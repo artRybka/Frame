@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.136.0
+
+- „Propozycje” w Playlistach to teraz „Propozycje dnia”: playlista składana
+  raz na dzień z kart „Dziś dla Ciebie” (wybór kuratora, Artysta tygodnia,
+  Motyw dnia, Ponieważ lubisz, pary tygodnia). Z każdej karty 12 pierwszych
+  dzieł, tych, które Odkrywaj pokazuje na początku, ułożonych czwórkami:
+  cztery z pierwszej karty, cztery z następnej i tak dalej. Ramka pokazuje
+  je w tej kolejności (bez tasowania), a dzieła pokazane w ostatnich dniach
+  idą na koniec. Twoje własne zdjęcia już się do nich nie dokładają.
+- Po stuknięciu w kafelek: nazwy kart, z których są dzieła, „Prezentuj na
+  ramce” i dzieła czwórkami, tak jak pójdą na ramce. Karty „Ponieważ lubisz”
+  są tej osoby, która włączyła Propozycje dnia na ramce.
+
 ## 1.134.0
 
 - Playlisty: karty da się ułożyć po swojemu. Przytrzymaj kartę i przesuń

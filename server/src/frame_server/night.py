@@ -263,6 +263,10 @@ def tasks(service: FrameService) -> list[NightTask]:
 
     def suggestions(night: Night) -> None:
         discover_api.suggestion_rows(service)  # the owner's
+        # Everyone's Propozycje dnia for the new day, the frame's first.
+        users = [service.player.suggestions_user, *(u.id for u in service.users.users())]
+        for user in dict.fromkeys(users):
+            service.player.day_picks(user)
 
     return [
         NightTask("tidy", tidy),

@@ -11,7 +11,7 @@ import time
 from collections import Counter
 from collections.abc import Awaitable, Callable, Iterable, Iterator
 from concurrent.futures import Future
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
@@ -26,7 +26,17 @@ from .imaging.grids import MAX_PHOTOS, MIN_PHOTOS
 from .imaging.layout import Fit
 from .imaging.text import TextBlock
 from .kept import kept_ids
-from .library import AlbumOrder, Item, ItemKind, Job, Note, Playlist, PlaylistKind, PlaylistRules
+from .library import (
+    AlbumOrder,
+    Item,
+    ItemKind,
+    Job,
+    Note,
+    Playlist,
+    PlaylistKind,
+    PlaylistRules,
+    day_picks,
+)
 from .library.artists import is_artist
 from .library.colors import SCORE_VERSION, analyse, tint_spread, tint_strength
 from .library.icloud import only_copy
@@ -85,6 +95,8 @@ POLISH_SHOW_SECONDS = 25.0
 POLISH_AHEAD_SECONDS = 180.0
 #: Works picked by the server for the default rotation (ids, oldest first).
 SUGGESTIONS_KEY = "suggestions"
+#: Whose Propozycje dnia the frame plays: who last put them on it.
+SUGGESTIONS_USER_KEY = "suggestions_user"
 #: The works with a study and the works of the day (``study.STATE_KEY``,
 #: ``daily.HISTORY_KEY``): the catalogue never deletes them.
 STUDY_KEY = "study_items"
@@ -300,6 +312,8 @@ class Player:
         self._due_at: datetime | None = None
         #: The photos of lately previewed Multi boards (:meth:`preview_board`).
         self._preview_boards: dict[tuple[object, ...], tuple[float, list[str]]] = {}
+        #: Propozycje dnia being made (:meth:`day_picks`), one at a time.
+        self._picking = threading.Lock()
 
     @property
     def busy(self) -> bool:
@@ -437,8 +451,12 @@ class Player:
         playlist = self.playlist(settings)
         if playlist is not None:
             return self.library.playlist_items(playlist)
-        # Suggestions, with the owner's own works; until the server has
-        # picked any, the whole library.
+        # Propozycje dnia, in their order; until the day's are made, those
+        # of before (Suggestions with the owner's own works, or the library).
+        picked = self._day_ids()
+        if picked:
+            found = (self.library.get(i) for i in picked)
+            return [i for i in found if i is not None and not i.excluded]
         suggested = [i for i in self.suggestions() if not i.excluded]
         own = self.library.query(PlaylistRules(kinds=[ItemKind.OWN]))[1]
         if suggested:
@@ -452,6 +470,48 @@ class Player:
         if settings.playlist_id is None:
             return None
         return self.library.playlist(settings.playlist_id)
+
+    # -- Propozycje dnia ---------------------------------------------------
+
+    @property
+    def suggestions_user(self) -> str:
+        """Whose Propozycje dnia the frame plays."""
+        return str(self.library.get_state(SUGGESTIONS_USER_KEY, OWNER_ID))
+
+    def play_suggestions(self, user: str) -> None:
+        """``user`` put Propozycje dnia on the frame: theirs from now on."""
+        if user != self.suggestions_user:
+            self.library.set_state(SUGGESTIONS_USER_KEY, user)
+            self.reset_queue()
+
+    def day_picks(self, user: str, today: date | None = None) -> day_picks.DayPicks:
+        """``user``'s Propozycje dnia for today, made now if they are not
+        yet (a query of the catalogue for each card: call off the event
+        loop). The frame's line is drawn again when the frame plays them."""
+        today = today or date.today()
+        found = day_picks.kept(self.library, user)
+        if found is not None and found.day == today.isoformat():
+            return found
+        with self._picking:
+            found = day_picks.kept(self.library, user)
+            if found is not None and found.day == today.isoformat():
+                return found  # made meanwhile
+            found = day_picks.work_out(self.library, user, today, private=self.settings.private_use)
+        if self.settings.playlist_id is None and user == self.suggestions_user:
+            self.reset_queue()
+        return found
+
+    def _day_ids(self) -> list[str]:
+        """The frame's Propozycje dnia as kept; another day's are made again
+        in the background (and the line drawn again then)."""
+        user = self.suggestions_user
+        found = day_picks.kept(self.library, user)
+        stale = found is None or found.day != date.today().isoformat()
+        if stale and self.service.settings.scheduler and not self._picking.locked():
+            threading.Thread(
+                target=self.day_picks, args=(user,), name="day-picks", daemon=True
+            ).start()
+        return found.ids if found is not None else []
 
     def suggestions(self) -> list[Item]:
         ids = self.library.get_state(SUGGESTIONS_KEY, [])
@@ -502,10 +562,12 @@ class Player:
         fresh = {i.id for i in self.fresh(items, settings)}
         parts = [[i for i in items if i.id in fresh], [i for i in items if i.id not in fresh]]
         playlist = self.playlist(settings)
+        # Propozycje dnia keep their fours: never shuffled.
+        in_order = playlist is None and bool(self._day_ids())
         for part in parts:
             if playlist is not None and playlist.album is not None:
                 part[:] = album_order(part, playlist.album.order)
-            elif settings.shuffle:
+            elif settings.shuffle and not in_order:
                 random.shuffle(part)
         state.queue = [i.id for part in parts for i in part]
 

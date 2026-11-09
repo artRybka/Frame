@@ -209,6 +209,8 @@ final class AppModel {
     /// Discover's rows and themes as last loaded (also by the previous
     /// launch): shown at once while fresh ones load.
     var suggestionRows: [SuggestionRow]?
+    /// Propozycje dnia as the server made them today; nil until loaded.
+    var dayPicks: DayPicks?
     var themes: [ArtTheme]?
     /// The work of the day at the top of Propozycje; nil while there is none.
     var daily: DailyWork?
@@ -797,6 +799,13 @@ final class AppModel {
     func refreshPlaylists() async {
         if let value = try? await backend.playlists() { setPlaylists(value) }
         if let value = try? await backend.hiddenItems() { setHidden(value.items) }
+        await refreshDayPicks()
+    }
+
+    /// Propozycje dnia as the server has them (made once a day; the first
+    /// ask of a day may take a few seconds on the NAS).
+    func refreshDayPicks() async {
+        if let value = try? await backend.daySuggestions(), value != dayPicks { dayPicks = value }
     }
 
     /// The cards in Playlisty in this order: at once here, then kept by the
@@ -1146,13 +1155,16 @@ final class AppModel {
             return
         }
         settings?.playlistId = nil
-        notices.done("Teraz prezentowane: Propozycje")
+        notices.done("Teraz prezentowane: Propozycje dnia")
         await followPlayer()
-        if let firstShowsLine { notices.done("Teraz prezentowane: Propozycje", firstShowsLine) }
+        if let firstShowsLine { notices.done("Teraz prezentowane: Propozycje dnia", firstShowsLine) }
     }
 
-    /// The works next in Propozycje, for its cover in Playlisty.
+    /// Propozycje dnia's cover in Playlisty: a work of each of the first four
+    /// fours (before they load, or from an older server, the works next in
+    /// the rotation of before).
     var suggestionCover: [RemoteItem] {
+        if let dayPicks, !dayPicks.items.isEmpty { return dayPicks.cover }
         let rows = suggestionRows ?? []
         return Array((rows.first { $0.key == "for-you" } ?? rows.first)?.items.prefix(4) ?? [])
     }

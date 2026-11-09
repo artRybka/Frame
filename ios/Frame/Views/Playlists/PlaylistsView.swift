@@ -30,6 +30,12 @@ struct PlaylistsView: View {
     /// each person; my "Ulubione" first, next to "Propozycje", until then).
     private var ordered: [PlaylistSummary] { model.playlists }
 
+    /// Under "Propozycje dnia": how many works today, else where they come from.
+    private var suggestionsLine: String {
+        guard let count = model.dayPicks?.items.count, count > 0 else { return "z „Dziś dla Ciebie”" }
+        return "\(Names.works(count)) na dziś"
+    }
+
     /// The frame plays Propozycje: no playlist.
     private var suggestionsActive: Bool { model.settings != nil && model.settings?.playlistId == nil }
 
@@ -57,7 +63,7 @@ struct PlaylistsView: View {
                         NowPlayingCard(playlist: active, opens: false)
                     } else if suggestionsActive {
                         NavigationLink(value: SuggestionsRoute()) {
-                            NowPlayingCard(title: "Propozycje", subtitle: "dobór z Odkrywaj") {
+                            NowPlayingCard(title: "Propozycje dnia", subtitle: "z „Dziś dla Ciebie”") {
                                 CoverSlideshow(slides: model.suggestionCover.prefix(4).map(CoverSlideshow.Slide.init))
                             }
                         }
@@ -67,13 +73,13 @@ struct PlaylistsView: View {
                     // different heights made the lazy grid jump while scrolling.
                     LazyVGrid(columns: Self.columns, spacing: 22) {
                         NavigationLink(value: SuggestionsRoute()) {
-                            SuggestionsCard(works: model.suggestionCover, isActive: suggestionsActive)
+                            SuggestionsCard(works: model.suggestionCover, subtitle: suggestionsLine, isActive: suggestionsActive)
                         }
                         .buttonStyle(.plain)
                         .contextMenu {
                             suggestionsMenu
                         } preview: {
-                            CardMenuPreview(title: "Propozycje", subtitle: "dobór z Odkrywaj") {
+                            CardMenuPreview(title: "Propozycje dnia", subtitle: suggestionsLine) {
                                 SuggestionsCover(works: model.suggestionCover)
                             }
                         }
@@ -181,8 +187,11 @@ struct PlaylistsView: View {
             }
             .refreshable { await model.refreshPlaylists() }
             .task { if model.playlists.isEmpty { await model.refreshPlaylists() } }
+            // Made once a day on the server: today's, also on a page kept open overnight.
+            .task { await model.refreshDayPicks() }
             .onChange(of: model.playlists.first?.id) { _, first in
                 if LaunchRoute.screen == "playlist", path.isEmpty, let first { path.append(first) }
+                if LaunchRoute.screen == "suggestions", path.isEmpty { path.append(SuggestionsRoute()) }
                 if LaunchRoute.screen == "editor", editing == nil {
                     editing = Playlist(name: "Błękitne krajobrazy", rules: PlaylistRules(colors: ["blue"]))
                 }
@@ -288,28 +297,47 @@ struct SuggestionsRoute: Hashable {}
 /// Opens "Ukryte" within Playlisty.
 struct HiddenRoute: Hashable {}
 
-/// Propozycje opened from their tile: a header like a playlist's, with
-/// "Prezentuj na ramce", over the same themes and rows as in Discover.
+/// Propozycje dnia opened from their tile (Mateusz 2026-11-09): a header
+/// like a playlist's naming the cards of "Dziś dla Ciebie" they come from,
+/// with "Prezentuj na ramce", over the works four by four, in the order the
+/// frame shows them.
 struct SuggestionsPage: View {
     @Environment(AppModel.self) private var model
     @Binding var path: NavigationPath
     @State private var starting = false
 
     private var isActive: Bool { model.settings != nil && model.settings?.playlistId == nil }
+    private static let pair = [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)]
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 header
-                SuggestionsView(path: $path)
+                if let picks = model.dayPicks, !picks.items.isEmpty {
+                    fours(picks)
+                } else if model.dayPicks == nil {
+                    GridSkeleton(count: 6)
+                } else {
+                    EmptyStateView(
+                        title: "Propozycje dnia są w drodze",
+                        message: "Składają się z kart „Dziś dla Ciebie”, gdy tylko w katalogu są ich dzieła."
+                    )
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .pageWidth()
             .padding(.horizontal, Theme.gutter)
             .padding(.bottom, 40)
         }
         .paperPage()
         .navigationBarTitleDisplayMode(.inline)
-        .refreshable { await model.refreshDiscover(force: true) }
+        .refreshable { await model.refreshDayPicks() }
+        .task { await model.refreshDayPicks() }
+    }
+
+    /// The cards' names, in the order of "Dziś dla Ciebie".
+    private var cardNames: String {
+        (model.dayPicks?.cards ?? []).map { Names.theme($0) }.joined(separator: " · ")
     }
 
     private var header: some View {
@@ -318,13 +346,15 @@ struct SuggestionsPage: View {
                 .aspectRatio(1.6, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .shadow(color: .black.opacity(0.15), radius: 18, y: 10)
-            Eyebrow("Dobór z Odkrywaj", color: Theme.vermilion)
-            Text("Propozycje")
+            Eyebrow("Dziś dla Ciebie", color: Theme.vermilion)
+            Text("Propozycje dnia")
                 .font(.serif(32, weight: .semibold))
                 .foregroundStyle(Theme.ink)
-            Text("Dzieła, które serwer wybiera z muzeów, i motywy, z których zrobisz playlistę.")
-                .font(.serif(17))
-                .foregroundStyle(Theme.inkSoft)
+            if !cardNames.isEmpty {
+                Text(cardNames)
+                    .font(.serif(17))
+                    .foregroundStyle(Theme.inkSoft)
+            }
             if isActive {
                 // A state, not a button: outlined in vermilion, like a label button.
                 Label("Teraz prezentowane na ramce", systemImage: "photo.fill")
@@ -356,6 +386,38 @@ struct SuggestionsPage: View {
                 .sensoryFeedback(.impact(weight: .medium), trigger: starting) { _, now in now }
             }
         }
+    }
+
+    /// Each four two by two, a little apart from the next: four of one
+    /// card, then four of the next, as the frame shows them.
+    private func fours(_ picks: DayPicks) -> some View {
+        LazyVStack(spacing: 18) {
+            ForEach(Array(picks.fours.enumerated()), id: \.offset) { _, four in
+                LazyVGrid(columns: Self.pair, spacing: 6) {
+                    ForEach(four) { work in
+                        NavigationLink(value: work.item.id) { tile(work) }
+                            .buttonStyle(.plain)
+                            .contextMenu { QueueButton(itemID: work.item.id) }
+                    }
+                }
+            }
+        }
+    }
+
+    private func tile(_ work: RemoteItem) -> some View {
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                ArtImage(
+                    ref: work.thumb,
+                    fallback: work.thumbFallback,
+                    placeholder: work.item.summary.placeholderColor,
+                    maxPixel: 500
+                )
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .accessibilityElement()
+            .accessibilityLabel(work.item.title)
     }
 }
 
@@ -632,6 +694,7 @@ struct CardCaption<Content: View>: View {
 /// in Discover, marked with sparkles; it can't be edited or deleted.
 struct SuggestionsCard: View {
     let works: [RemoteItem]
+    var subtitle = "z „Dziś dla Ciebie”"
     var isActive = false
 
     var body: some View {
@@ -659,16 +722,16 @@ struct SuggestionsCard: View {
                 }
                 .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
             CardCaption {
-                Text("Propozycje")
+                Text("Propozycje dnia")
                     .font(.serif(16, weight: .semibold))
                     .foregroundStyle(Theme.ink)
-                Text("dobór z Odkrywaj")
+                Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityHint("Otwiera Propozycje; przytrzymaj, by pokazać je na ramce")
+        .accessibilityHint("Otwiera Propozycje dnia; przytrzymaj, by pokazać je na ramce")
     }
 }
 

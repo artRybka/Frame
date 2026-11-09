@@ -1719,6 +1719,26 @@ extension Array where Element == RemoteItem {
 }
 
 /// A row of Discover, `GET /api/suggestions`.
+/// `GET /api/suggestions/day`: Propozycje dnia, the first works of each card
+/// of "Dziś dla Ciebie" in fours, as the frame shows them.
+struct DayPicks: Codable, Hashable, Sendable {
+    let day: String
+    /// The cards they come from, in the order of "Dziś dla Ciebie".
+    let cards: [ArtTheme]
+    let items: [RemoteItem]
+
+    /// One work of each of the first four fours: the cover shows four cards.
+    var cover: [RemoteItem] {
+        let firsts = stride(from: 0, to: items.count, by: 4).prefix(4).map { items[$0] }
+        return firsts.count == 4 ? firsts : Array(items.prefix(4))
+    }
+
+    /// The works four by four, as they come.
+    var fours: [[RemoteItem]] {
+        stride(from: 0, to: items.count, by: 4).map { Array(items[$0 ..< min($0 + 4, items.count)]) }
+    }
+}
+
 struct SuggestionRow: Codable, Hashable, Sendable, Identifiable {
     let key: String  // "for-you" | "like:<theme>" | "theme"
     let title: String
