@@ -48,6 +48,8 @@ protocol FrameBackend: Sendable {
     /// The card opened on a work whose source gathers pictures (Commons,
     /// Openverse, WikiArt): which museum it is in; waits up to `wait` seconds.
     func holder(itemID: String, wait: Int) async throws -> HolderView
+    /// The work's fragments (a scroll's parts, a Commons tile set): none for most works.
+    func fragments(itemID: String) async throws -> FragmentsView
     /// "Szukaj lepszej kopii": every copy of the work's picture in the
     /// sources, as they answer.
     func copies(itemID: String) async throws -> AsyncThrowingStream<CopyLine, Error>

@@ -45,7 +45,7 @@ from .imaging.layout import load_image
 from .library import Item, ItemKind
 from .library.colors import tint_spread
 from .library.duplicates import same_work, surname
-from .library.images import BYTES, IMAGE_MAX, display_copy, own_copy
+from .library.images import BYTES, display_copy, kept_long, own_copy
 from .library.likeness import Likeness
 from .library.models import Note, SharperCopy
 from .library.vocabulary import artist_matches, is_copy, is_photograph, is_reproduction
@@ -110,16 +110,30 @@ Status = Literal["looking", "found", "none", "fine", "off"]
 
 class Quality(NamedTuple):
     """A picture as its source gives it: the long side in pixels (0: no
-    picture but the thumbnail) and bits per pixel of its file (None when
-    not known)."""
+    picture but the thumbnail), bits per pixel of its file (None when not
+    known) and how many times longer than wide it is (1.0 when not known)."""
 
     side: int
     bits: float | None = None
+    ratio: float = 1.0
 
     @classmethod
     def of(cls, width: int, height: int, size: int) -> Quality:
         pixels = width * height
-        return cls(max(width, height), size * 8 / pixels if size and pixels else None)
+        bits = size * 8 / pixels if size and pixels else None
+        return cls.sized(width, height, bits)
+
+    @classmethod
+    def sized(cls, width: int, height: int, bits: float | None = None) -> Quality:
+        long, short = max(width, height), min(width, height)
+        return cls(long, bits, long / short if short > 0 else 1.0)
+
+    def kept(self, ratio: float | None = None) -> int:
+        """The long side the frame's server keeps of it
+        (:func:`~frame_server.library.images.kept_size`): an elongated
+        picture keeps more than IMAGE_MAX. ``ratio``: the work's, when
+        this one does not know it."""
+        return kept_long(self.side, max(self.ratio, ratio or 1.0))
 
     @classmethod
     def of_image(cls, img: Image.Image) -> Quality:
@@ -133,7 +147,8 @@ class Quality(NamedTuple):
         """This picture shows the work clearly better than ``own`` does."""
         if self.bits is not None and self.bits < MUSH:
             return False
-        side, own_side = min(self.side, IMAGE_MAX), min(own.side, IMAGE_MAX)
+        ratio = max(self.ratio, own.ratio)  # copies of one work: the same shape
+        side, own_side = self.kept(ratio), own.kept(ratio)
         if side < LEAST_SIDE:
             return False
         if side >= own_side * GAIN:

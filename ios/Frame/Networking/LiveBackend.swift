@@ -100,6 +100,12 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
+    func fragments(itemID: String) async throws -> FragmentsView {
+        var req = request("/api/library/items/\(escape(itemID))/fragments")
+        req.timeoutInterval = 60  // the museum may be asked first
+        return try await perform(req)
+    }
+
     func sharpen(itemID: String, wait: Int) async throws -> SharperView {
         var req = request(
             "/api/library/items/\(escape(itemID))/sharpen", method: "POST",

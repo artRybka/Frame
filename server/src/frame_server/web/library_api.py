@@ -277,6 +277,27 @@ async def get_item(item_id: str, svc: Svc) -> Item:
     return svc.holders.fill(await _work(svc, item_id))
 
 
+class FragmentsView(BaseModel):
+    """A work's fragments (library/fragments.py), for its card and its
+    study: ``whole``, the work a fragment is part of (on a fragment's card,
+    None on the work's own); ``fragments``, all of that work's, in order."""
+
+    whole: RemoteItem | None = None
+    fragments: list[RemoteItem] = Field(default_factory=list)
+
+
+@router.get("/library/items/{item_id:item}/fragments", response_model=FragmentsView)
+async def item_fragments(item_id: str, svc: Svc) -> FragmentsView:
+    item = await _work(svc, item_id)
+    work = await _work(svc, item.part_of) if item.part_of else item
+    found = await run_in_threadpool(urgent_call(svc.importer.fragments_of), work)
+    whole = remote_items(svc, [work], copies=False, keep_hidden=True) if item.part_of else []
+    return FragmentsView(
+        whole=whole[0] if whole else None,
+        fragments=remote_items(svc, found, copies=False, keep_hidden=True),
+    )
+
+
 class HolderView(BaseModel):
     """The museum the work is in, for its card (``Item.held_by``):
     ``status`` "found" (``name`` says which); "looking" (ask again); "none"
