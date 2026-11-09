@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.131.0
+
+- „Zdjęcia do podglądu” przeniesione z Ramki do Konfiguracji →
+  Wyświetlanie → „Przykładowe zdjęcia”. Wgrywasz tam z telefonu do ośmiu
+  zdjęć, a podgląd układów Multi pokazuje każdy układ na nich, w kolejności
+  dodania. Nie trafiają do biblioteki ani na ramkę; krzyżyk je usuwa.
+
 ## 1.130.2
 
 - Serwer nie staje już na ponad minutę, gdy ramka pyta o obraz w chwili, gdy
