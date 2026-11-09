@@ -398,7 +398,8 @@ struct ItemDetailView: View {
             )
                 .fixedSize(horizontal: false, vertical: true)
             if !summary.artist.isEmpty {
-                Text(Names.artist(summary.artist)).font(.serif(19)).foregroundStyle(Theme.ink)
+                // Not Text: it cut the name short with "…" (NameText).
+                NameText(text: Names.artist(summary.artist))
             }
             if photo, !date.isEmpty {
                 Text(date).font(.subheadline).foregroundStyle(Theme.inkSoft)
@@ -964,8 +965,8 @@ struct ItemDetailView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     if !item.artist.isEmpty {
                         // Their other works, on Discover's search.
-                        Text(Names.artist(item.artist)).font(.serif(19)).foregroundStyle(Theme.ink)
-                            .multilineTextAlignment(.leading)
+                        // Not Text: it cut "Piotr Mondrian" short with "…" (NameText).
+                        NameText(text: Names.artist(item.artist))
                             .artistPress { model.artistSearch = item.artist }
                     }
                     if !bio.isEmpty {

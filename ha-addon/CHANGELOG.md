@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.138.3
+
+- Nazwisko artysty pod tytułem dzieła (na karcie dzieła i w Teraz) nie jest
+  już ucinane na „…”, gdy obok jest miejsce; za długie zawija się do
+  drugiego wiersza.
+
 ## 1.138.2
 
 - Pełny ekran dzieła bez guzików: nie ma już słoneczka ani krzyżyka.
