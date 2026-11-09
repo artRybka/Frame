@@ -5,6 +5,9 @@
 - Szukaj → Styl: pod obrazkami została sama nazwa stylu, lata są tylko przy
   nagłówkach półek. Obrazki stoją bliżej siebie, więc na ekranie mieści się
   ich więcej.
+- Wybrany styl pilnuje swoich lat: dzieło z datą musi powstać mniej więcej
+  wtedy, gdy ten styl istniał (z zapasem 15 lat przed i 40 po). Art déco nie
+  pokazuje już Rubensa ani Muchy, których muzea znalazły po słowach w opisie.
 
 ## 1.129.0
 

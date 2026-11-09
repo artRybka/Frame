@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Collection
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from datetime import date
 from functools import cache, cached_property, lru_cache
@@ -886,9 +886,61 @@ def _grouped(keys: tuple[str, ...]) -> dict[str, list[Term]]:
     return grouped(list(keys))
 
 
+#: When each style was made (the app's Styl shelves show the same years;
+#: None: still going). A museum's search for "art deco" also finds Rubens
+#: and Mucha (Mateusz 2026-11-09), so a dated work must fit one of its
+#: styles' years, with :data:`STYLE_EARLY` before and :data:`STYLE_LATE`
+#: after: Munch's 1893 Scream is expressionism, Monet's water lilies of
+#: the 1910s impressionism.
+STYLE_YEARS: dict[str, tuple[int, int | None]] = {
+    "style:gothic": (1250, 1500), "style:renaissance": (1400, 1600),
+    "style:mannerism": (1520, 1600), "style:dutch-golden-age": (1600, 1690),
+    "style:baroque": (1600, 1750), "style:rococo": (1720, 1780),
+    "style:neoclassicism": (1760, 1830), "style:romanticism": (1790, 1850),
+    "style:hudson-river": (1825, 1875), "style:barbizon": (1830, 1870),
+    "style:academic": (1830, 1900), "style:orientalism": (1830, 1900),
+    "style:realism": (1840, 1880), "style:pre-raphaelite": (1848, 1900),
+    "style:munich-school": (1860, 1900), "style:impressionism": (1867, 1890),
+    "style:japonisme": (1860, 1910), "style:tonalism": (1880, 1915),
+    "style:symbolism": (1880, 1910), "style:pointillism": (1884, 1910),
+    "style:post-impressionism": (1886, 1905), "style:nabis": (1888, 1900),
+    "style:art-nouveau": (1890, 1910), "style:young-poland": (1890, 1918),
+    "style:fauvism": (1904, 1908), "style:expressionism": (1905, 1925),
+    "style:cubism": (1907, 1920), "style:futurism": (1909, 1916),
+    "style:abstraction": (1910, None), "style:constructivism": (1913, 1930),
+    "style:dada": (1916, 1924), "style:de-stijl": (1917, 1931),
+    "style:bauhaus": (1919, 1933), "style:new-objectivity": (1919, 1933),
+    "style:art-deco": (1920, 1940), "style:surrealism": (1924, None),
+    "style:rinpa": (1600, 1870), "style:ukiyo-e": (1660, 1900),
+    "style:shin-hanga": (1915, None),
+}  # fmt: skip
+STYLE_EARLY = 15
+STYLE_LATE = 40
+
+
+def in_style_years(item: Item, styles: Iterable[str]) -> bool:
+    """``item`` was made when one of ``styles`` was (an undated work, or a
+    style with no years, always fits)."""
+    if item.year is None:
+        return True
+    styles = list(styles)
+    spans = [STYLE_YEARS[key] for key in styles if key in STYLE_YEARS]
+    if not spans or len(spans) < len(styles):
+        return True
+    year = item.year
+    return any(
+        start - STYLE_EARLY <= year and (end is None or year <= end + STYLE_LATE)
+        for start, end in spans
+    )
+
+
 def matches_terms(item: Item, keys: list[str], judged: Collection[str] = ()) -> bool:
     """Every kind of term in ``keys`` has one that fits ``item``; kinds in
-    ``judged`` (:func:`searched_kinds`) are not looked at."""
+    ``judged`` (:func:`searched_kinds`) are not looked at, but a style's
+    years always are (:func:`in_style_years`)."""
+    styles = [k for k in keys if k.startswith("style:")]
+    if styles and not in_style_years(item, styles):
+        return False
     groups = {k: v for k, v in _grouped(tuple(keys)).items() if k not in judged}
     if not groups:
         return True
