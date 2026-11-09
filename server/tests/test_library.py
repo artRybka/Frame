@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 
 import httpx
 import numpy as np
@@ -116,6 +118,43 @@ def test_batch_is_one_transaction(tmp_path) -> None:
         pass
     # Rolled back on disk and in the cached copy alike.
     assert lib.count() == 3 and not lib.get("test:1").favorite  # type: ignore[union-attr]
+
+
+def test_state_kept_from_the_loop_never_waits_for_the_lock(tmp_path) -> None:
+    """keep_state is read back at once and written by a thread, even while
+    another thread holds the library (the frame's question waited 78 s)."""
+    lib = Library(tmp_path / "lib.db")
+    lib.set_state("app", {"seen": 0})
+    assert lib.count() == 0  # the items read once, before the lock is taken
+    held, release = threading.Event(), threading.Event()
+
+    def hold() -> None:
+        with lib.batch():
+            held.set()
+            release.wait(5)
+
+    holder = threading.Thread(target=hold)
+    holder.start()
+    held.wait(5)
+    started = time.monotonic()
+    lib.keep_state("app", {"seen": 1})
+    assert lib.get("nothing") is None
+    assert lib.get_state("app") == {"seen": 1}
+    assert time.monotonic() - started < 1
+    release.set()
+    holder.join(5)
+    lib.close()  # what is still kept goes to disk
+    assert Library(tmp_path / "lib.db").get_state("app") == {"seen": 1}
+
+
+def test_a_state_set_later_is_not_overwritten_by_one_kept_before(tmp_path) -> None:
+    lib = Library(tmp_path / "lib.db")
+    with lib.batch():  # the writer waits for this
+        lib.keep_state("k", 1)
+        lib.set_state("k", 2)
+    lib.write_kept()
+    assert lib.get_state("k") == 2
+    assert Library(tmp_path / "lib.db").get_state("k") == 2
 
 
 def test_playlists_and_state(tmp_path) -> None:

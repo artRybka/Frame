@@ -440,7 +440,7 @@ class PanelApp:
         return AppState.model_validate(self.service.library.get_state(APP_KEY, {}))
 
     def _save(self, state: AppState) -> None:
-        self.service.library.set_state(APP_KEY, state.model_dump(mode="json"))
+        self.service.library.keep_state(APP_KEY, state.model_dump(mode="json"))
         self.service.power.publish_status()
 
     @property
