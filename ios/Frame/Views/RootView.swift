@@ -36,7 +36,7 @@ struct RootView: View {
             switch LaunchRoute.screen {
             case "discover", "discover-group", "daily", "detail", "original": .discover
             case "museums", "search", "search-picker", "search-colors", "search-tones", "search-empty", "search-styles", "search-subjects", "search-techniques", "search-chosen", "search-museums": .search
-            case "playlists", "playlist", "editor", "editor-new", "editor-manual": .playlists
+            case "playlists", "playlist", "suggestions", "editor", "editor-new", "editor-manual": .playlists
             case "frame", "notices", "connection", "battery", "schedule", "schedule-economy", "presentation", "presentation-photo", "orientation": .frame
             default: .now
             }

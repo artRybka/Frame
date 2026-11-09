@@ -785,8 +785,24 @@ actor DemoBackend: FrameBackend {
 
     func playSuggestions() async throws {
         settingsValue.playlistId = nil
-        queue = items.map(\.id).shuffled()
+        queue = try await daySuggestions().items.map(\.item.id)
         try await next()
+    }
+
+    func daySuggestions() async throws -> DayPicks {
+        // As the server: twelve of each card of "Dziś dla Ciebie", in fours.
+        let cards = DemoDiscover.themes.filter { $0.group == "Dziś dla Ciebie" && works($0).count >= 4 }
+        var taken = Set<String>()
+        let lists = cards.map { card in
+            let picked = works(card).filter { !taken.contains($0.id) }.prefix(12)
+            taken.formUnion(picked.map(\.id))
+            return Array(picked)
+        }
+        var order: [Item] = []
+        for start in stride(from: 0, to: 12, by: 4) {
+            for list in lists where start < list.count { order += list[start ..< min(start + 4, list.count)] }
+        }
+        return DayPicks(day: "2026-11-09", cards: cards, items: remote(order))
     }
 
     // MARK: Settings, museums, device

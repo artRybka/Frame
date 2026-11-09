@@ -97,6 +97,8 @@ protocol FrameBackend: Sendable {
     func play(playlistID: Int) async throws
     /// Propozycje on the frame: the rotation without a playlist.
     func playSuggestions() async throws
+    /// Propozycje dnia of the asking person (made once a day).
+    func daySuggestions() async throws -> DayPicks
 
     func settings() async throws -> FrameSettings
     func saveSettings(_ settings: FrameSettings) async throws -> FrameSettings
