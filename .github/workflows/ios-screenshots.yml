@@ -12,6 +12,10 @@ on:
         type: choice
         options: [both, light, dark]
         default: both
+      only:
+        description: Capture only shots whose name matches this regex (empty = all)
+        type: string
+        default: ""
 
 jobs:
   screenshots:
@@ -66,12 +70,14 @@ jobs:
         env:
           UDID: ${{ steps.sim.outputs.udid }}
           APPEARANCES: ${{ inputs.appearance == 'both' && 'light dark' || inputs.appearance }}
+          ONLY: ${{ inputs.only }}
         run: |
           set -x
           mkdir -p shots
           xcrun simctl install "$UDID" build/Build/Products/Debug-iphonesimulator/Frame.app
           xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --wifiBars 3 || true
           capture() {
+            if [ -n "$ONLY" ] && ! [[ "$3" =~ $ONLY ]]; then return 0; fi
             xcrun simctl terminate "$UDID" com.artrybka.frame || true
             xcrun simctl launch "$UDID" com.artrybka.frame -demo YES -screen "$1" "${@:4}"
             sleep "${2:-12}"
@@ -119,6 +125,10 @@ jobs:
             capture connection 10 "connection-keys-$appearance" -settingsPage keys
             capture connection 10 "connection-diagnostics-$appearance" -settingsPage diagnostics
             capture battery 10 "battery-$appearance"
+            # Confirmation dialogs: on iOS 26 a popover on what was tapped.
+            capture frame 12 "confirm-update-$appearance" -confirm update
+            capture connection 12 "confirm-describe-$appearance" -settingsPage ai -confirm describe
+            capture playlists 12 "confirm-delete-playlist-$appearance" -confirm delete-playlist
             capture museums 8 "museums-$appearance"
             capture search 8 "search-$appearance"
             capture search-picker 8 "search-picker-$appearance"

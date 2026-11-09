@@ -184,10 +184,6 @@ struct CropScreen: View {
                 .opacity(shown ? 1 : 0)
         }
         .presentationBackground(.clear)
-        .confirmationDialog("Odrzucić zmiany kadru?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
-            Button("Odrzuć zmiany", role: .destructive) { discard() }
-            Button("Edytuj dalej", role: .cancel) {}
-        }
         .onAppear { if original == nil { original = draft } }
         .onChange(of: preview, initial: true) { latest = preview }
         .task {
@@ -219,6 +215,10 @@ struct CropScreen: View {
             Button("Anuluj") { cancel() }
                 .buttonStyle(.glass)
                 .disabled(saving || closing)
+                .confirmationDialog("Odrzucić zmiany kadru?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
+                    Button("Odrzuć zmiany", role: .destructive) { discard() }
+                    Button("Edytuj dalej", role: .cancel) {}
+                }
             Spacer()
         }
         .padding(.horizontal, Theme.gutter)

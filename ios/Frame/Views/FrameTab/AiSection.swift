@@ -112,17 +112,6 @@ struct AiSection: View {
                 await model.loadAiSettings()
             }
         }
-        .confirmationDialog(
-            estimate.map { "Opisać \(Names.pictures($0.items))?" } ?? "",
-            isPresented: Binding(get: { estimate != nil }, set: { if !$0 { estimate = nil } }),
-            titleVisibility: .visible,
-            presenting: estimate
-        ) { _ in
-            Button("Opisz bibliotekę") { Task { await model.describeLibrary() } }
-            Button("Anuluj", role: .cancel) {}
-        } message: { estimate in
-            Text("Około \(Money.usd(estimate.usd)) w pakietach Anthropic (połowa zwykłej ceny). Odpowiedzi przychodzą w ciągu doby. Pozostało w limicie \(Money.usd(budgetLeft)).")
-        }
     }
 
     // MARK: Key
@@ -256,6 +245,23 @@ struct AiSection: View {
         }
         .fontWeight(.semibold)
         .disabled(!settings.keySet || !keywordsOn || estimating || settings.keywordsProgress.preparing)
+        .task {
+            // CI screenshots: where the dialog points.
+            guard LaunchRoute.confirm == "describe" else { return }
+            try? await Task.sleep(for: .seconds(3))
+            estimate = AiEstimate(items: 19022, usd: 2.66)
+        }
+        .confirmationDialog(
+            estimate.map { "Opisać \(Names.pictures($0.items))?" } ?? "",
+            isPresented: Binding(get: { estimate != nil }, set: { if !$0 { estimate = nil } }),
+            titleVisibility: .visible,
+            presenting: estimate
+        ) { _ in
+            Button("Opisz bibliotekę") { Task { await model.describeLibrary() } }
+            Button("Anuluj", role: .cancel) {}
+        } message: { estimate in
+            Text("Około \(Money.usd(estimate.usd)) w pakietach Anthropic (połowa zwykłej ceny). Odpowiedzi przychodzą w ciągu doby. Pozostało w limicie \(Money.usd(budgetLeft)).")
+        }
         Text("Dokłada cały katalog Odkrywaj, taniej, w pakietach.")
             .font(.caption)
             .foregroundStyle(Theme.inkSoft)

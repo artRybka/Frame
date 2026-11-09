@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.133.1
+
+- Dymki z pytaniem („Opisać 19022 obrazy?”, „Usunąć playlistę?” i inne)
+  wskazują guzik, który je otworzył. Dotąd potwierdzenie „Opisz całą
+  bibliotekę” wisiało u góry strony ze strzałką na „Polskie tytuły i opisy”,
+  bo w iOS 26 dymek wskazuje widok, do którego jest przypięty, a był
+  przypięty do całej strony. Tak samo przy usuwaniu playlisty, klucza APNs
+  i domownika, odłączaniu telefonu, porzucaniu zmian kadru i wgrywaniu
+  innego certyfikatu autora.
+
 ## 1.133.0
 
 - Szukaj: wpisane razem słowa są frazą. „nocna straż” znajduje dzieła, w
