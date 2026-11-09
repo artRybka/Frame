@@ -561,6 +561,12 @@ struct FrameTabView: View {
         } message: {
             Text("Serwer zniknie na około minutę. Gdyby nowa wersja nie wystartowała, wróci obecna.")
         }
+        .task {
+            // CI screenshots: where the dialog points.
+            guard LaunchRoute.confirm == "update" else { return }
+            try? await Task.sleep(for: .seconds(3))
+            confirmingUpdate = true
+        }
     }
 
     /// What a tap on the Serwer tile does: update (the blue arrow), look

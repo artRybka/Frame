@@ -41,7 +41,10 @@ git-ignored. iOS 26+, SwiftUI, `@Observable`, Liquid Glass. CI builds and tests 
 from Linux.
 Screenshots are not part of CI: when a branch changes the look, dispatch
 `ios-screenshots.yml` on that branch (`workflow_dispatch`, ref = branch) and
-take the `screenshots` artifact.
+take the `screenshots` artifact (input `only`: a regex of shot names, e.g.
+`^confirm-`, to capture just those).
+`.confirmationDialog` goes on the button (or menu, or card) that asks, never
+on a page or section: on iOS 26 it is a popover pointing at that view.
 Pages: `.paperPage()` on the ScrollView (never a bare `.background(Theme.paper)`,
 `PageLayoutTests` fails on it) and `.pageWidth()` on its content. A vertical
 ScrollView is only as wide as its content, so a page holding just a spinner or

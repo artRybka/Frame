@@ -155,18 +155,6 @@ struct HouseholdSection: View {
         .sheet(item: $shown, onDismiss: { Task { await load() } }) { shown in
             InviteSheet(title: shown.title, link: shown.link)
         }
-        .confirmationDialog(
-            "Usunąć \(removing?.name ?? "")?",
-            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
-            titleVisibility: .visible,
-            presenting: removing
-        ) { person in
-            Button("Usuń", role: .destructive) {
-                Task { await save { try await $0.removePerson(id: person.id) } }
-            }
-        } message: { _ in
-            Text("Telefony tej osoby przestaną działać, a jej serca i prywatne playlisty znikną. Wspólne playlisty zostaną, już jako Twoje.")
-        }
     }
 
     @ViewBuilder
@@ -193,6 +181,21 @@ struct HouseholdSection: View {
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
+                    }
+                    .confirmationDialog(
+                        "Usunąć \(person.name)?",
+                        isPresented: Binding(
+                            get: { removing?.id == person.id },
+                            set: { if !$0 { removing = nil } }
+                        ),
+                        titleVisibility: .visible,
+                        presenting: removing
+                    ) { person in
+                        Button("Usuń", role: .destructive) {
+                            Task { await save { try await $0.removePerson(id: person.id) } }
+                        }
+                    } message: { _ in
+                        Text("Telefony tej osoby przestaną działać, a jej serca i prywatne playlisty znikną. Wspólne playlisty zostaną, już jako Twoje.")
                     }
                 }
             }
@@ -352,6 +355,16 @@ struct MyAccessView: View {
                     FunSection()
                     Button("Odłącz ten telefon", role: .destructive) { confirmLeave = true }
                         .frame(maxWidth: .infinity)
+                        .confirmationDialog("Odłączyć ten telefon od ramki?", isPresented: $confirmLeave, titleVisibility: .visible) {
+                            Button("Odłącz", role: .destructive) {
+                                Task {
+                                    await model.leaveFrame()
+                                    dismiss()
+                                }
+                            }
+                        } message: {
+                            Text("Aby wrócić, potrzebne będzie nowe zaproszenie. Twoje Ulubione i playlisty zostaną na serwerze.")
+                        }
                 }
                 .pageWidth()
                 .padding(.horizontal, Theme.gutter)
@@ -365,16 +378,6 @@ struct MyAccessView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Gotowe") { dismiss() }
                 }
-            }
-            .confirmationDialog("Odłączyć ten telefon od ramki?", isPresented: $confirmLeave, titleVisibility: .visible) {
-                Button("Odłącz", role: .destructive) {
-                    Task {
-                        await model.leaveFrame()
-                        dismiss()
-                    }
-                }
-            } message: {
-                Text("Aby wrócić, potrzebne będzie nowe zaproszenie. Twoje Ulubione i playlisty zostaną na serwerze.")
             }
         }
     }
