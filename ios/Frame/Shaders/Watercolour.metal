@@ -12,7 +12,7 @@ using namespace metal;
 // drawing then comes up in the wash. Lengths are in "sheet pixels": the
 // picture's short side is 540 of them, as in the concept it was drawn in.
 
-namespace watercolour {
+namespace paper {
 
 float hash(float2 cell, float seed) {
     float3 p = fract(float3(cell.xyx) * 0.1031 + seed * 0.0173);
@@ -37,10 +37,10 @@ float ease(float x) {
     return x * x * (3.0 - 2.0 * x);
 }
 
-}  // namespace watercolour
+}  // namespace paper
 
 [[ stitchable ]] half4 watercolour(float2 position, SwiftUI::Layer layer, float2 size, float progress) {
-    using namespace watercolour;
+    using namespace paper;
     float unit = min(size.x, size.y) / 540.0;
     float2 q = position / unit;
     float2 n = position / size;
