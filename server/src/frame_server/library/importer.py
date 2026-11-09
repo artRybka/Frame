@@ -332,6 +332,23 @@ class Importer:
         self.remember(found)
         return found
 
+    def placed_fragments(
+        self, item: Item
+    ) -> tuple[list[Item], list[tuple[Item, tuple[float, float, float, float]]]]:
+        """``item``'s fragments (as :meth:`fragments_of`), and those whose
+        place on it is known with that place (left, top, width, height as
+        fractions of the whole)."""
+        found = self.fragments_of(item)
+        if self.fragments is None or not found:
+            return found, []
+        parts = self.fragments.parts(item)  # kept: no second question
+        places = [
+            (fragment, (p.x, p.y, p.w, p.h))
+            for fragment, p in zip(found, parts, strict=False)
+            if p.x is not None and p.y is not None and p.w is not None and p.h is not None
+        ]
+        return found, places
+
     def resolve(self, item_id: str) -> Item | None:
         """A library item, or a museum work that is not (yet) in the library."""
         return self.library.get(item_id) or self.remote(item_id)
