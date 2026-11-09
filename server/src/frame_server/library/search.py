@@ -16,7 +16,7 @@ from .museums import PLACES_EUROPEANA, PLACES_WD, Discovery
 from .phrases import phrases
 from .places import QID, SOURCE_PLACES, known_places
 from .repo import matches, says, search_fits
-from .vocabulary import category_fits, museum_kind, museum_queries
+from .vocabulary import asked_artists, asked_topics, category_fits, museum_kind
 
 #: With colours asked, museum pages of this many works are looked at, until
 #: ``limit`` fit, this many pages are seen or this many seconds have passed.
@@ -53,8 +53,9 @@ def museum_text(rules: PlaylistRules, page: int, words: str | None = None) -> st
     """What to ask the museums: the words (``words``: as one museum's
     language has them), an artist (one per page, in turns) and the styles
     and subjects."""
-    artist = rules.artists[(page - 1) % len(rules.artists)] if rules.artists else ""
-    topics = museum_queries(rules.terms)[:1]
+    artists = asked_artists(rules.artists, rules.terms)
+    artist = artists[(page - 1) % len(artists)] if artists else ""
+    topics = asked_topics(rules.artists, artist, rules.terms)
     typed = rules.query.strip() if words is None else words
     return " ".join(w for w in (typed, artist, *topics) if w)
 
@@ -212,7 +213,8 @@ class MuseumSearch:
         rules = self.rules
         colors = rules.colors
         asked = COLOR_PAGE if colors else self.limit
-        deeper = rules.artists or phrases(rules.query)
+        artists = asked_artists(rules.artists, rules.terms)
+        deeper = artists or phrases(rules.query)
         left = COLOR_PAGES if colors else ARTIST_PAGES if deeper else 1
         started = time.monotonic()
         total = fitting = 0
@@ -226,7 +228,7 @@ class MuseumSearch:
         while at is not None and left > 0:
             text = museum_text(rules, at)
             # Several artists take turns, so each page asks for one of them.
-            round_ = (at - 1) // len(rules.artists) + 1 if rules.artists else at
+            round_ = (at - 1) // len(artists) + 1 if artists else at
             if text:
                 texts = {k: museum_text(rules, at, typed.get(k)) for k in named}
                 count, items, failed = importer.search_all(
@@ -247,7 +249,7 @@ class MuseumSearch:
             importer.measure(found)
             fitting += len(found)
             # Totals of several artists' searches don't add up page by page.
-            done = not items or (not rules.artists and 0 < count <= round_ * asked)
+            done = not items or (not artists and 0 < count <= round_ * asked)
             at = None if done else at + 1
             left -= 1
             yield total, found, failed, at

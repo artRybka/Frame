@@ -855,6 +855,8 @@ def term_matches(found: Term, item: Item, text: str | None = None) -> bool:
         return found.place is None or from_place(item, found.place)
     if found.key in item.terms:
         return True
+    if found.kind == "style" and _by_style_artist(found, item):
+        return True
     pattern = found.pattern
     return pattern is not None and bool(pattern.search(text if text is not None else text_of(item)))
 
@@ -952,6 +954,226 @@ def matches_terms(item: Item, keys: list[str], judged: Collection[str] = ()) -> 
         return False
     groups = {k: v for k, v in groups.items() if k not in judged}
     return all(any(term_matches(t, item, text) for t in terms) for terms in groups.values())
+
+
+#: Styles museums don't name and their search doesn't find ("new
+#: objectivity" brought Greek pyxides and video art, and with the style's
+#: name wanted nothing, Mateusz 2026-11-09): they are asked by their
+#: painters, in turns, and a work of theirs from the style's years fits.
+STYLE_ARTISTS: dict[str, tuple[str, ...]] = {
+    # Museums' words found few or none of these (2026-11-09, every source
+    # asked each style's word: AIC, Cleveland, Met, Rijksmuseum, SMK,
+    # Openverse, MNW, MNK, Yale, V&A, Getty, Commons, WikiArt).
+    "style:dutch-golden-age": (
+        "Rembrandt",
+        "Johannes Vermeer",
+        "Frans Hals",
+        "Jacob van Ruisdael",
+        "Jan Steen",
+        "Pieter de Hooch",
+        "Aelbert Cuyp",
+        "Gerard ter Borch",
+        "Jan van Goyen",
+        "Meindert Hobbema",
+        "Willem Claesz. Heda",
+        "Gabriel Metsu",
+    ),
+    "style:academic": (
+        "William-Adolphe Bouguereau",
+        "Alexandre Cabanel",
+        "Jean-Léon Gérôme",
+        "Lawrence Alma-Tadema",
+        "Frederic Leighton",
+        "Paul Delaroche",
+        "Thomas Couture",
+        "Ernest Meissonier",
+        "Henryk Siemiradzki",
+        "Jean-Paul Laurens",
+        "Pierre-Auguste Cot",
+        "Jules Breton",
+    ),
+    "style:hudson-river": (
+        "Thomas Cole",
+        "Frederic Edwin Church",
+        "Albert Bierstadt",
+        "Asher Brown Durand",
+        "Jasper Francis Cropsey",
+        "Sanford Robinson Gifford",
+        "John Frederick Kensett",
+        "Thomas Moran",
+        "Worthington Whittredge",
+        "Martin Johnson Heade",
+    ),
+    "style:pre-raphaelite": (
+        "Dante Gabriel Rossetti",
+        "John Everett Millais",
+        "William Holman Hunt",
+        "Edward Burne-Jones",
+        "Ford Madox Brown",
+        "Arthur Hughes",
+        "John William Waterhouse",
+        "Frederick Sandys",
+        "Evelyn De Morgan",
+        "Elizabeth Siddal",
+    ),
+    "style:munich-school": (
+        "Józef Brandt",
+        "Alfred Wierusz-Kowalski",
+        "Maksymilian Gierymski",
+        "Aleksander Gierymski",
+        "Władysław Czachórski",
+        "Wilhelm Leibl",
+        "Wilhelm Trübner",
+        "Franz von Lenbach",
+        "Karl von Piloty",
+        "Franz von Defregger",
+    ),
+    "style:tonalism": (
+        "James McNeill Whistler",
+        "George Inness",
+        "Dwight William Tryon",
+        "Thomas Wilmer Dewing",
+        "Alexander Helwig Wyant",
+        "Ralph Albert Blakelock",
+        "Henry Ward Ranger",
+        "John Francis Murphy",
+        "Charles Warren Eaton",
+        "Birge Harrison",
+    ),
+    "style:post-impressionism": (
+        "Vincent van Gogh",
+        "Paul Cézanne",
+        "Paul Gauguin",
+        "Henri de Toulouse-Lautrec",
+        "Émile Bernard",
+        "Henri Rousseau",
+        "Louis Anquetin",
+        "Charles Laval",
+    ),
+    "style:nabis": (
+        "Pierre Bonnard",
+        "Édouard Vuillard",
+        "Maurice Denis",
+        "Paul Sérusier",
+        "Paul Ranson",
+        "Félix Vallotton",
+        "Ker-Xavier Roussel",
+        "Henri-Gabriel Ibels",
+    ),
+    "style:young-poland": (
+        "Stanisław Wyspiański",
+        "Jacek Malczewski",
+        "Józef Mehoffer",
+        "Witold Wojtkiewicz",
+        "Władysław Podkowiński",
+        "Ferdynand Ruszczyc",
+        "Teodor Axentowicz",
+        "Wojciech Weiss",
+        "Jan Stanisławski",
+        "Leon Wyczółkowski",
+        "Julian Fałat",
+        "Olga Boznańska",
+    ),
+    "style:fauvism": (
+        "Henri Matisse",
+        "André Derain",
+        "Maurice de Vlaminck",
+        "Raoul Dufy",
+        "Albert Marquet",
+        "Georges Braque",
+        "Kees van Dongen",
+        "Henri Manguin",
+        "Charles Camoin",
+        "Othon Friesz",
+    ),
+    "style:constructivism": (
+        "Kazimir Malevich",
+        "El Lissitzky",
+        "Lyubov Popova",
+        "Vladimir Tatlin",
+        "Alexander Rodchenko",
+        "Varvara Stepanova",
+        "Władysław Strzemiński",
+        "Katarzyna Kobro",
+        "Henryk Stażewski",
+        "László Moholy-Nagy",
+    ),
+    "style:de-stijl": (
+        "Piet Mondrian",
+        "Theo van Doesburg",
+        "Bart van der Leck",
+        "Vilmos Huszár",
+        "Georges Vantongerloo",
+        "Gerrit Rietveld",
+        "César Domela",
+        "Friedrich Vordemberge-Gildewart",
+    ),
+    "style:new-objectivity": (
+        "Otto Dix",
+        "George Grosz",
+        "Christian Schad",
+        "Georg Schrimpf",
+        "Alexander Kanoldt",
+        "Rudolf Schlichter",
+        "Anton Räderscheidt",
+        "Carl Grossberg",
+        "Franz Radziwill",
+        "Karl Hubbuch",
+        "Jeanne Mammen",
+        "Max Beckmann",
+    ),
+    "style:shin-hanga": (
+        "Kawase Hasui",
+        "Hiroshi Yoshida",
+        "Ohara Koson",
+        "Ito Shinsui",
+        "Hashiguchi Goyo",
+        "Tsuchiya Koitsu",
+        "Torii Kotondo",
+        "Natori Shunsen",
+        "Yamamura Koka",
+        "Kasamatsu Shiro",
+    ),
+}
+#: Years around a style's own that its painters' works still count.
+STYLE_ARTIST_SLACK = 2
+
+
+def style_artists(keys: Iterable[str]) -> list[str]:
+    """What to ask museums for, in turns, when every style in ``keys`` is
+    one of :data:`STYLE_ARTISTS` (with another style, its word is asked):
+    first the style's own word (``""``), then its painters."""
+    styles = [k for k in keys if k.startswith("style:")]
+    if not styles or any(k not in STYLE_ARTISTS for k in styles):
+        return []
+    return ["", *dict.fromkeys(a for k in styles for a in STYLE_ARTISTS[k])]
+
+
+def asked_topics(chosen: list[str], artist: str, keys: list[str]) -> list[str]:
+    """The style or subject asked with ``artist`` (:func:`museum_queries`):
+    a style asked by one of its painters isn't named next to them."""
+    by_painter = bool(artist) and not chosen and bool(style_artists(keys))
+    return museum_queries([k for k in keys if not (by_painter and k in STYLE_ARTISTS)])[:1]
+
+
+def asked_artists(artists: list[str], keys: Iterable[str]) -> list[str]:
+    """The artists a search asks museums for: those chosen, or else the
+    painters of the styles chosen (:func:`style_artists`)."""
+    return artists or style_artists(keys)
+
+
+def _by_style_artist(style: Term, item: Item) -> bool:
+    """``item`` is by one of ``style``'s painters, from its years (or undated)."""
+    artists = STYLE_ARTISTS.get(style.key)
+    if not artists or not artist_matches(item.artist, list(artists)):
+        return False
+    span = STYLE_YEARS.get(style.key)
+    if item.year is None or span is None:
+        return True
+    start, end = span
+    return start - STYLE_ARTIST_SLACK <= item.year and (
+        end is None or item.year <= end + STYLE_ARTIST_SLACK
+    )
 
 
 def searched_style_fits(style: Term, item: Item, text: str) -> bool:

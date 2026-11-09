@@ -22,6 +22,8 @@ actor DemoBackend: FrameBackend {
 
     private var items: [Item]
     private var playlistsByID: [Int: Playlist]
+    /// The cards' order once one was moved, as the server keeps it.
+    private var playlistOrder: [Int] = []
     private var settingsValue = FrameSettings.defaults
     private var queue: [String] = []
     /// Added with "Dodaj do kolejki": at the front of `queue`.
@@ -400,7 +402,15 @@ actor DemoBackend: FrameBackend {
         return marks
     }
 
-    private var runElapsed: Double? { run.map { Date.now.timeIntervalSince($0.start) } }
+    private var runElapsed: Double? {
+        guard let run else { return nil }
+        let elapsed = Date.now.timeIntervalSince(run.start)
+        // CI screenshots: `-drawn 0.4` stops the drawing at that share, so a
+        // capture finds it there whenever the app came up.
+        guard let drawn = LaunchRoute.drawn, let drawing = Self.runStages.last else { return elapsed }
+        let total = Self.runStages.reduce(0) { $0 + $1.seconds }
+        return min(elapsed, total - drawing.seconds * (1 - drawn))
+    }
 
     /// A picture on its way to the frame: drawn with the settings as they are now.
     private func startRun(_ title: String, itemID: String? = nil) {
@@ -708,7 +718,20 @@ actor DemoBackend: FrameBackend {
     // MARK: Playlists
 
     func playlists() async throws -> [PlaylistSummary] {
-        playlistsByID.keys.sorted().compactMap { playlistsByID[$0] }.map(summary)
+        let made = playlistsByID.keys.sorted { a, b in
+            // As the server: "Ulubione" first until a card is moved.
+            let (fa, fb) = (playlistsByID[a]?.isFavorites == true, playlistsByID[b]?.isFavorites == true)
+            return fa != fb ? fa : a < b
+        }
+        let ids = made.sorted { a, b in
+            (playlistOrder.firstIndex(of: a) ?? playlistOrder.count) < (playlistOrder.firstIndex(of: b) ?? playlistOrder.count)
+        }
+        return ids.compactMap { playlistsByID[$0] }.map(summary)
+    }
+
+    func arrangePlaylists(ids: [Int]) async throws -> [PlaylistSummary] {
+        playlistOrder = ids.filter { playlistsByID[$0] != nil }
+        return try await playlists()
     }
 
     func playlist(id: Int) async throws -> PlaylistDetail {

@@ -311,3 +311,41 @@ def test_without_a_server_token_everyone_is_the_owner(tmp_path: Path) -> None:
         assert me["role"] == "owner" and me["people"] is False
         refused = client.post("/api/users/invites", json={"name": "P"})
         assert refused.status_code == 422
+
+
+def test_each_person_arranges_their_cards(tmp_path: Path) -> None:
+    """Playlisty in the order each person moved the cards; their own
+    "Ulubione" first until then, new ones after the arranged ones."""
+    app = _app(tmp_path)
+    with TestClient(app) as client:
+        ours = {"A", "B", "C", "Ulubione"}  # besides the ones a new server starts with
+
+        def names(headers: dict[str, str]) -> list[str]:
+            listed = client.get("/api/playlists", headers=headers).json()
+            return [p["name"] for p in listed if p["name"] in ours]
+
+        def make(name: str, headers: dict[str, str]) -> int:
+            body = {"name": name, "kind": "manual", "item_ids": [], "shared": True}
+            made = client.post("/api/playlists", json=body, headers=headers)
+            return made.json()["playlist"]["id"]
+
+        a = make("A", OWNER)
+        b = make("B", OWNER)
+        listed = client.get("/api/playlists", headers=OWNER).json()
+        fav = next(p["id"] for p in listed if p["name"] == "Ulubione")
+        assert names(OWNER) == ["Ulubione", "A", "B"]
+
+        moved = client.put("/api/playlists/order", json={"ids": [b, fav, a]}, headers=OWNER)
+        assert moved.status_code == 200, moved.text
+        assert [p["name"] for p in moved.json()][:3] == ["B", "Ulubione", "A"]
+        make("C", OWNER)
+        assert names(OWNER) == ["B", "Ulubione", "A", "C"]
+
+        # The member's own order, their own Ulubione first until then; ids
+        # they don't see (the owner's private Ulubione) are dropped, and the
+        # owner's order stays.
+        member = _join(client)
+        assert names(member) == ["Ulubione", "A", "B", "C"]
+        client.put("/api/playlists/order", json={"ids": [fav, b]}, headers=member)
+        assert names(member) == ["B", "Ulubione", "A", "C"]
+        assert names(OWNER) == ["B", "Ulubione", "A", "C"]

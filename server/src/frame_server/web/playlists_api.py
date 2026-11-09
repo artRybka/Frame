@@ -115,10 +115,23 @@ def _detail(svc: FrameService, playlist: Playlist) -> PlaylistDetail:
     )
 
 
+class PlaylistOrder(BaseModel):
+    ids: list[int]
+
+
 @router.get("/playlists", response_model=list[PlaylistSummary])
 def list_playlists(svc: Svc, user: CurrentUser) -> list[PlaylistSummary]:
-    """The asking person's playlists and the shared ones of others."""
-    return [summary(svc, p) for p in svc.library.playlists(user.id)]
+    """The asking person's playlists and the shared ones of others, in the
+    order they arranged the cards (their "Ulubione" first until then)."""
+    return [summary(svc, p) for p in svc.library.arranged_playlists(user.id)]
+
+
+@router.put("/playlists/order", response_model=list[PlaylistSummary])
+def arrange_playlists(order: PlaylistOrder, svc: Svc, user: CurrentUser) -> list[PlaylistSummary]:
+    """A card moved in Playlisty: the asking person's order from now on
+    (each person has their own; Propozycje and Ukryte are not playlists)."""
+    svc.library.arrange_playlists(user.id, order.ids)
+    return list_playlists(svc, user)
 
 
 @router.post("/playlists", response_model=PlaylistDetail)
