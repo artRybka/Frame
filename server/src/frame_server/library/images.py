@@ -17,6 +17,7 @@ from PIL import Image
 
 from ..fsutil import dir_bytes, own_files
 from ..imaging.layout import load_image
+from ..imaging.margins import trim_margins
 from .aic import aic_fallback
 from .hosts import HostGuard, Resting, guard, is_urgent, urgently, walled
 from .markup import commons_rendition
@@ -55,6 +56,11 @@ COMMONS_WIDTH = 3840
 #: out the app's use (:meth:`HostGuard.wait_calm`) with the picture's lock
 #: held, and a Szukaj tile waited for it with no end (2026-11-07).
 URGENT_LOCK_WAIT = 3.0
+#: Sources of the owner's own pictures (uploads, iCloud albums, the frame's
+#: placeholder): kept as they are, never trimmed of margins
+#: (:func:`~frame_server.imaging.margins.trim_margins`), a white wall or a
+#: snowy field at a photo's edges is the photo.
+OWN_SOURCES = ("upload", "icloud", "cli", "frame")
 #: Where :meth:`ImageCache._download` leaves the size of the file it read,
 #: in the picture's ``info``.
 BYTES = "frame_bytes"
@@ -117,6 +123,12 @@ def _missing(err: Exception) -> bool:
             return True
         return resp.status_code in (400, 401, 403) and not walled(resp)
     return not isinstance(err, httpx.HTTPError)
+
+
+def _trimmed(item_id: str) -> bool:
+    """Whether the work's pictures lose a museum's blank margins: not the
+    owner's own (:data:`OWN_SOURCES`)."""
+    return item_id.partition(":")[0] not in OWN_SOURCES
 
 
 def display_copy(item: Item) -> str:
@@ -247,9 +259,9 @@ class ImageCache:
                 return resp.content
         raise AssertionError("unreachable")
 
-    def _download(self, url: str, urgent: bool = False) -> Image.Image:
+    def _download(self, url: str, urgent: bool = False, trim: bool = True) -> Image.Image:
         """The picture at ``url``, set right when its host serves some wrong
-        (:attr:`repairs`)."""
+        (:attr:`repairs`); ``trim``: without a museum's blank margins."""
         data = self._fetch(url, urgent)
         try:
             img = load_image(data)
@@ -259,7 +271,9 @@ class ImageCache:
         repair = self.repairs.get(urlsplit(url).hostname or "")
         if repair is not None:
             img = repair(url, img, lambda other: self._fetch(other, urgent))
-        return img
+        # A museum's flat white or black sheet around the picture (the V&A's
+        # older scans): a mat inside the mat on the frame (2026-11-08).
+        return trim_margins(img) if trim else img
 
     def sample(self, url: str, urgent: bool = False) -> Image.Image:
         """A picture downloaded to be looked at, not kept."""
@@ -322,7 +336,7 @@ class ImageCache:
             url = urls[n]
             n += 1
             try:
-                return self._download(url, urgent)
+                return self._download(url, urgent, trim=_trimmed(item.id))
             except (httpx.HTTPError, OSError) as err:
                 refused = refused and _missing(err)
                 if isinstance(err, Resting):
@@ -497,6 +511,34 @@ class ImageCache:
         self._forget_gone(item)
         return path
 
+    def trim_kept(self) -> int:
+        """Cut the blank margins off the pictures kept from before
+        (:func:`trim_margins`), originals and thumbnails, in place; how many
+        changed. The owner's own are left alone (:data:`OWN_SOURCES`)."""
+        own = tuple(f"{source}_" for source in OWN_SOURCES)
+        changed = 0
+        # No locks: a file is replaced whole (_save_jpeg), and a picture
+        # downloaded meanwhile comes trimmed already, with nothing to cut.
+        for folder, side, quality in (
+            (self.images, IMAGE_MAX, 92),
+            (self.thumbs, THUMB_MAX, 85),
+        ):
+            for path in sorted(folder.glob("*.jpg")):
+                if path.name.startswith(own):
+                    continue
+                try:
+                    with Image.open(path) as kept:
+                        kept.load()
+                        img = trim_margins(kept)
+                        if img is kept:
+                            continue
+                        _save_jpeg(img, path, side, quality)
+                except OSError as err:
+                    log.warning("margins of %s left: %s", path.name, err)
+                    continue
+                changed += 1
+        return changed
+
     def drop_picture(self, item: Item) -> None:
         """Forget the work's original and thumbnail (another picture takes
         their place): both are had again from its addresses."""
@@ -537,7 +579,7 @@ class ImageCache:
             n += 1
             try:
                 # Not an image (a "verify you are human" page): load_image raises.
-                return self._download(url, urgent)
+                return self._download(url, urgent, trim=_trimmed(item.id))
             except (httpx.HTTPError, OSError) as err:
                 refused = refused and _refused(err)
                 if n == len(urls) and not mirrored:

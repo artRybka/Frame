@@ -44,8 +44,9 @@ COLOUR_CHROMA = 0.08
 #: 4: colour tags by area, accents tagged apart; 5: "colorful"; 6: "only:";
 #: 7: each family's share (``Item.color_shares``), "monochrome" by hue;
 #: 8: "monochrome" seen against its paper (``toned``); 9: Tonacja sides
-#: (``"tone:neutral"``, ``tone_sides``).
-SCORE_VERSION = 9
+#: (``"tone:neutral"``, ``tone_sides``); 10: without a museum's blank
+#: margins (``imaging.margins``), which counted as white.
+SCORE_VERSION = 10
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
 #: this chroma / lightness for light ones: a greyish-blue sky does, a beige

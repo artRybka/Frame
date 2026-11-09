@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.129.1
+
+- Dzieła bez białej ramki ze skanu. Część muzeów (zwłaszcza starsze skany
+  V&A) podaje obraz na płaskim białym lub czarnym arkuszu; serwer obcina teraz
+  takie jednolite marginesy przy pobieraniu, a obrazy już zapisane przycina
+  raz po aktualizacji i liczy ich kolory od nowa (biel marginesu nie jest już
+  „Bielą” w Kolorystyce). Własne zdjęcia zostają bez zmian.
+
 ## 1.129.0
 
 - Teraz: zmiana dzieła jest czytelna. Pasek pod ramką od pierwszej sekundy
