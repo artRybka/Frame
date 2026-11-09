@@ -18,7 +18,7 @@ import weakref
 from collections import Counter
 from collections.abc import Collection, Iterable, Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
@@ -1040,6 +1040,7 @@ class Library:
         items = dedupe(self.query(playlist.rules, sort=sort, user=playlist.owner)[1])
         if playlist.limit:
             items = limited(items, playlist, self.favorites(playlist.owner))
+        items = fetched_last(items, playlist)
         self._keep_count(playlist, stamp, items)
         return items
 
@@ -1299,6 +1300,30 @@ class Library:
                 "SELECT item_id, shown_at, reason FROM history ORDER BY id DESC LIMIT ?", (limit,)
             ).fetchall()
         return [{"item_id": i, "shown_at": s, "reason": r} for i, s, r in rows]
+
+
+#: Works the playlist editor's museum search keeps just before the
+#: playlist is saved still count as fetched for it.
+FETCHED_BEFORE = timedelta(hours=1)
+
+
+def fetched_last(items: list[Item], playlist: Playlist) -> list[Item]:
+    """A smart playlist's works with those that joined the library since it
+    was made (fetched from the museums for it, or found later) at the end,
+    each part in the order given (Mateusz 2026-11-09: "dzieła dociągane z
+    muzeów dawaj na koniec playlist")."""
+    if not playlist.created_at:
+        return items
+    try:
+        made = datetime.fromisoformat(playlist.created_at)
+    except ValueError:
+        return items
+    since = (made - FETCHED_BEFORE).astimezone(UTC).isoformat(timespec="seconds")
+    before = [i for i in items if not i.added_at or i.added_at < since]
+    if len(before) == len(items):
+        return items
+    taken = {i.id for i in before}
+    return before + [i for i in items if i.id not in taken]
 
 
 def limited(
