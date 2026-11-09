@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.137.0
+
+- Szukaj w katalogu odpowiada od razu: serwer ma teraz indeks wszystkich
+  dzieł i sprawdza tylko te, które mogą pasować (na 78 tysiącach dzieł
+  „vermeer” trwa około 0,05 s zamiast kilku sekund), a kolejne strony
+  wyników są gotowe od ręki.
+- Serwer nie zatrzymuje się już na kilkanaście sekund, gdy Szukaj pyta
+  muzea albo w tle porządkuje kopie dzieł: serca, notatki i kopie nie
+  blokują reszty serwera, a muzea mają własną pulę wątków.
+- Wyniki z katalogu od najlepiej pasujących: najpierw dzieła szukanego
+  artysty, potem te z szukanym słowem w tytule, w słowach kluczowych, a na
+  końcu w opisie.
+- Szukaj pokazuje wszystkie pasujące dzieła z katalogu, nie tylko pierwsze
+  60: kolejne dochodzą przy przewijaniu, dzieła z muzeów po nich.
+- Słowa szukane są od początku wyrazu, bez względu na polskie znaki: „zolw”
+  znajduje „żółw”, a „art” nie znajduje już „Stuttgart”.
+- Liczba przy podpowiedzi to dokładnie tyle dzieł, ile pokaże jej wybranie;
+  podpowiedź autora, która nic by nie pokazała, znika.
+
 ## 1.136.10
 
 - Kopie dzieła znajdują też pliki Commons z kaflami, których wyszukiwanie po
