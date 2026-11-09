@@ -140,11 +140,7 @@ struct PlaylistDetailView: View {
             Button { remove(item) } label: {
                 ArtCard(item: item)
                     .overlay(alignment: .topLeading) {
-                        Image(systemName: "minus.circle.fill")
-                            .font(.title2)
-                            .symbolRenderingMode(.palette)
-                            .foregroundStyle(.white, Theme.vermilion)
-                            .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
+                        GlassBadge(systemImage: "minus", tint: Theme.vermilion)
                             .padding(6)
                     }
             }

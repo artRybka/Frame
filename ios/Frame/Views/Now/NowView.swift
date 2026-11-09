@@ -1262,11 +1262,11 @@ struct Strip: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                                     .overlay(alignment: .topLeading) {
                                         if queued.contains(item.id) {
-                                            Image(systemName: QueueButton.symbol)
-                                                .font(.caption2.weight(.bold))
-                                                .foregroundStyle(.white)
-                                                .padding(5)
-                                                .background(Theme.vermilion, in: Circle())
+                                            GlassBadge(
+                                                systemImage: QueueButton.symbol,
+                                                tint: Theme.vermilion,
+                                                size: 24
+                                            )
                                                 .padding(5)
                                                 .accessibilityLabel("Dodane do kolejki")
                                         }

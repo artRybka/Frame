@@ -648,12 +648,9 @@ struct PlaylistCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(alignment: .topLeading) {
                     if isActive {
-                        Image(systemName: "play.fill")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.white)
-                            .padding(7)
-                            .background(Theme.vermilion, in: Circle())
+                        GlassBadge(systemImage: "play.fill", tint: Theme.vermilion)
                             .padding(8)
+                            .accessibilityLabel("Gra teraz")
                     }
                 }
                 .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
@@ -729,20 +726,13 @@ struct SuggestionsCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(alignment: .topLeading) {
                     if isActive {
-                        Image(systemName: "play.fill")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.white)
-                            .padding(7)
-                            .background(Theme.vermilion, in: Circle())
+                        GlassBadge(systemImage: "play.fill", tint: Theme.vermilion)
                             .padding(8)
+                            .accessibilityLabel("Gra teraz")
                     }
                 }
                 .overlay(alignment: .bottomTrailing) {
-                    Image(systemName: "sparkles")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(Theme.inkSoft)
-                        .frame(width: 30, height: 30)
-                        .background(Theme.paper.opacity(0.85), in: Circle())
+                    GlassBadge(systemImage: "sparkles")
                         .padding(8)
                 }
                 .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
@@ -810,12 +800,9 @@ struct HiddenCard: View {
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(alignment: .bottomTrailing) {
-                    // A drop of the same glass, not a paper sticker.
-                    Image(systemName: "eye.slash")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(Theme.inkSoft)
-                        .frame(width: 30, height: 30)
-                        .glassEffect(.regular, in: .circle)
+                    // A drop of the same glass, not a paper sticker: the
+                    // badge every thumbnail's mark now wears.
+                    GlassBadge(systemImage: "eye.slash")
                         .padding(9)
                 }
                 .shadow(color: .black.opacity(0.12), radius: 10, y: 6)

@@ -340,22 +340,6 @@ struct CropScreen: View {
     }
 }
 
-/// A small round mark in the corner of a picture that opens it larger.
-struct CornerBadge: View {
-    let systemImage: String
-
-    var body: some View {
-        Image(systemName: systemImage)
-            .font(.footnote.weight(.semibold))
-            .foregroundStyle(Theme.ink)
-            .frame(width: 30, height: 30)
-            .background(.ultraThinMaterial, in: Circle())
-            .overlay(Circle().strokeBorder(Theme.hairline))
-            .padding(10)
-            .allowsHitTesting(false)
-    }
-}
-
 /// The crop screen's frame moved onto the preview it came from.
 private struct AtHome: ViewModifier {
     struct Move: Equatable {
