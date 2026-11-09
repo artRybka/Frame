@@ -41,8 +41,8 @@ from .models import (
     PlaylistRules,
     PlaylistSummary,
 )
+from .phrases import fold as phrase_fold
 from .phrases import has_phrase, parsed
-from .phrases import words as phrase_words
 from .places import Places, known_places, learn_places
 from .term_index import TermIndex
 from .viewer import OWNER_ID, STORE, viewer_id
@@ -306,11 +306,12 @@ def has_words(item: Item, query: str) -> bool:
     word anywhere in its texts, a phrase as a phrase."""
     text = item_text(item)
     haystack = text.casefold()
-    seen: list[str] | None = None
+    folded: str | None = None
     for token, wanted in parsed(query):
         if " " in token:
-            seen = phrase_words(text) if seen is None else seen
-            if not has_phrase(wanted, seen):
+            if folded is None:
+                folded = haystack if haystack.isascii() else phrase_fold(text)
+            if not has_phrase(wanted, folded, folded=True):
                 return False
         elif token.casefold() not in haystack:
             return False
@@ -322,8 +323,8 @@ def says(item: Item, phrases: list[list[str]]) -> bool:
     typed or translated, :class:`.importer.Asked`)."""
     if not phrases:
         return True
-    seen = phrase_words(item_text(item))
-    return all(any(has_phrase(form, seen) for form in forms) for forms in phrases)
+    folded = phrase_fold(item_text(item))
+    return all(any(has_phrase(form, folded, folded=True) for form in forms) for forms in phrases)
 
 
 def _shown_more(item: Item, other: Item) -> bool:

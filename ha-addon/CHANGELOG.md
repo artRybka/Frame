@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.136.8
+
+- Szukaj z frazą („straż nocna”) nie zatrzymuje już serwera. Sprawdzanie
+  frazy w katalogu trwało około 12 sekund na zapytanie i w tym czasie
+  wszystko inne na serwerze czekało, więc aplikacja przestawała czekać na
+  wyniki. Teraz to ułamek sekundy.
+
 ## 1.136.7
 
 - Europeana nie podaje już zdjęć z archiwum Foto Marburg (małe, czarno-białe
