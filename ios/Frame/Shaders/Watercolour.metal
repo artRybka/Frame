@@ -1,0 +1,93 @@
+#include <metal_stdlib>
+#include <SwiftUI/SwiftUI_Metal.h>
+using namespace metal;
+
+// The new picture painted over the old one in watercolour, as the panel
+// draws it (FrameDevelop). Applied to the new picture's layer; what it
+// leaves transparent shows the old picture underneath.
+//
+// Each patch is first a wash of the colours that will be there (the new
+// picture blurred, a little more saturated), with ragged edges, soft in
+// some places and sharp in others, where the pigment gathers darker; the
+// drawing then comes up in the wash. Lengths are in "sheet pixels": the
+// picture's short side is 540 of them, as in the concept it was drawn in.
+
+namespace watercolour {
+
+float hash(float2 cell, float seed) {
+    float3 p = fract(float3(cell.xyx) * 0.1031 + seed * 0.0173);
+    p += dot(p, p.yzx + 33.33);
+    return fract((p.x + p.y) * p.z);
+}
+
+/// Smooth value noise, 0…1.
+float noise(float2 at, float seed) {
+    float2 cell = floor(at);
+    float2 f = at - cell;
+    float2 u = f * f * (3.0 - 2.0 * f);
+    float a = hash(cell, seed);
+    float b = hash(cell + float2(1, 0), seed);
+    float c = hash(cell + float2(0, 1), seed);
+    float d = hash(cell + float2(1, 1), seed);
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+float ease(float x) {
+    x = clamp(x, 0.0, 1.0);
+    return x * x * (3.0 - 2.0 * x);
+}
+
+}  // namespace watercolour
+
+[[ stitchable ]] half4 watercolour(float2 position, SwiftUI::Layer layer, float2 size, float progress) {
+    using namespace watercolour;
+    float unit = min(size.x, size.y) / 540.0;
+    float2 q = position / unit;
+    float2 n = position / size;
+
+    // When each place is reached: patches spreading from the middle out.
+    bool portrait = size.y >= size.x;
+    float2 off = float2(n.x - 0.5, n.y - (portrait ? 0.47 : 0.5)) * (portrait ? float2(1.5, 1.05) : float2(1.05, 1.5));
+    float order = 0.55 * (0.7 * noise(q / 120.0, 41.0) + 0.3 * noise(q / 50.0, 42.0)) + 0.45 * length(off);
+    order = clamp((order - 0.14) / 0.71, 0.0, 1.0);
+    float ragged = 0.6 * noise(q / 14.0, 61.0) + 0.4 * noise(q / 6.0, 62.0);
+    float grain = noise(q / 2.2, 71.0);
+    float wetness = noise(q / 150.0, 81.0);
+    float reach = order + 0.12 * (ragged - 0.5) + 0.03 * (grain - 0.5);
+
+    float t = progress * 1.45 - 0.22;
+    float soft = 0.012 + 0.075 * wetness * wetness;
+    float e = t - reach;
+    float wash = ease(e / soft);
+    float edge = (e - soft * 0.9) / (soft * 0.8 + 0.004);
+    float rim = wash > 0.0 ? 0.2 * exp(-edge * edge) : 0.0;
+    // The drawing itself, after the wash; everywhere by the end.
+    float drawn = max(ease((e - 0.13) / 0.2), ease((progress - 0.9) / 0.1));
+    float glaze = wash * 0.86;
+    if (glaze <= 0.0 && drawn <= 0.0) { return half4(0); }
+
+    // The wash: the new picture blurred (a 14 px Gaussian), a little more saturated.
+    float sigma = 14.0 * unit;
+    float3 sum = float3(0);
+    float weights = 0;
+    for (int j = -3; j <= 3; j++) {
+        for (int i = -3; i <= 3; i++) {
+            float2 d = float2(i, j) * 0.62;
+            float w = exp(-0.5 * dot(d, d));
+            float2 at = clamp(position + d * sigma, float2(0.5), size - 0.5);
+            sum += float3(layer.sample(at).rgb) * w;
+            weights += w;
+        }
+    }
+    float3 blurred = sum / weights;
+    float luma = dot(blurred, float3(0.2126, 0.7152, 0.0722));
+    blurred = clamp(mix(float3(luma), blurred, 1.2), 0.0, 1.0);
+    float speck = 1.0 - 0.06 * (grain - 0.5) * wash;
+    float3 tint = blurred * (1.0 - rim * (1.15 - blurred)) * speck;
+
+    float3 sharp = float3(layer.sample(position).rgb);
+    // Over the old picture: the wash covers `glaze` of it, the drawing the rest.
+    float alpha = glaze + drawn - glaze * drawn;
+    float3 colour = tint * glaze * (1.0 - drawn) + sharp * drawn;
+    return half4(half3(colour), half(alpha));
+}

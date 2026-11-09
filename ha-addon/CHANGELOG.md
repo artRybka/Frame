@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.131.2
+
+- Teraz: gdy ramka rysuje nowe dzieło, maluje się ono na starym akwarelą,
+  plama po plamie od środka, w tempie paska. Każda plama zaczyna się od
+  rozmytego koloru, który tam będzie, z nierówną, miejscami ciemniejszą
+  krawędzią, a potem pojawia się w niej rysunek. Z „Ogranicz ruch” nowe
+  dzieło po prostu przenika stare.
+
 ## 1.131.1
 
 - Szukaj → Epoka: gdy wybrane okresy nachodzą na siebie (np. Biedermeier

@@ -145,10 +145,12 @@ jobs:
             capture original 16 "original-$appearance"
             capture notices 9 "notices-$appearance"
             # A picture on its way (demo: 4 s, then 2.5 s preparing, 2.5 s
-            # sending, 9 s drawing): the bar while sending, the frame mid-draw.
-            capture swap 11 "swap-sending-$appearance"
+            # sending, 9 s drawing): the bar while sending, the frame painted
+            # over in watercolour early, midway and late in the drawing.
+            capture swap 9 "swap-sending-$appearance"
+            capture swap 12 "swap-drawing-early-$appearance"
             capture swap 15 "swap-drawing-$appearance"
-            capture swap 18.5 "swap-drawing-late-$appearance"
+            capture swap 18 "swap-drawing-late-$appearance"
           done
       - uses: actions/upload-artifact@v4
         with:
