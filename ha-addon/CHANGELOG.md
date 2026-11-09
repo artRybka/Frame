@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.137.5
+
+- Szukaj pokazuje ten sam obraz raz, także gdy źródła nazywają go w różnych
+  językach („Lekcja muzyki”, „The music lesson”): serwer porównuje
+  miniatury dzieł jednego artysty, w tle po każdym wyszukiwaniu i nocą.
+- Detale dzieł znikają z katalogu i wyników: po tytule („detail”, „detal”,
+  „szczegół”, „Ausschnitt”…) i po obrazie, gdy to tylko część innego
+  zdjęcia tego dzieła.
+- Kopie z Openverse (rawpixel w 1024 px, strony muzeów, o które serwer
+  pyta sam) i zdjęcia fototeki Hertziana w Europeanie nie trafiają już do
+  wyników.
+
 ## 1.137.4
 
 - Łączenie artystów przez Wikidata nie przerywa się po jednym błędzie
