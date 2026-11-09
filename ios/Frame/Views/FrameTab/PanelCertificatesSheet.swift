@@ -81,6 +81,16 @@ struct PanelCertificatesSheet: View {
                         Button("Wgraj") { Task { await send(newAuthor: false) } }
                             .fontWeight(.semibold)
                             .disabled(!ready)
+                            .confirmationDialog(
+                                "Inny certyfikat autora",
+                                isPresented: Binding(get: { authorChanged != nil }, set: { if !$0 { authorChanged = nil } }),
+                                titleVisibility: .visible
+                            ) {
+                                Button("Wgraj mimo to", role: .destructive) { Task { await send(newAuthor: true) } }
+                                Button("Anuluj", role: .cancel) {}
+                            } message: {
+                                Text("Ten author.p12 ma inny klucz niż certyfikat na serwerze. Ramka może uznać aplikację za inną i jej nie zainstalować. Przy odnawianiu zostaw w Certificate Managerze stary certyfikat autora.")
+                            }
                     }
                 }
             }
@@ -89,16 +99,6 @@ struct PanelCertificatesSheet: View {
                 allowedContentTypes: [UTType(filenameExtension: "p12") ?? .data, .data]
             ) { result in
                 if case let .success(url) = result { take(url, for: pickingFor) }
-            }
-            .confirmationDialog(
-                "Inny certyfikat autora",
-                isPresented: Binding(get: { authorChanged != nil }, set: { if !$0 { authorChanged = nil } }),
-                titleVisibility: .visible
-            ) {
-                Button("Wgraj mimo to", role: .destructive) { Task { await send(newAuthor: true) } }
-                Button("Anuluj", role: .cancel) {}
-            } message: {
-                Text("Ten author.p12 ma inny klucz niż certyfikat na serwerze. Ramka może uznać aplikację za inną i jej nie zainstalować. Przy odnawianiu zostaw w Certificate Managerze stary certyfikat autora.")
             }
         }
         .presentationDetents([.large])

@@ -81,6 +81,21 @@ struct PlaylistsView: View {
                             }
                             .buttonStyle(.plain)
                             .contextMenu { menu(playlist) }
+                            // On the card held, not the page: on iOS 26 the dialog
+                            // is a popover pointing at the view it hangs on.
+                            .confirmationDialog(
+                                "Usunąć playlistę „\(playlist.name)”?",
+                                isPresented: Binding(
+                                    get: { deleting?.id == playlist.id },
+                                    set: { if !$0 { deleting = nil } }
+                                ),
+                                titleVisibility: .visible,
+                                presenting: deleting
+                            ) { playlist in
+                                Button("Usuń", role: .destructive) {
+                                    Task { await delete(playlist) }
+                                }
+                            }
                         }
                         Button {
                             editing = Playlist(name: "")
@@ -144,16 +159,6 @@ struct PlaylistsView: View {
             .sheet(item: $editing) { playlist in
                 PlaylistEditorView(playlist: playlist)
             }
-            .confirmationDialog(
-                "Usunąć playlistę „\(deleting?.name ?? "")”?",
-                isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-                titleVisibility: .visible,
-                presenting: deleting
-            ) { playlist in
-                Button("Usuń", role: .destructive) {
-                    Task { await delete(playlist) }
-                }
-            }
             .refreshable { await model.refreshPlaylists() }
             .task { if model.playlists.isEmpty { await model.refreshPlaylists() } }
             .onChange(of: model.playlists.first?.id) { _, first in
@@ -166,6 +171,12 @@ struct PlaylistsView: View {
                 }
                 if LaunchRoute.screen == "editor-manual", editing == nil {
                     editing = Playlist(name: "Na ścianę", kind: .manual)
+                }
+                if LaunchRoute.confirm == "delete-playlist", deleting == nil {
+                    Task {
+                        try? await Task.sleep(for: .seconds(3))
+                        deleting = ordered.first { !$0.isFavorites && $0.isMine }
+                    }
                 }
             }
         }

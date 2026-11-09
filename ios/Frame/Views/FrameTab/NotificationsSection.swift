@@ -65,12 +65,6 @@ struct NotificationsSection: View {
                 Task { await model.uploadPushKey(from: url) }
             }
         }
-        .confirmationDialog("Usunąć klucz APNs z serwera?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Usuń klucz", role: .destructive) { Task { await model.deletePushKey() } }
-            Button("Anuluj", role: .cancel) {}
-        } message: {
-            Text("Serwer przestanie wysyłać powiadomienia, dopóki nie dodasz klucza ponownie.")
-        }
         .task { await model.loadNotifications() }
     }
 
@@ -160,6 +154,12 @@ struct NotificationsSection: View {
                     Button("Usuń z serwera", role: .destructive) { confirmDelete = true }
                 } label: {
                     Image(systemName: "ellipsis.circle")
+                }
+                .confirmationDialog("Usunąć klucz APNs z serwera?", isPresented: $confirmDelete, titleVisibility: .visible) {
+                    Button("Usuń klucz", role: .destructive) { Task { await model.deletePushKey() } }
+                    Button("Anuluj", role: .cancel) {}
+                } message: {
+                    Text("Serwer przestanie wysyłać powiadomienia, dopóki nie dodasz klucza ponownie.")
                 }
             }
         } else {

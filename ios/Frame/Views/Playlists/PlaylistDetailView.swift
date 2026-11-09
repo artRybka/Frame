@@ -94,22 +94,22 @@ struct PlaylistDetailView: View {
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
+                    .confirmationDialog("Usunąć playlistę?", isPresented: $confirmDelete, titleVisibility: .visible) {
+                        Button("Usuń", role: .destructive) {
+                            Task {
+                                try? await model.backend.deletePlaylist(id: playlistID)
+                                model.playlistDetails[playlistID] = nil
+                                await model.refreshPlaylists()
+                                dismiss()
+                            }
+                        }
+                    }
                 }
             }
         }
         .task(id: [playlistID, model.libraryRevision]) { await load() }
         .sheet(item: $editing, onDismiss: { Task { await load() } }) { playlist in
             PlaylistEditorView(playlist: playlist)
-        }
-        .confirmationDialog("Usunąć playlistę?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Usuń", role: .destructive) {
-                Task {
-                    try? await model.backend.deletePlaylist(id: playlistID)
-                    model.playlistDetails[playlistID] = nil
-                    await model.refreshPlaylists()
-                    dismiss()
-                }
-            }
         }
     }
 
