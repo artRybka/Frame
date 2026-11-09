@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.132.1
+
+- Szukaj: z Openverse przychodzą tylko zdigitalizowane dzieła sztuki, bez
+  kategorii „illustration”, z której brały się puste kafelki, herby i
+  przypadkowe rysunki (np. przy Dadaizmie). Już znalezione ilustracje
+  znikają z wyników.
+
 ## 1.132.0
 
 - Bardzo wydłużone dzieła, jak zwoje japońskie i chińskie, są zapisywane
