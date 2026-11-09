@@ -24,6 +24,7 @@ from .colors import analyse, has_colours, tint_spread
 from .commons import OWN_SOURCES
 from .dates import text_year
 from .duplicates import dedupe, rank
+from .fragments import Fragments, split_part
 from .hosts import as_asked, deferrable
 from .images import ImageCache
 from .lifespan import LifeDates
@@ -239,6 +240,9 @@ class Importer:
         #: Words typed in Szukaj in the museums' languages (the language
         #: model's, set by the service); none: asked as typed.
         self.translate: Callable[[str, float], Wording] | None = None
+        #: Fragments of works (library/fragments.py), set by the service:
+        #: a fragment's id (``<work>~p<n>``) is made from its work's.
+        self.fragments: Fragments | None = None
 
     def access(self) -> Access:
         """The owner's current choices, with the shared death-year cache."""
@@ -280,6 +284,8 @@ class Importer:
         with self._remote_lock:
             if item_id in self._remote:
                 return self._remote[item_id]
+        if (split := split_part(item_id)) is not None:
+            return self._fragment(*split)
         source, _, source_id = item_id.partition(":")
         if source not in self.sources() or not source_id:
             return None
@@ -288,6 +294,25 @@ class Importer:
         if item is not None:
             self.remember([item])
         return item
+
+    def _fragment(self, work_id: str, n: int) -> Item | None:
+        """The ``n``-th fragment of the work ``work_id`` (library/fragments.py)."""
+        work = self.resolve(work_id) if self.fragments is not None else None
+        if work is None or self.fragments is None:
+            return None
+        item = self.fragments.part(work, n)
+        if item is not None:
+            self.remember([item])
+        return item
+
+    def fragments_of(self, item: Item) -> list[Item]:
+        """``item``'s fragments as works of their own, remembered for their
+        cards and thumbnails; [] when it has none."""
+        if self.fragments is None:
+            return []
+        found = self.fragments.items(item)
+        self.remember(found)
+        return found
 
     def resolve(self, item_id: str) -> Item | None:
         """A library item, or a museum work that is not (yet) in the library."""

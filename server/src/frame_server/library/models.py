@@ -223,6 +223,11 @@ class Item(BaseModel):
     #: What the picture is when it is not of the work itself but a copy kept
     #: elsewhere ("Chromolitografia"): its place is then the original's.
     reproduction: str = ""
+    #: A fragment of another work (``library.fragments``): that work's id,
+    #: and which of how many parts this is (counted from 1); "" and 0 else.
+    part_of: str = ""
+    part: int = 0
+    parts: int = 0
 
     @computed_field  # type: ignore[prop-decorator]
     @property

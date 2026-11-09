@@ -147,14 +147,13 @@ class Spot(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-def frame_side(side: int) -> int:
-    return min(side, IMAGE_MAX)
-
-
 def gain(copy: Quality, current: Quality) -> float | None:
+    """How many times sharper ``copy`` is kept than ``current``: an
+    elongated work keeps more than IMAGE_MAX (``images.kept_size``)."""
     if not copy.side or not current.side:
         return None
-    return round(frame_side(copy.side) / frame_side(current.side), 2)
+    ratio = max(copy.ratio, current.ratio)  # copies of one work: the same shape
+    return round(copy.kept(ratio) / current.kept(ratio), 2)
 
 
 class Copies:
@@ -187,7 +186,11 @@ class Copies:
         emit(CopyLine(kind="copy", copy=current))
         if stored.sharper is not None:
             emit(CopyLine(kind="copy", copy=self.own(stored)))
-        quality = Quality(current.width and max(current.width, current.height), current.bits)
+        quality = (
+            Quality.sized(current.width, current.height, current.bits)
+            if current.width and current.height
+            else Quality(0, current.bits)
+        )
         if (larger := self.larger(stored, quality)) is not None:
             emit(CopyLine(kind="copy", copy=larger))
         seen = {stored.id, *([stored.sharper.item_id] if stored.sharper else [])}
@@ -351,7 +354,7 @@ class Copies:
         width, height = (size[0], size[1]) if size else (item.width or 0, item.height or 0)
         bits = Quality.of(*size).bits if size else None
         assert item.sharper is not None
-        current = Quality(max(item.sharper.width, item.sharper.height))
+        current = Quality.sized(item.sharper.width, item.sharper.height)
         return CopyView(
             item_id=item.id,
             source=item.source,
@@ -361,7 +364,7 @@ class Copies:
             height=height,
             bits=bits,
             measured=size is not None,
-            gain=gain(Quality(max(width, height)), current),
+            gain=gain(Quality.sized(width, height), current),
             verdict="worse",
             notes=["whole", "colours"],
             role="own",
@@ -401,7 +404,7 @@ class Copies:
             url=copy.url,
             width=width,
             height=height,
-            gain=None if role == "current" else gain(Quality(max(width, height)), current),
+            gain=None if role == "current" else gain(Quality.sized(width, height), current),
             verdict=verdict,
             role=role,
         )
@@ -451,7 +454,9 @@ class Copies:
             notes.append("reproduction")
             off = True
         view = self.view(copy, current, "worse")
-        quality = Quality(max(view.width, view.height))
+        quality = (
+            Quality.sized(view.width, view.height) if view.width and view.height else Quality(0)
+        )
         if not off and self._may_measure(measured, lock):
             try:
                 img = self._picture(display_copy(copy))
