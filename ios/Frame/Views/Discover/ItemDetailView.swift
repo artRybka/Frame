@@ -393,7 +393,8 @@ struct ItemDetailView: View {
             TitleWithYear(
                 title: nonEmpty(polish?.title) ?? (summary.shownTitle.isEmpty ? "Bez tytułu" : summary.shownTitle),
                 date: photo ? "" : date,
-                font: .serif(30, weight: .semibold)
+                font: .serif(30, weight: .semibold),
+                zoom: summary.zoom == true
             )
                 .fixedSize(horizontal: false, vertical: true)
             if !summary.artist.isEmpty {
@@ -943,7 +944,10 @@ struct ItemDetailView: View {
             TitleWithYear(
                 title: peeking ? original ?? shown : shown,
                 date: photo ? "" : date,
-                font: .serif(30, weight: .semibold)
+                font: .serif(30, weight: .semibold),
+                // "Pod lupą": its picture's tiles are laid on it while the
+                // full screen zooms in (a Commons tile set has places).
+                zoom: !item.isFragment && fragments?.places?.isEmpty == false
             )
                 .fixedSize(horizontal: false, vertical: true)
                 // The museum's title fades into the Polish one.

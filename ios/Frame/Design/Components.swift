@@ -226,6 +226,10 @@ struct ArtCard: View {
                             .padding(6)
                     }
                 }
+                .overlay(alignment: .topLeading) {
+                    // "Pod lupą": its tiles let the full screen zoom in far.
+                    if item.zoom == true { ZoomMark() }
+                }
                 .shadow(color: .black.opacity(0.14), radius: 8, x: 0, y: 5)
             if showsCaption {
                 VStack(alignment: .leading, spacing: 2) {
@@ -253,6 +257,20 @@ struct ArtCard: View {
     static func byline(_ item: ItemSummary) -> String {
         if item.kind == .photo, let line = item.subtitle, !line.isEmpty { return line }
         return item.artist.isEmpty ? Names.source(item.source) : Names.artist(item.artist)
+    }
+}
+
+/// A work to look at far closer ("Pod lupą", Mateusz 2026-11-09): a
+/// magnifier over its tile's top left corner, as the heart on the right.
+struct ZoomMark: View {
+    var body: some View {
+        Image(systemName: "plus.magnifyingglass")
+            .font(.caption.weight(.bold))
+            .foregroundStyle(.white)
+            .padding(6)
+            .background(.black.opacity(0.35), in: Circle())
+            .padding(6)
+            .accessibilityLabel("Pod lupą: można mocno przybliżyć")
     }
 }
 
@@ -926,25 +944,40 @@ struct TitleWithYear: View {
     let title: String
     let date: String
     let font: Font
+    /// "Pod lupą": a magnifier and "24×" on a badge after the year.
+    var zoom = false
     @Environment(\.colorScheme) private var scheme
     @Environment(\.displayScale) private var scale
 
     var body: some View {
-        TitleYear.text(title, date: date, font: font, scheme: scheme, scale: scale)
+        TitleYear.text(title, date: date, font: font, scheme: scheme, scale: scale, zoom: zoom)
     }
 }
 
 @MainActor
 enum TitleYear {
-    static func text(_ title: String, date: String, font: Font, scheme: ColorScheme, scale: CGFloat) -> Text {
-        let plain = Text(title).font(font).foregroundStyle(Theme.ink)
+    static func text(
+        _ title: String, date: String, font: Font, scheme: ColorScheme, scale: CGFloat, zoom: Bool = false
+    ) -> Text {
+        var text = Text(title).font(font).foregroundStyle(Theme.ink)
+        var label = title
         let date = unbroken(date)
-        guard !date.isEmpty, let badge = badge(date, scheme: scheme, scale: scale) else { return plain }
         // An image inside the text wraps with it; it sits on the baseline,
         // lowered so the badge's middle meets the small letters'.
-        return (plain + Text(" ").font(font) + Text(badge).baselineOffset(-3))
-            .accessibilityLabel(Text("\(title), \(date)"))
+        if !date.isEmpty, let badge = badge(date, scheme: scheme, scale: scale) {
+            text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)
+            label += ", \(date)"
+        }
+        if zoom, let badge = badge(zoomText, scheme: scheme, scale: scale, symbol: zoomSymbol) {
+            text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)
+            label += ", można przybliżyć do 24 razy"
+        }
+        return text.accessibilityLabel(Text(label))
     }
+
+    /// "Pod lupą": how far the full screen zooms into its tiles.
+    static let zoomText = "24×"
+    static let zoomSymbol = "plus.magnifyingglass"
 
     /// No line break inside the date: spaces held, dashes joined.
     nonisolated static func unbroken(_ date: String) -> String {
@@ -957,10 +990,10 @@ enum TitleYear {
     private static var drawn: [String: Image] = [:]
 
     /// The badge drawn once per date, look and screen.
-    private static func badge(_ date: String, scheme: ColorScheme, scale: CGFloat) -> Image? {
-        let key = "\(date)|\(scheme == .dark)|\(scale)"
+    private static func badge(_ date: String, scheme: ColorScheme, scale: CGFloat, symbol: String? = nil) -> Image? {
+        let key = "\(date)|\(symbol ?? "")|\(scheme == .dark)|\(scale)"
         if let image = drawn[key] { return image }
-        let renderer = ImageRenderer(content: YearBadge(date: date, dark: scheme == .dark))
+        let renderer = ImageRenderer(content: YearBadge(date: date, dark: scheme == .dark, symbol: symbol))
         renderer.scale = scale
         guard let cgImage = renderer.cgImage else { return nil }
         // Decorative: VoiceOver reads the date from the text's label.
@@ -977,16 +1010,23 @@ enum TitleYear {
 private struct YearBadge: View {
     let date: String
     let dark: Bool
+    /// A symbol before the figures ("Pod lupą": a magnifier before "24×").
+    var symbol: String? = nil
 
     var body: some View {
         let ink = Color(hex: dark ? 0xF1ECE4 : 0x1D1B18)
-        Text(date)
-            .font(.system(size: 12.5, weight: .light))
-            .monospacedDigit()
-            .tracking(0.3)
-            .foregroundStyle(ink)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2.5)
-            .background(ink.opacity(0.08), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+        HStack(spacing: 3) {
+            if let symbol {
+                Image(systemName: symbol).font(.system(size: 11.5, weight: .regular))
+            }
+            Text(date)
+                .font(.system(size: 12.5, weight: .light))
+                .monospacedDigit()
+                .tracking(0.3)
+        }
+        .foregroundStyle(ink)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2.5)
+        .background(ink.opacity(0.08), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
     }
 }
