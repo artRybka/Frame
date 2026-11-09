@@ -95,6 +95,24 @@ def _personal(playlist: Playlist) -> bool:
 #: A regrouping of the works this slow is logged as such: the library
 #: waits for it.
 SLOW_WORKS = 1.0
+#: Groupings made outside the lock before one is made holding it, when
+#: changes that regroup keep coming meanwhile.
+WORKS_ATTEMPTS = 3
+
+
+def _apply(works: Works, changes: list[tuple[Item | None, Item | None]]) -> bool:
+    """The changes made while ``works`` was made, applied to it; False when
+    one may change its groups (it is made again)."""
+    for old, new in changes:
+        if new is None:
+            if old is None or not works.remove(old.id):
+                return False
+        elif old is None:
+            works.add(new)
+        elif regroups(old, new) or not works.replace(new):
+            return False
+    return True
+
 
 #: The playlist "Historia przesłanych" (see ``Player.remember_sent``); one
 #: for each person (the owner's under the key from before, ``sent_key``).
@@ -134,6 +152,7 @@ CREATE TABLE IF NOT EXISTS ai_notes (
     created_at TEXT NOT NULL,
     PRIMARY KEY (item_id, kind)
 );
+CREATE INDEX IF NOT EXISTS ai_notes_kind ON ai_notes (kind);
 CREATE TABLE IF NOT EXISTS favorites (
     user_id TEXT NOT NULL,
     item_id TEXT NOT NULL,
@@ -397,9 +416,19 @@ class Library:
     def __init__(self, path: Path) -> None:
         self.path = path
         path.parent.mkdir(parents=True, exist_ok=True)
+        #: The items, their grouping and the hearts in memory: held only
+        #: while they change or are first read, never for a read of the
+        #: disk alone (the event loop asks for hearts).
         self._lock = threading.RLock()
+        #: The one connection to the disk (:meth:`_db`). Taken after
+        #: ``_lock`` when both are held, never before it.
+        self._db_lock = threading.RLock()
         self._items: dict[str, Item] | None = None
         self._works: Works | None = None  # the items grouped by work
+        #: One grouping is made at a time, outside ``_lock``: the changes
+        #: made meanwhile are kept here and applied to it when it is done.
+        self._works_lock = threading.Lock()
+        self._works_changes: list[tuple[Item | None, Item | None]] | None = None
         #: What made the grouping go since it was last made, and how many
         #: changes did (for the log: a regrouping holds up the library).
         self._works_dropped_by = "start"
@@ -414,7 +443,9 @@ class Library:
         self._pending_due = threading.Event()
         self._writer: threading.Thread | None = None
         self._depth = 0  # nested _db() blocks share the outermost transaction
-        self._favorites: dict[str, set[str]] | None = None
+        #: Each person's hearts, replaced (never changed in place) so that
+        #: they are read without a lock.
+        self._favorites: dict[str, frozenset[str]] | None = None
         #: Goes up with every change of an item (for the suggestions' index).
         self._version = 0
         #: ``places()`` as last counted: (library version, when, places).
@@ -427,6 +458,11 @@ class Library:
         self._catalogue_version = 0
         #: Goes up when a language model's note is kept or forgotten.
         self.notes_version = 0
+        #: Each kind's notes as read once and kept up to date since: the
+        #: language model's sweep asks for them every minute, and reading
+        #: them all from the NAS's disk held the library up for seconds.
+        self._notes: dict[str, dict[str, Note]] = {}
+        self._notes_lock = threading.Lock()
         #: Smart playlists' counts and covers as last worked out, by id.
         self._counted: dict[int, _Counted] = {}
         #: A smart playlist's count and cover may be shown as last worked
@@ -454,8 +490,12 @@ class Library:
         A connection per call made SQLite checkpoint and sync the disk on
         every close: several syncs per write, minutes for a few thousand
         writes on a NAS hard disk. In WAL mode ``synchronous=NORMAL`` stays
-        consistent after a power cut and syncs only at checkpoints."""
-        with self._lock:
+        consistent after a power cut and syncs only at checkpoints.
+
+        It holds its own lock, not the library's: a long read of the disk
+        (the language model's notes) no longer holds up the hearts, the
+        items and with them the event loop (2026-11-09, 20-44 s stalls)."""
+        with self._db_lock:
             if self._conn is None:
                 conn = sqlite3.connect(self.path, timeout=30, check_same_thread=False)
                 conn.execute("PRAGMA journal_mode=WAL")
@@ -478,6 +518,8 @@ class Library:
                 self._catalogue_version += 1
                 self._favorites = None
                 self._hearts_version += 1
+                with self._notes_lock:
+                    self._notes.clear()
                 raise
             finally:
                 self._depth -= 1
@@ -485,7 +527,7 @@ class Library:
     @contextmanager
     def batch(self) -> Iterator[None]:
         """Make the writes inside one transaction (one disk sync for all)."""
-        with self._db():
+        with self._lock, self._db():  # the library's lock first, as upsert takes them
             yield
 
     def close(self) -> None:
@@ -619,12 +661,17 @@ class Library:
                 db.execute("DELETE FROM items WHERE id = ?", (item_id,))
                 db.execute("DELETE FROM ai_notes WHERE item_id = ?", (item_id,))
                 db.execute("DELETE FROM favorites WHERE item_id = ?", (item_id,))
-            del self._all()[item_id]
+            with self._notes_lock:
+                for kept in self._notes.values():
+                    kept.pop(item_id, None)
+            removed = self._all().pop(item_id)
             self._version += 1
             self._catalogue_version += 1
-            for hearts in (self._favorites or {}).values():
-                hearts.discard(item_id)
-            if self._works is None or not self._works.remove(item_id):
+            if self._favorites is not None:
+                self._favorites = {u: h - {item_id} for u, h in self._favorites.items()}
+            if self._works is None and self._works_changes is not None:
+                self._works_changes.append((removed, None))  # applied when it is made
+            elif self._works is None or not self._works.remove(item_id):
                 self._drop_works(f"deletion of {item_id}")
             return True
 
@@ -635,7 +682,7 @@ class Library:
         owner's."""
         if self.get_state(FAVORITES_MOVED_KEY):
             return
-        with self._db() as db:
+        with self._lock, self._db() as db:
             stamp = now_iso()
             db.executemany(
                 "INSERT OR IGNORE INTO favorites (user_id, item_id, added_at) VALUES (?, ?, ?)",
@@ -645,30 +692,39 @@ class Library:
         self._favorites = None
         self._hearts_version += 1
 
-    def _hearts(self) -> dict[str, set[str]]:
+    def _hearts(self) -> dict[str, frozenset[str]]:
+        """Everyone's hearts. Read without the lock once loaded: each
+        person's set is replaced when it changes, never changed in place, so
+        the event loop (a tile's heart) never waits for a write."""
+        hearts = self._favorites
+        if hearts is not None:
+            return hearts
         with self._lock:
             if self._favorites is None:
                 with self._db() as db:
                     rows = db.execute("SELECT user_id, item_id FROM favorites").fetchall()
-                hearts: dict[str, set[str]] = {}
+                found: dict[str, set[str]] = {}
                 for user_id, item_id in rows:
-                    hearts.setdefault(user_id, set()).add(item_id)
-                self._favorites = hearts
+                    found.setdefault(user_id, set()).add(item_id)
+                self._favorites = {u: frozenset(ids) for u, ids in found.items()}
             return self._favorites
+
+    def _set_hearts(self, user_id: str, ids: frozenset[str]) -> None:
+        """``user_id``'s hearts are now ``ids`` (with ``_lock`` held)."""
+        hearts = dict(self._hearts())
+        hearts[user_id] = ids
+        self._favorites = hearts
 
     def favorites(self, user_id: str | None = None) -> frozenset[str]:
         """The works ``user_id`` likes (default: whoever is asking)."""
-        user_id = user_id or viewer_id()
-        with self._lock:  # a heart given meanwhile would change the set
-            return frozenset(self._hearts().get(user_id, ()))
+        return self._hearts().get(user_id or viewer_id(), frozenset())
 
     def likes(self, user_id: str, item_id: str) -> bool:
         return item_id in self._hearts().get(user_id, ())
 
     def fans(self) -> dict[str, frozenset[str]]:
         """Everyone's hearts, by person."""
-        with self._lock:
-            return {u: frozenset(ids) for u, ids in self._hearts().items()}
+        return dict(self._hearts())
 
     def set_favorite(self, user_id: str, item_id: str, liked: bool) -> Item | None:
         """``user_id``'s heart on ``item_id``; the stored ``Item.favorite``
@@ -684,13 +740,14 @@ class Library:
                         " VALUES (?, ?, ?)",
                         (user_id, item_id, now_iso()),
                     )
-                    hearts.setdefault(user_id, set()).add(item_id)
+                    self._set_hearts(user_id, hearts.get(user_id, frozenset()) | {item_id})
                 else:
                     db.execute(
                         "DELETE FROM favorites WHERE user_id = ? AND item_id = ?",
                         (user_id, item_id),
                     )
-                    hearts.get(user_id, set()).discard(item_id)
+                    self._set_hearts(user_id, hearts.get(user_id, frozenset()) - {item_id})
+                hearts = self._hearts()
                 self._hearts_version += 1
                 anyone = any(item_id in ids for ids in hearts.values())
                 return self._update(item_id, favorite=anyone)
@@ -698,7 +755,8 @@ class Library:
     def forget_person(self, user_id: str) -> None:
         """A person removed from the server: their hearts go."""
         with self._lock, self._db() as db:
-            ids = self._hearts().pop(user_id, set())
+            ids = self._hearts().get(user_id, frozenset())
+            self._favorites = {u: h for u, h in self._hearts().items() if u != user_id}
             self._hearts_version += 1
             db.execute("DELETE FROM favorites WHERE user_id = ?", (user_id,))
             self._kv_rows().pop(f"{ORDER_KEY}:{user_id}", None)
@@ -713,7 +771,9 @@ class Library:
         or swapped in its place when the groups stay as they are, else
         dropped to be made again when next asked for."""
         works = self._works
-        if old is None:
+        if works is None and self._works_changes is not None:
+            self._works_changes.append((old, new))  # applied when it is made
+        elif old is None:
             if works is not None:
                 works.add(new)
         elif regroups(old, new):
@@ -723,6 +783,8 @@ class Library:
             works.replace(new)
 
     def _drop_works(self, why: str) -> None:
+        if self._works_changes is not None:
+            self._works_changes.append((None, None))  # the one being made is stale
         if self._works is not None:
             self._works = None
             self._works_dropped_by = f"{why}, in {threading.current_thread().name}"
@@ -732,22 +794,54 @@ class Library:
 
     def works(self) -> Works:
         """The library's items grouped by work: copies of one work from
-        several sources together, the best copy first."""
-        with self._lock:
-            if self._works is None:
+        several sources together, the best copy first.
+
+        Made outside the library's lock (14 s for 79 000 items on the NAS
+        held up every heart, write and with them the event loop): whoever
+        asks meanwhile waits for it, the rest of the library does not."""
+        works = self._works
+        if works is not None:
+            return works
+        if self._lock._is_owned():  # type: ignore[attr-defined]
+            # Asked with the lock held (the term index): waiting for the
+            # one being made could wait for this lock, so made right here.
+            made = self._works = Works(self._all().values())
+            return made
+        with self._works_lock:
+            for attempt in range(WORKS_ATTEMPTS):
+                with self._lock:
+                    if self._works is not None:
+                        return self._works
+                    items = list(self._all().values())
+                    last = attempt == WORKS_ATTEMPTS - 1
+                    if not last:
+                        self._works_changes = []
                 started = time.monotonic()
-                self._works = Works(self._all().values())
+                if last:  # changes kept coming: made with the lock held
+                    with self._lock:
+                        made = Works(self._all().values())
+                        self._works = made
+                else:
+                    made = Works(items)
+                    with self._lock:
+                        changes, self._works_changes = self._works_changes or [], None
+                        if self._works is not None:  # made meanwhile with the lock held
+                            return self._works
+                        if not _apply(made, changes):
+                            continue
+                        self._works = made
                 took = time.monotonic() - started
                 more = self._works_drops
                 log.log(
                     logging.INFO if took >= SLOW_WORKS else logging.DEBUG,
                     "works regrouped in %.1f s (%d items) after %s%s",
                     took,
-                    len(self._all()),
+                    len(items),
                     self._works_dropped_by,
                     f" and {more} more change(s)" if more > 0 else "",
                 )
-            return self._works
+                return made
+        raise AssertionError("unreachable")  # pragma: no cover
 
     def term_index(self) -> TermIndex:
         """The catalogue as searches see it, for the suggestions while typing.
@@ -771,6 +865,7 @@ class Library:
             return index
 
     def _build_term_index(self) -> TermIndex:
+        self.works()  # made first, outside the lock
         with self._lock:
             version = self._version
             items = list(self._all().values())
@@ -846,12 +941,17 @@ class Library:
         hearts = self.favorites(user) if mine else None
         hidden = Hidden() if include_excluded else self.hidden()
         key = rules.search_key()
+        # Looked up as a set: a list of 2 000 works with no picture cost
+        # every query a second, item after item.
+        left_out = set(rules.exclude_ids)
+        if left_out:
+            rules = rules.model_copy(update={"exclude_ids": []})
 
         # Photographs and pages of manuscripts the server picked only when
         # asked for (photographs never).
         def selected(item: Item) -> bool:
-            if item.id in spare or item.look is not None:  # photos sent once: never listed
-                return False
+            if item.id in spare or item.id in left_out or item.look is not None:
+                return False  # photos sent once: never listed
             if item.id in hidden.ids:  # another copy of a hidden work too
                 return False
             if not include_excluded and item.pooled and set_aside(item, rules.terms):
@@ -1231,12 +1331,21 @@ class Library:
         return None if row is None else _note(row)
 
     def notes(self, kind: str) -> dict[str, Note]:
-        """Every note of one kind, by item."""
+        """Every note of one kind, by item (a copy: kept in memory after the
+        first read, as :meth:`save_note` and :meth:`delete_notes` change it)."""
+        with self._notes_lock:
+            kept = self._notes.get(kind)
+            if kept is not None:
+                return dict(kept)
         with self._db() as db:
             rows = db.execute(
                 f"SELECT {_NOTE_COLUMNS} FROM ai_notes WHERE kind = ?", (kind,)
             ).fetchall()
-        return {row[0]: _note(row) for row in rows}
+            # Kept while the disk's lock is held: no note saved in between.
+            read = {row[0]: _note(row) for row in rows}
+            with self._notes_lock:
+                self._notes[kind] = read
+                return dict(read)
 
     def save_note(self, note: Note) -> Note:
         if not note.created_at:
@@ -1254,6 +1363,9 @@ class Library:
                     note.created_at,
                 ),
             )
+            with self._notes_lock:
+                if (kept := self._notes.get(note.kind)) is not None:
+                    kept[note.item_id] = note
         self.notes_version += 1
         return note
 
@@ -1266,6 +1378,11 @@ class Library:
                 cur = db.execute(
                     "DELETE FROM ai_notes WHERE kind = ? AND item_id = ?", (kind, item_id)
                 )
+            with self._notes_lock:
+                if item_id is None:
+                    self._notes.pop(kind, None)
+                elif (kept := self._notes.get(kind)) is not None:
+                    kept.pop(item_id, None)
         self.notes_version += 1
         return cur.rowcount
 
