@@ -29,6 +29,7 @@ from ..library import (
     PlaylistKind,
     PlaylistRules,
     PlaylistSummary,
+    zoom,
 )
 from ..library.artists import is_artist, known_names
 from ..library.duplicates import Shown
@@ -74,8 +75,9 @@ from ..library.vocabulary import (
     set_aside,
     suggest,
 )
+from ..library.zoom import zooms
 from ..museum_places import PlaceHit, commons_picture
-from ..player import POOL_SIZE, SUGGESTIONS_KEY
+from ..player import POOL_SIZE, SUGGESTIONS_KEY, TILE_WORKS_KEY
 from ..service import FrameService
 from .deps import require_owner, require_token, service
 from .library_api import RemoteItem, RemotePage, remote_items
@@ -444,7 +446,51 @@ def _suggestion_rows(svc: FrameService) -> list[SuggestionRow]:
                 items=remote_items(svc, mixed(day)),
             )
         )
+    if zoom := _zoom_row(svc):
+        rows.append(zoom)
     return [row.model_copy(update={"items": _light(row.items)}) for row in rows]
+
+
+#: Discover's row of the works to look at far closer, in tiles ("Pod
+#: lupą", before "Studia dzieł"; Mateusz 2026-11-09).
+ZOOM_ROW = "zoom"
+#: The files with a tile set are read once in the background when none are
+#: kept yet (after that, at night once a month).
+_zoom_asked = threading.Event()
+
+
+def _zoom_row(svc: FrameService) -> SuggestionRow | None:
+    """The works whose picture shown is a Commons file with a tile set:
+    the library's (hearts first), then Commons' other such files."""
+    player = svc.player
+    files = player.tile_set_works()
+    if not files and not _zoom_asked.is_set():
+        _zoom_asked.set()
+        threading.Thread(target=player.tile_set_files, name="tile sets", daemon=True).start()
+    if not zoom.pages():
+        return None
+    hidden = svc.library.hidden()
+    own = [i for i in svc.library.query(limit=None)[1] if zooms(i) and i not in hidden]
+    own.sort(key=lambda i: (not i.favorite, i.title.casefold()))
+    works = svc.library.works()
+    shown = {g for i in own if (g := works.group_index(i.id)) is not None}
+    # A file shown already in its work's place is that work.
+    taken = {i.id for i in own} | {i.sharper.item_id for i in own if i.sharper is not None}
+    svc.importer.remember(files)
+    for item in files:
+        at = works.group_index(item.id)
+        if item.id in taken or (at is not None and at in shown) or item in hidden:
+            continue
+        own.append(item)
+        taken.add(item.id)
+    if not own:
+        return None
+    return SuggestionRow(
+        key=ZOOM_ROW,
+        title="Pod lupą",
+        subtitle="Obrazy w ogromnej rozdzielczości: na pełnym ekranie przybliżysz je do 24×.",
+        items=remote_items(svc, own, copies=False),
+    )
 
 
 def suggestion_rows(svc: FrameService) -> list[SuggestionRow]:
@@ -457,6 +503,9 @@ def suggestion_rows(svc: FrameService) -> list[SuggestionRow]:
         today in _theme_rows,  # the museums' row of the day came in since
         svc.library.stamp(),
         tuple(svc.library.get_state(SUGGESTIONS_KEY, [])),
+        # "Pod lupą": the files with a tile set listed and read since.
+        len(zoom.pages()),
+        (svc.library.get_state(TILE_WORKS_KEY) or {}).get("at"),
     )
     kept = _rows.get(viewer)
     if kept is not None and kept[0] == key:

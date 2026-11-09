@@ -124,6 +124,10 @@ WIDE_KEY = "wide_originals"
 #: Set once the fragments' pictures kept trimmed of margins were let go
 #: (``ImageCache.drop_fragments``, 2026-11-09).
 FRAGMENTS_KEY = "untrimmed_fragments"
+#: The Commons files with a tile set as works ("Pod lupą" in Odkrywaj), and
+#: how long they are kept before they are read again.
+TILE_WORKS_KEY = "tile_set_works"
+TILE_WORKS_FOR = 30 * 86400.0
 #: The playlist the photos sent once gather in, newest first.
 SENT_NAME = "Historia przesłanych"
 #: A rotation with fewer pictures not shown lately asks museums for more,
@@ -1515,19 +1519,48 @@ class Player:
         if fragments is None:
             return
 
-        def files() -> list[Item]:
-            found = []
-            for title in fragments.all_tiled_files():
-                try:
-                    copy = self.service.importer.commons_file(title.removeprefix("File:"))
-                except (httpx.HTTPError, ValueError) as err:
-                    log.info("tile set %s: %s", title, err)
-                    continue
-                if copy is not None:
-                    found.append(copy)
-            return found
+        sharper.tiled_once(self.tile_set_files)
 
-        sharper.tiled_once(files)
+    def tile_set_files(self) -> list[Item]:
+        """The Commons files with a tile set, as works (one request each),
+        kept for "Pod lupą" (:data:`TILE_WORKS_KEY`)."""
+        fragments = self.service.importer.fragments
+        if fragments is None:
+            return []
+        found = []
+        for title in fragments.all_tiled_files():
+            try:
+                copy = self.service.importer.commons_file(title.removeprefix("File:"))
+            except (httpx.HTTPError, ValueError) as err:
+                log.info("tile set %s: %s", title, err)
+                continue
+            if copy is not None:
+                found.append(copy)
+        if found:
+            self.library.set_state(
+                TILE_WORKS_KEY,
+                {"at": time.time(), "items": [i.model_dump(mode="json") for i in found]},
+            )
+        return found
+
+    def tile_set_works(self) -> list[Item]:
+        """The Commons files with a tile set as works, as last read; [] when
+        not read yet."""
+        kept = self.library.get_state(TILE_WORKS_KEY) or {}
+        found: list[Item] = []
+        for data in kept.get("items") or []:
+            try:
+                found.append(Item.model_validate(data))
+            except ValueError:
+                continue
+        return found
+
+    def tile_sets_at_night(self, night: object = None) -> int:
+        """Once a month at night: the files with a tile set read again."""
+        kept = self.library.get_state(TILE_WORKS_KEY) or {}
+        if time.time() - float(kept.get("at") or 0) < TILE_WORKS_FOR:
+            return 0
+        return len(self.tile_set_files())
 
     def _fix_up(self) -> None:
         """Once after an update: the kept pictures without their blank

@@ -57,6 +57,7 @@ from ..library.repo import Hidden, SortKey, now_iso
 from ..library.search import fill as fill_by_search
 from ..library.seed import PACKS, import_queries, pack
 from ..library.viewer import viewer_id
+from ..library.zoom import zooms
 from ..player import hold_from
 from ..schedule import FrameSettings
 from ..service import FrameService
@@ -102,6 +103,8 @@ class RemoteItem(BaseModel):
     #: Width / height, also when the museum gives no size (measured on the
     #: thumbnail, see ``Importer.measure``); None when not known yet.
     aspect: float | None = None
+    #: Its picture can be looked at far closer, in tiles ("Pod lupą").
+    zoom: bool = False
 
 
 def remote_items(
@@ -149,6 +152,7 @@ def remote_items(
                 work=work_key(item),
                 twin=twin,
                 aspect=svc.importer.known_aspect(item),
+                zoom=zooms(item),
             ),
         )
     return list(found.values())

@@ -349,12 +349,17 @@ class ItemSummary(BaseModel):
     #: A photo's line under its title: when and where ("29 października
     #: 2026 · Kraków"); "" for works.
     subtitle: str = ""
+    #: Its picture can be looked at far closer, in tiles ("Pod lupą":
+    #: ``zoom.zooms``).
+    zoom: bool = False
 
     @classmethod
     def of(cls, item: Item) -> ItemSummary:
         from .photo_text import photo_line, photo_title
+        from .zoom import zooms
 
-        summary = cls(**item.model_dump(include=set(cls.model_fields) - {"subtitle"}))
+        summary = cls(**item.model_dump(include=set(cls.model_fields) - {"subtitle", "zoom"}))
+        summary.zoom = zooms(item)
         if item.sharper is not None:
             summary.picture = item.sharper.item_id
         if item.kind == ItemKind.PHOTO:

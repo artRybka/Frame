@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.138.0
+
+- „Pod lupą”: dzieła, które na Commons mają zdjęcie w kaflach ogromnej
+  rozdzielczości (np. „Straż nocna”), mają lupę na miniaturze i plakietkę
+  „24×” przy tytule. Na pełnym ekranie przybliżysz je do 24 razy.
+- W Odkrywaj nowy rząd „Pod lupą”, przed „Studiami dzieł”: najpierw
+  dzieła z biblioteki (ulubione na początku), potem pozostałe takie dzieła
+  z Commons.
+
 ## 1.137.7
 
 - Wycinki dzieł (np. głowy ze „Straży nocnej”) są rozpoznawane po dużym

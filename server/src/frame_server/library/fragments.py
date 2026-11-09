@@ -32,6 +32,7 @@ from typing import Any
 import httpx
 from pydantic import BaseModel
 
+from . import zoom
 from .models import Item
 
 log = logging.getLogger(__name__)
@@ -113,12 +114,34 @@ class Fragments:
         self._lock = threading.Lock()
         #: By work id: when asked, and the parts found.
         self._kept: dict[str, tuple[float, list[Part]]] = self._load()
-        #: Commons page ids with a tile set, and when listed.
-        self._tiled: tuple[float, frozenset[str]] | None = None
+        #: Commons page ids with a tile set, and when listed (kept on disk:
+        #: lists of works mark them without asking, ``zoom``).
+        self._tiled: tuple[float, frozenset[str]] | None = self._load_tiled()
         #: Their files' titles by the Wikidata item of the work each
         #: shows, and when read.
         self._works: tuple[float, dict[str, list[str]]] | None = None
         self._asking: dict[str, threading.Lock] = {}
+        zoom.known(self._tiled[1] if self._tiled is not None else ())
+
+    @property
+    def _tiled_path(self) -> Path:
+        return self.path.with_name("tile_sets.json")
+
+    def _load_tiled(self) -> tuple[float, frozenset[str]] | None:
+        try:
+            data = json.loads(self._tiled_path.read_text())
+            return float(data["at"]), frozenset(str(p) for p in data["pages"])
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+
+    def _save_tiled(self, at: float, pages: frozenset[str]) -> None:
+        try:
+            self._tiled_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self._tiled_path.with_suffix(".tmp")
+            tmp.write_text(json.dumps({"at": at, "pages": sorted(pages)}))
+            tmp.replace(self._tiled_path)
+        except OSError as err:
+            log.warning("tile sets not kept: %s", err)
 
     # -- kept on disk ------------------------------------------------------------
 
@@ -347,8 +370,11 @@ class Fragments:
                 break
             params.update(more)
         found = frozenset(ids)
+        at = self.clock()
         with self._lock:
-            self._tiled = (self.clock(), found)
+            self._tiled = (at, found)
+        zoom.known(found)
+        self._save_tiled(at, found)
         return found
 
     def _commons(self, http: httpx.Client, item: Item) -> list[Part] | None:
