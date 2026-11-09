@@ -1483,12 +1483,15 @@ class Europeana(Museum):
     #: 1200 px, half black-and-white prints on a catalogue card, the rest old
     #: colour slides faded blue and white; not asked any more (Mateusz,
     #: 2026-11-09), its works already kept take other copies
-    #: (``vocabulary.ART_PHOTO_ARCHIVES``).
+    #: (``vocabulary.ART_PHOTO_ARCHIVES``). Nor Rome's Hertziana, whose
+    #: photographs of works are as Marburg's (cropped, 400 px).
     not_art = (
         '-PROVIDER:"OpenUp!"',
         '-DATA_PROVIDER:"Ajuntament de Girona"',
         '-DATA_PROVIDER:"Philatelic Postal Museum"',
         '-DATA_PROVIDER:"German Documentation Center for Art History - Marburg Picture Index"',
+        '-DATA_PROVIDER:"Bibliotheca Hertziana, Max Planck Institute for Art History Rome. '
+        'Photographic Collection"',
         '-what:(stamp OR "postage stamp" OR "postal services" OR coin OR coins OR medal '
         "OR medals OR banknote OR banknotes)",
     )

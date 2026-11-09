@@ -44,6 +44,7 @@ from .library.loc import loc_mirrors
 from .library.museums import PRIVATE_LICENCE, TEST_LICENCE, Access, WikiArt, europeana_mirrors
 from .library.museums import client as museum_client
 from .library.records import records
+from .library.twins import Twins
 from .library.wikidata import MIRRORED, CommonsCopies
 from .museum_places import MuseumPlaces
 from .night import NightQueue
@@ -306,6 +307,8 @@ class FrameService:
         # Sharper copies of works whose own picture is poor: looked for when
         # a card opens, and for the work of the day before its page.
         self.sharper = Sharper(self.library, self.importer, self.images, copies.file)
+        # One work under other titles, and details of works, by their pictures.
+        self.twins = Twins(self.library, self.images)
         self.daily.sharper = self.sharper
         self.copies = Copies(self.sharper)
         # The museums of works from Commons, Openverse, WikiArt: looked up
