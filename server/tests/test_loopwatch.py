@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 
 import pytest
@@ -52,3 +53,35 @@ async def test_a_long_stall_is_shown_again(caplog: pytest.LogCaptureFixture) -> 
     task.cancel()
     stuck = [r for r in caplog.records if "has stood still" in r.getMessage()]
     assert 2 <= len(stuck) <= 3
+
+
+def holding(release: threading.Event) -> None:
+    while not release.is_set():  # at work, holding what the loop waits for
+        time.sleep(0.01)
+
+
+def waiting(lock: threading.Lock) -> None:
+    with lock:  # the loop, waiting for another thread
+        pass
+
+
+async def test_a_stall_shows_the_other_threads_at_work(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.WARNING, logger="frame_server.loopwatch")
+    watch = LoopWatch(stall=0.3, every=10.0, beat=0.05)
+    task = asyncio.create_task(watch.run())
+    await asyncio.sleep(0.1)
+    lock, release = threading.Lock(), threading.Event()
+    lock.acquire()
+    holder = threading.Thread(target=holding, args=(release,), name="holder")
+    holder.start()
+    threading.Timer(0.8, lambda: (lock.release(), release.set())).start()
+    waiting(lock)
+    await asyncio.sleep(0.1)
+    task.cancel()
+    holder.join(5)
+    stuck = [r.getMessage() for r in caplog.records if "has stood still" in r.getMessage()]
+    assert len(stuck) == 1
+    loop_part, _, others = stuck[0].partition("other threads at work:")
+    assert "waiting" in loop_part
+    assert "thread holder:" in others and "holding" in others
+    assert "loop-watch" not in others  # the watcher itself is left out

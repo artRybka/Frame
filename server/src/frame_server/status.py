@@ -270,7 +270,7 @@ class StatusMonitor:
     def _remember(self, now: datetime | None = None) -> None:
         self._follow(now or datetime.now(UTC))
         if self.library is not None:
-            self.library.set_state(STATUS_KEY, self.status.model_dump(include=REMEMBERED))
+            self.library.keep_state(STATUS_KEY, self.status.model_dump(include=REMEMBERED))
 
     def _follow(self, now: datetime, status: DeviceStatus | None = None) -> None:
         """Tell the battery log what the panel does now. A wake from a sleep

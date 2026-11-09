@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.130.2
+
+- Serwer nie staje już na ponad minutę, gdy ramka pyta o obraz w chwili, gdy
+  inna praca zapisuje bibliotekę. 9 listopada przy szukaniu „Edward Munch”
+  stał tak 78 s: miniatury zostawały puste, a aplikacja pisała „Serwer nie
+  odpowiedział na czas”. Gdyby serwer znów stanął, log pokaże też, która
+  praca go trzymała.
+
 ## 1.130.1
 
 - Szukaj → Styl: pod obrazkami została sama nazwa stylu, lata są tylko przy

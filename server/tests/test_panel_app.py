@@ -7,6 +7,7 @@ import asyncio
 import io
 import json
 import ssl
+import threading
 import time
 import zipfile
 from dataclasses import replace
@@ -595,6 +596,38 @@ def test_the_app_says_what_it_shows(tmp_path: Path) -> None:
     assert app.state.shown == "abc"
     app.answer(AppHello(shown="", charging=True))  # nothing on the screen
     assert app.state.shown is None
+
+
+def test_the_frame_is_answered_while_another_thread_holds_the_library(
+    tmp_path: Path,
+) -> None:
+    """The frame's question is answered on the event loop: it once waited
+    78 s there for a write elsewhere to let go of the library, and with it
+    every answer of the server (2026-11-09)."""
+    service = _service(tmp_path)
+    app = service.app
+    app.answer(AppHello(shown="abc", charging=True))
+    library = service.library
+    held, release = threading.Event(), threading.Event()
+
+    def hold() -> None:
+        with library.batch():
+            held.set()
+            release.wait(10)
+
+    holder = threading.Thread(target=hold)
+    holder.start()
+    try:
+        assert held.wait(5)
+        started = time.monotonic()
+        app.answer(AppHello(shown="def", charging=True))
+        assert time.monotonic() - started < 2
+        assert app.state.shown == "def"
+    finally:
+        release.set()
+        holder.join(10)
+    library.write_kept()
+    assert json.loads(library._kv_rows()[panel_app_module.APP_KEY])["shown"] == "def"
 
 
 def test_hourly_checks_are_set_up_to_the_next_change_outside_quiet_hours(
