@@ -806,7 +806,7 @@ struct RulesSummary: View {
             ForEach(rules.styles, id: \.self) { TagLabel(text: $0) }
             ForEach(rules.subjects, id: \.self) { TagLabel(text: "#\($0)") }
             ForEach(rules.colors, id: \.self) { TagLabel(text: ColorTag.name($0), colorTag: $0) }
-            if !rules.query.isEmpty { TagLabel(text: "„\(rules.query)”") }
+            ForEach(SearchPhrases.tokens(rules.query), id: \.self) { TagLabel(text: "„\($0)”") }
             if let from = rules.yearFrom { TagLabel(text: "od \(String(from))") }
             if let to = rules.yearTo { TagLabel(text: "do \(String(to))") }
             if rules.favoritesOnly { TagLabel(text: "♥ ulubione") }

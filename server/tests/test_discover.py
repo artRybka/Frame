@@ -128,6 +128,16 @@ def test_a_searched_style_needs_its_words_or_its_years() -> None:
     assert not matches(crucifix, stijl)
     assert matches(binder, stijl)
     assert matches(mondrian, stijl)
+    dada = PlaylistRules(terms=["style:dada"])
+    blank = Item(
+        id="openverse:1",
+        source="openverse",
+        source_id="1",
+        title="dada",
+        classification="illustration",
+        found_for=[dada.search_key()],
+    )
+    assert not matches(blank, dada)
     impressionism = PlaylistRules(terms=["style:impressionism"])
     found = [impressionism.search_key()]
     assert matches(_work(16, title="Poplars", year=1891, found_for=found), impressionism)

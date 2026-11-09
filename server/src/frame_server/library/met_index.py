@@ -37,6 +37,8 @@ from typing import Any
 
 import httpx
 
+from .phrases import fts
+
 log = logging.getLogger(__name__)
 
 URL = "https://media.githubusercontent.com/media/metmuseum/openaccess/master/MetObjects.csv"
@@ -77,7 +79,6 @@ CREATE VIRTUAL TABLE texts USING fts5(
     tokenize = 'unicode61 remove_diacritics 2'
 );
 """
-_WORD = re.compile(r"\w+")
 #: The file's columns of where a work was made.
 PLACE = ("City", "State", "Country", "Region", "Subregion", "Locale", "Excavation")
 
@@ -197,9 +198,9 @@ def _carry_marks(db: sqlite3.Connection, old: Path) -> None:
 
 
 def match(words: str) -> str:
-    """An FTS5 query of every word typed (all must be there), each quoted:
-    nothing typed can be read as the query language's own."""
-    return " ".join(f'"{w}"' for w in _WORD.findall(words))
+    """An FTS5 query of every word and phrase typed (all must be there),
+    each quoted: nothing typed can be read as the query language's own."""
+    return fts(words)
 
 
 class MetIndex:
