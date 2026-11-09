@@ -107,6 +107,10 @@ def _keyword_pairs(notes: dict[str, Any]) -> dict[str, str]:
     return {word: counts.most_common(1)[0][0] for word, counts in votes.items()}
 
 
+#: The app's own words, before the library's keywords are first gathered.
+_VOCABULARY = _vocabulary()
+
+
 class SearchWords:
     def __init__(self, library: Library, claude: Claude, config: AiConfigStore) -> None:
         self.library = library
@@ -147,6 +151,26 @@ class SearchWords:
             return Wording(text)
         except Exception:
             return Wording(text)
+
+    def known(self, text: str) -> tuple[str, ...]:
+        """The English and French of ``text`` known already: remembered
+        answers and the library's words as last gathered, nothing asked
+        (the catalogue's search asks this for every query)."""
+        key = _key(text)
+        if not key:
+            return ()
+        with self._lock:
+            known = self._known.get(key)
+            local = self._local
+        if known is not None:
+            return tuple(w for w in (known.get("en", ""), known.get("fr", "")) if w)
+        words = local or _VOCABULARY
+        if key in words:
+            return (words[key],)
+        parts = key.split()
+        if len(parts) > 1 and all(p in words for p in parts):
+            return (" ".join(words[p] for p in parts),)
+        return ()
 
     # -- what the library knows ---------------------------------------------
 

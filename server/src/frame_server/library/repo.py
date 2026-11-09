@@ -252,6 +252,7 @@ def matches(
     listed: Collection[str] = (),
     favorites: Collection[str] | None = None,
     key: str | None = None,
+    said: list[list[str]] | None = None,
 ) -> bool:
     """Whether ``item`` fits ``rules``; ``listed`` are the works on the
     person's playlists, for ``mine:playlists``, ``favorites`` their hearts
@@ -259,7 +260,8 @@ def matches(
     search for ``rules`` found (``key``: :meth:`PlaylistRules.search_key`,
     worked out when not given) fits as that search judged it: Szukaj and a
     smart playlist of the same choices hold the same works (Mateusz,
-    2026-11-07)."""
+    2026-11-07), when it has the words asked (``said``: :func:`said_as`,
+    the words as typed when not given; Mateusz 2026-11-09)."""
     liked = item.favorite if favorites is None else item.id in favorites
     if item.excluded or item.id in rules.exclude_ids:
         return False
@@ -297,7 +299,11 @@ def matches(
     if item.found_for:
         key = rules.search_key() if key is None else key
         if key and key in item.found_for:
-            return search_fits(item, rules)
+            if not search_fits(item, rules):
+                return False
+            if not rules.query.strip():
+                return True
+            return says(item, said_as(rules.query) if said is None else said)
     if rules.artists and not made_by(item.artist, rules.artists):
         return False
     if rules.styles and not _fold(item.styles) & _fold(rules.styles):
@@ -390,13 +396,34 @@ def relevance(rules: PlaylistRules) -> Callable[[Item], tuple[Any, ...]]:
     return rank
 
 
-def says(item: Item, phrases: list[list[str]]) -> bool:
-    """Whether ``item`` has each of ``phrases`` in one of its forms (as
-    typed or translated, :class:`.importer.Asked`)."""
-    if not phrases:
+def _says(form: str, folded: str) -> bool:
+    if " " in form.strip():
+        return has_phrase(form, folded, folded=True)
+    return word_start(form.strip()).search(folded) is not None
+
+
+def says(item: Item, said: list[list[str]]) -> bool:
+    """Whether ``item`` has each token of a search in one of its forms (as
+    typed or translated, :class:`.importer.Asked`): a word at a word's
+    start, a phrase as a phrase. A museum finds what it likes for a word
+    (Getty's ter Borch and Yale's three sheep for "vermeer"); what has none
+    of the words asked is no answer (Mateusz 2026-11-09)."""
+    if not said:
         return True
     folded = phrase_fold(item_text(item))
-    return all(any(has_phrase(form, folded, folded=True) for form in forms) for forms in phrases)
+    return all(any(_says(form, folded) for form in forms if form.strip()) for forms in said)
+
+
+def said_as(query: str, wording: Callable[[str], tuple[str, ...]] | None = None) -> list[list[str]]:
+    """Each token of ``query`` with its forms: as typed and, with
+    ``wording``, as the museums were asked it in their languages."""
+    out: list[list[str]] = []
+    for token, wanted in parsed(query):
+        if not wanted:
+            continue
+        forms = [token, *(wording(token) if wording is not None else ())]
+        out.append(list(dict.fromkeys(f for f in forms if f.strip())))
+    return out
 
 
 def _shown_more(item: Item, other: Item) -> bool:
@@ -532,6 +559,10 @@ class Library:
         self._search_lock = threading.Lock()
         self._search_changes: list[tuple[str, Item | None]] | None = None
         self._search_building = False
+        #: Translations of a search's words known without asking anyone
+        #: (``SearchWords.known``): a work a museum found for "nocna straż"
+        #: has "night watch" (:func:`said_as`).
+        self.wording: Callable[[str], tuple[str, ...]] | None = None
         #: Searches' whole answers, for their next pages (:meth:`query`).
         self._queries: OrderedDict[tuple[Any, ...], tuple[tuple[Any, ...], list[Item]]] = (
             OrderedDict()
@@ -1152,6 +1183,7 @@ class Library:
         hearts = self.favorites(user) if mine else None
         hidden = Hidden() if include_excluded else self.hidden()
         key = rules.search_key()
+        said = said_as(rules.query, self.wording) if key and rules.query.strip() else None
         # Looked up as a set: a list of 2 000 works with no picture cost
         # every query a second, item after item.
         left_out = set(rules.exclude_ids)
@@ -1169,8 +1201,8 @@ class Library:
                 return False
             if include_excluded and item.excluded:
                 unexcluded = item.model_copy(update={"excluded": False})
-                return matches(unexcluded, rules, listed, hearts, key)
-            return matches(item, rules, listed, hearts, key)
+                return matches(unexcluded, rules, listed, hearts, key, said)
+            return matches(item, rules, listed, hearts, key, said)
 
         index = self.search_index(wait=len(self._all()) <= SEARCH_INLINE)
         entries = index.candidates(rules, hearts) if index is not None else None

@@ -123,8 +123,9 @@ def test_museums_get_the_phrase_translated_and_its_works_are_checked(tmp_path) -
     # A museum that doesn't keep to quotes gets the words bare.
     items = _ask(tmp_path, PlaylistRules(query=quote(["nocna straż", "actor"])), phrased=False)
     assert Watches.asked[0] == "night watch actor"
-    # The phrase checked here; a single word is the museum's to find.
-    assert [i.title for i in items] == ["The Actor as a Night Watch", "The Night Watch"]
+    # Every token checked here, the single word too (Mateusz 2026-11-09:
+    # a museum's answer without the words is no answer).
+    assert [i.title for i in items] == ["The Actor as a Night Watch"]
 
 
 def test_single_words_are_left_to_the_museum(tmp_path) -> None:

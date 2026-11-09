@@ -433,7 +433,7 @@ def test_search_asks_the_chosen_museums_and_judges_colours(service, monkeypatch)
                 items = [
                     self._item(
                         f"{key}-{tint}",
-                        title=f"{key} {tint}",
+                        title=f"{key} sea {tint}",  # the words asked
                         image_url=f"https://x/{key}/{tint}.jpg",
                         thumb_url=f"https://x/{key}/{tint}.jpg",
                     )
@@ -536,7 +536,7 @@ def test_colours_look_deeper_and_the_stream_answers_museum_by_museum(service, mo
                 items = [
                     self._item(
                         f"{key}-{page}-{n}",
-                        title=f"{key} {page} {n}",
+                        title=f"{key} sea {page} {n}",  # the words asked
                         image_url=f"https://x/{key}/{tint}.jpg",
                         thumb_url=f"https://x/{key}/{tint}.jpg",
                     )

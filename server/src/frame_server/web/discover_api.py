@@ -945,7 +945,7 @@ async def terms_in_museums(svc: Svc, q: str) -> MuseumHint:
         svc.importer.at_home, asked.texts, 8, limiter=MUSEUM_THREADS
     )
     failed: list[str] = []
-    items = [i for i in items if not set_aside(i) and says(i, asked.phrases)]
+    items = [i for i in items if not set_aside(i) and says(i, asked.said)]
     wanted = fold(words)
     known = known_names()  # one row for Rembrandt, however a museum spells him
     names: Counter[str] = Counter(
