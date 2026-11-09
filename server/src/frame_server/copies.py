@@ -63,6 +63,10 @@ TITLE_ONLY = ("paris",)
 #: How much larger the own source's file must be than the one kept here
 #: to be offered (``Copies.larger``).
 LARGER_BY = 1.1
+#: A copy with a tile set (sharp far closer in, in the full-screen viewer)
+#: is offered over a picture without one when it keeps at least this much
+#: of its sharpness on the frame (Mateusz 2026-11-09, "Nocna straż").
+TILED_GAIN = 0.9
 #: Copies judged at once (thumbnails downloaded, keypoints compared).
 JUDGES = 4
 #: The close-up's side, in pixels of the picture at the frame's scale.
@@ -183,6 +187,7 @@ class Copies:
         keys = self.sources()
         emit(CopyLine(kind="start", sources=keys))
         current = self.current(stored)
+        shown_tiled = "tiles" in current.notes
         emit(CopyLine(kind="copy", copy=current))
         if stored.sharper is not None:
             emit(CopyLine(kind="copy", copy=self.own(stored)))
@@ -212,7 +217,7 @@ class Copies:
                 return
             view: CopyView | None
             try:
-                view = self.judge(stored, copy, quality, measured, lock)
+                view = self.judge(stored, copy, quality, measured, lock, shown_tiled)
             except Exception:
                 log.exception("judging copy %s of %s", copy.id, stored.id)
                 view = None
@@ -321,8 +326,20 @@ class Copies:
             and bool(display_copy(copy))
         )
 
+    def tiled(self, item_id: str) -> bool:
+        """Whether the picture ``item_id`` has a tile set (Commons): sharp
+        far closer in, in the app's full-screen viewer."""
+        fragments = getattr(self.sharper.importer, "fragments", None)
+        return fragments is not None and fragments.tiled(item_id)
+
     def current(self, item: Item) -> CopyView:
         """The picture shown now: the work's own or the copy in its place."""
+        view = self._current(item)
+        if self.tiled(view.item_id):
+            view.notes = [*view.notes, "tiles"]
+        return view
+
+    def _current(self, item: Item) -> CopyView:
         if item.sharper is not None:
             copy = item.sharper
             size = self.images.source_size(item)
@@ -366,7 +383,7 @@ class Copies:
             measured=size is not None,
             gain=gain(Quality.sized(width, height), current),
             verdict="worse",
-            notes=["whole", "colours"],
+            notes=["whole", "colours", *(["tiles"] if self.tiled(item.id) else [])],
             role="own",
         )
 
@@ -420,11 +437,14 @@ class Copies:
         current: Quality,
         measured: list[int] | None = None,
         lock: threading.Lock | None = None,
+        shown_tiled: bool = False,
     ) -> CopyView:
         """``copy`` judged against ``item``'s picture (``current``: the one
         shown now). What a source found is always told: another picture
         altogether (the same title, another work) is "off" with "other", one
-        whose thumbnail could not be had "off" with "unseen"."""
+        whose thumbnail could not be had "off" with "unseen". A whole copy
+        in a tile set is offered ("better", note "tiles") over a picture
+        shown without one (``shown_tiled`` False) unless much smaller."""
         try:
             own_thumb = self.images.ensure_thumb(item)
             copy_thumb = self.images.ensure_thumb(copy)
@@ -477,6 +497,10 @@ class Copies:
             view.verdict = "worse"
         else:
             view.verdict = "warn" if colours and not faded else "better"
+        if not off and self.tiled(copy.id):
+            notes.append("tiles")
+            if view.verdict == "worse" and not shown_tiled and (view.gain or 0) >= TILED_GAIN:
+                view.verdict = "warn" if colours and not faded else "better"
         view.notes = notes
         return view
 
