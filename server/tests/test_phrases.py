@@ -131,3 +131,16 @@ def test_single_words_are_left_to_the_museum(tmp_path) -> None:
     items = _ask(tmp_path, PlaylistRules(query="watch"), phrased=True)
     assert Watches.asked == ["watch"]
     assert len(items) == 4
+
+
+def test_the_catalogue_checks_a_phrase_quickly() -> None:
+    # 78 000 works took 12 s word by word and held up the whole server
+    # (Mateusz, 2026-11-09: "cały serwer przywiał").
+    import time
+
+    text = " ".join(["night", "and", "the", "watchman", "watches", "a", "river"] * 30)
+    items = [_item(n, title="Landscape", description=text) for n in range(20000)]
+    rules = PlaylistRules(query=quote(["night watch"]))
+    started = time.perf_counter()
+    assert not any(matches(i, rules) for i in items)
+    assert time.perf_counter() - started < 2.0

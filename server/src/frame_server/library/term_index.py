@@ -268,7 +268,7 @@ class TermIndex:
             found = {n for n in found if all(w in self._haystack(n) for w in odd)}
         if len(wanted) > 1:
             phrase = phrase_words(words)
-            found = {n for n in found if has_phrase(phrase, phrase_words(self._haystack(n)))}
+            found = {n for n in found if has_phrase(phrase, self._haystack(n))}
         return self._works(self._entries[n] for n in found)
 
     def _containing(self, run: str) -> set[int]:

@@ -50,6 +50,8 @@ def quote(phrases: Iterable[str]) -> str:
 def fold(text: str) -> str:
     """Lower case without accents (as ``vocabulary.fold``, which this module
     is too low to import)."""
+    if text.isascii():
+        return text.casefold()
     decomposed = unicodedata.normalize("NFKD", text.replace("ł", "l").replace("Ł", "L"))
     return "".join(c for c in decomposed if not unicodedata.combining(c)).casefold()
 
@@ -77,29 +79,39 @@ def _stem(word: str) -> str:
     return stem if len(stem) >= 3 else word
 
 
-def _same(typed: str, found: str) -> bool:
-    """Whether ``found`` is ``typed`` or a form of it."""
-    if typed == found:
-        return True
-    stem = _stem(typed)
-    return found.startswith(stem) and len(found) - len(stem) <= EXTRA
+@lru_cache(maxsize=256)
+def _pattern(wanted: tuple[str, ...]) -> re.Pattern[str]:
+    """A folded text's ``wanted`` words next to each other, each whole or
+    its stem with up to :data:`EXTRA` letters more."""
+    parts = []
+    for word in wanted:
+        stem = _stem(word)
+        parts.append(f"(?:{re.escape(word)}|{re.escape(stem)}\\w{{0,{EXTRA}}})")
+    return re.compile(r"(?<!\w)" + r"\W+".join(parts) + r"(?!\w)")
+
+
+@lru_cache(maxsize=256)
+def _stems(wanted: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(_stem(w) for w in wanted)
 
 
 def has_phrase(
-    phrase: str | list[str] | tuple[str, ...], text: str | list[str] | tuple[str, ...]
+    phrase: str | list[str] | tuple[str, ...], text: str, *, folded: bool = False
 ) -> bool:
-    """Whether ``text`` has ``phrase``: its words next to each other, in
-    order, each whole or in another form of it ("nocnej straży" for "nocna
-    straż", "night watches" for "night watch"; not "night watchman")."""
-    wanted = words(phrase) if isinstance(phrase, str) else phrase
-    seen = words(text) if isinstance(text, str) else text
+    """Whether ``text`` (``folded``: already through :func:`fold`) has
+    ``phrase``: its words next to each other, in order, each whole or in
+    another form of it ("nocnej straży" for "nocna straż", "night watches"
+    for "night watch"; not "night watchman"). A regular expression, so that
+    the whole catalogue is checked in a moment (a word-by-word loop took
+    12 s over 78 000 works, Mateusz 2026-11-09 "cały serwer przywiał")."""
+    wanted = tuple(words(phrase)) if isinstance(phrase, str) else tuple(phrase)
     if not wanted:
         return True
-    size = len(wanted)
-    for at in range(len(seen) - size + 1):
-        if all(_same(w, seen[at + i]) for i, w in enumerate(wanted)):
-            return True
-    return False
+    text = text if folded else fold(text)
+    # Most texts lack a word: plain substring checks turn them away first.
+    if not all(stem in text for stem in _stems(wanted)):
+        return False
+    return _pattern(wanted).search(text) is not None
 
 
 def fts(query: str) -> str:
