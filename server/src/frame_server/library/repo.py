@@ -24,7 +24,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
-from .artists import is_artist, known_names, learn, made_by
+from .artists import IDS_STATE, PEOPLE_STATE, is_artist, known_names, learn, made_by
 from .colors import has_colours, shown_tags
 from .duplicates import Works, dedupe, regroups
 from .models import (
@@ -1008,12 +1008,28 @@ class Library:
         if search is None:  # being made by a thread waiting for this one
             search = SearchIndex(self._snapshot())
         version = self._version
+        ids = {name: kept[0] for name, kept in self.get_state(IDS_STATE, {}).items() if kept[0]}
+        people = self.get_state(PEOPLE_STATE, {})
         index = TermIndex(
-            search, search.artists(), version, lambda rules: self.query(rules, limit=0)[0]
+            search,
+            search.artists(),
+            version,
+            lambda rules: self.query(rules, limit=0)[0],
+            ids,
+            {qid: str(known.get("en") or "") for qid, known in people.items()},
         )
         learn(index.names)  # who is who for the searches, too
         self._term_index_built_at = time.monotonic()
         return index
+
+    def refresh_names(self) -> None:
+        """Who is who among the artists worked out again now (Wikidata
+        told more), the suggestions with them."""
+        with self._term_index_lock:
+            if self._term_index_building:
+                return
+            self._term_index_building = True
+        self._rebuild_term_index()
 
     def _rebuild_term_index(self) -> None:
         try:

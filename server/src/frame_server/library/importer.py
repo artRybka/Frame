@@ -704,6 +704,36 @@ class Importer:
 
         return self._from_all(ask, keys)
 
+    def at_home(
+        self, query: Mapping[str, str], limit: int = 8
+    ) -> tuple[int, list[Item], list[str]]:
+        """What the museums whose lists are kept at home have for ``query``
+        (each museum's own words, :meth:`typed`), without asking any of
+        them: (total, items interleaved, museums asked). Quick enough for
+        every letter typed."""
+        access = self.access()
+        found: list[list[Item]] = []
+        asked: list[str] = []
+        total = 0
+        with self.http() as http:
+            for key in self.asked_sources():
+                text = query.get(key, "")
+                if not text.strip():
+                    continue
+                try:
+                    answer = museum(key, http, access).only_at_home(text, limit)
+                except Exception:
+                    log.exception("%s: searching at home failed", key)
+                    continue
+                if answer is None:
+                    continue
+                asked.append(key)
+                total += answer[0]
+                found.append([dated(i) for i in answer[1] if not is_copy(i)])
+        mixed = dedupe([i for i in chain.from_iterable(zip_longest(*found)) if i is not None])
+        self.remember(mixed)
+        return total, mixed, asked
+
     def wording(self, text: str, wait: float = TRANSLATE_SECONDS) -> Wording:
         """Words someone typed, with their English and French when Polish."""
         if self.translate is None or not text.strip():

@@ -57,6 +57,9 @@ def _fake(key: str) -> type[Museum]:
             start = (page - 1) * limit
             return 40, [self._work(n, query) for n in range(start, min(start + limit, 40))]
 
+        def only_at_home(self, query: str, limit: int = 8) -> tuple[int, list[Item]] | None:
+            return self.search(query, limit, 1)  # as if its list were kept here
+
         def fetch(self, source_id: str) -> Item | None:
             artist, _, n = source_id.rpartition("-")
             return self._work(int(n), artist)

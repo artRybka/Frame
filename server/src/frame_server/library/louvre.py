@@ -604,6 +604,10 @@ class Louvre(Museum):
         ).casefold()
         return all(word in text for word in words)
 
+    def only_at_home(self, query: str, limit: int = 8) -> tuple[int, list[Item]] | None:
+        """Searched at home anyway (the list is kept here)."""
+        return self.search(query, limit, 1)
+
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         words = query.casefold().split()
         return self._pick(lambda w: self._matches(words, w), limit, page)

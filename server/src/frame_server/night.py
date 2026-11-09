@@ -285,6 +285,7 @@ def tasks(service: FrameService) -> list[NightTask]:
         NightTask("loc", lambda night: loc_index.refresh_at_night(service.settings.data_dir)),
         *(NightTask(f"{key} dump", dump(key)) for key in dumps.DUMPS),
         NightTask("births", lambda night: births_at_night(service, night)),
+        NightTask("artist people", lambda night: service.artist_people.at_night(night.quiet)),
         NightTask("daily", daily),
         NightTask("playlists", playlists),
         NightTask("frame line", frame_line),

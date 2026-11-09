@@ -121,6 +121,11 @@ class GettyMuseum(Museum):
         if not self.private_use:
             params.append(("open_content", "true"))
         resp = self.http.get(API, params=params)
+        if resp.status_code == 400 and page > 1:
+            # A page past a type's last: the site's search refuses it
+            # instead of answering none (2026-11-09, at every search's
+            # second page), and the search failed with it.
+            return 0, []
         resp.raise_for_status()
         body = resp.json()
         hits = [h for h in body.get("data") or [] if isinstance(h, dict)]

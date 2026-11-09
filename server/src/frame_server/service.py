@@ -24,6 +24,7 @@ from .ai.prose import ProseJob
 from .ai.search_words import SearchWords
 from .ai.study import StudyJob
 from .albums import Albums
+from .artist_people import ArtistPeople
 from .artist_works import ArtistWorks
 from .births import Births
 from .config import Settings
@@ -313,6 +314,7 @@ class FrameService:
         # Where works are, for Szukaj's "Muzeum": the museums' Wikidata
         # items, names and cities, learnt at night (library/places.py).
         self.museum_places = MuseumPlaces(self.library, museum_client)
+        self.artist_people = ArtistPeople(self.library, museum_client)
         # Town names of photos' coordinates: after each album sync and at night.
         self.places = Places(self.library)
         self.study = Study(self.daily, self.ai, StudyJob(self.library, self.images, self.ai_config))
