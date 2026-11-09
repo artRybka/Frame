@@ -27,6 +27,7 @@ from frame_server.library.themes import (
 from frame_server.library.vocabulary import (
     BY_KEY,
     EARLY_COLOUR,
+    STYLE_ARTISTS,
     STYLE_YEARS,
     TERMS,
     artist_matches,
@@ -152,14 +153,16 @@ def test_a_style_museums_dont_know_is_asked_by_its_painters() -> None:
     turns, and their works from its years fit it, in Szukaj and in the
     catalogue alike."""
     rules = PlaylistRules(terms=["style:new-objectivity"])
-    assert museum_text(rules, 1) == "Otto Dix"
-    assert museum_text(rules, 2) == "George Grosz"
+    assert museum_text(rules, 1) == "new objectivity"
+    assert museum_text(rules, 2) == "Otto Dix"
+    assert museum_text(rules, 3) == "George Grosz"
     sea = PlaylistRules(terms=["style:new-objectivity", "subject:sea"])
-    assert museum_text(sea, 1) == "Otto Dix sea"
+    assert museum_text(sea, 1) == "new objectivity sea"
+    assert museum_text(sea, 2) == "Otto Dix sea"
     # With another style chosen too, the styles' words are asked.
     both = PlaylistRules(terms=["style:new-objectivity", "style:dada"])
     assert style_artists(both.terms) == [] and "Otto" not in museum_text(both, 1)
-    assert fill_queries(rules)[:2] == ["Otto Dix", "George Grosz"]
+    assert fill_queries(rules)[:3] == ["new objectivity", "Otto Dix", "George Grosz"]
     key = rules.search_key()
     portrait = _work(18, title="Portrait of the Journalist", artist="Otto Dix", year=1926)
     late = _work(19, title="Self-portrait", artist="Otto Dix", year=1966)
@@ -167,6 +170,12 @@ def test_a_style_museums_dont_know_is_asked_by_its_painters() -> None:
     assert matches(portrait.model_copy(update={"found_for": [key]}), rules)
     assert not matches(late, rules)
     assert not matches(late.model_copy(update={"found_for": [key]}), rules)
+    # Every style with painters has its years, and the Polish ones find
+    # MNW's spelling ("Alfred Kowalski Wierusz").
+    assert set(STYLE_ARTISTS) <= set(STYLE_YEARS)
+    munich = PlaylistRules(terms=["style:munich-school"])
+    horses = _work(20, title="Konie", artist="Alfred Kowalski Wierusz", year=1885)
+    assert matches(horses, munich)
 
 
 def test_techniques_follow_what_the_object_is() -> None:

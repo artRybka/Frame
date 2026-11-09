@@ -2,10 +2,12 @@
 
 ## 1.133.2
 
-- Szukaj → Styl → Nowa Rzeczowość: muzea nie znają tej nazwy, więc styl jest
-  szukany po malarzach (Dix, Grosz, Schad, Schrimpf, Kanoldt i inni), a ich
-  dzieła z lat 1917–1935 do niego pasują. Większość przychodzi z Użytkiem
-  prywatnym.
+- Szukaj → Styl: style, których muzea nie znają z nazwy, są szukane także
+  po swoich malarzach (najpierw nazwa stylu, potem malarze na zmianę), a ich
+  dzieła z lat stylu do niego pasują. Dotyczy Nowej Rzeczowości (dotąd 0
+  dzieł), Złotego wieku holenderskiego, Akademizmu, Szkoły znad rzeki
+  Hudson, Prerafaelitów, Szkoły monachijskiej, Tonalizmu, Postimpresjonizmu,
+  Nabistów, Młodej Polski, Fowizmu, Konstruktywizmu, De Stijl i Shin-hanga.
 
 ## 1.133.1
 

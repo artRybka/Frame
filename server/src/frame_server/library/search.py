@@ -16,7 +16,7 @@ from .museums import PLACES_EUROPEANA, PLACES_WD, Discovery
 from .phrases import phrases
 from .places import QID, SOURCE_PLACES, known_places
 from .repo import matches, says, search_fits
-from .vocabulary import STYLE_ARTISTS, asked_artists, category_fits, museum_kind, museum_queries
+from .vocabulary import asked_artists, asked_topics, category_fits, museum_kind
 
 #: With colours asked, museum pages of this many works are looked at, until
 #: ``limit`` fit, this many pages are seen or this many seconds have passed.
@@ -55,9 +55,7 @@ def museum_text(rules: PlaylistRules, page: int, words: str | None = None) -> st
     and subjects."""
     artists = asked_artists(rules.artists, rules.terms)
     artist = artists[(page - 1) % len(artists)] if artists else ""
-    # A style asked by its painters isn't asked by its name too.
-    by_style = bool(artists) and not rules.artists
-    topics = museum_queries([t for t in rules.terms if not (by_style and t in STYLE_ARTISTS)])[:1]
+    topics = asked_topics(rules.artists, artist, rules.terms)
     typed = rules.query.strip() if words is None else words
     return " ".join(w for w in (typed, artist, *topics) if w)
 
