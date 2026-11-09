@@ -74,13 +74,26 @@ struct PlaylistsView: View {
                             SuggestionsCard(works: model.suggestionCover, isActive: suggestionsActive)
                         }
                         .buttonStyle(.plain)
-                        .contextMenu { suggestionsMenu }
+                        .contextMenu {
+                            suggestionsMenu
+                        } preview: {
+                            CardMenuPreview(title: "Propozycje", subtitle: "dobór z Odkrywaj") {
+                                SuggestionsCover(works: model.suggestionCover)
+                            }
+                        }
                         ForEach(ordered) { playlist in
                             NavigationLink(value: playlist.id) {
                                 PlaylistCard(playlist: playlist, isActive: playlist.id == active?.id)
                             }
                             .buttonStyle(.plain)
-                            .contextMenu { menu(playlist) }
+                            // A card of its own while held, cover left and name
+                            // right: the options sit right under it, not under
+                            // the caption of the tall grid card.
+                            .contextMenu {
+                                menu(playlist)
+                            } preview: {
+                                PlaylistMenuPreview(playlist: playlist)
+                            }
                             // On the card held, not the page: on iOS 26 the dialog
                             // is a popover pointing at the view it hangs on.
                             .confirmationDialog(
@@ -97,12 +110,8 @@ struct PlaylistsView: View {
                                 }
                             }
                         }
-                        Button {
-                            editing = Playlist(name: "")
-                        } label: {
-                            NewPlaylistTile()
-                        }
-                        .buttonStyle(.plain)
+                        // New playlists come from the "+" at the top only
+                        // (Mateusz 2026-11-09: no "Nowa playlista" tile).
                         // Last: the works hidden with "Ukryj dzieło".
                         NavigationLink(value: HiddenRoute()) {
                             HiddenCard(items: model.hidden)
@@ -788,20 +797,70 @@ private struct GlassSheen: View {
     }
 }
 
-struct NewPlaylistTile: View {
+/// A held card, laid on its side: the cover on the left, the name and count
+/// on the right, so the menu comes straight under it (Mateusz 2026-11-09:
+/// the grid card's menu hung under its caption, far from the cover).
+struct CardMenuPreview<Cover: View, Details: View>: View {
+    let title: String
+    @ViewBuilder let cover: Cover
+    @ViewBuilder let details: Details
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Theme.hairline, style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
-                .aspectRatio(1, contentMode: .fit)
-                .overlay {
-                    VStack(spacing: 8) {
-                        Image(systemName: "plus").font(.title2.weight(.medium))
-                        Text("Nowa playlista").font(.subheadline.weight(.medium))
-                    }
+        HStack(alignment: .center, spacing: 14) {
+            cover
+                .frame(width: 112, height: 112)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .font(.serif(19, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                details
+                    .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(12)
+        .frame(width: 320)
+        .background(Theme.paper)
+    }
+}
+
+extension CardMenuPreview where Details == Text {
+    init(title: String, subtitle: String, @ViewBuilder cover: () -> Cover) {
+        self.title = title
+        self.cover = cover()
+        details = Text(subtitle)
+    }
+}
+
+/// A playlist's card while held: `CardMenuPreview` with its collage, count
+/// and whose it is.
+struct PlaylistMenuPreview: View {
+    let playlist: PlaylistSummary
+
+    var body: some View {
+        CardMenuPreview(title: playlist.name) {
+            Collage(itemIDs: playlist.coverItemIds, title: playlist.name)
+        } details: {
+            HStack(spacing: 4) {
+                if let icon = playlist.kind.icon {
+                    Image(systemName: icon).font(.caption2)
                 }
-            CardCaption {}
+                Text(playlist.countText)
+                if playlist.isMine, playlist.shared == true {
+                    // As on the card: my shared ones get the icon alone.
+                    Image(systemName: "person.2")
+                        .font(.caption2)
+                        .padding(.leading, 4)
+                        .accessibilityLabel("Wspólna")
+                }
+            }
+            if !playlist.isMine, let owner = playlist.ownerName, !owner.isEmpty {
+                Label(owner, systemImage: "person.2").font(.caption2)
+            }
         }
     }
 }

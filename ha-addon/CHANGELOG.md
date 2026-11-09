@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.133.2
+
+- Playlisty: bez kafelka „Nowa playlista” na końcu siatki; nową playlistę
+  tworzy „+” u góry ekranu. Przytrzymana karta playlisty (i Propozycji)
+  kładzie się na bok: okładka z lewej, nazwa i liczba dzieł z prawej, a
+  „Prezentuj na ramce” i „Usuń playlistę” stoją tuż pod nią, nie pod
+  podpisem i nie na sąsiednich kartach.
+
 ## 1.133.1
 
 - Dymki z pytaniem („Opisać 19022 obrazy?”, „Usunąć playlistę?” i inne)
