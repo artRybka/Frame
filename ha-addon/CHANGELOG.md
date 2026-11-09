@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.131.1
+
+- Library of Congress od dwóch dni odrzuca każde zapytanie z domu. Serwer
+  nie pyta jej teraz przez dobę po odmowie, a po każdej następnej dwa razy
+  dłużej, do dwóch tygodni. Stara fotografia przychodzi w tym czasie z
+  Wikimedia Commons.
+- Gdy serwer muzeum psuje się tylko w części (MNK: pełne zdjęcia dzieł od
+  trzech dni nie przychodzą, miniatury tak), serwer przestaje pytać o tę
+  część coraz dłużej, a miniatury idą dalej.
+- WikiArt: po odrzuconym logowaniu serwer czeka pół godziny, zamiast
+  logować się przy każdym wyszukiwaniu.
+
 ## 1.131.0
 
 - „Zdjęcia do podglądu” przeniesione z Ramki do Konfiguracji →

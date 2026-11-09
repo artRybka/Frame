@@ -1793,6 +1793,13 @@ class WikiArt(Museum):
     _sessions: ClassVar[dict[str, tuple[str, float]]] = {}
     _session_lock: ClassVar[threading.Lock] = threading.Lock()
     SESSION = 50 * 60.0
+    #: After a login WikiArt refused, none is tried (nor anything asked)
+    #: for this long: its login answered 500 to 50 tries on 2026-11-08, up
+    #: to eight in two minutes, one for each search, as each restart of the
+    #: server starts without a session and it gives ten an hour.
+    LOGIN_AGAIN = 30 * 60.0
+    #: When a login with each access code was last refused (monotonic).
+    _refused: ClassVar[dict[str, float]] = {}
 
     def _session(self, fresh: bool = False) -> str | None:
         """A session key from the owner's API keys; None without keys."""
@@ -1803,13 +1810,24 @@ class WikiArt(Museum):
         with self._session_lock:
             session, since = self._sessions.get(access, ("", 0.0))
             if fresh or not session or time.monotonic() - since > self.SESSION:
-                resp = self.http.get(
-                    f"{self.api}/login", params={"accessCode": access, "secretCode": secret}
-                )
-                resp.raise_for_status()
-                session = str(resp.json().get("SessionKey") or "")
-                if not session:
-                    raise httpx.HTTPError("WikiArt gave no session")
+                refused = self._refused.get(access)
+                if refused is not None and time.monotonic() - refused < self.LOGIN_AGAIN:
+                    left = self.LOGIN_AGAIN - (time.monotonic() - refused)
+                    raise httpx.HTTPError(
+                        f"WikiArt refused a login lately; not asked for {left / 60:.0f} min"
+                    )
+                try:
+                    resp = self.http.get(
+                        f"{self.api}/login", params={"accessCode": access, "secretCode": secret}
+                    )
+                    resp.raise_for_status()
+                    session = str(resp.json().get("SessionKey") or "")
+                    if not session:
+                        raise httpx.HTTPError("WikiArt gave no session")
+                except httpx.HTTPError:
+                    self._refused[access] = time.monotonic()
+                    raise
+                self._refused.pop(access, None)
                 self._sessions[access] = (session, time.monotonic())
             return session
 
