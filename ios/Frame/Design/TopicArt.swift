@@ -1,8 +1,11 @@
 import SwiftUI
 
-/// The Temat sheet's small drawings (PLAN 3.3zzz58): one for each subject,
+/// The Temat sheet's small drawings (PLAN 3.3zzz59): one for each subject,
 /// drawn in a black line with at most one colour, on a 24-point grid like
-/// `GroupMark`. The paths are in `TopicArtData.swift`.
+/// `GroupMark`. The paths are in `TopicArtData.swift`. The colour is a
+/// watercolour wash (PLAN 3.3zzz64): a picture under the line
+/// (`topic-wash-<key>` in the assets) that spills past it, pale in the
+/// middle with pigment pooled unevenly at a crisp edge.
 enum TopicArt {
     /// The drawing's line: always black, also in the dark, where it sits on
     /// a cream disc (a light line on a dark chip lost the drawings).
@@ -13,6 +16,28 @@ enum TopicArt {
     static let lineWidth: CGFloat = 1.3
     /// White parts (the figure in Portret).
     static let white = Color.white
+    /// How far a wash picture reaches past the 24-point grid on each side.
+    static let washMargin: CGFloat = 4
+
+    /// The sheet's groups, in order (Mateusz's pick of 2026-11-08 22:17).
+    static let groups: [(title: String, keys: [String])] = [
+        ("Krajobraz", ["landscape", "sea", "ships", "rivers", "mountains", "winter", "night", "sky", "trees", "gardens"]),
+        ("Przyroda", ["flowers", "botany", "birds", "animals", "still-life"]),
+        ("Ludzie", ["portrait", "women", "children", "music-dance", "theatre"]),
+        ("Życie i miejsca", ["everyday", "work", "city", "architecture", "interior"]),
+        ("Opowieści", ["mythology", "religion", "history", "hunting"]),
+    ]
+
+    /// A subject's key without `subject:` (the vocabulary's keys carry it).
+    static func bare(_ key: String) -> String {
+        key.hasPrefix("subject:") ? String(key.dropFirst(8)) : key
+    }
+
+    /// The wash picture's asset name for a drawing with a colour.
+    static func washAsset(_ key: String) -> String? {
+        let key = bare(key)
+        return drawings[key]?.tint == nil ? nil : "topic-wash-\(key)"
+    }
 
     struct Drawing {
         let tint: Tint?
@@ -46,7 +71,7 @@ enum TopicArt {
 
     /// The drawing for a subject key ("subject:sea" or "sea").
     static func drawing(_ key: String) -> Drawing? {
-        drawings[key.hasPrefix("subject:") ? String(key.dropFirst(8)) : key]
+        drawings[bare(key)]
     }
 
     /// Reads the generated path data: absolute `M`, `L`, `C` and `Z`.
@@ -91,11 +116,31 @@ enum TopicArt {
     }
 }
 
-/// A subject's drawing at any size.
+/// A subject's drawing at any size. With `wash` its colour is the
+/// watercolour picture under the line rather than a flat fill.
 struct TopicMark: View {
     let drawing: TopicArt.Drawing
+    var wash: String?
 
     var body: some View {
+        GeometryReader { geometry in
+            let side = min(geometry.size.width, geometry.size.height)
+            let reach = side * (24 + 2 * TopicArt.washMargin) / 24
+            ZStack {
+                if let wash {
+                    Image(wash)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: reach, height: reach)
+                }
+                lines
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var lines: some View {
         Canvas { context, size in
             let scale = min(size.width, size.height) / 24
             context.translateBy(x: (size.width - 24 * scale) / 2, y: (size.height - 24 * scale) / 2)
@@ -104,7 +149,9 @@ struct TopicMark: View {
                 let style = FillStyle(eoFill: layer.evenOdd)
                 switch layer.paint {
                 case .tint:
-                    if let tint = drawing.tint { context.fill(layer.path, with: .color(tint.color), style: style) }
+                    if wash == nil, let tint = drawing.tint {
+                        context.fill(layer.path, with: .color(tint.color), style: style)
+                    }
                 case .white:
                     context.fill(layer.path, with: .color(TopicArt.white), style: style)
                 case .ink:
@@ -120,51 +167,65 @@ struct TopicMark: View {
                 }
             }
         }
-        .accessibilityHidden(true)
     }
 }
 
-/// A Temat chip: the subject's drawing before its name. The line stays
-/// black; where the chip is dark (picked in the light, not picked in the
-/// dark) the drawing sits on a cream disc.
-struct TopicChip: View {
-    let drawing: TopicArt.Drawing
+/// A row of the Temat sheet's list (PLAN 3.3zzz64): the subject's drawing
+/// in its watercolour, the name, and a tick when picked, over a hairline.
+/// The line stays black; in the dark the drawing sits on a cream disc that
+/// holds the wash.
+struct TopicRow: View {
+    let drawing: TopicArt.Drawing?
+    var wash: String?
     let title: String
     var selected = false
     var action: () -> Void
 
     @Environment(\.colorScheme) private var scheme
-    @ScaledMetric(relativeTo: .subheadline) private var side: CGFloat = 20
-
-    /// Whether the chip behind the drawing is dark.
-    static func onDisc(selected: Bool, dark: Bool) -> Bool { selected != dark }
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @ScaledMetric(relativeTo: .subheadline) private var side: CGFloat = 28
 
     var body: some View {
-        let disc = Self.onDisc(selected: selected, dark: scheme == .dark)
         Button(action: action) {
-            HStack(spacing: 5) {
-                Group {
-                    if disc {
-                        TopicMark(drawing: drawing)
-                            .frame(width: side * 0.85, height: side * 0.85)
-                            .frame(width: side * 1.2, height: side * 1.2)
-                            .background(TopicArt.cream, in: Circle())
-                    } else {
-                        TopicMark(drawing: drawing)
-                            .frame(width: side, height: side)
-                            .padding(side * 0.1)
-                    }
-                }
-                Text(title).font(.subheadline.weight(.medium))
+            HStack(spacing: 9) {
+                mark
+                Text(title)
+                    .font(.subheadline.weight(selected ? .semibold : .regular))
+                    // One line in a half-width column ("Statki i łodzie" broke
+                    // in two); the large accessibility sizes may wrap.
+                    .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
+                    .minimumScaleFactor(0.75)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "checkmark")
+                    .font(.footnote.weight(.bold))
+                    .opacity(selected ? 1 : 0)
             }
-            .padding(.leading, 5)
-            .padding(.trailing, 12)
-            .padding(.vertical, 5)
-            .foregroundStyle(selected ? Theme.paper : Theme.ink)
-            .background(selected ? Theme.ink : Theme.card, in: Capsule())
-            .overlay(Capsule().strokeBorder(selected ? .clear : Theme.hairline))
+            .foregroundStyle(Theme.ink)
+            .padding(.horizontal, 2)
+            .frame(minHeight: 42)
+            .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 1) }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(selected ? .isSelected : [])
         .sensoryFeedback(.selection, trigger: selected)
+    }
+
+    @ViewBuilder private var mark: some View {
+        if let drawing {
+            if scheme == .dark {
+                TopicMark(drawing: drawing, wash: wash)
+                    .frame(width: side * 0.82, height: side * 0.82)
+                    .frame(width: side, height: side)
+                    .background(TopicArt.cream)
+                    .clipShape(Circle())
+            } else {
+                TopicMark(drawing: drawing, wash: wash)
+                    .frame(width: side, height: side)
+            }
+        } else {
+            Color.clear.frame(width: side, height: side)
+        }
     }
 }

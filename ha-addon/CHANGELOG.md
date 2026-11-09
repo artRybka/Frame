@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.130.0
+
+- Szukaj → Temat: zamiast kapsułek spis w dwóch kolumnach, pogrupowany
+  (Krajobraz, Przyroda, Ludzie, Życie i miejsca, Opowieści). Przy każdym
+  temacie rysunek cienkopisem, a kolor jak akwarela: plama wylewa się poza
+  linię, jasna w środku, z ostrym, nierównym brzegiem. Wybrany temat ma
+  ptaszek. Kolory są bardziej różne, Ptaki, Muzyka i Mitologia też mają
+  swój.
+
 ## 1.129.1
 
 - Dzieła bez białej ramki ze skanu. Część muzeów (zwłaszcza starsze skany

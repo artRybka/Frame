@@ -41,11 +41,24 @@ final class TopicArtTests: XCTestCase {
         XCTAssertEqual(box.maxY, 20, accuracy: 0.01)
     }
 
-    /// The line is always black: a dark chip puts the drawing on a disc.
-    func testTheDiscIsUnderTheDrawingOnADarkChip() {
-        XCTAssertFalse(TopicChip.onDisc(selected: false, dark: false))
-        XCTAssertTrue(TopicChip.onDisc(selected: true, dark: false))
-        XCTAssertTrue(TopicChip.onDisc(selected: false, dark: true))
-        XCTAssertFalse(TopicChip.onDisc(selected: true, dark: true))
+    /// Every subject in exactly one of the list's groups.
+    func testTheGroupsHoldEverySubjectOnce() {
+        let keys = TopicArt.groups.flatMap { $0.keys }
+        XCTAssertEqual(keys.count, 29)
+        XCTAssertEqual(Set(keys), Set(TopicArt.drawings.keys))
+        // The vocabulary's keys carry "subject:"; the groups find them all.
+        let subjects = DemoDiscover.terms.filter { $0.kind == "subject" }.map { TopicArt.bare($0.key) }
+        XCTAssertEqual(Set(subjects), Set(keys))
+    }
+
+    /// A drawing with a colour has its watercolour wash; one without has none.
+    func testEveryColourHasItsWash() {
+        for (key, drawing) in TopicArt.drawings {
+            let asset = TopicArt.washAsset("subject:\(key)")
+            XCTAssertEqual(asset != nil, drawing.tint != nil, key)
+            if let asset { XCTAssertNotNil(UIImage(named: asset), "no wash for \(key)") }
+        }
+        XCTAssertEqual(TopicArt.washAsset("birds"), "topic-wash-birds")
+        XCTAssertNil(TopicArt.washAsset("subject:unknown"))
     }
 }
