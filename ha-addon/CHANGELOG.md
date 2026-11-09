@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.136.4
+
+- Playlisty: przytrzymane „Ulubione” (i każda karta prezentowana na ramce)
+  mają menu: „Teraz prezentowane” i „Przesuń na koniec”, które jest teraz
+  przy każdej karcie poza ostatnią. Dotąd prezentowana pierwsza karta nie
+  miała żadnej opcji, więc menu się nie pokazywało.
+- Narożniki okładki w przytrzymanej karcie idą równo z narożnikami karty.
+- Przesuwana karta nie pokazuje znaku zakazu nad odstępami między kartami.
+
 ## 1.136.3
 
 - Szukaj i playlisty z artystą: dopiski muzeów w nawiasie, np. „(signed by
