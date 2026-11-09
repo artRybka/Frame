@@ -156,9 +156,19 @@ def test_museums_are_asked_in_their_languages(
         assert found.status_code == 200
         assert asked == {"met": "guitar cubism", "mnw": "gitara cubism", "paris": "guitare cubism"}
 
+        # The hint while typing asks no museum: what is kept at home, each
+        # in its museum's language.
         asked.clear()
+        at_home: dict[str, str] = {}
+
+        def home(texts, limit=8):  # type: ignore[no-untyped-def]
+            at_home.update(texts)
+            return 0, [], []
+
+        monkeypatch.setattr(service.importer, "at_home", home)
         assert client.get("/api/terms/museums", params={"q": "gitara"}).status_code == 200
-        assert asked == {"met": "guitar", "mnw": "gitara", "paris": "guitare", "aic": "guitar"}
+        assert asked == {}
+        assert at_home == {"met": "guitar", "mnw": "gitara", "paris": "guitare", "aic": "guitar"}
 
         asked.clear()
         client.get("/api/museums/mnw/search", params={"q": "gitara"})

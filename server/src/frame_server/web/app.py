@@ -34,6 +34,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from starlette.concurrency import run_in_threadpool
 
 from .. import build_version, logbuffer, night, notifications
+from ..artist_people import START_DELAY
 from ..config import Settings
 from ..device import MdcError
 from ..imaging import PRESETS, RenderSettings, Strategy
@@ -175,6 +176,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # Discover's first visit then finds its themes worked out.
             threading.Thread(target=discover_api.warm_up, args=(service,), daemon=True).start()
             threading.Thread(target=service.daily.run, name="daily", daemon=True).start()
+            # Who the catalogue's artists are, from Wikidata: once some
+            # minutes after a start (the search knows them then), new ones at
+            # night (artist_people.py).
+            people = threading.Timer(START_DELAY, service.artist_people.after_start)
+            people.daemon = True
+            people.start()
             # What all of that would ask the museums at once waits a while;
             # what the app and the panel ask for goes. The background's own
             # work waits while the app is in use too (library/hosts.py).

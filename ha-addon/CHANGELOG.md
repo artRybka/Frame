@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.137.1
+
+- Szukaj wie, kim są artyści: serwer raz pyta Wikidata o każdego artystę
+  katalogu, więc różne zapisy tej samej osoby („Jan Vermeer”, „Johannes
+  Vermeer”, „Vermeer, Johannes”) są jednym wierszem podpowiedzi i jednym
+  żetonem, a dwie różne osoby o podobnych nazwiskach („Jan Vermeer van
+  Haarlem”) się nie mieszają. Pierwsze pytanie rusza 5 minut po starcie
+  serwera i trwa kilkanaście–kilkadziesiąt minut w tle (wstrzymuje się,
+  gdy korzystasz z aplikacji); nowe nazwiska są dopytywane w nocy.
+- Kody z muzealnych baz („MTB-PE-817”) nie są już podpowiadane jako
+  artyści, a słowo kluczowe, które jest nazwiskiem artysty, nie powtarza
+  jego wiersza.
+- Podpowiedź „w muzeach” przy pisaniu odpowiada od razu: korzysta tylko
+  z list muzeów trzymanych na serwerze, nie pyta muzeów przy każdej
+  literze.
+- Muzeum, które w ogóle nie odpowiada (np. wygasły certyfikat), jest na
+  chwilę pomijane i wyszukiwanie na nie nie czeka. Druga strona wyników
+  z Getty nie kończy się już błędem.
+
 ## 1.137.0
 
 - Szukaj w katalogu odpowiada od razu: serwer ma teraz indeks wszystkich

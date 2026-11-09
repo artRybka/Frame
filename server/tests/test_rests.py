@@ -17,6 +17,7 @@ from frame_server.library.hosts import (
     FAILING_REST,
     PROBE_EVERY,
     REST,
+    SILENT_STREAK,
     HostGuard,
     Resting,
 )
@@ -224,3 +225,45 @@ def test_the_loc_s_collections_are_built_only_at_night(tmp_path: Path, monkeypat
     assert built == []
     index.refresh(tmp_path)
     assert built == [loc_index.index_path(tmp_path)]
+
+
+def test_a_host_that_never_answers_gets_a_break() -> None:
+    """MNW's certificate ran out and Paris Musées timed out: both were asked
+    at every search, each search waiting for them (2026-11-09)."""
+    clocks = Clocks()
+    guard = _guard(clocks, {})
+    sent: list[str] = []
+    answers = [True]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(str(request.url))
+        if answers[0]:
+            raise httpx.ConnectError("certificate has expired", request=request)
+        return httpx.Response(200)
+
+    with guard.client(transport=httpx.MockTransport(handler)) as http:
+        for _ in range(SILENT_STREAK):
+            with pytest.raises(httpx.ConnectError):
+                http.get(SMK)
+        with pytest.raises(Resting):
+            http.get(SMK)
+        assert len(sent) == SILENT_STREAK
+        assert guard.resting("api.smk.dk/api/v1") == pytest.approx(FAILING_REST)
+        clocks.tick(FAILING_REST)
+        answers[0] = False
+        assert http.get(SMK).status_code == 200
+        assert guard.resting("api.smk.dk/api/v1") == 0
+
+
+def test_a_wait_cut_short_by_us_is_no_failure() -> None:
+    clocks = Clocks()
+    guard = _guard(clocks, {})
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("slow", request=request)
+
+    with guard.client(transport=httpx.MockTransport(handler), timeout=2.5) as http:
+        for _ in range(2 * SILENT_STREAK):
+            with pytest.raises(httpx.ReadTimeout):
+                http.get(SMK)
+    assert guard.resting("api.smk.dk/api/v1") == 0
