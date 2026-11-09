@@ -2,8 +2,8 @@ import PhotosUI
 import SwiftUI
 
 /// Konfiguracja → Wyświetlanie → Przykładowe zdjęcia: up to eight photos
-/// from the phone that Prezentacja tries the Multi grids on, in the order
-/// added (Mateusz 2026-11-09: "Przenieśmy to ustawienie do konfiguracji.
+/// from the phone that Prezentacja previews photos on (Passe-partout and
+/// Wypełnij the first, Multi grids all of them in the order added) (Mateusz 2026-11-09: "Przenieśmy to ustawienie do konfiguracji.
 /// I tam wgram te 8 zdjęć."). They are sent once (with a look), so they
 /// stay out of the library's lists and the frame's rotation.
 struct SamplePhotosSection: View {
@@ -18,9 +18,9 @@ struct SamplePhotosSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Przykładowe zdjęcia", subtitle: "Do podglądu układów Multi")
+            SectionHeader(title: "Przykładowe zdjęcia", subtitle: "Do podglądu Prezentacji zdjęć")
             Card {
-                Text("Na nich Prezentacja pokazuje każdy układ, w kolejności dodania: przy czterech zdjęciach na planszy cztery pierwsze. Nie trafiają do biblioteki ani na ramkę.")
+                Text("Na nich Prezentacja pokazuje zdjęcia: Passe-partout i Wypełnij na pierwszym, Multi każdy układ w kolejności dodania (przy czterech zdjęciach na planszy cztery pierwsze). Nie trafiają do biblioteki ani na ramkę.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
