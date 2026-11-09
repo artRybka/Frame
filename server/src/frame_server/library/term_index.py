@@ -31,16 +31,19 @@ class TermIndex:
         by_artist: Mapping[str, Set[int]],
         version: int,
         query: Callable[[PlaylistRules], int],
+        ids: Mapping[str, str] | None = None,
+        labels: Mapping[str, str] | None = None,
     ) -> None:
         """``by_artist``: each artist's name as the catalogue spells it, with
         its works (``SearchIndex.by_artist``); ``query``: how many works the
-        catalogue has for rules."""
+        catalogue has for rules; ``ids`` and ``labels``: who Wikidata says
+        they are (:class:`ArtistNames`)."""
         self.version = version
         self._index = index
         self._query = query
         artists = {name: works for name, works in by_artist.items() if is_artist(name)}
         #: Who is who among the artists: one row for Rembrandt, not four.
-        self.names = ArtistNames(artists)
+        self.names = ArtistNames(artists, ids, labels)
         people: dict[str, tuple[list[str], set[int]]] = {}
         for name, works in artists.items():
             written, works_of = people.setdefault(self.names.shown(name), ([], set()))

@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import re
 import threading
 import time
 from collections import Counter, OrderedDict
@@ -870,6 +871,10 @@ def vocabulary() -> list[TermInfo]:
     ]
 
 
+#: "vermeer's" is Vermeer.
+_POSSESSIVE = re.compile(r"['’]s?$")
+
+
 def _term_hits(svc: FrameService, text: str, limit: int) -> list[TermHit]:
     """Artists, the works' keywords ("wielka fala"), the vocabulary's terms
     and the typed words last (always there: the app's Return puts them in)."""
@@ -879,11 +884,18 @@ def _term_hits(svc: FrameService, text: str, limit: int) -> list[TermHit]:
         TermHit(kind="artist", key=name, name=name, count=count)
         for name, count in index.artists(text, limit=4)
     ]
+    # A keyword that is an artist's name ("Johannes Vermeer", "johannes
+    # vermeer's") is their row already (Mateusz 2026-11-09).
+    named = {
+        fold(spelling)
+        for hit in hits
+        for spelling in index.names.spellings.get(hit.name, [hit.name])
+    }
     hits += [
         TermHit(kind="word", key=phrase, name=phrase, count=index.word_count(phrase))
-        for phrase in index.phrases(text, limit=3)
-        if fold(phrase) != fold(words)
-    ]
+        for phrase in index.phrases(text, limit=4)
+        if fold(phrase) != fold(words) and _POSSESSIVE.sub("", fold(phrase)) not in named
+    ][:3]
     for found in suggest(text, limit=max(limit - len(hits), 3)):
         detail = ", ".join(w.rstrip("*") for w in found.words[:3])
         kind = "period" if found.kind == "years" else found.kind
@@ -926,9 +938,13 @@ async def terms_in_museums(svc: Svc, q: str) -> MuseumHint:
     asked = await to_thread.run_sync(
         svc.importer.asked, quote([words]), None, HINT_TRANSLATE_SECONDS, limiter=MUSEUM_THREADS
     )
-    total, items, failed = await to_thread.run_sync(
-        urgent_call(svc.importer.search_all), asked.texts, 8, 1, limiter=MUSEUM_THREADS
+    # Only what is kept at home (the museums' dumps and lists): asking every
+    # museum at each letter typed took 40-90 s and the museums' patience
+    # (Mateusz 2026-11-09: the hint from local dumps only).
+    total, items, _ = await to_thread.run_sync(
+        svc.importer.at_home, asked.texts, 8, limiter=MUSEUM_THREADS
     )
+    failed: list[str] = []
     items = [i for i in items if not set_aside(i) and says(i, asked.phrases)]
     wanted = fold(words)
     known = known_names()  # one row for Rembrandt, however a museum spells him

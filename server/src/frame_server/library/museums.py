@@ -243,6 +243,16 @@ class Museum(ABC):
         )
         return total, [i for r in found if (i := self._map(r))]  # type: ignore[attr-defined]
 
+    def only_at_home(self, query: str, limit: int = 8) -> tuple[int, list[Item]] | None:
+        """Works for words typed from what is kept at home only (this
+        source's dump), never asking the museum; None when nothing is kept.
+        For the hint while typing (Mateusz 2026-11-09: it waited 40-90 s for
+        the museums)."""
+        index = self._index()
+        if index is None or not dump_words(query) or re.search(r"[:=]", query):
+            return None
+        return self._from_dump(index, query, limit=limit, page=1)
+
     def _at_home(
         self,
         query: str,

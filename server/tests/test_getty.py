@@ -116,3 +116,23 @@ def test_a_work_is_found_again_by_its_id() -> None:
         assert getty.fetch("../etc") is None
     assert found is not None and found.classification == "Illuminated Manuscript"
     assert len(sent) == 2 and sent[0].url.params["q"] == f"{WORK} -stereograph"
+
+
+def test_a_page_past_a_types_last_is_empty_not_a_failure() -> None:
+    """The site's search answers 400 to a page beyond a type's results, and
+    every search's second page failed with it (2026-11-09)."""
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        if request.url.params["classification_and_object_type"] == "Drawing":
+            return httpx.Response(400, json={"error": "from beyond total"})
+        return httpx.Response(200, json={"total": 30, "data": [_hit()]})
+
+    with httpx.Client(transport=httpx.MockTransport(answer)) as http:
+        total, items = GettyMuseum(http).search("Cameron", limit=8, page=2)
+        assert total == 30 and len(items) == 1
+        try:
+            GettyMuseum(http).search("Cameron", limit=8, page=1)
+        except httpx.HTTPStatusError:
+            pass  # the first page's refusal is a failure still
+        else:
+            raise AssertionError("a first page refused is no empty page")

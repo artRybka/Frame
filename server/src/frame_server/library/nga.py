@@ -269,6 +269,10 @@ class NationalGalleryOfArt(Museum):
         words = [w for w in re.split(r"\s+", text.lower().strip()) if w]
         return ["text LIKE ?" for _ in words], [f"%{w}%" for w in words]
 
+    def only_at_home(self, query: str, limit: int = 8) -> tuple[int, list[Item]] | None:
+        """Searched at home anyway (the list is kept here)."""
+        return self.search(query, limit, 1)
+
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         where, args = self._words(query)
         return self._query(where, args, limit, page)

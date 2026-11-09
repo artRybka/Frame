@@ -332,15 +332,31 @@ _TIMES = frozenset(
 )
 
 
+#: Library state: each spelling's Wikidata item as found (``artist_people``)
+#: and each item's names and years.
+IDS_STATE = "artist_ids"
+PEOPLE_STATE = "artist_people"
+
+
+#: A small letter followed by a capital: two words written together.
+_JOINED = re.compile(r"(?<=[a-ząćęłńóśźżäöüéèàç])(?=[A-ZĄĆĘŁŃÓŚŹŻÄÖÜÉÈÀÇ])")
+
+
 @lru_cache(maxsize=PER_WORK)
 def is_artist(name: str) -> bool:
     """``name`` names someone: not "Unknown", "Desconegut", "Fotògraf
     desconegut", "Japanese, Edo period", "Workshop of Rubens" or "Detroit
     Publishing Co."."""
-    first_line = name.split("\n")[0]
+    first_line = name.split("\n")[0].strip()
+    if first_line.startswith("#"):
+        return False  # a museum's field name ("#PredmetAutor:6058030")
+    # Words run together ("AnonimowyUnknown author") apart.
+    first_line = _JOINED.sub(" ", first_line)
     words = re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)?", fold(first_line))
     if not words:
         return False
+    if re.search(r"\d", first_line) and all(len(w) <= 3 for w in words):
+        return False  # a number ("MTB-PE-817")
     have = set(words)
     if have & NOBODY or have & _GROUPS or have & _FIRMS or words[0] in _ATTRIBUTED:
         return False
@@ -376,6 +392,8 @@ def made_by(artist: str, wanted: list[str]) -> bool:
     own works (Mateusz, 2026-11-07)."""
     if _known.alike(artist, wanted):
         return True  # "Rembrandt" for "Rembrandt van Rijn" (2026-11-08)
+    if _known.apart(artist, wanted):
+        return False  # Jan Vermeer van Haarlem for Vermeer of Delft (2026-11-09)
     if not artist_matches(artist, wanted):
         return False
     makers = _maker_words(artist)
@@ -533,12 +551,25 @@ class ArtistNames:
     catalogue too, "Rembrandt" alone is Rembrandt van Rijn only on the Met's
     say, and "Bruegel" stays nobody's."""
 
-    def __init__(self, works: Mapping[str, Collection[Hashable]] | None = None) -> None:
+    def __init__(
+        self,
+        works: Mapping[str, Collection[Hashable]] | None = None,
+        ids: Mapping[str, str] | None = None,
+        labels: Mapping[str, str] | None = None,
+    ) -> None:
         """``works``: each artist's name as the catalogue spells it, with its
-        works (anything that tells works apart)."""
+        works (anything that tells works apart). ``ids``: the Wikidata item
+        of names whose person is known (``artist_people``), ``labels`` those
+        items' English names: spellings of one item are one person, and two
+        items are never joined, whatever their words ("Jan Vermeer" of Delft
+        and "Jan Vermeer van Haarlem")."""
         works = works or {}
+        ids = ids or {}
+        labels = labels or {}
         names = sorted(n for n in works if _own_name(n))
         parent: dict[frozenset[str], frozenset[str]] = {}
+        #: Each group's Wikidata item, by its root.
+        item_of: dict[frozenset[str], str] = {}
 
         def find(key: frozenset[str]) -> frozenset[str]:
             parent.setdefault(key, key)
@@ -549,8 +580,32 @@ class ArtistNames:
 
         def join(a: frozenset[str], b: frozenset[str]) -> None:
             ra, rb = find(a), find(b)
-            if ra != rb:
-                parent[max(ra, rb, key=sorted)] = min(ra, rb, key=sorted)
+            if ra == rb:
+                return
+            qa, qb = item_of.get(ra), item_of.get(rb)
+            if qa and qb and qa != qb:
+                return  # two people Wikidata tells apart
+            root, other = min(ra, rb, key=sorted), max(ra, rb, key=sorted)
+            parent[other] = root
+            if qa or qb:
+                item_of[root] = qa or qb  # type: ignore[assignment]
+
+        # Wikidata's people first: their spellings together, and every
+        # join after that keeps two of them apart.
+        anchor: dict[str, frozenset[str]] = {}
+        for name in names:
+            qid = ids.get(name)
+            key = name_key(name)
+            if not qid or not key:
+                continue
+            root = find(key)
+            if item_of.get(root, qid) != qid:
+                continue  # these words are someone else's already
+            item_of[root] = qid
+            if qid in anchor:
+                join(key, anchor[qid])
+            else:
+                anchor[qid] = key
 
         #: The Met's "X (Y)": each Y with the names before it.
         known: dict[frozenset[str], set[tuple[frozenset[str], frozenset[str]]]] = {}
@@ -641,11 +696,23 @@ class ArtistNames:
         self._keys: dict[int, list[frozenset[str]]] = {}
         for key, person in self._person.items():
             self._keys.setdefault(person, []).append(key)
+        #: Each person -> their Wikidata item, when known.
+        self.items: dict[int, str] = {}
+        for key, person in self._person.items():
+            if qid := item_of.get(find(key)):
+                self.items[person] = qid
         #: Each person's name as shown -> all its spellings, that first.
         self.spellings: dict[str, list[str]] = {}
         self._shown: dict[int, str] = {}
         for person, found in spellings.items():
             found.sort(key=shown)
+            # Wikidata's name for them when the catalogue spells it so
+            # ("Johannes Vermeer", not "Jan Vermeer" of Commons' 31 works).
+            label = labels.get(self.items.get(person, ""), "")
+            named = [n for n in found if label and name_key(n) == name_key(label)]
+            if named:
+                found.remove(named[0])
+                found.insert(0, named[0])
             self.spellings[found[0]] = found
             self._shown[person] = found[0]
 
@@ -666,6 +733,18 @@ class ArtistNames:
         "Rembrandt (Rembrandt van Rijn)"; an unknown name as it is."""
         person = self.person(name)
         return self._shown.get(person, name) if person is not None else name
+
+    def apart(self, artist: str, wanted: list[str]) -> bool:
+        """Wikidata says ``artist`` is someone else than each of ``wanted``."""
+        person = self.person(artist)
+        mine = self.items.get(person) if person is not None else None
+        if not mine:
+            return False
+        for name in wanted:
+            other = self.person(name)
+            if other is None or not self.items.get(other) or self.items[other] == mine:
+                return False
+        return True
 
     def alike(self, artist: str, wanted: list[str]) -> bool:
         """``artist`` is one of the people ``wanted`` under another spelling

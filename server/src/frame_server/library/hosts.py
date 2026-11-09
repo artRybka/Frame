@@ -101,6 +101,14 @@ WALL_MEMORY = 6 * 3600.0
 #: answered 502 to 406 of 621 requests on 2026-11-07 and was asked on and on.
 FAIL_STREAK = 10
 FAILING_REST = 10 * 60.0
+#: Requests in a row that got no answer at all (a certificate run out, a
+#: refused connection, a timeout) after which the part rests the same way:
+#: MNW's expired certificate and Paris Musées' timeouts were asked at every
+#: search of 2026-11-09, each costing the search its wait.
+SILENT_STREAK = 3
+#: Seconds of waiting for an answer below which a timeout is ours, not the
+#: host's.
+PATIENT = 20.0
 #: A part that fails again within WALL_MEMORY after its rest rests twice
 #: as long at the first error, up to FAILING_MAX, and is not asked meanwhile:
 #: MNK's originals answered nothing but 502 from 2026-11-07 for three days,
@@ -337,6 +345,16 @@ class GuardedClient(httpx.Client):
         _held.lanes = []
         try:
             return super().send(request, **kwargs)
+        except Resting:
+            raise
+        except httpx.TransportError as err:
+            # A wait we cut short ourselves (a hint asked while typing) is
+            # no sign of a host that is down.
+            read = (request.extensions.get("timeout") or {}).get("read")
+            impatient = isinstance(err, httpx.ReadTimeout) and read is not None and read < PATIENT
+            if not impatient:
+                self._host_guard.unanswered(request.url)
+            raise
         finally:
             for key in _held.lanes:
                 self._host_guard.release(key)
@@ -897,8 +915,12 @@ class HostGuard:
             log.warning("%s answers again; asked as before", host)
         self._save_rests()
 
-    def _failed(self, key: str) -> None:
-        """A server error from ``key`` (a :func:`part`): after FAIL_STREAK
+    def unanswered(self, url: httpx.URL) -> None:
+        """A request to ``url`` got no answer (:data:`SILENT_STREAK`)."""
+        self._failed(part(url), SILENT_STREAK)
+
+    def _failed(self, key: str, streak: int = FAIL_STREAK) -> None:
+        """A server error from ``key`` (a :func:`part`): after ``streak``
         in a row it is left alone for FAILING_REST; failing again at the
         first request after its rest, twice as long (up to FAILING_MAX).
         The first request after a rest is the one that sees."""
@@ -911,7 +933,7 @@ class HostGuard:
             last = self._last_fail.get(key)
             # Within WALL_MEMORY of the end of its last rest.
             again = last is not None and today - sum(last) < WALL_MEMORY
-            if fails < FAIL_STREAK and not again:
+            if fails < streak and not again:
                 return
             wait = min(last[1] * 2, FAILING_MAX) if again and last else FAILING_REST
             self._fails[key] = 0
@@ -919,7 +941,7 @@ class HostGuard:
             self._probe_at[key] = now + wait
             self._last_fail[key] = (today, wait)
         log.warning(
-            "%s: %d server errors in a row; leaving it alone for %.0f min", key, fails, wait / 60
+            "%s: %d failures in a row; leaving it alone for %.0f min", key, fails, wait / 60
         )
         self._save_rests()
 
