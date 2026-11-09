@@ -43,6 +43,15 @@ final class TermFacetTests: XCTestCase {
         XCTAssertEqual(PeriodAxis.span(["period:ancient", "period:medieval"], periods: periods), "do 1400")
     }
 
+    func testOverlappingPicksLieOneUnderTheOther() {
+        // Biedermeier (Europe) and Zabory (Poland) overlap, Edo ends later
+        // than both but starts before: three rows; Meiji fits after Edo.
+        let rows = PeriodAxis.stack([200 ... 240, 150 ... 300, 100 ... 260, 262 ... 280])
+        XCTAssertEqual(rows, [2, 1, 0, 0])
+        XCTAssertEqual(PeriodAxis.stack([10 ... 20, 30 ... 40]), [0, 0])
+        XCTAssertEqual(PeriodAxis.stack([]), [])
+    }
+
     func testNamedPeriodsComeInTheServersGroups() {
         let named = [
             TermInfo(key: "period:belle-epoque", kind: "period", name: "Belle Époque", yearFrom: 1880, yearTo: 1914, region: "europe"),
