@@ -937,15 +937,34 @@ def in_style_years(item: Item, styles: Iterable[str]) -> bool:
 def matches_terms(item: Item, keys: list[str], judged: Collection[str] = ()) -> bool:
     """Every kind of term in ``keys`` has one that fits ``item``; kinds in
     ``judged`` (:func:`searched_kinds`) are not looked at, but a style's
-    years always are (:func:`in_style_years`)."""
+    years always are (:func:`in_style_years`), and a style the museums'
+    search judged still needs :func:`searched_style_fits`."""
     styles = [k for k in keys if k.startswith("style:")]
     if styles and not in_style_years(item, styles):
         return False
-    groups = {k: v for k, v in _grouped(tuple(keys)).items() if k not in judged}
-    if not groups:
-        return True
+    groups = _grouped(tuple(keys))
     text = text_of(item)
+    if (
+        "style" in judged
+        and "style" in groups
+        and not any(searched_style_fits(t, item, text) for t in groups["style"])
+    ):
+        return False
+    groups = {k: v for k, v in groups.items() if k not in judged}
     return all(any(term_matches(t, item, text) for t in terms) for terms in groups.values())
+
+
+def searched_style_fits(style: Term, item: Item, text: str) -> bool:
+    """A work the museums found for ``style``'s word fits it when its own
+    text names the style, or, for a style of one plain word
+    ("impressionism"), when it is dated within the style's years. A
+    museum's search takes "de stijl" or "art deco" as two words: Commons
+    found road signs and Rijksmuseum "Crucifix in romaanse stijl" for De
+    Stijl (Mateusz 2026-11-09), undated or dated by chance."""
+    if term_matches(style, item, text):
+        return True
+    one_word = re.fullmatch(r"\w+", style.query) is not None
+    return one_word and item.year is not None and in_style_years(item, [style.key])
 
 
 def searched_kinds(keys: list[str] | tuple[str, ...]) -> frozenset[str]:

@@ -90,13 +90,15 @@ def test_schools_split_off_their_bigger_styles() -> None:
 def test_a_style_keeps_to_its_years() -> None:
     """A museum's search for "art deco" also finds Rubens and Mucha
     (Mateusz 2026-11-09): what it found must have been made when the style
-    was, give or take; an undated work stays."""
+    was, give or take; an undated one stays when it names the style."""
     deco = PlaylistRules(terms=["style:art-deco"])
     key = deco.search_key()
     rubens = _work(7, title="The Calydonian Boar Hunt", year=1611, found_for=[key])
-    mucha = _work(8, title="Sarah Bernhardt in the role of La Tosca", year=1899, found_for=[key])
+    mucha = _work(
+        8, title="Sarah Bernhardt as La Tosca", styles=["Art Nouveau"], year=1899, found_for=[key]
+    )
     lamp = _work(9, title="Art deco lamp", year=1928, found_for=[key])
-    undated = _work(10, title="Metal mesh purse", found_for=[key])
+    undated = _work(10, title="Metal mesh purse", styles=["Art Deco"], found_for=[key])
     assert not matches(rubens, deco)
     assert not matches(mucha, deco)
     assert matches(lamp, deco)
@@ -109,6 +111,27 @@ def test_a_style_keeps_to_its_years() -> None:
     lilies = _work(12, title="Water Lilies", styles=["Impressionism"], year=1916)
     assert matches(lilies, PlaylistRules(terms=["style:impressionism"]))
     assert {t.key for t in TERMS if t.kind == "style"} == set(STYLE_YEARS)
+
+
+def test_a_searched_style_needs_its_words_or_its_years() -> None:
+    """Commons and Rijksmuseum take "de stijl" as two words: road signs and
+    "Crucifix in romaanse stijl" came back for De Stijl (Mateusz
+    2026-11-09). A style of two words must be named in the work; one of a
+    single word ("impressionism") may instead be dated within its years."""
+    stijl = PlaylistRules(terms=["style:de-stijl"])
+    key = stijl.search_key()
+    sign = Item(id="wmc:1", source="wmc", source_id="1", title="NLD-S110 new", found_for=[key])
+    crucifix = _work(13, title="Crucifix in romaanse stijl", year=1925, found_for=[key])
+    binder = _work(14, title="Linen Binder for De Stijl", found_for=[key])
+    mondrian = _work(15, title="Composition", styles=["De Stijl"], year=1921, found_for=[key])
+    assert not matches(sign, stijl)
+    assert not matches(crucifix, stijl)
+    assert matches(binder, stijl)
+    assert matches(mondrian, stijl)
+    impressionism = PlaylistRules(terms=["style:impressionism"])
+    found = [impressionism.search_key()]
+    assert matches(_work(16, title="Poplars", year=1891, found_for=found), impressionism)
+    assert not matches(_work(17, title="Poplars", found_for=found), impressionism)
 
 
 def test_techniques_follow_what_the_object_is() -> None:
