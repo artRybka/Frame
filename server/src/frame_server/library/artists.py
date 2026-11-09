@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 from collections.abc import Collection, Hashable, Mapping
 from functools import lru_cache
+from itertools import combinations
 
 from .nationality import NATIONALITIES
 from .vocabulary import PER_WORK, artist_matches, fold, name_words
@@ -418,6 +419,10 @@ _GENERATIONS = frozenset(
 #: person: another generation, a workshop or copy, nobody, a firm.
 _OTHER_PERSON = _GENERATIONS | _NOT_BY | NOBODY | _FIRMS
 _LETTERS = re.compile(r"[^\W\d_]+")
+#: Words a longer spelling may add to a name and still be the same person:
+#: "Katsushika Hokusai" for "Hokusai", "Francisco José de Goya y Lucientes"
+#: for "Goya"; a name with more is a list or a description, not a spelling.
+LONGER_WORDS = 4
 #: The Met's "Rembrandt (Rembrandt van Rijn)", "El Greco (Domenikos
 #: Theotokopoulos)": the name known by, then the full one.
 _KNOWN_AS = re.compile(r"^(.*?)\s*\(([^()]*)\)\s*$")
@@ -494,6 +499,25 @@ class ArtistNames:
         for key in keys:
             for word in key:
                 with_word.setdefault(word, []).append(key)
+        several: dict[frozenset[str], bool] = {}
+
+        def names_several(key: frozenset[str]) -> bool:
+            """``key`` holds two other artists' whole names that share no
+            word ("Albrecht Dürer, Vincent van Gogh, Pierre-Auguste Renoir",
+            "Renoir, Dürer"): a list of people, never one of them under a
+            longer spelling."""
+            if key not in several:
+                inside = {
+                    core
+                    for word in key - _FILLER
+                    for other in with_word.get(word, ())
+                    if other < key
+                    and (core := other - _FILLER)
+                    and (len(core) >= 2 or len(min(core)) >= 5)
+                }
+                several[key] = any(a.isdisjoint(b) for a, b in combinations(inside, 2))
+            return several[key]
+
         for key in keys:
             core = key - _FILLER
             if not core or key & _GENERATIONS or (len(core) == 1 and len(min(core)) < 4):
@@ -502,7 +526,10 @@ class ArtistNames:
             longer = {
                 find(other)
                 for other in with_word[rarest]
-                if key < other and not (other - key) & _OTHER_PERSON
+                if key < other
+                and not (other - key) & _OTHER_PERSON
+                and len((other - key) - _FILLER) <= LONGER_WORDS
+                and not names_several(other)
             }
             # In one person's names only: "Rembrandt", the Met's Rembrandt
             # van Rijn, stays out of "Rembrandt Peale".

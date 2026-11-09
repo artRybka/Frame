@@ -3,12 +3,13 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import httpx
 from PIL import Image
 
-from frame_server.library.fragments import Fragments, part_id, split_part
+from frame_server.library.fragments import Fragments, Part, part_id, place, split_part
 from frame_server.library.images import (
     IMAGE_AREA,
     IMAGE_MAX,
@@ -165,8 +166,10 @@ def test_cleveland_scroll_sections(tmp_path: Path) -> None:
 def test_commons_tile_sets(tmp_path: Path) -> None:
     grid = (
         "{|\n|[[File:Bosch - Garden-x0-y0.jpg|117px]]\n||[[File:Bosch - Garden-x1-y0.jpg|117px]]\n"
-        "|-\n|[[File:Bosch - Garden-x0-y1.jpg|117px]]\n|}\n[[File:Bosch Garden.jpg|117px]]"
+        "|-\n|[[File:Bosch - Garden-x0-y1.jpg|117px]]\n||[[File:Bosch - Garden-x1-y1.jpg|117px]]\n"
+        "|}\n[[File:Bosch Garden.jpg|117px]]"
     )
+    asked: list[str] = []
 
     def answer(request: httpx.Request) -> httpx.Response:
         params = request.url.params
@@ -185,11 +188,15 @@ def test_commons_tile_sets(tmp_path: Path) -> None:
                 json={"query": {"pages": {"2": {"revisions": [{"slots": {"main": {"*": grid}}}]}}}},
             )
         titles = params.get("titles", "").split("|")
+        asked.extend(titles)
         assert titles == [
             "File:Bosch - Garden-x0-y0.jpg",
             "File:Bosch - Garden-x1-y0.jpg",
             "File:Bosch - Garden-x0-y1.jpg",
+            "File:Bosch - Garden-x1-y1.jpg",
         ]
+        # The last column and row narrower, as a grid's ends are.
+        sizes = [(29952, 29952), (9984, 29952), (29952, 5000), (9984, 5000)]
         pages = {
             str(n): {
                 "title": t,
@@ -197,8 +204,8 @@ def test_commons_tile_sets(tmp_path: Path) -> None:
                     {
                         "url": f"https://upload.wikimedia.org/wikipedia/commons/a/ab/{n}.jpg",
                         "thumburl": f"https://upload.wikimedia.org/thumb/{n}.jpg",
-                        "width": 29952,
-                        "height": 29952,
+                        "width": sizes[n][0],
+                        "height": sizes[n][1],
                     }
                 ],
             }
@@ -216,13 +223,42 @@ def test_commons_tile_sets(tmp_path: Path) -> None:
         height=17078,
     )
     parts = fragments.items(garden)
-    assert [p.width for p in parts] == [29952] * 3
+    assert [p.width for p in parts] == [29952, 9984, 29952, 9984]
     assert parts[0].image_url.endswith("/0.jpg")
+    # Each tile's place on the whole, from the grid.
+    places = [(p.x, p.y, p.w, p.h) for p in fragments.parts(garden)]
+    assert places[0] == (0, 0, 0.75, 29952 / 34952)
+    assert places[1] == (0.75, 0, 0.25, 29952 / 34952)
+    assert places[3] == (0.75, 29952 / 34952, 0.25, 5000 / 34952)
     # Shown in Commons' widest rendition, not 150 MB.
     assert "/thumb/" in own_copy(parts[0]) and "3840px" in own_copy(parts[0])
     # A file without tiles: no question about its page.
     other = garden.model_copy(update={"id": "wmc:5", "source_id": "5"})
     assert fragments.items(other) == []
+    # Kept before tiles had places: asked again once.
+    assert len(asked) == 4
+    kept = json.loads((tmp_path / "f.json").read_text())
+    for part in kept["wmc:22605738"]["parts"]:
+        for key in ("x", "y", "w", "h"):
+            part.pop(key)
+    (tmp_path / "f.json").write_text(json.dumps(kept))
+    again = Fragments(tmp_path / "f.json", lambda: _client(httpx.MockTransport(answer)))
+    assert again.parts(garden)[1].x == 0.75
+    assert len(asked) == 8
+
+
+def test_tiles_off_a_grid_are_not_placed() -> None:
+    def tile(width: int, height: int) -> Part:
+        return Part(url="u", thumb="t", width=width, height=height)
+
+    # Column 0's tiles of two widths: no grid.
+    parts = place([tile(100, 50), tile(90, 50)], [(0, 0), (1, 0)])
+    assert not any(p.placed for p in parts)
+    # A column missing.
+    parts = place([tile(100, 50), tile(100, 50)], [(0, 0), (0, 2)])
+    assert not any(p.placed for p in parts)
+    parts = place([tile(100, 50), tile(40, 50)], [(0, 0), (0, 1)])
+    assert [(p.x, p.w) for p in parts] == [(0, 100 / 140), (100 / 140, 40 / 140)]
 
 
 def test_fragment_ids() -> None:
@@ -259,3 +295,6 @@ def test_a_fragment_id_is_made_from_its_work(tmp_path: Path) -> None:
     found = importer.resolve("cma:130638~p2")
     assert found is not None and found.image_url == "https://cdn/alt2_print.jpg"
     assert importer.resolve("cma:130638~p9") is None
+    # Cleveland's sections have no known place on the scroll (yet).
+    found, places = importer.placed_fragments(scroll)
+    assert len(found) == 2 and places == []

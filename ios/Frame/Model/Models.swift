@@ -1652,6 +1652,22 @@ struct Museum: Codable, Hashable, Sendable, Identifiable {
 struct FragmentsView: Codable, Hashable, Sendable {
     var whole: RemoteItem?
     var fragments: [RemoteItem]
+    /// Where fragments lie on the whole, when that is known (a Commons tile
+    /// set): the full-screen viewer lays them on it while zooming. Absent
+    /// from older servers.
+    var places: [FragmentPlace]? = nil
+}
+
+/// A fragment's place on its whole work: left, top, width and height as
+/// fractions of the whole's.
+struct FragmentPlace: Codable, Hashable, Sendable {
+    var id: String
+    var x: Double
+    var y: Double
+    var w: Double
+    var h: Double
+
+    var unit: CGRect { CGRect(x: x, y: y, width: w, height: h) }
 }
 
 struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
