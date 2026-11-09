@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.131.1
+
+- Szukaj → Epoka: gdy wybrane okresy nachodzą na siebie (np. Biedermeier
+  z Europy i Zabory z Polski), ich kreseczki pod osią leżą jedna pod drugą,
+  każda w kolorze swojej grupy, zamiast się zakrywać.
+
 ## 1.131.0
 
 - „Zdjęcia do podglądu” przeniesione z Ramki do Konfiguracji →

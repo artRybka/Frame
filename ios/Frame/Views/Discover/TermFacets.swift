@@ -277,6 +277,25 @@ enum PeriodAxis {
         var id: String { key }
     }
 
+    /// The lines of the named periods picked, under the axis: each goes on
+    /// the first row where it keeps clear of the others, so two that
+    /// overlap (Zabory and Biedermeier) lie one under the other. The rows,
+    /// in the order given.
+    static func stack(_ spans: [ClosedRange<CGFloat>], clear: CGFloat = 2) -> [Int] {
+        var rows: [[ClosedRange<CGFloat>]] = []
+        var out = Array(repeating: 0, count: spans.count)
+        for index in spans.indices.sorted(by: { (spans[$0].lowerBound, $0) < (spans[$1].lowerBound, $1) }) {
+            let span = spans[index]
+            let row = rows.firstIndex { taken in
+                taken.allSatisfy { span.upperBound + clear <= $0.lowerBound || span.lowerBound >= $0.upperBound + clear }
+            } ?? rows.count
+            if row == rows.count { rows.append([]) }
+            rows[row].append(span)
+            out[index] = row
+        }
+        return out
+    }
+
     /// The named periods of one group in as few rows as they go: each takes
     /// the first row where its capsule and name keep clear of the others.
     static func pack(_ items: [LaneItem], width: CGFloat, gap: CGFloat = 7, clear: CGFloat = 8) -> [Placed] {
@@ -1147,6 +1166,8 @@ struct PeriodPicker: View {
     private static let rail: CGFloat = 10
     private static let bead: CGFloat = 15
     private static let rowHeight: CGFloat = 16
+    /// From one named period's line under the axis to the next one's.
+    private static let lineStep: CGFloat = 5
     /// Narrower than this the two years go as one label, under the beads.
     private static let narrow: CGFloat = 40
 
@@ -1276,7 +1297,16 @@ struct PeriodPicker: View {
         let room = CGFloat(left.count) * 3.5 + CGFloat(right.count) * 7
         let narrow = x1 - x0 < max(Self.narrow, room)
         let showBrackets = !brackets.isEmpty && !(range != nil && narrow)
-        let labelsTop = rail + 14
+        let lines = brackets.map { period -> (period: TermInfo, from: CGFloat, width: CGFloat) in
+            let from = PeriodAxis.position(period.yearFrom ?? Int.min / 2, on: axis) * width
+            let to = PeriodAxis.position(period.yearTo ?? Int.max / 2, on: axis) * width
+            let length = max(to - from, 4)
+            return (period, min(from, width - 4), length)
+        }
+        let rows = PeriodAxis.stack(lines.map { $0.from ... $0.from + $0.width })
+        // One line's room is always kept; more only when picks overlap.
+        let extra = showBrackets ? CGFloat(rows.max() ?? 0) * Self.lineStep : 0
+        let labelsTop = rail + 14 + extra
         let ink = range == nil ? Theme.inkSoft : Theme.ink
         return ZStack(alignment: .topLeading) {
             Capsule()
@@ -1296,13 +1326,12 @@ struct PeriodPicker: View {
                     .offset(x: x0, y: rail - 1.5)
             }
             if showBrackets {
-                ForEach(brackets) { period in
-                    let from = PeriodAxis.position(period.yearFrom ?? Int.min / 2, on: axis) * width
-                    let to = PeriodAxis.position(period.yearTo ?? Int.max / 2, on: axis) * width
+                ForEach(lines.indices, id: \.self) { index in
+                    let stroke = lines[index]
                     Capsule()
-                        .fill(PeriodAxis.colour(of: period))
-                        .frame(width: max(to - from, 4), height: 2.5)
-                        .offset(x: min(from, width - 4), y: rail + 9)
+                        .fill(PeriodAxis.colour(of: stroke.period))
+                        .frame(width: stroke.width, height: 2.5)
+                        .offset(x: stroke.from, y: rail + 9 + CGFloat(rows[index]) * Self.lineStep)
                 }
             }
             bead(at: x0)
