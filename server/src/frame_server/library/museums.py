@@ -158,6 +158,10 @@ class Museum(ABC):
     #: The language its search understands: Polish words typed in Szukaj
     #: are translated for the others (``Wording``).
     language: ClassVar[str] = "en"
+    #: Its search keeps to a phrase in double quotes ("night watch": the
+    #: words next to each other): Szukaj's phrases are asked quoted; the
+    #: others get the words bare, and Szukaj checks the phrase itself.
+    phrases: ClassVar[bool] = False
     #: A source of one kind only (the Library of Congress's photographs):
     #: asked just when that kind is, never by every search.
     only: ClassVar[Kind | None] = None
@@ -251,7 +255,7 @@ class Museum(ABC):
         (:data:`LOCAL_MIN`), else from the museum's own search, as before
         there was an index; the index's when the museum cannot be asked."""
         index = self._index()
-        if index is None or not dump_words(query) or re.search(r'[:="]', query):
+        if index is None or not dump_words(query) or re.search(r"[:=]", query):
             return ask()
         found = self._from_dump(index, query, limit=limit, page=page, **filters)
         if found[0] >= LOCAL_MIN:
@@ -288,6 +292,7 @@ class Museum(ABC):
 
 class ArtInstituteChicago(Museum):
     key = "aic"
+    phrases = True
     name = "Art Institute of Chicago"
     api = "https://api.artic.edu/api/v1"
     iiif = AIC_IIIF
@@ -450,6 +455,7 @@ class ArtInstituteChicago(Museum):
 
 class ClevelandMuseum(Museum):
     key = "cma"
+    phrases = True
     name = "Cleveland Museum of Art"
     api = "https://openaccess-api.clevelandart.org/api"
     highlights = True
@@ -565,6 +571,7 @@ MET_LOCAL_MIN = 24
 
 class MetropolitanMuseum(Museum):
     key = "met"
+    phrases = True
     name = "The Metropolitan Museum of Art"
     api = "https://collectionapi.metmuseum.org/public/collection"
     highlights = True
@@ -714,6 +721,7 @@ class WikimediaCommons(Museum):
     """
 
     key = "wmc"
+    phrases = True
     name = "Wikimedia Commons"
     page_size = 50
     api = "https://commons.wikimedia.org/w/api.php"
@@ -1310,6 +1318,7 @@ class Europeana(Museum):
     """
 
     key = "europeana"
+    phrases = True
     name = "Europeana"
     api = "https://api.europeana.eu/record/v2/search.json"
     page_size = 100

@@ -2239,6 +2239,52 @@ struct PlacePicture: Codable, Hashable, Sendable {
     var picture: String = ""
 }
 
+/// Words typed in Szukaj as its chips (server `library/phrases.py`): a
+/// chip is one phrase, its words next to each other ("nocna straż"), and
+/// each further chip narrows the search, never "any of them" (Mateusz
+/// 2026-11-09). The rules keep them as one text: a phrase of several words
+/// in double quotes, one word bare. Words outside quotes are each a chip,
+/// as a query saved before phrases meant them.
+enum SearchPhrases {
+    static func tokens(_ query: String) -> [String] {
+        var found: [String] = []
+        var rest = Substring(query)
+        while let start = rest.firstIndex(where: { !$0.isWhitespace }) {
+            rest = rest[start...]
+            let text: Substring
+            if rest.first == "\"" {
+                let body = rest.dropFirst()
+                let end = body.firstIndex(of: "\"") ?? body.endIndex
+                text = body[..<end]
+                rest = end < body.endIndex ? body[body.index(after: end)...] : body[end...]
+            } else {
+                let end = rest.firstIndex(where: \.isWhitespace) ?? rest.endIndex
+                text = rest[..<end]
+                rest = rest[end...]
+            }
+            let words = clean(String(text))
+            if !words.isEmpty, !found.contains(words) { found.append(words) }
+        }
+        return found
+    }
+
+    static func query(_ phrases: [String]) -> String {
+        phrases.map(clean).filter { !$0.isEmpty }
+            .map { $0.contains(" ") ? "\"\($0)\"" : $0 }
+            .joined(separator: " ")
+    }
+
+    /// The phrase's words, each a chip of its own ("Szukaj słów osobno").
+    static func words(_ phrase: String) -> [String] {
+        clean(phrase).split(separator: " ").map(String.init)
+    }
+
+    private static func clean(_ text: String) -> String {
+        text.replacingOccurrences(of: "\"", with: " ")
+            .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+}
+
 extension PlaylistRules {
     /// The rules' artists, terms and words as chips; `names` gives the
     /// Polish names of terms.
@@ -2251,9 +2297,7 @@ extension PlaylistRules {
         }
         tokens += styles.map { SearchToken(kind: "legacy-style", key: $0, name: $0) }
         tokens += subjects.map { SearchToken(kind: "legacy-subject", key: $0, name: $0) }
-        if !query.trimmingCharacters(in: .whitespaces).isEmpty {
-            tokens.append(SearchToken(kind: "word", key: query, name: query))
-        }
+        tokens += SearchPhrases.tokens(query).map { SearchToken(kind: "word", key: $0, name: $0) }
         return tokens
     }
 
@@ -2263,7 +2307,7 @@ extension PlaylistRules {
         terms = tokens.filter { ["style", "subject", "period", "technique", "tag", "mine"].contains($0.kind) }.map(\.key)
         styles = tokens.filter { $0.kind == "legacy-style" }.map(\.key)
         subjects = tokens.filter { $0.kind == "legacy-subject" }.map(\.key)
-        query = tokens.filter { $0.kind == "word" }.map(\.key).joined(separator: " ")
+        query = SearchPhrases.query(tokens.filter { $0.kind == "word" }.map(\.key))
     }
 
     /// "years:1880-1914" as "1880–1914".

@@ -34,9 +34,10 @@ from ..library.hosts import urgent_call
 from ..library.importer import ALL
 from ..library.mix import mixed
 from ..library.museums import Discovery, Kind, places_in
+from ..library.phrases import quote
 from ..library.places import NAME as NAME_KEY
 from ..library.places import OWN, QID, known_places, migrate_sources
-from ..library.repo import Hidden, Library
+from ..library.repo import Hidden, Library, says
 from ..library.search import MuseumSearch
 from ..library.themes import (
     CARD_MIN,
@@ -873,11 +874,14 @@ async def terms_in_museums(svc: Svc, q: str) -> MuseumHint:
     words = q.strip()
     if not words:
         return MuseumHint(total=0, artists=[], items=[])
-    texts = await run_in_threadpool(svc.importer.typed, words, None, HINT_TRANSLATE_SECONDS)
-    total, items, failed = await run_in_threadpool(
-        urgent_call(svc.importer.search_all), texts, 8, 1
+    # What is typed becomes one token: a phrase when it has several words.
+    asked = await run_in_threadpool(
+        svc.importer.asked, quote([words]), None, HINT_TRANSLATE_SECONDS
     )
-    items = [i for i in items if not set_aside(i)]
+    total, items, failed = await run_in_threadpool(
+        urgent_call(svc.importer.search_all), asked.texts, 8, 1
+    )
+    items = [i for i in items if not set_aside(i) and says(i, asked.phrases)]
     wanted = fold(words)
     known = known_names()  # one row for Rembrandt, however a museum spells him
     names: Counter[str] = Counter(

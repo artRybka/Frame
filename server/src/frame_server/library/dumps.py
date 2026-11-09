@@ -45,6 +45,8 @@ from xml.etree import ElementTree
 
 import httpx
 
+from .phrases import fts
+
 if TYPE_CHECKING:
     from .models import Item
     from .museums import Museum
@@ -86,7 +88,6 @@ CREATE VIRTUAL TABLE texts USING fts5(
     tokenize = 'porter unicode61 remove_diacritics 2'
 );
 """
-_WORD = re.compile(r"\w+")
 
 
 class Unchanged(Exception):
@@ -110,9 +111,9 @@ class Entry:
 
 
 def match(words: str) -> str:
-    """An FTS5 query of every word typed (all must be there), each quoted:
-    nothing typed can be read as the query language's own."""
-    return " ".join(f'"{w}"' for w in _WORD.findall(words))
+    """An FTS5 query of every word and phrase typed (all must be there),
+    each quoted: nothing typed can be read as the query language's own."""
+    return fts(words)
 
 
 #: Kinds in the order results show them: what the frame shows best first

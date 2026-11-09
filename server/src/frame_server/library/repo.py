@@ -41,6 +41,8 @@ from .models import (
     PlaylistRules,
     PlaylistSummary,
 )
+from .phrases import has_phrase, parsed
+from .phrases import words as phrase_words
 from .places import Places, known_places, learn_places
 from .term_index import TermIndex
 from .viewer import OWNER_ID, STORE, viewer_id
@@ -275,23 +277,50 @@ def matches(
         return False
     # ``min_suitability`` of older playlists and themes is no longer kept to
     # (Mateusz, 2026-10-31: the e-paper threshold left out important works).
-    if rules.query:
-        haystack = " ".join(
-            [
-                item.title,
-                item.artist,
-                item.medium,
-                item.classification,
-                item.culture,
-                item.description,
-                *item.styles,
-                *item.subjects,
-                *item.keywords,
-            ]
-        ).casefold()
-        if not all(word in haystack for word in rules.query.casefold().split()):
+    return not rules.query or has_words(item, rules.query)
+
+
+def item_text(item: Item) -> str:
+    """What typed words are looked for in: the work's title, artist,
+    technique, culture, description, styles, subjects and keywords."""
+    return " ".join(
+        [
+            item.title,
+            item.artist,
+            item.medium,
+            item.classification,
+            item.culture,
+            item.description,
+            *item.styles,
+            *item.subjects,
+            *item.keywords,
+        ]
+    )
+
+
+def has_words(item: Item, query: str) -> bool:
+    """Whether ``item`` has every token of ``query`` (:mod:`.phrases`): a
+    word anywhere in its texts, a phrase as a phrase."""
+    text = item_text(item)
+    haystack = text.casefold()
+    seen: list[str] | None = None
+    for token, wanted in parsed(query):
+        if " " in token:
+            seen = phrase_words(text) if seen is None else seen
+            if not has_phrase(wanted, seen):
+                return False
+        elif token.casefold() not in haystack:
             return False
     return True
+
+
+def says(item: Item, phrases: list[list[str]]) -> bool:
+    """Whether ``item`` has each of ``phrases`` in one of its forms (as
+    typed or translated, :class:`.importer.Asked`)."""
+    if not phrases:
+        return True
+    seen = phrase_words(item_text(item))
+    return all(any(has_phrase(form, seen) for form in forms) for forms in phrases)
 
 
 def _shown_more(item: Item, other: Item) -> bool:

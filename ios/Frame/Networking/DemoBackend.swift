@@ -184,7 +184,7 @@ actor DemoBackend: FrameBackend {
         if !rules.query.isEmpty {
             let haystack = ([item.title, item.artist, item.medium, item.classification, item.culture]
                 + item.styles + item.subjects).joined(separator: " ").lowercased()
-            for word in rules.query.lowercased().split(separator: " ") where !haystack.contains(word) {
+            for phrase in SearchPhrases.tokens(rules.query.lowercased()) where !haystack.contains(phrase) {
                 return false
             }
         }

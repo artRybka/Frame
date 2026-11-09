@@ -13,8 +13,9 @@ from dataclasses import dataclass
 from .importer import Importer, Job, span
 from .models import Item, PlaylistRules
 from .museums import PLACES_EUROPEANA, PLACES_WD, Discovery
+from .phrases import phrases
 from .places import QID, SOURCE_PLACES, known_places
-from .repo import matches, search_fits
+from .repo import matches, says, search_fits
 from .vocabulary import category_fits, museum_kind, museum_queries
 
 #: With colours asked, museum pages of this many works are looked at, until
@@ -26,6 +27,10 @@ COLOR_SECONDS = 15.0
 #: self-portrait for Van Gogh); this many of their pages are looked at for
 #: ``limit`` works by the artists, within ``COLOR_SECONDS``.
 ARTIST_PAGES = 3
+#: With a phrase typed, museums whose search doesn't keep to phrases bring
+#: works with its words anywhere; this many of their pages are looked at for
+#: ``limit`` works that have the phrase, within ``COLOR_SECONDS``.
+PHRASE_PAGES = 3
 #: Works of each museum page that a smart playlist's fetching asks for: the
 #: same works, in the same order, as Szukaj's smaller pages.
 FILL_PAGE = 24
@@ -207,13 +212,17 @@ class MuseumSearch:
         rules = self.rules
         colors = rules.colors
         asked = COLOR_PAGE if colors else self.limit
-        left = COLOR_PAGES if colors else ARTIST_PAGES if rules.artists else 1
+        deeper = rules.artists or phrases(rules.query)
+        left = COLOR_PAGES if colors else ARTIST_PAGES if deeper else 1
         started = time.monotonic()
         total = fitting = 0
         at: int | None = page
-        # The words typed, in each museum's language ("gitara": "guitar").
+        # The words typed, in each museum's language ("gitara": "guitar"),
+        # each phrase quoted where the museum keeps to it.
         named = keys or importer.asked_sources(self.spec.kind)
-        typed = importer.typed(rules.query, named) if rules.query.strip() else {}
+        words = importer.asked(rules.query, named) if rules.query.strip() else None
+        typed = words.texts if words is not None else {}
+        said = words.phrases if words is not None else []
         while at is not None and left > 0:
             text = museum_text(rules, at)
             # Several artists take turns, so each page asks for one of them.
@@ -226,7 +235,11 @@ class MuseumSearch:
             else:
                 count, items, failed = importer.discover_all(self.spec, asked, at, keys)
             total = total or count
-            found = [i for i in importer.in_colors(items, colors) if self.fits(i)]
+            # Phrases checked here too: most museums find the words anywhere
+            # ("night" in one sentence, "watches" in another), before the
+            # colours are judged by thumbnails.
+            said_it = [i for i in items if says(i, said)]
+            found = [i for i in importer.in_colors(said_it, colors) if self.fits(i)]
             if spare is not None and len(found) < len(items):
                 chosen = {i.id for i in found}
                 spare([i for i in items if i.id not in chosen])

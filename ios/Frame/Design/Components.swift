@@ -761,6 +761,10 @@ struct EmptyStateView: View {
 /// strike-through, Mateusz). A tap gives the choice up.
 struct NothingFound: View {
     let without: [(token: SearchToken, count: Int)]
+    /// A phrase typed ("nocna straż"): offered as its words, each a chip of
+    /// its own (all of them still wanted, anywhere in the work's texts).
+    var phrase: SearchToken? = nil
+    var splitUp: (SearchToken) -> Void = { _ in }
     let giveUp: (SearchToken) -> Void
 
     var body: some View {
@@ -769,6 +773,20 @@ struct NothingFound: View {
                 .font(.serif(17).italic())
                 .foregroundStyle(Theme.inkSoft)
                 .multilineTextAlignment(.center)
+            if let phrase {
+                Button { splitUp(phrase) } label: {
+                    Label("Szukaj słów osobno", systemImage: "text.word.spacing")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(Theme.ink)
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 7)
+                        .background(Theme.ink.opacity(0.06), in: Capsule())
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+                .accessibilityHint("„\(phrase.name)” jako osobne słowa")
+            }
             if !without.isEmpty {
                 Text("Usuń jedno z poniższych:")
                     .font(.caption)
