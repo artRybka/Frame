@@ -133,6 +133,8 @@ def test_europeana_takes_works_free_in_the_eu() -> None:
         '-PROVIDER:"OpenUp!"',  # botany: roses named "Claude Monet"
         '-DATA_PROVIDER:"Ajuntament de Girona"',  # photographs called paintings
         '-DATA_PROVIDER:"Philatelic Postal Museum"',  # stamps called prints
+        # Faded slides and black-and-white prints of works (Mateusz 2026-11-09).
+        '-DATA_PROVIDER:"German Documentation Center for Art History - Marburg Picture Index"',
         '-what:(stamp OR "postage stamp" OR "postal services" OR coin OR coins OR medal '
         "OR medals OR banknote OR banknotes)",
         "what:(painting OR drawing OR print OR poster)",  # no medals or stamps
@@ -274,7 +276,7 @@ def test_europeana_discovery_and_fetch() -> None:
     assert item is not None and item.license == "CC0 1.0"
     discover, fetch = sent[0].url.params, sent[1].url.params
     assert discover["query"] == "cubism"
-    assert discover.get_list("qf")[6:] == ["what:painting", "YEAR:[* TO 1955]"]
+    assert discover.get_list("qf")[7:] == ["what:painting", "YEAR:[* TO 1955]"]
     assert fetch["query"] == 'europeana_id:"/2048047/Clasate_e91c"'
 
     # Browsing with nothing asked: public-domain images only, but every
