@@ -256,6 +256,10 @@ def list_items(
         exclude_ids=sorted(svc.images.gone_ids()),
     )
     total, items = svc.library.query(rules, sort=sort, offset=offset, limit=limit, seed=seed)
+    if rules.query.strip() or rules.artists:
+        # Its artists' pictures laid over each other: copies under other
+        # titles and details gone by the next look (library/twins.py).
+        svc.twins.after_search(items)
     return ItemPage(total=total, items=[ItemSummary.of(i) for i in items])
 
 

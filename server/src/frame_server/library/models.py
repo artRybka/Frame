@@ -121,6 +121,9 @@ ART_PHOTO_ARCHIVES = frozenset(
     {
         "German Documentation Center for Art History - Marburg Picture Index",
         "Royal Institute for Cultural Heritage",
+        # Rome's Hertziana photographs works for art historians as Marburg
+        # does: Vermeer's "Ansicht von Delft", cropped (2026-11-09).
+        "Bibliotheca Hertziana, Max Planck Institute for Art History Rome. Photographic Collection",
     }
 )
 
@@ -239,6 +242,16 @@ class Item(BaseModel):
     part_of: str = ""
     part: int = 0
     parts: int = 0
+    #: Another copy of the same work found by its picture under another
+    #: title ("Lekcja muzyki" on Commons, "The music lesson" on WikiArt;
+    #: ``library.twins``): that item's id, which groups them as one work
+    #: (``duplicates``); "" else.
+    copy_of: str = ""
+    #: The picture is a detail of another copy's (``library.twins``): that
+    #: item's id; a detail is no work for the frame (``vocabulary.is_detail``).
+    detail_of: str = ""
+    #: Version of ``library.twins``' look at the picture, 0 for none yet.
+    twins_seen: int = 0
 
     @computed_field  # type: ignore[prop-decorator]
     @property

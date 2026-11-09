@@ -298,6 +298,9 @@ def tasks(service: FrameService) -> list[NightTask]:
         NightTask("curator", service.curator.at_night),
         NightTask("themes", themes),
         NightTask("suggestions", suggestions),
+        # Copies under other titles and details, by their pictures: what the
+        # night has time for, the rest the next (library/twins.py).
+        NightTask("twins", lambda night: service.twins.at_night(night.quiet)),
         # Last: downloads, gently, in whatever time the night has left.
         NightTask("kept originals", service.kept.at_night),
     ]

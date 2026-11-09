@@ -8,7 +8,8 @@ artist, with the year and the picture's shape as checks; the copy kept is
 the one from the most reliable source: a museum before Europeana, Commons,
 Openverse and WikiArt. An art history archive's photograph of a work on
 Europeana (Foto Marburg's colour slides, faded blue and pale) comes after
-them all.
+them all. Copies whose titles share nothing ("Lekcja muzyki", "The music
+lesson") are found by their pictures (``twins``, ``Item.copy_of``).
 """
 
 from __future__ import annotations
@@ -81,6 +82,8 @@ STOPWORDS = frozenset(
 # fmt: on
 #: Words that only say where a file comes from (Commons file names).
 NOISE = re.compile(r"google art project\w*|google cultural institute|\bcropped\b|\bdetail\b")
+#: Where Commons' descriptions go on with the work's other titles.
+OTHER_TITLES = re.compile(r"\b(?:inne tytuly|other titles?|also known as)\b")
 #: Parts of Commons file names that say where the work hangs or which scan
 #: this is: "… - WGA24652", "… - 406 - Mauritshuis", "…, The Metropolitan
 #: Museum of Art", "… - rijksmuseum - 001".
@@ -189,6 +192,8 @@ def title_key(title: str, artist: str = "") -> str:
     file names, the artist: "Claude Monet - The Water Lilies (1906) - Google
     Art Project" -> "water lilies"."""
     text = fold(title.split("\n")[0])
+    # Commons' "Woman reading a letter.[1] Inne tytuły: Woman in Blue…".
+    text = OTHER_TITLES.split(text, maxsplit=1)[0]
     text = re.sub(r"\([^)]*\)|\[[^\]]*\]", " ", text)
     text = re.sub(r"\.(jpe?g|png|tiff?)$", "", text)
     parts = [p.strip() for p in re.split(r"\s+[-–—]\s+|\s*[|/,]\s*", text) if p.strip()]
@@ -221,11 +226,25 @@ def _inventory(item: Item) -> str:
     return ""
 
 
+def _copy_links(item: Item) -> set[str]:
+    """Pseudo addresses copies found by their pictures share (``Item.copy_of``,
+    ``library.twins``): the item's own and the one it is a copy of."""
+    links = {f"copy:{item.id}"}
+    if item.copy_of:
+        links.add(f"copy:{item.copy_of}")
+    return links
+
+
 def _links(item: Item) -> set[str]:
     links = {link for url in (item.url, item.image_url) if (link := _link(url))}
     if inventory := _inventory(item):
         links.add(inventory)
-    return links
+    return links | _copy_links(item)
+
+
+def _twins(a: Item, b: Item) -> bool:
+    """``a`` and ``b`` were found to show one picture (``library.twins``)."""
+    return bool((a.copy_of or b.copy_of) and _copy_links(a) & _copy_links(b))
 
 
 def origin(item: Item) -> str:
@@ -256,8 +275,9 @@ def work_key(item: Item) -> str:
 
 def _apart(a: Item, b: Item) -> bool:
     """``a`` and ``b`` can't be copies of one work: they come from one
-    collection, and only file collections hold several of a work."""
-    return origin(a) == origin(b) and origin(a) not in FILES
+    collection, and only file collections hold several of a work (or their
+    pictures showed them to be one: WikiArt has some works twice)."""
+    return origin(a) == origin(b) and origin(a) not in FILES and not _twins(a, b)
 
 
 def same_work(a: Item, b: Item) -> bool:
@@ -310,6 +330,7 @@ GROUPING_FIELDS = frozenset(
         "url",
         "image_url",
         "pooled",
+        "copy_of",
     }
 )
 

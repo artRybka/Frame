@@ -19,6 +19,7 @@ from datetime import date
 from functools import cache, cached_property, lru_cache
 from itertools import product
 from typing import Literal
+from urllib.parse import urlsplit
 
 from .models import ART_PHOTO_ARCHIVES, Item, ItemKind
 from .museums import Kind
@@ -681,12 +682,74 @@ def _is_postal(classification: str) -> bool:
     return bool(_POSTAL.search(classification))
 
 
+#: A part of a work cut out of its picture, as titles of the sources that
+#: gather pictures say it: Commons' "Young Woman with a Water Jug (detal)",
+#: "Girl reading a Letter…, detail", WikiArt's "The Procuress, detail
+#: (supposed self-portrait)" (Vermeer, Mateusz 2026-11-09). The word comes
+#: first or after a bracket, comma or dash: a museum's "Architectural
+#: Detail" is a drawing of its own (and museums are not asked by title
+#: here at all). "Fragment" counts only at the very end.
+_DETAIL = re.compile(
+    r"(?:^|[,;:(\[]|\s[-–—])\s*(?:details?|detal\w*|szczeg[oó]ł\w*|d[ée]tails?|dettagli?o?|"
+    r"detalles?|ausschnitt\w*|teilansicht\w*|uitsnede)\b"
+    r"|(?:[,(\[]|\s[-–—])\s*fragm\w*\s*[)\]]?\s*$",
+    re.IGNORECASE,
+)
+#: Sources that gather pictures from elsewhere, whose details of works are
+#: files like any other.
+GATHERED = frozenset({"wmc", "wikiart", "europeana", "openverse"})
+
+
+def is_detail(item: Item) -> bool:
+    """A detail of a work: its title says so (:data:`GATHERED` sources), or
+    its picture was found inside another copy's (``Item.detail_of``,
+    ``library.twins``). The catalogue's own fragments of tile sets
+    (``Item.part_of``) are not."""
+    if item.kind != ItemKind.ARTWORK or item.part_of:
+        return False
+    if item.detail_of:
+        return True
+    return item.source in GATHERED and _is_detail(item.title)
+
+
+@lru_cache(maxsize=PER_WORK)
+def _is_detail(title: str) -> bool:
+    return bool(_DETAIL.search(title.split("\n")[0]))
+
+
+#: Openverse's copies of works the server has from their museums directly:
+#: rawpixel's (pictures of 1024 px, "Young Woman Water Pitcher" by "themet",
+#: 15 of the 20 new works a search for Vermeer showed, 2026-11-09) and
+#: those of the museums' own pages it passes on.
+OPENVERSE_COPIES = (
+    "rawpixel.com",
+    "metmuseum.org",
+    "clevelandart.org",
+    "artic.edu",
+    "rijksmuseum.nl",
+    "smk.dk",
+    "nga.gov",
+)
+
+
+def is_openverse_copy(item: Item) -> bool:
+    """A work from Openverse that is a copy of one the server asks its
+    museum for itself (:data:`OPENVERSE_COPIES`)."""
+    if item.source != "openverse":
+        return False
+    host = (urlsplit(item.url).hostname or "").casefold().removeprefix("www.")
+    return any(host == h or host.endswith(f".{h}") for h in OPENVERSE_COPIES)
+
+
 def is_copy(item: Item) -> bool:
     """A reproduction of a work in print or on a slide, a photograph
     Openverse has from Flickr or one from a photo archive, a stamp, a
-    black-and-white photograph of a work: never what the frame looks for."""
+    black-and-white photograph of a work, a detail of a work, Openverse's
+    copy of a museum's work: never what the frame looks for."""
     return (
         (is_photograph(item) and item.source == "openverse")
+        or is_openverse_copy(item)
+        or is_detail(item)
         or is_archive_photo(item)
         or is_postal(item)
         or is_reproduction(item)
