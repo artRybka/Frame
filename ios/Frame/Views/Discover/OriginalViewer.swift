@@ -18,6 +18,11 @@ struct OriginalViewer: View {
     @State private var failed = false
     @State private var chrome = true
     @State private var tiles: [ZoomTile] = []
+    /// The picture is made of the tiles' own thumbnails: the work's picture
+    /// may be another photograph (another copy, another crop, other
+    /// colours), and the tiles would not lie on it (Mateusz 2026-11-09,
+    /// Bosch's "Garden" bluish under yellowish tiles, a giraffe beside a boar).
+    @State private var underlay = false
 
     var body: some View {
         ZStack {
@@ -74,7 +79,7 @@ struct OriginalViewer: View {
         .statusBarHidden(!chrome)
         .sensoryFeedback(.selection, trigger: brighten)
         .task(id: item.id) { await load() }
-        .task(id: item.id) { await loadTiles() }
+        .task(id: item.fragmentsID) { await loadTiles() }
         .onAppear { if brighten { ScreenBoost.shared.raise() } }
         // A swipe down starts closing long before the screen is gone: the
         // brightness goes back from its first frame (and comes up again
@@ -131,12 +136,12 @@ struct OriginalViewer: View {
     private func load() async {
         if let request = model.backend.request(for: ItemPeeks.tiles[item.id]?.thumb ?? .thumb(item.id)),
            let thumb = try? await ImageLoader.shared.image(for: request, maxPixel: 700, priority: .high) {
-            image = thumb
+            if !underlay { image = thumb }
         }
         for maxPixel: CGFloat in [1800, 4096] {
             guard let request = model.backend.request(for: item.originalRef) else { break }
             if let loaded = try? await ImageLoader.shared.image(for: request, maxPixel: maxPixel, priority: .high) {
-                image = loaded
+                if !underlay { image = loaded }
             }
             if Task.isCancelled { return }
         }
@@ -146,19 +151,43 @@ struct OriginalViewer: View {
     /// The work's tiles with their places, when the server knows them
     /// (Commons tile sets; Cleveland's scroll sections have none yet).
     private func loadTiles() async {
-        guard !item.isFragment, item.source == "wmc" || item.source == "cma",
-              let view = await Fragments.load(item.id, backend: model.backend),
+        let ids = [item.fragmentsID, item.id]
+        guard !item.isFragment, ids.contains(where: { $0.hasPrefix("wmc:") || $0.hasPrefix("cma:") }),
+              let view = await Fragments.load(shownWith: item, backend: model.backend),
               let places = view.places, !places.isEmpty
         else { return }
-        let fragments = Dictionary(view.fragments.map { ($0.id, $0.item) }, uniquingKeysWith: { a, _ in a })
-        tiles = places.compactMap { place in
+        let fragments = Dictionary(view.fragments.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        var found: [(tile: ZoomTile, thumb: URLRequest, item: Item)] = []
+        for place in places {
             guard let fragment = fragments[place.id], place.w > 0, place.h > 0,
-                  let request = model.backend.request(for: fragment.originalRef)
-            else { return nil }
-            return ZoomTile(id: place.id, unit: place.unit,
-                            pixels: ZoomTile.keptWidth(fragment.width, fragment.height),
-                            request: request)
+                  let request = model.backend.request(for: fragment.item.originalRef),
+                  let thumb = model.backend.request(for: fragment.thumb)
+            else { return }  // a hole in the grid: no tiles at all
+            let tile = ZoomTile(id: place.id, unit: place.unit,
+                                pixels: ZoomTile.keptWidth(fragment.item.width, fragment.item.height),
+                                request: request)
+            found.append((tile, thumb, fragment.item))
         }
+        // The thumbnails first, all of them, laid into one picture.
+        let thumbs = await withTaskGroup(of: (Int, UIImage?).self) { group in
+            for (index, entry) in found.enumerated() {
+                let request = entry.thumb
+                group.addTask {
+                    (index, try? await ImageLoader.shared.image(for: request, maxPixel: 600, priority: .high))
+                }
+            }
+            var thumbs = [UIImage?](repeating: nil, count: found.count)
+            for await (index, image) in group { thumbs[index] = image }
+            return thumbs
+        }
+        let laid = zip(found, thumbs).compactMap { entry, thumb in thumb.map { (unit: entry.tile.unit, image: $0) } }
+        guard !Task.isCancelled, laid.count == found.count,
+              let first = found.first,
+              let mosaic = ZoomTile.mosaic(laid, shape: ZoomTile.gridShape(first.tile.unit, first.item))
+        else { return }
+        underlay = true
+        image = mosaic
+        tiles = found.map { $0.tile }
     }
 }
 
@@ -177,6 +206,36 @@ struct ZoomTile: Equatable {
         guard let width, let height, width > 0, height > 0 else { return 2560 }
         let long = CGFloat(max(width, height))
         return CGFloat(width) * min(1, 2560 / long)
+    }
+
+    /// Width / height of the whole grid, from one tile's size and place.
+    static func gridShape(_ unit: CGRect, _ tile: Item) -> CGFloat? {
+        guard let width = tile.width, let height = tile.height, width > 0, height > 0,
+              unit.width > 0, unit.height > 0 else { return nil }
+        return (CGFloat(width) / unit.width) / (CGFloat(height) / unit.height)
+    }
+
+    /// The tiles' pictures laid side by side into one, each in its place:
+    /// as sharp as they are (at most 4096 px wide), of `shape`.
+    static func mosaic(_ laid: [(unit: CGRect, image: UIImage)], shape: CGFloat?) -> UIImage? {
+        guard let shape, shape > 0, !laid.isEmpty else { return nil }
+        let across = laid.map { $0.image.size.width * $0.image.scale / max($0.unit.width, 0.001) }.max() ?? 0
+        let width = min(4096, max(1, across.rounded()))
+        let size = CGSize(width: width, height: max(1, (width / shape).rounded()))
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: size, format: format).image { context in
+            UIColor.black.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+            for (unit, image) in laid {
+                // Whole pixels, a hair over: no seams between tiles.
+                let rect = CGRect(x: unit.minX * size.width, y: unit.minY * size.height,
+                                  width: unit.width * size.width, height: unit.height * size.height)
+                    .integral
+                image.draw(in: rect.insetBy(dx: -0.5, dy: -0.5))
+            }
+        }
     }
 }
 

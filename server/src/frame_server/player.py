@@ -119,6 +119,9 @@ MARGINS_KEY = "margins_trimmed"
 #: Set once the elongated works' kept originals were had again in the size
 #: they are kept in now (``ImageCache.wide_again``, 2026-11-09).
 WIDE_KEY = "wide_originals"
+#: Set once the fragments' pictures kept trimmed of margins were let go
+#: (``ImageCache.drop_fragments``, 2026-11-09).
+FRAGMENTS_KEY = "untrimmed_fragments"
 #: The playlist the photos sent once gather in, newest first.
 SENT_NAME = "Historia przesłanych"
 #: A rotation with fewer pictures not shown lately asks museums for more,
@@ -1521,6 +1524,10 @@ class Player:
             grown = self.service.images.wide_again(items)
             self.library.set_state(WIDE_KEY, True)
             log.info("elongated works: %d kept originals larger", grown)
+        if not self.library.get_state(FRAGMENTS_KEY, False):
+            dropped = self.service.images.drop_fragments()
+            self.library.set_state(FRAGMENTS_KEY, True)
+            log.info("fragments: %d trimmed pictures let go", dropped)
 
     def rescore(self) -> int:
         """Once per ``SCORE_VERSION``: analyse the library's pictures again

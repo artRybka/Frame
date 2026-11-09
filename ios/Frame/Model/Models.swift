@@ -85,6 +85,12 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
 
     /// One part of another work (`partOf`).
     var isFragment: Bool { !(partOf ?? "").isEmpty }
+    /// The work whose fragments go with the picture shown: a Commons copy
+    /// standing in for the work (its tile set), else the work itself.
+    var fragmentsID: String {
+        if let sharper, sharper.itemId.hasPrefix("wmc:") { return sharper.itemId }
+        return id
+    }
 
     /// The museum named on the card ("Kolekcja", "Teraz"): "" for a work
     /// whose museum is not known; a server before 1.81 names the source.
@@ -239,6 +245,8 @@ struct CopyView: Codable, Hashable, Sendable, Identifiable {
 
     var id: String { itemId }
     var side: Int { max(width, height) }
+    /// A Commons file with a tile set: sharp far closer in, in full screen.
+    var hasTiles: Bool { notes.contains("tiles") }
     var isCurrent: Bool { role == "current" }
     var isOwn: Bool { role == "own" }
     /// The museum's own picture in a larger file (an AIC work kept at

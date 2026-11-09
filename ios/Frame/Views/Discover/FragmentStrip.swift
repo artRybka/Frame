@@ -23,6 +23,16 @@ enum Fragments {
         return view
     }
 
+    /// Those of the picture shown (a Commons copy standing in for the work
+    /// brings its tile set), else the work's own.
+    static func load(shownWith item: Item, backend: any FrameBackend) async -> FragmentsView? {
+        let shown = item.fragmentsID
+        if shown != item.id, let view = await load(shown, backend: backend), !view.fragments.isEmpty {
+            return view
+        }
+        return await load(item.id, backend: backend)
+    }
+
     /// The title without the server's "(fragment 5/14)": the card says it
     /// on a tag of its own.
     static func title(_ title: String) -> String {

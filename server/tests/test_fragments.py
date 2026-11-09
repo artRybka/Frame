@@ -298,3 +298,39 @@ def test_a_fragment_id_is_made_from_its_work(tmp_path: Path) -> None:
     # Cleveland's sections have no known place on the scroll (yet).
     found, places = importer.placed_fragments(scroll)
     assert len(found) == 2 and places == []
+
+
+def test_fragments_keep_their_margins(tmp_path: Path) -> None:
+    from frame_server.library.images import _trimmed
+
+    assert _trimmed("wmc:22605738")
+    assert not _trimmed("wmc:22605738~p18")  # a tile keeps its edges
+    assert not _trimmed("upload:1")
+    cache = ImageCache(tmp_path, lambda: httpx.Client())
+    # A dark band at a tile's edge is part of the work, not a margin.
+    banded = Image.new("RGB", (400, 300), (0, 0, 0))
+    banded.paste((200, 180, 150), (0, 0, 300, 300))
+    for item_id in ("wmc:5~p2", "wmc:5"):
+        banded.save(tmp_path / "images" / f"{Item.stem_of(item_id)}.jpg", quality=95)
+    cache.trim_kept()
+    with Image.open(tmp_path / "images" / "wmc_5~p2.jpg") as tile:
+        assert tile.size == (400, 300)
+    # Those kept trimmed before are let go once, had again when asked for.
+    assert cache.drop_fragments() == 1
+    assert not (tmp_path / "images" / "wmc_5~p2.jpg").exists()
+    assert (tmp_path / "images" / "wmc_5.jpg").exists()
+
+
+def test_tile_sets_are_listed_once(tmp_path: Path) -> None:
+    asked: list[str] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        asked.append(str(request.url))
+        return httpx.Response(200, json={"query": {"embeddedin": [{"pageid": 13276351}]}})
+
+    fragments = Fragments(tmp_path / "f.json", lambda: _client(httpx.MockTransport(answer)))
+    assert fragments.tiled("wmc:13276351")
+    assert not fragments.tiled("wmc:1")
+    assert not fragments.tiled("wmc:13276351~p2")
+    assert not fragments.tiled("rijks:SK-C-5")
+    assert len(asked) == 1

@@ -152,7 +152,7 @@ struct ItemDetailView: View {
             }
         }
         .task(id: itemID) { await load() }
-        .task(id: itemID) { await loadFragments() }
+        .task(id: item?.fragmentsID ?? itemID) { await loadFragments() }
         .task(id: described) { await loadSeen() }
         .task(id: described) { await sharpen() }
         .task(id: described) { await findHolder() }
@@ -180,9 +180,17 @@ struct ItemDetailView: View {
 
     // MARK: Fragments
 
+    /// Those of the picture shown: a Commons copy picked for the work
+    /// brings its tile set.
     private func loadFragments() async {
-        guard fragments == nil else { return }
-        let found = await Fragments.load(itemID, backend: model.backend)
+        let id = item?.fragmentsID ?? itemID
+        let found: FragmentsView?
+        if let item {
+            found = await Fragments.load(shownWith: item, backend: model.backend)
+        } else {
+            found = await Fragments.load(itemID, backend: model.backend)
+        }
+        guard (item?.fragmentsID ?? itemID) == id else { return }
         withAnimation(.easeOut(duration: 0.25)) { fragments = found }
     }
 

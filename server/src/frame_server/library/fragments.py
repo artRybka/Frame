@@ -186,6 +186,23 @@ class Fragments:
                 self._save()
             return found[:MOST]
 
+    def tiled(self, item_id: str) -> bool:
+        """Whether ``item_id`` is a Commons file with a tile set (the list
+        asked once a month; False when Commons cannot be asked now)."""
+        source, _, source_id = item_id.partition(":")
+        if source != "wmc" or split_part(item_id) is not None:
+            return False
+        with self._lock:
+            tiled = self._tiled
+        if tiled is not None and self.clock() - tiled[0] < TILED_FOR:
+            return source_id in tiled[1]
+        try:
+            with self.http() as http:
+                return source_id in self._tiled_pages(http)
+        except (httpx.HTTPError, OSError, ValueError, KeyError, TypeError) as err:
+            log.info("Commons tile sets not listed: %s", err)
+            return False
+
     def items(self, item: Item) -> list[Item]:
         """``item``'s fragments as works of their own."""
         parts = self.parts(item)

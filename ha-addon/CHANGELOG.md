@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.136.9
+
+- Kafle z Commons w pełnym ekranie leżą na swoich miejscach i mają te same
+  barwy co podkład: podkład składa się teraz z miniatur samych kafli, a nie
+  z obrazu dzieła, który bywał innym zdjęciem (inna kopia, inny kadr, inne
+  barwy). Kafle nie tracą już ciemnych brzegów przy przycinaniu marginesów;
+  zapisane wcześniej zostaną raz pobrane od nowa.
+- Kopie dzieła: kopia z Commons z zestawem kafli ma znacznik „Kafle przy
+  powiększeniu” i jest proponowana na górze listy zamiast obrazu bez kafli
+  (np. „Nocna straż”). Po jej wybraniu karta i pełny ekran pokazują jej
+  kafle.
+
 ## 1.136.8
 
 - Szukaj z frazą („straż nocna”) nie zatrzymuje już serwera. Sprawdzanie

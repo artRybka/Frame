@@ -21,6 +21,7 @@ from ..fsutil import dir_bytes, own_files
 from ..imaging.layout import load_image
 from ..imaging.margins import trim_margins
 from .aic import aic_fallback
+from .fragments import PART, split_part
 from .hosts import HostGuard, Resting, guard, is_urgent, urgently, walled
 from .markup import commons_rendition, extension
 from .models import Item
@@ -194,8 +195,9 @@ def _missing(err: Exception) -> bool:
 
 def _trimmed(item_id: str) -> bool:
     """Whether the work's pictures lose a museum's blank margins: not the
-    owner's own (:data:`OWN_SOURCES`)."""
-    return item_id.partition(":")[0] not in OWN_SOURCES
+    owner's own (:data:`OWN_SOURCES`), nor a fragment of a work (a tile
+    must keep its edges to lie in its place on the whole)."""
+    return item_id.partition(":")[0] not in OWN_SOURCES and split_part(item_id) is None
 
 
 def display_copy(item: Item) -> str:
@@ -657,7 +659,7 @@ class ImageCache:
             (self.thumbs, THUMB_MAX, 85),
         ):
             for path in sorted(folder.glob("*.jpg")):
-                if path.name.startswith(own):
+                if path.name.startswith(own) or PART in path.stem:
                     continue
                 try:
                     with Image.open(path) as kept:
@@ -671,6 +673,19 @@ class ImageCache:
                     continue
                 changed += 1
         return changed
+
+    def drop_fragments(self) -> int:
+        """Forget the kept pictures of works' fragments (had again when
+        asked for): those kept before 2026-11-09 lost their margins, and a
+        trimmed tile does not lie in its place on the whole."""
+        dropped = 0
+        for folder in (self.images, self.thumbs):
+            for path in folder.glob(f"*{PART}*.jpg"):
+                if split_part(path.stem) is None:
+                    continue
+                path.unlink(missing_ok=True)
+                dropped += 1
+        return dropped
 
     def drop_picture(self, item: Item) -> None:
         """Forget the work's original and thumbnail (another picture takes
