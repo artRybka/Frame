@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.136.5
+
+- Playlisty inteligentne: dzieła dociągnięte z muzeów (dodane do biblioteki
+  od utworzenia playlisty) są na jej końcu, za dziełami, które biblioteka
+  miała wcześniej. Dotyczy listy dzieł w aplikacji i kolejności na ramce
+  bez tasowania.
+
 ## 1.136.4
 
 - Playlisty: przytrzymane „Ulubione” (i każda karta prezentowana na ramce)
