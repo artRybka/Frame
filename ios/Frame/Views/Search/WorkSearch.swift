@@ -3,7 +3,10 @@ import SwiftUI
 /// One search of the works, for Szukaj and for the playlist editor alike
 /// (Mateusz, 2026-11-07: "to samo szukanie"): what the catalogue has for the
 /// choices (at once) and what the museums have (each as it answers, more
-/// pages while the results' end is near). The server's search is one too: a
+/// pages while the results' end is near). The catalogue's works come all, a
+/// page at a time as the end nears, its best fits first (Mateusz, 2026-11-09:
+/// "z katalogu pokazujmy oczywiście wszystko, a nie tylko 60"); the museums
+/// after them. The server's search is one too: a
 /// smart playlist of the same choices fetches what this shows, and the works
 /// it found count for those choices in the catalogue from then on.
 @MainActor
@@ -54,6 +57,8 @@ final class WorkSearch {
     /// Rounds of museum pages in a row that brought no work.
     @ObservationIgnored private var emptyRounds = 0
     @ObservationIgnored private var loader: Task<Void, Never>?
+    /// The catalogue's question, for its next pages.
+    @ObservationIgnored private var catalogueQuery: LibraryQuery?
     @ObservationIgnored private weak var model: AppModel?
 
     /// How long a round that brought nothing waits before the next.
@@ -63,6 +68,9 @@ final class WorkSearch {
     /// The catalogue's works for a search, from which the museums are asked
     /// only once its end is near: a few screens of the grid.
     static let plenty = 60
+    /// The catalogue's works asked at a time (the server keeps the whole
+    /// answer, so the next pages come at once).
+    static let catalogueStep = 120
 
     // MARK: What is shown
 
@@ -93,8 +101,14 @@ final class WorkSearch {
     /// All the works found so far: the catalogue's and the museums'.
     var found: Int { inCatalogue + fromMuseums.count }
 
-    /// A museum may still have more.
-    var more: Bool { museumsWaiting || !next.isEmpty }
+    /// The catalogue has works not yet asked for.
+    var catalogueMore: Bool {
+        guard let catalogue else { return false }
+        return catalogue.items.count < catalogue.total
+    }
+
+    /// The catalogue or a museum may still have more.
+    var more: Bool { catalogueMore || museumsWaiting || !next.isEmpty }
 
     /// Still asking: the catalogue, or the museums' first pages.
     var busy: Bool { searching || asking }
@@ -128,6 +142,7 @@ final class WorkSearch {
         next = [:]
         museumsWaiting = false
         emptyRounds = 0
+        catalogueQuery = nil
         guard !key.isEmpty, let model else {
             catalogue = nil
             searching = false
@@ -137,12 +152,13 @@ final class WorkSearch {
         }
         searching = true
         asking = true
-        var query = LibraryQuery(rules: key.rules)
+        var query = LibraryQuery(rules: key.rules, limit: Self.catalogueStep)
         query.sources = key.sources
         do {
             let found = try await model.backend.items(query)
             if !Task.isCancelled {
                 catalogue = found
+                catalogueQuery = query
                 hidden = []
             }
         } catch {
@@ -216,6 +232,12 @@ final class WorkSearch {
                 moreIfNeeded()
                 return
             }
+            if catalogueMore {
+                await moreOfCatalogue(key)
+                loadingMore = false
+                moreIfNeeded()
+                return
+            }
             let found = results.count
             let pages = next
             await loadMore(key)
@@ -230,6 +252,25 @@ final class WorkSearch {
             if emptyRounds >= Self.emptyRoundsLimit { next = [:] }
             let moved = results.count != found || next != pages
             moreIfNeeded(after: moved ? .zero : Self.retryPause)
+        }
+    }
+
+    /// The catalogue's next works. A page that brings none new (the
+    /// catalogue changed meanwhile) ends it where it is.
+    private func moreOfCatalogue(_ key: Key) async {
+        guard let model, var query = catalogueQuery, let had = catalogue else { return }
+        query.offset = had.items.count
+        do {
+            let page = try await model.backend.items(query)
+            guard !Task.isCancelled, key == searched, var now = catalogue else { return }
+            let known = Set(now.items.map(\.id))
+            let new = page.items.filter { !known.contains($0.id) }
+            now.items += new
+            if new.isEmpty { now = ItemPage(total: now.items.count, items: now.items) }
+            catalogue = now
+        } catch {
+            // Asked again a while later, while the end is still near.
+            if !error.isCancellation { try? await Task.sleep(for: Self.retryPause) }
         }
     }
 

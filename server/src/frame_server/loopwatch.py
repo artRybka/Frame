@@ -32,6 +32,10 @@ BEAT_S = 1.0
 IDLE = ("/threading.py", "/queue.py", "/selectors.py", "/concurrent/futures/thread.py")
 #: The innermost calls shown of each other thread, and at most this many threads.
 THREAD_DEPTH = 10
+#: The loop's own innermost calls shown: its outer ones (the command line,
+#: uvicorn, asyncio) are always the same, and a long dump had its middle,
+#: where the loop stood, cut out of the log (2026-11-09).
+LOOP_DEPTH = 16
 THREADS_SHOWN = 12
 
 
@@ -87,7 +91,7 @@ class LoopWatch:
         frame = sys._current_frames().get(self._ident) if self._ident is not None else None
         if frame is None:
             return "  (the loop's thread is gone)"
-        return "".join(traceback.format_stack(frame)).rstrip()
+        return "".join(traceback.format_list(traceback.extract_stack(frame)[-LOOP_DEPTH:])).rstrip()
 
     def others(self) -> str:
         """The other threads not waiting for work, innermost call last of
