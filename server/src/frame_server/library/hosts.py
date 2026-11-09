@@ -45,8 +45,10 @@ from .policy import (
     LONG_BLOCKS,
     MEDIA_HOSTS,
     PACE,
+    REST_MAXES,
     SOURCES,
     WALL_403,
+    WALL_MEMORIES,
     WIKIMEDIA,
     WIKIMEDIA_HOSTS,
     WIKIMEDIA_MEDIA,
@@ -56,6 +58,19 @@ from .policy import (
 )
 
 log = logging.getLogger(__name__)
+
+
+def part(url: httpx.URL) -> str:
+    """What server errors count against: a host with the first two steps
+    of the path (``cdn-zbiory.mnk.pl/upload/multimedia``), as one server of
+    a museum often serves its originals and its thumbnails differently."""
+    steps = [s for s in url.path.split("/") if s][:2]
+    return "/".join([url.host, *steps])
+
+
+def host_of(key: str) -> str:
+    """The host of a key of rests: a host, a lane, or a :func:`part`."""
+    return key.split("/", 1)[0]
 
 
 def lane(host: str) -> str:
@@ -81,11 +96,17 @@ REST_MAX = 4 * 3600.0
 #: eight times on 2026-11-07, and the rest never grew because it was
 #: forgotten at the first answer.
 WALL_MEMORY = 6 * 3600.0
-#: Server errors (5xx) in a row after which a host is left alone for
-#: FAILING_REST (asked once a minute, to see): MNK's picture server answered
-#: 502 to 406 of 621 requests on 2026-11-07 and was asked on and on.
+#: Server errors (5xx) in a row after which a part of a host
+#: (:func:`part`) is left alone for FAILING_REST: MNK's picture server
+#: answered 502 to 406 of 621 requests on 2026-11-07 and was asked on and on.
 FAIL_STREAK = 10
 FAILING_REST = 10 * 60.0
+#: A part that fails again within WALL_MEMORY after its rest rests twice
+#: as long at the first error, up to FAILING_MAX, and is not asked meanwhile:
+#: MNK's originals answered nothing but 502 from 2026-11-07 for three days,
+#: while its thumbnails mostly came, and each thumbnail that came ended the
+#: originals' rest, ten more 502s a time (~1600 in three days).
+FAILING_MAX = 4 * 3600.0
 #: While the app is in use, the background looks again this often whether it
 #: may go on (seconds).
 APP_PAUSE_STEP = 10.0
@@ -375,8 +396,11 @@ class HostGuard:
         self._probe_at: dict[str, float] = {}
         #: When each host last turned us away, by the wall clock (by host).
         self._last_wall: dict[str, float] = {}
-        #: Server errors in a row (by host).
+        #: Server errors in a row (by :func:`part`).
         self._fails: dict[str, int] = {}
+        #: When each part's last rest for server errors began, by the wall
+        #: clock, and how long it was (by :func:`part`).
+        self._last_fail: dict[str, tuple[float, float]] = {}
         self._rests_file: Path | None = None
 
     def resting(self, host: str) -> float:
@@ -436,7 +460,7 @@ class HostGuard:
             raise
 
     def _before(self, request: httpx.Request, host: str) -> None:
-        wait = self._left(host)
+        wait = self._left(host) or self._left(part(request.url))
         if wait:
             raise Resting(
                 f"{host} turned us away; not asked for {wait / 60:.0f} min", request=request
@@ -720,7 +744,7 @@ class HostGuard:
             now = self.clock()
             resting = {h: until - now for h, (until, _) in self._resting.items() if until > now}
         for host, left in resting.items():
-            entry = row(owner_of(host))
+            entry = row(owner_of(host_of(host)))
             entry["resting"] = max(entry["resting"], round(left))
         others = rows.pop(None, None)
         ordered = sorted(rows.values(), key=lambda r: (-r["week"]["sent"], r["name"]))
@@ -819,22 +843,26 @@ class HostGuard:
             self._throttled(host, response)
             return
         if code >= 500 and not wall:
-            self._failed(host)
+            self._failed(part(response.request.url))
             return
-        if key not in self.pace:
+        if not wall:
+            self._answered(part(response.request.url))
+        if key not in self.pace or not wall:
             self._answered(host)
             return  # a single picture's host: its refusal is the picture's
-        if not wall:
-            self._answered(host)
-            return
         with self._lock:
             until, rest = self._resting.get(host, (0.0, 0.0))
             now = self.clock()
             today = self.wall()
             if until <= now:  # not one of the requests already under way
                 last = self._last_wall.get(host)
-                again = rest and last is not None and today - last < WALL_MEMORY
-                rest = min(rest * 2, REST_MAX) if again else LONG_BLOCKS.get(host, REST)
+                memory = WALL_MEMORIES.get(host, WALL_MEMORY)
+                again = rest and last is not None and today - last < memory
+                first = LONG_BLOCKS.get(host, REST)
+                longest = REST_MAXES.get(host, REST_MAX)
+                # Never shorter than the first: a rest kept from before the
+                # host's own block grew (the LoC's hour, then a day).
+                rest = max(min(rest * 2, longest), first) if again else first
                 self._resting[host] = (now + rest, rest)
                 self._probe_at[host] = now + (rest if host in LONG_BLOCKS else PROBE_EVERY)
                 self._last_wall[host] = today
@@ -853,10 +881,12 @@ class HostGuard:
         raise Resting(f"{host} turned us away", request=response.request)
 
     def _answered(self, host: str) -> None:
-        """``host`` answered: its rest (if any) ends; how long the last one
-        was stays known for WALL_MEMORY, so that the next wall rests longer."""
+        """``host`` (or a :func:`part`) answered: its rest (if any) ends; how
+        long the last one was stays known for WALL_MEMORY, so that the next
+        wall rests longer. A part that answers forgets its failures."""
         with self._lock:
             self._fails.pop(host, None)
+            self._last_fail.pop(host, None)
             until, rest = self._resting.get(host, (0.0, 0.0))
             if not until:
                 return
@@ -867,23 +897,29 @@ class HostGuard:
             log.warning("%s answers again; asked as before", host)
         self._save_rests()
 
-    def _failed(self, host: str) -> None:
-        """A server error from ``host``: after FAIL_STREAK in a row it is
-        left alone for FAILING_REST, asked once a minute to see."""
+    def _failed(self, key: str) -> None:
+        """A server error from ``key`` (a :func:`part`): after FAIL_STREAK
+        in a row it is left alone for FAILING_REST; failing again at the
+        first request after its rest, twice as long (up to FAILING_MAX).
+        The first request after a rest is the one that sees."""
         with self._lock:
-            fails = self._fails[host] = self._fails.get(host, 0) + 1
-            until, rest = self._resting.get(host, (0.0, 0.0))
-            now = self.clock()
-            if fails < FAIL_STREAK or until > now:
+            fails = self._fails[key] = self._fails.get(key, 0) + 1
+            until, _ = self._resting.get(key, (0.0, 0.0))
+            now, today = self.clock(), self.wall()
+            if until > now:
+                return  # under way when the rest began
+            last = self._last_fail.get(key)
+            # Within WALL_MEMORY of the end of its last rest.
+            again = last is not None and today - sum(last) < WALL_MEMORY
+            if fails < FAIL_STREAK and not again:
                 return
-            self._fails[host] = 0
-            self._resting[host] = (now + FAILING_REST, rest)
-            self._probe_at[host] = now + PROBE_EVERY
+            wait = min(last[1] * 2, FAILING_MAX) if again and last else FAILING_REST
+            self._fails[key] = 0
+            self._resting[key] = (now + wait, 0.0)
+            self._probe_at[key] = now + wait
+            self._last_fail[key] = (today, wait)
         log.warning(
-            "%s: %d server errors in a row; leaving it alone for %.0f min",
-            host,
-            fails,
-            FAILING_REST / 60,
+            "%s: %d server errors in a row; leaving it alone for %.0f min", key, fails, wait / 60
         )
         self._save_rests()
 
@@ -909,13 +945,14 @@ class HostGuard:
                 except (KeyError, TypeError, ValueError):
                     continue
                 left = until - today
-                if left <= 0 and today - last >= WALL_MEMORY:
+                if left <= 0 and today - last >= WALL_MEMORIES.get(host, WALL_MEMORY):
                     continue
                 self._resting[host] = (now + left if left > 0 else 0.0, rest)
                 if last:
                     self._last_wall[host] = last
                 if left > 0:
-                    first = left if host in LONG_BLOCKS else PROBE_EVERY
+                    # A part resting for its errors is not probed either.
+                    first = left if host in LONG_BLOCKS or "/" in host else PROBE_EVERY
                     self._probe_at[host] = now + first
                     log.info("%s rests %.0f min more (from before the start)", host, left / 60)
 
