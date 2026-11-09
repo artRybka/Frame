@@ -67,8 +67,12 @@ def test_the_library_remembers_the_searches(tmp_path) -> None:
     library = Library(tmp_path / "lib.db")
     library.wording = lambda text: ("guitar",) if text == "gitara" else ()
     library.upsert(_item(1, title="Still Life with a Guitar"))
+    library.upsert(_item(2, title="Still Life with a Lute"))
     rules = PlaylistRules(query="gitara")
-    assert library.query(rules)[0] == 0
+    # The word as the museums are asked it finds the catalogue's works too
+    # (Mateusz 2026-11-09: "uliczka" and Vermeer's "The Little Street").
+    assert [i.id for i in library.query(rules)[1]] == ["aic:1"]
+    assert library.query(PlaylistRules(query="lutnia"))[0] == 0
     library.found("aic:1", rules.search_key())
     assert [i.id for i in library.query(rules)[1]] == ["aic:1"]
     # Taken in again from the museum: the search stays.
@@ -109,8 +113,8 @@ def test_a_smart_playlist_fetches_what_szukaj_finds(tmp_path) -> None:
     try:
         library = Library(tmp_path / "lib.db")
         library.wording = lambda text: ("guitar", "guitare") if text == "gitara" else ()
-        # Already in the library, without the typed word: the search makes
-        # it fit, with the word the museum was asked.
+        # Already in the library, without the typed word: it fits by the
+        # word the museums are asked, as in Szukaj.
         library.upsert(_item(0, title="Guitar 0", year=1910))
         importer = Importing(library, None, None)  # type: ignore[arg-type]
         importer.cache = type("Cache", (), {"remove": lambda self, item: None})()
@@ -124,9 +128,10 @@ def test_a_smart_playlist_fetches_what_szukaj_finds(tmp_path) -> None:
     # Asked in the museum's language, as Szukaj asks it.
     assert Guitars.asked and set(Guitars.asked) == {"guitar"}
     assert job.done == 4
-    assert job.item_ids == ["aic:0", "aic:1", "aic:2", "aic:3"]
+    # The one it had fits already: four more.
+    assert job.item_ids == ["aic:1", "aic:2", "aic:3", "aic:4"]
     total, found = library.query(rules, sort="year")
-    assert total == 4 and [i.id for i in found] == job.item_ids
+    assert total == 5 and [i.id for i in found] == ["aic:0", *job.item_ids]
 
 
 def test_an_artist_search_keeps_only_their_own_works() -> None:

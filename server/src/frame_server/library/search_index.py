@@ -29,6 +29,7 @@ from .artists import known_names, name_key
 from .colors import has_colours
 from .models import MINE, Item, PlaylistRules
 from .phrases import fold, parsed
+from .phrases import words as phrase_words
 from .places import known_places
 from .vocabulary import (
     HIGHLIGHT,
@@ -249,21 +250,36 @@ class SearchIndex:
             found.update(self._words[word])
         return found
 
-    def with_words(self, query: str) -> set[int]:
+    def with_words(self, query: str, said: list[list[str]] | None = None) -> set[int]:
         """Entries that may have every token of ``query`` (:func:`repo.has_words`):
         a word starting like each of a token's runs of letters, a word starting
-        like each word's stem of a phrase."""
+        like each word's stem of a phrase. ``said``: each token's forms
+        (:func:`repo.said_as`), one of which will do."""
+        forms = said if said is not None else [[token] for token, _ in parsed(query)]
         found: set[int] | None = None
         with self._lock:
-            for token, wanted in parsed(query):
-                phrase = " " in token
-                parts = [_stem(w) for w in wanted] if phrase else _WORD.findall(fold(token))
-                for part in parts:
-                    have = self._with_word_starting(part)
-                    found = have if found is None else found & have
-                    if not found:
-                        return set()
+            for token_forms in forms:
+                have: set[int] = set()
+                for form in token_forms:
+                    have |= self._with_form(form)
+                found = have if found is None else found & have
+                if not found:
+                    return set()
             return found if found is not None else self.all_entries()
+
+    def _with_form(self, form: str) -> set[int]:
+        """Entries that may have ``form``, one token (under the lock)."""
+        form = form.strip()
+        # A phrase (as typed in quotes, or translated) by its words' stems.
+        phrase = " " in form
+        parts = [_stem(w) for w in phrase_words(form)] if phrase else _WORD.findall(fold(form))
+        found: set[int] | None = None
+        for part in parts:
+            have = self._with_word_starting(part)
+            found = have if found is None else found & have
+            if not found:
+                return set()
+        return found if found is not None else self.all_entries()
 
     # -- artists ---------------------------------------------------------------
 
@@ -373,13 +389,19 @@ class SearchIndex:
                 break
         return have
 
-    def candidates(self, rules: PlaylistRules, hearts: frozenset[str] | None) -> set[int] | None:
+    def candidates(
+        self,
+        rules: PlaylistRules,
+        hearts: frozenset[str] | None,
+        said: list[list[str]] | None = None,
+    ) -> set[int] | None:
         """Entries that may fit ``rules`` (all that do are among them), or
         None when nothing in them narrows the catalogue down. ``hearts``:
-        the works liked, for "Ulubione"."""
+        the works liked, for "Ulubione"; ``said``: the words' forms
+        (:func:`repo.said_as`)."""
         parts: list[Callable[[], set[int]]] = []
         if rules.query.strip():
-            parts.append(lambda: self.with_words(rules.query))
+            parts.append(lambda: self.with_words(rules.query, said))
         if rules.artists:
             parts.append(lambda: self.by_artists(rules.artists))
         terms = [t for t in rules.terms if t not in MINE]

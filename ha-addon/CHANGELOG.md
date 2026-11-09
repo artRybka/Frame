@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.137.6
+
+- Szukaj znajduje dzieło po słowach każdej jego kopii (tytuł z jednego
+  źródła, słowa kluczowe z innego) i pokazuje je w najlepszej kopii.
+- Słowa wpisane po polsku szukają w katalogu także w tłumaczeniu, tak jak
+  pytane są muzea: „gitara” znajduje też „Guitar”.
+- Ukrycie jednej kopii dzieła nie chowa już kopii, którą masz w ulubionych
+  (tak zniknęła „Uliczka” Vermeera z Rijksmuseum).
+
 ## 1.137.5
 
 - Szukaj pokazuje ten sam obraz raz, także gdy źródła nazywają go w różnych

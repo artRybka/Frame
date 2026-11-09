@@ -320,7 +320,10 @@ def matches(
         return False
     # ``min_suitability`` of older playlists and themes is no longer kept to
     # (Mateusz, 2026-10-31: the e-paper threshold left out important works).
-    return not rules.query or has_words(item, rules.query)
+    if not rules.query:
+        return True
+    # Each word as typed or as the museums were asked it (``said``).
+    return has_words(item, rules.query) if said is None else says(item, said)
 
 
 @lru_cache(maxsize=256)
@@ -410,7 +413,12 @@ def says(item: Item, said: list[list[str]]) -> bool:
     of the words asked is no answer (Mateusz 2026-11-09)."""
     if not said:
         return True
-    folded = phrase_fold(item_text(item))
+    return says_in(phrase_fold(item_text(item)), said)
+
+
+def says_in(folded: str, said: list[list[str]]) -> bool:
+    """Whether the folded text has each token of a search in one of its
+    forms (:func:`says`)."""
     return all(any(_says(form, folded) for form in forms if form.strip()) for forms in said)
 
 
@@ -1092,6 +1100,18 @@ class Library:
             found = Hidden()
         else:
             groups = {g for i in ids if (g := works.group_index(i)) is not None}
+            # A work with a copy someone likes is not hidden by another copy
+            # hidden: that copy was in the way (Mateusz 2026-11-09: WikiArt's
+            # "The Little Street", hidden on 11-06, took the Rijksmuseum's he
+            # liked with it once their pictures showed them to be one work).
+            liked = set().union(*self._hearts().values())
+            groups = {
+                g
+                for g in groups
+                if not any(
+                    not c.excluded and (c.favorite or c.id in liked) for c in works.groups[g]
+                )
+            }
             ids |= {c.id for g in groups for c in works.groups[g]}
             found = Hidden(ids, groups, works)
         self._hidden_kept = (version, works, found)
@@ -1183,7 +1203,9 @@ class Library:
         hearts = self.favorites(user) if mine else None
         hidden = Hidden() if include_excluded else self.hidden()
         key = rules.search_key()
-        said = said_as(rules.query, self.wording) if key and rules.query.strip() else None
+        # The words as typed and as the museums were asked them (English,
+        # French): "uliczka" finds "The Little Street" (Mateusz 2026-11-09).
+        said = said_as(rules.query, self.wording) if rules.query.strip() else None
         # Looked up as a set: a list of 2 000 works with no picture cost
         # every query a second, item after item.
         left_out = set(rules.exclude_ids)
@@ -1205,9 +1227,46 @@ class Library:
             return matches(item, rules, listed, hearts, key, said)
 
         index = self.search_index(wait=len(self._all()) <= SEARCH_INLINE)
-        entries = index.candidates(rules, hearts) if index is not None else None
+        entries = index.candidates(rules, hearts, said) if index is not None else None
         pool = list(index.items(entries)) if index is not None and entries is not None else None
         items = [i for i in (self._snapshot() if pool is None else pool) if selected(i)]
+        if said and not include_excluded:
+            # The words of a work are those of all its copies: Vermeer's
+            # "The Little Street" has "uliczka" in the Rijksmuseum's copy's
+            # keywords and in the title of one on Commons, while another
+            # copy stands for it (Mateusz 2026-11-09).
+            plain = rules.model_copy(update={"query": ""})
+            works = self.works()
+            have = {i.id for i in items}
+            if index is None:
+                worded: Iterable[Item] = self._snapshot()
+            else:
+                entries = set().union(*(index.with_words("", [forms]) for forms in said))
+                worded = index.items(entries)
+            # Works with a copy that has a word: all their copies' words
+            # together have them all.
+            near = {
+                g
+                for i in worded
+                if (g := works.group_index(i.id)) is not None and len(works.groups[g]) > 1
+            }
+            groups = [
+                g
+                for g in near
+                if says_in(" ".join(phrase_fold(item_text(c)) for c in works.groups[g]), said)
+            ]
+            for g in groups:
+                for copy in works.groups[g]:
+                    if copy.id in have or copy.id in spare or copy.id in left_out:
+                        continue
+                    if copy.look is not None or copy.id in hidden.ids:
+                        continue
+                    if copy.pooled and set_aside(copy, rules.terms):
+                        continue
+                    stored = self.get(copy.id)
+                    if stored is not None and matches(stored, plain, listed, hearts, "", None):
+                        items.append(stored)
+                        have.add(stored.id)
         if not include_excluded:
             # Copies the owner kept of one work: the best of those asked for
             # stands for them.
