@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.133.2
+
+- Szukaj: podpis dzieła wymieniający kilku artystów naraz nie skleja ich już
+  w jedną osobę. Przez taki podpis van Gogh, Dürer, Renoir, Tiepolo i
+  Toulouse-Lautrec byli w podpowiedziach jednym artystą, a wybranie van
+  Gogha pokazywało dzieła ich wszystkich.
+
 ## 1.133.1
 
 - Dymki z pytaniem („Opisać 19022 obrazy?”, „Usunąć playlistę?” i inne)
