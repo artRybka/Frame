@@ -182,6 +182,7 @@ struct TopicRow: View {
     var action: () -> Void
 
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.dynamicTypeSize) private var typeSize
     @ScaledMetric(relativeTo: .subheadline) private var side: CGFloat = 28
 
     var body: some View {
@@ -190,8 +191,10 @@ struct TopicRow: View {
                 mark
                 Text(title)
                     .font(.subheadline.weight(selected ? .semibold : .regular))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
+                    // One line in a half-width column ("Statki i łodzie" broke
+                    // in two); the large accessibility sizes may wrap.
+                    .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
+                    .minimumScaleFactor(0.75)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Image(systemName: "checkmark")
                     .font(.footnote.weight(.bold))
