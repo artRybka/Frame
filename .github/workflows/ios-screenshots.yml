@@ -104,6 +104,7 @@ jobs:
             capture detail 14 "detail-$appearance"
             capture detail 16 "detail-about-$appearance" -scroll about
             capture playlists 12 "playlists-$appearance"
+            capture suggestions 14 "suggestions-$appearance"
             capture playlist 12 "playlist-$appearance"
             capture editor 12 "editor-$appearance"
             capture editor-new 12 "editor-new-$appearance"

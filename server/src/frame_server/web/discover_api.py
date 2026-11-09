@@ -46,6 +46,7 @@ from ..library.themes import (
     OTHER_ART_THEMES,
     SECTION_YEARS,
     THEMES,
+    WEEKLY,
     Theme,
     batch_of,
     browse_theme,
@@ -473,10 +474,49 @@ async def suggestions(svc: Svc) -> list[SuggestionRow]:
     return await run_in_threadpool(suggestion_rows, svc)
 
 
+class DayCard(BaseModel):
+    """A card of "Dziś dla Ciebie" that Propozycje dnia take works from (as
+    the app's ``ArtTheme``: it opens the card)."""
+
+    key: str
+    name: str
+    description: str = ""
+    group: str = WEEKLY
+
+
+class DayPicksView(BaseModel):
+    """``GET /api/suggestions/day``: the asking person's Propozycje dnia."""
+
+    day: str
+    cards: list[DayCard]
+    #: The works in the order the frame shows them: fours from each card.
+    items: list[RemoteItem]
+
+
+@router.get("/suggestions/day", response_model=DayPicksView)
+async def day_suggestions(svc: Svc) -> DayPicksView:
+    """Propozycje dnia: twelve works of each card of "Dziś dla Ciebie", in
+    fours (Mateusz 2026-11-09), made once a day for each person."""
+    user = viewer_id()
+
+    def view() -> DayPicksView:
+        picks = svc.player.day_picks(user)
+        found = (svc.library.get(i) for i in picks.ids)
+        items = [i for i in found if i is not None]
+        return DayPicksView(
+            day=picks.day,
+            cards=[DayCard(key=k, name=n, description=d) for k, n, d in picks.cards],
+            items=_light(remote_items(svc, items, copies=False)),
+        )
+
+    return await run_in_threadpool(view)
+
+
 @router.post("/suggestions/play", status_code=202)
 async def play_suggestions(svc: Svc) -> dict[str, bool]:
-    """Puts Propozycje on the frame: the rotation without a playlist
-    ("Propozycje" in Playlisty)."""
+    """Puts Propozycje dnia on the frame: the rotation without a playlist,
+    the asking person's ("Propozycje dnia" in Playlisty)."""
+    svc.player.play_suggestions(viewer_id())
     settings = svc.player.settings
     settings.playlist_id = None
     svc.player.save_settings(settings)
