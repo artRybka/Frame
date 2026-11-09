@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import re
 import threading
+from array import array
 from bisect import bisect_left, insort
 from collections import OrderedDict
 from collections.abc import Callable, Hashable, Iterable, Iterator
@@ -100,13 +101,14 @@ class SearchIndex:
         self._items: list[Item | None] = []
         #: Each work's current entry.
         self._entry: dict[str, int] = {}
-        #: Folded words of the works' texts -> their entries, in order.
-        self._words: dict[str, list[int]] = {}
+        #: Folded words of the works' texts -> their entries, in order (4 bytes
+        #: each: 79 000 works have some 5 million).
+        self._words: dict[str, array[int]] = {}
         #: The same words, sorted in buckets by their first letters, for
         #: the words starting like a typed one.
         self._buckets: dict[str, list[str]] = {}
         #: Folded words of the artists' names -> entries.
-        self._artist_words: dict[str, list[int]] = {}
+        self._artist_words: dict[str, array[int]] = {}
         #: Each artist as written -> entries (who is who: ArtistNames).
         self.by_artist: dict[str, set[int]] = {}
         #: Each artist's name words (``artists.name_key``) -> entries: the
@@ -115,9 +117,9 @@ class SearchIndex:
         #: The vocabulary's terms the works are tagged with -> entries.
         self._tagged: dict[str, set[int]] = {}
         #: Museum searches (``Item.found_for``) -> entries they found.
-        self._found: dict[str, list[int]] = {}
-        #: Keywords and subjects, folded -> their spellings and entries.
-        self._phrases: dict[str, tuple[dict[str, int], set[int]]] = {}
+        self._found: dict[str, array[int]] = {}
+        #: Keywords and subjects, folded -> how many works have each spelling.
+        self._phrases: dict[str, dict[str, int]] = {}
         #: Words of those phrases -> the phrases, for the suggestions.
         self._phrase_words: dict[str, set[str]] = {}
         #: Parts of searches asked before -> their entries, kept up to date.
@@ -167,10 +169,8 @@ class SearchIndex:
         for key in item.terms:
             _discard(self._tagged, key, n)
         for folded, spelling in self._phrases_of(item):
-            kept = self._phrases.get(folded)
-            if kept is not None:
-                spellings, entries = kept
-                entries.discard(n)
+            spellings = self._phrases.get(folded)
+            if spellings is not None:
                 spellings[spelling] = spellings.get(spelling, 1) - 1
         for _, entries in self._atoms.values():
             entries.discard(n)
@@ -182,27 +182,26 @@ class SearchIndex:
         for word in set(_WORD.findall(fold(item_text(item)))):
             have = self._words.get(word)
             if have is None:
-                self._words[word] = [n]
+                self._words[word] = array("i", (n,))
                 insort(self._buckets.setdefault(word[:_BUCKET], []), word)
             else:
                 have.append(n)
         for word in set(_WORD.findall(fold(item.artist))):
-            self._artist_words.setdefault(word, []).append(n)
+            self._artist_words.setdefault(word, array("i")).append(n)
         if item.artist:
             self.by_artist.setdefault(item.artist, set()).add(n)
             self._by_key.setdefault(name_key(item.artist), set()).add(n)
         for key in set(item.found_for):
-            self._found.setdefault(key, []).append(n)
+            self._found.setdefault(key, array("i")).append(n)
         for key in item.terms:
             self._tagged.setdefault(key, set()).add(n)
         for folded, spelling in self._phrases_of(item):
-            kept = self._phrases.get(folded)
-            if kept is None:
-                kept = self._phrases[folded] = ({}, set())
+            spellings = self._phrases.get(folded)
+            if spellings is None:
+                spellings = self._phrases[folded] = {}
                 for word in folded.split():
                     self._phrase_words.setdefault(word, set()).add(folded)
-            kept[0][spelling] = kept[0].get(spelling, 0) + 1
-            kept[1].add(n)
+            spellings[spelling] = spellings.get(spelling, 0) + 1
         for fits, entries in self._atoms.values():
             if fits(item):
                 entries.add(n)
@@ -366,7 +365,7 @@ class SearchIndex:
         words = name_words(name)
         if not words:
             return set()
-        lists = sorted((self._artist_words.get(w, []) for w in words), key=len)
+        lists = sorted((self._artist_words.get(w, array("i")) for w in words), key=len)
         have = set(lists[0])
         for more in lists[1:]:
             have &= set(more)
@@ -466,13 +465,14 @@ class SearchIndex:
             for folded in found:
                 if folded == wanted:
                     continue  # the typed words' own row says it
-                spellings, entries = self._phrases[folded]
-                if not entries:
+                spellings = self._phrases[folded]
+                works = sum(spellings.values())
+                if works <= 0:
                     continue
                 starts = folded.startswith(wanted)
                 if not starts and f" {wanted}" not in f" {folded}":
                     continue
                 spelling = max(spellings, key=lambda s: spellings[s])
-                rows.append((not starts, -len(entries), folded, spelling))
+                rows.append((not starts, -works, folded, spelling))
         rows.sort()
         return [r[3] for r in rows[:limit]]

@@ -161,9 +161,7 @@ def test_a_search_shows_the_artists_own_works_first_and_all_of_them(tmp_path) ->
     lib.upsert(
         Item(id="a:2", source="a", source_id="2", title="View of Delft", artist="Johannes Vermeer")
     )
-    lib.upsert(
-        Item(id="a:3", source="a", source_id="3", title="Sea", description="after Vermeer")
-    )
+    lib.upsert(Item(id="a:3", source="a", source_id="3", title="Sea", description="after Vermeer"))
     lib.upsert(
         Item(
             id="a:4",
