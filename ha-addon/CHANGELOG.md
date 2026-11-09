@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.136.2
+
+- Szukaj i playlisty z artystą: dopiski muzeów w nawiasie, np. „(signed by
+  artist)” albo „(mentioned on object)”, nie sklejają już różnych malarzy w
+  jedną osobę. Dla „van Gogh” podpowiedź to znowu Vincent van Gogh (razem z
+  „Vincent Van Gogh, The Netherlands” i „(possibly)”), a nie Albrecht Dürer
+  z 3000 dzieł, a playlista van Gogha ma tylko jego dzieła, bez Renoira,
+  Tiepola czy Abrahama Storcka.
+
 ## 1.136.0
 
 - „Propozycje” w Playlistach to teraz „Propozycje dnia”: playlista składana

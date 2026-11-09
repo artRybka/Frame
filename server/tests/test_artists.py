@@ -9,7 +9,7 @@ from datetime import date
 import pytest
 
 from frame_server.library import Item, ItemKind
-from frame_server.library.artists import ArtistNames, is_artist, learn, made_by
+from frame_server.library.artists import ArtistNames, is_artist, learn, made_by, name_key
 from frame_server.library.duplicates import artist_words
 from frame_server.library.themes import (
     WEEK_KEY,
@@ -314,6 +314,49 @@ def test_a_list_of_artists_joins_none_of_them() -> None:
         ["Dürer, Renoir"],
         ["Pierre-Auguste Renoir", "Renoir"],
     ]
+
+
+def test_a_remark_in_brackets_joins_nobody() -> None:
+    # "(signed by artist)" after Dürer, Van Gogh and Storck read as the Met's
+    # full name and made one person of all three: "Olbracht Dürer" 3033 for
+    # "van Gogh", Storck in the Van Gogh playlist (Mateusz, 2026-11-09).
+    people = _people(
+        "Albrecht Dürer",
+        "Albrecht Dürer (signed by artist)",
+        "Vincent van Gogh",
+        "Vincent van Gogh (signed by artist)",
+        "Vincent Van Gogh, The Netherlands",
+        "Vincent van Gogh (possibly)",
+        "Vincent van Gogh (Dutch, 1853-1890)",
+        "Abraham Storck",
+        "Abraham Storck (signed by artist)",
+        "Pierre-Auguste Renoir (mentioned on object)",
+        "Roeloffzen & Hübner (mentioned on object)",
+        "Giovanni Battista Tiepolo (mentioned on object)",
+    )
+    assert people == [
+        ["Abraham Storck", "Abraham Storck (signed by artist)"],
+        ["Albrecht Dürer", "Albrecht Dürer (signed by artist)"],
+        ["Giovanni Battista Tiepolo (mentioned on object)"],
+        ["Pierre-Auguste Renoir (mentioned on object)"],
+        ["Roeloffzen & Hübner (mentioned on object)"],
+        [
+            "Vincent Van Gogh, The Netherlands",
+            "Vincent van Gogh",
+            "Vincent van Gogh (Dutch, 1853-1890)",
+            "Vincent van Gogh (possibly)",
+            "Vincent van Gogh (signed by artist)",
+        ],
+    ]
+    # A full name after two people's names is a remark too.
+    assert len(_people("Jan Steen (Hanna Blom)", "Frans Hals (Hanna Blom)")) == 2
+    # What makes another person stays: a generation, a reversed name.
+    assert _people("Pieter Bruegel (the Elder)", "Pieter Bruegel") == [
+        ["Pieter Bruegel"],
+        ["Pieter Bruegel (the Elder)"],
+    ]
+    assert name_key("Opałka, Roman") == {"opalka", "roman"}
+    assert name_key("Gogh, Vincent van") == name_key("Vincent van Gogh")
 
 
 def test_the_shown_name_is_the_one_of_most_works() -> None:
