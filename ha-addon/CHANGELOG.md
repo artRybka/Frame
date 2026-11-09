@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.136.1
+
+- Playlisty: przytrzymanie karty playlisty albo Propozycji dnia nie wyłącza
+  już aplikacji. Podgląd przytrzymanej i przesuwanej karty jest rysowany
+  osobno od strony i nie miał dostępu do pobierania obrazów.
+
 ## 1.136.0
 
 - „Propozycje” w Playlistach to teraz „Propozycje dnia”: playlista składana

@@ -82,6 +82,7 @@ struct PlaylistsView: View {
                             CardMenuPreview(title: "Propozycje dnia", subtitle: suggestionsLine) {
                                 SuggestionsCover(works: model.suggestionCover)
                             }
+                            .environment(model)
                         }
                         ForEach(ordered) { playlist in
                             NavigationLink(value: playlist.id) {
@@ -95,6 +96,7 @@ struct PlaylistsView: View {
                                 menu(playlist)
                             } preview: {
                                 PlaylistMenuPreview(playlist: playlist)
+                                    .environment(model)
                             }
                             // Held and moved, the card goes with the finger
                             // and the others make room (Mateusz 2026-11-09,
@@ -103,9 +105,13 @@ struct PlaylistsView: View {
                                 dragged = playlist.id
                                 return NSItemProvider(object: String(playlist.id) as NSString)
                             } preview: {
+                                // Drawn apart from the page, without its
+                                // environment: `ArtImage` needs the model
+                                // (1.136.0 crashed as soon as a card was held).
                                 Collage(itemIDs: playlist.coverItemIds, title: playlist.name)
                                     .frame(width: 150, height: 150)
                                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .environment(model)
                             }
                             .onDrop(of: [.text], delegate: CardDrop(target: playlist.id, dragged: $dragged, model: model))
                             // On the card held, not the page: on iOS 26 the dialog
