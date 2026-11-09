@@ -22,6 +22,8 @@ actor DemoBackend: FrameBackend {
 
     private var items: [Item]
     private var playlistsByID: [Int: Playlist]
+    /// The cards' order once one was moved, as the server keeps it.
+    private var playlistOrder: [Int] = []
     private var settingsValue = FrameSettings.defaults
     private var queue: [String] = []
     /// Added with "Dodaj do kolejki": at the front of `queue`.
@@ -708,7 +710,20 @@ actor DemoBackend: FrameBackend {
     // MARK: Playlists
 
     func playlists() async throws -> [PlaylistSummary] {
-        playlistsByID.keys.sorted().compactMap { playlistsByID[$0] }.map(summary)
+        let made = playlistsByID.keys.sorted { a, b in
+            // As the server: "Ulubione" first until a card is moved.
+            let (fa, fb) = (playlistsByID[a]?.isFavorites == true, playlistsByID[b]?.isFavorites == true)
+            return fa != fb ? fa : a < b
+        }
+        let ids = made.sorted { a, b in
+            (playlistOrder.firstIndex(of: a) ?? playlistOrder.count) < (playlistOrder.firstIndex(of: b) ?? playlistOrder.count)
+        }
+        return ids.compactMap { playlistsByID[$0] }.map(summary)
+    }
+
+    func arrangePlaylists(ids: [Int]) async throws -> [PlaylistSummary] {
+        playlistOrder = ids.filter { playlistsByID[$0] != nil }
+        return try await playlists()
     }
 
     func playlist(id: Int) async throws -> PlaylistDetail {

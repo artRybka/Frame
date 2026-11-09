@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// Playlists: what the frame presents now and all collections, smart and manual.
 struct PlaylistsView: View {
@@ -10,6 +11,8 @@ struct PlaylistsView: View {
     @State private var deleting: PlaylistSummary?
     /// How far the page is scrolled, for the glow of the card on top.
     @State private var scrolled: CGFloat = 0
+    /// The playlist whose card is being moved with a finger.
+    @State private var dragged: Int?
 
     private var active: PlaylistSummary? {
         guard let id = model.settings?.playlistId else { return nil }
@@ -23,16 +26,9 @@ struct PlaylistsView: View {
         GridItem(.flexible(), spacing: 16, alignment: .top),
     ]
 
-    /// The collections as the server lists them, with my "Ulubione" first,
-    /// next to "Propozycje".
-    private var ordered: [PlaylistSummary] {
-        guard let index = model.playlists.firstIndex(where: { $0.isFavorites && $0.isMine }) else {
-            return model.playlists
-        }
-        var list = model.playlists
-        list.insert(list.remove(at: index), at: 0)
-        return list
-    }
+    /// The collections in the order I put the cards (the server keeps it for
+    /// each person; my "Ulubione" first, next to "Propozycje", until then).
+    private var ordered: [PlaylistSummary] { model.playlists }
 
     /// The frame plays Propozycje: no playlist.
     private var suggestionsActive: Bool { model.settings != nil && model.settings?.playlistId == nil }
@@ -94,6 +90,18 @@ struct PlaylistsView: View {
                             } preview: {
                                 PlaylistMenuPreview(playlist: playlist)
                             }
+                            // Held and moved, the card goes with the finger
+                            // and the others make room (Mateusz 2026-11-09,
+                            // variant A of playlisty-kolejnosc/szkic.png).
+                            .onDrag {
+                                dragged = playlist.id
+                                return NSItemProvider(object: String(playlist.id) as NSString)
+                            } preview: {
+                                Collage(itemIDs: playlist.coverItemIds, title: playlist.name)
+                                    .frame(width: 150, height: 150)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
+                            .onDrop(of: [.text], delegate: CardDrop(target: playlist.id, dragged: $dragged, model: model))
                             // On the card held, not the page: on iOS 26 the dialog
                             // is a popover pointing at the view it hangs on.
                             .confirmationDialog(
@@ -118,6 +126,9 @@ struct PlaylistsView: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    // Let go between the cards (or on Propozycje, Ukryte):
+                    // the order as it stands is kept.
+                    .onDrop(of: [.text], delegate: CardDrop(target: nil, dragged: $dragged, model: model))
                 }
                 .environment(\.parallaxLift, scrolled)
                 .pageWidth()
@@ -203,6 +214,14 @@ extension PlaylistsView {
             }
             .disabled(playlist.itemCount == 0)
         }
+        if let index = model.playlists.firstIndex(where: { $0.id == playlist.id }), index > 0 {
+            Button("Przesuń na początek", systemImage: "arrow.up.to.line") {
+                var list = model.playlists
+                list.insert(list.remove(at: index), at: 0)
+                withAnimation(.snappy) { model.playlists = list }
+                Task { await model.arrangePlaylists(list) }
+            }
+        }
         if !playlist.isFavorites, playlist.isMine {
             Button("Usuń playlistę", systemImage: "trash", role: .destructive) { deleting = playlist }
         }
@@ -231,6 +250,37 @@ extension PlaylistsView {
 }
 
 extension Playlist: Identifiable {}
+
+/// A card moved over the others in Playlisty: they make room as it passes
+/// (the order changes at once), and where it is let go the order is kept on
+/// the server. `target` nil: the grid around the cards.
+private struct CardDrop: DropDelegate {
+    let target: Int?
+    @Binding var dragged: Int?
+    let model: AppModel
+
+    func dropEntered(info: DropInfo) {
+        guard let target, let dragged, dragged != target,
+              let from = model.playlists.firstIndex(where: { $0.id == dragged }),
+              let to = model.playlists.firstIndex(where: { $0.id == target })
+        else { return }
+        withAnimation(.snappy) {
+            model.playlists.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: dragged == nil ? .forbidden : .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard dragged != nil else { return false }
+        dragged = nil
+        let list = model.playlists
+        Task { await model.arrangePlaylists(list) }
+        return true
+    }
+}
 
 /// Opens Propozycje within Playlisty, pushed like a playlist.
 struct SuggestionsRoute: Hashable {}
@@ -824,7 +874,7 @@ struct CardMenuPreview<Cover: View, Details: View>: View {
         }
         .padding(12)
         .frame(width: 320)
-        .background(Theme.paper)
+        .background(Theme.paper, in: .rect)  // a card, not a page
     }
 }
 

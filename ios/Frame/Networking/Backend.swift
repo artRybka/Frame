@@ -86,6 +86,9 @@ protocol FrameBackend: Sendable {
     func playlists() async throws -> [PlaylistSummary]
     func playlist(id: Int) async throws -> PlaylistDetail
     func savePlaylist(_ playlist: Playlist) async throws -> PlaylistDetail
+    /// The cards in Playlisty in this order from now on (each person's own);
+    /// the playlists back in it.
+    func arrangePlaylists(ids: [Int]) async throws -> [PlaylistSummary]
     func deletePlaylist(id: Int) async throws
     func addToPlaylist(id: Int, itemIDs: [String]) async throws -> PlaylistDetail
     /// Takes one work out; a smart playlist keeps it in `rules.excludeIds`.
