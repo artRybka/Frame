@@ -139,7 +139,10 @@ struct PlaylistsView: View {
                         .buttonStyle(.plain)
                     }
                     // Let go between the cards (or on Propozycje, Ukryte):
-                    // the order as it stands is kept.
+                    // the order as it stands is kept. The whole grid takes
+                    // the card, gaps too: without the shape only the cards
+                    // did, and a card held over a gap showed "no entry".
+                    .contentShape(Rectangle())
                     .onDrop(of: [.text], delegate: CardDrop(target: nil, dragged: $dragged, model: model))
                 }
                 .environment(\.parallaxLift, scrolled)
@@ -228,11 +231,26 @@ extension PlaylistsView {
                 Task { await model.play(playlist) }
             }
             .disabled(playlist.itemCount == 0)
+        } else {
+            // Said, not left out: "Ulubione" on the frame and first had
+            // no option at all, so holding it showed no menu (Mateusz
+            // 2026-11-09 14:07).
+            Button("Teraz prezentowane", systemImage: "checkmark") {}
+                .disabled(true)
         }
         if let index = model.playlists.firstIndex(where: { $0.id == playlist.id }), index > 0 {
             Button("Przesuń na początek", systemImage: "arrow.up.to.line") {
                 var list = model.playlists
                 list.insert(list.remove(at: index), at: 0)
+                withAnimation(.snappy) { model.playlists = list }
+                Task { await model.arrangePlaylists(list) }
+            }
+        }
+        if let index = model.playlists.firstIndex(where: { $0.id == playlist.id }),
+           index < model.playlists.count - 1 {
+            Button("Przesuń na koniec", systemImage: "arrow.down.to.line") {
+                var list = model.playlists
+                list.append(list.remove(at: index))
                 withAnimation(.snappy) { model.playlists = list }
                 Task { await model.arrangePlaylists(list) }
             }
@@ -285,7 +303,8 @@ private struct CardDrop: DropDelegate {
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: dragged == nil ? .forbidden : .move)
+        // Never "no entry": wherever a card is let go, the order stands.
+        DropProposal(operation: .move)
     }
 
     func performDrop(info: DropInfo) -> Bool {
@@ -928,7 +947,7 @@ struct CardMenuPreview<Cover: View, Details: View>: View {
         HStack(alignment: .center, spacing: 14) {
             cover
                 .frame(width: 112, height: 112)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: Self.coverRadius, style: .continuous))
             VStack(alignment: .leading, spacing: 5) {
                 Text(title)
                     .font(.serif(19, weight: .semibold))
@@ -941,10 +960,17 @@ struct CardMenuPreview<Cover: View, Details: View>: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(12)
+        .padding(Self.inset)
         .frame(width: 320)
         .background(Theme.paper, in: .rect)  // a card, not a page
     }
+
+    /// The cover's corners as on the grid card, and the card around it
+    /// as far from them as the system's rounded preview (about 28 pt on
+    /// iOS 26) is from its edge, so the two curves run side by side
+    /// (Mateusz 2026-11-09: they did not, cover 10 pt inside 12 pt).
+    static var coverRadius: CGFloat { 12 }
+    static var inset: CGFloat { 16 }
 }
 
 extension CardMenuPreview where Details == Text {
