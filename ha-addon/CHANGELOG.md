@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.134.0
+
+- Dzieła z Commons, które mają zestaw ostrzejszych kafli (np. „Ogród
+  rozkoszy ziemskich” Boscha, „Straż nocna”), w pełnym ekranie doczytują
+  kafle przy przybliżaniu: każdy kafel trafia dokładnie na swoje miejsce na
+  obrazie, a wczytywane są tylko te, które widać. Przybliżyć można teraz
+  mocniej, aż do pikseli kafli.
+
 ## 1.133.1
 
 - Dymki z pytaniem („Opisać 19022 obrazy?”, „Usunąć playlistę?” i inne)

@@ -65,12 +65,22 @@ MOST = 60
 
 
 class Part(BaseModel):
-    """One fragment's picture as its source gives it."""
+    """One fragment's picture as its source gives it, and where on the
+    whole work it lies when that is known (a Commons tile set's grid): its
+    left, top, width and height as fractions of the whole's."""
 
     url: str
     thumb: str
     width: int
     height: int
+    x: float | None = None
+    y: float | None = None
+    w: float | None = None
+    h: float | None = None
+
+    @property
+    def placed(self) -> bool:
+        return self.w is not None and self.h is not None
 
 
 def part_id(work_id: str, n: int) -> str:
@@ -117,9 +127,13 @@ class Fragments:
             return kept
         for key, value in data.items():
             try:
-                kept[key] = (float(value["at"]), [Part(**p) for p in value["parts"]])
+                parts = [Part(**p) for p in value["parts"]]
+                at = float(value["at"])
             except (KeyError, TypeError, ValueError):
                 continue
+            if key.startswith("wmc:") and parts and not parts[0].placed:
+                continue  # kept before tiles had their places: asked again
+            kept[key] = (at, parts)
         return kept
 
     def _save(self) -> None:
@@ -282,6 +296,7 @@ class Fragments:
                 if info:
                     infos[renamed.get(page.get("title", ""), page.get("title", ""))] = info
         parts: list[Part] = []
+        cells: list[tuple[int, int]] = []
         for name in names:
             info = infos.get(name)
             if not info or not info.get("url") or not info.get("width") or not info.get("height"):
@@ -294,7 +309,40 @@ class Fragments:
                     height=int(info["height"]),
                 )
             )
+            cells.append(order[name])
+        return place(parts, cells)
+
+
+def place(parts: list[Part], cells: list[tuple[int, int]]) -> list[Part]:
+    """``parts`` (tiles at (row, column) ``cells``) with their places on
+    the whole: a column is as wide as its tiles, a row as tall, and the
+    grid is the whole picture. Left unplaced when a row or a column has no
+    tile at all, or the tiles of one disagree (not a grid then)."""
+    widths: dict[int, int] = {}
+    heights: dict[int, int] = {}
+    for part, (row, column) in zip(parts, cells, strict=True):
+        if widths.setdefault(column, part.width) != part.width:
+            return parts
+        if heights.setdefault(row, part.height) != part.height:
+            return parts
+    if not parts or sorted(widths) != list(range(len(widths))):
         return parts
+    if sorted(heights) != list(range(len(heights))):
+        return parts
+    total_w, total_h = sum(widths.values()), sum(heights.values())
+    left = [sum(widths[c] for c in range(column)) for column in range(len(widths))]
+    top = [sum(heights[r] for r in range(row)) for row in range(len(heights))]
+    return [
+        part.model_copy(
+            update={
+                "x": left[column] / total_w,
+                "y": top[row] / total_h,
+                "w": part.width / total_w,
+                "h": part.height / total_h,
+            }
+        )
+        for part, (row, column) in zip(parts, cells, strict=True)
+    ]
 
 
 def _wikitext(http: httpx.Client, **page: str) -> str:
