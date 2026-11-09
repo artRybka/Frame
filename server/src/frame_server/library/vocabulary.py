@@ -540,7 +540,14 @@ def _is_manuscript(classification: str, title: str, medium: str) -> bool:
 _PHOTOGRAPH = re.compile(
     r"\b(photograph(?:s|y|ic)?|fotografi\w*|gelatin[- ]silver|albumen|daguerreotype|ambrotype|"
     r"tintype|cyanotype|salted[- ]paper|platinum print|palladium print|chromogenic|"
-    r"inkjet print|carte[- ]de[- ]visite|cabinet card|stereograph\w*|collodion|photogravure)\b",
+    r"inkjet print|carte[- ]de[- ]visite|cabinet card|stereograph\w*|collodion|photogravure|"
+    # Paris Musées' "Arts graphiques, Photographie", "Épreuve sur papier
+    # gélatino-argentique" (Mateusz 2026-11-09: a 1944 portrait of
+    # Leclerc among the paintings); German, Dutch, Italian, Polish.
+    r"photographi(?:e|que|es|ques)|g[ée]latino[- ](?:argentique|bromure)|tirage argentique|"
+    r"photos?(?![-\w]|\s+(?:offset|litho|mechan|engrav|etch))|fotos?(?![-\w])|"
+    r"albumin\w*|daguerr[ée]otyp\w*|silbergelatine\w*|zilvergelatine\w*|"
+    r"gelatina[- ]argento|[żz]elatynowo[- ]srebrow\w*|odbitk\w* fotograficzn\w*)\b",
     re.IGNORECASE,
 )
 
@@ -712,9 +719,18 @@ def is_detail(item: Item) -> bool:
     return item.source in GATHERED and _is_detail(item.title)
 
 
+#: A detail in a file name, its words joined by underscores
+#: ("Night_Watch_detail_1").
+_FILE_DETAIL = re.compile(
+    r"(?:^|_)(?:details?|detal\w*|szczegol\w*|ausschnitt\w*|uitsnede)(?:_|\d|\.|$)",
+    re.IGNORECASE,
+)
+
+
 @lru_cache(maxsize=PER_WORK)
 def _is_detail(title: str) -> bool:
-    return bool(_DETAIL.search(title.split("\n")[0]))
+    line = title.split("\n")[0]
+    return bool(_DETAIL.search(line) or ("_" in line and _FILE_DETAIL.search(line)))
 
 
 #: Openverse's copies of works the server has from their museums directly:
@@ -741,17 +757,66 @@ def is_openverse_copy(item: Item) -> bool:
     return any(host == h or host.endswith(f".{h}") for h in OPENVERSE_COPIES)
 
 
+#: Printed matter and pages of text: typescripts, brochures, theatre
+#: programmes, proclamations, newspapers, certificates (Europeana and the
+#: Rijksmuseum under "II wojna światowa"; Mateusz 2026-11-09: "kartek z
+#: tekstami nie chcę", nor printed matter, in no group at all). Posters
+#: with a picture stay: they are typed "poster".
+_DOCUMENT = re.compile(
+    r"\b(typescripts?|maszynopis\w*|typoskript\w*|brochures?|broch[üu]re\w*|broszur\w*|"
+    r"pamphlets?|leaflets?|flyers?|ulotk\w*|vlugschrift\w*|flugbl[äa]tt\w*|tracts?|"
+    r"programmes?|theat(?:re|er) programs?|afi[șs] teatral|program\w* teatral\w*|"
+    r"documents?|dokument\w*|urkunde\w*|certificates?|diplomas?|"
+    r"newspapers?|gazet\w*|kranten?|zeitung\w*|journaux|"
+    r"correspondence|letters? \(correspondence\)|briefe?|"
+    r"aanplakbiljet\w*|bekendmaking\w*|bekanntmachung\w*|proclamati\w*|obwieszcz\w*|"
+    r"printed matter|drukwerk|druksache|druki|ephemera|texts?|tekst\w*)\b",
+    re.IGNORECASE,
+)
+#: Titles of notices that are nothing but text ("Bekendmaking", typed
+#: "poster" by the Rijksmuseum).
+_NOTICE_TITLE = re.compile(
+    r"^\W*(bekendmaking|proclamatie|proclamation|bekanntmachung|verordening|verordnung|"
+    r"aanplakbiljet|obwieszczenie|ogłoszenie|avis\b|ordre du)",
+    re.IGNORECASE,
+)
+#: The back of a painting or drawing on its own ("Chata verso").
+_VERSO = re.compile(
+    r"(?:[\s(_,;-]verso\)?|[\s(]odwrocie\)?|\(reverse\)|r[üu]ckseite\)?)\s*$"
+    r"|^\W*(?:verso|reverse) of\b",
+    re.IGNORECASE,
+)
+
+
+def is_document(item: Item) -> bool:
+    """A page of text or printed matter (a typescript, brochure, programme,
+    proclamation, newspaper, certificate), or the back of a work: in no
+    group, not even "Sztuki inne" (Mateusz 2026-11-09)."""
+    if item.kind != ItemKind.ARTWORK:
+        return False
+    return _is_document(item.classification, item.title)
+
+
+@lru_cache(maxsize=PER_WORK)
+def _is_document(classification: str, title: str) -> bool:
+    line = title.split("\n")[0]
+    return bool(
+        _DOCUMENT.search(classification) or _NOTICE_TITLE.search(line) or _VERSO.search(line)
+    )
+
+
 def is_copy(item: Item) -> bool:
     """A reproduction of a work in print or on a slide, a photograph
     Openverse has from Flickr or one from a photo archive, a stamp, a
     black-and-white photograph of a work, a detail of a work, Openverse's
-    copy of a museum's work: never what the frame looks for."""
+    copy of a museum's work, a page of text: never what the frame looks for."""
     return (
         (is_photograph(item) and item.source == "openverse")
         or is_openverse_copy(item)
         or is_detail(item)
         or is_archive_photo(item)
         or is_postal(item)
+        or is_document(item)
         or is_reproduction(item)
         or is_grey_copy(item)
     )
@@ -770,6 +835,10 @@ _DECORATIVE = re.compile(
     r"fans?|furniture|metalwork|"
     r"silver|glass|jewel\w*|enamels?|lacquer|jade|arms|armou?r|coins?|medals?|amulets?|"
     r"glyptic|tools|funerary|ritual|miscellaneous|ceramik\w*|porcelan\w*|tkanin\w*|rzemiosło|"
+    # Europeana's Dutch and German types ("aardewerk, keramiek, schotel");
+    # bells (requisitioned in 1942) and clocks.
+    r"keramiek|aardewerk|schotels?|porselein|steengoed|glaswerk|zilverwerk|keramik|"
+    r"bells?|klokken|glocken?|dzwon\w*|clocks?|"
     # A whole mummy with its portrait inserted is no picture; a mummy
     # portrait (the V&A's type of a Fayum panel) is.
     r"mumm(?:y|ies)(?!\s+portraits?)|human remains)\b",

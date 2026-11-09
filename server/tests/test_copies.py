@@ -22,6 +22,7 @@ from test_sharper import (
     _copy,
     _detail,
     _jpeg,
+    _album_page,
     _offer,
     _own,
     _print,
@@ -393,6 +394,26 @@ def test_a_copy_that_does_not_fit_can_be_picked_all_the_same(app: Any) -> None:
     assert (
         client.put(f"/api/library/items/{own.id}/copy", json={"item_id": "xx:1"}).status_code == 404
     )
+
+
+def test_the_whole_work_of_a_detail_is_only_to_look_at(app: Any) -> None:
+    """Under a head of "The Night Watch", its whole painting: told as the
+    whole work, never put in the detail's place (Mateusz 2026-11-09: the
+    proportions were the painting's); a page around the work stays one."""
+    client, service, web, hits = app
+    own = _own(service)
+    whole = _print(9, (3600, 2400))
+    whole.paste(_print(1, (2000, 1333)), (900, 600))
+    work, page = _copy(6, width=3600, height=2400), _copy(7, width=3600, height=2400)
+    _offer(web, work, whole)
+    _offer(web, page, _album_page(_print(1, (2400, 1600))))
+    hits[:] = [work, page]
+    copies = _final(_lines(client, own.id))
+    assert copies["wmc:6"]["verdict"] == "off" and "whole-work" in copies["wmc:6"]["notes"]
+    assert copies["wmc:7"]["verdict"] == "off" and "page" in copies["wmc:7"]["notes"]
+    resp = client.put(f"/api/library/items/{own.id}/copy", json={"item_id": "wmc:6"})
+    assert resp.status_code == 422
+    assert client.put(f"/api/library/items/{own.id}/copy", json={"item_id": "wmc:7"}).is_success
 
 
 def test_one_spot_in_both_pictures_at_the_frames_scale(app: Any) -> None:
