@@ -1367,10 +1367,16 @@ class Europeana(Museum):
     #: posters (see ``vocabulary.PHOTO_ARCHIVES``). Athens' Philatelic
     #: Postal Museum calls its stamps, first-day covers and proofs prints:
     #: nearly every print after 1950 (see ``vocabulary.NOT_ART_PROVIDERS``).
+    #: Bildarchiv Foto Marburg photographs works for art historians: files of
+    #: 1200 px, half black-and-white prints on a catalogue card, the rest old
+    #: colour slides faded blue and white; not asked any more (Mateusz,
+    #: 2026-11-09), its works already kept take other copies
+    #: (``vocabulary.ART_PHOTO_ARCHIVES``).
     not_art = (
         '-PROVIDER:"OpenUp!"',
         '-DATA_PROVIDER:"Ajuntament de Girona"',
         '-DATA_PROVIDER:"Philatelic Postal Museum"',
+        '-DATA_PROVIDER:"German Documentation Center for Art History - Marburg Picture Index"',
         '-what:(stamp OR "postage stamp" OR "postal services" OR coin OR coins OR medal '
         "OR medals OR banknote OR banknotes)",
     )

@@ -51,6 +51,8 @@ READINGS: dict[str, str] = {
     "wmc": "4",
     # 2026-11-09: searches ask for digitised artworks only, no illustrations.
     "openverse": "2",
+    # 2026-11-09: Foto Marburg's photographs of works left out.
+    "europeana": "2",
 }
 
 

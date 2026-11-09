@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.136.7
+
+- Europeana nie podaje już zdjęć z archiwum Foto Marburg (małe, czarno-białe
+  albo wyblakłe fotografie obrazów). Szukaj, Odkrywaj i dobieranie biorą
+  dzieła tylko z innych zbiorów. Dzieła z Marburga, które już są w katalogu,
+  zostają i same przechodzą na lepsze kopie.
+
 ## 1.136.6
 
 - Dzieła z Europeany w wyblakłych, zimnych kolorach (np. „Gaj oliwny” van

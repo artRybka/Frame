@@ -610,7 +610,8 @@ def is_grey_painting(item: Item, spread: float | None = None) -> bool:
 #: slides whose dyes have faded (Marburg's "fmc…" van Goghs: no yellow left,
 #: skies white and blue, Mateusz 2026-11-09): any other source's copy comes
 #: first (``duplicates.item_rank``) and takes their place in other colours
-#: (``sharper``). As ``Item.credit`` names them.
+#: (``sharper``). Marburg is no longer asked (``Europeana.not_art``, 2026-11-09);
+#: its works kept before stay. As ``Item.credit`` names them.
 ART_PHOTO_ARCHIVES = frozenset(
     {
         "German Documentation Center for Art History - Marburg Picture Index",
