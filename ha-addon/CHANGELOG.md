@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.132.0
+
+- Bardzo wydłużone dzieła, jak zwoje japońskie i chińskie, są zapisywane
+  ostrzej. Do proporcji 2:1 nic się nie zmienia. Dłuższe zachowują krótszy
+  bok 1280 px, mieszcząc się w 6,5 Mpx, tyle co kwadrat 2560 × 2560.
+  Zwój z Yale „Palace Women” miał 2560 × 111 px, teraz ma 12 275 × 534. Muzea,
+  które pozwalają wybrać rozmiar (NGA, Yale, SMK, Smithsonian, Courtauld),
+  są proszone o większy plik. Wydłużone dzieła, które już leżą na serwerze,
+  pobierają się raz ponownie.
+- Fragmenty dzieła: zwoje z Cleveland mają na karcie pasek zdjęć kolejnych
+  części, każde 3400 px, a wybrane wielkie obrazy z Wikimedia Commons (np.
+  „Ogród rozkoszy ziemskich”, „Straż nocna”) swoje kafle. Fragment otwiera
+  się jak osobne dzieło: można go pokazać na ramce, dodać do kolejki albo
+  playlisty i skadrować. Na jego karcie jest powrót do całości. W studium
+  dzieła fragmenty są w sekcji „Fragmenty zwoju”, po „Detalach”.
+
 ## 1.131.1
 
 - Szukaj → Epoka: gdy wybrane okresy nachodzą na siebie (np. Biedermeier

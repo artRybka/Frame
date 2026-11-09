@@ -73,6 +73,9 @@ struct ItemDetailView: View {
     @State private var studyTaps = 0
     /// How far the page is scrolled, for the glow at the top.
     @State private var scrolled: CGFloat = 0
+    /// The work's fragments, or its whole work's on a fragment's card
+    /// (`FragmentStrip`); nil until asked, none for most works.
+    @State private var fragments: FragmentsView?
 
     enum Sent { case done, failed }
 
@@ -93,6 +96,7 @@ struct ItemDetailView: View {
         _item = State(initialValue: ItemPeeks.cards[itemID])
         _polish = State(initialValue: known)
         _holding = State(initialValue: known == nil && ItemPeeks.tiles[itemID]?.summary.titlePl != nil)
+        _fragments = State(initialValue: Fragments.cached(itemID))
     }
 
     /// The work's card, rather than its placeholder.
@@ -148,6 +152,7 @@ struct ItemDetailView: View {
             }
         }
         .task(id: itemID) { await load() }
+        .task(id: itemID) { await loadFragments() }
         .task(id: described) { await loadSeen() }
         .task(id: described) { await sharpen() }
         .task(id: described) { await findHolder() }
@@ -170,6 +175,32 @@ struct ItemDetailView: View {
         }
         .sheet(isPresented: $findingCopies) {
             if let item { CopiesSheet(item: item) { copyPicked($0) } }
+        }
+    }
+
+    // MARK: Fragments
+
+    private func loadFragments() async {
+        guard fragments == nil else { return }
+        let found = await Fragments.load(itemID, backend: model.backend)
+        withAnimation(.easeOut(duration: 0.25)) { fragments = found }
+    }
+
+    /// Right under the buttons: for a scroll the way to see it sharp. On a
+    /// fragment's card, the whole work first, then its fragments with this
+    /// one outlined.
+    private func fragmentsSection(_ item: Item, _ view: FragmentsView) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let whole = view.whole { WholeWorkLink(whole: whole) }
+            HStack(alignment: .firstTextBaseline) {
+                Eyebrow("Fragmenty")
+                Spacer()
+                Text(item.isFragment ? "\(item.part ?? 0) z \(view.fragments.count)" : "\(view.fragments.count) · przesuń")
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+            }
+            .padding(.top, view.whole == nil ? 0 : 6)
+            FragmentStrip(fragments: view.fragments, current: item.isFragment ? item.id : nil)
         }
     }
 
@@ -216,6 +247,10 @@ struct ItemDetailView: View {
             picture(item)
             titleBlock(item)
             actions(item)
+            if let fragments, !fragments.fragments.isEmpty {
+                fragmentsSection(item, fragments)
+                    .transition(.opacity)
+            }
             if !item.colors.isEmpty { palette(item) }
             about(item)
             studySection(item)
@@ -892,7 +927,7 @@ struct ItemDetailView: View {
                     }
             }
             let shown = title(item)
-            let original = OriginalTitle.of(item.title, shown: shown)
+            let original = OriginalTitle.of(item.isFragment ? Fragments.title(item.title) : item.title, shown: shown)
             // The year on a badge at its end (Mateusz 2026-11-04, as on
             // Teraz); a photo keeps its date on a line of its own.
             let photo = item.kind == .photo
@@ -910,6 +945,7 @@ struct ItemDetailView: View {
                 .titleGlint(enabled: original != nil && !peeking)
                 // Held: the museum's own, until held again.
                 .titlePeek(enabled: original != nil, peeking: $peeking)
+            if let part = Fragments.label(item) { TagLabel(text: part) }
             // Nationality and years right under the name, as on Teraz.
             let bio = nonEmpty(shownPolish?.artistNote) ?? item.artistBio
             if !item.artist.isEmpty || !bio.isEmpty {
@@ -934,8 +970,10 @@ struct ItemDetailView: View {
     }
 
     private func title(_ item: Item) -> String {
-        nonEmpty(shownPolish?.title) ?? (showOriginal ? nil : earlyTitle)
+        let title = nonEmpty(shownPolish?.title) ?? (showOriginal ? nil : earlyTitle)
             ?? (item.displayTitle.isEmpty ? "Bez tytułu" : item.displayTitle)
+        // A fragment's number is on its own tag under the title.
+        return item.isFragment ? Fragments.title(title) : title
     }
 
     private func nonEmpty(_ text: String?) -> String? {

@@ -526,6 +526,10 @@ actor DemoBackend: FrameBackend {
         HolderView(status: "none")
     }
 
+    func fragments(itemID: String) async throws -> FragmentsView {
+        FragmentsView(whole: nil, fragments: [])
+    }
+
     func copies(itemID: String) async throws -> AsyncThrowingStream<CopyLine, Error> {
         AsyncThrowingStream { continuation in
             continuation.yield(CopyLine(kind: "start", sources: []))

@@ -76,6 +76,15 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
     /// The picture is a later copy of the work ("Chromolitografia") and
     /// `heldBy` is where the original is; nil or "": the work itself.
     var reproduction: String? = nil
+    /// A fragment of another work (the museum's photograph of one part of
+    /// a scroll, a Commons tile): that work's id, which part (from 1) of
+    /// how many; nil or "" for a work, and from a server before 1.132.
+    var partOf: String? = nil
+    var part: Int? = nil
+    var parts: Int? = nil
+
+    /// One part of another work (`partOf`).
+    var isFragment: Bool { !(partOf ?? "").isEmpty }
 
     /// The museum named on the card ("Kolekcja", "Teraz"): "" for a work
     /// whose museum is not known; a server before 1.81 names the source.
@@ -1635,6 +1644,14 @@ struct Museum: Codable, Hashable, Sendable, Identifiable {
     let key: String
     let name: String
     var id: String { key }
+}
+
+/// A work's fragments (`GET /api/library/items/<id>/fragments`): the work a
+/// fragment is part of (on a fragment's card), and all of that work's
+/// fragments in order; none for most works.
+struct FragmentsView: Codable, Hashable, Sendable {
+    var whole: RemoteItem?
+    var fragments: [RemoteItem]
 }
 
 struct RemoteItem: Codable, Hashable, Sendable, Identifiable {

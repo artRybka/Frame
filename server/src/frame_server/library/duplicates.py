@@ -229,8 +229,8 @@ def work_key(item: Item) -> str:
     """A key copies of one work usually share: the artist's surname and
     the title's words; the year as well for titles like "Landscape". Empty
     when the item says too little."""
-    if item.kind != ItemKind.ARTWORK:
-        return ""
+    if item.kind != ItemKind.ARTWORK or item.part_of:
+        return ""  # a fragment (library.fragments) is no copy of its work
     title = title_key(item.title, item.artist)
     name = surname(item.artist)
     if not title or not name:
@@ -253,6 +253,8 @@ def same_work(a: Item, b: Item) -> bool:
         return True
     if a.kind != ItemKind.ARTWORK or b.kind != ItemKind.ARTWORK or _apart(a, b):
         return False
+    if a.part_of or b.part_of:
+        return False  # fragments (library.fragments) are parts, not copies
     if _links(a) & _links(b):
         return True
     files = origin(a) == origin(b)

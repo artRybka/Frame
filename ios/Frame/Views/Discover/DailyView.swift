@@ -125,6 +125,9 @@ struct DailyView: View {
     /// "Popraw detale" sent: Claude is checking the details (until the
     /// server says it is done).
     @State private var mending = false
+    /// The work's fragments (a scroll's parts, a Commons tile set), once
+    /// asked; none for most works.
+    @State private var fragments: FragmentsView?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -180,6 +183,7 @@ struct DailyView: View {
             await followLegacy()
         }
         .task(id: work?.item.id) { await loadCard() }
+        .task(id: work?.item.id) { await loadFragments() }
         .sheet(isPresented: $addingToPlaylist) {
             if let card { AddToPlaylistSheet(item: card) }
         }
@@ -492,6 +496,12 @@ struct DailyView: View {
                 }
                 if let details = work.details, !details.isEmpty {
                     detailsSection(work, details).id("details")
+                }
+                // After "Detale", ahead of the size (Mateusz 2026-11-09).
+                if let fragments, !fragments.fragments.isEmpty {
+                    fragmentsSection(work, fragments.fragments)
+                        .id("fragments")
+                        .transition(.opacity)
                 }
                 // Right after "Detale", ahead of the lists (Mateusz 2026-11-03).
                 if let size = work.size, size.height > 0, size.width > 0 {
@@ -1035,6 +1045,57 @@ struct DailyView: View {
             return
         }
         mending = false
+    }
+
+    private func loadFragments() async {
+        guard let id = work?.item.id else { return }
+        let found = await Fragments.load(id, backend: model.backend)
+        guard work?.item.id == id else { return }
+        withAnimation(.easeOut(duration: 0.25)) { fragments = found }
+    }
+
+    /// The museum's own photographs of the work's parts, large, to swipe
+    /// through as "Detale"; a tap opens a fragment's card, a hold sends it
+    /// to the frame or the queue.
+    private func fragmentsSection(_ work: DailyWork, _ parts: [RemoteItem]) -> some View {
+        let scroll = work.item.item.source == "cma"
+        return section(scroll ? "Fragmenty zwoju" : "Fragmenty") {
+            prose(
+                scroll
+                    ? "Muzeum sfotografowało zwój w \(parts.count) częściach. Każdą można pokazać na ramce osobno, w pełnej ostrości."
+                    : "Dzieło jest dostępne także w \(parts.count) kaflach w pełnej rozdzielczości. Każdy można pokazać na ramce osobno.",
+                size: 15
+            )
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(Array(parts.enumerated()), id: \.element.id) { index, part in
+                        let shape = CGFloat(max(0.75, min(2.6, part.summary.aspectRatio)))
+                        NavigationLink(value: part.id) {
+                            VStack(alignment: .leading, spacing: 5) {
+                                ArtImage(ref: part.thumb, placeholder: part.item.placeholderColor, maxPixel: 1000, brighten: true)
+                                    .frame(width: 170 * shape, height: 170)
+                                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                                Text("Fragment \(index + 1) z \(parts.count)")
+                                    .font(.caption)
+                                    .foregroundStyle(Theme.inkSoft)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button("Pokaż na ramce", systemImage: "photo") {
+                                Task { _ = await model.show(itemID: part.id, hold: .untilNextChange) }
+                            }
+                            Button("Dodaj do kolejki", systemImage: QueueButton.symbol) {
+                                Task { await model.queueNext(itemID: part.id) }
+                            }
+                        }
+                    }
+                }
+                .scrollTargetLayout()
+            }
+            .scrollTargetBehavior(.viewAligned)
+            .scrollClipDisabled()
+        }
     }
 
     /// Fragments cut from the original, side by side to swipe through (the

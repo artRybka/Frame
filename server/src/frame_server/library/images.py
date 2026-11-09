@@ -5,7 +5,9 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import math
 import os
+import re
 import threading
 import time
 from collections.abc import Callable, Iterable, Iterator
@@ -20,7 +22,7 @@ from ..imaging.layout import load_image
 from ..imaging.margins import trim_margins
 from .aic import aic_fallback
 from .hosts import HostGuard, Resting, guard, is_urgent, urgently, walled
-from .markup import commons_rendition
+from .markup import commons_rendition, extension
 from .models import Item
 from .policy import DEFAULT_IMAGES, IMAGE_LIMITS, URGENT_EXTRA
 
@@ -28,6 +30,21 @@ log = logging.getLogger(__name__)
 
 THUMB_MAX = 640
 IMAGE_MAX = 2560
+#: Pictures longer than this many times their width (or the other way
+#: round) are kept larger than :data:`IMAGE_MAX` on the long side: a
+#: Japanese handscroll 30 times as long as it is tall was kept 2560 × 86 and
+#: came out mush on the card and in a crop (Mateusz, 2026-11-09). Up to
+#: this nothing changes; past it the short side keeps IMAGE_MAX / WIDE ...
+WIDE = 2.0
+#: ... as long as the picture has no more pixels than a square
+#: IMAGE_MAX × IMAGE_MAX one (6.5 Mpx: the frame's work on it takes as long),
+IMAGE_AREA = IMAGE_MAX * IMAGE_MAX
+#: ... nor a long side past this (the app's viewer, a JPEG's own limit is 65535).
+LONG_MOST = 16384
+#: The long side pictures were kept at most before :data:`WIDE` (Cleveland's
+#: "print" files, the largest JPEGs it gives, are 3400 px long): kept ones
+#: that long or shorter are had again once (:meth:`ImageCache.wide_again`).
+OLD_KEPT = 3400
 #: Thumbnails of works that are not in the library (browsed, previewed).
 THUMB_SPARE = 5000
 #: Downloads at once from one host (library/policy.py): Commons answers more
@@ -51,6 +68,16 @@ GONE_FOR = 7 * 86400.0
 #: width: a museum's scan can be 100 MB and 200 megapixels, far more than
 #: the frame's 2560 px, and too large for Pillow to open at all.
 COMMONS_WIDTH = 3840
+#: Sources whose works' sizes are their files' own and whose addresses ask
+#: for a size (IIIF ``full/!2560,2560``, the Smithsonian's ``max=2560``): an
+#: elongated work (:data:`WIDE`) is asked in the size it is kept in.
+SIZED = ("nga", "yale", "smk", "si", "courtauld")
+_IIIF_FIT = re.compile(rf"/full/!{IMAGE_MAX},{IMAGE_MAX}/")
+_SI_MAX = re.compile(rf"([?&]max=){IMAGE_MAX}\b")
+#: An elongated Commons file this many pixels or fewer is downloaded whole
+#: when Commons' widest rendition (:data:`COMMONS_WIDTH`) is narrower than
+#: the picture is kept: a scroll 30 000 × 1 000 px is 30 Mpx, a few MB.
+COMMONS_WHOLE = 50_000_000
 #: How long what the owner waits for waits for the background's download of
 #: the same picture before it downloads its own: the background's may wait
 #: out the app's use (:meth:`HostGuard.wait_calm`) with the picture's lock
@@ -86,9 +113,49 @@ class Gone(Unavailable):
     thumbnail. The work is left out of lists for :data:`GONE_FOR`."""
 
 
+def kept_size(width: int, height: int) -> tuple[int, int]:
+    """The size a picture of ``width`` × ``height`` is kept in (never larger
+    than it is): its long side :data:`IMAGE_MAX`, or for one more elongated
+    than :data:`WIDE` its short side IMAGE_MAX / WIDE within
+    :data:`IMAGE_AREA` and :data:`LONG_MOST`."""
+    if width <= 0 or height <= 0:
+        return width, height
+    long, short = max(width, height), min(width, height)
+    ratio = long / short
+    if ratio <= WIDE:
+        scale = IMAGE_MAX / long
+    else:
+        side = min(IMAGE_MAX / WIDE, math.sqrt(IMAGE_AREA / ratio), LONG_MOST / ratio)
+        scale = side / short
+    if scale >= 1.0:
+        return width, height
+    return max(round(width * scale), 1), max(round(height * scale), 1)
+
+
+def kept_long(long: int, ratio: float = 1.0) -> int:
+    """The long side a picture ``long`` px long and ``ratio`` times as long
+    as it is wide is kept with (:func:`kept_size`)."""
+    if long <= 0:
+        return 0
+    short = max(round(long / max(ratio, 1.0)), 1)
+    return max(kept_size(long, short))
+
+
+def wide(width: int | None, height: int | None) -> bool:
+    """Whether a picture this size is kept larger than :data:`IMAGE_MAX`."""
+    if not width or not height:
+        return False
+    return max(width, height) > WIDE * min(width, height)
+
+
 def _save_jpeg(img: Image.Image, path: Path, max_side: int, quality: int) -> None:
     img = img.convert("RGB")
-    img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+    if max_side == IMAGE_MAX:  # an original: elongated ones keep more (WIDE)
+        size = kept_size(*img.size)
+        if size != img.size:
+            img = img.resize(size, Image.Resampling.LANCZOS)
+    else:
+        img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
     # Its own file per thread: an urgent asker may write the same picture
     # beside the background's (:meth:`ImageCache._holding`).
     tmp = path.with_name(f"{path.stem}.{threading.get_ident()}.tmp")
@@ -141,11 +208,44 @@ def display_copy(item: Item) -> str:
 
 
 def own_copy(item: Item) -> str:
-    """:func:`display_copy` of the work's own source, never another's."""
+    """:func:`display_copy` of the work's own source, never another's: in
+    the size it is kept in when elongated (:func:`wide_copy`)."""
+    return wide_copy(item) or usual_copy(item)
+
+
+def usual_copy(item: Item) -> str:
+    """The work's own address as the source gives it, or Commons' rendition
+    of a file far larger than the frame needs."""
     url = item.image_url
     if item.width and item.width > COMMONS_WIDTH:
         return commons_rendition(url, COMMONS_WIDTH, item.width) or url
     return url
+
+
+def wide_copy(item: Item) -> str:
+    """An elongated work's own address asking for more than its usual
+    (:func:`usual_copy`) does, in the size it is kept in (:func:`kept_size`);
+    "" for any other work, or a source that gives no more."""
+    width, height, url = item.width, item.height, item.image_url
+    if not width or not height or not wide(width, height):
+        return ""
+    long = max(kept_size(width, height))
+    if long <= IMAGE_MAX:
+        return ""
+    if item.source in SIZED:
+        if _IIIF_FIT.search(url):
+            return _IIIF_FIT.sub(f"/full/!{long},{long}/", url)
+        if _SI_MAX.search(url):
+            return _SI_MAX.sub(rf"\g<1>{long}", url)
+    if (
+        item.source == "wmc"
+        and width > COMMONS_WIDTH
+        and long > COMMONS_WIDTH
+        and width * height <= COMMONS_WHOLE
+        and extension(url) in ("jpg", "jpeg", "png")
+    ):
+        return url
+    return ""
 
 
 class ImageCache:
@@ -311,6 +411,8 @@ class ImageCache:
         first = [item.thumb_url, image_url] if thumb else [image_url or item.thumb_url]
         if not thumb and (allowed := aic_fallback(image_url, item.width)):
             first.append(allowed)  # the download size refused: the API's widest
+        if not thumb and image_url != (usual := usual_copy(item)):
+            first.append(usual)  # the larger size refused (wide_copy)
         if item.sharper is not None:  # the sharper copy first, the own after
             copy = [item.sharper.thumb_url, item.sharper.url] if thumb else [item.sharper.url]
             first[:0] = copy
@@ -510,6 +612,37 @@ class ImageCache:
             _save_jpeg(img, self.thumb_path(item), THUMB_MAX, 85)
         self._forget_gone(item)
         return path
+
+    def wide_again(self, items: Iterable[Item]) -> int:
+        """Once after the update that keeps elongated pictures larger
+        (:data:`WIDE`): the kept originals of such works, cut to
+        :data:`OLD_KEPT` or less before, downloaded again; the one here
+        stays when the source gives no more or fails. How many grew."""
+        grown = 0
+        for item in items:
+            path = self.image_path(item)
+            if item.source in OWN_SOURCES or not path.is_file():
+                continue
+            try:
+                with Image.open(path) as kept:
+                    size = kept.size
+            except OSError:
+                continue
+            if not wide(*size) or max(size) > OLD_KEPT:
+                continue
+            try:
+                with self._lock(f"i:{item.id}"):
+                    img = self._original(item, False)
+                    width, height = kept_size(*img.size)
+                    if width * height <= size[0] * size[1]:
+                        continue  # the source gives no more
+                    _save_jpeg(img, path, IMAGE_MAX, 92)
+                    self._remember_size(item, img)
+            except (httpx.HTTPError, OSError) as err:
+                log.info("elongated %s kept as it was: %s", item.id, err)
+                continue
+            grown += 1
+        return grown
 
     def trim_kept(self) -> int:
         """Cut the blank margins off the pictures kept from before
