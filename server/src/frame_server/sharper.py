@@ -22,6 +22,12 @@ Commons has none are the other sources asked. Such a copy is marked a
 stand-in (``SharperCopy.stand_in``) and stays: the museum is not asked for
 its own picture again (Mateusz, 2026-11-08: the picture is on the server's
 disk already; "Przywróć zdjęcie muzeum" brings the own back by hand).
+
+A work whose picture is an art history archive's photograph of it
+(Europeana's Foto Marburg: colour slides decades old, their dyes faded to
+blue and white, Mateusz 2026-11-09) takes any other copy of the same picture
+whole as large as its own, in other colours too: the museums' scans have the
+painting's colours, the slide has lost them.
 """
 
 from __future__ import annotations
@@ -48,7 +54,13 @@ from .library.duplicates import same_work, surname
 from .library.images import BYTES, display_copy, kept_long, own_copy
 from .library.likeness import Likeness
 from .library.models import Note, SharperCopy
-from .library.vocabulary import artist_matches, is_copy, is_photograph, is_reproduction
+from .library.vocabulary import (
+    artist_matches,
+    is_art_archive_photo,
+    is_copy,
+    is_photograph,
+    is_reproduction,
+)
 
 if TYPE_CHECKING:
     from .library import Importer, Library
@@ -58,6 +70,9 @@ log = logging.getLogger(__name__)
 
 KIND = "sharper"
 VERSION = "sharper-1"
+#: The version of the look at an art archive's photograph: those looked at
+#: before they took copies in other colours are looked at again.
+ARCHIVE_VERSION = "sharper-archive-1"
 
 #: A picture whose long side is shorter than this is worth a sharper copy
 #: (the frame is 2560 px long) ...
@@ -81,6 +96,13 @@ MUSH = 0.2
 GREYER = 0.5
 #: ... nor coloured where the work has none (a colourised print) ...
 GREY = 0.012
+#: ... nor this many times as colourful (tint spread): the average colour
+#: misses a faded slide, its white sky and red ground averaging out close to
+#: the painting's yellow sky and violet ground (Foto Marburg's olive grove
+#: against WikiArt's: 0.056 apart, spread 0.020 against 0.077; its yellow
+#: house, schoolboy and postman 2.7 to 3.3 times; two good photographs of
+#: one painting 1.1, Mateusz 2026-11-09) ...
+LIVELIER = 2.0
 #: ... nor far off in its average colour (OKLab distance; photographs of
 #: one painting under other lights differ by a few hundredths).
 COLOUR_OFF = 0.08
@@ -143,8 +165,10 @@ class Quality(NamedTuple):
     def weak(self) -> bool:
         return self.side < WEAK_SIDE or (self.bits is not None and self.bits < WEAK_BITS)
 
-    def better(self, own: Quality) -> bool:
-        """This picture shows the work clearly better than ``own`` does."""
+    def better(self, own: Quality, faded: bool = False) -> bool:
+        """This picture shows the work clearly better than ``own`` does.
+        ``faded``: ``own`` is an art archive's old photograph
+        (:func:`archive_own`), which any copy about as large beats."""
         if self.bits is not None and self.bits < MUSH:
             return False
         ratio = max(self.ratio, own.ratio)  # copies of one work: the same shape
@@ -152,6 +176,8 @@ class Quality(NamedTuple):
         if side < LEAST_SIDE:
             return False
         if side >= own_side * GAIN:
+            return True
+        if faded and side >= own_side * 0.95:
             return True
         return (
             side >= own_side * 0.95
@@ -182,19 +208,36 @@ ColourNote = Literal["grey", "coloured", "colour-off"]
 def colour_note(own: Tone, copy: Tone) -> ColourNote | None:
     """How ``copy``'s colours differ from ``own``'s: "grey" (a black-and-white
     plate of a coloured work), "coloured" (a grey work coloured in),
-    "colour-off" (in other light altogether); None when they are its own."""
+    "colour-off" (in other light altogether, or far more colourful: one of
+    them faded); None when they are its own."""
     if own.spread >= GREY and copy.spread < own.spread * GREYER:
         return "grey"
     if own.spread < GREY and copy.spread >= max(GREY * 2, own.spread * 3):
         return "coloured"
+    if copy.spread >= own.spread * LIVELIER:
+        return "colour-off"
     distance = float(np.linalg.norm(np.subtract(own.mean, copy.mean)))
     return None if distance <= COLOUR_OFF else "colour-off"
 
 
-def same_colours(own: Tone, copy: Tone) -> bool:
+def same_colours(own: Tone, copy: Tone, faded: bool = False) -> bool:
     """``copy`` is in ``own``'s colours: not a grey copy of a coloured work,
-    nor a coloured one of a grey work, nor in other light altogether."""
-    return colour_note(own, copy) is None
+    nor a coloured one of a grey work, nor in other light altogether (but
+    for ``faded``: ``own`` is an archive's old slide, whose colours are off
+    themselves)."""
+    note = colour_note(own, copy)
+    return note is None or (faded and note == "colour-off")
+
+
+def archive_own(item: Item) -> bool:
+    """``item`` shows an art archive's photograph of the work, its own
+    picture with no copy in its place: in its colours only by chance."""
+    return is_art_archive_photo(item) and item.sharper is None
+
+
+def version(item: Item) -> str:
+    """The version of the look at ``item``."""
+    return ARCHIVE_VERSION if is_art_archive_photo(item) else VERSION
 
 
 def _now() -> datetime:
@@ -249,7 +292,11 @@ class Sharper:
             known = self._known.get(item.id)
         if known is None:
             note = self.library.note(item.id, KIND)
-            if note is None or note.prompt_version != VERSION:
+            if note is None:
+                return None
+            if note.data.get("status") == "kept":
+                return "fine"  # the owner's choice stands whatever the version
+            if note.prompt_version != version(item):
                 return None
             try:
                 at = datetime.fromisoformat(str(note.data.get("at")))
@@ -320,7 +367,8 @@ class Sharper:
             return "none"  # not even its thumbnail: the network, not the work
         if known is not None:
             return known
-        if not own.weak:
+        faded = archive_own(item)
+        if not own.weak and not faded:
             self._remember(item, "fine")
             return "fine"
         log.info("picture of %s is poor (%s); looking for a sharper copy", item.id, own)
@@ -328,7 +376,7 @@ class Sharper:
         for copy in self.candidates(item)[:COMPARED]:
             if downloaded == DOWNLOADED:
                 break
-            if not self._promising(copy, own) or not self.same_picture(item, copy):
+            if not self._promising(copy, own, faded) or not self.same_picture(item, copy):
                 continue
             downloaded += 1
             try:
@@ -337,7 +385,7 @@ class Sharper:
                 log.info("sharper copy %s of %s: %s", copy.id, item.id, err)
                 continue
             quality = Quality.of_image(img)
-            if not quality.better(own):
+            if not quality.better(own, faded):
                 log.info("copy %s of %s is no better (%s)", copy.id, item.id, quality)
                 continue
             self._adopt(item, copy, img)
@@ -434,10 +482,10 @@ class Sharper:
         )
 
     @staticmethod
-    def _promising(copy: Item, own: Quality) -> bool:
+    def _promising(copy: Item, own: Quality, faded: bool = False) -> bool:
         """Not smaller than needed by what its source says (when it says)."""
         side = max(copy.width or 0, copy.height or 0)
-        return not side or Quality(side).better(Quality(own.side))
+        return not side or Quality(side).better(Quality(own.side), faded)
 
     def same_picture(self, item: Item, copy: Item) -> bool:
         """``copy`` is ``item``'s picture whole and in its colours, by their
@@ -451,7 +499,7 @@ class Sharper:
         if not self.likeness.whole(item, copy):
             return False
         try:
-            return same_colours(tone(own_thumb), tone(copy_thumb))
+            return same_colours(tone(own_thumb), tone(copy_thumb), archive_own(item))
         except OSError:
             return False
 
@@ -681,7 +729,7 @@ class Sharper:
                 item_id=item.id,
                 kind=KIND,
                 model="",
-                prompt_version=VERSION,
+                prompt_version=version(item),
                 data={
                     "status": status,
                     "at": self.clock().isoformat(),

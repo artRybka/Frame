@@ -23,7 +23,7 @@ from ..imaging.palette import Palette
 from .colors import analyse, has_colours, tint_spread
 from .commons import OWN_SOURCES
 from .dates import text_year
-from .duplicates import dedupe, rank
+from .duplicates import dedupe, item_rank
 from .fragments import Fragments, split_part
 from .hosts import as_asked, deferrable
 from .images import ImageCache
@@ -788,7 +788,7 @@ class Importer:
         ``item`` is from a more reliable source than a copy only the server
         added."""
         twin = self.library.twin(item)
-        if twin is None or (twin.pooled and rank(item.source) < rank(twin.source)):
+        if twin is None or (twin.pooled and item_rank(item) < item_rank(twin)):
             return None
         return twin
 

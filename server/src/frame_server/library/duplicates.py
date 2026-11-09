@@ -6,7 +6,9 @@ so a search over all of them, or a rotation filled from all of them, finds
 one painting two or three times. Copies are told apart by title and
 artist, with the year and the picture's shape as checks; the copy kept is
 the one from the most reliable source: a museum before Europeana, Commons,
-Openverse and WikiArt.
+Openverse and WikiArt. An art history archive's photograph of a work on
+Europeana (Foto Marburg's colour slides, faded blue and pale) comes after
+them all.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from urllib.parse import unquote
 from .artists import NOBODY as NAMELESS
 from .artists import ROLES
 from .models import Item, ItemKind
-from .vocabulary import PER_WORK, fold
+from .vocabulary import PER_WORK, fold, is_art_archive_photo
 
 #: Lower is more reliable: museums describe their own works; Europeana
 #: passes on what its member collections say; Commons, Openverse and WikiArt
@@ -52,6 +54,12 @@ RANKS = {
 }
 #: Sources not in ``RANKS``.
 OTHER_RANK = 5
+#: An art history archive's photograph of a work (Europeana's Foto
+#: Marburg: 95 of its first 100 van Goghs, 2026-11-09), after every copy
+#: from elsewhere: Marburg's colour slides were taken decades ago and their
+#: dyes have faded (no yellow left, skies white and blue), while Commons
+#: and WikiArt have the museums' own scans.
+ARCHIVE_PHOTO_RANK = OTHER_RANK + 1
 #: Copies of one work are dated a year or two apart (begun, finished).
 YEAR_SLACK = 2
 #: Copies of one work are cropped differently, with or without the frame.
@@ -131,6 +139,12 @@ NOBODY = NAMELESS | ROLES
 
 def rank(source: str) -> int:
     return RANKS.get(source, OTHER_RANK)
+
+
+def item_rank(item: Item) -> int:
+    """How reliable ``item``'s copy is (lower: more): its source's
+    :func:`rank`, an art archive's photograph last."""
+    return ARCHIVE_PHOTO_RANK if is_art_archive_photo(item) else rank(item.source)
 
 
 def _clean_name(artist: str) -> str:
@@ -312,7 +326,7 @@ def regroups(old: Item, new: Item) -> bool:
 def preference(item: Item) -> tuple[bool, int]:
     """Sort key, best copy first: kept by the owner, then the most
     reliable source."""
-    return item.pooled, rank(item.source)
+    return item.pooled, item_rank(item)
 
 
 class Works:
