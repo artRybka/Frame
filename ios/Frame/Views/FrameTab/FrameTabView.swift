@@ -1337,9 +1337,12 @@ struct PresentationSection: View {
 
     private var previewID: String? { chosenPhotos.first ?? currentID ?? standIns[target] }
 
-    /// Multi: the photos the owner chose to try the grids on.
+    /// Photos: the owner's sample photos (Konfiguracja → Przykładowe
+    /// zdjęcia); Passe-partout and Wypełnij preview the first, Multi lays
+    /// its board from them (Mateusz 2026-11-09: "te same zdjęcia zastosuj
+    /// jako przykładowe w wizualizacji passe-partout i Wypełnij").
     private var chosenPhotos: [String] {
-        guard isMulti else { return [] }
+        guard target == .photo else { return [] }
         return settings.multiPhotos ?? []
     }
 

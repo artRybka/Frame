@@ -2,31 +2,45 @@ import PhotosUI
 import SwiftUI
 
 /// Konfiguracja → Wyświetlanie → Przykładowe zdjęcia: up to eight photos
-/// from the phone that Prezentacja tries the Multi grids on, in the order
-/// added (Mateusz 2026-11-09: "Przenieśmy to ustawienie do konfiguracji.
-/// I tam wgram te 8 zdjęć."). They are sent once (with a look), so they
-/// stay out of the library's lists and the frame's rotation.
+/// from the phone that Prezentacja previews photos on: Passe-partout and
+/// Wypełnij the first, the Multi grids all of them in this order, which a
+/// photo held and dragged changes (Mateusz 2026-11-09: "Przenieśmy to
+/// ustawienie do konfiguracji. I tam wgram te 8 zdjęć."). They are sent
+/// once (with a look), so they stay out of the library's lists and the
+/// frame's rotation.
 struct SamplePhotosSection: View {
     @Environment(AppModel.self) private var model
     let settings: FrameSettings
     @State private var picked: [PhotosPickerItem] = []
     @State private var uploading = 0
+    /// The order while a photo is dragged (nil: as saved).
+    @State private var arranged: [String]?
+    @State private var dragged: String?
 
     static let most = 8
 
-    private var photos: [String] { settings.multiPhotos ?? [] }
+    private var photos: [String] { arranged ?? settings.multiPhotos ?? [] }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Przykładowe zdjęcia", subtitle: "Do podglądu układów Multi")
+            SectionHeader(title: "Przykładowe zdjęcia", subtitle: "Do podglądu Prezentacji zdjęć")
             Card {
-                Text("Na nich Prezentacja pokazuje każdy układ, w kolejności dodania: przy czterech zdjęciach na planszy cztery pierwsze. Nie trafiają do biblioteki ani na ramkę.")
+                Text("Na nich Prezentacja pokazuje zdjęcia: Passe-partout i Wypełnij na pierwszym, Multi każdy układ w tej kolejności (przy czterech zdjęciach na planszy cztery pierwsze). Przytrzymaj zdjęcie i przesuń, aby zmienić kolejność. Nie trafiają do biblioteki ani na ramkę.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
                     ForEach(photos, id: \.self) { id in
                         tile(id)
+                            .onDrag {
+                                arranged = photos
+                                dragged = id
+                                return NSItemProvider(object: id as NSString)
+                            } preview: {
+                                // Drawn apart from the page: `ArtImage` needs the model.
+                                square(id).frame(width: 80, height: 80).environment(model)
+                            }
+                            .onDrop(of: [.text], delegate: SampleDrop(target: id, order: $arranged, dragged: $dragged, save: save))
                     }
                     ForEach(0 ..< max(Self.most - photos.count, 0), id: \.self) { index in
                         if index < uploading {
@@ -36,6 +50,7 @@ struct SamplePhotosSection: View {
                         }
                     }
                 }
+                .onDrop(of: [.text], delegate: SampleDrop(target: nil, order: $arranged, dragged: $dragged, save: save))
                 if photos.count < Self.most {
                     Divider()
                     PhotosPicker(
@@ -50,6 +65,8 @@ struct SamplePhotosSection: View {
                 }
             }
         }
+        .onChange(of: settings.multiPhotos) { arranged = nil }  // saved, or changed elsewhere
+        .onDisappear { arranged = nil; dragged = nil }  // a drag let go outside the grid
         .onChange(of: picked) { _, items in
             guard !items.isEmpty else { return }
             picked = []
@@ -63,10 +80,19 @@ struct SamplePhotosSection: View {
             .aspectRatio(1, contentMode: .fit)
     }
 
-    private func tile(_ id: String) -> some View {
-        ArtImage(ref: .thumb(id), placeholder: Theme.mat, maxPixel: 240)
+    /// A square whatever the photo's shape: the picture fills it and is
+    /// cut to it (on its own it kept its size and spilled over the next
+    /// tiles, Mateusz 2026-11-09).
+    private func square(_ id: String) -> some View {
+        Color.clear
             .aspectRatio(1, contentMode: .fit)
+            .overlay { ArtImage(ref: .thumb(id), placeholder: Theme.mat, maxPixel: 240) }
             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 4, style: .continuous))
+    }
+
+    private func tile(_ id: String) -> some View {
+        square(id)
             .overlay(alignment: .topTrailing) {
                 Button {
                     remove(id)
@@ -104,6 +130,19 @@ struct SamplePhotosSection: View {
         await model.saveSettings(new)
     }
 
+    /// The order after a drag, as the photos stand now.
+    private func save(_ order: [String]) {
+        guard var new = model.settings, order != (new.multiPhotos ?? []) else {
+            arranged = nil
+            return
+        }
+        new.multiPhotos = order
+        Task {
+            await model.saveSettings(new)
+            arranged = nil
+        }
+    }
+
     private func remove(_ id: String) {
         guard var new = model.settings else { return }
         new.multiPhotos = (new.multiPhotos ?? []).filter { $0 != id }
@@ -112,5 +151,35 @@ struct SamplePhotosSection: View {
             await model.saveSettings(new)
             try? await backend.deleteItem(id: id)
         }
+    }
+}
+
+/// Moves the sample photo held over the one it is dragged onto; the order
+/// is saved when it is let go.
+private struct SampleDrop: DropDelegate {
+    let target: String?
+    @Binding var order: [String]?
+    @Binding var dragged: String?
+    let save: ([String]) -> Void
+
+    func dropEntered(info: DropInfo) {
+        guard let target, let dragged, dragged != target, var list = order,
+              let from = list.firstIndex(of: dragged), let to = list.firstIndex(of: target)
+        else { return }
+        withAnimation(.snappy) {
+            list.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+            order = list
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: dragged == nil ? .forbidden : .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard dragged != nil, let list = order else { return false }
+        dragged = nil
+        save(list)
+        return true
     }
 }
