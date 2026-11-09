@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.138.2
+
+- Pełny ekran dzieła bez guzików: nie ma już słoneczka ani krzyżyka.
+  Gdy w Konfiguracji włączone są „Jaśniejsze dzieła”, ekran rozjaśnia się
+  sam po wejściu i ściemnia, gdy zaczynasz go zamykać. Zamykasz
+  przesunięciem w dół.
+
 ## 1.138.1
 
 - Wszystkie znaczki na miniaturach i kafelkach mają ten sam szklany,
