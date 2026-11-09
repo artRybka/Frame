@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.136.4
+
+- Ramka → Prezentacja → Zdjęcia: Passe-partout i Wypełnij pokazują podgląd
+  na pierwszym z przykładowych zdjęć z Konfiguracji, tak jak Multi. Bez
+  przykładowych zdjęć podgląd bierze, jak dotąd, zdjęcie z ramki albo
+  z biblioteki.
+- Konfiguracja → Przykładowe zdjęcia: miniatury to równe kwadraty (zdjęcia
+  poziome nachodziły na sąsiednie), a kolejność zmienia się, przytrzymując
+  zdjęcie i przesuwając je palcem.
+
 ## 1.136.3
 
 - Szukaj i playlisty z artystą: dopiski muzeów w nawiasie, np. „(signed by
