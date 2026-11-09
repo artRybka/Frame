@@ -218,12 +218,9 @@ struct ArtCard: View {
                 .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .overlay(alignment: .topTrailing) {
                     if showsFavorite, item.favorite {
-                        Image(systemName: "heart.fill")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.white)
+                        GlassBadge(systemImage: "heart.fill")
                             .padding(6)
-                            .background(.black.opacity(0.35), in: Circle())
-                            .padding(6)
+                            .accessibilityLabel("W ulubionych")
                     }
                 }
                 .overlay(alignment: .topLeading) {
@@ -264,13 +261,31 @@ struct ArtCard: View {
 /// magnifier over its tile's top left corner, as the heart on the right.
 struct ZoomMark: View {
     var body: some View {
-        Image(systemName: "plus.magnifyingglass")
-            .font(.caption.weight(.bold))
-            .foregroundStyle(.white)
-            .padding(6)
-            .background(.black.opacity(0.35), in: Circle())
+        GlassBadge(systemImage: "plus.magnifyingglass")
             .padding(6)
             .accessibilityLabel("Pod lupą: można mocno przybliżyć")
+    }
+}
+
+/// Every mark on a thumbnail, tile or card: one round drop of the system's
+/// glass with a symbol in it, as the crossed eye on "Ukryte" first wore
+/// (Mateusz 2026-11-09: "wszystkie ikonki na miniaturach, kafelkach
+/// szklane, jak na ukryte"). The symbol is soft ink; a mark that says
+/// something urgent (playing now, in the queue, remove) takes its colour.
+struct GlassBadge: View {
+    let systemImage: String
+    var tint: Color = Theme.inkSoft
+    /// The circle's side; the symbol keeps the "Ukryte" proportion (13 in 30).
+    var size: CGFloat = 30
+    /// A badge that is itself a button answers the finger, as glass does.
+    var interactive = false
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(.system(size: (size * 0.43).rounded(), weight: .semibold))
+            .foregroundStyle(tint)
+            .frame(width: size, height: size)
+            .glassEffect(interactive ? .regular.interactive() : .regular, in: .circle)
     }
 }
 
@@ -287,12 +302,8 @@ struct TileHeart: View {
             taps += 1
             toggle()
         } label: {
-            Image(systemName: favorite ? "heart.fill" : "heart")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.white)
+            GlassBadge(systemImage: favorite ? "heart.fill" : "heart", interactive: true)
                 .contentTransition(.symbolEffect(.replace))
-                .padding(6)
-                .background(.black.opacity(0.35), in: Circle())
                 .padding(6)
                 // A finger's room, the circle where the favourite's is.
                 .padding([.leading, .bottom], 8)

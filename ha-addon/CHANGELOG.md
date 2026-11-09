@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.138.1
+
+- Wszystkie znaczki na miniaturach i kafelkach mają ten sam szklany,
+  okrągły wygląd co oko na karcie „Ukryte”: serce ulubionych, lupa
+  „Pod lupą”, iskierki Propozycji, „gra teraz” na playliście, kolejka
+  w Teraz, plus/ptaszek i krzyżyk w edytorze playlisty, minus przy
+  usuwaniu z playlisty i krzyżyk przy przykładowych zdjęciach.
+
 ## 1.138.0
 
 - „Pod lupą”: dzieła, które na Commons mają zdjęcie w kaflach ogromnej

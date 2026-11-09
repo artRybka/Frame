@@ -465,10 +465,7 @@ struct PlaylistEditorView: View {
                                     .frame(width: 72, height: 72)
                                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                                     .overlay(alignment: .topTrailing) {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .font(.body)
-                                            .symbolRenderingMode(.palette)
-                                            .foregroundStyle(.white, .black.opacity(0.45))
+                                        GlassBadge(systemImage: "xmark", size: 22)
                                             .padding(3)
                                     }
                             }
@@ -694,16 +691,20 @@ struct PlaylistEditorView: View {
         } label: {
             ZStack {
                 if adding.contains(id) {
-                    ProgressView().controlSize(.small).tint(.white)
+                    // The spinner sits in the same drop of glass.
+                    ProgressView().controlSize(.small)
+                        .frame(width: 32, height: 32)
+                        .glassEffect(.regular, in: .circle)
                 } else {
-                    Image(systemName: added ? "checkmark" : "plus")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.white)
+                    GlassBadge(
+                        systemImage: added ? "checkmark" : "plus",
+                        tint: added ? Theme.good : Theme.inkSoft,
+                        size: 32,
+                        interactive: true
+                    )
+                    .contentTransition(.symbolEffect(.replace))
                 }
             }
-            .frame(width: 32, height: 32)
-            .background(added ? Theme.good : .black.opacity(0.45), in: Circle())
-            .overlay(Circle().strokeBorder(.white.opacity(0.8), lineWidth: 1.5))
             .padding(6)
             .contentShape(Rectangle())
         }
