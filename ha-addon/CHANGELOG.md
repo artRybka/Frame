@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.136.9
+
+- Kafle z Commons w pełnym ekranie leżą na swoich miejscach i mają te same
+  barwy co podkład: podkład składa się teraz z miniatur samych kafli, a nie
+  z obrazu dzieła, który bywał innym zdjęciem (inna kopia, inny kadr, inne
+  barwy). Kafle nie tracą już ciemnych brzegów przy przycinaniu marginesów;
+  zapisane wcześniej zostaną raz pobrane od nowa.
+
 ## 1.136.8
 
 - Szukaj z frazą („straż nocna”) nie zatrzymuje już serwera. Sprawdzanie
