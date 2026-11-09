@@ -200,3 +200,41 @@ def test_one_artist_under_many_spellings_is_one_suggestion(tmp_path) -> None:
     facets = {f.value: f.count for f in lib.facets().artists}
     assert facets["Rembrandt van Rijn"] == 9
     assert "Rembrandt" not in facets
+
+
+def test_van_gogh_is_suggested_as_himself(tmp_path) -> None:
+    """Mateusz, 2026-11-09: for "van Gogh" the suggestions led with
+    "Olbracht Dürer" 3033, then "Roeloffzen & Hübner (mentioned on ob…" and
+    "Wincenty van Gogh (possibly)", never Vincent van Gogh; his playlist
+    showed Renoir, Tiepolo and Abraham Storck. A "(signed by artist)" after
+    each of their names had made them one person."""
+    lib = Library(tmp_path / "lib.db")
+    spellings = [
+        ("rijks", "Albrecht Dürer", 5),
+        ("rijks", "Albrecht Dürer (signed by artist)", 1),
+        ("rijks", "Vincent van Gogh", 3),
+        ("rijks", "Vincent van Gogh (signed by artist)", 1),
+        ("rijks", "Vincent van Gogh (possibly)", 1),
+        ("smithsonian", "Vincent Van Gogh, The Netherlands", 1),
+        ("rijks", "Abraham Storck (signed by artist)", 2),
+        ("rijks", "Roeloffzen & Hübner (mentioned on object), Vincent van Gogh", 1),
+    ]
+    n = 0
+    for source, artist, count in spellings:
+        for _ in range(count):
+            n += 1
+            lib.upsert(
+                Item(
+                    id=f"{source}:{n}",
+                    source=source,
+                    source_id=str(n),
+                    title=f"Work {n}",
+                    artist=artist,
+                )
+            )
+    index = lib.term_index()
+    found = index.artists("van gogh")
+    assert found[0] == ("Vincent van Gogh", 6)
+    assert "Albrecht Dürer" not in dict(found)
+    assert lib.query(PlaylistRules(artists=["Vincent van Gogh"]))[0] == 6 + 1  # and the list
+    assert lib.query(PlaylistRules(artists=["Albrecht Dürer"]))[0] == 6

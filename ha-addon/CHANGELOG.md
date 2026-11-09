@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.136.3
+
+- Szukaj i playlisty z artystą: dopiski muzeów w nawiasie, np. „(signed by
+  artist)” albo „(mentioned on object)”, nie sklejają już różnych malarzy w
+  jedną osobę. Dla „van Gogh” podpowiedź to znowu Vincent van Gogh (razem z
+  „Vincent Van Gogh, The Netherlands” i „(possibly)”), a nie Albrecht Dürer
+  z 3000 dzieł, a playlista van Gogha ma tylko jego dzieła, bez Renoira,
+  Tiepola czy Abrahama Storcka.
+
+## 1.136.2
+
+- Konfiguracja → Wyświetlanie → Przykładowe zdjęcia: wybrane zdjęcia znowu
+  się pojawiają. Wgrywały się na serwer, ale aplikacja nie wysyłała ich
+  listy w ustawieniach ani jej nie odczytywała, więc po wgraniu kwadraciki
+  zostawały puste, a podgląd układów Multi brał przypadkowe zdjęcia.
+  Zdjęcia wgrane przed poprawką zostały na serwerze bez przypisania; trzeba
+  je wybrać jeszcze raz.
+
+## 1.136.1
+
+- Playlisty: przytrzymanie karty playlisty albo Propozycji dnia nie wyłącza
+  już aplikacji. Podgląd przytrzymanej i przesuwanej karty jest rysowany
+  osobno od strony i nie miał dostępu do pobierania obrazów.
+
 ## 1.136.0
 
 - „Propozycje” w Playlistach to teraz „Propozycje dnia”: playlista składana
