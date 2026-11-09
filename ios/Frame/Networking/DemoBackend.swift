@@ -400,7 +400,15 @@ actor DemoBackend: FrameBackend {
         return marks
     }
 
-    private var runElapsed: Double? { run.map { Date.now.timeIntervalSince($0.start) } }
+    private var runElapsed: Double? {
+        guard let run else { return nil }
+        let elapsed = Date.now.timeIntervalSince(run.start)
+        // CI screenshots: `-drawn 0.4` stops the drawing at that share, so a
+        // capture finds it there whenever the app came up.
+        guard let drawn = LaunchRoute.drawn, let drawing = Self.runStages.last else { return elapsed }
+        let total = Self.runStages.reduce(0) { $0 + $1.seconds }
+        return min(elapsed, total - drawing.seconds * (1 - drawn))
+    }
 
     /// A picture on its way to the frame: drawn with the settings as they are now.
     private func startRun(_ title: String, itemID: String? = nil) {

@@ -15,6 +15,9 @@ enum LaunchRoute {
     /// Words in the search field over an open group (CI screenshots of a
     /// group narrowed by the field).
     static let typed = UserDefaults.standard.string(forKey: "typed")
+    /// How far the demo frame's drawing stops (`-screen swap`, 0…1).
+    static let drawn = UserDefaults.standard.object(forKey: "drawn") == nil
+        ? nil : UserDefaults.standard.double(forKey: "drawn")
 }
 
 struct RootView: View {
