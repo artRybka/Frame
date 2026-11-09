@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.136.1
+
+- Konfiguracja → Wyświetlanie → Przykładowe zdjęcia: wybrane zdjęcia znowu
+  się pojawiają. Wgrywały się na serwer, ale aplikacja nie wysyłała ich
+  listy w ustawieniach ani jej nie odczytywała, więc po wgraniu kwadraciki
+  zostawały puste, a podgląd układów Multi brał przypadkowe zdjęcia.
+  Zdjęcia wgrane przed poprawką zostały na serwerze bez przypisania; trzeba
+  je wybrać jeszcze raz.
+
 ## 1.136.0
 
 - „Propozycje” w Playlistach to teraz „Propozycje dnia”: playlista składana

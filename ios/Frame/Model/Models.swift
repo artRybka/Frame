@@ -1533,6 +1533,7 @@ extension FrameSettings {
         follow(\.checkEveryHours)
         follow(\.checkQuietStart)
         follow(\.checkQuietEnd)
+        follow(\.multiPhotos)
         return out
     }
 }
@@ -1543,6 +1544,7 @@ extension FrameSettings {
         case orientation, rotation, art, photo, timezone, statusPollMinutes, privateUse, name
         case sourcesOff
         case powerMode, checkEveryHours, checkQuietStart, checkQuietEnd
+        case multiPhotos
         case quietEnd  // older servers: decoded only
     }
 
@@ -1569,6 +1571,7 @@ extension FrameSettings {
         checkEveryHours = try c.decodeIfPresent(Int.self, forKey: .checkEveryHours)
         checkQuietStart = try c.decodeIfPresent(String.self, forKey: .checkQuietStart)
         checkQuietEnd = try c.decodeIfPresent(String.self, forKey: .checkQuietEnd)
+        multiPhotos = try c.decodeIfPresent([String].self, forKey: .multiPhotos)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -1594,6 +1597,7 @@ extension FrameSettings {
             try c.encode(checkQuietStart, forKey: .checkQuietStart)  // null: checks all night
             try c.encode(end, forKey: .checkQuietEnd)
         }
+        try c.encodeIfPresent(multiPhotos, forKey: .multiPhotos)
     }
 
     /// Economy: the short wakes between the changes, every `checkEveryHours`

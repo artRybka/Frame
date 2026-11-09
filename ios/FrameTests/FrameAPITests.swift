@@ -541,6 +541,18 @@ final class FrameAPITests: XCTestCase {
         XCTAssertNil(draft.rebased(from: base, onto: current).playlistId)
     }
 
+    func testSamplePhotosReachTheServerAndComeBack() throws {
+        var settings = FrameSettings.defaults
+        settings.multiPhotos = ["p1", "p2"]
+        let json = try LiveBackend.encoder().encode(settings)
+        XCTAssertTrue(String(decoding: json, as: UTF8.self).contains("\"multi_photos\":[\"p1\",\"p2\"]"))
+        let decoded = try LiveBackend.decoder().decode(FrameSettings.self, from: json)
+        XCTAssertEqual(decoded.multiPhotos, ["p1", "p2"])
+        // A Frame tab draft made before they were added keeps them.
+        let draft = FrameSettings.defaults
+        XCTAssertEqual(draft.rebased(from: draft, onto: decoded).multiPhotos, ["p1", "p2"])
+    }
+
     func testEconomySettingsAndCountdown() throws {
         var settings = FrameSettings.defaults
         settings.changeTimes = ["07:00", "19:00"]
