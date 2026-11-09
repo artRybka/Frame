@@ -41,6 +41,8 @@ float ease(float x) {
 
 [[ stitchable ]] half4 watercolour(float2 position, SwiftUI::Layer layer, float2 size, float progress) {
     using namespace paper;
+    // The layer reaches past the picture by the blur's reach: paint nothing there.
+    if (any(position < float2(0)) || any(position > size)) { return half4(0); }
     float unit = min(size.x, size.y) / 540.0;
     float2 q = position / unit;
     float2 n = position / size;
