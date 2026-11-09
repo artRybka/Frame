@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.129.1
+
+- Szukaj → Styl: pod obrazkami została sama nazwa stylu, lata są tylko przy
+  nagłówkach półek. Obrazki stoją bliżej siebie, więc na ekranie mieści się
+  ich więcej.
+
 ## 1.129.0
 
 - Teraz: zmiana dzieła jest czytelna. Pasek pod ramką od pierwszej sekundy
