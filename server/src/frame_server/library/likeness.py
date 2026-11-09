@@ -148,6 +148,42 @@ class Fit(NamedTuple):
         )
 
 
+#: A copy around a picture is its whole work, not a page or a mat (see
+#: :func:`whole_work`), when the copy reaches this far past it (its share
+#: of the copy) ...
+AROUND = 0.3
+#: ... and holds there at least this share of the keypoints a picture as
+#: busy all over would (a page's margin holds a caption at most).
+BUSY_AROUND = 0.25
+
+
+def whole_work(fit: Fit) -> bool:
+    """The second picture of ``fit`` is the whole work of which the first is
+    a detail: the first lies within it, and the rest of it is as busy as a
+    picture (a margin or a mat around a picture is plain). A head of "The
+    Night Watch" under its whole painting (Mateusz 2026-11-09)."""
+    if fit.whole or fit.inside >= 1:
+        return False
+    width, height = fit.a.size
+    corners = np.array([[0, 0, 1], [width, 0, 1], [width, height, 1], [0, height, 1]], float)
+    laid = corners @ np.asarray(fit.mapping, float).T
+    bw, bh = fit.b.size
+    left, top = laid.min(axis=0)
+    right, bottom = laid.max(axis=0)
+    slack = 0.04
+    if left < -slack * bw or top < -slack * bh or right > (1 + slack) * bw:
+        return False
+    if bottom > (1 + slack) * bh:
+        return False
+    outside_area = 1 - max(0.0, (right - left) * (bottom - top)) / (bw * bh)
+    if outside_area < AROUND or not len(fit.b.points):
+        return False
+    xs, ys = fit.b.points[:, 0], fit.b.points[:, 1]
+    within = (xs >= left) & (xs <= right) & (ys >= top) & (ys <= bottom)
+    outside_points = 1 - float(within.sum()) / len(fit.b.points)
+    return outside_points >= BUSY_AROUND * outside_area
+
+
 class Likeness:
     """Tells copies of one picture apart by their thumbnails, where the
     cache has them (none is downloaded here). Safe to share between

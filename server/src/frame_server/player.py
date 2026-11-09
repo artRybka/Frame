@@ -110,8 +110,9 @@ SET_ASIDE_KEY = "set_aside_dropped"
 #: (1: photographs and manuscripts, 2: reproductions and B&W copies,
 #: 3: Girona's photo archive, 4: stamps and Athens' Philatelic Postal Museum,
 #: 5: black-and-white photographs from Foto Marburg and KIK-IRPA,
-#: 6: details by their titles, Openverse's copies of museums' works).
-SET_ASIDE_VERSION = 6
+#: 6: details by their titles, Openverse's copies of museums' works,
+#: 7: details in file names, photographs described in French).
+SET_ASIDE_VERSION = 7
 #: Version of the colour analysis and score the library's pictures carry.
 SCORE_KEY = "suitability_version"
 #: Set once the pictures kept from before lost their blank margins

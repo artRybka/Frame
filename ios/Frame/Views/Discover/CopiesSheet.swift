@@ -445,6 +445,7 @@ struct CopyRow: View {
         case "colour-off": CopyTag.Tag(text: "Inne kolory", tone: .warn)
         case "fragment": CopyTag.Tag(text: "Tylko fragment", tone: .bad)
         case "page": CopyTag.Tag(text: "Z marginesem", tone: .bad)
+        case "whole-work": CopyTag.Tag(text: "Całe dzieło", tone: .bad)
         case "turned": CopyTag.Tag(text: "Obrócona", tone: .bad)
         case "grey": CopyTag.Tag(text: "Czarno-biała", tone: .bad)
         case "coloured": CopyTag.Tag(text: "Pokolorowana", tone: .bad)
@@ -535,6 +536,11 @@ struct CopyCompare: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                 numbers
+                if copy.notes.contains("whole-work") {
+                    Text("To całe dzieło, a ta pozycja jest tylko jego fragmentem. Nie można jej nim zastąpić, bo zmieniłyby się proporcje i to, co widać na ramce.")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.inkSoft)
+                }
                 if copy.choosable {
                     if !copy.fits {
                         Text(Self.misfit(copy))
@@ -728,7 +734,7 @@ struct CopyCompare: View {
 
     private var crop: String {
         if copy.notes.contains("whole") || copy.isMuseums { return "cały obraz" }
-        for note in ["fragment", "page", "turned"] where copy.notes.contains(note) {
+        for note in ["fragment", "page", "whole-work", "turned"] where copy.notes.contains(note) {
             return CopyRow.noteTag(note)?.text.lowercased() ?? note
         }
         return "—"

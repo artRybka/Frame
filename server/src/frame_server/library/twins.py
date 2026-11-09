@@ -19,34 +19,53 @@ A picture of a work with more around it (a frame) is no detail: when it is
 not clear which of two is the whole, they are only copies.
 
 Each picture is looked at once (``Item.twins_seen``), against the works of
-its artist (one person by ``artists.known_names``, else the surname), at
-night and for the artists of a search right after it.
+its artist (one person by ``artists.known_names``, else the surname; the
+first one named for "attributed to X / after Y"), at night and for the
+artists of a search right after it.
+
+A detail far smaller than its work is lost in a thumbnail: a head of "The
+Night Watch" on Commons is 1/200 of the painting, 40 px of its thumbnail
+(15 such heads, a shield, a drummer and a hand in Szukaj, Mateusz
+2026-11-09). So a picture nothing was found for is also laid over the large
+picture of each surely whole work of its artist whose titles share a word
+with its own ("The Nightwatch Jan Brughman", "The Night Watch"), in windows
+at up to three sizes (``large_keypoints``).
 """
 
 from __future__ import annotations
 
 import logging
 import math
+import re
 import threading
 import time
 from collections import defaultdict
 from collections.abc import Callable, Iterable
+from functools import lru_cache
+from itertools import pairwise
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+
+from ..imaging.layout import load_image
 from .artists import known_names
-from .duplicates import surname
-from .likeness import SAME, Keypoints, cover, inside, keypoints, mapping, turn
+from .duplicates import STOPWORDS, surname
+from .images import display_copy
+from .likeness import FEATURES, SAME, Keypoints, cover, inside, keypoints, mapping, turn
 from .models import COLLECTIONS, Item, ItemKind
+from .phrases import fold
 from .vocabulary import is_copy
 
 if TYPE_CHECKING:
+    from PIL import Image
+
     from .images import ImageCache
     from .repo import Library
 
 log = logging.getLogger(__name__)
 
 #: Bump when the look changes, so every picture is looked at again.
-VERSION = 1
+VERSION = 2
 #: A picture this many times smaller than the part of another it matches
 #: (by area) is a detail of it (when that other is surely whole) ...
 DETAIL = 1.3
@@ -71,6 +90,67 @@ NIGHT_BUDGET = 2400.0
 #: An artist with more works than this is not looked at ("Unknown" under
 #: another spelling, a school): too many pairs to tell anything.
 MAX_WORKS = 4000
+#: Long sides a work's large picture is looked at in for details too small
+#: for its thumbnail, ...
+LARGE_SIDES = (1600, 3200, 4800)
+#: ... in windows of this side, overlapping by half (keypoints spread over
+#: the whole picture, not only its busiest part).
+WINDOW = 800
+#: Keypoints looked for in each window: a detail's part of the picture
+#: must hold enough of them (a head of "The Night Watch" is 1/200 of it).
+WINDOW_FEATURES = 4 * FEATURES
+#: A detail laid over the large picture stays within it, by this much of
+#: its sides.
+EDGE = 0.04
+#: Pairs laid over each other that way in one round at most, ...
+LARGE_PAIRS = 300
+#: ... and large pictures downloaded for them in one round of all the
+#: artists (those the frame has shown are here already).
+LARGE_DOWNLOADS = 40
+#: A work's picture smaller than this (long side) says no more than its
+#: thumbnail.
+LARGE_MIN = 1600
+#: Title words too common to tell one work from another.
+COMMON_WORDS = STOPWORDS | {
+    "portrait",
+    "study",
+    "studies",
+    "landscape",
+    "still",
+    "painting",
+    "picture",
+    "detail",
+    "details",
+    "fragment",
+    "untitled",
+    "sketch",
+    "drawing",
+    "young",
+    "woman",
+    "women",
+    "people",
+    "children",
+    "figure",
+    "figures",
+    "scene",
+    "image",
+    "after",
+    "their",
+    "there",
+    "which",
+    "under",
+    "attributed",
+    "przypisywany",
+    "wedlug",
+    "obraz",
+    "portret",
+    "kobieta",
+    "mezczyzna",
+}
+#: Where "attributed to X / after Y" stops naming the maker.
+_AFTER = re.compile(
+    r"\s*(?:/|;|\b(?:after|wedlug|według|wg\.|naar|nach|d'apr[eè]s)\b).*$", re.IGNORECASE
+)
 
 
 def candidate(item: Item) -> bool:
@@ -87,6 +167,9 @@ def candidate(item: Item) -> bool:
 def artist_key(artist: str) -> str:
     """Who made it, so that only one artist's works are laid over each
     other: their person in the catalogue, else their surname; "" for nobody."""
+    first = _AFTER.sub("", artist).strip()
+    if first and surname(first):
+        artist = first
     person = known_names().person(artist)
     if person is not None:
         return f"person:{person}"
@@ -94,12 +177,30 @@ def artist_key(artist: str) -> str:
     return f"surname:{name}" if name else ""
 
 
+@lru_cache(maxsize=1 << 16)
+def title_words(title: str) -> frozenset[str]:
+    """The words of a title that may name its work (folded, five letters or
+    more, not :data:`COMMON_WORDS`), and each two next to each other joined
+    ("Night Watch" for Commons' "Nightwatch")."""
+    found = re.findall(r"[^\W\d_]+", fold(title.split("\n")[0]))
+    kept = {w for w in found if len(w) >= 5 and w not in COMMON_WORDS}
+    kept.update(
+        a + b
+        for a, b in pairwise(found)
+        if len(a + b) >= 8 and a not in COMMON_WORDS and b not in COMMON_WORDS
+    )
+    return frozenset(kept)
+
+
 def _apart(a: Item, b: Item) -> bool:
     """Pairs never looked at: two museums' own works (a museum's work is
-    not in another), years too far apart."""
+    not in another), years too far apart unless their titles share a word
+    (a copy dated when it was made, or when its work was cut down)."""
     if a.source in COLLECTIONS and b.source in COLLECTIONS:
         return True
-    return a.year is not None and b.year is not None and abs(a.year - b.year) > YEAR_SLACK
+    if a.year is None or b.year is None or abs(a.year - b.year) <= YEAR_SLACK:
+        return False
+    return not title_words(a.title) & title_words(b.title)
 
 
 class Fit:
@@ -131,6 +232,8 @@ class Twins:
         self._asked: set[str] = set()
         self._asked_lock = threading.Lock()
         self.clock: Callable[[], float] = time.monotonic
+        #: Large pictures the round may still download.
+        self._downloads = 0
 
     # -- when ------------------------------------------------------------------
 
@@ -174,6 +277,7 @@ class Twins:
         returns how many pictures were looked at."""
         with self._lock:
             started = self.clock()
+            self._downloads = LARGE_DOWNLOADS
             by_artist: dict[str, list[Item]] = defaultdict(list)
             for item in self.library.query(include_excluded=True)[1]:
                 key = artist_key(item.artist) if candidate(item) else ""
@@ -244,11 +348,98 @@ class Twins:
                     fits[(item.id, other.id)] = fit
             done.add(item.id)
             looked.append(item)
-        copies, details = self._write(works, looked, fits)
+        large = self._large_details(works, looked, fits, grouped, until)
+        copies, details = self._write(works, looked, fits, large)
         return len(looked), copies, details
 
+    def _large_details(
+        self,
+        works: list[Item],
+        looked: list[Item],
+        fits: dict[tuple[str, str], Fit],
+        grouped: Any,
+        until: float,
+    ) -> dict[str, str]:
+        """Details too small for the thumbnails: the pictures looked at that
+        lie over nothing, laid over the large pictures of the artist's surely
+        whole works whose titles share a word with theirs; detail -> work."""
+        paired = {i for pair in fits for i in pair}
+        sure = {i.id for i in works if _surely_whole(i)}
+        sure.update(i for (a, b), fit in fits.items() if fit.whole for i in (a, b))
+        if not sure:
+            return {}
+        words: dict[int | str, frozenset[str]] = {}
+
+        def work_words(item: Item) -> frozenset[str]:
+            at = grouped.group_index(item.id)
+            key: int | str = item.id if at is None else at
+            if key not in words:
+                copies = [item] if at is None else grouped.groups[at]
+                words[key] = frozenset().union(*(title_words(c.title) for c in copies))
+            return words[key]
+
+        pairs: list[tuple[int, Item, Item]] = []
+        for small in looked:
+            if small.id in paired or small.source in COLLECTIONS:
+                continue
+            mine = title_words(small.title)
+            if not mine:
+                continue
+            at = grouped.group_index(small.id)
+            for big in works:
+                if big.id not in sure or big.id == small.id:
+                    continue
+                if at is not None and at == grouped.group_index(big.id):
+                    continue
+                shared = len(mine & work_words(big))
+                if shared:
+                    pairs.append((shared, small, big))
+        pairs.sort(key=lambda p: (-p[0], p[1].id, p[2].id))
+        large: dict[str, list[Keypoints] | None] = {}
+        found: dict[str, str] = {}
+        for _shared, small, big in pairs[:LARGE_PAIRS]:
+            if self.clock() > until:
+                break
+            if small.id in found:
+                continue
+            if big.id not in large:
+                img, downloaded = self._large_picture(big, self._downloads > 0)
+                self._downloads -= downloaded
+                large[big.id] = large_keypoints(img) if img is not None else None
+            sets = large[big.id]
+            path = self.images.thumb_path(small)
+            if not sets or not path.is_file():
+                continue
+            try:
+                mine_points = keypoints(path)
+            except Exception as err:  # a broken file: no opinion
+                log.info("twins: keypoints of %s: %s", small.id, err)
+                continue
+            if mine_points is not None and any(lies_within(mine_points, s) for s in sets):
+                log.info("twins: %s is a detail of %s (large picture)", small.id, big.id)
+                found[small.id] = big.id
+        return found
+
+    def _large_picture(self, item: Item, may_download: bool) -> tuple[Image.Image | None, int]:
+        """``item``'s picture as the frame has it, else downloaded when
+        ``may_download``; and whether it was."""
+        path = self.images.image_path(item)
+        try:
+            if path.is_file():
+                return load_image(path), 0
+            if not may_download:
+                return None, 0
+            return self.images.sample(display_copy(item)), 1
+        except Exception as err:  # gone, refused, broken: no opinion
+            log.info("twins: large picture of %s: %s", item.id, err)
+            return None, int(may_download)
+
     def _write(
-        self, works: list[Item], looked: list[Item], fits: dict[tuple[str, str], Fit]
+        self,
+        works: list[Item],
+        looked: list[Item],
+        fits: dict[tuple[str, str], Fit],
+        large: dict[str, str] | None = None,
     ) -> tuple[int, int]:
         by_id = {i.id: i for i in works}
         whole_twin: set[str] = set()
@@ -265,6 +456,8 @@ class Twins:
             sure = by_id[big].source in COLLECTIONS or big in whole_twin or by_id[big].copy_of
             if area >= DETAIL and sure and by_id[small].source not in COLLECTIONS:
                 detail_of.setdefault(small, big)
+        for small, big in (large or {}).items():
+            detail_of.setdefault(small, big)
         # Copies: everything else that lies over each other, together.
         parent: dict[str, str] = {}
 
@@ -313,6 +506,94 @@ class Twins:
             for item_id, fields in changes.items():
                 self.library.update(item_id, **fields)
         return found, len(detail_of)
+
+
+def _surely_whole(item: Item) -> bool:
+    """A large picture of a work whole: a museum's own, or one that is one
+    of several copies of a work (``Item.copy_of``) or has a sharper copy."""
+    if item.kind != ItemKind.ARTWORK or item.part_of or item.detail_of:
+        return False
+    if item.sharper is None and 0 < max(item.width or 0, item.height or 0) < LARGE_MIN:
+        return False
+    return item.source in COLLECTIONS or bool(item.copy_of) or item.sharper is not None
+
+
+def large_keypoints(img: Image.Image) -> list[Keypoints]:
+    """Keypoints of a large picture at :data:`LARGE_SIDES` (no larger than
+    it is), found in overlapping windows of :data:`WINDOW` and kept in the
+    picture's coordinates at that size; none for a picture no larger than
+    a window."""
+    try:
+        import cv2
+    except ImportError:  # pragma: no cover - a dependency, but optional here
+        return []
+    from PIL import Image as PILImage
+
+    grey = img.convert("L")
+    longest = max(grey.size)
+    if longest <= WINDOW:
+        return []
+    orb = cv2.ORB_create(nfeatures=WINDOW_FEATURES)  # type: ignore[attr-defined]
+    found: list[Keypoints] = []
+    for side in sorted({min(s, longest) for s in LARGE_SIDES}):
+        scale = side / longest
+        size = (max(1, round(grey.width * scale)), max(1, round(grey.height * scale)))
+        pixels = np.asarray(grey.resize(size, PILImage.Resampling.LANCZOS))
+        points: list[Any] = []
+        descriptors: list[Any] = []
+        lefts, tops = _starts(size[0]), _starts(size[1])
+        for row, top in enumerate(tops):
+            for column, left in enumerate(lefts):
+                window = pixels[top : top + WINDOW, left : left + WINDOW]
+                spots, described = orb.detectAndCompute(np.ascontiguousarray(window), None)
+                if described is None:
+                    continue
+                for spot, row_bits in zip(spots, described, strict=True):
+                    x, y = spot.pt[0] + left, spot.pt[1] + top
+                    # Each point once, from the window it is nearest the
+                    # middle of: twice over, it would be its own rival in
+                    # the matching (Lowe's ratio test).
+                    if _nearest(x, lefts) == column and _nearest(y, tops) == row:
+                        points.append((x, y))
+                        descriptors.append(row_bits)
+        if len(points) >= SAME:
+            found.append(Keypoints(np.array(points, dtype=np.float32), np.array(descriptors), size))
+    return found
+
+
+def _nearest(at: float, starts: list[int]) -> int:
+    """The window whose middle is nearest ``at`` along one side."""
+    return min(range(len(starts)), key=lambda i: abs(starts[i] + WINDOW / 2 - at))
+
+
+def _starts(length: int) -> list[int]:
+    """Where the windows along one side start: half a window apart, the
+    last one at the edge."""
+    if length <= WINDOW:
+        return [0]
+    starts = list(range(0, length - WINDOW, WINDOW // 2))
+    return [*starts, length - WINDOW]
+
+
+def lies_within(small: Keypoints, large: Keypoints) -> bool:
+    """``small`` is a part of ``large``: one mapping lays many of its
+    keypoints over the large picture's, unturned, its frame within the
+    large picture's and at most 1/:data:`DETAIL` of it."""
+    count, found = mapping(small, large)
+    if count < SAME or found is None or turn(found) > COPY_TURN:
+        return False
+    if inside(small, large, found) > 1 / DETAIL:
+        return False
+    width, height = small.size
+    corners = np.array([[0, 0, 1], [width, 0, 1], [width, height, 1], [0, height, 1]], float)
+    laid = corners @ np.asarray(found, float).T
+    lw, lh = large.size
+    return bool(
+        laid[:, 0].min() >= -EDGE * lw
+        and laid[:, 1].min() >= -EDGE * lh
+        and laid[:, 0].max() <= (1 + EDGE) * lw
+        and laid[:, 1].max() <= (1 + EDGE) * lh
+    )
 
 
 def _fit(a: Keypoints, b: Keypoints) -> Fit | None:

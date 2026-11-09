@@ -257,7 +257,11 @@ struct CopyView: Codable, Hashable, Sendable, Identifiable {
     /// What can be picked: any copy once judged, those that do not fit too
     /// (the owner has seen it and decides), but not one whose picture could
     /// not be had.
-    var choosable: Bool { !isCurrent && verdict != "checking" && !notes.contains("unseen") }
+    /// Not the whole work of which this one is a detail: in its place it
+    /// would show the whole, in other proportions (server's "whole-work").
+    var choosable: Bool {
+        !isCurrent && verdict != "checking" && !notes.contains("unseen") && !notes.contains("whole-work")
+    }
     /// The same picture whole: picked without a warning.
     var fits: Bool { ["better", "warn", "worse"].contains(verdict) }
     /// Whether a spot of it can be set beside the picture shown now: not

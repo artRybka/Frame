@@ -47,13 +47,14 @@ PAGES_VERSION = "2"
 READINGS: dict[str, str] = {
     # 2026-11-07: old photographs (Fotografia, photo categories); 3: the
     # artist's visible name only ("Nieznany", not "NieznanyUnknown author");
-    # 4: archive papers and chemical diagrams left out.
-    "wmc": "4",
+    # 4: archive papers and chemical diagrams left out; 5: archives'
+    # documents, backs of paintings and museums' objects too.
+    "wmc": "5",
     # 2026-11-09: searches ask for digitised artworks only, no illustrations.
     "openverse": "2",
     # 2026-11-09: Foto Marburg's photographs of works left out; 3: and
-    # the Hertziana's.
-    "europeana": "3",
+    # the Hertziana's; 4: types in every language and as AAT links.
+    "europeana": "4",
 }
 
 

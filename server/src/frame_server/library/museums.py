@@ -859,12 +859,16 @@ class WikimediaCommons(Museum):
     )
     #: Files described as works of art that are archives' papers and
     #: diagrams: the US National Archives' scans (forms, reports, dog tags)
-    #: and chemistry (Mateusz 2026-11-07, Szukaj "bednarski"). Words typed
-    #: find them; a chosen category doesn't.
+    #: and chemistry (Mateusz 2026-11-07, Szukaj "bednarski"), France's
+    #: archives' documents, backs of paintings, objects. Words typed find
+    #: them; a chosen category doesn't.
     not_art = re.compile(
         r"national archives|\bnara\b|records administration|textual reference|file unit|"
         r"record group|missing air crew|dog tags?|identification tags?|chemical|chemistry|"
-        r"structural formula|organic synthesis|\bdiagrams?\b|\bcharts?\b|scanned documents",
+        r"structural formula|organic synthesis|\bdiagrams?\b|\bcharts?\b|scanned documents|"
+        # Archives' papers, backs of paintings, a museum's objects
+        # photographed (Szukaj "II wojna światowa", 2026-11-09).
+        r"\bdocuments\b|archives nationales|reverses of paintings|unsupported object",
         re.IGNORECASE,
     )
     #: Category queries whose works are not paintings, and what they are.
@@ -1455,7 +1459,7 @@ class Europeana(Museum):
     #: "print" too.
     objects = re.compile(
         r"\b(stamps?|postage|postal|philatel\w*|postmarks?|envelopes?|coins?|medals?|"
-        r"bank ?notes?|numismat\w*)\b",
+        r"bank ?notes?|numismat\w*|specimens?|herbari\w*)\b",
         re.IGNORECASE,
     )
     #: Concept labels that name a work's type, for records whose type comes
@@ -1495,6 +1499,47 @@ class Europeana(Museum):
         '-what:(stamp OR "postage stamp" OR "postal services" OR coin OR coins OR medal '
         "OR medals OR banknote OR banknotes)",
     )
+
+    #: Concept labels that name a kind of object or a photograph.
+    object_concepts = re.compile(
+        r"\b(ceramics?|porcelain|pottery|earthenware|stoneware|glass|silver|metalwork|"
+        r"textiles?|furniture|bells?|clocks?|sculptures?|statues?|photos?|photographs?|"
+        r"posters?|manuscripts?)\b",
+        re.IGNORECASE,
+    )
+    #: Archives of photographs whose records say nothing of their type.
+    photo_providers = re.compile(r"\bfortepan\b|sound (?:&|and) vision|beeld en geluid", re.I)
+    #: Types given as Getty AAT links only, by their numbers.
+    aat_types: ClassVar[dict[str, str]] = {
+        "300027221": "Poster",
+        "300041575": "Bell",
+        "300046300": "Photograph",
+        "300033618": "Painting",
+        "300033973": "Drawing",
+        "300041273": "Print",
+    }
+
+    def _kinds(self, d: dict[str, Any]) -> list[str]:
+        """The record's types: in English first, then as its provider gives
+        them in any language ("aardewerk, keramiek, schotel", "Afiș
+        teatral"), then those given as Getty AAT links only. A third of
+        Europeana's works came typed in no English and were taken for
+        pictures (2026-11-09)."""
+        langs: dict[str, list[str]] = d.get("dcTypeLangAware") or {}
+        order = ["en", "def", *sorted(k for k in langs if k not in ("en", "def"))]
+        kinds: list[str] = []
+        for lang in order:
+            for kind in langs.get(lang) or []:
+                text = str(kind)
+                if "://" in text:
+                    number = text.rstrip("/").rsplit("/", 1)[-1]
+                    if "aat" in text and number in self.aat_types:
+                        text = self.aat_types[number]
+                    else:
+                        continue
+                if text not in kinds:
+                    kinds.append(text)
+        return kinds
 
     def _death(self, d: dict[str, Any]) -> int | None:
         """When the work's last author died, if every author is known."""
@@ -1543,7 +1588,7 @@ class Europeana(Museum):
             return None
         if (urlsplit(image).hostname or "") in EUROPEANA_UNREACHABLE:
             return None
-        kinds = [t for t in (d.get("dcTypeLangAware") or {}).get("en") or [] if "://" not in t]
+        kinds = self._kinds(d)
         # Types often come as vocabulary links only; their labels are among
         # the record's concepts ("slides (photographs)").
         concepts = (d.get("edmConceptPrefLabelLangAware") or {}).get("en") or []
@@ -1554,9 +1599,17 @@ class Europeana(Museum):
         licence = self._licence(d)
         if not licence:
             return None
-        classification = kinds[0] if kinds else ""
+        # All of them: the AAT's "Poster" and the provider's own "Afiș
+        # teatral" (a theatre programme) are one record's types.
+        classification = ", ".join(kinds[:3])
         if not classification:
             classification = next((c for c in concepts if self.type_concepts.search(c)), "")
+        if not classification:
+            # "Ceramic", "photo", "clocks" (bells): a category of "Sztuki
+            # inne" rather than a picture.
+            classification = ", ".join(c for c in concepts if self.object_concepts.search(c))
+        if not classification and self.photo_providers.search(_first(d.get("dataProvider"))):
+            classification = "Photograph"
         medium = ", ".join(c for c in concepts if self.medium_concepts.search(c))
         if "/thumbnail/" in preview and "size=" not in preview:
             preview += "&size=w400"

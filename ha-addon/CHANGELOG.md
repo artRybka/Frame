@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.137.7
+
+- Wycinki dzieł (np. głowy ze „Straży nocnej”) są rozpoznawane po dużym
+  zdjęciu całego obrazu i znikają z Szukaj jak kopie. Kopie „przypisywane”
+  albo „według” innego malarza łączą się w jedno dzieło.
+- Pod wycinkiem lista kopii pokazuje całe dzieło tylko do obejrzenia: nie
+  da się nim zastąpić wycinka, bo zmieniłyby się proporcje.
+- Druki i kartki z tekstem (maszynopisy, broszury, programy, obwieszczenia,
+  odwrocia obrazów) nie trafiają już nigdzie.
+- Stare zdjęcia, ceramika i dzwony z Europeany i Paris Musées trafiają do
+  Sztuk innych, a nie do obrazów: typ czytany jest w każdym języku.
+
 ## 1.137.6
 
 - Szukaj znajduje dzieło po słowach każdej jego kopii (tytuł z jednego
