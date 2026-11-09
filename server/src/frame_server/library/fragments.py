@@ -53,6 +53,8 @@ TILED_TEMPLATE = "Template:Tile set available"
 _TILE = re.compile(
     r"\[\[\s*(?:File|Image)\s*:\s*([^|\]]+?-x(\d+)-y(\d+)\.(?:jpe?g|png|tiff?))", re.I
 )
+#: The work a Commons page shows ({{Artwork |wikidata = Q...}}).
+_WORK = re.compile(r"\|\s*wikidata\s*=\s*(Q\d+)", re.I)
 _GRID = re.compile(r"\{\{\s*(Tile set/[^{}|]+?)\s*\}\}")
 #: Commons answers imageinfo for this many files at once.
 COMMONS_BATCH = 50
@@ -113,6 +115,9 @@ class Fragments:
         self._kept: dict[str, tuple[float, list[Part]]] = self._load()
         #: Commons page ids with a tile set, and when listed.
         self._tiled: tuple[float, frozenset[str]] | None = None
+        #: Their files' titles by the Wikidata item of the work each
+        #: shows, and when read.
+        self._works: tuple[float, dict[str, list[str]]] | None = None
         self._asking: dict[str, threading.Lock] = {}
 
     # -- kept on disk ------------------------------------------------------------
@@ -202,6 +207,50 @@ class Fragments:
         except (httpx.HTTPError, OSError, ValueError, KeyError, TypeError) as err:
             log.info("Commons tile sets not listed: %s", err)
             return False
+
+    def tiled_files(self, qid: str) -> list[str]:
+        """The Commons files with a tile set that show the work ``qid`` (a
+        Wikidata item), as "File:" titles: read once a month from their
+        pages ({{Artwork |wikidata=}}); [] when Commons cannot be asked."""
+        if not qid:
+            return []
+        with self._lock:
+            works = self._works
+        if works is None or self.clock() - works[0] >= TILED_FOR:
+            try:
+                with self.http() as http:
+                    found = self._tiled_works(http)
+            except (httpx.HTTPError, OSError, ValueError, KeyError, TypeError) as err:
+                log.info("works of Commons tile sets not read: %s", err)
+                return [] if works is None else works[1].get(qid, [])
+            works = (self.clock(), found)
+            with self._lock:
+                self._works = works
+        return works[1].get(qid, [])
+
+    def _tiled_works(self, http: httpx.Client) -> dict[str, list[str]]:
+        ids = sorted(self._tiled_pages(http))
+        found: dict[str, list[str]] = {}
+        for start in range(0, len(ids), COMMONS_BATCH):
+            resp = http.get(
+                COMMONS_API,
+                params={
+                    "action": "query",
+                    "format": "json",
+                    "formatversion": 2,
+                    "prop": "revisions",
+                    "rvprop": "content",
+                    "rvslots": "main",
+                    "pageids": "|".join(ids[start : start + COMMONS_BATCH]),
+                },
+            )
+            resp.raise_for_status()
+            for page in resp.json().get("query", {}).get("pages") or []:
+                revisions = page.get("revisions") or [{}]
+                text = str(revisions[0].get("slots", {}).get("main", {}).get("content") or "")
+                if (match := _WORK.search(text)) and page.get("title"):
+                    found.setdefault(match.group(1), []).append(str(page["title"]))
+        return found
 
     def items(self, item: Item) -> list[Item]:
         """``item``'s fragments as works of their own."""

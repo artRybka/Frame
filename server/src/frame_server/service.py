@@ -309,6 +309,7 @@ class FrameService:
         # The museums of works from Commons, Openverse, WikiArt: looked up
         # when a card opens and at night.
         self.holders = Holders(self.library, museum_client)
+        self.copies.work_qid = self.holders.work_qid
         # Where works are, for Szukaj's "Muzeum": the museums' Wikidata
         # items, names and cities, learnt at night (library/places.py).
         self.museum_places = MuseumPlaces(self.library, museum_client)

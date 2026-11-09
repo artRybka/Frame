@@ -176,6 +176,9 @@ class Copies:
         self._answers: OrderedDict[tuple[str, str], tuple[float, list[Item]]] = OrderedDict()
         self._kept: OrderedDict[str, Image.Image] = OrderedDict()
         self._lock = threading.Lock()
+        #: The Wikidata item of a work (``Holders.work_qid``): finds the
+        #: Commons files with a tile set that show it.
+        self.work_qid: Callable[[Item], str] | None = None
 
     # -- the list ------------------------------------------------------------------
 
@@ -308,10 +311,29 @@ class Copies:
                     found.append(copy)
             except (httpx.HTTPError, ValueError) as err:
                 log.info("Commons file of %s: %s", item.id, err)
+        found += self._tiled_copies(item, {c.id for c in found})
         works = self.sharper.library.works()
         index = works.group_of(item)
         if index is not None:
             found += [i for i in works.groups[index] if i.id != item.id]
+        return found
+
+    def _tiled_copies(self, item: Item, seen: set[str]) -> list[Item]:
+        """The Commons files with a tile set that show ``item``'s work
+        (found by its Wikidata item: a search by title missed "Nachtwacht"
+        for "Nocna straż", Mateusz 2026-11-09)."""
+        fragments = getattr(self.sharper.importer, "fragments", None)
+        if self.work_qid is None or fragments is None:
+            return []
+        found: list[Item] = []
+        for title in fragments.tiled_files(self.work_qid(item)):
+            try:
+                copy = self.sharper.importer.commons_file(title.removeprefix("File:"))
+            except (httpx.HTTPError, ValueError) as err:
+                log.info("tiled Commons file %s of %s: %s", title, item.id, err)
+                continue
+            if copy is not None and copy.id not in seen and copy.id != item.id:
+                found.append(copy)
         return found
 
     @staticmethod

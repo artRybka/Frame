@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.136.10
+
+- Kopie dzieła znajdują też pliki Commons z kaflami, których wyszukiwanie po
+  tytule nie widzi (np. „Nachtwacht” z Google Art Project dla „Nocnej
+  straży”): szukane po dziele w Wikidata.
+
 ## 1.136.9
 
 - Kafle z Commons w pełnym ekranie leżą na swoich miejscach i mają te same
