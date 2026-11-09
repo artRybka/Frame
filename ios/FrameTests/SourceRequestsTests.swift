@@ -44,5 +44,7 @@ final class SourceRequestsTests: XCTestCase {
         XCTAssertEqual(SourceRequestText.duration(40), "40 s")
         XCTAssertEqual(SourceRequestText.duration(61), "2 min")
         XCTAssertEqual(SourceRequestText.duration(3900), "1 godz. 5 min")
+        XCTAssertEqual(SourceRequestText.duration(86_400), "24 godz.")
+        XCTAssertEqual(SourceRequestText.duration(14 * 86_400 - 30), "14 dni")
     }
 }

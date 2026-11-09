@@ -36,6 +36,8 @@ from typing import Any
 
 import httpx
 
+from .phrases import fts
+
 log = logging.getLogger(__name__)
 
 API = "https://www.loc.gov"
@@ -90,7 +92,6 @@ CREATE VIRTUAL TABLE texts USING fts5(
     tokenize = 'unicode61 remove_diacritics 2'
 );
 """
-_WORD = re.compile(r"\w+")
 
 
 def flat(result: dict[str, Any]) -> dict[str, Any]:
@@ -193,8 +194,9 @@ def build(path: Path, collections: dict[str, Iterator[dict[str, Any]]]) -> int:
 
 
 def match(words: str) -> str:
-    """An FTS5 query of every word typed, each quoted."""
-    return " ".join(f'"{w}"' for w in _WORD.findall(words))
+    """An FTS5 query of every word and phrase typed (all must be there),
+    each quoted: nothing typed can be read as the query language's own."""
+    return fts(words)
 
 
 class LocIndex:

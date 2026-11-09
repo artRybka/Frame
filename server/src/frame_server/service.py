@@ -37,6 +37,7 @@ from .kept import KeptOriginals
 from .later import LaterWorks
 from .library import ImageCache, Importer, Library, courtauld
 from .library.commons import repair_library
+from .library.fragments import Fragments
 from .library.hosts import guard as host_guard
 from .library.loc import loc_mirrors
 from .library.museums import PRIVATE_LICENCE, TEST_LICENCE, Access, WikiArt, europeana_mirrors
@@ -242,6 +243,7 @@ class FrameService:
             self.palette,
             access=self._access,
         )
+        self.importer.fragments = Fragments(settings.data_dir / "fragments.json", museum_client)
         self.status = StatusMonitor(self.panel, self.library)
         # The owner's phone hears of the battery, failed sends, new pictures.
         self.notifier = Notifier(settings.data_dir, self.library)

@@ -73,6 +73,11 @@ class Host:
     #: Every 403 is its bot wall's, whatever it looks like (the AIC's API
     #: answered bursts with plain 403s, 2026-11-07, and was asked on).
     wall_403: bool = False
+    #: The longest rest of a wall that keeps coming back, where not
+    #: :data:`.hosts.REST_MAX`, and how long a wall is remembered to double
+    #: the next one, where not :data:`.hosts.WALL_MEMORY`.
+    rest_max: float | None = None
+    wall_memory: float | None = None
 
 
 @dataclass(frozen=True)
@@ -145,12 +150,19 @@ SOURCES: tuple[Source, ...] = (
     ),
     Source(
         # "Working within limits": the JSON API 20 requests a minute, image
-        # and storage services 150 a minute, else an hour's block.
+        # and storage services 150 a minute, else an hour's block. Its
+        # Cloudflare challenge has answered every request from home since
+        # 2026-11-07 07:35 UTC (all 11 of the next two days, hours apart;
+        # Mateusz 2026-11-09: "dużo dłuższy odpoczynek"): a day at once,
+        # doubled at each wall within a month, up to two weeks. Photographs
+        # meanwhile come from Commons (library/commons.py).
         "Library of Congress",
         "https://www.loc.gov/apis/json-and-yaml/working-within-limits/",
         "2026-11-07",
         {
-            "www.loc.gov": Host(pace=3.5, limit=1, long_block=HOUR),
+            "www.loc.gov": Host(
+                pace=3.5, limit=1, long_block=DAY, rest_max=14 * DAY, wall_memory=30 * DAY
+            ),
             "tile.loc.gov": Host(pace=0.5),
         },
         domains=("loc.gov",),
@@ -314,6 +326,10 @@ LONG_BLOCKS: dict[str, float] = _table("long_block")
 IMAGE_LIMITS: dict[str, int] = _table("images")
 #: Quotas, by host.
 BUDGETS: dict[str, Budget] = _table("budget")
+#: The longest rest of a host whose walls keep coming back, where not the default.
+REST_MAXES: dict[str, float] = _table("rest_max")
+#: How long a host's last wall is remembered, where not the default.
+WALL_MEMORIES: dict[str, float] = _table("wall_memory")
 #: Hosts whose every 403 is a bot wall's.
 WALL_403: frozenset[str] = frozenset(_table("wall_403"))
 

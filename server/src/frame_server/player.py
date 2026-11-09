@@ -104,6 +104,9 @@ SCORE_KEY = "suitability_version"
 #: Set once the pictures kept from before lost their blank margins
 #: (``ImageCache.trim_kept``).
 MARGINS_KEY = "margins_trimmed"
+#: Set once the elongated works' kept originals were had again in the size
+#: they are kept in now (``ImageCache.wide_again``, 2026-11-09).
+WIDE_KEY = "wide_originals"
 #: The playlist the photos sent once gather in, newest first.
 SENT_NAME = "Historia przesłanych"
 #: A rotation with fewer pictures not shown lately asks museums for more,
@@ -1438,14 +1441,20 @@ class Player:
 
     def _fix_up(self) -> None:
         """Once after an update: the kept pictures without their blank
-        margins, the pictures analysed again, then the thumbnails of works
-        shown from another source's copy made from it."""
+        margins, the pictures analysed again, the thumbnails of works shown
+        from another source's copy made from it, then the elongated works'
+        originals had again larger."""
         if not self.library.get_state(MARGINS_KEY, False):
             trimmed = self.service.images.trim_kept()
             self.library.set_state(MARGINS_KEY, True)
             log.info("margins: %d kept pictures trimmed", trimmed)
         self.rescore()
         self.service.sharper.thumbs_again()
+        if not self.library.get_state(WIDE_KEY, False):
+            items = self.library.query(include_excluded=True)[1]
+            grown = self.service.images.wide_again(items)
+            self.library.set_state(WIDE_KEY, True)
+            log.info("elongated works: %d kept originals larger", grown)
 
     def rescore(self) -> int:
         """Once per ``SCORE_VERSION``: analyse the library's pictures again

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 from frame_server.library import Item, ItemKind, PlaylistRules
 from frame_server.library import repo as repo_module
+from frame_server.library.phrases import quote
 from frame_server.library.repo import Library
 from frame_server.library.vocabulary import TERMS
 from frame_server.web.discover_api import _term_hits
@@ -83,8 +84,20 @@ def test_counts_agree_with_the_catalogue(tmp_path) -> None:
     for found in TERMS:
         expected = lib.query(PlaylistRules(terms=[found.key]))[0]
         assert index.term_count(found.key) == expected, found.key
-    for words in ["sea", "SEA", "hopper", "o'keeffe", "still life", "ea", "pre-rap", "-", "zzz"]:
-        expected = lib.query(PlaylistRules(query=words))[0]
+    for words in [
+        "sea",
+        "SEA",
+        "hopper",
+        "o'keeffe",
+        "still life",
+        "life still",
+        "ea",
+        "pre-rap",
+        "-",
+        "zzz",
+    ]:
+        # One chip: a phrase when it has several words.
+        expected = lib.query(PlaylistRules(query=quote([words])))[0]
         assert index.word_count(words) == expected, words
     hopper = dict(index.artists("hop"))
     assert list(hopper) == ["Edward Hopper"]

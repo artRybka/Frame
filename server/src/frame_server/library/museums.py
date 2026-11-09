@@ -158,6 +158,10 @@ class Museum(ABC):
     #: The language its search understands: Polish words typed in Szukaj
     #: are translated for the others (``Wording``).
     language: ClassVar[str] = "en"
+    #: Its search keeps to a phrase in double quotes ("night watch": the
+    #: words next to each other): Szukaj's phrases are asked quoted; the
+    #: others get the words bare, and Szukaj checks the phrase itself.
+    phrases: ClassVar[bool] = False
     #: A source of one kind only (the Library of Congress's photographs):
     #: asked just when that kind is, never by every search.
     only: ClassVar[Kind | None] = None
@@ -251,7 +255,7 @@ class Museum(ABC):
         (:data:`LOCAL_MIN`), else from the museum's own search, as before
         there was an index; the index's when the museum cannot be asked."""
         index = self._index()
-        if index is None or not dump_words(query) or re.search(r'[:="]', query):
+        if index is None or not dump_words(query) or re.search(r"[:=]", query):
             return ask()
         found = self._from_dump(index, query, limit=limit, page=page, **filters)
         if found[0] >= LOCAL_MIN:
@@ -288,6 +292,7 @@ class Museum(ABC):
 
 class ArtInstituteChicago(Museum):
     key = "aic"
+    phrases = True
     name = "Art Institute of Chicago"
     api = "https://api.artic.edu/api/v1"
     iiif = AIC_IIIF
@@ -450,6 +455,7 @@ class ArtInstituteChicago(Museum):
 
 class ClevelandMuseum(Museum):
     key = "cma"
+    phrases = True
     name = "Cleveland Museum of Art"
     api = "https://openaccess-api.clevelandart.org/api"
     highlights = True
@@ -565,6 +571,7 @@ MET_LOCAL_MIN = 24
 
 class MetropolitanMuseum(Museum):
     key = "met"
+    phrases = True
     name = "The Metropolitan Museum of Art"
     api = "https://collectionapi.metmuseum.org/public/collection"
     highlights = True
@@ -714,6 +721,7 @@ class WikimediaCommons(Museum):
     """
 
     key = "wmc"
+    phrases = True
     name = "Wikimedia Commons"
     page_size = 50
     api = "https://commons.wikimedia.org/w/api.php"
@@ -1310,6 +1318,7 @@ class Europeana(Museum):
     """
 
     key = "europeana"
+    phrases = True
     name = "Europeana"
     api = "https://api.europeana.eu/record/v2/search.json"
     page_size = 100
@@ -1632,8 +1641,10 @@ class Openverse(Museum):
         return int(body.get("result_count") or 0), items
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
-        # Art only: without a category most of Openverse is Flickr photos.
-        return self._get({"q": query, "category": "digitized_artwork,illustration"}, limit, page)
+        # Art only: without a category most of Openverse is Flickr photos,
+        # and its "illustration" anyone's drawings, crests and blank tiles
+        # (Dadaizm, Mateusz 2026-11-09).
+        return self._get({"q": query, "category": "digitized_artwork"}, limit, page)
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         if spec.year_from is not None or spec.year_to is not None:
@@ -1793,6 +1804,13 @@ class WikiArt(Museum):
     _sessions: ClassVar[dict[str, tuple[str, float]]] = {}
     _session_lock: ClassVar[threading.Lock] = threading.Lock()
     SESSION = 50 * 60.0
+    #: After a login WikiArt refused, none is tried (nor anything asked)
+    #: for this long: its login answered 500 to 50 tries on 2026-11-08, up
+    #: to eight in two minutes, one for each search, as each restart of the
+    #: server starts without a session and it gives ten an hour.
+    LOGIN_AGAIN = 30 * 60.0
+    #: When a login with each access code was last refused (monotonic).
+    _refused: ClassVar[dict[str, float]] = {}
 
     def _session(self, fresh: bool = False) -> str | None:
         """A session key from the owner's API keys; None without keys."""
@@ -1803,13 +1821,24 @@ class WikiArt(Museum):
         with self._session_lock:
             session, since = self._sessions.get(access, ("", 0.0))
             if fresh or not session or time.monotonic() - since > self.SESSION:
-                resp = self.http.get(
-                    f"{self.api}/login", params={"accessCode": access, "secretCode": secret}
-                )
-                resp.raise_for_status()
-                session = str(resp.json().get("SessionKey") or "")
-                if not session:
-                    raise httpx.HTTPError("WikiArt gave no session")
+                refused = self._refused.get(access)
+                if refused is not None and time.monotonic() - refused < self.LOGIN_AGAIN:
+                    left = self.LOGIN_AGAIN - (time.monotonic() - refused)
+                    raise httpx.HTTPError(
+                        f"WikiArt refused a login lately; not asked for {left / 60:.0f} min"
+                    )
+                try:
+                    resp = self.http.get(
+                        f"{self.api}/login", params={"accessCode": access, "secretCode": secret}
+                    )
+                    resp.raise_for_status()
+                    session = str(resp.json().get("SessionKey") or "")
+                    if not session:
+                        raise httpx.HTTPError("WikiArt gave no session")
+                except httpx.HTTPError:
+                    self._refused[access] = time.monotonic()
+                    raise
+                self._refused.pop(access, None)
                 self._sessions[access] = (session, time.monotonic())
             return session
 

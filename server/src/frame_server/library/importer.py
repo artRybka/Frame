@@ -24,6 +24,7 @@ from .colors import analyse, has_colours, tint_spread
 from .commons import OWN_SOURCES
 from .dates import text_year
 from .duplicates import dedupe, rank
+from .fragments import Fragments, split_part
 from .hosts import as_asked, deferrable
 from .images import ImageCache
 from .lifespan import LifeDates
@@ -41,6 +42,7 @@ from .museums import (
     reachable,
 )
 from .pages import search_pages
+from .phrases import quote, tokens
 from .repo import Library, matches, now_iso
 from .vocabulary import (
     HIGHLIGHT,
@@ -110,6 +112,23 @@ def language_of(key: str) -> str:
     """The language museum ``key`` searches in."""
     found = MUSEUMS.get(key)
     return found.language if found is not None else "en"
+
+
+def quotes_of(key: str) -> bool:
+    """Whether museum ``key``'s search keeps to a quoted phrase."""
+    found = MUSEUMS.get(key)
+    return found.phrases if found is not None else False
+
+
+@dataclass(frozen=True)
+class Asked:
+    """Words typed in Szukaj as the museums are asked them: each museum's
+    text (its language; phrases quoted where its search keeps to them) and,
+    for each phrase, its forms a work found must have one of (the phrase as
+    typed and translated: "nocna straż", "night watch", "ronde de nuit")."""
+
+    texts: dict[str, str]
+    phrases: list[list[str]]
 
 
 def small_thumb(item: Item) -> str:
@@ -239,6 +258,9 @@ class Importer:
         #: Words typed in Szukaj in the museums' languages (the language
         #: model's, set by the service); none: asked as typed.
         self.translate: Callable[[str, float], Wording] | None = None
+        #: Fragments of works (library/fragments.py), set by the service:
+        #: a fragment's id (``<work>~p<n>``) is made from its work's.
+        self.fragments: Fragments | None = None
 
     def access(self) -> Access:
         """The owner's current choices, with the shared death-year cache."""
@@ -280,6 +302,8 @@ class Importer:
         with self._remote_lock:
             if item_id in self._remote:
                 return self._remote[item_id]
+        if (split := split_part(item_id)) is not None:
+            return self._fragment(*split)
         source, _, source_id = item_id.partition(":")
         if source not in self.sources() or not source_id:
             return None
@@ -288,6 +312,42 @@ class Importer:
         if item is not None:
             self.remember([item])
         return item
+
+    def _fragment(self, work_id: str, n: int) -> Item | None:
+        """The ``n``-th fragment of the work ``work_id`` (library/fragments.py)."""
+        work = self.resolve(work_id) if self.fragments is not None else None
+        if work is None or self.fragments is None:
+            return None
+        item = self.fragments.part(work, n)
+        if item is not None:
+            self.remember([item])
+        return item
+
+    def fragments_of(self, item: Item) -> list[Item]:
+        """``item``'s fragments as works of their own, remembered for their
+        cards and thumbnails; [] when it has none."""
+        if self.fragments is None:
+            return []
+        found = self.fragments.items(item)
+        self.remember(found)
+        return found
+
+    def placed_fragments(
+        self, item: Item
+    ) -> tuple[list[Item], list[tuple[Item, tuple[float, float, float, float]]]]:
+        """``item``'s fragments (as :meth:`fragments_of`), and those whose
+        place on it is known with that place (left, top, width, height as
+        fractions of the whole)."""
+        found = self.fragments_of(item)
+        if self.fragments is None or not found:
+            return found, []
+        parts = self.fragments.parts(item)  # kept: no second question
+        places = [
+            (fragment, (p.x, p.y, p.w, p.h))
+            for fragment, p in zip(found, parts, strict=False)
+            if p.x is not None and p.y is not None and p.w is not None and p.h is not None
+        ]
+        return found, places
 
     def resolve(self, item_id: str) -> Item | None:
         """A library item, or a museum work that is not (yet) in the library."""
@@ -656,8 +716,26 @@ class Importer:
         """What each museum of ``keys`` (all on offer) is asked for words
         someone typed: in its own language ("gitara" in Warsaw, "guitar" at
         the Met)."""
-        words = self.wording(text, wait)
-        return {k: words.in_language(language_of(k)) for k in keys or self.sources()}
+        return self.asked(text, keys, wait).texts
+
+    def asked(
+        self, query: str, keys: Iterable[str] | None = None, wait: float = TRANSLATE_SECONDS
+    ) -> Asked:
+        """Szukaj's tokens (:mod:`.phrases`) as museums of ``keys`` (all on
+        offer) are asked them: each translated on its own, all of them
+        wanted (Mateusz, 2026-11-09: never "any of them")."""
+        wordings = [self.wording(t, wait) for t in tokens(query)]
+        texts: dict[str, str] = {}
+        for key in keys or self.sources():
+            language = language_of(key)
+            said = [w.in_language(language) for w in wordings]
+            texts[key] = quote(said) if quotes_of(key) else " ".join(said)
+        forms = [
+            list(dict.fromkeys(f for f in (w.text, w.en, w.fr) if f))
+            for w in wordings
+            if " " in w.text
+        ]
+        return Asked(texts, forms)
 
     def _from_all(
         self, ask: Callable[[str], tuple[int, list[Item]]], keys: list[str] | None = None

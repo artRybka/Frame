@@ -1,12 +1,90 @@
 # Changelog
 
-## 1.131.2
+## 1.135.1
 
 - Teraz: gdy ramka rysuje nowe dzieło, maluje się ono na starym akwarelą,
   plama po plamie od środka, w tempie paska. Każda plama zaczyna się od
   rozmytego koloru, który tam będzie, z nierówną, miejscami ciemniejszą
   krawędzią, a potem pojawia się w niej rysunek. Z „Ogranicz ruch” nowe
   dzieło po prostu przenika stare.
+
+## 1.134.1
+
+- Szukaj: podpis dzieła wymieniający kilku artystów naraz nie skleja ich już
+  w jedną osobę. Przez taki podpis van Gogh, Dürer, Renoir, Tiepolo i
+  Toulouse-Lautrec byli w podpowiedziach jednym artystą, a wybranie van
+  Gogha pokazywało dzieła ich wszystkich.
+
+## 1.134.0
+
+- Dzieła z Commons, które mają zestaw ostrzejszych kafli (np. „Ogród
+  rozkoszy ziemskich” Boscha, „Straż nocna”), w pełnym ekranie doczytują
+  kafle przy przybliżaniu: każdy kafel trafia dokładnie na swoje miejsce na
+  obrazie, a wczytywane są tylko te, które widać. Przybliżyć można teraz
+  mocniej, aż do pikseli kafli.
+
+## 1.133.1
+
+- Dymki z pytaniem („Opisać 19022 obrazy?”, „Usunąć playlistę?” i inne)
+  wskazują guzik, który je otworzył. Dotąd potwierdzenie „Opisz całą
+  bibliotekę” wisiało u góry strony ze strzałką na „Polskie tytuły i opisy”,
+  bo w iOS 26 dymek wskazuje widok, do którego jest przypięty, a był
+  przypięty do całej strony. Tak samo przy usuwaniu playlisty, klucza APNs
+  i domownika, odłączaniu telefonu, porzucaniu zmian kadru i wgrywaniu
+  innego certyfikatu autora.
+
+## 1.133.0
+
+- Szukaj: wpisane razem słowa są frazą. „nocna straż” znajduje dzieła, w
+  których te słowa stoją obok siebie (też „nocnej straży” albo „night watch”
+  w muzeach zagranicznych), a nie takie, gdzie „night” i „watches” padają w
+  różnych zdaniach opisu. Każde kolejne słowo dodane osobno dodatkowo
+  zawęża wyniki, nigdy nie wystarcza „dowolne z nich”. Gdy fraza nic nie
+  znajdzie, guzik „Szukaj słów osobno” rozbija ją na osobne słowa.
+  Zapisane playlisty działają jak dotąd.
+
+## 1.132.1
+
+- Szukaj: z Openverse przychodzą tylko zdigitalizowane dzieła sztuki, bez
+  kategorii „illustration”, z której brały się puste kafelki, herby i
+  przypadkowe rysunki (np. przy Dadaizmie). Już znalezione ilustracje
+  znikają z wyników.
+
+## 1.132.0
+
+- Bardzo wydłużone dzieła, jak zwoje japońskie i chińskie, są zapisywane
+  ostrzej. Do proporcji 2:1 nic się nie zmienia. Dłuższe zachowują krótszy
+  bok 1280 px, mieszcząc się w 6,5 Mpx, tyle co kwadrat 2560 × 2560.
+  Zwój z Yale „Palace Women” miał 2560 × 111 px, teraz ma 12 275 × 534. Muzea,
+  które pozwalają wybrać rozmiar (NGA, Yale, SMK, Smithsonian, Courtauld),
+  są proszone o większy plik. Wydłużone dzieła, które już leżą na serwerze,
+  pobierają się raz ponownie.
+- Fragmenty dzieła: zwoje z Cleveland mają na karcie pasek zdjęć kolejnych
+  części, każde 3400 px, a wybrane wielkie obrazy z Wikimedia Commons (np.
+  „Ogród rozkoszy ziemskich”, „Straż nocna”) swoje kafle. Fragment otwiera
+  się jak osobne dzieło: można go pokazać na ramce, dodać do kolejki albo
+  playlisty i skadrować. Na jego karcie jest powrót do całości. W studium
+  dzieła fragmenty są w sekcji „Fragmenty zwoju”, po „Detalach”.
+
+## 1.131.3
+
+- Library of Congress od dwóch dni odrzuca każde zapytanie z domu. Serwer
+  nie pyta jej teraz przez dobę po odmowie, a po każdej następnej dwa razy
+  dłużej, do dwóch tygodni. Stara fotografia przychodzi w tym czasie z
+  Wikimedia Commons.
+- Gdy serwer muzeum psuje się tylko w części (MNK: pełne zdjęcia dzieł od
+  trzech dni nie przychodzą, miniatury tak), serwer przestaje pytać o tę
+  część coraz dłużej, a miniatury idą dalej.
+- WikiArt: po odrzuconym logowaniu serwer czeka pół godziny, zamiast
+  logować się przy każdym wyszukiwaniu.
+
+## 1.131.2
+
+- Szukaj → Styl: styl z kilku słów (De Stijl, Art déco, Secesja, Młoda
+  Polska…) musi paść w opisie dzieła. Muzea czytały „de stijl” jako dwa
+  słowa, więc w wynikach były tablice drogowe i rysunki „w stylu
+  romańskim”. Styl z jednego słowa (Impresjonizm, Kubizm) wystarcza też
+  przy dziele z datą z lat tego stylu.
 
 ## 1.131.1
 

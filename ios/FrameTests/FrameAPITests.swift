@@ -1152,6 +1152,24 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(card?.playlistId, made.playlist.id)
     }
 
+    func testSearchPhrases() async throws {
+        // One chip is one phrase; saved before phrases, each word a chip.
+        XCTAssertEqual(SearchPhrases.tokens("\"nocna straż\" portret"), ["nocna straż", "portret"])
+        XCTAssertEqual(SearchPhrases.tokens("nocna straż"), ["nocna", "straż"])
+        XCTAssertEqual(SearchPhrases.tokens("  \"nocna   straż\" \"\" \"nocna straż"), ["nocna straż"])
+        XCTAssertEqual(SearchPhrases.query(["nocna straż", "portret", " "]), "\"nocna straż\" portret")
+        XCTAssertEqual(SearchPhrases.words(" nocna  straż "), ["nocna", "straż"])
+
+        let chips = [
+            SearchToken(kind: "word", key: "nocna straż", name: "nocna straż"),
+            SearchToken(kind: "word", key: "portret", name: "portret"),
+        ]
+        var rules = PlaylistRules()
+        rules.setTokens(chips)
+        XCTAssertEqual(rules.query, "\"nocna straż\" portret")
+        XCTAssertEqual(rules.tokens(names: [:]), chips)
+    }
+
     func testSearchTokensRoundTrip() async throws {
         var rules = PlaylistRules(query: "mgła", artists: ["Claude Monet"], styles: ["Impressionism"])
         rules.terms = ["subject:sea", "years:1880-1914"]
