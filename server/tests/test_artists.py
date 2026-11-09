@@ -290,6 +290,32 @@ def test_other_people_of_a_name_stay_apart() -> None:
     ]
 
 
+def test_a_list_of_artists_joins_none_of_them() -> None:
+    # One work credited to several people, or a description of a set, held
+    # Dürer, Renoir, Tiepolo and Toulouse-Lautrec as one person, and Van Gogh
+    # with them (Mateusz, 2026-11-09: "Olbracht Dürer" for "vincent van gogh").
+    listed = (
+        "Albrecht Dürer, Vincent van Gogh, Pierre-Auguste Renoir, "
+        "Henri de Toulouse-Lautrec, Giovanni Battista Tiepolo"
+    )
+    people = _people(
+        "Albrecht Dürer",
+        "Vincent van Gogh",
+        "Pierre-Auguste Renoir",
+        "Henri de Toulouse-Lautrec",
+        "Giovanni Battista Tiepolo",
+        listed,
+        "Renoir, Dürer",
+    )
+    assert all(len(p) == 1 for p in people), people
+    # Spellings of one person still join: few words more, nobody else's.
+    assert _people("Renoir", "Pierre-Auguste Renoir", "Dürer", "Dürer, Renoir") == [
+        ["Dürer"],
+        ["Dürer, Renoir"],
+        ["Pierre-Auguste Renoir", "Renoir"],
+    ]
+
+
 def test_the_shown_name_is_the_one_of_most_works() -> None:
     names = ArtistNames(
         {

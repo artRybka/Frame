@@ -5,7 +5,9 @@ import UIKit
 /// pinch out or double-tap to see it whole, pinch or double-tap to look
 /// closer, drag to look around, tap to hide the caption. The sun button
 /// brightens the screen to full while the viewer is open (remembered); it
-/// dims back as soon as the viewer starts to close.
+/// dims back as soon as the viewer starts to close. A work kept also as a
+/// set of sharper tiles (Commons; Mateusz 2026-11-09) gets them laid on it
+/// while zooming in, only those in view.
 struct OriginalViewer: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -15,12 +17,13 @@ struct OriginalViewer: View {
     @State private var image: UIImage?
     @State private var failed = false
     @State private var chrome = true
+    @State private var tiles: [ZoomTile] = []
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             if let image {
-                ZoomableImage(image: image) {
+                ZoomableImage(image: image, tiles: tiles) {
                     withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() }
                 }
                 .ignoresSafeArea()
@@ -71,6 +74,7 @@ struct OriginalViewer: View {
         .statusBarHidden(!chrome)
         .sensoryFeedback(.selection, trigger: brighten)
         .task(id: item.id) { await load() }
+        .task(id: item.id) { await loadTiles() }
         .onAppear { if brighten { ScreenBoost.shared.raise() } }
         // A swipe down starts closing long before the screen is gone: the
         // brightness goes back from its first frame (and comes up again
@@ -100,6 +104,13 @@ struct OriginalViewer: View {
                 : [Names.artist(item.artist), item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
             if !line.isEmpty {
                 Text(line).font(.footnote).opacity(0.75)
+            }
+            if !tiles.isEmpty {
+                Label("Przybliż, a ostrzejsze fragmenty (\(tiles.count)) doczytają się same",
+                      systemImage: "square.grid.3x3")
+                    .font(.caption)
+                    .opacity(0.6)
+                    .padding(.top, 2)
             }
         }
         .foregroundStyle(.white)
@@ -131,6 +142,42 @@ struct OriginalViewer: View {
         }
         failed = image == nil
     }
+
+    /// The work's tiles with their places, when the server knows them
+    /// (Commons tile sets; Cleveland's scroll sections have none yet).
+    private func loadTiles() async {
+        guard !item.isFragment, item.source == "wmc" || item.source == "cma",
+              let view = await Fragments.load(item.id, backend: model.backend),
+              let places = view.places, !places.isEmpty
+        else { return }
+        let fragments = Dictionary(view.fragments.map { ($0.id, $0.item) }, uniquingKeysWith: { a, _ in a })
+        tiles = places.compactMap { place in
+            guard let fragment = fragments[place.id], place.w > 0, place.h > 0,
+                  let request = model.backend.request(for: fragment.originalRef)
+            else { return nil }
+            return ZoomTile(id: place.id, unit: place.unit,
+                            pixels: ZoomTile.keptWidth(fragment.width, fragment.height),
+                            request: request)
+        }
+    }
+}
+
+/// A sharper picture of one part of the whole, laid on it while zooming:
+/// `unit` is its place as fractions of the whole, `pixels` how wide it
+/// comes from the server.
+struct ZoomTile: Equatable {
+    let id: String
+    let unit: CGRect
+    let pixels: CGFloat
+    let request: URLRequest
+
+    /// The width the server keeps a picture of this size at (its long side
+    /// at most 2560 px, `images.kept_size`).
+    static func keptWidth(_ width: Int?, _ height: Int?) -> CGFloat {
+        guard let width, let height, width > 0, height > 0 else { return 2560 }
+        let long = CGFloat(max(width, height))
+        return CGFloat(width) * min(1, 2560 / long)
+    }
 }
 
 /// A picture in a scroll view, shown filling the view (centred, the sides
@@ -138,6 +185,7 @@ struct OriginalViewer: View {
 /// see it whole and to zoom back in on a spot, single tap for `onTap`.
 struct ZoomableImage: UIViewRepresentable {
     let image: UIImage
+    var tiles: [ZoomTile] = []
     var onTap: () -> Void = {}
 
     func makeUIView(context: Context) -> ZoomScrollView { ZoomScrollView() }
@@ -145,6 +193,7 @@ struct ZoomableImage: UIViewRepresentable {
     func updateUIView(_ view: ZoomScrollView, context: Context) {
         view.onTap = onTap
         view.show(image)
+        view.lay(tiles)
     }
 }
 
@@ -155,6 +204,17 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
     private var fitted: CGSize = .zero
     /// The zoom at which the picture covers the whole view; it opens there.
     private var fillScale: CGFloat = 1
+    /// Sharper pictures of parts of it, laid on it while zooming in.
+    private var tiles: [ZoomTile] = []
+    /// The tiles on the picture now, by id, and the size each was asked in.
+    private var tileViews: [String: UIImageView] = [:]
+    private var tileSizes: [String: CGFloat] = [:]
+    private var tileLoads: [String: Task<Void, Never>] = [:]
+    /// The look at which tiles are in view after a zoom or a drag settles.
+    private var settling: Task<Void, Never>?
+    private var lookedAt: CFTimeInterval = 0
+    /// Below this many pixels across, a tile comes in its smaller size.
+    private static let smallTile: CGFloat = 1280
 
     init() {
         super.init(frame: .zero)
@@ -204,6 +264,7 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
         let scale = min(bounds.width / size.width, bounds.height / size.height)
         imageView.frame = CGRect(x: 0, y: 0, width: size.width * scale, height: size.height * scale)
         contentSize = imageView.frame.size
+        deepest()
         let fill = max(bounds.width / imageView.frame.width, bounds.height / imageView.frame.height)
         fillScale = min(maximumZoomScale, max(minimumZoomScale, fill))
         zoomScale = fillScale
@@ -211,6 +272,115 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
         // The middle of the picture in the middle of the view.
         contentOffset = CGPoint(x: (contentSize.width - bounds.width) / 2,
                                 y: (contentSize.height - bounds.height) / 2)
+        for tile in tiles { tileViews[tile.id]?.frame = rect(of: tile) }
+        lookAtTiles()
+    }
+
+    // MARK: Tiles
+
+    /// Lays `new` tiles on the picture (none until zoomed in past what the
+    /// picture itself shows).
+    func lay(_ new: [ZoomTile]) {
+        guard new != tiles else { return }
+        for view in tileViews.values { view.removeFromSuperview() }
+        for load in tileLoads.values { load.cancel() }
+        tileViews = [:]
+        tileSizes = [:]
+        tileLoads = [:]
+        tiles = new
+        deepest()
+        lookAtTiles()
+    }
+
+    /// With tiles, zooming goes as deep as their pixels reach (one of
+    /// theirs to one of the screen's), within reason.
+    private func deepest() {
+        let across = tiles.map { $0.pixels / max($0.unit.width, 0.001) }.max() ?? 0
+        let shown = imageView.bounds.width * traitCollection.displayScale
+        guard across > 0, shown > 0 else {
+            maximumZoomScale = 8
+            return
+        }
+        maximumZoomScale = min(24, max(8, across / shown))
+    }
+
+    private func rect(of tile: ZoomTile) -> CGRect {
+        let size = imageView.bounds.size
+        return CGRect(x: tile.unit.minX * size.width, y: tile.unit.minY * size.height,
+                      width: tile.unit.width * size.width, height: tile.unit.height * size.height)
+    }
+
+    /// Looks again at once now and then while a zoom or a drag goes on,
+    /// and once more when it stops.
+    private func tilesMoved() {
+        guard !tiles.isEmpty else { return }
+        if CACurrentMediaTime() - lookedAt > 0.3 { lookAtTiles() }
+        settling?.cancel()
+        settling = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
+            self?.lookAtTiles()
+        }
+    }
+
+    /// Asks for the tiles in view that show more than the picture there
+    /// (in a size to what they cover on the screen), and lets go of the
+    /// rest: a tile set is far too large to hold whole.
+    private func lookAtTiles() {
+        lookedAt = CACurrentMediaTime()
+        guard !tiles.isEmpty, let picture = imageView.image, imageView.bounds.width > 0 else { return }
+        let seen = convert(bounds, to: imageView)
+        let near = seen.insetBy(dx: -seen.width * 0.15, dy: -seen.height * 0.15)
+        let screen = traitCollection.displayScale
+        let pictureWidth = picture.size.width * picture.scale
+        for tile in tiles {
+            let place = rect(of: tile)
+            let onScreen = place.width * zoomScale * screen
+            let inPicture = tile.unit.width * pictureWidth
+            let wanted: CGFloat? = if !near.intersects(place) || onScreen <= inPicture * 1.2 {
+                nil
+            } else if onScreen <= Self.smallTile, tile.pixels > Self.smallTile * 1.2 {
+                Self.smallTile
+            } else {
+                tile.pixels
+            }
+            guard let wanted else {
+                drop(tile.id)
+                continue
+            }
+            if tileSizes[tile.id] != wanted { load(tile, size: wanted) }
+        }
+    }
+
+    private func load(_ tile: ZoomTile, size: CGFloat) {
+        tileSizes[tile.id] = size
+        tileLoads[tile.id]?.cancel()
+        tileLoads[tile.id] = Task { [weak self] in
+            let image = try? await ImageLoader.shared.image(for: tile.request, maxPixel: size)
+            guard let image, !Task.isCancelled, let self else { return }
+            self.put(image, on: tile)
+        }
+    }
+
+    private func put(_ image: UIImage, on tile: ZoomTile) {
+        guard tileSizes[tile.id] != nil else { return }
+        if let view = tileViews[tile.id] {
+            view.image = image  // a sharper (or lighter) one in its place
+            return
+        }
+        let view = UIImageView(image: image)
+        view.contentMode = .scaleToFill
+        view.frame = rect(of: tile)
+        view.alpha = 0
+        imageView.addSubview(view)
+        tileViews[tile.id] = view
+        UIView.animate(withDuration: 0.25) { view.alpha = 1 }
+    }
+
+    private func drop(_ id: String) {
+        tileLoads.removeValue(forKey: id)?.cancel()
+        tileSizes[id] = nil
+        tileViews.removeValue(forKey: id)?.removeFromSuperview()
     }
 
     /// Keeps a picture smaller than the screen in its middle.
@@ -223,7 +393,12 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
 
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
 
-    func scrollViewDidZoom(_ scrollView: UIScrollView) { centre() }
+    func scrollViewDidZoom(_ scrollView: UIScrollView) {
+        centre()
+        tilesMoved()
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) { tilesMoved() }
 
     @objc private func tapped() { onTap() }
 
