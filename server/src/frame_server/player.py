@@ -101,6 +101,9 @@ SET_ASIDE_KEY = "set_aside_dropped"
 SET_ASIDE_VERSION = 5
 #: Version of the colour analysis and score the library's pictures carry.
 SCORE_KEY = "suitability_version"
+#: Set once the pictures kept from before lost their blank margins
+#: (``ImageCache.trim_kept``).
+MARGINS_KEY = "margins_trimmed"
 #: The playlist the photos sent once gather in, newest first.
 SENT_NAME = "Historia przesłanych"
 #: A rotation with fewer pictures not shown lately asks museums for more,
@@ -1434,8 +1437,13 @@ class Player:
         return batches
 
     def _fix_up(self) -> None:
-        """Once after an update: the pictures analysed again, then the
-        thumbnails of works shown from another source's copy made from it."""
+        """Once after an update: the kept pictures without their blank
+        margins, the pictures analysed again, then the thumbnails of works
+        shown from another source's copy made from it."""
+        if not self.library.get_state(MARGINS_KEY, False):
+            trimmed = self.service.images.trim_kept()
+            self.library.set_state(MARGINS_KEY, True)
+            log.info("margins: %d kept pictures trimmed", trimmed)
         self.rescore()
         self.service.sharper.thumbs_again()
 
