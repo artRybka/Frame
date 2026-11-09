@@ -49,6 +49,8 @@ READINGS: dict[str, str] = {
     # artist's visible name only ("Nieznany", not "NieznanyUnknown author");
     # 4: archive papers and chemical diagrams left out.
     "wmc": "4",
+    # 2026-11-09: searches ask for digitised artworks only, no illustrations.
+    "openverse": "2",
 }
 
 

@@ -1632,8 +1632,10 @@ class Openverse(Museum):
         return int(body.get("result_count") or 0), items
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
-        # Art only: without a category most of Openverse is Flickr photos.
-        return self._get({"q": query, "category": "digitized_artwork,illustration"}, limit, page)
+        # Art only: without a category most of Openverse is Flickr photos,
+        # and its "illustration" anyone's drawings, crests and blank tiles
+        # (Dadaizm, Mateusz 2026-11-09).
+        return self._get({"q": query, "category": "digitized_artwork"}, limit, page)
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         if spec.year_from is not None or spec.year_to is not None:

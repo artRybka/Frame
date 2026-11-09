@@ -202,6 +202,8 @@ def search_fits(item: Item, rules: PlaylistRules) -> bool:
     (:func:`matches`, ``Item.found_for``)."""
     if rules.artists and not made_by(item.artist, rules.artists):
         return False
+    if item.source == "openverse" and item.classification == "illustration":
+        return False  # found before searches left them out (Openverse.search)
     return matches_terms(item, rules.terms, searched_kinds(rules.terms))
 
 
