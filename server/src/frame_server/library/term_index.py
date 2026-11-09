@@ -21,6 +21,8 @@ from dataclasses import dataclass
 
 from .artists import ArtistNames, is_artist
 from .models import MINE, Item, PlaylistRules
+from .phrases import has_phrase, quote
+from .phrases import words as phrase_words
 from .vocabulary import (
     OBJECT_CATEGORIES,
     Term,
@@ -237,10 +239,11 @@ class TermIndex:
             at += 1
 
     def word_count(self, words: str) -> int:
-        """How many works ``query(PlaylistRules(query=words))`` finds."""
+        """How many works ``words`` as one chip finds: a phrase when there
+        are several (:mod:`.phrases`)."""
         wanted = words.casefold().split()
         if not wanted or any(_WORD.search(w) is None for w in wanted):
-            return self._query(PlaylistRules(query=words))
+            return self._query(PlaylistRules(query=quote([words])))
         # A word is in the text where each of its runs of letters is inside
         # one of the text's words; with more than letters in it ("o'keeffe")
         # the text itself tells.
@@ -251,6 +254,9 @@ class TermIndex:
         assert found is not None
         if odd := [w for w in wanted if _WORD.fullmatch(w) is None]:
             found = {n for n in found if all(w in self._haystack(n) for w in odd)}
+        if len(wanted) > 1:
+            phrase = phrase_words(words)
+            found = {n for n in found if has_phrase(phrase, phrase_words(self._haystack(n)))}
         return self._works(self._entries[n] for n in found)
 
     def _containing(self, run: str) -> set[int]:

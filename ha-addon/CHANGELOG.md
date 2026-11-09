@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.133.0
+
+- Szukaj: wpisane razem słowa są frazą. „nocna straż” znajduje dzieła, w
+  których te słowa stoją obok siebie (też „nocnej straży” albo „night watch”
+  w muzeach zagranicznych), a nie takie, gdzie „night” i „watches” padają w
+  różnych zdaniach opisu. Każde kolejne słowo dodane osobno dodatkowo
+  zawęża wyniki, nigdy nie wystarcza „dowolne z nich”. Gdy fraza nic nie
+  znajdzie, guzik „Szukaj słów osobno” rozbija ją na osobne słowa.
+  Zapisane playlisty działają jak dotąd.
+
 ## 1.132.0
 
 - Bardzo wydłużone dzieła, jak zwoje japońskie i chińskie, są zapisywane

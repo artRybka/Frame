@@ -42,6 +42,7 @@ from .museums import (
     reachable,
 )
 from .pages import search_pages
+from .phrases import quote, tokens
 from .repo import Library, matches, now_iso
 from .vocabulary import (
     HIGHLIGHT,
@@ -111,6 +112,23 @@ def language_of(key: str) -> str:
     """The language museum ``key`` searches in."""
     found = MUSEUMS.get(key)
     return found.language if found is not None else "en"
+
+
+def quotes_of(key: str) -> bool:
+    """Whether museum ``key``'s search keeps to a quoted phrase."""
+    found = MUSEUMS.get(key)
+    return found.phrases if found is not None else False
+
+
+@dataclass(frozen=True)
+class Asked:
+    """Words typed in Szukaj as the museums are asked them: each museum's
+    text (its language; phrases quoted where its search keeps to them) and,
+    for each phrase, its forms a work found must have one of (the phrase as
+    typed and translated: "nocna straż", "night watch", "ronde de nuit")."""
+
+    texts: dict[str, str]
+    phrases: list[list[str]]
 
 
 def small_thumb(item: Item) -> str:
@@ -681,8 +699,26 @@ class Importer:
         """What each museum of ``keys`` (all on offer) is asked for words
         someone typed: in its own language ("gitara" in Warsaw, "guitar" at
         the Met)."""
-        words = self.wording(text, wait)
-        return {k: words.in_language(language_of(k)) for k in keys or self.sources()}
+        return self.asked(text, keys, wait).texts
+
+    def asked(
+        self, query: str, keys: Iterable[str] | None = None, wait: float = TRANSLATE_SECONDS
+    ) -> Asked:
+        """Szukaj's tokens (:mod:`.phrases`) as museums of ``keys`` (all on
+        offer) are asked them: each translated on its own, all of them
+        wanted (Mateusz, 2026-11-09: never "any of them")."""
+        wordings = [self.wording(t, wait) for t in tokens(query)]
+        texts: dict[str, str] = {}
+        for key in keys or self.sources():
+            language = language_of(key)
+            said = [w.in_language(language) for w in wordings]
+            texts[key] = quote(said) if quotes_of(key) else " ".join(said)
+        forms = [
+            list(dict.fromkeys(f for f in (w.text, w.en, w.fr) if f))
+            for w in wordings
+            if " " in w.text
+        ]
+        return Asked(texts, forms)
 
     def _from_all(
         self, ask: Callable[[str], tuple[int, list[Item]]], keys: list[str] | None = None

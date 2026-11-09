@@ -264,7 +264,11 @@ struct MuseumSearchView: View {
             worksGrid(search.shownCatalogue, search.shownFromMuseums)
             // Only once nothing more can come.
             if emptyShown {
-                NothingFound(without: without) { token in
+                NothingFound(
+                    without: without,
+                    phrase: tokens.wrappedValue.first { $0.kind == "word" && $0.key.contains(" ") },
+                    splitUp: splitUp
+                ) { token in
                     withAnimation(.snappy) { tokens.wrappedValue.removeAll { $0 == token } }
                 }
             }
@@ -275,6 +279,15 @@ struct MuseumSearchView: View {
                 SearchWaiting()
             }
         }
+    }
+
+    /// A phrase's words as chips of their own, where the phrase was.
+    private func splitUp(_ phrase: SearchToken) {
+        var chips = tokens.wrappedValue
+        guard let at = chips.firstIndex(of: phrase) else { return }
+        let words = SearchPhrases.words(phrase.key).map { SearchToken(kind: "word", key: $0, name: $0) }
+        chips.replaceSubrange(at ... at, with: words.filter { !chips.contains($0) })
+        withAnimation(.snappy) { tokens.wrappedValue = chips }
     }
 
     /// The works found, a museum's with its picture from the museum.
