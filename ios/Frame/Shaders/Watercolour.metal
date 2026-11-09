@@ -68,26 +68,30 @@ float ease(float x) {
 
     // The wash: the new picture blurred (a 14 px Gaussian), a little more saturated.
     float sigma = 14.0 * unit;
-    float3 sum = float3(0);
+    // Premultiplied: what lies past the picture's edge (clear) adds nothing.
+    float4 sum = float4(0);
     float weights = 0;
     for (int j = -3; j <= 3; j++) {
         for (int i = -3; i <= 3; i++) {
             float2 d = float2(i, j) * 0.62;
             float w = exp(-0.5 * dot(d, d));
             float2 at = clamp(position + d * sigma, float2(0.5), size - 0.5);
-            sum += float3(layer.sample(at).rgb) * w;
+            sum += float4(layer.sample(at)) * w;
             weights += w;
         }
     }
-    float3 blurred = sum / weights;
+    float cover = sum.a / weights;
+    float3 blurred = sum.a > 0.0 ? sum.rgb / sum.a : float3(0);
     float luma = dot(blurred, float3(0.2126, 0.7152, 0.0722));
     blurred = clamp(mix(float3(luma), blurred, 1.2), 0.0, 1.0);
     float speck = 1.0 - 0.06 * (grain - 0.5) * wash;
     float3 tint = blurred * (1.0 - rim * (1.15 - blurred)) * speck;
 
-    float3 sharp = float3(layer.sample(position).rgb);
+    float4 sharp = float4(layer.sample(position));
     // Over the old picture: the wash covers `glaze` of it, the drawing the rest.
+    glaze *= cover;
+    drawn *= sharp.a;
     float alpha = glaze + drawn - glaze * drawn;
-    float3 colour = tint * glaze * (1.0 - drawn) + sharp * drawn;
+    float3 colour = tint * glaze * (1.0 - drawn) + (sharp.a > 0.0 ? sharp.rgb / sharp.a : float3(0)) * drawn;
     return half4(half3(colour), half(alpha));
 }
