@@ -799,6 +799,18 @@ final class AppModel {
         if let value = try? await backend.hiddenItems() { setHidden(value.items) }
     }
 
+    /// The cards in Playlisty in this order: at once here, then kept by the
+    /// server (each person's own); back as the server has them if it fails.
+    func arrangePlaylists(_ ordered: [PlaylistSummary]) async {
+        if ordered.map(\.id) != playlists.map(\.id) { playlists = ordered }
+        do {
+            setPlaylists(try await backend.arrangePlaylists(ids: ordered.map(\.id)))
+        } catch {
+            show(error)
+            await refreshPlaylists()
+        }
+    }
+
     /// The playlists as the server sent them, kept for the next launch.
     private func setPlaylists(_ value: [PlaylistSummary]) {
         playlists = value

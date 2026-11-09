@@ -99,6 +99,9 @@ SLOW_WORKS = 1.0
 #: The playlist "Historia przesłanych" (see ``Player.remember_sent``); one
 #: for each person (the owner's under the key from before, ``sent_key``).
 SENT_KEY = "sent_photos_playlist"
+#: Each person's order of the cards in Playlisty (playlist ids), under
+#: ``playlist_order:<user id>``; set by moving a card in the app.
+ORDER_KEY = "playlist_order"
 #: Hearts were moved from ``Item.favorite`` to the owner's in ``favorites``.
 FAVORITES_MOVED_KEY = "favorites_moved"
 #: What was learnt of the museums (:class:`.places.Places`).
@@ -697,6 +700,8 @@ class Library:
             ids = self._hearts().pop(user_id, set())
             self._hearts_version += 1
             db.execute("DELETE FROM favorites WHERE user_id = ?", (user_id,))
+            self._kv_rows().pop(f"{ORDER_KEY}:{user_id}", None)
+            db.execute("DELETE FROM kv WHERE key = ?", (f"{ORDER_KEY}:{user_id}",))
             hearts = self._hearts()
             for item_id in ids:
                 if item_id in self._all() and not any(item_id in h for h in hearts.values()):
@@ -955,6 +960,24 @@ class Library:
             rows = db.execute("SELECT id, data FROM playlists ORDER BY id").fetchall()
         found = [self._playlist_of(pid, data) for pid, data in rows]
         return found if user is None else [p for p in found if p.visible_to(user)]
+
+    def arranged_playlists(self, user: str) -> list[Playlist]:
+        """The playlists ``user`` sees, in the order they put the cards in
+        Playlisty; their own "Ulubione" first and the rest as made until they
+        move one. Ones made or shared since come after the arranged ones."""
+        found = self.playlists(user)
+        default = sorted(found, key=lambda p: not (p.is_favorites and p.owner == user))
+        order = self.get_state(f"{ORDER_KEY}:{user}", None)
+        if not order:
+            return default
+        place = {pid: n for n, pid in enumerate(order)}
+        return sorted(default, key=lambda p: place.get(p.id or 0, len(place)))
+
+    def arrange_playlists(self, user: str, ids: list[int]) -> None:
+        """Remember ``user``'s order of the cards (ids they don't see dropped)."""
+        seen = {p.id for p in self.playlists(user)}
+        order = list(dict.fromkeys(i for i in ids if i in seen))
+        self.set_state(f"{ORDER_KEY}:{user}", order)
 
     def playlist(self, playlist_id: int) -> Playlist | None:
         with self._db() as db:

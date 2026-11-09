@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.135.0
+
+- Playlisty: karty da się ułożyć po swojemu. Przytrzymaj kartę i przesuń
+  palcem, pozostałe robią miejsce; w menu przytrzymanej karty jest też
+  „Przesuń na początek”. Kolejność zapamiętuje serwer, osobno dla każdego
+  domownika (ta sama na każdym jego telefonie). Propozycje zostają pierwsze,
+  Ukryte ostatnie, a nowe playlisty stają na końcu.
+- Bez kafelka „Nowa playlista” na końcu siatki; nową playlistę tworzy „+” u
+  góry ekranu. Przytrzymana karta playlisty (i Propozycji) kładzie się na
+  bok: okładka z lewej, nazwa i liczba dzieł z prawej, a menu stoi tuż pod
+  nią, nie pod podpisem i nie na sąsiednich kartach.
+
 ## 1.134.1
 
 - Szukaj: podpis dzieła wymieniający kilku artystów naraz nie skleja ich już
