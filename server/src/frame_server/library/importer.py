@@ -36,9 +36,11 @@ from .museums import (
     Kind,
     Museum,
     WikimediaCommons,
+    asked_by,
     available,
     client,
     museum,
+    plain_text,
     reachable,
 )
 from .pages import search_pages
@@ -492,10 +494,15 @@ class Importer:
             if wait is not None:
                 http.timeout = httpx.Timeout(wait)
             found = museum(source, http, access)
-            if kind == "any":
+            by = asked_by(query)
+            if by is not None and kind == "any":
+                total, items = found.search_artist(*by, limit=limit, page=page)
+            elif kind == "any":
                 total, items = found.search(query, limit=limit, page=page)
             else:
-                total, items = found.search_kind(query, cast(Kind, kind), limit=limit, page=page)
+                total, items = found.search_kind(
+                    plain_text(query), cast(Kind, kind), limit=limit, page=page
+                )
         items = self.without_grey([dated(i) for i in items if not is_copy(i)])
         self.remember(items)
         if items:

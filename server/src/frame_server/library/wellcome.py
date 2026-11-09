@@ -205,6 +205,20 @@ class WellcomeCollection(Museum):
             kinds=self.kinds["any"],
         )
 
+    def search_by(
+        self, artist: str, words: str = "", limit: int = 20, page: int = 1
+    ) -> tuple[int, list[Item]]:
+        # The dump's artist texts at home; the API as before.
+        text = " ".join(w for w in (words, artist) if w)
+        return self._at_home(
+            words,
+            limit,
+            page,
+            lambda: self._get({"query": text}, limit, page),
+            artist=artist,
+            kinds=self.kinds["any"],
+        )
+
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         genres = self.kinds.get(spec.kind)
         if spec.highlight or not genres:

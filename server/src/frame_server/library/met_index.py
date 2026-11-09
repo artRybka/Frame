@@ -216,6 +216,7 @@ class MetIndex:
         words: str = "",
         department: int | None = None,
         begin: int | None = None,
+        artist: str = "",
         end: int | None = None,
         highlight: bool = False,
         offset: int = 0,
@@ -224,10 +225,14 @@ class MetIndex:
         """(how many works fit, the ids of ``limit`` of them from
         ``offset``): words found best first (the Met's highlights before
         the rest), without words by id. A work with a year range fits a
-        span it overlaps, as the Met's ``dateBegin``/``dateEnd`` do."""
+        span it overlaps, as the Met's ``dateBegin``/``dateEnd`` do.
+        ``artist``: the words of a name in the works' artist texts only."""
         where = ["w.picture = 1"]
         args: list[Any] = []
         query = match(words) if words.strip() != "*" else ""
+        if by := match(artist):
+            parts = [f"{{artist}} : ({by})", *([f"({query})"] if query else [])]
+            query = " AND ".join(parts)
         if department is not None:
             where.append("w.department = ?")
             args.append(DEPARTMENTS.get(department, ""))

@@ -277,6 +277,15 @@ class NationalGalleryOfArt(Museum):
         where, args = self._words(query)
         return self._query(where, args, limit, page)
 
+    def search_by(
+        self, artist: str, words: str = "", limit: int = 20, page: int = 1
+    ) -> tuple[int, list[Item]]:
+        where, args = self._words(words)
+        names = [w for w in re.split(r"\s+", artist.lower().strip()) if w]
+        where += ["lower(artist) LIKE ?" for _ in names]
+        args += [f"%{w}%" for w in names]
+        return self._query(where, args, limit, page)
+
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         if spec.highlight or (spec.kind != "any" and spec.kind not in self.kinds):
             return 0, []
