@@ -3,11 +3,12 @@
 
 from __future__ import annotations
 
+import random
 import threading
 from typing import Any
 
 import pytest
-from PIL import Image, ImageOps
+from PIL import Image, ImageDraw, ImageOps
 from test_sharper import _detail, _print
 
 from frame_server.library import Item, PlaylistRules
@@ -33,6 +34,21 @@ def _work(service: FrameService, item_id: str, img: Image.Image, **fields: Any) 
     img.convert("RGB").save(path, "JPEG", quality=90)
     service.library.upsert(item)
     return item
+
+
+def _large(seed: int, size: tuple[int, int] = (2400, 2000)) -> Image.Image:
+    """A made-up painting drawn at its full size, fine shapes all over (a
+    small one enlarged is too smooth for a detail of it to be told)."""
+    rng = random.Random(seed)
+    img = Image.new("RGB", size, (235, 225, 200))
+    draw = ImageDraw.Draw(img)
+    for _ in range(5000):
+        x, y = rng.randrange(size[0]), rng.randrange(size[1])
+        w, h = rng.randrange(6, 90), rng.randrange(6, 90)
+        tone = tuple(rng.randrange(256) for _ in range(3))
+        shape = draw.ellipse if rng.random() < 0.5 else draw.rectangle
+        shape((x, y, x + w, y + h), fill=tone, outline=(20, 20, 20))
+    return img
 
 
 def _ids(service: FrameService, query: str) -> set[str]:
@@ -137,3 +153,38 @@ def test_other_titles_on_commons_are_no_part_of_the_title() -> None:
 
     long = "Study of a young woman.[1] Inne tytuły: Portrait of a Young Woman."
     assert title_key(long, "Jan Vermeer") == title_key("Study of a Young Woman")
+
+
+def test_a_small_detail_is_found_in_the_large_picture(service: FrameService) -> None:
+    """A head of "The Night Watch" is 40 px of the painting's thumbnail:
+    it is laid over the painting's large picture (Mateusz 2026-11-09)."""
+    painting = _large(7)
+    whole = _work(service, "rijks:1", painting.resize((600, 500)), title="The Night Watch")
+    service.library.update("rijks:1", width=2400, height=2000)
+    path = service.images.image_path(whole)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    painting.save(path, "JPEG", quality=92)
+    head = painting.crop((900, 700, 1280, 1020)).resize((760, 640))
+    _work(service, "wmc:2", head, title="The Nightwatch Jan Brughman")
+    # Another work whose title shares the word: no detail of it.
+    _work(service, "wmc:3", _large(8, (760, 640)), title="The Nightwatch, a study")
+    service.twins.look()
+    head_item = service.library.get("wmc:2")
+    other = service.library.get("wmc:3")
+    assert head_item is not None and head_item.detail_of == "rijks:1"
+    assert other is not None and not other.detail_of
+    assert _ids(service, "rembrandt vermeer night") <= {"rijks:1", "wmc:3"}
+
+
+def test_the_first_maker_named_and_file_name_details() -> None:
+    from frame_server.library.twins import artist_key, title_words
+
+    lundens = artist_key("Gerrit Lundens")
+    assert artist_key("Przypisywany Gerrit Lundens / Według Rembrandt") == lundens
+    assert artist_key("attributed to Gerrit Lundens") == lundens
+    assert artist_key("after Rembrandt") == artist_key("Rembrandt")
+    assert "nightwatch" in title_words("The Night Watch") & title_words("The Nightwatch")
+    assert not title_words("Portrait of a Young Woman")
+    detail = Item(id="wmc:1", source="wmc", source_id="1", title="Night_Watch_detail_1")
+    assert is_detail(detail)
+    assert not is_detail(Item(id="wmc:2", source="wmc", source_id="2", title="Detailed_Map"))

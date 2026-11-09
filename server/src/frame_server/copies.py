@@ -35,7 +35,7 @@ from .library.aic import aic_large_size
 from .library.duplicates import surname
 from .library.hosts import as_asked
 from .library.images import IMAGE_MAX, display_copy, own_copy
-from .library.likeness import WHOLE_TURN, Fit, keypoints
+from .library.likeness import WHOLE_TURN, Fit, keypoints, whole_work
 from .library.vocabulary import is_copy, is_photograph, is_reproduction
 from .sharper import Quality, archive_own, colour_note, tone
 
@@ -89,7 +89,8 @@ class CopyView(BaseModel):
     same picture, not sharper), "off" (a detail, a page around it, a grey
     plate, a reproduction, another work: only to look at), "checking"
     (being compared). ``notes``: why, as codes the app names: "whole",
-    "colours", "fragment", "page", "turned", "grey", "coloured",
+    "colours", "fragment", "page", "whole-work" (the work's picture is a
+    detail of the copy: only to look at, never chosen), "turned", "grey", "coloured",
     "colour-off", "reproduction", "other" (another picture: the same title,
     another work), "unseen" (its thumbnail could not be had).
     ``role``: "current" (the picture shown now), "own" (the work's own
@@ -483,8 +484,13 @@ class Copies:
         elif fit.turn > WHOLE_TURN and fit.cover >= 0.8:
             notes.append("turned")
             off = True
+        elif fit.inside > 1:
+            notes.append("fragment")
+            off = True
         else:
-            notes.append("fragment" if fit.inside > 1 else "page")
+            # The work's own picture a detail of the copy: the copy is the
+            # whole work, never its picture (Mateusz 2026-11-09).
+            notes.append("whole-work" if whole_work(fit) else "page")
             off = True
         try:
             colours = colour_note(tone(own_thumb), tone(copy_thumb))
@@ -557,6 +563,14 @@ class Copies:
         copy = self.sharper.importer.resolve(copy_id)
         if copy is None or not display_copy(copy):
             raise LookupError(copy_id)
+        try:
+            self.images.ensure_thumb(stored)
+            self.images.ensure_thumb(copy)
+        except (httpx.HTTPError, OSError):
+            pass
+        fit = self.likeness.fit(stored, copy)
+        if fit is not None and whole_work(fit):
+            raise ValueError("the work is a detail of this copy: its whole would stand in for it")
         return self.sharper.choose(stored, copy)
 
     # -- the close-up ------------------------------------------------------------------

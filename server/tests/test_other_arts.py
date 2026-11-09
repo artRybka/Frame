@@ -218,3 +218,21 @@ def test_museum_works_of_a_colour_process_only() -> None:
 
     kept, total = search_page(Asked(), colours, 1)  # type: ignore[arg-type]
     assert total == 4 and [i.id for i in kept] == ["aic:1", "aic:2"]
+
+
+def test_photographs_described_in_french_are_photographs() -> None:
+    """Paris Musées: "Arts graphiques, Photographie", "Épreuve sur papier
+    gélatino-argentique" (a 1944 portrait among the paintings, Mateusz
+    2026-11-09)."""
+    leclerc = Item(
+        id="paris:1",
+        source="paris",
+        source_id="1",
+        classification="Arts graphiques, Photographie",
+        medium="Épreuve sur papier gélatino-argentique",
+    )
+    assert object_category(leclerc) == PHOTOGRAPHY
+    etching = leclerc.model_copy(
+        update={"classification": "Arts graphiques", "medium": "Eau-forte"}
+    )
+    assert object_category(etching) is None

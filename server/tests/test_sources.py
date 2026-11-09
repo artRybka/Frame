@@ -263,10 +263,84 @@ def test_europeana_type_and_medium_from_concepts() -> None:
     ]
     with _europeana(records, []) as http:
         oil, print_ = Europeana(http).search("La Berceuse")[1]
-    assert oil.classification == "paintings (visual works)"
+    assert oil.classification == "Painting"  # its AAT link read
     assert oil.medium == "oil paint (paint), canvas (textile material)"
     assert is_painting(oil)
     assert print_.classification == "print" and print_.medium == ""
+
+
+def test_europeana_types_in_any_language_sort_objects_and_text_out() -> None:
+    """A third of Europeana's works came typed in no English and were taken
+    for pictures: a theatre programme, a ceramic plate, a requisitioned
+    bell, Fortepan's photographs (Szukaj "II wojna światowa", 2026-11-09)."""
+    from frame_server.library.vocabulary import (
+        DECORATIVE,
+        PHOTOGRAPHY,
+        is_copy,
+        is_document,
+        object_category,
+    )
+
+    free = "http://creativecommons.org/publicdomain/mark/1.0/"
+    records = [
+        _europeana_record(
+            free,
+            [],
+            id="/1/programme",
+            title=["Schițe și momente, Teatrul Municipal"],
+            dcTypeLangAware={
+                "ro": ["Afiș teatral"],
+                "def": ["http://vocab.getty.edu/aat/300027221"],
+            },
+        ),
+        _europeana_record(
+            free,
+            [],
+            id="/1/plate",
+            dcTypeLangAware={"nl": ["aardewerk, keramiek, schotel"]},
+        ),
+        _europeana_record(
+            free,
+            [],
+            id="/1/bell",
+            title=["Gt: P. van Trier. Gj: 1660. Dm: 125 cm."],
+            dcTypeLangAware={"def": ["http://vocab.getty.edu/aat/300041575"]},
+        ),
+        _europeana_record(free, [], id="/1/street", dataProvider=["Fortepan"]),
+        _europeana_record(
+            free,
+            [],
+            id="/1/poster",
+            dcTypeLangAware={"def": ["http://vocab.getty.edu/aat/300027221"]},
+        ),
+    ]
+    with _europeana(records, []) as http:
+        programme, plate, bell, street, poster = Europeana(http).search("1942")[1]
+    assert is_document(programme) and is_copy(programme)
+    assert object_category(plate) == DECORATIVE and object_category(bell) == DECORATIVE
+    assert object_category(street) == PHOTOGRAPHY
+    assert poster.classification == "Poster" and object_category(poster) is None
+    assert not is_copy(poster)
+
+
+def test_text_pages_and_backs_of_works_are_no_works() -> None:
+    from frame_server.library.vocabulary import is_document
+
+    def work(title: str, classification: str = "", source: str = "rijks") -> Item:
+        return Item(
+            id=f"{source}:1",
+            source=source,
+            source_id="1",
+            title=title,
+            classification=classification,
+        )
+
+    assert is_document(work("Rede van den Führer", "brochure"))
+    assert is_document(work("Bekendmaking", "poster"))
+    assert is_document(work("Józef Chełmoński Chata verso", "Painting", "wmc"))
+    assert not is_document(work("Rysunek dwustronny; recto: szkic; verso: studium głowy"))
+    assert not is_document(work("Brot!", "Poster"))
+    assert not is_document(work("Woman Reading a Letter", "Painting"))
 
 
 def test_europeana_discovery_and_fetch() -> None:

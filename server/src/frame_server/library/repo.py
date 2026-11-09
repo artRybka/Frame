@@ -51,6 +51,7 @@ from .term_index import TermIndex
 from .viewer import OWNER_ID, STORE, viewer_id
 from .vocabulary import (
     is_art_archive_photo,
+    is_document,
     is_grey_copy,
     is_postal,
     matches_terms,
@@ -268,12 +269,13 @@ def matches(
     # Photographs, sculpture, crafts and manuscripts are found only when
     # asked for, even those the owner kept: Monet's bust is no Monet.
     # Stamps never: Athens 2004's coins are no still life. Nor Foto
-    # Marburg's black-and-white prints on a catalogue card.
+    # Marburg's black-and-white prints on a catalogue card. Nor pages of
+    # text and printed matter (Mateusz 2026-11-09).
     category = object_category(item)
     if category is not None and category not in rules.terms and _searches(rules):
         return False
     if _searches(rules) and (
-        is_postal(item) or (is_art_archive_photo(item) and is_grey_copy(item))
+        is_postal(item) or is_document(item) or (is_art_archive_photo(item) and is_grey_copy(item))
     ):
         return False
     if rules.favorites_only and not liked:
