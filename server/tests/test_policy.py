@@ -43,10 +43,13 @@ def test_the_tables_keep_the_numbers_the_sources_ask_for() -> None:
     assert LIMITS["api.artic.edu"] == LIMITS["www.artic.edu"] == 1
     assert LIMITS["collectionapi.metmuseum.org"] == 1
     assert LONG_BLOCKS == {
-        "www.loc.gov": 3600.0,
+        "www.loc.gov": policy.DAY,
         "collectionapi.metmuseum.org": 1800.0,
         "api.artic.edu": 1800.0,
     }
+    # The LoC's challenge stayed two days (2026-11-09): up to two weeks.
+    assert policy.REST_MAXES == {"www.loc.gov": 14 * policy.DAY}
+    assert policy.WALL_MEMORIES == {"www.loc.gov": 30 * policy.DAY}
     assert policy.BUDGETS["collectionapi.metmuseum.org"].count == 1500
     assert PACE["lux.collections.yale.edu"] == PACE["manifests.collections.yale.edu"] == 0.5
     assert "api.artic.edu" in policy.WALL_403

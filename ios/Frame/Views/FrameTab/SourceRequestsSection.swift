@@ -242,6 +242,8 @@ enum SourceRequestText {
         let minutes = (s + 59) / 60
         if minutes < 60 { return "\(minutes) min" }
         let hours = minutes / 60, rest = minutes % 60
+        // The Library of Congress rests up to two weeks after its walls.
+        if hours >= 48 { return "\((hours + 23) / 24) dni" }
         return rest == 0 ? "\(hours) godz." : "\(hours) godz. \(rest) min"
     }
 }

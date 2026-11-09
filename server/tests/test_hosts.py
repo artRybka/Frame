@@ -421,9 +421,10 @@ def test_a_429_is_waited_out_as_the_host_asks() -> None:
 
 def test_the_library_of_congress_is_left_alone_for_its_hour() -> None:
     """loc.gov blocks for an hour and may start counting again on a request
-    meanwhile (2026-11-07, the home address challenged): no look a minute,
-    and a 429 without Retry-After counts as that hour too."""
-    from frame_server.library.hosts import LONG_BLOCKS, PACE
+    meanwhile (2026-11-07, the home address challenged): no look a minute
+    after its challenge (a day since 2026-11-09), and a 429 without
+    Retry-After counts as its hour."""
+    from frame_server.library.hosts import LONG_BLOCKS, PACE, THROTTLED_MAX
 
     assert PACE["www.loc.gov"] >= 3.0  # 20 a minute at most
     assert PACE["tile.loc.gov"] >= 0.4  # 150 a minute at most
@@ -442,4 +443,4 @@ def test_the_library_of_congress_is_left_alone_for_its_hour() -> None:
         clock.now += LONG_BLOCKS["www.loc.gov"]
         answer[0] = httpx.Response(429)
         assert http.get(url).status_code == 429
-        assert guard.resting("www.loc.gov") == pytest.approx(LONG_BLOCKS["www.loc.gov"])
+        assert guard.resting("www.loc.gov") == pytest.approx(THROTTLED_MAX)

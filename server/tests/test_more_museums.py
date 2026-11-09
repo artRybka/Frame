@@ -818,6 +818,40 @@ def test_wikiart_keys_are_two_codes_and_open_a_session(monkeypatch: pytest.Monke
     assert len(logins) == 3  # two checks (no colon: not asked), one session for both
 
 
+def test_a_refused_wikiart_login_is_not_tried_at_every_search(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Its login answered 500 to 50 tries on 2026-11-08, up to eight in two
+    minutes: one for each search."""
+    from frame_server.library.museums import WikiArt
+
+    monkeypatch.setattr(WikiArt, "_sessions", {})
+    monkeypatch.setattr(WikiArt, "_refused", {})
+    clock = [1000.0]
+    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
+    refuse = [True]
+    sent: list[httpx.Request] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        if request.url.path.endswith("/login"):
+            if refuse[0]:
+                return httpx.Response(500, json={"Exception": {"Message": "Too many sessions"}})
+            return httpx.Response(200, json={"SessionKey": "s1"})
+        return httpx.Response(200, json={"data": [], "hasMore": False})
+
+    with httpx.Client(transport=httpx.MockTransport(answer)) as http:
+        wikiart = museum("wikiart", http, Access(private_use=True, wikiart_keys=("acc", "sec")))
+        for term in ("Rothko", "Klee", "Hopper"):
+            with pytest.raises(httpx.HTTPError):
+                wikiart.search(term)
+        assert len(sent) == 1  # one login; nothing asked after it
+        clock[0] += WikiArt.LOGIN_AGAIN
+        refuse[0] = False
+        assert wikiart.search("Rothko") == (0, [])
+    assert [r.url.path.rsplit("/", 1)[-1] for r in sent] == ["login", "login", "PaintingSearch"]
+
+
 FILE_PATH = "http://commons.wikimedia.org/wiki/Special:FilePath/"
 
 

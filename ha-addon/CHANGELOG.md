@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.131.3
+
+- Library of Congress od dwóch dni odrzuca każde zapytanie z domu. Serwer
+  nie pyta jej teraz przez dobę po odmowie, a po każdej następnej dwa razy
+  dłużej, do dwóch tygodni. Stara fotografia przychodzi w tym czasie z
+  Wikimedia Commons.
+- Gdy serwer muzeum psuje się tylko w części (MNK: pełne zdjęcia dzieł od
+  trzech dni nie przychodzą, miniatury tak), serwer przestaje pytać o tę
+  część coraz dłużej, a miniatury idą dalej.
+- WikiArt: po odrzuconym logowaniu serwer czeka pół godziny, zamiast
+  logować się przy każdym wyszukiwaniu.
+
+## 1.131.2
+
+- Szukaj → Styl: styl z kilku słów (De Stijl, Art déco, Secesja, Młoda
+  Polska…) musi paść w opisie dzieła. Muzea czytały „de stijl” jako dwa
+  słowa, więc w wynikach były tablice drogowe i rysunki „w stylu
+  romańskim”. Styl z jednego słowa (Impresjonizm, Kubizm) wystarcza też
+  przy dziele z datą z lat tego stylu.
+
 ## 1.131.1
 
 - Szukaj → Epoka: gdy wybrane okresy nachodzą na siebie (np. Biedermeier
