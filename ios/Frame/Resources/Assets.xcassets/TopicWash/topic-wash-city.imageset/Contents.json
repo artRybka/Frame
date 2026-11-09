@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "topic-wash-city.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
