@@ -112,6 +112,12 @@ struct AiSection: View {
                 await model.loadAiSettings()
             }
         }
+        .task {
+            // CI screenshots: where the dialog points.
+            guard LaunchRoute.confirm == "describe" else { return }
+            try? await Task.sleep(for: .seconds(3))
+            estimate = AiEstimate(items: 19022, usd: 2.66)
+        }
         .confirmationDialog(
             estimate.map { "Opisać \(Names.pictures($0.items))?" } ?? "",
             isPresented: Binding(get: { estimate != nil }, set: { if !$0 { estimate = nil } }),

@@ -15,6 +15,9 @@ enum LaunchRoute {
     /// Words in the search field over an open group (CI screenshots of a
     /// group narrowed by the field).
     static let typed = UserDefaults.standard.string(forKey: "typed")
+    /// A confirmation dialog opened by itself (CI screenshots of where it
+    /// points): "update" on the Serwer tile, "describe" in Konfiguracja → Claude.
+    static let confirm = UserDefaults.standard.string(forKey: "confirm")
 }
 
 struct RootView: View {
