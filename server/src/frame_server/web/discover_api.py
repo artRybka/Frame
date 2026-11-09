@@ -15,6 +15,7 @@ from typing import Annotated
 from weakref import WeakKeyDictionary
 
 import httpx
+from anyio import CapacityLimiter, to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -902,6 +903,13 @@ async def terms(svc: Svc, q: str, limit: Annotated[int, Query(ge=1, le=20)] = 10
     return await run_in_threadpool(_term_hits, svc, q, limit)
 
 
+#: Threads for asking the museums, apart from the server's own pool: a
+#: search's stream asks some 19 sources at once, and two quick searches took
+#: the shared pool's 40 threads, so the catalogue's answer, the quickest of
+#: all, waited behind them (2026-11-09: 21 s).
+MUSEUM_THREADS = CapacityLimiter(24)
+
+
 #: How long the museums' hint, asked while typing, waits for the words'
 #: translation (a later answer serves the next one).
 HINT_TRANSLATE_SECONDS = 2.5
@@ -915,11 +923,11 @@ async def terms_in_museums(svc: Svc, q: str) -> MuseumHint:
     if not words:
         return MuseumHint(total=0, artists=[], items=[])
     # What is typed becomes one token: a phrase when it has several words.
-    asked = await run_in_threadpool(
-        svc.importer.asked, quote([words]), None, HINT_TRANSLATE_SECONDS
+    asked = await to_thread.run_sync(
+        svc.importer.asked, quote([words]), None, HINT_TRANSLATE_SECONDS, limiter=MUSEUM_THREADS
     )
-    total, items, failed = await run_in_threadpool(
-        urgent_call(svc.importer.search_all), asked.texts, 8, 1
+    total, items, failed = await to_thread.run_sync(
+        urgent_call(svc.importer.search_all), asked.texts, 8, 1, limiter=MUSEUM_THREADS
     )
     items = [i for i in items if not set_aside(i) and says(i, asked.phrases)]
     wanted = fold(words)
@@ -1193,8 +1201,8 @@ async def search_museums(
     keys = search.asked(offered, svc.importer.reachable()) if narrowed else search.keys
     if search.empty or (narrowed and not keys):
         return MuseumAnswer(source=ALL, total=0, items=[])
-    total, items, failed, next_ = await run_in_threadpool(
-        urgent_call(search.ask), svc.importer, keys, page, keeper(svc)
+    total, items, failed, next_ = await to_thread.run_sync(
+        urgent_call(search.ask), svc.importer, keys, page, keeper(svc), limiter=MUSEUM_THREADS
     )
     if keys and len(failed) == len(keys):
         raise HTTPException(502, f"{', '.join(failed)} did not answer")
@@ -1268,7 +1276,10 @@ async def stream_museums(
             loop.call_soon_threadsafe(answers.put_nowait, None)
 
     async def lines() -> AsyncIterator[str]:
-        asking = [asyncio.ensure_future(run_in_threadpool(urgent_call(ask), k)) for k in keys]
+        asking = [
+            asyncio.ensure_future(to_thread.run_sync(urgent_call(ask), k, limiter=MUSEUM_THREADS))
+            for k in keys
+        ]
         try:
             left = len(asking)
             while left:

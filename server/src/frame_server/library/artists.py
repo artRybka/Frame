@@ -637,6 +637,10 @@ class ArtistNames:
             plain = "(" not in name and "," not in name.split("\n")[0]
             return (not plain, -len(works[name]), len(name), name)
 
+        #: Each person -> the name words (:func:`name_key`) that are them.
+        self._keys: dict[int, list[frozenset[str]]] = {}
+        for key, person in self._person.items():
+            self._keys.setdefault(person, []).append(key)
         #: Each person's name as shown -> all its spellings, that first.
         self.spellings: dict[str, list[str]] = {}
         self._shown: dict[int, str] = {}
@@ -651,6 +655,11 @@ class ArtistNames:
     def person(self, name: str) -> int | None:
         """The person ``name`` is among the catalogue's artists, if any."""
         return self._person.get(name_key(name)) if name else None
+
+    def keys_of(self, person: int) -> list[frozenset[str]]:
+        """The name words (:func:`name_key`) of every spelling of ``person``:
+        a name with one of them is that person (:meth:`alike`)."""
+        return self._keys.get(person, [])
 
     def shown(self, name: str) -> str:
         """``name`` as its person is shown: "Rembrandt van Rijn" for

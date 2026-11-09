@@ -110,6 +110,7 @@ def test_a_changed_catalogue_is_counted_again_in_the_background(tmp_path, monkey
     lib = Library(tmp_path / "lib.db")
     _catalogue(lib, 20)
     before = lib.term_index()
+    had = before.word_count("rain")
     lib.upsert(Item(id="aic:999", source="aic", source_id="999", title="Rain at sea"))
     # The old index answers at once; a new one follows.
     assert lib.term_index() is before
@@ -119,7 +120,7 @@ def test_a_changed_catalogue_is_counted_again_in_the_background(tmp_path, monkey
         time.sleep(0.01)
     after = lib.term_index()
     assert after is not before
-    assert after.word_count("rain") == before.word_count("rain") + 1
+    assert after.word_count("rain") == had + 1
 
 
 def test_keywords_and_subjects_are_suggested(tmp_path) -> None:
@@ -185,11 +186,9 @@ def test_one_artist_under_many_spellings_is_one_suggestion(tmp_path) -> None:
                 )
             )
     index = lib.term_index()
-    assert index.artists("rembrandt") == [
-        ("Rembrandt van Rijn", 9),
-        ("Pupil of Rembrandt", 1),
-        ("Rembrandt Peale", 1),
-    ]
+    # Each with what its chip finds: the pupil's chip found nothing (a work
+    # "Pupil of Rembrandt" is by no one asked for), so it is not offered.
+    assert index.artists("rembrandt") == [("Rembrandt van Rijn", 9), ("Rembrandt Peale", 1)]
     # Any spelling finds the person.
     assert index.artists("harmensz") == [("Rembrandt van Rijn", 9)]
     assert index.artists("eyck") == [("Jan van Eyck", 3)]
@@ -234,7 +233,8 @@ def test_van_gogh_is_suggested_as_himself(tmp_path) -> None:
             )
     index = lib.term_index()
     found = index.artists("van gogh")
-    assert found[0] == ("Vincent van Gogh", 6)
+    # Counted as his chip finds them: the list of names too.
+    assert found[0] == ("Vincent van Gogh", 7)
     assert "Albrecht Dürer" not in dict(found)
     assert lib.query(PlaylistRules(artists=["Vincent van Gogh"]))[0] == 6 + 1  # and the list
     assert lib.query(PlaylistRules(artists=["Albrecht Dürer"]))[0] == 6
