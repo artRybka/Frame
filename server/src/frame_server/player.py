@@ -1512,6 +1512,10 @@ class Player:
             log.info("margins: %d kept pictures trimmed", trimmed)
         self.rescore()
         self.service.sharper.thumbs_again()
+        # Network work, a work at a time: in its own thread.
+        threading.Thread(
+            target=self.service.sharper.archives_once, name="archive slides", daemon=True
+        ).start()
         if not self.library.get_state(WIDE_KEY, False):
             items = self.library.query(include_excluded=True)[1]
             grown = self.service.images.wide_again(items)

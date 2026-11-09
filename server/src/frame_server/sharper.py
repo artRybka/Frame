@@ -58,6 +58,7 @@ from .library.vocabulary import (
     artist_matches,
     is_art_archive_photo,
     is_copy,
+    is_grey_copy,
     is_photograph,
     is_reproduction,
 )
@@ -126,6 +127,13 @@ STAND_IN_AGAIN = timedelta(hours=6)
 #: (:meth:`Sharper.thumbs_again`).
 THUMBS_KEY = "copy_thumbs"
 THUMBS_VERSION = 1
+#: The works shown in an art archive's faded slide looked at once after the
+#: update, not night by night (Mateusz 2026-11-09: "odpal już podmiany",
+#: :meth:`Sharper.archives_once`).
+ARCHIVES_KEY = "archive_copies"
+ARCHIVES_VERSION = 1
+#: One look at such a work takes this long at most (seconds).
+ARCHIVE_WAIT = 600.0
 
 Status = Literal["looking", "found", "none", "fine", "off"]
 
@@ -677,6 +685,35 @@ class Sharper:
         if isinstance(own, list) and len(own) == 3:
             return int(own[0]), int(own[1]), int(own[2])
         return None
+
+    def archive_works(self) -> list[Item]:
+        """The library's works shown in an art archive's colour photograph,
+        not looked at since they take copies in other colours."""
+        return [
+            i
+            for i in self.library.all_items()
+            if archive_own(i) and not i.excluded and not is_grey_copy(i) and self.status(i) is None
+        ]
+
+    def archives_once(self) -> int:
+        """Once after the update: every work shown in an art archive's faded
+        slide looked at for another copy, one after another; how many. A
+        look too slow leaves the rest for the next start (and the night)."""
+        if self.library.get_state(ARCHIVES_KEY, 0) >= ARCHIVES_VERSION:
+            return 0
+        works = self.archive_works()
+        log.info("archive slides: looking for other copies of %d works", len(works))
+        found = 0
+        for n, item in enumerate(works):
+            try:
+                status = self.soon(item).result(ARCHIVE_WAIT)
+            except Late:
+                log.info("archive slides: %d of %d looked at, the rest later", n, len(works))
+                return n
+            found += status == "found"
+        self.library.set_state(ARCHIVES_KEY, ARCHIVES_VERSION)
+        log.info("archive slides: %d of %d works took another copy", found, len(works))
+        return len(works)
 
     def thumbs_again(self) -> int:
         """Once: the thumbnails of works whose picture a copy took before
