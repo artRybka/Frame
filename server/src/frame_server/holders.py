@@ -158,6 +158,10 @@ def _name(entity: dict[str, Any]) -> str:
     return ""
 
 
+#: Works' Wikidata items kept in memory (``Holders.work_qid``).
+WORKS_KEPT = 500
+
+
 class Holders:
     """Looks up the museums of works from sources that gather pictures."""
 
@@ -174,6 +178,8 @@ class Holders:
         self._places: dict[str, str] = {}
         #: The copy in each work's place when it was looked up ("" for none).
         self._copies: dict[str, str] = {}
+        #: Works' Wikidata items by item id (``work_qid``), "" for none.
+        self._works: OrderedDict[str, str] = OrderedDict()
 
     # -- what is known ---------------------------------------------------------
 
@@ -308,6 +314,31 @@ class Holders:
             if place_qid and (name := self._label(http, place_qid)):
                 return name, place_qid
             return place, ""
+
+    def work_qid(self, item: Item) -> str:
+        """The Wikidata item of ``item``'s work: from its picture's Commons
+        page, else its museum record; "" when neither says (kept a while,
+        also that; not kept when they could not be asked)."""
+        with self._lock:
+            if item.id in self._works:
+                self._works.move_to_end(item.id)
+                return self._works[item.id]
+        try:
+            with self.http() as http:
+                qid = ""
+                page_id, title = commons_file(item)
+                if page_id or title:
+                    qid = work_qid(self._wikitext(http, page_id, title)[0])
+                if not qid and (ref := record_id(item)) is not None:
+                    qid = Wikidata._find(http, *ref) or ""
+        except (httpx.HTTPError, ValueError, KeyError) as err:
+            log.info("work of %s not looked up: %s", item.id, err)
+            return ""
+        with self._lock:
+            self._works[item.id] = qid
+            while len(self._works) > WORKS_KEPT:
+                self._works.popitem(last=False)
+        return qid
 
     @staticmethod
     def _label(http: httpx.Client, qid: str) -> str:
