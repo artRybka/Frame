@@ -60,6 +60,7 @@ def app(tmp_path: Path) -> Iterator[tuple[TestClient, FrameService, Web, list[An
 
         service.copies.search_in = search_in
         service.copies.tiled = lambda item_id: False  # Commons not asked
+        service.copies.work_qid = lambda item: ""
         yield client, service, web, hits
 
 
@@ -163,6 +164,34 @@ def test_a_copy_with_a_tile_set_is_offered(app: Any) -> None:
     copies = _final(_lines(client, own.id))
     assert "tiles" in copies[own.id]["notes"]
     assert copies["wmc:1"]["verdict"] == "worse" and "tiles" in copies["wmc:1"]["notes"]
+
+
+def test_a_tiled_commons_file_of_the_work_is_listed(app: Any) -> None:
+    """The search by title missed "Nachtwacht" (Mateusz 2026-11-09): the
+    Commons files with a tile set are found by the work's Wikidata item."""
+    client, service, web, _hits = app
+    own = _own(service)
+    tiled = _copy(9, width=1618, height=1079)
+    _offer(web, tiled, _print(1, (1618, 1079)))
+    service.copies.work_qid = lambda item: "Q219831"
+    service.copies.tiled = lambda item_id: item_id == "wmc:9"
+
+    class Tiles:
+        def tiled_files(self, qid: str) -> list[str]:
+            return ["File:Nachtwacht - Google Art Project.jpg"] if qid == "Q219831" else []
+
+    asked: list[str] = []
+
+    def commons_file(name: str) -> Any:
+        asked.append(name)
+        service.importer.remember([tiled])
+        return tiled
+
+    service.importer.fragments = Tiles()  # type: ignore[assignment]
+    service.importer.commons_file = commons_file  # type: ignore[method-assign]
+    copies = _final(_lines(client, own.id))
+    assert asked == ["Nachtwacht - Google Art Project.jpg"]
+    assert copies["wmc:9"]["verdict"] == "better" and "tiles" in copies["wmc:9"]["notes"]
 
 
 def test_a_silent_source_is_told_as_failed_in_time(app: Any) -> None:

@@ -334,3 +334,28 @@ def test_tile_sets_are_listed_once(tmp_path: Path) -> None:
     assert not fragments.tiled("wmc:13276351~p2")
     assert not fragments.tiled("rijks:SK-C-5")
     assert len(asked) == 1
+
+
+def test_tile_sets_are_known_by_their_work(tmp_path: Path) -> None:
+    def answer(request: httpx.Request) -> httpx.Response:
+        params = request.url.params
+        if params.get("list") == "embeddedin":
+            return httpx.Response(
+                200, json={"query": {"embeddedin": [{"pageid": 1}, {"pageid": 2}]}}
+            )
+        assert params.get("pageids") == "1|2"
+        pages = [
+            {
+                "title": "File:Nachtwacht - Google Art Project.jpg",
+                "revisions": [
+                    {"slots": {"main": {"content": "{{Artwork\n |wikidata = Q219831\n}}"}}}
+                ],
+            },
+            {"title": "File:No work.jpg", "revisions": [{"slots": {"main": {"content": "x"}}}]},
+        ]
+        return httpx.Response(200, json={"query": {"pages": pages}})
+
+    fragments = Fragments(tmp_path / "f.json", lambda: _client(httpx.MockTransport(answer)))
+    assert fragments.tiled_files("Q219831") == ["File:Nachtwacht - Google Art Project.jpg"]
+    assert fragments.tiled_files("Q1") == []
+    assert fragments.tiled_files("") == []
