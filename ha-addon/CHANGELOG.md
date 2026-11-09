@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.136.8
+
+- Szukaj z frazą („straż nocna”) nie zatrzymuje już serwera. Sprawdzanie
+  frazy w katalogu trwało około 12 sekund na zapytanie i w tym czasie
+  wszystko inne na serwerze czekało, więc aplikacja przestawała czekać na
+  wyniki. Teraz to ułamek sekundy.
+- Dzieła z archiwum Foto Marburg, które już są w katalogu, przechodzą na
+  dobre kopie (muzeum, Commons, WikiArt) od razu po aktualizacji serwera,
+  wszystkie po kolei, bez czekania na kolejne noce.
+- Nad tytułem takich dzieł nie ma już nazwy archiwum zdjęć („German
+  Documentation Center for Art History…”), tylko muzeum, w którym obraz
+  wisi, jeśli da się je ustalić (np. ze strony kopii z Commons).
+
 ## 1.136.7
 
 - Europeana nie podaje już zdjęć z archiwum Foto Marburg (małe, czarno-białe

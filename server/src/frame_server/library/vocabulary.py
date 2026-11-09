@@ -20,7 +20,7 @@ from functools import cache, cached_property, lru_cache
 from itertools import product
 from typing import Literal
 
-from .models import Item, ItemKind
+from .models import ART_PHOTO_ARCHIVES, Item, ItemKind
 from .museums import Kind
 
 TermKind = Literal["style", "subject", "period", "technique", "tag"]
@@ -611,13 +611,8 @@ def is_grey_painting(item: Item, spread: float | None = None) -> bool:
 #: skies white and blue, Mateusz 2026-11-09): any other source's copy comes
 #: first (``duplicates.item_rank``) and takes their place in other colours
 #: (``sharper``). Marburg is no longer asked (``Europeana.not_art``, 2026-11-09);
-#: its works kept before stay. As ``Item.credit`` names them.
-ART_PHOTO_ARCHIVES = frozenset(
-    {
-        "German Documentation Center for Art History - Marburg Picture Index",
-        "Royal Institute for Cultural Heritage",
-    }
-)
+#: its works kept before stay. Nor do they name the museum the work is in
+#: (``Item.held_by``). As ``Item.credit`` names them: ``models.ART_PHOTO_ARCHIVES``.
 
 
 def is_art_archive_photo(item: Item) -> bool:

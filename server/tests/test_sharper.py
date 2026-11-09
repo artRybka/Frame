@@ -588,3 +588,22 @@ def test_an_archive_slide_looked_at_before_is_looked_at_again(frame: Any) -> Non
         )
     )
     assert service.sharper.status(own) == "fine"
+
+
+def test_archive_slides_are_looked_at_once_after_the_update(frame: Any) -> None:
+    """Not night by night (Mateusz 2026-11-09: "odpal już podmiany")."""
+    from frame_server.sharper import ARCHIVES_KEY
+
+    service, web, answer = frame
+    service.library.set_state(ARCHIVES_KEY, 0)
+    own = _slide(service, web)
+    copy = _copy(5, width=1618, height=1079)
+    _offer(web, copy, _print(1, (1618, 1079)))
+    answer([copy])
+    assert [i.id for i in service.sharper.archive_works()] == [own.id]
+    assert service.sharper.archives_once() == 1
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None
+    assert service.sharper.archive_works() == []
+    service.sharper.search = lambda query, n: pytest.fail("looked again")
+    assert service.sharper.archives_once() == 0  # once

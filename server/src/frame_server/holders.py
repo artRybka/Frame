@@ -5,9 +5,11 @@ from Wikimedia Commons, Openverse, WikiArt or Europeana is a picture
 gathered from somewhere: "Wikimedia Commons" is where the picture is from,
 not the museum the work is in (Mateusz, 2026-11-02: "muzeum to muzeum, a
 źródło zdjęcia to osobny temat"). What can be said without asking anyone
-is in ``Item.held_by`` (Europeana's data provider, a sharper copy from the
-museum itself, WikiArt's gallery). The rest is looked up here, when the
-work's card opens and at night, and kept on the work (``Item.holder``):
+is in ``Item.held_by`` (Europeana's data provider unless a photo archive,
+a sharper copy from the museum itself, WikiArt's gallery). The rest is
+looked up here, when the work's card opens and at night, and kept on the
+work (``Item.holder``); a work nobody knew is asked about again once a copy
+takes its picture's place:
 
 1. the library's copy of the same work from a museum's own collection;
 2. the collection (P195, else the location P276) of the work on Wikidata,
@@ -109,9 +111,13 @@ def institution(wikitext: str) -> tuple[str, str]:
 
 def commons_file(item: Item) -> tuple[str, str]:
     """The Commons page of ``item``'s picture: (its page id, its "File:"
-    title); ("", "") when the picture is not from Commons."""
+    title); ("", "") when the picture is not from Commons. A work shown in a
+    copy from Commons (an archive's faded slide's place, ``sharper``) is
+    found by that copy's page."""
     if item.source == "wmc":
         return item.source_id, ""
+    if item.sharper is not None and item.sharper.item_id.startswith("wmc:"):
+        return item.sharper.item_id.removeprefix("wmc:"), ""
     parts = urlsplit(item.url)
     if not (parts.hostname or "").endswith("wikimedia.org"):
         return "", ""
@@ -120,6 +126,11 @@ def commons_file(item: Item) -> tuple[str, str]:
     if "/wiki/File:" in parts.path:
         return "", unquote(parts.path.split("/wiki/", 1)[1]).replace("_", " ")
     return "", ""
+
+
+def _copy_of(item: Item) -> str:
+    """The id of the copy in ``item``'s place, "" when it shows its own."""
+    return item.sharper.item_id if item.sharper is not None else ""
 
 
 def _where(entity: dict[str, Any]) -> list[str]:
@@ -161,6 +172,8 @@ class Holders:
         self._known: OrderedDict[str, tuple[str, datetime]] = OrderedDict()
         #: The Wikidata items of the museums found, by item id.
         self._places: dict[str, str] = {}
+        #: The copy in each work's place when it was looked up ("" for none).
+        self._copies: dict[str, str] = {}
 
     # -- what is known ---------------------------------------------------------
 
@@ -181,6 +194,7 @@ class Holders:
             return "off", ""
         with self._lock:
             known = self._known.get(item.id)
+            copy = self._copies.get(item.id, "")
         if known is None:
             note = self.library.note(item.id, KIND)
             if note is None or note.prompt_version != VERSION:
@@ -190,10 +204,13 @@ class Holders:
             except ValueError:
                 return None
             name = str(note.data.get("name") or "")
+            copy = str(note.data.get("copy") or "")
         else:
             name, at = known
         if name:
             return "found", name
+        if copy != _copy_of(stored):
+            return None  # another picture since: its page may name the museum
         if self.clock() - at < AGAIN:
             return "none", ""
         return None
@@ -345,14 +362,17 @@ class Holders:
     # -- keeping it ----------------------------------------------------------------
 
     def _remember(self, item: Item, name: str, qid: str = "") -> None:
+        copy = _copy_of(item)
         with self._lock:
             self._known[item.id] = (name, self.clock())
             self._known.move_to_end(item.id)
+            self._copies[item.id] = copy
             if qid:
                 self._places[item.id] = qid
             while len(self._known) > REMEMBERED:
                 gone, _ = self._known.popitem(last=False)
                 self._places.pop(gone, None)
+                self._copies.pop(gone, None)
         if name and qid:
             known_places().alias(name, qid)
         if self.library.get(item.id) is None:
@@ -366,6 +386,10 @@ class Holders:
                 kind=KIND,
                 model="",
                 prompt_version=VERSION,
-                data={"name": name, "at": self.clock().isoformat()},
+                data={
+                    "name": name,
+                    "at": self.clock().isoformat(),
+                    **({"copy": copy} if copy else {}),
+                },
             )
         )
