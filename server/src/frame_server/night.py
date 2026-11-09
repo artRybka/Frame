@@ -48,6 +48,9 @@ CATCH_UP_FOR = timedelta(hours=2)
 DONE_KEY = "night_done"
 #: Sharper copies are looked for, at night, for this many next pictures.
 SHARPER_AHEAD = 20
+#: Works shown in an art archive's old photograph (Foto Marburg's faded
+#: slides) looked at for another copy in one night, at most.
+ARCHIVES_A_NIGHT = 40
 #: One look for a sharper copy takes this long at most (seconds).
 SHARPER_WAIT = 600.0
 
@@ -190,7 +193,9 @@ def tasks(service: FrameService) -> list[NightTask]:
     """The night's tasks, in order: first what changes the catalogue, then
     what is worked out from it."""
     from .library import courtauld, dumps, loc_index, louvre, met_index, nga
+    from .library.vocabulary import is_grey_copy
     from .notifications import births_at_night
+    from .sharper import archive_own
     from .web import discover_api
 
     player, library = service.player, service.library
@@ -212,9 +217,19 @@ def tasks(service: FrameService) -> list[NightTask]:
         player.catch_up()
 
     def sharper(night: Night) -> int:
-        """The frame's next pictures from sharper copies, where there are."""
+        """The frame's next pictures from sharper copies, where there are;
+        then the library's works shown in an art archive's old photograph,
+        from any other copy (their slides' colours have faded)."""
         looked = 0
-        for item in player.upcoming(SHARPER_AHEAD):
+        archives = [
+            i
+            for i in library.all_items()
+            if archive_own(i)
+            and not i.excluded
+            and not is_grey_copy(i)
+            and service.sharper.status(i) is None
+        ][:ARCHIVES_A_NIGHT]
+        for item in [*player.upcoming(SHARPER_AHEAD), *archives]:
             if service.sharper.status(item) is not None:
                 continue  # known
             if not night.quiet():

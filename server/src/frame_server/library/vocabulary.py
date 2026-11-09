@@ -604,10 +604,13 @@ def is_grey_painting(item: Item, spread: float | None = None) -> bool:
 #: Europeana's providers whose pictures are photographs of works taken by an
 #: art history photo archive, not the museums' own scans: Bildarchiv Foto
 #: Marburg (half of them old black-and-white prints on a catalogue card with
-#: the negative number typed below) and Brussels' KIK-IRPA. Their colour
-#: photographs are good; a black-and-white one is a copy whatever the work,
-#: since the paper, chalk or ink colours of a drawing or print are lost too.
-#: As ``Item.credit`` names them.
+#: the negative number typed below) and Brussels' KIK-IRPA. A black-and-white
+#: one is a copy whatever the work, since the paper, chalk or ink colours of
+#: a drawing or print are lost too. Their colour photographs are often old
+#: slides whose dyes have faded (Marburg's "fmc…" van Goghs: no yellow left,
+#: skies white and blue, Mateusz 2026-11-09): any other source's copy comes
+#: first (``duplicates.item_rank``) and takes their place in other colours
+#: (``sharper``). As ``Item.credit`` names them.
 ART_PHOTO_ARCHIVES = frozenset(
     {
         "German Documentation Center for Art History - Marburg Picture Index",

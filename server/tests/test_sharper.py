@@ -163,6 +163,13 @@ def test_colours_tell_a_black_and_white_plate() -> None:
     assert not same_colours(painting, Tone(0.06, (0.45, 0.02, 0.05)))  # far darker
     etching = Tone(0.003, (0.8, 0.01, 0.03))
     assert not same_colours(etching, Tone(0.05, (0.8, 0.02, 0.05)))  # coloured in
+    # Foto Marburg's faded slide of the olive grove against WikiArt's copy:
+    # close on average, four times as colourful (Mateusz 2026-11-09).
+    slide = Tone(0.0197, (0.529, 0.005, 0.001))
+    wikiart = Tone(0.0773, (0.576, -0.008, 0.030))
+    assert not same_colours(slide, wikiart)
+    assert same_colours(slide, wikiart, faded=True)
+    assert same_colours(painting, Tone(0.07, (0.69, 0.02, 0.05)))  # a little livelier
 
 
 def test_a_poor_picture_is_swapped_for_a_sharper_copy(frame: Any) -> None:
@@ -474,3 +481,110 @@ def test_without_a_thumbnail_only_a_certain_copy_stands_in(down: Any) -> None:
     stored = service.library.get(own.id)
     assert stored is not None and stored.sharper is not None
     assert stored.sharper.item_id == "wmc:7"
+
+
+MARBURG = "German Documentation Center for Art History - Marburg Picture Index"
+SLIDE = "http://www.bildindex.de/bilder/d/fmc652207"
+SLIDE_THUMB = "https://api.europeana.eu/thumbnail/v2/url.json?uri=fmc652207&type=IMAGE"
+
+
+def _faded(img: Image.Image) -> Image.Image:
+    """An old colour slide of the painting: its yellow dye gone, the rest
+    paler and bluer (Foto Marburg's van Goghs)."""
+    r, g, b = img.split()
+    r = r.point(lambda v: int(v * 0.55 + 70))
+    g = g.point(lambda v: int(v * 0.6 + 80))
+    b = b.point(lambda v: int(v * 0.3 + 175))
+    return Image.merge("RGB", (r, g, b))
+
+
+def _slide(service: FrameService, web: Web, credit: str = MARBURG) -> Item:
+    """Van Gogh's olive grove in an art archive's faded slide, 1494 px."""
+    web[SLIDE] = _jpeg(_faded(_print(1, (1494, 996))))
+    web[SLIDE_THUMB] = _jpeg(_faded(_print(1, (600, 400))))
+    return service.library.upsert(
+        Item(
+            id="europeana:199~item_2ZUY",
+            kind=ItemKind.ARTWORK,
+            source="europeana",
+            source_id="199~item_2ZUY",
+            museum="Europeana",
+            title="Bathing Nymphs and Child",
+            artist="Camille Corot",
+            classification="paintings (visual works)",
+            credit=credit,
+            image_url=SLIDE,
+            thumb_url=SLIDE_THUMB,
+            width=1494,
+            height=996,
+        )
+    )
+
+
+def test_an_archive_slide_is_beaten_by_any_copy_as_large() -> None:
+    slide = Quality(1494, 2.0)
+    assert not Quality(1618, 2.0).better(slide)  # hardly larger
+    assert Quality(1618, 2.0).better(slide, faded=True)
+    assert Quality(1440, 2.0).better(slide, faded=True)  # about as large
+    assert not Quality(1100, 2.0).better(slide, faded=True)
+    faded = Tone(0.03, (0.75, -0.01, -0.03))
+    true = Tone(0.07, (0.65, 0.01, 0.07))
+    assert not same_colours(faded, true)
+    assert same_colours(faded, true, faded=True)
+    # A black-and-white plate stays out, faded slide or not.
+    assert not same_colours(faded, Tone(0.003, (0.7, 0.0, 0.0)), faded=True)
+
+
+def test_an_archive_slide_takes_a_copy_in_the_paintings_colours(frame: Any) -> None:
+    """Foto Marburg's faded slide (Mateusz 2026-11-09): WikiArt's copy, as
+    large and in the painting's own colours, takes its place."""
+    service, web, answer = frame
+    own = _slide(service, web)
+    copy = _copy(5, width=1618, height=1079)
+    _offer(web, copy, _print(1, (1618, 1079)))
+    answer([copy])
+    assert service.sharper.soon(own).result(60) == "found"
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None
+    assert stored.sharper.item_id == "wmc:5"
+
+
+def test_another_sources_picture_keeps_its_colours(frame: Any) -> None:
+    """The same pictures from a source that is no art archive: the copy in
+    other colours does not take its place."""
+    service, web, answer = frame
+    own = _slide(service, web, credit="Nationalmuseum Sweden")
+    copy = _copy(5, width=1618, height=1079)
+    _offer(web, copy, _print(1, (1618, 1079)))
+    answer([copy])
+    assert service.sharper.soon(own).result(60) == "none"
+
+
+def test_an_archive_slide_looked_at_before_is_looked_at_again(frame: Any) -> None:
+    from frame_server.library.models import Note
+    from frame_server.sharper import KIND, VERSION
+
+    service, web, _ = frame
+    own = _slide(service, web)
+    when = "2026-11-08T10:00:00+00:00"
+    service.library.save_note(
+        Note(
+            item_id=own.id,
+            kind=KIND,
+            model="",
+            prompt_version=VERSION,
+            data={"status": "none", "at": when},
+        )
+    )
+    assert service.sharper.status(own) is None
+    # The owner's own choice of the slide stands.
+    service.library.save_note(
+        Note(
+            item_id=own.id,
+            kind=KIND,
+            model="",
+            prompt_version=VERSION,
+            data={"status": "kept", "at": when},
+        )
+    )
+    assert service.sharper.status(own) == "fine"

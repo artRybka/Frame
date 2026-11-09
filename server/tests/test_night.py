@@ -238,3 +238,57 @@ def test_the_frames_next_pictures_get_sharper_copies_at_night(service, monkeypat
     (task,) = [t for t in night.tasks(service) if t.name == "sharper"]
     assert task.run(Night(threading.Event(), time.monotonic() + 30)) == 2
     assert set(looked) == {works[1].id, works[2].id}
+
+
+def test_works_in_an_archives_faded_slide_are_looked_at_at_night(service, monkeypatch) -> None:
+    """Foto Marburg's colour slides in the library (Mateusz 2026-11-09):
+    each looked at for another copy, not only the frame's next pictures;
+    its black-and-white prints and those known already are not."""
+    from concurrent.futures import Future
+
+    from frame_server.library import Item, ItemKind
+    from frame_server.library.models import SharperCopy
+
+    monkeypatch.setattr(night, "_last_used", time.monotonic() - 3600)
+    monkeypatch.setattr(service.player, "upcoming", lambda n: [])
+    marburg = "German Documentation Center for Art History - Marburg Picture Index"
+
+    def slide(n: int, **kw) -> Item:
+        return service.library.upsert(
+            Item(
+                id=f"europeana:199~fmc{n}",
+                kind=ItemKind.ARTWORK,
+                source="europeana",
+                source_id=f"199~fmc{n}",
+                title=f"Olive Grove {n}",
+                artist="Vincent van Gogh",
+                classification="paintings (visual works)",
+                credit=marburg,
+                **kw,
+            )
+        )
+
+    faded = slide(1, tint_spread=0.05)
+    slide(2, tint_spread=0.001)  # a black-and-white print: a copy anyway
+    slide(
+        3,
+        tint_spread=0.05,
+        sharper=SharperCopy(item_id="wmc:3", url="u", source="wmc", width=9, height=9),
+    )
+    slide(4, tint_spread=0.05)
+    known = {"europeana:199~fmc4"}
+    monkeypatch.setattr(
+        service.sharper, "status", lambda item: "none" if item.id in known else None
+    )
+    looked: list[str] = []
+
+    def soon(item):
+        looked.append(item.id)
+        done: Future[str] = Future()
+        done.set_result("found")
+        return done
+
+    monkeypatch.setattr(service.sharper, "soon", soon)
+    (task,) = [t for t in night.tasks(service) if t.name == "sharper"]
+    assert task.run(Night(threading.Event(), time.monotonic() + 30)) == 1
+    assert looked == [faded.id]
