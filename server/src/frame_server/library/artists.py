@@ -426,14 +426,89 @@ LONGER_WORDS = 4
 #: The Met's "Rembrandt (Rembrandt van Rijn)", "El Greco (Domenikos
 #: Theotokopoulos)": the name known by, then the full one.
 _KNOWN_AS = re.compile(r"^(.*?)\s*\(([^()]*)\)\s*$")
+#: Words of what a museum says of the name rather than a name: "Abraham
+#: Storck (signed by artist)", "Roeloffzen & Hübner (mentioned on object)",
+#: "Vincent van Gogh (possibly)", "Vincent Van Gogh, The Netherlands",
+#: "(Dutch, 1853-1890)". Never a generation, workshop or copy: "Pieter
+#: Bruegel (the Elder)" and "(copy after)" stay in the name.
+_REMARKS = (
+    (
+        _CULTURES
+        | _TIMES
+        | ROLES
+        | _FILLER
+        | frozenset(
+            {
+                "signed",
+                "monogrammed",
+                "inscribed",
+                "inscription",
+                "mentioned",
+                "object",
+                "by",
+                "on",
+                "to",
+                "in",
+                "at",
+                "born",
+                "died",
+                "dated",
+                "verso",
+                "recto",
+                "possible",
+                "perhaps",
+                "attributed",
+                "toegeschreven",
+                "doubtful",
+                "uncertain",
+                "unsure",
+            }
+        )
+    )
+    - _GENERATIONS
+    - _NOT_BY
+    - NOBODY
+    - _FIRMS
+)
+#: Words that never stand in a person's name: a bracket with one of them
+#: is a remark, never the Met's full name ("X (signed by artist)" joined
+#: everyone signed so into one person, Mateusz 2026-11-09).
+_REMARK_ONLY = _REMARKS - _FILLER - frozenset(NATIONALITIES)
+_BRACKET_TAIL = re.compile(r"\s*\(([^()]*)\)\s*$")
+
+
+def _remark(text: str) -> bool:
+    """``text`` (a bracket, a part after a comma) says something of the name
+    and names nobody: "signed by artist", "possibly", "Dutch, 1853-1890",
+    "The Netherlands"."""
+    return set(_LETTERS.findall(fold(text))) <= _REMARKS
+
+
+def _bare(line: str) -> str:
+    """The name without remarks after it: "Abraham Storck" for "Abraham
+    Storck (signed by artist)", "Vincent Van Gogh" for "Vincent Van Gogh,
+    The Netherlands". A reversed name stays: "Gogh, Vincent van", and
+    "Opałka, Roman" is not "Opałka" of the Romans."""
+    while (bracket := _BRACKET_TAIL.search(line)) and _remark(bracket.group(1)):
+        if not line[: bracket.start()].strip():
+            break
+        line = line[: bracket.start()]
+    head, *tail = line.split(",")
+    if tail and len(set(_LETTERS.findall(fold(head))) - _FILLER) >= 2:
+        while tail and _remark(tail[-1]):
+            tail.pop()
+        line = ",".join([head, *tail])
+    return line
 
 
 @lru_cache(maxsize=PER_WORK)
 def name_key(name: str) -> frozenset[str]:
-    """The words of the name's first line in lower case without accents:
-    the same for "Jan van Eyck", "Jan Van Eyck", "Eyck, Jan van" and
-    "Rembrandt (Rembrandt van Rijn)" with "Rembrandt van Rijn"."""
-    return frozenset(_LETTERS.findall(fold(name.split("\n")[0])))
+    """The words of the name's first line in lower case without accents,
+    without remarks after it: the same for "Jan van Eyck", "Jan Van Eyck",
+    "Eyck, Jan van" and "Rembrandt (Rembrandt van Rijn)" with "Rembrandt van
+    Rijn", and for "Abraham Storck (signed by artist)" with "Abraham
+    Storck"."""
+    return frozenset(_LETTERS.findall(fold(_bare(name.split("\n")[0]))))
 
 
 def _own_name(name: str) -> bool:
@@ -477,6 +552,8 @@ class ArtistNames:
             if ra != rb:
                 parent[max(ra, rb, key=sorted)] = min(ra, rb, key=sorted)
 
+        #: The Met's "X (Y)": each Y with the names before it.
+        known: dict[frozenset[str], set[tuple[frozenset[str], frozenset[str]]]] = {}
         for name in names:
             find(name_key(name))
             known_as = _KNOWN_AS.match(name.split("\n")[0])
@@ -490,9 +567,18 @@ class ArtistNames:
                 and is_artist(short)
                 and is_artist(full)
                 and not (short_key | full_key) & _OTHER_PERSON
+                and not full_key & _REMARK_ONLY
+                and not re.search(r"[\d,;&/]", full)
             ):
-                join(name_key(name), short_key)
-                join(name_key(name), full_key)
+                known.setdefault(full_key, set()).add((name_key(name), short_key))
+        for full_key, shorts in known.items():
+            # A full name after two people's names is no one's: a remark
+            # the words above missed.
+            if any(a[1].isdisjoint(b[1]) for a, b in combinations(shorts, 2)):
+                continue
+            for whole_key, short_key in shorts:
+                join(whole_key, short_key)
+                join(whole_key, full_key)
 
         keys = sorted(parent, key=sorted)
         with_word: dict[str, list[frozenset[str]]] = {}

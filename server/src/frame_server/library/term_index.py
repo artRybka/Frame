@@ -116,11 +116,14 @@ class TermIndex:
             written, works_of_person = people.setdefault(shown, ([], set()))
             written.append(fold(name))
             works_of_person |= found
-        #: (each spelling folded, the name shown, how many works), most
-        #: works first.
+        #: (each spelling folded, the name shown, it folded, how many works),
+        #: most works first.
         self._artists = sorted(
-            ((tuple(written), name, len(found)) for name, (written, found) in people.items()),
-            key=lambda a: (-a[2], a[1]),
+            (
+                (tuple(written), name, fold(name), len(found))
+                for name, (written, found) in people.items()
+            ),
+            key=lambda a: (-a[3], a[1]),
         )
         #: (folded phrase, its words, the commonest spelling, how many
         #: works), most works first.
@@ -147,13 +150,19 @@ class TermIndex:
         wanted = fold(text.strip())
         if not wanted:
             return []
-        found: list[tuple[str, int]] = []
-        for spellings, name, count in self._artists:
-            if any(wanted in folded for folded in spellings):
-                found.append((name, count))
-                if len(found) == limit:
+        # The people of that name first, then those only some museum's
+        # spelling has it in ("Roeloffzen & Hübner (mentioned on object)"
+        # for "van gogh", Mateusz 2026-11-09).
+        named: list[tuple[str, int]] = []
+        spelt: list[tuple[str, int]] = []
+        for spellings, name, folded_name, count in self._artists:
+            if wanted in folded_name:
+                named.append((name, count))
+                if len(named) == limit:
                     break
-        return found
+            elif len(spelt) < limit and any(wanted in folded for folded in spellings):
+                spelt.append((name, count))
+        return (named + spelt)[:limit]
 
     def phrases(self, text: str, limit: int = 4) -> list[str]:
         """Keywords and subjects of the works ("wielka fala", "Mount Fuji")
