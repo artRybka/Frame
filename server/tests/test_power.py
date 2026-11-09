@@ -62,12 +62,21 @@ def _settings(tmp_path: Path, port: int, mac: str | None = "aa:bb:cc:dd:ee:ff") 
     )
 
 
+def _far_changes(now: datetime | None = None) -> list[str]:
+    """Two change times on the hour, six and eighteen hours from now: these
+    tests run on the wall clock, and with fixed times (07:00, 19:00) the
+    next change came within ``MIN_SLEEP`` in the last minutes before them,
+    so the app was told to wait instead of to sleep."""
+    local = (now or datetime.now(UTC)).astimezone(WARSAW)
+    return sorted(f"{(local + timedelta(hours=h)).hour:02d}:00" for h in (6, 18))
+
+
 def _asleep(service: FrameService, *, deep: bool) -> None:
     """The app was told to sleep until the next change."""
     service.app.awake_until = None
     service.player.save_settings(
         FrameSettings(
-            change_times=["07:00", "19:00"],
+            change_times=_far_changes(),
             quiet_start=None,
             power_mode="economy" if deep else "online",
         )
