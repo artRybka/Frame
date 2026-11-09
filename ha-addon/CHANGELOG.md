@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.131.2
+
+- Szukaj → Styl: styl z kilku słów (De Stijl, Art déco, Secesja, Młoda
+  Polska…) musi paść w opisie dzieła. Muzea czytały „de stijl” jako dwa
+  słowa, więc w wynikach były tablice drogowe i rysunki „w stylu
+  romańskim”. Styl z jednego słowa (Impresjonizm, Kubizm) wystarcza też
+  przy dziele z datą z lat tego stylu.
+
 ## 1.131.1
 
 - Szukaj → Epoka: gdy wybrane okresy nachodzą na siebie (np. Biedermeier
