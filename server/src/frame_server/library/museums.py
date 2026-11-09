@@ -54,6 +54,41 @@ from .records import records
 
 log = logging.getLogger(__name__)
 
+#: A museum text asking for an artist's works by the museum's own author
+#: field (``search.museum_text``): the artist, then the other words.
+_BY = re.compile(r"^@by:([^\t]*)\t(.*)$", re.DOTALL)
+
+
+def by_artist(artist: str, words: str = "") -> str:
+    """The text asking a museum for ``artist``'s works (with ``words``)."""
+    return f"@by:{' '.join(artist.split())}\t{' '.join(words.split())}"
+
+
+def asked_by(text: str) -> tuple[str, str] | None:
+    """(the artist, the other words) of a :func:`by_artist` text; None for
+    plain words."""
+    found = _BY.match(text)
+    return (found.group(1), found.group(2)) if found else None
+
+
+def plain_text(text: str) -> str:
+    """``text`` as plain words: a :func:`by_artist` text's words and artist."""
+    found = asked_by(text)
+    if found is None:
+        return text
+    artist, words = found
+    return " ".join(w for w in (words, artist) if w)
+
+
+def surname_first(artist: str) -> str:
+    """ "Vilhelm Hammershøi" -> "Hammershøi, Vilhelm"; "Vincent van Gogh"
+    -> "Gogh, Vincent van" (as SMK files its makers)."""
+    parts = artist.split()
+    if len(parts) < 2 or "," in artist:
+        return artist
+    return f"{parts[-1]}, {' '.join(parts[:-1])}"
+
+
 USER_AGENT = "Frame/0.2 (home e-paper art frame; +https://github.com/artRybka/Frame)"
 
 
@@ -186,6 +221,33 @@ class Museum(ABC):
     def fetch(self, source_id: str) -> Item | None:
         """One work by its id in the museum's collection."""
 
+    def search_by(
+        self, artist: str, words: str = "", limit: int = 20, page: int = 1
+    ) -> tuple[int, list[Item]]:
+        """Works by ``artist`` (with ``words``), asked by the museum's own
+        author field where it has one: no pages of works only naming them
+        (Mateusz 2026-11-09). Without one, the name among the words."""
+        return self.search(" ".join(w for w in (words, artist) if w), limit, page)
+
+    def search_artist(
+        self, artist: str, words: str = "", limit: int = 20, page: int = 1
+    ) -> tuple[int, list[Item]]:
+        """:meth:`search_by`, and the name among the words when the author
+        field finds nothing or is refused: the museum may spell the artist
+        otherwise ("Rembrandt Harmensz. van Rijn")."""
+        if type(self).search_by is Museum.search_by:
+            return self.search_by(artist, words, limit, page)
+        try:
+            found = self.search_by(artist, words, limit, page)
+        except httpx.HTTPStatusError as err:
+            if not 400 <= err.response.status_code < 500 or err.response.status_code == 429:
+                raise
+            log.info("%s: author field refused (%s); the name as words", self.key, err)
+            found = (0, [])
+        if found[0]:
+            return found
+        return self.search(" ".join(w for w in (words, artist) if w), limit, page)
+
     def search_kind(
         self, query: str, kind: Kind, limit: int = 20, page: int = 1
     ) -> tuple[int, list[Item]]:
@@ -259,13 +321,19 @@ class Museum(ABC):
         limit: int,
         page: int,
         ask: Callable[[], tuple[int, list[Item]]],
+        artist: str = "",
         **filters: Any,
     ) -> tuple[int, list[Item]]:
-        """Works for words typed: from the dump's index when it finds enough
+        """Works for words typed (and by ``artist``, in the dump's artist
+        texts): from the dump's index when it finds enough
         (:data:`LOCAL_MIN`), else from the museum's own search, as before
         there was an index; the index's when the museum cannot be asked."""
         index = self._index()
-        if index is None or not dump_words(query) or re.search(r"[:=]", query):
+        if artist:
+            if index is None or not dump_words(artist) or re.search(r"[:=]", query):
+                return ask()
+            filters["also"] = [(artist, ("artist",))]
+        elif index is None or not dump_words(query) or re.search(r"[:=]", query):
             return ask()
         found = self._from_dump(index, query, limit=limit, page=page, **filters)
         if found[0] >= LOCAL_MIN:
@@ -391,6 +459,19 @@ class ArtInstituteChicago(Museum):
         if not query.strip() and (index := self._index()) is not None:
             return self._from_dump(index, limit=limit, page=page)
         return self._at_home(query, limit, page, ask)
+
+    def search_by(
+        self, artist: str, words: str = "", limit: int = 20, page: int = 1
+    ) -> tuple[int, list[Item]]:
+        def ask() -> tuple[int, list[Item]]:
+            must: list[dict[str, Any]] = [
+                {"match": {"artist_title": {"query": artist, "operator": "and"}}}
+            ]
+            if words.strip():
+                must.append(self._text(words, self.search_fields))
+            return self._post(words, must, [], limit, page)
+
+        return self._at_home(words, limit, page, ask, artist=artist)
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         index = self._index()
@@ -525,6 +606,14 @@ class ClevelandMuseum(Museum):
             return self._from_dump(index, limit=limit, page=page)
         return self._at_home(query, limit, page, lambda: self._get({"q": query}, limit, page))
 
+    def search_by(
+        self, artist: str, words: str = "", limit: int = 20, page: int = 1
+    ) -> tuple[int, list[Item]]:
+        params = {"artists": artist, **({"q": words} if words.strip() else {})}
+        return self._at_home(
+            words, limit, page, lambda: self._get(params, limit, page), artist=artist
+        )
+
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         words = [spec.style.strip(), "poster" if spec.kind == "poster" else ""]
         if (index := self._index()) is not None:
@@ -619,6 +708,16 @@ class MetropolitanMuseum(Museum):
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         return self._search({"q": query}, limit, page)
 
+    def search_by(
+        self, artist: str, words: str = "", limit: int = 20, page: int = 1
+    ) -> tuple[int, list[Item]]:
+        # The open data's artist texts at home; the Met's own search for its
+        # artist or culture field (``artistOrCulture``) when they find few.
+        params: dict[str, Any] = {"q": f"{words} {artist}"}
+        if not words.strip():
+            params = {"q": artist, "artistOrCulture": "true"}
+        return self._search(params, limit, page, artist=artist, words=words)
+
     # Departments: European Paintings; Drawings and Prints; Photographs;
     # European Sculpture and Decorative Arts.
     departments: ClassVar[dict[str, int]] = {
@@ -646,14 +745,17 @@ class MetropolitanMuseum(Museum):
             params["isHighlight"] = "true"
         return self._search({**params, "isPublicDomain": "true"}, limit, page)
 
-    def _search(self, params: dict[str, Any], limit: int, page: int) -> tuple[int, list[Item]]:
+    def _search(
+        self, params: dict[str, Any], limit: int, page: int, artist: str = "", words: str = ""
+    ) -> tuple[int, list[Item]]:
         # The Met's open data searched at home once it is in (met_index.py):
         # the Met is asked only for the works found.
         index = MET_INDEX.get(self.access.data_dir) if self.access.data_dir else None
         local = 0
         if index is not None:
             local, ids = index.search(
-                str(params.get("q") or ""),
+                str(params.get("q") or "") if not artist else words,
+                artist=artist,
                 department=params.get("departmentId"),
                 begin=params.get("dateBegin"),
                 end=params.get("dateEnd"),
@@ -1521,6 +1623,14 @@ class Europeana(Museum):
         # collars and photos of buildings, and buries the paintings.
         return self._get(query, [self.whats["any"]], limit, page)
 
+    def search_by(
+        self, artist: str, words: str = "", limit: int = 20, page: int = 1
+    ) -> tuple[int, list[Item]]:
+        # ``who:``: the work's maker (dcCreator), not any text naming them.
+        name = artist.replace('"', " ").strip()
+        query = " ".join(w for w in (f'who:"{name}"', words.strip()) if w)
+        return self._get(query, [self.whats["any"]], limit, page)
+
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         if spec.kind not in self.whats:
             # Its photographs are mostly records of places and events, its
@@ -1763,6 +1873,14 @@ class StatensMuseum(Museum):
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         return self._get({"keys": query or "*", "filters": self.filters}, limit, page)
+
+    def search_by(
+        self, artist: str, words: str = "", limit: int = 20, page: int = 1
+    ) -> tuple[int, list[Item]]:
+        # SMK files its makers surname first ("Hammershøi, Vilhelm").
+        name = surname_first(artist).replace("[", " ").replace("]", " ")
+        filters = f"{self.filters},[creator:{name}]"
+        return self._get({"keys": words.strip() or "*", "filters": filters}, limit, page)
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         if spec.highlight or (spec.kind != "any" and spec.kind not in self.names):

@@ -612,6 +612,17 @@ class Louvre(Museum):
         words = query.casefold().split()
         return self._pick(lambda w: self._matches(words, w), limit, page)
 
+    def search_by(
+        self, artist: str, words: str = "", limit: int = 20, page: int = 1
+    ) -> tuple[int, list[Item]]:
+        said, names = words.casefold().split(), artist.casefold().split()
+
+        def by(w: dict[str, Any]) -> bool:
+            made = " ".join(str(w.get(k) or "") for k in ("artist", "artist_fr")).casefold()
+            return all(n in made for n in names) and self._matches(said, w)
+
+        return self._pick(by, limit, page)
+
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         if spec.highlight or spec.kind not in ("any", "painting"):
             return 0, []

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.137.3
+
+- Szukając artysty, serwer pyta muzea o niego po ich własnym polu autora
+  (Art Institute of Chicago, Cleveland, Met, Europeana, SMK, V&A,
+  Smithsonian, Wellcome, NGA, Luwr, Courtauld), a nie o dzieła, które
+  tylko wymieniają jego nazwisko: mniej zapytań i szybciej jego dzieła.
+  Gdy muzeum zapisuje nazwisko inaczej, pyta jak dotąd.
+
 ## 1.137.2
 
 - Szukaj i playlisty inteligentne pokazują dzieło znalezione przez muzeum

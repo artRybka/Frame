@@ -142,3 +142,16 @@ def test_a_failed_build_waits(tmp_path: Path, monkeypatch: Any) -> None:
     monkeypatch.setattr(met_index, "_rows", lambda http, *args: iter(()))
     assert index.refresh(tmp_path) is False
     assert index.failed_at > 0 and not index._claim()
+
+
+def test_an_artist_is_looked_for_in_the_artist_texts_only(tmp_path: Path) -> None:
+    """Mateusz 2026-11-09: museums asked by their author field, not for
+    works only naming the artist ("Cypresses, after van Gogh")."""
+    rows = [*ROWS, _row(7, "Cypresses, after Vincent van Gogh")]
+    path = index_path(tmp_path)
+    path.parent.mkdir(parents=True)
+    build(path, iter(rows))
+    index = MetIndex(path)
+    assert index.search("vincent van gogh")[0] == 3
+    assert sorted(index.search(artist="Vincent van Gogh")[1]) == ["1", "2"]
+    assert index.search("wheat", artist="Vincent van Gogh")[1] == ["1"]

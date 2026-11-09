@@ -11,6 +11,7 @@ from test_pools import _wait, museums  # noqa: F401  (fixture)
 
 from frame_server.library import Item, ItemKind, PlaylistRules
 from frame_server.library.importer import fill_queries, span
+from frame_server.library.museums import by_artist
 from frame_server.library.repo import matches
 from frame_server.library.search import museum_text
 from frame_server.library.themes import (
@@ -154,11 +155,12 @@ def test_a_style_museums_dont_know_is_asked_by_its_painters() -> None:
     catalogue alike."""
     rules = PlaylistRules(terms=["style:new-objectivity"])
     assert museum_text(rules, 1) == "new objectivity"
-    assert museum_text(rules, 2) == "Otto Dix"
-    assert museum_text(rules, 3) == "George Grosz"
+    # The painters by the museums' author fields (``museums.by_artist``).
+    assert museum_text(rules, 2) == by_artist("Otto Dix")
+    assert museum_text(rules, 3) == by_artist("George Grosz")
     sea = PlaylistRules(terms=["style:new-objectivity", "subject:sea"])
     assert museum_text(sea, 1) == "new objectivity sea"
-    assert museum_text(sea, 2) == "Otto Dix sea"
+    assert museum_text(sea, 2) == by_artist("Otto Dix", "sea")
     # With another style chosen too, the styles' words are asked.
     both = PlaylistRules(terms=["style:new-objectivity", "style:dada"])
     assert style_artists(both.terms) == [] and "Otto" not in museum_text(both, 1)

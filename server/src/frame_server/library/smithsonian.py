@@ -146,6 +146,15 @@ class Smithsonian(Museum):
             return self._from_dump(index, kinds=("Paintings",), limit=limit, page=page)
         return self._at_home(query, limit, page, lambda: self._get(words, limit, page))
 
+    def search_by(
+        self, artist: str, words: str = "", limit: int = 20, page: int = 1
+    ) -> tuple[int, list[Item]]:
+        # The dump's artist texts at home; the API as before.
+        text = " ".join(w for w in (words, artist) if w)
+        return self._at_home(
+            words, limit, page, lambda: self._get([f"({text})"], limit, page), artist=artist
+        )
+
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         if spec.highlight or (spec.kind != "any" and spec.kind not in self.kinds):
             return 0, []
