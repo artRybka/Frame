@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.135.1
+
+- Szukaj → Styl: style, których muzea nie znają z nazwy, są szukane także
+  po swoich malarzach (najpierw nazwa stylu, potem malarze na zmianę), a ich
+  dzieła z lat stylu do niego pasują. Dotyczy Nowej Rzeczowości (dotąd 0
+  dzieł), Złotego wieku holenderskiego, Akademizmu, Szkoły znad rzeki
+  Hudson, Prerafaelitów, Szkoły monachijskiej, Tonalizmu, Postimpresjonizmu,
+  Nabistów, Młodej Polski, Fowizmu, Konstruktywizmu, De Stijl i Shin-hanga.
+
 ## 1.135.0
 
 - Playlisty: karty da się ułożyć po swojemu. Przytrzymaj kartę i przesuń

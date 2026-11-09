@@ -25,6 +25,7 @@ from .phrases import has_phrase, quote
 from .phrases import words as phrase_words
 from .vocabulary import (
     OBJECT_CATEGORIES,
+    STYLE_ARTISTS,
     Term,
     fold,
     in_style_years,
@@ -213,6 +214,8 @@ class TermIndex:
             and found.year_from is None
             and found.year_to is None
             and found.pattern is not None
+            # A style's painters fit it whatever the text (STYLE_ARTISTS).
+            and found.key not in STYLE_ARTISTS
         )
         if not textual:
             return set(), everything

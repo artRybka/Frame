@@ -47,6 +47,8 @@ from .repo import Library, matches, now_iso
 from .vocabulary import (
     HIGHLIGHT,
     TECHNIQUE_KINDS,
+    asked_artists,
+    asked_topics,
     is_copy,
     is_grey_copy,
     may_be_grey_copy,
@@ -163,9 +165,11 @@ def span(rules: PlaylistRules) -> tuple[int | None, int | None]:
 def fill_queries(rules: PlaylistRules) -> list[str]:
     """What Discover's search asks the museums for ``rules``, one text per
     artist: the words, the artist and the first style or subject."""
-    topics = museum_queries(rules.terms)[:1]
     words = rules.query.strip()
-    texts = [" ".join(w for w in (words, artist, *topics) if w) for artist in rules.artists or [""]]
+    texts = [
+        " ".join(w for w in (words, artist, *asked_topics(rules.artists, artist, rules.terms)) if w)
+        for artist in asked_artists(rules.artists, rules.terms) or [""]
+    ]
     return [t for t in dict.fromkeys(texts) if t]
 
 
@@ -879,11 +883,13 @@ class Importer:
             sources = [s for s in sources if MUSEUMS[s].highlights] or sources
         with self.http() as http:
             museums = [museum(s, http, self.access()) for s in sources]
-            if rules.artists or rules.query:
+            artists = asked_artists(rules.artists, rules.terms)
+            if artists or rules.query:
                 # Named artists or words: the museums' own search finds them,
                 # asked first as Discover's search asks (with the words and a
-                # style or subject), then by the artist or words alone.
-                alone = rules.artists or [rules.query]
+                # style or subject), then by the artist or words alone. A
+                # style's painters (Nowa Rzeczowość) as named artists.
+                alone = [a for a in artists if a] or [rules.query]
                 queries = list(dict.fromkeys([*fill_queries(rules), *alone]))
                 kind = museum_kind(rules.terms)
                 streams = [_search_stream(m, q, kind) for q in queries for m in museums]
