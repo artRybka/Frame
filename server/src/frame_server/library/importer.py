@@ -46,7 +46,9 @@ from .phrases import quote, tokens
 from .repo import Library, matches, now_iso
 from .vocabulary import (
     HIGHLIGHT,
+    STYLE_ARTISTS,
     TECHNIQUE_KINDS,
+    asked_artists,
     is_copy,
     is_grey_copy,
     may_be_grey_copy,
@@ -163,9 +165,12 @@ def span(rules: PlaylistRules) -> tuple[int | None, int | None]:
 def fill_queries(rules: PlaylistRules) -> list[str]:
     """What Discover's search asks the museums for ``rules``, one text per
     artist: the words, the artist and the first style or subject."""
-    topics = museum_queries(rules.terms)[:1]
+    artists = asked_artists(rules.artists, rules.terms)
+    # A style asked by its painters isn't asked by its name too.
+    by_style = bool(artists) and not rules.artists
+    topics = museum_queries([t for t in rules.terms if not (by_style and t in STYLE_ARTISTS)])[:1]
     words = rules.query.strip()
-    texts = [" ".join(w for w in (words, artist, *topics) if w) for artist in rules.artists or [""]]
+    texts = [" ".join(w for w in (words, artist, *topics) if w) for artist in artists or [""]]
     return [t for t in dict.fromkeys(texts) if t]
 
 
@@ -862,11 +867,13 @@ class Importer:
             sources = [s for s in sources if MUSEUMS[s].highlights] or sources
         with self.http() as http:
             museums = [museum(s, http, self.access()) for s in sources]
-            if rules.artists or rules.query:
+            artists = asked_artists(rules.artists, rules.terms)
+            if artists or rules.query:
                 # Named artists or words: the museums' own search finds them,
                 # asked first as Discover's search asks (with the words and a
-                # style or subject), then by the artist or words alone.
-                alone = rules.artists or [rules.query]
+                # style or subject), then by the artist or words alone. A
+                # style's painters (Nowa Rzeczowość) as named artists.
+                alone = artists or [rules.query]
                 queries = list(dict.fromkeys([*fill_queries(rules), *alone]))
                 kind = museum_kind(rules.terms)
                 streams = [_search_stream(m, q, kind) for q in queries for m in museums]

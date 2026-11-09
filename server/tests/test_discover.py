@@ -10,8 +10,9 @@ from fastapi.testclient import TestClient
 from test_pools import _wait, museums  # noqa: F401  (fixture)
 
 from frame_server.library import Item, ItemKind, PlaylistRules
-from frame_server.library.importer import span
+from frame_server.library.importer import fill_queries, span
 from frame_server.library.repo import matches
+from frame_server.library.search import museum_text
 from frame_server.library.themes import (
     ARTIST_SPREAD,
     COLOUR,
@@ -40,6 +41,7 @@ from frame_server.library.vocabulary import (
     museum_queries,
     object_category,
     set_aside,
+    style_artists,
     suggest,
     term,
 )
@@ -142,6 +144,29 @@ def test_a_searched_style_needs_its_words_or_its_years() -> None:
     found = [impressionism.search_key()]
     assert matches(_work(16, title="Poplars", year=1891, found_for=found), impressionism)
     assert not matches(_work(17, title="Poplars", found_for=found), impressionism)
+
+
+def test_a_style_museums_dont_know_is_asked_by_its_painters() -> None:
+    """Museums found nothing that names "new objectivity" (Mateusz
+    2026-11-09: zero works): Nowa Rzeczowość is asked by its painters, in
+    turns, and their works from its years fit it, in Szukaj and in the
+    catalogue alike."""
+    rules = PlaylistRules(terms=["style:new-objectivity"])
+    assert museum_text(rules, 1) == "Otto Dix"
+    assert museum_text(rules, 2) == "George Grosz"
+    sea = PlaylistRules(terms=["style:new-objectivity", "subject:sea"])
+    assert museum_text(sea, 1) == "Otto Dix sea"
+    # With another style chosen too, the styles' words are asked.
+    both = PlaylistRules(terms=["style:new-objectivity", "style:dada"])
+    assert style_artists(both.terms) == [] and "Otto" not in museum_text(both, 1)
+    assert fill_queries(rules)[:2] == ["Otto Dix", "George Grosz"]
+    key = rules.search_key()
+    portrait = _work(18, title="Portrait of the Journalist", artist="Otto Dix", year=1926)
+    late = _work(19, title="Self-portrait", artist="Otto Dix", year=1966)
+    assert matches(portrait, rules)
+    assert matches(portrait.model_copy(update={"found_for": [key]}), rules)
+    assert not matches(late, rules)
+    assert not matches(late.model_copy(update={"found_for": [key]}), rules)
 
 
 def test_techniques_follow_what_the_object_is() -> None:

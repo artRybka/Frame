@@ -855,6 +855,8 @@ def term_matches(found: Term, item: Item, text: str | None = None) -> bool:
         return found.place is None or from_place(item, found.place)
     if found.key in item.terms:
         return True
+    if found.kind == "style" and _by_style_artist(found, item):
+        return True
     pattern = found.pattern
     return pattern is not None and bool(pattern.search(text if text is not None else text_of(item)))
 
@@ -952,6 +954,59 @@ def matches_terms(item: Item, keys: list[str], judged: Collection[str] = ()) -> 
         return False
     groups = {k: v for k, v in groups.items() if k not in judged}
     return all(any(term_matches(t, item, text) for t in terms) for terms in groups.values())
+
+
+#: Styles museums don't name and their search doesn't find ("new
+#: objectivity" brought Greek pyxides and video art, and with the style's
+#: name wanted nothing, Mateusz 2026-11-09): they are asked by their
+#: painters, in turns, and a work of theirs from the style's years fits.
+STYLE_ARTISTS: dict[str, tuple[str, ...]] = {
+    "style:new-objectivity": (
+        "Otto Dix",
+        "George Grosz",
+        "Christian Schad",
+        "Georg Schrimpf",
+        "Alexander Kanoldt",
+        "Rudolf Schlichter",
+        "Anton Räderscheidt",
+        "Carl Grossberg",
+        "Franz Radziwill",
+        "Karl Hubbuch",
+        "Jeanne Mammen",
+        "Max Beckmann",
+    ),
+}
+#: Years around a style's own that its painters' works still count.
+STYLE_ARTIST_SLACK = 2
+
+
+def style_artists(keys: Iterable[str]) -> list[str]:
+    """The painters to ask museums for, when every style in ``keys`` is one
+    of :data:`STYLE_ARTISTS` (with another style, its word is asked)."""
+    styles = [k for k in keys if k.startswith("style:")]
+    if not styles or any(k not in STYLE_ARTISTS for k in styles):
+        return []
+    return list(dict.fromkeys(a for k in styles for a in STYLE_ARTISTS[k]))
+
+
+def asked_artists(artists: list[str], keys: Iterable[str]) -> list[str]:
+    """The artists a search asks museums for: those chosen, or else the
+    painters of the styles chosen (:func:`style_artists`)."""
+    return artists or style_artists(keys)
+
+
+def _by_style_artist(style: Term, item: Item) -> bool:
+    """``item`` is by one of ``style``'s painters, from its years (or undated)."""
+    artists = STYLE_ARTISTS.get(style.key)
+    if not artists or not artist_matches(item.artist, list(artists)):
+        return False
+    span = STYLE_YEARS.get(style.key)
+    if item.year is None or span is None:
+        return True
+    start, end = span
+    return start - STYLE_ARTIST_SLACK <= item.year and (
+        end is None or item.year <= end + STYLE_ARTIST_SLACK
+    )
 
 
 def searched_style_fits(style: Term, item: Item, text: str) -> bool:

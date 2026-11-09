@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.133.2
+
+- Szukaj → Styl → Nowa Rzeczowość: muzea nie znają tej nazwy, więc styl jest
+  szukany po malarzach (Dix, Grosz, Schad, Schrimpf, Kanoldt i inni), a ich
+  dzieła z lat 1917–1935 do niego pasują. Większość przychodzi z Użytkiem
+  prywatnym.
+
 ## 1.133.1
 
 - Dymki z pytaniem („Opisać 19022 obrazy?”, „Usunąć playlistę?” i inne)
