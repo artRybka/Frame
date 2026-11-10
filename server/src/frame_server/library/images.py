@@ -69,6 +69,10 @@ GONE_FOR = 7 * 86400.0
 #: width: a museum's scan can be 100 MB and 200 megapixels, far more than
 #: the frame's 2560 px, and too large for Pillow to open at all.
 COMMONS_WIDTH = 3840
+#: A fragment's picture is kept this large (``kept_side``): a tile of a
+#: Commons tile set is looked at closely, 2560 showed a twelfth of its
+#: width (Mateusz 2026-11-10).
+TILE_MAX = COMMONS_WIDTH
 #: Sources whose works' sizes are their files' own and whose addresses ask
 #: for a size (IIIF ``full/!2560,2560``, the Smithsonian's ``max=2560``): an
 #: elongated work (:data:`WIDE`) is asked in the size it is kept in.
@@ -147,6 +151,14 @@ def wide(width: int | None, height: int | None) -> bool:
     if not width or not height:
         return False
     return max(width, height) > WIDE * min(width, height)
+
+
+def kept_side(item: Item) -> int:
+    """The long side ``item``'s original is kept with: a fragment of a work
+    (a tile looked at in the full-screen viewer, "Pod lupą") as large as
+    Commons' widest rendition, :data:`TILE_MAX`; any other
+    :data:`IMAGE_MAX` (more for an elongated one, :func:`kept_size`)."""
+    return TILE_MAX if split_part(item.id) is not None else IMAGE_MAX
 
 
 def _save_jpeg(img: Image.Image, path: Path, max_side: int, quality: int) -> None:
@@ -595,7 +607,7 @@ class ImageCache:
             if not path.is_file():
                 img = self._original(item, urgent)
                 self._failed.pop(item.id, None)
-                _save_jpeg(img, path, IMAGE_MAX, 92)
+                _save_jpeg(img, path, kept_side(item), 92)
                 self._remember_size(item, img)
         self._forget_gone(item)
         return path
@@ -674,12 +686,13 @@ class ImageCache:
                 changed += 1
         return changed
 
-    def drop_fragments(self) -> int:
+    def drop_fragments(self, thumbs: bool = True) -> int:
         """Forget the kept pictures of works' fragments (had again when
         asked for): those kept before 2026-11-09 lost their margins, and a
-        trimmed tile does not lie in its place on the whole."""
+        trimmed tile does not lie in its place on the whole; those before
+        2026-11-10 were kept at 2560 px (``TILE_MAX``)."""
         dropped = 0
-        for folder in (self.images, self.thumbs):
+        for folder in (self.images, self.thumbs) if thumbs else (self.images,):
             for path in folder.glob(f"*{PART}*.jpg"):
                 if split_part(path.stem) is None:
                     continue

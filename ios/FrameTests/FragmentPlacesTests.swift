@@ -14,9 +14,10 @@ final class FragmentPlacesTests: XCTestCase {
     }
 
     func testTilesComeInTheSizeTheServerKeeps() {
-        XCTAssertEqual(ZoomTile.keptWidth(29952, 29952), 2560)
-        XCTAssertEqual(ZoomTile.keptWidth(9984, 29952), 9984 * 2560 / 29952, accuracy: 0.01)
+        XCTAssertEqual(ZoomTile.keptWidth(29952, 29952), 3840)
+        XCTAssertEqual(ZoomTile.keptWidth(9984, 29952), 1280)
+        XCTAssertEqual(ZoomTile.keptWidth(10000, 29952), 1282)  // whole pixels
         XCTAssertEqual(ZoomTile.keptWidth(1000, 800), 1000)
-        XCTAssertEqual(ZoomTile.keptWidth(nil, 800), 2560)
+        XCTAssertEqual(ZoomTile.keptWidth(nil, 800), 3840)
     }
 }

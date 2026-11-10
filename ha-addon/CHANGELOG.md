@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.139.2
+
+- „Pod lupą”: kafle z Commons są trzymane w 3840 px zamiast 2560, więc przy
+  dużym przybliżeniu są półtora raza ostrzejsze. Kafle zapisane wcześniej
+  zostaną raz pobrane od nowa. Aplikacja wczytuje pełny rozmiar kafla tylko
+  wtedy, gdy przybliżenie go wymaga.
+- „Pod lupą” w Odkrywaj pokazuje każde dzieło raz. Commons trzyma niektóre
+  w kilku plikach z kaflami (np. „Księżniczka z krainy porcelany” Whistlera
+  trzy razy); zostaje największy.
+
 ## 1.139.1
 
 - Próba sędziego powtórek: także Opus, a pytanie osobno o rodzaj pary

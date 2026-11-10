@@ -120,6 +120,8 @@ class Fragments:
         #: Their files' titles by the Wikidata item of the work each
         #: shows, and when read.
         self._works: tuple[float, dict[str, list[str]]] | None = None
+        #: The same by the files' page ids: page id -> Wikidata item.
+        self._page_works: dict[str, str] = {}
         self._asking: dict[str, threading.Lock] = {}
         zoom.known(self._tiled[1] if self._tiled is not None else ())
 
@@ -291,7 +293,16 @@ class Fragments:
                 text = str(revisions[0].get("slots", {}).get("main", {}).get("content") or "")
                 if (match := _WORK.search(text)) and page.get("title"):
                     found.setdefault(match.group(1), []).append(str(page["title"]))
+                    if page.get("pageid"):
+                        with self._lock:
+                            self._page_works[str(page["pageid"])] = match.group(1)
         return found
+
+    def work_of_page(self, page_id: str) -> str:
+        """The Wikidata item of the work a Commons file with a tile set
+        shows, by its page id, as last read (no request); "" unknown."""
+        with self._lock:
+            return self._page_works.get(page_id, "")
 
     def items(self, item: Item) -> list[Item]:
         """``item``'s fragments as works of their own."""
