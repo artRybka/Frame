@@ -135,10 +135,11 @@ struct SuggestionRowGridView: View {
                 }
                 MasonryGrid(items: items.map(\.summary)) { summary in
                     NavigationLink(value: summary.id) {
-                        ArtCard(item: summary, ref: items.first { $0.id == summary.id }?.thumb)
+                        ArtCard(item: summary, ref: items.first { $0.id == summary.id }?.thumb, showsFavorite: false)
                     }
                     .buttonStyle(.plain)
                     .contextMenu { QueueButton(itemID: summary.id) }
+                    .overlay(alignment: .topTrailing) { LikeHeart(item: summary) }
                 }
                 if items.isEmpty {
                     EmptyStateView(

@@ -803,6 +803,9 @@ actor DemoBackend: FrameBackend {
         for start in stride(from: 0, to: 12, by: 4) {
             for list in lists where start < list.count { order += list[start ..< min(start + 4, list.count)] }
         }
+        // One already liked among them, as on a real day (CI screenshots of
+        // both hearts).
+        if order.count > 1 { order[1].favorite = true }
         return DayPicks(day: "2026-11-09", cards: cards, items: remote(order))
     }
 

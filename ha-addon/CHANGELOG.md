@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.142.3
+## 1.142.5
 
 - „Droga dzieła” jest teraz rysunkiem drogi, a nie osią czasu. Jedna
   linia płynie łukami przez całą szerokość, jak pociągnięta szerokim
@@ -28,6 +28,16 @@
 - Pod rysunkiem nie ma już podpisu o źródle i o tym, kto opowiada.
 - Linia z kropkami rysuje się zawsze. Wcześniej czasem zostawały same
   teksty, bez drogi.
+
+## 1.142.3
+
+- Serce na miniaturach da się kliknąć także w Odkrywaj (zestawy, „Zobacz
+  wszystkie”, rzędy propozycji), w Propozycjach dnia i w playlistach,
+  nie tylko w Szukaj.
+  W Ulubionych serc dalej nie ma.
+- Czerwone serce jest z tego samego przeziernego szkła co puste, tylko
+  zabarwionego na czerwono, lekko prześwitującą czerwienią, tą samą
+  w jasnym i ciemnym trybie.
 
 ## 1.142.2
 
