@@ -16,7 +16,7 @@ from typing import Any
 import httpx
 
 from .models import Item
-from .museums import Access, Discovery, Kind, Museum, WikimediaCommons
+from .museums import Access, Discovery, Kind, Museum, WikimediaCommons, plain_text
 from .places import known_places
 from .wikidata import API, Wikidata
 
@@ -79,6 +79,7 @@ class WikidataPlaces(Museum):
     def search_kind(
         self, query: str, kind: Kind, limit: int = 20, page: int = 1
     ) -> tuple[int, list[Item]]:
+        query = plain_text(query)
         kinds = KINDS.get(kind)
         if not self.places or kinds is None:
             return 0, []

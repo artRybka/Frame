@@ -51,6 +51,45 @@ def test_a_work_the_search_found_fits_its_choices() -> None:
     assert not matches(found.model_copy(update={"excluded": True}), rules)
 
 
+def test_one_technique_is_checked_on_the_work_also_when_found() -> None:
+    """Malarstwo with Monet: museums asked for an artist bring every kind of
+    his works; what their type or material says another technique is out,
+    in Szukaj and in the catalogue (Mateusz 2026-11-10: AIC's caricatures,
+    "Drawing and Watercolor", "graphite on tan paper")."""
+    rules = PlaylistRules(artists=["Claude Monet"], terms=["technique:painting"])
+    key = rules.search_key()
+
+    def found(n: int, classification: str, medium: str = "") -> Item:
+        return _item(
+            n,
+            artist="Claude Monet",
+            classification=classification,
+            medium=medium,
+            found_for=[key],
+        )
+
+    caricature = found(1, "Drawing and Watercolor", "Graphite on tan wove paper")
+    assert not matches(caricature, rules)
+    assert not MuseumSearch.of(rules).fits(caricature)
+    assert matches(found(2, "Painting", "Oil on canvas"), rules)
+    # The type first: an oil sketch the museum files under drawings is one.
+    assert not matches(found(3, "Drawing", "Oil on paper"), rules)
+    # Its material when the type says nothing; oil beside graphite.
+    assert matches(found(4, "", "Oil and graphite on canvas"), rules)
+    assert not matches(found(5, "", "Etching"), rules)
+    assert not matches(found(6, "Print", "akwaforta, papier"), rules)
+    assert matches(found(7, "Painting", "olej, płótno"), rules)
+    # Saying nothing of its technique: the museum's search is trusted.
+    assert matches(found(8, "Image"), rules)
+    # Grafika: Degas's monotypes and Polish types are prints.
+    prints = PlaylistRules(artists=["Edgar Degas"], terms=["technique:print"])
+    degas = _item(
+        9, artist="Edgar Degas", classification="Monotype", found_for=[prints.search_key()]
+    )
+    assert matches(degas, prints)
+    assert not matches(degas.model_copy(update={"classification": "Painting"}), prints)
+
+
 def test_periods_are_checked_on_the_work_also_when_found() -> None:
     # 17th and 19th century: the museums are asked for 1601-1900, which
     # takes in the 18th century too.

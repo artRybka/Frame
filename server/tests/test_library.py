@@ -22,6 +22,7 @@ from frame_server.library.museums import (
     Museum,
     Rijksmuseum,
     WikimediaCommons,
+    by_artist,
 )
 from frame_server.library.seed import PACKS, SEED_QUERIES
 
@@ -560,6 +561,23 @@ def test_aic_mapping() -> None:
     assert item.id == "aic:24645" and item.artist_bio == "Japanese, 1760-1849"
     assert item.description == "Famous & blue." and item.subjects == ["waves", "Mount Fuji"]
     assert item.thumb_url.endswith("/abc/full/843,/0/default.jpg")
+
+
+def test_aic_asks_for_one_type_with_the_artist() -> None:
+    """Malarstwo with Monet: AIC is asked for his paintings by the author
+    field, not for every work naming him (his caricatures, Mateusz
+    2026-11-10)."""
+    sent: list[httpx.Request] = []
+    body = {"pagination": {"total": 0}, "data": []}
+    with _client({"https://api.artic.edu/api/v1/artworks/search": body}, sent) as http:
+        ArtInstituteChicago(http).search_kind(by_artist("Claude Monet"), "painting")
+        ArtInstituteChicago(http).search_kind("water lilies", "drawing")
+    must = json.loads(sent[0].content)["query"]["bool"]["must"]
+    assert {"term": {"artwork_type_title.keyword": "Painting"}} in must
+    assert {"match": {"artist_title": {"query": "Claude Monet", "operator": "and"}}} in must
+    must = json.loads(sent[1].content)["query"]["bool"]["must"]
+    assert {"term": {"artwork_type_title.keyword": "Drawing and Watercolor"}} in must
+    assert must[1]["simple_query_string"]["query"] == "water lilies"
 
 
 def test_cleveland_mapping() -> None:
