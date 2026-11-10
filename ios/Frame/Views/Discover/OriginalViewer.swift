@@ -191,6 +191,35 @@ struct ZoomTile: Equatable {
     let pixels: CGFloat
     let request: URLRequest
 
+    /// Zooming in goes no deeper than this, however large the tiles.
+    static let deepestZoom: CGFloat = 48
+
+    /// How far the full screen zooms in: as deep as the tiles' pixels reach
+    /// (`across`, the whole's width in them) one to one of the screen's
+    /// (`shown`, the picture's width fitted on it), at least 8 (no tiles).
+    static func depth(across: CGFloat, shown: CGFloat) -> CGFloat {
+        guard across > 0, shown > 0 else { return 8 }
+        return min(deepestZoom, max(8, across / shown))
+    }
+
+    /// The same for a work's tile set fitted on this screen, as the card
+    /// tells it ("17×"); nil without places.
+    @MainActor
+    static func depth(of view: FragmentsView, screen: CGSize, scale: CGFloat) -> Int? {
+        guard let places = view.places, !places.isEmpty, screen.width > 0, screen.height > 0 else { return nil }
+        let items = Dictionary(view.fragments.map { ($0.id, $0.item) }, uniquingKeysWith: { a, _ in a })
+        var across: CGFloat = 0
+        var shape: CGFloat?
+        for place in places where place.w > 0 {
+            guard let tile = items[place.id] else { continue }
+            across = max(across, keptWidth(tile.width, tile.height) / place.w)
+            shape = shape ?? gridShape(place.unit, tile)
+        }
+        guard let shape, across > 0 else { return nil }
+        let fitted = min(screen.width, screen.height * shape)
+        return Int(depth(across: across, shown: fitted * scale).rounded())
+    }
+
     /// The long side the server keeps a tile at (`images.TILE_MAX`, Commons'
     /// widest rendition; 2560 before 2026-11-10).
     static let keptSide: CGFloat = 3840
@@ -350,12 +379,7 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
     /// theirs to one of the screen's), within reason.
     private func deepest() {
         let across = tiles.map { $0.pixels / max($0.unit.width, 0.001) }.max() ?? 0
-        let shown = imageView.bounds.width * traitCollection.displayScale
-        guard across > 0, shown > 0 else {
-            maximumZoomScale = 8
-            return
-        }
-        maximumZoomScale = min(24, max(8, across / shown))
+        maximumZoomScale = ZoomTile.depth(across: across, shown: imageView.bounds.width * traitCollection.displayScale)
     }
 
     private func rect(of tile: ZoomTile) -> CGRect {

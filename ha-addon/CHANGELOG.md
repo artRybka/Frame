@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.140.1
+
+- „Pod lupą”: znaczek przy roku na karcie dzieła podaje, ile razy naprawdę
+  da się przybliżyć to dzieło na tym telefonie (np. 17× zamiast stałego
+  „24×”). Pełny ekran przybliża tak głęboko, jak sięgają piksele kafli, do
+  48×. Takie dzieła nie mają już sekcji „Fragmenty” na karcie ani w
+  studium: kafle ogląda się w pełnym ekranie.
+
 ## 1.140.0
 
 - Szukaj: pary dzieł, których obrazy nie rozstrzygnęły (to samo dzieło?
