@@ -22,6 +22,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
+from ..ai import AiUnavailable
 from ..library import (
     Item,
     Job,
@@ -984,6 +985,33 @@ async def terms(svc: Svc, q: str, limit: Annotated[int, Query(ge=1, le=20)] = 10
     periods and techniques, and the plain words; each with how many works
     in the catalogue fit."""
     return await run_in_threadpool(_term_hits, svc, q, limit)
+
+
+class SentenceAsk(BaseModel):
+    text: str
+
+
+class SentenceView(BaseModel):
+    """What a sentence typed in Szukaj asks for (``ai.sentence``)."""
+
+    #: In Polish, what the model read the sentence as.
+    reading: str
+    #: The chips to put in ("artist", "style", "subject", "period",
+    #: "technique", "color" or "word").
+    hits: list[TermHit]
+
+
+@router.post("/terms/sentence", response_model=SentenceView)
+async def terms_sentence(body: SentenceAsk, svc: Svc) -> SentenceView:
+    """Szukaj by a sentence ("Szukaj zdaniem", Haiku): its choices as chips.
+    409 without a key, with the switch off or over the month's limit."""
+    if not body.text.strip():
+        raise HTTPException(422, "empty sentence")
+    try:
+        found = await run_in_threadpool(svc.sentence.understand, body.text)
+    except AiUnavailable as err:
+        raise HTTPException(409, str(err)) from err
+    return SentenceView(reading=found.reading, hits=[TermHit(**h) for h in found.hits])
 
 
 #: Threads for asking the museums, apart from the server's own pool: a

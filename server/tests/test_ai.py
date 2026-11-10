@@ -226,17 +226,19 @@ def test_the_background_asks_about_the_owners_items(
     _add(service, "met:shown", pooled=True, show_count=1)
     _add(service, "icloud:1", kind=ItemKind.PHOTO, photo=PhotoInfo(caption="Zakopane"))
     assert service.ai.progress(KIND).waiting == 3
-    assert service.ai.sweep() == 3
-    while not service.ai._queue.empty():
-        service.ai._do(service.ai._queue.get())
-    asked = {p["messages"][0]["content"][1]["text"].splitlines()[0] for p in fake.asked}
+    assert service.ai.sweep() == 0  # asked at night, in a batch at half the price
+    assert service.ai.order_night() == 3
+    (requests,) = fake.batches.values()
+    asked = {r["params"]["messages"][0]["content"][1]["text"].splitlines()[0] for r in requests}
     assert asked == {"Kind: artwork", "Kind: photo"}
-    assert len(fake.asked) == 3
+    assert len(requests) == 3
+    fake.ended = True
+    assert service.ai.poll_batches() == 3
     assert service.ai.progress(KIND).waiting == 0
 
     service.ai_config.update(AiConfigUpdate(keywords_photos=False))
     _add(service, "icloud:2", kind=ItemKind.PHOTO)
-    assert service.ai.sweep() == 0
+    assert service.ai.order_night() == 0
 
 
 def test_a_photo_sent_once_gets_keywords_once_shown_or_queued(
@@ -251,8 +253,10 @@ def test_a_photo_sent_once_gets_keywords_once_shown_or_queued(
     service.player.remember_sent(sent)  # shown or queued: in "Historia przesłanych"
     assert service.library.sent_photo_ids() == {sent.id}
     assert service.ai.estimate(KIND)[0] == 1
-    assert service.ai.sweep() == 1
-    service.ai._do(service.ai._queue.get())
+    assert service.ai.sweep() == 0  # the night's batch asks
+    assert service.ai.order_night() == 1
+    fake.ended = True
+    assert service.ai.poll_batches() == 1
     item = service.library.get(sent.id)
     assert item is not None and "subject:sea" in item.terms and "żaglowiec" in item.keywords
     assert service.library.query(PlaylistRules(kinds=[ItemKind.PHOTO]))[0] == 0  # never listed
@@ -407,6 +411,7 @@ def test_what_the_app_needs_now_never_waits_for_the_background(
         return create(**params)
 
     fake.messages.create = slow_first
+    service.ai.jobs[KIND].night = False  # a background job asked by day
     assert service.ai.sweep() == 2
     service.ai.start()
     try:

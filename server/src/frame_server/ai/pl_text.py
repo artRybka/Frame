@@ -373,6 +373,7 @@ def clean(data: dict[str, Any], item: Item, facts: Facts | None) -> PolishText |
 class PlTextJob(NoteJob):
     kind = KIND
     model = HAIKU  # translations; notes ask SONNET (model_for)
+    night = True
     prompt_version = PROMPT_VERSION
     typical = TRANSLATION_USAGE
     #: The title is shown on the card as soon as it is written (``early_title``).

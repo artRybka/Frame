@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.141.0
+
+- Strażnik katalogu: w nocy Claude Haiku ogląda obrazy z Commons,
+  Europeany, Openverse i WikiArt i odkłada te, które nie są dziełem
+  (znaczek, strona tekstu, zdjęcie sali, czarno-białe zdjęcie kolorowego
+  obrazu). Każde odłożenie najpierw potwierdza krytyk; dzieła muzeów nie
+  są ruszane. Odłożone są w Konfiguracji → Model językowy → „Do
+  sprawdzenia”, z guzikiem „Przywróć”.
+- Nocny przegląd: co noc 30 losowych dzieł sprawdzanych pod kątem tytułu,
+  daty, polskiego opisu i obrazu. Nic nie jest zmieniane, znaleziska są na
+  tej samej liście „Do sprawdzenia”.
+- Szukaj zdaniem: po wpisaniu kilku słów w Szukaj wiersz „Szukaj zdaniem”
+  zamienia zdanie na tematy, epoki, kolory, artystów i słowa, każde jako
+  żeton do usunięcia.
+- Słowa kluczowe i polskie teksty, na które nikt nie czeka, są zamawiane
+  w nocy w paczce za pół ceny. Co potrzebne od razu, idzie od razu.
+
 ## 1.140.2
 
 - Polskie tytuły z Wikidaty dla większej liczby muzeów. Ustalony polski
