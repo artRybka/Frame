@@ -14,6 +14,8 @@ from ..ai.composition import PAGES
 from ..ai.daily import CHECK_ROUND, ROUND
 from ..ai.keywords import KIND as KEYWORDS
 from ..ai.pl_text import KIND as PL_TEXT
+from ..ai.twins_judge import MODELS as JUDGES
+from ..ai.twins_judge import Verdict, judge
 from ..service import FrameService
 from .deps import require_owner, service
 
@@ -194,3 +196,36 @@ async def put_compose(update: ComposeUpdate, svc: Svc) -> Compose:
     svc.compose.let(update.rework if update.rework is True else list(update.rework or []))
     svc.ai.wake()
     return await run_in_threadpool(_compose, svc)
+
+
+class JudgeAsk(BaseModel):
+    """Two works of the library and the models to ask about them."""
+
+    a: str
+    b: str
+    models: list[str] = list(JUDGES)
+    effort: str = "low"
+
+
+class JudgeView(BaseModel):
+    verdicts: list[Verdict]
+
+
+@router.post("/twins-judge", response_model=JudgeView)
+async def twins_judge(body: JudgeAsk, svc: Svc) -> JudgeView:
+    """How each model sees a pair of pictures (``ai.twins_judge``): the
+    test of the judge of copies, one pair at a time, from a script on the
+    owner's Mac (Mateusz 2026-11-10). Costs go to this month's spending."""
+    a, b = svc.library.get(body.a), svc.library.get(body.b)
+    if a is None or b is None:
+        raise HTTPException(404, "no such work")
+    unknown = [m for m in body.models if m not in JUDGES]
+    if unknown or body.effort not in ("low", "medium", "high", "xhigh", "max"):
+        raise HTTPException(422, f"unknown model or effort: {unknown or body.effort}")
+    try:
+        verdicts = await run_in_threadpool(
+            judge, svc.claude, svc.images, a, b, body.models, body.effort
+        )
+    except AiUnavailable as err:
+        raise HTTPException(409, str(err)) from err
+    return JudgeView(verdicts=verdicts)

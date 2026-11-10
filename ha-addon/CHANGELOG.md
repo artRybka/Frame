@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.138.6
+
+- Próba sędziego powtórek: serwer potrafi pokazać parę obrazów modelom
+  Haiku, Sonnet i Fable i podać, jak każdy ją ocenia (ta sama praca,
+  detal, zdjęcie w ramie, kopia innej ręki, dwa różne dzieła) i ile to
+  kosztowało. Używa klucza z Konfiguracji, koszt wlicza się do miesiąca.
+  Nic nie zmienia w katalogu.
+
 ## 1.138.5
 
 - Mniej powtórek i detali w Szukaj. Wyniki z muzeów nie pokazują już
