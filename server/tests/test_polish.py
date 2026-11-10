@@ -26,6 +26,7 @@ from frame_server.ai.pl_text import (
     clean,
     description,
     model_for,
+    own_title_first,
     request_text,
     schema,
     untranslated,
@@ -619,3 +620,116 @@ def test_the_card_gets_the_title_before_the_texts(tmp_path: Path) -> None:
         finally:
             fake.held.set()
             svc.ai.stop()
+
+
+def _works(request: httpx.Request, seen: list[httpx.Request]) -> httpx.Response:
+    """Wikidata with works Q1 ("met:1"), Q2 ("met:2") and none for "met:3"."""
+    seen.append(request)
+    params = request.url.params
+    if params.get("list") == "search":
+        value = params["srsearch"].rsplit("=", 1)[1]
+        hits = {"1": "Q1", "2": "Q2"}
+        found = [{"title": hits[value]}] if value in hits else []
+        return httpx.Response(200, json={"query": {"search": found}})
+    labels = {"Q1": "Słoneczniki", "Q2": "Gwiaździsta noc"}
+    return httpx.Response(
+        200,
+        json={
+            "entities": {
+                i: {"labels": {"pl": {"value": labels[i]}}, "claims": {}}
+                for i in params["ids"].split("|")
+            }
+        },
+    )
+
+
+def test_wikidata_reads_the_works_found_together() -> None:
+    seen: list[httpx.Request] = []
+    http = httpx.Client(transport=httpx.MockTransport(lambda r: _works(r, seen)))
+    wd = Wikidata()
+    items = [_item(source_id=n) for n in ("1", "2", "3")]
+    facts = wd.facts_of(http, items)
+    assert {k: f and f.title_pl for k, f in facts.items()} == {
+        "met:1": "Słoneczniki",
+        "met:2": "Gwiaździsta noc",
+        "met:3": None,
+    }
+    reads = [r for r in seen if r.url.params.get("action") == "wbgetentities"]
+    assert [r.url.params["ids"] for r in reads] == ["Q1|Q2"]
+    count = len(seen)
+    assert wd.facts_of(http, items) == facts  # all remembered, "met:3" too
+    assert len(seen) == count
+    assert wd.known(items[0]) == facts["met:1"]
+
+
+def test_an_error_wikidata_gives_with_a_200_is_not_nothing() -> None:
+    lagging = True
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        if lagging:
+            return httpx.Response(200, json={"error": {"code": "maxlag", "info": "lagged"}})
+        return _wikidata(request)
+
+    http = httpx.Client(transport=httpx.MockTransport(answer))
+    wd = Wikidata()
+    assert wd.facts(http, _item()) is None
+    assert wd.cached(_item()) == (False, None)
+    lagging = False
+    assert wd.facts(http, _item()) is not None
+
+
+def test_works_of_other_museums_are_found_by_their_numbers() -> None:
+    def answer(request: httpx.Request) -> httpx.Response:
+        params = request.url.params
+        if params.get("list") == "search":
+            assert params["srsearch"] == "haswbstatement:P217=KMS1"
+            return httpx.Response(200, json={"query": {"search": [{"title": "Q7"}]}})
+        number = {
+            "mainsnak": {"datavalue": {"value": "KMS1"}},
+            "qualifiers": {"P195": [{"datavalue": {"value": {"id": "Q671384"}}}]},
+        }
+        return httpx.Response(
+            200,
+            json={
+                "entities": {
+                    "Q7": {"labels": {"pl": {"value": "Kobieta"}}, "claims": {"P217": [number]}},
+                }
+            },
+        )
+
+    http = httpx.Client(transport=httpx.MockTransport(answer))
+    wd = Wikidata()
+    smk = wd.facts(http, _item(source="smk", source_id="KMS1"))
+    assert smk is not None and smk.title_pl == "Kobieta"
+    assert wd.facts(http, _item(source="wmc", source_id="123")) is None  # not asked
+    # Another museum's number of the same kind: not this work.
+    other = Wikidata()
+    number_elsewhere = httpx.MockTransport(
+        lambda r: (
+            httpx.Response(200, json={"query": {"search": [{"title": "Q7"}]}})
+            if r.url.params.get("list") == "search"
+            else httpx.Response(200, json={"entities": {"Q7": {"labels": {"pl": {"value": "X"}}}}})
+        )
+    )
+    smk = _item(source="smk", source_id="KMS1")
+    assert other.facts(httpx.Client(transport=number_elsewhere), smk) is None
+
+
+def test_the_texts_title_is_wikidatas_also_when_it_came_later(
+    service: FrameService, fake: FakeAnthropic
+) -> None:
+    fake.answer = PL_ANSWER
+    _add(service, "met:1", description=DESCRIPTION)
+    service.ai.run_one(KIND, "met:1")
+    item = service.library.get("met:1")
+    assert item is not None
+    assert service.pl_text.text(item).title == "Burza śnieżna"  # type: ignore[union-attr]
+    service.pl_text.wikidata._keep(item, Facts(qid="Q1", title_pl="Śnieżyca"))
+    assert service.pl_text.text(item).title == "Śnieżyca"  # type: ignore[union-attr]
+
+
+def test_polish_museums_keep_their_own_titles() -> None:
+    facts = Facts(qid="Q1", title_pl="Bitwa", creator_gender="male")
+    mnw = _item(source="mnw", source_id="1", title="Bitwa pod Grunwaldem")
+    assert own_title_first(mnw, facts) == Facts(qid="Q1", creator_gender="male")
+    assert own_title_first(_item(), facts) is facts

@@ -186,36 +186,85 @@ def _ids(entity: dict[str, Any], prop: str) -> list[str]:
 KEPT = "wikidata-facts"
 
 
+#: Works read in one request (wbgetentities takes 50 ids at most).
+BATCH = 50
+
+
 class Wikidata:
     """Facts by item id, kept in memory and, with ``kept``, on disk for
     :data:`.records.KEEP_DAYS` (an update of the server asked Wikidata about
     every work again, 428 requests on 2026-11-07); ``None`` when Wikidata
-    has none."""
+    has none.
+
+    A work is found by its museum's record id or inventory number
+    (:func:`commons_ref`): every museum Wikidata knows by one, not only
+    those of the copies (Mateusz, 2026-11-10)."""
 
     def __init__(self, kept: Records | None = None) -> None:
         self._known: dict[str, Facts | None] = {}
         self._lock = threading.Lock()
         self.kept = kept
 
-    def facts(self, http: httpx.Client, item: Item) -> Facts | None:
+    def cached(self, item: Item) -> tuple[bool, Facts | None]:
+        """(whether known, the facts) without asking Wikidata."""
         with self._lock:
             if item.id in self._known:
-                return self._known[item.id]
-        ref = record_id(item)
-        if ref is None:
-            return None
+                return True, self._known[item.id]
         if self.kept is not None:
             found, record = self.kept.get(KEPT, item.id)
             if found:
                 facts = _facts_from(record)
                 with self._lock:
                     self._known[item.id] = facts
-                return facts
+                return True, facts
+        return False, None
+
+    def known(self, item: Item) -> Facts | None:
+        """The facts of ``item`` when already asked for; never asks."""
+        return self.cached(item)[1]
+
+    def facts(self, http: httpx.Client, item: Item) -> Facts | None:
+        return self.facts_of(http, [item]).get(item.id)
+
+    def facts_of(self, http: httpx.Client, items: list[Item]) -> dict[str, Facts | None]:
+        """The facts of ``items`` by id, those known and those Wikidata
+        answered for; the works found are read :data:`BATCH` at a time.
+        What could not be asked (the network, a rate limit) is left out and
+        not remembered: asked again next time."""
+        out: dict[str, Facts | None] = {}
+        found: dict[str, tuple[Item, str, tuple[str, str]]] = {}
+        for item in items:
+            known, facts = self.cached(item)
+            if known:
+                out[item.id] = facts
+                continue
+            ref = commons_ref(item)
+            if ref is None:
+                continue  # nothing to find it by
+            try:
+                qid = self._find(http, *ref)
+            except (httpx.HTTPError, ValueError, KeyError):
+                continue
+            if not qid:
+                out[item.id] = self._keep(item, None)
+                continue
+            found[item.id] = (item, qid, ref)
+        if not found:
+            return out
         try:
-            qid = self._find(http, *ref)
-            facts = self._facts(http, qid) if qid else None
+            read = self._read(http, [qid for _, qid, _ in found.values()])
         except (httpx.HTTPError, ValueError, KeyError):
-            return None  # not remembered: asked again next time
+            return out
+        for item, qid, ref in found.values():
+            work = read.get(qid)
+            if work is not None and ref[0] == INVENTORY:
+                known_by = INVENTORIES[item.source]
+                if not _holds(work.entity, INVENTORY, ref[1], known_by.collection):
+                    work = None  # another museum's number, or part of a longer one
+            out[item.id] = self._keep(item, None if work is None else work.facts)
+        return out
+
+    def _keep(self, item: Item, facts: Facts | None) -> Facts | None:
         with self._lock:
             self._known[item.id] = facts
         if self.kept is not None:
@@ -223,66 +272,96 @@ class Wikidata:
         return facts
 
     @staticmethod
-    def _find(http: httpx.Client, prop: str, value: str) -> str | None:
-        resp = http.get(
-            API,
-            params={
-                "action": "query",
-                "list": "search",
-                # A number with spaces ("MNK XII-209") whole, in quotes.
-                "srsearch": f'haswbstatement:"{prop}={value}"'
-                if not re.fullmatch(r"[\w.-]+", value)
-                else f"haswbstatement:{prop}={value}",
-                "srlimit": 1,
-                "format": "json",
-            },
-        )
+    def _answer(resp: httpx.Response) -> dict[str, Any]:
+        """The API's answer; an error it gives with a 200 (a rate limit, a
+        lagging database) raises, so that it is not taken for "nothing found"."""
         resp.raise_for_status()
-        hits = resp.json().get("query", {}).get("search") or []
+        body: dict[str, Any] = resp.json()
+        if error := body.get("error"):
+            raise ValueError(str(error.get("code") if isinstance(error, dict) else error))
+        return body
+
+    @staticmethod
+    def _find(http: httpx.Client, prop: str, value: str) -> str | None:
+        params: dict[str, Any] = {
+            "action": "query",
+            "list": "search",
+            # A number with spaces ("MNK XII-209") whole, in quotes.
+            "srsearch": f'haswbstatement:"{prop}={value}"'
+            if not re.fullmatch(r"[\w.-]+", value)
+            else f"haswbstatement:{prop}={value}",
+            "srlimit": 1,
+            "format": "json",
+        }
+        hits = Wikidata._answer(http.get(API, params=params)).get("query", {}).get("search") or []
         return str(hits[0]["title"]) if hits else None
 
     @staticmethod
     def _entities(http: httpx.Client, ids: list[str], props: str) -> dict[str, Any]:
-        resp = http.get(
-            API,
-            params={
-                "action": "wbgetentities",
-                "ids": "|".join(ids),
-                "props": props,
-                "languages": "pl|en",
-                "sitefilter": "plwiki|enwiki",
-                "format": "json",
-            },
+        params: dict[str, Any] = {
+            "action": "wbgetentities",
+            "ids": "|".join(ids),
+            "props": props,
+            "languages": "pl|en",
+            "sitefilter": "plwiki|enwiki",
+            "format": "json",
+        }
+        entities: dict[str, Any] = (
+            Wikidata._answer(http.get(API, params=params)).get("entities") or {}
         )
-        resp.raise_for_status()
-        entities: dict[str, Any] = resp.json().get("entities") or {}
         return entities
 
-    def _facts(self, http: httpx.Client, qid: str) -> Facts:
-        work = self._entities(http, [qid], "labels|claims|sitelinks").get(qid) or {}
-        depicts = _ids(work, "P180")[:20]
-        labels = self._entities(http, depicts, "labels") if depicts else {}
-        pl, en = [], []
-        for ref in depicts:
-            entity = labels.get(ref) or {}
-            if label := _label(entity, "pl"):
-                pl.append(label)
-            elif label := _label(entity, "en"):
-                en.append(label)
-        gender = None
-        if creators := _ids(work, "P170")[:1]:
-            creator = self._entities(http, creators, "claims").get(creators[0]) or {}
-            gender = next((GENDERS[g] for g in _ids(creator, "P21") if g in GENDERS), None)
-        links = work.get("sitelinks") or {}
-        return Facts(
-            qid=qid,
-            title_pl=_label(work, "pl"),
-            depicts_pl=tuple(pl),
-            depicts_en=tuple(en),
-            creator_gender=gender,
-            wiki_pl=str(links.get("plwiki", {}).get("title") or ""),
-            wiki_en=str(links.get("enwiki", {}).get("title") or ""),
-        )
+    @staticmethod
+    def _many(http: httpx.Client, ids: list[str], props: str) -> dict[str, Any]:
+        """:meth:`_entities` of any number of ``ids``, :data:`BATCH` a request."""
+        ids = list(dict.fromkeys(ids))
+        out: dict[str, Any] = {}
+        for start in range(0, len(ids), BATCH):
+            out.update(Wikidata._entities(http, ids[start : start + BATCH], props))
+        return out
+
+    def _read(self, http: httpx.Client, qids: list[str]) -> dict[str, _Work]:
+        """The works ``qids`` with their facts: the works, what they depict
+        and their authors each read :data:`BATCH` at a time."""
+        works = self._many(http, qids, "labels|claims|sitelinks")
+        depicts = {qid: _ids(work, "P180")[:20] for qid, work in works.items()}
+        creators = {qid: _ids(work, "P170")[:1] for qid, work in works.items()}
+        labels = self._many(http, [d for ds in depicts.values() for d in ds], "labels")
+        people = self._many(http, [c for cs in creators.values() for c in cs], "claims")
+        out: dict[str, _Work] = {}
+        for qid in qids:
+            work = works.get(qid)
+            if not work or "missing" in work:
+                continue
+            pl, en = [], []
+            for ref in depicts[qid]:
+                entity = labels.get(ref) or {}
+                if label := _label(entity, "pl"):
+                    pl.append(label)
+                elif label := _label(entity, "en"):
+                    en.append(label)
+            gender = None
+            if creators[qid]:
+                creator = people.get(creators[qid][0]) or {}
+                gender = next((GENDERS[g] for g in _ids(creator, "P21") if g in GENDERS), None)
+            links = work.get("sitelinks") or {}
+            facts = Facts(
+                qid=qid,
+                title_pl=_label(work, "pl"),
+                depicts_pl=tuple(pl),
+                depicts_en=tuple(en),
+                creator_gender=gender,
+                wiki_pl=str(links.get("plwiki", {}).get("title") or ""),
+                wiki_en=str(links.get("enwiki", {}).get("title") or ""),
+            )
+            out[qid] = _Work(work, facts)
+        return out
+
+
+@dataclass(frozen=True)
+class _Work:
+    entity: dict[str, Any]
+    facts: Facts
 
 
 def wikipedia_intro(http: httpx.Client, lang: str, title: str) -> str:
