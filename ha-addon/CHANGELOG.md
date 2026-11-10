@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.139.1
+
+- Próba sędziego powtórek: także Opus, a pytanie osobno o rodzaj pary
+  i o to, który obraz jest całym dziełem (Haiku mylił kierunek „detal
+  czego”). Nic nie zmienia w katalogu.
+
 ## 1.139.0
 
 - Rijksmuseum dostaje własną bazę na serwerze, tak jak AIC, Cleveland,

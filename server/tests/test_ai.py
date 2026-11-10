@@ -485,8 +485,8 @@ def test_photos_tagged_before_titles_are_asked_again_works_not(
 def test_each_model_judges_a_pair_of_pictures(tmp_path: Path) -> None:
     """The judge of copies on trial (ai.twins_judge, Mateusz 2026-11-10):
     one pair, every model asked, each answer with its cost."""
-    from frame_server.ai.client import FABLE, SONNET
-    from frame_server.ai.twins_judge import SCHEMA
+    from frame_server.ai.client import FABLE, OPUS, SONNET
+    from frame_server.ai.twins_judge import SCHEMA, relation
 
     app = create_app(
         Settings(data_dir=tmp_path, seed_library=False, scheduler=False, public_host="127.0.0.1")
@@ -504,13 +504,13 @@ def test_each_model_judges_a_pair_of_pictures(tmp_path: Path) -> None:
         assert first.status_code == 409, first.text  # no key
         svc.ai_config.set_key(GOOD_KEY)
         fake = clients.setdefault(GOOD_KEY, FakeAnthropic(GOOD_KEY))
-        fake.answer = {"relation": "same", "confidence": 0.9, "why": "One painting."}
+        fake.answer = {"why": "One painting.", "kind": "same", "whole": "none", "confidence": 0.9}
         resp = client.post("/api/ai/twins-judge", json=pair)
         assert resp.status_code == 200
         verdicts = resp.json()["verdicts"]
-        assert [v["model"] for v in verdicts] == ["haiku", "sonnet", "fable"]
+        assert [v["model"] for v in verdicts] == ["haiku", "sonnet", "opus", "fable"]
         assert all(v["relation"] == "same" and v["cost_usd"] > 0 for v in verdicts)
-        assert {p["model"] for p in fake.asked} == {HAIKU, SONNET, FABLE}
+        assert {p["model"] for p in fake.asked} == {HAIKU, SONNET, OPUS, FABLE}
         asked = fake.asked[0]
         assert asked["output_config"]["format"]["schema"] == SCHEMA
         assert [b["type"] for b in asked["messages"][0]["content"]].count("image") == 2
@@ -520,3 +520,8 @@ def test_each_model_judges_a_pair_of_pictures(tmp_path: Path) -> None:
         bad = client.post("/api/ai/twins-judge", json={**pair, "models": ["gpt"]})
         assert bad.status_code == 422
         assert client.post("/api/ai/twins-judge", json={**pair, "b": "x:9"}).status_code == 404
+    # Which one is whole, asked apart from what kind of pair it is.
+    assert relation("part", "A") == "b_detail_of_a"
+    assert relation("photo", "B") == "a_photo_of_b"
+    assert relation("part", "none") == ""
+    assert relation("different", "none") == "different"

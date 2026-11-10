@@ -4,7 +4,7 @@ on its wall, a copy by another hand, or two works.
 The pictures tell most copies apart on their own (``library.twins``), but
 not all: one scan in two colours, a print after a painting, two landscapes
 of one dune. Before a model judges the pairs the pictures were unsure of
-every night, Haiku, Sonnet and Fable are tried on pairs Mateusz's Vermeer
+every night, Haiku, Sonnet, Opus and Fable are tried on pairs Mateusz's Vermeer
 search showed (labelled by hand): the cheapest one that never calls two
 works one is the judge (Mateusz 2026-11-10, card "Reguły teraz, potem test
 i sędzia"). This is the question each of them is asked.
@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from .client import FABLE, HAIKU, SONNET, image_block, request
+from .client import FABLE, HAIKU, OPUS, SONNET, image_block, request
 from .daily import _object, _str
 
 if TYPE_CHECKING:
@@ -26,9 +26,10 @@ if TYPE_CHECKING:
 
 KIND = "twins.judge"
 #: The models tried, by the names the app and the test script use.
-MODELS = {"haiku": HAIKU, "sonnet": SONNET, "fable": FABLE}
+MODELS = {"haiku": HAIKU, "sonnet": SONNET, "opus": OPUS, "fable": FABLE}
 #: The pictures go out as the server keeps its thumbnails (640 px).
 SIDE = 640
+#: How the second picture relates to the first, as the test script counts.
 RELATIONS = (
     "same",
     "a_detail_of_b",
@@ -39,16 +40,23 @@ RELATIONS = (
     "different",
     "unsure",
 )
+#: What the model is asked: what kind of pair, and for a part or a
+#: photograph, which picture is the whole work. One label naming both
+#: ("a_detail_of_b") was read backwards by Haiku 6 times in 73 pairs while
+#: its own reason said it right (test of 2026-11-10).
+KINDS = ("same", "part", "photo", "copy_by_other_hand", "different", "unsure")
+WHOLE = ("A", "B", "none")
 
 SYSTEM = """You compare two catalogue pictures of artworks, A and B, for a home art frame \
-that must show each artwork once. Say how B relates to A.
+that must show each artwork once. Decide what kind of pair they are.
 
+"kind":
 - "same": both show the same physical artwork whole. Different photographs, colour, \
 lighting, sharpness, a trimmed or kept frame, a few percent cropped off an edge, a \
 restoration state: still "same".
-- "a_detail_of_b" / "b_detail_of_a": one shows only a part of the other artwork (a head, \
-a corner, a window), so much is missing that it is no longer the whole work.
-- "a_photo_of_b" / "b_photo_of_a": one is a photograph of the other artwork together with \
+- "part": one picture shows only a part of the artwork the other shows whole (a head, a \
+corner, a window), so much is missing that it is no longer the whole work.
+- "photo": one picture is a photograph of the artwork the other shows, together with \
 what is around it: a wide frame, the museum wall, a room, a label, visitors.
 - "copy_by_other_hand": a different object repeating the composition: a print or \
 engraving after a painting, a painted copy, a replica or version by the artist or the \
@@ -57,17 +65,33 @@ changed details, hatching, a plate margin or lettering.
 - "different": two artworks, even by the same artist or of the same subject.
 - "unsure": the pictures do not allow a decision.
 
+"whole": for "part" and "photo", the letter of the picture that shows the artwork whole \
+and alone ("A" or "B"); the other one is the part or the photograph. For every other \
+kind, "none".
+
 Titles, makers and dates come from different museums and languages and are often wrong: \
 judge by the pictures, using the texts only as hints. Calling two different artworks \
-"same" hides one of them from the owner, so say "same" only when the picture content \
-matches figure for figure. Answer with "confidence" from 0 to 1 and "why" in at most 20 \
-words."""
+"same", or taking the whole work for the part, hides an artwork from the owner, so say \
+"same" only when the picture content matches figure for figure. Answer with "why" in at \
+most 20 words first, then "kind", "whole" and "confidence" from 0 to 1."""
 
 SCHEMA = _object(
-    relation={"type": "string", "enum": list(RELATIONS)},
-    confidence={"type": "number"},
     why=_str(),
+    kind={"type": "string", "enum": list(KINDS)},
+    whole={"type": "string", "enum": list(WHOLE)},
+    confidence={"type": "number"},
 )
+
+
+def relation(kind: str, whole: str) -> str:
+    """The answer as one of :data:`RELATIONS` ("" when it makes no sense:
+    a part without its whole)."""
+    if kind in ("part", "photo"):
+        if whole not in ("A", "B"):
+            return ""
+        what = "detail" if kind == "part" else "photo"
+        return f"b_{what}_of_a" if whole == "A" else f"a_{what}_of_b"
+    return kind if kind in RELATIONS else ""
 
 
 @dataclass
@@ -131,10 +155,9 @@ def judge(
         except Exception as err:  # one model down: the others still answer
             return Verdict(name, "", 0.0, "", 0.0, time.monotonic() - started, error=str(err))
         data = answer.data or {}
-        relation = data.get("relation")
         return Verdict(
             name,
-            relation if relation in RELATIONS else "",
+            relation(str(data.get("kind") or ""), str(data.get("whole") or "")),
             float(data.get("confidence") or 0.0),
             str(data.get("why") or ""),
             answer.cost_usd,
