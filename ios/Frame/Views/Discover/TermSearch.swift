@@ -191,10 +191,12 @@ extension View {
         tokens: Binding<[SearchToken]>,
         focused: FocusState<Bool>.Binding,
         prompt: String = "Artysta albo słowo",
+        keepsNavigationBar: Bool = false,
         pickedFromMuseums: @escaping () -> Void = {}
     ) -> some View {
         modifier(TermSearch(
-            lookup: lookup, tokens: tokens, focused: focused, prompt: prompt, pickedFromMuseums: pickedFromMuseums
+            lookup: lookup, tokens: tokens, focused: focused, prompt: prompt,
+            keepsNavigationBar: keepsNavigationBar, pickedFromMuseums: pickedFromMuseums
         ))
     }
 }
@@ -205,7 +207,11 @@ private struct TermSearch: ViewModifier {
     @Binding var tokens: [SearchToken]
     var focused: FocusState<Bool>.Binding
     let prompt: String
+    /// A sheet with Anuluj and Zapisz up top: the open search leaves its
+    /// navigation bar where it is (the system hides it by default).
+    let keepsNavigationBar: Bool
     let pickedFromMuseums: () -> Void
+    @State private var bar = NavigationBarKeeper()
     /// The search is open: the system's round X stands next to the field.
     @State private var presented = false
     /// A group's panel is open over the field (`TermFacetBar` says so).
@@ -228,6 +234,9 @@ private struct TermSearch: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .background {
+                if keepsNavigationBar { NavigationBarProbe(keeper: bar) }
+            }
             .searchable(
                 text: $lookup.text, tokens: fieldTokens, isPresented: $presented, prompt: Text(lookup.prompt(prompt))
             ) { token in
@@ -279,6 +288,7 @@ private struct TermSearch: ViewModifier {
     /// Opens the search for a group's choice, without the keyboard.
     private func openForX() {
         guard grouped, !presented, !panelOpen else { return }
+        if keepsNavigationBar { bar.keep() }
         quiet = true
         // The field gets an empty keyboard while it opens: with the real
         // one coming up and going down twice the field flew up and back.
@@ -301,6 +311,70 @@ private struct TermSearch: ViewModifier {
     private func putKeyboardAway() {
         focused.wrappedValue = false
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}
+
+/// UIKit's search controller hides the navigation bar while the search is
+/// open. In the playlist editor that took Anuluj and Zapisz with it: a
+/// group's choice opens the search for its X (`openForX`), so a sheet
+/// opened from Szukaj with Malarstwo picked lost Zapisz a moment after it
+/// came up. The probe sits in the page and tells the search controllers of
+/// the navigation around it to keep the bar.
+@MainActor
+final class NavigationBarKeeper {
+    fileprivate weak var probe: NavigationBarProbe.Probe?
+
+    func keep() { probe?.keep() }
+}
+
+private struct NavigationBarProbe: UIViewRepresentable {
+    let keeper: NavigationBarKeeper
+
+    func makeUIView(context: Context) -> Probe {
+        let probe = Probe()
+        probe.isUserInteractionEnabled = false
+        keeper.probe = probe
+        return probe
+    }
+
+    func updateUIView(_ probe: Probe, context: Context) {
+        keeper.probe = probe
+        probe.keep()
+    }
+
+    final class Probe: UIView {
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            keep()
+            // SwiftUI may hand the navigation item its search controller
+            // a moment after the page is in the window.
+            DispatchQueue.main.async { [weak self] in self?.keep() }
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            keep()
+        }
+
+        func keep() {
+            var responder: UIResponder? = self
+            while let next = responder?.next {
+                if let controller = next as? UIViewController {
+                    Self.keep(controller)
+                    if let navigation = controller as? UINavigationController {
+                        navigation.viewControllers.forEach(Self.keep)
+                    }
+                }
+                responder = next
+            }
+        }
+
+        private static func keep(_ controller: UIViewController) {
+            guard let search = controller.navigationItem.searchController,
+                  search.hidesNavigationBarDuringPresentation
+            else { return }
+            search.hidesNavigationBarDuringPresentation = false
+        }
     }
 }
 
