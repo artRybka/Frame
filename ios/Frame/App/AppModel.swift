@@ -209,8 +209,13 @@ final class AppModel {
     /// Discover's rows and themes as last loaded (also by the previous
     /// launch): shown at once while fresh ones load.
     var suggestionRows: [SuggestionRow]?
-    /// Propozycje dnia as the server made them today; nil until loaded.
+    /// Propozycje dnia as the server made them today (from the last launch
+    /// when that was today); nil until loaded.
     var dayPicks: DayPicks?
+    /// The cover of the last Propozycje dnia loaded, also of a day before:
+    /// shown at launch until today's come, not the rotation of "Dziś dla
+    /// Ciebie" that the tile then swapped for them (Mateusz 2026-11-10).
+    private var keptPicksCover: [RemoteItem] = []
     var themes: [ArtTheme]?
     /// The work of the day at the top of Propozycje; nil while there is none.
     var daily: DailyWork?
@@ -710,6 +715,9 @@ final class AppModel {
         discoverLoadedAt = nil
         playlists = (demoMode ? nil : PlaylistsCache.load(server: serverURL)) ?? []
         hidden = (demoMode ? nil : HiddenCache.load(server: serverURL)) ?? []
+        let picks = demoMode ? nil : DayPicksCache.load(server: serverURL)
+        dayPicks = picks.flatMap { $0.day == DailyWork.today ? $0 : nil }
+        keptPicksCover = picks?.cover ?? []
     }
 
     func refreshPlayer() async {
@@ -805,7 +813,11 @@ final class AppModel {
     /// Propozycje dnia as the server has them (made once a day; the first
     /// ask of a day may take a few seconds on the NAS).
     func refreshDayPicks() async {
-        if let value = try? await backend.daySuggestions(), value != dayPicks { dayPicks = value }
+        guard let value = try? await backend.daySuggestions(), value != dayPicks else { return }
+        dayPicks = value
+        guard !value.items.isEmpty else { return }
+        keptPicksCover = value.cover
+        if !demoMode { DayPicksCache.save(value, server: serverURL) }
     }
 
     /// The cards in Playlisty in this order: at once here, then kept by the
@@ -1161,10 +1173,11 @@ final class AppModel {
     }
 
     /// Propozycje dnia's cover in Playlisty: a work of each of the first four
-    /// fours (before they load, or from an older server, the works next in
-    /// the rotation of before).
+    /// fours (before they load, the last ones seen; from an older server,
+    /// the works next in the rotation of before).
     var suggestionCover: [RemoteItem] {
         if let dayPicks, !dayPicks.items.isEmpty { return dayPicks.cover }
+        if !keptPicksCover.isEmpty { return keptPicksCover }
         let rows = suggestionRows ?? []
         return Array((rows.first { $0.key == "for-you" } ?? rows.first)?.items.prefix(4) ?? [])
     }

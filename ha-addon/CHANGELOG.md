@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.139.2
+
+- Playlisty: kafelek „Propozycje dnia” po uruchomieniu aplikacji od razu
+  pokazuje dzieła z ostatniego razu, a nie inne, podmieniane chwilę
+  później. Gdy przychodzą nowe (nowy dzień), wchodzą płynnym
+  przenikaniem, dopiero gdy ich miniatury są już w telefonie.
+
 ## 1.139.1
 
 - Próba sędziego powtórek: także Opus, a pytanie osobno o rodzaj pary
