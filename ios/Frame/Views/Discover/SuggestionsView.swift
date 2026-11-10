@@ -423,10 +423,9 @@ struct WorkTile: View {
     var title: String?
     /// The picture a little brighter than the page (`ArtGlow`, when
     /// Konfiguracja allows it), as on the work's card ("Pod lupą",
-    /// Mateusz 2026-11-10).
+    /// Mateusz 2026-11-10): fully at the top, fading to a tenth of it at
+    /// the caption (19:15).
     var brighten = false
-    /// The heart of a favourite in the picture's top right corner.
-    var showsFavorite = false
 
     private var shownTitle: String {
         let title = title ?? item.summary.title
@@ -445,17 +444,12 @@ struct WorkTile: View {
                         placeholder: item.item.placeholderColor,
                         maxPixel: 500,
                         subjectFocus: true,
-                        brighten: brighten
+                        brighten: brighten,
+                        // Brightest at the top, a tenth of it at the caption.
+                        glowFade: 0.1
                     )
                 }
                 .clipped()
-                .overlay(alignment: .topTrailing) {
-                    if showsFavorite, item.item.favorite {
-                        HeartMark(on: true)
-                            .padding(7)
-                            .accessibilityLabel("W ulubionych")
-                    }
-                }
             VStack(alignment: .leading, spacing: 4) {
                 Text(shownTitle)
                     .font(.serif(15, weight: .semibold))
@@ -513,14 +507,15 @@ struct ZoomRow: View {
     }
 }
 
-/// One work of "Pod lupą" as a card that opens the work.
+/// One work of "Pod lupą" as a card that opens the work (in the row and in
+/// its grid); no heart on it (Mateusz 2026-11-10 19:23).
 struct ZoomWorkCard: View {
     @Environment(AppModel.self) private var model
     let remote: RemoteItem
 
     var body: some View {
         NavigationLink(value: remote.id) {
-            WorkTile(item: remote, brighten: true, showsFavorite: true)
+            WorkTile(item: remote, brighten: true)
                 .accessibilityHint("Otwiera dzieło, można je mocno przybliżyć")
         }
         .buttonStyle(.plain)

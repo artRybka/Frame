@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.142.8
+
+- „Pod lupą”: rozjaśnienie HDR na kafelkach jest gradientem: pełne
+  u góry obrazu, przy linii z podpisem 10%.
+
 ## 1.142.7
 
 - Zapamiętane strony wyników z Art Institute of Chicago i strony
