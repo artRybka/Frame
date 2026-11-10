@@ -174,8 +174,17 @@ struct JourneyRoad: View {
         .frame(height: plan?.height, alignment: .topLeading)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { self.width = $0 }
         .background {
-            Canvas { context, size in draw(in: &context, size: size, plan: plan, seas: seas, dark: dark) }
-                .accessibilityHidden(true)
+            ZStack(alignment: .topLeading) {
+                // Under everything, an underpainting under each text, each
+                // spreading when its text comes on screen.
+                if let plan {
+                    ForEach(Array(plan.hugs.enumerated()), id: \.offset) { i, hug in
+                        WashStain(wash: Self.wash(under: hug, seed: seed + "wash\(i)"), dark: dark, seed: Float(i * 7 % 50))
+                    }
+                }
+                Canvas { context, size in draw(in: &context, size: size, plan: plan, seas: seas, dark: dark) }
+                    .accessibilityHidden(true)
+            }
         }
     }
 
@@ -243,38 +252,7 @@ struct JourneyRoad: View {
     private func draw(in context: inout GraphicsContext, size: CGSize, plan: RoadPlan?, seas: [Bool], dark: Bool) {
         guard let plan else { return }
         let count = journey.stops.count
-        // Under everything, an underpainting under each text (18:48:
-        // „plamy akwareli z ostrzejszą krawędzią jak rozlana plama,
-        // nierówne podmalówki pod treściami”; 19:08: „jeżeli już, to
-        // blado-białe”): a pale white wash and a second one over it, a
-        // bloom where a drop pushed the paint away, and the whiter edge
-        // where it gathered as it dried. On the dark page faint.
-        let washes = plan.hugs.indices.map { i -> Wash in
-            var random = SeededRandom(seed + "wash\(i)")
-            return Self.wash(under: plan.hugs[i], random: &random)
-        }
-        context.drawLayer { layer in
-            layer.opacity = dark ? 0.1 : 1
-            for wash in washes {
-                layer.fill(Self.closed(wash.big), with: .color(Color.white.opacity(0.5 * wash.tone)))
-                layer.fill(Self.closed(wash.over), with: .color(Color.white.opacity(0.3 * wash.tone)))
-                layer.stroke(Self.closed(wash.over), with: .color(Color.white.opacity(0.55 * wash.tone)), lineWidth: 0.8)
-            }
-            layer.drawLayer { soft in
-                soft.addFilter(.blur(radius: 2.6))
-                for wash in washes {
-                    soft.stroke(Self.closed(wash.big), with: .color(Color.white.opacity(0.35 * wash.tone)), lineWidth: 5)
-                    let bloom = CGRect(x: wash.bloom.x - wash.bloom.radius, y: wash.bloom.y - wash.bloom.radius,
-                                       width: 2 * wash.bloom.radius, height: 2 * wash.bloom.radius)
-                    soft.fill(Path(ellipseIn: bloom), with: .color(Theme.paper.opacity(0.45 * wash.tone)))
-                }
-            }
-            for wash in washes {
-                layer.stroke(Self.closed(wash.big), with: .color(Color.white.opacity(min(1, 0.9 * wash.tone))),
-                             style: StrokeStyle(lineWidth: 1.1, lineJoin: .round))
-            }
-        }
-        // The seas first, under everything.
+        // The seas first, under the road.
         for i in 1..<count where seas[i] {
             var random = SeededRandom(seed + "sea\(i)")
             drawSea(in: &context, name: sea(i), top: plan.texts[i - 1].maxY + 16,
@@ -390,11 +368,93 @@ struct JourneyRoad: View {
 
     private static let sea = Color(light: 0x8FA9BA, dark: 0x5E7A8C)
 
-    private static func closed(_ points: [CGPoint]) -> Path {
+    fileprivate static func closed(_ points: [CGPoint]) -> Path {
         var path = Path()
         path.addLines(points)
         path.closeSubpath()
         return path
+    }
+}
+
+// MARK: Underpaintings
+
+/// The underpainting under one text (18:48: „plamy akwareli z ostrzejszą
+/// krawędzią jak rozlana plama, nierówne podmalówki pod treściami”; 19:08:
+/// „jeżeli już, to blado-białe”). It is not there until its text comes on
+/// screen; then it spreads from its middle as the watercolour of the
+/// frame's picture does in Teraz, and stays (19:28: „czy plamy białe mogą
+/// się rozpływać tak jak akwarelą obraz na ramce w Teraz… plamy pojawiają
+/// się przy przewijaniu”). With "Ogranicz ruch" it only fades in.
+private struct WashStain: View {
+    let wash: JourneyRoad.Wash
+    let dark: Bool
+    /// Tells one stain's spreading from another's.
+    let seed: Float
+
+    @State private var spread: Double = WashStain.held ?? 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// How long a stain takes to spread.
+    static let time: Double = 1.6
+    /// CI screenshots: "-journeyWash 0.5" holds every stain half spread.
+    private static let held: Double? = UserDefaults.standard.object(forKey: "journeyWash") == nil
+        ? nil : UserDefaults.standard.double(forKey: "journeyWash")
+
+    var body: some View {
+        let box = wash.box
+        WashPaint(wash: wash, seed: seed, progress: reduceMotion ? 1 : spread)
+            // On the dark page faint.
+            .opacity((dark ? 0.1 : 1) * (reduceMotion ? spread : 1))
+            .frame(width: box.width, height: box.height)
+            .onScrollVisibilityChange(threshold: 0.5) { visible in
+                guard visible, spread == 0 else { return }
+                withAnimation(reduceMotion ? .easeOut(duration: 0.4) : .linear(duration: Self.time)) { spread = 1 }
+            }
+            .offset(x: box.minX, y: box.minY)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+/// The stain as far as it has spread (`progress`, 0…1): a pale white wash
+/// and a second one over it, a bloom where a drop pushed the paint away,
+/// and the whiter edge where it gathered as it dried; while it spreads,
+/// only as far as its ragged front, thick with paint (`Watercolour.metal`,
+/// `stain`).
+private struct WashPaint: View, Animatable {
+    let wash: JourneyRoad.Wash
+    let seed: Float
+    var progress: Double
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    var body: some View {
+        let box = wash.box
+        let centre = CGPoint(x: wash.centre.x - box.minX, y: wash.centre.y - box.minY)
+        Canvas { context, _ in
+            context.translateBy(x: -box.minX, y: -box.minY)
+            let big = JourneyRoad.closed(wash.big), over = JourneyRoad.closed(wash.over)
+            context.fill(big, with: .color(.white.opacity(0.5 * wash.tone)))
+            context.fill(over, with: .color(.white.opacity(0.3 * wash.tone)))
+            context.stroke(over, with: .color(.white.opacity(0.55 * wash.tone)), lineWidth: 0.8)
+            context.drawLayer { soft in
+                soft.addFilter(.blur(radius: 2.6))
+                soft.stroke(big, with: .color(.white.opacity(0.35 * wash.tone)), lineWidth: 5)
+                let bloom = CGRect(x: wash.bloom.x - wash.bloom.radius, y: wash.bloom.y - wash.bloom.radius,
+                                   width: 2 * wash.bloom.radius, height: 2 * wash.bloom.radius)
+                soft.fill(Path(ellipseIn: bloom), with: .color(Theme.paper.opacity(0.45 * wash.tone)))
+            }
+            context.stroke(big, with: .color(.white.opacity(min(1, 0.9 * wash.tone))),
+                           style: StrokeStyle(lineWidth: 1.1, lineJoin: .round))
+        }
+        .layerEffect(
+            ShaderLibrary.stain(.float2(centre), .float2(wash.reach), .float(Float(progress)), .float(seed)),
+            maxSampleOffset: .zero,
+            isEnabled: progress < 1
+        )
     }
 }
 
@@ -793,6 +853,24 @@ extension JourneyRoad {
         var over: [CGPoint]
         var bloom: (x: CGFloat, y: CGFloat, radius: CGFloat)
         var tone: CGFloat
+        /// Its middle, where it starts to spread from, and how far it
+        /// reaches sideways and up and down.
+        var centre: CGPoint
+        var reach: CGSize
+
+        /// All of it, with room for its soft edge.
+        var box: CGRect {
+            let all = big + over
+            let xs = all.map(\.x) + [bloom.x - bloom.radius, bloom.x + bloom.radius]
+            let ys = all.map(\.y) + [bloom.y - bloom.radius, bloom.y + bloom.radius]
+            guard let west = xs.min(), let east = xs.max(), let north = ys.min(), let south = ys.max() else { return .zero }
+            return CGRect(x: west, y: north, width: east - west, height: south - north).insetBy(dx: -12, dy: -12).integral
+        }
+    }
+
+    static func wash(under box: CGRect, seed: String) -> Wash {
+        var random = SeededRandom(seed)
+        return wash(under: box, random: &random)
     }
 
     /// A stain of watercolour under a text: a rounded shape a little
@@ -822,7 +900,8 @@ extension JourneyRoad {
         let over = blob(scale, shift, 1.25, &random)
         let bloom = (x: centre.x + long * (0.9 * random.unit() - 0.45), y: centre.y + short * (0.7 * random.unit() - 0.35),
                      radius: 8 + 10 * random.unit())
-        return Wash(big: big, over: over, bloom: bloom, tone: 0.8 + 0.4 * random.unit())
+        return Wash(big: big, over: over, bloom: bloom, tone: 0.8 + 0.4 * random.unit(),
+                    centre: centre, reach: CGSize(width: long, height: short))
     }
 
     /// White beside the line, as if it had been corrected: a few strokes
