@@ -62,6 +62,7 @@ from . import (
     device_api,
     discover_api,
     library_api,
+    night_api,
     notify_api,
     player_api,
     playlists_api,
@@ -230,6 +231,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         users_api.router,
         sources_api.router,
         tailnet_api.router,
+        night_api.router,
     )
     for router in routers:
         app.include_router(router)

@@ -22,8 +22,9 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
-from .fsutil import dir_bytes
+from .fsutil import dir_bytes, own_names
 from .library.icloud import only_copy
+from .library.models import ItemKind
 
 if TYPE_CHECKING:
     from .config import Settings
@@ -39,6 +40,10 @@ OLD_CACHE_MB = 500
 MB = 1024 * 1024
 #: How long a measurement is good for, in seconds.
 MEASURE_MAX_AGE = 600.0
+#: How long a count of the catalogue is good for, in seconds.
+COUNT_MAX_AGE = 60.0
+#: The frame's long side: an original at least this large shows it whole.
+FRAME_SIDE = 2560
 
 
 class StorageUsage(BaseModel):
@@ -65,6 +70,27 @@ class StorageView(BaseModel):
     catalogue_full: bool = False
 
 
+class CatalogueCounts(BaseModel):
+    """How many works the server has gathered (Konfiguracja → Miejsce na
+    serwerze, Mateusz 2026-11-10), hidden ones and fragments of works left
+    out."""
+
+    #: Museum works, each once: other copies of one work, its details and
+    #: photographs of it on a wall are not counted.
+    works: int
+    #: Museum pictures in all, copies, details and those photographs counted.
+    pictures: int
+    #: Works whose original (the picture for the frame, not the thumbnail) is
+    #: on the server.
+    originals: int
+    #: Of those, the ones whose source gave a picture at least as large as
+    #: the frame (:data:`FRAME_SIDE` on its long side).
+    frame_size: int
+    #: Uploaded works and photos.
+    own: int
+    counted_at: float  # Unix time
+
+
 class StorageUpdate(BaseModel):
     """Either limit or both; the default value goes back to frame.env."""
 
@@ -83,6 +109,8 @@ class StorageStore:
         self.defaults = (settings.catalogue_mb, settings.image_cache_mb)
         self._usage: StorageUsage | None = None
         self._measuring = threading.Lock()
+        self._counts: CatalogueCounts | None = None
+        self._counting = threading.Lock()
         self._migrate()
         catalogue = library.get_state(CATALOGUE_KEY)
         if catalogue:
@@ -186,6 +214,47 @@ class StorageStore:
             total_bytes=catalogue + originals + panel + database,
             free_bytes=free,
             measured_at=time.time(),
+        )
+
+    # -- counting ------------------------------------------------------------
+
+    def counts(self, max_age: float = COUNT_MAX_AGE) -> CatalogueCounts:
+        """The catalogue counted, at most ``max_age`` seconds ago: the works
+        in memory, the originals by one read of their folder."""
+        with self._counting:
+            counts = self._counts
+            if counts is None or time.time() - counts.counted_at > max_age:
+                counts = self._counts = self._count()
+            return counts
+
+    def _count(self) -> CatalogueCounts:
+        on_disk = set(own_names(self.images.images))
+        works = pictures = originals = frame_size = own = 0
+        for item in self.library.all_items():
+            if item.excluded or item.part_of:
+                continue
+            if item.kind != ItemKind.ARTWORK:
+                own += 1
+                continue
+            pictures += 1
+            if item.copy_of or item.detail_of or item.scene_of:
+                continue
+            works += 1
+            if f"{item.file_stem}.jpg" not in on_disk:
+                continue
+            originals += 1
+            size = self.images.known_size(item)
+            if size is None and item.width and item.height:
+                size = (item.width, item.height)
+            if size is not None and max(size) >= FRAME_SIDE:
+                frame_size += 1
+        return CatalogueCounts(
+            works=works,
+            pictures=pictures,
+            originals=originals,
+            frame_size=frame_size,
+            own=own,
+            counted_at=time.time(),
         )
 
 

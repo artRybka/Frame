@@ -75,6 +75,12 @@ final class AppModel {
     /// Requests to each art source lately (Konfiguracja → Diagnostyka); nil
     /// until loaded or on an older server.
     var sourceRequests: SourceRequests?
+    /// How many works the server has gathered; nil until loaded or on an
+    /// older server.
+    var catalogueCounts: CatalogueCounts?
+    /// The server's night tasks (Konfiguracja → Zadania nocne); nil until
+    /// loaded or on an older server.
+    var nightTasks: NightTasks?
     var serverUpdate: ServerUpdate?
     /// "Aktualizuj serwer": waiting for the server to come back as the new version.
     var updatingServer = false
@@ -331,6 +337,8 @@ final class AppModel {
         panelApp = nil
         libraryStorage = nil
         sourceRequests = nil
+        catalogueCounts = nil
+        nightTasks = nil
         serverUpdate = nil
         aiSettings = nil
         sourceKeys = []
@@ -1300,6 +1308,38 @@ final class AppModel {
 
     func loadLibraryStorage() async {
         libraryStorage = try? await backend.libraryStorage()
+    }
+
+    func loadCatalogueCounts() async {
+        catalogueCounts = try? await backend.catalogueCounts()
+    }
+
+    func loadNightTasks() async {
+        nightTasks = try? await backend.nightTasks()
+    }
+
+    /// The night's tasks started now: `names`, or all of them for nil.
+    func startNightTasks(_ names: [String]? = nil) async {
+        do {
+            nightTasks = try await backend.startNightTasks(NightStart(tasks: names))
+        } catch {
+            show(error)
+            await loadNightTasks()
+            return
+        }
+        if let names, names.count == 1 {
+            notices.done("Uruchomiono: \(nightTasks?.label(names[0]) ?? names[0])")
+        } else {
+            notices.done("Uruchomiono zadania nocne")
+        }
+    }
+
+    func stopNightTasks() async {
+        do {
+            nightTasks = try await backend.stopNightTasks()
+        } catch {
+            show(error)
+        }
     }
 
     /// A new limit for the catalogue's thumbnails or the originals; the
