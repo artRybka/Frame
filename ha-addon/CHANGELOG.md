@@ -7,7 +7,8 @@
   nie tylko w Szukaj.
   W Ulubionych serc dalej nie ma.
 - Czerwone serce jest z tego samego przeziernego szkła co puste, tylko
-  zabarwionego na czerwono.
+  zabarwionego na czerwono, lekko prześwitującą czerwienią, tą samą
+  w jasnym i ciemnym trybie.
 
 ## 1.142.2
 

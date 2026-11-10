@@ -314,7 +314,7 @@ struct HeartMark: View {
         return interactive ? glass.interactive() : glass
     }
 
-    private static let red = Color(red: 0xD2 / 255, green: 0x46 / 255, blue: 0x3A / 255).opacity(0.62)
+    private static let red = Color(red: 0xD2 / 255, green: 0x46 / 255, blue: 0x3A / 255).opacity(0.81)
 }
 
 /// A heart drawn to fill its frame, for glass in its shape.
