@@ -36,6 +36,7 @@ import sqlite3
 import tarfile
 import threading
 import time
+import zlib
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
@@ -254,6 +255,14 @@ def build(path: Path, entries: Iterable[Entry]) -> int:
     return count
 
 
+def _record(kept: str | bytes) -> dict[str, Any]:
+    """A kept record: JSON, or JSON compressed (library/rijks_index.py)."""
+    if isinstance(kept, bytes):
+        kept = zlib.decompress(kept).decode()
+    data = json.loads(kept)
+    return data if isinstance(data, dict) else {}
+
+
 class DumpIndex:
     """Searches of one index file."""
 
@@ -324,13 +333,13 @@ class DumpIndex:
                 f"SELECT w.record FROM {source} WHERE {clause} ORDER BY {order} LIMIT ? OFFSET ?",
                 [*args, limit, offset],
             ).fetchall()
-        return count, [json.loads(row[0]) for row in rows]
+        return count, [_record(row[0]) for row in rows]
 
     def get(self, work_id: str) -> dict[str, Any] | None:
         """One work's record, None when the index has none of that id."""
         with self._lock:
             row = self._db.execute("SELECT record FROM works WHERE id = ?", (work_id,)).fetchone()
-        return json.loads(row[0]) if row else None
+        return _record(row[0]) if row else None
 
     def close(self) -> None:
         with self._lock:

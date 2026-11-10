@@ -361,7 +361,8 @@ def test_the_owner_sees_the_indexes_and_builds_one_now(tmp_path: Path, aic: Web)
     with TestClient(create_app(settings)) as client:
         assert client.get("/api/debug/dumps").status_code == 401
         states = {s["key"]: s for s in client.get("/api/debug/dumps", headers=owner).json()}
-        assert set(states) == set(dumps.DUMPS)
+        assert set(states) == {*dumps.DUMPS, "rijks"}
+        assert not states["rijks"]["index"] and not states["rijks"]["building"]
         assert states["aic"]["index"] and states["aic"]["works"] == 32
         assert not states["cma"]["index"] and "works" not in states["cma"]
         assert client.post("/api/debug/dumps/louvre", headers=owner).status_code == 404

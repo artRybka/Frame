@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.139.0
+
+- Rijksmuseum dostaje własną bazę na serwerze, tak jak AIC, Cleveland,
+  Smithsonian i Wellcome. Muzeum nie publikuje pliku z dziełami, więc
+  serwer czyta jego katalog (OAI-PMH) po 50 dzieł naraz, najwyżej 2,5
+  godziny na noc i tylko gdy nikt nie używa aplikacji. Całość, ok. 737 tys.
+  dzieł ze zdjęciem, schodzi w kilka nocy. Do tego czasu Rijksmuseum
+  działa jak dotąd, potem Szukaj, Odkrywaj i losowanie biorą je z dysku.
+  Co dwa miesiące serwer dociąga tylko zmiany. Baza zajmuje ok. 0,7 GB.
+
 ## 1.138.6
 
 - Próba sędziego powtórek: serwer potrafi pokazać parę obrazów modelom
