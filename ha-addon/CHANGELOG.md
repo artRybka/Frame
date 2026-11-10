@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.142.12
+
+- „Droga dzieła” w Studium dzieła powstaje dla dużo większej liczby
+  dzieł. Dotąd opowiadały ją tylko zapisy Art Institute of Chicago
+  i Cleveland Museum of Art (oraz właściciele z Wikidanych). Teraz także
+  National Gallery of Art w Waszyngtonie (prawie każdy obraz i rzeźba,
+  większość rysunków), Luwr (historia dzieła, dawni właściciele, sposób
+  nabycia i wypożyczenia na wystawy) i Rijksmuseum (obrazy opisane
+  w katalogu muzeum).
+- Dzieło z Wikimediów, Europeany albo innego zbioru, które wisi w jednym
+  z tych pięciu muzeów, dostaje drogę z zapisu tego muzeum: serwer
+  znajduje je po identyfikatorze muzeum w Wikidanych albo po kopii
+  obrazu z samego muzeum. Mona Lisa z Wikimediów ma więc drogę z Luwru.
+- Dzieła, dla których wcześniej nie było zapisu, są sprawdzane jeszcze
+  raz przy najbliższym otwarciu studium. Gotowe drogi zostają bez zmian.
+- Metropolitan Museum, Yale, SMK, Getty i V&A nie podają proweniencji
+  w swoich otwartych danych, więc ich dzieła mają drogę tylko wtedy,
+  gdy właścicieli zna Wikidata.
+- Indeks National Gallery of Art buduje się raz od nowa po aktualizacji
+  (kilka minut w tle); do tego czasu wyszukiwanie działa na starym.
+
 ## 1.142.11
 
 - Plakaty pokazują tylko plakaty. Po wybraniu artysty (np. Claude

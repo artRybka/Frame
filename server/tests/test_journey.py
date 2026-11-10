@@ -3,15 +3,27 @@ what the record says (Mateusz 2026-11-10, "S1")."""
 
 from __future__ import annotations
 
+import sqlite3
+from pathlib import Path
 from typing import Any
 
 import httpx
+import pytest
 from test_ai import FakeAnthropic, fake  # noqa: F401  (fixture)
 
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import HAIKU
-from frame_server.ai.journey import Journeys, Record, from_wikidata, read
-from frame_server.library.models import Item, ItemKind
+from frame_server.ai.journey import (
+    NONE_VERSION,
+    VERSION,
+    Journeys,
+    Record,
+    bridges,
+    from_wikidata,
+    read,
+)
+from frame_server.library import nga
+from frame_server.library.models import Item, ItemKind, Note, SharperCopy
 from frame_server.service import FrameService
 
 AIC = {
@@ -230,3 +242,157 @@ def test_owners_and_exhibitions_from_wikidata() -> None:
     assert record is not None and record.source == "Wikidata" and record.exhibitions == 1
     assert record.text.index("1600–1700: King Charles") < record.text.index("from 1797: Louvre")
     assert "1900: Exposition Universelle" in record.text
+
+
+# -- more museums, and works from elsewhere that hang in them ----------------------------------
+
+RIJKS = {
+    "referred_to_by": [
+        {
+            "content": "Aankoop met steun van de Vereniging Rembrandt",
+            "classified_as": [{"id": "http://vocab.getty.edu/aat/300026687"}],
+        },
+        {
+            "content": (
+                "<div><p>…; his sale, Amsterdam, 16 May 1696, no. 2, fl. 175, to Isaac Rooleeuw;"
+                "{Hoet 1752, vol. 1, p. 34.} from whom, fl. 550,000, to the museum, 1908</p></div>"
+            ),
+            "classified_as": [{"id": "http://vocab.getty.edu/aat/300444174"}],
+            "language": [{"id": "http://vocab.getty.edu/aat/300388277"}],
+        },
+    ]
+}
+
+LOUVRE = {
+    "objectHistory": "Donné par l'artiste au baron Rivet, 1849 ;\r\n\r\nlégué au musée, 1925.",
+    "previousOwner": [{"value": "Rivet, Charles", "note": "", "role": ""}],
+    "acquisitionDetails": [
+        {"mode": "legs", "dates": [{"type": "date du legs", "value": "1925", "startYear": 1925}]}
+    ],
+    "exhibition": [{"value": "Delacroix, New York (Etats-Unis), 17/09/2018 - 06/01/2019 "}],
+}
+
+
+def _journeys(service: FrameService, answers: dict[str, Any], **more: Any) -> Journeys:
+    return Journeys(service.library, service.claude, service.ai_config, http=_http(answers), **more)
+
+
+def _work(source: str, source_id: str, **more: Any) -> Item:
+    return Item(
+        id=f"{source}:{source_id}",
+        source=source,
+        source_id=source_id,
+        kind=ItemKind.ARTWORK,
+        title="A work",
+        **more,
+    )
+
+
+def _nga_index(folder: Path, rows: list[tuple[int, str]]) -> None:
+    path = folder / "nga" / "collection.sqlite"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(path) as db:
+        db.executescript(nga.SCHEMA)
+        db.execute(f"PRAGMA user_version = {nga.INDEX_VERSION}")
+        db.executemany("INSERT INTO works (id, provenance) VALUES (?, ?)", rows)
+
+
+def test_the_rijksmuseum_and_the_louvre_tell_the_way(service: FrameService) -> None:
+    journeys = _journeys(service, {"id.rijksmuseum.nl/200108369": RIJKS, "cl010059724": LOUVRE})
+    rijks = journeys.record(_work("rijks", "200108369"))
+    assert rijks is not None and rijks.source == "Rijksmuseum"
+    # Its English provenance, without the markup and the sources in braces.
+    assert rijks.text == (
+        "Provenance: …; his sale, Amsterdam, 16 May 1696, no. 2, fl. 175, to Isaac Rooleeuw; "
+        "from whom, fl. 550,000, to the museum, 1908"
+    )
+    louvre = journeys.record(_work("louvre", "010059724"))
+    assert louvre is not None and louvre.source == "Musée du Louvre" and louvre.exhibitions == 1
+    assert "baron Rivet, 1849 ; légué au musée, 1925." in louvre.text
+    assert "Former owners: Rivet, Charles" in louvre.text
+    assert "Came to the Louvre: legs (date du legs: 1925)" in louvre.text
+    assert "Delacroix, New York (Etats-Unis), 17/09/2018 - 06/01/2019" in louvre.text
+    # A museum's record ends in the museum, whichever museum it is.
+    assert (
+        read(ANSWER, Record(text=TEXT, source="Musée du Louvre"), _seurat())
+        .stops[  # type: ignore[union-attr]
+            -1
+        ]
+        .kind
+        == "museum"
+    )
+
+
+def test_the_national_gallery_tells_it_from_its_data_at_home(
+    service: FrameService,
+    tmp_path: Path,
+    fake: FakeAnthropic,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    journeys = _journeys(service, {}, data_dir=tmp_path)
+    monkeypatch.setattr(nga.INDEX, "_start", lambda path: None)
+    item = service.library.upsert(_work("nga", "46626"))
+    # No index yet: nothing is kept, and the work is left alone for a while.
+    assert journeys.look(item) is None and not journeys.asked(item)
+    assert not journeys.look_soon(item)
+    _nga_index(
+        tmp_path,
+        [
+            (
+                46626,
+                "Sold 1909 to Carl Sternheim, Munich;[1] bequest 1963 to NGA.\n\n\n[1] For 3000.",
+            ),
+            (7, ""),
+        ],
+    )
+    found = journeys.record(item)
+    assert found is not None and found.source == "National Gallery of Art"
+    assert found.text == (
+        "Provenance: Sold 1909 to Carl Sternheim, Munich;[1] bequest 1963 to NGA."
+        "\n\nNotes:\n[1] For 3000."
+    )
+    assert journeys.record(_work("nga", "7")) is None  # the gallery gives none
+
+
+def test_a_work_from_elsewhere_gets_its_museums_record(service: FrameService) -> None:
+    """Commons' Mona Lisa: the Louvre's record, by the ARK id on its
+    Wikidata item; a work shown in the museum's own copy: that museum's."""
+    claims = {
+        "P9394": [{"rank": "normal", "mainsnak": {"datavalue": {"value": "010059724"}}}],
+        "P4610": [{"rank": "deprecated", "mainsnak": {"datavalue": {"value": "1"}}}],
+        "P127": [],
+    }
+    assert bridges(claims) == [("louvre", "010059724")]
+    answers = {
+        "wbgetentities": {"entities": {"Q1": {"claims": claims}}},
+        "cl010059724": LOUVRE,
+        "api.artic.edu/api/v1/artworks/27992": AIC,
+    }
+    journeys = _journeys(service, answers, work_qid=lambda item: "Q1")
+    found = journeys.record(_work("wmc", "123"))
+    assert found is not None and found.source == "Musée du Louvre"
+    # The Art Institute's own picture stands in for an archive's photograph.
+    copy = SharperCopy(url="https://x/y.jpg", item_id="aic:27992", source="aic", width=9, height=9)
+    found = journeys.record(_work("europeana", "/1/a", sharper=copy))
+    assert found is not None and found.source == "Art Institute of Chicago"
+    # No museum that tells: Wikidata's own owners, here too few.
+    journeys = _journeys(service, answers, work_qid=lambda item: "")
+    assert journeys.record(_work("wmc", "124")) is None
+
+
+def test_a_none_from_before_is_looked_for_once_more(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    fake.answer = ANSWER
+    journeys = _journeys(service, {"api.artic.edu": AIC})
+    item = service.library.upsert(_seurat())
+    service.library.save_note(
+        Note(item_id=item.id, kind="journey", model="", prompt_version=VERSION, data={})
+    )
+    assert not journeys.asked(item)  # kept when fewer records were read
+    assert journeys.look(item) is not None and journeys.asked(item)
+    other = service.library.upsert(_work("met", "437658"))
+    assert journeys.look(other) is None and journeys.asked(other)
+    note = service.library.note(other.id, "journey")
+    assert note is not None and note.prompt_version == NONE_VERSION and note.data == {}
