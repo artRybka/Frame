@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.139.5
+
+- Polskie tytuły z Wikidaty dla większej liczby muzeów. Ustalony polski
+  tytuł z Wikidaty i dotąd wygrywał z tytułem od modelu, ale serwer szukał
+  go tylko dla Met, AIC, Cleveland, Rijksmuseum, WikiArt i Luwru. Teraz
+  także dla NGA, Paris Musées, V&A, Yale, Smithsonian, SMK, Courtauld
+  i Muzeów Narodowych w Warszawie i Krakowie (te dwa zachowują własne
+  polskie tytuły, Wikidata daje im resztę faktów). Gdzie Wikidata nie ma
+  polskiego tytułu, zostaje tytuł od modelu.
+
 ## 1.139.3
 
 - Playlisty: kafelek „Propozycje dnia” po uruchomieniu aplikacji od razu

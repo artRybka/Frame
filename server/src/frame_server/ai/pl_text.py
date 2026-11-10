@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import re
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
@@ -308,6 +308,18 @@ def untranslated(text: str) -> bool:
     return foreign >= 3 and foreign > polish
 
 
+#: Museums whose own titles are Polish: theirs stay, Wikidata's label (often
+#: shorter, sometimes another wording) does not take their place.
+OWN_POLISH_TITLES = frozenset({"mnw", "mnk"})
+
+
+def own_title_first(item: Item, facts: Facts | None) -> Facts | None:
+    """``facts`` without Wikidata's title where the museum's is Polish."""
+    if facts is None or not facts.title_pl or item.source not in OWN_POLISH_TITLES:
+        return facts
+    return replace(facts, title_pl="")
+
+
 def polish_title(raw: Any, facts: Facts | None, artist: str = "") -> str:
     """The Polish title as shown: an established one from Wikidata first,
     else the model's; "" when there is none. Without the artist's name in
@@ -425,7 +437,7 @@ class PlTextJob(NoteJob):
         )
 
     def facts(self, item: Item) -> Facts | None:
-        return self.wikidata.facts(self.http, item)
+        return own_title_first(item, self.wikidata.facts(self.http, item))
 
     def context(self, item: Item) -> Context:
         facts = self.facts(item)
@@ -509,6 +521,9 @@ class PlTextJob(NoteJob):
         if not self.fresh(item, note) or note is None or "title" not in note.data:
             return None
         text = PolishText.model_validate(note.data)
-        # Texts written before the name was left out of titles.
-        title = strip_artist(text.title, item.artist)
+        # Wikidata's title, also when it came after the texts; texts written
+        # before the name was left out of titles lose it.
+        title = polish_title(
+            text.title, own_title_first(item, self.wikidata.known(item)), item.artist
+        )
         return text if title == text.title else text.model_copy(update={"title": title})
