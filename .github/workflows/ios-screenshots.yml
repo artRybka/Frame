@@ -125,6 +125,7 @@ jobs:
             capture connection 10 "connection-sources-$appearance" -settingsPage sources
             capture connection 10 "connection-ai-$appearance" -settingsPage ai
             capture connection 10 "connection-library-$appearance" -settingsPage library
+            capture connection 10 "connection-night-$appearance" -settingsPage night
             capture connection 10 "connection-frame-$appearance" -settingsPage frame
             capture connection 10 "connection-server-$appearance" -settingsPage server
             capture connection 10 "connection-keys-$appearance" -settingsPage keys

@@ -27,6 +27,7 @@ from collections.abc import Callable, Hashable, Iterable, Iterator
 
 from .artists import known_names, name_key
 from .colors import has_colours
+from .given_names import given
 from .models import MINE, Item, PlaylistRules
 from .phrases import fold, parsed
 from .phrases import words as phrase_words
@@ -187,7 +188,9 @@ class SearchIndex:
                 insort(self._buckets.setdefault(word[:_BUCKET], []), word)
             else:
                 have.append(n)
-        for word in set(_WORD.findall(fold(item.artist))):
+        # First names in their Polish form, which every spelling of them
+        # shares (``given_names``: "Alphonse Mucha" is "Alfons Mucha").
+        for word in given(frozenset(_WORD.findall(fold(item.artist)))):
             self._artist_words.setdefault(word, array("i")).append(n)
         if item.artist:
             self.by_artist.setdefault(item.artist, set()).add(n)
@@ -377,8 +380,9 @@ class SearchIndex:
         return pool
 
     def _by_artist_words(self, name: str) -> set[int]:
-        """Entries whose artist has every word of ``name``."""
-        words = name_words(name)
+        """Entries whose artist has every word of ``name`` (a first name in
+        any of its languages)."""
+        words = given(name_words(name))
         if not words:
             return set()
         lists = sorted((self._artist_words.get(w, array("i")) for w in words), key=len)

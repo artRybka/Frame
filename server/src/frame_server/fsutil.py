@@ -33,6 +33,20 @@ def own_dirs(directory: Path) -> Iterator[Path]:
             yield path
 
 
+def own_names(directory: Path) -> Iterator[str]:
+    """Names of the regular files directly in ``directory`` (none when it is
+    missing), without the entries of a NAS or another OS: one directory
+    read, no stat."""
+    try:
+        entries = os.scandir(directory)
+    except FileNotFoundError:
+        return
+    with entries:
+        for entry in entries:
+            if not entry.name.startswith(_FOREIGN_PREFIXES):
+                yield entry.name
+
+
 def dir_bytes(directory: Path, suffix: str = "") -> int:
     """Bytes in the regular files directly in ``directory`` (none when it is
     missing), without the entries of a NAS or another OS; with ``suffix``

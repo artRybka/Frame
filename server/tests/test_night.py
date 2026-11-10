@@ -292,3 +292,93 @@ def test_works_in_an_archives_faded_slide_are_looked_at_at_night(service, monkey
     (task,) = [t for t in night.tasks(service) if t.name == "sharper"]
     assert task.run(Night(threading.Event(), time.monotonic() + 30)) == 1
     assert looked == [faded.id]
+
+
+def _until(check, seconds: float = 5.0) -> None:
+    deadline = time.monotonic() + seconds
+    while not check() and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+
+def test_tasks_asked_for_run_by_day_while_the_app_is_in_use(service, monkeypatch) -> None:
+    night.used()  # the app open: a night's run would wait
+    done: list[str] = []
+    gate = threading.Event()
+
+    def slow(_night) -> int:
+        gate.wait(5)
+        done.append("slow")
+        return 3
+
+    tasks = [
+        NightTask("a", lambda _night: done.append("a"), "Pierwsze"),
+        NightTask("slow", slow, "Wolne"),
+        NightTask("c", lambda _night: done.append("c")),
+    ]
+    queue = _queue(service, tasks)
+    run = queue.start(["c", "slow"])
+    assert run is not None and run.tasks == ["slow", "c"]  # in the night's order
+    _until(lambda: queue.current is not None and queue.current.current == "slow")
+    assert queue.start() is None  # one run at a time
+    view = queue.view()
+    assert view["running"]["current"] == "slow" and view["running"]["asked"] is True
+    assert [t["label"] for t in view["tasks"]] == ["Pierwsze", "Wolne", "c"]
+    gate.set()
+    _until(lambda: queue.current is None)
+    assert done == ["slow", "c"]
+    view = queue.view()
+    assert view["running"] is None
+    last = {t["name"]: t["last"] for t in view["tasks"]}
+    assert last["a"] is None
+    assert last["slow"]["count"] == 3 and last["slow"]["asked"] is True
+    assert last["c"]["count"] is None and last["c"]["nothing"] is False
+    assert last["slow"]["failed"] is False
+    assert service.library.get_state(DONE_KEY) is None  # by day: not the night
+
+
+def test_a_run_asked_for_can_be_stopped_and_names_are_checked(service) -> None:
+    started = threading.Event()
+
+    def waits(night_: Night) -> None:
+        started.set()
+        while night_.quiet():
+            night_.sleep(0.01)
+
+    done: list[str] = []
+    queue = _queue(service, [NightTask("w", waits), NightTask("b", lambda _n: done.append("b"))])
+    try:
+        queue.start(["nope"])
+    except ValueError as err:
+        assert "nope" in str(err)
+    else:
+        raise AssertionError("an unknown task started")
+    assert queue.start() is not None
+    assert started.wait(5)
+    assert queue.cancel()
+    _until(lambda: queue.current is None)
+    assert done == []  # stopped before the next task
+    assert not queue.cancel()
+
+
+def test_the_night_api(tmp_path, monkeypatch) -> None:
+    from fastapi.testclient import TestClient
+
+    from frame_server.config import Settings
+    from frame_server.web import create_app
+
+    app = create_app(
+        Settings(data_dir=tmp_path, seed_library=False, scheduler=False, public_host="127.0.0.1")
+    )
+    with TestClient(app) as client:
+        assert client.get("/api/night").status_code == 503  # no night queue
+        service = app.state.service
+        done: list[str] = []
+        service.night = NightQueue(service, [NightTask("a", lambda _n: done.append("a"), "A")])
+        view = client.get("/api/night").json()
+        assert view["tasks"][0]["name"] == "a" and view["night_start"] == "01:30"
+        assert client.post("/api/night/run", json={"tasks": ["x"]}).status_code == 404
+        assert client.post("/api/night/run", json={}).status_code == 200
+        _until(lambda: service.night.current is None and done)
+        assert done == ["a"]
+        assert client.get("/api/night").json()["tasks"][0]["last"]["asked"] is True
+        assert client.post("/api/night/stop").status_code == 200

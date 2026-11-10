@@ -1122,6 +1122,79 @@ struct LibraryStorage: Codable, Hashable, Sendable {
     }
 }
 
+/// How many works the server has gathered (Konfiguracja → Miejsce na
+/// serwerze, Mateusz 2026-11-10); hidden ones and fragments left out.
+struct CatalogueCounts: Codable, Hashable, Sendable {
+    /// Museum works, each once (other copies, details and photos of it on a
+    /// wall not counted).
+    var works: Int
+    /// Museum pictures in all, copies and details counted.
+    var pictures: Int
+    /// Works whose large picture (the original, not the thumbnail) is on the server.
+    var originals: Int
+    /// Of those, the ones at least as large as the frame (2560 px).
+    var frameSize: Int
+    /// Uploaded works and photos.
+    var own: Int
+    var countedAt: Double
+}
+
+/// The server's night (Konfiguracja → Zadania nocne): its tasks in order,
+/// how each last went, and what runs now.
+struct NightTasks: Codable, Hashable, Sendable {
+    struct LastRun: Codable, Hashable, Sendable {
+        /// ISO time, UTC.
+        var at: String
+        /// Seconds.
+        var took: Double
+        var failed: Bool
+        /// How many it did, when the task counts.
+        var count: Int?
+        /// It found nothing to do (an index still fresh, nothing new).
+        var nothing: Bool
+        /// Started from the app, not at night.
+        var asked: Bool
+    }
+
+    struct Entry: Codable, Hashable, Sendable, Identifiable {
+        var name: String
+        var label: String
+        /// Asks Claude (at the cost of the owner's key).
+        var paid: Bool
+        var last: LastRun?
+
+        var id: String { name }
+    }
+
+    struct Running: Codable, Hashable, Sendable {
+        var tasks: [String]
+        /// Started from the app; else the night's own run.
+        var asked: Bool
+        var startedAt: String
+        var current: String?
+        var done: [String]
+        var stopping: Bool
+    }
+
+    var tasks: [Entry]
+    var running: Running?
+    /// "01:30", in the frame's time zone.
+    var nightStart: String
+    var nightEnd: String
+    /// The night last worked through ("2026-11-10").
+    var lastNight: String?
+
+    func label(_ name: String?) -> String? {
+        guard let name else { return nil }
+        return tasks.first { $0.name == name }?.label ?? name
+    }
+}
+
+/// The night's tasks to start now; nil for all of them.
+struct NightStart: Encodable, Sendable {
+    var tasks: [String]?
+}
+
 /// Requests to each art source (Konfiguracja → Diagnostyka): today and over
 /// the last `days` days, what the source turned away and what the server
 /// held back itself (library/policy.py on the server). The sources most

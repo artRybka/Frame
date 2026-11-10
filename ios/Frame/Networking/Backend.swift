@@ -223,6 +223,14 @@ protocol FrameBackend: Sendable {
     func libraryStorage() async throws -> LibraryStorage
     /// Requests to each art source lately, and the refusals (the owner's).
     func sourceRequests() async throws -> SourceRequests
+    /// How many works the server has gathered, and in large pictures.
+    func catalogueCounts() async throws -> CatalogueCounts
+    /// The night's tasks and how each last went (the owner's).
+    func nightTasks() async throws -> NightTasks
+    /// The night's tasks started now (all of them for nil); 409 while a run goes on.
+    func startNightTasks(_ start: NightStart) async throws -> NightTasks
+    /// Stops the tasks started from the app after the current step.
+    func stopNightTasks() async throws -> NightTasks
     /// A limit equal to its default goes back to frame.env or the add-on options.
     func saveLibraryLimits(_ update: LibraryStorageUpdate) async throws -> LibraryStorage
     /// The newest server image next to the running one (Synology).

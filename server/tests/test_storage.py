@@ -166,3 +166,33 @@ def test_the_view_says_when_the_catalogue_is_full(service: FrameService) -> None
     (service.images.thumbs / "a.jpg").write_bytes(b"x" * 1024 * 1024)
     service.storage.forget()
     assert service.storage.view().catalogue_full is True
+
+
+def test_the_catalogue_is_counted_with_its_large_pictures(service: FrameService) -> None:
+    library, images = service.library, service.images
+    big = library.upsert(Item(id="aic:1", source="aic", source_id="1", width=4000, height=3000))
+    small = library.upsert(Item(id="aic:2", source="aic", source_id="2", width=900, height=700))
+    library.upsert(Item(id="aic:3", source="aic", source_id="3"))  # thumbnail only
+    library.upsert(Item(id="wmc:4", source="wmc", source_id="4", copy_of="aic:1"))
+    library.upsert(Item(id="wmc:5", source="wmc", source_id="5", excluded=True))
+    library.upsert(Item(id="wmc:6~p1", source="wmc", source_id="6~p1", part_of="wmc:6"))
+    for item in (big, small):
+        images.store(item, jpeg_bytes((200, 40, 40)))
+    service.importer.add_upload(jpeg_bytes((40, 40, 200)), kind=ItemKind.OWN)
+
+    counts = service.storage.counts()
+    assert (counts.works, counts.pictures, counts.own) == (3, 4, 1)
+    assert counts.originals == 2
+    assert counts.frame_size == 1  # the museum's 4000 px; the other is smaller
+
+    library.upsert(Item(id="aic:7", source="aic", source_id="7"))
+    assert service.storage.counts().works == 3  # kept a minute
+    assert service.storage.counts(max_age=0).works == 4
+
+
+def test_the_catalogue_count_over_the_api(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path))
+    with TestClient(app) as client:
+        counts = client.get("/api/library/catalogue")
+        assert counts.status_code == 200, counts.text
+        assert set(counts.json()) >= {"works", "pictures", "originals", "frame_size", "own"}

@@ -6,7 +6,7 @@ import SwiftUI
 /// and its update, the app's restart) is not repeated here.
 enum SettingsPage: String, Hashable, CaseIterable {
     case display, notifications, household
-    case sources, ai, library
+    case sources, ai, library, night
     case frame, server, keys
     case diagnostics
 
@@ -26,7 +26,7 @@ enum SettingsPage: String, Hashable, CaseIterable {
         var pages: [SettingsPage] {
             switch self {
             case .daily: [.display, .notifications, .household]
-            case .art: [.sources, .ai, .library]
+            case .art: [.sources, .ai, .library, .night]
             case .setup: [.frame, .server, .keys]
             case .tools: [.diagnostics]
             }
@@ -51,6 +51,7 @@ enum SettingsPage: String, Hashable, CaseIterable {
         case .sources: "Źródła dzieł"
         case .ai: "Claude"
         case .library: "Miejsce na serwerze"
+        case .night: "Zadania nocne"
         case .frame: "Ramka"
         case .server: "Serwer"
         case .keys: "Klucze i certyfikaty"
@@ -66,6 +67,7 @@ enum SettingsPage: String, Hashable, CaseIterable {
         case .sources: "building.columns.fill"
         case .ai: "text.book.closed.fill"
         case .library: "internaldrive.fill"
+        case .night: "moon.stars.fill"
         case .frame: "photo.artframe"
         case .server: "server.rack"
         case .keys: "key.fill"
@@ -116,6 +118,8 @@ struct ConnectionSettingsView: View {
         // On the stack, not the list: the list's tasks stop when a page
         // opens over it (and never start when one opens right away).
         .task { await model.loadLibraryStorage() }
+        .task { await model.loadCatalogueCounts() }
+        .task { await model.loadNightTasks() }
         .task { await model.loadPanelApp() }
         .task { await model.loadServerUpdate() }
         .task { await model.loadAiSettings() }
@@ -206,8 +210,15 @@ private struct SettingsRow: View {
             guard let ai = model.aiSettings else { return nil }
             return ai.keySet ? (Money.usd(ai.spentUsd), false) : ("Brak klucza", true)
         case .library:
+            if let counts = model.catalogueCounts { return (Names.worksGrouped(counts.works), false) }
             guard let storage = model.libraryStorage else { return nil }
             return (ByteSize.bytes(storage.usage.totalBytes), false)
+        case .night:
+            guard let night = model.nightTasks else { return nil }
+            if let running = night.running {
+                return (night.label(running.current) ?? "Trwa", false)
+            }
+            return night.tasks.contains { $0.last?.failed == true } ? ("Był błąd", true) : nil
         case .frame:
             guard let app = model.panelApp else { return nil }
             if app.package == nil { return ("Brak aplikacji", true) }
@@ -298,11 +309,16 @@ struct SettingsPageView: View {
                 waiting
             }
         case .library:
+            if let counts = model.catalogueCounts {
+                CatalogueCountSection(counts: counts)
+            }
             if let storage = model.libraryStorage {
                 LibrarySizeSection(storage: storage)
             } else {
                 waiting
             }
+        case .night:
+            NightTasksSection()
         case .frame:
             if let app = model.panelApp {
                 PanelAppSection(app: app)
