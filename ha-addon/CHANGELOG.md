@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.138.5
+
+- Mniej powtórek i detali w Szukaj. Wyniki z muzeów nie pokazują już
+  kopii dzieła, które jest w katalogu pod innym tytułem (np. „Het meisje
+  met de parel” obok „Dziewczyny z perłą”).
+- „Johannes Vermeer van Delft” i „Jan Vermeer” to dla porównywania obrazów
+  ten sam artysta, więc „Die Malkunst” łączy się z „Alegorią malarstwa”.
+  Ten sam skan pod innym zapisem autora też jest rozpoznawany (odcisk
+  obrazu).
+- Detale z Commons rozpoznawane także po nazwie pliku („…_detail_…”).
+- Zdjęcia obrazu w ramie albo na ścianie muzeum są odkładane jak detale.
+- Szukanie małych detali w dużym obrazie dokańcza się w kolejnych nocach,
+  zamiast przepadać, gdy zabrakło czasu.
+
 ## 1.138.3
 
 - Nazwisko artysty pod tytułem dzieła (na karcie dzieła i w Teraz) nie jest

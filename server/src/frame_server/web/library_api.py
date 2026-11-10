@@ -57,6 +57,7 @@ from ..library.repo import Hidden, SortKey, now_iso
 from ..library.search import fill as fill_by_search
 from ..library.seed import PACKS, import_queries, pack
 from ..library.viewer import viewer_id
+from ..library.vocabulary import is_copy
 from ..library.zoom import zooms
 from ..player import hold_from
 from ..schedule import FrameSettings
@@ -123,7 +124,14 @@ def remote_items(
     ("Ukryj dzieło"), unless ``keep_hidden``; without it also those whose
     thumbnail is not here while its museum turned us away
     (``ImageCache.thumb_waits``): they would be empty tiles for now.
-    ``hidden``: :meth:`Library.hidden`, when worked out once for many calls."""
+    ``hidden``: :meth:`Library.hidden`, when worked out once for many calls.
+
+    A work the library holds names the copy the catalogue shows of it
+    (``twin``), when that is another one: a museum's answer brings Commons'
+    "Het meisje met de parel" the pictures showed to be the catalogue's "Girl
+    with a Pearl Earring" (``library.twins``), and Szukaj leaves it out only
+    so (Mateusz 2026-11-10). One the pictures showed to be a detail, or a
+    photograph of a work in its frame, is left out unless ``keep_hidden``."""
     found: dict[str, RemoteItem] = {}
     gone = svc.images.gone_ids()
     if keep_hidden:
@@ -136,11 +144,17 @@ def remote_items(
         if not keep_hidden and svc.images.thumb_waits(item):
             continue
         twin: str | None = None
-        if copies and not svc.library.has(item.id):
-            if copy := svc.importer.copy_of(item):
-                item = copy
-            elif other := svc.library.twin(item):
-                twin = other.id
+        held = svc.library.get(item.id)
+        if held is None:
+            if copies:
+                if copy := svc.importer.copy_of(item):
+                    item = copy
+                elif other := svc.library.twin(item):
+                    twin = other.id
+        elif not keep_hidden and is_copy(held):
+            continue  # a detail or a framed photograph (library.twins)
+        elif best := svc.library.twin(held):
+            twin = best.id
         own = svc.library.get(item.id)
         if own is not None:  # the museum's text, the owner's heart
             item = item.model_copy(update={"favorite": own.favorite})
