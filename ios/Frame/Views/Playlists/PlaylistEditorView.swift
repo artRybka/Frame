@@ -954,7 +954,7 @@ private struct EditorSearch: ViewModifier {
                 // Measured outside the groups' inset: an open group grows it.
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
                 .termSuggestions(lookup, tokens: tokens, focused: focused)
-                .termSearch(lookup, tokens: tokens, focused: focused)
+                .termSearch(lookup, tokens: tokens, focused: focused, keepsNavigationBar: true)
                 .toolbar {
                     DefaultToolbarItem(kind: .search, placement: .bottomBar)
                 }
