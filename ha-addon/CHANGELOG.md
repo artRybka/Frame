@@ -6,6 +6,9 @@
   dużym przybliżeniu są półtora raza ostrzejsze. Kafle zapisane wcześniej
   zostaną raz pobrane od nowa. Aplikacja wczytuje pełny rozmiar kafla tylko
   wtedy, gdy przybliżenie go wymaga.
+- „Pod lupą” w Odkrywaj pokazuje każde dzieło raz. Commons trzyma niektóre
+  w kilku plikach z kaflami (np. „Księżniczka z krainy porcelany” Whistlera
+  trzy razy); zostaje największy.
 
 ## 1.138.5
 

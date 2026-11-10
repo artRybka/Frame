@@ -32,7 +32,7 @@ from ..library import (
     zoom,
 )
 from ..library.artists import is_artist, known_names
-from ..library.duplicates import Shown
+from ..library.duplicates import Shown, work_key
 from ..library.hosts import urgent_call
 from ..library.importer import ALL
 from ..library.mix import mixed
@@ -473,16 +473,38 @@ def _zoom_row(svc: FrameService) -> SuggestionRow | None:
     own = [i for i in svc.library.query(limit=None)[1] if zooms(i) and i not in hidden]
     own.sort(key=lambda i: (not i.favorite, i.title.casefold()))
     works = svc.library.works()
+    fragments = svc.importer.fragments
+
+    def work(item: Item) -> str:
+        """One work's key: Commons keeps some as several files with a tile
+        set (Whistler's "Princess" three times, Mateusz 2026-11-10)."""
+        shown = item.sharper.item_id if item.sharper is not None else item.id
+        source, _, page = shown.partition(":")
+        if fragments is not None and source == "wmc" and (qid := fragments.work_of_page(page)):
+            return qid
+        return work_key(item) or item.id
+
     shown = {g for i in own if (g := works.group_index(i.id)) is not None}
+    seen: set[str] = set()
+    kept: list[Item] = []
+    for item in own:
+        if (key := work(item)) not in seen:
+            seen.add(key)
+            kept.append(item)
     # A file shown already in its work's place is that work.
     taken = {i.id for i in own} | {i.sharper.item_id for i in own if i.sharper is not None}
     svc.importer.remember(files)
-    for item in files:
+    # Of several files of one work, the largest.
+    for item in sorted(files, key=lambda i: -(i.width or 0) * (i.height or 0)):
         at = works.group_index(item.id)
         if item.id in taken or (at is not None and at in shown) or item in hidden:
             continue
-        own.append(item)
+        if (key := work(item)) in seen:
+            continue
+        seen.add(key)
+        kept.append(item)
         taken.add(item.id)
+    own = kept
     if not own:
         return None
     return SuggestionRow(
