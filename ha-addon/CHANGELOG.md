@@ -4,13 +4,12 @@
 
 - Znaczki na miniaturach uporządkowane: na obrazie zostaje tylko to, co
   się klika, i tylko w prawym górnym rogu.
-- Serce bez kółka: biały kontur, gdy dzieło nie jest w Ulubionych, czerwone,
+- Serce bez kółka: szklane, gdy dzieło nie jest w Ulubionych, czerwone,
   gdy jest. W Ulubionych serc nie ma, bo ulubione jest tam wszystko.
 - Usuwanie z playlisty i krzyżyki (edytor, przykładowe zdjęcia) to czarne
   kółko na rogu, jak ptaszek wybranej miniatury w Prezentacji. Plus
-  w edytorze jest jasnym kółkiem, po dodaniu czarnym z ptaszkiem.
-- „Pod lupą” to etykietka z lupą i „24×” zaraz po tytule, jak w karcie
-  dzieła. Iskierki Propozycji dnia stoją przed liczbą dzieł, a zamiast
+  w edytorze też siedzi na rogu: jasne kółko, po dodaniu czarne z ptaszkiem.
+- „Pod lupą” to mała lupa zaraz po tytule. Iskierki Propozycji dnia stoją przed liczbą dzieł, a zamiast
   znaczka „gra teraz” pod kartą playlisty jest cynobrowe „Na ramce”.
   Na pasku „Następne” w Teraz podpis „Następny w kolejce”.
 - Szklany znaczek zostaje tylko na okładce „Ukrytych”.

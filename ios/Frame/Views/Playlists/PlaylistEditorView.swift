@@ -697,19 +697,19 @@ struct PlaylistEditorView: View {
                 if adding.contains(id) {
                     // The spinner sits in the same drop of glass.
                     ProgressView().controlSize(.mini)
-                        .frame(width: 26, height: 26)
+                        .frame(width: 24, height: 24)
                         .background(Theme.card, in: Circle())
                 } else {
                     // Light with a plus, then ink with a tick: as the heart,
-                    // empty and full.
-                    CornerMark(systemImage: added ? "checkmark" : "plus", size: 26, light: !added)
+                    // empty and full; on the corner, as remove.
+                    CornerMark(systemImage: added ? "checkmark" : "plus", size: 24, light: !added)
                         .contentTransition(.symbolEffect(.replace))
                 }
             }
-            .padding(6)
             // A finger's room (44 pt) towards the picture.
-            .padding([.leading, .bottom], 12)
+            .padding([.leading, .bottom], 16)
             .contentShape(Rectangle())
+            .offset(x: CornerMark.overhang, y: -CornerMark.overhang)
         }
         .buttonStyle(.plain)
         .disabled(adding.contains(id))

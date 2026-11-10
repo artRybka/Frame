@@ -190,8 +190,6 @@ extension EnvironmentValues {
 struct ArtCard: View {
     @Environment(AppModel.self) private var model
     @Environment(\.artCardAspects) private var aspects
-    @Environment(\.colorScheme) private var scheme
-    @Environment(\.displayScale) private var scale
     let item: ItemSummary
     var showsCaption = true
     /// Where the picture comes from; the server's thumbnail by default.
@@ -228,13 +226,9 @@ struct ArtCard: View {
                 .shadow(color: .black.opacity(0.14), radius: 8, x: 0, y: 5)
             if showsCaption {
                 VStack(alignment: .leading, spacing: 2) {
-                    // "Pod lupą": the card's label (magnifier, "24×") right
-                    // after the title, not a mark on the picture.
-                    TitleYear.text(
-                        item.title.isEmpty ? "Bez tytułu" : item.title, date: "",
-                        font: .serif(15, weight: .medium), scheme: scheme, scale: scale,
-                        zoom: item.zoom == true
-                    )
+                    // "Pod lupą": a small magnifier right after the title, in
+                    // the caption's soft ink, not a mark on the picture.
+                    title
                         .lineLimit(2)
                     Text(Self.byline(item))
                         .font(.caption)
@@ -249,6 +243,21 @@ struct ArtCard: View {
             // Another copy since the thumbnail was kept: had anew.
             if let picture = item.picture { model.pictureSeen(item.id, copy: picture) }
         }
+    }
+
+    /// The title, and for a "Pod lupą" work a magnifier after it that wraps
+    /// with the last word.
+    private var title: Text {
+        let text = Text(item.title.isEmpty ? "Bez tytułu" : item.title)
+            .font(.serif(15, weight: .medium))
+            .foregroundStyle(Theme.ink)
+        guard item.zoom == true else { return text }
+        return (text
+            + Text("\u{00A0}").font(.serif(15, weight: .medium))
+            + Text(Image(systemName: TitleYear.zoomSymbol))
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Theme.inkSoft))
+            .accessibilityLabel(Text("\(item.title), można mocno przybliżyć"))
     }
 
     /// The line under the title: a photo's day and town, a work's artist,
@@ -279,23 +288,33 @@ struct GlassBadge: View {
 /// and only in the top right corner; what merely tells (the kind of a
 /// collection, "Pod lupą", on the frame, in the queue) goes to the caption.
 ///
-/// A heart without a circle: an outline when off, red when on, with a soft
-/// shadow so it shows on a pale sky and on a dark ground alike.
+/// A heart without a circle (sheet szklane-znaczki/szkic-3, variant A): off,
+/// a heart of misted glass with a fine light edge, the picture showing
+/// through; on, plain red with no rim. A soft shadow keeps either apart
+/// from a pale sky or a dark ground.
 struct HeartMark: View {
     let on: Bool
-    var size: CGFloat = 17
+    var size: CGFloat = 18
 
     var body: some View {
-        ZStack {
-            Image(systemName: "heart.fill")
-                .foregroundStyle(on ? AnyShapeStyle(Theme.heart) : AnyShapeStyle(Color.black.opacity(0.12)))
-            // The outline: white round the red too, apart from the picture.
-            Image(systemName: "heart")
-                .foregroundStyle(.white)
-                .fontWeight(on ? .regular : .semibold)
+        Group {
+            if on {
+                Image(systemName: "heart.fill")
+                    .foregroundStyle(Theme.heart)
+            } else {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .mask(Image(systemName: "heart.fill"))
+                    .overlay {
+                        Image(systemName: "heart")
+                            .fontWeight(.light)
+                            .foregroundStyle(.white.opacity(0.85))
+                    }
+            }
         }
         .font(.system(size: size))
-        .shadow(color: .black.opacity(0.45), radius: 1.5, y: 1)
+        .frame(width: size + 3, height: size + 1)
+        .shadow(color: .black.opacity(0.3), radius: 1.5, y: 1)
     }
 }
 
