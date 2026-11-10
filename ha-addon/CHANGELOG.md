@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.142.6
+
+- „Droga dzieła” jest teraz rysunkiem drogi, a nie osią czasu. Jedna
+  linia płynie łukami przez całą szerokość, jak pociągnięta szerokim
+  piórem do kaligrafii: cienka na długich skosach, gruba na zakrętach.
+  Powstaje pierwsza, a kropki przystanków stoją na gotowej linii, więc
+  przy żadnej nie ma zakrętu. Tekst każdego przystanku zaczyna się tuż
+  pod swoją kropką, w zakolu drogi, i linia nigdzie w niego nie wchodzi.
+- Daty przystanków są pisane odręcznie i zawsze stoją przy kropce.
+- Droga zaczyna się na pierwszym przystanku i kończy większą czerwoną
+  kropką tam, gdzie dzieło jest dziś. Nad morzem wije się swobodnie
+  wśród fal.
+- Wypad, z którego dzieło wróciło (na przykład wystawa), jest odnogą:
+  wychodzi z drogi jak na rozdrożu, tym samym piórem, tylko przerywaną
+  kreską, i kończy się pustą kropką na odręcznej pętli, którą tekst
+  wypadu jest zakreślony.
+- Pod każdym tekstem leży blado-biała podmalówka: nierówna plama
+  z ostrzejszą, jaśniejszą krawędzią, jak rozlana i wyschnięta farba.
+- Obok czarnej linii w kilku miejscach biegną białe, poszarpane
+  pociągnięcia suchym pędzlem, jak korekty kreski, a czerwona kropka na
+  końcu ma biały, malowany otok, który nachodzi na czarną linię.
+- Teksty przystanków łamią się staranniej: „w”, „z” czy „i” nie zostają
+  na końcu wiersza, liczba trzyma się swojego słowa („800 franków”,
+  „nr 175”), wyróżniona nazwa nie jest rozrywana, wiersze mają podobną
+  długość, a ostatni nie jest jednym słowem.
+- Pod rysunkiem nie ma już podpisu o źródle i o tym, kto opowiada.
+- Linia z kropkami rysuje się zawsze. Wcześniej czasem zostawały same
+  teksty, bez drogi.
+
 ## 1.142.5
 
 - Szukaj i playlisty z wybraną techniką (Malarstwo, Grafika, Rysunki

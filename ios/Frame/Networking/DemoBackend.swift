@@ -1019,21 +1019,29 @@ actor DemoBackend: FrameBackend {
         work.size = asked.count == 2 ? .init(height: asked[0], width: asked[1]) : .init(height: 25.7, width: 37.9)
         // "Droga dzieła", from the Art Institute's provenance of this print.
         typealias Stop = DailyWork.Journey.Stop
+        // CI screenshots: "-journeyDetour YES" adds a side trip, the 1908
+        // show of Japanese prints at the Art Institute, to see its branch
+        // and its frame.
+        var stops = [
+            Stop(year: "ok. 1830–1832", place: "Edo", lat: 35.68, lon: 139.69, kind: "made", owner: true, detour: false,
+                 text: "Hokusai projektuje drzeworyt, odbijany w **wielu egzemplarzach**."),
+            Stop(year: "przed 1905", place: "Nowy Jork", lat: 40.71, lon: -74.0, kind: "sold", owner: true, detour: false,
+                 text: "Odbitka jest w rękach marszandów **Yamanaka & Company**."),
+            Stop(year: "1905", place: "Chicago", lat: 41.88, lon: -87.62, kind: "sold", owner: true, detour: false,
+                 text: "W grudniu kupuje ją kolekcjoner **Clarence Buckingham**."),
+            Stop(year: "1913", place: "Chicago", lat: 41.88, lon: -87.62, kind: "inherited", owner: true, detour: false,
+                 text: "Po jego śmierci przechodzi na siostry, **Lucy Maud i Kate**."),
+            Stop(year: "1925", place: "Chicago", lat: 41.88, lon: -87.62, kind: "museum", owner: true, detour: false,
+                 text: "Dar dla **Art Institute of Chicago**, w kolekcji Clarence’a Buckinghama."),
+        ]
+        if UserDefaults.standard.bool(forKey: "journeyDetour") {
+            stops.insert(Stop(year: "1908", place: "Chicago", lat: 41.88, lon: -87.62, kind: "shown", owner: false, detour: true,
+                              text: "Na wystawie japońskich drzeworytów w **Art Institute**, potem wraca do kolekcjonera."), at: 3)
+        }
         work.journey = .init(
             headline: "Z Edo do Chicago",
             lead: "Jedna z wielu odbitek, która przez Nowy Jork trafiła do kolekcjonera z Chicago.",
-            stops: [
-                Stop(year: "ok. 1830–1832", place: "Edo", lat: 35.68, lon: 139.69, kind: "made", owner: true, detour: false,
-                     text: "Hokusai projektuje drzeworyt, odbijany w **wielu egzemplarzach**."),
-                Stop(year: "przed 1905", place: "Nowy Jork", lat: 40.71, lon: -74.0, kind: "sold", owner: true, detour: false,
-                     text: "Odbitka jest w rękach marszandów **Yamanaka & Company**."),
-                Stop(year: "1905", place: "Chicago", lat: 41.88, lon: -87.62, kind: "sold", owner: true, detour: false,
-                     text: "W grudniu kupuje ją kolekcjoner **Clarence Buckingham**."),
-                Stop(year: "1913", place: "Chicago", lat: 41.88, lon: -87.62, kind: "inherited", owner: true, detour: false,
-                     text: "Po jego śmierci przechodzi na siostry, **Lucy Maud i Kate**."),
-                Stop(year: "1925", place: "Chicago", lat: 41.88, lon: -87.62, kind: "museum", owner: true, detour: false,
-                     text: "Dar dla **Art Institute of Chicago**, w kolekcji Clarence’a Buckinghama."),
-            ],
+            stops: stops,
             years: 95, km: 10130, fromWhere: "z Edo", hands: 5, exhibitions: nil,
             source: "Art Institute of Chicago"
         )
