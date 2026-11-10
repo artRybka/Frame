@@ -38,6 +38,7 @@ TECHNIQUE_KINDS: dict[str, Kind] = {
     "technique:manuscripts": "manuscript",
 }
 MANUSCRIPTS = "technique:manuscripts"
+POSTER = "technique:poster"
 PHOTOGRAPHY = "technique:photography"
 SCULPTURE = "technique:sculpture"
 DECORATIVE = "technique:decorative"
@@ -449,6 +450,15 @@ TERMS: list[Term] = [
         "schilderij*",
         "obraz",
         "olej*",
+        # Europeana's types in its providers' languages ("Målningar
+        # (Måleri)", "pictură", "Peinture[catégorie]").
+        "peinture*",
+        "gemälde*",
+        "malerei*",
+        "måleri*",
+        "maleri*",
+        "målning*",
+        "pictură",
     ),
     _t(
         "technique:print",
@@ -477,6 +487,15 @@ TERMS: list[Term] = [
         "miedzioryt*",
         "staloryt*",
         "sucha igła",
+        # Europeana's ("Printing graphic, Druckgrafik", "printed image,
+        # image imprimée": Rembrandt's etchings under Malarstwo).
+        "printed image*",
+        "printing graphic*",
+        "druckgra*",
+        "image imprimée*",
+        "estampe*",
+        "gravure*",
+        "grafiek",
     ),
     _t(
         "technique:drawing",
@@ -491,6 +510,10 @@ TERMS: list[Term] = [
         "rysun*",
         "akwarel*",
         "ołówek",
+        "zeichnung*",
+        "dessin*",
+        "tegning*",
+        "teckning*",
     ),
     _t("technique:poster", "Plakaty", "poster*", "affiche*", "plakat*"),
     _t(MANUSCRIPTS, "Rękopisy i miniatury", "manuscript*"),
@@ -984,6 +1007,24 @@ def text_of(item: Item) -> str:
 #: Techniques that say what an object is: when its museum's type or
 #: material names one of these, that settles its technique.
 _OBJECT_TECHNIQUES = ("technique:painting", "technique:print", "technique:drawing")
+#: A poster's type names a technique too: a print's, never a painting's or
+#: drawing's (the V&A's "Poster" under Malarstwo, 2026-11-10).
+_TYPED = (*_OBJECT_TECHNIQUES, POSTER)
+
+#: A provider's broad category beside the work's own type, in Europeana's
+#: records ("drawing, Painting [category], Drawing": a Rembrandt drawing
+#: under Malarstwo, 2026-11-10).
+_CATEGORY = re.compile(r"\[\s*(?:category|categorie|catégorie|kategorie)\s*\]", re.IGNORECASE)
+
+
+@lru_cache(maxsize=PER_WORK)
+def _own_type(classification: str) -> str:
+    """``classification`` without its broad categories, unless they are all
+    it says."""
+    if not _CATEGORY.search(classification):
+        return classification
+    parts = [p for p in classification.split(",") if not _CATEGORY.search(p)]
+    return ",".join(parts) if any(p.strip() for p in parts) else classification
 
 
 def _technique_matches(found: Term, item: Item) -> bool:
@@ -991,25 +1032,63 @@ def _technique_matches(found: Term, item: Item) -> bool:
     model's keywords mention: a Monet drawing whose description talks of
     his paintings, or a caricature tagged "obraz w ramie", is no painting.
     The type and material decide; without a technique there, the title and
-    the museum's own tags. Posters are prints, so a print's title may still
-    make it one."""
+    the museum's own tags. Posters are prints (Grafika takes them), and
+    a poster is what :func:`is_poster` says."""
     pattern = found.pattern
     if pattern is None:
         return False
-    if pattern.search(f"{item.classification} {item.medium}"):
+    if found.key == POSTER:
+        return is_poster(item)
+    said = f"{_own_type(item.classification)} {item.medium}"
+    if pattern.search(said):
         return True
-    if found.key != "technique:poster" and _object_technique(item.classification, item.medium):
+    if found.key == "technique:print" and _names(said, (POSTER,)):
+        return True
+    if _object_technique(_own_type(item.classification), item.medium):
         return False
     return bool(pattern.search(" ".join((item.title, *item.styles, *item.subjects))))
 
 
+#: A painting's or drawing's type or material: never a poster, whatever its
+#: title or tags (a design for one is a drawing).
+_NO_POSTER = ("technique:painting", "technique:drawing")
+
+
+def is_poster(item: Item) -> bool:
+    """A poster as its museum says it: the word in its type or material;
+    a painting or drawing by its type or material is none (Monet's oils
+    under Plakaty, Mateusz 2026-11-10); else the word in its title or the
+    museum's own tags (a print's "Poster for ..."). The museums' search for
+    an artist and posters brings any of his works, so this is checked on
+    every work, found by that search or not."""
+    return _is_poster(
+        _own_type(item.classification),
+        item.medium,
+        " ".join((item.title, *item.styles, *item.subjects)),
+    )
+
+
+@lru_cache(maxsize=PER_WORK)
+def _is_poster(classification: str, medium: str, tags: str) -> bool:
+    if _names(f"{classification} {medium}", (POSTER,)):
+        return True
+    # The type first; the material when the type names no technique (a
+    # poster's lithograph may be touched with gouache).
+    for text in (classification, medium):
+        if _names(text, ("technique:print",)):
+            break
+        if _names(text, _NO_POSTER):
+            return False
+    return _names(tags, (POSTER,))
+
+
+def _names(text: str, keys: tuple[str, ...]) -> bool:
+    return any((named := BY_KEY[key].pattern) is not None and named.search(text) for key in keys)
+
+
 @lru_cache(maxsize=PER_WORK)
 def _object_technique(classification: str, medium: str) -> bool:
-    text = f"{classification} {medium}"
-    return any(
-        (pattern := BY_KEY[key].pattern) is not None and pattern.search(text)
-        for key in _OBJECT_TECHNIQUES
-    )
+    return _names(f"{classification} {medium}", _TYPED)
 
 
 #: A painting's material even when it names a drawing's too ("Oil and
@@ -1028,15 +1107,27 @@ def searched_technique_fits(techniques: list[Term], item: Item) -> bool:
     only without words; asked for an artist or words they bring whatever
     they hold (AIC's Monet caricatures, "Drawing and Watercolor", "graphite
     on tan paper", under Malarstwo, Mateusz 2026-11-10). So the museum's
-    type decides, then the material: one naming another of painting, print
-    and drawing, and not the one asked, means no; naming none, the museum's
-    search is trusted."""
+    type decides, then the material: one naming another of painting, print,
+    drawing and poster, and not the one asked, means no (a poster is a
+    print); naming none, the museum's search is trusted. Plakaty are
+    checked on every work (:func:`is_poster`): no museum's search for an
+    artist keeps to them, so Monet + Plakaty showed his oils (Mateusz
+    2026-11-10). Rękopisy, Fotografia, Rzeźba and Ceramika take works of
+    that category only (:func:`object_category`)."""
+    if any(t.key == POSTER for t in techniques):
+        return is_poster(item)
+    categories = [t.key for t in techniques if t.key in OBJECT_CATEGORIES]
+    if categories:
+        return object_category(item) in categories
     asked = [t for t in techniques if t.key in _OBJECT_TECHNIQUES]
     if not asked:
         return True
     painting = any(t.key == "technique:painting" for t in asked)
-    for text, material in ((item.classification, False), (item.medium, True)):
+    prints = any(t.key == "technique:print" for t in asked)
+    for text, material in ((_own_type(item.classification), False), (item.medium, True)):
         if any(t.pattern is not None and t.pattern.search(text) for t in asked):
+            return True
+        if prints and _names(text, (POSTER,)):
             return True
         if painting and material and _OIL.search(text):
             return True

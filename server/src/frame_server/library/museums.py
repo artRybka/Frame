@@ -60,6 +60,10 @@ log = logging.getLogger(__name__)
 _BY = re.compile(r"^@by:([^\t]*)\t(.*)$", re.DOTALL)
 
 
+#: A poster's type in the languages museums write it.
+_POSTER_WORD = re.compile(r"\b(poster|affiche|plakat)", re.IGNORECASE)
+
+
 def by_artist(artist: str, words: str = "") -> str:
     """The text asking a museum for ``artist``'s works (with ``words``)."""
     return f"@by:{' '.join(artist.split())}\t{' '.join(words.split())}"
@@ -339,7 +343,7 @@ class Museum(ABC):
         if artist:
             if index is None or not dump_words(artist) or re.search(r"[:=]", query):
                 return ask()
-            filters["also"] = [(artist, ("artist",))]
+            filters["also"] = [*filters.get("also", ()), (artist, ("artist",))]
         elif index is None or not dump_words(query) or re.search(r"[:=]", query):
             return ask()
         found = self._from_dump(index, query, limit=limit, page=page, **filters)
@@ -383,9 +387,18 @@ class ArtInstituteChicago(Museum):
     iiif = AIC_IIIF
     fields = (
         "id,title,artist_title,artist_display,date_display,date_start,medium_display,"
-        "artwork_type_title,style_titles,subject_titles,place_of_origin,credit_line,"
+        "artwork_type_title,classification_titles,style_titles,subject_titles,"
+        "place_of_origin,credit_line,"
         "description,short_description,image_id,thumbnail,is_public_domain"
     )
+
+    @staticmethod
+    def _type(d: dict[str, Any]) -> str:
+        """Its type; a poster's is "Print", the word only among its
+        classifications: "Poster" then, for Plakaty (``vocabulary.is_poster``)."""
+        kind = str(d.get("artwork_type_title") or "")
+        classes = [str(c).casefold() for c in d.get("classification_titles") or []]
+        return "Poster" if kind == "Print" and "poster" in classes else kind
 
     def _map(self, d: dict[str, Any]) -> Item | None:
         if not d.get("image_id") or not d.get("is_public_domain"):
@@ -401,7 +414,7 @@ class ArtInstituteChicago(Museum):
             date_text=d.get("date_display") or "",
             year=d.get("date_start"),
             medium=d.get("medium_display") or "",
-            classification=d.get("artwork_type_title") or "",
+            classification=self._type(d),
             styles=d.get("style_titles") or [],
             subjects=d.get("subject_titles") or [],
             culture=d.get("place_of_origin") or "",
@@ -485,14 +498,22 @@ class ArtInstituteChicago(Museum):
     ) -> tuple[int, list[Item]]:
         """Works of one type (Malarstwo: "Painting"): its search for an
         artist or words brings any, his caricatures too (Mateusz
-        2026-11-10)."""
-        if kind not in self.artwork_types:
+        2026-11-10). Posters and manuscripts are prints and books by their
+        type, so by their classification ("poster": Toulouse-Lautrec's 26,
+        none of which his plain search's first page had)."""
+        dump: dict[str, Any]
+        if kind in ("poster", "manuscript"):
+            kept = self._text(kind, ("classification_titles", "term_titles"))
+            dump = {"also": [(kind, ("kind",))]}
+        elif kind in self.artwork_types:
+            kept = {"term": {"artwork_type_title.keyword": self.artwork_types[kind]}}
+            dump = {"kinds": (self.artwork_types[kind],)}
+        else:
             return super().search_kind(query, kind, limit, page)
-        type_title = self.artwork_types[kind]
         artist, words = asked_by(query) or ("", query)
 
         def ask() -> tuple[int, list[Item]]:
-            must: list[dict[str, Any]] = [{"term": {"artwork_type_title.keyword": type_title}}]
+            must: list[dict[str, Any]] = [kept]
             if artist:
                 must.append({"match": {"artist_title": {"query": artist, "operator": "and"}}})
             if words.strip():
@@ -501,7 +522,7 @@ class ArtInstituteChicago(Museum):
 
         if not artist and not words.strip():
             return self.discover(Discovery(kind=kind), limit, page)
-        return self._at_home(words, limit, page, ask, artist=artist, kinds=(type_title,))
+        return self._at_home(words, limit, page, ask, artist=artist, **dump)
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         index = self._index()
@@ -1230,8 +1251,13 @@ class Rijksmuseum(Museum):
 
     @staticmethod
     def _notation(node: dict[str, Any]) -> str:
-        # Either language-tagged values or plain strings.
-        values = [v if isinstance(v, dict) else {"@value": v} for v in node.get("notation") or []]
+        # Either language-tagged values or plain strings, in a list or one
+        # alone: a lone value read as a list was its keys, "@language"
+        # (Toulouse-Lautrec's prints by "@language", 2026-11-10).
+        notation = node.get("notation") or []
+        if not isinstance(notation, list):
+            notation = [notation]
+        values = [v if isinstance(v, dict) else {"@value": v} for v in notation]
         english = [v for v in values if v.get("@language") == "en"]
         return str((english or values or [{}])[0].get("@value", ""))
 
@@ -1767,6 +1793,31 @@ class Europeana(Museum):
         name = artist.replace('"', " ").strip()
         query = " ".join(w for w in (f'who:"{name}"', words.strip()) if w)
         return self._get(query, [self.whats["any"]], limit, page)
+
+    def search_kind(
+        self, query: str, kind: Kind, limit: int = 20, page: int = 1
+    ) -> tuple[int, list[Item]]:
+        """Works of one kind by its ``what`` (Plakaty: Mucha's "JOB", typed
+        "Print" by its provider): an artist by ``who``. What ``what:poster``
+        finds is a poster, so says so (``vocabulary.is_poster``)."""
+        if kind == "any" or kind not in self.whats:
+            return super().search_kind(query, kind, limit, page)
+        artist, words = asked_by(query) or ("", query)
+        name = artist.replace('"', " ").strip()
+        text = " ".join(w for w in (f'who:"{name}"' if name else "", words.strip()) if w)
+        total, items = self._get(text, [self.whats[kind]], limit, page)
+        if kind == "poster":
+            items = [
+                i
+                if _POSTER_WORD.search(i.classification)
+                else i.model_copy(
+                    update={
+                        "classification": ", ".join(k for k in (i.classification, "poster") if k)
+                    }
+                )
+                for i in items
+            ]
+        return total, items
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         if spec.kind not in self.whats:
