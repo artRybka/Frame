@@ -1182,6 +1182,22 @@ final class AppModel {
         return Array((rows.first { $0.key == "for-you" } ?? rows.first)?.items.prefix(4) ?? [])
     }
 
+    /// Whether a work is in Ulubione: its last heart here, else as loaded.
+    func liked(_ item: ItemSummary) -> Bool { hearts[item.id] ?? item.favorite }
+
+    /// A tile's heart turned at once; back if the server says no. A museum's
+    /// work joins the library with it (the server keeps a work once liked).
+    func like(_ item: ItemSummary, _ favorite: Bool) async {
+        guard !liking.contains(item.id) else { return }
+        liking.insert(item.id)
+        defer { liking.remove(item.id) }
+        let before = hearts[item.id]
+        hearts[item.id] = favorite
+        if await setFavorite(item.id, favorite) == nil { hearts[item.id] = before }
+    }
+
+    @ObservationIgnored private var liking: Set<String> = []
+
     func setFavorite(_ id: String, _ favorite: Bool) async -> Item? {
         do {
             let item = try await backend.setFavorite(id: id, favorite)

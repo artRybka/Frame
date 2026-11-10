@@ -469,11 +469,12 @@ struct SuggestionRowView: View {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(row.items) { remote in
                         NavigationLink(value: remote.id) {
-                            ArtCard(item: remote.summary, ref: remote.thumb)
+                            ArtCard(item: remote.summary, ref: remote.thumb, showsFavorite: false)
                                 .frame(width: 150)
                         }
                         .buttonStyle(.plain)
                         .contextMenu { QueueButton(itemID: remote.id) }
+                        .overlay(alignment: .topTrailing) { LikeHeart(item: remote.summary) }
                     }
                 }
                 .padding(.vertical, 4)
@@ -544,10 +545,11 @@ struct ThemeView: View {
                 actions
                 MasonryGrid(items: items.map(\.summary)) { summary in
                     NavigationLink(value: summary.id) {
-                        ArtCard(item: summary, ref: items.first { $0.id == summary.id }?.thumb)
+                        ArtCard(item: summary, ref: items.first { $0.id == summary.id }?.thumb, showsFavorite: false)
                     }
                     .buttonStyle(.plain)
                     .contextMenu { QueueButton(itemID: summary.id) }
+                    .overlay(alignment: .topTrailing) { LikeHeart(item: summary) }
                 }
                 if items.isEmpty && !more && !loading {
                     EmptyStateView(
