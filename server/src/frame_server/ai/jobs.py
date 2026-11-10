@@ -163,6 +163,10 @@ class NoteJob(ABC):
 
     #: Whether answers asked one at a time are streamed to :meth:`partial`.
     streams = False
+    #: Items nobody waits for are asked at night through the Batch API, for
+    #: half the price, instead of one at a time in the background (Mateusz
+    #: 2026-11-10, "O1"); what the frame or the app waits for is asked at once.
+    night = False
 
     def partial(self, item: Item, piece: str) -> None:  # noqa: B027 - optional hook
         """A piece of the answer's text as it is written (``streams`` only):
@@ -621,7 +625,7 @@ class AiWorker:
         queued = 0
         in_batches = self._batched()
         for job in self.jobs.values():
-            if not job.enabled():
+            if not job.enabled() or job.night:
                 continue
             later = self.later_ids(job.kind)
             for item in self._stale(job, job.wanted):
@@ -688,6 +692,33 @@ class AiWorker:
             self._next_poll = time.monotonic() + POLL_SECONDS
         return count
 
+    def order_night(self) -> int:
+        """What the background would ask one at a time for the jobs asked at
+        night (:attr:`NoteJob.night`), sent through the Batch API instead, as
+        much as this month's limit leaves; how many questions went. The
+        answers come in as any batch's (:meth:`poll_batches`)."""
+        sent = 0
+        in_batches = self._batched()
+        for job in self.jobs.values():
+            if not job.night or not job.enabled():
+                continue
+            later = self.later_ids(job.kind)
+            items = [
+                i
+                for i in self._stale(job, job.wanted)
+                if (job.kind, i.id) not in in_batches
+                and (job.kind, i.id) not in self._skipped
+                and i.id not in later
+            ]
+            while items and job.estimate_items(items) > self.claude.budget_left():
+                items = items[: len(items) // 2]
+            for start in range(0, len(items), BATCH_SIZE):
+                sent += self._send_batch(job, items[start : start + BATCH_SIZE])
+        if sent:
+            self._next_poll = time.monotonic() + POLL_SECONDS
+            log.info("language model: %d questions ordered for the night", sent)
+        return sent
+
     def _prepare_batch(self, kind: str) -> None:
         """Send the next chunk of the library; done when nothing is left."""
         job = self.jobs[kind]
@@ -696,20 +727,29 @@ class AiWorker:
         if not items or not job.enabled():
             self._preparing.discard(kind)
             return
+        if not self._send_batch(job, items[:BATCH_SIZE]):
+            self._preparing.discard(kind)
+            return
+        if len(items) <= BATCH_SIZE:
+            self._preparing.discard(kind)
+
+    def _send_batch(self, job: NoteJob, items: list[Item]) -> int:
+        """One batch of questions about ``items``; how many went."""
+        kind = job.kind
         ids: dict[str, str] = {}
         requests = []
-        for n, item in enumerate(items[:BATCH_SIZE]):
+        for n, item in enumerate(items):
             try:
                 params = job.params(item)
             except (OSError, httpx.HTTPError) as err:
                 log.warning("%s for %s: no picture (%s)", kind, item.id, err)
+                self._skipped.add((kind, item.id))
                 continue
             custom_id = f"i{n}"
             ids[custom_id] = item.id
             requests.append({"custom_id": custom_id, "params": params})
         if not requests:
-            self._preparing.discard(kind)
-            return
+            return 0
         batch_id = self.claude.create_batch(requests)
         log.info("%s: batch %s with %d questions", kind, batch_id, len(requests))
         record = {
@@ -721,8 +761,7 @@ class AiWorker:
             "done": 0,
         }
         self._save_batches([*self._batches(), record])
-        if len(items) <= BATCH_SIZE:
-            self._preparing.discard(kind)
+        return len(requests)
 
     def poll_batches(self) -> int:
         """Collect the answers of ended batches; how many notes were saved."""

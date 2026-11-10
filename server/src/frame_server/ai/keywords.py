@@ -173,6 +173,7 @@ class KeywordsJob(NoteJob):
     kind = KIND
     model = HAIKU
     prompt_version = PROMPT_VERSION
+    night = True
 
     def _switched_on(self, item: Item) -> bool:
         if item.excluded:

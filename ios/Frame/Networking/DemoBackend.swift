@@ -70,7 +70,8 @@ actor DemoBackend: FrameBackend {
     ]
     private var aiValue = AiSettings(
         keySet: false, keyTail: nil, keyFromApp: false, plText: true, keywordsArtworks: true,
-        keywordsPhotos: true, daily: true, searchWords: true, curator: true, twinsJudge: true, monthlyLimitUsd: 5, spentUsd: 0,
+        keywordsPhotos: true, daily: true, searchWords: true, curator: true, twinsJudge: true, gatekeeper: true, audit: true, sentence: true,
+        reviewCount: 2, monthlyLimitUsd: 5, spentUsd: 0,
         keywordsProgress: .init(done: 0, waiting: 0, refused: 0, batchItems: 0, batchDone: 0, preparing: false),
         plTextProgress: nil, error: nil
     )
@@ -1184,6 +1185,21 @@ actor DemoBackend: FrameBackend {
         return hits
     }
 
+    /// The demo reads a sentence by its vocabulary's words.
+    func sentence(_ text: String) async throws -> SentenceReading {
+        try await Task.sleep(for: .milliseconds(600))
+        let folded = DemoDiscover.fold(text)
+        let hits = DemoDiscover.terms.filter { term in
+            ([term.name] + term.words).contains { word in
+                let stem = DemoDiscover.fold(word).prefix(5)
+                return stem.count >= 4 && folded.contains(stem)
+            }
+        }
+        .prefix(3)
+        .map { TermHit(kind: $0.kind, key: $0.key, name: $0.name) }
+        return SentenceReading(reading: text, hits: Array(hits))
+    }
+
     /// The demo has no museums to ask: a pretend answer for any name.
     func museumHint(_ text: String) async throws -> MuseumHint {
         try await Task.sleep(for: .milliseconds(500))
@@ -1586,8 +1602,44 @@ actor DemoBackend: FrameBackend {
         if let value = update.searchWords { aiValue.searchWords = value }
         if let value = update.curator { aiValue.curator = value }
         if let value = update.twinsJudge { aiValue.twinsJudge = value }
+        if let value = update.gatekeeper { aiValue.gatekeeper = value }
+        if let value = update.audit { aiValue.audit = value }
+        if let value = update.sentence { aiValue.sentence = value }
         if let value = update.monthlyLimitUsd { aiValue.monthlyLimitUsd = value }
         return aiValue
+    }
+
+    /// "Do sprawdzenia" in the demo: one work set aside, one finding.
+    private lazy var reviewValue: AiReview = {
+        let works = items.filter { $0.kind == .artwork }
+        var review = AiReview(setAside: [], findings: [])
+        if let first = works.first {
+            review.setAside = [AiReview.Entry(
+                item: first.summary, at: "2026-11-10T02:14:00+00:00", by: "gatekeeper",
+                seenAs: "room", seenAsName: "Zdjęcie sali albo ściany z dziełem",
+                why: "Obraz na ścianie galerii, obok drzwi i ławka."
+            )]
+        }
+        if works.count > 1 {
+            review.findings = [AiReview.Entry(
+                item: works[1].summary, at: "2026-11-10T02:20:00+00:00", by: "audit",
+                problems: [AiReview.Problem(field: "date", name: "Data", problem: "Rok 1932 jest po śmierci autora (1890).")]
+            )]
+        }
+        return review
+    }()
+
+    func aiReview() async throws -> AiReview { reviewValue }
+
+    func bringBack(itemID: String) async throws -> AiReview {
+        reviewValue.setAside.removeAll { $0.item.id == itemID }
+        return reviewValue
+    }
+
+    func dismissReview(itemID: String) async throws -> AiReview {
+        reviewValue.setAside.removeAll { $0.item.id == itemID }
+        reviewValue.findings.removeAll { $0.item.id == itemID }
+        return reviewValue
     }
 
     func saveAiKey(_ key: String) async throws -> AiSettings {

@@ -136,6 +136,32 @@ final class TermLookup {
             .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
     }
 
+    /// The words look like a sentence ("spokojne zimowe pejzaże z wodą"):
+    /// Claude can read them as the search's choices ("Szukaj zdaniem").
+    var isSentence: Bool { trimmed.split(whereSeparator: \.isWhitespace).count >= 3 }
+
+    /// A sentence being read by the server.
+    private(set) var reading = false
+
+    /// "Szukaj zdaniem": the sentence's choices put in as chips, the field
+    /// emptied. Nil when it was read as nothing (the words stay).
+    func understand(_ backend: any FrameBackend, into tokens: Binding<[SearchToken]>) async throws -> SentenceReading? {
+        let sentence = trimmed
+        guard !sentence.isEmpty, !reading else { return nil }
+        reading = true
+        defer { reading = false }
+        let found = try await backend.sentence(sentence)
+        guard !found.hits.isEmpty else { return nil }
+        for hit in found.hits where !tokens.wrappedValue.contains(hit.token) {
+            tokens.wrappedValue.append(hit.token)
+        }
+        text = ""
+        hits = []
+        uncounted = []
+        hint = nil
+        return found
+    }
+
     /// Puts a chip in and empties the field.
     func pick(_ token: SearchToken, into tokens: Binding<[SearchToken]>) {
         if !tokens.wrappedValue.contains(token) { tokens.wrappedValue.append(token) }
@@ -392,14 +418,30 @@ private struct SuggestionsPanel: ViewModifier {
 /// While typing: what the words could mean, a tap puts it in as a chip.
 /// Shown in the panel over the field (`termSuggestions`).
 struct TermSuggestions: View {
+    @Environment(AppModel.self) private var model
     let lookup: TermLookup
     @Binding var tokens: [SearchToken]
     /// Called when a chip comes from the museums (the catalogue has nothing
     /// for it yet).
     var pickedFromMuseums: () -> Void = {}
 
+    /// "Szukaj zdaniem" is offered: a sentence, and the owner hasn't
+    /// switched it off (a household member doesn't know: offered, and the
+    /// server says so when it is off).
+    private var offersSentence: Bool {
+        lookup.isSentence && model.aiSettings?.sentence != false
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if offersSentence {
+                row(
+                    mark: "word", icon: "sparkles",
+                    title: lookup.reading ? "Czytam zdanie…" : "Szukaj zdaniem",
+                    kind: "Claude", detail: "zamieni je na wybory wyszukiwania", count: nil
+                ) { understand() }
+                .disabled(lookup.reading)
+            }
             if lookup.hits.isEmpty, lookup.hint == nil, !lookup.askingMuseums {
                 // Asking the catalogue (the words are still being typed).
                 SearchWaiting(height: 72)
@@ -489,6 +531,18 @@ struct TermSuggestions: View {
     private func pick(_ token: SearchToken, fromMuseums: Bool) {
         lookup.pick(token, into: $tokens)
         if fromMuseums { pickedFromMuseums() }
+    }
+
+    private func understand() {
+        Task {
+            do {
+                if try await lookup.understand(model.backend, into: $tokens) == nil {
+                    model.notices.info("Claude nie znalazł w tym zdaniu nic do wyszukania")
+                }
+            } catch {
+                model.notices.warn("Szukaj zdaniem nie działa", error.localizedDescription)
+            }
+        }
     }
 }
 

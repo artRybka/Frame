@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 import anthropic
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,12 +10,15 @@ from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 from ..ai import AiConfigUpdate, AiUnavailable, KeyRejected, Progress
+from ..ai.audit import FIELDS as AUDIT_FIELDS
 from ..ai.composition import PAGES
 from ..ai.daily import CHECK_ROUND, ROUND
+from ..ai.gatekeeper import SEEN_AS
 from ..ai.keywords import KIND as KEYWORDS
 from ..ai.pl_text import KIND as PL_TEXT
 from ..ai.twins_judge import CLAIMS, Verdict, judge
 from ..ai.twins_judge import MODELS as JUDGES
+from ..library.models import ItemSummary
 from ..service import FrameService
 from .deps import require_owner, service
 
@@ -36,6 +39,12 @@ class AiView(BaseModel):
     search_words: bool
     curator: bool = True
     twins_judge: bool = True
+    gatekeeper: bool = True
+    audit: bool = True
+    sentence: bool = True
+    #: Works on the list "Do sprawdzenia": set aside by the gatekeeper, and
+    #: the audit's findings.
+    review_count: int = 0
     monthly_limit_usd: float
     spent_usd: float  # this month
     spent_by_kind: dict[str, float]
@@ -71,6 +80,10 @@ def _view(svc: FrameService) -> AiView:
         search_words=config.search_words,
         curator=config.curator,
         twins_judge=config.twins_judge,
+        gatekeeper=config.gatekeeper,
+        audit=config.audit,
+        sentence=config.sentence,
+        review_count=len(svc.gatekeeper.written()) + len(svc.audit.written()),
         monthly_limit_usd=config.monthly_limit_usd,
         spent_usd=round(sum(spent.values()), 4),
         spent_by_kind={k: round(v, 4) for k, v in spent.items()},
@@ -236,3 +249,89 @@ async def twins_judge(body: JudgeAsk, svc: Svc) -> JudgeView:
     except AiUnavailable as err:
         raise HTTPException(409, str(err)) from err
     return JudgeView(verdicts=verdicts)
+
+
+class ReviewProblem(BaseModel):
+    #: "title", "artist", "date", "polish" or "picture", and its Polish name.
+    field: str
+    name: str
+    problem: str
+
+
+class ReviewEntry(BaseModel):
+    """One work on "Do sprawdzenia": set aside by the gatekeeper (``seen_as``)
+    or found by the audit (``problems``)."""
+
+    item: ItemSummary
+    at: str
+    #: "gatekeeper" or "audit".
+    by: str
+    seen_as: str = ""
+    #: What the gatekeeper saw it as, in Polish.
+    seen_as_name: str = ""
+    why: str = ""
+    problems: list[ReviewProblem] = []
+
+
+class Review(BaseModel):
+    set_aside: list[ReviewEntry]
+    findings: list[ReviewEntry]
+
+
+def _review(svc: FrameService) -> Review:
+    def entries(by: str, written: list[dict[str, Any]]) -> list[ReviewEntry]:
+        found = []
+        for entry in written:
+            item = svc.library.get(str(entry.get("id")))
+            if item is None:
+                continue
+            problems = [
+                ReviewProblem(
+                    field=str(p.get("field")),
+                    name=AUDIT_FIELDS.get(str(p.get("field")), ""),
+                    problem=str(p.get("problem") or ""),
+                )
+                for p in entry.get("problems") or []
+                if isinstance(p, dict)
+            ]
+            seen_as = str(entry.get("seen_as") or "")
+            found.append(
+                ReviewEntry(
+                    item=ItemSummary.of(item),
+                    at=str(entry.get("at") or ""),
+                    by=by,
+                    seen_as=seen_as,
+                    seen_as_name=SEEN_AS.get(seen_as, ""),
+                    why=str(entry.get("why") or ""),
+                    problems=problems,
+                )
+            )
+        return found
+
+    return Review(
+        set_aside=entries("gatekeeper", svc.gatekeeper.written()),
+        findings=entries("audit", svc.audit.written()),
+    )
+
+
+@router.get("/review", response_model=Review)
+async def get_review(svc: Svc) -> Review:
+    """ "Do sprawdzenia": what the gatekeeper set aside and what the night
+    audit found, newest first."""
+    return await run_in_threadpool(_review, svc)
+
+
+@router.post("/review/{item_id:item}/bring-back", response_model=Review)
+async def bring_back(item_id: str, svc: Svc) -> Review:
+    """A work the gatekeeper set aside back in the catalogue, for good."""
+    if not await run_in_threadpool(svc.gatekeeper.bring_back, item_id):
+        raise HTTPException(404, "no such work")
+    return await run_in_threadpool(_review, svc)
+
+
+@router.delete("/review/{item_id:item}", response_model=Review)
+async def dismiss(item_id: str, svc: Svc) -> Review:
+    """Off the list: the gatekeeper's call stands, the audit's finding is seen."""
+    svc.gatekeeper.forget_written(item_id)
+    svc.audit.forget_written(item_id)
+    return await run_in_threadpool(_review, svc)

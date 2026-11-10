@@ -836,9 +836,11 @@ def is_copy(item: Item) -> bool:
     Openverse has from Flickr or one from a photo archive, a stamp, a
     black-and-white photograph of a work, a detail of a work, a photograph
     of a work in its frame or on a museum's wall (``Item.scene_of``), Openverse's
-    copy of a museum's work, a page of text: never what the frame looks for."""
+    copy of a museum's work, a page of text, or what the catalogue's gatekeeper
+    saw to be no artwork (``Item.seen_as``): never what the frame looks for."""
     return (
-        (is_photograph(item) and item.source == "openverse")
+        bool(item.seen_as)
+        or (is_photograph(item) and item.source == "openverse")
         or is_openverse_copy(item)
         or is_detail(item)
         or bool(item.scene_of and not item.part_of)

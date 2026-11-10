@@ -262,6 +262,10 @@ class Item(BaseModel):
     #: The thumbnail's difference hash (``library.picture_hash``), "" while
     #: not worked out, "-" when there is no telling.
     picture_hash: str = ""
+    #: What the catalogue's gatekeeper (``ai.gatekeeper``) found the picture
+    #: to be when it is no artwork for the frame ("postal", "text", "room",
+    #: "grey_copy", "not_art"), confirmed by its critic; "" else.
+    seen_as: str = ""
 
     @computed_field  # type: ignore[prop-decorator]
     @property

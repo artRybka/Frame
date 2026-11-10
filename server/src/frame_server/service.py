@@ -15,13 +15,16 @@ from PIL import Image
 
 from . import notifications
 from .ai import AiConfigStore, AiWorker, Claude, DailyJob, KeywordsJob, PlTextJob
+from .ai.audit import Audit
 from .ai.composition import ComposeJob
 from .ai.curator import Curator
 from .ai.details import MendJob
 from .ai.extras import ExtrasJob
+from .ai.gatekeeper import Gatekeeper
 from .ai.museum_words import MuseumWords
 from .ai.prose import ProseJob
 from .ai.search_words import SearchWords
+from .ai.sentence import Sentence
 from .ai.study import StudyJob
 from .ai.twins_judge import NightJudge
 from .albums import Albums
@@ -314,6 +317,12 @@ class FrameService:
         self.twins_judge = NightJudge(
             self.library, self.images, self.twins, self.claude, self.ai_config
         )
+        # What pictures from Commons, Europeana, Openverse and WikiArt really
+        # are, and a few works a night looked over (Haiku and its critic).
+        self.gatekeeper = Gatekeeper(self.library, self.images, self.claude, self.ai_config)
+        self.audit = Audit(self.library, self.images, self.claude, self.ai_config)
+        # Szukaj by a sentence (Haiku).
+        self.sentence = Sentence(self.library, self.claude, self.ai_config)
         self.daily.sharper = self.sharper
         self.copies = Copies(self.sharper)
         # The museums of works from Commons, Openverse, WikiArt: looked up
