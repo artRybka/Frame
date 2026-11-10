@@ -624,6 +624,16 @@ struct LiveBackend: FrameBackend {
 
     func sourceRequests() async throws -> SourceRequests { try await get("/api/diagnostics/sources") }
 
+    func catalogueCounts() async throws -> CatalogueCounts { try await get("/api/library/catalogue") }
+
+    func nightTasks() async throws -> NightTasks { try await get("/api/night") }
+
+    func startNightTasks(_ start: NightStart) async throws -> NightTasks {
+        try await send("/api/night/run", method: "POST", body: start)
+    }
+
+    func stopNightTasks() async throws -> NightTasks { try await send("/api/night/stop", method: "POST") }
+
     func saveLibraryLimits(_ update: LibraryStorageUpdate) async throws -> LibraryStorage {
         try await send("/api/library/storage", method: "PUT", body: update)
     }

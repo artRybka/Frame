@@ -499,6 +499,13 @@ class ImageCache:
                 tmp.write_text(json.dumps(self._sizes))
                 tmp.replace(self._sizes_path)
 
+    def known_size(self, item: Item) -> tuple[int, int] | None:
+        """The original's size as its source gave it, when it was kept at
+        its download (no look at the disk)."""
+        with self._guard:
+            known = self._sizes.get(item.id)
+        return None if known is None else (known[0], known[1])
+
     def source_size(self, item: Item) -> tuple[int, int, int] | None:
         """The original as its source gave it: (width, height, bytes; 0 when
         not known), for one downloaded here; None when it is not here."""

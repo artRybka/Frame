@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.143.0
+
+- Konfiguracja → Dzieła i biblioteka → „Zadania nocne”: nocną pracę
+  serwera można uruchomić o dowolnej porze. Każde zadanie ma własny
+  guzik, a „Uruchom wszystkie teraz” puszcza cały pakiet po kolei, tak
+  jak w nocy, najwyżej przez 2 godziny. Na żądanie zadania nie czekają,
+  aż odłożysz aplikację. Widać, które zadanie trwa i ile zostało, można
+  je zatrzymać, a przy każdym zadaniu jest jego ostatni przebieg: kiedy,
+  jak długo, ile zrobiło albo że nie miało nic do zrobienia, i czy był
+  błąd. Zadania pytające Claude'a mają gwiazdkę. W tym samym czasie
+  działa tylko jeden przebieg: noc czeka na ten uruchomiony z aplikacji.
+- Konfiguracja → Miejsce na serwerze: „Zebrane dzieła” mówią, ile dzieł
+  serwer ma w katalogu (każde raz; obok wszystkie obrazy z kopiami
+  i detalami), ile z nich jest na serwerze w dużej rozdzielczości i ile
+  z tych ma co najmniej 2560 px, czyli pełny ekran ramki. Twoje prace
+  i zdjęcia liczą się osobno. Liczba dzieł stoi też w wierszu tej
+  strony na liście Konfiguracji.
 ## 1.142.12
 
 - „Droga dzieła” w Studium dzieła powstaje dla dużo większej liczby

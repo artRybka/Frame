@@ -36,6 +36,8 @@ actor DemoBackend: FrameBackend {
     )
     private var panelValue = DemoBackend.demoPanel
     private var catalogueLimitMb: Int?
+    /// The night's tasks started in the demo: done at once.
+    private var nightAsked: [String: String] = [:]
     /// "Aktualizuj serwer" in demo: the newer version is installed at once.
     private var demoServerVersion = "0.35.0"
     private var originalsLimitMb: Int?
@@ -1525,6 +1527,56 @@ actor DemoBackend: FrameBackend {
             row(nil, counts(12), counts(80)),
         ])
     }
+
+    func catalogueCounts() async throws -> CatalogueCounts {
+        CatalogueCounts(
+            works: 70_239, pictures: 74_812, originals: 1_204, frameSize: 968, own: 86,
+            countedAt: Date().timeIntervalSince1970
+        )
+    }
+
+    func nightTasks() async throws -> NightTasks {
+        let names: [(String, String, Bool, Double, Int?)] = [
+            ("tidy", "Porządki w plikach", false, 4.2, nil),
+            ("catalogue", "Nowe dzieła do katalogu", false, 312, 3),
+            ("grouping", "Kopie razem i podpowiedzi Szukaj", false, 18, nil),
+            ("language model", "Słowa kluczowe i polskie teksty", true, 2.1, 140),
+            ("met", "Spis Metropolitan Museum", false, 0.1, nil),
+            ("daily", "Studium dnia", true, 41, nil),
+            ("playlists", "Liczniki playlist", false, 6.4, nil),
+            ("sharper", "Ostrzejsze kopie", false, 380, 12),
+            ("themes", "Karty Odkrywaj", false, 22, nil),
+            ("suggestions", "Propozycje dnia", false, 9.8, nil),
+            ("twins", "Powtórki i detale", false, 1_420, 900),
+            ("twins judge", "Sędzia powtórek", true, 610, 120),
+            ("kept originals", "Oryginały Twoich dzieł", false, 95, 0),
+        ]
+        let iso = ISO8601DateFormatter()
+        let night = Calendar.current.date(bySettingHour: 2, minute: 10, second: 0, of: .now) ?? .now
+        let tasks = names.map { name, label, paid, took, count in
+            NightTasks.Entry(
+                name: name, label: label, paid: paid,
+                last: NightTasks.LastRun(
+                    at: nightAsked[name] ?? iso.string(from: night.addingTimeInterval(took)),
+                    took: took, failed: false, count: count,
+                    nothing: count == 0 || name == "met", asked: nightAsked[name] != nil
+                )
+            )
+        }
+        return NightTasks(
+            tasks: tasks, running: nil, nightStart: "01:30", nightEnd: "06:00",
+            lastNight: iso.string(from: .now).prefix(10).description
+        )
+    }
+
+    func startNightTasks(_ start: NightStart) async throws -> NightTasks {
+        let all = try await nightTasks().tasks.map(\.name)
+        let now = ISO8601DateFormatter().string(from: .now)
+        for name in start.tasks ?? all { nightAsked[name] = now }
+        return try await nightTasks()
+    }
+
+    func stopNightTasks() async throws -> NightTasks { try await nightTasks() }
 
     func saveLibraryLimits(_ update: LibraryStorageUpdate) async throws -> LibraryStorage {
         if let mb = update.catalogueMb { catalogueLimitMb = mb == 1000 ? nil : mb }

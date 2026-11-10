@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends
 from starlette.concurrency import run_in_threadpool
 
 from ..service import FrameService
-from ..storage import StorageUpdate, StorageView
+from ..storage import CatalogueCounts, StorageUpdate, StorageView
 from .deps import require_owner, service
 
 router = APIRouter(prefix="/api/library", dependencies=[Depends(require_owner)], tags=["library"])
@@ -19,6 +19,13 @@ Svc = Annotated[FrameService, Depends(service)]
 @router.get("/storage", response_model=StorageView)
 async def get_storage(svc: Svc) -> StorageView:
     return await run_in_threadpool(svc.storage.view)
+
+
+@router.get("/catalogue", response_model=CatalogueCounts)
+async def get_catalogue(svc: Svc) -> CatalogueCounts:
+    """How many works the server has gathered, and how many of them in
+    large pictures."""
+    return await run_in_threadpool(svc.storage.counts)
 
 
 @router.put("/storage", response_model=StorageView)
