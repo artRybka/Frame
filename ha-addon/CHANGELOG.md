@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.142.5
+
+- „Pod lupą”: serce na kafelkach da się kliknąć, w rzędzie Odkrywaj
+  i w „Pod lupą ›”, jak w innych miejscach.
+
 ## 1.142.4
 
 - Odkrywaj: „Pod lupą” w kafelkach jak „Studia dzieł”: obraz u góry,
