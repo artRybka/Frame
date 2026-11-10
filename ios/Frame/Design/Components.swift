@@ -288,30 +288,46 @@ struct GlassBadge: View {
 /// and only in the top right corner; what merely tells (the kind of a
 /// collection, "Pod lupą", on the frame, in the queue) goes to the caption.
 ///
-/// A heart without a circle (sheet szklane-znaczki/szkic-3, variant A, then
-/// without its edge): off, a heart of misted glass, the picture showing
-/// through; on, plain red with no rim. A soft shadow keeps either apart
-/// from a pale sky or a dark ground.
+/// A heart without a circle: off, a heart of the system's own glass (Liquid
+/// Glass in a heart's shape, its edge catching the light as iOS buttons
+/// do; Mateusz 2026-11-10 12:13); on, plain red with no rim and a soft
+/// shadow, apart from a pale sky or a dark ground.
 struct HeartMark: View {
     let on: Bool
     var size: CGFloat = 18
+    /// Pressed (Szukaj): the glass answers the finger.
+    var interactive = false
 
     var body: some View {
-        Group {
-            if on {
-                Image(systemName: "heart.fill")
-                    .foregroundStyle(Theme.heart)
-            } else {
-                // Glass alone, no edge (Mateusz 2026-11-10 11:39): the
-                // shadow keeps it apart from the picture.
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-                    .mask(Image(systemName: "heart.fill"))
-            }
+        if on {
+            Image(systemName: "heart.fill")
+                .font(.system(size: size))
+                .foregroundStyle(Theme.heart)
+                .frame(width: size + 4, height: size + 2)
+                .shadow(color: .black.opacity(0.3), radius: 1.5, y: 1)
+        } else {
+            Color.clear
+                .frame(width: size + 4, height: size + 2)
+                .glassEffect(interactive ? .regular.interactive() : .regular, in: HeartShape())
         }
-        .font(.system(size: size))
-        .frame(width: size + 3, height: size + 1)
-        .shadow(color: .black.opacity(0.3), radius: 1.5, y: 1)
+    }
+}
+
+/// A heart drawn to fill its frame, for glass in its shape.
+struct HeartShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width, h = rect.height / 0.95
+        func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * w, y: rect.minY + y * h) }
+        var path = Path()
+        path.move(to: pt(0.5, 0.92))
+        path.addCurve(to: pt(0.02, 0.31), control1: pt(0.22, 0.74), control2: pt(0.02, 0.55))
+        path.addCurve(to: pt(0.28, 0.03), control1: pt(0.02, 0.14), control2: pt(0.14, 0.03))
+        path.addCurve(to: pt(0.5, 0.17), control1: pt(0.38, 0.03), control2: pt(0.46, 0.09))
+        path.addCurve(to: pt(0.72, 0.03), control1: pt(0.54, 0.09), control2: pt(0.62, 0.03))
+        path.addCurve(to: pt(0.98, 0.31), control1: pt(0.86, 0.03), control2: pt(0.98, 0.14))
+        path.addCurve(to: pt(0.5, 0.92), control1: pt(0.98, 0.55), control2: pt(0.78, 0.74))
+        path.closeSubpath()
+        return path
     }
 }
 
@@ -357,8 +373,8 @@ struct TileHeart: View {
             taps += 1
             toggle()
         } label: {
-            HeartMark(on: favorite)
-                .contentTransition(.symbolEffect(.replace))
+            HeartMark(on: favorite, interactive: true)
+                .animation(.snappy, value: favorite)
                 .padding(7)
                 // A finger's room (44 pt), the heart where the favourite's is.
                 .padding([.leading, .bottom], 12)
