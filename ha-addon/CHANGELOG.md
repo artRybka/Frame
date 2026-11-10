@@ -2,9 +2,10 @@
 
 ## 1.142.3
 
-- „Droga dzieła”: linia przechodzi przez kropki płynnie, bez zakrętu
-  tuż przy kropce. Zawraca dopiero w szerokich łukach między przystankami,
-  tak jak nad morzem.
+- „Droga dzieła”: najpierw rysuje się jedna swobodna linia, a kropki
+  trafiają tam, gdzie przechodzi przez rok przystanku. Linia nie ma więc
+  zakrętów przy kropkach. Wije się w pasie obok tekstów, a na drugą
+  stronę przechodzi długim łukiem nad morzem albo po trzech przystankach.
 - Linia z kropkami rysuje się zawsze. Wcześniej czasem zostawały same
   teksty, bez drogi.
 

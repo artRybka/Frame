@@ -51,10 +51,10 @@ final class JourneyRoadTests: XCTestCase {
             XCTAssertLessThan(hypot(p.x - 41, p.y - 40.5), 6)
         }
         var random = SeededRandom("aic:27992")
-        let (drawn, pins) = JourneyRoad.penLine(stops, at: [1, 3], random: &random)
-        XCTAssertEqual(drawn[pins[0]].x, 40, accuracy: 0.01)  // the dots hold still
-        XCTAssertEqual(drawn[pins[1]].y, 200, accuracy: 0.01)
-        // Evenly spaced and relaxed: no jump between two neighbours.
+        let drawn = JourneyRoad.penLine(stops, random: &random)
+        XCTAssertEqual(drawn.first!.x, 20, accuracy: 3)  // within the hand's drift
+        XCTAssertEqual(drawn.last!.y, 200, accuracy: 3)
+        // Evenly spaced: no jump between two neighbours.
         for i in 1..<drawn.count {
             XCTAssertLessThan(hypot(drawn[i].x - drawn[i - 1].x, drawn[i].y - drawn[i - 1].y), 4)
         }
