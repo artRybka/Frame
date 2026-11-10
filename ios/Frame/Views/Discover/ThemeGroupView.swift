@@ -123,22 +123,32 @@ struct SuggestionRowGridView: View {
     let key: String
 
     private var row: SuggestionRow? { model.suggestionRows?.first { $0.key == key } }
+    private var zoom: Bool { key == DiscoverLayout.zoom }
+    private var subtitle: String? { zoom ? ZoomRow.subtitle : row?.subtitle }
+    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
     var body: some View {
         let items = row?.items ?? []
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if let subtitle = row?.subtitle, !subtitle.isEmpty {
+                if let subtitle, !subtitle.isEmpty {
                     Text(subtitle)
                         .font(.serif(17))
                         .foregroundStyle(Theme.inkSoft)
                 }
-                MasonryGrid(items: items.map(\.summary)) { summary in
-                    NavigationLink(value: summary.id) {
-                        ArtCard(item: summary, ref: items.first { $0.id == summary.id }?.thumb)
+                if zoom {
+                    // "Pod lupą": cards like the studies', two to a row.
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                        ForEach(items) { ZoomWorkCard(remote: $0) }
                     }
-                    .buttonStyle(.plain)
-                    .contextMenu { QueueButton(itemID: summary.id) }
+                } else {
+                    MasonryGrid(items: items.map(\.summary)) { summary in
+                        NavigationLink(value: summary.id) {
+                            ArtCard(item: summary, ref: items.first { $0.id == summary.id }?.thumb)
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu { QueueButton(itemID: summary.id) }
+                    }
                 }
                 if items.isEmpty {
                     EmptyStateView(
