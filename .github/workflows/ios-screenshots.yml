@@ -101,6 +101,7 @@ jobs:
             capture daily 16 "daily-size-$appearance" -scroll size
             capture daily 16 "daily-size-big-$appearance" -scroll size -realSize 210x163
             capture daily 16 "daily-size-huge-$appearance" -scroll size -realSize 378.5x647.7
+            capture daily 16 "daily-journey-$appearance" -scroll journey
             capture detail 14 "detail-$appearance"
             capture detail 16 "detail-about-$appearance" -scroll about
             capture playlists 12 "playlists-$appearance"

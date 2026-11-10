@@ -44,6 +44,8 @@ class AiConfig(BaseModel):
     audit: bool = True
     #: Szukaj by a sentence: what it asks for as the search's choices (Haiku).
     sentence: bool = True
+    #: The study's "Droga dzieła": the museum's provenance retold as stops (Haiku).
+    journey: bool = True
     #: Nothing more is asked once this month's cost reaches it.
     monthly_limit_usd: float = Field(5.0, ge=0, le=1000)
 
@@ -61,6 +63,7 @@ class AiConfigUpdate(BaseModel):
     gatekeeper: bool | None = None
     audit: bool | None = None
     sentence: bool | None = None
+    journey: bool | None = None
     monthly_limit_usd: float | None = Field(None, ge=0, le=1000)
 
 
@@ -112,7 +115,7 @@ class AiConfigStore:
             return config.curator
         if kind == "twins_judge":
             return config.twins_judge
-        if kind in ("gatekeeper", "audit", "sentence"):
+        if kind in ("gatekeeper", "audit", "sentence", "journey"):
             return bool(getattr(config, kind))
         return True
 
