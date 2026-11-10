@@ -1257,6 +1257,9 @@ struct AiSettings: Codable, Hashable, Sendable {
     var searchWords: Bool?
     /// Discover's curator: two cards of "Dziś dla Ciebie"; nil from older servers.
     var curator: Bool?
+    /// Copies and details the pictures could not tell apart, judged at
+    /// night (Haiku, then Haiku as the critic); nil from older servers.
+    var twinsJudge: Bool? = nil
     var monthlyLimitUsd: Double
     /// This month.
     var spentUsd: Double
@@ -1275,6 +1278,7 @@ struct AiSettingsUpdate: Encodable, Sendable {
     var daily: Bool?
     var searchWords: Bool?
     var curator: Bool?
+    var twinsJudge: Bool?
     var monthlyLimitUsd: Double?
 }
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.140.0
+
+- Szukaj: pary dzieł, których obrazy nie rozstrzygnęły (to samo dzieło?
+  detal? zdjęcie w ramie?), ocenia w nocy Claude Haiku. Gdy chce połączyć
+  dwa obrazy albo schować detal, drugi raz pyta krytyk, który szuka
+  dowodów przeciw; zmiana wchodzi tylko po jego zgodzie. Dzieło muzeum
+  nigdy nie jest chowane. Koszt to grosze miesięcznie; przełącznik
+  „Sędzia powtórek” w Konfiguracji.
+
 ## 1.139.4
 
 - Znaczki na miniaturach uporządkowane: na obrazie zostaje tylko to, co
