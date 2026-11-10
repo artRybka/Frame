@@ -190,6 +190,8 @@ extension EnvironmentValues {
 struct ArtCard: View {
     @Environment(AppModel.self) private var model
     @Environment(\.artCardAspects) private var aspects
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.displayScale) private var scale
     let item: ItemSummary
     var showsCaption = true
     /// Where the picture comes from; the server's thumbnail by default.
@@ -218,21 +220,21 @@ struct ArtCard: View {
                 .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .overlay(alignment: .topTrailing) {
                     if showsFavorite, item.favorite {
-                        GlassBadge(systemImage: "heart.fill")
-                            .padding(5)
+                        HeartMark(on: true)
+                            .padding(7)
                             .accessibilityLabel("W ulubionych")
                     }
-                }
-                .overlay(alignment: .topLeading) {
-                    // "Pod lupą": its tiles let the full screen zoom in far.
-                    if item.zoom == true { ZoomMark() }
                 }
                 .shadow(color: .black.opacity(0.14), radius: 8, x: 0, y: 5)
             if showsCaption {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(item.title.isEmpty ? "Bez tytułu" : item.title)
-                        .font(.serif(15, weight: .medium))
-                        .foregroundStyle(Theme.ink)
+                    // "Pod lupą": the card's label (magnifier, "24×") right
+                    // after the title, not a mark on the picture.
+                    TitleYear.text(
+                        item.title.isEmpty ? "Bez tytułu" : item.title, date: "",
+                        font: .serif(15, weight: .medium), scheme: scheme, scale: scale,
+                        zoom: item.zoom == true
+                    )
                         .lineLimit(2)
                     Text(Self.byline(item))
                         .font(.caption)
@@ -257,64 +259,73 @@ struct ArtCard: View {
     }
 }
 
-/// A work to look at far closer ("Pod lupą", Mateusz 2026-11-09): a
-/// magnifier over its tile's top left corner, as the heart on the right.
-struct ZoomMark: View {
+/// The glass drop with a symbol on the "Ukryte" cover: the one mark that
+/// stays glass (Mateusz 2026-11-10: glass suits a misted cover, not a
+/// picture's corner).
+struct GlassBadge: View {
+    let systemImage: String
+
     var body: some View {
-        GlassBadge(systemImage: "plus.magnifyingglass")
-            .padding(5)
-            .accessibilityLabel("Pod lupą: można mocno przybliżyć")
+        Image(systemName: systemImage)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(Theme.inkSoft)
+            .frame(width: 30, height: 30)
+            .glassEffect(.regular, in: .circle)
     }
 }
 
-/// Every mark on a thumbnail, tile or card: one round drop of the system's
-/// glass with a symbol in it, as the crossed eye on "Ukryte" first wore
-/// (Mateusz 2026-11-09: "wszystkie ikonki na miniaturach, kafelkach
-/// szklane, jak na ukryte").
+/// Marks on thumbnails and tiles, kept in order (Mateusz 2026-11-10, sheet
+/// szklane-znaczki/szkic-2): on the picture only what the finger presses,
+/// and only in the top right corner; what merely tells (the kind of a
+/// collection, "Pod lupą", on the frame, in the queue) goes to the caption.
 ///
-/// Kept in order (Mateusz 2026-11-10, sheet szklane-znaczki): small enough
-/// not to compete with the picture, and each corner means one thing.
-/// - top left: what happens to the work (playing now, in the queue, "Pod
-///   lupą"; at most one);
-/// - top right: what is yours (the heart, the editor's plus/tick, remove);
-/// - bottom right: only the kind of a collection, on its cover.
-/// The symbol is soft ink; only "playing now", the queue and an added tick
-/// take a colour.
-struct GlassBadge: View {
-    /// How loud a badge may be: one that only tells is smaller than one
-    /// the finger presses.
-    enum Role {
-        /// Tells something about the work on a grid tile.
-        case mark
-        /// The same on a small tile (Teraz's strip, the editor's squares).
-        case small
-        /// Pressed: the heart in Szukaj, the editor's plus, remove.
-        case button
-        /// The kind of collection in a cover's corner.
-        case cover
-
-        var size: CGFloat {
-            switch self {
-            case .mark: 20
-            case .small: 18
-            case .button: 26
-            case .cover: 24
-            }
-        }
-    }
-
-    let systemImage: String
-    var tint: Color = Theme.inkSoft
-    var role: Role = .mark
+/// A heart without a circle: an outline when off, red when on, with a soft
+/// shadow so it shows on a pale sky and on a dark ground alike.
+struct HeartMark: View {
+    let on: Bool
+    var size: CGFloat = 17
 
     var body: some View {
-        let size = role.size
-        Image(systemName: systemImage)
-            .font(.system(size: (size * 0.45).rounded(), weight: .semibold))
-            .foregroundStyle(tint)
-            .frame(width: size, height: size)
-            .glassEffect(role == .button ? .regular.interactive() : .regular, in: .circle)
+        ZStack {
+            Image(systemName: "heart.fill")
+                .foregroundStyle(on ? AnyShapeStyle(Theme.heart) : AnyShapeStyle(Color.black.opacity(0.12)))
+            // The outline: white round the red too, apart from the picture.
+            Image(systemName: "heart")
+                .foregroundStyle(.white)
+                .fontWeight(on ? .regular : .semibold)
+        }
+        .font(.system(size: size))
+        .shadow(color: .black.opacity(0.45), radius: 1.5, y: 1)
     }
+}
+
+/// A round mark pressed on a tile's top right corner: ink with a ring of
+/// the page, as the tick on a chosen miniature in Prezentacja
+/// (`miniatureChoice`), light in the dark. Remove (minus, cross) and the
+/// editor's added tick; `light` is the editor's plus before it is added.
+struct CornerMark: View {
+    let systemImage: String
+    var size: CGFloat = 22
+    var light = false
+
+    var body: some View {
+        ZStack {
+            Circle().fill(Theme.card)
+            if light {
+                Circle().strokeBorder(Theme.hairline, lineWidth: 0.75)
+            } else {
+                Circle().fill(Theme.ink).padding(2)
+            }
+            Image(systemName: systemImage)
+                .font(.system(size: (size * 0.45).rounded(), weight: .bold))
+                .foregroundStyle(light ? Theme.ink : Theme.card)
+        }
+        .frame(width: size, height: size)
+        .shadow(color: .black.opacity(0.22), radius: 3, y: 1.5)
+    }
+
+    /// How far a remove mark sits out over the corner, as the tick does.
+    static let overhang: CGFloat = 6
 }
 
 /// The heart over a tile's top right corner, as `ArtCard` shows a
@@ -330,11 +341,11 @@ struct TileHeart: View {
             taps += 1
             toggle()
         } label: {
-            GlassBadge(systemImage: favorite ? "heart.fill" : "heart", role: .button)
+            HeartMark(on: favorite)
                 .contentTransition(.symbolEffect(.replace))
-                .padding(4)
-                // A finger's room (44 pt), the circle where the favourite's is.
-                .padding([.leading, .bottom], 14)
+                .padding(7)
+                // A finger's room (44 pt), the heart where the favourite's is.
+                .padding([.leading, .bottom], 12)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

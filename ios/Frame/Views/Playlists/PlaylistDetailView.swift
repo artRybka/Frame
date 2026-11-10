@@ -147,8 +147,8 @@ struct PlaylistDetailView: View {
                 // The minus takes the heart's corner: what is yours.
                 ArtCard(item: item, showsFavorite: false)
                     .overlay(alignment: .topTrailing) {
-                        GlassBadge(systemImage: "minus", role: .button)
-                            .padding(4)
+                        CornerMark(systemImage: "minus")
+                            .offset(x: CornerMark.overhang, y: -CornerMark.overhang)
                     }
             }
             .buttonStyle(.plain)

@@ -2,13 +2,18 @@
 
 ## 1.138.4
 
-- Znaczki na miniaturach uporządkowane: te, które tylko informują (serce,
-  lupa, „gra teraz”, kolejka), są mniejsze; te, które się klika (serce
-  w Szukaj, plus w edytorze, usuwanie), nieco większe, z wygodnym polem
-  dotyku. Lewy górny róg mówi, co się dzieje z dziełem, prawy górny to,
-  co Twoje, a prawy dolny rodzaj zbioru na okładce.
-- W Ulubionych nie ma już serca na każdym kafelku. W edytorze playlisty
-  i przy usuwaniu dzieł plus i minus stoją w miejscu serca.
+- Znaczki na miniaturach uporządkowane: na obrazie zostaje tylko to, co
+  się klika, i tylko w prawym górnym rogu.
+- Serce bez kółka: biały kontur, gdy dzieło nie jest w Ulubionych, czerwone,
+  gdy jest. W Ulubionych serc nie ma, bo ulubione jest tam wszystko.
+- Usuwanie z playlisty i krzyżyki (edytor, przykładowe zdjęcia) to czarne
+  kółko na rogu, jak ptaszek wybranej miniatury w Prezentacji. Plus
+  w edytorze jest jasnym kółkiem, po dodaniu czarnym z ptaszkiem.
+- „Pod lupą” to etykietka z lupą i „24×” zaraz po tytule, jak w karcie
+  dzieła. Iskierki Propozycji dnia stoją przed liczbą dzieł, a zamiast
+  znaczka „gra teraz” pod kartą playlisty jest cynobrowe „Na ramce”.
+  Na pasku „Następne” w Teraz podpis „Następny w kolejce”.
+- Szklany znaczek zostaje tylko na okładce „Ukrytych”.
 
 ## 1.138.3
 
