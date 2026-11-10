@@ -217,7 +217,7 @@ struct ArtCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .overlay(alignment: .topTrailing) {
-                    if showsFavorite, item.favorite {
+                    if showsFavorite, model.liked(item) {
                         HeartMark(on: true)
                             .padding(7)
                             .accessibilityLabel("W ulubionych")
@@ -291,8 +291,7 @@ struct GlassBadge: View {
 /// A heart without a circle: off, a heart of the system's own glass (Liquid
 /// Glass in a heart's shape, its edge catching the light as iOS buttons
 /// do; Mateusz 2026-11-10 12:13), the clear kind so the picture shows
-/// through (12:40: "bardziej przezierne"); on, plain red with no rim and a soft
-/// shadow, apart from a pale sky or a dark ground.
+/// through (12:40: "bardziej przezierne"); on, the same glass tinted red.
 struct HeartMark: View {
     let on: Bool
     var size: CGFloat = 18
@@ -300,17 +299,16 @@ struct HeartMark: View {
     var interactive = false
 
     var body: some View {
-        if on {
-            Image(systemName: "heart.fill")
-                .font(.system(size: size))
-                .foregroundStyle(Theme.heart)
-                .frame(width: size + 4, height: size + 2)
-                .shadow(color: .black.opacity(0.3), radius: 1.5, y: 1)
-        } else {
-            Color.clear
-                .frame(width: size + 4, height: size + 2)
-                .glassEffect(interactive ? .clear.interactive() : .clear, in: HeartShape())
-        }
+        Color.clear
+            .frame(width: size + 4, height: size + 2)
+            .glassEffect(glass, in: HeartShape())
+    }
+
+    /// The same clear glass both ways; on, red laid under it (Mateusz
+    /// 2026-11-10 17:18: "czerwony podłożony pod szkło clear").
+    private var glass: Glass {
+        let glass: Glass = on ? .clear.tint(Theme.heart) : .clear
+        return interactive ? glass.interactive() : glass
     }
 }
 
@@ -364,6 +362,20 @@ struct CornerMark: View {
 /// The heart over a tile's top right corner, as `ArtCard` shows a
 /// favourite's, but tapped: into Ulubione and out again. Put over the tile's
 /// link, so the tap doesn't open the work.
+/// A tile's heart to press, over the card's top right corner: in Odkrywaj,
+/// its sets and playlists as in Szukaj (Mateusz 2026-11-10).
+struct LikeHeart: View {
+    @Environment(AppModel.self) private var model
+    let item: ItemSummary
+
+    var body: some View {
+        let on = model.liked(item)
+        TileHeart(favorite: on) {
+            Task { await model.like(item, !on) }
+        }
+    }
+}
+
 struct TileHeart: View {
     let favorite: Bool
     let toggle: () -> Void
