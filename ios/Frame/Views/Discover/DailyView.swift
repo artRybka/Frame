@@ -427,7 +427,8 @@ struct DailyView: View {
     private func show(_ fresh: DailyWork) {
         // The size found while the page is open (a work studied before the
         // sizes were looked up, once) fades in instead of jumping in.
-        if let shown = work, shown.item.id == fresh.item.id, shown.size == nil, fresh.size != nil {
+        if let shown = work, shown.item.id == fresh.item.id,
+           (shown.size == nil && fresh.size != nil) || (shown.journey == nil && fresh.journey != nil) {
             withAnimation(.easeOut(duration: 0.4)) { merge(fresh) }
         } else {
             merge(fresh)
@@ -445,6 +446,7 @@ struct DailyView: View {
         merged.byArtist = shown.byArtist
         merged.sameTime = shown.sameTime
         if merged.size == nil { merged.size = shown.size }
+        if merged.journey == nil { merged.journey = shown.journey }
         work = merged
     }
 
@@ -513,6 +515,16 @@ struct DailyView: View {
                     .id("size")
                     // A work studied before the sizes were looked up gets its
                     // size a moment later, once: it fades in, no jump.
+                    .transition(.opacity)
+                }
+                // "Droga dzieła" (Mateusz 2026-11-10, "S1"), after the size
+                // (15:21; not "Losy dzieła", next to "Dalsze losy"): looked up
+                // when the page first opens, so it fades in.
+                if let journey = work.journey, journey.stops.count >= 2 {
+                    section("Droga dzieła") {
+                        JourneyRoad(journey: journey, seed: work.item.item.id)
+                    }
+                    .id("journey")
                     .transition(.opacity)
                 }
                 if !similarWorks(work).isEmpty { section("Podobne dzieła") { similar(similarWorks(work)) } }

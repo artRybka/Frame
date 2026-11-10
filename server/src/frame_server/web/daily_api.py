@@ -29,6 +29,7 @@ from ..ai.daily import (
     short,
     vary_hedges,
 )
+from ..ai.journey import Journey
 from ..ai.pl_text import description
 from ..later import entry_key
 from ..library import Item
@@ -132,6 +133,8 @@ class DailyWork(BaseModel):
     pigments: list[Pigment] = []
     #: How big the work really is, in centimetres ("Prawdziwy rozmiar").
     size: RealSize | None = None
+    #: How it went from its maker to where it is now ("Droga dzieła").
+    journey: Journey | None = None
     sources: list[str] = []
     model: str = ""
     #: Left empty: the days before are no longer listed under the page.
@@ -259,6 +262,8 @@ def page(
     # and come back while the lists are on their way.
     size = svc.sizes.size(item)
     looking = looking or (lists and size is None and svc.sizes.look_soon(item))
+    journey = svc.journeys.journey(item)
+    looking = looking or (lists and journey is None and svc.journeys.look_soon(item))
     same_time = svc.daily.same_time(item, shown) if lists else []
     born, died = (
         life(item.artist_bio)
@@ -303,6 +308,7 @@ def page(
         events=essay.events if essay else [],
         pigments=vary_hedges(essay.pigments) if essay else [],
         size=size,
+        journey=journey,
         legacy_pending=bool(lists and essay and svc.later.look_soon(item, essay.legacy)) or looking,
         sources=essay.sources if essay else [],
         model=note.model if note else "",

@@ -42,6 +42,7 @@ class AiView(BaseModel):
     gatekeeper: bool = True
     audit: bool = True
     sentence: bool = True
+    journey: bool = True
     #: Works on the list "Do sprawdzenia": set aside by the gatekeeper, and
     #: the audit's findings.
     review_count: int = 0
@@ -83,6 +84,7 @@ def _view(svc: FrameService) -> AiView:
         gatekeeper=config.gatekeeper,
         audit=config.audit,
         sentence=config.sentence,
+        journey=config.journey,
         review_count=len(svc.gatekeeper.written()) + len(svc.audit.written()),
         monthly_limit_usd=config.monthly_limit_usd,
         spent_usd=round(sum(spent.values()), 4),

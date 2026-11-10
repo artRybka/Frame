@@ -70,7 +70,7 @@ actor DemoBackend: FrameBackend {
     ]
     private var aiValue = AiSettings(
         keySet: false, keyTail: nil, keyFromApp: false, plText: true, keywordsArtworks: true,
-        keywordsPhotos: true, daily: true, searchWords: true, curator: true, twinsJudge: true, gatekeeper: true, audit: true, sentence: true,
+        keywordsPhotos: true, daily: true, searchWords: true, curator: true, twinsJudge: true, gatekeeper: true, audit: true, sentence: true, journey: true,
         reviewCount: 2, monthlyLimitUsd: 5, spentUsd: 0,
         keywordsProgress: .init(done: 0, waiting: 0, refused: 0, batchItems: 0, batchDone: 0, preparing: false),
         plTextProgress: nil, error: nil
@@ -1007,6 +1007,26 @@ actor DemoBackend: FrameBackend {
         // CI screenshots: "-realSize 210x163" draws a big work's scale.
         let asked = (UserDefaults.standard.string(forKey: "realSize") ?? "").split(separator: "x").compactMap { Double($0) }
         work.size = asked.count == 2 ? .init(height: asked[0], width: asked[1]) : .init(height: 25.7, width: 37.9)
+        // "Droga dzieła", from the Art Institute's provenance of this print.
+        typealias Stop = DailyWork.Journey.Stop
+        work.journey = .init(
+            headline: "Z Edo do Chicago",
+            lead: "Jedna z wielu odbitek, która przez Nowy Jork trafiła do kolekcjonera z Chicago.",
+            stops: [
+                Stop(year: "ok. 1830–1832", place: "Edo", lat: 35.68, lon: 139.69, kind: "made", owner: true, detour: false,
+                     text: "Hokusai projektuje drzeworyt, odbijany w **wielu egzemplarzach**."),
+                Stop(year: "przed 1905", place: "Nowy Jork", lat: 40.71, lon: -74.0, kind: "sold", owner: true, detour: false,
+                     text: "Odbitka jest w rękach marszandów **Yamanaka & Company**."),
+                Stop(year: "1905", place: "Chicago", lat: 41.88, lon: -87.62, kind: "sold", owner: true, detour: false,
+                     text: "W grudniu kupuje ją kolekcjoner **Clarence Buckingham**."),
+                Stop(year: "1913", place: "Chicago", lat: 41.88, lon: -87.62, kind: "inherited", owner: true, detour: false,
+                     text: "Po jego śmierci przechodzi na siostry, **Lucy Maud i Kate**."),
+                Stop(year: "1925", place: "Chicago", lat: 41.88, lon: -87.62, kind: "museum", owner: true, detour: false,
+                     text: "Dar dla **Art Institute of Chicago**, w kolekcji Clarence’a Buckinghama."),
+            ],
+            years: 95, km: 10130, fromWhere: "z Edo", hands: 5, exhibitions: nil,
+            source: "Art Institute of Chicago"
+        )
         return work
     }
 
@@ -1605,6 +1625,7 @@ actor DemoBackend: FrameBackend {
         if let value = update.gatekeeper { aiValue.gatekeeper = value }
         if let value = update.audit { aiValue.audit = value }
         if let value = update.sentence { aiValue.sentence = value }
+        if let value = update.journey { aiValue.journey = value }
         if let value = update.monthlyLimitUsd { aiValue.monthlyLimitUsd = value }
         return aiValue
     }
