@@ -144,18 +144,22 @@ struct JourneyRoad: View {
 
     private var road: some View {
         let places = self.places
+        // Read here, not only in the Canvas: SwiftUI does not redraw a Canvas
+        // for state its drawing closure reads, so the road came out blank
+        // whenever the last row was measured after the first draw.
+        let rows = self.rows
         return VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(journey.stops.enumerated()), id: \.offset) { i, stop in
                 // Measured before the gap above it: the row's own text.
                 row(stop, places[i])
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("road")) } action: { rows[i] = $0 }
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("road")) } action: { self.rows[i] = $0 }
                     .padding(.top, i == 0 ? 36 : overSea(i) ? Self.seaGap : Self.gap)
             }
         }
         .padding(.bottom, 28)
         .coordinateSpace(.named("road"))
         .background {
-            Canvas { context, size in draw(in: &context, size: size, places: places) }
+            Canvas { context, size in draw(in: &context, size: size, places: places, rows: rows) }
                 .accessibilityHidden(true)
         }
         .overlay(alignment: .topLeading) { seaNames }
@@ -198,7 +202,7 @@ struct JourneyRoad: View {
 
     // MARK: Drawing
 
-    private func draw(in context: inout GraphicsContext, size: CGSize, places: [Place]) {
+    private func draw(in context: inout GraphicsContext, size: CGSize, places: [Place], rows: [Int: CGRect]) {
         let count = journey.stops.count
         guard count >= 2, (0..<count).allSatisfy({ rows[$0] != nil }) else { return }
         var random = SeededRandom(seed + "road")

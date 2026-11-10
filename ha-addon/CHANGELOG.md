@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.142.3
+
+- „Droga dzieła”: linia z kropkami rysuje się zawsze. Wcześniej czasem
+  zostawały same teksty, bez drogi.
+
 ## 1.142.2
 
 - „Droga dzieła”: linia biegnie gładko, bez załamań przy kropkach
