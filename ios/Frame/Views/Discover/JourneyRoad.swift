@@ -13,11 +13,12 @@ import SwiftUI
 /// under that run, its corner right at the dot (17:29), so the line never
 /// runs into a text and needs no backing. The runs are only as steep as
 /// the texts need. The line starts at the first stop and ends under the
-/// vermilion seal of the last; over a sea the work crossed it makes two
-/// free sweeps among waves. It is inked as with a broad nib held flat
+/// last one's dot, vermilion and bigger than the rest (18:16); over a sea
+/// the work crossed it makes two free sweeps among waves. It is inked as with a broad nib held flat
 /// (17:59: „przy zakrętach grubsza, jakby rysowana piórem do kaligrafii”):
 /// thin along the runs, thick where it turns down. An exhibition the work
-/// came back from is a hollow dot. The shape comes from the work's id.
+/// came back from is a side trip (18:16): a dashed branch off the road, a
+/// hollow dot at its end. The shape comes from the work's id.
 struct JourneyRoad: View {
     let journey: DailyWork.Journey
     /// The work's id: the road's wander.
@@ -140,7 +141,8 @@ struct JourneyRoad: View {
         // Canvas for state only its drawing closure reads, so the road came
         // out blank whenever the last text was measured after the first draw.
         let measured = (0..<count).compactMap { heights[$0] }
-        let plan = measured.count == count ? Self.plan(width: width, heights: measured, seas: seas, seed: seed) : nil
+        let plan = measured.count == count
+            ? Self.plan(width: width, heights: measured, seas: seas, detours: journey.stops.map(\.detour), seed: seed) : nil
         let textWidth = Self.textWidth(width)
         return ZStack(alignment: .topLeading) {
             ForEach(Array(journey.stops.enumerated()), id: \.offset) { i, stop in
@@ -200,25 +202,32 @@ struct JourneyRoad: View {
                     bottom: i == count - 1 ? plan.dots[i].y - 30 : plan.texts[i].minY - 14,
                     width: size.width, plan: plan, random: &random)
         }
-        // The road, from the first dot to the seal of the last.
+        // The road, from the first dot to the last.
         var stroke = Path()
-        stroke.addLines(Self.nibStroke(plan.line, until: plan.dots[count - 1], clear: Self.sealClear))
+        stroke.addLines(Self.nibStroke(plan.line, until: plan.dots[count - 1], clear: Self.lastClear))
         stroke.closeSubpath()
         context.fill(stroke, with: .color(Theme.ink))
         context.stroke(stroke, with: .color(Theme.ink), style: StrokeStyle(lineWidth: Self.hair, lineJoin: .round))
-        // The stops: dots, a hollow one for a side trip, a seal for the last.
+        // The stops: dots, a hollow one on a branch for a side trip, a bigger red one for the last.
         for i in 0..<count {
             let p = plan.dots[i]
             func circle(_ r: CGFloat) -> Path { Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r)) }
             if i == count - 1 {
-                // Where the work is now: a seal, as under a piece of
-                // calligraphy (18:04: the dot in a ring did not please).
-                let seal = Path(roundedRect: CGRect(x: -7, y: -7, width: 14, height: 14), cornerRadius: 2.2)
-                    .applying(CGAffineTransform(translationX: p.x, y: p.y).rotated(by: -7 * .pi / 180))
-                context.fill(seal, with: .color(Theme.vermilion))
-            } else if journey.stops[i].detour {
-                context.fill(circle(5), with: .color(Theme.paper))
-                context.stroke(circle(5), with: .color(Theme.ink), lineWidth: 1.7)
+                // Where the work is now (18:16: „czerwona, ale większa”).
+                context.fill(circle(Self.lastDot), with: .color(Theme.vermilion))
+            } else if let from = plan.branches[i] {
+                // A side trip the work came back from (18:16: „jako odnogę…
+                // rysowaną przerywaną linią”): a dashed branch, a hollow dot.
+                let side: CGFloat = plan.leading[i] ? -1 : 1
+                var spur = Path()
+                spur.move(to: from)
+                spur.addCurve(to: CGPoint(x: p.x + side * 4.6, y: p.y),
+                              control1: CGPoint(x: from.x + side * 9, y: from.y + 17),
+                              control2: CGPoint(x: p.x + side * 24, y: p.y + 3))
+                context.stroke(spur, with: .color(Theme.ink),
+                               style: StrokeStyle(lineWidth: 1.6, lineCap: .round, dash: [3.2, 3.8]))
+                context.fill(circle(4.6), with: .color(Theme.paper))
+                context.stroke(circle(4.6), with: .color(Theme.ink), lineWidth: 1.6)
             } else {
                 context.fill(circle(5.4), with: .color(Theme.ink))
             }
@@ -288,6 +297,8 @@ struct RoadPlan {
     var texts: [CGRect]
     /// Whether a text reads from its left edge (its dot is at its left).
     var leading: [Bool]
+    /// Where a side trip's branch leaves the road; its stop's dot is the branch's end.
+    var branches: [Int: CGPoint] = [:]
     var height: CGFloat
 }
 
@@ -295,8 +306,12 @@ extension JourneyRoad {
     /// Where the date's figures are in a text (the hand's line is tall):
     /// level with a dot beside it.
     static let yearY: CGFloat = 14
-    /// The line stops this short of the last stop, under its seal.
-    static let sealClear: CGFloat = 3
+    /// The line stops this short of the last stop, under its dot.
+    static let lastClear: CGFloat = 3
+    /// The last stop's dot, where the work is now: bigger than the others.
+    static let lastDot: CGFloat = 9
+    /// How far under the road a side trip's stop hangs.
+    static let branch: CGFloat = 32
     /// The nib's width, how far it is turned from flat, and the thinnest
     /// the stroke gets.
     static let nib: CGFloat = 6.2
@@ -318,7 +333,7 @@ extension JourneyRoad {
     /// through the turns alone; then, where a text would not clear the run
     /// under it, that run is made steeper (or its turn sent out to the
     /// edge) and the line drawn again.
-    static func plan(width: CGFloat, heights: [CGFloat], seas: [Bool], seed: String) -> RoadPlan? {
+    static func plan(width: CGFloat, heights: [CGFloat], seas: [Bool], detours: [Bool] = [], seed: String) -> RoadPlan? {
         let count = heights.count
         guard count >= 2, seas.count == count, width > 240 else { return nil }
         var random = SeededRandom(seed + "road")
@@ -386,6 +401,7 @@ extension JourneyRoad {
             var texts = [CGRect](repeating: .zero, count: count)
             var dots = [CGPoint](repeating: .zero, count: count)
             var leading = [Bool](repeating: true, count: count)
+            var branches: [Int: CGPoint] = [:]
             var changed = false
             // The first stop: the line starts at its dot and hooks away from its text.
             do {
@@ -409,7 +425,17 @@ extension JourneyRoad {
                 for q in turns[i]...turns[i + 1] where abs(line[q].x - dotX) < abs(line[d].x - dotX) { d = q }
                 dots[k] = line[d]
                 leading[k] = !left
-                let top = (lowest(turns[i], turns[i + 1], x0 - 5, x1 + 5) ?? line[d].y) + 5
+                var top = (lowest(turns[i], turns[i + 1], x0 - 5, x1 + 5) ?? line[d].y) + 5
+                if k < detours.count, detours[k] {
+                    // A side trip: a branch that leaves the road a little
+                    // further on and comes back to its stop, under the road.
+                    let ahead = line[d].x + (left ? 24 : -24)
+                    var a = d
+                    for q in turns[i]...turns[i + 1] where abs(line[q].x - ahead) < abs(line[a].x - ahead) { a = q }
+                    branches[k] = line[a]
+                    dots[k] = CGPoint(x: line[d].x, y: line[d].y + branch)
+                    top = max(top, dots[k].y - yearY)
+                }
                 texts[k] = CGRect(x: x0, y: top, width: textWidth, height: heights[k])
                 if let under = highest(turns[i + 1], turns[min(i + 3, turns.count - 1)], x0 - 6, x1 + 6),
                    top + heights[k] + 11 > under {
@@ -427,7 +453,7 @@ extension JourneyRoad {
             // The last stop: the line drops to its dot beside its text.
             do {
                 let k = count - 1
-                let x0 = endLeft ? end.x + 18 : end.x - 18 - textWidth
+                let x0 = endLeft ? end.x + 20 : end.x - 20 - textWidth
                 texts[k] = CGRect(x: x0, y: end.y - yearY, width: textWidth, height: heights[k])
                 dots[k] = end
                 leading[k] = endLeft
@@ -437,8 +463,8 @@ extension JourneyRoad {
                     changed = true
                 }
             }
-            result = RoadPlan(line: line, dots: dots, texts: texts, leading: leading,
-                              height: max(texts[count - 1].maxY, end.y + 10) + 6)
+            result = RoadPlan(line: line, dots: dots, texts: texts, leading: leading, branches: branches,
+                              height: max(texts[count - 1].maxY, end.y + lastDot) + 6)
             if !changed { break }
         }
         return result

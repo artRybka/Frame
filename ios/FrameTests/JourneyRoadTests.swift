@@ -110,6 +110,29 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertEqual(short.count, 2)
     }
 
+    func testASideTripHangsOnABranchUnderTheRoad() throws {
+        let heights: [CGFloat] = [54, 74, 54, 54, 74]
+        let seas = [false, false, false, false, false]
+        let plan = try XCTUnwrap(JourneyRoad.plan(width: 350, heights: heights, seas: seas,
+                                                  detours: [false, false, true, false, false], seed: "aic:27992"))
+        XCTAssertEqual(Array(plan.branches.keys), [2])
+        let from = try XCTUnwrap(plan.branches[2]), stop = plan.dots[2]
+        // The branch leaves the road itself and its stop is off the road, under it.
+        XCTAssertTrue(plan.line.contains(from))
+        XCTAssertFalse(plan.line.contains(stop))
+        XCTAssertGreaterThan(stop.y, from.y)
+        let off = plan.line.map { hypot($0.x - stop.x, $0.y - stop.y) }.min() ?? 0
+        XCTAssertGreaterThan(off, 20)
+        // Its date is level with it, and no text is in the road's way.
+        XCTAssertEqual(plan.texts[2].minY, stop.y - JourneyRoad.yearY, accuracy: 0.01)
+        for text in plan.texts {
+            let near = plan.line.map { p in
+                hypot(max(text.minX - p.x, 0, p.x - text.maxX), max(text.minY - p.y, 0, p.y - text.maxY))
+            }.min() ?? 0
+            XCTAssertGreaterThanOrEqual(near, 5)
+        }
+    }
+
     func testAShortJourneyHasARoadToo() {
         XCTAssertNotNil(JourneyRoad.plan(width: 350, heights: [54, 54], seas: [false, false], seed: "x"))
         XCTAssertNotNil(JourneyRoad.plan(width: 350, heights: [54, 74], seas: [false, true], seed: "y"))

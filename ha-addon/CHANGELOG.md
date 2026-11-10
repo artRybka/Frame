@@ -9,8 +9,11 @@
   przy żadnej nie ma zakrętu. Tekst każdego przystanku zaczyna się tuż
   pod swoją kropką, w zakolu drogi, i linia nigdzie w niego nie wchodzi.
 - Daty przystanków są pisane odręcznie i zawsze stoją przy kropce.
-- Droga zaczyna się na pierwszym przystanku i kończy czerwoną pieczęcią
-  tam, gdzie dzieło jest dziś. Nad morzem wije się swobodnie wśród fal.
+- Droga zaczyna się na pierwszym przystanku i kończy większą czerwoną
+  kropką tam, gdzie dzieło jest dziś. Nad morzem wije się swobodnie
+  wśród fal.
+- Wypad, z którego dzieło wróciło (na przykład wystawa), jest odnogą:
+  przerywana linia odchodzi od drogi i kończy się pustą kropką.
 - Linia z kropkami rysuje się zawsze. Wcześniej czasem zostawały same
   teksty, bez drogi.
 
