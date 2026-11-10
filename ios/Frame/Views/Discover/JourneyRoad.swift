@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// "Droga dzieła" (Mateusz 2026-11-10, "S1"; first called "Losy dzieła",
 /// too near "Dalsze losy"): how the work went from its maker to where it
@@ -28,7 +29,7 @@ import SwiftUI
 /// round the last dot (18:48: „białym jakby korekty linii obok czarnej
 /// ścieżki, białym otok wokół czerwonej kropki… plamy akwareli z
 /// ostrzejszą krawędzią, nierówne podmalówki pod treściami”).
-/// The texts are broken with care (18:26): see `typeset` and `EvenLines`.
+/// The texts are broken with care (18:26): see `typeset` and `broken`.
 /// Nothing is written under the drawing (18:26: „bez podpisu o genezie i
 /// źródle”). The shape comes from the work's id.
 struct JourneyRoad: View {
@@ -162,7 +163,7 @@ struct JourneyRoad: View {
                 // then moved to its dot; the move does not change its height.
                 // Measured before it is given the full width: a side trip's
                 // loop is drawn round the text as it stands.
-                row(stop, leading: plan?.leading[i] ?? true)
+                row(stop, leading: plan?.leading[i] ?? true, width: textWidth)
                     .onGeometryChange(for: CGSize.self) { $0.size } action: { self.sizes[i] = $0 }
                     .frame(width: textWidth, alignment: plan?.leading[i] ?? true ? .topLeading : .topTrailing)
                     .offset(x: plan?.texts[i].minX ?? 0, y: plan?.texts[i].minY ?? 0)
@@ -178,7 +179,7 @@ struct JourneyRoad: View {
         }
     }
 
-    private func row(_ stop: DailyWork.Journey.Stop, leading: Bool) -> some View {
+    private func row(_ stop: DailyWork.Journey.Stop, leading: Bool, width: CGFloat) -> some View {
         // The date in the hand, always the end of the line that is at the dot
         // (18:04: „czerwone daty zawsze przy kropce. Daty pismem pisanym”):
         // first where the text reads from its dot, last where it ends at it.
@@ -189,14 +190,46 @@ struct JourneyRoad: View {
             (leading ? Text("\(date)\(between)\(place)") : Text("\(place)\(between)\(date)"))
                 .lineLimit(1)
                 .truncationMode(leading ? .tail : .head)
-            EvenLines {
-                Text(Self.marked(Self.typeset(stop.text)))
-                    .font(.serif(15))
-                    .foregroundStyle(Theme.ink)
-                    .multilineTextAlignment(leading ? .leading : .trailing)
-            }
+            Text(Self.marked(Self.broken(stop.text, width: width)))
+                .font(.serif(15))
+                .foregroundStyle(Theme.ink)
+                .multilineTextAlignment(leading ? .leading : .trailing)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
+    }
+
+    /// The sentence set for a column this wide (18:26: „zadbaj o prawidłowe
+    /// łamania tekstów”): its hard spaces put in (`typeset`), and broken
+    /// into as few lines as it takes, of about the same length, so that a
+    /// line is never one word between two full ones. The words are
+    /// measured in the faces the text is drawn in.
+    static func broken(_ text: String, width: CGFloat) -> String {
+        let set = typeset(text)
+        guard width > 40 else { return set }
+        let chunks = set.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        var bold = false
+        let widths = chunks.map { chunk -> CGFloat in
+            var total: CGFloat = 0
+            for (k, part) in chunk.components(separatedBy: "**").enumerated() {
+                if k > 0 { bold.toggle() }
+                total += (part as NSString).size(withAttributes: [.font: bold ? boldFace : face]).width
+            }
+            return total
+        }
+        let space = (" " as NSString).size(withAttributes: [.font: face]).width
+        // A little under the column, so a line measured here never wraps there.
+        let starts = Set(evenBreaks(widths, space: space, width: width - 3))
+        return chunks.enumerated().map { k, chunk in (k == 0 ? "" : starts.contains(k) ? "\n" : " ") + chunk }.joined()
+    }
+
+    /// `Font.serif(15)` and its bold, to measure words with.
+    private static let face = serifFace(.regular)
+    private static let boldFace = serifFace(.bold)
+
+    private static func serifFace(_ weight: UIFont.Weight) -> UIFont {
+        let base = UIFont.systemFont(ofSize: 15, weight: weight)
+        return base.fontDescriptor.withDesign(.serif).map { UIFont(descriptor: $0, size: 15) } ?? base
     }
 
     /// The telling words, between ** and **, in bold.
@@ -360,28 +393,6 @@ struct JourneyRoad: View {
         path.addLines(points)
         path.closeSubpath()
         return path
-    }
-}
-
-/// Lines of about the same length (18:26: „zadbaj o prawidłowe łamania
-/// tekstów”): the text is as narrow as it can be without one more line, so
-/// a last line is never one word under two full ones.
-private struct EvenLines: Layout {
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        guard let text = subviews.first else { return .zero }
-        guard let width = proposal.width, width.isFinite, width > 0 else { return text.sizeThatFits(proposal) }
-        func size(_ width: CGFloat) -> CGSize { text.sizeThatFits(ProposedViewSize(width: width, height: nil)) }
-        let full = size(width)
-        var low = width / 2, high = width
-        while high - low > 1 {
-            let middle = (low + high) / 2
-            if size(middle).height <= full.height + 0.5 { high = middle } else { low = middle }
-        }
-        return CGSize(width: high.rounded(.up), height: size(high.rounded(.up)).height)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
     }
 }
 
@@ -666,6 +677,53 @@ extension JourneyRoad {
             if marks(words[i]) % 2 == 1 { bold.toggle() }
         }
         return out
+    }
+
+    /// Where to break words of these widths into lines no wider than
+    /// `width`: as few lines as it takes and, of those, the most even ones
+    /// (the least sum of squares of what each line leaves free), with no
+    /// short word alone on a line where that can be helped. The index of
+    /// the first word of each line after the first. A word wider than a
+    /// line has a line to itself.
+    static func evenBreaks(_ widths: [CGFloat], space: CGFloat, width: CGFloat) -> [Int] {
+        let count = widths.count
+        guard count > 1 else { return [] }
+        var before: [CGFloat] = [0]
+        for word in widths { before.append(before[before.count - 1] + word) }
+        func span(_ i: Int, _ j: Int) -> CGFloat { before[j] - before[i] + space * CGFloat(j - i - 1) }
+        var lines = 1, start = 0
+        for j in 1..<count where span(start, j + 1) > width {
+            lines += 1
+            start = j
+        }
+        guard lines > 1 else { return [] }
+        let never = CGFloat.greatestFiniteMagnitude
+        // best[l][j]: the first j words in l lines.
+        var best = [[CGFloat]](repeating: [CGFloat](repeating: never, count: count + 1), count: lines + 1)
+        var from = [[Int]](repeating: [Int](repeating: 0, count: count + 1), count: lines + 1)
+        best[0][0] = 0
+        for l in 1...lines {
+            for j in l...count {
+                for i in (l - 1)..<j where best[l - 1][i] < never {
+                    let wide = span(i, j)
+                    guard wide <= width || j - i == 1 else { continue }
+                    // A short word alone on a line counts against the breaks.
+                    let free = max(0, width - wide), alone = j - i == 1 && free > width * 0.4
+                    let cost = best[l - 1][i] + free * free + (alone ? width * width / 4 : 0)
+                    if cost < best[l][j] {
+                        best[l][j] = cost
+                        from[l][j] = i
+                    }
+                }
+            }
+        }
+        guard best[lines][count] < never else { return [] }
+        var starts: [Int] = [], j = count
+        for l in stride(from: lines, to: 1, by: -1) {
+            j = from[l][j]
+            starts.append(j)
+        }
+        return starts.reversed()
     }
 
     /// The route as one line: a spline through it, a point every 2 pt, and

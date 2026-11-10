@@ -195,6 +195,25 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertLessThan(halo.map { hypot($0.x - last.x, $0.y - last.y) }.max() ?? 99, 20)
     }
 
+    func testLinesAreOfAboutTheSameLength() {
+        // "Odbitka jest w rękach marszandów Yamanaka & Company.": the name is
+        // one piece, and the word before it is not left alone on a line.
+        XCTAssertEqual(JourneyRoad.evenBreaks([50, 26, 62, 84, 150], space: 4, width: 190), [2, 4])
+        // One line when it all fits, as few lines as it takes otherwise.
+        XCTAssertEqual(JourneyRoad.evenBreaks([50, 26, 62], space: 4, width: 190), [])
+        XCTAssertEqual(JourneyRoad.evenBreaks([100, 100, 100, 100], space: 4, width: 210), [2])
+        // A word wider than a line has a line to itself.
+        XCTAssertEqual(JourneyRoad.evenBreaks([60, 300, 60], space: 4, width: 190), [1, 2])
+        XCTAssertEqual(JourneyRoad.evenBreaks([60], space: 4, width: 190), [])
+        // In the app's own faces: no line is wider than the column, the words stay in order.
+        let text = "Odbitka jest w rękach marszandów **Yamanaka & Company**."
+        let lines = JourneyRoad.broken(text, width: 193).components(separatedBy: "\n")
+        XCTAssertEqual(lines.count, 3)
+        XCTAssertEqual(lines.joined(separator: " "), JourneyRoad.typeset(text))
+        XCTAssertEqual(lines.last, "**Yamanaka\u{00A0}&\u{00A0}Company**.")
+        XCTAssertNotEqual(lines[1], "marszandów")
+    }
+
     func testLinesAreNotBrokenWhereTheyMustNotBe() {
         let hard = "\u{00A0}"
         // A one-letter word never ends a line; the last line is not one word.
