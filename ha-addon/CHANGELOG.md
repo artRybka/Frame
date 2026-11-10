@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.143.3
+
+- „Droga dzieła” powstaje przy przewijaniu na wysokości środka ekranu
+  i idzie od góry: kreska się rysuje, na niej wyrastają kropki, a podpisy
+  wyłaniają się rozmyte i ostrzeją. Niżej nie ma jeszcze nic. Kiedy
+  przewijanie staje, zaczęty przystanek rysuje się do końca.
+- Białe plamy pod podpisami są jedną plamą: łączą je wąskie zacieki,
+  a farba wolno wsiąka w papier od góry i dosycha, zamiast rozlewać się
+  osobno pod każdym podpisem, kiedy ten wjeżdżał na ekran od dołu.
+- Kreska zaczyna się przy linii pod liczbami, a łuki są łagodniejsze:
+  trzymają się bliżej środka strony i nie sięgają krawędzi.
+- Z „Ogranicz ruch” i z VoiceOver cała droga jest od razu.
+
 ## 1.143.2
 
 - „Droga dzieła”: opisy przystanków bez daty czyta się naturalniej.
