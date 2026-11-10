@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.142.10
+
+- Karta nowej playlisty otwarta z Szukaj („Utwórz playlistę z tego
+  wyszukiwania”) nie gubi już po chwili guzika „Zapisz” ani „Anuluj”.
+  Wybór w grupie (np. Malarstwo) otwierał wyszukiwanie, a ono chowało
+  pasek u góry karty. To samo działo się w edytorze playlisty po
+  wybraniu czegoś w grupie.
+
 ## 1.142.9
 
 - „Droga dzieła”: białe plamy pod tekstami nie leżą już na stronie od
