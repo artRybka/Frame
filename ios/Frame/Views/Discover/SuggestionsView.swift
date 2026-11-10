@@ -423,7 +423,8 @@ struct WorkTile: View {
     var title: String?
     /// The picture a little brighter than the page (`ArtGlow`, when
     /// Konfiguracja allows it), as on the work's card ("Pod lupą",
-    /// Mateusz 2026-11-10).
+    /// Mateusz 2026-11-10): fully at the top, fading to a tenth of it at
+    /// the caption (19:15).
     var brighten = false
 
     private var shownTitle: String {
@@ -443,7 +444,9 @@ struct WorkTile: View {
                         placeholder: item.item.placeholderColor,
                         maxPixel: 500,
                         subjectFocus: true,
-                        brighten: brighten
+                        brighten: brighten,
+                        // Brightest at the top, a tenth of it at the caption.
+                        glowFade: 0.1
                     )
                 }
                 .clipped()

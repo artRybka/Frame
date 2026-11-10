@@ -4,6 +4,8 @@
 
 - „Pod lupą”: serce na kafelkach da się kliknąć, w rzędzie Odkrywaj
   i w „Pod lupą ›”, jak w innych miejscach.
+- „Pod lupą”: rozjaśnienie HDR na kafelkach jest gradientem: pełne
+  u góry obrazu, przy linii z podpisem 10%.
 
 ## 1.142.4
 
