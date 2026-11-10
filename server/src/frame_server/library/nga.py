@@ -48,10 +48,15 @@ CREATE TABLE works (
     id INTEGER PRIMARY KEY,
     title TEXT, artist TEXT, bio TEXT, date_text TEXT, year INTEGER,
     medium TEXT, classification TEXT, styles TEXT, credit TEXT,
-    iiif TEXT, width INTEGER, height INTEGER, rank INTEGER, text TEXT
+    iiif TEXT, width INTEGER, height INTEGER, rank INTEGER, text TEXT,
+    provenance TEXT
 );
 CREATE INDEX works_kind ON works (classification, year);
 """
+#: The index's make, in its ``user_version``: an older one is built again
+#: at once and searched meanwhile. 2: with each work's provenance (the
+#: study's "Droga dzieła", ai/journey.py).
+INDEX_VERSION = 2
 
 
 def _rows(http: httpx.Client, name: str) -> Iterator[dict[str, str]]:
@@ -98,6 +103,7 @@ def build(path: Path, http: httpx.Client) -> int:
     count = 0
     with sqlite3.connect(tmp) as db:
         db.executescript(SCHEMA)
+        db.execute(f"PRAGMA user_version = {INDEX_VERSION}")
         rows = []
         for r in _rows(http, "objects"):
             object_id = r["objectid"]
@@ -128,12 +134,13 @@ def build(path: Path, http: httpx.Client) -> int:
                 [str(f) for f in fields[:3]]
                 + [str(fields[5]), kind, *words, r.get("attribution") or ""]
             )
-            rows.append((int(object_id), *fields, text.lower()))
+            provenance = (r.get("provenancetext") or "").strip()
+            rows.append((int(object_id), *fields, text.lower(), provenance))
             if len(rows) >= 2000:
-                db.executemany(f"INSERT INTO works VALUES ({','.join('?' * 15)})", rows)
+                db.executemany(f"INSERT INTO works VALUES ({','.join('?' * 16)})", rows)
                 count += len(rows)
                 rows = []
-        db.executemany(f"INSERT INTO works VALUES ({','.join('?' * 15)})", rows)
+        db.executemany(f"INSERT INTO works VALUES ({','.join('?' * 16)})", rows)
         count += len(rows)
     os.replace(tmp, path)
     return count
@@ -146,14 +153,32 @@ class _Index:
         self.lock = threading.Lock()
         self.building = False
         self.failed_at = 0.0
+        #: The file whose make was read last: (its path, its time, its make).
+        self._made: tuple[Path, float, int] | None = None
 
     def ready(self, path: Path) -> bool:
         """Whether ``path`` can be searched; starts a build when it is
-        missing or a week old."""
+        missing, old, or of an older make."""
         fresh = path.is_file() and time.time() - path.stat().st_mtime < REFRESH_SECONDS
-        if not fresh:
+        if not (fresh and self.current(path)):
             self._start(path)
         return path.is_file()
+
+    def current(self, path: Path) -> bool:
+        """Whether the file at ``path`` is of this make (read once a file)."""
+        try:
+            stamp = path.stat().st_mtime
+        except OSError:
+            return False
+        made = self._made
+        if made is None or made[:2] != (path, stamp):
+            try:
+                with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as db:
+                    version = int(db.execute("PRAGMA user_version").fetchone()[0])
+            except sqlite3.Error:
+                version = 0
+            made = self._made = (path, stamp, version)
+        return made[2] >= INDEX_VERSION
 
     def _start(self, path: Path) -> None:
         if self._claim():
@@ -194,6 +219,20 @@ class _Index:
 
 
 INDEX = _Index()
+
+
+def provenance(data_dir: Path | None, object_id: str) -> str | None:
+    """The gallery's provenance of one work, "" when it gives none; None
+    while the index cannot say (not there yet, or of a make without it:
+    then it is being built again)."""
+    if data_dir is None or not object_id.isdigit():
+        return None
+    path = data_dir / "nga" / "collection.sqlite"
+    if not INDEX.ready(path) or not INDEX.current(path):
+        return None
+    with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as db:
+        row = db.execute("SELECT provenance FROM works WHERE id = ?", [int(object_id)]).fetchone()
+    return str(row[0] or "") if row else ""
 
 
 def refresh_at_night(data_dir: Path) -> bool:

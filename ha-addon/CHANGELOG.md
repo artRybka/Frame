@@ -1,5 +1,45 @@
 # Changelog
 
+## 1.142.12
+
+- „Droga dzieła” w Studium dzieła powstaje dla dużo większej liczby
+  dzieł. Dotąd opowiadały ją tylko zapisy Art Institute of Chicago
+  i Cleveland Museum of Art (oraz właściciele z Wikidanych). Teraz także
+  National Gallery of Art w Waszyngtonie (prawie każdy obraz i rzeźba,
+  większość rysunków), Luwr (historia dzieła, dawni właściciele, sposób
+  nabycia i wypożyczenia na wystawy) i Rijksmuseum (obrazy opisane
+  w katalogu muzeum).
+- Dzieło z Wikimediów, Europeany albo innego zbioru, które wisi w jednym
+  z tych pięciu muzeów, dostaje drogę z zapisu tego muzeum: serwer
+  znajduje je po identyfikatorze muzeum w Wikidanych albo po kopii
+  obrazu z samego muzeum. Mona Lisa z Wikimediów ma więc drogę z Luwru.
+- Dzieła, dla których wcześniej nie było zapisu, są sprawdzane jeszcze
+  raz przy najbliższym otwarciu studium. Gotowe drogi zostają bez zmian.
+- Metropolitan Museum, Yale, SMK, Getty i V&A nie podają proweniencji
+  w swoich otwartych danych, więc ich dzieła mają drogę tylko wtedy,
+  gdy właścicieli zna Wikidata.
+- Indeks National Gallery of Art buduje się raz od nowa po aktualizacji
+  (kilka minut w tle); do tego czasu wyszukiwanie działa na starym.
+
+## 1.142.11
+
+- Plakaty pokazują tylko plakaty. Po wybraniu artysty (np. Claude
+  Monet + Plakaty) muzea oddawały wszystkie jego prace, a serwer
+  przepuszczał je bez sprawdzenia, więc wśród plakatów były obrazy
+  olejne, rysunki i akwaforty. Teraz o plakacie decyduje to, co
+  muzeum pisze o samym dziele: rodzaj i technika. Obraz albo rysunek
+  nigdy nie jest plakatem.
+- Plakat jest grafiką: pojawia się w Grafice, ale nie w Malarstwie
+  ani w Rysunkach.
+- Fotografia, Rzeźba, Ceramika i Rękopisy w playlistach i katalogu
+  przyjmują tylko dzieła swojego rodzaju, tak jak w Szukaj.
+- Europeana: rysunki i ryciny opisane przez muzeum ogólną kategorią
+  „malarstwo” nie trafiają już do Malarstwa, a rodzaje zapisane po
+  niemiecku, francusku, szwedzku czy rumuńsku są rozpoznawane.
+- Art Institute of Chicago i Europeana są pytane wprost o plakaty, więc
+  przy Toulouse-Lautrecu czy Musze przychodzą ich prawdziwe plakaty.
+- Rijksmuseum: część grafik miała zamiast autora napis „@language”.
+
 ## 1.142.10
 
 - Karta nowej playlisty otwarta z Szukaj („Utwórz playlistę z tego

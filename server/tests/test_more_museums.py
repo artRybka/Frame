@@ -18,7 +18,7 @@ import pytest
 from frame_server.library import courtauld
 from frame_server.library.museums import Access, Discovery, available, museum
 from frame_server.library.muza import MuzaMuseum, NationalMuseumKrakow, NationalMuseumWarsaw, polish
-from frame_server.library.nga import NationalGalleryOfArt, build
+from frame_server.library.nga import INDEX, NationalGalleryOfArt, build, provenance
 from frame_server.library.smithsonian import Smithsonian
 from frame_server.library.vam import VictoriaAndAlbert
 from frame_server.library.wellcome import WellcomeCollection, split_title
@@ -162,7 +162,8 @@ NGA_FILES = {
     "objects": [
         {"objectid": "1158", "title": "Before the Ballet", "displaydate": "1890/1892",
          "beginyear": "1890", "medium": "oil on canvas", "classification": "Painting",
-         "creditline": "Widener Collection", "attribution": "Edgar Degas"},
+         "creditline": "Widener Collection", "attribution": "Edgar Degas",
+         "provenancetext": "Sold 1893 to Durand-Ruel, Paris; Widener, 1914."},
         {"objectid": "7", "title": "Closed", "displaydate": "", "beginyear": "",
          "medium": "", "classification": "Painting", "creditline": "", "attribution": ""},
         {"objectid": "9", "title": "A jug", "displaydate": "", "beginyear": "1937",
@@ -170,6 +171,23 @@ NGA_FILES = {
          "creditline": "", "attribution": ""},
     ],
 }  # fmt: skip
+
+
+def test_an_index_of_an_older_make_is_built_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An index from before provenance was kept is searched as it is and
+    built again at once, not when it turns a month old."""
+    path = tmp_path / "nga" / "collection.sqlite"
+    path.parent.mkdir()
+    with sqlite3.connect(path) as db:
+        db.execute("CREATE TABLE works (id INTEGER PRIMARY KEY, title TEXT)")
+    started: list[Path] = []
+    monkeypatch.setattr(INDEX, "_start", started.append)
+    assert not INDEX.current(path)
+    # (The tests' own ``ready`` never builds: the class's is asked.)
+    assert type(INDEX).ready(INDEX, path) and started == [path]  # searched meanwhile
+    assert provenance(tmp_path, "1158") is None  # cannot say yet
 
 
 def test_national_gallery_of_art_searches_its_open_data(tmp_path: Path) -> None:
@@ -195,6 +213,9 @@ def test_national_gallery_of_art_searches_its_open_data(tmp_path: Path) -> None:
         assert nga.discover(Discovery(style="impressionist"))[0] == 1
         found = nga.fetch("1158")
     assert total == 1 and found is not None
+    # The gallery's provenance is kept with the work (the study's "Droga dzieła").
+    assert provenance(tmp_path, "1158") == "Sold 1893 to Durand-Ruel, Paris; Widener, 1914."
+    assert provenance(tmp_path, "404") == "" and provenance(None, "1158") is None
     item = items[0]
     assert item.id == "nga:1158" and item.artist == "Edgar Degas"
     assert item.artist_bio == "French, 1834 - 1917" and item.year == 1890
