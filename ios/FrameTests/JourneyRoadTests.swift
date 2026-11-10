@@ -110,27 +110,54 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertEqual(short.count, 2)
     }
 
-    func testASideTripHangsOnABranchUnderTheRoad() throws {
+    func testASideTripForksOffToAFramedText() throws {
         let heights: [CGFloat] = [54, 74, 54, 54, 74]
         let seas = [false, false, false, false, false]
         let plan = try XCTUnwrap(JourneyRoad.plan(width: 350, heights: heights, seas: seas,
-                                                  detours: [false, false, true, false, false], seed: "aic:27992"))
+                                                  detours: [false, false, true, false, false],
+                                                  widths: [180, 190, 150, 160, 170], seed: "aic:27992"))
         XCTAssertEqual(Array(plan.branches.keys), [2])
-        let from = try XCTUnwrap(plan.branches[2]), stop = plan.dots[2]
-        // The branch leaves the road itself and its stop is off the road, under it.
-        XCTAssertTrue(plan.line.contains(from))
-        XCTAssertFalse(plan.line.contains(stop))
-        XCTAssertGreaterThan(stop.y, from.y)
+        let way = try XCTUnwrap(plan.branches[2]), frame = try XCTUnwrap(plan.frames[2]), stop = plan.dots[2]
+        // The branch forks off the road itself, is a long one, and never
+        // comes back up to the road: its stop is under it.
+        XCTAssertTrue(plan.line.contains(way[0]))
+        XCTAssertEqual(way.last, stop)
+        XCTAssertGreaterThan(zip(way, way.dropFirst()).map { hypot($1.x - $0.x, $1.y - $0.y) }.reduce(0, +), 100)
+        XCTAssertEqual(zip(way, way.dropFirst()).filter { $1.y < $0.y - 0.01 }.count, 0)
         let off = plan.line.map { hypot($0.x - stop.x, $0.y - stop.y) }.min() ?? 0
         XCTAssertGreaterThan(off, 20)
-        // Its date is level with it, and no text is in the road's way.
-        XCTAssertEqual(plan.texts[2].minY, stop.y - JourneyRoad.yearY, accuracy: 0.01)
-        for text in plan.texts {
+        // The stop is on a corner of the frame, the frame is as wide as its
+        // text and holds it, and the road keeps clear of it.
+        XCTAssertEqual(frame.minY, stop.y, accuracy: 0.01)
+        XCTAssertTrue(abs(frame.minX - stop.x) < 0.01 || abs(frame.maxX - stop.x) < 0.01)
+        XCTAssertEqual(frame.width, 150 + 2 * JourneyRoad.framePad.side, accuracy: 0.01)
+        XCTAssertEqual(frame.maxY, plan.texts[2].maxY + JourneyRoad.framePad.bottom, accuracy: 0.01)
+        XCTAssertGreaterThanOrEqual(frame.minX, 0)
+        XCTAssertLessThanOrEqual(frame.maxX, 350)
+        for box in plan.texts + [frame] {
             let near = plan.line.map { p in
-                hypot(max(text.minX - p.x, 0, p.x - text.maxX), max(text.minY - p.y, 0, p.y - text.maxY))
+                hypot(max(box.minX - p.x, 0, p.x - box.maxX), max(box.minY - p.y, 0, p.y - box.maxY))
             }.min() ?? 0
             XCTAssertGreaterThanOrEqual(near, 5)
         }
+    }
+
+    func testLinesAreNotBrokenWhereTheyMustNotBe() {
+        let hard = "\u{00A0}"
+        // A one-letter word never ends a line; the last line is not one word.
+        XCTAssertEqual(JourneyRoad.typeset("Seurat maluje obraz; ramkę z kropek dokłada w **1888–89**."),
+                       "Seurat maluje obraz; ramkę z\(hard)kropek dokłada w\(hard)**1888–89**.")
+        // A number stays with its word, a telling name is whole.
+        XCTAssertEqual(JourneyRoad.typeset("Pierwszy raz pokazany: VIII wystawa malarstwa, **nr 175** w katalogu."),
+                       "Pierwszy raz pokazany: VIII\(hard)wystawa malarstwa, **nr\(hard)175**\(hard)w\(hard)katalogu.")
+        XCTAssertEqual(JourneyRoad.typeset("Sprzedany za **20 000 dolarów** Frederikowi Clayowi i Helen Birch Bartlett."),
+                       "Sprzedany za\(hard)**20\(hard)000\(hard)dolarów** Frederikowi Clayowi i\(hard)Helen Birch\(hard)Bartlett.")
+        XCTAssertEqual(JourneyRoad.typeset("Po jej śmierci przechodzi na **brata, Émile’a**."),
+                       "Po jej śmierci przechodzi na **brata,\(hard)Émile’a**.")
+        // A year is not tied to the word after it, a long name is not tied at all.
+        XCTAssertEqual(JourneyRoad.typeset("W 1924 obraz kupuje **Frederic Clay Bartlett z żoną Helen Birch**, kolekcjonerzy."),
+                       "W\(hard)1924 obraz kupuje **Frederic\(hard)Clay\(hard)Bartlett z\(hard)żoną\(hard)Helen\(hard)Birch**, kolekcjonerzy.")
+        XCTAssertEqual(JourneyRoad.typeset("Dar."), "Dar.")
     }
 
     func testAShortJourneyHasARoadToo() {

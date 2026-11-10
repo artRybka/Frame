@@ -17,15 +17,20 @@ import SwiftUI
 /// the work crossed it makes two free sweeps among waves. It is inked as with a broad nib held flat
 /// (17:59: „przy zakrętach grubsza, jakby rysowana piórem do kaligrafii”):
 /// thin along the runs, thick where it turns down. An exhibition the work
-/// came back from is a side trip (18:16): a dashed branch off the road, a
-/// hollow dot at its end. The shape comes from the work's id.
+/// came back from is a side trip (18:16, 18:26: „odnoga dłuższa, a tekst
+/// wypadu w rysowanej ramce”): a dashed branch forks off the road early in
+/// the run and drifts away under it, down to a hollow dot on the corner of
+/// a frame drawn by hand round the trip's text. The texts are broken with
+/// care (18:26): see `typeset` and `EvenLines`. Nothing is written under
+/// the drawing (18:26: „bez podpisu o genezie i źródle”). The shape comes
+/// from the work's id.
 struct JourneyRoad: View {
     let journey: DailyWork.Journey
     /// The work's id: the road's wander.
     let seed: String
 
-    /// How tall each stop's text is at the width the road gives it.
-    @State private var heights: [Int: CGFloat] = [:]
+    /// How big each stop's text is at the width the road gives it.
+    @State private var sizes: [Int: CGSize] = [:]
     /// How wide the road is.
     @State private var width: CGFloat = 0
 
@@ -49,9 +54,6 @@ struct JourneyRoad: View {
             }
             if !facts.isEmpty { factsRow }
             road
-            Text("Źródło: \(journey.source.isEmpty ? "muzeum" : journey.source). Opowiedziane przez Claude Haiku.")
-                .font(.caption2)
-                .foregroundStyle(Theme.inkSoft)
         }
     }
 
@@ -140,17 +142,20 @@ struct JourneyRoad: View {
         // Worked out here, not in the Canvas: SwiftUI does not redraw a
         // Canvas for state only its drawing closure reads, so the road came
         // out blank whenever the last text was measured after the first draw.
-        let measured = (0..<count).compactMap { heights[$0] }
+        let measured = (0..<count).compactMap { sizes[$0] }
         let plan = measured.count == count
-            ? Self.plan(width: width, heights: measured, seas: seas, detours: journey.stops.map(\.detour), seed: seed) : nil
+            ? Self.plan(width: width, heights: measured.map(\.height), seas: seas, detours: journey.stops.map(\.detour),
+                        widths: measured.map(\.width), seed: seed) : nil
         let textWidth = Self.textWidth(width)
         return ZStack(alignment: .topLeading) {
             ForEach(Array(journey.stops.enumerated()), id: \.offset) { i, stop in
                 // Each text is measured where the layout first puts it and
                 // then moved to its dot; the move does not change its height.
+                // Measured before it is given the full width: a side trip's
+                // frame is drawn round the text as it stands.
                 row(stop, leading: plan?.leading[i] ?? true)
+                    .onGeometryChange(for: CGSize.self) { $0.size } action: { self.sizes[i] = $0 }
                     .frame(width: textWidth, alignment: plan?.leading[i] ?? true ? .topLeading : .topTrailing)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { self.heights[i] = $0 }
                     .offset(x: plan?.texts[i].minX ?? 0, y: plan?.texts[i].minY ?? 0)
                     .opacity(plan == nil ? 0 : 1)
             }
@@ -175,11 +180,12 @@ struct JourneyRoad: View {
             (leading ? Text("\(date)\(between)\(place)") : Text("\(place)\(between)\(date)"))
                 .lineLimit(1)
                 .truncationMode(leading ? .tail : .head)
-            Text(Self.marked(stop.text))
-                .font(.serif(15))
-                .foregroundStyle(Theme.ink)
-                .multilineTextAlignment(leading ? .leading : .trailing)
-                .fixedSize(horizontal: false, vertical: true)
+            EvenLines {
+                Text(Self.marked(Self.typeset(stop.text)))
+                    .font(.serif(15))
+                    .foregroundStyle(Theme.ink)
+                    .multilineTextAlignment(leading ? .leading : .trailing)
+            }
         }
         .accessibilityElement(children: .combine)
     }
@@ -215,17 +221,20 @@ struct JourneyRoad: View {
             if i == count - 1 {
                 // Where the work is now (18:16: „czerwona, ale większa”).
                 context.fill(circle(Self.lastDot), with: .color(Theme.vermilion))
-            } else if let from = plan.branches[i] {
+            } else if let way = plan.branches[i] {
                 // A side trip the work came back from (18:16: „jako odnogę…
-                // rysowaną przerywaną linią”): a dashed branch, a hollow dot.
-                let side: CGFloat = plan.leading[i] ? -1 : 1
+                // rysowaną przerywaną linią”; 18:26: „dłuższa, a tekst wypadu
+                // w rysowanej ramce”): the frame, the dashed branch, and a
+                // hollow dot where the branch meets the frame's corner.
+                if let frame = plan.frames[i] {
+                    var random = SeededRandom(seed + "frame\(i)")
+                    context.stroke(Self.sketched(frame, random: &random), with: .color(Theme.ink.opacity(0.8)),
+                                   style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+                }
                 var spur = Path()
-                spur.move(to: from)
-                spur.addCurve(to: CGPoint(x: p.x + side * 4.6, y: p.y),
-                              control1: CGPoint(x: from.x + side * 9, y: from.y + 17),
-                              control2: CGPoint(x: p.x + side * 24, y: p.y + 3))
+                spur.addLines(way.filter { hypot($0.x - p.x, $0.y - p.y) > 4.6 })
                 context.stroke(spur, with: .color(Theme.ink),
-                               style: StrokeStyle(lineWidth: 1.6, lineCap: .round, dash: [3.2, 3.8]))
+                               style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round, dash: [3.2, 3.8]))
                 context.fill(circle(4.6), with: .color(Theme.paper))
                 context.stroke(circle(4.6), with: .color(Theme.ink), lineWidth: 1.6)
             } else {
@@ -285,6 +294,51 @@ struct JourneyRoad: View {
     }
 
     private static let sea = Color(light: 0x8FA9BA, dark: 0x5E7A8C)
+
+    /// A frame drawn by hand: four strokes that bow a little and stop a
+    /// little short of the corners or run a little past them.
+    static func sketched(_ frame: CGRect, random: inout SeededRandom) -> Path {
+        var path = Path()
+        let corners = [CGPoint(x: frame.minX, y: frame.minY), CGPoint(x: frame.maxX, y: frame.minY),
+                       CGPoint(x: frame.maxX, y: frame.maxY), CGPoint(x: frame.minX, y: frame.maxY)]
+        for k in 0..<4 {
+            let a = corners[k], b = corners[(k + 1) % 4]
+            let length = max(1, hypot(b.x - a.x, b.y - a.y)), ux = (b.x - a.x) / length, uy = (b.y - a.y) / length
+            /// The point `along` the side (0 to 1), `off` to its side.
+            func point(_ along: CGFloat, _ off: CGFloat) -> CGPoint {
+                CGPoint(x: a.x + (b.x - a.x) * along - uy * off, y: a.y + (b.y - a.y) * along + ux * off)
+            }
+            // Each end from 1 pt short of its corner to 4 pt past it and up
+            // to 1.2 pt off the side; the middle bows by up to 1.3 pt.
+            let wander = (0..<6).map { _ in random.unit() }
+            path.move(to: point(-(5 * wander[0] - 1) / length, (wander[1] - 0.5) * 2.4))
+            path.addCurve(to: point(1 + (5 * wander[2] - 1) / length, (wander[3] - 0.5) * 2.4),
+                          control1: point(0.3, (wander[4] - 0.5) * 2.6), control2: point(0.7, (wander[5] - 0.5) * 2.6))
+        }
+        return path
+    }
+}
+
+/// Lines of about the same length (18:26: „zadbaj o prawidłowe łamania
+/// tekstów”): the text is as narrow as it can be without one more line, so
+/// a last line is never one word under two full ones.
+private struct EvenLines: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let text = subviews.first else { return .zero }
+        guard let width = proposal.width, width.isFinite, width > 0 else { return text.sizeThatFits(proposal) }
+        func size(_ width: CGFloat) -> CGSize { text.sizeThatFits(ProposedViewSize(width: width, height: nil)) }
+        let full = size(width)
+        var low = width / 2, high = width
+        while high - low > 1 {
+            let middle = (low + high) / 2
+            if size(middle).height <= full.height + 0.5 { high = middle } else { low = middle }
+        }
+        return CGSize(width: high.rounded(.up), height: size(high.rounded(.up)).height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
+    }
 }
 
 // MARK: Geometry
@@ -297,8 +351,10 @@ struct RoadPlan {
     var texts: [CGRect]
     /// Whether a text reads from its left edge (its dot is at its left).
     var leading: [Bool]
-    /// Where a side trip's branch leaves the road; its stop's dot is the branch's end.
-    var branches: [Int: CGPoint] = [:]
+    /// A side trip's branch, from where it leaves the road to its stop's dot.
+    var branches: [Int: [CGPoint]] = [:]
+    /// The frame round a side trip's text; its dot is on the frame's corner.
+    var frames: [Int: CGRect] = [:]
     var height: CGFloat
 }
 
@@ -310,8 +366,13 @@ extension JourneyRoad {
     static let lastClear: CGFloat = 3
     /// The last stop's dot, where the work is now: bigger than the others.
     static let lastDot: CGFloat = 9
-    /// How far under the road a side trip's stop hangs.
-    static let branch: CGFloat = 32
+    /// How far under the road a side trip's stop hangs, and how far back
+    /// along the road its branch forks off.
+    static let branch: CGFloat = 36
+    static let branchSpan: CGFloat = 170
+    /// The room between a side trip's text and its frame: at the sides,
+    /// above and under.
+    static let framePad: (side: CGFloat, top: CGFloat, bottom: CGFloat) = (10, 4, 9)
     /// The nib's width, how far it is turned from flat, and the thinnest
     /// the stroke gets.
     static let nib: CGFloat = 6.2
@@ -333,7 +394,8 @@ extension JourneyRoad {
     /// through the turns alone; then, where a text would not clear the run
     /// under it, that run is made steeper (or its turn sent out to the
     /// edge) and the line drawn again.
-    static func plan(width: CGFloat, heights: [CGFloat], seas: [Bool], detours: [Bool] = [], seed: String) -> RoadPlan? {
+    static func plan(width: CGFloat, heights: [CGFloat], seas: [Bool], detours: [Bool] = [], widths: [CGFloat] = [],
+                     seed: String) -> RoadPlan? {
         let count = heights.count
         guard count >= 2, seas.count == count, width > 240 else { return nil }
         var random = SeededRandom(seed + "road")
@@ -364,6 +426,8 @@ extension JourneyRoad {
                 : 14 + (random.unit() < 0.35 ? 30 + 34 * random.unit() : 22 * random.unit())
             runs[i].margin = 2 + 12 * random.unit()
             runs[i].bow = (random.unit() - 0.5) * 14
+            // A side trip's frame is wider than its text.
+            if let k = runs[i].stop, k < detours.count, detours[k] { runs[i].margin = max(runs[i].margin, framePad.side + 3) }
         }
         let start = CGPoint(x: x(startLeft, 52 + 10 * random.unit()), y: yearY)
         let hookInset = 16 + 10 * random.unit()
@@ -401,7 +465,8 @@ extension JourneyRoad {
             var texts = [CGRect](repeating: .zero, count: count)
             var dots = [CGPoint](repeating: .zero, count: count)
             var leading = [Bool](repeating: true, count: count)
-            var branches: [Int: CGPoint] = [:]
+            var branches: [Int: [CGPoint]] = [:]
+            var frames: [Int: CGRect] = [:]
             var changed = false
             // The first stop: the line starts at its dot and hooks away from its text.
             do {
@@ -420,26 +485,38 @@ extension JourneyRoad {
                 // The text is on the open side of the bay: where the run came from.
                 let left = !runs[i].left
                 let x0 = left ? runs[i].margin : width - runs[i].margin - textWidth, x1 = x0 + textWidth
-                let dotX = left ? x1 + 11 : x0 - 11
+                let detour = k < detours.count && detours[k]
+                // Round a side trip's text there is a frame, and its dot is on the frame.
+                let side = detour ? framePad.side : 0, under = detour ? framePad.bottom : 0
+                let dotX = left ? x1 + (detour ? side : 11) : x0 - (detour ? side : 11)
                 var d = turns[i]
                 for q in turns[i]...turns[i + 1] where abs(line[q].x - dotX) < abs(line[d].x - dotX) { d = q }
                 dots[k] = line[d]
                 leading[k] = !left
-                var top = (lowest(turns[i], turns[i + 1], x0 - 5, x1 + 5) ?? line[d].y) + 5
-                if k < detours.count, detours[k] {
-                    // A side trip: a branch that leaves the road a little
-                    // further on and comes back to its stop, under the road.
-                    let ahead = line[d].x + (left ? 24 : -24)
+                var top = (lowest(turns[i], turns[i + 1], x0 - side - 5, x1 + side + 5) ?? line[d].y) + 5
+                if detour {
+                    // A side trip: a branch forks off the road early in the
+                    // run and drifts away under it, down to the corner of
+                    // the frame; the frame is as wide as the text in it.
                     var a = d
-                    for q in turns[i]...turns[i + 1] where abs(line[q].x - ahead) < abs(line[a].x - ahead) { a = q }
-                    branches[k] = line[a]
-                    dots[k] = CGPoint(x: line[d].x, y: line[d].y + branch)
-                    top = max(top, dots[k].y - yearY)
+                    while a > min(d, turns[i] + 22), abs(line[a].x - dotX) < branchSpan { a -= 1 }
+                    let depth = max(branch, top - line[d].y), steps = CGFloat(max(1, d - a))
+                    var way = (a...d).map { q in
+                        CGPoint(x: line[q].x, y: line[q].y + depth * (d == a ? 1 : pow(CGFloat(q - a) / steps, 1.7)))
+                    }
+                    // It ends on the frame's corner itself.
+                    way[way.count - 1].x = dotX
+                    branches[k] = way
+                    dots[k] = way[way.count - 1]
+                    top = dots[k].y + framePad.top
+                    let wide = k < widths.count ? min(textWidth, max(40, widths[k])) : textWidth
+                    frames[k] = CGRect(x: (left ? x1 - wide : x0) - side, y: dots[k].y,
+                                       width: wide + 2 * side, height: framePad.top + heights[k] + under)
                 }
                 texts[k] = CGRect(x: x0, y: top, width: textWidth, height: heights[k])
-                if let under = highest(turns[i + 1], turns[min(i + 3, turns.count - 1)], x0 - 6, x1 + 6),
-                   top + heights[k] + 11 > under {
-                    let need = top + heights[k] + 12 - under
+                if let next = highest(turns[i + 1], turns[min(i + 3, turns.count - 1)], x0 - side - 6, x1 + side + 6),
+                   top + heights[k] + under + 11 > next {
+                    let need = top + heights[k] + under + 12 - next
                     // A tall text first sends its turn out to the edge, and
                     // only then makes the next run steeper.
                     if runs[i + 1].fall + need > 104, runs[i].inset > 16, !runs[i].sea {
@@ -463,11 +540,62 @@ extension JourneyRoad {
                     changed = true
                 }
             }
-            result = RoadPlan(line: line, dots: dots, texts: texts, leading: leading, branches: branches,
+            result = RoadPlan(line: line, dots: dots, texts: texts, leading: leading, branches: branches, frames: frames,
                               height: max(texts[count - 1].maxY, end.y + lastDot) + 6)
             if !changed { break }
         }
         return result
+    }
+
+    /// A stop's sentence with the spaces a line must not break at made hard
+    /// (18:26: „zadbaj o prawidłowe łamania tekstów”): after a one-letter
+    /// word ("w", "z", "i"), inside a number and between a number and its
+    /// word ("20 000 dolarów", "nr 175", "VIII wystawa"), inside a short
+    /// telling name (between ** and **), and before the last word, so the
+    /// last line is not one word. Nothing longer than 22 letters is tied.
+    static func typeset(_ text: String) -> String {
+        let words = text.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        guard words.count > 1 else { return text }
+        func core(_ word: String) -> String {
+            String(word.replacingOccurrences(of: "**", with: "").drop { "„(".contains($0) })
+        }
+        func bare(_ word: String) -> String {
+            var out = Substring(core(word))
+            while let last = out.last, ".,;:!?”)".contains(last) { out.removeLast() }
+            return String(out)
+        }
+        /// Whether a phrase ends with the word.
+        func ends(_ word: String) -> Bool {
+            guard let last = core(word).last else { return false }
+            return ",;:!?".contains(last) || (last == "." && bare(word).count > 3)
+        }
+        func digits(_ word: String) -> Bool { !word.isEmpty && word.allSatisfy { ("0"..."9").contains($0) } }
+        func marks(_ word: String) -> Int { word.components(separatedBy: "**").count - 1 }
+        var out = words[0], chunk = core(words[0]).count
+        var bold = marks(words[0]) % 2 == 1
+        for i in 1..<words.count {
+            let a = bare(words[i - 1]), b = bare(words[i]), length = core(words[i]).count
+            let room = chunk + 1 + length <= 22
+            var tie = room && bold
+            if !tie, !ends(words[i - 1]) {
+                if a.count == 1, a.first?.isLetter == true {
+                    tie = true
+                } else if room, digits(a), digits(String(b.prefix(3))), b.count >= 3 {
+                    tie = true
+                } else if room, a.count <= 3, let first = b.first, ("0"..."9").contains(first) {
+                    tie = true
+                } else if room, digits(a), !(a.count == 4 && ("1000"..."2099").contains(a)) {
+                    tie = true
+                } else if room, !a.isEmpty, a.allSatisfy({ "IVXLC".contains($0) }) {
+                    tie = true
+                }
+            }
+            if !tie, i == words.count - 1, core(words[i - 1]).count + 1 + length <= 16 { tie = true }
+            out += (tie ? "\u{00A0}" : " ") + words[i]
+            chunk = tie ? chunk + 1 + length : length
+            if marks(words[i]) % 2 == 1 { bold.toggle() }
+        }
+        return out
     }
 
     /// The route as one line: a spline through it, a point every 2 pt, and
