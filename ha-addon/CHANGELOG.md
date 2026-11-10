@@ -1,18 +1,64 @@
 # Changelog
 
+## 1.139.3
+
+- Playlisty: kafelek „Propozycje dnia” po uruchomieniu aplikacji od razu
+  pokazuje dzieła z ostatniego razu, a nie inne, podmieniane chwilę
+  później. Gdy przychodzą nowe (nowy dzień), wchodzą płynnym
+  przenikaniem, dopiero gdy ich miniatury są już w telefonie.
+
+## 1.139.2
+
+- „Pod lupą”: kafle z Commons są trzymane w 3840 px zamiast 2560, więc przy
+  dużym przybliżeniu są półtora raza ostrzejsze. Kafle zapisane wcześniej
+  zostaną raz pobrane od nowa. Aplikacja wczytuje pełny rozmiar kafla tylko
+  wtedy, gdy przybliżenie go wymaga.
+- „Pod lupą” w Odkrywaj pokazuje każde dzieło raz. Commons trzyma niektóre
+  w kilku plikach z kaflami (np. „Księżniczka z krainy porcelany” Whistlera
+  trzy razy); zostaje największy.
+
+## 1.139.1
+
+- Próba sędziego powtórek: także Opus, a pytanie osobno o rodzaj pary
+  i o to, który obraz jest całym dziełem (Haiku mylił kierunek „detal
+  czego”). Nic nie zmienia w katalogu.
+
+## 1.139.0
+
+- Rijksmuseum dostaje własną bazę na serwerze, tak jak AIC, Cleveland,
+  Smithsonian i Wellcome. Muzeum nie publikuje pliku z dziełami, więc
+  serwer czyta jego katalog (OAI-PMH) po 50 dzieł naraz, najwyżej 2,5
+  godziny na noc i tylko gdy nikt nie używa aplikacji. Całość, ok. 737 tys.
+  dzieł ze zdjęciem, schodzi w kilka nocy. Do tego czasu Rijksmuseum
+  działa jak dotąd, potem Szukaj, Odkrywaj i losowanie biorą je z dysku.
+  Co dwa miesiące serwer dociąga tylko zmiany. Baza zajmuje ok. 0,7 GB.
+
+## 1.138.6
+
+- Próba sędziego powtórek: serwer potrafi pokazać parę obrazów modelom
+  Haiku, Sonnet i Fable i podać, jak każdy ją ocenia (ta sama praca,
+  detal, zdjęcie w ramie, kopia innej ręki, dwa różne dzieła) i ile to
+  kosztowało. Używa klucza z Konfiguracji, koszt wlicza się do miesiąca.
+  Nic nie zmienia w katalogu.
+
+## 1.138.5
+
+- Mniej powtórek i detali w Szukaj. Wyniki z muzeów nie pokazują już
+  kopii dzieła, które jest w katalogu pod innym tytułem (np. „Het meisje
+  met de parel” obok „Dziewczyny z perłą”).
+- „Johannes Vermeer van Delft” i „Jan Vermeer” to dla porównywania obrazów
+  ten sam artysta, więc „Die Malkunst” łączy się z „Alegorią malarstwa”.
+  Ten sam skan pod innym zapisem autora też jest rozpoznawany (odcisk
+  obrazu).
+- Detale z Commons rozpoznawane także po nazwie pliku („…_detail_…”).
+- Zdjęcia obrazu w ramie albo na ścianie muzeum są odkładane jak detale.
+- Szukanie małych detali w dużym obrazie dokańcza się w kolejnych nocach,
+  zamiast przepadać, gdy zabrakło czasu.
+
 ## 1.138.4
 
-- Znaczki na miniaturach uporządkowane: na obrazie zostaje tylko to, co
-  się klika, i tylko w prawym górnym rogu.
-- Serce bez kółka: szklane, gdy dzieło nie jest w Ulubionych, czerwone,
-  gdy jest. W Ulubionych serc nie ma, bo ulubione jest tam wszystko.
-- Usuwanie z playlisty i krzyżyki (edytor, przykładowe zdjęcia) to czarne
-  kółko na rogu, jak ptaszek wybranej miniatury w Prezentacji. Plus
-  w edytorze też siedzi na rogu: jasne kółko, po dodaniu czarne z ptaszkiem.
-- „Pod lupą” to mała lupa zaraz po tytule. Iskierki Propozycji dnia stoją przed liczbą dzieł, a zamiast
-  znaczka „gra teraz” pod kartą playlisty jest cynobrowe „Na ramce”.
-  Na pasku „Następne” w Teraz podpis „Następny w kolejce”.
-- Szklany znaczek zostaje tylko na okładce „Ukrytych”.
+- Na pełnym ekranie dzieła wraca krzyżyk do zamykania. Słoneczka nadal
+  nie ma: przy „Jaśniejszych dziełach” ekran rozjaśnia się sam.
 
 ## 1.138.3
 

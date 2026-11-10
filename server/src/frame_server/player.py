@@ -124,6 +124,9 @@ WIDE_KEY = "wide_originals"
 #: Set once the fragments' pictures kept trimmed of margins were let go
 #: (``ImageCache.drop_fragments``, 2026-11-09).
 FRAGMENTS_KEY = "untrimmed_fragments"
+#: Set once the fragments' originals kept at 2560 px were let go, to be had
+#: again at ``images.TILE_MAX`` (2026-11-10).
+TILES_KEY = "fragments_3840"
 #: The Commons files with a tile set as works ("Pod lupą" in Odkrywaj), and
 #: how long they are kept before they are read again.
 TILE_WORKS_KEY = "tile_set_works"
@@ -1583,7 +1586,12 @@ class Player:
         if not self.library.get_state(FRAGMENTS_KEY, False):
             dropped = self.service.images.drop_fragments()
             self.library.set_state(FRAGMENTS_KEY, True)
+            self.library.set_state(TILES_KEY, True)  # had again at TILE_MAX
             log.info("fragments: %d trimmed pictures let go", dropped)
+        if not self.library.get_state(TILES_KEY, False):
+            dropped = self.service.images.drop_fragments(thumbs=False)
+            self.library.set_state(TILES_KEY, True)
+            log.info("fragments: %d originals let go to be had at 3840 px", dropped)
 
     def rescore(self) -> int:
         """Once per ``SCORE_VERSION``: analyse the library's pictures again

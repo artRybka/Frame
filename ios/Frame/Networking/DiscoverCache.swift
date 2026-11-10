@@ -41,6 +41,19 @@ enum HiddenCache {
     }
 }
 
+/// Propozycje dnia as last loaded from a server: their tile in Playlisty
+/// shows the same works at the next launch, not others swapped a moment
+/// later (Mateusz 2026-11-10).
+enum DayPicksCache {
+    static func load(server: String) -> DayPicks? {
+        CacheFile.load(DayPicks.self, "day-picks", server: server)
+    }
+
+    static func save(_ picks: DayPicks, server: String) {
+        CacheFile.save(picks, "day-picks", server: server)
+    }
+}
+
 /// A screen kept per server in Caches, as the server sent it.
 enum CacheFile {
     private static func url(_ name: String, server: String) -> URL? {

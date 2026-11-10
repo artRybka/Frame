@@ -39,7 +39,7 @@ from ..config import Settings
 from ..device import MdcError
 from ..imaging import PRESETS, RenderSettings, Strategy
 from ..imaging.layout import load_image
-from ..library import dumps
+from ..library import dumps, rijks_index
 from ..library.hosts import guard as host_guard
 from ..library.images import Gone
 from ..library.seed import seed_playlists
@@ -77,6 +77,22 @@ from .ids import EncodedSlashes
 from .purposes import Purposes
 
 log = logging.getLogger(__name__)
+
+
+def _day_quiet() -> bool:
+    """As the night's quiet, by day: waits for the app to be left alone
+    (10 minutes at most; else the reading stops until the night)."""
+    for _ in range(60):
+        if night.idle_for() >= night.QUIET_FOR:
+            return True
+        time.sleep(night.QUIET_LOOK)
+    return False
+
+
+def _day_pause(seconds: float) -> bool:
+    time.sleep(seconds)
+    return True
+
 
 # The panel reports download progress (and failures) here, at the root of the
 # content server, whatever path the manifest came from.
@@ -573,14 +589,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def dump_states() -> list[dict[str, object]]:
         """The museums' local indexes (library/dumps.py): built when, how
         many works, building now, or why the last build failed."""
-        return dumps.states(settings.data_dir)
+        return [*dumps.states(settings.data_dir), rijks_index.INDEX.state(settings.data_dir)]
 
     @app.post("/api/debug/dumps/{key}", dependencies=[Depends(require_owner)])
     def build_dump(key: str) -> dict[str, object]:
         """A museum's dump read now, in the background, without waiting for
         the night (the owner's test, 2026-11-08)."""
+        if key == rijks_index.KEY:
+            # Read while the app is quiet, as at night (library/rijks_index.py).
+            return {"started": rijks_index.read_now(settings.data_dir, _day_quiet, _day_pause)}
         if key not in dumps.DUMPS:
-            raise HTTPException(404, f"no dump {key!r}; one of {', '.join(dumps.DUMPS)}")
+            keys = ", ".join([*dumps.DUMPS, rijks_index.KEY])
+            raise HTTPException(404, f"no dump {key!r}; one of {keys}")
         return {"started": dumps.build_now(key, settings.data_dir)}
 
     @app.get("/api/debug/hosts", dependencies=[Depends(require_owner)])

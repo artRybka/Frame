@@ -215,7 +215,9 @@ SOURCES: tuple[Source, ...] = (
     Source(
         # REST searches up to 10 000 objects, everything else over OAI-PMH;
         # no rates published. A search page is a request a work (cached:
-        # library/records.py), asked two at a time.
+        # library/records.py), asked two at a time. The whole collection is
+        # read over OAI-PMH at night, one page after another, a second apart
+        # (library/rijks_index.py).
         "Rijksmuseum",
         "https://data.rijksmuseum.nl/docs/",
         "2026-11-07",

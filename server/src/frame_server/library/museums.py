@@ -51,6 +51,7 @@ from .met_index import INDEX as MET_INDEX
 from .met_objects import met_objects
 from .models import Item, ItemKind
 from .records import records
+from .rijks_index import local_index as rijks_local_index
 
 log = logging.getLogger(__name__)
 
@@ -1234,7 +1235,39 @@ class Rijksmuseum(Museum):
                             return str(point["id"])
         return str(d.get("id", ""))
 
+    def _licence(self, rights: str) -> str:
+        """The licence of a picture with ``rights`` (its statement's URL);
+        "" when it may not be shown."""
+        found = self.open_licences.get(re.sub(r"^http:", "https:", rights), "")
+        return found or (PRIVATE_LICENCE if self.private_use else "")
+
+    def _map_kept(self, d: dict[str, Any]) -> Item | None:
+        """A record read over OAI-PMH and kept at home (library/rijks_index.py)."""
+        licence = self._licence(str(d.get("rights") or ""))
+        iiif = str(d.get("iiif") or "")
+        if not iiif or not licence:
+            return None
+        types = d.get("types") or []
+        return self._item(
+            str(d["id"]),
+            title=str(d.get("title") or ""),
+            artist=str(d.get("artist") or ""),
+            date_text=str(d.get("date") or ""),
+            year=d.get("year"),
+            medium=str(d.get("medium") or ""),
+            classification=str(types[0]) if types else "",
+            credit=str(d.get("credit") or ""),
+            license=licence,
+            url=str(d.get("page") or ""),
+            highlight=bool(d.get("top")),
+            description=str(d.get("about") or ""),
+            image_url=f"{iiif}/full/max/0/default.jpg",
+            thumb_url=f"{iiif}/full/600,/0/default.jpg",
+        )
+
     def _map(self, d: dict[str, Any]) -> Item | None:
+        if d.get("edm"):
+            return self._map_kept(d)
         iiif, licence = self._image(d)
         if not iiif:
             return None
@@ -1298,9 +1331,16 @@ class Rijksmuseum(Museum):
         first = start // 10 * 10
         return list(range(first, last + 1, 10))
 
+    def _index(self) -> DumpIndex | None:
+        """The collection kept at home once read whole (library/rijks_index.py)."""
+        return rijks_local_index(self.access.data_dir)
+
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         if spec.style.strip() or spec.kind == "decorative":
             return 0, []  # no field for styles or movements, no one type of crafts
+        if (index := self._index()) is not None:
+            kind = spec.kind if spec.kind != "any" else "painting"
+            return self._from_dump(index, kinds=(kind,), spec=spec, limit=limit, page=page)
         decade = self._decades(spec)[0]
         total, ids = self._ids(self._discovery_params(spec, decade), (page - 1) * limit, limit)
         return total, self._objects(ids)
@@ -1309,6 +1349,9 @@ class Rijksmuseum(Museum):
         """Decades in random order (the API has no date ranges), then the
         first results of each, shuffled."""
         if spec.highlight or spec.style.strip() or spec.kind == "decorative":
+            return
+        if self._index() is not None:  # pages of the index in random order
+            yield from Museum.random_draw(self, spec, rng)
             return
         decades = self._decades(spec)
         rng.shuffle(decades)
@@ -1323,6 +1366,12 @@ class Rijksmuseum(Museum):
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         query = query.strip()
+        if not query and (index := self._index()) is not None:
+            return self._from_dump(index, limit=limit, page=page)
+        return self._at_home(query, limit, page, lambda: self._search(query, limit, page))
+
+    def _search(self, query: str, limit: int, page: int) -> tuple[int, list[Item]]:
+        """The museum's own search: a creator, else a title."""
         if "=" in query:
             attempts = [dict(p.split("=", 1) for p in query.split("&") if "=" in p)]
         else:
@@ -1340,6 +1389,8 @@ class Rijksmuseum(Museum):
         return total, items
 
     def fetch(self, source_id: str) -> Item | None:
+        if (at_home := self._from_index(source_id)) is not None:
+            return self._map(at_home)
         # A search page is a request a work: each record asked once
         # (library/records.py).
         kept = records(self.access.data_dir) if self.access.data_dir else None

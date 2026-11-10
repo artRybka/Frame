@@ -134,27 +134,20 @@ struct PlaylistDetailView: View {
         }
     }
 
-    /// Hearts only where they tell something: in Ulubione (or any list of
-    /// favourites alone) every tile would wear one.
-    private var hearts: Bool {
-        !(detail?.items.allSatisfy(\.favorite) ?? false)
-    }
-
     @ViewBuilder
     private func card(_ item: ItemSummary) -> some View {
         if removingItems {
             Button { remove(item) } label: {
-                // The minus takes the heart's corner: what is yours.
-                ArtCard(item: item, showsFavorite: false)
-                    .overlay(alignment: .topTrailing) {
-                        CornerMark(systemImage: "minus")
-                            .offset(x: CornerMark.overhang, y: -CornerMark.overhang)
+                ArtCard(item: item)
+                    .overlay(alignment: .topLeading) {
+                        GlassBadge(systemImage: "minus", tint: Theme.vermilion)
+                            .padding(6)
                     }
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Usuń z playlisty: \(item.title)")
         } else {
-            NavigationLink(value: item.id) { ArtCard(item: item, showsFavorite: hearts) }
+            NavigationLink(value: item.id) { ArtCard(item: item) }
                 .buttonStyle(.plain)
                 .contextMenu {
                     QueueButton(itemID: item.id)

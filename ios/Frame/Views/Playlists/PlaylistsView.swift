@@ -646,6 +646,13 @@ struct PlaylistCard: View {
             Collage(itemIDs: playlist.coverItemIds, title: playlist.name)
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(alignment: .topLeading) {
+                    if isActive {
+                        GlassBadge(systemImage: "play.fill", tint: Theme.vermilion)
+                            .padding(8)
+                            .accessibilityLabel("Gra teraz")
+                    }
+                }
                 .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
             CardCaption {
                 Text(playlist.name)
@@ -653,15 +660,10 @@ struct PlaylistCard: View {
                     .foregroundStyle(Theme.ink)
                     .lineLimit(2)
                 HStack(spacing: 4) {
-                    // Playing now: said in the caption, not on the picture.
-                    if isActive {
-                        OnFrameCount(count: playlist.countText)
-                    } else {
-                        if let icon = playlist.kind.icon {
-                            Image(systemName: icon).font(.caption2)
-                        }
-                        Text(playlist.countText).layoutPriority(1)
+                    if let icon = playlist.kind.icon {
+                        Image(systemName: icon).font(.caption2)
                     }
+                    Text(playlist.countText).layoutPriority(1)
                     Spacer(minLength: 6)
                     if let owner = sharedBy {
                         Label(owner, systemImage: "person.2")
@@ -685,23 +687,6 @@ struct PlaylistCard: View {
     private var sharedBy: String? {
         if !playlist.isMine, let owner = playlist.ownerName, !owner.isEmpty { return owner }
         return nil
-    }
-}
-
-/// The count under the card of the collection on the frame: "Na ramce"
-/// before it, in vermilion, with a play mark (Mateusz 2026-11-10: no mark on
-/// the cover).
-struct OnFrameCount: View {
-    let count: String
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "play.fill").font(.caption2)
-            Text("Na ramce · \(count)").layoutPriority(1)
-        }
-        .foregroundStyle(Theme.vermilion)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Na ramce, \(count)")
     }
 }
 
@@ -739,23 +724,25 @@ struct SuggestionsCard: View {
             SuggestionsCover(works: works)
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(alignment: .topLeading) {
+                    if isActive {
+                        GlassBadge(systemImage: "play.fill", tint: Theme.vermilion)
+                            .padding(8)
+                            .accessibilityLabel("Gra teraz")
+                    }
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    GlassBadge(systemImage: "sparkles")
+                        .padding(8)
+                }
                 .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
             CardCaption {
                 Text("Propozycje dnia")
                     .font(.serif(16, weight: .semibold))
                     .foregroundStyle(Theme.ink)
-                // The sparkles before the count, as a smart playlist's icon.
-                HStack(spacing: 4) {
-                    if isActive {
-                        OnFrameCount(count: subtitle)
-                    } else {
-                        Image(systemName: "sparkles").font(.caption2)
-                        Text(subtitle)
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(Theme.inkSoft)
-                .lineLimit(1)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
             }
         }
         .accessibilityElement(children: .combine)
@@ -764,11 +751,32 @@ struct SuggestionsCard: View {
 }
 
 /// Four of the works next in Propozycje, two by two; plain paper where
-/// there are fewer.
+/// there are fewer. Other works (today's come after the last launch's, or
+/// a new day) fade in over the ones shown once their pictures are here,
+/// instead of taking their place at once (Mateusz 2026-11-10).
 struct SuggestionsCover: View {
     let works: [RemoteItem]
 
+    @Environment(AppModel.self) private var model
+    /// The works drawn, and those they are coming over while they do.
+    @State private var shown: [RemoteItem]?
+    @State private var under: [RemoteItem]?
+    @State private var reveal = 1.0
+
+    static let fade = 0.9
+    /// How long the new pictures may take before they come anyway.
+    static let wait: Duration = .seconds(4)
+    static let maxPixel: CGFloat = 400
+
     var body: some View {
+        ZStack {
+            if let under { grid(under) }
+            grid(shown ?? works).opacity(reveal)
+        }
+        .task(id: works.map(\.id)) { await follow() }
+    }
+
+    private func grid(_ works: [RemoteItem]) -> some View {
         GeometryReader { geo in
             let side = (geo.size.width - 2) / 2
             let height = (geo.size.height - 2) / 2
@@ -776,7 +784,7 @@ struct SuggestionsCover: View {
                 ForEach(0 ..< 2, id: \.self) { row in
                     HStack(spacing: 2) {
                         ForEach(0 ..< 2, id: \.self) { column in
-                            tile(row * 2 + column)
+                            tile(works, row * 2 + column)
                                 .frame(width: side, height: height)
                                 .scaleEffect(CoverZoom.scale)
                                 .clipped()
@@ -787,16 +795,70 @@ struct SuggestionsCover: View {
         }
     }
 
-    @ViewBuilder private func tile(_ index: Int) -> some View {
+    @ViewBuilder private func tile(_ works: [RemoteItem], _ index: Int) -> some View {
         if index < works.count {
             ArtImage(
                 ref: works[index].thumb,
                 fallback: works[index].thumbFallback,
                 placeholder: works[index].item.summary.placeholderColor,
-                maxPixel: 400
+                maxPixel: Self.maxPixel
             )
+            // A view of its own for each work: the picture of the work
+            // before is not kept until the new one loads.
+            .id(works[index].id)
         } else {
             Theme.mat
+        }
+    }
+
+    /// The works given now: at once the first time (and for the same works
+    /// again), else faded in over the ones shown.
+    private func follow() async {
+        let next = works
+        guard let before = shown, before.map(\.id) != next.map(\.id) else {
+            shown = next
+            return
+        }
+        await warm(next)
+        // Other works asked for meanwhile: their own turn shows them.
+        guard !Task.isCancelled else { return }
+        under = before
+        shown = next
+        reveal = 0
+        // One frame with the new works hidden, then they come.
+        try? await Task.sleep(for: .milliseconds(30))
+        withAnimation(.easeInOut(duration: Self.fade)) {
+            reveal = 1
+        } completion: {
+            if shown?.map(\.id) == next.map(\.id) { under = nil }
+        }
+    }
+
+    /// The new works' thumbnails in memory, so they fade in as pictures,
+    /// not as their placeholder colours; not waited for past `wait`.
+    private func warm(_ works: [RemoteItem]) async {
+        let requests = works.prefix(4).map { work in
+            [work.thumb, work.thumbFallback].compactMap { $0 }.compactMap { model.backend.request(for: $0) }
+        }
+        let maxPixel = Self.maxPixel
+        let wait = Self.wait
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                await withTaskGroup(of: Void.self) { loads in
+                    for candidates in requests {
+                        loads.addTask {
+                            for request in candidates {
+                                if (try? await ImageLoader.shared.image(for: request, maxPixel: maxPixel)) != nil {
+                                    return
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            group.addTask { try? await Task.sleep(for: wait) }
+            await group.next()
+            group.cancelAll()
         }
     }
 }

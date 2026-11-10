@@ -57,3 +57,34 @@ def test_no_row_before_the_tile_sets_are_listed(service: FrameService) -> None:
     zoom.known(())
     service.library.set_state(TILE_WORKS_KEY, {"at": time.time(), "items": []})
     assert _zoom_row(service) is None
+
+
+def test_one_work_in_several_tile_sets_is_shown_once(service: FrameService) -> None:
+    """Whistler's "Princess" three times in a row (Mateusz 2026-11-10):
+    Commons keeps it as several files with a tile set."""
+    zoom.known({"400", "401", "402", "500", "501"})
+    princess = [
+        _item(
+            f"wmc:{n}",
+            title="The Princess from the Land of Porcelain",
+            artist="James McNeill Whistler",
+            width=w,
+            height=h,
+        )
+        for n, w, h in ((400, 8000, 13000), (401, 12000, 19500), (402, 6000, 9700))
+    ]
+    # Another work by its Wikidata item: titles in two languages.
+    watch = [
+        _item("wmc:500", title="The Night Watch", artist="Rembrandt", width=9000, height=7000),
+        _item("wmc:501", title="De Nachtwacht", artist="Rembrandt", width=28128, height=23334),
+    ]
+    files = [*princess, *watch]
+    service.library.set_state(
+        TILE_WORKS_KEY, {"at": time.time(), "items": [i.model_dump(mode="json") for i in files]}
+    )
+    fragments = service.importer.fragments
+    assert fragments is not None
+    fragments._page_works.update({"500": "Q219831", "501": "Q219831"})
+    row = _zoom_row(service)
+    assert row is not None
+    assert sorted(r.item.id for r in row.items) == ["wmc:401", "wmc:501"]  # the largest
