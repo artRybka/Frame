@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.139.0
+
+- „Pod lupą”: kafle z Commons są trzymane w 3840 px zamiast 2560, więc przy
+  dużym przybliżeniu są półtora raza ostrzejsze. Kafle zapisane wcześniej
+  zostaną raz pobrane od nowa. Aplikacja wczytuje pełny rozmiar kafla tylko
+  wtedy, gdy przybliżenie go wymaga.
+
 ## 1.138.5
 
 - Mniej powtórek i detali w Szukaj. Wyniki z muzeów nie pokazują już

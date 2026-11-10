@@ -191,12 +191,15 @@ struct ZoomTile: Equatable {
     let pixels: CGFloat
     let request: URLRequest
 
-    /// The width the server keeps a picture of this size at (its long side
-    /// at most 2560 px, `images.kept_size`).
+    /// The long side the server keeps a tile at (`images.TILE_MAX`, Commons'
+    /// widest rendition; 2560 before 2026-11-10).
+    static let keptSide: CGFloat = 3840
+
+    /// The width the server keeps a tile of this size at.
     static func keptWidth(_ width: Int?, _ height: Int?) -> CGFloat {
-        guard let width, let height, width > 0, height > 0 else { return 2560 }
+        guard let width, let height, width > 0, height > 0 else { return keptSide }
         let long = CGFloat(max(width, height))
-        return CGFloat(width) * min(1, 2560 / long)
+        return CGFloat(width) * min(1, keptSide / long)
     }
 
     /// Width / height of the whole grid, from one tile's size and place.
@@ -263,8 +266,9 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
     /// The look at which tiles are in view after a zoom or a drag settles.
     private var settling: Task<Void, Never>?
     private var lookedAt: CFTimeInterval = 0
-    /// Below this many pixels across, a tile comes in its smaller size.
-    private static let smallTile: CGFloat = 1280
+    /// The sizes a tile comes in, smallest first: the least that covers
+    /// what it takes on the screen (a full 3840 px tile decoded is 59 MB).
+    private static let tileSteps: [CGFloat] = [1280, 2560]
 
     init() {
         super.init(frame: .zero)
@@ -389,10 +393,8 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
             let inPicture = tile.unit.width * pictureWidth
             let wanted: CGFloat? = if !near.intersects(place) || onScreen <= inPicture * 1.2 {
                 nil
-            } else if onScreen <= Self.smallTile, tile.pixels > Self.smallTile * 1.2 {
-                Self.smallTile
             } else {
-                tile.pixels
+                Self.tileSteps.first { onScreen <= $0 && tile.pixels > $0 * 1.2 } ?? tile.pixels
             }
             guard let wanted else {
                 drop(tile.id)
