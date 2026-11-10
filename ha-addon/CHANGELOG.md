@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.139.3
+
+- Playlisty: kafelek „Propozycje dnia” po uruchomieniu aplikacji od razu
+  pokazuje dzieła z ostatniego razu, a nie inne, podmieniane chwilę
+  później. Gdy przychodzą nowe (nowy dzień), wchodzą płynnym
+  przenikaniem, dopiero gdy ich miniatury są już w telefonie.
+
 ## 1.139.2
 
 - „Pod lupą”: kafle z Commons są trzymane w 3840 px zamiast 2560, więc przy
