@@ -2,31 +2,32 @@ import SwiftUI
 
 /// "Droga dzieła" (Mateusz 2026-11-10, "S1"; first called "Losy dzieła",
 /// too near "Dalsze losy"): how the work went from its maker to where it
-/// hangs now, from the museum's provenance, as a road drawn with a pen. No
-/// time line, no rhythm (14:59: „droga jako rysowana luźno linia, a nie
-/// rytmiczny wąż… zamiast ikon kropki”; 15:18: „bardziej organiczna”;
-/// 17:19: „najpierw narysować całą linię i na niej nanieść kropki”): one
-/// free stroke drawn first, wandering in a narrow band beside the texts and
-/// crossing to the other side only in one long sweep (over a sea the work
-/// crossed, or after a few stops); each stop's dot is put where the line is
-/// at its year, so no dot ever sits on a turn. It drifts a little as a hand
-/// does, breathes in width, and goes dashed to an exhibition the work came
-/// back from. The last dot (where it is now) is vermilion. The road's shape
-/// comes from the work's id, so it is the same each time.
+/// hangs now, from the museum's provenance, as a drawing of a road. Not a
+/// time line (14:51: „nie jak oś czasu, bo tę już mamy”) and not a rhythmic
+/// snake (14:59: „droga jako rysowana luźno linia… zamiast ikon kropki”).
+/// One line sweeps from side to side down the whole column, the way the
+/// stretch over the Atlantic did in the sketch he circled (17:11): long
+/// slanted runs and round turns. It is drawn first and no turn is tied to
+/// a stop (17:19: „najpierw narysować całą linię i na niej nanieść
+/// kropki”): each stop is a dot on a run, and its text hangs in the bay
+/// under that run, its corner right at the dot (17:29), so the line never
+/// runs into a text and needs no backing. The runs are only as steep as
+/// the texts need. The line starts at the first stop and ends under the
+/// vermilion seal of the last; over a sea the work crossed it makes two
+/// free sweeps among waves. It is inked as with a broad nib held flat
+/// (17:59: „przy zakrętach grubsza, jakby rysowana piórem do kaligrafii”):
+/// thin along the runs, thick where it turns down. An exhibition the work
+/// came back from is a hollow dot. The shape comes from the work's id.
 struct JourneyRoad: View {
     let journey: DailyWork.Journey
     /// The work's id: the road's wander.
     let seed: String
 
-    /// Where each stop's text ended up, in the road's space.
-    @State private var rows: [Int: CGRect] = [:]
+    /// How tall each stop's text is at the width the road gives it.
+    @State private var heights: [Int: CGFloat] = [:]
+    /// How wide the road is.
+    @State private var width: CGFloat = 0
 
-    private static let gap: CGFloat = 58
-    /// Before a stop where the line crosses to the other side (over a sea,
-    /// or after a few stops): room for one long sweep.
-    private static let crossGap: CGFloat = 190
-    /// The band the line wanders in, beside the texts.
-    static let band: CGFloat = 86
     /// A stop this far from the one before has crossed a sea.
     private static let seaKm = 2500.0
 
@@ -106,26 +107,7 @@ struct JourneyRoad: View {
 
     // MARK: The road
 
-    /// Which side of the column the line runs on at a stop; its text is
-    /// beside the band, on the rest of the width.
-    private struct Place {
-        var left: Bool
-    }
-
-    /// The line crosses over a sea, and after three stops on one side.
-    private var places: [Place] {
-        var random = SeededRandom(seed)
-        var left = random.next() % 2 == 0
-        var run = 0
-        return journey.stops.indices.map { i in
-            if i > 0, overSea(i) || run >= 3 {
-                left.toggle()
-                run = 0
-            }
-            run += 1
-            return Place(left: left)
-        }
-    }
+    private var seas: [Bool] { journey.stops.indices.map(overSea) }
 
     /// Whether the stop crossed a sea from the one before.
     private func overSea(_ i: Int) -> Bool {
@@ -152,63 +134,51 @@ struct JourneyRoad: View {
     }
 
     private var road: some View {
-        let places = self.places
-        // Read here, not only in the Canvas: SwiftUI does not redraw a Canvas
-        // for state its drawing closure reads, so the road came out blank
-        // whenever the last row was measured after the first draw.
-        let rows = self.rows
-        let shape = self.shape(rows, places: places)
-        return VStack(alignment: .leading, spacing: 0) {
+        let count = journey.stops.count
+        let seas = self.seas
+        // Worked out here, not in the Canvas: SwiftUI does not redraw a
+        // Canvas for state only its drawing closure reads, so the road came
+        // out blank whenever the last text was measured after the first draw.
+        let measured = (0..<count).compactMap { heights[$0] }
+        let plan = measured.count == count ? Self.plan(width: width, heights: measured, seas: seas, seed: seed) : nil
+        let textWidth = Self.textWidth(width)
+        return ZStack(alignment: .topLeading) {
             ForEach(Array(journey.stops.enumerated()), id: \.offset) { i, stop in
-                // Measured before the gap above it and before it moves to its
-                // dot: the row's own text, where the layout put it.
-                row(stop, places[i])
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("road")) } action: { self.rows[i] = $0 }
-                    .offset(x: shift(i, places[i], shape))
-                    .padding(.top, i == 0 ? 36 : places[i].left != places[i - 1].left ? Self.crossGap : Self.gap)
+                // Each text is measured where the layout first puts it and
+                // then moved to its dot; the move does not change its height.
+                row(stop, leading: plan?.leading[i] ?? true)
+                    .frame(width: textWidth, alignment: plan?.leading[i] ?? true ? .topLeading : .topTrailing)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { self.heights[i] = $0 }
+                    .offset(x: plan?.texts[i].minX ?? 0, y: plan?.texts[i].minY ?? 0)
+                    .opacity(plan == nil ? 0 : 1)
             }
         }
-        .padding(.bottom, 40)
-        .coordinateSpace(.named("road"))
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(height: plan?.height, alignment: .topLeading)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { self.width = $0 }
         .background {
-            Canvas { context, size in draw(in: &context, size: size, shape: shape, rows: rows) }
+            Canvas { context, size in draw(in: &context, size: size, plan: plan, seas: seas) }
                 .accessibilityHidden(true)
         }
-        .overlay(alignment: .topLeading) { seaNames }
     }
 
-    /// Where the year's line is in a row: its dot sits there.
-    private static let yearY: CGFloat = 12
-    /// From a dot to its text (with the backing's own 6 pt inside).
-    private static let toText: CGFloat = 12
-
-    /// How far a row moves sideways so its text starts right at its dot
-    /// (17:29: „teksty… muszą być zaraz przy nich”).
-    private func shift(_ i: Int, _ place: Place, _ shape: RoadShape?) -> CGFloat {
-        guard let shape, i < shape.dots.count, let row = rows[i] else { return 0 }
-        let dot = shape.dots[i].x
-        return place.left ? dot + Self.toText - (row.minX + Self.band + 8)
-                          : dot - Self.toText - (row.maxX - Self.band - 8)
-    }
-
-    private func row(_ stop: DailyWork.Journey.Stop, _ place: Place) -> some View {
-        VStack(alignment: place.left ? .leading : .trailing, spacing: 2) {
-            Text("\(Text(stop.year).foregroundStyle(Theme.vermilion).fontWeight(.semibold))\(Text(stop.place.isEmpty ? "" : " · \(stop.place)").foregroundStyle(Theme.inkSoft))")
-                .font(.caption)
-                .monospacedDigit()
+    private func row(_ stop: DailyWork.Journey.Stop, leading: Bool) -> some View {
+        // The date in the hand, always the end of the line that is at the dot
+        // (18:04: „czerwone daty zawsze przy kropce. Daty pismem pisanym”):
+        // first where the text reads from its dot, last where it ends at it.
+        let date = Text(stop.year).font(.hand(21)).foregroundStyle(Theme.vermilion)
+        let place = Text(stop.place).font(.caption).foregroundStyle(Theme.inkSoft)
+        let between = Text(stop.place.isEmpty ? "" : " · ").font(.caption).foregroundStyle(Theme.inkSoft)
+        return VStack(alignment: leading ? .leading : .trailing, spacing: 0) {
+            (leading ? Text("\(date)\(between)\(place)") : Text("\(place)\(between)\(date)"))
+                .lineLimit(1)
+                .truncationMode(leading ? .tail : .head)
             Text(Self.marked(stop.text))
                 .font(.serif(15))
                 .foregroundStyle(Theme.ink)
-                .multilineTextAlignment(place.left ? .leading : .trailing)
+                .multilineTextAlignment(leading ? .leading : .trailing)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        // On a backing of paper that breaks the line where it runs under the
-        // text (17:29: „na podkładzie, który będzie przerywać ścieżkę”).
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
-        .background(Theme.paper, in: .rect(cornerRadius: 6))
-        .frame(maxWidth: .infinity, alignment: place.left ? .leading : .trailing)
-        .padding(place.left ? .leading : .trailing, Self.band + 8)
         .accessibilityElement(children: .combine)
     }
 
@@ -218,146 +188,279 @@ struct JourneyRoad: View {
         return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
     }
 
-    @ViewBuilder
-    private var seaNames: some View {
-        ForEach(journey.stops.indices.filter { overSea($0) && !sea($0).isEmpty }, id: \.self) { i in
-            if let before = rows[i - 1], let after = rows[i] {
-                Text(sea(i))
-                    .font(.serif(15).italic())
-                    .foregroundStyle(Theme.inkSoft)
-                    .position(x: before.width * 0.62, y: (before.maxY + after.minY) / 2 + 8)
-            }
-        }
-    }
-
     // MARK: Drawing
 
-    /// The line, and each stop's dot on it.
-    private struct RoadShape {
-        var line: [CGPoint]
-        var dots: [CGPoint]
-        var pins: [Int]
-    }
-
-    /// The line first (17:19), the dots after: the line is drawn through
-    /// points in the gaps only, swinging from one side of the band to the
-    /// other between stops; a crossing goes down past the text, sweeps across
-    /// the gap and comes down on the other side. Each dot then goes where the
-    /// line passes its stop's year, on a flank, never on a turn. Nil until
-    /// every row is measured.
-    private func shape(_ rows: [Int: CGRect], places: [Place]) -> RoadShape? {
+    private func draw(in context: inout GraphicsContext, size: CGSize, plan: RoadPlan?, seas: [Bool]) {
+        guard let plan else { return }
         let count = journey.stops.count
-        guard count >= 2, (0..<count).allSatisfy({ rows[$0] != nil }), let width = rows[0]?.width, width > 2 * Self.band
-        else { return nil }
-        var random = SeededRandom(seed + "road")
-        func inBand(_ left: Bool, _ u: CGFloat) -> CGFloat {
-            left ? 10 + (Self.band - 14) * u : width - Self.band + 4 + (Self.band - 14) * u
-        }
-        var swing = random.next() % 2 == 0
-        var route: [CGPoint] = [CGPoint(x: inBand(places[0].left, 0.5), y: 0)]
-        for i in 1..<count {
-            let left = places[i].left, above = rows[i - 1]!, row = rows[i]!
-            if places[i - 1].left == left {
-                swing.toggle()
-                route.append(CGPoint(x: inBand(left, (swing ? 0.15 : 0.85) + (random.unit() - 0.5) * 0.16),
-                                     y: (above.maxY + row.minY) / 2 + (random.unit() - 0.5) * 14))
-            } else {
-                route.append(CGPoint(x: inBand(!left, 0.35 + 0.3 * random.unit()), y: above.maxY + 14))
-                route.append(CGPoint(x: width * (0.5 + (random.unit() - 0.5) * 0.2), y: (above.maxY + row.minY) / 2))
-                route.append(CGPoint(x: inBand(left, 0.35 + 0.3 * random.unit()), y: row.minY - 26))
-            }
-        }
-        route.append(CGPoint(x: inBand(places[count - 1].left, 0.5), y: rows[count - 1]!.maxY + 40))
-        let line = Self.penLine(route, random: &random)
-        var pins: [Int] = []
-        for i in 0..<count {
-            let year = rows[i]!.minY + Self.yearY
-            var k = pins.last ?? 0
-            while k < line.count - 1, line[k].y < year { k += 1 }
-            pins.append(k)
-        }
-        return RoadShape(line: line, dots: pins.map { line[$0] }, pins: pins)
-    }
-
-    private func draw(in context: inout GraphicsContext, size: CGSize, shape: RoadShape?, rows: [Int: CGRect]) {
-        guard let shape else { return }
-        let count = journey.stops.count
-        let (line, dots, pins) = (shape.line, shape.dots, shape.pins)
-        var random = SeededRandom(seed + "ink")
         // The seas first, under everything.
-        for i in 1..<count where overSea(i) {
-            drawSea(in: &context, top: rows[i - 1]!.maxY + 14, bottom: rows[i]!.minY - 10, width: size.width)
+        for i in 1..<count where seas[i] {
+            var random = SeededRandom(seed + "sea\(i)")
+            drawSea(in: &context, name: sea(i), top: plan.texts[i - 1].maxY + 16,
+                    bottom: i == count - 1 ? plan.dots[i].y - 30 : plan.texts[i].minY - 14,
+                    width: size.width, plan: plan, random: &random)
         }
-        // Inked as one ribbon, dashed to and from an exhibition the work came
-        // back from, as a side trip.
-        var runs: [(Range<Int>, Bool)] = []
-        func add(_ range: Range<Int>, _ dashed: Bool) {
-            if case let (prev, was)? = runs.last, was == dashed { runs[runs.count - 1] = (prev.lowerBound..<range.upperBound, was) } else { runs.append((range, dashed)) }
-        }
-        add(0..<(pins[0] + 1), journey.stops[0].detour)
-        for i in 0..<(count - 1) {
-            add(pins[i]..<(pins[i + 1] + 1), journey.stops[i].detour || journey.stops[i + 1].detour)
-        }
-        add(pins[count - 1]..<line.count, journey.stops[count - 1].detour)
-        for (range, dashed) in runs {
-            let part = Array(line[range])
-            if dashed {
-                var path = Path()
-                path.addLines(part)
-                context.stroke(path, with: .color(Theme.ink.opacity(0.6)),
-                               style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [3, 5]))
-            } else {
-                context.fill(Self.ribbon(part, random: &random, base: 2.2), with: .color(Theme.ink.opacity(0.85)))
-            }
-        }
-        // The stops: dots, a ring round the last.
+        // The road, from the first dot to the seal of the last.
+        var stroke = Path()
+        stroke.addLines(Self.nibStroke(plan.line, until: plan.dots[count - 1], clear: Self.sealClear))
+        stroke.closeSubpath()
+        context.fill(stroke, with: .color(Theme.ink))
+        context.stroke(stroke, with: .color(Theme.ink), style: StrokeStyle(lineWidth: Self.hair, lineJoin: .round))
+        // The stops: dots, a hollow one for a side trip, a seal for the last.
         for i in 0..<count {
-            let p = dots[i]
+            let p = plan.dots[i]
             func circle(_ r: CGFloat) -> Path { Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r)) }
-            if journey.stops[i].detour {
+            if i == count - 1 {
+                // Where the work is now: a seal, as under a piece of
+                // calligraphy (18:04: the dot in a ring did not please).
+                let seal = Path(roundedRect: CGRect(x: -7, y: -7, width: 14, height: 14), cornerRadius: 2.2)
+                    .applying(CGAffineTransform(translationX: p.x, y: p.y).rotated(by: -7 * .pi / 180))
+                context.fill(seal, with: .color(Theme.vermilion))
+            } else if journey.stops[i].detour {
                 context.fill(circle(5), with: .color(Theme.paper))
-                context.stroke(circle(4.5), with: .color(Theme.ink), lineWidth: 1.5)
-            } else if i == count - 1 {
-                context.fill(circle(9), with: .color(Theme.vermilion))
-                context.stroke(circle(9), with: .color(Theme.paper), lineWidth: 2.5)
-                context.stroke(circle(14), with: .color(Theme.vermilion), lineWidth: 1.5)
+                context.stroke(circle(5), with: .color(Theme.ink), lineWidth: 1.7)
             } else {
-                context.fill(circle(7), with: .color(Theme.ink))
-                context.stroke(circle(7), with: .color(Theme.paper), lineWidth: 2.5)
+                context.fill(circle(5.4), with: .color(Theme.ink))
             }
         }
     }
 
-    /// A band of sea with loose edges and rows of small waves.
-    private func drawSea(in context: inout GraphicsContext, top: CGFloat, bottom: CGFloat, width: CGFloat) {
-        guard bottom - top > 30 else { return }
-        var band = Path()
-        band.move(to: CGPoint(x: 0, y: top))
-        band.addCurve(to: CGPoint(x: width, y: top - 4), control1: CGPoint(x: width * 0.26, y: top - 14),
-                      control2: CGPoint(x: width * 0.63, y: top + 16))
-        band.addLine(to: CGPoint(x: width, y: bottom))
-        band.addCurve(to: CGPoint(x: 0, y: bottom + 4), control1: CGPoint(x: width * 0.69, y: bottom + 12),
-                      control2: CGPoint(x: width * 0.31, y: bottom - 14))
-        band.closeSubpath()
-        context.fill(band, with: .color(Self.sea.opacity(0.16)))
+    /// A sea as on a map: rows of short waves that keep clear of the road
+    /// and of the texts, and the name between two rows, where there is room.
+    private func drawSea(in context: inout GraphicsContext, name: String, top: CGFloat, bottom: CGFloat,
+                         width: CGFloat, plan: RoadPlan, random: inout SeededRandom) {
+        guard bottom - top > 40 else { return }
+        let rows = max(3, Int(((bottom - top) / 30).rounded())), pitch = (bottom - top) / CGFloat(rows - 1)
+        func inText(_ p: CGPoint, _ pad: CGFloat) -> Bool {
+            plan.texts.contains { $0.insetBy(dx: -pad, dy: -pad).contains(p) }
+        }
         var waves = Path()
-        var y = top + 14
-        var shift: CGFloat = 0
-        while y < bottom - 10 {
-            var x = 14 + shift
-            while x < width - 24 {
-                waves.move(to: CGPoint(x: x, y: y))
-                waves.addQuadCurve(to: CGPoint(x: x + 12, y: y), control: CGPoint(x: x + 6, y: y - 5))
-                waves.addQuadCurve(to: CGPoint(x: x + 24, y: y), control: CGPoint(x: x + 18, y: y + 5))
-                x += 52
+        for q in 0..<rows {
+            let y = top + pitch * CGFloat(q)
+            let near = plan.line.filter { abs($0.y - y) < 10 }
+            var x = 6 + 40 * random.unit()
+            while x < width - 30 {
+                let length = min(34 + 60 * random.unit(), width - 6 - x), phase = random.unit() * 6
+                var run: [CGPoint] = []
+                var u: CGFloat = 0
+                while u <= length {
+                    let swell = 2 * sin((u / 22 + phase) * 2 * .pi) * min(1, u / 8, (length - u) / 8)
+                    let p = CGPoint(x: x + u, y: y + swell)
+                    if inText(p, 10) || near.contains(where: { abs($0.x - p.x) < 9 && abs($0.y - p.y) < 7 }) {
+                        if run.count > 6 { waves.addLines(run) }
+                        run = []
+                    } else {
+                        run.append(p)
+                    }
+                    u += 3
+                }
+                if run.count > 6 { waves.addLines(run) }
+                x += length + 14 + 30 * random.unit()
             }
-            y += 30
-            shift = shift == 0 ? 22 : 0
         }
-        context.stroke(waves, with: .color(Self.sea.opacity(0.8)), style: StrokeStyle(lineWidth: 1.4, lineCap: .round))
+        context.stroke(waves, with: .color(Self.sea.opacity(0.75)),
+                       style: StrokeStyle(lineWidth: 1.15, lineCap: .round, lineJoin: .round))
+        guard !name.isEmpty else { return }
+        var best: CGPoint?, clear: CGFloat = -1
+        for q in 0..<(rows - 1) {
+            for part in [0.2, 0.32, 0.5, 0.68, 0.8] as [CGFloat] {
+                let spot = CGPoint(x: width * part, y: top + pitch * (CGFloat(q) + 0.5))
+                if inText(spot, 34) { continue }
+                let nearest = plan.line.map { hypot(($0.x - spot.x) / 2.6, $0.y - spot.y) }.min() ?? 0
+                if nearest > clear + 1 { (best, clear) = (spot, nearest) }
+            }
+        }
+        if let best {
+            context.draw(Text(name).font(.serif(15).italic()).kerning(1.8).foregroundStyle(Theme.inkSoft), at: best)
+        }
     }
 
-    private static let sea = Color(light: 0x9DB3C2, dark: 0x4F6878)
+    private static let sea = Color(light: 0x8FA9BA, dark: 0x5E7A8C)
+}
+
+// MARK: Geometry
+
+/// The road worked out: the line, each stop's dot on it, and where each
+/// stop's text goes.
+struct RoadPlan {
+    var line: [CGPoint]
+    var dots: [CGPoint]
+    var texts: [CGRect]
+    /// Whether a text reads from its left edge (its dot is at its left).
+    var leading: [Bool]
+    var height: CGFloat
+}
+
+extension JourneyRoad {
+    /// Where the date's figures are in a text (the hand's line is tall):
+    /// level with a dot beside it.
+    static let yearY: CGFloat = 14
+    /// The line stops this short of the last stop, under its seal.
+    static let sealClear: CGFloat = 3
+    /// The nib's width, how far it is turned from flat, and the thinnest
+    /// the stroke gets.
+    static let nib: CGFloat = 6.2
+    static let nibTilt: CGFloat = -8 * .pi / 180
+    static let hair: CGFloat = 1.4
+
+    /// Every text is this wide: a little over half the road, so a run has
+    /// room to pass above it and the next one under it.
+    static func textWidth(_ width: CGFloat) -> CGFloat { max(120, (width * 0.55).rounded()) }
+
+    /// The road for texts of these heights. `seas[i]`: stop `i` is over a
+    /// sea from the one before.
+    ///
+    /// The line is a hook from the first stop, then runs from side to side:
+    /// two free ones over a sea, one for each stop between the first and the
+    /// last, and one to the last stop, which hangs on a short drop. A stop's
+    /// dot is on its run just past its text's corner, and its text is in the
+    /// bay under that run, on the side the run came from. The line is drawn
+    /// through the turns alone; then, where a text would not clear the run
+    /// under it, that run is made steeper (or its turn sent out to the
+    /// edge) and the line drawn again.
+    static func plan(width: CGFloat, heights: [CGFloat], seas: [Bool], seed: String) -> RoadPlan? {
+        let count = heights.count
+        guard count >= 2, seas.count == count, width > 240 else { return nil }
+        var random = SeededRandom(seed + "road")
+        let textWidth = Self.textWidth(width)
+        func x(_ left: Bool, _ fromEdge: CGFloat) -> CGFloat { left ? fromEdge : width - fromEdge }
+        struct Run {
+            var stop: Int?
+            var sea = false
+            /// The side its far turn is on.
+            var left = false
+            var fall: CGFloat = 0
+            var inset: CGFloat = 0
+            var margin: CGFloat = 0
+            var bow: CGFloat = 0
+            var turn = CGPoint.zero
+        }
+        let startLeft = random.next() % 2 == 0
+        var runs: [Run] = []
+        for k in 1..<count {
+            if seas[k] { runs += [Run(sea: true), Run(sea: true)] }
+            runs.append(Run(stop: k < count - 1 ? k : nil))
+        }
+        for i in runs.indices {
+            runs[i].left = i % 2 == 1 ? startLeft : !startLeft
+            runs[i].fall = runs[i].sea ? 54 + 14 * random.unit() : 58 + 22 * random.unit()
+            // Most turns reach the edge; one in three stops short of it.
+            runs[i].inset = runs[i].sea ? width * (0.2 + 0.14 * random.unit())
+                : 14 + (random.unit() < 0.35 ? 30 + 34 * random.unit() : 22 * random.unit())
+            runs[i].margin = 2 + 12 * random.unit()
+            runs[i].bow = (random.unit() - 0.5) * 14
+        }
+        let start = CGPoint(x: x(startLeft, 52 + 10 * random.unit()), y: yearY)
+        let hookInset = 16 + 10 * random.unit()
+        var hook = max(44, heights[0] + 10), drop: CGFloat = 44
+        var result: RoadPlan?
+        for _ in 0..<60 {
+            var route = [start, CGPoint(x: x(startLeft, hookInset), y: start.y + hook)]
+            var y = start.y + hook
+            for i in runs.indices {
+                let from = route[route.count - 1]
+                y += runs[i].fall
+                runs[i].turn = CGPoint(x: x(runs[i].left, runs[i].inset), y: y)
+                // A point mid-run, a little off the straight: the run bows.
+                route.append(CGPoint(x: (from.x + runs[i].turn.x) / 2, y: (from.y + y) / 2 + runs[i].bow))
+                route.append(runs[i].turn)
+            }
+            let endLeft = runs[runs.count - 1].left
+            let end = CGPoint(x: x(endLeft, runs[runs.count - 1].inset + 26), y: y + drop)
+            route.append(end)
+            let line = Self.line(route)
+            func index(at y: CGFloat) -> Int {
+                var k = 0
+                while k < line.count - 1, line[k].y < y { k += 1 }
+                return k
+            }
+            // Where each turn is on the line: the hook's, then each run's.
+            let turns = [index(at: route[1].y)] + runs.map { index(at: $0.turn.y) }
+            /// The lowest and the highest the line is over a stretch of x, between two samples.
+            func lowest(_ from: Int, _ to: Int, _ x0: CGFloat, _ x1: CGFloat) -> CGFloat? {
+                line[from...to].filter { $0.x >= x0 && $0.x <= x1 }.map(\.y).max()
+            }
+            func highest(_ from: Int, _ to: Int, _ x0: CGFloat, _ x1: CGFloat) -> CGFloat? {
+                line[from...to].filter { $0.x >= x0 && $0.x <= x1 }.map(\.y).min()
+            }
+            var texts = [CGRect](repeating: .zero, count: count)
+            var dots = [CGPoint](repeating: .zero, count: count)
+            var leading = [Bool](repeating: true, count: count)
+            var changed = false
+            // The first stop: the line starts at its dot and hooks away from its text.
+            do {
+                let x0 = startLeft ? start.x + 15 : start.x - 15 - textWidth
+                texts[0] = CGRect(x: x0, y: 0, width: textWidth, height: heights[0])
+                dots[0] = start
+                leading[0] = startLeft
+                if let under = highest(turns[0], turns[min(2, turns.count - 1)], x0 - 6, x0 + textWidth + 6),
+                   heights[0] + 11 > under {
+                    hook += heights[0] + 12 - under
+                    changed = true
+                }
+            }
+            for i in runs.indices {
+                guard let k = runs[i].stop else { continue }
+                // The text is on the open side of the bay: where the run came from.
+                let left = !runs[i].left
+                let x0 = left ? runs[i].margin : width - runs[i].margin - textWidth, x1 = x0 + textWidth
+                let dotX = left ? x1 + 11 : x0 - 11
+                var d = turns[i]
+                for q in turns[i]...turns[i + 1] where abs(line[q].x - dotX) < abs(line[d].x - dotX) { d = q }
+                dots[k] = line[d]
+                leading[k] = !left
+                let top = (lowest(turns[i], turns[i + 1], x0 - 5, x1 + 5) ?? line[d].y) + 5
+                texts[k] = CGRect(x: x0, y: top, width: textWidth, height: heights[k])
+                if let under = highest(turns[i + 1], turns[min(i + 3, turns.count - 1)], x0 - 6, x1 + 6),
+                   top + heights[k] + 11 > under {
+                    let need = top + heights[k] + 12 - under
+                    // A tall text first sends its turn out to the edge, and
+                    // only then makes the next run steeper.
+                    if runs[i + 1].fall + need > 104, runs[i].inset > 16, !runs[i].sea {
+                        runs[i].inset = max(14, runs[i].inset - 12)
+                    } else {
+                        runs[i + 1].fall += need
+                    }
+                    changed = true
+                }
+            }
+            // The last stop: the line drops to its dot beside its text.
+            do {
+                let k = count - 1
+                let x0 = endLeft ? end.x + 18 : end.x - 18 - textWidth
+                texts[k] = CGRect(x: x0, y: end.y - yearY, width: textWidth, height: heights[k])
+                dots[k] = end
+                leading[k] = endLeft
+                if let above = lowest(turns[turns.count - 2], turns[turns.count - 1], x0 - 6, x0 + textWidth + 6),
+                   above > texts[k].minY - 8 {
+                    drop += above - texts[k].minY + 9
+                    changed = true
+                }
+            }
+            result = RoadPlan(line: line, dots: dots, texts: texts, leading: leading,
+                              height: max(texts[count - 1].maxY, end.y + 10) + 6)
+            if !changed { break }
+        }
+        return result
+    }
+
+    /// The route as one line: a spline through it, a point every 2 pt, and
+    /// a soft pass over the whole of it, so every turn is a round one.
+    static func line(_ route: [CGPoint]) -> [CGPoint] {
+        smooth(even(spline(route, per: 24), step: 2), sigma: 8)
+    }
+
+    /// The outline of the line inked with a broad nib: every point of it
+    /// moved half the nib each way along the nib. Where the line goes along
+    /// the nib the outline closes to nothing, and the hairline drawn round
+    /// it is all there is. It stops `clear` short of `until`.
+    static func nibStroke(_ line: [CGPoint], until end: CGPoint, clear: CGFloat) -> [CGPoint] {
+        var cut = line.count
+        while cut > 0, hypot(line[cut - 1].x - end.x, line[cut - 1].y - end.y) < clear { cut -= 1 }
+        let dx = cos(nibTilt) * nib / 2, dy = sin(nibTilt) * nib / 2
+        let body = line[..<cut]
+        return body.map { CGPoint(x: $0.x + dx, y: $0.y + dy) } + body.reversed().map { CGPoint(x: $0.x - dx, y: $0.y - dy) }
+    }
 
     /// Centripetal Catmull-Rom through the points, `per` samples between
     /// each two: smooth, and never a cusp or a knot between close points.
@@ -384,26 +487,10 @@ struct JourneyRoad: View {
         return out
     }
 
-    /// One smooth stroke through the route: the spline evened out to a
-    /// point every 2 pt, with a slow sideways drift of the hand.
-    static func penLine(_ route: [CGPoint], random: inout SeededRandom) -> [CGPoint] {
-        let (points, _) = even(spline(route, per: 24), step: 2, keep: [])
-        guard points.count > 2 else { return points }
-        var a: CGFloat = 0, v: CGFloat = 0
-        return points.indices.map { i in
-            v = v * 0.985 + (random.unit() - 0.5) * 0.04
-            a = min(2.5, max(-2.5, a + v))
-            let n = normal(points, i)
-            return CGPoint(x: points[i].x + n.x * a, y: points[i].y + n.y * a)
-        }
-    }
-
-    /// Points every `step` along the polyline; the points at `keep` are
-    /// kept exactly, and where each landed is returned.
-    static func even(_ points: [CGPoint], step: CGFloat, keep: [Int]) -> ([CGPoint], [Int]) {
-        guard let first = points.first else { return ([], []) }
-        let kept = Set(keep)
-        var out = [first], landed: [Int: Int] = kept.contains(0) ? [0: 0] : [:]
+    /// Points every `step` along the polyline, and its last point.
+    static func even(_ points: [CGPoint], step: CGFloat) -> [CGPoint] {
+        guard let first = points.first else { return [] }
+        var out = [first]
         var carry: CGFloat = 0
         for i in 1..<points.count {
             let a = points[i - 1], b = points[i], d = hypot(b.x - a.x, b.y - a.y)
@@ -413,44 +500,41 @@ struct JourneyRoad: View {
                 s += step
             }
             carry = d - (s - step)
-            if kept.contains(i) {
-                out.append(b)
-                landed[i] = out.count - 1
-                carry = 0
-            } else if i == points.count - 1 {
-                out.append(b)
-            }
         }
-        return (out, keep.map { landed[$0] ?? 0 })
+        out.append(points[points.count - 1])
+        return out
     }
 
-    /// The line as a filled ribbon whose width breathes like a pen's
-    /// pressure, thinner at both ends.
-    static func ribbon(_ line: [CGPoint], random: inout SeededRandom, base: CGFloat) -> Path {
-        var path = Path()
-        guard line.count >= 2 else { return path }
+    /// A Gaussian pass along the line (`sigma` in samples): a tight turn
+    /// becomes a round one. Both ends stay where they are.
+    static func smooth(_ line: [CGPoint], sigma: CGFloat) -> [CGPoint] {
         let n = line.count
-        var a: CGFloat = 0, v: CGFloat = 0
-        var left: [CGPoint] = [], right: [CGPoint] = []
-        for i in 0..<n {
-            v = v * 0.97 + (random.unit() - 0.5) * 0.06
-            a = min(0.7, max(-0.7, a + v))
-            let taper = min(1, CGFloat(i) / 40, CGFloat(n - 1 - i) / 40)
-            let half = base * (1 + 0.45 * a) * (0.35 + 0.65 * taper) / 2
-            let p = line[i], m = normal(line, i)
-            left.append(CGPoint(x: p.x + m.x * half, y: p.y + m.y * half))
-            right.append(CGPoint(x: p.x - m.x * half, y: p.y - m.y * half))
+        guard n > 2 else { return line }
+        let reach = Int((sigma * 3).rounded(.up))
+        let weights = (-reach...reach).map { exp(-CGFloat($0 * $0) / (2 * sigma * sigma)) }
+        let total = weights.reduce(0, +)
+        // Past an end: the line mirrored through that end.
+        func at(_ i: Int) -> CGPoint {
+            if i < 0 {
+                let m = line[min(n - 1, -i)]
+                return CGPoint(x: 2 * line[0].x - m.x, y: 2 * line[0].y - m.y)
+            }
+            if i >= n {
+                let m = line[max(0, 2 * n - 2 - i)]
+                return CGPoint(x: 2 * line[n - 1].x - m.x, y: 2 * line[n - 1].y - m.y)
+            }
+            return line[i]
         }
-        path.addLines(left + right.reversed())
-        path.closeSubpath()
-        return path
-    }
-
-    /// The unit normal of the line at a sample.
-    private static func normal(_ line: [CGPoint], _ i: Int) -> CGPoint {
-        let q = line[min(line.count - 1, i + 1)], o = line[max(0, i - 1)]
-        let dx = q.x - o.x, dy = q.y - o.y, m = max(1e-6, hypot(dx, dy))
-        return CGPoint(x: -dy / m, y: dx / m)
+        return (0..<n).map { i in
+            if i == 0 || i == n - 1 { return line[i] }
+            var x: CGFloat = 0, y: CGFloat = 0
+            for k in -reach...reach {
+                let p = at(i + k), w = weights[k + reach]
+                x += p.x * w
+                y += p.y * w
+            }
+            return CGPoint(x: x / total, y: y / total)
+        }
     }
 }
 

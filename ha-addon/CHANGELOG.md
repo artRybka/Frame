@@ -2,12 +2,15 @@
 
 ## 1.142.3
 
-- „Droga dzieła”: najpierw rysuje się jedna swobodna linia, a kropki
-  trafiają tam, gdzie przechodzi przez rok przystanku. Linia nie ma więc
-  zakrętów przy kropkach. Wije się w pasie obok tekstów, a na drugą
-  stronę przechodzi długim łukiem nad morzem albo po trzech przystankach.
-  Tekst każdego przystanku zaczyna się zaraz przy kropce, na podkładzie
-  w kolorze papieru, który przerywa linię tam, gdzie biegnie pod tekstem.
+- „Droga dzieła” jest teraz rysunkiem drogi, a nie osią czasu. Jedna
+  linia płynie łukami przez całą szerokość, jak pociągnięta szerokim
+  piórem do kaligrafii: cienka na długich skosach, gruba na zakrętach.
+  Powstaje pierwsza, a kropki przystanków stoją na gotowej linii, więc
+  przy żadnej nie ma zakrętu. Tekst każdego przystanku zaczyna się tuż
+  pod swoją kropką, w zakolu drogi, i linia nigdzie w niego nie wchodzi.
+- Daty przystanków są pisane odręcznie i zawsze stoją przy kropce.
+- Droga zaczyna się na pierwszym przystanku i kończy czerwoną pieczęcią
+  tam, gdzie dzieło jest dziś. Nad morzem wije się swobodnie wśród fal.
 - Linia z kropkami rysuje się zawsze. Wcześniej czasem zostawały same
   teksty, bez drogi.
 
