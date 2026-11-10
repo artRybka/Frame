@@ -245,31 +245,32 @@ struct JourneyRoad: View {
         let count = journey.stops.count
         // Under everything, an underpainting under each text (18:48:
         // „plamy akwareli z ostrzejszą krawędzią jak rozlana plama,
-        // nierówne podmalówki pod treściami”): a wash and a second one over
-        // it, a bloom where a drop pushed the pigment away, and the edge
-        // where the pigment gathered as it dried. On the dark page faint.
+        // nierówne podmalówki pod treściami”; 19:08: „jeżeli już, to
+        // blado-białe”): a pale white wash and a second one over it, a
+        // bloom where a drop pushed the paint away, and the whiter edge
+        // where it gathered as it dried. On the dark page faint.
         let washes = plan.hugs.indices.map { i -> Wash in
             var random = SeededRandom(seed + "wash\(i)")
             return Self.wash(under: plan.hugs[i], random: &random)
         }
         context.drawLayer { layer in
-            layer.opacity = dark ? 0.15 : 1
+            layer.opacity = dark ? 0.1 : 1
             for wash in washes {
-                layer.fill(Self.closed(wash.big), with: .color(Self.washTint.opacity(0.26 * wash.tone)))
-                layer.fill(Self.closed(wash.over), with: .color(Self.washTint.opacity(0.17 * wash.tone)))
-                layer.stroke(Self.closed(wash.over), with: .color(Self.washEdge.opacity(0.3 * wash.tone)), lineWidth: 0.8)
+                layer.fill(Self.closed(wash.big), with: .color(Color.white.opacity(0.5 * wash.tone)))
+                layer.fill(Self.closed(wash.over), with: .color(Color.white.opacity(0.3 * wash.tone)))
+                layer.stroke(Self.closed(wash.over), with: .color(Color.white.opacity(0.55 * wash.tone)), lineWidth: 0.8)
             }
             layer.drawLayer { soft in
                 soft.addFilter(.blur(radius: 2.6))
                 for wash in washes {
-                    soft.stroke(Self.closed(wash.big), with: .color(Self.washEdge.opacity(0.16 * wash.tone)), lineWidth: 5)
+                    soft.stroke(Self.closed(wash.big), with: .color(Color.white.opacity(0.35 * wash.tone)), lineWidth: 5)
                     let bloom = CGRect(x: wash.bloom.x - wash.bloom.radius, y: wash.bloom.y - wash.bloom.radius,
                                        width: 2 * wash.bloom.radius, height: 2 * wash.bloom.radius)
                     soft.fill(Path(ellipseIn: bloom), with: .color(Theme.paper.opacity(0.45 * wash.tone)))
                 }
             }
             for wash in washes {
-                layer.stroke(Self.closed(wash.big), with: .color(Self.washEdge.opacity(0.6 * wash.tone)),
+                layer.stroke(Self.closed(wash.big), with: .color(Color.white.opacity(min(1, 0.9 * wash.tone))),
                              style: StrokeStyle(lineWidth: 1.1, lineJoin: .round))
             }
         }
@@ -280,22 +281,28 @@ struct JourneyRoad: View {
                     bottom: i == count - 1 ? plan.dots[i].y - 30 : plan.texts[i].minY - 14,
                     width: size.width, plan: plan, random: &random)
         }
-        // White beside the black line, as if it had been corrected, and
-        // white round the last dot (18:48). Under the line and the dot.
+        // White beside the black line, as if it had been corrected
+        // (18:48), under the line.
+        let body = Color.white.opacity(dark ? 0.2 : 0.95)
         var white = Path()
         for stroke in Self.corrections(along: plan.line, until: plan.dots[count - 1], seed: seed) {
             white.addLines(stroke)
             white.closeSubpath()
         }
-        var around = SeededRandom(seed + "halo")
-        white.addPath(Self.closed(Self.halo(round: plan.dots[count - 1], random: &around)))
-        context.fill(white, with: .color(.white.opacity(dark ? 0.2 : 0.95)))
+        context.fill(white, with: .color(body))
         // The road, from the first dot to the last.
         var stroke = Path()
         stroke.addLines(Self.nibStroke(plan.line, until: plan.dots[count - 1], clear: Self.lastClear))
         stroke.closeSubpath()
         context.fill(stroke, with: .color(Theme.ink))
         context.stroke(stroke, with: .color(Theme.ink), style: StrokeStyle(lineWidth: Self.hair, lineJoin: .round))
+        // White round the last dot, over the end of the line (19:08:
+        // „powinien też nachodzić na czarną linię”): the paper first, so
+        // the line ends under it on the dark page too, then the white.
+        var around = SeededRandom(seed + "halo")
+        let rim = Self.closed(Self.halo(round: plan.dots[count - 1], random: &around))
+        context.fill(rim, with: .color(Theme.paper))
+        context.fill(rim, with: .color(body))
         // The stops: dots, a hollow one on a branch for a side trip, a bigger red one for the last.
         for i in 0..<count {
             let p = plan.dots[i]
@@ -383,11 +390,6 @@ struct JourneyRoad: View {
 
     private static let sea = Color(light: 0x8FA9BA, dark: 0x5E7A8C)
 
-    /// The underpaintings: sand, and where the pigment gathered at the
-    /// edge a darker one; on the dark page light ones, drawn faintly.
-    private static let washTint = Color(light: 0xD2BC92, dark: 0xE9D9B8)
-    private static let washEdge = Color(light: 0xB39A6C, dark: 0xF3E6CC)
-
     private static func closed(_ points: [CGPoint]) -> Path {
         var path = Path()
         path.addLines(points)
@@ -423,6 +425,8 @@ extension JourneyRoad {
     static let lastClear: CGFloat = 3
     /// The last stop's dot, where the work is now: bigger than the others.
     static let lastDot: CGFloat = 9
+    /// Bristles of the dry brush in one white correction.
+    static let bristles = 3
     /// How far under the road a side trip's stop hangs, and how far back
     /// along the road its branch forks off.
     static let branch: CGFloat = 46
@@ -821,32 +825,41 @@ extension JourneyRoad {
         return Wash(big: big, over: over, bloom: bloom, tone: 0.8 + 0.4 * random.unit())
     }
 
-    /// White beside the line, as if it had been corrected: the outlines of
-    /// a few strokes along it, about one for every 360 pt, each on one side
-    /// of it or the other, thin at its ends. None past `end`.
+    /// White beside the line, as if it had been corrected: a few strokes
+    /// of a dry brush along it, about one for every 360 pt, each on one
+    /// side of it or the other. A stroke is `bristles` outlines side by
+    /// side, each starting and ending where it will, with torn edges, so
+    /// the stroke is ragged and frayed at its ends. None past `end`.
     static func corrections(along line: [CGPoint], until end: CGPoint, seed: String) -> [[CGPoint]] {
         var cut = line.count
         while cut > 0, hypot(line[cut - 1].x - end.x, line[cut - 1].y - end.y) < lastClear { cut -= 1 }
         guard cut > 80 else { return [] }
         var random = SeededRandom(seed + "white")
         let count = max(2, Int((CGFloat(cut) * 2 / 360).rounded()))
-        return (0..<count).map { k in
+        var strokes: [[CGPoint]] = []
+        for k in 0..<count {
             let length = Int((28 + 34 * random.unit()).rounded())
             let spot = (CGFloat(k) + 0.15 + 0.7 * random.unit()) / CGFloat(count)
             let at = min(cut - length - 6, max(6, Int((CGFloat(cut) * spot).rounded())))
-            let side = (random.unit() < 0.5 ? -1 : 1) * (4.2 + 1.6 * random.unit()), wide = 3 + 1.8 * random.unit()
-            var one: [CGPoint] = [], other: [CGPoint] = []
-            for q in 0...length {
-                let p = line[at + q], before = line[max(0, at + q - 3)], after = line[min(cut - 1, at + q + 3)]
-                let step = max(1e-3, hypot(after.x - before.x, after.y - before.y))
-                let across = CGPoint(x: -(after.y - before.y) / step, y: (after.x - before.x) / step)
-                let t = CGFloat(q) / CGFloat(length)
-                let half = wide * pow(sin(.pi * t), 0.45) / 2, off = side + 0.8 * sin(t * 5 + CGFloat(k))
-                one.append(CGPoint(x: p.x + across.x * (off + half), y: p.y + across.y * (off + half)))
-                other.append(CGPoint(x: p.x + across.x * (off - half), y: p.y + across.y * (off - half)))
+            let side = (random.unit() < 0.5 ? -1 : 1) * (4.4 + 1.6 * random.unit()), wide = 3.4 + 1.8 * random.unit()
+            for b in 0..<bristles {
+                let from = Int((7 * random.unit()).rounded()), to = length - Int((9 * random.unit()).rounded())
+                let middle = side + (CGFloat(b) - CGFloat(bristles - 1) / 2) * wide / CGFloat(bristles)
+                let half = wide / CGFloat(bristles) * (0.5 + 0.25 * random.unit())
+                var one: [CGPoint] = [], other: [CGPoint] = []
+                for q in from...to {
+                    let p = line[at + q], before = line[max(0, at + q - 3)], after = line[min(cut - 1, at + q + 3)]
+                    let step = max(1e-3, hypot(after.x - before.x, after.y - before.y))
+                    let across = CGPoint(x: -(after.y - before.y) / step, y: (after.x - before.x) / step)
+                    let off = middle + 0.8 * sin(CGFloat(q) / CGFloat(length) * 5 + CGFloat(k))
+                    let out = off + half + 1.1 * (random.unit() - 0.5), back = off - half + 1.1 * (random.unit() - 0.5)
+                    one.append(CGPoint(x: p.x + across.x * out, y: p.y + across.y * out))
+                    other.append(CGPoint(x: p.x + across.x * back, y: p.y + across.y * back))
+                }
+                strokes.append(one + other.reversed())
             }
-            return one + other.reversed()
         }
+        return strokes
     }
 
     /// White round the last dot, laid on with a brush: an uneven disc.

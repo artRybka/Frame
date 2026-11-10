@@ -181,13 +181,26 @@ final class JourneyRoadTests: XCTestCase {
     func testWhiteLiesBesideTheLineAndRoundTheLastDot() throws {
         let plan = try road(), last = plan.dots[plan.dots.count - 1]
         let strokes = JourneyRoad.corrections(along: plan.line, until: last, seed: "aic:27992")
-        XCTAssertGreaterThanOrEqual(strokes.count, 2)
+        // Each is a few bristles of a dry brush.
+        XCTAssertGreaterThanOrEqual(strokes.count, 2 * JourneyRoad.bristles)
+        XCTAssertEqual(strokes.count % JourneyRoad.bristles, 0)
         for stroke in strokes {
-            // Each keeps to the line: never further than a nib and a half from it.
+            // Each keeps to the line: never further than two nibs from it.
             let far = stroke.map { p in plan.line.map { hypot($0.x - p.x, $0.y - p.y) }.min() ?? 99 }.max() ?? 99
-            XCTAssertLessThan(far, 10)
-            XCTAssertGreaterThan(stroke.count, 40)
+            XCTAssertLessThan(far, 11.5)
+            XCTAssertGreaterThan(stroke.count, 24)
+            // Ragged (19:08: „trochę bardziej poszarpane”): the edge is torn
+            // from one point to the next, not a smooth curve.
+            let half = stroke.count / 2
+            let turns = (1..<(half - 1)).filter { q in
+                let a = stroke[q - 1], b = stroke[q], c = stroke[q + 1]
+                return abs((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x)) > 0.15
+            }
+            XCTAssertGreaterThan(turns.count, half / 3)
         }
+        // The bristles of one stroke do not all start and end together.
+        let lengths = Set(strokes.prefix(JourneyRoad.bristles).map(\.count))
+        XCTAssertGreaterThan(lengths.count, 1)
         var random = SeededRandom("halo")
         let halo = JourneyRoad.halo(round: last, random: &random)
         // Wider than the dot all round.
