@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.142.4
+
+- Odkrywaj: „Pod lupą” w kafelkach jak „Studia dzieł”: obraz u góry,
+  tytuł i autor na karcie. Każdy obraz trochę jaśniejszy (HDR), jak na
+  karcie dzieła. Podpis sekcji: „Dzieła w ogromnej rozdzielczości”.
+
 ## 1.142.3
 
 - Serce na miniaturach da się kliknąć także w Odkrywaj (zestawy, „Zobacz

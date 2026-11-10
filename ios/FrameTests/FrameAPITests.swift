@@ -1036,7 +1036,7 @@ final class FrameAPITests: XCTestCase {
     func testDemoSuggestionsAndThemes() async throws {
         let demo = DemoBackend()
         let rows = try await demo.suggestions()
-        XCTAssertEqual(rows.map(\.key), ["for-you", "theme"])
+        XCTAssertEqual(rows.map(\.key), ["for-you", "theme", "zoom"])
         XCTAssertTrue(rows.allSatisfy { !$0.items.isEmpty })
         let themes = try await demo.themes()
         let theme = try XCTUnwrap(themes.first { $0.key == rows[1].theme })
