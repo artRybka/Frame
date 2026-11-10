@@ -3,8 +3,9 @@ import UIKit
 
 /// The original on a dark screen of its own, opened filling the screen:
 /// pinch out or double-tap to see it whole, pinch or double-tap to look
-/// closer, drag to look around, tap to hide the caption, swipe down to
-/// close (no buttons on it; Mateusz 2026-11-09). With "Jaśniejsze dzieła"
+/// closer, drag to look around, tap to hide the caption, close with the
+/// cross or a swipe down (no sun button; Mateusz 2026-11-09, the cross back
+/// 2026-11-10). With "Jaśniejsze dzieła"
 /// on in Konfiguracja the screen comes up to full brightness on the way in
 /// and dims back as soon as the viewer starts to close. A work kept also as a
 /// set of sharper tiles (Commons; Mateusz 2026-11-09) gets them laid on it
@@ -41,15 +42,27 @@ struct OriginalViewer: View {
                 ProgressView().tint(.white)
             }
         }
+        .overlay(alignment: .topTrailing) {
+            if chrome {
+                Button(action: close) {
+                    Image(systemName: "xmark")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(width: 40, height: 40)
+                        .background(.black.opacity(0.5), in: Circle())
+                }
+                .accessibilityLabel("Zamknij")
+                .padding(.trailing, 16)
+                .padding(.top, 8)
+                .transition(.opacity)
+            }
+        }
         .overlay(alignment: .bottom) {
             if chrome { caption.transition(.opacity) }
         }
         .statusBarHidden(!chrome)
-        // VoiceOver's two-finger scrub closes it, as the swipe does.
-        .accessibilityAction(.escape) {
-            ScreenBoost.shared.restore()
-            dismiss()
-        }
+        // VoiceOver's two-finger scrub closes it, as the cross does.
+        .accessibilityAction(.escape, close)
         .task(id: item.id) { await load() }
         .task(id: item.fragmentsID) { await loadTiles() }
         .onAppear { if brighten { ScreenBoost.shared.raise() } }
@@ -69,6 +82,12 @@ struct OriginalViewer: View {
             if phase == .background { ScreenBoost.shared.forget() }
             if phase == .active, brighten { ScreenBoost.shared.raise() }
         }
+    }
+
+    /// Dimming starts with the closing, not after it.
+    private func close() {
+        ScreenBoost.shared.restore()
+        dismiss()
     }
 
     private var caption: some View {

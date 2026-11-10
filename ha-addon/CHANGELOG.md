@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.138.4
+
+- Na pełnym ekranie dzieła wraca krzyżyk do zamykania. Słoneczka nadal
+  nie ma: przy „Jaśniejszych dziełach” ekran rozjaśnia się sam.
+
 ## 1.138.3
 
 - Nazwisko artysty pod tytułem dzieła (na karcie dzieła i w Teraz) nie jest
