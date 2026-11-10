@@ -33,6 +33,8 @@ log = logging.getLogger(__name__)
 HAIKU = "claude-haiku-5-5"
 SONNET = "claude-sonnet-5-5"
 OPUS = "claude-opus-5-5"
+#: Tried as the judge of copies (``ai.twins_judge``), nothing else yet.
+FABLE = "claude-fable-5-2"
 SPEND_KEY = "ai_spend"
 #: The Batch API's discount on every token.
 BATCH_DISCOUNT = 0.5
@@ -55,6 +57,7 @@ PRICES = {
     HAIKU: Price(0.10, 0.125, 0.01, 0.50),
     SONNET: Price(2.00, 2.50, 0.10, 10.00),
     OPUS: Price(4.00, 5.00, 0.20, 20.00),
+    FABLE: Price(8.00, 10.00, 0.20, 40.00),
 }
 
 
