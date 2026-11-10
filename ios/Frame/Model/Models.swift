@@ -335,6 +335,9 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     /// A photo's line under its title: when and where ("29 października
     /// 2026 · Kraków"); "" for works, nil from an older server.
     var subtitle: String? = nil
+    /// Its picture can be looked at far closer, in tiles ("Pod lupą"):
+    /// a magnifier on its tile. Nil from a server before 1.138.
+    var zoom: Bool? = nil
 
     /// The title "Teraz" shows: Polish when there is one.
     var shownTitle: String { titlePl ?? title }
@@ -1701,6 +1704,8 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
     /// Width / height, also when the museum gives no size (the server
     /// measures the thumbnail); nil when not known yet.
     var aspect: Double? = nil
+    /// Its picture can be looked at far closer, in tiles ("Pod lupą").
+    var zoom: Bool? = nil
     var id: String { item.id }
 
     /// The tile's summary, with the measured shape: without it every work
@@ -1708,6 +1713,7 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
     var summary: ItemSummary {
         var summary = item.summary
         summary.aspect = aspect
+        summary.zoom = zoom
         return summary
     }
 

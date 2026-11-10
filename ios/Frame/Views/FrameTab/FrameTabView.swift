@@ -1774,7 +1774,7 @@ private extension UIFont {
 
 /// Konfiguracja → Wyświetlanie dzieł, kept on this phone: the artwork on
 /// the work's card and in the study a little brighter than the page
-/// (`ArtGlow`).
+/// (`ArtGlow`), the full-screen viewer at full screen brightness.
 struct ViewerSection: View {
     @AppStorage(ArtGlow.key) private var glow = true
     @AppStorage(ArtGlow.gainKey) private var gain = ArtGlow.defaultGain
@@ -1786,7 +1786,7 @@ struct ViewerSection: View {
                 Toggle(isOn: $glow) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Jaśniejsze dzieła")
-                        Text("Na karcie dzieła i w studium obraz świeci trochę jaśniej niż strona. Na ekranach z HDR.")
+                        Text("Na karcie dzieła i w studium obraz świeci trochę jaśniej niż strona (na ekranach z HDR), a w pełnym ekranie telefon rozjaśnia ekran do końca.")
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
                     }

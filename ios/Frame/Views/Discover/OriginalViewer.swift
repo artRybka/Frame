@@ -3,16 +3,17 @@ import UIKit
 
 /// The original on a dark screen of its own, opened filling the screen:
 /// pinch out or double-tap to see it whole, pinch or double-tap to look
-/// closer, drag to look around, tap to hide the caption. The sun button
-/// brightens the screen to full while the viewer is open (remembered); it
-/// dims back as soon as the viewer starts to close. A work kept also as a
+/// closer, drag to look around, tap to hide the caption, swipe down to
+/// close (no buttons on it; Mateusz 2026-11-09). With "Jaśniejsze dzieła"
+/// on in Konfiguracja the screen comes up to full brightness on the way in
+/// and dims back as soon as the viewer starts to close. A work kept also as a
 /// set of sharper tiles (Commons; Mateusz 2026-11-09) gets them laid on it
 /// while zooming in, only those in view.
 struct OriginalViewer: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
-    @AppStorage(ScreenBoost.key) private var brighten = false
+    @AppStorage(ArtGlow.key) private var brighten = true
     let item: Item
     @State private var image: UIImage?
     @State private var failed = false
@@ -40,44 +41,15 @@ struct OriginalViewer: View {
                 ProgressView().tint(.white)
             }
         }
-        .overlay(alignment: .topTrailing) {
-            if chrome {
-                HStack(spacing: 10) {
-                    Button {
-                        brighten.toggle()
-                    } label: {
-                        Image(systemName: brighten ? "sun.max.fill" : "sun.max")
-                            .font(.headline)
-                            .foregroundStyle(brighten ? .yellow : .white)
-                            .frame(width: 40, height: 40)
-                            .background(.black.opacity(0.5), in: Circle())
-                            .contentTransition(.symbolEffect(.replace))
-                    }
-                    .accessibilityLabel("Rozjaśnij ekran")
-                    .accessibilityAddTraits(brighten ? .isSelected : [])
-                    Button {
-                        // Dimming starts with the closing, not after it.
-                        ScreenBoost.shared.restore()
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                            .frame(width: 40, height: 40)
-                            .background(.black.opacity(0.5), in: Circle())
-                    }
-                    .accessibilityLabel("Zamknij")
-                }
-                .padding(.trailing, 16)
-                .padding(.top, 8)
-                .transition(.opacity)
-            }
-        }
         .overlay(alignment: .bottom) {
             if chrome { caption.transition(.opacity) }
         }
         .statusBarHidden(!chrome)
-        .sensoryFeedback(.selection, trigger: brighten)
+        // VoiceOver's two-finger scrub closes it, as the swipe does.
+        .accessibilityAction(.escape) {
+            ScreenBoost.shared.restore()
+            dismiss()
+        }
         .task(id: item.id) { await load() }
         .task(id: item.fragmentsID) { await loadTiles() }
         .onAppear { if brighten { ScreenBoost.shared.raise() } }

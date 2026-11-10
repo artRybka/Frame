@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.138.3
+
+- Nazwisko artysty pod tytułem dzieła (na karcie dzieła i w Teraz) nie jest
+  już ucinane na „…”, gdy obok jest miejsce; za długie zawija się do
+  drugiego wiersza.
+
+## 1.138.2
+
+- Pełny ekran dzieła bez guzików: nie ma już słoneczka ani krzyżyka.
+  Gdy w Konfiguracji włączone są „Jaśniejsze dzieła”, ekran rozjaśnia się
+  sam po wejściu i ściemnia, gdy zaczynasz go zamykać. Zamykasz
+  przesunięciem w dół.
+
+## 1.138.1
+
+- Wszystkie znaczki na miniaturach i kafelkach mają ten sam szklany,
+  okrągły wygląd co oko na karcie „Ukryte”: serce ulubionych, lupa
+  „Pod lupą”, iskierki Propozycji, „gra teraz” na playliście, kolejka
+  w Teraz, plus/ptaszek i krzyżyk w edytorze playlisty, minus przy
+  usuwaniu z playlisty i krzyżyk przy przykładowych zdjęciach.
+
+## 1.138.0
+
+- „Pod lupą”: dzieła, które na Commons mają zdjęcie w kaflach ogromnej
+  rozdzielczości (np. „Straż nocna”), mają lupę na miniaturze i plakietkę
+  „24×” przy tytule. Na pełnym ekranie przybliżysz je do 24 razy.
+- W Odkrywaj nowy rząd „Pod lupą”, przed „Studiami dzieł”: najpierw
+  dzieła z biblioteki (ulubione na początku), potem pozostałe takie dzieła
+  z Commons.
+
 ## 1.137.7
 
 - Wycinki dzieł (np. głowy ze „Straży nocnej”) są rozpoznawane po dużym

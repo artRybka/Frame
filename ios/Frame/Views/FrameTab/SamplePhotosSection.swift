@@ -97,10 +97,7 @@ struct SamplePhotosSection: View {
                 Button {
                     remove(id)
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.body)
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, .black.opacity(0.45))
+                    GlassBadge(systemImage: "xmark", size: 22, interactive: true)
                         .padding(3)
                 }
                 .buttonStyle(.plain)

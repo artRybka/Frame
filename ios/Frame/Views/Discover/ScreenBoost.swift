@@ -2,15 +2,14 @@ import CoreImage
 import CoreImage.CIFilterBuiltins
 import UIKit
 
-/// Raises the screen to full brightness while a picture is looked at and
+/// Raises the screen to full brightness while a picture is looked at (the
+/// full-screen viewer, with "Jaśniejsze dzieła" on, `ArtGlow.key`) and
 /// gives the owner's own brightness back afterwards. iOS itself puts the
 /// owner's brightness back when the app leaves the foreground, so a boost
 /// that outlives that is raised again on return.
 @MainActor
 final class ScreenBoost {
     static let shared = ScreenBoost()
-    /// Remembered by the full-screen viewer's sun button.
-    static let key = "viewer.brighten"
 
     private var boosted = false
     /// The owner's brightness, kept until the glide back to it ends (a
