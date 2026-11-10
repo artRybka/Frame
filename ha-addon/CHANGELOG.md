@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.142.12
+
+- Ten sam artysta pod innym zapisem imienia jest tym samym artystą:
+  „Alphonse Mucha” z V&A i Europeany trafia do Alfonsa Muchy, a muzeum,
+  które pod jednym zapisem nic nie znajduje, jest pytane o drugi.
+- Rijksmuseum nie podaje już wydawcy ani drukarza jako autora grafiki.
+- Europeana: plakaty, których autor jest zapisany tylko jako link albo
+  jako „projektant” (np. Kunstbibliothek w Berlinie), mają autora,
+  a drukarnia nie jest artystą.
+
 ## 1.142.11
 
 - Plakaty pokazują tylko plakaty. Po wybraniu artysty (np. Claude
