@@ -18,9 +18,9 @@ struct JourneyRoad: View {
     /// Where each stop's text ended up, in the road's space.
     @State private var rows: [Int: CGRect] = [:]
 
-    private static let gap: CGFloat = 64
+    private static let gap: CGFloat = 110
     /// Before a stop across an ocean: room for the sea.
-    private static let seaGap: CGFloat = 170
+    private static let seaGap: CGFloat = 190
     /// A stop this far from the one before has crossed a sea.
     private static let seaKm = 2500.0
 
@@ -216,19 +216,21 @@ struct JourneyRoad: View {
             drawSea(in: &context, top: rows[i - 1]!.maxY + 14, bottom: rows[i]!.minY - 10, width: width)
         }
         // The pen's way (15:18: „bardziej organiczna”; 15:26: „płynną linią,
-        // bez ostrych zakrętów czy przeskoków”): into each dot from above on
-        // its free side, through it, down past its text on that side, one
-        // swing across the gap (a few over a sea), never over a text.
+        // bez ostrych zakrętów”; 17:11: no „oderwania ręki” at the dots, the
+        // wide curves over the sea are the model): straight down through each
+        // dot along its free side, past its text, then one wide sweep across
+        // the gap to above the next dot. The turns happen in the gaps, never
+        // at a dot, and the line never crosses a text.
         var route: [CGPoint] = [CGPoint(x: dot(0).x + out(0) * 12, y: 0)]
         var at: [Int] = []
         for i in 0..<count {
             let here = dot(i), row = rows[i]!
-            route.append(CGPoint(x: here.x + out(i) * 3, y: here.y - 30))
+            route.append(CGPoint(x: here.x, y: here.y - 36))
             at.append(route.count)
             route.append(here)
-            route.append(CGPoint(x: here.x + out(i) * 6, y: max(here.y + 16, row.maxY + 8)))
+            route.append(CGPoint(x: here.x, y: max(here.y + 16, row.maxY + 6)))
             guard i < count - 1 else { break }
-            let top = row.maxY + 14, bottom = rows[i + 1]!.minY - 14
+            let top = row.maxY + 14, bottom = rows[i + 1]!.minY - 14, there = dot(i + 1)
             if overSea(i + 1) {
                 // One swing per 70 pt of sea: closer they fold into hairpins.
                 let turns = min(3, max(1, Int((bottom - top) / 70)))
@@ -238,15 +240,24 @@ struct JourneyRoad: View {
                     route.append(CGPoint(x: width * x, y: top + (bottom - top) * (CGFloat(t) + 0.5) / CGFloat(turns)))
                     left.toggle()
                 }
-            } else {
-                let from = here.x + out(i) * 6, to = dot(i + 1).x + out(i + 1) * 3
-                let x = from + (to - from) * (0.2 + 0.6 * random.unit()) + (random.unit() - 0.5) * 0.45 * width
-                route.append(CGPoint(x: min(0.92 * width, max(0.08 * width, x)),
+            } else if places[i].left == places[i + 1].left {
+                // The same side again: a soft bow inward.
+                let inward: CGFloat = places[i].left ? 1 : -1
+                route.append(CGPoint(x: here.x + inward * width * (0.1 + 0.06 * random.unit()),
                                      y: top + (bottom - top) * (0.4 + 0.2 * random.unit())))
+            } else {
+                let x = (here.x + there.x) / 2 + (random.unit() - 0.5) * 0.3 * abs(there.x - here.x)
+                route.append(CGPoint(x: x, y: top + (bottom - top) * (0.4 + 0.2 * random.unit())))
             }
         }
         route.append(CGPoint(x: places[count - 1].left ? 4 : width - 4, y: min(size.height - 4, rows[count - 1]!.maxY + 22)))
-        let (line, pins) = Self.penLine(route, at: at, random: &random)
+        // The texts, with a little room: the line is kept out of them.
+        let texts = (0..<count).map { i -> CGRect in
+            let row = rows[i]!, inset = places[i].inset
+            let x0 = places[i].left ? inset + 16 : 28, x1 = places[i].left ? width - 28 : width - inset - 16
+            return CGRect(x: x0, y: row.minY, width: max(0, x1 - x0), height: row.height).insetBy(dx: -7, dy: -6)
+        }
+        let (line, pins) = Self.penLine(route, at: at, avoid: texts, random: &random)
         // Inked as one ribbon, dashed to and from an exhibition the work came
         // back from, as a side trip.
         var runs: [(Range<Int>, Bool)] = []
@@ -347,7 +358,7 @@ struct JourneyRoad: View {
     /// point every 2 pt, a slow drift of the hand, then relaxed until no turn
     /// is sharp. Near each stop (`at`: its index in the route) the line holds
     /// still; returns where each stop landed in the line.
-    static func penLine(_ route: [CGPoint], at: [Int], random: inout SeededRandom) -> ([CGPoint], [Int]) {
+    static func penLine(_ route: [CGPoint], at: [Int], avoid: [CGRect] = [], random: inout SeededRandom) -> ([CGPoint], [Int]) {
         let per = 24
         let (points, pins) = even(spline(route, per: per), step: 2, keep: at.map { $0 * per })
         guard points.count > 2 else { return (points, pins) }
@@ -356,26 +367,39 @@ struct JourneyRoad: View {
             v = v * 0.985 + (random.unit() - 0.5) * 0.04
             a = min(2.5, max(-2.5, a + v))
             let n = normal(points, i)
-            let near = pins.reduce(CGFloat(1)) { min($0, CGFloat(abs(i - $1)) / 15) }
+            let near = pins.reduce(CGFloat(1)) { min($0, CGFloat(abs(i - $1)) / 30) }
             return CGPoint(x: points[i].x + n.x * a * near, y: points[i].y + n.y * a * near)
         }
         // How firmly each point keeps its place: fully at a dot, fading
-        // over 5 points (10 pt) either side, under the dot, so the line
-        // leaves it without a corner where the held part ends.
+        // over 16 points (32 pt) either side, the straight stretch through
+        // the dot, so it leaves without a corner where the held part ends.
         var hold = [CGFloat](repeating: 0, count: line.count)
         for pin in pins {
-            for i in max(0, pin - 5)...min(line.count - 1, pin + 5) {
-                let f = 1 - CGFloat(abs(i - pin)) / 5
+            for i in max(0, pin - 16)...min(line.count - 1, pin + 16) {
+                let f = 1 - CGFloat(abs(i - pin)) / 17
                 hold[i] = max(hold[i], f * f)
             }
         }
+        func clear(_ p: CGPoint) -> CGPoint {
+            var p = p
+            for text in avoid where text.contains(p) {
+                let d = [p.x - text.minX, text.maxX - p.x, p.y - text.minY, text.maxY - p.y]
+                switch d.firstIndex(of: d.min()!)! {
+                case 0: p.x = text.minX
+                case 1: p.x = text.maxX
+                case 2: p.y = text.minY
+                default: p.y = text.maxY
+                }
+            }
+            return p
+        }
         let start = line
         var next = line
-        for _ in 0..<400 {
+        for _ in 0..<300 {
             for i in 1..<(line.count - 1) {
                 let free = 1 - hold[i]
-                next[i] = CGPoint(x: start[i].x * hold[i] + free * (line[i - 1].x + 2 * line[i].x + line[i + 1].x) / 4,
-                                  y: start[i].y * hold[i] + free * (line[i - 1].y + 2 * line[i].y + line[i + 1].y) / 4)
+                next[i] = clear(CGPoint(x: start[i].x * hold[i] + free * (line[i - 1].x + 2 * line[i].x + line[i + 1].x) / 4,
+                                        y: start[i].y * hold[i] + free * (line[i - 1].y + 2 * line[i].y + line[i + 1].y) / 4))
             }
             swap(&line, &next)
         }

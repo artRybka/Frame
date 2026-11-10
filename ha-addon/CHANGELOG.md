@@ -2,8 +2,11 @@
 
 ## 1.142.3
 
-- „Droga dzieła”: linia z kropkami rysuje się zawsze. Wcześniej czasem
-  zostawały same teksty, bez drogi.
+- „Droga dzieła”: linia przechodzi przez kropki płynnie, bez zakrętu
+  tuż przy kropce. Zawraca dopiero w szerokich łukach między przystankami,
+  tak jak nad morzem.
+- Linia z kropkami rysuje się zawsze. Wcześniej czasem zostawały same
+  teksty, bez drogi.
 
 ## 1.142.2
 
