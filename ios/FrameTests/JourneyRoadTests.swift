@@ -94,10 +94,59 @@ final class JourneyRoadTests: XCTestCase {
             if turn > .pi { turn = 2 * .pi - turn }
             XCTAssertLessThan(turn * 180 / .pi, 20, "a bend at sample \(i)")
         }
-        // It sweeps across the road, not down one side of it.
+        // It sweeps across the road, not down one side of it, and stays on the page.
         let xs = plan.line.map(\.x)
-        XCTAssertLessThan(xs.min() ?? 0, 60)
-        XCTAssertGreaterThan(xs.max() ?? 0, 290)
+        XCTAssertLessThan(xs.min() ?? 0, 70)
+        XCTAssertGreaterThan(xs.max() ?? 0, 280)
+        XCTAssertGreaterThan(xs.min() ?? 0, 14)
+        XCTAssertLessThan(xs.max() ?? 0, 336)
+    }
+
+    func testTheLineComesOutFromUnderTheRule() throws {
+        // 22:21: „start kreski niech zaczyna się spod linii nad którą są
+        // liczby”: with figures over the road the line starts at their
+        // rule, over the road's top, and comes down through the first dot.
+        let heights: [CGFloat] = [54, 74, 54, 54, 54, 54, 54, 74, 74]
+        let seas = [false, false, false, false, false, false, false, true, false]
+        for seed in ["aic:27992", "aic:1", "x"] {
+            let plan = try XCTUnwrap(JourneyRoad.plan(width: 350, heights: heights, seas: seas, seed: seed,
+                                                      lead: JourneyRoad.lead))
+            let first = try XCTUnwrap(plan.line.first), dot = plan.dots[0]
+            XCTAssertEqual(first.y, -JourneyRoad.lead, accuracy: 0.01)
+            XCTAssertTrue(plan.line.contains(dot))
+            XCTAssertEqual(dot.y, JourneyRoad.yearY, accuracy: 2)
+            // Almost straight down to the dot, beside the first text.
+            XCTAssertLessThan(abs(first.x - dot.x), 12)
+            let near = plan.line.map { p in
+                hypot(max(plan.texts[0].minX - p.x, 0, p.x - plan.texts[0].maxX),
+                      max(plan.texts[0].minY - p.y, 0, p.y - plan.texts[0].maxY))
+            }.min() ?? 0
+            XCTAssertGreaterThanOrEqual(near, 5)
+            XCTAssertEqual(plan.line.last, plan.dots.last)
+        }
+    }
+
+    func testTheArcsNarrowTowardsTheBottom() throws {
+        // 22:22: „albo zwężać się coraz bardziej ku dołowi”; his pick of
+        // the two in sketch 19 (23:03: „B”).
+        XCTAssertEqual(JourneyRoad.arcs, .narrow)
+        let heights: [CGFloat] = [54, 74, 54, 54, 54, 54, 54, 74, 74]
+        let seas = [false, false, false, false, false, false, false, true, false]
+        for seed in ["aic:27992", "aic:1", "x"] {
+            let plan = try XCTUnwrap(JourneyRoad.plan(width: 350, heights: heights, seas: seas, seed: seed))
+            func span(_ from: CGFloat, _ to: CGFloat) -> CGFloat {
+                let xs = plan.line.filter { $0.y >= from * plan.height && $0.y < to * plan.height }.map(\.x)
+                return (xs.max() ?? 0) - (xs.min() ?? 0)
+            }
+            XCTAssertGreaterThan(span(0, 0.3), span(0.35, 0.65) + 30, seed)
+            XCTAssertGreaterThan(span(0.35, 0.65), span(0.7, 1) + 30, seed)
+            for text in plan.texts {
+                let near = plan.line.map { p in
+                    hypot(max(text.minX - p.x, 0, p.x - text.maxX), max(text.minY - p.y, 0, p.y - text.maxY))
+                }.min() ?? 0
+                XCTAssertGreaterThanOrEqual(near, 5, seed)
+            }
+        }
     }
 
     func testTheNibIsWideWhereTheLineGoesDown() throws {
@@ -153,40 +202,127 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertTrue(strokes.joined().allSatisfy { hypot($0.x - stop.x, $0.y - stop.y) > 4.6 })
     }
 
-    func testEachTextHasAnUnderpainting() throws {
+    func testTheUnderpaintingIsOneWash() throws {
         let heights: [CGFloat] = [54, 74, 54], widths: [CGFloat] = [180, 150, 170]
         let plan = try XCTUnwrap(JourneyRoad.plan(width: 350, heights: heights, seas: [false, false, false],
                                                   widths: widths, seed: "aic:27992"))
         XCTAssertEqual(plan.hugs.count, 3)
+        let paint = JourneyRoad.underpainting(under: plan.hugs, seas: [false, false, false], width: 350, seed: "aic:27992")
+        XCTAssertEqual(paint.stains.count, 3)
         for (i, hug) in plan.hugs.enumerated() {
             // The text as it stands: its own width, at the side its dot is on.
             XCTAssertEqual(hug.width, widths[i], accuracy: 0.01)
             XCTAssertEqual(plan.leading[i] ? hug.minX : hug.maxX, plan.leading[i] ? plan.texts[i].minX : plan.texts[i].maxX,
                            accuracy: 0.01)
-            var random = SeededRandom("wash\(i)")
-            let wash = JourneyRoad.wash(under: hug, random: &random)
             // A closed stain about the text: it covers the text's middle and is not much bigger than it.
-            let xs = wash.big.map(\.x), ys = wash.big.map(\.y)
+            let stain = paint.stains[i], xs = stain.map(\.x), ys = stain.map(\.y)
             XCTAssertLessThan(xs.min() ?? 0, hug.midX - hug.width * 0.3)
             XCTAssertGreaterThan(xs.max() ?? 0, hug.midX + hug.width * 0.3)
             XCTAssertLessThan(ys.min() ?? 0, hug.midY - 5)
             XCTAssertGreaterThan(ys.max() ?? 0, hug.midY + 5)
             XCTAssertGreaterThan(xs.min() ?? 0, hug.minX - 70)
             XCTAssertLessThan(xs.max() ?? 0, hug.maxX + 70)
-            XCTAssertEqual(wash.big.first, wash.big.last)
-            XCTAssertTrue((0.8...1.2).contains(wash.tone))
-            // Where it spreads from (19:28: the stain spreads as it comes on
-            // screen) is inside the text, and its box holds all of it with
-            // room for the soft edge.
-            XCTAssertTrue(hug.insetBy(dx: -1, dy: -6).contains(wash.centre))
-            XCTAssertGreaterThan(wash.reach.width, hug.width / 2)
-            XCTAssertGreaterThan(wash.reach.height, hug.height / 2)
-            for p in wash.big + wash.over {
-                XCTAssertTrue(wash.box.insetBy(dx: 11, dy: 11).contains(p))
-            }
+            XCTAssertEqual(stain.first, stain.last)
+            // The field the paint is made of has room for all of it.
+            XCTAssertGreaterThan(ys.min() ?? 0, hug.minY - JourneyRoad.washRoom.height + 4)
+            XCTAssertLessThan(ys.max() ?? 0, hug.maxY + JourneyRoad.washRoom.height - 4)
             // The same stain for the same seed, however often the view asks.
-            XCTAssertEqual(JourneyRoad.wash(under: hug, seed: "wash\(i)").big, wash.big)
+            XCTAssertEqual(JourneyRoad.stain(under: hug, seed: "aic:27992wash\(i)"), stain)
         }
+        // 22:18: „najlepiej zlewać w jedną całość”: from each stain to the
+        // next there are drops of paint in a row, each over the next, from
+        // inside the one stain to inside the other.
+        for i in 0..<2 {
+            var random = SeededRandom("aic:27992neck\(i)")
+            let drops = JourneyRoad.neck(from: plan.hugs[i], to: plan.hugs[i + 1], width: 350, random: &random)
+            XCTAssertGreaterThanOrEqual(drops.count, 3)
+            XCTAssertLessThan(drops[0].at.y, plan.hugs[i].maxY)
+            XCTAssertGreaterThan(drops[drops.count - 1].at.y, plan.hugs[i + 1].minY)
+            for (a, b) in zip(drops, drops.dropFirst()) {
+                XCTAssertLessThan(hypot(b.at.x - a.at.x, b.at.y - a.at.y), a.radius + b.radius)
+            }
+            XCTAssertTrue(drops.allSatisfy { paint.drops.contains($0) })
+        }
+        // Not across a sea: the paint does not run over the water.
+        let apart = JourneyRoad.underpainting(under: plan.hugs, seas: [false, false, true], width: 350, seed: "aic:27992")
+        XCTAssertLessThan(apart.drops.count, paint.drops.count)
+        XCTAssertGreaterThan(apart.drops.count, 0)
+    }
+
+    func testTheDrawingComesAboutAtTheMiddleOfTheScreen() throws {
+        // 22:18: „ich pojawienie powinno być nie na dole a na środku
+        // ekranu w trakcie przewijania”.
+        let plan = try road()
+        let marks = RoadMarks(plan)
+        XCTAssertEqual(marks.starts.count, plan.dots.count)
+        // Nothing has started with the middle of the screen over the first dot.
+        XCTAssertEqual(marks.target(mid: plan.dots[0].y - 5), plan.dots[0].y - 5)
+        // With a stop's dot at the middle, the stop is drawn to the end of
+        // its text: to where the next text begins to show, and no further.
+        let first = marks.target(mid: plan.dots[0].y + 1)
+        XCTAssertGreaterThan(first, plan.texts[0].maxY)
+        XCTAssertLessThan(first, plan.texts[1].minY + 46)
+        XCTAssertEqual(marks.target(mid: plan.dots[1].y - 1), first)
+        XCTAssertGreaterThan(marks.target(mid: plan.dots[1].y + 1), plan.texts[1].maxY)
+        // The last stop: everything; and never past it.
+        XCTAssertEqual(marks.target(mid: plan.dots[plan.dots.count - 1].y + 1), marks.full)
+        XCTAssertEqual(marks.target(mid: 99_999), marks.full)
+        XCTAssertGreaterThan(marks.full, plan.height)
+    }
+
+    func testTheArcsCanBeGentlerAllTheWay() throws {
+        // The other one of the two (22:21: „łuki mogą być trochę
+        // łagodniejsze, bliżej środka strony (nie sięgać tak bardzo na
+        // boki)”), kept for a change of mind.
+        let heights: [CGFloat] = [54, 74, 54, 54, 54, 54, 54, 74, 74]
+        let seas = [false, false, false, false, false, false, false, true, false]
+        for seed in ["aic:27992", "aic:1", "x"] {
+            let plan = try XCTUnwrap(JourneyRoad.plan(width: 350, heights: heights, seas: seas, seed: seed, arcs: .soft))
+            let xs = plan.line.map(\.x)
+            XCTAssertGreaterThan(xs.min() ?? 0, 30, seed)
+            XCTAssertLessThan(xs.max() ?? 0, 320, seed)
+            XCTAssertLessThan(xs.min() ?? 0, 80, seed)
+            XCTAssertGreaterThan(xs.max() ?? 0, 270, seed)
+            for text in plan.texts {
+                let near = plan.line.map { p in
+                    hypot(max(text.minX - p.x, 0, p.x - text.maxX), max(text.minY - p.y, 0, p.y - text.maxY))
+                }.min() ?? 0
+                XCTAssertGreaterThanOrEqual(near, 5, seed)
+            }
+        }
+    }
+
+    func testThePaintFlowsNoFasterThanItCan() {
+        // Far behind, the drawing hurries; close, it keeps its pace and stops at its target.
+        let far = RoadMarks.advance(front: 0, done: 0, target: 600, passed: 0.1)
+        XCTAssertEqual(far.front, 100, accuracy: 0.01)
+        let close = RoadMarks.advance(front: 594, done: 0, target: 600, passed: 0.1)
+        XCTAssertEqual(close.front, 599, accuracy: 0.01)
+        XCTAssertEqual(RoadMarks.advance(front: 599, done: 0, target: 600, passed: 0.1).front, 600)
+        // The drying follows, slower (22:18: „plamy powinny rozlewać się wolniej”), and never passes the drawing.
+        XCTAssertEqual(far.done, 100 / 1.4 * 0.1, accuracy: 0.01)
+        XCTAssertEqual(RoadMarks.advance(front: 600, done: 599, target: 600, passed: 0.1).done, 600)
+        // With the page at rest, both come to it and stay.
+        var state = (front: CGFloat(-50), done: CGFloat(-50)), frames = 0
+        while state.front < 400 || state.done < 400, frames < 6000 {
+            state = RoadMarks.advance(front: state.front, done: state.done, target: 400, passed: 1.0 / 60)
+            XCTAssertLessThanOrEqual(state.done, state.front)
+            frames += 1
+        }
+        // A screen's worth is wet for a few seconds, not for a moment and not for long.
+        XCTAssertGreaterThan(frames, 2 * 60)
+        XCTAssertLessThan(frames, 8 * 60)
+        let rest = RoadMarks.advance(front: state.front, done: state.done, target: 400, passed: 1.0 / 60)
+        XCTAssertEqual(rest.front, 400)
+        XCTAssertEqual(rest.done, 400)
+    }
+
+    func testADotGrowsALittleTooBigAndSettles() {
+        XCTAssertEqual(JourneyRoad.pop(-10), 0, accuracy: 0.001)
+        XCTAssertGreaterThan(JourneyRoad.pop(14), 1.05)
+        XCTAssertEqual(JourneyRoad.pop(26), 1, accuracy: 0.001)
+        XCTAssertEqual(JourneyRoad.pop(400), 1, accuracy: 0.001)
+        XCTAssertEqual(JourneyRoad.ease(0.5), 0.5, accuracy: 0.001)
     }
 
     func testWhiteLiesBesideTheLineAndRoundTheLastDot() throws {
