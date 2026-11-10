@@ -437,7 +437,7 @@ extension JourneyRoad {
     static let branchDash = (on: 9, off: 5)
     /// The room between a side trip's text and the loop round it: at the
     /// sides, above and under.
-    static let loopPad: (side: CGFloat, top: CGFloat, bottom: CGFloat) = (18, 10, 13)
+    static let loopPad: (side: CGFloat, top: CGFloat, bottom: CGFloat) = (22, 10, 15)
     /// The loop is a rounded box (a superellipse of this power); its stop's
     /// dot is on it this far out from the middle, towards a top corner.
     static let loopPower: CGFloat = 3.2
