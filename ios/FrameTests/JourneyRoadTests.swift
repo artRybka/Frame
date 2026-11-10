@@ -175,6 +175,17 @@ final class JourneyRoadTests: XCTestCase {
             XCTAssertLessThan(xs.max() ?? 0, hug.maxX + 70)
             XCTAssertEqual(wash.big.first, wash.big.last)
             XCTAssertTrue((0.8...1.2).contains(wash.tone))
+            // Where it spreads from (19:28: the stain spreads as it comes on
+            // screen) is inside the text, and its box holds all of it with
+            // room for the soft edge.
+            XCTAssertTrue(hug.insetBy(dx: -1, dy: -6).contains(wash.centre))
+            XCTAssertGreaterThan(wash.reach.width, hug.width / 2)
+            XCTAssertGreaterThan(wash.reach.height, hug.height / 2)
+            for p in wash.big + wash.over {
+                XCTAssertTrue(wash.box.insetBy(dx: 11, dy: 11).contains(p))
+            }
+            // The same stain for the same seed, however often the view asks.
+            XCTAssertEqual(JourneyRoad.wash(under: hug, seed: "wash\(i)").big, wash.big)
         }
     }
 
