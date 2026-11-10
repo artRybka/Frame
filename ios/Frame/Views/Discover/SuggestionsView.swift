@@ -425,8 +425,6 @@ struct WorkTile: View {
     /// Konfiguracja allows it), as on the work's card ("Pod lupą",
     /// Mateusz 2026-11-10).
     var brighten = false
-    /// The heart of a favourite in the picture's top right corner.
-    var showsFavorite = false
 
     private var shownTitle: String {
         let title = title ?? item.summary.title
@@ -449,13 +447,6 @@ struct WorkTile: View {
                     )
                 }
                 .clipped()
-                .overlay(alignment: .topTrailing) {
-                    if showsFavorite, item.item.favorite {
-                        HeartMark(on: true)
-                            .padding(7)
-                            .accessibilityLabel("W ulubionych")
-                    }
-                }
             VStack(alignment: .leading, spacing: 4) {
                 Text(shownTitle)
                     .font(.serif(15, weight: .semibold))
@@ -513,18 +504,22 @@ struct ZoomRow: View {
     }
 }
 
-/// One work of "Pod lupą" as a card that opens the work.
+/// One work of "Pod lupą" as a card that opens the work, with a heart to
+/// press (in the row and in its grid).
 struct ZoomWorkCard: View {
     @Environment(AppModel.self) private var model
     let remote: RemoteItem
 
     var body: some View {
         NavigationLink(value: remote.id) {
-            WorkTile(item: remote, brighten: true, showsFavorite: true)
+            WorkTile(item: remote, brighten: true)
                 .accessibilityHint("Otwiera dzieło, można je mocno przybliżyć")
         }
         .buttonStyle(.plain)
         .contextMenu { QueueButton(itemID: remote.id) }
+        // The heart to press, in the picture's top right corner as on the
+        // other rows of Odkrywaj.
+        .overlay(alignment: .topTrailing) { LikeHeart(item: remote.summary) }
         // The card opened from here shows this much while it loads.
         .onAppear {
             ItemPeeks.remember(remote.summary, thumb: remote.thumb)
