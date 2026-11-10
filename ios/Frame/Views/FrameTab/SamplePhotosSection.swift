@@ -29,7 +29,7 @@ struct SamplePhotosSection: View {
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
                     ForEach(photos, id: \.self) { id in
                         tile(id)
                             .onDrag {
@@ -97,8 +97,11 @@ struct SamplePhotosSection: View {
                 Button {
                     remove(id)
                 } label: {
-                    GlassBadge(systemImage: "xmark", size: 22, interactive: true)
-                        .padding(3)
+                    CornerMark(systemImage: "xmark", size: 20)
+                        // A finger's room towards the picture.
+                        .padding([.leading, .bottom], 12)
+                        .contentShape(Rectangle())
+                        .offset(x: CornerMark.overhang, y: -CornerMark.overhang)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Usuń przykładowe zdjęcie")

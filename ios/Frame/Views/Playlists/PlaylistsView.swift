@@ -646,13 +646,6 @@ struct PlaylistCard: View {
             Collage(itemIDs: playlist.coverItemIds, title: playlist.name)
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(alignment: .topLeading) {
-                    if isActive {
-                        GlassBadge(systemImage: "play.fill", tint: Theme.vermilion)
-                            .padding(8)
-                            .accessibilityLabel("Gra teraz")
-                    }
-                }
                 .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
             CardCaption {
                 Text(playlist.name)
@@ -660,10 +653,15 @@ struct PlaylistCard: View {
                     .foregroundStyle(Theme.ink)
                     .lineLimit(2)
                 HStack(spacing: 4) {
-                    if let icon = playlist.kind.icon {
-                        Image(systemName: icon).font(.caption2)
+                    // Playing now: said in the caption, not on the picture.
+                    if isActive {
+                        OnFrameCount(count: playlist.countText)
+                    } else {
+                        if let icon = playlist.kind.icon {
+                            Image(systemName: icon).font(.caption2)
+                        }
+                        Text(playlist.countText).layoutPriority(1)
                     }
-                    Text(playlist.countText).layoutPriority(1)
                     Spacer(minLength: 6)
                     if let owner = sharedBy {
                         Label(owner, systemImage: "person.2")
@@ -687,6 +685,23 @@ struct PlaylistCard: View {
     private var sharedBy: String? {
         if !playlist.isMine, let owner = playlist.ownerName, !owner.isEmpty { return owner }
         return nil
+    }
+}
+
+/// The count under the card of the collection on the frame: "Na ramce"
+/// before it, in vermilion, with a play mark (Mateusz 2026-11-10: no mark on
+/// the cover).
+struct OnFrameCount: View {
+    let count: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "play.fill").font(.caption2)
+            Text("Na ramce · \(count)").layoutPriority(1)
+        }
+        .foregroundStyle(Theme.vermilion)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Na ramce, \(count)")
     }
 }
 
@@ -724,25 +739,23 @@ struct SuggestionsCard: View {
             SuggestionsCover(works: works)
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(alignment: .topLeading) {
-                    if isActive {
-                        GlassBadge(systemImage: "play.fill", tint: Theme.vermilion)
-                            .padding(8)
-                            .accessibilityLabel("Gra teraz")
-                    }
-                }
-                .overlay(alignment: .bottomTrailing) {
-                    GlassBadge(systemImage: "sparkles")
-                        .padding(8)
-                }
                 .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
             CardCaption {
                 Text("Propozycje dnia")
                     .font(.serif(16, weight: .semibold))
                     .foregroundStyle(Theme.ink)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
+                // The sparkles before the count, as a smart playlist's icon.
+                HStack(spacing: 4) {
+                    if isActive {
+                        OnFrameCount(count: subtitle)
+                    } else {
+                        Image(systemName: "sparkles").font(.caption2)
+                        Text(subtitle)
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
+                .lineLimit(1)
             }
         }
         .accessibilityElement(children: .combine)
