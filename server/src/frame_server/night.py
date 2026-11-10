@@ -192,7 +192,7 @@ class NightQueue:
 def tasks(service: FrameService) -> list[NightTask]:
     """The night's tasks, in order: first what changes the catalogue, then
     what is worked out from it."""
-    from .library import courtauld, dumps, loc_index, louvre, met_index, nga
+    from .library import courtauld, dumps, loc_index, louvre, met_index, nga, rijks_index
     from .notifications import births_at_night
     from .web import discover_api
 
@@ -264,6 +264,14 @@ def tasks(service: FrameService) -> list[NightTask]:
 
         return refresh
 
+    def rijks(night: Night) -> int:
+        """The Rijksmuseum's collection read over OAI-PMH a few hours a
+        night until whole, then what changed every two months
+        (library/rijks_index.py)."""
+        if "rijks" not in service.importer.sources():
+            return 0
+        return rijks_index.read_at_night(service.settings.data_dir, night.quiet, night.sleep)
+
     def themes(night: Night) -> None:
         discover_api.work_out_cards(service, force=True)
 
@@ -298,6 +306,8 @@ def tasks(service: FrameService) -> list[NightTask]:
         NightTask("curator", service.curator.at_night),
         NightTask("themes", themes),
         NightTask("suggestions", suggestions),
+        # Hours at most (NIGHT_SECONDS), after what the morning needs.
+        NightTask("rijks", rijks),
         # Copies under other titles and details, by their pictures: what the
         # night has time for, the rest the next (library/twins.py).
         NightTask("twins", lambda night: service.twins.at_night(night.quiet)),
