@@ -204,7 +204,10 @@ struct NowView: View {
                             }
                         }
                         if !upcoming.isEmpty {
-                            Strip(title: "Następne", items: upcoming, queued: Set(player?.queued ?? []))
+                            Strip(
+                                title: "Następne", items: upcoming,
+                                queued: Set(player?.queued ?? []), nextQueued: player?.queued?.first
+                            )
                         }
                         if !history.isEmpty {
                             Strip(title: "Ostatnio na ramce", items: history, marks: player?.historyMarks ?? [:])
@@ -1227,6 +1230,8 @@ struct Strip: View {
     let title: String
     let items: [ItemSummary]
     var queued: Set<String> = []
+    /// The queue's first: "Następny w kolejce"; the rest "W kolejce".
+    var nextQueued: String?
     /// Who put each picture on the frame, and when ("Ostatnio na ramce").
     var marks: [String: ShownMark] = [:]
 
@@ -1260,24 +1265,20 @@ struct Strip: View {
                                 )
                                     .frame(width: Self.tile.width, height: Self.tile.height)
                                     .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-                                    .overlay(alignment: .topLeading) {
-                                        if queued.contains(item.id) {
-                                            GlassBadge(
-                                                systemImage: QueueButton.symbol,
-                                                tint: Theme.vermilion,
-                                                size: 24
-                                            )
-                                                .padding(5)
-                                                .accessibilityLabel("Dodane do kolejki")
-                                        }
-                                    }
                                     .shadow(color: .black.opacity(0.12), radius: 6, y: 4)
                                 Text(item.shownTitle)
                                     .font(.serif(13, weight: .medium))
                                     .foregroundStyle(Theme.ink)
                                     .lineLimit(2)
                                     .frame(width: 120, alignment: .leading)
-                                if let mark = marks[item.id], let when = When.past(mark.at) {
+                                // In the queue: said under the title, as under
+                                // the frame's preview, not on the picture.
+                                if queued.contains(item.id) {
+                                    Text(item.id == nextQueued ? "Następny w kolejce" : "W kolejce")
+                                        .font(.caption2)
+                                        .foregroundStyle(Theme.vermilion)
+                                        .frame(width: 120, alignment: .leading)
+                                } else if let mark = marks[item.id], let when = When.past(mark.at) {
                                     ShownMarkLabel(mark: mark, when: when)
                                         .font(.caption2)
                                         .frame(width: 120, alignment: .leading)
