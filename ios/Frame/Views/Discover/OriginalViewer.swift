@@ -199,7 +199,7 @@ struct ZoomTile: Equatable {
     static func keptWidth(_ width: Int?, _ height: Int?) -> CGFloat {
         guard let width, let height, width > 0, height > 0 else { return keptSide }
         let long = CGFloat(max(width, height))
-        return CGFloat(width) * min(1, keptSide / long)
+        return (CGFloat(width) * min(1, keptSide / long)).rounded()
     }
 
     /// Width / height of the whole grid, from one tile's size and place.
