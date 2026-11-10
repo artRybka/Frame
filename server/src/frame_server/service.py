@@ -23,6 +23,7 @@ from .ai.museum_words import MuseumWords
 from .ai.prose import ProseJob
 from .ai.search_words import SearchWords
 from .ai.study import StudyJob
+from .ai.twins_judge import NightJudge
 from .albums import Albums
 from .artist_people import ArtistPeople
 from .artist_works import ArtistWorks
@@ -309,6 +310,10 @@ class FrameService:
         self.sharper = Sharper(self.library, self.importer, self.images, copies.file)
         # One work under other titles, and details of works, by their pictures.
         self.twins = Twins(self.library, self.images)
+        # What the pictures could not settle, judged at night (Haiku, Batch API).
+        self.twins_judge = NightJudge(
+            self.library, self.images, self.twins, self.claude, self.ai_config
+        )
         self.daily.sharper = self.sharper
         self.copies = Copies(self.sharper)
         # The museums of works from Commons, Openverse, WikiArt: looked up

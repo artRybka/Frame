@@ -311,6 +311,9 @@ def tasks(service: FrameService) -> list[NightTask]:
         # Copies under other titles and details, by their pictures: what the
         # night has time for, the rest the next (library/twins.py).
         NightTask("twins", lambda night: service.twins.at_night(night.quiet)),
+        # What the pictures could not settle: Haiku, then Haiku as the
+        # critic, each batch waited for while the night is quiet.
+        NightTask("twins judge", service.twins_judge.at_night),
         # Once a month: Commons' files with a tile set ("Pod lupą").
         NightTask("tile sets", service.player.tile_sets_at_night),
         # Last: downloads, gently, in whatever time the night has left.

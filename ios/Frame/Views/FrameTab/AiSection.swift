@@ -100,6 +100,14 @@ struct AiSection: View {
                         value: curator
                     ) { AiSettingsUpdate(curator: $0) }
                 }
+                if let twinsJudge = settings.twinsJudge {
+                    Divider()
+                    toggle(
+                        "Sędzia powtórek",
+                        hint: "W nocy ocenia kopie i detale, których nie rozpoznały obrazy. Grosze miesięcznie.",
+                        value: twinsJudge
+                    ) { AiSettingsUpdate(twinsJudge: $0) }
+                }
                 Divider()
                 progress
             }
