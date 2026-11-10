@@ -219,7 +219,7 @@ struct ArtCard: View {
                 .overlay(alignment: .topTrailing) {
                     if showsFavorite, item.favorite {
                         GlassBadge(systemImage: "heart.fill")
-                            .padding(6)
+                            .padding(5)
                             .accessibilityLabel("W ulubionych")
                     }
                 }
@@ -262,7 +262,7 @@ struct ArtCard: View {
 struct ZoomMark: View {
     var body: some View {
         GlassBadge(systemImage: "plus.magnifyingglass")
-            .padding(6)
+            .padding(5)
             .accessibilityLabel("Pod lupą: można mocno przybliżyć")
     }
 }
@@ -270,22 +270,50 @@ struct ZoomMark: View {
 /// Every mark on a thumbnail, tile or card: one round drop of the system's
 /// glass with a symbol in it, as the crossed eye on "Ukryte" first wore
 /// (Mateusz 2026-11-09: "wszystkie ikonki na miniaturach, kafelkach
-/// szklane, jak na ukryte"). The symbol is soft ink; a mark that says
-/// something urgent (playing now, in the queue, remove) takes its colour.
+/// szklane, jak na ukryte").
+///
+/// Kept in order (Mateusz 2026-11-10, sheet szklane-znaczki): small enough
+/// not to compete with the picture, and each corner means one thing.
+/// - top left: what happens to the work (playing now, in the queue, "Pod
+///   lupą"; at most one);
+/// - top right: what is yours (the heart, the editor's plus/tick, remove);
+/// - bottom right: only the kind of a collection, on its cover.
+/// The symbol is soft ink; only "playing now", the queue and an added tick
+/// take a colour.
 struct GlassBadge: View {
+    /// How loud a badge may be: one that only tells is smaller than one
+    /// the finger presses.
+    enum Role {
+        /// Tells something about the work on a grid tile.
+        case mark
+        /// The same on a small tile (Teraz's strip, the editor's squares).
+        case small
+        /// Pressed: the heart in Szukaj, the editor's plus, remove.
+        case button
+        /// The kind of collection in a cover's corner.
+        case cover
+
+        var size: CGFloat {
+            switch self {
+            case .mark: 20
+            case .small: 18
+            case .button: 26
+            case .cover: 24
+            }
+        }
+    }
+
     let systemImage: String
     var tint: Color = Theme.inkSoft
-    /// The circle's side; the symbol keeps the "Ukryte" proportion (13 in 30).
-    var size: CGFloat = 30
-    /// A badge that is itself a button answers the finger, as glass does.
-    var interactive = false
+    var role: Role = .mark
 
     var body: some View {
+        let size = role.size
         Image(systemName: systemImage)
-            .font(.system(size: (size * 0.43).rounded(), weight: .semibold))
+            .font(.system(size: (size * 0.45).rounded(), weight: .semibold))
             .foregroundStyle(tint)
             .frame(width: size, height: size)
-            .glassEffect(interactive ? .regular.interactive() : .regular, in: .circle)
+            .glassEffect(role == .button ? .regular.interactive() : .regular, in: .circle)
     }
 }
 
@@ -302,11 +330,11 @@ struct TileHeart: View {
             taps += 1
             toggle()
         } label: {
-            GlassBadge(systemImage: favorite ? "heart.fill" : "heart", interactive: true)
+            GlassBadge(systemImage: favorite ? "heart.fill" : "heart", role: .button)
                 .contentTransition(.symbolEffect(.replace))
-                .padding(6)
-                // A finger's room, the circle where the favourite's is.
-                .padding([.leading, .bottom], 8)
+                .padding(4)
+                // A finger's room (44 pt), the circle where the favourite's is.
+                .padding([.leading, .bottom], 14)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

@@ -465,8 +465,8 @@ struct PlaylistEditorView: View {
                                     .frame(width: 72, height: 72)
                                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                                     .overlay(alignment: .topTrailing) {
-                                        GlassBadge(systemImage: "xmark", size: 22)
-                                            .padding(3)
+                                        GlassBadge(systemImage: "xmark", role: .small)
+                                            .padding(4)
                                     }
                             }
                             .buttonStyle(.plain)
@@ -674,11 +674,12 @@ struct PlaylistEditorView: View {
     @ViewBuilder
     private func card(_ item: ItemSummary, remote: RemoteItem? = nil) -> some View {
         let link = NavigationLink(value: item.id) {
-            ArtCard(item: item, ref: remote?.thumb)
+            // In a manual playlist the plus takes the heart's corner.
+            ArtCard(item: item, ref: remote?.thumb, showsFavorite: playlist.kind != .manual)
         }
         .buttonStyle(.plain)
         if playlist.kind == .manual {
-            link.overlay(alignment: .topLeading) { addButton(item.id, remote: remote) }
+            link.overlay(alignment: .topTrailing) { addButton(item.id, remote: remote) }
         } else {
             link
         }
@@ -692,20 +693,21 @@ struct PlaylistEditorView: View {
             ZStack {
                 if adding.contains(id) {
                     // The spinner sits in the same drop of glass.
-                    ProgressView().controlSize(.small)
-                        .frame(width: 32, height: 32)
+                    ProgressView().controlSize(.mini)
+                        .frame(width: GlassBadge.Role.button.size, height: GlassBadge.Role.button.size)
                         .glassEffect(.regular, in: .circle)
                 } else {
                     GlassBadge(
                         systemImage: added ? "checkmark" : "plus",
                         tint: added ? Theme.good : Theme.inkSoft,
-                        size: 32,
-                        interactive: true
+                        role: .button
                     )
                     .contentTransition(.symbolEffect(.replace))
                 }
             }
-            .padding(6)
+            .padding(4)
+            // A finger's room (44 pt) towards the picture.
+            .padding([.leading, .bottom], 14)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

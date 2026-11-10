@@ -97,8 +97,11 @@ struct SamplePhotosSection: View {
                 Button {
                     remove(id)
                 } label: {
-                    GlassBadge(systemImage: "xmark", size: 22, interactive: true)
-                        .padding(3)
+                    GlassBadge(systemImage: "xmark", role: .small)
+                        .padding(4)
+                        // A finger's room towards the picture.
+                        .padding([.leading, .bottom], 10)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Usuń przykładowe zdjęcie")

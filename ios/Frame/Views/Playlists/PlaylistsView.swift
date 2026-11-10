@@ -649,7 +649,7 @@ struct PlaylistCard: View {
                 .overlay(alignment: .topLeading) {
                     if isActive {
                         GlassBadge(systemImage: "play.fill", tint: Theme.vermilion)
-                            .padding(8)
+                            .padding(7)
                             .accessibilityLabel("Gra teraz")
                     }
                 }
@@ -727,12 +727,12 @@ struct SuggestionsCard: View {
                 .overlay(alignment: .topLeading) {
                     if isActive {
                         GlassBadge(systemImage: "play.fill", tint: Theme.vermilion)
-                            .padding(8)
+                            .padding(7)
                             .accessibilityLabel("Gra teraz")
                     }
                 }
                 .overlay(alignment: .bottomTrailing) {
-                    GlassBadge(systemImage: "sparkles")
+                    GlassBadge(systemImage: "sparkles", role: .cover)
                         .padding(8)
                 }
                 .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
@@ -802,8 +802,8 @@ struct HiddenCard: View {
                 .overlay(alignment: .bottomTrailing) {
                     // A drop of the same glass, not a paper sticker: the
                     // badge every thumbnail's mark now wears.
-                    GlassBadge(systemImage: "eye.slash")
-                        .padding(9)
+                    GlassBadge(systemImage: "eye.slash", role: .cover)
+                        .padding(8)
                 }
                 .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
             CardCaption {

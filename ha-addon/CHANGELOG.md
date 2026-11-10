@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.138.4
+
+- Znaczki na miniaturach uporządkowane: te, które tylko informują (serce,
+  lupa, „gra teraz”, kolejka), są mniejsze; te, które się klika (serce
+  w Szukaj, plus w edytorze, usuwanie), nieco większe, z wygodnym polem
+  dotyku. Lewy górny róg mówi, co się dzieje z dziełem, prawy górny to,
+  co Twoje, a prawy dolny rodzaj zbioru na okładce.
+- W Ulubionych nie ma już serca na każdym kafelku. W edytorze playlisty
+  i przy usuwaniu dzieł plus i minus stoją w miejscu serca.
+
 ## 1.138.3
 
 - Nazwisko artysty pod tytułem dzieła (na karcie dzieła i w Teraz) nie jest

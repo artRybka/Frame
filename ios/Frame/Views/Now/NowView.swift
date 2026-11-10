@@ -1265,9 +1265,9 @@ struct Strip: View {
                                             GlassBadge(
                                                 systemImage: QueueButton.symbol,
                                                 tint: Theme.vermilion,
-                                                size: 24
+                                                role: .small
                                             )
-                                                .padding(5)
+                                                .padding(4)
                                                 .accessibilityLabel("Dodane do kolejki")
                                         }
                                     }
