@@ -332,7 +332,11 @@ class FrameService:
         self.copies.work_qid = self.holders.work_qid
         # The study's "Droga dzieła": the museum's provenance retold (Haiku).
         self.journeys = Journeys(
-            self.library, self.claude, self.ai_config, work_qid=self.holders.work_qid
+            self.library,
+            self.claude,
+            self.ai_config,
+            work_qid=self.holders.work_qid,
+            data_dir=settings.data_dir,
         )
         # Commons' tile sets in place of works' pictures (deeper zoom).
         self.sharper.tiled_copies = self.copies.tiled_copies

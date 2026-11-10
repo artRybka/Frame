@@ -3,14 +3,20 @@
 
 Museums keep the record: the Art Institute of Chicago its provenance and
 the exhibitions it went to, the Cleveland Museum of Art its owners one by
-one with their dates, Wikidata the owners (P127) and exhibitions (P608) of
-works any museum holds. Haiku only retells that record in Polish, as a few
-stops on a road: a year, a place, one sentence, and what kind of stop it
-was (the app draws the road between them). Code then keeps only stops whose
-every year and sum of money is in the record; without a record, or with
-fewer than two stops left, the study has no such section. Nothing is made
-up and nothing is looked up twice: what was found (also nothing) is kept as
-a note of :data:`KIND`, looked for in the background when the page opens.
+one with their dates, the National Gallery of Art, the Rijksmuseum and the
+Louvre their provenance as a text (the Louvre also its loans to
+exhibitions), Wikidata the owners (P127) and exhibitions (P608) of works
+any museum holds. A work from somewhere else (Wikimedia Commons, Europeana,
+an archive's photograph) that hangs in one of these museums gets that
+museum's record: by the museum's id on the work's Wikidata item, or by the
+museum's own copy of the picture (``Item.sharper``). Haiku only retells
+that record in Polish, as a few stops on a road: a year, a place, one
+sentence, and what kind of stop it was (the app draws the road between
+them). Code then keeps only stops whose every year and sum of money is in
+the record; without a record, or with fewer than two stops left, the study
+has no such section. Nothing is made up and nothing is looked up twice:
+what was found (also nothing) is kept as a note of :data:`KIND`, looked for
+in the background when the page opens.
 """
 
 from __future__ import annotations
@@ -18,14 +24,18 @@ from __future__ import annotations
 import logging
 import math
 import re
+import sqlite3
 import threading
+import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import httpx
 from pydantic import BaseModel
 
-from ..library import Item, ItemKind
+from ..library import Item, ItemKind, nga
+from ..library.louvre import ARK as LOUVRE_ARK
 from ..library.markup import strip_markup
 from ..library.models import Note
 from ..library.museums import client
@@ -43,10 +53,17 @@ log = logging.getLogger(__name__)
 KIND = "journey"
 SWITCH = "journey"
 VERSION = "journey-1"
+#: "None" as it is kept since more records are read (the National Gallery,
+#: the Rijksmuseum, the Louvre, and museums' records of works from
+#: elsewhere): a "none" from before is looked for once more.
+NONE_VERSION = "journey-1/records-2"
 #: The record sent to the model, at most.
 RECORD_CHARS = 7000
 #: Exhibitions put in the record, at most (all are counted).
 EXHIBITIONS_SENT = 30
+#: A source that could not be asked is left alone this long (seconds):
+#: the page asks on every refresh while a journey is being looked for.
+RETRY_AFTER = 600.0
 MAX_STOPS = 9
 TEXT_MAX = 160
 #: What kind of stop it is: the app's drawing for it.
@@ -67,7 +84,9 @@ KINDS = (
 SYSTEM = f"""You retell the journey of one artwork, from its maker to where it is now, \
 for a Polish art app. You get the museum's own record: its provenance (who owned it, when, \
 how it passed on) and the exhibitions it went to. Use only that record: never add an owner, \
-a date, a price, a place or an event it does not give, and never guess why something happened.
+a date, a price, a place or an event it does not give, and never guess why something happened. \
+The record may be in French, and may end in the museum's notes: a year that is only a book's, a \
+letter's or a catalogue's there is no stop.
 
 Answer in Polish:
 - "headline": at most 45 characters, the journey in a few words, e.g. "Z pracowni w Paryżu do \
@@ -153,11 +172,13 @@ class Record(BaseModel):
 # -- the records -----------------------------------------------------------------------------
 
 
-def _aic(http: httpx.Client, item: Item) -> Record | None:
+def _aic(http: httpx.Client, source_id: str, data_dir: Path | None) -> Record | None:
     resp = http.get(
-        f"https://api.artic.edu/api/v1/artworks/{item.source_id}",
+        f"https://api.artic.edu/api/v1/artworks/{source_id}",
         params={"fields": "provenance_text,exhibition_history"},
     )
+    if resp.status_code == 404:
+        return None
     resp.raise_for_status()
     data = resp.json().get("data") or {}
     provenance = strip_markup(str(data.get("provenance_text") or "")).strip()
@@ -170,8 +191,11 @@ def _aic(http: httpx.Client, item: Item) -> Record | None:
     return Record(text=text, exhibitions=len(shows), source="Art Institute of Chicago")
 
 
-def _cma(http: httpx.Client, item: Item) -> Record | None:
-    resp = http.get(f"https://openaccess-api.clevelandart.org/api/artworks/{item.source_id}")
+def _cma(http: httpx.Client, source_id: str, data_dir: Path | None) -> Record | None:
+    """By the record's id or the accession number (Wikidata's P11110)."""
+    resp = http.get(f"https://openaccess-api.clevelandart.org/api/artworks/{source_id}")
+    if resp.status_code == 404:
+        return None
     resp.raise_for_status()
     data = resp.json().get("data") or {}
     owners = sorted(data.get("provenance") or [], key=lambda p: p.get("sortorder") or 0)
@@ -195,10 +219,139 @@ def _cma(http: httpx.Client, item: Item) -> Record | None:
     return Record(text=text, exhibitions=len(shows), source="Cleveland Museum of Art")
 
 
-#: The museums whose own record tells the way, by their name in it.
-MUSEUM_NAMES = ("Art Institute of Chicago", "Cleveland Museum of Art")
+def _nga(http: httpx.Client, source_id: str, data_dir: Path | None) -> Record | None:
+    """From the gallery's open data kept at home (library/nga.py): its
+    provenance, the notes it gives after it last."""
+    try:
+        text = nga.provenance(data_dir, source_id)
+    except sqlite3.Error as err:
+        raise ValueError(f"the National Gallery's index: {err}") from err
+    if text is None:  # no index yet, or one from before it kept this
+        raise ValueError("the National Gallery's index is not ready")
+    text = re.sub(r"\n{3,}", "\n\nNotes:\n", text.strip(), count=1)
+    if not text:
+        return None
+    return Record(text=f"Provenance: {text}", source="National Gallery of Art")
+
+
+#: Rijksmuseum's Linked Art: the type of its provenance statement.
+_RIJKS_PROVENANCE = "http://vocab.getty.edu/aat/300444174"
+_ENGLISH = "http://vocab.getty.edu/aat/300388277"
+
+
+def _rijks(http: httpx.Client, source_id: str, data_dir: Path | None) -> Record | None:
+    resp = http.get(
+        f"https://id.rijksmuseum.nl/{source_id}", headers={"Accept": "application/ld+json"}
+    )
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+    said = [
+        r
+        for r in resp.json().get("referred_to_by") or []
+        if r.get("content")
+        and any(c.get("id") == _RIJKS_PROVENANCE for c in r.get("classified_as") or [])
+    ]
+    english = [r for r in said if any(x.get("id") == _ENGLISH for x in r.get("language") or [])]
+    if not said:
+        return None
+    # Its sources stand in braces: "{Hoet I, 1752, p. 99, no. 15.}".
+    text = re.sub(r"\{[^{}]*\}", "", strip_markup(str((english or said)[0]["content"])))
+    text = " ".join(text.split())
+    return Record(text=f"Provenance: {text}", source="Rijksmuseum") if text else None
+
+
+#: The Louvre's history of a work, at most (some go on into an essay).
+LOUVRE_HISTORY_CHARS = 3500
+
+
+def _louvre(http: httpx.Client, source_id: str, data_dir: Path | None) -> Record | None:
+    """The entry's history ("objectHistory", French), its former owners,
+    how and when it came, and the exhibitions it was lent to."""
+    resp = http.get(f"{LOUVRE_ARK}{source_id.removeprefix('cl')}.json")
+    if resp.status_code == 404:
+        return None
+    resp.raise_for_status()
+    try:
+        entry = resp.json()
+    except ValueError as err:  # the bot wall's page instead of the entry
+        raise httpx.HTTPError(f"no JSON for {source_id}") from err
+    if not isinstance(entry, dict):
+        return None
+    history = strip_markup(str(entry.get("objectHistory") or "")).strip()
+    owners = [
+        str(o.get("value") or "").strip()
+        for o in entry.get("previousOwner") or []
+        if isinstance(o, dict) and o.get("value")
+    ]
+    shows = [
+        " ".join(str(e.get("value") or "").split())
+        for e in entry.get("exhibition") or []
+        if isinstance(e, dict) and e.get("value")
+    ]
+    if not history and not owners and not shows:
+        return None
+    came = []
+    for a in entry.get("acquisitionDetails") or []:
+        if not isinstance(a, dict) or not a.get("mode"):
+            continue
+        dates = "; ".join(
+            f"{d.get('type') or 'date'}: {d.get('value')}"
+            for d in a.get("dates") or []
+            if isinstance(d, dict) and d.get("value")
+        )
+        came.append(f"{a['mode']} ({dates})" if dates else str(a["mode"]))
+    text = f"History (the museum's own, in French):\n{history[:LOUVRE_HISTORY_CHARS] or '(none)'}"
+    if owners:
+        text += "\n\nFormer owners: " + "; ".join(owners)
+    if came:
+        text += "\n\nCame to the Louvre: " + "; ".join(came)
+    if shows:
+        text += "\n\nLent to exhibitions:\n" + "\n".join(shows[:EXHIBITIONS_SENT])
+    return Record(text=text, exhibitions=len(shows), source="Musée du Louvre")
+
+
+#: How a museum's record is asked for: (http, the work's id there, the data
+#: folder).
+Reader = Callable[[httpx.Client, str, Path | None], Record | None]
 #: Museums whose own record tells the way.
-MUSEUMS: dict[str, Callable[[httpx.Client, Item], Record | None]] = {"aic": _aic, "cma": _cma}
+MUSEUMS: dict[str, Reader] = {
+    "aic": _aic,
+    "cma": _cma,
+    "nga": _nga,
+    "rijks": _rijks,
+    "louvre": _louvre,
+}
+#: The same museums by their name in the record.
+MUSEUM_NAMES = (
+    "Art Institute of Chicago",
+    "Cleveland Museum of Art",
+    "National Gallery of Art",
+    "Rijksmuseum",
+    "Musée du Louvre",
+)
+#: Wikidata's properties that hold a work's id in those museums: a work
+#: from elsewhere that hangs there is asked for by it.
+BRIDGES = {
+    "P4610": "aic",  # Art Institute of Chicago artwork ID
+    "P11110": "cma",  # Cleveland Museum of Art ID: the accession number
+    "P4683": "nga",  # National Gallery of Art artwork ID
+    "P13234": "rijks",  # Rijksmuseum ID (Linked Art)
+    "P9394": "louvre",  # Louvre Museum ARK ID
+}
+
+
+def bridges(claims: dict[str, Any]) -> list[tuple[str, str]]:
+    """(museum, the work's id there) for each of :data:`BRIDGES` the
+    Wikidata item's ``claims`` give."""
+    found = []
+    for prop, museum in BRIDGES.items():
+        for claim in claims.get(prop) or []:
+            value = claim.get("mainsnak", {}).get("datavalue", {}).get("value")
+            if claim.get("rank") != "deprecated" and isinstance(value, str) and value.strip():
+                found.append((museum, value.strip()))
+                break
+    return found
 
 
 def _time(claim: dict[str, Any], prop: str) -> str:
@@ -217,12 +370,20 @@ def _label(entity: dict[str, Any]) -> str:
     return ""
 
 
+def claims_of(http: httpx.Client, qid: str) -> dict[str, Any]:
+    """The statements of the work's Wikidata item; {} without one."""
+    if not qid:
+        return {}
+    work = Wikidata._entities(http, [qid], "claims").get(qid) or {}
+    return work.get("claims") or {}
+
+
 def from_wikidata(http: httpx.Client, qid: str) -> Record | None:
     """Owners (P127) and exhibitions (P608) of the work, with their years."""
-    if not qid:
-        return None
-    work = Wikidata._entities(http, [qid], "claims").get(qid) or {}
-    claims = work.get("claims") or {}
+    return from_claims(http, claims_of(http, qid))
+
+
+def from_claims(http: httpx.Client, claims: dict[str, Any]) -> Record | None:
     owned = [c for c in claims.get("P127") or [] if c.get("rank") != "deprecated"]
     shown = [c for c in claims.get("P608") or [] if c.get("rank") != "deprecated"]
     if len(owned) < 2 and not shown:
@@ -358,6 +519,7 @@ class Journeys:
         config: AiConfigStore,
         work_qid: Callable[[Item], str] = lambda item: "",
         http: Callable[[], httpx.Client] | None = None,
+        data_dir: Path | None = None,
     ) -> None:
         self.library = library
         self.claude = claude
@@ -365,8 +527,12 @@ class Journeys:
         #: The work's Wikidata item (``Holders.work_qid``).
         self.work_qid = work_qid
         self.http = http
+        #: Where the sources' own data are kept (the National Gallery's).
+        self.data_dir = data_dir
         self._lock = threading.Lock()
         self._looking: set[str] = set()
+        #: Works whose record could not be asked for, and when.
+        self._failed: dict[str, float] = {}
 
     def enabled(self) -> bool:
         return self.config.enabled(SWITCH)
@@ -379,7 +545,9 @@ class Journeys:
 
     def asked(self, item: Item) -> bool:
         note = self.library.note(item.id, KIND)
-        return note is not None and note.prompt_version == VERSION
+        if note is None:
+            return False
+        return note.prompt_version == (VERSION if note.data else NONE_VERSION)
 
     def look_soon(self, item: Item) -> bool:
         """Looks the journey up in the background, once; True while it does."""
@@ -388,6 +556,8 @@ class Journeys:
         with self._lock:
             if item.id in self._looking:
                 return True
+            if time.monotonic() - self._failed.get(item.id, -RETRY_AFTER) < RETRY_AFTER:
+                return False
             self._looking.add(item.id)
         threading.Thread(target=self._look, args=(item,), name="journey", daemon=True).start()
         return True
@@ -402,13 +572,34 @@ class Journeys:
                 self._looking.discard(item.id)
 
     def record(self, item: Item) -> Record | None:
-        """The museum's record of the work's way, else Wikidata's. Raises
-        ``httpx.HTTPError`` when a source could not be asked."""
+        """The record of the work's way: its museum's; else, of a work from
+        elsewhere, the museum's whose own copy of the picture it is shown
+        in, then the museum's its Wikidata item names (:data:`BRIDGES`);
+        else Wikidata's owners and exhibitions. Raises ``httpx.HTTPError``
+        or ``ValueError`` when a source could not be asked."""
+        asked: set[tuple[str, str]] = set()
+
+        def ask(http: httpx.Client, museum: str, source_id: str) -> Record | None:
+            reader = MUSEUMS.get(museum)
+            if reader is None or not source_id or (museum, source_id) in asked:
+                return None
+            asked.add((museum, source_id))
+            return reader(http, source_id, self.data_dir)
+
         with (self.http or client)() as http:
-            ask = MUSEUMS.get(item.source)
-            found = ask(http, item) if ask is not None else None
+            found = ask(http, item.source, item.source_id)
+            if found is None and item.sharper is not None:
+                museum, _, source_id = item.sharper.item_id.partition(":")
+                found = ask(http, museum, source_id)
             if found is None:
-                found = from_wikidata(http, self.work_qid(item))
+                claims = claims_of(http, self.work_qid(item))
+                for museum, source_id in bridges(claims):
+                    if museum == item.source:
+                        continue  # its own museum: asked above
+                    if (found := ask(http, museum, source_id)) is not None:
+                        break
+                if found is None:
+                    found = from_claims(http, claims)
         if found is not None:
             found.text = found.text[:RECORD_CHARS]
         return found
@@ -419,7 +610,9 @@ class Journeys:
             found = self.record(item)
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as err:
             log.info("journey of %s: %s", item.id, err)
-            return None  # not kept: asked again next time
+            with self._lock:
+                self._failed[item.id] = time.monotonic()
+            return None  # not kept: asked again later
         journey: Journey | None = None
         model = ""
         if found is not None:
@@ -442,6 +635,8 @@ class Journeys:
                 answer = self.claude.ask(KIND, params)
             except AiUnavailable as err:
                 log.info("journey of %s not asked: %s", item.id, err)
+                with self._lock:
+                    self._failed[item.id] = time.monotonic()
                 return None
             journey = read(answer.data or {}, found, item)
             model = HAIKU
@@ -450,7 +645,7 @@ class Journeys:
                 item_id=item.id,
                 kind=KIND,
                 model=model,
-                prompt_version=VERSION,
+                prompt_version=VERSION if journey else NONE_VERSION,
                 data=journey.model_dump() if journey else {},
             )
         )
