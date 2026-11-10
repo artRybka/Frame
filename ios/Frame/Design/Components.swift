@@ -290,7 +290,8 @@ struct GlassBadge: View {
 ///
 /// A heart without a circle: off, a heart of the system's own glass (Liquid
 /// Glass in a heart's shape, its edge catching the light as iOS buttons
-/// do; Mateusz 2026-11-10 12:13); on, plain red with no rim and a soft
+/// do; Mateusz 2026-11-10 12:13), the clear kind so the picture shows
+/// through (12:40: "bardziej przezierne"); on, plain red with no rim and a soft
 /// shadow, apart from a pale sky or a dark ground.
 struct HeartMark: View {
     let on: Bool
@@ -308,7 +309,7 @@ struct HeartMark: View {
         } else {
             Color.clear
                 .frame(width: size + 4, height: size + 2)
-                .glassEffect(interactive ? .regular.interactive() : .regular, in: HeartShape())
+                .glassEffect(interactive ? .clear.interactive() : .clear, in: HeartShape())
         }
     }
 }
