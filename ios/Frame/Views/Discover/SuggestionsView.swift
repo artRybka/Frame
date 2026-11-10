@@ -507,8 +507,8 @@ struct ZoomRow: View {
     }
 }
 
-/// One work of "Pod lupą" as a card that opens the work, with a heart to
-/// press (in the row and in its grid).
+/// One work of "Pod lupą" as a card that opens the work (in the row and in
+/// its grid); no heart on it (Mateusz 2026-11-10 19:23).
 struct ZoomWorkCard: View {
     @Environment(AppModel.self) private var model
     let remote: RemoteItem
@@ -520,9 +520,6 @@ struct ZoomWorkCard: View {
         }
         .buttonStyle(.plain)
         .contextMenu { QueueButton(itemID: remote.id) }
-        // The heart to press, in the picture's top right corner as on the
-        // other rows of Odkrywaj.
-        .overlay(alignment: .topTrailing) { LikeHeart(item: remote.summary) }
         // The card opened from here shows this much while it loads.
         .onAppear {
             ItemPeeks.remember(remote.summary, thumb: remote.thumb)
