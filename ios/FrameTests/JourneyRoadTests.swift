@@ -110,36 +110,65 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertEqual(short.count, 2)
     }
 
-    func testASideTripForksOffToAFramedText() throws {
+    func testASideTripForksOffToACircledText() throws {
         let heights: [CGFloat] = [54, 74, 54, 54, 74]
         let seas = [false, false, false, false, false]
         let plan = try XCTUnwrap(JourneyRoad.plan(width: 350, heights: heights, seas: seas,
                                                   detours: [false, false, true, false, false],
                                                   widths: [180, 190, 150, 160, 170], seed: "aic:27992"))
         XCTAssertEqual(Array(plan.branches.keys), [2])
-        let way = try XCTUnwrap(plan.branches[2]), frame = try XCTUnwrap(plan.frames[2]), stop = plan.dots[2]
-        // The branch forks off the road itself, is a long one, and never
-        // comes back up to the road: its stop is under it.
-        XCTAssertTrue(plan.line.contains(way[0]))
+        let way = try XCTUnwrap(plan.branches[2]), box = try XCTUnwrap(plan.loops[2]), stop = plan.dots[2]
+        // The branch leaves the road itself, the way the road goes there,
+        // and ends at its stop, which is off the road, under it.
+        let fork = try XCTUnwrap(plan.line.firstIndex(of: way[0]))
         XCTAssertEqual(way.last, stop)
-        XCTAssertGreaterThan(zip(way, way.dropFirst()).map { hypot($1.x - $0.x, $1.y - $0.y) }.reduce(0, +), 100)
-        XCTAssertEqual(zip(way, way.dropFirst()).filter { $1.y < $0.y - 0.01 }.count, 0)
+        let road = atan2(plan.line[fork + 4].y - plan.line[fork - 4].y, plan.line[fork + 4].x - plan.line[fork - 4].x)
+        let leaves = atan2(way[2].y - way[0].y, way[2].x - way[0].x)
+        XCTAssertEqual(cos(road - leaves), 1, accuracy: 0.01)
+        XCTAssertGreaterThan(zip(way, way.dropFirst()).map { hypot($1.x - $0.x, $1.y - $0.y) }.reduce(0, +), 70)
         let off = plan.line.map { hypot($0.x - stop.x, $0.y - stop.y) }.min() ?? 0
         XCTAssertGreaterThan(off, 20)
-        // The stop is on a corner of the frame, the frame is as wide as its
-        // text and holds it, and the road keeps clear of it.
-        XCTAssertEqual(frame.minY, stop.y, accuracy: 0.01)
-        XCTAssertTrue(abs(frame.minX - stop.x) < 0.01 || abs(frame.maxX - stop.x) < 0.01)
-        XCTAssertEqual(frame.width, 150 + 2 * JourneyRoad.framePad.side, accuracy: 0.01)
-        XCTAssertEqual(frame.maxY, plan.texts[2].maxY + JourneyRoad.framePad.bottom, accuracy: 0.01)
-        XCTAssertGreaterThanOrEqual(frame.minX, 0)
-        XCTAssertLessThanOrEqual(frame.maxX, 350)
-        for box in plan.texts + [frame] {
+        // The loop's box is as wide as its text and holds it; the stop is
+        // on the loop, and the road keeps clear of the box.
+        XCTAssertEqual(box.width, 150 + 2 * JourneyRoad.loopPad.side, accuracy: 0.01)
+        XCTAssertEqual(box.minY, plan.texts[2].minY - JourneyRoad.loopPad.top, accuracy: 0.01)
+        XCTAssertEqual(box.maxY, plan.texts[2].maxY + JourneyRoad.loopPad.bottom, accuracy: 0.01)
+        XCTAssertGreaterThanOrEqual(box.minX, 0)
+        XCTAssertLessThanOrEqual(box.maxX, 350)
+        var random = SeededRandom("loop")
+        let ring = JourneyRoad.loop(box, dotRight: !plan.leading[2], random: &random)
+        XCTAssertLessThan(ring.map { hypot($0.x - stop.x, $0.y - stop.y) }.min() ?? 9, 1.5)
+        // It goes once round and a little more, and stays about its box.
+        XCTAssertGreaterThan(hypot(ring[0].x - ring[ring.count - 1].x, ring[0].y - ring[ring.count - 1].y), 20)
+        XCTAssertTrue(ring.allSatisfy { box.insetBy(dx: -box.width * 0.06, dy: -box.height * 0.06).contains($0) })
+        for area in plan.texts + [box] {
             let near = plan.line.map { p in
-                hypot(max(box.minX - p.x, 0, p.x - box.maxX), max(box.minY - p.y, 0, p.y - box.maxY))
+                hypot(max(area.minX - p.x, 0, p.x - area.maxX), max(area.minY - p.y, 0, p.y - area.maxY))
             }.min() ?? 0
             XCTAssertGreaterThanOrEqual(near, 5)
         }
+        // The branch is inked in short strokes, none of them over its dot.
+        let strokes = JourneyRoad.dashes(way, until: stop)
+        XCTAssertGreaterThan(strokes.count, 4)
+        XCTAssertTrue(strokes.joined().allSatisfy { hypot($0.x - stop.x, $0.y - stop.y) > 4.6 })
+    }
+
+    func testAFewStainsLieBesideTheLine() throws {
+        let plan = try road()
+        let stains = JourneyRoad.stains(along: plan.line, width: 350, seed: "aic:27992")
+        XCTAssertGreaterThanOrEqual(stains.count, 3)
+        XCTAssertLessThanOrEqual(stains.count, 12)
+        for stain in stains {
+            // Each is a closed shape near the line, with a few drops.
+            let middle = CGPoint(x: stain.wash.map(\.x).reduce(0, +) / CGFloat(stain.wash.count),
+                                 y: stain.wash.map(\.y).reduce(0, +) / CGFloat(stain.wash.count))
+            XCTAssertLessThan(plan.line.map { hypot($0.x - middle.x, $0.y - middle.y) }.min() ?? 99, 60)
+            XCTAssertLessThan(hypot(stain.wash[0].x - stain.wash[stain.wash.count - 1].x,
+                                    stain.wash[0].y - stain.wash[stain.wash.count - 1].y), 30)
+            XCTAssertGreaterThanOrEqual(stain.drops.count, 2)
+        }
+        // The same work keeps its stains.
+        XCTAssertEqual(stains.map(\.wash), JourneyRoad.stains(along: plan.line, width: 350, seed: "aic:27992").map(\.wash))
     }
 
     func testLinesAreNotBrokenWhereTheyMustNotBe() {

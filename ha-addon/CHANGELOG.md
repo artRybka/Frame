@@ -13,8 +13,10 @@
   kropką tam, gdzie dzieło jest dziś. Nad morzem wije się swobodnie
   wśród fal.
 - Wypad, z którego dzieło wróciło (na przykład wystawa), jest odnogą:
-  długa przerywana linia odchodzi od drogi jak rozwidlenie i kończy się
-  pustą kropką na rogu odręcznie narysowanej ramki z tekstem wypadu.
+  wychodzi z drogi jak na rozdrożu, tym samym piórem, tylko przerywaną
+  kreską, i kończy się pustą kropką na odręcznej pętli, którą tekst
+  wypadu jest zakreślony.
+- Przy linii leży kilka białych akwarelowych plam.
 - Teksty przystanków łamią się staranniej: „w”, „z” czy „i” nie zostają
   na końcu wiersza, liczba trzyma się swojego słowa („800 franków”,
   „nr 175”), wyróżniona nazwa nie jest rozrywana, wiersze mają podobną
