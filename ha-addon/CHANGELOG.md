@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.142.8
+
+- „Pod lupą”: rozjaśnienie HDR na kafelkach jest gradientem: pełne
+  u góry obrazu, przy linii z podpisem 10%.
+
+## 1.142.7
+
+- Zapamiętane strony wyników z Art Institute of Chicago i strony
+  wyszukiwań z wybraną techniką są pobierane z muzeów od nowa. Przy
+  Malarstwie i wybranym artyście przyjdą więc od razu jego obrazy,
+  a nie stara strona ze wszystkimi pracami.
+
 ## 1.142.6
 
 - „Droga dzieła” jest teraz rysunkiem drogi, a nie osią czasu. Jedna
