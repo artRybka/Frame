@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.143.2
+
+- „Droga dzieła”: opisy przystanków bez daty czyta się naturalniej.
+  Zamiast kilku przystanków „bez daty”, z których każdy kończył się
+  słowami „zapis nie podaje daty”, właściciele bez dat stają razem
+  w jednym przystanku, a o tym, czego zapis nie mówi, nie ma ani słowa.
+  Przystanek bez daty nie ma już czerwonego napisu przy kropce, zdania
+  nie zaczynają się raz za razem tak samo i nie powtarzają roku, który
+  stoi obok.
+- Gotowe drogi są opowiadane od nowa przy najbliższym otwarciu studium.
+
 ## 1.143.1
 
 - Ten sam artysta pod innym zapisem imienia jest tym samym artystą:
