@@ -19,7 +19,7 @@ from datetime import date
 from functools import cache, cached_property, lru_cache
 from itertools import product
 from typing import Literal
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from .models import ART_PHOTO_ARCHIVES, Item, ItemKind
 from .museums import Kind
@@ -716,7 +716,33 @@ def is_detail(item: Item) -> bool:
         return False
     if item.detail_of:
         return True
-    return item.source in GATHERED and _is_detail(item.title)
+    if item.source not in GATHERED:
+        return False
+    return _is_detail(item.title) or (item.source == "wmc" and _is_file_detail(item.url))
+
+
+#: A Commons file's name in its page's address ("…/wiki/File:Vermeer_La_
+#: Ruelle_detail_femme.JPG").
+_COMMONS_FILE = re.compile(r"/wiki/File:([^?#]+)", re.IGNORECASE)
+#: "detail" as a word of a file name: between underscores, dashes, commas
+#: or brackets ("…_detail_femme.JPG", "…_(détail).jpg", "…-detail-2.jpg").
+_FILE_NAME_DETAIL = re.compile(
+    r"(?:^|[_(\[,-])(?:details?|d[ée]tails?|detal\w*|szczeg[oó][lł]\w*|ausschnitt\w*|"
+    r"uitsnede|dettagli?o?)(?=[_)\],.\d-]|$)",
+    re.IGNORECASE,
+)
+
+
+@lru_cache(maxsize=PER_WORK)
+def _is_file_detail(url: str) -> bool:
+    """A Commons file whose name says it is a detail, while its title is
+    the work's own from Wikidata: four details of "The Little Street" all
+    titled "Uliczka" (Mateusz 2026-11-10)."""
+    found = _COMMONS_FILE.search(url)
+    if found is None:
+        return False
+    name = unquote(found.group(1)).replace(" ", "_")
+    return bool(_FILE_NAME_DETAIL.search(name))
 
 
 #: A detail in a file name, its words joined by underscores
@@ -808,12 +834,14 @@ def _is_document(classification: str, title: str) -> bool:
 def is_copy(item: Item) -> bool:
     """A reproduction of a work in print or on a slide, a photograph
     Openverse has from Flickr or one from a photo archive, a stamp, a
-    black-and-white photograph of a work, a detail of a work, Openverse's
+    black-and-white photograph of a work, a detail of a work, a photograph
+    of a work in its frame or on a museum's wall (``Item.scene_of``), Openverse's
     copy of a museum's work, a page of text: never what the frame looks for."""
     return (
         (is_photograph(item) and item.source == "openverse")
         or is_openverse_copy(item)
         or is_detail(item)
+        or bool(item.scene_of and not item.part_of)
         or is_archive_photo(item)
         or is_postal(item)
         or is_document(item)
