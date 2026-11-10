@@ -288,8 +288,8 @@ struct GlassBadge: View {
 /// and only in the top right corner; what merely tells (the kind of a
 /// collection, "Pod lupą", on the frame, in the queue) goes to the caption.
 ///
-/// A heart without a circle (sheet szklane-znaczki/szkic-3, variant A): off,
-/// a heart of misted glass with a fine light edge, the picture showing
+/// A heart without a circle (sheet szklane-znaczki/szkic-3, variant A, then
+/// without its edge): off, a heart of misted glass, the picture showing
 /// through; on, plain red with no rim. A soft shadow keeps either apart
 /// from a pale sky or a dark ground.
 struct HeartMark: View {
@@ -302,14 +302,11 @@ struct HeartMark: View {
                 Image(systemName: "heart.fill")
                     .foregroundStyle(Theme.heart)
             } else {
+                // Glass alone, no edge (Mateusz 2026-11-10 11:39): the
+                // shadow keeps it apart from the picture.
                 Rectangle()
                     .fill(.ultraThinMaterial)
                     .mask(Image(systemName: "heart.fill"))
-                    .overlay {
-                        Image(systemName: "heart")
-                            .fontWeight(.light)
-                            .foregroundStyle(.white.opacity(0.85))
-                    }
             }
         }
         .font(.system(size: size))
