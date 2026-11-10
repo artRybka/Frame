@@ -16,7 +16,11 @@
   wychodzi z drogi jak na rozdrożu, tym samym piórem, tylko przerywaną
   kreską, i kończy się pustą kropką na odręcznej pętli, którą tekst
   wypadu jest zakreślony.
-- Przy linii leży kilka białych akwarelowych plam.
+- Pod każdym tekstem leży akwarelowa podmalówka: nierówna plama
+  w kolorze piasku z ostrą, ciemniejszą krawędzią, jak rozlana
+  i wyschnięta farba.
+- Obok czarnej linii w kilku miejscach biegną białe pociągnięcia, jak
+  korekty kreski, a czerwona kropka na końcu ma biały, malowany otok.
 - Teksty przystanków łamią się staranniej: „w”, „z” czy „i” nie zostają
   na końcu wiersza, liczba trzyma się swojego słowa („800 franków”,
   „nr 175”), wyróżniona nazwa nie jest rozrywana, wiersze mają podobną

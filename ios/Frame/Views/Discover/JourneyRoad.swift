@@ -22,7 +22,12 @@ import SwiftUI
 /// a branch leaves the road as at a fork, inked with the same pen lifted
 /// (short strokes), along the road at first and then down to a hollow dot
 /// on a loop drawn by hand round the trip's text, the way one circles a
-/// word. Beside the line lie a few stains of white watercolour (18:40).
+/// word. Under each text lies an underpainting, a stain of watercolour
+/// that ran and dried with a sharp edge; beside the black line there is
+/// white here and there, as if the line had been corrected, and white
+/// round the last dot (18:48: „białym jakby korekty linii obok czarnej
+/// ścieżki, białym otok wokół czerwonej kropki… plamy akwareli z
+/// ostrzejszą krawędzią, nierówne podmalówki pod treściami”).
 /// The texts are broken with care (18:26): see `typeset` and `EvenLines`.
 /// Nothing is written under the drawing (18:26: „bez podpisu o genezie i
 /// źródle”). The shape comes from the work's id.
@@ -205,31 +210,34 @@ struct JourneyRoad: View {
     private func draw(in context: inout GraphicsContext, size: CGSize, plan: RoadPlan?, seas: [Bool], dark: Bool) {
         guard let plan else { return }
         let count = journey.stops.count
-        // Under everything, a few stains of white watercolour beside the
-        // line (18:40: „po jej bokach kilka akwarelowych, białych plam”):
-        // two washes over each other, their edges a little denser, a few
-        // drops. On the dark page they are only a faint lightening.
-        let stains = Self.stains(along: plan.line, width: size.width, seed: seed)
+        // Under everything, an underpainting under each text (18:48:
+        // „plamy akwareli z ostrzejszą krawędzią jak rozlana plama,
+        // nierówne podmalówki pod treściami”): a wash and a second one over
+        // it, a bloom where a drop pushed the pigment away, and the edge
+        // where the pigment gathered as it dried. On the dark page faint.
+        let washes = plan.hugs.indices.map { i -> Wash in
+            var random = SeededRandom(seed + "wash\(i)")
+            return Self.wash(under: plan.hugs[i], random: &random)
+        }
         context.drawLayer { layer in
-            layer.opacity = dark ? 0.07 : 1
-            layer.drawLayer { washes in
-                washes.addFilter(.blur(radius: 2.6))
-                for stain in stains {
-                    washes.fill(Self.closed(stain.wash), with: .color(Self.wash.opacity(0.5)))
-                    washes.fill(Self.closed(stain.second), with: .color(Self.wash.opacity(0.42)))
+            layer.opacity = dark ? 0.15 : 1
+            for wash in washes {
+                layer.fill(Self.closed(wash.big), with: .color(Self.washTint.opacity(0.26 * wash.tone)))
+                layer.fill(Self.closed(wash.over), with: .color(Self.washTint.opacity(0.17 * wash.tone)))
+                layer.stroke(Self.closed(wash.over), with: .color(Self.washEdge.opacity(0.3 * wash.tone)), lineWidth: 0.8)
+            }
+            layer.drawLayer { soft in
+                soft.addFilter(.blur(radius: 2.6))
+                for wash in washes {
+                    soft.stroke(Self.closed(wash.big), with: .color(Self.washEdge.opacity(0.16 * wash.tone)), lineWidth: 5)
+                    let bloom = CGRect(x: wash.bloom.x - wash.bloom.radius, y: wash.bloom.y - wash.bloom.radius,
+                                       width: 2 * wash.bloom.radius, height: 2 * wash.bloom.radius)
+                    soft.fill(Path(ellipseIn: bloom), with: .color(Theme.paper.opacity(0.45 * wash.tone)))
                 }
             }
-            layer.drawLayer { edges in
-                edges.addFilter(.blur(radius: 1))
-                for stain in stains {
-                    edges.stroke(Self.closed(stain.wash), with: .color(Self.wash.opacity(0.55)), lineWidth: 2.2)
-                    edges.stroke(Self.closed(stain.second), with: .color(Self.wash.opacity(0.4)), lineWidth: 1.6)
-                    for drop in stain.drops {
-                        edges.fill(Path(ellipseIn: CGRect(x: drop.x - drop.radius, y: drop.y - drop.radius,
-                                                          width: 2 * drop.radius, height: 2 * drop.radius)),
-                                   with: .color(Self.wash.opacity(0.7)))
-                    }
-                }
+            for wash in washes {
+                layer.stroke(Self.closed(wash.big), with: .color(Self.washEdge.opacity(0.6 * wash.tone)),
+                             style: StrokeStyle(lineWidth: 1.1, lineJoin: .round))
             }
         }
         // The seas first, under everything.
@@ -239,6 +247,16 @@ struct JourneyRoad: View {
                     bottom: i == count - 1 ? plan.dots[i].y - 30 : plan.texts[i].minY - 14,
                     width: size.width, plan: plan, random: &random)
         }
+        // White beside the black line, as if it had been corrected, and
+        // white round the last dot (18:48). Under the line and the dot.
+        var white = Path()
+        for stroke in Self.corrections(along: plan.line, until: plan.dots[count - 1], seed: seed) {
+            white.addLines(stroke)
+            white.closeSubpath()
+        }
+        var around = SeededRandom(seed + "halo")
+        white.addPath(Self.closed(Self.halo(round: plan.dots[count - 1], random: &around)))
+        context.fill(white, with: .color(.white.opacity(dark ? 0.2 : 0.95)))
         // The road, from the first dot to the last.
         var stroke = Path()
         stroke.addLines(Self.nibStroke(plan.line, until: plan.dots[count - 1], clear: Self.lastClear))
@@ -332,8 +350,10 @@ struct JourneyRoad: View {
 
     private static let sea = Color(light: 0x8FA9BA, dark: 0x5E7A8C)
 
-    /// The stains' white: on the dark page a warm one, drawn faintly.
-    private static let wash = Color(light: 0xFFFFFF, dark: 0xFFF6E8)
+    /// The underpaintings: sand, and where the pigment gathered at the
+    /// edge a darker one; on the dark page light ones, drawn faintly.
+    private static let washTint = Color(light: 0xD2BC92, dark: 0xE9D9B8)
+    private static let washEdge = Color(light: 0xB39A6C, dark: 0xF3E6CC)
 
     private static func closed(_ points: [CGPoint]) -> Path {
         var path = Path()
@@ -379,6 +399,8 @@ struct RoadPlan {
     var branches: [Int: [CGPoint]] = [:]
     /// The box of the loop round a side trip's text; its dot is on the loop.
     var loops: [Int: CGRect] = [:]
+    /// Each text as it stands: as wide as its longest line.
+    var hugs: [CGRect] = []
     var height: CGFloat
 }
 
@@ -582,7 +604,13 @@ extension JourneyRoad {
                     changed = true
                 }
             }
+            let hugs = texts.indices.map { k -> CGRect in
+                let wide = k < widths.count ? min(textWidth, max(40, widths[k])) : textWidth
+                return CGRect(x: leading[k] ? texts[k].minX : texts[k].maxX - wide, y: texts[k].minY,
+                              width: wide, height: texts[k].height)
+            }
             result = RoadPlan(line: line, dots: dots, texts: texts, leading: leading, branches: branches, loops: loops,
+                              hugs: hugs,
                               height: max(texts[count - 1].maxY, end.y + lastDot) + 6)
             if !changed { break }
         }
@@ -696,52 +724,83 @@ extension JourneyRoad {
         return spline(points, per: 6)
     }
 
-    /// A stain of white watercolour: two washes over each other and a few drops.
-    struct Stain {
-        var wash: [CGPoint]
-        var second: [CGPoint]
-        var drops: [(x: CGFloat, y: CGFloat, radius: CGFloat)]
+    /// An underpainting: a wash, a second one over a part of it, a bloom
+    /// where a drop of water pushed the pigment away, and how strong it is.
+    struct Wash {
+        var big: [CGPoint]
+        var over: [CGPoint]
+        var bloom: (x: CGFloat, y: CGFloat, radius: CGFloat)
+        var tone: CGFloat
     }
 
-    /// A few stains beside the line, one for about every 300 pt of it, on
-    /// one side and the other in turn, each lying along the line there.
-    static func stains(along line: [CGPoint], width: CGFloat, seed: String) -> [Stain] {
-        guard line.count > 40 else { return [] }
-        var random = SeededRandom(seed + "wash")
-        let count = max(3, Int((CGFloat(line.count) * 2 / 300).rounded()))
-        return (0..<count).map { k in
-            let spot = (CGFloat(k) + 0.2 + 0.6 * random.unit()) / CGFloat(count)
-            let at = min(line.count - 8, max(8, Int((CGFloat(line.count) * spot).rounded())))
-            let p = line[at], before = line[at - 6], after = line[at + 6]
-            let angle = atan2(after.y - before.y, after.x - before.x) + (random.unit() - 0.5) * 0.5
-            let off = (k % 2 == 1 ? 1 : -1) * (6 + 24 * random.unit())
-            let centre = CGPoint(x: min(width - 30, max(30, p.x - sin(angle) * off)), y: p.y + cos(angle) * off)
-            let long = 52 + 40 * random.unit(), short = 30 + 22 * random.unit()
-            /// A point of the stain: `x` along it and `y` across it.
-            func place(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
-                CGPoint(x: centre.x + x * cos(angle) - y * sin(angle), y: centre.y + x * sin(angle) + y * cos(angle))
+    /// A stain of watercolour under a text: a rounded shape a little
+    /// bigger than the text, off its middle and uneven all round.
+    static func wash(under box: CGRect, random: inout SeededRandom) -> Wash {
+        let long = box.width / 2 + 15 + 12 * random.unit(), short = (box.height - 3) / 2 + 9 + 8 * random.unit()
+        let tilt = (random.unit() - 0.5) * 0.16
+        let centre = CGPoint(x: box.midX + (random.unit() - 0.5) * 14, y: box.midY + 1.5 + (random.unit() - 0.5) * 8)
+        func blob(_ scale: CGFloat, _ shift: CGPoint, _ rough: CGFloat, _ random: inout SeededRandom) -> [CGPoint] {
+            let sides = 26, power: CGFloat = 2 / 2.3
+            let first = random.unit() * 2 * .pi, second = random.unit() * 2 * .pi, third = random.unit() * 2 * .pi
+            var ring = (0..<sides).map { q -> CGPoint in
+                let turn = CGFloat(q) / CGFloat(sides) * 2 * .pi, c = cos(turn), s = sin(turn)
+                let uneven = 0.15 * sin(2 * turn + first) + 0.1 * sin(3 * turn + second) + 0.05 * sin(5 * turn + third)
+                let reach = scale * (1 + rough * (uneven + 0.06 * (random.unit() - 0.5)))
+                let x = shift.x + long * reach * (c < 0 ? -1 : 1) * pow(abs(c), power)
+                let y = shift.y + short * reach * (s < 0 ? -1 : 1) * pow(abs(s), power)
+                return CGPoint(x: centre.x + x * cos(tilt) - y * sin(tilt), y: centre.y + x * sin(tilt) + y * cos(tilt))
             }
-            func blob(_ scale: CGFloat, _ shift: CGPoint, _ random: inout SeededRandom) -> [CGPoint] {
-                let sides = 17, lobes = random.unit() * 2 * .pi, frill = random.unit() * 2 * .pi
-                var ring = (0..<sides).map { q -> CGPoint in
-                    let turn = CGFloat(q) / CGFloat(sides) * 2 * .pi
-                    let reach = scale * (1 + 0.2 * (random.unit() - 0.5) + 0.14 * sin(3 * turn + lobes) + 0.08 * sin(5 * turn + frill))
-                    return place(shift.x + long * reach * cos(turn), shift.y + short * reach * sin(turn))
-                }
-                // Round again past the start, so the spline closes smoothly.
-                ring += ring[0..<3]
-                return Array(spline(ring, per: 6).dropFirst(6).dropLast(6))
-            }
-            let wash = blob(1, .zero, &random)
-            let shift = CGPoint(x: long * (0.5 * random.unit() - 0.25), y: short * (0.5 * random.unit() - 0.25))
-            let second = blob(0.7, shift, &random)
-            let drops = (0..<(2 + Int(3 * random.unit()))).map { _ -> (x: CGFloat, y: CGFloat, radius: CGFloat) in
-                let turn = random.unit() * 2 * .pi, far = 1.15 + 0.35 * random.unit()
-                let spot = place(long * far * cos(turn), short * far * sin(turn))
-                return (spot.x, spot.y, 1.2 + 2.6 * random.unit())
-            }
-            return Stain(wash: wash, second: second, drops: drops)
+            // Round again past the start, so the spline closes smoothly.
+            ring += ring[0..<3]
+            return Array(spline(ring, per: 5).dropFirst(5).dropLast(5))
         }
+        let big = blob(1, .zero, 1, &random)
+        let scale = 0.74 + 0.2 * random.unit()
+        let shift = CGPoint(x: long * (0.7 * random.unit() - 0.35), y: short * (0.5 * random.unit() - 0.25))
+        let over = blob(scale, shift, 1.25, &random)
+        let bloom = (x: centre.x + long * (0.9 * random.unit() - 0.45), y: centre.y + short * (0.7 * random.unit() - 0.35),
+                     radius: 8 + 10 * random.unit())
+        return Wash(big: big, over: over, bloom: bloom, tone: 0.8 + 0.4 * random.unit())
+    }
+
+    /// White beside the line, as if it had been corrected: the outlines of
+    /// a few strokes along it, about one for every 360 pt, each on one side
+    /// of it or the other, thin at its ends. None past `end`.
+    static func corrections(along line: [CGPoint], until end: CGPoint, seed: String) -> [[CGPoint]] {
+        var cut = line.count
+        while cut > 0, hypot(line[cut - 1].x - end.x, line[cut - 1].y - end.y) < lastClear { cut -= 1 }
+        guard cut > 80 else { return [] }
+        var random = SeededRandom(seed + "white")
+        let count = max(2, Int((CGFloat(cut) * 2 / 360).rounded()))
+        return (0..<count).map { k in
+            let length = Int((28 + 34 * random.unit()).rounded())
+            let spot = (CGFloat(k) + 0.15 + 0.7 * random.unit()) / CGFloat(count)
+            let at = min(cut - length - 6, max(6, Int((CGFloat(cut) * spot).rounded())))
+            let side = (random.unit() < 0.5 ? -1 : 1) * (4.2 + 1.6 * random.unit()), wide = 3 + 1.8 * random.unit()
+            var one: [CGPoint] = [], other: [CGPoint] = []
+            for q in 0...length {
+                let p = line[at + q], before = line[max(0, at + q - 3)], after = line[min(cut - 1, at + q + 3)]
+                let step = max(1e-3, hypot(after.x - before.x, after.y - before.y))
+                let across = CGPoint(x: -(after.y - before.y) / step, y: (after.x - before.x) / step)
+                let t = CGFloat(q) / CGFloat(length)
+                let half = wide * pow(sin(.pi * t), 0.45) / 2, off = side + 0.8 * sin(t * 5 + CGFloat(k))
+                one.append(CGPoint(x: p.x + across.x * (off + half), y: p.y + across.y * (off + half)))
+                other.append(CGPoint(x: p.x + across.x * (off - half), y: p.y + across.y * (off - half)))
+            }
+            return one + other.reversed()
+        }
+    }
+
+    /// White round the last dot, laid on with a brush: an uneven disc.
+    static func halo(round dot: CGPoint, random: inout SeededRandom) -> [CGPoint] {
+        let sides = 14, sway = random.unit() * 2 * .pi
+        var ring = (0..<sides).map { q -> CGPoint in
+            let turn = CGFloat(q) / CGFloat(sides) * 2 * .pi
+            let reach = 14.5 * (1 + 0.1 * sin(2 * turn + sway) + 0.12 * (random.unit() - 0.5))
+            return CGPoint(x: dot.x + reach * cos(turn), y: dot.y + reach * sin(turn))
+        }
+        ring += ring[0..<3]
+        return Array(spline(ring, per: 5).dropFirst(5).dropLast(5))
     }
 
     /// Centripetal Catmull-Rom through the points, `per` samples between

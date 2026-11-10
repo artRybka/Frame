@@ -153,22 +153,46 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertTrue(strokes.joined().allSatisfy { hypot($0.x - stop.x, $0.y - stop.y) > 4.6 })
     }
 
-    func testAFewStainsLieBesideTheLine() throws {
-        let plan = try road()
-        let stains = JourneyRoad.stains(along: plan.line, width: 350, seed: "aic:27992")
-        XCTAssertGreaterThanOrEqual(stains.count, 3)
-        XCTAssertLessThanOrEqual(stains.count, 12)
-        for stain in stains {
-            // Each is a closed shape near the line, with a few drops.
-            let middle = CGPoint(x: stain.wash.map(\.x).reduce(0, +) / CGFloat(stain.wash.count),
-                                 y: stain.wash.map(\.y).reduce(0, +) / CGFloat(stain.wash.count))
-            XCTAssertLessThan(plan.line.map { hypot($0.x - middle.x, $0.y - middle.y) }.min() ?? 99, 60)
-            XCTAssertLessThan(hypot(stain.wash[0].x - stain.wash[stain.wash.count - 1].x,
-                                    stain.wash[0].y - stain.wash[stain.wash.count - 1].y), 30)
-            XCTAssertGreaterThanOrEqual(stain.drops.count, 2)
+    func testEachTextHasAnUnderpainting() throws {
+        let heights: [CGFloat] = [54, 74, 54], widths: [CGFloat] = [180, 150, 170]
+        let plan = try XCTUnwrap(JourneyRoad.plan(width: 350, heights: heights, seas: [false, false, false],
+                                                  widths: widths, seed: "aic:27992"))
+        XCTAssertEqual(plan.hugs.count, 3)
+        for (i, hug) in plan.hugs.enumerated() {
+            // The text as it stands: its own width, at the side its dot is on.
+            XCTAssertEqual(hug.width, widths[i], accuracy: 0.01)
+            XCTAssertEqual(plan.leading[i] ? hug.minX : hug.maxX, plan.leading[i] ? plan.texts[i].minX : plan.texts[i].maxX,
+                           accuracy: 0.01)
+            var random = SeededRandom("wash\(i)")
+            let wash = JourneyRoad.wash(under: hug, random: &random)
+            // A closed stain about the text: it covers the text's middle and is not much bigger than it.
+            let xs = wash.big.map(\.x), ys = wash.big.map(\.y)
+            XCTAssertLessThan(xs.min() ?? 0, hug.midX - hug.width * 0.3)
+            XCTAssertGreaterThan(xs.max() ?? 0, hug.midX + hug.width * 0.3)
+            XCTAssertLessThan(ys.min() ?? 0, hug.midY - 5)
+            XCTAssertGreaterThan(ys.max() ?? 0, hug.midY + 5)
+            XCTAssertGreaterThan(xs.min() ?? 0, hug.minX - 70)
+            XCTAssertLessThan(xs.max() ?? 0, hug.maxX + 70)
+            XCTAssertEqual(wash.big.first, wash.big.last)
+            XCTAssertTrue((0.8...1.2).contains(wash.tone))
         }
-        // The same work keeps its stains.
-        XCTAssertEqual(stains.map(\.wash), JourneyRoad.stains(along: plan.line, width: 350, seed: "aic:27992").map(\.wash))
+    }
+
+    func testWhiteLiesBesideTheLineAndRoundTheLastDot() throws {
+        let plan = try road(), last = plan.dots[plan.dots.count - 1]
+        let strokes = JourneyRoad.corrections(along: plan.line, until: last, seed: "aic:27992")
+        XCTAssertGreaterThanOrEqual(strokes.count, 2)
+        for stroke in strokes {
+            // Each keeps to the line: never further than a nib and a half from it.
+            let far = stroke.map { p in plan.line.map { hypot($0.x - p.x, $0.y - p.y) }.min() ?? 99 }.max() ?? 99
+            XCTAssertLessThan(far, 10)
+            XCTAssertGreaterThan(stroke.count, 40)
+        }
+        var random = SeededRandom("halo")
+        let halo = JourneyRoad.halo(round: last, random: &random)
+        // Wider than the dot all round.
+        XCTAssertGreaterThan(halo.map { hypot($0.x - last.x, $0.y - last.y) }.min() ?? 0, JourneyRoad.lastDot + 1.5)
+        XCTAssertLessThan(halo.map { hypot($0.x - last.x, $0.y - last.y) }.max() ?? 99, 20)
     }
 
     func testLinesAreNotBrokenWhereTheyMustNotBe() {
