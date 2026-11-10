@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.142.5
+
+- Szukaj i playlisty z wybraną techniką (Malarstwo, Grafika, Rysunki
+  i akwarele) pokazują tylko dzieła tej techniki także przy wybranym
+  artyście albo wpisanych słowach. Wcześniej muzea odsyłały wszystkie
+  prace artysty, np. przy Monecie i Malarstwie jego karykatury ołówkiem
+  z Art Institute of Chicago. Decyduje rodzaj dzieła w muzeum, potem
+  technika („grafit na papierze” to rysunek, „olej na płótnie” obraz).
+- Art Institute of Chicago jest pytany wprost o obrazy danego artysty,
+  więc przy Malarstwie przychodzi ich więcej.
+- Grafika rozpoznaje też monotypie i polskie opisy muzeów (akwaforta,
+  litografia, staloryt, sucha igła).
+
 ## 1.142.4
 
 - Odkrywaj: „Pod lupą” w kafelkach jak „Studia dzieł”: obraz u góry,

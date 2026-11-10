@@ -448,6 +448,7 @@ TERMS: list[Term] = [
         "mummy portrait*",
         "schilderij*",
         "obraz",
+        "olej*",
     ),
     _t(
         "technique:print",
@@ -466,6 +467,16 @@ TERMS: list[Term] = [
         "linocut*",
         "prent*",
         "drzeworyt*",
+        # Degas's monotypes (SMK); the Polish museums' types and materials
+        # (MNK "grafika artystyczna", "akwaforta, papier").
+        "monotype*",
+        "grafika",
+        "akwafort*",
+        "akwatint*",
+        "litografi*",
+        "miedzioryt*",
+        "staloryt*",
+        "sucha igła",
     ),
     _t(
         "technique:drawing",
@@ -478,6 +489,8 @@ TERMS: list[Term] = [
         "pastel",
         "tekening*",
         "rysun*",
+        "akwarel*",
+        "ołówek",
     ),
     _t("technique:poster", "Plakaty", "poster*", "affiche*", "plakat*"),
     _t(MANUSCRIPTS, "Rękopisy i miniatury", "manuscript*"),
@@ -999,6 +1012,39 @@ def _object_technique(classification: str, medium: str) -> bool:
     )
 
 
+#: A painting's material even when it names a drawing's too ("Oil and
+#: graphite on canvas").
+_OIL = re.compile(r"\b(oils?|canvas|acrylics?|olej\w*|płótn\w*)\b", re.IGNORECASE)
+
+
+@lru_cache(maxsize=PER_WORK)
+def _names_technique(text: str) -> bool:
+    return _object_technique(text, "")
+
+
+def searched_technique_fits(techniques: list[Term], item: Item) -> bool:
+    """Whether a work the museums' search found for one technique (their
+    filter, :func:`searched_kinds`) is of it. Most museums filter by kind
+    only without words; asked for an artist or words they bring whatever
+    they hold (AIC's Monet caricatures, "Drawing and Watercolor", "graphite
+    on tan paper", under Malarstwo, Mateusz 2026-11-10). So the museum's
+    type decides, then the material: one naming another of painting, print
+    and drawing, and not the one asked, means no; naming none, the museum's
+    search is trusted."""
+    asked = [t for t in techniques if t.key in _OBJECT_TECHNIQUES]
+    if not asked:
+        return True
+    painting = any(t.key == "technique:painting" for t in asked)
+    for text, material in ((item.classification, False), (item.medium, True)):
+        if any(t.pattern is not None and t.pattern.search(text) for t in asked):
+            return True
+        if painting and material and _OIL.search(text):
+            return True
+        if _names_technique(text):
+            return False
+    return True
+
+
 def term_matches(found: Term, item: Item, text: str | None = None) -> bool:
     if found.key in OBJECT_CATEGORIES:
         return object_category(item) == found.key
@@ -1100,8 +1146,9 @@ def in_style_years(item: Item, styles: Iterable[str]) -> bool:
 def matches_terms(item: Item, keys: list[str], judged: Collection[str] = ()) -> bool:
     """Every kind of term in ``keys`` has one that fits ``item``; kinds in
     ``judged`` (:func:`searched_kinds`) are not looked at, but a style's
-    years always are (:func:`in_style_years`), and a style the museums'
-    search judged still needs :func:`searched_style_fits`."""
+    years always are (:func:`in_style_years`), a style the museums' search
+    judged still needs :func:`searched_style_fits` and a technique
+    :func:`searched_technique_fits`."""
     styles = [k for k in keys if k.startswith("style:")]
     if styles and not in_style_years(item, styles):
         return False
@@ -1111,6 +1158,12 @@ def matches_terms(item: Item, keys: list[str], judged: Collection[str] = ()) -> 
         "style" in judged
         and "style" in groups
         and not any(searched_style_fits(t, item, text) for t in groups["style"])
+    ):
+        return False
+    if (
+        "technique" in judged
+        and "technique" in groups
+        and not searched_technique_fits(groups["technique"], item)
     ):
         return False
     groups = {k: v for k, v in groups.items() if k not in judged}
