@@ -254,7 +254,13 @@ class Museum(ABC):
     ) -> tuple[int, list[Item]]:
         """:meth:`search` when a search asks for one kind (Fotografia):
         sources whose results don't say what each work is search that kind
-        alone (the Getty)."""
+        alone (the Getty), those that can filter by it do (AIC). A text
+        asking for an artist (:func:`by_artist`) is asked by the author
+        field (:meth:`search_artist`); the others' works of other kinds are
+        left out by their type (``vocabulary.searched_technique_fits``)."""
+        by = asked_by(query)
+        if by is not None:
+            return self.search_artist(*by, limit=limit, page=page)
         return self.search(query, limit, page)
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
@@ -473,6 +479,29 @@ class ArtInstituteChicago(Museum):
             return self._post(words, must, [], limit, page)
 
         return self._at_home(words, limit, page, ask, artist=artist)
+
+    def search_kind(
+        self, query: str, kind: Kind, limit: int = 20, page: int = 1
+    ) -> tuple[int, list[Item]]:
+        """Works of one type (Malarstwo: "Painting"): its search for an
+        artist or words brings any, his caricatures too (Mateusz
+        2026-11-10)."""
+        if kind not in self.artwork_types:
+            return super().search_kind(query, kind, limit, page)
+        type_title = self.artwork_types[kind]
+        artist, words = asked_by(query) or ("", query)
+
+        def ask() -> tuple[int, list[Item]]:
+            must: list[dict[str, Any]] = [{"term": {"artwork_type_title.keyword": type_title}}]
+            if artist:
+                must.append({"match": {"artist_title": {"query": artist, "operator": "and"}}})
+            if words.strip():
+                must.append(self._text(words, self.search_fields))
+            return self._post(words, must, [], limit, page)
+
+        if not artist and not words.strip():
+            return self.discover(Discovery(kind=kind), limit, page)
+        return self._at_home(words, limit, page, ask, artist=artist, kinds=(type_title,))
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         index = self._index()
@@ -1038,6 +1067,7 @@ class WikimediaCommons(Museum):
         :meth:`_map`). Commons says nothing else about what a file shows, so
         sculpture, decorative arts and manuscripts are not asked for here:
         its sculpture is today's snapshots (2026-11-07)."""
+        query = plain_text(query)
         if kind == "photograph":
             return self._search(query, limit, page, photos=True)
         if kind in ("sculpture", "decorative", "manuscript"):

@@ -10,7 +10,19 @@
   zostaje. Przy włączonym „Ogranicz ruch” plama tylko łagodnie się
   pojawia.
 
-## 1.142.5
+## 1.142.8
+
+- „Pod lupą”: rozjaśnienie HDR na kafelkach jest gradientem: pełne
+  u góry obrazu, przy linii z podpisem 10%.
+
+## 1.142.7
+
+- Zapamiętane strony wyników z Art Institute of Chicago i strony
+  wyszukiwań z wybraną techniką są pobierane z muzeów od nowa. Przy
+  Malarstwie i wybranym artyście przyjdą więc od razu jego obrazy,
+  a nie stara strona ze wszystkimi pracami.
+
+## 1.142.6
 
 - „Droga dzieła” jest teraz rysunkiem drogi, a nie osią czasu. Jedna
   linia płynie łukami przez całą szerokość, jak pociągnięta szerokim
@@ -38,6 +50,25 @@
 - Pod rysunkiem nie ma już podpisu o źródle i o tym, kto opowiada.
 - Linia z kropkami rysuje się zawsze. Wcześniej czasem zostawały same
   teksty, bez drogi.
+
+## 1.142.5
+
+- Szukaj i playlisty z wybraną techniką (Malarstwo, Grafika, Rysunki
+  i akwarele) pokazują tylko dzieła tej techniki także przy wybranym
+  artyście albo wpisanych słowach. Wcześniej muzea odsyłały wszystkie
+  prace artysty, np. przy Monecie i Malarstwie jego karykatury ołówkiem
+  z Art Institute of Chicago. Decyduje rodzaj dzieła w muzeum, potem
+  technika („grafit na papierze” to rysunek, „olej na płótnie” obraz).
+- Art Institute of Chicago jest pytany wprost o obrazy danego artysty,
+  więc przy Malarstwie przychodzi ich więcej.
+- Grafika rozpoznaje też monotypie i polskie opisy muzeów (akwaforta,
+  litografia, staloryt, sucha igła).
+
+## 1.142.4
+
+- Odkrywaj: „Pod lupą” w kafelkach jak „Studia dzieł”: obraz u góry,
+  tytuł i autor na karcie. Każdy obraz trochę jaśniejszy (HDR), jak na
+  karcie dzieła. Podpis sekcji: „Dzieła w ogromnej rozdzielczości”.
 
 ## 1.142.3
 

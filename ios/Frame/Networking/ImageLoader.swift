@@ -450,6 +450,10 @@ struct ArtImage: View {
     /// The artwork itself (the work's card, the study): shown a little
     /// brighter than the page (`ArtGlow`) when Konfiguracja allows it.
     var brighten = false
+    /// With `brighten`: the lift full at the top and fading evenly to this
+    /// share of it at the bottom ("Pod lupą" cards: 10 % at the caption,
+    /// Mateusz 2026-11-10); nil, the same all over.
+    var glowFade: Double? = nil
 
     /// Pauses before the picture is asked for again on its own.
     static let retryDelays: [Duration] = [.seconds(4), .seconds(15), .seconds(45)]
@@ -544,7 +548,15 @@ struct ArtImage: View {
     @ViewBuilder
     private func glowLayers(_ image: UIImage) -> some View {
         if glows, let lit = glowing ?? ArtGlow.cached(image, gain: glowGain) {
-            picture(lit).opacity(glowShown)
+            if let glowFade {
+                picture(lit)
+                    .opacity(glowShown)
+                    .mask {
+                        LinearGradient(colors: [.white, .white.opacity(glowFade)], startPoint: .top, endPoint: .bottom)
+                    }
+            } else {
+                picture(lit).opacity(glowShown)
+            }
         }
     }
 

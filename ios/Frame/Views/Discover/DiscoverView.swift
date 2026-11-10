@@ -24,10 +24,12 @@ struct DiscoverView: View {
                 }
                 .glowLift($scrolled)
                 .onChange(of: model.studyList?.count) {
-                    guard LaunchRoute.screen == "discover", LaunchRoute.scroll == "studies" else { return }  // CI screenshots
+                    // CI screenshots: "studies", "zoom" ("Pod lupą").
+                    guard LaunchRoute.screen == "discover", let target = LaunchRoute.scroll,
+                          ["studies", "zoom"].contains(target) else { return }
                     Task {
                         try? await Task.sleep(for: .seconds(1))
-                        proxy.scrollTo("studies", anchor: .top)
+                        proxy.scrollTo(target, anchor: .top)
                     }
                 }
             }

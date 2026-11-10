@@ -40,7 +40,6 @@ from .museums import (
     available,
     client,
     museum,
-    plain_text,
     reachable,
 )
 from .pages import search_pages
@@ -500,9 +499,7 @@ class Importer:
             elif kind == "any":
                 total, items = found.search(query, limit=limit, page=page)
             else:
-                total, items = found.search_kind(
-                    plain_text(query), cast(Kind, kind), limit=limit, page=page
-                )
+                total, items = found.search_kind(query, cast(Kind, kind), limit=limit, page=page)
         items = self.without_grey([dated(i) for i in items if not is_copy(i)])
         self.remember(items)
         if items:

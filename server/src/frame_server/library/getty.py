@@ -22,7 +22,7 @@ import re
 from typing import Any, ClassVar
 
 from .models import Item
-from .museums import PRIVATE_LICENCE, Discovery, Kind, Museum
+from .museums import PRIVATE_LICENCE, Discovery, Kind, Museum, plain_text
 
 API = "https://www.getty.edu/art/collection/api/search"
 SITE = "https://www.getty.edu/art/collection"
@@ -148,6 +148,7 @@ class GettyMuseum(Museum):
     def search_kind(
         self, query: str, kind: Kind, limit: int = 20, page: int = 1
     ) -> tuple[int, list[Item]]:
+        query = plain_text(query)
         if kind == "any":
             return self._kinds(query, PICTURES, limit, page, None)
         if kind not in TYPES:

@@ -511,7 +511,7 @@ def _zoom_row(svc: FrameService) -> SuggestionRow | None:
     return SuggestionRow(
         key=ZOOM_ROW,
         title="Pod lupą",
-        subtitle="Obrazy w ogromnej rozdzielczości: na pełnym ekranie przybliżysz każdy szczegół.",
+        subtitle="Dzieła w ogromnej rozdzielczości",
         items=remote_items(svc, own, copies=False),
     )
 
