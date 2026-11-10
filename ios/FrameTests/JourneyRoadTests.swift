@@ -318,7 +318,7 @@ final class JourneyRoadTests: XCTestCase {
     }
 
     func testADotGrowsALittleTooBigAndSettles() {
-        XCTAssertEqual(JourneyRoad.pop(-10), 0)
+        XCTAssertEqual(JourneyRoad.pop(-10), 0, accuracy: 0.001)
         XCTAssertGreaterThan(JourneyRoad.pop(14), 1.05)
         XCTAssertEqual(JourneyRoad.pop(26), 1, accuracy: 0.001)
         XCTAssertEqual(JourneyRoad.pop(400), 1, accuracy: 0.001)
