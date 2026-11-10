@@ -498,7 +498,8 @@ struct DailyView: View {
                     detailsSection(work, details).id("details")
                 }
                 // After "Detale", ahead of the size (Mateusz 2026-11-09).
-                if let fragments, !fragments.fragments.isEmpty {
+                // A tile set is looked at in full screen, not listed.
+                if let fragments, !fragments.fragments.isEmpty, !fragments.tiled {
                     fragmentsSection(work, fragments.fragments)
                         .id("fragments")
                         .transition(.opacity)

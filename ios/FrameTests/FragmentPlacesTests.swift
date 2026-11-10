@@ -20,4 +20,13 @@ final class FragmentPlacesTests: XCTestCase {
         XCTAssertEqual(ZoomTile.keptWidth(1000, 800), 1000)
         XCTAssertEqual(ZoomTile.keptWidth(nil, 800), 3840)
     }
+
+    func testTheCardTellsHowFarTheFullScreenZooms() {
+        // Bosch's "Garden": 3840 px tiles, the widest a fifth of 157 841 px,
+        // on a 393 pt wide phone at 3×.
+        let across = ZoomTile.keptWidth(29952, 29952) / (29952 / 157_841)
+        XCTAssertEqual(Int(ZoomTile.depth(across: across, shown: 393 * 3).rounded()), 17)
+        XCTAssertEqual(ZoomTile.depth(across: 0, shown: 1179), 8)  // no tiles
+        XCTAssertEqual(ZoomTile.depth(across: 1_000_000, shown: 1179), ZoomTile.deepestZoom)
+    }
 }

@@ -301,7 +301,7 @@ def test_wikidata_s_facts_outlive_an_update(
     """428 Wikidata requests on 2026-11-07: every update asked them again."""
     from frame_server.library.models import Item
     from frame_server.library.records import Records
-    from frame_server.library.wikidata import Facts, Wikidata
+    from frame_server.library.wikidata import Facts, Wikidata, _Work
 
     asked: list[str] = []
 
@@ -312,10 +312,10 @@ def test_wikidata_s_facts_outlive_an_update(
     monkeypatch.setattr(Wikidata, "_find", staticmethod(find))
     monkeypatch.setattr(
         Wikidata,
-        "_facts",
-        staticmethod(
-            lambda http, qid: Facts(qid=qid, title_pl="Słoneczniki", depicts_pl=("kwiat",))
-        ),
+        "_read",
+        lambda self, http, qids: {
+            q: _Work({}, Facts(qid=q, title_pl="Słoneczniki", depicts_pl=("kwiat",))) for q in qids
+        },
     )
     kept = Records(tmp_path / "records.sqlite")
     one = Item(id="met:1", source="met", source_id="1", title="Sunflowers")
