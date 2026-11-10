@@ -64,6 +64,14 @@ _BY = re.compile(r"^@by:([^\t]*)\t(.*)$", re.DOTALL)
 _POSTER_WORD = re.compile(r"\b(poster|affiche|plakat)", re.IGNORECASE)
 
 
+def _other_spelling(name: str) -> str | None:
+    """``artists.other_spelling`` (which imports the vocabulary, which
+    imports this module)."""
+    from .artists import other_spelling
+
+    return other_spelling(name)
+
+
 def by_artist(artist: str, words: str = "") -> str:
     """The text asking a museum for ``artist``'s works (with ``words``)."""
     return f"@by:{' '.join(artist.split())}\t{' '.join(words.split())}"
@@ -251,6 +259,10 @@ class Museum(ABC):
             found = (0, [])
         if found[0]:
             return found
+        if (other := _other_spelling(artist)) is not None:
+            found = self.search_by(other, words, limit, page)
+            if found[0]:
+                return found
         return self.search(" ".join(w for w in (words, artist) if w), limit, page)
 
     def search_kind(
@@ -512,13 +524,16 @@ class ArtInstituteChicago(Museum):
             return super().search_kind(query, kind, limit, page)
         artist, words = asked_by(query) or ("", query)
 
-        def ask() -> tuple[int, list[Item]]:
+        def ask(name: str = artist) -> tuple[int, list[Item]]:
             must: list[dict[str, Any]] = [kept]
-            if artist:
-                must.append({"match": {"artist_title": {"query": artist, "operator": "and"}}})
+            if name:
+                must.append({"match": {"artist_title": {"query": name, "operator": "and"}}})
             if words.strip():
                 must.append(self._text(words, self.search_fields))
-            return self._post(words, must, [], limit, page)
+            found = self._post(words, must, [], limit, page)
+            if not found[0] and name == artist and (other := _other_spelling(artist)):
+                return ask(other)  # "Alphonse Mucha" here, "Alfons" chosen
+            return found
 
         if not artist and not words.strip():
             return self.discover(Discovery(kind=kind), limit, page)
@@ -1249,6 +1264,9 @@ class Rijksmuseum(Museum):
     def _statement(self, d: dict[str, Any], aat: str) -> str:
         return self._text([r for r in d.get("referred_to_by") or [] if aat in self._types(r)])
 
+    #: Parts of a production that are a trade, not the making of the work.
+    _TRADE = re.compile(r"\b(publisher|printer|uitgever|drukker)\b", re.IGNORECASE)
+
     @staticmethod
     def _notation(node: dict[str, Any]) -> str:
         # Either language-tagged values or plain strings, in a list or one
@@ -1329,9 +1347,13 @@ class Rijksmuseum(Museum):
             return None
         names = [n for n in d.get("identified_by") or [] if n.get("type") == "Name"]
         production = d.get("produced_by") or {}
+        # Not who published or printed it: a print whose maker the museum
+        # only attributes was "by" Manzi, Joyant & Cie. (Toulouse-Lautrec,
+        # 2026-11-10); the production's statement names him then.
         makers = [
             agent
             for part in [production, *(production.get("part") or [])]
+            if not any(self._TRADE.search(self._notation(t)) for t in part.get("technique") or [])
             for agent in part.get("carried_out_by") or []
         ]
         timespan = production.get("timespan") or {}
@@ -1344,7 +1366,7 @@ class Rijksmuseum(Museum):
             title=self._text(names),
             artist=self._notation(makers[0])
             if makers
-            else self._text(production.get("referred_to_by") or []),
+            else _bare(self._text(production.get("referred_to_by") or [])),
             date_text=self._text(timespan.get("identified_by") or []),
             year=int(year_match.group(1)) if year_match else None,
             medium=self._statement(d, self.medium_type),
@@ -1648,6 +1670,44 @@ class Europeana(Museum):
                     kinds.append(text)
         return kinds
 
+    #: A contributor's role that makes them the work's author ("Henri de
+    #: Toulouse-Lautrec (23.11.1864 - 9.9.1901, Entwerfer)", the
+    #: Kunstbibliothek's posters with no creator at all).
+    _AUTHOR_ROLE = re.compile(
+        r"\b(entwerfer|künstler\w*|zeichner\w*|maler\w*|lithograph\w*|designer|artist|"
+        r"illustrator|ontwerper|kunstenaar|auteur|autor\w*)\b",
+        re.IGNORECASE,
+    )
+
+    @staticmethod
+    def _labels(d: dict[str, Any], field: str) -> list[str]:
+        """``field``'s names by language ("def" mixes in authority URIs)."""
+        labels = d.get(f"{field}LangAware") or {}
+        found = [
+            str(n)
+            for lang in ("en", "pl", "def", *labels)
+            for n in labels.get(lang) or []
+            if "://" not in str(n)
+        ] or [str(c) for c in d.get(field) or [] if "://" not in str(c)]
+        return list(dict.fromkeys(found))
+
+    def _makers(self, d: dict[str, Any]) -> list[str]:
+        """Who made the work, people before firms: its creators by name;
+        else the agent its creator links to ("Henri de Toulouse-Lautrec"
+        for a record naming him by Europeana's and the GND's addresses
+        only); else a contributor in an author's role. A printer named as
+        creator ("Imprimerie Chaix") gives way to the designer."""
+        from .artists import is_artist
+
+        creators = self._labels(d, "dcCreator")
+        if not creators and any("://" in str(c) for c in d.get("dcCreator") or []):
+            agents = d.get("edmAgentLabelLangAware") or {}
+            creators = [str(n) for lang in ("en", "def", "pl") for n in agents.get(lang) or []][:1]
+        authors = [c for c in self._labels(d, "dcContributor") if self._AUTHOR_ROLE.search(c)]
+        found = list(dict.fromkeys([*creators, *authors]))
+        people = [n for n in found if is_artist(_person(n))]
+        return people or found
+
     def _death(self, d: dict[str, Any]) -> int | None:
         """When the work's last author died, if every author is known."""
         life = self.access.life
@@ -1720,14 +1780,7 @@ class Europeana(Museum):
         medium = ", ".join(c for c in concepts if self.medium_concepts.search(c))
         if "/thumbnail/" in preview and "size=" not in preview:
             preview += "&size=w400"
-        # Labels by language; "def" mixes in authority URIs.
-        labels = d.get("dcCreatorLangAware") or {}
-        names = [
-            str(n)
-            for lang in ("en", "pl", "def", *labels)
-            for n in labels.get(lang) or []
-            if "://" not in str(n)
-        ] or [str(c) for c in d.get("dcCreator") or [] if "://" not in str(c)]
+        names = self._makers(d)
         year = _first(d.get("year"))
         record = str(d["id"])
         return self._item(

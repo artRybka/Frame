@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.143.1
+
+- Ten sam artysta pod innym zapisem imienia jest tym samym artystą:
+  „Alphonse Mucha” z V&A i Europeany trafia do Alfonsa Muchy, a muzeum,
+  które pod jednym zapisem nic nie znajduje, jest pytane o drugi.
+- Rijksmuseum nie podaje już wydawcy ani drukarza jako autora grafiki.
+- Europeana: plakaty, których autor jest zapisany tylko jako link albo
+  jako „projektant” (np. Kunstbibliothek w Berlinie), mają autora,
+  a drukarnia nie jest artystą.
+
 ## 1.143.0
 
 - Konfiguracja → Dzieła i biblioteka → „Zadania nocne”: nocną pracę
@@ -17,6 +27,7 @@
   z tych ma co najmniej 2560 px, czyli pełny ekran ramki. Twoje prace
   i zdjęcia liczą się osobno. Liczba dzieł stoi też w wierszu tej
   strony na liście Konfiguracji.
+
 ## 1.142.12
 
 - „Droga dzieła” w Studium dzieła powstaje dla dużo większej liczby
@@ -2063,6 +2074,7 @@
   powiadomienie „Studium gotowe”. Zamówione na później można przytrzymać
   jeszcze raz i przygotować na już, bez ponownej opłaty za to, co pakiet już
   zrobił.
+
 ## 1.95.6
 
 - Serwer pyta źródła dzieł tak, jak proszą ich zasady dla programów, żeby

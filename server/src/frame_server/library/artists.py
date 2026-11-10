@@ -15,6 +15,7 @@ from collections.abc import Collection, Hashable, Mapping
 from functools import lru_cache
 from itertools import combinations
 
+from .given_names import given
 from .nationality import NATIONALITIES
 from .vocabulary import PER_WORK, artist_matches, fold, name_words
 
@@ -245,6 +246,11 @@ _FIRMS = frozenset(
         "editions",
         "edition",
         "imprenta",
+        "imprimerie",
+        "imprimeur",
+        "druckerei",
+        "drukkerij",
+        "drukarnia",
         "impremta",
         "litografia",
         "lithographic",
@@ -394,10 +400,15 @@ def made_by(artist: str, wanted: list[str]) -> bool:
         return True  # "Rembrandt" for "Rembrandt van Rijn" (2026-11-08)
     if _known.apart(artist, wanted):
         return False  # Jan Vermeer van Haarlem for Vermeer of Delft (2026-11-09)
-    if not artist_matches(artist, wanted):
-        return False
     makers = _maker_words(artist)
-    return any(name_words(w) and name_words(w) <= makers for w in wanted)
+    if artist_matches(artist, wanted) and any(
+        name_words(w) and name_words(w) <= makers for w in wanted
+    ):
+        return True
+    # A first name in another language: the V&A's and Europeana's
+    # "Alphonse Mucha" for "Alfons Mucha" (2026-11-10).
+    mine = given(makers)
+    return any((words := given(_maker_words(w))) and words <= mine for w in wanted)
 
 
 # -- one artist under many spellings -------------------------------------------
@@ -768,3 +779,17 @@ def learn(names: ArtistNames) -> None:
     """Search with ``names`` from now on (built with the term index)."""
     global _known
     _known = names
+
+
+def other_spelling(name: str) -> str | None:
+    """Another way the catalogue spells ``name``'s person, to ask a museum
+    whose author field knows them so ("Alphonse Mucha" at the Art Institute
+    for "Alfons Mucha", 2026-11-10); None without one."""
+    names = _known
+    if names.person(name) is None:
+        return None
+    for spelling in names.spellings.get(names.shown(name), []):
+        line = spelling.split("\n")[0]
+        if name_key(line) != name_key(name) and not re.search(r"[,()]", line):
+            return line
+    return None
