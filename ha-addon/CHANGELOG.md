@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.142.1
+
+- „Droga dzieła”: kropki stoją przy swoich przystankach, a linia nie
+  przecina już tekstu.
+
 ## 1.142.0
 
 - Studium dzieła: nowa sekcja „Droga dzieła”, zaraz po „Rozmiarze

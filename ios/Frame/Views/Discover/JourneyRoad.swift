@@ -146,9 +146,10 @@ struct JourneyRoad: View {
         let places = self.places
         return VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(journey.stops.enumerated()), id: \.offset) { i, stop in
+                // Measured before the gap above it: the row's own text.
                 row(stop, places[i])
-                    .padding(.top, i == 0 ? 36 : overSea(i) ? Self.seaGap : Self.gap)
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("road")) } action: { rows[i] = $0 }
+                    .padding(.top, i == 0 ? 36 : overSea(i) ? Self.seaGap : Self.gap)
             }
         }
         .padding(.bottom, 28)
