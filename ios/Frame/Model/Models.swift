@@ -1268,6 +1268,8 @@ struct AiSettings: Codable, Hashable, Sendable {
     var audit: Bool? = nil
     /// Szukaj by a sentence; nil from older servers.
     var sentence: Bool? = nil
+    /// The study's "Droga dzieła" (Haiku); nil from older servers.
+    var journey: Bool? = nil
     /// Works on "Do sprawdzenia"; nil from older servers.
     var reviewCount: Int? = nil
     var monthlyLimitUsd: Double
@@ -1292,6 +1294,7 @@ struct AiSettingsUpdate: Encodable, Sendable {
     var gatekeeper: Bool?
     var audit: Bool?
     var sentence: Bool?
+    var journey: Bool?
     var monthlyLimitUsd: Double?
 }
 
@@ -2045,6 +2048,40 @@ struct DailyWork: Codable, Hashable, Sendable {
     /// "Prawdziwy rozmiar": from the museum or Wikidata, when it has the
     /// picture's proportions (server 1.83).
     var size: RealSize? = nil
+    /// "Droga dzieła": how the work went from its maker to where it is now,
+    /// from the museum's provenance (server 1.141).
+    var journey: Journey? = nil
+
+    /// The work's way, stop by stop, as the museum's record tells it.
+    struct Journey: Codable, Hashable, Sendable {
+        struct Stop: Codable, Hashable, Sendable {
+            /// "1900", "1884–1886", "przed 1891".
+            var year: String
+            var place: String
+            var lat: Double
+            var lon: Double
+            /// made, shown, home, inherited, sold, gift, travel, war, stolen, restored, museum.
+            var kind: String
+            /// The work comes to a new owner here.
+            var owner: Bool
+            /// An exhibition it came back from.
+            var detour: Bool
+            /// One sentence, the telling words between ** and **.
+            var text: String
+        }
+
+        var headline: String
+        var lead: String
+        var stops: [Stop]
+        var years: Int?
+        var km: Int?
+        /// "z Paryża": where `km` is counted from.
+        var fromWhere: String
+        var hands: Int?
+        var exhibitions: Int?
+        /// "Art Institute of Chicago", "Wikidata".
+        var source: String
+    }
 
     /// Today as `day` names it, "2026-11-02" (the phone's day, the server's
     /// in the same house).

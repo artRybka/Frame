@@ -21,6 +21,7 @@ from .ai.curator import Curator
 from .ai.details import MendJob
 from .ai.extras import ExtrasJob
 from .ai.gatekeeper import Gatekeeper
+from .ai.journey import Journeys
 from .ai.museum_words import MuseumWords
 from .ai.prose import ProseJob
 from .ai.search_words import SearchWords
@@ -329,6 +330,10 @@ class FrameService:
         # when a card opens and at night.
         self.holders = Holders(self.library, museum_client)
         self.copies.work_qid = self.holders.work_qid
+        # The study's "Droga dzieła": the museum's provenance retold (Haiku).
+        self.journeys = Journeys(
+            self.library, self.claude, self.ai_config, work_qid=self.holders.work_qid
+        )
         # Commons' tile sets in place of works' pictures (deeper zoom).
         self.sharper.tiled_copies = self.copies.tiled_copies
         self.sharper.is_tiled = self.copies.tiled

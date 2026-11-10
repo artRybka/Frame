@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.142.0
+
+- Studium dzieła: nowa sekcja „Droga dzieła”, zaraz po „Rozmiarze
+  obrazu”. Pokazuje, jak obraz szedł od pracowni do muzeum: kto go miał,
+  gdzie był wystawiany, za ile sprzedany. Rysowana jako płynna linia
+  z kropkami, z morzem, gdy dzieło przepłynęło ocean. Wszystko z zapisów
+  muzeum (Art Institute of Chicago, Cleveland, a dla innych Wikidata),
+  opowiedziane po polsku przez Claude Haiku. Rok albo kwota, której nie
+  ma w zapisie, nie trafia na drogę. Do wyłączenia w Konfiguracji → Model
+  językowy.
+
 ## 1.141.0
 
 - Strażnik katalogu: w nocy Claude Haiku ogląda obrazy z Commons,

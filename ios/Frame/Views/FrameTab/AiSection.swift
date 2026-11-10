@@ -132,6 +132,14 @@ struct AiSection: View {
                         value: sentence
                     ) { AiSettingsUpdate(sentence: $0) }
                 }
+                if let journey = settings.journey {
+                    Divider()
+                    toggle(
+                        "Droga dzieła",
+                        hint: "W studium dzieła droga od pracowni do muzeum, z danych muzeum. Ok. 0,2 centa za dzieło.",
+                        value: journey
+                    ) { AiSettingsUpdate(journey: $0) }
+                }
                 if let count = settings.reviewCount {
                     Divider()
                     NavigationLink {
