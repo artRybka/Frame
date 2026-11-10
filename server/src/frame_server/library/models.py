@@ -250,8 +250,18 @@ class Item(BaseModel):
     #: The picture is a detail of another copy's (``library.twins``): that
     #: item's id; a detail is no work for the frame (``vocabulary.is_detail``).
     detail_of: str = ""
+    #: The picture is a photograph of another copy's work with what is
+    #: around it (its frame, the museum's wall, a page): that item's id
+    #: (``library.twins``); no work for the frame either.
+    scene_of: str = ""
     #: Version of ``library.twins``' look at the picture, 0 for none yet.
     twins_seen: int = 0
+    #: Version of its look at the large pictures of the artist's works, for
+    #: details too small for a thumbnail; 0 while still to be done.
+    twins_large: int = 0
+    #: The thumbnail's difference hash (``library.picture_hash``), "" while
+    #: not worked out, "-" when there is no telling.
+    picture_hash: str = ""
 
     @computed_field  # type: ignore[prop-decorator]
     @property

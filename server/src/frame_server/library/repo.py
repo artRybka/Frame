@@ -61,6 +61,16 @@ from .vocabulary import (
 )
 
 #: Item fields that tell copies of a work apart or choose between them.
+#: What ``library.twins`` learnt from an item's picture.
+TWINS_FIELDS = (
+    "copy_of",
+    "detail_of",
+    "scene_of",
+    "twins_seen",
+    "twins_large",
+    "picture_hash",
+)
+
 log = logging.getLogger(__name__)
 
 #: Seconds the places of the catalogue's works are kept while nothing changes.
@@ -704,6 +714,10 @@ class Library:
                         "holder": item.holder or existing.holder,
                     }
                 )
+                if item.image_url == existing.image_url:
+                    # What the pictures showed (library.twins): the same
+                    # picture, whatever the museum says again.
+                    item = item.model_copy(update={k: getattr(existing, k) for k in TWINS_FIELDS})
             elif not item.added_at:
                 item = item.model_copy(update={"added_at": now_iso()})
             with self._db() as db:
