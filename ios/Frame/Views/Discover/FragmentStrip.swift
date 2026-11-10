@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// A work's fragments (the museum's photographs of a scroll's parts, a
 /// Commons tile set; Mateusz 2026-11-09): sharp where the whole, fit into
@@ -31,6 +32,16 @@ enum Fragments {
             return view
         }
         return await load(item.id, backend: backend)
+    }
+
+    /// How far the full screen zooms into the work's tile set on this
+    /// screen ("17×" on its card); nil without one.
+    static func depth(_ view: FragmentsView?, scale: CGFloat) -> Int? {
+        guard let view, view.tiled else { return nil }
+        let screen = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.screen.bounds.size }
+            .first ?? CGSize(width: 393, height: 852)
+        return ZoomTile.depth(of: view, screen: screen, scale: scale)
     }
 
     /// The title without the server's "(fragment 5/14)": the card says it

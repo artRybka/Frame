@@ -955,8 +955,10 @@ struct TitleWithYear: View {
     let title: String
     let date: String
     let font: Font
-    /// "Pod lupą": a magnifier and "24×" on a badge after the year.
-    var zoom = false
+    /// "Pod lupą": a magnifier and how far the full screen zooms in ("17×")
+    /// on a badge after the year; 0, the magnifier alone (not known yet);
+    /// nil, no badge.
+    var zoom: Int? = nil
     @Environment(\.colorScheme) private var scheme
     @Environment(\.displayScale) private var scale
 
@@ -968,7 +970,7 @@ struct TitleWithYear: View {
 @MainActor
 enum TitleYear {
     static func text(
-        _ title: String, date: String, font: Font, scheme: ColorScheme, scale: CGFloat, zoom: Bool = false
+        _ title: String, date: String, font: Font, scheme: ColorScheme, scale: CGFloat, zoom: Int? = nil
     ) -> Text {
         var text = Text(title).font(font).foregroundStyle(Theme.ink)
         var label = title
@@ -979,15 +981,13 @@ enum TitleYear {
             text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)
             label += ", \(date)"
         }
-        if zoom, let badge = badge(zoomText, scheme: scheme, scale: scale, symbol: zoomSymbol) {
+        if let zoom, let badge = badge(zoom > 0 ? "\(zoom)×" : "", scheme: scheme, scale: scale, symbol: zoomSymbol) {
             text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)
-            label += ", można przybliżyć do 24 razy"
+            label += zoom > 0 ? ", można przybliżyć \(zoom) razy" : ", można mocno przybliżyć"
         }
         return text.accessibilityLabel(Text(label))
     }
 
-    /// "Pod lupą": how far the full screen zooms into its tiles.
-    static let zoomText = "24×"
     static let zoomSymbol = "plus.magnifyingglass"
 
     /// No line break inside the date: spaces held, dashes joined.
@@ -1021,7 +1021,7 @@ enum TitleYear {
 private struct YearBadge: View {
     let date: String
     let dark: Bool
-    /// A symbol before the figures ("Pod lupą": a magnifier before "24×").
+    /// A symbol before the figures ("Pod lupą": a magnifier before "17×").
     var symbol: String? = nil
 
     var body: some View {
@@ -1030,10 +1030,12 @@ private struct YearBadge: View {
             if let symbol {
                 Image(systemName: symbol).font(.system(size: 11.5, weight: .regular))
             }
-            Text(date)
-                .font(.system(size: 12.5, weight: .light))
-                .monospacedDigit()
-                .tracking(0.3)
+            if !date.isEmpty {
+                Text(date)
+                    .font(.system(size: 12.5, weight: .light))
+                    .monospacedDigit()
+                    .tracking(0.3)
+            }
         }
         .foregroundStyle(ink)
         .padding(.horizontal, 6)

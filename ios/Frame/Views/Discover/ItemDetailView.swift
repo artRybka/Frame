@@ -8,6 +8,7 @@ import SwiftUI
 struct ItemDetailView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openStudy) private var openStudy
+    @Environment(\.displayScale) private var displayScale
     let itemID: String
     @State private var item: Item?
     @State private var view = ViewMode.original
@@ -255,7 +256,8 @@ struct ItemDetailView: View {
             picture(item)
             titleBlock(item)
             actions(item)
-            if let fragments, !fragments.fragments.isEmpty {
+            // A tile set is looked at in full screen, not listed.
+            if let fragments, !fragments.fragments.isEmpty, !fragments.tiled {
                 fragmentsSection(item, fragments)
                     .transition(.opacity)
             }
@@ -394,7 +396,7 @@ struct ItemDetailView: View {
                 title: nonEmpty(polish?.title) ?? (summary.shownTitle.isEmpty ? "Bez tytułu" : summary.shownTitle),
                 date: photo ? "" : date,
                 font: .serif(30, weight: .semibold),
-                zoom: summary.zoom == true
+                zoom: summary.zoom == true ? Fragments.depth(fragments, scale: displayScale) ?? 0 : nil
             )
                 .fixedSize(horizontal: false, vertical: true)
             if !summary.artist.isEmpty {
@@ -948,7 +950,7 @@ struct ItemDetailView: View {
                 font: .serif(30, weight: .semibold),
                 // "Pod lupą": its picture's tiles are laid on it while the
                 // full screen zooms in (a Commons tile set has places).
-                zoom: !item.isFragment && fragments?.places?.isEmpty == false
+                zoom: item.isFragment ? nil : Fragments.depth(fragments, scale: displayScale)
             )
                 .fixedSize(horizontal: false, vertical: true)
                 // The museum's title fades into the Polish one.

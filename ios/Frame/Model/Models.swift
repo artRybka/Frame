@@ -1675,6 +1675,10 @@ struct FragmentsView: Codable, Hashable, Sendable {
     /// set): the full-screen viewer lays them on it while zooming. Absent
     /// from older servers.
     var places: [FragmentPlace]? = nil
+
+    /// A Commons tile set laid on the work in full screen ("Pod lupą"):
+    /// its tiles are not listed as "Fragmenty" (Mateusz 2026-11-10).
+    var tiled: Bool { places?.isEmpty == false }
 }
 
 /// A fragment's place on its whole work: left, top, width and height as

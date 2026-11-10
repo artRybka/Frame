@@ -2,7 +2,7 @@
 Mateusz 2026-11-09): Commons files that have a tile set (``fragments``:
 "The Night Watch" in tiles of a 40 000 px scan), shown by the work itself
 or by a copy in its place (``Item.sharper``). Their tiles load while the
-full-screen viewer zooms in, up to 24 times.
+full-screen viewer zooms in, as deep as their pixels reach.
 
 The list of such files is read from Commons once a month (``fragments``)
 and kept here for every list of works to mark them without asking.
