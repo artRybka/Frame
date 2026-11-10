@@ -834,6 +834,8 @@ actor DemoBackend: FrameBackend {
         playlistsByID.values.first { $0.theme == theme.key || $0.name == theme.name }?.id
     }
 
+    private static func pixels(_ item: Item) -> Int { (item.width ?? 0) * (item.height ?? 0) }
+
     func suggestions() async throws -> [SuggestionRow] {
         // As the server: the theme of the day is one of the lasting themes.
         let themes = DemoDiscover.themes.filter {
@@ -848,6 +850,11 @@ actor DemoBackend: FrameBackend {
             SuggestionRow(
                 key: "theme", title: "Motyw dnia: \(theme.name)", subtitle: theme.description,
                 theme: theme.key, items: remote(works(theme))
+            ),
+            // "Pod lupą": the largest pictures stand in for the tile sets.
+            SuggestionRow(
+                key: DiscoverLayout.zoom, title: "Pod lupą", subtitle: ZoomRow.subtitle,
+                items: remote(Array(items.sorted { Self.pixels($0) > Self.pixels($1) }.prefix(8)))
             ),
         ]
     }

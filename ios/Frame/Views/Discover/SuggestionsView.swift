@@ -113,7 +113,7 @@ struct SuggestionsView: View {
     @ViewBuilder
     private func rowView(_ row: SuggestionRow) -> some View {
         if row.key == DiscoverLayout.zoom {
-            ZoomRow(row: row)
+            ZoomRow(row: row).id("zoom")
         } else {
             SuggestionRowView(row: row, theme: (model.themes ?? []).first { $0.key == row.theme })
         }

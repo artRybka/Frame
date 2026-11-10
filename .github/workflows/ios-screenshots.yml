@@ -88,6 +88,7 @@ jobs:
             capture now 16 "now-$appearance"
             capture discover 12 "discover-$appearance"
             capture discover 14 "discover-studies-$appearance" -scroll studies
+            capture discover 14 "discover-zoom-$appearance" -scroll zoom
             capture discover-group 12 "discover-group-$appearance"
             capture daily 14 "daily-$appearance"
             capture daily 16 "daily-end-$appearance" -scroll end
