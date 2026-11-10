@@ -6,6 +6,8 @@
   trafiają tam, gdzie przechodzi przez rok przystanku. Linia nie ma więc
   zakrętów przy kropkach. Wije się w pasie obok tekstów, a na drugą
   stronę przechodzi długim łukiem nad morzem albo po trzech przystankach.
+  Tekst każdego przystanku zaczyna się zaraz przy kropce, na podkładzie
+  w kolorze papieru, który przerywa linię tam, gdzie biegnie pod tekstem.
 - Linia z kropkami rysuje się zawsze. Wcześniej czasem zostawały same
   teksty, bez drogi.
 

@@ -157,21 +157,38 @@ struct JourneyRoad: View {
         // for state its drawing closure reads, so the road came out blank
         // whenever the last row was measured after the first draw.
         let rows = self.rows
+        let shape = self.shape(rows, places: places)
         return VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(journey.stops.enumerated()), id: \.offset) { i, stop in
-                // Measured before the gap above it: the row's own text.
+                // Measured before the gap above it and before it moves to its
+                // dot: the row's own text, where the layout put it.
                 row(stop, places[i])
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("road")) } action: { self.rows[i] = $0 }
+                    .offset(x: shift(i, places[i], shape))
                     .padding(.top, i == 0 ? 36 : places[i].left != places[i - 1].left ? Self.crossGap : Self.gap)
             }
         }
-        .padding(.bottom, 28)
+        .padding(.bottom, 40)
         .coordinateSpace(.named("road"))
         .background {
-            Canvas { context, size in draw(in: &context, size: size, places: places, rows: rows) }
+            Canvas { context, size in draw(in: &context, size: size, shape: shape, rows: rows) }
                 .accessibilityHidden(true)
         }
         .overlay(alignment: .topLeading) { seaNames }
+    }
+
+    /// Where the year's line is in a row: its dot sits there.
+    private static let yearY: CGFloat = 12
+    /// From a dot to its text (with the backing's own 6 pt inside).
+    private static let toText: CGFloat = 12
+
+    /// How far a row moves sideways so its text starts right at its dot
+    /// (17:29: „teksty… muszą być zaraz przy nich”).
+    private func shift(_ i: Int, _ place: Place, _ shape: RoadShape?) -> CGFloat {
+        guard let shape, i < shape.dots.count, let row = rows[i] else { return 0 }
+        let dot = shape.dots[i].x
+        return place.left ? dot + Self.toText - (row.minX + Self.band + 8)
+                          : dot - Self.toText - (row.maxX - Self.band - 8)
     }
 
     private func row(_ stop: DailyWork.Journey.Stop, _ place: Place) -> some View {
@@ -185,8 +202,13 @@ struct JourneyRoad: View {
                 .multilineTextAlignment(place.left ? .leading : .trailing)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        // On a backing of paper that breaks the line where it runs under the
+        // text (17:29: „na podkładzie, który będzie przerywać ścieżkę”).
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(Theme.paper, in: .rect(cornerRadius: 6))
         .frame(maxWidth: .infinity, alignment: place.left ? .leading : .trailing)
-        .padding(place.left ? .leading : .trailing, Self.band + 14)
+        .padding(place.left ? .leading : .trailing, Self.band + 8)
         .accessibilityElement(children: .combine)
     }
 
@@ -210,20 +232,24 @@ struct JourneyRoad: View {
 
     // MARK: Drawing
 
-    private func draw(in context: inout GraphicsContext, size: CGSize, places: [Place], rows: [Int: CGRect]) {
+    /// The line, and each stop's dot on it.
+    private struct RoadShape {
+        var line: [CGPoint]
+        var dots: [CGPoint]
+        var pins: [Int]
+    }
+
+    /// The line first (17:19), the dots after: the line is drawn through
+    /// points in the gaps only, swinging from one side of the band to the
+    /// other between stops; a crossing goes down past the text, sweeps across
+    /// the gap and comes down on the other side. Each dot then goes where the
+    /// line passes its stop's year, on a flank, never on a turn. Nil until
+    /// every row is measured.
+    private func shape(_ rows: [Int: CGRect], places: [Place]) -> RoadShape? {
         let count = journey.stops.count
-        guard count >= 2, (0..<count).allSatisfy({ rows[$0] != nil }) else { return }
+        guard count >= 2, (0..<count).allSatisfy({ rows[$0] != nil }), let width = rows[0]?.width, width > 2 * Self.band
+        else { return nil }
         var random = SeededRandom(seed + "road")
-        let width = size.width
-        // The seas first, under everything.
-        for i in 1..<count where overSea(i) {
-            drawSea(in: &context, top: rows[i - 1]!.maxY + 14, bottom: rows[i]!.minY - 10, width: width)
-        }
-        // The line first (17:19), the dots after: the line is drawn through
-        // points in the gaps only, swinging from one side of the band to the
-        // other between stops; a crossing goes down past the text, sweeps
-        // across the gap and comes down on the other side. Each dot then goes
-        // where the line passes its stop's year, on a flank, never on a turn.
         func inBand(_ left: Bool, _ u: CGFloat) -> CGFloat {
             left ? 10 + (Self.band - 14) * u : width - Self.band + 4 + (Self.band - 14) * u
         }
@@ -241,17 +267,27 @@ struct JourneyRoad: View {
                 route.append(CGPoint(x: inBand(left, 0.35 + 0.3 * random.unit()), y: row.minY - 26))
             }
         }
-        route.append(CGPoint(x: inBand(places[count - 1].left, 0.5), y: min(size.height - 2, rows[count - 1]!.maxY + 40)))
+        route.append(CGPoint(x: inBand(places[count - 1].left, 0.5), y: rows[count - 1]!.maxY + 40))
         let line = Self.penLine(route, random: &random)
-        // Each dot where the line passes its stop's year.
         var pins: [Int] = []
         for i in 0..<count {
-            let year = rows[i]!.minY + 8
+            let year = rows[i]!.minY + Self.yearY
             var k = pins.last ?? 0
             while k < line.count - 1, line[k].y < year { k += 1 }
             pins.append(k)
         }
-        let dots = pins.map { line[$0] }
+        return RoadShape(line: line, dots: pins.map { line[$0] }, pins: pins)
+    }
+
+    private func draw(in context: inout GraphicsContext, size: CGSize, shape: RoadShape?, rows: [Int: CGRect]) {
+        guard let shape else { return }
+        let count = journey.stops.count
+        let (line, dots, pins) = (shape.line, shape.dots, shape.pins)
+        var random = SeededRandom(seed + "ink")
+        // The seas first, under everything.
+        for i in 1..<count where overSea(i) {
+            drawSea(in: &context, top: rows[i - 1]!.maxY + 14, bottom: rows[i]!.minY - 10, width: size.width)
+        }
         // Inked as one ribbon, dashed to and from an exhibition the work came
         // back from, as a side trip.
         var runs: [(Range<Int>, Bool)] = []
