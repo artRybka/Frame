@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.142.2
+
+- „Droga dzieła”: linia biegnie gładko, bez załamań przy kropkach
+  i bez zawijasów nad morzem.
+
 ## 1.142.1
 
 - „Droga dzieła”: kropki stoją przy swoich przystankach, a linia nie
