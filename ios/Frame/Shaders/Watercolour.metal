@@ -97,3 +97,42 @@ float ease(float x) {
     float3 colour = tint * glaze * (1.0 - drawn) + (sharp.a > 0.0 ? sharp.rgb / sharp.a : float3(0)) * drawn;
     return half4(half3(colour), half(alpha));
 }
+
+// A pale white underpainting spreading on the page (JourneyRoad's
+// WashPaint), as the wash above spreads over the old picture: from its
+// middle out, patch by patch, with a ragged front, soft in some places and
+// sharp in others. The front is thick with paint, and the paint behind it
+// is wet and whiter; it dries to the pale stain the layer holds. Lengths
+// are in points: `centre` is the stain's middle and `radii` how far it
+// reaches sideways and up and down; `seed` tells one stain from another.
+[[ stitchable ]] half4 stain(float2 position, SwiftUI::Layer layer, float2 centre, float2 radii, float progress, float seed) {
+    using namespace paper;
+    float4 there = float4(layer.sample(position));
+    if (progress >= 1.0) { return half4(there); }
+    if (progress <= 0.0) { return half4(0); }
+
+    // When each place is reached.
+    float away = length((position - centre) / (radii * 1.25));
+    float order = 0.3 * (0.7 * noise(position / 45.0, 41.0 + seed) + 0.3 * noise(position / 18.0, 42.0 + seed)) + 0.7 * away;
+    order = clamp((order - 0.1) / 0.8, 0.0, 1.0);
+    float ragged = 0.6 * noise(position / 9.0, 61.0 + seed) + 0.4 * noise(position / 4.0, 62.0 + seed);
+    float grain = noise(position / 1.5, 71.0 + seed);
+    float wetness = noise(position / 60.0, 81.0 + seed);
+    float reach = order + 0.12 * (ragged - 0.5) + 0.03 * (grain - 0.5);
+
+    float t = progress * 1.3 - 0.08;
+    float soft = 0.012 + 0.075 * wetness * wetness;
+    float e = t - reach;
+    float wash = ease(e / soft);
+    // The front, a thin line of thick paint, and the wet paint behind it;
+    // both gone as the stain dries at the end.
+    float off = e - soft * 0.5;
+    float front = exp(-off * off / (0.014 * 0.014));
+    float wet = e > 0.0 ? 0.55 * exp(-e / 0.22) : 0.0;
+    float thick = min(1.0, max(front, wet * wash)) * (1.0 - ease((progress - 0.82) / 0.18));
+    // Only inside the stain itself, not in the soft edge round it.
+    thick *= 0.95 * smoothstep(0.15, 0.35, there.a);
+
+    float4 dried = there * wash;
+    return half4(float4(thick) + dried * (1.0 - thick));
+}

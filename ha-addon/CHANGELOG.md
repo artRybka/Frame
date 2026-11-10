@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.142.9
+
+- „Droga dzieła”: białe plamy pod tekstami nie leżą już na stronie od
+  razu. Kiedy przystanek wjeżdża na ekran przy przewijaniu, jego plama
+  rozlewa się od środka jak akwarela w przejściu obrazu na ramce
+  w Teraz: poszarpanym frontem gęstszej farby, miejscami miękkim,
+  miejscami ostrym, i po chwili zasycha w bladą plamę. Raz rozlana
+  zostaje. Przy włączonym „Ogranicz ruch” plama tylko łagodnie się
+  pojawia.
+
 ## 1.142.8
 
 - „Pod lupą”: rozjaśnienie HDR na kafelkach jest gradientem: pełne
