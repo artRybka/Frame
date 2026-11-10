@@ -55,7 +55,14 @@ READINGS: dict[str, str] = {
     # 2026-11-09: Foto Marburg's photographs of works left out; 3: and
     # the Hertziana's; 4: types in every language and as AAT links.
     "europeana": "4",
+    # 2026-11-10: one type asked by its field ("Painting"), an artist by
+    # the author's (Monet's caricatures under Malarstwo, Mateusz).
+    "aic": "2",
 }
+#: Pages of a search for one kind (Malarstwo, Fotografia: the key's fifth
+#: part), whichever museum: raised with a change to how such searches ask.
+#: 2: an artist is asked by the author field (2026-11-10).
+KIND_READING = "2"
 
 
 def reading(source: str) -> str:
@@ -134,12 +141,18 @@ class SearchPages:
 
     def _version(self, key: str) -> str:
         """The version a page of ``key`` is kept under: the store's and its
-        museum's reading (the key's first part)."""
+        museum's reading (the key's first part), and for one kind asked
+        (its fifth) :data:`KIND_READING`."""
         try:
-            source = str(json.loads(key)[0])
+            parts = json.loads(key)
+            source = str(parts[0])
         except (ValueError, IndexError, KeyError, TypeError):
-            source = ""
-        return f"{self.version}/{reading(source)}"
+            parts, source = [], ""
+        version = f"{self.version}/{reading(source)}"
+        kind = parts[4] if isinstance(parts, list) and len(parts) > 4 else "any"
+        if kind not in ("any", "", None):
+            version += f"/k{KIND_READING}"
+        return version
 
     def trim(self, room: int = MAX_BYTES) -> int:
         """The oldest pages removed until the rest fit ``room``; how many went."""

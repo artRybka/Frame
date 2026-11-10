@@ -128,6 +128,23 @@ def test_a_release_keeps_pages_fresh_unless_their_museum_reads_anew(
     assert again.get(aic, now=1060.0) == (True, 1, [_work(1)])
 
 
+def test_pages_of_one_kind_and_aic_read_anew(tmp_path: Path) -> None:
+    """Malarstwo with Monet asked AIC for every work of his and the others
+    by any field (his caricatures, Mateusz 2026-11-10): those pages are
+    asked again; the others stay fresh."""
+    store = SearchPages(tmp_path / "p.sqlite", "2")
+    for key in (
+        store.key("aic", "monet", 24, 1, "any", False),
+        store.key("met", "@by:Claude Monet\t", 24, 1, "painting", False),
+        store.key("met", "monet", 24, 1, "any", False),
+    ):
+        store.put(key, 1, [_work(1)], now=1000.0)
+    with store._lock:
+        store._db.execute("UPDATE pages SET version = '2/1'")
+    fresh = [store.get(k, now=1060.0) for (k,) in store._db.execute("SELECT key FROM pages")]
+    assert sorted(f[0] for f in fresh if f) == [False, False, True]
+
+
 def test_the_oldest_pages_go_first_when_the_room_is_full(tmp_path: Path) -> None:
     store = SearchPages(tmp_path / "p.sqlite")
     for n in range(5):
