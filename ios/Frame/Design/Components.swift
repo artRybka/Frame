@@ -302,14 +302,19 @@ struct HeartMark: View {
         Color.clear
             .frame(width: size + 4, height: size + 2)
             .glassEffect(glass, in: HeartShape())
+            // The same glass in dark mode as in light (18:27).
+            .environment(\.colorScheme, .light)
     }
 
     /// The same clear glass both ways; on, red laid under it (Mateusz
-    /// 2026-11-10 17:18: "czerwony podłożony pod szkło clear").
+    /// 2026-11-10 17:18: "czerwony podłożony pod szkło clear"), a little
+    /// see-through and the same red in both modes (18:27).
     private var glass: Glass {
-        let glass: Glass = on ? .clear.tint(Theme.heart) : .clear
+        let glass: Glass = on ? .clear.tint(Self.red) : .clear
         return interactive ? glass.interactive() : glass
     }
+
+    private static let red = Color(red: 0xD2 / 255, green: 0x46 / 255, blue: 0x3A / 255).opacity(0.62)
 }
 
 /// A heart drawn to fill its frame, for glass in its shape.
