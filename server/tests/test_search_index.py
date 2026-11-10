@@ -7,8 +7,6 @@ from __future__ import annotations
 import random
 import threading
 
-import pytest
-
 from frame_server.library import Item, Library
 from frame_server.library import repo as repo_module
 from frame_server.library.models import PlaylistRules
@@ -212,15 +210,16 @@ def test_the_index_is_made_outside_the_lock_with_the_changes_made_meanwhile(
     assert sorted(i.id for i in lib.query(PlaylistRules(query="sea"))[1]) == ["a:2", "a:9"]
 
 
-@pytest.mark.parametrize("dead", [0.5])
-def test_an_index_mostly_changed_is_made_anew(tmp_path, dead: float) -> None:
+def test_an_index_mostly_changed_is_made_anew(tmp_path) -> None:
     lib = Library(tmp_path / "lib.db")
     for n in range(10):
         lib.upsert(Item(id=f"a:{n}", source="a", source_id=str(n), title="Sea"))
     first = lib.search_index()
     for n in range(10):
         lib.update(f"a:{n}", title="Field")
-    assert first is not None and first.dead_share() >= dead
+    # The new index may be made before the last changes, which then go to
+    # it, not to the first: the first is past the share all the same.
+    assert first is not None and first.dead_share() > repo_module.SEARCH_DEAD_SHARE
     for _ in range(500):
         if lib._search is not first:
             break
