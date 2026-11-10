@@ -154,11 +154,14 @@ struct PlaylistDetailView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Usuń z playlisty: \(item.title)")
         } else {
-            NavigationLink(value: item.id) { ArtCard(item: item, showsFavorite: hearts) }
+            NavigationLink(value: item.id) { ArtCard(item: item, showsFavorite: false) }
                 .buttonStyle(.plain)
                 .contextMenu {
                     QueueButton(itemID: item.id)
                     Button("Usuń z playlisty", systemImage: "minus.circle", role: .destructive) { remove(item) }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if hearts { LikeHeart(item: item) }
                 }
         }
     }

@@ -423,6 +423,7 @@ struct SuggestionsPage: View {
                         NavigationLink(value: work.item.id) { tile(work) }
                             .buttonStyle(.plain)
                             .contextMenu { QueueButton(itemID: work.item.id) }
+                            .overlay(alignment: .topTrailing) { LikeHeart(item: work.item.summary) }
                     }
                 }
             }
