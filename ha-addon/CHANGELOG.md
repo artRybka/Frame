@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.142.10
+
+- Plakaty pokazują tylko plakaty. Po wybraniu artysty (np. Claude
+  Monet + Plakaty) muzea oddawały wszystkie jego prace, a serwer
+  przepuszczał je bez sprawdzenia, więc wśród plakatów były obrazy
+  olejne, rysunki i akwaforty. Teraz o plakacie decyduje to, co
+  muzeum pisze o samym dziele: rodzaj i technika. Obraz albo rysunek
+  nigdy nie jest plakatem.
+- Plakat jest grafiką: pojawia się w Grafice, ale nie w Malarstwie
+  ani w Rysunkach.
+- Fotografia, Rzeźba, Ceramika i Rękopisy w playlistach i katalogu
+  przyjmują tylko dzieła swojego rodzaju, tak jak w Szukaj.
+- Europeana: rysunki i ryciny opisane przez muzeum ogólną kategorią
+  „malarstwo” nie trafiają już do Malarstwa, a rodzaje zapisane po
+  niemiecku, francusku, szwedzku czy rumuńsku są rozpoznawane.
+- Art Institute of Chicago i Europeana są pytane wprost o plakaty, więc
+  przy Toulouse-Lautrecu czy Musze przychodzą ich prawdziwe plakaty.
+- Rijksmuseum: część grafik miała zamiast autora napis „@language”.
+
 ## 1.142.9
 
 - „Droga dzieła”: białe plamy pod tekstami nie leżą już na stronie od

@@ -53,11 +53,17 @@ READINGS: dict[str, str] = {
     # 2026-11-09: searches ask for digitised artworks only, no illustrations.
     "openverse": "2",
     # 2026-11-09: Foto Marburg's photographs of works left out; 3: and
-    # the Hertziana's; 4: types in every language and as AAT links.
-    "europeana": "4",
+    # the Hertziana's; 4: types in every language and as AAT links; 5: one
+    # kind asked by its ``what``, posters found so typed (2026-11-10).
+    "europeana": "5",
     # 2026-11-10: one type asked by its field ("Painting"), an artist by
-    # the author's (Monet's caricatures under Malarstwo, Mateusz).
-    "aic": "2",
+    # the author's (Monet's caricatures under Malarstwo, Mateusz); 3:
+    # posters by their classification, typed "Poster" (Monet's oils under
+    # Plakaty, Mateusz).
+    "aic": "3",
+    # 2026-11-10: a maker or type named by one value, not a list, read
+    # (Toulouse-Lautrec's prints by "@language").
+    "rijks": "2",
 }
 #: Pages of a search for one kind (Malarstwo, Fotografia: the key's fifth
 #: part), whichever museum: raised with a change to how such searches ask.
