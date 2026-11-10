@@ -7,8 +7,9 @@ enum LaunchRoute {
     static let fit = UserDefaults.standard.string(forKey: "fit")
     static let mat = UserDefaults.standard.string(forKey: "mat")
     /// "end", "author", "composition", "colour", "details", "size", "legacy",
-    /// "sametime": a long page opens scrolled
-    /// there; "studies": Discover at "Studia dzieł".
+    /// "sametime", "journey": a long page opens scrolled
+    /// there ("journey-end": at that section's lower part); "studies":
+    /// Discover at "Studia dzieł".
     static let scroll = UserDefaults.standard.string(forKey: "scroll")
     /// The composition's take shown first (CI screenshots of the later takes).
     static let take = UserDefaults.standard.integer(forKey: "take")

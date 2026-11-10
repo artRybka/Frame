@@ -147,7 +147,9 @@ struct DailyView: View {
                 guard let target = LaunchRoute.scroll else { return }  // CI screenshots: "composition", "details", "end"
                 Task {
                     try? await Task.sleep(for: .seconds(1))
-                    proxy.scrollTo(target, anchor: target == "end" ? .bottom : .top)
+                    // "journey-end": the section's lower part.
+                    let lower = target != "end" && target.hasSuffix("-end")
+                    proxy.scrollTo(lower ? String(target.dropLast(4)) : target, anchor: target == "end" || lower ? .bottom : .top)
                 }
             }
         }

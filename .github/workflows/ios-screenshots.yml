@@ -88,6 +88,7 @@ jobs:
             capture now 16 "now-$appearance"
             capture discover 12 "discover-$appearance"
             capture discover 14 "discover-studies-$appearance" -scroll studies
+            capture discover 14 "discover-zoom-$appearance" -scroll zoom
             capture discover-group 12 "discover-group-$appearance"
             capture daily 14 "daily-$appearance"
             capture daily 16 "daily-end-$appearance" -scroll end
@@ -102,6 +103,7 @@ jobs:
             capture daily 16 "daily-size-big-$appearance" -scroll size -realSize 210x163
             capture daily 16 "daily-size-huge-$appearance" -scroll size -realSize 378.5x647.7
             capture daily 16 "daily-journey-$appearance" -scroll journey
+            capture daily 16 "daily-journey-detour-$appearance" -scroll journey-end -journeyDetour YES
             capture detail 14 "detail-$appearance"
             capture detail 16 "detail-about-$appearance" -scroll about
             capture playlists 12 "playlists-$appearance"

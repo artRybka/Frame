@@ -110,8 +110,13 @@ struct SuggestionsView: View {
         }
     }
 
+    @ViewBuilder
     private func rowView(_ row: SuggestionRow) -> some View {
-        SuggestionRowView(row: row, theme: (model.themes ?? []).first { $0.key == row.theme })
+        if row.key == DiscoverLayout.zoom {
+            ZoomRow(row: row).id("zoom")
+        } else {
+            SuggestionRowView(row: row, theme: (model.themes ?? []).first { $0.key == row.theme })
+        }
     }
 }
 
@@ -124,6 +129,8 @@ enum DiscoverLayout {
     /// are in "Dziś dla Ciebie" now.
     static let likes = "Bo lubisz"
     static let likedPrefix = "like-"
+    /// The row "Pod lupą", as cards (`ZoomRow`).
+    static let zoom = "zoom"
     /// Groups made for this week or for this owner, not lasting themes.
     static let ownGroups: Set<String> = [weekly, likes]
 
@@ -403,28 +410,60 @@ struct StudyCard: View {
     let study: StudyBrief
 
     var body: some View {
+        WorkTile(item: study.item, title: study.title)
+            .accessibilityHint("Otwiera studium dzieła")
+    }
+}
+
+/// A work as a card, like a theme's: the picture on top, its title and
+/// artist below on the card's white ("Studia dzieł", "Pod lupą").
+struct WorkTile: View {
+    let item: RemoteItem
+    /// The title shown (a study's Polish title; else the work's own).
+    var title: String?
+    /// The picture a little brighter than the page (`ArtGlow`, when
+    /// Konfiguracja allows it), as on the work's card ("Pod lupą",
+    /// Mateusz 2026-11-10).
+    var brighten = false
+    /// The heart of a favourite in the picture's top right corner.
+    var showsFavorite = false
+
+    private var shownTitle: String {
+        let title = title ?? item.summary.title
+        return title.isEmpty ? "Bez tytułu" : title
+    }
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Color.clear
                 .frame(height: 118)
                 .frame(maxWidth: .infinity)
                 .overlay {
                     ArtImage(
-                        ref: study.item.thumb,
-                        fallback: study.item.thumbFallback,
-                        placeholder: study.item.item.placeholderColor,
+                        ref: item.thumb,
+                        fallback: item.thumbFallback,
+                        placeholder: item.item.placeholderColor,
                         maxPixel: 500,
-                        subjectFocus: true
+                        subjectFocus: true,
+                        brighten: brighten
                     )
                 }
                 .clipped()
+                .overlay(alignment: .topTrailing) {
+                    if showsFavorite, item.item.favorite {
+                        HeartMark(on: true)
+                            .padding(7)
+                            .accessibilityLabel("W ulubionych")
+                    }
+                }
             VStack(alignment: .leading, spacing: 4) {
-                Text(study.title)
+                Text(shownTitle)
                     .font(.serif(15, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(2, reservesSpace: true)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(Names.artist(study.item.item.artist))
+                Text(ArtCard.byline(item.summary))
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .lineLimit(1)
@@ -437,7 +476,60 @@ struct StudyCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.hairline))
         .accessibilityElement(children: .combine)
-        .accessibilityHint("Otwiera studium dzieła")
+    }
+}
+
+/// "Pod lupą": the works to look at far closer, as cards like the
+/// studies' (Mateusz 2026-11-10), each picture a little brighter (`ArtGlow`).
+struct ZoomRow: View {
+    let row: SuggestionRow
+
+    /// Its subtitle, also over a server that words it otherwise.
+    static let subtitle = "Dzieła w ogromnej rozdzielczości"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                NavigationLink(value: SuggestionRowRoute(key: row.key)) {
+                    SeeAllHeader(title: row.title, size: 22, weight: .semibold)
+                }
+                .buttonStyle(.plain)
+                Text(Self.subtitle)
+                    .font(.footnote)
+                    .foregroundStyle(Theme.inkSoft)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: 12) {
+                    ForEach(row.items) { remote in
+                        ZoomWorkCard(remote: remote).frame(width: 172)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, 2)
+            }
+            .scrollClipDisabled()
+            .edgeToEdgeRow()
+        }
+    }
+}
+
+/// One work of "Pod lupą" as a card that opens the work.
+struct ZoomWorkCard: View {
+    @Environment(AppModel.self) private var model
+    let remote: RemoteItem
+
+    var body: some View {
+        NavigationLink(value: remote.id) {
+            WorkTile(item: remote, brighten: true, showsFavorite: true)
+                .accessibilityHint("Otwiera dzieło, można je mocno przybliżyć")
+        }
+        .buttonStyle(.plain)
+        .contextMenu { QueueButton(itemID: remote.id) }
+        // The card opened from here shows this much while it loads.
+        .onAppear {
+            ItemPeeks.remember(remote.summary, thumb: remote.thumb)
+            if let picture = remote.summary.picture { model.pictureSeen(remote.id, copy: picture) }
+        }
     }
 }
 
