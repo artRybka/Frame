@@ -18,6 +18,8 @@ from frame_server.ai.journey import (
     VERSION,
     Journeys,
     Record,
+    _told,
+    _year,
     bridges,
     from_wikidata,
     read,
@@ -396,3 +398,39 @@ def test_a_none_from_before_is_looked_for_once_more(
     assert journeys.look(other) is None and journeys.asked(other)
     note = service.library.note(other.id, "journey")
     assert note is not None and note.prompt_version == NONE_VERSION and note.data == {}
+
+
+def test_what_the_record_does_not_give_is_left_out_without_a_word() -> None:
+    """Mateusz 2026-11-10 22:20, three stops "bez daty", each ending in
+    "; zapis nie podaje daty.": „Powtórzenia w opisach braku daty są
+    irytujące.”"""
+    assert [_year(y) for y in ("bez daty", "Bez Daty", "b.d.", "undated", "?", "—", "")] == [""] * 7
+    assert _year("ok. 1700") == "ok. 1700" and _year("przed 1891") == "przed 1891"
+    assert (
+        _told("Obraz należał do **Richarda, 4. markiza Hertford**; zapis nie podaje daty.")
+        == "Obraz należał do **Richarda, 4. markiza Hertford**."
+    )
+    assert (
+        _told("Obraz **Fragonarda** powstał w 1767 roku; zapis nie podaje miejsca jego powstania.")
+        == "Obraz **Fragonarda** powstał w 1767 roku."
+    )
+    assert _told("Kupuje go **Brû** (źródło nie wymienia ceny).") == "Kupuje go **Brû**."
+    assert _told("Kupuje go **Brû**, choć zapis nie podaje ceny; płaci gotówką.") == (
+        "Kupuje go **Brû**; płaci gotówką."
+    )
+    plain = "Émile sprzedaje go Casimirowi Brû za **800 franków**."
+    assert _told(plain) == plain
+    answer = {
+        **ANSWER,
+        "stops": [
+            {
+                **ANSWER["stops"][0],
+                "year": "bez daty",
+                "text": "Pokazany w Paryżu; zapis nie podaje daty.",
+            },
+            *ANSWER["stops"][1:],
+        ],
+    }
+    journey = read(answer, Record(text=TEXT), _seurat())
+    assert journey is not None
+    assert journey.stops[0].year == "" and journey.stops[0].text == "Pokazany w Paryżu."

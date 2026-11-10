@@ -52,7 +52,10 @@ log = logging.getLogger(__name__)
 
 KIND = "journey"
 SWITCH = "journey"
-VERSION = "journey-1"
+#: 2: stops without a date are told together and without a word about what
+#: the record does not give (Mateusz 2026-11-10 22:20: „Powtórzenia w
+#: opisach braku daty są irytujące. Trzeba to zrobić naturalniej.”).
+VERSION = "journey-2"
 #: "None" as it is kept since more records are read (the National Gallery,
 #: the Rijksmuseum, the Louvre, and museums' records of works from
 #: elsewhere): a "none" from before is looked for once more.
@@ -97,8 +100,12 @@ Chicago".
 says), each change of owner (a sale with its price when given, a gift, an heir), a war, theft \
 or seizure, at most three exhibitions that matter (the first showing, one far away), and last \
 where it is now (kind "museum" when it is a museum). Merge what happened in one place in one \
-year into one stop. Leave out owners the record gives no date for unless they matter.
-  Each stop: "year" as the record gives it ("1900", "1884–1886", "przed 1891", "ok. 1700"); \
+year into one stop. Owners the record gives no date for: leave them out, or, when they \
+matter, name those that follow one another together in ONE stop with "year": "" (e.g. "Potem \
+kolejno u **markiza Hertford**, księcia de Morny i Emmanuela de Pressigny."); never give each \
+of them a stop of its own.
+  Each stop: "year" as the record gives it ("1900", "1884–1886", "przed 1891", "ok. 1700"), \
+"" when it gives none (never "bez daty" or the like); \
 "place": the city in Polish ("Paryż", "Nowy Jork"), "" when unknown; "lat" and "lon": the city's \
 coordinates, 0 when there is no place; "kind": one of {", ".join(KINDS)}; "owner": true when \
 the work comes to a new owner here (the maker counts as the first); "detour": true for an \
@@ -106,8 +113,12 @@ exhibition away from which the work came back to the same owner; "text": one sen
 most {TEXT_MAX} characters, natural Polish, with the one or two most telling words (a name, a \
 price) between ** and **. A sentence says only what the record's lines about this stop say: \
 never join in an exhibition or an event from another line, and never repeat the year or the \
-place, which the app shows beside it. Write prices and years exactly as the record does, only \
-in Polish form ("800 franków", "20 000 dolarów")."""
+place, which the app shows beside it (no "W 1897 roku…"). Never say what the record does not \
+give ("zapis nie podaje daty", "miejsce nieznane", "bez daty"): leave it out without a word. \
+Tell it as one story going on: each sentence begins differently from the one before (not \
+"Obraz…" every time), and the work is "obraz", "rysunek" or the like only where the sentence \
+needs it. Write prices and years exactly as the record does, only in Polish form ("800 \
+franków", "20 000 dolarów")."""
 
 SCHEMA = _object(
     headline=_str(),
@@ -441,6 +452,38 @@ def _known(stop: dict[str, Any], record: str, item: Item) -> bool:
     return True
 
 
+#: A "year" that says there is none ("bez daty", "b.d.", "undated").
+_NO_YEAR = re.compile(
+    r"\s*(?:bez\s+dat\w*|brak\s+dat\w*|b\.\s?d\.?|n\.\s?d\.?|undated|unknown|nieznan\w*|\?+|[-–—]+)\s*",
+    re.IGNORECASE,
+)
+#: A clause that only says what the record does not give: "; zapis nie
+#: podaje daty", ", choć źródło nie wymienia miejsca".
+_NOT_GIVEN = re.compile(
+    r"\s*[;,(–—-]\s*(?:ale\s+|lecz\s+|choć\s+|jednak\s+|przy\s+czym\s+)?"
+    r"(?:zapis\w*|źródł\w+|muzeum|proweniencj\w+|dokument\w*)\b[^.;]*?"
+    r"\bnie\s+(?:podaj\w+|wymieni\w+|wskazuj\w+|precyzuj\w+|określ\w+|wspomina\w*|mówi\w*)\b[^.;]*\)?",
+    re.IGNORECASE,
+)
+
+
+def _year(year: object) -> str:
+    """The stop's date as the app shows it; "" for "bez daty" and the like."""
+    text = " ".join(str(year or "").split())
+    return "" if _NO_YEAR.fullmatch(text) else text
+
+
+def _told(text: object) -> str:
+    """The stop's sentence without a word about what the record does not
+    give: "…powstał w 1767 roku; zapis nie podaje miejsca." ends after
+    "roku"."""
+    told = _NOT_GIVEN.sub("", " ".join(str(text or "").split())).strip(" ;,")
+    # Its full stop back, also after a name in bold.
+    if told and told.removesuffix("**")[-1:] not in ".!?…":
+        told += "."
+    return told
+
+
 def _km(a: Stop, b: Stop) -> float:
     lat1, lon1, lat2, lon2 = map(math.radians, (a.lat, a.lon, b.lat, b.lon))
     h = (
@@ -463,8 +506,9 @@ def read(data: dict[str, Any], record: Record, item: Item) -> Journey | None:
     """The model's answer as a journey, only what the record supports."""
     stops: list[Stop] = []
     for raw in (data.get("stops") or [])[:MAX_STOPS]:
-        if not isinstance(raw, dict) or not str(raw.get("text") or "").strip():
+        if not isinstance(raw, dict) or not _told(raw.get("text")):
             continue
+        raw = {**raw, "year": _year(raw.get("year")), "text": _told(raw["text"])}
         if not _known(raw, record.text, item):
             log.info("journey of %s: a stop not in the record left out: %r", item.id, raw)
             continue

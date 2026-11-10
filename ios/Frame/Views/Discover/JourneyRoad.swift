@@ -192,13 +192,19 @@ struct JourneyRoad: View {
         // The date in the hand, always the end of the line that is at the dot
         // (18:04: „czerwone daty zawsze przy kropce. Daty pismem pisanym”):
         // first where the text reads from its dot, last where it ends at it.
+        // A stop the record gives no date for has none here either, and
+        // no line at all when it has no place (22:20: „Powtórzenia w
+        // opisach braku daty są irytujące”; the server no longer writes
+        // "bez daty").
         let date = Text(stop.year).font(.hand(21)).foregroundStyle(Theme.vermilion)
         let place = Text(stop.place).font(.caption).foregroundStyle(Theme.inkSoft)
-        let between = Text(stop.place.isEmpty ? "" : " · ").font(.caption).foregroundStyle(Theme.inkSoft)
+        let between = Text(stop.place.isEmpty || stop.year.isEmpty ? "" : " · ").font(.caption).foregroundStyle(Theme.inkSoft)
         return VStack(alignment: leading ? .leading : .trailing, spacing: 0) {
-            (leading ? Text("\(date)\(between)\(place)") : Text("\(place)\(between)\(date)"))
-                .lineLimit(1)
-                .truncationMode(leading ? .tail : .head)
+            if !(stop.year.isEmpty && stop.place.isEmpty) {
+                (leading ? Text("\(date)\(between)\(place)") : Text("\(place)\(between)\(date)"))
+                    .lineLimit(1)
+                    .truncationMode(leading ? .tail : .head)
+            }
             Text(Self.marked(Self.broken(stop.text, width: width)))
                 .font(.serif(15))
                 .foregroundStyle(Theme.ink)
