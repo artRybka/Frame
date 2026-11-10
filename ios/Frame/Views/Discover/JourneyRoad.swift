@@ -186,6 +186,8 @@ struct JourneyRoad: View {
             return Self.closed(Self.halo(round: plan.dots[count - 1], random: &around))
         }
         let marks = plan.map { RoadMarks($0) }
+        var soak = SeededRandom(seed + "soak")
+        let paintSeed = Float(soak.next() % 50)
         return ZStack(alignment: .topLeading) {
             ForEach(Array(journey.stops.enumerated()), id: \.offset) { i, stop in
                 // Each text is measured where the layout first puts it and
@@ -208,8 +210,7 @@ struct JourneyRoad: View {
             if let plan, let paint, let rim {
                 ZStack(alignment: .topLeading) {
                     // Under everything, the underpainting: one wash under all the texts.
-                    RoadWash(reveal: reveal, stains: paint.stains, drops: paint.drops, dark: dark,
-                             seed: Float(SeededRandom(seed + "soak").next() % 50))
+                    RoadWash(reveal: reveal, stains: paint.stains, drops: paint.drops, dark: dark, seed: paintSeed)
                     // The seas come up softly, a little behind the drawing.
                     Canvas { context, size in drawSeas(in: &context, size: size, plan: plan, seas: seas) }
                         .mask { Curtain(reveal: reveal, soft: 44, behind: 6) }
