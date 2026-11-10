@@ -456,7 +456,7 @@ struct PlaylistEditorView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Eyebrow("W playliście · \(playlist.itemIds.count)")
                 ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 8) {
+                    LazyHStack(spacing: 12) {
                         ForEach(playlist.itemIds, id: \.self) { id in
                             Button {
                                 withAnimation(.snappy) { playlist.itemIds.removeAll { $0 == id } }
@@ -465,8 +465,8 @@ struct PlaylistEditorView: View {
                                     .frame(width: 72, height: 72)
                                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                                     .overlay(alignment: .topTrailing) {
-                                        GlassBadge(systemImage: "xmark", size: 22)
-                                            .padding(3)
+                                        CornerMark(systemImage: "xmark", size: 20)
+                                            .offset(x: CornerMark.overhang, y: -CornerMark.overhang)
                                     }
                             }
                             .buttonStyle(.plain)
@@ -474,7 +474,10 @@ struct PlaylistEditorView: View {
                         }
                     }
                 }
-                .frame(height: 72)
+                // Room for the crosses over the squares' corners.
+                .contentMargins(.top, CornerMark.overhang + 2, for: .scrollContent)
+                .contentMargins(.trailing, CornerMark.overhang + 4, for: .scrollContent)
+                .frame(height: 72 + CornerMark.overhang + 2)
             }
         }
     }
@@ -674,11 +677,12 @@ struct PlaylistEditorView: View {
     @ViewBuilder
     private func card(_ item: ItemSummary, remote: RemoteItem? = nil) -> some View {
         let link = NavigationLink(value: item.id) {
-            ArtCard(item: item, ref: remote?.thumb)
+            // In a manual playlist the plus takes the heart's corner.
+            ArtCard(item: item, ref: remote?.thumb, showsFavorite: playlist.kind != .manual)
         }
         .buttonStyle(.plain)
         if playlist.kind == .manual {
-            link.overlay(alignment: .topLeading) { addButton(item.id, remote: remote) }
+            link.overlay(alignment: .topTrailing) { addButton(item.id, remote: remote) }
         } else {
             link
         }
@@ -692,21 +696,20 @@ struct PlaylistEditorView: View {
             ZStack {
                 if adding.contains(id) {
                     // The spinner sits in the same drop of glass.
-                    ProgressView().controlSize(.small)
-                        .frame(width: 32, height: 32)
-                        .glassEffect(.regular, in: .circle)
+                    ProgressView().controlSize(.mini)
+                        .frame(width: 24, height: 24)
+                        .background(Theme.card, in: Circle())
                 } else {
-                    GlassBadge(
-                        systemImage: added ? "checkmark" : "plus",
-                        tint: added ? Theme.good : Theme.inkSoft,
-                        size: 32,
-                        interactive: true
-                    )
-                    .contentTransition(.symbolEffect(.replace))
+                    // Light with a plus, then ink with a tick: as the heart,
+                    // empty and full; on the corner, as remove.
+                    CornerMark(systemImage: added ? "checkmark" : "plus", size: 24, light: !added)
+                        .contentTransition(.symbolEffect(.replace))
                 }
             }
-            .padding(6)
+            // A finger's room (44 pt) towards the picture.
+            .padding([.leading, .bottom], 16)
             .contentShape(Rectangle())
+            .offset(x: CornerMark.overhang, y: -CornerMark.overhang)
         }
         .buttonStyle(.plain)
         .disabled(adding.contains(id))

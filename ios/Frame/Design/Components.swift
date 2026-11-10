@@ -218,21 +218,17 @@ struct ArtCard: View {
                 .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .overlay(alignment: .topTrailing) {
                     if showsFavorite, item.favorite {
-                        GlassBadge(systemImage: "heart.fill")
-                            .padding(6)
+                        HeartMark(on: true)
+                            .padding(7)
                             .accessibilityLabel("W ulubionych")
                     }
-                }
-                .overlay(alignment: .topLeading) {
-                    // "Pod lupą": its tiles let the full screen zoom in far.
-                    if item.zoom == true { ZoomMark() }
                 }
                 .shadow(color: .black.opacity(0.14), radius: 8, x: 0, y: 5)
             if showsCaption {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(item.title.isEmpty ? "Bez tytułu" : item.title)
-                        .font(.serif(15, weight: .medium))
-                        .foregroundStyle(Theme.ink)
+                    // "Pod lupą": a small magnifier right after the title, in
+                    // the caption's soft ink, not a mark on the picture.
+                    title
                         .lineLimit(2)
                     Text(Self.byline(item))
                         .font(.caption)
@@ -249,6 +245,21 @@ struct ArtCard: View {
         }
     }
 
+    /// The title, and for a "Pod lupą" work a magnifier after it that wraps
+    /// with the last word.
+    private var title: Text {
+        let text = Text(item.title.isEmpty ? "Bez tytułu" : item.title)
+            .font(.serif(15, weight: .medium))
+            .foregroundStyle(Theme.ink)
+        guard item.zoom == true else { return text }
+        return (text
+            + Text("\u{00A0}").font(.serif(15, weight: .medium))
+            + Text(Image(systemName: TitleYear.zoomSymbol))
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Theme.inkSoft))
+            .accessibilityLabel(Text("\(item.title), można mocno przybliżyć"))
+    }
+
     /// The line under the title: a photo's day and town, a work's artist,
     /// else where the picture is from.
     static func byline(_ item: ItemSummary) -> String {
@@ -257,36 +268,97 @@ struct ArtCard: View {
     }
 }
 
-/// A work to look at far closer ("Pod lupą", Mateusz 2026-11-09): a
-/// magnifier over its tile's top left corner, as the heart on the right.
-struct ZoomMark: View {
-    var body: some View {
-        GlassBadge(systemImage: "plus.magnifyingglass")
-            .padding(6)
-            .accessibilityLabel("Pod lupą: można mocno przybliżyć")
-    }
-}
-
-/// Every mark on a thumbnail, tile or card: one round drop of the system's
-/// glass with a symbol in it, as the crossed eye on "Ukryte" first wore
-/// (Mateusz 2026-11-09: "wszystkie ikonki na miniaturach, kafelkach
-/// szklane, jak na ukryte"). The symbol is soft ink; a mark that says
-/// something urgent (playing now, in the queue, remove) takes its colour.
+/// The glass drop with a symbol on the "Ukryte" cover: the one mark that
+/// stays glass (Mateusz 2026-11-10: glass suits a misted cover, not a
+/// picture's corner).
 struct GlassBadge: View {
     let systemImage: String
-    var tint: Color = Theme.inkSoft
-    /// The circle's side; the symbol keeps the "Ukryte" proportion (13 in 30).
-    var size: CGFloat = 30
-    /// A badge that is itself a button answers the finger, as glass does.
-    var interactive = false
 
     var body: some View {
         Image(systemName: systemImage)
-            .font(.system(size: (size * 0.43).rounded(), weight: .semibold))
-            .foregroundStyle(tint)
-            .frame(width: size, height: size)
-            .glassEffect(interactive ? .regular.interactive() : .regular, in: .circle)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(Theme.inkSoft)
+            .frame(width: 30, height: 30)
+            .glassEffect(.regular, in: .circle)
     }
+}
+
+/// Marks on thumbnails and tiles, kept in order (Mateusz 2026-11-10, sheet
+/// szklane-znaczki/szkic-2): on the picture only what the finger presses,
+/// and only in the top right corner; what merely tells (the kind of a
+/// collection, "Pod lupą", on the frame, in the queue) goes to the caption.
+///
+/// A heart without a circle: off, a heart of the system's own glass (Liquid
+/// Glass in a heart's shape, its edge catching the light as iOS buttons
+/// do; Mateusz 2026-11-10 12:13), the clear kind so the picture shows
+/// through (12:40: "bardziej przezierne"); on, plain red with no rim and a soft
+/// shadow, apart from a pale sky or a dark ground.
+struct HeartMark: View {
+    let on: Bool
+    var size: CGFloat = 18
+    /// Pressed (Szukaj): the glass answers the finger.
+    var interactive = false
+
+    var body: some View {
+        if on {
+            Image(systemName: "heart.fill")
+                .font(.system(size: size))
+                .foregroundStyle(Theme.heart)
+                .frame(width: size + 4, height: size + 2)
+                .shadow(color: .black.opacity(0.3), radius: 1.5, y: 1)
+        } else {
+            Color.clear
+                .frame(width: size + 4, height: size + 2)
+                .glassEffect(interactive ? .clear.interactive() : .clear, in: HeartShape())
+        }
+    }
+}
+
+/// A heart drawn to fill its frame, for glass in its shape.
+struct HeartShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width, h = rect.height / 0.95
+        func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * w, y: rect.minY + y * h) }
+        var path = Path()
+        path.move(to: pt(0.5, 0.92))
+        path.addCurve(to: pt(0.02, 0.31), control1: pt(0.22, 0.74), control2: pt(0.02, 0.55))
+        path.addCurve(to: pt(0.28, 0.03), control1: pt(0.02, 0.14), control2: pt(0.14, 0.03))
+        path.addCurve(to: pt(0.5, 0.17), control1: pt(0.38, 0.03), control2: pt(0.46, 0.09))
+        path.addCurve(to: pt(0.72, 0.03), control1: pt(0.54, 0.09), control2: pt(0.62, 0.03))
+        path.addCurve(to: pt(0.98, 0.31), control1: pt(0.86, 0.03), control2: pt(0.98, 0.14))
+        path.addCurve(to: pt(0.5, 0.92), control1: pt(0.98, 0.55), control2: pt(0.78, 0.74))
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// A round mark pressed on a tile's top right corner: ink with a ring of
+/// the page, as the tick on a chosen miniature in Prezentacja
+/// (`miniatureChoice`), light in the dark. Remove (minus, cross) and the
+/// editor's added tick; `light` is the editor's plus before it is added.
+struct CornerMark: View {
+    let systemImage: String
+    var size: CGFloat = 22
+    var light = false
+
+    var body: some View {
+        ZStack {
+            Circle().fill(Theme.card)
+            if light {
+                Circle().strokeBorder(Theme.hairline, lineWidth: 0.75)
+            } else {
+                Circle().fill(Theme.ink).padding(2)
+            }
+            Image(systemName: systemImage)
+                .font(.system(size: (size * 0.45).rounded(), weight: .bold))
+                .foregroundStyle(light ? Theme.ink : Theme.card)
+        }
+        .frame(width: size, height: size)
+        .shadow(color: .black.opacity(0.22), radius: 3, y: 1.5)
+    }
+
+    /// How far a remove mark sits out over the corner, as the tick does.
+    static let overhang: CGFloat = 6
 }
 
 /// The heart over a tile's top right corner, as `ArtCard` shows a
@@ -302,11 +374,11 @@ struct TileHeart: View {
             taps += 1
             toggle()
         } label: {
-            GlassBadge(systemImage: favorite ? "heart.fill" : "heart", interactive: true)
-                .contentTransition(.symbolEffect(.replace))
-                .padding(6)
-                // A finger's room, the circle where the favourite's is.
-                .padding([.leading, .bottom], 8)
+            HeartMark(on: favorite, interactive: true)
+                .animation(.snappy, value: favorite)
+                .padding(7)
+                // A finger's room (44 pt), the heart where the favourite's is.
+                .padding([.leading, .bottom], 12)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

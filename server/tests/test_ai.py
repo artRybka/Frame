@@ -520,6 +520,14 @@ def test_each_model_judges_a_pair_of_pictures(tmp_path: Path) -> None:
         bad = client.post("/api/ai/twins-judge", json={**pair, "models": ["gpt"]})
         assert bad.status_code == 422
         assert client.post("/api/ai/twins-judge", json={**pair, "b": "x:9"}).status_code == 404
+        # As the critic of a claim.
+        fake.answer = {"why": "Figure for figure.", "verdict": "confirm", "confidence": 0.8}
+        critic = {**pair, "models": ["haiku"], "claim": "b_detail_of_a"}
+        resp = client.post("/api/ai/twins-judge", json=critic)
+        assert [v["relation"] for v in resp.json()["verdicts"]] == ["confirm"]
+        assert "B lies within A" in str(fake.asked[-1]["messages"])
+        bad = client.post("/api/ai/twins-judge", json={**critic, "claim": "copy_by_other_hand"})
+        assert bad.status_code == 422
     # Which one is whole, asked apart from what kind of pair it is.
     assert relation("part", "A") == "b_detail_of_a"
     assert relation("photo", "B") == "a_photo_of_b"

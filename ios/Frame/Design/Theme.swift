@@ -23,6 +23,9 @@ enum Theme {
     /// (Mateusz 2026-11-08, "K5").
     static let oak = Color(light: 0xB89466, dark: 0xA88758)
     static let good = Color(light: 0x3E7B56, dark: 0x7CC49A)
+    /// A favourite's heart on a picture: livelier than vermilion, so it
+    /// reads as "liked", not as a warning.
+    static let heart = Color(light: 0xD2463A, dark: 0xE5564A)
     static let warn = Color(light: 0xB7832A, dark: 0xE2B45E)
     static let bad = Color(light: 0xB8432F, dark: 0xE58A6F)
     /// Second lines on the frosted glass of the cards at the bottom: inkSoft

@@ -14,8 +14,8 @@ from ..ai.composition import PAGES
 from ..ai.daily import CHECK_ROUND, ROUND
 from ..ai.keywords import KIND as KEYWORDS
 from ..ai.pl_text import KIND as PL_TEXT
+from ..ai.twins_judge import CLAIMS, Verdict, judge
 from ..ai.twins_judge import MODELS as JUDGES
-from ..ai.twins_judge import Verdict, judge
 from ..service import FrameService
 from .deps import require_owner, service
 
@@ -35,6 +35,7 @@ class AiView(BaseModel):
     daily: bool
     search_words: bool
     curator: bool = True
+    twins_judge: bool = True
     monthly_limit_usd: float
     spent_usd: float  # this month
     spent_by_kind: dict[str, float]
@@ -69,6 +70,7 @@ def _view(svc: FrameService) -> AiView:
         daily=config.daily,
         search_words=config.search_words,
         curator=config.curator,
+        twins_judge=config.twins_judge,
         monthly_limit_usd=config.monthly_limit_usd,
         spent_usd=round(sum(spent.values()), 4),
         spent_by_kind={k: round(v, 4) for k, v in spent.items()},
@@ -205,6 +207,9 @@ class JudgeAsk(BaseModel):
     b: str
     models: list[str] = list(JUDGES)
     effort: str = "low"
+    #: Ask as the critic about this claim (one of ``CLAIMS``); verdicts are
+    #: then "confirm" or "reject".
+    claim: str = ""
 
 
 class JudgeView(BaseModel):
@@ -222,9 +227,11 @@ async def twins_judge(body: JudgeAsk, svc: Svc) -> JudgeView:
     unknown = [m for m in body.models if m not in JUDGES]
     if unknown or body.effort not in ("low", "medium", "high", "xhigh", "max"):
         raise HTTPException(422, f"unknown model or effort: {unknown or body.effort}")
+    if body.claim and body.claim not in CLAIMS:
+        raise HTTPException(422, f"unknown claim: {body.claim}")
     try:
         verdicts = await run_in_threadpool(
-            judge, svc.claude, svc.images, a, b, body.models, body.effort
+            judge, svc.claude, svc.images, a, b, body.models, body.effort, body.claim
         )
     except AiUnavailable as err:
         raise HTTPException(409, str(err)) from err

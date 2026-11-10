@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.140.0
+
+- Szukaj: pary dzieł, których obrazy nie rozstrzygnęły (to samo dzieło?
+  detal? zdjęcie w ramie?), ocenia w nocy Claude Haiku. Gdy chce połączyć
+  dwa obrazy albo schować detal, drugi raz pyta krytyk, który szuka
+  dowodów przeciw; zmiana wchodzi tylko po jego zgodzie. Dzieło muzeum
+  nigdy nie jest chowane. Koszt to grosze miesięcznie; przełącznik
+  „Sędzia powtórek” w Konfiguracji.
+
+## 1.139.4
+
+- Znaczki na miniaturach uporządkowane: na obrazie zostaje tylko to, co
+  się klika, i tylko w prawym górnym rogu.
+- Serce bez kółka: z przeziernego szkła, przez które widać obraz, gdy
+  dzieło nie jest w Ulubionych, czerwone, gdy jest. W Ulubionych serc nie
+  ma, bo ulubione jest tam wszystko.
+- Usuwanie z playlisty i krzyżyki (edytor, przykładowe zdjęcia) to czarne
+  kółko na rogu, jak ptaszek wybranej miniatury w Prezentacji. Plus
+  w edytorze też siedzi na rogu: jasne kółko, po dodaniu czarne z ptaszkiem.
+- „Pod lupą” to mała lupa zaraz po tytule. Iskierki Propozycji dnia stoją
+  przed liczbą dzieł, a zamiast znaczka „gra teraz” pod kartą playlisty
+  jest cynobrowe „Na ramce”. Na pasku „Następne” w Teraz podpis
+  „Następny w kolejce”.
+- Szklany znaczek w kółku zostaje tylko na okładce „Ukrytych”.
+
 ## 1.139.3
 
 - Playlisty: kafelek „Propozycje dnia” po uruchomieniu aplikacji od razu

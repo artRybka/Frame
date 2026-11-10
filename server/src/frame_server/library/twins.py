@@ -40,6 +40,14 @@ misattribution) never meets in one artist's works: each picture's hash
 (``picture_hash``) is laid against every other's, and two that close whose
 thumbnails lie over each other whole are copies; two museums' own works
 never become one, not even through a third picture.
+
+What the pictures cannot settle is kept for the judge (``suspects``): two
+pictures that lie over each other without a rule for how (not one picture
+whole, a part of a work not surely whole, a frame), and two hashes that
+close whose pictures do not lie over each other whole (one scan in two
+colours, a print after a painting). A model judges them at night
+(``ai.twins_judge.NightJudge``), and :meth:`Twins.apply` writes what it
+found.
 """
 
 from __future__ import annotations
@@ -51,6 +59,7 @@ import threading
 import time
 from collections import defaultdict
 from collections.abc import Callable, Iterable
+from datetime import UTC, datetime
 from functools import lru_cache
 from itertools import pairwise
 from typing import TYPE_CHECKING, Any
@@ -92,8 +101,9 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-#: Bump when the look changes, so every picture is looked at again.
-VERSION = 2
+#: Bump when the look changes, so every picture is looked at again (3: the
+#: pairs the pictures cannot settle are kept for the judge).
+VERSION = 3
 #: A picture this many times smaller than the part of another it matches
 #: (by area) is a detail of it (when that other is surely whole) ...
 DETAIL = 1.3
@@ -154,6 +164,13 @@ HASH_PAIRS = 2000
 #: A work's picture smaller than this (long side) says no more than its
 #: thumbnail.
 LARGE_MIN = 1600
+#: The pairs the pictures cannot settle, for the judge (library state):
+#: ``"<a>|<b>"`` (ids in order, :func:`pair_key`) -> ``{"why": "fit" |
+#: "hash", "at": iso}``, the newest :data:`SUSPECTS_MAX`.
+SUSPECTS_KEY = "twins_suspects"
+SUSPECTS_MAX = 3000
+#: What the judge may write (:meth:`Twins.apply`).
+APPLIED = ("same", "b_detail_of_a", "b_photo_of_a", "a_detail_of_b", "a_photo_of_b")
 #: Title words too common to tell one work from another.
 COMMON_WORDS = STOPWORDS | {
     "portrait",
@@ -704,6 +721,18 @@ class Twins:
             if fit.cover >= COPY_COVER and fit.turn <= COPY_TURN:
                 join(f"copy:{a}", f"copy:{b}")
                 found += 1
+        # What the pictures matched without a rule for how: for the judge.
+        self._suspect(
+            [
+                (a, b)
+                for (a, b) in fits
+                if a not in apart
+                and b not in apart
+                and find(f"copy:{a}") != find(f"copy:{b}")
+                and not (by_id[a].source in COLLECTIONS and by_id[b].source in COLLECTIONS)
+            ],
+            "fit",
+        )
         members: dict[str, list[Item]] = defaultdict(list)
         for item in works:
             if item.id not in apart:
@@ -783,6 +812,7 @@ class Twins:
                     continue
                 close.append((a, b))
         joined = 0
+        unsure: list[tuple[str, str]] = []
         for a, b in close[:HASH_PAIRS]:
             ia, ib = by_id[a], by_id[b]
             pa, pb = self.images.thumb_path(ia), self.images.thumb_path(ib)
@@ -794,6 +824,7 @@ class Twins:
                 continue
             fit = _fit(ka, kb) if ka is not None and kb is not None else None
             if fit is None or not fit.same:
+                unsure.append((a, b))  # that close, yet not one picture whole
                 continue
             family = {i.id: i for i in self._copies(ia, grouped) + self._copies(ib, grouped)}
             museums = [i for i in family.values() if i.source in COLLECTIONS]
@@ -803,10 +834,68 @@ class Twins:
             found, _ = self._write(list(family.values()), [], {(a, b): fit})
             joined += found
             grouped = self.library.works()
+        self._suspect(unsure, "hash")
         with self.library.batch():
             for item_id, value in written.items():
                 self.library.update(item_id, picture_hash=value)
         return len(written), joined
+
+    # -- the judge's pairs -------------------------------------------------------
+
+    def _suspect(self, pairs: list[tuple[str, str]], why: str) -> None:
+        """``pairs`` kept for the judge (the newest :data:`SUSPECTS_MAX`)."""
+        if not pairs:
+            return
+        kept = self.suspects()
+        at = datetime.now(UTC).isoformat(timespec="seconds")
+        for a, b in pairs:
+            key = pair_key(a, b)
+            kept.pop(key, None)  # anew: the newest last
+            kept[key] = {"why": why, "at": at}
+        if len(kept) > SUSPECTS_MAX:
+            kept = dict(list(kept.items())[-SUSPECTS_MAX:])
+        self.library.set_state(SUSPECTS_KEY, kept)
+        log.info("twins: %d pairs left to the judge (%s)", len(pairs), why)
+
+    def suspects(self) -> dict[str, dict[str, Any]]:
+        """The pairs the pictures could not settle, the oldest first."""
+        return dict(self.library.get_state(SUSPECTS_KEY, {}) or {})
+
+    def drop_suspects(self, keys: Iterable[str]) -> None:
+        """Judged (or gone): not asked about again."""
+        with self._lock:
+            kept = self.suspects()
+            for key in keys:
+                kept.pop(key, None)
+            self.library.set_state(SUSPECTS_KEY, kept)
+
+    def apply(self, a_id: str, b_id: str, relation: str) -> bool:
+        """What the judge found about ``a`` and ``b`` written as the pictures
+        would have (one of :data:`APPLIED`): copies of one work, or one a part
+        or a photograph of the other. A museum's own work is never set aside,
+        and two museums' works never become one. Whether it was written."""
+        if relation not in APPLIED:
+            return False
+        if relation.startswith("a_"):  # "a_detail_of_b": b is the whole
+            a_id, b_id = b_id, a_id
+            relation = "b_" + relation[2:-1] + "a"
+        with self._lock:
+            a, b = self.library.get(a_id), self.library.get(b_id)
+            if a is None or b is None:
+                return False
+            if relation == "same":
+                grouped = self.library.works()
+                family = {i.id: i for i in self._copies(a, grouped) + self._copies(b, grouped)}
+                if sum(i.source in COLLECTIONS for i in family.values()) > 1:
+                    return False  # two museums' own works are never one
+                one = Fit(WHOLE_MATCHES, 1.0, 1.0, 0.0)
+                self._write(list(family.values()), [], {(a.id, b.id): one})
+                return True
+            if b.source in COLLECTIONS:
+                return False  # a museum's own work is no detail or photograph
+            field = "detail_of" if relation == "b_detail_of_a" else "scene_of"
+            self.library.update(b.id, **{field: a.copy_of or a.id})
+            return True
 
     def _copies(self, item: Item, grouped: Any) -> list[Item]:
         """``item`` and the copies of its work its pictures were found to be
@@ -820,6 +909,11 @@ class Twins:
             if (other.copy_of or other.id) == root:
                 found[other.id] = other
         return list(found.values())
+
+
+def pair_key(a: str, b: str) -> str:
+    """A pair as the judge's lists keep it: the ids in order."""
+    return f"{a}|{b}" if a <= b else f"{b}|{a}"
 
 
 def _due(item: Item) -> bool:
