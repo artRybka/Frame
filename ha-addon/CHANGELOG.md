@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.142.10
+## 1.142.11
 
 - Plakaty pokazują tylko plakaty. Po wybraniu artysty (np. Claude
   Monet + Plakaty) muzea oddawały wszystkie jego prace, a serwer
@@ -18,6 +18,14 @@
 - Art Institute of Chicago i Europeana są pytane wprost o plakaty, więc
   przy Toulouse-Lautrecu czy Musze przychodzą ich prawdziwe plakaty.
 - Rijksmuseum: część grafik miała zamiast autora napis „@language”.
+
+## 1.142.10
+
+- Karta nowej playlisty otwarta z Szukaj („Utwórz playlistę z tego
+  wyszukiwania”) nie gubi już po chwili guzika „Zapisz” ani „Anuluj”.
+  Wybór w grupie (np. Malarstwo) otwierał wyszukiwanie, a ono chowało
+  pasek u góry karty. To samo działo się w edytorze playlisty po
+  wybraniu czegoś w grupie.
 
 ## 1.142.9
 
