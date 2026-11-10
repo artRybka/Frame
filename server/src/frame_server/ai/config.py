@@ -37,6 +37,13 @@ class AiConfig(BaseModel):
     #: Copies and details the pictures could not tell apart, judged at night
     #: (Haiku and Haiku as the critic, Batch API).
     twins_judge: bool = True
+    #: The catalogue's gatekeeper: pictures from Commons, Europeana, Openverse
+    #: and WikiArt that are no artwork for the frame (Haiku and its critic, at night).
+    gatekeeper: bool = True
+    #: The night audit: 30 works a night looked over, "Do sprawdzenia" (Haiku, at night).
+    audit: bool = True
+    #: Szukaj by a sentence: what it asks for as the search's choices (Haiku).
+    sentence: bool = True
     #: Nothing more is asked once this month's cost reaches it.
     monthly_limit_usd: float = Field(5.0, ge=0, le=1000)
 
@@ -51,6 +58,9 @@ class AiConfigUpdate(BaseModel):
     search_words: bool | None = None
     curator: bool | None = None
     twins_judge: bool | None = None
+    gatekeeper: bool | None = None
+    audit: bool | None = None
+    sentence: bool | None = None
     monthly_limit_usd: float | None = Field(None, ge=0, le=1000)
 
 
@@ -102,6 +112,8 @@ class AiConfigStore:
             return config.curator
         if kind == "twins_judge":
             return config.twins_judge
+        if kind in ("gatekeeper", "audit", "sentence"):
+            return bool(getattr(config, kind))
         return True
 
     def update(self, update: AiConfigUpdate) -> AiConfig:

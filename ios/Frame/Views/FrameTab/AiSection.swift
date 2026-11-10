@@ -108,6 +108,52 @@ struct AiSection: View {
                         value: twinsJudge
                     ) { AiSettingsUpdate(twinsJudge: $0) }
                 }
+                if let gatekeeper = settings.gatekeeper {
+                    Divider()
+                    toggle(
+                        "Strażnik katalogu",
+                        hint: "W nocy odkłada znaczki, strony z tekstem i zdjęcia sal z Commons i Europeany. Do ok. 0,6 USD miesięcznie.",
+                        value: gatekeeper
+                    ) { AiSettingsUpdate(gatekeeper: $0) }
+                }
+                if let audit = settings.audit {
+                    Divider()
+                    toggle(
+                        "Nocny przegląd",
+                        hint: "Co noc 30 losowych dzieł: tytuł, data, polski opis i obraz. Ok. 0,3 USD miesięcznie.",
+                        value: audit
+                    ) { AiSettingsUpdate(audit: $0) }
+                }
+                if let sentence = settings.sentence {
+                    Divider()
+                    toggle(
+                        "Szukaj zdaniem",
+                        hint: "Zdanie wpisane w Szukaj zamienia się w wybory wyszukiwania. Ułamek centa za zdanie.",
+                        value: sentence
+                    ) { AiSettingsUpdate(sentence: $0) }
+                }
+                if let count = settings.reviewCount {
+                    Divider()
+                    NavigationLink {
+                        AiReviewView()
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Do sprawdzenia").foregroundStyle(Theme.ink)
+                                Text("Co strażnik odłożył i co znalazł nocny przegląd.")
+                                    .font(.caption)
+                                    .foregroundStyle(Theme.inkSoft)
+                            }
+                            Spacer()
+                            if count > 0 {
+                                Text("\(count)")
+                                    .font(.subheadline.monospacedDigit())
+                                    .foregroundStyle(Theme.inkSoft)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
                 Divider()
                 progress
             }
@@ -299,7 +345,7 @@ struct AiSection: View {
             lines.append("W pakiecie: \(progress.batchDone) z \(progress.batchItems), odpowiedzi w ciągu doby")
         }
         if progress.waiting > 0 {
-            lines.append("Czeka w tle: \(progress.waiting)")
+            lines.append("Czeka na noc: \(progress.waiting) (w pakiecie, za pół ceny)")
         }
         if progress.refused > 0 {
             lines.append("Bez odpowiedzi modelu: \(progress.refused)")

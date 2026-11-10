@@ -159,6 +159,8 @@ protocol FrameBackend: Sendable {
     func vocabulary() async throws -> [TermInfo]
     /// What typed words could mean: artists, terms and the words themselves.
     func terms(_ text: String) async throws -> [TermHit]
+    /// Szukaj by a sentence: its choices as chips (`POST /api/terms/sentence`).
+    func sentence(_ text: String) async throws -> SentenceReading
     /// What the museums have for words the catalogue does not know.
     func museumHint(_ text: String) async throws -> MuseumHint
     /// The museums' works for a search's words, artists, terms, colours and
@@ -239,6 +241,12 @@ protocol FrameBackend: Sendable {
     func testPush(device: String) async throws -> PushTestResult
     func aiSettings() async throws -> AiSettings
     func saveAiSettings(_ update: AiSettingsUpdate) async throws -> AiSettings
+    /// "Do sprawdzenia": the gatekeeper's and the night audit's lists.
+    func aiReview() async throws -> AiReview
+    /// A work the gatekeeper set aside back in the catalogue, for good.
+    func bringBack(itemID: String) async throws -> AiReview
+    /// Off the list.
+    func dismissReview(itemID: String) async throws -> AiReview
     /// The server checks the key with Anthropic before keeping it.
     func saveAiKey(_ key: String) async throws -> AiSettings
     func deleteAiKey() async throws -> AiSettings

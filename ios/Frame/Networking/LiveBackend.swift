@@ -415,6 +415,10 @@ struct LiveBackend: FrameBackend {
         try await get("/api/terms", query: [URLQueryItem(name: "q", value: text)])
     }
 
+    func sentence(_ text: String) async throws -> SentenceReading {
+        try await send("/api/terms/sentence", method: "POST", body: SentenceAsk(text: text))
+    }
+
     func museumHint(_ text: String) async throws -> MuseumHint {
         try await get("/api/terms/museums", query: [URLQueryItem(name: "q", value: text)])
     }
@@ -702,6 +706,16 @@ struct LiveBackend: FrameBackend {
 
     func saveAiSettings(_ update: AiSettingsUpdate) async throws -> AiSettings {
         try await send("/api/ai", method: "PUT", body: update)
+    }
+
+    func aiReview() async throws -> AiReview { try await get("/api/ai/review") }
+
+    func bringBack(itemID: String) async throws -> AiReview {
+        try await send("/api/ai/review/\(escape(itemID))/bring-back", method: "POST")
+    }
+
+    func dismissReview(itemID: String) async throws -> AiReview {
+        try await send("/api/ai/review/\(escape(itemID))", method: "DELETE")
     }
 
     func saveAiKey(_ key: String) async throws -> AiSettings {

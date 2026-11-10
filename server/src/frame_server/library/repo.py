@@ -69,6 +69,8 @@ TWINS_FIELDS = (
     "twins_seen",
     "twins_large",
     "picture_hash",
+    # What the gatekeeper saw in the same picture (ai.gatekeeper).
+    "seen_as",
 )
 
 log = logging.getLogger(__name__)

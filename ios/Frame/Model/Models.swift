@@ -1260,6 +1260,16 @@ struct AiSettings: Codable, Hashable, Sendable {
     /// Copies and details the pictures could not tell apart, judged at
     /// night (Haiku, then Haiku as the critic); nil from older servers.
     var twinsJudge: Bool? = nil
+    /// The catalogue's gatekeeper: pictures from Commons, Europeana, Openverse
+    /// and WikiArt that are no artwork (Haiku and its critic, at night); nil
+    /// from older servers.
+    var gatekeeper: Bool? = nil
+    /// The night audit of 30 works ("Do sprawdzenia"); nil from older servers.
+    var audit: Bool? = nil
+    /// Szukaj by a sentence; nil from older servers.
+    var sentence: Bool? = nil
+    /// Works on "Do sprawdzenia"; nil from older servers.
+    var reviewCount: Int? = nil
     var monthlyLimitUsd: Double
     /// This month.
     var spentUsd: Double
@@ -1279,7 +1289,53 @@ struct AiSettingsUpdate: Encodable, Sendable {
     var searchWords: Bool?
     var curator: Bool?
     var twinsJudge: Bool?
+    var gatekeeper: Bool?
+    var audit: Bool?
+    var sentence: Bool?
     var monthlyLimitUsd: Double?
+}
+
+/// `GET /api/ai/review`: "Do sprawdzenia", what the gatekeeper set aside and
+/// what the night audit found, newest first.
+struct AiReview: Codable, Hashable, Sendable {
+    struct Problem: Codable, Hashable, Sendable {
+        /// title | artist | date | polish | picture
+        var field: String
+        /// Its Polish name ("Tytuł").
+        var name: String
+        var problem: String
+    }
+
+    struct Entry: Codable, Hashable, Sendable, Identifiable {
+        var item: ItemSummary
+        var at: String
+        /// "gatekeeper" or "audit".
+        var by: String
+        var seenAs: String = ""
+        /// What the gatekeeper saw it as, in Polish.
+        var seenAsName: String = ""
+        var why: String = ""
+        var problems: [Problem] = []
+
+        var id: String { by + ":" + item.id }
+    }
+
+    var setAside: [Entry]
+    var findings: [Entry]
+
+    var isEmpty: Bool { setAside.isEmpty && findings.isEmpty }
+}
+
+/// `POST /api/terms/sentence`: what a sentence typed in Szukaj asks for.
+struct SentenceReading: Codable, Hashable, Sendable {
+    /// What the model read it as, in Polish.
+    var reading: String
+    /// The chips to put in.
+    var hits: [TermHit]
+}
+
+struct SentenceAsk: Encodable, Sendable {
+    var text: String
 }
 
 struct AiKeyUpdate: Encodable, Sendable {

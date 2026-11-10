@@ -286,6 +286,9 @@ def tasks(service: FrameService) -> list[NightTask]:
         NightTask("tidy", tidy),
         NightTask("catalogue", player.grow_at_night),
         NightTask("grouping", grouping),
+        # Keywords and Polish texts nobody waits for, through the Batch API
+        # at half the price (their answers come in by day).
+        NightTask("language model", lambda night: service.ai.order_night()),
         NightTask("nga", lambda night: nga.refresh_at_night(service.settings.data_dir)),
         NightTask("courtauld", lambda night: courtauld.refresh_at_night(service.settings.data_dir)),
         NightTask("louvre", lambda night: louvre.refresh_at_night(service.settings.data_dir)),
@@ -314,6 +317,10 @@ def tasks(service: FrameService) -> list[NightTask]:
         # What the pictures could not settle: Haiku, then Haiku as the
         # critic, each batch waited for while the night is quiet.
         NightTask("twins judge", service.twins_judge.at_night),
+        # The catalogue's gatekeeper and the night audit: the same, each
+        # with its critic (ai/gatekeeper.py, ai/audit.py).
+        NightTask("gatekeeper", service.gatekeeper.at_night),
+        NightTask("audit", service.audit.at_night),
         # Once a month: Commons' files with a tile set ("Pod lupą").
         NightTask("tile sets", service.player.tile_sets_at_night),
         # Last: downloads, gently, in whatever time the night has left.
