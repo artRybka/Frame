@@ -18,9 +18,9 @@ struct JourneyRoad: View {
     /// Where each stop's text ended up, in the road's space.
     @State private var rows: [Int: CGRect] = [:]
 
-    private static let gap: CGFloat = 56
+    private static let gap: CGFloat = 64
     /// Before a stop across an ocean: room for the sea.
-    private static let seaGap: CGFloat = 150
+    private static let seaGap: CGFloat = 170
     /// A stop this far from the one before has crossed a sea.
     private static let seaKm = 2500.0
 
@@ -226,10 +226,12 @@ struct JourneyRoad: View {
             guard i < count - 1 else { break }
             let top = row.maxY + 14, bottom = rows[i + 1]!.minY - 14
             if overSea(i + 1) {
+                // One swing per 70 pt of sea: closer they fold into hairpins.
+                let turns = min(3, max(1, Int((bottom - top) / 70)))
                 var left = places[i].left
-                for t in 0..<3 {
-                    let x = (left ? 0.2 : 0.76) + (random.unit() - 0.5) * 0.12
-                    route.append(CGPoint(x: width * x, y: top + (bottom - top) * (0.15 + 0.35 * CGFloat(t))))
+                for t in 0..<turns {
+                    let x = (left ? 0.24 : 0.72) + (random.unit() - 0.5) * 0.1
+                    route.append(CGPoint(x: width * x, y: top + (bottom - top) * (CGFloat(t) + 0.5) / CGFloat(turns)))
                     left.toggle()
                 }
             } else {
@@ -353,13 +355,23 @@ struct JourneyRoad: View {
             let near = pins.reduce(CGFloat(1)) { min($0, CGFloat(abs(i - $1)) / 15) }
             return CGPoint(x: points[i].x + n.x * a * near, y: points[i].y + n.y * a * near)
         }
-        var still = [Bool](repeating: false, count: line.count)
-        for pin in pins { for i in max(0, pin - 5)...min(line.count - 1, pin + 5) { still[i] = true } }
+        // How firmly each point keeps its place: fully at a dot, fading
+        // over 5 points (10 pt) either side, under the dot, so the line
+        // leaves it without a corner where the held part ends.
+        var hold = [CGFloat](repeating: 0, count: line.count)
+        for pin in pins {
+            for i in max(0, pin - 5)...min(line.count - 1, pin + 5) {
+                let f = 1 - CGFloat(abs(i - pin)) / 5
+                hold[i] = max(hold[i], f * f)
+            }
+        }
+        let start = line
         var next = line
         for _ in 0..<400 {
-            for i in 1..<(line.count - 1) where !still[i] {
-                next[i] = CGPoint(x: (line[i - 1].x + 2 * line[i].x + line[i + 1].x) / 4,
-                                  y: (line[i - 1].y + 2 * line[i].y + line[i + 1].y) / 4)
+            for i in 1..<(line.count - 1) {
+                let free = 1 - hold[i]
+                next[i] = CGPoint(x: start[i].x * hold[i] + free * (line[i - 1].x + 2 * line[i].x + line[i + 1].x) / 4,
+                                  y: start[i].y * hold[i] + free * (line[i - 1].y + 2 * line[i].y + line[i + 1].y) / 4)
             }
             swap(&line, &next)
         }
