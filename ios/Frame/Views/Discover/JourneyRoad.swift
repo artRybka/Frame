@@ -42,9 +42,9 @@ import UIKit
 /// there, the dots come up on it, the white paint, one wash under all the
 /// texts, soaks into the paper, and each text comes up out of it
 /// (`RoadReveal`). The line comes out from under the rule below the
-/// figures, and its turns keep nearer the middle of the page than they did
-/// (22:21: „start kreski niech zaczyna się spod linii nad którą są liczby…
-/// łuki mogą być trochę łagodniejsze, bliżej środka strony”).
+/// figures (22:21: „start kreski niech zaczyna się spod linii nad którą są
+/// liczby”), and its turns, wide at the top, get narrower all the way
+/// down (22:22: „zwężać się coraz bardziej ku dołowi”).
 struct JourneyRoad: View {
     let journey: DailyWork.Journey
     /// The work's id: the road's wander.
@@ -783,7 +783,8 @@ extension JourneyRoad {
         /// From edge to edge at the top, narrower with every turn.
         case narrow
     }
-    static let arcs = Arcs.soft
+    /// Mateusz picked the narrowing ones (2026-11-10 23:03, sketch 19: „B”).
+    static let arcs = Arcs.narrow
     /// The underpainting's field is this much bigger than the road each
     /// way, and blurred this much: its soft edge is what the paint seeps over.
     static let washRoom = CGSize(width: 48, height: 34)

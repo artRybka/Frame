@@ -94,14 +94,12 @@ final class JourneyRoadTests: XCTestCase {
             if turn > .pi { turn = 2 * .pi - turn }
             XCTAssertLessThan(turn * 180 / .pi, 20, "a bend at sample \(i)")
         }
-        // It sweeps across the road, not down one side of it, and its
-        // turns keep off the edges (22:21: „bliżej środka strony (nie
-        // sięgać tak bardzo na boki)”).
+        // It sweeps across the road, not down one side of it, and stays on the page.
         let xs = plan.line.map(\.x)
         XCTAssertLessThan(xs.min() ?? 0, 70)
         XCTAssertGreaterThan(xs.max() ?? 0, 280)
-        XCTAssertGreaterThan(xs.min() ?? 0, 30)
-        XCTAssertLessThan(xs.max() ?? 0, 320)
+        XCTAssertGreaterThan(xs.min() ?? 0, 14)
+        XCTAssertLessThan(xs.max() ?? 0, 336)
     }
 
     func testTheLineComesOutFromUnderTheRule() throws {
@@ -128,12 +126,14 @@ final class JourneyRoadTests: XCTestCase {
         }
     }
 
-    func testTheArcsCanNarrowTowardsTheBottom() throws {
-        // 22:22: „albo zwężać się coraz bardziej ku dołowi”.
+    func testTheArcsNarrowTowardsTheBottom() throws {
+        // 22:22: „albo zwężać się coraz bardziej ku dołowi”; his pick of
+        // the two in sketch 19 (23:03: „B”).
+        XCTAssertEqual(JourneyRoad.arcs, .narrow)
         let heights: [CGFloat] = [54, 74, 54, 54, 54, 54, 54, 74, 74]
         let seas = [false, false, false, false, false, false, false, true, false]
         for seed in ["aic:27992", "aic:1", "x"] {
-            let plan = try XCTUnwrap(JourneyRoad.plan(width: 350, heights: heights, seas: seas, seed: seed, arcs: .narrow))
+            let plan = try XCTUnwrap(JourneyRoad.plan(width: 350, heights: heights, seas: seas, seed: seed))
             func span(_ from: CGFloat, _ to: CGFloat) -> CGFloat {
                 let xs = plan.line.filter { $0.y >= from * plan.height && $0.y < to * plan.height }.map(\.x)
                 return (xs.max() ?? 0) - (xs.min() ?? 0)
@@ -268,6 +268,28 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertEqual(marks.target(mid: plan.dots[plan.dots.count - 1].y + 1), marks.full)
         XCTAssertEqual(marks.target(mid: 99_999), marks.full)
         XCTAssertGreaterThan(marks.full, plan.height)
+    }
+
+    func testTheArcsCanBeGentlerAllTheWay() throws {
+        // The other one of the two (22:21: „łuki mogą być trochę
+        // łagodniejsze, bliżej środka strony (nie sięgać tak bardzo na
+        // boki)”), kept for a change of mind.
+        let heights: [CGFloat] = [54, 74, 54, 54, 54, 54, 54, 74, 74]
+        let seas = [false, false, false, false, false, false, false, true, false]
+        for seed in ["aic:27992", "aic:1", "x"] {
+            let plan = try XCTUnwrap(JourneyRoad.plan(width: 350, heights: heights, seas: seas, seed: seed, arcs: .soft))
+            let xs = plan.line.map(\.x)
+            XCTAssertGreaterThan(xs.min() ?? 0, 30, seed)
+            XCTAssertLessThan(xs.max() ?? 0, 320, seed)
+            XCTAssertLessThan(xs.min() ?? 0, 80, seed)
+            XCTAssertGreaterThan(xs.max() ?? 0, 270, seed)
+            for text in plan.texts {
+                let near = plan.line.map { p in
+                    hypot(max(text.minX - p.x, 0, p.x - text.maxX), max(text.minY - p.y, 0, p.y - text.maxY))
+                }.min() ?? 0
+                XCTAssertGreaterThanOrEqual(near, 5, seed)
+            }
+        }
     }
 
     func testThePaintFlowsNoFasterThanItCan() {
