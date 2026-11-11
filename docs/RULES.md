@@ -57,7 +57,7 @@ chciałbym żeby spadła jakość doboru tych propozycji”).
 | 1 | Noc: porządki przed dobieraniem, budżety czasu | 1.145.12 (PLAN 3.3zzz156) |
 | 2 | Szybkość bez zmiany wyników: przyrostowe scalanie grup (2a: 1.145.13, PLAN 3.3zzz157), dalej według pomiarów z nocy: punkty ORB na dysku, odsiew par, karty jednym przejściem | w toku |
 | 3 | Sprzątanie resztek: wskaźnik „Na e-papierze”, martwy próg, nieużywane punkty API | 1.145.14 (PLAN 3.3zzz158) |
-| 4 | Jeden werdykt pokazywania (lista powodów i tabela kontekstów, najpierw jako cień obok starych reguł) | |
+| 4 | Jeden werdykt pokazywania: lista powodów i tabela „miejsce × powód” (4a, bez zmiany wyników: 1.145.15, PLAN 3.3zzz159), potem zmiany widoczne z listą różnic | w toku |
 | 5 | Jedna tożsamość dzieła i autora | |
 | 6 | Jedna ścieżka pytań do muzeów i jedna nocna pętla modeli | |
 
@@ -75,6 +75,33 @@ rok, usunięcie) grupuje od nowa tylko dzieła osiągalne od niego przez
 `same_work` (`Works.regroup`), z tym samym wynikiem co grupowanie całego
 katalogu; całość od nowa tylko wtedy, gdy takich dzieł jest za dużo
 (`REGROUP_LOOKS`) albo zapis został wycofany.
+
+Etap 4a w skrócie: `library/verdict.py` zna każdy powód, dla którego coś
+nie jest obrazem na ramkę, pod jedną nazwą (`Why`), i pyta o nie reguły ze
+`vocabulary` raz, w jednej kolejności (`whys(item)`). Tabela `MINDS` mówi,
+które powody obchodzą które miejsce (`Place`), osobno dla dzieł dobranych
+przez serwer i dla zachowanych przez właściciela; `against(item, place,
+asked)` oddaje powody, które dane miejsce ma przeciw dziełu (żadnego: dzieło
+jest tam pokazywane albo brane). Miejsca w kodzie nie składają już reguł
+same, tylko nazywają miejsce:
+
+| Miejsce (`Place`) | Kto pyta | Dobrane przez serwer | Zachowane przez właściciela |
+|---|---|---|---|
+| `LISTED` | katalog przeglądany (Ulubione, playlisty, wszystko), słowa kluczowe, polskie teksty | wszystkie powody | nic |
+| `FOUND` | katalog pytany słowem, autorem albo filtrem | wszystkie powody | „Sztuki inne”, znaczek, dokument, szare zdjęcie z archiwum sztuki |
+| `STUDIED` | pula Studium dnia | wszystkie powody | „Sztuki inne”, czarno-białe kopie |
+| `MUSEUM` | odpowiedź muzeum przy czytaniu | kopie | kopie |
+| `SOUGHT` | Szukaj w muzeach, karty Odkrywaj z muzeów, dobieranie | wszystkie powody | wszystkie powody |
+| `TIDIED` | Strażnik, Nocny przegląd | wszystkie powody | wszystkie powody |
+| `COMPARED` | powtórki, Sędzia, ostrzejsze kopie | kopie | kopie |
+
+Powód z grupy „Sztuki inne” nie liczy się, gdy pytanie prosi o tę
+kategorię (`asked`). Zmiana tego, co widać, to odtąd zmiana komórki tej
+tabeli: decyzja Mateusza „serwer sam nie proponuje zachowanych detali,
+reprodukcji i znaczków” zmieni wiersz `STUDIED` i doda miejsce dla kart
+Odkrywaj z katalogu. Zestaw wzorcowy dostał sekcję `kept` (dzieła zachowane
+przez właściciela, które mają powód, i czy mogą dziś zostać Studium dnia),
+z której powstaje lista do tej decyzji.
 
 ## Jak sprawdzić zmianę reguł
 
@@ -107,7 +134,8 @@ w etapie 4:
 rozstrzygnięto o dziełach: pary uznane za jedno dzieło i przez co (opis,
 skrót obrazu, obrazy, Sędzia), detale i zdjęcia sal, pary rozdzielone przez
 właściciela („To nie to samo”) i przez Sędziego, dzieła odłożone przez
-Strażnika. Same opisy, bez obrazów i bez zdjęć właściciela. Plik zostaje
+Strażnika. Od 1.145.15 także dzieła zachowane przez właściciela, które
+mają powód „to nie obraz na ramkę” (`kept`). Same opisy, bez obrazów i bez zdjęć właściciela. Plik zostaje
 poza repozytorium (obok logów nocy na Macu).
 
 ```bash

@@ -14,7 +14,7 @@ under one mapping). Two pictures of one work become one work in the
 catalogue (``Item.copy_of``: the copies of a work all name one of them).
 A picture that is only part of another, while that other is surely the
 whole (a museum's own picture, or one that another copy shows whole), is a
-detail (``Item.detail_of``), left out like any copy (``vocabulary.is_copy``).
+detail (``Item.detail_of``), left out like any copy (``verdict.COPIES``).
 A picture of a work with more around it (a frame) is no detail: when it is
 not clear which of two is the whole, they are only copies.
 
@@ -91,7 +91,7 @@ from .picture_hash import distances as hash_distances
 from .picture_hash import picture_hash
 from .picture_hash import words as hash_words
 from .tidy_log import TidyLog
-from .vocabulary import is_copy
+from .verdict import Place, against
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -228,7 +228,7 @@ def candidate(item: Item) -> bool:
         and not item.part_of
         and item.look is None
         and not item.detail_of
-        and not is_copy(item)
+        and not against(item, Place.COMPARED)
     )
 
 

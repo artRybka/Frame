@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from ..library.vocabulary import is_copy
+from ..library.verdict import Place, against
 from .client import FABLE, HAIKU, OPUS, SONNET, AiUnavailable, image_block, request
 from .daily import _object, _str
 
@@ -337,7 +337,13 @@ class NightJudge:
                 break
             a_id, _, b_id = key.partition("|")
             a, b = self.library.get(a_id), self.library.get(b_id)
-            if a is None or b is None or _settled(a, b, grouped) or is_copy(a) or is_copy(b):
+            if (
+                a is None
+                or b is None
+                or _settled(a, b, grouped)
+                or against(a, Place.COMPARED)
+                or against(b, Place.COMPARED)
+            ):
                 # Gone, told apart meanwhile, or one of them set aside since
                 # (the gatekeeper's "no artwork"): nothing to ask about.
                 gone.append(key)

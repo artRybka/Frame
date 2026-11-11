@@ -14,7 +14,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from ..library.models import ItemKind, Note, PhotoInfo
-from ..library.vocabulary import TERMS, set_aside
+from ..library.verdict import Place, against
+from ..library.vocabulary import TERMS
 from .client import HAIKU, image_block, request
 from .jobs import NoteJob, text_hash
 
@@ -193,7 +194,7 @@ class KeywordsJob(NoteJob):
 
     def in_library(self, item: Item) -> bool:
         """Everything the library shows, pooled works too."""
-        return self._switched_on(item) and not (item.pooled and set_aside(item))
+        return self._switched_on(item) and not against(item, Place.LISTED)
 
     def source_hash(self, item: Item) -> str:
         return text_hash(_facts(item), item.thumb_url)

@@ -867,27 +867,6 @@ def _is_document(classification: str, title: str) -> bool:
     )
 
 
-def is_copy(item: Item) -> bool:
-    """A reproduction of a work in print or on a slide, a photograph
-    Openverse has from Flickr or one from a photo archive, a stamp, a
-    black-and-white photograph of a work, a detail of a work, a photograph
-    of a work in its frame or on a museum's wall (``Item.scene_of``), Openverse's
-    copy of a museum's work, a page of text, or what the catalogue's gatekeeper
-    saw to be no artwork (``Item.seen_as``): never what the frame looks for."""
-    return (
-        bool(item.seen_as)
-        or (is_photograph(item) and item.source == "openverse")
-        or is_openverse_copy(item)
-        or is_detail(item)
-        or bool(item.scene_of and not item.part_of)
-        or is_archive_photo(item)
-        or is_postal(item)
-        or is_document(item)
-        or is_reproduction(item)
-        or is_grey_copy(item)
-    )
-
-
 #: Museums' types of sculpture and of decorative arts; a type that names a
 #: picture technique comes first ("Miniature Painting").
 _SCULPTURE = re.compile(
@@ -950,28 +929,6 @@ def other_art(item: Item) -> bool:
     its technique and playlists that ask for it, never a study, the work of
     the day or Discover's other cards (Mateusz 2026-11-06, "własny sos")."""
     return object_category(item) is not None
-
-
-def set_aside(item: Item, keys: list[str] | tuple[str, ...] = ()) -> bool:
-    """Left out of the catalogue and searches: copies always; manuscripts,
-    photographs, sculpture and decorative arts unless ``keys`` ask for them."""
-    if is_copy(item):
-        return True
-    category = object_category(item)
-    return category is not None and category not in keys
-
-
-def category_fits(item: Item, keys: list[str] | tuple[str, ...]) -> bool:
-    """A work of a museum's search for ``keys``: of a category asked for, or
-    a picture while nothing but such categories is asked for as technique
-    (rzeźba alone: no paintings)."""
-    if set_aside(item, keys):
-        return False
-    if object_category(item) is not None:
-        return True
-    asked = [k for k in keys if k in OBJECT_CATEGORIES]
-    techniques = [k for k in keys if k.startswith("technique:")]
-    return not asked or len(techniques) > len(asked)
 
 
 def term(key: str) -> Term | None:

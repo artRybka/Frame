@@ -19,7 +19,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from ..library.models import COLLECTIONS, ItemKind
-from ..library.vocabulary import set_aside
+from ..library.verdict import Place, against
 from .client import image_block, request
 from .critic_night import REST, CriticNight
 from .daily import _object, _str
@@ -127,7 +127,7 @@ def asked_by_rules(item: Item) -> bool:
         and not item.part_of
         and item.look is None
         and bool(item.thumb_url)
-        and not set_aside(item)
+        and not against(item, Place.TIDIED)
     )
 
 

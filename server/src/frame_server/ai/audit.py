@@ -19,7 +19,7 @@ import random
 from typing import TYPE_CHECKING, Any
 
 from ..library.models import ItemKind
-from ..library.vocabulary import set_aside
+from ..library.verdict import Place, against
 from .client import image_block, request
 from .critic_night import CriticNight
 from .daily import _object, _str
@@ -113,7 +113,7 @@ class Audit(CriticNight):
             and not i.excluded
             and i.look is None
             and bool(i.thumb_url)
-            and not set_aside(i)
+            and not against(i, Place.TIDIED)
         ]
         # Favourites, playlists and Discover first (Mateusz 2026-11-11), each
         # part drawn at random.

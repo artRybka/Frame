@@ -25,6 +25,7 @@ from .models import Item, ItemKind, PlaylistRules
 from .nationality import artist_note
 from .repo import Library, matches
 from .seed import MORE_POLISH_PAINTERS, PACKS, POLISH_PAINTERS
+from .verdict import Place, against
 from .viewer import OWNER_ID, viewer_id
 from .vocabulary import (
     DECORATIVE,
@@ -41,7 +42,6 @@ from .vocabulary import (
     museum_queries,
     object_category,
     other_art,
-    set_aside,
     term,
     term_matches,
     text_of,
@@ -2029,12 +2029,14 @@ def search_page(
     total, items = importer.search(source, query, limit=limit, page=round_)
     asked = [k for k in found.terms if k in OBJECT_CATEGORIES]
     if asked:  # "Sztuki inne": the theme's technique only
-        kept = [i for i in items if object_category(i) in asked and not set_aside(i, asked)]
+        kept = [
+            i for i in items if object_category(i) in asked and not against(i, Place.SOUGHT, asked)
+        ]
         # What the museum's data shows ("Pierwsze kolory": a colour process).
         marks = [term(k) for k in found.terms if k.startswith("tag:") and k != HIGHLIGHT]
         kept = [i for i in kept if all(m is not None and term_matches(m, i) for m in marks)]
     else:
-        kept = [i for i in items if not set_aside(i)]
+        kept = [i for i in items if not against(i, Place.SOUGHT)]
     if found.strict:
         rules = found.rules()
         kept = [i for i in kept if matches(i, rules)]

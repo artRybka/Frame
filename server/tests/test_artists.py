@@ -194,7 +194,7 @@ def test_taste_and_search_leave_nobody_out(service) -> None:
 
 
 def test_girona_photo_archive_is_set_aside() -> None:
-    from frame_server.library.vocabulary import set_aside
+    from frame_server.library.verdict import Place, against
 
     photo = Item(
         id="europeana:718~Museu_1",
@@ -205,7 +205,7 @@ def test_girona_photo_archive_is_set_aside() -> None:
         artist="Desconegut",
     )
     other = photo.model_copy(update={"id": "europeana:2048047~x", "source_id": "2048047~x"})
-    assert set_aside(photo) and not set_aside(other)
+    assert against(photo, Place.SOUGHT) and not against(other, Place.SOUGHT)
 
 
 def test_konfiguracja_draws_another_artist_of_the_week(service) -> None:
