@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.3
+
+- Miniatury bardzo długich dzieł (zwoje, fryzy) są ostre. Serwer szykuje
+  je z większego zdjęcia i tak, by krótszy bok miał 320 px, a aplikacja nie
+  zmniejsza ich już po dłuższym boku. Stare, zbyt cienkie miniatury serwer
+  robi od nowa po aktualizacji; telefon może jeszcze przez dobę pokazywać
+  starą.
+
 ## 1.145.2
 
 - „Pod lupą”: rozbłysk na kafelkach jest mocniejszy, a całe kafelki są
