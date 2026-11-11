@@ -273,6 +273,13 @@ def test_photographs_are_told_apart() -> None:
     assert is_photograph(_work(2, title="Venice", medium="Albumen print from glass negative"))
     assert not is_photograph(_work(3, classification="Print", medium="Photomechanical print"))
     assert not is_photograph(_work(4, classification="Poster", medium="Photolithograph"))
+    # A museum's slip: a painting of c. 1650 under the type "Photograph".
+    assert not is_photograph(_work(5, classification="Photograph", medium="oil on canvas"))
+    assert is_photograph(_work(6, classification="Photograph", medium="oil print"))
+    assert is_photograph(_work(7, classification="Paintings", medium="oil on photograph"))
+    assert is_photograph(
+        _work(8, classification="Photograph", medium="gelatin silver print on board")
+    )
     own = Item(
         id="own:1", source="own", source_id="1", kind=ItemKind.PHOTO, classification="Photograph"
     )

@@ -593,8 +593,21 @@ def is_photograph(item: Item) -> bool:
     return item.kind == ItemKind.ARTWORK and _is_photograph(item.classification, item.medium)
 
 
+#: A painter's medium on a painter's support: a work so made is no
+#: photograph, whatever type its museum gave it (the NGA's "Old Woman
+#: Plucking a Fowl", c. 1650, oil on canvas, type "Photograph"). An "oil
+#: print" and "oil on photograph" are photographs.
+_PAINTED_ON = re.compile(
+    r"\b(?:oil|oils|tempera|acrylic|olej\w*)\b[^,;]*\bon (?:canvas|panel|wood|copper|board|linen)\b"
+    r"|\bolej\w*[^,;]*\b(?:płótn\w*|desk\w*)",
+    re.IGNORECASE,
+)
+
+
 @lru_cache(maxsize=PER_WORK)
 def _is_photograph(classification: str, medium: str) -> bool:
+    if _PAINTED_ON.search(medium) and not _PHOTOGRAPH.search(medium):
+        return False
     return bool(_PHOTOGRAPH.search(" ".join((classification, medium))))
 
 
@@ -848,7 +861,17 @@ _NOTICE_TITLE = re.compile(
     r"aanplakbiljet|obwieszczenie|ogłoszenie|avis\b|ordre du)",
     re.IGNORECASE,
 )
-#: The back of a painting or drawing on its own ("Chata verso").
+#: The back of a painting on its own ("Chata verso"): its stretcher and
+#: labels. Not a sheet named with both its sides ("Sketch of Anatomical
+#: Sculpture (recto) Sketch of Madame Cézanne (verso)"), and not the back
+#: of a drawing, which its museum lists for what is drawn there ("Sketch of
+#: Madame Cézanne (verso)"; both Cleveland's, set aside until 1.145.24).
+_RECTO = re.compile(r"\brecto\b", re.IGNORECASE)
+_SHEET = re.compile(
+    r"\b(drawings?|sketch\w*|watercolou?rs?|pastels?|prints?|rysun\w*|szkic\w*|akwarel\w*|"
+    r"tekening\w*|zeichnung\w*|dessins?|disegn\w*)\b",
+    re.IGNORECASE,
+)
 _VERSO = re.compile(
     r"(?:[\s(_,;-]verso\)?|[\s(]odwrocie\)?|\(reverse\)|r[üu]ckseite\)?)\s*$"
     r"|^\W*(?:verso|reverse) of\b",
@@ -868,9 +891,11 @@ def is_document(item: Item) -> bool:
 @lru_cache(maxsize=PER_WORK)
 def _is_document(classification: str, title: str) -> bool:
     line = title.split("\n")[0]
-    return bool(
-        _DOCUMENT.search(classification) or _NOTICE_TITLE.search(line) or _VERSO.search(line)
-    )
+    if _DOCUMENT.search(classification) or _NOTICE_TITLE.search(line):
+        return True
+    if _RECTO.search(line) or _SHEET.search(classification):
+        return False
+    return bool(_VERSO.search(line))
 
 
 #: Museums' types of sculpture and of decorative arts; a type that names a
