@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from ..library.vocabulary import is_copy
 from .client import FABLE, HAIKU, OPUS, SONNET, AiUnavailable, image_block, request
 from .daily import _object, _str
 
@@ -300,6 +301,8 @@ class NightJudge:
         #: The answers put in since :meth:`at_night` began, by outcome
         #: ("written", "rejected", …), for the night's summary.
         self.tally: dict[str, int] = {}
+        #: A batch was ordered ahead of this night's work (:meth:`ahead`).
+        self._ahead = False
 
     # -- state -----------------------------------------------------------------
 
@@ -334,7 +337,9 @@ class NightJudge:
                 break
             a_id, _, b_id = key.partition("|")
             a, b = self.library.get(a_id), self.library.get(b_id)
-            if a is None or b is None or _settled(a, b, grouped):
+            if a is None or b is None or _settled(a, b, grouped) or is_copy(a) or is_copy(b):
+                # Gone, told apart meanwhile, or one of them set aside since
+                # (the gatekeeper's "no artwork"): nothing to ask about.
                 gone.append(key)
                 continue
             found.append((key, a, b, claim))
@@ -474,24 +479,44 @@ class NightJudge:
         )
         return True
 
+    def ahead(self) -> None:
+        """Before the night's long work (the pictures looked at, 40 minutes):
+        last night's batch put in and the next one ordered, to be collected
+        by :meth:`at_night` once that work is done, not waited for."""
+        self.tally = {}
+        self._ahead = True
+        if self.collect() is not False:
+            self.order()
+
     def at_night(self, night: Night) -> None:
         """Last night's batch put in, then the critic's claims and the new
-        suspects asked, each waited for while the night is quiet."""
-        self.tally = {}
-        if self.collect() is False:
+        suspects asked, each waited for while the night is quiet
+        (a batch ordered :meth:`ahead` is waited for first)."""
+        if not self._ahead:
+            self.tally = {}
+        # Ordered ahead: its answer, the critic's claims, tonight's pairs.
+        rounds = 3 if self._ahead else 2
+        self._ahead = False
+        if self.collect() is False and not self._waited(night):
             return
-        for _ in range(2):  # the critic's claims, or the judge's pairs and then theirs
+        for _ in range(rounds):  # the critic's claims, or the judge's pairs and then theirs
             if not self.order():
                 return
-            waited = 0.0
-            while True:
-                if waited >= WAIT_SECONDS or not night.quiet():
-                    return
-                if not night.sleep(POLL_SECONDS):
-                    return
-                waited += POLL_SECONDS
-                if self.collect() is not False:
-                    break
+            if not self._waited(night):
+                return
+
+    def _waited(self, night: Night) -> bool:
+        """Waits for the batch under way while the night is quiet, a quarter
+        of an hour at most; whether its answers were put in."""
+        waited = 0.0
+        while True:
+            if waited >= WAIT_SECONDS or not night.quiet():
+                return False
+            if not night.sleep(POLL_SECONDS):
+                return False
+            waited += POLL_SECONDS
+            if self.collect() is not False:
+                return True
 
 
 def _settled(a: Item, b: Item, grouped: Any) -> bool:

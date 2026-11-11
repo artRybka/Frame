@@ -322,3 +322,60 @@ def test_keywords_nobody_waits_for_go_at_night_for_half_the_price(
     assert service.ai.poll_batches() == 2
     assert service.ai.progress(KEYWORDS).waiting == 0
     assert fake.asked == []  # nothing asked at full price
+
+
+def test_a_batch_ordered_ahead_is_collected_when_the_turn_comes(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    """The night orders the gatekeeper's batch before the pictures are
+    looked at (40 minutes) and puts the answers in afterwards, without
+    another wait: then the critic, in the same night."""
+    import threading
+    import time
+
+    from frame_server.night import Night
+
+    _work(service, "europeana:2", title="Martwa natura", pooled=True)
+    keeper = service.gatekeeper
+    keeper.ahead()
+    assert list(fake.batches) == ["batch_1"]
+    keeper.ahead()  # again: one batch at a time
+    assert list(fake.batches) == ["batch_1"]
+
+    # Meanwhile the batch ended.
+    fake.ended = True
+    _answer(fake, STAMP)
+    slept: list[float] = []
+
+    class Quick(Night):
+        def quiet(self) -> bool:
+            return True
+
+        def sleep(self, seconds: float) -> bool:
+            slept.append(seconds)
+            _answer(fake, {"why": "Perforated edges", "verdict": "confirm", "confidence": 0.9})
+            return True
+
+    keeper.at_night(Quick(threading.Event(), time.monotonic() + 600))
+    item = service.library.get("europeana:2")
+    assert item is not None and item.seen_as == "postal"
+    assert len(slept) == 1  # waited for the critic only
+    assert keeper.tally["claims"] == 1 and keeper.tally["written"] == 1
+
+
+def test_the_judge_is_not_asked_about_what_the_gatekeeper_set_aside(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+    monkeypatch: Any,
+) -> None:
+    _work(service, "openverse:1", title="Symbol", artist="A")
+    _work(service, "openverse:2", title="Symbol, bold", artist="A")
+    _work(service, "wmc:3", title="Pejzaż", artist="B")
+    _work(service, "wikiart:4", title="Landscape", artist="B")
+    suspects = {"openverse:1|openverse:2": {"why": "hash"}, "wikiart:4|wmc:3": {"why": "fit"}}
+    service.library.set_state("twins_suspects", suspects)
+    assert len(service.twins_judge._pairs({})) == 2
+    service.library.update("openverse:2", seen_as="not_art")
+    assert [key for key, *_ in service.twins_judge._pairs({})] == ["wikiart:4|wmc:3"]
+    assert list(service.twins.suspects()) == ["wikiart:4|wmc:3"]  # forgotten for good

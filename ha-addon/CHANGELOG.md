@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.145.12
+
+- Porządki w regułach doboru dzieł, etap 1: noc najpierw sprząta, potem
+  dobiera. Powtórki, Strażnik katalogu, Sędzia powtórek i Nocny przegląd
+  idą teraz przed dobieraniem nowych dzieł (ostatnio dobieranie zajęło
+  1 h 43 min, powtórki dostały 5 minut, a Strażnik i Przegląd nie ruszyły
+  ani razu). Dobieranie dostaje najwyżej 45 minut nocy.
+- Zamówienia do Claude dla Strażnika, Sędziego i Przeglądu wychodzą,
+  zanim serwer zacznie porównywać obrazy, więc odpowiedzi czekają, gdy
+  przychodzi ich kolej. Zadania porządków, do których noc nie doszła,
+  następnej nocy idą jako pierwsze.
+- Sędzia nie dostaje już par, w których jedno z dzieł Strażnik odłożył
+  jako nie-dzieło.
+
 ## 1.145.11
 
 - Porządki w regułach doboru dzieł, etap 0 (pomiar, bez zmiany tego, co
