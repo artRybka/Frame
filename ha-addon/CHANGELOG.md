@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.5
+## 1.145.6
 
 - Studium dzieła: „Dalsze losy” są teraz dalszym ciągiem „Drogi dzieła”
   i stoją zaraz pod nią. Chwilę po czerwonej plamie na końcu drogi pióro
@@ -23,6 +23,13 @@
 - „Droga dzieła”: cienka kreska zaczyna się rysować wcześniej, prawie
   u dołu ekranu, a kropki z plamami pod tekstami pojawiają się trochę
   wcześniej niż dotąd, nieco poniżej środka ekranu.
+
+## 1.145.5
+
+- „Pod lupą” jest teraz na samym końcu Odkrywaj, za „Studiami dzieł”.
+  Kafelki ruszają się przy obracaniu telefonu delikatniej, a cień pod
+  nimi jest słabszy i mniej rozmyty.
+
 ## 1.145.4
 
 - Miniatury bardzo długich dzieł (zwoje, fryzy) są ostre. Serwer szykuje

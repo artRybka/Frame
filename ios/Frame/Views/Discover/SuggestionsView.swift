@@ -84,8 +84,10 @@ struct SuggestionsView: View {
                     .edgeToEdgeRow()
                 }
             }
-            ForEach(otherRows) { row in rowView(row) }
+            ForEach(otherRows.filter { $0.key != DiscoverLayout.zoom }) { row in rowView(row) }
             if let studies = model.studyList, !studies.isEmpty { StudyRow(studies: studies).id("studies") }
+            // "Pod lupą" last, after "Studia dzieł" (Mateusz 2026-11-11).
+            if let zoom = otherRows.first(where: { $0.key == DiscoverLayout.zoom }) { rowView(zoom) }
         }
         // Full width while it is still empty, so the spinner is in the middle.
         .pageWidth()
