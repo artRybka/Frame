@@ -327,10 +327,10 @@ enum JourneySketch {
             var x: CGFloat = 4
             while x <= width - 4 - side {
                 let box = CGRect(x: x, y: y, width: side, height: side)
-                let gapX = max(0, stain.minX - box.maxX, box.minX - stain.maxX)
-                let gapY = max(0, stain.minY - box.maxY, box.minY - stain.maxY)
+                let gapX: CGFloat = max(0, stain.minX - box.maxX, box.minX - stain.maxX)
+                let gapY: CGFloat = max(0, stain.minY - box.maxY, box.minY - stain.maxY)
                 // Beside the stain and near it; off its middle counts a little.
-                let cost = hypot(gapX, 2 * gapY) + 0.15 * abs(box.midY - stain.midY)
+                let cost: CGFloat = hypot(gapX, 2 * gapY) + 0.15 * abs(box.midY - stain.midY)
                 if gapX + gapY > 0, cost < (best?.cost ?? 150), free(box, lines: near, taken: taken, width: width, height: height) {
                     best = (box, cost)
                 }
@@ -353,7 +353,7 @@ enum JourneySketch {
                 let box = CGRect(x: x, y: y, width: side, height: side)
                 if free(box, lines: near, taken: taken, width: width, height: height) {
                     let middle = CGPoint(x: box.midX, y: box.midY)
-                    let far = points.map { hypot($0.x - middle.x, $0.y - middle.y) }.min() ?? 0
+                    let far: CGFloat = points.map { hypot($0.x - middle.x, $0.y - middle.y) }.min() ?? 0
                     if far > (best?.far ?? 0) + 1 { best = (box, far) }
                 }
                 x += 6
@@ -432,7 +432,7 @@ enum JourneySketch {
         guard var last = points.first else { return [] }
         var out = [last], left = step
         for (a, b) in zip(points, points.dropFirst()) {
-            let length = hypot(b.x - a.x, b.y - a.y)
+            let length: CGFloat = hypot(b.x - a.x, b.y - a.y)
             guard length > 0 else { continue }
             var at: CGFloat = 0
             while length - at >= left {
