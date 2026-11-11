@@ -32,6 +32,7 @@ from .albums import Albums
 from .artist_people import ArtistPeople
 from .artist_works import ArtistWorks
 from .births import Births
+from .cared import Cared
 from .config import Settings
 from .copies import Copies
 from .daily import Daily
@@ -322,6 +323,11 @@ class FrameService:
         # are, and a few works a night looked over (Haiku and its critic).
         self.gatekeeper = Gatekeeper(self.library, self.images, self.claude, self.ai_config)
         self.audit = Audit(self.library, self.images, self.claude, self.ai_config)
+        # Favourites, playlists and Discover's works first in the night's
+        # tidying (Mateusz 2026-11-11).
+        self.cared = Cared(self)
+        for tidier in (self.twins, self.twins_judge, self.gatekeeper, self.audit):
+            tidier.cared = self.cared.ranks
         # Szukaj by a sentence (Haiku).
         self.sentence = Sentence(self.library, self.claude, self.ai_config)
         self.daily.sharper = self.sharper

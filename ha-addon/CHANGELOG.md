@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.144.0
+
+- Zadania nocne w Konfiguracji są w pakietach: Utrzymanie katalogu,
+  Powtórki i jakość, Opisy i fakty, Odkrywaj i ramka oraz Spisy muzeów.
+  Każdy pakiet ma jeden guzik, który uruchamia od razu wszystkie jego
+  zadania, i krótki opis, co robi. Pojedyncze zadania są nadal pod
+  „Zadania”.
+- Porządki zaczynają od dzieł, na których Ci zależy: najpierw Ulubione
+  i dzieła z Twoich playlist, potem to, co pokazują playlisty
+  inteligentne, karty Odkrywaj i Propozycje dnia. Dopiero potem reszta
+  katalogu. Dotyczy to powtórek i detali, sędziego powtórek, strażnika
+  katalogu, nocnego przeglądu, ostrzejszych kopii i tego, gdzie wiszą
+  dzieła.
+- Noc najpierw porządkuje, a dopiero na koniec czyta spis Rijksmuseum,
+  w czasie, który jej został. Wcześniej spis zajmował 2,5 godziny
+  i powtórki dostawały 5 minut, a strażnik katalogu i nocny przegląd nie
+  ruszyły ani razu. Strażnik i przegląd czekają na odpowiedź Claude'a
+  najwyżej kwadrans, a spóźnioną zbierają następnej nocy.
+- Klucze, hasła i tokeny w adresach (np. logowanie do WikiArt) nie
+  trafiają już do logu serwera, także przy czytaniu starszych dni.
+
 ## 1.143.4
 
 - Sędzia powtórek pracuje w nocy przed czytaniem spisu Rijksmuseum, a nie
