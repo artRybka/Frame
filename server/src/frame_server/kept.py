@@ -45,6 +45,12 @@ FILL = 0.9
 REFUSED_FOR = timedelta(days=30)
 #: Refused originals (by item id: when), across restarts.
 REFUSED_KEY = "kept_refused"
+#: Originals cut to the old limit (``images.OLD_MAX``) whose source gave no
+#: more when asked again: not asked a third time (by item id).
+NO_LARGER_KEY = "kept_no_larger"
+#: Set once a night found no original left to have again larger: the
+#: originals are not looked through again (new ones are kept at the limit).
+LARGER_DONE_KEY = "kept_larger_done"
 #: Answers after which a host is left alone for the rest of the night.
 THROTTLED = {403, 429}
 
@@ -110,6 +116,59 @@ class KeptOriginals:
         ids = kept_ids(self.service)
         items = [i for i in map(library.get, sorted(ids)) if i is not None and self._wanted(i)]
         return sorted(items, key=lambda i: (not i.favorite, i.id))
+
+    def cut(self) -> list[Item]:
+        """Works whose original here was cut to the old limit (2560 px until
+        1.145.33; Mateusz 2026-11-11: up to 4000) and may be had larger:
+        the kept ones, favourites first, then the others the owner looked
+        at, the latest first."""
+        library, images = self.service.library, self.service.images
+        done = set(library.get_state(NO_LARGER_KEY, []))
+        kept = kept_ids(self.service)
+
+        here = images.originals_here()
+
+        def worth(item: Item) -> bool:
+            return (
+                item.file_stem in here
+                and item.id not in done
+                and not item.excluded
+                and images.cut_before(item)
+            )
+
+        first = [i for i in map(library.get, sorted(kept)) if i is not None and worth(i)]
+        first.sort(key=lambda i: (not i.favorite, i.id))
+        seen = [
+            (used, item)
+            for item in library.all_items()
+            if item.id not in kept and worth(item) and (used := images.used_at(item)) is not None
+        ]
+        seen.sort(key=lambda pair: -pair[0])
+        return first + [item for _, item in seen]
+
+    def _larger(self, item: Item) -> int:
+        """The original of ``item`` had again larger: the bytes it grew by,
+        0 when it stays as it is (remembered when its source gives no
+        more). Resting and throttled hosts raise."""
+        library = self.service.library
+        try:
+            grew = self.service.images.larger_again(item)
+        except Unavailable as err:  # refused for good: as it is, then
+            log.info("kept: %s", err)
+            grew = 0
+        except Resting:
+            raise
+        except httpx.HTTPStatusError as err:
+            if err.response.status_code in THROTTLED:
+                raise
+            log.info("kept: larger original of %s failed: %s", item.id, err)
+            return 0
+        except (httpx.HTTPError, OSError, ValueError) as err:
+            log.info("kept: larger original of %s failed: %s", item.id, err)
+            return 0
+        if not grew:
+            library.set_state(NO_LARGER_KEY, [*library.get_state(NO_LARGER_KEY, []), item.id])
+        return grew
 
     # -- room --------------------------------------------------------------------
 
@@ -208,7 +267,39 @@ class KeptOriginals:
                 room -= size
             if not night.sleep(PAUSE):
                 break
-        if done:
+        # Then the originals cut to the old limit, larger: the kept works'
+        # whatever room there is (they are pruned last), the others' within it.
+        library = self.service.library
+        kept = kept_ids(self.service)
+        larger = 0
+        cut = [] if library.get_state(LARGER_DONE_KEY, False) or not night.quiet() else self.cut()
+        if not cut and night.quiet() and not library.get_state(LARGER_DONE_KEY, False):
+            library.set_state(LARGER_DONE_KEY, True)
+        for item in cut:
+            if done + larger >= A_NIGHT or not night.quiet():
+                break
+            if room <= 0 and item.id not in kept:
+                break
+            host = urlsplit(display_copy(item)).hostname or ""
+            if host in resting:
+                continue
+            try:
+                grew = self._larger(item)
+            except httpx.HTTPError as err:
+                log.info("kept: %s turned us away (%s); the rest another night", host, err)
+                resting.add(host)
+                continue
+            if grew:
+                larger += 1
+                room -= grew
+            if not night.sleep(PAUSE):
+                break
+        if done or larger:
             self.service.storage.forget()
-        log.info("kept: %d originals downloaded, %d hosts left for later", done, len(resting))
-        return done
+        log.info(
+            "kept: %d originals downloaded, %d had again larger, %d hosts left for later",
+            done,
+            larger,
+            len(resting),
+        )
+        return done + larger

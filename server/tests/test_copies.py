@@ -125,7 +125,7 @@ def test_every_copy_is_listed_with_its_verdict(app: Any) -> None:
     assert not any(line["kind"] == "drop" for line in lines)
     best = copies["wmc:1"]
     assert best["verdict"] == "better" and best["measured"]
-    assert best["width"] == 3600 and best["gain"] == round(2560 / 1686, 2)
+    assert best["width"] == 3600 and best["gain"] == round(3600 / 1686, 2)
     assert "whole" in best["notes"] and "colours" in best["notes"]
     assert copies["wmc:2"]["verdict"] == "off" and "fragment" in copies["wmc:2"]["notes"]
     assert copies["wmc:3"]["verdict"] == "off" and "grey" in copies["wmc:3"]["notes"]
@@ -289,7 +289,7 @@ def test_the_owner_picks_a_copy_and_goes_back(app: Any) -> None:
     assert item["sharper"]["item_id"] == "wmc:9" and item["sharper"]["chosen"]
     assert item["favorite"] and item["title"] == "Bathing Nymphs and Child"
     with Image.open(service.images.image_path(service.library.get(own.id))) as img:
-        assert max(img.size) == 2560
+        assert max(img.size) == 3600  # whole: originals are kept up to 4000 px
     # The look in the background leaves the pick be.
     view = client.post(f"/api/library/items/{own.id}/sharpen").json()
     assert view["status"] == "found" and view["sharper"]["item_id"] == "wmc:9"
@@ -457,7 +457,7 @@ def test_an_aic_work_kept_at_1686_offers_its_download_size(app: Any) -> None:
     larger = copies[own.id + "~larger"]
     assert larger["role"] == "larger" and larger["verdict"] == "better"
     assert (larger["width"], larger["height"]) == (2975, 1983)
-    assert larger["gain"] == round(2560 / 1686, 2)
+    assert larger["gain"] == round(2975 / 1686, 2)
     assert larger["notes"] == ["whole", "colours", "larger"]
 
     spot = client.get(f"/api/library/items/{own.id}/copies/{own.id}~larger/spot")
@@ -466,7 +466,7 @@ def test_an_aic_work_kept_at_1686_offers_its_download_size(app: Any) -> None:
     item = client.put(f"/api/library/items/{own.id}/copy", json={"item_id": own.id + "~larger"})
     assert item.status_code == 200 and item.json()["sharper"] is None
     with Image.open(service.images.image_path(service.library.get(own.id))) as img:
-        assert max(img.size) == 2560
+        assert max(img.size) == 2975
     assert service.images.source_size(service.library.get(own.id))[:2] == (2975, 1983)
     # Kept large now: not offered again.
     assert own.id + "~larger" not in _final(_lines(client, own.id))

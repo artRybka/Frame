@@ -186,7 +186,7 @@ def test_a_poor_picture_is_swapped_for_a_sharper_copy(frame: Any) -> None:
     assert stored.sharper.url == copy.image_url
     assert stored.title == "Bathing Nymphs and Child"  # the work's own texts stay
     with Image.open(service.images.image_path(stored)) as img:
-        assert max(img.size) == 2560  # the copy, cut down to the frame
+        assert max(img.size) == 3600  # the copy, whole (kept up to 4000 px)
     assert service.images.source_size(stored) is not None
     # Known from now on: asked again, nothing is looked up.
     answer([])
@@ -303,7 +303,7 @@ def test_the_card_asks_and_the_frame_gets_the_copy(tmp_path: Path) -> None:
         assert item["sharper"]["item_id"] == "wmc:9"
         picture = client.get(f"/api/library/items/{own.id}/image", params={"v": "wmc:9"})
         with Image.open(io.BytesIO(picture.content)) as img:
-            assert max(img.size) == 2560
+            assert max(img.size) == 3600
         # A photo has no other copies to look for.
         photo = service.library.upsert(
             Item(id="upload:1", kind=ItemKind.PHOTO, source="upload", source_id="1")
@@ -410,7 +410,7 @@ def test_a_copy_from_commons_stands_in_when_the_museum_gives_no_picture(down: An
     assert stored.sharper.stand_in
     assert asked == {"commons": ["Dama z gronostajem vinci"], "all": []}
     with Image.open(service.images.image_path(stored)) as img:
-        assert max(img.size) == 2560  # the copy, cut down to the frame
+        assert max(img.size) == 4000  # the copy, as large as originals are kept
 
 
 def test_a_work_known_to_be_fine_gets_a_stand_in_too(down: Any) -> None:
