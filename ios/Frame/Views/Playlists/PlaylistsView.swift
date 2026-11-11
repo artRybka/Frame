@@ -990,7 +990,7 @@ struct CoverDrift {
 /// A streak of gloss across the glass that runs with the phone's turn
 /// (`Tilt`, started by the collage's `parallax()`) and fades out once the
 /// phone is held still, so a card at rest has none.
-private struct GlassSheen: View {
+struct GlassSheen: View {
     var body: some View {
         let tilt = Tilt.shared
         let middle = 0.5 + 0.3 * tilt.x - 0.1 * tilt.y
