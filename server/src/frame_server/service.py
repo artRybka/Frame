@@ -295,6 +295,8 @@ class FrameService:
             DailyJob(self.library, self.images, self.ai_config),
         )
         self.ai.register(self.daily.job)
+        # Which of the day's best works is worth a page (Sonnet, once a day).
+        self.daily.claude = self.claude
         # What Wikidata knows of each work, kept on disk across updates.
         self.pl_text.wikidata.kept = self.daily.job.wikidata.kept = records(settings.data_dir)
         # Discover's curator: two cards of "Dziś dla Ciebie", ordered at night.

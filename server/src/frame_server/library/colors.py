@@ -778,3 +778,34 @@ def tint_spread(img: Image.Image) -> float:
     across = np.abs(ab @ np.array([-axis[1], axis[0]]))
     beyond = np.maximum(np.maximum(-along, along - PAPER_TINT), 0.0)
     return round(float(np.percentile(np.maximum(across, beyond), 95)), 4)
+
+
+#: OKLab distance from the paper's colour that counts as a mark on it.
+INK_DISTANCE = 0.08
+#: A sheet lighter than this (OKLab lightness of its median) is paper.
+PAPER_LIGHT = 0.75
+#: Of a sheet's pixels, fewer marked than this make it pale ("blada kartka").
+PALE_INK = 0.03
+
+
+def ink_share(img: Image.Image) -> float:
+    """The share of a light sheet's pixels marked on it (``INK_DISTANCE``
+    from the paper's colour, its median); 1.0 for a picture whose middle is
+    no light paper. A pale sheet of a sketchbook has ~0.006, so has a
+    finished Ingres portrait in graphite: the number alone cannot tell
+    them apart (2026-11-11), only that little can be seen."""
+    small = img.convert("RGB")
+    small.thumbnail((256, 256))
+    width, height = small.size
+    margin = int(min(width, height) * 0.06)  # the mount and the museum's edge
+    small = small.crop((margin, margin, width - margin, height - margin))
+    lab = linear_to_oklab(u8_to_linear(np.asarray(small))).reshape(-1, 3)
+    paper = np.median(lab, axis=0)
+    if paper[0] < PAPER_LIGHT:
+        return 1.0
+    return round(float((np.linalg.norm(lab - paper, axis=1) > INK_DISTANCE).mean()), 4)
+
+
+def pale_sheet(img: Image.Image) -> bool:
+    """A light sheet with almost nothing on it."""
+    return ink_share(img) < PALE_INK

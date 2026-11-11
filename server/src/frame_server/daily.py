@@ -2,12 +2,15 @@
 of Odkrywaj, with its own page written by Claude (``ai.daily``). Once written,
 the page is the work's study like any other (``Study.adopt``).
 
-The work is picked without the model: museum works only, well suited to
-the e-paper, large enough, not an artist of the last few weeks and never a
-work of the last year; a little ahead are works of the season, works with
-a round anniversary this year, artists the owner likes and works whose
-museum tells something about them. Every day is kept, so a past day opens
-the same work again.
+Rules rank the works: museum works only, large enough, not an artist of
+the last few weeks and never a work of the last year; a little ahead are
+works of the season, works with a round anniversary this year, artists the
+owner likes and works whose museum tells something about them; sketches by
+their titles and pale sheets go last. The first ten (each by another
+artist) go to the curator (``ai.study_pick``, Mateusz 2026-11-11), who
+looks at their pictures, sets aside what is no finished work worth a page
+and chooses one; without it the rules' first stands. Every day is kept, so
+a past day opens the same work again.
 """
 
 from __future__ import annotations
@@ -31,10 +34,13 @@ from PIL import Image
 from .ai.daily import KIND, DailyJob, Detail, Essay, Seen
 from .ai.jobs import text_hash
 from .ai.study import KIND as STUDY
+from .ai.study_pick import Choice
+from .ai.study_pick import choose as curate
 from .imaging.align import align
 from .imaging.layout import load_image
 from .library import Item, ItemKind, PlaylistRules
 from .library.artists import is_artist
+from .library.colors import PALE_INK, ink_share
 from .library.cultures import circle
 from .library.images import display_copy
 from .library.models import Note
@@ -43,6 +49,7 @@ from .library.vocabulary import artist_matches, is_photograph, other_art
 
 if TYPE_CHECKING:
     from .ai import AiWorker
+    from .ai.client import Claude
     from .artist_works import ArtistWorks
     from .later import LaterWorks
     from .library import Library
@@ -66,6 +73,27 @@ POOL = 800
 MIN_SIDE = 1000
 #: Works like the work of the day the model chooses among.
 CANDIDATES = 12
+#: The rules' best works (each by another artist) the curator looks at.
+SHORTLIST = 10
+#: Shortlists the curator is asked about for one day, when it sets aside a
+#: whole one.
+SHORTLISTS = 2
+#: Works the curator set aside ("no finished work worth a page"): never
+#: shortlisted again. {id: what it saw}, the newest last.
+UNFIT_KEY = "daily_unfit"
+UNFIT_MAX = 5000
+#: The curator's choice of each day: {day: {"item", "reason", "unfit"}}.
+CURATED_KEY = "daily_curated"
+#: A title that calls the work a sketch or studies (the rules put it last;
+#: the curator may still choose one that stands as a work by itself).
+SKETCH_TITLE = re.compile(
+    r"\b(stud(?:y|ies)|sketch(?:es|book|ing)?|croquis|esquisses?|[ée]tudes?|studien?"
+    r"|skizzen?(?:buch)?|schets(?:en|boek)?|szkic\w*|studi(?:um|a)|notebook|carnet)\b",
+    re.IGNORECASE,
+)
+#: What a sketch's title and a pale sheet take from a work's score.
+SKETCH_PENALTY = 0.3
+PALE_PENALTY = 0.3
 #: "W tym samym czasie": works made a few years either side of the work,
 #: elsewhere and by others (Mateusz 2026-11-02); one row scrolled sideways
 #: since 2026-11-03 ("pokazuj więcej dzieł").
@@ -119,7 +147,13 @@ def score(item: Item, day: date, taste: list[str], rng: random.Random) -> float:
     value += 0.2 * round_anniversary(item, day)
     value += 0.15 * bool(taste and item.artist and artist_matches(item.artist, taste))
     value += 0.1 * (len(item.description) >= 200)
+    value -= SKETCH_PENALTY * sketch_title(item)
     return value + rng.uniform(0, 0.35)
+
+
+def sketch_title(item: Item) -> bool:
+    """The museum calls the work a sketch, studies or a sketchbook page."""
+    return bool(SKETCH_TITLE.search(item.title))
 
 
 class Daily:
@@ -147,6 +181,9 @@ class Daily:
         #: Looks for a sharper copy of the day's work before its page is
         #: written; set by the service.
         self.sharper: Sharper | None = None
+        #: Asks the curator which shortlisted work is worth a page; set by
+        #: the service (None: the rules' first stands).
+        self.claude: Claude | None = None
 
     # -- the days ----------------------------------------------------------
 
@@ -189,7 +226,8 @@ class Daily:
             skipped = self.skipped(day)
             if current is not None and current.id not in skipped:
                 skipped.append(current.id)
-            found = self.choose(day, skipped)
+            # One shortlist: the app waits for the answer (a minute at most).
+            found = self.choose(day, skipped, shortlists=1)
             if found is None:
                 return None
             self.library.set_state(SKIPPED_KEY, {"day": day.isoformat(), "items": skipped})
@@ -204,7 +242,9 @@ class Daily:
         stored = self.library.get_state(SKIPPED_KEY, {})
         return list(stored.get("items") or []) if stored.get("day") == day.isoformat() else []
 
-    def choose(self, day: date, skipped: list[str] | None = None) -> Item | None:
+    def choose(
+        self, day: date, skipped: list[str] | None = None, shortlists: int = SHORTLISTS
+    ) -> Item | None:
         """The work for ``day``; ``skipped``: works set aside for it by hand
         (each one drawn again makes another draw)."""
         skipped = skipped if skipped is not None else self.skipped(day)
@@ -228,10 +268,12 @@ class Daily:
         rules = PlaylistRules(kinds=[ItemKind.ARTWORK])
         seed = day.toordinal() + 1_000_003 * len(skipped)
         drawn = self.library.query(rules, sort="random", seed=seed, limit=POOL)[1]
+        unfit = self.unfit()
         pool = [
             i
             for i in drawn
             if i.id not in recent
+            and i.id not in unfit
             and i.look is None
             and i.artist
             and not is_photograph(i)
@@ -243,7 +285,99 @@ class Daily:
             return None
         rng = random.Random(seed)
         taste = self.player.taste()
-        return max(pool, key=lambda i: score(i, day, taste, rng))
+        values = {i.id: score(i, day, taste, rng) for i in pool}
+        ranked = sorted(pool, key=lambda i: values[i.id], reverse=True)
+        first: Item | None = None
+        for _ in range(shortlists):
+            shortlist = self._shortlist(ranked)
+            if not shortlist:
+                break
+            if first is None:
+                # The rules' own choice: pale sheets go after the rest.
+                first = max(
+                    shortlist, key=lambda pair: values[pair[0].id] - PALE_PENALTY * _pale(pair[1])
+                )[0]
+            if not self._curated():
+                return first
+            choice = self._curate(day, shortlist)
+            if choice is None:  # the curator could not answer: the rules stand
+                return first
+            if choice.item is not None:
+                return choice.item
+            # A whole shortlist set aside: the next one.
+            asked = {item.id for item, _ in shortlist}
+            ranked = [i for i in ranked if i.id not in asked]
+        return first
+
+    # -- the curator ---------------------------------------------------------
+
+    def unfit(self) -> dict[str, str]:
+        """The works the curator set aside, with what it saw in each."""
+        return dict(self.library.get_state(UNFIT_KEY, {}))
+
+    def curated(self) -> dict[str, dict[str, object]]:
+        """The curator's choice by day (ISO dates)."""
+        return dict(self.library.get_state(CURATED_KEY, {}))
+
+    def _curated(self) -> bool:
+        return self.claude is not None and self.job.enabled()
+
+    def _shortlist(self, ranked: list[Item]) -> list[tuple[Item, float | None]]:
+        """The rules' best works, each by another artist, with how much of a
+        light sheet is marked (None when its picture is not to be had)."""
+        picked: list[tuple[Item, float | None]] = []
+        artists: list[str] = []
+        for item in ranked:
+            if len(picked) >= SHORTLIST:
+                break
+            if artists and artist_matches(item.artist, artists):
+                continue
+            artists.append(item.artist)
+            picked.append((item, self._ink(item)))
+        return picked
+
+    def _ink(self, item: Item) -> float | None:
+        try:
+            return ink_share(load_image(self.job.images.ensure_thumb(item).read_bytes()))
+        except Exception as err:  # not to be had now: judged without it
+            log.info("study of the day: no picture of %s (%s)", item.id, err)
+            return None
+
+    def _curate(self, day: date, shortlist: list[tuple[Item, float | None]]) -> Choice | None:
+        """The curator's answer about ``shortlist`` (its work None when it
+        set every one aside); None when it could not answer."""
+        assert self.claude is not None
+        try:
+            choice = curate(self.claude, self.job.images, shortlist)
+        except Exception as err:
+            log.warning("study of the day: the curator did not answer (%s)", err)
+            return None
+        if choice.unfit:
+            unfit = self.unfit()
+            unfit.update(choice.unfit)
+            self.library.set_state(UNFIT_KEY, dict(list(unfit.items())[-UNFIT_MAX:]))
+        log.info(
+            "study of the day %s: curator chose %s (%s), set aside %d of %d: %s",
+            day,
+            choice.item.id if choice.item else "nothing",
+            choice.reason,
+            len(choice.unfit),
+            len(shortlist),
+            "; ".join(f"{k}: {v}" for k, v in choice.unfit.items()),
+        )
+        if choice.item is None:
+            return choice
+        curated = self.curated()
+        curated[day.isoformat()] = {
+            "item": choice.item.id,
+            "reason": choice.reason,
+            "unfit": sorted(choice.unfit),
+        }
+        cutoff = (day - timedelta(days=KEEP_DAYS)).isoformat()
+        self.library.set_state(
+            CURATED_KEY, {d: c for d, c in sorted(curated.items()) if d >= cutoff}
+        )
+        return choice
 
     # -- works like it -----------------------------------------------------
 
@@ -559,6 +693,10 @@ class Daily:
 
     def stop(self) -> None:
         self._stop.set()
+
+
+def _pale(ink: float | None) -> bool:
+    return ink is not None and ink < PALE_INK
 
 
 def _years_apart(item: Item, other: Item) -> int:
