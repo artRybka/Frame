@@ -490,19 +490,16 @@ struct WorkTile: View {
                     .followsTilt()
             }
         }
-        .background(alignment: .top) {
-            // A brightened card stands off the page at the top: a faint
-            // sliver of shadow past its top corners, gone two thirds down
-            // the picture ("Mgiełka", Mateusz 2026-11-11).
+        .background {
+            // A brightened card stands off the page at the top: the
+            // trapezoid of shadow it casts, wider at the top, a little
+            // below its bottom edge (Mateusz 2026-11-11).
             if brighten {
-                LiftEdges()
-                    .fill(LinearGradient(
-                        colors: [.black.opacity(scheme == .dark ? 0.45 : 0.17), .black.opacity(0)],
-                        startPoint: .top, endPoint: .bottom
-                    ))
-                    .frame(height: 80)
-                    .blur(radius: 1.1)
+                LiftShadow()
+                    .fill(.black.opacity(scheme == .dark ? 0.5 : 0.2))
                     .padding(.top, 4)
+                    .padding(.bottom, -3)
+                    .blur(radius: 6)
             }
         }
         .accessibilityElement(children: .combine)
