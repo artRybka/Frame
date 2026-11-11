@@ -494,7 +494,7 @@ struct JourneyRoad: View {
         }
     }
 
-    /// The pen's small drawings on this road (`JourneySketch`): a few
+    /// The pen's small drawings on this road (`JourneySketch`): some
     /// stops' beside their stains, a ship on a sea the work crossed; each
     /// where it has room, clear of the line, the stains, the seas and each
     /// other. Where there is no room there is no drawing.
