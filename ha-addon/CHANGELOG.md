@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.10
+
+- Studium dzieła, „Kolor i światło” przy pastelu, kredce i kredzie: próbka
+  farby prawdopodobnej nie jest już rzadką, prawie pojedynczą kreską.
+  Jest tak samo gęsto zakreskowana jak próbka farby pewnej, tylko trochę
+  węższa i niższa.
+
 ## 1.145.9
 
 - Studium dzieła, „Kolor i światło”: malowane próbki prawdopodobnych farb
