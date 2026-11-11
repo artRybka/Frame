@@ -39,7 +39,8 @@ from ..library.themes import (
     put_curated,
     season,
 )
-from .client import OPUS, AiUnavailable, request
+from .client import OPUS, request
+from .night_order import NightOrder
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -56,9 +57,9 @@ KIND = "curator"
 PROPOSALS = 6
 #: Painters of the catalogue shown to the model, most works first.
 ARTISTS = 300
-#: How long the night waits for the batch's answer, and how often it asks.
+#: How long the night waits for the batch's answer (one question to Opus
+#: with a long answer: longer than the judges' rounds).
 WAIT_SECONDS = 3600.0
-POLL_SECONDS = 60.0
 SEASONS = {"winter": "zima", "spring": "wiosna", "summer": "lato", "autumn": "jesień"}
 
 SYSTEM = f"""\
@@ -170,8 +171,11 @@ def prompt(library: Library, day: date, taste: list[str], wanted: int) -> str:
     return "\n".join(lines)
 
 
-class Curator:
+class Curator(NightOrder):
     """Orders the curator's cards at night and puts in what passes."""
+
+    name = "curator"
+    wait_seconds = WAIT_SECONDS
 
     def __init__(
         self,
@@ -215,15 +219,10 @@ class Curator:
         wanted = curated_due(self.library, day)
         if not wanted:
             return False
-        try:
-            batch = self.claude.create_batch(
-                [{"custom_id": f"{KIND}-{day.isoformat()}", "params": self.params(day, wanted)}]
-            )
-        except AiUnavailable as err:
-            log.info("curator: not asked (%s)", err)
-            return False
-        except Exception:
-            log.exception("curator: the order failed")
+        batch = self.send(
+            [{"custom_id": f"{KIND}-{day.isoformat()}", "params": self.params(day, wanted)}]
+        )
+        if batch is None:
             return False
         self._set_order({"batch": batch, "day": day.isoformat()})
         log.info("curator: %d cards ordered for %s (batch %s)", wanted, day, batch)
@@ -235,14 +234,10 @@ class Curator:
         order = self._state().get("order")
         if not order:
             return None
-        try:
-            ended, _ = self.claude.batch_ended(order["batch"])
-            if not ended:
-                return False
-            messages = [m for _, m in self.claude.batch_results(order["batch"])]
-        except Exception:
-            log.exception("curator: the batch could not be read")
+        results = self.answers(order["batch"])
+        if results is None:
             return False
+        messages = [m for _, m in results]
         self._set_order(None)
         message = next((m for m in messages if m is not None), None)
         if message is None:
@@ -277,12 +272,5 @@ class Curator:
         ordered (the night runs after midnight: "tomorrow" is the day that
         has begun) and waited for while the night lasts."""
         self.collect()
-        if not self.order(date.today()):
-            return
-        waited = 0.0
-        while waited < WAIT_SECONDS and night.quiet():
-            if not night.sleep(POLL_SECONDS):
-                return
-            waited += POLL_SECONDS
-            if self.collect() is not False:
-                return
+        if self.order(date.today()):
+            self.waited(night)

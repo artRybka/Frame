@@ -147,6 +147,41 @@ enum Paint {
     /// swatch) the picture goes on: paint runs over the edge.
     static let bar = 26.0
     static let pad = 16.0
+    /// The least of the bar a colour takes where each has a place of its
+    /// own along it (watercolour, pastel): an accent of a hundredth of
+    /// the picture is still a patch one sees, not a hairline (Mateusz
+    /// 2026-11-11 22:54: „akcenty na linii kolorów większe (teraz są zbyt
+    /// drobne)”).
+    static let least = 20.0
+
+    /// Each colour's place along a bar `width` wide: as wide as its share
+    /// of the picture, a small one `least` wide, the others making room
+    /// for it by their shares.
+    static func spans(_ shares: [PaintShare], width: Double) -> [(Double, Double)] {
+        let floor = min(least, width / Double(max(1, shares.count)))
+        var widths = shares.map { _ in floor }
+        var small = Set<Int>()
+        while true {
+            let rest = shares.indices.filter { !small.contains($0) }
+            let room = width - floor * Double(small.count)
+            let weight = max(rest.reduce(0) { $0 + shares[$1].weight }, 0.000_001)
+            var more = false
+            for i in rest {
+                widths[i] = room * shares[i].weight / weight
+                if widths[i] < floor - 0.000_001 {
+                    small.insert(i)
+                    more = true
+                }
+            }
+            if !more { break }
+        }
+        for i in small { widths[i] = floor }
+        var x = 0.0
+        return widths.map { w in
+            defer { x += w }
+            return (x, x + w)
+        }
+    }
     /// A paint's swatch, and half the square its picture takes.
     static let swatch = 26.0
     static let half = 23.0
@@ -268,13 +303,7 @@ final class WaterStrip: PaintPainter, @unchecked Sendable {
 
     /// Each colour's place along the bar.
     static func spans(_ shares: [PaintShare], width: Double) -> [(Double, Double)] {
-        let total = max(shares.reduce(0) { $0 + $1.weight }, 0.000_001)
-        var x = 0.0
-        return shares.map { share in
-            let w = width * share.weight / total
-            defer { x += w }
-            return (x, x + w)
-        }
+        Paint.spans(shares, width: width)
     }
 
     private func prepare() -> Fields {
@@ -722,7 +751,7 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
         var spots = [(at: Double, long: Double)]()
         for (n, i) in small.enumerated() {
             let wish = room * (0.1 + 0.8 * (Double(n) + 0.5 + 0.5 * (random.next() - 0.5)) / Double(small.count))
-            let long = 17 + 9 * min(1, width * shares[i].weight / total / touch)
+            let long = 30 + 12 * min(1, width * shares[i].weight / total / touch)
             // On the body of a pull, not across the place where one begins, and clear of the other accents:
             // the nearest such place to where it would be.
             func free(_ spot: Double) -> Bool {
@@ -748,8 +777,7 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
             var pull = varied(a: spot - long / 2, e: spot + long / 2, touch: true, random: &random)
             pull.rgb = shares[i].rgb
             pull.on = true
-            pull.wide *= 0.68
-            pull.dy *= 1.5
+            pull.wide *= 0.92
             pull.at = at
             pull.takes = dab
             pulls.append(pull)
@@ -1078,11 +1106,11 @@ struct DryPlan: Sendable {
 
     init(shares: [PaintShare], width: Double, seed: Int) {
         let m = shares.count, Hs = Paint.bar
-        let total = max(shares.reduce(0) { $0 + $1.weight }, 0.000_001)
-        var random = PaintRandom(seed + 23), x0 = 0.0
+        let spans = Paint.spans(shares, width: width)
+        var random = PaintRandom(seed + 23)
         var strokes = [Stroke]()
-        for (i, share) in shares.enumerated() {
-            let w = width * share.weight / total
+        for i in shares.indices {
+            let x0 = spans[i].0, w = spans[i].1 - spans[i].0
             let a = x0 - (i > 0 ? 6 : 0), e = x0 + w + (i < m - 1 ? 6 : 0)
             let count = max(4, Int(((e - a) / 2.7).rounded()))
             let lean = 7.5 + 2 * (random.next() - 0.5)
@@ -1103,7 +1131,6 @@ struct DryPlan: Sendable {
                 strokes.append(Stroke(colour: i, part: 0.75 + 0.25 * Double(q) / Double(max(1, again)), from: (cx - l, y1), to: (cx + l, y2),
                                       bow: bow, wide: wide, alpha: alpha))
             }
-            x0 += w
         }
         self.strokes = strokes
         last = Double(max(0, m - 1)) * Self.apart + Self.stroke
