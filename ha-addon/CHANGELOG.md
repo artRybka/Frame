@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.1
+## 1.145.2
 
 - Studium dzieła: „Dalsze losy” są teraz dalszym ciągiem „Drogi dzieła”
   i stoją zaraz pod nią. Chwilę po czerwonej plamie na końcu drogi pióro
@@ -20,6 +20,15 @@
   ciemniejszy brzeg. Kreska jest rysowana w mokrej farbie, więc za
   piórem tusz rozpływa się w niebieskim, miejscami szerzej. Fale i nazwa
   morza zostają, fale są odrobinę ciemniejsze.
+
+## 1.145.1
+
+- Studium dnia bierze pod uwagę jakość zdjęcia dzieła. Dzieła ze zdjęciem
+  co najmniej tak dużym jak ekran ramki idą wyżej, a mniejsze niż 2000 px
+  niżej. Czarno-białe zdjęcia obrazów w kolorze i stare slajdy z archiwów
+  sztuki nie są proponowane. Kurator widzi rozmiar zdjęcia i odrzuca
+  nieostre, wyblakłe albo ze ścianą czy tablicą barw. Takie dzieło wraca,
+  gdy znajdzie się jego lepsza kopia.
 
 ## 1.145.0
 
