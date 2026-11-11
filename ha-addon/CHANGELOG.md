@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.24
+
+- Trzy dzieła przestają uchodzić za coś, czym nie są: dwa szkice Cézanne'a
+  z Cleveland („Sketch of Madame Cézanne”), które serwer brał za odwrocie
+  obrazu, i obraz „Old Woman Plucking a Fowl” z National Gallery of Art,
+  który muzeum opisało jako fotografię, choć to olej na płótnie z około
+  1650 roku. Odwrocie rysunku i arkusz opisany z obu stron są odtąd
+  dziełami, więc serwer nie odrzuca już dwustronnych rysunków z muzeów.
+
 ## 1.145.23
 
 - Odkrywaj pokazuje najpierw dobre dzieła. Strona tematu zaczynała się od
