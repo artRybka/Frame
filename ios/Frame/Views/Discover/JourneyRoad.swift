@@ -723,10 +723,11 @@ struct RoadMarks: Equatable {
 
     /// How far under the middle of the screen the tip of the line is
     /// drawn, at the least; on a screen tall enough it is drawn `foot`
-    /// over the screen's bottom (2026-11-11 11:56: „cienka kreska może
-    /// się zaczyna rysować wcześniej, prawie u dołu ekranu”).
+    /// over the bottom of what the bars leave of the screen, which is just
+    /// over the tab bar (2026-11-11 11:56: „cienka kreska może się zaczyna
+    /// rysować wcześniej, prawie u dołu ekranu”).
     static let ahead: CGFloat = 190
-    static let foot: CGFloat = 100
+    static let foot: CGFloat = 20
     /// A stop begins with its dot this far under the middle of the screen
     /// (11:56: „Podobnie plamy pod teksty, trochę wcześniej niż teraz”),
     /// and no sooner than this long after the stop before it.
@@ -779,7 +780,8 @@ struct RoadMarks: Equatable {
     /// A stop's clock when nothing in it changes any more.
     func whole(_ index: Int) -> CGFloat { (spans[index] ?? Self.clock.dry) + lead(index) }
 
-    /// How far under the middle of a screen `screen` high the tip is drawn.
+    /// How far under the middle of a screen the tip is drawn; `screen`:
+    /// the height the bars leave of it (the scroll view's bounds).
     static func reach(screen: CGFloat) -> CGFloat { max(ahead, screen / 2 - foot) }
 
     /// How far the tip of the line is to go with the middle of the screen

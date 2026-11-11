@@ -338,10 +338,12 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertGreaterThan(marks.full, plan.height)
         // 2026-11-11 11:56: „cienka kreska może się zaczyna rysować
         // wcześniej, prawie u dołu ekranu. Podobnie plamy pod teksty,
-        // trochę wcześniej niż teraz.” On a phone the tip is drawn a
-        // little over the bottom of the screen; on a low screen as before.
-        XCTAssertEqual(RoadMarks.reach(screen: 874), 337)
-        XCTAssertEqual(RoadMarks.reach(screen: 500), RoadMarks.ahead)
+        // trochę wcześniej niż teraz.” On a phone, where the bars leave
+        // 676 points of the screen, the tip is drawn just over the tab
+        // bar; on a low screen as before.
+        XCTAssertEqual(RoadMarks.reach(screen: 676), 318)
+        XCTAssertEqual(RoadMarks.reach(screen: 500), 230)
+        XCTAssertEqual(RoadMarks.reach(screen: 400), RoadMarks.ahead)
         XCTAssertEqual(marks.target(mid: 100, ahead: 337), 437)
         // A stop begins with its dot a little under the middle of the
         // screen, well over the tip of the line, and the line drawn through it.
@@ -383,7 +385,7 @@ final class JourneyRoadTests: XCTestCase {
         func there(_ i: Int) -> Bool { abs(reveal.age(i) - RoadMarks.clock.dry) < 0.0001 }
         run(12)
         // The pen has gone ahead of the middle of the screen and the line has thickened up to it.
-        XCTAssertEqual(reveal.pen, 150 + RoadMarks.ahead, accuracy: 0.01)
+        XCTAssertEqual(reveal.pen, 150 + RoadMarks.reach(screen: 500), accuracy: 0.01)
         XCTAssertEqual(reveal.thick, reveal.pen, accuracy: 0.01)
         // The stops above the middle have begun, in turn and not all at once; the rest wait.
         for i in marks.dots.indices {
@@ -443,14 +445,14 @@ final class JourneyRoadTests: XCTestCase {
                 XCTAssertLessThan(reveal.drawing(i), 0, "stop \(i)")
             }
         }
-        XCTAssertEqual(reveal.pen, 150 + RoadMarks.ahead, accuracy: 0.01)
+        XCTAssertEqual(reveal.pen, 150 + RoadMarks.reach(screen: 500), accuracy: 0.01)
         XCTAssertEqual(reveal.thick, reveal.pen, accuracy: 0.01)
         XCTAssertTrue(reveal.settled)
         // And down again: it is drawn again.
         reveal.look(CGRect(x: 0, y: 100, width: 350, height: 500))
         run(12)
         XCTAssertTrue(marks.dots.indices.filter { marks.dots[$0] <= 350 }.allSatisfy { there($0) })
-        XCTAssertEqual(reveal.pen, 350 + RoadMarks.ahead, accuracy: 0.01)
+        XCTAssertEqual(reveal.pen, 350 + RoadMarks.reach(screen: 500), accuracy: 0.01)
     }
 
     func testAStopsClockRunsBackFasterAndThePenDrawsBackUp() {
@@ -922,7 +924,7 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertGreaterThan(held, 100)
         XCTAssertEqual(reveal.age(count - 1), RoadMarks.clock.dry, accuracy: 0.001)
         // Ringed, the line goes on: as far as the heading, which is not at the middle of the screen yet.
-        let waiting = min(first + RoadMarks.ahead, onward.loopY + 6)
+        let waiting = min(first + RoadMarks.reach(screen: 500), onward.loopY + 6)
         XCTAssertGreaterThan(waiting, end + 30)
         XCTAssertEqual(reveal.pen, waiting, accuracy: 0.01)
         XCTAssertTrue(reveal.settled)
@@ -940,7 +942,7 @@ final class JourneyRoadTests: XCTestCase {
                 if reveal.age(count) >= 0 { circling += 1 }
             }
         }
-        XCTAssertEqual(reveal.pen, second + RoadMarks.ahead, accuracy: 0.01)
+        XCTAssertEqual(reveal.pen, second + RoadMarks.reach(screen: 500), accuracy: 0.01)
         XCTAssertGreaterThan(circling, 40)
         XCTAssertEqual(reveal.age(count), marks.whole(count), accuracy: 0.001)
         XCTAssertEqual(reveal.age(count + 1), RoadMarks.clock.dry, accuracy: 0.001)
