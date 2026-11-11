@@ -65,7 +65,10 @@ import UIKit
 /// on the screen, thin, and the line thickens behind it (`RoadLine`). A
 /// stop begins when its dot is up at the middle of the screen: the dot,
 /// then its stain spreading out of the dot under the text (`RoadStain`),
-/// then the text on the stain. Each stop has a stain of its own; they are
+/// then the text on the stain. The stain is ink poured, not paint washed
+/// in (09:11: „Rozlewanie tuszu a nie jego rozmywanie… papier na krawędzi
+/// plam nasiąkał tuszem i już mniej mocnym odcieniem powstaje fragmentami
+/// drugie halo plamy”). Each stop has a stain of its own; they are
 /// no longer one wash, which in dark paint would be a band down the page
 /// with the line lost in it.
 struct JourneyRoad: View {
@@ -932,10 +935,14 @@ private struct DotMark: View {
 /// (czyli plamy ciemnej farby (zanikające do ciemnoszarej akwareli)…”;
 /// 08:55: „powinny powstawać jak akwarela (zaczynając się od kropki) i nie
 /// spływać tak bardzo w dół… Plama może rozwiązać się czasami przy
-/// krawędzi. W motywie ciemnym tekst czarny, a plamy pod nim białe”): paint
-/// that comes out of the stop's dot and spreads under its text the way
-/// watercolour does, dark on the light page and white on the dark one
-/// (`Watercolour.metal`, `spill`).
+/// krawędzi. W motywie ciemnym tekst czarny, a plamy pod nim białe”; 09:11:
+/// „Plamy mają powstawać z kropek. Teraz są nanoszone na nich. Rozlewanie
+/// tuszu a nie jego rozmywanie… jakby papier na krawędzi plam nasiąkał
+/// tuszem i już mniej mocnym odcieniem powstaje fragmentami drugie halo
+/// plamy. Jakby akwarela wsiąkała w papier”): ink that pours out of the
+/// stop's dot and spreads under its text with a sharp wet edge, dries, and
+/// in places soaks on into the paper as a second, paler halo; dark on the
+/// light page and white on the dark one (`Watercolour.metal`, `spill`).
 private struct RoadStain: View {
     let reveal: RoadReveal
     let index: Int
@@ -954,8 +961,9 @@ private struct RoadStain: View {
                 ShaderLibrary.spill(
                     .float2(Float(spill.dot.x - box.minX), Float(spill.dot.y - box.minY)),
                     .float(Float(spill.bottom - box.minY)), .float(Float(spill.reach)), .float(age), .float(seed),
-                    .color(ink.wet), .color(ink.dense), .color(ink.wash),
-                    .float2(ink.cover.wet, ink.cover.dry), .float2(ink.grain, ink.bloom)
+                    .color(ink.wet), .color(ink.dense), .color(ink.wash), .color(ink.halo),
+                    .float2(ink.cover.wet, ink.cover.dry), .float2(ink.soak.pale, ink.soak.lip),
+                    .float2(ink.grain, ink.bloom)
                 ),
                 maxSampleOffset: .zero
             )
@@ -1491,24 +1499,30 @@ extension JourneyRoad {
         var frame = CGRect.zero
     }
 
-    /// The paint of the stains: as it comes (`wet`), dried where it lay
-    /// thick, by the dot (`dense`), and dried where it ran thin (`wash`);
-    /// how much of the page it covers wet and dry, how much of the paper's
-    /// grain shows in it and how uneven it dries.
+    /// The ink of the stains: as it comes (`wet`), dried where it lay
+    /// thick, by the dot (`dense`), dried where it ran thin (`wash`), and
+    /// soaked into the paper past the stain's edge (`halo`); how much of
+    /// the page it covers wet and dry, how much the halo covers and how
+    /// much more at its own edge, how much of the paper's grain shows in
+    /// it and how uneven it dries.
     struct Ink {
         var wet: Color
         var dense: Color
         var wash: Color
+        var halo: Color
         var cover: (wet: CGFloat, dry: CGFloat)
+        var soak: (pale: CGFloat, lip: CGFloat)
         var grain: CGFloat
         var bloom: CGFloat
 
         /// Dark ink that dries to a dark-grey wash (08:29).
         static let onLight = Ink(wet: Color(hex: 0x1B1916), dense: Color(hex: 0x1F1D1A), wash: Color(hex: 0x4A4641),
-                                 cover: (0.97, 0.85), grain: 0.2, bloom: 22.0 / 255)
+                                 halo: Color(hex: 0x46423D), cover: (0.97, 0.85), soak: (0.34, 0.2), grain: 0.2,
+                                 bloom: 22.0 / 255)
         /// On the dark page the stains are white (08:55).
         static let onDark = Ink(wet: Color(hex: 0xFFFDF9), dense: Color(hex: 0xFFFEFA), wash: Color(hex: 0xECE7DE),
-                                cover: (0.97, 0.9), grain: 0.09, bloom: 10.0 / 255)
+                                halo: Color(hex: 0xF6F2EA), cover: (0.97, 0.9), soak: (0.3, 0.16), grain: 0.09,
+                                bloom: 10.0 / 255)
     }
 
     /// Where the lines of a stop's text are on the road. `hug` is the text
@@ -1537,8 +1551,8 @@ extension JourneyRoad {
 
     /// A stop's stain: every line of its text with room round it, so the
     /// stain keeps the text's own ragged side; it sags along its foot,
-    /// where the paint gathers, and bulges at a side or two; the paint
-    /// gathers round the dot and goes from there into the stain; under
+    /// where the ink gathers, and bulges at a side or two; the ink comes
+    /// out of the dot and goes from there into the stain; under
     /// some stains a short drip, where there is room for one (08:55: „nie
     /// spływać tak bardzo w dół”).
     static func spill(under lines: [CGRect], from dot: CGPoint, line: [CGPoint], width: CGFloat, height: CGFloat,
@@ -1566,7 +1580,10 @@ extension JourneyRoad {
             let level = rect.midY + (random.unit() - 0.5) * 6
             bulges.append(Drop(at: CGPoint(x: left ? rect.minX + 4 : rect.maxX - 4, y: level), radius: 8 + 3 * random.unit()))
         }
-        // The way out of the dot: to the nearest place inside the stain.
+        // The way out of the dot: to the nearest place inside the stain, no
+        // wider than the dot where it starts, so the dot is the stain's tip
+        // and not under it (09:11: „Plamy mają powstawać z kropek. Teraz są
+        // nanoszone na nich”).
         var near = dot, away = CGFloat.infinity
         for rect in rects {
             let spot = CGPoint(x: min(max(rect.minX + 9, dot.x), max(rect.minX + 9, rect.maxX - 9)),
@@ -1577,7 +1594,7 @@ extension JourneyRoad {
         let steps = max(2, Int((away / 4).rounded(.up)))
         let way = (0...steps).map { q -> Drop in
             let part = CGFloat(q) / CGFloat(steps)
-            return Drop(at: CGPoint(x: dot.x + (near.x - dot.x) * part, y: dot.y + (near.y - dot.y) * part), radius: 7 + 4 * part)
+            return Drop(at: CGPoint(x: dot.x + (near.x - dot.x) * part, y: dot.y + (near.y - dot.y) * part), radius: 4.6 + 5.4 * part)
         }
         // A drip, rather on the stain's outer side, and only where the road is not right under it.
         var drips: [Drip] = []

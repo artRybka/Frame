@@ -98,63 +98,76 @@ float ease(float x) {
     return half4(half3(colour), half(alpha));
 }
 
-// A stop's stain in JourneyRoad coming out of the stop's dot and spreading
-// under its text the way watercolour does (RoadStain). The layer is the
-// field: the stain's shape, white and blurred, so its alpha says how deep
-// inside the paint a place is. Paint is where the field is over a
-// threshold. `age` is how long ago the paint started out of `source`, the
-// dot, in seconds. It goes out from there on all sides, unevenly, fast at first
-// and then creeping, the far corner of the stain `reach` away; under
-// `bottom`, the stain's foot, it comes late, to gather and drip. Where it
-// has only just come it is thin and its edge soft; then it deepens, seeps
-// out to its edge (the threshold falls) and dries: from `wet` to `dense`
-// where it lay thick, by the dot and along the edge it pooled at, and to
-// `wash` where it ran thin, the paper's grain showing through. Here and
-// there the edge comes loose: the paint bleeds out into the paper, pale,
-// and no rim dries there. `cover` is how much of the page the paint covers
-// wet and dry, `tooth` how much the grain shows and how uneven it dries.
-// Lengths are in points; `seed` tells one stain's paint from another's.
+// A stop's stain in JourneyRoad: ink poured out of the stop's dot, spreading
+// under its text (RoadStain; Mateusz 2026-11-11 09:11: „Plamy mają
+// powstawać z kropek… Rozlewanie tuszu a nie jego rozmywanie… jakby papier
+// na krawędzi plam nasiąkał tuszem i już mniej mocnym odcieniem powstaje
+// fragmentami drugie halo plamy. Jakby akwarela wsiąkała w papier”). The
+// layer is the field: the stain's shape, white and blurred, so its alpha
+// says how deep inside the ink a place is. Ink is where the field is over
+// a threshold. `age` is how long ago the ink started out of `source`, the
+// dot, in seconds. It goes out from there on all sides with a sharp wet
+// front, in lobes, fast at first and then slower, the far corner of the
+// stain `reach` away; under `bottom`, the stain's foot, it comes late, to
+// gather and drip. Where it has come it is there at once, its edge sharp;
+// it creeps a little further (the threshold falls) and dries: from `wet`
+// to `dense` where it lay thick, by the dot and along the edge it pooled
+// at, and to `wash` where it ran thin, the paper's grain showing through.
+// Then the paper at the edge soaks it up: in places a second halo grows
+// out past the edge, in `seeped`, paler (`soak.x` of the page covered),
+// with an edge of its own where the pigment stops (`soak.y` more there).
+// `cover` is how much of the page the ink covers wet and dry, `tooth` how
+// much the grain shows and how uneven it dries. Lengths are in points;
+// `seed` tells one stain's ink from another's.
 [[ stitchable ]] half4 spill(float2 position, SwiftUI::Layer layer, float2 source, float bottom, float reach, float age,
-                             float seed, half4 wet, half4 dense, half4 wash, float2 cover, float2 tooth) {
+                             float seed, half4 wet, half4 dense, half4 wash, half4 seeped, float2 cover, float2 soak,
+                             float2 tooth) {
     using namespace paper;
     float field = float(layer.sample(position).a);
     if (field <= 0.04 || age <= 0.0) { return half4(0); }
     float2 at = position;
 
-    // When the paint gets here.
-    float ragged = 0.6 * noise(at / 9.0, 61.0 + seed) + 0.4 * noise(at / 4.0, 62.0 + seed);
+    // When the ink gets here.
     float away = length(at - source) / max(reach, 1.0);
-    float way = clamp(away + 0.24 * (noise(at / 34.0, 41.0 + seed) - 0.5) + 0.1 * (noise(at / 13.0, 43.0 + seed) - 0.5)
-                      + 0.04 * (ragged - 0.5), 0.0, 1.1);
+    float way = clamp(away + 0.24 * (noise(at / 34.0, 41.0 + seed) - 0.5) + 0.1 * (noise(at / 13.0, 43.0 + seed) - 0.5),
+                      0.0, 1.1);
     float below = at.y - bottom + 2.0;
     if (below > 0.0) { way = max(way, mix(way, 1.0 + below / 60.0, smoothstep(0.0, 6.0, below))); }
     float comes = 3.8 * (1.0 - pow(1.0 - min(way, 1.48) / 1.5, 1.0 / 2.2));
     float since = age - comes;
     if (since <= 0.0) { return half4(0); }
 
+    float ragged = 0.6 * noise(at / 9.0, 61.0 + seed) + 0.4 * noise(at / 4.0, 62.0 + seed);
     float wetness = noise(at / 60.0, 81.0 + seed);
     float grain = noise(at / 1.5, 71.0 + seed);
     float pool = noise(at / 30.0, 91.0 + seed);
     float lobe = noise(at / 24.0, 93.0 + seed);
-    float seep = ease(since / 1.2);
-    float arrive = ease(since / 0.9);
-    float dry = ease((since - 0.5) / 1.9);
+    float patch = noise(at / 26.0, 97.0 + seed);
+    float capillary = 0.6 * noise(at / 5.0, 98.0 + seed) + 0.4 * noise(at / 2.2, 99.0 + seed);
+    float seep = ease(since / 0.9);
+    float arrive = ease(since / 0.015);
+    float dry = ease((since - 0.8) / 2.2);
 
-    // The edge: soft while the paint is young, and where the paper was wet.
-    float edge = 0.64 - 0.2 * seep + 0.09 * (ragged - 0.5) + 0.1 * (lobe - 0.5);
-    float feather = 0.03 + 0.07 * wetness * wetness + 0.2 * (1.0 - seep);
-    float inside = smoothstep(edge - feather, edge + 0.02, field);
-    float loose = smoothstep(0.56, 0.78, wetness);
-    float fringe = loose * seep * 0.5 * smoothstep(0.05, 0.4, field) * (1.0 - 0.25 * (grain - 0.5));
-    if (inside <= 0.0 && fringe <= 0.0) { return half4(0); }
+    // The ink's edge: sharp.
+    float edge = 0.58 - 0.13 * seep + 0.07 * (ragged - 0.5) + 0.08 * (lobe - 0.5);
+    float inside = smoothstep(edge - 0.035, edge + 0.015, field);
+    // The second halo: only in places, growing out of the edge as the paper soaks.
+    float part = smoothstep(0.4, 0.6, patch);
+    float deep = ease((since - 0.9) / 2.8) * part * (0.26 * (0.55 + 0.9 * pool) + 0.07 * (capillary - 0.5));
+    float outer = edge - deep;
+    float ring = deep > 0.0 ? smoothstep(0.0, 0.03, deep) * smoothstep(outer - 0.03, outer + 0.012, field) : 0.0;
+    float lip = ring * (1.0 - smoothstep(outer + 0.015, outer + 0.09, field));
+    float pale = ring * (soak.x + soak.y * lip) * (1.0 - 0.35 * (grain - 0.5));
+    if (inside <= 0.0 && pale <= 0.0) { return half4(0); }
 
-    float rim = dry * (1.0 - loose) * smoothstep(edge - 0.005, edge + 0.03, field)
+    float rim = dry * (1.0 - 0.7 * part) * smoothstep(edge - 0.005, edge + 0.03, field)
         * (1.0 - smoothstep(edge + 0.08, edge + 0.3, field)) * (0.45 + 0.55 * (1.0 - wetness));
     float thick = 1.0 - ease(away / 0.9);
-    float body = min(1.0, 0.78 * thick + 0.7 * rim) * inside;
+    float body = min(1.0, 0.78 * thick + 0.7 * rim);
     float dried = min(0.97, (cover.y + 0.1 * thick + 0.08 * (pool - 0.5)) * (1.0 - tooth.x * (grain - 0.5)) + 0.12 * rim);
-    float alpha = arrive * max(inside * mix(cover.x, dried, dry), fringe);
+    float alpha = arrive * max(inside * mix(cover.x, dried, dry), pale);
     float3 settled = mix(float3(wash.rgb), float3(dense.rgb), body) + (pool - 0.5) * tooth.y * dry;
-    float3 colour = clamp(mix(float3(wet.rgb), settled, max(dry, 1.0 - inside)), 0.0, 1.0);
+    float3 ink = mix(float3(wet.rgb), settled, dry);
+    float3 colour = clamp(mix(float3(seeped.rgb), ink, inside), 0.0, 1.0);
     return half4(half3(colour * alpha), half(alpha));
 }
