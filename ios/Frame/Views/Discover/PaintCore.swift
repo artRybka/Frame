@@ -876,14 +876,15 @@ struct DryPlan: Sendable {
     }
 
     /// One paint's scribble: the corners of its zigzag, in points from the
-    /// middle of its swatch. `sure` false: fewer turns.
+    /// middle of its swatch. `sure` false (a likely paint, not one the
+    /// sources name): as close a hatching, on a narrower and lower patch.
     static func scribble(sure: Bool, index: Int, seed: Int) -> [(x: Double, y: Double)] {
         var random = PaintRandom(seed + 400 + index)
-        let turns = sure ? 7 : 4
+        let turns = sure ? 7 : 5, reach = sure ? 10.5 : 7.5, tall = sure ? 9.5 : 8.5
         var points = [(x: Double, y: Double)]()
         for q in 0...turns {
-            let u = -10.5 + 21 * Double(q) / Double(turns) + 1.2 * (random.next() - 0.5), up = q % 2 == 0
-            points.append((u + (up ? 2.2 : -2.2), (up ? -9.5 : 9.5) * (0.8 + 0.25 * random.next())))
+            let u = -reach + 2 * reach * Double(q) / Double(turns) + 1.2 * (random.next() - 0.5), up = q % 2 == 0
+            points.append((u + (up ? 2.2 : -2.2), (up ? -tall : tall) * (0.8 + 0.25 * random.next())))
         }
         return points
     }

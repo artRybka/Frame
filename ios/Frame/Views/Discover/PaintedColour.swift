@@ -161,8 +161,8 @@ final class DryStrip: @unchecked Sendable {
     }
 }
 
-/// One paint as a short scribble of the stick. `sure` false: fewer
-/// turns, a thinner and paler line.
+/// One paint as a short scribble of the stick. `sure` false: the same
+/// close hatching on a narrower patch, a touch lighter in the hand.
 final class DryScribble: @unchecked Sendable {
     static let length = 1.2
 
@@ -190,9 +190,9 @@ final class DryScribble: @unchecked Sendable {
         let age = min(Self.length, age), turns = points.count - 1
         if age > 0, turns > 0 {
             let done = min(1, age / 0.45) * Double(turns)
-            context.setAlpha(sure ? 0.85 : 0.55)
+            context.setAlpha(sure ? 0.85 : 0.76)
             context.setStrokeColor(colour)
-            context.setLineWidth(sure ? 3.4 : 2.6)
+            context.setLineWidth(sure ? 3.4 : 3.1)
             context.move(to: CGPoint(x: points[0].x, y: points[0].y))
             for q in 1...turns {
                 let k = min(1, done - Double(q - 1))

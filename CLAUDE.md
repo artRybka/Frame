@@ -28,6 +28,11 @@ uv run mypy src
 - `web/app.py` FastAPI: `/panel/*` for the panel (no auth, must never 404
   once content exists), `/api/*` for the app (Bearer token).
 - Never hand-edit `uv.lock`; use `uv add` / `uv lock`.
+- The rules that decide which works are shown and which are one work are
+  being made one (`docs/RULES.md`, the audit of 2026-11-11 and its plan).
+  What every place answers about every kind of work is frozen in
+  `tests/test_rules_matrix.py`: a change of a rule that moves a mark there
+  is a change of what the owner sees, his to decide.
 - Museum requests go through `library/hosts.py` with the rules in
   `library/policy.py`. Search pages are kept on disk for days and survive
   releases: when you change how one museum's answers become `Item`s, raise
