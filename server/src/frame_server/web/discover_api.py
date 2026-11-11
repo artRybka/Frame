@@ -38,7 +38,7 @@ from ..library.duplicates import Shown, work_key
 from ..library.hosts import urgent_call
 from ..library.importer import ALL
 from ..library.mix import mixed
-from ..library.museums import Discovery, Kind, places_in
+from ..library.museums import places_in
 from ..library.phrases import quote
 from ..library.places import NAME as NAME_KEY
 from ..library.places import OWN, QID, known_places, migrate_sources
@@ -71,7 +71,6 @@ from ..library.themes import (
 )
 from ..library.viewer import viewer_id
 from ..library.vocabulary import (
-    TECHNIQUE_KINDS,
     TERMS,
     fold,
     set_aside,
@@ -1428,24 +1427,3 @@ async def stream_museums(
                 task.cancel()
 
     return StreamingResponse(lines(), media_type="application/x-ndjson")
-
-
-@router.get("/browse", response_model=RemotePage)
-async def browse(
-    svc: Svc,
-    year_from: Annotated[int | None, Query(ge=0, le=2100)] = None,
-    year_to: Annotated[int | None, Query(ge=0, le=2100)] = None,
-    style: str = "",
-    kind: Kind = "any",
-    page: Annotated[int, Query(ge=1)] = 1,
-    limit: Annotated[int, Query(ge=1, le=24)] = 8,
-) -> RemotePage:
-    """Works of a period, style and kind from every museum that can filter
-    that way, interleaved (``limit`` from each)."""
-    spec = Discovery(year_from=year_from, year_to=year_to, style=style, kind=kind)
-    total, items, failed = await run_in_threadpool(
-        urgent_call(svc.importer.discover_all), spec, limit, page
-    )
-    asked = [key for key, value in TECHNIQUE_KINDS.items() if value == kind]
-    items = [i for i in items if spec.fits(i) and not set_aside(i, asked)]
-    return RemotePage(total=total, items=remote_items(svc, items), failed=failed)

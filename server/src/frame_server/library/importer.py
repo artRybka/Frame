@@ -871,28 +871,6 @@ class Importer:
                     job.failed += 1
         return added
 
-    def draw(
-        self,
-        spec: Discovery,
-        count: int,
-        sources: list[str],
-        job: Job,
-        min_suitability: float = 0.0,
-        rng: random.Random | None = None,
-    ) -> None:
-        """Add ``count`` random works matching ``spec``, taking turns between
-        ``sources``; works below ``min_suitability`` are drawn again."""
-        rng = rng or random.Random()
-        with self.http() as http:
-            streams = [museum(s, http, self.access()).random_draw(spec, rng) for s in sources]
-            self._take(
-                streams,
-                count,
-                job,
-                before=spec.fits,
-                after=lambda item: (item.suitability or 0.0) >= min_suitability,
-            )
-
     def fill(
         self,
         rules: PlaylistRules,
@@ -909,8 +887,8 @@ class Importer:
         named = [s for s in rules.sources if s in offered]
         sources = named or self.asked_sources(museum_kind(rules.terms))
         sources = [s for s in sources if s not in rules.exclude_sources]
-        # Colours and suitability are only known once the thumbnail is in.
-        cheap = rules.model_copy(update={"colors": [], "min_suitability": None})
+        # Colours are only known once the thumbnail is in.
+        cheap = rules.model_copy(update={"colors": []})
         highlight = HIGHLIGHT in rules.terms
         if highlight:
             sources = [s for s in sources if MUSEUMS[s].highlights] or sources
@@ -966,14 +944,12 @@ class Importer:
         queries: Iterable[tuple[str, str]] = (),
         kinds: Iterable[Kind] = ("painting",),
         highlights: Iterable[Kind] = (),
-        min_suitability: float = 0.0,
         rng: random.Random | None = None,
     ) -> None:
         """Add ``count`` works the server picks (``pooled``), taking turns
         between works by ``artists``, the museum searches ``queries`` (e.g.
         a theme), works of ``kinds`` drawn at random and museums' most
-        important works of ``highlights``; works below ``min_suitability``
-        are left out."""
+        important works of ``highlights``."""
         rng = rng or random.Random()
         with self.http() as http:
 
@@ -1001,7 +977,7 @@ class Importer:
                 count,
                 job,
                 before=lambda item: True,
-                after=lambda item: (item.suitability or 0.0) >= min_suitability,
+                after=lambda item: True,
                 pooled=True,
             )
 

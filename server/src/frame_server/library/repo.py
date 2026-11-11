@@ -335,8 +335,8 @@ def matches(
         return False
     if rules.year_to is not None and (item.year is None or item.year > rules.year_to):
         return False
-    # ``min_suitability`` of older playlists and themes is no longer kept to
-    # (Mateusz, 2026-10-31: the e-paper threshold left out important works).
+    # ``min_suitability`` of older playlists is no longer a rule (Mateusz,
+    # 2026-10-31: the e-paper threshold left out important works).
     if not rules.query:
         return True
     # Each word as typed or as the museums were asked it (``said``).

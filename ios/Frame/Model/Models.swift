@@ -397,7 +397,6 @@ struct PlaylistRules: Codable, Hashable, Sendable {
     var yearFrom: Int?
     var yearTo: Int?
     var favoritesOnly: Bool = false
-    var minSuitability: Double?
     /// Works taken out of a smart playlist although they match its rules.
     var excludeIds: [String] = []
 
@@ -407,7 +406,7 @@ struct PlaylistRules: Codable, Hashable, Sendable {
         query.isEmpty && artists.isEmpty && styles.isEmpty && subjects.isEmpty && terms.isEmpty
             && colors.isEmpty
             && kinds.isEmpty && sources.isEmpty && places.isEmpty && yearFrom == nil && yearTo == nil
-            && !favoritesOnly && minSuitability == nil
+            && !favoritesOnly
     }
 
     /// Only the owner's own works ("Moje"): favourites or those on
@@ -432,7 +431,6 @@ extension PlaylistRules {
         yearFrom = try c.decodeIfPresent(Int.self, forKey: .yearFrom)
         yearTo = try c.decodeIfPresent(Int.self, forKey: .yearTo)
         favoritesOnly = try c.decode(Bool.self, forKey: .favoritesOnly)
-        minSuitability = try c.decodeIfPresent(Double.self, forKey: .minSuitability)
         excludeIds = try c.decodeIfPresent([String].self, forKey: .excludeIds) ?? []  // older servers
     }
 }
@@ -2664,17 +2662,6 @@ struct LibraryPack: Codable, Hashable, Sendable, Identifiable {
     let size: Int
     var importing: Bool
     var id: String { key }
-}
-
-/// Random works to add, `POST /api/library/draw`.
-struct DrawRequest: Codable, Hashable, Sendable {
-    var count = 100
-    var yearFrom: Int?
-    var yearTo: Int?
-    /// English, as the museums name styles, e.g. "Impressionism".
-    var style = ""
-    var kind = "any"  // any | painting | print | drawing | poster
-    var minSuitability = 0.0
 }
 
 /// A background import on the server, `GET /api/jobs/{id}`.

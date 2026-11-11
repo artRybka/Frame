@@ -52,7 +52,7 @@ from ..library.hosts import Resting, urgent_call
 from ..library.images import Gone
 from ..library.importer import ALL
 from ..library.models import Framing, SharperCopy
-from ..library.museums import MUSEUMS, Discovery, Kind
+from ..library.museums import MUSEUMS
 from ..library.repo import Hidden, SortKey, now_iso
 from ..library.search import fill as fill_by_search
 from ..library.seed import PACKS, import_queries, pack
@@ -181,17 +181,6 @@ class RemotePage(BaseModel):
 
 class ImportRequest(BaseModel):
     source_id: str
-
-
-class DrawRequest(BaseModel):
-    count: int = Field(100, ge=1, le=500)
-    year_from: int | None = Field(None, ge=0, le=2100)
-    year_to: int | None = Field(None, ge=0, le=2100)
-    style: str = ""
-    kind: Kind = "any"
-    sources: list[str] = Field(default_factory=lambda: ["aic", "cma", "met", "rijks"])
-    #: 0–1; works that look worse on e-paper are drawn again.
-    min_suitability: float = Field(0.0, ge=0, le=1)
 
 
 class ImportSearchRequest(BaseModel):
@@ -1297,28 +1286,6 @@ def pack_import(key: str, svc: Svc) -> dict[str, Any]:
         import_queries(svc.importer, found.queries, job)
 
     return {"job_id": svc.importer.start_job(f"pack: {key}", work).id}
-
-
-@router.post("/library/draw")
-def draw(request: DrawRequest, svc: Svc) -> dict[str, Any]:
-    """Add random works by period, style and kind from several museums."""
-    offered = svc.importer.sources()
-    unknown = [s for s in request.sources if s not in offered]
-    if unknown or not request.sources:
-        raise HTTPException(422, f"unknown museums {unknown}; choose from {sorted(offered)}")
-    spec = Discovery(
-        year_from=request.year_from,
-        year_to=request.year_to,
-        style=request.style,
-        kind=request.kind,
-    )
-
-    def work(job: Job) -> None:
-        svc.importer.draw(
-            spec, request.count, request.sources, job, min_suitability=request.min_suitability
-        )
-
-    return {"job_id": svc.importer.start_job(f"draw: {request.count}", work).id}
 
 
 class FillRequest(BaseModel):

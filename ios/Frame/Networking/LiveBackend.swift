@@ -531,11 +531,6 @@ struct LiveBackend: FrameBackend {
         return ref.jobId
     }
 
-    func drawRandom(_ request: DrawRequest) async throws -> String {
-        let ref: JobRef = try await send("/api/library/draw", method: "POST", body: request)
-        return ref.jobId
-    }
-
     private struct FillBody: Encodable {
         let rules: PlaylistRules
         let count: Int
