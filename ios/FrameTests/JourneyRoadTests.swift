@@ -951,6 +951,35 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertTrue(still.settled)
     }
 
+    @MainActor
+    func testTheRoadIsLaidOutAsTheViewLastWorkedItOut() async throws {
+        // What is under the road is measured in several steps, more than
+        // one in a frame: the road is laid out as at the last of them (the
+        // later works never came: it had stayed as at an earlier one).
+        let (plan, _, years, onward) = try goingOn()
+        let count = plan.dots.count
+        let marks = RoadMarks(plan, onward: onward, ends: years.map { $0 + 90 })
+        let reveal = RoadReveal()
+        reveal.expect(nil, still: false)
+        reveal.expect(RoadMarks(plan), still: false)
+        reveal.expect(RoadMarks(plan, onward: onward, ends: years.map { $0 + 400 }), still: false)
+        reveal.expect(marks, still: false)
+        // Not while the view is being worked out: a moment later.
+        XCTAssertTrue(reveal.stops.isEmpty)
+        for _ in 0..<200 where reveal.stops.count != count + 4 { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertEqual(reveal.stops.count, count + 4)
+        // Everything on screen and the page at rest: the later works come, where they are now.
+        reveal.look(CGRect(x: 0, y: marks.height - 480, width: 350, height: 500))
+        var now = Date()
+        for _ in 0..<(60 * 20) {
+            now += 1.0 / 60
+            reveal.tick(now)
+        }
+        XCTAssertEqual(reveal.age(count + 3), RoadMarks.clock.dry, accuracy: 0.001)
+        XCTAssertEqual(reveal.pen, marks.full, accuracy: 0.01)
+        XCTAssertTrue(reveal.settled)
+    }
+
     func testASeaIsAWashTheLineIsDrawnInto() throws {
         // 2026-11-11 11:09, of sketch 26: „Morze - super - wdrażamy.”
         let plan = try road()

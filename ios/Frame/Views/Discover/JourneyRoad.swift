@@ -267,6 +267,11 @@ struct JourneyRoad: View {
             RoadMarks(plan, leads: plan.dots.indices.map { RoadMarks.lead(dashes: hands[$0]?.count ?? 0) },
                       onward: onward, ends: later.indices.map { ends[$0] ?? plan.height })
         }
+        // Told here and not through `onChange`: of several changes in one
+        // frame that runs for the first only, and what is under the road is
+        // measured in several steps. The road stayed laid out as it was at
+        // one of them, and the later works never came.
+        reveal.expect(marks, still: still)
         let indigo = Ink.paint(Ink.indigo, dark: dark)
         // Each sea as a wash of watercolour the line is drawn into.
         let washes = plan.map { seaWashes(on: $0, seas: seas) } ?? [:]
@@ -356,8 +361,6 @@ struct JourneyRoad: View {
         }
         // Where the screen is on the road: its middle is where the drawing comes about.
         .onGeometryChange(for: CGRect.self) { $0.bounds(of: .scrollView) ?? .null } action: { reveal.look($0) }
-        .onChange(of: marks, initial: true) { _, marks in reveal.lay(marks, still: still) }
-        .onChange(of: still) { _, still in reveal.lay(marks, still: still) }
         .background { RoadClock(reveal: reveal) }
     }
 
@@ -829,6 +832,8 @@ final class RoadReveal {
 
     @ObservationIgnored private var marks = RoadMarks()
     @ObservationIgnored private var still = false
+    /// How the view last worked the road out (`expect`).
+    @ObservationIgnored private var asked: (marks: RoadMarks, still: Bool)?
     /// The part of the road on screen, and when it last moved.
     @ObservationIgnored private var seen = CGRect.null
     @ObservationIgnored private var looked = false
@@ -868,6 +873,18 @@ final class RoadReveal {
 
     /// How long stop `index` has been drawing, its branch first.
     func drawing(_ index: Int) -> CGFloat { index < stops.count ? stops[index].age : -1 }
+
+    /// The view has worked the road out (again): it is laid out so a moment
+    /// later, when the view is done, as the view last worked it out.
+    func expect(_ marks: RoadMarks?, still: Bool) {
+        guard let marks else { return }
+        if let asked, asked.marks == marks, asked.still == still { return }
+        asked = (marks, still)
+        Task { @MainActor [weak self] in
+            guard let self, let asked = self.asked else { return }
+            self.lay(asked.marks, still: asked.still)
+        }
+    }
 
     /// The road is laid out (or laid out again).
     func lay(_ marks: RoadMarks?, still: Bool) {
