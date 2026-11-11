@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.145.30
+
+- Studium dzieła, „Droga dzieła”: przy drodze pojawiają się małe rysunki
+  piórkiem, kilka kresek tą samą stalówką co kreska drogi. Miejsca:
+  wieża Eiffla przy Paryżu (od 1889 roku, wcześniej Notre-Dame), Fudżi
+  przy Japonii, Big Ben, Statua Wolności, kamienice Amsterdamu, wiatrak,
+  Koloseum, gondola, kolumna Zygmunta, kościół Mariacki i inne. Zdarzenia:
+  monety przy sprzedaży, młotek przy aukcji, prezent przy darze, zwój
+  z pieczęcią przy spadku, pusta rama przy kradzieży, hełm przy wojnie,
+  pędzel przy konserwacji, statek na morzu, które dzieło przepłynęło.
+  Razem 33 motywy.
+- Rysunki są okazjonalne: najwyżej trzy na drogę, nigdy przy sąsiednich
+  przystankach, żaden dwa razy. Rysują się kreska po kresce, gdy pojawi
+  się tekst przystanku, w wolnym miejscu obok jego plamy; gdzie miejsca
+  nie ma, rysunku nie ma.
+- Rysunek dobiera aplikacja z miasta, roku i rodzaju przystanku, które
+  serwer podaje od pierwszych dróg. Dlatego drogi opracowane wcześniej
+  mają je tak samo jak nowe, bez ponownego opracowania.
+
 ## 1.145.29
 
 - Studium dzieła, „Kolor i światło”: na pasku barw jest także mała, mocna
