@@ -42,7 +42,7 @@ COLOUR_SPREAD = (0.01, 0.035)
 #: 8: "monochrome" seen against its paper (``toned``); 9: Tonacja sides
 #: (``"tone:neutral"``, ``tone_sides``); 10: without a museum's blank
 #: margins (``imaging.margins``), which counted as white; 11: small
-#: striking patches among the swatches (``touches``).
+#: striking patches among the swatches and the accent tags (``touches``).
 SCORE_VERSION = 11
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
@@ -302,18 +302,17 @@ def analyse(img: Image.Image, spread: float | None = None) -> Analysis:
     centres, weights = kmeans(lab, k=6)
     dominant = dominant_colours(centres, weights)
     accents = accent_colours(fine, dominant)
-    # Shown, not tagged: what a picture is found by stays as it was.
     small = touches(linear_to_oklab(_sample(img, TOUCH_SAMPLE)), dominant, accents)
+    tags = colour_tags(fine, spread, dominant, accents, small)
+    # One tint and a collector's stamp is one tint still: no touches there.
+    if "monochrome" in tags:
+        small = []
     swatches = [_swatch(c, w) for c, w in dominant]
     # A touch is what the eye goes to: it is shown before the least accent.
     room = MAX_SWATCHES - len(swatches) - len(small)
     swatches += [_swatch(c, w, accent=True) for c, w, _ in accents[: max(room, 0)]]
-    swatches += [_swatch(c, w, accent=True) for c, w in small]
-    return Analysis(
-        swatches,
-        colour_tags(fine, spread, dominant, accents),
-        colour_shares(fine, spread),
-    )
+    swatches += [_swatch(c, w, accent=True) for c, w, _ in small]
+    return Analysis(swatches, tags, colour_shares(fine, spread))
 
 
 def colour_shares(lab: np.ndarray, spread: float) -> dict[str, float]:
@@ -356,28 +355,36 @@ def colour_tags(
     spread: float,
     dominant: list[tuple[np.ndarray, float]],
     accents: list[tuple[np.ndarray, float, str]],
+    small: Sequence[tuple[np.ndarray, float, str]] = (),
 ) -> list[str]:
     """Colour and mood tags. A colour family is a tag when it covers
     ``COLOURING`` of the picture: a Madonna's blue robe in a gold altarpiece
     is not "in shades of blue". Smaller colours the palette shows (accents,
-    small dominant ones) are ``ACCENT_TAG`` tags; warm and cool go by area
-    too, so one vivid red robe does not make a grey sky warm."""
+    small dominant ones, and the ``small`` striking patches, ``touches``:
+    the Little Street is found by its red shutter, Mateusz 2026-11-11 21:50)
+    are ``ACCENT_TAG`` tags; warm and cool go by area too, so one vivid red
+    robe does not make a grey sky warm. A picture of one tint stays one
+    (``single_tone`` does not look at ``small``) and has no touch for an
+    accent: a stamp on an etching is not what it is looked for by."""
     names = pixel_families(lab, spread)
     share = {n: float((names == n).mean()) for n in COLOR_FAMILIES}
     tags = [n for n in COLOR_FAMILIES if share[n] >= COLOURING]
     shown = {name for _, _, name in accents} | {family(c) for c, _ in dominant}
+    chroma = np.hypot(lab[:, 1], lab[:, 2])
+    mean_chroma = float(chroma.mean())
+    # Several hues, however muted (El Greco), are never monochrome.
+    in_colours = colourful(lab, spread)
+    monochrome = not in_colours and single_tone(lab, spread, accents)
+    if not monochrome:
+        shown |= {name for _, _, name in small}
     tags += [
         ACCENT_TAG + n for n in COLOR_FAMILIES if n in shown and n not in tags and n not in NEUTRALS
     ]
     tags += [ONLY_TAG + n for n in painted_in(share)]
 
-    chroma = np.hypot(lab[:, 1], lab[:, 2])
-    mean_chroma = float(chroma.mean())
-    # Several hues, however muted (El Greco), are never monochrome.
-    in_colours = colourful(lab, spread)
     if in_colours:
         tags.append("colorful")
-    if not in_colours and single_tone(lab, spread, accents):
+    if monochrome:
         tags.append("monochrome")
     elif mean_chroma > 0.1:
         tags.append("vivid")
@@ -737,12 +744,12 @@ def touches(
     lab: np.ndarray,
     dominant: list[tuple[np.ndarray, float]],
     accents: Sequence[tuple[np.ndarray, float, str]],
-) -> list[tuple[np.ndarray, float]]:
+) -> list[tuple[np.ndarray, float, str]]:
     """Small patches of a colour the palette does not show yet: the red
     shutter of Vermeer's Little Street, well under a hundredth of the
     picture and of the bricks' own hue, so ``accent_colours`` takes its
-    sector for the wall. One per hue sector at most, (colour, weight), the
-    most striking first."""
+    sector for the wall. One per hue sector at most, (colour, weight,
+    colour family), the most striking first."""
     chroma = np.hypot(lab[:, 1], lab[:, 2])
     hue = _hue(lab)
     shown = [c for c, _ in dominant] + [c for c, _, _ in accents]
@@ -750,8 +757,8 @@ def touches(
     shown_hue = np.array([float(_hue(c)) for c in shown])
     shown_light = np.array([float(c[0]) for c in shown])
     n = len(lab)
-    found: list[tuple[np.ndarray, float, float]] = []
-    for _, start, end in ACCENT_SECTORS:
+    found: list[tuple[np.ndarray, float, str, float]] = []
+    for name, start, end in ACCENT_SECTORS:
         member = (chroma >= 0.05) & ((hue - start) % 360 < end - start)
         count = int(member.sum())
         if count < TOUCH_AREA * n:
@@ -773,14 +780,19 @@ def touches(
         share = float((alike < ACCENT_TWIN).mean())
         if share < TOUCH_AREA:
             continue
-        found.append((centre, min(share, TOUCH_WEIGHT), vivid - most))
-    found.sort(key=lambda f: -f[2])
-    kept: list[tuple[np.ndarray, float]] = []
-    for centre, weight, _ in found:
+        # Named as an accent of its sector is (``accent_colours``).
+        if name == "orange" and centre[0] < 0.6:
+            name = "brown"
+        elif name == "red" and centre[0] > 0.65:
+            name = "pink"
+        found.append((centre, min(share, TOUCH_WEIGHT), name, vivid - most))
+    found.sort(key=lambda f: -f[3])
+    kept: list[tuple[np.ndarray, float, str]] = []
+    for centre, weight, name, _ in found:
         if len(kept) < MAX_TOUCHES and all(
-            _distance(centre, c, 0.5) >= ACCENT_TWIN for c, _ in kept
+            _distance(centre, c, 0.5) >= ACCENT_TWIN for c, _, _ in kept
         ):
-            kept.append((centre, weight))
+            kept.append((centre, weight, name))
     return kept
 
 
