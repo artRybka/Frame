@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.145.23
+
+- Odkrywaj pokazuje najpierw dobre dzieła. Strona tematu zaczynała się od
+  arcydzieł muzeów, a dalej szli autorzy alfabetycznie, z dziełami bez
+  autora na początku, codziennie tak samo. „Sztuka polska” otwierała się
+  sześcioma obrazami Gierymskiego i siedmioma Malczewskiego i nie dochodziła
+  do Matejki, a „Arcydzieła muzeów” 24 anonimowymi starożytnościami. Teraz
+  o miejscu decyduje to, czy muzeum uznaje dzieło za ważne, czy znamy
+  autora, czy dzieło ma opis i duży, ostry obraz. Kolejne prace tego samego
+  autora i z tego samego muzeum stoją dalej, więc na stronie jest około
+  dwa razy więcej autorów.
+- Strony tematów zmieniają się co dzień: mniej więcej połowa pierwszych
+  dzieł jest następnego dnia inna. Propozycje dnia biorą pierwsze dzieła
+  każdej karty, więc też są co dzień inne.
+- Szukaj układa wyniki jak dotąd, a Studium dnia wybiera według własnych
+  kryteriów.
+- Stara ocena e-papieru nie ustala już żadnej kolejności. Okładki playlist
+  pokazują ich najlepsze dzieła według tej samej oceny co Odkrywaj.
+
 ## 1.145.22
 
 - Studium dzieła, „Kolor i światło”: próbki farb malowane w technice

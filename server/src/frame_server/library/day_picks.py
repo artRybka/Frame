@@ -95,7 +95,12 @@ def work_out(library: Library, user: str, day: date, private: bool = False) -> D
             )
         else:
             total, items = library.query(
-                found.rules(), sort="suitability", limit=PER_CARD * 4, user=user, proposing=True
+                found.rules(),
+                sort="good",
+                seed=day.toordinal(),
+                limit=PER_CARD * 4,
+                user=user,
+                proposing=True,
             )
         if total < CARD_MIN:
             continue  # not shown in Odkrywaj either

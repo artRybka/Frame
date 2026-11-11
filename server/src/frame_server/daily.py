@@ -42,11 +42,11 @@ from .library import Item, ItemKind, PlaylistRules
 from .library.artists import is_artist
 from .library.colors import PALE_INK, ink_share
 from .library.cultures import circle
+from .library.good import copy_quality, sketch_title
 from .library.images import display_copy, said_side
 from .library.models import Note
 from .library.nationality import NATIONALITIES
-from .library.vocabulary import artist_matches, is_photograph
-from .sharper import WEAK_SIDE, archive_own
+from .library.vocabulary import archive_own, artist_matches, is_photograph
 
 if TYPE_CHECKING:
     from .ai import AiWorker
@@ -91,23 +91,11 @@ UNFIT_MAX = 5000
 POOR_COPY_KEY = "daily_poor_copy"
 #: The curator's choice of each day: {day: {"item", "reason", "unfit"}}.
 CURATED_KEY = "daily_curated"
-#: A title that calls the work a sketch or studies (the rules put it last;
-#: the curator may still choose one that stands as a work by itself).
-SKETCH_TITLE = re.compile(
-    r"\b(stud(?:y|ies)|sketch(?:es|book|ing)?|croquis|esquisses?|[ée]tudes?|studien?"
-    r"|skizzen?(?:buch)?|schets(?:en|boek)?|szkic\w*|studi(?:um|a)|notebook|carnet)\b",
-    re.IGNORECASE,
-)
-#: What a sketch's title and a pale sheet take from a work's score.
+#: What a sketch's title (``good.SKETCH_TITLE``: the rules put it last; the
+#: curator may still choose one that stands as a work by itself) and a pale
+#: sheet take from a work's score.
 SKETCH_PENALTY = 0.3
 PALE_PENALTY = 0.3
-#: The copy's quality (Mateusz 2026-11-11: "bierz pod uwagę także jakość
-#: kopii dzieła"): a picture as long as the frame's side (2560 px) shows
-#: the work whole, one shorter than ``sharper.WEAK_SIDE`` is worth a sharper
-#: copy, which may not be found.
-FRAME_SIDE = 2560
-SHARP_BONUS = 0.15
-WEAK_PENALTY = 0.25
 #: "W tym samym czasie": works made a few years either side of the work,
 #: elsewhere and by others (Mateusz 2026-11-02); one row scrolled sideways
 #: since 2026-11-03 ("pokazuj więcej dzieł").
@@ -171,21 +159,6 @@ def copy_side(item: Item) -> int | None:
     found elsewhere, else its museum's), None when not known: a museum that
     says no size is not held to its thumbnail's (``images.said_side``)."""
     return said_side(item)
-
-
-def copy_quality(item: Item) -> float:
-    """What the copy's size adds to (or takes from) a work's score."""
-    side = copy_side(item)
-    if side is None:
-        return 0.0
-    if side >= FRAME_SIDE:
-        return SHARP_BONUS
-    return -WEAK_PENALTY if side < WEAK_SIDE else 0.0
-
-
-def sketch_title(item: Item) -> bool:
-    """The museum calls the work a sketch, studies or a sketchbook page."""
-    return bool(SKETCH_TITLE.search(item.title))
 
 
 class Daily:
@@ -463,7 +436,9 @@ class Daily:
 
         for term in [t for t in item.terms if t.startswith(("style:", "years:", "technique:"))]:
             near = PlaylistRules(kinds=[ItemKind.ARTWORK], terms=[term])
-            items = self.library.query(near, sort="suitability", limit=60, proposing=True)[1]
+            # As ever (highlights, then artists from A to Z): the model
+            # chooses among them, and the order is the pick's own.
+            items = self.library.query(near, sort="relevance", limit=60, proposing=True)[1]
             if item.year:
                 items = [i for i in items if i.year and abs(i.year - item.year) <= 40]
             add(items, CANDIDATES)
