@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.32
+## 1.145.33
 
 - „Ten sam autor” jest odtąd jedną regułą w całym serwerze. „Inne dzieła
   autora” na karcie, Studium dnia, „Na później” i tematy Odkrywaj pytają
@@ -14,6 +14,25 @@
   („formerly attributed to”), następcy o tym samym imieniu (Hiroshige II)
   i imiennicy (Stanisław Witkiewicz i Stanisław Ignacy Witkiewicz,
   Rembrandt i Rembrandt Peale). Około 3,5 tysiąca dzieł.
+
+## 1.145.32
+
+- Studium dzieła, „Droga dzieła”: przy drodze pojawiają się małe rysunki
+  piórkiem, kilka kresek tą samą stalówką co kreska drogi. Miejsca:
+  wieża Eiffla przy Paryżu (od 1889 roku, wcześniej Notre-Dame), Fudżi
+  przy Japonii, Big Ben, Statua Wolności, kamienice Amsterdamu, wiatrak,
+  Koloseum, gondola, kolumna Zygmunta, kościół Mariacki i inne. Zdarzenia:
+  monety przy sprzedaży, młotek przy aukcji, prezent przy darze, zwój
+  z pieczęcią przy spadku, pusta rama przy kradzieży, hełm przy wojnie,
+  pędzel przy konserwacji, statek na morzu, które dzieło przepłynęło.
+  Razem 33 motywy.
+- Rysunki są okazjonalne: najwyżej trzy na drogę, nigdy przy sąsiednich
+  przystankach, żaden dwa razy. Rysują się kreska po kresce, gdy pojawi
+  się tekst przystanku, w wolnym miejscu obok jego plamy; gdzie miejsca
+  nie ma, rysunku nie ma.
+- Rysunek dobiera aplikacja z miasta, roku i rodzaju przystanku, które
+  serwer podaje od pierwszych dróg. Dlatego drogi opracowane wcześniej
+  mają je tak samo jak nowe, bez ponownego opracowania.
 
 ## 1.145.31
 

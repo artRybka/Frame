@@ -306,6 +306,9 @@ struct JourneyRoad: View {
         let indigo = Ink.paint(Ink.indigo, dark: dark)
         // Each sea as a wash of watercolour the line is drawn into.
         let washes = plan.map { seaWashes(on: $0, seas: seas) } ?? [:]
+        // The pen's small drawings: by a few stops, and a ship on a sea.
+        let drawings = plan.flatMap { plan in spills.map { sketches(on: plan, spills: $0, washes: washes, onward: onward) } } ?? []
+        let ships = drawings.filter(\.sea).map(\.box)
         var soak = SeededRandom(seed + "soak")
         let paintSeed = Float(soak.next() % 50)
         let texts = ZStack(alignment: .topLeading) {
@@ -358,7 +361,7 @@ struct JourneyRoad: View {
                         }
                     }
                     // The seas come up softly, a little behind the pen.
-                    Canvas { context, size in drawSeas(in: &context, size: size, plan: plan, seas: seas) }
+                    Canvas { context, size in drawSeas(in: &context, size: size, plan: plan, seas: seas, ships: ships) }
                         .mask { Curtain(reveal: reveal, soft: 44, behind: 30) }
                     // What the pen leaves as it passes, as far as it has come.
                     InkCanvas(ink: ink, part: .pen)
@@ -371,6 +374,9 @@ struct JourneyRoad: View {
                         RoadBranch(reveal: reveal, index: i, dashes: hands[i] ?? [], ring: ring(round: i, of: plan))
                     }
                     RoadDots(reveal: reveal, plan: plan, seed: seed)
+                    ForEach(drawings.indices, id: \.self) { k in
+                        RoadSketch(reveal: reveal, drawn: drawings[k])
+                    }
                     // The line going on: round the blot, round "Dalsze losy" and down the left.
                     if let onward {
                         OnwardLine(reveal: reveal, onward: onward, last: count - 1)
@@ -486,6 +492,38 @@ struct JourneyRoad: View {
             let spill = Self.spill(under: rects, from: dot, width: width, seed: seed + "later\(k)")
             return (spill, Self.blot(on: onward, at: k, spill: spill, seed: seed))
         }
+    }
+
+    /// The pen's small drawings on this road (`JourneySketch`): a few
+    /// stops' beside their stains, a ship on a sea the work crossed; each
+    /// where it has room, clear of the line, the stains, the seas and each
+    /// other. Where there is no room there is no drawing.
+    private func sketches(on plan: RoadPlan, spills: [Spill], washes: [Int: Wash], onward: Onward?) -> [JourneySketch.Drawn] {
+        let stops = journey.stops.map {
+            JourneySketch.Stop(place: $0.place, lat: $0.lat, lon: $0.lon, year: $0.year, kind: $0.kind, text: $0.text,
+                               detour: $0.detour)
+        }
+        let lines = [plan.line] + plan.branches.keys.sorted().compactMap { plan.branches[$0] } + (onward.map { [$0.line] } ?? [])
+        // A stain as it is seen, without the room kept for its soft edge.
+        let stains = spills.map { $0.frame.insetBy(dx: Self.spillRoom - 3, dy: Self.spillRoom - 3) }
+        var taken = stains + plan.loops.keys.sorted().compactMap { plan.loops[$0]?.insetBy(dx: -6, dy: -6) }
+        // The red blot at the road's end.
+        if let end = plan.dots.last { taken.append(CGRect(x: end.x - 26, y: end.y - 26, width: 52, height: 52)) }
+        let waters = washes.keys.sorted().compactMap { washes[$0]?.box }
+        var out: [JourneySketch.Drawn] = []
+        for pick in JourneySketch.picks(stops, seas: seas) where pick.stop < stains.count {
+            let box = pick.sea
+                ? washes[pick.stop].flatMap {
+                    JourneySketch.room(on: $0.box, lines: lines, taken: taken, width: width, height: plan.height)
+                }
+                : JourneySketch.room(beside: stains[pick.stop], lines: lines, taken: taken + waters, width: width,
+                                     height: plan.height)
+            guard let box else { continue }
+            taken.append(box)
+            out.append(JourneySketch.Drawn(stop: pick.stop, sea: pick.sea, box: box,
+                                           lines: JourneySketch.lines(pick.motif, in: box, seed: seed + "\(pick.stop)")))
+        }
+        return out
     }
 
     /// The loop round a side trip's text.
@@ -605,13 +643,13 @@ struct JourneyRoad: View {
     // MARK: Drawing
 
     /// The seas, under the road.
-    private func drawSeas(in context: inout GraphicsContext, size: CGSize, plan: RoadPlan, seas: [Bool]) {
+    private func drawSeas(in context: inout GraphicsContext, size: CGSize, plan: RoadPlan, seas: [Bool], ships: [CGRect]) {
         let count = journey.stops.count
         for i in 1..<count where seas[i] {
             var random = SeededRandom(seed + "sea\(i)")
             let band = Self.seaBand(before: i, on: plan)
             drawSea(in: &context, name: sea(i), top: band.top, bottom: band.bottom,
-                    width: size.width, plan: plan, random: &random)
+                    width: size.width, plan: plan, ships: ships, random: &random)
         }
     }
 
@@ -625,15 +663,16 @@ struct JourneyRoad: View {
         return out
     }
 
-    /// A sea as on a map: rows of short waves that keep clear of the road
-    /// and of the texts with their stains, and the name between two rows,
-    /// where there is room.
+    /// A sea as on a map: rows of short waves that keep clear of the road,
+    /// of the texts with their stains and of the ship drawn on it
+    /// (`ships`), and the name between two rows, where there is room.
     private func drawSea(in context: inout GraphicsContext, name: String, top: CGFloat, bottom: CGFloat,
-                         width: CGFloat, plan: RoadPlan, random: inout SeededRandom) {
+                         width: CGFloat, plan: RoadPlan, ships: [CGRect], random: inout SeededRandom) {
         guard bottom - top > 40 else { return }
         let rows = max(3, Int(((bottom - top) / 30).rounded())), pitch = (bottom - top) / CGFloat(rows - 1)
         func inText(_ p: CGPoint, _ pad: CGFloat) -> Bool {
             plan.texts.contains { $0.insetBy(dx: -pad, dy: -pad).contains(p) }
+                || ships.contains { $0.insetBy(dx: -pad, dy: -min(pad, 8)).contains(p) }
         }
         var waves = Path()
         for q in 0..<rows {
@@ -812,6 +851,10 @@ struct RoadMarks: Equatable {
     /// What is told of a later work comes up on the paper from this long
     /// after its blot, for this long.
     static let told: (at: CGFloat, takes: CGFloat) = (1.5, 0.9)
+    /// The pen makes a stop's small drawing (`JourneySketch`) from this
+    /// long after the stop began, when its text is there; the ship on a
+    /// sea, as soon as the line is over it.
+    static let sketch: (stop: CGFloat, sea: CGFloat) = (1.3, 0.3)
     /// A stop's mark is made when the pen comes to it (17:25: „chciałem
     /// żeby pojawiała się gdy mija ja kreska, a potem przy dalszym
     /// przewinięciu rozlewałaby się w plamę pod tekst”; `past`: no
@@ -1435,6 +1478,36 @@ private struct Told<Content: View>: View {
         content
             .opacity(shown)
             .offset(y: 4 * (1 - shown))
+    }
+}
+
+/// One of the pen's small drawings by the road (`JourneySketch`; Mateusz
+/// 2026-11-11 20:02: „proste, piórkiem kilka kresek… w stylu obecnego
+/// rysunku drogi”): drawn stroke after stroke once its stop's text is
+/// there (the ship: once the line is over its sea), in the road's ink,
+/// and undone with its stop as the page goes back.
+private struct RoadSketch: View {
+    let reveal: RoadReveal
+    let drawn: JourneySketch.Drawn
+
+    var body: some View {
+        let age = reveal.age(drawn.stop) - (drawn.sea ? RoadMarks.sketch.sea : RoadMarks.sketch.stop)
+        let strokes = JourneySketch.outlines(drawn.lines, age: age)
+        let inked = Self.path(strokes)
+        ZStack(alignment: .topLeading) {
+            inked.fill(Theme.ink)
+            inked.stroke(Theme.ink, style: StrokeStyle(lineWidth: JourneySketch.hair, lineJoin: .round))
+        }
+        .opacity(strokes.isEmpty ? 0 : 1)
+    }
+
+    private static func path(_ strokes: [[CGPoint]]) -> Path {
+        var path = Path()
+        for stroke in strokes where stroke.count > 2 {
+            path.addLines(stroke)
+            path.closeSubpath()
+        }
+        return path
     }
 }
 
