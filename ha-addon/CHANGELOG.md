@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.20
+
+- Studium dzieła, „Droga dzieła”: kropka przystanku pojawia się jako
+  kleks w chwili, gdy mija ją kreska, nisko na ekranie. Plama pod tekst
+  wylewa się z niej później, gdy przy dalszym przewijaniu kropka dojdzie
+  w okolice środka ekranu, i wtedy rusza od razu. Tak samo czerwony kleks
+  na końcu drogi i czerwone kleksy przy „Dalszych losach”. Kropka wyprawy
+  na wystawę nadal pojawia się na końcu swojej odnogi. Przy cofaniu strony
+  kropka znika, gdy kreska cofnie się ponad nią.
+
 ## 1.145.19
 
 - Serwer nie proponuje już sam detali, reprodukcji, znaczków, dokumentów,
