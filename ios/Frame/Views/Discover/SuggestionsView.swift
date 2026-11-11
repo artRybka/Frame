@@ -424,7 +424,8 @@ struct WorkTile: View {
     /// The picture a little brighter than the page (`ArtGlow`, when
     /// Konfiguracja allows it), as on the work's card ("Pod lupą",
     /// Mateusz 2026-11-10): fully at the top, fading to a tenth of it at
-    /// the caption (19:15).
+    /// the caption (19:15); stronger, held over the top third, with a soft
+    /// shadow behind the picture's part of the card (2026-11-11).
     var brighten = false
 
     private var shownTitle: String {
@@ -445,8 +446,12 @@ struct WorkTile: View {
                         maxPixel: 500,
                         subjectFocus: true,
                         brighten: brighten,
-                        // Brightest at the top, a tenth of it at the caption.
-                        glowFade: 0.1
+                        // Brighter than the card's at the top, full over the
+                        // top third, a tenth of it at the caption (Mateusz
+                        // 2026-11-11 10:06: stronger, and a little lower).
+                        glowFade: 0.1,
+                        glowHold: 0.3,
+                        glowBoost: 1.35
                     )
                 }
                 .clipped()
@@ -469,6 +474,16 @@ struct WorkTile: View {
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.hairline))
+        .background(alignment: .top) {
+            // A brightened card: a soft shadow behind its upper part, the
+            // picture's, gone by the caption (Mateusz 2026-11-11).
+            if brighten {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Theme.card)
+                    .frame(height: 118)
+                    .shadow(color: .black.opacity(0.22), radius: 12, x: 0, y: 6)
+            }
+        }
         .accessibilityElement(children: .combine)
     }
 }
