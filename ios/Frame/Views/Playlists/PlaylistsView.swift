@@ -991,10 +991,14 @@ struct CoverDrift {
 /// (`Tilt`, started by the collage's `parallax()`) and fades out once the
 /// phone is held still, so a card at rest has none.
 struct GlassSheen: View {
+    /// How strong the streak is at a full turn ("Pod lupą" cards: more,
+    /// Mateusz 2026-11-11).
+    var peak = 0.4
+
     var body: some View {
         let tilt = Tilt.shared
         let middle = 0.5 + 0.3 * tilt.x - 0.1 * tilt.y
-        let strength = 0.4 * min(1, 1.4 * max(abs(tilt.x), abs(tilt.y)))
+        let strength = peak * min(1, 1.4 * max(abs(tilt.x), abs(tilt.y)))
         LinearGradient(
             stops: [
                 .init(color: .white.opacity(0), location: middle - 0.16),
