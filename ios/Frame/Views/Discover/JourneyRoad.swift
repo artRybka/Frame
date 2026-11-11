@@ -269,7 +269,7 @@ struct JourneyRoad: View {
         }
         let indigo = Ink.paint(Ink.indigo, dark: dark)
         // Each sea as a wash of watercolour the line is drawn into.
-        let washes = plan.map { washes(on: $0, seas: seas) } ?? [:]
+        let washes = plan.map { seaWashes(on: $0, seas: seas) } ?? [:]
         var soak = SeededRandom(seed + "soak")
         let paintSeed = Float(soak.next() % 50)
         let texts = ZStack(alignment: .topLeading) {
@@ -583,7 +583,7 @@ struct JourneyRoad: View {
     }
 
     /// Each sea's wash (`SeaWash`), by the stop that is over that sea.
-    private func washes(on plan: RoadPlan, seas: [Bool]) -> [Int: Wash] {
+    private func seaWashes(on plan: RoadPlan, seas: [Bool]) -> [Int: Wash] {
         var out: [Int: Wash] = [:]
         for i in plan.dots.indices.dropFirst() where i < seas.count && seas[i] {
             let band = Self.seaBand(before: i, on: plan)
