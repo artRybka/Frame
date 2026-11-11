@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.2
+## 1.145.3
 
 - Studium dzieła: „Dalsze losy” są teraz dalszym ciągiem „Drogi dzieła”
   i stoją zaraz pod nią. Chwilę po czerwonej plamie na końcu drogi pióro
@@ -20,6 +20,12 @@
   ciemniejszy brzeg. Kreska jest rysowana w mokrej farbie, więc za
   piórem tusz rozpływa się w niebieskim, miejscami szerzej. Fale i nazwa
   morza zostają, fale są odrobinę ciemniejsze.
+
+## 1.145.2
+
+- „Pod lupą”: rozbłysk na kafelkach jest mocniejszy, a całe kafelki są
+  lekko uniesione nad stroną. Przy obracaniu telefonu przesuwają się,
+  a ich cień na stronie przesuwa się w drugą stronę.
 
 ## 1.145.1
 
