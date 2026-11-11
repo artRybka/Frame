@@ -5,6 +5,19 @@
 - Porządki: serwer nie liczy już i nie trzyma oceny „na e-papierze”, której
   od kilku wydań nikt nie czytał. Nic się nie zmienia w tym, co widać.
 
+## 1.145.27
+
+- Studium dzieła, „Droga dzieła”: kropka przystanku wyrasta z samej
+  kreski. Pióro zatrzymuje się w tym miejscu na pół sekundy i dociska,
+  a kreska pęcznieje w kroplę: od swojej grubości do pełnej kropki, raz,
+  bez powiększania i cofania. Kropla ma szpic leżący wstecz na kresce,
+  więc jest jej pogrubieniem, a nie znakiem położonym na wierzchu.
+  Dopiero potem kreska rusza dalej. Przy szybkim przewijaniu postój jest
+  krótszy.
+- Koniec kreski rysuje się wyżej nad paskiem zakładek (64 pt zamiast
+  20), żeby powstawanie kropki było dobrze widać.
+- Plamy pod tekstami nie mają już zacieku spływającego w dół.
+
 ## 1.145.26
 
 - Przedmioty i książki, które uchodziły za obrazy, trafiają do „Sztuk
