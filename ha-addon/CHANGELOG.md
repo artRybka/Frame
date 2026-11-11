@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.145.30
+
+- Najlepszą kopię dzieła wybiera teraz obraz, a dopiero potem źródło.
+  Gdy katalog ma kilka kopii tego samego dzieła, pokazywana jest ta
+  z obrazem wystarczającym na ramkę; dotąd pierwsza była zawsze kopia
+  zachowana, nawet mała. Dziewczynę z perłą i Alegorię malarstwa
+  pokazywała kopia o boku 400 px, teraz kopie o boku 4548 i 7377 px.
+- Obraz olejny i rysunek albo grafika o tym samym tytule i autorze to
+  dwa dzieła, nie kopie jednego („Cypresses” van Gogha z Met i rysunek
+  z Chicago).
+- Serce przechodzi nocą na lepszą kopię tego samego dzieła, jeśli taka
+  jest w katalogu. Kopia z własnym kadrem zostaje. Zachowane kopie nie
+  znikają z list.
+
 ## 1.145.28
 
 - Porządki: serwer nie liczy już i nie trzyma oceny „na e-papierze”, której

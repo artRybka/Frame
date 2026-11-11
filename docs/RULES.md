@@ -59,7 +59,7 @@ chciałbym żeby spadła jakość doboru tych propozycji”).
 | 2 | Szybkość bez zmiany wyników: przyrostowe scalanie grup (2a: 1.145.13, PLAN 3.3zzz157); duże obrazy powtórek zostają jako oryginały (2b: 1.145.17, PLAN 3.3zzz161); dalej według pomiarów z nocy | w toku |
 | 3 | Sprzątanie resztek: wskaźnik „Na e-papierze”, martwy próg, nieużywane punkty API | 1.145.14 (PLAN 3.3zzz158) |
 | 4 | Jeden werdykt pokazywania: lista powodów i tabela „miejsce × powód” (4a, bez zmiany wyników: 1.145.15, PLAN 3.3zzz159); serwer nie proponuje zachowanych detali, kopii i znaczków (4b: 1.145.19, PLAN 3.3zzz163); kolejność „najpierw dobre” w Odkrywaj (4c: 1.145.23, PLAN 3.3zzz168) | 1.145.23 |
-| 5 | Jedna tożsamość dzieła i autora, opis rodzaju: przedmioty i książki do „Sztuk innych” (5a: 1.145.26, PLAN 3.3zzz171); „ten sam autor” jedną regułą (5b); to samo dzieło i najlepsza kopia według obrazu (5c) | w toku |
+| 5 | Jedna tożsamość dzieła i autora, opis rodzaju: przedmioty i książki do „Sztuk innych” (5a: 1.145.26, PLAN 3.3zzz171); „ten sam autor” jedną regułą (5b); to samo dzieło i najlepsza kopia według obrazu (5c: 1.145.30, PLAN 3.3zzz176) | w toku |
 | 6 | Jedna ścieżka pytań do muzeów i jedna nocna pętla modeli | |
 
 Etapy 0 do 3 nie zmieniają tego, co widać. Przed każdą zmianą widocznych
@@ -182,6 +182,16 @@ attributed to” za autora. Grup z więcej niż jedną kopią jest 28 (68
 pozycji), bo dobrane kopie z mniej pewnych źródeł serwer usuwa; w 10
 najlepsza kopia zmieniłaby się przy kolejności „najpierw obraz”, 4 serca
 leżą na kopii, która nie jest najlepsza.
+
+Etap 5c w skrócie (lista różnic pokazana, wybór Mateusza „Wprowadź”):
+pierwszą kopię dzieła wybiera `duplicates.preference`: najpierw nie zdjęcie
+archiwum sztuki, potem obraz (`duplicates.picture`: wystarcza na ramkę,
+zwykły, słaby), potem ranga źródła, a „zachowane” już tylko przy remisie.
+Obraz i rysunek albo grafika o tym samym tytule to dwa dzieła
+(`duplicates.another_technique`). Serce przechodzi nocą na ściśle lepszą
+kopię (`Library.hearts_to_best`), poza kopiami z własnym kadrem. Na
+katalogu: pierwsza kopia zmienia się w 3 grupach z 28, jedna grupa się
+rozdziela, żadne z 132 serc się nie przenosi.
 
 ## Jak sprawdzić zmianę reguł
 
