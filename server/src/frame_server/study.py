@@ -275,6 +275,12 @@ class Study:
                 target=self._cut, args=(item,), name="study-details", daemon=True
             ).start()
 
+    def making(self, item_id: str) -> bool:
+        """Whether the study is being written, or its details cut and its
+        later works looked up (:meth:`_cut`): the page leaves those to it."""
+        with self._lock:
+            return item_id in self._asking or item_id in self._cutting
+
     def _cut(self, item: Item) -> None:
         try:
             self.detail(item, 0)

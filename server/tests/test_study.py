@@ -148,6 +148,41 @@ def test_claude_writes_a_study_once_and_it_is_kept(tmp_path: Path) -> None:
         assert len(_studies(fake)) == 1
 
 
+def test_the_page_leaves_the_later_works_to_the_study_being_made(tmp_path: Path) -> None:
+    """While a study is written and cut it looks its later works up itself
+    (``Study._cut``). The page asked for them too: the museums were asked
+    twice, and under load the page's look ended first, so the study's
+    "later" part was never told (2026-11-11: the full run failed on it
+    once in a few)."""
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    fake = FakeAnthropic(GOOD_KEY)
+    fake.answer = ANSWER_PX
+    svc.claude.factory = lambda key: fake
+    svc.ai_config.set_key(GOOD_KEY)
+    svc.ai_config.update(AiConfigUpdate(pl_text=False, keywords_artworks=False, daily=False))
+    with TestClient(app) as client:
+        _catalogue(svc)
+        _like(svc)
+        svc.ai.start()
+        assert client.post("/api/study/met:1").status_code == 200
+        _ready(client, "met:1")
+        asked: list[str] = []
+        look_soon = svc.later.look_soon
+
+        def looking(item: Any, entries: Any) -> bool:
+            asked.append(item.id)
+            return look_soon(item, entries)
+
+        svc.later.look_soon = looking  # type: ignore[method-assign]
+        svc.study._cutting.add("met:1")  # as while its details are cut
+        pending = client.get("/api/study/met:1").json()["work"]["legacy_pending"]
+        assert pending is True and asked == []
+        svc.study._cutting.discard("met:1")
+        client.get("/api/study/met:1")
+        assert asked == ["met:1"]  # the page's own look, once the study is made
+
+
 def test_a_new_study_on_request(tmp_path: Path) -> None:
     app = _app(tmp_path)
     svc: FrameService = app.state.service
