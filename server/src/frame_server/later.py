@@ -93,7 +93,9 @@ class LaterWorks:
             # Hidden since ("Ukryj dzieło"), or a copy of a work hidden since.
             if kept[1] is None or (found is not None and found not in self.library.hidden()):
                 return found
-        hits = self.library.query(PlaylistRules(query=entry.search), sort="suitability", limit=5)[1]
+        hits = self.library.query(
+            PlaylistRules(query=entry.search), sort="suitability", limit=5, proposing=True
+        )[1]
         copy = next(
             (
                 hit

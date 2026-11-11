@@ -48,7 +48,7 @@ from .phrases import has_phrase, parsed
 from .places import Places, known_places, learn_places
 from .search_index import SearchIndex, item_text
 from .term_index import TermIndex
-from .verdict import Place, against
+from .verdict import COPIES, Place, Why, against, whys
 from .viewer import OWNER_ID, STORE, viewer_id
 from .vocabulary import matches_terms, searched_kinds
 
@@ -591,6 +591,9 @@ class Library:
         self._queries_lock = threading.Lock()
         #: ``hidden()`` as last worked out: (catalogue version, works, it).
         self._hidden_kept: tuple[tuple[int, int], Works, Hidden] | None = None
+        #: The items the pictures showed to be details, by the id of the
+        #: copy they are a detail of (``Item.detail_of``), as of a version.
+        self._details_kept: tuple[int, dict[str, list[str]]] | None = None
         self._term_index: TermIndex | None = None
         self._term_index_lock = threading.Lock()
         self._term_index_building = False
@@ -1176,6 +1179,64 @@ class Library:
         items = [i for i in self._snapshot() if i.excluded and i.look is None]
         return sorted(items, key=lambda i: i.excluded_at or "", reverse=True)
 
+    def _details_by_whole(self) -> dict[str, list[str]]:
+        kept = self._details_kept
+        version = self._version
+        if kept is not None and kept[0] == version:
+            return kept[1]
+        found: dict[str, list[str]] = {}
+        for item in self._snapshot():
+            if item.detail_of:
+                found.setdefault(item.detail_of, []).append(item.id)
+        self._details_kept = (version, found)
+        return found
+
+    def details(self, item: Item) -> list[Item]:
+        """The library's details of ``item``'s work, for its card (Mateusz
+        2026-11-11: material worth seeing, left out of the catalogue as
+        copies): pictures found inside one of its copies (``Item.detail_of``,
+        ``library.twins``), and copies of it whose title says they are a
+        detail (``Why.DETAIL``). Not ``item`` itself, no hidden one, none
+        that is also another kind of copy (a grey copy, a reproduction), and
+        one picture once (``picture_hash``)."""
+        works = self.works()
+        index = works.group_of(item)
+        group = works.groups[index] if index is not None else []
+        copies = {item.id, *(i.id for i in group)}
+        if item.copy_of:
+            copies.add(item.copy_of)
+        by_whole = self._details_by_whole()
+        candidates: dict[str, Item] = {}
+        for copy_id in sorted(copies):
+            for detail_id in by_whole.get(copy_id, ()):
+                if (detail := self.get(detail_id)) is not None:
+                    candidates.setdefault(detail.id, detail)
+        for member in group:
+            candidates.setdefault(member.id, member)
+        hidden = self.hidden()
+        found: list[Item] = []
+        pictures: set[str] = set()
+        for detail in candidates.values():
+            if detail.id == item.id or detail.excluded or detail in hidden:
+                continue
+            reasons = set(whys(detail))
+            if Why.DETAIL not in reasons or (reasons & COPIES) - {Why.DETAIL}:
+                continue
+            picture = detail.picture_hash
+            if picture and picture != "-":
+                if picture in pictures:
+                    continue
+                pictures.add(picture)
+            found.append(detail)
+        return found
+
+    def whole_of(self, item: Item) -> Item | None:
+        """The best copy of the work ``item`` is a detail of
+        (``Item.detail_of``); None for any other."""
+        if not item.detail_of or (whole := self.get(item.detail_of)) is None:
+            return None
+        return self.twin(whole) or whole
+
     def twin(self, item: Item) -> Item | None:
         """The library's best copy of ``item``'s work, when that is another
         item."""
@@ -1192,9 +1253,15 @@ class Library:
         seed: int = 0,
         include_excluded: bool = False,
         user: str | None = None,
+        proposing: bool = False,
     ) -> tuple[int, list[Item]]:
         """``user``: whose hearts and playlists "Ulubione" and "Moje" mean
         (default: whoever is asking, the owner in the background).
+        ``proposing``: the server asks for itself (a card of Discover, the
+        work of the day, Propozycje dnia), not the owner for his works: what
+        he kept that is no picture for the frame (a detail, a reproduction,
+        a stamp) stays out, unless the rules ask for his own ("Ulubione",
+        "Moje playlisty").
 
         The search index narrows the catalogue to the works the rules may
         fit and only those are checked (:func:`matches`); the whole answer
@@ -1207,11 +1274,14 @@ class Library:
         elif sort == "relevance":
             sort = "recent"
         works = self.works()
+        if rules.favorites_only or any(t in MINE for t in rules.terms):
+            proposing = False
         kept = (
             rules.model_dump_json(),
             sort,
             seed if sort == "random" else 0,
             include_excluded,
+            proposing,
             user,
             self._version,
             self._hearts_version,
@@ -1227,7 +1297,7 @@ class Library:
             else:
                 items = None
         if items is None:
-            items = self._query(rules, sort, seed, include_excluded, user, limit == 0)
+            items = self._query(rules, sort, seed, include_excluded, user, limit == 0, proposing)
             if limit != 0:
                 with self._queries_lock:
                     self._queries[kept] = (made_with, items)
@@ -1244,6 +1314,7 @@ class Library:
         include_excluded: bool,
         user: str,
         count_only: bool,
+        proposing: bool = False,
     ) -> list[Item]:
         # Spare copies of a work stay out, unless a source is asked for.
         spare = (
@@ -1261,6 +1332,7 @@ class Library:
         said = said_as(rules.query, self.wording) if rules.query.strip() else None
         # Looked up as a set: a list of 2 000 works with no picture cost
         # every query a second, item after item.
+        place = Place.PROPOSED if proposing else Place.LISTED
         left_out = set(rules.exclude_ids)
         if left_out:
             rules = rules.model_copy(update={"exclude_ids": []})
@@ -1272,7 +1344,7 @@ class Library:
                 return False  # photos sent once: never listed
             if item.id in hidden.ids:  # another copy of a hidden work too
                 return False
-            if not include_excluded and against(item, Place.LISTED, rules.terms):
+            if not include_excluded and against(item, place, rules.terms):
                 return False
             if include_excluded and item.excluded:
                 unexcluded = item.model_copy(update={"excluded": False})
@@ -1314,7 +1386,7 @@ class Library:
                         continue
                     if copy.look is not None or copy.id in hidden.ids:
                         continue
-                    if against(copy, Place.LISTED, rules.terms):
+                    if against(copy, place, rules.terms):
                         continue
                     stored = self.get(copy.id)
                     if stored is not None and matches(stored, plain, listed, hearts, "", None):

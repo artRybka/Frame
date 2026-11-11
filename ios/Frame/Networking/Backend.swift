@@ -50,6 +50,8 @@ protocol FrameBackend: Sendable {
     func holder(itemID: String, wait: Int) async throws -> HolderView
     /// The work's fragments (a scroll's parts, a Commons tile set): none for most works.
     func fragments(itemID: String) async throws -> FragmentsView
+    /// The work's details (pictures of a part of it): none for most works.
+    func details(itemID: String) async throws -> DetailsView
     /// "Szukaj lepszej kopii": every copy of the work's picture in the
     /// sources, as they answer.
     func copies(itemID: String) async throws -> AsyncThrowingStream<CopyLine, Error>

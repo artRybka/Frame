@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from pathlib import Path
 
 import pytest
@@ -14,7 +15,7 @@ from test_twins import _work as _picture
 
 from frame_server import golden
 from frame_server.library.duplicates import same_work
-from frame_server.library.models import Item, ItemKind
+from frame_server.library.models import Item, ItemKind, PlaylistRules
 from frame_server.service import FrameService
 
 
@@ -173,3 +174,49 @@ def test_the_works_kept_with_a_reason_against_are_listed(
     path.write_text(json.dumps(data), encoding="utf-8")
     assert golden.main([str(path)]) == 0
     assert "kept, rzeźba: 1 (0 may be the work of the day)" in capsys.readouterr().out
+
+
+def test_the_whole_catalogue_is_saved_and_asked_away_from_the_server(
+    service: FrameService, tmp_path: Path
+) -> None:
+    """Every work of art as the library has it, a hidden one too, none of
+    the owner's photographs; read back, it is a library that answers as the
+    server's does."""
+    _settled(service)
+    service.library.upsert(
+        Item(id="upload:1", kind=ItemKind.PHOTO, source="upload", source_id="1", title="Wakacje")
+    )
+    service.library.update("met:10", excluded=True, keywords=["harbour"])
+    with _client(service) as client:
+        answer = client.get("/api/debug/catalogue")
+    assert answer.status_code == 200
+    saved = tmp_path / "catalogue.jsonl.gz"
+    saved.write_bytes(answer.content)
+    works = {item.id: item for item in golden.works(saved)}
+    art = [i for i in service.library.query(include_excluded=True)[1] if i.source != "upload"]
+    assert set(works) == {i.id for i in art} and "upload:1" not in works
+    for item in art:  # as the library has them: no field lost on the way
+        assert works[item.id] == item
+    assert works["met:10"].excluded and works["met:10"].keywords == ["harbour"]
+
+    library = golden.library_of(saved, tmp_path / "away.db")
+    try:
+        ours = service.library.query(PlaylistRules(query="Lacemaker"))[1]
+        theirs = library.query(PlaylistRules(query="Lacemaker"))[1]
+        assert ours and [i.id for i in theirs] == [i.id for i in ours]
+    finally:
+        library.close()
+
+
+def test_a_large_catalogue_is_written_in_pieces(
+    service: FrameService, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    for n in range(400):
+        title = " ".join(uuid.uuid4().hex for _ in range(8))  # nothing to pack
+        service.library.upsert(Item(id=f"met:{n}", source="met", source_id=str(n), title=title))
+    monkeypatch.setattr(golden, "PIECE", 4096)
+    pieces = list(golden.catalogue(service.library))
+    assert len(pieces) > 2 and all(pieces)
+    saved = tmp_path / "catalogue.jsonl.gz"
+    saved.write_bytes(b"".join(pieces))
+    assert len(golden.works(saved)) == 400

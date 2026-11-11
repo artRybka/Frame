@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import random
 import threading
+import time
 from typing import Any
 
 import pytest
@@ -292,6 +293,41 @@ def test_a_large_picture_not_downloaded_is_tried_again(
     # Done with: no download the next night.
     service.twins.look()
     assert len(downloads) == 1
+
+
+def test_a_large_picture_looked_at_stays_as_the_original(
+    service: FrameService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Downloaded to be laid over, it is the work's original from then on
+    (Mateusz 2026-11-11: a pity to lose them), the first to go when room
+    runs out; the next look reads it from the disk."""
+    painting = _large(12)
+    whole = _work(service, "rijks:1", painting.resize((600, 500)), title="The Night Watch")
+    service.library.update("rijks:1", width=2400, height=2000)
+    head = painting.crop((900, 700, 1280, 1020)).resize((760, 640))
+    _work(service, "wmc:2", head, title="The Nightwatch Jan Brughman")
+    seen = _work(service, "met:3", _print(3, (600, 700)), title="The Milkmaid", artist="Vermeer")
+    images = service.images
+    images.image_path(seen).parent.mkdir(parents=True, exist_ok=True)
+    _print(3, (600, 700)).save(images.image_path(seen), "JPEG")
+    downloads: list[str] = []
+
+    def sample(url: str, urgent: bool = False) -> Image.Image:
+        downloads.append(url)
+        return painting
+
+    monkeypatch.setattr(images, "sample", sample)
+    assert not images.image_path(whole).is_file()
+    service.twins.look()
+    found = service.library.get("wmc:2")
+    assert found is not None and found.detail_of == "rijks:1" and len(downloads) == 1
+    kept = images.image_path(whole)
+    assert kept.is_file() and max(Image.open(kept).size) <= 2560
+    assert time.time() - kept.stat().st_mtime > 300 * 24 * 3600  # dated far back
+    assert images.used_at(whole) is None and images.used_at(seen) is not None
+    # Room for one original: the one only looked at goes, the one seen stays.
+    assert images.prune(images.image_path(seen).stat().st_size, keep=[]) == 1
+    assert not kept.is_file() and images.image_path(seen).is_file()
 
 
 def test_what_the_pictures_told_survives_a_new_answer(service: FrameService) -> None:

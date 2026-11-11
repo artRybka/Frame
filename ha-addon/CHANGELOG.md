@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.17
+## 1.145.20
 
 - Studium dzieła, „Droga dzieła”: kropka przystanku pojawia się jako
   kleks w chwili, gdy mija ją kreska, nisko na ekranie. Plama pod tekst
@@ -9,6 +9,34 @@
   na końcu drogi i czerwone kleksy przy „Dalszych losach”. Kropka wyprawy
   na wystawę nadal pojawia się na końcu swojej odnogi. Przy cofaniu strony
   kropka znika, gdy kreska cofnie się ponad nią.
+
+## 1.145.19
+
+- Serwer nie proponuje już sam detali, reprodukcji, znaczków, dokumentów,
+  czarno-białych kopii ani kopii z Openverse, także wtedy, gdy mają serce
+  albo leżą na playliście: nie trafiają do Odkrywaj, Propozycji dnia,
+  Studium dnia ani między inne dzieła autora. W Ulubionych, na playlistach
+  i w Szukaj zostają jak dotąd. Rzeźba, ceramika, fotografia i rękopisy
+  pokazują się w Odkrywaj tylko w swojej grupie „Sztuki inne”.
+- Narzędzie do porządków w regułach: cały katalog (same opisy dzieł) można
+  pobrać z serwera i wypróbować na nim zmianę, zanim trafi na ramkę.
+
+## 1.145.18
+
+- Karta dzieła pokazuje jego detale, czyli wycinki, które serwer znalazł
+  i trzyma osobno jako kopie: pasek „Detale”, a dotknięcie detalu otwiera
+  go na całym ekranie. Na karcie detalu jest „Całe dzieło” i pasek „Inne
+  detale”.
+
+## 1.145.17
+
+- Duże obrazy, które powtórki pobierają z muzeów, żeby sprawdzić, czy mały
+  obraz jest detalem większego dzieła, nie są już wyrzucane po porównaniu.
+  Zostają jako oryginały dzieł: karta dzieła otwiera się od razu w pełnej
+  jakości, a następne powtórki nie pobierają tego samego drugi raz
+  (pobieranie zajmowało 23 z 29 minut powtórek). Mieszczą się w limicie
+  miejsca na oryginały i przy braku miejsca znikają pierwsze, przed
+  dziełami oglądanymi i Ulubionymi.
 
 ## 1.145.16
 
