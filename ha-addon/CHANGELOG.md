@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.3
+## 1.145.5
 
 - Studium dzieła: „Dalsze losy” są teraz dalszym ciągiem „Drogi dzieła”
   i stoją zaraz pod nią. Chwilę po czerwonej plamie na końcu drogi pióro
@@ -23,6 +23,13 @@
 - „Droga dzieła”: cienka kreska zaczyna się rysować wcześniej, prawie
   u dołu ekranu, a kropki z plamami pod tekstami pojawiają się trochę
   wcześniej niż dotąd, nieco poniżej środka ekranu.
+## 1.145.4
+
+- Miniatury bardzo długich dzieł (zwoje, fryzy) są ostre. Serwer szykuje
+  je z większego zdjęcia i tak, by krótszy bok miał 320 px, a aplikacja nie
+  zmniejsza ich już po dłuższym boku. Stare, zbyt cienkie miniatury serwer
+  robi od nowa po aktualizacji; telefon może jeszcze przez dobę pokazywać
+  starą.
 
 ## 1.145.2
 
