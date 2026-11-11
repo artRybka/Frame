@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.145.26
+
+- Przedmioty i książki, które uchodziły za obrazy, trafiają do „Sztuk
+  innych”: miecze, instrumenty, ubrania, meble, lampy i naczynia do
+  „Ceramika i rzemiosło”, brązy, terakoty, maski i kamee do „Rzeźba”,
+  książki (głównie z Met) do „Rękopisy i miniatury”. Muzea nazwały je
+  inaczej, niż serwer się spodziewał, więc pojawiały się w tematach
+  malarskich, także wśród „Arcydzieł muzeów”. W katalogu to około 870
+  dzieł. Zostają w swoich grupach, nic nie jest usuwane poza jedenastoma
+  okazami przyrodniczymi z Europeany.
+- Dobieranie nie bierze już takich przedmiotów jako obrazów.
+- Brakujące techniki: ksylografie z kopenhaskiego SMK i ekslibrisy są
+  grafiką, odrysy i szkicowniki rysunkiem, greckie plakaty plakatami.
+  Filtr techniki w Szukaj znajduje przez to około 470 dzieł więcej.
+
 ## 1.145.25
 
 - Studium dzieła, „Kolor i światło”: pasek kolorów obrazu olejnego jest

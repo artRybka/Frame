@@ -496,6 +496,15 @@ TERMS: list[Term] = [
         "estampe*",
         "gravure*",
         "grafiek",
+        # Types that named no technique (the catalogue of 2026-11-11): SMK's
+        # "Xylograph" (302 works), the Polish museums' "odbitka
+        # typograficzna" and "ekslibris".
+        "xylograph*",
+        "odbitka typograficzna",
+        "ekslibris*",
+        "ex libris",
+        "bookplate*",
+        "stipple",
     ),
     _t(
         "technique:drawing",
@@ -514,8 +523,12 @@ TERMS: list[Term] = [
         "dessin*",
         "tegning*",
         "teckning*",
+        # The MNW's tracings of drawings and sketchbooks.
+        "odrys*",
+        "szkicownik*",
+        "sketchbook*",
     ),
-    _t("technique:poster", "Plakaty", "poster*", "affiche*", "plakat*"),
+    _t("technique:poster", "Plakaty", "poster*", "affiche*", "plakat*", "αφίσα*"),
     _t(MANUSCRIPTS, "Rękopisy i miniatury", "manuscript*"),
     _t(PHOTOGRAPHY, "Fotografia", "photograph*", "fotografi*"),
     _t(SCULPTURE, "Rzeźba", "sculpture*", "rzeźb*", "statue*"),
@@ -555,6 +568,7 @@ _YEARS = re.compile(r"^years:(\d{1,4})?-(\d{1,4})?$")
 _MANUSCRIPT = re.compile(
     r"\b(manuscripts?|codex|codices|books? of hours|psalters?|antiphon\w*|graduals?|missals?|"
     r"breviar\w*|qur'?an|koran|shah-?nam\w*|bifoli\w*|folios?|calligraph\w*|"
+    r"belles heures|livres? d'heures|"
     r"(?:leaf|leaves|pages?|folios?) from|r[eę]kopis\w*|handschrift\w*)\b",
     re.IGNORECASE,
 )
@@ -851,7 +865,9 @@ _DOCUMENT = re.compile(
     r"newspapers?|gazet\w*|kranten?|zeitung\w*|journaux|"
     r"correspondence|letters? \(correspondence\)|briefe?|"
     r"aanplakbiljet\w*|bekendmaking\w*|bekanntmachung\w*|proclamati\w*|obwieszcz\w*|"
-    r"printed matter|drukwerk|druksache|druki|ephemera|texts?|tekst\w*)\b",
+    r"printed matter|drukwerk|druksache|druki|ephemera|texts?|tekst\w*|"
+    # Natural history's specimens (Europeana: a bat's skull).
+    r"(?:preserved )?specimens?)\b",
     re.IGNORECASE,
 )
 #: Titles of notices that are nothing but text ("Bekendmaking", typed
@@ -901,7 +917,13 @@ def _is_document(classification: str, title: str) -> bool:
 #: Museums' types of sculpture and of decorative arts; a type that names a
 #: picture technique comes first ("Miniature Painting").
 _SCULPTURE = re.compile(
-    r"\b(sculptures?|statues?|statuettes?|busts?|reliefs?|figur\w*|netsuke|beeld\w*|rzeźb\w*)\b",
+    r"\b(sculptures?|statues?|statuettes?|busts?|reliefs?|figur\w*|netsuke|beeld\w*|rzeźb\w*|"
+    # The Met's and others' types by material and place, which named
+    # nothing known ("Bronzes", "Terracottas", "Ivories-Elephant", "Gems",
+    # "Architectural fragment"; among the highlights of "Arcydzieła muzeów").
+    r"bronzes|terracottas?|ivor(?:y|ies)|gems?|cameos?|lapidary|hardstone|stone|"
+    r"stelae?|steles?|shabtis?|heads?|masks?|monuments?|architectural fragments?|archivolts?|"
+    r"mouldings?|talatat|medallions?|crèche|płaskorzeźb\w*|coffins?)\b",
     re.IGNORECASE,
 )
 _DECORATIVE = re.compile(
@@ -915,12 +937,38 @@ _DECORATIVE = re.compile(
     # bells (requisitioned in 1942) and clocks.
     r"keramiek|aardewerk|schotels?|porselein|steengoed|glaswerk|zilverwerk|keramik|"
     r"bells?|klokken|glocken?|dzwon\w*|clocks?|"
+    # Types that named nothing known and passed for pictures (1 700 works
+    # of the catalogue of 2026-11-11: the Met's clarinets, andirons, shoes
+    # and daggers, the V&A's boxes and plaques).
+    r"decorative arts?|ornaments?|andirons?|instruments?|\w+phone|garments?|shoes|sandals|"
+    r"caps?|bonnets?|hats?|shawls?|capes?|mantles?|corsets?|gowns?|robes?|vests?|petticoats?|"
+    r"trousers|pelerines?|collars?|belts?|boas?|fascinators?|engageantes|ensembles?|codpieces?|"
+    r"quilts?|carpets?|rugs?|coverings|hangings|shrouds?|napkins?|cushions?|bags?|"
+    r"basketry|horology|watch(?:es)?|timepieces?|lamps?|lampstands?|lighting|"
+    r"(?<!fashion )(?<!book )plates?|book covers?|"
+    r"teapots?|tiles?|plaques?|box(?:es)?|snuffbox(?:es)?|chests?|cases?|"
+    r"daggers?|swords?|helmets?|shields?|gauntlets?|firearms?|crossbows?|weapons?|"
+    r"[\w-]*guards?|flasks?|necklaces?|pendants?|pins?|rings?|beads?|buttons?|scarabs?|seals?|"
+    r"woodwork|wood|frames?|tables?|worktables?|chairs?|armchairs?|sideboards?|"
+    r"cabinets?|bench(?:es)?|settees?|stoves?|burners?|stands?|pourers?|"
+    r"toys?|dolls?|chess|salvers?|sauceboats?|ladles?|spoons?|cutlery|decanters?|"
+    r"glassware|hookahs?|kendi|rhyton|mirrors?|implements?|stoups?|finials?|goggles|inr[oō]|"
+    r"miniature rooms?|inlays?|holders?|discs?|"
     # A whole mummy with its portrait inserted is no picture; a mummy
     # portrait (the V&A's type of a Fayum panel) is.
     r"mumm(?:y|ies)(?!\s+portraits?)|human remains)\b",
     re.IGNORECASE,
 )
 
+
+#: A book as its museum's type (the Met's "Books": Vasari's Lives, pattern
+#: books, a title page for a picture): with the manuscripts, the nearest
+#: of "Sztuki inne". Cleveland's "Bound Volume" stays: its works are single
+#: leaves and spreads (Hiroshige's, Kamisaka Sekka's).
+_BOOK = re.compile(r"\bbooks?\b(?!\s+(?:pages?|plates?|illustrations?|covers?))", re.IGNORECASE)
+#: The Met's copies in tempera of Egyptian tomb paintings: pictures, typed
+#: by what they show ("Facsimile, Qenamun (TT 93), chariot, weapons").
+_FACSIMILE = re.compile(r"^\W*facsimile\b", re.IGNORECASE)
 
 #: Wall paintings, as museums write them.
 _MURAL = re.compile(r"\b(fresco(?:es|s)?|wall paintings?|murals?|fresk\w*)\b", re.IGNORECASE)
@@ -945,12 +993,14 @@ def _object_category(classification: str, title: str, medium: str) -> str | None
         return None
     # The Met files Boscoreale's walls as "Miscellaneous-Stone": a fresco
     # is a picture whatever its museum's type.
-    if _MURAL.search(f"{classification} {medium} {title}"):
+    if _MURAL.search(f"{classification} {medium} {title}") or _FACSIMILE.search(classification):
         return None
     if _SCULPTURE.search(classification):
         return SCULPTURE
     if _DECORATIVE.search(classification):
         return DECORATIVE
+    if _BOOK.search(classification):
+        return MANUSCRIPTS
     return None
 
 

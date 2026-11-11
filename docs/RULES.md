@@ -59,7 +59,7 @@ chciałbym żeby spadła jakość doboru tych propozycji”).
 | 2 | Szybkość bez zmiany wyników: przyrostowe scalanie grup (2a: 1.145.13, PLAN 3.3zzz157); duże obrazy powtórek zostają jako oryginały (2b: 1.145.17, PLAN 3.3zzz161); dalej według pomiarów z nocy | w toku |
 | 3 | Sprzątanie resztek: wskaźnik „Na e-papierze”, martwy próg, nieużywane punkty API | 1.145.14 (PLAN 3.3zzz158) |
 | 4 | Jeden werdykt pokazywania: lista powodów i tabela „miejsce × powód” (4a, bez zmiany wyników: 1.145.15, PLAN 3.3zzz159); serwer nie proponuje zachowanych detali, kopii i znaczków (4b: 1.145.19, PLAN 3.3zzz163); kolejność „najpierw dobre” w Odkrywaj (4c: 1.145.23, PLAN 3.3zzz168) | 1.145.23 |
-| 5 | Jedna tożsamość dzieła i autora | |
+| 5 | Jedna tożsamość dzieła i autora, opis rodzaju: przedmioty i książki do „Sztuk innych” (5a: 1.145.26, PLAN 3.3zzz171); „ten sam autor” jedną regułą (5b); to samo dzieło i najlepsza kopia według obrazu (5c) | w toku |
 | 6 | Jedna ścieżka pytań do muzeów i jedna nocna pętla modeli | |
 
 Etapy 0 do 3 nie zmieniają tego, co widać. Przed każdą zmianą widocznych
@@ -162,6 +162,28 @@ malarskiej technice na malarskim podłożu nie jest fotografią, choć muzeum
 tak nazwało jego rodzaj (`_PAINTED_ON`). Sprawdzone na całym katalogu:
 werdykt zmienia się dla trzech dzieł.
 
+Etap 5a w skrócie (lista różnic pokazana, wybór Mateusza „Przenieś
+wszystko”): `vocabulary.object_category` zna teraz rodzaje, którymi muzea
+nazywają przedmioty („Metal-Ornaments”, „Aerophone-…”, „Swords”, „Bronzes”,
+„Books”). Rodzaj, który nazywa technikę obrazu, dalej rozstrzyga pierwszy
+(„Furniture, Drawings” to rysunek). Na katalogu 868 dzieł zmieniło
+kategorię (404 rzemiosło, 70 rzeźba, 394 książki do rękopisów), 11 okazów
+przyrodniczych stało się dokumentem, 475 dzieł dostało technikę. Udział
+kategorii „Sztuk innych” to próg dobierania; przycinanie rusza dopiero
+powyżej półtora udziału (`player.OTHER_ART_OVER`), żeby zmiana opisu nie
+usuwała dzieł. Nowy rodzaj z muzeum, którego reguły nie znają, zostaje
+obrazem: listę takich rodzajów daje katalog (`golden.works`) i
+`object_category`.
+
+Pomiary do 5b i 5c (katalog z 2026-11-11): `vocabulary.artist_matches`
+(podzbiór słów) i `artists.made_by` (osoby) różnią się na 81 parach nazw
+w jedną stronę („Style of…”, „Według…”) i na 1820 w drugą („Edgar Degas”
+i „Hilaire Germain Edgar Degas”); `made_by` uznaje „…, After” i „formerly
+attributed to” za autora. Grup z więcej niż jedną kopią jest 28 (68
+pozycji), bo dobrane kopie z mniej pewnych źródeł serwer usuwa; w 10
+najlepsza kopia zmieniłaby się przy kolejności „najpierw obraz”, 4 serca
+leżą na kopii, która nie jest najlepsza.
+
 ## Jak sprawdzić zmianę reguł
 
 ### 1. Co mówi każde miejsce o każdym rodzaju dzieła
@@ -218,6 +240,10 @@ nowemu.
 curl -s -H "Authorization: Bearer $(cat ~/.config/frame/nas-token)" \
   http://<adres serwera>:8099/api/debug/catalogue > catalogue.jsonl.gz
 ```
+
+Kto jest kim wśród autorów, serwer wie także od Wikidaty; do prób z
+autorami (etap 5b) pobiera się ten stan tak samo z `/api/debug/artists` i
+podaje jako trzeci argument `golden.library_of`.
 
 ### 3. Czas
 
