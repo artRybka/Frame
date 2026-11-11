@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.2
+
+- „Pod lupą”: rozbłysk na kafelkach jest mocniejszy, a całe kafelki są
+  lekko uniesione nad stroną. Przy obracaniu telefonu przesuwają się,
+  a ich cień na stronie przesuwa się w drugą stronę.
+
 ## 1.145.1
 
 - Studium dnia bierze pod uwagę jakość zdjęcia dzieła. Dzieła ze zdjęciem

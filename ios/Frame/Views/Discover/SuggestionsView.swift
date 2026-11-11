@@ -425,7 +425,8 @@ struct WorkTile: View {
     /// Konfiguracja allows it), as on the work's card ("Pod lupą",
     /// Mateusz 2026-11-10): fully at the top, fading to a tenth of it at
     /// the caption (19:15); stronger, held over the top third (2026-11-11),
-    /// cropped closer, with a glossy coat; no shadow, as the other cards.
+    /// cropped closer, with a glossy coat, lifted over the page with the
+    /// phone's turn and casting a shadow on it.
     var brighten = false
 
     /// How much closer a brightened card crops its picture.
@@ -436,7 +437,7 @@ struct WorkTile: View {
         return title.isEmpty ? "Bez tytułu" : title
     }
 
-    var body: some View {
+    private var card: some View {
         VStack(alignment: .leading, spacing: 0) {
             Color.clear
                 .frame(height: 118)
@@ -483,12 +484,22 @@ struct WorkTile: View {
             // A glossy coat: a diagonal streak that runs with the phone's
             // turn, as on the "Ukryte" cover (Mateusz 2026-11-11).
             if brighten {
-                GlassSheen()
+                GlassSheen(peak: 0.65)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .followsTilt()
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    var body: some View {
+        // A brightened card stands a little over the page and moves with
+        // the phone's turn, its shadow on the page the other way
+        // (Mateusz 2026-11-11).
+        if brighten {
+            card.liftedCard(cornerRadius: 12)
+        } else {
+            card
+        }
     }
 }
 
