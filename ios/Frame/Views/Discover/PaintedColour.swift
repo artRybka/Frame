@@ -306,8 +306,9 @@ struct PaintedStrip: View {
     let swatches: [ColorSwatch]
     let style: PaintStyle
     let seed: Int
-    /// Told when the first stroke begins.
-    var began: (Date) -> Void = { _ in }
+    /// Told when the first stroke begins, and how long the bar's paint
+    /// takes from then.
+    var began: (Date, Double) -> Void = { _, _ in }
 
     @State private var width: CGFloat = 0
     @State private var jobs = PaintJobs()
@@ -335,8 +336,9 @@ struct PaintedStrip: View {
                 if width > 40, !shares.isEmpty {
                     let dark = scheme == .dark, wide = Double(width.rounded())
                     let key = "\(style.rawValue)|\(Int(wide))|\(dark)|\(seed)|" + shares.map { "\($0.rgb)\($0.weight)" }.joined(separator: ",")
+                    let takes = style.barTime(shares, width: wide)
                     Painted(job: jobs.job(key) { PaintJob.strip(style, shares: shares, width: wide, seed: seed, dark: dark) },
-                            key: key, after: .distantPast, began: began)
+                            key: key, after: .distantPast, began: { began($0, takes) })
                 }
             }
     }

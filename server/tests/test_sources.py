@@ -339,6 +339,12 @@ def test_text_pages_and_backs_of_works_are_no_works() -> None:
     assert is_document(work("Bekendmaking", "poster"))
     assert is_document(work("Józef Chełmoński Chata verso", "Painting", "wmc"))
     assert not is_document(work("Rysunek dwustronny; recto: szkic; verso: studium głowy"))
+    # A sheet named with both sides, and the back of a drawing, drawn on.
+    both = "Sketch of Anatomical Sculpture (recto) Sketch of Madame Cézanne (verso)"
+    assert not is_document(work(both, "Drawing", "cma"))
+    assert not is_document(work("Sketch of Madame Cézanne (verso)", "Drawing", "cma"))
+    assert not is_document(work("Landscape (recto); Figures (verso)", "Painting"))
+    assert is_document(work("Landscape (verso)", "Painting"))
     assert not is_document(work("Brot!", "Poster"))
     assert not is_document(work("Woman Reading a Letter", "Painting"))
 

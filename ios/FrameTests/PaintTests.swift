@@ -108,41 +108,136 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(strip.frame(age: 999).bytes, dry.bytes)
     }
 
-    func testOilIsAPullOfTheBrushForEachColourOneAfterAnother() {
-        let pulls = OilStrip.pulls(jatte, width: 350, seed: 5)
-        XCTAssertEqual(pulls.count, jatte.count)
-        for (before, after) in zip(pulls, pulls.dropFirst()) {
-            // Each a little over the one before (12:02: „Mogą na siebie trochę nachodzić”).
-            XCTAssertEqual(after.a, before.e + OilStrip.gap, accuracy: 0.001)
+    /// The colour about a point of the bar, 0…255 each: the mean of a few pixels, so that no one bristle's streak decides.
+    private func colour(_ frame: PaintFrame, _ x: Double, _ y: Double) -> (red: Double, green: Double, blue: Double) {
+        var sum = (0.0, 0.0, 0.0), count = 0.0
+        for dy in stride(from: -3.0, through: 3.0, by: 1) {
+            for dx in stride(from: -1.0, through: 1.0, by: 1) {
+                let at = pixel(x + dx, y + dy), colour = frame.colour(at.0, at.1)
+                sum = (sum.0 + colour.red, sum.1 + colour.green, sum.2 + colour.blue)
+                count += 1
+            }
         }
-        XCTAssertLessThanOrEqual(pulls[pulls.count - 1].e, 350)
-        // The small shares are touches of the brush (12:12: „Przy
-        // mniejszych - muśnięcia / pacnięcia”), never too narrow to see.
-        XCTAssertFalse(pulls[0].touch)
-        XCTAssertTrue(pulls[6].touch)
-        for pull in pulls { XCTAssertGreaterThanOrEqual(pull.e - pull.a, OilStrip.least - 0.001) }
+        return (sum.0 / count, sum.1 / count, sum.2 / count)
+    }
+
+    /// Mateusz 2026-11-11 18:59: „Same farby na pasku jednak bliżej
+    /// siebie, mogą się trochę mieszać ze sobą i dawać płynniejsze
+    /// przejście. Tak jakby malarz poszczególnymi pociągnięciami malował
+    /// gradient. Akcenty z końca jako pacnięcia na wierzchu.”
+    func testOilIsOneBandOfPullsWithTheSmallColoursAsTouchesOnTop() {
+        let pulls = OilStrip.pulls(jatte, width: 350, seed: 5)
+        let mains = pulls.filter { !$0.on }, accents = pulls.filter(\.on)
+        // The four big colours are pulls (the widest in two), the three small ones touches on top.
+        XCTAssertEqual(mains.count, 5)
+        XCTAssertEqual(accents.map(\.rgb), [jatte[4].rgb, jatte[5].rgb, jatte[6].rgb])
+        XCTAssertEqual(mains.map(\.rgb), [jatte[0].rgb, jatte[0].rgb, jatte[1].rgb, jatte[2].rgb, jatte[3].rgb])
+        XCTAssertEqual(mains[0].a, 0)
+        XCTAssertNil(mains[0].under)
+        for (before, after) in zip(mains, mains.dropFirst()) {
+            // Each begun in the wet paint of the one before, with that paint on the brush.
+            XCTAssertEqual(after.a, before.e - OilStrip.back, accuracy: 0.001)
+            XCTAssertEqual(after.under, before.rgb)
+            XCTAssertGreaterThan(after.blend, 0.3)
+            XCTAssertGreaterThan(after.at, before.at)
+        }
+        XCTAssertLessThanOrEqual(mains[mains.count - 1].e, 350)
+        // The accents come last, on the body of a pull: not across the place where one begins, not on each other.
+        let seams = mains.dropFirst().map(\.a)
+        for (n, accent) in accents.enumerated() {
+            XCTAssertTrue(accent.touch)
+            XCTAssertNil(accent.under)
+            XCTAssertGreaterThanOrEqual(accent.at, mains[mains.count - 1].at + mains[mains.count - 1].takes)
+            XCTAssertGreaterThan(accent.a, 0)
+            XCTAssertLessThan(accent.e, 350 - 16)
+            for seam in seams { XCTAssertFalse(seam + 3 > accent.a - 5 && seam + 3 < accent.e + 10, "accent \(n)") }
+            for other in accents.prefix(n) { XCTAssertTrue(accent.a > other.e + 8 || accent.e < other.a - 8, "accent \(n)") }
+        }
+        // Enough of the picture stays in the pulls: of eight equal colours only three are accents, and one colour alone is a pull.
+        let equal = shares((0..<8).map { _ in ("#6A7F9A", 0.125) })
+        XCTAssertEqual(OilStrip.pulls(equal, width: 350, seed: 5).filter(\.on).count, 3)
+        XCTAssertEqual(OilStrip.pulls(shares([("#6A7F9A", 1)]), width: 350, seed: 5).filter(\.on).count, 0)
+        XCTAssertTrue(OilStrip.pulls([], width: 350, seed: 5).isEmpty)
 
         let strip = OilStrip(shares: jatte, width: 350, seed: 5, dark: false)
+        XCTAssertEqual(strip.last, pulls.map { $0.at + $0.takes }.max() ?? 0, accuracy: 0.001)
+        XCTAssertEqual(strip.length, strip.last + OilStrip.lag + OilStrip.soak, accuracy: 0.001)
         XCTAssertEqual(covered(strip.frame(age: 0)), 0)
-        let early = strip.frame(age: 0.45)
-        let first = pixel(pulls[0].a + 8, 13), third = pixel(pulls[2].a + 8, 13)
+        let early = strip.frame(age: 0.3)
+        let first = pixel(mains[0].a + 8, 13), fourth = pixel(mains[3].a + 24, 13)
         XCTAssertGreaterThan(early.cover(first.0, first.1), 0.9)
-        XCTAssertEqual(early.cover(third.0, third.1), 0)
-        let done = strip.frame(age: strip.length)
-        for (i, pull) in pulls.enumerated() {
-            // Where the brush came down the paint is full and of its colour, a little lighter or darker in the light.
-            let at = pixel(pull.a + 8, 13 + pull.dy)
-            XCTAssertGreaterThan(done.cover(at.0, at.1), 0.9, "pull \(i)")
+        XCTAssertEqual(early.cover(fourth.0, fourth.1), 0)
+        // All the paint down: one band, no paper between the pulls; only the last one runs dry.
+        let wet = strip.frame(age: strip.last), last = mains[mains.count - 1]
+        for x in stride(from: 6.0, to: last.a + 0.4 * (last.e - last.a), by: 4) {
+            let at = pixel(x, 13)
+            XCTAssertGreaterThan(wet.cover(at.0, at.1), 0.9, "at \(x)")
         }
-        let colour = done.colour(first.0, first.1)
-        XCTAssertEqual(colour.green, jatte[0].rgb[1], accuracy: 60)
-        XCTAssertGreaterThan(colour.green, colour.blue + 30)
-        XCTAssertGreaterThan(covered(done), covered(early) * 2)
-        XCTAssertEqual(strip.frame(age: 999).bytes, done.bytes)
-        // On a dark page the same paint, with a deeper shadow under it.
+        let green = wet.colour(first.0, first.1)
+        XCTAssertEqual(green.green, jatte[0].rgb[1], accuracy: 60)
+        XCTAssertGreaterThan(green.green, green.blue + 30)
+        // An accent is on top of the paint that was there: green before it, orange after.
+        let orange = accents[0], spot = (x: orange.a + 0.45 * (orange.e - orange.a), y: 13 + orange.dy)
+        let under = colour(strip.frame(age: orange.at), spot.x, spot.y), over = colour(wet, spot.x, spot.y)
+        XCTAssertGreaterThan(under.green, under.red + 10)
+        XCTAssertGreaterThan(over.red, over.green + 40)
+        // On a dark page the same paint.
         let dark = OilStrip(shares: jatte, width: 350, seed: 5, dark: true).frame(age: 99)
-        XCTAssertEqual(dark.cover(first.0, first.1), done.cover(first.0, first.1), accuracy: 0.01)
-        XCTAssertGreaterThan(covered(dark), covered(done))
+        XCTAssertEqual(dark.cover(first.0, first.1), wet.cover(first.0, first.1), accuracy: 0.01)
+    }
+
+    func testOilColoursGoOverIntoEachOther() {
+        // Two colours, each wide enough for three pulls.
+        let two = shares([("#B03020", 0.5), ("#2040B0", 0.5)])
+        let pulls = OilStrip.pulls(two, width: 350, seed: 5)
+        XCTAssertEqual(pulls.count, 6)
+        XCTAssertFalse(pulls.contains(where: \.on))
+        // The pull next to the other colour has some of it on the brush; the ones away from it are pure.
+        XCTAssertEqual(pulls[0].rgb, two[0].rgb)
+        XCTAssertEqual(pulls[5].rgb, two[1].rgb)
+        XCTAssertGreaterThan(pulls[2].rgb[2], two[0].rgb[2] + 5)
+        XCTAssertLessThan(pulls[2].rgb[0], two[0].rgb[0] - 5)
+        XCTAssertGreaterThan(pulls[3].rgb[0], two[1].rgb[0] + 10)
+        XCTAssertLessThan(pulls[3].rgb[2], two[1].rgb[2] - 10)
+        for (mixed, pure) in zip(OilStrip.mixed(two[0].rgb, two[1].rgb, 0), two[0].rgb) { XCTAssertEqual(mixed, pure, accuracy: 0.001) }
+        // Along the bar red gives way to blue by degrees: no place where one stops and the other begins.
+        let done = OilStrip(shares: two, width: 350, seed: 5, dark: false).frame(age: 99)
+        func warm(_ x: Double) -> Double {
+            let here = colour(done, x, 13)
+            return here.red / max(1, here.red + here.blue)
+        }
+        let left = warm(40), right = warm(pulls[5].a + 0.6 * (pulls[5].e - pulls[5].a))
+        XCTAssertGreaterThan(left, 0.75)
+        XCTAssertLessThan(right, 0.3)
+        let between = stride(from: pulls[2].a + 10, through: pulls[4].a + 30, by: 6).map(warm)
+        XCTAssertGreaterThanOrEqual(between.filter { $0 > right + 0.12 && $0 < left - 0.12 }.count, 5)
+        for (here, next) in zip(between, between.dropFirst()) { XCTAssertLessThan(abs(here - next), 0.36) }
+    }
+
+    /// Mateusz 2026-11-11 18:59: „Przy lini kolorów robionych farba
+    /// olejna także dodaj „tłustą plamę” na papierze pod spodem.”
+    func testThePaperUnderTheOilBarSoaksTheOilUp() {
+        let strip = OilStrip(shares: jatte, width: 350, seed: 5, dark: false)
+        func count(_ frame: PaintFrame, _ range: ClosedRange<UInt8>) -> Int {
+            var count = 0
+            for k in 0..<(frame.wide * frame.high) where range.contains(frame.bytes[4 * k + 3]) { count += 1 }
+            return count
+        }
+        // A faint stain round the paint that was not there when the first pulls were just down, and comes slowly.
+        let begun = strip.frame(age: 0.5), wet = strip.frame(age: strip.last), soaked = strip.frame(age: strip.length)
+        XCTAssertLessThan(count(begun, 12...80), 1200)
+        XCTAssertGreaterThan(count(soaked, 12...80), count(wet, 12...80) + 3000)
+        let half = strip.frame(age: strip.last + OilStrip.soak / 2)
+        XCTAssertGreaterThan(count(half, 12...80), count(wet, 12...80))
+        XCTAssertLessThan(count(half, 5...80), count(soaked, 5...80))
+        // The paint itself is as it was, and the stain stays near it.
+        XCTAssertEqual(Double(count(soaked, 201...255)), Double(count(wet, 201...255)), accuracy: 60)
+        XCTAssertEqual(soaked.cover(2, 2), 0)
+        XCTAssertEqual(soaked.cover(soaked.wide / 2, 4), 0)
+        XCTAssertEqual(strip.frame(age: 999).bytes, soaked.bytes)
+        // On a dark page too.
+        let dark = OilStrip(shares: jatte, width: 350, seed: 5, dark: true).frame(age: 99)
+        XCTAssertGreaterThan(count(dark, 12...80), 3000)
     }
 
     func testAPaintsSwatchIsATouchADabOrAScribbleOfItsColour() {
@@ -181,9 +276,6 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(solid(soaked), solid(down), accuracy: 15)
         XCTAssertEqual(sure.frame(age: 999).bytes, soaked.bytes)
         XCTAssertEqual(sure.length, sure.last + OilStrip.soak, accuracy: 0.001)
-        // The bar's paint soaks nothing up.
-        let bar = OilStrip(shares: jatte, width: 350, seed: 5, dark: false)
-        XCTAssertEqual(bar.length, bar.last + 0.2, accuracy: 0.001)
         let wet = WaterDab(rgb: rgb, index: 0, seed: 5)
         XCTAssertEqual(covered(wet.frame(age: 0)), 0)
         // As wide as the swatch's place, 26 points across, or a little over.
@@ -219,25 +311,26 @@ final class PaintTests: XCTestCase {
     }
 
     func testThePaintsBeginWhileTheBarIsPaintedOneAfterAnother() {
+        let three = Array(jatte.prefix(3))
         for style in PaintStyle.allCases {
             // With no bar the first is there at once.
-            XCTAssertEqual(style.swatchDelay(colours: 0, index: 0), 0)
-            XCTAssertGreaterThan(style.swatchDelay(colours: 0, index: 1), 0.2)
-            let first = style.swatchDelay(colours: 7, index: 0)
-            XCTAssertGreaterThan(style.swatchDelay(colours: 7, index: 1), first + 0.2)
-            XCTAssertLessThan(style.swatchDelay(colours: 7, index: 1), first + 0.3)
-            XCTAssertGreaterThan(first, style.swatchDelay(colours: 3, index: 0))
+            XCTAssertEqual(style.barTime([], width: 350), 0)
+            XCTAssertEqual(style.swatchDelay(bar: 0, index: 0), 0)
+            XCTAssertGreaterThan(style.swatchDelay(bar: 0, index: 1), 0.2)
+            let bar = style.barTime(jatte, width: 350), first = style.swatchDelay(bar: bar, index: 0)
+            XCTAssertGreaterThan(style.swatchDelay(bar: bar, index: 1), first + 0.2)
+            XCTAssertLessThan(style.swatchDelay(bar: bar, index: 1), first + 0.3)
+            XCTAssertGreaterThan(bar, style.barTime(three, width: 350))
+            // They do not wait for the bar's last stroke (Mateusz 2026-11-11
+            // 18:39: „muszą się pojawiać trochę wcześniej”): the first begins
+            // about half way through the bar, when its first colours are down.
+            XCTAssertLessThan(first, 0.7 * bar, "\(style)")
+            XCTAssertGreaterThan(first, 0.3 * bar, "\(style)")
         }
-        // They do not wait for the bar's last stroke (Mateusz 2026-11-11
-        // 18:39: „muszą się pojawiać trochę wcześniej”): the first begins
-        // about half way through the bar, when its first colours are down.
-        let bars = [(PaintStyle.oil, OilStrip(shares: jatte, width: 350, seed: 5, dark: false).last, OilStrip.stroke),
-                    (.water, WaterStrip(shares: jatte, width: 350, seed: 5).last, WaterStrip.stroke),
-                    (.dry, DryPlan(shares: jatte, width: 350, seed: 5).last, DryPlan.stroke)]
-        for (style, last, stroke) in bars {
-            let first = style.swatchDelay(colours: jatte.count, index: 0)
-            XCTAssertLessThan(first, 0.7 * last, "\(style)")
-            XCTAssertGreaterThan(first, stroke, "\(style)")
-        }
+        // The bar's time is the time its painter takes over its paint.
+        XCTAssertEqual(PaintStyle.oil.barTime(jatte, width: 350), OilStrip(shares: jatte, width: 350, seed: 5, dark: false).last, accuracy: 0.001)
+        XCTAssertEqual(PaintStyle.oil.barTime(jatte, width: 350), OilStrip(shares: jatte, width: 350, seed: 41, dark: true).last, accuracy: 0.001)
+        XCTAssertEqual(PaintStyle.water.barTime(jatte, width: 350), WaterStrip(shares: jatte, width: 350, seed: 5).last, accuracy: 0.001)
+        XCTAssertEqual(PaintStyle.dry.barTime(jatte, width: 350), DryPlan(shares: jatte, width: 350, seed: 5).last, accuracy: 0.001)
     }
 }

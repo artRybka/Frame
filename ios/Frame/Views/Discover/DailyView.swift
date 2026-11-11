@@ -95,7 +95,7 @@ struct DailyView: View {
     @State private var zoomed = false
     /// When each work's palette under "Kolor i światło" began to be
     /// painted: its paints' swatches follow it.
-    @State private var painted: [String: Date] = [:]
+    @State private var painted: [String: (at: Date, takes: Double)] = [:]
     /// The work as its card has it, for the heart and "…" top right.
     @State private var card: Item?
     @State private var addingToPlaylist = false
@@ -504,7 +504,7 @@ struct DailyView: View {
                         let strokes = style == nil ? 0 : PaintedStrip.shares(item.colors).count
                         if !item.colors.isEmpty {
                             if let style, strokes > 0 {
-                                PaintedStrip(swatches: item.colors, style: style, seed: Paint.seed(item.id)) { painted[item.id] = $0 }
+                                PaintedStrip(swatches: item.colors, style: style, seed: Paint.seed(item.id)) { painted[item.id] = ($0, $1) }
                             } else {
                                 PaletteStrip(swatches: item.colors, height: 26, cornerRadius: 6)
                             }
@@ -512,8 +512,9 @@ struct DailyView: View {
                         if !work.colour.isEmpty { prose(work.colour) }
                         if let pigments = work.pigments, !pigments.isEmpty {
                             // The paints begin while the bar is painted; with no bar, at once.
-                            self.pigments(pigments, style: style, seed: Paint.seed(item.id), strokes: strokes,
-                                          began: strokes > 0 ? painted[item.id] : .distantPast)
+                            self.pigments(pigments, style: style, seed: Paint.seed(item.id),
+                                          began: strokes > 0 ? painted[item.id]?.at : .distantPast,
+                                          bar: strokes > 0 ? painted[item.id]?.takes ?? 0 : 0)
                         }
                     }
                     .id("colour")
@@ -814,16 +815,17 @@ struct DailyView: View {
     /// The paints the work is made with: each on its own swatch, its name,
     /// where it is in the picture and a line about it.
     /// `style`: the work's technique, each swatch painted in it (nil: a
-    /// plain round one); `began`: when the palette bar's first of
-    /// `strokes` strokes began (nil: not yet), the swatches after it.
-    private func pigments(_ pigments: [DailyWork.Pigment], style: PaintStyle? = nil, seed: Int = 0, strokes: Int = 0,
-                          began: Date? = nil) -> some View {
+    /// plain round one); `began`: when the palette bar's first stroke
+    /// began (nil: not yet) and `bar`: how long its paint takes from
+    /// then (0: no bar), the swatches after that.
+    private func pigments(_ pigments: [DailyWork.Pigment], style: PaintStyle? = nil, seed: Int = 0,
+                          began: Date? = nil, bar: Double = 0) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(pigments.enumerated()), id: \.element.name) { index, pigment in
                 HStack(alignment: .top, spacing: 12) {
                     Group {
                         if let style {
-                            let lead = style.swatchDelay(colours: strokes, index: index)
+                            let lead = style.swatchDelay(bar: bar, index: index)
                             PaintedSwatch(hex: pigment.hex, index: index, style: style, seed: seed,
                                           after: began?.addingTimeInterval(lead), lead: lead)
                         } else {
