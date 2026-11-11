@@ -659,6 +659,27 @@ final class FrameAPITests: XCTestCase {
         XCTAssertNil(old.tasks[0].group)
     }
 
+    func testTidyChangesDecode() throws {
+        let item = { (id: String) in
+            #"{"id": "\#(id)", "kind": "artwork", "source": "wmc", "title": "Mleczarka", "artist": "Johannes Vermeer", "date_text": "", "year": 1658, "colors": [], "width": 600, "height": 700, "favorite": false, "suitability": null}"#
+        }
+        let json = """
+        {"doubtful": [{"at": "2026-11-11T02:41:00+00:00", "a": \(item("wmc:3")), "b": \(item("rijks:1")),
+                       "relation": "detail", "relation_name": "Detal dzieła", "by": "judge",
+                       "why": "B is a crop of A", "critic": "Nothing in B lies outside A"}],
+         "sure": []}
+        """
+        let changes = try LiveBackend.decoder().decode(TidyChanges.self, from: Data(json.utf8))
+        XCTAssertEqual(changes.doubtful.first?.id, "wmc:3|rijks:1")
+        XCTAssertEqual(changes.doubtful.first?.relationName, "Detal dzieła")
+        XCTAssertFalse(changes.isEmpty)
+        let run = try LiveBackend.decoder().decode(
+            NightTasks.LastRun.self,
+            from: Data(#"{"at": "2026-11-11T05:00:00+00:00", "took": 311, "failed": false, "count": 1639, "nothing": false, "asked": false, "summary": "1639 obrazów obejrzanych, 18 kopii"}"#.utf8)
+        )
+        XCTAssertEqual(run.summary, "1639 obrazów obejrzanych, 18 kopii")
+    }
+
     func testPanelWifiDecodesAndExplainsAWrongNetwork() throws {
         let json = """
         {"configured": true, "panel_app": true, "wifi": {"read_at": "2026-10-28T20:00:00+00:00",

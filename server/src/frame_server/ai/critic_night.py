@@ -70,6 +70,9 @@ class CriticNight(ABC):
         #: The works cared about, by id: 0 kept, 1 shown (``cared.Cared``);
         #: their candidates go first.
         self.cared: Callable[[], Mapping[str, int]] = dict
+        #: The answers put in since :meth:`at_night` began, by outcome
+        #: ("written", "rejected", …), for the night's summary.
+        self.tally: dict[str, int] = {}
 
     # -- what a job says ----------------------------------------------------------
 
@@ -254,6 +257,8 @@ class CriticNight(ABC):
             else:
                 counts["rejected"] += 1
                 log.info("%s: %s rejected by the critic: %s", self.kind, item_id, data.get("why"))
+        for name, n in counts.items():  # since the night began (``tally``)
+            self.tally[name] = self.tally.get(name, 0) + n
         state = self.state()
         state.pop("order", None)
         state["claims"], state["asked"], state["written"] = claims, asked, written
@@ -272,6 +277,7 @@ class CriticNight(ABC):
     def at_night(self, night: Night) -> None:
         """Last night's batch put in, then the critic's claims and the judge's
         works asked, each waited for while the night is quiet."""
+        self.tally = {}
         if self.collect() is False:
             return
         for _ in range(3):  # claims left over, the judge's works, then their claims

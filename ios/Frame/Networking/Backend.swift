@@ -249,6 +249,10 @@ protocol FrameBackend: Sendable {
     func testPush(device: String) async throws -> PushTestResult
     func aiSettings() async throws -> AiSettings
     func saveAiSettings(_ update: AiSettingsUpdate) async throws -> AiSettings
+    /// What the tidying of copies changed, the judge's (doubtful) first.
+    func tidyChanges() async throws -> TidyChanges
+    /// "To nie to samo": the two pictures apart again, for good.
+    func keepApart(_ apart: TidyApart) async throws -> TidyChanges
     /// "Do sprawdzenia": the gatekeeper's and the night audit's lists.
     func aiReview() async throws -> AiReview
     /// A work the gatekeeper set aside back in the catalogue, for good.

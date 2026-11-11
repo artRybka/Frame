@@ -10,6 +10,8 @@ struct NightTasksSection: View {
     @Environment(AppModel.self) private var model
     @State private var loading = true
     @State private var confirmAll = false
+    /// CI screenshots: `-nightChanges YES` opens „Co zmieniła noc".
+    @State private var showChanges = UserDefaults.standard.bool(forKey: "nightChanges")
 
     private var night: NightTasks? { model.nightTasks }
 
@@ -45,6 +47,7 @@ struct NightTasksSection: View {
                 }
             }
         }
+        .navigationDestination(isPresented: $showChanges) { TidyChangesView() }
         .task {
             await model.loadNightTasks()
             loading = false
@@ -131,6 +134,31 @@ private struct NightGroupCard: View {
                     startButton
                 }
                 .padding(16)
+                if group.key == "duplicates" {
+                    Divider().padding(.leading, 16)
+                    NavigationLink {
+                        TidyChangesView()
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Co zmieniła noc")
+                                    .font(.subheadline)
+                                    .foregroundStyle(Theme.ink)
+                                Text("Połączone kopie, detale i zdjęcia na ścianie. Najpierw te z wątpliwościami.")
+                                    .font(.caption)
+                                    .foregroundStyle(Theme.inkSoft)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(Theme.inkSoft)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
                 Divider().padding(.leading, 16)
                 Button {
                     withAnimation(.snappy) { open.toggle() }
@@ -294,7 +322,7 @@ private struct NightTaskRow: View {
                     Text(last.text)
                         .font(.caption)
                         .foregroundStyle(last.warn ? Theme.warn : Theme.inkSoft)
-                        .lineLimit(1)
+                        .lineLimit(3)
                 }
             }
             Spacer(minLength: 8)
@@ -340,6 +368,8 @@ private struct NightTaskRow: View {
         parts.append(NightDuration.text(last.took))
         if last.failed {
             parts.append("błąd")
+        } else if let summary = last.summary, !summary.isEmpty {
+            parts.append(summary)
         } else if last.nothing {
             parts.append("nic do zrobienia")
         } else if let count = last.count {

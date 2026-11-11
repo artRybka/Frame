@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.145.0
+
+- Zadania nocne → Powtórki i jakość → „Co zmieniła noc”: lista obrazów,
+  które noc uznała za kopię innego dzieła, jego detal albo zdjęcie na
+  ścianie. Na górze te z wątpliwościami, które rozstrzygnął sędzia: oba
+  obrazki oraz to, co powiedzieli sędzia i krytyk. Niżej, zwinięte, te,
+  które rozstrzygnął sam obraz. „To nie to samo” rozdziela parę na stałe
+  i noc nie połączy jej ponownie. Nic nie jest usuwane: kopia zostaje
+  w bibliotece, a pokazuje się najlepsza z nich.
+- Przy zadaniach Powtórki i detale, Sędzia powtórek, Strażnik katalogu
+  i Nocny przegląd widać, co zrobiły, np. „900 obrazów obejrzanych,
+  41 kopii, 14 detali”.
+- Zadanie „Kopie razem i podpowiedzi Szukaj” nazywa się teraz
+  „Odświeżenie grup kopii i podpowiedzi Szukaj”, bo niczego nie szuka,
+  tylko odświeża to, co już wiadomo.
+
 ## 1.144.4
 
 - „Pod lupą”: miniatury na kafelkach są kadrowane bliżej i mają błyszczącą

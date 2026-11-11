@@ -297,6 +297,9 @@ class NightJudge:
         self.config = config
         #: The works cared about, by id (``cared.Cared``): their pairs first.
         self.cared: Callable[[], Mapping[str, int]] = dict
+        #: The answers put in since :meth:`at_night` began, by outcome
+        #: ("written", "rejected", …), for the night's summary.
+        self.tally: dict[str, int] = {}
 
     # -- state -----------------------------------------------------------------
 
@@ -418,6 +421,8 @@ class NightJudge:
         critic = bool(order.get("critic"))
         model = CRITIC_MODEL if critic else JUDGE
         claims: dict[str, str] = dict(state.get("claims") or {})
+        #: What the judge said of each claim, for the owner's list.
+        reasons: dict[str, str] = dict(state.get("reasons") or {})
         judged: dict[str, Any] = dict(state.get("judged") or {})
         done: list[str] = []
         counts = {"kept": 0, "claims": 0, "written": 0, "rejected": 0}
@@ -435,6 +440,7 @@ class NightJudge:
             if not critic:
                 if found in CLAIMS:
                     claims[key] = found
+                    reasons[key] = str(why or "")[:400]
                     counts["claims"] += 1
                 else:
                     judged[key] = {"judge": found, "at": at}
@@ -442,15 +448,19 @@ class NightJudge:
                     counts["kept"] += 1
                 continue
             claims.pop(key, None)
-            written = found == "confirm" and self.twins.apply(a_id, b_id, claim)
+            said = {"why": reasons.pop(key, ""), "critic": str(why or "")[:400]}
+            written = found == "confirm" and self.twins.apply(a_id, b_id, claim, said)
             judged[key] = {"judge": claim, "critic": found, "written": written, "at": at}
             if found == "reject":
                 log.info("twins judge: %s %s rejected: %s", key, claim, why)
             done.append(key)
             counts["written" if written else "rejected"] += 1
+        for name, n in counts.items():  # since the night began (``tally``)
+            self.tally[name] = self.tally.get(name, 0) + n
         state = self.state()
         state.pop("order", None)
         state["claims"] = claims
+        state["reasons"] = {k: v for k, v in reasons.items() if k in claims}
         state["judged"] = judged
         self._save(state)
         self.twins.drop_suspects(done)
@@ -467,6 +477,7 @@ class NightJudge:
     def at_night(self, night: Night) -> None:
         """Last night's batch put in, then the critic's claims and the new
         suspects asked, each waited for while the night is quiet."""
+        self.tally = {}
         if self.collect() is False:
             return
         for _ in range(2):  # the critic's claims, or the judge's pairs and then theirs
