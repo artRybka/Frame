@@ -48,17 +48,9 @@ from .phrases import has_phrase, parsed
 from .places import Places, known_places, learn_places
 from .search_index import SearchIndex, item_text
 from .term_index import TermIndex
+from .verdict import Place, against
 from .viewer import OWNER_ID, STORE, viewer_id
-from .vocabulary import (
-    is_art_archive_photo,
-    is_document,
-    is_grey_copy,
-    is_postal,
-    matches_terms,
-    object_category,
-    searched_kinds,
-    set_aside,
-)
+from .vocabulary import matches_terms, searched_kinds
 
 #: Item fields that tell copies of a work apart or choose between them.
 #: What ``library.twins`` learnt from an item's picture.
@@ -286,12 +278,9 @@ def matches(
     # Stamps never: Athens 2004's coins are no still life. Nor Foto
     # Marburg's black-and-white prints on a catalogue card. Nor pages of
     # text and printed matter (Mateusz 2026-11-09).
-    category = object_category(item)
-    if category is not None and category not in rules.terms and _searches(rules):
-        return False
-    if _searches(rules) and (
-        is_postal(item) or is_document(item) or (is_art_archive_photo(item) and is_grey_copy(item))
-    ):
+    # (``Place.FOUND``, as of a work he kept: those the server took in are
+    # left out before they come here.)
+    if _searches(rules) and against(item, Place.FOUND, rules.terms, kept=True):
         return False
     if rules.favorites_only and not liked:
         return False
@@ -662,7 +651,11 @@ class Library:
 
     def close(self) -> None:
         self.write_kept()
-        with self._lock:
+        # The connection's own lock, not the library's: a write in progress
+        # on another thread (a download's note, the night's state) holds
+        # it, and closing under that write crashed the interpreter (a
+        # segmentation fault in SQLite).
+        with self._db_lock:
             if self._conn is not None:
                 self._conn.close()
                 self._conn = None
@@ -1279,7 +1272,7 @@ class Library:
                 return False  # photos sent once: never listed
             if item.id in hidden.ids:  # another copy of a hidden work too
                 return False
-            if not include_excluded and item.pooled and set_aside(item, rules.terms):
+            if not include_excluded and against(item, Place.LISTED, rules.terms):
                 return False
             if include_excluded and item.excluded:
                 unexcluded = item.model_copy(update={"excluded": False})
@@ -1321,7 +1314,7 @@ class Library:
                         continue
                     if copy.look is not None or copy.id in hidden.ids:
                         continue
-                    if copy.pooled and set_aside(copy, rules.terms):
+                    if against(copy, Place.LISTED, rules.terms):
                         continue
                     stored = self.get(copy.id)
                     if stored is not None and matches(stored, plain, listed, hearts, "", None):

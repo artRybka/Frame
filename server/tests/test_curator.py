@@ -32,7 +32,7 @@ from frame_server.library.themes import (
     search_page,
     theme,
 )
-from frame_server.library.vocabulary import set_aside
+from frame_server.library.verdict import Place, against
 
 DAY = date(2026, 11, 9)
 
@@ -123,10 +123,10 @@ def test_antiquity_cards_keep_paintings_and_leave_objects_out() -> None:
         culture="Byzantium, Constantinople",
     )
     assert matches(tomb, BY_KEY["ancient-egypt"].rules())
-    assert not set_aside(fresco) and matches(fresco, BY_KEY["roman-frescoes"].rules())
+    assert not against(fresco, Place.SOUGHT) and matches(fresco, BY_KEY["roman-frescoes"].rules())
     assert matches(fayum, BY_KEY["fayum"].rules())
-    assert set_aside(mummy)  # a whole mummy is no picture
-    assert set_aside(enamel) and not matches(enamel, BY_KEY["byzantine-icons"].rules())
+    assert against(mummy, Place.SOUGHT)  # a whole mummy is no picture
+    assert against(enamel, Place.SOUGHT) and not matches(enamel, BY_KEY["byzantine-icons"].rules())
     assert matches(icon, BY_KEY["byzantine-icons"].rules())
 
     class Importer:
@@ -452,7 +452,7 @@ def test_antiquity_from_getty_yale_and_the_v_and_a_fits_its_cards() -> None:
             culture="Egypt",
         )
     )
-    assert not set_aside(fayum) and matches(fayum, BY_KEY["fayum"].rules())
+    assert not against(fayum, Place.SOUGHT) and matches(fayum, BY_KEY["fayum"].rules())
     icon = dated(
         _work(
             "vam:4",

@@ -45,7 +45,8 @@ from .library.cultures import circle
 from .library.images import display_copy
 from .library.models import Note
 from .library.nationality import NATIONALITIES
-from .library.vocabulary import artist_matches, is_grey_copy, is_photograph, other_art
+from .library.verdict import Place, against
+from .library.vocabulary import artist_matches, is_photograph
 from .sharper import WEAK_SIDE, archive_own
 
 if TYPE_CHECKING:
@@ -347,12 +348,11 @@ class Daily:
             and poor.get(i.id) != copy_key(i)
             and i.look is None
             and i.artist
-            and not is_photograph(i)
             # A black-and-white photograph of a work in colour, an art
-            # archive's old slide: no copy to look at for a quarter of an hour.
-            and not is_grey_copy(i)
+            # archive's old slide: no copy to look at for a quarter of an
+            # hour. "Sztuki inne" keep to their own group.
+            and not against(i, Place.STUDIED)
             and not archive_own(i)
-            and not other_art(i)  # "Sztuki inne" keep to their own group
             and max(i.width or MIN_SIDE, i.height or MIN_SIDE) >= MIN_SIDE
             and not (recent_artists and artist_matches(i.artist, recent_artists))
         ]

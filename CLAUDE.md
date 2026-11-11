@@ -33,6 +33,10 @@ uv run mypy src
   What every place answers about every kind of work is frozen in
   `tests/test_rules_matrix.py`: a change of a rule that moves a mark there
   is a change of what the owner sees, his to decide.
+  Whether a work is shown (or taken on) somewhere is asked of
+  `library/verdict.py`: `against(item, Place.X, asked)`, with what each
+  place minds in its `MINDS` table. Never put `vocabulary`'s `is_detail`,
+  `is_postal`… together anew at a call site; a new reason is a new `Why`.
 - Museum requests go through `library/hosts.py` with the rules in
   `library/policy.py`. Search pages are kept on disk for days and survive
   releases: when you change how one museum's answers become `Item`s, raise

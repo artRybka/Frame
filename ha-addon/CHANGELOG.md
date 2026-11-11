@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.145.15
+
+- Porządki w regułach doboru dzieł, etap 4, pierwszy krok (bez zmiany
+  tego, co widać). Serwer ma jedną listę powodów, dla których coś nie jest
+  obrazem na ramkę (detal, reprodukcja, znaczek, zdjęcie dzieła w ramie,
+  rzeźba i tak dalej), i jedną tabelę, która mówi, co z tego obchodzi
+  katalog, Szukaj, Studium dnia, muzea, Strażnika i powtórki. Dwadzieścia
+  miejsc, które dotąd składały te reguły każde po swojemu, pyta teraz tę
+  tabelę; odpowiedzi są te same co przedtem.
+- Zestaw wzorcowy zna teraz Twoje zachowane detale, reprodukcje i znaczki:
+  z niego powstanie lista do Twojej decyzji, zanim cokolwiek zmieni się
+  w propozycjach.
+- Wyłączanie serwera czeka na zapis do bazy, który właśnie trwa w tle.
+  Do tej pory zamknięcie bazy w trakcie takiego zapisu potrafiło wywrócić
+  proces (rzadko, przy wyłączaniu; częściej w testach przed wydaniem).
+
 ## 1.145.14
 
 - Porządki w regułach doboru dzieł, etap 3. Z karty dzieła znika wiersz

@@ -16,7 +16,7 @@ from frame_server.ai.client import HAIKU
 from frame_server.ai.keywords import KIND as KEYWORDS
 from frame_server.ai.sentence import Sentence
 from frame_server.library.models import Item, ItemKind, PhotoInfo
-from frame_server.library.vocabulary import set_aside
+from frame_server.library.verdict import Place, against
 from frame_server.service import FrameService
 
 
@@ -106,7 +106,7 @@ def test_the_critic_confirms_before_a_picture_is_set_aside(
     _answer(fake, {"why": "Perforated edges", "verdict": "confirm", "confidence": 0.9})
     assert keeper.collect() is True
     item = service.library.get("europeana:2")
-    assert item is not None and item.seen_as == "postal" and set_aside(item)
+    assert item is not None and item.seen_as == "postal" and against(item, Place.SOUGHT)
     (written,) = keeper.written()
     assert written["id"] == "europeana:2" and written["seen_as"] == "postal"
     assert not keeper.order()  # nothing left
@@ -145,7 +145,7 @@ def test_a_rejected_claim_and_an_artwork_change_nothing(
     assert keeper.order() and keeper.collect()
     for item_id in ("wmc:1", "wmc:2"):
         item = service.library.get(item_id)
-        assert item is not None and not item.seen_as and not set_aside(item)
+        assert item is not None and not item.seen_as and not against(item, Place.SOUGHT)
     assert keeper.written() == []
     assert not keeper.order()  # both asked, neither again
 
@@ -159,7 +159,7 @@ def test_the_owner_brings_a_work_back_for_good(
     service.gatekeeper.state()  # nothing else known
     assert service.gatekeeper.bring_back("wmc:1")
     item = service.library.get("wmc:1")
-    assert item is not None and not item.seen_as and not set_aside(item)
+    assert item is not None and not item.seen_as and not against(item, Place.SOUGHT)
     assert service.gatekeeper.candidates({}) == []  # never asked again
 
 

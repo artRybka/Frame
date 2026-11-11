@@ -36,7 +36,8 @@ from .library.duplicates import surname
 from .library.hosts import as_asked
 from .library.images import IMAGE_MAX, display_copy, own_copy
 from .library.likeness import WHOLE_TURN, Fit, keypoints, whole_work
-from .library.vocabulary import is_copy, is_photograph, is_reproduction
+from .library.verdict import Place, against
+from .library.vocabulary import is_photograph
 from .sharper import Quality, archive_own, colour_note, tone
 
 if TYPE_CHECKING:
@@ -498,7 +499,7 @@ class Copies:
             colours = None
         notes.append(colours or "colours")
         off = off or colours in ("grey", "coloured")
-        if is_copy(copy) or is_reproduction(copy):
+        if against(copy, Place.COMPARED):
             notes.append("reproduction")
             off = True
         view = self.view(copy, current, "worse")

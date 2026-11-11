@@ -69,11 +69,11 @@ from ..library.themes import (
     theme,
     theme_of_the_day,
 )
+from ..library.verdict import Place, against
 from ..library.viewer import viewer_id
 from ..library.vocabulary import (
     TERMS,
     fold,
-    set_aside,
     suggest,
 )
 from ..library.zoom import zooms
@@ -1062,7 +1062,7 @@ async def terms_in_museums(svc: Svc, q: str) -> MuseumHint:
         svc.importer.at_home, asked.texts, 8, limiter=MUSEUM_THREADS
     )
     failed: list[str] = []
-    items = [i for i in items if not set_aside(i) and says(i, asked.said)]
+    items = [i for i in items if not against(i, Place.SOUGHT) and says(i, asked.said)]
     wanted = fold(words)
     known = known_names()  # one row for Rembrandt, however a museum spells him
     names: Counter[str] = Counter(

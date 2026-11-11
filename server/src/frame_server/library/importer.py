@@ -45,18 +45,17 @@ from .museums import (
 from .pages import search_pages
 from .phrases import quote, tokens
 from .repo import Library, matches, now_iso
+from .verdict import Place, against
 from .vocabulary import (
     HIGHLIGHT,
     TECHNIQUE_KINDS,
     asked_artists,
     asked_topics,
-    is_copy,
     is_grey_copy,
     may_be_grey_copy,
     museum_kind,
     museum_queries,
     object_category,
-    set_aside,
     years,
 )
 from .wording import Wording
@@ -500,7 +499,7 @@ class Importer:
                 total, items = found.search(query, limit=limit, page=page)
             else:
                 total, items = found.search_kind(query, cast(Kind, kind), limit=limit, page=page)
-        items = self.without_grey([dated(i) for i in items if not is_copy(i)])
+        items = self.without_grey([dated(i) for i in items if not against(i, Place.MUSEUM)])
         self.remember(items)
         if items:
             self._memo(memo, total, items)
@@ -734,7 +733,7 @@ class Importer:
                     continue
                 asked.append(key)
                 total += answer[0]
-                found.append([dated(i) for i in answer[1] if not is_copy(i)])
+                found.append([dated(i) for i in answer[1] if not against(i, Place.MUSEUM)])
         mixed = dedupe([i for i in chain.from_iterable(zip_longest(*found)) if i is not None])
         self.remember(mixed)
         return total, mixed, asked
@@ -801,7 +800,7 @@ class Importer:
             [
                 i
                 for i in chain.from_iterable(zip_longest(*found))
-                if i is not None and not is_copy(i)
+                if i is not None and not against(i, Place.MUSEUM)
             ]
         )
         self.remember(mixed)
@@ -834,7 +833,7 @@ class Importer:
             page = 1
             while len(found) < limit:
                 total, items = source_museum.search(query, limit=size, page=page)
-                found += [i for i in items if not is_copy(i)]
+                found += [i for i in items if not against(i, Place.MUSEUM)]
                 if page * size >= total:
                     break
                 page += 1
@@ -1112,7 +1111,7 @@ class Importer:
                     continue
                 if not before(item):
                     continue
-                if set_aside(item, terms or []):
+                if against(item, Place.SOUGHT, terms or []):
                     job.skipped += 1
                     continue
                 try:

@@ -8,7 +8,8 @@ import httpx
 
 from frame_server.library.getty import CC0, IIIF, GettyMuseum
 from frame_server.library.museums import PRIVATE_LICENCE, Access, Discovery
-from frame_server.library.vocabulary import MANUSCRIPTS, PHOTOGRAPHY, category_fits, set_aside
+from frame_server.library.verdict import Place, against, category_fits
+from frame_server.library.vocabulary import MANUSCRIPTS, PHOTOGRAPHY
 
 IMAGE = "81288db0-270f-4049-a6c0-20c283c81b00"
 WORK = "4b55bf5f-0000-4000-8000-000000000001"
@@ -53,7 +54,7 @@ def test_a_photograph_found_as_one_is_one() -> None:
     assert work.artist_bio == "British, born India, 1815 - 1879" and work.culture == "British"
     assert work.image_url == f"{IIIF}/{IMAGE}/full/!2560,2560/0/default.jpg"
     assert work.license == "CC0 1.0" and work.url.endswith("/object/106ABC")
-    assert category_fits(work, [PHOTOGRAPHY]) and set_aside(work)
+    assert category_fits(work, [PHOTOGRAPHY]) and against(work, Place.SOUGHT)
     params = sent[0].url.params
     # Stereographs and the albums holding the photographs: never.
     assert params["q"] == "Cameron -stereograph" and params["is_parent"] == "false"

@@ -128,3 +128,48 @@ def test_the_saved_decisions_are_measured_from_a_file(
     assert "same by description: 1 together" in told
     assert "apart by owner: 1 apart" in told
     assert golden.main([]) == 2
+
+
+def test_the_works_kept_with_a_reason_against_are_listed(
+    service: FrameService, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """What the owner kept that the rules call a copy or "Sztuki inne": the
+    list he decides the one verdict by (docs/RULES.md, stage 4)."""
+
+    def add(item_id: str, **kw: object) -> None:
+        source, _, source_id = item_id.partition(":")
+        kw.setdefault("artist", "Claude Monet")
+        kw.setdefault("classification", "Painting")
+        service.library.upsert(Item(id=item_id, source=source, source_id=source_id, **kw))
+
+    add("met:1", title="Poplars")  # a painting: no reason
+    add("wikiart:2", title="Haystacks, detail", favorite=True)
+    add("europeana:3", title="Cathedral", classification="Postage stamp")
+    add("met:4", title="Bust", classification="Sculpture")
+    add("wikiart:5", title="Bridge, detail", pooled=True)  # the server's: not his
+    add("wmc:6", title="Regatta (page 41 crop)", seen_as="not_art")  # two reasons
+    data = golden.decisions(service)
+    kept = {entry["id"]: entry for entry in data["kept"]}
+    assert set(kept) == {"wikiart:2", "europeana:3", "met:4", "wmc:6"}
+    assert kept["wikiart:2"] == {
+        "id": "wikiart:2",
+        "why": ["detail"],
+        "liked": True,
+        "studied": kept["wikiart:2"]["studied"],
+    }
+    assert kept["wmc:6"]["why"] == ["seen", "reproduction"]
+    assert kept["met:4"]["why"] == ["sculpture"] and not kept["met:4"]["studied"]
+    assert all(entry["id"] in data["items"] for entry in data["kept"])
+
+    by_reason = golden.kept_against(data)
+    assert {name: [w["id"] for w in works] for name, works in by_reason.items()} == {
+        "detal dzieła": ["wikiart:2"],
+        "znaczek albo banknot": ["europeana:3"],
+        "rzeźba": ["met:4"],
+        "odłożone przez Strażnika": ["wmc:6"],
+    }
+    assert by_reason["detal dzieła"][0]["title"] == "Haystacks, detail"
+    path = tmp_path / "decisions.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    assert golden.main([str(path)]) == 0
+    assert "kept, rzeźba: 1 (0 may be the work of the day)" in capsys.readouterr().out

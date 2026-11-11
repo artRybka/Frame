@@ -18,7 +18,8 @@ from frame_server.library.loc import (
 )
 from frame_server.library.museums import PRIVATE_LICENCE, Access, Discovery
 from frame_server.library.repo import Library
-from frame_server.library.vocabulary import PHOTOGRAPHY, category_fits, set_aside
+from frame_server.library.verdict import Place, against, category_fits
+from frame_server.library.vocabulary import PHOTOGRAPHY
 
 PATH = "pnp/fsac/1a33000/1a33800/1a33833"
 
@@ -64,7 +65,7 @@ def test_free_photographs_become_works() -> None:
     master = f"{IIIF}/master:{PATH.replace('/', ':')}u/full/!2560,2560/0/default.jpg"
     assert work.image_url == master and work.thumb_url == f"{SERVICE}{PATH}r.jpg"
     # A photograph: only with Fotografia, never in the catalogue.
-    assert category_fits(work, [PHOTOGRAPHY]) and set_aside(work)
+    assert category_fits(work, [PHOTOGRAPHY]) and against(work, Place.SOUGHT)
     # When the full scan is kept under another name: the service copies.
     assert loc_mirrors(work) == [f"{SERVICE}{PATH}v.jpg", f"{SERVICE}{PATH}r.jpg"]
     assert loc_mirrors(work, thumb=True) == []

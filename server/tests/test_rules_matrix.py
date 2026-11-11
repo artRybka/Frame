@@ -33,7 +33,7 @@ from frame_server.ai.gatekeeper import asked_by_rules
 from frame_server.library import Item, ItemKind, PlaylistRules
 from frame_server.library.models import ART_PHOTO_ARCHIVES
 from frame_server.library.twins import candidate
-from frame_server.library.vocabulary import category_fits, is_copy, set_aside
+from frame_server.library.verdict import Place, against, category_fits, copy_whys
 from frame_server.service import FrameService
 
 MONET = "Claude Monet"
@@ -235,11 +235,13 @@ def _places(service: FrameService) -> dict[str, Callable[[Item], bool]]:
         "katalog, szukane słowem": lambda i: i.id in searched,
         "studium dnia": lambda i: i.id in studied,
         # As a museum's answer is read: Importer._ask_museum.
-        "odpowiedź muzeum": lambda i: not is_copy(i) and bool(importer.without_grey([i])),
+        "odpowiedź muzeum": lambda i: (
+            not against(i, Place.MUSEUM) and bool(importer.without_grey([i]))
+        ),
         # MuseumSearch.fits, of a search that asks for no category.
         "Szukaj w muzeach": lambda i: category_fits(i, ()),
         # themes.search_page, of a card that asks for no category.
-        "karta Odkrywaj z muzeów": lambda i: not set_aside(i),
+        "karta Odkrywaj z muzeów": lambda i: not against(i, Place.SOUGHT),
         "Strażnik": asked_by_rules,
         "Nocny przegląd": lambda i: i.id in audited,
         "powtórki": candidate,
@@ -287,7 +289,7 @@ def test_the_server_never_proposes_a_copy_it_took_in_itself(quiet: FrameService)
     works = _works(quiet)
     places = _places(quiet)
     for (name, pooled), item in works.items():
-        if pooled and set_aside(item):
+        if pooled and against(item, Place.SOUGHT):
             shown = [p for p in PLACES[:3] if places[p](item)]
             assert not shown, f"{name}: {shown}"
 
@@ -296,7 +298,7 @@ def test_where_the_places_disagree_about_works_the_owner_kept(quiet: FrameServic
     works = _works(quiet)
     places = _places(quiet)
     kept = {name: item for (name, pooled), item in works.items() if not pooled}
-    studied = {n for n, i in kept.items() if is_copy(i) and places["studium dnia"](i)}
+    studied = {n for n, i in kept.items() if copy_whys(i) and places["studium dnia"](i)}
     assert studied == KEPT_COPIES_STUDIED
     browsed = {
         n

@@ -56,8 +56,8 @@ from ..library.museums import MUSEUMS
 from ..library.repo import Hidden, SortKey, now_iso
 from ..library.search import fill as fill_by_search
 from ..library.seed import PACKS, import_queries, pack
+from ..library.verdict import Place, against
 from ..library.viewer import viewer_id
-from ..library.vocabulary import is_copy
 from ..library.zoom import zooms
 from ..player import hold_from
 from ..schedule import FrameSettings
@@ -151,7 +151,7 @@ def remote_items(
                     item = copy
                 elif other := svc.library.twin(item):
                     twin = other.id
-        elif not keep_hidden and is_copy(held):
+        elif not keep_hidden and against(held, Place.MUSEUM):
             continue  # a detail or a framed photograph (library.twins)
         elif best := svc.library.twin(held):
             twin = best.id
