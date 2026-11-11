@@ -280,48 +280,10 @@ class Daily:
         """The work for ``day``; ``skipped``: works set aside for it by hand
         (each one drawn again makes another draw)."""
         skipped = skipped if skipped is not None else self.skipped(day)
-        history = self.history()
-        recent = {
-            i for d, i in history.items() if d >= (day - timedelta(days=REPEAT_DAYS)).isoformat()
-        }
-        recent |= set(skipped)
-        artists_cutoff = (day - timedelta(days=ARTIST_DAYS)).isoformat()
-        recent_artists = [
-            item.artist
-            for d, i in history.items()
-            if artists_cutoff <= d < day.isoformat() and (item := self.library.get(i)) is not None
-        ]
-        # Drawn again: another artist too.
-        recent_artists += [
-            item.artist for i in skipped if (item := self.library.get(i)) is not None
-        ]
-        # Any work of the catalogue: no e-paper threshold (it left out
-        # Rembrandt and Vermeer).
-        rules = PlaylistRules(kinds=[ItemKind.ARTWORK])
-        seed = day.toordinal() + 1_000_003 * len(skipped)
-        drawn = self.library.query(rules, sort="random", seed=seed, limit=POOL)[1]
-        unfit = self.unfit()
-        poor = self.poor_copies()
-        pool = [
-            i
-            for i in drawn
-            if i.id not in recent
-            and i.id not in unfit
-            and poor.get(i.id) != copy_key(i)
-            and i.look is None
-            and i.artist
-            and not is_photograph(i)
-            # A black-and-white photograph of a work in colour, an art
-            # archive's old slide: no copy to look at for a quarter of an hour.
-            and not is_grey_copy(i)
-            and not archive_own(i)
-            and not other_art(i)  # "Sztuki inne" keep to their own group
-            and max(i.width or MIN_SIDE, i.height or MIN_SIDE) >= MIN_SIDE
-            and not (recent_artists and artist_matches(i.artist, recent_artists))
-        ]
+        pool = self.pool(day, skipped)
         if not pool:
             return None
-        rng = random.Random(seed)
+        rng = random.Random(self._seed(day, skipped))
         taste = self.player.taste()
         values = {i.id: score(i, day, taste, rng) for i in pool}
         ranked = sorted(pool, key=lambda i: values[i.id], reverse=True)
@@ -346,6 +308,54 @@ class Daily:
             asked = {item.id for item, _ in shortlist}
             ranked = [i for i in ranked if i.id not in asked]
         return first
+
+    @staticmethod
+    def _seed(day: date, skipped: list[str]) -> int:
+        return day.toordinal() + 1_000_003 * len(skipped)
+
+    def pool(self, day: date, skipped: list[str]) -> list[Item]:
+        """The works ``day``'s one is chosen among: drawn from the catalogue,
+        less those shown lately, their artists, and what is no picture to
+        look at for a quarter of an hour."""
+        history = self.history()
+        recent = {
+            i for d, i in history.items() if d >= (day - timedelta(days=REPEAT_DAYS)).isoformat()
+        }
+        recent |= set(skipped)
+        artists_cutoff = (day - timedelta(days=ARTIST_DAYS)).isoformat()
+        recent_artists = [
+            item.artist
+            for d, i in history.items()
+            if artists_cutoff <= d < day.isoformat() and (item := self.library.get(i)) is not None
+        ]
+        # Drawn again: another artist too.
+        recent_artists += [
+            item.artist for i in skipped if (item := self.library.get(i)) is not None
+        ]
+        # Any work of the catalogue: no e-paper threshold (it left out
+        # Rembrandt and Vermeer).
+        rules = PlaylistRules(kinds=[ItemKind.ARTWORK])
+        seed = self._seed(day, skipped)
+        drawn = self.library.query(rules, sort="random", seed=seed, limit=POOL)[1]
+        unfit = self.unfit()
+        poor = self.poor_copies()
+        return [
+            i
+            for i in drawn
+            if i.id not in recent
+            and i.id not in unfit
+            and poor.get(i.id) != copy_key(i)
+            and i.look is None
+            and i.artist
+            and not is_photograph(i)
+            # A black-and-white photograph of a work in colour, an art
+            # archive's old slide: no copy to look at for a quarter of an hour.
+            and not is_grey_copy(i)
+            and not archive_own(i)
+            and not other_art(i)  # "Sztuki inne" keep to their own group
+            and max(i.width or MIN_SIDE, i.height or MIN_SIDE) >= MIN_SIDE
+            and not (recent_artists and artist_matches(i.artist, recent_artists))
+        ]
 
     # -- the curator ---------------------------------------------------------
 

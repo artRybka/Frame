@@ -1,0 +1,116 @@
+# Reguły doboru i deduplikacji dzieł: audyt i plan porządków
+
+Audyt z 2026-11-11 (prośba Mateusza: „kompletny audyt i przygotowanie planu
+zmian, celem jest jakość i szybkość działania”). Pełny dokument z mapą reguł
+jest w bibliotece projektu („Audyt reguł doboru i deduplikacji dzieł”). Tutaj
+to, czego potrzebuje kolejna osoba przy kodzie: co ustalono, w jakiej
+kolejności to porządkujemy i jak sprawdzić, że zmiana niczego nie zepsuła.
+
+Mateusz 2026-11-11 14:16: wdrażamy cały plan, etapy 0 do 6. Zastrzeżenie
+z 14:17 i 14:19: wspólne reguły nie mogą obniżyć jakości doboru Studium dnia
+ani dziennych propozycji kuratora („droga doboru może być inna, ale nie
+chciałbym żeby spadła jakość doboru tych propozycji”).
+
+## Ustalenia
+
+- **„Czy to dzieło pokazać”** rozstrzyga dwanaście reguł z
+  `library/vocabulary.py` (`is_copy`, `set_aside`, `other_art` i inne),
+  składanych na nowo w ok. 60 miejscach w 15 plikach, w różnych zestawach.
+- **„Czy to to samo dzieło”** ma dziewięć odpowiedzi: opis (`same_work`,
+  rok ±2), numer inwentarza (tylko Rijksmuseum), skrót obrazu, punkty ORB,
+  `twins._fit` z własną klasą `Fit` (rok ±10), Sędzia, identyfikator Wikidata
+  (tylko „Pod lupą”), `isSameWork` w aplikacji, doraźne porównania tytułów.
+- **„Ten sam autor”** ma sześć odpowiedzi, **„Twoje dzieło”** osiem.
+- **Muzea są pytane czterema ścieżkami**: `MuseumSearch.pages` (Szukaj,
+  własne playlisty), `themes.search_page` (karty, tylko AIC, Cleveland, Met),
+  `Importer.fill` (playlisty z kart), `Importer.collect` i `_take`
+  (dobieranie katalogu).
+- **Nocna pętla modeli** istnieje w czterech kopiach (`CriticNight`,
+  `NightJudge`, `Curator`, studium).
+- **Resztki**: ocena e-papieru (suitability) w 12 plikach i wskaźnik
+  „Na e-papierze” w aplikacji, jednorazowe migracje, punkty `/api/browse`
+  i `/api/library/draw`, których aplikacja nie woła.
+
+## Liczby bazowe (NAS, 1.143.2, logi z 10 i 11 listopada 2026, ok. 91 tys. dzieł)
+
+| Pomiar | Wartość |
+|---|---|
+| Noc 11.11, cały budżet | 4 h 30 min |
+| dobieranie katalogu | 1 h 43 min (6 partii po ok. 318 dzieł) |
+| spis Rijksmuseum | 2 h 30 min (od 1.144.0 na końcu nocy) |
+| powtórki i detale | 5 min 11 s, potem koniec nocy |
+| Strażnik, Nocny przegląd | nie ruszyły ani razu do rana 11.11 |
+| Powtórki na żądanie | 32 min 45 s dla 38 538 obrazów 835 autorów (41 kopii, 14 detali) |
+| Przebudowa grup kopii | 30 razy w 3 h 47 min, 3,3 do 6,4 s każda, razem 126 s |
+| Powolne odpowiedzi | `/api/suggestions` 3,2 i 4,8 s, `/api/themes` 2,2 i 2,7 s |
+| Sędzia powtórek 10.11 | 74 pary, 68 rozdzielonych, 2 zapisane |
+
+## Plan
+
+| Etap | Co | Stan |
+|---|---|---|
+| 0 | Zestaw wzorcowy i pomiary | 1.145.11 (PLAN 3.3zzz155) |
+| 1 | Noc: porządki przed dobieraniem, budżety czasu | |
+| 2 | Szybkość bez zmiany wyników: przyrostowe scalanie grup, punkty ORB na dysku, odsiew par, karty jednym przejściem | |
+| 3 | Sprzątanie resztek | |
+| 4 | Jeden werdykt pokazywania (lista powodów i tabela kontekstów, najpierw jako cień obok starych reguł) | |
+| 5 | Jedna tożsamość dzieła i autora | |
+| 6 | Jedna ścieżka pytań do muzeów i jedna nocna pętla modeli | |
+
+Etapy 0 do 3 nie zmieniają tego, co widać. Przed każdą zmianą widocznych
+wyników w etapach 4 do 6 Mateusz dostaje listę różnic do decyzji.
+
+## Jak sprawdzić zmianę reguł
+
+### 1. Co mówi każde miejsce o każdym rodzaju dzieła
+
+`server/tests/test_rules_matrix.py` trzyma po jednym dziele każdego rodzaju,
+który reguły rozróżniają (obraz, detal, reprodukcja, szara kopia, znaczek,
+fotografia, rękopis i tak dalej), raz jako dobrane przez serwer i raz jako
+zachowane przez właściciela, i pyta o nie dziewięć miejsc: katalog, katalog
+szukany słowem, pulę Studium dnia, odczyt odpowiedzi muzeum, Szukaj w
+muzeach, kartę Odkrywaj z muzeów, Strażnika, Nocny przegląd i powtórki.
+Tabela `EXPECTED` to dzisiejsze zachowanie. Zmiana reguły, która przesuwa
+choć jeden znak, wychodzi w teście z nazwą rodzaju i miejsca.
+
+Pierwsze trzy kolumny to zbiór, z którego wybierają Studium dnia i karty
+kuratora. „-” w nich zamienia się w „+” tylko za zgodą Mateusza.
+
+Dwie znane niespójności (ustalenie K1 audytu) są zapisane wprost, do decyzji
+w etapie 4:
+
+- `KEPT_COPIES_STUDIED`: detal, reprodukcja, znaczek, dokument, zdjęcie sali,
+  zdjęcie archiwum i kopia z Openverse, które właściciel zachował, mogą
+  zostać Studium dnia, choć zachowana szara kopia już nie.
+- `BROWSED_NOT_FOUND`: zachowane dzieła, które katalog pokazuje przy
+  przeglądaniu, a pomija po wpisaniu słowa.
+
+### 2. Zestaw wzorcowy z prawdziwego katalogu
+
+`GET /api/debug/decisions` (tylko właściciel) oddaje to, co do tej pory
+rozstrzygnięto o dziełach: pary uznane za jedno dzieło i przez co (opis,
+skrót obrazu, obrazy, Sędzia), detale i zdjęcia sal, pary rozdzielone przez
+właściciela („To nie to samo”) i przez Sędziego, dzieła odłożone przez
+Strażnika. Same opisy, bez obrazów i bez zdjęć właściciela. Plik zostaje
+poza repozytorium (obok logów nocy na Macu).
+
+```bash
+curl -s -H "Authorization: Bearer $(cat ~/.config/frame/nas-token)" \
+  http://<adres serwera>:8099/api/debug/decisions > decisions.json
+cd server && uv run python -m frame_server.golden ../decisions.json
+```
+
+Polecenie wypisuje, jak dzisiejsza reguła „to samo dzieło” (`same_work`)
+radzi sobie na tych decyzjach: ile par trzyma razem, ile gubi, ile par
+rozdzielonych błędnie łączy. `golden.measure(data, reguła)` liczy to samo dla
+dowolnej nowej reguły, więc etap 5 ma liczbę przed i po.
+
+### 3. Czas
+
+- Powtórki piszą po każdej rundzie, gdzie poszedł czas:
+  `twins: time: keypoints 310.2 s (5210), pairs 88.0 s (41200), …`
+  (kroki: candidates, hashes, hash distances, keypoints, pairs, thumbnails,
+  large pictures, large keypoints, large pairs, writes, grouping; w nawiasie
+  liczba obrazów, par albo pobrań).
+- Każde zadanie nocy dopisuje, ile razy przez nie przebudowano grupy kopii:
+  `night: twins in 310.9 s, the works regrouped 5 time(s) in 17.2 s`.

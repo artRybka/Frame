@@ -58,7 +58,8 @@ import re
 import threading
 import time
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from functools import lru_cache
 from itertools import pairwise
@@ -337,6 +338,24 @@ class _Round:
         self.thumbs = thumbs
         #: Pictures no source has a thumbnail of: nothing to look at.
         self.gone: set[str] = set()
+        #: Where the round's time went, by step: seconds and how many times
+        #: (pictures, pairs, downloads), for the log.
+        self.spent: dict[str, float] = defaultdict(float)
+        self.counted: dict[str, int] = defaultdict(int)
+
+    @contextmanager
+    def timed(self, step: str, count: int = 1) -> Iterator[None]:
+        began = time.perf_counter()
+        try:
+            yield
+        finally:
+            self.spent[step] += time.perf_counter() - began
+            self.counted[step] += count
+
+    def told(self) -> str:
+        """ "keypoints 310.2 s (5210), pairs 88.0 s (41200)": the slowest first."""
+        steps = sorted(self.spent.items(), key=lambda kv: -kv[1])
+        return ", ".join(f"{step} {took:.1f} s ({self.counted[step]})" for step, took in steps)
 
 
 class Twins:
@@ -409,12 +428,14 @@ class Twins:
             self._round = _Round(downloads, THUMBS_A_ROUND)
             # The night's round: Favourites, playlists and Discover first.
             cared: Mapping[str, int] = self.cared() if keys is None else {}
-            everyone, by_artist = self._candidates(keys)
+            with self._round.timed("candidates"):
+                everyone, by_artist = self._candidates(keys)
             # Hashes first, a quarter of the time at most: across artists.
             mine = None if keys is None else {i.id for w in by_artist.values() for i in w}
             hashed, joined = self._hashes(everyone, mine, started + budget / 4, quiet, cared)
             if joined:  # copies named anew: the works as they are now
-                everyone, by_artist = self._candidates(keys)
+                with self._round.timed("candidates"):
+                    everyone, by_artist = self._candidates(keys)
             due = [
                 (key, works)
                 for key, works in by_artist.items()
@@ -447,6 +468,9 @@ class Twins:
                     details,
                     hashed,
                 )
+                # Where the time went (the steps overlap nowhere; what is
+                # left is the waiting for locks and the sorting).
+                log.info("twins: time: %s", self._round.told())
             return seen
 
     def _candidates(self, keys: set[str] | None) -> tuple[list[Item], dict[str, list[Item]]]:
@@ -474,7 +498,8 @@ class Twins:
             return None
         self._round.thumbs -= 1
         try:
-            return self.images.ensure_thumb(item)
+            with self._round.timed("thumbnails"):
+                return self.images.ensure_thumb(item)
         except Gone:
             self._round.gone.add(item.id)
             return None
@@ -486,7 +511,8 @@ class Twins:
         """One artist's new pictures laid over all their works'; how many
         were looked at, how many copies and details were found."""
         new = [i for i in works if i.twins_seen < VERSION]
-        grouped = self.library.works()
+        with self._round.timed("grouping"):
+            grouped = self.library.works()
         points: dict[str, Keypoints | None] = {}
         #: Pictures whose thumbnail is not here: looked at another time.
         missing: set[str] = set()
@@ -501,7 +527,8 @@ class Twins:
                     points[item.id] = None
                     return None
                 try:
-                    points[item.id] = keypoints(path)
+                    with self._round.timed("keypoints"):
+                        points[item.id] = keypoints(path)
                 except Exception as err:  # a broken file: no opinion
                     log.info("twins: keypoints of %s: %s", item.id, err)
                     points[item.id] = None
@@ -529,13 +556,15 @@ class Twins:
                 if mine is None or theirs is None:
                     continue
                 pairs += 1
-                fit = _fit(mine, theirs)
+                with self._round.timed("pairs"):
+                    fit = _fit(mine, theirs)
                 if fit is not None:
                     fits[(item.id, other.id)] = fit
             done.add(item.id)
             looked.append(item)
         large, scenes, large_done = self._large_details(works, looked, fits, grouped, until, of)
-        copies, details = self._write(works, looked, fits, large, scenes, large_done)
+        with self._round.timed("writes"):
+            copies, details = self._write(works, looked, fits, large, scenes, large_done)
         return len(looked), copies, details
 
     def _large_details(
@@ -608,11 +637,13 @@ class Twins:
             """The item's large picture's keypoints (none when it can't be
             had); None when it can't be downloaded in this round."""
             if item.id not in large:
-                img, downloaded, refused = self._large_picture(item, self._round.downloads > 0)
+                with self._round.timed("large pictures"):
+                    img, downloaded, refused = self._large_picture(item, self._round.downloads > 0)
                 self._round.downloads -= downloaded
                 if refused:
                     return None
-                large[item.id] = large_keypoints(img) if img is not None else []
+                with self._round.timed("large keypoints"):
+                    large[item.id] = large_keypoints(img) if img is not None else []
             return large[item.id]
 
         found: dict[str, str] = {}
@@ -630,7 +661,9 @@ class Twins:
             if sets is None:
                 later.add(small.id)
                 continue
-            if any(lies_within(mine_points, s) for s in sets):
+            with self._round.timed("large pairs"):
+                within = any(lies_within(mine_points, s) for s in sets)
+            if within:
                 log.info("twins: %s is a detail of %s (large picture)", small.id, big.id)
                 found[small.id] = big.id
                 continue
@@ -644,7 +677,9 @@ class Twins:
             if around is None:
                 later.add(small.id)
                 continue
-            if any(lies_within(theirs, s) for s in around):
+            with self._round.timed("large pairs"):
+                within = any(lies_within(theirs, s) for s in around)
+            if within:
                 log.info("twins: %s is a photograph of %s (large picture)", small.id, big.id)
                 scenes[small.id] = big.id
         done.update(i.id for i in waiting if i.id not in later)
@@ -858,7 +893,8 @@ class Twins:
             path = self.images.thumb_path(item)
             if not path.is_file():
                 continue  # hashed once it is here
-            written[item.id] = picture_hash(path)
+            with self._round.timed("hashes"):
+                written[item.id] = picture_hash(path)
         if not written:
             return 0, 0
         by_id = {i.id: i for i in everyone}
@@ -866,10 +902,12 @@ class Twins:
         new = [i for i, h in written.items() if h != NO_HASH]
         order = known + new
         rows = hash_words([hashes.get(i) or written[i] for i in order])
-        grouped = self.library.works()
+        with self._round.timed("grouping"):
+            grouped = self.library.works()
         close: list[tuple[str, str]] = []
         for at in range(len(known), len(order)):
-            near = np.flatnonzero(hash_distances(rows[at], rows[:at]) <= HASH_NEAR)
+            with self._round.timed("hash distances"):
+                near = np.flatnonzero(hash_distances(rows[at], rows[:at]) <= HASH_NEAR)
             a = order[at]
             for index in near:
                 b = order[int(index)]
@@ -892,10 +930,12 @@ class Twins:
             if not (pa.is_file() and pb.is_file()):
                 continue
             try:
-                ka, kb = keypoints(pa), keypoints(pb)
+                with self._round.timed("keypoints", 2):
+                    ka, kb = keypoints(pa), keypoints(pb)
             except Exception:  # a broken file: no opinion
                 continue
-            fit = _fit(ka, kb) if ka is not None and kb is not None else None
+            with self._round.timed("pairs"):
+                fit = _fit(ka, kb) if ka is not None and kb is not None else None
             if fit is None or not fit.same:
                 unsure.append((a, b))  # that close, yet not one picture whole
                 continue
@@ -904,9 +944,11 @@ class Twins:
             if len(museums) > 1:
                 continue  # two museums' own works are never one
             log.info("twins: %s and %s are one picture (hash)", a, b)
-            found, _ = self._write(list(family.values()), [], {(a, b): fit}, by="hash")
+            with self._round.timed("writes"):
+                found, _ = self._write(list(family.values()), [], {(a, b): fit}, by="hash")
             joined += found
-            grouped = self.library.works()
+            with self._round.timed("grouping"):
+                grouped = self.library.works()
         self._suspect(unsure, "hash")
         with self.library.batch():
             for item_id, value in written.items():
