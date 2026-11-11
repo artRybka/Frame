@@ -500,14 +500,17 @@ def tasks(service: FrameService) -> list[NightTask]:
         NightTask("curator", service.curator.at_night, "Dziś dla Ciebie", paid=True),
         NightTask("themes", themes, "Karty Odkrywaj"),
         NightTask("suggestions", suggestions, "Propozycje dnia"),
+        # What the pictures of the nights before could not settle: Haiku,
+        # then Haiku as the critic, a quarter of an hour at most for each
+        # batch (a later answer is collected the next night). Before
+        # "rijks": after it the night is often over (2026-11-11: "twins"
+        # began at 04:55, the judge was left for the next night).
+        NightTask("twins judge", service.twins_judge.at_night, "Sędzia powtórek", paid=True),
         # Hours at most (NIGHT_SECONDS), after what the morning needs.
         NightTask("rijks", rijks, "Spis Rijksmuseum"),
         # Copies under other titles and details, by their pictures: what the
         # night has time for, the rest the next (library/twins.py).
         NightTask("twins", lambda night: service.twins.at_night(night.quiet), "Powtórki i detale"),
-        # What the pictures could not settle: Haiku, then Haiku as the
-        # critic, each batch waited for while the night is quiet.
-        NightTask("twins judge", service.twins_judge.at_night, "Sędzia powtórek", paid=True),
         # The catalogue's gatekeeper and the night audit: the same, each
         # with its critic (ai/gatekeeper.py, ai/audit.py).
         NightTask("gatekeeper", service.gatekeeper.at_night, "Strażnik katalogu", paid=True),

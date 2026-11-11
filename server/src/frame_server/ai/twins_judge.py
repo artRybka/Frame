@@ -269,8 +269,10 @@ CRITIC_MODEL = HAIKU
 PAIRS_A_NIGHT = 400
 #: Pairs remembered as judged, the newest.
 JUDGED_MAX = 20_000
-#: How long the night waits for a batch, and how often it asks.
-WAIT_SECONDS = 3600.0
+#: How long the night waits for a batch, and how often it asks (the rest
+#: of the night's work waits meanwhile; a later answer is collected the
+#: next night).
+WAIT_SECONDS = 900.0
 POLL_SECONDS = 60.0
 
 
