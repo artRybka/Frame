@@ -42,7 +42,7 @@ from .museums import (
     museum,
     reachable,
 )
-from .pages import search_pages
+from .pages import reading, search_pages
 from .phrases import quote, tokens
 from .repo import Library, matches, now_iso
 from .verdict import Place, against
@@ -56,6 +56,7 @@ from .vocabulary import (
     museum_kind,
     museum_queries,
     object_category,
+    type_tells,
     years,
 )
 from .wording import Wording
@@ -77,6 +78,15 @@ TASTE_SOURCES = (
 DRAW_SOURCES = (*(s for s in TASTE_SOURCES if s not in ("wellcome", "wikiart")), "paris")
 #: Museums that can be asked for their most important works.
 HIGHLIGHT_SOURCES = ("met", "cma", "mnw", "mnk")
+#: What an older reading of the Rijksmuseum's records kept for a type or a
+#: maker its record names by one value, not a list (read right since
+#: 2026-11-10; the works taken in before kept the word).
+MISREAD = "@language"
+#: The museums whose kept works are read again (:meth:`Importer.read_again`)
+#: when their reading (``pages.READINGS``) changes, and the library's state
+#: that says with which reading each was.
+READ_AGAIN = ("rijks",)
+READ_AGAIN_KEY = "read_again"
 #: How long a search waits for typed words to be translated (seconds); an
 #: answer that comes later serves the next search.
 TRANSLATE_SECONDS = 5.0
@@ -203,6 +213,26 @@ class Job:
     item_ids: list[str] = field(default_factory=list)
 
 
+def _untold(item: Item) -> bool:
+    """``item`` is worth reading again from its museum (:meth:`Importer.
+    read_again`)."""
+    return MISREAD in (item.artist, item.classification) or not type_tells(item)
+
+
+def _read_anew(item: Item, fresh: Item | None) -> dict[str, str]:
+    """What of the kept ``item`` changes to its museum's record as read
+    today (``fresh``; None: the museum no longer shows the work): its type,
+    where the record says one, and a misread word in any case. A maker
+    read right stays as kept (with its "possibly")."""
+    fixes: dict[str, str] = {}
+    told = fresh.classification if fresh is not None else ""
+    if told != item.classification and (told or item.classification == MISREAD):
+        fixes["classification"] = told
+    if item.artist == MISREAD:
+        fixes["artist"] = fresh.artist if fresh is not None else ""
+    return fixes
+
+
 def dated(item: Item) -> Item:
     """``item`` with the year its date in words gives ("1st century A.D.",
     Getty, V&A, Yale), when its source's reader left none: as an imported
@@ -317,6 +347,40 @@ class Importer:
         if item is not None:
             self.remember([item])
         return item
+
+    def read_again(self, quiet: Callable[[], bool] = lambda: True) -> int:
+        """The kept works whose museum's type tells the server nothing, or
+        that an older reading got wrong (:data:`MISREAD`), read again from
+        their museum, once for each of its readings: a work keeps what was
+        read the day it came, however the reading is mended since (70 of
+        the Rijksmuseum's typed "@language" and twelve "by" it, 28 "design"
+        or "grisaille" that the museum also calls a drawing or a painting,
+        2026-11-11). Most records are kept at home (library/records.py);
+        the others are asked one after another while ``quiet``, and the
+        next night goes on where a night stopped. Only the type and a
+        misread maker change. Returns how many works did."""
+        read = dict(self.library.get_state(READ_AGAIN_KEY, {}))
+        changed = 0
+        for source in READ_AGAIN:
+            if source not in self.sources() or read.get(source) == reading(source):
+                continue
+            works = [i for i in self.library.all_items() if i.source == source and _untold(i)]
+            with self.http() as http:
+                asked = museum(source, http, self.access())
+                for item in works:
+                    if not quiet():
+                        return changed
+                    try:
+                        fresh = asked.fetch(item.source_id)
+                    except (httpx.HTTPError, ValueError):
+                        log.info("%s could not be read again tonight", item.id)
+                        return changed
+                    if fixes := _read_anew(item, fresh):
+                        self.library.update(item.id, **fixes)
+                        changed += 1
+            read[source] = reading(source)
+            self.library.set_state(READ_AGAIN_KEY, read)
+        return changed
 
     def _fragment(self, work_id: str, n: int) -> Item | None:
         """The ``n``-th fragment of the work ``work_id`` (library/fragments.py)."""

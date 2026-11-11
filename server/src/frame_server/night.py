@@ -555,6 +555,11 @@ def tasks(service: FrameService) -> list[NightTask]:
             looked += 1
         return looked
 
+    def read_again(night: Night) -> int:
+        """Works kept with a type or maker an older reading of their
+        museum's record got wrong, read again (``Importer.read_again``)."""
+        return service.importer.read_again(night.quiet)
+
     def places(night: Night) -> int:
         """The towns of photos from the camera roll and older albums (their
         coordinates come with the original)."""
@@ -711,6 +716,7 @@ def tasks(service: FrameService) -> list[NightTask]:
         NightTask("frame line", frame_line, "Kolejka ramki", group=disc),
         NightTask("sharper", sharper, "Ostrzejsze kopie", group=cat),
         NightTask("museums", museums, "Gdzie wiszą dzieła", group=text),
+        NightTask("read again", read_again, "Rodzaj i autor czytane ponownie", group=text),
         NightTask(
             "museum places",
             lambda night: service.museum_places.at_night(night.quiet),

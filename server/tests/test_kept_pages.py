@@ -213,3 +213,56 @@ def test_an_old_page_is_shown_and_asked_again_behind(
         time.sleep(0.01)
     assert importer.search("aic", "monet")[1][0].id == "aic:2"  # the new one next
     assert source.asked == 2
+
+
+def _kept_rijks(n: str, **fields: str) -> Item:
+    return Item(
+        id=f"rijks:{n}",
+        kind=ItemKind.ARTWORK,
+        source="rijks",
+        source_id=n,
+        title=f"Work {n}",
+        image_url=f"https://example.org/{n}.jpg",
+        thumb_url=f"https://example.org/{n}t.jpg",
+        **fields,  # type: ignore[arg-type]
+    )
+
+
+def test_works_kept_with_a_misread_type_are_read_again(tmp_path: Path) -> None:
+    """The Rijksmuseum's types and makers named by one value were kept as
+    "@language" until the reading was mended (2026-11-10); the 70 works
+    taken in before kept the word (2026-11-11)."""
+    sent: list[str] = []
+    library = Library(tmp_path / "lib.db")
+    importer = Importer(
+        library,
+        None,  # type: ignore[arg-type]
+        None,  # type: ignore[arg-type]
+        http=lambda: _rijks(sent),
+        access=lambda: Access(data_dir=tmp_path),
+    )
+    library.upsert(_kept_rijks("200108369", artist="@language", classification="@language"))
+    # One the museum no longer has: the word goes, its maker stays.
+    library.upsert(_kept_rijks("1", artist="anonymous", classification="@language"))
+    # A type that tells what the work is: not asked about.
+    library.upsert(_kept_rijks("2", artist="Someone", classification="print"))
+    # Not while the night is not quiet; then all of them, once.
+    assert importer.read_again(lambda: False) == 0 and not sent
+    assert importer.read_again() == 2
+    milkmaid = library.get("rijks:200108369")
+    assert milkmaid is not None and milkmaid.title == "Work 200108369"
+    assert (milkmaid.artist, milkmaid.classification) == ("Johannes Vermeer", "painting")
+    gone = library.get("rijks:1")
+    assert gone is not None and (gone.artist, gone.classification) == ("anonymous", "")
+    assert sent == ["https://id.rijksmuseum.nl/200108369", "https://id.rijksmuseum.nl/1"]
+    library.upsert(_kept_rijks("3", classification="@language"))
+    assert importer.read_again() == 0 and len(sent) == 2
+    # A new reading of the museum's records: again. A type that tells
+    # nothing is read again too, and the maker kept with it stays.
+    milkmaid = library.update(milkmaid.id, artist="Vermeer (possibly)", classification="design")
+    library.set_state("read_again", {"rijks": "3"})
+    assert importer.read_again() == 2
+    assert sent[2:] == ["https://id.rijksmuseum.nl/3"]  # the Milkmaid's record is at home
+    milkmaid = library.get("rijks:200108369")
+    assert milkmaid is not None
+    assert (milkmaid.artist, milkmaid.classification) == ("Vermeer (possibly)", "painting")
