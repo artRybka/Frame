@@ -336,12 +336,23 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertEqual(marks.target(mid: 100), 100 + RoadMarks.ahead)
         XCTAssertEqual(marks.target(mid: 99_999), marks.full)
         XCTAssertGreaterThan(marks.full, plan.height)
-        // A stop begins with its dot up at the middle of the screen and the line drawn through it.
+        // 2026-11-11 11:56: „cienka kreska może się zaczyna rysować
+        // wcześniej, prawie u dołu ekranu. Podobnie plamy pod teksty,
+        // trochę wcześniej niż teraz.” On a phone the tip is drawn a
+        // little over the bottom of the screen; on a low screen as before.
+        XCTAssertEqual(RoadMarks.reach(screen: 874), 337)
+        XCTAssertEqual(RoadMarks.reach(screen: 500), RoadMarks.ahead)
+        XCTAssertEqual(marks.target(mid: 100, ahead: 337), 437)
+        // A stop begins with its dot a little under the middle of the
+        // screen, well over the tip of the line, and the line drawn through it.
+        XCTAssertGreaterThanOrEqual(RoadMarks.near, 60)
+        XCTAssertLessThan(RoadMarks.near, RoadMarks.ahead - 60)
+        XCTAssertGreaterThan(RoadMarks.back, RoadMarks.near + 20)
         let dot = marks.dots[1]
-        XCTAssertFalse(marks.due(1, mid: dot - 40, pen: dot + 100))
+        XCTAssertFalse(marks.due(1, mid: dot - RoadMarks.near - 30, pen: dot + 100))
         XCTAssertFalse(marks.due(1, mid: dot + 5, pen: dot - 1))
         XCTAssertTrue(marks.due(1, mid: dot + 5, pen: dot + 100))
-        XCTAssertTrue(marks.due(1, mid: dot - 5, pen: dot + 4))
+        XCTAssertTrue(marks.due(1, mid: dot - RoadMarks.near + 5, pen: dot + 4))
         // 08:55: „najpierw pojawia się kropka, a z niej po chwili wylewa
         // się… plama pod tekst”, and the text on the stain after that.
         XCTAssertGreaterThan(RoadMarks.clock.spill, 0.3)
@@ -888,8 +899,9 @@ final class JourneyRoadTests: XCTestCase {
         reveal.lay(RoadMarks(plan), still: false)
         reveal.lay(marks, still: false)
         let end = marks.dots[count - 1], gate = RoadMarks.ring.at + RoadMarks.ring.takes
-        // The road's end a little over the middle of the screen.
-        reveal.look(CGRect(x: 0, y: end + 20 - 250, width: 350, height: 500))
+        // The road's end a little under the middle of the screen, where a stop begins.
+        let first = end - RoadMarks.near + 10
+        reveal.look(CGRect(x: 0, y: first - 250, width: 350, height: 500))
         var now = Date()
         func run(_ seconds: Int, _ check: () -> Void) {
             for _ in 0..<(60 * seconds) {
@@ -910,13 +922,14 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertGreaterThan(held, 100)
         XCTAssertEqual(reveal.age(count - 1), RoadMarks.clock.dry, accuracy: 0.001)
         // Ringed, the line goes on: as far as the heading, which is not at the middle of the screen yet.
-        let waiting = min(end + 20 + RoadMarks.ahead, onward.loopY + 6)
+        let waiting = min(first + RoadMarks.ahead, onward.loopY + 6)
         XCTAssertGreaterThan(waiting, end + 30)
         XCTAssertEqual(reveal.pen, waiting, accuracy: 0.01)
         XCTAssertTrue(reveal.settled)
-        // Scrolled on, the second later work at the middle of the screen: the
+        // Scrolled on, the second later work where a stop begins: the
         // heading is circled first, and only then do the later works begin.
-        reveal.look(CGRect(x: 0, y: years[1] + 5 - 250, width: 350, height: 500))
+        let second = years[1] - RoadMarks.near + 10
+        reveal.look(CGRect(x: 0, y: second - 250, width: 350, height: 500))
         XCTAssertFalse(reveal.settled)
         var circling = 0
         run(16) {
@@ -927,7 +940,7 @@ final class JourneyRoadTests: XCTestCase {
                 if reveal.age(count) >= 0 { circling += 1 }
             }
         }
-        XCTAssertEqual(reveal.pen, years[1] + 5 + RoadMarks.ahead, accuracy: 0.01)
+        XCTAssertEqual(reveal.pen, second + RoadMarks.ahead, accuracy: 0.01)
         XCTAssertGreaterThan(circling, 40)
         XCTAssertEqual(reveal.age(count), marks.whole(count), accuracy: 0.001)
         XCTAssertEqual(reveal.age(count + 1), RoadMarks.clock.dry, accuracy: 0.001)
@@ -935,7 +948,7 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertLessThan(reveal.age(count + 3), 0)
         XCTAssertTrue(reveal.settled)
         // The page goes back: the later works and the loop are undone, the ring stays.
-        reveal.look(CGRect(x: 0, y: end + 20 - 250, width: 350, height: 500))
+        reveal.look(CGRect(x: 0, y: first - 250, width: 350, height: 500))
         run(8) {}
         XCTAssertLessThan(reveal.age(count + 1), 0)
         XCTAssertLessThan(reveal.age(count), 0)

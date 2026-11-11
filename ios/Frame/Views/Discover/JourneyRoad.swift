@@ -721,11 +721,16 @@ struct RoadMarks: Equatable {
         height = max(height, (ends.max() ?? height) + 6)
     }
 
-    /// How far under the middle of the screen the tip of the line is drawn.
+    /// How far under the middle of the screen the tip of the line is
+    /// drawn, at the least; on a screen tall enough it is drawn `foot`
+    /// over the screen's bottom (2026-11-11 11:56: „cienka kreska może
+    /// się zaczyna rysować wcześniej, prawie u dołu ekranu”).
     static let ahead: CGFloat = 190
-    /// A stop begins with its dot this near the middle of the screen, and
-    /// no sooner than this long after the stop before it.
-    static let near: CGFloat = 10
+    static let foot: CGFloat = 100
+    /// A stop begins with its dot this far under the middle of the screen
+    /// (11:56: „Podobnie plamy pod teksty, trochę wcześniej niż teraz”),
+    /// and no sooner than this long after the stop before it.
+    static let near: CGFloat = 80
     static let apart: CGFloat = 0.3
     /// The slowest the tip and the full width go, in points a second, and
     /// how long each takes to catch up with what it follows.
@@ -749,7 +754,7 @@ struct RoadMarks: Equatable {
     /// screen again; its clock then runs back by this much a second, or
     /// this many times its age when that is more. The pen catches up with
     /// a page going back in `retreat` seconds.
-    static let back: CGFloat = 40
+    static let back: CGFloat = 110
     static let undo: (slow: CGFloat, rate: CGFloat) = (2.2, 1.6)
     static let retreat: CGFloat = 0.5
     /// The ring round the blot at the road's end (10:39: „niech po chwili,
@@ -774,11 +779,15 @@ struct RoadMarks: Equatable {
     /// A stop's clock when nothing in it changes any more.
     func whole(_ index: Int) -> CGFloat { (spans[index] ?? Self.clock.dry) + lead(index) }
 
-    /// How far the tip of the line is to go with the middle of the screen at `mid`.
-    func target(mid: CGFloat) -> CGFloat { min(mid + Self.ahead, full) }
+    /// How far under the middle of a screen `screen` high the tip is drawn.
+    static func reach(screen: CGFloat) -> CGFloat { max(ahead, screen / 2 - foot) }
 
-    /// Whether stop `index` may begin: its dot is up at the middle of the
-    /// screen and the line is drawn through it.
+    /// How far the tip of the line is to go with the middle of the screen
+    /// at `mid`, drawn `ahead` under it.
+    func target(mid: CGFloat, ahead: CGFloat = RoadMarks.ahead) -> CGFloat { min(mid + ahead, full) }
+
+    /// Whether stop `index` may begin: its dot is up near the middle of
+    /// the screen and the line is drawn through it.
     func due(_ index: Int, mid: CGFloat, pen: CGFloat) -> Bool {
         dots[index] <= mid + Self.near && pen >= min(dots[index] + 4, full)
     }
@@ -915,13 +924,16 @@ final class RoadReveal {
     /// rest was drawn with the page at its end.
     private var mid: CGFloat { ended == nil ? seen.midY : .infinity }
 
+    /// How far under the middle of this screen the tip of the line is drawn.
+    private var ahead: CGFloat { seen.isNull ? RoadMarks.ahead : RoadMarks.reach(screen: seen.height) }
+
     /// How far the tip of the line is to be: ahead of the middle of the
     /// screen, never over a stop that is still there, and not past a stop
     /// the line is to wait at (`RoadMarks.gates`).
     private var target: CGFloat {
         var kept = -CGFloat.infinity
         for index in stops.indices where stops[index].age >= 0 { kept = max(kept, marks.dots[index] + 6) }
-        var far = marks.target(mid: mid)
+        var far = marks.target(mid: mid, ahead: ahead)
         for (index, long) in marks.gates where index < stops.count && age(index) < long {
             far = min(far, marks.dots[index] + 6)
         }
@@ -969,10 +981,11 @@ final class RoadReveal {
     /// scrolling steadily: the pen ahead, the stops above in turn.
     private func hold(_ mid: CGFloat) {
         let speed: CGFloat = 72
-        pen = min(marks.full, mid + RoadMarks.ahead - speed * RoadMarks.lag.pen)
+        pen = min(marks.full, mid + ahead - speed * RoadMarks.lag.pen)
         thick = pen - speed * RoadMarks.lag.thick
         for index in drawn.indices {
-            let age = marks.dots[index] <= mid ? min(marks.whole(index), (mid - marks.dots[index]) / speed + 0.1) : -1
+            let line = mid + RoadMarks.near
+            let age = marks.dots[index] <= line ? min(marks.whole(index), (line - marks.dots[index]) / speed + 0.1) : -1
             drawn[index] = age >= 0
             if stops[index].age != age { stops[index].age = age }
         }
@@ -983,7 +996,7 @@ final class RoadReveal {
     /// The road's end is on screen and not all of it is to be drawn yet.
     private var waits: Bool {
         ended == nil && !seen.isNull && seen.maxY >= marks.height
-            && (marks.target(mid: seen.midY) < marks.full || drawn.contains(false))
+            && (marks.target(mid: seen.midY, ahead: ahead) < marks.full || drawn.contains(false))
     }
 
     /// Something is still to move.

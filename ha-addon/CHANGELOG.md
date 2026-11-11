@@ -20,6 +20,9 @@
   ciemniejszy brzeg. Kreska jest rysowana w mokrej farbie, więc za
   piórem tusz rozpływa się w niebieskim, miejscami szerzej. Fale i nazwa
   morza zostają, fale są odrobinę ciemniejsze.
+- „Droga dzieła”: cienka kreska zaczyna się rysować wcześniej, prawie
+  u dołu ekranu, a kropki z plamami pod tekstami pojawiają się trochę
+  wcześniej niż dotąd, nieco poniżej środka ekranu.
 
 ## 1.145.2
 
