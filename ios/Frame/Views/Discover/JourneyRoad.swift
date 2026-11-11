@@ -26,8 +26,8 @@ import UIKit
 /// word. Under each text lies a stain of watercolour that ran and dried
 /// with a sharp edge (white at first, an underpainting; dark since
 /// 2026-11-11, see below); beside the black line there is
-/// white here and there, as if the line had been corrected, and white
-/// round the last dot (18:48: „białym jakby korekty linii obok czarnej
+/// white here and there, as if the line had been corrected, and at first
+/// white round the last dot too (18:48: „białym jakby korekty linii obok czarnej
 /// ścieżki, białym otok wokół czerwonej kropki… plamy akwareli z
 /// ostrzejszą krawędzią, nierówne podmalówki pod treściami”).
 /// The texts are broken with care (18:26): see `typeset` and `broken`.
@@ -71,6 +71,17 @@ import UIKit
 /// drugie halo plamy”). Each stop has a stain of its own; they are
 /// no longer one wash, which in dark paint would be a band down the page
 /// with the line lost in it.
+///
+/// 09:44, on the sketch of that („Jest pięknie! Rewelacja! Trzy ostatnie
+/// uwagi”): „czerwona kropka na końcu także jako plama akwareli, bez
+/// białego otoku. Na styku z czernią miesza się jak prawdziwa akwarela.”
+/// (`RoadBlot`); „odnoga wystawy - okrąg musi się rysować po plamie, nie od
+/// góry, tylko jako zakreślenie od początku do końca. Kreskowana linia do
+/// niego prowadząca musi wyglądać realistyczniej i powstawać (rysować) się
+/// kreseczkami.” (`RoadBranch`); „gdy cofam ekran rysunek niech zanika
+/// (czyli odwrócona animacja.” (`RoadReveal`: a stop whose dot is under
+/// the middle of the screen again is undone, its clock running back, and
+/// the line draws back up).
 struct JourneyRoad: View {
     let journey: DailyWork.Journey
     /// The work's id: the road's wander.
@@ -211,11 +222,11 @@ struct JourneyRoad: View {
         // Each sentence broken into its lines, and how wide each line is.
         let set = journey.stops.map { Self.setting($0.text, width: textWidth) }
         let spills = plan.flatMap { stains(under: $0, lines: set.map(\.lines)) }
-        let rim = plan.map { plan -> Path in
-            var around = SeededRandom(seed + "halo")
-            return Self.closed(Self.halo(round: plan.dots[count - 1], random: &around))
+        // Each side trip's branch, stroke by stroke; a stop with one waits for it.
+        let hands = plan.map { Self.hands(of: $0, seed: seed) } ?? [:]
+        let marks = plan.map { plan in
+            RoadMarks(plan, leads: plan.dots.indices.map { RoadMarks.lead(dashes: hands[$0]?.count ?? 0) })
         }
-        let marks = plan.map { RoadMarks($0) }
         var soak = SeededRandom(seed + "soak")
         let paintSeed = Float(soak.next() % 50)
         return ZStack(alignment: .topLeading) {
@@ -237,7 +248,7 @@ struct JourneyRoad: View {
         .frame(height: plan?.height, alignment: .topLeading)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { self.width = $0 }
         .background(alignment: .topLeading) {
-            if let plan, let spills, let rim {
+            if let plan, let spills {
                 let ink = RoadInk(plan: plan, seed: seed, dark: dark, top: top,
                                   flow: Self.inkFlow(plan.line.count, seed: seed), stains: spills.map(\.box))
                 ZStack(alignment: .topLeading) {
@@ -255,7 +266,14 @@ struct JourneyRoad: View {
                         .mask { Curtain(reveal: reveal, soft: 5, above: top) }
                         .padding(.top, -top)
                     RoadLine(reveal: reveal, ink: ink)
-                    RoadDots(reveal: reveal, plan: plan, rim: rim, dark: dark)
+                    ForEach(hands.keys.sorted(), id: \.self) { i in
+                        RoadBranch(reveal: reveal, index: i, dashes: hands[i] ?? [], ring: ring(round: i, of: plan))
+                    }
+                    RoadDots(reveal: reveal, plan: plan)
+                    // Where the work is now: a blot of red at the end of the line.
+                    RoadBlot(reveal: reveal, index: count - 1,
+                             blot: Self.blot(for: spills[count - 1], line: plan.line, seed: seed),
+                             dark: dark, seed: paintSeed + 3)
                 }
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
@@ -266,6 +284,15 @@ struct JourneyRoad: View {
         .onChange(of: marks, initial: true) { _, marks in reveal.lay(marks, still: still) }
         .onChange(of: still) { _, still in reveal.lay(marks, still: still) }
         .background { RoadClock(reveal: reveal) }
+    }
+
+    /// The loop round a side trip's text.
+    private func ring(round index: Int, of plan: RoadPlan) -> Path? {
+        guard let frame = plan.loops[index] else { return nil }
+        var random = SeededRandom(seed + "loop\(index)")
+        var ring = Path()
+        ring.addLines(Self.loop(frame, dotRight: !plan.leading[index], random: &random))
+        return ring
     }
 
     /// Each stop's stain, once every text's lines are known: the first
@@ -445,25 +472,32 @@ struct JourneyRoad: View {
 /// Where the stops are down the road, and how fast the pen goes (2026-11-11:
 /// „kreska maluje się trochę szybciej niż powstają plamy i teksty (czyli
 /// rysuje się niżej na ekranie) cieńszą kreską i potem grubnie”). The tip
-/// of the line runs ahead of the middle of the screen, never back; its full
-/// width follows in time. A stop begins when its dot has come up to the
-/// middle of the screen, one stop after another, and from then on it runs
-/// on its own clock whatever the page does.
+/// of the line runs ahead of the middle of the screen; its full width
+/// follows in time. A stop begins when its dot has come up to the middle
+/// of the screen, one stop after another, and from then on it runs on its
+/// own clock. When the page goes back the drawing goes back too (09:44:
+/// „gdy cofam ekran rysunek niech zanika (czyli odwrócona animacja”): a
+/// stop whose dot is well under the middle of the screen again is undone,
+/// its clock running backwards, faster, and the line draws back up.
 struct RoadMarks: Equatable {
     /// Each stop's dot and the foot of its text, down the road.
     var dots: [CGFloat] = []
     var feet: [CGFloat] = []
     var height: CGFloat = 0
+    /// How long each stop waits for its branch to be drawn, stroke after
+    /// stroke, before its dot comes up: a side trip's; the others do not wait.
+    var leads: [CGFloat] = []
 
     /// Past the road's end: everything is drawn.
     var full: CGFloat { height + 60 }
 
     init() {}
 
-    init(_ plan: RoadPlan) {
+    init(_ plan: RoadPlan, leads: [CGFloat] = []) {
         height = plan.height
         dots = plan.dots.map(\.y)
         feet = plan.texts.map(\.maxY)
+        self.leads = leads
     }
 
     /// How far under the middle of the screen the tip of the line is drawn.
@@ -482,6 +516,32 @@ struct RoadMarks: Equatable {
     /// tekst”), its text comes up from `text` for `emerge`, and by `dry`
     /// nothing in it changes any more.
     static let clock: (spill: CGFloat, text: CGFloat, emerge: CGFloat, dry: CGFloat) = (0.45, 1.1, 1.2, 6)
+    /// A side trip's branch (09:44: „powstawać (rysować) się kreseczkami”):
+    /// a stroke begins this long after the one before and takes this long;
+    /// after the last there is a moment's rest, and then the stop's dot.
+    static let dash: (apart: CGFloat, takes: CGFloat, rest: CGFloat) = (0.085, 0.065, 0.1)
+    /// The loop round a side trip's text is drawn when its stain is there
+    /// (09:44: „okrąg musi się rysować po plamie”): from this long after
+    /// the stop's dot came up, for this long.
+    static let loop: (at: CGFloat, takes: CGFloat) = (2, 1)
+    /// A stop is undone when its dot is this far under the middle of the
+    /// screen again; its clock then runs back by this much a second, or
+    /// this many times its age when that is more. The pen catches up with
+    /// a page going back in `retreat` seconds.
+    static let back: CGFloat = 40
+    static let undo: (slow: CGFloat, rate: CGFloat) = (2.2, 1.6)
+    static let retreat: CGFloat = 0.5
+
+    /// How long a branch of `dashes` strokes takes.
+    static func lead(dashes: Int) -> CGFloat {
+        dashes > 0 ? CGFloat(dashes) * dash.apart + dash.rest : 0
+    }
+
+    /// How long stop `index` waits for its branch.
+    func lead(_ index: Int) -> CGFloat { index < leads.count ? leads[index] : 0 }
+
+    /// A stop's clock when nothing in it changes any more.
+    func whole(_ index: Int) -> CGFloat { Self.clock.dry + lead(index) }
 
     /// How far the tip of the line is to go with the middle of the screen at `mid`.
     func target(mid: CGFloat) -> CGFloat { min(mid + Self.ahead, full) }
@@ -494,17 +554,30 @@ struct RoadMarks: Equatable {
 
     /// The tip and the full width a moment later: each goes faster the
     /// further behind it is, and never slower than its pace. The tip stops
-    /// at `target`, the full width at the tip.
+    /// at `target`, the full width at the tip. With the target over the
+    /// tip (the page went back) the line draws back up to it, quicker.
     static func advance(pen: CGFloat, thick: CGFloat, target: CGFloat, passed: CGFloat) -> (pen: CGFloat, thick: CGFloat) {
-        let drawn = min(target, pen + max(pace.pen, (target - pen) / lag.pen) * passed)
+        let drawn = target >= pen
+            ? min(target, pen + max(pace.pen, (target - pen) / lag.pen) * passed)
+            : max(target, pen - max(pace.pen, (pen - target) / retreat) * passed)
         let filled = min(drawn, thick + max(pace.thick, (drawn - thick) / lag.thick) * passed)
         return (drawn, filled)
     }
+
+    /// A stop's clock a moment later. `drawn`: the stop is to be there, and
+    /// its clock runs on to `whole`; otherwise it runs back, and under 0
+    /// the stop is gone (-1).
+    static func older(_ age: CGFloat, drawn: Bool, whole: CGFloat, passed: CGFloat) -> CGFloat {
+        if drawn { return min(whole, max(0, age) + passed) }
+        guard age >= 0 else { return -1 }
+        let left = age - max(undo.slow, undo.rate * age) * passed
+        return left > 0 ? left : -1
+    }
 }
 
-/// How long ago one stop began, in seconds; under 0 it has not begun.
-/// Each stop has its own, so only what belongs to a stop in motion is
-/// drawn again.
+/// One stop's clock, in seconds: how long it has been drawing; under 0
+/// it is not there. Each stop has its own, so only what belongs to a stop
+/// in motion is drawn again.
 @MainActor
 @Observable
 final class StopClock {
@@ -516,7 +589,8 @@ final class StopClock {
 /// line has its full width. Both follow the middle of the screen as the
 /// page is scrolled (22:18: „na środku ekranu w trakcie przewijania”), the
 /// pen ahead of it. The stops begin one by one as their dots come up to
-/// the middle of the screen (`RoadMarks`).
+/// the middle of the screen, and are undone when the page goes back
+/// (`RoadMarks`).
 @MainActor
 @Observable
 final class RoadReveal {
@@ -528,33 +602,45 @@ final class RoadReveal {
 
     @ObservationIgnored private var marks = RoadMarks()
     @ObservationIgnored private var still = false
-    @ObservationIgnored private var target = RoadReveal.before
     /// The part of the road on screen, and when it last moved.
     @ObservationIgnored private var seen = CGRect.null
     @ObservationIgnored private var looked = false
     @ObservationIgnored private var moved = Date.distantPast
     @ObservationIgnored private var last: Date?
-    /// The furthest down the road the middle of the screen has been.
-    @ObservationIgnored private var reach = -CGFloat.infinity
-    /// How long the drawing has been going, in seconds, when each stop
-    /// began, and when the last of them did.
+    /// Which stops are to be there; the others are not, or are being undone.
+    @ObservationIgnored private var drawn: [Bool] = []
+    /// How long the drawing has been going, in seconds, and when the
+    /// latest stop began.
     @ObservationIgnored private var time: CGFloat = 0
-    @ObservationIgnored private var began: [CGFloat?] = []
     @ObservationIgnored private var latest = -CGFloat.infinity
+    /// The page came to rest with the road's end on screen, and the rest
+    /// was drawn: where the middle of the screen was then.
+    @ObservationIgnored private var ended: CGFloat?
 
     /// Before anything is drawn: over the rule the line comes out from.
     static let before: CGFloat = -50
     /// With the road's end on screen and the page at rest this long, the
     /// rest is drawn: nothing more will come to the middle of the screen.
+    /// It stays until the page has gone back by `slack` (a bounce at the
+    /// page's end is not going back).
     static let rest: TimeInterval = 1.2
+    static let slack: CGFloat = 60
     /// CI screenshots: "-journeyWash 0.45" holds the drawing as it is with
     /// the middle of the screen that far down the road and the page
     /// scrolling; 1 and more is all of it, dry.
     static let held: CGFloat? = UserDefaults.standard.object(forKey: "journeyWash") == nil
         ? nil : CGFloat(UserDefaults.standard.double(forKey: "journeyWash"))
 
-    /// How long ago stop `index` began.
-    func age(_ index: Int) -> CGFloat { index < stops.count ? stops[index].age : -1 }
+    /// How long ago stop `index` began: its dot came up at 0; under 0 it
+    /// is not there (or only its branch is being drawn).
+    func age(_ index: Int) -> CGFloat {
+        guard index < stops.count else { return -1 }
+        let age = stops[index].age
+        return age < 0 ? -1 : age - marks.lead(index)
+    }
+
+    /// How long stop `index` has been drawing, its branch first.
+    func drawing(_ index: Int) -> CGFloat { index < stops.count ? stops[index].age : -1 }
 
     /// The road is laid out (or laid out again).
     func lay(_ marks: RoadMarks?, still: Bool) {
@@ -563,7 +649,7 @@ final class RoadReveal {
         self.still = still
         if stops.count != marks.dots.count {
             stops = marks.dots.map { _ in StopClock() }
-            began = marks.dots.map { _ in nil }
+            drawn = marks.dots.map { _ in false }
         }
         aim()
     }
@@ -577,32 +663,44 @@ final class RoadReveal {
         aim()
     }
 
+    /// The middle of the screen on the road; past everything once the
+    /// rest was drawn with the page at its end.
+    private var mid: CGFloat { ended == nil ? seen.midY : .infinity }
+
+    /// How far the tip of the line is to be: ahead of the middle of the
+    /// screen, and never over a stop that is still there.
+    private var target: CGFloat {
+        var kept = -CGFloat.infinity
+        for index in stops.indices where stops[index].age >= 0 { kept = max(kept, marks.dots[index] + 6) }
+        return max(kept, marks.target(mid: mid))
+    }
+
     private func aim() {
         guard looked, !marks.dots.isEmpty else { return }
         if let held = Self.held { return held >= 1 ? finish() : hold(held * marks.height) }
         if still || seen.isNull { return finish() }
-        reach = max(reach, seen.midY)
-        target = max(target, marks.target(mid: reach))
+        if let rested = ended, seen.midY < rested - Self.slack { ended = nil }
         // What is over the top of the screen is not watched: it is there at once.
         let over = min(seen.minY - 80, target)
         if pen < over { pen = over }
         if thick < over { thick = over }
-        for index in began.indices where began[index] == nil && marks.feet[index] < seen.minY - 80 {
-            began[index] = time - RoadMarks.clock.dry
-            stops[index].age = RoadMarks.clock.dry
+        for index in drawn.indices where marks.feet[index] < seen.minY - 80 {
+            drawn[index] = true
+            let whole = marks.whole(index)
+            if stops[index].age != whole { stops[index].age = whole }
         }
         if busy { settled = false }
     }
 
     /// All of it, dry.
     private func finish() {
-        target = marks.full
-        reach = .infinity
+        ended = nil
         if pen != marks.full { pen = marks.full }
         if thick != marks.full { thick = marks.full }
-        for index in began.indices {
-            began[index] = time - RoadMarks.clock.dry
-            if stops[index].age != RoadMarks.clock.dry { stops[index].age = RoadMarks.clock.dry }
+        for index in drawn.indices {
+            drawn[index] = true
+            let whole = marks.whole(index)
+            if stops[index].age != whole { stops[index].age = whole }
         }
         last = nil
         if !settled { settled = true }
@@ -614,8 +712,9 @@ final class RoadReveal {
         let speed: CGFloat = 72
         pen = min(marks.full, mid + RoadMarks.ahead - speed * RoadMarks.lag.pen)
         thick = pen - speed * RoadMarks.lag.thick
-        for index in began.indices {
-            let age = marks.dots[index] <= mid ? min(RoadMarks.clock.dry, (mid - marks.dots[index]) / speed + 0.1) : -1
+        for index in drawn.indices {
+            let age = marks.dots[index] <= mid ? min(marks.whole(index), (mid - marks.dots[index]) / speed + 0.1) : -1
+            drawn[index] = age >= 0
             if stops[index].age != age { stops[index].age = age }
         }
         last = nil
@@ -624,17 +723,17 @@ final class RoadReveal {
 
     /// The road's end is on screen and not all of it is to be drawn yet.
     private var waits: Bool {
-        reach < .infinity && !seen.isNull && seen.maxY >= marks.height
-            && (target < marks.full || began.contains { $0 == nil })
+        ended == nil && !seen.isNull && seen.maxY >= marks.height
+            && (marks.target(mid: seen.midY) < marks.full || drawn.contains(false))
     }
 
     /// Something is still to move.
     private var busy: Bool {
-        if pen < target || thick < pen || waits { return true }
-        for index in began.indices {
-            if began[index] != nil, stops[index].age < RoadMarks.clock.dry { return true }
+        if pen != target || thick < pen || waits { return true }
+        for index in drawn.indices {
+            if drawn[index] ? stops[index].age < marks.whole(index) : stops[index].age >= 0 { return true }
         }
-        if let next = began.firstIndex(where: { $0 == nil }), marks.dots[next] <= reach + RoadMarks.near { return true }
+        if let next = drawn.firstIndex(of: false), marks.dots[next] <= mid + RoadMarks.near { return true }
         return false
     }
 
@@ -643,24 +742,25 @@ final class RoadReveal {
         guard !settled else { return }
         let passed = CGFloat(max(0, min(1.0 / 20, last.map { now.timeIntervalSince($0) } ?? 1.0 / 60)))
         last = now
-        if waits, now.timeIntervalSince(moved) > Self.rest {
-            target = marks.full
-            reach = .infinity
+        if waits, now.timeIntervalSince(moved) > Self.rest { ended = seen.midY }
+        time += passed
+        let mid = self.mid
+        // The page went back: what is well under the middle of the screen again is undone.
+        for index in drawn.indices where drawn[index] && marks.dots[index] > mid + RoadMarks.back {
+            drawn[index] = false
+        }
+        if let index = drawn.firstIndex(of: false), time >= latest + RoadMarks.apart,
+           marks.due(index, mid: mid, pen: pen) {
+            drawn[index] = true
+            latest = time
+        }
+        for index in drawn.indices {
+            let age = RoadMarks.older(stops[index].age, drawn: drawn[index], whole: marks.whole(index), passed: passed)
+            if stops[index].age != age { stops[index].age = age }
         }
         let next = RoadMarks.advance(pen: pen, thick: thick, target: target, passed: passed)
         if next.pen != pen { pen = next.pen }
         if next.thick != thick { thick = next.thick }
-        time += passed
-        if let index = began.firstIndex(where: { $0 == nil }), time >= latest + RoadMarks.apart,
-           marks.due(index, mid: reach, pen: pen) {
-            began[index] = time
-            latest = time
-        }
-        for index in began.indices {
-            guard let start = began[index] else { continue }
-            let age = min(RoadMarks.clock.dry, time - start)
-            if stops[index].age != age { stops[index].age = age }
-        }
         if !busy {
             settled = true
             last = nil
@@ -712,7 +812,7 @@ private struct Curtain: View {
 
 /// What is inked on the road, drawn once: `body` is the line at its full
 /// width with the white beside it, `pen` what the pen leaves as it passes
-/// (the drops of ink it throws off at a turn, each side trip's branch and loop).
+/// (the drops of ink it throws off at a turn).
 private struct RoadInk: Equatable {
     var plan: RoadPlan
     var seed: String
@@ -760,10 +860,7 @@ private struct RoadInk: Equatable {
     /// The fine drops of ink the nib throws off at a turn (2026-11-11
     /// 08:29: „drobinek nierównego tuszu przy kresce”; 08:55: „za dużo
     /// małych kropeczek… jak przy zbyt szybkim rysowaniu stalówką. Np.
-    /// tylko przy zakrętach”), and a side trip the work came back from
-    /// (18:16: „jako odnogę… rysowaną przerywaną linią”; 18:40: „jak
-    /// rozdroże… ramka może jako zakreślenie”): the loop round its text,
-    /// and the branch in short strokes of the pen.
+    /// tylko przy zakrętach”).
     func drawPen(in context: inout GraphicsContext) {
         var dust = Path()
         for speck in JourneyRoad.spatter(along: plan.line, turns: plan.turns, until: end, seed: seed, off: stains).specks {
@@ -771,23 +868,6 @@ private struct RoadInk: Equatable {
             dust.addPath(grain, transform: CGAffineTransform(translationX: speck.at.x, y: speck.at.y).rotated(by: speck.turn))
         }
         context.fill(dust, with: .color(Theme.ink.opacity(0.9)))
-        for i in 0..<(plan.dots.count - 1) {
-            guard let way = plan.branches[i] else { continue }
-            if let frame = plan.loops[i] {
-                var random = SeededRandom(seed + "loop\(i)")
-                var ring = Path()
-                ring.addLines(JourneyRoad.loop(frame, dotRight: !plan.leading[i], random: &random))
-                context.stroke(ring, with: .color(Theme.ink.opacity(0.82)),
-                               style: StrokeStyle(lineWidth: 1.3, lineCap: .round, lineJoin: .round))
-            }
-            var spur = Path()
-            for dash in JourneyRoad.dashes(way, until: plan.dots[i]) {
-                spur.addLines(dash)
-                spur.closeSubpath()
-            }
-            context.fill(spur, with: .color(Theme.ink))
-            context.stroke(spur, with: .color(Theme.ink), style: StrokeStyle(lineWidth: 1.2, lineJoin: .round))
-        }
     }
 }
 
@@ -871,63 +951,122 @@ private struct Emerging<Content: View>: View {
     }
 }
 
-/// The dots, each coming up on the line when its stop begins.
+/// A side trip the work came back from (18:16: „jako odnogę… rysowaną
+/// przerywaną linią”; 18:40: „jak rozdroże… ramka może jako zakreślenie”;
+/// 2026-11-11 09:44: „okrąg musi się rysować po plamie, nie od góry, tylko
+/// jako zakreślenie od początku do końca. Kreskowana linia do niego
+/// prowadząca musi wyglądać realistyczniej i powstawać (rysować) się
+/// kreseczkami”): the branch is drawn first, when the stop begins, with
+/// the pen lifted between strokes, one stroke after another by hand; then
+/// the stop's dot, its stain and its text; and last the loop round the
+/// text, the way one circles a word, from its start round to its end.
+private struct RoadBranch: View {
+    let reveal: RoadReveal
+    let index: Int
+    let dashes: [JourneyRoad.Dash]
+    let ring: Path?
+
+    var body: some View {
+        let inked = strokes(reveal.drawing(index))
+        let circled = JourneyRoad.ease((reveal.age(index) - RoadMarks.loop.at) / RoadMarks.loop.takes)
+        ZStack(alignment: .topLeading) {
+            if let ring, circled > 0 {
+                ring.trimmedPath(from: 0, to: circled)
+                    .stroke(Theme.ink.opacity(0.82), style: StrokeStyle(lineWidth: 1.3, lineCap: .round, lineJoin: .round))
+            }
+            inked.fill(Theme.ink)
+            inked.stroke(Theme.ink, style: StrokeStyle(lineWidth: 0.7, lineJoin: .round))
+        }
+    }
+
+    /// The branch as far as it is drawn `age` seconds after its first stroke began.
+    private func strokes(_ age: CGFloat) -> Path {
+        var path = Path()
+        for (k, dash) in dashes.enumerated() {
+            let part = min(1, (age - CGFloat(k) * RoadMarks.dash.apart) / RoadMarks.dash.takes)
+            guard part > 0 else { break }
+            path.addLines(dash.outline(part))
+            path.closeSubpath()
+        }
+        return path
+    }
+}
+
+/// The dots, each coming up on the line when its stop begins. The last
+/// stop has none: it has a blot (`RoadBlot`).
 private struct RoadDots: View {
     let reveal: RoadReveal
     let plan: RoadPlan
-    let rim: Path
-    let dark: Bool
 
     var body: some View {
-        let last = plan.dots.count - 1
         ZStack(alignment: .topLeading) {
-            ForEach(plan.dots.indices, id: \.self) { i in
-                DotMark(reveal: reveal, index: i, at: plan.dots[i],
-                        kind: i == last ? .last : plan.branches[i] != nil ? .hollow : .plain,
-                        rim: i == last ? rim : nil, dark: dark)
+            ForEach(0..<max(0, plan.dots.count - 1), id: \.self) { i in
+                DotMark(reveal: reveal, index: i, at: plan.dots[i], hollow: plan.branches[i] != nil)
             }
         }
     }
 }
 
 /// One dot: it grows a little too big and settles. A hollow one where a
-/// side trip's branch ends, and a
-/// bigger red one for the last, where the work is now (18:16: „czerwona,
-/// ale większa”), on white laid over the end of the line (19:08: „powinien
-/// też nachodzić na czarną linię”): the paper first, so the line and the
-/// stain end under it, then the white.
+/// side trip's branch ends.
 private struct DotMark: View {
-    enum Kind { case plain, hollow, last }
-
     let reveal: RoadReveal
     let index: Int
     let at: CGPoint
-    let kind: Kind
-    let rim: Path?
-    let dark: Bool
+    let hollow: Bool
 
     var body: some View {
-        let age = reveal.age(index), size = JourneyRoad.pop(age)
-        let white = JourneyRoad.ease(age / 0.3)
-        ZStack(alignment: .topLeading) {
-            if let rim {
-                rim.fill(Theme.paper).opacity(white)
-                rim.fill(JourneyRoad.white(dark)).opacity(white)
+        let size = JourneyRoad.pop(reveal.age(index))
+        Group {
+            if hollow {
+                Circle().fill(Theme.paper).overlay { Circle().stroke(Theme.ink, lineWidth: 1.6) }
+                    .frame(width: 9.2, height: 9.2)
+            } else {
+                Circle().fill(Theme.ink).frame(width: 10.8, height: 10.8)
             }
-            Group {
-                switch kind {
-                case .last:
-                    Circle().fill(Theme.vermilion).frame(width: 2 * JourneyRoad.lastDot, height: 2 * JourneyRoad.lastDot)
-                case .hollow:
-                    Circle().fill(Theme.paper).overlay { Circle().stroke(Theme.ink, lineWidth: 1.6) }
-                        .frame(width: 9.2, height: 9.2)
-                case .plain:
-                    Circle().fill(Theme.ink).frame(width: 10.8, height: 10.8)
-                }
-            }
-            .scaleEffect(size)
-            .position(at)
         }
+        .scaleEffect(size)
+        .position(at)
+    }
+}
+
+/// Where the work is now (18:16: „czerwona, ale większa”; 2026-11-11
+/// 09:44: „czerwona kropka na końcu także jako plama akwareli, bez białego
+/// otoku. Na styku z czernią miesza się jak prawdziwa akwarela”): a blot
+/// of red watercolour at the end of the line. It spreads from its middle
+/// with a wet edge and dries with the pigment pooled along its rim; the
+/// paper round it soaks some of it up; and where it meets the black (the
+/// end of the line, and the last stop's ink, which comes out of it) the
+/// two run into each other (`Watercolour.metal`, `blot`).
+private struct RoadBlot: View {
+    let reveal: RoadReveal
+    let index: Int
+    let blot: JourneyRoad.Blot
+    let dark: Bool
+    /// Tells this paint from the stains'.
+    let seed: Float
+
+    var body: some View {
+        let age = reveal.age(index), room = JourneyRoad.blotRoom
+        let corner = CGPoint(x: (blot.at.x - room).rounded(.down), y: (blot.at.y - room).rounded(.down))
+        let ink = dark ? JourneyRoad.Ink.onDark : JourneyRoad.Ink.onLight
+        Color.white
+            .frame(width: 2 * room, height: 2 * room)
+            .colorEffect(
+                ShaderLibrary.blot(
+                    .float2(Float(blot.at.x - corner.x), Float(blot.at.y - corner.y)),
+                    .float2(Float(blot.back.x - corner.x), Float(blot.back.y - corner.y)),
+                    .float2(Float(blot.to.x - corner.x), Float(blot.to.y - corner.y)),
+                    .float4(Float(blot.into.minX - corner.x), Float(blot.into.minY - corner.y),
+                            Float(blot.into.maxX - corner.x), Float(blot.into.maxY - corner.y)),
+                    .float(Float(JourneyRoad.blotRadius)), .float(Float(age)),
+                    .float(Float(age - RoadMarks.clock.spill)), .float(seed),
+                    .float3(Float(blot.lobes[0]), Float(blot.lobes[1]), Float(blot.lobes[2])),
+                    .color(ink.red), .color(ink.dense)
+                )
+            )
+            .opacity(age > 0 ? 1 : 0)
+            .offset(x: corner.x, y: corner.y)
     }
 }
 
@@ -1041,18 +1180,22 @@ extension JourneyRoad {
     static let yearY: CGFloat = 14
     /// The line stops this short of the last stop, under its dot.
     static let lastClear: CGFloat = 3
-    /// The last stop's dot, where the work is now: bigger than the others.
+    /// The last stop's mark, where the work is now: bigger than the others.
+    /// The road's height leaves this much for it under its dot.
     static let lastDot: CGFloat = 9
+    /// It is a blot of red about this big, in a field that reaches this
+    /// far from its middle: room for the red that runs along the black.
+    static let blotRadius: CGFloat = 10.4
+    static let blotRoom: CGFloat = 34
     /// Bristles of the dry brush in one white correction.
     static let bristles = 3
     /// How far under the road a side trip's stop hangs, and how far back
     /// along the road its branch forks off.
     static let branch: CGFloat = 46
     static let branchSpan: CGFloat = 140
-    /// The pen of the branch: a narrower nib, in strokes this long with
-    /// this much between them.
-    static let branchNib: CGFloat = 3.4
-    static let branchDash = (on: 9, off: 5)
+    /// A line of a text much shorter than the ones over and under it is
+    /// not a deep notch in the stain's side: no deeper than this.
+    static let notch: CGFloat = 26
     /// The room between a side trip's text and the loop round it: at the
     /// sides, above and under.
     static let loopPad: (side: CGFloat, top: CGFloat, bottom: CGFloat) = (22, 10, 15)
@@ -1427,15 +1570,63 @@ extension JourneyRoad {
         return one + other.reversed()
     }
 
-    /// A side trip's branch inked with the pen lifted: the outlines of short
-    /// strokes of a narrower nib along it, the last one short of its dot.
-    static func dashes(_ way: [CGPoint], until end: CGPoint) -> [[CGPoint]] {
-        let fine = even(way, step: 1).filter { hypot($0.x - end.x, $0.y - end.y) > 6.5 }
-        var out: [[CGPoint]] = []
-        for start in stride(from: 0, to: fine.count, by: branchDash.on + branchDash.off) {
-            let stroke = Array(fine[start..<min(fine.count, start + branchDash.on + 1)])
-            guard stroke.count >= 3 else { break }
-            out.append(nibStroke(stroke, until: end, clear: 0, nib: branchNib))
+    /// One stroke of a side trip's branch: its middle line, a point every
+    /// point of length; how wide it is where the pen pressed hardest; how
+    /// far off the branch it lies and how much it is turned from it.
+    struct Dash: Equatable {
+        var way: [CGPoint]
+        var wide: CGFloat
+        var off: CGFloat
+        var skew: CGFloat
+
+        /// Its outline, drawn as far as `part` of its length: thin where
+        /// the pen came down and where it was lifted, pressed in between.
+        func outline(_ part: CGFloat) -> [CGPoint] {
+            let end = way.count - 1
+            guard end >= 1 else { return [] }
+            let upto = min(end, max(1, Int((CGFloat(end) * part).rounded())))
+            var one: [CGPoint] = [], other: [CGPoint] = []
+            for j in 0...upto {
+                let before = way[max(0, j - 1)], after = way[min(end, j + 1)]
+                let step = max(1e-3, hypot(after.x - before.x, after.y - before.y))
+                let across = CGPoint(x: -(after.y - before.y) / step, y: (after.x - before.x) / step)
+                let along = CGFloat(j) / CGFloat(end)
+                let press = sin(CGFloat.pi * (0.05 + 0.9 * along))
+                let half = wide / 2 * pow(press, 0.55)
+                let side = off + skew * (CGFloat(j) - CGFloat(end) / 2)
+                one.append(CGPoint(x: way[j].x + across.x * (side + half), y: way[j].y + across.y * (side + half)))
+                other.append(CGPoint(x: way[j].x + across.x * (side - half), y: way[j].y + across.y * (side - half)))
+            }
+            return one + other.reversed()
+        }
+    }
+
+    /// A side trip's branch drawn by hand with the pen lifted between
+    /// strokes (09:44: „Kreskowana linia… musi wyglądać realistyczniej”):
+    /// short strokes along it, no two alike (longer and shorter, wider and
+    /// finer, a little off the branch and a little turned), the last one
+    /// short of its dot.
+    static func hand(_ way: [CGPoint], until end: CGPoint, seed: String) -> [Dash] {
+        let fine = even(way, step: 1).filter { hypot($0.x - end.x, $0.y - end.y) > 7 }
+        var random = SeededRandom(seed)
+        var out: [Dash] = []
+        var start = 0
+        while start < fine.count - 4 {
+            let long = Int((7 + 4.5 * random.unit()).rounded())
+            let stroke = Array(fine[start..<min(fine.count, start + long + 1)])
+            guard stroke.count >= 5 else { break }
+            let wide = 2.5 + 1.1 * random.unit(), off = (random.unit() - 0.5) * 1.2, skew = (random.unit() - 0.5) * 0.16
+            out.append(Dash(way: stroke, wide: wide, off: off, skew: skew))
+            start += long + Int((4 + 2.6 * random.unit()).rounded())
+        }
+        return out
+    }
+
+    /// Every side trip's branch on the road, by its stop.
+    static func hands(of plan: RoadPlan, seed: String) -> [Int: [Dash]] {
+        var out: [Int: [Dash]] = [:]
+        for (index, way) in plan.branches where index < plan.dots.count {
+            out[index] = hand(way, until: plan.dots[index], seed: seed + "hand\(index)")
         }
         return out
     }
@@ -1485,8 +1676,9 @@ extension JourneyRoad {
         /// Each line of the text with room round it.
         var lines: [CGRect] = []
         var bulges: [Drop] = []
-        /// From the dot into the stain.
+        /// From the dot into the stain, and the line of the text it gets to.
         var way: [Drop] = []
+        var into = CGRect.zero
         var drips: [Drip] = []
         var dot = CGPoint.zero
         /// The stain's foot: under it there are only sags and drips.
@@ -1504,8 +1696,9 @@ extension JourneyRoad {
     /// soaked into the paper past the stain's edge (`halo`); how much of
     /// the page it covers wet and dry, how much the halo covers and how
     /// much more at its own edge, how much of the paper's grain shows in
-    /// it and how uneven it dries.
+    /// it and how uneven it dries. `red`: the blot at the road's end.
     struct Ink {
+        var red: Color
         var wet: Color
         var dense: Color
         var wash: Color
@@ -1516,11 +1709,11 @@ extension JourneyRoad {
         var bloom: CGFloat
 
         /// Dark ink that dries to a dark-grey wash (08:29).
-        static let onLight = Ink(wet: Color(hex: 0x1B1916), dense: Color(hex: 0x1F1D1A), wash: Color(hex: 0x4A4641),
+        static let onLight = Ink(red: Color(hex: 0xB8432F), wet: Color(hex: 0x1B1916), dense: Color(hex: 0x1F1D1A), wash: Color(hex: 0x4A4641),
                                  halo: Color(hex: 0x46423D), cover: (0.97, 0.85), soak: (0.34, 0.2), grain: 0.2,
                                  bloom: 22.0 / 255)
         /// On the dark page the stains are white (08:55).
-        static let onDark = Ink(wet: Color(hex: 0xFFFDF9), dense: Color(hex: 0xFFFEFA), wash: Color(hex: 0xECE7DE),
+        static let onDark = Ink(red: Color(hex: 0xE58A6F), wet: Color(hex: 0xFFFDF9), dense: Color(hex: 0xFFFEFA), wash: Color(hex: 0xECE7DE),
                                 halo: Color(hex: 0xF6F2EA), cover: (0.97, 0.9), soak: (0.3, 0.16), grain: 0.09,
                                 bloom: 10.0 / 255)
     }
@@ -1550,7 +1743,8 @@ extension JourneyRoad {
     }
 
     /// A stop's stain: every line of its text with room round it, so the
-    /// stain keeps the text's own ragged side; it sags along its foot,
+    /// stain keeps the text's own ragged side (but a short line between
+    /// two long ones is no deep notch in it); it sags along its foot,
     /// where the ink gathers, and bulges at a side or two; the ink comes
     /// out of the dot and goes from there into the stain; under
     /// some stains a short drip, where there is room for one (08:55: „nie
@@ -1563,6 +1757,13 @@ extension JourneyRoad {
             let left = max(-13, text.minX - 12 - 5 * random.unit()), right = min(width + 13, text.maxX + 12 + 5 * random.unit())
             let top = text.minY - (k == 0 ? 6 : 4), foot = text.maxY + (k == lines.count - 1 ? 7 : 5)
             rects.append(CGRect(x: left, y: top, width: max(1, right - left), height: max(1, foot - top)))
+        }
+        if rects.count > 2 {
+            for k in 1..<(rects.count - 1) {
+                let left = min(rects[k].minX, max(rects[k - 1].minX, rects[k + 1].minX) + notch)
+                let right = max(rects[k].maxX, min(rects[k - 1].maxX, rects[k + 1].maxX) - notch)
+                rects[k] = CGRect(x: left, y: rects[k].minY, width: right - left, height: rects[k].height)
+            }
         }
         guard let first = rects.first, let last = rects.last else { return Spill() }
         let box = rects.dropFirst().reduce(first) { $0.union($1) }
@@ -1584,12 +1785,12 @@ extension JourneyRoad {
         // wider than the dot where it starts, so the dot is the stain's tip
         // and not under it (09:11: „Plamy mają powstawać z kropek. Teraz są
         // nanoszone na nich”).
-        var near = dot, away = CGFloat.infinity
+        var near = dot, away = CGFloat.infinity, into = first
         for rect in rects {
             let spot = CGPoint(x: min(max(rect.minX + 9, dot.x), max(rect.minX + 9, rect.maxX - 9)),
                                y: min(max(rect.minY + 6, dot.y), max(rect.minY + 6, rect.maxY - 6)))
             let far = hypot(spot.x - dot.x, spot.y - dot.y)
-            if far < away { (near, away) = (spot, far) }
+            if far < away { (near, away, into) = (spot, far, rect) }
         }
         let steps = max(2, Int((away / 4).rounded(.up)))
         let way = (0...steps).map { q -> Drop in
@@ -1623,8 +1824,31 @@ extension JourneyRoad {
             frame = frame.union(CGRect(x: drip.to.x - drip.bead, y: drip.from.y, width: 2 * drip.bead,
                                        height: drip.to.y + drip.bead - drip.from.y))
         }
-        return Spill(lines: rects, bulges: bulges, way: way, drips: drips, dot: dot, bottom: bottom, reach: reach, box: box,
-                     frame: frame.insetBy(dx: -spillRoom, dy: -spillRoom))
+        return Spill(lines: rects, bulges: bulges, way: way, into: into, drips: drips, dot: dot, bottom: bottom, reach: reach,
+                     box: box, frame: frame.insetBy(dx: -spillRoom, dy: -spillRoom))
+    }
+
+    /// The blot at the road's end: its middle, the last stop's dot; a
+    /// place on the line a little before its end, where the line runs into
+    /// it from; where the last stop's ink goes from it and the line of the
+    /// text that gets to; and how its outline wanders (three turns).
+    struct Blot: Equatable {
+        var at: CGPoint
+        var back: CGPoint
+        var to: CGPoint
+        var into: CGRect
+        var lobes: [CGFloat]
+    }
+
+    /// The blot at the end of `line`, with the last stop's stain `spill` coming out of it.
+    static func blot(for spill: Spill, line: [CGPoint], seed: String) -> Blot {
+        let end = spill.dot
+        var cut = line.count
+        while cut > 0, hypot(line[cut - 1].x - end.x, line[cut - 1].y - end.y) < lastClear { cut -= 1 }
+        let back = line.isEmpty ? end : line[max(0, cut - 10)]
+        var random = SeededRandom(seed + "blot")
+        let lobes = (0..<3).map { _ in random.unit() * 2 * CGFloat.pi }
+        return Blot(at: end, back: back, to: spill.way.last?.at ?? end, into: spill.into, lobes: lobes)
     }
 
     /// A drop of ink beside the line: longer the way it was flung.
@@ -1792,18 +2016,6 @@ extension JourneyRoad {
             }
         }
         return strokes
-    }
-
-    /// White round the last dot, laid on with a brush: an uneven disc.
-    static func halo(round dot: CGPoint, random: inout SeededRandom) -> [CGPoint] {
-        let sides = 14, sway = random.unit() * 2 * .pi
-        var ring = (0..<sides).map { q -> CGPoint in
-            let turn = CGFloat(q) / CGFloat(sides) * 2 * .pi
-            let reach = 14.5 * (1 + 0.1 * sin(2 * turn + sway) + 0.12 * (random.unit() - 0.5))
-            return CGPoint(x: dot.x + reach * cos(turn), y: dot.y + reach * sin(turn))
-        }
-        ring += ring[0..<3]
-        return Array(spline(ring, per: 5).dropFirst(5).dropLast(5))
     }
 
     /// Centripetal Catmull-Rom through the points, `per` samples between
