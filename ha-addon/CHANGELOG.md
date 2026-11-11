@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.145.31
+
+- Rijksmuseum: 111 dzieł miało w katalogu słowo „@language” zamiast
+  rodzaju albo autora (ślad błędu czytania sprzed 10 listopada). Serwer
+  odczyta je nocą ponownie z rekordów muzeum, razem z dziełami, których
+  rodzaj nic mu nie mówił. Nowe zadanie nocne „Rodzaj i autor czytane
+  ponownie” robi to raz, przeważnie bez pytania muzeum.
+- Rijksmuseum: serwer czyta wszystkie rodzaje, którymi muzeum opisuje
+  dzieło, nie tylko pierwszy. Portrety „grisaille” są przez to obrazami
+  (35 w katalogu), projekty rysunkami, a kartki z albumów fotografiami.
+- Projekt plakatu, który muzeum nazywa rysunkiem, jest w Rysunku
+  i w Plakatach, nie w Grafice. Przedmioty, które Rijksmuseum nazywa
+  tylko po niderlandzku (gałki lasek, tkaniny obiciowe, wazy), trafiają
+  do „Ceramika i rzemiosło”.
+
+## 1.145.30
+
+- Najlepszą kopię dzieła wybiera teraz obraz, a dopiero potem źródło.
+  Gdy katalog ma kilka kopii tego samego dzieła, pokazywana jest ta
+  z obrazem wystarczającym na ramkę; dotąd pierwsza była zawsze kopia
+  zachowana, nawet mała. Dziewczynę z perłą i Alegorię malarstwa
+  pokazywała kopia o boku 400 px, teraz kopie o boku 4548 i 7377 px.
+- Obraz olejny i rysunek albo grafika o tym samym tytule i autorze to
+  dwa dzieła, nie kopie jednego („Cypresses” van Gogha z Met i rysunek
+  z Chicago).
+- Serce przechodzi nocą na lepszą kopię tego samego dzieła, jeśli taka
+  jest w katalogu. Kopia z własnym kadrem zostaje. Zachowane kopie nie
+  znikają z list.
+
 ## 1.145.29
 
 - Studium dzieła, „Kolor i światło”: na pasku barw jest także mała, mocna

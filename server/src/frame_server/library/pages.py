@@ -64,8 +64,9 @@ READINGS: dict[str, str] = {
     "aic": "3",
     # 2026-11-10: a maker or type named by one value, not a list, read
     # (Toulouse-Lautrec's prints by "@language"); 3: never the publisher
-    # or printer as the maker.
-    "rijks": "3",
+    # or printer as the maker; 4: every type the museum gives, not the
+    # first alone ("grisaille, painting", "design, drawing"; 2026-11-11).
+    "rijks": "4",
 }
 #: Pages of a search for one kind (Malarstwo, Fotografia: the key's fifth
 #: part), whichever museum: raised with a change to how such searches ask.

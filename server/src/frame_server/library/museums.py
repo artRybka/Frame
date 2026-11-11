@@ -17,7 +17,7 @@ import re
 import threading
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Literal
@@ -1279,6 +1279,14 @@ class Rijksmuseum(Museum):
         english = [v for v in values if v.get("@language") == "en"]
         return str((english or values or [{}])[0].get("@value", ""))
 
+    @staticmethod
+    def _types_said(names: Iterable[str]) -> str:
+        """Every type the museum gives a work, in its order: the first
+        alone was often the narrower word the server does not know and the
+        second what the work is ("grisaille" of a painting, "design" of a
+        drawing, 2026-11-11)."""
+        return ", ".join(dict.fromkeys(n for name in names if (n := name.strip())))
+
     def _image(self, d: dict[str, Any]) -> tuple[str, str]:
         """IIIF base of the public-domain image and its licence, if any; with
         ``private_use`` also of one still in copyright ("InC")."""
@@ -1321,7 +1329,6 @@ class Rijksmuseum(Museum):
         iiif = str(d.get("iiif") or "")
         if not iiif or not licence:
             return None
-        types = d.get("types") or []
         return self._item(
             str(d["id"]),
             title=str(d.get("title") or ""),
@@ -1329,7 +1336,7 @@ class Rijksmuseum(Museum):
             date_text=str(d.get("date") or ""),
             year=d.get("year"),
             medium=str(d.get("medium") or ""),
-            classification=str(types[0]) if types else "",
+            classification=self._types_said(str(t) for t in d.get("types") or []),
             credit=str(d.get("credit") or ""),
             license=licence,
             url=str(d.get("page") or ""),
@@ -1370,7 +1377,7 @@ class Rijksmuseum(Museum):
             date_text=self._text(timespan.get("identified_by") or []),
             year=int(year_match.group(1)) if year_match else None,
             medium=self._statement(d, self.medium_type),
-            classification=self._notation(classes[0]) if classes else "",
+            classification=self._types_said(self._notation(c) for c in classes),
             credit=self._statement(d, self.credit_type),
             license=licence,
             url=self._page_url(d),
