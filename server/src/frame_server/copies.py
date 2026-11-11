@@ -34,7 +34,7 @@ from .library import Item, ItemKind
 from .library.aic import aic_large_size
 from .library.duplicates import surname
 from .library.hosts import as_asked
-from .library.images import IMAGE_MAX, display_copy, own_copy
+from .library.images import FRAME_SIDE, display_copy, own_copy
 from .library.likeness import WHOLE_TURN, Fit, keypoints, whole_work
 from .library.verdict import Place, against
 from .library.vocabulary import archive_own, is_photograph
@@ -599,7 +599,7 @@ class Copies:
         fit = self.likeness.fit(stored, copy) if copy.id != stored.id else None
         picture = self._picture(url)
         # The picture shown now, at the frame's scale (its long side the frame's).
-        scale = IMAGE_MAX / max(current.size)  # small pictures are enlarged on the frame
+        scale = FRAME_SIDE / max(current.size)  # small pictures are enlarged on the frame
         fw, fh = current.width * scale, current.height * scale
         w, h = min(1.0, SPOT / fw), min(1.0, SPOT / fh)
         if x is None or y is None:

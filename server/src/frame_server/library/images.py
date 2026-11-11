@@ -36,7 +36,15 @@ THUMB_MAX = 640
 #: from it was a blur (Mateusz, 2026-11-11). 320 × 8192 px at most, a few
 #: hundred kB.
 THUMB_LONG = 8192
-IMAGE_MAX = 2560
+#: The long side an original is kept with at most (Mateusz 2026-11-11:
+#: "Bierzmy lepszą jakość jeżeli taka jest dostępna i muzeum pozwala.
+#: Oczywiście z limitem. Powiedzmy 4k px?"): more than the frame's 2560 px
+#: (:data:`FRAME_SIDE`), for the app's viewer and a study's details.
+IMAGE_MAX = 4000
+#: What it was until 1.145.33: originals cut to it are had again larger
+#: (:meth:`ImageCache.larger_again`), and museums' addresses kept with the
+#: works still ask for it (:func:`sized_copy` asks for more).
+OLD_MAX = 2560
 #: Pictures longer than this many times their width (or the other way
 #: round) are kept larger than :data:`IMAGE_MAX` on the long side: a
 #: Japanese handscroll 30 times as long as it is tall was kept 2560 × 86 and
@@ -88,11 +96,21 @@ WEAK_SIDE = 2000
 #: The frame's longer side: a picture as long shows the work whole on it.
 FRAME_SIDE = 2560
 #: Sources whose works' sizes are their files' own and whose addresses ask
-#: for a size (IIIF ``full/!2560,2560``, the Smithsonian's ``max=2560``): an
-#: elongated work (:data:`WIDE`) is asked in the size it is kept in.
+#: for a size (IIIF ``full/!2560,2560``, the Smithsonian's ``max=2560``):
+#: a work is asked in the size it is kept in (:func:`kept_size`), never in
+#: more than its file has (Yale's server enlarges a small scan to the size
+#: asked, the Courtauld's refuses).
 SIZED = ("nga", "yale", "smk", "si", "courtauld")
-_IIIF_FIT = re.compile(rf"/full/!{IMAGE_MAX},{IMAGE_MAX}/")
-_SI_MAX = re.compile(rf"([?&]max=){IMAGE_MAX}\b")
+#: Sources whose IIIF server enlarges a smaller scan to the size asked and
+#: whose works' sizes are not known: asked whole (the Wellcome Collection's
+#: scans are 3600 px at most; ``!4000,4000`` of one 2004 × 2440 came
+#: 3285 × 4000, 2026-11-11).
+WHOLE = ("wellcome",)
+#: A size the server's own readers ask for in a work's address (the AIC's
+#: ``!3000,3000``, its museum's limit, is none).
+_OURS = f"(?:{OLD_MAX}|{IMAGE_MAX})"
+_IIIF_FIT = re.compile(rf"/full/!{_OURS},{_OURS}/")
+_SI_MAX = re.compile(rf"([?&]max=){_OURS}\b")
 #: An elongated Commons file this many pixels or fewer is downloaded whole
 #: when Commons' widest rendition (:data:`COMMONS_WIDTH`) is narrower than
 #: the picture is kept: a scroll 30 000 × 1 000 px is 30 Mpx, a few MB.
@@ -243,6 +261,12 @@ def _refused(err: Exception) -> bool:
     return not isinstance(err, httpx.HTTPError)  # read, but not as a picture
 
 
+def _too_large(err: Exception) -> bool:
+    """An IIIF server's answer to a size larger than the file, when it does
+    not enlarge (400)."""
+    return isinstance(err, httpx.HTTPStatusError) and err.response.status_code == 400
+
+
 def _missing(err: Exception) -> bool:
     """Whether the address has no picture of the work for good: gone (404,
     410), refused by the server itself (not by a bot wall, which forgets
@@ -284,8 +308,8 @@ def display_copy(item: Item) -> str:
 
 def own_copy(item: Item) -> str:
     """:func:`display_copy` of the work's own source, never another's: in
-    the size it is kept in when elongated (:func:`wide_copy`)."""
-    return wide_copy(item) or usual_copy(item)
+    the size it is kept in (:func:`sized_copy`)."""
+    return sized_copy(item) or usual_copy(item)
 
 
 def usual_copy(item: Item) -> str:
@@ -297,30 +321,49 @@ def usual_copy(item: Item) -> str:
     return url
 
 
-def wide_copy(item: Item) -> str:
-    """An elongated work's own address asking for more than its usual
-    (:func:`usual_copy`) does, in the size it is kept in (:func:`kept_size`);
-    "" for any other work, or a source that gives no more."""
+def sized_copy(item: Item) -> str:
+    """The work's own address asking for the size it is kept in
+    (:func:`kept_size`, :data:`IMAGE_MAX` for most), where the address asks
+    for a size or Commons has the elongated file whole; "" for any other
+    work (:func:`usual_copy` is its address then).
+
+    A source that says its files' sizes (:data:`SIZED`) is asked for no
+    more than the file has; one that enlarges (:data:`WHOLE`) for the whole
+    file; any other for IMAGE_MAX, and for the whole file when that is
+    refused (:func:`whole_copy`)."""
     width, height, url = item.width, item.height, item.image_url
+    fit, si = _IIIF_FIT.search(url), _SI_MAX.search(url)
+    if fit or si:
+        long = IMAGE_MAX
+        if item.source in SIZED and width and height:
+            long = max(kept_size(width, height))
+        elif item.source in WHOLE and fit:
+            return _IIIF_FIT.sub("/full/max/", url)
+        if fit:
+            return _IIIF_FIT.sub(f"/full/!{long},{long}/", url)
+        return _SI_MAX.sub(rf"\g<1>{long}", url)
     if not width or not height or not wide(width, height):
         return ""
-    long = max(kept_size(width, height))
-    if long <= IMAGE_MAX:
-        return ""
-    if item.source in SIZED:
-        if _IIIF_FIT.search(url):
-            return _IIIF_FIT.sub(f"/full/!{long},{long}/", url)
-        if _SI_MAX.search(url):
-            return _SI_MAX.sub(rf"\g<1>{long}", url)
     if (
         item.source == "wmc"
         and width > COMMONS_WIDTH
-        and long > COMMONS_WIDTH
+        and max(kept_size(width, height)) > COMMONS_WIDTH
         and width * height <= COMMONS_WHOLE
         and extension(url) in ("jpg", "jpeg", "png")
     ):
         return url
     return ""
+
+
+def whole_copy(item: Item) -> str:
+    """The address of the work's whole file, for a source whose files'
+    sizes are not known and whose address asks for a size: an IIIF server
+    that does not enlarge answers 400 to ``!4000,4000`` of a smaller scan
+    (the Getty's, 2026-11-11), which is then small enough to have whole."""
+    known = item.source in SIZED and bool(item.width and item.height)
+    if known or item.source in WHOLE or not _IIIF_FIT.search(item.image_url):
+        return ""
+    return _IIIF_FIT.sub("/full/max/", item.image_url)
 
 
 def thumb_copy(item: Item) -> str:
@@ -523,7 +566,7 @@ class ImageCache:
         if not thumb and (allowed := aic_fallback(image_url, item.width)):
             first.append(allowed)  # the download size refused: the API's widest
         if not thumb and image_url != (usual := usual_copy(item)):
-            first.append(usual)  # the larger size refused (wide_copy)
+            first.append(usual)  # the larger size refused (sized_copy)
         if item.sharper is not None:  # the sharper copy first, the own after
             copy = [item.sharper.thumb_url, item.sharper.url] if thumb else [item.sharper.url]
             first[:0] = copy
@@ -785,6 +828,54 @@ class ImageCache:
             grown += 1
         return grown
 
+    def originals_here(self) -> set[str]:
+        """The file stems (``Item.file_stem``) of the originals kept here,
+        from one look at their folder."""
+        try:
+            with os.scandir(self.images) as folder:
+                return {entry.name[:-4] for entry in folder if entry.name.endswith(".jpg")}
+        except OSError:
+            return set()
+
+    def cut_before(self, item: Item) -> bool:
+        """Whether the original here was cut to the old limit
+        (:data:`OLD_MAX`): its source had more, and may be asked for it."""
+        path = self.image_path(item)
+        if item.source in OWN_SOURCES or split_part(item.id) is not None:
+            return False
+        known = self.known_size(item)
+        if (known is not None and max(known) < OLD_MAX) or not path.is_file():
+            return False  # its source gave less (no look at the disk)
+        try:
+            with Image.open(path) as kept:
+                size = kept.size
+        except OSError:
+            return False
+        return max(size) == OLD_MAX
+
+    def larger_again(self, item: Item) -> int:
+        """The original of ``item``, kept cut to :data:`OLD_MAX`, downloaded
+        again in the size originals are kept in now; the one here stays
+        when the source gives no more. The bytes it grew by (0: it stays).
+        Errors of the download are the caller's."""
+        path = self.image_path(item)
+        with self._lock(f"i:{item.id}"):
+            try:
+                with Image.open(path) as kept:
+                    size = kept.size
+                before = path.stat().st_size
+            except OSError:
+                return 0
+            img = self._original(item, False)
+            width, height = kept_size(*img.size)
+            if width * height <= size[0] * size[1]:
+                return 0  # the source gives no more
+            used = path.stat().st_mtime
+            _save_jpeg(img, path, kept_side(item), 92)
+            os.utime(path, (used, used))  # as lately used as it was
+            self._remember_size(item, img)
+            return max(path.stat().st_size - before, 1)
+
     def thin_thumbs_again(self) -> int:
         """Once after the update that keeps elongated thumbnails thicker
         (:func:`thumb_size`): such thumbnails thinner than they are made now
@@ -894,6 +985,7 @@ class ImageCache:
         if mirrored:
             urls = self._mirrored(item, False, urls)
         refused = True
+        sized = sized_copy(item)
         n = 0
         while n < len(urls):
             url = urls[n]
@@ -903,6 +995,9 @@ class ImageCache:
                 return self._download(url, urgent, trim=_trimmed(item.id))
             except (httpx.HTTPError, OSError) as err:
                 refused = refused and _refused(err)
+                whole = whole_copy(item) if url == sized and _too_large(err) else ""
+                if whole and whole not in urls:
+                    urls.insert(n, whole)  # smaller than asked: the whole file
                 if n == len(urls) and not mirrored:
                     mirrored = True
                     urls = self._mirrored(item, False, urls)

@@ -72,7 +72,8 @@ SEEN = "seen"
 #: The details checked over their cuts (``ai.details``): the titles moved.
 DETAILS_CHECKED = "details_checked"
 BOXES_VERSION = 2
-#: The longest side of a kept original (``library.images.IMAGE_MAX``).
+#: The longest side of a kept original when the pages before
+#: :data:`BOXES_VERSION` were written (``library.images.OLD_MAX``).
 ORIGINAL_SIDE = 2560
 #: Wikipedia articles about the work, and the artist's opening paragraph.
 WORK_CHARS = 9000

@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 import httpx
+import pytest
 from PIL import Image
 
 from frame_server.library.fragments import Fragments, Part, part_id, place, split_part
@@ -24,26 +25,27 @@ from frame_server.sharper import Quality
 
 
 def test_ordinary_pictures_keep_the_long_side() -> None:
-    assert kept_size(4000, 3000) == (2560, 1920)
-    assert kept_size(3000, 4000) == (1920, 2560)
-    assert kept_size(5120, 2560) == (2560, 1280)  # 2:1, the edge
+    assert kept_size(6000, 4500) == (4000, 3000)
+    assert kept_size(4500, 6000) == (3000, 4000)
+    assert kept_size(10000, 5000) == (4000, 2000)  # 2:1, the edge
     assert kept_size(1000, 800) == (1000, 800)  # never enlarged
 
 
 def test_elongated_pictures_keep_more() -> None:
-    # Fukutomi's full scan, 1:30: 13 968 × 469 instead of 2560 × 86.
+    # Fukutomi's full scan, 1:30: 16 384 × 550 instead of 4000 × 134 (the
+    # long side's limit comes first; 13 968 × 469 while the limit was 2560).
     width, height = kept_size(76716, 2577)
     assert width * height <= IMAGE_AREA * 1.001
-    assert (width, height) == (13968, 469)
-    # 3:1: the short side stays half the frame's.
-    assert kept_size(9000, 3000) == (3840, 1280)
+    assert (width, height) == (16384, 550)
+    # 3:1: the short side stays half the limit.
+    assert kept_size(9000, 3000) == (6000, 2000)
     # Tall ones too.
-    assert kept_size(1000, 30000) == (467, 14022)
+    assert kept_size(1000, 30000) == (546, 16384)
     # The source's own file is never enlarged.
     assert kept_size(3400, 114) == (3400, 114)
     # The long side has a limit.
     assert max(kept_size(400_000, 4000)) <= 16384
-    assert kept_long(76716, 76716 / 2577) == 13968
+    assert kept_long(76716, 76716 / 2577) == 16384
     assert kept_long(4000) == IMAGE_MAX
 
 
@@ -69,19 +71,71 @@ def _item(source: str, url: str, width: int, height: int) -> Item:
 def test_elongated_works_are_asked_larger() -> None:
     iiif = "https://example.org/iiif/x/full/!2560,2560/0/default.jpg"
     wide = _item("yale", iiif, 16555, 720)
-    assert own_copy(wide) == "https://example.org/iiif/x/full/!12275,12275/0/default.jpg"
+    assert own_copy(wide) == "https://example.org/iiif/x/full/!16384,16384/0/default.jpg"
     assert usual_copy(wide) == iiif
-    assert own_copy(_item("yale", iiif, 4000, 3000)) == iiif  # ordinary
-    assert own_copy(_item("vam", iiif, 16555, 720)) == iiif  # sizes not the file's
     si = "https://ids.si.edu/ids/deliveryService?id=X&max=2560"
-    assert own_copy(_item("si", si, 9000, 1000)).endswith("&max=7680")
+    assert own_copy(_item("si", si, 9000, 1000)).endswith("&max=9000")
+
+
+def test_works_are_asked_in_the_size_they_are_kept_in() -> None:
+    """Originals are kept up to 4000 px (Mateusz 2026-11-11); the works'
+    addresses, kept with them, asked for 2560."""
+    iiif = "https://example.org/iiif/x/full/!2560,2560/0/default.jpg"
+
+    def asked(source: str, width: int, height: int) -> str:
+        return own_copy(_item(source, iiif, width, height)).split("/full/")[1].split("/")[0]
+
+    assert asked("nga", 7594, 5084) == "!4000,4000"
+    # Never more than the file has: Yale's server enlarged a 1306 px scan
+    # to the 2560 asked, the Courtauld's refuses.
+    assert asked("yale", 1306, 1236) == "!1306,1306"
+    assert asked("courtauld", 2973, 897) == "!2973,2973"
+    # Sizes not the file's (a thumbnail's): the limit, ...
+    assert asked("getty", 527, 640) == "!4000,4000"
+    assert asked("vam", 409, 600) == "!4000,4000"
+    # ... or the whole file where the server would enlarge it.
+    assert asked("wellcome", 493, 600) == "max"
+    # A size that is the museum's own limit stays.
+    aic = "https://www.artic.edu/iiif/2/x/full/!3000,3000/0/default.jpg"
+    assert own_copy(_item("aic", aic, 3000, 1267)) == aic
+    assert own_copy(_item("met", "https://images.metmuseum.org/x.jpg", 600, 435)).endswith("x.jpg")
 
 
 def test_a_larger_size_refused_falls_back(tmp_path: Path) -> None:
     iiif = "https://example.org/iiif/x/full/!2560,2560/0/default.jpg"
     cache = ImageCache(tmp_path, lambda: httpx.Client())
     urls = cache._addresses(_item("nga", iiif, 9000, 1000), thumb=False)
-    assert urls == ["https://example.org/iiif/x/full/!7680,7680/0/default.jpg", iiif]
+    assert urls == ["https://example.org/iiif/x/full/!9000,9000/0/default.jpg", iiif]
+
+
+def test_a_scan_smaller_than_asked_is_had_whole(tmp_path: Path) -> None:
+    """The Getty's server (IIIF 3) answers 400 to a size larger than the
+    scan: a work with a scan smaller than the 2560 asked had no original at
+    all (2026-11-11). The whole file is asked then, and only then."""
+    iiif = "https://example.org/iiif/x/full/!2560,2560/0/default.jpg"
+    asked: list[str] = []
+    answers = {"!4000,4000": 400, "max": 200}
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        size = request.url.path.split("/full/")[1].split("/")[0]
+        asked.append(size)
+        status = answers.get(size, 400)
+        return httpx.Response(status, content=_jpeg(1888, 2290) if status == 200 else b"")
+
+    cache = ImageCache(tmp_path, lambda: httpx.Client(transport=httpx.MockTransport(answer)))
+    cache.sleep = lambda _s: None
+    small = _item("getty", iiif, 527, 640)
+    with Image.open(cache.ensure_image(small)) as kept:
+        assert kept.size == (1888, 2290)
+    assert asked == ["!4000,4000", "max"]
+    # A server that is down is not asked for the whole file (the Getty's
+    # largest scans are 12 000 px): the size asked before, then nothing.
+    asked.clear()
+    answers["!4000,4000"] = 404
+    other = _item("getty", iiif, 527, 640).model_copy(update={"id": "getty:2"})
+    with pytest.raises(OSError):
+        cache.ensure_image(other)
+    assert asked == ["!4000,4000", "!2560,2560"]
 
 
 def test_originals_are_kept_in_the_new_size(tmp_path: Path) -> None:
