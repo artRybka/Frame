@@ -55,7 +55,7 @@ chciałbym żeby spadła jakość doboru tych propozycji”).
 |---|---|---|
 | 0 | Zestaw wzorcowy i pomiary | 1.145.11 (PLAN 3.3zzz155) |
 | 1 | Noc: porządki przed dobieraniem, budżety czasu | 1.145.12 (PLAN 3.3zzz156) |
-| 2 | Szybkość bez zmiany wyników: przyrostowe scalanie grup (2a: 1.145.13, PLAN 3.3zzz157); duże obrazy powtórek zostają jako oryginały (2b: 1.145.16, PLAN 3.3zzz160); dalej według pomiarów z nocy | w toku |
+| 2 | Szybkość bez zmiany wyników: przyrostowe scalanie grup (2a: 1.145.13, PLAN 3.3zzz157); duże obrazy powtórek zostają jako oryginały (2b: 1.145.17, PLAN 3.3zzz161); dalej według pomiarów z nocy | w toku |
 | 3 | Sprzątanie resztek: wskaźnik „Na e-papierze”, martwy próg, nieużywane punkty API | 1.145.14 (PLAN 3.3zzz158) |
 | 4 | Jeden werdykt pokazywania: lista powodów i tabela „miejsce × powód” (4a, bez zmiany wyników: 1.145.15, PLAN 3.3zzz159), potem zmiany widoczne z listą różnic | w toku |
 | 5 | Jedna tożsamość dzieła i autora | |

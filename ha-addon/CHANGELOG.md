@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.16
+## 1.145.17
 
 - Duże obrazy, które powtórki pobierają z muzeów, żeby sprawdzić, czy mały
   obraz jest detalem większego dzieła, nie są już wyrzucane po porównaniu.
@@ -9,6 +9,20 @@
   (pobieranie zajmowało 23 z 29 minut powtórek). Mieszczą się w limicie
   miejsca na oryginały i przy braku miejsca znikają pierwsze, przed
   dziełami oglądanymi i Ulubionymi.
+
+## 1.145.16
+
+- Studium dzieła, „Droga dzieła”: przy linii nie ma już białych „korekt”
+  ani białych dotknięć na kropelkach tuszu. Kropelek przy zakrętach jest
+  tyle samo co dotąd.
+- Gdy strona jest przewijana szybko, rysunek za nią nadąża: kreska goni
+  dół ekranu wielokrotnie szybciej, a plamy i opisy przystanków, które
+  są już wysoko na ekranie, pojawiają się w ułamku sekundy zamiast
+  w kilka sekund, nadal jeden po drugim. Przy spokojnym czytaniu tempo
+  jest takie jak dotąd. To samo dotyczy „Dalszych losów”.
+- Kropka przystanku ląduje jak kleks spod stalówki: w jedną dziesiątą
+  sekundy rozpryskuje się ponad swój rozmiar, z poszarpanym brzegiem,
+  i zaraz się uspokaja. Zostaje nie całkiem okrągła, każda trochę inna.
 
 ## 1.145.15
 
