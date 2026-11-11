@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.145.16
+
+- Studium dzieła, „Droga dzieła”: przy linii nie ma już białych „korekt”
+  ani białych dotknięć na kropelkach tuszu. Kropelek przy zakrętach jest
+  tyle samo co dotąd.
+- Gdy strona jest przewijana szybko, rysunek za nią nadąża: kreska goni
+  dół ekranu wielokrotnie szybciej, a plamy i opisy przystanków, które
+  są już wysoko na ekranie, pojawiają się w ułamku sekundy zamiast
+  w kilka sekund, nadal jeden po drugim. Przy spokojnym czytaniu tempo
+  jest takie jak dotąd. To samo dotyczy „Dalszych losów”.
+- Kropka przystanku ląduje jak kleks spod stalówki: w jedną dziesiątą
+  sekundy rozpryskuje się ponad swój rozmiar, z poszarpanym brzegiem,
+  i zaraz się uspokaja. Zostaje nie całkiem okrągła, każda trochę inna.
+
 ## 1.145.15
 
 - Porządki w regułach doboru dzieł, etap 4, pierwszy krok (bez zmiany
