@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.145.25
+
+- Studium dzieła, „Kolor i światło”: pasek kolorów obrazu olejnego jest
+  malowany jak gradient. Główne kolory leżą jedno na drugim: każde
+  pociągnięcie zaczyna się w mokrej farbie poprzedniego i niesie ją
+  dalej, więc kolor przechodzi w kolor płynnie, a pociągnięcia nadal
+  widać. Tylko ostatnie kończy sucho.
+- Małe kolory z końca palety to akcenty: pacnięcia pędzlem położone na
+  wierzchu, na samym końcu, z dala od łączeń pociągnięć.
+- Pod paskiem papier nasiąka olejem: wokół farby powoli wychodzi tłusta
+  plama, taka sama jak wokół pacnięć farb.
+
 ## 1.145.24
 
 - Trzy dzieła przestają uchodzić za coś, czym nie są: dwa szkice Cézanne'a
