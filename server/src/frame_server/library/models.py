@@ -203,7 +203,6 @@ class Item(BaseModel):
     found_for: list[str] = Field(default_factory=list)
     #: One of the works its museum counts among its most important.
     highlight: bool = False
-    suitability: float | None = None
     # colors.tint_spread: ~0 when the picture has no colour of its own.
     tint_spread: float | None = None
     favorite: bool = False
@@ -348,7 +347,6 @@ class ItemSummary(BaseModel):
     width: int | None
     height: int | None
     favorite: bool
-    suitability: float | None
     pooled: bool = False
     #: The Polish title, where a list shows it ("Teraz"); None elsewhere.
     title_pl: str | None = None

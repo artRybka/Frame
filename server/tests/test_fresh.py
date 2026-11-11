@@ -78,11 +78,10 @@ def test_themes_of_the_week_come_from_the_catalogue(service) -> None:
                     artist="Theodore Robinson",
                     artist_bio="American, 1852-1896",
                     styles=["Impressionism"],
-                    suitability=0.6,
                     pooled=True,
                 )
             )
-        library.upsert(_work(99, title="River", artist="Weak", suitability=0.1, pooled=True))
+        library.upsert(_work(99, title="River", artist="Weak", pooled=True))
     day = date(2026, 11, 2)
     themes = weekly_themes(library, day)
     keys = [t.key for t in themes]
@@ -108,9 +107,9 @@ def test_new_and_returning_works_and_daily_covers(museums) -> None:  # noqa: F81
     old = (datetime.now(UTC) - timedelta(days=400)).isoformat(timespec="seconds")
     with library.batch():
         for n in range(6):
-            library.upsert(_work(n, title=f"New snow {n}", suitability=0.8, pooled=True))
+            library.upsert(_work(n, title=f"New snow {n}", pooled=True))
         for n in range(10, 15):
-            item = library.upsert(_work(n, title=f"Kept {n}", suitability=0.8))
+            item = library.upsert(_work(n, title=f"Kept {n}"))
             library.update(item.id, added_at=old)
     app = create_app(service.settings)
     app.state.service = service
@@ -316,7 +315,7 @@ def test_a_card_for_each_liked_artist(museums) -> None:  # noqa: F811
         for artist, count in painters.items():
             for _ in range(count):
                 n += 1
-                library.upsert(_work(n, artist=artist, title=f"Work {n}", suitability=0.8))
+                library.upsert(_work(n, artist=artist, title=f"Work {n}"))
         library.update("cma:1", favorite=True)
     taste = service.player.taste()
     assert taste[0] == "Claude Monet"

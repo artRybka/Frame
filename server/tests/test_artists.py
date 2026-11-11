@@ -103,7 +103,6 @@ def _work(n: int, artist: str) -> Item:
         kind=ItemKind.ARTWORK,
         title=f"Harbour {n}",
         artist=artist,
-        suitability=0.6,
         pooled=True,
     )
 

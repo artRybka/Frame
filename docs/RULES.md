@@ -33,8 +33,8 @@ chciałbym żeby spadła jakość doboru tych propozycji”).
   i oba punkty usunął etap 3. Sama ocena została jako kolejność „najlepsze
   najpierw” (karty i strony Odkrywaj, pula Propozycji dnia, wiersz dla
   modelu wybierającego Studium dnia): jej wymiana zmienia to, co widać,
-  więc należała do etapu 4 (4c, 1.145.23: `library/good.py`). Zostało
-  samo pole `Item.suitability` i jego liczenie.
+  więc należała do etapu 4 (4c, 1.145.23: `library/good.py`). Samo pole
+  `Item.suitability` i jego liczenie usunęło 1.145.28 (PLAN 3.3zzz174).
 
 ## Liczby bazowe (NAS, 1.143.2, logi z 10 i 11 listopada 2026, ok. 91 tys. dzieł)
 
@@ -152,8 +152,7 @@ najpierw lista różnic z katalogu (`golden.library_of`).
 
 Do etapu 5 zostaje z tej listy: „Rembrandt Peale” w malarstwie
 holenderskim, dzieła bez tytułu, Straż nocna z dwóch muzeów obok siebie,
-statuetki i miecze Met nierozpoznane jako rzeźba i rzemiosło. Osobno do
-sprzątnięcia: samo pole `Item.suitability` i jego liczenie.
+statuetki i miecze Met nierozpoznane jako rzeźba i rzemiosło.
 
 Trzy pomyłki opisu z listy etapu 4b (1.145.24, PLAN 3.3zzz169): odwrocie
 jest dokumentem tylko dla obrazu, nie dla rysunku ani arkusza nazwanego

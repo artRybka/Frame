@@ -37,7 +37,6 @@ def _paintings(service, count: int, start: int = 0) -> list[Item]:
                     classification="Paintings",
                     medium="Oil on canvas",
                     year=1880,
-                    suitability=0.5,
                     pooled=True,
                 )
             )

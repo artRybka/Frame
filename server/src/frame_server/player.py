@@ -113,7 +113,8 @@ SET_ASIDE_KEY = "set_aside_dropped"
 #: 6: details by their titles, Openverse's copies of museums' works,
 #: 7: details in file names, photographs described in French).
 SET_ASIDE_VERSION = 7
-#: Version of the colour analysis and score the library's pictures carry.
+#: Version of the colour analysis the library's pictures carry (the key is
+#: of the e-paper score it once went with).
 SCORE_KEY = "suitability_version"
 #: Set once the pictures kept from before lost their blank margins
 #: (``ImageCache.trim_kept``).
@@ -1622,26 +1623,23 @@ class Player:
         analysed: dict[str, dict[str, Any]] = {}
         for item in self.library.query(include_excluded=True)[1]:
             path = images.thumb_path(item)
-            if (item.suitability is None and not item.colors) or not path.is_file():
+            if not item.colors or not path.is_file():
                 continue
             try:
                 with Image.open(path) as img:
                     spread = item.tint_spread
                     if spread is None:
                         spread = tint_spread(img)
-                    colors, tags, value, shares = analyse(img, self.service.palette, spread)
+                    colors, tags, shares = analyse(img, spread)
             except OSError:
                 log.warning("rescore: cannot read %s", path)
                 continue
-            changes: dict[str, Any] = {
+            analysed[item.id] = {
                 "colors": colors,
                 "color_tags": tags,
                 "color_shares": shares,
                 "tint_spread": spread,
             }
-            if item.suitability is not None:
-                changes["suitability"] = value
-            analysed[item.id] = changes
         with self.library.batch():
             for item_id, changes in analysed.items():
                 self.library.update(item_id, **changes)
