@@ -1565,6 +1565,12 @@ actor DemoBackend: FrameBackend {
         let groups = packages.map { key, label, about in
             NightTasks.Group(key: key, label: label, about: about, tasks: names.filter { $0.5 == key }.map(\.0))
         }
+        let demoSummaries = [
+            "twins": "900 obrazów obejrzanych, 41 kopii, 14 detali",
+            "twins judge": "12 par połączonych, 96 par osobno, 3 odrzucone przez krytyka",
+            "gatekeeper": "200 dzieł obejrzanych, 4 odłożone",
+            "audit": "30 dzieł obejrzanych, 2 do sprawdzenia",
+        ]
         let iso = ISO8601DateFormatter()
         let night = Calendar.current.date(bySettingHour: 2, minute: 10, second: 0, of: .now) ?? .now
         let tasks = names.map { name, label, paid, took, count, group in
@@ -1573,7 +1579,8 @@ actor DemoBackend: FrameBackend {
                 last: NightTasks.LastRun(
                     at: nightAsked[name] ?? iso.string(from: night.addingTimeInterval(took)),
                     took: took, failed: false, count: count,
-                    nothing: count == 0 || name == "met", asked: nightAsked[name] != nil
+                    nothing: count == 0 || name == "met", asked: nightAsked[name] != nil,
+                    summary: demoSummaries[name]
                 )
             )
         }
@@ -1735,6 +1742,39 @@ actor DemoBackend: FrameBackend {
     }()
 
     func aiReview() async throws -> AiReview { reviewValue }
+
+    /// What the tidying changed, in the demo: one pair from the judge, two
+    /// from the pictures.
+    private lazy var tidyValue: TidyChanges = {
+        let works = items.filter { $0.kind == .artwork }.map(\.summary)
+        guard works.count >= 4 else { return TidyChanges(doubtful: [], sure: []) }
+        return TidyChanges(
+            doubtful: [TidyChanges.Change(
+                at: "2026-11-11T02:41:00+00:00", a: works[1], b: works[0], relation: "detail",
+                relationName: "Detal dzieła", by: "judge",
+                why: "B shows the woman's head and the window of A at a larger scale.",
+                critic: "The crop lines up with A; nothing in B lies outside A."
+            )],
+            sure: [
+                TidyChanges.Change(
+                    at: "2026-11-11T01:12:00+00:00", a: works[2], b: works[0], relation: "copy",
+                    relationName: "Kopia tego samego dzieła", by: "hash"
+                ),
+                TidyChanges.Change(
+                    at: "2026-11-11T01:10:00+00:00", a: works[3], b: works[0], relation: "scene",
+                    relationName: "Zdjęcie dzieła na ścianie", by: "pictures"
+                ),
+            ]
+        )
+    }()
+
+    func tidyChanges() async throws -> TidyChanges { tidyValue }
+
+    func keepApart(_ apart: TidyApart) async throws -> TidyChanges {
+        tidyValue.doubtful.removeAll { $0.a.id == apart.a && $0.b.id == apart.b }
+        tidyValue.sure.removeAll { $0.a.id == apart.a && $0.b.id == apart.b }
+        return tidyValue
+    }
 
     func bringBack(itemID: String) async throws -> AiReview {
         reviewValue.setAside.removeAll { $0.item.id == itemID }

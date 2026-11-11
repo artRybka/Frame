@@ -130,3 +130,86 @@ def test_secrets_already_on_disk_are_left_out_when_read(tmp_path, monkeypatch) -
     )
     [line] = logbuffer.day_lines("2026-11-11", 10) or []
     assert "abc" not in line.split("?", 1)[1] and "secretCode=[ukryte]" in line
+
+
+# -- what the tidying of copies changed (Mateusz 2026-11-11) ------------------------------
+
+
+def _client(service: FrameService):
+    from fastapi.testclient import TestClient
+
+    from frame_server.web import create_app
+
+    app = create_app(service.settings)
+    app.state.service = service
+    return TestClient(app)
+
+
+def test_the_pictures_changes_are_listed_and_kept_apart_for_good(service: FrameService) -> None:
+    from test_sharper import _print
+    from test_twins import _work as _picture
+
+    painting = _print(1, (600, 700))
+    _picture(service, "wmc:1", painting, title="Lekcja muzyki", year=1662)
+    _picture(service, "wikiart:2", painting.resize((420, 490)), title="The music lesson")
+    service.twins.look()
+    [entry] = service.twins.log.entries()
+    assert entry["relation"] == "copy" and entry["by"] in ("pictures", "hash")
+    copy, whole = entry["a"], entry["b"]
+    assert {copy, whole} == {"wmc:1", "wikiart:2"}
+    stored = service.library.get(copy)
+    assert stored is not None and stored.copy_of == whole
+
+    assert service.twins.separate(copy, whole)
+    stored = service.library.get(copy)
+    assert stored is not None and not stored.copy_of
+    assert service.twins.log.entries() == []
+    # Never joined again, by the pictures or by the judge.
+    _picture(service, "europeana:3", painting.resize((400, 467)), title="Die Musikstunde")
+    service.twins.look()
+    one, other = service.library.get(copy), service.library.get(whole)
+    assert one is not None and other is not None
+    assert (one.copy_of or one.id) != (other.copy_of or other.id)
+    assert not service.twins.apply(copy, whole, "same")
+
+
+def test_the_judges_changes_are_the_doubtful_ones(service: FrameService) -> None:
+    from test_sharper import _print
+    from test_twins import _work as _picture
+
+    painting = _print(12, (600, 700))
+    _picture(service, "met:1", painting, title="A")
+    _picture(service, "wmc:3", painting.crop((100, 0, 400, 700)), title="C", artist="Unknown")
+    said = {"why": "B is a crop of A", "critic": "No sign of a whole work in B"}
+    assert service.twins.apply("wmc:3", "met:1", "a_detail_of_b", said)
+    [entry] = service.twins.log.entries()
+    assert entry == {**entry, "a": "wmc:3", "b": "met:1", "relation": "detail", "by": "judge"}
+    assert entry["why"] == said["why"] and entry["critic"] == said["critic"]
+
+    with _client(service) as client:
+        listed = client.get("/api/night/changes").json()
+        [doubtful] = listed["doubtful"]
+        assert doubtful["a"]["id"] == "wmc:3" and doubtful["relation_name"] == "Detal dzieła"
+        assert listed["sure"] == []
+        after = client.post("/api/night/changes/apart", json={"a": "wmc:3", "b": "met:1"}).json()
+        assert after["doubtful"] == []
+    part = service.library.get("wmc:3")
+    assert part is not None and not part.detail_of
+
+
+def test_a_task_says_what_it_did_in_words() -> None:
+    from frame_server.night import Done, _outcome, plural
+
+    assert [plural(n, "kopia", "kopie", "kopii") for n in (1, 3, 5, 12, 22)] == [
+        "1 kopia",
+        "3 kopie",
+        "5 kopii",
+        "12 kopii",
+        "22 kopie",
+    ]
+    assert _outcome(Done(41, "41 kopii, 14 detali")) == {
+        "count": 41,
+        "nothing": False,
+        "summary": "41 kopii, 14 detali",
+    }
+    assert _outcome(3) == {"count": 3, "nothing": False}

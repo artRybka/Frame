@@ -174,11 +174,37 @@ class Run:
     done: list[str] = field(default_factory=list)
 
 
+@dataclass
+class Done:
+    """A task's answer told in words for the app ("41 kopii, 14 detali"),
+    with how many it did."""
+
+    count: int
+    text: str
+
+
 def _outcome(value: object) -> dict[str, Any]:
     """A task's answer as the app shows it: how many it did (``count``,
-    for an int) and whether it found nothing to do (False or 0)."""
+    for an int) and whether it found nothing to do (False or 0); a
+    :class:`Done` says it in words too (``summary``)."""
+    if isinstance(value, Done):
+        return {"count": value.count, "nothing": value.count == 0, "summary": value.text}
     count = value if isinstance(value, int) and not isinstance(value, bool) else None
     return {"count": count, "nothing": value is False or count == 0}
+
+
+def plural(n: int, one: str, few: str, many: str) -> str:
+    """ "1 kopia", "3 kopie", "5 kopii": a count with its Polish form."""
+    if n == 1:
+        return f"{n} {one}"
+    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
+        return f"{n} {few}"
+    return f"{n} {many}"
+
+
+def _listed(parts: list[object], empty: str) -> str:
+    """The parts said (a count of 0 or none left out), else ``empty``."""
+    return ", ".join(p for p in parts if isinstance(p, str) and p) or empty
 
 
 class NightQueue:
@@ -485,6 +511,62 @@ def tasks(service: FrameService) -> list[NightTask]:
         for user in dict.fromkeys(users):
             service.player.day_picks(user)
 
+    def twins(night: Night) -> Done:
+        began = _utc_now()
+        seen = service.twins.at_night(night.quiet)
+        made = service.twins.log.since(began)
+        parts: list[object] = [
+            plural(seen, "obraz obejrzany", "obrazy obejrzane", "obrazów obejrzanych"),
+            made["copy"] and plural(made["copy"], "kopia", "kopie", "kopii"),
+            made["detail"] and plural(made["detail"], "detal", "detale", "detali"),
+            made["scene"]
+            and plural(
+                made["scene"], "zdjęcie na ścianie", "zdjęcia na ścianie", "zdjęć na ścianie"
+            ),
+        ]
+        return Done(seen, _listed(parts, ""))
+
+    def twins_judge(night: Night) -> Done:
+        began = _utc_now()
+        service.twins_judge.at_night(night)
+        tally = service.twins_judge.tally
+        made = service.twins.log.since(began)
+        written = made["judge"]
+        parts: list[object] = [
+            written and plural(written, "para połączona", "pary połączone", "par połączonych"),
+            tally.get("kept") and plural(tally["kept"], "para osobno", "pary osobno", "par osobno"),
+            tally.get("rejected")
+            and plural(
+                tally["rejected"],
+                "odrzucona przez krytyka",
+                "odrzucone przez krytyka",
+                "odrzuconych przez krytyka",
+            ),
+        ]
+        return Done(written, _listed(parts, "nic nowego od sędziego"))
+
+    def critic_night(job: Any, written_words: tuple[str, str, str]) -> Callable[[Night], Done]:
+        def run(night: Night) -> Done:
+            job.at_night(night)
+            tally = job.tally
+            looked = tally.get("nothing", 0) + tally.get("claims", 0)
+            written = tally.get("written", 0)
+            parts: list[object] = [
+                looked
+                and plural(looked, "dzieło obejrzane", "dzieła obejrzane", "dzieł obejrzanych"),
+                written and plural(written, *written_words),
+                tally.get("rejected")
+                and plural(
+                    tally["rejected"],
+                    "odrzucone przez krytyka",
+                    "odrzucone przez krytyka",
+                    "odrzuconych przez krytyka",
+                ),
+            ]
+            return Done(written, _listed(parts, "nic nowego"))
+
+        return run
+
     dump_labels = {
         "aic": "Spis Art Institute of Chicago",
         "cma": "Spis Cleveland Museum of Art",
@@ -495,7 +577,7 @@ def tasks(service: FrameService) -> list[NightTask]:
     return [
         NightTask("tidy", tidy, "Porządki w plikach", group=cat),
         NightTask("catalogue", player.grow_at_night, "Nowe dzieła do katalogu", group=cat),
-        NightTask("grouping", grouping, "Kopie razem i podpowiedzi Szukaj", group=cat),
+        NightTask("grouping", grouping, "Odświeżenie grup kopii i podpowiedzi Szukaj", group=cat),
         # Keywords and Polish texts nobody waits for, through the Batch API
         # at half the price (their answers come in by day).
         NightTask(
@@ -570,24 +652,27 @@ def tasks(service: FrameService) -> list[NightTask]:
         # copies got 5 minutes, the gatekeeper and the audit never ran).
         # Copies under other titles and details, by their pictures: what the
         # night has time for (40 minutes at most), the rest the next.
-        NightTask(
-            "twins",
-            lambda night: service.twins.at_night(night.quiet),
-            "Powtórki i detale",
-            group=dup,
-        ),
+        NightTask("twins", twins, "Powtórki i detale", group=dup),
         # What the pictures could not settle, tonight's included: Haiku,
         # then Haiku as the critic, a quarter of an hour at most for each
         # batch (a later answer is collected the next night).
-        NightTask(
-            "twins judge", service.twins_judge.at_night, "Sędzia powtórek", paid=True, group=dup
-        ),
+        NightTask("twins judge", twins_judge, "Sędzia powtórek", paid=True, group=dup),
         # The catalogue's gatekeeper and the night audit: the same, each
         # with its critic (ai/gatekeeper.py, ai/audit.py).
         NightTask(
-            "gatekeeper", service.gatekeeper.at_night, "Strażnik katalogu", paid=True, group=dup
+            "gatekeeper",
+            critic_night(service.gatekeeper, ("odłożone", "odłożone", "odłożonych")),
+            "Strażnik katalogu",
+            paid=True,
+            group=dup,
         ),
-        NightTask("audit", service.audit.at_night, "Nocny przegląd dzieł", paid=True, group=dup),
+        NightTask(
+            "audit",
+            critic_night(service.audit, ("do sprawdzenia", "do sprawdzenia", "do sprawdzenia")),
+            "Nocny przegląd dzieł",
+            paid=True,
+            group=dup,
+        ),
         # Once a month: Commons' files with a tile set ("Pod lupą").
         NightTask("tile sets", service.player.tile_sets_at_night, "Kafle „Pod lupą”", group=cat),
         # Downloads, gently, a limited number a night.
