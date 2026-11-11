@@ -46,9 +46,11 @@ private struct LiftedCard: ViewModifier {
     /// was 2.5; shadow lighter and sharper, was 0.14 at blur 5).
     static let shift: CGFloat = 2
     /// How far its shadow on the page moves the other way.
-    static let cast: CGFloat = 1
-    /// How far below the card the shadow falls at rest.
-    static let drop: CGFloat = 4
+    static let cast: CGFloat = 2
+    /// How far the shadow is smaller than the card on each side: at rest,
+    /// held straight, it lies under the card and the card looks like any
+    /// other; it shows only as the phone turns (Mateusz 2026-11-11 13:53).
+    static let inset: CGFloat = 2.5
 
     func body(content: Content) -> some View {
         let tilt = Tilt.shared
@@ -58,10 +60,10 @@ private struct LiftedCard: ViewModifier {
             .background {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .fill(.black.opacity(scheme == .dark ? 0.32 : 0.09))
-                    .padding(.horizontal, 3)
+                    .padding(Self.inset)
                     .blur(radius: 3)
                     // Moved with the card below, so back by both.
-                    .offset(x: -x * (Self.shift + Self.cast), y: Self.drop - y * (Self.shift + Self.cast))
+                    .offset(x: -x * (Self.shift + Self.cast), y: -y * (Self.shift + Self.cast))
             }
             .offset(x: x * Self.shift, y: y * Self.shift)
             .followsTilt()
