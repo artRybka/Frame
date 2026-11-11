@@ -460,9 +460,9 @@ def made_by(artist: str, wanted: list[str]) -> bool:
             continue  # "Master of 1518" is not the Master of 1540
         if asked == name_key(artist):
             return True
-        if not is_artist(name) or not asked - _FILLER - GIVEN.keys():
-            continue  # nobody ("German"), or first names only: "Raphael" is
-            # not Anton Raphael Mengs
+        if not is_artist(name) or all(len(w) < 2 for w in asked - _FILLER - GIVEN.keys()):
+            continue  # nobody ("German"), first names only ("Raphael" is not
+            # Anton Raphael Mengs) or initials ("W." is not C.W. Eckersberg)
         if (_outside_brackets(artist) - asked) & _SUCCESSORS:
             continue  # "Utagawa Hiroshige II" is not Utagawa Hiroshige
         # In the name as it is, or with a first name in another language:

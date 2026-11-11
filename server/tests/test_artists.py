@@ -434,6 +434,8 @@ def test_another_person_with_the_name_in_theirs_is_not_the_artist() -> None:
     assert not made_by("unknown artist", ["Artist, style of: Giuseppe Arcimboldo"])
     assert not made_by("Joseph Anton Seethaler II, German", ["German"])
     assert not made_by("Master of 1518", ["Master of 1540"])
+    assert not made_by("C.W. Eckersberg", ["W."])  # initials are nobody's name
+    assert made_by("C.W. Eckersberg", ["Eckersberg"])
     assert made_by("Katsushika Hokusai", ["Katsushika Hokusai (1760-1849)"])
 
 
