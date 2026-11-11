@@ -241,6 +241,10 @@ curl -s -H "Authorization: Bearer $(cat ~/.config/frame/nas-token)" \
   http://<adres serwera>:8099/api/debug/catalogue > catalogue.jsonl.gz
 ```
 
+Kto jest kim wśród autorów, serwer wie także od Wikidaty; do prób z
+autorami (etap 5b) pobiera się ten stan tak samo z `/api/debug/artists` i
+podaje jako trzeci argument `golden.library_of`.
+
 ### 3. Czas
 
 - Powtórki piszą po każdej rundzie, gdzie poszedł czas:

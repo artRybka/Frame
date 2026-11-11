@@ -14,6 +14,7 @@ from test_sharper import _print
 from test_twins import _work as _picture
 
 from frame_server import golden
+from frame_server.library.artists import IDS_STATE, PEOPLE_STATE
 from frame_server.library.duplicates import same_work
 from frame_server.library.models import Item, ItemKind, PlaylistRules
 from frame_server.service import FrameService
@@ -204,6 +205,29 @@ def test_the_whole_catalogue_is_saved_and_asked_away_from_the_server(
         ours = service.library.query(PlaylistRules(query="Lacemaker"))[1]
         theirs = library.query(PlaylistRules(query="Lacemaker"))[1]
         assert ours and [i.id for i in theirs] == [i.id for i in ours]
+    finally:
+        library.close()
+
+
+def test_who_the_artists_are_goes_with_the_catalogue(service: FrameService, tmp_path: Path) -> None:
+    """What Wikidata told of the artists is saved too, and a library made
+    of the catalogue away from the server keeps it."""
+    _settled(service)
+    ids = {"Jan Vermeer": ["Q41264", "2026-11-01"], "Nobody Known": ["", "2026-11-01"]}
+    people = {"Q41264": {"en": "Johannes Vermeer", "born": 1632, "died": 1675}}
+    service.library.set_state(IDS_STATE, ids)
+    service.library.set_state(PEOPLE_STATE, people)
+    with _client(service) as client:
+        catalogue = client.get("/api/debug/catalogue")
+        answer = client.get("/api/debug/artists")
+    assert answer.status_code == 200
+    assert answer.json() == {"ids": ids, "people": people}
+    saved, told = tmp_path / "catalogue.jsonl.gz", tmp_path / "artists.json"
+    saved.write_bytes(catalogue.content)
+    told.write_bytes(answer.content)
+    library = golden.library_of(saved, tmp_path / "away.db", told)
+    try:
+        assert golden.artists(library) == {"ids": ids, "people": people}
     finally:
         library.close()
 
