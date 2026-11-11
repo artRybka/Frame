@@ -11,6 +11,7 @@ from datetime import timedelta
 import httpx
 import pytest
 from conftest import jpeg_bytes
+from PIL import Image
 
 from frame_server import kept, night
 from frame_server.kept import REFUSED_FOR, KeptOriginals
@@ -85,6 +86,71 @@ def test_the_night_downloads_what_is_kept_and_nothing_else(museum) -> None:
     assert service.asked == ["ok.invalid/liked.jpg", "ok.invalid/listed.jpg"]  # hearts first
     assert service.kept.at_night(_night()) == 0  # all here: nothing asked again
     assert len(service.asked) == 2
+
+
+def _cut(service, item: Item, size: tuple[int, int] = (2560, 1920)) -> None:
+    """``item``'s original as it was kept until 1.145.33: cut to 2560 px."""
+    path = service.images.image_path(item)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(jpeg_bytes((30, 30, 200), size))
+
+
+def test_originals_cut_to_the_old_limit_are_had_again_larger(museum) -> None:
+    """Mateusz 2026-11-11: originals up to 4000 px, not 2560. Those here
+    were cut: the kept works' first, then the ones he looked at, a night at
+    a time; a source that has no more is not asked a third time."""
+    service = museum
+    large, same = jpeg_bytes((200, 30, 30), (4800, 3600)), jpeg_bytes((200, 30, 30), (2560, 1920))
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        service.asked.append(request.url.path)
+        return httpx.Response(200, content=same if "small" in request.url.path else large)
+
+    service.images.http = lambda: httpx.Client(transport=httpx.MockTransport(answer))
+    liked, small = _work(service, "liked"), _work(service, "small")
+    seen, whole = _work(service, "seen"), _work(service, "whole")
+    for item in (liked, small):
+        service.library.set_favorite("owner", item.id, True)
+    for item in (liked, small, seen):
+        _cut(service, item)
+    _cut(service, whole, (1800, 1350))  # all its source had: not cut
+    images = service.images
+
+    assert service.kept.at_night(_night()) == 2
+    assert service.asked == ["/liked.jpg", "/small.jpg", "/seen.jpg"]  # the kept first
+    for item, side in ((liked, 4000), (small, 2560), (seen, 4000), (whole, 1800)):
+        with Image.open(images.image_path(item)) as kept_here:
+            assert max(kept_here.size) == side
+    assert images.known_size(liked) == (4800, 3600)
+    # The next night nothing is left, and the originals are not looked through again.
+    assert service.kept.at_night(_night()) == 0 and len(service.asked) == 3
+    _cut(service, seen)
+    assert service.kept.at_night(_night()) == 0 and len(service.asked) == 3
+
+
+def test_larger_originals_stop_at_the_originals_limit(museum, monkeypatch) -> None:
+    """The kept works' originals grow into the room of the others (pruned
+    first), never into one another's: a full cache would lose Favourites."""
+    service = museum
+    large = jpeg_bytes((200, 30, 30), (4800, 3600))
+    service.images.http = lambda: httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, content=large))
+    )
+    liked, seen = _work(service, "liked"), _work(service, "seen")
+    service.library.set_favorite("owner", liked.id, True)
+    for item in (liked, seen):
+        _cut(service, item)
+    keeper: KeptOriginals = service.kept
+    monkeypatch.setattr(keeper, "room", lambda: 0)  # full, of others' originals
+    assert keeper.at_night(_night()) == 1
+    sides = []
+    for item in (liked, seen):
+        with Image.open(service.images.image_path(item)) as kept_here:
+            sides.append(max(kept_here.size))
+    assert sides == [4000, 2560]
+    _cut(service, liked)
+    monkeypatch.setattr(keeper, "kept_room", lambda kept: 0)  # full of kept ones
+    assert keeper.at_night(_night()) == 0
 
 
 def test_a_host_that_turns_us_away_is_left_for_the_night(museum) -> None:

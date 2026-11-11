@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.35
+## 1.145.36
 
 - Studium dzieła, „Droga dzieła”: rysunków piórkiem przy drodze jest
   więcej. Dotąd najwyżej trzy na drogę i nigdy przy sąsiednich
@@ -15,6 +15,41 @@
   zamiast 17–26) i prawie tak wysokie jak pasek. Na pasku akwarelowym
   i pastelowym, gdzie każda barwa ma swoje miejsce w rzędzie, najmniejsza
   barwa ma co najmniej 20 punktów szerokości zamiast kilku.
+
+## 1.145.35
+
+- Autorzy zapisani z dopiskiem muzeum („Winslow Homer, American”,
+  „Juste-François Boucher, French”) są szukani w Wikidacie pod samym
+  nazwiskiem. Dotąd serwer pytał o „American Winslow Homer” i nikogo nie
+  znajdował: dotyczyło to 527 zapisów, głównie ze Smithsonian. Dzięki temu
+  ich dzieła trafiają do właściwej osoby, a syn architekt nie łączy się
+  już z ojcem malarzem.
+- „Joshua Reynolds” i „Sir Joshua Reynolds” oraz „Palma il Giovane” i
+  „Jacopo Palma il Giovane” stają się jednym autorem. Myliły je daty:
+  „XVIII wiek” zapisany jako rok 1700 i rysunki datowane rokiem urodzenia
+  autora.
+- Po aktualizacji serwer pyta Wikidatę ponownie o około 2700 zapisów,
+  raz, w tle. Poprawione łączenie autorów widać po tej rundzie.
+- Powiadomienie o urodzinach autora nie ma już w tytule dopisku muzeum.
+
+## 1.145.34
+
+- Oryginały dzieł są odtąd przechowywane z dłuższym bokiem do 4000 px
+  zamiast 2560. Widać to przy powiększaniu dzieła w aplikacji, w detalach
+  studium i przy kadrowaniu. Obraz wysyłany na ramkę ma nadal 2560 px,
+  czyli tyle, ile ekran.
+- Każde muzeum jest pytane o tyle, ile naprawdę ma. Serwery, które mały
+  skan sztucznie powiększały do żądanego rozmiaru (Yale, Wellcome), dają
+  teraz plik w jego prawdziwej wielkości. Małe skany Getty, których dotąd
+  nie dało się pobrać, wracają w całości. Granice samych muzeów zostają:
+  AIC 3000 px, Cleveland 3400, V&A 2500, Wikimedia Commons 3840.
+- Oryginały pobrane wcześniej i przycięte do 2560 px serwer pobiera nocą
+  ponownie, większe: najpierw Ulubione, potem playlisty, potem dzieła
+  ostatnio oglądane, do 300 na noc.
+- Większy oryginał zajmuje około 2,4 raza więcej miejsca. W tym samym
+  limicie oryginałów (Konfiguracja, domyślnie 3000 MB) zmieści się ich
+  więc mniej. Gdy limit jest pełny, większe oryginały przestają dochodzić
+  i czekają, aż go podniesiesz; Ulubione nie wypychają się nawzajem.
 
 ## 1.145.33
 
