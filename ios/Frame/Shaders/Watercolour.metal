@@ -98,50 +98,63 @@ float ease(float x) {
     return half4(half3(colour), half(alpha));
 }
 
-// The pale white underpainting of JourneyRoad coming onto the page from
-// the top and soaking into it (RoadWash). The layer is the field: the
-// stains under the texts and the runs of paint between them, white and
-// blurred, so its alpha says how deep inside the paint a place is. Paint
-// is where the field is over a threshold. `front` is how far down the road
-// the paint has come and `done` how far it has dried, both heights on the
-// road; `origin` is the road's corner in the layer. At the front the paint
-// has only just arrived: thin, wet and whiter, and only in the middle of
-// its stain. Behind the front the threshold falls, so the paint seeps out
-// to its edge; it sinks into the paper (the grain shows through and the
-// wet white goes pale) and gathers whiter along the edge as it dries.
-// Above `done` it is dry and stays as it is. Lengths are in points; `seed`
-// tells one road's paint from another's.
-[[ stitchable ]] half4 soak(float2 position, SwiftUI::Layer layer, float2 origin, float front, float done, float seed) {
+// A stop's stain in JourneyRoad coming out of the stop's dot and spreading
+// under its text the way watercolour does (RoadStain). The layer is the
+// field: the stain's shape, white and blurred, so its alpha says how deep
+// inside the paint a place is. Paint is where the field is over a
+// threshold. `age` is how long ago the paint started out of `source`, the
+// dot, in seconds. It goes out from there on all sides, unevenly, fast at first
+// and then creeping, the far corner of the stain `reach` away; under
+// `bottom`, the stain's foot, it comes late, to gather and drip. Where it
+// has only just come it is thin and its edge soft; then it deepens, seeps
+// out to its edge (the threshold falls) and dries: from `wet` to `dense`
+// where it lay thick, by the dot and along the edge it pooled at, and to
+// `wash` where it ran thin, the paper's grain showing through. Here and
+// there the edge comes loose: the paint bleeds out into the paper, pale,
+// and no rim dries there. `cover` is how much of the page the paint covers
+// wet and dry, `tooth` how much the grain shows and how uneven it dries.
+// Lengths are in points; `seed` tells one stain's paint from another's.
+[[ stitchable ]] half4 spill(float2 position, SwiftUI::Layer layer, float2 source, float bottom, float reach, float age,
+                             float seed, half4 wet, half4 dense, half4 wash, float2 cover, float2 tooth) {
     using namespace paper;
     float field = float(layer.sample(position).a);
-    if (field <= 0.02) { return half4(0); }
-    float2 at = position - origin;
+    if (field <= 0.04 || age <= 0.0) { return half4(0); }
+    float2 at = position;
 
-    // When the paint gets here: from the top, sooner in some patches.
+    // When the paint gets here.
     float ragged = 0.6 * noise(at / 9.0, 61.0 + seed) + 0.4 * noise(at / 4.0, 62.0 + seed);
-    float reached = at.y + 8.0 + 40.0 * (noise(at / 70.0, 41.0 + seed) - 0.5) + 5.0 * (ragged - 0.5);
-    float e = front - reached;
-    if (e <= 0.0) { return half4(0); }
-    float u = e / max(front - done, 26.0);
-    float seep = ease(u * 0.9);
-    float arrive = ease(u * 2.2);
+    float away = length(at - source) / max(reach, 1.0);
+    float way = clamp(away + 0.24 * (noise(at / 34.0, 41.0 + seed) - 0.5) + 0.1 * (noise(at / 13.0, 43.0 + seed) - 0.5)
+                      + 0.04 * (ragged - 0.5), 0.0, 1.1);
+    float below = at.y - bottom + 2.0;
+    if (below > 0.0) { way = max(way, mix(way, 1.0 + below / 60.0, smoothstep(0.0, 6.0, below))); }
+    float comes = 3.8 * (1.0 - pow(1.0 - min(way, 1.48) / 1.5, 1.0 / 2.2));
+    float since = age - comes;
+    if (since <= 0.0) { return half4(0); }
+
     float wetness = noise(at / 60.0, 81.0 + seed);
-
-    // The edge: soft where the paper was wet, sharp where it was dry.
-    float edge = 0.82 - 0.32 * seep + 0.06 * (ragged - 0.5);
-    float feather = 0.02 + 0.1 * wetness * wetness + 0.1 * (1.0 - seep);
-    float inside = smoothstep(edge - feather, edge + 0.015, field);
-    if (inside <= 0.0) { return half4(0); }
-
     float grain = noise(at / 1.5, 71.0 + seed);
-    float pool = noise(at / 38.0, 91.0 + seed);
-    // A second, smaller wash over the middle of each stain.
-    float second = 0.2 * smoothstep(0.80, 0.88, field + 0.1 * (noise(at / 22.0, 95.0 + seed) - 0.5));
-    float body = 0.44 * (0.85 + 0.3 * pool) * (1.0 - 0.3 * (grain - 0.5) * seep);
-    float rim = 0.34 * seep * smoothstep(edge - 0.005, edge + 0.02, field) * (1.0 - smoothstep(edge + 0.03, edge + 0.1, field))
-        * (0.35 + 0.65 * (1.0 - wetness));
-    float wet = u < 1.0 ? 0.4 * (1.0 - ease(u * 1.1)) : 0.0;
-    float alpha = inside * arrive * min(1.0, body + second * seep + rim + wet);
-    // White, premultiplied.
-    return half4(half(alpha));
+    float pool = noise(at / 30.0, 91.0 + seed);
+    float lobe = noise(at / 24.0, 93.0 + seed);
+    float seep = ease(since / 1.2);
+    float arrive = ease(since / 0.9);
+    float dry = ease((since - 0.5) / 1.9);
+
+    // The edge: soft while the paint is young, and where the paper was wet.
+    float edge = 0.64 - 0.2 * seep + 0.09 * (ragged - 0.5) + 0.1 * (lobe - 0.5);
+    float feather = 0.03 + 0.07 * wetness * wetness + 0.2 * (1.0 - seep);
+    float inside = smoothstep(edge - feather, edge + 0.02, field);
+    float loose = smoothstep(0.56, 0.78, wetness);
+    float fringe = loose * seep * 0.5 * smoothstep(0.05, 0.4, field) * (1.0 - 0.25 * (grain - 0.5));
+    if (inside <= 0.0 && fringe <= 0.0) { return half4(0); }
+
+    float rim = dry * (1.0 - loose) * smoothstep(edge - 0.005, edge + 0.03, field)
+        * (1.0 - smoothstep(edge + 0.08, edge + 0.3, field)) * (0.45 + 0.55 * (1.0 - wetness));
+    float thick = 1.0 - ease(away / 0.9);
+    float body = min(1.0, 0.78 * thick + 0.7 * rim) * inside;
+    float dried = min(0.97, (cover.y + 0.1 * thick + 0.08 * (pool - 0.5)) * (1.0 - tooth.x * (grain - 0.5)) + 0.12 * rim);
+    float alpha = arrive * max(inside * mix(cover.x, dried, dry), fringe);
+    float3 settled = mix(float3(wash.rgb), float3(dense.rgb), body) + (pool - 0.5) * tooth.y * dry;
+    float3 colour = clamp(mix(float3(wet.rgb), settled, max(dry, 1.0 - inside)), 0.0, 1.0);
+    return half4(half3(colour * alpha), half(alpha));
 }
