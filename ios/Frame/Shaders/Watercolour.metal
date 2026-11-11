@@ -203,10 +203,22 @@ float boxAway(float2 at, float4 box, float corner) {
 // the black and the black into the red's rim, more with time, the middle
 // of the blot staying red. Over the black this paints the mixture; the
 // line and the stain themselves are drawn under it. Lengths are in points.
-[[ stitchable ]] half4 blot(float2 position, half4 color, float2 centre, float2 back, float2 into, float4 stain,
-                            float radius, float age, float flow, float seed, float3 lobes, half4 red, half4 ink) {
+//
+// The same blot, smaller, is a later work's on the line that goes on into
+// "Dalsze losy" (Mateusz 10:20: „kontynuację linii Drogi dzieła, tylko
+// innym kolorem plam”): there the line runs through it, on to `on` (the
+// blot's own middle where it does not), and what pours out of it is another
+// `paint` than the line's `ink`; the red runs into both. `size`: the
+// blot's radius, how far in from its rim its middle stays red, and half
+// the width of the line where it comes in and where it goes on (0: it
+// does not). What the paints run by is in proportion to the radius.
+[[ stitchable ]] half4 blot(float2 position, half4 color, float2 centre, float2 back, float2 on, float2 into, float4 stain,
+                            float4 size, float age, float flow, float seed, float3 lobes, half4 red, half4 ink,
+                            half4 paint) {
     using namespace paper;
     if (age <= 0.0) { return half4(0); }
+    float radius = size.x;
+    float scale = radius / 10.4;
     float2 at = position;
     float2 off = at - centre;
     float away = length(off);
@@ -215,8 +227,9 @@ float boxAway(float2 at, float4 box, float corner) {
                           + 0.035 * sin(5.0 * turn + lobes.z));
     float ragged = 1.6 * (noise(at / 4.0, 11.0 + seed) - 0.5);
     // The black keeps to the blot's rim: its middle stays red.
-    float core = rim - away - 2.5;
-    float line = max(core, strokeAway(at, back, centre, float2(2.9, 2.9)));
+    float core = rim - away - size.y;
+    float line = max(core, min(strokeAway(at, back, centre, float2(size.z, size.z)),
+                               strokeAway(at, centre, on, float2(size.w, size.w))));
     float poured = max(core, min(strokeAway(at, centre, into, float2(4.6, 10.0)), boxAway(at, stain, 8.0)));
     float warp = 3.2 * (noise(at / 6.0, 21.0 + seed) - 0.5) + 1.6 * (noise(at / 2.5, 22.0 + seed) - 0.5);
     float pool = noise(at / 9.0, 31.0 + seed);
@@ -235,11 +248,12 @@ float boxAway(float2 at, float4 box, float corner) {
     // The black here: the line, and the last stop's ink once it has come.
     float black = max(1.0 - smoothstep(-0.6, 0.6, line), (1.0 - smoothstep(-0.6, 0.6, poured)) * there);
     // How much red has run to this place, and how much black.
-    float reds = max(inside, grow >= 1.0 ? 1.0 - smoothstep(0.0, 1.0 + 9.0 * run, edge + warp) : 0.0);
-    float blacks = max(1.0 - smoothstep(-0.5, 0.5 + 4.0 * run, line + 0.8 * warp),
-                       (1.0 - smoothstep(-0.5, 0.5 + 4.0 * run, poured + 0.8 * warp)) * there);
+    float reds = max(inside, grow >= 1.0 ? 1.0 - smoothstep(0.0, 1.0 + 9.0 * scale * run, edge + scale * warp) : 0.0);
+    float lined = 1.0 - smoothstep(-0.5, 0.5 + 4.0 * scale * run, line + 0.8 * scale * warp);
+    float stained = (1.0 - smoothstep(-0.5, 0.5 + 4.0 * scale * run, poured + 0.8 * scale * warp)) * there;
+    float blacks = max(lined, stained);
     // The paper round the blot soaks the red up, in places.
-    float deep = soak * smoothstep(0.42, 0.62, patch) * (3.0 + 2.6 * pool);
+    float deep = soak * smoothstep(0.42, 0.62, patch) * scale * (3.0 + 2.6 * pool);
     float ring = deep > 0.0 ? smoothstep(0.0, 0.5, deep) * (1.0 - smoothstep(deep - 0.7, deep + 0.3, edge)) : 0.0;
     float lip = ring * smoothstep(deep - 1.5, deep - 0.4, edge);
     float pale = ring * (0.3 + 0.18 * lip) * (1.0 - 0.3 * (grain - 0.5)) * (1.0 - black);
@@ -251,6 +265,81 @@ float boxAway(float2 at, float4 box, float corner) {
     float shade = (1.0 - 0.17 * pooled) * (1.0 + 0.1 * (1.0 - smoothstep(-6.0, -2.0, edge)) * dry)
         * (1.0 + 0.09 * (pool - 0.5) * dry) * (1.0 - 0.1 * (grain - 0.5));
     float share = blacks / (blacks + 2.0 * reds + 0.000001);
-    float3 colour = mix(min(float3(red.rgb) * shade, float3(1.0)), float3(ink.rgb), share);
+    // What the red runs into here: the line's ink, or the paint that pours out of the blot.
+    float3 other = mix(float3(ink.rgb), float3(paint.rgb), stained / (lined + stained + 0.000001));
+    float3 colour = mix(min(float3(red.rgb) * shade, float3(1.0)), other, share);
+    return half4(half3(colour * alpha), half(alpha));
+}
+
+// A sea the work crossed, on "Droga dzieła", as a wash (Mateusz
+// 2026-11-11 11:09: „Morze - super - wdrażamy”). Applied to a white
+// rectangle over the sea. `box`: the band the wash keeps to (left, top,
+// right, bottom); its edge wanders in and out of it. `entry`: where the
+// line comes into it; the paint floods out from there, `reach` far at the
+// most. `came`: how far it has flooded (0…1.15), how dry it is, how far
+// the paper round it has soaked (both 0…1), and how many points of the
+// line are drawn. `line`: every `each`th point of the line, x and y by
+// turns. Dry, the pigment has gathered along the edge. The line is drawn
+// into the wash wet: behind the pen its ink runs out into the blue, in
+// places further, and thins there to a grey. Lengths are in points.
+[[ stitchable ]] half4 sea(float2 position, half4 color, float4 box, float2 entry, float reach, float4 came,
+                           device const float *line, int count, float each, float seed, half4 blue, half4 deep,
+                           half4 ink) {
+    using namespace paper;
+    float spread = came.x;
+    float dry = came.y;
+    float soak = came.z;
+    float tip = came.w;
+    if (spread <= 0.0) { return half4(0); }
+    float2 at = position;
+    float edge = boxAway(at, box, 26.0) + 16.0 * (noise(at / 46.0, 3.0 + seed) - 0.5)
+        + 5.0 * (noise(at / 11.0, 4.0 + seed) - 0.5) + 1.4 * (noise(at / 3.0, 5.0 + seed) - 0.5);
+    if (edge > 9.0) { return half4(0); }
+    // The wet front, out from where the line comes in: uneven, and quicker along the sea than across it.
+    float gone = length((at - entry) * float2(1.0, 1.5)) * (1.0 + 0.3 * (noise(at / 30.0, 6.0 + seed) - 0.5));
+    float front = gone - spread * (reach + 30.0);
+    float inside = (1.0 - smoothstep(-0.6, 0.6, edge)) * (1.0 - smoothstep(-2.5, 1.5, front));
+    float pool = noise(at / 34.0, 31.0 + seed);
+    float grain = noise(at / 1.5, 41.0 + seed);
+    // Dry, the pigment has pooled along the edge; wet, there is more of it just behind the front.
+    float rim = smoothstep(-5.0, -0.6, edge) * dry;
+    float wet = (1.0 - dry) * smoothstep(-14.0, -1.0, front) * 0.16;
+    float alpha = inside * (0.3 * (1.0 + 0.5 * (pool - 0.5)) * (1.0 - 0.34 * (grain - 0.5)) + 0.2 * rim + wet);
+    float3 colour = mix(float3(blue.rgb), float3(deep.rgb), 0.5 * rim + 0.25 * (pool - 0.5));
+    // The paper past the edge soaks a little of it up, in places.
+    if (inside < 1.0 && soak > 0.0) {
+        float sunk = soak * smoothstep(0.45, 0.62, noise(at / 14.0, 51.0 + seed)) * (3.0 + 3.0 * pool);
+        float ring = sunk > 0.0 ? (1.0 - smoothstep(sunk - 0.8, sunk + 0.3, edge)) * smoothstep(-0.5, 0.5, edge) : 0.0;
+        alpha = max(alpha, ring * 0.12);
+    }
+    // The line in the wet wash: how near this place is to it, and how long ago the pen passed there.
+    if (inside > 0.0 && tip > 0.0 && count >= 4) {
+        float near = 1.0e9;
+        float where = 0.0;
+        for (int k = 0; k + 3 < count; k += 2) {
+            float2 a = float2(line[k], line[k + 1]);
+            float2 v = float2(line[k + 2], line[k + 3]) - a;
+            float along = clamp(dot(at - a, v) / max(dot(v, v), 0.0001), 0.0, 1.0);
+            float away = length(at - a - v * along);
+            if (away < near) {
+                near = away;
+                where = (float(k / 2) + along) * each;
+            }
+        }
+        float passed = tip - where;
+        if (passed > 0.0 && near < 24.0) {
+            float run = ease(passed / 80.0);
+            float bloom = smoothstep(0.38, 0.7, noise(at / 22.0, 23.0 + seed));
+            float wide = 1.5 + run * (3.0 + 9.0 * bloom);
+            float warp = 7.0 * (noise(at / 9.0, 21.0 + seed) - 0.5) + 3.0 * (noise(at / 3.4, 22.0 + seed) - 0.5);
+            float feather = near + warp * run * (0.4 + 0.6 * bloom);
+            // Close to the line the black is strong; further out it thins to a grey in the blue.
+            float black = (1.0 - smoothstep(1.4, 1.4 + wide, feather)) * min(1.0, passed / 6.0) * inside;
+            float strong = black * black * (3.0 - 2.0 * black) * (1.0 - 0.2 * dry);
+            colour = mix(colour, float3(ink.rgb), strong * 0.72);
+            alpha = alpha + (0.66 - alpha) * strong;
+        }
+    }
+    alpha = clamp(alpha, 0.0, 1.0);
     return half4(half3(colour * alpha), half(alpha));
 }
