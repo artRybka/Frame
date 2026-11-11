@@ -333,6 +333,7 @@ class NightQueue:
                     break
                 run.current = task.name
                 began = time.monotonic()
+                grouped = self.service.library.regrouped()
                 failed = False
                 result: object = None
                 try:
@@ -341,7 +342,8 @@ class NightQueue:
                     failed = True
                     log.exception("night: %s failed", task.name)
                 night.took[task.name] = took = time.monotonic() - began
-                log.info("night: %s in %.1f s", task.name, took)
+                again = _regrouped(self.service, grouped)
+                log.info("night: %s in %.1f s%s", task.name, took, again)
                 run.done.append(task.name)
                 self._remember(task.name, took, failed, result, run.asked)
             if not stop.is_set():
@@ -409,6 +411,16 @@ class NightQueue:
         run = self.current
         if run is not None:
             run.stop.set()
+
+
+def _regrouped(service: FrameService, before: tuple[int, float]) -> str:
+    """ ", the works regrouped 5 times in 17.2 s" since ``before``, for the
+    log of a task (the app's requests waited for each); empty when not."""
+    made, seconds = service.library.regrouped()
+    times = made - before[0]
+    if times <= 0:
+        return ""
+    return f", the works regrouped {times} time(s) in {seconds - before[1]:.1f} s"
 
 
 def _utc_now() -> str:

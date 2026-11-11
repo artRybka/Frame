@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.145.10
+
+- Porządki w regułach doboru dzieł, etap 0 (pomiar, bez zmiany tego, co
+  widać). Po audycie reguł z 11 listopada serwer zapisuje, gdzie idzie
+  czas: powtórki piszą w logu czas każdego kroku rundy (skróty obrazów,
+  punkty, pary, pobrania, zapisy), a każde zadanie nocy dopisuje, ile razy
+  przez nie przebudowano grupy kopii i ile to trwało.
+- `GET /api/debug/decisions` (tylko właściciel) oddaje to, co do tej pory
+  rozstrzygnięto o dziełach: pary uznane za jedno dzieło i przez co, detale
+  i zdjęcia sal, pary rozdzielone przez „To nie to samo” i przez Sędziego,
+  dzieła odłożone przez Strażnika. Same opisy, bez obrazów i bez własnych
+  zdjęć. To zestaw wzorcowy, na którym sprawdzimy każdą późniejszą zmianę
+  reguł (`python -m frame_server.golden plik.json`).
+- Opis audytu, planu i sposobu sprawdzania: `docs/RULES.md`.
+
 ## 1.145.9
 
 - Studium dzieła, „Kolor i światło”: malowane próbki prawdopodobnych farb

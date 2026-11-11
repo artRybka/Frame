@@ -33,7 +33,7 @@ from fastapi import (
 from fastapi.responses import FileResponse, PlainTextResponse
 from starlette.concurrency import run_in_threadpool
 
-from .. import build_version, logbuffer, night, notifications
+from .. import build_version, golden, logbuffer, night, notifications
 from ..artist_people import START_DELAY
 from ..config import Settings
 from ..device import MdcError
@@ -604,6 +604,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             keys = ", ".join([*dumps.DUMPS, rijks_index.KEY])
             raise HTTPException(404, f"no dump {key!r}; one of {keys}")
         return {"started": dumps.build_now(key, settings.data_dir)}
+
+    @app.get("/api/debug/decisions", dependencies=[Depends(require_owner)])
+    async def settled_decisions(request: Request) -> dict[str, Any]:
+        """What is settled about the works so far (golden.py): which
+        pictures are one work, details and photographs, pairs kept apart,
+        works set aside. Descriptions only; test data for changes of the
+        rules."""
+        return await run_in_threadpool(golden.decisions, request.app.state.service)
 
     @app.get("/api/debug/hosts", dependencies=[Depends(require_owner)])
     def host_tally() -> dict[str, Any]:

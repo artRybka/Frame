@@ -535,6 +535,10 @@ class Library:
         #: changes did (for the log: a regrouping holds up the library).
         self._works_dropped_by = "start"
         self._works_drops = 0
+        #: How many times the grouping was made anew and the seconds it
+        #: took, since the start (:meth:`regrouped`).
+        self._works_made = 0
+        self._works_seconds = 0.0
         self._conn: sqlite3.Connection | None = None
         #: The key/value table, read once (:meth:`_kv_rows`).
         self._kv: dict[str, str] | None = None
@@ -919,6 +923,12 @@ class Library:
         else:
             self._works_drops += 1
 
+    def regrouped(self) -> tuple[int, float]:
+        """How many times the works were grouped anew since the start, and
+        the seconds that took: whoever asked for them first waited that long
+        (the night's log says it for each task)."""
+        return self._works_made, self._works_seconds
+
     def works(self) -> Works:
         """The library's items grouped by work: copies of one work from
         several sources together, the best copy first.
@@ -959,6 +969,8 @@ class Library:
                         self._works = made
                 took = time.monotonic() - started
                 more = self._works_drops
+                self._works_made += 1
+                self._works_seconds += took
                 log.log(
                     logging.INFO if took >= SLOW_WORKS else logging.DEBUG,
                     "works regrouped in %.1f s (%d items) after %s%s",
