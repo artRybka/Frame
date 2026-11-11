@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.145.6
+
+- Studium dzieła: „Dalsze losy” są teraz dalszym ciągiem „Drogi dzieła”
+  i stoją zaraz pod nią. Chwilę po czerwonej plamie na końcu drogi pióro
+  zakreśla ją jednym okrągłym ruchem i dopiero z tego zakreślenia kreska
+  schodzi niżej, zakreśla nagłówek „Dalsze losy” i biegnie w dół lewą
+  stroną, lżejszą ręką i nie całkiem prosto.
+- Każde późniejsze dzieło ma na tej kresce małą czerwoną plamę, a z niej
+  pod rok i nazwisko wylewa się plama farby w kolorze indygo (w ciemnym
+  motywie jasna, z ciemnym tekstem). Czerwień, indygo i czerń kreski
+  wpływają w siebie. Cytat, obrazek i opis zostają na papierze, po
+  prawej stronie kreski.
+- Dzieło bez „Drogi dzieła” ma „Dalsze losy” jak dotąd, tylko wyżej:
+  przed „Podobnymi dziełami”.
+- „Droga dzieła”: morze, przez które dzieło przepłynęło, jest
+  bladoniebieską plamą akwareli. Rozlewa się tuż przed piórem, od
+  miejsca, w którym kreska w nią wchodzi, a po wyschnięciu ma
+  ciemniejszy brzeg. Kreska jest rysowana w mokrej farbie, więc za
+  piórem tusz rozpływa się w niebieskim, miejscami szerzej. Fale i nazwa
+  morza zostają, fale są odrobinę ciemniejsze.
+- „Droga dzieła”: cienka kreska zaczyna się rysować wcześniej, prawie
+  u dołu ekranu, a kropki z plamami pod tekstami pojawiają się trochę
+  wcześniej niż dotąd, nieco poniżej środka ekranu.
+
 ## 1.145.5
 
 - „Pod lupą” jest teraz na samym końcu Odkrywaj, za „Studiami dzieł”.

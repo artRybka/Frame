@@ -522,15 +522,23 @@ struct DailyView: View {
                 // "Droga dzieła" (Mateusz 2026-11-10, "S1"), after the size
                 // (15:21; not "Losy dzieła", next to "Dalsze losy"): looked up
                 // when the page first opens, so it fades in.
+                // "Dalsze losy" right under it, as the road going on
+                // (Mateusz 2026-11-11 10:20: „dodać sekcje „Dalsze losy”
+                // jako kontynuację linii Drogi dzieła… Na pewno zostawiamy
+                // nagłówek sekcji Dalsze losy”): the road draws that
+                // section itself, heading and all. A work with no road
+                // keeps the plain time line, in the same place.
                 if let journey = work.journey, journey.stops.count >= 2 {
                     section("Droga dzieła") {
-                        JourneyRoad(journey: journey, seed: work.item.item.id)
+                        JourneyRoad(journey: journey, seed: work.item.item.id, later: work.legacy,
+                                    told: { AnyView(laterTold($0)) })
                     }
                     .id("journey")
                     .transition(.opacity)
+                } else if !work.legacy.isEmpty {
+                    section("Dalsze losy") { legacy(work.legacy) }.id("legacy")
                 }
                 if !similarWorks(work).isEmpty { section("Podobne dzieła") { similar(similarWorks(work)) } }
-                if !work.legacy.isEmpty { section("Dalsze losy") { legacy(work.legacy) }.id("legacy") }
                 if let others = work.byArtist, !others.isEmpty {
                     section("Inne prace artysty") { byArtist(Array(others.prefix(Self.byArtistShown))) }.id("artist")
                 }
@@ -1359,14 +1367,7 @@ struct DailyView: View {
                             .font(.serif(16, weight: .semibold))
                             .foregroundStyle(Theme.ink)
                             .fixedSize(horizontal: false, vertical: true)
-                        if !entry.quote.isEmpty {
-                            Text("„\(entry.quote)”")
-                                .font(.serif(15).italic())
-                                .foregroundStyle(Theme.ink.opacity(0.9))
-                                .padding(.leading, 9)
-                                .overlay(alignment: .leading) { Rectangle().fill(Theme.vermilion).frame(width: 3) }
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+                        if !entry.quote.isEmpty { laterQuote(entry) }
                         HStack(alignment: .top, spacing: 12) {
                             laterPicture(entry)
                             prose(entry.text, size: 15)
@@ -1374,6 +1375,29 @@ struct DailyView: View {
                     }
                     .padding(.bottom, 16)
                 }
+            }
+        }
+    }
+
+    /// What a later work's maker said of this one.
+    private func laterQuote(_ entry: DailyWork.Legacy) -> some View {
+        Text("„\(entry.quote)”")
+            .font(.serif(15).italic())
+            .foregroundStyle(Theme.ink.opacity(0.9))
+            .padding(.leading, 9)
+            .overlay(alignment: .leading) { Rectangle().fill(Theme.vermilion).frame(width: 3) }
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// What is told of a later work under its year and name where "Dalsze
+    /// losy" is the road going on (`JourneyRoad`): the quote, the picture
+    /// and a few words, on the paper as on the time line.
+    private func laterTold(_ entry: DailyWork.Legacy) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            if !entry.quote.isEmpty { laterQuote(entry) }
+            HStack(alignment: .top, spacing: 12) {
+                laterPicture(entry)
+                prose(entry.text, size: 15)
             }
         }
     }
