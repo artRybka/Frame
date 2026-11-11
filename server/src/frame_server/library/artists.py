@@ -602,6 +602,12 @@ def _bare(line: str) -> str:
     return line
 
 
+def without_remarks(name: str) -> str:
+    """The name's first line without what a museum says after it: "Winslow
+    Homer" for "Winslow Homer, American" (:func:`_bare`)."""
+    return _bare(name.split("\n")[0]).strip()
+
+
 @lru_cache(maxsize=PER_WORK)
 def name_key(name: str) -> frozenset[str]:
     """The words of the name's first line in lower case without accents,

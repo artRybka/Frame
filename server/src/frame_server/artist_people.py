@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from .births import search_name
+from .births import asked_as, search_name
 from .library.artists import IDS_STATE, PEOPLE_STATE, is_artist
 from .library.hosts import Resting
 from .library.wikidata import API
@@ -60,6 +60,25 @@ YOUNGEST, AFTER_DEATH = 10, 30
 LONGEST = 100
 #: Share of a spelling's dated works the life must fit.
 FITTING = 0.8
+#: A work's year this near its maker's birth is the museum's date of the
+#: maker, not of the work (the NGA's undated drawings by Palma il Giovane,
+#: born 1548/50, are of 1548): it tells nothing of whose the work is.
+LIFE_DATE = 5
+#: A year that is a century's first is the century ("18th century" is kept
+#: as 1700): a work of any of its years.
+CENTURY = 100
+#: Library state: how the spellings were last asked (:data:`READING`), and
+#: the spellings to ask again whatever is kept of them (the answer kept
+#: stays until the new one).
+READING_KEY = "artist_people_reading"
+AGAIN_KEY = "artist_people_again"
+#: Raised when the search or the choice among its hits changes: spellings
+#: that may be answered otherwise now are asked again, once.
+#: 2 (1.145.35): "Winslow Homer, American" was searched as "American
+#: Winslow Homer" and never found (527 spellings of 2736 works, mostly the
+#: Smithsonian's); "Joshua Reynolds" with a portrait of the "18th century"
+#: (1700) was a namesake born 1675, and "Jacopo Palma il Giovane" nobody.
+READING = 2
 #: Words of a hit's description that make it someone who made art, for a
 #: spelling with no dated work to go by.
 _MAKER = re.compile(
@@ -111,12 +130,18 @@ class Facts(dict[str, Any]):
 
 
 def fits(born: int | None, died: int | None, years: list[int]) -> bool:
-    """Whether most of ``years`` fall in a life from ``born`` to ``died``."""
+    """Whether most of ``years`` fall in a life from ``born`` to ``died``: a
+    century's first year as any year of the century, and not counting the
+    years that are the maker's own (:data:`LIFE_DATE`)."""
     if born is None or not years:
         return born is not None or died is not None
+    start = born + YOUNGEST
     end = (died if died is not None else born + LONGEST) + AFTER_DEATH
-    inside = sum(born + YOUNGEST <= y <= end for y in years)
-    return inside >= FITTING * len(years)
+    told = [y for y in years if abs(y - born) > LIFE_DATE]
+    inside = sum(
+        start <= y <= end or (y % CENTURY == 0 and y <= end and start < y + CENTURY) for y in told
+    )
+    return inside >= FITTING * len(told)
 
 
 class ArtistPeople:
@@ -145,6 +170,7 @@ class ArtistPeople:
         its works' years."""
         now = now or datetime.now(UTC)
         asked = self.ids()
+        again = set(self.library.get_state(AGAIN_KEY, []))
         index = self.library.search_index()
         if index is None:
             return []
@@ -161,7 +187,11 @@ class ArtistPeople:
             if len(entries) < MIN_WORKS and of_person.get(names.shown(name), 0) < MIN_WORKS:
                 continue
             kept = asked.get(name)
-            if kept is not None and (kept[0] or datetime.fromisoformat(kept[1]) > now - RECHECK):
+            if (
+                name not in again
+                and kept is not None
+                and (kept[0] or datetime.fromisoformat(kept[1]) > now - RECHECK)
+            ):
                 continue
             years = [i.year for i in index.items(entries) if i.year is not None]
             out.append((len(entries), name, years))
@@ -177,12 +207,40 @@ class ArtistPeople:
     def at_night(self, quiet: Callable[[], bool] = lambda: True) -> int:
         return self.look_up(A_NIGHT, quiet, why="at night")
 
+    def ask_again(self) -> int:
+        """Once per :data:`READING`: notes the spellings whose answer may be
+        another now, for the coming rounds to ask again; how many. Those
+        are the ones no one was found for, and the found ones with a century
+        among their works' years (another hit's life may fit them now)."""
+        if self.library.get_state(READING_KEY, 1) >= READING:
+            return 0
+        index = self.library.search_index()
+        if index is None:
+            return 0  # no catalogue yet: the next round
+        by_name = index.artists()
+
+        def century(name: str) -> bool:
+            works = index.items(by_name.get(name, ()))
+            return any(i.year is not None and i.year % CENTURY == 0 for i in works)
+
+        again = sorted(name for name, kept in self.ids().items() if not kept[0] or century(name))
+        self.library.set_state(AGAIN_KEY, again)
+        self.library.set_state(READING_KEY, READING)
+        searched = sum(1 for name in again if asked_as(name) != search_name(name))
+        log.info(
+            "artist people: %d spellings are asked again (%d under another name)",
+            len(again),
+            searched,
+        )
+        return len(again)
+
     def look_up(self, limit: int, quiet: Callable[[], bool] = lambda: True, why: str = "") -> int:
         """Asks about up to ``limit`` spellings; how many people were found.
         The search knows them at once after."""
         if not self._lock.acquire(blocking=False):
             return 0  # a round is under way
         try:
+            self.ask_again()
             wanted = self.wanted()[:limit]
             if not wanted:
                 return 0
@@ -248,6 +306,11 @@ class ArtistPeople:
         kept.update({name: [qid, stamp] for name, qid in got.items()})
         self.library.set_state(PEOPLE_STATE, people)
         self.library.set_state(IDS_STATE, kept)
+        again = self.library.get_state(AGAIN_KEY, [])
+        if left := [name for name in again if name not in got]:
+            self.library.set_state(AGAIN_KEY, left)
+        elif again:
+            self.library.set_state(AGAIN_KEY, [])
         return got
 
     @staticmethod
