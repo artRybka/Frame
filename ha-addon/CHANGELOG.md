@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.18
+
+- Karta dzieła pokazuje jego detale, czyli wycinki, które serwer znalazł
+  i trzyma osobno jako kopie: pasek „Detale”, a dotknięcie detalu otwiera
+  go na całym ekranie. Na karcie detalu jest „Całe dzieło” i pasek „Inne
+  detale”.
+
 ## 1.145.17
 
 - Duże obrazy, które powtórki pobierają z muzeów, żeby sprawdzić, czy mały

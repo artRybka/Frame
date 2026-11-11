@@ -48,7 +48,7 @@ from .phrases import has_phrase, parsed
 from .places import Places, known_places, learn_places
 from .search_index import SearchIndex, item_text
 from .term_index import TermIndex
-from .verdict import Place, against
+from .verdict import COPIES, Place, Why, against, whys
 from .viewer import OWNER_ID, STORE, viewer_id
 from .vocabulary import matches_terms, searched_kinds
 
@@ -591,6 +591,9 @@ class Library:
         self._queries_lock = threading.Lock()
         #: ``hidden()`` as last worked out: (catalogue version, works, it).
         self._hidden_kept: tuple[tuple[int, int], Works, Hidden] | None = None
+        #: The items the pictures showed to be details, by the id of the
+        #: copy they are a detail of (``Item.detail_of``), as of a version.
+        self._details_kept: tuple[int, dict[str, list[str]]] | None = None
         self._term_index: TermIndex | None = None
         self._term_index_lock = threading.Lock()
         self._term_index_building = False
@@ -1175,6 +1178,64 @@ class Library:
         "Ukryte" in Playlists)."""
         items = [i for i in self._snapshot() if i.excluded and i.look is None]
         return sorted(items, key=lambda i: i.excluded_at or "", reverse=True)
+
+    def _details_by_whole(self) -> dict[str, list[str]]:
+        kept = self._details_kept
+        version = self._version
+        if kept is not None and kept[0] == version:
+            return kept[1]
+        found: dict[str, list[str]] = {}
+        for item in self._snapshot():
+            if item.detail_of:
+                found.setdefault(item.detail_of, []).append(item.id)
+        self._details_kept = (version, found)
+        return found
+
+    def details(self, item: Item) -> list[Item]:
+        """The library's details of ``item``'s work, for its card (Mateusz
+        2026-11-11: material worth seeing, left out of the catalogue as
+        copies): pictures found inside one of its copies (``Item.detail_of``,
+        ``library.twins``), and copies of it whose title says they are a
+        detail (``Why.DETAIL``). Not ``item`` itself, no hidden one, none
+        that is also another kind of copy (a grey copy, a reproduction), and
+        one picture once (``picture_hash``)."""
+        works = self.works()
+        index = works.group_of(item)
+        group = works.groups[index] if index is not None else []
+        copies = {item.id, *(i.id for i in group)}
+        if item.copy_of:
+            copies.add(item.copy_of)
+        by_whole = self._details_by_whole()
+        candidates: dict[str, Item] = {}
+        for copy_id in sorted(copies):
+            for detail_id in by_whole.get(copy_id, ()):
+                if (detail := self.get(detail_id)) is not None:
+                    candidates.setdefault(detail.id, detail)
+        for member in group:
+            candidates.setdefault(member.id, member)
+        hidden = self.hidden()
+        found: list[Item] = []
+        pictures: set[str] = set()
+        for detail in candidates.values():
+            if detail.id == item.id or detail.excluded or detail in hidden:
+                continue
+            reasons = set(whys(detail))
+            if Why.DETAIL not in reasons or (reasons & COPIES) - {Why.DETAIL}:
+                continue
+            picture = detail.picture_hash
+            if picture and picture != "-":
+                if picture in pictures:
+                    continue
+                pictures.add(picture)
+            found.append(detail)
+        return found
+
+    def whole_of(self, item: Item) -> Item | None:
+        """The best copy of the work ``item`` is a detail of
+        (``Item.detail_of``); None for any other."""
+        if not item.detail_of or (whole := self.get(item.detail_of)) is None:
+            return None
+        return self.twin(whole) or whole
 
     def twin(self, item: Item) -> Item | None:
         """The library's best copy of ``item``'s work, when that is another
