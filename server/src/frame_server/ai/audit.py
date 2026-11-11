@@ -115,7 +115,14 @@ class Audit(CriticNight):
             and bool(i.thumb_url)
             and not set_aside(i)
         ]
-        return random.sample(found, min(len(found), self.per_night))
+        # Favourites, playlists and Discover first (Mateusz 2026-11-11), each
+        # part drawn at random.
+        cared = self.cared()
+        first = [i for i in found if i.id in cared]
+        rest = [i for i in found if i.id not in cared]
+        picked = random.sample(first, min(len(first), self.per_night))
+        room = self.per_night - len(picked)
+        return picked + random.sample(rest, min(len(rest), room))
 
     def facts(self, item: Item) -> str:
         lines = [

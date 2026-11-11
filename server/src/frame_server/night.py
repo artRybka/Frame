@@ -123,6 +123,43 @@ class NightTask:
     label: str = ""
     #: Asks Claude (through the Batch API, at the owner's key's cost).
     paid: bool = False
+    #: Its package in the app (:data:`GROUPS`).
+    group: str = ""
+
+
+#: The tasks' packages in Konfiguracja → Zadania nocne, each started at once
+#: (Mateusz 2026-11-11: "pakiety działań, np. związanych z duplikatami,
+#: utrzymaniem katalogu, bo teraz lista jest długa"): key, name, what it does.
+GROUPS: list[tuple[str, str, str]] = [
+    (
+        "catalogue",
+        "Utrzymanie katalogu",
+        "Nowe dzieła, porządki w plikach, kopie razem, ostrzejsze kopie i oryginały Twoich dzieł.",
+    ),
+    (
+        "duplicates",
+        "Powtórki i jakość",
+        "Powtórki i detale, sędzia powtórek, strażnik katalogu i nocny przegląd. "
+        "Najpierw Ulubione, playlisty i Odkrywaj.",
+    ),
+    (
+        "descriptions",
+        "Opisy i fakty",
+        "Polskie teksty i słowa kluczowe, kim są artyści, gdzie wiszą dzieła, miasta i miejsca.",
+    ),
+    (
+        "discover",
+        "Odkrywaj i ramka",
+        "Studium dnia, Dziś dla Ciebie, karty Odkrywaj, Propozycje dnia, playlisty, "
+        "kolejka ramki i urodziny artystów.",
+    ),
+    (
+        "indexes",
+        "Spisy muzeów",
+        "Lokalne spisy kolekcji (Met, NGA, Luwr, Rijksmuseum i inne), "
+        "odświeżane, gdy przyjdzie pora.",
+    ),
+]
 
 
 @dataclass
@@ -311,9 +348,20 @@ class NightQueue:
                     "name": t.name,
                     "label": t.label or t.name,
                     "paid": t.paid,
+                    "group": t.group or None,
                     "last": runs.get(t.name),
                 }
                 for t in self.tasks
+            ],
+            "groups": [
+                {
+                    "key": key,
+                    "label": label,
+                    "about": about,
+                    "tasks": [t.name for t in self.tasks if t.group == key],
+                }
+                for key, label, about in GROUPS
+                if any(t.group == key for t in self.tasks)
             ],
             "running": None
             if run is None
@@ -371,7 +419,8 @@ def tasks(service: FrameService) -> list[NightTask]:
         then the library's works shown in an art archive's old photograph,
         from any other copy (their slides' colours have faded)."""
         looked = 0
-        archives = service.sharper.archive_works()[:ARCHIVES_A_NIGHT]
+        archives = service.cared.first(service.sharper.archive_works(), lambda i: [i.id])
+        archives = archives[:ARCHIVES_A_NIGHT]
         for item in [*player.upcoming(SHARPER_AHEAD), *archives]:
             if service.sharper.status(item) is not None:
                 continue  # known
@@ -388,7 +437,9 @@ def tasks(service: FrameService) -> list[NightTask]:
         """Which museums the library's works from Commons, Openverse and
         WikiArt are in, for those nobody looked up yet."""
         looked = 0
-        for item in service.library.all_items():
+        # Favourites, playlists and Discover first (Mateusz 2026-11-11).
+        items = service.cared.first(service.library.all_items(), lambda i: [i.id])
+        for item in items:
             if looked == HOLDERS_A_NIGHT or not night.quiet():
                 break
             if service.holders.known(item) is not None:
@@ -440,10 +491,11 @@ def tasks(service: FrameService) -> list[NightTask]:
         "si": "Spis Smithsonian",
         "wellcome": "Spis Wellcome Collection",
     }
+    cat, dup, text, disc, idx = "catalogue", "duplicates", "descriptions", "discover", "indexes"
     return [
-        NightTask("tidy", tidy, "Porządki w plikach"),
-        NightTask("catalogue", player.grow_at_night, "Nowe dzieła do katalogu"),
-        NightTask("grouping", grouping, "Kopie razem i podpowiedzi Szukaj"),
+        NightTask("tidy", tidy, "Porządki w plikach", group=cat),
+        NightTask("catalogue", player.grow_at_night, "Nowe dzieła do katalogu", group=cat),
+        NightTask("grouping", grouping, "Kopie razem i podpowiedzi Szukaj", group=cat),
         # Keywords and Polish texts nobody waits for, through the Batch API
         # at half the price (their answers come in by day).
         NightTask(
@@ -451,72 +503,96 @@ def tasks(service: FrameService) -> list[NightTask]:
             lambda night: service.ai.order_night(),
             "Słowa kluczowe i polskie teksty",
             paid=True,
+            group=text,
         ),
         NightTask(
             "nga",
             lambda night: nga.refresh_at_night(service.settings.data_dir),
             "Spis National Gallery of Art",
+            group=idx,
         ),
         NightTask(
             "courtauld",
             lambda night: courtauld.refresh_at_night(service.settings.data_dir),
             "Spis Courtauld Gallery",
+            group=idx,
         ),
         NightTask(
             "louvre",
             lambda night: louvre.refresh_at_night(service.settings.data_dir),
             "Spis Luwru",
+            group=idx,
         ),
         NightTask(
             "met",
             lambda night: met_index.refresh_at_night(service.settings.data_dir),
             "Spis Metropolitan Museum",
+            group=idx,
         ),
         NightTask(
             "loc",
             lambda night: loc_index.refresh_at_night(service.settings.data_dir),
             "Spis Biblioteki Kongresu",
+            group=idx,
         ),
-        *(NightTask(f"{key} dump", dump(key), dump_labels.get(key, "")) for key in dumps.DUMPS),
-        NightTask("births", lambda night: births_at_night(service, night), "Urodziny artystów"),
+        *(
+            NightTask(f"{key} dump", dump(key), dump_labels.get(key, ""), group=idx)
+            for key in dumps.DUMPS
+        ),
+        NightTask(
+            "births", lambda night: births_at_night(service, night), "Urodziny artystów", group=disc
+        ),
         NightTask(
             "artist people",
             lambda night: service.artist_people.at_night(night.quiet),
             "Kim są artyści",
+            group=text,
         ),
-        NightTask("daily", daily, "Studium dnia", paid=True),
-        NightTask("playlists", playlists, "Liczniki playlist"),
-        NightTask("frame line", frame_line, "Kolejka ramki"),
-        NightTask("sharper", sharper, "Ostrzejsze kopie"),
-        NightTask("museums", museums, "Gdzie wiszą dzieła"),
+        NightTask("daily", daily, "Studium dnia", paid=True, group=disc),
+        NightTask("playlists", playlists, "Liczniki playlist", group=disc),
+        NightTask("frame line", frame_line, "Kolejka ramki", group=disc),
+        NightTask("sharper", sharper, "Ostrzejsze kopie", group=cat),
+        NightTask("museums", museums, "Gdzie wiszą dzieła", group=text),
         NightTask(
             "museum places",
             lambda night: service.museum_places.at_night(night.quiet),
             "Miasta muzeów",
+            group=text,
         ),
-        NightTask("places", places, "Miejsca zdjęć"),
+        NightTask("places", places, "Miejsca zdjęć", group=text),
         # Waits for its batch while the night is quiet (an hour at most),
         # so that "themes" works out the new cards' covers.
-        NightTask("curator", service.curator.at_night, "Dziś dla Ciebie", paid=True),
-        NightTask("themes", themes, "Karty Odkrywaj"),
-        NightTask("suggestions", suggestions, "Propozycje dnia"),
-        # What the pictures of the nights before could not settle: Haiku,
-        # then Haiku as the critic, a quarter of an hour at most for each
-        # batch (a later answer is collected the next night). Before
-        # "rijks": after it the night is often over (2026-11-11: "twins"
-        # began at 04:55, the judge was left for the next night).
-        NightTask("twins judge", service.twins_judge.at_night, "Sędzia powtórek", paid=True),
-        # Hours at most (NIGHT_SECONDS), after what the morning needs.
-        NightTask("rijks", rijks, "Spis Rijksmuseum"),
+        NightTask("curator", service.curator.at_night, "Dziś dla Ciebie", paid=True, group=disc),
+        NightTask("themes", themes, "Karty Odkrywaj", group=disc),
+        NightTask("suggestions", suggestions, "Propozycje dnia", group=disc),
+        # The tidying, Favourites, playlists and Discover first (cared.py),
+        # all before "rijks": after it the night was over (2026-11-11: the
+        # copies got 5 minutes, the gatekeeper and the audit never ran).
         # Copies under other titles and details, by their pictures: what the
-        # night has time for, the rest the next (library/twins.py).
-        NightTask("twins", lambda night: service.twins.at_night(night.quiet), "Powtórki i detale"),
+        # night has time for (40 minutes at most), the rest the next.
+        NightTask(
+            "twins",
+            lambda night: service.twins.at_night(night.quiet),
+            "Powtórki i detale",
+            group=dup,
+        ),
+        # What the pictures could not settle, tonight's included: Haiku,
+        # then Haiku as the critic, a quarter of an hour at most for each
+        # batch (a later answer is collected the next night).
+        NightTask(
+            "twins judge", service.twins_judge.at_night, "Sędzia powtórek", paid=True, group=dup
+        ),
         # The catalogue's gatekeeper and the night audit: the same, each
         # with its critic (ai/gatekeeper.py, ai/audit.py).
-        NightTask("gatekeeper", service.gatekeeper.at_night, "Strażnik katalogu", paid=True),
-        NightTask("audit", service.audit.at_night, "Nocny przegląd dzieł", paid=True),
+        NightTask(
+            "gatekeeper", service.gatekeeper.at_night, "Strażnik katalogu", paid=True, group=dup
+        ),
+        NightTask("audit", service.audit.at_night, "Nocny przegląd dzieł", paid=True, group=dup),
         # Once a month: Commons' files with a tile set ("Pod lupą").
-        NightTask("tile sets", service.player.tile_sets_at_night, "Kafle „Pod lupą”"),
-        # Last: downloads, gently, in whatever time the night has left.
-        NightTask("kept originals", service.kept.at_night, "Oryginały Twoich dzieł"),
+        NightTask("tile sets", service.player.tile_sets_at_night, "Kafle „Pod lupą”", group=cat),
+        # Downloads, gently, a limited number a night.
+        NightTask("kept originals", service.kept.at_night, "Oryginały Twoich dzieł", group=cat),
+        # Last: the Rijksmuseum's index, in whatever time the night has left
+        # (2.5 hours at most, NIGHT_SECONDS), until it is whole.
+        NightTask("rijks", rijks, "Spis Rijksmuseum", group=idx),
     ]

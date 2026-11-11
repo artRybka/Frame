@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 from ..library.models import COLLECTIONS, ItemKind
 from ..library.vocabulary import set_aside
 from .client import image_block, request
-from .critic_night import CriticNight
+from .critic_night import REST, CriticNight
 from .daily import _object, _str
 
 if TYPE_CHECKING:
@@ -146,9 +146,12 @@ class Gatekeeper(CriticNight):
             for i in self.library.all_items()
             if i.id not in asked and i.id not in kept_by_owner and asked_by_rules(i)
         ]
-        # What the owner keeps or saw first, then the newest of the catalogue.
+        # Favourites, playlists and Discover first (Mateusz 2026-11-11), then
+        # what the owner keeps or saw, then the newest of the catalogue.
         found.sort(key=lambda i: i.added_at or "", reverse=True)
         found.sort(key=lambda i: not (not i.pooled or i.favorite or i.show_count > 0))
+        cared = self.cared()
+        found.sort(key=lambda i: cared.get(i.id, REST))
         return found
 
     def kept_by_owner(self) -> set[str]:

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import logging.handlers
+import re
 import threading
 from collections import deque
 from pathlib import Path
@@ -27,11 +28,47 @@ DAYS = 7
 #: The file's name in its folder; older days get the date after it.
 FILE = "server.log"
 
+#: A URL's query parameters that carry a key, a secret or a token: never
+#: written to the log (2026-11-11: WikiArt's login, accessCode and
+#: secretCode, stood in a failed request's URL in clear text).
+SECRET_PARAMS = (
+    "accesscode",
+    "secretcode",
+    "api_key",
+    "apikey",
+    "api-key",
+    "key",
+    "wskey",
+    "token",
+    "access_token",
+    "password",
+    "secret",
+)
+_SECRET = re.compile(
+    r"([?&](?:" + "|".join(re.escape(p) for p in SECRET_PARAMS) + r")=)[^&\s'\"<>]+",
+    re.IGNORECASE,
+)
+#: What stands in place of a secret.
+HIDDEN = "[ukryte]"
+
+
+def redact(text: str) -> str:
+    """``text`` with the secrets of the URLs in it left out."""
+    return _SECRET.sub(rf"\g<1>{HIDDEN}", text) if "=" in text else text
+
+
+class Redacting(logging.Formatter):
+    """A record as :class:`logging.Formatter` writes it, its URLs' secrets
+    left out."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        return redact(super().format(record))
+
 
 class LogBuffer(logging.Handler):
     def __init__(self, keep: int = KEEP) -> None:
         super().__init__()
-        self.setFormatter(logging.Formatter(FORMAT))
+        self.setFormatter(Redacting(FORMAT))
         self._records: deque[str] = deque(maxlen=keep)
         self._last: logging.LogRecord | None = None
         self._guard = threading.Lock()
@@ -94,7 +131,20 @@ def install() -> LogBuffer:
         for handler in (_buffer, _file):
             if handler is not None and handler not in logger.handlers:
                 logger.addHandler(handler)
+        for handler in logger.handlers:  # the container's log too
+            _redacting(handler)
     return _buffer
+
+
+def _redacting(handler: logging.Handler) -> None:
+    """``handler`` writing its records without their URLs' secrets."""
+    current = handler.formatter
+    if isinstance(current, Redacting) or type(current) not in (logging.Formatter, type(None)):
+        return  # ours, or one of its own kind (uvicorn's colours) left alone
+    if current is None:
+        handler.setFormatter(Redacting())
+    else:
+        handler.setFormatter(Redacting(current._fmt, current.datefmt))
 
 
 _file: logging.Handler | None = None
@@ -129,7 +179,7 @@ def keep_on_disk(folder: Path) -> None:
     except OSError as err:
         logging.getLogger(__name__).warning("the log is not kept on disk: %s", err)
         return
-    handler.setFormatter(logging.Formatter(FORMAT))
+    handler.setFormatter(Redacting(FORMAT))
     _file, _path = handler, path
     _buffer.preload(before[-KEEP:])
     install()
@@ -170,7 +220,7 @@ def day_lines(day: str, count: int, grep: str | None = None) -> list[str] | None
             and record.startswith(day)
             and (needle is None or needle in record.lower())
         ):
-            found.append(_shorten(record))
+            found.append(_shorten(redact(record)))
 
     # A day's file is named after it once the day is over; until the first
     # record after midnight, today's file still holds yesterday.

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -28,9 +29,13 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-#: How long the night waits for a batch, and how often it asks.
-WAIT_SECONDS = 3600.0
+#: How long the night waits for a batch, and how often it asks: a quarter
+#: of an hour, as the judge of copies (a later answer is collected the next
+#: night); an hour each left the tasks after them no time (2026-11-11).
+WAIT_SECONDS = 900.0
 POLL_SECONDS = 60.0
+#: The rank of a work nobody cares about (``cared``).
+REST = 2
 #: Works remembered as asked, the newest.
 JUDGED_MAX = 60_000
 #: What was written (or found), the newest, for the app's list.
@@ -62,6 +67,9 @@ class CriticNight(ABC):
         self.images = images
         self.claude = claude
         self.config = config
+        #: The works cared about, by id: 0 kept, 1 shown (``cared.Cared``);
+        #: their candidates go first.
+        self.cared: Callable[[], Mapping[str, int]] = dict
 
     # -- what a job says ----------------------------------------------------------
 
