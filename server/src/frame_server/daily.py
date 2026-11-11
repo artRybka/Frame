@@ -226,7 +226,8 @@ class Daily:
             skipped = self.skipped(day)
             if current is not None and current.id not in skipped:
                 skipped.append(current.id)
-            found = self.choose(day, skipped)
+            # One shortlist: the app waits for the answer (a minute at most).
+            found = self.choose(day, skipped, shortlists=1)
             if found is None:
                 return None
             self.library.set_state(SKIPPED_KEY, {"day": day.isoformat(), "items": skipped})
@@ -241,7 +242,9 @@ class Daily:
         stored = self.library.get_state(SKIPPED_KEY, {})
         return list(stored.get("items") or []) if stored.get("day") == day.isoformat() else []
 
-    def choose(self, day: date, skipped: list[str] | None = None) -> Item | None:
+    def choose(
+        self, day: date, skipped: list[str] | None = None, shortlists: int = SHORTLISTS
+    ) -> Item | None:
         """The work for ``day``; ``skipped``: works set aside for it by hand
         (each one drawn again makes another draw)."""
         skipped = skipped if skipped is not None else self.skipped(day)
@@ -285,7 +288,7 @@ class Daily:
         values = {i.id: score(i, day, taste, rng) for i in pool}
         ranked = sorted(pool, key=lambda i: values[i.id], reverse=True)
         first: Item | None = None
-        for _ in range(SHORTLISTS):
+        for _ in range(shortlists):
             shortlist = self._shortlist(ranked)
             if not shortlist:
                 break
