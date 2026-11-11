@@ -1,5 +1,5 @@
 """The decisions made so far about the works, as data to measure changes
-of the rules against (docs/PLAN.md 3.3zzz154).
+of the rules against (docs/PLAN.md 3.3zzz155).
 
 Before a rule is replaced by a more general one, what the rules, the
 pictures, the judge and the owner have settled until now is the best test

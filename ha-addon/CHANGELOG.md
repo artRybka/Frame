@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.10
+## 1.145.11
 
 - Porządki w regułach doboru dzieł, etap 0 (pomiar, bez zmiany tego, co
   widać). Po audycie reguł z 11 listopada serwer zapisuje, gdzie idzie

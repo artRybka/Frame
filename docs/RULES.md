@@ -49,7 +49,7 @@ chciałbym żeby spadła jakość doboru tych propozycji”).
 
 | Etap | Co | Stan |
 |---|---|---|
-| 0 | Zestaw wzorcowy i pomiary | 1.145.10 (PLAN 3.3zzz154) |
+| 0 | Zestaw wzorcowy i pomiary | 1.145.11 (PLAN 3.3zzz155) |
 | 1 | Noc: porządki przed dobieraniem, budżety czasu | |
 | 2 | Szybkość bez zmiany wyników: przyrostowe scalanie grup, punkty ORB na dysku, odsiew par, karty jednym przejściem | |
 | 3 | Sprzątanie resztek | |

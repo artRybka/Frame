@@ -1,5 +1,5 @@
 """What each place of the server says of each kind of work, frozen
-(docs/PLAN.md 3.3zzz154).
+(docs/PLAN.md 3.3zzz155).
 
 The rules that decide whether a work is shown are put together anew in many
 places (the audit of 2026-11-11: about sixty calls in fifteen files), each
