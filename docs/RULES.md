@@ -117,6 +117,16 @@ a zadania z modelami to czekanie na paczki (7 do 9 minut każda). Duży obraz
 pobrany do porównania zostaje więc jako oryginał dzieła
 (`ImageCache.looked_at`), pierwszy do usunięcia przy braku miejsca.
 
+Rozmiar obrazu (znalezisko z całego katalogu, 2026-11-11, PLAN 3.3zzz166):
+`Item.width` i `height` to rozmiar oryginału tylko dla źródeł z
+`images.SAY_SIZE`; dla pozostałych (Met, Rijksmuseum, MNW, MNK, Luwr, Getty,
+Paris Musées, V&A, Europeana, Wellcome, Cleveland) to rozmiar miniatury,
+czyli proporcje obrazu i nic więcej. Reguła, która ocenia jakość kopii,
+pyta `images.said_side(item)` (None: nie wiadomo), nigdy `item.width`.
+Studium dnia przez to nie wybierało z ponad połowy katalogu. Do etapu 5
+zostaje ten sam błąd w powtórkach (`twins._surely_whole`) i czytnik
+Cleveland.
+
 ## Jak sprawdzić zmianę reguł
 
 ### 1. Co mówi każde miejsce o każdym rodzaju dzieła

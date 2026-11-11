@@ -22,6 +22,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from ..library.images import said_side
 from .client import SONNET, image_block, request
 from .daily import _object, _str
 
@@ -126,7 +127,7 @@ def _photograph(item: Item) -> str:
     if copy is not None:
         where = f" (a sharper copy from {copy.museum or copy.source})"
         return f"Photograph: {copy.width} × {copy.height} px{where}"
-    if item.width and item.height:
+    if said_side(item) is not None:  # not a thumbnail's size
         return f"Photograph: {item.width} × {item.height} px"
     return ""
 
