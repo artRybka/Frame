@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.143.4
+
+- Sędzia powtórek pracuje w nocy przed czytaniem spisu Rijksmuseum, a nie
+  po nim (wcześniej noc kończyła się, zanim do niego doszła), i czeka na
+  odpowiedź najwyżej kwadrans; spóźnioną zbiera następnej nocy.
+
 ## 1.143.3
 
 - „Droga dzieła” powstaje przy przewijaniu na wysokości środka ekranu
