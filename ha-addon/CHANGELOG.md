@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.28
+
+- Porządki: serwer nie liczy już i nie trzyma oceny „na e-papierze”, której
+  od kilku wydań nikt nie czytał. Nic się nie zmienia w tym, co widać.
+
 ## 1.145.27
 
 - Studium dzieła, „Droga dzieła”: kropka przystanku wyrasta z samej

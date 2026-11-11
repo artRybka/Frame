@@ -271,9 +271,9 @@ def test_analyse_blue_picture() -> None:
     import io
 
     img = Image.open(io.BytesIO(jpeg_bytes((40, 80, 200))))
-    swatches, tags, score, _ = analyse(img)
+    swatches, tags, _ = analyse(img)
     assert "blue" in tags and "cool" in tags
-    assert swatches[0].hex.startswith("#") and 0 <= score <= 1
+    assert swatches[0].hex.startswith("#")
 
 
 def test_analyse_finds_small_vivid_accents() -> None:
@@ -289,7 +289,7 @@ def test_analyse_finds_small_vivid_accents() -> None:
     pixels[110:150, 100:130] = (120, 32, 28)  # skirt
     noise = rng.integers(-6, 7, pixels.shape)
     img = Image.fromarray(np.clip(pixels.astype(int) + noise, 0, 255).astype(np.uint8))
-    swatches, tags, _, _ = analyse(img)
+    swatches, tags, _ = analyse(img)
     dominant = [s for s in swatches if not s.accent]
     accents = [s for s in swatches if s.accent]
     assert 1 <= len(dominant) <= 4 and swatches[: len(dominant)] == dominant  # dominant first
@@ -309,8 +309,8 @@ def test_colour_tags_go_by_area() -> None:
         pixels[100 : 100 + robe_rows, 60:140] = (40, 70, 170)
         return Image.fromarray(pixels)
 
-    _, wide, _, _ = analyse(altarpiece(100))
-    _, narrow, _, _ = analyse(altarpiece(10))
+    _, wide, _ = analyse(altarpiece(100))
+    _, narrow, _ = analyse(altarpiece(10))
     assert "blue" in wide and "accent:blue" not in wide
     assert "blue" not in narrow and "accent:blue" in narrow and "warm" in narrow
     assert has_colours(narrow, ["accent:blue"]) and not has_colours(narrow, ["blue"])
@@ -358,15 +358,15 @@ def test_only_colours_ask_for_pictures_painted_in_them_alone() -> None:
     pixels[:] = (120, 120, 118)
     pixels[:80] = (60, 110, 190)
     pixels[80:150] = (30, 70, 150)
-    _, tags, _, _ = analyse(Image.fromarray(pixels))
+    _, tags, _ = analyse(Image.fromarray(pixels))
     assert "only:blue" in tags and has_colours(tags, ["only:blue", "only:teal"])
     pixels[150:170, :60] = (190, 40, 30)  # a red boat
-    _, tags, _, _ = analyse(Image.fromarray(pixels))
+    _, tags, _ = analyse(Image.fromarray(pixels))
     assert has_colours(tags, ["only:blue", "only:teal", "only:red"])
 
 
 def test_yellowed_paper_is_not_warm() -> None:
-    _, tags, _, _ = analyse(_etching([(238, 226, 198)]))
+    _, tags, _ = analyse(_etching([(238, 226, 198)]))
     assert "warm" not in tags and not any(t.startswith("accent:") for t in tags)
 
 
@@ -385,12 +385,12 @@ def test_colourful_needs_several_hues_far_apart() -> None:
     red, blue, green = (170, 40, 35), (40, 70, 160), (60, 120, 60)
     brown = (110, 70, 40)
     # A Madonna's red and blue with green grass: a few percent each will do.
-    _, madonna, _, _ = analyse(print_with((red, 8), (blue, 8), (green, 8)))
+    _, madonna, _ = analyse(print_with((red, 8), (blue, 8), (green, 8)))
     assert "colorful" in madonna and "monochrome" not in madonna
     # Black and white, sepia on old paper and a two-tone print are not.
-    _, etching, _, _ = analyse(_etching([(238, 226, 198)]))
-    _, two_tone, _, _ = analyse(print_with((blue, 40), (brown, 40)))
-    _, chalk, _, _ = analyse(print_with((red, 60)))
+    _, etching, _ = analyse(_etching([(238, 226, 198)]))
+    _, two_tone, _ = analyse(print_with((blue, 40), (brown, 40)))
+    _, chalk, _ = analyse(print_with((red, 60)))
     for tags in (etching, two_tone, chalk):
         assert "colorful" not in tags
     assert has_colours(madonna, ["colorful"]) and not has_colours(two_tone, ["colorful"])
@@ -509,7 +509,7 @@ def test_analysis_gives_colour_shares() -> None:
 
 
 def test_monochrome_pictures_have_no_accents() -> None:
-    swatches, _, _, _ = analyse(_etching([(238, 226, 198)]))
+    swatches, _, _ = analyse(_etching([(238, 226, 198)]))
     assert swatches and not any(s.accent for s in swatches)
 
 
@@ -884,8 +884,7 @@ def test_taking_takes_turns_and_skips_known_or_unfit(tmp_path) -> None:
     class Importing(Importer):
         def _analysed(self, item: Item) -> Item:
             # Odd ids do not fit once looked at.
-            score = 0.2 if int(item.source_id) % 2 else 0.9
-            return item.model_copy(update={"suitability": score})
+            return item.model_copy(update={"width": 100 if int(item.source_id) % 2 else 3000})
 
     saved = dict(MUSEUMS)
     MUSEUMS.update(aic=A, cma=B)
@@ -899,7 +898,7 @@ def test_taking_takes_turns_and_skips_known_or_unfit(tmp_path) -> None:
         rng = random.Random(3)
         streams = [source(httpx.Client()).random_draw(spec, rng) for source in (A, B)]
         importer._take(
-            streams, 8, job, before=spec.fits, after=lambda item: (item.suitability or 0) >= 0.5
+            streams, 8, job, before=spec.fits, after=lambda item: (item.width or 0) >= 2000
         )
     finally:
         MUSEUMS.clear()
@@ -1105,20 +1104,6 @@ def _etching(colours: list[tuple[int, int, int]]) -> Image.Image:
     ink = (rng.random((240, 320)) < 0.35) | (np.arange(320)[None, :] % 7 == 0)
     pixels[ink] = (45, 35, 30)
     return Image.fromarray(pixels)
-
-
-def test_colourful_works_score_best_on_epaper() -> None:
-    from frame_server.library.colors import score
-
-    etching = score(_etching([(238, 226, 198)]))  # sepia ink on yellowed paper
-    grey = score(_etching([(225, 225, 225)]))
-    print_ = score(_etching([(220, 60, 50), (40, 90, 200), (240, 200, 40), (60, 160, 70)]))
-    # However crisp, pictures without colour of their own score below 0.72;
-    # a colourful one makes it.
-    assert etching <= 0.5 and grey <= 0.5
-    assert print_ >= 0.72
-    _, _, analysed, _ = analyse(_etching([(238, 226, 198)]))
-    assert analysed == etching
 
 
 def test_starter_blues_take_turquoise_once(tmp_path) -> None:
