@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.144.3
+
+- „Droga dzieła”: na końcu drogi zamiast czerwonej kropki w białym otoku
+  jest plama czerwonej akwareli. Rozlewa się od środka, dosycha z
+  ciemniejszym brzegiem, a tam, gdzie styka się z kreską i z tuszem pod
+  ostatnim podpisem, czerwień i czerń wpływają w siebie.
+- Odnoga wystawy rysuje się odręcznymi kreseczkami, jedna po drugiej,
+  każda trochę inna. Zakreślenie wokół podpisu powstaje dopiero po
+  plamie, jednym ruchem od początku do końca.
+- Kiedy ekran się cofa, rysunek zanika tak, jak powstał, tylko wstecz
+  i szybciej: podpis, plama, kropka, a kreska wraca w górę.
+- Krótka linijka między dwiema długimi nie robi już głębokiego wcięcia
+  w plamie pod podpisem.
+
 ## 1.144.2
 
 - „Droga dzieła”: kreska biegnie przodem, niżej na ekranie, najpierw
