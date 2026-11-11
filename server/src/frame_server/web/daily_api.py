@@ -309,7 +309,15 @@ def page(
         pigments=vary_hedges(essay.pigments) if essay else [],
         size=size,
         journey=journey,
-        legacy_pending=bool(lists and essay and svc.later.look_soon(item, essay.legacy)) or looking,
+        # While the study is cut it looks the later works up itself
+        # (``Study._cut``): asked here too, the museums were asked twice,
+        # and the study's "later" part was now and then never told.
+        legacy_pending=bool(
+            lists
+            and essay
+            and (svc.study.making(item.id) or svc.later.look_soon(item, essay.legacy))
+        )
+        or looking,
         sources=essay.sources if essay else [],
         model=note.model if note else "",
         partial=not lists,
