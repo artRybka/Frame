@@ -26,7 +26,7 @@ from ..library.markup import strip_artist, strip_language_prefix, strip_markup
 from ..library.models import ItemKind, Note
 from ..library.museums import client
 from ..library.nationality import artist_note, fix_note
-from ..library.vocabulary import set_aside
+from ..library.verdict import Place, against
 from ..library.wikidata import Facts, Wikidata, wikipedia_intro
 from .client import HAIKU, SONNET, cost, image_block, request
 from .jobs import NoteJob, Usage, text_hash
@@ -412,7 +412,7 @@ class PlTextJob(NoteJob):
         return self.applies(item) and (not item.pooled or item.favorite or item.show_count > 0)
 
     def in_library(self, item: Item) -> bool:
-        return self.applies(item) and not (item.pooled and set_aside(item))
+        return self.applies(item) and not against(item, Place.LISTED)
 
     def fresh(self, item: Item, note: Note | None) -> bool:
         """Up to date; texts kept with an English copy of the museum's

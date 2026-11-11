@@ -13,7 +13,8 @@ from test_sharper import _detail, _print
 
 from frame_server.library import Item, PlaylistRules
 from frame_server.library.twins import VERSION
-from frame_server.library.vocabulary import is_copy, is_detail, is_openverse_copy
+from frame_server.library.verdict import copy_whys
+from frame_server.library.vocabulary import is_detail, is_openverse_copy
 from frame_server.service import FrameService
 
 
@@ -141,12 +142,12 @@ def test_details_by_title_and_openverse_copies() -> None:
     def item(source: str, title: str, url: str = "") -> Item:
         return Item(id=f"{source}:1", source=source, source_id="1", title=title, url=url)
 
-    assert is_copy(item("wmc", "Young Woman with a Water Jug (detal)"))
-    assert is_copy(item("wikiart", "The Procuress, detail (supposed self-portrait)"))
-    assert is_copy(item("wmc", "Vermeer - Girl reading a Letter at an Open Window, detail"))
-    assert not is_copy(item("met", "Architectural Detail"))
-    assert not is_copy(item("wmc", "Fragment of an Altarpiece"))
-    assert not is_copy(item("wmc", "The Art of Painting"))
+    assert copy_whys(item("wmc", "Young Woman with a Water Jug (detal)"))
+    assert copy_whys(item("wikiart", "The Procuress, detail (supposed self-portrait)"))
+    assert copy_whys(item("wmc", "Vermeer - Girl reading a Letter at an Open Window, detail"))
+    assert not copy_whys(item("met", "Architectural Detail"))
+    assert not copy_whys(item("wmc", "Fragment of an Altarpiece"))
+    assert not copy_whys(item("wmc", "The Art of Painting"))
     raw = item("openverse", "Young Woman Water Pitcher", "https://www.rawpixel.com/image/1015474")
     met = item("openverse", "Study of a Young Woman", "https://www.metmuseum.org/art/1")
     flickr = item("openverse", "Monet", "https://www.flickr.com/photos/1")
@@ -213,7 +214,7 @@ def test_a_painting_on_a_wall_is_no_copy_of_it(service: FrameService) -> None:
     service.twins.look()
     photo = service.library.get("wmc:2")
     assert photo is not None and photo.scene_of == "met:1" and not photo.copy_of
-    assert is_copy(photo)
+    assert copy_whys(photo)
     assert _ids(service, "vermeer") == {"met:1"}
 
 

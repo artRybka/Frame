@@ -65,13 +65,12 @@ from .library.duplicates import same_work, surname
 from .library.images import BYTES, display_copy, kept_long, own_copy
 from .library.likeness import Likeness
 from .library.models import Note, SharperCopy
+from .library.verdict import Place, against
 from .library.vocabulary import (
     artist_matches,
     is_art_archive_photo,
-    is_copy,
     is_grey_copy,
     is_photograph,
-    is_reproduction,
 )
 
 if TYPE_CHECKING:
@@ -637,8 +636,7 @@ class Sharper:
             and not is_art_archive_photo(copy)
             and copy.look is None
             and copy.sharper is None
-            and not is_copy(copy)
-            and not is_reproduction(copy)
+            and not against(copy, Place.COMPARED)
             and (is_photograph(item) or not is_photograph(copy))
             and bool(display_copy(copy))
         )

@@ -16,7 +16,8 @@ from .museums import PLACES_EUROPEANA, PLACES_WD, Discovery, by_artist
 from .phrases import phrases
 from .places import QID, SOURCE_PLACES, known_places
 from .repo import matches, said_as, says, search_fits
-from .vocabulary import asked_artists, asked_topics, category_fits, museum_kind
+from .verdict import category_fits
+from .vocabulary import asked_artists, asked_topics, museum_kind
 
 #: With colours asked, museum pages of this many works are looked at, until
 #: ``limit`` fit, this many pages are seen or this many seconds have passed.

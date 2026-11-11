@@ -55,6 +55,7 @@ from .library.themes import (
     thin_other_art,
     thin_searches,
 )
+from .library.verdict import copy_whys
 from .library.viewer import OWNER_ID
 from .library.vocabulary import (
     DECORATIVE,
@@ -65,7 +66,6 @@ from .library.vocabulary import (
     SCULPTURE,
     object_category,
     other_art,
-    set_aside,
 )
 from .progress import Stage
 from .schedule import FrameSettings, Presentation, in_quiet_hours, next_change
@@ -106,7 +106,7 @@ RESET_KEY = "library_reset"
 #: Set once the catalogue's manuscripts are gone.
 #: Set once the catalogue has been cleared of what it leaves out now.
 SET_ASIDE_KEY = "set_aside_dropped"
-#: Bump when ``set_aside`` leaves out more, so the catalogue is cleaned again
+#: Bump when ``verdict.COPIES`` leave out more, so the catalogue is cleaned again
 #: (1: photographs and manuscripts, 2: reproductions and B&W copies,
 #: 3: Girona's photo archive, 4: stamps and Athens' Philatelic Postal Museum,
 #: 5: black-and-white photographs from Foto Marburg and KIK-IRPA,
@@ -1688,7 +1688,7 @@ class Player:
             i
             for i in self.library.query(include_excluded=True)[1]
             if i.pooled
-            and set_aside(i, OBJECT_CATEGORIES)  # "Sztuki inne" stay (2026-11-06)
+            and copy_whys(i)  # "Sztuki inne" stay (2026-11-06)
             and not i.favorite
             and not i.framing
             and i.id not in kept

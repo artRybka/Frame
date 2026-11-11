@@ -20,6 +20,7 @@ from frame_server.library.museums import (
     available,
     museum,
 )
+from frame_server.library.verdict import copy_whys
 from frame_server.library.vocabulary import is_painting
 
 MATISSE = "http://data.europeana.eu/agent/60593"
@@ -276,7 +277,6 @@ def test_europeana_types_in_any_language_sort_objects_and_text_out() -> None:
     from frame_server.library.vocabulary import (
         DECORATIVE,
         PHOTOGRAPHY,
-        is_copy,
         is_document,
         object_category,
     )
@@ -316,11 +316,11 @@ def test_europeana_types_in_any_language_sort_objects_and_text_out() -> None:
     ]
     with _europeana(records, []) as http:
         programme, plate, bell, street, poster = Europeana(http).search("1942")[1]
-    assert is_document(programme) and is_copy(programme)
+    assert is_document(programme) and copy_whys(programme)
     assert object_category(plate) == DECORATIVE and object_category(bell) == DECORATIVE
     assert object_category(street) == PHOTOGRAPHY
     assert poster.classification == "Poster" and object_category(poster) is None
-    assert not is_copy(poster)
+    assert not copy_whys(poster)
 
 
 def test_text_pages_and_backs_of_works_are_no_works() -> None:

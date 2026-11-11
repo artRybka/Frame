@@ -15,13 +15,14 @@ other sources: the owner's own photographs are not in it.
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
 
 from .library.duplicates import same_work
 from .library.images import OWN_SOURCES
 from .library.models import Item, ItemKind
 from .library.twins import pair_key
+from .library.verdict import COPIES, NAMES, Why, whys
 
 if TYPE_CHECKING:
     from .service import FrameService
@@ -95,6 +96,11 @@ def decisions(service: FrameService) -> dict[str, Any]:
     - ``apart``: pairs that are not one work, by the "owner" ("To nie to
       samo") or the "judge" (asked and kept apart, or the critic said no);
     - ``set_aside``: works the gatekeeper set aside, and as what;
+    - ``kept``: works the owner kept (a heart, a playlist: not ``pooled``)
+      that the rules have a reason against (``verdict.whys``: a detail, a
+      reproduction, a stamp, a sculpture…), each with its reasons, whether
+      it has a heart and whether it is ``studied``: among the works today's
+      work of the day is chosen from;
     - ``items``: the brief of every work named above, by id.
     """
     library = service.library
@@ -166,6 +172,18 @@ def decisions(service: FrameService) -> dict[str, Any]:
         if pair_key(a, b) not in linked and keep(a, b):
             apart.append({"a": a, "b": b, "by": "judge"})
 
+    studied = {i.id for i in service.daily.pool(date.today(), [])}
+    kept = [
+        {
+            "id": item.id,
+            "why": [why.value for why in why],
+            "liked": item.favorite,
+            "studied": item.id in studied,
+        }
+        for item in everything.values()
+        if not item.pooled and (why := whys(item)) and keep(item.id)
+    ]
+
     return {
         "at": datetime.now(UTC).isoformat(timespec="seconds"),
         "works": len(everything),
@@ -174,8 +192,27 @@ def decisions(service: FrameService) -> dict[str, Any]:
         "scenes": scenes,
         "apart": apart,
         "set_aside": set_aside,
+        "kept": kept,
         "items": {i.id: brief(i) for i in named.values()},
     }
+
+
+def kept_against(data: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """The works the owner kept that the rules have a reason against, by
+    the reason as the app would say it (a copy's reasons before "Sztuki
+    inne"; a work with several under its first), each as its brief with
+    ``liked`` and ``studied``: the list he decides the one verdict by."""
+    items = data.get("items") or {}
+    found: dict[str, list[dict[str, Any]]] = {}
+    for entry in data.get("kept") or []:
+        reasons = [Why(value) for value in entry.get("why") or []]
+        if not reasons:
+            continue
+        first = next((why for why in reasons if why in COPIES), reasons[0])
+        work = {**(items.get(entry["id"]) or {"id": entry["id"]})}
+        work.update(liked=bool(entry.get("liked")), studied=bool(entry.get("studied")))
+        found.setdefault(NAMES[first], []).append(work)
+    return found
 
 
 def measure(
@@ -227,6 +264,9 @@ def main(argv: list[str] | None = None) -> int:
         told = ", ".join(f"{n} {what}" for what, n in sorted(counts.items()))
         print(f"{kind}: {told}")
     print(f"set aside by the gatekeeper: {len(data.get('set_aside') or [])}")
+    for name, works in sorted(kept_against(data).items()):
+        studied = sum(w["studied"] for w in works)
+        print(f"kept, {name}: {len(works)} ({studied} may be the work of the day)")
     return 0
 
 

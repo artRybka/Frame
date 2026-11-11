@@ -25,6 +25,7 @@ from frame_server.library.themes import (
     WEEKLY,
     theme_of_the_day,
 )
+from frame_server.library.verdict import Place, against, category_fits, copy_whys
 from frame_server.library.vocabulary import (
     BY_KEY,
     EARLY_COLOUR,
@@ -32,8 +33,6 @@ from frame_server.library.vocabulary import (
     STYLE_YEARS,
     TERMS,
     artist_matches,
-    category_fits,
-    is_copy,
     is_grey_copy,
     is_grey_painting,
     is_manuscript,
@@ -42,7 +41,6 @@ from frame_server.library.vocabulary import (
     is_reproduction,
     museum_queries,
     object_category,
-    set_aside,
     style_artists,
     suggest,
     term,
@@ -280,7 +278,9 @@ def test_photographs_are_told_apart() -> None:
     )
     assert not is_photograph(own)  # the owner's photos are never set aside
     page = _work(5, title="Leaf from a Psalter")
-    assert set_aside(page) and not set_aside(page, ["technique:manuscripts"])
+    assert against(page, Place.SOUGHT) and not against(
+        page, Place.SOUGHT, ["technique:manuscripts"]
+    )
 
 
 def test_sculpture_photographs_and_crafts_only_when_asked_for() -> None:
@@ -298,7 +298,9 @@ def test_sculpture_photographs_and_crafts_only_when_asked_for() -> None:
         None,
     ]
     for work in (bust, vase, photo):
-        assert set_aside(work) and not set_aside(work, [object_category(work) or ""])
+        assert against(work, Place.SOUGHT) and not against(
+            work, Place.SOUGHT, [object_category(work) or ""]
+        )
     monet = PlaylistRules(artists=["Claude Monet"], query="")
     for work in (bust, vase, photo, lilies):
         work.artist = "Claude Monet"
@@ -319,7 +321,7 @@ def test_sculpture_photographs_and_crafts_only_when_asked_for() -> None:
     assert category_fits(lilies, []) and not category_fits(bust, [])
     # Openverse's photographs are Flickr's: never.
     flickr = Item(id="openverse:1", source="openverse", source_id="1", classification="photograph")
-    assert set_aside(flickr, ["technique:photography"])
+    assert against(flickr, Place.SOUGHT, ["technique:photography"])
 
 
 def test_reproductions_are_told_apart() -> None:
@@ -339,7 +341,7 @@ def test_reproductions_are_told_apart() -> None:
 
 def test_paintings_without_colour_are_copies() -> None:
     grey = _work(1, title="Babie lato", classification="Painting", tint_spread=0.002)
-    assert is_grey_painting(grey) and is_copy(grey) and set_aside(grey)
+    assert is_grey_painting(grey) and copy_whys(grey) and against(grey, Place.SOUGHT)
     oil = _work(2, title="Babie lato", medium="Oil on canvas", tint_spread=0.002)
     assert is_grey_painting(oil)
     coloured = _work(3, title="Babie lato", classification="Painting", tint_spread=0.03)
@@ -367,12 +369,14 @@ def test_black_and_white_photos_of_art_archives_are_copies() -> None:
     drawing = archive(
         2, title="Kartoffelfeld in den Dünen", classification="Drawing", tint_spread=0.0
     )
-    assert all(is_grey_copy(i) and is_copy(i) and set_aside(i) for i in (berceuse, drawing))
+    assert all(
+        is_grey_copy(i) and copy_whys(i) and against(i, Place.SOUGHT) for i in (berceuse, drawing)
+    )
     colour = archive(3, title="La Berceuse / Madame Roulin", tint_spread=0.027)
     unknown = archive(4, title="La Berceuse / Madame Roulin")
-    assert not is_copy(colour) and not is_copy(unknown)
+    assert not copy_whys(colour) and not copy_whys(unknown)
     etching = _work(5, title="Melencolia I", classification="Print", tint_spread=0.0)
-    assert not is_grey_copy(etching) and not is_copy(etching)
+    assert not is_grey_copy(etching) and not copy_whys(etching)
     grey_oil = _work(6, title="Babie lato", classification="Painting", tint_spread=0.002)
     assert is_grey_copy(grey_oil)
     # Kept, it stays in the library and the favourites, but no search finds it.
@@ -394,8 +398,8 @@ def test_stamps_are_never_pictures() -> None:
         title="Igrzyska Olimpijskie Ateny 2004: starożytne monety olimpijskie",
         credit="Philatelic Postal Museum",
     )
-    assert is_postal(athens) and is_copy(athens) and set_aside(athens)
-    assert set_aside(athens, ["technique:decorative"])
+    assert is_postal(athens) and copy_whys(athens) and against(athens, Place.SOUGHT)
+    assert against(athens, Place.SOUGHT, ["technique:decorative"])
     assert is_postal(_work(1, title="Wilhelmina", classification="Postage stamp"))
     assert is_postal(_work(2, title="Chopin", classification="Znaczek pocztowy"))
     # Posters for the post and artists' postcards are pictures.

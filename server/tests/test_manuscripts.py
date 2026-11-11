@@ -13,7 +13,8 @@ from frame_server.library.paris import ParisMusees
 from frame_server.library.search import MuseumSearch
 from frame_server.library.smithsonian import Smithsonian
 from frame_server.library.vam import VictoriaAndAlbert
-from frame_server.library.vocabulary import MANUSCRIPTS, category_fits, museum_kind
+from frame_server.library.verdict import category_fits
+from frame_server.library.vocabulary import MANUSCRIPTS, museum_kind
 from frame_server.library.yale import YaleMuseums
 
 MET_LEAF = {

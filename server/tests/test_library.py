@@ -1218,3 +1218,30 @@ def test_state_is_read_while_another_thread_writes(tmp_path) -> None:
     except RuntimeError:
         pass
     assert lib.get_state("c") is None and lib.get_state("a") == {"n": 1}
+
+
+def test_closing_waits_for_a_write_in_progress(tmp_path) -> None:
+    """A write on another thread (a download's note, the night's state)
+    holds the connection: closing under it crashed the interpreter (the
+    server tests' exit 139)."""
+    library = Library(tmp_path / "lib.db")
+    inside, leave = threading.Event(), threading.Event()
+
+    def write() -> None:
+        with library._db() as db:
+            inside.set()
+            leave.wait(5)
+            db.execute("INSERT OR REPLACE INTO kv (key, value) VALUES ('late', '1')")
+
+    writer = threading.Thread(target=write)
+    writer.start()
+    assert inside.wait(5)
+    closer = threading.Thread(target=library.close)
+    closer.start()
+    closer.join(0.3)
+    assert closer.is_alive()  # waits for the write to end
+    leave.set()
+    writer.join(5)
+    closer.join(5)
+    assert not writer.is_alive() and not closer.is_alive()
+    assert Library(tmp_path / "lib.db").get_state("late") == 1  # written before the close
