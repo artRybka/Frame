@@ -37,6 +37,21 @@ float ease(float x) {
     return x * x * (3.0 - 2.0 * x);
 }
 
+/// How far a place is from a stroke from `a` to `b`, `wide.x` wide at
+/// `a` and `wide.y` at `b` (half widths); under 0 it is inside it.
+float strokeAway(float2 at, float2 a, float2 b, float2 wide) {
+    float2 v = b - a;
+    float along = clamp(dot(at - a, v) / max(dot(v, v), 0.0001), 0.0, 1.0);
+    return length(at - a - v * along) - mix(wide.x, wide.y, along);
+}
+
+/// How far a place is from a box with round corners (`box`: its left,
+/// top, right and bottom); under 0 it is inside it.
+float boxAway(float2 at, float4 box, float corner) {
+    float2 q = abs(at - 0.5 * (box.xy + box.zw)) - 0.5 * (box.zw - box.xy) + corner;
+    return length(max(q, float2(0.0))) + min(max(q.x, q.y), 0.0) - corner;
+}
+
 }  // namespace paper
 
 [[ stitchable ]] half4 watercolour(float2 position, SwiftUI::Layer layer, float2 size, float progress) {
@@ -169,5 +184,73 @@ float ease(float x) {
     float3 settled = mix(float3(wash.rgb), float3(dense.rgb), body) + (pool - 0.5) * tooth.y * dry;
     float3 ink = mix(float3(wet.rgb), settled, dry);
     float3 colour = clamp(mix(float3(seeped.rgb), ink, inside), 0.0, 1.0);
+    return half4(half3(colour * alpha), half(alpha));
+}
+
+// Where the work is now, at the end of the road in JourneyRoad: a blot of
+// red watercolour (RoadBlot; Mateusz 2026-11-11 09:44: „czerwona kropka na
+// końcu także jako plama akwareli, bez białego otoku. Na styku z czernią
+// miesza się jak prawdziwa akwarela”). The view is a square of white with
+// the blot's middle at `centre`; `age` is how long ago the blot began, in
+// seconds. It spreads from its middle to about `radius`, its outline
+// wandering (`lobes`: three turns of it), with a sharp wet edge; dry, its
+// pigment has pooled along the rim and its middle is paler, and the paper
+// round it has soaked some of it up, in places, as a paler ring. The black
+// meets it in two places: the end of the line, which runs into it from
+// `back`, and the last stop's ink, which comes out of it towards `into`
+// and under the text there (`stain`: that line's box), `flow` seconds ago.
+// While both are wet they run into each other: the red creeps out along
+// the black and the black into the red's rim, more with time, the middle
+// of the blot staying red. Over the black this paints the mixture; the
+// line and the stain themselves are drawn under it. Lengths are in points.
+[[ stitchable ]] half4 blot(float2 position, half4 color, float2 centre, float2 back, float2 into, float4 stain,
+                            float radius, float age, float flow, float seed, float3 lobes, half4 red, half4 ink) {
+    using namespace paper;
+    if (age <= 0.0) { return half4(0); }
+    float2 at = position;
+    float2 off = at - centre;
+    float away = length(off);
+    float turn = atan2(off.y, off.x);
+    float rim = radius * (1.0 + 0.07 * sin(2.0 * turn + lobes.x) + 0.05 * sin(3.0 * turn + lobes.y)
+                          + 0.035 * sin(5.0 * turn + lobes.z));
+    float ragged = 1.6 * (noise(at / 4.0, 11.0 + seed) - 0.5);
+    // The black keeps to the blot's rim: its middle stays red.
+    float core = rim - away - 2.5;
+    float line = max(core, strokeAway(at, back, centre, float2(2.9, 2.9)));
+    float poured = max(core, min(strokeAway(at, centre, into, float2(4.6, 10.0)), boxAway(at, stain, 8.0)));
+    float warp = 3.2 * (noise(at / 6.0, 21.0 + seed) - 0.5) + 1.6 * (noise(at / 2.5, 22.0 + seed) - 0.5);
+    float pool = noise(at / 9.0, 31.0 + seed);
+    float grain = noise(at / 1.5, 41.0 + seed);
+    float patch = noise(at / 12.0, 51.0 + seed);
+
+    float grow = 1.0 - pow(1.0 - min(1.0, age / 0.55), 2.4);
+    float dry = ease((age - 0.9) / 2.2);
+    float soak = ease((age - 1.1) / 2.6);
+    float run = ease((age - 0.5) / 2.6);
+    float there = ease((flow - 0.05) / 0.3);
+
+    // The blot itself: sharp at its edge.
+    float edge = away - rim * grow + ragged * grow;
+    float inside = 1.0 - smoothstep(-0.5, 0.5, edge);
+    // The black here: the line, and the last stop's ink once it has come.
+    float black = max(1.0 - smoothstep(-0.6, 0.6, line), (1.0 - smoothstep(-0.6, 0.6, poured)) * there);
+    // How much red has run to this place, and how much black.
+    float reds = max(inside, grow >= 1.0 ? 1.0 - smoothstep(0.0, 1.0 + 9.0 * run, edge + warp) : 0.0);
+    float blacks = max(1.0 - smoothstep(-0.5, 0.5 + 4.0 * run, line + 0.8 * warp),
+                       (1.0 - smoothstep(-0.5, 0.5 + 4.0 * run, poured + 0.8 * warp)) * there);
+    // The paper round the blot soaks the red up, in places.
+    float deep = soak * smoothstep(0.42, 0.62, patch) * (3.0 + 2.6 * pool);
+    float ring = deep > 0.0 ? smoothstep(0.0, 0.5, deep) * (1.0 - smoothstep(deep - 0.7, deep + 0.3, edge)) : 0.0;
+    float lip = ring * smoothstep(deep - 1.5, deep - 0.4, edge);
+    float pale = ring * (0.3 + 0.18 * lip) * (1.0 - 0.3 * (grain - 0.5)) * (1.0 - black);
+    float alpha = max(max(inside * (0.96 - 0.05 * dry), black * smoothstep(0.02, 0.25, reds) * 0.97), pale);
+    if (alpha <= 0.0) { return half4(0); }
+
+    // The red: wet and even at first; dry, darker along the rim and paler in the middle.
+    float pooled = smoothstep(-3.4, -0.9, edge) * dry;
+    float shade = (1.0 - 0.17 * pooled) * (1.0 + 0.1 * (1.0 - smoothstep(-6.0, -2.0, edge)) * dry)
+        * (1.0 + 0.09 * (pool - 0.5) * dry) * (1.0 - 0.1 * (grain - 0.5));
+    float share = blacks / (blacks + 2.0 * reds + 0.000001);
+    float3 colour = mix(min(float3(red.rgb) * shade, float3(1.0)), float3(ink.rgb), share);
     return half4(half3(colour * alpha), half(alpha));
 }
