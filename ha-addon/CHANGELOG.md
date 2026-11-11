@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.144.4
+
+- „Pod lupą”: miniatury na kafelkach są kadrowane bliżej i mają błyszczącą
+  powłokę, której ukośny błysk przesuwa się przy obracaniu telefonu.
+  Cienia za kartą już nie ma, karta wygląda jak inne kafelki.
+
 ## 1.144.3
 
 - „Droga dzieła”: na końcu drogi zamiast czerwonej kropki w białym otoku
