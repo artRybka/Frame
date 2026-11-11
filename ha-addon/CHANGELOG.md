@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.143.5
+
+- Studium dnia wybiera kurator. Reguły układają listę dziesięciu dzieł
+  dnia, a Sonnet ogląda ich obrazy i odrzuca szkice robocze, kartki ze
+  szkicownika, notatki, blade i prawie puste arkusze, fragmenty i
+  dokumenty. Z reszty wybiera dzieło, o którym da się najwięcej
+  opowiedzieć. Odrzuconych dzieł już nie proponuje. Jedno zapytanie
+  dziennie, ok. 2 centów. Bez klucza wybierają reguły, ale szkice i blade
+  kartki stawiają na końcu.
+
 ## 1.143.4
 
 - Sędzia powtórek pracuje w nocy przed czytaniem spisu Rijksmuseum, a nie
