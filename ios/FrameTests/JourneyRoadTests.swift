@@ -269,7 +269,7 @@ final class JourneyRoadTests: XCTestCase {
             XCTAssertEqual(lines[0].width, 90, accuracy: 0.01)
             XCTAssertEqual(lines[2].width, 121, accuracy: 0.01)
             let dot = plan.dots[i], seed = "aic:27992spill\(i)"
-            let spill = JourneyRoad.spill(under: lines, from: dot, line: plan.line, width: 350, height: plan.height, seed: seed)
+            let spill = JourneyRoad.spill(under: lines, from: dot, width: 350, seed: seed)
             // The stain is the text's own lines with room round them, run into one.
             XCTAssertEqual(spill.lines.count, lines.count)
             for (k, line) in lines.enumerated() {
@@ -292,14 +292,10 @@ final class JourneyRoadTests: XCTestCase {
             }
             // The paint has the whole stain to go: as far as its far corner.
             XCTAssertGreaterThanOrEqual(spill.reach, hypot(spill.box.midX - dot.x, spill.box.midY - dot.y))
-            // Not much runs down: one drip at most, a short one, and never onto the line.
-            XCTAssertLessThanOrEqual(spill.drips.count, 1)
-            for drip in spill.drips {
-                XCTAssertLessThan(drip.from.y, spill.bottom)
-                XCTAssertGreaterThanOrEqual(drip.to.y - drip.from.y, 6)
-                XCTAssertLessThanOrEqual(drip.to.y - drip.from.y, 17.01)
-                let under = plan.line.filter { abs($0.x - drip.from.x) < 9 && $0.y > drip.from.y - 4 }.map(\.y).min()
-                if let under { XCTAssertGreaterThanOrEqual(under - drip.to.y, 7.99) }
+            // Nothing runs down out of it (19:50: „bez zacieku w dół”): under its
+            // foot there are only its sags, and those not deep.
+            for sag in spill.bulges {
+                XCTAssertLessThan(sag.at.y + sag.radius, spill.bottom + 11)
             }
             // The field the paint is made of has room for all of it.
             XCTAssertTrue(spill.frame.contains(spill.box))
@@ -309,13 +305,12 @@ final class JourneyRoadTests: XCTestCase {
                 XCTAssertLessThan(drop.at.y + drop.radius, spill.frame.maxY - JourneyRoad.spillRoom + 0.01)
             }
             // The same stain for the same seed, however often the view asks.
-            XCTAssertEqual(JourneyRoad.spill(under: lines, from: dot, line: plan.line, width: 350, height: plan.height,
-                                             seed: seed), spill)
+            XCTAssertEqual(JourneyRoad.spill(under: lines, from: dot, width: 350, seed: seed), spill)
         }
         // A short line between two long ones is not a deep notch in the stain's side.
         let long = CGRect(x: 100, y: 0, width: 200, height: 20)
         let notched = JourneyRoad.spill(under: [long, CGRect(x: 100, y: 20, width: 60, height: 20), long.offsetBy(dx: 0, dy: 40)],
-                                        from: CGPoint(x: 95, y: 5), line: [], width: 350, height: 400, seed: "notch")
+                                        from: CGPoint(x: 95, y: 5), width: 350, seed: "notch")
         XCTAssertGreaterThanOrEqual(notched.lines[1].maxX,
                                     min(notched.lines[0].maxX, notched.lines[2].maxX) - JourneyRoad.notch - 0.01)
         XCTAssertLessThan(notched.lines[1].maxX, notched.lines[0].maxX)
@@ -338,11 +333,14 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertGreaterThan(marks.full, plan.height)
         // 2026-11-11 11:56: „cienka kreska może się zaczyna rysować
         // wcześniej, prawie u dołu ekranu. Podobnie plamy pod teksty,
-        // trochę wcześniej niż teraz.” On a phone, where the bars leave
-        // 676 points of the screen, the tip is drawn just over the tab
-        // bar; on a low screen as before.
-        XCTAssertEqual(RoadMarks.reach(screen: 676), 318)
-        XCTAssertEqual(RoadMarks.reach(screen: 500), 230)
+        // trochę wcześniej niż teraz.” 19:48, of the tip 20 points over
+        // the tab bar: „Żeby dobrze byłoby widać, linia może rysować się
+        // odrobinę później niż teraz.” On a phone, where the bars leave
+        // 676 points of the screen, the tip is drawn 64 points over the
+        // tab bar; on a low screen as before.
+        XCTAssertEqual(RoadMarks.reach(screen: 676), 274)
+        XCTAssertEqual(RoadMarks.reach(screen: 600), 236)
+        XCTAssertEqual(RoadMarks.reach(screen: 500), RoadMarks.ahead)
         XCTAssertEqual(RoadMarks.reach(screen: 400), RoadMarks.ahead)
         XCTAssertEqual(marks.target(mid: 100, ahead: 337), 437)
         // A stop begins with its dot a little under the middle of the
@@ -468,7 +466,7 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertFalse(RoadMarks(plan, leads: [0, 0.6]).marked(1))
         XCTAssertTrue(RoadMarks(plan, leads: [0, 0.6]).marked(0))
         let dot = marks.dots[2]
-        XCTAssertFalse(marks.passed(2, pen: dot))
+        XCTAssertFalse(marks.passed(2, pen: dot - 0.5))
         XCTAssertTrue(marks.passed(2, pen: dot + RoadMarks.past))
         let reveal = RoadReveal()
         reveal.lay(marks, still: false)
@@ -485,7 +483,7 @@ final class JourneyRoadTests: XCTestCase {
         reveal.look(CGRect(x: 0, y: low - 250, width: 350, height: 500))
         run(12)
         XCTAssertEqual(reveal.pen, low + RoadMarks.reach(screen: 500), accuracy: 0.01)
-        XCTAssertGreaterThan(reveal.pen, dot + 60)
+        XCTAssertGreaterThan(reveal.pen, dot + 40)
         // Its mark is on the line, its stop has not begun; what is under the pen has neither.
         XCTAssertEqual(reveal.mark(2), RoadMarks.clock.dry, accuracy: 0.001)
         XCTAssertLessThan(reveal.age(2), 0)
@@ -632,31 +630,33 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertEqual(rest.thick, 400)
     }
 
-    func testADotLandsAsABlotOffTheNib() {
-        // 2026-11-11 16:39: „Kropki bardziej dynamicznie. Bardziej jak
-        // „kleksy” przy rysowaniu linii.” In seconds since its stop began:
-        // out to well over its size in a tenth of a second, then back.
-        let splat = JourneyRoad.splat
-        XCTAssertEqual(JourneyRoad.pop(-1), 0, accuracy: 0.001)
-        XCTAssertEqual(JourneyRoad.pop(0), 0, accuracy: 0.001)
-        XCTAssertGreaterThan(JourneyRoad.pop(0.05), 0.9)
-        XCTAssertEqual(JourneyRoad.pop(splat.burst), splat.over, accuracy: 0.001)
-        XCTAssertGreaterThan(splat.over, 1.3)
-        XCTAssertLessThan(splat.burst, 0.15)
-        // It draws back a little under its size and comes to it.
-        let dip = stride(from: splat.burst, to: splat.settle, by: 0.01).map { JourneyRoad.pop($0) }.min() ?? 1
-        XCTAssertLessThan(dip, 0.98)
-        XCTAssertGreaterThan(dip, 0.9)
-        XCTAssertEqual(JourneyRoad.pop(splat.settle), 1, accuracy: 0.001)
-        XCTAssertEqual(JourneyRoad.pop(5), 1, accuracy: 0.001)
-        XCTAssertEqual(JourneyRoad.ease(0.5), 0.5, accuracy: 0.001)
-        // Ragged as it bursts out, and as uneven as it stays once it has settled.
-        XCTAssertEqual(JourneyRoad.ragged(0.02), splat.ragged, accuracy: 0.001)
-        XCTAssertEqual(JourneyRoad.ragged(splat.burst), splat.ragged, accuracy: 0.001)
-        XCTAssertLessThan(JourneyRoad.ragged(0.3), splat.ragged)
-        XCTAssertGreaterThan(JourneyRoad.ragged(0.3), 1)
-        XCTAssertEqual(JourneyRoad.ragged(splat.settle), 1)
-        XCTAssertEqual(JourneyRoad.ragged(5), 1)
+    func testADotSwellsOutOfTheLineAsItsDropAndNeverBack() throws {
+        // 2026-11-11 19:48: „Kropki pojawiające się na lini w drodze
+        // dzieła - muszą się malować z linii być jej kroplowym
+        // pogrubieniem - jakby zatrzymaniem pióra i dociśnięciem. Teraz
+        // ‚skacza’ powiększają się i zmniejszają.” In seconds since the
+        // pen came to rest on it: it only ever grows, up to its size.
+        XCTAssertEqual(JourneyRoad.swell(-1), 0)
+        XCTAssertEqual(JourneyRoad.swell(0), 0)
+        var before: CGFloat = 0
+        for age in stride(from: CGFloat(0.01), through: 2, by: 0.01) {
+            let grown = JourneyRoad.swell(age)
+            XCTAssertGreaterThanOrEqual(grown, before, "\(age)")
+            XCTAssertLessThanOrEqual(grown, 1, "\(age)")
+            // No jump from one frame to the next.
+            XCTAssertLessThan(grown - before, 0.04, "\(age)")
+            before = grown
+        }
+        XCTAssertEqual(JourneyRoad.swell(RoadMarks.press), 1, accuracy: 0.001)
+        XCTAssertEqual(JourneyRoad.swell(RoadMarks.press / 2), 0.5, accuracy: 0.001)
+        XCTAssertEqual(JourneyRoad.swell(5), 1)
+        XCTAssertGreaterThanOrEqual(RoadMarks.press, 0.4)
+        XCTAssertLessThanOrEqual(RoadMarks.press, 0.7)
+        // It starts as wide as the line is at the pen's tip and comes to a dot's size.
+        XCTAssertEqual(JourneyRoad.dotRadius(0), 0)
+        XCTAssertEqual(JourneyRoad.dotRadius(0.0001), JourneyRoad.hair / 2, accuracy: 0.01)
+        XCTAssertEqual(JourneyRoad.dotRadius(1), JourneyRoad.dot.full)
+        XCTAssertEqual(JourneyRoad.dotRadius(3), JourneyRoad.dot.full)
         // Not quite round, each dot in its own way, the same every time.
         let edge = JourneyRoad.blotEdge(seed: "aic:27992dot0")
         XCTAssertEqual(edge.count, JourneyRoad.blotSides)
@@ -665,17 +665,118 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertGreaterThan((edge.max() ?? 0) - (edge.min() ?? 0), 0.05)
         XCTAssertTrue(edge.allSatisfy { abs($0) < 0.1 })
         let at = CGPoint(x: 100, y: 200)
-        let still = JourneyRoad.blotOutline(at: at, radius: 5, edge: edge, ragged: 1)
-        XCTAssertEqual(still.count, JourneyRoad.blotSides)
-        XCTAssertTrue(still.allSatisfy { abs(hypot($0.x - at.x, $0.y - at.y) - 5) < 0.5 })
-        // At its biggest it keeps well within the room there is round a dot.
-        let burst = JourneyRoad.blotOutline(at: at, radius: JourneyRoad.dot.full * splat.over, edge: edge, ragged: splat.ragged)
-        let reach = burst.map { hypot($0.x - at.x, $0.y - at.y) }
-        XCTAssertLessThan(reach.max() ?? 99, 9.2)
-        XCTAssertGreaterThan(reach.min() ?? 0, 5)
-        XCTAssertGreaterThan((reach.max() ?? 0) - (reach.min() ?? 0), 0.9)
-        // And before it lands there is nothing.
-        XCTAssertTrue(JourneyRoad.blotOutline(at: at, radius: 0, edge: edge, ragged: 1).isEmpty)
+        // A side trip's dot is round.
+        let round = JourneyRoad.blotOutline(at: at, radius: 5, edge: edge)
+        XCTAssertEqual(round.count, JourneyRoad.blotSides)
+        XCTAssertTrue(round.allSatisfy { abs(hypot($0.x - at.x, $0.y - at.y) - 5) < 0.5 })
+        XCTAssertTrue(JourneyRoad.blotOutline(at: at, radius: 0, edge: edge).isEmpty)
+        // A dot on the line is a drop: round ahead, where the pen rests,
+        // and drawn out to a point back along the line.
+        let along = CGPoint(x: 0.6, y: 0.8), radius = JourneyRoad.dot.full
+        func ahead(_ p: CGPoint) -> CGFloat { (p.x - at.x) * along.x + (p.y - at.y) * along.y }
+        func aside(_ p: CGPoint) -> CGFloat { -(p.x - at.x) * along.y + (p.y - at.y) * along.x }
+        let drop = JourneyRoad.dropOutline(at: at, along: along, radius: radius, edge: edge)
+        let front = drop.filter { ahead($0) > 0.01 }, back = drop.filter { ahead($0) < -0.01 }
+        XCTAssertGreaterThan(front.count, 12)
+        XCTAssertGreaterThan(back.count, 12)
+        XCTAssertTrue(front.allSatisfy { abs(hypot($0.x - at.x, $0.y - at.y) - radius) < 0.55 })
+        // The point: well behind the dot, on the line, no wider there than the line at its thinnest.
+        let far = back.map(ahead).min() ?? 0
+        XCTAssertLessThan(far, -1.8 * radius)
+        XCTAssertGreaterThan(far, -JourneyRoad.drop.tail * radius - 0.01)
+        let tip = back.filter { ahead($0) < far + 0.01 }
+        XCTAssertEqual(tip.count, 2)
+        XCTAssertLessThan(tip.map { abs(aside($0)) }.max() ?? 9, JourneyRoad.hair / 2 + 1.2)
+        // It narrows all the way from the round of it to the point: full
+        // where it leaves the round, hollow towards the point.
+        for side in [back.filter { aside($0) > 0 }, back.filter { aside($0) < 0 }] {
+            let sorted = side.sorted { ahead($0) > ahead($1) }
+            XCTAssertGreaterThan(sorted.count, 5)
+            for (a, b) in zip(sorted, sorted.dropFirst()) {
+                XCTAssertGreaterThan(abs(aside(a)), abs(aside(b)))
+            }
+        }
+        XCTAssertEqual(JourneyRoad.dropSide(0), 1)
+        XCTAssertEqual(JourneyRoad.dropSide(1), 0)
+        XCTAssertGreaterThan(JourneyRoad.dropSide(0.2), 0.8)
+        XCTAssertLessThan(JourneyRoad.dropSide(0.75), 0.25)
+        // As it swells it keeps its shape: a smaller drop lies inside a bigger one's reach.
+        var reach: CGFloat = 0
+        for grown in stride(from: CGFloat(0.05), through: 1, by: 0.05) {
+            let outline = JourneyRoad.dropOutline(at: at, along: along, radius: JourneyRoad.dotRadius(grown), edge: edge)
+            let out = outline.map { hypot($0.x - at.x, $0.y - at.y) }.max() ?? 0
+            XCTAssertGreaterThanOrEqual(out, reach - 0.001, "\(grown)")
+            reach = out
+        }
+        // Before the pen comes there is nothing.
+        XCTAssertTrue(JourneyRoad.dropOutline(at: at, along: along, radius: 0, edge: edge).isEmpty)
+        // The way the line runs through a dot: along the line there, downwards.
+        let plan = try road()
+        for index in 0..<(plan.dots.count - 1) {
+            let way = JourneyRoad.along(plan.line, at: plan.dots[index])
+            XCTAssertEqual(hypot(way.x, way.y), 1, accuracy: 0.001)
+            XCTAssertGreaterThan(way.y, 0, "dot \(index)")
+        }
+    }
+
+    @MainActor
+    func testThePenRestsOnAStopsDotWhileItIsPressed() throws {
+        // 19:48: „jakby zatrzymaniem pióra i dociśnięciem”. The pen comes
+        // to the dot, stays there while the dot swells, and goes on.
+        let plan = try road(), marks = RoadMarks(plan)
+        XCTAssertEqual(RoadMarks.past, 0)
+        XCTAssertEqual(marks.rest(2), marks.dots[2])
+        let reveal = RoadReveal()
+        reveal.lay(marks, still: false)
+        var now = Date()
+        // The middle of the screen well over the third dot, the pen's place under it.
+        let dot = marks.dots[2]
+        let mid = dot + 40 - RoadMarks.reach(screen: 500)
+        reveal.look(CGRect(x: 0, y: mid - 250, width: 350, height: 500))
+        var rested = 0, came: Int?, left: Int?, grown: CGFloat = -1
+        for frame in 0..<1200 where left == nil {
+            now += 1.0 / 60
+            reveal.tick(now)
+            let mark = reveal.mark(2)
+            if reveal.pen < dot {
+                XCTAssertLessThan(mark, 0, "frame \(frame)")
+            } else if mark < RoadMarks.press {
+                // Being pressed: the pen is on the dot and nowhere else, and the dot only grows.
+                if came == nil { came = frame }
+                XCTAssertEqual(reveal.pen, dot, accuracy: 0.001, "frame \(frame)")
+                XCTAssertGreaterThan(JourneyRoad.swell(mark), grown, "frame \(frame)")
+                grown = JourneyRoad.swell(mark)
+                rested += 1
+            } else if reveal.pen > dot {
+                left = frame
+            }
+        }
+        XCTAssertNotNil(came)
+        XCTAssertNotNil(left)
+        // Half a second, at 60 frames a second.
+        XCTAssertGreaterThanOrEqual(rested, 27)
+        XCTAssertLessThanOrEqual(rested, 32)
+        for _ in 0..<600 {
+            now += 1.0 / 60
+            reveal.tick(now)
+        }
+        XCTAssertEqual(reveal.pen, dot + 40, accuracy: 0.01)
+        XCTAssertEqual(reveal.mark(2), RoadMarks.clock.dry, accuracy: 0.001)
+        XCTAssertTrue(reveal.settled)
+        // A pen far behind where it is to be does not rest as long.
+        let hasty = RoadReveal()
+        hasty.lay(marks, still: false)
+        hasty.look(CGRect(x: 0, y: mid - 250, width: 350, height: 500))
+        var slow = 0, fast = 0
+        for _ in 0..<1200 {
+            now += 1.0 / 60
+            hasty.tick(now)
+            if hasty.pen == marks.dots[0], hasty.mark(0) < RoadMarks.press { fast += 1 }
+            if hasty.pen == marks.dots[2], hasty.mark(2) < RoadMarks.press { slow += 1 }
+        }
+        XCTAssertGreaterThan(fast, 0)
+        XCTAssertLessThan(fast, slow)
+        XCTAssertLessThan(fast, 20)
     }
 
     func testAPageScrolledFastHurriesTheStops() throws {
@@ -785,8 +886,7 @@ final class JourneyRoadTests: XCTestCase {
         let plan = try road(), end = plan.dots.count - 1, last = plan.dots[end]
         let lines = JourneyRoad.lines(of: plan.hugs.isEmpty ? plan.texts[end] : plan.hugs[end], head: nil, widths: [],
                                       leading: plan.leading[end])
-        let spill = JourneyRoad.spill(under: lines, from: last, line: plan.line, width: 350, height: plan.height,
-                                      seed: "aic:27992spill\(end)")
+        let spill = JourneyRoad.spill(under: lines, from: last, width: 350, seed: "aic:27992spill\(end)")
         let blot = JourneyRoad.blot(for: spill, line: plan.line, seed: "aic:27992")
         XCTAssertEqual(blot.at, last)
         // The line runs into it from a little way back.
@@ -818,8 +918,7 @@ final class JourneyRoadTests: XCTestCase {
         let plan = try road(), end = plan.dots.count - 1
         let lines = JourneyRoad.lines(of: plan.hugs.isEmpty ? plan.texts[end] : plan.hugs[end], head: nil, widths: [],
                                       leading: plan.leading[end])
-        let spill = JourneyRoad.spill(under: lines, from: plan.dots[end], line: plan.line, width: 350, height: plan.height,
-                                      seed: "aic:27992spill\(end)")
+        let spill = JourneyRoad.spill(under: lines, from: plan.dots[end], width: 350, seed: "aic:27992spill\(end)")
         let heading = CGRect(x: JourneyRoad.rail + JourneyRoad.lassoPad.side, y: plan.height + JourneyRoad.laterGap,
                              width: 112, height: 24)
         let years = [heading.maxY + 34, heading.maxY + 150, heading.maxY + 270]
@@ -928,19 +1027,15 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertEqual(hypot(whole[count - 1].x - whole[count].x, whole[count - 1].y - whole[count].y), 0, accuracy: 0.001)
     }
 
-    func testALaterWorksStainPoursOutOfItsBlotAndNothingDripsUnderIt() throws {
+    func testALaterWorksStainPoursOutOfItsBlot() throws {
         let (_, _, years, onward) = try goingOn()
         // A later work's year and name as they stand to the right of the line.
         let hug = CGRect(x: JourneyRoad.laterInset, y: years[0] - 12, width: 150, height: 44)
         let lines = JourneyRoad.lines(of: hug, head: CGSize(width: 40, height: 22), widths: [150], leading: true)
         XCTAssertEqual(lines.count, 2)
-        let shelf = JourneyRoad.shelf(under: lines, width: 350)
-        XCTAssertTrue(shelf.allSatisfy { $0.y > hug.maxY })
         var spill = JourneyRoad.Spill()
         for seed in ["a", "b", "c", "d", "e", "f", "g", "h"] {
-            spill = JourneyRoad.spill(under: lines, from: onward.dots[0], line: shelf, width: 350, height: hug.maxY + 100, seed: seed)
-            // What is told of the work is written right under: nothing drips onto it.
-            XCTAssertTrue(spill.drips.isEmpty, seed)
+            spill = JourneyRoad.spill(under: lines, from: onward.dots[0], width: 350, seed: seed)
             XCTAssertEqual(spill.dot, onward.dots[0])
             XCTAssertEqual(spill.way.first?.at, onward.dots[0])
         }

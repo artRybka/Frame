@@ -124,7 +124,7 @@ float boxAway(float2 at, float4 box, float corner) {
 // dot, in seconds. It goes out from there on all sides with a sharp wet
 // front, in lobes, fast at first and then slower, the far corner of the
 // stain `reach` away; under `bottom`, the stain's foot, it comes late, to
-// gather and drip. Where it has come it is there at once, its edge sharp;
+// gather. Where it has come it is there at once, its edge sharp;
 // it creeps a little further (the threshold falls) and dries: from `wet`
 // to `dense` where it lay thick, by the dot and along the edge it pooled
 // at, and to `wash` where it ran thin, the paper's grain showing through.
