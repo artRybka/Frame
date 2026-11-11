@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.145.29
+
+- Studium dzieła, „Kolor i światło”: na pasku barw jest także mała, mocna
+  plama koloru, która przyciąga wzrok, choć zajmuje ułamek procenta
+  obrazu: czerwień okiennicy na „Uliczce” Vermeera, słońce na „Impresji”
+  Moneta. Dotąd serwer liczył akcent dopiero od 0,4% obrazu i nie
+  odróżniał go od dużej barwy o podobnym odcieniu (czerwień okiennicy
+  brał za cegłę). Taka plama pojawia się jako pacnięcie na wierzchu, tak
+  jak dotychczasowe akcenty, także na karcie dzieła.
+- Po aktualizacji serwer raz przelicza barwy wszystkich dzieł z ich
+  miniatur, więc dotyczy to także studiów przygotowanych wcześniej.
+- Szukaj, Kolor: taka plama liczy się też jako akcent, więc „Uliczka”
+  wychodzi pod „Czerwień · akcent”. Dzieła monochromatyczne (rycina
+  z małą pieczątką kolekcjonera) zostają monochromatyczne i akcentu
+  nie dostają.
+
 ## 1.145.28
 
 - Porządki: serwer nie liczy już i nie trzyma oceny „na e-papierze”, której

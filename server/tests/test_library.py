@@ -499,6 +499,51 @@ def test_a_faded_colour_print_is_not_monochrome() -> None:
     assert "monochrome" in analyse(Image.fromarray(pixels)).tags
 
 
+def _street(shutter: bool) -> Image.Image:
+    """A brick house front under a pale sky, like Vermeer's Little Street:
+    with or without its one red shutter, a five-hundredth of the picture."""
+    rng = np.random.default_rng(5)
+    pixels = np.empty((400, 320, 3), np.uint8)
+    pixels[:] = (125, 84, 62)  # brick
+    pixels[:90, :120] = (176, 190, 204)  # sky
+    pixels[90:200, :50] = (72, 92, 62)  # a vine
+    pixels[300:] = (179, 165, 144)  # cobbles
+    pixels[180:300, 40:90] = (84, 65, 51)  # a doorway
+    if shutter:
+        pixels[220:246, 284:294] = (156, 62, 38)
+    noise = rng.integers(-7, 8, pixels.shape)
+    return Image.fromarray(np.clip(pixels.astype(int) + noise, 0, 255).astype(np.uint8))
+
+
+def test_a_small_striking_patch_is_among_the_colours() -> None:
+    # Mateusz 2026-11-11 21:24: the red of the shutter belongs on the bar of
+    # the Little Street; 21:50: „musi wychodzić także w szukaniu po „akcent:
+    # czerwień””. It is of the bricks' own hue and far under an accent's
+    # size: a touch among the colours, and a red accent to be found by.
+    swatches, tags, shares = analyse(_street(shutter=True))
+    plain, plain_tags, _ = analyse(_street(shutter=False))
+    assert set(tags) - set(plain_tags) == {"accent:red"} and set(plain_tags) <= set(tags)
+    assert has_colours(tags, ["red@accent"], shares) and has_colours(tags, ["accent:red"])
+    assert not has_colours(plain_tags, ["red@accent"], shares)
+    assert len(swatches) == len(plain) + 1 and swatches[:-1] == plain
+    touch = swatches[-1]
+    red, green, blue = (int(touch.hex[i : i + 2], 16) for i in (1, 3, 5))
+    assert touch.accent and touch.weight <= 0.02
+    assert red > 135 and green < 80 and blue < 60
+    assert len(swatches) <= 8
+
+
+def test_a_stamp_on_an_etching_is_no_accent() -> None:
+    # One tint stays one tint: a collector's small red stamp does not make
+    # an etching a picture with a red accent, and its bar has no touch.
+    plain = _etching([(238, 226, 198)])
+    pixels = np.asarray(plain).copy()
+    pixels[200:214, 290:304] = (190, 40, 30)
+    swatches, tags, _ = analyse(Image.fromarray(pixels))
+    assert "monochrome" in tags and "monochrome" in analyse(plain).tags
+    assert "accent:red" not in tags and not any(s.accent for s in swatches)
+
+
 def test_analysis_gives_colour_shares() -> None:
     pixels = np.empty((200, 200, 3), np.uint8)
     pixels[:] = (120, 120, 118)
