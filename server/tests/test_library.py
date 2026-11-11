@@ -499,6 +499,36 @@ def test_a_faded_colour_print_is_not_monochrome() -> None:
     assert "monochrome" in analyse(Image.fromarray(pixels)).tags
 
 
+def _street(shutter: bool) -> Image.Image:
+    """A brick house front under a pale sky, like Vermeer's Little Street:
+    with or without its one red shutter, a five-hundredth of the picture."""
+    rng = np.random.default_rng(5)
+    pixels = np.empty((400, 320, 3), np.uint8)
+    pixels[:] = (125, 84, 62)  # brick
+    pixels[:90, :120] = (207, 195, 173)  # sky
+    pixels[300:] = (179, 165, 144)  # cobbles
+    pixels[180:300, 40:90] = (84, 65, 51)  # a doorway
+    if shutter:
+        pixels[220:246, 284:294] = (156, 62, 38)
+    noise = rng.integers(-7, 8, pixels.shape)
+    return Image.fromarray(np.clip(pixels.astype(int) + noise, 0, 255).astype(np.uint8))
+
+
+def test_a_small_striking_patch_is_among_the_colours() -> None:
+    # Mateusz 2026-11-11: the red of the shutter belongs on the bar of the
+    # Little Street. It is of the bricks' own hue and far under an accent's
+    # size, so it is shown as a touch and the picture is found as before.
+    swatches, tags, _ = analyse(_street(shutter=True))
+    plain, plain_tags, _ = analyse(_street(shutter=False))
+    assert tags == plain_tags and "accent:red" not in tags
+    assert len(swatches) == len(plain) + 1 and swatches[:-1] == plain
+    touch = swatches[-1]
+    red, green, blue = (int(touch.hex[i : i + 2], 16) for i in (1, 3, 5))
+    assert touch.accent and touch.weight <= 0.02
+    assert red > 135 and green < 80 and blue < 60
+    assert len(swatches) <= 8
+
+
 def test_analysis_gives_colour_shares() -> None:
     pixels = np.empty((200, 200, 3), np.uint8)
     pixels[:] = (120, 120, 118)

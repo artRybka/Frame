@@ -41,8 +41,9 @@ COLOUR_SPREAD = (0.01, 0.035)
 #: 7: each family's share (``Item.color_shares``), "monochrome" by hue;
 #: 8: "monochrome" seen against its paper (``toned``); 9: Tonacja sides
 #: (``"tone:neutral"``, ``tone_sides``); 10: without a museum's blank
-#: margins (``imaging.margins``), which counted as white.
-SCORE_VERSION = 10
+#: margins (``imaging.margins``), which counted as white; 11: small
+#: striking patches among the swatches (``touches``).
+SCORE_VERSION = 11
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
 #: this chroma / lightness for light ones: a greyish-blue sky does, a beige
@@ -196,6 +197,23 @@ ACCENT_BRIGHTER = 0.045
 #: Accents closer than this (``_distance``, lightness halved) are one.
 ACCENT_TWIN = 0.07
 MAX_ACCENTS = 4
+#: A touch: a patch too small for an accent whose colour stands out all the
+#: same (the one red shutter of Vermeer's Little Street, the sun of Monet's
+#: Impression). Looked for in a finer sample (``TOUCH_SAMPLE`` pixels a
+#: side); its colour comes from the hue's most colourful pixels, this share
+#: of the picture at most; it covers this share at least, and is this many
+#: times as colourful as every colour of about its hue the palette shows
+#: already, and this much more chroma. However much of the picture looks
+#: like it, it is shown as a touch (``TOUCH_WEIGHT``).
+TOUCH_SAMPLE = 192
+TOUCH_VIVID = 0.001
+TOUCH_AREA = 0.0004
+TOUCH_STRONGER = 1.5
+TOUCH_BRIGHTER = 0.05
+TOUCH_WEIGHT = 0.02
+MAX_TOUCHES = 2
+#: Colours of a picture, at most: what the app's painted bar lays down.
+MAX_SWATCHES = 8
 #: Hue sectors (OKLab hue, degrees) accents are looked for in.
 ACCENT_SECTORS = (
     ("red", -30, 45),
@@ -273,9 +291,9 @@ class Analysis(NamedTuple):
 
 
 def analyse(img: Image.Image, spread: float | None = None) -> Analysis:
-    """Dominant colours then accents, colour/mood tags and the colour
-    families' shares; ``spread`` is the picture's ``tint_spread`` if already
-    known."""
+    """Dominant colours, then accents, then the small striking patches
+    (``touches``); colour/mood tags and the colour families' shares;
+    ``spread`` is the picture's ``tint_spread`` if already known."""
     if spread is None:
         spread = tint_spread(img)
     linear = _sample(img)
@@ -284,8 +302,13 @@ def analyse(img: Image.Image, spread: float | None = None) -> Analysis:
     centres, weights = kmeans(lab, k=6)
     dominant = dominant_colours(centres, weights)
     accents = accent_colours(fine, dominant)
+    # Shown, not tagged: what a picture is found by stays as it was.
+    small = touches(linear_to_oklab(_sample(img, TOUCH_SAMPLE)), dominant, accents)
     swatches = [_swatch(c, w) for c, w in dominant]
-    swatches += [_swatch(c, w, accent=True) for c, w, _ in accents]
+    # A touch is what the eye goes to: it is shown before the least accent.
+    room = MAX_SWATCHES - len(swatches) - len(small)
+    swatches += [_swatch(c, w, accent=True) for c, w, _ in accents[: max(room, 0)]]
+    swatches += [_swatch(c, w, accent=True) for c, w in small]
     return Analysis(
         swatches,
         colour_tags(fine, spread, dominant, accents),
@@ -708,6 +731,57 @@ def accent_colours(
         elif len(accents) < MAX_ACCENTS:
             accents.append((centre, share, name))
     return sorted(accents, key=lambda a: -a[1])
+
+
+def touches(
+    lab: np.ndarray,
+    dominant: list[tuple[np.ndarray, float]],
+    accents: Sequence[tuple[np.ndarray, float, str]],
+) -> list[tuple[np.ndarray, float]]:
+    """Small patches of a colour the palette does not show yet: the red
+    shutter of Vermeer's Little Street, well under a hundredth of the
+    picture and of the bricks' own hue, so ``accent_colours`` takes its
+    sector for the wall. One per hue sector at most, (colour, weight), the
+    most striking first."""
+    chroma = np.hypot(lab[:, 1], lab[:, 2])
+    hue = _hue(lab)
+    shown = [c for c, _ in dominant] + [c for c, _, _ in accents]
+    shown_chroma = np.array([float(np.hypot(c[1], c[2])) for c in shown])
+    shown_hue = np.array([float(_hue(c)) for c in shown])
+    shown_light = np.array([float(c[0]) for c in shown])
+    n = len(lab)
+    found: list[tuple[np.ndarray, float, float]] = []
+    for _, start, end in ACCENT_SECTORS:
+        member = (chroma >= 0.05) & ((hue - start) % 360 < end - start)
+        count = int(member.sum())
+        if count < TOUCH_AREA * n:
+            continue
+        top = max(1, min(count, int(TOUCH_VIVID * n)))
+        centre = lab[member][np.argsort(-chroma[member])[:top]].mean(0)
+        vivid = float(np.hypot(centre[1], centre[2]))
+        # Of a hue the palette has: only if far more colourful than it. A
+        # near-black ground with a blue cast does not show a blue turban.
+        gap = np.abs((shown_hue - float(_hue(centre)) + 180) % 360 - 180)
+        near = (gap < 40) & (shown_chroma >= 0.03) & (np.abs(shown_light - centre[0]) < 0.25)
+        most = float(shown_chroma[near].max()) if near.any() else 0.0
+        if vivid < TOUCH_STRONGER * most or vivid - most < TOUCH_BRIGHTER:
+            continue
+        if any(_distance(centre, c, 0.5) < ACCENT_TWIN for c in shown):
+            continue
+        diff = lab - centre
+        alike = np.sqrt(0.25 * diff[:, 0] ** 2 + 4 * (diff[:, 1] ** 2 + diff[:, 2] ** 2))
+        share = float((alike < ACCENT_TWIN).mean())
+        if share < TOUCH_AREA:
+            continue
+        found.append((centre, min(share, TOUCH_WEIGHT), vivid - most))
+    found.sort(key=lambda f: -f[2])
+    kept: list[tuple[np.ndarray, float]] = []
+    for centre, weight, _ in found:
+        if len(kept) < MAX_TOUCHES and all(
+            _distance(centre, c, 0.5) >= ACCENT_TWIN for c, _ in kept
+        ):
+            kept.append((centre, weight))
+    return kept
 
 
 def tint_strength(img: Image.Image) -> float:
