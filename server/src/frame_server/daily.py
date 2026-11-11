@@ -42,7 +42,7 @@ from .library import Item, ItemKind, PlaylistRules
 from .library.artists import is_artist
 from .library.colors import PALE_INK, ink_share
 from .library.cultures import circle
-from .library.images import display_copy
+from .library.images import display_copy, said_side
 from .library.models import Note
 from .library.nationality import NATIONALITIES
 from .library.vocabulary import artist_matches, is_photograph
@@ -70,7 +70,10 @@ REPEAT_DAYS = 365
 ARTIST_DAYS = 30
 #: The works of the catalogue the pick looks among, drawn for the day.
 POOL = 800
-#: The longer side of the original, when the museum says (pixels).
+#: The longer side of the original, when the museum says (pixels). The Met,
+#: the Rijksmuseum, the Polish national museums and others say none: their
+#: works were held to their thumbnails' 600 px and never chosen, 45 845 of
+#: the 84 974 works fit otherwise (2026-11-11).
 MIN_SIDE = 1000
 #: Works like the work of the day the model chooses among.
 CANDIDATES = 12
@@ -165,12 +168,9 @@ def score(item: Item, day: date, taste: list[str], rng: random.Random) -> float:
 
 def copy_side(item: Item) -> int | None:
     """The long side of the picture the work is shown from (a sharper copy
-    found elsewhere, else its museum's), None when not known."""
-    if item.sharper is not None:
-        return max(item.sharper.width, item.sharper.height)
-    if item.width and item.height:
-        return max(item.width, item.height)
-    return None
+    found elsewhere, else its museum's), None when not known: a museum that
+    says no size is not held to its thumbnail's (``images.said_side``)."""
+    return said_side(item)
 
 
 def copy_quality(item: Item) -> float:
@@ -350,7 +350,7 @@ class Daily:
             # An art archive's old slide: no copy to look at for a quarter of
             # an hour. (Copies and "Sztuki inne" are not proposed at all.)
             and not archive_own(i)
-            and max(i.width or MIN_SIDE, i.height or MIN_SIDE) >= MIN_SIDE
+            and (said_side(i) or MIN_SIDE) >= MIN_SIDE
             and not (recent_artists and artist_matches(i.artist, recent_artists))
         ]
 

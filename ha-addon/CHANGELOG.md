@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.21
+
+- Studium dnia wybiera teraz także spośród dzieł Metropolitan Museum,
+  Rijksmuseum, Muzeum Narodowego w Warszawie i w Krakowie, Luwru, Getty,
+  Paris Musées i Cleveland. Te muzea nie podają rozmiaru obrazu, serwer
+  zapisywał im rozmiar miniatury i odrzucał je jako za małe skany: odpadała
+  ponad połowa dzieł, w tym prawie wszystkie, które muzea same oznaczają
+  jako najważniejsze. Kryteria wyboru się nie zmieniają, prawdziwie małe
+  skany dalej nie zostają Studium dnia.
+
 ## 1.145.20
 
 - Studium dzieła, „Droga dzieła”: kropka przystanku pojawia się jako

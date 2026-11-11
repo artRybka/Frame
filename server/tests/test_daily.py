@@ -19,7 +19,7 @@ from test_ai import GOOD_KEY, FakeAnthropic, _message
 
 from frame_server import daily as daily_module
 from frame_server import sizes
-from frame_server.ai import AiConfigUpdate
+from frame_server.ai import AiConfigUpdate, study_pick
 from frame_server.ai.client import HAIKU, OPUS, SONNET
 from frame_server.ai.daily import (
     INCOMPLETE,
@@ -1547,10 +1547,10 @@ def test_without_an_answer_the_rules_choose(tmp_path: Path) -> None:
 
 def test_the_copy_counts_in_the_pick(offline: FrameService) -> None:
     # A small picture goes last, one as long as the frame's side first.
-    _add(offline, "met:1", title="Small", artist="A Painter", width=1400, height=1000)
-    _add(offline, "met:2", title="Middling", artist="B Painter", width=2200, height=1600)
-    _add(offline, "met:3", title="Large", artist="C Painter", width=4000, height=3000)
-    small, middling, large = (offline.library.get(f"met:{n}") for n in (1, 2, 3))
+    _add(offline, "aic:1", title="Small", artist="A Painter", width=1400, height=1000)
+    _add(offline, "aic:2", title="Middling", artist="B Painter", width=2200, height=1600)
+    _add(offline, "aic:3", title="Large", artist="C Painter", width=4000, height=3000)
+    small, middling, large = (offline.library.get(f"aic:{n}") for n in (1, 2, 3))
     assert small and middling and large
     assert daily_module.copy_quality(small) < daily_module.copy_quality(middling)
     assert daily_module.copy_quality(middling) < daily_module.copy_quality(large)
@@ -1563,6 +1563,24 @@ def test_the_copy_counts_in_the_pick(offline: FrameService) -> None:
     assert daily_module.copy_quality(sharper) == daily_module.copy_quality(large)
     unknown = small.model_copy(update={"width": None, "height": None})
     assert daily_module.copy_quality(unknown) == 0.0
+
+
+def test_a_museum_that_says_no_size_is_not_held_to_its_thumbnail(
+    offline: FrameService,
+) -> None:
+    """The Met says no size: what is kept for its work is its thumbnail's
+    (600 px), which is no word on the original. Its works were never the
+    work of the day (Mateusz's catalogue, 2026-11-11: 45 845 of 84 974)."""
+    _add(offline, "met:1", title="The Harvesters", artist="Pieter Bruegel", width=600, height=401)
+    # The Art Institute says its picture's own size: a small one stays out.
+    _add(offline, "aic:2", title="A Small Scan", artist="B Painter", width=843, height=600)
+    met, aic = offline.library.get("met:1"), offline.library.get("aic:2")
+    assert met and aic
+    assert daily_module.copy_side(met) is None and daily_module.copy_quality(met) == 0.0
+    assert daily_module.copy_side(aic) == 843
+    assert [i.id for i in offline.daily.pool(DAY, [])] == ["met:1"]
+    assert study_pick._photograph(met) == ""
+    assert study_pick._photograph(aic) == "Photograph: 843 × 600 px"
 
 
 def test_a_grey_copy_is_never_the_study_of_the_day(offline: FrameService) -> None:
@@ -1583,8 +1601,8 @@ def test_a_grey_copy_is_never_the_study_of_the_day(offline: FrameService) -> Non
 
 def test_a_poor_photograph_comes_back_with_another_copy(tmp_path: Path) -> None:
     _, svc, fake = _claude(tmp_path)
-    _add(svc, "met:1", title="Blurred", artist="A Painter", width=3000, height=2000)
-    _add(svc, "met:2", title="Sharp", artist="B Painter", width=3000, height=2000)
+    _add(svc, "aic:1", title="Blurred", artist="A Painter", width=3000, height=2000)
+    _add(svc, "aic:2", title="Sharp", artist="B Painter", width=3000, height=2000)
     asked = _curator(fake, {"works": [], "choice": 0, "reason": "-"})
     svc.daily.pick(DAY)
     numbers = _numbers(asked[0])
@@ -1605,8 +1623,8 @@ def test_a_poor_photograph_comes_back_with_another_copy(tmp_path: Path) -> None:
     }
     _curator(fake, answer)
     found = svc.daily.pick(DAY)
-    assert found is not None and found.id == "met:2"
-    assert svc.daily.poor_copies() == {"met:1": ""} and svc.daily.unfit() == {}
+    assert found is not None and found.id == "aic:2"
+    assert svc.daily.poor_copies() == {"aic:1": ""} and svc.daily.unfit() == {}
     # Not shortlisted while its photograph is the same ...
     asked = _curator(fake, {"works": [], "choice": 0, "reason": "-"})
     svc.daily.pick(DAY + timedelta(days=400))
@@ -1615,7 +1633,7 @@ def test_a_poor_photograph_comes_back_with_another_copy(tmp_path: Path) -> None:
     copy = SharperCopy(
         url="https://x/1.jpg", item_id="wmc:1", source="wmc", width=5000, height=4000
     )
-    svc.library.update("met:1", sharper=copy)
+    svc.library.update("aic:1", sharper=copy)
     asked = _curator(fake, {"works": [], "choice": 0, "reason": "-"})
     svc.daily.pick(DAY + timedelta(days=800))
     assert "Blurred" in _numbers(asked[0])
