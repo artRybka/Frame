@@ -8,19 +8,29 @@ a work, which pairs were kept apart, which works were set aside as no art.
 :func:`decisions` gathers them from the library (``GET /api/debug/decisions``)
 and :func:`measure` says how a way of telling works apart does on them.
 
+A change of what is shown is tried on the whole catalogue, away from the
+frame's server: :func:`catalogue` writes every work as the library has it
+(``GET /api/debug/catalogue``), :func:`works` reads them back and
+:func:`library_of` makes a library of them to ask as the server's is asked.
+
 Descriptions only, never a picture, and only works of art from museums and
 other sources: the owner's own photographs are not in it.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import gzip
+import json
+import zlib
+from collections.abc import Callable, Iterator
 from datetime import UTC, date, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .library.duplicates import same_work
 from .library.images import OWN_SOURCES
 from .library.models import Item, ItemKind
+from .library.repo import Library
 from .library.twins import pair_key
 from .library.verdict import COPIES, NAMES, Why, whys
 
@@ -72,6 +82,46 @@ def brief(item: Item) -> dict[str, Any]:
 def work(data: dict[str, Any]) -> Item:
     """A brief as an item again (what it does not say: the defaults)."""
     return Item.model_validate(data)
+
+
+#: The catalogue is written in pieces of about this many bytes.
+PIECE = 1 << 16
+
+
+def catalogue(library: Library) -> Iterator[bytes]:
+    """Every work of art as the library has it, hidden ones too: gzip, a
+    work a line (what a work does not say is its default). In pieces, the
+    catalogue of a hundred thousand works is never whole in memory."""
+    packer = zlib.compressobj(6, zlib.DEFLATED, 31)  # 31: a gzip file
+    piece = bytearray()
+    for item in library.query(include_excluded=True)[1]:
+        if not _art(item):
+            continue
+        said = item.model_dump(mode="json", exclude_defaults=True) | {
+            "id": item.id,
+            "source": item.source,
+            "source_id": item.source_id,
+        }
+        piece += packer.compress(json.dumps(said, ensure_ascii=False).encode() + b"\n")
+        if len(piece) >= PIECE:
+            yield bytes(piece)
+            piece.clear()
+    yield bytes(piece + packer.flush())
+
+
+def works(path: Path) -> list[Item]:
+    """The works of a catalogue saved by :func:`catalogue`."""
+    with gzip.open(path, "rt", encoding="utf-8") as lines:
+        return [work(json.loads(line)) for line in lines if line.strip()]
+
+
+def library_of(path: Path, db: Path) -> Library:
+    """A library at ``db`` holding the works of the catalogue saved at
+    ``path``: asked as the server's is, with no server."""
+    library = Library(db)
+    for item in works(path):
+        library.upsert(item)
+    return library
 
 
 def _art(item: Item | None) -> bool:
@@ -250,9 +300,7 @@ def main(argv: list[str] | None = None) -> int:
     """``python -m frame_server.golden decisions.json``: how today's rule
     for "one work" does on the decisions saved from
     ``/api/debug/decisions``, a line for each kind of pair."""
-    import json
     import sys
-    from pathlib import Path
 
     paths = sys.argv[1:] if argv is None else argv
     if len(paths) != 1:

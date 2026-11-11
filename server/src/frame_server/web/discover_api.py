@@ -344,7 +344,7 @@ def work_out_cards(svc: FrameService, force: bool = False) -> dict[str, tuple[in
         pages = _pages_of(svc.library)
         for found in [*weekly, *others]:
             stamp = svc.library.catalogue_stamp()
-            total, items = svc.library.query(found.rules(), sort="suitability")
+            total, items = svc.library.query(found.rules(), sort="suitability", proposing=True)
             cards[found.key] = (total, _cover(items, f"{today}:{found.key}"))
             # The same query is the theme's first page: its set opens at once.
             pages.keep(_page_key(found, 1, viewer_id()), stamp, total, items[:ROW_SIZE])
@@ -423,7 +423,7 @@ def _day_row(svc: FrameService, found: Theme, day: date) -> list[Item]:
     global _day_fetch
     if day in _theme_rows:
         return _theme_rows[day]
-    items = svc.library.query(found.rules(), sort="random", seed=day.toordinal())[1]
+    items = svc.library.query(found.rules(), sort="random", seed=day.toordinal(), proposing=True)[1]
     picked = svc.player.fresh(items)[:ROW_SIZE]
     if len(picked) >= DAY_ROW_MIN:
         _theme_rows.clear()
@@ -489,7 +489,9 @@ def _zoom_row(svc: FrameService) -> SuggestionRow | None:
     if not zoom.pages():
         return None
     hidden = svc.library.hidden()
-    own = [i for i in svc.library.query(limit=None)[1] if zooms(i) and i not in hidden]
+    own = [
+        i for i in svc.library.query(limit=None, proposing=True)[1] if zooms(i) and i not in hidden
+    ]
     own.sort(key=lambda i: (not i.favorite, i.title.casefold()))
     works = svc.library.works()
     fragments = svc.importer.fragments
@@ -656,6 +658,7 @@ def _work_out_page(svc: FrameService, found: Theme, page: int, user: str) -> tup
             offset=(page - 1) * ROW_SIZE,
             limit=ROW_SIZE,
             user=user,
+            proposing=True,
         )
         pages.keep(key, stamp, total, items)
         return total, items
@@ -728,7 +731,7 @@ def _new_artist(svc: FrameService) -> ThemeCard | None:
     found = new_artist_of_the_week(svc.library, date.today())
     if found is None:
         return None
-    total, items = svc.library.query(found.rules(), sort="suitability")
+    total, items = svc.library.query(found.rules(), sort="suitability", proposing=True)
     cover = _cover(items, f"{date.today().isoformat()}:{found.key}")
     with _cards_lock:
         stamp, cards = _cards

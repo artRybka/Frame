@@ -1262,7 +1262,7 @@ def thin_searches(library: Library) -> list[tuple[str, str]]:
     return [
         search
         for t in THEMES
-        if t.strict and t.searches() and library.query(t.rules())[0] < COVER_MIN
+        if t.strict and t.searches() and library.query(t.rules(), proposing=True)[0] < COVER_MIN
         for search in t.searches()[:2]
     ]
 
@@ -1275,7 +1275,7 @@ def thin_other_art(library: Library) -> list[tuple[Theme, int]]:
     come back."""
     thin = []
     for t in OTHER_ART_THEMES:
-        if t.searches() and (count := library.query(t.rules())[0]) < COVER_MIN:
+        if t.searches() and (count := library.query(t.rules(), proposing=True)[0]) < COVER_MIN:
             thin.append((t, count))
     return thin
 
@@ -1540,7 +1540,7 @@ def make_weekly(library: Library, week: str, history: set[str]) -> list[Theme]:
     """The themes of ``week`` from what the catalogue holds: the artist of
     the week and a few pairs of terms, none made in the weeks before."""
     rules = PlaylistRules(kinds=[ItemKind.ARTWORK])
-    items = library.query(rules)[1]
+    items = library.query(rules, proposing=True)[1]
     rng = random.Random(week)
     artist = _artist_of_the_week(items, rng, history)
     return ([artist] if artist else []) + _mixes(items, rng, history)
@@ -1613,7 +1613,7 @@ def new_artist_of_the_week(library: Library, day: date) -> Theme | None:
         themes = [replace(_theme_from(t), group=WEEKLY) for t in stored.get("themes") or []]
         history: list[str] = stored.get("history") or []
         old = next((t for t in themes if t.key.startswith(ARTIST_PREFIX)), None)
-        items = library.query(PlaylistRules(kinds=[ItemKind.ARTWORK]))[1]
+        items = library.query(PlaylistRules(kinds=[ItemKind.ARTWORK]), proposing=True)[1]
         rng = random.Random(f"{week}:{len(history)}")
         found = _artist_of_the_week(items, rng, set(history) | ({old.key} if old else set()))
         if found is None:
@@ -1806,7 +1806,7 @@ def check_proposals(
                 terms=terms,
                 catalogue=True,
             )
-            if library.query(theme.rules())[0] < WEEKLY_MIN:
+            if library.query(theme.rules(), proposing=True)[0] < WEEKLY_MIN:
                 reason = "too few works"
         if reason:
             log.info("curator: %r left out (%s)", p.name, reason)
@@ -1834,7 +1834,9 @@ def make_colours(library: Library, week: str, history: list[str]) -> list[Theme]
     """``COLOUR_CARDS`` of ``COLOUR_POOL`` for ``week``, drawn from those
     with ``COLOUR_MIN`` works in the catalogue: first those not shown in
     the weeks of ``history`` (oldest first), then the longest unshown."""
-    fit = [t for t in COLOUR_POOL if library.query(t.rules(), limit=1)[0] >= COLOUR_MIN]
+    fit = [
+        t for t in COLOUR_POOL if library.query(t.rules(), limit=1, proposing=True)[0] >= COLOUR_MIN
+    ]
     rng = random.Random(f"colours:{week}")
     fresh = [t for t in fit if t.key not in history]
     rng.shuffle(fresh)
@@ -1927,7 +1929,7 @@ def make_liked(library: Library, taste: list[str], user: str = OWNER_ID) -> list
     ``LIKED_CARDS``, in "Dziś dla Ciebie". Remembered in ``library``, so a
     card opened after a restart is still found."""
     rules = PlaylistRules(kinds=[ItemKind.ARTWORK])
-    have = Counter(i.artist for i in library.query(rules)[1])
+    have = Counter(i.artist for i in library.query(rules, proposing=True)[1])
     made: list[Theme] = []
     seen: set[str] = set()
     for artist in taste:
@@ -2063,6 +2065,10 @@ def browse_catalogue(
     library: Library, found: Theme, page: int = 1, limit: int = 24
 ) -> tuple[list[Item], bool]:
     total, items = library.query(
-        found.rules(), sort="suitability", offset=(page - 1) * limit, limit=limit
+        found.rules(),
+        sort="suitability",
+        offset=(page - 1) * limit,
+        limit=limit,
+        proposing=True,
     )
     return items, page * limit < total
