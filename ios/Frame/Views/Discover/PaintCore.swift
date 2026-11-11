@@ -45,15 +45,20 @@ enum PaintStyle: String, Sendable, CaseIterable {
         return painting && !other ? .oil : nil
     }
 
+    /// How far through the painting of the bar the first paint's swatch
+    /// begins: they do not wait for the bar's end (Mateusz 2026-11-11
+    /// 18:39: „muszą się pojawiać trochę wcześniej”).
+    static let swatchesFrom = 0.5
+
     /// How long after the bar's first stroke paint `index`'s swatch
     /// begins, with `colours` strokes on the bar (none: no bar).
     func swatchDelay(colours: Int, index: Int) -> Double {
-        let (apart, stroke, lead, gap): (Double, Double, Double, Double) = switch self {
-        case .oil: (OilStrip.apart, OilStrip.stroke, 0.35, 0.34)
-        case .water: (WaterStrip.apart, WaterStrip.stroke, 0.35, 0.28)
-        case .dry: (DryPlan.apart, DryPlan.stroke, 0.25, 0.3)
+        let (apart, stroke, gap): (Double, Double, Double) = switch self {
+        case .oil: (OilStrip.apart, OilStrip.stroke, 0.26)
+        case .water: (WaterStrip.apart, WaterStrip.stroke, 0.22)
+        case .dry: (DryPlan.apart, DryPlan.stroke, 0.24)
         }
-        let bar = colours > 0 ? Double(colours - 1) * apart + stroke + lead : 0
+        let bar = colours > 0 ? Self.swatchesFrom * (Double(colours - 1) * apart + stroke) : 0
         return bar + gap * Double(index)
     }
 
@@ -380,20 +385,19 @@ final class WaterStrip: PaintPainter, @unchecked Sendable {
 
 /// One paint as a dab of watercolour: it spreads from the middle, then
 /// dries with a darker rim and, in places, a ring the paper soaked up.
-/// `sure` false (a likely paint, not one the sources name): thinner.
+/// A likely paint, not one the sources name, is the same dab (Mateusz
+/// 2026-11-11 18:39: „zawsze duże (nawet gdy niepewne)”).
 final class WaterDab: PaintPainter, @unchecked Sendable {
     let wide = Int(2 * Paint.half) * Paint.scale
     let high = Int(2 * Paint.half) * Paint.scale
     let length = 6.0
 
     private let rgb: [Double]
-    private let sure: Bool
     private let seed: Double
     private let turns: (Double, Double, Double)
 
-    init(rgb: [Double], sure: Bool, index: Int, seed: Int) {
+    init(rgb: [Double], index: Int, seed: Int) {
         self.rgb = rgb
-        self.sure = sure
         self.seed = Double(seed + index)
         var random = PaintRandom(seed + 300 + index)
         turns = (random.next() * 6.28, random.next() * 6.28, random.next() * 6.28)
@@ -405,7 +409,7 @@ final class WaterDab: PaintPainter, @unchecked Sendable {
         guard age > 0 else { return out }
         let S = Double(Paint.scale), half = Paint.half, full = 11.2
         let grow = 1 - pow(1 - min(1, age / 0.55), 2.4)
-        let dry = Paint.ease((age - 0.9) / 2.2), soak = Paint.ease((age - 1.1) / 2.6), thin = sure ? 1 : 0.62
+        let dry = Paint.ease((age - 0.9) / 2.2), soak = Paint.ease((age - 1.1) / 2.6)
         for k in 0..<(wide * high) {
             let x = -half + (Double(k % wide) + 0.5) / S, y = -half + (Double(k / wide) + 0.5) / S
             let th = atan2(y, x), dist = (x * x + y * y).squareRoot()
@@ -418,8 +422,7 @@ final class WaterDab: PaintPainter, @unchecked Sendable {
             let deep = soak * Paint.step(0.42, 0.62, Paint.noise(x / 12, y / 12, 51 + seed)) * (3 + 2.6 * low)
             let ring = deep > 0 ? Paint.step(0, 0.5, deep) * (1 - Paint.step(deep - 0.7, deep + 0.3, e)) : 0
             let lip = ring * Paint.step(deep - 1.5, deep - 0.4, e)
-            let al = max(inside * (0.96 - 0.05 * dry) * (thin + (1 - thin) * Paint.step(-3.4, -0.9, e) * dry),
-                         ring * (0.3 + 0.18 * lip) * (1 - 0.3 * (grain - 0.5)) * thin)
+            let al = max(inside * (0.96 - 0.05 * dry), ring * (0.3 + 0.18 * lip) * (1 - 0.3 * (grain - 0.5)))
             if al <= 0 { continue }
             let rim = Paint.step(-3.4, -0.9, e) * dry
             let shade = (1 - 0.17 * rim) * (1 + 0.1 * (1 - Paint.step(-6, -2, e)) * dry) * (1 + 0.12 * (low - 0.5) * dry) * (1 - 0.12 * (grain - 0.5))
@@ -559,9 +562,9 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
     /// the tube it was before, and the paper round it soaks a little of
     /// the oil up (13:51: „mogą być trochę większe niż obecne kropki.
     /// Wokół nich tło może trochę nasiąkać jak przy farbach olejnych”).
-    /// `sure` false (a likely paint, not one the sources name): a
-    /// smaller touch with less paint on the brush.
-    init(touch rgb: [Double], sure: Bool, index: Int, seed: Int, dark: Bool) {
+    /// A likely paint, not one the sources name, is as big a touch
+    /// (18:39: „zawsze duże (nawet gdy niepewne)”).
+    init(touch rgb: [Double], index: Int, seed: Int, dark: Bool) {
         shares = [PaintShare(rgb: rgb, weight: 1)]
         self.seed = Double(seed + 131 + 9 * index)
         self.dark = dark
@@ -570,22 +573,17 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
         high = Int(Paint.bar + 2 * Paint.pad) * Paint.scale
         last = Self.stroke * 0.6
         length = last + Self.soak
-        pulls = [Self.touch(sure: sure, seed: seed + 300 + index)]
+        pulls = [Self.touch(seed: seed + 300 + index)]
     }
 
     /// How long the paper round a touch goes on soaking.
     static let soak = 3.2
 
     /// The one touch of a paint's swatch, across its 26 points.
-    static func touch(sure: Bool, seed: Int) -> Pull {
+    static func touch(seed: Int) -> Pull {
         var random = PaintRandom(seed)
-        var pull = varied(a: sure ? -3 : 2.5, e: sure ? 21.5 : 18.5, touch: true, random: &random)
-        if sure {
-            pull.wide += 1.2
-        } else {
-            pull.wide *= 0.74
-            pull.full *= 0.7
-        }
+        var pull = varied(a: -3, e: 21.5, touch: true, random: &random)
+        pull.wide += 1.2
         return pull
     }
 
@@ -876,11 +874,12 @@ struct DryPlan: Sendable {
     }
 
     /// One paint's scribble: the corners of its zigzag, in points from the
-    /// middle of its swatch. `sure` false (a likely paint, not one the
-    /// sources name): as close a hatching, on a narrower and lower patch.
-    static func scribble(sure: Bool, index: Int, seed: Int) -> [(x: Double, y: Double)] {
+    /// middle of its swatch. A likely paint, not one the sources name,
+    /// is hatched on as big a patch (Mateusz 2026-11-11 18:39: „zawsze
+    /// duże (nawet gdy niepewne)”).
+    static func scribble(index: Int, seed: Int) -> [(x: Double, y: Double)] {
         var random = PaintRandom(seed + 400 + index)
-        let turns = sure ? 7 : 5, reach = sure ? 10.5 : 7.5, tall = sure ? 9.5 : 8.5
+        let turns = 7, reach = 10.5, tall = 9.5
         var points = [(x: Double, y: Double)]()
         for q in 0...turns {
             let u = -reach + 2 * reach * Double(q) / Double(turns) + 1.2 * (random.next() - 0.5), up = q % 2 == 0
