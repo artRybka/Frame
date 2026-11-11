@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.145.34
+
+- Oryginały dzieł są odtąd przechowywane z dłuższym bokiem do 4000 px
+  zamiast 2560. Widać to przy powiększaniu dzieła w aplikacji, w detalach
+  studium i przy kadrowaniu. Obraz wysyłany na ramkę ma nadal 2560 px,
+  czyli tyle, ile ekran.
+- Każde muzeum jest pytane o tyle, ile naprawdę ma. Serwery, które mały
+  skan sztucznie powiększały do żądanego rozmiaru (Yale, Wellcome), dają
+  teraz plik w jego prawdziwej wielkości. Małe skany Getty, których dotąd
+  nie dało się pobrać, wracają w całości. Granice samych muzeów zostają:
+  AIC 3000 px, Cleveland 3400, V&A 2500, Wikimedia Commons 3840.
+- Oryginały pobrane wcześniej i przycięte do 2560 px serwer pobiera nocą
+  ponownie, większe: najpierw Ulubione, potem playlisty, potem dzieła
+  ostatnio oglądane, do 300 na noc.
+- Większy oryginał zajmuje około 2,4 raza więcej miejsca. W tym samym
+  limicie oryginałów (Konfiguracja, domyślnie 3000 MB) zmieści się ich
+  więc mniej. Gdy limit jest pełny, większe oryginały przestają dochodzić
+  i czekają, aż go podniesiesz; Ulubione nie wypychają się nawzajem.
+
 ## 1.145.33
 
 - „Ten sam autor” jest odtąd jedną regułą w całym serwerze. „Inne dzieła

@@ -89,7 +89,7 @@ def test_the_night_downloads_what_is_kept_and_nothing_else(museum) -> None:
 
 
 def _cut(service, item: Item, size: tuple[int, int] = (2560, 1920)) -> None:
-    """``item``'s original as it was kept until 1.145.32: cut to 2560 px."""
+    """``item``'s original as it was kept until 1.145.33: cut to 2560 px."""
     path = service.images.image_path(item)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(jpeg_bytes((30, 30, 200), size))
