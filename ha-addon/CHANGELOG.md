@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.145.33
+
+- „Ten sam autor” jest odtąd jedną regułą w całym serwerze. „Inne dzieła
+  autora” na karcie, Studium dnia, „Na później” i tematy Odkrywaj pytają
+  o autora tak samo jak Szukaj, i tak samo, od którego dzieła zaczniesz.
+- Do dzieł autora dochodzą te zapisane inaczej: „Edgar Degas” i „Hilaire
+  Germain Edgar Degas”, „Hieronim Bosch” i „Hieronymus Bosch”, „Winslow
+  Homer, American” i „Winslow Homer”. W katalogu to około 40 tysięcy
+  dzieł, które trafiają do właściwych autorów.
+- Spod autora znikają kopie i naśladowcy („Follower of Rembrandt”,
+  „Według Albrecht Dürer”), dzieła, których autorstwo muzeum cofnęło
+  („formerly attributed to”), następcy o tym samym imieniu (Hiroshige II)
+  i imiennicy (Stanisław Witkiewicz i Stanisław Ignacy Witkiewicz,
+  Rembrandt i Rembrandt Peale). Około 3,5 tysiąca dzieł.
+
 ## 1.145.32
 
 - Studium dzieła, „Droga dzieła”: przy drodze pojawiają się małe rysunki

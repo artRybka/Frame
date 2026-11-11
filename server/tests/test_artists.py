@@ -9,7 +9,14 @@ from datetime import date
 import pytest
 
 from frame_server.library import Item, ItemKind
-from frame_server.library.artists import ArtistNames, is_artist, learn, made_by, name_key
+from frame_server.library.artists import (
+    ArtistNames,
+    is_artist,
+    learn,
+    made_by,
+    name_key,
+    same_hand,
+)
 from frame_server.library.duplicates import artist_words
 from frame_server.library.themes import (
     WEEK_KEY,
@@ -384,3 +391,73 @@ def test_a_search_for_an_artist_finds_every_spelling() -> None:
     assert not made_by("Rembrandt Peale", ["Rembrandt van Rijn"])
     assert not made_by("Pupil of Rembrandt", ["Rembrandt van Rijn"])
     assert not made_by("After Rembrandt", ["Rembrandt"])
+
+
+def test_a_name_the_museum_takes_back_is_not_the_maker() -> None:
+    """A copy said after the name, an attribution given up, a forgery (the
+    catalogue of 2026-11-11: 15 works "Lucas Cranach the Elder, After", 12
+    "formerly attributed to" Rodin, all among the artists' own)."""
+    for line in (
+        "Lucas Cranach the Elder, After",
+        "Formerly attributed to Mi Fu (傳)米芾 (1052-1107)",
+        "Artist, formerly attributed to: Auguste Rodin",
+        "Artist, forgery of: John Trumbull",
+    ):
+        assert not is_artist(line), line
+    assert not made_by("Lucas Cranach the Elder, After", ["Lucas Cranach the Elder"])
+    assert not made_by("Formerly attributed to Vincent van Gogh", ["Vincent van Gogh"])
+    assert not made_by("Artist, formerly attributed to: Auguste Rodin", ["Auguste Rodin"])
+    assert not made_by("Artist, forgery of: John Trumbull", ["John Trumbull"])
+    assert not made_by("Rembrandt van Rijn (værksted)", ["Rembrandt van Rijn"])
+    # A year's "after" takes nothing back, and the museum still gives an
+    # attributed work to them.
+    assert is_artist("Wu Zhang (1671-after 1741)")
+    assert made_by("Wu Zhang (1671-after 1741)", ["Wu Zhang"])
+    assert made_by("Attributed to Rembrandt van Rijn", ["Rembrandt van Rijn"])
+
+
+def test_another_person_with_the_name_in_theirs_is_not_the_artist() -> None:
+    """The next of the name, someone with it as a first name, a line that
+    names nobody."""
+    assert not made_by("Utagawa Hiroshige II (Shigenobu)", ["Utagawa Hiroshige"])
+    assert not made_by("Robert Havell, Jr.", ["Robert Havell"])
+    assert made_by("Utagawa Hiroshige II (Shigenobu)", ["Utagawa Hiroshige II"])
+    assert made_by("Hiroshige I Utagawa", ["Utagawa Hiroshige"])
+    assert made_by("Utagawa Kunisada I (Toyokuni III)", ["Utagawa Kunisada"])
+    assert made_by("Hans Holbein the Younger", ["Hans Holbein"])  # mostly him
+    # Two first names are no surname.
+    assert not made_by("Anton Raphael Mengs", ["Raphael"])
+    assert not made_by("Hans Simon Holtzbecker", ["John Simon"])
+    assert made_by("Hubert Robert, French", ["Hubert Robert"])
+    # What is asked for is somebody.
+    assert not made_by("Albrecht Dürer", ["Dürer-School"])
+    assert not made_by("unknown artist", ["Artist, style of: Giuseppe Arcimboldo"])
+    assert not made_by("Joseph Anton Seethaler II, German", ["German"])
+    assert not made_by("Master of 1518", ["Master of 1540"])
+    assert not made_by("C.W. Eckersberg", ["W."])  # initials are nobody's name
+    assert made_by("C.W. Eckersberg", ["Eckersberg"])
+    assert made_by("Katsushika Hokusai", ["Katsushika Hokusai (1760-1849)"])
+
+
+def test_two_works_are_by_one_hand_whichever_is_asked_first() -> None:
+    """Until 1.145.31 the other works of an artist were those whose line
+    had every word of this work's: "Hilaire Germain Edgar Degas" found no
+    "Edgar Degas", and "Rembrandt" every follower of his."""
+    for one, other in (
+        ("Edgar Degas", "Hilaire Germain Edgar Degas"),
+        ("Jan Piotr Norblin", "Jean Pierre Norblin de la Gourdaine"),
+        ("Winslow Homer, American", "Winslow Homer"),
+        ("Rembrandt van Rijn", "Attributed to Rembrandt van Rijn"),
+        ("After Rembrandt", "After Rembrandt"),
+        ("Currier & Ives", "Currier & Ives Lithography Company"),
+    ):
+        assert same_hand(one, other) and same_hand(other, one), (one, other)
+    for one, other in (
+        ("Rembrandt van Rijn", "Follower of Rembrandt van Rijn"),
+        ("Honoré Daumier", "Style of Honoré Victorin Daumier"),
+        ("Albrecht Dürer", "Według Albrecht Dürer"),
+        ("Utagawa Hiroshige", "Utagawa Hiroshige II"),
+        ("Pierre Ranson, French", "French School"),
+        ("Unknown artist", "Artist, style of: Abraham Genoels II"),
+    ):
+        assert not same_hand(one, other) and not same_hand(other, one), (one, other)

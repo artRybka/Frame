@@ -19,7 +19,7 @@ from typing import Any
 
 import httpx
 
-from .artists import is_artist
+from .artists import is_artist, made_by, same_hand
 from .importer import Importer
 from .models import Item, ItemKind, PlaylistRules
 from .nationality import artist_note
@@ -37,7 +37,6 @@ from .vocabulary import (
     SCULPTURE,
     TERMS,
     Term,
-    artist_matches,
     fold,
     museum_queries,
     object_category,
@@ -1469,7 +1468,7 @@ def _artist_of_the_week(items: list[Item], rng: random.Random, history: set[str]
     if not found:
         return None
     found.sort()
-    weights = [1.0 if artist_matches(a, named) else 2.0 for a in found]
+    weights = [1.0 if made_by(a, named) else 2.0 for a in found]
     artist = rng.choices(found, weights)[0]
     bio = next((i.artist_bio for i in items if i.artist == artist and i.artist_bio), "")
     note = artist_note(bio) if bio else None
@@ -1785,7 +1784,7 @@ def check_proposals(
         name, description = " ".join(p.name.split()), " ".join(p.description.split())
         terms = tuple(dict.fromkeys(t for t in p.terms if t in allowed))
         named = tuple(
-            dict.fromkeys(a for wanted in p.artists for a in artists if artist_matches(a, [wanted]))
+            dict.fromkeys(a for wanted in p.artists for a in artists if made_by(a, [wanted]))
         )
         reason = ""
         if not name or len(name) > CURATED_NAME or len(description) > CURATED_DESCRIPTION:
@@ -1933,17 +1932,15 @@ def make_liked(library: Library, taste: list[str], user: str = OWNER_ID) -> list
     made: list[Theme] = []
     seen: set[str] = set()
     for artist in taste:
-        found = next(
-            (t for t in THEMES if t.artists and artist_matches(artist, list(t.artists))), None
-        )
+        found = next((t for t in THEMES if t.artists and made_by(artist, list(t.artists))), None)
         if found is None:
             continue
-        own = [a for a in found.artists if artist_matches(artist, [a])]
+        own = [a for a in found.artists if same_hand(artist, a)]
         if not own or own[0] in seen:
             continue  # the same artist spelled otherwise
         seen.add(own[0])
         counts = {
-            a: sum(n for name, n in have.items() if artist_matches(name, [a]))
+            a: sum(n for name, n in have.items() if made_by(name, [a]))
             for a in found.artists
             if a not in own
         }

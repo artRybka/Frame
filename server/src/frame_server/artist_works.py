@@ -20,11 +20,11 @@ from typing import TYPE_CHECKING
 import httpx
 
 from .library import Item, ItemKind, PlaylistRules
-from .library.artists import is_artist
+from .library.artists import is_artist, same_hand
 from .library.duplicates import same_work
 from .library.likeness import Likeness
 from .library.models import Note
-from .library.vocabulary import artist_matches, fold, is_photograph
+from .library.vocabulary import fold, is_photograph
 
 if TYPE_CHECKING:
     from .library import Library
@@ -94,7 +94,7 @@ class ArtistWorks:
                 or other in hidden
                 or is_photograph(other)
                 or not other.artist
-                or not artist_matches(other.artist, [item.artist])
+                or not same_hand(other.artist, item.artist)
                 or _key(other) in titles
                 or any(self.copies(other, s) for s in seen)
             ):
@@ -178,9 +178,7 @@ class ArtistWorks:
             hits = []
         rng = random.Random(self._seed(item))
         found = [
-            h
-            for h in hits
-            if h.id != item.id and h.artist and artist_matches(h.artist, [item.artist])
+            h for h in hits if h.id != item.id and h.artist and same_hand(h.artist, item.artist)
         ]
         rng.shuffle(found)
         if self.images is not None:

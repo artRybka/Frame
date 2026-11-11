@@ -15,9 +15,9 @@ from collections.abc import Collection, Hashable, Mapping
 from functools import lru_cache
 from itertools import combinations
 
-from .given_names import given
+from .given_names import GIVEN, given
 from .nationality import NATIONALITIES
-from .vocabulary import PER_WORK, artist_matches, fold, name_words
+from .vocabulary import PER_WORK, fold
 
 #: Words for "unknown", "anonymous" and "various" in museums' languages
 #: (folded: lower case, no accents).
@@ -221,6 +221,9 @@ _GROUPS = frozenset(
         "manner",
         "entourage",
         "omgeving",
+        "værksted",
+        "forgery",
+        "forger",
     }
 )
 #: The first word of a work after someone else's or only given to them.
@@ -356,6 +359,8 @@ def is_artist(name: str) -> bool:
     first_line = name.split("\n")[0].strip()
     if first_line.startswith("#"):
         return False  # a museum's field name ("#PredmetAutor:6058030")
+    if _not_theirs(first_line):
+        return False  # "Lucas Cranach the Elder, After", "Formerly attributed to Mi Fu"
     # Words run together ("AnonimowyUnknown author") apart.
     first_line = _JOINED.sub(" ", first_line)
     words = re.findall(r"[^\W\d_]+(?:'[^\W\d_]+)?", fold(first_line))
@@ -382,6 +387,29 @@ _NOT_BY = (
 )
 
 
+#: A name the museum takes back or only copies, said after the name:
+#: "Lucas Cranach the Elder, After" (the NGA), "Rembrandt van Rijn
+#: (værksted)" (SMK), "Bonifacio Bembo, workshop of"; and "Formerly
+#: attributed to Mi Fu", "Artist, formerly attributed to: Auguste Rodin"
+#: (the Met). Not "Wu Zhang (1671-after 1741)", whose "after" is a year's,
+#: nor "Lucas Cranach the Elder and Workshop", his with his workshop.
+_AFTER_NAME = re.compile(
+    r"(?:[,(]|\s[-–])\s*(?:or\s+)?(?:"
+    + "|".join(sorted(re.escape(word) for word in _NOT_BY))
+    + r")(?:\s+of)?\s*\)?\s*$"
+)
+_FORMERLY = frozenset({"formerly", "previously", "dawniej", "voorheen", "ehemals", "anciennement"})
+
+
+def _not_theirs(line: str) -> bool:
+    """``line`` names someone the work is not by: a copy after them or
+    their workshop said after the name, or an attribution taken back."""
+    folded = fold(line)
+    return bool(_AFTER_NAME.search(folded)) or bool(
+        _FORMERLY.intersection(_LETTERS.findall(folded))
+    )
+
+
 @lru_cache(maxsize=PER_WORK)
 def _maker_words(artist: str) -> frozenset[str]:
     """The words of ``artist`` before any "after", "workshop of" and the
@@ -391,24 +419,68 @@ def _maker_words(artist: str) -> frozenset[str]:
     return frozenset(words[:cut])
 
 
+#: Words that make the next of a name another person than the name alone:
+#: "Utagawa Hiroshige II", "Robert Havell, Jr.", "Vernet fils". ("The
+#: Younger" does not: "Hans Holbein" alone is mostly him.)
+_SUCCESSORS = frozenset({"ii", "iii", "iv", "jr", "junior", "fils"})
+
+
+@lru_cache(maxsize=PER_WORK)
+def _outside_brackets(artist: str) -> frozenset[str]:
+    """The words of ``artist`` that are not in brackets: in "Utagawa
+    Kunisada I (Toyokuni III)" the third is of another name of his."""
+    return frozenset(_LETTERS.findall(fold(re.sub(r"\([^()]*\)", " ", artist))))
+
+
+@lru_cache(maxsize=PER_WORK)
+def _numbers(artist: str) -> frozenset[str]:
+    """The numbers in ``artist``'s name, a bracket's years aside: what
+    tells the "Master of 1518" from the Master of 1540."""
+    return frozenset(re.findall(r"\d+", re.sub(r"\([^()]*\)", " ", artist.split("\n")[0])))
+
+
 def made_by(artist: str, wanted: list[str]) -> bool:
     """A work with ``artist`` is by one of ``wanted`` (spelled as museums
     do: "Gogh, Vincent van" is Vincent van Gogh), not a copy after them or
     of their workshop or followers: searching an artist shows only their
     own works (Mateusz, 2026-11-07)."""
+    if _not_theirs(artist.split("\n")[0]):
+        return False  # "Lucas Cranach the Elder, After" is not Cranach's
     if _known.alike(artist, wanted):
         return True  # "Rembrandt" for "Rembrandt van Rijn" (2026-11-08)
     if _known.apart(artist, wanted):
         return False  # Jan Vermeer van Haarlem for Vermeer of Delft (2026-11-09)
     makers = _maker_words(artist)
-    if artist_matches(artist, wanted) and any(
-        name_words(w) and name_words(w) <= makers for w in wanted
-    ):
-        return True
-    # A first name in another language: the V&A's and Europeana's
-    # "Alphonse Mucha" for "Alfons Mucha" (2026-11-10).
     mine = given(makers)
-    return any((words := given(_maker_words(w))) and words <= mine for w in wanted)
+    for name in wanted:
+        asked = name_key(name)
+        if not asked or asked & _NOT_BY:
+            continue  # nobody's own name: "Dürer-School", "Artist, style of: X"
+        if not _numbers(name) <= _numbers(artist):
+            continue  # "Master of 1518" is not the Master of 1540
+        if asked == name_key(artist):
+            return True
+        if not is_artist(name) or all(len(w) < 2 for w in asked - _FILLER - GIVEN.keys()):
+            continue  # nobody ("German"), first names only ("Raphael" is not
+            # Anton Raphael Mengs) or initials ("W." is not C.W. Eckersberg)
+        if (_outside_brackets(artist) - asked) & _SUCCESSORS:
+            continue  # "Utagawa Hiroshige II" is not Utagawa Hiroshige
+        # In the name as it is, or with a first name in another language:
+        # the V&A's and Europeana's "Alphonse Mucha" for "Alfons Mucha"
+        # (2026-11-10).
+        if asked <= makers or given(asked) <= mine:
+            return True
+    return False
+
+
+def same_hand(artist: str, other: str) -> bool:
+    """Two works' artists are one maker, however each museum spells them:
+    :func:`made_by` asked either way ("Edgar Degas" and "Hilaire Germain
+    Edgar Degas"; not "Rembrandt" and "Pupil of Rembrandt")."""
+    key = name_key(artist)
+    if key and key == name_key(other) and _numbers(artist) == _numbers(other):
+        return True  # the same line: "After Rembrandt" twice
+    return made_by(artist, [other]) or made_by(other, [artist])
 
 
 # -- one artist under many spellings -------------------------------------------
