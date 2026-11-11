@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.36
+
+- Porządki w kodzie nocnych zadań modeli (etap 6a): Sędzia kopii, Strażnik,
+  Nocny przegląd i Kurator korzystają z jednej wspólnej pętli zamawiania
+  i odbierania odpowiedzi zamiast czterech kopii. W działaniu nic się nie
+  zmienia.
+
 ## 1.145.35
 
 - Autorzy zapisani z dopiskiem muzeum („Winslow Homer, American”,
