@@ -305,8 +305,9 @@ struct JourneyRoad: View {
         .coordinateSpace(.named(Self.space))
         .background(alignment: .topLeading) {
             if let plan, let spills {
-                let ink = RoadInk(plan: plan, seed: seed, dark: dark, top: top,
-                                  flow: Self.inkFlow(plan.line.count, seed: seed), stains: spills.map(\.box))
+                // No white and no specks on a stain, nor on a sea's wet wash.
+                let ink = RoadInk(plan: plan, seed: seed, dark: dark, top: top, flow: Self.inkFlow(plan.line.count, seed: seed),
+                                  stains: spills.map(\.box) + washes.sorted { $0.key < $1.key }.map(\.value.box))
                 ZStack(alignment: .topLeading) {
                     // Under everything, the seas' washes: the line is drawn into them wet.
                     ForEach(washes.keys.sorted(), id: \.self) { i in
@@ -1079,7 +1080,7 @@ private struct RoadInk: Equatable {
     var top: CGFloat
     /// How full the nib runs along the line.
     var flow: [CGFloat]
-    /// Where the stains are: no white and no specks there.
+    /// Where the stains and the seas' washes are: no white and no specks there.
     var stains: [CGRect]
 
     private var end: CGPoint { plan.dots[plan.dots.count - 1] }
