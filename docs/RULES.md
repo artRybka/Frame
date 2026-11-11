@@ -51,7 +51,7 @@ chciałbym żeby spadła jakość doboru tych propozycji”).
 |---|---|---|
 | 0 | Zestaw wzorcowy i pomiary | 1.145.11 (PLAN 3.3zzz155) |
 | 1 | Noc: porządki przed dobieraniem, budżety czasu | 1.145.12 (PLAN 3.3zzz156) |
-| 2 | Szybkość bez zmiany wyników: przyrostowe scalanie grup, punkty ORB na dysku, odsiew par, karty jednym przejściem | |
+| 2 | Szybkość bez zmiany wyników: przyrostowe scalanie grup (2a: 1.145.13, PLAN 3.3zzz157), dalej według pomiarów z nocy: punkty ORB na dysku, odsiew par, karty jednym przejściem | w toku |
 | 3 | Sprzątanie resztek | |
 | 4 | Jeden werdykt pokazywania (lista powodów i tabela kontekstów, najpierw jako cień obok starych reguł) | |
 | 5 | Jedna tożsamość dzieła i autora | |
@@ -65,6 +65,12 @@ Nocny przegląd) idzie przed dobieraniem katalogu, dobieranie dostaje
 najwyżej 45 minut (`night.CATALOGUE_FOR`), zamówienia do Claude wychodzą
 przed pierwszym zadaniem pakietu (`NightTask.ahead`), a zadania, do których
 noc nie doszła, następnej idą pierwsze (`NightQueue.in_turn`).
+
+Etap 2a w skrócie: zmiana jednego dzieła (nazwana kopia, tytuł, autor,
+rok, usunięcie) grupuje od nowa tylko dzieła osiągalne od niego przez
+`same_work` (`Works.regroup`), z tym samym wynikiem co grupowanie całego
+katalogu; całość od nowa tylko wtedy, gdy takich dzieł jest za dużo
+(`REGROUP_LOOKS`) albo zapis został wycofany.
 
 ## Jak sprawdzić zmianę reguł
 
@@ -118,5 +124,7 @@ dowolnej nowej reguły, więc etap 5 ma liczbę przed i po.
   (kroki: candidates, hashes, hash distances, keypoints, pairs, thumbnails,
   large pictures, large keypoints, large pairs, writes, grouping; w nawiasie
   liczba obrazów, par albo pobrań).
-- Każde zadanie nocy dopisuje, ile razy przez nie przebudowano grupy kopii:
-  `night: twins in 310.9 s, the works regrouped 5 time(s) in 17.2 s`.
+- Każde zadanie nocy dopisuje, ile razy przez nie przebudowano grupy kopii
+  w całości (na to czekały pytania aplikacji) i ile zmian ułożono tylko
+  w części (od 1.145.13, nikt nie czeka):
+  `night: twins in 310.9 s, the works regrouped 1 time(s) in 3.4 s, 41 change(s) regrouped in part in 0.1 s`.

@@ -128,14 +128,17 @@ WORKS_ATTEMPTS = 3
 
 def _apply(works: Works, changes: list[tuple[Item | None, Item | None]]) -> bool:
     """The changes made while ``works`` was made, applied to it; False when
-    one may change its groups (it is made again)."""
+    it has to be made again (a write was rolled back meanwhile, or a change
+    has to do with too many works: ``Works.regroup``)."""
     for old, new in changes:
         if new is None:
-            if old is None or not works.remove(old.id):
+            if old is None:
+                return False
+            if not works.remove(old.id) and not works.regroup(old.id, None):
                 return False
         elif old is None:
             works.add(new)
-        elif regroups(old, new) or not works.replace(new):
+        elif (regroups(old, new) or not works.replace(new)) and not works.regroup(new.id, new):
             return False
     return True
 
@@ -539,6 +542,9 @@ class Library:
         #: took, since the start (:meth:`regrouped`).
         self._works_made = 0
         self._works_seconds = 0.0
+        #: ... and how many times a part of them was (``Works.regroup``).
+        self._works_parts = 0
+        self._works_part_seconds = 0.0
         self._conn: sqlite3.Connection | None = None
         #: The key/value table, read once (:meth:`_kv_rows`).
         self._kv: dict[str, str] | None = None
@@ -595,7 +601,7 @@ class Library:
         )
         self._queries_lock = threading.Lock()
         #: ``hidden()`` as last worked out: (catalogue version, works, it).
-        self._hidden_kept: tuple[int, Works, Hidden] | None = None
+        self._hidden_kept: tuple[tuple[int, int], Works, Hidden] | None = None
         self._term_index: TermIndex | None = None
         self._term_index_lock = threading.Lock()
         self._term_index_building = False
@@ -802,7 +808,10 @@ class Library:
                 self._favorites = {u: h - {item_id} for u, h in self._favorites.items()}
             if self._works is None and self._works_changes is not None:
                 self._works_changes.append((removed, None))  # applied when it is made
-            elif self._works is None or not self._works.remove(item_id):
+            elif self._works is None or not (
+                # With copies: they alone are grouped anew.
+                self._works.remove(item_id) or self._regroup_part(self._works, item_id, None)
+            ):
                 self._drop_works(f"deletion of {item_id}")
             return True
 
@@ -899,19 +908,32 @@ class Library:
 
     def _regroup(self, old: Item | None, new: Item, what: str) -> None:
         """Keep the grouping up to date with ``new`` (``old`` before): added
-        or swapped in its place when the groups stay as they are, else
-        dropped to be made again when next asked for."""
+        or swapped in its place when the groups stay as they are, else the
+        works it has to do with grouped anew (``Works.regroup``). The whole
+        library is grouped again, when next asked for, only where those are
+        too many, and after a write was rolled back."""
         works = self._works
         if works is None and self._works_changes is not None:
             self._works_changes.append((old, new))  # applied when it is made
         elif old is None:
             if works is not None:
                 works.add(new)
-        elif regroups(old, new):
+        elif works is None:
+            if regroups(old, new):
+                self._works_drops += 1
+        elif (regroups(old, new) or not works.replace(new)) and not self._regroup_part(
+            works, new.id, new
+        ):
             fields = sorted(k for k in type(new).model_fields if getattr(old, k) != getattr(new, k))
             self._drop_works(f"{what} of {new.id} ({', '.join(fields)})")
-        elif works is not None:
-            works.replace(new)
+
+    def _regroup_part(self, works: Works, item_id: str, new: Item | None) -> bool:
+        started = time.monotonic()
+        done = works.regroup(item_id, new)
+        if done:
+            self._works_parts += 1
+        self._works_part_seconds += time.monotonic() - started
+        return done
 
     def _drop_works(self, why: str) -> None:
         if self._works_changes is not None:
@@ -928,6 +950,11 @@ class Library:
         the seconds that took: whoever asked for them first waited that long
         (the night's log says it for each task)."""
         return self._works_made, self._works_seconds
+
+    def regrouped_in_part(self) -> tuple[int, float]:
+        """How many times a change regrouped the works it had to do with
+        alone, and the seconds that took (no one waited)."""
+        return self._works_parts, self._works_part_seconds
 
     def works(self) -> Works:
         """The library's items grouped by work: copies of one work from
@@ -1120,8 +1147,11 @@ class Library:
     def hidden(self) -> Hidden:
         """The works hidden in the app ("Ukryj dzieło"): the hidden items and
         every copy of their works, here or at a museum."""
-        version = self._catalogue_version
+        catalogue = self._catalogue_version
         works = self.works()
+        # The groups as they are now: a copy named since (``Works.regroup``)
+        # is hidden with its work.
+        version = (catalogue, works.regrouped)
         kept = self._hidden_kept
         if kept is not None and kept[0] == version and kept[1] is works:
             return kept[2]
