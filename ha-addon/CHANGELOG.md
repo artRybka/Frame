@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.145.38
+
+- Studium dzieła, „Droga dzieła”: rysunków piórkiem przy drodze jest
+  więcej. Dotąd najwyżej trzy na drogę i nigdy przy sąsiednich
+  przystankach; teraz mniej więcej przy dwóch przystankach z trzech,
+  byle nie przy trzech z rzędu. Statek na morzu jest ponad to, a gdy
+  dzieło przepłynęło dwa morza, statki są dwa. To, co zdarzyło się
+  dwa razy (dwie sprzedaże), może być narysowane dwa razy, daleko od
+  siebie; widok miejsca nadal tylko raz. Droga „Wielkiej fali” ma teraz
+  Fudżi, statek, monety i zwój z pieczęcią przy spadku z 1913 roku.
+- Studium dzieła, „Kolor i światło”: akcenty na pasku barw są większe.
+  Na pasku olejnym pacnięcie jest około dwa razy dłuższe (30–42 punkty
+  zamiast 17–26) i prawie tak wysokie jak pasek. Na pasku akwarelowym
+  i pastelowym, gdzie każda barwa ma swoje miejsce w rzędzie, najmniejsza
+  barwa ma co najmniej 20 punktów szerokości zamiast kilku.
+
 ## 1.145.37
 
 - Mniej zapytań do muzeów (etap 6b): dobieranie katalogu i dopełnianie

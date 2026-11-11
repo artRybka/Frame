@@ -283,6 +283,36 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(wet.frame(age: 99).bytes, wet.frame(age: wet.length).bytes)
     }
 
+    /// Mateusz 2026-11-11 22:54: „akcenty na linii kolorów większe (teraz
+    /// są zbyt drobne)”.
+    func testAnAccentIsBigEnoughToBeSeen() {
+        // The Little Street: bricks, greys, and a hundredth of the picture in the shutter's red.
+        let street = shares([("#7d543e", 0.284), ("#b3a590", 0.194), ("#cfc3ad", 0.18), ("#544133", 0.144), ("#c4a87f", 0.074),
+                             ("#9c3e26", 0.013)])
+        // In oil a touch of the brush on top, well over a point of the finger long and nearly as high as the bar.
+        let touches = OilStrip.pulls(street, width: 350, seed: 5).filter(\.on)
+        XCTAssertEqual(touches.map(\.rgb), [street[4].rgb, street[5].rgb])
+        for touch in touches {
+            XCTAssertGreaterThanOrEqual(touch.e - touch.a, 30)
+            XCTAssertLessThanOrEqual(touch.e - touch.a, 42)
+            XCTAssertGreaterThan(touch.wide, 0.6 * Paint.bar / 2)
+        }
+        // In watercolour and pastel a patch of its own, as wide as a finger's tip; the others make room by their shares.
+        let spans = Paint.spans(street, width: 350)
+        XCTAssertEqual(spans[5].1 - spans[5].0, Paint.least, accuracy: 0.001)
+        XCTAssertEqual(spans[0].0, 0)
+        XCTAssertEqual(spans[5].1, 350, accuracy: 0.001)
+        for (before, after) in zip(spans, spans.dropFirst()) { XCTAssertEqual(before.1, after.0, accuracy: 0.001) }
+        XCTAssertEqual((spans[0].1 - spans[0].0) / (spans[1].1 - spans[1].0), 0.284 / 0.194, accuracy: 0.001)
+        XCTAssertEqual(WaterStrip.spans(street, width: 350).map(\.1), spans.map(\.1))
+        // Colours that all have room keep their shares; more colours than there is room for share the bar.
+        let even = Paint.spans(jatte, width: 350)
+        XCTAssertEqual(even[6].1 - even[6].0, 350 * 0.06, accuracy: 0.001)
+        let many = Paint.spans(shares((0..<8).map { _ in ("#6A7F9A", 0.125) }), width: 80)
+        XCTAssertEqual(many.map { $0.1 - $0.0 }, Array(repeating: 10, count: 8))
+        XCTAssertTrue(Paint.spans([], width: 350).isEmpty)
+    }
+
     func testPastelIsHatchedColourByColour() {
         let plan = DryPlan(shares: jatte, width: 350, seed: 5)
         for i in jatte.indices { XCTAssertGreaterThanOrEqual(plan.strokes.filter { $0.colour == i }.count, 4, "colour \(i)") }

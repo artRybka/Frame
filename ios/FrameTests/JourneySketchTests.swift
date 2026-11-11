@@ -74,27 +74,49 @@ final class JourneySketchTests: XCTestCase {
         ]
     }
 
-    func testARoadGetsAFewDrawingsNeverAtStopsNextToEachOther() {
-        // „okazjonalnie a nie przy każdym Punkcie”: Fuji by Edo, a ship on
-        // the Pacific, coins by the sale of 1905 (sketch 32).
+    func testARoadGetsDrawingsAtAboutTwoStopsOfThree() {
+        // Mateusz 2026-11-11 22:54, after a road with three: „rysunków przy
+        // drodze dzieła może być więcej”. Fuji by Edo, a ship on the
+        // Pacific, coins by the sale of 1905 (sketch 32), and now the will
+        // of 1913 too.
         let picks = JourneySketch.picks(wave, seas: [false, true, false, false, false])
         XCTAssertEqual(picks, [
             JourneySketch.Pick(stop: 0, motif: .fuji),
             JourneySketch.Pick(stop: 1, motif: .ship, sea: true),
             JourneySketch.Pick(stop: 2, motif: .coins),
+            JourneySketch.Pick(stop: 3, motif: .scroll),
         ])
-        // Whatever the road, the rules hold.
+        // Whatever the road, the rules hold: „okazjonalnie a nie przy
+        // każdym Punkcie” (20:02) stays.
         var long = wave + wave + [stop("Paryż", 48.86, 2.35, "1950", "sold", detour: true)]
         long[6].kind = "stolen"
+        let sales = (0..<9).map { stop("Lipsk", 51.34, 12.37, "\(1800 + $0 * 10)", "sold") }
         for (stops, seas) in [(wave, [false, true, false, false, false]), (long, long.map { _ in false }),
+                              (long, long.map { _ in true }), (sales, sales.map { _ in false }),
                               (Array(wave.prefix(2)), [false, true]), (Array(wave.prefix(1)), [false])] {
             let picks = JourneySketch.picks(stops, seas: seas)
-            XCTAssertLessThanOrEqual(picks.count, min(3, (stops.count + 1) / 2))
-            XCTAssertEqual(Set(picks.map(\.motif)).count, picks.count, "none twice")
-            let by = picks.filter { !$0.sea }.map(\.stop).sorted()
-            for (a, b) in zip(by, by.dropFirst()) { XCTAssertGreaterThan(b - a, 1, "not at neighbours") }
+            let by = picks.filter { !$0.sea }.map(\.stop)
+            XCTAssertLessThanOrEqual(by.count, (2 * stops.count + 1) / 3)
+            XCTAssertEqual(Set(by).count, by.count, "one drawing by a stop")
+            for (a, b) in zip(by, by.dropFirst(2)) { XCTAssertGreaterThan(b - a, 2, "never at three stops in a row") }
             for pick in picks { XCTAssertFalse(stops[pick.stop].detour) }
+            // A sight once; what happened twice at most, and then well apart.
+            for motif in Set(picks.filter { !$0.sea }.map(\.motif)) {
+                let at = picks.filter { !$0.sea && $0.motif == motif }.map(\.stop)
+                XCTAssertLessThanOrEqual(at.count, JourneySketch.event(stops[at[0]], sea: false) == motif ? 2 : 1, "\(motif)")
+                if at.count == 2 { XCTAssertGreaterThan(at[1] - at[0], 2, "\(motif)") }
+            }
+            // A ship only on a sea, two at most, not on two seas running.
+            let ships = picks.filter(\.sea)
+            XCTAssertTrue(ships.allSatisfy { $0.motif == .ship && seas[$0.stop] })
+            XCTAssertLessThanOrEqual(ships.count, 2)
+            for (a, b) in zip(ships, ships.dropFirst()) { XCTAssertGreaterThan(b.stop - a.stop, 1) }
         }
+        // More than before: the long road has seven by its ten stops (and none by its side trip), a road of
+        // nine sales two piles of coins.
+        XCTAssertEqual(JourneySketch.picks(long, seas: long.map { _ in false }).map(\.stop), [0, 2, 3, 5, 6, 8, 9])
+        XCTAssertEqual(JourneySketch.picks(sales, seas: sales.map { _ in false }).map(\.motif), [.coins, .coins])
+        XCTAssertEqual(JourneySketch.picks(long, seas: long.map { _ in true }).filter(\.sea).count, 2)
         XCTAssertTrue(JourneySketch.picks(Array(wave.prefix(1)), seas: [false]).isEmpty)
         // An old road and a new one are told the same way: nothing but the
         // stops decides (21:19: „Stare drogi… kompletność jak nowotworzone”).

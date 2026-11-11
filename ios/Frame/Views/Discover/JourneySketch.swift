@@ -229,44 +229,57 @@ enum JourneySketch {
         }
     }
 
-    /// The drawings of a road: few (three on a long road, one on a short
-    /// one), never at two stops next to each other, none twice, none at a
-    /// side trip. The first sight of a place comes first, then what
-    /// happened; a second place counts for less than a sale, so a road is
-    /// not all towers. A sea the work crossed gets one ship.
+    /// The drawings of a road: at about two stops of three (Mateusz
+    /// 2026-11-11 22:54, after the first build drew three at most:
+    /// „rysunków przy drodze dzieła może być więcej”), still not at every
+    /// one (20:02: „okazjonalnie a nie przy każdym Punkcie”): never at
+    /// three stops in a row, and rather apart than next to each other;
+    /// none at a side trip. The first sight of a place comes first, then
+    /// what happened; a second place counts for less than a sale, so a
+    /// road is not all towers. A sight is drawn once, where the work
+    /// first came there; what happened twice (two sales) may be drawn
+    /// twice, well apart. A sea the work crossed gets its ship, over and
+    /// above the stops' drawings: two seas, two ships.
     static func picks(_ stops: [Stop], seas: [Bool]) -> [Pick] {
-        let most = min(3, (stops.count + 1) / 2)
-        guard most > 0, stops.count > 1 else { return [] }
+        guard stops.count > 1 else { return [] }
+        let most = (2 * stops.count + 1) / 3
         var picks: [Pick] = []
-        var used = Set<Motif>()
         var placed = false
-        func neighbour(_ index: Int) -> Bool { picks.contains { !$0.sea && abs($0.stop - index) <= 1 } }
+        func drawn(_ index: Int) -> Bool { picks.contains { $0.stop == index } }
         // Each place's sight belongs to the stop the work first came there at.
         var sightAt: [Int: Motif] = [:]
         var seen = Set<Motif>()
         for (index, stop) in stops.enumerated() where !stop.detour {
             if let motif = sight(stop), seen.insert(motif).inserted { sightAt[index] = motif }
         }
-        let crossing = stops.indices.first { $0 > 0 && $0 < seas.count && seas[$0] }
         while picks.count < most {
             var best: (pick: Pick, weight: Double)?
             func offer(_ pick: Pick, _ weight: Double) {
-                guard weight > 0, !used.contains(pick.motif) else { return }
+                guard weight > 0 else { return }
                 if best == nil || weight > best!.weight { best = (pick, weight) }
             }
-            for (index, stop) in stops.enumerated() where !stop.detour && !neighbour(index) {
-                if let motif = sightAt[index] { offer(Pick(stop: index, motif: motif), placed ? 1.8 : 3) }
+            for (index, stop) in stops.enumerated() where !stop.detour && !drawn(index) {
+                let before = drawn(index - 1), after = drawn(index + 1)
+                if (before && after) || (before && drawn(index - 2)) || (after && drawn(index + 2)) { continue }
+                let crowd = before || after ? 0.7 : 1
+                if let motif = sightAt[index] { offer(Pick(stop: index, motif: motif), (placed ? 1.8 : 3) * crowd) }
                 if let motif = event(stop, sea: index < seas.count && seas[index]), motif != .ship {
-                    offer(Pick(stop: index, motif: motif), weight(motif))
+                    let same = picks.filter { $0.motif == motif }
+                    if same.count < 2, !same.contains(where: { abs($0.stop - index) <= 2 }) {
+                        offer(Pick(stop: index, motif: motif), weight(motif) * crowd * (same.isEmpty ? 1 : 0.5))
+                    }
                 }
             }
-            if let crossing { offer(Pick(stop: crossing, motif: .ship, sea: true), 2.5) }
             guard let best else { break }
             picks.append(best.pick)
-            used.insert(best.pick.motif)
-            if sightAt[best.pick.stop] == best.pick.motif, !best.pick.sea { placed = true }
+            if sightAt[best.pick.stop] == best.pick.motif { placed = true }
         }
-        return picks.sorted { ($0.stop, $0.sea ? 0 : 1) < ($1.stop, $1.sea ? 0 : 1) }
+        var ships: [Pick] = []
+        for index in stops.indices where index > 0 && index < seas.count && seas[index] && ships.count < 2 {
+            if let last = ships.last, index - last.stop < 2 { continue }
+            ships.append(Pick(stop: index, motif: .ship, sea: true))
+        }
+        return (picks + ships).sorted { ($0.stop, $0.sea ? 0 : 1) < ($1.stop, $1.sea ? 0 : 1) }
     }
 
     // MARK: Where one has room
