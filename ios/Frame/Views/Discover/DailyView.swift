@@ -511,7 +511,7 @@ struct DailyView: View {
                         }
                         if !work.colour.isEmpty { prose(work.colour) }
                         if let pigments = work.pigments, !pigments.isEmpty {
-                            // The paints come after the bar; with no bar, at once.
+                            // The paints begin while the bar is painted; with no bar, at once.
                             self.pigments(pigments, style: style, seed: Paint.seed(item.id), strokes: strokes,
                                           began: strokes > 0 ? painted[item.id] : .distantPast)
                         }
@@ -824,7 +824,7 @@ struct DailyView: View {
                     Group {
                         if let style {
                             let lead = style.swatchDelay(colours: strokes, index: index)
-                            PaintedSwatch(hex: pigment.hex, sure: pigment.sure != false, index: index, style: style, seed: seed,
+                            PaintedSwatch(hex: pigment.hex, index: index, style: style, seed: seed,
                                           after: began?.addingTimeInterval(lead), lead: lead)
                         } else {
                             Circle()
@@ -833,9 +833,10 @@ struct DailyView: View {
                         }
                     }
                     // A likely paint, not one the sources name: a dashed ring round
-                    // the plain swatch. A painted one is smaller or thinner and has
-                    // no ring (Mateusz 2026-11-11 13:44: „kropki niepewnych kolorów
-                    // bez przerywanego okręgu dookoła”).
+                    // the plain swatch. A painted one has no ring (Mateusz 2026-11-11
+                    // 13:44: „kropki niepewnych kolorów bez przerywanego okręgu
+                    // dookoła”) and is as big as a sure one (18:39: „zawsze duże
+                    // (nawet gdy niepewne)”): its line says how sure it is.
                     .overlay {
                         if pigment.sure == false, style == nil {
                             Circle()

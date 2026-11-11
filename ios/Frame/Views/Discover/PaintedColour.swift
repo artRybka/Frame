@@ -62,12 +62,12 @@ struct PaintJob: @unchecked Sendable {
     }
 
     /// One paint's swatch.
-    static func swatch(_ style: PaintStyle, rgb: [Double], sure: Bool, index: Int, seed: Int, dark: Bool) -> PaintJob {
+    static func swatch(_ style: PaintStyle, rgb: [Double], index: Int, seed: Int, dark: Bool) -> PaintJob {
         switch style {
-        case .oil: return PaintJob(OilStrip(touch: rgb, sure: sure, index: index, seed: seed, dark: dark))
-        case .water: return PaintJob(WaterDab(rgb: rgb, sure: sure, index: index, seed: seed))
+        case .oil: return PaintJob(OilStrip(touch: rgb, index: index, seed: seed, dark: dark))
+        case .water: return PaintJob(WaterDab(rgb: rgb, index: index, seed: seed))
         case .dry:
-            let scribble = DryScribble(rgb: rgb, sure: sure, index: index, seed: seed)
+            let scribble = DryScribble(rgb: rgb, index: index, seed: seed)
             return PaintJob(size: scribble.size, length: DryScribble.length) { scribble.image(age: $0) }
         }
     }
@@ -161,8 +161,7 @@ final class DryStrip: @unchecked Sendable {
     }
 }
 
-/// One paint as a short scribble of the stick. `sure` false: the same
-/// close hatching on a narrower patch, a touch lighter in the hand.
+/// One paint as a short scribble of the stick.
 final class DryScribble: @unchecked Sendable {
     static let length = 1.2
 
@@ -170,17 +169,15 @@ final class DryScribble: @unchecked Sendable {
     let high = Int(2 * Paint.half) * Paint.scale
 
     private let colour: CGColor
-    private let sure: Bool
     private let points: [(x: Double, y: Double)]
     private let seed: Int
     private var tooth: CGImage?
 
     var size: CGSize { CGSize(width: 2 * Paint.half, height: 2 * Paint.half) }
 
-    init(rgb: [Double], sure: Bool, index: Int, seed: Int) {
+    init(rgb: [Double], index: Int, seed: Int) {
         colour = DryCanvas.colour(rgb)
-        self.sure = sure
-        points = DryPlan.scribble(sure: sure, index: index, seed: seed)
+        points = DryPlan.scribble(index: index, seed: seed)
         self.seed = seed + 7 + index
     }
 
@@ -190,9 +187,9 @@ final class DryScribble: @unchecked Sendable {
         let age = min(Self.length, age), turns = points.count - 1
         if age > 0, turns > 0 {
             let done = min(1, age / 0.45) * Double(turns)
-            context.setAlpha(sure ? 0.85 : 0.76)
+            context.setAlpha(0.85)
             context.setStrokeColor(colour)
-            context.setLineWidth(sure ? 3.4 : 3.1)
+            context.setLineWidth(3.4)
             context.move(to: CGPoint(x: points[0].x, y: points[0].y))
             for q in 1...turns {
                 let k = min(1, done - Double(q - 1))
@@ -233,6 +230,9 @@ struct Painted: View {
     /// How long after the first of its section it is due (a held
     /// screenshot shows the whole section at one moment).
     var lead: Double = 0
+    /// How far over the bottom of what the bars leave of the screen its
+    /// foot is when it begins; under 0: that far under it still.
+    var over: CGFloat = Painted.clear
 
     @State private var image: CGImage?
     @State private var shown: String?
@@ -265,7 +265,7 @@ struct Painted: View {
             .onGeometryChange(for: Bool.self) { proxy in
                 guard let bounds = proxy.bounds(of: .scrollView) else { return true }
                 let foot = proxy.size.height - Paint.pad
-                return bounds.maxY >= foot + Self.clear && bounds.minY <= foot
+                return bounds.maxY >= foot + over && bounds.minY <= foot
             } action: { seen = $0 }
             .background {
                 TimelineView(.animation(minimumInterval: 1.0 / 30, paused: finished || (start == nil && !(seen && after != nil)))) { context in
@@ -343,10 +343,11 @@ struct PaintedStrip: View {
 }
 
 /// One paint's swatch painted in the work's technique, in the place of
-/// the plain round one.
+/// the plain round one. The same for a paint the sources name and for a
+/// likely one (Mateusz 2026-11-11 18:39: „zawsze duże (nawet gdy
+/// niepewne)”).
 struct PaintedSwatch: View {
     let hex: String
-    let sure: Bool
     let index: Int
     let style: PaintStyle
     let seed: Int
@@ -354,6 +355,12 @@ struct PaintedSwatch: View {
     let after: Date?
     /// How long after the bar's first stroke that is.
     var lead: Double = 0
+
+    /// It begins as its top comes over the bottom of what the bars leave
+    /// of the screen, not once the whole of it is well over it: beside
+    /// its paint's name it is there already (18:39: „muszą się pojawiać
+    /// trochę wcześniej”).
+    static let over = -CGFloat(Paint.swatch)
 
     @State private var jobs = PaintJobs()
     @Environment(\.colorScheme) private var scheme
@@ -364,9 +371,9 @@ struct PaintedSwatch: View {
             .overlay {
                 if let rgb = Paint.rgb(hex) {
                     let dark = scheme == .dark
-                    let key = "\(style.rawValue)|\(hex)|\(sure)|\(index)|\(dark)|\(seed)"
-                    Painted(job: jobs.job(key) { PaintJob.swatch(style, rgb: rgb, sure: sure, index: index, seed: seed, dark: dark) },
-                            key: key, after: after, lead: lead)
+                    let key = "\(style.rawValue)|\(hex)|\(index)|\(dark)|\(seed)"
+                    Painted(job: jobs.job(key) { PaintJob.swatch(style, rgb: rgb, index: index, seed: seed, dark: dark) },
+                            key: key, after: after, lead: lead, over: Self.over)
                 } else {
                     Circle().fill(Theme.mat)
                 }
