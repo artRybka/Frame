@@ -115,7 +115,9 @@ class ArtistWorks:
         if kept is not None and now - kept[0] < POOL_FOR:
             return [work for i in kept[1] if (work := self.library.get(i)) is not None]
         rules = PlaylistRules(kinds=[ItemKind.ARTWORK], artists=[item.artist])
-        found = self.library.query(rules, sort="random", seed=self._seed(item), limit=POOL)[1]
+        found = self.library.query(
+            rules, sort="random", seed=self._seed(item), limit=POOL, proposing=True
+        )[1]
         with self._lock:
             self._pools = {k: v for k, v in self._pools.items() if now - v[0] < POOL_FOR}
             self._pools[key] = (now, [i.id for i in found])

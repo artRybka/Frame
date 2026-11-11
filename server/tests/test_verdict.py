@@ -4,8 +4,11 @@ places did before it (``test_rules_matrix.EXPECTED``)."""
 
 from __future__ import annotations
 
+from datetime import date
+
 from test_rules_matrix import EXPECTED, PLACES, SPECIMENS, _work
 
+from frame_server.library import ItemKind, PlaylistRules
 from frame_server.library.verdict import (
     COPIES,
     MINDS,
@@ -23,6 +26,7 @@ from frame_server.library.vocabulary import (
     object_category,
     other_art,
 )
+from frame_server.service import FrameService
 
 
 def test_the_reasons_are_copies_or_sztuki_inne() -> None:
@@ -71,7 +75,8 @@ def test_every_reason_has_a_name() -> None:
 ASKS = {
     "katalog": Place.LISTED,
     "katalog, szukane słowem": Place.FOUND,
-    "studium dnia": Place.STUDIED,
+    "studium dnia": Place.PROPOSED,
+    "karta Odkrywaj z katalogu": Place.PROPOSED,
     "odpowiedź muzeum": Place.MUSEUM,
     "Szukaj w muzeach": Place.SOUGHT,
     "karta Odkrywaj z muzeów": Place.SOUGHT,
@@ -115,3 +120,32 @@ def test_a_category_asked_for_lets_its_works_in() -> None:
     # A copy stays out whatever is asked for.
     stamp = _work("znaczek", True)
     assert against(stamp, Place.SOUGHT, [SCULPTURE, PHOTOGRAPHY]) == (Why.POSTAL,)
+
+
+def test_what_the_owner_kept_is_his_to_see_and_never_proposed(service: FrameService) -> None:
+    """A detail, a reproduction and a stamp he kept: in Ulubione, found by a
+    word (the stamp but listed), on his playlist; on no card of Discover,
+    not the work of the day (Mateusz 2026-11-11)."""
+    library = service.library
+    kept = {
+        name: _work(name, False).model_copy(update={"favorite": True})
+        for name in ("obraz z muzeum", "detal w tytule", "reprodukcja", "znaczek")
+    }
+    for item in kept.values():
+        library.upsert(item)
+    ids = {name: item.id for name, item in kept.items()}
+    art = PlaylistRules(kinds=[ItemKind.ARTWORK])
+
+    def found(rules: PlaylistRules, **how: bool) -> set[str]:
+        return {i.id for i in library.query(rules, **how)[1]}
+
+    hearts = art.model_copy(update={"favorites_only": True})
+    monet = art.model_copy(update={"artists": ["Claude Monet"]})
+    assert found(hearts) == set(ids.values())
+    assert found(monet) == {ids["obraz z muzeum"], ids["detal w tytule"], ids["reprodukcja"]}
+    # The server's own cards: the painting alone...
+    assert found(art, proposing=True) == {ids["obraz z muzeum"]}
+    assert found(monet, proposing=True) == {ids["obraz z muzeum"]}
+    # ... but for a card of his own works, which are his whatever they are.
+    assert found(hearts, proposing=True) == set(ids.values())
+    assert {i.id for i in service.daily.pool(date(2026, 11, 11), [])} <= {ids["obraz z muzeum"]}

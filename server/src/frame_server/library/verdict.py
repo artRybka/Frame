@@ -160,8 +160,9 @@ class Place(StrEnum):
     LISTED = "listed"
     #: The catalogue asked for works: a word, an artist, a filter.
     FOUND = "found"
-    #: The works the work of the day is chosen from.
-    STUDIED = "studied"
+    #: What the server proposes on its own: the work of the day, Discover's
+    #: cards and pages, Propozycje dnia, the works beside a study.
+    PROPOSED = "proposed"
     #: A museum's answer as it is read, before any search's own wishes.
     MUSEUM = "museum"
     #: What a search in the museums, or a card of Discover filled from
@@ -183,8 +184,10 @@ MINDS: dict[Place, tuple[frozenset[Why], frozenset[Why]]] = {
     # A stamp or a page he kept is no still life, Foto Marburg's grey slide
     # no painting (Mateusz 2026-11-09); a detail he kept is found.
     Place.FOUND: (EVERY, OTHER | {Why.POSTAL, Why.DOCUMENT, Why.GREY_SLIDE}),
-    # No copy to look at for a quarter of an hour.
-    Place.STUDIED: (EVERY, OTHER | {Why.GREY_COPY, Why.GREY_SLIDE}),
+    # The details, reproductions and stamps he kept stay his (Ulubione, his
+    # playlists, Szukaj): the server proposes none of them itself (Mateusz
+    # 2026-11-11).
+    Place.PROPOSED: (EVERY, EVERY),
     Place.MUSEUM: (COPIES, COPIES),
     Place.SOUGHT: (EVERY, EVERY),
     Place.TIDIED: (EVERY, EVERY),

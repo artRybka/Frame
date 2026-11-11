@@ -543,6 +543,10 @@ actor DemoBackend: FrameBackend {
         FragmentsView(whole: nil, fragments: [])
     }
 
+    func details(itemID: String) async throws -> DetailsView {
+        DetailsView(whole: nil, details: [])
+    }
+
     func copies(itemID: String) async throws -> AsyncThrowingStream<CopyLine, Error> {
         AsyncThrowingStream { continuation in
             continuation.yield(CopyLine(kind: "start", sources: []))

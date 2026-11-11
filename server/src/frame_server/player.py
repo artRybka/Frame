@@ -1229,7 +1229,11 @@ class Player:
         Mateusz, 2026-10-31, it left out Rembrandt and Vermeer.)"""
         taken = {i.id for i in self.suggestions()}
         rules = PlaylistRules(kinds=[ItemKind.ARTWORK])
-        pool = [i for i in self.fresh(self.library.query(rules)[1], settings) if i.id not in taken]
+        pool = [
+            i
+            for i in self.fresh(self.library.query(rules, proposing=True)[1], settings)
+            if i.id not in taken
+        ]
         taste = set(self.taste())
         liked = [i for i in pool if i.artist in taste]
         others = [i for i in pool if i.artist not in taste]

@@ -30,7 +30,7 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
 from .. import build_version, golden, logbuffer, night, notifications
@@ -612,6 +612,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         works set aside. Descriptions only; test data for changes of the
         rules."""
         return await run_in_threadpool(golden.decisions, request.app.state.service)
+
+    @app.get("/api/debug/catalogue", dependencies=[Depends(require_owner)])
+    def whole_catalogue(request: Request) -> StreamingResponse:
+        """Every work of art as the library has it (golden.py): gzip, a
+        work a line. Descriptions only; the catalogue a change of the rules
+        is tried on before it is the frame's."""
+        return StreamingResponse(
+            golden.catalogue(request.app.state.service.library),
+            media_type="application/gzip",
+            headers={"Content-Disposition": 'attachment; filename="catalogue.jsonl.gz"'},
+        )
 
     @app.get("/api/debug/hosts", dependencies=[Depends(require_owner)])
     def host_tally() -> dict[str, Any]:

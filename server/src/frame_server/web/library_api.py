@@ -324,6 +324,34 @@ async def item_fragments(item_id: str, svc: Svc) -> FragmentsView:
     )
 
 
+class DetailsView(BaseModel):
+    """A work's details, for its card ("Detale"; Mateusz 2026-11-11):
+    pictures of a part of it the server keeps apart from the catalogue as
+    copies (``Library.details``). ``whole``: on a detail's card, the work
+    it is a detail of."""
+
+    whole: RemoteItem | None = None
+    details: list[RemoteItem] = Field(default_factory=list)
+
+
+@router.get("/library/items/{item_id:item}/details", response_model=DetailsView)
+async def item_details(item_id: str, svc: Svc) -> DetailsView:
+    item = await _work(svc, item_id)
+
+    def find() -> tuple[list[Item], Item | None]:
+        # On a detail's card, the whole work and its other details.
+        whole = svc.library.whole_of(item)
+        found = svc.library.details(whole or item)
+        return [d for d in found if d.id != item.id], whole
+
+    found, whole = await run_in_threadpool(urgent_call(find))
+    gone = svc.images.gone_ids()
+    seen = [d for d in found if d.id not in gone]
+    shown = remote_items(svc, seen, copies=False, keep_hidden=True)
+    wholes = remote_items(svc, [whole], copies=False) if whole is not None else []
+    return DetailsView(whole=wholes[0] if wholes else None, details=shown)
+
+
 class HolderView(BaseModel):
     """The museum the work is in, for its card (``Item.held_by``):
     ``status`` "found" (``name`` says which); "looking" (ask again); "none"
