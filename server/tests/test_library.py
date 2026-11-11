@@ -857,7 +857,7 @@ def test_discovery_year_check() -> None:
     assert Rijksmuseum(httpx.Client())._decades(Discovery(year_to=1)) == [0]
 
 
-def test_draw_takes_turns_and_skips_known_or_weak(tmp_path) -> None:
+def test_taking_takes_turns_and_skips_known_or_unfit(tmp_path) -> None:
     import random
 
     from frame_server.library.importer import Importer, Job
@@ -883,7 +883,7 @@ def test_draw_takes_turns_and_skips_known_or_weak(tmp_path) -> None:
 
     class Importing(Importer):
         def _analysed(self, item: Item) -> Item:
-            # Odd ids look weak on e-paper.
+            # Odd ids do not fit once looked at.
             score = 0.2 if int(item.source_id) % 2 else 0.9
             return item.model_copy(update={"suitability": score})
 
@@ -896,7 +896,11 @@ def test_draw_takes_turns_and_skips_known_or_weak(tmp_path) -> None:
         importer.cache = type("Cache", (), {"remove": lambda self, item: None})()
         job = Job(id="j", description="draw")
         spec = Discovery(year_from=1800, year_to=1830)
-        importer.draw(spec, 8, ["aic", "cma"], job, min_suitability=0.5, rng=random.Random(3))
+        rng = random.Random(3)
+        streams = [source(httpx.Client()).random_draw(spec, rng) for source in (A, B)]
+        importer._take(
+            streams, 8, job, before=spec.fits, after=lambda item: (item.suitability or 0) >= 0.5
+        )
     finally:
         MUSEUMS.clear()
         MUSEUMS.update(saved)

@@ -1131,19 +1131,6 @@ struct ItemDetailView: View {
                 pictureFact(item)
             }
             fact("Licencja", item.license)
-            if let score = item.suitability {
-                HStack {
-                    Text("Na e-papierze").foregroundStyle(Theme.inkSoft)
-                    Spacer()
-                    Gauge(value: score) { EmptyView() }
-                        .gaugeStyle(.accessoryLinearCapacity)
-                        .tint(score >= 0.72 ? Theme.good : score >= 0.45 ? Theme.warn : Theme.bad)
-                        .frame(width: 120)
-                    Text(score >= 0.72 ? "świetnie" : score >= 0.45 ? "dobrze" : "słabiej")
-                        .font(.subheadline.weight(.medium))
-                }
-                .font(.subheadline)
-            }
             if item.showCount > 0 {
                 fact("Na ramce", "\(item.showCount)×, ostatnio \(When.ago(item.lastShownAt) ?? "")")
             }

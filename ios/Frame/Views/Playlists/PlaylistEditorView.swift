@@ -53,8 +53,6 @@ struct PlaylistEditorView: View {
     /// before there was a limit keeps all that match ("Wszystkie").
     init(playlist: Playlist) {
         var playlist = playlist
-        // "Only the best on e-paper" is gone from the editor: saving drops it.
-        playlist.rules.minSuitability = nil
         // A range of years from older editors becomes a period chip.
         if playlist.rules.yearFrom != nil || playlist.rules.yearTo != nil {
             let years = "years:\(playlist.rules.yearFrom.map(String.init) ?? "")-\(playlist.rules.yearTo.map(String.init) ?? "")"

@@ -29,7 +29,11 @@ chciałbym żeby spadła jakość doboru tych propozycji”).
   `NightJudge`, `Curator`, studium).
 - **Resztki**: ocena e-papieru (suitability) w 12 plikach i wskaźnik
   „Na e-papierze” w aplikacji, jednorazowe migracje, punkty `/api/browse`
-  i `/api/library/draw`, których aplikacja nie woła.
+  i `/api/library/draw`, których aplikacja nie woła. Wskaźnik, próg
+  i oba punkty usunął etap 3. Sama ocena została jako kolejność „najlepsze
+  najpierw” (karty i strony Odkrywaj, pula Propozycji dnia, wiersz dla
+  modelu wybierającego Studium dnia): jej wymiana zmienia to, co widać,
+  więc należy do etapu 4.
 
 ## Liczby bazowe (NAS, 1.143.2, logi z 10 i 11 listopada 2026, ok. 91 tys. dzieł)
 
@@ -52,7 +56,7 @@ chciałbym żeby spadła jakość doboru tych propozycji”).
 | 0 | Zestaw wzorcowy i pomiary | 1.145.11 (PLAN 3.3zzz155) |
 | 1 | Noc: porządki przed dobieraniem, budżety czasu | 1.145.12 (PLAN 3.3zzz156) |
 | 2 | Szybkość bez zmiany wyników: przyrostowe scalanie grup (2a: 1.145.13, PLAN 3.3zzz157), dalej według pomiarów z nocy: punkty ORB na dysku, odsiew par, karty jednym przejściem | w toku |
-| 3 | Sprzątanie resztek | |
+| 3 | Sprzątanie resztek: wskaźnik „Na e-papierze”, martwy próg, nieużywane punkty API | 1.145.14 (PLAN 3.3zzz158) |
 | 4 | Jeden werdykt pokazywania (lista powodów i tabela kontekstów, najpierw jako cień obok starych reguł) | |
 | 5 | Jedna tożsamość dzieła i autora | |
 | 6 | Jedna ścieżka pytań do muzeów i jedna nocna pętla modeli | |
