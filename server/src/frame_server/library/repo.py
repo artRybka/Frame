@@ -26,7 +26,7 @@ from typing import Any, Literal, NamedTuple
 
 from .artists import IDS_STATE, PEOPLE_STATE, is_artist, known_names, learn, made_by
 from .colors import has_colours, shown_tags
-from .duplicates import Works, dedupe, regroups
+from .duplicates import Works, better, dedupe, regroups
 from .good import good_first, worth
 from .models import (
     MINE,
@@ -37,6 +37,7 @@ from .models import (
     Facets,
     FacetValue,
     Item,
+    ItemKind,
     Note,
     PlaceCount,
     Playlist,
@@ -892,6 +893,37 @@ class Library:
                 self._hearts_version += 1
                 anyone = any(item_id in ids for ids in hearts.values())
                 return self._update(item_id, favorite=anyone)
+
+    def hearts_to_best(self) -> list[tuple[str, str, str]]:
+        """A heart on a copy of a work of which the library has a better
+        one (``duplicates.better``: its picture, then its source) moves to
+        that one (Mateusz 2026-11-11: "serce przechodzi na lepszą kopię"):
+        Ulubione shows the work in the copy that is liked. Not when the
+        person likes the better copy too, framed the one they have, or the
+        better one is hidden or not listed. The copy liked before stays in
+        the library. Returns (person, from, to)."""
+        works = self.works()
+        hidden = self.hidden()
+        moved: list[tuple[str, str, str]] = []
+        for user, ids in sorted(self.fans().items()):
+            for item_id in sorted(ids):
+                item = self.get(item_id)
+                if item is None or item.kind != ItemKind.ARTWORK or item.framing:
+                    continue
+                first = works.best(item)
+                if first is None or first.id == item.id or first.id in ids:
+                    continue
+                best = self.get(first.id)
+                if best is None or not better(best, item):
+                    continue
+                if best.excluded or best.id in hidden.ids or against(best, Place.LISTED):
+                    continue
+                self.set_favorite(user, best.id, True)
+                self.set_favorite(user, item.id, False)
+                moved.append((user, item.id, best.id))
+        if moved:
+            log.info("hearts: %d moved to a better copy of the work: %s", len(moved), moved[:20])
+        return moved
 
     def forget_person(self, user_id: str) -> None:
         """A person removed from the server: their hearts go."""

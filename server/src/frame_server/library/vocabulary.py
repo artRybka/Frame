@@ -619,6 +619,12 @@ _PAINTED_ON = re.compile(
 
 
 @lru_cache(maxsize=PER_WORK)
+def painted_on(medium: str) -> bool:
+    """A museum's line on what the work is made with says paint on a
+    painting's ground: "Oil on canvas", "olej na desce"."""
+    return bool(_PAINTED_ON.search(medium))
+
+
 def _is_photograph(classification: str, medium: str) -> bool:
     if _PAINTED_ON.search(medium) and not _PHOTOGRAPH.search(medium):
         return False

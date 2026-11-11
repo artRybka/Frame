@@ -51,6 +51,10 @@ def _fake(key: str) -> type[Museum]:
                 image_url=url,
                 thumb_url=url,
                 classification="Painting",
+                # Large enough for the frame at every museum: none is a
+                # better copy of another's (``duplicates.picture``).
+                width=3200,
+                height=2400,
             )
 
         def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
@@ -326,6 +330,10 @@ def _grey_copies(key: str) -> type[Museum]:
                 image_url=url,
                 thumb_url=url,
                 classification="Painting",
+                # Large enough for the frame at every museum: none is a
+                # better copy of another's (``duplicates.picture``).
+                width=3200,
+                height=2400,
             )
 
     Copies.key = key

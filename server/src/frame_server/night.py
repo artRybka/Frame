@@ -509,6 +509,7 @@ def tasks(service: FrameService) -> list[NightTask]:
 
     def grouping(night: Night) -> None:
         library.works()  # copies of one work together, after the turnover
+        library.hearts_to_best()  # a heart follows the work to its best copy
         library.term_index()  # the suggestions while typing
 
     def playlists(night: Night) -> None:

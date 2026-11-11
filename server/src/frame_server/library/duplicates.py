@@ -24,8 +24,9 @@ from urllib.parse import unquote
 
 from .artists import NOBODY as NAMELESS
 from .artists import ROLES
+from .images import FRAME_SIDE, WEAK_SIDE, said_side
 from .models import Item, ItemKind
-from .vocabulary import PER_WORK, fold, is_art_archive_photo
+from .vocabulary import PER_WORK, fold, is_art_archive_photo, painted_on
 
 #: Lower is more reliable: museums describe their own works; Europeana
 #: passes on what its member collections say; Commons, Openverse and WikiArt
@@ -280,6 +281,39 @@ def _apart(a: Item, b: Item) -> bool:
     return origin(a) == origin(b) and origin(a) not in FILES and not _twins(a, b)
 
 
+#: What a drawing or a print is made with, in a museum's line on it, ...
+_DRAWN = re.compile(
+    r"\b(pen|ink|graphite|pencil|chalk|charcoal|crayon|etching|engraving|lithograph\w*"
+    r"|woodcut|drypoint|aquatint|mezzotint|ołów\w*|tusz\w*|piórk\w*|kredk\w*|węgl\w*"
+    r"|akwafort\w*|litografi\w*|drzeworyt\w*|miedzioryt\w*)\b",
+    re.IGNORECASE,
+)
+#: ... and paint in it: with any of it the line does not say which.
+_PAINT = re.compile(
+    r"\b(oil|oils|olej\w*|tempera|acrylic|akryl\w*|gouache|gwasz\w*|watercolou?rs?"
+    r"|akwarel\w*|aquarel\w*|pastel\w*|wash)\b",
+    re.IGNORECASE,
+)
+
+
+@lru_cache(maxsize=PER_WORK)
+def _made_with(medium: str) -> str:
+    """ "paint" for a painting ("Oil on canvas"), "line" for a drawing or a
+    print with no paint ("Pen and reed pen and brown ink"), "" when the
+    museum's line does not say (most copies have none)."""
+    if painted_on(medium):
+        return "paint"
+    return "line" if _DRAWN.search(medium) and not _PAINT.search(medium) else ""
+
+
+def another_technique(a: Item, b: Item) -> bool:
+    """One is a painting and the other a drawing or a print, by what their
+    museums say they are made with: van Gogh's "Cypresses" at the Met (oil
+    on canvas) and the Art Institute's drawing of them, of one title, year
+    and shape (the catalogue of 2026-11-11), are two works."""
+    return {_made_with(a.medium), _made_with(b.medium)} == {"paint", "line"}
+
+
 def same_work(a: Item, b: Item) -> bool:
     """``a`` and ``b`` are copies of one work: from two sources, or two files
     of it on Commons."""
@@ -291,6 +325,8 @@ def same_work(a: Item, b: Item) -> bool:
         return False  # fragments (library.fragments) are parts, not copies
     if _links(a) & _links(b):
         return True
+    if another_technique(a, b):
+        return False
     files = origin(a) == origin(b)
     title = title_key(a.title, a.artist)
     if not title or title != title_key(b.title, b.artist):
@@ -331,6 +367,8 @@ GROUPING_FIELDS = frozenset(
         "image_url",
         "pooled",
         "copy_of",
+        "sharper",
+        "medium",
     }
 )
 
@@ -350,12 +388,36 @@ def regroups(old: Item, new: Item) -> bool:
 REGROUP_LOOKS = 10_000
 
 
-def preference(item: Item) -> tuple[bool, bool, int]:
-    """Sort key, best copy first: an art archive's photograph after every
-    other copy, even one the owner kept (Mateusz 2026-11-09: a heart or a
-    playlist says nothing of the picture); then kept by the owner, then the
-    most reliable source."""
-    return is_art_archive_photo(item), item.pooled, item_rank(item)
+def picture(item: Item) -> int:
+    """How good the picture of ``item``'s copy is, as far as the catalogue
+    knows (lower: better): 0 large enough for the frame (it says so, or it
+    is a museum's own, whose originals are), 2 known to be too small for it
+    (``images.WEAK_SIDE``), 1 between, or of a source that says no size and
+    is no museum (Europeana's are often a few hundred pixels)."""
+    side = said_side(item)
+    if side is None:
+        return 0 if rank(item.source) == 0 else 1
+    if side >= FRAME_SIDE:
+        return 0
+    return 2 if side < WEAK_SIDE else 1
+
+
+def preference(item: Item) -> tuple[bool, int, int, bool]:
+    """Sort key, best copy first: the picture, then the source (Mateusz
+    2026-11-11: "najpierw sam obraz, potem źródło"). An art archive's
+    photograph after every other copy (2026-11-09: faded slides), then the
+    copy whose picture is large enough for the frame before one that is
+    not (:func:`picture`), then the most reliable source; of two alike the
+    one the owner kept. A heart or a playlist says nothing of the picture:
+    until 1.145.29 a kept copy came before any other, Europeana's 400 px
+    "Die Malkunst" before Commons' 7377."""
+    return is_art_archive_photo(item), picture(item), item_rank(item), item.pooled
+
+
+def better(item: Item, other: Item) -> bool:
+    """``item`` is a better copy than ``other`` by its picture or source
+    (who kept which aside)."""
+    return preference(item)[:3] < preference(other)[:3]
 
 
 class Works:
