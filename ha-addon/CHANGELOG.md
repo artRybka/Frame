@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.16
+
+- Duże obrazy, które powtórki pobierają z muzeów, żeby sprawdzić, czy mały
+  obraz jest detalem większego dzieła, nie są już wyrzucane po porównaniu.
+  Zostają jako oryginały dzieł: karta dzieła otwiera się od razu w pełnej
+  jakości, a następne powtórki nie pobierają tego samego drugi raz
+  (pobieranie zajmowało 23 z 29 minut powtórek). Mieszczą się w limicie
+  miejsca na oryginały i przy braku miejsca znikają pierwsze, przed
+  dziełami oglądanymi i Ulubionymi.
+
 ## 1.145.15
 
 - Porządki w regułach doboru dzieł, etap 4, pierwszy krok (bez zmiany

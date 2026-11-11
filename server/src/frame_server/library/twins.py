@@ -70,7 +70,7 @@ import numpy as np
 from ..imaging.layout import load_image
 from .artists import known_names
 from .duplicates import STOPWORDS, surname
-from .images import Gone, display_copy
+from .images import Gone
 from .likeness import (
     FEATURES,
     SAME,
@@ -689,15 +689,17 @@ class Twins:
         self, item: Item, may_download: bool
     ) -> tuple[Image.Image | None, int, bool]:
         """``item``'s picture as the frame has it, else downloaded when
-        ``may_download``; whether it was, and whether it was not for lack
-        of ``may_download`` (then it is wanted another time)."""
+        ``may_download`` (and kept as its original while there is room:
+        Mateusz 2026-11-11, a pity to lose them); whether it was, and
+        whether it was not for lack of ``may_download`` (then it is wanted
+        another time)."""
         path = self.images.image_path(item)
         try:
             if path.is_file():
                 return load_image(path), 0, False
             if not may_download:
                 return None, 0, True
-            return self.images.sample(display_copy(item)), 1, False
+            return self.images.looked_at(item), 1, False
         except Exception as err:  # gone, refused, broken: no opinion
             log.info("twins: large picture of %s: %s", item.id, err)
             return None, int(may_download), False
