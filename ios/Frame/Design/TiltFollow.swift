@@ -42,10 +42,11 @@ private struct LiftedCard: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var scheme
 
-    /// How far the card moves at a full turn.
-    static let shift: CGFloat = 2.5
+    /// How far the card moves at a full turn (Mateusz 2026-11-11: 2 pt,
+    /// was 2.5; shadow lighter and sharper, was 0.14 at blur 5).
+    static let shift: CGFloat = 2
     /// How far its shadow on the page moves the other way.
-    static let cast: CGFloat = 1.5
+    static let cast: CGFloat = 1
     /// How far below the card the shadow falls at rest.
     static let drop: CGFloat = 4
 
@@ -56,9 +57,9 @@ private struct LiftedCard: ViewModifier {
         content
             .background {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(.black.opacity(scheme == .dark ? 0.45 : 0.14))
+                    .fill(.black.opacity(scheme == .dark ? 0.32 : 0.09))
                     .padding(.horizontal, 3)
-                    .blur(radius: 5)
+                    .blur(radius: 3)
                     // Moved with the card below, so back by both.
                     .offset(x: -x * (Self.shift + Self.cast), y: Self.drop - y * (Self.shift + Self.cast))
             }
