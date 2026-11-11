@@ -101,7 +101,7 @@ class _Counted(NamedTuple):
 
 def _cover(items: list[Item]) -> tuple[list[str], list[ColorSwatch]]:
     """A playlist's cover: its four best works (:func:`.good.worth`; until
-    1.145.22 by the e-paper score), and their colours."""
+    1.145.23 by the e-paper score), and their colours."""
     best = sort_items(items, "suitability")[:4]
     return [i.id for i in best], cover_colors(best)
 

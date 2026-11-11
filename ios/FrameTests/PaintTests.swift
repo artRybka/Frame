@@ -145,19 +145,17 @@ final class PaintTests: XCTestCase {
         XCTAssertGreaterThan(covered(dark), covered(done))
     }
 
-    func testAPaintTheSourcesDoNotNameIsASmallerSwatch() {
+    func testAPaintsSwatchIsATouchADabOrAScribbleOfItsColour() {
         let rgb = Paint.rgb("#3B4FA0") ?? [0, 0, 0]
         // In oil a touch of the brush, as the bar's small colours are
         // (13:50: „kropki kolorów farb olejnych / akryli etc. rób
         // pacnieciami jak na pasku przy niewielkiej ilości koloru”).
-        let sure = OilStrip(touch: rgb, sure: true, index: 0, seed: 5, dark: false)
-        let likely = OilStrip(touch: rgb, sure: false, index: 0, seed: 5, dark: false)
+        let sure = OilStrip(touch: rgb, index: 0, seed: 5, dark: false)
         XCTAssertEqual(sure.pulls.count, 1)
         XCTAssertTrue(sure.pulls[0].touch)
         XCTAssertEqual(sure.wide, 58 * Paint.scale)
         XCTAssertEqual(sure.high, 58 * Paint.scale)
         XCTAssertEqual(covered(sure.frame(age: 0)), 0)
-        XCTAssertGreaterThan(covered(sure.frame(age: 99)), covered(likely.frame(age: 99)) * 1.3)
         XCTAssertGreaterThan(covered(sure.frame(age: 99)), covered(sure.frame(age: 0.1)))
         let middle = sure.frame(age: 99).colour(sure.wide / 2, sure.high / 2)
         XCTAssertGreaterThan(middle.blue, middle.red + 40)
@@ -186,9 +184,10 @@ final class PaintTests: XCTestCase {
         // The bar's paint soaks nothing up.
         let bar = OilStrip(shares: jatte, width: 350, seed: 5, dark: false)
         XCTAssertEqual(bar.length, bar.last + 0.2, accuracy: 0.001)
-        let wet = WaterDab(rgb: rgb, sure: true, index: 0, seed: 5), thin = WaterDab(rgb: rgb, sure: false, index: 0, seed: 5)
+        let wet = WaterDab(rgb: rgb, index: 0, seed: 5)
         XCTAssertEqual(covered(wet.frame(age: 0)), 0)
-        XCTAssertGreaterThan(covered(wet.frame(age: 99)), covered(thin.frame(age: 99)) * 1.15)
+        // As wide as the swatch's place, 26 points across, or a little over.
+        XCTAssertGreaterThan(solid(wet.frame(age: 99)), 300)
         XCTAssertEqual(wet.frame(age: 99).bytes, wet.frame(age: wet.length).bytes)
     }
 
@@ -203,31 +202,42 @@ final class PaintTests: XCTestCase {
         // The first colour's strokes are all begun before the last colour's first.
         let firstDone = plan.strokes.filter { $0.colour == 0 }.map { Double($0.colour) * DryPlan.apart + $0.part * DryPlan.stroke }.max() ?? 0
         XCTAssertLessThan(firstDone, Double(jatte.count - 1) * DryPlan.apart)
-        XCTAssertEqual(DryPlan.scribble(sure: true, index: 0, seed: 5).count, 8)
-        // A likely paint is hatched as closely as a sure one, on a narrower patch: never a line or two.
-        let sure = DryPlan.scribble(sure: true, index: 0, seed: 5), likely = DryPlan.scribble(sure: false, index: 0, seed: 5)
-        XCTAssertEqual(likely.count, 6)
-        let span = { (points: [(x: Double, y: Double)]) in (points.map(\.x).max() ?? 0) - (points.map(\.x).min() ?? 0) }
-        XCTAssertLessThan(span(likely), span(sure) - 3)
-        XCTAssertLessThanOrEqual(span(likely) / Double(likely.count - 1), span(sure) / Double(sure.count - 1) + 0.4)
+        // A paint's scribble is a close hatching across its swatch, never
+        // a line or two; a likely paint's is the same (Mateusz 2026-11-11
+        // 18:39: „zawsze duże (nawet gdy niepewne)”), so there is one kind.
+        for index in 0..<6 {
+            let scribble = DryPlan.scribble(index: index, seed: 5)
+            XCTAssertEqual(scribble.count, 8)
+            let across = (scribble.map(\.x).max() ?? 0) - (scribble.map(\.x).min() ?? 0)
+            XCTAssertGreaterThan(across, 17)
+            XCTAssertLessThan(across, 27)
+        }
         let tooth = DryPlan.tooth(wide: 40, high: 40, seed: 5)
         XCTAssertEqual(tooth.count, 1600)
         XCTAssertGreaterThanOrEqual(tooth.min() ?? 0, 96)
         XCTAssertGreaterThan(tooth.max() ?? 0, 240)
     }
 
-    func testThePaintsComeAfterTheBarOneAfterAnother() {
+    func testThePaintsBeginWhileTheBarIsPaintedOneAfterAnother() {
         for style in PaintStyle.allCases {
             // With no bar the first is there at once.
             XCTAssertEqual(style.swatchDelay(colours: 0, index: 0), 0)
             XCTAssertGreaterThan(style.swatchDelay(colours: 0, index: 1), 0.2)
             let first = style.swatchDelay(colours: 7, index: 0)
             XCTAssertGreaterThan(style.swatchDelay(colours: 7, index: 1), first + 0.2)
+            XCTAssertLessThan(style.swatchDelay(colours: 7, index: 1), first + 0.3)
             XCTAssertGreaterThan(first, style.swatchDelay(colours: 3, index: 0))
         }
-        // After the bar's last stroke is down.
-        XCTAssertGreaterThan(PaintStyle.oil.swatchDelay(colours: 7, index: 0), OilStrip(shares: jatte, width: 350, seed: 5, dark: false).last)
-        XCTAssertGreaterThan(PaintStyle.water.swatchDelay(colours: 7, index: 0), WaterStrip(shares: jatte, width: 350, seed: 5).last)
-        XCTAssertGreaterThan(PaintStyle.dry.swatchDelay(colours: 7, index: 0), DryPlan(shares: jatte, width: 350, seed: 5).last)
+        // They do not wait for the bar's last stroke (Mateusz 2026-11-11
+        // 18:39: „muszą się pojawiać trochę wcześniej”): the first begins
+        // about half way through the bar, when its first colours are down.
+        let bars = [(PaintStyle.oil, OilStrip(shares: jatte, width: 350, seed: 5, dark: false).last, OilStrip.stroke),
+                    (.water, WaterStrip(shares: jatte, width: 350, seed: 5).last, WaterStrip.stroke),
+                    (.dry, DryPlan(shares: jatte, width: 350, seed: 5).last, DryPlan.stroke)]
+        for (style, last, stroke) in bars {
+            let first = style.swatchDelay(colours: jatte.count, index: 0)
+            XCTAssertLessThan(first, 0.7 * last, "\(style)")
+            XCTAssertGreaterThan(first, stroke, "\(style)")
+        }
     }
 }

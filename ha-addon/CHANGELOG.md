@@ -1,6 +1,10 @@
 # Changelog
 
+<<<<<<< HEAD
 ## 1.145.22
+=======
+## 1.145.23
+>>>>>>> origin/main
 
 - Odkrywaj pokazuje najpierw dobre dzieła. Strona tematu zaczynała się od
   arcydzieł muzeów, a dalej szli autorzy alfabetycznie, z dziełami bez
@@ -19,6 +23,21 @@
 - Stara ocena e-papieru nie ustala już żadnej kolejności. Okładki playlist
   pokazują ich najlepsze dzieła według tej samej oceny co Odkrywaj.
 
+<<<<<<< HEAD
+=======
+## 1.145.22
+
+- Studium dzieła, „Kolor i światło”: próbki farb malowane w technice
+  dzieła są zawsze duże, także przy farbach tylko prawdopodobnych
+  (pacnięcie olejne, plama akwareli i kreskowanie pastelą takie same jak
+  przy farbach pewnych). O tym, że farba jest tylko prawdopodobna, mówi
+  jej opis.
+- Próbki pojawiają się wcześniej: pierwsza rusza w połowie malowania
+  paska kolorów, a nie po jego końcu, kolejne idą po sobie szybciej, a
+  każda zaczyna się już wtedy, gdy wsuwa się na ekran od dołu, więc obok
+  nazwy farby jest od razu.
+
+>>>>>>> origin/main
 ## 1.145.21
 
 - Studium dnia wybiera teraz także spośród dzieł Metropolitan Museum,

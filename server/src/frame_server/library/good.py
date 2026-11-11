@@ -1,7 +1,7 @@
 """Which works come first where the server proposes them (a theme of
 Odkrywaj, Propozycje dnia): the good ones, by many hands, others each day.
 
-Until 1.145.22 a theme's page was its museums' highlights and then its
+Until 1.145.23 a theme's page was its museums' highlights and then its
 artists from A to Z, the nameless before them all, the same every day:
 "Sztuka polska" opened with six Gierymskis and seven Malczewskis and never
 came to Matejko, "Arcydzieła muzeów" with 24 nameless antiquities. Of the 71
