@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.9
+
+- Studium dzieła, „Kolor i światło”: malowane próbki prawdopodobnych farb
+  nie mają już przerywanego okręgu dookoła. Poznać je po tym, że są
+  mniejsze albo cieńsze. Przy płaskiej palecie okrąg zostaje.
+
 ## 1.145.8
 
 - Studium dzieła, „Kolor i światło”: paleta i próbki farb są malowane
