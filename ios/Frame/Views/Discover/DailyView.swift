@@ -832,12 +832,15 @@ struct DailyView: View {
                                 .overlay(Circle().strokeBorder(.black.opacity(0.12), lineWidth: 0.5))
                         }
                     }
-                    // A likely paint, not one the sources name: a dashed ring round it.
+                    // A likely paint, not one the sources name: a dashed ring round
+                    // the plain swatch. A painted one is smaller or thinner and has
+                    // no ring (Mateusz 2026-11-11 13:44: „kropki niepewnych kolorów
+                    // bez przerywanego okręgu dookoła”).
                     .overlay {
-                        if pigment.sure == false {
+                        if pigment.sure == false, style == nil {
                             Circle()
                                 .strokeBorder(Theme.inkSoft, style: StrokeStyle(lineWidth: 1, dash: [2.5, 2]))
-                                .padding(style == nil ? -3 : -4)
+                                .padding(-3)
                         }
                     }
                     .frame(width: 26, height: 26)

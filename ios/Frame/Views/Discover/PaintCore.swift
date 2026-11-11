@@ -9,7 +9,7 @@ import Foundation
 
 /// How a work's colours are painted under "Kolor i światło".
 enum PaintStyle: String, Sendable, CaseIterable {
-    /// Oil, acrylic, tempera: pulls of a loaded brush, dots out of the tube.
+    /// Oil, acrylic, tempera: pulls of a loaded brush, a touch of it for each paint.
     case oil
     /// Watercolour, gouache: strokes that run into each other on wet paper.
     case water
@@ -20,7 +20,12 @@ enum PaintStyle: String, Sendable, CaseIterable {
     /// museums write in; nil when it says nothing of the three, or names
     /// a print or a photograph: those keep the flat palette. Of several
     /// (pastel over watercolour) the first named; chalk named after pen
-    /// or ink is under a drawing in ink, which is flat too.
+    /// or ink is under a drawing in ink, which is flat too. A museum that
+    /// names no paint (the Getty gives only "Painting"; Mateusz 2026-11-11
+    /// 13:50: „może w takiej sytuacji da jednak jakoś radę ustalić ze to
+    /// obraz olejny”): what is on canvas is in oil or acrylic, and so is
+    /// a painting whose medium names nothing that says otherwise (paper,
+    /// silk, ink, fresco).
     static func of(medium: String, classification: String = "") -> PaintStyle? {
         let words = Self.words(medium)
         let kind = Self.words(classification)
@@ -34,7 +39,10 @@ enum PaintStyle: String, Sendable, CaseIterable {
             }
             if ink.contains(word) || inkBegins.contains(where: { word.hasPrefix($0) }) { inked = true }
         }
-        return nil
+        if words.contains(where: { word in canvas.contains { word.hasPrefix($0) } || word == "tela" }) { return .oil }
+        let painting = kind.contains { word in paintings.contains { word.hasPrefix($0) } }
+        let other = inked || words.contains { word in notOil.contains { word.hasPrefix($0) } }
+        return painting && !other ? .oil : nil
     }
 
     /// How long after the bar's first stroke paint `index`'s swatch
@@ -70,6 +78,15 @@ enum PaintStyle: String, Sendable, CaseIterable {
 
     private static let ink: Set<String> = ["ink", "inks", "inkt", "pen", "encre", "plume", "tinte", "feder", "tinta", "atrament", "sepia", "bistre", "bister"]
     private static let inkBegins = ["tusz", "pior", "inchiostr"]
+
+    /// What only oil or acrylic is painted on.
+    private static let canvas = ["canvas", "plotn", "toile", "doek", "leinwand", "lienzo", "laerred"]
+    /// A painting, as the museums file it.
+    private static let paintings = ["paint", "peint", "malarstw", "obraz", "schilderij", "gemald", "maleri", "pittur", "dipint", "pintur"]
+    /// What a painting is on or in when it is no oil painting.
+    private static let notOil = ["paper", "papier", "papir", "papel", "carta", "silk", "jedwab", "soie", "seide", "parchment", "vellum",
+                                 "pergamin", "ivory", "fresc", "fresk", "mosai", "mozai", "enamel", "emali", "glass", "szkl", "porcel",
+                                 "lacquer", "tapestr", "gobelin", "scroll"]
 
     private static let named: [(PaintStyle, [String], Set<String>)] = [
         (.oil, ["olej", "huile", "olie", "olfarb", "oelfarb", "akryl", "acryl", "acril", "tempera", "tempery", "temperow"],
@@ -494,6 +511,8 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
     private let shares: [PaintShare]
     private let seed: Double
     private let dark: Bool
+    /// A paint's swatch: the paper round it soaks a little of its oil up.
+    private let soaks: Bool
     private var laid: [Laid]?
     private var done: PaintFrame?
 
@@ -525,11 +544,65 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
         self.shares = shares
         self.seed = Double(seed)
         self.dark = dark
+        soaks = false
         wide = Int((width + 2 * Paint.pad).rounded()) * Paint.scale
         high = Int(Paint.bar + 2 * Paint.pad) * Paint.scale
         last = Double(max(0, shares.count - 1)) * Self.apart + Self.stroke
         length = last + 0.2
         pulls = Self.pulls(shares, width: width, seed: seed)
+    }
+
+    /// One paint's swatch: a single touch of the brush, as the bar's
+    /// small colours are (Mateusz 2026-11-11 13:50: „kropki kolorów farb
+    /// olejnych / akryli etc. rób pacnieciami jak na pasku przy
+    /// niewielkiej ilości koloru”), a little bigger than the dot out of
+    /// the tube it was before, and the paper round it soaks a little of
+    /// the oil up (13:51: „mogą być trochę większe niż obecne kropki.
+    /// Wokół nich tło może trochę nasiąkać jak przy farbach olejnych”).
+    /// `sure` false (a likely paint, not one the sources name): a
+    /// smaller touch with less paint on the brush.
+    init(touch rgb: [Double], sure: Bool, index: Int, seed: Int, dark: Bool) {
+        shares = [PaintShare(rgb: rgb, weight: 1)]
+        self.seed = Double(seed + 131 + 9 * index)
+        self.dark = dark
+        soaks = true
+        wide = Int(Paint.swatch + 2 * Paint.pad) * Paint.scale
+        high = Int(Paint.bar + 2 * Paint.pad) * Paint.scale
+        last = Self.stroke * 0.6
+        length = last + Self.soak
+        pulls = [Self.touch(sure: sure, seed: seed + 300 + index)]
+    }
+
+    /// How long the paper round a touch goes on soaking.
+    static let soak = 3.2
+
+    /// The one touch of a paint's swatch, across its 26 points.
+    static func touch(sure: Bool, seed: Int) -> Pull {
+        var random = PaintRandom(seed)
+        var pull = varied(a: sure ? -3 : 2.5, e: sure ? 21.5 : 18.5, touch: true, random: &random)
+        if sure {
+            pull.wide += 1.2
+        } else {
+            pull.wide *= 0.74
+            pull.full *= 0.7
+        }
+        return pull
+    }
+
+    /// A pull from `a` to `e`, its own in everything else.
+    private static func varied(a: Double, e: Double, touch: Bool, random: inout PaintRandom) -> Pull {
+        // The order the numbers are drawn in is the sketch's.
+        let tilt = (touch ? 0.2 : 0.05) * (random.next() * 2 - 1)
+        let dy = (touch ? 2.2 : 1.5) * (random.next() * 2 - 1)
+        let wide = Paint.bar / 2 - (touch ? 1.5 : 0.4) - 1.8 * random.next()
+        let full = touch ? 0.3 + 0.2 * random.next() : 0.2 + 0.32 * random.next()
+        let fall = 0.8 + 0.8 * random.next()
+        let taper = 0.2 + 0.32 * random.next()
+        let p1 = random.next() * 6.28, p2 = random.next() * 6.28
+        let sway = 0.5 + 1.1 * random.next()
+        let blob = 0.75 + 0.5 * random.next()
+        return Pull(a: a, e: e, touch: touch, tilt: tilt, dy: dy, wide: wide, full: full, fall: fall, taper: taper,
+                    p1: p1, p2: p2, sway: sway, blob: blob)
     }
 
     /// Each colour's pull along a bar `width` wide.
@@ -548,19 +621,7 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
         var random = PaintRandom(seed + 17), x = 0.0
         var pulls = [Pull]()
         for w in widths {
-            let touch = w < Self.touch
-            // The order the numbers are drawn in is the sketch's.
-            let tilt = (touch ? 0.2 : 0.05) * (random.next() * 2 - 1)
-            let dy = (touch ? 2.2 : 1.5) * (random.next() * 2 - 1)
-            let wide = Paint.bar / 2 - (touch ? 1.5 : 0.4) - 1.8 * random.next()
-            let full = touch ? 0.3 + 0.2 * random.next() : 0.2 + 0.32 * random.next()
-            let fall = 0.8 + 0.8 * random.next()
-            let taper = 0.2 + 0.32 * random.next()
-            let p1 = random.next() * 6.28, p2 = random.next() * 6.28
-            let sway = 0.5 + 1.1 * random.next()
-            let blob = 0.75 + 0.5 * random.next()
-            pulls.append(Pull(a: x, e: x + w, touch: touch, tilt: tilt, dy: dy, wide: wide, full: full, fall: fall, taper: taper,
-                              p1: p1, p2: p2, sway: sway, blob: blob))
+            pulls.append(varied(a: x, e: x + w, touch: w < Self.touch, random: &random))
             x += w + gap
         }
         return pulls
@@ -684,81 +745,68 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
                 }
             }
         }
-        let out = OilLight.shade(height: H, red: R, green: G, blue: B, cover: A, wide: wide, high: high, dark: dark)
+        var out = OilLight.shade(height: H, red: R, green: G, blue: B, cover: A, wide: wide, high: high, dark: dark)
+        if soaks { soak(&out, cover: A, age: age - last) }
         if age >= length {
             done = out
             self.laid = nil
         }
         return out
     }
-}
 
-/// One paint in oil: a dot pressed out of its tube, seen from above
-/// (Mateusz 11:51: „jako wyciśnięte, górnego kształtu kropki”): a low
-/// dome, on it the coil the paint came out in, and the small peak the
-/// tube left. `sure` false: a smaller, lower dot.
-final class OilDab: PaintPainter, @unchecked Sendable {
-    let wide = Int(2 * Paint.half) * Paint.scale
-    let high = Int(2 * Paint.half) * Paint.scale
-    let length = 1.2
-
-    private let rgb: [Double]
-    private let sure: Bool
-    private let dark: Bool
-    private let seed: Double
-    private let turn: Double, peak: (x: Double, y: Double), way: Double
-
-    init(rgb: [Double], sure: Bool, index: Int, seed: Int, dark: Bool) {
-        self.rgb = rgb
-        self.sure = sure
-        self.dark = dark
-        self.seed = Double(131 + seed + 9 * index)
-        var random = PaintRandom(seed + 300 + index)
-        turn = random.next() * 6.28
-        let x = 1.5 * (random.next() - 0.5), y = 1.5 * (random.next() - 0.5)
-        peak = (x, y)
-        way = random.next() * 6.28
-    }
-
-    func frame(age: Double) -> PaintFrame {
-        let n = wide * high
-        let age = min(length, age)
-        guard age > 0 else { return PaintFrame(wide: wide, high: high) }
-        var H = [Float](repeating: 0, count: n), A = [Float](repeating: 0, count: n)
-        var R = [Float](repeating: 0, count: n), G = [Float](repeating: 0, count: n), B = [Float](repeating: 0, count: n)
-        let S = Double(Paint.scale), half = Paint.half, full = sure ? 10.2 : 7.4
-        let grow = 1 - pow(1 - min(1, age / 0.7), 2.2), rad = full * (0.25 + 0.75 * grow), wound = 5.5 * (1 - grow)
-        let tipUp = Paint.ease((age - 0.55) / 0.4)
-        for k in 0..<n {
-            let x = -half + (Double(k % wide) + 0.5) / S, y = -half + (Double(k / wide) + 0.5) / S
-            let r = (x * x + y * y).squareRoot()
-            if r > rad * 1.15 + 1 { continue }
-            let th = atan2(y, x)
-            // Round, not quite: pressed out by hand.
-            let edge = rad * (1 + 0.05 * sin(2 * th + turn) + 0.035 * sin(3 * th + 2 * turn) + 0.03 * (Paint.noise(th * 2.2 + 9, 1.5, seed) - 0.5))
-            let side = edge - r
-            if side < -0.6 { continue }
-            let cover = Paint.step(-0.5, 0.5, side)
-            if cover <= 0 { continue }
-            // A dome; on it the coil the paint came out in, tighter towards the middle; and the peak
-            // the tube left, pulled a little to one side.
-            let dome = pow(max(0, 1 - pow(r / edge, 2.3)), 0.62)
-            let coil = cos(6.283 * (r / 5.2) - th - turn - wound) * (0.07 + 0.04 * r / edge) * Paint.step(0, 2.4, side)
-            let dx = x - peak.x, dy = y - peak.y
-            let along = dx * cos(way) + dy * sin(way), across = -dx * sin(way) + dy * cos(way)
-            let tip = tipUp * 0.75 * exp(-(pow((along - 0.8) / (along > 0.8 ? 3.1 : 1.5), 2) + pow(across / 1.45, 2)))
-            var hgt = 1.35 * dome + coil * (sure ? 1 : 0.7) + tip + 0.1
-            if !sure { hgt *= 0.8 }
-            let streak = 1 + 0.08 * (Paint.noise(x / 1.7, y / 1.7, seed + 4) - 0.5)
-            H[k] = Float(hgt * cover)
-            A[k] = Float(cover * (sure ? 1 : 0.9))
-            R[k] = Float(rgb[0] * streak)
-            G[k] = Float(rgb[1] * streak)
-            B[k] = Float(rgb[2] * streak)
+    /// The paper round the paint soaks its oil up: a faint stain, a
+    /// little of the paint's colour in it, that creeps out from under the
+    /// paint to an uneven edge and stops. `age`: since the touch was down.
+    private func soak(_ out: inout PaintFrame, cover: [Float], age: Double) {
+        let soaked = Paint.ease(age / Self.soak)
+        guard soaked > 0 else { return }
+        // How near the paint a pixel is: its cover, blurred twice.
+        var near = cover
+        var turn = [Float](repeating: 0, count: near.count)
+        let reach = 3 * Paint.scale
+        for _ in 0..<2 {
+            for y in 0..<high {
+                var sum: Float = 0
+                for x in -reach..<wide + reach {
+                    if x + reach < wide, x + reach >= 0 { sum += near[y * wide + x + reach] }
+                    if x - reach - 1 >= 0, x - reach - 1 < wide { sum -= near[y * wide + x - reach - 1] }
+                    if x >= 0, x < wide { turn[y * wide + x] = sum / Float(2 * reach + 1) }
+                }
+            }
+            for x in 0..<wide {
+                var sum: Float = 0
+                for y in -reach..<high + reach {
+                    if y + reach < high, y + reach >= 0 { sum += turn[(y + reach) * wide + x] }
+                    if y - reach - 1 >= 0, y - reach - 1 < high { sum -= turn[(y - reach - 1) * wide + x] }
+                    if y >= 0, y < high { near[y * wide + x] = sum / Float(2 * reach + 1) }
+                }
+            }
         }
-        return OilLight.shade(height: H, red: R, green: G, blue: B, cover: A, wide: wide, high: high, dark: dark)
+        let S = Double(Paint.scale), paint = shares[0].rgb
+        let oil = dark ? [128.0, 112, 84] : [170.0, 148, 104], share = dark ? 0.5 : 0.36
+        let stain = (0..<3).map { paint[$0] * share + oil[$0] * (1 - share) }
+        let most = dark ? 0.2 : 0.24
+        for k in 0..<(wide * high) {
+            let close = Double(near[k])
+            if close <= 0.01 { continue }
+            let q = 4 * k, over = Double(out.bytes[q + 3]) / 255
+            if over >= 0.995 { continue }
+            let x = (Double(k % wide) + 0.5) / S, y = (Double(k / wide) + 0.5) / S
+            // It gets further in some places than in others.
+            let far = 0.5 - soaked * (0.36 + 0.12 * (Paint.noise(x / 5, y / 5, 171 + seed) - 0.5) + 0.05 * (Paint.noise(x / 1.6, y / 1.6, 173 + seed) - 0.5))
+            let wet = Paint.step(far - 0.035, far + 0.035, close)
+            if wet <= 0 { continue }
+            // A little more of it where it stopped.
+            let rim = 1 - Paint.step(far + 0.02, far + 0.16, close)
+            let under = most * wet * (0.72 + 0.28 * rim) * (0.5 + 0.5 * soaked), all = over + (1 - over) * under
+            for c in 0..<3 {
+                out.bytes[q + c] = Paint.byte((Double(out.bytes[q + c]) * over + stain[c] * under * (1 - over)) / all)
+            }
+            out.bytes[q + 3] = Paint.byte(255 * all)
+        }
     }
 }
+
 
 // MARK: - Pastel, crayon, chalk
 

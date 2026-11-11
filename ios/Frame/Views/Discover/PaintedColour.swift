@@ -64,7 +64,7 @@ struct PaintJob: @unchecked Sendable {
     /// One paint's swatch.
     static func swatch(_ style: PaintStyle, rgb: [Double], sure: Bool, index: Int, seed: Int, dark: Bool) -> PaintJob {
         switch style {
-        case .oil: return PaintJob(OilDab(rgb: rgb, sure: sure, index: index, seed: seed, dark: dark))
+        case .oil: return PaintJob(OilStrip(touch: rgb, sure: sure, index: index, seed: seed, dark: dark))
         case .water: return PaintJob(WaterDab(rgb: rgb, sure: sure, index: index, seed: seed))
         case .dry:
             let scribble = DryScribble(rgb: rgb, sure: sure, index: index, seed: seed)
