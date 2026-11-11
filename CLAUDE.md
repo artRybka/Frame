@@ -37,6 +37,9 @@ uv run mypy src
   `library/verdict.py`: `against(item, Place.X, asked)`, with what each
   place minds in its `MINDS` table. Never put `vocabulary`'s `is_detail`,
   `is_postal`… together anew at a call site; a new reason is a new `Why`.
+  The order in which the server proposes works (Odkrywaj's themes,
+  Propozycje dnia) is `library/good.py` (`Library.query(sort="good",
+  seed=day)`): a changed weight there changes what he sees, too.
 - Museum requests go through `library/hosts.py` with the rules in
   `library/policy.py`. Search pages are kept on disk for days and survive
   releases: when you change how one museum's answers become `Item`s, raise

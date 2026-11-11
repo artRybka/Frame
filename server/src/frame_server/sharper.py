@@ -62,11 +62,12 @@ from .imaging.layout import load_image
 from .library import Item, ItemKind
 from .library.colors import tint_spread
 from .library.duplicates import same_work, surname
-from .library.images import BYTES, display_copy, kept_long, own_copy
+from .library.images import BYTES, WEAK_SIDE, display_copy, kept_long, own_copy
 from .library.likeness import Likeness
 from .library.models import Note, SharperCopy
 from .library.verdict import Place, against
 from .library.vocabulary import (
+    archive_own,
     artist_matches,
     is_art_archive_photo,
     is_grey_copy,
@@ -86,10 +87,8 @@ VERSION = "sharper-2"
 #: before they took copies in other colours are looked at again.
 ARCHIVE_VERSION = "sharper-archive-1"
 
-#: A picture whose long side is shorter than this is worth a sharper copy
-#: (the frame is 2560 px long) ...
-WEAK_SIDE = 2000
-#: ... and so is one squeezed below this many bits per pixel (a painting's
+#: A picture shorter than ``images.WEAK_SIDE`` is worth a sharper copy, and
+#: so is one squeezed below this many bits per pixel (a painting's
 #: JPEG at a fair quality takes 1.5 to 4).
 WEAK_BITS = 0.6
 #: A copy stands in only when its long side (up to the frame's) is this
@@ -260,12 +259,6 @@ def same_colours(own: Tone, copy: Tone, faded: bool = False) -> bool:
     themselves)."""
     note = colour_note(own, copy)
     return note is None or (faded and note == "colour-off")
-
-
-def archive_own(item: Item) -> bool:
-    """``item`` shows an art archive's photograph of the work, its own
-    picture with no copy in its place: in its colours only by chance."""
-    return is_art_archive_photo(item) and item.sharper is None
 
 
 def version(item: Item) -> str:
