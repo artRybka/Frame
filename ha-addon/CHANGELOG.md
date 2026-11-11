@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.145.9
+
+- Studium dzieła, „Kolor i światło”: malowane próbki prawdopodobnych farb
+  nie mają już przerywanego okręgu dookoła. Poznać je po tym, że są
+  mniejsze albo cieńsze. Przy płaskiej palecie okrąg zostaje.
+- „Kolor i światło” rozpoznaje obraz olejny także wtedy, gdy muzeum nie
+  podaje techniki, a jedynie to, że dzieło jest obrazem (tak jest
+  w zbiorach Getty), albo gdy w opisie jest samo płótno. Obraz na
+  papierze, jedwabiu, tuszem albo fresk zostaje przy płaskiej palecie.
+- Farby olejne, akrylowe i tempery nie są już kropkami z tuby, tylko
+  pacnięciami pędzla, takimi jak małe kolory na pasku palety, trochę
+  większymi od dawnych kropek. Papier wokół pacnięcia powoli nasiąka
+  olejem i zostaje na nim delikatna, nierówna obwódka.
+
 ## 1.145.8
 
 - Studium dzieła, „Kolor i światło”: paleta i próbki farb są malowane

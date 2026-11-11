@@ -44,6 +44,23 @@ final class PaintTests: XCTestCase {
         // What kind of thing it is counts too: a print is no painting.
         XCTAssertNil(PaintStyle.of(medium: "oil colours on paper", classification: "Prints"))
         XCTAssertEqual(PaintStyle.of(medium: "Oil on canvas", classification: "Paintings"), .oil)
+        // A museum that names no paint (the Getty: only "Painting";
+        // Mateusz 13:50: „może w takiej sytuacji da jednak jakoś radę
+        // ustalić ze to obraz olejny”): a painting is in oil, unless its
+        // medium says what else it is; canvas is painted in oil.
+        XCTAssertEqual(PaintStyle.of(medium: "", classification: "Painting"), .oil)
+        XCTAssertEqual(PaintStyle.of(medium: "", classification: "Malarstwo"), .oil)
+        XCTAssertEqual(PaintStyle.of(medium: "wood", classification: "Paintings"), .oil)
+        XCTAssertEqual(PaintStyle.of(medium: "canvas"), .oil)
+        XCTAssertEqual(PaintStyle.of(medium: "płótno"), .oil)
+        XCTAssertEqual(PaintStyle.of(medium: "Watercolor", classification: "Paintings"), .water)
+        XCTAssertNil(PaintStyle.of(medium: "Ink and color on silk", classification: "Paintings"))
+        XCTAssertNil(PaintStyle.of(medium: "paper", classification: "Paintings"))
+        XCTAssertNil(PaintStyle.of(medium: "fresco", classification: "Paintings"))
+        XCTAssertNil(PaintStyle.of(medium: "", classification: "Drawing"))
+        XCTAssertNil(PaintStyle.of(medium: "", classification: "Photograph"))
+        XCTAssertNil(PaintStyle.of(medium: "", classification: "Illuminated Manuscript"))
+        XCTAssertNil(PaintStyle.of(medium: "", classification: ""))
     }
 
     func testTheNoiseIsTheSameEachTimeAndStaysInItsBounds() {
@@ -130,12 +147,45 @@ final class PaintTests: XCTestCase {
 
     func testAPaintTheSourcesDoNotNameIsASmallerSwatch() {
         let rgb = Paint.rgb("#3B4FA0") ?? [0, 0, 0]
-        let sure = OilDab(rgb: rgb, sure: true, index: 0, seed: 5, dark: false), likely = OilDab(rgb: rgb, sure: false, index: 0, seed: 5, dark: false)
+        // In oil a touch of the brush, as the bar's small colours are
+        // (13:50: „kropki kolorów farb olejnych / akryli etc. rób
+        // pacnieciami jak na pasku przy niewielkiej ilości koloru”).
+        let sure = OilStrip(touch: rgb, sure: true, index: 0, seed: 5, dark: false)
+        let likely = OilStrip(touch: rgb, sure: false, index: 0, seed: 5, dark: false)
+        XCTAssertEqual(sure.pulls.count, 1)
+        XCTAssertTrue(sure.pulls[0].touch)
+        XCTAssertEqual(sure.wide, 58 * Paint.scale)
+        XCTAssertEqual(sure.high, 58 * Paint.scale)
         XCTAssertEqual(covered(sure.frame(age: 0)), 0)
-        XCTAssertGreaterThan(covered(sure.frame(age: 99)), covered(likely.frame(age: 99)) * 1.4)
-        XCTAssertGreaterThan(covered(sure.frame(age: 99)), covered(sure.frame(age: 0.2)))
+        XCTAssertGreaterThan(covered(sure.frame(age: 99)), covered(likely.frame(age: 99)) * 1.3)
+        XCTAssertGreaterThan(covered(sure.frame(age: 99)), covered(sure.frame(age: 0.1)))
         let middle = sure.frame(age: 99).colour(sure.wide / 2, sure.high / 2)
         XCTAssertGreaterThan(middle.blue, middle.red + 40)
+        // A little bigger than the dot it was (13:51: „mogą być trochę
+        // większe niż obecne kropki”): that was 20 points across.
+        func solid(_ frame: PaintFrame) -> Double {
+            var count = 0.0
+            for k in 0..<(frame.wide * frame.high) where frame.bytes[4 * k + 3] > 200 { count += 1 }
+            return count / Double(Paint.scale * Paint.scale)
+        }
+        XCTAssertGreaterThan(solid(sure.frame(age: 99)), 360)
+        XCTAssertLessThan(solid(sure.frame(age: 99)), 600)
+        // Round it the paper soaks a little oil up, slowly (13:51: „Wokół
+        // nich tło może trochę nasiąkać jak przy farbach olejnych”): a
+        // faint stain that was not there when the touch was just down.
+        func faint(_ frame: PaintFrame) -> Int {
+            var count = 0
+            for k in 0..<(frame.wide * frame.high) where frame.bytes[4 * k + 3] > 12 && frame.bytes[4 * k + 3] < 80 { count += 1 }
+            return count
+        }
+        let down = sure.frame(age: sure.last), soaked = sure.frame(age: sure.length)
+        XCTAssertGreaterThan(faint(soaked), faint(down) + 400)
+        XCTAssertEqual(solid(soaked), solid(down), accuracy: 15)
+        XCTAssertEqual(sure.frame(age: 999).bytes, soaked.bytes)
+        XCTAssertEqual(sure.length, sure.last + OilStrip.soak, accuracy: 0.001)
+        // The bar's paint soaks nothing up.
+        let bar = OilStrip(shares: jatte, width: 350, seed: 5, dark: false)
+        XCTAssertEqual(bar.length, bar.last + 0.2, accuracy: 0.001)
         let wet = WaterDab(rgb: rgb, sure: true, index: 0, seed: 5), thin = WaterDab(rgb: rgb, sure: false, index: 0, seed: 5)
         XCTAssertEqual(covered(wet.frame(age: 0)), 0)
         XCTAssertGreaterThan(covered(wet.frame(age: 99)), covered(thin.frame(age: 99)) * 1.15)
