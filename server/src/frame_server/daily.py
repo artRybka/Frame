@@ -45,7 +45,6 @@ from .library.cultures import circle
 from .library.images import display_copy
 from .library.models import Note
 from .library.nationality import NATIONALITIES
-from .library.verdict import Place, against
 from .library.vocabulary import artist_matches, is_photograph
 from .sharper import WEAK_SIDE, archive_own
 
@@ -337,7 +336,7 @@ class Daily:
         # Rembrandt and Vermeer).
         rules = PlaylistRules(kinds=[ItemKind.ARTWORK])
         seed = self._seed(day, skipped)
-        drawn = self.library.query(rules, sort="random", seed=seed, limit=POOL)[1]
+        drawn = self.library.query(rules, sort="random", seed=seed, limit=POOL, proposing=True)[1]
         unfit = self.unfit()
         poor = self.poor_copies()
         return [
@@ -348,10 +347,8 @@ class Daily:
             and poor.get(i.id) != copy_key(i)
             and i.look is None
             and i.artist
-            # A black-and-white photograph of a work in colour, an art
-            # archive's old slide: no copy to look at for a quarter of an
-            # hour. "Sztuki inne" keep to their own group.
-            and not against(i, Place.STUDIED)
+            # An art archive's old slide: no copy to look at for a quarter of
+            # an hour. (Copies and "Sztuki inne" are not proposed at all.)
             and not archive_own(i)
             and max(i.width or MIN_SIDE, i.height or MIN_SIDE) >= MIN_SIDE
             and not (recent_artists and artist_matches(i.artist, recent_artists))
@@ -466,7 +463,7 @@ class Daily:
 
         for term in [t for t in item.terms if t.startswith(("style:", "years:", "technique:"))]:
             near = PlaylistRules(kinds=[ItemKind.ARTWORK], terms=[term])
-            items = self.library.query(near, sort="suitability", limit=60)[1]
+            items = self.library.query(near, sort="suitability", limit=60, proposing=True)[1]
             if item.year:
                 items = [i for i in items if i.year and abs(i.year - item.year) <= 40]
             add(items, CANDIDATES)
@@ -559,7 +556,7 @@ class Daily:
             year_to=item.year + OTHER_CIRCLE_YEARS,
         )
         seed = zlib.crc32(item.id.encode())
-        found = self.library.query(rules, sort="random", seed=seed)[1]
+        found = self.library.query(rules, sort="random", seed=seed, proposing=True)[1]
         found.sort(key=lambda i: (not i.favorite, not i.highlight))  # stable
         near = [i.id for i in found if abs((i.year or 0) - item.year) <= SAME_TIME_YEARS]
         # An unknown work's circle: the West's, as most of the catalogue.

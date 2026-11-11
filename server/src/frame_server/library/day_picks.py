@@ -91,11 +91,11 @@ def work_out(library: Library, user: str, day: date, private: bool = False) -> D
         if found.key == day_theme:
             # As Odkrywaj draws the day's row from the catalogue.
             total, items = library.query(
-                found.rules(), sort="random", seed=day.toordinal(), user=user
+                found.rules(), sort="random", seed=day.toordinal(), user=user, proposing=True
             )
         else:
             total, items = library.query(
-                found.rules(), sort="suitability", limit=PER_CARD * 4, user=user
+                found.rules(), sort="suitability", limit=PER_CARD * 4, user=user, proposing=True
             )
         if total < CARD_MIN:
             continue  # not shown in Odkrywaj either

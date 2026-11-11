@@ -1,23 +1,24 @@
 """What each place of the server says of each kind of work, frozen
 (docs/PLAN.md 3.3zzz155).
 
-The rules that decide whether a work is shown are put together anew in many
-places (the audit of 2026-11-11: about sixty calls in fifteen files), each
-with its own choice of them. Before they become one verdict, this is what
-they answer today: one work of every kind the rules tell apart, once as the
-server took it in (``pooled``) and once as the owner kept it, asked of every
-place that can be asked on its own. A change of the rules that moves a mark
-shows here, with the kind and the place it moved in.
+One work of every kind the rules tell apart, once as the server took it in
+(``pooled``) and once as the owner kept it, asked of every place that can be
+asked on its own. The places ask one table (``library/verdict.py``, since
+the audit of 2026-11-11 found the rules put together anew in about sixty
+calls); a change of it that moves a mark shows here, with the kind and the
+place it moved in.
 
-The first three places are what the work of the day and the curator's
-cards of "Dziś dla Ciebie" choose among (the cards and Propozycje dnia are
-filled from the catalogue). Mateusz 2026-11-11: the way to them may change,
-their quality may not fall, so a "-" there turns into a "+" only with his
-word, and a "+" of a good work never into a "-".
+The third and fourth places are what the server proposes on its own: the
+work of the day and the cards of Discover and Propozycje dnia filled from
+the catalogue. Mateusz 2026-11-11: the way to them may change, their
+quality may not fall, so a "-" there turns into a "+" only with his word,
+and a "+" of a good work never into a "-". The details, reproductions and
+stamps he kept are his to see (the catalogue, Szukaj) and never proposed
+(his decision of 2026-11-11 14:56).
 
-Where the places disagree about a work the owner kept
-(:data:`KEPT_COPIES_STUDIED`, :data:`BROWSED_NOT_FOUND`) is the audit's
-finding K1: as it is until he decides which of it is meant.
+Where the places still disagree about a work the owner kept
+(:data:`BROWSED_NOT_FOUND`) is the audit's finding K1: as it is until he
+decides which of it is meant.
 """
 
 from __future__ import annotations
@@ -33,7 +34,7 @@ from frame_server.ai.gatekeeper import asked_by_rules
 from frame_server.library import Item, ItemKind, PlaylistRules
 from frame_server.library.models import ART_PHOTO_ARCHIVES
 from frame_server.library.twins import candidate
-from frame_server.library.verdict import Place, against, category_fits, copy_whys
+from frame_server.library.verdict import Place, against, category_fits
 from frame_server.service import FrameService
 
 MONET = "Claude Monet"
@@ -122,6 +123,7 @@ PLACES = (
     "katalog",
     "katalog, szukane słowem",
     "studium dnia",
+    "karta Odkrywaj z katalogu",
     "odpowiedź muzeum",
     "Szukaj w muzeach",
     "karta Odkrywaj z muzeów",
@@ -133,46 +135,31 @@ PLACES = (
 #: What the places answer today: "+" shown (or taken on), "-" left out,
 #: for the work as the server took it in, then as the owner kept it.
 EXPECTED: dict[str, tuple[str, str]] = {
-    "obraz z muzeum": ("++++++-++", "++++++-++"),
-    "obraz ze zbioru plików": ("+++++++++", "+++++++++"),
-    "detal w tytule": ("---------", "+++------"),
-    "detal po obrazie": ("---------", "+++------"),
-    "zdjęcie sali z dziełem": ("---------", "+++------"),
-    "reprodukcja": ("---------", "+++------"),
-    "szara kopia obrazu": ("---------", "++-------"),
-    "szara grafika z muzeum": ("++++++-++", "++++++-++"),
-    "znaczek": ("---------", "+-+------"),
-    "dokument": ("---------", "+-+------"),
-    "archiwum fotografii": ("---------", "+++------"),
-    "archiwum sztuki, kolor": ("++-++++++", "++-++++++"),
-    "archiwum sztuki, szare": ("---------", "+--------"),
-    "kopia z Openverse": ("---------", "+++------"),
-    "fotografia z Openverse": ("---------", "+--------"),
-    "fotografia z muzeum": ("---+----+", "+--+----+"),
-    "rękopis": ("---+----+", "+--+----+"),
-    "rzeźba": ("---+----+", "+--+----+"),
-    "ceramika": ("---+----+", "+--+----+"),
-    "plakat": ("++++++-++", "++++++-++"),
-    "odłożone przez Strażnika": ("---------", "+++------"),
-    "mały obraz": ("++-++++++", "++-++++++"),
+    "obraz z muzeum": ("+++++++-++", "+++++++-++"),
+    "obraz ze zbioru plików": ("++++++++++", "++++++++++"),
+    "detal w tytule": ("----------", "++--------"),
+    "detal po obrazie": ("----------", "++--------"),
+    "zdjęcie sali z dziełem": ("----------", "++--------"),
+    "reprodukcja": ("----------", "++--------"),
+    "szara kopia obrazu": ("----------", "++--------"),
+    "szara grafika z muzeum": ("+++++++-++", "+++++++-++"),
+    "znaczek": ("----------", "+---------"),
+    "dokument": ("----------", "+---------"),
+    "archiwum fotografii": ("----------", "++--------"),
+    "archiwum sztuki, kolor": ("++-+++++++", "++-+++++++"),
+    "archiwum sztuki, szare": ("----------", "+---------"),
+    "kopia z Openverse": ("----------", "++--------"),
+    "fotografia z Openverse": ("----------", "+---------"),
+    "fotografia z muzeum": ("----+----+", "+---+----+"),
+    "rękopis": ("----+----+", "+---+----+"),
+    "rzeźba": ("----+----+", "+---+----+"),
+    "ceramika": ("----+----+", "+---+----+"),
+    "plakat": ("+++++++-++", "+++++++-++"),
+    "odłożone przez Strażnika": ("----------", "++--------"),
+    "mały obraz": ("++-+++++++", "++-+++++++"),
 }
 
-#: K1, the first oddity: what the rules call a copy (a detail, a
-#: reproduction, a stamp…) may be the work of the day once the owner kept
-#: it, though a grey copy he kept may not.
-KEPT_COPIES_STUDIED = {
-    "detal w tytule",
-    "detal po obrazie",
-    "zdjęcie sali z dziełem",
-    "reprodukcja",
-    "znaczek",
-    "dokument",
-    "archiwum fotografii",
-    "kopia z Openverse",
-    "odłożone przez Strażnika",
-}
-
-#: K1, the second: works the owner kept that the catalogue lists while it
+#: K1: works the owner kept that the catalogue lists while it
 #: is browsed and leaves out once a word is typed. ("Sztuki inne" are meant
 #: to: found only when their group is asked for.)
 BROWSED_NOT_FOUND = {
@@ -227,6 +214,8 @@ def _places(service: FrameService) -> dict[str, Callable[[Item], bool]]:
     browsed = {i.id for i in library.query(art)[1]}
     searched = {i.id for i in library.query(art.model_copy(update={"query": "Monet"}))[1]}
     studied = {i.id for i in service.daily.pool(date(2026, 11, 11), [])}
+    by_monet = art.model_copy(update={"artists": [MONET]})
+    proposed = {i.id for i in library.query(by_monet, proposing=True)[1]}
     service.audit.per_night = 10_000
     audited = {i.id for i in service.audit.candidates({})}
     importer = service.importer
@@ -234,6 +223,8 @@ def _places(service: FrameService) -> dict[str, Callable[[Item], bool]]:
         "katalog": lambda i: i.id in browsed,
         "katalog, szukane słowem": lambda i: i.id in searched,
         "studium dnia": lambda i: i.id in studied,
+        # A card of Discover filled from the catalogue (an artist's).
+        "karta Odkrywaj z katalogu": lambda i: i.id in proposed,
         # As a museum's answer is read: Importer._ask_museum.
         "odpowiedź muzeum": lambda i: (
             not against(i, Place.MUSEUM) and bool(importer.without_grey([i]))
@@ -282,15 +273,17 @@ def test_what_every_place_says_of_every_kind(quiet: FrameService) -> None:
     assert found == EXPECTED, f"\nplaces: {', '.join(PLACES)}\n{table}"
 
 
-def test_the_server_never_proposes_a_copy_it_took_in_itself(quiet: FrameService) -> None:
-    """Nothing the rules call a copy, and no work of "Sztuki inne", that the
-    server took in on its own is in the catalogue, found by a word, or among
-    the works the work of the day is chosen from."""
+def test_the_server_never_proposes_a_copy(quiet: FrameService) -> None:
+    """Nothing the rules call a copy, and no work of "Sztuki inne", is among
+    the works the work of the day is chosen from or on a card of Discover,
+    whoever took it in; what the server took in itself is not in the
+    catalogue either."""
     works = _works(quiet)
     places = _places(quiet)
     for (name, pooled), item in works.items():
-        if pooled and against(item, Place.SOUGHT):
-            shown = [p for p in PLACES[:3] if places[p](item)]
+        if against(item, Place.SOUGHT):
+            asked = PLACES[:4] if pooled else PLACES[2:4]
+            shown = [p for p in asked if places[p](item)]
             assert not shown, f"{name}: {shown}"
 
 
@@ -298,8 +291,6 @@ def test_where_the_places_disagree_about_works_the_owner_kept(quiet: FrameServic
     works = _works(quiet)
     places = _places(quiet)
     kept = {name: item for (name, pooled), item in works.items() if not pooled}
-    studied = {n for n, i in kept.items() if copy_whys(i) and places["studium dnia"](i)}
-    assert studied == KEPT_COPIES_STUDIED
     browsed = {
         n
         for n, i in kept.items()

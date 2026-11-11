@@ -119,7 +119,7 @@ SCHEMA: dict[str, Any] = {
 
 def catalogue_artists(library: Library) -> list[tuple[str, int]]:
     """The catalogue's painters with at least a few works, most first."""
-    items = library.query(PlaylistRules(kinds=[ItemKind.ARTWORK]))[1]
+    items = library.query(PlaylistRules(kinds=[ItemKind.ARTWORK]), proposing=True)[1]
     counts = Counter(i.artist for i in items if is_artist(i.artist))
     return [(a, n) for a, n in counts.most_common(ARTISTS) if n >= 3]
 
