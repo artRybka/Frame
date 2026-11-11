@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.7
+
+- „Pod lupą”: gdy telefon jest trzymany nieruchomo, cienia pod kafelkami
+  nie widać i wyglądają jak zwykłe. Cień pojawia się dopiero przy
+  obracaniu telefonu.
+
 ## 1.145.6
 
 - Studium dzieła: „Dalsze losy” są teraz dalszym ciągiem „Drogi dzieła”
