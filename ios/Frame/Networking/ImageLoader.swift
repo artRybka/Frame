@@ -338,14 +338,42 @@ actor ImageLoader {
         return min(max(asked ?? 1.5 * Double(attempt), 0.5), 8)
     }
 
-    private static func downsample(_ data: Data, maxPixel: CGFloat) -> UIImage? {
+    /// Pictures more elongated than this keep their short side
+    /// `maxPixel / wide` instead of the long side `maxPixel` (the server's
+    /// `WIDE`): a handscroll 24 times as long as it is tall came 500 × 21 px
+    /// and the square tile cut from it was a blur (Mateusz 2026-11-11) ...
+    static let wide: CGFloat = 2
+    /// ... within this many pixels (or `maxPixel` squared, when more).
+    static let wideArea: CGFloat = 2_000_000
+
+    /// The long side a picture `width` × `height` px is made at for
+    /// `maxPixel`: `maxPixel`, or for an elongated one enough to keep its
+    /// short side `maxPixel / wide` (within `wideArea`); never more than it is.
+    nonisolated static func longSide(width: CGFloat, height: CGFloat, maxPixel: CGFloat) -> CGFloat {
+        let long = max(width, height), short = min(width, height)
+        guard short > 0, long > wide * short else { return maxPixel }
+        let ratio = long / short
+        let area = max(wideArea, maxPixel * maxPixel)
+        let side = min(maxPixel / wide, (area / ratio).squareRoot())
+        return max(maxPixel, min(long, (side * ratio).rounded()))
+    }
+
+    static func downsample(_ data: Data, maxPixel: CGFloat) -> UIImage? {
         let options = [kCGImageSourceShouldCache: false] as CFDictionary
         guard let source = CGImageSourceCreateWithData(data as CFData, options) else { return nil }
+        var longSide = maxPixel
+        if let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+           let width = properties[kCGImagePropertyPixelWidth] as? NSNumber,
+           let height = properties[kCGImagePropertyPixelHeight] as? NSNumber {
+            longSide = Self.longSide(
+                width: CGFloat(width.doubleValue), height: CGFloat(height.doubleValue), maxPixel: maxPixel
+            )
+        }
         let thumbOptions = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceShouldCacheImmediately: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxPixel,
+            kCGImageSourceThumbnailMaxPixelSize: longSide,
         ] as CFDictionary
         guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOptions) else {
             return nil

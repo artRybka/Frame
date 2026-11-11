@@ -121,6 +121,9 @@ MARGINS_KEY = "margins_trimmed"
 #: Set once the elongated works' kept originals were had again in the size
 #: they are kept in now (``ImageCache.wide_again``, 2026-11-09).
 WIDE_KEY = "wide_originals"
+#: Set once the elongated works' thumbnails thinner than they are made now
+#: were made again or let go (``ImageCache.thin_thumbs_again``, 2026-11-11).
+THIN_THUMBS_KEY = "thin_thumbs"
 #: Set once the fragments' pictures kept trimmed of margins were let go
 #: (``ImageCache.drop_fragments``, 2026-11-09).
 FRAGMENTS_KEY = "untrimmed_fragments"
@@ -1569,7 +1572,7 @@ class Player:
         """Once after an update: the kept pictures without their blank
         margins, the pictures analysed again, the thumbnails of works shown
         from another source's copy made from it, then the elongated works'
-        originals had again larger."""
+        originals had again larger and their thin thumbnails made again."""
         if not self.library.get_state(MARGINS_KEY, False):
             trimmed = self.service.images.trim_kept()
             self.library.set_state(MARGINS_KEY, True)
@@ -1583,6 +1586,10 @@ class Player:
             grown = self.service.images.wide_again(items)
             self.library.set_state(WIDE_KEY, True)
             log.info("elongated works: %d kept originals larger", grown)
+        if not self.library.get_state(THIN_THUMBS_KEY, False):
+            thickened = self.service.images.thin_thumbs_again()
+            self.library.set_state(THIN_THUMBS_KEY, True)
+            log.info("elongated works: %d thin thumbnails made again or let go", thickened)
         if not self.library.get_state(FRAGMENTS_KEY, False):
             dropped = self.service.images.drop_fragments()
             self.library.set_state(FRAGMENTS_KEY, True)

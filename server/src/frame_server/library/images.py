@@ -30,6 +30,12 @@ from .policy import DEFAULT_IMAGES, IMAGE_LIMITS, URGENT_EXTRA
 log = logging.getLogger(__name__)
 
 THUMB_MAX = 640
+#: An elongated thumbnail (:data:`WIDE`) keeps its short side THUMB_MAX /
+#: WIDE instead, as long as its long side stays within this: a handscroll
+#: 24 times as long as it is tall came 640 × 26 px, and the square tile cut
+#: from it was a blur (Mateusz, 2026-11-11). 320 × 8192 px at most, a few
+#: hundred kB.
+THUMB_LONG = 8192
 IMAGE_MAX = 2560
 #: Pictures longer than this many times their width (or the other way
 #: round) are kept larger than :data:`IMAGE_MAX` on the long side: a
@@ -137,6 +143,32 @@ def kept_size(width: int, height: int) -> tuple[int, int]:
     return max(round(width * scale), 1), max(round(height * scale), 1)
 
 
+def thumb_size(width: int, height: int) -> tuple[int, int]:
+    """The size a thumbnail of a picture ``width`` × ``height`` is kept in
+    (never larger than it is): its long side :data:`THUMB_MAX`, or for one
+    more elongated than :data:`WIDE` its short side THUMB_MAX / WIDE within
+    :data:`THUMB_LONG`."""
+    if width <= 0 or height <= 0:
+        return width, height
+    long, short = max(width, height), min(width, height)
+    ratio = long / short
+    side = THUMB_MAX / ratio if ratio <= WIDE else min(THUMB_MAX / WIDE, THUMB_LONG / ratio)
+    scale = side / short
+    if scale >= 1.0:
+        return width, height
+    return max(round(width * scale), 1), max(round(height * scale), 1)
+
+
+def thin_thumb(width: int, height: int) -> bool:
+    """Whether an elongated picture this size is thinner than its thumbnail
+    is kept (:func:`thumb_size`): the source has a larger one to make it
+    from. A tenth less is close enough."""
+    if not wide(width, height):
+        return False
+    want = min(thumb_size(width * 100, height * 100))
+    return min(width, height) < 0.9 * want
+
+
 def kept_long(long: int, ratio: float = 1.0) -> int:
     """The long side a picture ``long`` px long and ``ratio`` times as long
     as it is wide is kept with (:func:`kept_size`)."""
@@ -165,6 +197,10 @@ def _save_jpeg(img: Image.Image, path: Path, max_side: int, quality: int) -> Non
     img = img.convert("RGB")
     if max_side == IMAGE_MAX:  # an original: elongated ones keep more (WIDE)
         size = kept_size(*img.size)
+        if size != img.size:
+            img = img.resize(size, Image.Resampling.LANCZOS)
+    elif max_side == THUMB_MAX:  # a thumbnail: elongated ones stay thicker
+        size = thumb_size(*img.size)
         if size != img.size:
             img = img.resize(size, Image.Resampling.LANCZOS)
     else:
@@ -259,6 +295,25 @@ def wide_copy(item: Item) -> str:
         and extension(url) in ("jpg", "jpeg", "png")
     ):
         return url
+    return ""
+
+
+def thumb_copy(item: Item) -> str:
+    """An elongated work's address asking for its thumbnail in the size it
+    is kept in (:func:`thumb_size`), from a source whose addresses ask for a
+    size (:data:`SIZED`, Commons); "" for any other work or source."""
+    width, height, url = item.width, item.height, item.image_url
+    if not width or not height or not wide(width, height):
+        return ""
+    w, h = thumb_size(width, height)
+    long = max(w, h)
+    if item.source in SIZED:
+        if _IIIF_FIT.search(url):
+            return _IIIF_FIT.sub(f"/full/!{long},{long}/", url)
+        if _SI_MAX.search(url):
+            return _SI_MAX.sub(rf"\g<1>{long}", url)
+    if item.source == "wmc" and (rendition := commons_rendition(url, w, width)):
+        return rendition
     return ""
 
 
@@ -441,6 +496,27 @@ class ImageCache:
         return list(dict.fromkeys([*urls, *(u for u in more if u)]))
 
     def _thumbnail(self, item: Item, urgent: bool) -> Image.Image:
+        """The thumbnail from the work's addresses; for an elongated work
+        whose thumbnail address gives too thin a picture (Cleveland's 900 ×
+        37 px "web" one of a handscroll), from a larger address of it."""
+        img = self._small_thumbnail(item, urgent)
+        if not thin_thumb(*img.size):
+            return img
+        trim = _trimmed(item.id)
+        larger = [] if item.sharper is not None else [thumb_copy(item)]
+        if item.sharper is not None or item.source not in self.fetchers:
+            larger += self._addresses(item, thumb=False)
+        for url in dict.fromkeys(u for u in larger if u and u != item.thumb_url):
+            try:
+                other = self._download(url, urgent, trim=trim)
+            except (httpx.HTTPError, OSError) as err:
+                log.info("larger thumbnail of %s from %s failed: %s", item.id, url, err)
+                continue
+            if min(other.size) > min(img.size):
+                return other
+        return img
+
+    def _small_thumbnail(self, item: Item, urgent: bool) -> Image.Image:
         urls = self._addresses(item, thumb=True)
         mirrored = not urls  # none of its own: the mirrors at once
         if mirrored:
@@ -664,6 +740,39 @@ class ImageCache:
                 continue
             grown += 1
         return grown
+
+    def thin_thumbs_again(self) -> int:
+        """Once after the update that keeps elongated thumbnails thicker
+        (:func:`thumb_size`): such thumbnails thinner than they are made now
+        made again from the original kept here, else let go to be had again
+        from the work's addresses when next asked for (the owner's own are
+        made from the original only). How many."""
+        own = tuple(f"{source}_" for source in OWN_SOURCES)
+        changed = 0
+        for path in sorted(self.thumbs.glob("*.jpg")):
+            try:
+                with Image.open(path) as kept:
+                    size = kept.size
+            except OSError:
+                continue
+            if not thin_thumb(*size):
+                continue
+            local = self.images / path.name
+            larger = False
+            if local.is_file():
+                # No lock: the file is replaced whole (_save_jpeg).
+                try:
+                    original = load_image(local)
+                    if larger := min(original.size) > min(size):
+                        _save_jpeg(original, path, THUMB_MAX, 85)
+                except OSError as err:
+                    log.info("thumbnail %s not made again: %s", path.name, err)
+            if not larger:
+                if path.name.startswith(own):
+                    continue
+                path.unlink(missing_ok=True)
+            changed += 1
+        return changed
 
     def trim_kept(self) -> int:
         """Cut the blank margins off the pictures kept from before
