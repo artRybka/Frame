@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.3
+
+- „Pod lupą” jest teraz na samym końcu Odkrywaj, za „Studiami dzieł”.
+  Kafelki ruszają się przy obracaniu telefonu delikatniej, a cień pod
+  nimi jest słabszy i mniej rozmyty.
+
 ## 1.145.2
 
 - „Pod lupą”: rozbłysk na kafelkach jest mocniejszy, a całe kafelki są
