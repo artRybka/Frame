@@ -28,21 +28,24 @@ private struct TiltFollow: ViewModifier {
     }
 }
 
-/// The shadow of a card whose top edge stands off the page: widest past
-/// the top corners, narrowing to nothing inside the card at the bottom
-/// ("Pod lupą", Mateusz 2026-11-11: variant B, "klin").
-struct LiftWedge: Shape {
+/// The shadow of a card whose top edge stands off the page, as a light
+/// touch: a narrow sliver past each side, widest at the top corners and
+/// down to nothing lower on the picture ("Pod lupą", Mateusz 2026-11-11:
+/// "Mgiełka", sheet pod-lupa-kafelki/szkic-cien-2; the first, wide wedge
+/// ran into one patch).
+struct LiftEdges: Shape {
     /// How far past the card's sides it reaches at the top.
-    var spread: CGFloat = 7
-    /// How far inside the card's sides it ends at the bottom.
-    var inset: CGFloat = 9
+    var spread: CGFloat = 2.8
 
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        path.move(to: CGPoint(x: rect.minX - spread, y: rect.minY + 2))
-        path.addLine(to: CGPoint(x: rect.maxX + spread, y: rect.minY + 2))
-        path.addLine(to: CGPoint(x: rect.maxX - inset, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX + inset, y: rect.maxY))
+        path.move(to: CGPoint(x: rect.minX - spread, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.minX + 0.5, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.minX + 0.5, y: rect.maxY))
+        path.closeSubpath()
+        path.move(to: CGPoint(x: rect.maxX + spread, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - 0.5, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - 0.5, y: rect.maxY))
         path.closeSubpath()
         return path
     }

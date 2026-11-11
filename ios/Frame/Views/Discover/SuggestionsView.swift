@@ -491,14 +491,18 @@ struct WorkTile: View {
             }
         }
         .background(alignment: .top) {
-            // A brightened card stands off the page at the top: a wedge of
-            // shadow past its top corners, none by the caption (variant B,
-            // Mateusz 2026-11-11).
+            // A brightened card stands off the page at the top: a faint
+            // sliver of shadow past its top corners, gone two thirds down
+            // the picture ("Mgiełka", Mateusz 2026-11-11).
             if brighten {
-                LiftWedge()
-                    .fill(.black.opacity(scheme == .dark ? 0.6 : 0.42))
-                    .frame(height: 122)
-                    .blur(radius: 4)
+                LiftEdges()
+                    .fill(LinearGradient(
+                        colors: [.black.opacity(scheme == .dark ? 0.45 : 0.17), .black.opacity(0)],
+                        startPoint: .top, endPoint: .bottom
+                    ))
+                    .frame(height: 80)
+                    .blur(radius: 1.1)
+                    .padding(.top, 4)
             }
         }
         .accessibilityElement(children: .combine)

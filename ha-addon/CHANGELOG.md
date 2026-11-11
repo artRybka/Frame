@@ -3,8 +3,8 @@
 ## 1.144.1
 
 - „Pod lupą”: miniatury na kafelkach są kadrowane bliżej, mają błyszczącą
-  powłokę, której ukośny błysk przesuwa się przy obracaniu telefonu, a cień
-  przy górnych rogach pokazuje, że karta odstaje górą od strony.
+  powłokę, której ukośny błysk przesuwa się przy obracaniu telefonu, a delikatny
+  cień przy górnych rogach pokazuje, że karta odstaje górą od strony.
 
 ## 1.144.0
 
