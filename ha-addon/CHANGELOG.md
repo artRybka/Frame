@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.39
+
+- Studium dzieła: gdy studium jest właśnie pisane, a aplikacja ma otwartą
+  jego stronę, serwer szuka w muzeach „dzieł późniejszych” raz, nie dwa
+  razy. Dotąd strona zaczynała to samo szukanie obok studium: pytania
+  do muzeów szły podwójnie, a pasek postępu studium czasem pomijał
+  krok szukania dzieł późniejszych. Gotowe studia bez zmian.
+
 ## 1.145.38
 
 - Studium dzieła, „Droga dzieła”: rysunków piórkiem przy drodze jest
