@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.145.1
+
+- Studium dzieła: „Dalsze losy” są teraz dalszym ciągiem „Drogi dzieła”
+  i stoją zaraz pod nią. Chwilę po czerwonej plamie na końcu drogi pióro
+  zakreśla ją jednym okrągłym ruchem i dopiero z tego zakreślenia kreska
+  schodzi niżej, zakreśla nagłówek „Dalsze losy” i biegnie w dół lewą
+  stroną, lżejszą ręką i nie całkiem prosto.
+- Każde późniejsze dzieło ma na tej kresce małą czerwoną plamę, a z niej
+  pod rok i nazwisko wylewa się plama farby w kolorze indygo (w ciemnym
+  motywie jasna, z ciemnym tekstem). Czerwień, indygo i czerń kreski
+  wpływają w siebie. Cytat, obrazek i opis zostają na papierze, po
+  prawej stronie kreski.
+- Dzieło bez „Drogi dzieła” ma „Dalsze losy” jak dotąd, tylko wyżej:
+  przed „Podobnymi dziełami”.
+
 ## 1.145.0
 
 - Zadania nocne → Powtórki i jakość → „Co zmieniła noc”: lista obrazów,

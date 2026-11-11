@@ -692,6 +692,265 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertEqual(JourneyRoad.blot(for: spill, line: [], seed: "aic:27992").back, last)
     }
 
+    // MARK: "Dalsze losy" as the road going on
+
+    /// The line going on from the road's end into "Dalsze losy": the
+    /// heading 36 pt under the road and three later works under it.
+    private func goingOn(leading: Bool? = nil) throws
+        -> (plan: RoadPlan, heading: CGRect, years: [CGFloat], onward: JourneyRoad.Onward) {
+        let plan = try road(), end = plan.dots.count - 1
+        let lines = JourneyRoad.lines(of: plan.hugs.isEmpty ? plan.texts[end] : plan.hugs[end], head: nil, widths: [],
+                                      leading: plan.leading[end])
+        let spill = JourneyRoad.spill(under: lines, from: plan.dots[end], line: plan.line, width: 350, height: plan.height,
+                                      seed: "aic:27992spill\(end)")
+        let heading = CGRect(x: JourneyRoad.rail + JourneyRoad.lassoPad.side, y: plan.height + JourneyRoad.laterGap,
+                             width: 112, height: 24)
+        let years = [heading.maxY + 34, heading.maxY + 150, heading.maxY + 270]
+        let onward = try XCTUnwrap(JourneyRoad.onward(from: plan.dots[end], past: spill.box, leading: leading ?? plan.leading[end],
+                                                      heading: heading, years: years, width: 350, seed: "aic:27992"))
+        return (plan, heading, years, onward)
+    }
+
+    func testTheLineGoesOnOutOfARingRoundTheBlotRoundTheHeadingAndDownTheLeft() throws {
+        // 2026-11-11 10:20: „dodać sekcje „Dalsze losy” jako kontynuację
+        // linii Drogi dzieła… kreska przy dalszych losach już prosta z
+        // lewej, a informacje po jej prawej stronie. Na pewno zostawiamy
+        // nagłówek sekcji Dalsze losy. Więc kreska mogłaby go np
+        // „opisywać” i lecieć dalej?”; 10:39: „niech po chwili, na
+        // czerwonym kółku robi się okrągłe zakreślenie i to z niego
+        // wychodzi dalsza kreska? Kreska przy dalszych losach nie aż tak
+        // prosta, z odrobiną lekkości.”
+        let (plan, heading, years, onward) = try goingOn()
+        let last = plan.dots[plan.dots.count - 1], line = onward.line
+        // Once round the blot, clear of it, ending under it.
+        XCTAssertGreaterThan(onward.ring, 40)
+        let ring = line[0...onward.ring]
+        for (k, point) in ring.enumerated() {
+            let far = hypot(point.x - last.x, point.y - last.y)
+            XCTAssertGreaterThan(far, JourneyRoad.blotRadius + 2, "ring \(k)")
+            XCTAssertLessThan(far, JourneyRoad.ringRadius + 4, "ring \(k)")
+        }
+        XCTAssertLessThan(try XCTUnwrap(ring.map(\.x).min()), last.x - 12)
+        XCTAssertGreaterThan(try XCTUnwrap(ring.map(\.x).max()), last.x + 12)
+        XCTAssertLessThan(try XCTUnwrap(ring.map(\.y).min()), last.y - 12)
+        XCTAssertGreaterThan(try XCTUnwrap(ring.map(\.y).max()), last.y + 12)
+        XCTAssertGreaterThan(line[onward.ring].y, last.y + 10)
+        XCTAssertLessThan(abs(line[onward.ring].x - last.x), 8)
+        // Then the heading, then the later works, in turn; the line ends at the last.
+        XCTAssertLessThan(onward.ring, onward.entry)
+        XCTAssertLessThan(onward.entry, onward.exit)
+        XCTAssertLessThan(onward.exit, onward.marks[0])
+        XCTAssertEqual(onward.marks, onward.marks.sorted())
+        XCTAssertEqual(Set(onward.marks).count, 3)
+        XCTAssertEqual(onward.marks[2], line.count - 1)
+        // The loop goes right round the heading and nowhere through it.
+        let loop = line[onward.entry...onward.exit]
+        XCTAssertLessThan(try XCTUnwrap(loop.map(\.x).min()), heading.minX - 8)
+        XCTAssertGreaterThan(try XCTUnwrap(loop.map(\.x).max()), heading.maxX + 8)
+        XCTAssertLessThan(try XCTUnwrap(loop.map(\.y).min()), heading.minY - 3)
+        XCTAssertGreaterThan(try XCTUnwrap(loop.map(\.y).max()), heading.maxY + 3)
+        XCTAssertFalse(loop.contains { heading.insetBy(dx: 1, dy: 1).contains($0) })
+        XCTAssertEqual(onward.foot, heading.maxY + JourneyRoad.lassoPad.over, accuracy: 0.001)
+        // Each later work's blot is on the line at its year, down the left side.
+        for (k, dot) in onward.dots.enumerated() {
+            XCTAssertEqual(dot.y, years[k], accuracy: 2.5, "work \(k)")
+            XCTAssertEqual(dot.x, JourneyRoad.rail, accuracy: 5.5, "work \(k)")
+        }
+        // Down the left side the line keeps to the edge, and it is not ruled.
+        let rail = line[(onward.exit + 20)...]
+        let left = try XCTUnwrap(rail.map(\.x).min()), right = try XCTUnwrap(rail.map(\.x).max())
+        XCTAssertGreaterThan(left, 3)
+        XCTAssertLessThan(right, 15)
+        XCTAssertGreaterThan(right - left, 1)
+        // The pen draws it downwards, but for the ring and the loop, which have their own time.
+        for k in (onward.ring + 2)..<line.count {
+            XCTAssertGreaterThanOrEqual(onward.gate[k], onward.gate[k - 1], "point \(k)")
+        }
+        XCTAssertEqual(onward.gate[onward.exit], onward.loopY)
+        XCTAssertGreaterThan(onward.loopY, heading.minY - 30)
+        XCTAssertLessThan(onward.loopY, onward.foot)
+        XCTAssertGreaterThan(onward.gate[onward.ring + 1], last.y)
+        // The same every time; with the last stop's text on the other side, the other way round.
+        XCTAssertEqual(try goingOn().onward, onward)
+        let other = try goingOn(leading: !plan.leading[plan.dots.count - 1]).onward
+        XCTAssertEqual(other.line[0].x - last.x, last.x - line[0].x, accuracy: 0.5)
+        XCTAssertEqual(other.line[10].x - last.x, last.x - line[10].x, accuracy: 0.5)
+        XCTAssertEqual(other.line[10].y, line[10].y, accuracy: 0.5)
+        XCTAssertEqual(other.marks.count, 3)
+        // No heading under the road yet, or no later work: no line.
+        XCTAssertNil(JourneyRoad.onward(from: last, past: .zero, leading: true, heading: .null, years: years, width: 350, seed: "x"))
+        XCTAssertNil(JourneyRoad.onward(from: last, past: .zero, leading: true, heading: heading, years: [], width: 350, seed: "x"))
+        XCTAssertNil(JourneyRoad.onward(from: last, past: .zero, leading: true, heading: heading.offsetBy(dx: 0, dy: -400),
+                                        years: years, width: 350, seed: "x"))
+    }
+
+    func testTheLineGoingOnIsDrawnAsFarAsThePenTheRingAndTheLoopHaveCome() throws {
+        let (plan, _, _, onward) = try goingOn()
+        let count = onward.line.count, far = plan.height + 2000
+        // Nothing before the ring; the ring by its own time, whatever the pen.
+        XCTAssertEqual(onward.tip(pen: -50, ringed: 0, circled: 0), 0)
+        XCTAssertEqual(onward.tip(pen: far, ringed: 0, circled: 1), 0)
+        XCTAssertEqual(onward.tip(pen: far, ringed: 0.5, circled: 1), Int((CGFloat(onward.ring) * 0.5).rounded()))
+        XCTAssertEqual(onward.tip(pen: -50, ringed: 1, circled: 0), onward.ring + 1)
+        // Down to the heading with the pen; the loop by its own time; then on down.
+        XCTAssertEqual(onward.tip(pen: onward.loopY - 1, ringed: 1, circled: 1), onward.gate.firstIndex { $0 > onward.loopY - 1 })
+        XCTAssertLessThanOrEqual(onward.tip(pen: onward.loopY - 1, ringed: 1, circled: 1), onward.entry)
+        XCTAssertEqual(onward.tip(pen: far, ringed: 1, circled: 0), onward.entry)
+        XCTAssertEqual(onward.tip(pen: far, ringed: 1, circled: 0.5),
+                       onward.entry + Int((CGFloat(onward.exit - onward.entry) * 0.5).rounded()))
+        XCTAssertEqual(onward.tip(pen: far, ringed: 1, circled: 1), count)
+        // Inked with a lighter nib than the road's, and to nothing at its tip.
+        XCTAssertLessThan(JourneyRoad.onwardNib, JourneyRoad.nib)
+        XCTAssertTrue(onward.outline(tip: 0, thick: far).isEmpty)
+        XCTAssertTrue(onward.outline(tip: 1, thick: far).isEmpty)
+        let whole = onward.outline(tip: count, thick: far)
+        XCTAssertEqual(whole.count, 2 * count)
+        let start = hypot(whole[0].x - whole[2 * count - 1].x, whole[0].y - whole[2 * count - 1].y)
+        XCTAssertGreaterThan(start, JourneyRoad.onwardNib * 0.4)
+        XCTAssertLessThan(start, JourneyRoad.onwardNib * 1.3)
+        XCTAssertEqual(hypot(whole[count - 1].x - whole[count].x, whole[count - 1].y - whole[count].y), 0, accuracy: 0.001)
+    }
+
+    func testALaterWorksStainPoursOutOfItsBlotAndNothingDripsUnderIt() throws {
+        let (_, _, years, onward) = try goingOn()
+        // A later work's year and name as they stand to the right of the line.
+        let hug = CGRect(x: JourneyRoad.laterInset, y: years[0] - 12, width: 150, height: 44)
+        let lines = JourneyRoad.lines(of: hug, head: CGSize(width: 40, height: 22), widths: [150], leading: true)
+        XCTAssertEqual(lines.count, 2)
+        let shelf = JourneyRoad.shelf(under: lines, width: 350)
+        XCTAssertTrue(shelf.allSatisfy { $0.y > hug.maxY })
+        var spill = JourneyRoad.Spill()
+        for seed in ["a", "b", "c", "d", "e", "f", "g", "h"] {
+            spill = JourneyRoad.spill(under: lines, from: onward.dots[0], line: shelf, width: 350, height: hug.maxY + 100, seed: seed)
+            // What is told of the work is written right under: nothing drips onto it.
+            XCTAssertTrue(spill.drips.isEmpty, seed)
+            XCTAssertEqual(spill.dot, onward.dots[0])
+            XCTAssertEqual(spill.way.first?.at, onward.dots[0])
+        }
+        // Its blot: on the line, which runs into it from above and on out of it below.
+        let blot = JourneyRoad.blot(on: onward, at: 0, spill: spill, seed: "aic:27992")
+        XCTAssertEqual(blot.at, onward.dots[0])
+        XCTAssertLessThan(blot.back.y, blot.at.y)
+        XCTAssertGreaterThan(try XCTUnwrap(blot.on).y, blot.at.y)
+        XCTAssertEqual(blot.to, spill.way[spill.way.count - 1].at)
+        XCTAssertTrue(spill.lines.contains(blot.into))
+        XCTAssertEqual(blot.lobes.count, 3)
+        XCTAssertEqual(JourneyRoad.blot(on: onward, at: 0, spill: spill, seed: "aic:27992"), blot)
+        // The line ends at the last later work: nothing goes on out of its blot.
+        XCTAssertNil(JourneyRoad.blot(on: onward, at: 2, spill: spill, seed: "aic:27992").on)
+        // Smaller than the road's blot, with room for its paint to run in.
+        XCTAssertLessThan(JourneyRoad.smallBlot.radius, JourneyRoad.blotRadius)
+        XCTAssertGreaterThan(JourneyRoad.smallBlot.room, JourneyRoad.smallBlot.radius * 1.16 + 10)
+        XCTAssertLessThan(JourneyRoad.smallBlot.core, JourneyRoad.smallBlot.radius / 2)
+    }
+
+    func testALaterWorksNameIsSetInItsOwnFace() {
+        let name = "Stephen Sondheim, „Niedziela w parku z George’em”"
+        XCTAssertEqual(JourneyRoad.nameWidth(350), 290)
+        XCTAssertEqual(JourneyRoad.nameWidth(280), 234)
+        let set = JourneyRoad.setting(name, width: 290, plain: JourneyRoad.nameFace, bold: JourneyRoad.nameFace)
+        XCTAssertEqual(set.lines.count, 2)
+        XCTAssertEqual(set.text.components(separatedBy: "\n").count, 2)
+        XCTAssertTrue(set.lines.allSatisfy { $0 <= 290 })
+        // Wider than in the face of a stop's sentence: it is bigger and bolder.
+        let plain = JourneyRoad.setting(name, width: 2000)
+        XCTAssertEqual(plain.lines.count, 1)
+        XCTAssertGreaterThan(JourneyRoad.setting(name, width: 2000, plain: JourneyRoad.nameFace, bold: JourneyRoad.nameFace).lines[0],
+                             plain.lines[0])
+    }
+
+    @MainActor
+    func testTheLineWaitsForTheRingAndTheLaterWorksForTheHeading() throws {
+        let (plan, _, years, onward) = try goingOn()
+        let count = plan.dots.count
+        // The last later work ends far down: the page's end is not on screen here.
+        let ends = [years[0] + 90, years[1] + 90, years[2] + 700]
+        let marks = RoadMarks(plan, onward: onward, ends: ends)
+        // After the road's stops: the loop round the heading, then the later works.
+        XCTAssertEqual(marks.dots.count, count + 4)
+        XCTAssertEqual(marks.feet.count, count + 4)
+        XCTAssertEqual(marks.road, plan.height)
+        XCTAssertEqual(marks.height, ends[2] + 6)
+        XCTAssertEqual(marks.dots[count], onward.loopY)
+        XCTAssertEqual(marks.dots[count + 1], onward.dots[0].y)
+        XCTAssertEqual(marks.gates, [count - 1: RoadMarks.ring.at + RoadMarks.ring.takes, count: RoadMarks.lasso])
+        XCTAssertEqual(marks.after, [count + 1: RoadMarks.lasso])
+        XCTAssertGreaterThan(marks.whole(count), RoadMarks.lasso)
+        XCTAssertLessThan(marks.whole(count), RoadMarks.clock.dry)
+        XCTAssertEqual(marks.whole(count + 1), RoadMarks.clock.dry)
+        // A road with nothing under it is as it was; so is one whose later works are not measured yet.
+        XCTAssertEqual(RoadMarks(plan).height, plan.height)
+        XCTAssertTrue(RoadMarks(plan).gates.isEmpty)
+        XCTAssertEqual(RoadMarks(plan, onward: onward, ends: []), RoadMarks(plan))
+
+        let reveal = RoadReveal()
+        // The road is laid first, what is under it a moment later.
+        reveal.lay(RoadMarks(plan), still: false)
+        reveal.lay(marks, still: false)
+        let end = marks.dots[count - 1], gate = RoadMarks.ring.at + RoadMarks.ring.takes
+        // The road's end a little over the middle of the screen.
+        reveal.look(CGRect(x: 0, y: end + 20 - 250, width: 350, height: 500))
+        var now = Date()
+        func run(_ seconds: Int, _ check: () -> Void) {
+            for _ in 0..<(60 * seconds) {
+                now += 1.0 / 60
+                reveal.tick(now)
+                check()
+            }
+        }
+        var held = 0
+        run(16) {
+            // Until the blot is ringed the line does not go on past it.
+            if reveal.age(count - 1) < gate {
+                XCTAssertLessThanOrEqual(reveal.pen, end + 6.001)
+                if reveal.age(count - 1) >= 0 { held += 1 }
+            }
+            XCTAssertLessThan(reveal.age(count), 0)
+        }
+        XCTAssertGreaterThan(held, 100)
+        XCTAssertEqual(reveal.age(count - 1), RoadMarks.clock.dry, accuracy: 0.001)
+        // Ringed, the line goes on: as far as the heading, which is not at the middle of the screen yet.
+        let waiting = min(end + 20 + RoadMarks.ahead, onward.loopY + 6)
+        XCTAssertGreaterThan(waiting, end + 30)
+        XCTAssertEqual(reveal.pen, waiting, accuracy: 0.01)
+        XCTAssertTrue(reveal.settled)
+        // Scrolled on, the second later work at the middle of the screen: the
+        // heading is circled first, and only then do the later works begin.
+        reveal.look(CGRect(x: 0, y: years[1] + 5 - 250, width: 350, height: 500))
+        XCTAssertFalse(reveal.settled)
+        var circling = 0
+        run(16) {
+            if reveal.age(count) < RoadMarks.lasso {
+                // Not past the heading until it is circled, and no later work yet.
+                XCTAssertLessThanOrEqual(reveal.pen, onward.loopY + 6.001)
+                XCTAssertLessThan(reveal.age(count + 1), 0)
+                if reveal.age(count) >= 0 { circling += 1 }
+            }
+        }
+        XCTAssertEqual(reveal.pen, years[1] + 5 + RoadMarks.ahead, accuracy: 0.01)
+        XCTAssertGreaterThan(circling, 40)
+        XCTAssertEqual(reveal.age(count), marks.whole(count), accuracy: 0.001)
+        XCTAssertEqual(reveal.age(count + 1), RoadMarks.clock.dry, accuracy: 0.001)
+        XCTAssertEqual(reveal.age(count + 2), RoadMarks.clock.dry, accuracy: 0.001)
+        XCTAssertLessThan(reveal.age(count + 3), 0)
+        XCTAssertTrue(reveal.settled)
+        // The page goes back: the later works and the loop are undone, the ring stays.
+        reveal.look(CGRect(x: 0, y: end + 20 - 250, width: 350, height: 500))
+        run(8) {}
+        XCTAssertLessThan(reveal.age(count + 1), 0)
+        XCTAssertLessThan(reveal.age(count), 0)
+        XCTAssertEqual(reveal.age(count - 1), RoadMarks.clock.dry, accuracy: 0.001)
+        XCTAssertEqual(reveal.pen, waiting, accuracy: 0.01)
+        XCTAssertTrue(reveal.settled)
+        // "Ogranicz ruch": all of it at once.
+        let still = RoadReveal()
+        still.lay(marks, still: true)
+        still.look(CGRect(x: 0, y: 0, width: 350, height: 500))
+        XCTAssertEqual(still.pen, marks.full)
+        XCTAssertTrue(marks.dots.indices.allSatisfy { still.drawing($0) == marks.whole($0) })
+        XCTAssertTrue(still.settled)
+    }
+
     func testLinesAreOfAboutTheSameLength() {
         // "Odbitka jest w rękach marszandów Yamanaka & Company.": the name is
         // one piece, and the word before it is not left alone on a line.
