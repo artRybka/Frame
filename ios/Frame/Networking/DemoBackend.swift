@@ -1536,26 +1536,40 @@ actor DemoBackend: FrameBackend {
     }
 
     func nightTasks() async throws -> NightTasks {
-        let names: [(String, String, Bool, Double, Int?)] = [
-            ("tidy", "Porządki w plikach", false, 4.2, nil),
-            ("catalogue", "Nowe dzieła do katalogu", false, 312, 3),
-            ("grouping", "Kopie razem i podpowiedzi Szukaj", false, 18, nil),
-            ("language model", "Słowa kluczowe i polskie teksty", true, 2.1, 140),
-            ("met", "Spis Metropolitan Museum", false, 0.1, nil),
-            ("daily", "Studium dnia", true, 41, nil),
-            ("playlists", "Liczniki playlist", false, 6.4, nil),
-            ("sharper", "Ostrzejsze kopie", false, 380, 12),
-            ("themes", "Karty Odkrywaj", false, 22, nil),
-            ("suggestions", "Propozycje dnia", false, 9.8, nil),
-            ("twins", "Powtórki i detale", false, 1_420, 900),
-            ("twins judge", "Sędzia powtórek", true, 610, 120),
-            ("kept originals", "Oryginały Twoich dzieł", false, 95, 0),
+        let names: [(String, String, Bool, Double, Int?, String)] = [
+            ("tidy", "Porządki w plikach", false, 4.2, nil, "catalogue"),
+            ("catalogue", "Nowe dzieła do katalogu", false, 312, 3, "catalogue"),
+            ("grouping", "Kopie razem i podpowiedzi Szukaj", false, 18, nil, "catalogue"),
+            ("language model", "Słowa kluczowe i polskie teksty", true, 2.1, 140, "descriptions"),
+            ("met", "Spis Metropolitan Museum", false, 0.1, nil, "indexes"),
+            ("daily", "Studium dnia", true, 41, nil, "discover"),
+            ("playlists", "Liczniki playlist", false, 6.4, nil, "discover"),
+            ("sharper", "Ostrzejsze kopie", false, 380, 12, "catalogue"),
+            ("museums", "Gdzie wiszą dzieła", false, 158, 300, "descriptions"),
+            ("themes", "Karty Odkrywaj", false, 22, nil, "discover"),
+            ("suggestions", "Propozycje dnia", false, 9.8, nil, "discover"),
+            ("twins", "Powtórki i detale", false, 1_420, 900, "duplicates"),
+            ("twins judge", "Sędzia powtórek", true, 610, 120, "duplicates"),
+            ("gatekeeper", "Strażnik katalogu", true, 420, 200, "duplicates"),
+            ("audit", "Nocny przegląd dzieł", true, 380, 30, "duplicates"),
+            ("kept originals", "Oryginały Twoich dzieł", false, 95, 0, "catalogue"),
+            ("rijks", "Spis Rijksmuseum", false, 3_600, 900, "indexes"),
         ]
+        let packages: [(String, String, String)] = [
+            ("catalogue", "Utrzymanie katalogu", "Nowe dzieła, porządki w plikach, kopie razem, ostrzejsze kopie i oryginały Twoich dzieł."),
+            ("duplicates", "Powtórki i jakość", "Powtórki i detale, sędzia powtórek, strażnik katalogu i nocny przegląd. Najpierw Ulubione, playlisty i Odkrywaj."),
+            ("descriptions", "Opisy i fakty", "Polskie teksty i słowa kluczowe, kim są artyści, gdzie wiszą dzieła, miasta i miejsca."),
+            ("discover", "Odkrywaj i ramka", "Studium dnia, Dziś dla Ciebie, karty Odkrywaj, Propozycje dnia, playlisty, kolejka ramki i urodziny artystów."),
+            ("indexes", "Spisy muzeów", "Lokalne spisy kolekcji (Met, NGA, Luwr, Rijksmuseum i inne), odświeżane, gdy przyjdzie pora."),
+        ]
+        let groups = packages.map { key, label, about in
+            NightTasks.Group(key: key, label: label, about: about, tasks: names.filter { $0.5 == key }.map(\.0))
+        }
         let iso = ISO8601DateFormatter()
         let night = Calendar.current.date(bySettingHour: 2, minute: 10, second: 0, of: .now) ?? .now
-        let tasks = names.map { name, label, paid, took, count in
+        let tasks = names.map { name, label, paid, took, count, group in
             NightTasks.Entry(
-                name: name, label: label, paid: paid,
+                name: name, label: label, paid: paid, group: group,
                 last: NightTasks.LastRun(
                     at: nightAsked[name] ?? iso.string(from: night.addingTimeInterval(took)),
                     took: took, failed: false, count: count,
@@ -1564,7 +1578,7 @@ actor DemoBackend: FrameBackend {
             )
         }
         return NightTasks(
-            tasks: tasks, running: nil, nightStart: "01:30", nightEnd: "06:00",
+            tasks: tasks, groups: groups, running: nil, nightStart: "01:30", nightEnd: "06:00",
             lastNight: iso.string(from: .now).prefix(10).description
         )
     }

@@ -1318,8 +1318,9 @@ final class AppModel {
         nightTasks = try? await backend.nightTasks()
     }
 
-    /// The night's tasks started now: `names`, or all of them for nil.
-    func startNightTasks(_ names: [String]? = nil) async {
+    /// The night's tasks started now: `names`, or all of them for nil;
+    /// `title` names them in the notice (a package's name).
+    func startNightTasks(_ names: [String]? = nil, title: String? = nil) async {
         do {
             nightTasks = try await backend.startNightTasks(NightStart(tasks: names))
         } catch {
@@ -1327,7 +1328,9 @@ final class AppModel {
             await loadNightTasks()
             return
         }
-        if let names, names.count == 1 {
+        if let title {
+            notices.done("Uruchomiono: \(title)")
+        } else if let names, names.count == 1 {
             notices.done("Uruchomiono: \(nightTasks?.label(names[0]) ?? names[0])")
         } else {
             notices.done("Uruchomiono zadania nocne")

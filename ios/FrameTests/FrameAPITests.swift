@@ -633,6 +633,32 @@ final class FrameAPITests: XCTestCase {
         )
     }
 
+    func testNightTasksDecodeInPackages() throws {
+        let json = """
+        {"tasks": [
+           {"name": "twins", "label": "Powtórki i detale", "paid": false, "group": "duplicates",
+            "last": {"at": "2026-11-11T05:00:00+00:00", "took": 310.9, "failed": false,
+                     "count": 1639, "nothing": false, "asked": false}},
+           {"name": "audit", "label": "Nocny przegląd dzieł", "paid": true, "group": "duplicates",
+            "last": null},
+           {"name": "rijks", "label": "Spis Rijksmuseum", "paid": false, "group": "indexes", "last": null}],
+         "groups": [
+           {"key": "duplicates", "label": "Powtórki i jakość", "about": "Powtórki i detale…",
+            "tasks": ["twins", "audit"]},
+           {"key": "indexes", "label": "Spisy muzeów", "about": "Lokalne spisy…", "tasks": ["rijks"]}],
+         "running": null, "night_start": "01:30", "night_end": "06:00", "last_night": "2026-11-11"}
+        """
+        let night = try LiveBackend.decoder().decode(NightTasks.self, from: Data(json.utf8))
+        XCTAssertEqual(night.groups?.map(\.key), ["duplicates", "indexes"])
+        XCTAssertEqual(night.entries(of: night.groups![0]).map(\.name), ["twins", "audit"])
+        XCTAssertEqual(night.tasks[1].group, "duplicates")
+        // An older server: no packages, one list.
+        let older = #"{"tasks": [{"name": "tidy", "label": "Porządki w plikach", "paid": false, "last": null}], "running": null, "night_start": "01:30", "night_end": "06:00", "last_night": null}"#
+        let old = try LiveBackend.decoder().decode(NightTasks.self, from: Data(older.utf8))
+        XCTAssertNil(old.groups)
+        XCTAssertNil(old.tasks[0].group)
+    }
+
     func testPanelWifiDecodesAndExplainsAWrongNetwork() throws {
         let json = """
         {"configured": true, "panel_app": true, "wifi": {"read_at": "2026-10-28T20:00:00+00:00",

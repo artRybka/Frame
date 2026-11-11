@@ -2,7 +2,10 @@ import SwiftUI
 
 /// Konfiguracja → Zadania nocne (Mateusz 2026-11-10: "uruchomienie zadań
 /// nocnych niezależnie od pory dnia"): the server's night, one task at a time
-/// or all of them, started now; what runs and how each last went.
+/// or all of them, started now; what runs and how each last went. Since
+/// 2026-11-11 in packages ("Powtórki i jakość", "Utrzymanie katalogu"…),
+/// each started at once, its tasks folded away ("lista jest długa i
+/// niekoniecznie jasna").
 struct NightTasksSection: View {
     @Environment(AppModel.self) private var model
     @State private var loading = true
@@ -19,14 +22,13 @@ struct NightTasksSection: View {
                 } else {
                     allButton(night)
                 }
-                Card(padding: 0) {
-                    VStack(spacing: 0) {
-                        ForEach(Array(night.tasks.enumerated()), id: \.element.id) { index, task in
-                            if index > 0 {
-                                Divider().padding(.leading, 16)
-                            }
-                            NightTaskRow(task: task, running: night.running)
-                        }
+                if let groups = night.groups, !groups.isEmpty {
+                    ForEach(groups) { group in
+                        NightGroupCard(night: night, group: group)
+                    }
+                } else {
+                    Card(padding: 0) {
+                        NightTaskRows(tasks: night.tasks, running: night.running)
                     }
                 }
                 Text("Na żądanie zadania nie czekają, aż odłożysz aplikację: serwer może wtedy odpowiadać wolniej.")
@@ -80,6 +82,140 @@ struct NightTasksSection: View {
             Button("Anuluj", role: .cancel) {}
         } message: {
             Text("Zadania pójdą po kolei, tak jak w nocy, najwyżej przez 2 godziny. Część z nich pyta Claude'a: koszt z Twojego klucza.")
+        }
+    }
+}
+
+/// A package of tasks: what it does, when it last ran, a button to start
+/// all of it, and its tasks folded away.
+private struct NightGroupCard: View {
+    @Environment(AppModel.self) private var model
+    @State private var open = false
+    @State private var confirm = false
+    let night: NightTasks
+    let group: NightTasks.Group
+
+    private var entries: [NightTasks.Entry] { night.entries(of: group) }
+    private var isRunning: Bool {
+        guard let running = night.running else { return false }
+        return group.tasks.contains { running.tasks.contains($0) && !running.done.contains($0) }
+    }
+
+    var body: some View {
+        Card(padding: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Text(group.label)
+                                .font(.headline)
+                                .foregroundStyle(Theme.ink)
+                            if entries.contains(where: \.paid) {
+                                Image(systemName: "sparkle")
+                                    .font(.caption)
+                                    .foregroundStyle(Theme.inkSoft)
+                                    .accessibilityLabel("część pyta Claude'a")
+                            }
+                        }
+                        Text(group.about)
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let last = lastText {
+                            Text(last.text)
+                                .font(.caption)
+                                .foregroundStyle(last.warn ? Theme.warn : Theme.inkSoft)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    startButton
+                }
+                .padding(16)
+                Divider().padding(.leading, 16)
+                Button {
+                    withAnimation(.snappy) { open.toggle() }
+                } label: {
+                    HStack {
+                        Text(open ? "Schowaj zadania" : "Zadania (\(entries.count))")
+                            .font(.subheadline)
+                        Spacer()
+                        Image(systemName: "chevron.down")
+                            .font(.footnote.weight(.semibold))
+                            .rotationEffect(.degrees(open ? 180 : 0))
+                    }
+                    .foregroundStyle(Theme.inkSoft)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                if open {
+                    Divider().padding(.leading, 16)
+                    NightTaskRows(tasks: entries, running: night.running)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var startButton: some View {
+        if isRunning {
+            ProgressView()
+                .frame(width: 36, height: 36)
+        } else {
+            Button {
+                confirm = true
+            } label: {
+                Image(systemName: "play.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.circle)
+            .tint(Theme.ink)
+            .disabled(night.running != nil)
+            .accessibilityLabel("Uruchom pakiet: \(group.label)")
+            .confirmationDialog(group.label, isPresented: $confirm, titleVisibility: .visible) {
+                Button("Uruchom pakiet (\(entries.count))") {
+                    Task { await model.startNightTasks(group.tasks, title: group.label) }
+                }
+                Button("Anuluj", role: .cancel) {}
+            } message: {
+                if entries.contains(where: \.paid) {
+                    Text("Zadania pójdą po kolei, najwyżej przez 2 godziny. Część z nich pyta Claude'a: koszt z Twojego klucza.")
+                } else {
+                    Text("Zadania pójdą po kolei, najwyżej przez 2 godziny.")
+                }
+            }
+        }
+    }
+
+    /// "Ostatnio dziś, 03:25 · 12 min", "Jeszcze nie było", "Był błąd".
+    private var lastText: (text: String, warn: Bool)? {
+        let runs = entries.compactMap(\.last)
+        if runs.contains(where: \.failed) { return ("Ostatnio był błąd", true) }
+        guard let latest = runs.max(by: { $0.at < $1.at }) else { return ("Jeszcze nie było", false) }
+        let took = runs.filter { $0.at.prefix(10) == latest.at.prefix(10) }.reduce(0) { $0 + $1.took }
+        let never = entries.count - runs.count
+        var parts = ["Ostatnio " + (When.past(latest.at) ?? "")]
+        parts.append(NightDuration.text(took))
+        if never > 0 { parts.append("\(never) jeszcze nie było") }
+        return (parts.joined(separator: " · "), false)
+    }
+}
+
+/// Tasks one under another, each with its button.
+private struct NightTaskRows: View {
+    let tasks: [NightTasks.Entry]
+    let running: NightTasks.Running?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(tasks.enumerated()), id: \.element.id) { index, task in
+                if index > 0 {
+                    Divider().padding(.leading, 16)
+                }
+                NightTaskRow(task: task, running: running)
+            }
         }
     }
 }

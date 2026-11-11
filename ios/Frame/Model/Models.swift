@@ -1161,9 +1161,24 @@ struct NightTasks: Codable, Hashable, Sendable {
         var label: String
         /// Asks Claude (at the cost of the owner's key).
         var paid: Bool
+        /// Its package (`Group.key`); nil from an older server.
+        var group: String?
         var last: LastRun?
 
         var id: String { name }
+    }
+
+    /// A package of tasks started at once (Mateusz 2026-11-11: "pakiety
+    /// działań, np. związanych z duplikatami, utrzymaniem katalogu").
+    struct Group: Codable, Hashable, Sendable, Identifiable {
+        var key: String
+        var label: String
+        /// What its tasks do, in a sentence.
+        var about: String
+        /// Its tasks' names, in the night's order.
+        var tasks: [String]
+
+        var id: String { key }
     }
 
     struct Running: Codable, Hashable, Sendable {
@@ -1177,6 +1192,8 @@ struct NightTasks: Codable, Hashable, Sendable {
     }
 
     var tasks: [Entry]
+    /// The packages; nil or empty from an older server (one long list then).
+    var groups: [Group]?
     var running: Running?
     /// "01:30", in the frame's time zone.
     var nightStart: String
@@ -1187,6 +1204,11 @@ struct NightTasks: Codable, Hashable, Sendable {
     func label(_ name: String?) -> String? {
         guard let name else { return nil }
         return tasks.first { $0.name == name }?.label ?? name
+    }
+
+    /// `group`'s tasks, in order.
+    func entries(of group: Group) -> [Entry] {
+        group.tasks.compactMap { name in tasks.first { $0.name == name } }
     }
 }
 
