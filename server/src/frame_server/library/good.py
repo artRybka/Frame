@@ -21,7 +21,7 @@ from collections.abc import Callable, Hashable
 from typing import Any
 
 from .artists import ArtistNames, is_artist, known_names, name_key
-from .images import WEAK_SIDE, said_side
+from .images import FRAME_SIDE, WEAK_SIDE, said_side
 from .models import Item
 from .vocabulary import archive_own
 
@@ -46,7 +46,6 @@ ARCHIVE_PENALTY = 0.75
 #: kopii dzieła"): a picture as long as the frame's side (2560 px) shows
 #: the work whole, one shorter than ``images.WEAK_SIDE`` is worth a sharper
 #: copy, which may not be found.
-FRAME_SIDE = 2560
 SHARP_BONUS = 0.15
 WEAK_PENALTY = 0.25
 #: How much the day's draw adds at most: half a highlight, so a page is

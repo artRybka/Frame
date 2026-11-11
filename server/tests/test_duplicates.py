@@ -7,6 +7,7 @@ import logging
 
 from fastapi.testclient import TestClient
 
+from frame_server.imaging.layout import Crop
 from frame_server.library import (
     Item,
     ItemKind,
@@ -26,6 +27,7 @@ from frame_server.library.duplicates import (
     title_key,
     work_key,
 )
+from frame_server.library.models import Framing, SharperCopy
 from frame_server.library.museums import MUSEUMS, Museum
 from frame_server.web.library_api import remote_items
 
@@ -129,6 +131,77 @@ def test_an_art_archives_slide_comes_after_every_other_copy() -> None:
     assert [i.id for i in dedupe([found[2], museum])] == ["europeana:2048~b"]
 
 
+def test_the_copy_with_the_better_picture_stands_for_the_work() -> None:
+    """The picture first, then the source (Mateusz 2026-11-11): until
+    1.145.29 Europeana's 400 px "Die Malkunst" stood before Commons' 7377."""
+    vermeer = {"title": "Die Malkunst", "artist": "Johannes Vermeer"}
+    khm = _work("europeana", "15502~GG_9128", width=400, height=479, **vermeer)
+    commons = _work("wmc", 22003845, width=6209, height=7377, **vermeer)
+    assert [i.id for i in dedupe([khm, commons])] == ["wmc:22003845"]
+    # A museum says no size of its own picture, which is large: it stays
+    # before Commons' copy, as the more reliable source.
+    met = _work("met", 1, width=495, height=624)
+    assert [i.id for i in dedupe([_work("wmc", 2, width=6600, height=8320), met])] == ["met:1"]
+    # A copy known to be too small for the frame comes after one that is not.
+    monet = {"title": "Impression, Sunrise", "artist": "Claude Monet", "year": 1872}
+    weak = _work("wmc", 3, width=1600, height=1245, **monet)
+    large = _work("wmc", 4, width=5773, height=4478, **monet)
+    assert [i.id for i in dedupe([weak, large])] == ["wmc:4"]
+    assert [i.id for i in dedupe([weak, _work("europeana", "9~x", **monet)])] == ["europeana:9~x"]
+    # A sharper copy shown in its place makes the picture large enough.
+    shown = SharperCopy(
+        item_id="wmc:4", source="wmc", url="https://example.org/a.jpg", width=5773, height=4478
+    )
+    sharpened = _work("europeana", "9~y", sharper=shown, **monet)
+    assert [i.id for i in dedupe([large, sharpened])] == ["europeana:9~y"]
+    # Of two alike, the one the owner kept.
+    kept = _work("wmc", 5, width=5000, height=3880, **monet)
+    assert [i.id for i in dedupe([large.model_copy(update={"pooled": True}), kept])] == ["wmc:5"]
+
+
+def test_a_painting_and_a_drawing_of_one_title_are_two_works() -> None:
+    """Van Gogh's "Cypresses": the Met's painting and the Art Institute's
+    drawing were one work, the drawing behind the painting (the catalogue
+    of 2026-11-11)."""
+    cypresses = {"title": "Cypresses", "year": 1889}
+    met = _work("met", 437980, medium="Oil on canvas", classification="Paintings", **cypresses)
+    drawing = "Pen and reed pen and brown ink over graphite on paper"
+    aic = _work("aic", 87327, medium=drawing, **cypresses)
+    assert not same_work(met, aic)
+    assert len(dedupe([met, aic])) == 2
+    # A copy that does not say what it is made with is either's.
+    assert same_work(met, _work("wmc", 1, **cypresses))
+    assert same_work(aic, _work("wmc", 1, **cypresses))
+    # Paint on a drawing ("with watercolor") says no more.
+    assert same_work(met, _work("cma", 2, medium="Pen and ink with watercolor", **cypresses))
+    assert same_work(aic, _work("cma", 3, medium="Reed pen and ink", **cypresses))
+
+
+def test_a_heart_follows_the_work_to_its_better_copy(tmp_path) -> None:
+    """Ulubione shows a work in the copy that is liked: the heart moves to
+    the better one (Mateusz 2026-11-11), the copy liked before stays."""
+    lib = Library(tmp_path / "lib.db")
+    monet = {"title": "Impression, Sunrise", "artist": "Claude Monet", "year": 1872}
+    lib.upsert(_work("wmc", 3, width=1600, height=1245, **monet))
+    lib.upsert(_work("wmc", 4, width=5773, height=4478, pooled=True, **monet))
+    lib.upsert(_work("met", 1))
+    lib.upsert(_work("openverse", 2))
+    lib.upsert(_work("europeana", "9~x", title="Irises"))
+    lib.upsert(_work("aic", 5, title="Irises", pooled=True))
+    for item_id in ("wmc:3", "openverse:2", "met:1", "europeana:9~x"):
+        lib.set_favorite("owner", item_id, True)
+    lib.update("europeana:9~x", framing={"landscape": Framing(fill=Crop(x=0.4, zoom=1.5))})
+    # The small Monet's heart goes to the large one; the Openverse copy's
+    # stays, the Met's being liked too; the Europeana copy was framed.
+    assert lib.hearts_to_best() == [("owner", "wmc:3", "wmc:4")]
+    assert lib.favorites("owner") == {"wmc:4", "openverse:2", "met:1", "europeana:9~x"}
+    assert lib.get("wmc:3") is not None and not lib.get("wmc:3").favorite  # type: ignore[union-attr]
+    assert lib.get("wmc:4").favorite  # type: ignore[union-attr]
+    assert lib.hearts_to_best() == []  # nothing left to move
+    liked = lib.query(PlaylistRules(favorites_only=True), user="owner")[1]
+    assert {i.id for i in liked} == {"wmc:4", "met:1", "europeana:9~x"}
+
+
 def test_works_keep_one_copy_per_source() -> None:
     """A copy without a year fits the first of two paintings with one name,
     not both."""
@@ -149,8 +222,10 @@ def test_library_hides_copies_the_server_added(tmp_path) -> None:
     lib.upsert(_work("wmc", 3, title="The Bedroom", pooled=True))
     lib.upsert(_work("europeana", 4, title="The Bedroom"))  # kept by the owner
     lib.upsert(_work("aic", 5, title="The Bedroom", pooled=True))
-    assert lib.spare_copies() == {"openverse:1", "wmc:3", "aic:5"}
-    assert {i.id for i in lib.query()[1]} == {"met:2", "europeana:4"}
+    # The museum's copy stands for the work, the one the owner kept from
+    # Europeana stays (in his lists): until 1.145.29 a kept copy came first.
+    assert lib.spare_copies() == {"openverse:1", "wmc:3"}
+    assert {i.id for i in lib.query()[1]} == {"met:2", "aic:5"}
     # Asked by source, a source's copies are there.
     assert [i.id for i in lib.query(PlaylistRules(sources=["openverse"]))[1]] == ["openverse:1"]
 
@@ -158,18 +233,23 @@ def test_library_hides_copies_the_server_added(tmp_path) -> None:
     assert lib.twin(lib.get("met:2")) is None  # type: ignore[arg-type]
     assert lib.twin(_work("rijks", 7, title="Irises")) is None
 
-    # The owner keeps the Openverse copy: now that one is the work's copy.
+    # The owner keeps the Openverse copy: it stays, behind the museum's.
     lib.update("openverse:1", pooled=False)
-    assert lib.spare_copies() == {"met:2", "wmc:3", "aic:5"}
+    assert lib.spare_copies() == {"wmc:3"}
+    assert {i.id for i in lib.query()[1]} == {"met:2", "aic:5"}
 
-    # Every source but Europeana: the next copy of its work takes its place.
-    rest = lib.query(PlaylistRules(exclude_sources=["europeana"]))[1]
-    assert {i.id for i in rest} == {"openverse:1", "aic:5"}
-    assert lib.query(PlaylistRules(exclude_sources=["openverse"]))[1][0].id != "openverse:1"
+    # Every source but the Art Institute: the next copy of its work takes
+    # its place.
+    rest = lib.query(PlaylistRules(exclude_sources=["aic"]))[1]
+    assert {i.id for i in rest} == {"met:2", "europeana:4"}
+    assert {i.id for i in lib.query(PlaylistRules(exclude_sources=["met"]))[1]} == {
+        "openverse:1",
+        "aic:5",
+    }
     # Both copies kept by the owner: the catalogue lists the work once, in
     # the copy from the more reliable source.
     lib.update("met:2", pooled=False)
-    assert {i.id for i in lib.query()[1]} == {"met:2", "europeana:4"}
+    assert {i.id for i in lib.query()[1]} == {"met:2", "aic:5"}
     assert {i.id for i in lib.query(PlaylistRules(query="Wheat"))[1]} == {"met:2"}
     # Only the Openverse copy is a favourite: that one stands for the work there.
     lib.update("openverse:1", favorite=True)

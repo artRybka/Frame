@@ -85,6 +85,8 @@ TILE_MAX = COMMONS_WIDTH
 #: A picture whose long side is shorter than this is worth a sharper copy
 #: (the frame is 2560 px long).
 WEAK_SIDE = 2000
+#: The frame's longer side: a picture as long shows the work whole on it.
+FRAME_SIDE = 2560
 #: Sources whose works' sizes are their files' own and whose addresses ask
 #: for a size (IIIF ``full/!2560,2560``, the Smithsonian's ``max=2560``): an
 #: elongated work (:data:`WIDE`) is asked in the size it is kept in.

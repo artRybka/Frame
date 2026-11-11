@@ -9,6 +9,7 @@ import json
 from typing import Any
 
 import httpx
+from test_library import RIJKS_OBJECT
 
 from frame_server.library import Item, PlaylistRules
 from frame_server.library.museums import (
@@ -20,7 +21,7 @@ from frame_server.library.museums import (
 )
 from frame_server.library.repo import matches
 from frame_server.library.search import MuseumSearch
-from frame_server.library.vocabulary import is_poster
+from frame_server.library.vocabulary import DECORATIVE, is_poster, object_category, type_tells
 
 
 def _found(rules: PlaylistRules, n: int, **fields: Any) -> Item:
@@ -91,6 +92,12 @@ def test_a_poster_is_a_print_never_a_painting_or_drawing() -> None:
     work = Item(id="vam:1", source="vam", source_id="1", classification="Poster")
     assert matches(work, PlaylistRules(terms=["technique:print"]))
     assert not matches(work, PlaylistRules(terms=["technique:painting"]))
+    # A poster's design, as the Rijksmuseum types it: a drawing and a
+    # poster, no print.
+    design = work.model_copy(update={"classification": "design, poster, drawing"})
+    assert matches(design, PlaylistRules(terms=["technique:drawing"]))
+    assert matches(design, PlaylistRules(terms=["technique:poster"]))
+    assert not matches(design, PlaylistRules(terms=["technique:print"]))
 
 
 def test_europeana_s_broad_categories_and_languages() -> None:
@@ -201,3 +208,32 @@ def test_a_rijksmuseum_name_given_alone_is_read() -> None:
     both = [{"@language": "nl", "@value": "prent"}, {"@language": "en", "@value": "print"}]
     assert Rijksmuseum._notation({"notation": both}) == "print"
     assert Rijksmuseum._notation({}) == ""
+
+
+def test_the_rijksmuseum_gives_every_type_of_a_work() -> None:
+    """The first type alone was often a narrower word the server does not
+    know: "grisaille" before "painting", "design" before "drawing" (48 of
+    the owner's 1 588 works of the museum, 2026-11-11)."""
+    types = [
+        {"notation": {"@language": "nl", "@value": "grisaille"}},
+        {"notation": [{"@language": "en", "@value": "painting"}, {"@value": "schilderij"}]},
+        {"notation": "painting"},
+    ]
+    read = Rijksmuseum(httpx.Client())._map({**RIJKS_OBJECT, "classified_as": types})
+    assert read is not None and read.classification == "grisaille, painting"
+    assert type_tells(read) and not type_tells(
+        read.model_copy(update={"classification": "grisaille"})
+    )
+    kept = {
+        "edm": 1,
+        "id": "200106575",
+        "iiif": "https://iiif.micr.io/abc",
+        "rights": "http://creativecommons.org/publicdomain/mark/1.0/",
+        "types": ["design", "drawing"],
+    }
+    at_home = Rijksmuseum(httpx.Client())._map(kept)
+    assert at_home is not None and at_home.classification == "design, drawing"
+    # Objects it types in Dutch alone are no pictures (a cane knob of
+    # porcelain, a furnishing fabric).
+    for dutch in ("wandelstokknop", "bekledingsstof", "kraag, godet", "kastanjevaas"):
+        assert object_category(read.model_copy(update={"classification": dutch})) == DECORATIVE

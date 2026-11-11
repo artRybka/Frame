@@ -619,6 +619,12 @@ _PAINTED_ON = re.compile(
 
 
 @lru_cache(maxsize=PER_WORK)
+def painted_on(medium: str) -> bool:
+    """A museum's line on what the work is made with says paint on a
+    painting's ground: "Oil on canvas", "olej na desce"."""
+    return bool(_PAINTED_ON.search(medium))
+
+
 def _is_photograph(classification: str, medium: str) -> bool:
     if _PAINTED_ON.search(medium) and not _PHOTOGRAPH.search(medium):
         return False
@@ -954,6 +960,11 @@ _DECORATIVE = re.compile(
     r"toys?|dolls?|chess|salvers?|sauceboats?|ladles?|spoons?|cutlery|decanters?|"
     r"glassware|hookahs?|kendi|rhyton|mirrors?|implements?|stoups?|finials?|goggles|inr[oō]|"
     r"miniature rooms?|inlays?|holders?|discs?|"
+    # The Rijksmuseum's types given in Dutch alone (cane knobs, bottles,
+    # samplers, furnishing fabrics; 2026-11-11).
+    r"fles(?:sen)?|wijnkan\w*|kettles?|kraag|kragen|borduurlap\w*|merklap\w*|\w+stof(?:fen)?|"
+    r"\w+weefsels?|\w*vaas|\w*vazen|cachets?|wandelstokkn\w+|reisnecessaires?|"
+    r"woven materials?|hasps?|"
     # A whole mummy with its portrait inserted is no picture; a mummy
     # portrait (the V&A's type of a Fayum panel) is.
     r"mumm(?:y|ies)(?!\s+portraits?)|human remains)\b",
@@ -1002,6 +1013,15 @@ def _object_category(classification: str, title: str, medium: str) -> str | None
     if _BOOK.search(classification):
         return MANUSCRIPTS
     return None
+
+
+def type_tells(item: Item) -> bool:
+    """The museum's type says what the work is: a technique the server
+    knows (a painting, print, drawing, poster) or a category of "Sztuki
+    inne". False for no type, or one that tells nothing ("design",
+    "fragment", "grisaille")."""
+    told = _object_technique(_own_type(item.classification), "")
+    return told or object_category(item) is not None
 
 
 def other_art(item: Item) -> bool:
@@ -1081,7 +1101,9 @@ def _technique_matches(found: Term, item: Item) -> bool:
     if pattern.search(said):
         return True
     if found.key == "technique:print" and _names(said, (POSTER,)):
-        return True
+        # A poster's design in pencil or gouache is no print: the
+        # Rijksmuseum types one "design, poster, drawing".
+        return not _names(_own_type(item.classification), _NO_POSTER)
     if _object_technique(_own_type(item.classification), item.medium):
         return False
     return bool(pattern.search(" ".join((item.title, *item.styles, *item.subjects))))
