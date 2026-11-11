@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.37
+
+- Mniej zapytań do muzeów (etap 6b): dobieranie katalogu i dopełnianie
+  playlist z kart Odkrywaj korzystają z tych samych zapamiętanych stron
+  wyników co Szukaj i zestawy. Strona, o którą serwer pytał niedawno, nie
+  jest pytana drugi raz, a kolejne dopełnienie playlisty zaczyna tam,
+  gdzie poprzednie skończyło. W tym, co widać, nic się nie zmienia.
+
 ## 1.145.36
 
 - Porządki w kodzie nocnych zadań modeli (etap 6a): Sędzia kopii, Strażnik,
