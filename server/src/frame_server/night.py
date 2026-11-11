@@ -26,7 +26,7 @@ import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import TimeoutError as FutureTimeout
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from datetime import time as clock
 from typing import TYPE_CHECKING, Any
@@ -55,6 +55,17 @@ DONE_KEY = "night_done"
 RUNS_KEY = "night_runs"
 #: Tasks started by day run this long at most.
 ASKED_FOR = timedelta(hours=2)
+#: The tasks the last night did not get to (their names).
+LEFT_KEY = "night_left"
+#: The package of the tidying (:data:`GROUPS`): its batches are ordered
+#: before its first task, and those of its tasks the last night did not get
+#: to go first the next.
+TIDYING = "duplicates"
+#: New works are taken in for this long a night at most (seconds; the
+#: batch under way is finished). Mateusz 2026-11-11, after the audit: the
+#: tidying first; on 2026-11-11 the catalogue took 1 h 43 min of the night
+#: and the copies got five minutes.
+CATALOGUE_FOR = 45 * 60.0
 #: Sharper copies are looked for, at night, for this many next pictures.
 SHARPER_AHEAD = 20
 #: Works shown in an art archive's old photograph (Foto Marburg's faded
@@ -114,6 +125,13 @@ class Night:
         """Waits ``seconds``; False when stopped."""
         return not self.stop.wait(seconds)
 
+    def within(self, seconds: float | None) -> Night:
+        """This night as a task sees it that may take ``seconds`` of it at
+        most (None: as long as the night lasts)."""
+        if seconds is None:
+            return self
+        return replace(self, deadline=min(self.deadline, time.monotonic() + seconds))
+
 
 @dataclass
 class NightTask:
@@ -125,6 +143,11 @@ class NightTask:
     paid: bool = False
     #: Its package in the app (:data:`GROUPS`).
     group: str = ""
+    #: Seconds of the night it may take at most (None: what is left).
+    budget: float | None = None
+    #: Orders its batch before the tidying's first task (the night's own
+    #: run only), so that the answer is there when its turn comes.
+    ahead: Callable[[], object] | None = None
 
 
 #: The tasks' packages in Konfiguracja → Zadania nocne, each started at once
@@ -271,11 +294,24 @@ class NightQueue:
         the owner asked for is waited for first."""
         deadline = time.monotonic() + seconds  # not moved by a run waited for
         with self._running:
-            run = Run([t.name for t in self.tasks], asked=False, started_at=_utc_now())
-            night = self._go(run, self.tasks, deadline)
+            tasks = self.in_turn()
+            run = Run([t.name for t in tasks], asked=False, started_at=_utc_now())
+            night = self._go(run, tasks, deadline)
             if not self._stop.is_set():
                 self.service.library.set_state(DONE_KEY, night_of.isoformat())
         return night
+
+    def in_turn(self) -> list[NightTask]:
+        """The night's tasks in tonight's order: the tidying's tasks the
+        last night did not get to take the places of those it did (a night
+        cut short would else give every night to the first of them)."""
+        left = set(self.service.library.get_state(LEFT_KEY, []) or [])
+        tidying = [t for t in self.tasks if t.group == TIDYING]
+        waiting = [t for t in tidying if t.name in left]
+        if not waiting or len(waiting) == len(tidying):
+            return list(self.tasks)
+        turns = iter(waiting + [t for t in tidying if t.name not in left])
+        return [next(turns) if t.group == TIDYING else t for t in self.tasks]
 
     def start(self, names: list[str] | None = None) -> Run | None:
         """The tasks ``names`` (all of them, in the night's order, for None)
@@ -326,18 +362,24 @@ class NightQueue:
             asked=run.asked,
         )
         started = time.monotonic()
+        ordered = run.asked  # by day each task orders its own
+        left: list[str] = []
         try:
-            for task in tasks:
+            for at, task in enumerate(tasks):
                 if not night.quiet():
                     log.info("night: %s and the rest left for the next night", task.name)
+                    left = [t.name for t in tasks[at:]]
                     break
+                if not ordered and task.group == TIDYING:
+                    ordered = True
+                    self._order_ahead(tasks[at:])
                 run.current = task.name
                 began = time.monotonic()
                 grouped = self.service.library.regrouped()
                 failed = False
                 result: object = None
                 try:
-                    result = task.run(night)
+                    result = task.run(night.within(task.budget))
                 except Exception:
                     failed = True
                     log.exception("night: %s failed", task.name)
@@ -346,12 +388,26 @@ class NightQueue:
                 log.info("night: %s in %.1f s%s", task.name, took, again)
                 run.done.append(task.name)
                 self._remember(task.name, took, failed, result, run.asked)
+            if not run.asked:
+                self.service.library.set_state(LEFT_KEY, left)
             if not stop.is_set():
                 log.info("night: done in %.0f s", time.monotonic() - started)
         finally:
             run.current = None
             self.current = None
         return night
+
+    @staticmethod
+    def _order_ahead(tasks: list[NightTask]) -> None:
+        """The batches of the tasks to come ordered now: their answers are
+        there by the time the pictures have been looked at."""
+        for task in tasks:
+            if task.ahead is None:
+                continue
+            try:
+                task.ahead()
+            except Exception:
+                log.exception("night: %s could not order ahead", task.name)
 
     def _remember(self, name: str, took: float, failed: bool, result: object, asked: bool) -> None:
         library = self.service.library
@@ -588,8 +644,6 @@ def tasks(service: FrameService) -> list[NightTask]:
     cat, dup, text, disc, idx = "catalogue", "duplicates", "descriptions", "discover", "indexes"
     return [
         NightTask("tidy", tidy, "Porządki w plikach", group=cat),
-        NightTask("catalogue", player.grow_at_night, "Nowe dzieła do katalogu", group=cat),
-        NightTask("grouping", grouping, "Odświeżenie grup kopii i podpowiedzi Szukaj", group=cat),
         # Keywords and Polish texts nobody waits for, through the Batch API
         # at half the price (their answers come in by day).
         NightTask(
@@ -660,35 +714,61 @@ def tasks(service: FrameService) -> list[NightTask]:
         NightTask("themes", themes, "Karty Odkrywaj", group=disc),
         NightTask("suggestions", suggestions, "Propozycje dnia", group=disc),
         # The tidying, Favourites, playlists and Discover first (cared.py),
-        # all before "rijks": after it the night was over (2026-11-11: the
-        # copies got 5 minutes, the gatekeeper and the audit never ran).
+        # before the catalogue takes anything in and before "rijks"
+        # (2026-11-11: the catalogue took 1 h 43 min and the index the rest;
+        # the copies got 5 minutes, the gatekeeper and the audit never ran).
+        # The three that ask Claude order their batches before the first of
+        # these four begins (``ahead``) and collect them when their turn
+        # comes; those the last night did not get to go first
+        # (``NightQueue.in_turn``).
         # Copies under other titles and details, by their pictures: what the
         # night has time for (40 minutes at most), the rest the next.
         NightTask("twins", twins, "Powtórki i detale", group=dup),
-        # What the pictures could not settle, tonight's included: Haiku,
-        # then Haiku as the critic, a quarter of an hour at most for each
-        # batch (a later answer is collected the next night).
-        NightTask("twins judge", twins_judge, "Sędzia powtórek", paid=True, group=dup),
-        # The catalogue's gatekeeper and the night audit: the same, each
-        # with its critic (ai/gatekeeper.py, ai/audit.py).
+        # The catalogue's gatekeeper before the judge: what it sets aside
+        # as no artwork the judge is not asked about (ai/gatekeeper.py).
         NightTask(
             "gatekeeper",
             critic_night(service.gatekeeper, ("odłożone", "odłożone", "odłożonych")),
             "Strażnik katalogu",
             paid=True,
             group=dup,
+            ahead=service.gatekeeper.ahead,
         ),
+        # What the pictures could not settle, tonight's included: Haiku,
+        # then Haiku as the critic, a quarter of an hour at most for each
+        # batch (a later answer is collected the next night).
+        NightTask(
+            "twins judge",
+            twins_judge,
+            "Sędzia powtórek",
+            paid=True,
+            group=dup,
+            ahead=service.twins_judge.ahead,
+        ),
+        # The night audit, with its critic (ai/audit.py).
         NightTask(
             "audit",
             critic_night(service.audit, ("do sprawdzenia", "do sprawdzenia", "do sprawdzenia")),
             "Nocny przegląd dzieł",
             paid=True,
             group=dup,
+            ahead=service.audit.ahead,
         ),
         # Once a month: Commons' files with a tile set ("Pod lupą").
         NightTask("tile sets", service.player.tile_sets_at_night, "Kafle „Pod lupą”", group=cat),
         # Downloads, gently, a limited number a night.
         NightTask("kept originals", service.kept.at_night, "Oryginały Twoich dzieł", group=cat),
+        # New works once the tidying is done, three quarters of an hour at
+        # most; then the groups of copies and Szukaj's hints made anew, so
+        # that the morning's first look does not wait for them.
+        NightTask(
+            "catalogue",
+            player.grow_at_night,
+            "Nowe dzieła do katalogu",
+            group=cat,
+            budget=CATALOGUE_FOR,
+        ),
+        NightTask("grouping", grouping, "Odświeżenie grup kopii i podpowiedzi Szukaj", group=cat),
         # Last: the Rijksmuseum's index, in whatever time the night has left
         # (2.5 hours at most, NIGHT_SECONDS), until it is whole.
         NightTask("rijks", rijks, "Spis Rijksmuseum", group=idx),

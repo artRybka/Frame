@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from test_pools import _wait, museums  # noqa: F401  (fixture)
 
 from frame_server import night
-from frame_server.night import DONE_KEY, Night, NightQueue, NightTask
+from frame_server.night import CATALOGUE_FOR, DONE_KEY, LEFT_KEY, Night, NightQueue, NightTask
 
 WARSAW = ZoneInfo("Europe/Warsaw")
 
@@ -382,3 +382,106 @@ def test_the_night_api(tmp_path, monkeypatch) -> None:
         assert done == ["a"]
         assert client.get("/api/night").json()["tasks"][0]["last"]["asked"] is True
         assert client.post("/api/night/stop").status_code == 200
+
+
+# -- the tidying first, within budgets (docs/RULES.md, stage 1) ---------------------
+
+
+def test_a_task_takes_its_budget_of_the_night_at_most(service, monkeypatch) -> None:
+    monkeypatch.setattr(night, "_last_used", time.monotonic() - 3600)
+    seen: dict[str, float] = {}
+
+    def look(name: str):
+        return lambda n: seen.__setitem__(name, n.deadline - time.monotonic())
+
+    tasks = [
+        NightTask("short", look("short"), budget=30.0),
+        NightTask("free", look("free")),
+        NightTask("long", look("long"), budget=9000.0),
+    ]
+    _queue(service, tasks).work(date(2026, 11, 3), 600)
+    assert 25 < seen["short"] <= 30
+    assert 590 < seen["free"] <= 600
+    assert 590 < seen["long"] <= 600  # never past the night's own end
+
+
+def test_the_catalogue_takes_new_works_in_for_three_quarters_of_an_hour(service) -> None:
+    by_name = {t.name: t for t in night.tasks(service)}
+    assert by_name["catalogue"].budget == CATALOGUE_FOR == 45 * 60
+    # The batch under way is finished, no other begun: the night it is given
+    # is over when its budget is.
+    over = Night(threading.Event(), time.monotonic() + 3600).within(0.0)
+    assert not over.open() and not over.quiet()
+    assert service.player.grow_at_night(over) == 0
+
+
+def test_the_tidying_the_night_did_not_get_to_goes_first_the_next(service, monkeypatch) -> None:
+    monkeypatch.setattr(night, "_last_used", time.monotonic() - 3600)
+    done: list[str] = []
+    stop = threading.Event()
+
+    def task(name: str, group: str = "duplicates", ends: bool = False) -> NightTask:
+        def run(n: Night) -> None:
+            done.append(name)
+            if ends:  # the night is over after this one
+                n.stop.set()
+
+        return NightTask(name, run, group=group)
+
+    ends = task("twins", ends=True)
+    tasks = [task("tidy", "catalogue"), ends, task("gatekeeper"), task("judge"), task("rijks", "")]
+    queue = _queue(service, tasks)
+    monkeypatch.setattr(queue, "_stop", stop)
+    queue.work(date(2026, 11, 3), 600)
+    assert done == ["tidy", "twins"]
+    assert service.library.get_state(LEFT_KEY) == ["gatekeeper", "judge", "rijks"]
+
+    # The next night: the two that waited take the first places of the four.
+    done.clear()
+    tasks[1] = task("twins")
+    queue = _queue(service, tasks)
+    assert [t.name for t in queue.in_turn()] == ["tidy", "gatekeeper", "judge", "twins", "rijks"]
+    queue.work(date(2026, 11, 4), 600)
+    assert done == ["tidy", "gatekeeper", "judge", "twins", "rijks"]
+    assert service.library.get_state(LEFT_KEY) == []
+    assert [t.name for t in queue.in_turn()] == [t.name for t in tasks]
+
+
+def test_batches_are_ordered_before_the_tidying_and_only_at_night(service, monkeypatch) -> None:
+    monkeypatch.setattr(night, "_last_used", time.monotonic() - 3600)
+    done: list[str] = []
+
+    def task(name: str, group: str, ahead: bool = False) -> NightTask:
+        return NightTask(
+            name,
+            lambda _n: done.append(name),
+            group=group,
+            ahead=(lambda: done.append(f"{name} ordered")) if ahead else None,
+        )
+
+    tasks = [
+        task("tidy", "catalogue"),
+        task("twins", "duplicates"),
+        task("gatekeeper", "duplicates", ahead=True),
+        NightTask(
+            "broken", lambda _n: done.append("broken"), group="duplicates", ahead=lambda: 1 / 0
+        ),
+        task("judge", "duplicates", ahead=True),
+    ]
+    queue = _queue(service, tasks)
+    queue.work(date(2026, 11, 3), 600)
+    assert done == [
+        "tidy",
+        "gatekeeper ordered",
+        "judge ordered",
+        "twins",
+        "gatekeeper",
+        "broken",
+        "judge",
+    ]
+    # By day, asked for: each task orders its own.
+    done.clear()
+    run = queue.start(["twins", "judge"])
+    assert run is not None
+    _until(lambda: queue.current is None)
+    assert done == ["twins", "judge"]

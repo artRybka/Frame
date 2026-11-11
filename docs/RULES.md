@@ -50,7 +50,7 @@ chciałbym żeby spadła jakość doboru tych propozycji”).
 | Etap | Co | Stan |
 |---|---|---|
 | 0 | Zestaw wzorcowy i pomiary | 1.145.11 (PLAN 3.3zzz155) |
-| 1 | Noc: porządki przed dobieraniem, budżety czasu | |
+| 1 | Noc: porządki przed dobieraniem, budżety czasu | 1.145.12 (PLAN 3.3zzz156) |
 | 2 | Szybkość bez zmiany wyników: przyrostowe scalanie grup, punkty ORB na dysku, odsiew par, karty jednym przejściem | |
 | 3 | Sprzątanie resztek | |
 | 4 | Jeden werdykt pokazywania (lista powodów i tabela kontekstów, najpierw jako cień obok starych reguł) | |
@@ -59,6 +59,12 @@ chciałbym żeby spadła jakość doboru tych propozycji”).
 
 Etapy 0 do 3 nie zmieniają tego, co widać. Przed każdą zmianą widocznych
 wyników w etapach 4 do 6 Mateusz dostaje listę różnic do decyzji.
+
+Etap 1 w skrócie: pakiet „Powtórki i jakość” (powtórki, Strażnik, Sędzia,
+Nocny przegląd) idzie przed dobieraniem katalogu, dobieranie dostaje
+najwyżej 45 minut (`night.CATALOGUE_FOR`), zamówienia do Claude wychodzą
+przed pierwszym zadaniem pakietu (`NightTask.ahead`), a zadania, do których
+noc nie doszła, następnej idą pierwsze (`NightQueue.in_turn`).
 
 ## Jak sprawdzić zmianę reguł
 

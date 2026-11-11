@@ -85,7 +85,13 @@ def test_the_tidying_runs_before_the_rijks_index(service: FrameService) -> None:
     names = [t.name for t in tasks(service)]
     for name in ("twins", "twins judge", "gatekeeper", "audit", "kept originals"):
         assert names.index(name) < names.index("rijks")
+        # ... and before the catalogue takes new works in (2026-11-11: it
+        # took 1 h 43 min of the night, the copies got five minutes).
+        assert names.index(name) < names.index("catalogue")
     assert names.index("twins") < names.index("twins judge")
+    # What the gatekeeper sets aside the judge is not asked about.
+    assert names.index("gatekeeper") < names.index("twins judge")
+    assert names.index("catalogue") < names.index("grouping") < names.index("rijks")
 
 
 def test_every_task_has_a_package(service: FrameService) -> None:
@@ -97,7 +103,7 @@ def test_every_task_has_a_package(service: FrameService) -> None:
     listed = [name for g in view["groups"] for name in g["tasks"]]
     assert sorted(listed) == sorted(t["name"] for t in view["tasks"])
     duplicates = next(g for g in view["groups"] if g["key"] == "duplicates")
-    assert duplicates["tasks"] == ["twins", "twins judge", "gatekeeper", "audit"]
+    assert duplicates["tasks"] == ["twins", "gatekeeper", "twins judge", "audit"]
 
 
 # -- secrets in the log -------------------------------------------------------------------

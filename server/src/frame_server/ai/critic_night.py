@@ -73,6 +73,8 @@ class CriticNight(ABC):
         #: The answers put in since :meth:`at_night` began, by outcome
         #: ("written", "rejected", …), for the night's summary.
         self.tally: dict[str, int] = {}
+        #: A batch was ordered ahead of this night's work (:meth:`ahead`).
+        self._ahead = False
 
     # -- what a job says ----------------------------------------------------------
 
@@ -274,21 +276,39 @@ class CriticNight(ABC):
         )
         return True
 
+    def ahead(self) -> None:
+        """Before the night's long work (the pictures looked at, 40 minutes):
+        last night's batch put in and the next one ordered, to be collected
+        by :meth:`at_night` once that work is done, not waited for."""
+        self.tally = {}
+        self._ahead = True
+        if self.collect() is not False:
+            self.order()
+
     def at_night(self, night: Night) -> None:
         """Last night's batch put in, then the critic's claims and the judge's
-        works asked, each waited for while the night is quiet."""
-        self.tally = {}
-        if self.collect() is False:
+        works asked, each waited for while the night is quiet
+        (a batch ordered :meth:`ahead` is waited for first)."""
+        if not self._ahead:
+            self.tally = {}
+        self._ahead = False
+        if self.collect() is False and not self._waited(night):
             return
         for _ in range(3):  # claims left over, the judge's works, then their claims
             if not self.order():
                 return
-            waited = 0.0
-            while True:
-                if waited >= WAIT_SECONDS or not night.quiet():
-                    return
-                if not night.sleep(POLL_SECONDS):
-                    return
-                waited += POLL_SECONDS
-                if self.collect() is not False:
-                    break
+            if not self._waited(night):
+                return
+
+    def _waited(self, night: Night) -> bool:
+        """Waits for the batch under way while the night is quiet, a quarter
+        of an hour at most; whether its answers were put in."""
+        waited = 0.0
+        while True:
+            if waited >= WAIT_SECONDS or not night.quiet():
+                return False
+            if not night.sleep(POLL_SECONDS):
+                return False
+            waited += POLL_SECONDS
+            if self.collect() is not False:
+                return True
