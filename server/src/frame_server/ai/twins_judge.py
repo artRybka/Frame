@@ -29,13 +29,13 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from ..library.verdict import Place, against
-from .client import FABLE, HAIKU, OPUS, SONNET, AiUnavailable, image_block, request
+from .client import FABLE, HAIKU, OPUS, SONNET, image_block, request
 from .daily import _object, _str
+from .night_order import CheckedNight
 
 if TYPE_CHECKING:
     from ..library import ImageCache, Item, Library
     from ..library.twins import Twins
-    from ..night import Night
     from .client import Claude
     from .config import AiConfigStore
 
@@ -271,17 +271,14 @@ CRITIC_MODEL = HAIKU
 PAIRS_A_NIGHT = 400
 #: Pairs remembered as judged, the newest.
 JUDGED_MAX = 20_000
-#: How long the night waits for a batch, and how often it asks (the rest
-#: of the night's work waits meanwhile; a later answer is collected the
-#: next night).
-WAIT_SECONDS = 900.0
-POLL_SECONDS = 60.0
 
 
-class NightJudge:
+class NightJudge(CheckedNight):
     """The pairs the pictures could not settle, judged at night: Haiku asks
     what they are; what would hide a picture goes to the critic; only what
     it confirms is written (:meth:`Twins.apply`)."""
+
+    name = "twins judge"
 
     def __init__(
         self,
@@ -298,11 +295,12 @@ class NightJudge:
         self.config = config
         #: The works cared about, by id (``cared.Cared``): their pairs first.
         self.cared: Callable[[], Mapping[str, int]] = dict
-        #: The answers put in since :meth:`at_night` began, by outcome
-        #: ("written", "rejected", …), for the night's summary.
-        self.tally: dict[str, int] = {}
-        #: A batch was ordered ahead of this night's work (:meth:`ahead`).
-        self._ahead = False
+        self.tally = {}
+
+    def rounds(self, ahead: bool) -> int:
+        # Ordered ahead: its answer, the critic's claims, tonight's pairs;
+        # else the critic's claims, or the judge's pairs and then theirs.
+        return 3 if ahead else 2
 
     # -- state -----------------------------------------------------------------
 
@@ -393,13 +391,8 @@ class NightJudge:
             self._forget(broken)
         if not requests:
             return False
-        try:
-            batch = self.claude.create_batch(requests)
-        except AiUnavailable as err:
-            log.info("twins judge: not asked (%s)", err)
-            return False
-        except Exception:
-            log.exception("twins judge: the order failed")
+        batch = self.send(requests)
+        if batch is None:
             return False
         state = self.state()
         state["order"] = {"batch": batch, "critic": critic, "pairs": keys}
@@ -421,13 +414,8 @@ class NightJudge:
         order = state.get("order")
         if not order:
             return None
-        try:
-            ended, _ = self.claude.batch_ended(order["batch"])
-            if not ended:
-                return False
-            results = list(self.claude.batch_results(order["batch"]))
-        except Exception:
-            log.exception("twins judge: the batch could not be read")
+        results = self.answers(order["batch"])
+        if results is None:
             return False
         critic = bool(order.get("critic"))
         model = CRITIC_MODEL if critic else JUDGE
@@ -466,8 +454,7 @@ class NightJudge:
                 log.info("twins judge: %s %s rejected: %s", key, claim, why)
             done.append(key)
             counts["written" if written else "rejected"] += 1
-        for name, n in counts.items():  # since the night began (``tally``)
-            self.tally[name] = self.tally.get(name, 0) + n
+        self.count(counts)
         state = self.state()
         state.pop("order", None)
         state["claims"] = claims
@@ -484,45 +471,6 @@ class NightJudge:
             counts["rejected"],
         )
         return True
-
-    def ahead(self) -> None:
-        """Before the night's long work (the pictures looked at, 40 minutes):
-        last night's batch put in and the next one ordered, to be collected
-        by :meth:`at_night` once that work is done, not waited for."""
-        self.tally = {}
-        self._ahead = True
-        if self.collect() is not False:
-            self.order()
-
-    def at_night(self, night: Night) -> None:
-        """Last night's batch put in, then the critic's claims and the new
-        suspects asked, each waited for while the night is quiet
-        (a batch ordered :meth:`ahead` is waited for first)."""
-        if not self._ahead:
-            self.tally = {}
-        # Ordered ahead: its answer, the critic's claims, tonight's pairs.
-        rounds = 3 if self._ahead else 2
-        self._ahead = False
-        if self.collect() is False and not self._waited(night):
-            return
-        for _ in range(rounds):  # the critic's claims, or the judge's pairs and then theirs
-            if not self.order():
-                return
-            if not self._waited(night):
-                return
-
-    def _waited(self, night: Night) -> bool:
-        """Waits for the batch under way while the night is quiet, a quarter
-        of an hour at most; whether its answers were put in."""
-        waited = 0.0
-        while True:
-            if waited >= WAIT_SECONDS or not night.quiet():
-                return False
-            if not night.sleep(POLL_SECONDS):
-                return False
-            waited += POLL_SECONDS
-            if self.collect() is not False:
-                return True
 
 
 def _settled(a: Item, b: Item, grouped: Any) -> bool:
