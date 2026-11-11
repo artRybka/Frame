@@ -425,10 +425,8 @@ struct WorkTile: View {
     /// Konfiguracja allows it), as on the work's card ("Pod lupą",
     /// Mateusz 2026-11-10): fully at the top, fading to a tenth of it at
     /// the caption (19:15); stronger, held over the top third (2026-11-11),
-    /// cropped closer, with a glossy coat and a wedge of shadow at the top.
+    /// cropped closer, with a glossy coat; no shadow, as the other cards.
     var brighten = false
-
-    @Environment(\.colorScheme) private var scheme
 
     /// How much closer a brightened card crops its picture.
     static let closer: CGFloat = 1.18
@@ -488,18 +486,6 @@ struct WorkTile: View {
                 GlassSheen()
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .followsTilt()
-            }
-        }
-        .background {
-            // A brightened card stands off the page at the top: the
-            // trapezoid of shadow it casts, wider at the top, a little
-            // below its bottom edge (Mateusz 2026-11-11).
-            if brighten {
-                LiftShadow()
-                    .fill(.black.opacity(scheme == .dark ? 0.5 : 0.2))
-                    .padding(.top, 4)
-                    .padding(.bottom, -3)
-                    .blur(radius: 6)
             }
         }
         .accessibilityElement(children: .combine)
