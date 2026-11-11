@@ -1510,6 +1510,10 @@ async def test_new_firmware_is_told(tmp_path: Path, server_ssl: ssl.SSLContext) 
         await service.status.refresh(force=True)
         assert service.status.status.firmware == "S-RSEDWWC-1130.7" and told == []
         firmware["now"] = b"S-RSEDWWC-1131.2"
+        # A restart closes the library, which writes what keep_state kept;
+        # without it the second service may read the folder before that
+        # writer thread did, and see no firmware before.
+        service.library.close()
         again = _service(tmp_path, panel.port)  # read once per run: a restart reads it again
         again.status.on_firmware = lambda before, now: told.append((before, now))
         await again.status.refresh(force=True)
