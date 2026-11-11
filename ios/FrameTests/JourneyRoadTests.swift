@@ -457,6 +457,81 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertEqual(reveal.pen, 350 + RoadMarks.reach(screen: 500), accuracy: 0.01)
     }
 
+    @MainActor
+    func testAStopsMarkIsDroppedAsThePenPassesAndItsInkPoursLater() throws {
+        // 2026-11-11 17:25: „chciałem żeby pojawiała się gdy mija ja
+        // kreska, a potem przy dalszym przewinięciu rozlewałaby się w
+        // plamę pod tekst.”
+        let plan = try road(), marks = RoadMarks(plan)
+        XCTAssertTrue(marks.dots.indices.allSatisfy { marks.marked($0) })
+        // A side trip's dot is at the end of its branch: the pen does not pass it.
+        XCTAssertFalse(RoadMarks(plan, leads: [0, 0.6]).marked(1))
+        XCTAssertTrue(RoadMarks(plan, leads: [0, 0.6]).marked(0))
+        let dot = marks.dots[2]
+        XCTAssertFalse(marks.passed(2, pen: dot))
+        XCTAssertTrue(marks.passed(2, pen: dot + RoadMarks.past))
+        let reveal = RoadReveal()
+        reveal.lay(marks, still: false)
+        var now = Date()
+        func run(_ seconds: Int) {
+            for _ in 0..<(60 * seconds) {
+                now += 1.0 / 60
+                reveal.tick(now)
+            }
+        }
+        // The third stop's dot 60 pt under where a stop begins: the pen,
+        // low on the screen, is past it.
+        let low = dot - RoadMarks.near - 60
+        reveal.look(CGRect(x: 0, y: low - 250, width: 350, height: 500))
+        run(12)
+        XCTAssertEqual(reveal.pen, low + RoadMarks.reach(screen: 500), accuracy: 0.01)
+        XCTAssertGreaterThan(reveal.pen, dot + 60)
+        // Its mark is on the line, its stop has not begun; what is under the pen has neither.
+        XCTAssertEqual(reveal.mark(2), RoadMarks.clock.dry, accuracy: 0.001)
+        XCTAssertLessThan(reveal.age(2), 0)
+        for i in marks.dots.indices where marks.dots[i] > reveal.pen {
+            XCTAssertLessThan(reveal.mark(i), 0, "stop \(i)")
+            XCTAssertLessThan(reveal.age(i), 0, "stop \(i)")
+        }
+        XCTAssertTrue(reveal.settled)
+        // Scrolled on by 100 pt: the stop begins, and its ink pours out of the mark at once.
+        reveal.look(CGRect(x: 0, y: low - 150, width: 350, height: 500))
+        XCTAssertFalse(reveal.settled)
+        var began: CGFloat?
+        for _ in 0..<120 where began == nil {
+            now += 1.0 / 60
+            reveal.tick(now)
+            if reveal.age(2) >= 0 { began = reveal.age(2) }
+        }
+        XCTAssertGreaterThanOrEqual(try XCTUnwrap(began), RoadMarks.clock.spill)
+        run(12)
+        XCTAssertEqual(reveal.age(2), RoadMarks.clock.dry, accuracy: 0.001)
+        XCTAssertEqual(reveal.mark(2), RoadMarks.clock.dry, accuracy: 0.001)
+        // Back to where it was: the stop is undone, its mark stays on the line the pen is still past.
+        reveal.look(CGRect(x: 0, y: low - 250, width: 350, height: 500))
+        run(8)
+        XCTAssertLessThan(reveal.age(2), 0)
+        XCTAssertEqual(reveal.mark(2), RoadMarks.clock.dry, accuracy: 0.001)
+        XCTAssertTrue(reveal.settled)
+        // Far back, the pen draws back over it and takes the mark with it, not at once.
+        reveal.look(CGRect(x: 0, y: dot - 400 - 250, width: 350, height: 500))
+        var left = reveal.mark(2), going = 0
+        for _ in 0..<600 where left >= 0 {
+            now += 1.0 / 60
+            reveal.tick(now)
+            if reveal.pen < dot + RoadMarks.past {
+                XCTAssertLessThan(reveal.mark(2), max(left, RoadMarks.gone + 0.001))
+                going += 1
+            }
+            left = reveal.mark(2)
+        }
+        XCTAssertLessThan(left, 0)
+        XCTAssertGreaterThan(going, 5)
+        run(8)
+        XCTAssertLessThan(reveal.pen, dot)
+        XCTAssertTrue(reveal.settled)
+    }
+
     func testAStopsClockRunsBackFasterAndThePenDrawsBackUp() {
         // To be there: on to the whole of it and no further.
         XCTAssertEqual(RoadMarks.older(-1, drawn: true, whole: 6, passed: 0.1), 0.1, accuracy: 0.0001)
@@ -917,6 +992,11 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertEqual(marks.dots[count + 1], onward.dots[0].y)
         XCTAssertEqual(marks.gates, [count - 1: RoadMarks.ring.at + RoadMarks.ring.takes, count: RoadMarks.lasso])
         XCTAssertEqual(marks.after, [count + 1: RoadMarks.lasso])
+        // The heading's loop is no mark on the line; a later work's blot is one.
+        XCTAssertEqual(marks.bare, [count])
+        XCTAssertFalse(marks.marked(count))
+        XCTAssertTrue(marks.marked(count - 1))
+        XCTAssertTrue(marks.marked(count + 1))
         XCTAssertGreaterThan(marks.whole(count), RoadMarks.lasso)
         XCTAssertLessThan(marks.whole(count), RoadMarks.clock.dry)
         XCTAssertEqual(marks.whole(count + 1), RoadMarks.clock.dry)

@@ -110,6 +110,16 @@ import UIKit
 /// stops' clocks (`RoadMarks.quick`, `hurry`); and a dot lands as a blot
 /// off the nib: it bursts out ragged and settles, not quite round
 /// (`DotMark`, `JourneyRoad.pop`).
+///
+/// 17:25, asked which he had meant: „W sumie chciałem żeby pojawiała się
+/// gdy mija ja kreska, a potem przy dalszym przewinięciu rozlewałaby się
+/// w plamę pod tekst.” So a stop's mark (its dot, the red blot at the
+/// road's end, a later work's small blot) is dropped by the pen as it
+/// passes, low on the screen, on a clock of its own (`RoadReveal.mark`);
+/// the stop begins as before, when the page has brought that mark up
+/// near the middle of the screen, and then the ink pours out of it at
+/// once. A side trip's hollow dot still comes with its stop, at the end
+/// of its branch: the pen does not pass it.
 struct JourneyRoad: View {
     let journey: DailyWork.Journey
     /// The work's id: the road's wander.
@@ -699,6 +709,8 @@ struct RoadMarks: Equatable {
     /// This stop begins only when the one before it has run this long:
     /// the first later work, when the heading is circled.
     var after: [Int: CGFloat] = [:]
+    /// Stops with no mark on the line: the loop round the heading "Dalsze losy".
+    var bare: Set<Int> = []
 
     /// Past the road's end: everything is drawn.
     var full: CGFloat { height + 60 }
@@ -722,6 +734,7 @@ struct RoadMarks: Equatable {
         feet.append(onward.foot)
         spans[last + 1] = Self.lasso + 0.05
         after[last + 2] = Self.lasso
+        bare = [last + 1]
         dots += onward.dots.map(\.y)
         feet += ends
         height = max(height, (ends.max() ?? height) + 6)
@@ -787,6 +800,15 @@ struct RoadMarks: Equatable {
     /// What is told of a later work comes up on the paper from this long
     /// after its blot, for this long.
     static let told: (at: CGFloat, takes: CGFloat) = (1.5, 0.9)
+    /// A stop's mark is dropped on the line when the pen is this far past
+    /// it (17:25: „chciałem żeby pojawiała się gdy mija ja kreska, a
+    /// potem przy dalszym przewinięciu rozlewałaby się w plamę pod
+    /// tekst”); the stop begins no sooner than this long after that, and
+    /// when the pen draws back over it the mark goes from no more than
+    /// `gone` seconds of its clock.
+    static let past: CGFloat = 2
+    static let landed: CGFloat = 0.3
+    static let gone: CGFloat = 1
 
     /// How long a branch of `dashes` strokes takes.
     static func lead(dashes: Int) -> CGFloat {
@@ -795,6 +817,13 @@ struct RoadMarks: Equatable {
 
     /// How long stop `index` waits for its branch.
     func lead(_ index: Int) -> CGFloat { index < leads.count ? leads[index] : 0 }
+
+    /// Whether the pen drops stop `index`'s mark as it passes: not a side
+    /// trip's, which is at the end of its branch, and not the heading's loop.
+    func marked(_ index: Int) -> Bool { lead(index) == 0 && !bare.contains(index) }
+
+    /// Whether the pen at `pen` has passed stop `index`'s mark.
+    func passed(_ index: Int, pen: CGFloat) -> Bool { pen >= dots[index] + Self.past }
 
     /// A stop's clock when nothing in it changes any more.
     func whole(_ index: Int) -> CGFloat { (spans[index] ?? Self.clock.dry) + lead(index) }
@@ -876,6 +905,9 @@ final class RoadReveal {
     private(set) var pen = RoadReveal.before
     private(set) var thick = RoadReveal.before
     private(set) var stops: [StopClock] = []
+    /// The stops' marks, each on a clock of its own: how long ago the pen
+    /// dropped it; under 0 it is not there.
+    private(set) var drops: [StopClock] = []
     /// Nothing is moving: no need to keep time.
     private(set) var settled = true
 
@@ -920,6 +952,13 @@ final class RoadReveal {
         return age < 0 ? -1 : age - marks.lead(index)
     }
 
+    /// How long ago stop `index`'s mark came: dropped by the pen as it
+    /// passed, or, a side trip's, with its stop.
+    func mark(_ index: Int) -> CGFloat {
+        guard index < drops.count else { return -1 }
+        return marks.marked(index) ? drops[index].age : age(index)
+    }
+
     /// How long stop `index` has been drawing, its branch first.
     func drawing(_ index: Int) -> CGFloat { index < stops.count ? stops[index].age : -1 }
 
@@ -943,8 +982,9 @@ final class RoadReveal {
         if stops.count != marks.dots.count {
             // The clocks that are running keep running: "Dalsze losy" is
             // measured a moment after the road and adds its own after them.
-            let count = marks.dots.count, clocks = stops, were = drawn
+            let count = marks.dots.count, clocks = stops, were = drawn, fallen = drops
             stops = (0..<count).map { $0 < clocks.count ? clocks[$0] : StopClock() }
+            drops = (0..<count).map { $0 < fallen.count ? fallen[$0] : StopClock() }
             drawn = (0..<count).map { $0 < were.count ? were[$0] : false }
         }
         aim()
@@ -979,10 +1019,18 @@ final class RoadReveal {
         return max(kept, far)
     }
 
-    /// Whether the stop before `index` has run long enough for it to begin.
+    /// Whether the stop before `index` has run long enough for it to
+    /// begin, and its own mark has landed: the ink pours out of the mark.
     private func ready(_ index: Int) -> Bool {
+        if marks.marked(index), drops[index].age < RoadMarks.landed { return false }
         guard index > 0, let long = marks.after[index] else { return true }
         return stops[index - 1].age >= long
+    }
+
+    /// Stop `index`'s mark is there, dry.
+    private func drop(_ index: Int, there: Bool = true) {
+        let age = there ? RoadMarks.clock.dry : -1
+        if drops[index].age != age { drops[index].age = age }
     }
 
     private func aim() {
@@ -998,6 +1046,7 @@ final class RoadReveal {
             drawn[index] = true
             let whole = marks.whole(index)
             if stops[index].age != whole { stops[index].age = whole }
+            drop(index)
         }
         if busy { settled = false }
     }
@@ -1011,6 +1060,7 @@ final class RoadReveal {
             drawn[index] = true
             let whole = marks.whole(index)
             if stops[index].age != whole { stops[index].age = whole }
+            drop(index)
         }
         last = nil
         if !settled { settled = true }
@@ -1027,6 +1077,8 @@ final class RoadReveal {
             let age = marks.dots[index] <= line ? min(marks.whole(index), (line - marks.dots[index]) / speed + 0.1) : -1
             drawn[index] = age >= 0
             if stops[index].age != age { stops[index].age = age }
+            // The marks the pen has passed are there, the ones under it not yet.
+            drop(index, there: marks.passed(index, pen: pen))
         }
         last = nil
         if !settled { settled = true }
@@ -1043,6 +1095,9 @@ final class RoadReveal {
         if pen != target || thick < pen || waits { return true }
         for index in drawn.indices {
             if drawn[index] ? stops[index].age < marks.whole(index) : stops[index].age >= 0 { return true }
+            // A mark that is landing, or going as the pen draws back over it.
+            if marks.marked(index),
+               marks.passed(index, pen: pen) ? drops[index].age < RoadMarks.clock.dry : drops[index].age >= 0 { return true }
         }
         if let next = drawn.firstIndex(of: false), marks.dots[next] <= mid + RoadMarks.near { return true }
         return false
@@ -1067,6 +1122,8 @@ final class RoadReveal {
            time >= latest + RoadMarks.wait(owed: marks.owed(index, mid: place)) {
             drawn[index] = true
             latest = time
+            // Its mark is on the line already: the ink pours out of it at once.
+            if marks.marked(index), stops[index].age < RoadMarks.clock.spill { stops[index].age = RoadMarks.clock.spill }
         }
         for index in drawn.indices {
             let behind = marks.owed(index, mid: place) - max(0, stops[index].age)
@@ -1077,6 +1134,16 @@ final class RoadReveal {
         let next = RoadMarks.advance(pen: pen, thick: thick, target: target, passed: passed)
         if next.pen != pen { pen = next.pen }
         if next.thick != thick { thick = next.thick }
+        // The pen drops a stop's mark as it passes (17:25: „chciałem żeby
+        // pojawiała się gdy mija ja kreska”), and takes it back when it
+        // draws back over it.
+        for index in drops.indices where marks.marked(index) {
+            let there = marks.passed(index, pen: pen), was = drops[index].age
+            let rate = there ? RoadMarks.hurry(behind: marks.owed(index, mid: place) - max(0, was)) : 1
+            let age = RoadMarks.older(there ? was : min(was, RoadMarks.gone), drawn: there, whole: RoadMarks.clock.dry,
+                                      passed: passed * rate)
+            if was != age { drops[index].age = age }
+        }
         if !busy {
             settled = true
             last = nil
@@ -1331,8 +1398,9 @@ private struct Told<Content: View>: View {
     }
 }
 
-/// The dots, each coming up on the line when its stop begins. The last
-/// stop has none: it has a blot (`RoadBlot`).
+/// The dots, each dropped on the line by the pen as it passes (a side
+/// trip's hollow one comes with its stop). The last stop has none: it has
+/// a blot (`RoadBlot`).
 private struct RoadDots: View {
     let reveal: RoadReveal
     let plan: RoadPlan
@@ -1388,7 +1456,8 @@ private struct SeaWash: View {
 /// One dot, a blot off the nib (16:39: „Kropki bardziej dynamicznie.
 /// Bardziej jak „kleksy” przy rysowaniu linii”): it bursts out to well
 /// over its size, ragged, and settles, not quite round (`JourneyRoad.pop`,
-/// `ragged`, `blotEdge`). A hollow one where a side trip's branch ends.
+/// `ragged`, `blotEdge`), when the pen passes it (`RoadReveal.mark`). A
+/// hollow one where a side trip's branch ends.
 private struct DotMark: View {
     let reveal: RoadReveal
     let index: Int
@@ -1398,7 +1467,7 @@ private struct DotMark: View {
     let edge: [CGFloat]
 
     var body: some View {
-        let age = reveal.age(index)
+        let age = reveal.mark(index)
         let radius = (hollow ? JourneyRoad.dot.hollow : JourneyRoad.dot.full) * JourneyRoad.pop(age)
         let blot = JourneyRoad.closed(JourneyRoad.blotOutline(at: at, radius: radius, edge: edge, ragged: JourneyRoad.ragged(age)))
         ZStack(alignment: .topLeading) {
@@ -1435,7 +1504,9 @@ private struct RoadBlot: View {
     var paint: Color?
 
     var body: some View {
-        let age = reveal.age(index), room = small ? JourneyRoad.smallBlot.room : JourneyRoad.blotRoom
+        // The blot is there since the pen dropped it; the ink pours out of it when its stop begins.
+        let age = reveal.mark(index), pours = reveal.age(index) - RoadMarks.clock.spill
+        let room = small ? JourneyRoad.smallBlot.room : JourneyRoad.blotRoom
         let corner = CGPoint(x: (blot.at.x - room).rounded(.down), y: (blot.at.y - room).rounded(.down))
         let ink = dark ? JourneyRoad.Ink.onDark : JourneyRoad.Ink.onLight
         // How big it is, how much of its middle stays red, and how wide
@@ -1456,7 +1527,7 @@ private struct RoadBlot: View {
                     .float4(Float(blot.into.minX - corner.x), Float(blot.into.minY - corner.y),
                             Float(blot.into.maxX - corner.x), Float(blot.into.maxY - corner.y)),
                     .float4(Float(size[0]), Float(size[1]), Float(size[2]), Float(size[3])), .float(Float(age)),
-                    .float(Float(age - RoadMarks.clock.spill)), .float(seed),
+                    .float(Float(pours)), .float(seed),
                     .float3(Float(blot.lobes[0]), Float(blot.lobes[1]), Float(blot.lobes[2])),
                     .color(ink.red), .color(ink.dense), .color(paint ?? ink.dense)
                 )
