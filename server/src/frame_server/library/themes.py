@@ -78,7 +78,6 @@ class Theme:
     artists: tuple[str, ...] = ()
     terms: tuple[str, ...] = ()
     colors: tuple[str, ...] = ()
-    min_suitability: float | None = None
     #: (museum, query) to browse by; else the artists', else the terms'.
     queries: tuple[tuple[str, str], ...] = ()
     #: Words every work's text must have (a season: "autumn").
@@ -102,7 +101,6 @@ class Theme:
             artists=list(self.artists),
             terms=list(self.terms),
             colors=list(self.colors),
-            min_suitability=self.min_suitability,
             kinds=[ItemKind.ARTWORK],
         )
 

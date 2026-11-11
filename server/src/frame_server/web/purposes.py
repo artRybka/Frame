@@ -19,7 +19,6 @@ _PREFIXES: tuple[tuple[str, str], ...] = (
     ("/panel/", "ramka"),
     ("/api/themes", "Odkrywaj"),
     ("/api/suggestions", "Odkrywaj"),
-    ("/api/browse", "Odkrywaj"),
     ("/api/daily", "Odkrywaj"),
     ("/api/discover/", "Szukaj"),
     ("/api/terms", "Szukaj"),

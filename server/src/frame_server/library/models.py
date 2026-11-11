@@ -431,7 +431,6 @@ class PlaylistRules(BaseModel):
     favorites_only: bool = False
     #: Only works the owner kept (not those the server added to the catalogue).
     kept_only: bool = False
-    min_suitability: float | None = None
     #: Works the owner removed from this smart playlist although they match.
     exclude_ids: list[str] = Field(default_factory=list)
 
@@ -488,7 +487,6 @@ class PlaylistRules(BaseModel):
             or self.year_to is not None
             or self.favorites_only
             or self.kept_only
-            or self.min_suitability is not None
         )
 
     def asks_mine(self) -> bool:

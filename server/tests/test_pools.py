@@ -300,9 +300,6 @@ def test_discover_endpoints(
         rows = client.get("/api/suggestions").json()
         assert [r["key"] for r in rows] == ["theme"]  # nothing picked yet
 
-        browse = client.get("/api/browse", params={"kind": "print"}).json()
-        assert browse["total"] == 0  # the fakes cannot filter
-
         catalogue = client.get("/api/library/items", params={"kept": True}).json()
         assert catalogue["total"] == 0
 

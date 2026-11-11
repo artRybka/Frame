@@ -1369,10 +1369,6 @@ actor DemoBackend: FrameBackend {
         return "demo"
     }
 
-    func drawRandom(_ request: DrawRequest) async throws -> String {
-        try await importPack(key: "draw")
-    }
-
     func fillLibrary(rules: PlaylistRules, count: Int) async throws -> String {
         try await importPack(key: "fill")
     }

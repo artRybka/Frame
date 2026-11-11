@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.14
+
+- Porządki w regułach doboru dzieł, etap 3. Z karty dzieła znika wiersz
+  „Na e-papierze”: próg tej oceny nie działa od końca października,
+  a wskaźnik sugerował, że serwer coś na jej podstawie odrzuca.
+- Usunięte resztki tego progu w regułach playlist i motywów oraz dwa
+  punkty API, których aplikacja od dawna nie używa (przeglądanie muzeów
+  po epoce i losowe dobieranie dzieł). Kolejność „najlepsze najpierw”
+  w Odkrywaj zostaje na razie bez zmian.
+
 ## 1.145.13
 
 - Porządki w regułach doboru dzieł, etap 2 (szybkość, bez zmiany tego, co
