@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.144.5
+
+- Studium dnia bierze pod uwagę jakość zdjęcia dzieła. Dzieła ze zdjęciem
+  co najmniej tak dużym jak ekran ramki idą wyżej, a mniejsze niż 2000 px
+  niżej. Czarno-białe zdjęcia obrazów w kolorze i stare slajdy z archiwów
+  sztuki nie są proponowane. Kurator widzi rozmiar zdjęcia i odrzuca
+  nieostre, wyblakłe albo ze ścianą czy tablicą barw. Takie dzieło wraca,
+  gdy znajdzie się jego lepsza kopia.
+
 ## 1.144.4
 
 - „Pod lupą”: miniatury na kafelkach są kadrowane bliżej i mają błyszczącą
