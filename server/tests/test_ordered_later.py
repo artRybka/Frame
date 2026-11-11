@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from test_ai import GOOD_KEY, FakeAnthropic, _message
 from test_daily import ANSWER_PX, _app, _catalogue, _like, composing, written
 
-from frame_server.ai import AiConfigUpdate
+from frame_server.ai import AiConfigUpdate, study_pick
 from frame_server.ai.client import OPUS
 from frame_server.ai.daily import KIND as DAILY
 from frame_server.ai.jobs import BATCHES_KEY, LATER_KEY
@@ -174,8 +174,9 @@ def test_tomorrows_page_is_ordered_for_later_and_kept_for_its_day(tmp_path: Path
         assert tomorrow.id not in [item.id for item, _, _ in svc.study.written()]
         assert all(p["model"] != OPUS for p in fake.asked)  # all of it in batches
 
-        # Its day: the page is there, nothing asked again.
+        # Its day: the page is there, nothing asked again (but the curator,
+        # about the day after).
         asked = len(fake.asked)
         svc.daily.tick(today + timedelta(days=1))
         assert svc.daily.ask(tomorrow) is None
-        assert len(fake.asked) == asked
+        assert all(p["model"] == study_pick.MODEL for p in fake.asked[asked:])
