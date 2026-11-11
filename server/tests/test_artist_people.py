@@ -12,8 +12,9 @@ from urllib.parse import parse_qs
 import httpx
 
 from frame_server.artist_people import ArtistPeople, fits
+from frame_server.births import search_name
 from frame_server.library import Item, Library
-from frame_server.library.artists import ArtistNames, is_artist
+from frame_server.library.artists import IDS_STATE, ArtistNames, is_artist
 from frame_server.library.models import PlaylistRules
 from frame_server.web.discover_api import _term_hits
 
@@ -133,6 +134,47 @@ def test_a_life_fits_the_works_years() -> None:
     assert not fits(1820, 1890, [1655, 1660])
     assert fits(1600, None, [1650])
     assert not fits(None, None, [1650])
+
+
+def test_a_century_and_the_makers_own_years_are_no_works_years() -> None:
+    """Cleveland's "18th century" is kept as 1700, and the NGA dates an
+    undated drawing with its maker's birth: Joshua Reynolds (1723-1792) was
+    a namesake born 1675, Palma il Giovane (1550-1628) nobody."""
+    assert fits(1723, 1792, [1700, 1756, 1789])
+    assert not fits(1723, 1792, [1600, 1756, 1789])  # another century is not his
+    assert not fits(1823, 1892, [1700, 1756, 1789])
+    assert fits(1550, 1628, [1548, 1548, 1548, 1568, 1575, 1580, 1580, 1585, 1590, 1620])
+    assert not fits(1550, 1628, [1548, 1700, 1710])
+
+
+def test_what_a_museum_says_after_the_name_is_not_searched(tmp_path) -> None:
+    """The Smithsonian's "Winslow Homer, American" was searched as "American
+    Winslow Homer" and never found (527 spellings, 2026-11-11): asked again
+    once, under the name alone, and the kept answers stay meanwhile."""
+    assert search_name("Winslow Homer, American") == "Winslow Homer"
+    assert search_name("Alfred Diston, active 1818–1829") == "Alfred Diston"
+    assert search_name("Monet, Claude (1840-1926)") == "Claude Monet"
+    assert search_name("Opałka, Roman") == "Roman Opałka"
+    lib = Library(tmp_path / "lib.db")
+    _works(lib, "Johannes Vermeer, Dutch", [1660, 1665], source="si")
+    _works(lib, "Jan Vermeer", [1658, 1666], source="commons")
+    _works(lib, "Nobody Known", [1900, 1901])
+    stamp = "2026-11-09T20:00:00+00:00"
+    lib.set_state(
+        IDS_STATE,
+        {
+            "Johannes Vermeer, Dutch": ["", stamp],
+            "Jan Vermeer": ["Q41264", stamp],
+            "Nobody Known": ["", stamp],
+        },
+    )
+    asked: list[str] = []
+    people = ArtistPeople(lib, lambda: _wikidata(asked))
+    assert people.after_start() == 1
+    assert sorted(asked) == ["Johannes Vermeer", "Nobody Known"]  # the found one is not
+    assert people.ids()["Johannes Vermeer, Dutch"][0] == "Q41264"
+    asked.clear()
+    assert people.after_start() == 0 and asked == []  # once
 
 
 def test_museum_codes_are_no_artists() -> None:

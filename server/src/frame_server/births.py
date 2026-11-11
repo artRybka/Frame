@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from .library import museums
+from .library.artists import without_remarks
 from .library.models import ItemKind, PlaylistRules
 from .library.vocabulary import other_art
 
@@ -36,14 +37,23 @@ DAY_PRECISION = 11
 HUMAN = "Q5"
 
 
-def search_name(artist: str) -> str:
-    """ "Monet, Claude" is searched as "Claude Monet"; dates in brackets go."""
+def asked_as(artist: str) -> str:
+    """How an artist was searched until 1.145.34: "Monet, Claude" as "Claude
+    Monet", dates in brackets gone, and so "Winslow Homer, American" as
+    "American Winslow Homer", whom Wikidata never found."""
     name = re.sub(r"\(.*?\)", "", artist).strip()
     if name.count(",") == 1:
         last, first = (p.strip() for p in name.split(","))
         if first and last:
             name = f"{first} {last}"
     return " ".join(name.split())
+
+
+def search_name(artist: str) -> str:
+    """ "Monet, Claude" is searched as "Claude Monet"; dates in brackets go,
+    and what a museum says after the name ("Winslow Homer, American",
+    "Alfred Diston, active 1818–1829")."""
+    return asked_as(without_remarks(artist))
 
 
 def _born(claims: dict[str, Any]) -> date | None:
@@ -111,7 +121,11 @@ class Births:
             if entry is None or (
                 not entry.get("born")
                 and entry.get("at")
-                and datetime.fromisoformat(str(entry["at"])) < now - RECHECK
+                and (
+                    datetime.fromisoformat(str(entry["at"])) < now - RECHECK
+                    # A miss under another name than is searched now.
+                    or entry.get("as", asked_as(artist)) != search_name(artist)
+                )
             ):
                 out.append(artist)
         return out
@@ -134,6 +148,7 @@ class Births:
                 stored[artist] = {
                     "born": born.isoformat() if born else None,
                     "at": datetime.now(UTC).isoformat(timespec="seconds"),
+                    "as": search_name(artist),
                 }
                 self.library.set_state(STATE_KEY, stored)
                 kept += 1

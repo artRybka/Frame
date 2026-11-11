@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.145.35
+
+- Autorzy zapisani z dopiskiem muzeum („Winslow Homer, American”,
+  „Juste-François Boucher, French”) są szukani w Wikidacie pod samym
+  nazwiskiem. Dotąd serwer pytał o „American Winslow Homer” i nikogo nie
+  znajdował: dotyczyło to 527 zapisów, głównie ze Smithsonian. Dzięki temu
+  ich dzieła trafiają do właściwej osoby, a syn architekt nie łączy się
+  już z ojcem malarzem.
+- „Joshua Reynolds” i „Sir Joshua Reynolds” oraz „Palma il Giovane” i
+  „Jacopo Palma il Giovane” stają się jednym autorem. Myliły je daty:
+  „XVIII wiek” zapisany jako rok 1700 i rysunki datowane rokiem urodzenia
+  autora.
+- Po aktualizacji serwer pyta Wikidatę ponownie o około 2700 zapisów,
+  raz, w tle. Poprawione łączenie autorów widać po tej rundzie.
+- Powiadomienie o urodzinach autora nie ma już w tytule dopisku muzeum.
+
 ## 1.145.34
 
 - Oryginały dzieł są odtąd przechowywane z dłuższym bokiem do 4000 px
