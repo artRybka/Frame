@@ -1154,6 +1154,9 @@ struct NightTasks: Codable, Hashable, Sendable {
         var nothing: Bool
         /// Started from the app, not at night.
         var asked: Bool
+        /// What it did, in words ("41 kopii, 14 detali"); nil when the task
+        /// only counts.
+        var summary: String?
     }
 
     struct Entry: Codable, Hashable, Sendable, Identifiable {
@@ -1210,6 +1213,43 @@ struct NightTasks: Codable, Hashable, Sendable {
     func entries(of group: Group) -> [Entry] {
         group.tasks.compactMap { name in tasks.first { $0.name == name } }
     }
+}
+
+/// What the tidying of copies changed (`GET /api/night/changes`, Mateusz
+/// 2026-11-11: "podsumowania wykonanych prac, szczególnie przy usuniętych
+/// duplikatach"): a picture made a copy, a detail or a photograph on a wall
+/// of another work. Nothing is deleted: the best copy is shown.
+struct TidyChanges: Codable, Hashable, Sendable {
+    struct Change: Codable, Hashable, Sendable, Identifiable {
+        var at: String
+        /// The copy, the detail or the photograph …
+        var a: ItemSummary
+        /// … and the work it belongs to.
+        var b: ItemSummary
+        /// "copy", "detail" or "scene", and its Polish name.
+        var relation: String
+        var relationName: String
+        /// "pictures", "hash" or "judge" (the doubtful ones).
+        var by: String
+        /// What the judge and its critic said (the judge's only, in English).
+        var why: String = ""
+        var critic: String = ""
+
+        var id: String { a.id + "|" + b.id }
+    }
+
+    /// Settled by the judge: the pictures could not tell.
+    var doubtful: [Change]
+    /// Settled by the pictures.
+    var sure: [Change]
+
+    var isEmpty: Bool { doubtful.isEmpty && sure.isEmpty }
+}
+
+/// Two pictures kept apart for good ("To nie to samo").
+struct TidyApart: Encodable, Sendable {
+    var a: String
+    var b: String
 }
 
 /// The night's tasks to start now; nil for all of them.

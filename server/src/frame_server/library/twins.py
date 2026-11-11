@@ -89,6 +89,7 @@ from .picture_hash import NONE as NO_HASH
 from .picture_hash import distances as hash_distances
 from .picture_hash import picture_hash
 from .picture_hash import words as hash_words
+from .tidy_log import TidyLog
 from .vocabulary import is_copy
 
 if TYPE_CHECKING:
@@ -170,6 +171,9 @@ LARGE_MIN = 1600
 #: ``"<a>|<b>"`` (ids in order, :func:`pair_key`) -> ``{"why": "fit" |
 #: "hash", "at": iso}``, the newest :data:`SUSPECTS_MAX`.
 SUSPECTS_KEY = "twins_suspects"
+#: Pairs the owner said are not one work, nor a part of the other ("To nie
+#: to samo"): never joined again (``pair_key``).
+APART_KEY = "twins_apart"
 SUSPECTS_MAX = 3000
 #: What the judge may write (:meth:`Twins.apply`).
 APPLIED = ("same", "b_detail_of_a", "b_photo_of_a", "a_detail_of_b", "a_photo_of_b")
@@ -352,6 +356,8 @@ class Twins:
         #: The works cared about, by id: 0 kept, 1 shown (``cared.Cared``);
         #: the night looks at them first (Mateusz 2026-11-11).
         self.cared: Callable[[], Mapping[str, int]] = dict
+        #: What was changed, for the owner to look over (``tidy_log``).
+        self.log = TidyLog(library)
 
     # -- when ------------------------------------------------------------------
 
@@ -669,8 +675,14 @@ class Twins:
         large: dict[str, str] | None = None,
         large_scenes: dict[str, str] | None = None,
         large_done: set[str] | None = None,
+        by: str = "pictures",
+        said: dict[str, str] | None = None,
     ) -> tuple[int, int]:
+        """``by``: how it was settled, for the owner's list (``tidy_log``);
+        ``said``: what the judge and its critic said."""
         by_id = {i.id: i for i in works}
+        apart_pairs = self.apart()
+        fits = {ab: f for ab, f in fits.items() if pair_key(*ab) not in apart_pairs}
         whole_twin: set[str] = set()
         for (a, b), fit in fits.items():
             if fit.whole:
@@ -727,11 +739,22 @@ class Twins:
         for item in works:
             if item.copy_of:
                 join(f"copy:{item.id}", f"copy:{item.copy_of}")
+        kept_apart = [
+            (x, y)
+            for x, _, y in (key.partition("|") for key in apart_pairs)
+            if x in by_id and y in by_id
+        ]
+
+        def may_join(x: str, y: str) -> bool:
+            """Not when it would make a pair the owner kept apart one work."""
+            ends = {find(f"copy:{x}"), find(f"copy:{y}")}
+            return not any({find(f"copy:{p}"), find(f"copy:{q}")} == ends for p, q in kept_apart)
+
         found = 0
         for (a, b), fit in fits.items():
             if a in apart or b in apart:
                 continue
-            if fit.cover >= COPY_COVER and fit.turn <= COPY_TURN:
+            if fit.cover >= COPY_COVER and fit.turn <= COPY_TURN and may_join(a, b):
                 join(f"copy:{a}", f"copy:{b}")
                 found += 1
         # What the pictures matched without a rule for how: for the judge.
@@ -772,7 +795,36 @@ class Twins:
         with self.library.batch():
             for item_id, fields in changes.items():
                 self.library.update(item_id, **fields)
+        self._log_changes(by_id, changes, by, said or {})
         return found, len(detail_of) + len(scene_of)
+
+    def _log_changes(
+        self,
+        before: dict[str, Item],
+        changes: dict[str, dict[str, Any]],
+        by: str,
+        said: dict[str, str],
+    ) -> None:
+        """The new copies, details and photographs on the owner's list: a
+        picture joining a work (not one moved from one copy to another as
+        the group's best copy changes)."""
+        entries: list[dict[str, Any]] = []
+        for item_id, fields in changes.items():
+            old = before.get(item_id)
+            if old is None:
+                continue
+            for field, relation in (
+                ("copy_of", "copy"),
+                ("detail_of", "detail"),
+                ("scene_of", "scene"),
+            ):
+                new = fields.get(field)
+                if not new or new == getattr(old, field):
+                    continue
+                if field == "copy_of" and old.copy_of:
+                    continue  # a copy already, now named after another copy
+                entries.append({"a": item_id, "b": new, "relation": relation, "by": by, **said})
+        self.log.add(entries)
 
     # -- across artists ----------------------------------------------------------
 
@@ -828,6 +880,8 @@ class Twins:
                 if g is not None and g == grouped.group_index(b):
                     continue
                 close.append((a, b))
+        kept_apart = self.apart()
+        close = [ab for ab in close if pair_key(*ab) not in kept_apart]
         if cared:
             close.sort(key=lambda ab: min(cared.get(ab[0], REST), cared.get(ab[1], REST)))
         joined = 0
@@ -850,7 +904,7 @@ class Twins:
             if len(museums) > 1:
                 continue  # two museums' own works are never one
             log.info("twins: %s and %s are one picture (hash)", a, b)
-            found, _ = self._write(list(family.values()), [], {(a, b): fit})
+            found, _ = self._write(list(family.values()), [], {(a, b): fit}, by="hash")
             joined += found
             grouped = self.library.works()
         self._suspect(unsure, "hash")
@@ -863,6 +917,8 @@ class Twins:
 
     def _suspect(self, pairs: list[tuple[str, str]], why: str) -> None:
         """``pairs`` kept for the judge (the newest :data:`SUSPECTS_MAX`)."""
+        kept_apart = self.apart()
+        pairs = [(a, b) for a, b in pairs if pair_key(a, b) not in kept_apart]
         if not pairs:
             return
         kept = self.suspects()
@@ -888,12 +944,14 @@ class Twins:
                 kept.pop(key, None)
             self.library.set_state(SUSPECTS_KEY, kept)
 
-    def apply(self, a_id: str, b_id: str, relation: str) -> bool:
+    def apply(
+        self, a_id: str, b_id: str, relation: str, said: dict[str, str] | None = None
+    ) -> bool:
         """What the judge found about ``a`` and ``b`` written as the pictures
         would have (one of :data:`APPLIED`): copies of one work, or one a part
         or a photograph of the other. A museum's own work is never set aside,
         and two museums' works never become one. Whether it was written."""
-        if relation not in APPLIED:
+        if relation not in APPLIED or pair_key(a_id, b_id) in self.apart():
             return False
         if relation.startswith("a_"):  # "a_detail_of_b": b is the whole
             a_id, b_id = b_id, a_id
@@ -908,13 +966,54 @@ class Twins:
                 if sum(i.source in COLLECTIONS for i in family.values()) > 1:
                     return False  # two museums' own works are never one
                 one = Fit(WHOLE_MATCHES, 1.0, 1.0, 0.0)
-                self._write(list(family.values()), [], {(a.id, b.id): one})
+                self._write(list(family.values()), [], {(a.id, b.id): one}, by="judge", said=said)
                 return True
             if b.source in COLLECTIONS:
                 return False  # a museum's own work is no detail or photograph
             field = "detail_of" if relation == "b_detail_of_a" else "scene_of"
-            self.library.update(b.id, **{field: a.copy_of or a.id})
+            whole = a.copy_of or a.id
+            self.library.update(b.id, **{field: whole})
+            self.log.add(
+                [
+                    {
+                        "a": b.id,
+                        "b": whole,
+                        "relation": "detail" if field == "detail_of" else "scene",
+                        "by": "judge",
+                        **(said or {}),
+                    }
+                ]
+            )
             return True
+
+    # -- the owner's word ----------------------------------------------------------
+
+    def apart(self) -> set[str]:
+        """The pairs the owner kept apart (``pair_key``)."""
+        return set(self.library.get_state(APART_KEY, []) or [])
+
+    def separate(self, a_id: str, b_id: str) -> bool:
+        """ "To nie to samo": ``a`` is not a copy, a detail or a photograph
+        of ``b`` (nor ``b`` of ``a``), for good. Whether either was found."""
+        with self._lock:
+            a, b = self.library.get(a_id), self.library.get(b_id)
+            if a is None or b is None:
+                return False
+            changes: dict[str, dict[str, str]] = {}
+            for one, other in ((a, b), (b, a)):
+                whole = {other.id, other.copy_of} - {""}
+                for field in ("copy_of", "detail_of", "scene_of"):
+                    if getattr(one, field) and getattr(one, field) in whole:
+                        changes.setdefault(one.id, {})[field] = ""
+            kept = self.apart() | {pair_key(a_id, b_id)}
+            self.library.set_state(APART_KEY, sorted(kept))
+            with self.library.batch():
+                for item_id, fields in changes.items():
+                    self.library.update(item_id, **fields)
+        self.drop_suspects([pair_key(a_id, b_id)])
+        self.log.drop(a_id, b_id)
+        log.info("twins: %s and %s kept apart by the owner", a_id, b_id)
+        return True
 
     def _copies(self, item: Item, grouped: Any) -> list[Item]:
         """``item`` and the copies of its work its pictures were found to be

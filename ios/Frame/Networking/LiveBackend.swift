@@ -720,6 +720,12 @@ struct LiveBackend: FrameBackend {
 
     func aiReview() async throws -> AiReview { try await get("/api/ai/review") }
 
+    func tidyChanges() async throws -> TidyChanges { try await get("/api/night/changes") }
+
+    func keepApart(_ apart: TidyApart) async throws -> TidyChanges {
+        try await send("/api/night/changes/apart", method: "POST", body: apart)
+    }
+
     func bringBack(itemID: String) async throws -> AiReview {
         try await send("/api/ai/review/\(escape(itemID))/bring-back", method: "POST")
     }
