@@ -33,7 +33,8 @@ chciałbym żeby spadła jakość doboru tych propozycji”).
   i oba punkty usunął etap 3. Sama ocena została jako kolejność „najlepsze
   najpierw” (karty i strony Odkrywaj, pula Propozycji dnia, wiersz dla
   modelu wybierającego Studium dnia): jej wymiana zmienia to, co widać,
-  więc należy do etapu 4.
+  więc należała do etapu 4 (4c, 1.145.23: `library/good.py`). Zostało
+  samo pole `Item.suitability` i jego liczenie.
 
 ## Liczby bazowe (NAS, 1.143.2, logi z 10 i 11 listopada 2026, ok. 91 tys. dzieł)
 
@@ -57,11 +58,7 @@ chciałbym żeby spadła jakość doboru tych propozycji”).
 | 1 | Noc: porządki przed dobieraniem, budżety czasu | 1.145.12 (PLAN 3.3zzz156) |
 | 2 | Szybkość bez zmiany wyników: przyrostowe scalanie grup (2a: 1.145.13, PLAN 3.3zzz157); duże obrazy powtórek zostają jako oryginały (2b: 1.145.17, PLAN 3.3zzz161); dalej według pomiarów z nocy | w toku |
 | 3 | Sprzątanie resztek: wskaźnik „Na e-papierze”, martwy próg, nieużywane punkty API | 1.145.14 (PLAN 3.3zzz158) |
-<<<<<<< HEAD
-| 4 | Jeden werdykt pokazywania: lista powodów i tabela „miejsce × powód” (4a, bez zmiany wyników: 1.145.15, PLAN 3.3zzz159); serwer nie proponuje zachowanych detali, kopii i znaczków (4b: 1.145.19, PLAN 3.3zzz163); kolejność „najpierw dobre” w Odkrywaj (4c: 1.145.22, PLAN 3.3zzz167) | 1.145.22 |
-=======
 | 4 | Jeden werdykt pokazywania: lista powodów i tabela „miejsce × powód” (4a, bez zmiany wyników: 1.145.15, PLAN 3.3zzz159); serwer nie proponuje zachowanych detali, kopii i znaczków (4b: 1.145.19, PLAN 3.3zzz163); kolejność „najpierw dobre” w Odkrywaj (4c: 1.145.23, PLAN 3.3zzz168) | 1.145.23 |
->>>>>>> origin/main
 | 5 | Jedna tożsamość dzieła i autora | |
 | 6 | Jedna ścieżka pytań do muzeów i jedna nocna pętla modeli | |
 
@@ -157,6 +154,13 @@ Do etapu 5 zostaje z tej listy: „Rembrandt Peale” w malarstwie
 holenderskim, dzieła bez tytułu, Straż nocna z dwóch muzeów obok siebie,
 statuetki i miecze Met nierozpoznane jako rzeźba i rzemiosło. Osobno do
 sprzątnięcia: samo pole `Item.suitability` i jego liczenie.
+
+Trzy pomyłki opisu z listy etapu 4b (1.145.24, PLAN 3.3zzz169): odwrocie
+jest dokumentem tylko dla obrazu, nie dla rysunku ani arkusza nazwanego
+obiema stronami (`vocabulary._VERSO`, `_RECTO`, `_SHEET`); dzieło o
+malarskiej technice na malarskim podłożu nie jest fotografią, choć muzeum
+tak nazwało jego rodzaj (`_PAINTED_ON`). Sprawdzone na całym katalogu:
+werdykt zmienia się dla trzech dzieł.
 
 ## Jak sprawdzić zmianę reguł
 

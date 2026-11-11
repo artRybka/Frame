@@ -1,10 +1,15 @@
 # Changelog
 
-<<<<<<< HEAD
-## 1.145.22
-=======
+## 1.145.24
+
+- Trzy dzieła przestają uchodzić za coś, czym nie są: dwa szkice Cézanne'a
+  z Cleveland („Sketch of Madame Cézanne”), które serwer brał za odwrocie
+  obrazu, i obraz „Old Woman Plucking a Fowl” z National Gallery of Art,
+  który muzeum opisało jako fotografię, choć to olej na płótnie z około
+  1650 roku. Odwrocie rysunku i arkusz opisany z obu stron są odtąd
+  dziełami, więc serwer nie odrzuca już dwustronnych rysunków z muzeów.
+
 ## 1.145.23
->>>>>>> origin/main
 
 - Odkrywaj pokazuje najpierw dobre dzieła. Strona tematu zaczynała się od
   arcydzieł muzeów, a dalej szli autorzy alfabetycznie, z dziełami bez
@@ -23,8 +28,6 @@
 - Stara ocena e-papieru nie ustala już żadnej kolejności. Okładki playlist
   pokazują ich najlepsze dzieła według tej samej oceny co Odkrywaj.
 
-<<<<<<< HEAD
-=======
 ## 1.145.22
 
 - Studium dzieła, „Kolor i światło”: próbki farb malowane w technice
@@ -37,7 +40,6 @@
   każda zaczyna się już wtedy, gdy wsuwa się na ekran od dołu, więc obok
   nazwy farby jest od razu.
 
->>>>>>> origin/main
 ## 1.145.21
 
 - Studium dnia wybiera teraz także spośród dzieł Metropolitan Museum,
