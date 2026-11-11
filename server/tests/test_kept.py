@@ -128,6 +128,31 @@ def test_originals_cut_to_the_old_limit_are_had_again_larger(museum) -> None:
     assert service.kept.at_night(_night()) == 0 and len(service.asked) == 3
 
 
+def test_larger_originals_stop_at_the_originals_limit(museum, monkeypatch) -> None:
+    """The kept works' originals grow into the room of the others (pruned
+    first), never into one another's: a full cache would lose Favourites."""
+    service = museum
+    large = jpeg_bytes((200, 30, 30), (4800, 3600))
+    service.images.http = lambda: httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, content=large))
+    )
+    liked, seen = _work(service, "liked"), _work(service, "seen")
+    service.library.set_favorite("owner", liked.id, True)
+    for item in (liked, seen):
+        _cut(service, item)
+    keeper: KeptOriginals = service.kept
+    monkeypatch.setattr(keeper, "room", lambda: 0)  # full, of others' originals
+    assert keeper.at_night(_night()) == 1
+    sides = []
+    for item in (liked, seen):
+        with Image.open(service.images.image_path(item)) as kept_here:
+            sides.append(max(kept_here.size))
+    assert sides == [4000, 2560]
+    _cut(service, liked)
+    monkeypatch.setattr(keeper, "kept_room", lambda kept: 0)  # full of kept ones
+    assert keeper.at_night(_night()) == 0
+
+
 def test_a_host_that_turns_us_away_is_left_for_the_night(museum) -> None:
     service = museum
     for name, host in (("a", "busy.invalid"), ("b", "busy.invalid"), ("c", "ok.invalid")):

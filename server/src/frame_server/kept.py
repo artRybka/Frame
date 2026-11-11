@@ -178,6 +178,22 @@ class KeptOriginals:
         used = self.service.storage.usage().originals_bytes
         return int(limit * FILL) - used
 
+    def kept_room(self, kept: set[str]) -> int:
+        """Bytes the kept works' originals may still grow by: the others'
+        make room for them (they are pruned first), never one another's."""
+        library, images = self.service.library, self.service.images
+        here = images.originals_here()
+        used = 0
+        for item in map(library.get, kept):
+            if item is None or item.file_stem not in here or only_copy(item):
+                continue
+            try:
+                used += images.image_path(item).stat().st_size
+            except OSError:
+                continue
+        limit = self.service.settings.image_cache_mb * 1024 * 1024
+        return int(limit * FILL) - used
+
     # -- downloading -------------------------------------------------------------
 
     def _download(self, item: Item) -> int:
@@ -268,18 +284,20 @@ class KeptOriginals:
             if not night.sleep(PAUSE):
                 break
         # Then the originals cut to the old limit, larger: the kept works'
-        # whatever room there is (they are pruned last), the others' within it.
+        # in the others' room too (those are pruned first), the others'
+        # within what is free.
         library = self.service.library
         kept = kept_ids(self.service)
         larger = 0
         cut = [] if library.get_state(LARGER_DONE_KEY, False) or not night.quiet() else self.cut()
         if not cut and night.quiet() and not library.get_state(LARGER_DONE_KEY, False):
             library.set_state(LARGER_DONE_KEY, True)
+        kept_room = self.kept_room(kept) if cut else 0
         for item in cut:
             if done + larger >= A_NIGHT or not night.quiet():
                 break
-            if room <= 0 and item.id not in kept:
-                break
+            if (kept_room if item.id in kept else room) <= 0:
+                continue  # the limit is reached: as it is until it is raised
             host = urlsplit(display_copy(item)).hostname or ""
             if host in resting:
                 continue
@@ -292,6 +310,7 @@ class KeptOriginals:
             if grew:
                 larger += 1
                 room -= grew
+                kept_room -= grew
             if not night.sleep(PAUSE):
                 break
         if done or larger:
