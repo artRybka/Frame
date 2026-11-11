@@ -344,6 +344,12 @@ def regroups(old: Item, new: Item) -> bool:
     return any(getattr(old, f) != getattr(new, f) for f in GROUPING_FIELDS)
 
 
+#: Copies compared at most to regroup the works one change has to do with
+#: (``Works.regroup``, with the library's lock held: about a tenth of a
+#: second); past that all are grouped anew, outside the lock.
+REGROUP_LOOKS = 10_000
+
+
 def preference(item: Item) -> tuple[bool, bool, int]:
     """Sort key, best copy first: an art archive's photograph after every
     other copy, even one the owner kept (Mateusz 2026-11-09: a heart or a
@@ -365,6 +371,16 @@ class Works:
         #: Goes up with every change; :meth:`spare` as last worked out.
         self._changes = 0
         self._spare: tuple[int, frozenset[str], frozenset[str]] | None = None
+        #: The turn each item was grouped in: among equally good copies the
+        #: earlier one first, here as when all are grouped anew.
+        self._turn: dict[str, int] = {}
+        self._turns = 0
+        #: Goes up when works are grouped anew in part (:meth:`regroup`):
+        #: what was worked out from the groups' numbers is stale.
+        self.regrouped = 0
+        items = list(items)
+        for item in items:
+            self._in_turn(item.id)
         for item in sorted(items, key=preference):
             self.add(item)
 
@@ -401,13 +417,105 @@ class Works:
         at = next((n for n, i in enumerate(group) if preference(item) < preference(i)), len(group))
         group.insert(at, item)
         self._group[item.id] = index
+        self._in_turn(item.id)
         self._changes += 1
+        self._file(item, index)
+        return index
+
+    def _in_turn(self, item_id: str) -> None:
+        if item_id not in self._turn:
+            self._turn[item_id] = self._turns
+            self._turns += 1
+
+    def _held_under(self, item: Item) -> list[list[int]]:
+        """The lists of groups ``item``'s own is found in: by its title and
+        by each of its links."""
+        if item.kind != ItemKind.ARTWORK:
+            return []
+        found = [held for link in _links(item) if (held := self._by_link.get(link))]
+        if held := self._by_title.get(title_key(item.title, item.artist)):
+            found.append(held)
+        return found
+
+    def _file(self, item: Item, index: int) -> None:
+        """Group ``index`` is found by ``item``'s title and links."""
         if item.kind == ItemKind.ARTWORK:
             if title := title_key(item.title, item.artist):
                 self._by_title[title].append(index)
             for link in _links(item):
                 self._by_link[link].append(index)
-        return index
+
+    def _unfile(self, item: Item, index: int) -> None:
+        for held in self._held_under(item):
+            if index in held:
+                held.remove(index)
+
+    def regroup(self, item_id: str, new: Item | None) -> bool:
+        """``item_id`` became ``new`` (None: it is gone) in a way that may
+        change the groups (:func:`regroups`): the works it has to do with
+        are grouped anew, every other group stays as it is. False, with
+        nothing changed, when those are too many to look through while the
+        library waits (:data:`REGROUP_LOOKS`: an artist's hundred
+        "Landscapes"); all are grouped anew then.
+
+        Grouping goes from copy to copy (:func:`same_work`), so what
+        ``item_id`` can change is the groups reached that way from it, as
+        it was and as it is: those items alone are grouped again, in the
+        order all would be. The whole library took 3 to 6 s on the NAS,
+        thirty times a night (2026-11-11), each time with every list and
+        search waiting for it.
+
+        The new groups are put in before the old ones are emptied: who
+        reads meanwhile (without a lock) finds a copy in both rather than
+        in neither."""
+        taken: set[int] = set()
+        items: dict[str, Item] = {}
+        queue: list[Item] = [] if new is None else [new]
+        looks = 0
+
+        def take(index: int) -> None:
+            if index not in taken:
+                taken.add(index)
+                queue.extend(i for i in self.groups[index] if i.id != item_id)
+
+        if (own := self._group.get(item_id)) is not None:
+            take(own)
+        while queue:
+            item = queue.pop()
+            if item.id in items:
+                continue
+            items[item.id] = item
+            near = {index for held in self._held_under(item) for index in held}
+            for index in near - taken:
+                looks += len(self.groups[index])
+                if any(same_work(i, item) for i in self.groups[index]):
+                    take(index)
+            if looks > REGROUP_LOOKS:
+                return False
+        old = [list(self.groups[index]) for index in taken]
+        if new is None:
+            self._turn.pop(item_id, None)
+        else:
+            self._in_turn(item_id)
+        # The new groups worked out aside, then put in at the end.
+        aside = Works(sorted(items.values(), key=lambda i: self._turn[i.id]))
+        base = len(self.groups)
+        for at, group in enumerate(aside.groups):
+            self.groups.append(group)
+            for item in group:
+                self._file(item, base + at)
+        for at, group in enumerate(aside.groups):
+            for item in group:
+                self._group[item.id] = base + at
+        if new is None:
+            self._group.pop(item_id, None)
+        for index, group in zip(taken, old, strict=True):
+            self.groups[index] = []  # the other groups keep their numbers
+            for item in group:
+                self._unfile(item, index)
+        self._changes += 1
+        self.regrouped += 1
+        return True
 
     def replace(self, item: Item) -> bool:
         """The grouped copy of ``item`` swapped for this one, in its place;
@@ -434,8 +542,10 @@ class Works:
             return True
         if len(self.groups[index]) != 1:
             return False
+        self._unfile(self.groups[index][0], index)
         self.groups[index] = []  # the other groups keep their numbers
         del self._group[item_id]
+        self._turn.pop(item_id, None)
         self._changes += 1
         return True
 

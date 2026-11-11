@@ -105,7 +105,7 @@ def test_works_are_grouped_outside_the_lock_with_the_changes_made_meanwhile(
     assert lib.works() is works
 
 
-def test_a_regrouping_change_meanwhile_makes_the_grouping_again(tmp_path, monkeypatch) -> None:
+def test_a_regrouping_change_meanwhile_is_applied_to_the_grouping(tmp_path, monkeypatch) -> None:
     lib = Library(tmp_path / "lib.db")
     lib.upsert(_item(1, artist="A", title="One"))
     lib._works = None
@@ -129,7 +129,7 @@ def test_a_regrouping_change_meanwhile_makes_the_grouping_again(tmp_path, monkey
     lib.upsert(_item(1, artist="A", title="Another title"))  # regroups
     go_on.set()
     maker.join(5)
-    assert len(calls) == 2
+    assert len(calls) == 1  # not made again: the one work grouped anew
     titles = [i.title for group in found[0].groups for i in group]  # type: ignore[attr-defined]
     assert titles == ["Another title"]
 

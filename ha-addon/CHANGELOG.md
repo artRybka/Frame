@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.13
+
+- Porządki w regułach doboru dzieł, etap 2 (szybkość, bez zmiany tego, co
+  widać). Gdy powtórki znajdą kopię albo zmieni się tytuł, autor czy rok
+  dzieła, serwer układa od nowa tylko dzieła, których to dotyczy, a nie
+  grupy kopii całego katalogu. Do tej pory każda taka zmiana kosztowała
+  3 do 6 sekund czekania przy pierwszym pytaniu po niej (lista, Szukaj,
+  Odkrywaj), w nocy około trzydziestu razy, a przy powtórkach puszczonych
+  w dzień tak samo.
+
 ## 1.145.12
 
 - Porządki w regułach doboru dzieł, etap 1: noc najpierw sprząta, potem

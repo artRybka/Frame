@@ -109,11 +109,12 @@ def test_the_library_counts_its_regroupings(service: FrameService) -> None:
     made, seconds = library.regrouped()
     library.works()  # still there: nothing made
     assert library.regrouped() == (made, seconds)
-    # A copy named: the groups are made anew when next asked for.
+    # A copy named: the two works alone are grouped anew, at once.
     library.upsert(Item(id="wmc:2", source="wmc", source_id="2", title="B", artist="X"))
     library.update("wmc:2", copy_of="met:1")
-    library.works()
-    assert library.regrouped()[0] == made + 1
+    assert [i.id for i in library.works().groups[-1]] == ["met:1", "wmc:2"]
+    assert library.regrouped() == (made, seconds)
+    assert library.regrouped_in_part()[0] == 1
 
 
 def test_the_saved_decisions_are_measured_from_a_file(
