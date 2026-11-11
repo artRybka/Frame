@@ -11,7 +11,10 @@
   jak dotychczasowe akcenty, także na karcie dzieła.
 - Po aktualizacji serwer raz przelicza barwy wszystkich dzieł z ich
   miniatur, więc dotyczy to także studiów przygotowanych wcześniej.
-  Wyszukiwanie po kolorze i akcencie działa jak dotąd.
+- Szukaj, Kolor: taka plama liczy się też jako akcent, więc „Uliczka”
+  wychodzi pod „Czerwień · akcent”. Dzieła monochromatyczne (rycina
+  z małą pieczątką kolekcjonera) zostają monochromatyczne i akcentu
+  nie dostają.
 
 ## 1.145.28
 
