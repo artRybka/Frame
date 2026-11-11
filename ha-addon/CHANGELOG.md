@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.145.7
+
+- Studium dzieła, „Kolor i światło”: paleta i próbki farb są malowane
+  techniką, w której powstało dzieło. Olej, akryl i tempera to osobne
+  pociągnięcia pędzla, pełne na początku i suche przy końcu, lekko
+  nachodzące na siebie i mieszające się w tych miejscach, a przy
+  mniejszych kolorach krótkie pacnięcia; farby to kropki wyciśnięte
+  z tuby. Akwarela i gwasz rozlewają się na mokrym papierze i wpływają
+  jedna w drugą. Pastel, kredka i kreda to kreskowanie, spod którego
+  prześwituje papier. Malowanie zaczyna się, gdy sekcja jest na ekranie.
+- Technikę aplikacja czyta z opisu dzieła (po polsku, angielsku,
+  francusku, niemiecku, niderlandzku, włosku i hiszpańsku). Grafiki,
+  fotografie, rysunki tuszem i dzieła bez podanej techniki zostają przy
+  płaskiej palecie i okrągłych próbkach.
+
 ## 1.145.6
 
 - Studium dzieła: „Dalsze losy” są teraz dalszym ciągiem „Drogi dzieła”
