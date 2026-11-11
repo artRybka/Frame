@@ -268,6 +268,8 @@ struct JourneyRoad: View {
                       onward: onward, ends: later.indices.map { ends[$0] ?? plan.height })
         }
         let indigo = Ink.paint(Ink.indigo, dark: dark)
+        // Each sea as a wash of watercolour the line is drawn into.
+        let washes = plan.map { washes(on: $0, seas: seas) } ?? [:]
         var soak = SeededRandom(seed + "soak")
         let paintSeed = Float(soak.next() % 50)
         let texts = ZStack(alignment: .topLeading) {
@@ -301,7 +303,13 @@ struct JourneyRoad: View {
                 let ink = RoadInk(plan: plan, seed: seed, dark: dark, top: top,
                                   flow: Self.inkFlow(plan.line.count, seed: seed), stains: spills.map(\.box))
                 ZStack(alignment: .topLeading) {
-                    // Under everything, the stains: one under each text, out of its dot.
+                    // Under everything, the seas' washes: the line is drawn into them wet.
+                    ForEach(washes.keys.sorted(), id: \.self) { i in
+                        if let wash = washes[i] {
+                            SeaWash(reveal: reveal, wash: wash, dark: dark, seed: paintSeed + 61 + Float(3 * i))
+                        }
+                    }
+                    // The stains: one under each text, out of its dot.
                     ForEach(spills.indices, id: \.self) { i in
                         RoadStain(reveal: reveal, index: i, spill: spills[i], dark: dark, seed: paintSeed + Float(7 * i))
                     }
@@ -568,10 +576,20 @@ struct JourneyRoad: View {
         let count = journey.stops.count
         for i in 1..<count where seas[i] {
             var random = SeededRandom(seed + "sea\(i)")
-            drawSea(in: &context, name: sea(i), top: plan.texts[i - 1].maxY + 16,
-                    bottom: i == count - 1 ? plan.dots[i].y - 30 : plan.texts[i].minY - 14,
+            let band = Self.seaBand(before: i, on: plan)
+            drawSea(in: &context, name: sea(i), top: band.top, bottom: band.bottom,
                     width: size.width, plan: plan, random: &random)
         }
+    }
+
+    /// Each sea's wash (`SeaWash`), by the stop that is over that sea.
+    private func washes(on plan: RoadPlan, seas: [Bool]) -> [Int: Wash] {
+        var out: [Int: Wash] = [:]
+        for i in plan.dots.indices.dropFirst() where i < seas.count && seas[i] {
+            let band = Self.seaBand(before: i, on: plan)
+            out[i] = Self.wash(top: band.top, bottom: band.bottom, line: plan.line, width: width)
+        }
+        return out
     }
 
     /// The white of the corrections and of the last dot's halo.
@@ -628,7 +646,7 @@ struct JourneyRoad: View {
         }
     }
 
-    private static let sea = Color(light: 0x8FA9BA, dark: 0x5E7A8C)
+    private static let sea = Color(light: 0x6E8FA8, dark: 0x86A6BC)
 
     fileprivate static func closed(_ points: [CGPoint]) -> Path {
         var path = Path()
@@ -1271,6 +1289,43 @@ private struct RoadDots: View {
                 DotMark(reveal: reveal, index: i, at: plan.dots[i], hollow: plan.branches[i] != nil)
             }
         }
+    }
+}
+
+/// A sea the work crossed, as a wash of watercolour (Mateusz 2026-11-11
+/// 10:20: „Zlewanie czerwonej kropki wygląda tak dobrze, że aż kusi dodać
+/// podobne mieszanie tego lub innych kolorów gdzieś jeszcze”; 11:09, of
+/// sketch 26: „Morze - super - wdrażamy”): pale blue, laid just before
+/// the pen gets there. It floods out from where the line comes into it,
+/// with a wet front, and dries with its pigment gathered along its edge.
+/// The line is drawn into it while it is wet, so its ink runs: behind the
+/// pen the black feathers out into the blue, in places further
+/// (`Watercolour.metal`, `sea`). All of it follows the pen, so it goes
+/// back as the page does.
+private struct SeaWash: View {
+    let reveal: RoadReveal
+    let wash: JourneyRoad.Wash
+    let dark: Bool
+    /// Tells one sea's paint from another's.
+    let seed: Float
+
+    var body: some View {
+        let came = wash.came(pen: reveal.pen), frame = wash.frame, box = wash.box
+        let paint = dark ? JourneyRoad.Wash.onDark : JourneyRoad.Wash.onLight
+        Color.white
+            .frame(width: frame.width, height: frame.height)
+            .colorEffect(
+                ShaderLibrary.sea(
+                    .float4(Float(box.minX - frame.minX), Float(box.minY - frame.minY),
+                            Float(box.maxX - frame.minX), Float(box.maxY - frame.minY)),
+                    .float2(Float(wash.entry.x - frame.minX), Float(wash.entry.y - frame.minY)), .float(Float(wash.reach)),
+                    .float4(Float(came.spread), Float(came.dry), Float(came.soak), Float(came.tip)),
+                    .floatArray(wash.points), .float(Float(JourneyRoad.washEach)), .float(seed),
+                    .color(paint.blue), .color(paint.deep), .color(paint.ink)
+                )
+            )
+            .opacity(came.spread > 0 ? 1 : 0)
+            .offset(x: frame.minX, y: frame.minY)
     }
 }
 
@@ -2336,6 +2391,77 @@ extension JourneyRoad {
     static func shelf(under lines: [CGRect], width: CGFloat) -> [CGPoint] {
         let foot = (lines.map(\.maxY).max() ?? 0) + 12
         return stride(from: CGFloat(-20), through: width + 20, by: 6).map { CGPoint(x: $0, y: foot) }
+    }
+
+    /// Where a sea is on the road: from under the text of the stop before
+    /// it to over the text of stop `index`, which is across it.
+    static func seaBand(before index: Int, on plan: RoadPlan) -> (top: CGFloat, bottom: CGFloat) {
+        (plan.texts[index - 1].maxY + 16,
+         index == plan.dots.count - 1 ? plan.dots[index].y - 30 : plan.texts[index].minY - 14)
+    }
+
+    /// A sea's wash on the road.
+    struct Wash: Equatable {
+        /// All of it, with room for its uneven edge.
+        var frame = CGRect.zero
+        /// The band it keeps to; its edge wanders in and out of it.
+        var box = CGRect.zero
+        /// Where the line comes into it: the paint floods out from there,
+        /// and has this far to go.
+        var entry = CGPoint.zero
+        var reach: CGFloat = 1
+        /// The line through it, every `washEach`th point of it, as x and y
+        /// in the wash's own frame.
+        var points: [Float] = []
+        /// How far down the road each point of the line is, from the
+        /// first of `points` to well past the sea: by them, how much of
+        /// the line the pen has drawn.
+        var heights: [CGFloat] = []
+        var top: CGFloat = 0
+        var bottom: CGFloat = 0
+
+        /// The wash with the pen at `pen`: how far the paint has flooded
+        /// (it starts before the pen gets to the sea), how dry it is and
+        /// how far the paper round it has soaked (both well after the pen
+        /// has left it), and how many points of the line are drawn.
+        func came(pen: CGFloat) -> (spread: CGFloat, dry: CGFloat, soak: CGFloat, tip: CGFloat) {
+            let spread = min(1.15, max(0, (pen - (top - 70)) / 150))
+            let tip = heights.firstIndex { $0 > pen } ?? heights.count
+            return (spread, JourneyRoad.ease((pen - bottom - 30) / 260), JourneyRoad.ease((pen - bottom) / 300), CGFloat(tip))
+        }
+
+        /// The paint, its darker edge, and the line's ink in it.
+        static let onLight = (blue: Color(hex: 0x7098B8), deep: Color(hex: 0x487094), ink: Color(hex: 0x1D1B18))
+        static let onDark = (blue: Color(hex: 0x6892B0), deep: Color(hex: 0x96BAD2), ink: Color(hex: 0xF1ECE4))
+    }
+
+    /// Every this many points of the line, one is given to a wash.
+    static let washEach = 4
+
+    /// The wash of the sea between `top` and `bottom` (its first and last
+    /// row of waves) on a road `width` wide. Nothing where there is no
+    /// room for a sea.
+    static func wash(top: CGFloat, bottom: CGFloat, line: [CGPoint], width: CGFloat) -> Wash? {
+        guard bottom - top > 40, line.count > 1 else { return nil }
+        let pad: CGFloat = 22
+        let frame = CGRect(x: -16, y: (top - pad).rounded(.down), width: width + 32, height: (bottom - top + 2 * pad).rounded(.up))
+        // Clear of the stains over and under it.
+        let box = CGRect(x: 5, y: top + 5, width: width - 10, height: bottom - top - 11)
+        let from = line.firstIndex { $0.y >= top - pad } ?? line.count - 1
+        let to = line[from...].firstIndex { $0.y >= bottom + pad } ?? line.count - 1
+        let entry = line[line[from...to].firstIndex { $0.y >= top - 4 } ?? to]
+        let corners = [CGPoint(x: box.minX, y: box.minY), CGPoint(x: box.maxX, y: box.minY),
+                       CGPoint(x: box.minX, y: box.maxY), CGPoint(x: box.maxX, y: box.maxY)]
+        // The front is uneven: a little more than the furthest corner.
+        let reach = 1.15 * (corners.map { hypot($0.x - entry.x, ($0.y - entry.y) * 1.5) }.max() ?? 1)
+        var points: [Float] = []
+        for k in stride(from: from, through: to, by: washEach) {
+            points.append(Float(line[k].x - frame.minX))
+            points.append(Float(line[k].y - frame.minY))
+        }
+        // The ink goes on running for a while after the pen has left the sea.
+        let heights = line[from..<min(line.count, to + 90)].map(\.y)
+        return Wash(frame: frame, box: box, entry: entry, reach: reach, points: points, heights: heights, top: top, bottom: bottom)
     }
 
     /// A drop of ink beside the line: longer the way it was flung.

@@ -14,6 +14,12 @@
   prawej stronie kreski.
 - Dzieło bez „Drogi dzieła” ma „Dalsze losy” jak dotąd, tylko wyżej:
   przed „Podobnymi dziełami”.
+- „Droga dzieła”: morze, przez które dzieło przepłynęło, jest
+  bladoniebieską plamą akwareli. Rozlewa się tuż przed piórem, od
+  miejsca, w którym kreska w nią wchodzi, a po wyschnięciu ma
+  ciemniejszy brzeg. Kreska jest rysowana w mokrej farbie, więc za
+  piórem tusz rozpływa się w niebieskim, miejscami szerzej. Fale i nazwa
+  morza zostają, fale są odrobinę ciemniejsze.
 
 ## 1.145.0
 

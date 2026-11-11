@@ -951,6 +951,72 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertTrue(still.settled)
     }
 
+    func testASeaIsAWashTheLineIsDrawnInto() throws {
+        // 2026-11-11 11:09, of sketch 26: „Morze - super - wdrażamy.”
+        let plan = try road()
+        let band = JourneyRoad.seaBand(before: 7, on: plan)
+        XCTAssertEqual(band.top, plan.texts[6].maxY + 16)
+        XCTAssertEqual(band.bottom, plan.texts[7].minY - 14)
+        XCTAssertGreaterThan(band.bottom - band.top, 40)
+        let wash = try XCTUnwrap(JourneyRoad.wash(top: band.top, bottom: band.bottom, line: plan.line, width: 350))
+        // Between the stains over and under it, across the road, with room for its uneven edge.
+        XCTAssertGreaterThan(wash.box.minY, band.top)
+        XCTAssertLessThan(wash.box.maxY, band.bottom)
+        XCTAssertEqual(wash.box.minX, 5)
+        XCTAssertEqual(wash.box.maxX, 345)
+        XCTAssertTrue(wash.frame.insetBy(dx: 12, dy: 12).contains(wash.box))
+        // It floods out from where the line comes into it, as far as its furthest corner.
+        XCTAssertTrue(plan.line.contains(wash.entry))
+        XCTAssertEqual(wash.entry.y, band.top - 4, accuracy: 3)
+        XCTAssertGreaterThan(wash.reach, hypot(max(wash.entry.x - wash.box.minX, wash.box.maxX - wash.entry.x), wash.box.height))
+        // The line through it, in the wash's own frame, a point in four.
+        XCTAssertEqual(wash.points.count % 2, 0)
+        XCTAssertGreaterThan(wash.points.count, 40)
+        for k in stride(from: 0, to: wash.points.count, by: 2) {
+            XCTAssertGreaterThanOrEqual(wash.points[k], 0, "point \(k / 2)")
+            XCTAssertLessThanOrEqual(CGFloat(wash.points[k]), wash.frame.width, "point \(k / 2)")
+            XCTAssertGreaterThanOrEqual(wash.points[k + 1], 0, "point \(k / 2)")
+            XCTAssertLessThanOrEqual(CGFloat(wash.points[k + 1]), wash.frame.height + 4, "point \(k / 2)")
+        }
+        let first = CGPoint(x: CGFloat(wash.points[0]) + wash.frame.minX, y: CGFloat(wash.points[1]) + wash.frame.minY)
+        let from = try XCTUnwrap(plan.line.firstIndex { hypot($0.x - first.x, $0.y - first.y) < 0.01 })
+        let second = plan.line[from + JourneyRoad.washEach]
+        XCTAssertEqual(CGFloat(wash.points[2]) + wash.frame.minX, second.x, accuracy: 0.01)
+        XCTAssertEqual(CGFloat(wash.points[3]) + wash.frame.minY, second.y, accuracy: 0.01)
+        XCTAssertEqual(wash.heights[0], plan.line[from].y)
+        // The ink goes on running after the pen has left the sea: the line is followed past it.
+        XCTAssertGreaterThan(wash.heights.count, (wash.points.count / 2 - 1) * JourneyRoad.washEach + 60)
+        XCTAssertGreaterThan(try XCTUnwrap(wash.heights.last), band.bottom + 22)
+
+        // Laid just before the pen gets there, and all there when the pen is in it.
+        XCTAssertEqual(wash.came(pen: band.top - 70).spread, 0)
+        XCTAssertGreaterThan(wash.came(pen: band.top - 40).spread, 0)
+        XCTAssertEqual(wash.came(pen: band.top - 40).tip, 0)
+        XCTAssertEqual(wash.came(pen: band.top + 80).spread, 1, accuracy: 0.001)
+        XCTAssertEqual(wash.came(pen: band.bottom + 500).spread, 1.15)
+        // Wet while the pen is in it; dry, and soaked into the paper round it, well after.
+        XCTAssertEqual(wash.came(pen: band.bottom).dry, 0)
+        XCTAssertEqual(wash.came(pen: band.bottom).soak, 0)
+        XCTAssertGreaterThan(wash.came(pen: band.bottom + 150).dry, 0.1)
+        XCTAssertLessThan(wash.came(pen: band.bottom + 150).dry, 0.9)
+        XCTAssertEqual(wash.came(pen: band.bottom + 300).dry, 1)
+        XCTAssertEqual(wash.came(pen: band.bottom + 300).soak, 1)
+        // The line is drawn into it as far as the pen has come, and undone as the pen goes back.
+        var before: CGFloat = -1
+        for pen in stride(from: band.top - 30, through: band.bottom + 300, by: 7) {
+            let tip = wash.came(pen: pen).tip
+            XCTAssertGreaterThanOrEqual(tip, before)
+            before = tip
+        }
+        XCTAssertGreaterThan(wash.came(pen: (band.top + band.bottom) / 2).tip, 10)
+        XCTAssertLessThan(wash.came(pen: (band.top + band.bottom) / 2).tip, CGFloat(wash.heights.count - 60))
+        XCTAssertEqual(wash.came(pen: band.bottom + 300).tip, CGFloat(wash.heights.count))
+        // The same every time; nothing where there is no room for a sea.
+        XCTAssertEqual(JourneyRoad.wash(top: band.top, bottom: band.bottom, line: plan.line, width: 350), wash)
+        XCTAssertNil(JourneyRoad.wash(top: band.top, bottom: band.top + 40, line: plan.line, width: 350))
+        XCTAssertNil(JourneyRoad.wash(top: band.top, bottom: band.bottom, line: [], width: 350))
+    }
+
     func testLinesAreOfAboutTheSameLength() {
         // "Odbitka jest w rękach marszandów Yamanaka & Company.": the name is
         // one piece, and the word before it is not left alone on a line.
