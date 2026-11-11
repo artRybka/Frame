@@ -184,21 +184,6 @@ def fill_queries(rules: PlaylistRules) -> list[str]:
     return [t for t in dict.fromkeys(texts) if t]
 
 
-def _search_stream(source: Museum, query: str, kind: Kind = "any") -> Iterator[Item]:
-    """A museum's search results, page after page (of ``kind``, when one)."""
-    size = min(source.page_size, 24)
-    page = 1
-    while True:
-        if kind == "any":
-            total, items = source.search(query, limit=size, page=page)
-        else:
-            total, items = source.search_kind(query, kind, limit=size, page=page)
-        yield from items
-        if page * size >= total:
-            return
-        page += 1
-
-
 @dataclass
 class Job:
     id: str
@@ -474,6 +459,23 @@ class Importer:
                 "height": height,
             }
         )
+
+    def stream(self, source: str, query: str, kind: Kind = "any") -> Iterator[Item]:
+        """A museum's search results, page after page (of ``kind``, when
+        one), through the kept pages (:meth:`search`). Until 1.145.36 the
+        catalogue's and the cards' playlists' searches asked the museum
+        themselves, every time from its first page: what Szukaj or a set
+        had asked an hour before was asked again, and a playlist's every
+        topping up walked the same pages (the audit of 2026-11-11: four
+        paths to the museums)."""
+        size = min(MUSEUMS[source].page_size, 24)
+        page = 1
+        while True:
+            total, items = self.search(source, query, limit=size, page=page, kind=kind)
+            yield from items
+            if page * size >= total:
+                return
+            page += 1
 
     def search(
         self,
@@ -963,7 +965,7 @@ class Importer:
                 alone = [a for a in artists if a] or [rules.query]
                 queries = list(dict.fromkeys([*fill_queries(rules), *alone]))
                 kind = museum_kind(rules.terms)
-                streams = [_search_stream(m, q, kind) for q in queries for m in museums]
+                streams = [self.stream(k, q, kind) for q in queries for k in sources]
             else:
                 texts = [*rules.styles, *rules.subjects, *museum_queries(rules.terms)] or [""]
                 year_from, year_to = span(rules)
@@ -1020,8 +1022,8 @@ class Importer:
             offered = set(self.sources())
             taste = [s for s in TASTE_SOURCES if s in offered]
             draw = [s for s in DRAW_SOURCES if s in offered]
-            streams = [_search_stream(source(s), a) for a in artists for s in taste]
-            streams += [_search_stream(source(s), q) for s, q in queries if s in offered]
+            streams = [self.stream(s, a) for a in artists for s in taste]
+            streams += [self.stream(s, q) for s, q in queries if s in offered]
             streams += [
                 source(s).random_draw(Discovery(kind=kind), rng) for kind in kinds for s in draw
             ]
@@ -1067,7 +1069,7 @@ class Importer:
                 for s in HIGHLIGHT_SOURCES
                 if s in offered
             ]
-            streams += [_search_stream(source(s), q) for s, q in queries if s in offered]
+            streams += [self.stream(s, q) for s, q in queries if s in offered]
             streams += [source(s).random_draw(Discovery(kind=kind), rng) for s in offered]
             rng.shuffle(streams)
             self._take(
@@ -1097,22 +1099,16 @@ class Importer:
         and the Met turned the home address away after a morning's
         catalogue round)."""
         offered = self.asked_sources(TECHNIQUE_KINDS[category])
-        with self.http() as http:
-            streams = [
-                _search_stream(museum(s, http, self.access()), q)
-                for s, q in searches
-                if s in offered
-            ]
-            self._take(
-                streams,
-                count,
-                job,
-                before=lambda item: object_category(item) == category,
-                after=fits,
-                pooled=True,
-                terms=[category],
-                most=most,
-            )
+        self._take(
+            [self.stream(s, q) for s, q in searches if s in offered],
+            count,
+            job,
+            before=lambda item: object_category(item) == category,
+            after=fits,
+            pooled=True,
+            terms=[category],
+            most=most,
+        )
 
     def discover_all(
         self, spec: Discovery, limit: int = 8, page: int = 1, keys: list[str] | None = None

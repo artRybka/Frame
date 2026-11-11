@@ -1065,6 +1065,55 @@ def test_fill_asks_the_museums_as_discover_search_does(tmp_path) -> None:
     assert sorted(asked) == ["Claude Monet", "Claude Monet sea", "Paul Signac", "Paul Signac sea"]
 
 
+def test_the_catalogues_searches_go_through_the_kept_pages(tmp_path) -> None:
+    """The audit of 2026-11-11: the catalogue and the cards' playlists asked
+    the museums themselves, every time from the first page; what a set or
+    Szukaj had asked was asked again. One path: ``Importer.search``."""
+    from frame_server.library.importer import Importer, Job
+
+    asked: list[tuple[str, int]] = []
+
+    class Paged(Museum):
+        key = "aic"
+        name = "Paged"
+        page_size = 2
+
+        def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+            asked.append((query, page))
+            items = [self._item(f"{query}{n}", artist="Claude Monet") for n in range(4)]
+            return len(items), items[(page - 1) * limit : page * limit]
+
+        def fetch(self, source_id: str) -> Item | None:
+            return None
+
+    class Importing(Importer):
+        def _analysed(self, item: Item) -> Item:
+            return item
+
+    saved = dict(MUSEUMS)
+    MUSEUMS.clear()
+    MUSEUMS.update(aic=Paged)
+    try:
+        importer = Importing(Library(tmp_path / "lib.db"), None, None)  # type: ignore[arg-type]
+        # A set's page, as Odkrywaj asks it ...
+        assert importer.search("aic", "sea", limit=2, page=1)[0] == 4
+        assert asked == [("sea", 1)]
+        # ... is not asked again for the catalogue, which goes on from it.
+        job = Job(id="j", description="catalogue")
+        importer.collect(3, job, queries=[("aic", "sea")], kinds=())
+        assert asked == [("sea", 1), ("sea", 2)]
+        assert job.item_ids == ["aic:sea0", "aic:sea1", "aic:sea2"]
+        # The next round walks the same pages without a request.
+        importer.collect(
+            1, Job(id="k", description="catalogue"), queries=[("aic", "sea")], kinds=()
+        )
+        assert asked == [("sea", 1), ("sea", 2)]
+        assert importer.library.get("aic:sea3") is not None
+    finally:
+        MUSEUMS.clear()
+        MUSEUMS.update(saved)
+
+
 def _gradient(dark: tuple[int, int, int], light: tuple[int, int, int]) -> Image.Image:
     t = np.linspace(0, 1, 200)[None, :, None]
     pixels = (np.array(dark) * (1 - t) + np.array(light) * t) * np.ones((150, 1, 1))
