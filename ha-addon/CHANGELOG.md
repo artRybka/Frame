@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.7
+## 1.145.8
 
 - Studium dzieła, „Kolor i światło”: paleta i próbki farb są malowane
   techniką, w której powstało dzieło. Olej, akryl i tempera to osobne
@@ -14,6 +14,12 @@
   francusku, niemiecku, niderlandzku, włosku i hiszpańsku). Grafiki,
   fotografie, rysunki tuszem i dzieła bez podanej techniki zostają przy
   płaskiej palecie i okrągłych próbkach.
+
+## 1.145.7
+
+- „Pod lupą”: gdy telefon jest trzymany nieruchomo, cienia pod kafelkami
+  nie widać i wyglądają jak zwykłe. Cień pojawia się dopiero przy
+  obracaniu telefonu.
 
 ## 1.145.6
 
