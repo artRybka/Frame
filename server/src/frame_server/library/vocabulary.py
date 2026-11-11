@@ -664,6 +664,12 @@ def is_art_archive_photo(item: Item) -> bool:
     return item.source == "europeana" and item.credit in ART_PHOTO_ARCHIVES
 
 
+def archive_own(item: Item) -> bool:
+    """``item`` shows an art archive's photograph of the work, its own
+    picture with no copy in its place: in its colours only by chance."""
+    return is_art_archive_photo(item) and item.sharper is None
+
+
 def may_be_grey_copy(item: Item) -> bool:
     """A work whose picture, if it has no colour, is a black-and-white copy:
     a painting, or anything an art photo archive has. (Real prints and

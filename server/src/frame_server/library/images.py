@@ -82,6 +82,9 @@ LOOKED_AGE = 365 * 24 * 3600.0
 #: Commons tile set is looked at closely, 2560 showed a twelfth of its
 #: width (Mateusz 2026-11-10).
 TILE_MAX = COMMONS_WIDTH
+#: A picture whose long side is shorter than this is worth a sharper copy
+#: (the frame is 2560 px long).
+WEAK_SIDE = 2000
 #: Sources whose works' sizes are their files' own and whose addresses ask
 #: for a size (IIIF ``full/!2560,2560``, the Smithsonian's ``max=2560``): an
 #: elongated work (:data:`WIDE`) is asked in the size it is kept in.

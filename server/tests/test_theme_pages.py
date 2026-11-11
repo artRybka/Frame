@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import threading
+from datetime import date
 from typing import Any
 
 from fastapi.testclient import TestClient
@@ -74,6 +75,52 @@ def test_a_set_comes_as_last_worked_out_and_is_worked_out_again_after(service) -
             break
         threading.Event().wait(0.05)
     assert {i.id for i in items} == {"met:0", "met:1", "met:2"}
+
+
+def test_a_set_is_worked_out_again_on_another_day(service, monkeypatch) -> None:
+    """The good works come in another order each day (``library.good``):
+    the page as last worked out comes at once, the day's own for the next
+    visit."""
+
+    class Today(date):
+        day = date(2026, 11, 12)
+
+        @classmethod
+        def today(cls) -> date:
+            return cls.day
+
+    monkeypatch.setattr(discover_api, "date", Today)
+    _paintings(service, 2)
+    discover_api.catalogue_page(service, PAINTERS)
+    seeds: list[int] = []
+    query = service.library.query
+
+    def asked(*args: Any, **kwargs: Any) -> tuple[int, list[Item]]:
+        seeds.append(kwargs["seed"])
+        assert kwargs["sort"] == "good"
+        return query(*args, **kwargs)
+
+    monkeypatch.setattr(service.library, "query", asked)
+    discover_api.catalogue_page(service, PAINTERS)
+    assert not seeds  # the same day: as worked out
+    Today.day = date(2026, 11, 13)
+    items, _ = discover_api.catalogue_page(service, PAINTERS)
+    assert {i.id for i in items} == {"met:0", "met:1"}  # at once
+    for _ in range(100):
+        if seeds:
+            break
+        threading.Event().wait(0.05)
+    assert seeds == [date(2026, 11, 13).toordinal()]
+    for _ in range(100):  # the day's page is kept: nothing more to work out
+        if not _pages(service).working:
+            break
+        threading.Event().wait(0.05)
+    discover_api.catalogue_page(service, PAINTERS)
+    assert len(seeds) == 1
+
+
+def _pages(service) -> Any:
+    return discover_api._pages_of(service.library)
 
 
 def test_the_cards_work_out_each_sets_first_page(service, monkeypatch) -> None:
