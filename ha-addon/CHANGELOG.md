@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.143.5
+
+- „Pod lupą”: rozjaśnienie HDR u góry kafelków jest mocniejsze i sięga
+  niżej (pełne przez górną trzecią część obrazu), a za górną częścią
+  karty jest miękki cień.
+
 ## 1.143.4
 
 - Sędzia powtórek pracuje w nocy przed czytaniem spisu Rijksmuseum, a nie

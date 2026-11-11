@@ -454,6 +454,12 @@ struct ArtImage: View {
     /// share of it at the bottom ("Pod lupą" cards: 10 % at the caption,
     /// Mateusz 2026-11-10); nil, the same all over.
     var glowFade: Double? = nil
+    /// With `glowFade`: how far down (a share of the height) the lift stays
+    /// full before it starts to fade.
+    var glowHold: Double = 0
+    /// With `brighten`: the gain set in Konfiguracja times this (up to what
+    /// the screen can show).
+    var glowBoost: Double = 1
 
     /// Pauses before the picture is asked for again on its own.
     static let retryDelays: [Duration] = [.seconds(4), .seconds(15), .seconds(45)]
@@ -466,7 +472,9 @@ struct ArtImage: View {
     @State private var focus: UnitPoint = .center
     @State private var failed = false
     @AppStorage(ArtGlow.key) private var glowAllowed = true
-    @AppStorage(ArtGlow.gainKey) private var glowGain = ArtGlow.defaultGain
+    @AppStorage(ArtGlow.gainKey) private var glowSet = ArtGlow.defaultGain
+    /// The gain the brighter copy is made with.
+    private var glowGain: Double { glowSet * glowBoost }
     /// The brighter copy of the picture shown (`brighten`).
     @State private var glowing: UIImage?
     /// How far the brighter copy is shown over the picture (0 to 1).
@@ -552,7 +560,14 @@ struct ArtImage: View {
                 picture(lit)
                     .opacity(glowShown)
                     .mask {
-                        LinearGradient(colors: [.white, .white.opacity(glowFade)], startPoint: .top, endPoint: .bottom)
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white, location: 0),
+                                .init(color: .white, location: glowHold),
+                                .init(color: .white.opacity(glowFade), location: 1),
+                            ],
+                            startPoint: .top, endPoint: .bottom
+                        )
                     }
             } else {
                 picture(lit).opacity(glowShown)
