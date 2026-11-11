@@ -173,6 +173,32 @@ def test_a_smart_playlist_fetches_what_szukaj_finds(tmp_path) -> None:
     assert total == 5 and [i.id for i in found] == ["aic:0", *job.item_ids]
 
 
+def test_a_cards_playlist_is_topped_up_as_szukaj_finds_unless_of_artists(monkeypatch) -> None:
+    """Stage 6b: on the museums, 2026-11-11, "Morze i statki" drawn by style
+    brought two portraits among ten works, asked as Szukaj asks ten works of
+    the sea; a card of artists keeps its artists' turns, and no search asks
+    for the museums' highlights."""
+    from frame_server.library import search
+
+    went: list[str] = []
+
+    class Recording:
+        def fill(self, rules, count, job, pooled=False) -> None:  # type: ignore[no-untyped-def]
+            went.append("drawn")
+
+    monkeypatch.setattr(search, "fill", lambda *args, **kwargs: went.append("as Szukaj"))
+    job = Job(id="j", description="card")
+    for rules in (
+        PlaylistRules(terms=["subject:sea", "subject:ships"]),  # Morze i statki
+        PlaylistRules(terms=["period:17c"]),  # Złoty wiek
+        PlaylistRules(query="autumn"),  # Jesień
+        PlaylistRules(artists=["Turner", "Caspar David Friedrich"]),  # Romantyzm
+        PlaylistRules(terms=["tag:highlight"]),  # Arcydzieła muzeów
+    ):
+        search.fill_card(Recording(), rules, 10, job, pooled=True)  # type: ignore[arg-type]
+    assert went == ["as Szukaj", "as Szukaj", "as Szukaj", "drawn", "drawn"]
+
+
 def test_an_artist_search_keeps_only_their_own_works() -> None:
     # Museums find whatever names him: Guillaumin's self-portrait, an
     # anonymous sheet, a print after him (Mateusz, 2026-11-07).

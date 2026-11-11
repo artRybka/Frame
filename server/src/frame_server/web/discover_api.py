@@ -43,7 +43,7 @@ from ..library.phrases import quote
 from ..library.places import NAME as NAME_KEY
 from ..library.places import OWN, QID, known_places, migrate_sources
 from ..library.repo import Hidden, Library, says
-from ..library.search import MuseumSearch
+from ..library.search import MuseumSearch, fill_card
 from ..library.themes import (
     CARD_MIN,
     GROUPS,
@@ -948,7 +948,7 @@ async def theme_playlist(key: str, request: ThemePlaylistRequest, svc: Svc) -> T
             rules = playlist.rules
 
             def fill(job: Job) -> None:
-                svc.importer.fill(rules, POOL_SIZE - have, job, pooled=True)
+                fill_card(svc.importer, rules, POOL_SIZE - have, job, pooled=True)
 
             job_id = svc.importer.start_job(f"theme: {key}", fill).id
     assert playlist.id is not None

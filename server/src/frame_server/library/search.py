@@ -17,7 +17,7 @@ from .phrases import phrases
 from .places import QID, SOURCE_PLACES, known_places
 from .repo import matches, said_as, says, search_fits
 from .verdict import category_fits
-from .vocabulary import asked_artists, asked_topics, museum_kind
+from .vocabulary import HIGHLIGHT, asked_artists, asked_topics, museum_kind
 
 #: With colours asked, museum pages of this many works are looked at, until
 #: ``limit`` fit, this many pages are seen or this many seconds have passed.
@@ -316,3 +316,22 @@ def fill(
         # The words as the museums were asked them (translated by then).
         fits=lambda item: matches(item, rules, said=said_as(rules.query, importer.library.wording)),
     )
+
+
+def fill_card(
+    importer: Importer, rules: PlaylistRules, count: int, job: Job, pooled: bool = False
+) -> None:
+    """Add ``count`` museum works for the playlist of a card of Odkrywaj
+    with ``rules``. A card of a subject or a period as Szukaj finds its
+    choices (:func:`fill`): on the museums, 2026-11-11, "Morze i statki"
+    drawn by style brought two portraits and "Dragon and Orchard" among ten
+    works, and "Złoty wiek" eight prints of one hand from one drawn page;
+    asked as Szukaj asks, ten works of the sea and eight painters, for
+    fewer requests. A card of artists the older way (:meth:`Importer.fill`:
+    its artists in turns, where Szukaj's pages bring one artist after
+    another), as a card of the museums' highlights, which no search asks
+    for."""
+    if rules.artists or HIGHLIGHT in rules.terms or MuseumSearch.of(rules).empty:
+        importer.fill(rules, count, job, pooled=pooled)
+    else:
+        fill(importer, rules, count, job, pooled=pooled)
