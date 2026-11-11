@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.143.5
+## 1.144.2
 
 - „Droga dzieła”: kreska biegnie przodem, niżej na ekranie, najpierw
   cienka jak włos, a za nią grubnie; tusz w stalówce jest nierówny.
@@ -13,6 +13,43 @@
 - Drobinki tuszu są tylko przy zakrętach, jak od zbyt szybkiej stalówki,
   i część z nich jest poprawiona białym korektorem; przy kresce doszły
   krótkie białe poprawki.
+
+## 1.144.1
+
+- Studium dnia wybiera kurator. Reguły układają listę dziesięciu dzieł
+  dnia, a Sonnet ogląda ich obrazy i odrzuca szkice robocze, kartki ze
+  szkicownika, notatki, blade i prawie puste arkusze, fragmenty i
+  dokumenty. Z reszty wybiera dzieło, o którym da się najwięcej
+  opowiedzieć. Odrzuconych dzieł już nie proponuje. Jedno zapytanie
+  dziennie, ok. 2 centów. Bez klucza wybierają reguły, ale szkice i blade
+  kartki stawiają na końcu.
+
+## 1.144.0
+
+- Zadania nocne w Konfiguracji są w pakietach: Utrzymanie katalogu,
+  Powtórki i jakość, Opisy i fakty, Odkrywaj i ramka oraz Spisy muzeów.
+  Każdy pakiet ma jeden guzik, który uruchamia od razu wszystkie jego
+  zadania, i krótki opis, co robi. Pojedyncze zadania są nadal pod
+  „Zadania”.
+- Porządki zaczynają od dzieł, na których Ci zależy: najpierw Ulubione
+  i dzieła z Twoich playlist, potem to, co pokazują playlisty
+  inteligentne, karty Odkrywaj i Propozycje dnia. Dopiero potem reszta
+  katalogu. Dotyczy to powtórek i detali, sędziego powtórek, strażnika
+  katalogu, nocnego przeglądu, ostrzejszych kopii i tego, gdzie wiszą
+  dzieła.
+- Noc najpierw porządkuje, a dopiero na koniec czyta spis Rijksmuseum,
+  w czasie, który jej został. Wcześniej spis zajmował 2,5 godziny
+  i powtórki dostawały 5 minut, a strażnik katalogu i nocny przegląd nie
+  ruszyły ani razu. Strażnik i przegląd czekają na odpowiedź Claude'a
+  najwyżej kwadrans, a spóźnioną zbierają następnej nocy.
+- Klucze, hasła i tokeny w adresach (np. logowanie do WikiArt) nie
+  trafiają już do logu serwera, także przy czytaniu starszych dni.
+
+## 1.143.5
+
+- „Pod lupą”: rozjaśnienie HDR u góry kafelków jest mocniejsze i sięga
+  niżej (pełne przez górną trzecią część obrazu), a za górną częścią
+  karty jest miękki cień.
 
 ## 1.143.4
 

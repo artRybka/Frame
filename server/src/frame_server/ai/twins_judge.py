@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -294,6 +295,8 @@ class NightJudge:
         self.twins = twins
         self.claude = claude
         self.config = config
+        #: The works cared about, by id (``cared.Cared``): their pairs first.
+        self.cared: Callable[[], Mapping[str, int]] = dict
 
     # -- state -----------------------------------------------------------------
 
@@ -317,6 +320,9 @@ class NightJudge:
         else:
             judged = state.get("judged") or {}
             wanted = [(k, "") for k in self.twins.suspects() if k not in judged]
+            # Pairs of Favourites, playlists and Discover first (2026-11-11).
+            cared = self.cared()
+            wanted.sort(key=lambda kc: min(cared.get(i, 2) for i in kc[0].split("|")))
         grouped = self.library.works()
         found: list[tuple[str, Item, Item, str]] = []
         gone: list[str] = []

@@ -58,7 +58,7 @@ import re
 import threading
 import time
 from collections import defaultdict
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime
 from functools import lru_cache
 from itertools import pairwise
@@ -130,6 +130,8 @@ SEARCH_DELAY = 20.0
 THUMBS_A_ROUND = 200
 #: At night: this long at most (seconds), a quiet moment between artists.
 NIGHT_BUDGET = 2400.0
+#: The rank of a work nobody cares about (``cared``).
+REST = 2
 #: An artist with more works than this is not looked at ("Unknown" under
 #: another spelling, a school): too many pairs to tell anything.
 MAX_WORKS = 4000
@@ -347,6 +349,9 @@ class Twins:
         #: Seconds a search's look waits for the app to fetch its thumbnails.
         self.search_delay = SEARCH_DELAY
         self._round = _Round(0, 0)
+        #: The works cared about, by id: 0 kept, 1 shown (``cared.Cared``);
+        #: the night looks at them first (Mateusz 2026-11-11).
+        self.cared: Callable[[], Mapping[str, int]] = dict
 
     # -- when ------------------------------------------------------------------
 
@@ -396,10 +401,12 @@ class Twins:
         with self._lock:
             started = self.clock()
             self._round = _Round(downloads, THUMBS_A_ROUND)
+            # The night's round: Favourites, playlists and Discover first.
+            cared: Mapping[str, int] = self.cared() if keys is None else {}
             everyone, by_artist = self._candidates(keys)
             # Hashes first, a quarter of the time at most: across artists.
             mine = None if keys is None else {i.id for w in by_artist.values() for i in w}
-            hashed, joined = self._hashes(everyone, mine, started + budget / 4, quiet)
+            hashed, joined = self._hashes(everyone, mine, started + budget / 4, quiet, cared)
             if joined:  # copies named anew: the works as they are now
                 everyone, by_artist = self._candidates(keys)
             due = [
@@ -407,7 +414,13 @@ class Twins:
                 for key, works in by_artist.items()
                 if len(works) <= MAX_WORKS and any(_due(i) for i in works)
             ]
-            due.sort(key=lambda kw: (sum(i.twins_seen < VERSION for i in kw[1]), kw[0]))
+            due.sort(
+                key=lambda kw: (
+                    min((cared.get(i.id, REST) for i in kw[1] if _due(i)), default=REST),
+                    sum(i.twins_seen < VERSION for i in kw[1]),
+                    kw[0],
+                )
+            )
             seen = copies = details = 0
             for _key, works in due:
                 if self.clock() - started > budget or not quiet():
@@ -769,6 +782,7 @@ class Twins:
         mine: set[str] | None,
         until: float,
         quiet: Callable[[], bool],
+        cared: Mapping[str, int] | None = None,
     ) -> tuple[int, int]:
         """Each picture's hash worked out once (those of ``mine``, None:
         all), and laid against every other hash: two pictures this close
@@ -782,6 +796,9 @@ class Twins:
                 hashes[item.id] = item.picture_hash
             elif not item.picture_hash and (mine is None or item.id in mine):
                 fresh.append(item)
+        cared = cared or {}
+        if cared:  # the works cared about hashed first, and their pairs
+            fresh.sort(key=lambda i: cared.get(i.id, REST))
         written: dict[str, str] = {}
         for item in fresh:
             if self.clock() > until or not quiet():
@@ -811,6 +828,8 @@ class Twins:
                 if g is not None and g == grouped.group_index(b):
                     continue
                 close.append((a, b))
+        if cared:
+            close.sort(key=lambda ab: min(cared.get(ab[0], REST), cared.get(ab[1], REST)))
         joined = 0
         unsure: list[tuple[str, str]] = []
         for a, b in close[:HASH_PAIRS]:

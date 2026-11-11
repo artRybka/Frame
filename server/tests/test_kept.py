@@ -156,8 +156,10 @@ def test_a_work_that_fails_oddly_does_not_end_the_downloads(museum, monkeypatch)
     assert service.images.has_image(fine)
 
 
-def test_kept_originals_are_the_nights_last_task(service) -> None:
-    assert tasks(service)[-1].name == "kept originals"
+def test_kept_originals_come_after_the_tidying_before_the_rijks_index(service) -> None:
+    names = [t.name for t in tasks(service)]
+    assert names.index("kept originals") > names.index("audit")
+    assert names[-1] == "rijks"  # whatever time the night has left
 
 
 def _until(check, seconds: float = 10.0) -> bool:

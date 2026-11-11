@@ -30,6 +30,7 @@ from ..library import (
     PlaylistKind,
     PlaylistRules,
     PlaylistSummary,
+    day_picks,
     zoom,
 )
 from ..library.artists import is_artist, known_names
@@ -351,6 +352,24 @@ def work_out_cards(svc: FrameService, force: bool = False) -> dict[str, tuple[in
         _cards = (time.monotonic(), cards)
         _cards_from = key
         return cards
+
+
+def shown_ids(svc: FrameService) -> set[str]:
+    """The works Discover shows as last worked out: the cards' covers, the
+    themes' pages kept (every card's first page and those opened since) and
+    everyone's Propozycje dnia (the night's tidying looks at them first,
+    Mateusz 2026-11-11)."""
+    ids = {i.id for _count, cover in _cards[1].values() for i in cover}
+    pages = _pages_of(svc.library)
+    with pages.lock:
+        kept = list(pages.kept.values())
+    ids.update(i.id for _stamp, _total, items in kept for i in items)
+    users = [svc.player.suggestions_user, *(u.id for u in svc.users.users())]
+    for user in dict.fromkeys(users):
+        picks = day_picks.kept(svc.library, user)
+        if picks is not None:
+            ids.update(picks.ids)
+    return ids
 
 
 def _theme_cards(svc: FrameService) -> dict[str, tuple[int, list[Item]]]:

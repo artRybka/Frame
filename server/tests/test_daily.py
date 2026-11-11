@@ -1403,3 +1403,142 @@ def test_works_asked_for_at_once_are_all_kept(offline: FrameService) -> None:
     for t in threads:
         t.join()
     assert listed(offline.library, key) == set(ids)
+
+
+# -- the curator of the study of the day ----------------------------------------
+
+
+def _sheet(service: FrameService, item_id: str) -> None:
+    """A pale sheet: light paper with a few pencil marks."""
+    img = Image.new("RGB", (900, 600), (236, 230, 214))
+    draw = ImageDraw.Draw(img)
+    for x in (200, 420, 640):
+        draw.line((x, 200, x + 30, 260), fill=(150, 145, 135), width=2)
+    item = service.library.get(item_id)
+    assert item is not None
+    buf = io.BytesIO()
+    img.save(buf, "JPEG")
+    service.images.thumb_path(item).write_bytes(buf.getvalue())
+
+
+def _curator(fake: FakeAnthropic, *answers: dict[str, Any]) -> list[dict[str, Any]]:
+    """The curator's answers in turn; returns its questions."""
+    left = list(answers)
+    asked: list[dict[str, Any]] = []
+
+    def create(**params: Any) -> Any:
+        fake.asked.append(params)
+        assert params["model"] == SONNET
+        asked.append(params)
+        return _message(left.pop(0) if len(left) > 1 else left[0])
+
+    fake.messages.create = create
+    return asked
+
+
+def _numbers(question: dict[str, Any]) -> dict[str, int]:
+    """The shortlisted works' numbers by title."""
+    texts = [b["text"] for b in question["messages"][0]["content"] if b["type"] == "text"]
+    return {t.split("\n")[0].split(". ", 1)[1]: int(t.split(".")[0]) for t in texts}
+
+
+def test_a_title_that_calls_the_work_a_sketch() -> None:
+    def item(title: str) -> Item:
+        return Item(id="a:1", source="a", source_id="1", title=title)
+
+    assert daily_module.sketch_title(item("Mixed Studies near the Pool of Bethesda, Jerusalem"))
+    assert daily_module.sketch_title(item("Sketchbook page"))
+    assert daily_module.sketch_title(item("Study of a Young Woman"))
+    assert daily_module.sketch_title(item("Skizzenbuch, Blatt 12"))
+    assert not daily_module.sketch_title(item("The Artist's Studio"))
+    assert not daily_module.sketch_title(item("Students of the Academy"))
+
+
+def test_without_the_curator_sketches_and_pale_sheets_go_last(offline: FrameService) -> None:
+    _add(offline, "met:1", title="Mixed Studies near the Pool of Bethesda", artist="F. E. Church")
+    _add(offline, "met:2", title="A Quiet Page", artist="Someone Pale")
+    _sheet(offline, "met:2")
+    _add(offline, "met:3", title="The Harvesters", artist="Pieter Bruegel", year=1565)
+    found = offline.daily.pick(DAY)
+    assert found is not None and found.id == "met:3"
+    assert offline.daily.curated() == {}
+
+
+def test_the_curator_sets_aside_a_sketchbook_page(tmp_path: Path) -> None:
+    _, svc, fake = _claude(tmp_path)
+    _catalogue(svc)
+    _add(svc, "met:6", title="Bethesda", artist="Frederic Edwin Church", year=1868)
+    _sheet(svc, "met:6")
+    asked = _curator(fake, {"works": [], "choice": 0, "reason": "-"})
+    svc.daily.pick(DAY)  # a first look at the day's shortlist (nothing fits)
+    numbers = _numbers(asked[0])
+    assert set(numbers) <= {
+        "Under the Wave off Kanagawa",
+        "South Wind, Clear Sky",
+        "Water Lilies",
+        "The Harvesters",
+        "Bethesda",
+    }
+    # One work per artist, each with its picture; the pale sheet said so.
+    assert not {"Under the Wave off Kanagawa", "South Wind, Clear Sky"} <= set(numbers)
+    content = asked[0]["messages"][0]["content"]
+    assert sum(b["type"] == "image" for b in content) == len(numbers)
+    assert any("light sheet" in b.get("text", "") and "Bethesda" in b["text"] for b in content)
+
+    svc.library.set_state(daily_module.UNFIT_KEY, {})
+    svc.library.set_state(daily_module.CURATED_KEY, {})
+    svc.library.set_state(HISTORY_KEY, {})
+    asked.clear()
+    answer = {
+        "works": [
+            {"n": numbers["Bethesda"], "what": "Notatki ołówkiem", "fit": False, "why": "szkic"},
+            {"n": numbers["Water Lilies"], "what": "Lilie wodne", "fit": True, "why": "obraz"},
+        ],
+        "choice": numbers["Water Lilies"],
+        "reason": "Najwięcej do oglądania.",
+    }
+    _curator(fake, answer)
+    found = svc.daily.pick(DAY)
+    assert found is not None and found.id == "met:3"
+    assert svc.daily.unfit() == {"met:6": "Notatki ołówkiem · szkic"}
+    assert svc.daily.curated()[DAY.isoformat()] == {
+        "item": "met:3",
+        "reason": "Najwięcej do oglądania.",
+        "unfit": ["met:6"],
+    }
+    # The sheet set aside is never shortlisted again.
+    asked = _curator(fake, {"works": [], "choice": 1, "reason": "Pierwsze."})
+    assert svc.daily.again(DAY) is not None
+    assert "Bethesda" not in _numbers(asked[0])
+    assert svc.claude.spending.by_kind().get("study_pick", 0) > 0
+
+
+def test_a_shortlist_all_set_aside_asks_about_the_next(tmp_path: Path) -> None:
+    _, svc, fake = _claude(tmp_path)
+    for n in range(14):
+        _add(svc, f"met:{n + 10}", title=f"Work {n}", artist=f"Painter {n}")
+    first = {
+        "works": [{"n": n, "what": "", "fit": False, "why": "szkic"} for n in range(1, 11)],
+        "choice": 0,
+        "reason": "Same szkice.",
+    }
+    asked = _curator(fake, first, {"works": [], "choice": 2, "reason": "Drugie."})
+    found = svc.daily.pick(DAY)
+    assert len(asked) == 2 and len(svc.daily.unfit()) == 10
+    assert len(_numbers(asked[1])) == 4
+    second = list(_numbers(asked[1]))[1]
+    assert found is not None and found.title == second
+
+
+def test_without_an_answer_the_rules_choose(tmp_path: Path) -> None:
+    _, svc, fake = _claude(tmp_path)
+    _catalogue(svc)
+    _curator(fake, {"works": [], "choice": 42, "reason": "?"})
+    found = svc.daily.pick(DAY)
+    assert found is not None
+    assert svc.daily.curated() == {} and svc.daily.unfit() == {}
+    # The switch off: nothing asked.
+    svc.ai_config.update(AiConfigUpdate(daily=False))
+    asked = _curator(fake, {"works": [], "choice": 1, "reason": "-"})
+    assert svc.daily.pick(DAY + timedelta(days=1)) is not None
+    assert asked == []
