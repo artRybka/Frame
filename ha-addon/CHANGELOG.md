@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.144.2
+
+- „Droga dzieła”: kreska biegnie przodem, niżej na ekranie, najpierw
+  cienka jak włos, a za nią grubnie; tusz w stalówce jest nierówny.
+- Pod każdym podpisem jest ciemna plama tuszu, która wylewa się z kropki
+  swojego przystanku: najpierw kropka, po chwili tusz ostrym, mokrym
+  brzegiem, potem biały podpis z czerwoną datą. Plama dosycha do
+  ciemnoszarej akwareli, a papier przy jej krawędzi nasiąka: miejscami
+  wyrasta drugie, jaśniejsze halo. W ciemnym motywie plamy są białe,
+  a tekst czarny.
+- Drobinki tuszu są tylko przy zakrętach, jak od zbyt szybkiej stalówki,
+  i część z nich jest poprawiona białym korektorem; przy kresce doszły
+  krótkie białe poprawki.
+
 ## 1.144.1
 
 - Studium dnia wybiera kurator. Reguły układają listę dziesięciu dzieł
