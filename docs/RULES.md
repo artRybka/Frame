@@ -55,7 +55,7 @@ chciałbym żeby spadła jakość doboru tych propozycji”).
 |---|---|---|
 | 0 | Zestaw wzorcowy i pomiary | 1.145.11 (PLAN 3.3zzz155) |
 | 1 | Noc: porządki przed dobieraniem, budżety czasu | 1.145.12 (PLAN 3.3zzz156) |
-| 2 | Szybkość bez zmiany wyników: przyrostowe scalanie grup (2a: 1.145.13, PLAN 3.3zzz157), dalej według pomiarów z nocy: punkty ORB na dysku, odsiew par, karty jednym przejściem | w toku |
+| 2 | Szybkość bez zmiany wyników: przyrostowe scalanie grup (2a: 1.145.13, PLAN 3.3zzz157); duże obrazy powtórek zostają jako oryginały (2b: 1.145.17, PLAN 3.3zzz161); dalej według pomiarów z nocy | w toku |
 | 3 | Sprzątanie resztek: wskaźnik „Na e-papierze”, martwy próg, nieużywane punkty API | 1.145.14 (PLAN 3.3zzz158) |
 | 4 | Jeden werdykt pokazywania: lista powodów i tabela „miejsce × powód” (4a, bez zmiany wyników: 1.145.15, PLAN 3.3zzz159), potem zmiany widoczne z listą różnic | w toku |
 | 5 | Jedna tożsamość dzieła i autora | |
@@ -102,6 +102,12 @@ reprodukcji i znaczków” zmieni wiersz `STUDIED` i doda miejsce dla kart
 Odkrywaj z katalogu. Zestaw wzorcowy dostał sekcję `kept` (dzieła zachowane
 przez właściciela, które mają powód, i czy mogą dziś zostać Studium dnia),
 z której powstaje lista do tej decyzji.
+
+Etap 2b w skrócie: pomiar pakietu „Powtórki i jakość” z 2026-11-11 pokazał,
+że powtórki to w 80% pobieranie dużych obrazów z muzeów (1403 z 1758 s),
+a zadania z modelami to czekanie na paczki (7 do 9 minut każda). Duży obraz
+pobrany do porównania zostaje więc jako oryginał dzieła
+(`ImageCache.looked_at`), pierwszy do usunięcia przy braku miejsca.
 
 ## Jak sprawdzić zmianę reguł
 

@@ -75,6 +75,9 @@ GONE_FOR = 7 * 86400.0
 #: width: a museum's scan can be 100 MB and 200 megapixels, far more than
 #: the frame's 2560 px, and too large for Pillow to open at all.
 COMMONS_WIDTH = 3840
+#: How far back an original kept only because it was looked at is dated
+#: (:meth:`ImageCache.looked_at`): older than any the owner saw.
+LOOKED_AGE = 365 * 24 * 3600.0
 #: A fragment's picture is kept this large (``kept_side``): a tile of a
 #: Commons tile set is looked at closely, 2560 showed a twelfth of its
 #: width (Mateusz 2026-11-10).
@@ -448,6 +451,23 @@ class ImageCache:
         """A picture downloaded to be looked at, not kept."""
         return self._download(url, urgent)
 
+    def looked_at(self, item: Item) -> Image.Image:
+        """``item``'s original downloaded to be looked at (the twins' large
+        pictures), and kept as the work's original while there is room: it
+        is the file the work's card and the frame would ask for, and the
+        next look reads it from the disk. Dated :data:`LOOKED_AGE` back,
+        it is the first to go when room runs out, before any original the
+        owner saw (:meth:`prune`)."""
+        img = self.sample(display_copy(item))
+        path = self.image_path(item)
+        with contextlib.suppress(OSError), self._lock(f"i:{item.id}"):
+            if not path.is_file():
+                _save_jpeg(img, path, kept_side(item), 92)
+                self._remember_size(item, img)
+                old = time.time() - LOOKED_AGE
+                os.utime(path, (old, old))
+        return img
+
     def ensure_thumb(self, item: Item, urgent: bool = False) -> Path:
         """The thumbnail, downloaded if need be. When its own address fails,
         the original's and the mirrors' are tried; when every one refuses
@@ -650,11 +670,13 @@ class ImageCache:
 
     def used_at(self, item: Item) -> float | None:
         """When the original was last downloaded or asked for (wall clock),
-        None when it is not here."""
+        None when it is not here, or here only because the server looked at
+        it (:meth:`looked_at`)."""
         try:
-            return self.image_path(item).stat().st_mtime
+            used = self.image_path(item).stat().st_mtime
         except OSError:
             return None
+        return used if time.time() - used < LOOKED_AGE else None
 
     def unavailable(self, item: Item) -> bool:
         """Whether the original failed to download lately (and is not here),
