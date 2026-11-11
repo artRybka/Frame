@@ -904,17 +904,14 @@ def test_library_is_scored_again_once(service) -> None:
     work = service.importer.add_upload(
         jpeg_bytes((150, 150, 150)), kind=ItemKind.OWN, title="Grey", artist="Ala"
     )
-    fresh = work.suitability
-    assert fresh is not None and fresh <= 0.5  # no colour of its own
     colours = library.get(work.id).colors
-    # The score and palette of an older version.
-    library.update(work.id, suitability=0.95, colors=colours[:1])
+    # The palette of an older version.
+    library.update(work.id, colors=colours[:1])
     library.set_state(SCORE_KEY, SCORE_VERSION - 1)
     assert service.player.rescore() >= 1
-    assert library.get(work.id).suitability == fresh
     assert library.get(work.id).colors == colours
     assert library.get_state(SCORE_KEY) == SCORE_VERSION
-    library.update(work.id, suitability=0.95)
+    library.update(work.id, colors=colours[:1])
     assert service.player.rescore() == 0  # only once
 
 

@@ -498,8 +498,26 @@ def test_birthdays_of_favourite_artists_go_out_at_ten(
     from frame_server.births import STATE_KEY
 
     notifier.register(PHONE, sandbox=False)
-    _work(service, "met:1", title="Ul", artist="Monet, Claude", favorite=True, year=1891)
-    _work(service, "met:2", title="Most", artist="Monet, Claude", favorite=True, year=1899)
+    # The newest favourite is the picture; fixed times, as two works added
+    # within one clock tick would otherwise come in either order.
+    _work(
+        service,
+        "met:1",
+        title="Ul",
+        artist="Monet, Claude",
+        favorite=True,
+        year=1891,
+        added_at="2026-11-02T00:00:00+00:00",
+    )
+    _work(
+        service,
+        "met:2",
+        title="Most",
+        artist="Monet, Claude",
+        favorite=True,
+        year=1899,
+        added_at="2026-11-01T00:00:00+00:00",
+    )
     _work(service, "met:3", title="Taniec", artist="Henri Matisse", favorite=True)
     _work(service, "met:4", title="Fale", artist="Hokusai", favorite=False)
     service.library.set_state(

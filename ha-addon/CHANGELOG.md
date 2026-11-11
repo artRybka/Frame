@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.145.28
+
+- Porządki: serwer nie liczy już i nie trzyma oceny „na e-papierze”, której
+  od kilku wydań nikt nie czytał. Nic się nie zmienia w tym, co widać.
+
+## 1.145.27
+
+- Studium dzieła, „Droga dzieła”: kropka przystanku wyrasta z samej
+  kreski. Pióro zatrzymuje się w tym miejscu na pół sekundy i dociska,
+  a kreska pęcznieje w kroplę: od swojej grubości do pełnej kropki, raz,
+  bez powiększania i cofania. Kropla ma szpic leżący wstecz na kresce,
+  więc jest jej pogrubieniem, a nie znakiem położonym na wierzchu.
+  Dopiero potem kreska rusza dalej. Przy szybkim przewijaniu postój jest
+  krótszy.
+- Koniec kreski rysuje się wyżej nad paskiem zakładek (64 pt zamiast
+  20), żeby powstawanie kropki było dobrze widać.
+- Plamy pod tekstami nie mają już zacieku spływającego w dół.
+
+## 1.145.26
+
+- Przedmioty i książki, które uchodziły za obrazy, trafiają do „Sztuk
+  innych”: miecze, instrumenty, ubrania, meble, lampy i naczynia do
+  „Ceramika i rzemiosło”, brązy, terakoty, maski i kamee do „Rzeźba”,
+  książki (głównie z Met) do „Rękopisy i miniatury”. Muzea nazwały je
+  inaczej, niż serwer się spodziewał, więc pojawiały się w tematach
+  malarskich, także wśród „Arcydzieł muzeów”. W katalogu to około 870
+  dzieł. Zostają w swoich grupach, nic nie jest usuwane poza jedenastoma
+  okazami przyrodniczymi z Europeany.
+- Dobieranie nie bierze już takich przedmiotów jako obrazów.
+- Brakujące techniki: ksylografie z kopenhaskiego SMK i ekslibrisy są
+  grafiką, odrysy i szkicowniki rysunkiem, greckie plakaty plakatami.
+  Filtr techniki w Szukaj znajduje przez to około 470 dzieł więcej.
+
 ## 1.145.25
 
 - Studium dzieła, „Kolor i światło”: pasek kolorów obrazu olejnego jest

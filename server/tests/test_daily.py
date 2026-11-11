@@ -209,7 +209,6 @@ def _offline() -> httpx.Client:
 
 def _add(service: FrameService, item_id: str, **kw: Any) -> Item:
     kw.setdefault("kind", ItemKind.ARTWORK)
-    kw.setdefault("suitability", 0.7)
     kw.setdefault("width", 3000)
     kw.setdefault("height", 2000)
     item = service.library.upsert(
@@ -230,7 +229,6 @@ def _catalogue(service: FrameService) -> None:
         date_text="ca. 1830–32",
         year=1831,
         description=DESCRIPTION,
-        suitability=0.95,
         terms=["style:ukiyo-e"],
     )
     _add(
@@ -274,7 +272,7 @@ def test_the_work_of_the_day_is_picked_once_and_kept(offline: FrameService) -> N
     _catalogue(offline)
     first = offline.daily.pick(DAY)
     assert first is not None
-    _add(offline, "met:5", title="Better still", artist="Someone Else", suitability=0.99)
+    _add(offline, "met:5", title="Better still", artist="Someone Else")
     again = offline.daily.pick(DAY)
     assert again is not None and again.id == first.id
     assert offline.daily.history() == {DAY.isoformat(): first.id}
@@ -282,8 +280,8 @@ def test_the_work_of_the_day_is_picked_once_and_kept(offline: FrameService) -> N
 
 
 def test_a_dark_masterpiece_can_be_the_work_of_the_day(offline: FrameService) -> None:
-    # No e-paper threshold: a low score left out Rembrandt and Vermeer.
-    _add(offline, "met:9", title="Self-Portrait", artist="Rembrandt", suitability=0.2)
+    # No e-paper score: a low one left out Rembrandt and Vermeer.
+    _add(offline, "met:9", title="Self-Portrait", artist="Rembrandt")
     found = offline.daily.pick(DAY)
     assert found is not None and found.id == "met:9"
 

@@ -12,6 +12,8 @@ A change of what is shown is tried on the whole catalogue, away from the
 frame's server: :func:`catalogue` writes every work as the library has it
 (``GET /api/debug/catalogue``), :func:`works` reads them back and
 :func:`library_of` makes a library of them to ask as the server's is asked.
+Who is who among its artists is asked with what Wikidata told the server of
+them (:func:`artists`, ``GET /api/debug/artists``).
 
 Descriptions only, never a picture, and only works of art from museums and
 other sources: the owner's own photographs are not in it.
@@ -27,6 +29,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from .library.artists import IDS_STATE, PEOPLE_STATE
 from .library.duplicates import same_work
 from .library.images import OWN_SOURCES
 from .library.models import Item, ItemKind
@@ -115,12 +118,28 @@ def works(path: Path) -> list[Item]:
         return [work(json.loads(line)) for line in lines if line.strip()]
 
 
-def library_of(path: Path, db: Path) -> Library:
+def artists(library: Library) -> dict[str, Any]:
+    """Who the catalogue's artists are, as Wikidata told (artist_people.py):
+    ``ids``, each spelling asked with its item and when; ``people``, each
+    item's names and years. With them a library made away from the server
+    knows "Jan Vermeer" from "Jan Vermeer van Haarlem" as the server does."""
+    return {
+        "ids": library.get_state(IDS_STATE, {}),
+        "people": library.get_state(PEOPLE_STATE, {}),
+    }
+
+
+def library_of(path: Path, db: Path, told: Path | None = None) -> Library:
     """A library at ``db`` holding the works of the catalogue saved at
-    ``path``: asked as the server's is, with no server."""
+    ``path``: asked as the server's is, with no server. ``told``: what
+    :func:`artists` said of its artists, saved as JSON."""
     library = Library(db)
     for item in works(path):
         library.upsert(item)
+    if told is not None:
+        said = json.loads(told.read_text(encoding="utf-8"))
+        library.set_state(IDS_STATE, said.get("ids", {}))
+        library.set_state(PEOPLE_STATE, said.get("people", {}))
     return library
 
 

@@ -624,6 +624,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             headers={"Content-Disposition": 'attachment; filename="catalogue.jsonl.gz"'},
         )
 
+    @app.get("/api/debug/artists", dependencies=[Depends(require_owner)])
+    def catalogue_artists(request: Request) -> dict[str, Any]:
+        """Who the catalogue's artists are as Wikidata told (golden.py):
+        with the catalogue, what a change of "the same artist" is tried on."""
+        return golden.artists(request.app.state.service.library)
+
     @app.get("/api/debug/hosts", dependencies=[Depends(require_owner)])
     def host_tally() -> dict[str, Any]:
         """The kept days' requests to each host (sent, turned away,

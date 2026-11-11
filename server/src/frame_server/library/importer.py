@@ -379,21 +379,19 @@ class Importer:
         its size is the work's and stays."""
         with Image.open(self.cache.ensure_thumb(item)) as thumb:
             spread = tint_spread(thumb)
-            colors, tags, score, shares = analyse(thumb, self.palette, spread)
+            colors, tags, shares = analyse(thumb, spread)
         changes: dict[str, Any] = {
             "colors": colors,
             "color_tags": tags,
             "color_shares": shares,
             "tint_spread": spread,
         }
-        if item.suitability is not None:
-            changes["suitability"] = score
         return self.library.update(item.id, **changes) or item.model_copy(update=changes)
 
     def _analysed(self, item: Item) -> Item:
         with Image.open(self.cache.ensure_thumb(item)) as thumb:
             spread = tint_spread(thumb)
-            colors, tags, score, shares = analyse(thumb, self.palette, spread)
+            colors, tags, shares = analyse(thumb, spread)
             width, height = item.width, item.height
             if not width or not height:
                 width, height = thumb.size
@@ -407,7 +405,6 @@ class Importer:
                 "colors": colors,
                 "color_tags": tags,
                 "color_shares": shares,
-                "suitability": score,
                 "tint_spread": spread,
                 "width": width,
                 "height": height,
@@ -573,7 +570,7 @@ class Importer:
         try:
             with self._thumbnail(item) as img:
                 spread = tint_spread(img)
-                _, tags, _, shares = analyse(img, self.palette, spread)
+                _, tags, shares = analyse(img, spread)
                 self._remember_aspect(item, img)
         except (httpx.HTTPError, OSError, ValueError) as err:
             log.info("no thumbnail of %s to look at: %s", item.id, err)

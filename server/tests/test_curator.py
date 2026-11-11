@@ -165,7 +165,6 @@ def _catalogue(service) -> None:
                     medium="Oil on canvas",
                     classification="Painting",
                     year=1650,
-                    suitability=0.6,
                     pooled=True,
                 )
             )
@@ -179,7 +178,6 @@ def _catalogue(service) -> None:
                     medium="Oil on canvas",
                     classification="Painting",
                     year=1890,
-                    suitability=0.6,
                     pooled=True,
                 )
             )

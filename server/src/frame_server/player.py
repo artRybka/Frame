@@ -113,7 +113,8 @@ SET_ASIDE_KEY = "set_aside_dropped"
 #: 6: details by their titles, Openverse's copies of museums' works,
 #: 7: details in file names, photographs described in French).
 SET_ASIDE_VERSION = 7
-#: Version of the colour analysis and score the library's pictures carry.
+#: Version of the colour analysis the library's pictures carry (the key is
+#: of the e-paper score it once went with).
 SCORE_KEY = "suitability_version"
 #: Set once the pictures kept from before lost their blank margins
 #: (``ImageCache.trim_kept``).
@@ -164,6 +165,12 @@ HIGHLIGHTS_KEY = "catalogue_highlights"
 #: "Sztuki inne": the share of the catalogue's works each technique keeps,
 #: so that Szukaj has some at once (Mateusz 2026-11-06: 6 % in all, 5:4:3:3).
 OTHER_ART_SHARES = {PHOTOGRAPHY: 0.02, MANUSCRIPTS: 0.016, SCULPTURE: 0.012, DECORATIVE: 0.012}
+#: A technique is cut back to its share only once it holds this many times
+#: as much: the share is what the server fills up to. When the catalogue
+#: learned that 868 of its "pictures" were objects and books (2026-11-11),
+#: a cut to the share would have deleted 863 works in a night, 277 of them
+#: manuscripts, sculptures and crafts taken in as such.
+OTHER_ART_OVER = 1.5
 #: Works of one technique taken in at a time.
 OTHER_ART_BATCH = 40
 #: Thin cards of "Sztuki inne" filled a night, the thinnest first; each
@@ -1344,10 +1351,11 @@ class Player:
         self.other_art_room(fresh=True)
 
     def trim_other_art(self) -> int:
-        """Keep each technique of "Sztuki inne" within its share of the
-        catalogue (after the limit was lowered, or searches kept many):
-        the ones seen least lately go first, never those the owner kept,
-        liked, framed or put in a playlist. Returns how many went."""
+        """Bring each technique of "Sztuki inne" that grew well over its
+        share of the catalogue (:data:`OTHER_ART_OVER`: after the limit was
+        lowered, or searches kept many) back to it: the ones seen least
+        lately go first, never those the owner kept, liked, framed or put
+        in a playlist. Returns how many went."""
         works = self._catalogue_works()
         protected = self._protected()
         images = self.service.images
@@ -1355,7 +1363,7 @@ class Player:
         for category, share in OTHER_ART_SHARES.items():
             own = [i for i in works if object_category(i) == category]
             over = len(own) - int(share * len(works))
-            if over <= 0:
+            if len(own) <= OTHER_ART_OVER * share * len(works):
                 continue
             spare = [
                 i
@@ -1615,26 +1623,23 @@ class Player:
         analysed: dict[str, dict[str, Any]] = {}
         for item in self.library.query(include_excluded=True)[1]:
             path = images.thumb_path(item)
-            if (item.suitability is None and not item.colors) or not path.is_file():
+            if not item.colors or not path.is_file():
                 continue
             try:
                 with Image.open(path) as img:
                     spread = item.tint_spread
                     if spread is None:
                         spread = tint_spread(img)
-                    colors, tags, value, shares = analyse(img, self.service.palette, spread)
+                    colors, tags, shares = analyse(img, spread)
             except OSError:
                 log.warning("rescore: cannot read %s", path)
                 continue
-            changes: dict[str, Any] = {
+            analysed[item.id] = {
                 "colors": colors,
                 "color_tags": tags,
                 "color_shares": shares,
                 "tint_spread": spread,
             }
-            if item.suitability is not None:
-                changes["suitability"] = value
-            analysed[item.id] = changes
         with self.library.batch():
             for item_id, changes in analysed.items():
                 self.library.update(item_id, **changes)

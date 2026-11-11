@@ -121,6 +121,116 @@ def test_the_catalogue_keeps_a_share_of_other_arts(museums, monkeypatch) -> None
     assert player.trim_other_art() == 11  # 13 of 222 works, 2 wanted
     left = library.query(PlaylistRules(terms=[SCULPTURE]))[1]
     assert len(left) == 2 and liked.id in {i.id for i in left}
+    # A little over its share is left alone: the share is what is filled
+    # up to, and works the catalogue held as pictures may turn out objects.
+    library.upsert(_work(1011, classification="Sculpture", pooled=True))
+    assert player.trim_other_art() == 0
+    assert len(library.query(PlaylistRules(terms=[SCULPTURE]))[1]) == 3
+
+
+def test_museums_types_of_objects_are_no_pictures() -> None:
+    """Types that named neither a picture's technique nor a known kind of
+    "Sztuki inne" passed for pictures: 868 works of the owner's catalogue,
+    20 of them among "Arcydzieła muzeów" (2026-11-11)."""
+
+    def kind(classification: str, title: str = "Work", medium: str = "") -> str | None:
+        return object_category(
+            Item(
+                id="met:1",
+                source="met",
+                source_id="1",
+                title=title,
+                classification=classification,
+                medium=medium,
+            )
+        )
+
+    for crafts in (
+        "Metal-Ornaments",
+        "Aerophone-Reed Vibrated-single reed cylindrical",
+        "Andiron",
+        "Swords",
+        "Sword and scabbard",
+        "Archery Equipment-Crossbows",
+        "Garment",
+        "Musical Instrument",
+        "Tile, Decorative arts",
+        "Decorative Arts",
+        "Miniature room",
+        "Bread plate",
+        "Wood",
+        "Horology",
+        "Robe à la française",
+        "Trigger guard",
+        "Inrō",
+    ):
+        assert kind(crafts) == DECORATIVE, crafts
+    for carved in (
+        "Bronzes",
+        "Terracottas",
+        "Ivories-Elephant",
+        "Gems",
+        "Mask",
+        "Architectural fragment",
+        "Lapidary Work-Agate",
+        "Shabti, Wahneferhotep",
+    ):
+        assert kind(carved) == SCULPTURE, carved
+    assert kind("Metalwork-Gilt Bronze") == DECORATIVE  # as before: metalwork
+    assert kind("Books", medium="Woodcut") == MANUSCRIPTS
+    assert kind("Illustrated Books") == MANUSCRIPTS
+    assert kind("Egyptian Blue-Implements", "The Belles Heures of Jean de France") == MANUSCRIPTS
+    # Pictures still: a type that names a picture's technique, single leaves
+    # of a bound volume, a fashion plate, a copy in tempera of a tomb's wall.
+    for picture in (
+        "Furniture, Drawings",
+        "Ornaments, Prints",
+        "Lighting, Drawings",
+        "Bound Volume",
+        "Fashion plate",
+        "Book page",
+        "Miniatures",
+        "Facsimile, Qenamun (TT 93), chariot, weapons",
+        "Wood engraving",
+        "Miscellaneous-Paintings",
+    ):
+        assert kind(picture) is None, picture
+    assert kind("Miscellaneous-Stone", "Wall painting from Room H", "Fresco") is None
+
+
+def test_types_that_named_no_technique_do() -> None:
+    def fits(key: str, classification: str, title: str = "Work", medium: str = "") -> bool:
+        item = Item(
+            id="smk:1",
+            source="smk",
+            source_id="1",
+            title=title,
+            classification=classification,
+            medium=medium,
+        )
+        return matches(item, PlaylistRules(terms=[key]))
+
+    assert fits("technique:print", "Xylograph")
+    assert fits("technique:print", "ekslibris", medium="cynkotypia kreskowa, papier")
+    assert fits("technique:print", "odbitka typograficzna")
+    assert fits("technique:drawing", "odrys", medium="tusz, piórko, papier")
+    assert fits("technique:drawing", "szkicownik")
+    assert fits("technique:poster", "Αφίσα")
+    # A photograph's print is none ("odbitka fotograficzna").
+    assert not fits("technique:print", "fotografia z natury", medium="odbitka fotograficzna")
+
+
+def test_a_natural_history_specimen_is_no_work() -> None:
+    from frame_server.library.vocabulary import is_document
+
+    skull = Item(
+        id="europeana:1",
+        source="europeana",
+        source_id="1",
+        title="Saccopteryx bilineata skull",
+        classification="specimen",
+    )
+    assert is_document(skull) and object_category(skull) is None
 
 
 def test_other_arts_have_no_study_nor_painting_cards(museums) -> None:  # noqa: F811

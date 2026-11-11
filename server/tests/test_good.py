@@ -141,8 +141,6 @@ def test_a_playlists_cover_is_its_best_works(tmp_path: Path) -> None:
                     f"met:{n}",
                     artist=f"Painter Number{n}",
                     highlight=n >= 6,
-                    # What the e-paper score said counts no more.
-                    suitability=1.0 - n / 10,
                 )
             ).id
             for n in range(8)
