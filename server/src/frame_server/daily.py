@@ -39,14 +39,14 @@ from .ai.study_pick import choose as curate
 from .imaging.align import align
 from .imaging.layout import load_image
 from .library import Item, ItemKind, PlaylistRules
-from .library.artists import is_artist
+from .library.artists import is_artist, made_by, same_hand
 from .library.colors import PALE_INK, ink_share
 from .library.cultures import circle
 from .library.good import copy_quality, sketch_title
 from .library.images import display_copy, said_side
 from .library.models import Note
 from .library.nationality import NATIONALITIES
-from .library.vocabulary import archive_own, artist_matches, is_photograph
+from .library.vocabulary import archive_own, is_photograph
 
 if TYPE_CHECKING:
     from .ai import AiWorker
@@ -147,7 +147,7 @@ def round_anniversary(item: Item, day: date) -> bool:
 def score(item: Item, day: date, taste: list[str], rng: random.Random) -> float:
     value = 0.25 * of_season(item, day)
     value += 0.2 * round_anniversary(item, day)
-    value += 0.15 * bool(taste and item.artist and artist_matches(item.artist, taste))
+    value += 0.15 * bool(taste and item.artist and made_by(item.artist, taste))
     value += 0.1 * (len(item.description) >= 200)
     value -= SKETCH_PENALTY * sketch_title(item)
     value += copy_quality(item)
@@ -324,7 +324,7 @@ class Daily:
             # an hour. (Copies and "Sztuki inne" are not proposed at all.)
             and not archive_own(i)
             and (said_side(i) or MIN_SIDE) >= MIN_SIDE
-            and not (recent_artists and artist_matches(i.artist, recent_artists))
+            and not (recent_artists and made_by(i.artist, recent_artists))
         ]
 
     # -- the curator ---------------------------------------------------------
@@ -353,7 +353,7 @@ class Daily:
         for item in ranked:
             if len(picked) >= SHORTLIST:
                 break
-            if artists and artist_matches(item.artist, artists):
+            if any(same_hand(item.artist, a) for a in artists):
                 continue
             artists.append(item.artist)
             picked.append((item, self._ink(item)))
@@ -741,11 +741,7 @@ def _years_apart(item: Item, other: Item) -> int:
 def same_artist(item: Item, other: Item) -> bool:
     """``other`` is by ``item``'s artist (a known one: two anonymous works
     are not)."""
-    return (
-        is_artist(item.artist)
-        and bool(other.artist)
-        and artist_matches(other.artist, [item.artist])
-    )
+    return is_artist(item.artist) and bool(other.artist) and same_hand(other.artist, item.artist)
 
 
 def country(item: Item) -> str:

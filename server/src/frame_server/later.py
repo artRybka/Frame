@@ -20,8 +20,9 @@ from pydantic import BaseModel
 
 from .ai.jobs import text_hash
 from .library import Item, PlaylistRules
+from .library.artists import made_by
 from .library.models import Note
-from .library.vocabulary import artist_matches, fold
+from .library.vocabulary import fold
 
 if TYPE_CHECKING:
     from .ai.daily import Legacy
@@ -58,7 +59,7 @@ def _words(text: str) -> set[str]:
 def same_work(hit: Item, entry: Legacy) -> bool:
     """``hit`` is by the author named and its title shares a word with the
     title named (the original one in ``search`` or the Polish one)."""
-    if not hit.artist or not artist_matches(hit.artist, [entry.who]):
+    if not hit.artist or not made_by(hit.artist, [entry.who]):
         return False
     named = (_words(entry.search) | _words(entry.title)) - _words(entry.who)
     return bool(named & _words(hit.title))
@@ -100,7 +101,7 @@ class LaterWorks:
             (
                 hit
                 for hit in hits
-                if hit.id != item.id and hit.artist and artist_matches(hit.artist, [entry.who])
+                if hit.id != item.id and hit.artist and made_by(hit.artist, [entry.who])
             ),
             None,
         )
