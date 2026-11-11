@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.144.1
+
+- „Pod lupą”: miniatury na kafelkach są kadrowane bliżej, mają błyszczącą
+  powłokę, której ukośny błysk przesuwa się przy obracaniu telefonu, a cień
+  przy górnych rogach pokazuje, że karta odstaje górą od strony.
+
 ## 1.144.0
 
 - Zadania nocne w Konfiguracji są w pakietach: Utrzymanie katalogu,

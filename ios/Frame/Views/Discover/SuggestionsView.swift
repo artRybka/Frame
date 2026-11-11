@@ -424,9 +424,14 @@ struct WorkTile: View {
     /// The picture a little brighter than the page (`ArtGlow`, when
     /// Konfiguracja allows it), as on the work's card ("Pod lupą",
     /// Mateusz 2026-11-10): fully at the top, fading to a tenth of it at
-    /// the caption (19:15); stronger, held over the top third, with a soft
-    /// shadow behind the picture's part of the card (2026-11-11).
+    /// the caption (19:15); stronger, held over the top third (2026-11-11),
+    /// cropped closer, with a glossy coat and a wedge of shadow at the top.
     var brighten = false
+
+    @Environment(\.colorScheme) private var scheme
+
+    /// How much closer a brightened card crops its picture.
+    static let closer: CGFloat = 1.18
 
     private var shownTitle: String {
         let title = title ?? item.summary.title
@@ -453,6 +458,8 @@ struct WorkTile: View {
                         glowHold: 0.3,
                         glowBoost: 1.35
                     )
+                    // Cropped a little closer than the studies' (2026-11-11).
+                    .scaleEffect(brighten ? Self.closer : 1)
                 }
                 .clipped()
             VStack(alignment: .leading, spacing: 4) {
@@ -474,14 +481,24 @@ struct WorkTile: View {
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.hairline))
-        .background(alignment: .top) {
-            // A brightened card: a soft shadow behind its upper part, the
-            // picture's, gone by the caption (Mateusz 2026-11-11).
+        .overlay {
+            // A glossy coat: a diagonal streak that runs with the phone's
+            // turn, as on the "Ukryte" cover (Mateusz 2026-11-11).
             if brighten {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Theme.card)
-                    .frame(height: 118)
-                    .shadow(color: .black.opacity(0.22), radius: 12, x: 0, y: 6)
+                GlassSheen()
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .followsTilt()
+            }
+        }
+        .background(alignment: .top) {
+            // A brightened card stands off the page at the top: a wedge of
+            // shadow past its top corners, none by the caption (variant B,
+            // Mateusz 2026-11-11).
+            if brighten {
+                LiftWedge()
+                    .fill(.black.opacity(scheme == .dark ? 0.6 : 0.42))
+                    .frame(height: 122)
+                    .blur(radius: 4)
             }
         }
         .accessibilityElement(children: .combine)
