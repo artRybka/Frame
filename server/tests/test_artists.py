@@ -440,7 +440,7 @@ def test_another_person_with_the_name_in_theirs_is_not_the_artist() -> None:
 
 
 def test_two_works_are_by_one_hand_whichever_is_asked_first() -> None:
-    """Until 1.145.27 the other works of an artist were those whose line
+    """Until 1.145.31 the other works of an artist were those whose line
     had every word of this work's: "Hilaire Germain Edgar Degas" found no
     "Edgar Degas", and "Rembrandt" every follower of his."""
     for one, other in (

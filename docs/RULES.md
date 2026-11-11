@@ -59,7 +59,7 @@ chciałbym żeby spadła jakość doboru tych propozycji”).
 | 2 | Szybkość bez zmiany wyników: przyrostowe scalanie grup (2a: 1.145.13, PLAN 3.3zzz157); duże obrazy powtórek zostają jako oryginały (2b: 1.145.17, PLAN 3.3zzz161); dalej według pomiarów z nocy | w toku |
 | 3 | Sprzątanie resztek: wskaźnik „Na e-papierze”, martwy próg, nieużywane punkty API | 1.145.14 (PLAN 3.3zzz158) |
 | 4 | Jeden werdykt pokazywania: lista powodów i tabela „miejsce × powód” (4a, bez zmiany wyników: 1.145.15, PLAN 3.3zzz159); serwer nie proponuje zachowanych detali, kopii i znaczków (4b: 1.145.19, PLAN 3.3zzz163); kolejność „najpierw dobre” w Odkrywaj (4c: 1.145.23, PLAN 3.3zzz168) | 1.145.23 |
-| 5 | Jedna tożsamość dzieła i autora, opis rodzaju: przedmioty i książki do „Sztuk innych” (5a: 1.145.26, PLAN 3.3zzz171); „ten sam autor” jedną regułą (5b); to samo dzieło i najlepsza kopia według obrazu (5c: 1.145.30, PLAN 3.3zzz176) | w toku |
+| 5 | Jedna tożsamość dzieła i autora, opis rodzaju: przedmioty i książki do „Sztuk innych” (5a: 1.145.26, PLAN 3.3zzz171); „ten sam autor” jedną regułą (5b: 1.145.32, PLAN 3.3zzz178); to samo dzieło i najlepsza kopia według obrazu (5c: 1.145.30, PLAN 3.3zzz176) | w toku |
 | 6 | Jedna ścieżka pytań do muzeów i jedna nocna pętla modeli | |
 
 Etapy 0 do 3 nie zmieniają tego, co widać. Przed każdą zmianą widocznych
@@ -192,6 +192,14 @@ Obraz i rysunek albo grafika o tym samym tytule to dwa dzieła
 kopię (`Library.hearts_to_best`), poza kopiami z własnym kadrem. Na
 katalogu: pierwsza kopia zmienia się w 3 grupach z 28, jedna grupa się
 rozdziela, żadne z 132 serc się nie przenosi.
+
+Etap 5b w skrócie (lista różnic pokazana, wybór Mateusza „Wprowadź”):
+o to, czy dwa dzieła są jednego autora, pyta się `artists.same_hand(a, b)`,
+a o to, czy dzieło jest szukanego autora, `artists.made_by(artist, wanted)`.
+Najpierw rozstrzygają dane o autorach (ta sama osoba albo inna osoba według
+Wikidaty), potem zapis: nazwa cofnięta przez muzeum, następca, samo imię
+i inicjały nie są autorem. `vocabulary.artist_matches` (podzbiór słów) jest
+już tylko wstępnym sitem i nigdzie nie rozstrzyga.
 
 ## Jak sprawdzić zmianę reguł
 
