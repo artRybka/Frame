@@ -204,7 +204,12 @@ final class PaintTests: XCTestCase {
         let firstDone = plan.strokes.filter { $0.colour == 0 }.map { Double($0.colour) * DryPlan.apart + $0.part * DryPlan.stroke }.max() ?? 0
         XCTAssertLessThan(firstDone, Double(jatte.count - 1) * DryPlan.apart)
         XCTAssertEqual(DryPlan.scribble(sure: true, index: 0, seed: 5).count, 8)
-        XCTAssertEqual(DryPlan.scribble(sure: false, index: 0, seed: 5).count, 5)
+        // A likely paint is hatched as closely as a sure one, on a narrower patch: never a line or two.
+        let sure = DryPlan.scribble(sure: true, index: 0, seed: 5), likely = DryPlan.scribble(sure: false, index: 0, seed: 5)
+        XCTAssertEqual(likely.count, 6)
+        let span = { (points: [(x: Double, y: Double)]) in (points.map(\.x).max() ?? 0) - (points.map(\.x).min() ?? 0) }
+        XCTAssertLessThan(span(likely), span(sure) - 3)
+        XCTAssertLessThanOrEqual(span(likely) / Double(likely.count - 1), span(sure) / Double(sure.count - 1) + 0.4)
         let tooth = DryPlan.tooth(wide: 40, high: 40, seed: 5)
         XCTAssertEqual(tooth.count, 1600)
         XCTAssertGreaterThanOrEqual(tooth.min() ?? 0, 96)
