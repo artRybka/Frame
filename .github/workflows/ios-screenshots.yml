@@ -98,6 +98,11 @@ jobs:
             capture daily 16 "daily-legacy-$appearance" -scroll legacy
             capture daily 16 "daily-author-$appearance" -scroll author
             capture daily 16 "daily-colour-$appearance" -scroll colour
+            capture daily 16 "daily-colour-oil-$appearance" -scroll colour -paintStyle oil
+            capture daily 16 "daily-colour-oil-mid-$appearance" -scroll colour -paintStyle oil -paintAge 2.4
+            capture daily 16 "daily-colour-water-$appearance" -scroll colour -paintStyle water
+            capture daily 16 "daily-colour-dry-$appearance" -scroll colour -paintStyle dry
+            capture daily 16 "daily-colour-dry-mid-$appearance" -scroll colour -paintStyle dry -paintAge 2.4
             capture daily 16 "daily-sametime-$appearance" -scroll sametime
             capture daily 16 "daily-size-$appearance" -scroll size
             capture daily 16 "daily-size-big-$appearance" -scroll size -realSize 210x163

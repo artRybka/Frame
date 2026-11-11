@@ -93,6 +93,9 @@ struct DailyView: View {
     /// The page's width: the picture takes all of it, whatever loads first.
     @State private var pageWidth: CGFloat = 0
     @State private var zoomed = false
+    /// When each work's palette under "Kolor i światło" began to be
+    /// painted: its paints' swatches follow it.
+    @State private var painted: [String: Date] = [:]
     /// The work as its card has it, for the heart and "…" top right.
     @State private var card: Item?
     @State private var addingToPlaylist = false
@@ -492,9 +495,26 @@ struct DailyView: View {
                 }
                 if !work.colour.isEmpty || !work.item.item.colors.isEmpty || !(work.pigments ?? []).isEmpty {
                     section("Kolor i światło") {
-                        if !work.item.item.colors.isEmpty { PaletteStrip(swatches: work.item.item.colors, height: 26, cornerRadius: 6) }
+                        // Painted in the work's own technique (Mateusz
+                        // 2026-11-11 11:09: „tak żeby paleta odpowiadała
+                        // rzeczywistej technice dzieła”): oil, watercolour
+                        // or pastel; any other keeps the flat palette.
+                        let item = work.item.item
+                        let style = PaintStyle.of(item)
+                        let strokes = style == nil ? 0 : PaintedStrip.shares(item.colors).count
+                        if !item.colors.isEmpty {
+                            if let style, strokes > 0 {
+                                PaintedStrip(swatches: item.colors, style: style, seed: Paint.seed(item.id)) { painted[item.id] = $0 }
+                            } else {
+                                PaletteStrip(swatches: item.colors, height: 26, cornerRadius: 6)
+                            }
+                        }
                         if !work.colour.isEmpty { prose(work.colour) }
-                        if let pigments = work.pigments, !pigments.isEmpty { self.pigments(pigments) }
+                        if let pigments = work.pigments, !pigments.isEmpty {
+                            // The paints come after the bar; with no bar, at once.
+                            self.pigments(pigments, style: style, seed: Paint.seed(item.id), strokes: strokes,
+                                          began: strokes > 0 ? painted[item.id] : .distantPast)
+                        }
                     }
                     .id("colour")
                 }
@@ -793,23 +813,35 @@ struct DailyView: View {
 
     /// The paints the work is made with: each on its own swatch, its name,
     /// where it is in the picture and a line about it.
-    private func pigments(_ pigments: [DailyWork.Pigment]) -> some View {
+    /// `style`: the work's technique, each swatch painted in it (nil: a
+    /// plain round one); `began`: when the palette bar's first of
+    /// `strokes` strokes began (nil: not yet), the swatches after it.
+    private func pigments(_ pigments: [DailyWork.Pigment], style: PaintStyle? = nil, seed: Int = 0, strokes: Int = 0,
+                          began: Date? = nil) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            ForEach(pigments, id: \.name) { pigment in
+            ForEach(Array(pigments.enumerated()), id: \.element.name) { index, pigment in
                 HStack(alignment: .top, spacing: 12) {
-                    Circle()
-                        .fill(Color(hexString: pigment.hex) ?? Theme.mat)
-                        .overlay(Circle().strokeBorder(.black.opacity(0.12), lineWidth: 0.5))
-                        // A likely paint, not one the sources name: a dashed ring round it.
-                        .overlay {
-                            if pigment.sure == false {
-                                Circle()
-                                    .strokeBorder(Theme.inkSoft, style: StrokeStyle(lineWidth: 1, dash: [2.5, 2]))
-                                    .padding(-3)
-                            }
+                    Group {
+                        if let style {
+                            let lead = style.swatchDelay(colours: strokes, index: index)
+                            PaintedSwatch(hex: pigment.hex, sure: pigment.sure != false, index: index, style: style, seed: seed,
+                                          after: began?.addingTimeInterval(lead), lead: lead)
+                        } else {
+                            Circle()
+                                .fill(Color(hexString: pigment.hex) ?? Theme.mat)
+                                .overlay(Circle().strokeBorder(.black.opacity(0.12), lineWidth: 0.5))
                         }
-                        .frame(width: 26, height: 26)
-                        .padding(.top, 1)
+                    }
+                    // A likely paint, not one the sources name: a dashed ring round it.
+                    .overlay {
+                        if pigment.sure == false {
+                            Circle()
+                                .strokeBorder(Theme.inkSoft, style: StrokeStyle(lineWidth: 1, dash: [2.5, 2]))
+                                .padding(style == nil ? -3 : -4)
+                        }
+                    }
+                    .frame(width: 26, height: 26)
+                    .padding(.top, 1)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(pigment.name)
                             .font(.serif(15, weight: .semibold))
