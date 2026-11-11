@@ -2066,7 +2066,8 @@ def browse_catalogue(
 ) -> tuple[list[Item], bool]:
     total, items = library.query(
         found.rules(),
-        sort="suitability",
+        sort="good",
+        seed=date.today().toordinal(),
         offset=(page - 1) * limit,
         limit=limit,
         proposing=True,

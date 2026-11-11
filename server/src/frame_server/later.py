@@ -94,7 +94,7 @@ class LaterWorks:
             if kept[1] is None or (found is not None and found not in self.library.hidden()):
                 return found
         hits = self.library.query(
-            PlaylistRules(query=entry.search), sort="suitability", limit=5, proposing=True
+            PlaylistRules(query=entry.search), sort="relevance", limit=5, proposing=True
         )[1]
         copy = next(
             (

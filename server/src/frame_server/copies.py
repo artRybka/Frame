@@ -37,8 +37,8 @@ from .library.hosts import as_asked
 from .library.images import IMAGE_MAX, display_copy, own_copy
 from .library.likeness import WHOLE_TURN, Fit, keypoints, whole_work
 from .library.verdict import Place, against
-from .library.vocabulary import is_photograph
-from .sharper import Quality, archive_own, colour_note, tone
+from .library.vocabulary import archive_own, is_photograph
+from .sharper import Quality, colour_note, tone
 
 if TYPE_CHECKING:
     from .sharper import Sharper

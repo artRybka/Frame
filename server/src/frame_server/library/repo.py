@@ -27,6 +27,7 @@ from typing import Any, Literal, NamedTuple
 from .artists import IDS_STATE, PEOPLE_STATE, is_artist, known_names, learn, made_by
 from .colors import has_colours, shown_tags
 from .duplicates import Works, dedupe, regroups
+from .good import good_first, worth
 from .models import (
     MINE,
     MINE_FAVORITES,
@@ -99,7 +100,8 @@ class _Counted(NamedTuple):
 
 
 def _cover(items: list[Item]) -> tuple[list[str], list[ColorSwatch]]:
-    """A playlist's cover: its four most suitable works, and their colours."""
+    """A playlist's cover: its four best works (:func:`.good.worth`; until
+    1.145.23 by the e-paper score), and their colours."""
     best = sort_items(items, "suitability")[:4]
     return [i.id for i in best], cover_colors(best)
 
@@ -151,8 +153,11 @@ def sent_key(user_id: str) -> str:
     return SENT_KEY if user_id == OWNER_ID else f"{SENT_KEY}:{user_id}"
 
 
+#: "good": as the server proposes (:func:`.good.good_first`, ``seed`` the
+#: day). "suitability" is what the app calls the best first: a search's by
+#: relevance, anything else by :func:`.good.worth` (once the e-paper score).
 SortKey = Literal[
-    "recent", "title", "artist", "year", "random", "suitability", "shown", "relevance"
+    "recent", "title", "artist", "year", "random", "suitability", "shown", "relevance", "good"
 ]
 
 SCHEMA = """
@@ -458,7 +463,7 @@ def sort_items(items: list[Item], sort: SortKey, seed: int = 0) -> list[Item]:
     if sort == "year":
         return sorted(items, key=lambda i: (i.year is None, i.year or 0))
     if sort == "suitability":
-        return sorted(items, key=lambda i: -(i.suitability or 0))
+        return sorted(items, key=lambda i: -worth(i))
     if sort == "shown":
         return sorted(items, key=lambda i: i.last_shown_at or "", reverse=True)
     if sort == "random":
@@ -1279,7 +1284,7 @@ class Library:
         kept = (
             rules.model_dump_json(),
             sort,
-            seed if sort == "random" else 0,
+            seed if sort in ("random", "good") else 0,
             include_excluded,
             proposing,
             user,
@@ -1400,6 +1405,12 @@ class Library:
             return items
         if sort == "relevance":
             return sorted(items, key=relevance(rules))
+        if sort == "good":
+            rank = relevance(rules) if _searches(rules) else None
+            # How well a work fits what was asked still comes before how
+            # good it is: by the artist asked for, where the words are, tagged.
+            fits = (lambda item: rank(item)[:3]) if rank is not None else None
+            return good_first(items, seed, rules.model_dump_json(), fits)
         return sort_items(items, sort, seed)
 
     def facets(self) -> Facets:

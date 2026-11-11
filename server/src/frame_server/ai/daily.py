@@ -584,8 +584,6 @@ def request_text(item: Item, context: Context) -> str:
     if item.colors:
         palette = ", ".join(f"{c.hex} ({c.weight:.0%})" for c in item.colors[:6])
         lines.append(f"Kolory (analiza serwera): {palette}")
-    if item.suitability is not None:
-        lines.append(f"Ocena na e-papier (serwer, 0–1): {item.suitability:.2f}")
     facts = context.facts
     if facts and facts.title_pl:
         lines.append(f"Polski tytuł z Wikidata: {facts.title_pl}")

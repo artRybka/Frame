@@ -57,7 +57,7 @@ chciałbym żeby spadła jakość doboru tych propozycji”).
 | 1 | Noc: porządki przed dobieraniem, budżety czasu | 1.145.12 (PLAN 3.3zzz156) |
 | 2 | Szybkość bez zmiany wyników: przyrostowe scalanie grup (2a: 1.145.13, PLAN 3.3zzz157); duże obrazy powtórek zostają jako oryginały (2b: 1.145.17, PLAN 3.3zzz161); dalej według pomiarów z nocy | w toku |
 | 3 | Sprzątanie resztek: wskaźnik „Na e-papierze”, martwy próg, nieużywane punkty API | 1.145.14 (PLAN 3.3zzz158) |
-| 4 | Jeden werdykt pokazywania: lista powodów i tabela „miejsce × powód” (4a, bez zmiany wyników: 1.145.15, PLAN 3.3zzz159); serwer nie proponuje zachowanych detali, kopii i znaczków (4b: 1.145.19, PLAN 3.3zzz163); kolejność „najpierw dobre” w Odkrywaj (4c) z listą różnic | w toku |
+| 4 | Jeden werdykt pokazywania: lista powodów i tabela „miejsce × powód” (4a, bez zmiany wyników: 1.145.15, PLAN 3.3zzz159); serwer nie proponuje zachowanych detali, kopii i znaczków (4b: 1.145.19, PLAN 3.3zzz163); kolejność „najpierw dobre” w Odkrywaj (4c: 1.145.23, PLAN 3.3zzz168) | 1.145.23 |
 | 5 | Jedna tożsamość dzieła i autora | |
 | 6 | Jedna ścieżka pytań do muzeów i jedna nocna pętla modeli | |
 
@@ -126,6 +126,33 @@ pyta `images.said_side(item)` (None: nie wiadomo), nigdy `item.width`.
 Studium dnia przez to nie wybierało z ponad połowy katalogu. Do etapu 5
 zostaje ten sam błąd w powtórkach (`twins._surely_whole`) i czytnik
 Cleveland.
+
+Etap 4c w skrócie (cel Mateusza: „Dzieła w Odkrywaj mają być po prostu
+dobre”; lista różnic pokazana, jego wybór „Wprowadź”): tam, gdzie serwer
+proponuje (karty i strony tematów Odkrywaj, Propozycje dnia), o kolejności
+decyduje `library/good.py`, nie alfabet autorów i nie ocena e-papieru.
+`worth(item)` liczy to, co katalog wie o dziele: arcydzieło muzeum, znany
+autor, opis, jakość kopii (tylko tam, gdzie muzeum podaje rozmiar), minus
+szkic w tytule i slajd archiwum. `good_first` dodaje losowanie dnia (inne
+w każdym temacie) i odsuwa każdą kolejną pracę tej samej osoby i, mniej,
+tego samego muzeum. To, jak dzieło pasuje do pytania (autor, miejsce
+słowa, tag), dalej idzie przed oceną. Pyta się `Library.query(sort="good",
+seed=dzień)`. Szukaj zostaje przy trafności, Studium dnia przy własnej
+puli i własnej ocenie. Zmiana wagi w `good.py` to zmiana tego, co widać:
+najpierw lista różnic z katalogu (`golden.library_of`).
+
+| Pierwsza strona tematu (71 tematów, 24 dzieła) | Przed | Po |
+|---|---|---|
+| autorów | 7,9 | 14,5 |
+| dzieł bez autora | 6,8 | 2,5 |
+| muzeów | 4,3 | 5,6 |
+| arcydzieł muzeów | 12,4 | 11,8 |
+| najwięcej prac jednej osoby | 13,4 | 5,9 |
+
+Do etapu 5 zostaje z tej listy: „Rembrandt Peale” w malarstwie
+holenderskim, dzieła bez tytułu, Straż nocna z dwóch muzeów obok siebie,
+statuetki i miecze Met nierozpoznane jako rzeźba i rzemiosło. Osobno do
+sprzątnięcia: samo pole `Item.suitability` i jego liczenie.
 
 ## Jak sprawdzić zmianę reguł
 

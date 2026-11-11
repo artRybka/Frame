@@ -126,20 +126,23 @@ PAGES_KEPT = 400
 
 #: A theme's page of the catalogue for one person (:func:`_page_key`).
 PageKey = tuple[str, str, int, str]
+#: What a page was worked out from (:func:`_page_stamp`).
+PageStamp = tuple[int, ...]
 
 
 class _ThemePages:
     """One library's pages of themes as last worked out
-    (:func:`catalogue_page`): (catalogue stamp, how many works fit, the
-    page's works) by :func:`_page_key`."""
+    (:func:`catalogue_page`): (what it was worked out from,
+    :func:`_page_stamp`; how many works fit; the page's works) by
+    :func:`_page_key`."""
 
     def __init__(self) -> None:
         self.lock = threading.Lock()
-        self.kept: OrderedDict[PageKey, tuple[tuple[int, int], int, list[Item]]] = OrderedDict()
+        self.kept: OrderedDict[PageKey, tuple[PageStamp, int, list[Item]]] = OrderedDict()
         #: Pages being worked out again in the background.
         self.working: set[PageKey] = set()
 
-    def keep(self, key: PageKey, stamp: tuple[int, int], total: int, items: list[Item]) -> None:
+    def keep(self, key: PageKey, stamp: PageStamp, total: int, items: list[Item]) -> None:
         with self.lock:
             self.kept[key] = (stamp, total, items)
             self.kept.move_to_end(key)
@@ -343,8 +346,10 @@ def work_out_cards(svc: FrameService, force: bool = False) -> dict[str, tuple[in
         others = [*mine.values(), *THEMES, *OTHER_ART_THEMES, *colour_themes(svc.library, day)]
         pages = _pages_of(svc.library)
         for found in [*weekly, *others]:
-            stamp = svc.library.catalogue_stamp()
-            total, items = svc.library.query(found.rules(), sort="suitability", proposing=True)
+            stamp = _page_stamp(svc, day)
+            total, items = svc.library.query(
+                found.rules(), sort="good", seed=day.toordinal(), proposing=True
+            )
             cards[found.key] = (total, _cover(items, f"{today}:{found.key}"))
             # The same query is the theme's first page: its set opens at once.
             pages.keep(_page_key(found, 1, viewer_id()), stamp, total, items[:ROW_SIZE])
@@ -647,14 +652,22 @@ def _page_key(found: Theme, page: int, user: str) -> PageKey:
     return (found.key, found.rules().model_dump_json(), page, user)
 
 
+def _page_stamp(svc: FrameService, day: date) -> PageStamp:
+    """What a theme's page was worked out from: the catalogue and the day
+    (the good works come in another order each day, ``library.good``)."""
+    return (*svc.library.catalogue_stamp(), day.toordinal())
+
+
 def _work_out_page(svc: FrameService, found: Theme, page: int, user: str) -> tuple[int, list[Item]]:
     pages = _pages_of(svc.library)
     key = _page_key(found, page, user)
     try:
-        stamp = svc.library.catalogue_stamp()
+        day = date.today()
+        stamp = _page_stamp(svc, day)
         total, items = svc.library.query(
             found.rules(),
-            sort="suitability",
+            sort="good",
+            seed=day.toordinal(),
             offset=(page - 1) * ROW_SIZE,
             limit=ROW_SIZE,
             user=user,
@@ -672,15 +685,16 @@ def catalogue_page(svc: FrameService, found: Theme, page: int = 1) -> tuple[list
     whether more follow. A query of the whole catalogue takes seconds on the
     NAS (Mateusz 2026-11-06: a set took ~10 s to show its first works), so
     the page as last worked out comes at once, also after the catalogue
-    changed (works the server adds in the background); it is worked out
-    again in the background then, for the next visit. The cards
+    changed (works the server adds in the background) and on another day
+    (the night works out every theme's first page of the day); it is worked
+    out again in the background then, for the next visit. The cards
     (:func:`work_out_cards`) work out every theme's first page."""
     pages = _pages_of(svc.library)
     user = viewer_id()
     key = _page_key(found, page, user)
     with pages.lock:
         kept = pages.kept.get(key)
-        stale = kept is not None and kept[0] != svc.library.catalogue_stamp()
+        stale = kept is not None and kept[0] != _page_stamp(svc, date.today())
         again = stale and key not in pages.working
         if again:
             pages.working.add(key)
@@ -731,8 +745,11 @@ def _new_artist(svc: FrameService) -> ThemeCard | None:
     found = new_artist_of_the_week(svc.library, date.today())
     if found is None:
         return None
-    total, items = svc.library.query(found.rules(), sort="suitability", proposing=True)
-    cover = _cover(items, f"{date.today().isoformat()}:{found.key}")
+    day = date.today()
+    total, items = svc.library.query(
+        found.rules(), sort="good", seed=day.toordinal(), proposing=True
+    )
+    cover = _cover(items, f"{day.isoformat()}:{found.key}")
     with _cards_lock:
         stamp, cards = _cards
         _cards = (stamp, {**cards, found.key: (total, cover)})
