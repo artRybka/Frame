@@ -102,6 +102,12 @@ URGENT_LOCK_WAIT = 3.0
 #: (:func:`~frame_server.imaging.margins.trim_margins`), a white wall or a
 #: snowy field at a photo's edges is the photo.
 OWN_SOURCES = ("upload", "icloud", "cli", "frame")
+#: Sources whose readers say how large a work's picture is. For a work of
+#: any other the size kept is its thumbnail's (``Importer._analysed``): the
+#: picture's proportions, and no word on how large the original is (the
+#: Met's 600 px, the Rijksmuseum's 640: 46 000 works of the catalogue,
+#: 2026-11-11). Cleveland says its web picture's size, not the one shown.
+SAY_SIZE = frozenset({*SIZED, "aic", "wmc", "wikiart", "openverse", *OWN_SOURCES})
 #: Where :meth:`ImageCache._download` leaves the size of the file it read,
 #: in the picture's ``info``.
 BYTES = "frame_bytes"
@@ -249,6 +255,17 @@ def _trimmed(item_id: str) -> bool:
     owner's own (:data:`OWN_SOURCES`), nor a fragment of a work (a tile
     must keep its edges to lie in its place on the whole)."""
     return item_id.partition(":")[0] not in OWN_SOURCES and split_part(item_id) is None
+
+
+def said_side(item: Item) -> int | None:
+    """The long side of the picture ``item`` is shown from, when it is
+    known: a sharper copy's, else the one its source says; None for a
+    source that says none (:data:`SAY_SIZE`)."""
+    if item.sharper is not None:
+        return max(item.sharper.width, item.sharper.height)
+    if item.source in SAY_SIZE and item.width and item.height:
+        return max(item.width, item.height)
+    return None
 
 
 def display_copy(item: Item) -> str:

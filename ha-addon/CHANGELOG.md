@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.21
+## 1.145.22
 
 - Studium dzieła, „Kolor i światło”: próbki farb malowane w technice
   dzieła są zawsze duże, także przy farbach tylko prawdopodobnych
@@ -11,6 +11,16 @@
   paska kolorów, a nie po jego końcu, kolejne idą po sobie szybciej, a
   każda zaczyna się już wtedy, gdy wsuwa się na ekran od dołu, więc obok
   nazwy farby jest od razu.
+
+## 1.145.21
+
+- Studium dnia wybiera teraz także spośród dzieł Metropolitan Museum,
+  Rijksmuseum, Muzeum Narodowego w Warszawie i w Krakowie, Luwru, Getty,
+  Paris Musées i Cleveland. Te muzea nie podają rozmiaru obrazu, serwer
+  zapisywał im rozmiar miniatury i odrzucał je jako za małe skany: odpadała
+  ponad połowa dzieł, w tym prawie wszystkie, które muzea same oznaczają
+  jako najważniejsze. Kryteria wyboru się nie zmieniają, prawdziwie małe
+  skany dalej nie zostają Studium dnia.
 
 ## 1.145.20
 
