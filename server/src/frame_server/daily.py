@@ -34,7 +34,7 @@ from PIL import Image
 from .ai.daily import KIND, DailyJob, Detail, Essay, Seen
 from .ai.jobs import text_hash
 from .ai.study import KIND as STUDY
-from .ai.study_pick import Choice
+from .ai.study_pick import Choice, copy_key
 from .ai.study_pick import choose as curate
 from .imaging.align import align
 from .imaging.layout import load_image
@@ -45,7 +45,8 @@ from .library.cultures import circle
 from .library.images import display_copy
 from .library.models import Note
 from .library.nationality import NATIONALITIES
-from .library.vocabulary import artist_matches, is_photograph, other_art
+from .library.vocabulary import artist_matches, is_grey_copy, is_photograph, other_art
+from .sharper import WEAK_SIDE, archive_own
 
 if TYPE_CHECKING:
     from .ai import AiWorker
@@ -82,6 +83,9 @@ SHORTLISTS = 2
 #: shortlisted again. {id: what it saw}, the newest last.
 UNFIT_KEY = "daily_unfit"
 UNFIT_MAX = 5000
+#: Works the curator set aside for their photograph alone: {id: the copy
+#: shown then (``study_pick.copy_key``)}; back once another copy is shown.
+POOR_COPY_KEY = "daily_poor_copy"
 #: The curator's choice of each day: {day: {"item", "reason", "unfit"}}.
 CURATED_KEY = "daily_curated"
 #: A title that calls the work a sketch or studies (the rules put it last;
@@ -94,6 +98,13 @@ SKETCH_TITLE = re.compile(
 #: What a sketch's title and a pale sheet take from a work's score.
 SKETCH_PENALTY = 0.3
 PALE_PENALTY = 0.3
+#: The copy's quality (Mateusz 2026-11-11: "bierz pod uwagę także jakość
+#: kopii dzieła"): a picture as long as the frame's side (2560 px) shows
+#: the work whole, one shorter than ``sharper.WEAK_SIDE`` is worth a sharper
+#: copy, which may not be found.
+FRAME_SIDE = 2560
+SHARP_BONUS = 0.15
+WEAK_PENALTY = 0.25
 #: "W tym samym czasie": works made a few years either side of the work,
 #: elsewhere and by others (Mateusz 2026-11-02); one row scrolled sideways
 #: since 2026-11-03 ("pokazuj więcej dzieł").
@@ -148,7 +159,28 @@ def score(item: Item, day: date, taste: list[str], rng: random.Random) -> float:
     value += 0.15 * bool(taste and item.artist and artist_matches(item.artist, taste))
     value += 0.1 * (len(item.description) >= 200)
     value -= SKETCH_PENALTY * sketch_title(item)
+    value += copy_quality(item)
     return value + rng.uniform(0, 0.35)
+
+
+def copy_side(item: Item) -> int | None:
+    """The long side of the picture the work is shown from (a sharper copy
+    found elsewhere, else its museum's), None when not known."""
+    if item.sharper is not None:
+        return max(item.sharper.width, item.sharper.height)
+    if item.width and item.height:
+        return max(item.width, item.height)
+    return None
+
+
+def copy_quality(item: Item) -> float:
+    """What the copy's size adds to (or takes from) a work's score."""
+    side = copy_side(item)
+    if side is None:
+        return 0.0
+    if side >= FRAME_SIDE:
+        return SHARP_BONUS
+    return -WEAK_PENALTY if side < WEAK_SIDE else 0.0
 
 
 def sketch_title(item: Item) -> bool:
@@ -269,14 +301,20 @@ class Daily:
         seed = day.toordinal() + 1_000_003 * len(skipped)
         drawn = self.library.query(rules, sort="random", seed=seed, limit=POOL)[1]
         unfit = self.unfit()
+        poor = self.poor_copies()
         pool = [
             i
             for i in drawn
             if i.id not in recent
             and i.id not in unfit
+            and poor.get(i.id) != copy_key(i)
             and i.look is None
             and i.artist
             and not is_photograph(i)
+            # A black-and-white photograph of a work in colour, an art
+            # archive's old slide: no copy to look at for a quarter of an hour.
+            and not is_grey_copy(i)
+            and not archive_own(i)
             and not other_art(i)  # "Sztuki inne" keep to their own group
             and max(i.width or MIN_SIDE, i.height or MIN_SIDE) >= MIN_SIDE
             and not (recent_artists and artist_matches(i.artist, recent_artists))
@@ -314,6 +352,11 @@ class Daily:
     def unfit(self) -> dict[str, str]:
         """The works the curator set aside, with what it saw in each."""
         return dict(self.library.get_state(UNFIT_KEY, {}))
+
+    def poor_copies(self) -> dict[str, str]:
+        """The works the curator set aside for their photograph, with the
+        copy it saw."""
+        return dict(self.library.get_state(POOR_COPY_KEY, {}))
 
     def curated(self) -> dict[str, dict[str, object]]:
         """The curator's choice by day (ISO dates)."""
@@ -356,14 +399,20 @@ class Daily:
             unfit = self.unfit()
             unfit.update(choice.unfit)
             self.library.set_state(UNFIT_KEY, dict(list(unfit.items())[-UNFIT_MAX:]))
+        if choice.poor_copy:
+            poor = self.poor_copies()
+            poor.update(choice.poor_copy)
+            self.library.set_state(POOR_COPY_KEY, dict(list(poor.items())[-UNFIT_MAX:]))
         log.info(
-            "study of the day %s: curator chose %s (%s), set aside %d of %d: %s",
+            "study of the day %s: curator chose %s (%s), set aside %d of %d: %s; "
+            "for the photograph: %s",
             day,
             choice.item.id if choice.item else "nothing",
             choice.reason,
-            len(choice.unfit),
+            len(choice.unfit) + len(choice.poor_copy),
             len(shortlist),
             "; ".join(f"{k}: {v}" for k, v in choice.unfit.items()),
+            ", ".join(choice.poor_copy) or "none",
         )
         if choice.item is None:
             return choice
@@ -372,6 +421,7 @@ class Daily:
             "item": choice.item.id,
             "reason": choice.reason,
             "unfit": sorted(choice.unfit),
+            "poor_copy": sorted(choice.poor_copy),
         }
         cutoff = (day - timedelta(days=KEEP_DAYS)).isoformat()
         self.library.set_state(

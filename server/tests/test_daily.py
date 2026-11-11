@@ -1505,6 +1505,7 @@ def test_the_curator_sets_aside_a_sketchbook_page(tmp_path: Path) -> None:
         "item": "met:3",
         "reason": "Najwięcej do oglądania.",
         "unfit": ["met:6"],
+        "poor_copy": [],
     }
     # The sheet set aside is never shortlisted again.
     asked = _curator(fake, {"works": [], "choice": 1, "reason": "Pierwsze."})
@@ -1542,3 +1543,79 @@ def test_without_an_answer_the_rules_choose(tmp_path: Path) -> None:
     asked = _curator(fake, {"works": [], "choice": 1, "reason": "-"})
     assert svc.daily.pick(DAY + timedelta(days=1)) is not None
     assert asked == []
+
+
+def test_the_copy_counts_in_the_pick(offline: FrameService) -> None:
+    # A small picture goes last, one as long as the frame's side first.
+    _add(offline, "met:1", title="Small", artist="A Painter", width=1400, height=1000)
+    _add(offline, "met:2", title="Middling", artist="B Painter", width=2200, height=1600)
+    _add(offline, "met:3", title="Large", artist="C Painter", width=4000, height=3000)
+    small, middling, large = (offline.library.get(f"met:{n}") for n in (1, 2, 3))
+    assert small and middling and large
+    assert daily_module.copy_quality(small) < daily_module.copy_quality(middling)
+    assert daily_module.copy_quality(middling) < daily_module.copy_quality(large)
+    # A sharper copy found elsewhere is what counts.
+    copy = SharperCopy(
+        url="https://x/1.jpg", item_id="wmc:1", source="wmc", width=5000, height=4000
+    )
+    sharper = small.model_copy(update={"sharper": copy})
+    assert daily_module.copy_side(sharper) == 5000
+    assert daily_module.copy_quality(sharper) == daily_module.copy_quality(large)
+    unknown = small.model_copy(update={"width": None, "height": None})
+    assert daily_module.copy_quality(unknown) == 0.0
+
+
+def test_a_grey_copy_is_never_the_study_of_the_day(offline: FrameService) -> None:
+    _add(
+        offline,
+        "met:1",
+        title="Starry Night",
+        artist="Vincent van Gogh",
+        classification="Paintings",
+        medium="Oil on canvas",
+        tint_spread=0.001,
+    )
+    _add(offline, "met:2", title="The Harvesters", artist="Pieter Bruegel", year=1565)
+    for n in range(5):
+        found = offline.daily.pick(DAY + timedelta(days=40 * n))
+        assert found is None or found.id != "met:1"
+
+
+def test_a_poor_photograph_comes_back_with_another_copy(tmp_path: Path) -> None:
+    _, svc, fake = _claude(tmp_path)
+    _add(svc, "met:1", title="Blurred", artist="A Painter", width=3000, height=2000)
+    _add(svc, "met:2", title="Sharp", artist="B Painter", width=3000, height=2000)
+    asked = _curator(fake, {"works": [], "choice": 0, "reason": "-"})
+    svc.daily.pick(DAY)
+    numbers = _numbers(asked[0])
+    assert "Photograph: 3000 × 2000 px" in asked[0]["messages"][0]["content"][0]["text"]
+    svc.library.set_state(HISTORY_KEY, {})
+    answer = {
+        "works": [
+            {
+                "n": numbers["Blurred"],
+                "what": "Obraz",
+                "fit": False,
+                "photo": True,
+                "why": "nieostre",
+            }
+        ],
+        "choice": numbers["Sharp"],
+        "reason": "Ostre.",
+    }
+    _curator(fake, answer)
+    found = svc.daily.pick(DAY)
+    assert found is not None and found.id == "met:2"
+    assert svc.daily.poor_copies() == {"met:1": ""} and svc.daily.unfit() == {}
+    # Not shortlisted while its photograph is the same ...
+    asked = _curator(fake, {"works": [], "choice": 0, "reason": "-"})
+    svc.daily.pick(DAY + timedelta(days=400))
+    assert "Blurred" not in _numbers(asked[0])
+    # ... and back once a sharper copy is shown.
+    copy = SharperCopy(
+        url="https://x/1.jpg", item_id="wmc:1", source="wmc", width=5000, height=4000
+    )
+    svc.library.update("met:1", sharper=copy)
+    asked = _curator(fake, {"works": [], "choice": 0, "reason": "-"})
+    svc.daily.pick(DAY + timedelta(days=800))
+    assert "Blurred" in _numbers(asked[0])
