@@ -57,7 +57,7 @@ chciałbym żeby spadła jakość doboru tych propozycji”).
 | 1 | Noc: porządki przed dobieraniem, budżety czasu | 1.145.12 (PLAN 3.3zzz156) |
 | 2 | Szybkość bez zmiany wyników: przyrostowe scalanie grup (2a: 1.145.13, PLAN 3.3zzz157); duże obrazy powtórek zostają jako oryginały (2b: 1.145.17, PLAN 3.3zzz161); dalej według pomiarów z nocy | w toku |
 | 3 | Sprzątanie resztek: wskaźnik „Na e-papierze”, martwy próg, nieużywane punkty API | 1.145.14 (PLAN 3.3zzz158) |
-| 4 | Jeden werdykt pokazywania: lista powodów i tabela „miejsce × powód” (4a, bez zmiany wyników: 1.145.15, PLAN 3.3zzz159), potem zmiany widoczne z listą różnic | w toku |
+| 4 | Jeden werdykt pokazywania: lista powodów i tabela „miejsce × powód” (4a, bez zmiany wyników: 1.145.15, PLAN 3.3zzz159); serwer nie proponuje zachowanych detali, kopii i znaczków (4b: 1.145.19, PLAN 3.3zzz163); kolejność „najpierw dobre” w Odkrywaj (4c) z listą różnic | w toku |
 | 5 | Jedna tożsamość dzieła i autora | |
 | 6 | Jedna ścieżka pytań do muzeów i jedna nocna pętla modeli | |
 
@@ -89,7 +89,7 @@ same, tylko nazywają miejsce:
 |---|---|---|---|
 | `LISTED` | katalog przeglądany (Ulubione, playlisty, wszystko), słowa kluczowe, polskie teksty | wszystkie powody | nic |
 | `FOUND` | katalog pytany słowem, autorem albo filtrem | wszystkie powody | „Sztuki inne”, znaczek, dokument, szare zdjęcie z archiwum sztuki |
-| `STUDIED` | pula Studium dnia | wszystkie powody | „Sztuki inne”, czarno-białe kopie |
+| `PROPOSED` | to, co serwer proponuje sam: Studium dnia, karty i strony Odkrywaj z katalogu, Propozycje dnia, inne dzieła autora (od 1.145.19; wcześniej `STUDIED`, tylko pula Studium dnia, a zachowane: „Sztuki inne” i czarno-białe kopie) | wszystkie powody | wszystkie powody |
 | `MUSEUM` | odpowiedź muzeum przy czytaniu | kopie | kopie |
 | `SOUGHT` | Szukaj w muzeach, karty Odkrywaj z muzeów, dobieranie | wszystkie powody | wszystkie powody |
 | `TIDIED` | Strażnik, Nocny przegląd | wszystkie powody | wszystkie powody |
@@ -97,11 +97,19 @@ same, tylko nazywają miejsce:
 
 Powód z grupy „Sztuki inne” nie liczy się, gdy pytanie prosi o tę
 kategorię (`asked`). Zmiana tego, co widać, to odtąd zmiana komórki tej
-tabeli: decyzja Mateusza „serwer sam nie proponuje zachowanych detali,
-reprodukcji i znaczków” zmieni wiersz `STUDIED` i doda miejsce dla kart
-Odkrywaj z katalogu. Zestaw wzorcowy dostał sekcję `kept` (dzieła zachowane
-przez właściciela, które mają powód, i czy mogą dziś zostać Studium dnia),
-z której powstaje lista do tej decyzji.
+tabeli. Zestaw wzorcowy dostał sekcję `kept` (dzieła zachowane przez
+właściciela, które mają powód, i czy mogą dziś zostać Studium dnia), z
+której powstaje lista do takiej decyzji.
+
+Etap 4b w skrócie (decyzja Mateusza „serwer sam nie proponuje zachowanych
+detali, reprodukcji i znaczków”): wiersz `STUDIED` stał się `PROPOSED` i
+obejmuje wszystko, co serwer proponuje sam. Kto proponuje, pyta katalog
+z `proposing=True` (`Library.query`); reguła, która prosi o własne dzieła
+właściciela (Ulubione, „Moje”), wyłącza to sama, więc jego listy, playlisty
+i Szukaj zostają przy `LISTED` i `FOUND`. Lista z jego serwera miała 48
+dzieł, z czego żadne nie leżało na playliście, a dwa miały serce:
+„zachowane” znaczy dziś tylko „nie dobrane przez serwer” (`not pooled`),
+co obejmuje importy z pierwszych dni. To do uporządkowania w etapie 5.
 
 Etap 2b w skrócie: pomiar pakietu „Powtórki i jakość” z 2026-11-11 pokazał,
 że powtórki to w 80% pobieranie dużych obrazów z muzeów (1403 z 1758 s),
@@ -116,21 +124,20 @@ pobrany do porównania zostaje więc jako oryginał dzieła
 `server/tests/test_rules_matrix.py` trzyma po jednym dziele każdego rodzaju,
 który reguły rozróżniają (obraz, detal, reprodukcja, szara kopia, znaczek,
 fotografia, rękopis i tak dalej), raz jako dobrane przez serwer i raz jako
-zachowane przez właściciela, i pyta o nie dziewięć miejsc: katalog, katalog
-szukany słowem, pulę Studium dnia, odczyt odpowiedzi muzeum, Szukaj w
+zachowane przez właściciela, i pyta o nie dziesięć miejsc: katalog, katalog
+szukany słowem, pulę Studium dnia, kartę Odkrywaj z katalogu, odczyt
+odpowiedzi muzeum, Szukaj w
 muzeach, kartę Odkrywaj z muzeów, Strażnika, Nocny przegląd i powtórki.
 Tabela `EXPECTED` to dzisiejsze zachowanie. Zmiana reguły, która przesuwa
 choć jeden znak, wychodzi w teście z nazwą rodzaju i miejsca.
 
-Pierwsze trzy kolumny to zbiór, z którego wybierają Studium dnia i karty
-kuratora. „-” w nich zamienia się w „+” tylko za zgodą Mateusza.
+Pierwsze cztery kolumny to zbiór, z którego wybierają Studium dnia, karty
+Odkrywaj i kurator. „-” w nich zamienia się w „+” tylko za zgodą Mateusza.
 
-Dwie znane niespójności (ustalenie K1 audytu) są zapisane wprost, do decyzji
-w etapie 4:
+Z dwóch znanych niespójności (ustalenie K1 audytu) pierwszą, zachowane
+kopie w puli Studium dnia, zamknął etap 4b. Druga jest zapisana wprost, do
+decyzji w etapie 4c:
 
-- `KEPT_COPIES_STUDIED`: detal, reprodukcja, znaczek, dokument, zdjęcie sali,
-  zdjęcie archiwum i kopia z Openverse, które właściciel zachował, mogą
-  zostać Studium dnia, choć zachowana szara kopia już nie.
 - `BROWSED_NOT_FOUND`: zachowane dzieła, które katalog pokazuje przy
   przeglądaniu, a pomija po wpisaniu słowa.
 
@@ -154,6 +161,18 @@ Polecenie wypisuje, jak dzisiejsza reguła „to samo dzieło” (`same_work`)
 radzi sobie na tych decyzjach: ile par trzyma razem, ile gubi, ile par
 rozdzielonych błędnie łączy. `golden.measure(data, reguła)` liczy to samo dla
 dowolnej nowej reguły, więc etap 5 ma liczbę przed i po.
+
+Zmianę tego, co widać, próbuje się na całym katalogu poza serwerem (od
+1.145.19): `GET /api/debug/catalogue` oddaje każde dzieło sztuki tak, jak ma
+je biblioteka (gzip, dzieło w wierszu, same opisy), a `golden.library_of`
+robi z pliku bibliotekę, którą pyta się tak jak serwerową. Lista różnic dla
+Mateusza to wtedy dwa pytania do tej samej biblioteki: po staremu i po
+nowemu.
+
+```bash
+curl -s -H "Authorization: Bearer $(cat ~/.config/frame/nas-token)" \
+  http://<adres serwera>:8099/api/debug/catalogue > catalogue.jsonl.gz
+```
 
 ### 3. Czas
 
