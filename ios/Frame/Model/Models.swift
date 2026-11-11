@@ -1877,6 +1877,15 @@ struct FragmentsView: Codable, Hashable, Sendable {
     var tiled: Bool { places?.isEmpty == false }
 }
 
+/// A work's details (`GET /api/library/items/<id>/details`; Mateusz
+/// 2026-11-11): pictures of a part of it the server keeps apart from the
+/// catalogue as copies; on a detail's card, the work it is a detail of.
+/// None for most works.
+struct DetailsView: Codable, Hashable, Sendable {
+    var whole: RemoteItem?
+    var details: [RemoteItem]
+}
+
 /// A fragment's place on its whole work: left, top, width and height as
 /// fractions of the whole's.
 struct FragmentPlace: Codable, Hashable, Sendable {

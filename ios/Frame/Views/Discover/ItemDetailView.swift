@@ -77,6 +77,9 @@ struct ItemDetailView: View {
     /// The work's fragments, or its whole work's on a fragment's card
     /// (`FragmentStrip`); nil until asked, none for most works.
     @State private var fragments: FragmentsView?
+    /// The work's details, or the whole work on a detail's card
+    /// (`DetailStrip`); nil until asked, none for most works.
+    @State private var details: DetailsView?
 
     enum Sent { case done, failed }
 
@@ -98,6 +101,7 @@ struct ItemDetailView: View {
         _polish = State(initialValue: known)
         _holding = State(initialValue: known == nil && ItemPeeks.tiles[itemID]?.summary.titlePl != nil)
         _fragments = State(initialValue: Fragments.cached(itemID))
+        _details = State(initialValue: Details.cached(itemID))
     }
 
     /// The work's card, rather than its placeholder.
@@ -154,6 +158,7 @@ struct ItemDetailView: View {
         }
         .task(id: itemID) { await load() }
         .task(id: item?.fragmentsID ?? itemID) { await loadFragments() }
+        .task(id: itemID) { await loadDetails() }
         .task(id: described) { await loadSeen() }
         .task(id: described) { await sharpen() }
         .task(id: described) { await findHolder() }
@@ -213,6 +218,36 @@ struct ItemDetailView: View {
         }
     }
 
+    // MARK: Details
+
+    private func loadDetails() async {
+        let id = itemID
+        let found = await Details.load(id, backend: model.backend)
+        guard found != details else { return }
+        withAnimation(.easeOut(duration: 0.25)) { details = found }
+    }
+
+    /// Details of the work, after its fragments: on a detail's card, the
+    /// whole work first.
+    private func detailsSection(_ view: DetailsView) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let whole = view.whole { WholeWorkLink(whole: whole) }
+            if !view.details.isEmpty {
+                HStack(alignment: .firstTextBaseline) {
+                    Eyebrow(view.whole == nil ? "Detale" : "Inne detale")
+                    Spacer()
+                    if view.details.count > 1 {
+                        Text("\(view.details.count) · przesuń")
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                }
+                .padding(.top, view.whole == nil ? 0 : 6)
+                DetailStrip(details: view.details)
+            }
+        }
+    }
+
     // MARK: Copies
 
     /// A copy picked in "Szukaj lepszej kopii": the card fades to it. On the
@@ -259,6 +294,10 @@ struct ItemDetailView: View {
             // A tile set is looked at in full screen, not listed.
             if let fragments, !fragments.fragments.isEmpty, !fragments.tiled {
                 fragmentsSection(item, fragments)
+                    .transition(.opacity)
+            }
+            if let details, details.whole != nil || !details.details.isEmpty {
+                detailsSection(details)
                     .transition(.opacity)
             }
             if !item.colors.isEmpty { palette(item) }

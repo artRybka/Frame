@@ -106,6 +106,12 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
+    func details(itemID: String) async throws -> DetailsView {
+        var req = request("/api/library/items/\(escape(itemID))/details")
+        req.timeoutInterval = 60  // the museum may be asked first
+        return try await perform(req)
+    }
+
     func sharpen(itemID: String, wait: Int) async throws -> SharperView {
         var req = request(
             "/api/library/items/\(escape(itemID))/sharpen", method: "POST",
