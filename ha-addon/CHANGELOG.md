@@ -12,6 +12,9 @@
 - Zestaw wzorcowy zna teraz Twoje zachowane detale, reprodukcje i znaczki:
   z niego powstanie lista do Twojej decyzji, zanim cokolwiek zmieni się
   w propozycjach.
+- Wyłączanie serwera czeka na zapis do bazy, który właśnie trwa w tle.
+  Do tej pory zamknięcie bazy w trakcie takiego zapisu potrafiło wywrócić
+  proces (rzadko, przy wyłączaniu; częściej w testach przed wydaniem).
 
 ## 1.145.14
 

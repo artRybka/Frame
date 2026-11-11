@@ -651,7 +651,11 @@ class Library:
 
     def close(self) -> None:
         self.write_kept()
-        with self._lock:
+        # The connection's own lock, not the library's: a write in progress
+        # on another thread (a download's note, the night's state) holds
+        # it, and closing under that write crashed the interpreter (a
+        # segmentation fault in SQLite).
+        with self._db_lock:
             if self._conn is not None:
                 self._conn.close()
                 self._conn = None
