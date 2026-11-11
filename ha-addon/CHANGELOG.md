@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.3
+## 1.145.4
 
 - Miniatury bardzo długich dzieł (zwoje, fryzy) są ostre. Serwer szykuje
   je z większego zdjęcia i tak, by krótszy bok miał 320 px, a aplikacja nie
