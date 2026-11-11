@@ -375,7 +375,7 @@ class NightQueue:
                     self._order_ahead(tasks[at:])
                 run.current = task.name
                 began = time.monotonic()
-                grouped = self.service.library.regrouped()
+                grouped = _groupings(self.service)
                 failed = False
                 result: object = None
                 try:
@@ -469,14 +469,23 @@ class NightQueue:
             run.stop.set()
 
 
-def _regrouped(service: FrameService, before: tuple[int, float]) -> str:
-    """ ", the works regrouped 5 times in 17.2 s" since ``before``, for the
-    log of a task (the app's requests waited for each); empty when not."""
-    made, seconds = service.library.regrouped()
-    times = made - before[0]
-    if times <= 0:
-        return ""
-    return f", the works regrouped {times} time(s) in {seconds - before[1]:.1f} s"
+def _groupings(service: FrameService) -> tuple[int, float, int, float]:
+    return (*service.library.regrouped(), *service.library.regrouped_in_part())
+
+
+def _regrouped(service: FrameService, before: tuple[int, float, int, float]) -> str:
+    """ ", the works regrouped 5 time(s) in 17.2 s, 41 change(s) regrouped
+    in part in 0.3 s" since ``before``, for the log of a task (the app's
+    requests waited for each whole regrouping, for none in part); empty
+    when neither."""
+    made, seconds, parts, part_seconds = _groupings(service)
+    told = ""
+    if made > before[0]:
+        told += f", the works regrouped {made - before[0]} time(s) in {seconds - before[1]:.1f} s"
+    if parts > before[2]:
+        took = part_seconds - before[3]
+        told += f", {parts - before[2]} change(s) regrouped in part in {took:.1f} s"
+    return told
 
 
 def _utc_now() -> str:

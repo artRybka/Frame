@@ -15,6 +15,7 @@ from frame_server.library import (
     Playlist,
     PlaylistKind,
     PlaylistRules,
+    duplicates,
 )
 from frame_server.library.duplicates import (
     Shown,
@@ -183,7 +184,9 @@ def test_library_hides_copies_the_server_added(tmp_path) -> None:
     assert [i.id for i in lib.playlist_items(manual)] == ["met:2", "europeana:4"]
 
 
-def test_grouping_is_kept_through_changes_that_do_not_touch_it(tmp_path, caplog) -> None:
+def test_grouping_is_kept_through_changes_that_do_not_touch_it(
+    tmp_path, caplog, monkeypatch
+) -> None:
     lib = Library(tmp_path / "lib.db")
     lib.upsert(_work("met", 1, pooled=True))
     lib.upsert(_work("openverse", 2, pooled=True))
@@ -210,19 +213,30 @@ def test_grouping_is_kept_through_changes_that_do_not_touch_it(tmp_path, caplog)
     lib.update("met:1", show_count=3)
     assert lib._version == version
 
-    # A title, or a copy of a work deleted: grouped again, and the log says why.
+    # A title, or a copy of a work deleted: the works they have to do with
+    # are grouped anew, in the same grouping (no one waits for the rest).
     lib.update("met:1", title="Wheat Field")
-    with caplog.at_level(logging.DEBUG, logger="frame_server.library.repo"):
-        assert lib.works() is not works
-    assert "after change of met:1 (title), in MainThread" in caplog.text
+    assert lib.works() is works
+    assert lib.spare_copies() == set()  # two works now
     lib.upsert(_work("rijks", 5, title="Wheat Field", pooled=True))
     assert lib.spare_copies() == {"rijks:5"}  # added to its group
-    works = lib.works()
-    lib.delete("rijks:5")
-    lib.update("met:1", title="Cypresses")
+    lib.delete("met:1")  # its copy is the work now
+    assert lib.works() is works
+    assert lib.spare_copies() == set()
+    assert works.best(_work("aic", 9, title="Wheat Field")) == lib.get("rijks:5")
+    assert lib.regrouped()[0] == 1 and lib.regrouped_in_part()[0] == 2
+
+    # A change that has to do with too many works to look through while
+    # the library waits: all are grouped again, and the log says why.
+    monkeypatch.setattr(duplicates, "REGROUP_LOOKS", -1)
+    grouping = [list(group) for group in works.groups]
+    lib.update("rijks:5", title="Cypresses")
+    assert [list(group) for group in works.groups] == grouping  # left as it was
+    lib.update("rijks:5", year=1889)
     with caplog.at_level(logging.DEBUG, logger="frame_server.library.repo"):
         assert lib.works() is not works
-    assert "after deletion of rijks:5, in MainThread and 1 more change(s)" in caplog.text
+    assert "after change of rijks:5 (title), in MainThread and 1 more change(s)" in caplog.text
+    assert lib.works().best(_work("aic", 9, title="Cypresses")) == lib.get("rijks:5")
 
 
 def _fake(key: str, titles: list[str]) -> type[Museum]:
@@ -558,3 +572,121 @@ def test_a_hidden_work_is_gone_everywhere_but_ukryte(service) -> None:
         listed = client.get(f"/api/playlists/{playlist}").json()["items"]
         assert [i["id"] for i in listed] == ["met:1", "aic:3"]
         assert len(remote_items(svc, at_museums)) == 2  # met:1 and its copy are one work
+
+
+# -- a change regroups the works it has to do with alone (docs/RULES.md, stage 2) ----
+
+
+def _grouping(works: Works) -> set[tuple[str, ...]]:
+    return {tuple(i.id for i in group) for group in works.groups if group}
+
+
+def _filed_right(works: Works) -> None:
+    """Every group is found by its items' titles and links, and nothing
+    points at a group emptied."""
+    for index, group in enumerate(works.groups):
+        for item in group:
+            assert works.group_index(item.id) == index
+            assert all(index in held for held in works._held_under(item))
+    for held in [*works._by_title.values(), *works._by_link.values()]:
+        assert all(works.groups[index] for index in held)
+
+
+def test_a_change_regroups_as_grouping_everything_anew_would() -> None:
+    """Thousands of changes to small catalogues full of near copies: after
+    each, the grouping is the one made from scratch, copy for copy and in
+    the same order within each work."""
+    import random
+
+    titles = ["Irises", "Wheat Field", "Landscape", "Portrait of a Man", "Sunflowers"]
+    artists = ["Vincent van Gogh", "van Gogh", "Claude Monet", "Monet", ""]
+    sources = ["met", "aic", "wmc", "openverse", "europeana", "rijks", "wikiart", "cma"]
+    for seed in range(60):
+        rng = random.Random(seed)
+
+        def some(n: int, rng: random.Random = rng) -> Item:
+            source = rng.choice(sources)
+            return Item(
+                id=f"{source}:{n}",
+                source=source,
+                source_id=f"{rng.randint(1, 3)}~{n}" if source == "europeana" else str(n),
+                title=rng.choice(titles),
+                artist=rng.choice(artists),
+                year=rng.choice([None, 1888, 1889, 1890, 1895]),
+                width=rng.choice([0, 800, 1000]),
+                height=rng.choice([0, 800]),
+                url=rng.choice(["", "", f"https://example.org/{rng.randint(1, 6)}"]),
+                image_url=f"https://example.org/img/{rng.randint(1, 40)}.jpg",
+                pooled=rng.random() < 0.7,
+            )
+
+        items = {i.id: i for i in (some(n) for n in range(40))}
+        works = Works(items.values())
+        for _ in range(60):
+            item_id = rng.choice(list(items))
+            what = rng.random()
+            if what < 0.15 and len(items) > 5:
+                del items[item_id]
+                assert works.remove(item_id) or works.regroup(item_id, None)
+            else:
+                old = items[item_id]
+                other = rng.choice(list(items))
+                new = old.model_copy(
+                    update=rng.choice(
+                        [
+                            {"title": rng.choice(titles)},
+                            {"artist": rng.choice(artists)},
+                            {"year": rng.choice([None, 1888, 1889, 1890, 1895])},
+                            {"copy_of": "" if other == item_id else other},
+                            {"copy_of": ""},
+                            {"pooled": not old.pooled},
+                            {"url": f"https://example.org/{rng.randint(1, 6)}"},
+                            {"width": rng.choice([0, 800, 1000])},
+                            {"kind": rng.choice([ItemKind.ARTWORK, ItemKind.PHOTO])},
+                        ]
+                    )
+                )
+                items[item_id] = new
+                assert works.regroup(item_id, new)
+            assert _grouping(works) == _grouping(Works(items.values())), seed
+            _filed_right(works)
+        assert works.spare() == Works(items.values()).spare()
+
+
+def test_a_copy_named_joins_its_work_and_the_rest_stays(tmp_path) -> None:
+    lib = Library(tmp_path / "lib.db")
+    for n in range(1, 4):
+        lib.upsert(_work("met", n, title=f"Work {n}", pooled=True))
+    lib.upsert(_work("wmc", "a", title="Untitled", artist="", pooled=True))
+    works = lib.works()
+    untouched = [works.groups[works.group_index(f"met:{n}")] for n in (2, 3)]  # type: ignore[index]
+    lib.update("wmc:a", copy_of="met:1")  # what the twins write
+    assert lib.works() is works
+    assert lib.spare_copies() == {"wmc:a"}
+    assert all(
+        works.groups[works.group_index(f"met:{n}")] is group  # type: ignore[index]
+        for n, group in zip((2, 3), untouched, strict=True)
+    )
+    # ... and taken apart again ("To nie to samo").
+    lib.update("wmc:a", copy_of="")
+    assert lib.spare_copies() == set()
+    assert lib.regrouped()[0] == 1 and lib.regrouped_in_part()[0] == 2
+
+
+def test_a_copy_named_of_a_hidden_work_is_hidden_with_it(tmp_path) -> None:
+    lib = Library(tmp_path / "lib.db")
+    lib.upsert(_work("met", 1, title="The Little Street", artist="Johannes Vermeer"))
+    lib.upsert(_work("wmc", 2, title="Het straatje", artist="", pooled=True))
+    lib.update("met:1", excluded=True)
+    assert {i.id for i in lib.query()[1]} == {"wmc:2"}
+    # Their pictures show them to be one work (the twins): hidden as well,
+    # and so is its copy a museum answers with.
+    lib.update("wmc:2", copy_of="met:1")
+    hidden = lib.hidden()
+    assert lib.get("wmc:2") in hidden
+    assert _work("rijks", 7, title="The Little Street", artist="Johannes Vermeer") in hidden
+    assert lib.query()[1] == []
+    # Taken apart again ("To nie to samo"): shown again.
+    lib.update("wmc:2", copy_of="")
+    assert lib.get("wmc:2") not in lib.hidden()
+    assert {i.id for i in lib.query()[1]} == {"wmc:2"}
