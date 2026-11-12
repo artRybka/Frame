@@ -704,3 +704,109 @@ final class InkStamp: PaintPainter, @unchecked Sendable {
         return out
     }
 }
+
+// MARK: - A photograph's tones
+
+/// The bar of a photograph (Mateusz 2026-11-12 10:47: „fotografia -
+/// gradientowy pasek z lekkim ziarnem”): its tones from the darkest to
+/// the lightest, as a histogram has them, going over into each other
+/// without a seam, each about as wide as its share, under the grain of
+/// the film.
+final class PhotoStrip: PaintPainter, @unchecked Sendable {
+    let wide: Int
+    let high: Int
+    let length = PrintPaint.appear
+    /// The tones' places: where along the bar each is itself.
+    let stops: [(at: Double, rgb: [Double])]
+
+    private let width: Double
+    private let seed: Double
+    private var whole: PaintFrame?
+
+    /// How round the bar's corners are, and how strong the grain is.
+    static let corner = 3.0, grain = 0.1
+
+    init(shares: [PaintShare], width: Double, seed: Int) {
+        self.width = width
+        self.seed = Double(seed)
+        (wide, high) = PrintPaint.size(width: width)
+        let order = shares.sorted { PrintPaint.lightness($0.rgb) < PrintPaint.lightness($1.rgb) }
+        stops = zip(order, Paint.spans(order, width: width)).map { (($1.0 + $1.1) / 2, $0.rgb) }
+    }
+
+    /// The tone at `x` along the bar.
+    func tone(at x: Double) -> [Double] {
+        guard let first = stops.first, let last = stops.last else { return [0, 0, 0] }
+        if x <= first.at { return first.rgb }
+        for (a, b) in zip(stops, stops.dropFirst()) where x < b.at {
+            let part = (x - a.at) / max(0.001, b.at - a.at)
+            // Not a straight ramp: a tone holds a little about its own place.
+            return PrintPaint.mixed(a.rgb, b.rgb, 0.6 * part + 0.4 * Paint.ease(part))
+        }
+        return last.rgb
+    }
+
+    func frame(age: Double) -> PaintFrame {
+        if age >= length, let whole { return whole }
+        var out = PaintFrame(wide: wide, high: high)
+        guard age > 0, !stops.isEmpty else { return out }
+        let S = Double(PrintPaint.scale), pad = Paint.pad, shown = Paint.ease(age / length), r = Self.corner
+        let tones = (0..<wide).map { tone(at: (Double($0) + 0.5) / S - pad) }
+        for j in max(0, Int((pad - 1) * S))...min(high - 1, Int((pad + Paint.bar + 1) * S)) {
+            let y = (Double(j) + 0.5) / S - pad
+            for i in max(0, Int((pad - 1) * S))...min(wide - 1, Int((pad + width + 1) * S)) {
+                let x = (Double(i) + 0.5) / S - pad
+                let qx = abs(x - width / 2) - width / 2 + r, qy = abs(y - Paint.bar / 2) - Paint.bar / 2 + r
+                let away = (max(qx, 0) * max(qx, 0) + max(qy, 0) * max(qy, 0)).squareRoot() + min(max(qx, qy), 0) - r
+                let cover = min(1, max(0, 0.5 - away * S))
+                if cover <= 0 { continue }
+                // The film's grain: fine, a little clumped, the same in all three colours.
+                let speck = 0.6 * Paint.noise(x / 0.4, y / 0.4, 91 + seed) + 0.4 * Paint.noise(x / 1.1, y / 1.1, 92 + seed)
+                let lit = 1 + Self.grain * 2 * (speck - 0.5)
+                let q = 4 * (j * wide + i)
+                out.bytes[q] = Paint.byte(tones[i][0] * lit)
+                out.bytes[q + 1] = Paint.byte(tones[i][1] * lit)
+                out.bytes[q + 2] = Paint.byte(tones[i][2] * lit)
+                out.bytes[q + 3] = Paint.byte(255 * cover * shown)
+            }
+        }
+        if age >= length { whole = out }
+        return out
+    }
+}
+
+/// One colour's swatch for a photograph: a small print of that tone,
+/// with the same grain.
+final class PhotoChip: PaintPainter, @unchecked Sendable {
+    let wide = Int(2 * Paint.half) * PrintPaint.scale
+    let high = Int(2 * Paint.half) * PrintPaint.scale
+    let length = PrintPaint.appear
+
+    private let rgb: [Double]
+    private let seed: Double
+
+    init(rgb: [Double], index: Int, seed: Int) {
+        self.rgb = rgb
+        self.seed = Double(seed + 3 * index)
+    }
+
+    func frame(age: Double) -> PaintFrame {
+        var out = PaintFrame(wide: wide, high: high)
+        guard age > 0 else { return out }
+        let S = Double(PrintPaint.scale), half = PrintPaint.markHalf, r = PhotoStrip.corner, shown = Paint.ease(age / length)
+        for k in 0..<(wide * high) {
+            let x = (Double(k % wide) + 0.5) / S - Paint.half, y = (Double(k / wide) + 0.5) / S - Paint.half
+            let qx = abs(x) - half + r, qy = abs(y) - half + r
+            let away = (max(qx, 0) * max(qx, 0) + max(qy, 0) * max(qy, 0)).squareRoot() + min(max(qx, qy), 0) - r
+            let cover = min(1, max(0, 0.5 - away * S))
+            if cover <= 0 { continue }
+            let speck = 0.6 * Paint.noise(x / 0.4, y / 0.4, 91 + seed) + 0.4 * Paint.noise(x / 1.1, y / 1.1, 92 + seed)
+            let lit = 1 + PhotoStrip.grain * 2 * (speck - 0.5), q = 4 * k
+            out.bytes[q] = Paint.byte(rgb[0] * lit)
+            out.bytes[q + 1] = Paint.byte(rgb[1] * lit)
+            out.bytes[q + 2] = Paint.byte(rgb[2] * lit)
+            out.bytes[q + 3] = Paint.byte(255 * cover * shown)
+        }
+        return out
+    }
+}

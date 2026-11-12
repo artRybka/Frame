@@ -533,6 +533,47 @@ def test_a_small_striking_patch_is_among_the_colours() -> None:
     assert len(swatches) <= 8
 
 
+def _sea(foam: bool) -> Image.Image:
+    """A dark sea under a dark sky, like Turner's Dutch men of war: with or
+    without the white of its foam, a twentieth of the picture."""
+    rng = np.random.default_rng(7)
+    pixels = np.empty((300, 400, 3), np.uint8)
+    pixels[:] = (94, 78, 61)  # the sky
+    pixels[120:] = (84, 98, 108)  # the sea
+    pixels[90:150, 120:300] = (168, 155, 129)  # sails
+    pixels[220:, :160] = (50, 58, 66)  # a dark wave
+    if foam:
+        pixels[200:230, 150:350] = (236, 226, 200)
+    noise = rng.integers(-7, 8, pixels.shape)
+    return Image.fromarray(np.clip(pixels.astype(int) + noise, 0, 255).astype(np.uint8))
+
+
+def test_a_white_that_stands_out_is_among_the_colours() -> None:
+    # Mateusz 2026-11-12 11:38, of Turner's sea, whose bar had browns and
+    # greys only: „biały jest wyraźnie wybijającym się akcentem to trzeba go
+    # uwzględnić”. The accents are found by their colour; white has none.
+    swatches, tags, _ = analyse(_sea(foam=True))
+    plain, plain_tags, _ = analyse(_sea(foam=False))
+    assert len(swatches) == len(plain) + 1
+    white = swatches[-1]
+    red, green, blue = (int(white.hex[i : i + 2], 16) for i in (1, 3, 5))
+    assert white.accent and 0.02 <= white.weight <= 0.06
+    assert min(red, green, blue) > 185 and all(not s.accent or s == white for s in swatches)
+    # No tag goes by it: the picture is found as it was.
+    assert [t for t in tags if t.startswith("accent:")] == [
+        t for t in plain_tags if t.startswith("accent:")
+    ]
+    assert len(swatches) <= 8
+    # A print's paper, the light of a pale picture: its colours show them.
+    pale = np.empty((200, 200, 3), np.uint8)
+    pale[:] = (236, 226, 200)
+    pale[60:140, 40:160] = (168, 155, 129)
+    pale[150:170, 20:180] = (94, 78, 61)
+    assert not any(s.accent for s in analyse(Image.fromarray(pale)).swatches)
+    # One tint and its paper is one tint: nothing is added to an etching.
+    assert not any(s.accent for s in analyse(_etching([(238, 226, 198)])).swatches)
+
+
 def test_a_stamp_on_an_etching_is_no_accent() -> None:
     # One tint stays one tint: a collector's small red stamp does not make
     # an etching a picture with a red accent, and its bar has no touch.

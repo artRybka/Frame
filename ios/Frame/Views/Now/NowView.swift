@@ -1110,10 +1110,9 @@ struct ArtworkInfo: View {
             if item.kind == .photo {
                 PhotoFacts(item: item)
             }
-            if !item.colors.isEmpty {
-                PaletteStrip(swatches: item.colors)
-                    .padding(.vertical, 4)
-            }
+            // No strip of the work's colours here (Mateusz 2026-11-12 10:47:
+            // „cienki pasek na zakładce Teraz - zupełnie z niego
+            // zrezygnujmy”): they are on the work's card, in its technique.
             if !about.isEmpty {
                 // The arrow sits right under the text: it opens and closes it.
                 VStack(alignment: .leading, spacing: 2) {

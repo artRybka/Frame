@@ -33,9 +33,13 @@ final class PaintTests: XCTestCase {
                      "Watercolour with pen and ink", "tusz, akwarela, papier"]
         let dry = ["pastel on paper", "kredka, papier", "black chalk", "Pastel over watercolour", "pastel, papier naklejony na tekturę",
                    "Red chalk on laid paper", "kreda, papier"]
-        // Photographs, ink with colours, and whatever names no paint: flat.
-        let flat = ["Gelatin silver print", "Oil print", "", "Ink and color on silk", "Bronze", "Albumen silver print", "Platinum print",
-                    "Salted paper print from a paper negative", "Chromogenic print", "fotografia"]
+        // Ink with colours, and whatever names no paint: flat.
+        let flat = ["", "Ink and color on silk", "Bronze", "papier"]
+        // A photograph: its tones under grain (Mateusz 2026-11-12 10:47:
+        // „fotografia - gradientowy pasek z lekkim ziarnem”).
+        let photo = ["Gelatin silver print", "Oil print", "Albumen silver print", "Platinum print",
+                     "Salted paper print from a paper negative", "Chromogenic print", "fotografia"]
+        for text in photo { XCTAssertEqual(PaintStyle.of(medium: text), .photo, text) }
         for text in oil { XCTAssertEqual(PaintStyle.of(medium: text), .oil, text) }
         for text in water { XCTAssertEqual(PaintStyle.of(medium: text), .water, text) }
         for text in dry { XCTAssertEqual(PaintStyle.of(medium: text), .dry, text) }
@@ -57,7 +61,7 @@ final class PaintTests: XCTestCase {
         XCTAssertNil(PaintStyle.of(medium: "paper", classification: "Paintings"))
         XCTAssertNil(PaintStyle.of(medium: "fresco", classification: "Paintings"))
         XCTAssertNil(PaintStyle.of(medium: "", classification: "Drawing"))
-        XCTAssertNil(PaintStyle.of(medium: "", classification: "Photograph"))
+        XCTAssertEqual(PaintStyle.of(medium: "", classification: "Photograph"), .photo)
         XCTAssertNil(PaintStyle.of(medium: "", classification: "Illuminated Manuscript"))
         XCTAssertNil(PaintStyle.of(medium: "", classification: ""))
     }
@@ -109,7 +113,7 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(PaintStyle.of(medium: "papier", classification: "Rysunek", mono: true, warm: true), .pen)
         // A painting of one colour is still painted.
         XCTAssertEqual(PaintStyle.of(medium: "Oil on panel", classification: "Paintings", mono: true), .oil)
-        XCTAssertNil(PaintStyle.of(medium: "Gelatin silver print", classification: "Photographs", mono: true))
+        XCTAssertEqual(PaintStyle.of(medium: "Gelatin silver print", classification: "Photographs", mono: true), .photo)
         // Which tool or press each is.
         XCTAssertEqual(PaintStyle.allCases.compactMap(\.tool).count, 3)
         XCTAssertEqual(PaintStyle.allCases.compactMap(\.press).count, 2)
@@ -307,25 +311,83 @@ final class PaintTests: XCTestCase {
         XCTAssertTrue((1...60).contains(Paint.seed("met-436535")))
     }
 
-    func testWatercolourFillsEachColoursShareAndIsStillWhenDry() {
+    /// Mateusz 2026-11-12 10:47: „przeróbmy akwarele i pastele tak, żeby
+    /// akcenty leżały "na wierzchu"”; 11:02: „akwarela, gwasz - chyba
+    /// akcenty trzeba robić na czystym papierze - zostawiać niezamalowane
+    /// kółeczko”.
+    func testWatercolourFillsTheBarWithItsBigColoursAndLeavesPaperForTheSmall() {
         let strip = WaterStrip(shares: jatte, width: 350, seed: 5)
         XCTAssertEqual(strip.wide, 382 * Paint.scale)
         XCTAssertEqual(strip.high, 58 * Paint.scale)
         XCTAssertEqual(covered(strip.frame(age: 0)), 0)
+        // The four big colours are washes over the whole bar, the three small ones accents.
+        let mains = Array(jatte.prefix(4)), spans = WaterStrip.spans(mains, width: 350)
+        XCTAssertEqual(spans.last?.1 ?? 0, 350, accuracy: 0.001)
+        XCTAssertEqual(strip.touches.map(\.rgb), [jatte[4].rgb, jatte[5].rgb, jatte[6].rgb])
+        /// A place in a wash that is clear of the accents.
+        func clear(_ span: (Double, Double)) -> Double {
+            stride(from: span.0 + 8, to: span.1 - 8, by: 2).first { x in strip.touches.allSatisfy { abs($0.x - x) > $0.round + 4 } } ?? span.0 + 8
+        }
         // Half a second in only the first stroke is down.
         let early = strip.frame(age: 0.3)
-        let spans = WaterStrip.spans(jatte, width: 350)
-        XCTAssertGreaterThan(early.cover(pixel(20, 13).0, pixel(20, 13).1), 0.8)
+        XCTAssertGreaterThan(early.cover(pixel(clear((6, 40)), 13).0, pixel(clear((6, 40)), 13).1), 0.8)
         XCTAssertEqual(early.cover(pixel(spans[3].0 + 10, 13).0, pixel(spans[3].0 + 10, 13).1), 0)
         let dry = strip.frame(age: strip.length)
         for (i, span) in spans.enumerated() {
-            let at = pixel((span.0 + span.1) / 2, 13)
+            let at = pixel(clear(span), 13)
             XCTAssertGreaterThan(dry.cover(at.0, at.1), 0.85, "colour \(i)")
             let colour = dry.colour(at.0, at.1)
-            XCTAssertEqual(colour.red, jatte[i].rgb[0], accuracy: 45, "colour \(i)")
-            XCTAssertEqual(colour.green, jatte[i].rgb[1], accuracy: 45, "colour \(i)")
-            XCTAssertEqual(colour.blue, jatte[i].rgb[2], accuracy: 45, "colour \(i)")
+            XCTAssertEqual(colour.red, mains[i].rgb[0], accuracy: 45, "colour \(i)")
+            XCTAssertEqual(colour.green, mains[i].rgb[1], accuracy: 45, "colour \(i)")
+            XCTAssertEqual(colour.blue, mains[i].rgb[2], accuracy: 45, "colour \(i)")
         }
+        // The washes go round each accent's place: when they are down it is clean paper still.
+        let washed = strip.frame(age: (strip.touches.first?.at ?? 0) - 0.01)
+        for (n, touch) in strip.touches.enumerated() {
+            XCTAssertTrue((16...19).contains(2 * touch.round), "accent \(n)")
+            XCTAssertGreaterThan(touch.x - touch.round, 5)
+            XCTAssertLessThan(touch.x + touch.round, 345)
+            XCTAssertGreaterThan(touch.y - touch.round, 1)
+            XCTAssertLessThan(touch.y + touch.round, Paint.bar - 1)
+            for other in strip.touches.dropFirst(n + 1) { XCTAssertGreaterThan(abs(other.x - touch.x), other.round + touch.round + 4) }
+            let middle = pixel(touch.x, touch.y)
+            XCTAssertEqual(washed.cover(middle.0, middle.1), 0, "accent \(n)")
+            // Paint on both sides of it.
+            for side in [-1.0, 1.0] {
+                let at = pixel(touch.x + side * (touch.round + 2.5), touch.y)
+                XCTAssertGreaterThan(washed.cover(at.0, at.1), 0.8, "accent \(n), \(side)")
+            }
+            // Then its own paint in it, pure: nothing is under it.
+            XCTAssertGreaterThan(dry.cover(middle.0, middle.1), 0.85, "accent \(n)")
+            let colour = dry.colour(middle.0, middle.1)
+            XCTAssertEqual(colour.red, touch.rgb[0], accuracy: 30, "accent \(n)")
+            XCTAssertEqual(colour.green, touch.rgb[1], accuracy: 30, "accent \(n)")
+            XCTAssertEqual(colour.blue, touch.rgb[2], accuracy: 30, "accent \(n)")
+            // On one side it stops short of the wash, and paper stays between them.
+            let off = (touch.lean.x * touch.lean.x + touch.lean.y * touch.lean.y).squareRoot()
+            XCTAssertTrue((2.6...3.6).contains(off), "accent \(n)")
+            XCTAssertGreaterThan(abs(touch.lean.x), abs(touch.lean.y), "accent \(n)")
+            func along(_ far: Double) -> (Int, Int) { pixel(touch.x + far * touch.lean.x / off, touch.y + far * touch.lean.y / off) }
+            let bare = stride(from: 0.5, through: 3, by: 0.5).map { dry.cover(along($0 - touch.round).0, along($0 - touch.round).1) }.min() ?? 1
+            XCTAssertLessThan(bare, 0.2, "accent \(n)")
+            // On the other it lies over the wash and has run into it (Mateusz 2026-11-12 11:21: „plamka
+            // akcentu może częściowo nachodzić/zlewać się z resztą paska”): the wash there has taken its colour.
+            let taken = stride(from: 0.5, through: 3, by: 0.5).compactMap { far -> Double? in
+                let at = along(touch.round + far)
+                guard washed.cover(at.0, at.1) > 0.85, dry.cover(at.0, at.1) > 0.85 else { return nil }
+                let was = washed.colour(at.0, at.1), now = dry.colour(at.0, at.1)
+                return abs(now.red - was.red) + abs(now.green - was.green) + abs(now.blue - was.blue)
+            }.max() ?? 0
+            XCTAssertGreaterThan(taken, 40, "accent \(n)")
+        }
+        // The accents come one after another when the washes are down.
+        XCTAssertEqual(strip.touches.map(\.at), strip.touches.map(\.at).sorted())
+        XCTAssertGreaterThan(strip.touches[0].at, 3 * WaterStrip.apart + WaterStrip.stroke)
+        XCTAssertEqual(strip.last, (strip.touches.last?.at ?? 0) + WaterStrip.accents.spread, accuracy: 0.001)
+        // A work of big colours only is washes side by side, as it was.
+        let plain = WaterStrip(shares: Array(jatte.prefix(3)), width: 350, seed: 5)
+        XCTAssertTrue(plain.touches.isEmpty)
+        XCTAssertEqual(plain.last, 2 * WaterStrip.apart + WaterStrip.stroke, accuracy: 0.001)
         // Nothing far off the bar, and nothing changes once it is dry.
         XCTAssertEqual(dry.cover(2, 2), 0)
         XCTAssertEqual(strip.frame(age: 999).bytes, dry.bytes)
@@ -520,7 +582,30 @@ final class PaintTests: XCTestCase {
             XCTAssertLessThanOrEqual(touch.e - touch.a, 42)
             XCTAssertGreaterThan(touch.wide, 0.6 * Paint.bar / 2)
         }
-        // In watercolour and pastel a patch of its own, as wide as a finger's tip; the others make room by their shares.
+        // In watercolour a round of clean paper with its paint in it, most of the bar's height across.
+        let water = WaterStrip(shares: street, width: 350, seed: 5)
+        XCTAssertEqual(water.touches.map(\.rgb), [street[4].rgb, street[5].rgb])
+        for touch in water.touches { XCTAssertGreaterThanOrEqual(2 * touch.round, 16) }
+        // In pastel a patch of strokes pressed hard, low on the bar and out under its foot (Mateusz 2026-11-12
+        // 11:02: „akcent - mocniej docisnąć. może być trochę niżej i wystawać pod linię ogólnego gradientu”).
+        let pastel = DryPlan(shares: street, width: 350, seed: 5)
+        XCTAssertFalse(pastel.strokes.filter { $0.colour < 4 }.contains(where: \.press))
+        let hatching = pastel.strokes.filter { $0.colour < 4 && abs($0.to.y - $0.from.y) > Paint.bar }
+        XCTAssertTrue(hatching.allSatisfy { ($0.to.x - $0.from.x) * ($0.to.y - $0.from.y) < 0 })
+        for i in [4, 5] {
+            let patch = pastel.strokes.filter { $0.colour == i }
+            XCTAssertGreaterThanOrEqual(patch.count, 8)
+            XCTAssertTrue(patch.allSatisfy(\.press))
+            XCTAssertTrue(patch.allSatisfy { $0.alpha > 0.5 })
+            // The other way than the hatching under it (11:21: „po skosie w drugą stronę (tak jak poprzednio)”).
+            XCTAssertTrue(patch.allSatisfy { ($0.to.x - $0.from.x) * ($0.to.y - $0.from.y) > 0 })
+            let ends = patch.flatMap { [$0.from, $0.to] }
+            XCTAssertGreaterThanOrEqual((ends.map(\.x).max() ?? 0) - (ends.map(\.x).min() ?? 0), 16)
+            XCTAssertGreaterThan(ends.map(\.y).max() ?? 0, Paint.bar + 4)
+            XCTAssertLessThan(ends.map(\.y).max() ?? 0, Paint.bar + 9)
+            XCTAssertGreaterThan(ends.map(\.y).min() ?? 0, 0.2 * Paint.bar)
+        }
+        // Colours side by side each have a place as wide as a finger's tip at least; the others make room by their shares.
         let spans = Paint.spans(street, width: 350)
         XCTAssertEqual(spans[5].1 - spans[5].0, Paint.least, accuracy: 0.001)
         XCTAssertEqual(spans[0].0, 0)
@@ -545,8 +630,16 @@ final class PaintTests: XCTestCase {
             XCTAssertTrue((0.25...1).contains(stroke.alpha))
         }
         // The first colour's strokes are all begun before the last colour's first.
-        let firstDone = plan.strokes.filter { $0.colour == 0 }.map { Double($0.colour) * DryPlan.apart + $0.part * DryPlan.stroke }.max() ?? 0
+        let firstDone = plan.strokes.filter { $0.colour == 0 }.map { Double($0.turn) * DryPlan.apart + $0.part * DryPlan.stroke }.max() ?? 0
         XCTAssertLessThan(firstDone, Double(jatte.count - 1) * DryPlan.apart)
+        // The small colours are hatched over the others, when those are down.
+        let over = plan.strokes.filter(\.press), under = plan.strokes.filter { !$0.press }
+        XCTAssertEqual(Set(over.map(\.colour)), [4, 5, 6])
+        XCTAssertGreaterThan(over.map(\.turn).min() ?? 0, under.map(\.turn).max() ?? 9)
+        XCTAssertEqual((plan.strokes.map(\.turn).max() ?? 0) + 1, jatte.count)
+        // The others fill the bar from end to end.
+        XCTAssertLessThan(under.map { min($0.from.x, $0.to.x) }.min() ?? 9, 2)
+        XCTAssertGreaterThan(under.map { max($0.from.x, $0.to.x) }.max() ?? 0, 348)
         // A paint's scribble is a close hatching across its swatch, never
         // a line or two; a likely paint's is the same (Mateusz 2026-11-11
         // 18:39: „zawsze duże (nawet gdy niepewne)”), so there is one kind.
@@ -563,6 +656,70 @@ final class PaintTests: XCTestCase {
         XCTAssertGreaterThan(tooth.max() ?? 0, 240)
     }
 
+    /// Mateusz 2026-11-12 10:47: „fotografia - gradientowy pasek z lekkim
+    /// ziarnem”.
+    func testAPhotographIsItsTonesInOneGradientUnderGrain() {
+        let tones = shares([("#C9C2B4", 0.3), ("#2A2826", 0.25), ("#8A847A", 0.3), ("#565049", 0.15)])
+        let strip = PhotoStrip(shares: tones, width: 350, seed: 7)
+        // From the darkest to the lightest, each about its share's middle.
+        XCTAssertEqual(strip.stops.count, 4)
+        XCTAssertEqual(strip.stops.map(\.at), strip.stops.map(\.at).sorted())
+        let lights = strip.stops.map { PrintPaint.lightness($0.rgb) }
+        XCTAssertEqual(lights, lights.sorted())
+        XCTAssertEqual(strip.stops[0].at, 350 * 0.125, accuracy: 3)
+        // No seams: the tone grows lighter all the way along.
+        var last = -1.0
+        for x in stride(from: 0.0, through: 350, by: 2) {
+            let light = PrintPaint.lightness(strip.tone(at: x))
+            XCTAssertGreaterThanOrEqual(light, last - 0.0001, "\(x)")
+            last = light
+        }
+        // There at once, and still.
+        XCTAssertEqual(PaintStyle.photo.barTime(tones, width: 350), PrintPaint.appear)
+        let whole = strip.frame(age: strip.length), later = strip.frame(age: strip.length + 3)
+        XCTAssertEqual(whole.bytes, later.bytes)
+        let S = Double(PrintPaint.scale)
+        func at(_ x: Double, _ y: Double) -> Int { 4 * (Int((y + Paint.pad) * S) * whole.wide + Int((x + Paint.pad) * S)) }
+        // Whole inside, nothing outside, round at the corners.
+        XCTAssertEqual(whole.bytes[at(175, 13) + 3], 255)
+        XCTAssertEqual(whole.bytes[at(175, -3) + 3], 0)
+        XCTAssertEqual(whole.bytes[at(0.2, 0.2) + 3], 0)
+        // Grain: neighbours of one tone differ a little, never much.
+        var least = 255, most = 0
+        for k in 0..<30 {
+            let green = Int(whole.bytes[at(330 + Double(k) / 3, 6 + Double(k) / 2) + 1])
+            least = min(least, green)
+            most = max(most, green)
+        }
+        XCTAssertGreaterThan(most - least, 6)
+        XCTAssertLessThan(most - least, 60)
+        // Its paints' swatches: small squares of the same grain.
+        let chip = PhotoChip(rgb: [140, 132, 122], index: 0, seed: 7)
+        let made = chip.frame(age: chip.length)
+        XCTAssertEqual(made.bytes[4 * (made.high / 2 * made.wide + made.wide / 2) + 3], 255)
+        XCTAssertEqual(made.bytes[3], 0)
+    }
+
+    /// Mateusz 2026-11-12 10:47: „rzeźba - bez paska”.
+    func testASculptureIsToldByItsKindOrByWhatItIsMadeOf() {
+        for kind in ["Sculpture", "Sculpture-Bronze", "Rzeźba", "Statuettes", "Busts", "Reliefs", "beeldhouwwerk", "Skulptur", "Netsuke",
+                     "płaskorzeźba"] {
+            XCTAssertTrue(PaintStyle.sculpted(medium: "", classification: kind), kind)
+        }
+        // Painted or not: a sculpture's colours are not a picture's.
+        XCTAssertTrue(PaintStyle.sculpted(medium: "Polychromed wood", classification: "Sculpture"))
+        for medium in ["Bronze", "brąz", "odlew z brązu", "Marble", "marmur kararyjski", "Terracotta", "Painted plaster", "gips patynowany",
+                       "Alabaster", "Limestone", "Ivory"] {
+            XCTAssertTrue(PaintStyle.sculpted(medium: medium), medium)
+        }
+        // What is painted, drawn or printed is none, whatever it lies on.
+        for (medium, kind) in [("Oil on canvas", "Paintings"), ("Watercolor on ivory", ""), ("Oil on marble", ""), ("", ""), ("", "Painting"),
+                               ("Woodcut", "Relief print"), ("tusz, papier brązowy", ""), ("papier brązowy", ""), ("Gelatin silver print", ""),
+                               ("Pen and brown ink", "Drawings"), ("Porcelain", "Ceramics")] {
+            XCTAssertFalse(PaintStyle.sculpted(medium: medium, classification: kind), "\(medium) \(kind)")
+        }
+    }
+
     func testThePaintsBeginWhileTheBarIsPaintedOneAfterAnother() {
         let three = Array(jatte.prefix(3))
         for style in PaintStyle.allCases {
@@ -573,6 +730,11 @@ final class PaintTests: XCTestCase {
             let bar = style.barTime(jatte, width: 350), first = style.swatchDelay(bar: bar, index: 0)
             XCTAssertGreaterThan(style.swatchDelay(bar: bar, index: 1), first + 0.2)
             XCTAssertLessThan(style.swatchDelay(bar: bar, index: 1), first + 0.3)
+            // A photograph is not made colour by colour: it is there.
+            if style == .photo {
+                XCTAssertEqual(bar, PrintPaint.appear)
+                continue
+            }
             XCTAssertGreaterThan(bar, style.barTime(three, width: 350))
             // They do not wait for the bar's last stroke (Mateusz 2026-11-11
             // 18:39: „muszą się pojawiać trochę wcześniej”): the first begins

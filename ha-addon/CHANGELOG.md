@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.145.51
+
+- Karta dzieła, „Kolorystyka”: zamiast płaskiego paska z procentami jest
+  pasek barw w technice dzieła, ten sam co w Studium („Kolor i światło”):
+  olej, akwarela, pastel, kreska ryciny i rysunku, odbitki farb grafiki
+  barwnej. Na karcie jest od razu gotowy, bez ruchu, i bez procentów pod
+  spodem; jest też wyższy (26 pt zamiast 18).
+- Fotografia ma własny pasek: tony od najciemniejszego do najjaśniejszego
+  w jednym gradiencie, z lekkim ziarnem (także w Studium).
+- Rzeźba nie ma paska barw na karcie (znaczniki barw zostają). Dzieło,
+  którego technika nic nie mówi, ma pasek płaski, bez procentów.
+- Akwarela i gwasz: małe, wyraźne barwy nie mają już własnego odcinka
+  paska. Plama omija kółko czystego papieru, a w nim leży kropla barwy
+  akcentu, która z jednej strony zachodzi na plamę i w nią wpływa
+  (w Studium widać, jak się rozlewa).
+- Pastel, kredka, kreda: akcent to łatka mocno dociśniętych kresek po
+  skosie w drugą stronę, nisko na pasku i trochę pod jego linią.
+- Zakładka Teraz: cienki pasek barw pod tytułem zniknął.
+- Barwy dzieła: biel, która wyraźnie się wybija (piana na ciemnym morzu,
+  biały czepek w ciemnym wnętrzu), jest teraz wśród barw obrazu jako
+  akcent. Po aktualizacji serwer raz przelicza barwy biblioteki (na NAS
+  1 do 2 godzin); szukanie po kolorze działa bez zmian.
+
 ## 1.145.50
 
 - Studium dzieła, analiza kompozycji: arkusz nie kończy się równo na
