@@ -19,10 +19,12 @@ from frame_server.library.artists import (
 )
 from frame_server.library.duplicates import artist_words
 from frame_server.library.themes import (
+    CURATED_KEY,
     WEEK_KEY,
     WEEKLY,
     Theme,
     artist_of_the_week,
+    curated,
     new_artist_of_the_week,
     week_of,
     weekly_themes,
@@ -186,6 +188,28 @@ def test_a_week_stored_under_the_old_group_name_shows_under_the_new(service) -> 
     )
     assert WEEKLY == "Dziś dla Ciebie"
     assert [(t.key, t.group) for t in weekly_themes(library, day)] == [(artist.key, WEEKLY)]
+
+
+def test_a_card_stored_with_what_a_theme_no_longer_has_still_shows(service) -> None:
+    """1.145.14 took ``min_suitability`` from the themes; the week's themes
+    and the curator's cards stored before it failed to be read, and with
+    them Odkrywaj's cards and the day's proposals (the NAS, 2026-11-12)."""
+    library = service.library
+    day = date(2026, 10, 31)
+    artist = Theme(
+        "week-artist-theodore-robinson",
+        "Theodore Robinson",
+        "Artysta tygodnia. 40 dzieł na ten tydzień.",
+        WEEKLY,
+        artists=("Theodore Robinson",),
+        catalogue=True,
+    )
+    stored = {**asdict(artist), "min_suitability": 0.4}
+    library.set_state(WEEK_KEY, {"week": week_of(day), "themes": [stored], "history": [artist.key]})
+    assert [t.key for t in weekly_themes(library, day)] == [artist.key]
+    card = {**asdict(artist), "key": "curator-light", "min_suitability": None}
+    library.set_state(CURATED_KEY, {"cards": [{"theme": card, "day": day.isoformat()}]})
+    assert [t.key for t in curated(library)] == ["curator-light"]
 
 
 def test_taste_and_search_leave_nobody_out(service) -> None:
