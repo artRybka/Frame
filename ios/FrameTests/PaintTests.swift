@@ -215,6 +215,83 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(LineStrip.plan(Array(engraving.prefix(1)), width: 350, seed: 5, tool: .pen).tones.count, 1)
     }
 
+    /// Kiyonaga's "Uma no Naishi": aged paper and the key block's browns,
+    /// with a salmon and a yellow on a twentieth of it each (Mateusz
+    /// 2026-11-12 11:35: „jeżeli pojawią się plama barwna, to nasza skala
+    /// koloru musi ją uwzględniać”).
+    private var kiyonaga: [PaintShare] {
+        shares([("#c7bc9a", 0.431), ("#7e6e52", 0.179), ("#9d7f5a", 0.171), ("#ac9c77", 0.138), ("#c06e4f", 0.044), ("#aa8e38", 0.043)])
+    }
+
+    func testAPatchOfColourIsToldFromTheTonesOfTheOneColour() {
+        // The salmon and the yellow are patches, the browns the tones; and the work is still one of tones.
+        XCTAssertEqual(PrintPaint.patches(kiyonaga) ?? [], [false, false, false, false, true, true])
+        XCTAssertTrue(PrintPaint.mostlyOne(kiyonaga))
+        XCTAssertFalse(PrintPaint.oneColour(kiyonaga.map(\.rgb)))
+        // A work of one colour has none.
+        for tones in [engraving,
+                      shares([("#c9b79a", 0.4), ("#a9856a", 0.27), ("#8a5a44", 0.2), ("#6b3f30", 0.13)]),
+                      shares([("#d2cec4", 0.46), ("#a9a59c", 0.26), ("#7d7a74", 0.18), ("#55534f", 0.1)]),
+                      shares([("#e0cdb0", 0.5), ("#c08a6a", 0.3), ("#a0523a", 0.2)])] {
+            XCTAssertEqual(PrintPaint.patches(tones)?.contains(true), false)
+            XCTAssertTrue(PrintPaint.mostlyOne(tones))
+        }
+        // A work in colours is not a scale of tones with patches: there is too much colour in it.
+        XCTAssertFalse(PrintPaint.mostlyOne(wave))
+        XCTAssertFalse(PrintPaint.mostlyOne(shares([("#1d1a17", 0.3), ("#e8dcc0", 0.28), ("#c8a23a", 0.18), ("#b5432b", 0.14)])))
+        XCTAssertFalse(PrintPaint.mostlyOne(jatte))
+        XCTAssertEqual(PrintPaint.patches([]) ?? [true], [])
+    }
+
+    func testAPatchOfColourIsPrintedOnTheScaleOfTones() {
+        for tool in [LineTool.burin, .pen, .pencil] {
+            let plan = LineStrip.plan(kiyonaga, width: 350, seed: 5, tool: tool)
+            // Every colour keeps its place by lightness and its share; the patches are marked.
+            XCTAssertEqual(plan.tones.count, 6)
+            XCTAssertEqual(plan.tones.filter(\.patch).map(\.colour).sorted(), [4, 5])
+            XCTAssertEqual(plan.tones.last?.to ?? 0, 350, accuracy: 0.001)
+            // The paper and the ink are the browns', not a patch's.
+            let alone = LineStrip.plan(Array(kiyonaga.prefix(4)), width: 350, seed: 5, tool: tool)
+            XCTAssertEqual(plan.paper, alone.paper)
+            XCTAssertEqual(plan.ink, alone.ink)
+            // The lines over a patch are thin enough for its colour to be seen.
+            for tone in plan.tones where tone.patch { XCTAssertLessThanOrEqual(tone.cover, LineStrip.over.most + 0.001) }
+
+            let strip = LineStrip(shares: kiyonaga, width: 350, seed: 5, tool: tool)
+            XCTAssertEqual(strip.length, LineStrip.time(6), accuracy: 0.001)
+            let bare = strip.frame(age: PrintPaint.appear), whole = strip.frame(age: strip.length)
+            /// How far the middle of a tone is from the paper in colour (red against blue), on the average.
+            func tint(_ frame: PaintFrame, _ tone: LineStrip.Tone) -> Double {
+                var sum = 0.0, count = 0.0
+                for x in stride(from: tone.from + 3, to: tone.to - 3, by: 0.5) {
+                    for y in stride(from: 5.0, to: 21.0, by: 0.5) {
+                        let (i, j) = dot(x, y), colour = frame.colour(i, j)
+                        sum += (colour.red - colour.blue) - (plan.paper[0] - plan.paper[2])
+                        count += 1
+                    }
+                }
+                return sum / count
+            }
+            for tone in plan.tones {
+                // Paper alone at first; at the end a patch is its own colour, a tone is the paper under grey lines.
+                XCTAssertLessThan(abs(tint(bare, tone)), 6, "\(tool)")
+                if tone.patch {
+                    XCTAssertGreaterThan(tint(whole, tone), 35, "\(tool) \(tone.colour)")
+                } else {
+                    XCTAssertLessThan(abs(tint(whole, tone)), 14, "\(tool) \(tone.colour)")
+                }
+            }
+            // The patches are printed before the lines are far along, one after another.
+            let early = strip.frame(age: PrintPaint.appear + LineStrip.printed.after + LineStrip.printed.takes)
+            let patches = plan.tones.filter(\.patch)
+            XCTAssertGreaterThan(tint(early, patches[0]), 35, "\(tool)")
+            XCTAssertLessThan(tint(early, patches[1]), tint(whole, patches[1]) - 10, "\(tool)")
+            // Done is done.
+            XCTAssertEqual(strip.frame(age: strip.length + 3).bytes, whole.bytes)
+            XCTAssertEqual(LineStrip(shares: kiyonaga, width: 350, seed: 5, tool: tool).frame(age: 9).bytes, whole.bytes)
+        }
+    }
+
     func testAColourPrintIsItsInksPressedOneAfterAnother() {
         for press in [InkPress.wood, .stone] {
             let strip = InkStrip(shares: wave, width: 350, seed: 5, press: press)

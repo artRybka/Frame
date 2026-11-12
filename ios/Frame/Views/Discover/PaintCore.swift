@@ -67,9 +67,10 @@ enum PaintStyle: String, Sendable, CaseIterable {
     /// What is printed or drawn is not painted (Mateusz 2026-11-12 07:26:
     /// „dla rycin, rysunków, grafik, plakatów chciałbym opracować inny
     /// wygląd paska kolorów”). `mono`: the work is of one colour (the
-    /// server's "monochrome", or its colours are one colour's tones,
-    /// `PrintPaint.oneColour`): a print of one colour is a scale of tones
-    /// in lines, one in colours is its inks; a lithograph of one colour
+    /// server's "monochrome", or its colours are one colour's tones for
+    /// the most part, `PrintPaint.mostlyOne`): a print of one colour is a
+    /// scale of tones in lines, with a patch of colour it has beside them
+    /// printed on it; one in colours is its inks; a lithograph of one colour
     /// is the crayon's. A drawing in ink is a pen's (a painting in ink
     /// and colours stays flat), one in pencil or charcoal a soft point's;
     /// a drawing that names no tool goes by its ink, `warm` (brown) a

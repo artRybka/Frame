@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.52
+
+- Studium i karta dzieła, pasek barw grafiki i rysunku: gdy odbitka albo
+  rysunek jednej barwy ma też barwną plamę (łosoś i żółć na japońskim
+  drzeworycie, podkolorowany detal ryciny), plama jest teraz na skali
+  walorów: odbita płasko własną farbą w swoim miejscu, pod rzadszymi
+  kreskami. Dotąd znikała wśród brązów. Grafika, w której barwy jest
+  dużo (od ok. jednej trzeciej), ma jak dotąd pasek odbitek farb.
+
 ## 1.145.51
 
 - Karta dzieła, „Kolorystyka”: zamiast płaskiego paska z procentami jest

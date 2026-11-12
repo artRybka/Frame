@@ -120,6 +120,8 @@ jobs:
             capture daily 16 "daily-colour-dry-accents-$appearance" -scroll colour -paintStyle dry -paintColours 526c8e:0.221/3b4e79:0.198/6f8593:0.169/303b4b:0.168/a0b07c:0.021/b5a43c:0.011/293690:0.020
             capture daily 16 "daily-colour-burin-$appearance" -scroll colour -paintStyle burin -paintColours 918d78:0.28/4c4a3c:0.26/5f5c4b:0.24/78745f:0.22
             capture daily 16 "daily-colour-burin-mid-$appearance" -scroll colour -paintStyle burin -paintAge 1.2 -paintColours 918d78:0.28/4c4a3c:0.26/5f5c4b:0.24/78745f:0.22
+            capture daily 16 "daily-colour-burin-patches-$appearance" -scroll colour -paintStyle burin -paintColours c7bc9a:0.431/7e6e52:0.179/9d7f5a:0.171/ac9c77:0.138/c06e4f:0.044/aa8e38:0.043
+            capture daily 16 "daily-colour-burin-patches-mid-$appearance" -scroll colour -paintStyle burin -paintAge 1.0 -paintColours c7bc9a:0.431/7e6e52:0.179/9d7f5a:0.171/ac9c77:0.138/c06e4f:0.044/aa8e38:0.043
             capture daily 16 "daily-colour-pen-$appearance" -scroll colour -paintStyle pen -paintColours c9b79a:0.40/a9856a:0.27/8a5a44:0.20/6b3f30:0.13
             capture daily 16 "daily-colour-pencil-$appearance" -scroll colour -paintStyle pencil -paintColours d2cec4:0.46/a9a59c:0.26/7d7a74:0.18/55534f:0.10
             capture daily 16 "daily-colour-woodblock-$appearance" -scroll colour -paintStyle woodblock -paintColours d9cdb0:0.34/c8bc9d:0.22/1f3a5f:0.16/3d5f86:0.12/8fa7b8:0.09/e9e2cf:0.07
