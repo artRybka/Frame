@@ -106,6 +106,15 @@ SIZED = ("nga", "yale", "smk", "si", "courtauld")
 #: scans are 3600 px at most; ``!4000,4000`` of one 2004 × 2440 came
 #: 3285 × 4000, 2026-11-11).
 WHOLE = ("wellcome",)
+#: Sources whose IIIF server works out a size it was not asked for before
+#: for many seconds and hands the whole file over at once: asked whole and
+#: cut down here, but for a file of more than :data:`COMMONS_WHOLE` pixels
+#: (as much as is opened whole here; one in 25 of Yale's is larger).
+#: Yale, 2026-11-12, six works: ``!4000,4000`` in 9, 16, 37 and 44 s, the
+#: whole file (2 to 5 MB) in half a second each; in the night a 500 now
+#: and then, after which the host rested and its thumbnails and imports
+#: were turned away 524 times.
+SLOW_SIZES = ("yale",)
 #: A size the server's own readers ask for in a work's address (the AIC's
 #: ``!3000,3000``, its museum's limit, is none).
 _OURS = f"(?:{OLD_MAX}|{IMAGE_MAX})"
@@ -328,14 +337,17 @@ def sized_copy(item: Item) -> str:
     work (:func:`usual_copy` is its address then).
 
     A source that says its files' sizes (:data:`SIZED`) is asked for no
-    more than the file has; one that enlarges (:data:`WHOLE`) for the whole
-    file; any other for IMAGE_MAX, and for the whole file when that is
-    refused (:func:`whole_copy`)."""
+    more than the file has, or for the whole file where a size takes its
+    server long (:data:`SLOW_SIZES`); one that enlarges (:data:`WHOLE`) for
+    the whole file; any other for IMAGE_MAX, and for the whole file when
+    that is refused (:func:`whole_copy`)."""
     width, height, url = item.width, item.height, item.image_url
     fit, si = _IIIF_FIT.search(url), _SI_MAX.search(url)
     if fit or si:
         long = IMAGE_MAX
         if item.source in SIZED and width and height:
+            if item.source in SLOW_SIZES and fit and width * height <= COMMONS_WHOLE:
+                return _IIIF_FIT.sub("/full/full/", url)
             long = max(kept_size(width, height))
         elif item.source in WHOLE and fit:
             return _IIIF_FIT.sub("/full/max/", url)
