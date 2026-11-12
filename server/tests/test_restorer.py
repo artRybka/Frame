@@ -14,28 +14,25 @@ from PIL import Image
 from test_sharper import OWN, OWN_THUMB, Web, _jpeg, _own, _print, _serve
 
 from frame_server.ai.gatekeeper import asked_by_rules
+from frame_server.ai.gemini import Ask, NotDrawn
 from frame_server.config import Settings
 from frame_server.library import Item, low_res
 from frame_server.library.models import ItemSummary
 from frame_server.library.viewer import OWNER_ID
-from frame_server.restorer import Drawn, NotRestored, Restorer, fit
+from frame_server.restorer import NotRestored, fit
 from frame_server.service import FrameService
 from frame_server.web.app import create_app
 
 SMALL = (900, 600)
 
 
-class Refused(Exception):
-    pass
-
-
 class FakePainter:
     """The image model: the picture twice as large, or a refusal."""
 
     def __init__(self) -> None:
-        self.asked: list[tuple[str, str, str]] = []
+        self.asked: list[tuple[str, str]] = []
         self.refuse: set[tuple[int, int]] = set()
-        self.batches: dict[str, dict[str, Image.Image]] = {}
+        self.batches: dict[str, list[Ask]] = {}
         self.done: set[str] = set()
 
     def enabled(self) -> bool:
@@ -47,34 +44,31 @@ class FakePainter:
         return picture.resize((w * 2 + 3, h * 2), Image.Resampling.BICUBIC)  # a hair wider
 
     def paint(
-        self,
-        kind: str,
-        prompt: str,
-        pictures: Sequence[Image.Image],
-        size: str = "1K",
-        model: str = "",
+        self, kind: str, prompt: str, pictures: Sequence[Image.Image], size: str = "1K"
     ) -> tuple[Image.Image, float]:
-        self.asked.append((kind, size, model))
+        self.asked.append((kind, size))
         if pictures[0].size in self.refuse:
-            raise Refused("image_recitation")
+            raise NotDrawn("Google answered 400", "image_recitation")
         return self._draw(pictures[0]), 0.06
 
-    def submit(
-        self, kind: str, prompt: str, pictures: dict[str, Image.Image], size: str, model: str
-    ) -> str:
+    def batch(self, kind: str, asks: Sequence[Ask]) -> str:
         name = f"batches/{len(self.batches) + 1}"
-        self.batches[name] = dict(pictures)
+        self.batches[name] = list(asks)
         return name
 
-    def collect(self, kind: str, name: str) -> list[Drawn] | None:
-        if name not in self.done:
+    def batched(
+        self, kind: str, batch: str
+    ) -> dict[str, tuple[Image.Image, float] | NotDrawn] | None:
+        if batch not in self.done:
             return None
-        return [
-            Drawn(key=k, refused=True, error="image_recitation")
-            if p.size in self.refuse
-            else Drawn(key=k, picture=self._draw(p))
-            for k, p in self.batches[name].items()
-        ]
+        found: dict[str, tuple[Image.Image, float] | NotDrawn] = {}
+        for ask in self.batches[batch]:
+            picture = ask.pictures[0]
+            if picture.size in self.refuse:
+                found[ask.name] = NotDrawn("no picture", "image_recitation")
+            else:
+                found[ask.name] = (self._draw(picture), 0.03)
+        return found
 
 
 def _small(service: FrameService, **kw: Any) -> Item:
@@ -96,13 +90,7 @@ def app(tmp_path: Path) -> Iterator[tuple[TestClient, FrameService, Web, FakePai
         service.sharper.commons_file = lambda item: ""
         painter = FakePainter()
         service.painter = painter  # type: ignore[assignment]
-        service.restorer = Restorer(
-            service.library,
-            service.images,
-            service.sharper,
-            painter,
-            refusal=lambda err: isinstance(err, Refused),
-        )
+        service.restorer.painter = painter  # type: ignore[assignment]
         yield client, service, web, painter
 
 
@@ -120,7 +108,7 @@ def test_a_small_picture_drawn_again_stays_the_same_work(app: Any) -> None:
     assert copy["museum"] == "Kreatywny restaurator"
     # Twice as large, a hair off its proportions: kept so.
     assert (copy["width"], copy["height"]) == (1803, 1200)
-    assert painter.asked == [("restorer", "2K", "gemini-nano-banana-2.1")]
+    assert painter.asked == [("restorer", "2K")]
 
     stored = service.library.get(own.id)
     assert stored is not None

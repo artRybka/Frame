@@ -30,19 +30,20 @@ from __future__ import annotations
 import io
 import logging
 import threading
-from collections.abc import Callable, Iterator, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any
 
 from PIL import Image
 
+from .ai.gemini import MODEL, Ask, NotDrawn
 from .library import Item, ItemKind
 from .library.low_res import LOW_SIDE, low_side
 from .library.models import Note
 from .library.viewer import OWNER_ID
 
 if TYPE_CHECKING:
+    from .ai.gemini import Painter
     from .library import ImageCache, Library
     from .sharper import Sharper
 
@@ -51,7 +52,6 @@ log = logging.getLogger(__name__)
 KIND = "restorer"
 #: Where the drawing is from, as the card names it.
 ORIGIN = "Kreatywny restaurator"
-MODEL = "gemini-nano-banana-2.1"
 #: The model's output: some 2048 px on the long side.
 SIZE = "2K"
 #: A picture this long or longer gains nothing from the model's 2K.
@@ -91,43 +91,12 @@ contradicts the painting, do not sharpen into halos.
 class NotRestored(ValueError):
     """The work cannot be drawn again: ``code`` says why ("refused": the
     model would not draw it; "skewed": drawn in other proportions;
-    "large": its picture is large enough; "not_art")."""
+    "large": its picture is large enough; "not_drawn": no picture came
+    back this time; "not_art")."""
 
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = code
-
-
-@dataclass
-class Drawn:
-    """One answer of a batch: ``picture`` drawn, else ``refused`` (for
-    good) or ``error`` (to be asked again)."""
-
-    key: str
-    picture: Image.Image | None = None
-    refused: bool = False
-    error: str = ""
-
-
-class Painter(Protocol):
-    """Google's image model (``ai.gemini.Painter``)."""
-
-    def enabled(self) -> bool: ...
-
-    def paint(
-        self,
-        kind: str,
-        prompt: str,
-        pictures: Sequence[Image.Image],
-        size: str = ...,
-        model: str = ...,
-    ) -> tuple[Image.Image, float]: ...
-
-    def submit(
-        self, kind: str, prompt: str, pictures: dict[str, Image.Image], size: str, model: str
-    ) -> str: ...
-
-    def collect(self, kind: str, name: str) -> list[Drawn] | None: ...
 
 
 class Restorer:
@@ -137,15 +106,12 @@ class Restorer:
         images: ImageCache,
         sharper: Sharper,
         painter: Painter,
-        refusal: Callable[[Exception], bool] = lambda err: False,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self.library = library
         self.images = images
         self.sharper = sharper
         self.painter = painter
-        #: Whether an error of :meth:`Painter.paint` is the model's refusal.
-        self.refusal = refusal
         self.clock = clock
         self._lock = threading.Lock()
         self._wake = threading.Event()
@@ -220,12 +186,12 @@ class Restorer:
             stored = self.sharper.keep_own(stored)
         picture = self._picture(stored)
         try:
-            drawn, usd = self.painter.paint(KIND, PROMPT, [picture], size=SIZE, model=MODEL)
-        except Exception as err:
-            if self.refusal(err):
-                self._note(stored.id, "refused", why=str(err)[:300])
+            drawn, usd = self.painter.paint(KIND, PROMPT, [picture], size=SIZE)
+        except NotDrawn as err:
+            if refusal(err):
+                self._note(stored.id, "refused", why=str(err)[:300], code=err.code)
                 raise NotRestored("refused", str(err)) from err
-            raise
+            raise NotRestored("not_drawn", str(err)) from err
         return self._keep(stored, picture, drawn, usd)
 
     def _keep(self, item: Item, picture: Image.Image, drawn: Image.Image, usd: float) -> Item:
@@ -265,7 +231,7 @@ class Restorer:
             batches = self._batches()
             sent = 0
             for chunk in _chunks(items, PER_BATCH):
-                pictures: dict[str, Image.Image] = {}
+                pictures: dict[str, Image.Image] = {}  # by the work's id
                 for item in chunk:
                     try:
                         self.check(item)
@@ -276,7 +242,8 @@ class Restorer:
                         log.info("restorer: %s not had: %s", item.id, err)
                 if not pictures:
                     continue
-                name = self.painter.submit(KIND, PROMPT, pictures, SIZE, MODEL)
+                asks = [Ask(i, PROMPT, [p], SIZE) for i, p in pictures.items()]
+                name = self.painter.batch(KIND, asks)
                 batches.append(
                     {
                         "name": name,
@@ -299,7 +266,11 @@ class Restorer:
             batches = self._batches()
             left = []
             for batch in batches:
-                answers = self.painter.collect(KIND, str(batch["name"]))
+                try:
+                    answers = self.painter.batched(KIND, str(batch["name"]))
+                except NotDrawn as err:  # lost: its works may be sent again
+                    log.info("restorer: batch %s lost: %s", batch["name"], err)
+                    continue
                 if answers is None:
                     left.append(batch)
                     continue
@@ -308,17 +279,19 @@ class Restorer:
                 self.library.set_state(BATCHES, left)
         return drawn
 
-    def _take(self, batch: dict[str, Any], answers: list[Drawn]) -> int:
+    def _take(
+        self, batch: dict[str, Any], answers: dict[str, tuple[Image.Image, float] | NotDrawn]
+    ) -> int:
         drawn = 0
-        for answer in answers:
-            item = self.library.get(answer.key)
+        for item_id, answer in answers.items():
+            item = self.library.get(item_id)
             if item is None:
                 continue
-            if answer.picture is None:
-                if answer.refused:
-                    self._note(item.id, "refused", why=answer.error[:300])
+            if isinstance(answer, NotDrawn):
+                if refusal(answer):
+                    self._note(item.id, "refused", why=str(answer)[:300], code=answer.code)
                 else:
-                    log.info("restorer: %s not drawn: %s", item.id, answer.error)
+                    log.info("restorer: %s not drawn: %s", item.id, answer)
                 continue
             if self.restored(item):
                 continue  # drawn from its card meanwhile
@@ -333,7 +306,7 @@ class Restorer:
             if size and tuple(size) != picture.size:
                 continue  # its picture changed meanwhile: drawn from another
             try:
-                self._keep(item, picture, answer.picture, BATCH_USD)
+                self._keep(item, picture, answer[0], answer[1])
             except (NotRestored, ValueError) as err:
                 log.info("restorer: %s not kept: %s", item.id, err)
                 continue
@@ -362,6 +335,16 @@ class Restorer:
             self._wake.clear()
 
 
+#: Google's words for a picture its model will not draw again, whatever is
+#: asked (it takes the work for a protected one, or its content for one it
+#: may not show): never sent again.
+REFUSALS = ("recitation", "prohibited", "safety", "blocklist", "spii")
+
+
+def refusal(err: NotDrawn) -> bool:
+    return any(word in err.code.lower() for word in REFUSALS)
+
+
 def fit(size: tuple[int, int], drawn: Image.Image) -> Image.Image:
     """``drawn`` in the proportions of the picture it was drawn from
     (``size``); raises :class:`NotRestored` when they differ by more than
@@ -387,4 +370,4 @@ def _chunks(items: list[Item], n: int) -> Iterator[list[Item]]:
         yield items[at : at + n]
 
 
-__all__ = ["LOW_SIDE", "Drawn", "NotRestored", "Restorer", "fit"]
+__all__ = ["LOW_SIDE", "NotRestored", "Restorer", "fit", "refusal"]
