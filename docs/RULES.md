@@ -56,7 +56,7 @@ chciałbym żeby spadła jakość doboru tych propozycji”).
 |---|---|---|
 | 0 | Zestaw wzorcowy i pomiary | 1.145.11 (PLAN 3.3zzz155) |
 | 1 | Noc: porządki przed dobieraniem, budżety czasu | 1.145.12 (PLAN 3.3zzz156) |
-| 2 | Szybkość bez zmiany wyników: przyrostowe scalanie grup (2a: 1.145.13, PLAN 3.3zzz157); duże obrazy powtórek zostają jako oryginały (2b: 1.145.17, PLAN 3.3zzz161); dalej według pomiarów z nocy | w toku |
+| 2 | Szybkość bez zmiany wyników: przyrostowe scalanie grup (2a: 1.145.13, PLAN 3.3zzz157); duże obrazy powtórek zostają jako oryginały (2b: 1.145.17, PLAN 3.3zzz161); noc 11/12 listopada zmieściła wszystkie zadania (powtórki 452 s na 3871 obrazów), dalszego przyspieszania nie trzeba | 1.145.17 |
 | 3 | Sprzątanie resztek: wskaźnik „Na e-papierze”, martwy próg, nieużywane punkty API | 1.145.14 (PLAN 3.3zzz158) |
 | 4 | Jeden werdykt pokazywania: lista powodów i tabela „miejsce × powód” (4a, bez zmiany wyników: 1.145.15, PLAN 3.3zzz159); serwer nie proponuje zachowanych detali, kopii i znaczków (4b: 1.145.19, PLAN 3.3zzz163); kolejność „najpierw dobre” w Odkrywaj (4c: 1.145.23, PLAN 3.3zzz168) | 1.145.23 |
 | 5 | Jedna tożsamość dzieła i autora, opis rodzaju: przedmioty i książki do „Sztuk innych” (5a: 1.145.26, PLAN 3.3zzz171); „ten sam autor” jedną regułą (5b: 1.145.33, PLAN 3.3zzz179); to samo dzieło i najlepsza kopia według obrazu (5c: 1.145.30, PLAN 3.3zzz176) | w toku |

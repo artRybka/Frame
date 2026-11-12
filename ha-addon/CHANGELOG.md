@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.145.57
+
+- Odkrywaj: karty malarzy nie łapią już innych osób o tym samym
+  nazwisku. „Romantyzm” i „Pejzaże XIX wieku” pokazywały obok Turnera
+  mezzotinty Charlesa Turnera i kilku innych Turnerów (56 dzieł z 356),
+  karta z Boschem w jednej trzeciej dzieła Antonia Boscha. Tak samo
+  poprawieni: Boucher, Vermeer, Leighton, Mucha, Poynter, Millet
+  i Fragonard.
+- Szukaj i własne playlisty z barw (np. ciepłe obrazy): serwer ocenia
+  barwy tylko u dzieł, które pasują techniką i latami, zamiast pobierać
+  miniatury wszystkiego, co muzeum ma na stronie. W próbie 8 dzieł
+  w 39 sekund zamiast 2 w 7 minut; wyniki są te same.
+
 ## 1.145.55
 
 - Studium dzieła, analiza kompozycji: znaki analizy wyraźnie odcinają
