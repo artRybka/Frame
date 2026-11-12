@@ -1272,16 +1272,16 @@ struct ItemDetailView: View {
     /// little for the frame; a tap looks for a better copy elsewhere
     /// ("Szukaj lepszej kopii").
     private func pictureFact(_ item: Item) -> some View {
-        let place: String
+        let place: String?
         var size: String?
         let restored = item.sharper?.isRestored == true
         if let sharper = item.sharper, !restored {
             place = sharper.museum.isEmpty ? Names.source(sharper.source) : sharper.museum
             size = "\(sharper.width) × \(sharper.height) px"
         } else if let sharper = item.sharper {
-            // Drawn again from the museum's picture: the museum, the
-            // drawing's size, and the restorer's name under it.
-            place = item.museum.isEmpty ? Names.source(item.source) : item.museum
+            // Drawn again from the museum's picture (its museum is under
+            // Kolekcja): the drawing's size, the restorer's name under it.
+            place = nil
             size = "\(sharper.width) × \(sharper.height) px"
         } else {
             let source = item.museum.isEmpty ? Names.source(item.source) : item.museum
