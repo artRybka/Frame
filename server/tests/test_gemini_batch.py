@@ -147,7 +147,7 @@ def test_a_batch_is_sent_and_read_once_by_its_names(
     assert painter.batched(KIND, NAME) is None
     google.busy = 3  # Google busy through every try: later
     assert painter.batched(KIND, NAME) is None
-    assert service.claude.spending.by_kind() == {}
+    assert service.painter.spending.by_kind() == {}
 
     google.state = "BATCH_STATE_SUCCEEDED"
     found = painter.batched(KIND, NAME)
@@ -161,7 +161,7 @@ def test_a_batch_is_sent_and_read_once_by_its_names(
     refused, bad = found["b/lines"], found["c/lines"]
     assert isinstance(refused, NotDrawn) and refused.code == "image_recitation"
     assert isinstance(bad, NotDrawn) and bad.code == "INVALID_ARGUMENT"
-    assert service.claude.spending.by_kind() == {KIND: usd}
+    assert service.painter.spending.by_kind() == {KIND: usd}
 
 
 def test_a_lost_batch_and_refusals(service: FrameService, painter: Painter, google: Google) -> None:

@@ -5,8 +5,11 @@ there is one key, one count of what was spent and one month's limit).
 
 The key is the owner's, given in the app (Konfiguracja; never the
 environment's). What an answer cost is counted from its own ``usage`` into
-the same month's spending as Claude's answers, under the kind its asker
-names, and nothing is asked once the month's limit is reached.
+the image model's own month's spending (:data:`SPEND_KEY`; apart from
+Claude's, Mateusz 2026-11-12 23:20: "Dla Gemini trzeba dać osobny segment
+w Konfiguracja (tak jak Claude) i tam ustawić osobno limit"), under the
+kind its asker names, and nothing is asked once its own month's limit
+(``AiConfig.gemini_monthly_limit_usd``) is reached.
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from PIL import Image
 
-from .client import AiUnavailable
+from .client import AiUnavailable, Spending
 
 if TYPE_CHECKING:
     from .client import Claude
@@ -210,9 +213,13 @@ def _pictures(node: Any, found: list[str]) -> None:
             _pictures(value, found)
 
 
+#: Where what the image model's answers cost is kept (state), by month and kind.
+SPEND_KEY = "gemini_spend"
+
+
 class Painter:
-    """Asks Google's image model and counts what it costs, in the same
-    month's spending and under the same limit as Claude's answers."""
+    """Asks Google's image model and counts what it costs, in a month's
+    spending and under a month's limit of its own."""
 
     def __init__(
         self,
@@ -222,7 +229,16 @@ class Painter:
     ) -> None:
         self.config = config
         self.claude = claude
+        self.spending = Spending(claude.spending.library, SPEND_KEY)
         self.http = http or (lambda: httpx.Client(timeout=PATIENCE))
+
+    def budget_left(self) -> float:
+        """What is left of the image model's month's limit."""
+        return self.config.config.gemini_monthly_limit_usd - self.spending.total()
+
+    def check_budget(self) -> None:
+        if self.budget_left() <= 0:
+            raise AiUnavailable("this month's limit for the image model is reached")
 
     def enabled(self) -> bool:
         """Whether there is a key to ask with."""
@@ -247,7 +263,7 @@ class Painter:
         key = self.config.gemini_key
         if not key:
             raise AiUnavailable("no Google API key")
-        self.claude.check_budget()
+        self.check_budget()
         body = {
             "model": MODEL,
             "input": [{"type": "text", "text": prompt}, *(_block(p) for p in pictures)],
@@ -271,7 +287,7 @@ class Painter:
             raise NotDrawn(said, _code(answer))
         raw = answer.json()
         usd = cost(raw.get("usage") or {})
-        self.claude.spending.add(kind, usd)
+        self.spending.add(kind, usd)
         found: list[str] = []
         _pictures(raw, found)
         if not found:
@@ -293,7 +309,7 @@ class Painter:
         names = [ask.name for ask in asks]
         if not names or len(set(names)) != len(names):
             raise ValueError("a batch needs questions, each under a name of its own")
-        self.claude.check_budget()
+        self.check_budget()
         requests = [{"request": _request(a), "metadata": {"key": a.name}} for a in asks]
         weight = sum(len(json.dumps(r)) for r in requests)
         if weight > BATCH_BYTES:
@@ -344,7 +360,7 @@ class Painter:
             if not isinstance(drawn, NotDrawn):
                 spent += drawn[1]
             found[name] = drawn
-        self.claude.spending.add(kind, round(spent, 4))
+        self.spending.add(kind, round(spent, 4))
         return found
 
     def _send(self, method: str, url: str, key: str, **kw: Any) -> httpx.Response:
