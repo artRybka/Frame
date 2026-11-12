@@ -21,6 +21,10 @@ struct ItemDetailView: View {
     /// The picture shown now as its source gave it (width, height), once
     /// the server has told.
     @State private var pictureSize: (Int, Int)?
+    /// The picture's long side when it is small for the frame (`LowRes`),
+    /// 0 when it is not, as the server told it once the card opened or a
+    /// copy was picked; nil, the tile's word for it until then.
+    @State private var lowKnown: Int?
     @State private var draft = FramingDraft()
     /// Crops saved here: the preview asks for them by name, as the one
     /// cached from before shows the old crop.
@@ -266,6 +270,7 @@ struct ItemDetailView: View {
     private func copyPicked(_ updated: Item) {
         withAnimation(.easeInOut(duration: 0.4)) { item = updated }
         pictureSize = updated.sharper.map { ($0.width, $0.height) }
+        lowKnown = updated.sharper.map { LowRes.side(max($0.width, $0.height)) }
         let id = itemID
         if model.player?.current?.item?.id == id {
             model.notices.info(
@@ -301,6 +306,7 @@ struct ItemDetailView: View {
             let updated = try await model.chooseCopy(itemID: itemID, copyID: copyID)
             withAnimation(.easeInOut(duration: 0.4)) { item = updated }
             pictureSize = updated.sharper.map { ($0.width, $0.height) }
+            lowKnown = updated.sharper.map { LowRes.side(max($0.width, $0.height)) }
         } catch {
             model.show(error)
         }
@@ -455,7 +461,8 @@ struct ItemDetailView: View {
                 title: nonEmpty(polish?.title) ?? (summary.shownTitle.isEmpty ? "Bez tytułu" : summary.shownTitle),
                 date: photo ? "" : date,
                 font: .serif(30, weight: .semibold),
-                zoom: summary.zoom == true ? Fragments.depth(fragments, scale: displayScale) ?? 0 : nil
+                zoom: summary.zoom == true ? Fragments.depth(fragments, scale: displayScale) ?? 0 : nil,
+                lowSide: summary.lowSide
             )
                 .fixedSize(horizontal: false, vertical: true)
             if !summary.artist.isEmpty {
@@ -614,6 +621,7 @@ struct ItemDetailView: View {
             if let width = view.width, let height = view.height, width > 0 {
                 pictureSize = (width, height)
             }
+            if let low = view.lowSide { lowKnown = low }
             if let held = view.heldBy, !held.isEmpty, item?.heldBy?.isEmpty != false {
                 withAnimation(.easeOut(duration: 0.3)) { item?.heldBy = held }
                 if let key = view.heldAt, !key.isEmpty { item?.heldAt = key }
@@ -1033,7 +1041,8 @@ struct ItemDetailView: View {
                 font: .serif(30, weight: .semibold),
                 // "Pod lupą": its picture's tiles are laid on it while the
                 // full screen zooms in (a Commons tile set has places).
-                zoom: item.isFragment ? nil : Fragments.depth(fragments, scale: displayScale)
+                zoom: item.isFragment ? nil : Fragments.depth(fragments, scale: displayScale),
+                lowSide: lowSide
             )
                 .fixedSize(horizontal: false, vertical: true)
                 // The museum's title fades into the Polish one.
@@ -1225,8 +1234,14 @@ struct ItemDetailView: View {
         }
     }
 
-    /// Where the picture is from and how large it is; a tap looks for a
-    /// better copy elsewhere ("Szukaj lepszej kopii").
+    /// The picture's long side when it is small for the frame (`LowRes`).
+    private var lowSide: Int? {
+        lowKnown ?? ItemPeeks.tiles[itemID]?.summary.lowSide
+    }
+
+    /// Where the picture is from and how large it is, and whether that is
+    /// little for the frame; a tap looks for a better copy elsewhere
+    /// ("Szukaj lepszej kopii").
     private func pictureFact(_ item: Item) -> some View {
         let place: String
         var size: String?
@@ -1255,6 +1270,9 @@ struct ItemDetailView: View {
                         .contentTransition(.opacity)
                     if item.sharper?.isChosen == true {
                         Text("wybrane przez Ciebie").font(.caption).foregroundStyle(Theme.inkSoft)
+                    }
+                    if let side = lowSide, side > 0 {
+                        CopyTag(tag: .init(text: "Niska rozdzielczość", tone: .warn))
                     }
                 }
                 Image(systemName: "chevron.right")
