@@ -7,7 +7,8 @@
   same słowa i lata pokazuje Szukaj. Dotąd serwer losował strony muzeów
   według stylu; w próbie „Morze i statki” przynosiło tak 3 dzieła na 10
   nie o morzu, a „Złoty wiek” osiem rycin jednego autora. Teraz dzieła
-  są na temat, autorzy różni, a zapytań do muzeów jest około połowy.
+  są na temat, autorzy różni, a zapytań do muzeów jest mniej (dla
+  morza 13 zamiast 24).
 - Bez zmiany zostają karty autorów (np. „Romantyzm”: losowanie lepiej
   miesza autorów), „Arcydzieła muzeów” i karty barw („Kolor i nastrój”):
   dla barw sposób Szukaj okazał się wielokrotnie wolniejszy.
