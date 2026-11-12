@@ -64,6 +64,15 @@ bare. Seen on the page, he took the darker ground back (2026-11-12 10:54:
 "akwarela jednak jaśniejsza - tak jak wcześniej"): :data:`LOOK` 4 lays the
 stains as light as before it, and keeps the rest.
 
+A sheet made by hand does not stop at its frame (2026-11-12 11:04: "plamy
+akwareli mogą w jednym czy max 2 miejscach wylewać się i sięgać krawędzi
+bocznej ekranu. podobnie kreska rysunku - pojedyncza może wystawać poza
+kadr"). So (:data:`LOOK` 5) the layers are wider than the field by
+:data:`BLEED` of it on each side, the page's margin beside the frame: in
+one or two places a stain runs out over it (:func:`_spills`) and one
+stroke that ends at a side goes on past it (:func:`_past`). What lies in
+the field is as it was; :func:`field` is a layer cut back to it.
+
 No model is asked here; about four seconds a sheet (``sheets.Sheets``
 makes them ahead).
 """
@@ -87,7 +96,7 @@ Array = npt.NDArray[Any]
 PenStroke = tuple[Sequence[tuple[float, float]], bool, bool]
 
 #: Raised when the look changes, so that sheets made before are made again.
-LOOK = 4
+LOOK = 5
 #: The sheet's longer side.
 LONG = 1500
 #: The app's page and ink (``Theme.paper``, ``Theme.ink``): light, dark.
@@ -137,6 +146,25 @@ HATCH_APART = 15.0
 HATCH_SHORT = 26.0
 HATCH_NIB = 1.5
 HATCH_INK = 0.5
+#: How much wider than the field the layers are on each side (of the
+#: field's width): the page's margin there, into which a stain may run and
+#: a stroke go on. A phone's margin is about 0.055 of the sheet, so what
+#: reaches the layer's end is cut by the screen's edge there.
+BLEED = 0.08
+#: Where the stains run out: in one place, or as often as not in two; half
+#: as high as this (of the field's shorter side); as far as this (of the
+#: margin) where they run furthest; and they join the field from this many
+#: pixels within it, where its ragged edge has stopped the paint.
+SPILL_TWO = 0.5
+SPILL_HALF = (0.1, 0.17)
+SPILL_FAR = 1.25
+SPILL_ROOT = 18
+#: The stroke that goes on past the frame: one that ends this near a side
+#: (of the width) and heads out of it at least this much (of its
+#: direction); it ends this far into the margin.
+PAST_NEAR = 0.035
+PAST_HEADING = 0.35
+PAST_FAR = (0.5, 0.85)
 
 
 def _colour(rgb: tuple[int, int, int]) -> Array:
@@ -419,6 +447,100 @@ def hatching(rgb: Array, rng: np.random.Generator) -> list[Array]:
     return lines
 
 
+def bleed(width: int) -> int:
+    """How many pixels wider than a field this wide a layer is, each side."""
+    return round(BLEED * width)
+
+
+def field(layer: Image.Image) -> Image.Image:
+    """A layer (:func:`layers`) cut back to the field: what an app from
+    before the margin lays in the frame."""
+    wide = layer.width
+    guess = round(wide / (1 + 2 * BLEED))
+    width = next((w for w in range(guess - 3, guess + 4) if w + 2 * bleed(w) == wide), guess)
+    side = (wide - width) // 2
+    return layer.crop((side, 0, side + width, layer.height))
+
+
+def _spills(painted: Array, margin: int, rng: np.random.Generator) -> Array:
+    """Where the stains run out of the field over the margin beside it: a
+    tongue in one place or two, on a side where the field is painted up to
+    its edge. As wide as the field with its two margins; 1 where the
+    stains go on, from a little within the field outwards."""
+    h, w = painted.shape
+    out = np.zeros((h, w + 2 * margin), np.float32)
+    if margin < 8:
+        return out
+    half = rng.uniform(*SPILL_HALF, 2) * min(h, w)
+    band = max(min(24, w // 8), 1)
+    places: list[
+        tuple[int, int, float]
+    ] = []  # the side (0 left, 1 right), the row, half its height
+    for k in range(2 if rng.random() < SPILL_TWO else 1):
+        r = float(half[k])
+        found: list[tuple[int, int]] = []
+        for side in (0, 1):
+            edge = painted[:, :band] if side == 0 else painted[:, w - band :]
+            full = (edge.mean(axis=1) > 0.9).astype(np.uint8).reshape(-1, 1)
+            reach = int(r) | 1
+            fits = cv2.erode(full, np.ones((2 * reach + 1, 1), np.uint8)).ravel() > 0
+            fits[: int(0.06 * h) + reach] = False
+            fits[h - int(0.06 * h) - reach :] = False
+            for row in np.flatnonzero(fits).tolist():
+                if all(s != side or abs(row - at) > 2 * (r + other) for s, at, other in places):
+                    found.append((side, row))
+        if not found:
+            break
+        # the other side first, when one has run out already
+        fresh = [f for f in found if all(f[0] != s for s, _, _ in places)] or found
+        places.append((*fresh[int(rng.integers(len(fresh)))], r))
+    if not places:
+        return out
+    yy, xx = np.mgrid[0:h, 0 : w + 2 * margin].astype(np.float32)
+    # no two run out alike: the front wanders, slowly and in small
+    ragged = _noise(out.shape, 0.2 * margin, rng) * 0.3 * margin + _noise(out.shape, 5, rng) * 3
+    for where, row, r in places:
+        beyond = (margin - xx) if where == 0 else (xx - (margin + w - 1))  # out of the field
+        # a round front, widest where it leaves the field
+        shape = np.clip(1 - np.abs((yy - row) / r) ** 2.6, 0, 1)
+        far = SPILL_FAR * margin * shape + ragged * np.clip(shape * 3, 0, 1)
+        tongue = np.clip((far - beyond) / 1.5, 0, 1) * (shape > 0)
+        out = np.maximum(out, np.where(beyond > -SPILL_ROOT, tongue, 0))
+    return out
+
+
+def _past(
+    strokes: Sequence[PenStroke], size: tuple[int, int], margin: int, rng: np.random.Generator
+) -> tuple[int, Array] | None:
+    """The one stroke that goes on past the frame, and its points (pixels
+    of the field) with that end carried out into the margin: one that
+    ends at a side and heads out of it. None when no stroke does."""
+    w, h = size
+    found: list[tuple[int, Array]] = []
+    for at, (points, _, closed) in enumerate(strokes):
+        pts = np.asarray(points, np.float32).reshape(-1, 2) * (w, h)
+        if closed or len(pts) < 2:
+            continue
+        for end, before in ((0, 1), (len(pts) - 1, len(pts) - 2)):
+            way = pts[end] - pts[before]
+            long = float(np.hypot(*way))
+            if long < 1:
+                continue
+            way = way / long
+            x = float(pts[end][0])
+            left = x <= PAST_NEAR * w and way[0] < -PAST_HEADING
+            right = x >= (1 - PAST_NEAR) * w and way[0] > PAST_HEADING
+            if not (left or right):
+                continue
+            gap = x if left else (w - 1 - x)  # still within the field
+            run = (gap + float(rng.uniform(*PAST_FAR)) * margin) / abs(float(way[0]))
+            tip = (pts[end] + way * min(run, 2.2 * margin)).reshape(1, 2)
+            found.append((at, np.concatenate([tip, pts] if end == 0 else [pts, tip])))
+    if not found or margin < 8:
+        return None
+    return found[int(rng.integers(len(found)))]
+
+
 def layers(
     picture: Image.Image,
     strokes: Sequence[PenStroke] = (),
@@ -429,8 +551,15 @@ def layers(
     """The picture (its field alone) as the sheet's two layers,
     :data:`LONG` pixels long: the stains on the app's page, and over them
     what the pen drew (its strokes and the hatching of the darker parts), on
-    nothing. The app lays one on the other, each as it is made."""
+    nothing. The app lays one on the other, each as it is made.
+
+    Both are wider than the field by :func:`bleed` on each side, the
+    page's margin, where a stain or two run out and a stroke goes on;
+    :func:`field` cuts a layer back."""
     rng = np.random.default_rng(seed)
+    # What runs out of the field has its own chance: the field is the same
+    # with it and without.
+    loose = np.random.default_rng([seed, 5])
     src = np.asarray(picture.convert("RGB"))
     scale = LONG / max(src.shape[:2])
     size = (max(round(src.shape[1] * scale), 8), max(round(src.shape[0] * scale), 8))
@@ -442,8 +571,6 @@ def layers(
     paints = _pigment(colours)
     up = w / piece.shape[1]
     moving = _moving(rgb, rng)
-    canvas = np.zeros((h, w, 3), np.float32) if dark else np.ones((h, w, 3), np.float32)
-    cover = np.zeros((h, w), np.float32)
     # The paint keeps inside the field, raggedly.
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
     inset = np.minimum.reduce([xx, yy, w - 1 - xx, h - 1 - yy])
@@ -454,7 +581,6 @@ def layers(
     grain = _noise((h, w), 0.9, rng)
     patchy = _noise((h, w), 26, rng)  # where the paper soaks at a stain's edge
     lively = busy(rgb, (h, w))
-    under = FIRST * (0.85 + 0.15 * blotch) * inside * lively
     # Where little happens the page is left bare in fragments: sooner where
     # the stain would be near the page's own value, and towards the edge.
     page_lab = cv2.cvtColor(_colour(PAGE[dark]).reshape(1, 1, 3), cv2.COLOR_RGB2LAB)[0, 0]
@@ -476,25 +602,51 @@ def layers(
     thin = np.clip((level - bare) / BARE_THIN, 0, 1)
     least = 0.55 if dark else 0.35  # covering paint thinned much is a smudge
     thin = least + (1 - least) * thin * thin * (3 - 2 * thin)
+    pad = 26
+    # Where neighbours keep apart and the page shows between them.
+    seam = np.clip(_noise((h, w), 60, rng) * 3 - 0.3, 0, 1)
+    # The margin beside the field: all that the paint goes by is carried
+    # into it as in a mirror, and the paint may lie there where it runs out.
+    side = bleed(w)
+    wide = w + 2 * side
+
+    def out(a: Array) -> Array:
+        return np.pad(a, ((0, 0), (side, side)) + ((0, 0),) * (a.ndim - 2), mode="reflect")
+
+    framed = np.pad(inside, ((0, 0), (side, side)))
+    spilt = _spills(painted, side, loose)
+    # (a stain that runs out ends as any stain does, with its wet front
+    # and the paper soaked a little beyond it)
+    inside = np.maximum(
+        framed, np.clip(cv2.GaussianBlur(cv2.dilate(spilt, np.ones((33, 33))), (0, 0), 3), 0, 1)
+    )
+    wander, blotch, grain, patchy, lively, moving, thin, seam = (
+        out(a) for a in (wander, blotch, grain, patchy, lively, moving, thin, seam)
+    )
+    painted = out(painted)
+    painted[:, :side] = spilt[:, :side] > 0.5
+    painted[:, side + w :] = spilt[:, side + w :] > 0.5
+    under = FIRST * (0.85 + 0.15 * blotch) * np.maximum(framed, spilt) * lively
+    canvas = np.zeros((h, wide, 3), np.float32) if dark else np.ones((h, wide, 3), np.float32)
+    cover = np.zeros((h, wide), np.float32)
     if dark:
         canvas[:] = (moving**1.3) * under[..., None]
         cover[:] = under
     else:
         canvas *= moving ** under[..., None]
-    pad = 26
-    # Where neighbours keep apart and the page shows between them.
-    seam = np.clip(_noise((h, w), 60, rng) * 3 - 0.3, 0, 1)
     # Each stain's body first, light ones first as one paints: a stain's
     # soaked edge is then not laid over its neighbours.
     stains: list[tuple[int, tuple[slice, slice], Array]] = []
-    taken = np.zeros((h, w), np.float32)
+    taken = np.zeros((h, wide), np.float32)
     for c in sorted(range(1, len(colours)), key=lambda c: -float(paints[c].sum())):
         ys, xs = np.nonzero(piece == c)
         y0, y1 = max(int(ys.min() * up) - pad, 0), min(int((ys.max() + 1) * up) + pad, h)
         x0, x1 = max(int(xs.min() * up) - pad, 0), min(int((xs.max() + 1) * up) + pad, w)
+        # a stain near a side is in the margin's mirror too
+        x0, x1 = (0 if x0 < side else x0 + side), (wide if x1 > w - side else x1 + side)
         part = (slice(y0, y1), slice(x0, x1))
         mask = cv2.resize((piece == c).astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR)
-        mask = cv2.GaussianBlur(mask[part], (0, 0), 2.6)
+        mask = cv2.GaussianBlur(out(mask)[part], (0, 0), 2.6)
         # neighbours meet, or here and there keep apart (wet paint beside
         # wet paint would run) and the page shows between them
         short = 0.5 + (GAP + 0.6 * np.abs(wander[part])) * seam[part]
@@ -531,27 +683,41 @@ def layers(
             canvas[part] *= tint ** (aa * load * inside[part])[..., None]
             canvas[part] *= flat ** ((1 - aa) * halo_load * inside[part])[..., None]
     page, ink = _colour(PAGE[dark]), _colour(INK[dark])
-    sheet = np.empty((h, w, 3), np.float32)
+    sheet = np.empty((h, wide, 3), np.float32)
     sheet[:] = page
     sheet = sheet * (1 - np.clip(cover, 0, 1)[..., None]) + canvas if dark else sheet * canvas
     wash = Image.fromarray((np.clip(sheet, 0, 1) * 255).astype(np.uint8))
     # The darker parts hatched, under the strokes. On the dark page the pen
     # is light: there the hatching is the page's own dark, so that it still
     # darkens what it shades.
-    shade = np.zeros((h, w), np.float32)
+    shift = np.array((side, 0), np.float32)
+    shade = np.zeros((h, wide), np.float32)
     for line in hatching(rgb, rng):
-        _nib(shade, line, rng, HATCH_NIB)
-    shaded = np.clip(shade, 0, 1) * inside * HATCH_INK
-    # A few strokes of the nib, by one who saw the picture.
-    line = np.zeros((h, w), np.float32)
-    for points, sharp, closed in strokes:
+        _nib(shade, line + shift, rng, HATCH_NIB)
+    shaded = np.clip(shade, 0, 1) * framed * HATCH_INK
+    # A few strokes of the nib, by one who saw the picture. One that ends
+    # at a side goes on past the frame, as a hand does not stop on a line.
+    line = np.zeros((h, wide), np.float32)
+    free = np.zeros((h, wide), np.float32)
+    past = _past(strokes, (w, h), side, loose)
+    for at, (points, sharp, closed) in enumerate(strokes):
         pts = np.asarray(points, np.float32).reshape(-1, 2) * (w, h)
         if len(pts) < 2:
             continue
         if closed:
             pts = np.concatenate([pts, pts[:2]])  # closed a little past where it began
-        _nib(line, pts if sharp or len(pts) < 3 else _chaikin(pts), rng, NIB)
-    laid = np.clip(line, 0, 1) * inside * NIB_INK
+        goes = past is not None and past[0] == at
+        if past is not None and goes:
+            pts = past[1]
+        pts = pts + shift
+        _nib(free if goes else line, pts if sharp or len(pts) < 3 else _chaikin(pts), rng, NIB)
+    # (the stroke that goes on is not stopped by the field's edge at the sides)
+    xs_wide = np.arange(wide, dtype=np.float32)[None, :]
+    sides = ((xs_wide < side + SPILL_ROOT) | (xs_wide > side + w - 1 - SPILL_ROOT)).astype(
+        np.float32
+    )
+    laid = np.clip(line, 0, 1) * framed + np.clip(free, 0, 1) * np.maximum(framed, sides)
+    laid = np.clip(laid, 0, 1) * NIB_INK
     alpha = 1 - (1 - shaded) * (1 - laid)
     lead = page if dark else ink
     colour = lead * (shaded * (1 - laid))[..., None] + ink * laid[..., None]
@@ -568,12 +734,12 @@ def render(
     dark: bool = False,
     seed: int = 1,
 ) -> Image.Image:
-    """The sheet whole, the pen's layer laid on the stains: for apps from
-    before the two were sent apart."""
+    """The sheet whole, the pen's layer laid on the stains, the field
+    alone: for apps from before the two were sent apart."""
     wash, pen = layers(picture, strokes, dark=dark, seed=seed)
     whole = wash.convert("RGBA")
     whole.alpha_composite(pen)
-    return whole.convert("RGB")
+    return field(whole.convert("RGB"))
 
 
 def png(pen: Image.Image) -> bytes:

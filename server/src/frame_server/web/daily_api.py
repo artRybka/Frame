@@ -34,6 +34,7 @@ from ..ai.daily import (
 )
 from ..ai.journey import Journey
 from ..ai.pl_text import description
+from ..imaging.sheet import BLEED
 from ..later import entry_key
 from ..library import Item
 from ..library.markup import strip_markup
@@ -119,6 +120,12 @@ class DailyWork(BaseModel):
     #: ``&layer=pen``), which the app lays down one after the other, as if
     #: painted and drawn before the reader.
     composition_layers: bool = False
+    #: The layers may be asked for with the page's margin beside the field
+    #: too (``&layer=wash-bleed``, ``&layer=pen-bleed``): wider than the
+    #: field by this much of its width on each side, where a stain runs out
+    #: to the screen's edge and a stroke goes on past the frame. None: the
+    #: page has no sheet.
+    composition_bleed: float | None = None
     #: Every analysis the page has had, oldest first, once the owner asked
     #: for one anew (else empty).
     composition_versions: list[CompositionVersion] = []
@@ -311,6 +318,7 @@ def page(
         if essay and essay.composition.views
         else "",
         composition_layers=bool(essay and essay.composition.views),
+        composition_bleed=BLEED if essay and essay.composition.views else None,
         composition_versions=[
             CompositionVersion(made=str(v.get("made") or ""), shown=n == pick)
             for n, v in enumerate(kept)
@@ -397,8 +405,10 @@ async def composition_sheet(
     (``imaging.sheet``): the picture as stains and a few strokes of a pen,
     on the app's light page or its dark one; ``layer``: the stains alone
     (``wash``) or the pen alone (``pen``, a PNG with nothing around the
-    lines). Made ahead (``Sheets.ahead``), now when asked for before its
-    turn (seconds), then kept; ``v`` names the take it belongs to."""
+    lines), and either with the page's margin beside the field
+    (``wash-bleed``, ``pen-bleed``: ``composition_bleed``). Made ahead
+    (``Sheets.ahead``), now when asked for before its turn (seconds), then
+    kept; ``v`` names the take it belongs to."""
     if layer not in LAYERS:
         raise HTTPException(422, "no such layer")
     work = svc.library.get(item)

@@ -14,8 +14,12 @@ enum DemoStudies {
     }
 
     /// Server-style path of a demo work's sheet (the app adds "&dark=1"
-    /// and "&layer=wash" or "&layer=pen").
+    /// and "&layer=wash-bleed" or "&layer=pen-bleed").
     static func sheet(_ id: String) -> String { "/demo/sheet/\(id)?v=1" }
+
+    /// How much wider than the field the bundled layers are on each side
+    /// (the server's `sheet.BLEED`).
+    static let bleed = 0.08
 
     /// The take with the strokes its sheet's pen was drawn along.
     static func sketched(_ take: DailyWork.Take, id: String) -> DailyWork.Take {
