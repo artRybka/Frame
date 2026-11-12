@@ -283,8 +283,11 @@ class Media:
                 return running
             future: Future[str] = Future()
             self._looking[item.id] = future
+        # Named so its requests are the card's (``hosts.THREAD_PURPOSES``),
+        # not the background's: those wait while the app is in use, and
+        # the card asked and waited in vain (1.145.61, 2026-11-12 22:38).
         threading.Thread(
-            target=self._look_then_done, args=(item, future), name="medium", daemon=True
+            target=self._look_then_done, args=(item, future), name="work-medium", daemon=True
         ).start()
         return future
 

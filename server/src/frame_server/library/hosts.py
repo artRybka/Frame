@@ -178,6 +178,8 @@ THREAD_PURPOSES: tuple[tuple[str, str], ...] = (
     ("search-page", "odświeżanie"),
     ("sharper", "kopie"),
     ("holder", "muzeum dzieła"),
+    # The card waits for it: not held back while the app is in use.
+    ("work-medium", "technika dzieła"),
     ("real-size", "rozmiary"),
     ("artist-works", "dzieła autora"),
     ("later-works", "dzieła autora"),

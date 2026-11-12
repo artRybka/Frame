@@ -16,6 +16,11 @@
   Gemini w Kluczach i certyfikatach.
 - Długi tytuł ze znacznikiem skraca się w środku, więc znacznik po nim
   nie ginie.
+## 1.145.71
+
+- Technika dzieła szukana od razu, gdy otwierasz kartę: dotąd serwer
+  czekał z tym, aż przestaniesz korzystać z aplikacji, więc „Widok
+  Delftu” i „Polonia” zostawały bez techniki (i z paskiem farby olejnej).
 
 ## 1.145.70
 
