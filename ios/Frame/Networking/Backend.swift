@@ -51,6 +51,9 @@ protocol FrameBackend: Sendable {
     /// The card opened on a work whose source gathers pictures (Commons,
     /// Openverse, WikiArt): which museum it is in; waits up to `wait` seconds.
     func holder(itemID: String, wait: Int) async throws -> HolderView
+    /// The card opened on a work that names no technique: what it is made
+    /// with, from its record, Commons or Wikidata; waits up to `wait` seconds.
+    func medium(itemID: String, wait: Int) async throws -> MediumView
     /// The work's fragments (a scroll's parts, a Commons tile set): none for most works.
     func fragments(itemID: String) async throws -> FragmentsView
     /// The work's details (pictures of a part of it): none for most works.

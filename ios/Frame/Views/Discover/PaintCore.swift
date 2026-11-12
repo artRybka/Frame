@@ -228,7 +228,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
                                  "lacquer", "tapestr", "gobelin", "scroll"]
 
     private static let named: [(PaintStyle, [String], Set<String>)] = [
-        (.oil, ["olej", "huile", "olie", "olfarb", "oelfarb", "akryl", "acryl", "acril", "tempera", "tempery", "temperow"],
+        (.oil, ["olej", "huile", "olie", "olja", "olje", "olfarb", "oelfarb", "akryl", "acryl", "acril", "tempera", "tempery", "temperow"],
          ["oil", "oils", "ol", "oel", "olio", "oleo"]),
         (.water, ["watercol", "aquarel", "akwarel", "acuarel", "acquerel", "waterverf", "akvarel", "gouach", "gwasz", "guazzo",
                   "bodycol", "dekverf", "deckfarb"], []),

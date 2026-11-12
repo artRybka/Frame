@@ -58,6 +58,15 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(PaintStyle.of(medium: "płótno"), .oil)
         XCTAssertEqual(PaintStyle.of(medium: "Watercolor", classification: "Paintings"), .water)
         XCTAssertNil(PaintStyle.of(medium: "Ink and color on silk", classification: "Paintings"))
+        // What the server looks up where the source names nothing (Wikidata's
+        // materials, WikiArt's "media", Commons' {{Technique}}, Europeana's
+        // record): Wyspiański's "Śpiący Staś" came from WikiArt as a painting.
+        XCTAssertEqual(PaintStyle.of(medium: "pastel, paper", classification: "Painting"), .dry)
+        XCTAssertEqual(PaintStyle.of(medium: "paper, pastel", classification: "Painting"), .dry)
+        XCTAssertEqual(PaintStyle.of(medium: "oil paint, poplar panel", classification: "Painting"), .oil)
+        XCTAssertEqual(PaintStyle.of(medium: "watercolor paint, paper", classification: "Painting"), .water)
+        XCTAssertEqual(PaintStyle.of(medium: "pastel on cardboard", classification: "Painting"), .dry)
+        XCTAssertEqual(PaintStyle.of(medium: "Olja på duk", classification: "Painting"), .oil)
         XCTAssertNil(PaintStyle.of(medium: "paper", classification: "Paintings"))
         XCTAssertNil(PaintStyle.of(medium: "fresco", classification: "Paintings"))
         XCTAssertNil(PaintStyle.of(medium: "", classification: "Drawing"))

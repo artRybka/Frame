@@ -234,6 +234,13 @@ class Museum(ABC):
     def fetch(self, source_id: str) -> Item | None:
         """One work by its id in the museum's collection."""
 
+    def medium(self, source_id: str) -> str:
+        """What the work ``source_id`` is made with, as its own record says
+        where the search's answer leaves it out ("" when it does not say;
+        ``frame_server.media``)."""
+        found = self.fetch(source_id)
+        return found.medium if found is not None else ""
+
     def search_by(
         self, artist: str, words: str = "", limit: int = 20, page: int = 1
     ) -> tuple[int, list[Item]]:
@@ -1558,6 +1565,43 @@ def europeana_mirrors(item: Item, thumb: bool = False) -> list[str]:
     return [f"https://proxy.europeana.eu/{record}?view={quote(item.image_url, safe='')}"]
 
 
+def _said(values: Any, concepts: dict[str, str]) -> list[str]:
+    """A record's field given by language (``{"en": [...], "def": [...]}``):
+    its English values, else those of no language, else the first
+    language's; a vocabulary's link by the concept's English name."""
+    if not isinstance(values, dict):
+        return []
+    english = [v for k, vs in values.items() if k.lower().startswith("en") for v in vs or []]
+    plain = list(values.get("def") or [])
+    rest = next((list(vs or []) for k, vs in values.items() if k != "def"), [])
+    out: list[str] = []
+    for value in english or plain or rest:
+        text = str(value).strip()
+        if text.startswith("http"):
+            text = concepts.get(text, "")
+        if text and not re.search(r"\d\s*(?:cm|mm|in)\b|^[\d.,\s×x]+$", text, re.IGNORECASE):
+            out.append(text)
+    return out
+
+
+def europeana_medium(record: dict[str, Any]) -> str:
+    """What a Europeana record (its ``object``) names the work made with:
+    the proxies' ``dctermsMedium``, else their ``dcFormat``; "" when none."""
+    concepts: dict[str, str] = {}
+    for concept in record.get("concepts") or []:
+        if isinstance(concept, dict) and isinstance(concept.get("about"), str):
+            labels = concept.get("prefLabel") or {}
+            names: list[Any] = labels.get("en") or next(iter(labels.values()), [])
+            if names:
+                concepts[concept["about"]] = str(names[0])
+    proxies = [p for p in record.get("proxies") or [] if isinstance(p, dict)]
+    for field in ("dctermsMedium", "dcFormat"):
+        found = [t for p in proxies for t in _said(p.get(field), concepts)]
+        if found:
+            return ", ".join(dict.fromkeys(found))
+    return ""
+
+
 class Europeana(Museum):
     """Europe's cultural heritage portal, Polish collections included.
 
@@ -1900,6 +1944,23 @@ class Europeana(Museum):
         _, items = self._get(f'europeana_id:"{record}"', [], 1, 1)
         return items[0] if items else None
 
+    #: A record's own page, with what its search answer leaves out.
+    record_api = "https://api.europeana.eu/record/v2"
+
+    def medium(self, source_id: str) -> str:
+        """What the record names the work made with (``dctermsMedium``,
+        else ``dcFormat`` but sizes): in English where it is given so, a
+        vocabulary's link by its English name ("canvas" for Vermeer's
+        "View of Delft", "Oil on cardboard")."""
+        record = "/" + source_id.replace("~", "/")
+        resp = self.http.get(
+            f"{self.record_api}{record}.json", headers=europeana_key(self.access.europeana_key)
+        )
+        if resp.status_code == 404:
+            return ""
+        resp.raise_for_status()
+        return europeana_medium(resp.json().get("object") or {})
+
 
 class Openverse(Museum):
     """Openly licensed images (Flickr, Wikimedia Commons, museums) via Openverse.
@@ -2240,6 +2301,8 @@ class WikiArt(Museum):
             date_text=str(year or ""),
             year=year if isinstance(year, int) else None,
             classification="Painting",
+            # Only a work's own record (``fetch``) names it: ["pastel", "paper"].
+            medium=", ".join(str(m).strip() for m in d.get("media") or [] if str(m).strip()),
             styles=list(d.get("styles") or []),
             subjects=list(d.get("genres") or []),
             license=self.licence,
@@ -2311,7 +2374,14 @@ class WikiArt(Museum):
         return self._results(spec.style.strip(), limit, page)
 
     def fetch(self, source_id: str) -> Item | None:
-        resp = self.http.get(f"{self.api}/Painting", params={"id": source_id})
+        params = {"id": source_id}
+        if session := self._session():
+            # Without one, WikiArt's free questions run out within the hour.
+            params["authSessionKey"] = session
+        resp = self.http.get(f"{self.api}/Painting", params=params)
+        if session and resp.status_code == 500 and "session" in resp.text.lower():
+            params["authSessionKey"] = self._session(fresh=True) or ""  # it ran out
+            resp = self.http.get(f"{self.api}/Painting", params=params)
         if resp.status_code == 404:
             return None
         resp.raise_for_status()

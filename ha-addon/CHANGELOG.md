@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.61
+## 1.145.62
 
 - Szukanie po kolorze, po audycie na 530 dziełach z biblioteki. Nowa
   barwa „Beż” w arkuszu Kolor: blady, ciepły ton papieru, kości słoniowej
@@ -24,6 +24,16 @@
 - Po aktualizacji serwer raz przelicza barwy biblioteki (na NAS 1 do 2
   godzin); do tego czasu wyniki szukania po kolorze są mieszane. Pasek
   barw w studium się nie zmienia.
+
+## 1.145.61
+
+- Technika dzieł uzupełniana tam, gdzie źródło jej nie podaje (WikiArt,
+  Commons, część Europeany, V&A): serwer szuka jej w rekordzie dzieła,
+  na stronie Commons i w Wikidata, gdy otwiera się karta, i nocą
+  (zadanie „Technika dzieł”, Ulubione i playlisty najpierw). Pasek
+  Kolorystyki maluje się wtedy znalezioną techniką, więc pastel
+  Wyspiańskiego „Śpiący Staś” dostaje pastel zamiast farby olejnej,
+  a na karcie pojawia się „Technika”.
 
 ## 1.145.60
 
