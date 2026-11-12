@@ -248,3 +248,21 @@ def test_a_record_that_cannot_be_read_is_asked_again(tmp_path: Path) -> None:
     assert media.look(_stas(), 5) == ("none", "")
     assert library.note(_stas().id, "medium") is None  # not "nobody knows" for a month
     assert media.known(_stas()) is None or media.known(_stas()) == ("none", "")
+
+
+def test_the_cards_look_is_not_held_back_while_the_app_is_in_use() -> None:
+    # As the background's, its requests waited while the app was in use:
+    # the card asked, waited and got nothing (1.145.61 on the NAS).
+    import threading
+
+    from frame_server.library import hosts
+
+    seen: list[tuple[str, bool]] = []
+
+    def look() -> None:
+        seen.append((hosts.purpose(), hosts.deferrable()))
+
+    thread = threading.Thread(target=look, name="work-medium")
+    thread.start()
+    thread.join()
+    assert seen == [("technika dzieła", False)]

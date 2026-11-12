@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.70
+
+- Technika dzieła szukana od razu, gdy otwierasz kartę: dotąd serwer
+  czekał z tym, aż przestaniesz korzystać z aplikacji, więc „Widok
+  Delftu” i „Polonia” zostawały bez techniki (i z paskiem farby olejnej).
+
 ## 1.145.69
 
 - Playlisty: dzieła w playliście można sortować. W menu „…” jest
