@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.145.54
+
+- Karta dzieła i Studium, pasek barw: dzieło, o którego technice muzeum
+  nic nie mówi („Widok Delftu” z Mauritshuis), ma teraz pasek malowany
+  farbą olejną zamiast płaskiego. Płaski zostaje dla dzieł, których
+  technika nazywa coś innego (porcelana, tusz na jedwabiu), dla dzieł
+  jednej barwy bez opisu i dla przedmiotów; rzeźba dalej nie ma paska.
+- Barwy dzieła: duża barwa niepodobna do czterech głównych jest teraz
+  pokazywana razem z nimi. Dotąd w ciemnym obrazie cztery ciemne barwy
+  zajmowały wszystkie miejsca i jasne szaty (jedna ósma obrazu u
+  Delacroix) znikały z paska. Po aktualizacji serwer raz przelicza barwy
+  biblioteki (na NAS 1 do 2 godzin); szukanie po kolorze działa bez zmian.
+
 ## 1.145.52
 
 - Studium i karta dzieła, pasek barw grafiki i rysunku: gdy odbitka albo

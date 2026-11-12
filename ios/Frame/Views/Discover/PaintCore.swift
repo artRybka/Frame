@@ -55,8 +55,15 @@ enum PaintStyle: String, Sendable, CaseIterable {
     }
 
     /// What a work's medium says it is made with, in the languages the
-    /// museums write in; nil when it says nothing of these: such a work
-    /// keeps the flat palette. Of several paints (pastel
+    /// museums write in; nil when it names something that is none of
+    /// these (porcelain, ink and colours on silk): such a work keeps the
+    /// flat palette. A work whose museum says nothing at all of how it is
+    /// made is taken for a painting in oil (Mateusz 2026-11-12 12:25, of
+    /// Vermeer's "View of Delft", which came with no medium: „Chyba musimy
+    /// założyć że w takiej sytuacji dajemy farbę”), unless it is of one
+    /// colour (rather a print or a drawing) or filed as a drawing or an
+    /// object; and so is one that names only what a painting is on (a
+    /// panel, cardboard). Of several paints (pastel
     /// over watercolour) the first named; chalk named after pen or ink is
     /// under a drawing in ink. A museum that names no paint (the Getty
     /// gives only "Painting"; Mateusz 2026-11-11 13:50: „może w takiej
@@ -104,6 +111,10 @@ enum PaintStyle: String, Sendable, CaseIterable {
         if has(words, soft) { return .pencil }
         if painting { return has(words, notOil) ? nil : .oil }
         if mono, has(all, drawings) { return warm ? .pen : .pencil }
+        // Nothing says how it is made, or only what it is painted on: paint.
+        let unsaid = words.isEmpty || (words.allSatisfy { word in boards.contains { word.hasPrefix($0) } || fillers.contains(word) }
+            && has(words, boards))
+        if unsaid, !mono, !has(kind, drawings), !has(kind, objects) { return .oil }
         return nil
     }
 
@@ -197,6 +208,18 @@ enum PaintStyle: String, Sendable, CaseIterable {
 
     /// What only oil or acrylic is painted on.
     private static let canvas = ["canvas", "plotn", "toile", "doek", "leinwand", "lienzo", "laerred"]
+    /// What a painting is on besides canvas, named alone ("panel (wood by form)").
+    private static let boards = ["panel", "paneel", "panneau", "oak", "wood", "cardboard", "karton", "tektur", "deska", "desce", "deski"]
+    /// Words beside it that say nothing.
+    private static let fillers: Set<String> = ["on", "by", "form", "na", "op", "sur", "auf"]
+    /// What is no picture, as the museums file it: its colours stay flat.
+    private static let objects = ["ceram", "keram", "porcel", "potter", "earthenware", "stoneware", "fajans", "faienc", "glass", "szkl",
+                                  "silver", "srebr", "metal", "textil", "tekst", "tkanin", "furnit", "mebl", "bell", "clock", "zegar",
+                                  "manuscr", "rekopis", "book", "ksiaz", "jewel", "bizut", "coin", "monet", "medal", "numizm", "numism",
+                                  "costum", "arms", "armor", "armour", "weapon", "vessel", "naczyn", "vase", "wazon", "tapestr", "gobelin",
+                                  "carpet", "dywan", "mosai", "mozai", "decorativ", "rzemios", "object", "przedmiot", "enamel", "emali",
+                                  "lacquer", "ivory", "stamp", "znacz", "postcard", "pocztow", "document", "dokument", "map", "instrument",
+                                  "architect", "model"]
     /// A painting, as the museums file it.
     private static let paintings = ["paint", "peint", "malarstw", "obraz", "schilderij", "gemald", "maleri", "pittur", "dipint", "pintur"]
     /// What a painting is on or in when it is no oil painting.
