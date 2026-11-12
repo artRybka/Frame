@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.145.43
+
+- Studium dzieła, „Analiza kompozycji”: rysowana jak arkusz studyjny.
+  Pod znakami leży arkusz z rysunkiem dzieła piórkiem na podkładzie
+  akwarelowym (przełącznikiem można wrócić do samego obrazu). Znaki są
+  białą kredą z ziarnem, jest ich 3–5, a powtórzony kolor zaznacza nowy
+  znak „echo” czerwienią. Rysunek lekko unosi się przy przechyleniu
+  telefonu, z cieniem tylko wtedy. Analizę pisze nowa instrukcja, która
+  mówi, czego w obrazie szukać, a sprawdzenie zacieśnia za duże pętle.
+  Rysunek piórkiem kosztuje około 0,02–0,03 USD na studium. Zapisane
+  studia zostają jak były: „Wykonaj ponowną analizę” rysuje je na nowo.
+
 ## 1.145.42
 
 - Oryginały z Yale: serwer pobiera cały plik i zmniejsza go u siebie.
