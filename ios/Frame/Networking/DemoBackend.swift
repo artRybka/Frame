@@ -539,6 +539,8 @@ actor DemoBackend: FrameBackend {
     /// its originals' sizes, and Cleveland's web pictures stand for its
     /// originals here, so the screenshots show the mark (Hiroshige, 900 px).
     private static func lowSide(_ item: Item) -> Int {
+        // CI screenshots: `-demoLowSide all` marks every work as 950 px.
+        if item.kind == .artwork, UserDefaults.standard.string(forKey: "demoLowSide") == "all" { return 950 }
         guard item.kind == .artwork, ["aic", "cma"].contains(item.source),
               let width = item.width, let height = item.height else { return 0 }
         return LowRes.side(max(width, height))
