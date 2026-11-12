@@ -212,6 +212,23 @@ def test_a_card_stored_with_what_a_theme_no_longer_has_still_shows(service) -> N
     assert [t.key for t in curated(library)] == ["curator-light"]
 
 
+def test_a_cards_painter_is_not_everyone_of_his_surname() -> None:
+    """ "Romantyzm" named "Turner" and showed Charles Turner's mezzotints and
+    William Turner of Oxford; "Bosch" Antonio Bosch (the catalogue,
+    2026-11-12)."""
+    from frame_server.library.themes import BY_KEY
+
+    romantics = list(BY_KEY["romanticism"].artists)
+    assert made_by("Joseph Mallord William Turner", romantics)
+    assert made_by("William Turner", romantics)  # Commons' name for him
+    assert not made_by("Charles Turner", romantics)
+    assert not made_by("Benjamin Brecknell Turner", romantics)
+    named = [a for t in BY_KEY.values() for a in t.artists]
+    assert made_by("Hieronim Bosch", named) and not made_by("Antonio Bosch", named)
+    assert made_by("Alfons Mucha", named) and not made_by('Maria "Mucha" Ihnatowicz', named)
+    assert made_by("Jan Vermeer", named) and not made_by("Esther Vermeer", named)
+
+
 def test_taste_and_search_leave_nobody_out(service) -> None:
     library = service.library
     with library.batch():

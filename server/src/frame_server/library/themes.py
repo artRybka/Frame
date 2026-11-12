@@ -79,6 +79,11 @@ class Theme:
     name: str
     description: str
     group: str
+    #: A surname alone where it is one painter's; the whole name where
+    #: others share it: "Turner" took in Charles Turner and William Turner
+    #: of Oxford (56 of the catalogue's 356 Turners), "Bosch" Antonio Bosch
+    #: (38 of 115), 2026-11-12. Turner twice: Commons has his paintings
+    #: under "William Turner".
     artists: tuple[str, ...] = ()
     terms: tuple[str, ...] = ()
     colors: tuple[str, ...] = ()
@@ -282,8 +287,8 @@ ANTIQUITY_PAINTERS = (
     "Hubert Robert",
     "Jacques-Louis David",
     "Puvis de Chavannes",
-    "Poynter",
-    "Leighton",
+    "Edward John Poynter",
+    "Frederic Leighton",
     "Panini",
     "Styka",
 )
@@ -355,7 +360,7 @@ THEMES: list[Theme] = [
         "Złoty wiek: Vermeer, Rembrandt, Hals, Steen, Ruisdael, aż po Breitnera.",
         STYLES,
         artists=(
-            "Vermeer",
+            "Johannes Vermeer",
             "Rembrandt",
             "Frans Hals",
             "Steen",
@@ -375,7 +380,8 @@ THEMES: list[Theme] = [
         "Burze, ruiny i światło: Turner, Friedrich, Delacroix, Géricault.",
         STYLES,
         artists=(
-            "Turner",
+            "Joseph Mallord William Turner",
+            "William Turner",  # as Commons names him; of Oxford comes too
             "Caspar David Friedrich",
             "Delacroix",
             "Géricault",
@@ -390,7 +396,7 @@ THEMES: list[Theme] = [
         STYLES,
         artists=(
             "Courbet",
-            "Millet",
+            "Jean-François Millet",
             "Corot",
             "Daubigny",
             "Théodore Rousseau",
@@ -434,14 +440,22 @@ THEMES: list[Theme] = [
         "Rokoko",
         "Ogrody, huśtawki i pastelowe niebo: Watteau, Fragonard, Boucher.",
         STYLES,
-        artists=("Watteau", "Fragonard", "Boucher", "Lancret", "Chardin"),
+        artists=("Watteau", "Jean-Honoré Fragonard", "François Boucher", "Lancret", "Chardin"),
     ),
     Theme(
         "northern",
         "Dawni mistrzowie Północy",
         "Dürer, Bruegel, Holbein, van Eyck, Cranach: obrazy i ryciny.",
         STYLES,
-        artists=("Dürer", "Bruegel", "Holbein", "van Eyck", "Cranach", "Memling", "Bosch"),
+        artists=(
+            "Dürer",
+            "Bruegel",
+            "Holbein",
+            "van Eyck",
+            "Cranach",
+            "Memling",
+            "Hieronymus Bosch",
+        ),
     ),
     Theme(
         "north-light",
@@ -489,7 +503,7 @@ THEMES: list[Theme] = [
         "Plakaty i secesja",
         "Mucha, Toulouse-Lautrec, Steinlen, Chéret, Grasset i plakat przełomu wieków.",
         PRINTS,
-        artists=("Mucha", "Toulouse-Lautrec", "Steinlen", "Chéret", "Grasset"),
+        artists=("Alphonse Mucha", "Toulouse-Lautrec", "Steinlen", "Chéret", "Grasset"),
         queries=_pack_queries("posters"),
     ),
     Theme(
@@ -561,7 +575,8 @@ THEMES: list[Theme] = [
         SUBJECTS,
         artists=(
             "Corot",
-            "Turner",
+            "Joseph Mallord William Turner",
+            "William Turner",  # as Commons names him; of Oxford comes too
             "Constable",
             "Inness",
             "Winslow Homer",
