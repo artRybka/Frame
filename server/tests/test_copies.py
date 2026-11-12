@@ -476,7 +476,7 @@ def test_the_owner_brings_a_bought_copy_kept_for_good(app: Any) -> None:
     """Bought in Alamy (Mateusz, 2026-11-12): the file is the work's picture
     from then on, outlives the cache, and "Przywróć zdjęcie muzeum" goes
     back."""
-    client, service, web, hits = app
+    client, service, _web, _hits = app
     own = _own(service, favorite=True)
     bought = _jpeg(_print(1, (5000, 3333)), 92)
 
