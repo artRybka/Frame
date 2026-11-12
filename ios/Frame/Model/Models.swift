@@ -7,6 +7,8 @@ import Foundation
 struct ColorSwatch: Codable, Hashable, Sendable {
     let hex: String
     let weight: Double
+    /// An accent, not one of the picture's large colours.
+    var accent: Bool?
 }
 
 enum ItemKind: String, Codable, Hashable, Sendable, CaseIterable {
