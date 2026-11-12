@@ -135,8 +135,13 @@ enum PrintPaint {
     /// than `vivid` is a colour of its own; how far (degrees) one hue's
     /// tones lie apart; how far off the line from its paper to its ink a
     /// tone may lie; and the share of a work its patches of colour stay
-    /// under while it counts as one colour's.
-    static let faint = 0.03, vivid = 0.12, hues = 35.0, apart = 0.05, spotted = 0.3
+    /// under while it counts as one colour's. `apart`: one colour's
+    /// tones lie within 0.021 of that line in the works tried; the pale
+    /// green of a lithograph in colours lay 0.039 off it and was drawn as
+    /// a grey under 0.05 (Mateusz 2026-11-12 13:46, of Cézanne's „Kąpiące
+    /// się”: „dlaczego … nie ma zieleni i niebieskiego pod kreską
+    /// rysunku?”).
+    static let faint = 0.03, vivid = 0.12, hues = 35.0, apart = 0.03, spotted = 0.3
 
     static func mixed(_ a: [Double], _ b: [Double], _ much: Double) -> [Double] {
         zip(a, b).map { $0 + ($1 - $0) * much }

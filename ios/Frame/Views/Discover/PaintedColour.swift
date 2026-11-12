@@ -10,6 +10,17 @@ import SwiftUI
 // A work whose technique says nothing keeps the flat bar and the plain
 // round swatches; a sculpture has no bar (10:47).
 
+extension Paint {
+    /// CI screenshots: "-paintRelief 0.3" gives every work's oil paint that height.
+    static let forcedRelief: Double? = UserDefaults.standard.object(forKey: "paintRelief") == nil
+        ? nil : UserDefaults.standard.double(forKey: "paintRelief")
+
+    /// How high this work's oil paint stands (`Paint.relief(year:styles:medium:)`).
+    static func relief(_ item: Item) -> Double {
+        forcedRelief ?? relief(year: item.year, styles: item.styles, medium: item.medium)
+    }
+}
+
 extension PaintStyle {
     /// CI screenshots: "-paintStyle oil" paints every work that way.
     static let forced: PaintStyle? = UserDefaults.standard.string(forKey: "paintStyle").flatMap(PaintStyle.init(rawValue:))
@@ -77,9 +88,11 @@ struct PaintJob: @unchecked Sendable {
     }
 
     /// The palette bar, `width` points wide.
-    static func strip(_ style: PaintStyle, shares: [PaintShare], width: Double, seed: Int, dark: Bool) -> PaintJob {
+    /// `relief`: how high an oil paint stands (`Paint.relief`).
+    static func strip(_ style: PaintStyle, shares: [PaintShare], width: Double, seed: Int, dark: Bool,
+                      relief: Double = Paint.calm.plain) -> PaintJob {
         switch style {
-        case .oil: return PaintJob(OilStrip(shares: shares, width: width, seed: seed, dark: dark))
+        case .oil: return PaintJob(OilStrip(shares: shares, width: width, seed: seed, dark: dark, relief: relief))
         case .water: return PaintJob(WaterStrip(shares: shares, width: width, seed: seed))
         case .dry:
             let strip = DryStrip(shares: shares, width: width, seed: seed)
@@ -94,9 +107,10 @@ struct PaintJob: @unchecked Sendable {
     }
 
     /// One paint's swatch.
-    static func swatch(_ style: PaintStyle, rgb: [Double], index: Int, seed: Int, dark: Bool) -> PaintJob {
+    static func swatch(_ style: PaintStyle, rgb: [Double], index: Int, seed: Int, dark: Bool,
+                       relief: Double = Paint.calm.plain) -> PaintJob {
         switch style {
-        case .oil: return PaintJob(OilStrip(touch: rgb, index: index, seed: seed, dark: dark))
+        case .oil: return PaintJob(OilStrip(touch: rgb, index: index, seed: seed, dark: dark, relief: relief))
         case .water: return PaintJob(WaterDab(rgb: rgb, index: index, seed: seed))
         case .dry:
             let scribble = DryScribble(rgb: rgb, index: index, seed: seed)
@@ -382,6 +396,12 @@ struct PaintedStrip: View {
     var began: (Date, Double) -> Void = { _, _ in }
     /// There finished, not painted while looked at.
     var whole = false
+    /// How high an oil paint stands (`Paint.relief`).
+    var relief = Paint.calm.plain
+    /// Shown this much smaller than the bar of a work's card (the Teraz
+    /// tab's narrow one): painted for a place that much wider, so the
+    /// strokes are as much finer as the bar is lower.
+    var slim: CGFloat = 1
 
     @State private var width: CGFloat = 0
     @State private var jobs = PaintJobs()
@@ -412,15 +432,17 @@ struct PaintedStrip: View {
         let shares = Self.shares(swatches)
         Color.clear
             .frame(maxWidth: .infinity)
-            .frame(height: Paint.bar)
+            .frame(height: Paint.bar * slim)
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
             .overlay {
                 if width > 40, !shares.isEmpty {
-                    let dark = scheme == .dark, wide = Double(width.rounded())
-                    let key = "\(style.rawValue)|\(Int(wide))|\(dark)|\(seed)|" + shares.map { "\($0.rgb)\($0.weight)" }.joined(separator: ",")
+                    let dark = scheme == .dark, wide = Double((width / slim).rounded())
+                    let key = "\(style.rawValue)|\(Int(wide))|\(dark)|\(seed)|\(relief)|"
+                        + shares.map { "\($0.rgb)\($0.weight)" }.joined(separator: ",")
                     let takes = style.barTime(shares, width: wide)
-                    Painted(job: jobs.job(key) { PaintJob.strip(style, shares: shares, width: wide, seed: seed, dark: dark) },
+                    Painted(job: jobs.job(key) { PaintJob.strip(style, shares: shares, width: wide, seed: seed, dark: dark, relief: relief) },
                             key: key, after: .distantPast, began: { began($0, takes) }, whole: whole)
+                        .scaleEffect(slim)
                 }
             }
     }
@@ -439,6 +461,8 @@ struct PaintedSwatch: View {
     let after: Date?
     /// How long after the bar's first stroke that is.
     var lead: Double = 0
+    /// How high an oil paint stands (`Paint.relief`).
+    var relief = Paint.calm.plain
 
     /// It begins as its top comes over the bottom of what the bars leave
     /// of the screen, not once the whole of it is well over it: beside
@@ -455,8 +479,8 @@ struct PaintedSwatch: View {
             .overlay {
                 if let rgb = Paint.rgb(hex) {
                     let dark = scheme == .dark
-                    let key = "\(style.rawValue)|\(hex)|\(index)|\(dark)|\(seed)"
-                    Painted(job: jobs.job(key) { PaintJob.swatch(style, rgb: rgb, index: index, seed: seed, dark: dark) },
+                    let key = "\(style.rawValue)|\(hex)|\(index)|\(dark)|\(seed)|\(relief)"
+                    Painted(job: jobs.job(key) { PaintJob.swatch(style, rgb: rgb, index: index, seed: seed, dark: dark, relief: relief) },
                             key: key, after: after, lead: lead, over: Self.over)
                 } else {
                     Circle().fill(Theme.mat)
