@@ -1078,9 +1078,9 @@ struct TitleWithYear: View {
 /// A work whose picture is small for the frame (Mateusz 2026-11-12): its
 /// long side, when known, under the server's `low_res.LOW_SIDE` (1600 px;
 /// the frame's 2560 enlarge it 1.6 times or more). Not a button, so not on
-/// the picture: a photo with an exclamation mark after the title, as "Pod lupą"'s magnifier.
+/// the picture: dots of a coarse screen after the title, as "Pod lupą"'s magnifier.
 enum LowRes {
-    static let symbol = "photo.badge.exclamationmark"
+    static let symbol = "circle.grid.3x3.fill"
     /// The tint of a warning, as "Szukaj lepszej kopii"'s notes.
     static let tint = Theme.warn
 
