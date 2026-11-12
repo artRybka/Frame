@@ -87,6 +87,30 @@ sheet (:func:`whites`), the paper itself on the light page, as one
 paints in watercolour, and light paint on the dark one. An old varnish
 yellows a picture's lights, so white is read without their cast.
 
+Of a storm by Turner (2026-11-12 13:46): "na szkicu bardzo brakuje ciemnej
+plamy nieba. to istotny element, a akwarela go pominęła. chyba
+błękit/prześwit nieba też powinien się pokazać w akwareli", and of the
+way the stains are painted altogether: "Szkic musi oddawać istotę i ideę
+obrazu". The sheet had lost what that picture is made of in four places,
+and :data:`LOOK` 7 mends each:
+
+- stains of nearly one colour were joined one neighbour at a time, so a
+  picture whose tones run into one another came out as a single stain
+  from its darkest to its lightest. A stain is now one only while its two
+  furthest parts are near (:data:`SAME`, :func:`_joined`);
+- the picture was drawn out place by place before its masses were read,
+  which made a great dark sky as light as the sea under it. Its key is
+  one tone curve now (:func:`_keyed`); only what is white is still looked
+  for in the picture drawn out;
+- a quiet stain at the field's edge was left as paper however dark it
+  was. What is far from the page's own value is always painted
+  (:data:`BARE_FAR`);
+- masses are sorted by value first, and under an old varnish every hue is
+  a brown: the opening of blue was cloud. Hues are read against the
+  picture's own (:func:`hues`), a place of another hue inside a mass is
+  a stain of its own (:func:`_own`), and such a picture's paints are
+  mixed further apart with its cast thinned (:func:`_mixed`).
+
 No model is asked here; about four seconds a sheet (``sheets.Sheets``
 makes them ahead).
 """
@@ -110,7 +134,7 @@ Array = npt.NDArray[Any]
 PenStroke = tuple[Sequence[tuple[float, float]], bool, bool]
 
 #: Raised when the look changes, so that sheets made before are made again.
-LOOK = 6
+LOOK = 7
 #: The sheet's longer side.
 LONG = 1500
 #: The app's page and ink (``Theme.paper``, ``Theme.ink``): light, dark.
@@ -126,8 +150,46 @@ LEAST = 0.012
 #: neighbours there no further apart than this (CIE Lab) are one stain.
 QUIET_LEAST = 0.06
 ALIKE = 20.0
-#: Neighbours this near in colour are one stain anywhere.
+#: Neighbours this near in colour are one stain anywhere. A stain is one
+#: only while all of it is this near: its two furthest parts, not each
+#: part and the next (so a picture whose tones run into one another, a
+#: storm in browns and greys, is not one stain from its darkest to its
+#: lightest). What is left over between two stains, smaller than
+#: :data:`PATCH` of the picture, still joins the one it is near as a
+#: whole: a wall is not made of patches.
 SAME = 16.0
+PATCH = 0.04
+#: Colours are told apart against the picture's own: where its hues lie
+#: close together (their spread: how far from its middle hue nine tenths
+#: of it lie, CIE a/b) they are read as if they spread this far, at most
+#: :data:`HUE_GAIN` times further apart than they are. So the grey-blue
+#: opening in a brown sky is another colour than the brown, as it is to
+#: the eye. A picture of one colour (a drawing in sepia, spread under
+#: :data:`HUE_ONE`) has no hues to tell apart, and what lies between is
+#: read part way.
+HUE_SPREAD = 22.0
+HUE_GAIN = 2.5
+HUE_ONE = (3.5, 7.0)
+#: The paints of such a picture are mixed further apart in hue too (by
+#: this much of how its colours are read), and its own cast (the middle
+#: hue, when that is a varnish's yellow-brown, :data:`WHITE_WARM`) is
+#: thinned to this much at the most: in its lights and middle tones,
+#: where hue is seen. Its darks (under the first
+#: of :data:`HUE_LIGHT`, CIE L; wholly from the second) keep their own
+#: colour: what little hue a dark has is chance, and a brown shadow mixed
+#: away from brown is violet.
+HUE_PAINT = 0.6
+HUE_CAST = 0.3
+HUE_LIGHT = (30.0, 58.0)
+#: A place inside a mass whose hue is this far from the mass's own (as the
+#: picture's hues are read) is a stain of its own, however near in value:
+#: the opening of blue in a sky of cloud (Mateusz 2026-11-12 13:46:
+#: "chyba błękit/prześwit nieba też powinien się pokazać w akwareli").
+#: Counted in its lights and middle tones only (:data:`HUE_LIGHT`), not
+#: smaller than this much of the picture, and the greatest few only.
+OWN_HUE = 14.0
+OWN_LEAST = 0.008
+OWN_MOST = 3
 #: The first pale wash under the stains, where things happen.
 FIRST = 0.3
 #: What decides where the page is left bare in a quiet place: how near the
@@ -144,6 +206,14 @@ GAP = 0.38
 #: the field that is left bare (a picture that is all sky is still painted).
 BARE_THIN = 0.2
 BARE_MOST = 0.3
+#: A stain far from the page's own value is not left out, however quiet
+#: the place and however near the edge: a great dark sky is what the
+#: picture is made of (Mateusz 2026-11-12 13:46, of a storm by Turner whose
+#: sky the sheet left as paper: "na szkicu bardzo brakuje ciemnej plamy
+#: nieba. to istotny element, a akwarela go pominęła"). From the first of
+#: these (how far the stain is from the page, CIE Lab, on the light page)
+#: the edge and chance count for less, from the second for nothing.
+BARE_FAR = (40.0, 54.0)
 #: What is white in the picture stays white on the sheet: the paper itself
 #: on the light page, light paint on the dark one. White is what is this
 #: light (CIE L of the picture in the sheet's key) and this plain once the
@@ -217,12 +287,18 @@ def _noise(shape: tuple[int, int], sigma: float, rng: np.random.Generator) -> Ar
     return n / (np.abs(n).max() + 1e-6)
 
 
-def _keyed(rgb: Array) -> Array:
-    """The picture in a watercolour's key: its darks lifted, what a dark
-    varnish hides drawn out a little."""
+def _keyed(rgb: Array, drawn: bool = False) -> Array:
+    """The picture in a watercolour's key: its darks lifted, as one tone
+    curve for the whole of it. ``drawn``: drawn out place by place first,
+    so that a dark varnish hides less. The stains were once made of the
+    picture so drawn, and a great dark sky came out as light as the sea
+    under it; a picture's light and dark are what a study is of, so only
+    what is white is still looked for that way (the foam of a wave on
+    toned paper is its white, though the sheet's margin is lighter)."""
     lab = cv2.cvtColor(rgb, cv2.COLOR_RGB2LAB)
-    clahe = cv2.createCLAHE(clipLimit=1.6, tileGridSize=(6, 6))
-    light = clahe.apply(lab[..., 0]).astype(np.float32) / 255
+    if drawn:
+        lab[..., 0] = cv2.createCLAHE(clipLimit=1.6, tileGridSize=(6, 6)).apply(lab[..., 0])
+    light = lab[..., 0].astype(np.float32) / 255
     lo, hi = np.percentile(light, (1.5, 98.5))
     light = np.clip((light - lo) / max(hi - lo, 0.2), 0, 1) * 0.9
     middle = float(np.clip(np.median(light), 0.08, 0.92))
@@ -262,16 +338,34 @@ def busy(rgb: Array, shape: tuple[int, int]) -> Array:
     return cv2.resize(t * t * (3 - 2 * t), (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
 
 
+def hues(lab: Array) -> tuple[Array, float]:
+    """The picture's middle hue (CIE a/b about 0) and how many times
+    further apart than they are its hues are read (1 to :data:`HUE_GAIN`):
+    more the closer together they lie, but not in a picture of one colour.
+    ``lab``: CIE Lab as cv2 has it in bytes (a/b about 128)."""
+    ab = lab[..., 1:].reshape(-1, 2).astype(np.float32) - 128
+    middle = np.median(ab, axis=0)
+    spread = float(np.percentile(np.linalg.norm(ab - middle, axis=1), 90))
+    gain = float(np.clip(HUE_SPREAD / max(spread, 1e-3), 1, HUE_GAIN))
+    some = float(np.clip((spread - HUE_ONE[0]) / (HUE_ONE[1] - HUE_ONE[0]), 0, 1))
+    return middle, 1 + (gain - 1) * some
+
+
 def _joined(piece: Array, count: int, lab: Array, quiet: Array) -> Array:
     """The masses with neighbours of nearly one colour made one (anywhere
     when very near, further apart where little happens): the nearest pair
-    first, until none is near enough."""
+    first, until none is near enough. Near is measured between the two
+    furthest parts of what would be one stain; then a small leftover joins
+    the neighbour whose colour as a whole it is near."""
     flat = piece.ravel()
     area = np.bincount(flat, minlength=count + 1).astype(np.float64)
     total = np.stack(
         [np.bincount(flat, lab[..., k].ravel(), minlength=count + 1) for k in range(3)], axis=1
     )
     still = np.bincount(flat, quiet.ravel(), minlength=count + 1)
+    own = total / np.maximum(area, 1)[:, None]
+    # how far apart the furthest parts of two stains are (each a part at first)
+    far = np.linalg.norm(own[:, None] - own[None], axis=2)
     pairs: set[tuple[int, int]] = set()
     for one, other in ((piece[:, :-1], piece[:, 1:]), (piece[:-1], piece[1:])):
         differ = one != other
@@ -279,25 +373,76 @@ def _joined(piece: Array, count: int, lab: Array, quiet: Array) -> Array:
         hi = np.maximum(one[differ], other[differ])
         pairs.update(zip(lo.tolist(), hi.tolist(), strict=True))
     to = np.arange(count + 1)
-    while pairs:
-        best: tuple[int, int] | None = None
-        nearest = 1.0
-        for a, b in pairs:
-            calm = float(min(still[a] / area[a], still[b] / area[b]))
-            apart = float(np.linalg.norm(total[a] / area[a] - total[b] / area[b]))
-            limit = max(SAME, ALIKE * calm if calm > 0.5 else 0.0)
-            if apart < nearest * limit:
-                best, nearest = (a, b), apart / limit
-        if best is None:
-            break
-        a, b = best
-        area[a] += area[b]
-        total[a] += total[b]
-        still[a] += still[b]
-        to[to == b] = a
-        moved = ((int(to[p]), int(to[q])) for p, q in pairs)
-        pairs = {(min(x, y), max(x, y)) for x, y in moved if x != y}
+    small = PATCH * piece.size
+    for whole in (True, False):  # the stains, then what is left over between them
+        while pairs:
+            best: tuple[int, int] | None = None
+            nearest = 1.0
+            for a, b in pairs:
+                if whole:
+                    apart = float(far[a, b])
+                elif min(area[a], area[b]) < small:
+                    apart = float(np.linalg.norm(total[a] / area[a] - total[b] / area[b]))
+                else:
+                    continue
+                calm = float(min(still[a] / area[a], still[b] / area[b]))
+                limit = max(SAME, ALIKE * calm if calm > 0.5 else 0.0)
+                if apart < nearest * limit:
+                    best, nearest = (a, b), apart / limit
+            if best is None:
+                break
+            a, b = best
+            area[a] += area[b]
+            total[a] += total[b]
+            still[a] += still[b]
+            far[a] = far[:, a] = np.maximum(far[a], far[b])
+            to[to == b] = a
+            moved = ((int(to[p]), int(to[q])) for p, q in pairs)
+            pairs = {(min(x, y), max(x, y)) for x, y in moved if x != y}
     return to[piece]
+
+
+def _own(piece: Array, count: int, lab: Array) -> tuple[Array, int]:
+    """The masses with the places of another hue inside them taken out
+    (:data:`OWN_HUE`): masses are sorted by value first, so a patch of blue
+    as light as the cloud beside it was cloud. Such a place is a mass of
+    its own, unless it is the colour of a mass it touches (a strip of the
+    neighbour, where the two were not parted cleanly): then it is that
+    one's."""
+    hue = lab[..., 1:]
+    seen = np.clip((lab[..., 0] - HUE_LIGHT[0]) / (HUE_LIGHT[1] - HUE_LIGHT[0]), 0, 1)
+    middle = {c: np.median(lab[piece == c], axis=0) for c in range(1, count + 1)}
+    found: list[tuple[int, Array]] = []
+    round_ = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    was = piece
+    for c in range(1, count + 1):
+        mass = was == c
+        off = np.linalg.norm(hue - middle[c][1:], axis=2) * seen
+        other = cv2.morphologyEx((mass & (off > OWN_HUE)).astype(np.uint8), cv2.MORPH_OPEN, round_)
+        n, comp, stats, _ = cv2.connectedComponentsWithStats(other, connectivity=8)
+        for k in range(1, n):
+            if stats[k, cv2.CC_STAT_AREA] < OWN_LEAST * piece.size:
+                continue
+            whole = np.zeros(piece.shape, np.uint8)  # the place without its holes
+            outline, _ = cv2.findContours(
+                (comp == k).astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
+            )
+            cv2.drawContours(whole, outline, -1, 1, cv2.FILLED)
+            place = (whole > 0) & mass
+            if np.median(off[place]) <= OWN_HUE:  # (a ring round the mass's own is not one)
+                continue
+            colour = np.median(lab[place], axis=0)
+            beside = np.unique(was[(cv2.dilate(whole, np.ones((5, 5), np.uint8)) > 0) & ~mass])
+            apart = {int(b): float(np.linalg.norm(colour - middle[int(b)])) for b in beside}
+            nearest = min(apart, key=lambda b: apart[b], default=0)
+            if nearest and apart[nearest] < SAME:
+                piece = np.where(place, nearest, piece)
+            else:
+                found.append((int(place.sum()), place))
+    for _, place in sorted(found, key=lambda entry: -entry[0])[:OWN_MOST]:
+        count += 1
+        piece = np.where(place, count, piece)
+    return piece, count
 
 
 def _plain(rgb: Array) -> Array:
@@ -337,9 +482,11 @@ def masses(rgb: Array, seed: int = 1, flat: Array | None = None) -> tuple[Array,
     flat = _plain(rgb) if flat is None else flat
     quiet = 1 - busy(rgb, flat.shape[:2])
     true = cv2.cvtColor(flat, cv2.COLOR_BGR2LAB).astype(np.float32)
+    middle, gain = hues(true)
     true[..., 0] *= 100 / 255
-    lab = cv2.cvtColor(flat, cv2.COLOR_BGR2LAB).astype(np.float32)
-    lab[..., 0] *= 1.3  # a painter sorts by value first
+    true[..., 1:] = (true[..., 1:] - 128 - middle) * gain  # as the picture's hues are read
+    lab = true.copy()
+    lab[..., 0] *= 255 / 100 * 1.3  # a painter sorts by value first
     cv2.setRNGSeed(seed)
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.5)
     _, tags, _ = cv2.kmeans(  # type: ignore[call-overload]
@@ -374,11 +521,30 @@ def masses(rgb: Array, seed: int = 1, flat: Array | None = None) -> tuple[Array,
     kept = np.unique(joined)
     piece = np.searchsorted(kept, joined).astype(np.int32) + 1
     count = len(kept)
+    piece, count = _own(piece, count, true)
     plain = cv2.cvtColor(flat, cv2.COLOR_BGR2RGB).astype(np.float32) / 255
     colours = np.zeros((count + 1, 3), np.float32)
     for c in range(1, count + 1):
         colours[c] = np.median(plain[piece == c], axis=0)
     return piece, colours
+
+
+def _mixed(colours: Array, middle: Array, gain: float) -> Array:
+    """The masses' colours mixed as the picture's hues are read
+    (:func:`hues`): further apart about its middle hue, and that cast
+    thinned, where they lie close together. Their values stay."""
+    if gain <= 1:
+        return colours
+    apart = 1 + (gain - 1) * HUE_PAINT
+    hue = math.degrees(math.atan2(float(middle[1]), float(middle[0])))
+    cast = 1.0  # a picture all in green is green, not under a varnish
+    if WHITE_WARM[0] <= hue <= WHITE_WARM[1]:
+        cast = 1 - (1 - HUE_CAST) * (gain - 1) / (HUE_GAIN - 1)
+    lab = cv2.cvtColor(colours.reshape(1, -1, 3).astype(np.float32), cv2.COLOR_RGB2LAB)
+    seen = np.clip((lab[..., :1] - HUE_LIGHT[0]) / (HUE_LIGHT[1] - HUE_LIGHT[0]), 0, 1)
+    read = middle * cast + (lab[..., 1:] - middle) * apart
+    lab[..., 1:] += seen * (read - lab[..., 1:])
+    return np.clip(cv2.cvtColor(lab, cv2.COLOR_LAB2RGB).reshape(-1, 3), 0, 1)
 
 
 def _pigment(colours: Array) -> Array:
@@ -665,17 +831,16 @@ def layers(
     src = np.asarray(picture.convert("RGB"))
     scale = LONG / max(src.shape[:2])
     size = (max(round(src.shape[1] * scale), 8), max(round(src.shape[0] * scale), 8))
-    rgb = _keyed(
-        cv2.resize(src, size, interpolation=cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC)
-    )
+    sized = cv2.resize(src, size, interpolation=cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC)
+    rgb = _keyed(sized)
     h, w = rgb.shape[:2]
     plain = _plain(rgb)
     piece, colours = masses(rgb, seed=seed % 2**31, flat=plain)
-    paints = _pigment(colours)
+    paints = _pigment(_mixed(colours, *hues(cv2.cvtColor(plain, cv2.COLOR_BGR2LAB))))
     up = w / piece.shape[1]
     # What is white in the picture: the paper on the light page (with a
     # breath of the picture's tone, its folds), light paint on the dark one.
-    white = whites(rgb, plain)
+    white = whites(_keyed(sized, drawn=True))
     blank = cv2.GaussianBlur(
         cv2.resize(white.astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR), (0, 0), 2.6
     )
@@ -702,9 +867,17 @@ def layers(
     near_map = cv2.GaussianBlur(
         cv2.resize(near[piece], (w, h), interpolation=cv2.INTER_LINEAR), (0, 0), 6
     )
+    reach = apart * (45.0 / 52.0 if dark else 1.0)
+    far = np.clip((reach - BARE_FAR[0]) / (BARE_FAR[1] - BARE_FAR[0]), 0, 1)
+    far[0] = 0
+    far_map = cv2.GaussianBlur(
+        cv2.resize(far[piece], (w, h), interpolation=cv2.INTER_LINEAR), (0, 0), 6
+    )
     rim = np.clip(1 - inset / (0.3 * min(h, w)), 0, 1)
     chance = _noise((h, w), 0.07 * max(h, w), rng) * 0.8 + _noise((h, w), 18, rng) * 0.2
-    bare = (1 - lively) * (BARE_NEAR * near_map + BARE_RIM * rim + BARE_CHANCE * chance)
+    bare = (1 - lively) * (
+        BARE_NEAR * near_map + (BARE_RIM * rim + BARE_CHANCE * chance) * (1 - far_map)
+    )
     level = max(BARE, float(np.quantile(bare, 1 - BARE_MOST)))
     painted = bare < level
     if dark:
