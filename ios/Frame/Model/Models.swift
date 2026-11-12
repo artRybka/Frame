@@ -1944,6 +1944,11 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
     /// what the museums' bot walls turn away (2026-11-07).
     var thumb: ImageRef { .thumb(id) }
 
+    /// The thumbnail as a cover tile shows it: the work without the paper
+    /// or mount around it (Mateusz 2026-11-12: Goya's etchings were a
+    /// small plate on a wide sheet and looked like errors).
+    var tile: ImageRef { .tile(id) }
+
     /// No other address to try: the server's copy is the only one.
     var thumbFallback: ImageRef? { nil }
 }
@@ -1993,6 +1998,10 @@ struct SuggestionRow: Codable, Hashable, Sendable, Identifiable {
     /// The theme to browse further (the theme of the day).
     var theme: String?
     var items: [RemoteItem]
+    /// Of `items`, the works for its card's cover (the theme of the day in
+    /// "Dziś dla Ciebie"), picked by the server as a theme's cover is:
+    /// paintings first. Nil from older servers and for other rows.
+    var cover: [String]?
     var id: String { key }
 }
 

@@ -74,6 +74,7 @@ from ..library.viewer import viewer_id
 from ..library.vocabulary import (
     TERMS,
     fold,
+    is_painting,
     suggest,
 )
 from ..library.zoom import zooms
@@ -186,6 +187,10 @@ class SuggestionRow(BaseModel):
     subtitle: str = ""
     theme: str | None = None  # the theme to browse further
     items: list[RemoteItem]
+    #: Of ``items``, the ids of the works for its card's cover (the theme
+    #: of the day as a card in "Dziś dla Ciebie"), picked as a theme's
+    #: cover is (:func:`_cover`: paintings first); [] for rows without one.
+    cover: list[str] = []
 
 
 class ThemePage(BaseModel):
@@ -283,7 +288,7 @@ def _draw(seed: str, item: Item) -> bytes:
     return hashlib.sha256(f"{seed}:{item.id}".encode()).digest()
 
 
-def _cover(items: list[Item], seed: str = "") -> list[Item]:
+def _cover(items: list[Item], seed: str = "", found: Theme | None = None) -> list[Item]:
     """Four works by different artists where there are such, drawn from the
     best ``COVER_POOL`` by ``seed`` (a day's covers differ from the next's).
 
@@ -291,17 +296,27 @@ def _cover(items: list[Item], seed: str = "") -> list[Item]:
     the cards are worked out again whenever the catalogue changes, and a
     shuffle gave a card four other works after one new work came in, so
     the covers kept changing while Odkrywaj was browsed (Mateusz
-    2026-11-07)."""
-    items = items[:COVER_POOL]
+    2026-11-07).
+
+    Paintings come first, the best ``COVER_POOL`` of them wherever they
+    stand in ``items``, unless ``found`` is a theme of prints or drawings
+    (:meth:`Theme.on_paper`): drawings and prints stay inside the set, the
+    cover is painting (Mateusz 2026-11-12). A theme with fewer paintings
+    than four fills its cover with the rest as before."""
+    paintings = found is None or not found.on_paper()
+    pool = items[:COVER_POOL]
+    if paintings:
+        painted = [i for i in items if is_painting(i)][:COVER_POOL]
+        pool = painted + [i for i in pool if not is_painting(i)]
     if seed:
-        items = sorted(items, key=lambda item: _draw(seed, item))
+        pool = sorted(pool, key=lambda i: (paintings and not is_painting(i), _draw(seed, i)))
     picked: list[Item] = []
-    for item in items:
+    for item in pool:
         if all(item.artist != p.artist for p in picked):
             picked.append(item)
         if len(picked) == 4:
             return picked
-    return (picked + [i for i in items if i not in picked])[:4]
+    return (picked + [i for i in pool if i not in picked])[:4]
 
 
 def _cards_key(svc: FrameService) -> tuple[object, ...]:
@@ -350,7 +365,7 @@ def work_out_cards(svc: FrameService, force: bool = False) -> dict[str, tuple[in
             total, items = svc.library.query(
                 found.rules(), sort="good", seed=day.toordinal(), proposing=True
             )
-            cards[found.key] = (total, _cover(items, f"{today}:{found.key}"))
+            cards[found.key] = (total, _cover(items, f"{today}:{found.key}", found))
             # The same query is the theme's first page: its set opens at once.
             pages.keep(_page_key(found, 1, viewer_id()), stamp, total, items[:ROW_SIZE])
         _cards = (time.monotonic(), cards)
@@ -468,6 +483,7 @@ def _suggestion_rows(svc: FrameService) -> list[SuggestionRow]:
                 subtitle=f"{reason}. {found.description}" if reason else found.description,
                 theme=found.key,
                 items=remote_items(svc, mixed(day)),
+                cover=[i.id for i in _cover(day, f"{today.isoformat()}:{found.key}", found)],
             )
         )
     if zoom := _zoom_row(svc):
@@ -749,7 +765,7 @@ def _new_artist(svc: FrameService) -> ThemeCard | None:
     total, items = svc.library.query(
         found.rules(), sort="good", seed=day.toordinal(), proposing=True
     )
-    cover = _cover(items, f"{day.isoformat()}:{found.key}")
+    cover = _cover(items, f"{day.isoformat()}:{found.key}", found)
     with _cards_lock:
         stamp, cards = _cards
         _cards = (stamp, {**cards, found.key: (total, cover)})

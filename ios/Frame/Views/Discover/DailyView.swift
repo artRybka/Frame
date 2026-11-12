@@ -4,13 +4,33 @@ import SwiftUI
 /// (cropped around the place Claude named, else what draws the eye), its
 /// title and one sentence written to fit two lines, an arrow in the corner;
 /// the whole tile opens its page. Kept low, so the themes start right below it.
-/// The picture sits a little deeper than the card (`parallax()`).
+/// The picture sits a little deeper than the card (`parallax()`); like the
+/// "Pod lupą" cards it is brighter (HDR), glossy and lifted over the page.
 /// Held, the owner can draw another one (`drawDailyAgainMenu`).
 struct DailyTile: View {
     let work: DailyWork
 
     private var byline: String {
         [Names.artist(work.item.item.artist), work.item.item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    /// Where Claude said the picture is about, to crop around.
+    private var focus: UnitPoint? { work.focus.map { UnitPoint(x: $0.x, y: $0.y) } }
+
+    /// The HDR lift of "Pod lupą" cards (`WorkTile`): full over the top
+    /// third, a tenth of it at the caption (Mateusz 2026-11-12).
+    static let glowFade = 0.1
+    static let glowHold = 0.3
+    static let glowBoost = 1.35
+
+    /// The work's original, the sharper copy its card found too, as the
+    /// study's page asks for it (`DailyView.originalRef`).
+    static func originalRef(_ work: DailyWork) -> ImageRef {
+        let item = work.item.item
+        if item.sharper == nil, let card = ItemPeeks.cards[item.id], card.sharper != nil {
+            return card.originalRef
+        }
+        return item.originalRef
     }
 
     var body: some View {
@@ -20,15 +40,40 @@ struct DailyTile: View {
                     .frame(height: 130)
                     .frame(maxWidth: .infinity)
                     .overlay {
-                        ArtImage(
-                            ref: work.item.thumb,
-                            fallback: work.item.thumbFallback,
-                            placeholder: work.item.item.placeholderColor,
-                            maxPixel: 1000,
-                            priority: .high,
-                            subjectFocus: true,
-                            focusPoint: work.focus.map { UnitPoint(x: $0.x, y: $0.y) }
-                        )
+                        ZStack {
+                            ArtImage(
+                                ref: work.item.thumb,
+                                fallback: work.item.thumbFallback,
+                                placeholder: work.item.item.placeholderColor,
+                                maxPixel: 1000,
+                                priority: .high,
+                                subjectFocus: true,
+                                focusPoint: focus,
+                                brighten: true,
+                                glowFade: Self.glowFade,
+                                glowHold: Self.glowHold,
+                                glowBoost: Self.glowBoost
+                            )
+                            // The thumbnail (640 px) is stretched over the
+                            // band's ~1050: blurry (Mateusz 2026-11-12). The
+                            // original fades in over it, at the size the
+                            // study's page asks for, so the page has it at once.
+                            if work.item.inLibrary {
+                                ArtImage(
+                                    ref: Self.originalRef(work),
+                                    placeholder: .clear,
+                                    maxPixel: DailyView.originalPixels,
+                                    priority: .high,
+                                    subjectFocus: true,
+                                    focusPoint: focus,
+                                    crossfade: true,
+                                    brighten: true,
+                                    glowFade: Self.glowFade,
+                                    glowHold: Self.glowHold,
+                                    glowBoost: Self.glowBoost
+                                )
+                            }
+                        }
                         // A touch bigger than the band, so it can drift in it.
                         .padding(.horizontal, -Parallax.side)
                         .padding(.vertical, -Parallax.top)
@@ -65,7 +110,15 @@ struct DailyTile: View {
             .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
             .clipShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).strokeBorder(Theme.hairline))
+            // The glossy coat of "Pod lupą": a diagonal streak that runs
+            // with the phone's turn (Mateusz 2026-11-12).
+            .overlay {
+                GlassSheen(peak: 0.65)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+            }
             .contentShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+            // Standing a little over the page, as "Pod lupą" cards do.
+            .liftedCard(cornerRadius: Theme.corner)
         }
         .buttonStyle(.plain)
         .accessibilityHint("Studium dnia")
@@ -651,7 +704,7 @@ struct DailyView: View {
 
     /// As the work's card asks for its original, so the one it showed is
     /// the one in memory here.
-    private static let originalPixels: CGFloat = 1800
+    static let originalPixels: CGFloat = 1800
 
     /// The work's original; the sharper copy its card found since the study
     /// was written, too, so the study shows the picture the card did.

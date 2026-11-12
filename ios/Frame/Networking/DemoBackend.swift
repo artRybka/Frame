@@ -1847,7 +1847,7 @@ actor DemoBackend: FrameBackend {
     nonisolated func request(for image: ImageRef) -> URLRequest? {
         let url: URL?
         switch image {
-        case let .thumb(id): url = Self.bundled(id) ?? imageURLs[id]?.thumb
+        case let .thumb(id), let .tile(id): url = Self.bundled(id) ?? imageURLs[id]?.thumb
         case let .image(id), let .original(id, _): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
         case let .framePreview(id, settings, framing, _):
             url = framed(id, settings, trying: framing) ?? Self.bundled(id) ?? imageURLs[id]?.thumb
