@@ -1657,3 +1657,31 @@ def test_closing_waits_for_a_write_in_progress(tmp_path) -> None:
     closer.join(5)
     assert not writer.is_alive() and not closer.is_alive()
     assert Library(tmp_path / "lib.db").get_state("late") == 1  # written before the close
+
+
+def test_playlist_keeps_its_order_when_a_work_changes_in_passing(tmp_path) -> None:
+    """De Chirico's playlist jumped after a work's card was opened: its
+    technique and museum, looked up then, changed the work, which went to
+    the end of the search index; works of one artist and year kept the
+    index's order, so it moved down and the others up (Mateusz 2026-11-12).
+    Works alike for a sort keep one order: by title, then id."""
+    lib = Library(tmp_path / "lib.db")
+    for n, title in enumerate(["Piazza", "Melancholy", "Enigma", "Ariadne", "Hector"], 1):
+        lib.upsert(_item(n, title=title, artist="Giorgio de Chirico", year=1914))
+    lib.upsert(_item(6, title="Self-portrait", artist="Giorgio de Chirico", year=1911))
+    chirico = lib.save_playlist(
+        Playlist(
+            name="de Chirico",
+            kind=PlaylistKind.SMART,
+            rules=PlaylistRules(artists=["Giorgio de Chirico"]),
+        )
+    )
+    before = [i.id for i in lib.playlist_items(chirico, sort="artist")]
+    assert before == ["test:6", "test:4", "test:3", "test:5", "test:2", "test:1"]
+
+    lib.update("test:4", medium="Oil on canvas", holder="Tate")  # its card opened
+    assert [i.id for i in lib.playlist_items(chirico, sort="artist")] == before
+    for sort in ("year", "recent", "shown", "random"):
+        first = [i.id for i in lib.query(chirico.rules, sort=sort, seed=3)[1]]  # type: ignore[arg-type]
+        lib.update("test:2", medium=f"Oil, {sort}")
+        assert [i.id for i in lib.query(chirico.rules, sort=sort, seed=3)[1]] == first  # type: ignore[arg-type]

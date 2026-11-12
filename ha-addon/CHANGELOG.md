@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.68
+
+- Inteligentna playlista nie przeskakuje już po powrocie z karty dzieła.
+  Dzieła jednego artysty z tego samego roku (u de Chirico jest ich
+  wiele) nie miały ustalonej kolejności między sobą: dzieło, któremu
+  serwer coś dopisał (technikę i muzeum przy otwarciu karty, przeliczone
+  barwy), przesuwało się na koniec swojego roku, a reszta podjeżdżała w
+  górę. Teraz takie dzieła stoją według tytułu i zawsze w tej samej
+  kolejności; to samo w pozostałych porządkach list i wyników.
+
 ## 1.145.67
 
 - Studium dzieła, analiza kompozycji: rysunek piórkiem na arkuszu jest

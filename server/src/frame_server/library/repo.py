@@ -406,6 +406,7 @@ def relevance(rules: PlaylistRules) -> Callable[[Item], tuple[Any, ...]]:
             item.year is None,
             item.year or 0,
             item.title.casefold(),
+            item.id,
         )
 
     return rank
@@ -456,22 +457,39 @@ def _shown_more(item: Item, other: Item) -> bool:
     )
 
 
+def _settled(item: Item) -> tuple[str, str]:
+    """What tells apart works a sort finds alike: the title, then the id.
+    Without it they kept the order the search index had them in, and a
+    work changed in passing (its technique or museum looked up as its card
+    opened) went to the end of its kind there: a playlist sorted by artist
+    and year had it jump elsewhere and its neighbours move up (Mateusz
+    2026-11-12, de Chirico's ~200 works, many of one year)."""
+    return item.title.casefold(), item.id
+
+
 def sort_items(items: list[Item], sort: SortKey, seed: int = 0) -> list[Item]:
+    """``items`` in the ``sort`` asked for, the same every time for the same
+    works, however they came (:func:`_settled` decides between equals);
+    "suitability" keeps equals as given (a manual playlist's cover)."""
     if sort == "title":
-        return sorted(items, key=lambda i: i.title.casefold())
+        return sorted(items, key=lambda i: (i.title.casefold(), i.id))
     if sort == "artist":
-        return sorted(items, key=lambda i: (i.artist.casefold(), i.year or 0))
+        return sorted(items, key=lambda i: (i.artist.casefold(), i.year or 0, *_settled(i)))
     if sort == "year":
-        return sorted(items, key=lambda i: (i.year is None, i.year or 0))
+        return sorted(items, key=lambda i: (i.year is None, i.year or 0, *_settled(i)))
     if sort == "suitability":
+        # Equals as given: a manual playlist's cover in its own order.
         return sorted(items, key=lambda i: -worth(i))
     if sort == "shown":
-        return sorted(items, key=lambda i: i.last_shown_at or "", reverse=True)
+        # The latest first; of those never shown, the same each time.
+        ordered = sorted(items, key=lambda i: i.id)
+        return sorted(ordered, key=lambda i: i.last_shown_at or "", reverse=True)
     if sort == "random":
-        shuffled = list(items)
+        shuffled = sorted(items, key=lambda i: i.id)
         random.Random(seed).shuffle(shuffled)
         return shuffled
-    return sorted(items, key=lambda i: i.added_at, reverse=True)
+    ordered = sorted(items, key=lambda i: i.id)
+    return sorted(ordered, key=lambda i: i.added_at, reverse=True)
 
 
 def cover_colors(items: list[Item]) -> list[ColorSwatch]:
