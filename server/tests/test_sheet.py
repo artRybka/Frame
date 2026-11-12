@@ -805,7 +805,9 @@ def test_sketches_of_an_earlier_pen_are_drawn_again_at_night(service: FrameServi
     assert again["composition_versions"][0]["composition"] == again["composition"]
     left = redrawn({**kept, pen.PEN_KEY: 1}, None)
     assert left["composition"] == kept["composition"] and left[pen.PEN_KEY] == pen.ROUND
-    # The pages of the pen before this one wait for the owner's word (the
-    # redrawing costs): only the first pen's, which he said yes to, are asked.
+    # Which pages are drawn again is the owner's word (the redrawing costs):
+    # he said yes for the first pen's pages and for the second's.
     assert wants(page.model_copy(update={"data": {**page.data, pen.PEN_KEY: 1}}))
-    assert not wants(page.model_copy(update={"data": {**page.data, pen.PEN_KEY: 2}}))
+    assert wants(page.model_copy(update={"data": {**page.data, pen.PEN_KEY: 2}}))
+    assert not wants(page.model_copy(update={"data": {**page.data, pen.PEN_KEY: 3}}))
+    assert pen.REDRAWN <= pen.ROUND

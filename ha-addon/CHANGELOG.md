@@ -17,9 +17,7 @@
   ważne formy (łódź, twarz, dłoń).
 - Kreskowanie ciemnych partii zostaje bez zmian.
 - Nowy rysunek dostają studia robione od teraz oraz, nocą w pakiecie,
-  studia sprzed pierwszej poprawki piórka (tak jak było ustalone, tylko
-  już tym piórkiem; ok. 2 centów za studium). Studia, które zdążyły
-  dostać poprzednie piórko, czekają na decyzję.
+  wszystkie gotowe studia (ok. 2 centów za studium).
 
 ## 1.145.58
 

@@ -68,9 +68,10 @@ PEN_KEY = "pen_round"
 #: A page whose sketch a pen before this one drew gets it drawn again at
 #: night (``ai.redraw``), which costs: the owner said yes to that for the
 #: pages of the first pen (Mateusz 2026-11-12 10:38, "Tak, nocą w
-#: pakiecie"), and they get this pen's. The pages of the second pen wait
-#: for his word: raise this to :data:`ROUND` when he gives it.
-REDRAWN = 2
+#: pakiecie") and for those the second pen had drawn by then (15:23, the
+#: same answer), so every page before this pen is drawn again. A pen after
+#: this one asks him anew before it raises this.
+REDRAWN = 3
 
 SYSTEM = """Rysujesz piórkiem schematyczny szkic jednego obrazu, taki, jaki malarz robi na kartce \
 przed analizą kompozycji. Po szkicu ma być od razu widać, co jest tematem obrazu i gdzie leży. \
