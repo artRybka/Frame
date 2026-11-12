@@ -4,8 +4,8 @@ import UIKit
 /// One take on the composition, drawn as a study sheet: the picture's field
 /// in stains of its colours with a pen sketch over them (made by the server,
 /// on the page's own colour), ruled with a thin frame and the grid in
-/// graphite, the marks over it in a draughtsman's coloured pencil, red or
-/// blue, whichever stands out from the picture, with a number beside each;
+/// graphite, the marks over it in a draughtsman's coloured pencil, blue or
+/// (over a picture's blues) red, with a number beside each;
 /// their labels under the sheet in two columns, hand-written: a title and a
 /// line under it. A tap shows the picture itself under the marks, another
 /// brings the sheet back (no sign for it on the sheet).
@@ -147,9 +147,9 @@ struct CompositionSketch: View {
         .clipped()
     }
 
-    /// The sheet is here, or was given up on: with it the pencil that
-    /// stands out from its colours is picked; without it the marks go on
-    /// the picture, as before the sheet.
+    /// The sheet is here, or was given up on: with it the pencil is picked
+    /// from its colours under the marks; without it the marks go on the
+    /// picture, as before the sheet.
     private func sheetLoaded(_ ref: ImageRef) {
         guard ref == sheetRef else { return }
         if let image = sheetInMemory(ref) {
@@ -165,7 +165,7 @@ struct CompositionSketch: View {
 
     private func pick(_ ref: ImageRef, _ image: UIImage) {
         guard crayons[ref] == nil else { return }
-        crayons[ref] = Crayon.pick(for: image, dark: scheme == .dark)
+        crayons[ref] = Crayon.pick(for: image, under: take.marksInField)
     }
 
     private static let sheetPixels: CGFloat = 1600
@@ -387,10 +387,11 @@ struct CompositionSketch: View {
     }
 }
 
-/// The two ends of a draughtsman's pencil. The one farther from the
-/// picture's colours draws the marks; the other one what only answers
-/// across the picture (a colour that returns), so it is not read as a line
-/// that runs there.
+/// The two ends of a draughtsman's pencil. Blue draws the marks: paintings
+/// are mostly warm, and it stands out from them. On a picture whose marks
+/// lie over its blues the red end draws them. The other end draws what
+/// only answers across the picture (a colour that returns), so it is not
+/// read as a line that runs there.
 enum Crayon: Hashable, Sendable {
     case red, blue
 
@@ -416,26 +417,48 @@ enum Crayon: Hashable, Sendable {
         (mark.shape == "echo" ? other : self).color(dark: dark)
     }
 
-    /// The pencil that reads best over these colours (sRGB, 0…1): the one
-    /// whose nearest fifth of them is farther from it, measured in Lab.
-    static func pick(over colours: [SIMD3<Double>], dark: Bool) -> Crayon {
-        func score(_ crayon: Crayon) -> Double {
-            let own = lab(crayon.rgb(dark: dark))
-            let distances = colours.map { colour -> Double in
-                let d = lab(colour) - own
-                return (d * d).sum().squareRoot()
-            }.sorted()
-            return distances.isEmpty ? 0 : distances[distances.count / 5]
+    /// How much more of the colours must be cool than warm for the red
+    /// pencil: a few bluish places under the marks do not turn it.
+    static let coolLead = 0.08
+
+    /// The pencil that reads best over these colours (sRGB, 0…1): red
+    /// where clearly more of them are blues than reds, ochres and browns,
+    /// else blue. (The distance from the pencil's own colour said blue for
+    /// every picture: no painting is as deep a blue as the pencil.)
+    static func pick(over colours: [SIMD3<Double>]) -> Crayon {
+        guard !colours.isEmpty else { return .blue }
+        let labs = colours.map(lab)
+        let cool = Double(labs.filter { $0.z < -6 }.count) / Double(labs.count)
+        let warm = Double(labs.filter { $0.y > 8 && $0.z > 8 }.count) / Double(labs.count)
+        return cool - warm > coolLead ? .red : .blue
+    }
+
+    /// The pencil for a sheet: picked over the sheet's colours where the
+    /// marks (fractions of the sheet) lie, since that is where it has to
+    /// be read; over all of it when no mark lies on it.
+    static func pick(for image: UIImage, under marks: [DailyWork.Mark]) -> Crayon {
+        let side = 64
+        let all = colours(of: image, side: side)
+        guard all.count == side * side else { return .blue }
+        var under: [SIMD3<Double>] = []
+        let size = CGSize(width: side, height: side)
+        for mark in marks where mark.shape != "echo" {
+            for path in Pencil.paths(for: mark, in: size, seed: 1) {
+                path.forEach { element in
+                    let point: CGPoint
+                    switch element {
+                    case let .move(to: to), let .line(to: to): point = to
+                    default: return
+                    }
+                    let (x, y) = (Int(point.x.rounded(.down)), Int(point.y.rounded(.down)))
+                    if (0..<side).contains(x), (0..<side).contains(y) { under.append(all[y * side + x]) }
+                }
+            }
         }
-        return score(.blue) > score(.red) ? .blue : .red
+        return pick(over: under.isEmpty ? all : under)
     }
 
-    /// The pencil for a sheet: picked over its colours, 32 by 32.
-    static func pick(for image: UIImage, dark: Bool) -> Crayon {
-        pick(over: colours(of: image), dark: dark)
-    }
-
-    /// The picture's colours, a small grid of them.
+    /// The picture's colours, a small grid of them, row by row from the top.
     static func colours(of image: UIImage, side: Int = 32) -> [SIMD3<Double>] {
         guard let source = image.cgImage, let space = CGColorSpace(name: CGColorSpace.sRGB) else { return [] }
         var bytes = [UInt8](repeating: 0, count: side * side * 4)

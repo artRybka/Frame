@@ -85,16 +85,16 @@ final class CompositionSheetTests: XCTestCase {
         XCTAssertGreaterThan(side.maxX, 360 + Pencil.reach - 1)
     }
 
-    func testThePencilFartherFromThePicturesColoursDrawsTheMarks() {
+    func testBlueDrawsTheMarksAndRedOverAPicturesBlues() {
         let red = SIMD3<Double>(0.75, 0.15, 0.1)
         let blue = SIMD3<Double>(0.1, 0.2, 0.6)
         let grey = SIMD3<Double>(0.5, 0.5, 0.5)
-        for dark in [false, true] {
-            // A red picture takes the blue pencil, a blue one the red.
-            XCTAssertEqual(Crayon.pick(over: Array(repeating: red, count: 80) + Array(repeating: grey, count: 20), dark: dark), .blue)
-            XCTAssertEqual(Crayon.pick(over: Array(repeating: blue, count: 80) + Array(repeating: grey, count: 20), dark: dark), .red)
-        }
-        XCTAssertEqual(Crayon.pick(over: [], dark: false), .red)
+        XCTAssertEqual(Crayon.pick(over: Array(repeating: red, count: 80) + Array(repeating: grey, count: 20)), .blue)
+        XCTAssertEqual(Crayon.pick(over: Array(repeating: blue, count: 80) + Array(repeating: grey, count: 20)), .red)
+        // A few bluish places do not turn the pencil; nor do as many blues as reds.
+        XCTAssertEqual(Crayon.pick(over: Array(repeating: blue, count: 5) + Array(repeating: grey, count: 95)), .blue)
+        XCTAssertEqual(Crayon.pick(over: Array(repeating: blue, count: 50) + Array(repeating: red, count: 50)), .blue)
+        XCTAssertEqual(Crayon.pick(over: []), .blue)
         XCTAssertEqual(Crayon.red.other, .blue)
         // What only answers across the picture is drawn in the other end.
         let echo = Mark(shape: "echo", points: [], title: "", text: "")
@@ -104,16 +104,30 @@ final class CompositionSheetTests: XCTestCase {
         // Lab as everyone has it: white is L 100, and black 0.
         XCTAssertEqual(Crayon.lab(SIMD3<Double>(1, 1, 1)).x, 100, accuracy: 0.01)
         XCTAssertEqual(Crayon.lab(SIMD3<Double>(0, 0, 0)).x, 0, accuracy: 0.01)
-        // A picture's colours are read back as painted.
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 40))
+    }
+
+    func testThePencilIsPickedWhereTheMarksLie() {
+        // A sheet blue on its left half and red on its right.
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 80, height: 40))
         let image = renderer.image { context in
-            UIColor(red: 0.75, green: 0.15, blue: 0.1, alpha: 1).setFill()
+            UIColor(red: 0.1, green: 0.2, blue: 0.6, alpha: 1).setFill()
             context.fill(CGRect(x: 0, y: 0, width: 40, height: 40))
+            UIColor(red: 0.75, green: 0.15, blue: 0.1, alpha: 1).setFill()
+            context.fill(CGRect(x: 40, y: 0, width: 40, height: 40))
         }
-        let colours = Crayon.colours(of: image)
+        let colours = Crayon.colours(of: image, side: 32)
         XCTAssertEqual(colours.count, 32 * 32)
-        XCTAssertEqual(colours[500].x, 0.75, accuracy: 0.03)
-        XCTAssertEqual(Crayon.pick(for: image, dark: false), .blue)
+        XCTAssertEqual(colours[16 * 32 + 4].z, 0.6, accuracy: 0.04)   // left: blue
+        XCTAssertEqual(colours[16 * 32 + 28].x, 0.75, accuracy: 0.04)  // right: red
+        let left = Mark(shape: "line", points: [Spot(x: 0.1, y: 0.2), Spot(x: 0.4, y: 0.8)], title: "", text: "")
+        let right = Mark(shape: "loop", points: [Spot(x: 0.75, y: 0.5), Spot(x: 0.9, y: 0.7)], title: "", text: "")
+        XCTAssertEqual(Crayon.pick(for: image, under: [left]), .red)
+        XCTAssertEqual(Crayon.pick(for: image, under: [right]), .blue)
+        // An echo is drawn in the other end: it does not choose the pencil.
+        let echo = Mark(shape: "echo", points: [Spot(x: 0.1, y: 0.5), Spot(x: 0.4, y: 0.5)], title: "", text: "")
+        XCTAssertEqual(Crayon.pick(for: image, under: [right, echo]), .blue)
+        // No mark on the sheet: all of it, as many blues as reds.
+        XCTAssertEqual(Crayon.pick(for: image, under: []), .blue)
     }
 
     func testTheDemoHasASheetForItsStudyInBothAppearances() async throws {
