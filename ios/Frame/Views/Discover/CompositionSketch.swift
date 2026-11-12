@@ -15,6 +15,9 @@ import UIKit
 /// From a server that sends the sheet's two layers (`layers`) it is laid
 /// down before the reader, pen then stains then chalk (`SheetLayers`), and
 /// each chalk mark lies on a plane of its own over the sheet (`ChalkMarks`).
+/// Where the server has the layers with the page's margin beside the field
+/// (`bleed`), they are laid wider than the frame: a stain or two run out to
+/// the screen's edge and a stroke of the pen goes on past the frame.
 ///
 /// A server from before the sheet (no `sheet`), or a sheet that would not
 /// load: the picture as it is, the marks in pencil with a paper-coloured
@@ -30,6 +33,13 @@ struct CompositionSketch: View {
     var sheet: String = ""
     /// The server has the sheet as its two layers too (the stains, the pen).
     var layers = false
+    /// How much wider than the field the layers can be had on each side (of
+    /// the field's width): the page's margin, into which a stain runs out
+    /// and a stroke goes on (Mateusz 2026-11-12 11:04: "plamy akwareli mogą
+    /// w jednym czy max 2 miejscach wylewać się i sięgać krawędzi bocznej
+    /// ekranu. podobnie kreska rysunku - pojedyncza może wystawać poza
+    /// kadr"). 0 from a server before that: the layers end at the frame.
+    var bleed: CGFloat = 0
     /// The text block's width: the picture takes all of it, the same in
     /// every take (nil: as wide as the column lets it).
     var width: CGFloat? = nil
@@ -51,13 +61,15 @@ struct CompositionSketch: View {
     /// The sheet's pictures for the page's colour now: the whole sheet, or
     /// its stains and its pen (`Self.sheetRefs`).
     private var sheetRefs: [ImageRef] {
-        Self.sheetRefs(sheet, layers: layers, dark: scheme == .dark)
+        Self.sheetRefs(sheet, layers: layers, bleed: bleed, dark: scheme == .dark)
     }
 
-    static func sheetRefs(_ sheet: String, layers: Bool, dark: Bool) -> [ImageRef] {
+    static func sheetRefs(_ sheet: String, layers: Bool, bleed: CGFloat = 0, dark: Bool) -> [ImageRef] {
         guard !sheet.isEmpty else { return [] }
         let page = sheet + (dark ? "&dark=1" : "")
-        return layers ? [.path(page + "&layer=wash"), .path(page + "&layer=pen")] : [.path(page)]
+        guard layers else { return [.path(page)] }
+        let wide = bleed > 0 ? "-bleed" : ""
+        return [.path(page + "&layer=wash" + wide), .path(page + "&layer=pen" + wide)]
     }
 
     var body: some View {
@@ -125,10 +137,15 @@ struct CompositionSketch: View {
             .overlay {
                 Group {
                     if drawn {
-                        SheetLayers(
-                            wash: refs[0], pen: refs[1], strokes: take.sketch ?? [], ready: here,
-                            maxPixel: Self.sheetPixels
-                        ) { chalkDue = true }
+                        // Wider than the frame by the page's margin on each
+                        // side, where the server's layers are.
+                        GeometryReader { geometry in
+                            SheetLayers(
+                                wash: refs[0], pen: refs[1], strokes: take.sketch ?? [], ready: here,
+                                maxPixel: Self.sheetPixels, bleed: bleed
+                            ) { chalkDue = true }
+                            .padding(.horizontal, -bleed * geometry.size.width)
+                        }
                     } else {
                         ArtImage(ref: refs[0], placeholder: .clear, maxPixel: Self.sheetPixels)
                     }

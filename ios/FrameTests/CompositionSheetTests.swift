@@ -282,6 +282,52 @@ final class CompositionSheetTests: XCTestCase {
             CompositionSketch.sheetRefs("/s?v=1", layers: true, dark: false),
             [.path("/s?v=1&layer=wash"), .path("/s?v=1&layer=pen")]
         )
+        // From a server that has them with the page's margin beside the
+        // field, those: a stain runs out and a stroke goes on past the
+        // frame (Mateusz 2026-11-12 11:04).
+        XCTAssertEqual(
+            CompositionSketch.sheetRefs("/s?v=1", layers: true, bleed: 0.08, dark: true),
+            [.path("/s?v=1&dark=1&layer=wash-bleed"), .path("/s?v=1&dark=1&layer=pen-bleed")]
+        )
+        XCTAssertEqual(CompositionSketch.sheetRefs("/s?v=1", layers: false, bleed: 0.08, dark: false), [.path("/s?v=1")])
+    }
+
+    func testTheSheetRunsOutOfItsFrameAtTheSides() {
+        // A picture wider than the field by a tenth of it on each side:
+        // the field is the middle of it.
+        let wide = CGSize(width: 240, height: 100)
+        let field = SheetPlan.field(in: wide, bleed: 0.1)
+        XCTAssertEqual(field.minX, 20, accuracy: 1e-9)
+        XCTAssertEqual(field.width, 200, accuracy: 1e-9)
+        XCTAssertEqual(field.height, 100)
+        XCTAssertEqual(SheetPlan.field(in: wide, bleed: 0), CGRect(origin: .zero, size: wide))
+        // A stroke that ends at the right side heading out of it is
+        // followed over the margin; its other end, inside, is not.
+        let out = DailyWork.Stroke(points: [Spot(x: 0.5, y: 0.5), Spot(x: 0.99, y: 0.5)], sharp: true)
+        let line = SheetPlan.line(out, in: field, margin: field.minX)
+        XCTAssertEqual(line.count, 3)
+        XCTAssertEqual(line[0].x, 120, accuracy: 1e-6)
+        XCTAssertEqual(line[0].y, 50, accuracy: 1e-6)
+        XCTAssertEqual(line[2].x, 240, accuracy: 1e-6)
+        XCTAssertEqual(line[2].y, 50, accuracy: 1e-6)
+        // To the left the same, at the stroke's start.
+        let back = DailyWork.Stroke(points: [Spot(x: 0.02, y: 0.4), Spot(x: 0.3, y: 0.6)], sharp: true)
+        let left = SheetPlan.line(back, in: field, margin: field.minX)
+        XCTAssertEqual(left.count, 3)
+        XCTAssertLessThan(left[0].x, field.minX)
+        XCTAssertLessThan(left[0].y, left[1].y)
+        // One that runs along the side, one that ends inside, a closed
+        // one, and any on a sheet with no margin: as they are.
+        let along = DailyWork.Stroke(points: [Spot(x: 0.99, y: 0.2), Spot(x: 0.99, y: 0.8)], sharp: true)
+        XCTAssertEqual(SheetPlan.line(along, in: field, margin: field.minX).count, 2)
+        let inside = DailyWork.Stroke(points: [Spot(x: 0.2, y: 0.2), Spot(x: 0.8, y: 0.8)], sharp: true)
+        XCTAssertEqual(SheetPlan.line(inside, in: field, margin: field.minX).count, 2)
+        let ring = DailyWork.Stroke(points: out.points + [Spot(x: 0.7, y: 0.9)], sharp: true, closed: true)
+        XCTAssertEqual(SheetPlan.line(ring, in: field, margin: field.minX).count, 4)
+        XCTAssertEqual(SheetPlan.line(out, in: field, margin: 0).count, 2)
+        // A steep one is not carried further than a little over twice the margin.
+        let steep = SheetPlan.past(CGPoint(x: 218, y: 50), from: CGPoint(x: 210, y: 30), field: field, margin: 20)
+        XCTAssertEqual(hypot((steep?.x ?? 0) - 218, (steep?.y ?? 0) - 50), 44, accuracy: 1e-6)
     }
 
     func testTheDemoHasASheetForItsStudyInBothAppearances() async throws {
@@ -291,6 +337,12 @@ final class CompositionSheetTests: XCTestCase {
         XCTAssertFalse(sheet.isEmpty)
         // In its two layers, as a server that has them: the stains and the pen.
         XCTAssertEqual(work.compositionLayers, true)
+        // With the page's margin beside the field, as the server's renderer makes them.
+        XCTAssertEqual(work.compositionBleed, DemoStudies.bleed)
+        let wideRef = try XCTUnwrap(CompositionSketch.sheetRefs(sheet, layers: true, bleed: 0.08, dark: false).first)
+        let wideURL = try XCTUnwrap(demo.request(for: wideRef)?.url)
+        XCTAssertTrue(wideURL.lastPathComponent.hasSuffix("-wash.jpg"))
+        XCTAssertNotNil(UIImage(contentsOfFile: wideURL.path))
         let refs = CompositionSketch.sheetRefs(sheet, layers: true, dark: false) + CompositionSketch.sheetRefs(sheet, layers: true, dark: true)
         XCTAssertEqual(refs.count, 4)
         for ref in refs {

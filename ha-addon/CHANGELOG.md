@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.50
+
+- Studium dzieła, analiza kompozycji: arkusz nie kończy się równo na
+  kadrze. W jednym albo dwóch miejscach plama akwareli wylewa się poza
+  kadr i sięga bocznej krawędzi ekranu, a jedna kreska piórka, która
+  kończy się przy boku, biegnie dalej poza kadr. Po aktualizacji serwer
+  robi arkusze od nowa, w tle.
+
 ## 1.145.49
 
 - Studium dzieła, analiza kompozycji: akwarela wchodzi płynnie, po całym

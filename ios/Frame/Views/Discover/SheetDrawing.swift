@@ -13,6 +13,11 @@ import SwiftUI
 /// It starts once both pictures are here and the sheet is on screen, and
 /// runs once: a sheet seen again (the page's other colour, a take picked
 /// again) is whole at once. With Reduce Motion it is whole from the start.
+///
+/// With `bleed` the two pictures are wider than the field by that much of
+/// its width on each side (the page's margin, where a stain runs out and a
+/// stroke goes on past the frame): the view is laid that much wider than
+/// the frame, and the masks know where the field lies in it.
 struct SheetLayers: View {
     let wash: ImageRef
     let pen: ImageRef
@@ -20,6 +25,9 @@ struct SheetLayers: View {
     /// Both pictures are here.
     let ready: Bool
     let maxPixel: CGFloat
+    /// How much wider than the field the pictures are on each side (of the
+    /// field's width); 0: they are the field.
+    var bleed: CGFloat = 0
     /// The sheet is drawn far enough for the chalk to come.
     let onMarks: () -> Void
 
@@ -35,12 +43,18 @@ struct SheetLayers: View {
         ZStack {
             ArtImage(ref: wash, placeholder: .clear, maxPixel: maxPixel)
                 .mask {
-                    clocked { canvas, time, size in SheetPlan.washMask(in: &canvas, size: size, time: time) }
+                    clocked { canvas, time, size in
+                        SheetPlan.washMask(in: &canvas, size: size, time: time ?? SheetPlan.whole, bleed: bleed)
+                    }
                 }
             ArtImage(ref: pen, placeholder: .clear, maxPixel: maxPixel)
                 .mask {
                     clocked { canvas, time, size in
-                        SheetPlan.penMask(in: &canvas, size: size, time: time, strokes: strokes)
+                        guard let time else {
+                            canvas.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black))
+                            return
+                        }
+                        SheetPlan.penMask(in: &canvas, size: size, time: time, strokes: strokes, bleed: bleed)
                     }
                 }
         }
@@ -62,16 +76,14 @@ struct SheetLayers: View {
     }
 
     /// One layer's mask: nothing before the drawing starts, then as far as
-    /// time has it, all of it once drawn (and with Reduce Motion).
-    private func clocked(_ draw: @escaping (inout GraphicsContext, Double, CGSize) -> Void) -> some View {
+    /// time has it; no time (nil) once all of it is drawn (and with Reduce
+    /// Motion).
+    private func clocked(_ draw: @escaping (inout GraphicsContext, Double?, CGSize) -> Void) -> some View {
         TimelineView(.animation(paused: start == nil || settled)) { context in
             let time = elapsed(context.date)
             Canvas { canvas, size in
-                guard let time, time < SheetPlan.whole else {
-                    canvas.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black))
-                    return
-                }
-                draw(&canvas, time, size)
+                let now: Double? = (time ?? SheetPlan.whole) < SheetPlan.whole ? time : nil
+                draw(&canvas, now, size)
             }
         }
     }
@@ -133,12 +145,56 @@ enum SheetPlan {
     /// How much of the sheet has to be on screen for the drawing to start.
     static let seenShare = 0.35
 
-    /// A stroke's line on a sheet of this size.
+    /// How near a side (of the field's width) a stroke ends that may go on
+    /// past the frame, and how much of its way must lead out of it (the
+    /// server's `PAST_NEAR`, `PAST_HEADING`, a little wider: the mask may
+    /// follow a stroke that did not go on, never miss one that did).
+    static let pastNear: CGFloat = 0.05
+    static let pastHeading: CGFloat = 0.3
+
+    /// Where the field lies in a picture that is wider than it by `bleed`
+    /// of its width on each side.
+    static func field(in size: CGSize, bleed: CGFloat) -> CGRect {
+        let side = size.width * bleed / (1 + 2 * bleed)
+        return CGRect(x: side, y: 0, width: size.width - 2 * side, height: size.height)
+    }
+
+    /// A stroke's line on a sheet whose field is this.
     static func line(_ stroke: DailyWork.Stroke, in size: CGSize) -> [CGPoint] {
-        var points = stroke.points.map { CGPoint(x: $0.x * size.width, y: $0.y * size.height) }
+        line(stroke, in: CGRect(origin: .zero, size: size), margin: 0)
+    }
+
+    /// A stroke's line on a sheet whose field lies here, with `margin`
+    /// beside it: an end at a side that heads out of the field is carried
+    /// on over the margin, where the server's pen may have gone on.
+    static func line(_ stroke: DailyWork.Stroke, in field: CGRect, margin: CGFloat) -> [CGPoint] {
+        var points = stroke.points.map { spot in
+            CGPoint(x: field.minX + CGFloat(spot.x) * field.width, y: field.minY + CGFloat(spot.y) * field.height)
+        }
         guard points.count > 1 else { return [] }
-        if stroke.closed == true, let first = points.first { points.append(first) }
+        if stroke.closed == true, let first = points.first {
+            points.append(first)
+        } else if margin > 0 {
+            if let tip = past(points[0], from: points[1], field: field, margin: margin) { points.insert(tip, at: 0) }
+            if let tip = past(points[points.count - 1], from: points[points.count - 2], field: field, margin: margin) { points.append(tip) }
+        }
         return stroke.sharp == true ? points : Pencil.smooth(points, samples: 8)
+    }
+
+    /// Where a stroke that ends at `end`, coming from `before`, would be
+    /// at the margin's far side; nil when it does not end at a side
+    /// heading out.
+    static func past(_ end: CGPoint, from before: CGPoint, field: CGRect, margin: CGFloat) -> CGPoint? {
+        let way = CGPoint(x: end.x - before.x, y: end.y - before.y)
+        let long = hypot(way.x, way.y)
+        guard long > 0 else { return nil }
+        let across = way.x / long
+        let left = end.x <= field.minX + pastNear * field.width && across < -pastHeading
+        let right = end.x >= field.maxX - pastNear * field.width && across > pastHeading
+        guard left || right else { return nil }
+        let gap = left ? end.x - field.minX : field.maxX - end.x
+        let run = min((gap + margin) / abs(across), 2.2 * margin)
+        return CGPoint(x: end.x + way.x / long * run, y: end.y + way.y / long * run)
     }
 
     static func length(_ line: [CGPoint]) -> CGFloat {
@@ -173,10 +229,11 @@ enum SheetPlan {
 
     /// The pen's layer at `time`: along each stroke as far as it is drawn,
     /// then a slanted edge that goes over the sheet as the hand shades it.
-    static func penMask(in context: inout GraphicsContext, size: CGSize, time: Double, strokes: [DailyWork.Stroke]) {
-        let lines = strokes.map { line($0, in: size) }.filter { $0.count > 1 }
+    static func penMask(in context: inout GraphicsContext, size: CGSize, time: Double, strokes: [DailyWork.Stroke], bleed: CGFloat = 0) {
+        let frame = field(in: size, bleed: bleed)
+        let lines = strokes.map { line($0, in: frame, margin: frame.minX) }.filter { $0.count > 1 }
         let timing = spans(lines.map { length($0) })
-        let style = StrokeStyle(lineWidth: nib(in: size), lineCap: .round, lineJoin: .round)
+        let style = StrokeStyle(lineWidth: nib(in: frame.size), lineCap: .round, lineJoin: .round)
         for (line, span) in zip(lines, timing) {
             let part = drawn(span, at: time)
             guard part > 0 else { continue }
@@ -209,10 +266,29 @@ enum SheetPlan {
         return part * part * (3 - 2 * part)
     }
 
-    /// The stains at `time`: the whole of them, as far as they show.
-    static func washMask(in context: inout GraphicsContext, size: CGSize, time: Double) {
+    /// How much of the margin beside the field (from its far side) the
+    /// stains thin out over: where the screen is wider than the phone's, a
+    /// stain that runs out ends softly, not at the picture's cut edge.
+    static let washFade: CGFloat = 0.2
+
+    /// The stains at `time`: the whole of them, as far as they show; with
+    /// a margin beside the field, thinning to nothing at its far side.
+    static func washMask(in context: inout GraphicsContext, size: CGSize, time: Double, bleed: CGFloat = 0) {
         let shown = washShown(at: time)
         guard shown > 0 else { return }
-        context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black.opacity(shown)))
+        let whole = Path(CGRect(origin: .zero, size: size))
+        let side = field(in: size, bleed: bleed).minX
+        guard side > 0, size.width > 0 else {
+            context.fill(whole, with: .color(.black.opacity(shown)))
+            return
+        }
+        let soft = washFade * side / size.width
+        let stops = [
+            Gradient.Stop(color: .clear, location: 0),
+            Gradient.Stop(color: .black.opacity(shown), location: soft),
+            Gradient.Stop(color: .black.opacity(shown), location: 1 - soft),
+            Gradient.Stop(color: .clear, location: 1),
+        ]
+        context.fill(whole, with: .linearGradient(Gradient(stops: stops), startPoint: .zero, endPoint: CGPoint(x: size.width, y: 0)))
     }
 }
