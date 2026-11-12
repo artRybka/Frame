@@ -111,6 +111,13 @@ jobs:
             capture daily 16 "daily-colour-water-$appearance" -scroll colour -paintStyle water
             capture daily 16 "daily-colour-dry-$appearance" -scroll colour -paintStyle dry
             capture daily 16 "daily-colour-dry-mid-$appearance" -scroll colour -paintStyle dry -paintAge 2.4
+            capture daily 16 "daily-colour-burin-$appearance" -scroll colour -paintStyle burin -paintColours 918d78:0.28/4c4a3c:0.26/5f5c4b:0.24/78745f:0.22
+            capture daily 16 "daily-colour-burin-mid-$appearance" -scroll colour -paintStyle burin -paintAge 1.2 -paintColours 918d78:0.28/4c4a3c:0.26/5f5c4b:0.24/78745f:0.22
+            capture daily 16 "daily-colour-pen-$appearance" -scroll colour -paintStyle pen -paintColours c9b79a:0.40/a9856a:0.27/8a5a44:0.20/6b3f30:0.13
+            capture daily 16 "daily-colour-pencil-$appearance" -scroll colour -paintStyle pencil -paintColours d2cec4:0.46/a9a59c:0.26/7d7a74:0.18/55534f:0.10
+            capture daily 16 "daily-colour-woodblock-$appearance" -scroll colour -paintStyle woodblock -paintColours d9cdb0:0.34/c8bc9d:0.22/1f3a5f:0.16/3d5f86:0.12/8fa7b8:0.09/e9e2cf:0.07
+            capture daily 16 "daily-colour-woodblock-mid-$appearance" -scroll colour -paintStyle woodblock -paintAge 1.2 -paintColours d9cdb0:0.34/c8bc9d:0.22/1f3a5f:0.16/3d5f86:0.12/8fa7b8:0.09/e9e2cf:0.07
+            capture daily 16 "daily-colour-litho-$appearance" -scroll colour -paintStyle litho -paintColours 1d1a17:0.30/e8dcc0:0.28/c8a23a:0.18/b5432b:0.14/6f7f4f:0.10
             capture daily 16 "daily-sametime-$appearance" -scroll sametime
             capture daily 16 "daily-size-$appearance" -scroll size
             capture daily 16 "daily-size-big-$appearance" -scroll size -realSize 210x163

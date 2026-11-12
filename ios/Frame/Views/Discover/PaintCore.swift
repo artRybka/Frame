@@ -7,7 +7,8 @@ import Foundation
 // itself, worked out a pixel at a time: no SwiftUI and no CoreGraphics, so
 // that it can be checked anywhere. `PaintedColour.swift` puts it on the page.
 
-/// How a work's colours are painted under "Kolor i światło".
+/// How a work's colours are shown under "Kolor i światło": painted, drawn
+/// or printed, as the work is.
 enum PaintStyle: String, Sendable, CaseIterable {
     /// Oil, acrylic, tempera: pulls of a loaded brush, a touch of it for each paint.
     case oil
@@ -15,21 +16,73 @@ enum PaintStyle: String, Sendable, CaseIterable {
     case water
     /// Pastel, crayon, chalk: hatching that catches the tooth of the paper.
     case dry
+    /// A print of one colour (engraving, etching, woodcut): a scale of its
+    /// tones in the engraver's lines (`LineStrip`, `PrintCore.swift`).
+    case burin
+    /// A drawing in pen and ink: the same scale in a pen's lines.
+    case pen
+    /// A drawing in pencil or charcoal, a lithograph of one colour: the
+    /// same scale in a soft point's lines.
+    case pencil
+    /// A print in colours from blocks (a colour woodcut): its inks'
+    /// impressions (`InkStrip`).
+    case woodblock
+    /// A print in colours from the stone or the screen (a colour
+    /// lithograph, a poster): its inks' impressions, with the crayon's grain.
+    case litho
 
-    /// What a work's medium says it is painted with, in the languages the
-    /// museums write in; nil when it says nothing of the three, or names
-    /// a print or a photograph: those keep the flat palette. Of several
-    /// (pastel over watercolour) the first named; chalk named after pen
-    /// or ink is under a drawing in ink, which is flat too. A museum that
-    /// names no paint (the Getty gives only "Painting"; Mateusz 2026-11-11
-    /// 13:50: „może w takiej sytuacji da jednak jakoś radę ustalić ze to
-    /// obraz olejny”): what is on canvas is in oil or acrylic, and so is
-    /// a painting whose medium names nothing that says otherwise (paper,
-    /// silk, ink, fresco).
-    static func of(medium: String, classification: String = "") -> PaintStyle? {
+    /// The tool of a work of lines; nil for any other.
+    var tool: LineTool? {
+        switch self {
+        case .burin: .burin
+        case .pen: .pen
+        case .pencil: .pencil
+        default: nil
+        }
+    }
+
+    /// What a colour print is printed from; nil for any other.
+    var press: InkPress? {
+        switch self {
+        case .woodblock: .wood
+        case .litho: .stone
+        default: nil
+        }
+    }
+
+    /// What a work's medium says it is made with, in the languages the
+    /// museums write in; nil when it says nothing of these, or names a
+    /// photograph: those keep the flat palette. Of several paints (pastel
+    /// over watercolour) the first named; chalk named after pen or ink is
+    /// under a drawing in ink. A museum that names no paint (the Getty
+    /// gives only "Painting"; Mateusz 2026-11-11 13:50: „może w takiej
+    /// sytuacji da jednak jakoś radę ustalić ze to obraz olejny”): what is
+    /// on canvas is in oil or acrylic, and so is a painting whose medium
+    /// names nothing that says otherwise (paper, silk, ink, fresco).
+    ///
+    /// What is printed or drawn is not painted (Mateusz 2026-11-12 07:26:
+    /// „dla rycin, rysunków, grafik, plakatów chciałbym opracować inny
+    /// wygląd paska kolorów”). `mono`: the work is of one colour (the
+    /// server's "monochrome", or its colours are one colour's tones,
+    /// `PrintPaint.oneColour`): a print of one colour is a scale of tones
+    /// in lines, one in colours is its inks; a lithograph of one colour
+    /// is the crayon's. A drawing in ink is a pen's (a painting in ink
+    /// and colours stays flat), one in pencil or charcoal a soft point's;
+    /// a drawing that names no tool goes by its ink, `warm` (brown) a
+    /// pen's. Paint named wins over the pencil under it (pencil and
+    /// watercolour is a watercolour), a print over the paint on it.
+    static func of(medium: String, classification: String = "", mono: Bool = false, warm: Bool = false) -> PaintStyle? {
         let words = Self.words(medium)
         let kind = Self.words(classification)
-        if (words + kind).contains(where: { word in flat.contains { word.hasPrefix($0) } || flatWhole.contains(word) }) { return nil }
+        let all = words + kind
+        func has(_ list: [String], _ begins: [String], _ whole: Set<String> = []) -> Bool {
+            list.contains { word in whole.contains(word) || begins.contains { word.hasPrefix($0) } }
+        }
+        // An "oil print" is a photograph, not an oil painting and not a print.
+        let printed = zip(words, words.dropFirst()).contains { photographed.contains($0) && $1.hasPrefix("print") }
+        if printed || has(all, photographs, ["foto", "photo"]) { return nil }
+        if has(all, stone) { return mono ? .pencil : .litho }
+        if has(all, prints, ["ets", "druk"]) { return mono ? .burin : .woodblock }
         var inked = false
         for word in words {
             for (style, begins, whole) in named where whole.contains(word) || begins.contains(where: { word.hasPrefix($0) }) {
@@ -40,9 +93,13 @@ enum PaintStyle: String, Sendable, CaseIterable {
             if ink.contains(word) || inkBegins.contains(where: { word.hasPrefix($0) }) { inked = true }
         }
         if words.contains(where: { word in canvas.contains { word.hasPrefix($0) } || word == "tela" }) { return .oil }
-        let painting = kind.contains { word in paintings.contains { word.hasPrefix($0) } }
-        let other = inked || words.contains { word in notOil.contains { word.hasPrefix($0) } }
-        return painting && !other ? .oil : nil
+        let painting = has(kind, paintings)
+        // Ink and colours on silk is a painting, not a drawing in pen.
+        if inked { return !mono && (painting || has(words, colours)) ? nil : .pen }
+        if has(words, soft) { return .pencil }
+        if painting { return has(words, notOil) ? nil : .oil }
+        if mono, has(all, drawings) { return warm ? .pen : .pencil }
+        return nil
     }
 
     /// How far through the painting of the bar the first paint's swatch
@@ -58,6 +115,8 @@ enum PaintStyle: String, Sendable, CaseIterable {
         case .oil: return OilStrip.pulls(shares, width: width, seed: 0).map { $0.at + $0.takes }.max() ?? 0
         case .water: return Double(shares.count - 1) * WaterStrip.apart + WaterStrip.stroke
         case .dry: return Double(shares.count - 1) * DryPlan.apart + DryPlan.stroke
+        case .burin, .pen, .pencil: return LineStrip.time(shares.count)
+        case .woodblock, .litho: return InkStrip.time(shares.count)
         }
     }
 
@@ -68,6 +127,8 @@ enum PaintStyle: String, Sendable, CaseIterable {
         case .oil: 0.26
         case .water: 0.22
         case .dry: 0.24
+        case .burin, .pen, .pencil: 0.24
+        case .woodblock, .litho: 0.26
         }
         return Self.swatchesFrom * bar + gap * Double(index)
     }
@@ -81,15 +142,25 @@ enum PaintStyle: String, Sendable, CaseIterable {
             .map(String.init)
     }
 
-    /// Prints and photographs: an "oil print" is no oil painting.
-    private static let flat = [
-        "print", "screenprint", "silkscreen", "lithogra", "litogra", "chromolit", "etching", "engrav", "woodcut", "woodblock",
-        "linocut", "aquatint", "akwatint", "mezzotint", "drypoint", "monotyp", "drzeworyt", "akwafort", "miedzioryt", "staloryt",
-        "grafik", "estamp", "gravure", "houtsne", "radier", "holzschnitt", "kupferstich", "serigra", "photogra", "fotogra",
-        "gelatin", "albumen", "daguerr", "bromoil", "offset", "kleurendruk", "farbdruck", "xilogra", "xylogra", "incisione",
-        "grabado",
-    ]
-    private static let flatWhole: Set<String> = ["ets", "druk", "foto", "photo"]
+    private static let photographs = ["photogra", "fotogra", "gelatin", "albumen", "daguerr", "bromoil", "cyanotyp", "chromogenic",
+                                      "inkjet", "collotyp", "calotyp", "tintyp", "ambrotyp", "platinotyp", "salted"]
+    /// What a photograph's print is named by.
+    private static let photographed: Set<String> = ["oil", "carbon", "silver", "platinum", "palladium", "salt", "paper", "pigment"]
+    /// Printed from the stone or through a screen, and what is printed so: posters.
+    private static let stone = ["lithogra", "litogra", "chromolit", "screenprint", "silkscreen", "serigra", "sitodruk", "offset",
+                                "kleurendruk", "farbdruck", "poster", "plakat", "affiche", "afisz"]
+    /// Printed from a plate or a block.
+    private static let prints = ["print", "etching", "engrav", "woodcut", "woodblock", "linocut", "linoryt", "aquatint", "akwatint",
+                                 "mezzotint", "drypoint", "monotyp", "drzeworyt", "akwafort", "miedzioryt", "staloryt", "rycin", "sztych",
+                                 "grafik", "estamp", "gravure", "houtsne", "radier", "holzschnitt", "kupferstich", "xilogra", "xylogra",
+                                 "incisione", "grabado", "farbholz", "kleurenhout"]
+    /// A soft point.
+    private static let soft = ["pencil", "graphit", "grafit", "charcoal", "fusain", "bleistift", "kohle", "potlood", "houtskool", "lapiz",
+                               "matita", "carboncino", "silverpoint", "metalpoint", "olowk", "olowek", "wegiel", "wegl"]
+    /// What says there are colours beside the ink.
+    private static let colours = ["color", "colour", "kolor", "barw", "couleur", "farb", "kleur", "pigment", "gold", "zlot"]
+    /// A drawing, as the museums file it.
+    private static let drawings = ["drawing", "rysun", "tekening", "zeichnung", "dessin", "disegn", "dibuj"]
 
     private static let ink: Set<String> = ["ink", "inks", "inkt", "pen", "encre", "plume", "tinte", "feder", "tinta", "atrament", "sepia", "bistre", "bister"]
     private static let inkBegins = ["tusz", "pior", "inchiostr"]
