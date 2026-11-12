@@ -99,15 +99,23 @@ def test_where_little_happens_the_wash_is_general_and_leaves_the_page() -> None:
     # paint still lies around what happens (the house).
     light = sheets.render(_scene(), seed=3)
     left = _bare(light)
-    # (Less of it on the light page, where white chalk has to show: Mateusz
-    # 2026-11-12 09:47, "akwarelowe tło mogłoby być trochę ciemniejsze".)
-    assert 0.1 < left.mean() <= sheets.BARE_MOST_LIGHT + 0.04
+    # (As much on the light page as on the dark one, and the stains as
+    # light as before the darker ground he tried: Mateusz 2026-11-12 10:54,
+    # "akwarela jednak jaśniejsza - tak jak wcześniej".)
+    assert 0.1 < left.mean() <= sheets.BARE_MOST + 0.04
     assert left[40:140, 1300:1480].mean() > 0.9  # the far sky
     assert not left[330:780, 430:860].any()  # the house and what is round it
     night = _bare(sheets.render(_scene(), dark=True, seed=3), dark=True)
     assert 0.05 < night.mean() <= sheets.BARE_MOST + 0.04
     # Where something happens everywhere, all is painted but the ragged edge.
     assert _bare(sheets.render(_crowd(), seed=3))[60:940, 60:1440].mean() < 0.01
+    # The stains stay a wash, clearly lighter than the picture they come
+    # from, even where all is painted (the darker ground of the look before
+    # was hardly lighter than the picture; he took it back).
+    crowd = _crowd()
+    washed = np.asarray(sheets.render(crowd, seed=3), np.float32)[100:-100, 100:-100]
+    painted = np.asarray(crowd.resize((washed.shape[1] + 200, washed.shape[0] + 200)), np.float32)
+    assert washed.mean() > painted[100:-100, 100:-100].mean() + 0.06 * 255
 
 
 def _halves(seed: int = 2) -> Image.Image:

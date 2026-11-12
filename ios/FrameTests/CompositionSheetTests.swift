@@ -265,13 +265,15 @@ final class CompositionSheetTests: XCTestCase {
         XCTAssertEqual(SheetPlan.line(ring, in: size).last, CGPoint.zero)
         XCTAssertGreaterThan(SheetPlan.line(DailyWork.Stroke(points: open.points), in: size).count, 10)
         XCTAssertTrue(SheetPlan.line(DailyWork.Stroke(points: [Spot(x: 0, y: 0)]), in: size).isEmpty)
-        // The stains spread from places all over the sheet, each reaching
-        // past its neighbours, the same every time.
-        let blooms = SheetPlan.blooms(in: CGSize(width: 390, height: 280))
-        XCTAssertGreaterThanOrEqual(blooms.count, 6)
-        XCTAssertTrue(blooms.allSatisfy { $0.from >= 0 && $0.from <= 0.45 && $0.reach > 100 })
-        XCTAssertTrue(blooms.allSatisfy { CGRect(x: 0, y: 0, width: 390, height: 280).contains($0.centre) })
-        XCTAssertEqual(SheetPlan.blooms(in: CGSize(width: 390, height: 280)).map { $0.centre }, blooms.map { $0.centre })
+        // The stains come up all over the sheet at once, evenly, not from
+        // places (Mateusz 2026-11-12 10:54): nothing before their time,
+        // half of them half-way, all of them at the end, never going back.
+        XCTAssertEqual(SheetPlan.washShown(at: SheetPlan.washFrom), 0)
+        XCTAssertEqual(SheetPlan.washShown(at: SheetPlan.washFrom + SheetPlan.wash / 2), 0.5, accuracy: 1e-9)
+        XCTAssertEqual(SheetPlan.washShown(at: SheetPlan.washFrom + SheetPlan.wash), 1)
+        XCTAssertEqual(SheetPlan.washShown(at: SheetPlan.whole), 1)
+        let rising = stride(from: 0.0, through: SheetPlan.whole, by: 0.05).map { SheetPlan.washShown(at: $0) }
+        XCTAssertTrue(zip(rising, rising.dropFirst()).allSatisfy { $0.0 <= $0.1 })
         // The sheet's pictures: whole from a server before the layers, else
         // its stains and its pen, for the page's colour.
         XCTAssertEqual(CompositionSketch.sheetRefs("", layers: true, dark: false), [])

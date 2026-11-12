@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The study sheet laid down before the reader, as if made now: the pen
 /// first, stroke after stroke along the lines the server drew it by, then
-/// the stains spreading under it and the pen shading the dark parts, then
+/// the stains coming up under it and the pen shading the dark parts, then
 /// (told through `onMarks`) the chalk. Mateusz 2026-11-12, having waited
 /// on an empty ruled sheet: "Czy mógłby pojawiać się szybciej? malować /
 /// rysować się na żywo?".
@@ -120,7 +120,7 @@ enum SheetPlan {
     static let pen = 1.5
     /// The least a stroke takes, however short.
     static let dash = 0.14
-    /// The stains spread from here on, for this long.
+    /// The stains come up from here on, for this long.
     static let washFrom = 0.8
     static let wash = 1.7
     /// The pen shades the dark parts (and whatever of it the strokes left).
@@ -200,46 +200,19 @@ enum SheetPlan {
         )
     }
 
-    /// Where a stain starts to spread and when (of the wash's time, 0…1),
-    /// on a sheet cut into cells of about a third of its short side; the
-    /// same for the same sheet.
-    static func blooms(in size: CGSize) -> [(centre: CGPoint, from: Double, reach: CGFloat)] {
-        let cell = max(40, min(size.width, size.height) / 3)
-        let columns = max(2, Int((size.width / cell).rounded())), rows = max(2, Int((size.height / cell).rounded()))
-        let wide = size.width / CGFloat(columns), tall = size.height / CGFloat(rows)
-        var out: [(centre: CGPoint, from: Double, reach: CGFloat)] = []
-        for row in 0..<rows {
-            for column in 0..<columns {
-                let seed = row * 31 + column * 7
-                let x = (CGFloat(column) + 0.25 + 0.5 * CGFloat(Pencil.Jitter.random(seed + 1))) * wide
-                let y = (CGFloat(row) + 0.25 + 0.5 * CGFloat(Pencil.Jitter.random(seed + 2))) * tall
-                // Each a little after its neighbour to the upper left, none in step.
-                let along = Double(row + column) / Double(max(1, rows + columns - 2))
-                let from = 0.45 * (0.7 * along + 0.3 * Pencil.Jitter.random(seed + 3))
-                out.append((centre: CGPoint(x: x, y: y), from: from, reach: 1.15 * hypot(wide, tall)))
-            }
-        }
-        return out
+    /// How much of the stains shows at `time` (0…1): they come all over
+    /// the sheet at once, slowly at first and at the end. Mateusz
+    /// 2026-11-12 10:54, of the stains that spread from places: "akwarela
+    /// niech płynnie wchodzi po całości, a nie 'rozlewa się'".
+    static func washShown(at time: Double) -> Double {
+        let part = min(1, max(0, (time - washFrom) / wash))
+        return part * part * (3 - 2 * part)
     }
 
-    /// The stains at `time`: each spreading from its place with a soft
-    /// edge, as paint runs into wet paper, until they are one.
+    /// The stains at `time`: the whole of them, as far as they show.
     static func washMask(in context: inout GraphicsContext, size: CGSize, time: Double) {
-        let spread = min(1, max(0, (time - washFrom) / wash))
-        guard spread > 0 else { return }
-        var soft = context
-        soft.addFilter(.blur(radius: max(8, 0.035 * min(size.width, size.height))))
-        soft.drawLayer { layer in
-            for bloom in blooms(in: size) {
-                let grown = min(1, max(0, (spread - bloom.from) / (1 - 0.45)))
-                guard grown > 0 else { continue }
-                // Quick at first, slowing as the paint thins out.
-                let radius = bloom.reach * CGFloat(1 - pow(1 - grown, 2.2))
-                layer.fill(
-                    Path(ellipseIn: CGRect(x: bloom.centre.x - radius, y: bloom.centre.y - radius, width: 2 * radius, height: 2 * radius)),
-                    with: .color(.black)
-                )
-            }
-        }
+        let shown = washShown(at: time)
+        guard shown > 0 else { return }
+        context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black.opacity(shown)))
     }
 }
