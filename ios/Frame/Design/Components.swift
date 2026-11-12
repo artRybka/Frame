@@ -245,19 +245,32 @@ struct ArtCard: View {
         }
     }
 
-    /// The title, and for a "Pod lupą" work a magnifier after it that wraps
-    /// with the last word.
+    /// The title, and after it, wrapping with the last word: for a "Pod
+    /// lupą" work a magnifier, for a picture small for the frame a grid of
+    /// pixels (`LowRes`).
     private var title: Text {
-        let text = Text(item.title.isEmpty ? "Bez tytułu" : item.title)
+        var text = Text(item.title.isEmpty ? "Bez tytułu" : item.title)
             .font(.serif(15, weight: .medium))
             .foregroundStyle(Theme.ink)
-        guard item.zoom == true else { return text }
-        return (text
-            + Text("\u{00A0}").font(.serif(15, weight: .medium))
-            + Text(Image(systemName: TitleYear.zoomSymbol))
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Theme.inkSoft))
-            .accessibilityLabel(Text("\(item.title), można mocno przybliżyć"))
+        var label = item.title
+        if item.zoom == true {
+            text = text
+                + Text("\u{00A0}").font(.serif(15, weight: .medium))
+                + Text(Image(systemName: TitleYear.zoomSymbol))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.inkSoft)
+            label += ", można mocno przybliżyć"
+        }
+        if let side = item.lowSide, side > 0 {
+            text = text
+                + Text("\u{00A0}").font(.serif(15, weight: .medium))
+                + Text(Image(systemName: LowRes.symbol))
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(LowRes.tint)
+            label += ", \(LowRes.spoken(side))"
+        }
+        guard label != item.title else { return text }
+        return text.accessibilityLabel(Text(label))
     }
 
     /// The line under the title: a photo's day and town, a work's artist,
@@ -1051,18 +1064,41 @@ struct TitleWithYear: View {
     /// on a badge after the year; 0, the magnifier alone (not known yet);
     /// nil, no badge.
     var zoom: Int? = nil
+    /// A picture small for the frame: its long side on a badge after the
+    /// year ("950 px", `LowRes`); 0 or nil, no badge.
+    var lowSide: Int? = nil
     @Environment(\.colorScheme) private var scheme
     @Environment(\.displayScale) private var scale
 
     var body: some View {
-        TitleYear.text(title, date: date, font: font, scheme: scheme, scale: scale, zoom: zoom)
+        TitleYear.text(title, date: date, font: font, scheme: scheme, scale: scale, zoom: zoom, lowSide: lowSide)
     }
+}
+
+/// A work whose picture is small for the frame (Mateusz 2026-11-12): its
+/// long side, when known, under the server's `low_res.LOW_SIDE` (1600 px;
+/// the frame's 2560 enlarge it 1.6 times or more). Not a button, so not on
+/// the picture: a grid of pixels after the title, as "Pod lupą"'s magnifier.
+enum LowRes {
+    static let symbol = "checkerboard.rectangle"
+    /// The tint of a warning, as "Szukaj lepszej kopii"'s notes.
+    static let tint = Theme.warn
+
+    /// The server's `LOW_SIDE`, for a copy picked on the card before the
+    /// server is asked again.
+    static let limit = 1600
+
+    /// `side` when it is small for the frame, else 0.
+    static func side(_ side: Int) -> Int { side > 0 && side < limit ? side : 0 }
+
+    static func spoken(_ side: Int) -> String { "niska rozdzielczość, \(side) pikseli" }
 }
 
 @MainActor
 enum TitleYear {
     static func text(
-        _ title: String, date: String, font: Font, scheme: ColorScheme, scale: CGFloat, zoom: Int? = nil
+        _ title: String, date: String, font: Font, scheme: ColorScheme, scale: CGFloat, zoom: Int? = nil,
+        lowSide: Int? = nil
     ) -> Text {
         var text = Text(title).font(font).foregroundStyle(Theme.ink)
         var label = title
@@ -1076,6 +1112,11 @@ enum TitleYear {
         if let zoom, let badge = badge(zoom > 0 ? "\(zoom)×" : "", scheme: scheme, scale: scale, symbol: zoomSymbol) {
             text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)
             label += zoom > 0 ? ", można przybliżyć \(zoom) razy" : ", można mocno przybliżyć"
+        }
+        if let lowSide, lowSide > 0,
+           let badge = badge("\(lowSide) px", scheme: scheme, scale: scale, symbol: LowRes.symbol, warn: true) {
+            text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)
+            label += ", \(LowRes.spoken(lowSide))"
         }
         return text.accessibilityLabel(Text(label))
     }
@@ -1093,10 +1134,12 @@ enum TitleYear {
     private static var drawn: [String: Image] = [:]
 
     /// The badge drawn once per date, look and screen.
-    private static func badge(_ date: String, scheme: ColorScheme, scale: CGFloat, symbol: String? = nil) -> Image? {
-        let key = "\(date)|\(symbol ?? "")|\(scheme == .dark)|\(scale)"
+    private static func badge(
+        _ date: String, scheme: ColorScheme, scale: CGFloat, symbol: String? = nil, warn: Bool = false
+    ) -> Image? {
+        let key = "\(date)|\(symbol ?? "")|\(warn)|\(scheme == .dark)|\(scale)"
         if let image = drawn[key] { return image }
-        let renderer = ImageRenderer(content: YearBadge(date: date, dark: scheme == .dark, symbol: symbol))
+        let renderer = ImageRenderer(content: YearBadge(date: date, dark: scheme == .dark, symbol: symbol, warn: warn))
         renderer.scale = scale
         guard let cgImage = renderer.cgImage else { return nil }
         // Decorative: VoiceOver reads the date from the text's label.
@@ -1115,9 +1158,13 @@ private struct YearBadge: View {
     let dark: Bool
     /// A symbol before the figures ("Pod lupą": a magnifier before "17×").
     var symbol: String? = nil
+    /// In the tint of a warning (`LowRes`), not the title's ink.
+    var warn = false
 
     var body: some View {
-        let ink = Color(hex: dark ? 0xF1ECE4 : 0x1D1B18)
+        let ink = warn
+            ? Color(hex: dark ? 0xE2B45E : 0xB7832A)
+            : Color(hex: dark ? 0xF1ECE4 : 0x1D1B18)
         HStack(spacing: 3) {
             if let symbol {
                 Image(systemName: symbol).font(.system(size: 11.5, weight: .regular))

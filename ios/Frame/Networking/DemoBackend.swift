@@ -296,7 +296,7 @@ actor DemoBackend: FrameBackend {
     private func detail(_ playlist: Playlist) -> PlaylistDetail {
         PlaylistDetail(
             playlist: summary(playlist), itemIds: playlist.itemIds,
-            items: items(for: playlist).map(\.summary)
+            items: items(for: playlist).map(Self.tile)
         )
     }
 
@@ -499,7 +499,7 @@ actor DemoBackend: FrameBackend {
         let listed = listed(for: rules)
         let list = Self.sorted(items.filter { Self.matches($0, rules, listed: listed) }, by: query.sort)
         let page = list.dropFirst(query.offset).prefix(query.limit)
-        return ItemPage(total: list.count, items: page.map(\.summary))
+        return ItemPage(total: list.count, items: page.map(Self.tile))
     }
 
     func item(id: String) async throws -> Item {
@@ -532,7 +532,23 @@ actor DemoBackend: FrameBackend {
     }
 
     func sharpen(itemID: String, wait: Int) async throws -> SharperView {
-        SharperView(status: "off", sharper: nil)
+        SharperView(status: "off", sharper: nil, lowSide: items.first { $0.id == itemID }.map(Self.lowSide))
+    }
+
+    /// The server's `low_res.low_side` in the demo: the Art Institute says
+    /// its originals' sizes, and Cleveland's web pictures stand for its
+    /// originals here, so the screenshots show the mark (Hiroshige, 900 px).
+    private static func lowSide(_ item: Item) -> Int {
+        guard item.kind == .artwork, ["aic", "cma"].contains(item.source),
+              let width = item.width, let height = item.height else { return 0 }
+        return LowRes.side(max(width, height))
+    }
+
+    /// A tile: the work's summary with its mark of a small picture.
+    private static func tile(_ item: Item) -> ItemSummary {
+        var summary = item.summary
+        summary.lowSide = lowSide(item)
+        return summary
     }
 
     func holder(itemID: String, wait: Int) async throws -> HolderView {

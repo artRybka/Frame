@@ -207,6 +207,8 @@ struct SharperView: Codable, Hashable, Sendable {
     var heldBy: String? = nil
     /// Its key in Szukaj's "Muzeum".
     var heldAt: String? = nil
+    /// `ItemSummary.lowSide`: the card's mark.
+    var lowSide: Int? = nil
 }
 
 /// The museum a work from Commons, Openverse or WikiArt is in, looked up as
@@ -348,6 +350,9 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     /// Its picture can be looked at far closer, in tiles ("Pod lupą"):
     /// a magnifier on its tile. Nil from a server before 1.138.
     var zoom: Bool? = nil
+    /// Its picture's long side when known and small for the frame (under
+    /// 1600 px, `low_res.LOW_SIDE`): a mark after the title. 0 or nil, none.
+    var lowSide: Int? = nil
 
     /// The title "Teraz" shows: Polish when there is one.
     var shownTitle: String { titlePl ?? title }
@@ -1931,6 +1936,8 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
     var aspect: Double? = nil
     /// Its picture can be looked at far closer, in tiles ("Pod lupą").
     var zoom: Bool? = nil
+    /// `ItemSummary.lowSide`.
+    var lowSide: Int? = nil
     var id: String { item.id }
 
     /// The tile's summary, with the measured shape: without it every work
@@ -1939,6 +1946,7 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
         var summary = item.summary
         summary.aspect = aspect
         summary.zoom = zoom
+        summary.lowSide = lowSide
         return summary
     }
 
