@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.145.44
+
+- Studium dzieła: przerabianie zapisanych analiz kompozycji na arkusze
+  idzie teraz pakietem, wolniej, ale taniej. Pytania do Opusa (analiza i
+  tekst) serwer zamawia przez Batch API za połowę ceny, więc jedno
+  studium kosztuje około 0,10 USD zamiast 0,15, a odpowiedzi przychodzą w
+  ciągu minut do godzin. Do tego czasu studium pokazuje dotychczasową
+  analizę. „Wykonaj ponowną analizę” i studium bez analizy dalej są
+  robione od razu.
+- Przerabiane są też studia, w których właściciel sam wybrał jedną z
+  wersji analizy: nowa analiza dochodzi jako kolejna wersja i jest
+  pokazywana, wcześniejsze zostają do wyboru. Powrót do starszej wersji
+  po przerobieniu jest już uszanowany.
+
 ## 1.145.43
 
 - Studium dzieła, „Analiza kompozycji”: rysowana jak arkusz studyjny.
