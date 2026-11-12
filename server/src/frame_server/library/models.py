@@ -364,14 +364,21 @@ class ItemSummary(BaseModel):
     #: Its picture can be looked at far closer, in tiles ("Pod lupą":
     #: ``zoom.zooms``).
     zoom: bool = False
+    #: Its picture's long side when it is known and small for the frame
+    #: (``low_res.low_side``), else 0: a mark after the title.
+    low_side: int = 0
 
     @classmethod
     def of(cls, item: Item) -> ItemSummary:
+        from .low_res import low_side
         from .photo_text import photo_line, photo_title
         from .zoom import zooms
 
-        summary = cls(**item.model_dump(include=set(cls.model_fields) - {"subtitle", "zoom"}))
+        summary = cls(
+            **item.model_dump(include=set(cls.model_fields) - {"subtitle", "zoom", "low_side"})
+        )
         summary.zoom = zooms(item)
+        summary.low_side = low_side(item)
         if item.sharper is not None:
             summary.picture = item.sharper.item_id
         if item.kind == ItemKind.PHOTO:
@@ -508,6 +515,21 @@ class AlbumOrder(StrEnum):
     ADDED = "added"  # added to the album most recently first
 
 
+#: How a playlist's works are put in order (Mateusz 2026-11-12): by
+#: artist (then year), year made, when added, format (portrait first) or
+#: quality (the long side of the picture shown, largest first).
+PlaylistSortKey = Literal["artist", "year", "added", "format", "quality"]
+
+
+class PlaylistSort(BaseModel):
+    """A playlist's order, in the app and on the frame (when it does not
+    shuffle). ``reverse`` turns the key's own direction round; works whose
+    value is not known (no year, no size) stay last either way."""
+
+    key: PlaylistSortKey
+    reverse: bool = False
+
+
 class AlbumSource(BaseModel):
     """The shared iCloud album an album playlist mirrors."""
 
@@ -542,8 +564,20 @@ class Playlist(BaseModel):
     #: matching, a steady set is taken: favourites first, the rest drawn
     #: once for these rules and limit (`repo.limited`).
     limit: int | None = Field(default=None, ge=1)
+    #: The order its owner chose; None: :meth:`order` (artist for a smart
+    #: playlist, the order of adding for a manual one).
+    sort: PlaylistSort | None = None
     created_at: str = ""
     updated_at: str = ""
+
+    @property
+    def order(self) -> PlaylistSort:
+        """The order its works are in: the chosen one, else the default."""
+        if self.sort is not None:
+            return self.sort
+        if self.kind == PlaylistKind.SMART:
+            return PlaylistSort(key="artist")
+        return PlaylistSort(key="added", reverse=True)  # as they were added
 
     def visible_to(self, user_id: str) -> bool:
         return self.shared or self.owner == user_id
@@ -575,6 +609,8 @@ class PlaylistSummary(BaseModel):
     #: The viewer made it (and may change it).
     mine: bool = True
     limit: int | None = None
+    #: The order its works are in (:attr:`Playlist.order`); None for an album.
+    sort: PlaylistSort | None = None
 
 
 class FacetValue(BaseModel):

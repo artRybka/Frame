@@ -9,6 +9,8 @@ struct PlaylistDetailView: View {
     /// Tapping a work takes it out of the playlist instead of opening it.
     @State private var removingItems = false
     @State private var syncing = false
+    /// A new order asked, until the works come back in it.
+    @State private var sorting = false
     /// "Prezentuj na ramce" asked, until the playlist plays.
     @State private var starting = false
     /// The first load failed: a retry instead of the skeleton.
@@ -75,6 +77,9 @@ struct PlaylistDetailView: View {
                         if isAlbum {
                             Button("Synchronizuj z albumem", systemImage: "arrow.triangle.2.circlepath") { sync() }
                                 .disabled(syncing)
+                        }
+                        if !isAlbum, let sort = summary?.sort {
+                            sortMenu(sort)
                         }
                         Button(isAlbum ? "Usuń zdjęcia z playlisty" : "Usuń dzieła z playlisty", systemImage: "minus.circle") {
                             withAnimation { removingItems = true }
@@ -184,9 +189,18 @@ struct PlaylistDetailView: View {
             if playlist.kind == .smart && !playlist.rules.isEmpty {
                 RulesSummary(rules: playlist.rules)
             }
-            Text(playlist.countText)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(Theme.inkSoft)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(playlist.countText)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Theme.inkSoft)
+                if playlist.kind != .album, let caption = playlist.sort?.caption {
+                    Label(caption, systemImage: "arrow.up.arrow.down")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.inkSoft)
+                        .labelStyle(.titleAndIcon)
+                        .contentTransition(.opacity)
+                }
+            }
             if let album = playlist.album {
                 AlbumCard(album: album, sync: playlist.albumSync, syncing: syncing) { sync() }
             }
@@ -259,6 +273,51 @@ struct PlaylistDetailView: View {
             "Stuknij zdjęcie, aby nie pokazywać go na ramce. W albumie zostaje; "
                 + "przywrócisz je w menu „…”."
         case .manual: "Stuknij dzieło, aby usunąć je z playlisty."
+        }
+    }
+
+    /// "Sortuj" in the "…" menu: the key, then which way round
+    /// (Mateusz 2026-11-12: "ustawienie sortowania dajmy w menu „…”").
+    private func sortMenu(_ sort: PlaylistSort) -> some View {
+        Menu {
+            Picker("Sortuj według", selection: Binding(
+                get: { sort.known },
+                set: { key in if let key, key != sort.known { setSort(PlaylistSort(key)) } }
+            )) {
+                ForEach(PlaylistSort.Key.allCases) { key in
+                    Label(key.title, systemImage: key.systemImage).tag(Optional(key))
+                }
+            }
+            .pickerStyle(.inline)
+            if let key = sort.known {
+                Picker("Kolejność", selection: Binding(
+                    get: { sort.reverse },
+                    set: { reverse in if reverse != sort.reverse { setSort(PlaylistSort(key, reverse: reverse)) } }
+                )) {
+                    Text(key.direction(reverse: false)).tag(false)
+                    Text(key.direction(reverse: true)).tag(true)
+                }
+                .pickerStyle(.inline)
+            }
+        } label: {
+            Label("Sortuj", systemImage: "arrow.up.arrow.down")
+        }
+        .disabled(detail == nil || sorting)
+    }
+
+    /// Asks the server for the new order: the grid, and the frame's next
+    /// pictures when it does not shuffle, follow it.
+    private func setSort(_ sort: PlaylistSort) {
+        Task {
+            sorting = true
+            defer { sorting = false }
+            do {
+                let updated = try await model.backend.sortPlaylist(id: playlistID, sort: sort)
+                withAnimation(.snappy) { model.playlistDetails[playlistID] = updated }
+                await model.refreshPlaylists()
+            } catch {
+                model.show(error)
+            }
         }
     }
 

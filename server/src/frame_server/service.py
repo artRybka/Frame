@@ -45,7 +45,7 @@ from .imaging import Palette, RenderSettings, get_palette, render, render_multi
 from .imaging.pipeline import encode_image
 from .kept import KeptOriginals
 from .later import LaterWorks
-from .library import ImageCache, Importer, Library, courtauld
+from .library import ImageCache, Importer, Library, courtauld, low_res
 from .library.commons import repair_library
 from .library.fragments import Fragments
 from .library.hosts import guard as host_guard
@@ -227,6 +227,9 @@ class FrameService:
         host_guard.keep_rests(settings.data_dir / "hosts" / "rests.json")
         self.images = ImageCache(settings.data_dir / "library", museum_client)
         self.images.mirrors["europeana"] = europeana_mirrors
+        self.library.long_side = self.images.long_side  # playlists "by quality"
+        # Tiles and cards mark a picture small for the frame by its size.
+        low_res.known_sizes(self.images.long_side)
         self.images.mirrors["loc"] = loc_mirrors
         # The Courtauld's CMYK scans come white as JPEG: asked again as PNG.
         self.images.repairs[courtauld.HOST] = courtauld.repair

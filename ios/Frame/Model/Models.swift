@@ -207,6 +207,8 @@ struct SharperView: Codable, Hashable, Sendable {
     var heldBy: String? = nil
     /// Its key in Szukaj's "Muzeum".
     var heldAt: String? = nil
+    /// `ItemSummary.lowSide`: the card's mark.
+    var lowSide: Int? = nil
 }
 
 /// The museum a work from Commons, Openverse or WikiArt is in, looked up as
@@ -348,6 +350,9 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     /// Its picture can be looked at far closer, in tiles ("Pod lupą"):
     /// a magnifier on its tile. Nil from a server before 1.138.
     var zoom: Bool? = nil
+    /// Its picture's long side when known and small for the frame (under
+    /// 1600 px, `low_res.LOW_SIDE`): a mark after the title. 0 or nil, none.
+    var lowSide: Int? = nil
 
     /// The title "Teraz" shows: Polish when there is one.
     var shownTitle: String { titlePl ?? title }
@@ -475,6 +480,71 @@ enum AlbumOrder: String, Codable, Hashable, Sendable, CaseIterable, Identifiable
     }
 }
 
+/// The order of a playlist's works, in the app and on the frame when it
+/// does not shuffle (server: models.PlaylistSort; Mateusz 2026-11-12).
+struct PlaylistSort: Codable, Hashable, Sendable {
+    enum Key: String, CaseIterable, Identifiable, Sendable {
+        case artist, year, added, format, quality
+
+        var id: Self { self }
+
+        var title: String {
+            switch self {
+            case .artist: "Artysta"
+            case .year: "Rok powstania"
+            case .added: "Data dodania"
+            case .format: "Format"
+            case .quality: "Jakość"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .artist: "person"
+            case .year: "calendar"
+            case .added: "clock"
+            case .format: "rectangle.portrait"
+            case .quality: "square.grid.3x3.square"
+            }
+        }
+
+        /// The way round, as the menu offers it: `reverse` false is the key's own.
+        func direction(reverse: Bool) -> String {
+            switch self {
+            case .artist: reverse ? "Z–A" : "A–Z"
+            case .year: reverse ? "Od najnowszych" : "Od najstarszych"
+            case .added: reverse ? "Od najdawniej dodanych" : "Od ostatnio dodanych"
+            case .format: reverse ? "Najpierw poziome" : "Najpierw pionowe"
+            case .quality: reverse ? "Najpierw najmniejsze" : "Najpierw największe"
+            }
+        }
+    }
+
+    /// As the server sends it; a key this app does not know is kept as is.
+    var key: String
+    var reverse = false
+
+    init(_ key: Key, reverse: Bool = false) {
+        self.key = key.rawValue
+        self.reverse = reverse
+    }
+
+    var known: Key? { Key(rawValue: key) }
+
+    /// Under the playlist's count: "Według roku, od najstarszych".
+    var caption: String? {
+        guard let known else { return nil }
+        let direction = known.direction(reverse: reverse).lowercased()
+        return switch known {
+        case .artist: "Według artysty, \(known.direction(reverse: reverse))"
+        case .year: "Według roku, \(direction)"
+        case .added: reverse ? "W kolejności dodawania" : "Ostatnio dodane na początku"
+        case .format: known.direction(reverse: reverse)
+        case .quality: "Według rozdzielczości, \(direction)"
+        }
+    }
+}
+
 /// The shared iCloud album an album playlist mirrors.
 struct AlbumSource: Codable, Hashable, Sendable {
     var url: String
@@ -534,6 +604,8 @@ struct PlaylistSummary: Codable, Identifiable, Hashable, Sendable {
     var shared: Bool?
     var mine: Bool?
     var limit: Int?
+    /// The order of its works; nil for an album, and from older servers.
+    var sort: PlaylistSort?
 
     var isFavorites: Bool { kind == .smart && rules.favoritesOnly }
     /// Made by this phone's person: only they change it.
@@ -1949,6 +2021,8 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
     var aspect: Double? = nil
     /// Its picture can be looked at far closer, in tiles ("Pod lupą").
     var zoom: Bool? = nil
+    /// `ItemSummary.lowSide`.
+    var lowSide: Int? = nil
     var id: String { item.id }
 
     /// The tile's summary, with the measured shape: without it every work
@@ -1957,6 +2031,7 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
         var summary = item.summary
         summary.aspect = aspect
         summary.zoom = zoom
+        summary.lowSide = lowSide
         return summary
     }
 

@@ -165,6 +165,8 @@ jobs:
             capture playlists 12 "playlists-$appearance"
             capture suggestions 14 "suggestions-$appearance"
             capture playlist 12 "playlist-$appearance"
+            capture playlist 12 "lowres-playlist-$appearance" -demoLowSide all
+            capture detail 16 "lowres-detail-$appearance" -demoLowSide all
             capture editor 12 "editor-$appearance"
             capture editor-new 12 "editor-new-$appearance"
             capture editor-manual 12 "editor-manual-$appearance"
