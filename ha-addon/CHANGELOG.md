@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.145.69
+
+- Playlisty: dzieła w playliście można sortować. W menu „…” jest
+  „Sortuj”: według artysty, roku powstania, daty dodania, formatu
+  (najpierw pionowe albo poziome) albo jakości, czyli rozdzielczości
+  zdjęcia dzieła (najpierw największe albo najpierw najsłabsze, żeby
+  łatwo znaleźć te, którym przyda się lepsza kopia). Każde kryterium da
+  się odwrócić. Wybór jest zapisany przy playliście, a pod liczbą dzieł
+  widać, jak są ułożone. Inteligentne playlisty są domyślnie według
+  artysty, ręczne w kolejności dodawania.
+- Przy wyłączonym „Losowo” ramka pokazuje dzieła playlisty w tej samej
+  kolejności co aplikacja (np. po roku, przez kolejne lata).
+
 ## 1.145.68
 
 - Inteligentna playlista nie przeskakuje już po powrocie z karty dzieła.

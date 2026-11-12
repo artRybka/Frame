@@ -290,6 +290,10 @@ struct LiveBackend: FrameBackend {
         try await send("/api/playlists/order", method: "PUT", body: ["ids": ids])
     }
 
+    func sortPlaylist(id: Int, sort: PlaylistSort) async throws -> PlaylistDetail {
+        try await send("/api/playlists/\(id)/sort", method: "PUT", body: sort)
+    }
+
     func addToPlaylist(id: Int, itemIDs: [String]) async throws -> PlaylistDetail {
         try await send("/api/playlists/\(id)/items", method: "POST", body: ["item_ids": itemIDs])
     }
