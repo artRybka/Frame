@@ -19,12 +19,15 @@ from frame_server.ai.check import checked
 from frame_server.ai.check import question as check_question
 from frame_server.ai.client import HAIKU, OPUS, SONNET, AiUnavailable, Answer
 from frame_server.ai.composition import (
+    AGAIN_KEY,
     BEFORE,
     CHOSEN,
     COST,
     KIND,
     LET_ALL,
     REWORK_KEY,
+    SHOWN,
+    VERSIONS,
     ComposeJob,
     compose,
     merged,
@@ -718,13 +721,50 @@ def test_the_round_of_the_study_sheet_is_let_for_every_page(service: FrameServic
     assert item is not None
     _old_page(service, **{CHECK_ROUND: 7})
     assert job.rework() == [] and job.wanted(item)  # no list to set
-    # The one he picked among a page's analyses stays, and a page of this round too.
-    _old_page(service, **{CHECK_ROUND: 7, CHOSEN: True})
+    # Ordered for later, for less; one he asked for anew or left without any is not.
+    assert job.patient(item)
+    _old_page(service, composition={"views": []}, **{CHECK_ROUND: 7})
+    assert not job.patient(item)
+    _old_page(service, **{CHECK_ROUND: 7})
+    assert job.again(item) and not job.patient(item)
+    # "Przeróbmy także te, gdzie sam wcześniej dokonałem podmiany": a pick of
+    # his made before this round is written again too, kept among the versions.
+    page = service.library.note("met:1", STUDY)
+    assert page is not None
+    before = {"composition": page.data["composition"], CHECK_ROUND: 7}
+    _old_page(service, **{CHECK_ROUND: 7, CHOSEN: True, VERSIONS: [before], SHOWN: 0})
+    service.library.set_state(AGAIN_KEY, [])
     job.forget()
+    assert job.wanted(item) and job.patient(item)
+    _made_again(service)
+    page = service.library.note("met:1", STUDY)
+    assert page is not None and page.data[CHECK_ROUND] == ROUND and CHOSEN not in page.data
+    assert [v[CHECK_ROUND] for v in page.data[VERSIONS]] == [7, ROUND]
+    assert page.data[SHOWN] == 1 and not job.wanted(item)
+    # Going back to the older one afterwards is his pick: left be.
+    assert job.choose(item, 0)
+    page = service.library.note("met:1", STUDY)
+    assert page is not None and page.data[CHECK_ROUND] == 7 and page.data[CHOSEN] is True
     assert not job.wanted(item)
+    # A page of this round is done.
     _old_page(service, **{CHECK_ROUND: ROUND})
     job.forget()
     assert not job.wanted(item)
+
+
+def test_pages_brought_to_this_round_are_ordered_for_later(service: FrameService) -> None:
+    # Mateusz 2026-11-12: "A możemy je dać w pakiecie? Tzn wolniej ale taniej?"
+    from test_ai import GOOD_KEY, FakeAnthropic
+
+    _catalogue(service)
+    fake = FakeAnthropic(GOOD_KEY)
+    service.claude.factory = lambda key: fake
+    service.ai_config.set_key(GOOD_KEY)
+    _old_page(service, **{CHECK_ROUND: 7})
+    assert service.ai.sweep() >= 1
+    assert service.ai.later(KIND, "met:1")
+    assert (KIND, "met:1") not in service.ai._pending  # not asked at once
+    assert service.ai.sweep() == 0  # ordered once
 
 
 def test_what_wikipedia_says_of_the_composition_comes_first() -> None:
@@ -853,3 +893,32 @@ def test_an_analysis_asked_anew_that_gives_no_take(service: FrameService) -> Non
     page = service.library.note("met:1", STUDY)
     assert page is not None and len(page.data["composition_versions"]) == 1
     assert job.again(item) and job.wanted(item)  # asked anew: once more
+
+
+def test_a_page_ordered_for_later_is_written_through_batches(service: FrameService) -> None:
+    from test_ai import GOOD_KEY, FakeAnthropic
+    from test_ordered_later import _batched
+
+    _catalogue(service)
+    fake = FakeAnthropic(GOOD_KEY)
+    fake.answer = pixels(ANALYSIS)
+    fake.ended = True
+    service.claude.factory = lambda key: fake
+    service.ai_config.set_key(GOOD_KEY)
+    _old_page(service, **{CHECK_ROUND: 7})
+    old = service.library.note("met:1", STUDY)
+    assert old is not None
+    asked = _batched(fake)
+    assert service.ai.ask_later("met:1", KIND)
+    assert service.ai.advance(KIND, "met:1") is None  # Opus's question is in a batch
+    assert len(fake.batches) == 1 and not fake.asked
+    for _ in range(4):  # the analysis, then the text: each answer takes it a step on
+        service.ai.poll_batches()
+        if not service.ai.later(KIND, "met:1"):
+            break
+    assert not service.ai.later(KIND, "met:1")
+    assert asked and all(q["model"] == OPUS for q in asked)  # the long ones, for half
+    assert all(q["model"] != OPUS for q in fake.asked)  # the short ones at once
+    page = service.library.note("met:1", STUDY)
+    assert page is not None and page.data[CHECK_ROUND] == ROUND
+    assert page.data[BEFORE] == old.data["composition"]

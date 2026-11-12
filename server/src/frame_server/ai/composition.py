@@ -32,9 +32,10 @@ cost):
    no longer add sentences of their own (Mateusz 2026-11-07).
 
 Pages written before are written again (:class:`ComposeJob`) in the
-background, one by one, for the works the owner lets it (:data:`REWORK_KEY`:
-first a few to see, then all); a page left without its composition (the
-question failed) gets it the same way, unasked.
+background, for the works the owner lets it (:data:`REWORK_KEY`: first a
+few to see, then all; :data:`LET_ALL`: a round he let for all), ordered
+for later so that Opus's questions cost half; a page left without its
+composition (the question failed) gets it unasked, at once.
 
 The owner may also ask for one work's analysis anew from its page (held
 header "Analiza kompozycji" → "Wykonaj ponowną analizę", Mateusz
@@ -114,7 +115,10 @@ PAGES = (DAILY, STUDY)
 REWORK_KEY = "composition_rework"
 #: The round the owner let for every page at once, with no list to set
 #: (Mateusz 2026-11-12, seeing the study sheet: "Przeróbmy proszę wszystkie
-#: dotychczasowe."). A round after it asks him again.
+#: dotychczasowe."), ordered for later ("A możemy je dać w pakiecie? Tzn
+#: wolniej ale taniej?", :meth:`ComposeJob.patient`), and the pages whose
+#: analysis he had picked himself too ("Przeróbmy także te, gdzie sam
+#: wcześniej dokonałem podmiany."). A round after it asks him again.
 LET_ALL = 8
 #: The take a page had before it was written again, kept to go back to.
 BEFORE = "composition_before"
@@ -637,14 +641,18 @@ def wants(
 ) -> bool:
     """A written page whose composition is of an earlier round, when the
     owner lets it be written again (:data:`LET_ALL`: he let this round for
-    all; the one he picked among a page's analyses stays); one without any,
-    always; one whose analysis the owner asked for anew (``again``), always."""
+    all, the pages he picked an analysis for too; such a pick stays once
+    this round's is among the page's analyses, so going back to an older
+    one is not undone); one without any, always; one whose analysis the
+    owner asked for anew (``again``), always."""
     if note is None or "teaser" not in note.data:
         return False
     if note.item_id in again:
         return True
     if note.data.get(CHOSEN) and page_views(note.data):
-        return False
+        had = any(v.get(CHECK_ROUND, 1) >= ROUND for v in versions(note.data))
+        if had or ROUND > LET_ALL:
+            return False
     if note.data.get(CHECK_ROUND, 1) >= ROUND:
         return False
     if not page_views(note.data):
@@ -770,6 +778,16 @@ class ComposeJob(NoteJob):
 
     def wanted(self, item: Item) -> bool:
         return item.id in self.waiting()
+
+    def patient(self, item: Item) -> bool:
+        """A page that has its analysis and is brought to this round: read
+        as it is meanwhile, so ordered for later (Mateusz 2026-11-12). The
+        one the owner asked for anew and a page left without any are waited
+        for."""
+        if item.id in self.asked_again():
+            return False
+        pages = self._pages_of(item.id)
+        return bool(pages) and all(page_views(page.data) for page in pages)
 
     def source_hash(self, item: Item) -> str:
         return text_hash(item.title, item.artist, item.date_text)

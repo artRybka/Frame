@@ -168,6 +168,13 @@ class NoteJob(ABC):
     #: 2026-11-10, "O1"); what the frame or the app waits for is asked at once.
     night = False
 
+    def patient(self, item: Item) -> bool:
+        """Whether nobody waits for this item's note: the background then
+        orders it for later (:meth:`AiWorker.ask_later`: its long questions
+        go through the Batch API, for half their price, each answer within
+        minutes to hours) instead of asking at once."""
+        return False
+
     def partial(self, item: Item, piece: str) -> None:  # noqa: B027 - optional hook
         """A piece of the answer's text as it is written (``streams`` only):
         e.g. a title shown before the rest is ready."""
@@ -631,6 +638,12 @@ class AiWorker:
             for item in self._stale(job, job.wanted):
                 key = (job.kind, item.id)
                 if key in self._skipped or key in in_batches or item.id in later:
+                    continue
+                if job.patient(item):
+                    if self.ask_later(item.id, job.kind):
+                        queued += 1
+                        if queued >= SWEEP_ITEMS:
+                            return queued
                     continue
                 with self._lock:
                     if key in self._pending:
