@@ -176,8 +176,9 @@ def test_a_smart_playlist_fetches_what_szukaj_finds(tmp_path) -> None:
 def test_a_cards_playlist_is_topped_up_as_szukaj_finds_unless_of_artists(monkeypatch) -> None:
     """Stage 6b: on the museums, 2026-11-11, "Morze i statki" drawn by style
     brought two portraits among ten works, asked as Szukaj asks ten works of
-    the sea; a card of artists keeps its artists' turns, and no search asks
-    for the museums' highlights."""
+    the sea; a card of artists keeps its artists' turns, no search asks
+    for the museums' highlights, and a card of colours as Szukaj finds took
+    seven minutes for two works."""
     from frame_server.library import search
 
     went: list[str] = []
@@ -194,9 +195,12 @@ def test_a_cards_playlist_is_topped_up_as_szukaj_finds_unless_of_artists(monkeyp
         PlaylistRules(query="autumn"),  # Jesień
         PlaylistRules(artists=["Turner", "Caspar David Friedrich"]),  # Romantyzm
         PlaylistRules(terms=["tag:highlight"]),  # Arcydzieła muzeów
+        PlaylistRules(  # Ciepłe barwy
+            terms=["technique:painting", "technique:drawing"], colors=["warm"]
+        ),
     ):
         search.fill_card(Recording(), rules, 10, job, pooled=True)  # type: ignore[arg-type]
-    assert went == ["as Szukaj", "as Szukaj", "as Szukaj", "drawn", "drawn"]
+    assert went == ["as Szukaj", "as Szukaj", "as Szukaj", "drawn", "drawn", "drawn"]
 
 
 def test_an_artist_search_keeps_only_their_own_works() -> None:

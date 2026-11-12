@@ -330,8 +330,11 @@ def fill_card(
     fewer requests. A card of artists the older way (:meth:`Importer.fill`:
     its artists in turns, where Szukaj's pages bring one artist after
     another), as a card of the museums' highlights, which no search asks
-    for."""
-    if rules.artists or HIGHLIGHT in rules.terms or MuseumSearch.of(rules).empty:
+    for, and a card of colours: museums don't know colours, so Szukaj
+    judges their pages thumbnail by thumbnail, whatever they hold ("Ciepłe
+    barwy": two works in seven minutes), where the draw asks them for
+    paintings and drawings and judges the few it takes (eight in 21 s)."""
+    if rules.artists or rules.colors or HIGHLIGHT in rules.terms or MuseumSearch.of(rules).empty:
         importer.fill(rules, count, job, pooled=pooled)
     else:
         fill(importer, rules, count, job, pooled=pooled)
