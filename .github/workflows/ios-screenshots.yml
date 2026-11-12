@@ -109,6 +109,13 @@ jobs:
             capture daily 16 "daily-composition-drawing-shower-$appearance" -scroll composition -demoStudy shower -sheetDrawn 0.45
             capture daily 16 "daily-composition-chosen-$appearance" -scroll composition -chalkChosen 2
             capture daily 16 "daily-composition-bedroom-chosen-$appearance" -scroll composition -demoStudy bedroom -chalkChosen 3
+            # The sheet drawn by an image model (a stand-in in the demo):
+            # coloured lines, the sketch alone after a tap, a note tapped.
+            capture daily 16 "daily-drawn-$appearance" -scroll composition -demoDrawn YES
+            capture daily 16 "daily-drawn-bare-$appearance" -scroll composition -demoDrawn YES -compositionBare YES
+            capture daily 16 "daily-drawn-chosen-$appearance" -scroll composition -demoDrawn YES -chalkChosen 2
+            capture daily 16 "daily-drawn-bedroom-$appearance" -scroll composition -demoDrawn YES -demoStudy bedroom
+            capture daily 16 "daily-drawn-shower-$appearance" -scroll composition -demoDrawn YES -demoStudy shower
             capture daily 16 "daily-detail-geometry-$appearance" -scroll composition -take 1
             capture daily 16 "daily-details-$appearance" -scroll details
             capture daily 16 "daily-legacy-$appearance" -scroll legacy
@@ -163,7 +170,7 @@ jobs:
             capture playlist 12 "restored-playlist-$appearance" -demoLowSide restored
             capture detail 16 "restored-detail-$appearance" -demoLowSide restored -scroll title
             capture detail 16 "restored-picture-$appearance" -demoLowSide restored -scroll picture
-            capture connection 12 "restored-settings-$appearance" -settingsPage ai -scroll restorer
+            capture connection 12 "restored-settings-$appearance" -settingsPage gemini -scroll restorer
             capture editor 12 "editor-$appearance"
             capture editor-new 12 "editor-new-$appearance"
             capture editor-manual 12 "editor-manual-$appearance"
@@ -178,6 +185,7 @@ jobs:
             capture connection 10 "connection-notifications-$appearance" -settingsPage notifications
             capture connection 10 "connection-sources-$appearance" -settingsPage sources
             capture connection 10 "connection-ai-$appearance" -settingsPage ai
+            capture connection 10 "connection-gemini-$appearance" -settingsPage gemini
             capture connection 10 "connection-library-$appearance" -settingsPage library
             capture connection 10 "connection-night-$appearance" -settingsPage night
             capture connection 12 "night-changes-$appearance" -settingsPage night -nightChanges YES
@@ -189,7 +197,7 @@ jobs:
             # Confirmation dialogs: on iOS 26 a popover on what was tapped.
             capture frame 12 "confirm-update-$appearance" -confirm update
             capture connection 12 "confirm-describe-$appearance" -settingsPage ai -confirm describe
-            capture connection 12 "confirm-restore-$appearance" -settingsPage ai -scroll restorer -confirm restore
+            capture connection 12 "confirm-restore-$appearance" -settingsPage gemini -scroll restorer -confirm restore
             capture playlists 12 "confirm-delete-playlist-$appearance" -confirm delete-playlist
             capture museums 8 "museums-$appearance"
             capture search 8 "search-$appearance"

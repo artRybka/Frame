@@ -1536,6 +1536,34 @@ final class AppModel {
         notices.done("Usunięto klucz")
     }
 
+    /// True when the server checked the key with Google and kept it.
+    func saveGeminiKey(_ key: String) async -> Bool {
+        do {
+            aiSettings = try await backend.saveGeminiKey(key)
+        } catch BackendError.http(400, _) {
+            notices.fail("Google nie przyjął klucza", "Sprawdź, czy skopiowano go w całości.")
+            return false
+        } catch BackendError.http(502, _) {
+            notices.fail("Google teraz nie odpowiada", "Spróbuj za chwilę.")
+            return false
+        } catch {
+            show(error)
+            return false
+        }
+        notices.done("Klucz zapisany")
+        return true
+    }
+
+    func deleteGeminiKey() async {
+        do {
+            aiSettings = try await backend.deleteGeminiKey()
+        } catch {
+            show(error)
+            return
+        }
+        notices.done("Usunięto klucz")
+    }
+
     func loadSourceKeys() async {
         sourceKeys = (try? await backend.sourceKeys()) ?? []
     }

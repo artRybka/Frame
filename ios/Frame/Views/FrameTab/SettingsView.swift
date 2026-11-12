@@ -6,7 +6,7 @@ import SwiftUI
 /// and its update, the app's restart) is not repeated here.
 enum SettingsPage: String, Hashable, CaseIterable {
     case display, notifications, household
-    case sources, ai, library, night
+    case sources, ai, gemini, library, night
     case frame, server, keys
     case diagnostics
 
@@ -26,7 +26,7 @@ enum SettingsPage: String, Hashable, CaseIterable {
         var pages: [SettingsPage] {
             switch self {
             case .daily: [.display, .notifications, .household]
-            case .art: [.sources, .ai, .library, .night]
+            case .art: [.sources, .ai, .gemini, .library, .night]
             case .setup: [.frame, .server, .keys]
             case .tools: [.diagnostics]
             }
@@ -50,6 +50,7 @@ enum SettingsPage: String, Hashable, CaseIterable {
         case .household: "Domownicy"
         case .sources: "Źródła dzieł"
         case .ai: "Claude"
+        case .gemini: "Gemini"
         case .library: "Miejsce na serwerze"
         case .night: "Zadania nocne"
         case .frame: "Ramka"
@@ -66,6 +67,7 @@ enum SettingsPage: String, Hashable, CaseIterable {
         case .household: "person.2.fill"
         case .sources: "building.columns.fill"
         case .ai: "text.book.closed.fill"
+        case .gemini: "paintbrush.pointed.fill"
         case .library: "internaldrive.fill"
         case .night: "moon.stars.fill"
         case .frame: "photo.artframe"
@@ -209,6 +211,9 @@ private struct SettingsRow: View {
         case .ai:
             guard let ai = model.aiSettings else { return nil }
             return ai.keySet ? (Money.usd(ai.spentUsd), false) : ("Brak klucza", true)
+        case .gemini:
+            guard let ai = model.aiSettings, let keySet = ai.geminiKeySet else { return nil }
+            return keySet ? (Money.usd(ai.geminiSpentUsd ?? 0), false) : ("Brak klucza", true)
         case .library:
             if let counts = model.catalogueCounts { return (Names.worksGrouped(counts.works), false) }
             guard let storage = model.libraryStorage else { return nil }
@@ -250,6 +255,7 @@ private struct KeyCount {
     @MainActor
     init(model: AppModel) {
         if let ai = model.aiSettings { add(ai.keySet) }
+        if let gemini = model.aiSettings?.geminiKeySet { add(gemini) }
         if let push = model.notificationSettings { add(push.key != nil) }
         if let tailnet = model.tailnetKey { add(tailnet.keySet) }
         for source in model.sourceKeys { add(source.keySet) }
@@ -279,8 +285,8 @@ struct SettingsPageView: View {
                 .padding(.bottom, 40)
             }
             .task {
-                // CI screenshots: `-scroll restorer` on the Claude page.
-                guard page == .ai, LaunchRoute.scroll == "restorer" else { return }
+                // CI screenshots: `-scroll restorer` on the Gemini page.
+                guard page == .gemini, LaunchRoute.scroll == "restorer" else { return }
                 try? await Task.sleep(for: .seconds(4))
                 withAnimation { proxy.scrollTo("restorer", anchor: .center) }
             }
@@ -313,6 +319,12 @@ struct SettingsPageView: View {
         case .ai:
             if let ai = model.aiSettings {
                 AiSection(settings: ai)
+            } else {
+                waiting
+            }
+        case .gemini:
+            if let ai = model.aiSettings {
+                AiSection(settings: ai, part: .gemini)
             } else {
                 waiting
             }

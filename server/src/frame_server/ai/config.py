@@ -59,6 +59,8 @@ class AiConfig(BaseModel):
     drawn: bool = True
     #: Nothing more is asked once this month's cost reaches it.
     monthly_limit_usd: float = Field(5.0, ge=0, le=1000)
+    #: The same for the image model, which has a month's limit of its own.
+    gemini_monthly_limit_usd: float = Field(5.0, ge=0, le=1000)
 
 
 class AiConfigUpdate(BaseModel):
@@ -77,6 +79,7 @@ class AiConfigUpdate(BaseModel):
     journey: bool | None = None
     drawn: bool | None = None
     monthly_limit_usd: float | None = Field(None, ge=0, le=1000)
+    gemini_monthly_limit_usd: float | None = Field(None, ge=0, le=1000)
 
 
 def clean_key(value: str) -> str:

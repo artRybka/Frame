@@ -617,14 +617,13 @@ def jpeg(rgb: Array) -> bytes:
 
 
 def png(layer: Array) -> bytes:
-    """A mark's layer: black, as much of it as there is pencil; the app
-    gives it the pencil's colour."""
+    """A mark's layer: black, as much of it as there is pencil (clear
+    elsewhere); the app gives it the pencil's colour."""
     alpha = (np.clip(layer, 0, 1) * 255 + 0.5).astype(np.uint8)
-    img = Image.merge(
-        "LA", (Image.new("L", (alpha.shape[1], alpha.shape[0]), 0), Image.fromarray(alpha))
-    )
+    rgba = np.zeros((*alpha.shape, 4), np.uint8)
+    rgba[..., 3] = alpha
     out = io.BytesIO()
-    img.save(out, "PNG", optimize=True)
+    Image.fromarray(rgba, "RGBA").save(out, "PNG", optimize=True)
     return out.getvalue()
 
 

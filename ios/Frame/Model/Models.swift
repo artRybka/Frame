@@ -1502,6 +1502,29 @@ struct AiSettings: Codable, Hashable, Sendable {
     var plTextProgress: Progress?
     /// Why the server paused asking, if it did.
     var error: String?
+    /// Google's key for the image model that draws the study sheets of the
+    /// analyses of composition: whether the server has one, its last
+    /// characters. Nil from servers before the drawn sheets.
+    var geminiKeySet: Bool? = nil
+    var geminiKeyTail: String? = nil
+    /// "Arkusze kompozycji z modelu graficznego"; nil from older servers.
+    var drawn: Bool? = nil
+    /// About what one drawn sheet costs at once, and through Google's Batch.
+    var drawnUsd: Double? = nil
+    var drawnBatchUsd: Double? = nil
+    /// The sheets of the studies saved before go through the Batch: how
+    /// many still wait for it, and how many are in it now.
+    var drawnWaiting: Int? = nil
+    var drawnInBatch: Int? = nil
+    /// Why no sheet is drawn now: "no_credit" (the key's prepaid credit is
+    /// used up), "key_rejected", "limit" (the image model's month's).
+    var geminiError: String? = nil
+    /// The image model's own month (Konfiguracja → Gemini): its limit and
+    /// what its answers cost so far, by what asked for them. Nil from
+    /// servers that count it with Claude's.
+    var geminiMonthlyLimitUsd: Double? = nil
+    var geminiSpentUsd: Double? = nil
+    var geminiSpentByKind: [String: Double]? = nil
 }
 
 /// Only what is set changes.
@@ -1518,6 +1541,8 @@ struct AiSettingsUpdate: Encodable, Sendable {
     var sentence: Bool?
     var journey: Bool?
     var monthlyLimitUsd: Double?
+    var drawn: Bool?
+    var geminiMonthlyLimitUsd: Double?
 }
 
 /// `GET /api/ai/review`: "Do sprawdzenia", what the gatekeeper set aside and
@@ -2284,6 +2309,44 @@ struct DailyWork: Codable, Hashable, Sendable {
         var sure: Bool? = nil
     }
 
+    /// A take's study sheet as an image model drew it: the work as a study
+    /// in watercolour and pen on the light page's paper, and over it the
+    /// analysis's marks, each drawn by the model with a coloured pencil of
+    /// its own and sent as a layer of its own (Mateusz 2026-11-12 21:59:
+    /// "świetnie wyglądają kolorowe linie i bardzo poprawiają czytelność!
+    /// Absolutnie muszą zostać i będziemy je stosować w aplikacji").
+    struct Drawn: Codable, Hashable, Sendable {
+        /// Where a number stands (fractions of the field).
+        struct Number: Codable, Hashable, Sendable {
+            var x: Double
+            var y: Double
+        }
+
+        /// One of the take's marks as the model drew it.
+        struct Pencilled: Codable, Hashable, Sendable {
+            /// Which of the take's marks it is (its place among them).
+            var mark: Int
+            /// Server path of its line alone (a picture the field's size,
+            /// clear but for the pencil); "" when the model left the mark
+            /// out: the app draws it itself, in the mark's colour.
+            var layer: String
+            /// "#rrggbb": the line's colour, its number's and its note's.
+            var colour: String
+            /// Where its number stands on its line: once, or at each ring
+            /// of an echo, at the first and the last beat of a rhythm.
+            var numbers: [Number]
+        }
+
+        /// Server path of the study, with the page's margin on each side
+        /// of the field (`bleed` of the field's width), where one wash
+        /// and one line run out.
+        var sheet: String
+        var bleed: Double
+        /// The field's width over its height.
+        var aspect: Double
+        var marks: [Pencilled]
+    }
+
     /// One of the analyses of the composition the page has had (server
     /// 1.88): the owner picks the one it shows.
     struct CompositionVersion: Codable, Hashable, Sendable {
@@ -2342,6 +2405,13 @@ struct DailyWork: Codable, Hashable, Sendable {
     /// once the owner asked for one anew (else empty; nil from servers
     /// before 1.88).
     var compositionVersions: [CompositionVersion]? = nil
+    /// The take's study sheet as the image model drew it, where the owner
+    /// gave the server Google's key: shown in place of the sheet above
+    /// (`DrawnSheet`). Nil while the take has none, and from servers before it.
+    var compositionDrawn: Drawn? = nil
+    /// That sheet is being drawn now (a new page's, an analysis made anew;
+    /// a minute or two): the page is asked for again until it is here.
+    var compositionDrawnPending: Bool? = nil
     /// The owner asked for the analysis anew and Claude is making it.
     var compositionPending: Bool? = nil
     /// The owner asked for the details to be checked ("Popraw detale") and

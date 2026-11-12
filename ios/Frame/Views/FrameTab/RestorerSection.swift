@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Konfiguracja → Claude → "Kreatywny restaurator" (Mateusz 2026-11-12):
+/// Konfiguracja → Gemini → "Kreatywny restaurator" (Mateusz 2026-11-12):
 /// the favourites whose picture is small for the frame (under 1600 px,
 /// `LowRes`) drawn again larger by Google's image model (Nano Banana 2.1)
 /// in its batches, at half the price, within a day. One work at a time is

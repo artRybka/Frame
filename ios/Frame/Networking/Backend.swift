@@ -281,6 +281,10 @@ protocol FrameBackend: Sendable {
     /// The server checks the key with Anthropic before keeping it.
     func saveAiKey(_ key: String) async throws -> AiSettings
     func deleteAiKey() async throws -> AiSettings
+    /// Google's key for the image model; the server checks it with Google
+    /// before keeping it.
+    func saveGeminiKey(_ key: String) async throws -> AiSettings
+    func deleteGeminiKey() async throws -> AiSettings
     /// Keys of art sources; the server checks a key with its source before keeping it.
     func sourceKeys() async throws -> [SourceKey]
     func saveSourceKey(_ source: String, key: String) async throws -> [SourceKey]

@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.72
+## 1.145.74
 
 - Kreatywny restaurator: dzieło o niskiej rozdzielczości można dać do
   przerysowania modelowi graficznemu Google (Nano Banana 2.1), który
@@ -9,13 +9,45 @@
   dzieło ma po tytule bursztynowe iskierki zamiast kropek rastra, a na
   karcie przy „Zdjęcie dzieła” napis „Kreatywny restaurator”. Pojedynczo
   w menu „…” karty (pod „Szukaj lepszej kopii”, ok. pół minuty), a
-  wszystkie Ulubione poniżej 1600 px naraz w Konfiguracji → Claude, w
+  wszystkie Ulubione poniżej 1600 px naraz w Konfiguracji → Gemini, w
   pakietach Google za połowę ceny (ok. 0,03 USD za dzieło, do doby).
   Przerysowane zdjęcie zostaje tym samym dziełem i nocne porządki go nie
   podmieniają. „Przywróć zdjęcie muzeum” cofa zmianę. Potrzebny klucz
   Gemini w Kluczach i certyfikatach.
 - Długi tytuł ze znacznikiem skraca się w środku, więc znacznik po nim
   nie ginie.
+## 1.145.73
+
+- Ponowna analiza kompozycji nie rysuje już podkładu od nowa. Gdy
+  dzieło ma szkic z modelu graficznego, „Wykonaj ponowną analizę”
+  zamawia u niego tylko kolorowe linie na tym samym szkicu (ok. 0,05 USD
+  zamiast 0,15 USD), więc arkusz pod spodem się nie zmienia.
+- Gemini ma własną stronę w Konfiguracji, pod „Claude”: osobny
+  miesięczny limit (domyślnie 5 USD), wydatki w tym miesiącu i
+  przełącznik arkuszy kompozycji ze stanem Batch. Wydatki Gemini i
+  Claude liczą się osobno, więc limit jednego nie wstrzymuje drugiego.
+  Klucz Google zostaje w Kluczach i certyfikatach.
+
+## 1.145.72
+
+- Studium dzieła, analiza kompozycji: arkusz rysuje teraz model
+  graficzny Google (Gemini). Dzieło jest na nim studium piórkiem i
+  akwarelą, a linie kompozycji są narysowane kredkami, każdy znacznik
+  swoim kolorem, z numerem na samej linii w tym samym kolorze. Szkic i
+  akwarela w jednym, dwóch miejscach wychodzą poza pole do krawędzi
+  ekranu. Arkusz jest jasną kartką także w trybie ciemnym.
+- Dotknięcie arkusza chowa linie kompozycji i zostawia sam szkic,
+  dotknięcie notatki zostawia jej linię i przygasza pozostałe.
+- Potrzebny jest klucz Google: Konfiguracja → Klucze i certyfikaty →
+  „Google (Gemini)”. Bez klucza arkusz wygląda jak dotąd.
+- Koszt: nowe studium dostaje arkusz od razu (ok. 0,15 USD, piórko za
+  0,18–0,35 USD przestaje być zamawiane). Studia zapisane wcześniej
+  serwer przerysowuje sam przez Batch Google'a za połowę ceny (ok.
+  0,08 USD za dzieło), po 20 dzieł, w ramach miesięcznego limitu AI.
+  „Wykonaj ponowną analizę” daje nowy arkusz od razu. Przełącznik
+  „Arkusze kompozycji z modelu graficznego” w Konfiguracji wyłącza
+  całość, a pod nim widać, ile studiów czeka i ile to będzie kosztować.
+
 ## 1.145.71
 
 - Technika dzieła szukana od razu, gdy otwierasz kartę: dotąd serwer

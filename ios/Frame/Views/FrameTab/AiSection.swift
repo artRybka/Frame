@@ -5,12 +5,19 @@ import SwiftUI
 /// Konfiguracja → Klucze i certyfikaty (`part: .key`). The models are fixed
 /// per task on the server: Haiku for keywords and translations, Sonnet for
 /// notes on works without a description.
+///
+/// Konfiguracja → Gemini (`part: .gemini`): Google's image model, with a
+/// month's limit and spending of its own (Mateusz 2026-11-12 23:20: "Dla
+/// Gemini trzeba dać osobny segment w Konfiguracja (tak jak Claude) i tam
+/// ustawić osobno limit").
 struct AiSection: View {
     enum Part {
         /// The switches, the limit and the progress.
         case settings
-        /// The Anthropic key alone.
+        /// The Anthropic key, and Google's.
         case key
+        /// The image model: its switches, its own limit and spending.
+        case gemini
     }
 
     @Environment(AppModel.self) private var model
@@ -18,14 +25,12 @@ struct AiSection: View {
     var part: Part = .settings
     @State private var key = ""
     @State private var savingKey = false
+    @State private var geminiKey = ""
+    @State private var savingGeminiKey = false
     @State private var estimating = false
     @State private var estimate: AiEstimate?
 
     private static let limits: [Double] = [1, 2, 5, 10, 20, 50, 100, 150, 200]
-
-    private var limitOptions: [Double] {
-        Set(Self.limits + [settings.monthlyLimitUsd]).sorted()
-    }
 
     private var budgetLeft: Double { max(settings.monthlyLimitUsd - settings.spentUsd, 0) }
 
@@ -35,6 +40,52 @@ struct AiSection: View {
         switch part {
         case .settings: settingsBody
         case .key: keyBody
+        case .gemini: geminiBody
+        }
+    }
+
+    private var geminiBody: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(title: "Model graficzny (Gemini)", subtitle: "Arkusze analizy kompozycji")
+            Card {
+                if let limit = settings.geminiMonthlyLimitUsd {
+                    if settings.geminiKeySet != true {
+                        Label("Brak klucza Google. Dodasz go w Kluczach i certyfikatach.", systemImage: "key")
+                            .font(.caption)
+                            .foregroundStyle(Theme.warn)
+                        Divider()
+                    }
+                    spendingRows(
+                        limit: limit, spent: settings.geminiSpentUsd ?? 0,
+                        note: "Po przekroczeniu limitu serwer nie pyta modelu graficznego do końca miesiąca. Wydatki Claude liczą się osobno."
+                    ) { AiSettingsUpdate(geminiMonthlyLimitUsd: $0) }
+                    if let drawn = settings.drawn {
+                        Divider()
+                        toggle(
+                            "Arkusze kompozycji z modelu graficznego",
+                            hint: Self.drawnHint(settings),
+                            value: drawn
+                        ) { AiSettingsUpdate(drawn: $0) }
+                        if settings.geminiKeySet == true, let note = Self.drawnNote(settings, on: drawn) {
+                            Label(note.text, systemImage: note.icon)
+                                .font(.caption)
+                                .foregroundStyle(note.bad ? Theme.bad : Theme.inkSoft)
+                        }
+                    }
+                } else {
+                    Label("Ten serwer nie ma jeszcze modelu graficznego. Zaktualizuj serwer.", systemImage: "arrow.down.circle")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                }
+            }
+        }
+        .task {
+            // The Batch moves on while Konfiguracja is open.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(20))
+                guard !Task.isCancelled else { return }
+                await model.loadAiSettings()
+            }
         }
     }
 
@@ -43,6 +94,12 @@ struct AiSection: View {
             SectionHeader(title: "Claude", subtitle: "Klucz API Anthropic")
             Card {
                 keyFields
+            }
+            if settings.geminiKeySet != nil {
+                SectionHeader(title: "Google (Gemini)", subtitle: "Klucz API modelu graficznego")
+                Card {
+                    geminiKeyFields
+                }
             }
         }
     }
@@ -219,6 +276,82 @@ struct AiSection: View {
         }
     }
 
+    /// Google's key for the image model (Mateusz 2026-11-01: keys go in
+    /// through a field in Konfiguracja, never the server's environment).
+    @ViewBuilder
+    private var geminiKeyFields: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Klucz API Google (Gemini)").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
+                Spacer()
+                if settings.geminiKeySet == true, let tail = settings.geminiKeyTail {
+                    Label("…\(tail)", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline.monospaced())
+                        .foregroundStyle(Theme.good)
+                }
+            }
+            SecureField(settings.geminiKeySet == true ? "zapisany · wpisz nowy, by zmienić" : "AIza…", text: $geminiKey)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            Text("Z aistudio.google.com → API keys. Model graficzny rysuje arkusze analizy kompozycji.")
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
+        }
+        Button {
+            Task {
+                savingGeminiKey = true
+                if await model.saveGeminiKey(geminiKey) { geminiKey = "" }
+                savingGeminiKey = false
+            }
+        } label: {
+            HStack {
+                Text("Zapisz i sprawdź")
+                if savingGeminiKey { ProgressView() }
+            }
+        }
+        .fontWeight(.semibold)
+        .disabled(geminiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || savingGeminiKey)
+        if settings.geminiKeySet == true {
+            Button("Usuń klucz", role: .destructive) {
+                Task { await model.deleteGeminiKey() }
+            }
+            .font(.subheadline)
+        }
+    }
+
+    /// What the drawn sheets are and about what they cost.
+    static func drawnHint(_ settings: AiSettings) -> String {
+        let now = Money.usd(settings.drawnUsd ?? 0.15)
+        let batch = Money.usd(settings.drawnBatchUsd ?? 0.075)
+        return "Szkic akwarelą i piórkiem oraz kolorowe linie rysuje model Google. "
+            + "Nowe studium od razu, ok. \(now); zapisane wcześniej przez Batch, ok. \(batch) za arkusz."
+    }
+
+    /// What stands under the switch: the key missing, why none is drawn
+    /// now, or how the saved studies' sheets are getting on.
+    static func drawnNote(_ settings: AiSettings, on: Bool) -> (text: String, icon: String, bad: Bool)? {
+        guard on else { return nil }
+        if settings.geminiKeySet != true {
+            return ("Brak klucza Google. Dodasz go w Kluczach i certyfikatach.", "key", true)
+        }
+        switch settings.geminiError {
+        case "no_credit":
+            return ("Na koncie Google skończyły się środki. Doładuj je w Google AI Studio.", "exclamationmark.circle", true)
+        case "key_rejected":
+            return ("Google odrzucił klucz. Wpisz go ponownie w Kluczach i certyfikatach.", "exclamationmark.circle", true)
+        case "limit":
+            return ("Miesięczny limit Gemini jest wyczerpany, arkusze poczekają.", "pause.circle", true)
+        default: break
+        }
+        let waiting = settings.drawnWaiting ?? 0, batch = settings.drawnInBatch ?? 0
+        guard waiting + batch > 0 else { return nil }
+        let cost = Money.usd(Double(waiting + batch) * (settings.drawnBatchUsd ?? 0.075))
+        return (
+            "Zapisane studia bez arkusza: \(waiting + batch), w tym w Batch: \(batch). Razem ok. \(cost).",
+            "clock", false
+        )
+    }
+
     // MARK: Switches and money
 
     private func toggle(
@@ -237,17 +370,27 @@ struct AiSection: View {
         .tint(Theme.ink)
     }
 
-    @ViewBuilder
     private var spending: some View {
-        let limit = Binding(
-            get: { settings.monthlyLimitUsd },
-            set: { usd in Task { await model.saveAiSettings(AiSettingsUpdate(monthlyLimitUsd: usd)) } }
+        spendingRows(
+            limit: settings.monthlyLimitUsd, spent: settings.spentUsd,
+            note: "Po przekroczeniu limitu serwer nie pyta modelu do końca miesiąca."
+        ) { AiSettingsUpdate(monthlyLimitUsd: $0) }
+    }
+
+    /// A model's month: its limit to choose, and how much of it is spent.
+    @ViewBuilder
+    private func spendingRows(
+        limit: Double, spent: Double, note: String, update: @escaping (Double) -> AiSettingsUpdate
+    ) -> some View {
+        let chosen = Binding(
+            get: { limit },
+            set: { usd in Task { await model.saveAiSettings(update(usd)) } }
         )
         HStack {
             Text("Miesięczny limit").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
             Spacer()
-            Picker("Miesięczny limit", selection: limit) {
-                ForEach(limitOptions, id: \.self) { usd in
+            Picker("Miesięczny limit", selection: chosen) {
+                ForEach(Set(Self.limits + [limit]).sorted(), id: \.self) { usd in
                     Text(Money.usd(usd)).tag(usd)
                 }
             }
@@ -258,13 +401,13 @@ struct AiSection: View {
             HStack {
                 Text("W tym miesiącu").font(.subheadline).foregroundStyle(Theme.ink)
                 Spacer()
-                Text(Money.usd(settings.spentUsd))
+                Text(Money.usd(spent))
                     .font(.subheadline.monospacedDigit())
                     .foregroundStyle(Theme.inkSoft)
             }
-            ProgressView(value: min(settings.spentUsd / max(settings.monthlyLimitUsd, 0.01), 1))
-                .tint(settings.spentUsd >= settings.monthlyLimitUsd ? Theme.bad : Theme.ink)
-            Text("Po przekroczeniu limitu serwer nie pyta modelu do końca miesiąca.")
+            ProgressView(value: min(spent / max(limit, 0.01), 1))
+                .tint(spent >= limit ? Theme.bad : Theme.ink)
+            Text(note)
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
         }

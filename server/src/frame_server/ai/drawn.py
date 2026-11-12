@@ -293,12 +293,23 @@ def _course(mark: Mark) -> tuple[list[tuple[float, float]], bool]:
 
 
 @dataclass
+class Under:
+    """What lies under a work's lines, as the model answered: its study,
+    and the study with what runs out of it (None: it goes without). Kept
+    for the work, so that another take of it (an analysis made anew) has
+    only its lines drawn over the same study."""
+
+    study: Image.Image
+    spilt: Image.Image | None = None
+
+
+@dataclass
 class Sheet:
     """A drawn sheet as it is kept: the page (the field with its side
     margins) as a JPEG, a layer per titled mark of the take (PNG; None
     where the model left the mark out), each mark's colour and where its
-    number stands (fractions of the field), the field's size in pixels and
-    what the answers cost."""
+    number stands (fractions of the field), the field's size in pixels,
+    what the answers cost and what it was drawn over."""
 
     page: bytes
     layers: list[bytes | None]
@@ -306,6 +317,7 @@ class Sheet:
     numbers: list[list[tuple[float, float]]]
     size: tuple[int, int]
     cost: dict[str, float] = field(default_factory=dict)
+    under: Under | None = None
 
 
 def titled(view: View) -> list[Mark]:
@@ -428,20 +440,31 @@ def put_together(
     )
 
 
-def draw(picture: Image.Image, view: View, paint: Paint, seed: int = 1) -> Sheet:
+def draw(
+    picture: Image.Image, view: View, paint: Paint, seed: int = 1, under: Under | None = None
+) -> Sheet:
     """The sheet of a take, asked for now: ``picture`` is the work (its
     field alone, when the take has one) and ``view`` the take as its field
-    sees it (``View.inside``). Raises :class:`NotDrawn` when the model's
-    study is not the work's; a spill that cannot be had is left out."""
+    sees it (``View.inside``). Over ``under`` (the work's study, had
+    before) only the take's lines are asked for (Mateusz 2026-11-12 23:20:
+    "gdy zamawiam ponowną analizę, a podkład od Gemini już jest, to rób
+    nim tylko kolorowe kreski"). Raises :class:`NotDrawn` when the study
+    is not the work's; a spill that cannot be had is left out."""
     work = drawn.sent(picture)
     costs: dict[str, float] = {}
-    study, _ = _study(work, view, paint, costs)
-    marked = _marks(study, view, paint, costs)
-    spilt = None
-    try:
-        spilt, costs["spill"] = paint(SPILL, [drawn.padded(study)[0]])
-    except AiUnavailable:
-        raise
-    except Exception as err:  # the sheet is paid for: it goes without its spill
-        log.warning("the sheet's spill left out: %s", err)
-    return put_together(work, view, study, marked, spilt, costs, seed)
+    if under is None:
+        study, _ = _study(work, view, paint, costs)
+        marked = _marks(study, view, paint, costs)
+        spilt = None
+        try:
+            spilt, costs["spill"] = paint(SPILL, [drawn.padded(study)[0]])
+        except AiUnavailable:
+            raise
+        except Exception as err:  # the sheet is paid for: it goes without its spill
+            log.warning("the sheet's spill left out: %s", err)
+        under = Under(study, spilt)
+    else:
+        marked = _marks(under.study, view, paint, costs)
+    sheet = put_together(work, view, under.study, marked, under.spilt, costs, seed)
+    sheet.under = under
+    return sheet
