@@ -557,13 +557,14 @@ struct CoverSlideshow: View {
 
         init(_ id: String) {
             self.id = id
-            ref = .thumb(id)
+            ref = .tile(id)  // the work without its paper or mount
+            fallback = .thumb(id)
         }
 
         init(_ work: RemoteItem) {
             id = work.id
-            ref = work.thumb
-            fallback = work.thumbFallback
+            ref = work.tile
+            fallback = work.thumb
             placeholder = work.item.summary.placeholderColor
         }
     }
@@ -812,8 +813,8 @@ struct SuggestionsCover: View {
     @ViewBuilder private func tile(_ works: [RemoteItem], _ index: Int) -> some View {
         if index < works.count {
             ArtImage(
-                ref: works[index].thumb,
-                fallback: works[index].thumbFallback,
+                ref: works[index].tile,
+                fallback: works[index].thumb,
                 placeholder: works[index].item.summary.placeholderColor,
                 maxPixel: Self.maxPixel
             )
@@ -852,7 +853,7 @@ struct SuggestionsCover: View {
     /// not as their placeholder colours; not waited for past `wait`.
     private func warm(_ works: [RemoteItem]) async {
         let requests = works.prefix(4).map { work in
-            [work.thumb, work.thumbFallback].compactMap { $0 }.compactMap { model.backend.request(for: $0) }
+            [work.tile, work.thumb].compactMap { model.backend.request(for: $0) }
         }
         let maxPixel = Self.maxPixel
         let wait = Self.wait

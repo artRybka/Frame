@@ -7,8 +7,9 @@
   fotografa wokół dzieła (jedna jasna, równa barwa przy krawędzi) i
   kafelek pokazuje tylko to, co na nim narysowane lub odbite, z wąskim
   oddechem papieru. Akwaforta Goi na szerokim arkuszu nie wygląda już
-  jak błąd. Karta dzieła, przeglądarka i ramka dalej pokazują cały
-  arkusz.
+  jak błąd. Tak samo okładki playlist (kafelki w Playlistach, nagłówek
+  playlisty, „Teraz prezentowane”, „Propozycje dnia”). Karta dzieła,
+  przeglądarka i ramka dalej pokazują cały arkusz.
 - Odkrywaj, okładki kart: serwer wybiera na okładkę najpierw obrazy
   (malarstwo), nawet gdy w propozycji przeważają ryciny i rysunki; w
   środku propozycji nic się nie zmienia. Karty o grafice lub rysunku
