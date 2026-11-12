@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 import anthropic
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
@@ -13,7 +14,9 @@ from ..ai import AiConfigUpdate, AiUnavailable, KeyRejected, Progress
 from ..ai.audit import FIELDS as AUDIT_FIELDS
 from ..ai.composition import PAGES
 from ..ai.daily import CHECK_ROUND, ROUND
+from ..ai.drawn import TYPICAL_USD as SHEET_USD
 from ..ai.gatekeeper import SEEN_AS
+from ..ai.gemini import GeminiRejected
 from ..ai.keywords import KIND as KEYWORDS
 from ..ai.pl_text import KIND as PL_TEXT
 from ..ai.twins_judge import CLAIMS, Verdict, judge
@@ -52,6 +55,23 @@ class AiView(BaseModel):
     keywords_progress: Progress
     pl_text_progress: Progress | None = None
     error: str | None  # why the model is paused, if it is
+    #: Google's key for the image model that draws the study sheets
+    #: (``ai.drawn``): whether there is one, its last letters.
+    gemini_key_set: bool = False
+    gemini_key_tail: str | None = None
+    #: The owner's switch "Arkusze rysowane przez model graficzny".
+    drawn: bool = True
+    #: About what one drawn sheet costs.
+    drawn_usd: float = SHEET_USD
+    #: Why no sheet is drawn now: "no_credit" (the key's prepaid credit is
+    #: used up), "key_rejected", "limit" (the month's).
+    gemini_error: str | None = None
+    #: The sheets of the pages saved before go through Google's Batch (half
+    #: the price, within a day): how many still wait for it, how many are
+    #: in it now, and about what one costs there.
+    drawn_waiting: int = 0
+    drawn_in_batch: int = 0
+    drawn_batch_usd: float = SHEET_USD / 2
 
 
 class KeyUpdate(BaseModel):
@@ -70,6 +90,7 @@ class Started(BaseModel):
 def _view(svc: FrameService) -> AiView:
     store, config = svc.ai_config, svc.ai_config.config
     spent = svc.claude.spending.by_kind()
+    waiting, in_batch = svc.drawn.counts()
     return AiView(
         key_set=bool(store.api_key),
         key_tail=store.key_tail,
@@ -92,6 +113,12 @@ def _view(svc: FrameService) -> AiView:
         keywords_progress=svc.ai.progress(KEYWORDS),
         pl_text_progress=svc.ai.progress(PL_TEXT),
         error=svc.ai.error,
+        gemini_key_set=bool(store.gemini_key),
+        gemini_key_tail=store.gemini_tail,
+        drawn=config.drawn,
+        gemini_error=svc.drawn.error if store.drawn else None,
+        drawn_waiting=waiting,
+        drawn_in_batch=in_batch,
     )
 
 
@@ -104,6 +131,7 @@ async def get_ai(svc: Svc) -> AiView:
 async def put_ai(update: AiConfigUpdate, svc: Svc) -> AiView:
     svc.ai_config.update(update)
     svc.ai.wake()
+    svc.drawn.again()  # the limit raised, the sheets switched on
     return await run_in_threadpool(_view, svc)
 
 
@@ -132,6 +160,35 @@ async def delete_key(svc: Svc) -> AiView:
     """Forget the app's key (frame.env's applies again, if it has one)."""
     svc.ai_config.set_key(None)
     svc.ai.wake()
+    return await run_in_threadpool(_view, svc)
+
+
+@router.put("/gemini-key", response_model=AiView)
+async def put_gemini_key(update: KeyUpdate, svc: Svc) -> AiView:
+    """Check Google's key (free), then keep it: the study sheets are drawn
+    by its image model from now on."""
+    key = update.key.strip()
+    if not key:
+        raise HTTPException(400, "empty API key")
+    try:
+        await run_in_threadpool(svc.painter.check_key, key)
+    except GeminiRejected as err:
+        raise HTTPException(400, str(err)) from err
+    except httpx.HTTPError as err:
+        raise HTTPException(502, f"Google did not answer: {err}") from err
+    try:
+        svc.ai_config.set_gemini_key(key)
+    except ValueError as err:
+        raise HTTPException(400, str(err)) from err
+    svc.drawn.again()
+    return await run_in_threadpool(_view, svc)
+
+
+@router.delete("/gemini-key", response_model=AiView)
+async def delete_gemini_key(svc: Svc) -> AiView:
+    """Forget Google's key: the sheets are made by the server again."""
+    svc.ai_config.set_gemini_key(None)
+    svc.drawn.again()
     return await run_in_threadpool(_view, svc)
 
 
