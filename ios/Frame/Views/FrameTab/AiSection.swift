@@ -18,6 +18,8 @@ struct AiSection: View {
     var part: Part = .settings
     @State private var key = ""
     @State private var savingKey = false
+    @State private var geminiKey = ""
+    @State private var savingGeminiKey = false
     @State private var estimating = false
     @State private var estimate: AiEstimate?
 
@@ -43,6 +45,12 @@ struct AiSection: View {
             SectionHeader(title: "Claude", subtitle: "Klucz API Anthropic")
             Card {
                 keyFields
+            }
+            if settings.geminiKeySet != nil {
+                SectionHeader(title: "Google (Gemini)", subtitle: "Klucz API modelu graficznego")
+                Card {
+                    geminiKeyFields
+                }
             }
         }
     }
@@ -140,6 +148,19 @@ struct AiSection: View {
                         value: journey
                     ) { AiSettingsUpdate(journey: $0) }
                 }
+                if let drawn = settings.drawn {
+                    Divider()
+                    toggle(
+                        "Arkusze kompozycji z modelu graficznego",
+                        hint: Self.drawnHint(settings),
+                        value: drawn
+                    ) { AiSettingsUpdate(drawn: $0) }
+                    if let note = Self.drawnNote(settings, on: drawn) {
+                        Label(note.text, systemImage: note.icon)
+                            .font(.caption)
+                            .foregroundStyle(note.bad ? Theme.bad : Theme.inkSoft)
+                    }
+                }
                 if let count = settings.reviewCount {
                     Divider()
                     NavigationLink {
@@ -217,6 +238,82 @@ struct AiSection: View {
             }
             .font(.subheadline)
         }
+    }
+
+    /// Google's key for the image model (Mateusz 2026-11-01: keys go in
+    /// through a field in Konfiguracja, never the server's environment).
+    @ViewBuilder
+    private var geminiKeyFields: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Klucz API Google (Gemini)").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
+                Spacer()
+                if settings.geminiKeySet == true, let tail = settings.geminiKeyTail {
+                    Label("…\(tail)", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline.monospaced())
+                        .foregroundStyle(Theme.good)
+                }
+            }
+            SecureField(settings.geminiKeySet == true ? "zapisany · wpisz nowy, by zmienić" : "AIza…", text: $geminiKey)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            Text("Z aistudio.google.com → API keys. Model graficzny rysuje arkusze analizy kompozycji.")
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
+        }
+        Button {
+            Task {
+                savingGeminiKey = true
+                if await model.saveGeminiKey(geminiKey) { geminiKey = "" }
+                savingGeminiKey = false
+            }
+        } label: {
+            HStack {
+                Text("Zapisz i sprawdź")
+                if savingGeminiKey { ProgressView() }
+            }
+        }
+        .fontWeight(.semibold)
+        .disabled(geminiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || savingGeminiKey)
+        if settings.geminiKeySet == true {
+            Button("Usuń klucz", role: .destructive) {
+                Task { await model.deleteGeminiKey() }
+            }
+            .font(.subheadline)
+        }
+    }
+
+    /// What the drawn sheets are and about what they cost.
+    static func drawnHint(_ settings: AiSettings) -> String {
+        let now = Money.usd(settings.drawnUsd ?? 0.15)
+        let batch = Money.usd(settings.drawnBatchUsd ?? 0.075)
+        return "Szkic akwarelą i piórkiem oraz kolorowe linie rysuje model Google. "
+            + "Nowe studium od razu, ok. \(now); zapisane wcześniej przez Batch, ok. \(batch) za arkusz."
+    }
+
+    /// What stands under the switch: the key missing, why none is drawn
+    /// now, or how the saved studies' sheets are getting on.
+    static func drawnNote(_ settings: AiSettings, on: Bool) -> (text: String, icon: String, bad: Bool)? {
+        guard on else { return nil }
+        if settings.geminiKeySet != true {
+            return ("Brak klucza Google. Dodasz go w Kluczach i certyfikatach.", "key", true)
+        }
+        switch settings.geminiError {
+        case "no_credit":
+            return ("Na koncie Google skończyły się środki. Doładuj je w Google AI Studio.", "exclamationmark.circle", true)
+        case "key_rejected":
+            return ("Google odrzucił klucz. Wpisz go ponownie w Kluczach i certyfikatach.", "exclamationmark.circle", true)
+        case "limit":
+            return ("Miesięczny limit jest wyczerpany, arkusze poczekają.", "pause.circle", true)
+        default: break
+        }
+        let waiting = settings.drawnWaiting ?? 0, batch = settings.drawnInBatch ?? 0
+        guard waiting + batch > 0 else { return nil }
+        let cost = Money.usd(Double(waiting + batch) * (settings.drawnBatchUsd ?? 0.075))
+        return (
+            "Zapisane studia bez arkusza: \(waiting + batch), w tym w Batch: \(batch). Razem ok. \(cost).",
+            "clock", false
+        )
     }
 
     // MARK: Switches and money

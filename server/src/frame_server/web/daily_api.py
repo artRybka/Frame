@@ -79,6 +79,45 @@ class CompositionVersion(BaseModel):
     shown: bool = False
 
 
+class DrawnNumber(BaseModel):
+    """Where a mark's number stands on its line (fractions of the field)."""
+
+    x: float
+    y: float
+
+
+class DrawnMark(BaseModel):
+    """One mark of the take as the image model drew it."""
+
+    #: Which of the take's marks it is (its place among ``marks``).
+    mark: int
+    #: Its line alone, the field's size (``&part=m…``): a PNG that is
+    #: nothing but as much black as there is pencil; "" when the model
+    #: left the mark out (the app draws it itself).
+    layer: str = ""
+    #: The pencil it is drawn with ("#rrggbb"): the line's colour, its
+    #: number's and its note's.
+    colour: str
+    #: Where its number stands: once, at each ring of an echo, at the
+    #: first and the last beat of a rhythm.
+    numbers: list[DrawnNumber] = []
+
+
+class Drawn(BaseModel):
+    """The take's study sheet as drawn by the image model (``ai.drawn``):
+    one picture for the light page (the app shows it as a light card on
+    its dark one), and the marks' lines to lay over it."""
+
+    #: The study with the page's margin on each side of the field
+    #: (``&part=page``), where a wash and a line run out to the screen's edge.
+    sheet: str
+    #: How much of the field's width the margin is, each side.
+    bleed: float
+    #: The field's width over its height.
+    aspect: float
+    marks: list[DrawnMark] = []
+
+
 class DailyBrief(BaseModel):
     day: str
     item: RemoteItem
@@ -129,6 +168,13 @@ class DailyWork(BaseModel):
     #: Every analysis the page has had, oldest first, once the owner asked
     #: for one anew (else empty).
     composition_versions: list[CompositionVersion] = []
+    #: The sheet as the image model drew it; None while the take has
+    #: none (the sheet above is shown).
+    composition_drawn: Drawn | None = None
+    #: The take's drawn sheet is being made now (a new page's, one the
+    #: owner had made anew; a minute or two): the app asks for the page
+    #: again until it has ``composition_drawn``.
+    composition_drawn_pending: bool = False
     #: The owner asked for the analysis anew and it is being made.
     composition_pending: bool = False
     #: The owner asked for the details to be checked ("Popraw detale"): on its way.
@@ -241,6 +287,35 @@ def sheet_url(svc: FrameService, item: Item, view: View) -> str:
     return f"/api/composition/sheet?item={quote(item.id, safe='')}&v={svc.sheets.key(view)}"
 
 
+def drawn(svc: FrameService, item: Item, view: View) -> tuple[Drawn | None, bool]:
+    """The take's drawn sheet as the app gets it, or whether it is being
+    made now (:class:`DailyWork`)."""
+    at = f"item={quote(item.id, safe='')}&v={svc.drawn.key(view)}"
+    kept = svc.drawn.meta(item, view)
+    if kept is None:
+        return None, svc.drawn.pending(item, view)
+    width, height = kept["size"]
+    marks = [
+        DrawnMark(
+            mark=mark,
+            layer=f"/api/composition/drawn?{at}&part=m{n}" if there else "",
+            colour=colour,
+            numbers=[DrawnNumber(x=x, y=y) for x, y in numbers],
+        )
+        for n, (mark, there, colour, numbers) in enumerate(
+            zip(kept["marks"], kept["layers"], kept["colours"], kept["numbers"], strict=False),
+            start=1,
+        )
+    ]
+    sheet = Drawn(
+        sheet=f"/api/composition/drawn?{at}&part=page",
+        bleed=BLEED,
+        aspect=width / height,
+        marks=marks,
+    )
+    return sheet, False
+
+
 def page(
     svc: FrameService,
     item: Item,
@@ -296,8 +371,10 @@ def page(
         or ((essay.born, essay.died) if essay else (None, None))
     )
     note = svc.library.note(item.id, job.kind) if essay else None
+    views = essay.composition.views if essay else []
     kept = versions(note.data) if note else []
     pick = note.data.get(SHOWN, len(kept) - 1) if note else -1
+    sheet, drawing = drawn(svc, item, views[0]) if views else (None, False)
     return DailyWork(
         day=day,
         item=_light(svc, item, bio=True),
@@ -323,6 +400,8 @@ def page(
             CompositionVersion(made=str(v.get("made") or ""), shown=n == pick)
             for n, v in enumerate(kept)
         ],
+        composition_drawn=sheet,
+        composition_drawn_pending=drawing,
         composition_pending=bool(essay) and svc.compose.pending(item.id),
         details_pending=bool(essay) and svc.mend.pending(item.id),
         colour=essay.colour if essay else "",
@@ -421,6 +500,20 @@ async def composition_sheet(
         raise HTTPException(503, "the picture cannot be had now") from err
     kind = "image/png" if path.suffix == ".png" else "image/jpeg"
     return FileResponse(path, media_type=kind, headers={"Cache-Control": "max-age=604800"})
+
+
+@router.get("/composition/drawn")
+async def composition_drawn(svc: Svc, item: str, v: str, part: str = "page") -> FileResponse:
+    """A part of the study sheet the image model drew for a take
+    (``DailyWork.composition_drawn``): ``page``, the study on the light
+    page with its side margins, or ``m1``…, the line of one mark alone.
+    Kept for good, so the app may keep it long."""
+    work = svc.library.get(item)
+    path = svc.drawn.part(work, v, part) if work is not None else None
+    if path is None:
+        raise HTTPException(404, "no such sheet")
+    kind = "image/png" if path.suffix == ".png" else "image/jpeg"
+    return FileResponse(path, media_type=kind, headers={"Cache-Control": "max-age=2592000"})
 
 
 @router.post("/daily/again", response_model=DailyBrief, dependencies=[Depends(require_owner)])

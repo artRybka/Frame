@@ -5,6 +5,12 @@ may cost a month.
 The key the app saves wins over ``FRAME_ANTHROPIC_API_KEY`` (frame.env or
 the add-on options) and is never sent back, only its last characters.
 Without a key nothing is asked and the frame works as before.
+
+And Google's key, for the image model that draws the study sheets of the
+analyses of composition (``ai.drawn``): saved in the app only, never taken
+from frame.env (Mateusz 2026-11-01: keys go in through a field in
+Konfiguracja), never sent back either. Without it the sheets are made as
+before it (``imaging.sheet``).
 """
 
 from __future__ import annotations
@@ -46,6 +52,11 @@ class AiConfig(BaseModel):
     sentence: bool = True
     #: The study's "Droga dzieła": the museum's provenance retold as stops (Haiku).
     journey: bool = True
+    #: Google's key (the image model, ``ai.drawn``).
+    gemini_api_key: str | None = None
+    #: The study sheets of the analyses drawn by the image model (three
+    #: pictures a sheet, about 0.15 USD); needs Google's key.
+    drawn: bool = True
     #: Nothing more is asked once this month's cost reaches it.
     monthly_limit_usd: float = Field(5.0, ge=0, le=1000)
 
@@ -64,6 +75,7 @@ class AiConfigUpdate(BaseModel):
     audit: bool | None = None
     sentence: bool | None = None
     journey: bool | None = None
+    drawn: bool | None = None
     monthly_limit_usd: float | None = Field(None, ge=0, le=1000)
 
 
@@ -97,6 +109,30 @@ class AiConfigStore:
     def key_tail(self) -> str | None:
         key = self.api_key
         return key[-KEY_TAIL:] if key else None
+
+    @property
+    def gemini_key(self) -> str | None:
+        """Google's key (the app's; there is no other)."""
+        return self.config.gemini_api_key
+
+    @property
+    def gemini_tail(self) -> str | None:
+        key = self.gemini_key
+        return key[-KEY_TAIL:] if key else None
+
+    @property
+    def drawn(self) -> bool:
+        """Whether the study sheets are drawn by the image model: Google's
+        key, and the owner's switch."""
+        config = self.config
+        return bool(config.gemini_api_key) and config.drawn
+
+    def set_gemini_key(self, key: str | None) -> AiConfig:
+        """Keep Google's key (None forgets it)."""
+        update = {"gemini_api_key": clean_key(key) if key else None}
+        config = self.config.model_copy(update=update)
+        self._save(config)
+        return config
 
     def enabled(self, kind: str) -> bool:
         """Whether jobs of ``kind`` may run: a key, and the owner's switch."""
