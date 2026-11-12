@@ -150,6 +150,44 @@ final class CompositionSheetTests: XCTestCase {
         XCTAssertEqual(Chalk.castShown(x: 1, y: 0, lit: false, still: false), 1)
     }
 
+    func testANumberDoesNotLieUnderAnotherMarksLine() {
+        // Mateusz 2026-11-12 13:46: "cyferka (3) schowała się za linią
+        // trójkąta (1) - musimy uniknąć takich 'nałożeń'".
+        let size = CGSize(width: 300, height: 300)
+        let triangle = Mark(
+            shape: "triangle", points: [Spot(x: 0.5, y: 0.1), Spot(x: 0.1, y: 0.9), Spot(x: 0.9, y: 0.9)],
+            title: "Trójkąt", text: ""
+        )
+        // A loop whose number would sit on the triangle's left side.
+        let loop = Mark(shape: "loop", points: [Spot(x: 0.2, y: 0.6), Spot(x: 0.3, y: 0.7)], title: "Łódź", text: "")
+        let sides = Pencil.courses(of: triangle, in: size)
+        XCTAssertEqual(sides.count, 1)
+        XCTAssertEqual(sides[0].count, 4)
+        let alone = Pencil.numberSpot(for: loop, in: size)
+        XCTAssertLessThan(Pencil.distance(from: alone, to: sides), 3)
+        let spots = Pencil.numberSpots(for: [triangle, loop], in: size)
+        XCTAssertGreaterThanOrEqual(Pencil.distance(from: spots[1], to: sides), Pencil.lineClear)
+        // ... still by its own mark, and the triangle's stays over its top.
+        XCTAssertLessThan(hypot(spots[1].x - alone.x, spots[1].y - alone.y), 50)
+        XCTAssertEqual(spots[0], Pencil.numberSpot(for: triangle, in: size))
+        // The same when the triangle has no label of its own.
+        let bare = Mark(shape: "triangle", points: triangle.points, title: "", text: "")
+        let moved = Pencil.numberSpots(for: [loop], in: size, among: [bare, loop])[0]
+        XCTAssertGreaterThanOrEqual(Pencil.distance(from: moved, to: sides), Pencil.lineClear)
+        // A mark's own line does not move its number.
+        XCTAssertEqual(Pencil.numberSpots(for: [loop], in: size)[0], alone)
+        // Every shape has a course where it has strokes.
+        for shape in ["echo", "loop", "triangle", "rect", "underline", "spiral", "rhythm", "rays", "motion", "arrow", "line"] {
+            let points = [Spot(x: 0.2, y: 0.3), Spot(x: 0.6, y: 0.4), Spot(x: 0.7, y: 0.8), Spot(x: 0.3, y: 0.7)]
+            let count = ["triangle": 3, "spiral": 3, "rect": 2, "loop": 2][shape] ?? 4
+            let mark = Mark(shape: shape, points: Array(points.prefix(count)), title: "", text: "")
+            XCTAssertFalse(Pencil.paths(for: mark, in: size, seed: 1).isEmpty, shape)
+            XCTAssertFalse(Pencil.courses(of: mark, in: size).isEmpty, shape)
+        }
+        XCTAssertEqual(Pencil.distance(from: CGPoint(x: 5, y: 7), to: [[CGPoint(x: 0, y: 0), CGPoint(x: 10, y: 0)]]), 7, accuracy: 1e-6)
+        XCTAssertEqual(Pencil.distance(from: CGPoint(x: 13, y: 4), to: [[CGPoint(x: 0, y: 0), CGPoint(x: 10, y: 0)]]), 5, accuracy: 1e-6)
+    }
+
     func testANumberDoesNotLieOnAnArrowhead() {
         // Mateusz 2026-11-12 11:31: "Kółeczko (4) zakrywa grot strzałki".
         let size = CGSize(width: 345, height: 430)

@@ -1292,16 +1292,79 @@ enum Pencil {
     /// How far a number's middle keeps from an arrowhead's tip: its disc
     /// and the head's two strokes.
     static let headClear: CGFloat = 22
+    /// How far a number's middle keeps from another mark's line: its disc
+    /// and half the chalk's width.
+    static let lineClear: CGFloat = 12
+
+    /// The lines a mark's strokes run along in a picture of `size` (what
+    /// `paths` draws, without its width): where no other mark's number
+    /// may lie.
+    static func courses(of mark: DailyWork.Mark, in size: CGSize) -> [[CGPoint]] {
+        let points = mark.points.map { CGPoint(x: $0.x * size.width, y: $0.y * size.height) }
+        guard let first = points.first else { return [] }
+        func ring(_ centre: CGPoint, _ rx: CGFloat, _ ry: CGFloat) -> [CGPoint] {
+            (0...24).map { step in
+                let angle = 2 * CGFloat.pi * CGFloat(step) / 24
+                return CGPoint(x: centre.x + rx * cos(angle), y: centre.y + ry * sin(angle))
+            }
+        }
+        switch mark.shape {
+        case "echo" where points.count >= 2:
+            let radius = echoRing(in: size)
+            return points.map { ring($0, radius, radius) } + echoDashes(points, in: size)
+        case "loop":
+            let corner = points.count > 1 ? points[1] : first
+            // (the hand goes round a little wider than the form)
+            return [ring(first, max(abs(corner.x - first.x), 8) * 1.04, max(abs(corner.y - first.y), 8) * 1.04)]
+        case "triangle" where points.count == 3:
+            return [points + [first]]
+        case "rect" where points.count == 2:
+            let (a, b) = (points[0], points[1])
+            return [[a, CGPoint(x: b.x, y: a.y), b, CGPoint(x: a.x, y: b.y), a]]
+        case "underline" where points.count >= 2:
+            return [smooth(wave(from: first, to: points[points.count - 1]))]
+        case "spiral" where points.count == 3:
+            return [smooth(spiral(start: points[0], through: points[1], eye: points[2]))]
+        case "rhythm" where points.count >= 4:
+            return beats(points)
+        case "rays" where points.count >= 3:
+            return points.dropFirst().map { [$0, first] }
+        case "motion" where points.count >= 2:
+            let line = smooth(points)
+            return [line] + speedLines(line, gap: 6.5)
+        default:
+            return points.count >= 2 ? corners(points).map { smooth($0) } : []
+        }
+    }
+
+    /// How far `point` is from the nearest of the `lines`.
+    static func distance(from point: CGPoint, to lines: [[CGPoint]]) -> CGFloat {
+        var nearest = CGFloat.infinity
+        for line in lines {
+            if line.count == 1 { nearest = min(nearest, hypot(point.x - line[0].x, point.y - line[0].y)) }
+            for (a, b) in zip(line, line.dropFirst()) {
+                let (dx, dy) = (b.x - a.x, b.y - a.y)
+                let along = max(0, min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / max(dx * dx + dy * dy, 0.0001)))
+                nearest = min(nearest, hypot(point.x - a.x - dx * along, point.y - a.y - dy * along))
+            }
+        }
+        return nearest
+    }
 
     /// The marks' numbers on the study sheet: each at its own spot
     /// (`numberSpot`), moved a step aside where another number already
-    /// sits or an arrowhead lies (`heads`: of all the marks drawn,
-    /// `among`, labelled or not), so two never lie on each other and none
-    /// covers where an arrow points.
+    /// sits, an arrowhead lies (`heads`: of all the marks drawn, `among`,
+    /// labelled or not) or another mark's line runs (`courses`), so two
+    /// never lie on each other, none covers where an arrow points and
+    /// none is crossed by a line that is not its own: each mark stands at
+    /// its own height over the sheet, and a higher one's line lay over a
+    /// lower one's number (Mateusz 2026-11-12 13:46: "cyferka (3) schowała
+    /// się za linią trójkąta (1) - musimy uniknąć takich 'nałożeń'").
     static func numberSpots(for marks: [DailyWork.Mark], in size: CGSize, among all: [DailyWork.Mark]? = nil) -> [CGPoint] {
         let margin: CGFloat = 11
         let step: CGFloat = 23
         let tips = heads(of: all ?? marks, in: size)
+        let drawn = (all ?? marks).map { (mark: $0, lines: courses(of: $0, in: size)) }
         let steps = [(0, 0), (1, 0), (0, 1), (-1, 0), (0, -1), (1, -1), (-1, -1), (1, 1), (-1, 1), (2, 0), (-2, 0), (0, -2), (0, 2)]
         var taken: [CGPoint] = []
         for mark in marks {
@@ -1318,7 +1381,13 @@ enum Pencil {
             func clear(_ candidate: CGPoint) -> Bool {
                 tips.allSatisfy { hypot($0.x - candidate.x, $0.y - candidate.y) >= headClear }
             }
-            let free = tried.first { alone($0) && clear($0) } ?? tried.first(where: alone)
+            let others = drawn.filter { $0.mark != mark }.flatMap(\.lines)
+            func off(_ candidate: CGPoint) -> Bool {
+                distance(from: candidate, to: others) >= lineClear
+            }
+            let free = tried.first { alone($0) && clear($0) && off($0) }
+                ?? tried.first { alone($0) && clear($0) }
+                ?? tried.first(where: alone)
             taken.append(free ?? tried[0])
         }
         return taken
