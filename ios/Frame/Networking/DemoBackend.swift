@@ -24,6 +24,8 @@ actor DemoBackend: FrameBackend {
     private var playlistsByID: [Int: Playlist]
     /// The cards' order once one was moved, as the server keeps it.
     private var playlistOrder: [Int] = []
+    /// The order chosen for each playlist's works (the server keeps it with the playlist).
+    private var playlistSorts: [Int: PlaylistSort] = [:]
     private var settingsValue = FrameSettings.defaults
     private var queue: [String] = []
     /// Added with "Dodaj do kolejki": at the front of `queue`.
@@ -250,19 +252,49 @@ actor DemoBackend: FrameBackend {
         }
     }
 
+    /// The order of a playlist's works, as the server's `Playlist.order`.
+    private func order(of playlist: Playlist) -> PlaylistSort {
+        if let id = playlist.id, let chosen = playlistSorts[id] { return chosen }
+        return playlist.kind == .smart ? PlaylistSort(.artist) : PlaylistSort(.added, reverse: true)
+    }
+
+    /// As the server's `repo.ordered`, roughly: unknown values last.
+    private static func ordered(_ list: [Item], by sort: PlaylistSort) -> [Item] {
+        func value(_ item: Item, _ position: Int) -> Double? {
+            switch sort.known {
+            case .year: item.year.map(Double.init)
+            case .added: Double(position)
+            case .format:
+                if let w = item.width, let h = item.height, w > 0 { Double(h) / Double(w) } else { nil }
+            case .quality: item.width.flatMap { w in item.height.map { Double(max(w, $0)) } }
+            default: nil
+            }
+        }
+        if sort.known == .artist || sort.known == nil {
+            let byArtist = list.sorted { ($0.artist, $0.year ?? 0) < ($1.artist, $1.year ?? 0) }
+            return sort.reverse ? byArtist.reversed() : byArtist
+        }
+        let mostFirst = sort.known != .year
+        let valued = list.enumerated().map { (value($1, $0), $1) }
+        let known = valued.compactMap { pair in pair.0.map { ($0, pair.1) } }
+            .sorted { mostFirst != sort.reverse ? $0.0 > $1.0 : $0.0 < $1.0 }
+        return known.map(\.1) + valued.filter { $0.0 == nil }.map(\.1)
+    }
+
     private func items(for playlist: Playlist) -> [Item] {
         if playlist.kind != .smart {
-            return playlist.itemIds
+            let found = playlist.itemIds
                 .filter { !playlist.rules.excludeIds.contains($0) }
                 .compactMap { id in items.first { $0.id == id } }
+            return playlist.kind == .album ? found : Self.ordered(found, by: order(of: playlist))
         }
         let listed = listed(for: playlist.rules)
         let found = Self.sorted(items.filter { Self.matches($0, playlist.rules, listed: listed) }, by: "suitability")
-        guard let limit = playlist.limit, found.count > limit else { return found }
+        guard let limit = playlist.limit, found.count > limit else { return Self.ordered(found, by: order(of: playlist)) }
         // As the server: favourites first, then a steady draw.
         let taken = Set(found.sorted { ($0.favorite ? 0 : 1, $0.id.hashValue) < ($1.favorite ? 0 : 1, $1.id.hashValue) }
             .prefix(limit).map(\.id))
-        return found.filter { taken.contains($0.id) }
+        return Self.ordered(found.filter { taken.contains($0.id) }, by: order(of: playlist))
     }
 
     /// The works on the playlists but "Ulubione", when `rules` ask for them
@@ -289,7 +321,8 @@ actor DemoBackend: FrameBackend {
                     name: playlist.name, count: list.count
                 )
             },
-            theme: playlist.theme, limit: playlist.limit
+            theme: playlist.theme, limit: playlist.limit,
+            sort: playlist.kind == .album ? nil : order(of: playlist)
         )
     }
 
@@ -814,6 +847,12 @@ actor DemoBackend: FrameBackend {
         if copy.id == nil { copy.id = (playlistsByID.keys.max() ?? 0) + 1 }
         playlistsByID[copy.id!] = copy
         return detail(copy)
+    }
+
+    func sortPlaylist(id: Int, sort: PlaylistSort) async throws -> PlaylistDetail {
+        guard let playlist = playlistsByID[id] else { throw BackendError.notFound }
+        playlistSorts[id] = sort
+        return detail(playlist)
     }
 
     func deletePlaylist(id: Int) async throws {

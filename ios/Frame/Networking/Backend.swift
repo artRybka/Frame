@@ -109,6 +109,8 @@ protocol FrameBackend: Sendable {
     /// the playlists back in it.
     func arrangePlaylists(ids: [Int]) async throws -> [PlaylistSummary]
     func deletePlaylist(id: Int) async throws
+    /// The order of the playlist's works, in the app and on the frame.
+    func sortPlaylist(id: Int, sort: PlaylistSort) async throws -> PlaylistDetail
     func addToPlaylist(id: Int, itemIDs: [String]) async throws -> PlaylistDetail
     /// Takes one work out; a smart playlist keeps it in `rules.excludeIds`.
     func removeFromPlaylist(id: Int, itemID: String) async throws -> PlaylistDetail

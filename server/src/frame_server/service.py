@@ -225,6 +225,7 @@ class FrameService:
         host_guard.keep_rests(settings.data_dir / "hosts" / "rests.json")
         self.images = ImageCache(settings.data_dir / "library", museum_client)
         self.images.mirrors["europeana"] = europeana_mirrors
+        self.library.long_side = self.images.long_side  # playlists "by quality"
         # Tiles and cards mark a picture small for the frame by its size.
         low_res.known_sizes(self.images.long_side)
         self.images.mirrors["loc"] = loc_mirrors
