@@ -147,10 +147,10 @@ struct ItemDetailView: View {
             .glowLift($scrolled)
             .onChange(of: polish) {
                 // CI screenshots
-                guard LaunchRoute.screen == "detail", let scroll = LaunchRoute.scroll, ["about", "palette"].contains(scroll), polish != nil else { return }
+                guard LaunchRoute.screen == "detail", let scroll = LaunchRoute.scroll, ["about", "palette", "title", "picture"].contains(scroll), polish != nil else { return }
                 Task {
                     try? await Task.sleep(for: .seconds(1))
-                    proxy.scrollTo(scroll, anchor: scroll == "palette" ? .center : .top)
+                    proxy.scrollTo(scroll, anchor: ["palette", "picture"].contains(scroll) ? .center : .top)
                 }
             }
         }
@@ -342,7 +342,7 @@ struct ItemDetailView: View {
     private func loaded(_ item: Item) -> some View {
         VStack(alignment: .leading, spacing: 24) {
             picture(item)
-            titleBlock(item)
+            titleBlock(item).id("title")
             actions(item)
             // A tile set is looked at in full screen, not listed.
             if let fragments, !fragments.fragments.isEmpty, !fragments.tiled {
@@ -1254,7 +1254,7 @@ struct ItemDetailView: View {
             fact("Pochodzenie", nonEmpty(labels?.culture) ?? (answered ? item.culture : ""))
             fact("Kolekcja", item.museumShown)
             if item.kind == .artwork && item.look == nil {
-                pictureFact(item)
+                pictureFact(item).id("picture")
             }
             fact("Licencja", item.license)
             if item.showCount > 0 {

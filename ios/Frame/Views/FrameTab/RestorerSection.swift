@@ -25,7 +25,7 @@ struct RestorerSection: View {
             while !Task.isCancelled {
                 if let fresh = await model.restorerState() { state = fresh }
                 if LaunchRoute.confirm == "restore", asking == nil, let state, state.items > 0 {
-                    try? await Task.sleep(for: .seconds(2))
+                    try? await Task.sleep(for: .seconds(6))  // after the page scrolled to it
                     asking = state  // CI screenshots: where the dialog points
                 }
                 try? await Task.sleep(for: .seconds(30))
