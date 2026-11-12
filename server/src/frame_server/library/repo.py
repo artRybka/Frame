@@ -469,7 +469,8 @@ def _settled(item: Item) -> tuple[str, str]:
 
 def sort_items(items: list[Item], sort: SortKey, seed: int = 0) -> list[Item]:
     """``items`` in the ``sort`` asked for, the same every time for the same
-    works, however they came (:func:`_settled` decides between equals)."""
+    works, however they came (:func:`_settled` decides between equals);
+    "suitability" keeps equals as given (a manual playlist's cover)."""
     if sort == "title":
         return sorted(items, key=lambda i: (i.title.casefold(), i.id))
     if sort == "artist":
@@ -477,7 +478,8 @@ def sort_items(items: list[Item], sort: SortKey, seed: int = 0) -> list[Item]:
     if sort == "year":
         return sorted(items, key=lambda i: (i.year is None, i.year or 0, *_settled(i)))
     if sort == "suitability":
-        return sorted(items, key=lambda i: (-worth(i), i.id))
+        # Equals as given: a manual playlist's cover in its own order.
+        return sorted(items, key=lambda i: -worth(i))
     if sort == "shown":
         # The latest first; of those never shown, the same each time.
         ordered = sorted(items, key=lambda i: i.id)
