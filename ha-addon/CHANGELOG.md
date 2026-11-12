@@ -11,6 +11,12 @@
   w jednym gradiencie, z lekkim ziarnem (także w Studium).
 - Rzeźba nie ma paska barw na karcie (znaczniki barw zostają). Dzieło,
   którego technika nic nie mówi, ma pasek płaski, bez procentów.
+- Akwarela i gwasz: małe, wyraźne barwy nie mają już własnego odcinka
+  paska. Plama omija kółko czystego papieru, a w nim leży kropla barwy
+  akcentu, która z jednej strony zachodzi na plamę i w nią wpływa
+  (w Studium widać, jak się rozlewa).
+- Pastel, kredka, kreda: akcent to łatka mocno dociśniętych kresek po
+  skosie w drugą stronę, nisko na pasku i trochę pod jego linią.
 - Zakładka Teraz: cienki pasek barw pod tytułem zniknął.
 - Tylko aplikacja iOS.
 

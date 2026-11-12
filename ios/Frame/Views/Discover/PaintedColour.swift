@@ -124,10 +124,12 @@ private enum DryCanvas {
     }
 
     /// The paper's tooth as a picture that is only there or not.
-    static func tooth(wide: Int, high: Int, seed: Int) -> CGImage? {
+    /// `open`: how much of the tooth is left open (under a stick
+    /// pressed hard, less).
+    static func tooth(wide: Int, high: Int, seed: Int, open: Double = 1) -> CGImage? {
         let grain = DryPlan.tooth(wide: wide, high: high, seed: seed)
         var bytes = [UInt8](repeating: 0, count: wide * high * 4)
-        for k in grain.indices { bytes[4 * k + 3] = grain[k] }
+        for k in grain.indices { bytes[4 * k + 3] = Paint.byte(255 - open * (255 - Double(grain[k]))) }
         guard let provider = CGDataProvider(data: Data(bytes) as CFData) else { return nil }
         return CGImage(width: wide, height: high, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: wide * 4,
                        space: PaintJob.space, bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
@@ -160,6 +162,8 @@ final class DryStrip: @unchecked Sendable {
     private let colours: [CGColor]
     private let seed: Int
     private var tooth: CGImage?
+    /// The tooth under the strokes pressed hard.
+    private var filled: CGImage?
 
     var size: CGSize { CGSize(width: CGFloat(wide) / CGFloat(Paint.scale), height: CGFloat(high) / CGFloat(Paint.scale)) }
 
@@ -171,10 +175,26 @@ final class DryStrip: @unchecked Sendable {
         self.seed = seed
     }
 
+    /// The hatching, and over it the accents: pressed hard, they fill
+    /// the paper's tooth, so they are drawn apart and rubbed less.
     func image(age: Double) -> CGImage? {
-        guard let context = DryCanvas.context(wide: wide, high: high, origin: Paint.pad) else { return nil }
         if tooth == nil { tooth = DryCanvas.tooth(wide: wide, high: high, seed: seed) }
-        for stroke in plan.strokes {
+        let soft = drawn(age: age, press: false, tooth: tooth)
+        guard plan.strokes.contains(where: { $0.press && plan.made($0, age: age) > 0 }) else { return soft }
+        if filled == nil { filled = DryCanvas.tooth(wide: wide, high: high, seed: seed, open: DryPlan.pressed) }
+        guard let soft, let hard = drawn(age: age, press: true, tooth: filled),
+              let both = CGContext(data: nil, width: wide, height: high, bitsPerComponent: 8, bytesPerRow: 0,
+                                   space: PaintJob.space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return soft }
+        let all = CGRect(x: 0, y: 0, width: wide, height: high)
+        both.draw(soft, in: all)
+        both.draw(hard, in: all)
+        return both.makeImage()
+    }
+
+    /// The strokes pressed hard, or the others, as far as they are made at `age`.
+    private func drawn(age: Double, press: Bool, tooth: CGImage?) -> CGImage? {
+        guard let context = DryCanvas.context(wide: wide, high: high, origin: Paint.pad) else { return nil }
+        for stroke in plan.strokes where stroke.press == press {
             let made = plan.made(stroke, age: age)
             if made <= 0 { continue }
             context.setAlpha(stroke.alpha)

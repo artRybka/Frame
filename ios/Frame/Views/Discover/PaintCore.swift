@@ -140,7 +140,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
         guard !shares.isEmpty else { return 0 }
         switch self {
         case .oil: return OilStrip.pulls(shares, width: width, seed: 0).map { $0.at + $0.takes }.max() ?? 0
-        case .water: return Double(shares.count - 1) * WaterStrip.apart + WaterStrip.stroke
+        case .water: return WaterStrip.time(shares, width: width)
         case .dry: return Double(shares.count - 1) * DryPlan.apart + DryPlan.stroke
         case .burin, .pen, .pencil: return LineStrip.time(shares.count)
         case .woodblock, .litho: return InkStrip.time(shares.count)
@@ -282,6 +282,60 @@ enum Paint {
             return (x, x + w)
         }
     }
+    /// Under this much of the bar a colour is an accent: laid on top of
+    /// the others, not among them (Mateusz 2026-11-11 18:59, of the oil:
+    /// „Akcenty z końca jako pacnięcia na wierzchu”; 2026-11-12 10:47:
+    /// „przeróbmy akwarele i pastele tak, żeby akcenty leżały "na
+    /// wierzchu"”). The others keep at least `ground` of the picture.
+    static let touch = 44.0
+    static let ground = 0.55
+
+    /// Which of the colours are accents on a bar `width` wide: the
+    /// smallest first, while enough of the picture stays under them and
+    /// one colour at least.
+    static func accents(_ shares: [PaintShare], width: Double) -> [Bool] {
+        let total = max(shares.reduce(0) { $0 + $1.weight }, 0.000_001)
+        var accent = shares.map { _ in false }, kept = total, left = shares.count
+        for i in shares.indices.sorted(by: { shares[$0].weight < shares[$1].weight }) {
+            guard width * shares[i].weight / total < touch, left > 1, (kept - shares[i].weight) / total >= ground else { break }
+            accent[i] = true
+            kept -= shares[i].weight
+            left -= 1
+        }
+        return accent
+    }
+
+    /// Where accents `longs` long go along a bar `width` wide: spread
+    /// over it, each at the nearest place to its own that is clear of
+    /// the `seams` between the colours under it and of the other accents.
+    static func spots(_ longs: [Double], width: Double, seams: [Double], random: inout PaintRandom) -> [Double] {
+        var spots = [(at: Double, long: Double)]()
+        for (n, long) in longs.enumerated() {
+            let wish = width * (0.1 + 0.8 * (Double(n) + 0.5 + 0.5 * (random.next() - 0.5)) / Double(longs.count))
+            func free(_ spot: Double) -> Bool {
+                let from = spot - long / 2, to = spot + long / 2
+                if from < 5 || to > width - 5 { return false }
+                for seam in seams where seam > from - 4 && seam < to + 4 { return false }
+                for other in spots where abs(other.at - spot) < (other.long + long) / 2 + 9 { return false }
+                return true
+            }
+            var spot = min(max(wish, long / 2 + 5), width - long / 2 - 5)
+            for step in 0..<60 {
+                let right = wish + 3 * Double(step), left = wish - 3 * Double(step)
+                if free(right) {
+                    spot = right
+                    break
+                }
+                if free(left) {
+                    spot = left
+                    break
+                }
+            }
+            spots.append((spot, long))
+        }
+        return spots.map(\.at)
+    }
+
     /// A paint's swatch, and half the square its picture takes.
     static let swatch = 26.0
     static let half = 23.0
@@ -379,7 +433,10 @@ final class WaterStrip: PaintPainter, @unchecked Sendable {
     /// When the last stroke is down.
     let last: Double
 
+    /// The washes: the colours that are no accents, side by side.
     private let shares: [PaintShare]
+    /// The accents: touches of a loaded brush on top of the washes.
+    let touches: [Touch]
     private let width: Double
     private let seed: Double
     private var fields: Fields?
@@ -387,18 +444,73 @@ final class WaterStrip: PaintPainter, @unchecked Sendable {
     private struct Fields {
         var away: [[Float]], along: [[Float]], wander: [[Float]]
         var low: [Float], grain: [Float], soak: [Float], fine: [Float]
+        /// Each touch: the pixels it may reach, and how far each is from its edge (points; under 0 inside).
+        var touched: [(left: Int, right: Int, top: Int, bottom: Int, away: [Float])]
+        /// How far each pixel is from the edge of the nearest round of paper left clean (points; under 0 inside).
+        var hole: [Float]
+    }
+
+    /// An accent: a small round of paper the washes leave clean, and
+    /// the accent's own paint in it (Mateusz 2026-11-12 11:02: „akcenty
+    /// trzeba robić na czystym papierze - zostawiać niezamalowane
+    /// kółeczko”). The drop is not set square in its round: on one side
+    /// it goes over the wash and runs into it, on the other more paper
+    /// stays (11:21: „plamka akcentu może częściowo nachodzić/zlewać się
+    /// z resztą paska”).
+    struct Touch: Sendable {
+        var rgb: [Double]
+        /// Its middle along the bar and down it, and how big the round of clean paper is.
+        var x: Double, y: Double, round: Double
+        /// How far off the round's middle the drop's middle is.
+        var lean: (x: Double, y: Double)
+        /// When it comes down.
+        var at: Double
+        var turns: (Double, Double)
     }
 
     static let apart = 0.3, stroke = 0.42
+    /// How long after the last wash the accents come, how far apart, and how long one takes to spread.
+    static let accents = (after: 0.5, apart: 0.3, spread: 0.4)
+    /// The round of clean paper: its radius for the smallest accent, how
+    /// much more for the biggest, how much smaller than it the accent's
+    /// drop is, and how far off its middle the drop lies.
+    static let round = (least: 8.0, more: 1.5, gap: 0.2, off: (least: 2.6, more: 1.0))
 
-    init(shares: [PaintShare], width: Double, seed: Int) {
+    init(shares all: [PaintShare], width: Double, seed: Int) {
+        let accent = Paint.accents(all, width: width)
+        let shares = all.indices.filter { !accent[$0] }.map { all[$0] }, small = all.indices.filter { accent[$0] }.map { all[$0] }
         self.shares = shares
         self.width = width
         self.seed = Double(seed)
         wide = Int((width + 2 * Paint.pad).rounded()) * Paint.scale
         high = Int(Paint.bar + 2 * Paint.pad) * Paint.scale
-        last = Double(max(0, shares.count - 1)) * Self.apart + Self.stroke
+        let total = max(all.reduce(0) { $0 + $1.weight }, 0.000_001)
+        var random = PaintRandom(seed + 29)
+        let rounds = small.map { Self.round.least + Self.round.more * min(1, width * $0.weight / total / Paint.touch) }
+        let seams = Self.spans(shares, width: width).dropFirst().map(\.0)
+        let spots = Paint.spots(rounds.map { 2 * $0 + 4 }, width: width, seams: Array(seams), random: &random)
+        touches = small.indices.map { n in
+            // To one side or the other, not up or down: the washes are beside it.
+            let turn = (random.next() < 0.5 ? 0 : Double.pi) + 1.2 * (random.next() - 0.5)
+            let off = Self.round.off.least + Self.round.off.more * random.next()
+            return Touch(rgb: small[n].rgb, x: spots[n], y: Paint.bar / 2 + 1.2 * (random.next() - 0.5), round: rounds[n],
+                  lean: (off * cos(turn), off * sin(turn)),
+                  at: Self.washed(shares.count) + Self.accents.after + Double(n) * Self.accents.apart,
+                  turns: (random.next() * 6.28, random.next() * 6.28))
+        }
+        last = Self.time(all, width: width)
         length = last + 7
+    }
+
+    /// When the last of `count` washes is down.
+    private static func washed(_ count: Int) -> Double { Double(max(0, count - 1)) * apart + stroke }
+
+    /// How long the bar's paint takes to be down: the washes one after
+    /// another, then the accents in their rounds of paper.
+    static func time(_ shares: [PaintShare], width: Double) -> Double {
+        let small = Paint.accents(shares, width: width).filter { $0 }.count
+        let washes = washed(shares.count - small)
+        return small == 0 ? washes : washes + accents.after + Double(small - 1) * accents.apart + accents.spread
     }
 
     /// Each colour's place along the bar.
@@ -413,7 +525,36 @@ final class WaterStrip: PaintPainter, @unchecked Sendable {
                             along: Array(repeating: [Float](repeating: 0, count: n), count: m),
                             wander: Array(repeating: [Float](repeating: 0, count: n), count: m),
                             low: [Float](repeating: 0, count: n), grain: [Float](repeating: 0, count: n),
-                            soak: [Float](repeating: 0, count: n), fine: [Float](repeating: 0, count: n))
+                            soak: [Float](repeating: 0, count: n), fine: [Float](repeating: 0, count: n), touched: [],
+                            hole: [Float](repeating: 99, count: n))
+        for (j, touch) in touches.enumerated() {
+            let reach = touch.round + 12, dj = Double(j)
+            let left = max(0, Int((touch.x - reach + pad) * S)), right = min(wide - 1, Int((touch.x + reach + pad) * S))
+            let top = max(0, Int((touch.y - reach + pad) * S)), bottom = min(high - 1, Int((touch.y + reach + pad) * S))
+            var away = [Float]()
+            guard left <= right, top <= bottom else {
+                fields.touched.append((0, -1, 0, -1, away))
+                continue
+            }
+            away.reserveCapacity((right - left + 1) * (bottom - top + 1))
+            for row in top...bottom {
+                for column in left...right {
+                    let x = -pad + (Double(column) + 0.5) / S, y = -pad + (Double(row) + 0.5) / S
+                    let far = ((x - touch.x) * (x - touch.x) + (y - touch.y) * (y - touch.y)).squareRoot()
+                    let th = atan2(y - touch.y, x - touch.x)
+                    // The brush went round it by eye: not quite a circle.
+                    let left0 = touch.round * (1 + 0.05 * sin(2 * th + touch.turns.1) + 0.035 * sin(3 * th + touch.turns.0))
+                    let held = far - left0 + 0.9 * (Paint.noise(x / 3.5, y / 3.5, 340 + 11 * dj + seed) - 0.5)
+                    let k = row * wide + column
+                    if Float(held) < fields.hole[k] { fields.hole[k] = Float(held) }
+                    // The accent's own drop, a little smaller than its round and off its middle.
+                    let ox = x - touch.x - touch.lean.x, oy = y - touch.y - touch.lean.y, turn = atan2(oy, ox)
+                    let mine = (touch.round - Self.round.gap) * (1 + 0.07 * sin(2 * turn + touch.turns.0) + 0.05 * sin(3 * turn + touch.turns.1))
+                    away.append(Float((ox * ox + oy * oy).squareRoot() - mine + 1.1 * (Paint.noise(x / 4, y / 4, 300 + 11 * dj + seed) - 0.5)))
+                }
+            }
+            fields.touched.append((left, right, top, bottom, away))
+        }
         for k in 0..<n {
             let x = -pad + (Double(k % wide) + 0.5) / S, y = -pad + (Double(k / wide) + 0.5) / S
             fields.low[k] = Float(Paint.noise(x / 18, y / 18, 31 + seed))
@@ -494,7 +635,9 @@ final class WaterStrip: PaintPainter, @unchecked Sendable {
                     halo = Paint.step(0, 0.5, deep) * (1 - Paint.step(deep - 0.7, deep + 0.3, edge)) * 0.26 * (1 - 0.3 * (grain - 0.5))
                 }
             }
-            let al = max(A * (0.96 - 0.04 * dry), halo)
+            // The paper left clean for an accent: the wash goes round it.
+            let held = Double(fields.hole[k])
+            let al = max(A * (0.96 - 0.04 * dry), halo) * Paint.step(-0.45, 0.45, held)
             if al <= 0 { continue }
             let cr: Double, cg: Double, cb: Double
             if sum > 0 {
@@ -508,7 +651,7 @@ final class WaterStrip: PaintPainter, @unchecked Sendable {
             }
             // Two paints together are a little darker than either.
             let both = sum > 0 ? 4 * (w1 / sum) * (w2 / sum) : 0
-            let rim = Paint.step(-3.6, -0.8, edge) * dry
+            let rim = Paint.step(-3.6, -0.8, max(edge, -held)) * dry
             let shade = (1 - 0.13 * both) * (1 - 0.16 * rim) * (1 + 0.1 * (low - 0.5) * dry) * (1 - 0.1 * (grain - 0.5))
             let q = 4 * k
             out.bytes[q] = Paint.byte(cr * shade)
@@ -516,9 +659,52 @@ final class WaterStrip: PaintPainter, @unchecked Sendable {
             out.bytes[q + 2] = Paint.byte(cb * shade)
             out.bytes[q + 3] = Paint.byte(255 * al)
         }
+        for (j, touch) in touches.enumerated() { lay(touch, fields.touched[j], age: age - touch.at, index: Double(j), fields: fields, into: &out) }
         // Dry: nothing of it changes any more, and what it was worked out from can go.
         if age >= length { self.fields = nil }
         return out
+    }
+
+    /// An accent in its round of clean paper: a drop of its own paint,
+    /// pure where nothing is under it. On one side it stops short of the
+    /// wash about it and paper stays between them; on the other it goes
+    /// over the wash and, while both are wet, runs out into it and mixes
+    /// with it. It dries with the pigment gathered at its rim.
+    private func lay(_ touch: Touch, _ place: (left: Int, right: Int, top: Int, bottom: Int, away: [Float]), age: Double, index: Double,
+                     fields: Fields, into out: inout PaintFrame) {
+        guard age > 0, place.left <= place.right else { return }
+        let S = Double(Paint.scale), pad = Paint.pad
+        let grow = 1 - pow(1 - min(1, age / Self.accents.spread), 2.4), dry = Paint.ease((age - 0.8) / 2.2), runs = Paint.ease((age - 0.15) / 1.6)
+        let least = touch.round - Self.round.gap
+        var p = 0
+        for row in place.top...place.bottom {
+            for column in place.left...place.right {
+                let away = Double(place.away[p]) + (1 - grow) * least
+                p += 1
+                if away > 6 { continue }
+                let k = row * wide + column, q = 4 * k
+                let x = -pad + (Double(column) + 0.5) / S, y = -pad + (Double(row) + 0.5) / S
+                let under = Double(out.bytes[q + 3]) / 255
+                let low = Double(fields.low[k]), grain = Double(fields.grain[k])
+                // Where it runs: into the wash it lies on, further in places, never over bare paper.
+                let damp = (0.45 + 0.55 * Paint.step(0.4, 0.66, Paint.noise(x / 6, y / 6, 320 + 11 * index + seed))) * runs * under
+                let soft = 0.5 + 3.2 * damp
+                let inside = 1 - Paint.step(-soft, soft, away - 2.2 * damp)
+                if inside <= 0.004 { continue }
+                let rim = Paint.step(-3.0, -0.7, away) * dry * (1 - 0.8 * damp)
+                let shade = (1 - 0.2 * rim) * (1 + 0.07 * (1 - Paint.step(-5, -2, away)) * dry) * (1 + 0.1 * (low - 0.5) * dry) * (1 - 0.1 * (grain - 0.5))
+                let much = inside * (0.95 - 0.04 * dry)
+                for c in 0..<3 {
+                    let below = Double(out.bytes[q + c])
+                    // Over the wash the two paints mix, the more the nearer the drop's edge.
+                    let wash = 0.1 + 0.26 * Paint.step(-3, 0.5, away) * runs
+                    let glaze = under > 0 ? exp((1 - wash) * log(max(4, touch.rgb[c])) + wash * log(max(4, below))) : touch.rgb[c]
+                    let mine = glaze * shade
+                    out.bytes[q + c] = Paint.byte(under > 0 ? below + (mine - below) * much : mine)
+                }
+                out.bytes[q + 3] = Paint.byte(255 * max(under, much))
+            }
+        }
     }
 }
 
@@ -672,9 +858,7 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
     static let stride = 64.0, back = 16.0
     /// Under this a colour is an accent: a touch of the brush on top of
     /// the others, not a pull among them.
-    static let touch = 44.0
-    /// The pulls keep at least this much of the picture's colour.
-    static let ground = 0.55
+    static let touch = Paint.touch
     /// How long after the last pull the accents come, and how far apart.
     static let accents = (after: 0.12, apart: 0.24)
 
@@ -801,13 +985,7 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
         guard !shares.isEmpty else { return [] }
         let total = max(shares.reduce(0) { $0 + $1.weight }, 0.000_001)
         // The smallest first, while enough of the picture stays in the pulls.
-        var accent = shares.map { _ in false }, kept = total, left = shares.count
-        for i in shares.indices.sorted(by: { shares[$0].weight < shares[$1].weight }) {
-            guard width * shares[i].weight / total < touch, left > 1, (kept - shares[i].weight) / total >= Self.ground else { break }
-            accent[i] = true
-            kept -= shares[i].weight
-            left -= 1
-        }
+        let accent = Paint.accents(shares, width: width)
         let mains = shares.indices.filter { !accent[$0] }, small = shares.indices.filter { accent[$0] }
         let ground = max(mains.reduce(0) { $0 + shares[$1].weight }, 0.000_001), room = width - 6
         var random = PaintRandom(seed + 17), x = 0.0, at = 0.0
@@ -1189,10 +1367,13 @@ struct DryPlan: Sendable {
     /// One stroke of the stick, in points from the bar's upper left corner.
     struct Stroke: Sendable {
         var colour: Int
-        /// When in its colour's turn it is made, 0…1.
+        /// Which colour's turn it is made in, and when in that turn, 0…1.
+        var turn: Int
         var part: Double
         var from: (x: Double, y: Double), to: (x: Double, y: Double)
         var bow: Double, wide: Double, alpha: Double
+        /// Pressed hard: the stick fills the paper's tooth.
+        var press = false
     }
 
     var strokes: [Stroke]
@@ -1201,17 +1382,31 @@ struct DryPlan: Sendable {
     var length: Double
 
     static let apart = 0.34, stroke = 0.5
+    /// An accent's patch: how far down the bar it begins (of the bar's
+    /// height) and how far under the bar's foot it goes (Mateusz
+    /// 2026-11-12 11:02: „akcent - mocniej docisnąć. może być trochę
+    /// niżej i wystawać pod linię ogólnego gradientu”).
+    static let accent = (top: 0.38, under: 6.0)
+    /// How much of the paper's tooth a stroke pressed hard leaves open.
+    static let pressed = 0.5
     /// How long one stroke takes.
     static let quick = 0.07
 
+    /// The colours hatched side by side, the accents hatched over them
+    /// afterwards (Mateusz 2026-11-12 10:47: „żeby akcenty leżały "na
+    /// wierzchu"”): a small patch each, pressed harder and the other
+    /// way, so that it sits on the hatching under it.
     init(shares: [PaintShare], width: Double, seed: Int) {
-        let m = shares.count, Hs = Paint.bar
-        let spans = Paint.spans(shares, width: width)
+        let Hs = Paint.bar
+        let accent = Paint.accents(shares, width: width)
+        let mains = shares.indices.filter { !accent[$0] }, small = shares.indices.filter { accent[$0] }
+        let m = mains.count
+        let spans = Paint.spans(mains.map { shares[$0] }, width: width)
         var random = PaintRandom(seed + 23)
         var strokes = [Stroke]()
-        for i in shares.indices {
-            let x0 = spans[i].0, w = spans[i].1 - spans[i].0
-            let a = x0 - (i > 0 ? 6 : 0), e = x0 + w + (i < m - 1 ? 6 : 0)
+        for (n, i) in mains.enumerated() {
+            let x0 = spans[n].0, w = spans[n].1 - spans[n].0
+            let a = x0 - (n > 0 ? 6 : 0), e = x0 + w + (n < m - 1 ? 6 : 0)
             let count = max(4, Int(((e - a) / 2.7).rounded()))
             let lean = 7.5 + 2 * (random.next() - 0.5)
             for q in 0..<count {
@@ -1219,7 +1414,7 @@ struct DryPlan: Sendable {
                 let over = 1.5 + 3 * random.next() * random.next(), under = 1.2 + 3 * random.next() * random.next()
                 let l = lean + 2.4 * (random.next() - 0.5)
                 let bow = 1.6 * (random.next() - 0.5), wide = 2.3 + 1.3 * random.next(), alpha = 0.62 + 0.33 * random.next()
-                strokes.append(Stroke(colour: i, part: Double(q) / Double(count), from: (cx - l, Hs + under), to: (cx + l, -over),
+                strokes.append(Stroke(colour: i, turn: n, part: Double(q) / Double(count), from: (cx - l, Hs + under), to: (cx + l, -over),
                                       bow: bow, wide: wide, alpha: alpha))
             }
             // A few lighter ones back over it, the other way: the hand going over the patch again.
@@ -1228,18 +1423,46 @@ struct DryPlan: Sendable {
                 let cx = a + 3 + (e - a - 6) * random.next(), l = -(4 + 3 * random.next())
                 let y1 = Hs - 1 - 4 * random.next(), y2 = 1 + 4 * random.next()
                 let bow = random.next() - 0.5, wide = 1.6 + random.next(), alpha = 0.3 + 0.2 * random.next()
-                strokes.append(Stroke(colour: i, part: 0.75 + 0.25 * Double(q) / Double(max(1, again)), from: (cx - l, y1), to: (cx + l, y2),
+                strokes.append(Stroke(colour: i, turn: n, part: 0.75 + 0.25 * Double(q) / Double(max(1, again)), from: (cx - l, y1), to: (cx + l, y2),
                                       bow: bow, wide: wide, alpha: alpha))
             }
         }
+        let total = max(shares.reduce(0) { $0 + $1.weight }, 0.000_001)
+        let longs = small.map { 16 + 8 * min(1, width * shares[$0].weight / total / Paint.touch) }
+        let spots = Paint.spots(longs.map { $0 + 6 }, width: width, seams: spans.dropFirst().map(\.0), random: &random)
+        for (n, i) in small.enumerated() {
+            let a = spots[n] - longs[n] / 2, e = spots[n] + longs[n] / 2
+            let count = max(6, Int((longs[n] / 2.5).rounded()))
+            // The stick pressed hard, and the other way than the hatching under it (Mateusz 2026-11-12 11:21:
+            // „akcent rysowany po skosie w drugą stronę (tak jak poprzednio)”).
+            let slope = -(0.22 + 0.05 * (random.next() - 0.5))
+            let top = Hs * Self.accent.top + 2 * (random.next() - 0.5), foot = Hs + Self.accent.under + 1.5 * (random.next() - 0.5)
+            for q in 0..<count {
+                let cx = a + (e - a) * (Double(q) + 0.5 + 0.5 * (random.next() - 0.5)) / Double(count)
+                // Shorter at the patch's ends.
+                let full = 0.72 + 0.28 * sin(Double.pi * (Double(q) + 0.5) / Double(count))
+                let y1 = foot - (1 - full) * 5 + 2.6 * (random.next() - 0.5), y2 = top + (1 - full) * 6 + 3.4 * (random.next() - 0.5)
+                let l = slope * (y1 - y2) + 0.8 * (random.next() - 0.5)
+                let bow = 1.2 * (random.next() - 0.5), wide = 2.7 + 0.9 * random.next(), alpha = 0.9 + 0.1 * random.next()
+                strokes.append(Stroke(colour: i, turn: m + n, part: 0.8 * Double(q) / Double(count), from: (cx - l, y1), to: (cx + l, y2),
+                                      bow: bow, wide: wide, alpha: alpha, press: true))
+            }
+            // Gone over once more, to fill the patch.
+            for q in 0..<2 {
+                let cx = a + 2 + (e - a - 4) * random.next()
+                let y1 = foot - 2 - 2 * random.next(), y2 = top + 2 + 3 * random.next(), l = slope * (y1 - y2) + 1.2 * (random.next() - 0.5)
+                strokes.append(Stroke(colour: i, turn: m + n, part: 0.8 + 0.2 * Double(q) / 2, from: (cx - l, y1), to: (cx + l, y2),
+                                      bow: random.next() - 0.5, wide: 2.4 + 0.8 * random.next(), alpha: 0.55 + 0.15 * random.next(), press: true))
+            }
+        }
         self.strokes = strokes
-        last = Double(max(0, m - 1)) * Self.apart + Self.stroke
+        last = Double(max(0, shares.count - 1)) * Self.apart + Self.stroke
         length = last + 1
     }
 
     /// How much of a stroke is made at `age`: under 0 none, from 1 all.
     func made(_ stroke: Stroke, age: Double) -> Double {
-        (age - (Double(stroke.colour) * Self.apart + stroke.part * Self.stroke)) / Self.quick
+        (age - (Double(stroke.turn) * Self.apart + stroke.part * Self.stroke)) / Self.quick
     }
 
     /// One paint's scribble: the corners of its zigzag, in points from the
