@@ -319,6 +319,62 @@ def test_what_is_white_in_the_picture_stays_white() -> None:
     assert not sheets.whites(np.asarray(lamp)).any()
 
 
+def _storm(size: tuple[int, int] = (600, 400)) -> Image.Image:
+    """A storm under an old varnish: a great dark sky, a cloud with an
+    opening of grey-blue as light as it, a sea whose browns run from dark
+    to light band by band."""
+    img = Image.new("RGB", size, (70, 52, 42))
+    canvas = ImageDraw.Draw(img)
+    canvas.ellipse((150, 110, 560, 330), fill=(176, 158, 128))  # the cloud
+    canvas.ellipse((215, 150, 345, 235), fill=(128, 146, 150))  # the opening
+    for k in range(9):  # the sea: each band a little lighter than the last
+        tone = 62 + 19 * k
+        canvas.rectangle((0, 240 + 18 * k, 600, 258 + 18 * k), fill=(tone, tone - 10, tone - 24))
+    return img
+
+
+def test_the_sheet_keeps_what_the_picture_is_made_of() -> None:
+    """Mateusz 2026-11-12 13:46, of a storm by Turner: "na szkicu bardzo
+    brakuje ciemnej plamy nieba. to istotny element, a akwarela go
+    pominęła. chyba błękit/prześwit nieba też powinien się pokazać w
+    akwareli"; "Szkic musi oddawać istotę i ideę obrazu"."""
+    storm = _storm()
+    piece, colours = sheets.masses(np.asarray(storm), seed=3)
+    tall, wide = piece.shape
+
+    def at(x: float, y: float) -> int:
+        return int(piece[int(y * tall), int(x * wide)])
+
+    # Tones that run into one another are not one stain from the darkest
+    # to the lightest: the sea's dark is another than its light.
+    assert at(0.05, 0.63) != at(0.05, 0.97)
+    assert colours[at(0.05, 0.97)].sum() > colours[at(0.05, 0.63)].sum() + 0.6
+    # The opening is a stain of its own, though as light as the cloud.
+    sky, cloud, opening = at(0.1, 0.1), at(0.8, 0.5), at(0.47, 0.48)
+    assert len({sky, cloud, opening}) == 3
+    assert abs(float(colours[opening].sum() - colours[cloud].sum())) < 0.25
+    for dark in (False, True):
+        sheet = np.asarray(sheets.render(storm, dark=dark, seed=3), np.int16)
+        # ... and is blue on the sheet beside a cloud that is not.
+        blue = sheet[440:520, 620:780].mean(axis=(0, 1))
+        cream = sheet[420:560, 1150:1300].mean(axis=(0, 1))
+        assert blue[2] > blue[0] + 6 and cream[0] > cream[2] + 10
+    # The dark sky is painted on the light page, quiet as it is and at the
+    # field's edge: a dark stain, darker than the cloud under it.
+    light = sheets.render(storm, seed=3)
+    assert _bare(light)[40:240, 40:1460].mean() < 0.02
+    lit = np.asarray(light, np.float32)
+    assert lit[60:220, 100:1400].mean() < lit[420:560, 1150:1300].mean() - 40
+    # A picture all in one green has no varnish to see through: its paint
+    # stays green.
+    wood = Image.new("RGB", (600, 400), (70, 110, 60))
+    canvas = ImageDraw.Draw(wood)
+    canvas.rectangle((0, 0, 600, 150), fill=(120, 150, 90))
+    canvas.ellipse((250, 180, 380, 300), fill=(150, 160, 90))
+    green = np.asarray(sheets.render(wood, seed=3), np.int16)[450:700, 150:450].mean(axis=(0, 1))
+    assert green[1] > green[0] + 12 and green[1] > green[2] + 12
+
+
 def test_the_sheets_are_made_ahead_of_the_reader(tmp_path: Path) -> None:
     """Mateusz 2026-11-12 09:47: "Po wejściu w studium sporo czasu czekam aż
     pojawi się obraz analizy kompozycji"."""

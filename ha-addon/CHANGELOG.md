@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.145.58
+
+- Studium dzieła, analiza kompozycji: akwarela arkusza lepiej oddaje to,
+  z czego obraz jest zbudowany. Wielka ciemna plama (burzowe niebo
+  Turnera) jest teraz ciemną plamą, a nie pustym papierem ani szarością
+  taką jak morze pod nią. Obraz, którego tony przechodzą jeden w drugi,
+  nie zlewa się już w jedną plamę od najciemniejszego do
+  najjaśniejszego miejsca.
+- Miejsce o innej barwie niż otoczenie, choć równie jasne (prześwit
+  błękitu w chmurach), jest osobną plamą. W obrazach pod pożółkłym
+  werniksem farby jasnych i średnich tonów są mieszane dalej od siebie,
+  więc szarobłękit nie ginie w brązie.
+- To, co w obrazie białe, zostaje białe jak dotąd, a spokojne tła
+  portretów nadal mają niedomalowane brzegi.
+- Numerek znaku nie chowa się już pod linią innego znaku: gdy w jego
+  miejscu biegnie cudza linia, staje krok obok.
+- Arkusze mają nowy wygląd (7), więc serwer maluje je od nowa, każdy
+  przy pierwszym otwarciu studium albo z wyprzedzeniem; nie trzeba nic
+  robić. Bez pytania modelu, bez kosztu.
+
 ## 1.145.57
 
 - Odkrywaj: karty malarzy nie łapią już innych osób o tym samym
@@ -12,6 +32,7 @@
   barwy tylko u dzieł, które pasują techniką i latami, zamiast pobierać
   miniatury wszystkiego, co muzeum ma na stronie. W próbie 8 dzieł
   w 39 sekund zamiast 2 w 7 minut; wyniki są te same.
+
 ## 1.145.56
 
 - Pasek barw farbą olejną: tłusta plama na papierze pod farbą sięga
