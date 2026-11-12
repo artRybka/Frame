@@ -224,9 +224,20 @@ final class TermFacetTests: XCTestCase {
         XCTAssertEqual(ColorTag.level(of: "only:blue"), .most)
         XCTAssertNil(ColorTag.level(of: "warm"))
         XCTAssertNil(ColorTag.level(of: "tone:warm"))
-        // White, grey and black are never an accent.
-        XCTAssertEqual(ColorTag.Level.of("white"), [.clear, .much, .most])
+        // Grey, black and beige are never an accent; white is one where
+        // it stands out (Mateusz 2026-11-12).
+        XCTAssertEqual(ColorTag.Level.of("gray"), [.clear, .much, .most])
+        XCTAssertEqual(ColorTag.Level.of("cream"), [.clear, .much, .most])
+        XCTAssertEqual(ColorTag.Level.of("white").first, .accent)
         XCTAssertEqual(ColorTag.Level.of("blue").first, .accent)
+        XCTAssertEqual(ColorTag.name("white@accent"), "Biel · akcent")
+        XCTAssertEqual(ColorTag.name("accent:white"), "Akcent: biel")
+        XCTAssertEqual(ColorTag.name("cream@clear"), "Beż · obecny")
+        XCTAssertEqual(ColorTag.name("cream@most"), "Beż · główny")
+        XCTAssertEqual(ColorTag.rows(["cream", "accent:white"]), [["cream"], ["accent:white"], []])
+        // Seven to a row in the Kolor sheet, Tonacja's groups on three of them.
+        XCTAssertEqual(ColorTag.families.count, 13)
+        XCTAssertEqual(ToneRow.groupWidth(in: 7 * 40 + 6 * ToneGroup.columnGap), 3 * 40 + 2 * ToneGroup.columnGap, accuracy: 0.001)
         let tokens = [
             SearchToken(kind: "color", key: "blue@much", name: "Błękit · wyraźny"),
             SearchToken(kind: "color", key: "tone:warm", name: "Ciepłe"),
