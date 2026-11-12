@@ -28,6 +28,7 @@ from .artists import IDS_STATE, PEOPLE_STATE, is_artist, known_names, learn, mad
 from .colors import has_colours, shown_tags
 from .duplicates import Works, better, dedupe, regroups
 from .good import good_first, worth
+from .images import said_side
 from .models import (
     MINE,
     MINE_FAVORITES,
@@ -43,6 +44,7 @@ from .models import (
     Playlist,
     PlaylistKind,
     PlaylistRules,
+    PlaylistSort,
     PlaylistSummary,
 )
 from .phrases import fold as phrase_fold
@@ -492,6 +494,52 @@ def sort_items(items: list[Item], sort: SortKey, seed: int = 0) -> list[Item]:
     return sorted(ordered, key=lambda i: i.added_at, reverse=True)
 
 
+def ordered(
+    items: list[Item],
+    order: PlaylistSort,
+    long_side: Callable[[Item], int | None] = said_side,
+    added: list[str] | None = None,
+) -> list[Item]:
+    """A playlist's ``items`` in ``order`` (Mateusz 2026-11-12: "Do playlist
+    dodaj opcję ich sortowania"). ``added``: a manual playlist's ids in the
+    order they were added, its "when added"; a smart one's is the work's
+    joining the library. A work whose key is not known (no artist, no year,
+    no size) goes last whichever way; equals by title, then id
+    (:func:`_settled`).
+
+    - artist: A to Z (reversed Z to A), each one's works the oldest first;
+    - year: the oldest first;
+    - added: the latest first;
+    - format: the tallest first (portrait, square, landscape);
+    - quality: the largest picture first."""
+    settled = sorted(items, key=_settled)
+    at = {item_id: n for n, item_id in enumerate(added or [])}
+
+    def value(item: Item) -> Any:
+        match order.key:
+            case "artist":
+                return item.artist.strip().casefold() or None
+            case "year":
+                return item.year
+            case "added":
+                if added is not None:
+                    return at.get(item.id)
+                return item.added_at or None
+            case "format":
+                return item.height / item.width if item.width and item.height else None
+            case _:
+                return long_side(item) or None
+
+    if order.key == "artist":
+        settled.sort(key=lambda i: (i.year is None, i.year or 0))
+    # The natural direction: these the most first.
+    most_first = order.key in ("added", "format", "quality")
+    known = [(v, i) for i in settled if (v := value(i)) is not None]
+    unknown = [i for i in settled if value(i) is None]
+    known.sort(key=lambda pair: pair[0], reverse=most_first != order.reverse)
+    return [i for _, i in known] + unknown
+
+
 def cover_colors(items: list[Item]) -> list[ColorSwatch]:
     """The main (heaviest, not accent) colour of each cover work."""
     found: list[ColorSwatch] = []
@@ -538,6 +586,10 @@ class Library:
         #: while they change or are first read, never for a read of the
         #: disk alone (the event loop asks for hearts).
         self._lock = threading.RLock()
+        #: The long side of a work's picture, for a playlist "by quality":
+        #: what its source says until the service puts the image cache's
+        #: answer here (:meth:`.images.ImageCache.long_side`).
+        self.long_side: Callable[[Item], int | None] = said_side
         #: The one connection to the disk (:meth:`_db`). Taken after
         #: ``_lock`` when both are held, never before it.
         self._db_lock = threading.RLock()
@@ -1625,19 +1677,32 @@ class Library:
             ids.update(i.id for i in self.playlist_items(playlist))
         return ids
 
-    def playlist_items(self, playlist: Playlist, sort: SortKey = "recent") -> list[Item]:
+    def playlist_items(self, playlist: Playlist, sort: SortKey | None = None) -> list[Item]:
+        """The playlist's works in its own order (:attr:`Playlist.order`,
+        the app's and the frame's), or by ``sort`` when one is asked; an
+        album's photos as they are kept (the player orders them)."""
         if playlist.kind != PlaylistKind.SMART:
             all_items = self._snapshot_by_id()
             # Album photos taken out, and hidden works.
             skip = set(playlist.rules.exclude_ids) | self.hidden().ids
-            return dedupe(
+            items = dedupe(
                 [all_items[i] for i in playlist.item_ids if i in all_items and i not in skip]
             )
+            if playlist.kind == PlaylistKind.ALBUM:
+                return items
+            if sort is not None:
+                return sort_items(items, sort)
+            # Each work where its first copy was added (:func:`dedupe`).
+            return ordered(items, playlist.order, self.long_side, [i.id for i in items])
         stamp = self._stamp()
-        items = dedupe(self.query(playlist.rules, sort=sort, user=playlist.owner)[1])
+        items = dedupe(self.query(playlist.rules, sort=sort or "recent", user=playlist.owner)[1])
         if playlist.limit:
             items = limited(items, playlist, self.favorites(playlist.owner))
-        items = fetched_last(items, playlist)
+        if sort is None:
+            items = ordered(items, playlist.order, self.long_side)
+        if sort is not None or playlist.sort is None:
+            # Works fetched for it last, unless its owner chose an order.
+            items = fetched_last(items, playlist)
         self._keep_count(playlist, stamp, items)
         return items
 
@@ -1660,6 +1725,7 @@ class Library:
             shared=playlist.shared,
             mine=playlist.owner == viewer_id(),
             limit=playlist.limit,
+            sort=None if playlist.kind == PlaylistKind.ALBUM else playlist.order,
         )
 
     def _stamp(self) -> tuple[int, int, int]:

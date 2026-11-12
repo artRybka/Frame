@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..library import (
@@ -14,6 +14,7 @@ from ..library import (
     Playlist,
     PlaylistKind,
     PlaylistRules,
+    PlaylistSort,
     PlaylistSummary,
 )
 from ..library.duplicates import Works
@@ -105,7 +106,7 @@ def _only_favorites(svc: FrameService, playlist: Playlist) -> bool:
 
 
 def _detail(svc: FrameService, playlist: Playlist) -> PlaylistDetail:
-    items = svc.library.playlist_items(playlist, sort="artist")
+    items = svc.library.playlist_items(playlist)  # in its own order
     if playlist.kind == PlaylistKind.SMART:
         items = items[:DETAIL_LIMIT]  # e.g. one made before empty rules were refused
     return PlaylistDetail(
@@ -177,7 +178,11 @@ def update_playlist(
     existing = _own(svc, playlist_id, user)
     # An app from before "Wspólna" sends no ``shared``: the playlist stays as it is.
     shared = playlist.shared if "shared" in playlist.model_fields_set else existing.shared
-    playlist = _checked(playlist).model_copy(update={"owner": existing.owner, "shared": shared})
+    # The order is set on its own (``/sort``); the editor sends none.
+    sort = playlist.sort if "sort" in playlist.model_fields_set else existing.sort
+    playlist = _checked(playlist).model_copy(
+        update={"owner": existing.owner, "shared": shared, "sort": sort}
+    )
     if _only_favorites(svc, existing):
         # It may be renamed and narrowed, but stays the hearts' playlist.
         rules = playlist.rules.model_copy(update={"favorites_only": True})
@@ -197,6 +202,24 @@ def update_playlist(
         svc.albums.deleted(playlist_id)  # the photos of the old album go
     if relinked:
         svc.albums.start_sync(playlist_id)
+    return _detail(svc, saved)
+
+
+@router.put("/playlists/{playlist_id}/sort", response_model=PlaylistDetail)
+def sort_playlist(
+    playlist_id: int,
+    svc: Svc,
+    user: CurrentUser,
+    sort: Annotated[PlaylistSort | None, Body()] = None,
+) -> PlaylistDetail:
+    """The order of the playlist's works, in the app and on the frame when
+    it does not shuffle (Mateusz 2026-11-12); null: back to the default."""
+    existing = _own(svc, playlist_id, user)
+    if existing.kind == PlaylistKind.ALBUM:
+        raise HTTPException(409, "an album keeps the order chosen for it")
+    saved = svc.library.save_playlist(existing.model_copy(update={"sort": sort}))
+    if saved.order != existing.order:
+        svc.player.playlist_changed(playlist_id)  # the frame's next ones follow
     return _detail(svc, saved)
 
 

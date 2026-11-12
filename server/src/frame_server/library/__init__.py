@@ -16,6 +16,7 @@ from .models import (
     Playlist,
     PlaylistKind,
     PlaylistRules,
+    PlaylistSort,
     PlaylistSummary,
 )
 from .repo import Library
@@ -38,5 +39,6 @@ __all__ = [
     "Playlist",
     "PlaylistKind",
     "PlaylistRules",
+    "PlaylistSort",
     "PlaylistSummary",
 ]

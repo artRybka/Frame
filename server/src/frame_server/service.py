@@ -225,6 +225,7 @@ class FrameService:
         host_guard.keep_rests(settings.data_dir / "hosts" / "rests.json")
         self.images = ImageCache(settings.data_dir / "library", museum_client)
         self.images.mirrors["europeana"] = europeana_mirrors
+        self.library.long_side = self.images.long_side  # playlists "by quality"
         self.images.mirrors["loc"] = loc_mirrors
         # The Courtauld's CMYK scans come white as JPEG: asked again as PNG.
         self.images.repairs[courtauld.HOST] = courtauld.repair
