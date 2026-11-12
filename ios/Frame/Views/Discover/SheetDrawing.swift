@@ -57,6 +57,7 @@ struct SheetLayers: View {
                         SheetPlan.penMask(in: &canvas, size: size, time: time, strokes: strokes, bleed: bleed)
                     }
                 }
+                .opacity(SheetPlan.penShare)
         }
         .onGeometryChange(for: Bool.self) { proxy in
             // No scroll view around it: nothing to wait for.
@@ -128,6 +129,11 @@ struct SheetLayers: View {
 /// When each part of a study sheet is laid down, and the masks that show
 /// that much of it. Seconds from the start of the drawing.
 enum SheetPlan {
+    /// How much of the pen's ink the sheet keeps: the sketch lies under the
+    /// marks and is weaker than they are (Mateusz 2026-11-12 11:31: "szkic
+    /// pod spodem słabszy, a linie kredą - ciut mocniejsze i grubsze niż
+    /// rysunek teraz").
+    static let penShare = 0.6
     /// The pen's strokes, one after another at one speed.
     static let pen = 1.5
     /// The least a stroke takes, however short.

@@ -73,6 +73,20 @@ one or two places a stain runs out over it (:func:`_spills`) and one
 stroke that ends at a side goes on past it (:func:`_past`). What lies in
 the field is as it was; :func:`field` is a layer cut back to it.
 
+The margin first carried what lay by the frame as in a mirror, a second
+chair beside the chair. Of that, 11:48: "wylewanie akwareli nie wygląda
+dobrze - to musiałaby być jednolita plama, a nie odbicie lustrzane
+skomplikowanego układu". So (:data:`LOOK` 6) what runs out is one stain
+of one colour, the mass that lies at the frame there, and nothing of the
+picture is carried beyond the frame.
+
+And of the white linen of a portrait painted in the cream of the face
+beside it (11:31: "(3) wskazuje i opisuje biel tkanin, a na szkicu jest
+cielisty-kremowy"): what is white in the picture stays white on the
+sheet (:func:`whites`), the paper itself on the light page, as one
+paints in watercolour, and light paint on the dark one. An old varnish
+yellows a picture's lights, so white is read without their cast.
+
 No model is asked here; about four seconds a sheet (``sheets.Sheets``
 makes them ahead).
 """
@@ -96,7 +110,7 @@ Array = npt.NDArray[Any]
 PenStroke = tuple[Sequence[tuple[float, float]], bool, bool]
 
 #: Raised when the look changes, so that sheets made before are made again.
-LOOK = 5
+LOOK = 6
 #: The sheet's longer side.
 LONG = 1500
 #: The app's page and ink (``Theme.paper``, ``Theme.ink``): light, dark.
@@ -130,6 +144,25 @@ GAP = 0.38
 #: the field that is left bare (a picture that is all sky is still painted).
 BARE_THIN = 0.2
 BARE_MOST = 0.3
+#: What is white in the picture stays white on the sheet: the paper itself
+#: on the light page, light paint on the dark one. White is what is this
+#: light (CIE L of the picture in the sheet's key) and this plain once the
+#: cast of the picture's own lights is taken off (an old varnish yellows
+#: its linen), unless those lights are more coloured than
+#: :data:`WHITE_CAST` or not a varnish's yellow (:data:`WHITE_WARM`, the
+#: hue's angle in Lab): a lamp, a sunset, a blue sky are a colour. A white
+#: place smaller than :data:`WHITE_LEAST` of the picture is let go, and no
+#: more than :data:`WHITE_MOST` of it is white (the lightest of it).
+WHITE_LIGHT = 80.0
+WHITE_PLAIN = 8.0
+WHITE_CAST = 24.0
+WHITE_WARM = (68.0, 102.0)
+WHITE_LEAST = 0.002
+WHITE_MOST = 0.25
+#: How little of the picture's own tone the paper keeps where it is white
+#: (its folds), and the light paint that stands for white on the dark page.
+WHITE_TONE = 0.045
+WHITE_PAINT = (0.91, 0.89, 0.85)
 #: How much of the ink a stroke of the nib lays, and its width.
 NIB_INK = 0.66
 NIB = 3.3
@@ -267,12 +300,41 @@ def _joined(piece: Array, count: int, lab: Array, quiet: Array) -> Array:
     return to[piece]
 
 
-def masses(rgb: Array, seed: int = 1) -> tuple[Array, Array]:
+def _plain(rgb: Array) -> Array:
+    """The picture as its masses are read from it (BGR, 560 pixels long)."""
+    return _flat(rgb, 560, 16, 40)
+
+
+def whites(rgb: Array, flat: Array | None = None) -> Array:
+    """Where the picture is white, as a small map (of :func:`masses`'s
+    shape): light and plain, seen without the cast of its own lights."""
+    flat = _plain(rgb) if flat is None else flat
+    lab = cv2.cvtColor(flat, cv2.COLOR_BGR2LAB).astype(np.float32)
+    light = lab[..., 0] * (100 / 255)
+    ab = lab[..., 1:] - 128
+    top = light >= np.percentile(light, 98)
+    cast = np.median(ab[top], axis=0)
+    hue = math.degrees(math.atan2(float(cast[1]), float(cast[0])))
+    if float(np.hypot(*cast)) > WHITE_CAST or not WHITE_WARM[0] <= hue <= WHITE_WARM[1]:
+        cast = np.zeros(2, np.float32)  # the lights are a colour, not a varnish
+    level = max(float(light[top].mean()), 1.0)
+    plain = np.linalg.norm(ab - cast * (light / level)[..., None], axis=2)
+    found = (light >= WHITE_LIGHT) & (plain <= WHITE_PLAIN)
+    if found.mean() > WHITE_MOST:  # the lightest of it
+        found &= light >= np.quantile(light[found], 1 - WHITE_MOST / float(found.mean()))
+    found = cv2.morphologyEx(found.astype(np.uint8), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    n, comp, stats, _ = cv2.connectedComponentsWithStats(found, connectivity=8)
+    kept = np.zeros(n, bool)
+    kept[1:] = stats[1:, cv2.CC_STAT_AREA] >= WHITE_LEAST * found.size
+    return kept[comp]
+
+
+def masses(rgb: Array, seed: int = 1, flat: Array | None = None) -> tuple[Array, Array]:
     """The picture's masses: a small map of which mass each place belongs to
     (from 1) and each mass's colour. What is too small to be a mass joins
     the mass around it, and where little happens a mass must be greater and
     neighbours of nearly one colour are one."""
-    flat = _flat(rgb, 560, 16, 40)
+    flat = _plain(rgb) if flat is None else flat
     quiet = 1 - busy(rgb, flat.shape[:2])
     true = cv2.cvtColor(flat, cv2.COLOR_BGR2LAB).astype(np.float32)
     true[..., 0] *= 100 / 255
@@ -462,40 +524,75 @@ def field(layer: Image.Image) -> Image.Image:
     return layer.crop((side, 0, side + width, layer.height))
 
 
-def _spills(painted: Array, margin: int, rng: np.random.Generator) -> Array:
+def _sides(piece: Array, white: Array, height: int) -> tuple[Array, Array]:
+    """Which mass lies at the field's left and right edge at each of
+    ``height`` rows: the first that is not white from the edge inwards (a
+    print's own margin is white), 0 where the picture is white well into
+    it (paper does not run)."""
+    label = np.where(white, 0, piece)
+    rows = np.minimum(np.arange(height) * label.shape[0] // height, label.shape[0] - 1)
+    deep = max(4, round(0.04 * label.shape[1]))
+    found = []
+    for strip in (label[:, :deep], label[:, ::-1][:, :deep]):
+        first = (strip > 0).argmax(axis=1)
+        found.append(strip[np.arange(len(strip)), first][rows])
+    return found[0], found[1]
+
+
+def _spills(
+    painted: Array, margin: int, rng: np.random.Generator, sides: tuple[Array, Array]
+) -> tuple[Array, Array]:
     """Where the stains run out of the field over the margin beside it: a
     tongue in one place or two, on a side where the field is painted up to
-    its edge. As wide as the field with its two margins; 1 where the
-    stains go on, from a little within the field outwards."""
+    its edge. As wide as the field with its two margins; 1 where a stain
+    goes on, from a little within the field outwards, and with it which
+    mass it is: what runs out is one stain of one colour (``sides``: the
+    mass at each side's rows), where it can be from a place where that one
+    mass alone lies along the edge (Mateusz 2026-11-12 11:48, of the
+    margin that mirrored the picture: "to musiałaby być jednolita plama, a
+    nie odbicie lustrzane skomplikowanego układu")."""
     h, w = painted.shape
     out = np.zeros((h, w + 2 * margin), np.float32)
+    whose = np.zeros(out.shape, np.int32)
     if margin < 8:
-        return out
+        return out, whose
     half = rng.uniform(*SPILL_HALF, 2) * min(h, w)
     band = max(min(24, w // 8), 1)
     places: list[
         tuple[int, int, float]
     ] = []  # the side (0 left, 1 right), the row, half its height
     for k in range(2 if rng.random() < SPILL_TWO else 1):
-        r = float(half[k])
         found: list[tuple[int, int]] = []
-        for side in (0, 1):
-            edge = painted[:, :band] if side == 0 else painted[:, w - band :]
-            full = (edge.mean(axis=1) > 0.9).astype(np.uint8).reshape(-1, 1)
-            reach = int(r) | 1
-            fits = cv2.erode(full, np.ones((2 * reach + 1, 1), np.uint8)).ravel() > 0
-            fits[: int(0.06 * h) + reach] = False
-            fits[h - int(0.06 * h) - reach :] = False
-            for row in np.flatnonzero(fits).tolist():
-                if all(s != side or abs(row - at) > 2 * (r + other) for s, at, other in places):
-                    found.append((side, row))
+        wish = float(half[k])
+        r = wish
+        # one mass along the tongue's whole root, a narrower tongue sooner
+        # than two masses; only then wherever the paint reaches the edge
+        for r, one in ((wish, True), (0.75 * wish, True), (0.55 * wish, True), (wish, False)):
+            for side in (0, 1):
+                edge = painted[:, :band] if side == 0 else painted[:, w - band :]
+                ids = sides[side]
+                full = ((edge.mean(axis=1) > 0.9) & (ids > 0)).astype(np.uint8).reshape(-1, 1)
+                reach = int(r) | 1
+                fits = cv2.erode(full, np.ones((2 * reach + 1, 1), np.uint8)).ravel() > 0
+                fits[: int(0.06 * h) + reach] = False
+                fits[h - int(0.06 * h) - reach :] = False
+                if one:
+                    turns = np.concatenate([[0], np.cumsum(ids[1:] != ids[:-1])])
+                    rows = np.arange(h)
+                    lo, hi = np.clip(rows - reach, 0, h - 1), np.clip(rows + reach, 0, h - 1)
+                    fits &= turns[lo] == turns[hi]
+                for row in np.flatnonzero(fits).tolist():
+                    if all(s != side or abs(row - at) > 2 * (r + other) for s, at, other in places):
+                        found.append((side, row))
+            if found:
+                break
         if not found:
             break
         # the other side first, when one has run out already
         fresh = [f for f in found if all(f[0] != s for s, _, _ in places)] or found
         places.append((*fresh[int(rng.integers(len(fresh)))], r))
     if not places:
-        return out
+        return out, whose
     yy, xx = np.mgrid[0:h, 0 : w + 2 * margin].astype(np.float32)
     # no two run out alike: the front wanders, slowly and in small
     ragged = _noise(out.shape, 0.2 * margin, rng) * 0.3 * margin + _noise(out.shape, 5, rng) * 3
@@ -505,8 +602,13 @@ def _spills(painted: Array, margin: int, rng: np.random.Generator) -> Array:
         shape = np.clip(1 - np.abs((yy - row) / r) ** 2.6, 0, 1)
         far = SPILL_FAR * margin * shape + ragged * np.clip(shape * 3, 0, 1)
         tongue = np.clip((far - beyond) / 1.5, 0, 1) * (shape > 0)
-        out = np.maximum(out, np.where(beyond > -SPILL_ROOT, tongue, 0))
-    return out
+        tongue = np.where(beyond > -SPILL_ROOT, tongue, 0)
+        out = np.maximum(out, tongue)
+        root = sides[where][max(int(row - r), 0) : int(row + r) + 1]
+        root = root[root > 0]
+        if len(root):
+            whose[(tongue > 0) & (beyond > 0)] = int(np.bincount(root).argmax())
+    return out, whose
 
 
 def _past(
@@ -567,9 +669,16 @@ def layers(
         cv2.resize(src, size, interpolation=cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC)
     )
     h, w = rgb.shape[:2]
-    piece, colours = masses(rgb, seed=seed % 2**31)
+    plain = _plain(rgb)
+    piece, colours = masses(rgb, seed=seed % 2**31, flat=plain)
     paints = _pigment(colours)
     up = w / piece.shape[1]
+    # What is white in the picture: the paper on the light page (with a
+    # breath of the picture's tone, its folds), light paint on the dark one.
+    white = whites(rgb, plain)
+    blank = cv2.GaussianBlur(
+        cv2.resize(white.astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR), (0, 0), 2.6
+    )
     moving = _moving(rgb, rng)
     # The paint keeps inside the field, raggedly.
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
@@ -598,6 +707,8 @@ def layers(
     bare = (1 - lively) * (BARE_NEAR * near_map + BARE_RIM * rim + BARE_CHANCE * chance)
     level = max(BARE, float(np.quantile(bare, 1 - BARE_MOST)))
     painted = bare < level
+    if dark:
+        painted |= blank > 0.5  # white is paint there: never left out
     # towards a bare place the wash runs thin before it stops
     thin = np.clip((level - bare) / BARE_THIN, 0, 1)
     least = 0.55 if dark else 0.35  # covering paint thinned much is a smudge
@@ -605,28 +716,36 @@ def layers(
     pad = 26
     # Where neighbours keep apart and the page shows between them.
     seam = np.clip(_noise((h, w), 60, rng) * 3 - 0.3, 0, 1)
-    # The margin beside the field: all that the paint goes by is carried
-    # into it as in a mirror, and the paint may lie there where it runs out.
+    # The margin beside the field, where a stain may run out: one stain of
+    # one colour, so nothing of the picture is carried there but the
+    # paper's own chance (its grain, where it soaks); what the picture
+    # gives the paint inside (its gradations, how much happens) ends at
+    # the frame or dies away beyond it.
     side = bleed(w)
     wide = w + 2 * side
 
-    def out(a: Array) -> Array:
-        return np.pad(a, ((0, 0), (side, side)) + ((0, 0),) * (a.ndim - 2), mode="reflect")
+    def out(a: Array, how: str = "reflect") -> Array:
+        pad = ((0, 0), (side, side)) + ((0, 0),) * (a.ndim - 2)
+        if how == "fade":
+            return np.pad(a, pad, mode="linear_ramp", end_values=0)
+        return np.pad(a, pad, mode=how)  # type: ignore[call-overload]
 
     framed = np.pad(inside, ((0, 0), (side, side)))
-    spilt = _spills(painted, side, loose)
+    spilt, whose = _spills(painted, side, loose, _sides(piece, white, h))
     # (a stain that runs out ends as any stain does, with its wet front
     # and the paper soaked a little beyond it)
     inside = np.maximum(
         framed, np.clip(cv2.GaussianBlur(cv2.dilate(spilt, np.ones((33, 33))), (0, 0), 3), 0, 1)
     )
-    wander, blotch, grain, patchy, lively, moving, thin, seam = (
-        out(a) for a in (wander, blotch, grain, patchy, lively, moving, thin, seam)
-    )
+    wander, blotch, grain, patchy, seam = (out(a) for a in (wander, blotch, grain, patchy, seam))
+    moving, lively, blank = out(moving, "edge"), out(lively, "fade"), out(blank, "constant")
+    thin = np.pad(thin, ((0, 0), (side, side)), constant_values=1)
     painted = out(painted)
     painted[:, :side] = spilt[:, :side] > 0.5
     painted[:, side + w :] = spilt[:, side + w :] > 0.5
-    under = FIRST * (0.85 + 0.15 * blotch) * np.maximum(framed, spilt) * lively
+    under = FIRST * (0.85 + 0.15 * blotch) * framed * lively
+    if not dark:
+        under *= 1 - blank  # the paper stays clean where the picture is white
     canvas = np.zeros((h, wide, 3), np.float32) if dark else np.ones((h, wide, 3), np.float32)
     cover = np.zeros((h, wide), np.float32)
     if dark:
@@ -638,24 +757,39 @@ def layers(
     # soaked edge is then not laid over its neighbours.
     stains: list[tuple[int, tuple[slice, slice], Array]] = []
     taken = np.zeros((h, wide), np.float32)
-    for c in sorted(range(1, len(colours)), key=lambda c: -float(paints[c].sum())):
-        ys, xs = np.nonzero(piece == c)
+    # (what is white is a stain of its own, cut out of the masses it lay in)
+    paints = np.concatenate([paints, _colour((255, 255, 255))[None]])
+    if dark:
+        paints[-1] = np.asarray(WHITE_PAINT, np.float32) ** (1 / 1.3)
+    shapes = [(piece == c) & ~white for c in range(len(colours))] + [white]
+    for c in sorted(range(1, len(shapes)), key=lambda c: -float(paints[c].sum())):
+        if not shapes[c].any():
+            continue
+        ys, xs = np.nonzero(shapes[c])
         y0, y1 = max(int(ys.min() * up) - pad, 0), min(int((ys.max() + 1) * up) + pad, h)
         x0, x1 = max(int(xs.min() * up) - pad, 0), min(int((xs.max() + 1) * up) + pad, w)
-        # a stain near a side is in the margin's mirror too
-        x0, x1 = (0 if x0 < side else x0 + side), (wide if x1 > w - side else x1 + side)
+        x0, x1 = x0 + side, x1 + side
+        mask = cv2.resize(shapes[c].astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR)
+        mask = out(mask, "constant")
+        if c < len(colours) and (whose == c).any():  # the stain that runs out goes on there
+            mask[whose == c] = 1
+            ys, xs = np.nonzero(whose == c)
+            y0, y1 = min(y0, max(int(ys.min()) - pad, 0)), max(y1, min(int(ys.max()) + pad, h))
+            x0, x1 = min(x0, max(int(xs.min()) - pad, 0)), max(x1, min(int(xs.max()) + pad, wide))
         part = (slice(y0, y1), slice(x0, x1))
-        mask = cv2.resize((piece == c).astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR)
-        mask = cv2.GaussianBlur(out(mask)[part], (0, 0), 2.6)
+        mask = cv2.GaussianBlur(mask[part], (0, 0), 2.6)
         # neighbours meet, or here and there keep apart (wet paint beside
         # wet paint would run) and the page shows between them
         short = 0.5 + (GAP + 0.6 * np.abs(wander[part])) * seam[part]
-        body = ((mask > short) & painted[part]).astype(np.uint8)
+        is_white = c == len(shapes) - 1
+        body = ((mask > (0.5 if is_white else short)) & (painted[part] | is_white)).astype(np.uint8)
         if body.sum() < 40:
             continue
         stains.append((c, part, body))
-        taken[part] = np.maximum(taken[part], body)
+        if dark or not is_white:  # the paper's white is no wet paint beside a neighbour
+            taken[part] = np.maximum(taken[part], body)
     for c, part, body in stains:
+        is_white = c == len(shapes) - 1
         d_in = cv2.distanceTransform(body, cv2.DIST_L2, 3)
         d_out = cv2.distanceTransform(1 - body, cv2.DIST_L2, 3)
         aa = np.clip(d_in, 0, 1)
@@ -670,11 +804,23 @@ def layers(
         far = 5 + 7 * np.clip(patchy[part] + 0.2, 0, 1)
         halo = ((d_out > 0) & (d_out < far) & (patchy[part] > -0.1)).astype(np.float32)
         halo *= np.clip(1 - others * 4, 0, 1)
+        if not dark:
+            halo *= 1 - blank[part]  # and not on what is white
         halo_load = (0.16 + 0.14 * np.exp(-np.abs(far - d_out) / 1.1)) * halo
         flat = paints[c][None, None]
         # the stain is flat where nothing happens, and moves where much does
-        own = (0.06 + 0.22 * lively[part])[..., None]
+        own = ((0.06 + 0.22 * lively[part]) * framed[part])[..., None]
         tint = (1 - own) * flat + own * moving[part]
+        if is_white and not dark:
+            # the paper, with a breath of the picture's own tone in grey
+            tone = moving[part].mean(axis=2, keepdims=True)
+            tint = 1 - WHITE_TONE * (1 - np.repeat(tone, 3, axis=2)) / max(1 - FIRST, 0.1)
+            load = np.ones_like(load)
+        elif is_white:
+            tint = np.broadcast_to(flat, tint.shape) * (
+                0.9 + 0.1 * moving[part].mean(axis=2, keepdims=True)
+            )
+            load = np.maximum(load, 0.88)
         if dark:  # on a dark page paint covers instead of staining
             alpha = np.clip((aa * load * 0.9 + (1 - aa) * halo_load * 1.3) * inside[part], 0, 1)
             canvas[part] = canvas[part] * (1 - alpha[..., None]) + (tint**1.3) * alpha[..., None]

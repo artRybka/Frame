@@ -253,7 +253,70 @@ def test_a_stain_runs_out_and_a_stroke_goes_on_past_the_frame() -> None:
     assert not np.asarray(calm)[:, side + 1500 + 6 :, 3].any()
     bare = np.zeros((1000, 1500), bool)
     bare[:, 300:1200] = True
-    assert not sheets._spills(bare, side, np.random.default_rng(1)).any()
+    edges = (np.ones(1000, np.int32), np.ones(1000, np.int32))
+    assert not sheets._spills(bare, side, np.random.default_rng(1), edges)[0].any()
+
+
+def test_what_runs_out_is_one_stain_of_one_colour() -> None:
+    """Mateusz 2026-11-12 11:48, of the margin that mirrored the picture:
+    "to musiałaby być jednolita plama, a nie odbicie lustrzane
+    skomplikowanego układu"."""
+    # A green strip down the left side and a yellow one down the right,
+    # discs of every colour between them: a mirror would carry the discs out.
+    crowd = _crowd()
+    canvas = ImageDraw.Draw(crowd)
+    canvas.rectangle((0, 0, 17, 400), fill=(40, 150, 70))
+    canvas.rectangle((582, 0, 600, 400), fill=(225, 190, 50))
+    side = sheets.bleed(1500)
+    page = np.array(sheets.PAGE[False], np.int16)
+    ran = 0
+    for seed in (1, 2, 3, 4):
+        wash = np.asarray(sheets.layers(crowd, seed=seed)[0], np.int16)
+        stained = np.abs(wash - page).max(axis=2) > 30
+        left, right = wash[:, : side - 8], wash[:, side + 1500 + 8 :]
+        for margin, there, green in (
+            (left, stained[:, : side - 8], True),
+            (right, stained[:, side + 1500 + 8 :], False),
+        ):
+            if there.sum() < 500:
+                continue
+            ran += 1
+            r, g, b = (margin[..., k][there] for k in range(3))
+            one = (g > r + 12) & (g > b + 12) if green else (r > b + 40) & (g > b + 30)
+            assert one.mean() > 0.97
+    assert ran >= 4
+
+
+def test_what_is_white_in_the_picture_stays_white() -> None:
+    """Mateusz 2026-11-12 11:31, of a portrait's linen painted in the cream
+    of the face: "(3) wskazuje i opisuje biel tkanin, a na szkicu jest
+    cielisty-kremowy"."""
+    # A dark ground, a red coat, a face and linen yellowed by the varnish.
+    portrait = Image.new("RGB", (600, 400), (62, 52, 50))
+    canvas = ImageDraw.Draw(portrait)
+    canvas.rectangle((150, 120, 450, 400), fill=(170, 40, 30))
+    canvas.ellipse((230, 40, 370, 200), fill=(236, 180, 130))
+    canvas.rectangle((255, 215, 345, 330), fill=(243, 225, 192))
+    found = sheets.whites(np.asarray(portrait))
+    tall, wide = found.shape
+    assert found[int(0.6 * tall) : int(0.78 * tall), int(0.45 * wide) : int(0.55 * wide)].all()
+    assert not found[int(0.2 * tall) : int(0.4 * tall), int(0.45 * wide) : int(0.55 * wide)].any()
+    assert 0.03 < found.mean() < 0.08
+    linen, face = (slice(590, 780), slice(680, 820)), (slice(180, 420), slice(680, 820))
+    light = np.asarray(sheets.render(portrait, seed=3), np.int16)
+    # On the light page it is the paper, clearly lighter than the face.
+    assert np.abs(light[linen] - np.array(sheets.PAGE[False])).max(axis=2).mean() < 10
+    assert light[linen].mean(axis=(0, 1)).sum() > light[face].mean(axis=(0, 1)).sum() + 60
+    # On the dark page light paint, plain, the lightest thing on the sheet.
+    night = np.asarray(sheets.render(portrait, dark=True, seed=3), np.int16)
+    paint = night[linen].mean(axis=(0, 1))
+    assert paint.min() > 170 and paint.max() - paint.min() < 30
+    assert paint.sum() > night[face].mean(axis=(0, 1)).sum() + 60
+    # A pale blue sky is a colour, not a white; neither is a lamp's yellow.
+    assert not sheets.whites(np.asarray(_scene())).any()
+    lamp = Image.new("RGB", (600, 400), (40, 36, 60))
+    ImageDraw.Draw(lamp).ellipse((240, 140, 360, 260), fill=(255, 214, 90))
+    assert not sheets.whites(np.asarray(lamp)).any()
 
 
 def test_the_sheets_are_made_ahead_of_the_reader(tmp_path: Path) -> None:
