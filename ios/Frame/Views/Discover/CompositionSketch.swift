@@ -4,9 +4,9 @@ import UIKit
 /// One take on the composition, drawn as a study sheet: the picture's field
 /// in stains of its colours with a pen sketch over them (made by the server,
 /// on the page's own colour), ruled with a thin frame and the grid in
-/// graphite, the marks over it in chalk of the pen's own colour, much
+/// graphite, the marks over it in a blue coloured pencil, much
 /// heavier than the sketch under them, which is laid thin with its stains
-/// so the marks are what is read first (a colour that returns in red), a little
+/// so the marks are what is read first, a little
 /// over the sheet: shifting with the phone's turn over the shadow they
 /// cast, and on the dark page brighter than its white where the screen can
 /// (`Chalk`, `ChalkMarks`), with a number beside each;
@@ -406,13 +406,14 @@ struct CompositionSketch: View {
             Canvas { context, size in
                 let spot = CGPoint(x: size.width / 2, y: size.height / 2)
                 if chalk {
-                    Chalk.badge(entry.number, of: entry.mark, at: spot, in: &context)
+                    Chalk.badge(entry.number, of: entry.mark, at: spot, in: &context, dark: scheme == .dark)
                 } else {
                     Pencil.badge(entry.number, at: spot, in: &context)
                 }
             }
             .frame(width: 22, height: 22)
-            .shadow(color: .black.opacity(0.22), radius: 1.2, y: 0.5)
+            // (the sheet's number lies on the page's own colour: no edge)
+            .shadow(color: .black.opacity(chalk ? 0 : 0.22), radius: 1.2, y: 0.5)
             .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 5 }
             .accessibilityHidden(true)
             // The hand-written face has tall lines: the note sits close
@@ -441,11 +442,19 @@ struct CompositionSketch: View {
     }
 }
 
-/// The chalk the study sheet's marks are drawn in: the pen's own colour
-/// (the page's ink: dark on the light page, light on the dark one), heavier
-/// than the pen's sketch under it, and red for what only answers across the
-/// picture (a colour that returns), so it is not read as a line that runs
-/// there. It was white first; seen on the phone, the white lines read
+/// The stick the study sheet's marks are drawn in: a blue coloured pencil
+/// (deep on the light page, pale on the dark one), heavier than the pen's
+/// sketch under it, every mark alike: what only answers across the picture
+/// (a colour that returns) is told by its form, small rings and a broken
+/// line between them. Its numbers are written in the same pencil, each in
+/// a ring of it on a dab of the page's colour.
+///
+/// Blue since Mateusz saw the trial sheets of the pen's fourth round, drawn
+/// so (2026-11-12 19:40: "Fajnie też współgra teraz z niebieską linią. I
+/// tak to wdrażajmy (teraz w apce jest czarna, inaczej to wygląda i trzeba
+/// to pozmieniać."; 19:44: "To co wdrażamy teraz - niech wygląda tak jak na
+/// Twoim szkicu."). Before that it was the pen's own colour, with red for
+/// a returning colour, and white first; seen on the phone, the white lines read
 /// worse than the sketch under them (Mateusz 2026-11-12 11:31: "Chyba linie
 /// kredą są mniej czytelne niż szkic pod spodem. Może zróbmy tak: szkic pod
 /// spodem słabszy, a linie kredą - ciut mocniejsze i grubsze niż rysunek
@@ -483,18 +492,19 @@ struct CompositionSketch: View {
 /// headroom (Low Power Mode, full sun), and white chalk would be lost on
 /// the bare page, a faint one stays.
 enum Chalk {
-    static let white = Color.white
-    static let red = Color(.sRGB, red: 226 / 255, green: 52 / 255, blue: 38 / 255)
+    /// The coloured pencil on each page, given outright: a picture
+    /// rendered off screen knows no colour scheme.
+    static func blue(dark: Bool) -> Color {
+        Color(hex: dark ? 0x78A8FF : 0x1238A8)
+    }
 
-    /// The pen's colour on each page (`Theme.ink`, as the server's sheet
-    /// has it), given outright: a picture rendered off screen knows no
-    /// colour scheme.
-    static func ink(dark: Bool) -> Color {
-        Color(hex: dark ? 0xF1ECE4 : 0x1D1B18)
+    /// The page's own colour (`Theme.paper`), under a number.
+    static func page(dark: Bool) -> Color {
+        Color(hex: dark ? 0x121110 : 0xF5F1EA)
     }
 
     static func color(for mark: DailyWork.Mark, dark: Bool) -> Color {
-        mark.shape == "echo" ? red : ink(dark: dark)
+        blue(dark: dark)
     }
 
     /// How heavy the chalk is against the lead pencil's widths: two to
@@ -614,11 +624,13 @@ enum Chalk {
         still ? .zero : CGSize(width: CGFloat(x) * shift, height: CGFloat(y) * shift)
     }
 
-    /// A mark's number, dark on a dab of white chalk; a returning colour's
-    /// has only its ring in the red (a red dab drew the eye too much). The
-    /// same on the sheet and in the notes under it.
-    static func badge(_ number: Int, of mark: DailyWork.Mark, at spot: CGPoint, in context: inout GraphicsContext) {
-        Pencil.badge(number, at: spot, in: &context, ink: Pencil.lead, paper: white, ring: mark.shape == "echo" ? red : nil)
+    /// A mark's number, written by hand in the coloured pencil, in a ring
+    /// of it on a dab of the page's colour. The same on the sheet and in
+    /// the notes under it.
+    static func badge(
+        _ number: Int, of mark: DailyWork.Mark, at spot: CGPoint, in context: inout GraphicsContext, dark: Bool
+    ) {
+        Pencil.badge(number, at: spot, in: &context, ink: color(for: mark, dark: dark), paper: page(dark: dark), hand: true)
     }
 }
 
@@ -725,7 +737,7 @@ struct ChalkDrawing: View {
                     }
                 }
                 for number in numbered {
-                    Chalk.badge(number.entry.number, of: number.entry.mark, at: number.spot, in: &context)
+                    Chalk.badge(number.entry.number, of: number.entry.mark, at: number.spot, in: &context, dark: dark)
                 }
             }
         }
@@ -1056,13 +1068,14 @@ enum Pencil {
     /// sheet it is a dab of the mark's chalk (`Chalk.badge`).
     static func badge(
         _ number: Int, at spot: CGPoint, in context: inout GraphicsContext,
-        ink: Color = lead, paper: Color = paper, ring: Color? = nil
+        ink: Color = lead, paper: Color = paper, ring: Color? = nil, hand: Bool = false
     ) {
         context.fill(Path(ellipseIn: CGRect(x: spot.x - 9.5, y: spot.y - 9.5, width: 19, height: 19)), with: .color(paper))
         context.fill(loop(center: spot, rx: 8.5, ry: 8, width: 1.4, seed: 40 + number), with: .color(ring ?? ink))
+        // (`hand`: written, as the notes are; the face's figures sit low in its tall line)
         context.draw(
-            Text("\(number)").font(.system(size: 10.5, weight: .bold)).foregroundStyle(ink),
-            at: spot
+            Text("\(number)").font(hand ? Font.hand(15) : .system(size: 10.5, weight: .bold)).foregroundStyle(ink),
+            at: hand ? CGPoint(x: spot.x, y: spot.y - 0.5) : spot
         )
     }
 

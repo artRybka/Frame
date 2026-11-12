@@ -31,8 +31,8 @@ import queue
 import threading
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterator
-from concurrent.futures import Future
+from collections.abc import Callable, Iterator, Sequence
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -41,7 +41,7 @@ import httpx
 from pydantic import BaseModel
 
 from ..library.models import Note
-from .client import OPUS, AiUnavailable, Answer, cost
+from .client import FABLE, OPUS, AiUnavailable, Answer, cost
 
 if TYPE_CHECKING:
     from ..library import ImageCache, Item, Library
@@ -73,7 +73,7 @@ NOW, BACKGROUND = 0, 10
 LATER_KEY = "ai_later"
 #: The questions an order for later sends through the Batch API (the
 #: others are asked at once: they cost little).
-DEFERRED_MODELS = (OPUS,)
+DEFERRED_MODELS = (OPUS, FABLE)
 
 
 class Deferred(BaseException):
@@ -83,10 +83,73 @@ class Deferred(BaseException):
     jobs' own ``except Exception`` (a check that failed must not lose a
     page) let it through."""
 
-    def __init__(self, params: dict[str, Any], seq: int) -> None:
+    def __init__(
+        self, params: dict[str, Any], seq: int, also: Sequence[dict[str, Any]] = ()
+    ) -> None:
         super().__init__(f"question {seq} put off")
         self.params = params
         self.seq = seq
+        #: The questions asked together with it (the ones after it, in
+        #: their order): they go into the same batch.
+        self.also = list(also)
+
+
+class Ask:
+    """The ``ask`` of a note made in several questions (an order for
+    later, or one finished now): each question in turn answered from what
+    the order kept, else asked now (``defer``: a long one put into a batch,
+    :class:`Deferred`), and what it answered kept."""
+
+    def __init__(self, worker: AiWorker, kind: str, item_id: str, *, defer: bool) -> None:
+        self.worker, self.kind, self.item_id, self.defer = worker, kind, item_id, defer
+        entry = worker._later().get(f"{kind}|{item_id}")
+        self.ordered = entry is not None
+        self.kept = list(entry.get("answers") or []) if entry else []
+        self.seq = itertools.count()
+
+    def _kept(self, n: int, params: dict[str, Any]) -> Answer | None:
+        if n < len(self.kept) and self.kept[n].get("model", "").startswith(params["model"]):
+            k = self.kept[n]
+            return Answer(k.get("data"), bool(k.get("refused")), k.get("cost_usd", 0.0), k["model"])
+        return None
+
+    def _save(self, n: int, answer: Answer) -> None:
+        if self.ordered:
+            self.worker._save_answer(self.kind, self.item_id, n, answer)
+
+    def __call__(self, params: dict[str, Any]) -> Answer:
+        n = next(self.seq)
+        kept = self._kept(n, params)
+        if kept is not None:
+            return kept
+        if self.defer and params["model"] in DEFERRED_MODELS:
+            raise Deferred(params, n)
+        answer = self.worker.claude.ask(self.kind, params)
+        self._save(n, answer)
+        return answer
+
+    def many(self, several: Sequence[dict[str, Any]]) -> list[Answer]:
+        """Questions that do not wait for one another's answers: asked at
+        the same time (``defer``: in one batch), answered in their order."""
+        numbers = [next(self.seq) for _ in several]
+        found = [self._kept(n, params) for n, params in zip(numbers, several, strict=True)]
+        first = next((at for at, answer in enumerate(found) if answer is None), None)
+        if first is None:
+            return [answer for answer in found if answer is not None]
+        if self.defer and several[first]["model"] in DEFERRED_MODELS:
+            raise Deferred(several[first], numbers[first], several[first + 1 :])
+        missing = [at for at in range(first, len(several)) if found[at] is None]
+        with ThreadPoolExecutor(max_workers=len(missing)) as pool:
+            asked = {
+                at: pool.submit(self.worker.claude.ask, self.kind, several[at]) for at in missing
+            }
+        answers: list[Answer] = []
+        for at in range(len(several)):
+            answer = found[at] or asked[at].result()  # (the first that failed is raised)
+            if at >= first:  # kept in their order: one saved cuts those after it
+                self._save(numbers[at], answer)
+            answers.append(answer)
+        return answers
 
 
 #: Lists of works kept in the library's state (the owner's "Popraw detale",
@@ -96,6 +159,16 @@ class Deferred(BaseException):
 #: another left "Roman Interior" waiting for good, put back on the list by
 #: a request that read it before the worker took it off).
 _LISTS = threading.Lock()
+
+
+def _kept(answer: Answer) -> dict[str, Any]:
+    """An answer as an order for later keeps it."""
+    return {
+        "data": answer.data,
+        "refused": answer.refused,
+        "cost_usd": answer.cost_usd,
+        "model": answer.model,
+    }
 
 
 def listed(library: Library, key: str) -> set[str]:
@@ -167,6 +240,10 @@ class NoteJob(ABC):
     #: half the price, instead of one at a time in the background (Mateusz
     #: 2026-11-10, "O1"); what the frame or the app waits for is asked at once.
     night = False
+    #: The night's question is the first of several (:meth:`revise` asks
+    #: the others once it is answered): its answer starts an order for
+    #: later, whose further questions go through the Batch API too.
+    follow_up = False
 
     def patient(self, item: Item) -> bool:
         """Whether nobody waits for this item's note: the background then
@@ -346,40 +423,28 @@ class AiWorker:
             answers = list(entry.get("answers") or [])[:seq]
             if len(answers) < seq:  # a question before it is missing: asked again
                 return
-            answers.append(
-                {
-                    "data": answer.data,
-                    "refused": answer.refused,
-                    "cost_usd": answer.cost_usd,
-                    "model": answer.model,
-                }
-            )
+            answers.append(_kept(answer))
             later[f"{kind}|{item_id}"] = {**entry, "answers": answers, "batch": ""}
             self.library.set_state(LATER_KEY, later)
 
-    def _replaying(self, kind: str, item_id: str, *, defer: bool) -> Callable[..., Answer]:
-        """The ``ask`` of an order for later: each question in turn answered
-        from what was kept, else asked now (``defer``: a long one put into a
-        batch, :class:`Deferred`), and what it answered kept."""
-        entry = self._later().get(f"{kind}|{item_id}")
-        kept = list(entry.get("answers") or []) if entry else []
-        seq = itertools.count()
+    def _follow(self, kind: str, item_id: str, answer: Answer) -> int:
+        """A night's answer that is the first of several
+        (:attr:`NoteJob.follow_up`): an order for later that has it, taken
+        on at once (its next questions go into a batch). 1 when the note
+        is made already."""
+        with self._lock:
+            later = self._later()
+            later[f"{kind}|{item_id}"] = {"answers": [_kept(answer)], "batch": ""}
+            self.library.set_state(LATER_KEY, later)
+        try:
+            return 1 if self._try_advance(kind, item_id) is not None else 0
+        except (AiUnavailable, anthropic.APIError) as err:
+            # (the order stays: taken on with the others once the pause ends)
+            log.warning("%s for %s: not taken on yet (%s)", kind, item_id, err)
+            return 0
 
-        def ask(params: dict[str, Any]) -> Answer:
-            n = next(seq)
-            if n < len(kept) and kept[n].get("model", "").startswith(params["model"]):
-                k = kept[n]
-                return Answer(
-                    k.get("data"), bool(k.get("refused")), k.get("cost_usd", 0.0), k["model"]
-                )
-            if defer and params["model"] in DEFERRED_MODELS:
-                raise Deferred(params, n)
-            answer = self.claude.ask(kind, params)
-            if entry is not None:
-                self._save_answer(kind, item_id, n, answer)
-            return answer
-
-        return ask
+    def _replaying(self, kind: str, item_id: str, *, defer: bool) -> Ask:
+        return Ask(self, kind, item_id, defer=defer)
 
     def advance(self, kind: str, item_id: str) -> Note | None:
         """An order for later taken a step further: made from its start with
@@ -390,7 +455,12 @@ class AiWorker:
             entry = self._later().get(f"{kind}|{item_id}")
             if entry is None or entry.get("batch"):
                 return None  # made already, or waiting for its batch
-            if job is None or item is None or not job.enabled() or not job.in_library(item):
+            if (
+                job is None
+                or item is None
+                or not job.enabled()
+                or not (job.in_library(item) or job.wanted(item))
+            ):
                 self._drop_later(kind, item_id)  # gone, off, or no longer wanted
                 return None
             note = self.library.note(item_id, kind)
@@ -413,9 +483,22 @@ class AiWorker:
 
     def _defer(self, kind: str, item_id: str, put_off: Deferred) -> None:
         # ``timeout`` is the client's own (a long answer), no part of the request.
-        params = {k: v for k, v in put_off.params.items() if k != "timeout"}
-        batch_id = self.claude.create_batch([{"custom_id": "q", "params": params}])
-        log.info("%s for %s: question %d in batch %s", kind, item_id, put_off.seq, batch_id)
+        questions = [
+            {
+                "custom_id": f"q{n or ''}",
+                "params": {k: v for k, v in params.items() if k != "timeout"},
+            }
+            for n, params in enumerate([put_off.params, *put_off.also])
+        ]
+        batch_id = self.claude.create_batch(questions)
+        log.info(
+            "%s for %s: question %d%s in batch %s",
+            kind,
+            item_id,
+            put_off.seq,
+            f" and {len(put_off.also)} with it" if put_off.also else "",
+            batch_id,
+        )
         with self._lock:
             later = self._later()
             key = f"{kind}|{item_id}"
@@ -428,7 +511,7 @@ class AiWorker:
             "kind": kind,
             "model": put_off.params["model"],
             "prompt_version": self.jobs[kind].prompt_version,
-            "ids": {"q": item_id},
+            "ids": {q["custom_id"]: item_id for q in questions},
             "done": 0,
             "later": put_off.seq,
         }
@@ -440,11 +523,18 @@ class AiWorker:
         taken on (or, failed, asked again on its next go)."""
         kind, seq = record["kind"], int(record["later"])
         item_id = record["ids"].get("q", "")
-        for _, message in self.claude.batch_results(record["id"]):
+        answers: dict[int, Answer] = {}
+        for custom_id, message in self.claude.batch_results(record["id"]):
             if message is not None:
                 model = str(getattr(message, "model", "") or record["model"])
-                answer = self.claude.answer(kind, model, message, batch=True)
-                self._save_answer(kind, item_id, seq, answer)
+                # ("q", then "q1", "q2"… for the questions asked with it)
+                answers[int(custom_id[1:] or 0)] = self.claude.answer(
+                    kind, model, message, batch=True
+                )
+        for n in range(len(record["ids"])):  # in their order, up to the first that failed
+            if n not in answers:
+                break
+            self._save_answer(kind, item_id, seq + n, answers[n])
         with self._lock:  # failed: no answer kept, the next go sends it again
             later = self._later()
             key = f"{kind}|{item_id}"
@@ -807,7 +897,11 @@ class AiWorker:
             # A job may ask different models: the answer says which one it was.
             model = str(getattr(message, "model", "") or record["model"])
             answer = self.claude.answer(job.kind, model, message, batch=True)
-            if record["prompt_version"] == job.prompt_version:
+            if record["prompt_version"] != job.prompt_version:
+                continue
+            if job.follow_up and answer.data is not None:
+                saved += self._follow(job.kind, item.id, answer)
+            else:
                 self._keep(job, item, answer)
                 saved += 1
         return saved

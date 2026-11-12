@@ -159,11 +159,16 @@ GRIDS = ("none", "golden", "thirds", "halves", "3x2", "2x3")
 #: whole of it.
 FIELD_MIN = 0.3
 FIELD_EDGE = 0.02
-#: The pen sketch under an analysis (``ai.pen``): its strokes and their points.
-#: (As many points as a stroke laid on the picture's edges is put down in,
-#: ``imaging.trace.POINTS``.)
-MAX_STROKES = 28
-MAX_STROKE_POINTS = 24
+#: The pen sketch under an analysis (``ai.pen``): its strokes and their
+#: points (a drawing of the work, its subject seen closer: six times what
+#: the first pens' twenty-odd strokes were), and the least of the nib a
+#: stroke is drawn with.
+MAX_STROKES = 170
+MAX_STROKE_POINTS = 48
+MIN_STROKE_WEIGHT = 0.3
+#: A stroke's points closer than this are one (an eyelid drawn in a
+#: close-up is a hundredth of the picture long).
+SAME_STROKE_SPOT = 0.0015
 #: The places a take rests on (:class:`Key`), and their sides that count.
 MAX_KEYS = 10
 AXES = ("x", "y", "xy")
@@ -453,11 +458,14 @@ class Box(BaseModel):
 class Stroke(BaseModel):
     """One stroke of the pen sketch under an analysis (``ai.pen``): a line
     through its points (fractions of the field), bent smoothly or, when
-    ``sharp``, straight from point to point; ``closed`` back to its start."""
+    ``sharp``, straight from point to point; ``closed`` back to its start;
+    ``weight``: how much of the nib it is drawn with (less for a line inside
+    a form and for what is small)."""
 
     points: list[Spot]
     sharp: bool = False
     closed: bool = False
+    weight: float = 1.0
 
 
 class View(BaseModel):
@@ -728,11 +736,11 @@ def _dicts(value: Any) -> list[dict[str, Any]]:
     return [v for v in value if isinstance(v, dict)] if isinstance(value, list) else []
 
 
-def _distinct(spots: list[Spot]) -> list[Spot]:
+def _distinct(spots: list[Spot], same: float = SAME_SPOT) -> list[Spot]:
     """The points without one landing on the one before it."""
     kept: list[Spot] = []
     for s in spots:
-        if not kept or max(abs(s.x - kept[-1].x), abs(s.y - kept[-1].y)) > SAME_SPOT:
+        if not kept or max(abs(s.x - kept[-1].x), abs(s.y - kept[-1].y)) > same:
             kept.append(s)
     return kept
 
@@ -868,7 +876,8 @@ def _field(raw: Any) -> Box | None:
 
 def _stroke(raw: dict[str, Any]) -> Stroke | None:
     spots = _distinct(
-        [s for s in (_spot(p, 0.05) for p in raw.get("points") or []) if s is not None]
+        [s for s in (_spot(p, 0.05) for p in raw.get("points") or []) if s is not None],
+        SAME_STROKE_SPOT,
     )
     if len(spots) < 2:
         return None
@@ -876,6 +885,7 @@ def _stroke(raw: dict[str, Any]) -> Stroke | None:
         points=spots[:MAX_STROKE_POINTS],
         sharp=raw.get("sharp") is True,
         closed=raw.get("closed") is True and len(spots) >= 3,
+        weight=min(1.0, max(MIN_STROKE_WEIGHT, _unit(raw.get("weight", 1.0)) or 1.0)),
     )
 
 
