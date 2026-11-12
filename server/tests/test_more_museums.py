@@ -1188,3 +1188,93 @@ def test_louvre_periods_and_authors_read_as_people_write_them() -> None:
     assert not named({"label": "Allemagne Rhin", "wikidata": "", "linkType": "École de"})
     assert not named({"label": "Italie", "wikidata": ""})
     assert not named({"label": "RAPHAEL", "attributionLevel": "Ancienne attribution"})
+
+
+def test_wikiart_gives_all_works_of_the_artist_a_search_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Its search ends after one page of 60: de Chirico's 60 of 198 (Mateusz,
+    2026-11-12). An artist's name brings the artist's whole list, the
+    search's works first; other words stay a search."""
+    from frame_server.library.museums import WikiArt
+
+    monkeypatch.setattr(WikiArt, "_sessions", {})
+    monkeypatch.setattr(WikiArt, "_artists", {})
+    monkeypatch.setattr(WikiArt, "_named", {})
+    monkeypatch.setattr(WikiArt, "_tokens", {})
+
+    def work(n: int, artist: str = "Giorgio de Chirico", artist_id: str = "a1") -> dict:
+        return {
+            "id": f"p{n}",
+            "title": f"Piazza {n}",
+            "artistName": artist,
+            "artistId": artist_id,
+            "artistUrl": "giorgio-de-chirico",
+            "url": f"piazza-{n}",
+            "image": f"https://uploads.wikiart.org/p{n}.jpg!Large.jpg",
+            "width": 900,
+            "height": 1200,
+        }
+
+    found = [work(5), work(2), work(999, "Alberto Savinio", "a2")]
+    whole = [work(n) for n in range(1, 131)]
+    sent: list[str] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        params = request.url.params
+        endpoint = request.url.path.rsplit("/", 1)[-1]
+        sent.append(endpoint)
+        if endpoint == "PaintingSearch":
+            if params["term"] == "metaphysical towers":
+                return httpx.Response(200, json={"data": [work(9)], "hasMore": False})
+            return httpx.Response(200, json={"data": found, "hasMore": False})
+        if endpoint == "PaintingsByArtist":
+            assert params["id"] == "a1"
+            start = int(params.get("paginationToken") or 0)
+            page = whole[start : start + 60]
+            more = start + 60 < len(whole)
+            return httpx.Response(
+                200,
+                json={"data": page, "hasMore": more, "paginationToken": str(start + 60)},
+            )
+        raise AssertionError(request.url)
+
+    with httpx.Client(transport=httpx.MockTransport(answer)) as http:
+        wikiart = museum("wikiart", http, Access(private_use=True))
+        total, items = wikiart.search("de Chirico", limit=40)
+        assert total == 130
+        assert [i.source_id for i in items[:3]] == ["p5", "p2", "p1"]
+        assert len({i.id for i in items}) == 40
+        total, items = wikiart.search("de Chirico", limit=40, page=4)
+        assert len(items) == 10 and items[-1].source_id == "p130"
+        assert sent.count("PaintingsByArtist") == 3  # kept, not asked again
+        # Words not in the artist's name: the search as it is.
+        assert wikiart.search("metaphysical towers") == (1, [wikiart._map(work(9))])
+
+
+def test_wikiart_search_stays_when_the_artists_list_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from frame_server.library.museums import WikiArt
+
+    monkeypatch.setattr(WikiArt, "_sessions", {})
+    monkeypatch.setattr(WikiArt, "_artists", {})
+    monkeypatch.setattr(WikiArt, "_named", {})
+    monkeypatch.setattr(WikiArt, "_tokens", {})
+    row = {"id": "p1", "title": "Ariadne", "artistName": "Giorgio de Chirico", "image": "x.jpg"}
+    sent: list[str] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        endpoint = request.url.path.rsplit("/", 1)[-1]
+        sent.append(endpoint)
+        if endpoint == "PaintingSearch":
+            return httpx.Response(200, json={"data": [row], "hasMore": False})
+        if endpoint == "Painting":  # the short record names no artist id
+            return httpx.Response(200, json={**row, "artistId": "a1"})
+        return httpx.Response(500, json={"Exception": {"Message": "Free API limit exceeded"}})
+
+    with httpx.Client(transport=httpx.MockTransport(answer)) as http:
+        wikiart = museum("wikiart", http, Access(private_use=True))
+        total, items = wikiart.search("Chirico")
+        assert (total, [i.source_id for i in items]) == (1, ["p1"])
+    assert sent == ["PaintingSearch", "Painting", "PaintingsByArtist"]

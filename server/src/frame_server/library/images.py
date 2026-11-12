@@ -8,6 +8,7 @@ import logging
 import math
 import os
 import re
+import secrets
 import threading
 import time
 from collections.abc import Callable, Iterable, Iterator
@@ -398,10 +399,21 @@ def thumb_copy(item: Item) -> str:
     return ""
 
 
+#: The address of a copy the owner brought for a work (one bought in Alamy,
+#: a scan of his own): a file in ``owned/``, kept for good, never pruned.
+OWNED = "owned:"
+#: The source such a copy is noted with (``SharperCopy.source``).
+OWNED_SOURCE = "owned"
+#: The longest side such a copy is kept in.
+OWNED_MAX = 8000
+
+
 class ImageCache:
     def __init__(self, root: Path, http: Callable[[], httpx.Client]) -> None:
         self.thumbs = root / "thumbs"
         self.images = root / "images"
+        #: Copies the owner brought (:data:`OWNED`).
+        self.owned = root / "owned"
         #: Thumbnails as the cover tiles show them (:meth:`tile`), by the
         #: thumbnail's name; never without their thumbnail.
         self.tiles = root / "tiles"
@@ -511,7 +523,9 @@ class ImageCache:
     def _fetch(self, url: str, urgent: bool = False) -> bytes:
         """A few downloads per host at a time, ``urgent`` ones first; throttled
         ones are tried again after the wait the host asks for (a few seconds
-        at most)."""
+        at most). A copy the owner brought is read from its file."""
+        if url.startswith(OWNED):
+            return (self.owned / Path(url.removeprefix(OWNED)).name).read_bytes()
         urgent = urgent or is_urgent()
         host = urlsplit(url).hostname or ""
         if not urgent:  # not holding the host's turn while the background waits
@@ -821,6 +835,19 @@ class ImageCache:
                 self._remember_size(item, img)
         self._forget_gone(item)
         return path
+
+    def keep_owned(self, item: Item, data: bytes) -> tuple[str, Image.Image]:
+        """Keep the copy the owner brought for ``item`` (a picture's bytes)
+        for good; its address (:data:`OWNED`) and the picture. Raises
+        ValueError for what is no picture."""
+        try:
+            img = load_image(data)
+        except (OSError, ValueError, Image.DecompressionBombError) as err:
+            raise ValueError(f"not a picture: {err}") from err
+        name = re.sub(r"[^A-Za-z0-9_-]+", "_", item.id)[:80] + f"-{secrets.token_hex(4)}.jpg"
+        self.owned.mkdir(parents=True, exist_ok=True)
+        _save_jpeg(img, self.owned / name, OWNED_MAX, 95)
+        return OWNED + name, img
 
     def adopt(self, item: Item, img: Image.Image) -> Path:
         """Keep ``img`` (a sharper copy, :mod:`frame_server.sharper`) as the

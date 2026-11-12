@@ -644,6 +644,28 @@ async def choose_copy(item_id: str, pick: CopyPick, svc: Svc) -> Item:
         raise HTTPException(502, f"copy unavailable: {err}") from err
 
 
+@router.post("/library/items/{item_id:item}/copy/file", response_model=Item)
+async def bring_copy(
+    item_id: str,
+    svc: Svc,
+    file: Annotated[UploadFile, File()],
+    origin: Annotated[str, Form()] = "",
+) -> Item:
+    """A copy of the work's picture the owner brought (one bought in Alamy,
+    a scan): kept for good and shown in its place, as a copy picked in
+    "Szukaj lepszej kopii" ("Przywróć zdjęcie muzeum" goes back)."""
+    item = await _work(svc, item_id)
+    if item.kind != ItemKind.ARTWORK or item.look is not None:
+        raise HTTPException(422, "only a museum work takes a copy")
+    data = await file.read()
+    if not data:
+        raise HTTPException(422, "empty file")
+    try:
+        return await run_in_threadpool(urgent_call(svc.sharper.bring), item, data, origin)
+    except ValueError as err:
+        raise HTTPException(422, str(err)) from err
+
+
 @router.delete("/library/items/{item_id:item}/copy", response_model=Item)
 async def keep_own_picture(item_id: str, svc: Svc) -> Item:
     """Back to the work's own picture; no copy is looked for again."""

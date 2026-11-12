@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The study of the day at the top of Odkrywaj: a band of the picture
 /// (cropped around the place Claude named, else what draws the eye), its
@@ -154,6 +155,8 @@ struct DailyView: View {
     @State private var addingToPlaylist = false
     @State private var savingPhoto = false
     @State private var findingCopies = false
+    /// "Wczytaj kupioną kopię": the file picker for a copy bought in Alamy.
+    @State private var bringingCopy = false
     /// How far the page is scrolled, for the glow at the top.
     @State private var scrolled: CGFloat = 0
     /// The title held once: the museum's own shows until held again ("Tytuł w oryginale").
@@ -232,8 +235,21 @@ struct DailyView: View {
                                 model.show(error)
                             }
                         }
-                    }
+                    },
+                    bringCopy: { bringingCopy = true }
                 )
+            }
+        }
+        .fileImporter(isPresented: $bringingCopy, allowedContentTypes: [.image]) { result in
+            guard case let .success(url) = result, let id = card?.id else { return }
+            Task {
+                model.notices.info("Wczytuję kopię…")
+                do {
+                    self.card = try await model.bringCopy(itemID: id, from: url, origin: "Alamy")
+                    model.notices.info("Zdjęcie podmienione")
+                } catch {
+                    if !error.isCancellation { model.show(error) }
+                }
             }
         }
         .task(id: route) {

@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// One picture: original vs. how it will look on the e-paper, its story,
 /// palette, and actions (show now, queue next, favourite, add to playlist,
@@ -15,6 +16,8 @@ struct ItemDetailView: View {
     @State private var showingPlaylists = false
     /// "Szukaj lepszej kopii": the sheet of the picture's copies elsewhere.
     @State private var findingCopies = false
+    /// "Wczytaj kupioną kopię": the file picker for a copy bought in Alamy.
+    @State private var bringingCopy = false
     /// The picture shown now as its source gave it (width, height), once
     /// the server has told.
     @State private var pictureSize: (Int, Int)?
@@ -153,9 +156,14 @@ struct ItemDetailView: View {
                     model: model, item: item, changed: { self.item = $0 },
                     addingToPlaylist: $showingPlaylists, savingPhoto: $savingPhoto,
                     findingCopies: $findingCopies, pictureSide: pictureSize.map { max($0.0, $0.1) },
-                    keepOwn: { Task { await keepOwnPicture() } }
+                    keepOwn: { Task { await keepOwnPicture() } },
+                    bringCopy: { bringingCopy = true }
                 )
             }
+        }
+        .fileImporter(isPresented: $bringingCopy, allowedContentTypes: [.image]) { result in
+            guard case let .success(url) = result else { return }
+            Task { await bringCopy(from: url) }
         }
         .task(id: itemID) { await load() }
         .task(id: item?.fragmentsID ?? itemID) { await loadFragments() }
@@ -268,6 +276,16 @@ struct ItemDetailView: View {
             )
         } else {
             model.notices.info("Zdjęcie podmienione")
+        }
+    }
+
+    /// "Wczytaj kupioną kopię": the bought file is the work's picture now.
+    private func bringCopy(from url: URL) async {
+        model.notices.info("Wczytuję kopię…")
+        do {
+            copyPicked(try await model.bringCopy(itemID: itemID, from: url, origin: "Alamy"))
+        } catch {
+            if !error.isCancellation { model.show(error) }
         }
     }
 

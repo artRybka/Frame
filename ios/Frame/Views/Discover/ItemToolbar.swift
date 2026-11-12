@@ -17,6 +17,11 @@ struct ItemToolbar: ToolbarContent {
     var pictureSide: Int? = nil
     /// "Przywróć zdjęcie muzeum", while a copy stands in for the work's own.
     var keepOwn: () -> Void = {}
+    /// "Wczytaj kupioną kopię" (Kupowanie w Alamy on): the host picks the file.
+    var bringCopy: (() -> Void)? = nil
+
+    /// Konfiguracja → Źródła dzieł → Kupowanie w Alamy.
+    private var buying: Bool { hasCopies && model.settings?.alamy == true }
 
     /// A museum's work, which other sources may have too.
     private var hasCopies: Bool { item.kind == .artwork && item.look == nil }
@@ -63,6 +68,21 @@ struct ItemToolbar: ToolbarContent {
                     }
                     if item.sharper != nil {
                         Button("Przywróć zdjęcie muzeum", systemImage: "arrow.uturn.backward", action: keepOwn)
+                    }
+                }
+                if buying {
+                    if let url = AppModel.alamySearch(item) {
+                        Link(destination: url) {
+                            Label {
+                                Text("Kup w Alamy")
+                                Text("Licencja osobista od 17 £")
+                            } icon: {
+                                Image(systemName: "cart")
+                            }
+                        }
+                    }
+                    if let bringCopy {
+                        Button("Wczytaj kupioną kopię", systemImage: "square.and.arrow.down.on.square", action: bringCopy)
                     }
                 }
                 if let url = URL(string: item.url), !item.url.isEmpty {
