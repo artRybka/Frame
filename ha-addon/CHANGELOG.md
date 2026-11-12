@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.145.42
+
+- Oryginały z Yale: serwer pobiera cały plik i zmniejsza go u siebie.
+  Yale liczy rozmiar 4000 px od kilku do kilkudziesięciu sekund i czasem
+  odpowiada błędem, po którym przez jakiś czas nie szły też jego
+  miniatury ani nowe dzieła (524 odmowy w nocy 11/12 listopada); cały
+  plik oddaje w pół sekundy.
+
+## 1.145.41
+
+- Odkrywaj: karty „Dziś dla Ciebie” zapisane przed 1.145.14 (karty
+  kuratora i tygodnia) znowu dają się odczytać. Przez ten błąd karty
+  Odkrywaj i Propozycje dnia nie odświeżały się w nocy, a po restarcie
+  serwera Odkrywaj mogło się nie ładować.
+
 ## 1.145.40
 
 - Playlisty zrobione z kart Odkrywaj (tematy, epoki, pory roku, „Sztuki

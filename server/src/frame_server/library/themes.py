@@ -14,6 +14,7 @@ import threading
 import time
 from collections import Counter
 from dataclasses import asdict, dataclass, replace
+from dataclasses import fields as dataclass_fields
 from datetime import date, timedelta
 from typing import Any
 
@@ -1452,7 +1453,14 @@ def _slug(text: str) -> str:
 
 
 def _theme_from(data: dict[str, Any]) -> Theme:
-    fields: dict[str, Any] = {k: tuple(v) if isinstance(v, list) else v for k, v in data.items()}
+    """A theme as it was stored (the week's, the curator's cards). What a
+    theme no longer has is left out: a card stored with ``min_suitability``
+    before 1.145.14 took it away failed here until its week ended, and the
+    cards of Odkrywaj and the day's proposals with it (2026-11-12)."""
+    known = {f.name for f in dataclass_fields(Theme)}
+    fields: dict[str, Any] = {
+        k: tuple(v) if isinstance(v, list) else v for k, v in data.items() if k in known
+    }
     fields["queries"] = tuple(tuple(q) for q in data.get("queries") or ())
     return Theme(**fields)
 
