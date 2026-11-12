@@ -33,8 +33,8 @@ final class PaintTests: XCTestCase {
                      "Watercolour with pen and ink", "tusz, akwarela, papier"]
         let dry = ["pastel on paper", "kredka, papier", "black chalk", "Pastel over watercolour", "pastel, papier naklejony na tekturę",
                    "Red chalk on laid paper", "kreda, papier"]
-        // Ink with colours, and whatever names no paint: flat.
-        let flat = ["", "Ink and color on silk", "Bronze", "papier"]
+        // Ink with colours, and whatever names something that is no paint: flat.
+        let flat = ["Ink and color on silk", "Bronze", "papier", "Porcelain", "mixed media"]
         // A photograph: its tones under grain (Mateusz 2026-11-12 10:47:
         // „fotografia - gradientowy pasek z lekkim ziarnem”).
         let photo = ["Gelatin silver print", "Oil print", "Albumen silver print", "Platinum print",
@@ -63,7 +63,24 @@ final class PaintTests: XCTestCase {
         XCTAssertNil(PaintStyle.of(medium: "", classification: "Drawing"))
         XCTAssertEqual(PaintStyle.of(medium: "", classification: "Photograph"), .photo)
         XCTAssertNil(PaintStyle.of(medium: "", classification: "Illuminated Manuscript"))
-        XCTAssertNil(PaintStyle.of(medium: "", classification: ""))
+        // Nothing at all about how it is made: paint (Mateusz 2026-11-12
+        // 12:25, of the "View of Delft" that came without a medium: „Chyba
+        // musimy założyć że w takiej sytuacji dajemy farbę”).
+        XCTAssertEqual(PaintStyle.of(medium: "", classification: ""), .oil)
+        XCTAssertEqual(PaintStyle.of(medium: ""), .oil)
+        XCTAssertEqual(PaintStyle.of(medium: "", classification: "Stadsgezicht"), .oil)
+        // Only what it is painted on: paint too.
+        XCTAssertEqual(PaintStyle.of(medium: "panel (wood by form)"), .oil)
+        XCTAssertEqual(PaintStyle.of(medium: "paneel"), .oil)
+        XCTAssertEqual(PaintStyle.of(medium: "cardboard"), .oil)
+        // Not what is of one colour (rather a print or a drawing), nor what is filed as a drawing or an object.
+        XCTAssertNil(PaintStyle.of(medium: "", classification: "", mono: true))
+        XCTAssertNil(PaintStyle.of(medium: "", classification: "Ceramics"))
+        XCTAssertNil(PaintStyle.of(medium: "", classification: "Textiles"))
+        XCTAssertNil(PaintStyle.of(medium: "", classification: "clocks"))
+        XCTAssertNil(PaintStyle.of(medium: "Six-panel folding screen; ink, color and gold on paper"))
+        XCTAssertFalse(PaintStyle.sculpted(medium: "", classification: ""))
+        XCTAssertTrue(PaintStyle.sculpted(medium: "", classification: "Sculpture"))
     }
 
     /// Mateusz 2026-11-12 07:26: „dla rycin, rysunków, grafik, plakatów

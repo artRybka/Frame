@@ -43,8 +43,9 @@ COLOUR_SPREAD = (0.01, 0.035)
 #: (``"tone:neutral"``, ``tone_sides``); 10: without a museum's blank
 #: margins (``imaging.margins``), which counted as white; 11: small
 #: striking patches among the swatches and the accent tags (``touches``);
-#: 12: a white that stands out among the swatches (``lights``).
-SCORE_VERSION = 12
+#: 12: a white that stands out among the swatches (``lights``); 13: a
+#: sizeable colour unlike the four dominant ones (``passed_over``).
+SCORE_VERSION = 13
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
 #: this chroma / lightness for light ones: a greyish-blue sky does, a beige
@@ -180,6 +181,15 @@ MERGE = 0.06
 #: Dominant colours shown, at most, and the least share of the picture.
 MAX_DOMINANT = 4
 MIN_DOMINANT = 0.04
+#: A colour the four largest left no room for is shown after them when it
+#: covers ``PASSED_SHARE`` of the picture and is ``PASSED_APART`` (see
+#: ``_distance``) from every colour shown: the white robes of Delacroix's
+#: Indian from Calcutta, an eighth of a picture whose four largest colours
+#: are all dark (Mateusz 2026-11-12 12:28: „dlaczego np. tu nie ma bieli?
+#: … Jest istotnym elementem dzieła.”), the black of a colour woodblock
+#: print's key block.
+PASSED_SHARE = 0.06
+PASSED_APART = 0.2
 #: A pixel is coloured enough to be part of an accent from this OKLab
 #: chroma, chroma / lightness (dark reds) or a/b distance from the
 #: picture's own cast (a greyish blue in a brown picture) on.
@@ -319,6 +329,7 @@ def analyse(img: Image.Image, spread: float | None = None) -> Analysis:
     lab = linear_to_oklab(linear)
     fine = linear_to_oklab(_sample(img, 128))
     centres, weights = kmeans(lab, k=6)
+    merged = merged_colours(centres, weights)
     dominant = dominant_colours(centres, weights)
     accents = accent_colours(fine, dominant)
     small = touches(linear_to_oklab(_sample(img, TOUCH_SAMPLE)), dominant, accents)
@@ -328,8 +339,11 @@ def analyse(img: Image.Image, spread: float | None = None) -> Analysis:
     if "monochrome" in tags:
         small = []
     shown = [c for c, _ in dominant] + [c for c, _, _ in accents] + [c for c, _, _ in small]
+    # No tag goes by it either: the picture is found as it was.
+    more = passed_over(merged[len(dominant) :], shown)
+    shown += [c for c, _ in more]
     white = [] if "monochrome" in tags else lights(fine, shown)
-    swatches = [_swatch(c, w) for c, w in dominant]
+    swatches = [_swatch(c, w) for c, w in dominant + more]
     # A touch is what the eye goes to: it is shown before the least accent.
     room = MAX_SWATCHES - len(swatches) - len(small) - len(white)
     swatches += [_swatch(c, w, accent=True) for c, w, _ in accents[: max(room, 0)]]
@@ -678,6 +692,23 @@ def _hue(lab: np.ndarray) -> np.ndarray:
 def dominant_colours(centres: np.ndarray, weights: np.ndarray) -> list[tuple[np.ndarray, float]]:
     """The k-means colours, largest first, with near-identical ones (three
     beiges of an old wall) merged, at most ``MAX_DOMINANT``."""
+    return [m for m in merged_colours(centres, weights) if m[1] >= MIN_DOMINANT][:MAX_DOMINANT]
+
+
+def passed_over(
+    rest: Sequence[tuple[np.ndarray, float]], shown: Sequence[np.ndarray]
+) -> list[tuple[np.ndarray, float]]:
+    """The largest of the colours the dominant ones left no room for
+    (``rest``) that is sizeable and unlike every colour ``shown`` (see
+    ``PASSED_SHARE``); (colour, weight), or nothing."""
+    for centre, weight in rest:
+        if weight >= PASSED_SHARE and all(_distance(centre, c) >= PASSED_APART for c in shown):
+            return [(centre, weight)]
+    return []
+
+
+def merged_colours(centres: np.ndarray, weights: np.ndarray) -> list[tuple[np.ndarray, float]]:
+    """The k-means colours, largest first, with near-identical ones merged."""
     merged: list[tuple[np.ndarray, float]] = []
     for idx in np.argsort(-weights):
         centre, weight = centres[idx], float(weights[idx])
@@ -688,7 +719,7 @@ def dominant_colours(centres: np.ndarray, weights: np.ndarray) -> list[tuple[np.
         else:
             merged.append((centre.copy(), weight))
     merged.sort(key=lambda m: -m[1])
-    return [m for m in merged if m[1] >= MIN_DOMINANT][:MAX_DOMINANT]
+    return merged
 
 
 def accent_colours(

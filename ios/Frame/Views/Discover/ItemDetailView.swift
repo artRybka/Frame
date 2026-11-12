@@ -1124,8 +1124,9 @@ struct ItemDetailView: View {
     /// The work's colours as a bar in its own technique, there at once
     /// and with no shares under it (Mateusz 2026-11-12 10:47: „bez
     /// procentów”, „bez ruchu, od razu gotowy”); the flat strip for a
-    /// work whose technique says nothing („puste pole techniki -
-    /// wektorowy pasek, ale bez procentów”), none for a sculpture
+    /// work whose technique is none of those painted („wektorowy pasek,
+    /// ale bez procentów”; a work that names no technique at all is taken
+    /// for a painting since 12:25, `PaintStyle.of`), none for a sculpture
     /// („rzeźba - bez paska”).
     @ViewBuilder
     private func palette(_ item: Item) -> some View {

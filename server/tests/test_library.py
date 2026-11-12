@@ -10,7 +10,15 @@ from conftest import jpeg_bytes
 from PIL import Image
 
 from frame_server.imaging.color import linear_to_oklab, u8_to_linear
-from frame_server.library import Item, ItemKind, Library, Playlist, PlaylistKind, PlaylistRules
+from frame_server.library import (
+    Item,
+    ItemKind,
+    Library,
+    Playlist,
+    PlaylistKind,
+    PlaylistRules,
+    colors,
+)
 from frame_server.library.colors import TONE_GROUPS, TONE_TAG, analyse, family, has_colours
 from frame_server.library.models import MINE_FAVORITES, MINE_PLAYLISTS
 from frame_server.library.museums import (
@@ -531,6 +539,54 @@ def test_a_small_striking_patch_is_among_the_colours() -> None:
     assert touch.accent and touch.weight <= 0.02
     assert red > 135 and green < 80 and blue < 60
     assert len(swatches) <= 8
+
+
+def _dark_room(robes: bool) -> Image.Image:
+    """Four darks that fill a picture, like Delacroix's two studies of an
+    Indian from Calcutta: with or without the greyish white of the robes,
+    an eighth of it."""
+    rng = np.random.default_rng(11)
+    pixels = np.empty((300, 400, 3), np.uint8)
+    pixels[:] = (43, 37, 31)
+    pixels[:, 130:240] = (66, 55, 44)
+    pixels[:, 240:330] = (98, 81, 63)
+    pixels[:, 330:] = (27, 22, 19)
+    if robes:
+        pixels[60:240, 150:230] = (161, 156, 140)
+    noise = rng.integers(-5, 6, pixels.shape)
+    return Image.fromarray(np.clip(pixels.astype(int) + noise, 0, 255).astype(np.uint8))
+
+
+def test_a_sizeable_colour_unlike_the_four_largest_is_shown_too() -> None:
+    # Mateusz 2026-11-12 12:28, of Delacroix's Indian from Calcutta, whose
+    # bar was four darks and a red: „dlaczego np. tu nie ma bieli? … Jest
+    # istotnym elementem dzieła.” The four largest colours took every place.
+    swatches, tags, _ = analyse(_dark_room(robes=True))
+    plain, plain_tags, _ = analyse(_dark_room(robes=False))
+    main = [s for s in swatches if not s.accent]
+    assert len(main) == 5 and len([s for s in plain if not s.accent]) <= 4
+    light = main[-1]
+    red, green, blue = (int(light.hex[i : i + 2], 16) for i in (1, 3, 5))
+    assert min(red, green, blue) > 125 and 0.08 <= light.weight <= 0.16
+    assert all(int(s.hex[1:3], 16) < 110 for s in main[:-1])
+    # No tag goes by it, and the eight are still eight at most.
+    assert [t for t in tags if t.startswith("accent:")] == [
+        t for t in plain_tags if t.startswith("accent:")
+    ]
+    assert len(swatches) <= 8
+    # A fifth colour like the others stays out: the Little Street's walls.
+    centres = np.array(
+        [[0.3, 0.0, 0.02], [0.4, 0.0, 0.02], [0.5, 0.0, 0.02], [0.6, 0.0, 0.02], [0.72, 0.0, 0.02]]
+    )
+    weights = np.array([0.3, 0.25, 0.2, 0.15, 0.1])
+    merged = colors.merged_colours(centres, weights)
+    shown = [c for c, _ in merged[:4]]
+    assert colors.passed_over(merged[4:], shown) == []
+    centres[4, 0] = 0.85
+    assert len(colors.passed_over(colors.merged_colours(centres, weights)[4:], shown)) == 1
+    # Nor a small one, however unlike.
+    weights = np.array([0.32, 0.26, 0.21, 0.17, 0.04])
+    assert colors.passed_over(colors.merged_colours(centres, weights)[4:], shown) == []
 
 
 def _sea(foam: bool) -> Image.Image:
