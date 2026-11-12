@@ -97,6 +97,10 @@ jobs:
             capture daily 16 "daily-composition-bedroom-$appearance" -scroll composition -demoStudy bedroom
             capture daily 16 "daily-composition-shower-$appearance" -scroll composition -demoStudy shower
             capture daily 16 "daily-composition-moulin-$appearance" -scroll composition -demoStudy moulin
+            capture daily 16 "daily-composition-lit-$appearance" -scroll composition -chalkDemo lit
+            capture daily 16 "daily-composition-plain-$appearance" -scroll composition -chalkDemo none
+            capture daily 16 "daily-composition-shower-lit-$appearance" -scroll composition -demoStudy shower -chalkDemo lit
+            capture daily 16 "daily-composition-shower-plain-$appearance" -scroll composition -demoStudy shower -chalkDemo none
             capture daily 16 "daily-detail-geometry-$appearance" -scroll composition -take 1
             capture daily 16 "daily-details-$appearance" -scroll details
             capture daily 16 "daily-legacy-$appearance" -scroll legacy

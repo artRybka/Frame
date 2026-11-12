@@ -100,6 +100,44 @@ final class CompositionSheetTests: XCTestCase {
         XCTAssertEqual(Chalk.offset(x: 1, y: -1, shift: Chalk.shift, still: false), CGSize(width: 1.5, height: -1.5))
         XCTAssertEqual(Chalk.offset(x: 0.5, y: 0, shift: -Chalk.castShift, still: false), CGSize(width: -0.5, height: 0))
         XCTAssertEqual(Chalk.offset(x: 1, y: 1, shift: Chalk.shift, still: true), .zero)
+        // The shadow shows only as the phone turns (Mateusz 2026-11-12 07:01);
+        // where the chalk cannot be lit above the page's white a faint one stays.
+        XCTAssertEqual(Chalk.castShown(x: 0, y: 0, lit: true, still: false), 0)
+        XCTAssertEqual(Chalk.castShown(x: 0.6, y: 0.8, lit: true, still: false), 1, accuracy: 1e-9)
+        XCTAssertEqual(Chalk.castShown(x: 0.3, y: 0.4, lit: true, still: false), 0.5, accuracy: 1e-9)
+        XCTAssertEqual(Chalk.castShown(x: 1, y: 1, lit: true, still: true), 0)
+        XCTAssertEqual(Chalk.castShown(x: 0, y: 0, lit: false, still: false), Chalk.castUnlit)
+        XCTAssertEqual(Chalk.castShown(x: 1, y: 0, lit: false, still: false), 1)
+    }
+
+    func testAStrokeOfChalkIsAStickNotAPoint() throws {
+        let size = CGSize(width: 360, height: 480)
+        let line = Mark(shape: "line", points: [Spot(x: 0.1, y: 0.5), Spot(x: 0.9, y: 0.5)], title: "", text: "")
+        // Blunt where it lands: wider there than the pencil's point.
+        func landing(_ path: Path) -> CGFloat {
+            var heights: [CGFloat] = []
+            path.forEach { element in
+                switch element {
+                case let .move(to: point), let .line(to: point):
+                    if point.x < 40 { heights.append(point.y) }
+                default: break
+                }
+            }
+            return (heights.max() ?? 0) - (heights.min() ?? 0)
+        }
+        let pencil = Pencil.paths(for: line, in: size, seed: 1, weight: Pencil.crayonWeight)[0]
+        let chalk = Pencil.paths(for: line, in: size, seed: 1, weight: Pencil.crayonWeight, chalk: true)[0]
+        XCTAssertGreaterThan(landing(chalk), landing(pencil) * 1.5)
+        XCTAssertEqual(chalk.boundingRect.width, pencil.boundingRect.width, accuracy: 1)
+        // Pressed unevenly, never lightly; and it stays on the paper's hills.
+        let presses = (0..<40).map(Chalk.press)
+        XCTAssertGreaterThanOrEqual(try XCTUnwrap(presses.min()), 0.82)
+        XCTAssertLessThanOrEqual(try XCTUnwrap(presses.max()), 1)
+        XCTAssertGreaterThan(Set(presses.map { Int($0 * 100) }).count, 5)
+        XCTAssertEqual(Chalk.kept(1), 1, accuracy: 1e-9)
+        XCTAssertEqual(Chalk.kept(0), 0.42, accuracy: 1e-9)
+        let tooth = try XCTUnwrap(Chalk.tooth)
+        XCTAssertEqual(tooth.width, Chalk.toothSide * Chalk.toothScale)
     }
 
     /// The marks as a picture, clear around them: what the brighter copy
@@ -129,14 +167,18 @@ final class CompositionSheetTests: XCTestCase {
         // Nothing under the strokes or beside them: no wash wiped, no edge.
         XCTAssertEqual(pixel(100, 80), [0, 0, 0, 0])
         XCTAssertEqual(pixel(5, 5), [0, 0, 0, 0])
-        // The line in white, across the middle.
-        let onLine = (44...56).map { pixel(100, $0) }.max { $0[3] < $1[3] }!
-        XCTAssertGreaterThan(onLine[3], 200)
-        XCTAssertGreaterThan(onLine[2], 200)
-        // The echo's broken line in red, between its rings.
-        let reds = (0..<200).flatMap { x in (10...30).map { y in pixel(x, y) } }.filter { $0[3] > 200 }
+        // The line in white, across the middle: where the chalk lies thickest
+        // in each column.
+        let along = (40...160).map { x in (44...56).map { pixel(x, $0) }.max { $0[3] < $1[3] }! }
+        let most = along.max { $0[3] < $1[3] }!
+        XCTAssertGreaterThan(most[3], 180)
+        XCTAssertGreaterThan(most[2], 180)
+        // Chalk, not ink: it is not as thick everywhere (the paper's tooth).
+        XCTAssertLessThan(along.map { $0[3] }.min()!, most[3] - 15)
+        // The echo's rings and broken line in red.
+        let reds = (0..<200).flatMap { x in (10...30).map { y in pixel(x, y) } }.filter { $0[3] > 150 }
         XCTAssertFalse(reds.isEmpty)
-        XCTAssertTrue(reds.allSatisfy { $0[0] > $0[2] + 60 })
+        XCTAssertTrue(reds.allSatisfy { $0[0] > $0[2] + 40 })
         // The copy for a screen with headroom: the same picture, lit.
         let lit = try XCTUnwrap(ArtGlow.render(plain, gain: Chalk.gain))
         XCTAssertEqual(lit.width, plain.width)

@@ -14,6 +14,11 @@ enum LaunchRoute {
     /// The composition's sheet opens with the picture itself under the
     /// marks, as after a tap (CI screenshots of that state).
     static let compositionBare = UserDefaults.standard.bool(forKey: "compositionBare")
+    /// `-chalkDemo lit|none` (CI screenshots a picture of the brighter chalk
+    /// is put together from): "lit" draws the sheet's marks as on a screen
+    /// with headroom (no shadow with the phone held still), "none" leaves
+    /// them out.
+    static let chalkDemo = UserDefaults.standard.string(forKey: "chalkDemo")
     /// `-demoStudy bedroom|shower|moulin`: the demo's study page shows that
     /// work's analysis of the composition on its sheet (`DemoStudies`).
     /// The composition's take shown first (CI screenshots of the later takes).

@@ -368,10 +368,20 @@ struct CompositionSketch: View {
 ///
 /// So nothing lies under a stroke. What sets the marks off the sheet:
 /// they are brighter than the page's own white where the screen has the
-/// headroom (an extended-range copy, as `ArtGlow` makes of a picture), they
-/// cast a soft shadow on the sheet (which is what reads on the bare page
-/// and without headroom: Low Power Mode, full sun), and they shift over it
-/// as the phone turns.
+/// headroom (an extended-range copy, as `ArtGlow` makes of a picture), and
+/// they shift over it as the phone turns, over a shadow that shows only
+/// then.
+///
+/// Of that, 07:01: "Cień pod liniami jeżeli już, to minimalny i widoczny
+/// tylko po przechyleniu telefonu"; "kreska kredy powinna być bardziej jak
+/// kreda a nie piórko - teraz wygląda bardzo wektorowo i elektronicznie";
+/// "nie podoba mi się czerwony numerek powtórzenia koloru, za bardzo zwraca
+/// na siebie uwagę". So a stroke is a stick's: blunt at its ends, pressed
+/// unevenly, a little dust beside it, and it stays only where the paper's
+/// tooth took it (`tooth`, as the pastel of the colour bars). The shadow is
+/// not there with the phone held still. Only where the screen has no
+/// headroom (Low Power Mode, full sun), and white chalk would be lost on
+/// the bare page, a faint one stays.
 enum Chalk {
     static let white = Color.white
     static let red = Color(.sRGB, red: 226 / 255, green: 52 / 255, blue: 38 / 255)
@@ -388,11 +398,59 @@ enum Chalk {
     /// their shadow the other way.
     static let shift: CGFloat = 1.5
     static let castShift: CGFloat = 1
-    /// Where the shadow lies with the phone held still (the light from the
-    /// upper left), how soft it is, and how dark on each page.
-    static let cast = CGSize(width: 0.5, height: 0.9)
-    static let castBlur: CGFloat = 1.1
-    static func castDepth(dark: Bool) -> Double { dark ? 0.6 : 0.42 }
+    /// How soft the shadow is and how dark on each page at a full turn.
+    static let castBlur: CGFloat = 1
+    static func castDepth(dark: Bool) -> Double { dark ? 0.5 : 0.34 }
+    /// Without headroom: how much of that shadow stays with the phone held
+    /// still, and where it lies then (the light from the upper left).
+    static let castUnlit = 0.55
+    static let castRest = CGSize(width: 0.4, height: 0.7)
+
+    /// How much of the shadow shows at this turn of the phone (`x`, `y`:
+    /// `Tilt`'s): none held still where the chalk is lit above the page's
+    /// white, all at a full turn.
+    static func castShown(x: Double, y: Double, lit: Bool, still: Bool) -> Double {
+        let turned = still ? 0 : min(1, hypot(x, y))
+        return lit ? turned : max(castUnlit, turned)
+    }
+
+    /// How hard the stick is pressed in a stroke, each its own (0.82…1).
+    static func press(_ seed: Int) -> Double {
+        0.82 + 0.18 * Pencil.Jitter.random(seed &* 31 &+ 5)
+    }
+
+    /// The dust a stick leaves beside its stroke: how far out, how thin.
+    static let dustWidth: CGFloat = 1.5
+    static let dust = 0.3
+
+    /// The paper's tooth as a tile (`toothSide` points square): how much
+    /// of the chalk stays at each place, in its alpha.
+    static let toothSide = 96
+    static let toothScale = 3
+    static let tooth: CGImage? = {
+        let side = toothSide * toothScale
+        var bytes = [UInt8](repeating: 0, count: side * side * 4)
+        for k in 0..<(side * side) {
+            let x = (Double(k % side) + 0.5) / Double(toothScale), y = (Double(k / side) + 0.5) / Double(toothScale)
+            let grain = 0.5 * Paint.noise(x / 0.55, y / 0.55, 241) + 0.3 * Paint.noise(x / 1.3, y / 1.3, 242)
+                + 0.2 * Paint.noise(x / 4, y / 4, 243)
+            bytes[4 * k + 3] = Paint.byte(255 * kept(grain))
+        }
+        guard let provider = CGDataProvider(data: Data(bytes) as CFData),
+              let space = CGColorSpace(name: CGColorSpace.sRGB)
+        else { return nil }
+        return CGImage(
+            width: side, height: side, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: side * 4,
+            space: space, bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent
+        )
+    }()
+
+    /// How much chalk stays where the paper's grain is `grain` (0…1): all
+    /// on its hills, under half in its hollows.
+    static func kept(_ grain: Double) -> Double {
+        0.42 + 0.58 * Paint.step(0.36, 0.6, grain)
+    }
 
     /// The gain for a screen with this headroom: nil where it would not show.
     static func lift(headroom: CGFloat) -> CGFloat? {
@@ -406,14 +464,11 @@ enum Chalk {
         still ? .zero : CGSize(width: CGFloat(x) * shift, height: CGFloat(y) * shift)
     }
 
-    /// A mark's number on a dab of its chalk: dark on the white, white on
-    /// the red; the same on the sheet and in the notes under it.
+    /// A mark's number, dark on a dab of white chalk; a returning colour's
+    /// has only its ring in the red (a red dab drew the eye too much). The
+    /// same on the sheet and in the notes under it.
     static func badge(_ number: Int, of mark: DailyWork.Mark, at spot: CGPoint, in context: inout GraphicsContext) {
-        if mark.shape == "echo" {
-            Pencil.badge(number, at: spot, in: &context, ink: white, paper: red)
-        } else {
-            Pencil.badge(number, at: spot, in: &context, ink: Pencil.lead, paper: white)
-        }
+        Pencil.badge(number, at: spot, in: &context, ink: Pencil.lead, paper: white, ring: mark.shape == "echo" ? red : nil)
     }
 }
 
@@ -430,7 +485,7 @@ struct ChalkDrawing: View {
             let field = CompositionSketch.pictureRect(in: size, room: room)
             context.translateBy(x: field.minX, y: field.minY)
             let drawn: [(mark: DailyWork.Mark, paths: [Path])] = marks.enumerated().map { index, mark in
-                (mark: mark, paths: Pencil.paths(for: mark, in: field.size, seed: index * 7 + 1, weight: Pencil.crayonWeight))
+                (mark: mark, paths: Pencil.paths(for: mark, in: field.size, seed: index * 7 + 1, weight: Pencil.crayonWeight, chalk: true))
             }
             let spots = Pencil.numberSpots(for: labelled.map(\.mark), in: field.size)
             if cast {
@@ -447,10 +502,25 @@ struct ChalkDrawing: View {
                     }
                 }
             } else {
-                for entry in drawn {
-                    let colour = Chalk.color(for: entry.mark)
-                    for path in entry.paths {
-                        context.fill(path, with: .color(colour))
+                // The strokes, then all of them rubbed into the paper's tooth.
+                let whole = CGRect(x: -field.minX, y: -field.minY, width: size.width, height: size.height)
+                context.drawLayer { layer in
+                    for (index, entry) in drawn.enumerated() {
+                        let colour = Chalk.color(for: entry.mark)
+                        for (part, path) in entry.paths.enumerated() {
+                            layer.stroke(
+                                path, with: .color(colour.opacity(Chalk.dust)),
+                                style: StrokeStyle(lineWidth: Chalk.dustWidth, lineCap: .round, lineJoin: .round)
+                            )
+                            layer.fill(path, with: .color(colour.opacity(Chalk.press(index * 17 + part))))
+                        }
+                    }
+                    if let tooth = Chalk.tooth {
+                        layer.blendMode = .destinationIn
+                        layer.fill(
+                            Path(whole),
+                            with: .tiledImage(Image(decorative: tooth, scale: CGFloat(Chalk.toothScale)))
+                        )
                     }
                 }
                 for (entry, spot) in zip(labelled, spots) {
@@ -461,10 +531,10 @@ struct ChalkDrawing: View {
     }
 }
 
-/// The marks standing a little over the sheet: their shadow on it, and
-/// over the shadow the chalk, brighter than the page's white where the
-/// screen can show it. The two shift against each other with the phone's
-/// turn (`Tilt`; still with Reduce Motion, no gyroscope in Low Power Mode).
+/// The marks standing a little over the sheet: the chalk, brighter than the
+/// page's white where the screen can show it, and under it its shadow,
+/// which shows as the two shift against each other with the phone's turn
+/// (`Tilt`; still with Reduce Motion, no gyroscope in Low Power Mode).
 struct ChalkMarks: View {
     let marks: [DailyWork.Mark]
     let labelled: [CompositionSketch.Labelled]
@@ -491,8 +561,10 @@ struct ChalkMarks: View {
             let bright = lit.flatMap { $0.source == made ? $0.image : nil }
             ZStack {
                 ChalkDrawing(marks: marks, labelled: labelled, room: room, cast: true)
-                    .opacity(Chalk.castDepth(dark: scheme == .dark))
-                    .modifier(Floating(rest: Chalk.cast, shift: -Chalk.castShift))
+                    .modifier(Floating(
+                        rest: bright == nil ? Chalk.castRest : .zero, shift: -Chalk.castShift,
+                        cast: Chalk.castDepth(dark: scheme == .dark), lit: bright != nil
+                    ))
                 ZStack {
                     ChalkDrawing(marks: marks, labelled: labelled, room: room)
                         .opacity(bright == nil ? 1 : 0)
@@ -505,6 +577,7 @@ struct ChalkMarks: View {
                 .modifier(Floating(rest: .zero, shift: Chalk.shift))
             }
             .task(id: made) { await light(made) }
+            .opacity(LaunchRoute.chalkDemo == "none" ? 0 : 1)
         }
         .followsTilt()
     }
@@ -513,7 +586,7 @@ struct ChalkMarks: View {
     /// the screen has headroom for it.
     private func light(_ made: Made) async {
         guard made.size.width > 1, made.size.height > 1,
-              let gain = Chalk.lift(headroom: ScreenBoost.shared.headroom)
+              let gain = Chalk.lift(headroom: LaunchRoute.chalkDemo == "lit" ? 8 : ScreenBoost.shared.headroom)
         else {
             lit = nil
             return
@@ -536,16 +609,22 @@ struct ChalkMarks: View {
     }
 }
 
-/// Moves a layer with the phone's turn, from where it rests.
+/// Moves a layer with the phone's turn, from where it rests. `cast`: the
+/// layer is the marks' shadow, this dark at a full turn and shown as far
+/// as the phone is turned (`Chalk.castShown`).
 private struct Floating: ViewModifier {
     let rest: CGSize
     let shift: CGFloat
+    var cast: Double? = nil
+    var lit = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         let tilt = Tilt.shared
         let moved = Chalk.offset(x: tilt.x, y: tilt.y, shift: shift, still: reduceMotion)
-        content.offset(x: rest.width + moved.width, y: rest.height + moved.height)
+        content
+            .opacity(cast.map { $0 * Chalk.castShown(x: tilt.x, y: tilt.y, lit: lit, still: reduceMotion) } ?? 1)
+            .offset(x: rest.width + moved.width, y: rest.height + moved.height)
     }
 }
 
@@ -657,10 +736,10 @@ enum Pencil {
     /// sheet it is a dab of the mark's chalk (`Chalk.badge`).
     static func badge(
         _ number: Int, at spot: CGPoint, in context: inout GraphicsContext,
-        ink: Color = lead, paper: Color = paper
+        ink: Color = lead, paper: Color = paper, ring: Color? = nil
     ) {
         context.fill(Path(ellipseIn: CGRect(x: spot.x - 9.5, y: spot.y - 9.5, width: 19, height: 19)), with: .color(paper))
-        context.fill(loop(center: spot, rx: 8.5, ry: 8, width: 1.4, seed: 40 + number), with: .color(ink))
+        context.fill(loop(center: spot, rx: 8.5, ry: 8, width: 1.4, seed: 40 + number), with: .color(ring ?? ink))
         context.draw(
             Text("\(number)").font(.system(size: 10.5, weight: .bold)).foregroundStyle(ink),
             at: spot
@@ -698,14 +777,22 @@ enum Pencil {
     }
 
     /// A mark's strokes in a picture of `size`. `weight`: how much heavier
-    /// than the lead pencil (the sheet's coloured pencil).
-    static func paths(for mark: DailyWork.Mark, in size: CGSize, seed: Int, weight: CGFloat = 1) -> [Path] {
-        paths(for: mark, in: size, seed: seed, pen: Pen(weight: weight))
+    /// than the lead pencil (the sheet's chalk). `chalk`: a stick, not a
+    /// point: its strokes end blunt.
+    static func paths(for mark: DailyWork.Mark, in size: CGSize, seed: Int, weight: CGFloat = 1, chalk: Bool = false) -> [Path] {
+        paths(for: mark, in: size, seed: seed, pen: Pen(weight: weight, least: chalk ? bluntEnd : pointedEnd))
     }
 
-    /// How heavy the pencil is: every stroke's width times it.
+    /// How much of a stroke's width is left where it lands and lifts: a
+    /// pencil's point, a stick of chalk.
+    static let pointedEnd: CGFloat = 0.25
+    static let bluntEnd: CGFloat = 0.72
+
+    /// How heavy the pencil is (every stroke's width times it) and how
+    /// blunt (`least`: the share of the width left at a stroke's ends).
     struct Pen {
         let weight: CGFloat
+        var least: CGFloat = Pencil.pointedEnd
         func callAsFunction(_ width: CGFloat) -> CGFloat { width * weight }
     }
 
@@ -718,59 +805,59 @@ enum Pencil {
             // broken line between them, which nobody reads as an edge.
             let radius = echoRing(in: size)
             return points.enumerated().map { index, point in
-                loop(center: point, rx: radius, ry: radius, width: pen(1.7), seed: seed + index)
+                loop(center: point, rx: radius, ry: radius, width: pen(1.7), seed: seed + index, least: pen.least)
             } + echoDashes(points, in: size).enumerated().map { index, dash in
-                stroke(dash, width: pen(1.6), seed: seed + 10 + index, start: 0.2, end: 0.2)
+                stroke(dash, width: pen(1.6), seed: seed + 10 + index, start: 0.2, end: 0.2, least: pen.least)
             }
         case "loop":
             let corner = points.count > 1 ? points[1] : first
             let rx = max(abs(corner.x - first.x), 8)
             let ry = max(abs(corner.y - first.y), 8)
-            return [loop(center: first, rx: rx, ry: ry, width: pen(2.4), seed: seed)]
+            return [loop(center: first, rx: rx, ry: ry, width: pen(2.4), seed: seed, least: pen.least)]
         case "triangle" where points.count == 3:
-            return (0..<3).map { side(points[$0], points[($0 + 1) % 3], width: pen(2), seed: seed + $0) }
+            return (0..<3).map { side(points[$0], points[($0 + 1) % 3], width: pen(2), seed: seed + $0, least: pen.least) }
         case "rect" where points.count == 2:
             let (a, b) = (points[0], points[1])
             let corners = [a, CGPoint(x: b.x, y: a.y), b, CGPoint(x: a.x, y: b.y)]
-            return (0..<4).map { side(corners[$0], corners[($0 + 1) % 4], width: pen(1.6), seed: seed + $0) }
+            return (0..<4).map { side(corners[$0], corners[($0 + 1) % 4], width: pen(1.6), seed: seed + $0, least: pen.least) }
         case "underline" where points.count >= 2:
-            return [stroke(wave(from: first, to: points[points.count - 1]), width: pen(2.2), seed: seed)]
+            return [stroke(wave(from: first, to: points[points.count - 1]), width: pen(2.2), seed: seed, least: pen.least)]
         case "spiral" where points.count == 3:
             let line = spiral(start: points[0], through: points[1], eye: points[2])
-            return line.count >= 2 ? [stroke(line, width: pen(2.2), seed: seed, start: 0.04, end: 0.3)] : []
+            return line.count >= 2 ? [stroke(line, width: pen(2.2), seed: seed, start: 0.04, end: 0.3, least: pen.least)] : []
         case "rhythm" where points.count >= 4:
             // A stroke along each repeated form, all parallel, no line between them.
             return beats(points).enumerated().map { index, beat in
-                stroke(beat, width: pen(2.3), seed: seed + index, start: 0.14, end: 0.14)
+                stroke(beat, width: pen(2.3), seed: seed + index, start: 0.14, end: 0.14, least: pen.least)
             }
         case "rays" where points.count >= 3:
             // Each ray from its far end into the vanishing point, thinning as it goes.
             let eye = points[0]
             return points.dropFirst().enumerated().map { index, end in
-                stroke([end, eye], width: pen(1.9), seed: seed + index, start: 0.05, end: 0.45)
+                stroke([end, eye], width: pen(1.9), seed: seed + index, start: 0.05, end: 0.45, least: pen.least)
             }
         case "motion" where points.count >= 2:
             // A sweeping arrow, two speed lines trailing beside its start.
             let line = smooth(points)
             let tip = line[line.count - 1]
             let from = line[max(0, line.count - 6)]
-            return [stroke(points, width: pen(3), seed: seed, start: 0.02, end: 0.08)]
+            return [stroke(points, width: pen(3), seed: seed, start: 0.02, end: 0.08, least: pen.least)]
                 + speedLines(line, gap: 6.5).enumerated().map { index, trail in
-                    stroke(trail, width: pen(1.5), seed: seed + 3 + index, start: 0.3, end: 0.3)
+                    stroke(trail, width: pen(1.5), seed: seed + 3 + index, start: 0.3, end: 0.3, least: pen.least)
                 }
-                + head(tip: tip, from: from, width: pen(2.6), size: 13)
+                + head(tip: tip, from: from, width: pen(2.6), size: 13, least: pen.least)
         case "arrow" where points.count >= 2:
             let pieces = corners(points)
             let line = smooth(pieces[pieces.count - 1])
             let tip = line[line.count - 1]
             let from = line[max(0, line.count - 6)]
-            return pieces.enumerated().map { stroke($1, width: pen(2.6), seed: seed + $0) }
-                + head(tip: tip, from: from, width: pen(2.3), size: 10)
+            return pieces.enumerated().map { stroke($1, width: pen(2.6), seed: seed + $0, least: pen.least) }
+                + head(tip: tip, from: from, width: pen(2.3), size: 10, least: pen.least)
         default:
             // A wedge's or a zigzag's corners stay sharp: a curve through
             // them swung wide into a hairpin (Nighthawks, Mateusz 2026-11-02).
             return points.count >= 2
-                ? corners(points).enumerated().map { stroke($1, width: pen(2.2), seed: seed + $0) } : []
+                ? corners(points).enumerated().map { stroke($1, width: pen(2.2), seed: seed + $0, least: pen.least) } : []
         }
     }
 
@@ -927,7 +1014,9 @@ enum Pencil {
 
     /// A pen stroke through the points: a filled outline, thin at both ends
     /// (`start` and `end` are the fractions it takes to reach full width).
-    static func stroke(_ points: [CGPoint], width: CGFloat, seed: Int, start: CGFloat = 0.25, end: CGFloat = 0.25) -> Path {
+    static func stroke(
+        _ points: [CGPoint], width: CGFloat, seed: Int, start: CGFloat = 0.25, end: CGFloat = 0.25, least: CGFloat = pointedEnd
+    ) -> Path {
         let line = smooth(points)
         guard line.count > 1 else { return Path() }
         var lengths: [CGFloat] = [0]
@@ -943,7 +1032,7 @@ enum Pencil {
             let a = start > 0 ? min(1, t / start) : 1
             let b = end > 0 ? min(1, (1 - t) / end) : 1
             let wobble = 1 + 0.12 * sin(CGFloat(index) * 0.35 + phase)
-            let half = width * (0.25 + 0.75 * pow(max(min(a, b), 0), 0.7)) * wobble / 2
+            let half = width * (least + (1 - least) * pow(max(min(a, b), 0), 0.7)) * wobble / 2
             let before = line[max(index - 1, 0)]
             let after = line[min(index + 1, line.count - 1)]
             let dx = after.x - before.x
@@ -961,7 +1050,7 @@ enum Pencil {
 
     /// A loop drawn in one go: it starts lower left, goes round a little more
     /// than once and widens as it goes, so the ends do not meet.
-    static func loop(center: CGPoint, rx: CGFloat, ry: CGFloat, width: CGFloat, seed: Int) -> Path {
+    static func loop(center: CGPoint, rx: CGFloat, ry: CGFloat, width: CGFloat, seed: Int, least: CGFloat = pointedEnd) -> Path {
         var jitter = Jitter(seed: seed)
         let start = 190 + jitter.next() * 40
         let points = (0..<24).map { index -> CGPoint in
@@ -969,7 +1058,7 @@ enum Pencil {
             let k = 1 + 0.04 * sin(Double(index) * 0.8) + 0.07 * Double(index) / 23
             return CGPoint(x: center.x + rx * k * cos(angle), y: center.y + ry * k * sin(angle))
         }
-        return stroke(points, width: width, seed: seed, start: 0.12, end: 0.3)
+        return stroke(points, width: width, seed: seed, start: 0.12, end: 0.3, least: least)
     }
 
     /// A rhythm's beats: the points in pairs (a repeated form's foot and
@@ -1021,7 +1110,7 @@ enum Pencil {
     }
 
     /// An arrowhead: two short strokes back from the tip.
-    static func head(tip: CGPoint, from: CGPoint, width: CGFloat, size: CGFloat) -> [Path] {
+    static func head(tip: CGPoint, from: CGPoint, width: CGFloat, size: CGFloat, least: CGFloat = pointedEnd) -> [Path] {
         let angle = atan2(tip.y - from.y, tip.x - from.x)
         return [CGFloat(2.55), -2.45].map { turn -> Path in
             let a = angle + turn
@@ -1030,19 +1119,19 @@ enum Pencil {
                 CGPoint(x: tip.x + size * 0.55 * cos(a) + 0.6, y: tip.y + size * 0.55 * sin(a)),
                 CGPoint(x: tip.x + size * cos(a), y: tip.y + size * sin(a)),
             ]
-            return stroke(points, width: width, seed: 1, start: 0.05, end: 0.6)
+            return stroke(points, width: width, seed: 1, start: 0.05, end: 0.6, least: least)
         }
     }
 
     /// A ruled side of a triangle or rect, a little past both corners.
-    static func side(_ a: CGPoint, _ b: CGPoint, width: CGFloat, seed: Int) -> Path {
+    static func side(_ a: CGPoint, _ b: CGPoint, width: CGFloat, seed: Int, least: CGFloat = pointedEnd) -> Path {
         let length = max(hypot(b.x - a.x, b.y - a.y), 0.0001)
         let over = CGPoint(x: (b.x - a.x) / length * 3, y: (b.y - a.y) / length * 3)
         let bend = CGFloat(Jitter.random(seed) - 0.5) * 1.2
         let middle = CGPoint(x: (a.x + b.x) / 2 - over.y / 3 * bend, y: (a.y + b.y) / 2 + over.x / 3 * bend)
         return stroke(
             [CGPoint(x: a.x - over.x, y: a.y - over.y), middle, CGPoint(x: b.x + over.x, y: b.y + over.y)],
-            width: width, seed: seed, start: 0.1, end: 0.1
+            width: width, seed: seed, start: 0.1, end: 0.1, least: least
         )
     }
 

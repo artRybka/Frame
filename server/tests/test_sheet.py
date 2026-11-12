@@ -104,6 +104,43 @@ def test_where_little_happens_the_wash_is_general_and_leaves_the_page() -> None:
     assert _bare(sheets.render(_crowd(), seed=3))[60:940, 60:1440].mean() < 0.01
 
 
+def _halves(seed: int = 2) -> Image.Image:
+    """A blue half over a red one, both speckled: something everywhere."""
+    rng = np.random.default_rng(seed)
+    img = Image.new("RGB", (600, 400), (60, 110, 190))
+    canvas = ImageDraw.Draw(img)
+    canvas.rectangle((0, 200, 600, 400), fill=(190, 60, 40))
+    for _ in range(500):
+        x, y, r = rng.uniform(0, 600), rng.uniform(0, 400), rng.uniform(2, 5)
+        base = (60, 110, 190) if y < 200 else (190, 60, 40)
+        speck = (
+            int(np.clip(base[0] + rng.uniform(-25, 25), 0, 255)),
+            int(np.clip(base[1] + rng.uniform(-25, 25), 0, 255)),
+            int(np.clip(base[2] + rng.uniform(-25, 25), 0, 255)),
+        )
+        canvas.ellipse((x - r, y - r, x + r, y + r), fill=speck)
+    return img
+
+
+def test_neighbouring_stains_make_no_dark_band_and_alike_ones_are_one() -> None:
+    """Mateusz 2026-11-12 07:01: "Teraz zawsze się nakładają jedna na drugą i
+    powstaje ciemniejszy pas w każdym takim miejscu"; "jeżeli dwie plamy
+    akwareli są do siebie bardzo podobne … to lepiej zlać je w jedną"."""
+    # Specks of nearly the stain's own colour do not make patches of it,
+    # busy as the picture is.
+    _piece, colours = sheets.masses(np.asarray(_halves()), seed=3)
+    assert len(colours) - 1 == 2
+    for seed in (1, 2, 3):
+        sheet = np.asarray(sheets.render(_halves(), seed=seed), np.float32)
+        rows = sheet[:, 150:1350].sum(axis=2).mean(axis=1) / 3
+        blue, red = rows[300:400].mean(), rows[560:660].mean()
+        # Across the seam the rows go from the one stain's tone to the
+        # other's: none is darker than the darker stain by more than its
+        # own unevenness.
+        assert rows[470:530].min() > min(blue, red) - 25
+        assert rows[470:530].max() < max(blue, red) + 25
+
+
 def test_the_pen_draws_over_the_stains() -> None:
     plain = np.asarray(sheets.render(_scene(), seed=3), np.int32)
     stroke = ([(0.1, 0.2), (0.5, 0.25), (0.9, 0.2)], False, False)

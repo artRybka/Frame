@@ -31,6 +31,15 @@ So the sheet is:
   bare in fragments: most where the picture is nearest the page's own
   value (the lights on the light page, the darks on the dark one) and
   towards the field's edge, as a painter leaves a study unfinished;
+- neighbours as he asked next (07:01): "Przerwy mogłyby pojawiać się czasem
+  także pomiędzy plamami koloru. Teraz zawsze się nakładają jedna na drugą
+  i powstaje ciemniejszy pas w każdym takim miejscu", and "jeżeli dwie
+  plamy akwareli są do siebie bardzo podobne (np. niebieska ściana w
+  pokoju van Gogha), to lepiej zlać je w jedną plamę". So neighbours very
+  near in colour are one stain anywhere (:data:`SAME`); a stain's soaked
+  edge lies on bare paper only, never over a neighbour; where two stains
+  touch their wet fronts are faint; and here and there they keep apart and
+  the page shows between them (:data:`GAP`);
 - a few strokes of a nib (thick on the pull, thin where it lands and
   lifts), given by one who saw the picture (``ai.pen``); none when there
   are none.
@@ -73,6 +82,8 @@ LEAST = 0.005
 #: neighbours there no further apart than this (CIE Lab) are one stain.
 QUIET_LEAST = 0.04
 ALIKE = 15.0
+#: Neighbours this near in colour are one stain anywhere.
+SAME = 13.0
 #: The first pale wash under the stains, where things happen.
 FIRST = 0.3
 #: What decides where the page is left bare in a quiet place: how near the
@@ -82,6 +93,9 @@ BARE_NEAR = 0.7
 BARE_RIM = 0.6
 BARE_CHANCE = 0.45
 BARE = 0.55
+#: How far two neighbouring stains keep apart at most, where they do (of
+#: the blurred edge between them: about three pixels each).
+GAP = 0.38
 #: How far under :data:`BARE` the wash begins to run thin, and the most of
 #: the field that is left bare (a picture that is all sky is still painted).
 BARE_THIN = 0.2
@@ -154,8 +168,9 @@ def busy(rgb: Array, shape: tuple[int, int]) -> Array:
 
 
 def _joined(piece: Array, count: int, lab: Array, quiet: Array) -> Array:
-    """The masses with quiet neighbours of nearly one colour made one: the
-    nearest pair first, until none is near enough."""
+    """The masses with neighbours of nearly one colour made one (anywhere
+    when very near, further apart where little happens): the nearest pair
+    first, until none is near enough."""
     flat = piece.ravel()
     area = np.bincount(flat, minlength=count + 1).astype(np.float64)
     total = np.stack(
@@ -171,12 +186,13 @@ def _joined(piece: Array, count: int, lab: Array, quiet: Array) -> Array:
     to = np.arange(count + 1)
     while pairs:
         best: tuple[int, int] | None = None
-        nearest = ALIKE
+        nearest = 1.0
         for a, b in pairs:
             calm = float(min(still[a] / area[a], still[b] / area[b]))
             apart = float(np.linalg.norm(total[a] / area[a] - total[b] / area[b]))
-            if calm > 0.5 and apart < nearest * calm:
-                best, nearest = (a, b), apart / calm
+            limit = max(SAME, ALIKE * calm if calm > 0.5 else 0.0)
+            if apart < nearest * limit:
+                best, nearest = (a, b), apart / limit
         if best is None:
             break
         a, b = best
@@ -374,7 +390,12 @@ def render(
     else:
         canvas *= moving ** under[..., None]
     pad = 26
-    # Light first, as one paints.
+    # Where neighbours keep apart and the page shows between them.
+    seam = np.clip(_noise((h, w), 60, rng) * 3 - 0.3, 0, 1)
+    # Each stain's body first, light ones first as one paints: a stain's
+    # soaked edge is then not laid over its neighbours.
+    stains: list[tuple[int, tuple[slice, slice], Array]] = []
+    taken = np.zeros((h, w), np.float32)
     for c in sorted(range(1, len(colours)), key=lambda c: -float(paints[c].sum())):
         ys, xs = np.nonzero(piece == c)
         y0, y1 = max(int(ys.min() * up) - pad, 0), min(int((ys.max() + 1) * up) + pad, h)
@@ -382,19 +403,29 @@ def render(
         part = (slice(y0, y1), slice(x0, x1))
         mask = cv2.resize((piece == c).astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR)
         mask = cv2.GaussianBlur(mask[part], (0, 0), 2.6)
-        # stains stop a hair short of each other: wet paint beside wet paint would run
-        body = ((mask > 0.5 + 0.6 * np.abs(wander[part])) & painted[part]).astype(np.uint8)
+        # neighbours meet, or here and there keep apart (wet paint beside
+        # wet paint would run) and the page shows between them
+        short = 0.5 + (GAP + 0.6 * np.abs(wander[part])) * seam[part]
+        body = ((mask > short) & painted[part]).astype(np.uint8)
         if body.sum() < 40:
             continue
+        stains.append((c, part, body))
+        taken[part] = np.maximum(taken[part], body)
+    for c, part, body in stains:
         d_in = cv2.distanceTransform(body, cv2.DIST_L2, 3)
         d_out = cv2.distanceTransform(1 - body, cv2.DIST_L2, 3)
         aa = np.clip(d_in, 0, 1)
-        # the wet front: pigment carried to the edge and left there
+        others = cv2.GaussianBlur(taken[part] - body, (0, 0), 2.5)
+        touch = np.clip(others * 3, 0, 1)
+        # the wet front: pigment carried to the edge and left there, most
+        # where the edge is open; two fronts side by side would be a dark band
         load = (1 - FIRST) * (0.8 + 0.2 * blotch[part]) * thin[part] + 0.1 * grain[part]
-        load += 0.42 * np.exp(-d_in / 1.3) + 0.1 * np.exp(-d_in / 9)
-        # the paper soaks at the edge: a paler second stain, in fragments
+        load += (0.42 * np.exp(-d_in / 1.3) + 0.1 * np.exp(-d_in / 9)) * (1 - 0.8 * touch)
+        # the paper soaks at the edge: a paler second stain, in fragments,
+        # on the bare paper only
         far = 5 + 7 * np.clip(patchy[part] + 0.2, 0, 1)
         halo = ((d_out > 0) & (d_out < far) & (patchy[part] > -0.1)).astype(np.float32)
+        halo *= np.clip(1 - others * 4, 0, 1)
         halo_load = (0.16 + 0.14 * np.exp(-np.abs(far - d_out) / 1.1)) * halo
         flat = paints[c][None, None]
         # the stain is flat where nothing happens, and moves where much does
