@@ -70,7 +70,7 @@ def _item(source: str, url: str, width: int, height: int) -> Item:
 
 def test_elongated_works_are_asked_larger() -> None:
     iiif = "https://example.org/iiif/x/full/!2560,2560/0/default.jpg"
-    wide = _item("yale", iiif, 16555, 720)
+    wide = _item("nga", iiif, 16555, 720)
     assert own_copy(wide) == "https://example.org/iiif/x/full/!16384,16384/0/default.jpg"
     assert usual_copy(wide) == iiif
     si = "https://ids.si.edu/ids/deliveryService?id=X&max=2560"
@@ -88,8 +88,15 @@ def test_works_are_asked_in_the_size_they_are_kept_in() -> None:
     assert asked("nga", 7594, 5084) == "!4000,4000"
     # Never more than the file has: Yale's server enlarged a 1306 px scan
     # to the 2560 asked, the Courtauld's refuses.
-    assert asked("yale", 1306, 1236) == "!1306,1306"
+    assert asked("smk", 1306, 1236) == "!1306,1306"
     assert asked("courtauld", 2973, 897) == "!2973,2973"
+    # Yale's server takes 9 to 44 s over a size and half a second over the
+    # whole file (2026-11-12): whole, and cut down here, ...
+    assert asked("yale", 1306, 1236) == "full"
+    assert asked("yale", 4212, 6066) == "full"
+    assert asked("yale", 16555, 720) == "full"
+    # ... but for a file past 50 Mpx (as much as is opened whole here).
+    assert asked("yale", 8084, 6741) == "!4000,4000"
     # Sizes not the file's (a thumbnail's): the limit, ...
     assert asked("getty", 527, 640) == "!4000,4000"
     assert asked("vam", 409, 600) == "!4000,4000"
