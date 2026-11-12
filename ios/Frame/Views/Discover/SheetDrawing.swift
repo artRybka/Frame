@@ -32,6 +32,7 @@ struct SheetLayers: View {
     let onMarks: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var scheme
     /// When the drawing began.
     @State private var start: Date?
     /// On screen (enough of it to watch).
@@ -47,6 +48,7 @@ struct SheetLayers: View {
                         SheetPlan.washMask(in: &canvas, size: size, time: time ?? SheetPlan.whole, bleed: bleed)
                     }
                 }
+                .opacity(SheetPlan.washShare)
             ArtImage(ref: pen, placeholder: .clear, maxPixel: maxPixel)
                 .mask {
                     clocked { canvas, time, size in
@@ -57,7 +59,7 @@ struct SheetLayers: View {
                         SheetPlan.penMask(in: &canvas, size: size, time: time, strokes: strokes, bleed: bleed)
                     }
                 }
-                .opacity(SheetPlan.penShare)
+                .opacity(SheetPlan.penShare(dark: scheme == .dark))
         }
         .onGeometryChange(for: Bool.self) { proxy in
             // No scroll view around it: nothing to wait for.
@@ -129,11 +131,21 @@ struct SheetLayers: View {
 /// When each part of a study sheet is laid down, and the masks that show
 /// that much of it. Seconds from the start of the drawing.
 enum SheetPlan {
+    /// How much of the stains the sheet keeps over the page: laid thinner,
+    /// they are lighter on the light page and darker on the dark one, and
+    /// the marks stand out of them (Mateusz 2026-11-12 12:44: "Rysunki
+    /// kredy są za słabe. muszą się wyraźniej odcinać. Może trzeba jeszcze
+    /// rozjaśnić akwarelę w trybie jasnym, a przyciemnić w ciemnym?"). The
+    /// server's picture has the page's own colour around the stains, so
+    /// this needs no other picture from it.
+    static let washShare = 0.7
     /// How much of the pen's ink the sheet keeps: the sketch lies under the
-    /// marks and is weaker than they are (Mateusz 2026-11-12 11:31: "szkic
-    /// pod spodem słabszy, a linie kredą - ciut mocniejsze i grubsze niż
-    /// rysunek teraz").
-    static let penShare = 0.6
+    /// marks and is much weaker than they are (Mateusz 2026-11-12 11:31:
+    /// "szkic pod spodem słabszy, a linie kredą - ciut mocniejsze i grubsze
+    /// niż rysunek teraz"; 0.6 on both pages still stood beside the marks).
+    /// Less on the dark page: a light line on dark reads stronger than a
+    /// dark one on light at the same share.
+    static func penShare(dark: Bool) -> Double { dark ? 0.32 : 0.42 }
     /// The pen's strokes, one after another at one speed.
     static let pen = 1.5
     /// The least a stroke takes, however short.

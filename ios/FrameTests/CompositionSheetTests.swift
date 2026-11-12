@@ -100,10 +100,18 @@ final class CompositionSheetTests: XCTestCase {
         XCTAssertEqual(Chalk.color(for: loop, dark: false), Chalk.ink(dark: false))
         XCTAssertEqual(Chalk.color(for: loop, dark: true), Chalk.ink(dark: true))
         XCTAssertNotEqual(Chalk.ink(dark: false), Chalk.ink(dark: true))
-        XCTAssertLessThan(SheetPlan.penShare, 0.75)
-        XCTAssertGreaterThan(SheetPlan.penShare, 0.4)
+        // 12:44, having seen that: "Rysunki kredy są za słabe. muszą się
+        // wyraźniej odcinać. Może trzeba jeszcze rozjaśnić akwarelę w trybie
+        // jasnym, a przyciemnić w ciemnym?": the sheet under the marks is
+        // laid thin (its stains towards the page, its pen under half, less
+        // still where it is light on dark) and the chalk is broad.
+        XCTAssertLessThan(SheetPlan.washShare, 0.8)
+        XCTAssertGreaterThan(SheetPlan.washShare, 0.5)
+        XCTAssertLessThan(SheetPlan.penShare(dark: false), 0.5)
+        XCTAssertLessThan(SheetPlan.penShare(dark: true), SheetPlan.penShare(dark: false))
+        XCTAssertGreaterThan(SheetPlan.penShare(dark: true), 0.2)
         XCTAssertLessThan(Chalk.weight, Pencil.crayonWeight)  // not the broad white stick
-        XCTAssertGreaterThan(Chalk.weight, 0.8)
+        XCTAssertGreaterThan(Chalk.weight, 1.1)
         // What only answers across the picture is not read as a line that runs there.
         XCTAssertEqual(Chalk.color(for: echo, dark: false), Chalk.red)
         XCTAssertEqual(Chalk.color(for: echo, dark: true), Chalk.red)
@@ -175,7 +183,48 @@ final class CompositionSheetTests: XCTestCase {
         XCTAssertEqual(above.y, 35, accuracy: 1e-6)
     }
 
-    func testATappedLabelLightsItsMarkAndTheOthersStepBack() {
+    /// Mateusz 2026-11-12 12:44, of a label whose title took two lines
+    /// ("Żółć wraca / trzy razy"): "coś się posypały odstępy w nagłówkach
+    /// tekstu?". As one text the title's lines stood the face's whole tall
+    /// line apart; written word by word they are as close as the note's.
+    @MainActor
+    func testATitleOfTwoLinesKeepsThemClose() throws {
+        func drawn(_ text: String, width: CGFloat?) throws -> CGSize {
+            let lines = HandLines(text: text, size: 20)
+            let renderer = width.map { ImageRenderer(content: AnyView(lines.frame(width: $0, alignment: .leading))) }
+                ?? ImageRenderer(content: AnyView(lines.fixedSize()))
+            renderer.scale = 1
+            let image = try XCTUnwrap(renderer.cgImage)
+            return CGSize(width: image.width, height: image.height)
+        }
+        let word = try drawn("wraca", width: nil)
+        // Room for one word and a half: the second goes under the first.
+        let two = try drawn("wraca wraca", width: word.width * 1.5)
+        XCTAssertEqual(two.height - word.height, 19, accuracy: 1.5)
+        XCTAssertLessThan(two.height - word.height, word.height * 0.9)
+        // With room for both they share the line.
+        let wide = try drawn("wraca wraca", width: word.width * 2.6)
+        XCTAssertEqual(wide.height, word.height, accuracy: 1)
+    }
+
+    /// A title of two lines has them about one length ("Żółć wraca / trzy
+    /// razy"), not a full line and one word under it; a note fills its
+    /// lines as before.
+    func testATitlesLinesAreEven() {
+        let sizes = [40, 50, 35, 40].map { CGSize(width: $0, height: 26) }
+        let filled = WordFlow.frames(of: sizes, width: 150, space: 5, pitch: 20)
+        XCTAssertEqual(filled.map(\.minY), [0, 0, 0, 20])
+        let even = WordFlow.frames(of: sizes, width: 150, space: 5, pitch: 20, even: true)
+        XCTAssertEqual(even.map(\.minY), [0, 0, 20, 20])
+        XCTAssertEqual(even.map(\.minX), [0, 45, 0, 40])
+        // No more lines than the width takes, and one line stays one.
+        let one = WordFlow.frames(of: sizes, width: 400, space: 5, pitch: 20, even: true)
+        XCTAssertEqual(one.map(\.minY), [0, 0, 0, 0])
+        let narrow = WordFlow.frames(of: sizes, width: 60, space: 5, pitch: 20, even: true)
+        XCTAssertEqual(narrow.map(\.minY), [0, 20, 40, 60])
+    }
+
+    func testATappedLabelLeavesItsMarkAndTheOthersStepBack() {
         // Mateusz 2026-11-12 11:31: "Dotknięcie podpisu z numerkiem pod spodem
         // niech jakoś zapala - wyróżnia wskazane zakreślenie na szkicu powyżej".
         let named = Mark(shape: "loop", points: [], title: "Twarz", text: "")
@@ -192,7 +241,10 @@ final class CompositionSheetTests: XCTestCase {
         XCTAssertEqual(ChalkMarks.share(of: [1], chosen: 3, shown: true), Chalk.aside)
         XCTAssertEqual(ChalkMarks.share(of: [1], chosen: nil, shown: true), 1)
         XCTAssertEqual(ChalkMarks.share(of: [3], chosen: 3, shown: false), 0)
-        XCTAssertLessThan(Chalk.aside, 0.5)
+        // The others stepping back is all that picks it out (12:44: "na
+        // pewno nie żółte podświetlenie. raczej przygaszenie pozostałych").
+        XCTAssertLessThan(Chalk.aside, 0.3)
+        XCTAssertGreaterThan(Chalk.aside, 0.1)
     }
 
     func testAStrokeOfChalkIsAStickNotAPoint() throws {
@@ -216,11 +268,11 @@ final class CompositionSheetTests: XCTestCase {
         XCTAssertEqual(chalk.boundingRect.width, pencil.boundingRect.width, accuracy: 1)
         // Pressed unevenly, never lightly; and it stays on the paper's hills.
         let presses = (0..<40).map(Chalk.press)
-        XCTAssertGreaterThanOrEqual(try XCTUnwrap(presses.min()), 0.82)
+        XCTAssertGreaterThanOrEqual(try XCTUnwrap(presses.min()), 0.9)
         XCTAssertLessThanOrEqual(try XCTUnwrap(presses.max()), 1)
-        XCTAssertGreaterThan(Set(presses.map { Int($0 * 100) }).count, 5)
+        XCTAssertGreaterThan(Set(presses.map { Int($0 * 1000) }).count, 5)
         XCTAssertEqual(Chalk.kept(1), 1, accuracy: 1e-9)
-        XCTAssertEqual(Chalk.kept(0), 0.55, accuracy: 1e-9)
+        XCTAssertEqual(Chalk.kept(0), 0.78, accuracy: 1e-9)
         let tooth = try XCTUnwrap(Chalk.tooth)
         XCTAssertEqual(tooth.width, Chalk.toothSide * Chalk.toothScale)
     }
