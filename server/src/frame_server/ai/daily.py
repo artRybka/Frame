@@ -160,8 +160,8 @@ GRIDS = ("none", "golden", "thirds", "halves", "3x2", "2x3")
 FIELD_MIN = 0.3
 FIELD_EDGE = 0.02
 #: The pen sketch under an analysis (``ai.pen``): its strokes and their points.
-MAX_STROKES = 20
-MAX_STROKE_POINTS = 12
+MAX_STROKES = 28
+MAX_STROKE_POINTS = 16
 #: The places a take rests on (:class:`Key`), and their sides that count.
 MAX_KEYS = 10
 AXES = ("x", "y", "xy")

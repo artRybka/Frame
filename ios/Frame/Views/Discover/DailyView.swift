@@ -919,6 +919,7 @@ struct DailyView: View {
             CompositionSketch(
                 item: work.item, aspect: aspect(work.item.item), take: shown,
                 sheet: shown.field == takes.first?.field ? work.compositionSheet ?? "" : "",
+                layers: work.compositionLayers == true,
                 width: pageWidth > 0 ? pageWidth - 2 * Theme.gutter : nil
             )
                 .padding(.top, 4)

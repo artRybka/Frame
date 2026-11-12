@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.145.46
+
+- Studium dzieła, analiza kompozycji: arkusz jest gotowy, zanim otworzysz
+  studium. Dotąd serwer robił go dopiero przy pierwszym otwarciu, stąd
+  czekanie na pustej kartce z siatką. Teraz robi arkusze z góry, w tle,
+  zaczynając od najnowszych studiów. Po aktualizacji potrzebuje na to
+  trochę czasu, bo wszystkie arkusze robi od nowa.
+- Arkusz rysuje się na żywo: najpierw piórko, kreska po kresce, potem
+  spod niego rozlewa się akwarela, piórko kreskuje cienie, a na końcu
+  po kolei wchodzą znaki kredą. Trwa to niecałe trzy sekundy i zaczyna
+  się, gdy arkusz jest na ekranie. Przy włączonym „Ogranicz ruch” arkusz
+  pojawia się od razu.
+- Akwarelowy podkład jest ciemniejszy na jasnej stronie, żeby biała kreda
+  była na nim lepiej widoczna, i jeszcze ogólniejszy: mniej plam, bardziej
+  płaskich.
+- Piórko rysuje więcej konturów (14–22 zamiast 9–16) i dokładniej, a
+  ciemniejsze partie obrazu są gdzieniegdzie kreskowane. Kreskowanie mają
+  wszystkie arkusze od razu. Kontury w gotowych studiach serwer rysuje od
+  nowa nocą, w pakiecie (zadanie nocne „Słowa kluczowe i polskie
+  teksty”), za około 2–3 centy za studium.
+- Każdy znak kredą leży na własnej płaszczyźnie nad arkuszem: przy
+  przechylaniu telefonu główny znak przesuwa się najbardziej, kolejne
+  coraz mniej, więc łatwiej je od siebie odróżnić.
+
 ## 1.145.45
 
 - Studium dzieła, „Kolor i światło”: ryciny, rysunki, grafiki i plakaty

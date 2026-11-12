@@ -24,6 +24,7 @@ from .ai.gatekeeper import Gatekeeper
 from .ai.journey import Journeys
 from .ai.museum_words import MuseumWords
 from .ai.prose import ProseJob
+from .ai.redraw import PenJob
 from .ai.search_words import SearchWords
 from .ai.sentence import Sentence
 from .ai.study import StudyJob
@@ -372,7 +373,9 @@ class FrameService:
         # lets it) and for pages left without one.
         self.compose = ComposeJob(self.daily.job)
         self.ai.register(self.compose)
-        # The study sheets the analyses are drawn on, made when first asked for.
+        # The pen sketches of pages drawn by an earlier pen, drawn again at night.
+        self.ai.register(PenJob(self.compose))
+        # The study sheets the analyses are drawn on, made ahead in the background.
         self.sheets = Sheets(self.library, self.images)
         # The composition text of pages written before, rewritten once in one
         # voice (their marks stay).

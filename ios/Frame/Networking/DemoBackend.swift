@@ -1024,10 +1024,14 @@ actor DemoBackend: FrameBackend {
         // one. CI screenshots: "-demoStudy bedroom" shows another work's
         // analysis and sheet under the wave's page.
         work.compositionSheet = DemoStudies.sheet(wave.id)
+        work.compositionLayers = true
+        if let first = work.composition?.views?.first {
+            work.composition?.views?[0] = DemoStudies.sketched(first, id: wave.id)
+        }
         if let study = DemoStudies.asked, let item = found(study.id) {
             work.item = RemoteItem(item: item, inLibrary: true)
             work.title = study.title
-            work.composition = .init(views: [study.take], points: [], lines: [])
+            work.composition = .init(views: [DemoStudies.sketched(study.take, id: study.id)], points: [], lines: [])
             work.compositionSheet = DemoStudies.sheet(study.id)
         }
         // CI screenshots: "-realSize 210x163" draws a big work's scale.
@@ -1895,13 +1899,18 @@ actor DemoBackend: FrameBackend {
         return out
     }
 
-    /// "/demo/sheet/<id>?v=1[&dark=1]": a work's study sheet, made by the
-    /// server's renderer and bundled for the light and the dark page.
+    /// "/demo/sheet/<id>?v=1[&dark=1]&layer=wash|pen": a layer of a work's
+    /// study sheet, made by the server's renderer and bundled for the light
+    /// and the dark page (the stains, and what the pen drew over them).
     private static func sheet(_ path: String) -> URL? {
         guard let parts = URLComponents(string: path) else { return nil }
         let id = String(parts.path.dropFirst("/demo/sheet/".count))
         let dark = parts.queryItems?.contains { $0.name == "dark" && $0.value == "1" } == true
-        return Bundle.main.url(forResource: DemoFraming.stem(id) + (dark ? "-sheet-dark" : "-sheet"), withExtension: "jpg")
+        let pen = parts.queryItems?.contains { $0.name == "layer" && $0.value == "pen" } == true
+        return Bundle.main.url(
+            forResource: DemoFraming.stem(id) + (pen ? "-pen" : "-wash") + (dark ? "-dark" : ""),
+            withExtension: pen ? "png" : "jpg"
+        )
     }
 
     private static func bundled(_ id: String) -> URL? {
