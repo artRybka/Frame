@@ -23,10 +23,15 @@ final class CompositionSheetTests: XCTestCase {
         XCTAssertEqual(inside[0].x, 0.25, accuracy: 1e-9)
         XCTAssertEqual(inside[0].y, 1.0 / 3, accuracy: 1e-9)
         XCTAssertEqual(inside[1].x, 0.75, accuracy: 1e-9)
+        // The strokes of the sheet's pen, which the app follows as it lays the pen's layer down.
+        XCTAssertEqual(take.sketch?.count, 1)
+        XCTAssertEqual(take.sketch?.first?.sharp, false)
+        XCTAssertEqual(take.sketch?.first?.points.last, Spot(x: 0.9, y: 0.9))
         let older = try LiveBackend.decoder().decode(
             DailyWork.Take.self, from: Data(#"{"title": "Geometria", "grid": "none", "text": "", "marks": []}"#.utf8)
         )
         XCTAssertNil(older.field)
+        XCTAssertNil(older.sketch)
         XCTAssertEqual(older.shownField, .whole)
         // A field that is no part of the picture is not shown.
         var odd = take
@@ -100,6 +105,20 @@ final class CompositionSheetTests: XCTestCase {
         XCTAssertEqual(Chalk.offset(x: 1, y: -1, shift: Chalk.shift, still: false), CGSize(width: 1.5, height: -1.5))
         XCTAssertEqual(Chalk.offset(x: 0.5, y: 0, shift: -Chalk.castShift, still: false), CGSize(width: -0.5, height: 0))
         XCTAssertEqual(Chalk.offset(x: 1, y: 1, shift: Chalk.shift, still: true), .zero)
+        // Each mark on a plane of its own, the first (the main one) highest
+        // (Mateusz 2026-11-12 09:47); a sheet from a server before that, all on one.
+        XCTAssertEqual(Chalk.planes(3, apart: true), [[0], [1], [2]])
+        XCTAssertEqual(Chalk.planes(3, apart: false), [[0, 1, 2]])
+        XCTAssertEqual(Chalk.planes(0, apart: true), [])
+        XCTAssertEqual(Chalk.planeShift(0, of: 1), Chalk.shift)
+        XCTAssertEqual(Chalk.planeShift(0, of: 5), Chalk.highShift)
+        XCTAssertEqual(Chalk.planeShift(4, of: 5), Chalk.lowShift)
+        XCTAssertEqual(Chalk.planeShift(2, of: 5), (Chalk.highShift + Chalk.lowShift) / 2, accuracy: 1e-9)
+        XCTAssertGreaterThan(Chalk.highShift, Chalk.shift)
+        XCTAssertLessThan(Chalk.lowShift, Chalk.shift)
+        // A higher plane's shadow goes further the other way.
+        XCTAssertEqual(Chalk.castReach(under: Chalk.shift), Chalk.castShift)
+        XCTAssertGreaterThan(Chalk.castReach(under: Chalk.highShift), Chalk.castShift)
         // The shadow shows only as the phone turns (Mateusz 2026-11-12 07:01);
         // where the chalk cannot be lit above the page's white a faint one stays.
         XCTAssertEqual(Chalk.castShown(x: 0, y: 0, lit: true, still: false), 0)
@@ -183,6 +202,84 @@ final class CompositionSheetTests: XCTestCase {
         let lit = try XCTUnwrap(ArtGlow.render(plain, gain: Chalk.gain))
         XCTAssertEqual(lit.width, plain.width)
         XCTAssertEqual(lit.height, plain.height)
+        // One plane holds one mark: the line alone has no red in it, and
+        // its brighter copy is cut to where the line lies.
+        let alone = try XCTUnwrap(ChalkMarks.plain(
+            marks: marks, labelled: CompositionSketch.labelled(marks), room: EdgeInsets(), size: size, scale: 1, only: [0]
+        ))
+        try bytes.withUnsafeMutableBytes { buffer in
+            let context = try XCTUnwrap(CGContext(
+                data: buffer.baseAddress, width: 200, height: 100, bitsPerComponent: 8, bytesPerRow: 800,
+                space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ))
+            context.clear(CGRect(x: 0, y: 0, width: 200, height: 100))
+            context.draw(alone, in: CGRect(x: 0, y: 0, width: 200, height: 100))
+        }
+        XCTAssertTrue((0..<200).allSatisfy { x in (10...30).allSatisfy { y in pixel(x, y)[3] == 0 } })
+        XCTAssertGreaterThan((40...160).map { x in (44...56).map { pixel(x, $0)[3] }.max()! }.max()!, 180)
+        let drawing = ChalkDrawing(marks: marks, labelled: CompositionSketch.labelled(marks), room: EdgeInsets(), only: [0])
+        let box = drawing.bounds(in: size)
+        XCTAssertLessThan(box.height, 40)
+        XCTAssertGreaterThan(box.width, 150)
+        XCTAssertTrue(box.contains(CGPoint(x: 100, y: 50)))
+        let cut = try XCTUnwrap(ChalkMarks.cut(box, of: alone, scale: 1))
+        XCTAssertEqual(cut.frame, cut.pixels)
+        XCTAssertTrue(CGRect(x: 0, y: 0, width: 200, height: 100).contains(cut.pixels))
+        XCTAssertNil(ChalkMarks.cut(CGRect(x: 300, y: 300, width: 10, height: 10), of: alone, scale: 1))
+        // At three pixels a point the cut lies on whole pixels.
+        let fine = try XCTUnwrap(ChalkMarks.cut(CGRect(x: 10.2, y: 20.4, width: 30.3, height: 10.1), of: alone, scale: 3))
+        XCTAssertEqual(fine.pixels, CGRect(x: 30, y: 61, width: 92, height: 31))
+        XCTAssertEqual(fine.frame.minX, 10, accuracy: 1e-9)
+    }
+
+    /// The sheet laid down before the reader: the pen stroke after stroke,
+    /// the stains under it, then the chalk (Mateusz 2026-11-12 09:47:
+    /// "malować / rysować się na żywo").
+    func testTheSheetIsDrawnPenThenStainsThenChalk() {
+        // Two strokes, the second three times as long: the pen moves at one speed.
+        let spans = SheetPlan.spans([100, 300])
+        XCTAssertEqual(spans[0].from, 0)
+        XCTAssertEqual(spans[0].takes, SheetPlan.pen / 4, accuracy: 1e-9)
+        XCTAssertEqual(spans[1].from, SheetPlan.pen / 4, accuracy: 1e-9)
+        XCTAssertEqual(spans[1].from + spans[1].takes, SheetPlan.pen, accuracy: 1e-9)
+        XCTAssertEqual(SheetPlan.drawn(spans[1], at: 0), 0)
+        XCTAssertEqual(SheetPlan.drawn(spans[1], at: SheetPlan.pen), 1)
+        XCTAssertEqual(SheetPlan.drawn(spans[0], at: SheetPlan.pen / 8), 0.5, accuracy: 1e-9)
+        // A dot of a stroke still takes a moment; no strokes, no trouble.
+        XCTAssertEqual(SheetPlan.spans([1, 10_000])[0].takes, SheetPlan.dash)
+        XCTAssertTrue(SheetPlan.spans([]).isEmpty)
+        XCTAssertEqual(SheetPlan.spans([0, 0]).count, 2)
+        // The stains start under the pen still drawing, the chalk comes on
+        // the drawn sheet, and all of it is there within three seconds.
+        XCTAssertLessThan(SheetPlan.washFrom, SheetPlan.pen)
+        XCTAssertLessThanOrEqual(SheetPlan.washFrom + SheetPlan.wash, SheetPlan.whole)
+        XCTAssertLessThanOrEqual(SheetPlan.hatchFrom + SheetPlan.hatch, SheetPlan.whole)
+        XCTAssertLessThanOrEqual(SheetPlan.marksAt, SheetPlan.whole)
+        XCTAssertLessThanOrEqual(SheetPlan.whole, 3)
+        // A stroke's line: through its points on the sheet, closed back to its start.
+        let size = CGSize(width: 200, height: 100)
+        let open = DailyWork.Stroke(points: [Spot(x: 0, y: 0), Spot(x: 0.5, y: 0), Spot(x: 1, y: 1)], sharp: true)
+        XCTAssertEqual(SheetPlan.line(open, in: size), [.zero, CGPoint(x: 100, y: 0), CGPoint(x: 200, y: 100)])
+        XCTAssertEqual(SheetPlan.length(SheetPlan.line(open, in: size)), 100 + hypot(100, 100), accuracy: 1e-6)
+        let ring = DailyWork.Stroke(points: open.points, sharp: true, closed: true)
+        XCTAssertEqual(SheetPlan.line(ring, in: size).last, CGPoint.zero)
+        XCTAssertGreaterThan(SheetPlan.line(DailyWork.Stroke(points: open.points), in: size).count, 10)
+        XCTAssertTrue(SheetPlan.line(DailyWork.Stroke(points: [Spot(x: 0, y: 0)]), in: size).isEmpty)
+        // The stains spread from places all over the sheet, each reaching
+        // past its neighbours, the same every time.
+        let blooms = SheetPlan.blooms(in: CGSize(width: 390, height: 280))
+        XCTAssertGreaterThanOrEqual(blooms.count, 6)
+        XCTAssertTrue(blooms.allSatisfy { $0.from >= 0 && $0.from <= 0.45 && $0.reach > 100 })
+        XCTAssertTrue(blooms.allSatisfy { CGRect(x: 0, y: 0, width: 390, height: 280).contains($0.centre) })
+        XCTAssertEqual(SheetPlan.blooms(in: CGSize(width: 390, height: 280)).map { $0.centre }, blooms.map { $0.centre })
+        // The sheet's pictures: whole from a server before the layers, else
+        // its stains and its pen, for the page's colour.
+        XCTAssertEqual(CompositionSketch.sheetRefs("", layers: true, dark: false), [])
+        XCTAssertEqual(CompositionSketch.sheetRefs("/s?v=1", layers: false, dark: true), [.path("/s?v=1&dark=1")])
+        XCTAssertEqual(
+            CompositionSketch.sheetRefs("/s?v=1", layers: true, dark: false),
+            [.path("/s?v=1&layer=wash"), .path("/s?v=1&layer=pen")]
+        )
     }
 
     func testTheDemoHasASheetForItsStudyInBothAppearances() async throws {
@@ -190,16 +287,28 @@ final class CompositionSheetTests: XCTestCase {
         let work = try await demo.daily(day: nil, wait: 0, lists: false)
         let sheet = try XCTUnwrap(work.compositionSheet)
         XCTAssertFalse(sheet.isEmpty)
-        for path in [sheet, sheet + "&dark=1"] {
-            let url = try XCTUnwrap(demo.request(for: .path(path))?.url)
+        // In its two layers, as a server that has them: the stains and the pen.
+        XCTAssertEqual(work.compositionLayers, true)
+        let refs = CompositionSketch.sheetRefs(sheet, layers: true, dark: false) + CompositionSketch.sheetRefs(sheet, layers: true, dark: true)
+        XCTAssertEqual(refs.count, 4)
+        for ref in refs {
+            let url = try XCTUnwrap(demo.request(for: ref)?.url)
             XCTAssertNotNil(UIImage(contentsOfFile: url.path))
         }
-        XCTAssertTrue(try XCTUnwrap(demo.request(for: .path(sheet + "&dark=1"))?.url).lastPathComponent.hasSuffix("-sheet-dark.jpg"))
+        XCTAssertEqual(try XCTUnwrap(demo.request(for: refs[2])?.url).lastPathComponent.hasSuffix("-wash-dark.jpg"), true)
+        XCTAssertEqual(try XCTUnwrap(demo.request(for: refs[1])?.url).lastPathComponent.hasSuffix("-pen.png"), true)
+        // With the strokes its pen was drawn along, on the sheet.
+        let strokes = try XCTUnwrap(work.composition?.takes.first?.sketch)
+        XCTAssertGreaterThan(strokes.count, 8)
+        XCTAssertTrue(strokes.allSatisfy { $0.points.count >= 2 && $0.points.allSatisfy { (0...1).contains($0.x) && (0...1).contains($0.y) } })
         // Every other demo study has its sheets, and its marks lie in the field.
         for study in DemoStudies.named.values {
-            for path in [DemoStudies.sheet(study.id), DemoStudies.sheet(study.id) + "&dark=1"] {
-                XCTAssertNotNil(demo.request(for: .path(path))?.url, path)
+            let layers = CompositionSketch.sheetRefs(DemoStudies.sheet(study.id), layers: true, dark: false)
+                + CompositionSketch.sheetRefs(DemoStudies.sheet(study.id), layers: true, dark: true)
+            for ref in layers {
+                XCTAssertNotNil(demo.request(for: ref)?.url, study.id)
             }
+            XCTAssertGreaterThan(DemoStudies.sketches[study.id]?.count ?? 0, 8, study.id)
             for mark in study.take.marksInField {
                 for point in mark.points {
                     XCTAssertTrue((-0.5...1.5).contains(point.x) && (-0.5...1.5).contains(point.y))

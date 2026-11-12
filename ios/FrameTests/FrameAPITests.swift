@@ -1097,6 +1097,15 @@ final class FrameAPITests: XCTestCase {
         let day = weekly[1]
         XCTAssertEqual(day.name, "Motyw dnia: \(theme.name)")
         XCTAssertFalse(day.cover?.isEmpty ?? true)
+        // The server's pick for the card's cover (paintings first) leads it.
+        var picked = rows[1]
+        let chosen = Array(picked.items.suffix(2).map(\.id))
+        picked.cover = chosen
+        let pickedCard = try XCTUnwrap(DiscoverLayout.dayCard(picked, themes: themes))
+        XCTAssertEqual(pickedCard.cover?.prefix(2).map(\.id), chosen)
+        XCTAssertEqual(pickedCard.cover?.count, min(4, picked.items.count))
+        // Cover tiles ask for the work without its paper; the server's copy.
+        XCTAssertEqual(page0Tile(picked), .tile(picked.items[0].id))
         // An older server names the group "Na ten tydzień": the same group.
         let old = themes.map { theme in
             var theme = theme
@@ -1111,6 +1120,16 @@ final class FrameAPITests: XCTestCase {
         XCTAssertFalse(page.more)
         XCTAssertEqual(page.items.first?.thumb, .thumb(page.items[0].id))  // demo works are on the server
         XCTAssertNil(page.items[0].thumbFallback)
+    }
+
+    private func page0Tile(_ row: SuggestionRow) -> ImageRef? { row.items.first?.tile }
+
+    func testTileAsksForTheWorkInsideItsPaper() throws {
+        let backend = LiveBackend(baseURL: URL(string: "http://frame.local:8099")!, token: "t")
+        let request = try XCTUnwrap(backend.request(for: .tile("cma:133655")))
+        XCTAssertEqual(request.url?.path, "/api/library/items/cma:133655/thumb")
+        XCTAssertEqual(request.url?.query, "tile=true")
+        XCTAssertEqual(ImageRef.tile("cma:1").itemID, "cma:1")
     }
 
     func testThemeStreamsInLines() async throws {

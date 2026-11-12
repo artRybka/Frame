@@ -12,6 +12,10 @@ import UIKit
 /// line under it. A tap shows the picture itself under the marks, another
 /// brings the sheet back (no sign for it on the sheet).
 ///
+/// From a server that sends the sheet's two layers (`layers`) it is laid
+/// down before the reader, pen then stains then chalk (`SheetLayers`), and
+/// each chalk mark lies on a plane of its own over the sheet (`ChalkMarks`).
+///
 /// A server from before the sheet (no `sheet`), or a sheet that would not
 /// load: the picture as it is, the marks in pencil with a paper-coloured
 /// edge, and a tap hides them.
@@ -24,14 +28,18 @@ struct CompositionSketch: View {
     let take: DailyWork.Take
     /// Server path of the take's study sheet ("" when it has none).
     var sheet: String = ""
+    /// The server has the sheet as its two layers too (the stains, the pen).
+    var layers = false
     /// The text block's width: the picture takes all of it, the same in
     /// every take (nil: as wide as the column lets it).
     var width: CGFloat? = nil
     @State private var bare = LaunchRoute.compositionBare
-    /// The sheet that is here: the marks come with it.
-    @State private var loaded: ImageRef?
+    /// The sheet's pictures that are here: the marks come with them.
+    @State private var loaded: Set<ImageRef> = []
     /// The sheet that would not load: the marks go on the picture.
     @State private var failed: ImageRef?
+    /// The sheet is drawn far enough for the chalk (`SheetLayers`).
+    @State private var chalkDue = false
 
     /// A mark with a label, by its number on the picture.
     struct Labelled: Identifiable {
@@ -40,18 +48,26 @@ struct CompositionSketch: View {
         var id: Int { number }
     }
 
-    /// The sheet for the page's colour now.
-    private var sheetRef: ImageRef? {
-        sheet.isEmpty ? nil : .path(sheet + (scheme == .dark ? "&dark=1" : ""))
+    /// The sheet's pictures for the page's colour now: the whole sheet, or
+    /// its stains and its pen (`Self.sheetRefs`).
+    private var sheetRefs: [ImageRef] {
+        Self.sheetRefs(sheet, layers: layers, dark: scheme == .dark)
+    }
+
+    static func sheetRefs(_ sheet: String, layers: Bool, dark: Bool) -> [ImageRef] {
+        guard !sheet.isEmpty else { return [] }
+        let page = sheet + (dark ? "&dark=1" : "")
+        return layers ? [.path(page + "&layer=wash"), .path(page + "&layer=pen")] : [.path(page)]
     }
 
     var body: some View {
-        let ref = sheetRef.flatMap { $0 == failed ? nil : $0 }
-        let marks = ref == nil ? take.marks : take.marksInField
+        let refs = sheetRefs.first == failed ? [] : sheetRefs
+        let marks = refs.isEmpty ? take.marks : take.marksInField
         let labelled = Self.labelled(marks)
+        let here = !refs.isEmpty && refs.allSatisfy(loaded.contains)
         VStack(spacing: 14) {
-            if let ref {
-                sheetPicture(ref, marks: marks, labelled: labelled, here: loaded == ref)
+            if !refs.isEmpty {
+                sheetPicture(refs, marks: marks, labelled: labelled, here: here)
             } else {
                 picture(labelled)
             }
@@ -62,12 +78,12 @@ struct CompositionSketch: View {
                     spacing: 12
                 ) {
                     ForEach(labelled) { entry in
-                        label(entry, chalk: ref != nil)
+                        label(entry, chalk: !refs.isEmpty)
                     }
                 }
             }
         }
-        .animation(.easeOut(duration: 0.3), value: loaded)
+        .animation(.easeOut(duration: 0.3), value: here)
     }
 
     private let pencil = Pencil.lead
@@ -99,15 +115,26 @@ struct CompositionSketch: View {
     /// picture's great lines further (`Pencil.overflow`): room is made
     /// above and below for them, at the sides they run into the gutter.
     /// No marks before the sheet is here: white chalk on the bare page
-    /// would hardly show.
-    private func sheetPicture(_ ref: ImageRef, marks: [DailyWork.Mark], labelled: [Labelled], here: Bool) -> some View {
+    /// would hardly show. A sheet in two layers is drawn before the reader
+    /// and its marks come one after another once it is.
+    private func sheetPicture(_ refs: [ImageRef], marks: [DailyWork.Mark], labelled: [Labelled], here: Bool) -> some View {
         let room = sheetRoom(marks)
         let dark = scheme == .dark
+        let drawn = refs.count == 2
         return box(fieldAspect)
             .overlay {
-                ArtImage(ref: ref, placeholder: .clear, maxPixel: Self.sheetPixels)
-                    .environment(\.artImageLoaded) { loaded in sheetLoaded(loaded) }
-                    .opacity(bare ? 0 : 1)
+                Group {
+                    if drawn {
+                        SheetLayers(
+                            wash: refs[0], pen: refs[1], strokes: take.sketch ?? [], ready: here,
+                            maxPixel: Self.sheetPixels
+                        ) { chalkDue = true }
+                    } else {
+                        ArtImage(ref: refs[0], placeholder: .clear, maxPixel: Self.sheetPixels)
+                    }
+                }
+                .environment(\.artImageLoaded) { loaded in sheetLoaded(loaded) }
+                .opacity(bare ? 0 : 1)
             }
             .overlay {
                 // The picture itself, cut to the field: only once asked for.
@@ -123,9 +150,8 @@ struct CompositionSketch: View {
                 .allowsHitTesting(false)
             }
             .overlay {
-                ChalkMarks(marks: marks, labelled: labelled, room: room)
+                ChalkMarks(marks: marks, labelled: labelled, room: room, shown: here && (chalkDue || !drawn), planes: drawn)
                     .padding(EdgeInsets(top: -room.top, leading: -room.leading, bottom: -room.bottom, trailing: -room.trailing))
-                    .opacity(here ? 1 : 0)
                     .allowsHitTesting(false)
             }
             .contentShape(Rectangle())
@@ -138,9 +164,9 @@ struct CompositionSketch: View {
             .padding(.top, room.top)
             .padding(.bottom, room.bottom)
             .frame(maxWidth: .infinity)
-            .task(id: ref) {
+            .task(id: refs) {
                 // A sheet already in memory has its marks at once.
-                if sheetInMemory(ref) { loaded = ref }
+                for ref in refs where sheetInMemory(ref) { loaded.insert(ref) }
             }
     }
 
@@ -159,11 +185,12 @@ struct CompositionSketch: View {
     /// The sheet is here, or was given up on: with it come the marks;
     /// without it they go on the picture, as before the sheet.
     private func sheetLoaded(_ ref: ImageRef) {
-        guard ref == sheetRef else { return }
+        let refs = sheetRefs
+        guard refs.contains(ref) else { return }
         if sheetInMemory(ref) {
-            loaded = ref
+            loaded.insert(ref)
         } else {
-            failed = ref
+            failed = refs.first
         }
     }
 
@@ -398,6 +425,35 @@ enum Chalk {
     /// their shadow the other way.
     static let shift: CGFloat = 1.5
     static let castShift: CGFloat = 1
+    /// With each mark on a plane of its own: how far the highest (the
+    /// first mark, the main one) and the lowest move at a full turn, the
+    /// others evenly between (picked by reasoning, around the 1.5 pt he
+    /// asked for; not yet seen on a phone).
+    static let highShift: CGFloat = 2.6
+    static let lowShift: CGFloat = 0.8
+    /// How long a mark takes to come onto the drawn sheet, and how long
+    /// after the one before it starts.
+    static let comeIn = 0.35
+    static let comeGap = 0.2
+
+    /// Which marks (by their place) each plane holds, the highest first:
+    /// one each when `apart`, else all on one.
+    static func planes(_ count: Int, apart: Bool) -> [[Int]] {
+        guard count > 0 else { return [] }
+        return apart ? (0..<count).map { [$0] } : [Array(0..<count)]
+    }
+
+    /// How far a plane moves at a full turn: `shift` when it is the only one.
+    static func planeShift(_ plane: Int, of count: Int) -> CGFloat {
+        guard count > 1 else { return shift }
+        return highShift - (highShift - lowShift) * CGFloat(plane) / CGFloat(count - 1)
+    }
+
+    /// How far the shadow of a plane that moves `shift` goes the other
+    /// way: further under a higher plane.
+    static func castReach(under plane: CGFloat) -> CGFloat {
+        castShift * plane / shift
+    }
     /// How soft the shadow is and how dark on each page at a full turn.
     static let castBlur: CGFloat = 1
     static func castDepth(dark: Bool) -> Double { dark ? 0.5 : 0.34 }
@@ -473,21 +529,65 @@ enum Chalk {
 }
 
 /// A take's marks in chalk with their numbers, or (`cast`) the shadow they
-/// throw; in a canvas grown by `room` around the picture's field.
+/// throw; in a canvas grown by `room` around the picture's field. `only`:
+/// just these marks (by their place among `marks`) and their numbers, as
+/// one plane over the sheet holds them (`ChalkMarks`); each is drawn the
+/// same alone as among the others.
 struct ChalkDrawing: View {
     let marks: [DailyWork.Mark]
     let labelled: [CompositionSketch.Labelled]
     let room: EdgeInsets
     var cast = false
+    var only: [Int]? = nil
+
+    /// The place among `marks` of each labelled one, in the labels' order.
+    static func owners(_ marks: [DailyWork.Mark]) -> [Int] {
+        marks.indices.filter { !marks[$0].title.isEmpty }
+    }
+
+    private func has(_ index: Int) -> Bool { only?.contains(index) != false }
+
+    /// The strokes of each mark drawn here, with its place among `marks`.
+    private func strokes(in size: CGSize) -> [(index: Int, mark: DailyWork.Mark, paths: [Path])] {
+        marks.enumerated().compactMap { (index, mark) -> (index: Int, mark: DailyWork.Mark, paths: [Path])? in
+            guard has(index) else { return nil }
+            return (index: index, mark: mark, paths: Pencil.paths(for: mark, in: size, seed: index * 7 + 1, weight: Pencil.crayonWeight, chalk: true))
+        }
+    }
+
+    /// The numbers drawn here and where.
+    private func numbers(in size: CGSize) -> [(entry: CompositionSketch.Labelled, spot: CGPoint)] {
+        let owners = Self.owners(marks)
+        let spots = Pencil.numberSpots(for: labelled.map(\.mark), in: size)
+        return zip(labelled, spots).enumerated().compactMap { (place, pair) -> (entry: CompositionSketch.Labelled, spot: CGPoint)? in
+            guard place < owners.count, has(owners[place]) else { return nil }
+            return (entry: pair.0, spot: pair.1)
+        }
+    }
+
+    /// Where what is drawn here lies in a canvas of `size`, with room for
+    /// its dust: what a plane's brighter copy is cut to.
+    func bounds(in size: CGSize) -> CGRect {
+        let field = CompositionSketch.pictureRect(in: size, room: room)
+        var box = CGRect.null
+        for entry in strokes(in: field.size) {
+            for path in entry.paths where !path.isEmpty {
+                box = box.union(path.boundingRect)
+            }
+        }
+        for number in numbers(in: field.size) {
+            box = box.union(CGRect(x: number.spot.x - 11, y: number.spot.y - 11, width: 22, height: 22))
+        }
+        guard !box.isNull else { return .zero }
+        return box.offsetBy(dx: field.minX, dy: field.minY).insetBy(dx: -4, dy: -4)
+    }
 
     var body: some View {
         Canvas { context, size in
             let field = CompositionSketch.pictureRect(in: size, room: room)
             context.translateBy(x: field.minX, y: field.minY)
-            let drawn: [(mark: DailyWork.Mark, paths: [Path])] = marks.enumerated().map { index, mark in
-                (mark: mark, paths: Pencil.paths(for: mark, in: field.size, seed: index * 7 + 1, weight: Pencil.crayonWeight, chalk: true))
-            }
-            let spots = Pencil.numberSpots(for: labelled.map(\.mark), in: field.size)
+            let drawn = strokes(in: field.size)
+            let numbered = numbers(in: field.size)
             if cast {
                 var soft = context
                 soft.addFilter(.blur(radius: Chalk.castBlur))
@@ -497,7 +597,8 @@ struct ChalkDrawing: View {
                             layer.fill(path, with: .color(.black))
                         }
                     }
-                    for spot in spots {
+                    for number in numbered {
+                        let spot = number.spot
                         layer.fill(Path(ellipseIn: CGRect(x: spot.x - 9.5, y: spot.y - 9.5, width: 19, height: 19)), with: .color(.black))
                     }
                 }
@@ -505,14 +606,14 @@ struct ChalkDrawing: View {
                 // The strokes, then all of them rubbed into the paper's tooth.
                 let whole = CGRect(x: -field.minX, y: -field.minY, width: size.width, height: size.height)
                 context.drawLayer { layer in
-                    for (index, entry) in drawn.enumerated() {
+                    for entry in drawn {
                         let colour = Chalk.color(for: entry.mark)
                         for (part, path) in entry.paths.enumerated() {
                             layer.stroke(
                                 path, with: .color(colour.opacity(Chalk.dust)),
                                 style: StrokeStyle(lineWidth: Chalk.dustWidth, lineCap: .round, lineJoin: .round)
                             )
-                            layer.fill(path, with: .color(colour.opacity(Chalk.press(index * 17 + part))))
+                            layer.fill(path, with: .color(colour.opacity(Chalk.press(entry.index * 17 + part))))
                         }
                     }
                     if let tooth = Chalk.tooth {
@@ -523,8 +624,8 @@ struct ChalkDrawing: View {
                         )
                     }
                 }
-                for (entry, spot) in zip(labelled, spots) {
-                    Chalk.badge(entry.number, of: entry.mark, at: spot, in: &context)
+                for number in numbered {
+                    Chalk.badge(number.entry.number, of: number.entry.mark, at: number.spot, in: &context)
                 }
             }
         }
@@ -535,10 +636,76 @@ struct ChalkDrawing: View {
 /// page's white where the screen can show it, and under it its shadow,
 /// which shows as the two shift against each other with the phone's turn
 /// (`Tilt`; still with Reduce Motion, no gyroscope in Low Power Mode).
+///
+/// `planes`: each mark stands at a height of its own, the first (the main
+/// one) highest, so they shift against one another too and are told apart
+/// (Mateusz 2026-11-12 09:47: "Poszczególne oznaczenia / linie kredą mogą
+/// być umieszczone na różnych płaszczyznach paralaksy - łatwiej będzie się
+/// je czytać"), and they come one after another when `shown` turns true.
 struct ChalkMarks: View {
     let marks: [DailyWork.Mark]
     let labelled: [CompositionSketch.Labelled]
     let room: EdgeInsets
+    var shown = true
+    var planes = false
+
+    var body: some View {
+        GeometryReader { geometry in
+            let groups = Chalk.planes(marks.count, apart: planes)
+            ZStack {
+                // The lowest first: a higher one lies over it.
+                ForEach(Array(groups.enumerated().reversed()), id: \.offset) { plane, group in
+                    ChalkPlane(
+                        marks: marks, labelled: labelled, room: room, only: group, size: geometry.size,
+                        shift: Chalk.planeShift(plane, of: groups.count)
+                    )
+                    .opacity(shown ? 1 : 0)
+                    .animation(
+                        planes ? .easeOut(duration: Chalk.comeIn).delay(Chalk.comeGap * Double(plane)) : .easeOut(duration: 0.3),
+                        value: shown
+                    )
+                }
+            }
+            .opacity(LaunchRoute.chalkDemo == "none" ? 0 : 1)
+        }
+        .followsTilt()
+    }
+
+    /// The marks as the canvas draws them, as a picture (clear around them).
+    static func plain(
+        marks: [DailyWork.Mark], labelled: [CompositionSketch.Labelled], room: EdgeInsets, size: CGSize, scale: CGFloat,
+        only: [Int]? = nil
+    ) -> CGImage? {
+        let renderer = ImageRenderer(
+            content: ChalkDrawing(marks: marks, labelled: labelled, room: room, only: only).frame(width: size.width, height: size.height)
+        )
+        renderer.scale = scale
+        return renderer.cgImage
+    }
+
+    /// The pixels of a picture `scale` times its points that hold `box`
+    /// (in points), and the place in points of exactly those pixels.
+    static func cut(_ box: CGRect, of image: CGImage, scale: CGFloat) -> (pixels: CGRect, frame: CGRect)? {
+        let whole = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+        let pixels = CGRect(x: box.minX * scale, y: box.minY * scale, width: box.width * scale, height: box.height * scale)
+            .integral.intersection(whole)
+        guard !pixels.isNull, pixels.width >= 1, pixels.height >= 1 else { return nil }
+        let frame = CGRect(x: pixels.minX / scale, y: pixels.minY / scale, width: pixels.width / scale, height: pixels.height / scale)
+        return (pixels: pixels, frame: frame)
+    }
+}
+
+/// One plane of marks over the sheet: its chalk, its brighter copy where
+/// the screen has headroom (cut to where the marks lie: an extended-range
+/// picture of the whole sheet for every plane would be heavy), its shadow.
+private struct ChalkPlane: View {
+    let marks: [DailyWork.Mark]
+    let labelled: [CompositionSketch.Labelled]
+    let room: EdgeInsets
+    let only: [Int]
+    let size: CGSize
+    /// How far this plane moves at a full turn of the phone.
+    let shift: CGFloat
     @Environment(\.displayScale) private var displayScale
     @Environment(\.colorScheme) private var scheme
     @State private var lit: Lit?
@@ -546,6 +713,7 @@ struct ChalkMarks: View {
     /// What the brighter copy was made of.
     struct Made: Equatable {
         let marks: [DailyWork.Mark]
+        let only: [Int]
         let size: CGSize
         let scale: CGFloat
     }
@@ -553,37 +721,37 @@ struct ChalkMarks: View {
     private struct Lit {
         let source: Made
         let image: UIImage
+        /// Where the copy lies in the plane.
+        let frame: CGRect
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            let made = Made(marks: marks, size: geometry.size, scale: displayScale)
-            let bright = lit.flatMap { $0.source == made ? $0.image : nil }
-            ZStack {
-                ChalkDrawing(marks: marks, labelled: labelled, room: room, cast: true)
-                    .modifier(Floating(
-                        rest: bright == nil ? Chalk.castRest : .zero, shift: -Chalk.castShift,
-                        cast: Chalk.castDepth(dark: scheme == .dark), lit: bright != nil
-                    ))
-                ZStack {
-                    ChalkDrawing(marks: marks, labelled: labelled, room: room)
-                        .opacity(bright == nil ? 1 : 0)
-                    if let bright {
-                        Image(uiImage: bright)
-                            .resizable()
-                            .allowedDynamicRange(.high)
-                    }
+        let made = Made(marks: marks, only: only, size: size, scale: displayScale)
+        let bright = lit.flatMap { $0.source == made ? $0 : nil }
+        ZStack {
+            ChalkDrawing(marks: marks, labelled: labelled, room: room, cast: true, only: only)
+                .modifier(Floating(
+                    rest: bright == nil ? Chalk.castRest : .zero, shift: -Chalk.castReach(under: shift),
+                    cast: Chalk.castDepth(dark: scheme == .dark), lit: bright != nil
+                ))
+            ZStack(alignment: .topLeading) {
+                ChalkDrawing(marks: marks, labelled: labelled, room: room, only: only)
+                    .opacity(bright == nil ? 1 : 0)
+                if let bright {
+                    Image(uiImage: bright.image)
+                        .resizable()
+                        .allowedDynamicRange(.high)
+                        .frame(width: bright.frame.width, height: bright.frame.height)
+                        .offset(x: bright.frame.minX, y: bright.frame.minY)
                 }
-                .modifier(Floating(rest: .zero, shift: Chalk.shift))
             }
-            .task(id: made) { await light(made) }
-            .opacity(LaunchRoute.chalkDemo == "none" ? 0 : 1)
+            .modifier(Floating(rest: .zero, shift: shift))
         }
-        .followsTilt()
+        .task(id: made) { await light(made) }
     }
 
-    /// Makes the brighter copy of the marks as drawn at this size, where
-    /// the screen has headroom for it.
+    /// Makes the brighter copy of this plane's marks as drawn at this size,
+    /// where the screen has headroom for it.
     private func light(_ made: Made) async {
         guard made.size.width > 1, made.size.height > 1,
               let gain = Chalk.lift(headroom: LaunchRoute.chalkDemo == "lit" ? 8 : ScreenBoost.shared.headroom)
@@ -591,21 +759,14 @@ struct ChalkMarks: View {
             lit = nil
             return
         }
-        guard let plain = Self.plain(marks: marks, labelled: labelled, room: room, size: made.size, scale: made.scale) else { return }
-        let lifted = await Task.detached(priority: .userInitiated, operation: { ArtGlow.render(plain, gain: gain) }).value
+        let drawing = ChalkDrawing(marks: marks, labelled: labelled, room: room, only: only)
+        guard let plain = ChalkMarks.plain(marks: marks, labelled: labelled, room: room, size: made.size, scale: made.scale, only: only),
+              let cut = ChalkMarks.cut(drawing.bounds(in: made.size), of: plain, scale: made.scale),
+              let part = plain.cropping(to: cut.pixels)
+        else { return }
+        let lifted = await Task.detached(priority: .userInitiated, operation: { ArtGlow.render(part, gain: gain) }).value
         guard !Task.isCancelled, let lifted else { return }
-        lit = Lit(source: made, image: UIImage(cgImage: lifted, scale: made.scale, orientation: .up))
-    }
-
-    /// The marks as the canvas draws them, as a picture (clear around them).
-    static func plain(
-        marks: [DailyWork.Mark], labelled: [CompositionSketch.Labelled], room: EdgeInsets, size: CGSize, scale: CGFloat
-    ) -> CGImage? {
-        let renderer = ImageRenderer(
-            content: ChalkDrawing(marks: marks, labelled: labelled, room: room).frame(width: size.width, height: size.height)
-        )
-        renderer.scale = scale
-        return renderer.cgImage
+        lit = Lit(source: made, image: UIImage(cgImage: lifted, scale: made.scale, orientation: .up), frame: cut.frame)
     }
 }
 

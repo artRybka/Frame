@@ -528,7 +528,7 @@ struct ArtImage: View {
     /// copy): a thumbnail or preview from before is had anew.
     private var picture: Int {
         switch ref {
-        case let .thumb(id), let .framePreview(id, _, _, _): model.pictureChanges[id] ?? 0
+        case let .thumb(id), let .tile(id), let .framePreview(id, _, _, _): model.pictureChanges[id] ?? 0
         default: 0
         }
     }
@@ -766,7 +766,7 @@ extension ImageRef {
     /// The library work whose picture this is, for the server's own copies.
     var itemID: String? {
         switch self {
-        case let .thumb(id), let .image(id), let .original(id, _): id
+        case let .thumb(id), let .tile(id), let .image(id), let .original(id, _): id
         default: nil
         }
     }

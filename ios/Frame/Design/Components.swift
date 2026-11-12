@@ -995,7 +995,10 @@ struct Collage: View {
 
     @ViewBuilder
     private func tile(_ index: Int, _ width: CGFloat, _ height: CGFloat) -> some View {
-        let picture = ArtImage(ref: .thumb(itemIDs[index]), maxPixel: 400, subjectFocus: true)
+        // The work without its paper or mount (Mateusz 2026-11-12).
+        let picture = ArtImage(
+            ref: .tile(itemIDs[index]), fallback: .thumb(itemIDs[index]), maxPixel: 400, subjectFocus: true
+        )
             .frame(width: width, height: height)
             .scaleEffect(CoverZoom.scale)
             .clipped()
