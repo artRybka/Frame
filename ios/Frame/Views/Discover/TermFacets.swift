@@ -1824,11 +1824,17 @@ struct LevelSwatch: View {
             VStack(spacing: 3) {
                 ZStack {
                     if let level {
-                        Circle().stroke(Theme.hairline, lineWidth: 3.5)
-                        Circle()
-                            .trim(from: 0, to: level.fraction)
-                            .stroke(ColorTag.ring(family), style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
-                            .rotationEffect(.degrees(-90))
+                        // Narrower than the row is tall: seven to a row are
+                        // some 47 pt apart, and two picked side by side
+                        // (Brąz, Beż) had their rings touching.
+                        ZStack {
+                            Circle().stroke(Theme.hairline, lineWidth: 3)
+                            Circle()
+                                .trim(from: 0, to: level.fraction)
+                                .stroke(ColorTag.ring(family), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                                .rotationEffect(.degrees(-90))
+                        }
+                        .frame(width: 41, height: 41)
                     }
                     Circle()
                         .fill(ColorTag.color(family))
@@ -1840,17 +1846,18 @@ struct LevelSwatch: View {
                             .foregroundStyle(ColorTag.light(family) ? Color(hex: 0x1D1B18) : .white)
                     }
                 }
-                .frame(width: 46, height: 46)
+                .frame(height: 46)
                 // Seven to a row since Beż: a size smaller than caption2, and
-                // room to shrink, so "Pomarańcz" is whole and two levels side
-                // by side ("wyraźny", "obecny") stay two words.
+                // room to shrink, so "Pomarańcz" is whole, about as large
+                // as its neighbours, and two levels side by side ("wyraźny",
+                // "obecny") stay two words.
                 Text(ColorTag.name(family))
-                    .font(.system(size: 10, weight: level != nil ? .semibold : .regular))
+                    .font(.system(size: 9.5, weight: level != nil ? .semibold : .regular))
                     .foregroundStyle(level != nil ? Theme.ink : Theme.inkSoft)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                 Text(level?.name(for: family) ?? " ")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 9.5, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
