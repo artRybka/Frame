@@ -285,7 +285,7 @@ def facets(svc: Svc) -> Facets:
 
 @router.get("/library/items/{item_id:item}", response_model=Item)
 async def get_item(item_id: str, svc: Svc) -> Item:
-    return svc.holders.fill(await _work(svc, item_id))
+    return svc.media.fill(svc.holders.fill(await _work(svc, item_id)))
 
 
 class FragmentPlace(BaseModel):
@@ -378,6 +378,30 @@ async def item_holder(
     status, name = svc.holders.look(item, 0)
     held = svc.holders.fill(svc.library.get(item.id) or item)
     return HolderView(status=status, name=held.held_by or name, key=held.held_at)
+
+
+class MediumView(BaseModel):
+    """How a work is made, looked up when its source does not say:
+    "found" (``medium``), "looking" (ask again), "none", "off"."""
+
+    status: Literal["found", "looking", "none", "off"]
+    medium: str = ""
+
+
+@router.post("/library/items/{item_id:item}/medium", response_model=MediumView)
+async def item_medium(
+    item_id: str, svc: Svc, wait: Annotated[float, Query(ge=0, le=60)] = 0
+) -> MediumView:
+    """The card opened on a work that names no technique: what it is made
+    with, from its record, its Commons page or Wikidata (frame_server.media),
+    looked up in the background. ``wait``: seconds to wait for the answer."""
+    item = await _work(svc, item_id)
+    future = svc.media.soon(item)
+    if wait:
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), wait)
+    status, text = svc.media.look(item, 0)
+    return MediumView(status=status, medium=text)
 
 
 class PolishView(BaseModel):

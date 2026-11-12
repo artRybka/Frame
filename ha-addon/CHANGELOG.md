@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.61
+
+- Technika dzieł uzupełniana tam, gdzie źródło jej nie podaje (WikiArt,
+  Commons, część Europeany, V&A): serwer szuka jej w rekordzie dzieła,
+  na stronie Commons i w Wikidata, gdy otwiera się karta, i nocą
+  (zadanie „Technika dzieł”, Ulubione i playlisty najpierw). Pasek
+  Kolorystyki maluje się wtedy znalezioną techniką, więc pastel
+  Wyspiańskiego „Śpiący Staś” dostaje pastel zamiast farby olejnej,
+  a na karcie pojawia się „Technika”.
+
 ## 1.145.60
 
 - Studium dzieła, analiza kompozycji: rysunek piórkiem na arkuszu trzyma

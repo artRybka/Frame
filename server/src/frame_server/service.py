@@ -53,6 +53,7 @@ from .library.museums import client as museum_client
 from .library.records import records
 from .library.twins import Twins
 from .library.wikidata import MIRRORED, CommonsCopies
+from .media import Media
 from .museum_places import MuseumPlaces
 from .night import NightQueue
 from .notifications import Notifier
@@ -340,6 +341,9 @@ class FrameService:
         # when a card opens and at night.
         self.holders = Holders(self.library, museum_client)
         self.copies.work_qid = self.holders.work_qid
+        # How works are made, where their source does not say (the app
+        # paints a work's colours in its technique): on the card and at night.
+        self.media = Media(self.library, self.importer, self.holders)
         # The study's "Droga dzieła": the museum's provenance retold (Haiku).
         self.journeys = Journeys(
             self.library,

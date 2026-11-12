@@ -726,6 +726,9 @@ class Library:
                         "found_for": found_together(existing.found_for, item.found_for),
                         "sharper": existing.sharper,
                         "holder": item.holder or existing.holder,
+                        # Looked up where the museum's answer said none
+                        # (frame_server.media): kept when it says none again.
+                        "medium": item.medium or existing.medium,
                     }
                 )
                 if item.image_url == existing.image_url:
