@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.145.59
+
+- Pasek barw farbą olejną dla dzieł malowanych gładko (tempera, gotyk,
+  barok, w ogóle przed 1800 rokiem): pociągnięcia są równe, proste i
+  jednakowo szerokie, mniej postrzępione, a jedna barwa przechodzi w
+  drugą dłużej i miękcej. Dzieła z pierwszej połowy XIX wieku dostają
+  to w mniejszym stopniu, późniejsze zostają żywe jak dotąd.
+- Akwarela: kropka akcentu zostawia przy sobie mniej czystego papieru,
+  a to, co zostaje, ma półton plamy dookoła.
+- Barwy bladej kartki: serwer mierzy je teraz od koloru papieru, tak jak
+  widzi je oko, więc w litografii „Kąpiące się” Cézanne'a zieleń zajmuje
+  na pasku tyle co na kartce (ok. 10%), a niebo, które w liczbach jest
+  chłodną szarością, jest pokazane jako osobna barwa (ok. 7%). Aplikacja
+  odbija obie jako plamy pod kreską. Po aktualizacji serwer raz
+  przelicza barwy biblioteki (na NAS 1 do 2 godzin); znaczniki barw i
+  szukanie po kolorze działają bez zmian.
+
 ## 1.145.58
 
 - Studium dzieła, analiza kompozycji: akwarela arkusza lepiej oddaje to,

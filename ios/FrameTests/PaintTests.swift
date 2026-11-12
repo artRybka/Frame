@@ -257,6 +257,16 @@ final class PaintTests: XCTestCase {
         let bathers = shares([("#f3ebe3", 0.484), ("#d0cec4", 0.325), ("#aeb1a5", 0.122), ("#909489", 0.069), ("#b0bd99", 0.044)])
         XCTAssertEqual(PrintPaint.patches(bathers) ?? [], [false, false, false, false, true])
         XCTAssertTrue(PrintPaint.mostlyOne(bathers))
+        // A tint the server found on the pale sheet is a patch though nearer the tones (14:28: „zieleni i
+        // błękitu powinno być chyba więcej na pasku a nie taki mały kwadracik?”): its sky, a grey that is
+        // blue beside its paper. The same grey among a drawing's tones is a tone.
+        let sky = PaintShare(rgb: Paint.rgb("#9cabac") ?? [0, 0, 0], weight: 0.071)
+        var tinted = shares([("#f3ebe3", 0.484), ("#d0cec4", 0.325), ("#aeb1a5", 0.122), ("#909489", 0.069), ("#b0bd99", 0.105)])
+        tinted[4].accent = true
+        XCTAssertEqual(PrintPaint.patches(tinted + [sky]) ?? [], [false, false, false, false, true, false])
+        XCTAssertEqual(PrintPaint.patches(tinted + [PaintShare(rgb: sky.rgb, weight: sky.weight, accent: true)]) ?? [],
+                       [false, false, false, false, true, true])
+        XCTAssertTrue(PrintPaint.mostlyOne(tinted + [PaintShare(rgb: sky.rgb, weight: sky.weight, accent: true)]))
         // A work in colours is not a scale of tones with patches: there is too much colour in it.
         XCTAssertFalse(PrintPaint.mostlyOne(wave))
         XCTAssertFalse(PrintPaint.mostlyOne(shares([("#1d1a17", 0.3), ("#e8dcc0", 0.28), ("#c8a23a", 0.18), ("#b5432b", 0.14)])))
@@ -439,7 +449,9 @@ final class PaintTests: XCTestCase {
             XCTAssertEqual(colour.green, mains[i].rgb[1], accuracy: 45, "colour \(i)")
             XCTAssertEqual(colour.blue, mains[i].rgb[2], accuracy: 45, "colour \(i)")
         }
-        // The washes go round each accent's place: when they are down it is clean paper still.
+        // The washes go round each accent's place: when they are down it is paper still, with only a half tone
+        // of the wash on it (14:28 that day: „kropka akcentu akwareli niech zostawia mniej pustego papieru lub
+        // delikatnie go wybarwia półtonem”).
         let washed = strip.frame(age: (strip.touches.first?.at ?? 0) - 0.01)
         for (n, touch) in strip.touches.enumerated() {
             XCTAssertTrue((16...19).contains(2 * touch.round), "accent \(n)")
@@ -449,7 +461,7 @@ final class PaintTests: XCTestCase {
             XCTAssertLessThan(touch.y + touch.round, Paint.bar - 1)
             for other in strip.touches.dropFirst(n + 1) { XCTAssertGreaterThan(abs(other.x - touch.x), other.round + touch.round + 4) }
             let middle = pixel(touch.x, touch.y)
-            XCTAssertEqual(washed.cover(middle.0, middle.1), 0, "accent \(n)")
+            XCTAssertEqual(washed.cover(middle.0, middle.1), WaterStrip.round.pale, accuracy: 0.06, "accent \(n)")
             // Paint on both sides of it.
             for side in [-1.0, 1.0] {
                 let at = pixel(touch.x + side * (touch.round + 2.5), touch.y)
@@ -461,13 +473,14 @@ final class PaintTests: XCTestCase {
             XCTAssertEqual(colour.red, touch.rgb[0], accuracy: 30, "accent \(n)")
             XCTAssertEqual(colour.green, touch.rgb[1], accuracy: 30, "accent \(n)")
             XCTAssertEqual(colour.blue, touch.rgb[2], accuracy: 30, "accent \(n)")
-            // On one side it stops short of the wash, and paper stays between them.
+            // On one side it stops short of the wash, and a little of the pale paper stays between them.
             let off = (touch.lean.x * touch.lean.x + touch.lean.y * touch.lean.y).squareRoot()
-            XCTAssertTrue((2.6...3.6).contains(off), "accent \(n)")
+            XCTAssertTrue((1.7...2.5).contains(off), "accent \(n)")
             XCTAssertGreaterThan(abs(touch.lean.x), abs(touch.lean.y), "accent \(n)")
             func along(_ far: Double) -> (Int, Int) { pixel(touch.x + far * touch.lean.x / off, touch.y + far * touch.lean.y / off) }
             let bare = stride(from: 0.5, through: 3, by: 0.5).map { dry.cover(along($0 - touch.round).0, along($0 - touch.round).1) }.min() ?? 1
-            XCTAssertLessThan(bare, 0.2, "accent \(n)")
+            XCTAssertLessThan(bare, WaterStrip.round.pale + 0.08, "accent \(n)")
+            XCTAssertGreaterThan(bare, 0.15, "accent \(n)")
             // On the other it lies over the wash and has run into it (Mateusz 2026-11-12 11:21: „plamka
             // akcentu może częściowo nachodzić/zlewać się z resztą paska”): the wash there has taken its colour.
             let taken = stride(from: 0.5, through: 3, by: 0.5).compactMap { far -> Double? in
@@ -649,6 +662,7 @@ final class PaintTests: XCTestCase {
         XCTAssertLessThanOrEqual(Paint.calm.late, Paint.calm.thick)
         // The same paint in the same places; the lower it is, the less its light and shade.
         let thick = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.thick).frame(age: 99)
+        let plain = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.plain).frame(age: 99)
         let smooth = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.smooth).frame(age: 99)
         /// How much the paint's lightness changes from a pixel to the one under it, on the average.
         func rough(_ frame: PaintFrame) -> Double {
@@ -670,9 +684,60 @@ final class PaintTests: XCTestCase {
             for k in 0..<(frame.wide * frame.high) where frame.bytes[4 * k + 3] == 255 { count += 1 }
             return count
         }
-        XCTAssertEqual(solid(thick), solid(smooth))
+        XCTAssertEqual(solid(thick), solid(plain))
+        XCTAssertLessThan(rough(plain), 0.8 * rough(thick))
         XCTAssertLessThan(rough(smooth), 0.6 * rough(thick))
         XCTAssertGreaterThan(rough(smooth), 0)
+    }
+
+    /// Mateusz 2026-11-12 14:28: „dla baroku i gotyku - uspokójmy także
+    /// 'linie' farby - mniej ekspresyjnie, równiej, z miększymi
+    /// przejściami.”
+    func testASmoothPaintIsLaidWithAnEvenHand() {
+        XCTAssertEqual(Paint.even(relief: Paint.calm.smooth), 1)
+        XCTAssertEqual(Paint.even(relief: Paint.calm.plain), 0)
+        XCTAssertEqual(Paint.even(relief: Paint.calm.thick), 0)
+        XCTAssertTrue((0.3...0.5).contains(Paint.even(relief: Paint.calm.even)))
+        // A lively hand's pulls are those of sketch 30, as they were.
+        let lively = OilStrip.pulls(jatte, width: 350, seed: 5), even = OilStrip.pulls(jatte, width: 350, seed: 5, even: 1)
+        XCTAssertEqual(OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.late).pulls.map(\.tilt), lively.map(\.tilt))
+        // As many pulls at the same times, of the same colours' places.
+        XCTAssertEqual(even.count, lively.count)
+        XCTAssertEqual(even.map(\.at), lively.map(\.at))
+        func spread(_ values: [Double]) -> Double { (values.max() ?? 0) - (values.min() ?? 0) }
+        let mains = lively.indices.filter { !lively[$0].on }
+        XCTAssertEqual(mains.map { even[$0].e }, mains.map { lively[$0].e })
+        XCTAssertEqual(even.map(\.on), lively.map(\.on))
+        // Straighter, level, alike in width, narrowing less.
+        for index in lively.indices {
+            XCTAssertLessThanOrEqual(abs(even[index].tilt), 0.3 * abs(lively[index].tilt) + 0.000_001)
+            XCTAssertLessThanOrEqual(abs(even[index].dy), 0.3 * abs(lively[index].dy) + 0.000_001)
+            XCTAssertLessThan(even[index].sway, 0.3 * lively[index].sway)
+            XCTAssertLessThan(even[index].taper, 0.3 * lively[index].taper)
+        }
+        XCTAssertLessThan(spread(mains.map { even[$0].wide }), 0.3 * spread(mains.map { lively[$0].wide }))
+        // Softer where one goes over into the next: begun further back in its wet paint, with more of it
+        // on the brush, carried further.
+        for index in mains.dropFirst() {
+            XCTAssertEqual(even[index].a, lively[index].a - OilStrip.evened.back, accuracy: 0.001)
+            XCTAssertGreaterThan(even[index].blend, lively[index].blend + 0.2)
+            XCTAssertGreaterThan(even[index].carry.0, 1.5 * lively[index].carry.0)
+        }
+        // The last pull does not run as dry.
+        if let end = mains.last { XCTAssertGreaterThan(even[end].full, lively[end].full) }
+        // In the picture: the sides of the paint wander less.
+        func edge(_ frame: PaintFrame) -> Double {
+            // How much the paint's upper edge moves from one column to the next, on the average.
+            var tops = [Int]()
+            for x in stride(from: 40 * Paint.scale, to: frame.wide - 80 * Paint.scale, by: 1) {
+                if let top = (0..<frame.high).first(where: { frame.bytes[4 * ($0 * frame.wide + x) + 3] > 200 }) { tops.append(top) }
+            }
+            guard tops.count > 1 else { return 0 }
+            return zip(tops, tops.dropFirst()).reduce(0.0) { $0 + abs(Double($1.1 - $1.0)) } / Double(tops.count - 1)
+        }
+        let rough = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.plain).frame(age: 99)
+        let calm = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.smooth).frame(age: 99)
+        XCTAssertLessThan(edge(calm), 0.8 * edge(rough))
     }
 
     func testAPaintsSwatchIsATouchADabOrAScribbleOfItsColour() {

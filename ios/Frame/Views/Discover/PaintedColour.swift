@@ -35,7 +35,9 @@ extension PaintStyle {
         // beside them is printed on the scale of tones, not a reason for
         // a bar of inks (Mateusz 2026-11-12 11:35: „jeżeli pojawią się
         // plama barwna, to nasza skala koloru musi ją uwzględniać”).
-        let shares = item.colors.compactMap { swatch in Paint.rgb(swatch.hex).map { PaintShare(rgb: $0, weight: max(swatch.weight, 0)) } }
+        let shares = item.colors.compactMap { swatch in
+            Paint.rgb(swatch.hex).map { PaintShare(rgb: $0, weight: max(swatch.weight, 0), accent: swatch.accent ?? false) }
+        }
         return of(medium: item.medium, classification: item.classification,
                   mono: item.colorTags.contains("monochrome") || (!shares.isEmpty && PrintPaint.mostlyOne(shares)), warm: warm(colours))
     }
@@ -411,11 +413,12 @@ struct PaintedStrip: View {
     static let most = 8
 
     /// CI screenshots: "-paintColours 918d78:0.28/4c4a3c:0.26" are the
-    /// colours of every work's bar (an engraving's, for an engraving's bar).
+    /// colours of every work's bar (an engraving's, for an engraving's
+    /// bar); "9cabac:0.07:a" is an accent.
     static let forced: [PaintShare] = (UserDefaults.standard.string(forKey: "paintColours") ?? "").split(separator: "/").compactMap { part in
         let bits = part.split(separator: ":")
-        guard bits.count == 2, let rgb = Paint.rgb(String(bits[0])), let weight = Double(bits[1]), weight > 0 else { return nil }
-        return PaintShare(rgb: rgb, weight: weight)
+        guard bits.count >= 2, let rgb = Paint.rgb(String(bits[0])), let weight = Double(bits[1]), weight > 0 else { return nil }
+        return PaintShare(rgb: rgb, weight: weight, accent: bits.count > 2)
     }
 
     /// The colours it paints: those it can read, the first `most`.
@@ -423,7 +426,7 @@ struct PaintedStrip: View {
         if !forced.isEmpty { return forced }
         return swatches.compactMap { swatch in
             guard let rgb = Paint.rgb(swatch.hex), swatch.weight > 0 else { return nil }
-            return PaintShare(rgb: rgb, weight: swatch.weight)
+            return PaintShare(rgb: rgb, weight: swatch.weight, accent: swatch.accent ?? false)
         }
         .prefix(most).map { $0 }
     }
