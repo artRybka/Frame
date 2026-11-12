@@ -423,7 +423,7 @@ struct CompositionSketch: View {
             // more than the note's under it (Mateusz 2026-11-12 12:44:
             // "coś się posypały odstępy w nagłówkach tekstu?").
             VStack(alignment: .leading, spacing: -7) {
-                HandLines(text: entry.mark.title, size: 21)
+                HandLines(text: entry.mark.title, size: 21, even: true)
                 if !entry.mark.text.isEmpty {
                     HandLines(text: entry.mark.text, size: 18)
                         .foregroundStyle(Theme.inkSoft)
@@ -939,13 +939,16 @@ extension DailyWork.Mark {
 struct HandLines: View {
     let text: String
     let size: CGFloat
+    /// Lines of about one length (a title), not a full one and a word
+    /// left over under it.
+    var even = false
 
     var body: some View {
         let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
         // Caveat's space is 0.242 em; a line every 0.95 em, as close as the
         // note sits under its title. A word longer than the line is
         // written smaller, not out of the column.
-        WordFlow(space: size * 0.242, pitch: size * 0.95) {
+        WordFlow(space: size * 0.242, pitch: size * 0.95, even: even) {
             ForEach(words.indices, id: \.self) { index in
                 Text(words[index]).font(.hand(size)).lineLimit(1).minimumScaleFactor(0.7)
             }
@@ -961,6 +964,9 @@ struct HandLines: View {
 struct WordFlow: Layout {
     let space: CGFloat
     let pitch: CGFloat
+    /// In as few lines as the width takes, but those as even as they can
+    /// be: "Żółć wraca / trzy razy", not "Żółć wraca trzy / razy".
+    var even = false
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let placed = place(subviews, width: proposal.width ?? .infinity)
@@ -979,18 +985,46 @@ struct WordFlow: Layout {
         }
     }
 
-    /// Each word's frame: on the line while it fits, else at the start of
-    /// the next (a word wider than the line gets a line of its own).
+    /// Each word's frame. A word is offered the whole line: one that fits
+    /// answers with its own size, a longer one with the line's width.
     private func place(_ subviews: Subviews, width: CGFloat) -> [CGRect] {
+        let line = ProposedViewSize(width: width.isFinite ? width : nil, height: nil)
+        let sizes = subviews.map { $0.sizeThatFits(line) }
+        return Self.frames(of: sizes, width: width, space: space, pitch: pitch, even: even)
+    }
+
+    /// The frames of words of these sizes in a line this wide. `even`:
+    /// in no more lines than that takes, laid in the narrowest width that
+    /// still takes no more (so the lines come out about one length).
+    static func frames(of sizes: [CGSize], width: CGFloat, space: CGFloat, pitch: CGFloat, even: Bool = false) -> [CGRect] {
+        let whole = filled(sizes, width: width, space: space, pitch: pitch)
+        guard even, width.isFinite, let last = whole.last, last.minY > 0 else { return whole }
+        var narrow = sizes.map(\.width).max() ?? 0
+        var wide = width
+        var best = whole
+        for _ in 0..<12 where wide - narrow > 0.5 {
+            let middle = (narrow + wide) / 2
+            let tried = filled(sizes, width: middle, space: space, pitch: pitch)
+            if (tried.last?.minY ?? 0) <= last.minY + 0.01 {
+                best = tried
+                wide = middle
+            } else {
+                narrow = middle
+            }
+        }
+        return best
+    }
+
+    /// Each word on the line while it fits, else at the start of the next
+    /// (a word wider than the line gets a line of its own).
+    private static func filled(_ sizes: [CGSize], width: CGFloat, space: CGFloat, pitch: CGFloat) -> [CGRect] {
         var frames: [CGRect] = []
         var x: CGFloat = 0
         var y: CGFloat = 0
-        // A word is offered the whole line: one that fits answers with
-        // its own size, a longer one with the line's width.
-        let line = ProposedViewSize(width: width.isFinite ? width : nil, height: nil)
-        for subview in subviews {
-            let size = subview.sizeThatFits(line)
-            if x > 0, x + space + size.width > width {
+        for size in sizes {
+            // Half a point of give: laid again in exactly the width it asked
+            // for, a line must not lose its last word to rounding.
+            if x > 0, x + space + size.width > width + 0.5 {
                 x = 0
                 y += pitch
             }

@@ -207,6 +207,23 @@ final class CompositionSheetTests: XCTestCase {
         XCTAssertEqual(wide.height, word.height, accuracy: 1)
     }
 
+    /// A title of two lines has them about one length ("Żółć wraca / trzy
+    /// razy"), not a full line and one word under it; a note fills its
+    /// lines as before.
+    func testATitlesLinesAreEven() {
+        let sizes = [40, 50, 35, 40].map { CGSize(width: $0, height: 26) }
+        let filled = WordFlow.frames(of: sizes, width: 150, space: 5, pitch: 20)
+        XCTAssertEqual(filled.map(\.minY), [0, 0, 0, 20])
+        let even = WordFlow.frames(of: sizes, width: 150, space: 5, pitch: 20, even: true)
+        XCTAssertEqual(even.map(\.minY), [0, 0, 20, 20])
+        XCTAssertEqual(even.map(\.minX), [0, 45, 0, 40])
+        // No more lines than the width takes, and one line stays one.
+        let one = WordFlow.frames(of: sizes, width: 400, space: 5, pitch: 20, even: true)
+        XCTAssertEqual(one.map(\.minY), [0, 0, 0, 0])
+        let narrow = WordFlow.frames(of: sizes, width: 60, space: 5, pitch: 20, even: true)
+        XCTAssertEqual(narrow.map(\.minY), [0, 20, 40, 60])
+    }
+
     func testATappedLabelLeavesItsMarkAndTheOthersStepBack() {
         // Mateusz 2026-11-12 11:31: "Dotknięcie podpisu z numerkiem pod spodem
         // niech jakoś zapala - wyróżnia wskazane zakreślenie na szkicu powyżej".
