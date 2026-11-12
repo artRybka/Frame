@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.145.63
+
+- Pasek barw: rysunki i ryciny, które muzeum sfotografowało na szarej
+  albo liliowej tekturze, nie mają już szaroliliowej plamki akcentu.
+  Reguła z 1.145.59, która mierzy barwy bladej kartki od koloru papieru
+  (zieleń i błękit u Cézanne'a), brała pas tektury wokół arkusza za
+  błękitne zabarwienie. Teraz serwer rozpoznaje tekturę po tym, że
+  skrajne linie zdjęcia z co najmniej dwóch stron są jednej, tej samej
+  barwy, i mierzy kartkę bez niej. W próbce 530 dzieł z biblioteki
+  zmienia się 13 pasków, wszystkie z takim akcentem; litografie
+  Cézanne'a zostają bez zmian.
+- Po aktualizacji serwer raz przelicza barwy biblioteki z miniatur
+  (razem z przeliczeniem po zmianie barw do szukania, jeśli obie
+  wersje przychodzą naraz).
+
 ## 1.145.62
 
 - Szukanie po kolorze, po audycie na 530 dziełach z biblioteki. Nowa

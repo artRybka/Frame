@@ -697,11 +697,17 @@ def test_a_sizeable_colour_unlike_the_four_largest_is_shown_too() -> None:
 
 
 def _sheet(
-    washes: bool, mount: bool = False, ink: tuple[int, int, int] = (113, 114, 106)
+    washes: bool,
+    mount: bool = False,
+    ink: tuple[int, int, int] = (113, 114, 106),
+    board: tuple[int, int, int] | None = None,
+    sky: bool = False,
 ) -> Image.Image:
     """A cream sheet drawn on in pencil, like Cézanne's lithograph of the
     bathers: with or without its pale washes, a green one and a sky that
-    is a grey by its numbers; ``mount``: a white mount round it."""
+    is a grey by its numbers; ``mount``: a white mount round it; ``board``:
+    the colour of the board it was photographed on, which shows all round;
+    ``sky``: a wash across the top, down to the picture's edge."""
     rng = np.random.default_rng(7)
     pixels = np.empty((300, 400, 3), float)
     pixels[:] = (243, 235, 227)
@@ -717,6 +723,8 @@ def _sheet(
     if washes:
         wash(slice(40, 160), slice(60, 210), (160, 190, 140))
         wash(slice(40, 120), slice(220, 350), (140, 165, 172))
+    if sky:
+        wash(slice(0, 40), slice(0, 400), (140, 165, 172))
     if mount:
         pixels[:, :60] = (254, 252, 250)
     # The pencil: lines over paper and washes alike, and a shaded place.
@@ -724,6 +732,13 @@ def _sheet(
         pixels[row : row + 3, 40:360] = ink
     pixels[262:290, 250:360] = ink
     pixels[200:250, 250:330] = (176, 174, 166)
+    if board is not None:
+        # The sheet lies on it, and throws a little shadow down and right.
+        laid = np.empty((332, 432, 3), float)
+        laid[:] = board
+        laid[18:320, 18:420] = np.array(board, float) * 0.8
+        laid[16:316, 16:416] = pixels
+        pixels = laid
     noise = rng.integers(-4, 5, pixels.shape)
     return Image.fromarray(np.clip(pixels + noise, 0, 255).astype(np.uint8))
 
@@ -766,6 +781,46 @@ def test_the_tints_of_a_pale_sheet_are_shown(monkeypatch) -> None:
     # picture a sheet at all.
     assert colors.pale(linear_to_oklab(colors._sample(_sheet(True, ink=(34, 65, 96)), 128))) is None
     assert colors.pale(linear_to_oklab(colors._sample(_dark_room(robes=True), 128))) is None
+
+
+def test_the_board_a_sheet_was_photographed_on_is_no_tint() -> None:
+    # The audit of the colours for search, 2026-11-12: of 19 sheets of the
+    # owner's library with a tint, 6 had a "blue" from the grey or lilac
+    # board the museum photographed them on, a frame round the sheet.
+    def sides(lab: np.ndarray) -> list[str]:
+        sheet = colors.pale(lab)
+        assert sheet is not None
+        return sorted(side for _, _, side in colors.tints(lab, sheet))
+
+    def accents(img: Image.Image) -> dict[str | None, ColorSwatch]:
+        sheet = colors.pale(colors.unmounted(linear_to_oklab(colors._grid(img, 128))))
+        assert sheet is not None
+        swatches = analyse(img).swatches
+        return {sheet.side(_oklab(s), colors.TINT_OFF): s for s in swatches if s.accent}
+
+    bare = accents(_sheet(washes=True))
+    for board in ((186, 185, 190), (124, 126, 128), (150, 154, 153)):
+        grid = linear_to_oklab(colors._grid(_sheet(washes=False, board=board), 128))
+        # Measured as it lies there, the board is a blue of the sheet's...
+        assert sides(grid.reshape(-1, 3)) == ["blue"]
+        # ...and the sheet without its board has no tint.
+        inside = colors.unmounted(grid)
+        assert 0.75 * grid[..., 0].size < len(inside) < 0.9 * grid[..., 0].size
+        assert sides(inside) == []
+        # What is painted on the sheet is found as on the bare sheet: its
+        # share is of the sheet, not of the photograph.
+        laid = accents(_sheet(washes=True, board=board))
+        for side in ("green", "blue"):
+            assert abs(laid[side].weight - bare[side].weight) < 0.03
+            assert np.linalg.norm(_oklab(laid[side]) - _oklab(bare[side])) < 0.03
+    # A sky down to the picture's edge is on one side, and is the sheet's:
+    # nothing is cut, and its blue is found.
+    grid = linear_to_oklab(colors._grid(_sheet(washes=False, sky=True), 128))
+    assert len(colors.unmounted(grid)) == grid[..., 0].size
+    assert sides(grid.reshape(-1, 3)) == ["blue"]
+    # Nor is a dark picture cut, whatever lies at its edges.
+    grid = linear_to_oklab(colors._grid(_dark_room(robes=True), 128))
+    assert len(colors.unmounted(grid)) == grid[..., 0].size
 
 
 def _sea(foam: bool) -> Image.Image:

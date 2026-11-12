@@ -49,8 +49,9 @@ COLOUR_SPREAD = (0.01, 0.035)
 #: the tints of a pale sheet (``tints``); 15: one rule of names for the
 #: shares, the swatches and the accents (``named``), beige a family of its
 #: own, accents by the pixels that stand out, a tag for the white accent
-#: and the tints, Tonacja against the picture's own white.
-SCORE_VERSION = 15
+#: and the tints, Tonacja against the picture's own white; 16: a pale
+#: sheet measured without the board it was photographed on (``unmounted``).
+SCORE_VERSION = 16
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
 #: this chroma / lightness for light ones: a greyish-blue sky does, a beige
@@ -348,6 +349,21 @@ TINT_TOP = 0.3
 #: and then shows the tint itself; an accent or a touch of its side is
 #: the tint, and is given its share.
 TINT_SHOWN = 0.03
+#: The board a museum photographs a sheet on shows round it, a grey or a
+#: lilac one as a "blue" beside cream paper (the audit of the colours for
+#: search, 2026-11-12: of 19 sheets of the owner's library with a tint, 6
+#: had it from the board, and an engraving a "green" from its ink measured
+#: on the black round it). A side of the picture shows the board when its
+#: lines from the edge inwards are ``BOARD_ROW`` darker than the paper
+#: (``TINT_UNDER``), ``BOARD_LINES`` of them at least and no deeper than
+#: ``BOARD_DEEP`` of the picture, and its outermost line is ``BOARD_ROW``
+#: of one colour (within ``BOARD_SAME``, OKLab); and the board is there
+#: when two sides show that same colour. A sky down to the picture's edge
+#: is on one side, and the sea of the Great Wave is no one colour.
+BOARD_ROW = 0.7
+BOARD_LINES = 2
+BOARD_DEEP = 0.2
+BOARD_SAME = 0.05
 TINT_SECTORS = (("green", 120, 195), ("blue", 195, 290))
 #: Colours of a picture, at most: what the app's painted bar lays down.
 MAX_SWATCHES = 8
@@ -364,12 +380,16 @@ ACCENT_SECTORS = (
 )
 
 
-def _sample(img: Image.Image, size: int = 64) -> np.ndarray:
+def _grid(img: Image.Image, size: int) -> np.ndarray:
     # load_image honours a colour profile: an Adobe RGB scan read as sRGB
     # looks muted (Matejko's Stańczyk loses his red).
     small = load_image(img).copy()
     small.thumbnail((size, size), Image.Resampling.BILINEAR)
-    return u8_to_linear(np.asarray(small)).reshape(-1, 3)
+    return u8_to_linear(np.asarray(small))
+
+
+def _sample(img: Image.Image, size: int = 64) -> np.ndarray:
+    return _grid(img, size).reshape(-1, 3)
 
 
 def kmeans(points: np.ndarray, k: int, iterations: int = 15) -> tuple[np.ndarray, np.ndarray]:
@@ -471,7 +491,8 @@ def analyse(img: Image.Image, spread: float | None = None) -> Analysis:
         spread = tint_spread(img)
     linear = _sample(img)
     lab = linear_to_oklab(linear)
-    fine = linear_to_oklab(_sample(img, 128))
+    grid = linear_to_oklab(_grid(img, 128))
+    fine = grid.reshape(-1, 3)
     centres, weights = kmeans(lab, k=6)
     merged = merged_colours(centres, weights)
     dominant = dominant_colours(centres, weights)
@@ -495,10 +516,12 @@ def analyse(img: Image.Image, spread: float | None = None) -> Analysis:
     also = ["white"] if white or passed else []
     # A pale sheet's tints: an accent of a tint's side is as large as the
     # tint; a tint no colour shows is shown as one more accent.
-    sheet = None if monochrome else pale(fine)
+    # The sheet itself: not the board it was photographed on.
+    whole = fine if monochrome else unmounted(grid)
+    sheet = None if monochrome else pale(whole)
     tinted: list[tuple[np.ndarray, float]] = []
     if sheet is not None:
-        for colour, share, side in tints(fine, sheet):
+        for colour, share, side in tints(whole, sheet):
             # A large colour of its side shows it, and holds its pixels.
             if any(sheet.side(c, TINT_SHOWN) == side for c, _ in dominant + more):
                 continue
@@ -1092,6 +1115,49 @@ class Sheet(NamedTuple):
         return next((name for name, start, end in TINT_SECTORS if start <= hue < end), None)
 
 
+def unmounted(lab: np.ndarray) -> np.ndarray:
+    """The pixels of a sheet without the board it was photographed on (see
+    ``BOARD_ROW``); ``lab``: the picture, rows by columns. All of it when no
+    board shows."""
+    light = lab[..., 0]
+    paper = float(np.median(light[light >= np.quantile(light, 0.8)]))
+    under = light <= paper - TINT_UNDER
+    height, width = under.shape
+    top, bottom, left, right = 0, height, 0, width
+    moved = paper >= TINT_PAPER
+    while moved and bottom - top > 2 and right - left > 2:
+        moved = False
+        if under[top, left:right].mean() >= BOARD_ROW:
+            top, moved = top + 1, True
+        if under[bottom - 1, left:right].mean() >= BOARD_ROW:
+            bottom, moved = bottom - 1, True
+        if under[top:bottom, left].mean() >= BOARD_ROW:
+            left, moved = left + 1, True
+        if under[top:bottom, right - 1].mean() >= BOARD_ROW:
+            right, moved = right - 1, True
+    # Each side: how deep, of how many lines, and its outermost line.
+    sides = (
+        (top, height, lab[0]),
+        (height - bottom, height, lab[-1]),
+        (left, width, lab[:, 0]),
+        (width - right, width, lab[:, -1]),
+    )
+    boards: list[np.ndarray | None] = []
+    for deep, length, line in sides:
+        colour = np.median(line, axis=0)
+        one = float((np.linalg.norm(line - colour, axis=1) <= BOARD_SAME).mean())
+        shown = BOARD_LINES <= deep <= BOARD_DEEP * length and one >= BOARD_ROW
+        boards.append(colour if shown else None)
+    cut = [0, 0, 0, 0]
+    for side, board in enumerate(boards):
+        others = [b for other, b in enumerate(boards) if other != side and b is not None]
+        if board is not None and any(
+            float(np.linalg.norm(board - b)) <= BOARD_SAME for b in others
+        ):
+            cut[side] = sides[side][0]
+    return np.asarray(lab[cut[0] : height - cut[1], cut[2] : width - cut[3]].reshape(-1, 3))
+
+
 def pale(lab: np.ndarray) -> Sheet | None:
     """The paper and the darkest mark of a light, pale sheet (see
     ``TINT_PAPER``); None for any other picture."""
@@ -1114,10 +1180,11 @@ def pale(lab: np.ndarray) -> Sheet | None:
 
 def tints(lab: np.ndarray, sheet: Sheet) -> list[tuple[np.ndarray, float, str]]:
     """The cool tints of a pale sheet: (colour, share of the sheet, side),
-    largest first (see ``TINT_PAPER``). No tag goes by them: of 19 sheets
-    of the owner's library with one, 9 had no such colour to the eye, 6 of
-    them a tint from the grey board the museum photographed them on (the
-    audit of 2026-11-12)."""
+    largest first (see ``TINT_PAPER``); ``lab``: the sheet without its
+    board (``unmounted``). No tag goes by them: of 19 sheets of the owner's
+    library with one, 9 had no such colour to the eye (the audit of
+    2026-11-12), 6 of them from the grey board the museum photographed
+    them on, which is no longer measured."""
     off = sheet.off(lab)
     far = np.hypot(off[:, 0], off[:, 1])
     hue = np.degrees(np.arctan2(off[:, 1], off[:, 0])) % 360
