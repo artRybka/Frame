@@ -489,9 +489,10 @@ def analyse(img: Image.Image, spread: float | None = None) -> Analysis:
     # What the bar shows the picture is found by (Mateusz 2026-11-12
     # 15:16): the white it shows for standing out (here, or as the colour
     # passed over: the robes of Delacroix's Indian) is an accent by name.
+    # In a picture of one tint the white passed over is its paper.
     pale_parts = paleness(fine)
-    stands_out = white or any(family(c, pale_parts) == "white" for c, _ in more)
-    also = ["white"] if stands_out else []
+    passed = not monochrome and any(family(c, pale_parts) == "white" for c, _ in more)
+    also = ["white"] if white or passed else []
     # A pale sheet's tints: an accent of a tint's side is as large as the
     # tint; a tint no colour shows is shown as one more accent.
     sheet = None if monochrome else pale(fine)
