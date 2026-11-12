@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.65
+
+- Studium dzieła, analiza kompozycji: rysunek piórkiem na arkuszu znów
+  jest rysunkiem modelu, jak w 1.145.60. Rysunek prowadzony po
+  krawędziach obrazu z 1.145.62 okazał się gęsty i chaotyczny, więc
+  został wycofany. Arkusze wracają same po aktualizacji serwera, bez
+  kosztu.
+
 ## 1.145.64
 
 - Pasek barw: rysunki i ryciny, które muzeum sfotografowało na szarej

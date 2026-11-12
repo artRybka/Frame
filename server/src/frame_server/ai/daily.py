@@ -458,10 +458,6 @@ class Stroke(BaseModel):
     points: list[Spot]
     sharp: bool = False
     closed: bool = False
-    #: Not of the picture's subject: one of the few long lines of the rest
-    #: (the pen of round 3 on says; the sheet draws the picture's own
-    #: contours closely where the subject is, ``imaging.trace``).
-    rest: bool = False
 
 
 class View(BaseModel):
@@ -880,7 +876,6 @@ def _stroke(raw: dict[str, Any]) -> Stroke | None:
         points=spots[:MAX_STROKE_POINTS],
         sharp=raw.get("sharp") is True,
         closed=raw.get("closed") is True and len(spots) >= 3,
-        rest=raw.get("rest") is True,
     )
 
 
