@@ -22,6 +22,8 @@ from .daily import (
     TAKE,
     TEXT_CHARS,
     Key,
+    Mark,
+    Spot,
     View,
     _dicts,
     _key,
@@ -50,8 +52,11 @@ oceniasz pomysłu na kompozycję, tylko celność i uczciwość śladów.
 Dostajesz: obraz bez śladów, ten sam obraz z narysowanymi śladami (różowe linie, numer śladu w \
 białym kółku przy jego początku; żółte kółka z numerem P1, P2… to punkty kluczowe), a potem listę \
 śladów: kształt, tytuł, punkty w pikselach (x w prawo, y w dół od lewego górnego rogu) i przy \
-każdym punkcie nazwa miejsca, na którym miał leżeć ("na"), listę punktów kluczowych (tak samo: \
-piksele i nazwa miejsca) oraz pomiary serwera.
+każdym punkcie nazwa miejsca, na którym miał leżeć ("na"), a po "po" to, po czym cały ślad \
+biegnie albo co obejmuje, listę punktów kluczowych (tak samo: piksele i nazwa miejsca) oraz \
+pomiary serwera. "loop" to owal wpisany w ramkę, której lewy górny i prawy dolny róg podają jego \
+dwa punkty. "echo" to małe kółka w podanych miejscach, połączone przerywaną linią: miejsca, w \
+których wraca ten sam kolor albo forma.
 
 Dla każdego śladu po kolei:
 1. Znajdź na obrazie bez śladów każde nazwane miejsce. Czy punkt leży na nim? Chybienie to więcej \
@@ -61,7 +66,11 @@ niż szerokość tej formy albo ok. 3% boku obrazu.
    - "move": któryś punkt chybia, a miejsce istnieje; podaj WSZYSTKIE punkty śladu, poprawione \
 tam, gdzie chybiały, resztę bez zmian.
    - "drop": nazwanego miejsca nie ma, linia biegnie przez puste pole, "rytm" to przypadkowe \
-przedmioty lub mniej niż trzy formy, spirala przez puste niebo, albo ślad dubluje inny ślad.
+przedmioty lub mniej niż trzy formy, spirala przez puste niebo, "echo" łączy miejsca o różnych \
+kolorach albo drobiazgi, których nie widać od razu, albo ślad dubluje inny ślad.
+   Pętla ("loop") ma obejmować samą rzecz nazwaną w "po": gdy ramka jest od niej wyraźnie większa \
+(z którejś strony zostaje zapas większy niż jedna piąta wymiaru rzeczy albo ramka bierze \
+sąsiednią formę), to "move" z rogami ramki ciasno wokół rzeczy.
 3. "why": najwyżej 12 słów.
 
 Punkty kluczowe: każdy sprawdzasz jak ślad. "ok", gdy leży na nazwanym miejscu; "move" z \
@@ -92,8 +101,19 @@ class Checked:
     changes: list[str] = field(default_factory=list)
 
 
+def _box(mark: Mark) -> list[Spot]:
+    """A loop as the check sees it: the two corners of the box it is drawn in."""
+    centre, corner = mark.points[0], mark.points[1]
+    rx, ry = abs(corner.x - centre.x), abs(corner.y - centre.y)
+    return [Spot(x=centre.x - rx, y=centre.y - ry), Spot(x=centre.x + rx, y=centre.y + ry)]
+
+
 def question(
-    img: Image.Image, view: View, keys: list[Key], na: dict[str, list[str]]
+    img: Image.Image,
+    view: View,
+    keys: list[Key],
+    na: dict[str, list[str]],
+    po: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """The check of a take: the clean picture, the take and its key points
     drawn on it, and both as data with what each point was meant to lie on
@@ -101,9 +121,13 @@ def question(
     w, h = img.size
     lines = [f"OBRAZ: {w} × {h} px (oba obrazy)", f"Tekst: {view.text}", "Ślady:"]
     for n, m in enumerate(view.marks, start=1):
-        points = " ".join(f"({p.x * w:.0f}, {p.y * h:.0f})" for p in m.points)
+        spots = _box(m) if m.shape == "loop" else m.points
+        points = " ".join(f"({p.x * w:.0f}, {p.y * h:.0f})" for p in spots)
         named = "; ".join(na.get(m.title, []))
-        lines.append(f"{n}. {m.shape} „{m.title}” – {m.text} – punkty: {points} – na: {named}")
+        along = f" – po: {along}" if (along := (po or {}).get(m.title, "")) else ""
+        lines.append(
+            f"{n}. {m.shape} „{m.title}” – {m.text} – punkty: {points} – na: {named}{along}"
+        )
     lines.append("Punkty kluczowe:")
     for n, k in enumerate(keys, start=1):
         kind = "główny" if k.main else "ważny"
@@ -170,6 +194,12 @@ def checked(
             continue
         if c.get("verdict") == "move":
             points = [p for p in map(spot, c.get("points") or []) if p is not None]
+            if mark.shape == "loop" and len(points) >= 2:  # its box, as it was shown
+                a, b = points[0], points[1]
+                points = [
+                    {"x": (a["x"] + b["x"]) / 2, "y": (a["y"] + b["y"]) / 2},
+                    {"x": max(a["x"], b["x"]), "y": max(a["y"], b["y"])},
+                ]
             raw = {"shape": mark.shape, "title": mark.title, "text": mark.text, "points": points}
             moved = _mark(raw)
             if moved is not None and moved.points != mark.points:

@@ -1,5 +1,7 @@
 """The analysis of a work's composition ("Analiza kompozycji"): one take,
-drawn in pencil on the picture, with four to six sentences under it.
+drawn in coloured pencil on a study sheet of the picture (``imaging.sheet``:
+its masses as stains, a few strokes of a pen), with four to six sentences
+under it.
 
 Asked apart from the rest of the page (Mateusz 2026-11-02), in steps, each
 by the cheapest model that does it well (Mateusz 2026-11-04, after two
@@ -9,16 +11,23 @@ cost):
 1. Opus, with medium thinking and the picture alone (no museum text, no
    Wikipedia: they made it no better), draws the masses and their balance,
    the divisions, the one figure that orders it all, great clear rhythms,
-   whether it is open or closed, and names the places it rests on (its
-   key points), each mark's points with what they lie on. No grids and no
-   movement: those are measured apart.
+   a colour that returns, whether it is open or closed, and names the
+   places it rests on (its key points), each mark's points with what they
+   lie on and what the whole mark runs along; and the picture's own field
+   on a reproduction that shows more (a print's paper). No grids and no
+   movement: those are measured apart. It is told how each mark will be
+   drawn (Mateusz 2026-11-11: the instruction "mogłaby być lepsza"; the
+   first, tidier one "widzi za mało", so this one goes through a list of
+   what a picture may rest on and draws at most five).
 2. Haiku checks every mark and place against what it was meant to lie on
    (``ai.check``).
 3. The server finds the picture's own lines (``ai.lines``) and chooses the
    grid by what lies on them and on the key points (``ai.grid``).
 4. Sonnet says whether the composition is still or moving and draws a
    movement that really happens (``ai.motion``).
-5. Opus, with little thinking and no picture, writes the text from the
+5. Sonnet draws the picture in a dozen strokes of a pen (``ai.pen``),
+   which go into the sheet under the marks.
+6. Opus, with little thinking and no picture, writes the text from the
    draft and what the steps found, in one voice (``ai.prose``): the steps
    no longer add sentences of their own (Mateusz 2026-11-07).
 
@@ -35,11 +44,13 @@ header "Analiza kompozycji" → "Wykonaj ponowną analizę", Mateusz
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+from dataclasses import field as dataclass_field
 from datetime import date
 from typing import TYPE_CHECKING, Any
 
@@ -51,7 +62,7 @@ from ..library.models import Note
 from . import grid as grids
 from . import lines as found_lines
 from . import motion as motions
-from . import prose
+from . import pen, prose
 from .check import CHECK_SIDE, answer_views, checked, page_views
 from .check import question as check_question
 from .client import OPUS, AiUnavailable, Answer, request
@@ -62,11 +73,13 @@ from .daily import (
     MAX_KEYS,
     ROUND,
     SHAPES,
+    Box,
     Context,
     Key,
     View,
     _composition,
     _dicts,
+    _field,
     _key,
     _list,
     _object,
@@ -85,18 +98,24 @@ from .jobs import NoteJob, Usage, listed, relist, text_hash
 from .study import KIND as STUDY
 
 if TYPE_CHECKING:
+    from PIL import Image
+
     from ..library import ImageCache, Item
     from .daily import DailyJob
 
 log = logging.getLogger(__name__)
 
 KIND = "composition"
-PROMPT_VERSION = "composition-5"
+PROMPT_VERSION = "composition-6"
 #: The pages it is written into.
 PAGES = (DAILY, STUDY)
 #: The works whose pages written before may be written again: ``True`` for
 #: all of them, else a list of item ids (set over ``/api/ai/composition``).
 REWORK_KEY = "composition_rework"
+#: The round the owner let for every page at once, with no list to set
+#: (Mateusz 2026-11-12, seeing the study sheet: "Przeróbmy proszę wszystkie
+#: dotychczasowe."). A round after it asks him again.
+LET_ALL = 8
 #: The take a page had before it was written again, kept to go back to.
 BEFORE = "composition_before"
 #: The works whose analysis the owner asked to be made anew, one at a time
@@ -115,70 +134,161 @@ COST = "composition_cost"
 PAGES_SECONDS = 30.0
 #: All five steps, as if Opus answered them (about 0.14 USD).
 TYPICAL = Usage(input_tokens=10500, cache_read_input_tokens=3200, output_tokens=4600)
-#: The marks Opus may draw (movement is Sonnet's, ``ai.motion``).
+#: The marks Opus may draw (movement is Sonnet's, ``ai.motion``), and how
+#: many of them a sheet the width of a hand holds (Mateusz 2026-11-12, on
+#: six trial sheets: six marks crowd it).
 DRAWN = tuple(s for s in SHAPES if s not in ("motion", "underline"))
+MAX_DRAWN = 5
 MAIN = "główny"
 
-SYSTEM = """Piszesz „Analizę kompozycji” jednego dzieła do aplikacji domowej ramki, dla \
-miłośnika sztuki, który nie jest historykiem sztuki. Rysujesz ją ołówkiem na obrazie: aplikacja \
-nakłada Twoje ślady na obraz, numeruje je i podpisuje, a pod obrazem pokazuje tekst. Naturalna, \
-poprawna polszczyzna, jak w dobrym polskim muzeum, bez superlatywów.
+SYSTEM = """Rysujesz i opisujesz „Analizę kompozycji” jednego dzieła do aplikacji domowej ramki, \
+dla miłośnika sztuki, który nie jest historykiem sztuki. Naturalna, poprawna polszczyzna, jak w \
+dobrym polskim muzeum, bez superlatywów.
 
-Współrzędne podajesz w pikselach obrazu, który dostajesz (wymiary w danych: OBRAZ), od lewego \
-górnego rogu: x w prawo, y w dół. Każdy punkt stawiasz na konkretnym, nazwanym miejscu formy \
-(czubek głowy, łokieć, róg okna, linia horyzontu przy lewej krawędzi) i to miejsce wpisujesz \
-w "na". Punkt, którego nie umiesz tak nazwać, nie powstaje.
+JAK TO WYGLĄDA U CZYTELNIKA
+Aplikacja pokazuje arkusz studyjny: obraz uproszczony do plam akwareli i kilku kresek piórkiem, a \
+na nim Twoje ślady narysowane kredką. Każdy ślad dostaje numer, a w legendzie pod arkuszem tytuł \
+i jedno krótkie zdanie. Arkusz ogląda się w telefonie, ma szerokość dłoni, więc mieści kilka \
+dużych, wyraźnych śladów. Czytelnik najpierw patrzy na rysunek, dopiero potem czyta: ślad ma być \
+zrozumiały sam. Pokazujesz to, na czym ten obraz naprawdę stoi, najwyżej pięcioma śladami: \
+niczego wyraźnego nie pomijasz z ostrożności i niczego nie dorysowujesz dla ozdoby.
 
-JAK PRACUJESZ (krótko, bez rozważania wszystkich możliwości)
-1. Spójrz z daleka: duże masy jasne i ciemne, dominanta, gdzie leży ciężar i co go równoważy \
-(przeciwwaga: forma, plama lub pusta przestrzeń po drugiej stronie), mocne akcenty koloru, \
-które prowadzą wzrok albo wiążą obraz (powtórzona czerwień, jedyna jasna plama).
-2. Wybierz JEDEN główny układ, najmocniejszy i widoczny od razu (piramida, odwrócony trójkąt \
-lub V, przekątna, X, krzyż, owal, krzywa S, klin, perspektywa zbieżna, układ centralny lub \
-symetryczny, pasy, rozproszony). Uznaj go tylko, gdy wyznaczają go co najmniej trzy ważne \
-formy albo jedna wielka, ciągła forma.
-3. Dodaj najwyżej 2–4 ślady, które naprawdę dzielą pole albo powtarzają się: horyzont lub \
-brzeg, rama w ramie, duży rytm (co najmniej trzy podobne formy niosące konstrukcję: kolumny, \
-maszty, pnie, postacie; nie sprzęty i przedmioty, nie drobny wzór), otwartość ucięta \
-krawędzią, przeciwwaga, akcent koloru.
-4. Nie dopasowuj żadnych siatek (złoty podział, trójpodział, połowy) i nie pisz o nich; zrobi \
-to osobny krok na podstawie Twoich punktów kluczowych. Nie oceniaj też ruchu ani tego, czy \
-kompozycja jest statyczna czy dynamiczna, i nie rysuj ruchu; to też osobny krok. Złota \
-spirala tylko po prawdziwych, zwiniętych formach.
-5. Wskaż 3–6 punktów kluczowych: miejsca, na których naprawdę opiera się kompozycja \
-(dominanta, oko lub twarz głównej postaci, punkt zbiegu, wierzchołek głównego układu, linia \
-horyzontu, ważna pionowa krawędź). Każdy dokładnie na formie, z nazwą.
-Lepiej mniej i pewnie niż wzór przyłożony na siłę. Portret na gładkim tle: powiedz to wprost \
-i pokaż oś postaci, podział tła albo masę.
+Aplikacja rysuje dokładnie to, co podasz, i łączy punkty najkrótszą drogą:
+- "line" z 2 punktów to prosta kreska, z 3 punktów ostry klin (ramię, wierzchołek, ramię), z 4 i \
+więcej miękka krzywa przez kolejne punkty;
+- "triangle" to trzy proste boki między wierzchołkami;
+- "loop" to owal wpisany w ramkę, "rect" to prostokąt tej ramki;
+- "rhythm" to jedna prosta kreska przy każdej formie, wszystkie ustawione równolegle;
+- "rays" to proste od dalekich końców do punktu zbiegu;
+- "echo" to małe kółko w każdym podanym miejscu i cienka przerywana linia, która je wiąże, drugim \
+kolorem kredki (czytelnik widzi: te miejsca sobie odpowiadają, to nie jest krawędź ani podział);
+- "arrow" to linia z grotem przy ostatnim punkcie;
+- "spiral" to złota spirala od początku łuku do oka.
+Ciągła kreska znaczy: tu w obrazie coś biegnie (krawędź, oś, szereg rzeczy). Jeżeli "line" łączy \
+tylko dwie rzeczy przez puste pole, czytelnik zobaczy podział, którego w obrazie nie ma. Związek \
+dwóch odległych miejsc pokazuje "echo", a układ trzech miejsc "triangle".
 
-ODPOWIEDŹ: "composition" z jednym ujęciem w "views" (tekst bez słowa o siatkach i podziałach \
-pola):
+WSPÓŁRZĘDNE
+Piksele obrazu, który dostajesz (wymiary w danych: OBRAZ), od lewego górnego rogu: x w prawo, y w \
+dół. Każdy punkt stawiasz na konkretnym, nazwanym miejscu formy (czubek głowy, łokieć, róg okna, \
+linia horyzontu przy lewej krawędzi) i to miejsce wpisujesz w "na". Punkt, którego nie umiesz tak \
+nazwać, nie powstaje.
+
+JAK PRACUJESZ
+1. Pole obrazu. Gdy reprodukcja pokazuje więcej niż sam obraz (margines papieru, podpis pod \
+ryciną, passe-partout, rama), wskaż w "pole" ramkę samego obrazu. Wszystko dalej dzieje się w tym \
+polu, a „bok” znaczy bok pola.
+2. Spójrz z daleka: duże masy jasne i ciemne, dominanta, gdzie leży ciężar i co go równoważy po \
+drugiej stronie (forma, plama albo pusta przestrzeń), mocne akcenty koloru.
+3. Wybierz JEDEN główny układ, najmocniejszy i widoczny od razu (piramida, odwrócony trójkąt lub \
+V, przekątna, X, krzyż, owal, krzywa S, klin, perspektywa zbieżna, układ centralny lub \
+symetryczny, pasy, podział jednym pionem lub poziomem, rozproszony). Uznaj go tylko, gdy \
+wyznaczają go co najmniej trzy ważne formy albo jedna wielka, ciągła forma lub krawędź. To zawsze \
+pierwszy ślad.
+4. Przejdź po kolei całą listę i dla każdej pozycji odpowiedz sobie, czy ten obraz ją ma: \
+dominanta; przeciwwaga; podział pola (horyzont, brzeg, krawędź ściany, oś); mniejszy trójkąt albo \
+klin wewnątrz głównego układu (zgięta ręka, klin jasnej bluzki, snop światła, zbiegające się \
+zbocza); rytm rzeczy powtórzonych; kolor, który wraca w innym miejscu; rama w ramie; otwartość. Z \
+tych, które obraz ma wyraźnie, rysujesz najwyżej cztery najważniejsze. O pozostałych piszesz w \
+tekście.
+5. Wskaż 3–6 punktów kluczowych: miejsca, na których naprawdę opiera się kompozycja (dominanta, \
+oko lub twarz głównej postaci, punkt zbiegu, wierzchołek głównego układu, linia horyzontu, ważna \
+pionowa krawędź). Każdy dokładnie na formie, z nazwą.
+6. Zrób kontrolę przed oddaniem (niżej), potem napisz brudnopis tekstu z tego, co narysowałeś.
+Nie dopasowuj żadnych siatek (złoty podział, trójpodział, połowy) i nie pisz o nich: zrobi to \
+osobny krok na podstawie Twoich punktów kluczowych. Nie oceniaj ruchu ani tego, czy kompozycja \
+jest statyczna czy dynamiczna, i nie rysuj ruchu: to też osobny krok.
+Nie przykładaj wzoru na siłę. Portret na gładkim tle: powiedz to wprost i pokaż oś postaci, \
+podział tła albo masę.
+
+CO CHCESZ POKAZAĆ I JAK TO NARYSOWAĆ
+Jedna rzecz ma jeden sposób rysowania.
+- Piramida, trójkąt postaci, także mniejszy trójkąt w obrębie jednej postaci (kapelusz, łokieć, \
+dłoń): "triangle". Wierzchołki na nazwanych, wyraźnych miejscach. Boki pokazują układ między \
+trzema miejscami, więc mogą biec przez postać albo tło.
+- Przekątna, oś, horyzont, brzeg, krawędź, podział: "line" z 2 punktów, od miejsca, gdzie ta \
+linia w obrazie się zaczyna, do miejsca, gdzie się kończy. Rzecz prosta nie dostaje trzeciego \
+punktu. Linia biegnie po formie lub krawędzi albo przez co najmniej trzy rzeczy stojące w \
+szeregu.
+- V, klin, odwrócony trójkąt (zbiegające się zbocza, klin bluzki między połami płaszcza, zgięta \
+ręka): "line" z 3 punktów, ramiona po krawędziach, wierzchołek w miejscu, gdzie się schodzą.
+- Łuk, krzywa S, zygzak: "line" z 4–8 punktów, gęsto, na jednej ciągłej formie albo na formach \
+stojących jedna za drugą.
+- Wielki owal układu, dominanta, przeciwwaga, masa, zwarta grupa postaci: "loop". Ramka dotyka \
+rzeczy z czterech stron i nie bierze zapasu ani sąsiednich form: pętla wokół postaci kończy się \
+na jej głowie, plecach i stopach, nie na krześle obok. Dominanta zawsze dostaje własny ślad.
+- Kolor, który wraca (błękit sukni i błękit drugiej sukni, czerwień kamizelki i czerwień \
+krzesła), albo dwie formy, które sobie odpowiadają po dwóch stronach obrazu: "echo", 2–4 punkty, \
+każdy w środku jednej plamy, najpierw największa. Tylko duże, od razu widoczne plamy, nie drobne \
+ozdoby.
+- Rama w ramie (okno, drzwi, przejście), pas, prostokątna bryła: "rect" po jej krawędziach.
+- Perspektywa zbieżna: "rays", punkt zbiegu i 2–8 dalekich końców po prawdziwych krawędziach. Gdy \
+punkt zbiegu leży dalej niż pół boku poza obrazem, zamiast tego dwie "line" po zbiegających się \
+krawędziach.
+- Rytm: "rhythm", gdy co najmniej trzy rzeczy tego samego rodzaju powtarzają się w szeregu na co \
+najmniej jednej trzeciej boku (kolumny, maszty, pnie, postacie, konie w zaprzęgu, otwory okien i \
+bram, łodzie). Dla każdej para punktów wzdłuż jej dłuższej osi; gdy rzecz nie jest wydłużona, od \
+jej dołu do góry. Wszystkie pary w tym samym kierunku.
+- Otwartość: "arrow" wzdłuż formy uciętej krawędzią, od jej środka przez krawędź, co najmniej \
+jedna piąta boku. Tylko gdy otwartość mocno decyduje o wyglądzie obrazu.
+- Złota spirala: "spiral", tylko po prawdziwych, zwiniętych formach.
+
+Tego nie rysujesz, tylko o tym piszesz:
+- ciągłej linii łączącej dwie rzeczy dlatego, że mają ten sam kolor albo się równoważą (to jest \
+"echo" albo "loop" na przeciwwadze);
+- pustej przestrzeni: nie obwodzisz jej;
+- drogi wzroku od rzeczy do rzeczy.
+
+ZASADY ŚLADU
+- Linia, krzywa i ramiona klina leżą na formie w całości, nie tylko punktami. Przejedź w myśli \
+palcem po każdym odcinku: jeśli w połowie drogi jest pusto albo leży tam cudza twarz, popraw \
+punkty albo zmień kształt. Formę przerwaną (szal schowany za głową) rysujesz do przerwy, nie \
+przez nią. Trójkąta i echa to nie dotyczy. W "po" wpisujesz, po czym ślad biegnie albo co \
+obejmuje (2–6 słów, np. „krawędź dachu lewego domu”).
+- Ślad jest czytelny w telefonie. Krótszy niż jedna dziesiąta dłuższego boku pola powstaje tylko \
+jako pętla wokół małej rzeczy, która jest dominantą albo akcentem koloru.
+- Ślady się nie dublują i nie tłoczą. Dwa nie biegną po tej samej krawędzi i nie obejmują tej \
+samej rzeczy tym samym kształtem. Trzy ślady nie kończą się w jednym punkcie. Dwie pętle nie \
+zachodzą na siebie.
+- 3–5 śladów w kolejności ważności. Obraz wielofigurowy albo pejzaż z kilkoma planami ma zwykle \
+pięć, prosty portret trzy lub cztery. Nie dodawaj ozdobników (drobny sprzęt w rogu, strzałka dla \
+samej strzałki).
+- Tytuł śladu nazywa rzecz z obrazu („Biały kożuch”, „Krawędź fasady”), nie pojęcie („Dominanta”, \
+„Przeciwwaga”). Rolę mówi opis.
+
+KONTROLA PRZED ODDANIEM
+Dla każdego śladu po kolei: czy każdy punkt leży na nazwanym miejscu; czy linia i klin biegną po \
+formie; czy kształt jest tym z listy dla tej rzeczy; czy pętla obejmuje samą rzecz, bez zapasu; \
+czy ślad nie dubluje innego. Ślad, który nie przechodzi, poprawiasz. Potem wróć do listy z kroku \
+4: czy dominanta ma swój ślad, czy narysowałeś rytm, powtórzony kolor, mniejszy trójkąt albo \
+klin, jeśli obraz je ma i są ważniejsze od tego, co narysowałeś? Na koniec spójrz na sam rysunek: \
+czy ktoś, kto nie przeczyta tekstu, zobaczy, jak ten obraz jest zbudowany, i czy ślady nie \
+zasłaniają się nawzajem?
+
+ODPOWIEDŹ: "composition" z jednym ujęciem w "views", pola w tej kolejności:
 - "title": „Analiza kompozycji”.
-- "text": brudnopis, 4–6 zdań, 450–800 znaków; ostateczny tekst napisze z niego osobny krok. \
-Ma zawierać: czy kompozycja jest otwarta czy zamknięta i po czym to widać; co równoważy \
-dominantę albo jak działa kolor; co układ robi dla tematu. Konkretnie, bez wstępów i ocen. Bez \
-zdania o statyce, dynamice i ruchu. Nic, czego nie widać na obrazie lub w śladach.
-- "points": punkty kluczowe z punktu 5, najważniejszy pierwszy. Każdy: "x", "y" (piksele), \
-"na" (1–5 słów), "os": "x" gdy liczy się tylko położenie w poziomie (pionowa krawędź, oś \
-postaci), "y" gdy tylko wysokość (horyzont, linia stołu), "xy" dla punktu; "waga": "główny" \
-(najwyżej dwa) albo "ważny".
-- "marks": 3–6 śladów, najpierw główny układ. Każdy: "shape", "points", "title" (1–3 słowa), \
-"text" (najwyżej 45 znaków), "na" (lista: dla każdego punktu po kolei nazwa miejsca, na którym \
-leży, 1–5 słów).
-  "line" 2–12 punktów: horyzont, podział, oś, krawędź, przekątna, boki V lub klina (3 punkty: \
-koniec boku, wierzchołek, koniec drugiego), krzywa S przez kolejne formy; może wyjść poza \
-obraz do pół boku.
-  "triangle" 3 wierzchołki na prawdziwych punktach formy, może wyjść poza obraz.
-  "loop" środek i róg prostokąta, w który się wpisuje: wielki owal układu lub dominanta.
-  "rect" dwa przeciwległe rogi: rama w ramie, pas, bryła.
-  "rhythm" 3–12 par punktów: dół i góra każdej powtarzanej formy wzdłuż jej osi.
-  "rays" punkt zbiegu, potem 2–8 dalekich końców po prawdziwych krawędziach; gdy punkt zbiegu \
-leży dalej niż pół boku poza obrazem, zamiast tego dwie "line" po zbiegających się krawędziach.
-  "arrow" 2–12 punktów: kierunek wychodzący poza obraz, tylko gdy otwartość mocno decyduje o \
-wyglądzie; długi, co najmniej jedna piąta boku.
+- "pole": "left", "top", "right", "bottom" w pikselach. Cały obraz, gdy reprodukcja nie ma \
+marginesów.
+- "marks": 3–5 śladów, najpierw główny układ. Każdy: "shape", "points", "na" (lista: dla każdego \
+punktu po kolei nazwa miejsca, na którym leży, 1–5 słów), "po" (po czym biegnie albo co obejmuje \
+cały ślad), "title" (1–3 słowa), "text" (najwyżej 45 znaków).
+  "line" 2–8 punktów; wielka linia może wyjść poza obraz do pół boku.
+  "triangle" 3 wierzchołki; może wyjść poza obraz.
+  "loop" i "rect" 2 punkty: lewy górny i prawy dolny róg ramki wokół rzeczy.
+  "rhythm" 3–12 par punktów.
+  "echo" 2–4 punkty, każdy w środku plamy lub formy.
+  "rays" punkt zbiegu, potem 2–8 dalekich końców.
+  "arrow" 2 punkty, grot przy drugim.
   "spiral" 3 punkty: początek najszerszego łuku, punkt ćwierć obrotu dalej, oko.
-  Czytelność: dwa ślady nie biegną po tej samej krawędzi ani tuż obok siebie; jedna rzecz ma \
-jeden ślad."""
+- "points": punkty kluczowe z kroku 5, najważniejszy pierwszy. Każdy: "x", "y" (piksele), "na" \
+(1–5 słów), "os": "x" gdy liczy się tylko położenie w poziomie (pionowa krawędź, oś postaci), "y" \
+gdy tylko wysokość (horyzont, linia stołu), "xy" dla punktu; "waga": "główny" (najwyżej dwa) albo \
+"ważny".
+- "text": brudnopis, 4–6 zdań, 450–800 znaków; ostateczny tekst napisze z niego osobny krok. Ma \
+zawierać: czy kompozycja jest otwarta czy zamknięta i po czym to widać; co równoważy dominantę \
+albo jak działa kolor; co układ robi dla tematu; to, czego nie narysowałeś, a co warto powiedzieć \
+(pusta przestrzeń, powtórzony kolor, ucięte formy). Konkretnie, bez wstępów i ocen. Bez zdania o \
+statyce, dynamice i ruchu, bez słowa o siatkach. Nic, czego nie widać na obrazie lub w śladach."""
 
 _POINT = _object(x={"type": "number"}, y={"type": "number"})
 _KEY = _object(
@@ -188,19 +298,22 @@ _KEY = _object(
     os={"type": "string", "enum": list(AXES)},
     waga={"type": "string", "enum": [MAIN, "ważny"]},
 )
+_EDGE = {"type": "number"}
 _VIEW = _object(
     title=_str(),
-    text=_str(),
-    points=_list(_KEY),
+    pole=_object(left=_EDGE, top=_EDGE, right=_EDGE, bottom=_EDGE),
     marks=_list(
         _object(
             shape={"type": "string", "enum": list(DRAWN)},
             points=_list(_POINT),
+            na=_list(_str()),
+            po=_str(),
             title=_str(),
             text=_str(),
-            na=_list(_str()),
         )
     ),
+    points=_list(_KEY),
+    text=_str(),
 )
 SCHEMA = _object(composition=_object(views=_list(_VIEW)))
 
@@ -243,12 +356,54 @@ def question(images: ImageCache, item: Item, context: Context) -> dict[str, Any]
 
 @dataclass
 class Draft:
-    """The analysis as Opus drew it: its take (no grid, no movement), the
-    places it rests on, and what each mark's points lie on, by its title."""
+    """The analysis as Opus drew it, in its picture's field: its take (no
+    grid, no movement), the places it rests on, what each mark's points lie
+    on and what the whole mark runs along, by its title; the field itself,
+    when the reproduction shows more than the picture."""
 
     view: View
     keys: list[Key]
     na: dict[str, list[str]]
+    po: dict[str, str] = dataclass_field(default_factory=dict)
+    field: Box | None = None
+
+
+def _number(value: Any) -> float | None:
+    return float(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
+
+
+def _boxes(data: dict[str, Any]) -> dict[str, Any]:
+    """The answer with each loop, asked for as the box around the thing (its
+    two corners: easier to place than a centre and a reach), as the app
+    keeps it: its centre and a corner."""
+    data = copy.deepcopy(data)
+    composition = data.get("composition")
+    views = _dicts(composition.get("views")) if isinstance(composition, dict) else []
+    for mark in (m for v in views for m in _dicts(v.get("marks")) if m.get("shape") == "loop"):
+        corners = [p for p in _dicts(mark.get("points"))[:2]]
+        xs = [_number(p.get("x")) for p in corners]
+        ys = [_number(p.get("y")) for p in corners]
+        if len(corners) == 2 and None not in xs and None not in ys:
+            mark["points"] = [
+                {"x": (xs[0] + xs[1]) / 2, "y": (ys[0] + ys[1]) / 2},  # type: ignore[operator]
+                {"x": max(xs), "y": max(ys)},  # type: ignore[type-var]
+            ]
+    return data
+
+
+def _pole(raw: Any, size: tuple[int, int] | None) -> Box | None:
+    """The picture's field as the answer gave it (its four edges, in the
+    pixels of the picture sent), or None for the whole of it."""
+    if not isinstance(raw, dict):
+        return None
+    edges = [_number(raw.get(k)) for k in ("left", "top", "right", "bottom")]
+    if None in edges:
+        return None
+    left, top, right, bottom = (float(e) for e in edges if e is not None)
+    w, h = size if size is not None and max(right, bottom) > 1.5 else (1, 1)
+    left, right = sorted((left / w, right / w))
+    top, bottom = sorted((top / h, bottom / h))
+    return _field({"x": left, "y": top, "w": right - left, "h": bottom - top})
 
 
 def draft(data: dict[str, Any] | None, params: dict[str, Any]) -> Draft | None:
@@ -256,6 +411,7 @@ def draft(data: dict[str, Any] | None, params: dict[str, Any]) -> Draft | None:
     if not data:
         return None
     size = sent_size(params)
+    data = _boxes(data)
     fractions = to_fractions(data, size)
     views = answer_views(fractions)
     if not views:
@@ -284,14 +440,17 @@ def draft(data: dict[str, Any] | None, params: dict[str, Any]) -> Draft | None:
         _text(m.get("title"), 40): [_text(n, 60) for n in m.get("na") or [] if isinstance(n, str)]
         for m in _dicts(first.get("marks"))
     }
-    view = views[0].model_copy(update={"grid": "none", "keys": []})
-    return Draft(view=view, keys=keys[:MAX_KEYS], na=na)
-
-
-def take(data: dict[str, Any] | None, params: dict[str, Any]) -> list[View]:
-    """The take of an answer (in pixels), as the app shows it: one or none."""
-    found = draft(data, params)
-    return [found.view] if found else []
+    po = {_text(m.get("title"), 40): _text(m.get("po"), 80) for m in _dicts(first.get("marks"))}
+    field = _pole(first.get("pole"), size)
+    marks = views[0].marks[:MAX_DRAWN]
+    view = views[0].model_copy(
+        update={"grid": "none", "keys": keys[:MAX_KEYS], "marks": marks, "field": field}
+    )
+    # From here on in the field: what is checked, measured and divided is the picture.
+    view = view.inside()
+    return Draft(
+        view=view.model_copy(update={"keys": []}), keys=view.keys, na=na, po=po, field=field
+    )
 
 
 def _insert(said: list[str], sentence: str, after: int) -> None:
@@ -338,6 +497,8 @@ def written(
     ``step``: told of each part as it begins (the study's Lock Screen card)."""
     tell = step or (lambda part: None)
     img = picture(images, item, CHECK_SIDE)
+    if found.field is not None:
+        img = cropped(img, found.field)
     costs = {"analysis": analysis_usd}
     view, keys, changes = found.view, found.keys, list[str]()
 
@@ -359,7 +520,10 @@ def written(
     looked = run(
         "check",
         lambda: checked(
-            view, keys, asked("check", check_question(img, view, keys, found.na)), img.size
+            view,
+            keys,
+            asked("check", check_question(img, view, keys, found.na, found.po)),
+            img.size,
         ),
     )
     if looked is not None:
@@ -374,6 +538,9 @@ def written(
             said = sentences(view.text)
             params = motions.question(img, view, said, directions, picture_lines)
             movement = run("motion", lambda: motions.movement(asked("motion", params), img.size))
+    # The few strokes of the pen under the stains of the sheet: without them
+    # the sheet is the stains alone.
+    strokes = run("sketch", lambda: pen.strokes(asked("sketch", pen.question(img)), img.size))
     # The grid and the movement are facts; the text is written last, in one voice.
     with_grid = merged(view, choice, None)
     facts = prose.grid_facts(choice.grid, choice.held) if choice is not None else []
@@ -390,6 +557,9 @@ def written(
         if text
         else merged(view, choice, movement)
     )
+    # Back on the whole reproduction, as apps before the sheet draw it.
+    shown = shown.model_copy(update={"sketch": strokes or []}).on(found.field)
+    shown = _view(shown.model_dump()) or shown
     log.info(
         "composition of %s: %.3f USD (%s), grid %s, %d marks",
         item.id,
@@ -405,6 +575,18 @@ def written(
         COST: {k: round(v, 4) for k, v in costs.items()},
         **({prose.PROSE_KEY: prose.PROSE} if text else {}),
     }
+
+
+def cropped(img: Image.Image, field: Box) -> Image.Image:
+    """The picture's field alone."""
+    w, h = img.size
+    box = (
+        round(field.x * w),
+        round(field.y * h),
+        round((field.x + field.w) * w),
+        round((field.y + field.h) * h),
+    )
+    return img.crop(box)
 
 
 def compose(
@@ -454,8 +636,9 @@ def wants(
     note: Note | None, rework: bool | list[str], again: set[str] | frozenset[str] = frozenset()
 ) -> bool:
     """A written page whose composition is of an earlier round, when the
-    owner lets it be written again; one without any, always; one whose
-    analysis the owner asked for anew (``again``), always."""
+    owner lets it be written again (:data:`LET_ALL`: he let this round for
+    all; the one he picked among a page's analyses stays); one without any,
+    always; one whose analysis the owner asked for anew (``again``), always."""
     if note is None or "teaser" not in note.data:
         return False
     if note.item_id in again:
@@ -465,6 +648,8 @@ def wants(
     if note.data.get(CHECK_ROUND, 1) >= ROUND:
         return False
     if not page_views(note.data):
+        return True
+    if ROUND <= LET_ALL:
         return True
     return rework is True or (isinstance(rework, list) and note.item_id in rework)
 

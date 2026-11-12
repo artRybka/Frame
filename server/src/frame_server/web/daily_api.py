@@ -9,7 +9,9 @@ import re
 from collections.abc import Callable
 from datetime import date
 from typing import Annotated
+from urllib.parse import quote
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -26,6 +28,7 @@ from ..ai.daily import (
     Milestone,
     Pigment,
     Spot,
+    View,
     short,
     vary_hedges,
 )
@@ -107,6 +110,10 @@ class DailyWork(BaseModel):
     #: Left empty: read by 0.42 apps.
     facts: list[dict[str, str]] = []
     composition: Composition | None = None
+    #: The study sheet the analysis is drawn on (``GET
+    #: /api/composition/sheet``; the app adds ``&dark=1`` for its dark
+    #: page): the picture as stains and a few strokes of a pen.
+    composition_sheet: str = ""
     #: Every analysis the page has had, oldest first, once the owner asked
     #: for one anew (else empty).
     composition_versions: list[CompositionVersion] = []
@@ -216,6 +223,12 @@ def _work(svc: FrameService, day: date, item: Item, writing: bool, lists: bool =
     )
 
 
+def sheet_url(svc: FrameService, item: Item, view: View) -> str:
+    """Where the app gets the sheet a take is drawn on: another address
+    when the take's field or pen sketch changes, so it may be kept long."""
+    return f"/api/composition/sheet?item={quote(item.id, safe='')}&v={svc.sheets.key(view)}"
+
+
 def page(
     svc: FrameService,
     item: Item,
@@ -289,6 +302,9 @@ def page(
         else [p for p in museum.split("\n\n") if p],
         artist=essay.artist if essay else "",
         composition=essay.composition if essay and essay.composition.views else None,
+        composition_sheet=sheet_url(svc, item, essay.composition.views[0])
+        if essay and essay.composition.views
+        else "",
         composition_versions=[
             CompositionVersion(made=str(v.get("made") or ""), shown=n == pick)
             for n, v in enumerate(kept)
@@ -364,6 +380,23 @@ async def daily_detail(
     path = await run_in_threadpool(svc.daily.detail, item, n) if item is not None else None
     if path is None:
         raise HTTPException(404, "no such fragment")
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=604800"})
+
+
+@router.get("/composition/sheet")
+async def composition_sheet(svc: Svc, item: str, v: str = "", dark: bool = False) -> FileResponse:
+    """The study sheet the work's analysis of composition is drawn on
+    (``imaging.sheet``): the picture as stains and a few strokes of a pen,
+    on the app's light page or its dark one. Made when first asked for
+    (seconds), then kept; ``v`` names the take it belongs to."""
+    work = svc.library.get(item)
+    view = await run_in_threadpool(svc.sheets.view, work, v) if work is not None else None
+    if work is None or view is None:
+        raise HTTPException(404, "no such analysis")
+    try:
+        path = await run_in_threadpool(svc.sheets.sheet, work, view, dark)
+    except (httpx.HTTPError, OSError) as err:  # the picture cannot be had
+        raise HTTPException(503, "the picture cannot be had now") from err
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=604800"})
 
 

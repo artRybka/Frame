@@ -94,11 +94,13 @@ CHECKED = "composition_checked"
 #: furniture or of a few trees, after the first real analyses; round 6:
 #: readable marks, perspective as rays, Mateusz on Nighthawks; round 7: the
 #: main layout always drawn, a wedge whose vanishing point lies far off as
-#: two lines, as round 6 dropped Nighthawks' wedge). Pages of an
-#: earlier round are written again by ``ai.composition.ComposeJob`` as the
-#: owner lets it.
+#: two lines, as round 6 dropped Nighthawks' wedge; round 8: the study
+#: sheet, 2026-11-12: what to look for said outright, a returning colour's
+#: mark, the picture's field, the strokes of a pen under the marks). Pages
+#: of an earlier round are written again by ``ai.composition.ComposeJob``
+#: as the owner lets it.
 CHECK_ROUND = "composition_round"
-ROUND = 7
+ROUND = 8
 #: Kept in a page that came back without some of what every page has (see
 #: :func:`missing`) though it was asked for twice: what it lacks. A page
 #: without it that lacks them all was written before the second question
@@ -127,12 +129,18 @@ SNAP_CORNER = 0.04
 #: stroke along each, parallel to the others, and no line between them
 #: (Mateusz 2026-11-02). "rays" are a vanishing point and the far ends of
 #: the edges running into it; "motion" a movement in the picture (a
-#: flight, a swing), drawn as a sweeping arrow with speed lines. Old pages'
+#: flight, a swing), drawn as a sweeping arrow with speed lines. An "echo"
+#: is two to four places that answer each other (a colour that returns, a
+#: form repeated across the picture): a small ring at each and a thin broken
+#: line between them, in the pencil's other colour, so that no one reads it
+#: as an edge (Mateusz 2026-11-11: "trzeba się zastanowić jak coś takiego
+#: zaznaczać", then "przerywana linia i drobne kółka są ok"). Old pages'
 #: rhythms (one point per form) were in a take no longer shown.
 SHAPES = {
     "arrow": 2, "line": 2, "loop": 2, "triangle": 3, "rect": 2, "underline": 2, "spiral": 3,
-    "rhythm": 2 * MIN_BEATS, "rays": 3, "motion": 2,
+    "rhythm": 2 * MIN_BEATS, "rays": 3, "motion": 2, "echo": 2,
 }  # fmt: skip
+MAX_ECHO = 4
 #: The shapes that run through several points.
 PATHS = ("arrow", "line", "motion")
 #: The shapes of the picture's great lines, which may run on past its
@@ -145,6 +153,15 @@ REACH = 0.5
 #: (3×3), halves (2×2), thirds across and halves down (3×2) and the other
 #: way round (2×3).
 GRIDS = ("none", "golden", "thirds", "halves", "3x2", "2x3")
+#: The picture's own field on a reproduction that shows more (a print's
+#: paper, a mount): each side at least this much of the reproduction's, and
+#: one that leaves out less than :data:`FIELD_EDGE` of every side is the
+#: whole of it.
+FIELD_MIN = 0.3
+FIELD_EDGE = 0.02
+#: The pen sketch under an analysis (``ai.pen``): its strokes and their points.
+MAX_STROKES = 20
+MAX_STROKE_POINTS = 12
 #: The places a take rests on (:class:`Key`), and their sides that count.
 MAX_KEYS = 10
 AXES = ("x", "y", "xy")
@@ -381,7 +398,7 @@ class Mark(BaseModel):
 
     def anchor(self) -> Spot:
         """Where a remark about the mark points: its middle."""
-        if self.shape == "loop" or len(self.points) == 1:
+        if self.shape in ("loop", "echo") or len(self.points) == 1:
             return self.points[0]
         if self.shape == "rect":
             a, b = self.points
@@ -410,6 +427,37 @@ class Key(Spot):
     main: bool = False
 
 
+class Box(BaseModel):
+    """A part of the picture: fractions of its width and height."""
+
+    x: float
+    y: float
+    w: float
+    h: float
+
+    def into(self, spot: Spot) -> Spot:
+        """A place on the picture as a place in this part of it."""
+        return spot.model_copy(
+            update={"x": (spot.x - self.x) / self.w, "y": (spot.y - self.y) / self.h}
+        )
+
+    def out_of(self, spot: Spot) -> Spot:
+        """A place in this part as a place on the whole picture."""
+        return spot.model_copy(
+            update={"x": self.x + spot.x * self.w, "y": self.y + spot.y * self.h}
+        )
+
+
+class Stroke(BaseModel):
+    """One stroke of the pen sketch under an analysis (``ai.pen``): a line
+    through its points (fractions of the field), bent smoothly or, when
+    ``sharp``, straight from point to point; ``closed`` back to its start."""
+
+    points: list[Spot]
+    sharp: bool = False
+    closed: bool = False
+
+
 class View(BaseModel):
     """One take on the composition: its marks over the picture, a grid under
     them and a few sentences."""
@@ -420,6 +468,36 @@ class View(BaseModel):
     marks: list[Mark] = Field(default_factory=list)
     #: What the grid was chosen by (not drawn; none on takes made before).
     keys: list[Key] = Field(default_factory=list)
+    #: The picture's own field, when the reproduction shows more than the
+    #: picture (a print's paper, a mount): the sheet the app draws on shows
+    #: it alone and the grid divides it. The marks and keys stay fractions
+    #: of the whole reproduction, as apps before the sheet draw them.
+    field: Box | None = None
+    #: The pen sketch drawn into the sheet (``ai.pen``; none on takes made
+    #: before, whose sheet is the stains alone).
+    sketch: list[Stroke] = Field(default_factory=list)
+
+    def inside(self) -> View:
+        """The take as its field sees it: marks and keys as fractions of the
+        field (itself when the field is the whole picture)."""
+        if self.field is None:
+            return self
+        box = self.field
+        marks = [
+            m.model_copy(update={"points": [box.into(p) for p in m.points]}) for m in self.marks
+        ]
+        keys = [Key.model_validate(box.into(k).model_dump()) for k in self.keys]
+        return self.model_copy(update={"marks": marks, "keys": keys, "field": None})
+
+    def on(self, box: Box | None) -> View:
+        """A take drawn in a field put back on the whole picture."""
+        if box is None:
+            return self
+        marks = [
+            m.model_copy(update={"points": [box.out_of(p) for p in m.points]}) for m in self.marks
+        ]
+        keys = [Key.model_validate(box.out_of(k).model_dump()) for k in self.keys]
+        return self.model_copy(update={"marks": marks, "keys": keys, "field": box})
 
 
 class Composition(BaseModel):
@@ -699,6 +777,15 @@ def _too_near(a: Spot, b: Spot) -> bool:
     return max(abs(a.x - b.x), abs(a.y - b.y)) < MIN_LOOP * 2
 
 
+def _apart(spots: list[Spot]) -> list[Spot]:
+    """An echo's places, without one beside a place already kept."""
+    kept: list[Spot] = []
+    for s in spots:
+        if not any(_too_near(s, k) for k in kept):
+            kept.append(s)
+    return kept[:MAX_ECHO]
+
+
 def _beats(spots: list[Spot]) -> list[Spot]:
     """A rhythm's points as pairs (a form's foot and top), without a pair
     that is a dot."""
@@ -729,11 +816,13 @@ def _mark(raw: dict[str, Any]) -> Mark | None:
         spots = _beats(spots)
     elif shape == "rays" and spots:
         spots = _rays(spots)
+    elif shape == "echo":
+        spots = _apart(spots)
     if shape not in SHAPES or not title or len(spots) < SHAPES[shape]:
         return None
     if shape in PATHS:
         spots = spots[:MAX_LINE_POINTS]
-    elif shape not in ("rhythm", "rays"):
+    elif shape not in ("rhythm", "rays", "echo"):
         spots = spots[: SHAPES[shape]]
     if shape == "triangle" and _area(*spots) < MIN_TRIANGLE:
         return None
@@ -759,6 +848,35 @@ def _key(raw: dict[str, Any]) -> Key | None:
     return Key(x=spot.x, y=spot.y, title=title, axis=str(axis), main=raw.get("main") is True)
 
 
+def _field(raw: Any) -> Box | None:
+    """The picture's field on its reproduction, or None when it is the
+    whole of it (or no field at all: a sliver, a box off the picture)."""
+    if not isinstance(raw, dict):
+        return None
+    x, y, w, h = (_unit(raw.get(k)) for k in ("x", "y", "w", "h"))
+    if x is None or y is None or w is None or h is None:
+        return None
+    w, h = min(w, 1 - x), min(h, 1 - y)
+    if w < FIELD_MIN or h < FIELD_MIN:
+        return None
+    if x <= FIELD_EDGE and y <= FIELD_EDGE and x + w >= 1 - FIELD_EDGE and y + h >= 1 - FIELD_EDGE:
+        return None
+    return Box(x=x, y=y, w=w, h=h)
+
+
+def _stroke(raw: dict[str, Any]) -> Stroke | None:
+    spots = _distinct(
+        [s for s in (_spot(p, 0.05) for p in raw.get("points") or []) if s is not None]
+    )
+    if len(spots) < 2:
+        return None
+    return Stroke(
+        points=spots[:MAX_STROKE_POINTS],
+        sharp=raw.get("sharp") is True,
+        closed=raw.get("closed") is True and len(spots) >= 3,
+    )
+
+
 def _view(raw: dict[str, Any]) -> View | None:
     marks = [m for m in map(_mark, _dicts(raw.get("marks"))) if m is not None][:MAX_MARKS]
     title = _text(raw.get("title"), 40)
@@ -767,7 +885,16 @@ def _view(raw: dict[str, Any]) -> View | None:
     grid = raw.get("grid") if raw.get("grid") in GRIDS else "none"
     keys = [k for k in map(_key, _dicts(raw.get("keys"))) if k is not None][:MAX_KEYS]
     text = _text(raw.get("text"), TEXT_CHARS)
-    view = View(title=title, grid=str(grid), text=text, marks=marks, keys=keys)
+    sketch = [s for s in map(_stroke, _dicts(raw.get("sketch"))) if s is not None][:MAX_STROKES]
+    view = View(
+        title=title,
+        grid=str(grid),
+        text=text,
+        marks=marks,
+        keys=keys,
+        field=_field(raw.get("field")),
+        sketch=sketch,
+    )
     # A grid drawn under a take that nothing in it lies on proves nothing.
     return view if grid_fits(view) else view.model_copy(update={"grid": "none"})
 
