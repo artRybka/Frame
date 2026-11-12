@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.52
+## 1.145.53
 
 - Studium dzieła, analiza kompozycji: to, co wylewa się poza kadr, jest
   jedną jednolitą plamą w kolorze tej, która w tym miejscu dochodzi do

@@ -252,20 +252,35 @@ final class CompositionSheetTests: XCTestCase {
         // Nothing under the strokes or beside them: no wash wiped, no edge.
         XCTAssertEqual(pixel(100, 80), [0, 0, 0, 0])
         XCTAssertEqual(pixel(5, 5), [0, 0, 0, 0])
-        // The line in white, across the middle: where the chalk lies thickest
-        // in each column.
+        // The line in the pen's colour (dark on the light page), across the
+        // middle: where the chalk lies thickest in each column.
         let along = (40...160).map { x in (44...56).map { pixel(x, $0) }.max { $0[3] < $1[3] }! }
         let most = along.max { $0[3] < $1[3] }!
         XCTAssertGreaterThan(most[3], 180)
-        XCTAssertGreaterThan(most[2], 180)
+        XCTAssertLessThan(most[2], 70)
         // Chalk, not ink: it is not as thick everywhere (the paper's tooth).
         XCTAssertLessThan(along.map { $0[3] }.min()!, most[3] - 15)
         // The echo's rings and broken line in red.
         let reds = (0..<200).flatMap { x in (10...30).map { y in pixel(x, y) } }.filter { $0[3] > 150 }
         XCTAssertFalse(reds.isEmpty)
         XCTAssertTrue(reds.allSatisfy { $0[0] > $0[2] + 40 })
-        // The copy for a screen with headroom: the same picture, lit.
-        let lit = try XCTUnwrap(ArtGlow.render(plain, gain: Chalk.gain))
+        // On the dark page the same line is light.
+        let night = try XCTUnwrap(ChalkMarks.plain(
+            marks: marks, labelled: CompositionSketch.labelled(marks), room: EdgeInsets(), size: size, scale: 1, dark: true
+        ))
+        try bytes.withUnsafeMutableBytes { buffer in
+            let context = try XCTUnwrap(CGContext(
+                data: buffer.baseAddress, width: 200, height: 100, bitsPerComponent: 8, bytesPerRow: 800,
+                space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ))
+            context.clear(CGRect(x: 0, y: 0, width: 200, height: 100))
+            context.draw(night, in: CGRect(x: 0, y: 0, width: 200, height: 100))
+        }
+        let light = (40...160).flatMap { x in (44...56).map { pixel(x, $0) } }.max { $0[3] < $1[3] }!
+        XCTAssertGreaterThan(light[3], 180)
+        XCTAssertGreaterThan(light[2], 160)
+        // The copy for a screen with headroom (light chalk): the same picture, lit.
+        let lit = try XCTUnwrap(ArtGlow.render(night, gain: Chalk.gain))
         XCTAssertEqual(lit.width, plain.width)
         XCTAssertEqual(lit.height, plain.height)
         // One plane holds one mark: the line alone has no red in it, and
