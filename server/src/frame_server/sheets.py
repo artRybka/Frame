@@ -125,7 +125,13 @@ class Sheets:
         if view.field is not None:
             img = cropped(img, view.field)
         strokes = [([(p.x, p.y) for p in s.points], s.sharp, s.closed) for s in view.sketch]
-        wash, pen = sheets.layers(img, strokes, dark=dark, seed=zlib.crc32(item.id.encode()))
+        wash, pen = sheets.layers(
+            img,
+            strokes,
+            dark=dark,
+            seed=zlib.crc32(item.id.encode()),
+            weights=[s.weight for s in view.sketch],
+        )
         whole = wash.convert("RGBA")
         whole.alpha_composite(pen)
         self.dir.mkdir(parents=True, exist_ok=True)

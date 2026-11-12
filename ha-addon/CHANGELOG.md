@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.145.66
+
+- Studium dzieła, analiza kompozycji: rysunek piórkiem na arkuszu jest
+  teraz dokładnym rysunkiem dzieła, a nie kilkoma zaznaczeniami i obłymi
+  bryłami. Rysuje go Fable 5.2 z obrazu w pełnej wielkości, jaką model
+  czyta: nazywa temat, rysuje go forma po formie, a resztę obrazu ledwie
+  zaznacza. To, co w temacie małe albo złożone (twarz, dłonie, łódź,
+  żagle), jest wycinane z oryginału, powiększane i rysowane osobno
+  przez Opusa, dlatego twarz jest twarzą, a nie trzema kreskami. Rysunek
+  ma zwykle 70–120 kresek zamiast dwudziestu. Linie mierzone z kontrastu
+  obrazu nie biorą już w tym udziału.
+- Kreska piórka jest cieńsza i nierówno dociśnięta: raz jaśniejsza, raz
+  ciemniejsza, grubsza tam, gdzie nacisk jest mocniejszy, cienka na
+  początku i końcu. Kreski wewnątrz form (rysy twarzy, palce, fałdy) i
+  te ze zbliżeń są cieńsze od obrysów. Arkusze, które już są, serwer
+  rysuje nową kreską sam po aktualizacji, bez pytania modelu i bez kosztu.
+- Koszt: rysunek piórkiem w nowym studium to ok. 0,30–0,40 USD (było
+  ok. 0,045 USD), a studium zamówione „na później” ok. połowy tego.
+  Nowe studium powstaje o ok. minutę dłużej. Studia, które już są,
+  zachowują dotychczasowy rysunek; ich przerysowanie nocą w pakiecie
+  jest gotowe, ale wyłączone do decyzji właściciela.
+
 ## 1.145.65
 
 - Studium dzieła, analiza kompozycji: rysunek piórkiem na arkuszu znów

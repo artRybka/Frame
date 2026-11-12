@@ -56,7 +56,9 @@ from datetime import date
 from typing import TYPE_CHECKING, Any
 
 import anthropic
+from PIL import Image
 
+from ..imaging.layout import load_image
 from ..imaging.text import sentences
 from ..library.markup import strip_markup
 from ..library.models import Note
@@ -77,6 +79,7 @@ from .daily import (
     Box,
     Context,
     Key,
+    Stroke,
     View,
     _composition,
     _dicts,
@@ -99,8 +102,6 @@ from .jobs import NoteJob, Usage, listed, relist, text_hash
 from .study import KIND as STUDY
 
 if TYPE_CHECKING:
-    from PIL import Image
-
     from ..library import ImageCache, Item
     from .daily import DailyJob
 
@@ -542,10 +543,22 @@ def written(
             said = sentences(view.text)
             params = motions.question(img, view, said, directions, picture_lines)
             movement = run("motion", lambda: motions.movement(asked("motion", params), img.size))
-    # The few strokes of the pen under the stains of the sheet: without them
-    # the sheet is the stains alone.
+    # The drawing of the pen over the stains of the sheet: without it the
+    # sheet is the stains alone. Its close-ups are asked together.
     about = [m.title for m in view.marks]
-    strokes = run("sketch", lambda: pen.strokes(asked("sketch", pen.question(img, about)), img))
+    many = getattr(ask, "many", None)
+
+    def together(several: list[dict[str, Any]]) -> list[dict[str, Any] | None]:
+        answers = many(several) if many else [ask(params) for params in several]
+        costs["sketch"] = costs.get("sketch", 0.0) + sum(a.cost_usd for a in answers)
+        return [a.data for a in answers]
+
+    def sketch() -> list[Stroke] | None:
+        large = drawn_from(images, item, found.field)
+        drawn = pen.draw(large, about, lambda params: asked("sketch", params), together)
+        return pen.strokes(drawn, large)
+
+    strokes = run("sketch", sketch)
     # The grid and the movement are facts; the text is written last, in one voice.
     with_grid = merged(view, choice, None)
     facts = prose.grid_facts(choice.grid, choice.held) if choice is not None else []
@@ -581,6 +594,16 @@ def written(
         pen.PEN_KEY: pen.ROUND,
         **({prose.PROSE_KEY: prose.PROSE} if text else {}),
     }
+
+
+def drawn_from(images: ImageCache, item: Item, field: Box | None) -> Image.Image:
+    """The picture the pen draws: the work's (its ``field`` alone) as large
+    as it can be had, at most :data:`pen.SOURCE` long, since the pen's
+    close-ups are cut from it."""
+    path, _ = images.picture(item)
+    img = load_image(path.read_bytes()).convert("RGB")
+    img.thumbnail((pen.SOURCE, pen.SOURCE), Image.Resampling.LANCZOS)
+    return cropped(img, field) if field is not None else img
 
 
 def cropped(img: Image.Image, field: Box) -> Image.Image:

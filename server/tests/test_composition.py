@@ -17,7 +17,7 @@ from frame_server.ai import lines as found_lines
 from frame_server.ai.check import SYSTEM as CHECK_SYSTEM
 from frame_server.ai.check import checked
 from frame_server.ai.check import question as check_question
-from frame_server.ai.client import HAIKU, OPUS, SONNET, AiUnavailable, Answer
+from frame_server.ai.client import FABLE, HAIKU, OPUS, SONNET, AiUnavailable, Answer
 from frame_server.ai.composition import (
     AGAIN_KEY,
     BEFORE,
@@ -48,6 +48,7 @@ from frame_server.ai.daily import (
 )
 from frame_server.ai.motion import SYSTEM as MOTION_SYSTEM
 from frame_server.ai.motion import Movement, movement
+from frame_server.ai.pen import CLOSE_SYSTEM, read_size
 from frame_server.ai.pen import SYSTEM as PEN_SYSTEM
 from frame_server.ai.prose import PROSE, PROSE_KEY
 from frame_server.ai.prose import SYSTEM as PROSE_SYSTEM
@@ -460,14 +461,50 @@ ANALYSIS_V6 = {
 }
 
 
-#: Sonnet's pen sketch, in pixels of the picture it got (900 × 600 fits whole).
-SKETCH = {
+def pen_points(*spots: tuple[float, float], of: tuple[int, int] = (900, 600)) -> str:
+    """Points as the pen writes them: in pixels of the picture it reads (the
+    one ``of`` this size, enlarged to what the model reads), given here
+    where they are on a picture 900 × 600."""
+    read = read_size(*of)
+    return " ".join(f"{round(x * read[0] / 900)},{round(y * read[1] / 600)}" for x, y in spots)
+
+
+def _line(what: str, p: str, **more: Any) -> dict[str, Any]:
+    return {"co": what, "lekka": False, "p": p, "ostra": False, "zamknieta": False, **more}
+
+
+def sketch(of: tuple[int, int] = (900, 600), boat: bool = False) -> dict[str, Any]:
+    """The pen's first answer about the wave (a picture ``of`` this size);
+    ``boat``: with the boat marked to be drawn closer."""
+
+    def p(*spots: tuple[float, float]) -> str:
+        return pen_points(*spots, of=of)
+
+    kx, ky = read_size(*of)[0] / 900, read_size(*of)[1] / 600
+    return {
+        "temat": "fala nad łodziami",
+        "fragmenty": [{"co": "łódź", "x": 300 * kx, "y": 520 * ky, "w": 300 * kx, "h": 80 * ky}]
+        if boat
+        else [],
+        "szkic": [
+            _line("grzbiet fali", p((0, 420), (200, 180), (420, 150)), temat=True),
+            _line("horyzont", p((0, 300), (900, 300)), temat=False, ostra=True),
+            _line("Fudżi", p((560, 440), (610, 380), (660, 440)), temat=True, ostra=True),
+            _line("łódź", p((300, 560), (450, 590), (600, 560)), temat=True, zamknieta=True),
+            _line("kropka", p((10, 10)), temat=True),  # no stroke
+        ],
+    }
+
+
+#: The pen's sketch of the picture 900 × 600: the subject's strokes first
+#: (the crest, Fuji, the boat), then the horizon.
+SKETCH = sketch()
+#: The boat drawn closer: its place and a tenth of its length around it (270
+#: to 630 by 490 to 600 of the picture), enlarged four times.
+CLOSE = {
     "szkic": [
-        {"co": "grzbiet fali", "points": _points((0, 420), (200, 180), (420, 150)), "ostra": False},
-        {"co": "horyzont", "points": _points((0, 300), (900, 300)), "ostra": True},
-        {"co": "Fudżi", "points": _points((560, 440), (610, 380), (660, 440)), "ostra": True},
-        {"co": "łódź", "points": _points((300, 560), (450, 590), (600, 560)), "zamknieta": True},
-        {"co": "kropka", "points": _points((10, 10))},  # no stroke
+        _line("kadłub", "120,200 1320,200 1200,400 240,400", ostra=True, zamknieta=True),
+        _line("wiosło", "400,100 1000,300", lekka=True, ostra=True),
     ]
 }
 
@@ -480,9 +517,15 @@ WRITTEN = (
 )
 
 
-def _pipeline(asked: list[dict[str, Any]], analysis: dict[str, Any] = ANALYSIS_V6) -> Any:
-    """Every step answering: Opus, the Haiku check, Sonnet's movement and
-    its pen sketch, and the writer of the text."""
+def _pipeline(
+    asked: list[dict[str, Any]],
+    analysis: dict[str, Any] = ANALYSIS_V6,
+    of: tuple[int, int] = (900, 600),
+    boat: bool = True,
+) -> Any:
+    """Every step answering: Opus, the Haiku check, Sonnet's movement, the
+    pen's drawing (of a picture ``of`` this size; ``boat``: with a place
+    drawn closer) and the writer of the text."""
 
     def ask(params: dict[str, Any]) -> Answer:
         asked.append(params)
@@ -500,7 +543,9 @@ def _pipeline(asked: list[dict[str, Any]], analysis: dict[str, Any] = ANALYSIS_V
         if system == PROSE_SYSTEM:
             return Answer({"text": WRITTEN}, False, 0.015, OPUS)
         if system == PEN_SYSTEM:
-            return Answer(SKETCH, False, 0.02, SONNET)
+            return Answer(sketch(of, boat), False, 0.02, FABLE)
+        if system == CLOSE_SYSTEM:
+            return Answer(CLOSE, False, 0.01, OPUS)
         if system == MOTION_SYSTEM:
             reply = {
                 "budowa": "dynamiczna",
@@ -530,7 +575,7 @@ def test_the_analysis_is_asked_apart_in_steps(service: FrameService) -> None:
     assert item is not None
     asked: list[dict[str, Any]] = []
     found = compose(service.images, item, service.daily.job.sources(item), _pipeline(asked))
-    first, check, motion, sketch, writer = asked
+    first, check, motion, drawing, close, writer = asked
     assert first["system"][0]["text"] == COMPOSITION_SYSTEM and first["model"] == OPUS
     assert first["output_config"]["effort"] == "medium"
     text = first["messages"][0]["content"][1]["text"]
@@ -538,9 +583,18 @@ def test_the_analysis_is_asked_apart_in_steps(service: FrameService) -> None:
     assert check["model"] == HAIKU and "loop „Fudżi”" in check["messages"][0]["content"][-1]["text"]
     assert motion["model"] == SONNET
     assert "po: stożek góry" in check["messages"][0]["content"][-1]["text"]
-    # The pen sketch: the picture alone, smaller, by the cheaper model.
-    assert sketch["model"] == SONNET and sketch["system"][0]["text"] == PEN_SYSTEM
-    assert [b["type"] for b in sketch["messages"][0]["content"]] == ["image", "text"]
+    # The pen's drawing: the picture alone, as large as a model reads one,
+    # by the one that draws exactly; then the place it asked to see closer,
+    # enlarged, beside the whole picture with the place marked.
+    assert drawing["model"] == FABLE and drawing["system"][0]["text"] == PEN_SYSTEM
+    assert [b["type"] for b in drawing["messages"][0]["content"]] == ["image", "text"]
+    width, height = read_size(900, 600)
+    assert f"OBRAZ: {width} × {height} px" in drawing["messages"][0]["content"][1]["text"]
+    assert close["model"] == OPUS and close["system"][0]["text"] == CLOSE_SYSTEM
+    assert [b["type"] for b in close["messages"][0]["content"]] == ["image", "image", "text"]
+    said = close["messages"][0]["content"][2]["text"]
+    assert said.startswith("FRAGMENT: łódź (temat obrazu: fala nad łodziami)")
+    assert "OBRAZ: 1440 × 440 px" in said
     # The writer gets the draft and the facts, no picture.
     assert writer["model"] == OPUS and writer["output_config"]["effort"] == "low"
     (content,) = writer["messages"][0]["content"]
@@ -557,13 +611,28 @@ def test_the_analysis_is_asked_apart_in_steps(service: FrameService) -> None:
     assert found[CHECKED][0].startswith("przesunięty ślad 1 „Fudżi”")
     assert found[CHECK_ROUND] == ROUND
     assert found[COST] == {
-        "analysis": 0.07, "check": 0.01, "motion": 0.03, "sketch": 0.02, "text": 0.015
+        "analysis": 0.07, "check": 0.01, "motion": 0.03, "sketch": 0.03, "text": 0.015
     }  # fmt: skip
     # The loop came as a box and is kept as its centre and a corner, moved by the check.
     loop = view["marks"][0]
     assert (round(loop["points"][0]["x"] * 900), round(loop["points"][0]["y"] * 600)) == (610, 400)
-    # The sketch goes into the take, for the sheet: four strokes, the dot left out.
-    assert len(view["sketch"]) == 4 and view["sketch"][1]["sharp"] and view["sketch"][3]["closed"]
+    # The sketch goes into the take, for the sheet: the crest and Fuji as the
+    # whole picture gave them, the boat as its close-up did (what the whole
+    # drew of it is gone, the dot too), then the horizon. The close-up's
+    # strokes are thinner, the one inside a form thinner still, and the oar
+    # is drawn only where it is in the boat's place.
+    drawn = view["sketch"]
+    assert [(s["sharp"], s["closed"], s["weight"]) for s in drawn] == [
+        (False, False, 1.0),
+        (True, False, 1.0),
+        (True, True, 0.83),
+        (True, False, 0.52),
+        (True, False, 1.0),
+    ]
+    hull = [(round(p["x"] * 900), round(p["y"] * 600)) for p in drawn[2]["points"]]
+    assert hull == [(300, 540), (600, 540), (570, 590), (330, 590)]
+    oar = [(round(p["x"] * 900), round(p["y"] * 600)) for p in drawn[3]["points"]]
+    assert oar[0][1] == 520 and oar[-1] == (520, 565)
     assert view["field"] is None
     # An unusable analysis gives the page nothing.
     refused = compose(
@@ -912,13 +981,13 @@ def test_a_page_ordered_for_later_is_written_through_batches(service: FrameServi
     assert service.ai.ask_later("met:1", KIND)
     assert service.ai.advance(KIND, "met:1") is None  # Opus's question is in a batch
     assert len(fake.batches) == 1 and not fake.asked
-    for _ in range(4):  # the analysis, then the text: each answer takes it a step on
+    for _ in range(5):  # the analysis, the pen's drawing, the text: each answer a step on
         service.ai.poll_batches()
         if not service.ai.later(KIND, "met:1"):
             break
     assert not service.ai.later(KIND, "met:1")
-    assert asked and all(q["model"] == OPUS for q in asked)  # the long ones, for half
-    assert all(q["model"] != OPUS for q in fake.asked)  # the short ones at once
+    assert [q["model"] for q in asked] == [OPUS, FABLE, OPUS]  # the long ones, for half
+    assert all(q["model"] not in (OPUS, FABLE) for q in fake.asked)  # the short ones at once
     page = service.library.note("met:1", STUDY)
     assert page is not None and page.data[CHECK_ROUND] == ROUND
     assert page.data[BEFORE] == old.data["composition"]

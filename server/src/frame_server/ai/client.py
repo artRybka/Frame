@@ -247,6 +247,11 @@ class Claude:
     def create_batch(self, requests: list[dict[str, Any]]) -> str:
         """``requests``: ``{"custom_id": ..., "params": request(...)}``."""
         self.check_budget()
+        # (``timeout`` is the client's own for a long answer, no part of a request)
+        requests = [
+            {**r, "params": {k: v for k, v in r["params"].items() if k != "timeout"}}
+            for r in requests
+        ]
         try:
             return str(self.client().messages.batches.create(requests=requests).id)
         except anthropic.AuthenticationError as err:

@@ -7,18 +7,30 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
 from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
-from test_composition import ANALYSIS_V6, SKETCH, _drawn, _old_page, _pipeline, _points
+from test_composition import (
+    ANALYSIS_V6,
+    CLOSE,
+    SKETCH,
+    _drawn,
+    _line,
+    _old_page,
+    _pipeline,
+    _points,
+    pen_points,
+    sketch,
+)
 from test_daily import _app, _catalogue
 
 from frame_server.ai import AiConfigUpdate, pen
 from frame_server.ai.check import SYSTEM as CHECK_SYSTEM
 from frame_server.ai.check import page_views
-from frame_server.ai.client import SONNET, Answer
+from frame_server.ai.client import FABLE, OPUS, Answer
 from frame_server.ai.composition import MAX_DRAWN, compose, draft, question
 from frame_server.ai.daily import CHECK_ROUND, ROUND, TAKE, Box, Spot, _view
 from frame_server.ai.pen import strokes as pen_strokes
@@ -515,7 +527,7 @@ def test_a_print_is_analysed_in_its_field(service: FrameService) -> None:
     ]
     assert round(found.keys[0].y, 6) == 0.5 and found.po["Krowa"] == "krowa"
     asked: list[dict[str, Any]] = []
-    answers = _pipeline(asked, PRINT)
+    answers = _pipeline(asked, PRINT, of=(720, 360), boat=False)  # (the pen draws the field)
 
     def ask(params: dict[str, Any]) -> Answer:
         if params["system"][0]["text"] == CHECK_SYSTEM:  # the check leaves this one be
@@ -549,137 +561,153 @@ def test_at_most_five_marks_and_a_sketch_of_some_strokes(service: FrameService) 
     params = question(service.images, item, service.daily.job.sources(item))
     found = draft({"composition": {"views": [view]}}, params)
     assert found is not None and len(found.view.marks) == MAX_DRAWN == 5
-    # The pen: fractions of the picture, whatever size it was sent at; too few strokes are none.
-    # (On a blank picture nothing can be measured: the strokes stay as drawn.)
+    # The pen: fractions of the picture, whatever size it has; too few strokes are none.
     blank = Image.new("RGB", (900, 600), "white")
     drawn = pen_strokes(SKETCH, blank)
     assert drawn is not None and len(drawn) == 4
-    assert (drawn[1].points[1].x, drawn[1].points[1].y) == (1.0, 0.5) and drawn[1].sharp
+    horizon = drawn[3]  # (what is not the subject comes last)
+    assert (horizon.points[1].x, round(horizon.points[1].y, 3)) == (1.0, 0.5) and horizon.sharp
     assert pen_strokes({"szkic": SKETCH["szkic"][:2]}, blank) is None
     assert pen_strokes(None, blank) is None
-    # (sent at 1568 × 1045: its pixels are of that)
-    big = pen_strokes(SKETCH, Image.new("RGB", (1800, 1200), "white"))
-    assert big is not None and round(big[1].points[1].x, 2) == round(900 / 1568, 2)
+    # (a larger picture is read at the same size, the most a model reads: the same pixels)
+    assert pen.read_size(1800, 1200) == pen.read_size(900, 600)
+    assert pen_strokes(SKETCH, Image.new("RGB", (1800, 1200), "white")) == drawn
 
 
-def _ship(size: tuple[int, int] = (900, 600)) -> Image.Image:
-    """A dark hull with a mast and a sail on a pale sea under a pale sky."""
-    img = Image.new("RGB", size, (205, 210, 215))
-    canvas = ImageDraw.Draw(img)
-    canvas.rectangle((0, 400, size[0], size[1]), fill=(150, 165, 175))  # the sea
-    canvas.polygon([(300, 330), (620, 330), (580, 420), (340, 420)], fill=(70, 50, 40))
-    canvas.rectangle((452, 120, 460, 330), fill=(60, 45, 35))  # the mast
-    canvas.ellipse((480, 150, 600, 300), fill=(240, 230, 200))  # the sail
-    return img
-
-
-def _circle(cx: float, cy: float, rx: float, ry: float, n: int = 10) -> list[dict[str, float]]:
-    turn = np.linspace(0, 2 * np.pi, n, endpoint=False)
-    return [{"x": cx + rx * float(np.cos(t)), "y": cy + ry * float(np.sin(t))} for t in turn]
-
-
-def test_a_stroke_is_laid_on_the_pictures_own_edge() -> None:
-    """Mateusz 2026-11-12 14:50, of the pen's drawing: "Może być oczywiście
-    schematyczna, ale teraz nieraz jest chaotyczna"."""
-    from frame_server.ai.daily import MAX_STROKE_POINTS
-    from frame_server.imaging import trace
-
-    rgb = np.asarray(_ship())
-    w, h = 900.0, 600.0
-
-    def line(*spots: tuple[float, float]) -> list[tuple[float, float]]:
-        return [(x / w, y / h) for x, y in spots]
-
-    sail = [(p["x"] / w, p["y"] / h) for p in _circle(548, 232, 60, 75)]  # 8 px beside it
-    hull = line((290, 322), (630, 322), (590, 428), (330, 428))  # 8 to 10 px outside it
-    mast = line((449, 110), (451, 340))
-    sky = line((60, 60), (300, 90), (520, 40), (840, 110))  # along nothing
-    sea = line((40, 520), (860, 540))  # along nothing
-    again = line((296, 326), (624, 326))  # the hull's top once more
-    lines: list[trace.Line] = [
-        (sail, False, True),
-        (hull, True, True),
-        (mast, True, False),
-        (sky, False, False),
-        (sea, True, False),
-        (again, True, False),
-    ]
-    laid = trace.follow(rgb, lines)
-    round_sail, box, pole, *lost = laid
-    assert lost == [None, None, None]
-    assert round_sail is not None and box is not None and pole is not None
-    # The sail's stroke runs on the sail's rim, all the way round, and stays closed.
-    rim = np.array(round_sail[0]) * [w, h]
-    off = np.hypot((rim[:, 0] - 540) / 60, (rim[:, 1] - 225) / 75) - 1
-    assert round_sail[2] and len(rim) >= 6 and float(np.abs(off).max()) < 0.06
-    # The hull keeps its four straight sides, now on the hull's corners.
-    corners = np.array(box[0]) * [w, h]
-    assert box[1] and box[2] and len(corners) == 4
-    true = np.array([(300, 330), (620, 330), (580, 420), (340, 420)], float)
-    assert float(np.abs(corners - true).max()) < 4
-    # A straight stroke stays straight and upright, on one side of the mast.
-    top, foot = np.array(pole[0]) * [w, h]
-    assert len(pole[0]) == 2 and abs(top[0] - foot[0]) < 2 and 450 <= top[0] <= 462
-    # No stroke is put down in more points than a page keeps.
-    assert trace.POINTS <= MAX_STROKE_POINTS
-
-
-def test_the_pen_draws_the_subject_and_little_else() -> None:
+def test_the_pen_draws_the_subject_closely_and_little_else() -> None:
     """Mateusz 2026-11-12 14:50: "Najlepiej gdyby rysunek był dokładny tam
     gdzie dzieło tego wymaga (temat, postać, istotny fragment) a pominięty
-    lub bardzo ogólny w reszcie dzieła"."""
-    ship = _ship()
-    w, h = 900, 600  # (as the pen sees it: it fits whole)
+    lub bardzo ogólny w reszcie dzieła"; 17:32: "Lepszy był rysunek modelu,
+    ale musi być dokładniejszy"."""
+    blank = Image.new("RGB", (900, 600), "white")
+    p = pen_points
+    kx, ky = pen.read_size(900, 600)[0] / 900, pen.read_size(900, 600)[1] / 600
 
-    def stroke(what: str, spots: Any, **more: Any) -> dict[str, Any]:
-        return {
-            "co": what,
-            "points": _points(*spots) if isinstance(spots, tuple) else spots,
-            **more,
-        }
+    def place(what: str, x: float, y: float, w: float, h: float) -> dict[str, Any]:
+        return {"co": what, "x": x * kx, "y": y * ky, "w": w * kx, "h": h * ky}
 
-    answer = {
+    plan = {
         "temat": "statek na morzu",
+        "fragmenty": [
+            place("statek", 300, 100, 320, 330),
+            place("bandera", 440, 100, 80, 60),
+            place("drobiazg", 10, 10, 5, 5),  # too small: widened to the least worth a look
+            place("wszystko", 0, 0, 900, 560),  # most of the picture: no closer
+            {"co": "nic", "x": "?", "y": 0, "w": 10, "h": 10},
+        ],
         "szkic": [
-            stroke("brzeg morza", ((0, 404), (900, 404)), temat=False, ostra=True),
-            stroke("żagiel", _circle(548, 232, 60, 75), temat=True, zamknieta=True),
-            stroke(
-                "kadłub",
-                ((290, 322), (630, 322), (590, 428), (330, 428)),
-                temat=True,
-                ostra=True,
-                zamknieta=True,
-            ),
-            stroke("maszt", ((449, 110), (451, 340)), temat=True, ostra=True),
-            stroke("chmura", ((60, 60), (300, 90), (520, 40), (840, 110)), temat=False),
+            _line("brzeg morza", p((0, 404), (900, 404)), temat=False, ostra=True),
+            _line("fala", p((100, 500), (250, 470), (400, 500)), temat=True),
+            _line("lina na brzeg", p((200, 250), (500, 250)), temat=True, ostra=True),
+            _line("rama", p((2, 2), (898, 2), (898, 598), (2, 598)), temat=True, zamknieta=True),
             *[
-                stroke(f"fala {n}", ((40, 440 + 20 * n), (860, 450 + 20 * n)), temat=False)
-                for n in range(6)
+                _line(f"chmura {n}", p((40, 20 + 8 * n), (860, 30 + 8 * n)), temat=False)
+                for n in range(7)
             ],
         ],
     }
-    drawn = pen_strokes(answer, ship)
+    places = pen.boxes(plan, blank.size)
+    assert [name for name, _ in places] == ["statek", "bandera", "drobiazg"]
+    ship, flag, speck = (box for _, box in places)
+    assert (round(ship.x * 900), round(ship.w * 900), round(ship.h * 600)) == (300, 320, 330)
+    assert round(speck.w * 900) == round(900 / 14)  # (and kept inside the picture)
+    assert speck.x == 0 and speck.y == 0
+    # The ship's close-up: its place and a tenth around it (267 to 653 by 67
+    # to 463), enlarged four times; the flag's: 432 to 528 by 90 to 170.
+    hull = _line("kadłub", "172,1132 1372,1132 1212,1412 332,1412", ostra=True, zamknieta=True)
+    mast = _line("maszt", "732,152 732,1100", ostra=True)
+    sail = _line("żagiel w banderze", "700,160 900,160 900,380 700,380", lekka=True)
+    cloth = _line("płótno", "40,40 340,40 340,260 40,260", zamknieta=True)
+    closer = [{"szkic": [hull, mast, sail]}, {"szkic": [cloth]}]
+    drawn = pen_strokes({**plan, pen.CLOSE_KEY: closer}, blank)
     assert drawn is not None
-    # The subject first, in the pen's order; the strokes along nothing are gone.
-    assert [(s.closed, s.sharp) for s in drawn] == [
-        (True, False),
-        (True, True),
-        (False, True),
-        (False, True),
+    # The subject first: what the whole picture gave of it outside the places
+    # (the rope is cut at the ship's side, the frame of the picture is left
+    # out), then each place as its close-up drew it, the larger first, then
+    # a few lines of the rest.
+    assert len(drawn) == 2 + 2 + 1 + pen.MAX_GENERAL
+    wave, rope, ship_hull, ship_mast, flag_cloth = drawn[: -pen.MAX_GENERAL]
+    assert len(wave.points) == 3 and wave.weight == 1.0
+    assert round(rope.points[0].x * 900) == 200 and abs(rope.points[-1].x * 900 - 300) < 3
+    # The ship's own strokes are thinner than the whole's, the flag's thinner
+    # still: a hand presses less on what is small.
+    assert ship_hull.closed and ship_hull.sharp and ship_hull.weight == 0.87
+    assert [(round(pt.x * 900), round(pt.y * 600)) for pt in ship_hull.points] == [
+        (310, 350),
+        (610, 350),
+        (570, 420),
+        (350, 420),
     ]
-    shore = drawn[-1].points
-    assert all(abs(p.y * h - 400) < 3 for p in shore) and shore[-1].x * w > 800
-    # Of what is not the subject only a few strokes are kept at all.
-    crowded = {**answer, "szkic": answer["szkic"][1:4] + answer["szkic"][:1] * 9}
-    blank = Image.new("RGB", (w, h), "white")  # (nothing measured: all that is kept is seen)
-    kept = pen_strokes(crowded, blank)
-    assert kept is not None and len(kept) == 3 + pen.MAX_GENERAL
-    # The pen is told what the analysis points at, and sees the picture larger.
-    asked = pen.question(Image.new("RGB", (3000, 2000)), ["Statek", "Łódź", "Statek", " "])
+    # The ship gives way to the flag in it: its mast begins where the flag's
+    # place ends and its sail there is gone; the flag's own close-up drew it.
+    top, foot = ship_mast.points
+    assert abs(top.y - (flag.y + flag.h)) < 0.004 and round(foot.y * 600) == 342
+    assert flag_cloth.closed and flag_cloth.weight == 0.59
+    assert all(_inside(pt, flag) for pt in flag_cloth.points)
+    # Of the rest a few lines: the shore (cut where the ship stands), some clouds.
+    assert all(s.weight == 1.0 for s in drawn[-pen.MAX_GENERAL :])
+    assert abs(drawn[-pen.MAX_GENERAL].points[-1].x * 900 - 300) < 3
+    # A place whose close-up gave nothing keeps what the whole drew of it.
+    kept = pen_strokes({**plan, pen.CLOSE_KEY: [None, None]}, blank)
+    assert kept is not None and len(kept[1].points) == 2
+    assert [round(pt.x * 900) for pt in kept[1].points] == [200, 500]
+
+
+def _inside(point: Any, box: Box) -> bool:
+    return box.x <= point.x <= box.x + box.w and box.y <= point.y <= box.y + box.h
+
+
+def test_the_pen_asks_about_the_whole_then_about_each_place() -> None:
+    whole = Image.new("RGB", (3000, 2000), "white")
+    asked = pen.question(whole, ["Statek", "Łódź", "Statek", " "])
+    assert asked["model"] == FABLE and asked["output_config"]["effort"] == "medium"
     said = asked["messages"][0]["content"][-1]["text"]
-    assert "OBRAZ: 1568 × 1045 px" in said and said.endswith("ANALIZA WSKAZUJE: Statek; Łódź")
-    assert "ANALIZA" not in pen.question(ship)["messages"][0]["content"][-1]["text"]
-    assert "temat" in asked["output_config"]["format"]["schema"]["properties"]
+    width, height = pen.read_size(3000, 2000)
+    assert max(width, height) > 2000  # as large as a model reads one
+    assert f"OBRAZ: {width} × {height} px" in said
+    assert said.endswith("ANALIZA WSKAZUJE: Statek; Łódź")
+    assert "ANALIZA" not in pen.question(whole)["messages"][0]["content"][-1]["text"]
+    assert {"temat", "fragmenty", "szkic"} <= set(
+        asked["output_config"]["format"]["schema"]["properties"]
+    )
+    # A small picture is enlarged, at most four times.
+    assert pen.read_size(300, 200) == (1200, 800)
+
+    # The whole answer: the first one and, in the order of its places, what
+    # each close-up drew (asked together when that can be).
+    small = Image.new("RGB", (900, 600), "white")
+    plan = sketch(boat=True)
+    questions: list[dict[str, Any]] = []
+
+    def ask(params: dict[str, Any]) -> dict[str, Any] | None:
+        questions.append(params)
+        return plan if params["system"][0]["text"] == pen.SYSTEM else CLOSE
+
+    together: list[int] = []
+
+    def many(several: list[dict[str, Any]]) -> list[dict[str, Any] | None]:
+        together.append(len(several))
+        return [ask(params) for params in several]
+
+    drawn = pen.draw(small, ["Łódź"], ask, many)
+    assert drawn is not None and drawn[pen.CLOSE_KEY] == [CLOSE] and together == [1]
+    first, close = questions
+    assert first["model"] == pen.MODEL == FABLE and close["model"] == pen.CLOSE_MODEL == OPUS
+    assert close["system"][0]["text"] == pen.CLOSE_SYSTEM
+    found = pen_strokes(drawn, small)
+    assert found is not None and len(found) == 5
+    # The first answer had already (a night's batch): only the close-ups are asked.
+    questions.clear()
+    assert pen.draw(small, [], ask, plan=plan) == drawn
+    assert [q["model"] for q in questions] == [OPUS]
+    # One who will not draw the whole: asked of the spare; with no answer
+    # from it either there is no sketch.
+    questions.clear()
+    refusing = iter([None, plan, CLOSE])
+    assert pen.draw(small, [], lambda params: questions.append(params) or next(refusing)) == drawn
+    assert [q["model"] for q in questions] == [FABLE, pen.SPARE, OPUS]
+    assert pen.draw(small, [], lambda params: None) is None
+    assert pen_strokes(None, small) is None
 
 
 def test_the_app_gets_the_sheet_of_the_take_it_shows(tmp_path: Path) -> None:
@@ -747,30 +775,45 @@ def test_sketches_of_an_earlier_pen_are_drawn_again_at_night(service: FrameServi
     """Mateusz 2026-11-12 09:47: the pen's contours "trochę dokładniejsze,
     może być ich też trochę więcej", in the studies there are too; 08:15,
     of work nobody waits for: "w pakiecie? Tzn wolniej ale taniej?"."""
-    from test_ai import GOOD_KEY, FakeAnthropic
+    from test_ai import GOOD_KEY, FakeAnthropic, _message
     from test_ordered_later import _batched
 
+    from frame_server.ai.composition import drawn_from
+    from frame_server.ai.jobs import BATCHES_KEY, LATER_KEY
+
     _catalogue(service)
+    item = service.library.get("met:1")
+    assert item is not None
     fake = FakeAnthropic(GOOD_KEY)
-    _batched(fake)
-    # (In fractions: the catalogue's test picture is a few pixels.)
-    fake.answer = {
-        "szkic": [
-            {**s, "points": [{"x": p["x"] / 1024, "y": p["y"] / 683} for p in s["points"]]}
-            for s in SKETCH["szkic"]
-        ]
-    }
+    got = _batched(fake)
+    of = drawn_from(service.images, item, None).size  # (the catalogue's test picture)
+    plan = sketch(of, boat=True)
+    read = pen.read_size(*of)
+    fuji = {"co": "Fudżi", "x": 0.6 * read[0], "y": 0.6 * read[1], "w": 0.16, "h": 0.14}
+    plan["fragmenty"].append({**fuji, "w": 0.16 * read[0], "h": 0.14 * read[1]})
+    answers = {pen.SYSTEM: plan, pen.CLOSE_SYSTEM: CLOSE}
+
+    def results(batch_id: str) -> list[Any]:
+        out = []
+        for r in fake.batches[batch_id]:
+            got.append(r["params"])
+            message = _message(answers[r["params"]["system"][0]["text"]])
+            message.model = r["params"]["model"]
+            ok = SimpleNamespace(type="succeeded", message=message)
+            out.append(SimpleNamespace(custom_id=r["custom_id"], result=ok))
+        return out
+
+    fake.messages.batches.results = results
     service.claude.factory = lambda key: fake
     service.ai_config.set_key(GOOD_KEY)
     service.ai_config.update(
         AiConfigUpdate(keywords_artworks=False, keywords_photos=False, pl_text=False)
     )
     job = service.ai.jobs[PEN]
-    assert isinstance(job, PenJob) and job.night and job.model == SONNET
+    assert isinstance(job, PenJob) and job.night and job.follow_up and job.model == FABLE
     # A page whose whole analysis is about to be made again gets the new pen with it.
     _old_page(service, **{CHECK_ROUND: ROUND - 1})
-    item = service.library.get("met:1")
-    assert item is not None and not job.wanted(item)
+    assert not job.wanted(item)
     # One that has its analysis: its sketch alone, at night, never at once.
     _old_page(service, **{CHECK_ROUND: ROUND})
     service.compose.forget()
@@ -780,14 +823,36 @@ def test_sketches_of_an_earlier_pen_are_drawn_again_at_night(service: FrameServi
     assert service.ai.order_night() == 1 and not fake.asked
     (requests,) = fake.batches.values()
     asked = requests[0]["params"]
-    assert asked["model"] == SONNET and asked["system"][0]["text"] == pen.SYSTEM
+    assert asked["model"] == FABLE and asked["system"][0]["text"] == pen.SYSTEM
+    assert "timeout" not in asked  # (the client's own, no part of a request)
     assert service.ai.order_night() == 0  # already in a batch
+    # The pen's first answer in: the place it asked to see closer goes into
+    # a batch of its own, for half the price too; nothing is asked at once.
     fake.ended = True
+    assert service.ai.poll_batches() == 0
+    assert list(fake.batches) == ["batch_1", "batch_2"] and not fake.asked
+    close, other = fake.batches["batch_2"]  # both places together
+    assert (close["custom_id"], other["custom_id"]) == ("q", "q1")
+    assert close["params"]["model"] == other["params"]["model"] == OPUS
+    assert close["params"]["system"][0]["text"] == pen.CLOSE_SYSTEM
+    assert "FRAGMENT: łódź" in close["params"]["messages"][0]["content"][-1]["text"]
+    assert "FRAGMENT: Fudżi" in other["params"]["messages"][0]["content"][-1]["text"]
+    assert service.ai.later(PEN, "met:1") and service.ai.order_night() == 0
+    page = service.library.note("met:1", STUDY)
+    assert page is not None and wants(page)  # not drawn yet
     assert service.ai.poll_batches() == 1
+    assert service.library.get_state(LATER_KEY, {}) == {}
+    assert service.library.get_state(BATCHES_KEY, []) == []
+    assert [q["model"] for q in got] == [FABLE, OPUS, OPUS]
     page = service.library.note("met:1", STUDY)
     assert page is not None and page.data[pen.PEN_KEY] == pen.ROUND
     shown = page_views(page.data)[0]
-    assert len(shown.sketch) == 4 and shown.sketch[1].sharp
+    # The crest as the whole picture gave it, the boat and Fuji as their
+    # close-ups drew them (what the whole had of them is gone), the horizon.
+    crest, hull, oar, *fuji, horizon = shown.sketch
+    assert crest.weight == horizon.weight == 1.0 and horizon.sharp and len(crest.points) == 3
+    assert hull.closed and hull.weight == 0.83 and oar.weight == 0.52
+    assert len(fuji) == 3 and all(s.weight < hull.weight for s in fuji)
     assert [m.title for m in shown.marks]  # the analysis itself is as it was
     assert not job.wanted(item) and service.ai.order_night() == 0
     # Another sketch is another sheet, made ahead like any.
@@ -806,7 +871,8 @@ def test_sketches_of_an_earlier_pen_are_drawn_again_at_night(service: FrameServi
     left = redrawn({**kept, pen.PEN_KEY: 1}, None)
     assert left["composition"] == kept["composition"] and left[pen.PEN_KEY] == pen.ROUND
     # Which pages are drawn again is the owner's word (the redrawing costs):
-    # he said yes for the first pen's pages and for the second's.
+    # he said yes for the first pen's pages and for the second's, and was
+    # not asked yet about the third's.
     assert wants(page.model_copy(update={"data": {**page.data, pen.PEN_KEY: 1}}))
     assert wants(page.model_copy(update={"data": {**page.data, pen.PEN_KEY: 2}}))
     assert not wants(page.model_copy(update={"data": {**page.data, pen.PEN_KEY: 3}}))

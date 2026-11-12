@@ -134,7 +134,10 @@ Array = npt.NDArray[Any]
 PenStroke = tuple[Sequence[tuple[float, float]], bool, bool]
 
 #: Raised when the look changes, so that sheets made before are made again.
-LOOK = 7
+#: (8 was the drawing traced from the picture's contours, withdrawn: sheets
+#: of it may still lie on a disk, so 8 is not to be used again. 9: the line
+#: pressed unevenly, drawn through its points.)
+LOOK = 9
 #: The sheet's longer side.
 LONG = 1500
 #: The app's page and ink (``Theme.paper``, ``Theme.ink``): light, dark.
@@ -233,9 +236,25 @@ WHITE_MOST = 0.25
 #: (its folds), and the light paint that stands for white on the dark page.
 WHITE_TONE = 0.045
 WHITE_PAINT = (0.91, 0.89, 0.85)
-#: How much of the ink a stroke of the nib lays, and its width.
-NIB_INK = 0.66
-NIB = 3.3
+#: How much of the ink a stroke of the nib lays where it is pressed
+#: hardest, and its width there. A hand does not press evenly (Mateusz
+#: 2026-11-12 18:32, of the drawing: "może być trochę zróżnicowany mocą
+#: (raz odrobinę ciemniej, raz jaśniej). Kreski ogólnie cieńsze, ale tam
+#: gdzie mocniej dociśnięte - grubiej"): each stroke has its own pressure
+#: (:data:`PRESS`, of 1) that drifts along it (by :data:`PRESS_DRIFT`,
+#: slowly: one change a :data:`PRESS_SPAN` pixels), and where it is light
+#: the line is this much of the full width (:data:`NIB_LIGHT`) and of the
+#: full ink (:data:`INK_LIGHT`).
+NIB_INK = 0.92
+NIB = 4.8
+PRESS = (0.2, 0.85)
+PRESS_DRIFT = 0.45
+PRESS_SPAN = 110.0
+NIB_LIGHT = 0.24
+INK_LIGHT = 0.66
+#: A stroke is drawn this many times larger and brought down: a line a
+#: pixel or three wide has no other way to be a pixel and a third.
+NIB_FINE = 3
 #: The darker parts are hatched here and there: what counts as dark (the
 #: darkest share of the picture, and at least this much under its middle
 #: value, of 1), the least such a part is (of the picture), the lines'
@@ -584,16 +603,20 @@ def _moving(rgb: Array, rng: np.random.Generator) -> Array:
     return np.clip(cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB), 0.02, 1) ** 0.8
 
 
-def _chaikin(points: Array, times: int = 3) -> Array:
-    """A line through the points with its corners cut."""
-    p = points
-    for _ in range(times):
-        if len(p) < 3:
-            break
-        q = 0.75 * p[:-1] + 0.25 * p[1:]
-        r = 0.25 * p[:-1] + 0.75 * p[1:]
-        p = np.concatenate([p[:1], np.stack([q, r], axis=1).reshape(-1, 2), p[-1:]])
-    return p
+def _through(points: Array, per: int = 8) -> Array:
+    """A smooth line that passes through every one of the points (a
+    Catmull-Rom spline): for a pen whose points lie on the contour itself,
+    where cutting the corners would pull the line off it."""
+    p = np.asarray(points, np.float32)
+    if len(p) < 3:
+        return p
+    q = np.concatenate([p[:1], p, p[-1:]])
+    t = np.linspace(0, 1, per, endpoint=False, dtype=np.float32)[:, None]
+    a, b, c, d = q[:-3, None], q[1:-2, None], q[2:-1, None], q[3:, None]
+    spans = 0.5 * (
+        2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (3 * b - a - 3 * c + d) * t**3
+    )
+    return np.concatenate([spans.reshape(-1, 2), p[-1:]])
 
 
 def _nib(layer: Array, points: Array, rng: np.random.Generator, width: float) -> None:
@@ -617,6 +640,48 @@ def _nib(layer: Array, points: Array, rng: np.random.Generator, width: float) ->
     for i in range(n - 1):
         a, b = (int(q[i][0]), int(q[i][1])), (int(q[i + 1][0]), int(q[i + 1][1]))
         cv2.line(layer, a, b, 1.0, round(float(w[i]) * 2), cv2.LINE_AA, 2)
+
+
+def _pressed(layer: Array, points: Array, rng: np.random.Generator, width: float) -> None:
+    """One stroke of the drawing: a thin line, fuller and darker where the
+    hand presses, which it does differently from stroke to stroke and along
+    each; thin where the nib lands and lifts."""
+    seg = np.hypot(*np.diff(points, axis=0).T)
+    s = np.concatenate([[0], np.cumsum(seg)])
+    if s[-1] < 3:
+        return
+    t = np.linspace(0, s[-1], max(int(s[-1] / 2.5), 2))
+    p = np.stack([np.interp(t, s, points[:, 0]), np.interp(t, s, points[:, 1])], axis=1)
+    n = len(p)
+    d = np.gradient(p, axis=0)
+    angle = np.arctan2(d[:, 1], d[:, 0])
+    knots = max(int(s[-1] / PRESS_SPAN) + 2, 3)
+    drift = np.interp(
+        np.linspace(0, 1, n),
+        np.linspace(0, 1, knots),
+        rng.uniform(-PRESS_DRIFT, PRESS_DRIFT, knots),
+    )
+    press = np.clip(float(rng.uniform(*PRESS)) + drift, 0.0, 1.0)
+    # (it lands and lifts within a few pixels, whatever the stroke's length)
+    ends = np.minimum(np.minimum(t, s[-1] - t) / min(14.0, s[-1] / 3), 1.0) ** 0.7
+    pull = 0.8 + 0.3 * np.abs(np.sin(angle - 0.6))  # the nib is cut at an angle
+    w = np.maximum(width * (NIB_LIGHT + (1 - NIB_LIGHT) * press) * pull * (0.4 + 0.6 * ends), 0.9)
+    ink = (INK_LIGHT + (1 - INK_LIGHT) * press) * (0.75 + 0.25 * ends)
+    lo = np.floor(p.min(axis=0) - width - 2).astype(int)
+    hi = np.ceil(p.max(axis=0) + width + 3).astype(int)
+    x0, y0 = max(int(lo[0]), 0), max(int(lo[1]), 0)
+    x1, y1 = min(int(hi[0]), layer.shape[1]), min(int(hi[1]), layer.shape[0])
+    if x1 <= x0 or y1 <= y0:
+        return
+    # (on its own patch, then the darker of it and what is there: a stroke
+    # that crosses another does not thin it)
+    fine = np.zeros(((y1 - y0) * NIB_FINE, (x1 - x0) * NIB_FINE), np.float32)
+    q = np.round((p - (x0, y0)) * NIB_FINE * 4).astype(np.int32)
+    for i in range(n - 1):
+        a, b = (int(q[i][0]), int(q[i][1])), (int(q[i + 1][0]), int(q[i + 1][1]))
+        cv2.line(fine, a, b, float(ink[i]), max(round(float(w[i]) * NIB_FINE), 1), cv2.LINE_AA, 2)
+    patch = cv2.resize(fine, (x1 - x0, y1 - y0), interpolation=cv2.INTER_AREA)
+    np.maximum(layer[y0:y1, x0:x1], patch, out=layer[y0:y1, x0:x1])
 
 
 def hatching(rgb: Array, rng: np.random.Generator) -> list[Array]:
@@ -815,6 +880,7 @@ def layers(
     *,
     dark: bool = False,
     seed: int = 1,
+    weights: Sequence[float] = (),
 ) -> tuple[Image.Image, Image.Image]:
     """The picture (its field alone) as the sheet's two layers,
     :data:`LONG` pixels long: the stains on the app's page, and over them
@@ -823,7 +889,8 @@ def layers(
 
     Both are wider than the field by :func:`bleed` on each side, the
     page's margin, where a stain or two run out and a stroke goes on;
-    :func:`field` cuts a layer back."""
+    :func:`field` cuts a layer back. ``weights``: how much of the nib each
+    stroke is drawn with (all of it where none is given)."""
     rng = np.random.default_rng(seed)
     # What runs out of the field has its own chance: the field is the same
     # with it and without.
@@ -1029,7 +1096,10 @@ def layers(
         if past is not None and goes:
             pts = past[1]
         pts = pts + shift
-        _nib(free if goes else line, pts if sharp or len(pts) < 3 else _chaikin(pts), rng, NIB)
+        if not sharp and len(pts) >= 3:
+            pts = _through(pts)
+        nib = NIB * (weights[at] if at < len(weights) else 1.0)
+        _pressed(free if goes else line, pts, rng, nib)
     # (the stroke that goes on is not stopped by the field's edge at the sides)
     xs_wide = np.arange(wide, dtype=np.float32)[None, :]
     sides = ((xs_wide < side + SPILL_ROOT) | (xs_wide > side + w - 1 - SPILL_ROOT)).astype(

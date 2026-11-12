@@ -15,9 +15,9 @@ from test_ai import GOOD_KEY, FakeAnthropic, _message
 from test_daily import ANSWER_PX, _app, _catalogue, _like, composing, written
 
 from frame_server.ai import AiConfigUpdate, study_pick
-from frame_server.ai.client import OPUS
+from frame_server.ai.client import FABLE, OPUS
 from frame_server.ai.daily import KIND as DAILY
-from frame_server.ai.jobs import BATCHES_KEY, LATER_KEY
+from frame_server.ai.jobs import BATCHES_KEY, LATER_KEY, Ask, Deferred
 from frame_server.ai.study import KIND
 from frame_server.service import FrameService
 
@@ -48,6 +48,53 @@ def _batched(fake: FakeAnthropic) -> list[dict[str, Any]]:
 
     fake.messages.batches.results = results
     return got
+
+
+def test_questions_that_do_not_wait_for_one_another_are_asked_together(tmp_path: Path) -> None:
+    """The pen's close-ups: at once at the same time, or (an order for
+    later) in one batch; what is answered is kept in its order."""
+    app, svc, fake = _setup(tmp_path)
+    with TestClient(app):
+        _catalogue(svc)
+
+        def question(model: str, n: int) -> dict[str, Any]:
+            return {"model": model, "max_tokens": 100, "messages": [{"role": "user", "content": n}]}
+
+        # No order: asked now, each answer in its question's place.
+        ask = Ask(svc.ai, KIND, "met:1", defer=False)
+        assert ask.many([]) == []
+        answers = ask.many([question(OPUS, n) for n in range(3)])
+        assert len(answers) == 3 and len(fake.asked) == 3
+        assert svc.library.get_state(LATER_KEY, {}) == {}
+        # An order for later: the long ones go into one batch, the first
+        # named "q" and those with it "q1", "q2"…
+        svc.library.set_state(LATER_KEY, {f"{KIND}|met:1": {"answers": [], "batch": ""}})
+        ask = Ask(svc.ai, KIND, "met:1", defer=True)
+        first = ask(question("claude-haiku", 0))  # a short one: at once, and kept
+        assert first.data is not None and len(fake.asked) == 4
+        several = [question(FABLE, n) for n in (1, 2, 3)]
+        try:
+            ask.many(several)
+            raise AssertionError("asked at full price")
+        except Deferred as put_off:
+            assert put_off.seq == 1 and put_off.params == several[0]
+            assert put_off.also == several[1:]
+            svc.ai._defer(KIND, "met:1", put_off)
+        assert [r["custom_id"] for r in fake.batches["batch_1"]] == ["q", "q1", "q2"]
+        (record,) = svc.library.get_state(BATCHES_KEY, [])
+        assert record["later"] == 1 and set(record["ids"].values()) == {"met:1"}
+        assert len(fake.asked) == 4
+        # Finished now instead: the ones not answered are asked together,
+        # and kept after the one that was.
+        ask = Ask(svc.ai, KIND, "met:1", defer=False)
+        assert ask(question("claude-haiku", 0)).model == first.model and len(fake.asked) == 4
+        assert len(ask.many(several)) == 3 and len(fake.asked) == 7
+        kept = svc.library.get_state(LATER_KEY, {})[f"{KIND}|met:1"]["answers"]
+        assert len(kept) == 4
+        # Made from its start again: nothing is asked twice.
+        ask = Ask(svc.ai, KIND, "met:1", defer=True)
+        ask(question("claude-haiku", 0))
+        assert len(ask.many(several)) == 3 and len(fake.asked) == 7
 
 
 def _ready(client: TestClient, item_id: str) -> dict[str, Any]:
@@ -95,14 +142,21 @@ def test_a_study_ordered_for_later_goes_through_batches(tmp_path: Path) -> None:
 
         svc.ai.poll_batches()  # the analysis in: the short steps asked at once
         assert list(fake.batches) == ["batch_1", "batch_2", "batch_3"]
-        (text,) = [r["params"] for r in fake.batches["batch_3"]]
+        (sketch,) = [r["params"] for r in fake.batches["batch_3"]]
+        assert sketch["model"] == FABLE and composing(sketch)  # the pen's drawing
+        assert client.get("/api/study/met:1").json()["status"] == "later"
+
+        svc.ai.poll_batches()  # the drawing in (it asked for no close-ups)
+        assert list(fake.batches) == ["batch_1", "batch_2", "batch_3", "batch_4"]
+        (text,) = [r["params"] for r in fake.batches["batch_4"]]
         assert text["model"] == OPUS and composing(text)  # its text, written last
         assert client.get("/api/study/met:1").json()["status"] == "later"
 
         svc.ai.poll_batches()  # the text in: the page made
         view = _ready(client, "met:1")
-        assert len(got) == 3
-        assert all(p["model"] != OPUS for p in fake.asked), [p["model"] for p in fake.asked]
+        assert len(got) == 4
+        models = [p["model"] for p in fake.asked]
+        assert all(m not in (OPUS, FABLE) for m in models), models
         assert fake.asked and all(composing(p) for p in fake.asked)
         assert svc.library.get_state(LATER_KEY, {}) == {}
         assert svc.library.get_state(BATCHES_KEY, []) == []
@@ -164,7 +218,7 @@ def test_tomorrows_page_is_ordered_for_later_and_kept_for_its_day(tmp_path: Path
 
         svc.ai._advance_all()
         fake.ended = True
-        for _ in range(3):  # the page, its analysis, its text
+        for _ in range(4):  # the page, its analysis, its drawing, its text
             svc.ai.poll_batches()
         assert svc.daily.job.essay(tomorrow) is not None
         assert not svc.ai.later(DAILY, tomorrow.id)
