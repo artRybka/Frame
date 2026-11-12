@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.41
+
+- Odkrywaj: karty „Dziś dla Ciebie” zapisane przed 1.145.14 (karty
+  kuratora i tygodnia) znowu dają się odczytać. Przez ten błąd karty
+  Odkrywaj i Propozycje dnia nie odświeżały się w nocy, a po restarcie
+  serwera Odkrywaj mogło się nie ładować.
+
 ## 1.145.40
 
 - Playlisty zrobione z kart Odkrywaj (tematy, epoki, pory roku, „Sztuki
