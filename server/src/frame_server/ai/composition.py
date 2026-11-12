@@ -98,6 +98,7 @@ from .daily import (
 from .daily import (
     KIND as DAILY,
 )
+from .drawn import AT_ONCE
 from .jobs import NoteJob, Usage, listed, relist, text_hash
 from .study import KIND as STUDY
 
@@ -495,11 +496,14 @@ def written(
     analysis_usd: float = 0.0,
     recent: list[str] | None = None,
     step: Callable[[str], None] | None = None,
+    penned: bool = True,
 ) -> dict[str, Any]:
     """The analysis checked, its grid chosen and its movement looked at, as
     it goes into a page. Every step that cannot be had (the month's limit,
     an error, an unusable answer) is left out: the analysis is paid for.
-    ``step``: told of each part as it begins (the study's Lock Screen card)."""
+    ``step``: told of each part as it begins (the study's Lock Screen card).
+    ``penned``: the pen draws its sketch; not where the whole sheet is
+    drawn by the image model (``ai.drawn``), which needs none."""
     tell = step or (lambda part: None)
     img = picture(images, item, CHECK_SIDE)
     if found.field is not None:
@@ -558,7 +562,7 @@ def written(
         drawn = pen.draw(large, about, lambda params: asked("sketch", params), together)
         return pen.strokes(drawn, large)
 
-    strokes = run("sketch", sketch)
+    strokes = run("sketch", sketch) if penned else None
     # The grid and the movement are facts; the text is written last, in one voice.
     with_grid = merged(view, choice, None)
     facts = prose.grid_facts(choice.grid, choice.held) if choice is not None else []
@@ -625,17 +629,20 @@ def compose(
     ask: Callable[[dict[str, Any]], Answer],
     recent: list[str] | None = None,
     step: Callable[[str], None] | None = None,
+    penned: bool = True,
 ) -> dict[str, Any]:
     """The composition of a page being written: what goes into it (its
     take, what the check changed, the round, what it cost), or nothing when
     the answer is unusable. ``step``: told of each part as it begins
-    ("composition", then those of :func:`written`)."""
+    ("composition", then those of :func:`written`). ``penned``: as there."""
     if step is not None:
         step("composition")
     params = question(images, item, context)
     answer = ask(params)
     found = draft(answer.data, params)
-    return written(images, item, found, ask, answer.cost_usd, recent, step) if found else {}
+    if not found:
+        return {}
+    return written(images, item, found, ask, answer.cost_usd, recent, step, penned)
 
 
 def failed(note: Note | None) -> bool:
@@ -832,7 +839,9 @@ class ComposeJob(NoteJob):
             )
             return replace(answer, data={"unusable": True, "answer": answer.data})
         recent = prose.recent_openings(self.library, but=item.id)
-        data = written(self.images, item, found, ask, answer.cost_usd, recent)
+        data = written(
+            self.images, item, found, ask, answer.cost_usd, recent, penned=not self.config.drawn
+        )
         return replace(answer, data=data)
 
     def apply(self, item: Item, note: Note) -> None:
@@ -856,4 +865,7 @@ class ComposeJob(NoteJob):
                 self.library.save_note(page.model_copy(update={"data": data}))
         if item.id in again:  # made, or came back without a take: asked no more
             relist(self.library, AGAIN_KEY, item.id, on=False)
+            if "composition" in note.data and self.config.drawn:
+                # His order: its sheet is drawn by the image model at once (``drawn``).
+                relist(self.library, AT_ONCE, item.id, on=True)
         self.forget()

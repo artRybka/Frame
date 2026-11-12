@@ -181,6 +181,8 @@ struct DailyView: View {
     /// "Wykonaj ponowną analizę" sent: how many analyses the page had
     /// before, to tell once the new one is here (or came to nothing).
     @State private var analysingFrom: Int?
+    /// The drawn sheet that would not load: the server's own is shown.
+    @State private var drawnFailed: String?
     /// "Popraw detale" sent: Claude is checking the details (until the
     /// server says it is done).
     @State private var mending = false
@@ -292,6 +294,7 @@ struct DailyView: View {
         }
         .task(id: cropKey) { await loadFraming() }
         .task(id: work?.compositionPending == true || analysingFrom != nil) { await followAnalysis() }
+        .task(id: work?.compositionDrawnPending == true) { await followDrawnSheet() }
         .task(id: work?.detailsPending == true || mending) { await followMending() }
     }
 
@@ -987,14 +990,24 @@ struct DailyView: View {
             }
             // The sheet is made for the first take's field: a take with
             // another field (older analyses had two) goes on the picture.
-            CompositionSketch(
-                item: work.item, aspect: aspect(work.item.item), take: shown,
-                sheet: shown.field == takes.first?.field ? work.compositionSheet ?? "" : "",
-                layers: work.compositionLayers == true,
-                bleed: CGFloat(work.compositionBleed ?? 0),
-                width: pageWidth > 0 ? pageWidth - 2 * Theme.gutter : nil
-            )
+            let column: CGFloat? = pageWidth > 0 ? pageWidth - 2 * Theme.gutter : nil
+            if let drawn = work.compositionDrawn, shown.field == takes.first?.field, drawn.sheet != drawnFailed {
+                // The sheet an image model drew for the take (Mateusz
+                // 2026-11-12 22:14: "Jest świetnie. Wdrażamy.").
+                DrawnSheet(take: shown, drawn: drawn, title: Self.sheetTitle(work), width: column) {
+                    drawnFailed = drawn.sheet
+                }
                 .padding(.top, 4)
+            } else {
+                CompositionSketch(
+                    item: work.item, aspect: aspect(work.item.item), take: shown,
+                    sheet: shown.field == takes.first?.field ? work.compositionSheet ?? "" : "",
+                    layers: work.compositionLayers == true,
+                    bleed: CGFloat(work.compositionBleed ?? 0),
+                    width: column
+                )
+                .padding(.top, 4)
+            }
             if !shown.text.isEmpty { prose(shown.text, size: 15) }
         }
         .animation(.easeOut(duration: 0.25), value: work.compositionPending == true || analysingFrom != nil)
@@ -1089,6 +1102,25 @@ struct DailyView: View {
             return
         }
         analysingFrom = nil
+    }
+
+    /// What is written above the field of a drawn sheet: whose work and which.
+    static func sheetTitle(_ work: DailyWork) -> String {
+        let artist = work.item.item.artist.trimmingCharacters(in: .whitespaces)
+        return artist.isEmpty ? work.title : "\(artist), \(work.title)"
+    }
+
+    /// While the image model draws the take's sheet (a new page's, an
+    /// analysis made anew; a minute or two): the page is fetched again
+    /// every little while until the sheet is on it.
+    private func followDrawnSheet() async {
+        guard work?.compositionDrawnPending == true else { return }
+        for _ in 0..<30 {  // some seven minutes; the server's own sheet stays after
+            try? await Task.sleep(for: .seconds(15))
+            if Task.isCancelled { return }
+            await refreshPage()
+            guard work?.compositionDrawnPending == true, work?.compositionDrawn == nil else { return }
+        }
     }
 
     /// The page's text fetched again (the lists on it stay).

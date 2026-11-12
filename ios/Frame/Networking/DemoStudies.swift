@@ -1,4 +1,6 @@
 import Foundation
+import SwiftUI
+import UIKit
 
 /// The demo's analyses of the composition for a few more of its bundled
 /// works, drawn on study sheets made by the server's own renderer
@@ -162,4 +164,132 @@ enum DemoStudies {
             )
         ),
     ]
+
+    // MARK: The sheet an image model draws (a stand-in)
+
+    /// `-demoDrawn YES`: the demo's page has its sheet as a server with
+    /// Google's key sends it (`DailyWork.Drawn`).
+    static var drawnAsked: Bool { UserDefaults.standard.bool(forKey: "demoDrawn") }
+
+    /// Pencils as the server measures them off the model's answers.
+    static let pencils = ["#394f98", "#be4031", "#287b3f", "#da7e28", "#8a529b", "#2792a2", "#c2337f"]
+
+    private static let drawnLock = NSLock()
+    private static var drawnTakes: [String: DailyWork.Take] = [:]
+
+    /// The take's sheet as the image model's: no model draws here, so the
+    /// study is the bundled sheet's stains with its pen over them, and
+    /// each mark's line is drawn with the app's own stick into a layer, as
+    /// the server sends the model's. The last mark comes without a layer
+    /// (the model left it out): the app draws it itself.
+    static func drawn(_ take: DailyWork.Take, id: String) -> DailyWork.Drawn? {
+        guard let aspect = fieldAspect(id) else { return nil }
+        drawnLock.withLock { drawnTakes[id] = take }
+        let marks = take.marksInField
+        let titled = marks.indices.filter { !marks[$0].title.isEmpty }.prefix(pencils.count)
+        let path = "/demo/drawn/\(id)?v=1"
+        return DailyWork.Drawn(
+            sheet: path + "&part=page",
+            bleed: bleed,
+            aspect: aspect,
+            marks: titled.enumerated().map { place, index in
+                let left = place == titled.count - 1 && titled.count > 1
+                return DailyWork.Drawn.Pencilled(
+                    mark: index,
+                    layer: left ? "" : path + "&part=m\(place + 1)",
+                    colour: pencils[place],
+                    numbers: left ? [] : onLine(marks[index], aspect: aspect)
+                )
+            }
+        )
+    }
+
+    /// The field's shape, from the bundled layer (wider than the field by
+    /// the margin on each side).
+    private static func fieldAspect(_ id: String) -> Double? {
+        guard let url = Bundle.main.url(forResource: DemoFraming.stem(id) + "-wash", withExtension: "jpg"),
+              let image = UIImage(contentsOfFile: url.path), image.size.height > 0
+        else { return nil }
+        return Double(image.size.width) / (1 + 2 * bleed) / Double(image.size.height)
+    }
+
+    /// Places on a mark's own line for its number, as the server finds
+    /// them on the model's: one, each ring of an echo, the first and the
+    /// last beat of a rhythm.
+    static func onLine(_ mark: DailyWork.Mark, aspect: Double) -> [DailyWork.Drawn.Number] {
+        typealias Number = DailyWork.Drawn.Number
+        let points = mark.points
+        guard let first = points.first, let last = points.last else { return [] }
+        func between(_ a: Spot, _ b: Spot, _ share: Double) -> Number {
+            Number(x: a.x + (b.x - a.x) * share, y: a.y + (b.y - a.y) * share)
+        }
+        switch mark.shape {
+        case "loop":
+            let rx = max(abs(last.x - first.x), 0.01), ry = max(abs(last.y - first.y), 0.01)
+            return [Number(x: first.x + rx * 0.707, y: first.y - ry * 0.707)]
+        case "echo":
+            // On top of each ring, whose radius is a share of the longer side.
+            return points.map { Number(x: $0.x, y: $0.y - 0.03 * max(aspect, 1)) }
+        case "rhythm":
+            guard points.count >= 4 else { return [between(first, last, 0.5)] }
+            return [between(points[0], points[1], 0.5), between(points[points.count - 2], last, 0.5)]
+        case "rect":
+            return [Number(x: (first.x + last.x) / 2, y: min(first.y, last.y))]
+        default:
+            return [between(first, points.count > 1 ? points[1] : last, 0.4)]
+        }
+    }
+
+    /// "/demo/drawn/<id>?v=1&part=page|m<n>": the stand-in's study, or the
+    /// line of its n-th titled mark, made once and kept in the temporary
+    /// folder.
+    static func drawnPart(_ path: String) -> URL? {
+        guard let parts = URLComponents(string: path),
+              let part = parts.queryItems?.first(where: { $0.name == "part" })?.value
+        else { return nil }
+        let id = String(parts.path.dropFirst("/demo/drawn/".count))
+        let stem = DemoFraming.stem(id)
+        let out = FileManager.default.temporaryDirectory
+            .appendingPathComponent("demo-drawn-2-\(stem)-\(part).\(part == "page" ? "jpg" : "png")")
+        if FileManager.default.fileExists(atPath: out.path) { return out }
+        guard let washURL = Bundle.main.url(forResource: stem + "-wash", withExtension: "jpg"),
+              let wash = UIImage(contentsOfFile: washURL.path)
+        else { return nil }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        if part == "page" {
+            format.opaque = true
+            let pen = Bundle.main.url(forResource: stem + "-pen", withExtension: "png").flatMap { UIImage(contentsOfFile: $0.path) }
+            let page = UIGraphicsImageRenderer(size: wash.size, format: format).image { _ in
+                wash.draw(at: .zero)
+                pen?.draw(in: CGRect(origin: .zero, size: wash.size))
+            }
+            guard let data = page.jpegData(compressionQuality: 0.9) else { return nil }
+            try? data.write(to: out)
+            return out
+        }
+        guard part.hasPrefix("m"), let number = Int(part.dropFirst()), number >= 1,
+              let take = drawnLock.withLock({ drawnTakes[id] })
+        else { return nil }
+        let marks = take.marksInField
+        let titled = marks.indices.filter { !marks[$0].title.isEmpty }
+        guard number <= titled.count else { return nil }
+        let index = titled[number - 1]
+        // The field alone, drawn as on a phone and made three times as large.
+        let field = CGSize(width: wash.size.width / (1 + 2 * bleed), height: wash.size.height)
+        let drawnAt = CGSize(width: 360, height: 360 * field.height / field.width)
+        format.opaque = false
+        let layer = UIGraphicsImageRenderer(size: field, format: format).image { context in
+            let cg = context.cgContext
+            cg.scaleBy(x: field.width / drawnAt.width, y: field.height / drawnAt.height)
+            cg.setFillColor(UIColor.black.cgColor)
+            for path in Pencil.paths(for: marks[index], in: drawnAt, seed: index * 7 + 1, weight: Chalk.weight * 1.6, chalk: true) {
+                cg.addPath(path.cgPath)
+                cg.fillPath()
+            }
+        }
+        guard let data = layer.pngData() else { return nil }
+        try? data.write(to: out)
+        return out
+    }
 }

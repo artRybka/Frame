@@ -1441,7 +1441,8 @@ class DailyJob(NoteJob):
             recent = recent_openings(self.library, but=item.id)
             sources = context or self.sources(item)
             step = partial(self._stage, item.id)
-            data.update(compose(self.images, item, sources, ask, recent, step=step))
+            penned = not self.config.drawn
+            data.update(compose(self.images, item, sources, ask, recent, step=step, penned=penned))
         except (AiUnavailable, anthropic.APIError) as err:
             log.warning("composition of %s not asked: %s", item.id, err)
         except Exception:  # the page is paid for: never lost to its composition

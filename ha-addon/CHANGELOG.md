@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.145.72
+
+- Studium dzieła, analiza kompozycji: arkusz rysuje teraz model
+  graficzny Google (Gemini). Dzieło jest na nim studium piórkiem i
+  akwarelą, a linie kompozycji są narysowane kredkami, każdy znacznik
+  swoim kolorem, z numerem na samej linii w tym samym kolorze. Szkic i
+  akwarela w jednym, dwóch miejscach wychodzą poza pole do krawędzi
+  ekranu. Arkusz jest jasną kartką także w trybie ciemnym.
+- Dotknięcie arkusza chowa linie kompozycji i zostawia sam szkic,
+  dotknięcie notatki zostawia jej linię i przygasza pozostałe.
+- Potrzebny jest klucz Google: Konfiguracja → Klucze i certyfikaty →
+  „Google (Gemini)”. Bez klucza arkusz wygląda jak dotąd.
+- Koszt: nowe studium dostaje arkusz od razu (ok. 0,15 USD, piórko za
+  0,18–0,35 USD przestaje być zamawiane). Studia zapisane wcześniej
+  serwer przerysowuje sam przez Batch Google'a za połowę ceny (ok.
+  0,08 USD za dzieło), po 20 dzieł, w ramach miesięcznego limitu AI.
+  „Wykonaj ponowną analizę” daje nowy arkusz od razu. Przełącznik
+  „Arkusze kompozycji z modelu graficznego” w Konfiguracji wyłącza
+  całość, a pod nim widać, ile studiów czeka i ile to będzie kosztować.
+
 ## 1.145.71
 
 - Technika dzieła szukana od razu, gdy otwierasz kartę: dotąd serwer

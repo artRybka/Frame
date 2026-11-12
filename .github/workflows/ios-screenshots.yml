@@ -109,6 +109,13 @@ jobs:
             capture daily 16 "daily-composition-drawing-shower-$appearance" -scroll composition -demoStudy shower -sheetDrawn 0.45
             capture daily 16 "daily-composition-chosen-$appearance" -scroll composition -chalkChosen 2
             capture daily 16 "daily-composition-bedroom-chosen-$appearance" -scroll composition -demoStudy bedroom -chalkChosen 3
+            # The sheet drawn by an image model (a stand-in in the demo):
+            # coloured lines, the sketch alone after a tap, a note tapped.
+            capture daily 16 "daily-drawn-$appearance" -scroll composition -demoDrawn YES
+            capture daily 16 "daily-drawn-bare-$appearance" -scroll composition -demoDrawn YES -compositionBare YES
+            capture daily 16 "daily-drawn-chosen-$appearance" -scroll composition -demoDrawn YES -chalkChosen 2
+            capture daily 16 "daily-drawn-bedroom-$appearance" -scroll composition -demoDrawn YES -demoStudy bedroom
+            capture daily 16 "daily-drawn-shower-$appearance" -scroll composition -demoDrawn YES -demoStudy shower
             capture daily 16 "daily-detail-geometry-$appearance" -scroll composition -take 1
             capture daily 16 "daily-details-$appearance" -scroll details
             capture daily 16 "daily-legacy-$appearance" -scroll legacy
