@@ -4,8 +4,10 @@ import UIKit
 /// One take on the composition, drawn as a study sheet: the picture's field
 /// in stains of its colours with a pen sketch over them (made by the server,
 /// on the page's own colour), ruled with a thin frame and the grid in
-/// graphite, the marks over it in a draughtsman's coloured pencil, blue or
-/// (over a picture's blues) red, with a number beside each;
+/// graphite, the marks over it in white chalk (a colour that returns in
+/// red), a little over the sheet: brighter than the page's white where the
+/// screen can, shifting with the phone's turn over the shadow they cast
+/// (`Chalk`, `ChalkMarks`), with a number beside each;
 /// their labels under the sheet in two columns, hand-written: a title and a
 /// line under it. A tap shows the picture itself under the marks, another
 /// brings the sheet back (no sign for it on the sheet).
@@ -26,8 +28,8 @@ struct CompositionSketch: View {
     /// every take (nil: as wide as the column lets it).
     var width: CGFloat? = nil
     @State private var bare = LaunchRoute.compositionBare
-    /// The pencil picked for each sheet that loaded.
-    @State private var crayons: [ImageRef: Crayon] = [:]
+    /// The sheet that is here: the marks come with it.
+    @State private var loaded: ImageRef?
     /// The sheet that would not load: the marks go on the picture.
     @State private var failed: ImageRef?
 
@@ -47,10 +49,9 @@ struct CompositionSketch: View {
         let ref = sheetRef.flatMap { $0 == failed ? nil : $0 }
         let marks = ref == nil ? take.marks : take.marksInField
         let labelled = Self.labelled(marks)
-        let crayon = ref.flatMap { crayons[$0] }
         VStack(spacing: 14) {
             if let ref {
-                sheetPicture(ref, marks: marks, labelled: labelled, crayon: crayon)
+                sheetPicture(ref, marks: marks, labelled: labelled, here: loaded == ref)
             } else {
                 picture(labelled)
             }
@@ -61,12 +62,12 @@ struct CompositionSketch: View {
                     spacing: 12
                 ) {
                     ForEach(labelled) { entry in
-                        label(entry, ink: ref == nil ? nil : (crayon?.color(for: entry.mark, dark: scheme == .dark) ?? Theme.inkSoft))
+                        label(entry, chalk: ref != nil)
                     }
                 }
             }
         }
-        .animation(.easeOut(duration: 0.3), value: crayon)
+        .animation(.easeOut(duration: 0.3), value: loaded)
     }
 
     private let pencil = Pencil.lead
@@ -97,7 +98,9 @@ struct CompositionSketch: View {
     /// little past the field's corners, as ruled by hand, and the
     /// picture's great lines further (`Pencil.overflow`): room is made
     /// above and below for them, at the sides they run into the gutter.
-    private func sheetPicture(_ ref: ImageRef, marks: [DailyWork.Mark], labelled: [Labelled], crayon: Crayon?) -> some View {
+    /// No marks before the sheet is here: white chalk on the bare page
+    /// would hardly show.
+    private func sheetPicture(_ ref: ImageRef, marks: [DailyWork.Mark], labelled: [Labelled], here: Bool) -> some View {
         let room = sheetRoom(marks)
         let dark = scheme == .dark
         return box(fieldAspect)
@@ -114,10 +117,16 @@ struct CompositionSketch: View {
                 Canvas { context, size in
                     let field = Self.pictureRect(in: size, room: room)
                     context.translateBy(x: field.minX, y: field.minY)
-                    drawSheet(in: &context, size: field.size, marks: marks, labelled: labelled, crayon: crayon, dark: dark)
+                    drawRuling(in: &context, size: field.size, dark: dark)
                 }
                 .padding(EdgeInsets(top: -room.top, leading: -room.leading, bottom: -room.bottom, trailing: -room.trailing))
                 .allowsHitTesting(false)
+            }
+            .overlay {
+                ChalkMarks(marks: marks, labelled: labelled, room: room)
+                    .padding(EdgeInsets(top: -room.top, leading: -room.leading, bottom: -room.bottom, trailing: -room.trailing))
+                    .opacity(here ? 1 : 0)
+                    .allowsHitTesting(false)
             }
             .contentShape(Rectangle())
             .onTapGesture {
@@ -130,8 +139,8 @@ struct CompositionSketch: View {
             .padding(.bottom, room.bottom)
             .frame(maxWidth: .infinity)
             .task(id: ref) {
-                // A sheet already in memory has its pencil at once.
-                if let image = sheetInMemory(ref) { pick(ref, image) }
+                // A sheet already in memory has its marks at once.
+                if sheetInMemory(ref) { loaded = ref }
             }
     }
 
@@ -147,25 +156,19 @@ struct CompositionSketch: View {
         .clipped()
     }
 
-    /// The sheet is here, or was given up on: with it the pencil is picked
-    /// from its colours under the marks; without it the marks go on the
-    /// picture, as before the sheet.
+    /// The sheet is here, or was given up on: with it come the marks;
+    /// without it they go on the picture, as before the sheet.
     private func sheetLoaded(_ ref: ImageRef) {
         guard ref == sheetRef else { return }
-        if let image = sheetInMemory(ref) {
-            pick(ref, image)
+        if sheetInMemory(ref) {
+            loaded = ref
         } else {
             failed = ref
         }
     }
 
-    private func sheetInMemory(_ ref: ImageRef) -> UIImage? {
-        model.backend.request(for: ref).flatMap { ImageLoader.inMemory(for: $0, maxPixel: Self.sheetPixels) }
-    }
-
-    private func pick(_ ref: ImageRef, _ image: UIImage) {
-        guard crayons[ref] == nil else { return }
-        crayons[ref] = Crayon.pick(for: image, under: take.marksInField)
+    private func sheetInMemory(_ ref: ImageRef) -> Bool {
+        model.backend.request(for: ref).flatMap { ImageLoader.inMemory(for: $0, maxPixel: Self.sheetPixels) } != nil
     }
 
     private static let sheetPixels: CGFloat = 1600
@@ -185,16 +188,9 @@ struct CompositionSketch: View {
         )
     }
 
-    /// The frame and the grid ruled in graphite; then the marks in the
-    /// coloured pencil, the wash wiped off under each (a soft edge of the
-    /// page's colour, so the pencil reads on any stain and on the picture
-    /// itself); a returning colour's rings and broken line in the pencil's
-    /// other end; the numbers on a dab of the page's colour. No marks before
-    /// the sheet is here: the pencil is picked from its colours.
-    private func drawSheet(
-        in context: inout GraphicsContext, size: CGSize,
-        marks: [DailyWork.Mark], labelled: [Labelled], crayon: Crayon?, dark: Bool
-    ) {
+    /// The frame and the grid ruled in graphite (the marks lie over them,
+    /// `ChalkMarks`).
+    private func drawRuling(in context: inout GraphicsContext, size: CGSize, dark: Bool) {
         let graphite = Theme.ink.opacity(dark ? 0.5 : 0.55)
         let corners = [CGPoint.zero, CGPoint(x: size.width, y: 0), CGPoint(x: size.width, y: size.height), CGPoint(x: 0, y: size.height)]
         for index in 0..<4 {
@@ -204,32 +200,6 @@ struct CompositionSketch: View {
         for (index, line) in Pencil.grid(take.grid, in: size).enumerated() {
             let path = Pencil.ruled(line[0], line[1], over: Pencil.reach, width: 0.9, seed: 90 + index)
             context.fill(path, with: .color(graphite))
-        }
-        guard let crayon else { return }
-        let weight = Pencil.crayonWeight
-        let drawn: [(mark: DailyWork.Mark, paths: [Path])] = marks.enumerated().map { index, mark in
-            (mark: mark, paths: Pencil.paths(for: mark, in: size, seed: index * 7 + 1, weight: weight))
-        }
-        var wiped = context
-        wiped.opacity = 0.72
-        wiped.addFilter(.blur(radius: 0.7))
-        wiped.drawLayer { layer in
-            for entry in drawn {
-                for path in entry.paths {
-                    layer.stroke(path, with: .color(Theme.paper), style: StrokeStyle(lineWidth: 3.4, lineCap: .round, lineJoin: .round))
-                    layer.fill(path, with: .color(Theme.paper))
-                }
-            }
-        }
-        for entry in drawn {
-            let colour = crayon.color(for: entry.mark, dark: dark).opacity(0.96)
-            for path in entry.paths {
-                context.fill(path, with: .color(colour))
-            }
-        }
-        let spots = Pencil.numberSpots(for: labelled.map(\.mark), in: size)
-        for (entry, spot) in zip(labelled, spots) {
-            Pencil.badge(entry.number, at: spot, in: &context, ink: crayon.color(for: entry.mark, dark: dark), paper: Theme.paper.opacity(0.94))
         }
     }
 
@@ -318,7 +288,7 @@ struct CompositionSketch: View {
     }
 
     /// The picture's place in a canvas grown by `room` on each side.
-    private static func pictureRect(in size: CGSize, room: EdgeInsets) -> CGRect {
+    static func pictureRect(in size: CGSize, room: EdgeInsets) -> CGRect {
         CGRect(
             x: room.leading, y: room.top,
             width: max(size.width - room.leading - room.trailing, 1),
@@ -346,20 +316,20 @@ struct CompositionSketch: View {
 
     /// The number on the same badge as on the picture, and beside it the
     /// title with its line under it: the line starts where the title does,
-    /// not under the number. `ink`: the coloured pencil the mark is drawn
-    /// in on the sheet (nil: the lead pencil on its paper disc).
-    private func label(_ entry: Labelled, ink: Color?) -> some View {
+    /// not under the number. `chalk`: the mark is drawn in chalk on the
+    /// sheet (else in the lead pencil on its paper disc).
+    private func label(_ entry: Labelled, chalk: Bool) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 5) {
             Canvas { context, size in
                 let spot = CGPoint(x: size.width / 2, y: size.height / 2)
-                if let ink {
-                    Pencil.badge(entry.number, at: spot, in: &context, ink: ink, paper: .clear)
+                if chalk {
+                    Chalk.badge(entry.number, of: entry.mark, at: spot, in: &context)
                 } else {
                     Pencil.badge(entry.number, at: spot, in: &context)
                 }
             }
             .frame(width: 22, height: 22)
-            .shadow(color: .black.opacity(ink == nil ? 0.22 : 0), radius: 1.2, y: 0.5)
+            .shadow(color: .black.opacity(0.22), radius: 1.2, y: 0.5)
             .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 5 }
             .accessibilityHidden(true)
             // The hand-written face has tall lines: the note sits close
@@ -387,107 +357,195 @@ struct CompositionSketch: View {
     }
 }
 
-/// The two ends of a draughtsman's pencil. Blue draws the marks: paintings
-/// are mostly warm, and it stands out from them. On a picture whose marks
-/// lie over its blues the red end draws them. The other end draws what
+/// The chalk the study sheet's marks are drawn in: white, and red for what
 /// only answers across the picture (a colour that returns), so it is not
-/// read as a line that runs there.
-enum Crayon: Hashable, Sendable {
-    case red, blue
+/// read as a line that runs there. Mateusz 2026-11-12, of the coloured
+/// pencil with the wash wiped to the page's colour under it: "Nie podoba mi
+/// się ten styl kolorowych kresek na białym podkładzie … A może kreski
+/// mogłyby mieć podbicie HDR? I wtedy być rysowane bielą a te od akcentów
+/// kolorystycznych np. czerwienią?", and "kredka z delikatnym efektem
+/// paralaksy … Takie 1,5pt przesunięcia".
+///
+/// So nothing lies under a stroke. What sets the marks off the sheet:
+/// they are brighter than the page's own white where the screen has the
+/// headroom (an extended-range copy, as `ArtGlow` makes of a picture), they
+/// cast a soft shadow on the sheet (which is what reads on the bare page
+/// and without headroom: Low Power Mode, full sun), and they shift over it
+/// as the phone turns.
+enum Chalk {
+    static let white = Color.white
+    static let red = Color(.sRGB, red: 226 / 255, green: 52 / 255, blue: 38 / 255)
 
-    var other: Crayon { self == .red ? .blue : .red }
+    static func color(for mark: DailyWork.Mark) -> Color {
+        mark.shape == "echo" ? red : white
+    }
 
-    /// Deeper on the light page, lighter on the dark one.
-    func rgb(dark: Bool) -> SIMD3<Double> {
-        switch (self, dark) {
-        case (.red, false): SIMD3<Double>(196, 36, 24) / 255
-        case (.blue, false): SIMD3<Double>(18, 56, 168) / 255
-        case (.red, true): SIMD3<Double>(255, 112, 92) / 255
-        case (.blue, true): SIMD3<Double>(120, 168, 255) / 255
+    /// How many times brighter than the page's white the chalk is drawn
+    /// where the screen can (about a stop; picked by reasoning, not yet
+    /// seen on a phone).
+    static let gain: CGFloat = 2
+    /// How far the marks move at a full turn of the phone, in points, and
+    /// their shadow the other way.
+    static let shift: CGFloat = 1.5
+    static let castShift: CGFloat = 1
+    /// Where the shadow lies with the phone held still (the light from the
+    /// upper left), how soft it is, and how dark on each page.
+    static let cast = CGSize(width: 0.5, height: 0.9)
+    static let castBlur: CGFloat = 1.1
+    static func castDepth(dark: Bool) -> Double { dark ? 0.6 : 0.42 }
+
+    /// The gain for a screen with this headroom: nil where it would not show.
+    static func lift(headroom: CGFloat) -> CGFloat? {
+        let lift = min(gain, headroom * 0.9)
+        return lift > 1.05 ? lift : nil
+    }
+
+    /// How far a layer that moves `shift` points at a full turn is moved
+    /// now (`x`, `y`: `Tilt`'s, -1 to 1); nowhere with Reduce Motion.
+    static func offset(x: Double, y: Double, shift: CGFloat, still: Bool) -> CGSize {
+        still ? .zero : CGSize(width: CGFloat(x) * shift, height: CGFloat(y) * shift)
+    }
+
+    /// A mark's number on a dab of its chalk: dark on the white, white on
+    /// the red; the same on the sheet and in the notes under it.
+    static func badge(_ number: Int, of mark: DailyWork.Mark, at spot: CGPoint, in context: inout GraphicsContext) {
+        if mark.shape == "echo" {
+            Pencil.badge(number, at: spot, in: &context, ink: white, paper: red)
+        } else {
+            Pencil.badge(number, at: spot, in: &context, ink: Pencil.lead, paper: white)
         }
     }
+}
 
-    func color(dark: Bool) -> Color {
-        let rgb = rgb(dark: dark)
-        return Color(.sRGB, red: rgb.x, green: rgb.y, blue: rgb.z)
-    }
+/// A take's marks in chalk with their numbers, or (`cast`) the shadow they
+/// throw; in a canvas grown by `room` around the picture's field.
+struct ChalkDrawing: View {
+    let marks: [DailyWork.Mark]
+    let labelled: [CompositionSketch.Labelled]
+    let room: EdgeInsets
+    var cast = false
 
-    /// The pencil a mark is drawn in when this one draws the marks.
-    func color(for mark: DailyWork.Mark, dark: Bool) -> Color {
-        (mark.shape == "echo" ? other : self).color(dark: dark)
-    }
-
-    /// How much more of the colours must be cool than warm for the red
-    /// pencil: a few bluish places under the marks do not turn it.
-    static let coolLead = 0.08
-
-    /// The pencil that reads best over these colours (sRGB, 0…1): red
-    /// where clearly more of them are blues than reds, ochres and browns,
-    /// else blue. (The distance from the pencil's own colour said blue for
-    /// every picture: no painting is as deep a blue as the pencil.)
-    static func pick(over colours: [SIMD3<Double>]) -> Crayon {
-        guard !colours.isEmpty else { return .blue }
-        let labs = colours.map(lab)
-        let cool = Double(labs.filter { $0.z < -6 }.count) / Double(labs.count)
-        let warm = Double(labs.filter { $0.y > 8 && $0.z > 8 }.count) / Double(labs.count)
-        return cool - warm > coolLead ? .red : .blue
-    }
-
-    /// The pencil for a sheet: picked over the sheet's colours where the
-    /// marks (fractions of the sheet) lie, since that is where it has to
-    /// be read; over all of it when no mark lies on it.
-    static func pick(for image: UIImage, under marks: [DailyWork.Mark]) -> Crayon {
-        let side = 64
-        let all = colours(of: image, side: side)
-        guard all.count == side * side else { return .blue }
-        var under: [SIMD3<Double>] = []
-        let size = CGSize(width: side, height: side)
-        for mark in marks where mark.shape != "echo" {
-            for path in Pencil.paths(for: mark, in: size, seed: 1) {
-                path.forEach { element in
-                    let point: CGPoint
-                    switch element {
-                    case let .move(to: to), let .line(to: to): point = to
-                    default: return
+    var body: some View {
+        Canvas { context, size in
+            let field = CompositionSketch.pictureRect(in: size, room: room)
+            context.translateBy(x: field.minX, y: field.minY)
+            let drawn: [(mark: DailyWork.Mark, paths: [Path])] = marks.enumerated().map { index, mark in
+                (mark: mark, paths: Pencil.paths(for: mark, in: field.size, seed: index * 7 + 1, weight: Pencil.crayonWeight))
+            }
+            let spots = Pencil.numberSpots(for: labelled.map(\.mark), in: field.size)
+            if cast {
+                var soft = context
+                soft.addFilter(.blur(radius: Chalk.castBlur))
+                soft.drawLayer { layer in
+                    for entry in drawn {
+                        for path in entry.paths {
+                            layer.fill(path, with: .color(.black))
+                        }
                     }
-                    let (x, y) = (Int(point.x.rounded(.down)), Int(point.y.rounded(.down)))
-                    if (0..<side).contains(x), (0..<side).contains(y) { under.append(all[y * side + x]) }
+                    for spot in spots {
+                        layer.fill(Path(ellipseIn: CGRect(x: spot.x - 9.5, y: spot.y - 9.5, width: 19, height: 19)), with: .color(.black))
+                    }
+                }
+            } else {
+                for entry in drawn {
+                    let colour = Chalk.color(for: entry.mark)
+                    for path in entry.paths {
+                        context.fill(path, with: .color(colour))
+                    }
+                }
+                for (entry, spot) in zip(labelled, spots) {
+                    Chalk.badge(entry.number, of: entry.mark, at: spot, in: &context)
                 }
             }
         }
-        return pick(over: under.isEmpty ? all : under)
+    }
+}
+
+/// The marks standing a little over the sheet: their shadow on it, and
+/// over the shadow the chalk, brighter than the page's white where the
+/// screen can show it. The two shift against each other with the phone's
+/// turn (`Tilt`; still with Reduce Motion, no gyroscope in Low Power Mode).
+struct ChalkMarks: View {
+    let marks: [DailyWork.Mark]
+    let labelled: [CompositionSketch.Labelled]
+    let room: EdgeInsets
+    @Environment(\.displayScale) private var displayScale
+    @Environment(\.colorScheme) private var scheme
+    @State private var lit: Lit?
+
+    /// What the brighter copy was made of.
+    struct Made: Equatable {
+        let marks: [DailyWork.Mark]
+        let size: CGSize
+        let scale: CGFloat
     }
 
-    /// The picture's colours, a small grid of them, row by row from the top.
-    static func colours(of image: UIImage, side: Int = 32) -> [SIMD3<Double>] {
-        guard let source = image.cgImage, let space = CGColorSpace(name: CGColorSpace.sRGB) else { return [] }
-        var bytes = [UInt8](repeating: 0, count: side * side * 4)
-        let drawn = bytes.withUnsafeMutableBytes { buffer -> Bool in
-            guard let context = CGContext(
-                data: buffer.baseAddress, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4,
-                space: space, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
-            ) else { return false }
-            context.interpolationQuality = .medium
-            context.draw(source, in: CGRect(x: 0, y: 0, width: side, height: side))
-            return true
-        }
-        guard drawn else { return [] }
-        return (0..<(side * side)).map { index in
-            SIMD3<Double>(Double(bytes[index * 4]), Double(bytes[index * 4 + 1]), Double(bytes[index * 4 + 2])) / 255
-        }
+    private struct Lit {
+        let source: Made
+        let image: UIImage
     }
 
-    /// CIE Lab (D65) of an sRGB colour.
-    static func lab(_ rgb: SIMD3<Double>) -> SIMD3<Double> {
-        func linear(_ value: Double) -> Double {
-            value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+    var body: some View {
+        GeometryReader { geometry in
+            let made = Made(marks: marks, size: geometry.size, scale: displayScale)
+            let bright = lit.flatMap { $0.source == made ? $0.image : nil }
+            ZStack {
+                ChalkDrawing(marks: marks, labelled: labelled, room: room, cast: true)
+                    .opacity(Chalk.castDepth(dark: scheme == .dark))
+                    .modifier(Floating(rest: Chalk.cast, shift: -Chalk.castShift))
+                ZStack {
+                    ChalkDrawing(marks: marks, labelled: labelled, room: room)
+                        .opacity(bright == nil ? 1 : 0)
+                    if let bright {
+                        Image(uiImage: bright)
+                            .resizable()
+                            .allowedDynamicRange(.high)
+                    }
+                }
+                .modifier(Floating(rest: .zero, shift: Chalk.shift))
+            }
+            .task(id: made) { await light(made) }
         }
-        let (r, g, b) = (linear(rgb.x), linear(rgb.y), linear(rgb.z))
-        let x = (0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / 0.95047
-        let y = 0.2126729 * r + 0.7151522 * g + 0.0721750 * b
-        let z = (0.0193339 * r + 0.1191920 * g + 0.9503041 * b) / 1.08883
-        func f(_ t: Double) -> Double { t > 0.008856 ? cbrt(t) : 7.787 * t + 16.0 / 116 }
-        return SIMD3<Double>(116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z)))
+        .followsTilt()
+    }
+
+    /// Makes the brighter copy of the marks as drawn at this size, where
+    /// the screen has headroom for it.
+    private func light(_ made: Made) async {
+        guard made.size.width > 1, made.size.height > 1,
+              let gain = Chalk.lift(headroom: ScreenBoost.shared.headroom)
+        else {
+            lit = nil
+            return
+        }
+        guard let plain = Self.plain(marks: marks, labelled: labelled, room: room, size: made.size, scale: made.scale) else { return }
+        let lifted = await Task.detached(priority: .userInitiated, operation: { ArtGlow.render(plain, gain: gain) }).value
+        guard !Task.isCancelled, let lifted else { return }
+        lit = Lit(source: made, image: UIImage(cgImage: lifted, scale: made.scale, orientation: .up))
+    }
+
+    /// The marks as the canvas draws them, as a picture (clear around them).
+    static func plain(
+        marks: [DailyWork.Mark], labelled: [CompositionSketch.Labelled], room: EdgeInsets, size: CGSize, scale: CGFloat
+    ) -> CGImage? {
+        let renderer = ImageRenderer(
+            content: ChalkDrawing(marks: marks, labelled: labelled, room: room).frame(width: size.width, height: size.height)
+        )
+        renderer.scale = scale
+        return renderer.cgImage
+    }
+}
+
+/// Moves a layer with the phone's turn, from where it rests.
+private struct Floating: ViewModifier {
+    let rest: CGSize
+    let shift: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        let tilt = Tilt.shared
+        let moved = Chalk.offset(x: tilt.x, y: tilt.y, shift: shift, still: reduceMotion)
+        content.offset(x: rest.width + moved.width, y: rest.height + moved.height)
     }
 }
 
@@ -586,7 +644,7 @@ enum Pencil {
     /// Pencil and the paper edge around it, the same over any picture.
     static let lead = Color(hex: 0x2E2A25)
     static let paper = Color(hex: 0xFBF8F2)
-    /// How much heavier the coloured pencil of the study sheet is than the
+    /// How much heavier the chalk of the study sheet is than the
     /// lead pencil on the picture (Mateusz 2026-11-11: "trochę mocniej dla
     /// większej czytelności").
     static let crayonWeight: CGFloat = 1.3
@@ -596,8 +654,7 @@ enum Pencil {
     /// A mark's number: on a paper disc in a pencil ring drawn by hand, the
     /// same on the picture and in the legend under it (the ring's seed is
     /// the number, so number 2 has the same ring in both). On the study
-    /// sheet the ring and the number are in the mark's coloured pencil, on
-    /// a dab of the page's colour.
+    /// sheet it is a dab of the mark's chalk (`Chalk.badge`).
     static func badge(
         _ number: Int, at spot: CGPoint, in context: inout GraphicsContext,
         ink: Color = lead, paper: Color = paper

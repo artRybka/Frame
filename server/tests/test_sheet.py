@@ -43,7 +43,7 @@ def test_the_sheet_is_stains_on_the_apps_page() -> None:
     assert max(light.size) == sheets.LONG and light.size == (1500, 1000)
     # The paint keeps inside the field: its corners are the page itself.
     assert light.getpixel((1, 1)) == sheets.PAGE[False]
-    sky, house = light.getpixel((1200, 200)), light.getpixel((640, 520))
+    sky, house = light.getpixel((640, 300)), light.getpixel((640, 520))
     assert sky[2] > sky[0] and house[0] > house[2] + 40  # the masses keep their colours
     dark = sheets.render(_scene(), dark=True, seed=3)
     assert dark.getpixel((1, 1)) == sheets.PAGE[True]
@@ -53,6 +53,55 @@ def test_the_sheet_is_stains_on_the_apps_page() -> None:
     # The file keeps the page's colour, so the sheet lies on the app's page without a seam.
     back = Image.open(io.BytesIO(sheets.jpeg(light))).getpixel((1, 1))
     assert max(abs(a - b) for a, b in zip(back, sheets.PAGE[False], strict=True)) <= 2
+
+
+def _crowd(size: tuple[int, int] = (600, 400)) -> Image.Image:
+    """Something everywhere: discs of every colour."""
+    rng = np.random.default_rng(5)
+    img = Image.new("RGB", size, (120, 110, 100))
+    canvas = ImageDraw.Draw(img)
+    for _ in range(260):
+        x, y, r = rng.uniform(0, size[0]), rng.uniform(0, size[1]), rng.uniform(8, 22)
+        colour = (int(rng.uniform(30, 230)), int(rng.uniform(30, 230)), int(rng.uniform(30, 230)))
+        canvas.ellipse((x - r, y - r, x + r, y + r), fill=colour)
+    return img
+
+
+def _bare(sheet: Image.Image, dark: bool = False) -> Any:
+    """Where the sheet is the page itself."""
+    apart = np.abs(np.asarray(sheet, np.int32) - np.array(sheets.PAGE[dark])).sum(axis=2)
+    return apart < 12
+
+
+def test_where_little_happens_the_wash_is_general_and_leaves_the_page() -> None:
+    """Mateusz 2026-11-12: the watercolour "ogólniejsza … tam gdzie mniej się
+    dzieje", "nie zalewać plamą wszystkiego i fragmentami zostawiać tło
+    podkładu"."""
+    scene = np.asarray(_scene())
+    lively = sheets.busy(scene, scene.shape[:2])
+    assert lively[60, 480] < 0.05 and lively[330, 480] < 0.05  # the sky, the field
+    assert lively[140, 180] > 0.9  # the house's corner
+    crowd = np.asarray(_crowd())
+    assert sheets.busy(crowd, crowd.shape[:2]).mean() > 0.8
+    # A sky in three bands of nearly one blue is one stain.
+    banded = _scene()
+    canvas = ImageDraw.Draw(banded)
+    for k, blue in enumerate(((150, 180, 220), (158, 186, 222), (166, 192, 224))):
+        canvas.rectangle((0, k * 46, 600, k * 46 + 46), fill=blue)
+    canvas.rectangle((180, 140, 330, 280), fill=(170, 40, 30))
+    piece, colours = sheets.masses(np.asarray(banded), seed=3)
+    assert len(np.unique(piece[5:120, 20:540])) == 1 and len(colours) - 1 <= 4
+    # The quiet picture's page shows in fragments, never most of it; the
+    # paint still lies around what happens (the house).
+    light = sheets.render(_scene(), seed=3)
+    left = _bare(light)
+    assert 0.1 < left.mean() <= sheets.BARE_MOST + 0.04
+    assert left[60:200, 1150:1450].mean() > 0.9  # the far sky
+    assert not left[330:780, 430:860].any()  # the house and what is round it
+    night = _bare(sheets.render(_scene(), dark=True, seed=3), dark=True)
+    assert 0.05 < night.mean() <= sheets.BARE_MOST + 0.04
+    # Where something happens everywhere, all is painted but the ragged edge.
+    assert _bare(sheets.render(_crowd(), seed=3))[60:940, 60:1440].mean() < 0.01
 
 
 def test_the_pen_draws_over_the_stains() -> None:

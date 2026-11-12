@@ -3,8 +3,8 @@ import XCTest
 @testable import Frame
 
 /// The analysis of the composition drawn on a study sheet: what the server
-/// sends for it, the picture's field, the coloured pencil and the mark of a
-/// colour that returns.
+/// sends for it, the picture's field, the chalk and the mark of a colour
+/// that returns.
 final class CompositionSheetTests: XCTestCase {
     private typealias Spot = DailyWork.Spot
     private typealias Mark = DailyWork.Mark
@@ -85,49 +85,62 @@ final class CompositionSheetTests: XCTestCase {
         XCTAssertGreaterThan(side.maxX, 360 + Pencil.reach - 1)
     }
 
-    func testBlueDrawsTheMarksAndRedOverAPicturesBlues() {
-        let red = SIMD3<Double>(0.75, 0.15, 0.1)
-        let blue = SIMD3<Double>(0.1, 0.2, 0.6)
-        let grey = SIMD3<Double>(0.5, 0.5, 0.5)
-        XCTAssertEqual(Crayon.pick(over: Array(repeating: red, count: 80) + Array(repeating: grey, count: 20)), .blue)
-        XCTAssertEqual(Crayon.pick(over: Array(repeating: blue, count: 80) + Array(repeating: grey, count: 20)), .red)
-        // A few bluish places do not turn the pencil; nor do as many blues as reds.
-        XCTAssertEqual(Crayon.pick(over: Array(repeating: blue, count: 5) + Array(repeating: grey, count: 95)), .blue)
-        XCTAssertEqual(Crayon.pick(over: Array(repeating: blue, count: 50) + Array(repeating: red, count: 50)), .blue)
-        XCTAssertEqual(Crayon.pick(over: []), .blue)
-        XCTAssertEqual(Crayon.red.other, .blue)
-        // What only answers across the picture is drawn in the other end.
+    func testTheMarksAreWhiteChalkAndAReturningColourRed() {
         let echo = Mark(shape: "echo", points: [], title: "", text: "")
         let loop = Mark(shape: "loop", points: [], title: "", text: "")
-        XCTAssertEqual(Crayon.red.color(for: echo, dark: false), Crayon.blue.color(dark: false))
-        XCTAssertEqual(Crayon.red.color(for: loop, dark: false), Crayon.red.color(dark: false))
-        // Lab as everyone has it: white is L 100, and black 0.
-        XCTAssertEqual(Crayon.lab(SIMD3<Double>(1, 1, 1)).x, 100, accuracy: 0.01)
-        XCTAssertEqual(Crayon.lab(SIMD3<Double>(0, 0, 0)).x, 0, accuracy: 0.01)
+        XCTAssertEqual(Chalk.color(for: loop), Chalk.white)
+        // What only answers across the picture is not read as a line that runs there.
+        XCTAssertEqual(Chalk.color(for: echo), Chalk.red)
+        // Brighter than the page's white only where the screen can show it.
+        XCTAssertNil(Chalk.lift(headroom: 1))
+        XCTAssertEqual(Chalk.lift(headroom: 8), Chalk.gain)
+        XCTAssertEqual(try XCTUnwrap(Chalk.lift(headroom: 1.5)), 1.35, accuracy: 1e-9)
+        // A point and a half at a full turn of the phone, the shadow the other way; still with Reduce Motion.
+        XCTAssertEqual(Chalk.shift, 1.5)
+        XCTAssertEqual(Chalk.offset(x: 1, y: -1, shift: Chalk.shift, still: false), CGSize(width: 1.5, height: -1.5))
+        XCTAssertEqual(Chalk.offset(x: 0.5, y: 0, shift: -Chalk.castShift, still: false), CGSize(width: -0.5, height: 0))
+        XCTAssertEqual(Chalk.offset(x: 1, y: 1, shift: Chalk.shift, still: true), .zero)
     }
 
-    func testThePencilIsPickedWhereTheMarksLie() {
-        // A sheet blue on its left half and red on its right.
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 80, height: 40))
-        let image = renderer.image { context in
-            UIColor(red: 0.1, green: 0.2, blue: 0.6, alpha: 1).setFill()
-            context.fill(CGRect(x: 0, y: 0, width: 40, height: 40))
-            UIColor(red: 0.75, green: 0.15, blue: 0.1, alpha: 1).setFill()
-            context.fill(CGRect(x: 40, y: 0, width: 40, height: 40))
+    /// The marks as a picture, clear around them: what the brighter copy
+    /// (above the page's white, where the screen can) is made of.
+    @MainActor
+    func testTheChalkIsDrawnOnNothingAndItsBrighterCopyIsTheSameSize() throws {
+        // Untitled, so no number lies among them.
+        let line = Mark(shape: "line", points: [Spot(x: 0.1, y: 0.5), Spot(x: 0.9, y: 0.5)], title: "", text: "")
+        let echo = Mark(shape: "echo", points: [Spot(x: 0.25, y: 0.2), Spot(x: 0.75, y: 0.2)], title: "", text: "")
+        let marks = [line, echo]
+        let size = CGSize(width: 200, height: 100)
+        let plain = try XCTUnwrap(ChalkMarks.plain(
+            marks: marks, labelled: CompositionSketch.labelled(marks), room: EdgeInsets(), size: size, scale: 1
+        ))
+        XCTAssertEqual(plain.width, 200)
+        XCTAssertEqual(plain.height, 100)
+        var bytes = [UInt8](repeating: 0, count: 200 * 100 * 4)
+        let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+        try bytes.withUnsafeMutableBytes { buffer in
+            let context = try XCTUnwrap(CGContext(
+                data: buffer.baseAddress, width: 200, height: 100, bitsPerComponent: 8, bytesPerRow: 800,
+                space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ))
+            context.draw(plain, in: CGRect(x: 0, y: 0, width: 200, height: 100))
         }
-        let colours = Crayon.colours(of: image, side: 32)
-        XCTAssertEqual(colours.count, 32 * 32)
-        XCTAssertEqual(colours[16 * 32 + 4].z, 0.6, accuracy: 0.04)   // left: blue
-        XCTAssertEqual(colours[16 * 32 + 28].x, 0.75, accuracy: 0.04)  // right: red
-        let left = Mark(shape: "line", points: [Spot(x: 0.1, y: 0.2), Spot(x: 0.4, y: 0.8)], title: "", text: "")
-        let right = Mark(shape: "loop", points: [Spot(x: 0.75, y: 0.5), Spot(x: 0.9, y: 0.7)], title: "", text: "")
-        XCTAssertEqual(Crayon.pick(for: image, under: [left]), .red)
-        XCTAssertEqual(Crayon.pick(for: image, under: [right]), .blue)
-        // An echo is drawn in the other end: it does not choose the pencil.
-        let echo = Mark(shape: "echo", points: [Spot(x: 0.1, y: 0.5), Spot(x: 0.4, y: 0.5)], title: "", text: "")
-        XCTAssertEqual(Crayon.pick(for: image, under: [right, echo]), .blue)
-        // No mark on the sheet: all of it, as many blues as reds.
-        XCTAssertEqual(Crayon.pick(for: image, under: []), .blue)
+        func pixel(_ x: Int, _ y: Int) -> [Int] { (0..<4).map { Int(bytes[(y * 200 + x) * 4 + $0]) } }
+        // Nothing under the strokes or beside them: no wash wiped, no edge.
+        XCTAssertEqual(pixel(100, 80), [0, 0, 0, 0])
+        XCTAssertEqual(pixel(5, 5), [0, 0, 0, 0])
+        // The line in white, across the middle.
+        let onLine = (44...56).map { pixel(100, $0) }.max { $0[3] < $1[3] }!
+        XCTAssertGreaterThan(onLine[3], 200)
+        XCTAssertGreaterThan(onLine[2], 200)
+        // The echo's broken line in red, between its rings.
+        let reds = (0..<200).flatMap { x in (10...30).map { y in pixel(x, y) } }.filter { $0[3] > 200 }
+        XCTAssertFalse(reds.isEmpty)
+        XCTAssertTrue(reds.allSatisfy { $0[0] > $0[2] + 60 })
+        // The copy for a screen with headroom: the same picture, lit.
+        let lit = try XCTUnwrap(ArtGlow.render(plain, gain: Chalk.gain))
+        XCTAssertEqual(lit.width, plain.width)
+        XCTAssertEqual(lit.height, plain.height)
     }
 
     func testTheDemoHasASheetForItsStudyInBothAppearances() async throws {

@@ -16,13 +16,21 @@ So the sheet is:
 - the page: ``Theme.paper`` of the app, flat (the app draws its own frame,
   grid, marks and notes around and over the picture this module makes);
 - the picture's masses (about eight, by value first) as stains that spill
-  like the ink stains of "Droga dzieła": a first pale wash under all, then
-  each mass with a sharp wet edge where the pigment gathers and, in
-  fragments, a paler second edge where the paper soaked; inside a stain the
-  colour still moves a little, as the picture's does. Dark pictures are
-  lifted into a watercolour's key, so that marks over them read. On the
-  dark page the paint covers instead of staining and the picture stays
-  dark;
+  like the ink stains of "Droga dzieła": a first pale wash where things
+  happen, then each mass with a sharp wet edge where the pigment gathers
+  and, in fragments, a paler second edge where the paper soaked; inside a
+  stain the colour still moves a little, as the picture's does. Dark
+  pictures are lifted into a watercolour's key, so that marks over them
+  read. On the dark page the paint covers instead of staining and the
+  picture stays dark;
+- more general where less happens (Mateusz 2026-11-12: "Czy sama akwarela
+  w tle mogłaby być ogólniejsza? Szczególnie tam gdzie mniej się dzieje?
+  Może nawet nie zalewać plamą wszystkiego i fragmentami zostawiać tło
+  podkładu"): there the small masses join the great ones, neighbours of
+  nearly one colour are one stain, the stain is flat, and the page is left
+  bare in fragments: most where the picture is nearest the page's own
+  value (the lights on the light page, the darks on the dark one) and
+  towards the field's edge, as a painter leaves a study unfinished;
 - a few strokes of a nib (thick on the pull, thin where it lands and
   lifts), given by one who saw the picture (``ai.pen``); none when there
   are none.
@@ -49,7 +57,7 @@ Array = npt.NDArray[Any]
 PenStroke = tuple[Sequence[tuple[float, float]], bool, bool]
 
 #: Raised when the look changes, so that sheets made before are made again.
-LOOK = 1
+LOOK = 2
 #: The sheet's longer side.
 LONG = 1500
 #: The app's page and ink (``Theme.paper``, ``Theme.ink``): light, dark.
@@ -61,8 +69,23 @@ LIFT = 0.15
 #: picture): a smaller one joins what surrounds it.
 MASSES = 8
 LEAST = 0.005
-#: The first pale wash over the whole field, under the stains.
+#: Where nothing happens a mass must be this much of the picture, and
+#: neighbours there no further apart than this (CIE Lab) are one stain.
+QUIET_LEAST = 0.04
+ALIKE = 15.0
+#: The first pale wash under the stains, where things happen.
 FIRST = 0.3
+#: What decides where the page is left bare in a quiet place: how near the
+#: stain is to the page's own value, how near the field's edge, and chance;
+#: bare where they come to more than :data:`BARE`.
+BARE_NEAR = 0.7
+BARE_RIM = 0.6
+BARE_CHANCE = 0.45
+BARE = 0.55
+#: How far under :data:`BARE` the wash begins to run thin, and the most of
+#: the field that is left bare (a picture that is all sky is still painted).
+BARE_THIN = 0.2
+BARE_MOST = 0.3
 #: How much of the ink a stroke of the nib lays, and its width.
 NIB_INK = 0.66
 NIB = 3.3
@@ -110,11 +133,71 @@ def _flat(rgb: Array, side: int, spatial: int, colour: int) -> Array:
     return cv2.medianBlur(flat, 5)
 
 
+def busy(rgb: Array, shape: tuple[int, int]) -> Array:
+    """How much happens at each place of the picture, from 0 (a plain sky,
+    a wall, a dark ground) to 1 (figures, foliage, a crowd), as a map of
+    ``shape``: how many edges lie around the place, against the picture's
+    own busiest parts but never against less than a plain picture has."""
+    scale = 240 / max(rgb.shape[:2])
+    small = cv2.resize(rgb, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    lab = cv2.cvtColor(cv2.GaussianBlur(small, (0, 0), 1.2), cv2.COLOR_RGB2LAB).astype(np.float32)
+    lab[..., 0] *= 100 / 255
+    edges = np.zeros(lab.shape[:2], np.float32)
+    for channel in range(3):
+        gx = cv2.Sobel(lab[..., channel], cv2.CV_32F, 1, 0, ksize=3)
+        gy = cv2.Sobel(lab[..., channel], cv2.CV_32F, 0, 1, ksize=3)
+        edges += gx * gx + gy * gy
+    around = cv2.GaussianBlur(np.sqrt(edges), (0, 0), 9)
+    most = max(float(np.percentile(around, 90)), 14.0)
+    t = np.clip((around / most - 0.22) / 0.5, 0, 1)
+    return cv2.resize(t * t * (3 - 2 * t), (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
+
+
+def _joined(piece: Array, count: int, lab: Array, quiet: Array) -> Array:
+    """The masses with quiet neighbours of nearly one colour made one: the
+    nearest pair first, until none is near enough."""
+    flat = piece.ravel()
+    area = np.bincount(flat, minlength=count + 1).astype(np.float64)
+    total = np.stack(
+        [np.bincount(flat, lab[..., k].ravel(), minlength=count + 1) for k in range(3)], axis=1
+    )
+    still = np.bincount(flat, quiet.ravel(), minlength=count + 1)
+    pairs: set[tuple[int, int]] = set()
+    for one, other in ((piece[:, :-1], piece[:, 1:]), (piece[:-1], piece[1:])):
+        differ = one != other
+        lo = np.minimum(one[differ], other[differ])
+        hi = np.maximum(one[differ], other[differ])
+        pairs.update(zip(lo.tolist(), hi.tolist(), strict=True))
+    to = np.arange(count + 1)
+    while pairs:
+        best: tuple[int, int] | None = None
+        nearest = ALIKE
+        for a, b in pairs:
+            calm = float(min(still[a] / area[a], still[b] / area[b]))
+            apart = float(np.linalg.norm(total[a] / area[a] - total[b] / area[b]))
+            if calm > 0.5 and apart < nearest * calm:
+                best, nearest = (a, b), apart / calm
+        if best is None:
+            break
+        a, b = best
+        area[a] += area[b]
+        total[a] += total[b]
+        still[a] += still[b]
+        to[to == b] = a
+        moved = ((int(to[p]), int(to[q])) for p, q in pairs)
+        pairs = {(min(x, y), max(x, y)) for x, y in moved if x != y}
+    return to[piece]
+
+
 def masses(rgb: Array, seed: int = 1) -> tuple[Array, Array]:
     """The picture's masses: a small map of which mass each place belongs to
     (from 1) and each mass's colour. What is too small to be a mass joins
-    the mass around it."""
+    the mass around it, and where little happens a mass must be greater and
+    neighbours of nearly one colour are one."""
     flat = _flat(rgb, 560, 12, 32)
+    quiet = 1 - busy(rgb, flat.shape[:2])
+    true = cv2.cvtColor(flat, cv2.COLOR_BGR2LAB).astype(np.float32)
+    true[..., 0] *= 100 / 255
     lab = cv2.cvtColor(flat, cv2.COLOR_BGR2LAB).astype(np.float32)
     lab[..., 0] *= 1.3  # a painter sorts by value first
     cv2.setRNGSeed(seed)
@@ -123,15 +206,17 @@ def masses(rgb: Array, seed: int = 1) -> tuple[Array, Array]:
         lab.reshape(-1, 3), MASSES, None, criteria, 4, cv2.KMEANS_PP_CENTERS
     )
     tags = tags.reshape(lab.shape[:2]).astype(np.int32)
-    floor = LEAST * tags.size
     piece = np.zeros(tags.shape, np.int32)
     count = 0
     for tag in range(MASSES):  # connected pieces of each colour; the small ones are let go
         n, comp, stats, _ = cv2.connectedComponentsWithStats(
             (tags == tag).astype(np.uint8), connectivity=4
         )
+        calm = np.bincount(comp.ravel(), quiet.ravel(), minlength=n)
         for c in range(1, n):
-            if stats[c, cv2.CC_STAT_AREA] >= floor:
+            area = stats[c, cv2.CC_STAT_AREA]
+            least = LEAST + (QUIET_LEAST - LEAST) * calm[c] / area
+            if area >= least * tags.size:
                 count += 1
                 piece[comp == c] = count
     if count == 0:  # one flat colour: one mass
@@ -145,6 +230,10 @@ def masses(rgb: Array, seed: int = 1) -> tuple[Array, Array]:
         lut = np.zeros(int(near.max()) + 1, np.int32)
         lut[near[loose == 0]] = piece[loose == 0]
         piece = lut[near]
+    joined = _joined(piece, count, true, quiet)
+    kept = np.unique(joined)
+    piece = np.searchsorted(kept, joined).astype(np.int32) + 1
+    count = len(kept)
     plain = cv2.cvtColor(flat, cv2.COLOR_BGR2RGB).astype(np.float32) / 255
     colours = np.zeros((count + 1, 3), np.float32)
     for c in range(1, count + 1):
@@ -256,7 +345,29 @@ def render(
     blotch = _noise((h, w), 46, rng) * 0.6 + _noise((h, w), 11, rng) * 0.4
     grain = _noise((h, w), 0.9, rng)
     patchy = _noise((h, w), 26, rng)  # where the paper soaks at a stain's edge
-    under = FIRST * (0.85 + 0.15 * blotch) * inside
+    lively = busy(rgb, (h, w))
+    under = FIRST * (0.85 + 0.15 * blotch) * inside * lively
+    # Where little happens the page is left bare in fragments: sooner where
+    # the stain would be near the page's own value, and towards the edge.
+    page_lab = cv2.cvtColor(_colour(PAGE[dark]).reshape(1, 1, 3), cv2.COLOR_RGB2LAB)[0, 0]
+    worn = paints**1.3 if dark else paints
+    apart = np.linalg.norm(
+        cv2.cvtColor(worn.reshape(1, -1, 3), cv2.COLOR_RGB2LAB)[0] - page_lab, axis=1
+    )
+    near = np.clip(1.25 - apart / (52.0 if dark else 45.0), 0, 1)
+    near[0] = 0
+    near_map = cv2.GaussianBlur(
+        cv2.resize(near[piece], (w, h), interpolation=cv2.INTER_LINEAR), (0, 0), 6
+    )
+    rim = np.clip(1 - inset / (0.3 * min(h, w)), 0, 1)
+    chance = _noise((h, w), 0.07 * max(h, w), rng) * 0.8 + _noise((h, w), 18, rng) * 0.2
+    bare = (1 - lively) * (BARE_NEAR * near_map + BARE_RIM * rim + BARE_CHANCE * chance)
+    level = max(BARE, float(np.quantile(bare, 1 - BARE_MOST)))
+    painted = bare < level
+    # towards a bare place the wash runs thin before it stops
+    thin = np.clip((level - bare) / BARE_THIN, 0, 1)
+    least = 0.55 if dark else 0.35  # covering paint thinned much is a smudge
+    thin = least + (1 - least) * thin * thin * (3 - 2 * thin)
     if dark:
         canvas[:] = (moving**1.3) * under[..., None]
         cover[:] = under
@@ -272,21 +383,23 @@ def render(
         mask = cv2.resize((piece == c).astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR)
         mask = cv2.GaussianBlur(mask[part], (0, 0), 2.6)
         # stains stop a hair short of each other: wet paint beside wet paint would run
-        body = (mask > 0.5 + 0.6 * np.abs(wander[part])).astype(np.uint8)
+        body = ((mask > 0.5 + 0.6 * np.abs(wander[part])) & painted[part]).astype(np.uint8)
         if body.sum() < 40:
             continue
         d_in = cv2.distanceTransform(body, cv2.DIST_L2, 3)
         d_out = cv2.distanceTransform(1 - body, cv2.DIST_L2, 3)
         aa = np.clip(d_in, 0, 1)
         # the wet front: pigment carried to the edge and left there
-        load = (1 - FIRST) * (0.8 + 0.2 * blotch[part]) + 0.1 * grain[part]
+        load = (1 - FIRST) * (0.8 + 0.2 * blotch[part]) * thin[part] + 0.1 * grain[part]
         load += 0.42 * np.exp(-d_in / 1.3) + 0.1 * np.exp(-d_in / 9)
         # the paper soaks at the edge: a paler second stain, in fragments
         far = 5 + 7 * np.clip(patchy[part] + 0.2, 0, 1)
         halo = ((d_out > 0) & (d_out < far) & (patchy[part] > -0.1)).astype(np.float32)
         halo_load = (0.16 + 0.14 * np.exp(-np.abs(far - d_out) / 1.1)) * halo
         flat = paints[c][None, None]
-        tint = 0.45 * flat + 0.55 * moving[part]
+        # the stain is flat where nothing happens, and moves where much does
+        own = (0.12 + 0.43 * lively[part])[..., None]
+        tint = (1 - own) * flat + own * moving[part]
         if dark:  # on a dark page paint covers instead of staining
             alpha = np.clip((aa * load * 0.9 + (1 - aa) * halo_load * 1.3) * inside[part], 0, 1)
             canvas[part] = canvas[part] * (1 - alpha[..., None]) + (tint**1.3) * alpha[..., None]
