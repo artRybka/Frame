@@ -1032,6 +1032,9 @@ struct ArtworkInfo: View {
     /// The title held once: the museum's own shows until held again ("Tytuł w oryginale").
     @State private var peeking = false
 
+    /// How much smaller than on the work's card its bar of colours is here.
+    static let slim: CGFloat = 0.5
+
     private var shown: PolishText? { asked ?? polish }
     private var title: String {
         nonEmpty(shown?.title) ?? (item.displayTitle.isEmpty ? "Bez tytułu" : item.displayTitle)
@@ -1110,9 +1113,20 @@ struct ArtworkInfo: View {
             if item.kind == .photo {
                 PhotoFacts(item: item)
             }
-            // No strip of the work's colours here (Mateusz 2026-11-12 10:47:
-            // „cienki pasek na zakładce Teraz - zupełnie z niego
-            // zrezygnujmy”): they are on the work's card, in its technique.
+            // The work's colours, as on its card and in its technique,
+            // only narrow (Mateusz 2026-11-12 13:46: „dodajmy jednak pasek
+            // koloru w teraz - zróbmy wąski, może nie będzie źle…”; at 10:47
+            // the thin flat strip went: „zupełnie z niego zrezygnujmy”).
+            // A sculpture has none here either.
+            if !item.colors.isEmpty, !PaintStyle.sculpted(item) {
+                if let style = PaintStyle.of(item), !PaintedStrip.shares(item.colors).isEmpty {
+                    PaintedStrip(swatches: item.colors, style: style, seed: Paint.seed(item.id), whole: true,
+                                 relief: Paint.relief(item), slim: Self.slim)
+                        .padding(.vertical, 4)
+                } else {
+                    PaletteStrip(swatches: item.colors).padding(.vertical, 4)
+                }
+            }
             if !about.isEmpty {
                 // The arrow sits right under the text: it opens and closes it.
                 VStack(alignment: .leading, spacing: 2) {

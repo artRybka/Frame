@@ -1143,7 +1143,7 @@ struct ItemDetailView: View {
             if bare {
                 EmptyView()
             } else if let style = PaintStyle.of(item), !PaintedStrip.shares(item.colors).isEmpty {
-                PaintedStrip(swatches: item.colors, style: style, seed: Paint.seed(item.id), whole: true)
+                PaintedStrip(swatches: item.colors, style: style, seed: Paint.seed(item.id), whole: true, relief: Paint.relief(item))
             } else {
                 PaletteStrip(swatches: item.colors, height: Paint.bar, cornerRadius: 6)
             }

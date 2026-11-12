@@ -559,7 +559,8 @@ struct DailyView: View {
                         let strokes = style == nil ? 0 : PaintedStrip.shares(item.colors).count
                         if !item.colors.isEmpty {
                             if let style, strokes > 0 {
-                                PaintedStrip(swatches: item.colors, style: style, seed: Paint.seed(item.id)) { painted[item.id] = ($0, $1) }
+                                PaintedStrip(swatches: item.colors, style: style, seed: Paint.seed(item.id),
+                                             began: { painted[item.id] = ($0, $1) }, relief: Paint.relief(item))
                             } else {
                                 PaletteStrip(swatches: item.colors, height: 26, cornerRadius: 6)
                             }
@@ -567,7 +568,7 @@ struct DailyView: View {
                         if !work.colour.isEmpty { prose(work.colour) }
                         if let pigments = work.pigments, !pigments.isEmpty {
                             // The paints begin while the bar is painted; with no bar, at once.
-                            self.pigments(pigments, style: style, seed: Paint.seed(item.id),
+                            self.pigments(pigments, style: style, seed: Paint.seed(item.id), relief: Paint.relief(item),
                                           began: strokes > 0 ? painted[item.id]?.at : .distantPast,
                                           bar: strokes > 0 ? painted[item.id]?.takes ?? 0 : 0)
                         }
@@ -872,9 +873,10 @@ struct DailyView: View {
     /// `style`: the work's technique, each swatch painted in it (nil: a
     /// plain round one); `began`: when the palette bar's first stroke
     /// began (nil: not yet) and `bar`: how long its paint takes from
-    /// then (0: no bar), the swatches after that.
+    /// then (0: no bar), the swatches after that; `relief`: how high
+    /// an oil paint stands.
     private func pigments(_ pigments: [DailyWork.Pigment], style: PaintStyle? = nil, seed: Int = 0,
-                          began: Date? = nil, bar: Double = 0) -> some View {
+                          relief: Double = Paint.calm.plain, began: Date? = nil, bar: Double = 0) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(pigments.enumerated()), id: \.element.name) { index, pigment in
                 HStack(alignment: .top, spacing: 12) {
@@ -882,7 +884,7 @@ struct DailyView: View {
                         if let style {
                             let lead = style.swatchDelay(bar: bar, index: index)
                             PaintedSwatch(hex: pigment.hex, index: index, style: style, seed: seed,
-                                          after: began?.addingTimeInterval(lead), lead: lead)
+                                          after: began?.addingTimeInterval(lead), lead: lead, relief: relief)
                         } else {
                             Circle()
                                 .fill(Color(hexString: pigment.hex) ?? Theme.mat)
