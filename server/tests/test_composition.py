@@ -43,6 +43,7 @@ from frame_server.ai.daily import (
 )
 from frame_server.ai.motion import SYSTEM as MOTION_SYSTEM
 from frame_server.ai.motion import Movement, movement
+from frame_server.ai.pen import SYSTEM as PEN_SYSTEM
 from frame_server.ai.prose import PROSE, PROSE_KEY
 from frame_server.ai.prose import SYSTEM as PROSE_SYSTEM
 from frame_server.ai.sketch import PHI, beats, draw, grid_fits, measure, measures
@@ -289,11 +290,13 @@ def test_haiku_checks_each_mark_and_place(service: FrameService) -> None:
     text = content[-1]["text"]
     assert "OBRAZ: 900 × 600 px" in text and "Pomiary serwera:" in text
     assert "loop „Fudżi”" in text and "na: szczyt; zbocze" in text
+    # A loop is shown as the box it is drawn in, and moved as one.
+    assert "punkty: (540, 372) (648, 468)" in text
     assert "P1. (450, 300) – na: szczyt – główny" in text
 
     reply = {
         "marks": [
-            {"n": 1, "verdict": "move", "points": _points((630, 420), (680, 470)), "why": "obok"},
+            {"n": 1, "verdict": "move", "points": _points((580, 370), (680, 470)), "why": "obok"},
             {"n": 2, "verdict": "drop", "points": [], "why": "nie ma horyzontu"},
         ],
         "points": [
@@ -305,6 +308,7 @@ def test_haiku_checks_each_mark_and_place(service: FrameService) -> None:
     found = checked(view, keys, reply, img.size)
     (mark,) = found.view.marks
     assert mark.title == "Fudżi" and (mark.points[0].x, mark.points[0].y) == (0.7, 0.7)
+    assert (round(mark.points[1].x * 900), round(mark.points[1].y * 600)) == (680, 470)
     assert [(k.title, k.x) for k in found.keys] == [("szczyt", 0.6)]
     assert found.keys[0].main
     assert found.view.text == "Oko biegnie do Fudżi."
@@ -415,8 +419,8 @@ ANALYSIS = {
 
 
 #: Opus's analysis, in pixels of a 900 × 600 picture: no grid, no
-#: movement, the places it rests on.
-ANALYSIS_V5 = {
+#: movement, the places it rests on; a loop as the box around the thing.
+ANALYSIS_V6 = {
     "composition": {
         "views": [
             {
@@ -431,10 +435,11 @@ ANALYSIS_V5 = {
                 "marks": [
                     {
                         "shape": "loop",
-                        "points": _points((600, 400), (650, 440)),
+                        "points": _points((550, 360), (650, 440)),
                         "title": "Fudżi",
                         "text": "przeciwwaga",
                         "na": ["szczyt", "zbocze"],
+                        "po": "stożek góry",
                     },
                     {
                         "shape": "line",
@@ -450,6 +455,18 @@ ANALYSIS_V5 = {
 }
 
 
+#: Sonnet's pen sketch, in pixels of the picture it got (900 × 600 fits whole).
+SKETCH = {
+    "szkic": [
+        {"co": "grzbiet fali", "points": _points((0, 420), (200, 180), (420, 150)), "ostra": False},
+        {"co": "horyzont", "points": _points((0, 300), (900, 300)), "ostra": True},
+        {"co": "Fudżi", "points": _points((560, 440), (610, 380), (660, 440)), "ostra": True},
+        {"co": "łódź", "points": _points((300, 560), (450, 590), (600, 560)), "zamknieta": True},
+        {"co": "kropka", "points": _points((10, 10))},  # no stroke
+    ]
+}
+
+
 #: The text as the writer puts it together at the end.
 WRITTEN = (
     "Wielka fala zamyka lewą stronę i tnie krawędź, więc morze trwa dalej poza kadrem. "
@@ -458,9 +475,9 @@ WRITTEN = (
 )
 
 
-def _pipeline(asked: list[dict[str, Any]], analysis: dict[str, Any] = ANALYSIS_V5) -> Any:
+def _pipeline(asked: list[dict[str, Any]], analysis: dict[str, Any] = ANALYSIS_V6) -> Any:
     """Every step answering: Opus, the Haiku check, Sonnet's movement and
-    the writer of the text."""
+    its pen sketch, and the writer of the text."""
 
     def ask(params: dict[str, Any]) -> Answer:
         asked.append(params)
@@ -468,7 +485,7 @@ def _pipeline(asked: list[dict[str, Any]], analysis: dict[str, Any] = ANALYSIS_V
         if system == CHECK_SYSTEM:
             reply: dict[str, Any] = {
                 "marks": [
-                    {"n": 1, "verdict": "move", "points": _points((610, 400), (660, 440))},
+                    {"n": 1, "verdict": "move", "points": _points((560, 360), (660, 440))},
                     {"n": 2, "verdict": "drop", "points": [], "why": "brak horyzontu"},
                 ],
                 "points": [{"n": 3, "verdict": "drop", "point": {"x": 0, "y": 0}}],
@@ -477,6 +494,8 @@ def _pipeline(asked: list[dict[str, Any]], analysis: dict[str, Any] = ANALYSIS_V
             return Answer(reply, False, 0.01, HAIKU)
         if system == PROSE_SYSTEM:
             return Answer({"text": WRITTEN}, False, 0.015, OPUS)
+        if system == PEN_SYSTEM:
+            return Answer(SKETCH, False, 0.02, SONNET)
         if system == MOTION_SYSTEM:
             reply = {
                 "budowa": "dynamiczna",
@@ -506,13 +525,17 @@ def test_the_analysis_is_asked_apart_in_steps(service: FrameService) -> None:
     assert item is not None
     asked: list[dict[str, Any]] = []
     found = compose(service.images, item, service.daily.job.sources(item), _pipeline(asked))
-    first, check, motion, writer = asked
+    first, check, motion, sketch, writer = asked
     assert first["system"][0]["text"] == COMPOSITION_SYSTEM and first["model"] == OPUS
     assert first["output_config"]["effort"] == "medium"
     text = first["messages"][0]["content"][1]["text"]
     assert "OBRAZ: 900 × 600 px" in text and "OPIS MUZEUM" not in text  # the picture alone
     assert check["model"] == HAIKU and "loop „Fudżi”" in check["messages"][0]["content"][-1]["text"]
     assert motion["model"] == SONNET
+    assert "po: stożek góry" in check["messages"][0]["content"][-1]["text"]
+    # The pen sketch: the picture alone, smaller, by the cheaper model.
+    assert sketch["model"] == SONNET and sketch["system"][0]["text"] == PEN_SYSTEM
+    assert [b["type"] for b in sketch["messages"][0]["content"]] == ["image", "text"]
     # The writer gets the draft and the facts, no picture.
     assert writer["model"] == OPUS and writer["output_config"]["effort"] == "low"
     (content,) = writer["messages"][0]["content"]
@@ -528,7 +551,15 @@ def test_the_analysis_is_asked_apart_in_steps(service: FrameService) -> None:
     assert [k["title"] for k in view["keys"]] == ["grzbiet fali", "szczyt Fudżi"]
     assert found[CHECKED][0].startswith("przesunięty ślad 1 „Fudżi”")
     assert found[CHECK_ROUND] == ROUND
-    assert found[COST] == {"analysis": 0.07, "check": 0.01, "motion": 0.03, "text": 0.015}
+    assert found[COST] == {
+        "analysis": 0.07, "check": 0.01, "motion": 0.03, "sketch": 0.02, "text": 0.015
+    }  # fmt: skip
+    # The loop came as a box and is kept as its centre and a corner, moved by the check.
+    loop = view["marks"][0]
+    assert (round(loop["points"][0]["x"] * 900), round(loop["points"][0]["y"] * 600)) == (610, 400)
+    # The sketch goes into the take, for the sheet: four strokes, the dot left out.
+    assert len(view["sketch"]) == 4 and view["sketch"][1]["sharp"] and view["sketch"][3]["closed"]
+    assert view["field"] is None
     # An unusable analysis gives the page nothing.
     refused = compose(
         service.images, item, service.daily.job.sources(item), lambda p: Answer(None, True, 0, "o")
@@ -543,7 +574,7 @@ def test_a_step_that_fails_leaves_the_rest(service: FrameService) -> None:
 
     def ask(params: dict[str, Any]) -> Answer:
         if params["model"] == OPUS:
-            return Answer(ANALYSIS_V5, False, 0.07, OPUS)
+            return Answer(ANALYSIS_V6, False, 0.07, OPUS)
         raise AiUnavailable("the month's limit")
 
     found = compose(service.images, item, service.daily.job.sources(item), ask)

@@ -1020,6 +1020,16 @@ actor DemoBackend: FrameBackend {
             work.compositionPending = kept.readyAt != nil
         }
         work.detailsPending = (detailChecks[wave.id] ?? .distantPast) > Date()
+        // The analysis is drawn on a study sheet, as a server with it sends
+        // one. CI screenshots: "-demoStudy bedroom" shows another work's
+        // analysis and sheet under the wave's page.
+        work.compositionSheet = DemoStudies.sheet(wave.id)
+        if let study = DemoStudies.asked, let item = found(study.id) {
+            work.item = RemoteItem(item: item, inLibrary: true)
+            work.title = study.title
+            work.composition = .init(views: [study.take], points: [], lines: [])
+            work.compositionSheet = DemoStudies.sheet(study.id)
+        }
         // CI screenshots: "-realSize 210x163" draws a big work's scale.
         let asked = (UserDefaults.standard.string(forKey: "realSize") ?? "").split(separator: "x").compactMap { Double($0) }
         work.size = asked.count == 2 ? .init(height: asked[0], width: asked[1]) : .init(height: 25.7, width: 37.9)
@@ -1839,6 +1849,8 @@ actor DemoBackend: FrameBackend {
             url = framed(id, settings, trying: framing) ?? Self.bundled(id) ?? imageURLs[id]?.thumb
         case let .path(path) where path.hasPrefix("/demo/detail/"):
             url = Self.detail(path)
+        case let .path(path) where path.hasPrefix("/demo/sheet/"):
+            url = Self.sheet(path)
         case let .path(path):
             // "/demo/<id>?<presentation key>"; the key only makes the path change.
             let id = String(path.dropFirst("/demo/".count).prefix { $0 != "?" })
@@ -1881,6 +1893,15 @@ actor DemoBackend: FrameBackend {
         else { return nil }
         try? data.write(to: out)
         return out
+    }
+
+    /// "/demo/sheet/<id>?v=1[&dark=1]": a work's study sheet, made by the
+    /// server's renderer and bundled for the light and the dark page.
+    private static func sheet(_ path: String) -> URL? {
+        guard let parts = URLComponents(string: path) else { return nil }
+        let id = String(parts.path.dropFirst("/demo/sheet/".count))
+        let dark = parts.queryItems?.contains { $0.name == "dark" && $0.value == "1" } == true
+        return Bundle.main.url(forResource: DemoFraming.stem(id) + (dark ? "-sheet-dark" : "-sheet"), withExtension: "jpg")
     }
 
     private static func bundled(_ id: String) -> URL? {

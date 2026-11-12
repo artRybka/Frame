@@ -11,6 +11,11 @@ enum LaunchRoute {
     /// there ("journey-end": at that section's lower part); "studies":
     /// Discover at "Studia dzieł".
     static let scroll = UserDefaults.standard.string(forKey: "scroll")
+    /// The composition's sheet opens with the picture itself under the
+    /// marks, as after a tap (CI screenshots of that state).
+    static let compositionBare = UserDefaults.standard.bool(forKey: "compositionBare")
+    /// `-demoStudy bedroom|shower|moulin`: the demo's study page shows that
+    /// work's analysis of the composition on its sheet (`DemoStudies`).
     /// The composition's take shown first (CI screenshots of the later takes).
     static let take = UserDefaults.standard.integer(forKey: "take")
     /// Words in the search field over an open group (CI screenshots of a

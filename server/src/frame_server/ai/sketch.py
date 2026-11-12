@@ -170,6 +170,53 @@ def speed_lines(path: list[tuple[float, float]], gap: float) -> list[list[tuple[
     return found
 
 
+#: An echo's ring (its radius, of the picture's longer side) and the broken
+#: line between two rings: how far it bows and how long a dash and its gap are.
+ECHO_RING = 0.03
+ECHO_BOW = 0.07
+ECHO_DASH = 0.023
+
+
+def echo_rings(
+    points: list[tuple[float, float]], size: tuple[int, int]
+) -> list[list[tuple[float, float]]]:
+    """A small ring at each of an echo's places."""
+    r = max(size) * ECHO_RING
+    return [
+        [
+            (x + r * math.cos(2 * math.pi * n / 24), y + r * math.sin(2 * math.pi * n / 24))
+            for n in range(25)
+        ]
+        for x, y in points
+    ]
+
+
+def echo_dashes(
+    points: list[tuple[float, float]], size: tuple[int, int]
+) -> list[list[tuple[float, float]]]:
+    """The broken, slightly bowed line from each of an echo's rings to the
+    next: its dashes, from ring to ring."""
+    r = max(size) * ECHO_RING
+    gap = r + max(size) * 0.005
+    found: list[list[tuple[float, float]]] = []
+    for (ax, ay), (bx, by) in itertools.pairwise(points):
+        length = math.hypot(bx - ax, by - ay)
+        span = length - 2 * gap
+        if span <= 0:
+            continue
+        ux, uy = (bx - ax) / length, (by - ay) / length
+        bow = ECHO_BOW * length
+        count = max(int(span / (max(size) * ECHO_DASH)), 2)
+        for k in range(count):
+            dash = []
+            for t in (k / count, (k + 0.275) / count, (k + 0.55) / count):
+                d = gap + t * span
+                lift = bow * math.sin(math.pi * d / length)
+                dash.append((ax + ux * d + uy * lift, ay + uy * d - ux * lift))
+            found.append(dash)
+    return found
+
+
 def _strokes(mark: Mark, size: tuple[int, int]) -> list[list[tuple[float, float]]]:
     """The mark's polylines in pixels (a loop is drawn apart)."""
     points = [_xy(p, size) for p in mark.points]
@@ -189,6 +236,8 @@ def _strokes(mark: Mark, size: tuple[int, int]) -> list[list[tuple[float, float]
         return [[(ax, ay), (bx, ay), (bx, by), (ax, by), (ax, ay)]]
     if mark.shape == "underline":
         return [[points[0], points[-1]]]
+    if mark.shape == "echo":
+        return [*echo_rings(points, size), *echo_dashes(points, size)]
     return [points]
 
 
@@ -216,6 +265,10 @@ def _number_spot(mark: Mark, size: tuple[int, int], radius: float) -> tuple[floa
     elif mark.shape == "rhythm":
         (x, y), _ = beats([_xy(p, size) for p in mark.points])[0]
         spot = (x - radius * 1.2, y - radius * 1.2)
+    elif mark.shape == "echo":
+        x, y = _xy(mark.points[0], size)
+        ring = max(size) * ECHO_RING
+        spot = (x + ring + radius * 0.8, y - ring - radius * 0.4)
     else:
         a = mark.anchor()
         spot = _xy(a, size)
@@ -381,6 +434,8 @@ def measure(mark: Mark, size: tuple[int, int]) -> str:
         if _outside(points):
             parts.append("biegnie poza obraz")
         return ", ".join(parts)
+    if mark.shape == "echo":
+        return "miejsca: " + "; ".join(_px(p, size) for p in points)
     centre = mark.anchor()
     text = f"środek: x {_nearest(centre.x)}, y {_nearest(centre.y)}"
     return text + (", wychodzi poza obraz" if _outside(points) else "")
@@ -565,6 +620,7 @@ def grid_fits(view: View) -> bool:
     across, down = CUTS.get(view.grid, ((), ()))
     if not across and not down:
         return True
+    view = view.inside()  # the grid divides the picture's field
     xs: list[float] = []
     ys: list[float] = []
     for mark in view.marks:

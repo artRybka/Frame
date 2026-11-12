@@ -63,6 +63,7 @@ from .power import INSTALL_LOOK, WAKE_BURST_SECONDS, PowerManager
 from .progress import ProgressTracker, Stage
 from .rendered import RenderCache, Rendered, render_key
 from .sharper import Sharper
+from .sheets import Sheets
 from .sizes import Sizes
 from .source_keys import SourceKeys
 from .status import StatusMonitor
@@ -371,6 +372,8 @@ class FrameService:
         # lets it) and for pages left without one.
         self.compose = ComposeJob(self.daily.job)
         self.ai.register(self.compose)
+        # The study sheets the analyses are drawn on, made when first asked for.
+        self.sheets = Sheets(self.library, self.images)
         # The composition text of pages written before, rewritten once in one
         # voice (their marks stay).
         self.prose = ProseJob(self.daily.job)

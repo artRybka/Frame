@@ -912,8 +912,11 @@ struct DailyView: View {
                     }
                 }
             }
+            // The sheet is made for the first take's field: a take with
+            // another field (older analyses had two) goes on the picture.
             CompositionSketch(
                 item: work.item, aspect: aspect(work.item.item), take: shown,
+                sheet: shown.field == takes.first?.field ? work.compositionSheet ?? "" : "",
                 width: pageWidth > 0 ? pageWidth - 2 * Theme.gutter : nil
             )
                 .padding(.top, 4)

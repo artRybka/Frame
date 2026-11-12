@@ -2037,6 +2037,46 @@ struct DailyWork: Codable, Hashable, Sendable {
         var grid: String
         var text: String
         var marks: [Mark]
+        /// The picture's own field on a reproduction with margins (a print
+        /// on its paper): the sheet shows only it, the grid divides it. The
+        /// marks stay fractions of the whole reproduction. Nil: the whole
+        /// picture, and from servers before the study sheet.
+        var field: Field? = nil
+
+        /// A box on the reproduction, fractions from its top left.
+        struct Field: Codable, Hashable, Sendable {
+            var x: Double
+            var y: Double
+            var w: Double
+            var h: Double
+
+            static let whole = Field(x: 0, y: 0, w: 1, h: 1)
+
+            /// A place on the whole reproduction, as a fraction of the field.
+            func inside(_ spot: Spot) -> Spot {
+                Spot(x: w > 0 ? (spot.x - x) / w : spot.x, y: h > 0 ? (spot.y - y) / h : spot.y)
+            }
+        }
+
+        /// The field the sheet shows: the one given when it is a real part
+        /// of the picture, else all of it.
+        var shownField: Field {
+            guard let field, field.w > 0.05, field.h > 0.05,
+                  field.x >= 0, field.y >= 0, field.x + field.w <= 1.001, field.y + field.h <= 1.001
+            else { return .whole }
+            return field
+        }
+
+        /// The marks as fractions of the field, as the sheet draws them.
+        var marksInField: [Mark] {
+            let field = shownField
+            guard field != .whole else { return marks }
+            return marks.map { mark in
+                var moved = mark
+                moved.points = mark.points.map(field.inside)
+                return moved
+            }
+        }
     }
 
     struct Composition: Codable, Hashable, Sendable {
@@ -2148,6 +2188,11 @@ struct DailyWork: Codable, Hashable, Sendable {
     /// A short note about the artist.
     var artist: String?
     var composition: Composition?
+    /// Server path of the study sheet the analysis is drawn on: the
+    /// picture's field in stains of its colours with a pen sketch over
+    /// them, on the page's colour ("&dark=1" for the dark page). Nil or
+    /// empty from servers before the sheet: the marks go on the picture.
+    var compositionSheet: String? = nil
     /// Every analysis of the composition the page has had, oldest first,
     /// once the owner asked for one anew (else empty; nil from servers
     /// before 1.88).

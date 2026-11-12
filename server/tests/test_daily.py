@@ -191,9 +191,15 @@ ANSWER_PX = pixels(ANSWER)
 
 def composing(params: dict[str, Any]) -> bool:
     """A question about the composition: its analysis, its check, its
-    movement or its text written last."""
+    movement, its pen sketch or its text written last."""
     return params["system"][0]["text"].startswith(
-        ("Sprawdzasz", "Piszesz „Analizę", "Dopisujesz", "Piszesz ostateczny tekst")
+        (
+            "Sprawdzasz",
+            "Rysujesz i opisujesz „Analizę",
+            "Dopisujesz",
+            "Rysujesz piórkiem",
+            "Piszesz ostateczny tekst",
+        )
     )
 
 
@@ -527,7 +533,7 @@ def test_claude_writes_the_page(tmp_path: Path) -> None:
         # the picture (the clean picture, then the take drawn), then its movement,
         # then its text written in one voice.
         analysis, check, *rest = [p for p in fake.asked if p not in written(fake)]
-        assert analysis["system"][0]["text"].startswith("Piszesz „Analizę kompozycji”")
+        assert analysis["system"][0]["text"].startswith("Rysujesz i opisujesz „Analizę kompozycji”")
         assert analysis["messages"][0]["content"][0]["type"] == "image"
         images = [b for b in check["messages"][0]["content"] if b["type"] == "image"]
         assert len(images) == 2 and check["model"] == HAIKU
