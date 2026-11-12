@@ -33,8 +33,8 @@ final class PaintTests: XCTestCase {
                      "Watercolour with pen and ink", "tusz, akwarela, papier"]
         let dry = ["pastel on paper", "kredka, papier", "black chalk", "Pastel over watercolour", "pastel, papier naklejony na tekturę",
                    "Red chalk on laid paper", "kreda, papier"]
-        // Ink with colours, and whatever names no paint: flat.
-        let flat = ["", "Ink and color on silk", "Bronze", "papier"]
+        // Ink with colours, and whatever names something that is no paint: flat.
+        let flat = ["Ink and color on silk", "Bronze", "papier", "Porcelain", "mixed media"]
         // A photograph: its tones under grain (Mateusz 2026-11-12 10:47:
         // „fotografia - gradientowy pasek z lekkim ziarnem”).
         let photo = ["Gelatin silver print", "Oil print", "Albumen silver print", "Platinum print",
@@ -63,7 +63,24 @@ final class PaintTests: XCTestCase {
         XCTAssertNil(PaintStyle.of(medium: "", classification: "Drawing"))
         XCTAssertEqual(PaintStyle.of(medium: "", classification: "Photograph"), .photo)
         XCTAssertNil(PaintStyle.of(medium: "", classification: "Illuminated Manuscript"))
-        XCTAssertNil(PaintStyle.of(medium: "", classification: ""))
+        // Nothing at all about how it is made: paint (Mateusz 2026-11-12
+        // 12:25, of the "View of Delft" that came without a medium: „Chyba
+        // musimy założyć że w takiej sytuacji dajemy farbę”).
+        XCTAssertEqual(PaintStyle.of(medium: "", classification: ""), .oil)
+        XCTAssertEqual(PaintStyle.of(medium: ""), .oil)
+        XCTAssertEqual(PaintStyle.of(medium: "", classification: "Stadsgezicht"), .oil)
+        // Only what it is painted on: paint too.
+        XCTAssertEqual(PaintStyle.of(medium: "panel (wood by form)"), .oil)
+        XCTAssertEqual(PaintStyle.of(medium: "paneel"), .oil)
+        XCTAssertEqual(PaintStyle.of(medium: "cardboard"), .oil)
+        // Not what is of one colour (rather a print or a drawing), nor what is filed as a drawing or an object.
+        XCTAssertNil(PaintStyle.of(medium: "", classification: "", mono: true))
+        XCTAssertNil(PaintStyle.of(medium: "", classification: "Ceramics"))
+        XCTAssertNil(PaintStyle.of(medium: "", classification: "Textiles"))
+        XCTAssertNil(PaintStyle.of(medium: "", classification: "clocks"))
+        XCTAssertNil(PaintStyle.of(medium: "Six-panel folding screen; ink, color and gold on paper"))
+        XCTAssertFalse(PaintStyle.sculpted(medium: "", classification: ""))
+        XCTAssertTrue(PaintStyle.sculpted(medium: "", classification: "Sculpture"))
     }
 
     /// Mateusz 2026-11-12 07:26: „dla rycin, rysunków, grafik, plakatów
@@ -236,6 +253,10 @@ final class PaintTests: XCTestCase {
             XCTAssertEqual(PrintPaint.patches(tones)?.contains(true), false)
             XCTAssertTrue(PrintPaint.mostlyOne(tones))
         }
+        // A pale colour is a patch as well: the green of a lithograph in colours among its greys.
+        let bathers = shares([("#f3ebe3", 0.484), ("#d0cec4", 0.325), ("#aeb1a5", 0.122), ("#909489", 0.069), ("#b0bd99", 0.044)])
+        XCTAssertEqual(PrintPaint.patches(bathers) ?? [], [false, false, false, false, true])
+        XCTAssertTrue(PrintPaint.mostlyOne(bathers))
         // A work in colours is not a scale of tones with patches: there is too much colour in it.
         XCTAssertFalse(PrintPaint.mostlyOne(wave))
         XCTAssertFalse(PrintPaint.mostlyOne(shares([("#1d1a17", 0.3), ("#e8dcc0", 0.28), ("#c8a23a", 0.18), ("#b5432b", 0.14)])))
@@ -602,6 +623,58 @@ final class PaintTests: XCTestCase {
         XCTAssertGreaterThan(count(dark, 12...80), 3000)
     }
 
+    /// Mateusz 2026-11-12 13:46: „"3d" farby olejnej jest zbyt duże, trochę
+    /// musimy je uspokoić. Co prawda świetnie wygląda np. u Van Gogha, ale
+    /// źle sprawdza się w baroku czy gotyku. chyba że jesteśmy w stanie to
+    /// zróżnicować i dostosować do obrazu (tego jak gładko czy ostro jest
+    /// malowany)?”
+    func testTheOilPaintIsAsHighAsTheWorkIsPainted() {
+        // By the style a museum names, by tempera, else by the year.
+        XCTAssertEqual(Paint.relief(year: 1889, styles: ["Post-Impressionism"]), Paint.calm.thick)
+        XCTAssertEqual(Paint.relief(year: 1905, styles: ["Fauvism"]), Paint.calm.thick)
+        XCTAssertEqual(Paint.relief(year: 1874, styles: ["Impressionism", "19th century"]), Paint.calm.loose)
+        XCTAssertEqual(Paint.relief(year: 1660, styles: ["Baroque", "Dutch Golden Age"]), Paint.calm.smooth)
+        XCTAssertEqual(Paint.relief(year: 1931, styles: ["Surrealism"]), Paint.calm.smooth)
+        XCTAssertEqual(Paint.relief(year: nil, medium: "Tempera and gold on panel"), Paint.calm.smooth)
+        XCTAssertEqual(Paint.relief(year: 1440), Paint.calm.smooth)
+        XCTAssertEqual(Paint.relief(year: 1650), Paint.calm.smooth)
+        XCTAssertEqual(Paint.relief(year: 1830), Paint.calm.even)
+        XCTAssertEqual(Paint.relief(year: 1875), Paint.calm.loose)
+        XCTAssertEqual(Paint.relief(year: 1889), Paint.calm.late)
+        XCTAssertEqual(Paint.relief(year: nil), Paint.calm.plain)
+        XCTAssertLessThan(Paint.calm.smooth, Paint.calm.even)
+        XCTAssertLessThan(Paint.calm.even, Paint.calm.plain)
+        XCTAssertLessThan(Paint.calm.plain, Paint.calm.loose)
+        XCTAssertLessThan(Paint.calm.loose, Paint.calm.late)
+        XCTAssertLessThanOrEqual(Paint.calm.late, Paint.calm.thick)
+        // The same paint in the same places; the lower it is, the less its light and shade.
+        let thick = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.thick).frame(age: 99)
+        let smooth = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.smooth).frame(age: 99)
+        /// How much the paint's lightness changes from a pixel to the one under it, on the average.
+        func rough(_ frame: PaintFrame) -> Double {
+            var sum = 0.0, count = 0.0
+            for y in 0..<(frame.high - 1) {
+                for x in 0..<frame.wide {
+                    let q = 4 * (y * frame.wide + x), under = q + 4 * frame.wide
+                    guard frame.bytes[q + 3] == 255, frame.bytes[under + 3] == 255 else { continue }
+                    let here = Double(frame.bytes[q]) + Double(frame.bytes[q + 1]) + Double(frame.bytes[q + 2])
+                    let there = Double(frame.bytes[under]) + Double(frame.bytes[under + 1]) + Double(frame.bytes[under + 2])
+                    sum += abs(here - there)
+                    count += 1
+                }
+            }
+            return sum / max(count, 1)
+        }
+        func solid(_ frame: PaintFrame) -> Int {
+            var count = 0
+            for k in 0..<(frame.wide * frame.high) where frame.bytes[4 * k + 3] == 255 { count += 1 }
+            return count
+        }
+        XCTAssertEqual(solid(thick), solid(smooth))
+        XCTAssertLessThan(rough(smooth), 0.6 * rough(thick))
+        XCTAssertGreaterThan(rough(smooth), 0)
+    }
+
     func testAPaintsSwatchIsATouchADabOrAScribbleOfItsColour() {
         let rgb = Paint.rgb("#3B4FA0") ?? [0, 0, 0]
         // In oil a touch of the brush, as the bar's small colours are
@@ -634,7 +707,8 @@ final class PaintTests: XCTestCase {
             return count
         }
         let down = sure.frame(age: sure.last), soaked = sure.frame(age: sure.length)
-        XCTAssertGreaterThan(faint(soaked), faint(down) + 400)
+        // (Smaller than it was at first: 13:46 the next day, „rozlewa się za bardzo”.)
+        XCTAssertGreaterThan(faint(soaked), faint(down) + 150)
         XCTAssertEqual(solid(soaked), solid(down), accuracy: 15)
         XCTAssertEqual(sure.frame(age: 999).bytes, soaked.bytes)
         XCTAssertEqual(sure.length, sure.last + OilStrip.soak, accuracy: 0.001)

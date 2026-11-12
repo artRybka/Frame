@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.145.56
+
+- Pasek barw farbą olejną: tłusta plama na papierze pod farbą sięga
+  mniej więcej o połowę bliżej i jest słabsza.
+- Wypukłość farby olejnej jest spokojniejsza i zależy od dzieła: gładka
+  dla tempery, gotyku, renesansu, baroku i w ogóle dzieł sprzed 1800
+  roku, pośrednia dla pierwszej połowy XIX wieku, wyraźna od
+  impresjonistów, a gruba jak dotąd tam, gdzie muzeum podaje styl znany
+  z gęstej farby (postimpresjonizm, ekspresjonizm, fowizm). Aplikacja
+  czyta to ze stylu, techniki i roku dzieła, nie z samego obrazu.
+- Zakładka Teraz: barwy dzieła wracają jako wąski pasek (o połowę
+  niższy niż na karcie dzieła), malowany w technice dzieła.
+- Grafika i rysunek ze skalą walorów: blada barwa też jest odbijana jako
+  plama (zieleń w litografii „Kąpiące się” Cézanne'a była dotąd jednym z
+  szarych tonów).
+- Tylko aplikacja; serwer bez zmian.
+
 ## 1.145.55
 
 - Studium dzieła, analiza kompozycji: znaki analizy wyraźnie odcinają
@@ -12,6 +29,19 @@
 - Tytuł podpisu, który zajmuje dwa wiersze, ma je teraz tak blisko
   siebie jak wiersze notki pod nim (dotąd stały szeroko rozsunięte).
 - Tylko aplikacja; serwer bez zmian, arkusze zostają te same.
+
+## 1.145.54
+
+- Karta dzieła i Studium, pasek barw: dzieło, o którego technice muzeum
+  nic nie mówi („Widok Delftu” z Mauritshuis), ma teraz pasek malowany
+  farbą olejną zamiast płaskiego. Płaski zostaje dla dzieł, których
+  technika nazywa coś innego (porcelana, tusz na jedwabiu), dla dzieł
+  jednej barwy bez opisu i dla przedmiotów; rzeźba dalej nie ma paska.
+- Barwy dzieła: duża barwa niepodobna do czterech głównych jest teraz
+  pokazywana razem z nimi. Dotąd w ciemnym obrazie cztery ciemne barwy
+  zajmowały wszystkie miejsca i jasne szaty (jedna ósma obrazu u
+  Delacroix) znikały z paska. Po aktualizacji serwer raz przelicza barwy
+  biblioteki (na NAS 1 do 2 godzin); szukanie po kolorze działa bez zmian.
 
 ## 1.145.53
 

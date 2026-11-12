@@ -55,8 +55,15 @@ enum PaintStyle: String, Sendable, CaseIterable {
     }
 
     /// What a work's medium says it is made with, in the languages the
-    /// museums write in; nil when it says nothing of these: such a work
-    /// keeps the flat palette. Of several paints (pastel
+    /// museums write in; nil when it names something that is none of
+    /// these (porcelain, ink and colours on silk): such a work keeps the
+    /// flat palette. A work whose museum says nothing at all of how it is
+    /// made is taken for a painting in oil (Mateusz 2026-11-12 12:25, of
+    /// Vermeer's "View of Delft", which came with no medium: „Chyba musimy
+    /// założyć że w takiej sytuacji dajemy farbę”), unless it is of one
+    /// colour (rather a print or a drawing) or filed as a drawing or an
+    /// object; and so is one that names only what a painting is on (a
+    /// panel, cardboard). Of several paints (pastel
     /// over watercolour) the first named; chalk named after pen or ink is
     /// under a drawing in ink. A museum that names no paint (the Getty
     /// gives only "Painting"; Mateusz 2026-11-11 13:50: „może w takiej
@@ -104,6 +111,10 @@ enum PaintStyle: String, Sendable, CaseIterable {
         if has(words, soft) { return .pencil }
         if painting { return has(words, notOil) ? nil : .oil }
         if mono, has(all, drawings) { return warm ? .pen : .pencil }
+        // Nothing says how it is made, or only what it is painted on: paint.
+        let unsaid = words.isEmpty || (words.allSatisfy { word in boards.contains { word.hasPrefix($0) } || fillers.contains(word) }
+            && has(words, boards))
+        if unsaid, !mono, !has(kind, drawings), !has(kind, objects) { return .oil }
         return nil
     }
 
@@ -197,6 +208,18 @@ enum PaintStyle: String, Sendable, CaseIterable {
 
     /// What only oil or acrylic is painted on.
     private static let canvas = ["canvas", "plotn", "toile", "doek", "leinwand", "lienzo", "laerred"]
+    /// What a painting is on besides canvas, named alone ("panel (wood by form)").
+    private static let boards = ["panel", "paneel", "panneau", "oak", "wood", "cardboard", "karton", "tektur", "deska", "desce", "deski"]
+    /// Words beside it that say nothing.
+    private static let fillers: Set<String> = ["on", "by", "form", "na", "op", "sur", "auf"]
+    /// What is no picture, as the museums file it: its colours stay flat.
+    private static let objects = ["ceram", "keram", "porcel", "potter", "earthenware", "stoneware", "fajans", "faienc", "glass", "szkl",
+                                  "silver", "srebr", "metal", "textil", "tekst", "tkanin", "furnit", "mebl", "bell", "clock", "zegar",
+                                  "manuscr", "rekopis", "book", "ksiaz", "jewel", "bizut", "coin", "monet", "medal", "numizm", "numism",
+                                  "costum", "arms", "armor", "armour", "weapon", "vessel", "naczyn", "vase", "wazon", "tapestr", "gobelin",
+                                  "carpet", "dywan", "mosai", "mozai", "decorativ", "rzemios", "object", "przedmiot", "enamel", "emali",
+                                  "lacquer", "ivory", "stamp", "znacz", "postcard", "pocztow", "document", "dokument", "map", "instrument",
+                                  "architect", "model"]
     /// A painting, as the museums file it.
     private static let paintings = ["paint", "peint", "malarstw", "obraz", "schilderij", "gemald", "maleri", "pittur", "dipint", "pintur"]
     /// What a painting is on or in when it is no oil painting.
@@ -290,6 +313,48 @@ enum Paint {
     /// wierzchu"”). The others keep at least `ground` of the picture.
     static let touch = 44.0
     static let ground = 0.55
+
+    /// How much of an oil paint's height the bar shows (`OilLight.shade`):
+    /// the thick paint of sketch 30 is right for a Van Gogh and wrong for
+    /// a panel painted smooth (Mateusz 2026-11-12 13:46: „"3d" farby
+    /// olejnej jest zbyt duże, trochę musimy je uspokoić. Co prawda
+    /// świetnie wygląda np. u Van Gogha, ale źle sprawdza się w baroku czy
+    /// gotyku. chyba że jesteśmy w stanie to zróżnicować i dostosować do
+    /// obrazu (tego jak gładko czy ostro jest malowany)?”).
+    /// `smooth`: tempera and the old masters' glazes; `even`: the first
+    /// half of the 19th century; `plain`: a work that says nothing of its
+    /// time; `loose`: the Impressionists' years; `late`: after them;
+    /// `thick`: a style known for its paint.
+    static let calm = (smooth: 0.3, even: 0.45, plain: 0.55, loose: 0.75, late: 0.9, thick: 1.0)
+    /// Styles by the paint they are known for, as museums write them (a
+    /// word's beginning, lower case): the thick ones are asked first,
+    /// „post-impressionism” holds „impressionism”.
+    private static let thickly = ["post-impression", "postimpression", "postimpresjon", "expression", "ekspresjon", "fauv", "fowi", "impasto"]
+    private static let loosely = ["impression", "impresjon", "pointill", "puentyl", "divisionis", "dywizjon", "macchia", "barbizon"]
+    private static let smoothly = ["gothic", "gotyk", "gotyc", "medieval", "średniowiecz", "byzant", "bizant", "renaissance", "renesans",
+                                   "manneris", "manieryzm", "baroque", "barok", "golden age", "rococo", "rokoko", "classic", "klasycy",
+                                   "academic", "akadem", "biedermeier", "nazaren", "pre-raphael", "prerafael", "surreal", "hyperreal",
+                                   "hiperreal", "photoreal", "fotoreal", "precision", "new objectivity", "neue sachlichkeit"]
+
+    /// The height of a work's paint, from what its record says of the way
+    /// it is painted: its style where a museum names one, tempera, else
+    /// its year. Only a guess by the time's habit (a late Rembrandt or a
+    /// Hals is thicker than his century), yet nearer than one height for
+    /// every work; the picture itself is not asked: at a reproduction's
+    /// size craquelure and canvas read as brushwork.
+    static func relief(year: Int?, styles: [String] = [], medium: String = "") -> Double {
+        let said = styles.joined(separator: " ").lowercased()
+        func names(_ words: [String]) -> Bool { words.contains { said.contains($0) } }
+        if names(thickly) { return calm.thick }
+        if names(loosely) { return calm.loose }
+        let paint = medium.lowercased()
+        if names(smoothly) || paint.contains("temper") { return calm.smooth }
+        guard let year else { return calm.plain }
+        if year < 1800 { return calm.smooth }
+        if year < 1860 { return calm.even }
+        if year < 1885 { return calm.loose }
+        return calm.late
+    }
 
     /// Which of the colours are accents on a bar `width` wide: the
     /// smallest first, while enough of the picture stays under them and
@@ -772,10 +837,13 @@ enum OilLight {
     static let steep = 0.95
 
     /// `height`, `cover` and the paint's colour a pixel each → the picture.
+    /// `relief`: how much of the paint's height shows (`Paint.relief`):
+    /// 1 the thick paint of sketch 30, less a smoother hand.
     static func shade(height: [Float], red: [Float], green: [Float], blue: [Float], cover: [Float],
-                      wide: Int, high: Int, dark: Bool) -> PaintFrame {
+                      wide: Int, high: Int, dark: Bool, relief: Double = 1) -> PaintFrame {
         var out = PaintFrame(wide: wide, high: high)
         let S = Double(Paint.scale), L = light
+        let steep = Self.steep * relief, thick = 0.45 + 0.55 * relief
         var mid = (L.0, L.1, L.2 + 1)
         let long = (mid.0 * mid.0 + mid.1 * mid.1 + mid.2 * mid.2).squareRoot()
         mid = (mid.0 / long, mid.1 / long, mid.2 / long)
@@ -792,7 +860,7 @@ enum OilLight {
                     sh = 0.55 * cov(x - Int((0.7 * d).rounded()), y - Int((1.1 * d).rounded()))
                         + 0.25 * cov(x - Int((1.3 * d).rounded()), y - Int((1.9 * d).rounded()))
                         + 0.2 * cov(x - Int((0.4 * d).rounded()), y - Int((0.6 * d).rounded()))
-                    sh *= (dark ? 0.34 : 0.17) * (1 - a)
+                    sh *= (dark ? 0.34 : 0.17) * (1 - a) * thick
                 }
                 if a <= 0, sh <= 0 { continue }
                 if a <= 0 {
@@ -806,7 +874,7 @@ enum OilLight {
                 let nl = (gx * gx + gy * gy + 1).squareRoot(), nx = -gx / nl, ny = -gy / nl, nz = 1 / nl
                 let dif = max(0, nx * L.0 + ny * L.1 + nz * L.2)
                 let spec = pow(max(0, nx * mid.0 + ny * mid.1 + nz * mid.2), 18)
-                let lit = 0.74 + 0.5 * dif, gl = 255 * 0.07 * spec
+                let lit = 0.74 + 0.5 * dif, gl = 255 * 0.07 * spec * relief
                 let r = min(255, Double(red[k]) * lit + gl), g = min(255, Double(green[k]) * lit + gl), b = min(255, Double(blue[k]) * lit + gl)
                 // At its edge the paint is over its own shadow.
                 let al = a + (1 - a) * sh
@@ -843,6 +911,8 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
     private let shares: [PaintShare]
     private let seed: Double
     private let dark: Bool
+    /// How much of the paint's height shows (`Paint.relief`).
+    private let relief: Double
     /// A paint's swatch: the paper round it soaks a little of its oil up.
     private let soaks: Bool
     private var laid: [Laid]?
@@ -900,10 +970,11 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
         var red: [Float] = [], green: [Float] = [], blue: [Float] = []
     }
 
-    init(shares: [PaintShare], width: Double, seed: Int, dark: Bool) {
+    init(shares: [PaintShare], width: Double, seed: Int, dark: Bool, relief: Double = Paint.calm.plain) {
         self.shares = shares
         self.seed = Double(seed)
         self.dark = dark
+        self.relief = relief
         soaks = false
         self.width = width
         wide = Int((width + 2 * Paint.pad).rounded()) * Paint.scale
@@ -922,10 +993,11 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
     /// Wokół nich tło może trochę nasiąkać jak przy farbach olejnych”).
     /// A likely paint, not one the sources name, is as big a touch
     /// (18:39: „zawsze duże (nawet gdy niepewne)”).
-    init(touch rgb: [Double], index: Int, seed: Int, dark: Bool) {
+    init(touch rgb: [Double], index: Int, seed: Int, dark: Bool, relief: Double = Paint.calm.plain) {
         shares = [PaintShare(rgb: rgb, weight: 1)]
         self.seed = Double(seed + 131 + 9 * index)
         self.dark = dark
+        self.relief = relief
         soaks = true
         width = Paint.swatch
         wide = Int(Paint.swatch + 2 * Paint.pad) * Paint.scale
@@ -1157,7 +1229,7 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
         if soaks {
             let paint = painted(laid, age: age)
             out = OilLight.shade(height: paint.height, red: paint.red, green: paint.green, blue: paint.blue, cover: paint.cover,
-                                 wide: wide, high: high, dark: dark)
+                                 wide: wide, high: high, dark: dark, relief: relief)
             soak(&out, cover: paint.cover, age: age - last)
         } else {
             if stain == nil { stain = stained(painted(laid, age: length)) }
@@ -1166,7 +1238,7 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
             } else {
                 let paint = painted(laid, age: age)
                 out = OilLight.shade(height: paint.height, red: paint.red, green: paint.green, blue: paint.blue, cover: paint.cover,
-                                     wide: wide, high: high, dark: dark)
+                                     wide: wide, high: high, dark: dark, relief: relief)
                 if age >= last { wet = out }
             }
             if let stain { soak(&out, stain: stain, age: age) }
@@ -1250,6 +1322,13 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
 
     /// How far out of the bar's paint its oil gets, in points (the blur's reach).
     static let seep = 4.0
+    /// The stain when it has stopped: how far out of the paint it has
+    /// got (0: not at all … 0.5: as far as the blur reaches) and how
+    /// strong it is at the most, on light paper and on dark. Smaller and
+    /// fainter than it was at first (0.36; 0.24 and 0.2): Mateusz
+    /// 2026-11-12 13:46: „tłusta plama pod farbą olejną rozlewa się za
+    /// bardzo. trochę mniejsza / delikatniejsza”.
+    static let stained = (out: 0.22, most: (light: 0.15, dark: 0.13))
 
     /// What the bar's paint, all of it down, leaves in the paper.
     private func stained(_ paint: Down) -> Stain {
@@ -1275,7 +1354,7 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
     private func soak(_ out: inout PaintFrame, stain: Stain, age: Double) {
         let S = Double(Paint.scale)
         let oil = dark ? [128.0, 112, 84] : [170.0, 148, 104], share = dark ? 0.5 : 0.36
-        let most = dark ? 0.2 : 0.24
+        let most = dark ? Self.stained.most.dark : Self.stained.most.light
         // When the pull over a place is down: they go from the left.
         let sweep = pulls.filter { !$0.on }.map { $0.at + $0.takes }.max() ?? 0
         for k in 0..<(wide * high) {
@@ -1287,7 +1366,7 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
             let down = sweep * min(1, max(0, x / max(1, width))) + Self.stroke * 0.5
             let soaked = Paint.ease((age - down - Self.lag) / Self.soak)
             if soaked <= 0 { continue }
-            let far = 0.5 - soaked * (0.36 + Double(stain.wander[k]))
+            let far = 0.5 - soaked * (Self.stained.out + Double(stain.wander[k]))
             let wet = Paint.step(far - 0.035, far + 0.035, close)
             if wet <= 0 { continue }
             let rim = 1 - Paint.step(far + 0.02, far + 0.16, close)
@@ -1332,7 +1411,7 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
         let S = Double(Paint.scale), paint = shares[0].rgb
         let oil = dark ? [128.0, 112, 84] : [170.0, 148, 104], share = dark ? 0.5 : 0.36
         let stain = (0..<3).map { paint[$0] * share + oil[$0] * (1 - share) }
-        let most = dark ? 0.2 : 0.24
+        let most = dark ? Self.stained.most.dark : Self.stained.most.light
         for k in 0..<(wide * high) {
             let close = Double(near[k])
             if close <= 0.01 { continue }
@@ -1340,7 +1419,7 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
             if over >= 0.995 { continue }
             let x = (Double(k % wide) + 0.5) / S, y = (Double(k / wide) + 0.5) / S
             // It gets further in some places than in others.
-            let far = 0.5 - soaked * (0.36 + 0.12 * (Paint.noise(x / 5, y / 5, 171 + seed) - 0.5) + 0.05 * (Paint.noise(x / 1.6, y / 1.6, 173 + seed) - 0.5))
+            let far = 0.5 - soaked * (Self.stained.out + 0.12 * (Paint.noise(x / 5, y / 5, 171 + seed) - 0.5) + 0.05 * (Paint.noise(x / 1.6, y / 1.6, 173 + seed) - 0.5))
             let wet = Paint.step(far - 0.035, far + 0.035, close)
             if wet <= 0 { continue }
             // A little more of it where it stopped.

@@ -1124,8 +1124,9 @@ struct ItemDetailView: View {
     /// The work's colours as a bar in its own technique, there at once
     /// and with no shares under it (Mateusz 2026-11-12 10:47: „bez
     /// procentów”, „bez ruchu, od razu gotowy”); the flat strip for a
-    /// work whose technique says nothing („puste pole techniki -
-    /// wektorowy pasek, ale bez procentów”), none for a sculpture
+    /// work whose technique is none of those painted („wektorowy pasek,
+    /// ale bez procentów”; a work that names no technique at all is taken
+    /// for a painting since 12:25, `PaintStyle.of`), none for a sculpture
     /// („rzeźba - bez paska”).
     @ViewBuilder
     private func palette(_ item: Item) -> some View {
@@ -1142,7 +1143,7 @@ struct ItemDetailView: View {
             if bare {
                 EmptyView()
             } else if let style = PaintStyle.of(item), !PaintedStrip.shares(item.colors).isEmpty {
-                PaintedStrip(swatches: item.colors, style: style, seed: Paint.seed(item.id), whole: true)
+                PaintedStrip(swatches: item.colors, style: style, seed: Paint.seed(item.id), whole: true, relief: Paint.relief(item))
             } else {
                 PaletteStrip(swatches: item.colors, height: Paint.bar, cornerRadius: 6)
             }
