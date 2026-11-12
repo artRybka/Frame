@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -31,6 +32,15 @@ MODEL = "gemini-nano-banana-2.1"
 URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
 MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 REVISION = "2026-05-20"
+#: Google's Batch: questions in the request itself (generateContent's
+#: shape), answered within a day at half the price.
+BATCH_URL = f"{MODELS_URL}/{MODEL}:batchGenerateContent"
+BATCHES_URL = "https://generativelanguage.googleapis.com/v1beta"
+#: A batch's questions in the request may weigh this much at most (Google:
+#: 20 MB).
+BATCH_BYTES = 19_000_000
+#: The Batch's price, a share of the one asked at once.
+BATCH_SHARE = 0.5
 #: USD per million tokens: what goes in, text and thinking out, picture out
 #: (ai.google.dev/pricing, 2026-11-12). A picture at 1K is 1120 tokens.
 PRICE = (1.50, 7.50, 30.0)
@@ -56,6 +66,10 @@ class NotDrawn(Exception):
     def __init__(self, message: str, code: str = "") -> None:
         super().__init__(message)
         self.code = code
+
+
+class Busy(NotDrawn):
+    """Google stayed busy (429, 5xx) through every try: ask again later."""
 
 
 @dataclass(frozen=True)
@@ -93,6 +107,89 @@ def cost(usage: dict[str, Any]) -> float:
     said += usage.get("total_thought_tokens", 0)
     spent = usage.get("total_input_tokens", 0) * into + said * text + pictured * picture
     return round(spent / 1e6, 4)
+
+
+def batch_cost(usage: dict[str, Any]) -> float:
+    """What a batch's answer cost (generateContent's ``usageMetadata``), at
+    the Batch's price."""
+    into, text, picture = PRICE
+    pictured = sum(
+        part.get("tokenCount", 0)
+        for part in usage.get("candidatesTokensDetails") or []
+        if str(part.get("modality", "")).lower() == "image"
+    )
+    said = max(usage.get("candidatesTokenCount", 0) - pictured, 0)
+    said += usage.get("thoughtsTokenCount", 0)
+    spent = usage.get("promptTokenCount", 0) * into + said * text + pictured * picture
+    return round(spent * BATCH_SHARE / 1e6, 4)
+
+
+def _jpeg(img: Image.Image) -> str:
+    out = io.BytesIO()
+    img.convert("RGB").save(out, "JPEG", quality=92)
+    return base64.b64encode(out.getvalue()).decode()
+
+
+def _request(ask: Ask) -> dict[str, Any]:
+    """One question as generateContent takes it."""
+    parts: list[dict[str, Any]] = [{"text": ask.prompt}]
+    parts += [{"inline_data": {"mime_type": "image/jpeg", "data": _jpeg(p)}} for p in ask.pictures]
+    return {
+        "contents": [{"role": "user", "parts": parts}],
+        "generation_config": {
+            "responseModalities": ["IMAGE"],
+            "imageConfig": {"imageSize": ask.size},
+        },
+    }
+
+
+def _state(raw: dict[str, Any]) -> str:
+    """A batch's state, the last word of Google's ("BATCH_STATE_SUCCEEDED"
+    or "JOB_STATE_SUCCEEDED": "SUCCEEDED")."""
+    meta = raw.get("metadata") if isinstance(raw.get("metadata"), dict) else raw
+    state = str((meta or {}).get("state") or "")
+    return state.rsplit("_", 1)[-1] if state else ""
+
+
+def _answers(node: Any) -> list[dict[str, Any]]:
+    """A finished batch's answers, wherever Google put them (``response``
+    or ``metadata.output``, under ``inlinedResponses`` once or twice)."""
+    if isinstance(node, dict):
+        inlined = node.get("inlinedResponses")
+        if isinstance(inlined, list):
+            return [a for a in inlined if isinstance(a, dict)]
+        if isinstance(inlined, dict):
+            return _answers(inlined)
+        for key in ("response", "output", "metadata", "dest"):
+            found = _answers(node.get(key))
+            if found:
+                return found
+    return []
+
+
+def _drawn(answer: dict[str, Any]) -> tuple[Image.Image, float] | NotDrawn:
+    """One answer of a batch: its picture and cost, or why there is none."""
+    error = answer.get("error")
+    if isinstance(error, dict):
+        words = (error.get(name) for name in ("status", "reason", "code"))
+        code = next((w for w in words if isinstance(w, str) and not w.isdigit()), "")
+        return NotDrawn(f"Google: {str(error.get('message') or error)[:300]}", code)
+    response = answer.get("response") or {}
+    usd = batch_cost(response.get("usageMetadata") or {})
+    for candidate in response.get("candidates") or []:
+        for part in (candidate.get("content") or {}).get("parts") or []:
+            data = (part.get("inlineData") or part.get("inline_data") or {}).get("data")
+            if isinstance(data, str):
+                try:
+                    img = Image.open(io.BytesIO(base64.b64decode(data)))
+                    img.load()
+                except (OSError, ValueError) as err:
+                    return NotDrawn(f"Google's picture cannot be read: {err}")
+                return img.convert("RGB"), usd
+    reasons = [str(c.get("finishReason") or "") for c in response.get("candidates") or []]
+    blocked = (response.get("promptFeedback") or {}).get("blockReason")
+    code = next((r for r in [*reasons, str(blocked or "")] if r and r != "STOP"), "")
+    return NotDrawn("Google's answer has no picture", code.lower())
 
 
 def _block(img: Image.Image) -> dict[str, Any]:
@@ -187,8 +284,34 @@ class Painter:
         """Hands the questions to Google's Batch (answered within a day, at
         half the price): the batch's name, to ask :meth:`batched` with.
         Raises :class:`AiUnavailable` as :meth:`paint` does (no key, the
-        month's limit, the key's trouble)."""
-        raise NotImplementedError
+        month's limit, the key's trouble), ValueError when the questions
+        weigh more than Google takes in one request (:data:`BATCH_BYTES`:
+        fewer at a time) or have names twice."""
+        key = self.config.gemini_key
+        if not key:
+            raise AiUnavailable("no Google API key")
+        names = [ask.name for ask in asks]
+        if not names or len(set(names)) != len(names):
+            raise ValueError("a batch needs questions, each under a name of its own")
+        self.claude.check_budget()
+        requests = [{"request": _request(a), "metadata": {"key": a.name}} for a in asks]
+        weight = sum(len(json.dumps(r)) for r in requests)
+        if weight > BATCH_BYTES:
+            raise ValueError(
+                f"a batch of {len(asks)} questions weighs {weight / 1e6:.1f} MB, "
+                f"Google takes {BATCH_BYTES / 1e6:.0f} MB at most: send fewer at a time"
+            )
+        body = {
+            "batch": {
+                "display_name": f"frame-{kind}",
+                "input_config": {"requests": {"requests": requests}},
+            }
+        }
+        answer = self._send("post", BATCH_URL, key, json=body)
+        name = answer.json().get("name")
+        if not isinstance(name, str) or not name.startswith("batches/"):
+            raise NotDrawn(f"Google's batch has no name: {answer.text[:200]}")
+        return name
 
     def batched(
         self, kind: str, batch: str
@@ -197,5 +320,51 @@ class Painter:
         what it cost, or why there is none; None while Google is at it.
         What they cost is counted as ``kind`` once, when they are read.
         Raises :class:`NotDrawn` when the batch itself is lost (expired,
-        cancelled, unknown)."""
-        raise NotImplementedError
+        cancelled, unknown), :class:`AiUnavailable` for the key's trouble."""
+        key = self.config.gemini_key
+        if not key:
+            raise AiUnavailable("no Google API key")
+        try:
+            answer = self._send("get", f"{BATCHES_URL}/{batch}", key)
+        except (Busy, httpx.HTTPError):
+            return None  # looked at again next time
+        except NotDrawn as err:
+            raise NotDrawn(f"batch {batch}: {err}", err.code or "lost") from err
+        raw = answer.json()
+        state = _state(raw)
+        if state in ("PENDING", "RUNNING", "UNSPECIFIED", ""):
+            return None
+        if state != "SUCCEEDED":
+            raise NotDrawn(f"batch {batch}: {state.lower()}", state.lower())
+        found: dict[str, tuple[Image.Image, float] | NotDrawn] = {}
+        spent = 0.0
+        for at, one in enumerate(_answers(raw)):
+            name = str((one.get("metadata") or {}).get("key") or at)
+            drawn = _drawn(one)
+            if not isinstance(drawn, NotDrawn):
+                spent += drawn[1]
+            found[name] = drawn
+        self.claude.spending.add(kind, round(spent, 4))
+        return found
+
+    def _send(self, method: str, url: str, key: str, **kw: Any) -> httpx.Response:
+        """A request of the Batch, asked again while Google is busy. Raises
+        as :meth:`paint` does; :class:`NotDrawn` for other refusals."""
+        headers = {"x-goog-api-key": key}
+        answer = None
+        with self.http() as http:
+            for attempt in range(TRIES):
+                answer = http.request(method.upper(), url, headers=headers, **kw)
+                if answer.status_code not in AGAIN or attempt == TRIES - 1:
+                    break
+                time.sleep(4.0 * (attempt + 1))
+        assert answer is not None
+        if answer.status_code == 402:
+            raise NoCredit("Google: the key's prepaid credit is used up")
+        if answer.status_code in (401, 403):
+            raise GeminiRejected("Google did not accept the key")
+        if answer.status_code >= 400:
+            said = f"Google answered {answer.status_code}: {answer.text[:300]}"
+            busy = answer.status_code in AGAIN
+            raise (Busy if busy else NotDrawn)(said, _code(answer))
+        return answer
