@@ -51,6 +51,7 @@ from ..library.duplicates import work_key
 from ..library.hosts import Resting, urgent_call
 from ..library.images import Gone
 from ..library.importer import ALL
+from ..library.low_res import low_side
 from ..library.models import Framing, SharperCopy
 from ..library.museums import MUSEUMS
 from ..library.repo import Hidden, SortKey, now_iso
@@ -106,6 +107,9 @@ class RemoteItem(BaseModel):
     aspect: float | None = None
     #: Its picture can be looked at far closer, in tiles ("Pod lupą").
     zoom: bool = False
+    #: Its picture's long side when known and small for the frame
+    #: (``low_res.low_side``), else 0.
+    low_side: int = 0
 
 
 def remote_items(
@@ -167,6 +171,7 @@ def remote_items(
                 twin=twin,
                 aspect=svc.importer.known_aspect(item),
                 zoom=zooms(item),
+                low_side=low_side(item),
             ),
         )
     return list(found.values())
@@ -557,6 +562,9 @@ class SharperView(BaseModel):
     held_by: str = ""
     #: ``Item.held_at``: its key.
     held_at: str = ""
+    #: The picture's long side when it is small for the frame
+    #: (``low_res.low_side``), else 0: the card's mark.
+    low_side: int = 0
 
 
 @router.post("/library/items/{item_id:item}/sharpen", response_model=SharperView)
@@ -580,6 +588,7 @@ async def sharpen_item(
         sharper=copy,
         width=size[0],
         height=size[1],
+        low_side=low_side(stored or item, (size[0], size[1]) if size[0] else None),
         held_by=svc.holders.fill(stored or item).held_by,
         held_at=svc.holders.fill(stored or item).held_at,
     )

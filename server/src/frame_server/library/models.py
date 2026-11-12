@@ -364,14 +364,21 @@ class ItemSummary(BaseModel):
     #: Its picture can be looked at far closer, in tiles ("Pod lupą":
     #: ``zoom.zooms``).
     zoom: bool = False
+    #: Its picture's long side when it is known and small for the frame
+    #: (``low_res.low_side``), else 0: a mark after the title.
+    low_side: int = 0
 
     @classmethod
     def of(cls, item: Item) -> ItemSummary:
+        from .low_res import low_side
         from .photo_text import photo_line, photo_title
         from .zoom import zooms
 
-        summary = cls(**item.model_dump(include=set(cls.model_fields) - {"subtitle", "zoom"}))
+        summary = cls(
+            **item.model_dump(include=set(cls.model_fields) - {"subtitle", "zoom", "low_side"})
+        )
         summary.zoom = zooms(item)
+        summary.low_side = low_side(item)
         if item.sharper is not None:
             summary.picture = item.sharper.item_id
         if item.kind == ItemKind.PHOTO:

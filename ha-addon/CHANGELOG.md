@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.145.70
+
+- Dzieła o niskiej rozdzielczości mają mały bursztynowy znacznik
+  (dziewięć kropek rastra) tuż po tytule na miniaturach playlist, w
+  Szukaj i w Odkrywaj, a na karcie dzieła plakietkę z liczbą pikseli
+  obok roku i napis
+  „Niska rozdzielczość” przy „Zdjęcie dzieła” (dotknięcie, jak dotąd,
+  szuka lepszej kopii). Znacznik dostaje zdjęcie, którego dłuższy bok
+  ma mniej niż 1600 px, czyli ramka musi je powiększyć co najmniej
+  1,6×. Liczy się tylko rozmiar znany na pewno: muzea, które go nie
+  podają (Met, Rijksmuseum, Luwr…), dostają znacznik dopiero po
+  pobraniu oryginału, a dzieła z playlist i Ulubionych mają go zawsze.
+
 ## 1.145.69
 
 - Playlisty: dzieła w playliście można sortować. W menu „…” jest

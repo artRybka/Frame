@@ -722,17 +722,14 @@ class ImageCache:
         return None if known is None else (known[0], known[1])
 
     def long_side(self, item: Item) -> int | None:
-        """The long side of the picture ``item`` is shown from: as its
-        source or sharper copy says (:func:`said_side`), else as its
-        original came when downloaded here; None when neither is known
-        (never a thumbnail's size)."""
-        said = said_side(item)
-        if said is not None:
-            return said
-        known = self.known_size(item)
-        if known is not None and known[0] > 0 and known[1] > 0:
-            return max(known)
-        return None
+        """The long side of the picture ``item`` is shown from, when it is
+        known: :func:`said_side`, else the original's as downloaded
+        (:meth:`known_size`); never a thumbnail's. The mark of a small
+        picture (``low_res``) and the order by quality read it."""
+        side = said_side(item)
+        if side is None and (size := self.known_size(item)) is not None and min(size) > 0:
+            side = max(size)
+        return side
 
     def source_size(self, item: Item) -> tuple[int, int, int] | None:
         """The original as its source gave it: (width, height, bytes; 0 when
