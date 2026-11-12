@@ -76,9 +76,53 @@ enum PrintPaint {
     /// picture and misses about a fifth of such works (a yellowed sheet,
     /// a mount); the bar shows these colours, so it goes by them too.
     static func oneColour(_ colours: [[Double]]) -> Bool {
-        let tinted = colours.map(lab).filter { ($0.a * $0.a + $0.b * $0.b).squareRoot() >= faint }
-        guard !tinted.isEmpty else { return true }
-        if tinted.contains(where: { ($0.a * $0.a + $0.b * $0.b).squareRoot() > vivid }) { return false }
+        patches(colours.map { PaintShare(rgb: $0, weight: 1) })?.contains(true) == false
+    }
+
+    /// Which of a work's colours are patches of colour beside the tones
+    /// of its one colour (Mateusz 2026-11-12 11:35, of a woodblock print
+    /// in faded colours that was given a scale of brown tones: „jeżeli
+    /// pojawią się plama barwna, to nasza skala koloru musi ją
+    /// uwzględniać”); nil when no part of the work is one colour's tones.
+    /// One colour's tones are mixtures of its paper and its ink: they lie
+    /// between the two (within `apart` of the line from one to the
+    /// other), none is vivid, and those with a tint are of one hue. The
+    /// pink of a faded print is of the hue of its yellowed paper nearly,
+    /// and far off that line. Of all the papers and inks the work's
+    /// colours could be, those that make the most of it tones.
+    static func patches(_ shares: [PaintShare]) -> [Bool]? {
+        let labs = shares.map { lab($0.rgb) }
+        var best: [Bool]?, most = 0.0
+        for paper in labs.indices {
+            for ink in labs.indices where labs[paper].light >= labs[ink].light {
+                let from = labs[paper], to = labs[ink]
+                let off = labs.map { colour -> Bool in
+                    if (colour.a * colour.a + colour.b * colour.b).squareRoot() > vivid { return true }
+                    let part = from.light > to.light ? min(1, max(0, (from.light - colour.light) / (from.light - to.light))) : 0
+                    let a = colour.a - (from.a + (to.a - from.a) * part), b = colour.b - (from.b + (to.b - from.b) * part)
+                    return (a * a + b * b).squareRoot() > apart
+                }
+                let tones = labs.indices.filter { !off[$0] }
+                let kept = tones.reduce(0) { $0 + shares[$1].weight }
+                guard kept > most, oneHue(tones.map { labs[$0] }) else { continue }
+                (best, most) = (off, kept)
+            }
+        }
+        return shares.isEmpty ? [] : best
+    }
+
+    /// Whether a work is one colour's tones for the most part: patches of
+    /// colour (`patches`) are under `spotted` of it. Such a work is shown
+    /// as a scale of its tones in lines, with its patches printed on it.
+    static func mostlyOne(_ shares: [PaintShare]) -> Bool {
+        guard let off = patches(shares) else { return false }
+        let total = max(shares.reduce(0) { $0 + $1.weight }, 0.000_001)
+        return shares.indices.filter { off[$0] }.reduce(0) { $0 + shares[$1].weight } / total < spotted
+    }
+
+    /// Whether the colours that have a tint are all of one hue.
+    private static func oneHue(_ colours: [(light: Double, a: Double, b: Double)]) -> Bool {
+        let tinted = colours.filter { ($0.a * $0.a + $0.b * $0.b).squareRoot() >= faint }
         let hue = atan2(tinted.reduce(0) { $0 + $1.b }, tinted.reduce(0) { $0 + $1.a })
         return tinted.allSatisfy { colour in
             var away = abs(atan2(colour.b, colour.a) - hue)
@@ -89,8 +133,10 @@ enum PrintPaint {
 
     /// A colour fainter than this has no hue to speak of; one stronger
     /// than `vivid` is a colour of its own; how far (degrees) one hue's
-    /// tones lie apart.
-    static let faint = 0.03, vivid = 0.12, hues = 35.0
+    /// tones lie apart; how far off the line from its paper to its ink a
+    /// tone may lie; and the share of a work its patches of colour stay
+    /// under while it counts as one colour's.
+    static let faint = 0.03, vivid = 0.12, hues = 35.0, apart = 0.05, spotted = 0.3
 
     static func mixed(_ a: [Double], _ b: [Double], _ much: Double) -> [Double] {
         zip(a, b).map { $0 + ($1 - $0) * much }
@@ -223,6 +269,10 @@ final class LineStrip: PaintPainter, @unchecked Sendable {
     private let width: Double
     private let seed: Double
     private var sheet: PrintPaint.Sheet?
+    /// The patches of colour where they lie: the pixels each may reach and how much of its ink each takes.
+    private var blocks: [(left: Int, right: Int, top: Int, bottom: Int, much: [Float], rgb: [Float])] = []
+    /// The paper with all its patches printed.
+    private var stained: PrintPaint.Sheet?
     /// The paper's tooth, which a soft point does not reach the bottom of.
     private var tooth: [Float] = []
     /// The lines that are down, a picture for each direction, and how many they are.
@@ -233,6 +283,11 @@ final class LineStrip: PaintPainter, @unchecked Sendable {
     /// How long a line takes, and the breath before the lines are
     /// crossed, in lines.
     static let takes = 0.14, breath = 14.0
+    /// The lines over a patch of colour: how much thinner than its
+    /// lightness asks, and how close at the most; and when a patch is
+    /// printed: how long after the paper is there the first is begun, how
+    /// far apart they are, and how long one takes.
+    static let over = (thin: 0.5, most: 0.24), printed = (after: 0.05, apart: 0.2, takes: 0.26)
 
     /// How long the lines of `count` tones take: the same for every work
     /// of as many, however close its lines are.
@@ -246,12 +301,18 @@ final class LineStrip: PaintPainter, @unchecked Sendable {
         var cover: Double
         /// Which of the work's colours it is.
         var colour: Int
+        /// A patch of colour, not a tone of the work's one colour
+        /// (`PrintPaint.patches`): printed flat on the paper in its own
+        /// colour, with the lines going thinly over it.
+        var patch = false
     }
 
     struct Plan: Sendable {
         var tones: [Tone]
         var strokes: [LineStroke]
         var paper: [Double], ink: [Double]
+        /// The work's colours.
+        var colours: [[Double]] = []
         /// When the last line is down.
         var last: Double
 
@@ -280,14 +341,18 @@ final class LineStrip: PaintPainter, @unchecked Sendable {
         let hand = tool.hand, H = Paint.bar
         let light = shares.map { PrintPaint.lightness($0.rgb) }
         let order = shares.indices.sorted { light[$0] > light[$1] }
-        let paper = PrintPaint.mixed(shares[order[0]].rgb, [243, 235, 216], 0.82)
-        let ink = PrintPaint.mixed(shares[order[order.count - 1]].rgb, hand.black, 0.8)
-        let top = min(0.97, light[order[0]] + 0.13), bottom = min(light[order[order.count - 1]] - 0.16, 0.24)
+        // The paper and the ink are the one colour's: a patch of colour is neither.
+        let off = PrintPaint.patches(shares) ?? shares.map { _ in false }
+        let tonal = order.filter { !off[$0] }, first = tonal.first ?? order[0], last = tonal.last ?? order[order.count - 1]
+        let paper = PrintPaint.mixed(shares[first].rgb, [243, 235, 216], 0.82)
+        let ink = PrintPaint.mixed(shares[last].rgb, hand.black, 0.8)
+        let top = min(0.97, light[first] + 0.13), bottom = min(light[last] - 0.16, 0.24)
         let spans = Paint.spans(order.map { shares[$0] }, width: width)
         let tones = order.enumerated().map { k, i in
-            Tone(from: spans[k].0, to: spans[k].1, cover: min(0.93, max(0.05, (top - light[i]) / (top - bottom))), colour: i)
+            let cover = min(0.93, max(0.05, (top - light[i]) / (top - bottom)))
+            return Tone(from: spans[k].0, to: spans[k].1, cover: off[i] ? min(Self.over.most, Self.over.thin * cover) : cover, colour: i, patch: off[i])
         }
-        var plan = Plan(tones: tones, strokes: [], paper: paper, ink: ink, last: 0)
+        var plan = Plan(tones: tones, strokes: [], paper: paper, ink: ink, colours: shares.map(\.rgb), last: 0)
         var random = PaintRandom(seed + 91), at = 0.0
         for (k, degrees) in hand.sets.enumerated() {
             // What this direction's lines are to cover, the ones before it having covered what they can.
@@ -348,8 +413,27 @@ final class LineStrip: PaintPainter, @unchecked Sendable {
         if let sheet { return sheet }
         let made = PrintPaint.sheet(paper: plan.paper, width: width, seed: seed, plate: tool == .burin)
         sheet = made
+        let S = Double(PrintPaint.scale), pad = Paint.pad
+        var random = PaintRandom(Int(seed) + 77)
+        // A patch of colour is a block's impression (a crayon's under a pen or a pencil), a little out of register.
+        blocks = plan.tones.enumerated().filter { $0.element.patch }.map { index, tone in
+            let shift = (x: 1.2 * (random.next() * 2 - 1), y: 1.2 * (random.next() * 2 - 1))
+            let block = InkBlock(left: tone.from - InkBlock.over + shift.x, right: tone.to + InkBlock.over + shift.x,
+                                 top: shift.y, bottom: Paint.bar + shift.y, seed: seed + 13 * Double(index))
+            let left = max(0, Int((tone.from + shift.x - 4 + pad) * S)), right = min(wide - 1, Int((tone.to + shift.x + 4 + pad) * S))
+            let top = max(0, Int((shift.y - 3 + pad) * S)), bottom = min(high - 1, Int((Paint.bar + shift.y + 3 + pad) * S))
+            var much = [Float]()
+            if left <= right, top <= bottom {
+                much.reserveCapacity((right - left + 1) * (bottom - top + 1))
+                for j in top...bottom {
+                    for i in left...right {
+                        much.append(Float(block.ink((Double(i) + 0.5) / S - pad, (Double(j) + 0.5) / S - pad, press: tool == .burin ? .wood : .stone)))
+                    }
+                }
+            }
+            return (left, right, top, bottom, much, plan.colours[tone.colour].map { Float($0) })
+        }
         if tool == .pencil {
-            let S = Double(PrintPaint.scale)
             tooth = (0..<(wide * high)).map { q in
                 Float(0.42 + 0.5 * Paint.noise(Double(q % wide) / S / 0.45, Double(q / wide) / S / 0.45, 71 + seed))
             }
@@ -357,11 +441,39 @@ final class LineStrip: PaintPainter, @unchecked Sendable {
         return made
     }
 
+    /// The paper with its patches of colour as far as they are printed at `age`.
+    private func printed(_ paper: PrintPaint.Sheet, age: Double) -> PrintPaint.Sheet {
+        guard !blocks.isEmpty else { return paper }
+        let timing = Self.printed
+        let done = age >= PrintPaint.appear + timing.after + Double(blocks.count - 1) * timing.apart + timing.takes
+        if done, let stained { return stained }
+        var paper = paper
+        let sheer = Float(InkStrip.sheer)
+        for (index, block) in blocks.enumerated() {
+            let there = Float(Paint.ease((age - PrintPaint.appear - timing.after - Double(index) * timing.apart) / timing.takes))
+            if there <= 0 || block.left > block.right || block.top > block.bottom { continue }
+            var q = 0
+            for j in block.top...block.bottom {
+                for i in block.left...block.right {
+                    let much = block.much[q] * there
+                    q += 1
+                    if much <= 0 { continue }
+                    let k = j * wide + i
+                    paper.red[k] += (paper.red[k] * block.rgb[0] / 255 * sheer + block.rgb[0] * (1 - sheer) - paper.red[k]) * much
+                    paper.green[k] += (paper.green[k] * block.rgb[1] / 255 * sheer + block.rgb[1] * (1 - sheer) - paper.green[k]) * much
+                    paper.blue[k] += (paper.blue[k] * block.rgb[2] / 255 * sheer + block.rgb[2] * (1 - sheer) - paper.blue[k]) * much
+                }
+            }
+        }
+        if done { stained = paper }
+        return paper
+    }
+
     func frame(age: Double) -> PaintFrame {
         if age >= length, let whole { return whole }
         var out = PaintFrame(wide: wide, high: high)
         guard age > 0, !plan.tones.isEmpty else { return out }
-        let sheet = prepare(), n = wide * high, S = Double(PrintPaint.scale), pad = Paint.pad, hand = tool.hand
+        let sheet = printed(prepare(), age: age), n = wide * high, S = Double(PrintPaint.scale), pad = Paint.pad, hand = tool.hand
         // The lines that are down stay down: only those begun since are drawn again.
         let done = plan.strokes.prefix { $0.at + Self.takes <= age }.count
         if laid.isEmpty || done < down {

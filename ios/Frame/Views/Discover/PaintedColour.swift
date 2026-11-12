@@ -20,8 +20,13 @@ extension PaintStyle {
         // The household's own photographs.
         if item.kind == .photo { return .photo }
         let colours = item.colors.compactMap { Paint.rgb($0.hex) }
+        // One colour's tones for the most part: a patch of colour or two
+        // beside them is printed on the scale of tones, not a reason for
+        // a bar of inks (Mateusz 2026-11-12 11:35: „jeżeli pojawią się
+        // plama barwna, to nasza skala koloru musi ją uwzględniać”).
+        let shares = item.colors.compactMap { swatch in Paint.rgb(swatch.hex).map { PaintShare(rgb: $0, weight: max(swatch.weight, 0)) } }
         return of(medium: item.medium, classification: item.classification,
-                  mono: item.colorTags.contains("monochrome") || (!colours.isEmpty && PrintPaint.oneColour(colours)), warm: warm(colours))
+                  mono: item.colorTags.contains("monochrome") || (!shares.isEmpty && PrintPaint.mostlyOne(shares)), warm: warm(colours))
     }
 
     /// A sculpture: no bar of colours.
