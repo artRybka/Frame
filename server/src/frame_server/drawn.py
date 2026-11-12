@@ -395,6 +395,8 @@ class DrawnSheets:
         except AiUnavailable as err:
             log.info("sheets not handed to the batch now: %s", err)
             self._rest(LIMIT)
+        except ValueError:  # too much for one batch: its asker hands over less
+            raise
         except Exception as err:  # the network, Google's trouble
             log.warning("sheets not handed to the batch: %s", err)
             self._rest(None, BATCH_LOOK)
@@ -421,7 +423,13 @@ class DrawnSheets:
                 continue
             asks.append(Ask(stem, study_prompt(view.inside()), [work]))
             takes.append([item.id, self.key(view)])
-        name = self._hand(asks) if asks else None
+        name = None
+        while asks:
+            try:
+                name = self._hand(asks)
+                break
+            except ValueError:  # more than Google takes at once: half of them
+                asks, takes = asks[: len(asks) // 2], takes[: len(takes) // 2]
         if name is not None:
             self._set_batch({"round": "study", "name": name, "takes": takes, "cost": {}})
             self._looked = time.monotonic()
@@ -479,7 +487,12 @@ class DrawnSheets:
         if not asks:
             self._set_batch(None)
             return
-        name = self._hand(asks)
+        try:
+            name = self._hand(asks)
+        except ValueError as err:
+            log.warning("the sheets' second round not handed to the batch: %s", err)
+            self._rest(None, BATCH_LOOK)
+            return
         if name is not None:
             self._set_batch({**state, "name": name})
             self._looked = time.monotonic()

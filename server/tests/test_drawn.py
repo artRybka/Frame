@@ -184,9 +184,9 @@ def test_the_model_is_asked_three_things_and_the_sheet_is_taken_apart() -> None:
     ):
         assert layer is not None
         img = Image.open(io.BytesIO(layer))
-        assert img.mode == "LA" and img.size == sheet.size
-        luma, alpha = (np.asarray(band) for band in img.split())
-        assert luma.max() == 0  # nothing but as much black as there is pencil
+        assert img.mode == "RGBA" and img.size == sheet.size
+        *rgb, alpha = (np.asarray(band) for band in img.split())
+        assert max(band.max() for band in rgb) == 0  # as much black as there is pencil
         ys, xs = np.nonzero(alpha > 120)
         assert len(xs) > 300
         if mark.title == "Horyzont":
@@ -201,7 +201,7 @@ def test_the_model_is_asked_three_things_and_the_sheet_is_taken_apart() -> None:
     assert [len(spots) for spots in sheet.numbers] == [1, 1, 1]
     for layer, [(x, y)] in zip(sheet.layers, sheet.numbers, strict=True):
         assert layer is not None
-        alpha = np.asarray(Image.open(io.BytesIO(layer)).split()[1])
+        alpha = np.asarray(Image.open(io.BytesIO(layer)).split()[3])
         px, py = round(x * sheet.size[0]), round(y * sheet.size[1])
         assert alpha[max(py - 6, 0) : py + 7, max(px - 6, 0) : px + 7].max() > 120
 
@@ -506,6 +506,22 @@ def test_saved_pages_go_through_the_batch_and_an_analysis_made_anew_at_once(
             "spill": 0.0215,
         }
         assert _step(svc) is False and len(stood.batches) == 2 and stood.calls == []
+        # More than Google takes at once: half as many are handed over.
+        full = stood.batch
+
+        def crowded(kind: str, asks: Any) -> str:
+            if len(asks) > 1:
+                raise ValueError("send fewer at a time")
+            return full(kind, asks)
+
+        svc.painter.batch = crowded  # type: ignore[method-assign]
+        take = (svc.library.get("met:1"), _shown(svc))
+        svc.drawn.saved = lambda: [take, take, take]  # type: ignore[method-assign]
+        assert svc.drawn._begin() is False and len(stood.batches[-1]) == 1
+        del svc.drawn.saved  # type: ignore[attr-defined]
+        svc.drawn._set_batch(None)
+        svc.painter.batch = full  # type: ignore[method-assign]
+        stood.batches.pop()
 
         # "Wykonaj ponowną analizę": the new take's sheet is drawn at once.
         svc.ai_config.set_key(GOOD_KEY)

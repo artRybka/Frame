@@ -75,7 +75,9 @@ actor DemoBackend: FrameBackend {
         keywordsPhotos: true, daily: true, searchWords: true, curator: true, twinsJudge: true, gatekeeper: true, audit: true, sentence: true, journey: true,
         reviewCount: 2, monthlyLimitUsd: 5, spentUsd: 0,
         keywordsProgress: .init(done: 0, waiting: 0, refused: 0, batchItems: 0, batchDone: 0, preparing: false),
-        plTextProgress: nil, error: nil
+        plTextProgress: nil, error: nil,
+        geminiKeySet: false, geminiKeyTail: nil, drawn: true, drawnUsd: 0.15, drawnBatchUsd: 0.075,
+        drawnWaiting: 0, drawnInBatch: 0, geminiError: nil
     )
     private var demoAsleep = false
     /// The picture "on its way" to the pretend frame, for the progress bar.
@@ -1043,6 +1045,12 @@ actor DemoBackend: FrameBackend {
             work.composition = .init(views: [DemoStudies.sketched(study.take, id: study.id)], points: [], lines: [])
             work.compositionSheet = DemoStudies.sheet(study.id)
         }
+        // "-demoDrawn YES": the sheet as a server with Google's key sends
+        // it, drawn by an image model (here a stand-in put together from
+        // the bundled sheet; `DemoStudies.drawn`).
+        if DemoStudies.drawnAsked, let take = work.composition?.views?.first {
+            work.compositionDrawn = DemoStudies.drawn(take, id: work.item.id)
+        }
         // CI screenshots: "-realSize 210x163" draws a big work's scale.
         let asked = (UserDefaults.standard.string(forKey: "realSize") ?? "").split(separator: "x").compactMap { Double($0) }
         work.size = asked.count == 2 ? .init(height: asked[0], width: asked[1]) : .init(height: 25.7, width: 37.9)
@@ -1825,6 +1833,20 @@ actor DemoBackend: FrameBackend {
         return aiValue
     }
 
+    func saveGeminiKey(_ key: String) async throws -> AiSettings {
+        aiValue.geminiKeySet = true
+        aiValue.geminiKeyTail = String(key.trimmingCharacters(in: .whitespaces).suffix(4))
+        aiValue.drawnWaiting = 12
+        return aiValue
+    }
+
+    func deleteGeminiKey() async throws -> AiSettings {
+        aiValue.geminiKeySet = false
+        aiValue.geminiKeyTail = nil
+        aiValue.drawnWaiting = 0
+        return aiValue
+    }
+
     func keywordsEstimate() async throws -> AiEstimate { AiEstimate(items: 1840, usd: 0.32) }
 
     func describeLibrary() async throws -> AiStarted {
@@ -1864,6 +1886,8 @@ actor DemoBackend: FrameBackend {
             url = Self.detail(path)
         case let .path(path) where path.hasPrefix("/demo/sheet/"):
             url = Self.sheet(path)
+        case let .path(path) where path.hasPrefix("/demo/drawn/"):
+            url = DemoStudies.drawnPart(path)
         case let .path(path):
             // "/demo/<id>?<presentation key>"; the key only makes the path change.
             let id = String(path.dropFirst("/demo/".count).prefix { $0 != "?" })
