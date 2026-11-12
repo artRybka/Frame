@@ -127,14 +127,19 @@ import numpy as np
 import numpy.typing as npt
 from PIL import Image
 
+from . import trace
+
 #: Pixels, as cv2 hands them about (its stubs know no dtypes).
 Array = npt.NDArray[Any]
 #: A stroke of the pen: its points (fractions of the picture), whether it
 #: keeps its corners, whether it closes.
 PenStroke = tuple[Sequence[tuple[float, float]], bool, bool]
+#: A line the pen draws: its points (fractions of the field), whether it
+#: keeps its corners, whether it closes, how heavy it is (0…1).
+PenLine = tuple[Sequence[tuple[float, float]], bool, bool, float]
 
 #: Raised when the look changes, so that sheets made before are made again.
-LOOK = 7
+LOOK = 8
 #: The sheet's longer side.
 LONG = 1500
 #: The app's page and ink (``Theme.paper``, ``Theme.ink``): light, dark.
@@ -236,6 +241,16 @@ WHITE_PAINT = (0.91, 0.89, 0.85)
 #: How much of the ink a stroke of the nib lays, and its width.
 NIB_INK = 0.66
 NIB = 3.3
+#: The lightest line of the drawing is this much of the nib's width (a
+#: detail; a form's heavy contour is the whole of it).
+NIB_LIGHT = 0.45
+#: The picture's own contours are drawn when it is at least this many
+#: pixels on its shorter side, and the model's strokes are drawn with them
+#: when they come to less line than this (in the picture's longer sides).
+DRAWN_SIDE = 160
+DRAWN_LEAST = 1.2
+# How many of the pen's lines an app is given to draw its layer along.
+PATHS = 64
 #: The darker parts are hatched here and there: what counts as dark (the
 #: darkest share of the picture, and at least this much under its middle
 #: value, of 1), the least such a part is (of the picture), the lines'
@@ -809,12 +824,57 @@ def _past(
     return found[int(rng.integers(len(found)))]
 
 
+def pen_lines(
+    picture: Image.Image, strokes: Sequence[PenStroke] = (), aside: Sequence[bool] = ()
+) -> list[PenLine]:
+    """What the pen draws of this picture (its field alone): the picture's
+    own contours (``trace.drawing``), exact where its subject is, which the
+    strokes of the one who saw it say (``aside``: which of them are not of
+    the subject). A picture that gives too little to draw (a fog) gets
+    those strokes themselves as well; with no strokes and no contours the
+    sheet is the stains alone."""
+    guide = [
+        (points, closed, not (at < len(aside) and aside[at]))
+        for at, (points, _, closed) in enumerate(strokes)
+    ]
+    src = np.asarray(picture.convert("RGB"))
+    try:
+        drawn = trace.drawing(src, guide) if min(src.shape[:2]) >= DRAWN_SIDE else []
+    except Exception:  # the measure fails: the strokes alone, as before it
+        drawn = []
+    lines: list[PenLine] = [(points, True, False, weight) for points, weight in drawn]
+    if trace.run(drawn, (src.shape[1], src.shape[0])) < DRAWN_LEAST:
+        lines = [(points, sharp, closed, 1.0) for points, sharp, closed in strokes] + lines
+    return lines
+
+
+def paths(lines: Sequence[PenLine], most: int = 10, count: int = PATHS) -> list[PenStroke]:
+    """The pen's lines roughly, in a few points each: what an app draws
+    the pen's layer along as the sheet draws itself. The first ``count``
+    of them (the forms come first): the small lines beside them come with
+    the shading, as whatever the strokes left does."""
+    out: list[PenStroke] = []
+    for points, sharp, closed, _ in lines[:count]:
+        at: Array = np.asarray(points, np.float32).reshape(-1, 1, 2)
+        fine = 0.004
+        while len(at) > most:
+            few = cv2.approxPolyDP(at, fine, closed)
+            if len(few) <= most:
+                at = few
+                break
+            fine *= 1.5
+        out.append(([(float(x), float(y)) for x, y in at.reshape(-1, 2)], sharp, closed))
+    return out
+
+
 def layers(
     picture: Image.Image,
     strokes: Sequence[PenStroke] = (),
     *,
     dark: bool = False,
     seed: int = 1,
+    aside: Sequence[bool] = (),
+    lines: Sequence[PenLine] | None = None,
 ) -> tuple[Image.Image, Image.Image]:
     """The picture (its field alone) as the sheet's two layers,
     :data:`LONG` pixels long: the stains on the app's page, and over them
@@ -1018,8 +1078,12 @@ def layers(
     # at a side goes on past the frame, as a hand does not stop on a line.
     line = np.zeros((h, wide), np.float32)
     free = np.zeros((h, wide), np.float32)
-    past = _past(strokes, (w, h), side, loose)
-    for at, (points, sharp, closed) in enumerate(strokes):
+    if lines is None:
+        lines = pen_lines(picture, strokes, aside)
+    past = _past(
+        [(points, sharp, closed) for points, sharp, closed, _ in lines], (w, h), side, loose
+    )
+    for at, (points, sharp, closed, weight) in enumerate(lines):
         pts = np.asarray(points, np.float32).reshape(-1, 2) * (w, h)
         if len(pts) < 2:
             continue
@@ -1029,7 +1093,8 @@ def layers(
         if past is not None and goes:
             pts = past[1]
         pts = pts + shift
-        _nib(free if goes else line, pts if sharp or len(pts) < 3 else _chaikin(pts), rng, NIB)
+        nib = NIB * (NIB_LIGHT + (1 - NIB_LIGHT) * weight)
+        _nib(free if goes else line, pts if sharp or len(pts) < 3 else _chaikin(pts), rng, nib)
     # (the stroke that goes on is not stopped by the field's edge at the sides)
     xs_wide = np.arange(wide, dtype=np.float32)[None, :]
     sides = ((xs_wide < side + SPILL_ROOT) | (xs_wide > side + w - 1 - SPILL_ROOT)).astype(
@@ -1052,10 +1117,12 @@ def render(
     *,
     dark: bool = False,
     seed: int = 1,
+    aside: Sequence[bool] = (),
+    lines: Sequence[PenLine] | None = None,
 ) -> Image.Image:
     """The sheet whole, the pen's layer laid on the stains, the field
     alone: for apps from before the two were sent apart."""
-    wash, pen = layers(picture, strokes, dark=dark, seed=seed)
+    wash, pen = layers(picture, strokes, dark=dark, seed=seed, aside=aside, lines=lines)
     whole = wash.convert("RGBA")
     whole.alpha_composite(pen)
     return field(whole.convert("RGB"))

@@ -205,10 +205,15 @@ def strokes(data: dict[str, Any] | None, img: Image.Image) -> list[Stroke] | Non
         )
         if stroke is not None:
             (rest if raw.get("temat") is False else subject).append(stroke)
-    found = [*subject, *rest[:MAX_GENERAL]][:MAX_STROKES]
+    found = [*subject, *(s.model_copy(update={"rest": True}) for s in rest[:MAX_GENERAL])]
+    found = found[:MAX_STROKES]
     if len(found) < MIN_STROKES:
         return None
-    laid = [s for s in map(_laid, _on_edges(img, found)) if s is not None]
+    laid = [
+        on.model_copy(update={"rest": drawn.rest})
+        for drawn, on in zip(found, map(_laid, _on_edges(img, found)), strict=True)
+        if on is not None
+    ]
     # A picture too soft to be measured (a fog, a sfumato) keeps the pen's
     # strokes as it drew them: better loose than none.
     return laid if len(laid) >= MIN_STROKES else found

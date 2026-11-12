@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.145.62
+
+- Studium dzieła, analiza kompozycji: rysunek piórkiem na arkuszu rysuje
+  dzieło, a nie kilka zaznaczeń. Serwer bierze kontury z samego obrazu:
+  znajduje jego krawędzie i prowadzi po nich linie, więc twarz, dłoń,
+  takielunek statku czy poręcz krzesła są dokładnie tam, gdzie są na
+  obrazie.
+- Rysunek jest szczegółowy przy temacie, a poza nim zostaje kilka długich
+  linii albo nic. Krawędź wśród wielu podobnych (fale, deszcz, faktura
+  pędzla) liczy się mniej niż samotny kontur, więc rysunek nie obrysowuje
+  wszystkiego. Kreski modelu mówią już tylko, gdzie jest temat, i są
+  rysowane same wyłącznie wtedy, gdy obraz nie daje prawie żadnych
+  konturów. Kreskowanie ciemnych partii zostaje bez zmian.
+- Arkusze rysują się na nowo same po aktualizacji serwera, także w gotowych
+  studiach, bez modelu i bez kosztu. Aplikacja nie wymaga nowej wersji.
+
 ## 1.145.61
 
 - Technika dzieł uzupełniana tam, gdzie źródło jej nie podaje (WikiArt,
