@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.145.71
+
+- Kreatywny restaurator: dzieło o niskiej rozdzielczości można dać do
+  przerysowania modelowi graficznemu Google (Nano Banana 2.1), który
+  zwraca je w ok. 2000 px, z ostrymi krawędziami, pociągnięciami pędzla
+  i fakturą płótna. Szczegóły są dorysowane, nie odzyskane, więc takie
+  dzieło ma po tytule bursztynowe iskierki zamiast kropek rastra, a na
+  karcie przy „Zdjęcie dzieła” napis „Kreatywny restaurator”. Pojedynczo
+  w menu „…” karty (pod „Szukaj lepszej kopii”, ok. pół minuty), a
+  wszystkie Ulubione poniżej 1600 px naraz w Konfiguracji → Claude, w
+  pakietach Google za połowę ceny (ok. 0,03 USD za dzieło, do doby).
+  Przerysowane zdjęcie zostaje tym samym dziełem i nocne porządki go nie
+  podmieniają. „Przywróć zdjęcie muzeum” cofa zmianę. Potrzebny klucz
+  Gemini w Kluczach i certyfikatach.
+- Długi tytuł ze znacznikiem skraca się w środku, więc znacznik po nim
+  nie ginie.
+
 ## 1.145.70
 
 - Dzieła o niskiej rozdzielczości mają mały bursztynowy znacznik
