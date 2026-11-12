@@ -230,6 +230,9 @@ struct ArtCard: View {
                     // the caption's soft ink, not a mark on the picture.
                     title
                         .lineLimit(2)
+                        // A long title gives way in the middle, not at its
+                        // end: the marks after it stay in sight.
+                        .truncationMode(marked ? .middle : .tail)
                     Text(Self.byline(item))
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
@@ -248,6 +251,11 @@ struct ArtCard: View {
     /// The title, and after it, wrapping with the last word: for a "Pod
     /// lupą" work a magnifier, for a picture small for the frame a grid of
     /// pixels (`LowRes`).
+    /// A mark follows the title (`title`).
+    private var marked: Bool {
+        item.zoom == true || item.restored == true || (item.lowSide ?? 0) > 0
+    }
+
     private var title: Text {
         var text = Text(item.title.isEmpty ? "Bez tytułu" : item.title)
             .font(.serif(15, weight: .medium))
