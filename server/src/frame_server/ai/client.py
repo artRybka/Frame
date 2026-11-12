@@ -136,21 +136,23 @@ def month(now: datetime | None = None) -> str:
 class Spending:
     """What answers cost, by month and kind of job (kept in the library)."""
 
-    def __init__(self, library: Library) -> None:
+    def __init__(self, library: Library, key: str = SPEND_KEY) -> None:
         self.library = library
+        #: Where it is kept (Claude's and the image model's are apart).
+        self.key = key
         self._lock = threading.Lock()
 
     def add(self, kind: str, usd: float) -> None:
         if usd <= 0:
             return
         with self._lock:
-            spent = self.library.get_state(SPEND_KEY, {})
+            spent = self.library.get_state(self.key, {})
             this = spent.setdefault(month(), {})
             this[kind] = round(this.get(kind, 0.0) + usd, 6)
-            self.library.set_state(SPEND_KEY, spent)
+            self.library.set_state(self.key, spent)
 
     def by_kind(self, when: str | None = None) -> dict[str, float]:
-        return dict(self.library.get_state(SPEND_KEY, {}).get(when or month(), {}))
+        return dict(self.library.get_state(self.key, {}).get(when or month(), {}))
 
     def total(self, when: str | None = None) -> float:
         return sum(self.by_kind(when).values())

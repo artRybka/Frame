@@ -64,8 +64,13 @@ class AiView(BaseModel):
     #: About what one drawn sheet costs.
     drawn_usd: float = SHEET_USD
     #: Why no sheet is drawn now: "no_credit" (the key's prepaid credit is
-    #: used up), "key_rejected", "limit" (the month's).
+    #: used up), "key_rejected", "limit" (the image model's month's).
     gemini_error: str | None = None
+    #: The image model's own month: its limit, what its answers cost so
+    #: far, by what asked for them ("sheet", "restorer").
+    gemini_monthly_limit_usd: float = 5.0
+    gemini_spent_usd: float = 0.0
+    gemini_spent_by_kind: dict[str, float] = {}
     #: The sheets of the pages saved before go through Google's Batch (half
     #: the price, within a day): how many still wait for it, how many are
     #: in it now, and about what one costs there.
@@ -90,6 +95,7 @@ class Started(BaseModel):
 def _view(svc: FrameService) -> AiView:
     store, config = svc.ai_config, svc.ai_config.config
     spent = svc.claude.spending.by_kind()
+    painted = svc.painter.spending.by_kind()
     waiting, in_batch = svc.drawn.counts()
     return AiView(
         key_set=bool(store.api_key),
@@ -119,6 +125,9 @@ def _view(svc: FrameService) -> AiView:
         gemini_error=svc.drawn.error if store.drawn else None,
         drawn_waiting=waiting,
         drawn_in_batch=in_batch,
+        gemini_monthly_limit_usd=config.gemini_monthly_limit_usd,
+        gemini_spent_usd=round(sum(painted.values()), 4),
+        gemini_spent_by_kind={k: round(v, 4) for k, v in painted.items()},
     )
 
 

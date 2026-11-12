@@ -1510,8 +1510,14 @@ struct AiSettings: Codable, Hashable, Sendable {
     var drawnWaiting: Int? = nil
     var drawnInBatch: Int? = nil
     /// Why no sheet is drawn now: "no_credit" (the key's prepaid credit is
-    /// used up), "key_rejected", "limit" (the month's).
+    /// used up), "key_rejected", "limit" (the image model's month's).
     var geminiError: String? = nil
+    /// The image model's own month (Konfiguracja → Gemini): its limit and
+    /// what its answers cost so far, by what asked for them. Nil from
+    /// servers that count it with Claude's.
+    var geminiMonthlyLimitUsd: Double? = nil
+    var geminiSpentUsd: Double? = nil
+    var geminiSpentByKind: [String: Double]? = nil
 }
 
 /// Only what is set changes.
@@ -1529,6 +1535,7 @@ struct AiSettingsUpdate: Encodable, Sendable {
     var journey: Bool?
     var monthlyLimitUsd: Double?
     var drawn: Bool?
+    var geminiMonthlyLimitUsd: Double?
 }
 
 /// `GET /api/ai/review`: "Do sprawdzenia", what the gatekeeper set aside and

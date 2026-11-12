@@ -13,6 +13,14 @@ What is kept for a take (``<work>-<key>-…`` in ``drawn/``):
 - ``meta.json``: the marks' colours, where their numbers stand, what the
   answers cost.
 
+And for the work and its field (``<work>-u<field>-…``), whatever the take:
+``study.png`` and ``spill.png``, the model's study and the study with
+what runs out of it, as answered. Another take of the same work and field
+(Mateusz 2026-11-12 23:20: "gdy zamawiam ponowną analizę, a podkład od
+Gemini już jest, to rób nim tylko kolorowe kreski") is drawn over them:
+its lines alone are asked for (about a third of a sheet), and its page is
+the same one.
+
 Which takes get one, and when (Mateusz 2026-11-12 22:32: "Nowe od razu,
 zapisane przez Batch po aktualizacji dla obniżenia kosztu lub poprzez
 "Wykonaj ponowną analizę" od razu"):
@@ -34,6 +42,7 @@ will not redraw some works) is left with that one.
 from __future__ import annotations
 
 import contextlib
+import io
 import json
 import logging
 import threading
@@ -54,6 +63,7 @@ from .ai.drawn import (
     SPILL,
     TYPICAL_USD,
     Sheet,
+    Under,
     draw,
     lines_ask,
     put_together,
@@ -193,6 +203,47 @@ class DrawnSheets:
         tmp = path.with_suffix(path.suffix + ".tmp")
         tmp.write_bytes(data)
         tmp.replace(path)
+
+    # -- what lies under a work's lines -----------------------------------------
+
+    def _under_name(self, item: Item, view: View) -> str:
+        """The name of what is kept for the work and the take's field."""
+        field = view.field.model_dump_json() if view.field is not None else ""
+        return f"{item.file_stem}-u{text_hash(LOOK, field)[:8]}"
+
+    def _under_file(self, item: Item, view: View, part: str) -> Path:
+        return self.dir / f"{self._under_name(item, view)}-{part}.png"
+
+    def _under(self, item: Item, view: View, work: Image.Image | None = None) -> Under | None:
+        """The study kept for the work and the take's field, with what
+        runs out of it; None when there is none. One that is no longer
+        ``work``'s (the work has another picture now) is thrown away."""
+        try:
+            study = Image.open(self._under_file(item, view, "study")).convert("RGB")
+        except OSError:
+            return None
+        if work is not None and imaging.measure(work, study)[1] > imaging.FAR_OFF:
+            log.info("the study kept for %s is not its picture's any more", item.id)
+            for part in ("study", "spill"):
+                with contextlib.suppress(OSError):
+                    self._under_file(item, view, part).unlink()
+            return None
+        try:
+            spilt = Image.open(self._under_file(item, view, "spill")).convert("RGB")
+        except OSError:
+            spilt = None
+        return Under(study, spilt)
+
+    def _keep_under(self, item: Item, view: View, under: Under | None) -> None:
+        """Keeps what is not kept yet of what the take was drawn over."""
+        if under is None:
+            return
+        for part, img in (("study", under.study), ("spill", under.spilt)):
+            path = self._under_file(item, view, part)
+            if img is not None and not path.is_file():
+                out = io.BytesIO()
+                img.save(out, "PNG")
+                self._write(path.name, out.getvalue())
 
     # -- which are wanted -----------------------------------------------------
 
@@ -334,9 +385,13 @@ class DrawnSheets:
         return zlib.crc32(item.id.encode())
 
     def make(self, item: Item, view: View) -> None:
-        """Draws the take's sheet now and keeps it (three paid answers)."""
+        """Draws the take's sheet now and keeps it: three paid answers, or
+        the lines' alone over the study the work already has."""
         paint = partial(self.painter.paint, KIND)
-        sheet = draw(self._work(item, view), view.inside(), paint, seed=self._seed(item))
+        work = self._work(item, view)
+        under = self._under(item, view, work)
+        sheet = draw(work, view.inside(), paint, seed=self._seed(item), under=under)
+        self._keep_under(item, view, sheet.under)
         self._keep(item, view, sheet)
         log.info("sheet of %s drawn: %s", item.id, sheet.cost)
 
@@ -402,18 +457,16 @@ class DrawnSheets:
             self._rest(None, BATCH_LOOK)
         return None
 
-    def _study_file(self, stem: str) -> Path:
-        return self.dir / f"{stem}-study.png"
-
     def _begin(self) -> bool:
         """Hands the studies of some saved pages' takes to the Batch."""
-        afford = int(self.painter.claude.budget_left() / BATCH_USD)
+        afford = int(self.painter.budget_left() / BATCH_USD)
         saved = self.saved()[: min(BATCH_TAKES, max(afford, 0))]
         if not saved:
             if afford <= 0 and self.saved():
                 self._rest(LIMIT)
             return False
-        asks, takes = [], []
+        asks: list[Ask] = []
+        takes: list[list[str]] = []
         for item, view in saved:
             stem = self._stem(item, self.key(view))
             try:
@@ -421,15 +474,24 @@ class DrawnSheets:
             except Exception as err:  # the picture cannot be had
                 self._fail(stem, err, count=False)
                 continue
-            asks.append(Ask(stem, study_prompt(view.inside()), [work]))
+            under = self._under_name(item, view)
+            if self._under(item, view, work) is None and all(ask.name != under for ask in asks):
+                asks.append(Ask(under, study_prompt(view.inside()), [work]))
             takes.append([item.id, self.key(view)])
+        if takes and not asks:  # each has its study: their lines alone are asked for
+            self._set_batch({"round": "lines", "name": "", "takes": takes, "cost": {}})
+            return True
         name = None
         while asks:
             try:
                 name = self._hand(asks)
                 break
-            except ValueError:  # more than Google takes at once: half of them
-                asks, takes = asks[: len(asks) // 2], takes[: len(takes) // 2]
+            except ValueError:  # more than Google takes at once: the first half of the takes
+                takes = takes[: len(takes) // 2]
+                kept = {self._under_name(i, v) for i, v in saved if [i.id, self.key(v)] in takes}
+                asks = [ask for ask in asks if ask.name in kept]
+                if not asks:
+                    break
         if name is not None:
             self._set_batch({"round": "study", "name": name, "takes": takes, "cost": {}})
             self._looked = time.monotonic()
@@ -451,7 +513,10 @@ class DrawnSheets:
         second round."""
         takes, cost = [], {}
         for stem, item, view in self._each(state):
-            answer = answers.get(stem)
+            if self._under_file(item, view, "study").is_file():  # had before, or with another take
+                takes.append([item.id, self.key(view)])
+                continue
+            answer = answers.get(self._under_name(item, view))
             if not isinstance(answer, tuple):
                 self._fail(stem, answer or "no answer")
                 continue
@@ -464,8 +529,7 @@ class DrawnSheets:
             if off > imaging.FAR_OFF:
                 self._fail(stem, f"the study lies {off:.1f}% off the work")
                 continue
-            self.dir.mkdir(parents=True, exist_ok=True)
-            study.save(self._study_file(stem), "PNG")
+            self._keep_under(item, view, Under(study))
             takes.append([item.id, self.key(view)])
             cost[stem] = {"underlay": usd}
         self._set_batch({"round": "lines", "name": "", "takes": takes, "cost": cost})
@@ -473,19 +537,21 @@ class DrawnSheets:
     def _second(self, state: dict[str, Any]) -> None:
         """Hands the second round to the Batch: over each study the take's
         lines, and what runs out of it."""
-        asks = []
-        for stem, _, view in self._each(state):
-            try:
-                study = Image.open(self._study_file(stem)).convert("RGB")
-            except OSError as err:
-                self._fail(stem, err, count=False)
+        asks: list[Ask] = []
+        each = self._each(state)
+        for stem, item, view in each:
+            under = self._under(item, view)
+            if under is None:
+                self._fail(stem, "its study is gone", count=False)
                 continue
-            ask = lines_ask(study, view.inside())
+            ask = lines_ask(under.study, view.inside())
             if ask is not None:
-                asks.append(Ask(f"{stem}/lines", ask[0], [study]))
-            asks.append(Ask(f"{stem}/spill", SPILL, [imaging.padded(study)[0]]))
-        if not asks:
-            self._set_batch(None)
+                asks.append(Ask(f"{stem}/lines", ask[0], [under.study]))
+            spill = f"{self._under_name(item, view)}/spill"
+            if under.spilt is None and all(ask.name != spill for ask in asks):
+                asks.append(Ask(spill, SPILL, [imaging.padded(under.study)[0]]))
+        if not asks:  # nothing to ask: the takes without marks get their page at once
+            self._lines_in(state, {})
             return
         try:
             name = self._hand(asks)
@@ -501,21 +567,25 @@ class DrawnSheets:
         """The second round came: the sheets are put together and kept."""
         for stem, item, view in self._each(state):
             cost = dict(state["cost"].get(stem) or {})
-            lines, spill = answers.get(f"{stem}/lines"), answers.get(f"{stem}/spill")
+            lines = answers.get(f"{stem}/lines")
+            spill = answers.get(f"{self._under_name(item, view)}/spill")
             inside = view.inside()
             try:
-                study = Image.open(self._study_file(stem)).convert("RGB")
-                wanted = lines_ask(study, inside) is not None
+                under = self._under(item, view)
+                if under is None:
+                    raise OSError("its study is gone")
+                if under.spilt is None and isinstance(spill, tuple):
+                    under.spilt, cost["spill"] = spill
+                    self._keep_under(item, view, under)
+                wanted = lines_ask(under.study, inside) is not None
                 if wanted and not isinstance(lines, tuple):
                     raise NotDrawn(f"no lines: {lines or 'no answer'}")
                 marked = None
                 if wanted and isinstance(lines, tuple):
                     marked, cost["lines"] = lines
-                spilt = None
-                if isinstance(spill, tuple):
-                    spilt, cost["spill"] = spill
                 work = self._work(item, view)
-                sheet = put_together(work, inside, study, marked, spilt, cost, self._seed(item))
+                seed = self._seed(item)
+                sheet = put_together(work, inside, under.study, marked, under.spilt, cost, seed)
             except NotDrawn as err:
                 self._fail(stem, err)
                 continue
@@ -524,11 +594,6 @@ class DrawnSheets:
                 continue
             self._keep(item, view, sheet)
             log.info("sheet of %s drawn through the batch: %s", item.id, sheet.cost)
-        for item_id, key in state["takes"]:
-            done = self.library.get(item_id)
-            if done is not None:
-                with contextlib.suppress(OSError):
-                    self._study_file(self._stem(done, key)).unlink()
         self._set_batch(None)
 
     def _batched(self) -> bool:

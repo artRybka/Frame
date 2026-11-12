@@ -155,9 +155,17 @@ final class DrawnSheetTests: XCTestCase {
          "keywords_progress": {"done": 0, "waiting": 0, "refused": 0, "batch_items": 0, "batch_done": 0, "preparing": false},
          "error": null,
          "gemini_key_set": true, "gemini_key_tail": "wxyz", "drawn": true, "drawn_usd": 0.15,
-         "drawn_batch_usd": 0.075, "drawn_waiting": 8, "drawn_in_batch": 20, "gemini_error": null}
+         "drawn_batch_usd": 0.075, "drawn_waiting": 8, "drawn_in_batch": 20, "gemini_error": null,
+         "gemini_monthly_limit_usd": 10, "gemini_spent_usd": 0.45, "gemini_spent_by_kind": {"sheet": 0.45}}
         """#
         var settings = try LiveBackend.decoder().decode(AiSettings.self, from: Data(json.utf8))
+        // Gemini's month is its own (23:20: "osobny segment … i tam ustawić osobno limit").
+        XCTAssertEqual(settings.geminiMonthlyLimitUsd, 10)
+        XCTAssertEqual(settings.geminiSpentUsd, 0.45)
+        XCTAssertEqual(settings.geminiSpentByKind, ["sheet": 0.45])
+        XCTAssertEqual(settings.monthlyLimitUsd, 5)
+        XCTAssertTrue(SettingsPage.Block.art.pages.contains(.gemini))
+        XCTAssertEqual(SettingsPage.gemini.title, "Gemini")
         XCTAssertEqual(settings.geminiKeyTail, "wxyz")
         XCTAssertEqual(settings.drawnInBatch, 20)
         // The saved studies' sheets go through the Batch: how many, about how much.
@@ -186,6 +194,11 @@ final class DrawnSheetTests: XCTestCase {
         )
         XCTAssertNil(older.geminiKeySet)
         XCTAssertNil(older.drawn)
+        // One that counts the image model with Claude: no limit of its own to set.
+        let shared = try LiveBackend.decoder().decode(
+            AiSettings.self, from: Data(json.replacingOccurrences(of: "\"gemini_monthly_limit_usd\": 10,", with: "").utf8)
+        )
+        XCTAssertNil(shared.geminiMonthlyLimitUsd)
 
         // The demo keeps the key as the server does: only its tail comes back.
         let demo = DemoBackend()
@@ -198,5 +211,11 @@ final class DrawnSheetTests: XCTestCase {
         // The switch goes to the server by its own name.
         let sent = try LiveBackend.encoder().encode(AiSettingsUpdate(drawn: false))
         XCTAssertEqual(String(data: sent, encoding: .utf8), #"{"drawn":false}"#)
+        // Gemini's limit too, and the demo keeps it apart from Claude's.
+        let limit = try LiveBackend.encoder().encode(AiSettingsUpdate(geminiMonthlyLimitUsd: 20))
+        XCTAssertEqual(String(data: limit, encoding: .utf8), #"{"gemini_monthly_limit_usd":20}"#)
+        let raised = try await demo.saveAiSettings(AiSettingsUpdate(geminiMonthlyLimitUsd: 20))
+        XCTAssertEqual(raised.geminiMonthlyLimitUsd, 20)
+        XCTAssertEqual(raised.monthlyLimitUsd, 5)
     }
 }

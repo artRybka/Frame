@@ -78,8 +78,9 @@ actor DemoBackend: FrameBackend {
         reviewCount: 2, monthlyLimitUsd: 5, spentUsd: 0,
         keywordsProgress: .init(done: 0, waiting: 0, refused: 0, batchItems: 0, batchDone: 0, preparing: false),
         plTextProgress: nil, error: nil,
-        geminiKeySet: false, geminiKeyTail: nil, drawn: true, drawnUsd: 0.15, drawnBatchUsd: 0.075,
-        drawnWaiting: 0, drawnInBatch: 0, geminiError: nil
+        geminiKeySet: true, geminiKeyTail: "wxyz", drawn: true, drawnUsd: 0.15, drawnBatchUsd: 0.075,
+        drawnWaiting: 12, drawnInBatch: 20, geminiError: nil,
+        geminiMonthlyLimitUsd: 5, geminiSpentUsd: 1.35, geminiSpentByKind: ["sheet": 1.35]
     )
     private var demoAsleep = false
     /// The picture "on its way" to the pretend frame, for the progress bar.
@@ -1806,6 +1807,8 @@ actor DemoBackend: FrameBackend {
         if let value = update.sentence { aiValue.sentence = value }
         if let value = update.journey { aiValue.journey = value }
         if let value = update.monthlyLimitUsd { aiValue.monthlyLimitUsd = value }
+        if let value = update.drawn { aiValue.drawn = value }
+        if let value = update.geminiMonthlyLimitUsd { aiValue.geminiMonthlyLimitUsd = value }
         return aiValue
     }
 

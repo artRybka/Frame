@@ -181,6 +181,7 @@ jobs:
             capture connection 10 "connection-notifications-$appearance" -settingsPage notifications
             capture connection 10 "connection-sources-$appearance" -settingsPage sources
             capture connection 10 "connection-ai-$appearance" -settingsPage ai
+            capture connection 10 "connection-gemini-$appearance" -settingsPage gemini
             capture connection 10 "connection-library-$appearance" -settingsPage library
             capture connection 10 "connection-night-$appearance" -settingsPage night
             capture connection 12 "night-changes-$appearance" -settingsPage night -nightChanges YES

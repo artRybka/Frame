@@ -22,7 +22,7 @@ from test_daily import _app, _catalogue
 
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import AiUnavailable
-from frame_server.ai.daily import CHECK_ROUND, ROUND, Mark, Spot, View
+from frame_server.ai.daily import CHECK_ROUND, ROUND, Box, Mark, Spot, View
 from frame_server.ai.drawn import (
     AT_ONCE,
     KIND,
@@ -204,6 +204,20 @@ def test_the_model_is_asked_three_things_and_the_sheet_is_taken_apart() -> None:
         alpha = np.asarray(Image.open(io.BytesIO(layer)).split()[3])
         px, py = round(x * sheet.size[0]), round(y * sheet.size[1])
         assert alpha[max(py - 6, 0) : py + 7, max(px - 6, 0) : px + 7].max() > 120
+    # Another take of the work (23:20: "gdy zamawiam ponowną analizę, a podkład
+    # od Gemini już jest, to rób nim tylko kolorowe kreski"): over the study it
+    # has, its lines alone are asked for, and its page is the same one.
+    assert sheet.under is not None and sheet.under.spilt is not None
+    other = view.model_copy(update={"marks": view.marks[1:2]})
+    again = Stand(other)
+    anew = draw(_scene(), other, again, seed=3, under=sheet.under)
+    assert again.asked == ["lines"] and anew.cost == {"lines": 0.052}
+    assert anew.page == sheet.page and anew.under is sheet.under
+    assert len(anew.layers) == 1 and anew.layers[0] is not None
+    # A take without a mark to draw costs nothing more.
+    bare = view.model_copy(update={"marks": []})
+    free = draw(_scene(), bare, again, seed=3, under=sheet.under)
+    assert again.asked == ["lines"] and free.cost == {} and free.page == sheet.page
 
 
 def test_a_mark_left_out_is_asked_for_once_more_and_a_strange_study_is_refused() -> None:
@@ -310,18 +324,24 @@ def test_the_painter_asks_google_and_counts_what_it_cost(service: FrameService) 
     assert asked["response_format"] == {"type": "image", "image_size": "2K"}
     assert [part["type"] for part in asked["input"]] == ["text", "image"]
     assert google.headers[0]["x-goog-api-key"] == GOOGLE_KEY
-    # Counted with Claude's answers, as its own kind, under the same limit.
-    assert service.claude.spending.by_kind() == {KIND: usd}
-    service.ai_config.update(AiConfigUpdate(monthly_limit_usd=usd / 2))
+    # Counted as its own kind in the image model's own month, apart from
+    # Claude's, and under a limit of its own.
+    assert service.painter.spending.by_kind() == {KIND: usd}
+    assert service.claude.spending.by_kind() == {}
+    assert painter.budget_left() == pytest.approx(5.0 - usd)
+    service.ai_config.update(AiConfigUpdate(monthly_limit_usd=0))  # Claude's: not this model's
+    painter.check_budget()
+    service.ai_config.update(AiConfigUpdate(monthly_limit_usd=5))
+    service.ai_config.update(AiConfigUpdate(gemini_monthly_limit_usd=usd / 2))
     with pytest.raises(AiUnavailable):
         painter.paint(KIND, "draw", [])
     assert len(google.posts) == 1
-    service.ai_config.update(AiConfigUpdate(monthly_limit_usd=10))
+    service.ai_config.update(AiConfigUpdate(gemini_monthly_limit_usd=10))
     for status, error in ((402, NoCredit), (403, GeminiRejected), (400, NotDrawn)):
         google.status = status
         with pytest.raises(error):
             painter.paint(KIND, "draw", [])
-    assert service.claude.spending.by_kind() == {KIND: usd}  # nothing had: nothing spent
+    assert service.painter.spending.by_kind() == {KIND: usd}  # nothing had: nothing spent
 
 
 class Stood:
@@ -485,7 +505,11 @@ def test_saved_pages_go_through_the_batch_and_an_analysis_made_anew_at_once(
         stood.ready = False
         assert _step(svc) is False
         lines, spill = stood.batches[1]
-        assert lines.name == f"{study.name}/lines" and "pencil (#" in lines.prompt
+        item = svc.library.get("met:1")
+        assert item is not None
+        stem = f"{item.file_stem}-{svc.drawn.key(_shown(svc))}"
+        assert study.name.startswith(f"{item.file_stem}-u")  # the work's, whatever the take
+        assert lines.name == f"{stem}/lines" and "pencil (#" in lines.prompt
         assert spill.name == f"{study.name}/spill" and spill.prompt == SPILL
         assert spill.pictures[0].width > lines.pictures[0].width  # padded with its paper
         # The server starts anew meanwhile: the batch is where it was.
@@ -494,11 +518,12 @@ def test_saved_pages_go_through_the_batch_and_an_analysis_made_anew_at_once(
         stood.ready = True
         assert _step(svc) is True
         assert svc.drawn._batch() is None and svc.drawn.saved() == []
-        assert not list(svc.drawn.dir.glob("*-study.png"))
+        # The study and what runs out of it are kept for the work.
+        under = sorted(path.name for path in svc.drawn.dir.glob(f"{study.name}-*"))
+        assert under == [f"{study.name}-spill.png", f"{study.name}-study.png"]
         work = client.get("/api/study/met:1").json()["work"]
         assert len(work["composition_drawn"]["marks"]) >= 1
-        item = svc.library.get("met:1")
-        assert item is not None
+        first_page = client.get(work["composition_drawn"]["sheet"]).content
         kept = svc.drawn.meta(item, _shown(svc))
         assert kept is not None and kept["cost"] == {
             "underlay": 0.025,
@@ -515,12 +540,28 @@ def test_saved_pages_go_through_the_batch_and_an_analysis_made_anew_at_once(
             return full(kind, asks)
 
         svc.painter.batch = crowded  # type: ignore[method-assign]
-        take = (svc.library.get("met:1"), _shown(svc))
-        svc.drawn.saved = lambda: [take, take, take]  # type: ignore[method-assign]
+        fields = [Box(x=0.0, y=0.0, w=1.0, h=h) for h in (0.9, 0.8, 0.7)]  # studies of their own
+        takes = [(item, _shown(svc).model_copy(update={"field": box})) for box in fields]
+        svc.drawn.saved = lambda: takes  # type: ignore[method-assign]
         assert svc.drawn._begin() is False and len(stood.batches[-1]) == 1
-        del svc.drawn.saved  # type: ignore[attr-defined]
+        state = svc.drawn._batch()
+        assert state is not None and len(state["takes"]) == 1
         svc.drawn._set_batch(None)
         svc.painter.batch = full  # type: ignore[method-assign]
+        stood.batches.pop()
+        # A saved take of a work that has its study goes straight to the lines'
+        # round, and two takes of one work ask for one study between them.
+        svc.drawn.saved = lambda: [(item, _shown(svc))]  # type: ignore[method-assign]
+        assert svc.drawn._begin() is True
+        state = svc.drawn._batch()
+        assert state is not None and (state["round"], state["name"]) == ("lines", "")
+        svc.drawn._set_batch(None)
+        svc.drawn.saved = lambda: [takes[0], takes[0]]  # type: ignore[method-assign]
+        assert svc.drawn._begin() is False and len(stood.batches[-1]) == 1
+        state = svc.drawn._batch()
+        assert state is not None and len(state["takes"]) == 2
+        del svc.drawn.saved  # type: ignore[attr-defined]
+        svc.drawn._set_batch(None)
         stood.batches.pop()
 
         # "Wykonaj ponowną analizę": the new take's sheet is drawn at once.
@@ -531,10 +572,20 @@ def test_saved_pages_go_through_the_batch_and_an_analysis_made_anew_at_once(
         work = client.get("/api/study/met:1").json()["work"]
         assert work["composition_drawn"] is None and work["composition_drawn_pending"] is True
         assert [item.id for item, _ in svc.drawn.at_once()] == ["met:1"]
-        assert svc.drawn.ahead() is True and stood.calls == [KIND] * 3
+        # 23:20: "a podkład od Gemini już jest, to rób nim tylko kolorowe kreski".
+        assert svc.drawn.ahead() is True and stood.calls == [KIND]
         assert listed(svc.library, AT_ONCE) == set() and len(stood.batches) == 2
         work = client.get("/api/study/met:1").json()["work"]
         assert work["composition_drawn"] is not None
+        assert client.get(work["composition_drawn"]["sheet"]).content == first_page
+        anew = svc.drawn.meta(item, _shown(svc))
+        assert anew is not None and anew["cost"] == {"lines": 0.052}
+        # The work's picture is another now: its study is thrown away with it.
+        measured = imaging.measure
+        imaging.measure = lambda work, study: (None, 99.0)  # type: ignore[assignment]
+        assert svc.drawn._under(item, _shown(svc), _scene()) is None
+        imaging.measure = measured  # type: ignore[assignment]
+        assert not list(svc.drawn.dir.glob(f"{study.name}-*"))
         # The take it had before keeps its sheet, should he go back to it.
         assert client.put("/api/study/met:1/composition", json={"shown": 0}).status_code == 200
         assert client.get("/api/study/met:1").json()["work"]["composition_drawn"] is not None
@@ -588,10 +639,14 @@ def test_trouble_with_the_key_is_told_and_a_work_the_model_refuses_is_left(
         # The month's limit: said too.
         svc.drawn.again()
         svc.painter.paint = Painter(svc.ai_config, svc.claude).paint  # type: ignore[method-assign]
-        svc.claude.spending.add(KIND, 1.0)
-        svc.ai_config.update(AiConfigUpdate(monthly_limit_usd=1))
+        svc.painter.spending.add(KIND, 1.0)
+        svc.ai_config.update(AiConfigUpdate(gemini_monthly_limit_usd=1))
         assert svc.drawn.ahead() is False and svc.drawn.error == LIMIT
-        svc.ai_config.update(AiConfigUpdate(monthly_limit_usd=10))
+        view = client.get("/api/ai").json()
+        assert view["gemini_monthly_limit_usd"] == 1 and view["gemini_error"] == LIMIT
+        assert view["gemini_spent_usd"] >= 1.0 and view["gemini_spent_by_kind"][KIND] >= 1.0
+        assert KIND not in view["spent_by_kind"]  # Claude's month is another
+        svc.ai_config.update(AiConfigUpdate(gemini_monthly_limit_usd=10))
 
         # A picture that cannot be had now is tried again later, however often.
         picture = svc.images.picture
@@ -637,38 +692,44 @@ def test_the_batch_keeps_within_the_months_limit_and_leaves_what_is_refused(
         svc.library.set_state(SINCE, "9999")
         stood = Stood(svc)
         # Nothing is handed over that the month's limit does not hold.
-        svc.claude.spending.add(KIND, 0.99)
-        svc.ai_config.update(AiConfigUpdate(monthly_limit_usd=1))
+        svc.painter.spending.add(KIND, 0.99)
+        svc.ai_config.update(AiConfigUpdate(gemini_monthly_limit_usd=1))
         assert _step(svc) is False and stood.batches == [] and svc.drawn.error == LIMIT
-        svc.ai_config.update(AiConfigUpdate(monthly_limit_usd=10))
+        svc.ai_config.update(AiConfigUpdate(gemini_monthly_limit_usd=10))
         svc.drawn.again()
         # The model refuses the work's study, twice: left.
-        stood.ready, stood.refuse = True, "-" + DrawnSheets.key(_shown(svc))
+        item = svc.library.get("met:1")
+        assert item is not None
+        stood.ready, stood.refuse = True, svc.drawn._under_name(item, _shown(svc))
         assert _step(svc) is False and len(stood.batches) == 1
         assert _step(svc) is True and svc.drawn._batch() is None
         assert _step(svc) is False and len(stood.batches) == 2
         assert _step(svc) is True
         assert _step(svc) is False and len(stood.batches) == 2 and svc.drawn.saved() == []
-        # The lines refused: the study alone is no sheet.
+        # The lines refused: the study alone is no sheet, but it is kept for the work.
         svc.drawn._tried = {}
         stood.refuse = "/lines"
         assert _step(svc) is False and _step(svc) is True  # the studies came
         assert _step(svc) is False and len(stood.batches) == 4  # the second round
         assert _step(svc) is True and svc.drawn._batch() is None
-        item = svc.library.get("met:1")
-        assert item is not None and svc.drawn.meta(item, _shown(svc)) is None
-        assert not list(svc.drawn.dir.glob("*-study.png"))
-        # A batch Google lost is handed over again.
+        assert svc.drawn.meta(item, _shown(svc)) is None
+        assert len(list(svc.drawn.dir.glob("*-study.png"))) == 1
+        assert len(list(svc.drawn.dir.glob("*-spill.png"))) == 1
+        # Tried again, its lines alone are asked for over that study.
         stood.refuse = ""
         svc.drawn._tried = {}
+        assert _step(svc) is True  # nothing to ask in the first round
         assert _step(svc) is False and len(stood.batches) == 5
+        assert [ask.name.rsplit("/", 1)[1] for ask in stood.batches[4]] == ["lines"]
 
+        # A batch Google lost is handed over again.
         def lost(kind: str, batch: str) -> Any:
             raise NotDrawn("the batch expired")
 
         svc.painter.batched = lost  # type: ignore[method-assign]
         assert _step(svc) is False and svc.drawn._batch() is None
         svc.painter.batched = stood.batched  # type: ignore[method-assign]
-        assert _step(svc) is False and len(stood.batches) == 6
-        assert _step(svc) is True and _step(svc) is False and _step(svc) is True
-        assert svc.drawn.meta(item, _shown(svc)) is not None
+        assert _step(svc) is True and _step(svc) is False and len(stood.batches) == 6
+        assert _step(svc) is True
+        kept = svc.drawn.meta(item, _shown(svc))
+        assert kept is not None and kept["cost"] == {"lines": 0.026}

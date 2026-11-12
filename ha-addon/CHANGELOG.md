@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.145.73
+
+- Ponowna analiza kompozycji nie rysuje już podkładu od nowa. Gdy
+  dzieło ma szkic z modelu graficznego, „Wykonaj ponowną analizę”
+  zamawia u niego tylko kolorowe linie na tym samym szkicu (ok. 0,05 USD
+  zamiast 0,15 USD), więc arkusz pod spodem się nie zmienia.
+- Gemini ma własną stronę w Konfiguracji, pod „Claude”: osobny
+  miesięczny limit (domyślnie 5 USD), wydatki w tym miesiącu i
+  przełącznik arkuszy kompozycji ze stanem Batch. Wydatki Gemini i
+  Claude liczą się osobno, więc limit jednego nie wstrzymuje drugiego.
+  Klucz Google zostaje w Kluczach i certyfikatach.
+
 ## 1.145.72
 
 - Studium dzieła, analiza kompozycji: arkusz rysuje teraz model
