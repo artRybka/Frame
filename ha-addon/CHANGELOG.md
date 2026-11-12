@@ -18,7 +18,10 @@
 - Pastel, kredka, kreda: akcent to łatka mocno dociśniętych kresek po
   skosie w drugą stronę, nisko na pasku i trochę pod jego linią.
 - Zakładka Teraz: cienki pasek barw pod tytułem zniknął.
-- Tylko aplikacja iOS.
+- Barwy dzieła: biel, która wyraźnie się wybija (piana na ciemnym morzu,
+  biały czepek w ciemnym wnętrzu), jest teraz wśród barw obrazu jako
+  akcent. Po aktualizacji serwer raz przelicza barwy biblioteki (na NAS
+  1 do 2 godzin); szukanie po kolorze działa bez zmian.
 ## 1.145.49
 
 - Studium dzieła, analiza kompozycji: akwarela wchodzi płynnie, po całym

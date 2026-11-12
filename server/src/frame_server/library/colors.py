@@ -42,8 +42,9 @@ COLOUR_SPREAD = (0.01, 0.035)
 #: 8: "monochrome" seen against its paper (``toned``); 9: Tonacja sides
 #: (``"tone:neutral"``, ``tone_sides``); 10: without a museum's blank
 #: margins (``imaging.margins``), which counted as white; 11: small
-#: striking patches among the swatches and the accent tags (``touches``).
-SCORE_VERSION = 11
+#: striking patches among the swatches and the accent tags (``touches``);
+#: 12: a white that stands out among the swatches (``lights``).
+SCORE_VERSION = 12
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
 #: this chroma / lightness for light ones: a greyish-blue sky does, a beige
@@ -212,6 +213,24 @@ TOUCH_STRONGER = 1.5
 TOUCH_BRIGHTER = 0.05
 TOUCH_WEIGHT = 0.02
 MAX_TOUCHES = 2
+#: A white that stands out (Mateusz 2026-11-12 11:38, of the foam of
+#: Turner's dark sea, whose bar had browns and greys only: „biały jest
+#: wyraźnie wybijającym się akcentem to trzeba go uwzględnić”). The other
+#: accents are looked for by their colour, and white has none. It is the
+#: picture's lightest ``LIGHT_TOP``: white (``LIGHT_WHITE`` light at least,
+#: ``LIGHT_CHROMA`` at most), lighter than every colour shown by
+#: ``LIGHT_ABOVE`` and than the picture's middle tone by ``LIGHT_OVER``
+#: (the paper of a print, the mist of a pale landscape do not stand out),
+#: and ``LIGHT_AREA`` of the picture is about as light. Shown as an
+#: accent, ``LIGHT_WEIGHT`` at most.
+LIGHT_TOP = 0.02
+LIGHT_WHITE = 0.8
+LIGHT_CHROMA = 0.05
+LIGHT_ABOVE = 0.12
+LIGHT_OVER = 0.3
+LIGHT_NEAR = 0.08
+LIGHT_AREA = 0.01
+LIGHT_WEIGHT = 0.06
 #: Colours of a picture, at most: what the app's painted bar lays down.
 MAX_SWATCHES = 8
 #: Hue sectors (OKLab hue, degrees) accents are looked for in.
@@ -304,14 +323,18 @@ def analyse(img: Image.Image, spread: float | None = None) -> Analysis:
     accents = accent_colours(fine, dominant)
     small = touches(linear_to_oklab(_sample(img, TOUCH_SAMPLE)), dominant, accents)
     tags = colour_tags(fine, spread, dominant, accents, small)
-    # One tint and a collector's stamp is one tint still: no touches there.
+    # One tint and a collector's stamp is one tint still: no touches there,
+    # and its paper is no accent.
     if "monochrome" in tags:
         small = []
+    shown = [c for c, _ in dominant] + [c for c, _, _ in accents] + [c for c, _, _ in small]
+    white = [] if "monochrome" in tags else lights(fine, shown)
     swatches = [_swatch(c, w) for c, w in dominant]
     # A touch is what the eye goes to: it is shown before the least accent.
-    room = MAX_SWATCHES - len(swatches) - len(small)
+    room = MAX_SWATCHES - len(swatches) - len(small) - len(white)
     swatches += [_swatch(c, w, accent=True) for c, w, _ in accents[: max(room, 0)]]
     swatches += [_swatch(c, w, accent=True) for c, w, _ in small]
+    swatches += [_swatch(c, w, accent=True) for c, w in white]
     return Analysis(swatches, tags, colour_shares(fine, spread))
 
 
@@ -794,6 +817,25 @@ def touches(
         ):
             kept.append((centre, weight, name))
     return kept
+
+
+def lights(lab: np.ndarray, shown: Sequence[np.ndarray]) -> list[tuple[np.ndarray, float]]:
+    """The white that stands out in a picture whose colours (``shown``) are
+    all darker: the foam of Turner's sea, a white cap in a dark room; (colour,
+    weight), or nothing (see ``LIGHT_TOP``). No tag goes by it."""
+    light = lab[:, 0]
+    top = max(1, int(LIGHT_TOP * len(lab)))
+    centre = lab[np.argsort(-light)[:top]].mean(0)
+    if centre[0] < LIGHT_WHITE or float(np.hypot(centre[1], centre[2])) > LIGHT_CHROMA:
+        return []
+    if shown and centre[0] - max(float(c[0]) for c in shown) < LIGHT_ABOVE:
+        return []
+    if centre[0] - float(np.median(light)) < LIGHT_OVER:
+        return []
+    share = float((light >= centre[0] - LIGHT_NEAR).mean())
+    if share < LIGHT_AREA:
+        return []
+    return [(centre, min(share, LIGHT_WEIGHT))]
 
 
 def tint_strength(img: Image.Image) -> float:
