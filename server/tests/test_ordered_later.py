@@ -143,7 +143,7 @@ def test_a_study_ordered_for_later_goes_through_batches(tmp_path: Path) -> None:
         svc.ai.poll_batches()  # the analysis in: the short steps asked at once
         assert list(fake.batches) == ["batch_1", "batch_2", "batch_3"]
         (sketch,) = [r["params"] for r in fake.batches["batch_3"]]
-        assert sketch["model"] == FABLE and composing(sketch)  # the pen's drawing
+        assert sketch["model"] == OPUS and composing(sketch)  # the pen's drawing
         assert client.get("/api/study/met:1").json()["status"] == "later"
 
         svc.ai.poll_batches()  # the drawing in (it asked for no close-ups)
@@ -193,7 +193,8 @@ def test_a_study_ordered_for_later_can_be_made_now(tmp_path: Path) -> None:
         assert view["work"]["title"] == "Wielka fala w Kanagawie"
         assert written(fake) == []  # the page from its batch
         analyses = [p for p in fake.asked if p["model"] == OPUS]
-        assert len(analyses) == 2 and all(composing(p) for p in analyses)  # analysis, text
+        # (the analysis, the pen's drawing, the text)
+        assert len(analyses) == 3 and all(composing(p) for p in analyses)
         assert svc.library.get_state(LATER_KEY, {}) == {}
         note = svc.library.note("met:1", KIND)
 

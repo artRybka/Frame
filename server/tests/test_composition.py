@@ -49,7 +49,7 @@ from frame_server.ai.daily import (
 from frame_server.ai.motion import SYSTEM as MOTION_SYSTEM
 from frame_server.ai.motion import Movement, movement
 from frame_server.ai.pen import CLOSE_SYSTEM, read_size
-from frame_server.ai.pen import SYSTEM as PEN_SYSTEM
+from frame_server.ai.pen import GRID_SYSTEM as PEN_SYSTEM
 from frame_server.ai.prose import PROSE, PROSE_KEY
 from frame_server.ai.prose import SYSTEM as PROSE_SYSTEM
 from frame_server.ai.sketch import PHI, beats, draw, grid_fits, measure, measures
@@ -543,7 +543,7 @@ def _pipeline(
         if system == PROSE_SYSTEM:
             return Answer({"text": WRITTEN}, False, 0.015, OPUS)
         if system == PEN_SYSTEM:
-            return Answer(sketch(of, boat), False, 0.02, FABLE)
+            return Answer(sketch(of, boat), False, 0.02, OPUS)
         if system == CLOSE_SYSTEM:
             return Answer(CLOSE, False, 0.01, OPUS)
         if system == MOTION_SYSTEM:
@@ -584,12 +584,13 @@ def test_the_analysis_is_asked_apart_in_steps(service: FrameService) -> None:
     assert motion["model"] == SONNET
     assert "po: stożek góry" in check["messages"][0]["content"][-1]["text"]
     # The pen's drawing: the picture alone, as large as a model reads one,
-    # by the one that draws exactly; then the place it asked to see closer,
-    # enlarged, beside the whole picture with the place marked.
-    assert drawing["model"] == FABLE and drawing["system"][0]["text"] == PEN_SYSTEM
-    assert [b["type"] for b in drawing["messages"][0]["content"]] == ["image", "text"]
+    # and once more under a grid of coordinates; then the place it asked to
+    # see closer, enlarged, beside the whole picture with the place marked.
+    assert drawing["model"] == OPUS and drawing["system"][0]["text"] == PEN_SYSTEM
+    assert drawing["output_config"]["effort"] == "medium"
+    assert [b["type"] for b in drawing["messages"][0]["content"]] == ["image", "image", "text"]
     width, height = read_size(900, 600)
-    assert f"OBRAZ: {width} × {height} px" in drawing["messages"][0]["content"][1]["text"]
+    assert f"OBRAZ: {width} × {height} px" in drawing["messages"][0]["content"][-1]["text"]
     assert close["model"] == OPUS and close["system"][0]["text"] == CLOSE_SYSTEM
     assert [b["type"] for b in close["messages"][0]["content"]] == ["image", "image", "text"]
     said = close["messages"][0]["content"][2]["text"]
@@ -986,7 +987,7 @@ def test_a_page_ordered_for_later_is_written_through_batches(service: FrameServi
         if not service.ai.later(KIND, "met:1"):
             break
     assert not service.ai.later(KIND, "met:1")
-    assert [q["model"] for q in asked] == [OPUS, FABLE, OPUS]  # the long ones, for half
+    assert [q["model"] for q in asked] == [OPUS, OPUS, OPUS]  # the long ones, for half
     assert all(q["model"] not in (OPUS, FABLE) for q in fake.asked)  # the short ones at once
     page = service.library.note("met:1", STUDY)
     assert page is not None and page.data[CHECK_ROUND] == ROUND

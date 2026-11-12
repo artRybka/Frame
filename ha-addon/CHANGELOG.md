@@ -4,19 +4,22 @@
 
 - Studium dzieła, analiza kompozycji: rysunek piórkiem na arkuszu jest
   teraz dokładnym rysunkiem dzieła, a nie kilkoma zaznaczeniami i obłymi
-  bryłami. Rysuje go Fable 5.2 z obrazu w pełnej wielkości, jaką model
+  bryłami. Rysuje go Opus z obrazu w pełnej wielkości, jaką model
   czyta: nazywa temat, rysuje go forma po formie, a resztę obrazu ledwie
-  zaznacza. To, co w temacie małe albo złożone (twarz, dłonie, łódź,
-  żagle), jest wycinane z oryginału, powiększane i rysowane osobno
-  przez Opusa, dlatego twarz jest twarzą, a nie trzema kreskami. Rysunek
-  ma zwykle 70–120 kresek zamiast dwudziestu. Linie mierzone z kontrastu
-  obrazu nie biorą już w tym udziału.
+  zaznacza. Żeby kreski trafiały w swoje miejsce, model dostaje obraz
+  dwa razy: czysty i z naniesioną siatką współrzędnych co 200 pikseli
+  (bez niej Opus potrafił narysować okręt Turnera w niebie). To, co w
+  temacie małe albo złożone (twarz, dłonie, łódź, żagle), jest wycinane
+  z oryginału, powiększane i rysowane osobno, dlatego twarz jest twarzą,
+  a nie trzema kreskami. Rysunek ma zwykle 70–110 kresek zamiast
+  dwudziestu. Linie mierzone z kontrastu obrazu nie biorą już w tym
+  udziału.
 - Kreska piórka jest cieńsza i nierówno dociśnięta: raz jaśniejsza, raz
   ciemniejsza, grubsza tam, gdzie nacisk jest mocniejszy, cienka na
   początku i końcu. Kreski wewnątrz form (rysy twarzy, palce, fałdy) i
   te ze zbliżeń są cieńsze od obrysów. Arkusze, które już są, serwer
   rysuje nową kreską sam po aktualizacji, bez pytania modelu i bez kosztu.
-- Koszt: rysunek piórkiem w nowym studium to ok. 0,30–0,40 USD (było
+- Koszt: rysunek piórkiem w nowym studium to ok. 0,18–0,35 USD (było
   ok. 0,045 USD), a studium zamówione „na później” ok. połowy tego.
   Nowe studium powstaje o ok. minutę dłużej. Studia, które już są,
   zachowują dotychczasowy rysunek; ich przerysowanie nocą w pakiecie

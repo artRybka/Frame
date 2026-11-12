@@ -24,10 +24,18 @@ So this pen (:data:`ROUND` 4) is the model's drawing made exact, tried on
 real pictures before it was built (Ducreux's yawning self-portrait,
 Turner's ships bearing up for anchorage, David's Madame Pastoret):
 
-- Fable draws the whole. On the same pictures Sonnet gave a dozen rounded
-  lumps whatever it was asked; Opus stood between, and on Turner put the
-  ship a fifth of the picture too high, in the sky; Fable's lines lie on
-  the contours.
+- Who draws matters, and what it is shown. On the same pictures Sonnet
+  gave a dozen rounded lumps whatever it was asked. Fable's lines lie on
+  the contours. Opus draws well but reads a place off a large picture
+  loosely: on Turner it put the ship a fifth of the picture too high, in
+  the sky, at any effort. Shown the picture once more with a grid of
+  coordinates over it (:data:`GRID`), it puts everything where it is
+  (Turner, Pastoret, Ducreux, van Gogh's Bedroom), and draws a little
+  less than Fable (the Bedroom's bed, chairs, table and window, not its
+  mirror and towel) for about a third less money: Mateusz 2026-11-12
+  18:30, "efekt jest super, tylko troszkę drogo. Opus nie da rady?";
+  18:59, "Czy Opus na większym wysiłku albo z lepszym promptem nie da
+  rady? To praca warta późniejszej oszczędności."
 - It sees the picture as large as a model reads one, names the subject,
   and marks up to :data:`MAX_BOXES` places that need a closer look (a
   head, each hand, a ship, a boat). It draws the subject outside them, form
@@ -36,10 +44,9 @@ Turner's ships bearing up for anchorage, David's Madame Pastoret):
   alone (:func:`close_question`): a model puts a line as exactly as the
   picture it reads is large, so a face drawn from the whole picture is
   three dashes and from its enlargement a face. Opus draws these: a place
-  that fills its picture is not misplaced, its drawing was all but Fable's
-  on the trials, and the whole sketch costs some 0.3 USD instead of 0.5 to
-  0.9 (Mateusz 2026-11-12 18:30: "efekt jest super, tylko troszkę drogo.
-  Opus nie da rady?").
+  that fills its picture is not misplaced. The whole sketch costs 0.2 to
+  0.35 USD (with Fable drawing the whole 0.3 to 0.4, all by Fable 0.5 to
+  0.9).
 - A stroke along a form's outline is drawn with the whole nib, one inside
   a form (features, fingers, folds) and those of a close-up with less
   (``Stroke.weight``), as a hand presses less on what is small.
@@ -73,13 +80,21 @@ from .daily import (
     image_block,
     model_size,
 )
+from .sketch import _font
 
 #: Who draws the whole and says where to look closer, who draws the
 #: close-ups, and who draws when one of them will not (a refusal, an answer
 #: that cannot be read).
-MODEL = FABLE
+MODEL = OPUS
 CLOSE_MODEL = OPUS
-SPARE = OPUS
+SPARE = FABLE
+#: Who puts a line where the thing is with no help. The others get the
+#: whole picture a second time with a grid of coordinates over it, a line
+#: every :data:`GRID` pixels with its number. (More effort did not put
+#: Opus's drawing in its place, and with the grid drew no better on the
+#: trials for a quarter more money.)
+SURE = (FABLE,)
+GRID = 200
 EFFORT = "medium"
 #: The original is read at most this long: what the close-ups are cut from.
 SOURCE = 4096
@@ -218,6 +233,18 @@ Współrzędne podajesz w pikselach FRAGMENTU (pierwszy obraz).
 ODPOWIEDŹ: "szkic": lista kresek, każda: "co", "lekka", "p", "ostra", "zamknieta"."""
 )
 
+GRID_SYSTEM = (
+    SYSTEM
+    + f"""
+
+SIATKA WSPÓŁRZĘDNYCH
+Drugi obraz to ten sam obraz z naniesioną siatką co {GRID} pikseli, opisaną liczbami (x u góry, \
+pośrodku i u dołu, y po lewej, pośrodku i po prawej). Służy tylko do odczytu położeń: zanim \
+postawisz punkt, znajdź na siatce kratkę, w której leży to miejsce, i podaj współrzędne zgodne z \
+jej opisem. Sprawdź tak zwłaszcza rogi każdego prostokąta z "fragmenty" oraz początek i koniec \
+każdej kreski. Rysujesz to, co widać na pierwszym obrazie; siatki nie rysujesz."""
+)
+
 _NUMBER = {"type": "number"}
 _LINE = {
     "co": _str(),
@@ -252,20 +279,54 @@ def _read(img: Image.Image) -> Image.Image:
     return img if size == img.size else img.resize(size, Image.Resampling.LANCZOS)
 
 
-def question(img: Image.Image, about: Sequence[str] = (), model: str = MODEL) -> dict[str, Any]:
+def gridded(img: Image.Image, step: int = GRID) -> Image.Image:
+    """The picture with a grid of coordinates over it: a line every
+    ``step`` pixels, each with its number at both ends and in the middle,
+    for one who reads a place off a picture loosely."""
+    w, h = img.size
+    layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    canvas = ImageDraw.Draw(layer)
+    font = _font(26)
+    for x in range(step, w, step):
+        canvas.line([(x, 0), (x, h)], fill=(0, 0, 0, 150), width=4)
+        canvas.line([(x, 0), (x, h)], fill=(255, 255, 0, 230), width=2)
+    for y in range(step, h, step):
+        canvas.line([(0, y), (w, y)], fill=(0, 0, 0, 150), width=4)
+        canvas.line([(0, y), (w, y)], fill=(255, 255, 0, 230), width=2)
+
+    def label(x: float, y: float, text: str) -> None:
+        box = canvas.textbbox((x, y), text, font=font)
+        canvas.rectangle((box[0] - 3, box[1] - 2, box[2] + 3, box[3] + 2), fill=(0, 0, 0, 210))
+        canvas.text((x, y), text, fill=(255, 255, 0, 255), font=font)
+
+    for x in range(step, w, step):
+        for y in (4, h // 2 + 5, h - 36):
+            label(x + 5, y, str(x))
+    for y in range(step, h, step):
+        for x in (4, w // 2 + 5, w - 80):
+            label(x, y + 4, str(y))
+    return Image.alpha_composite(img.convert("RGBA"), layer).convert("RGB")
+
+
+def question(
+    img: Image.Image, about: Sequence[str] = (), model: str | None = None
+) -> dict[str, Any]:
     """The pen's first question: the picture whole (its field alone, as
     the sheet shows it), for its subject, the places to look at closer and
     the drawing outside them; ``about``: what the analysis's marks are of,
     so the pen knows what the page will speak of."""
+    who = model or MODEL
+    sure = who in SURE
     seen = _read(img)
     text = f"OBRAZ: {seen.size[0]} × {seen.size[1]} px (współrzędne w tych pikselach)"
     named = [t for t in dict.fromkeys(a.strip() for a in about) if t][:MAX_ABOUT]
     if named:
         text += "\nANALIZA WSKAZUJE: " + "; ".join(named)
+    pictures = [image_block(seen)] if sure else [image_block(seen), image_block(gridded(seen))]
     params = request(
-        model=model,
-        system=SYSTEM,
-        content=[image_block(seen), {"type": "text", "text": text}],
+        model=who,
+        system=SYSTEM if sure else GRID_SYSTEM,
+        content=[*pictures, {"type": "text", "text": text}],
         schema=SCHEMA,
         max_tokens=16000,
         effort=EFFORT,
@@ -323,7 +384,7 @@ def _cut(size: tuple[int, int], box: Box) -> tuple[int, int, int, int]:
 
 
 def close_question(
-    img: Image.Image, box: Box, name: str, subject: str = "", model: str = CLOSE_MODEL
+    img: Image.Image, box: Box, name: str, subject: str = "", model: str | None = None
 ) -> dict[str, Any]:
     """The pen's question about one place: the place cut from the picture
     and enlarged, and the whole picture with the place marked."""
@@ -343,7 +404,7 @@ def close_question(
         "(współrzędne w pikselach fragmentu, pierwszego obrazu)"
     )
     params = request(
-        model=model,
+        model=model or CLOSE_MODEL,
         system=CLOSE_SYSTEM,
         content=[image_block(near), image_block(where), {"type": "text", "text": text}],
         schema=CLOSE_SCHEMA,

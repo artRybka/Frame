@@ -20,7 +20,7 @@ from test_ai import GOOD_KEY, FakeAnthropic, _message
 from frame_server import daily as daily_module
 from frame_server import sizes
 from frame_server.ai import AiConfigUpdate, study_pick
-from frame_server.ai.client import FABLE, HAIKU, OPUS, SONNET
+from frame_server.ai.client import HAIKU, OPUS, SONNET
 from frame_server.ai.daily import (
     INCOMPLETE,
     TAKE,
@@ -538,7 +538,7 @@ def test_claude_writes_the_page(tmp_path: Path) -> None:
         assert analysis["messages"][0]["content"][0]["type"] == "image"
         images = [b for b in check["messages"][0]["content"] if b["type"] == "image"]
         assert len(images) == 2 and check["model"] == HAIKU
-        assert [p["model"] for p in rest] == [SONNET, FABLE, OPUS]  # movement, pen, text
+        assert [p["model"] for p in rest] == [SONNET, OPUS, OPUS]  # movement, pen, text
 
         # Asked once: the page is kept.
         client.get("/api/daily")

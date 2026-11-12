@@ -86,10 +86,9 @@ class PenJob(NoteJob):
     kind = KIND
     model = pen.MODEL
     prompt_version = f"pen-{pen.ROUND}"
-    #: The whole picture and some three close-ups, as if all were asked of
-    #: the one who draws the whole (about 0.3 USD at once, half of it at
-    #: night).
-    typical = Usage(input_tokens=11000, cache_read_input_tokens=0, output_tokens=5200)
+    #: The whole picture (twice: clean and under the grid) and some three
+    #: close-ups (about 0.26 USD at once, half of it at night).
+    typical = Usage(input_tokens=20000, cache_read_input_tokens=0, output_tokens=9000)
     night = True
     #: The night's question is the pen's first; the close-ups follow it.
     follow_up = True

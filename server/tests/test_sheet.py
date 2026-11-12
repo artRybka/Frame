@@ -657,10 +657,40 @@ def _inside(point: Any, box: Box) -> bool:
     return box.x <= point.x <= box.x + box.w and box.y <= point.y <= box.y + box.h
 
 
+def test_the_grid_rules_the_picture_with_numbered_lines() -> None:
+    """What a model that misplaces a drawing is shown beside the picture:
+    the same picture, a line every 200 px, each with its number."""
+    picture = Image.new("RGB", (900, 620), (40, 60, 90))
+    ruled = pen.gridded(picture)
+    assert ruled.size == picture.size and ruled.mode == "RGB"
+    seen = np.asarray(ruled).astype(int)
+    yellow = (seen[..., 0] > 200) & (seen[..., 1] > 200) & (seen[..., 2] < 90)
+    for x in (200, 400, 600, 800):
+        assert yellow[100:180, x].all() and not yellow[100:180, x + 60].any()
+    for y in (200, 400, 600):
+        assert yellow[y, 290:380].all()
+    assert not yellow[100:180, 100].any()  # none between the lines
+    # Each line's number is written by it (dark, backed, in the yellow).
+    by = seen[4:36, 205:270]
+    assert (by.sum(axis=2) < 60).any() and yellow[4:36, 205:270].any()
+    assert not yellow[4:36, 110:190].any()
+
+
 def test_the_pen_asks_about_the_whole_then_about_each_place() -> None:
     whole = Image.new("RGB", (3000, 2000), "white")
     asked = pen.question(whole, ["Statek", "Łódź", "Statek", " "])
-    assert asked["model"] == FABLE and asked["output_config"]["effort"] == "medium"
+    # Opus draws, and reads a place off a large picture loosely: it gets the
+    # picture a second time under a grid of coordinates.
+    assert asked["model"] == pen.MODEL == OPUS and asked["output_config"]["effort"] == "medium"
+    assert asked["system"][0]["text"] == pen.GRID_SYSTEM and pen.GRID_SYSTEM.startswith(pen.SYSTEM)
+    clean, ruled, _ = asked["messages"][0]["content"]
+    assert clean["type"] == ruled["type"] == "image" and clean["source"] != ruled["source"]
+    # Fable (the spare) puts a line where the thing is with no help.
+    spare = pen.question(whole, model=pen.SPARE)
+    assert pen.SPARE == FABLE and spare["model"] == FABLE
+    assert spare["system"][0]["text"] == pen.SYSTEM
+    assert [b["type"] for b in spare["messages"][0]["content"]] == ["image", "text"]
+    assert spare["output_config"]["effort"] == "medium"
     said = asked["messages"][0]["content"][-1]["text"]
     width, height = pen.read_size(3000, 2000)
     assert max(width, height) > 2000  # as large as a model reads one
@@ -681,7 +711,7 @@ def test_the_pen_asks_about_the_whole_then_about_each_place() -> None:
 
     def ask(params: dict[str, Any]) -> dict[str, Any] | None:
         questions.append(params)
-        return plan if params["system"][0]["text"] == pen.SYSTEM else CLOSE
+        return CLOSE if params["system"][0]["text"] == pen.CLOSE_SYSTEM else plan
 
     together: list[int] = []
 
@@ -692,7 +722,7 @@ def test_the_pen_asks_about_the_whole_then_about_each_place() -> None:
     drawn = pen.draw(small, ["Łódź"], ask, many)
     assert drawn is not None and drawn[pen.CLOSE_KEY] == [CLOSE] and together == [1]
     first, close = questions
-    assert first["model"] == pen.MODEL == FABLE and close["model"] == pen.CLOSE_MODEL == OPUS
+    assert first["model"] == pen.MODEL and close["model"] == pen.CLOSE_MODEL == OPUS
     assert close["system"][0]["text"] == pen.CLOSE_SYSTEM
     found = pen_strokes(drawn, small)
     assert found is not None and len(found) == 5
@@ -705,7 +735,7 @@ def test_the_pen_asks_about_the_whole_then_about_each_place() -> None:
     questions.clear()
     refusing = iter([None, plan, CLOSE])
     assert pen.draw(small, [], lambda params: questions.append(params) or next(refusing)) == drawn
-    assert [q["model"] for q in questions] == [FABLE, pen.SPARE, OPUS]
+    assert [q["model"] for q in questions] == [OPUS, FABLE, OPUS]
     assert pen.draw(small, [], lambda params: None) is None
     assert pen_strokes(None, small) is None
 
@@ -791,7 +821,7 @@ def test_sketches_of_an_earlier_pen_are_drawn_again_at_night(service: FrameServi
     read = pen.read_size(*of)
     fuji = {"co": "Fudżi", "x": 0.6 * read[0], "y": 0.6 * read[1], "w": 0.16, "h": 0.14}
     plan["fragmenty"].append({**fuji, "w": 0.16 * read[0], "h": 0.14 * read[1]})
-    answers = {pen.SYSTEM: plan, pen.CLOSE_SYSTEM: CLOSE}
+    answers = {pen.GRID_SYSTEM: plan, pen.CLOSE_SYSTEM: CLOSE}
 
     def results(batch_id: str) -> list[Any]:
         out = []
@@ -810,7 +840,7 @@ def test_sketches_of_an_earlier_pen_are_drawn_again_at_night(service: FrameServi
         AiConfigUpdate(keywords_artworks=False, keywords_photos=False, pl_text=False)
     )
     job = service.ai.jobs[PEN]
-    assert isinstance(job, PenJob) and job.night and job.follow_up and job.model == FABLE
+    assert isinstance(job, PenJob) and job.night and job.follow_up and job.model == OPUS
     # A page whose whole analysis is about to be made again gets the new pen with it.
     _old_page(service, **{CHECK_ROUND: ROUND - 1})
     assert not job.wanted(item)
@@ -823,7 +853,7 @@ def test_sketches_of_an_earlier_pen_are_drawn_again_at_night(service: FrameServi
     assert service.ai.order_night() == 1 and not fake.asked
     (requests,) = fake.batches.values()
     asked = requests[0]["params"]
-    assert asked["model"] == FABLE and asked["system"][0]["text"] == pen.SYSTEM
+    assert asked["model"] == OPUS and asked["system"][0]["text"] == pen.GRID_SYSTEM
     assert "timeout" not in asked  # (the client's own, no part of a request)
     assert service.ai.order_night() == 0  # already in a batch
     # The pen's first answer in: the place it asked to see closer goes into
@@ -843,7 +873,7 @@ def test_sketches_of_an_earlier_pen_are_drawn_again_at_night(service: FrameServi
     assert service.ai.poll_batches() == 1
     assert service.library.get_state(LATER_KEY, {}) == {}
     assert service.library.get_state(BATCHES_KEY, []) == []
-    assert [q["model"] for q in got] == [FABLE, OPUS, OPUS]
+    assert [q["model"] for q in got] == [OPUS, OPUS, OPUS]
     page = service.library.note("met:1", STUDY)
     assert page is not None and page.data[pen.PEN_KEY] == pen.ROUND
     shown = page_views(page.data)[0]
