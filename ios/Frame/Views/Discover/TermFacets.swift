@@ -1841,16 +1841,19 @@ struct LevelSwatch: View {
                     }
                 }
                 .frame(width: 46, height: 46)
+                // Seven to a row since Beż: a size smaller than caption2, and
+                // room to shrink, so "Pomarańcz" is whole and two levels side
+                // by side ("wyraźny", "obecny") stay two words.
                 Text(ColorTag.name(family))
-                    .font(.caption2.weight(level != nil ? .semibold : .regular))
+                    .font(.system(size: 10, weight: level != nil ? .semibold : .regular))
                     .foregroundStyle(level != nil ? Theme.ink : Theme.inkSoft)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.75)
                 Text(level?.name(for: family) ?? " ")
-                    .font(.caption2.weight(.semibold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.75)
             }
             .opacity(dimmed ? 0.3 : 1)
             .contentShape(Rectangle())
