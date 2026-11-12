@@ -19,6 +19,9 @@ struct ItemToolbar: ToolbarContent {
     var keepOwn: () -> Void = {}
     /// "Wczytaj kupioną kopię" (Kupowanie w Alamy on): the host picks the file.
     var bringCopy: (() -> Void)? = nil
+    /// "Kreatywny restaurator", under "Szukaj lepszej kopii": for a picture
+    /// small for the frame (`LowRes`), drawn again by the image model.
+    var restore: (() -> Void)? = nil
 
     /// Konfiguracja → Źródła dzieł → Kupowanie w Alamy.
     private var buying: Bool { hasCopies && model.settings?.alamy == true }
@@ -64,6 +67,16 @@ struct ItemToolbar: ToolbarContent {
                             Text(copiesNote)
                         } icon: {
                             Image(systemName: "plus.magnifyingglass")
+                        }
+                    }
+                    if let restore {
+                        Button(action: restore) {
+                            Label {
+                                Text("Kreatywny restaurator")
+                                Text("Model AI dorysuje szczegóły")
+                            } icon: {
+                                Image(systemName: LowRes.restoredSymbol)
+                            }
                         }
                     }
                     if item.sharper != nil {

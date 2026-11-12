@@ -128,7 +128,7 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
             id: id, kind: kind, source: source, title: displayTitle, artist: artist, dateText: dateText,
             year: year, colors: colors, width: width, height: height, favorite: favorite,
             suitability: suitability, heldBy: heldBy, heldAt: heldAt, picture: sharper?.itemId ?? "",
-            subtitle: photoLine
+            subtitle: photoLine, restored: sharper?.isRestored == true ? true : nil
         )
     }
 }
@@ -190,8 +190,12 @@ struct SharperCopy: Codable, Hashable, Sendable {
     var height: Int
     /// Picked by the owner ("Szukaj lepszej kopii"), not found by the server.
     var chosen: Bool? = nil
+    /// Drawn again larger by the image model ("Kreatywny restaurator"):
+    /// detail invented, not the museum's photograph.
+    var restored: Bool? = nil
 
     var isChosen: Bool { chosen == true }
+    var isRestored: Bool { restored == true }
 }
 
 /// A sharper copy of a work's picture, looked for as its card opens:
@@ -353,6 +357,9 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     /// Its picture's long side when known and small for the frame (under
     /// 1600 px, `low_res.LOW_SIDE`): a mark after the title. 0 or nil, none.
     var lowSide: Int? = nil
+    /// Its picture was drawn again by the image model ("Kreatywny
+    /// restaurator"): amber sparkles in place of the low resolution's dots.
+    var restored: Bool? = nil
 
     /// The title "Teraz" shows: Polish when there is one.
     var shownTitle: String { titlePl ?? title }
@@ -1528,6 +1535,17 @@ struct AiEstimate: Codable, Hashable, Sendable {
     var usd: Double
 }
 
+/// Konfiguracja → "Kreatywny restaurator": the favourites under 1600 px the
+/// image model would draw again (`items`, about `usd` in Google's batches),
+/// those waiting in batches, and the works drawn so far.
+struct RestorerState: Codable, Hashable, Sendable {
+    var enabled: Bool
+    var items: Int
+    var usd: Double
+    var waiting: Int
+    var restored: Int
+}
+
 struct AiStarted: Codable, Hashable, Sendable {
     var items: Int
 }
@@ -1938,6 +1956,8 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
     var zoom: Bool? = nil
     /// `ItemSummary.lowSide`.
     var lowSide: Int? = nil
+    /// `ItemSummary.restored`: the library's copy was drawn again.
+    var restored: Bool? = nil
     var id: String { item.id }
 
     /// The tile's summary, with the measured shape: without it every work
@@ -1947,6 +1967,7 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
         summary.aspect = aspect
         summary.zoom = zoom
         summary.lowSide = lowSide
+        if restored == true { summary.restored = true }
         return summary
     }
 

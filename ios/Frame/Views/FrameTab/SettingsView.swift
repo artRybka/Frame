@@ -308,6 +308,7 @@ struct SettingsPageView: View {
             } else {
                 waiting
             }
+            RestorerSection()
         case .library:
             if let counts = model.catalogueCounts {
                 CatalogueCountSection(counts: counts)

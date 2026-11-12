@@ -110,6 +110,9 @@ class RemoteItem(BaseModel):
     #: Its picture's long side when known and small for the frame
     #: (``low_res.low_side``), else 0.
     low_side: int = 0
+    #: The library's copy shows a picture drawn again by the image model
+    #: ("Kreatywny restaurator").
+    restored: bool = False
 
 
 def remote_items(
@@ -172,6 +175,7 @@ def remote_items(
                 aspect=svc.importer.known_aspect(item),
                 zoom=zooms(item),
                 low_side=low_side(item),
+                restored=own is not None and own.sharper is not None and own.sharper.restored,
             ),
         )
     return list(found.values())

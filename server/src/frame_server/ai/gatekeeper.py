@@ -118,7 +118,8 @@ def facts(item: Item) -> str:
 
 def asked_by_rules(item: Item) -> bool:
     """A work the gatekeeper looks at: a picture of a gathering source the
-    rules let into the catalogue."""
+    rules let into the catalogue. Not one the image model drew again for
+    the owner (``SharperCopy.restored``): his, kept as he wanted it."""
     return (
         item.kind == ItemKind.ARTWORK
         and item.source not in COLLECTIONS
@@ -126,6 +127,7 @@ def asked_by_rules(item: Item) -> bool:
         and not item.seen_as
         and not item.part_of
         and item.look is None
+        and not (item.sharper is not None and item.sharper.restored)
         and bool(item.thumb_url)
         and not against(item, Place.TIDIED)
     )

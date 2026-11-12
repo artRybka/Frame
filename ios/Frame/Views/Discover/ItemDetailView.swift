@@ -25,6 +25,8 @@ struct ItemDetailView: View {
     /// 0 when it is not, as the server told it once the card opened or a
     /// copy was picked; nil, the tile's word for it until then.
     @State private var lowKnown: Int?
+    /// "Kreatywny restaurator" at work (half a minute).
+    @State private var restoring = false
     @State private var draft = FramingDraft()
     /// Crops saved here: the preview asks for them by name, as the one
     /// cached from before shows the old crop.
@@ -161,7 +163,8 @@ struct ItemDetailView: View {
                     addingToPlaylist: $showingPlaylists, savingPhoto: $savingPhoto,
                     findingCopies: $findingCopies, pictureSide: pictureSize.map { max($0.0, $0.1) },
                     keepOwn: { Task { await keepOwnPicture() } },
-                    bringCopy: { bringingCopy = true }
+                    bringCopy: { bringingCopy = true },
+                    restore: canRestore(item) ? { Task { await restoreByModel() } } : nil
                 )
             }
         }
@@ -289,6 +292,30 @@ struct ItemDetailView: View {
         model.notices.info("Wczytuję kopię…")
         do {
             copyPicked(try await model.bringCopy(itemID: itemID, from: url, origin: "Alamy"))
+        } catch {
+            if !error.isCancellation { model.show(error) }
+        }
+    }
+
+    /// "Kreatywny restaurator" in the menu: for the owner, a museum work
+    /// whose picture is small for the frame and not drawn again yet.
+    private func canRestore(_ item: Item) -> Bool {
+        model.isOwner && item.kind == .artwork && item.look == nil && !restoring
+            && item.sharper?.isRestored != true && (lowSide ?? 0) > 0
+    }
+
+    /// "Kreatywny restaurator": the image model draws the picture again
+    /// larger (half a minute); the card fades to it as to a picked copy.
+    private func restoreByModel() async {
+        restoring = true
+        defer { restoring = false }
+        model.notices.info("Kreatywny restaurator pracuje…", "Potrwa około pół minuty.")
+        do {
+            copyPicked(try await model.restore(itemID: itemID))
+        } catch let BackendError.http(status, body) where status == 422 && body.contains("refused") {
+            model.notices.warn(
+                "Restaurator odmówił", "Model uznał obraz za chroniony i nie chce go przerysować."
+            )
         } catch {
             if !error.isCancellation { model.show(error) }
         }
@@ -462,7 +489,8 @@ struct ItemDetailView: View {
                 date: photo ? "" : date,
                 font: .serif(30, weight: .semibold),
                 zoom: summary.zoom == true ? Fragments.depth(fragments, scale: displayScale) ?? 0 : nil,
-                lowSide: summary.lowSide
+                lowSide: summary.lowSide,
+                restored: summary.restored == true
             )
                 .fixedSize(horizontal: false, vertical: true)
             if !summary.artist.isEmpty {
@@ -1042,7 +1070,8 @@ struct ItemDetailView: View {
                 // "Pod lupą": its picture's tiles are laid on it while the
                 // full screen zooms in (a Commons tile set has places).
                 zoom: item.isFragment ? nil : Fragments.depth(fragments, scale: displayScale),
-                lowSide: lowSide
+                lowSide: lowSide,
+                restored: item.sharper?.isRestored == true
             )
                 .fixedSize(horizontal: false, vertical: true)
                 // The museum's title fades into the Polish one.
@@ -1245,8 +1274,14 @@ struct ItemDetailView: View {
     private func pictureFact(_ item: Item) -> some View {
         let place: String
         var size: String?
-        if let sharper = item.sharper {
+        let restored = item.sharper?.isRestored == true
+        if let sharper = item.sharper, !restored {
             place = sharper.museum.isEmpty ? Names.source(sharper.source) : sharper.museum
+            size = "\(sharper.width) × \(sharper.height) px"
+        } else if let sharper = item.sharper {
+            // Drawn again from the museum's picture: the museum, the
+            // drawing's size, and the restorer's name under it.
+            place = item.museum.isEmpty ? Names.source(item.source) : item.museum
             size = "\(sharper.width) × \(sharper.height) px"
         } else {
             let source = item.museum.isEmpty ? Names.source(item.source) : item.museum
@@ -1268,10 +1303,12 @@ struct ItemDetailView: View {
                         .multilineTextAlignment(.trailing)
                         .foregroundStyle(Theme.ink)
                         .contentTransition(.opacity)
-                    if item.sharper?.isChosen == true {
+                    if restored {
+                        RestoredTag()
+                    } else if item.sharper?.isChosen == true {
                         Text("wybrane przez Ciebie").font(.caption).foregroundStyle(Theme.inkSoft)
                     }
-                    if let side = lowSide, side > 0 {
+                    if !restored, let side = lowSide, side > 0 {
                         CopyTag(tag: .init(text: "Niska rozdzielczość", tone: .warn))
                     }
                 }

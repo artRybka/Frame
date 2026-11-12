@@ -785,6 +785,20 @@ struct LiveBackend: FrameBackend {
 
     func keywordsEstimate() async throws -> AiEstimate { try await get("/api/ai/keywords/estimate") }
 
+    func restore(itemID: String) async throws -> Item {
+        var req = request("/api/library/items/\(escape(itemID))/restore", method: "POST")
+        req.timeoutInterval = 180  // the image model draws for half a minute, then it is measured and cut
+        return try await perform(req)
+    }
+
+    func restorer() async throws -> RestorerState { try await get("/api/ai/restorer") }
+
+    func restoreFavourites() async throws -> RestorerState {
+        var req = request("/api/ai/restorer/favourites", method: "POST")
+        req.timeoutInterval = 300  // every picture downloaded and sent in batches
+        return try await perform(req)
+    }
+
     func describeLibrary() async throws -> AiStarted {
         try await send("/api/ai/keywords/describe-library", method: "POST")
     }

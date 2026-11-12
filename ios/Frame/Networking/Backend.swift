@@ -67,6 +67,14 @@ protocol FrameBackend: Sendable {
     /// A copy of the work's picture the owner brought (bought in Alamy, a
     /// scan): kept for good and shown in its place, like a picked copy.
     func bringCopy(itemID: String, filename: String, data: Data, origin: String) async throws -> Item
+    /// "Kreatywny restaurator": the work's small picture drawn again larger
+    /// by the image model (half a minute) and kept in its place, as a copy
+    /// the owner picked. A 422 "refused: …" when the model would not.
+    func restore(itemID: String) async throws -> Item
+    /// Konfiguracja: the favourites under 1600 px the batch would draw.
+    func restorer() async throws -> RestorerState
+    /// Those favourites drawn again through Google's batches (within a day).
+    func restoreFavourites() async throws -> RestorerState
     /// One spot of the picture shown now and of the copy, at the frame's
     /// scale; the most detailed one without `x` and `y`.
     func copySpot(itemID: String, copyID: String, x: Double?, y: Double?) async throws -> CopySpot

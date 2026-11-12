@@ -160,6 +160,8 @@ jobs:
             capture playlist 12 "playlist-$appearance"
             capture playlist 12 "lowres-playlist-$appearance" -demoLowSide all
             capture detail 16 "lowres-detail-$appearance" -demoLowSide all
+            capture playlist 12 "restored-playlist-$appearance" -demoLowSide restored
+            capture detail 16 "restored-detail-$appearance" -demoLowSide restored
             capture editor 12 "editor-$appearance"
             capture editor-new 12 "editor-new-$appearance"
             capture editor-manual 12 "editor-manual-$appearance"
@@ -185,6 +187,7 @@ jobs:
             # Confirmation dialogs: on iOS 26 a popover on what was tapped.
             capture frame 12 "confirm-update-$appearance" -confirm update
             capture connection 12 "confirm-describe-$appearance" -settingsPage ai -confirm describe
+            capture connection 12 "confirm-restore-$appearance" -settingsPage ai -confirm restore
             capture playlists 12 "confirm-delete-playlist-$appearance" -confirm delete-playlist
             capture museums 8 "museums-$appearance"
             capture search 8 "search-$appearance"
