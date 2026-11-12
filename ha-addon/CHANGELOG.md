@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.145.60
+
+- Szukanie po kolorze, po audycie na 530 dziełach z biblioteki. Nowa
+  barwa „Beż” w arkuszu Kolor: blady, ciepły ton papieru, kości słoniowej
+  i jasnej karnacji. Dotąd liczył się jako żółć albo pomarańcz, przez co
+  „Pomarańcz · główny” i „Żółć · główna” znajdowały prawie same rysunki
+  i ryciny (41 z 42 w próbce).
+- Akcenty i udziały barw nazywa teraz jedna reguła. Ciemny brąz nie jest
+  już „czerwonym akcentem”, błękit nieba jest błękitem, a nie turkusem,
+  ciemna czerwień szat jest czerwienią, a nie brązem. Akcentem jest też
+  barwa, która wyraźnie odstaje od reszty obrazu na co najmniej 1%
+  powierzchni, choć nie zmieściła się na pasku.
+- „Biel · akcent”: biel, która się wybija (piana ciemnego morza, biała
+  szata), ma teraz swój znacznik i można jej szukać.
+- Tonacja liczy temperaturę i nasycenie względem bieli samego obrazu.
+  Czarna rycina na pożółkłym papierze jest neutralna i stonowana, a nie
+  ciepła i żywa. W próbce „Ciepłe” spada z 62% do 43%, „Żywe” z 40% do
+  24%, „Chłodne” rośnie z 3% do 5%.
+- Poziomy barw znaczą „co najmniej”: „obecny” to co najmniej 6% obrazu,
+  „wyraźny” co najmniej 28%. „Czerwień · obecna” znajduje więc także
+  obraz w połowie czerwony. „Akcent” i „główny” znaczą to co dotąd.
+- Po aktualizacji serwer raz przelicza barwy biblioteki (na NAS 1 do 2
+  godzin); do tego czasu wyniki szukania po kolorze są mieszane. Pasek
+  barw w studium się nie zmienia.
+
 ## 1.145.59
 
 - Pasek barw farbą olejną dla dzieł malowanych gładko (tempera, gotyk,

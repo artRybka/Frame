@@ -1019,7 +1019,8 @@ struct TermFacetPanel: View {
     private var colourGrid: some View {
         let families = ColorTag.families.filter { colors.contains($0) || pickedLevel($0) != nil }
         let full = pickedFamilies.count >= ColorTag.maxLevels
-        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 6), spacing: 10) {
+        let columns = Array(repeating: GridItem(.flexible(), spacing: ToneGroup.columnGap), count: ToneRow.columns)
+        return LazyVGrid(columns: columns, spacing: 10) {
             ForEach(families, id: \.self) { family in
                 let level = pickedLevel(family)
                 LevelSwatch(family: family, level: level, dimmed: full && level == nil) {
@@ -1079,15 +1080,16 @@ struct TermFacetPanel: View {
     }
 
     /// Two groups in a row (szkic 14, T1): Temperatura and Nasycenie, then
-    /// Barwność and Jasność. Each half of the six Kolorystyka columns holds
-    /// a group with its middle dot on the middle column, on Kolorystyka's
-    /// rows, so switching cards the middles stay put (Neutralne where
-    /// Pomarańcz is, Umiarkowane on Turkus; Mateusz 2026-11-05 23:32).
+    /// Barwność and Jasność. Each holds three of the seven Kolorystyka
+    /// columns, the first three and the last three (``ToneRow``), with its
+    /// middle dot on the middle one, on Kolorystyka's rows, so switching
+    /// cards the middles stay put (Neutralne where Pomarańcz is, Umiarkowane
+    /// on Błękit; Mateusz 2026-11-05 23:32, seven columns since Beż).
     private var toneGrid: some View {
         let groups = ColorTag.toneGroups
         return VStack(spacing: 10) {
             ForEach(Array(stride(from: 0, to: groups.count, by: 2)), id: \.self) { start in
-                HStack(spacing: ToneGroup.columnGap) {
+                ToneRow {
                     ForEach(groups[start..<min(start + 2, groups.count)], id: \.self) { group in toneGroup(group) }
                 }
             }
@@ -1859,6 +1861,40 @@ struct LevelSwatch: View {
         .accessibilityValue(level?.name(for: family) ?? "nie wybrany")
         .accessibilityHint("Stuknij, by było go więcej; po większości kolor się wyłącza.")
         .accessibilityAddTraits(level != nil ? .isSelected : [])
+    }
+}
+
+/// A row of the Tonacja card on Kolorystyka's columns: its first group on
+/// the first three of them, its second on the last three, the middle
+/// column between them empty.
+struct ToneRow: Layout {
+    /// Kolorystyka's swatches in a row.
+    static let columns = 7
+    /// The columns a group holds.
+    static let span = 3
+
+    /// How wide a group is in a row ``width`` wide.
+    static func groupWidth(in width: CGFloat) -> CGFloat {
+        let gap = ToneGroup.columnGap
+        let column = (width - gap * CGFloat(columns - 1)) / CGFloat(columns)
+        return max(column * CGFloat(span) + gap * CGFloat(span - 1), 0)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.replacingUnspecifiedDimensions().width
+        let each = ProposedViewSize(width: Self.groupWidth(in: width), height: proposal.height)
+        let height = subviews.map { $0.sizeThatFits(each).height }.max() ?? 0
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let width = Self.groupWidth(in: bounds.width)
+        let each = ProposedViewSize(width: width, height: bounds.height)
+        for (index, subview) in subviews.enumerated() {
+            // The first from the leading edge, the others from the trailing one.
+            let x = index == 0 ? bounds.minX : bounds.maxX - width
+            subview.place(at: CGPoint(x: x, y: bounds.minY), anchor: .topLeading, proposal: each)
+        }
     }
 }
 
