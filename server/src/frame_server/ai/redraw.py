@@ -2,7 +2,8 @@
 
 The sheet an analysis of composition is drawn on has a few strokes of a
 pen over its stains (``ai.pen``). When the pen learns to draw better
-(:data:`pen.ROUND`), the pages that have their analysis keep it and get the
+(:data:`pen.ROUND`, and :data:`pen.REDRAWN` says which pages' sketches are
+then old), the pages that have their analysis keep it and get the
 sketch alone anew: one question to Sonnet a page, nobody waiting, so asked
 at night through the Batch API for half the price (about a cent a page;
 Mateusz 2026-11-12 08:15, of work nobody waits for: "A możemy je dać w
@@ -35,7 +36,7 @@ KIND = "pen"
 
 def wants(note: Note | None) -> bool:
     """A page with an analysis whose sketch an earlier pen drew (or none)."""
-    if note is None or note.data.get(pen.PEN_KEY, 1) >= pen.ROUND:
+    if note is None or note.data.get(pen.PEN_KEY, 1) >= pen.REDRAWN:
         return False
     return bool(page_views(note.data))
 
@@ -83,8 +84,8 @@ class PenJob(NoteJob):
     model = SONNET
     prompt_version = f"pen-{pen.ROUND}"
     #: The picture and the instruction in, some twenty strokes and a little
-    #: thought out (about 0.035 USD at once, half of it at night).
-    typical = Usage(input_tokens=2400, cache_read_input_tokens=0, output_tokens=3000)
+    #: thought out (about 0.045 USD at once, half of it at night).
+    typical = Usage(input_tokens=4600, cache_read_input_tokens=0, output_tokens=3400)
     night = True
 
     def __init__(self, compose: ComposeJob) -> None:
@@ -137,14 +138,14 @@ class PenJob(NoteJob):
         view = self._view(item.id)
         if view is None:
             raise LookupError(f"no page of {item.id} has an analysis")
-        return pen.question(self._picture(item, view))
+        return pen.question(self._picture(item, view), [m.title for m in view.marks])
 
     def apply(self, item: Item, note: Note) -> None:
         view = self._view(item.id)
         strokes = None
         if view is not None and "szkic" in note.data:
             try:
-                strokes = pen.strokes(note.data, self._picture(item, view).size)
+                strokes = pen.strokes(note.data, self._picture(item, view))
             except Exception as err:  # the picture cannot be had now: the old sketch stays
                 log.warning("pen sketch of %s not put in: %s", item.id, err)
         for kind in PAGES:

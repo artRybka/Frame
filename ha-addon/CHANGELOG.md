@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.60
+## 1.145.61
 
 - Szukanie po kolorze, po audycie na 530 dziełach z biblioteki. Nowa
   barwa „Beż” w arkuszu Kolor: blady, ciepły ton papieru, kości słoniowej
@@ -24,6 +24,25 @@
 - Po aktualizacji serwer raz przelicza barwy biblioteki (na NAS 1 do 2
   godzin); do tego czasu wyniki szukania po kolorze są mieszane. Pasek
   barw w studium się nie zmienia.
+
+## 1.145.60
+
+- Studium dzieła, analiza kompozycji: rysunek piórkiem na arkuszu trzyma
+  się form obrazu. Serwer mierzy teraz każdą kreskę: dosuwa ją do
+  krawędzi obrazu, która biegnie tuż obok (konturu postaci, burty,
+  żagla, brzegu chmury), prostą zostawia prostą, końce skraca do miejsca,
+  w którym forma się kończy. Kreska, która nie leży na żadnej krawędzi,
+  i kreska, która powtarza inną, nie jest rysowana.
+- Piórko ma nową instrukcję: najpierw mówi, co jest tematem obrazu
+  (postać, grupa, statek, budowla, przedmioty martwej natury, a także
+  to, o czym mówi analiza), i rysuje go dokładnie, większością kresek.
+  Reszta obrazu dostaje najwyżej kilka długich linii wielkich podziałów
+  (horyzont, brzeg ciemnej partii) albo nic; spokojne tło zostaje puste.
+  Piórko ogląda też obraz w większym rozmiarze, żeby widzieć małe, ale
+  ważne formy (łódź, twarz, dłoń).
+- Kreskowanie ciemnych partii zostaje bez zmian.
+- Nowy rysunek dostają studia robione od teraz oraz, nocą w pakiecie,
+  wszystkie gotowe studia (ok. 2 centów za studium).
 
 ## 1.145.59
 

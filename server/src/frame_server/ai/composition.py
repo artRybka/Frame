@@ -544,7 +544,8 @@ def written(
             movement = run("motion", lambda: motions.movement(asked("motion", params), img.size))
     # The few strokes of the pen under the stains of the sheet: without them
     # the sheet is the stains alone.
-    strokes = run("sketch", lambda: pen.strokes(asked("sketch", pen.question(img)), img.size))
+    about = [m.title for m in view.marks]
+    strokes = run("sketch", lambda: pen.strokes(asked("sketch", pen.question(img, about)), img))
     # The grid and the movement are facts; the text is written last, in one voice.
     with_grid = merged(view, choice, None)
     facts = prose.grid_facts(choice.grid, choice.held) if choice is not None else []
