@@ -218,6 +218,14 @@ struct HolderView: Codable, Hashable, Sendable {
     var key: String? = nil
 }
 
+/// How a work is made, looked up as its card opens when its source does
+/// not say (WikiArt, Commons, some of Europeana's): "found" (`medium`),
+/// "looking" (ask again), "none", "off".
+struct MediumView: Codable, Hashable, Sendable {
+    var status: String
+    var medium: String = ""
+}
+
 /// One copy of a work's picture from another source ("Szukaj lepszej
 /// kopii"), as the server judged it.
 struct CopyView: Codable, Hashable, Sendable, Identifiable {

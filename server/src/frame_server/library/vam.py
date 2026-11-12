@@ -121,3 +121,19 @@ class VictoriaAndAlbert(Museum):
         resp.raise_for_status()
         found = [d for d in resp.json().get("records") or [] if d.get("systemNumber") == source_id]
         return self._map(found[0]) if found else None
+
+    def medium(self, source_id: str) -> str:
+        """The object's own record: "Tempera on panel" (its search gives
+        no materials)."""
+        if not self.private_use:
+            return ""
+        resp = self.http.get(f"{self.api}/museumobject/{source_id}")
+        if resp.status_code == 404:
+            return ""
+        resp.raise_for_status()
+        record = resp.json().get("record") or {}
+        said = str(record.get("materialsAndTechniques") or "").strip()
+        if said:
+            return said
+        names = [m.get("text") for m in record.get("materials") or [] if isinstance(m, dict)]
+        return ", ".join(str(n) for n in names if n)

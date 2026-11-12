@@ -79,6 +79,11 @@ HOLDERS_A_NIGHT = 300
 #: ... each taking this long at most (seconds).
 HOLDER_WAIT = 60.0
 
+#: Works whose technique is looked up in one night, at most ...
+MEDIA_A_NIGHT = 600
+#: ... each taking this long at most (seconds).
+MEDIUM_WAIT = 60.0
+
 #: When the app last asked the server something (time.monotonic()).
 _last_used = float("-inf")
 
@@ -555,6 +560,24 @@ def tasks(service: FrameService) -> list[NightTask]:
             looked += 1
         return looked
 
+    def media(night: Night) -> int:
+        """How the library's works are made, for those whose source does
+        not say and nobody looked up yet (frame_server.media)."""
+        looked = 0
+        # Favourites, playlists and Discover first (Mateusz 2026-11-11).
+        items = service.cared.first(service.library.all_items(), lambda i: [i.id])
+        for item in items:
+            if looked == MEDIA_A_NIGHT or not night.quiet():
+                break
+            if service.media.known(item) is not None:
+                continue
+            try:
+                service.media.soon(item).result(MEDIUM_WAIT)
+            except FutureTimeout:
+                break
+            looked += 1
+        return looked
+
     def read_again(night: Night) -> int:
         """Works kept with a type or maker an older reading of their
         museum's record got wrong, read again (``Importer.read_again``)."""
@@ -717,6 +740,7 @@ def tasks(service: FrameService) -> list[NightTask]:
         NightTask("frame line", frame_line, "Kolejka ramki", group=disc),
         NightTask("sharper", sharper, "Ostrzejsze kopie", group=cat),
         NightTask("museums", museums, "Gdzie wiszą dzieła", group=text),
+        NightTask("media", media, "Technika dzieł", group=text),
         NightTask("read again", read_again, "Rodzaj i autor czytane ponownie", group=text),
         NightTask(
             "museum places",

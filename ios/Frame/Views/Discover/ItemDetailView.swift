@@ -163,6 +163,7 @@ struct ItemDetailView: View {
         .task(id: described) { await loadSeen() }
         .task(id: described) { await sharpen() }
         .task(id: described) { await findHolder() }
+        .task(id: described) { await findMedium() }
         .task(id: view == .frame ? draftKey : "") { await loadFraming() }
         .onChange(of: item) { _, item in
             if let item { ItemPeeks.keep(item) }
@@ -621,6 +622,30 @@ struct ItemDetailView: View {
                 if item?.heldBy?.isEmpty != false {
                     withAnimation(.easeOut(duration: 0.3)) { item?.heldBy = view.name }
                     if let key = view.key, !key.isEmpty { item?.heldAt = key }
+                }
+                return
+            }
+            if view.status != "looking" { return }
+        }
+    }
+
+    /// A work whose source names no technique (WikiArt, Commons, some of
+    /// Europeana's) was painted in oil on "Kolorystyka" (Mateusz
+    /// 2026-11-12 15:28, of Wyspiański's pastel „Śpiący Staś”: „Może jest
+    /// szansa na uzupełnienie danych o technice dzieł”): the server looks
+    /// it up in the work's record, on Commons and Wikidata as the card
+    /// opens, and the bar is painted again in the technique found.
+    private func findMedium() async {
+        guard let id = described, id == itemID, item?.kind == .artwork,
+              item?.medium.trimmingCharacters(in: .whitespaces).isEmpty == true
+        else { return }
+        for attempt in 0..<3 {
+            guard let view = try? await model.backend.medium(itemID: id, wait: attempt == 0 ? 15 : 30),
+                  !Task.isCancelled, id == itemID
+            else { return }
+            if view.status == "found", !view.medium.isEmpty {
+                if item?.medium.trimmingCharacters(in: .whitespaces).isEmpty == true {
+                    withAnimation(.easeOut(duration: 0.3)) { item?.medium = view.medium }
                 }
                 return
             }

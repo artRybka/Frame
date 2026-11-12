@@ -539,6 +539,10 @@ actor DemoBackend: FrameBackend {
         HolderView(status: "none")
     }
 
+    func medium(itemID: String, wait: Int) async throws -> MediumView {
+        MediumView(status: "none")
+    }
+
     func fragments(itemID: String) async throws -> FragmentsView {
         FragmentsView(whole: nil, fragments: [])
     }
