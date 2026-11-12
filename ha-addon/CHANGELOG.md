@@ -2,8 +2,9 @@
 
 ## 1.145.69
 
-- Dzieła o niskiej rozdzielczości mają mały bursztynowy znacznik: kratkę
-  pikseli tuż po tytule na miniaturach playlist, w Szukaj i w Odkrywaj,
+- Dzieła o niskiej rozdzielczości mają mały bursztynowy znacznik
+  (zdjęcie z wykrzyknikiem) tuż po tytule na miniaturach playlist, w
+  Szukaj i w Odkrywaj,
   a na karcie dzieła plakietkę z liczbą pikseli obok roku i napis
   „Niska rozdzielczość” przy „Zdjęcie dzieła” (dotknięcie, jak dotąd,
   szuka lepszej kopii). Znacznik dostaje zdjęcie, którego dłuższy bok
