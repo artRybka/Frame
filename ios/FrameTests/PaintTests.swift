@@ -33,9 +33,13 @@ final class PaintTests: XCTestCase {
                      "Watercolour with pen and ink", "tusz, akwarela, papier"]
         let dry = ["pastel on paper", "kredka, papier", "black chalk", "Pastel over watercolour", "pastel, papier naklejony na tekturę",
                    "Red chalk on laid paper", "kreda, papier"]
-        // Photographs, ink with colours, and whatever names no paint: flat.
-        let flat = ["Gelatin silver print", "Oil print", "", "Ink and color on silk", "Bronze", "Albumen silver print", "Platinum print",
-                    "Salted paper print from a paper negative", "Chromogenic print", "fotografia"]
+        // Ink with colours, and whatever names no paint: flat.
+        let flat = ["", "Ink and color on silk", "Bronze", "papier"]
+        // A photograph: its tones under grain (Mateusz 2026-11-12 10:47:
+        // „fotografia - gradientowy pasek z lekkim ziarnem”).
+        let photo = ["Gelatin silver print", "Oil print", "Albumen silver print", "Platinum print",
+                     "Salted paper print from a paper negative", "Chromogenic print", "fotografia"]
+        for text in photo { XCTAssertEqual(PaintStyle.of(medium: text), .photo, text) }
         for text in oil { XCTAssertEqual(PaintStyle.of(medium: text), .oil, text) }
         for text in water { XCTAssertEqual(PaintStyle.of(medium: text), .water, text) }
         for text in dry { XCTAssertEqual(PaintStyle.of(medium: text), .dry, text) }
@@ -57,7 +61,7 @@ final class PaintTests: XCTestCase {
         XCTAssertNil(PaintStyle.of(medium: "paper", classification: "Paintings"))
         XCTAssertNil(PaintStyle.of(medium: "fresco", classification: "Paintings"))
         XCTAssertNil(PaintStyle.of(medium: "", classification: "Drawing"))
-        XCTAssertNil(PaintStyle.of(medium: "", classification: "Photograph"))
+        XCTAssertEqual(PaintStyle.of(medium: "", classification: "Photograph"), .photo)
         XCTAssertNil(PaintStyle.of(medium: "", classification: "Illuminated Manuscript"))
         XCTAssertNil(PaintStyle.of(medium: "", classification: ""))
     }
@@ -109,7 +113,7 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(PaintStyle.of(medium: "papier", classification: "Rysunek", mono: true, warm: true), .pen)
         // A painting of one colour is still painted.
         XCTAssertEqual(PaintStyle.of(medium: "Oil on panel", classification: "Paintings", mono: true), .oil)
-        XCTAssertNil(PaintStyle.of(medium: "Gelatin silver print", classification: "Photographs", mono: true))
+        XCTAssertEqual(PaintStyle.of(medium: "Gelatin silver print", classification: "Photographs", mono: true), .photo)
         // Which tool or press each is.
         XCTAssertEqual(PaintStyle.allCases.compactMap(\.tool).count, 3)
         XCTAssertEqual(PaintStyle.allCases.compactMap(\.press).count, 2)
@@ -563,6 +567,70 @@ final class PaintTests: XCTestCase {
         XCTAssertGreaterThan(tooth.max() ?? 0, 240)
     }
 
+    /// Mateusz 2026-11-12 10:47: „fotografia - gradientowy pasek z lekkim
+    /// ziarnem”.
+    func testAPhotographIsItsTonesInOneGradientUnderGrain() {
+        let tones = shares([("#C9C2B4", 0.3), ("#2A2826", 0.25), ("#8A847A", 0.3), ("#565049", 0.15)])
+        let strip = PhotoStrip(shares: tones, width: 350, seed: 7)
+        // From the darkest to the lightest, each about its share's middle.
+        XCTAssertEqual(strip.stops.count, 4)
+        XCTAssertEqual(strip.stops.map(\.at), strip.stops.map(\.at).sorted())
+        let lights = strip.stops.map { PrintPaint.lightness($0.rgb) }
+        XCTAssertEqual(lights, lights.sorted())
+        XCTAssertEqual(strip.stops[0].at, 350 * 0.125, accuracy: 3)
+        // No seams: the tone grows lighter all the way along.
+        var last = -1.0
+        for x in stride(from: 0.0, through: 350, by: 2) {
+            let light = PrintPaint.lightness(strip.tone(at: x))
+            XCTAssertGreaterThanOrEqual(light, last - 0.0001, "\(x)")
+            last = light
+        }
+        // There at once, and still.
+        XCTAssertEqual(PaintStyle.photo.barTime(tones, width: 350), PrintPaint.appear)
+        let whole = strip.frame(age: strip.length), later = strip.frame(age: strip.length + 3)
+        XCTAssertEqual(whole.bytes, later.bytes)
+        let S = Double(PrintPaint.scale)
+        func at(_ x: Double, _ y: Double) -> Int { 4 * (Int((y + Paint.pad) * S) * whole.wide + Int((x + Paint.pad) * S)) }
+        // Whole inside, nothing outside, round at the corners.
+        XCTAssertEqual(whole.bytes[at(175, 13) + 3], 255)
+        XCTAssertEqual(whole.bytes[at(175, -3) + 3], 0)
+        XCTAssertEqual(whole.bytes[at(0.2, 0.2) + 3], 0)
+        // Grain: neighbours of one tone differ a little, never much.
+        var least = 255, most = 0
+        for k in 0..<30 {
+            let green = Int(whole.bytes[at(330 + Double(k) / 3, 6 + Double(k) / 2) + 1])
+            least = min(least, green)
+            most = max(most, green)
+        }
+        XCTAssertGreaterThan(most - least, 6)
+        XCTAssertLessThan(most - least, 60)
+        // Its paints' swatches: small squares of the same grain.
+        let chip = PhotoChip(rgb: [140, 132, 122], index: 0, seed: 7)
+        let made = chip.frame(age: chip.length)
+        XCTAssertEqual(made.bytes[4 * (made.high / 2 * made.wide + made.wide / 2) + 3], 255)
+        XCTAssertEqual(made.bytes[3], 0)
+    }
+
+    /// Mateusz 2026-11-12 10:47: „rzeźba - bez paska”.
+    func testASculptureIsToldByItsKindOrByWhatItIsMadeOf() {
+        for kind in ["Sculpture", "Sculpture-Bronze", "Rzeźba", "Statuettes", "Busts", "Reliefs", "beeldhouwwerk", "Skulptur", "Netsuke",
+                     "płaskorzeźba"] {
+            XCTAssertTrue(PaintStyle.sculpted(medium: "", classification: kind), kind)
+        }
+        // Painted or not: a sculpture's colours are not a picture's.
+        XCTAssertTrue(PaintStyle.sculpted(medium: "Polychromed wood", classification: "Sculpture"))
+        for medium in ["Bronze", "brąz", "odlew z brązu", "Marble", "marmur kararyjski", "Terracotta", "Painted plaster", "gips patynowany",
+                       "Alabaster", "Limestone", "Ivory"] {
+            XCTAssertTrue(PaintStyle.sculpted(medium: medium), medium)
+        }
+        // What is painted, drawn or printed is none, whatever it lies on.
+        for (medium, kind) in [("Oil on canvas", "Paintings"), ("Watercolor on ivory", ""), ("Oil on marble", ""), ("", ""), ("", "Painting"),
+                               ("Woodcut", "Relief print"), ("tusz, papier brązowy", ""), ("papier brązowy", ""), ("Gelatin silver print", ""),
+                               ("Pen and brown ink", "Drawings"), ("Porcelain", "Ceramics")] {
+            XCTAssertFalse(PaintStyle.sculpted(medium: medium, classification: kind), "\(medium) \(kind)")
+        }
+    }
+
     func testThePaintsBeginWhileTheBarIsPaintedOneAfterAnother() {
         let three = Array(jatte.prefix(3))
         for style in PaintStyle.allCases {
@@ -573,6 +641,11 @@ final class PaintTests: XCTestCase {
             let bar = style.barTime(jatte, width: 350), first = style.swatchDelay(bar: bar, index: 0)
             XCTAssertGreaterThan(style.swatchDelay(bar: bar, index: 1), first + 0.2)
             XCTAssertLessThan(style.swatchDelay(bar: bar, index: 1), first + 0.3)
+            // A photograph is not made colour by colour: it is there.
+            if style == .photo {
+                XCTAssertEqual(bar, PrintPaint.appear)
+                continue
+            }
             XCTAssertGreaterThan(bar, style.barTime(three, width: 350))
             // They do not wait for the bar's last stroke (Mateusz 2026-11-11
             // 18:39: „muszą się pojawiać trochę wcześniej”): the first begins

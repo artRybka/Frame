@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.145.46
+
+- Karta dzieła, „Kolorystyka”: zamiast płaskiego paska z procentami jest
+  pasek barw w technice dzieła, ten sam co w Studium („Kolor i światło”):
+  olej, akwarela, pastel, kreska ryciny i rysunku, odbitki farb grafiki
+  barwnej. Na karcie jest od razu gotowy, bez ruchu, i bez procentów pod
+  spodem; jest też wyższy (26 pt zamiast 18).
+- Fotografia ma własny pasek: tony od najciemniejszego do najjaśniejszego
+  w jednym gradiencie, z lekkim ziarnem (także w Studium).
+- Rzeźba nie ma paska barw na karcie (znaczniki barw zostają). Dzieło,
+  którego technika nic nie mówi, ma pasek płaski, bez procentów.
+- Zakładka Teraz: cienki pasek barw pod tytułem zniknął.
+- Tylko aplikacja iOS.
+
 ## 1.145.45
 
 - Studium dzieła, „Kolor i światło”: ryciny, rysunki, grafiki i plakaty

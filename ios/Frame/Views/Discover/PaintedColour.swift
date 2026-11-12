@@ -6,8 +6,9 @@ import SwiftUI
 // watercolour or in pastel (`PaintCore.swift` is the paint; this file
 // puts it on the page and gives it its time). What is drawn or printed
 // has its own (2026-11-12 07:26, `PrintCore.swift`): a scale of tones in
-// lines, or a colour print's inks. A work in any other technique (a
-// photograph, a bronze) keeps the flat bar and the plain round swatches.
+// lines, or a colour print's inks; a photograph a gradient under grain.
+// A work whose technique says nothing keeps the flat bar and the plain
+// round swatches; a sculpture has no bar (10:47).
 
 extension PaintStyle {
     /// CI screenshots: "-paintStyle oil" paints every work that way.
@@ -16,9 +17,16 @@ extension PaintStyle {
     /// How this work's colours are painted, drawn or printed; nil: flat.
     static func of(_ item: Item) -> PaintStyle? {
         if let forced { return forced }
+        // The household's own photographs.
+        if item.kind == .photo { return .photo }
         let colours = item.colors.compactMap { Paint.rgb($0.hex) }
         return of(medium: item.medium, classification: item.classification,
                   mono: item.colorTags.contains("monochrome") || (!colours.isEmpty && PrintPaint.oneColour(colours)), warm: warm(colours))
+    }
+
+    /// A sculpture: no bar of colours.
+    static func sculpted(_ item: Item) -> Bool {
+        forced == nil && item.kind != .photo && sculpted(medium: item.medium, classification: item.classification)
     }
 
     /// Whether the darkest of a work's colours is a brown: of a drawing
@@ -75,6 +83,8 @@ struct PaintJob: @unchecked Sendable {
             return PaintJob(LineStrip(shares: shares, width: width, seed: seed, tool: style.tool ?? .burin), scale: PrintPaint.scale)
         case .woodblock, .litho:
             return PaintJob(InkStrip(shares: shares, width: width, seed: seed, press: style.press ?? .wood), scale: PrintPaint.scale)
+        case .photo:
+            return PaintJob(PhotoStrip(shares: shares, width: width, seed: seed), scale: PrintPaint.scale)
         }
     }
 
@@ -90,6 +100,8 @@ struct PaintJob: @unchecked Sendable {
             return PaintJob(LinePatch(rgb: rgb, index: index, seed: seed, tool: style.tool ?? .burin), scale: PrintPaint.scale)
         case .woodblock, .litho:
             return PaintJob(InkStamp(rgb: rgb, index: index, seed: seed, press: style.press ?? .wood), scale: PrintPaint.scale)
+        case .photo:
+            return PaintJob(PhotoChip(rgb: rgb, index: index, seed: seed), scale: PrintPaint.scale)
         }
     }
 }
@@ -239,7 +251,9 @@ final class PaintJobs {
 
 /// A painting on the page, painted while it is looked at: it begins when
 /// it is on the screen and `after` has come, and goes on to its end. With
-/// "Ogranicz ruch" it is there at once, finished.
+/// "Ogranicz ruch" it is there at once, finished; so it is when asked
+/// `whole` (the work's card: Mateusz 2026-11-12 10:47: „bez ruchu, od razu
+/// gotowy”).
 struct Painted: View {
     let job: PaintJob
     /// What it paints: a new one is painted at the age the old one had.
@@ -254,6 +268,8 @@ struct Painted: View {
     /// How far over the bottom of what the bars leave of the screen its
     /// foot is when it begins; under 0: that far under it still.
     var over: CGFloat = Painted.clear
+    /// Not painted while looked at: there finished.
+    var whole = false
 
     @State private var image: CGImage?
     @State private var shown: String?
@@ -289,16 +305,25 @@ struct Painted: View {
                 return bounds.maxY >= foot + over && bounds.minY <= foot
             } action: { seen = $0 }
             .background {
-                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: finished || (start == nil && !(seen && after != nil)))) { context in
+                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: whole || finished || (start == nil && !(seen && after != nil)))) { context in
                     Color.clear.onChange(of: context.date) { _, now in tick(now) }
                 }
+            }
+            .task(id: whole ? key : "") {
+                guard whole else { return }
+                let job = self.job, key = self.key
+                let made = await Task.detached(priority: .userInitiated) { job.image(job.length) }.value
+                guard !Task.isCancelled else { return }
+                image = made
+                shown = key
+                settled = true
             }
             .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
 
     private func tick(_ now: Date) {
-        guard !busy, !finished else { return }
+        guard !busy, !finished, !whole else { return }
         if start == nil {
             guard seen, let after, now >= after else { return }
             start = now
@@ -330,6 +355,8 @@ struct PaintedStrip: View {
     /// Told when the first stroke begins, and how long the bar's paint
     /// takes from then.
     var began: (Date, Double) -> Void = { _, _ in }
+    /// There finished, not painted while looked at.
+    var whole = false
 
     @State private var width: CGFloat = 0
     @State private var jobs = PaintJobs()
@@ -368,7 +395,7 @@ struct PaintedStrip: View {
                     let key = "\(style.rawValue)|\(Int(wide))|\(dark)|\(seed)|" + shares.map { "\($0.rgb)\($0.weight)" }.joined(separator: ",")
                     let takes = style.barTime(shares, width: wide)
                     Painted(job: jobs.job(key) { PaintJob.strip(style, shares: shares, width: wide, seed: seed, dark: dark) },
-                            key: key, after: .distantPast, began: { began($0, takes) })
+                            key: key, after: .distantPast, began: { began($0, takes) }, whole: whole)
                 }
             }
     }

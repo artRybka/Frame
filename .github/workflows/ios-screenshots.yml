@@ -130,6 +130,14 @@ jobs:
             capture daily 16 "daily-journey-full-end-$appearance" -scroll journey-end -journeyWash 1 -journeyDetour YES
             capture detail 14 "detail-$appearance"
             capture detail 16 "detail-about-$appearance" -scroll about
+            # "Kolorystyka" on the card: the bar in the work's technique, there at once.
+            capture detail 16 "detail-palette-$appearance" -scroll palette
+            capture detail 16 "detail-palette-oil-$appearance" -scroll palette -paintStyle oil
+            capture detail 16 "detail-palette-water-$appearance" -scroll palette -paintStyle water
+            capture detail 16 "detail-palette-dry-$appearance" -scroll palette -paintStyle dry
+            capture detail 16 "detail-palette-burin-$appearance" -scroll palette -paintStyle burin -paintColours 918d78:0.28/4c4a3c:0.26/5f5c4b:0.24/78745f:0.22
+            capture detail 16 "detail-palette-woodblock-$appearance" -scroll palette -paintStyle woodblock -paintColours d9cdb0:0.34/c8bc9d:0.22/1f3a5f:0.16/3d5f86:0.12/8fa7b8:0.09/e9e2cf:0.07
+            capture detail 16 "detail-palette-photo-$appearance" -scroll palette -paintStyle photo -paintColours c9c2b4:0.30/2a2826:0.25/8a847a:0.30/565049:0.15
             capture playlists 12 "playlists-$appearance"
             capture suggestions 14 "suggestions-$appearance"
             capture playlist 12 "playlist-$appearance"

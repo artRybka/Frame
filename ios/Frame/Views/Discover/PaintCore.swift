@@ -30,6 +30,10 @@ enum PaintStyle: String, Sendable, CaseIterable {
     /// A print in colours from the stone or the screen (a colour
     /// lithograph, a poster): its inks' impressions, with the crayon's grain.
     case litho
+    /// A photograph: its tones as one gradient under the film's grain
+    /// (`PhotoStrip`; Mateusz 2026-11-12 10:47: „fotografia - gradientowy
+    /// pasek z lekkim ziarnem”).
+    case photo
 
     /// The tool of a work of lines; nil for any other.
     var tool: LineTool? {
@@ -51,8 +55,8 @@ enum PaintStyle: String, Sendable, CaseIterable {
     }
 
     /// What a work's medium says it is made with, in the languages the
-    /// museums write in; nil when it says nothing of these, or names a
-    /// photograph: those keep the flat palette. Of several paints (pastel
+    /// museums write in; nil when it says nothing of these: such a work
+    /// keeps the flat palette. Of several paints (pastel
     /// over watercolour) the first named; chalk named after pen or ink is
     /// under a drawing in ink. A museum that names no paint (the Getty
     /// gives only "Painting"; Mateusz 2026-11-11 13:50: „może w takiej
@@ -80,7 +84,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
         }
         // An "oil print" is a photograph, not an oil painting and not a print.
         let printed = zip(words, words.dropFirst()).contains { photographed.contains($0) && $1.hasPrefix("print") }
-        if printed || has(all, photographs, ["foto", "photo"]) { return nil }
+        if printed || has(all, photographs, ["foto", "photo"]) { return .photo }
         if has(all, stone) { return mono ? .pencil : .litho }
         if has(all, prints, ["ets", "druk"]) { return mono ? .burin : .woodblock }
         var inked = false
@@ -102,6 +106,29 @@ enum PaintStyle: String, Sendable, CaseIterable {
         return nil
     }
 
+    /// Whether a work is a sculpture, by its museum's type or by what it
+    /// is made of when nothing says how it is painted: the colours of its
+    /// photograph are the stone's and the backdrop's, and it has no bar
+    /// of colours at all (Mateusz 2026-11-12 10:47: „rzeźba - bez paska”).
+    /// A "relief print" is a print.
+    static func sculpted(medium: String, classification: String = "") -> Bool {
+        let kind = words(classification)
+        func has(_ list: [String], _ begins: [String]) -> Bool {
+            list.contains { word in begins.contains { word.hasPrefix($0) } }
+        }
+        if has(kind, sculptures), !has(kind, prints) { return true }
+        guard of(medium: medium, classification: classification) == nil else { return false }
+        // Not "brązowy": brown paper is no bronze.
+        return has(words(medium), carved) || words(medium).contains { $0 == "braz" || $0 == "brazu" }
+    }
+
+    /// A sculpture, as the museums file it.
+    private static let sculptures = ["sculpt", "skulpt", "statu", "rzezb", "plaskorzezb", "beeld", "bust", "popiersi", "relief", "figurin",
+                                     "netsuke", "bronzes", "terracott"]
+    /// What a sculpture is made of.
+    private static let carved = ["bronze", "marble", "marmur", "marbre", "marmor", "terracott", "terakot", "plaster", "gips",
+                                 "alabast", "limestone", "sandstone", "granit", "piaskow", "wapien", "ivory"]
+
     /// How far through the painting of the bar the first paint's swatch
     /// begins: they do not wait for the bar's end (Mateusz 2026-11-11
     /// 18:39: „muszą się pojawiać trochę wcześniej”).
@@ -117,6 +144,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
         case .dry: return Double(shares.count - 1) * DryPlan.apart + DryPlan.stroke
         case .burin, .pen, .pencil: return LineStrip.time(shares.count)
         case .woodblock, .litho: return InkStrip.time(shares.count)
+        case .photo: return PrintPaint.appear
         }
     }
 
@@ -129,6 +157,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
         case .dry: 0.24
         case .burin, .pen, .pencil: 0.24
         case .woodblock, .litho: 0.26
+        case .photo: 0.24
         }
         return Self.swatchesFrom * bar + gap * Double(index)
     }
