@@ -4,13 +4,14 @@ import UIKit
 /// One take on the composition, drawn as a study sheet: the picture's field
 /// in stains of its colours with a pen sketch over them (made by the server,
 /// on the page's own colour), ruled with a thin frame and the grid in
-/// graphite, the marks over it in chalk of the pen's own colour, heavier
-/// than the sketch under them (a colour that returns in red), a little
+/// graphite, the marks over it in chalk of the pen's own colour, much
+/// heavier than the sketch under them, which is laid thin with its stains
+/// so the marks are what is read first (a colour that returns in red), a little
 /// over the sheet: shifting with the phone's turn over the shadow they
 /// cast, and on the dark page brighter than its white where the screen can
 /// (`Chalk`, `ChalkMarks`), with a number beside each;
 /// their labels under the sheet in two columns, hand-written: a title and a
-/// line under it. A tap on a label lights its mark on the sheet: the
+/// line under it. A tap on a label picks its mark out on the sheet: the
 /// others step back until it is tapped again. A tap on the sheet shows the
 /// picture itself under the marks, another brings the sheet back (no sign
 /// for it on the sheet).
@@ -111,8 +112,9 @@ struct CompositionSketch: View {
         .sensoryFeedback(.selection, trigger: chosen)
     }
 
-    /// A label of the sheet: a tap lights its mark over the sheet, another
-    /// lets it go; the labels of the others step back with their marks.
+    /// A label of the sheet: a tap leaves its mark alone over the sheet,
+    /// another lets it go; the labels of the others step back with their
+    /// marks.
     private func pointing(_ entry: Labelled) -> some View {
         let lit = chosen == entry.number
         return label(entry, chalk: true)
@@ -416,11 +418,12 @@ struct CompositionSketch: View {
             // The hand-written face has tall lines: the note sits close
             // under its title, and its own lines close together, as
             // written by hand.
+            // A title that takes two lines is written word by word too:
+            // as one text its lines stood a whole tall line apart, far
+            // more than the note's under it (Mateusz 2026-11-12 12:44:
+            // "coś się posypały odstępy w nagłówkach tekstu?").
             VStack(alignment: .leading, spacing: -7) {
-                Text(entry.mark.title)
-                    .font(.hand(21))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.8)
+                HandLines(text: entry.mark.title, size: 21)
                 if !entry.mark.text.isEmpty {
                     HandLines(text: entry.mark.text, size: 18)
                         .foregroundStyle(Theme.inkSoft)
@@ -447,6 +450,11 @@ struct CompositionSketch: View {
 /// kredą są mniej czytelne niż szkic pod spodem. Może zróbmy tak: szkic pod
 /// spodem słabszy, a linie kredą - ciut mocniejsze i grubsze niż rysunek
 /// teraz. W kolorze rysunku, a powtórki kolorów zostawiamy czerwone").
+/// Seen so, they were still too weak (12:44: "Rysunki kredy są za słabe.
+/// muszą się wyraźniej odcinać. Może trzeba jeszcze rozjaśnić akwarelę w
+/// trybie jasnym, a przyciemnić w ciemnym?"): the stick is broader and
+/// pressed harder, less of it is lost in the paper's tooth, and the sheet
+/// under it is laid thinner (`SheetPlan.washShare`, `penShare`).
 /// The brighter copy is for light chalk, so it is made on the dark page
 /// only, and dark chalk on the light page keeps no shadow with the phone
 /// held still.
@@ -489,18 +497,16 @@ enum Chalk {
         mark.shape == "echo" ? red : ink(dark: dark)
     }
 
-    /// How heavy the chalk is against the lead pencil's widths: a little
-    /// heavier than the sheet's pen (about a point on a phone), not the
-    /// broad white stick it was (1.3).
-    static let weight: CGFloat = 0.95
+    /// How heavy the chalk is against the lead pencil's widths: two to
+    /// three times the sheet's pen (about a point on a phone). It was 0.95
+    /// and read as weak.
+    static let weight: CGFloat = 1.25
     /// How much of a mark and of its label is left when another's label
-    /// was tapped, and the light behind the one that was: a highlighter's
-    /// yellow, this wide around its strokes and this soft.
-    static let aside = 0.28
-    static let glow = Color(hex: 0xFFC53A)
-    static let glowDepth = 0.8
-    static let glowSpread: CGFloat = 9
-    static let glowBlur: CGFloat = 3.5
+    /// was tapped. Nothing is added to the one that was: it stands out by
+    /// the others stepping back (Mateusz 2026-11-12 12:44, of a yellow
+    /// light behind it: "na pewno nie żółte podświetlenie. raczej
+    /// przygaszenie pozostałych").
+    static let aside = 0.2
 
     /// How many times brighter than the page's white the chalk is drawn
     /// where the screen can (about a stop; picked by reasoning, not yet
@@ -555,9 +561,9 @@ enum Chalk {
         return lit ? turned : max(castUnlit, turned)
     }
 
-    /// How hard the stick is pressed in a stroke, each its own (0.82…1).
+    /// How hard the stick is pressed in a stroke, each its own (0.9…1).
     static func press(_ seed: Int) -> Double {
-        0.82 + 0.18 * Pencil.Jitter.random(seed &* 31 &+ 5)
+        0.9 + 0.1 * Pencil.Jitter.random(seed &* 31 &+ 5)
     }
 
     /// The dust a stick leaves beside its stroke: how far out, how thin.
@@ -588,9 +594,10 @@ enum Chalk {
     }()
 
     /// How much chalk stays where the paper's grain is `grain` (0…1): all
-    /// on its hills, a little over half in its hollows.
+    /// on its hills, most of it in its hollows (a little over half made
+    /// the strokes thin out against the stains).
     static func kept(_ grain: Double) -> Double {
-        0.55 + 0.45 * Paint.step(0.36, 0.6, grain)
+        0.78 + 0.22 * Paint.step(0.36, 0.6, grain)
     }
 
     /// The gain for a screen with this headroom: nil where it would not
@@ -628,9 +635,6 @@ struct ChalkDrawing: View {
     var only: [Int]? = nil
     /// The page is the dark one: the chalk is light.
     var dark = false
-    /// Instead of the shadow (`cast`), the light behind a mark whose label
-    /// was tapped: in this colour, this wide around its strokes.
-    var glow: Color? = nil
 
     /// The place among `marks` of each labelled one, in the labels' order.
     static func owners(_ marks: [DailyWork.Mark]) -> [Int] {
@@ -682,26 +686,19 @@ struct ChalkDrawing: View {
             let numbered = numbers(in: field.size)
             if cast {
                 var soft = context
-                soft.addFilter(.blur(radius: glow == nil ? Chalk.castBlur : Chalk.glowBlur))
+                soft.addFilter(.blur(radius: Chalk.castBlur))
                 soft.drawLayer { layer in
                     for entry in drawn {
                         for path in entry.paths {
-                            if let glow {
-                                layer.stroke(
-                                    path, with: .color(glow),
-                                    style: StrokeStyle(lineWidth: Chalk.glowSpread, lineCap: .round, lineJoin: .round)
-                                )
-                            } else {
-                                layer.fill(path, with: .color(.black))
-                            }
+                            layer.fill(path, with: .color(.black))
                         }
                     }
                     for number in numbered {
                         let spot = number.spot
-                        let reach: CGFloat = glow == nil ? 9.5 : 9.5 + Chalk.glowSpread / 2
+                        let reach: CGFloat = 9.5
                         layer.fill(
                             Path(ellipseIn: CGRect(x: spot.x - reach, y: spot.y - reach, width: 2 * reach, height: 2 * reach)),
-                            with: .color(glow ?? .black)
+                            with: .color(.black)
                         )
                     }
                 }
@@ -747,9 +744,9 @@ struct ChalkDrawing: View {
 /// je czytać"), and they come one after another when `shown` turns true.
 ///
 /// `chosen`: the mark (by its place among `marks`) whose label was tapped.
-/// It is lit from behind and the others step back; told apart they must
-/// each be on a plane of their own, so they are then even where `planes`
-/// is not asked for.
+/// It stays as it is and the others step back; told apart they must each
+/// be on a plane of their own, so they are then even where `planes` is
+/// not asked for.
 struct ChalkMarks: View {
     let marks: [DailyWork.Mark]
     let labelled: [CompositionSketch.Labelled]
@@ -773,8 +770,7 @@ struct ChalkMarks: View {
                 ForEach(Array(groups.enumerated().reversed()), id: \.offset) { plane, group in
                     ChalkPlane(
                         marks: marks, labelled: labelled, room: room, only: group, size: geometry.size,
-                        shift: planes ? Chalk.planeShift(plane, of: groups.count) : Chalk.shift,
-                        glows: chosen.map { group.contains($0) } ?? false
+                        shift: planes ? Chalk.planeShift(plane, of: groups.count) : Chalk.shift
                     )
                     .opacity(Self.share(of: group, chosen: chosen, shown: shown))
                     .animation(
@@ -824,8 +820,6 @@ private struct ChalkPlane: View {
     let size: CGSize
     /// How far this plane moves at a full turn of the phone.
     let shift: CGFloat
-    /// Its mark's label was tapped: lit from behind.
-    var glows = false
     @Environment(\.displayScale) private var displayScale
     @Environment(\.colorScheme) private var scheme
     @State private var lit: Lit?
@@ -860,11 +854,6 @@ private struct ChalkPlane: View {
                     cast: Chalk.castDepth(dark: dark), lit: quiet
                 ))
             ZStack(alignment: .topLeading) {
-                if glows {
-                    ChalkDrawing(marks: marks, labelled: labelled, room: room, cast: true, only: only, glow: Chalk.glow)
-                        .opacity(Chalk.glowDepth)
-                        .transition(.opacity)
-                }
                 ChalkDrawing(marks: marks, labelled: labelled, room: room, only: only, dark: dark)
                     .opacity(bright == nil ? 1 : 0)
                 if let bright {
@@ -954,10 +943,11 @@ struct HandLines: View {
     var body: some View {
         let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
         // Caveat's space is 0.242 em; a line every 0.95 em, as close as the
-        // note sits under its title.
+        // note sits under its title. A word longer than the line is
+        // written smaller, not out of the column.
         WordFlow(space: size * 0.242, pitch: size * 0.95) {
             ForEach(words.indices, id: \.self) { index in
-                Text(words[index]).font(.hand(size))
+                Text(words[index]).font(.hand(size)).lineLimit(1).minimumScaleFactor(0.7)
             }
         }
         .accessibilityElement(children: .ignore)
@@ -995,8 +985,11 @@ struct WordFlow: Layout {
         var frames: [CGRect] = []
         var x: CGFloat = 0
         var y: CGFloat = 0
+        // A word is offered the whole line: one that fits answers with
+        // its own size, a longer one with the line's width.
+        let line = ProposedViewSize(width: width.isFinite ? width : nil, height: nil)
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            let size = subview.sizeThatFits(line)
             if x > 0, x + space + size.width > width {
                 x = 0
                 y += pitch

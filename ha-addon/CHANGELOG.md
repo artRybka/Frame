@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.145.55
+
+- Studium dzieła, analiza kompozycji: znaki analizy wyraźnie odcinają
+  się od arkusza. Kreda jest grubsza i mocniej dociśnięta, akwarela pod
+  nią jest położona cieniej (w trybie jasnym jaśniejsza, w ciemnym
+  ciemniejsza), a szkic piórkiem jeszcze słabszy.
+- Dotknięcie podpisu nie podkłada już żółtej poświaty pod znak:
+  wskazany znak zostaje, jak był, a pozostałe znaki i podpisy mocniej
+  przygasają.
+- Tytuł podpisu, który zajmuje dwa wiersze, ma je teraz tak blisko
+  siebie jak wiersze notki pod nim (dotąd stały szeroko rozsunięte).
+- Tylko aplikacja; serwer bez zmian, arkusze zostają te same.
+
 ## 1.145.53
 
 - Studium dzieła, analiza kompozycji: to, co wylewa się poza kadr, jest
