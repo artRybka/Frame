@@ -88,19 +88,24 @@ enum PrintPaint {
     /// between the two (within `apart` of the line from one to the
     /// other), none is vivid, and those with a tint are of one hue. The
     /// pink of a faded print is of the hue of its yellowed paper nearly,
-    /// and far off that line. Of all the papers and inks the work's
+    /// and far off that line. A colour the server found as an accent (a
+    /// pale sheet's tint: the sky of Cézanne's lithograph, a grey that is
+    /// blue beside its paper) is a patch from `marked` off the line on. Of all the papers and inks the work's
     /// colours could be, those that make the most of it tones.
     static func patches(_ shares: [PaintShare]) -> [Bool]? {
         let labs = shares.map { lab($0.rgb) }
         var best: [Bool]?, most = 0.0
-        for paper in labs.indices {
-            for ink in labs.indices where labs[paper].light >= labs[ink].light {
+        // An accent is neither the paper nor the ink.
+        let ends = labs.indices.filter { !shares[$0].accent }
+        for paper in ends {
+            for ink in ends where labs[paper].light >= labs[ink].light {
                 let from = labs[paper], to = labs[ink]
-                let off = labs.map { colour -> Bool in
+                let off = labs.indices.map { index -> Bool in
+                    let colour = labs[index]
                     if (colour.a * colour.a + colour.b * colour.b).squareRoot() > vivid { return true }
                     let part = from.light > to.light ? min(1, max(0, (from.light - colour.light) / (from.light - to.light))) : 0
                     let a = colour.a - (from.a + (to.a - from.a) * part), b = colour.b - (from.b + (to.b - from.b) * part)
-                    return (a * a + b * b).squareRoot() > apart
+                    return (a * a + b * b).squareRoot() > (shares[index].accent ? marked : apart)
                 }
                 let tones = labs.indices.filter { !off[$0] }
                 let kept = tones.reduce(0) { $0 + shares[$1].weight }
@@ -141,7 +146,7 @@ enum PrintPaint {
     /// a grey under 0.05 (Mateusz 2026-11-12 13:46, of Cézanne's „Kąpiące
     /// się”: „dlaczego … nie ma zieleni i niebieskiego pod kreską
     /// rysunku?”).
-    static let faint = 0.03, vivid = 0.12, hues = 35.0, apart = 0.03, spotted = 0.3
+    static let faint = 0.03, vivid = 0.12, hues = 35.0, apart = 0.03, marked = 0.015, spotted = 0.3
 
     static func mixed(_ a: [Double], _ b: [Double], _ much: Double) -> [Double] {
         zip(a, b).map { $0 + ($1 - $0) * much }

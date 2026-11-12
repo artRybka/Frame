@@ -20,7 +20,7 @@ from frame_server.library import (
     colors,
 )
 from frame_server.library.colors import TONE_GROUPS, TONE_TAG, analyse, family, has_colours
-from frame_server.library.models import MINE_FAVORITES, MINE_PLAYLISTS
+from frame_server.library.models import MINE_FAVORITES, MINE_PLAYLISTS, ColorSwatch
 from frame_server.library.museums import (
     MUSEUMS,
     ArtInstituteChicago,
@@ -587,6 +587,78 @@ def test_a_sizeable_colour_unlike_the_four_largest_is_shown_too() -> None:
     # Nor a small one, however unlike.
     weights = np.array([0.32, 0.26, 0.21, 0.17, 0.04])
     assert colors.passed_over(colors.merged_colours(centres, weights)[4:], shown) == []
+
+
+def _sheet(
+    washes: bool, mount: bool = False, ink: tuple[int, int, int] = (113, 114, 106)
+) -> Image.Image:
+    """A cream sheet drawn on in pencil, like Cézanne's lithograph of the
+    bathers: with or without its pale washes, a green one and a sky that
+    is a grey by its numbers; ``mount``: a white mount round it."""
+    rng = np.random.default_rng(7)
+    pixels = np.empty((300, 400, 3), float)
+    pixels[:] = (243, 235, 227)
+
+    def wash(rows: slice, columns: slice, colour: tuple[int, int, int]) -> None:
+        # Thin and uneven: more of the paper than of the paint, in patches.
+        place = pixels[rows, columns]
+        much = np.kron(
+            rng.uniform(0.15, 1.0, (place.shape[0] // 10, place.shape[1] // 10)), np.ones((10, 10))
+        )
+        place += (np.array(colour, float) - place) * much[..., None]
+
+    if washes:
+        wash(slice(40, 160), slice(60, 210), (160, 190, 140))
+        wash(slice(40, 120), slice(220, 350), (140, 165, 172))
+    if mount:
+        pixels[:, :60] = (254, 252, 250)
+    # The pencil: lines over paper and washes alike, and a shaded place.
+    for row in list(range(170, 260, 9)) + list(range(60, 140, 16)):
+        pixels[row : row + 3, 40:360] = ink
+    pixels[262:290, 250:360] = ink
+    pixels[200:250, 250:330] = (176, 174, 166)
+    noise = rng.integers(-4, 5, pixels.shape)
+    return Image.fromarray(np.clip(pixels + noise, 0, 255).astype(np.uint8))
+
+
+def _oklab(swatch: ColorSwatch) -> np.ndarray:
+    rgb = np.array([int(swatch.hex[i : i + 2], 16) for i in (1, 3, 5)], np.uint8)
+    return np.asarray(linear_to_oklab(u8_to_linear(rgb)))
+
+
+def test_the_tints_of_a_pale_sheet_are_shown(monkeypatch) -> None:
+    # Mateusz 2026-11-12 13:46 and 14:28, of Cézanne's lithograph in colours
+    # „Kąpiące się”, whose bar was greys and one small green patch:
+    # „dlaczego … nie ma zieleni i niebieskiego pod kreską rysunku?”,
+    # „zieleni i błękitu powinno być chyba więcej na pasku a nie taki mały
+    # kwadracik?” Its sky is a grey by its numbers, blue beside its paper.
+    swatches, tags, _ = analyse(_sheet(washes=True))
+    plain, plain_tags, _ = analyse(_sheet(washes=False))
+    fine = linear_to_oklab(colors._sample(_sheet(washes=True), 128))
+    sheet = colors.pale(fine)
+    assert sheet is not None
+    sides = {sheet.side(_oklab(s), colors.TINT_OFF): s for s in swatches if s.accent}
+    green, blue = sides["green"], sides["blue"]
+    # As large as the washes are: about an eighth and a twelfth of the sheet.
+    assert 0.09 <= green.weight <= 0.17 and 0.05 <= blue.weight <= 0.12
+    # The sky's colour: hardly a colour by itself, cooler than the paper.
+    lab = _oklab(blue)
+    assert float(np.hypot(lab[1], lab[2])) < 0.03 and lab[2] < sheet.paper[2] - 0.01
+    assert not any(sheet.side(_oklab(s), colors.TINT_OFF) for s in plain)
+    # No tag goes by them, and the eight are still eight at most.
+    assert "accent:blue" not in tags and len(swatches) <= 8
+    assert "monochrome" in plain_tags
+    with monkeypatch.context() as patch:
+        patch.setattr(colors, "TINT_SHARE", 9.0)
+        before, before_tags, _ = analyse(_sheet(washes=True))
+    assert tags == before_tags and len(before) == len(swatches) - 1
+    # A white mount round a cream sheet is no tint: a wash darkens its paper.
+    mounted, _, _ = analyse(_sheet(washes=False, mount=True))
+    assert len(mounted) == len(plain) or not any(s.accent for s in mounted)
+    # Nor is a sheet printed in a dark blue one drawn on in pencil, or a dark
+    # picture a sheet at all.
+    assert colors.pale(linear_to_oklab(colors._sample(_sheet(True, ink=(34, 65, 96)), 128))) is None
+    assert colors.pale(linear_to_oklab(colors._sample(_dark_room(robes=True), 128))) is None
 
 
 def _sea(foam: bool) -> Image.Image:

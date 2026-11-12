@@ -44,8 +44,9 @@ COLOUR_SPREAD = (0.01, 0.035)
 #: margins (``imaging.margins``), which counted as white; 11: small
 #: striking patches among the swatches and the accent tags (``touches``);
 #: 12: a white that stands out among the swatches (``lights``); 13: a
-#: sizeable colour unlike the four dominant ones (``passed_over``).
-SCORE_VERSION = 13
+#: sizeable colour unlike the four dominant ones (``passed_over``); 14:
+#: the tints of a pale sheet (``tints``).
+SCORE_VERSION = 14
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
 #: this chroma / lightness for light ones: a greyish-blue sky does, a beige
@@ -241,6 +242,37 @@ LIGHT_OVER = 0.3
 LIGHT_NEAR = 0.08
 LIGHT_AREA = 0.01
 LIGHT_WEIGHT = 0.06
+#: The tints of a pale sheet (Mateusz 2026-11-12 13:46 and 14:28, of
+#: Cézanne's lithograph in colours „Kąpiące się”, whose bar was a scale of
+#: greys with one small green patch: „dlaczego … nie ma zieleni i
+#: niebieskiego pod kreską rysunku?”, „zieleni i błękitu powinno być
+#: chyba więcej na pasku a nie taki mały kwadracik?”). Its sky is a grey
+#: by its numbers and blue to the eye, which takes the paper for white:
+#: so a sheet's colours are measured from its paper, not from grey. The
+#: sheet is light paper (the lightest fifth ``TINT_PAPER`` light and
+#: white to cream, the middle tone ``TINT_LIGHT``, the darkest fiftieth
+#: no more coloured than ``TINT_INK``: the dark blue of Hokusai's Great
+#: Wave is no pencil) and pale (nine tenths of it within
+#: ``TINT_PALE`` of the mixtures of its paper and its darkest mark, in
+#: a/b); a pixel is tinted from ``TINT_OFF`` off those mixtures on, and
+#: ``TINT_UNDER`` darker than the paper; a
+#: tint is the tinted pixels of one side of the colour circle
+#: (``TINT_SECTORS``), ``TINT_SHARE`` of the sheet at least, shown in the
+#: colour of its most tinted ``TINT_TOP``. Only the cool sides: a warm
+#: tint cannot be told from the paper's age, its foxing or its mount.
+TINT_PAPER = 0.8
+TINT_LIGHT = 0.72
+TINT_PALE = 0.035
+TINT_INK = 0.03
+TINT_OFF = 0.01
+TINT_UNDER = 0.03
+TINT_SHARE = 0.05
+TINT_TOP = 0.3
+#: A large colour is of a tint's side from this far off the mixtures on,
+#: and then shows the tint itself; an accent or a touch of its side is
+#: the tint, and is given its share.
+TINT_SHOWN = 0.03
+TINT_SECTORS = (("green", 120, 195), ("blue", 195, 290))
 #: Colours of a picture, at most: what the app's painted bar lays down.
 MAX_SWATCHES = 8
 #: Hue sectors (OKLab hue, degrees) accents are looked for in.
@@ -343,10 +375,28 @@ def analyse(img: Image.Image, spread: float | None = None) -> Analysis:
     more = passed_over(merged[len(dominant) :], shown)
     shown += [c for c, _ in more]
     white = [] if "monochrome" in tags else lights(fine, shown)
+    # A pale sheet's tints: an accent of a tint's side is as large as the
+    # tint; a tint no colour shows is shown as one more accent.
+    sheet = None if "monochrome" in tags else pale(fine)
+    tinted: list[tuple[np.ndarray, float]] = []
+    if sheet is not None:
+        for colour, share, side in tints(fine, sheet):
+            # A large colour of its side shows it, and holds its pixels.
+            if any(sheet.side(c, TINT_SHOWN) == side for c, _ in dominant + more):
+                continue
+            for found in (accents, small):
+                sides = [sheet.side(c, TINT_OFF) for c, _, _ in found]
+                if side in sides:
+                    twin = sides.index(side)
+                    found[twin] = (found[twin][0], max(found[twin][1], share), found[twin][2])
+                    break
+            else:
+                tinted.append((colour, share))
     swatches = [_swatch(c, w) for c, w in dominant + more]
     # A touch is what the eye goes to: it is shown before the least accent.
-    room = MAX_SWATCHES - len(swatches) - len(small) - len(white)
+    room = MAX_SWATCHES - len(swatches) - len(small) - len(white) - len(tinted)
     swatches += [_swatch(c, w, accent=True) for c, w, _ in accents[: max(room, 0)]]
+    swatches += [_swatch(c, w, accent=True) for c, w in tinted]
     swatches += [_swatch(c, w, accent=True) for c, w, _ in small]
     swatches += [_swatch(c, w, accent=True) for c, w in white]
     return Analysis(swatches, tags, colour_shares(fine, spread))
@@ -867,6 +917,69 @@ def lights(lab: np.ndarray, shown: Sequence[np.ndarray]) -> list[tuple[np.ndarra
     if share < LIGHT_AREA:
         return []
     return [(centre, min(share, LIGHT_WEIGHT))]
+
+
+class Sheet(NamedTuple):
+    """A pale sheet's paper and darkest mark (OKLab)."""
+
+    paper: np.ndarray
+    ink: np.ndarray
+
+    def off(self, lab: np.ndarray) -> np.ndarray:
+        """How far colours lie, in a/b, from the mixture of paper and ink
+        that is as light as they are."""
+        span = max(float(self.paper[0] - self.ink[0]), 1e-6)
+        part = np.clip((self.paper[0] - lab[..., 0]) / span, 0.0, 1.0)
+        mixed = self.paper[1:] + part[..., None] * (self.ink[1:] - self.paper[1:])
+        return np.asarray(lab[..., 1:] - mixed)
+
+    def side(self, colour: np.ndarray, least: float) -> str | None:
+        """The tint (``TINT_SECTORS``) a colour is, ``least`` off the
+        mixtures at least; else None."""
+        off = self.off(colour)
+        if float(np.hypot(off[0], off[1])) < least:
+            return None
+        hue = float(np.degrees(np.arctan2(off[1], off[0]))) % 360
+        return next((name for name, start, end in TINT_SECTORS if start <= hue < end), None)
+
+
+def pale(lab: np.ndarray) -> Sheet | None:
+    """The paper and the darkest mark of a light, pale sheet (see
+    ``TINT_PAPER``); None for any other picture."""
+    light = lab[:, 0]
+    if float(np.median(light)) < TINT_LIGHT:
+        return None
+    paper = np.median(lab[light >= np.quantile(light, 0.8)], axis=0)
+    # Paper is white to cream: a pale blue picture is a mist, not a sheet.
+    if paper[0] < TINT_PAPER or paper[2] < 0:
+        return None
+    sheet = Sheet(paper, np.median(lab[light <= np.quantile(light, 0.02)], axis=0))
+    # Its darkest mark is a grey or a brown: drawn on, not printed in colours.
+    if float(np.hypot(sheet.ink[1], sheet.ink[2])) > TINT_INK:
+        return None
+    off = sheet.off(lab)
+    if float(np.quantile(np.hypot(off[:, 0], off[:, 1]), 0.9)) > TINT_PALE:
+        return None
+    return sheet
+
+
+def tints(lab: np.ndarray, sheet: Sheet) -> list[tuple[np.ndarray, float, str]]:
+    """The cool tints of a pale sheet: (colour, share of the sheet, side),
+    largest first (see ``TINT_PAPER``). No tag goes by them."""
+    off = sheet.off(lab)
+    far = np.hypot(off[:, 0], off[:, 1])
+    hue = np.degrees(np.arctan2(off[:, 1], off[:, 0])) % 360
+    # A wash darkens its paper: a white mount round a cream sheet is no tint.
+    under = lab[:, 0] <= sheet.paper[0] - TINT_UNDER
+    found: list[tuple[np.ndarray, float, str]] = []
+    for name, start, end in TINT_SECTORS:
+        member = (far >= TINT_OFF) & (hue >= start) & (hue < end) & under
+        share = float(member.mean())
+        if share < TINT_SHARE:
+            continue
+        top = max(1, int(TINT_TOP * int(member.sum())))
+        found.append((lab[member][np.argsort(-far[member])[:top]].mean(0), share, name))
+    return sorted(found, key=lambda f: -f[1])
 
 
 def tint_strength(img: Image.Image) -> float:
