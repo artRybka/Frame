@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.71
+## 1.145.72
 
 - Kreatywny restaurator: dzieło o niskiej rozdzielczości można dać do
   przerysowania modelowi graficznemu Google (Nano Banana 2.1), który
