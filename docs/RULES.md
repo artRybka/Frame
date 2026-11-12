@@ -60,7 +60,7 @@ chciałbym żeby spadła jakość doboru tych propozycji”).
 | 3 | Sprzątanie resztek: wskaźnik „Na e-papierze”, martwy próg, nieużywane punkty API | 1.145.14 (PLAN 3.3zzz158) |
 | 4 | Jeden werdykt pokazywania: lista powodów i tabela „miejsce × powód” (4a, bez zmiany wyników: 1.145.15, PLAN 3.3zzz159); serwer nie proponuje zachowanych detali, kopii i znaczków (4b: 1.145.19, PLAN 3.3zzz163); kolejność „najpierw dobre” w Odkrywaj (4c: 1.145.23, PLAN 3.3zzz168) | 1.145.23 |
 | 5 | Jedna tożsamość dzieła i autora, opis rodzaju: przedmioty i książki do „Sztuk innych” (5a: 1.145.26, PLAN 3.3zzz171); „ten sam autor” jedną regułą (5b: 1.145.33, PLAN 3.3zzz179); to samo dzieło i najlepsza kopia według obrazu (5c: 1.145.30, PLAN 3.3zzz176) | w toku |
-| 6 | Jedna nocna pętla modeli (6a: 1.145.36, PLAN 3.3zzz182); szukanie w muzeach jedną ścieżką zapamiętanych stron (6b: 1.145.37, PLAN 3.3zzz183); czym dopełniają się playlisty z kart: do decyzji | w toku |
+| 6 | Jedna nocna pętla modeli (6a: 1.145.36, PLAN 3.3zzz182); szukanie w muzeach jedną ścieżką zapamiętanych stron (6b: 1.145.37, PLAN 3.3zzz183); playlisty z kart tematów i epok dopełniane tak jak Szukaj (6b: 1.145.40, PLAN 3.3zzz186) | 1.145.40 |
 
 Etapy 0 do 3 nie zmieniają tego, co widać. Przed każdą zmianą widocznych
 wyników w etapach 4 do 6 Mateusz dostaje listę różnic do decyzji.
@@ -211,6 +211,15 @@ Etap 6b w skrócie: każde wyszukiwanie w muzeum, także dla katalogu
 `Importer.search` (`Importer.stream` strona po stronie), więc przez
 zapamiętane strony `library/pages.py`. Zmiana sposobu czytania odpowiedzi
 muzeum (`READINGS`) dotyczy odtąd także tych dwóch dróg.
+
+Czym dopełnia się playlista (od 1.145.40): własna playlista i playlista
+z karty tematu, epoki, pory roku albo „Sztuk innych” tym, co pokazuje
+Szukaj (`search.fill`); playlista z karty autorów, z karty barw i
+z „Arcydzieł muzeów” losowaniem stron muzeów (`Importer.fill`). Wybiera
+`search.fill_card`; powody i liczby z próby na żywych muzeach są przy
+niej i w PLAN 3.3zzz186. Zostają więc dwie drogi dopełniania, każda tam,
+gdzie w próbie dawała lepsze dzieła; obie pytają muzea przez tę samą
+warstwę (`library/hosts.py`, `library/policy.py`).
 
 ## Jak sprawdzić zmianę reguł
 

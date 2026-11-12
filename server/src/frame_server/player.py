@@ -46,6 +46,7 @@ from .library.nationality import life_years, note_years
 from .library.photo_text import photo_line, photo_title
 from .library.repo import matches, sent_key
 from .library.search import fill as fill_by_search
+from .library.search import fill_card
 from .library.style import AUTO, auto_preset, toned_only
 from .library.themes import (
     COVER_MIN,
@@ -1228,7 +1229,7 @@ class Player:
             return importer.start_job(
                 "pool", lambda job: fill_by_search(importer, rules, want, job, pooled=True)
             )
-        return importer.start_job("pool", lambda job: importer.fill(rules, want, job, pooled=True))
+        return importer.start_job("pool", lambda job: fill_card(importer, rules, want, job, True))
 
     def _pick_from_catalogue(self, count: int, settings: FrameSettings) -> list[Item]:
         """Up to ``count`` new Suggestions from the catalogue: half by the
