@@ -498,7 +498,9 @@ struct DailyView: View {
                         // Painted in the work's own technique (Mateusz
                         // 2026-11-11 11:09: „tak żeby paleta odpowiadała
                         // rzeczywistej technice dzieła”): oil, watercolour
-                        // or pastel; any other keeps the flat palette.
+                        // or pastel; a print or a drawing in its lines or
+                        // its inks (2026-11-12 07:26); any other keeps
+                        // the flat palette.
                         let item = work.item.item
                         let style = PaintStyle.of(item)
                         let strokes = style == nil ? 0 : PaintedStrip.shares(item.colors).count

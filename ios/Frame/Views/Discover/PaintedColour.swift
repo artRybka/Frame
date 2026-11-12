@@ -4,16 +4,28 @@ import SwiftUI
 // "Kolor i światło" painted in the work's own technique (Mateusz
 // 2026-11-11 11:09): the palette bar and each paint's swatch, in oil, in
 // watercolour or in pastel (`PaintCore.swift` is the paint; this file
-// puts it on the page and gives it its time). A work in any other
-// technique keeps the flat bar and the plain round swatches.
+// puts it on the page and gives it its time). What is drawn or printed
+// has its own (2026-11-12 07:26, `PrintCore.swift`): a scale of tones in
+// lines, or a colour print's inks. A work in any other technique (a
+// photograph, a bronze) keeps the flat bar and the plain round swatches.
 
 extension PaintStyle {
     /// CI screenshots: "-paintStyle oil" paints every work that way.
     static let forced: PaintStyle? = UserDefaults.standard.string(forKey: "paintStyle").flatMap(PaintStyle.init(rawValue:))
 
-    /// How this work's colours are painted; nil: flat.
+    /// How this work's colours are painted, drawn or printed; nil: flat.
     static func of(_ item: Item) -> PaintStyle? {
-        forced ?? of(medium: item.medium, classification: item.classification)
+        if let forced { return forced }
+        let colours = item.colors.compactMap { Paint.rgb($0.hex) }
+        return of(medium: item.medium, classification: item.classification,
+                  mono: item.colorTags.contains("monochrome") || (!colours.isEmpty && PrintPaint.oneColour(colours)), warm: warm(colours))
+    }
+
+    /// Whether the darkest of a work's colours is a brown: of a drawing
+    /// that names no tool, that it is in a pen's brown ink.
+    static func warm(_ colours: [[Double]]) -> Bool {
+        guard let darkest = colours.min(by: { PrintPaint.lightness($0) < PrintPaint.lightness($1) }) else { return false }
+        return darkest[0] - darkest[2] > 20
     }
 }
 
@@ -38,8 +50,9 @@ struct PaintJob: @unchecked Sendable {
 
     static let space = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
 
-    private init(_ painter: PaintPainter) {
-        size = CGSize(width: CGFloat(painter.wide) / CGFloat(Paint.scale), height: CGFloat(painter.high) / CGFloat(Paint.scale))
+    /// `scale`: the painter's pixels to a point.
+    private init(_ painter: PaintPainter, scale: Int = Paint.scale) {
+        size = CGSize(width: CGFloat(painter.wide) / CGFloat(scale), height: CGFloat(painter.high) / CGFloat(scale))
         length = painter.length
         image = { painter.frame(age: $0).image }
     }
@@ -58,6 +71,10 @@ struct PaintJob: @unchecked Sendable {
         case .dry:
             let strip = DryStrip(shares: shares, width: width, seed: seed)
             return PaintJob(size: strip.size, length: strip.plan.length) { strip.image(age: $0) }
+        case .burin, .pen, .pencil:
+            return PaintJob(LineStrip(shares: shares, width: width, seed: seed, tool: style.tool ?? .burin), scale: PrintPaint.scale)
+        case .woodblock, .litho:
+            return PaintJob(InkStrip(shares: shares, width: width, seed: seed, press: style.press ?? .wood), scale: PrintPaint.scale)
         }
     }
 
@@ -69,6 +86,10 @@ struct PaintJob: @unchecked Sendable {
         case .dry:
             let scribble = DryScribble(rgb: rgb, index: index, seed: seed)
             return PaintJob(size: scribble.size, length: DryScribble.length) { scribble.image(age: $0) }
+        case .burin, .pen, .pencil:
+            return PaintJob(LinePatch(rgb: rgb, index: index, seed: seed, tool: style.tool ?? .burin), scale: PrintPaint.scale)
+        case .woodblock, .litho:
+            return PaintJob(InkStamp(rgb: rgb, index: index, seed: seed, press: style.press ?? .wood), scale: PrintPaint.scale)
         }
     }
 }
@@ -300,8 +321,8 @@ struct Painted: View {
     }
 }
 
-/// The work's colours as a bar painted in its technique, each colour as
-/// wide as its share of the picture.
+/// The work's colours as a bar painted, drawn or printed in its
+/// technique, each colour as wide as its share of the picture.
 struct PaintedStrip: View {
     let swatches: [ColorSwatch]
     let style: PaintStyle
@@ -317,9 +338,18 @@ struct PaintedStrip: View {
     /// More colours than this are no bar any more, only specks.
     static let most = 8
 
+    /// CI screenshots: "-paintColours 918d78:0.28/4c4a3c:0.26" are the
+    /// colours of every work's bar (an engraving's, for an engraving's bar).
+    static let forced: [PaintShare] = (UserDefaults.standard.string(forKey: "paintColours") ?? "").split(separator: "/").compactMap { part in
+        let bits = part.split(separator: ":")
+        guard bits.count == 2, let rgb = Paint.rgb(String(bits[0])), let weight = Double(bits[1]), weight > 0 else { return nil }
+        return PaintShare(rgb: rgb, weight: weight)
+    }
+
     /// The colours it paints: those it can read, the first `most`.
     static func shares(_ swatches: [ColorSwatch]) -> [PaintShare] {
-        swatches.compactMap { swatch in
+        if !forced.isEmpty { return forced }
+        return swatches.compactMap { swatch in
             guard let rgb = Paint.rgb(swatch.hex), swatch.weight > 0 else { return nil }
             return PaintShare(rgb: rgb, weight: swatch.weight)
         }
