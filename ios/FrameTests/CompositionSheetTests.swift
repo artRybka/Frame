@@ -90,16 +90,25 @@ final class CompositionSheetTests: XCTestCase {
         XCTAssertGreaterThan(side.maxX, 360 + Pencil.reach - 1)
     }
 
-    func testTheMarksAreChalkOfThePensColourAndAReturningColourRed() {
+    func testTheMarksAreABlueColouredPencilHeavierThanThePenUnderThem() {
         let echo = Mark(shape: "echo", points: [], title: "", text: "")
         let loop = Mark(shape: "loop", points: [], title: "", text: "")
-        // The pen's colour on each page, heavier than the sketch under it
-        // and that sketch weaker (Mateusz 2026-11-12 11:31: "szkic pod spodem
-        // słabszy, a linie kredą - ciut mocniejsze i grubsze niż rysunek
-        // teraz. W kolorze rysunku, a powtórki kolorów zostawiamy czerwone").
-        XCTAssertEqual(Chalk.color(for: loop, dark: false), Chalk.ink(dark: false))
-        XCTAssertEqual(Chalk.color(for: loop, dark: true), Chalk.ink(dark: true))
-        XCTAssertNotEqual(Chalk.ink(dark: false), Chalk.ink(dark: true))
+        // Blue, as on the trial sheets he saw (Mateusz 2026-11-12 19:40:
+        // "Fajnie też współgra teraz z niebieską linią. I tak to wdrażajmy
+        // (teraz w apce jest czarna"; 19:44: "niech wygląda tak jak na Twoim
+        // szkicu"): deep on the light page, pale on the dark one, and every
+        // mark alike, a returning colour too (its rings and broken line
+        // tell it apart). Heavier than the sketch under it and that sketch
+        // weaker (11:31: "szkic pod spodem słabszy, a linie kredą - ciut
+        // mocniejsze i grubsze niż rysunek teraz").
+        XCTAssertEqual(Chalk.color(for: loop, dark: false), Chalk.blue(dark: false))
+        XCTAssertEqual(Chalk.color(for: loop, dark: true), Chalk.blue(dark: true))
+        XCTAssertNotEqual(Chalk.blue(dark: false), Chalk.blue(dark: true))
+        XCTAssertEqual(Chalk.color(for: echo, dark: false), Chalk.blue(dark: false))
+        XCTAssertEqual(Chalk.color(for: echo, dark: true), Chalk.blue(dark: true))
+        // Its numbers lie on the page's own colour.
+        XCTAssertEqual(Chalk.page(dark: false), Color(hex: 0xF5F1EA))
+        XCTAssertEqual(Chalk.page(dark: true), Color(hex: 0x121110))
         // 12:44, having seen that: "Rysunki kredy są za słabe. muszą się
         // wyraźniej odcinać. Może trzeba jeszcze rozjaśnić akwarelę w trybie
         // jasnym, a przyciemnić w ciemnym?": the sheet under the marks is
@@ -112,9 +121,6 @@ final class CompositionSheetTests: XCTestCase {
         XCTAssertGreaterThan(SheetPlan.penShare(dark: true), 0.2)
         XCTAssertLessThan(Chalk.weight, Pencil.crayonWeight)  // not the broad white stick
         XCTAssertGreaterThan(Chalk.weight, 1.1)
-        // What only answers across the picture is not read as a line that runs there.
-        XCTAssertEqual(Chalk.color(for: echo, dark: false), Chalk.red)
-        XCTAssertEqual(Chalk.color(for: echo, dark: true), Chalk.red)
         // Brighter than the page's white only where the screen can show
         // it, and only light chalk (the dark page).
         XCTAssertNil(Chalk.lift(headroom: 1))

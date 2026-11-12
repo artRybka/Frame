@@ -19,6 +19,11 @@
   początku i końcu. Kreski wewnątrz form (rysy twarzy, palce, fałdy) i
   te ze zbliżeń są cieńsze od obrysów. Arkusze, które już są, serwer
   rysuje nową kreską sam po aktualizacji, bez pytania modelu i bez kosztu.
+- Aplikacja: kreski analizy kompozycji na arkuszu są rysowane niebieską
+  kredką zamiast koloru piórka, także powtórzenia koloru, które były
+  czerwone (poznaje się je po kółkach i przerywanej linii). Numery są
+  pisane odręcznie tą samą kredką, w niebieskim kółku na kolorze strony,
+  na arkuszu i przy podpisach pod nim.
 - Koszt: rysunek piórkiem w nowym studium to ok. 0,18–0,35 USD (było
   ok. 0,045 USD), a studium zamówione „na później” ok. połowy tego.
   Nowe studium powstaje o ok. minutę dłużej. Studia, które już są,
