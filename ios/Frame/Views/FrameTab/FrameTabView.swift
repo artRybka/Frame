@@ -1854,6 +1854,10 @@ struct SourcesSection: View {
         Binding(get: { settings.privateUse ?? false }, set: { on in save { $0.privateUse = on } })
     }
 
+    private var alamy: Binding<Bool> {
+        Binding(get: { settings.alamy ?? false }, set: { on in save { $0.alamy = on } })
+    }
+
     private func save(_ change: (inout FrameSettings) -> Void) {
         var new = settings
         change(&new)
@@ -1900,6 +1904,22 @@ struct SourcesSection: View {
                     }
                 }
                 .tint(Theme.ink)
+                // An older server knows no Alamy (nil).
+                if settings.alamy != nil {
+                    Divider()
+                    Toggle(isOn: alamy) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Kupowanie w Alamy")
+                            Text(
+                                "W menu „…” dzieła: „Kup w Alamy” szuka go tam (licencja osobista od 17 £), "
+                                    + "a „Wczytaj kupioną kopię” robi z pobranego pliku zdjęcie dzieła."
+                            )
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
+                        }
+                    }
+                    .tint(Theme.ink)
+                }
                 if !missingKeys.isEmpty {
                     Divider()
                     Label("Bez klucza: \(missingKeys). Dodasz go w Kluczach i certyfikatach.", systemImage: "key")

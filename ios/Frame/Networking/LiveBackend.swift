@@ -166,6 +166,17 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
+    func bringCopy(itemID: String, filename: String, data: Data, origin: String) async throws -> Item {
+        var form = MultipartForm()
+        form.addField("origin", origin)
+        form.addFile("file", filename: filename, mimeType: "application/octet-stream", data: data)
+        var req = request("/api/library/items/\(escape(itemID))/copy/file", method: "POST")
+        req.setValue(form.contentType, forHTTPHeaderField: "Content-Type")
+        req.httpBody = form.body()
+        req.timeoutInterval = 180  // a large file, measured and cut into details
+        return try await perform(req)
+    }
+
     func copySpot(itemID: String, copyID: String, x: Double?, y: Double?) async throws -> CopySpot {
         var query: [URLQueryItem] = []
         if let x, let y {

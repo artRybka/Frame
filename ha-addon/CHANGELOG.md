@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.145.66
+
+- WikiArt: szukanie po nazwisku artysty daje wszystkie jego dzieła, a nie
+  tylko pierwsze 60. Wyszukiwarka WikiArt kończyła się na jednej stronie,
+  więc z 198 prac Giorgia de Chirico ramka widziała 60. Najpierw idą
+  najbardziej znane (te z wyszukiwania), potem reszta. Oryginały w WikiArt
+  bywają małe: u de Chirico tylko około 40 ma 1000 px albo więcej.
+- Kupowanie w Alamy: nowy przełącznik w Konfiguracji → Źródła dzieł. Gdy
+  jest włączony, menu „…” dzieła ma „Kup w Alamy” (szukanie tego dzieła
+  w Alamy, licencja osobista od 17 £) i „Wczytaj kupioną kopię”. Kupiony
+  plik staje się zdjęciem dzieła, tak jak kopia wybrana w „Szukaj lepszej
+  kopii”: serce, playlisty i kadry zostają, a „Przywróć zdjęcie muzeum”
+  wraca do poprzedniego. Serwer trzyma ten plik na stałe. Alamy nie daje
+  API zwykłym klientom, więc sam zakup odbywa się na ich stronie.
+
 ## 1.145.65
 
 - Studium dzieła, analiza kompozycji: rysunek piórkiem na arkuszu znów

@@ -470,3 +470,40 @@ def test_an_aic_work_kept_at_1686_offers_its_download_size(app: Any) -> None:
     assert service.images.source_size(service.library.get(own.id))[:2] == (2975, 1983)
     # Kept large now: not offered again.
     assert own.id + "~larger" not in _final(_lines(client, own.id))
+
+
+def test_the_owner_brings_a_bought_copy_kept_for_good(app: Any) -> None:
+    """Bought in Alamy (Mateusz, 2026-11-12): the file is the work's picture
+    from then on, outlives the cache, and "Przywróć zdjęcie muzeum" goes
+    back."""
+    client, service, web, hits = app
+    own = _own(service, favorite=True)
+    bought = _jpeg(_print(1, (5000, 3333)), 92)
+
+    resp = client.post(
+        f"/api/library/items/{own.id}/copy/file",
+        files={"file": ("alamy.jpg", bought, "image/jpeg")},
+        data={"origin": "Alamy"},
+    )
+    assert resp.status_code == 200, resp.text
+    item = resp.json()
+    assert item["sharper"]["chosen"] and item["sharper"]["museum"] == "Alamy"
+    assert item["sharper"]["source"] == "owned" and item["favorite"]
+    assert max(item["sharper"]["width"], item["sharper"]["height"]) == 5000
+    stored = service.library.get(own.id)
+    assert stored is not None
+    # The cache lets the picture go: it is had again from the kept file.
+    service.images.drop_picture(stored)
+    with Image.open(service.images.ensure_image(stored)) as img:
+        assert max(img.size) == 4000  # as every original is kept
+    # The background never looks past the owner's pick.
+    view = client.post(f"/api/library/items/{own.id}/sharpen").json()
+    assert view["status"] == "found" and view["sharper"]["source"] == "owned"
+
+    bad = client.post(
+        f"/api/library/items/{own.id}/copy/file", files={"file": ("x.jpg", b"nope", "image/jpeg")}
+    )
+    assert bad.status_code == 422
+
+    item = client.delete(f"/api/library/items/{own.id}/copy").json()
+    assert item["sharper"] is None

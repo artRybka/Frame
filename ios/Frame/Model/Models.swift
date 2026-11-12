@@ -1682,6 +1682,9 @@ struct FrameSettings: Codable, Hashable, Sendable {
     /// copyright that their collections publish, and WikiArt. (The test
     /// switches WikiArt and "Bez limitu 70 lat" went into it in 1.111.0.)
     var privateUse: Bool? = nil
+    /// "Kupowanie w Alamy": a work's "…" menu looks for it in Alamy and
+    /// takes the bought file in as its picture; nil: a server before it.
+    var alamy: Bool? = nil
     /// Collections of everyone's pictures turned off in Konfiguracja →
     /// Źródła dzieł ("wmc", "europeana", "openverse", "wikiart"); nil: a
     /// server before 1.124.
@@ -1748,6 +1751,7 @@ extension FrameSettings {
         follow(\.timezone)
         follow(\.statusPollMinutes)
         follow(\.privateUse)
+        follow(\.alamy)
         follow(\.sourcesOff)
         follow(\.name)
         follow(\.powerMode)
@@ -1763,7 +1767,7 @@ extension FrameSettings {
     private enum CodingKeys: String, CodingKey {
         case playlistId, changeTimes, changeEveryDays, quietStart, shuffle, avoidRepeatDays
         case orientation, rotation, art, photo, timezone, statusPollMinutes, privateUse, name
-        case sourcesOff
+        case sourcesOff, alamy
         case powerMode, checkEveryHours, checkQuietStart, checkQuietEnd
         case multiPhotos
         case quietEnd  // older servers: decoded only
@@ -1787,6 +1791,7 @@ extension FrameSettings {
         statusPollMinutes = try c.decode(Int.self, forKey: .statusPollMinutes)
         privateUse = try c.decodeIfPresent(Bool.self, forKey: .privateUse)
         sourcesOff = try c.decodeIfPresent([String].self, forKey: .sourcesOff)
+        alamy = try c.decodeIfPresent(Bool.self, forKey: .alamy)
         name = try c.decodeIfPresent(String.self, forKey: .name)
         powerMode = try c.decodeIfPresent(String.self, forKey: .powerMode)
         checkEveryHours = try c.decodeIfPresent(Int.self, forKey: .checkEveryHours)
@@ -1811,6 +1816,7 @@ extension FrameSettings {
         try c.encode(statusPollMinutes, forKey: .statusPollMinutes)
         try c.encodeIfPresent(privateUse, forKey: .privateUse)
         try c.encodeIfPresent(sourcesOff, forKey: .sourcesOff)
+        try c.encodeIfPresent(alamy, forKey: .alamy)
         try c.encodeIfPresent(name, forKey: .name)
         try c.encodeIfPresent(powerMode, forKey: .powerMode)
         try c.encodeIfPresent(checkEveryHours, forKey: .checkEveryHours)
