@@ -99,8 +99,9 @@ class PenJob(NoteJob):
         self._pages: tuple[float, set[str]] = (0.0, set())
 
     def enabled(self) -> bool:
-        """With the pages themselves ("Studium dnia" on)."""
-        return self.config.enabled(DAILY)
+        """With the pages themselves ("Studium dnia" on); not where the
+        sheets are drawn by the image model, which need no pen."""
+        return self.config.enabled(DAILY) and not self.config.drawn
 
     def waiting(self) -> set[str]:
         when, ids = self._pages

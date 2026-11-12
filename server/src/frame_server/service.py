@@ -21,6 +21,7 @@ from .ai.curator import Curator
 from .ai.details import MendJob
 from .ai.extras import ExtrasJob
 from .ai.gatekeeper import Gatekeeper
+from .ai.gemini import Painter
 from .ai.journey import Journeys
 from .ai.museum_words import MuseumWords
 from .ai.prose import ProseJob
@@ -38,6 +39,7 @@ from .config import Settings
 from .copies import Copies
 from .daily import Daily
 from .device import MdcClient, MdcConnectionError, MdcError, wol
+from .drawn import DrawnSheets
 from .holders import Holders
 from .imaging import Palette, RenderSettings, get_palette, render, render_multi
 from .imaging.pipeline import encode_image
@@ -381,6 +383,9 @@ class FrameService:
         self.ai.register(PenJob(self.compose))
         # The study sheets the analyses are drawn on, made ahead in the background.
         self.sheets = Sheets(self.library, self.images)
+        # Those sheets drawn by the image model, where the owner gave Google's key.
+        self.painter = Painter(self.ai_config, self.claude)
+        self.drawn = DrawnSheets(self.library, self.images, self.painter)
         # The composition text of pages written before, rewritten once in one
         # voice (their marks stay).
         self.prose = ProseJob(self.daily.job)
