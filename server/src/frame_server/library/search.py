@@ -246,8 +246,12 @@ class MuseumSearch:
             # "watches" in another) and a name in whatever they think goes
             # with it (ter Borch for "vermeer"); before the colours are judged
             # by thumbnails.
-            said_it = [i for i in items if says(i, said)]
-            found = [i for i in importer.in_colors(said_it, colors) if self.fits(i)]
+            # What a look at the work's data tells first, the thumbnails
+            # after: of the museums' own pages a search of warm paintings
+            # judged the colours of every vase and coin (two works in seven
+            # minutes, 2026-11-12).
+            said_it = [i for i in items if says(i, said) and self.fits(i)]
+            found = importer.in_colors(said_it, colors)
             if spare is not None and len(found) < len(items):
                 chosen = {i.id for i in found}
                 spare([i for i in items if i.id not in chosen])

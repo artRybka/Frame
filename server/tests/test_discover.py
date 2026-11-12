@@ -663,7 +663,11 @@ def test_a_sets_searches_asked_together_are_for_different_painters() -> None:
 
     # Themes of painters without set searches: each painter's museums in
     # turn, a new painter in each.
-    plain = next(t for t in THEMES if t.artists and not t.queries)
+    # (not one that names a painter twice, as Commons and the museums do:
+    # Turner in "Romantyzm").
+    plain = next(
+        t for t in THEMES if t.artists and not t.queries and "William Turner" not in t.artists
+    )
     first = plain.searches()[: len(plain.artists)]
     assert len({query for _, query in first}) == len(plain.artists)
 

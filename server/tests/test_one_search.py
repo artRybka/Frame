@@ -289,6 +289,52 @@ def test_a_search_hands_on_the_works_that_do_not_fit(tmp_path) -> None:
     assert len(spare) == 8 and {i.artist for i in spare} == {"Armand Guillaumin"}
 
 
+class Mixed(Museum):
+    key = "aic"
+    name = "Mixed"
+    page_size = 100
+
+    def discover(self, spec, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:  # type: ignore[no-untyped-def]
+        vases = [self._item(f"v{n}", title=f"Vase {n}", classification="Vessel") for n in range(5)]
+        oil = self._item("p", title="Dusk", classification="Painting", medium="oil on canvas")
+        return (6, [*vases, oil]) if page == 1 else (6, [])
+
+    def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        return 0, []
+
+    def fetch(self, source_id: str) -> Item | None:
+        return None
+
+
+def test_colours_are_judged_of_the_works_that_fit_otherwise(tmp_path) -> None:
+    """Museums don't know colours, so their pages are judged thumbnail by
+    thumbnail: a playlist of warm paintings judged every vase and coin of
+    the museums' own pages, two works in seven minutes (2026-11-12)."""
+    saved = dict(MUSEUMS)
+    MUSEUMS.clear()
+    MUSEUMS.update(aic=Mixed)
+    judged: list[str] = []
+    spare: list[Item] = []
+    try:
+        library = Library(tmp_path / "lib.db")
+        importer = Importing(library, None, None)  # type: ignore[arg-type]
+
+        def in_colors(items, colors):  # type: ignore[no-untyped-def]
+            judged.extend(i.id for i in items)
+            return items
+
+        importer.in_colors = in_colors  # type: ignore[method-assign]
+        rules = PlaylistRules(terms=["technique:painting"], colors=["warm"])
+        search = MuseumSearch.of(rules, limit=8)
+        _total, items, _failed, _after = search.ask(importer, ["aic"], 1, spare.extend)
+    finally:
+        MUSEUMS.clear()
+        MUSEUMS.update(saved)
+    assert [i.id for i in items] == ["aic:p"]
+    assert set(judged) == {"aic:p"}
+    assert len(spare) == 5  # the vases, for the catalogue
+
+
 def test_works_not_shown_join_the_catalogue_after_the_shown_ones(tmp_path) -> None:
     library = Library(tmp_path / "lib.db")
 
