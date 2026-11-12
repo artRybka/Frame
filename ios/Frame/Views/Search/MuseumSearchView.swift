@@ -133,7 +133,7 @@ struct MuseumSearchView: View {
             }
             // CI screenshots: the Kolor sheet's two cards.
             if LaunchRoute.screen == "search-colors", rules.colors.isEmpty {
-                rules.colors = ["brown@much", "gray@clear"]
+                rules.colors = ["brown@much", "cream@clear", "white@accent"]
             }
             if LaunchRoute.screen == "search-tones", rules.colors.isEmpty {
                 rules.colors = ["tone:neutral", "tone:dark", "tone:medium"]

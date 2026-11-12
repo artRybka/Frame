@@ -19,7 +19,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from ..library.colors import COLOR_FAMILIES, LEVELS, TONE_GROUPS
+from ..library.colors import COLOR_FAMILIES, GROUNDS, LEVELS, TONE_GROUPS
 from ..library.vocabulary import TERMS, fold
 from .client import HAIKU, AiUnavailable, request
 from .daily import _object, _str
@@ -52,6 +52,7 @@ FAMILY_NAMES = {
     "purple": "fioletowy",
     "pink": "różowy",
     "brown": "brązowy",
+    "cream": "beżowy",
     "black": "czarny",
     "gray": "szary",
     "white": "biały",
@@ -70,9 +71,9 @@ TONE_NAMES = {
     "light": "jasne",
 }
 LEVEL_NAMES = {
-    "accent": "akcent (mała, żywa część)",
-    "clear": "wyraźnie obecny",
-    "much": "dużo",
+    "accent": "akcent (mała, żywa część; nigdy dla cream, black, gray)",
+    "clear": "wyraźnie obecny (co najmniej)",
+    "much": "dużo (co najmniej)",
     "most": "przeważa",
 }
 TONES = [side for group in TONE_GROUPS for side in group]
@@ -218,6 +219,9 @@ class Sentence:
                 continue
             family, level = colour.get("family"), colour.get("level")
             if family in FAMILY_NAMES and level in LEVELS:
+                # Grey, black and beige are never an accent: no work has one.
+                if level == "accent" and family in GROUNDS and family != "white":
+                    level = "clear"
                 add("color", f"{family}@{level}", FAMILY_NAMES[family])
         for side in data.get("tones") or []:
             if side in TONE_NAMES:

@@ -152,9 +152,13 @@ extension Item {
 
 /// Polish names and display colours for the server's colour/mood tags.
 enum ColorTag {
+    /// In the Kolor sheet's order, seven to a row. Beige ("cream") is the
+    /// pale warm tone of paper, ivory and skin, a family of its own since
+    /// the server's analysis 15 (Mateusz 2026-11-12): it was "yellow" or
+    /// "orange", and those found mostly drawings.
     static let families = [
-        "red", "orange", "yellow", "green", "teal", "blue", "purple", "pink", "brown", "black",
-        "gray", "white",
+        "red", "orange", "yellow", "green", "teal", "blue", "purple", "pink", "brown", "cream",
+        "black", "gray", "white",
     ]
     static let moods = ["warm", "cool", "vivid", "muted", "colorful", "monochrome", "dark", "light"]
     /// The Tonacja card's middles, between a group's ends ("tone:neutral").
@@ -162,9 +166,9 @@ enum ColorTag {
     /// Tags of colours that are only an accent of a picture ("accent:red");
     /// a picture has either a colour's own tag or its accent tag.
     static let accentPrefix = "accent:"
-    static let accentFamilies = [
-        "red", "orange", "yellow", "green", "teal", "blue", "purple", "pink", "brown",
-    ]
+    /// White is an accent where it stands out (the foam of a dark sea);
+    /// grey, black and beige never are.
+    static let accentFamilies = onlyFamilies + ["white"]
 
     static func accent(_ family: String) -> String { accentPrefix + family }
 
@@ -172,13 +176,16 @@ enum ColorTag {
     /// them: never shown on a work. Picked under "Dominuje", they find
     /// pictures painted in those colours alone (with white, grey, black).
     static let onlyPrefix = "only:"
-    static let onlyFamilies = accentFamilies
+    static let onlyFamilies = [
+        "red", "orange", "yellow", "green", "teal", "blue", "purple", "pink", "brown",
+    ]
 
     static func only(_ family: String) -> String { onlyPrefix + family }
 
     /// How much of a work a colour asked for in the Kolor sheet covers,
     /// "blue@much" (server `colors.LEVELS`): a small accent, clear, much,
-    /// most of its colours. White, grey and black are never an accent.
+    /// most of its colours. Clear and much are "at least": clear finds a
+    /// work the colour fills, too. Grey, black and beige are never an accent.
     enum Level: Int, CaseIterable {
         case accent, clear, much, most
 
@@ -216,13 +223,12 @@ enum ColorTag {
         /// How much of the ring around the swatch it fills.
         var fraction: Double { Double(rawValue + 1) / Double(Self.allCases.count) }
 
-        /// The levels a family can take: no accent of white, grey or black.
+        /// The levels a family can take: no accent of grey, black or beige.
         static func of(_ family: String) -> [Level] {
-            neutrals.contains(family) ? [.clear, .much, .most] : allCases
+            accentFamilies.contains(family) ? allCases : [.clear, .much, .most]
         }
     }
 
-    static let neutrals = ["black", "gray", "white"]
     static let levelMark = "@"
 
     enum Gender { case masculine, feminine, plural }
@@ -326,6 +332,7 @@ enum ColorTag {
         case "purple": "Fiolet"
         case "pink": "Róż"
         case "brown": "Brąz"
+        case "cream": "Beż"
         case "black": "Czerń"
         case "gray": "Szarości"
         case "white": "Biel"
@@ -358,6 +365,7 @@ enum ColorTag {
         case "purple": Color(hex: 0x6B4C8A)
         case "pink": Color(hex: 0xD98BA0)
         case "brown": Color(hex: 0x7A5636)
+        case "cream": Color(hex: 0xD9C4A0)
         case "black": Color(hex: 0x1D1B18)
         case "gray": Color(hex: 0x8E8A84)
         case "white": Color(hex: 0xF4F0E8)
@@ -488,6 +496,7 @@ extension ColorTag {
     static func ring(_ tag: String) -> AnyShapeStyle {
         switch family(tag) {
         case "white": AnyShapeStyle(Color(hex: 0xBDB4A6))
+        case "cream": AnyShapeStyle(Color(hex: 0xB89C6E))
         case "yellow": AnyShapeStyle(Color(hex: 0xD4AE2E))
         case "warm": AnyShapeStyle(Color(hex: 0xF2662B))
         case "cool": AnyShapeStyle(Color(hex: 0x3F6FA8))
@@ -509,7 +518,7 @@ extension ColorTag {
 
     /// Light swatches carry a dark tick.
     static func light(_ tag: String) -> Bool {
-        ["white", "yellow", "pink", "light", "cool", "neutral"].contains(family(tag))
+        ["white", "cream", "yellow", "pink", "light", "cool", "neutral"].contains(family(tag))
     }
 }
 

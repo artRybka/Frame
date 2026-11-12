@@ -24,6 +24,7 @@ COLOR_FAMILIES = (
     "purple",
     "pink",
     "brown",
+    "cream",
     "black",
     "gray",
     "white",
@@ -45,14 +46,53 @@ COLOUR_SPREAD = (0.01, 0.035)
 #: striking patches among the swatches and the accent tags (``touches``);
 #: 12: a white that stands out among the swatches (``lights``); 13: a
 #: sizeable colour unlike the four dominant ones (``passed_over``); 14:
-#: the tints of a pale sheet (``tints``).
-SCORE_VERSION = 14
+#: the tints of a pale sheet (``tints``); 15: one rule of names for the
+#: shares, the swatches and the accents (``named``), beige a family of its
+#: own, accents by the pixels that stand out, a tag for the white accent
+#: and the tints, Tonacja against the picture's own white; 16: a pale
+#: sheet measured without the board it was photographed on (``unmounted``).
+SCORE_VERSION = 16
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
 #: this chroma / lightness for light ones: a greyish-blue sky does, a beige
 #: wall or the greys of a picture don't.
 TINTED = 0.02
 TINTED_LIGHT = 0.04
+#: Beige (``"cream"``, "Beż"): a pale warm tint, lighter than
+#: ``CREAM_LIGHT`` and of the hues ``CREAM_HUES`` (OKLab, degrees), up to
+#: chroma ``CREAM_SURE`` always: the paper of a drawing, a print, an old
+#: photograph, ivory, pale skin. Of 530 works of the owner's library 42
+#: were "mostly orange" or "mostly yellow", 41 of them paper (the audit of
+#: 2026-11-12; Mateusz 15:16: beige a family of its own in the Kolor
+#: sheet). A stronger tint, up to ``CREAM_CHROMA``, is beige too unless it
+#: is ``CREAM_OVER`` times as coloured as the picture's light parts are
+#: (``paleness``): Vermeer's yellow bodice by a white wall is yellow, the
+#: same tint all over a yellowed sheet is its paper. From ``CREAM_YELLOW``
+#: degrees on only the faint ones: a pale lemon is a yellow.
+CREAM_LIGHT = 0.62
+CREAM_HUES = (35.0, 110.0)
+CREAM_SURE = 0.07
+CREAM_CHROMA = 0.10
+CREAM_OVER = 1.5
+CREAM_YELLOW = 100.0
+#: The light parts say how coloured the picture's lights are when they are
+#: this much of it.
+CREAM_AREA = 0.005
+#: A dark warm tone (lighter than ``BROWN_LIGHT`` it is none) is brown up
+#: to chroma ``BROWN_CHROMA`` between orange and yellow-green; towards red
+#: (``BROWN_RED`` degrees, up to orange at 45) only up to
+#: ``BROWN_RED_CHROMA``, and nearer red than that never: the dark red of
+#: Goya's and David's robes is a red.
+BROWN_LIGHT = 0.6
+BROWN_CHROMA = 0.13
+BROWN_RED = 25.0
+BROWN_RED_CHROMA = 0.09
+#: A light red is pink near magenta and crimson (up to ``PINK_HUE``
+#: degrees), and towards orange while it is paler than ``PINK_CHROMA``: a
+#: vivid vermilion in the light stays red.
+PINK_LIGHT = 0.65
+PINK_HUE = 15.0
+PINK_CHROMA = 0.16
 #: Least share of the picture a colour family covers to be part of its
 #: colouring (tag ``"blue"``: "W odcieniach błękitu"); less is an accent at most.
 COLOURING = 0.15
@@ -60,6 +100,10 @@ COLOURING = 0.15
 #: never with the colour's own tag.
 ACCENT_TAG = "accent:"
 NEUTRALS = ("black", "gray", "white")
+#: What a picture's colours lie on: the neutrals and beige. Never an accent
+#: (but the white that stands out: ``lights``), and aside when the colours
+#: a picture is painted in are counted (``painted_in``, "most").
+GROUNDS = (*NEUTRALS, "cream")
 #: Tags of the colours a picture is painted in (``"only:blue"``): the
 #: fewest colour families, largest first, that make ``ONLY_SHARE`` of its
 #: coloured pixels (neutrals aside). Never shown; a search for "Dominuje:
@@ -129,17 +173,19 @@ TONED_ASTRAY = 0.02
 TONED_BAND = 0.08
 
 #: How much of a picture a colour covers, in four levels the Kolor sheet
-#: offers (``"blue@much"``): an accent (a small, vivid part: an accent
-#: tag, at most ``LEVEL_ACCENT`` of the picture), clear, much, and most.
-#: Clear and much are bands of the picture's area, overlapping a little as
-#: the analysis only estimates; "most" is the share of the picture's
-#: colours (white, grey and black aside) and several colours asked at it
-#: share it: blue and teal "most" are pictures painted mostly in the two.
+#: offers (``"blue@much"``): an accent (a small part that stands out: an
+#: accent tag), clear, much, and most. Clear and much are "at least": the
+#: colour covers ``LEVEL_CLEAR`` (``LEVEL_MUCH``) of the picture or more.
+#: They were bands (8-33%, 28-62%), and a photograph a little lighter or
+#: darker moved a work out of its band; "clear" did not find a picture
+#: two fifths red (Mateusz 2026-11-12 15:16: "at least", clear from 6%).
+#: "Most" is the share of the picture's colours (white, grey, black and
+#: beige aside) and several colours asked at it share it: blue and teal
+#: "most" are pictures painted mostly in the two.
 LEVELS = ("accent", "clear", "much", "most")
 LEVEL_MARK = "@"
-LEVEL_ACCENT = 0.1
-LEVEL_CLEAR = (0.08, 0.33)
-LEVEL_MUCH = (0.28, 0.62)
+LEVEL_CLEAR = 0.06
+LEVEL_MUCH = 0.28
 LEVEL_MOST = 0.6
 #: Each colour asked at "most" covers this much of the picture's colours,
 #: and together they this much of the picture (no grey drawing with a touch
@@ -159,23 +205,40 @@ TONE_GROUPS = (
     ("colorful", "monochrome"),
     ("dark", "medium", "light"),
 )
+#: Temperatura and Nasycenie are measured as the eye sees the picture,
+#: against its own white: the tint of its lightest ``TONE_WHITE_TOP``
+#: (when that is a white: ``TONE_WHITE_LIGHT`` light, ``TONE_WHITE_CHROMA``
+#: at most), taken away in proportion to lightness. Measured from grey, a
+#: black etching on yellowed paper was warm and a pencil drawing vivid: of
+#: 530 works of the owner's library 62% were warm and 3% cool, 40% vivid
+#: (the audit of 2026-11-12; Mateusz 15:16). Against the white: 43% warm,
+#: 51% neutral, 5% cool; 24% vivid, 31% moderate, 46% muted.
+TONE_WHITE_TOP = 0.02
+TONE_WHITE_LIGHT = 0.70
+TONE_WHITE_CHROMA = 0.055
 #: Temperatura: the picture's colour along the warm (orange, OKLab hue
 #: ``TONE_WARM_HUE``) to cool axis, chroma-weighted mean; warm from
 #: ``TONE_WARM``, cool below ``TONE_COOL`` (a little below zero: plain
-#: grey is neutral). Old art is mostly warm: of 490 Cleveland works 51%
-#: warm, 45% neutral, 4% cool.
+#: grey is neutral), a monochrome work only below ``TONE_COOL_MONO``: the
+#: grey ink of an engraving is cooler than its cream paper and no cool
+#: picture, a cyanotype is.
 TONE_WARM_HUE = 60.0
-TONE_WARM = 0.025
-TONE_COOL = -0.002
-#: Nasycenie: the chroma of the picture's most colourful tenth; vivid from
-#: ``TONE_VIVID_CHROMA``, muted below ``TONE_MUTED_CHROMA`` (16% / 52% /
-#: 33% of the Cleveland works).
-TONE_VIVID_CHROMA = 0.065
+TONE_WARM = 0.016
+TONE_COOL = -0.006
+TONE_COOL_MONO = -0.02
+#: Nasycenie: the chroma of the picture's most colourful tenth, a colour
+#: in the dark counting for less (in full from ``TONE_FULL_LIGHT`` light
+#: on, never less than ``TONE_DIM`` of it: the eye sees little colour in a
+#: near-black brown); vivid from ``TONE_VIVID_CHROMA``, muted below
+#: ``TONE_MUTED_CHROMA``.
+TONE_VIVID_CHROMA = 0.068
 TONE_MUTED_CHROMA = 0.035
+TONE_FULL_LIGHT = 0.55
+TONE_DIM = 0.35
 #: Jasność: mean lightness; dark below ``TONE_DARK``, light from
-#: ``TONE_LIGHT`` (20% / 59% / 21%).
+#: ``TONE_LIGHT`` (28% / 30% / 42% of those 530 works).
 TONE_DARK = 0.53
-TONE_LIGHT = 0.72
+TONE_LIGHT = 0.69
 
 #: Dominant colours closer than this (``_distance``) read as one.
 MERGE = 0.06
@@ -209,6 +272,20 @@ ACCENT_BRIGHTER = 0.045
 #: Accents closer than this (``_distance``, lightness halved) are one.
 ACCENT_TWIN = 0.07
 MAX_ACCENTS = 4
+#: A colour is an accent of a picture (its ``ACCENT_TAG``) also when the
+#: bar does not show it: its pixels that stand out cover ``OUT_AREA`` of
+#: the picture. A pixel stands out when it is ``OUT_TIMES`` as coloured as
+#: the picture's middle (chroma ``OUT_CHROMA`` at least), or
+#: ``OUT_CAST_TIMES`` as far from its cast as the middle pixel is
+#: (``OUT_CAST`` at least): a blue in a brown room. Stricter than what
+#: ``accent_colours`` takes for coloured: a tag is what a work is found
+#: by, and a quarter of the works "with a red accent" had a dark brown
+#: for it (the audit of 2026-11-12).
+OUT_CHROMA = 0.08
+OUT_TIMES = 2.0
+OUT_CAST = 0.07
+OUT_CAST_TIMES = 3.0
+OUT_AREA = 0.01
 #: A touch: a patch too small for an accent whose colour stands out all the
 #: same (the one red shutter of Vermeer's Little Street, the sun of Monet's
 #: Impression). Looked for in a finer sample (``TOUCH_SAMPLE`` pixels a
@@ -272,10 +349,26 @@ TINT_TOP = 0.3
 #: and then shows the tint itself; an accent or a touch of its side is
 #: the tint, and is given its share.
 TINT_SHOWN = 0.03
+#: The board a museum photographs a sheet on shows round it, a grey or a
+#: lilac one as a "blue" beside cream paper (the audit of the colours for
+#: search, 2026-11-12: of 19 sheets of the owner's library with a tint, 6
+#: had it from the board, and an engraving a "green" from its ink measured
+#: on the black round it). A side of the picture shows the board when its
+#: lines from the edge inwards are ``BOARD_ROW`` darker than the paper
+#: (``TINT_UNDER``), ``BOARD_LINES`` of them at least and no deeper than
+#: ``BOARD_DEEP`` of the picture, and its outermost line is ``BOARD_ROW``
+#: of one colour (within ``BOARD_SAME``, OKLab); and the board is there
+#: when two sides show that same colour. A sky down to the picture's edge
+#: is on one side, and the sea of the Great Wave is no one colour.
+BOARD_ROW = 0.7
+BOARD_LINES = 2
+BOARD_DEEP = 0.2
+BOARD_SAME = 0.05
 TINT_SECTORS = (("green", 120, 195), ("blue", 195, 290))
 #: Colours of a picture, at most: what the app's painted bar lays down.
 MAX_SWATCHES = 8
-#: Hue sectors (OKLab hue, degrees) accents are looked for in.
+#: Hue sectors (OKLab hue, degrees) accents are looked for in: one accent
+#: a sector at most. What an accent found is called is ``named``'s to say.
 ACCENT_SECTORS = (
     ("red", -30, 45),
     ("orange", 45, 75),
@@ -287,12 +380,16 @@ ACCENT_SECTORS = (
 )
 
 
-def _sample(img: Image.Image, size: int = 64) -> np.ndarray:
+def _grid(img: Image.Image, size: int) -> np.ndarray:
     # load_image honours a colour profile: an Adobe RGB scan read as sRGB
     # looks muted (Matejko's Stańczyk loses his red).
     small = load_image(img).copy()
     small.thumbnail((size, size), Image.Resampling.BILINEAR)
-    return u8_to_linear(np.asarray(small)).reshape(-1, 3)
+    return u8_to_linear(np.asarray(small))
+
+
+def _sample(img: Image.Image, size: int = 64) -> np.ndarray:
+    return _grid(img, size).reshape(-1, 3)
 
 
 def kmeans(points: np.ndarray, k: int, iterations: int = 15) -> tuple[np.ndarray, np.ndarray]:
@@ -311,35 +408,70 @@ def kmeans(points: np.ndarray, k: int, iterations: int = 15) -> tuple[np.ndarray
     return centres, weights
 
 
-def family(lab: np.ndarray) -> str:
-    light, a, b = (float(v) for v in lab)
-    chroma = float(np.hypot(a, b))
-    hue = float(np.degrees(np.arctan2(b, a)) % 360)
-    if 15 <= hue < 110 and 0.03 <= chroma < 0.13 and light < 0.6:
-        return "brown"
-    if chroma < 0.025 + 0.035 * light:
-        # Aged paper and greyish tints count as neutrals, not as colours;
-        # dark colours carry less chroma, so the bar is lower for them.
-        if light > 0.82:
-            return "white"
-        if light < 0.3:
-            return "black"
-        return "gray"
-    if hue >= 330 or hue < 15:
-        return "pink" if light > 0.65 else "red"
-    if hue < 45:
-        return "red"
-    if hue < 80:
-        return "orange"
-    if hue < 120:
-        return "yellow"
-    if hue < 175:
-        return "green"
-    if hue < 230:
-        return "teal"
-    if hue < 290:
-        return "blue"
-    return "purple"
+def family(lab: np.ndarray, pale: float = 0.0) -> str:
+    """The colour family of one colour, by the rule its pixels are named
+    by (``named``); ``pale`` is its picture's ``paleness``."""
+    return str(named(np.asarray(lab, dtype=float)[None, :], pale)[0])
+
+
+def paleness(lab: np.ndarray) -> float:
+    """How coloured a picture's light parts are (their median chroma; see
+    ``CREAM_LIGHT``): what its beige is told from its yellow by. 0 for a
+    picture with next to no light parts."""
+    light = lab[:, 0] > CREAM_LIGHT
+    if float(light.mean()) < CREAM_AREA:
+        return 0.0
+    return float(np.median(np.hypot(lab[light, 1], lab[light, 2])))
+
+
+def named(lab: np.ndarray, pale: float) -> np.ndarray:
+    """The colour family of each colour of ``lab``: the one rule of names,
+    for a picture's pixels (``pixel_families``) and for the colours its bar
+    shows (``family``), so what a tag says is what a share counts. ``pale``
+    is the picture's ``paleness``."""
+    light = lab[:, 0]
+    chroma = np.hypot(lab[:, 1], lab[:, 2])
+    hue = _hue(lab)
+    names = np.where(light > 0.82, "white", np.where(light < 0.3, "black", "gray")).astype("<U6")
+    tinted = chroma >= np.maximum(TINTED, TINTED_LIGHT * light)
+    bar = np.where(
+        hue < CREAM_YELLOW, min(CREAM_CHROMA, max(CREAM_SURE, CREAM_OVER * pale)), CREAM_SURE
+    )
+    cream = (
+        tinted
+        & (light > CREAM_LIGHT)
+        & (hue >= CREAM_HUES[0])
+        & (hue < CREAM_HUES[1])
+        & (chroma < bar)
+    )
+    red = (hue >= 330) | (hue < 45)
+    dark = light < BROWN_LIGHT
+    sectors = (
+        ("red", red),
+        (
+            "pink",
+            red & (light > PINK_LIGHT) & ((hue >= 330) | (hue < PINK_HUE) | (chroma < PINK_CHROMA)),
+        ),
+        ("orange", (hue >= 45) & (hue < 80)),
+        ("yellow", (hue >= 80) & (hue < 120)),
+        ("green", (hue >= 120) & (hue < 175)),
+        ("teal", (hue >= 175) & (hue < 210)),
+        # A sky is blue: light sky blue is at 226 degrees.
+        ("blue", (hue >= 210) & (hue < 290)),
+        ("purple", (hue >= 290) & (hue < 330)),
+        (
+            "brown",
+            dark
+            & (
+                ((hue >= 45) & (hue < 110) & (chroma < BROWN_CHROMA))
+                | ((hue >= BROWN_RED) & (hue < 45) & (chroma < BROWN_RED_CHROMA))
+            ),
+        ),
+        ("cream", cream),
+    )
+    for name, sector in sectors:
+        names[tinted & sector] = name
+    return names
 
 
 class Analysis(NamedTuple):
@@ -359,28 +491,37 @@ def analyse(img: Image.Image, spread: float | None = None) -> Analysis:
         spread = tint_spread(img)
     linear = _sample(img)
     lab = linear_to_oklab(linear)
-    fine = linear_to_oklab(_sample(img, 128))
+    grid = linear_to_oklab(_grid(img, 128))
+    fine = grid.reshape(-1, 3)
     centres, weights = kmeans(lab, k=6)
     merged = merged_colours(centres, weights)
     dominant = dominant_colours(centres, weights)
     accents = accent_colours(fine, dominant)
     small = touches(linear_to_oklab(_sample(img, TOUCH_SAMPLE)), dominant, accents)
-    tags = colour_tags(fine, spread, dominant, accents, small)
+    monochrome = one_tone(fine, spread, accents)
     # One tint and a collector's stamp is one tint still: no touches there,
     # and its paper is no accent.
-    if "monochrome" in tags:
+    if monochrome:
         small = []
     shown = [c for c, _ in dominant] + [c for c, _, _ in accents] + [c for c, _, _ in small]
-    # No tag goes by it either: the picture is found as it was.
     more = passed_over(merged[len(dominant) :], shown)
     shown += [c for c, _ in more]
-    white = [] if "monochrome" in tags else lights(fine, shown)
+    white = [] if monochrome else lights(fine, shown)
+    # What the bar shows the picture is found by (Mateusz 2026-11-12
+    # 15:16): the white it shows for standing out (here, or as the colour
+    # passed over: the robes of Delacroix's Indian) is an accent by name.
+    # In a picture of one tint the white passed over is its paper.
+    pale_parts = paleness(fine)
+    passed = not monochrome and any(family(c, pale_parts) == "white" for c, _ in more)
+    also = ["white"] if white or passed else []
     # A pale sheet's tints: an accent of a tint's side is as large as the
     # tint; a tint no colour shows is shown as one more accent.
-    sheet = None if "monochrome" in tags else pale(fine)
+    # The sheet itself: not the board it was photographed on.
+    whole = fine if monochrome else unmounted(grid)
+    sheet = None if monochrome else pale(whole)
     tinted: list[tuple[np.ndarray, float]] = []
     if sheet is not None:
-        for colour, share, side in tints(fine, sheet):
+        for colour, share, side in tints(whole, sheet):
             # A large colour of its side shows it, and holds its pixels.
             if any(sheet.side(c, TINT_SHOWN) == side for c, _ in dominant + more):
                 continue
@@ -399,6 +540,7 @@ def analyse(img: Image.Image, spread: float | None = None) -> Analysis:
     swatches += [_swatch(c, w, accent=True) for c, w in tinted]
     swatches += [_swatch(c, w, accent=True) for c, w, _ in small]
     swatches += [_swatch(c, w, accent=True) for c, w in white]
+    tags = colour_tags(fine, spread, shown, monochrome, also)
     return Analysis(swatches, tags, colour_shares(fine, spread))
 
 
@@ -411,62 +553,62 @@ def colour_shares(lab: np.ndarray, spread: float) -> dict[str, float]:
 
 
 def pixel_families(lab: np.ndarray, spread: float) -> np.ndarray:
-    """Each pixel's colour family, as ``family`` names them but with a lower
-    bar for colour (a pale blue sky is blue, not grey); a picture with no
-    colour of its own (``spread``: ink on yellowed paper) is all neutrals."""
-    light = lab[:, 0]
-    chroma = np.hypot(lab[:, 1], lab[:, 2])
-    hue = _hue(lab)
-    names = np.where(light > 0.82, "white", np.where(light < 0.3, "black", "gray")).astype("<U6")
+    """Each pixel's colour family (``named``: a pale blue sky is blue, not
+    grey); a picture with no colour of its own (``spread``: ink on yellowed
+    paper) is all neutrals."""
     if spread < COLOUR_SPREAD[0]:
-        return names
-    tinted = chroma >= np.maximum(TINTED, TINTED_LIGHT * light)
-    sectors = (
-        ("red", (hue >= 330) | (hue < 45)),
-        ("pink", ((hue >= 330) | (hue < 15)) & (light > 0.65)),
-        ("orange", (hue >= 45) & (hue < 80)),
-        ("yellow", (hue >= 80) & (hue < 120)),
-        ("green", (hue >= 120) & (hue < 175)),
-        ("teal", (hue >= 175) & (hue < 230)),
-        ("blue", (hue >= 230) & (hue < 290)),
-        ("purple", (hue >= 290) & (hue < 330)),
-        ("brown", (hue >= 15) & (hue < 110) & (chroma < 0.13) & (light < 0.6)),
+        light = lab[:, 0]
+        return np.where(light > 0.82, "white", np.where(light < 0.3, "black", "gray")).astype("<U6")
+    return named(lab, paleness(lab))
+
+
+def standing_out(lab: np.ndarray) -> np.ndarray:
+    """The pixels that catch the eye: far more coloured than the picture
+    is, or well off its cast (see ``OUT_CHROMA``)."""
+    chroma = np.hypot(lab[:, 1], lab[:, 2])
+    cast = np.median(lab[:, 1:], 0)
+    off_cast = np.hypot(lab[:, 1] - cast[0], lab[:, 2] - cast[1])
+    strong = chroma >= max(OUT_CHROMA, OUT_TIMES * float(np.median(chroma)))
+    apart = (off_cast >= max(OUT_CAST, OUT_CAST_TIMES * float(np.median(off_cast)))) & (
+        chroma >= 0.03
     )
-    for name, sector in sectors:
-        names[tinted & sector] = name
-    return names
+    return np.asarray(strong | apart)
+
+
+def one_tone(
+    lab: np.ndarray, spread: float, accents: Sequence[tuple[np.ndarray, float, str]] = ()
+) -> bool:
+    """Whether a picture is monochrome (its ``"monochrome"`` tag): not in
+    colours (``colourful``) and of one tint (``single_tone``)."""
+    # Several hues, however muted (El Greco), are never monochrome.
+    return not colourful(lab, spread) and single_tone(lab, spread, accents)
 
 
 def colour_tags(
     lab: np.ndarray,
     spread: float,
-    dominant: list[tuple[np.ndarray, float]],
-    accents: list[tuple[np.ndarray, float, str]],
-    small: Sequence[tuple[np.ndarray, float, str]] = (),
+    shown: Sequence[np.ndarray] = (),
+    monochrome: bool | None = None,
+    also: Sequence[str] = (),
 ) -> list[str]:
     """Colour and mood tags. A colour family is a tag when it covers
     ``COLOURING`` of the picture: a Madonna's blue robe in a gold altarpiece
-    is not "in shades of blue". Smaller colours the palette shows (accents,
-    small dominant ones, and the ``small`` striking patches, ``touches``:
-    the Little Street is found by its red shutter, Mateusz 2026-11-11 21:50)
-    are ``ACCENT_TAG`` tags; warm and cool go by area too, so one vivid red
-    robe does not make a grey sky warm. A picture of one tint stays one
-    (``single_tone`` does not look at ``small``) and has no touch for an
-    accent: a stamp on an etching is not what it is looked for by."""
+    is not "in shades of blue". Smaller colours are ``ACCENT_TAG`` tags
+    (``accented``): those the bar shows (``shown``; ``also``: the white
+    that stands out, ``lights``), and those whose pixels stand out. Warm
+    and cool go by area too, so one vivid red robe does not make a grey sky
+    warm. ``monochrome``: whether the picture is (``one_tone``), if already
+    known."""
     names = pixel_families(lab, spread)
     share = {n: float((names == n).mean()) for n in COLOR_FAMILIES}
     tags = [n for n in COLOR_FAMILIES if share[n] >= COLOURING]
-    shown = {name for _, _, name in accents} | {family(c) for c, _ in dominant}
     chroma = np.hypot(lab[:, 1], lab[:, 2])
     mean_chroma = float(chroma.mean())
-    # Several hues, however muted (El Greco), are never monochrome.
     in_colours = colourful(lab, spread)
-    monochrome = not in_colours and single_tone(lab, spread, accents)
-    if not monochrome:
-        shown |= {name for _, _, name in small}
-    tags += [
-        ACCENT_TAG + n for n in COLOR_FAMILIES if n in shown and n not in tags and n not in NEUTRALS
-    ]
+    if monochrome is None:
+        monochrome = one_tone(lab, spread)
+    accents = accented(lab, spread, names, shown, monochrome) | set(also)
+    tags += [ACCENT_TAG + n for n in COLOR_FAMILIES if n in accents and n not in tags]
     tags += [ONLY_TAG + n for n in painted_in(share)]
 
     if in_colours:
@@ -494,36 +636,74 @@ def colour_tags(
         tags.append("dark")
     elif mean_light > 0.8:
         tags.append("light")
-    return tags + [TONE_TAG + side for side in tone_sides(lab, "monochrome" in tags)]
+    return tags + [TONE_TAG + side for side in tone_sides(lab, monochrome)]
+
+
+def accented(
+    lab: np.ndarray,
+    spread: float,
+    names: np.ndarray,
+    shown: Sequence[np.ndarray],
+    monochrome: bool,
+) -> set[str]:
+    """The colour families a picture has an accent of, the ones large
+    enough for a tag of their own among them: the colours its bar shows
+    (``shown``: the Little Street is found by its red shutter, Mateusz
+    2026-11-11 21:50), each named as its pixels are (``named``: the dark
+    brown of a varnished ground is no red accent), and the families whose
+    pixels stand out on ``OUT_AREA`` of it though the bar has no room for
+    them. A picture with no colour of its own (``spread``) has none; one
+    of a single tint none by its pixels: a stamp on an etching is not what
+    it is looked for by. Never a ground (``GROUNDS``): a white dominant
+    colour is a sheet's paper as often as a white dress, and the white
+    that stands out is ``lights``' to find."""
+    if spread < COLOUR_SPREAD[0]:
+        return set()
+    pale = paleness(lab)
+    found = {family(colour, pale) for colour in shown}
+    if not monochrome:
+        out = standing_out(lab)
+        found |= {n for n in COLOR_FAMILIES if float((out & (names == n)).mean()) >= OUT_AREA}
+    return {n for n in found if n not in GROUNDS}
 
 
 def tone_sides(lab: np.ndarray, monochrome: bool) -> list[str]:
-    """The picture's side of each Tonacja group (``TONE_GROUPS``), one each."""
-    chroma = np.hypot(lab[:, 1], lab[:, 2])
-    hue = np.arctan2(lab[:, 2], lab[:, 1])
+    """The picture's side of each Tonacja group (``TONE_GROUPS``), one
+    each; its colour seen against its own white (``TONE_WHITE_TOP``)."""
+    light = lab[:, 0]
+    ab = lab[:, 1:]
+    top = light >= np.percentile(light, 100 * (1 - TONE_WHITE_TOP))
+    top_light = float(light[top].mean())
+    white = np.median(ab[top], axis=0)
+    if top_light < TONE_WHITE_LIGHT or float(np.hypot(white[0], white[1])) > TONE_WHITE_CHROMA:
+        # Its lightest tone is a colour or a dark: nothing to see it against.
+        white = np.zeros(2)
+    seen = ab - np.outer(np.clip(light / max(top_light, 1e-6), 0, 1), white)
+    chroma = np.hypot(seen[:, 0], seen[:, 1])
+    hue = np.arctan2(seen[:, 1], seen[:, 0])
     warmth = float((chroma * np.cos(hue - np.radians(TONE_WARM_HUE))).mean())
-    vivid = float(np.percentile(chroma, 90))
-    light = float(lab[:, 0].mean())
+    vivid = float(np.percentile(chroma * np.clip(light / TONE_FULL_LIGHT, TONE_DIM, 1.0), 90))
+    mean_light = float(light.mean())
+    cool = TONE_COOL_MONO if monochrome else TONE_COOL
     return [
-        "warm" if warmth >= TONE_WARM else "cool" if warmth < TONE_COOL else "neutral",
+        "warm" if warmth >= TONE_WARM else "cool" if warmth < cool else "neutral",
         "vivid"
         if vivid >= TONE_VIVID_CHROMA
         else "muted"
         if vivid < TONE_MUTED_CHROMA
         else "moderate",
         "monochrome" if monochrome else "colorful",
-        "dark" if light < TONE_DARK else "light" if light >= TONE_LIGHT else "medium",
+        "dark" if mean_light < TONE_DARK else "light" if mean_light >= TONE_LIGHT else "medium",
     ]
 
 
 def painted_in(share: dict[str, float]) -> list[str]:
     """The colour families a picture is painted in, from each one's share
     of it: the fewest, largest first, that make ``ONLY_SHARE`` of its
-    coloured pixels. A blue Whistler nocturne is blue alone, Monet's sea at
-    Pourville blue and turquoise; a picture without colour, none."""
-    colours = sorted(
-        ((v, n) for n, v in share.items() if n not in NEUTRALS and v > 0), reverse=True
-    )
+    coloured pixels (``GROUNDS`` aside: a blue wash is blue alone on white
+    paper and on cream). A blue Whistler nocturne is blue alone, Monet's
+    sea at Pourville blue and turquoise; a picture without colour, none."""
+    colours = sorted(((v, n) for n, v in share.items() if n not in GROUNDS and v > 0), reverse=True)
     total = sum(v for v, _ in colours)
     found: list[str] = []
     held = 0.0
@@ -684,11 +864,10 @@ def at_levels(have: set[str], shares: dict[str, float], wanted: list[str]) -> bo
         if at == "most":
             most.append(family)
         elif at == "accent":
-            if ACCENT_TAG + family not in have or share > LEVEL_ACCENT:
+            if ACCENT_TAG + family not in have:
                 return False
         elif at in ("clear", "much"):
-            low, high = LEVEL_CLEAR if at == "clear" else LEVEL_MUCH
-            if not low <= share <= high:
+            if share < (LEVEL_CLEAR if at == "clear" else LEVEL_MUCH):
                 return False
         else:
             return False
@@ -697,12 +876,13 @@ def at_levels(have: set[str], shares: dict[str, float], wanted: list[str]) -> bo
 
 def _mostly(shares: dict[str, float], families: list[str]) -> bool:
     """Whether ``families`` together make most of a picture: of its colours
-    (white, grey and black aside), or of all of it when one is a neutral."""
+    (``GROUNDS`` aside: white, grey, black and beige), or of all of it when
+    one of them is asked."""
     picked = [shares.get(f, 0.0) for f in families]
-    if any(f in NEUTRALS for f in families):
+    if any(f in GROUNDS for f in families):
         whole = sum(shares.values()) or 1.0
     else:
-        whole = sum(v for f, v in shares.items() if f not in NEUTRALS)
+        whole = sum(v for f, v in shares.items() if f not in GROUNDS)
     if whole <= 0 or sum(picked) < LEVEL_MOST_AREA:
         return False
     return sum(picked) >= LEVEL_MOST * whole and all(v >= LEVEL_MOST_EACH * whole for v in picked)
@@ -779,7 +959,8 @@ def accent_colours(
     yellow bodice and red skirt of Vermeer's Milkmaid, though each covers a
     few percent. One per hue sector at most, in the colour of its most
     vivid pixels rather than an average with its shadows; (colour, share of
-    the picture that looks like it, colour family), largest first."""
+    the picture that looks like it, the hue sector it was found in),
+    largest first. Its tag goes by its colour (``accented``)."""
     chroma = np.hypot(lab[:, 1], lab[:, 2])
     hue = _hue(lab)
     # Coloured beyond the picture's own: in a vivid Van Gogh only the
@@ -825,10 +1006,6 @@ def accent_colours(
         share = float((coloured & (alike < ACCENT_TWIN)).mean())
         if share < ACCENT_AREA:
             continue
-        if name == "orange" and centre[0] < 0.6:
-            name = "brown"
-        elif name == "red" and centre[0] > 0.65:
-            name = "pink"
         found.append((centre, share, name, np.sqrt(share) * vivid))
     found.sort(key=lambda f: -f[3])
     accents: list[tuple[np.ndarray, float, str]] = []
@@ -853,7 +1030,7 @@ def touches(
     shutter of Vermeer's Little Street, well under a hundredth of the
     picture and of the bricks' own hue, so ``accent_colours`` takes its
     sector for the wall. One per hue sector at most, (colour, weight,
-    colour family), the most striking first."""
+    hue sector), the most striking first."""
     chroma = np.hypot(lab[:, 1], lab[:, 2])
     hue = _hue(lab)
     shown = [c for c, _ in dominant] + [c for c, _, _ in accents]
@@ -884,11 +1061,6 @@ def touches(
         share = float((alike < ACCENT_TWIN).mean())
         if share < TOUCH_AREA:
             continue
-        # Named as an accent of its sector is (``accent_colours``).
-        if name == "orange" and centre[0] < 0.6:
-            name = "brown"
-        elif name == "red" and centre[0] > 0.65:
-            name = "pink"
         found.append((centre, min(share, TOUCH_WEIGHT), name, vivid - most))
     found.sort(key=lambda f: -f[3])
     kept: list[tuple[np.ndarray, float, str]] = []
@@ -903,7 +1075,7 @@ def touches(
 def lights(lab: np.ndarray, shown: Sequence[np.ndarray]) -> list[tuple[np.ndarray, float]]:
     """The white that stands out in a picture whose colours (``shown``) are
     all darker: the foam of Turner's sea, a white cap in a dark room; (colour,
-    weight), or nothing (see ``LIGHT_TOP``). No tag goes by it."""
+    weight), or nothing (see ``LIGHT_TOP``). Its tag is ``"accent:white"``."""
     light = lab[:, 0]
     top = max(1, int(LIGHT_TOP * len(lab)))
     centre = lab[np.argsort(-light)[:top]].mean(0)
@@ -943,6 +1115,49 @@ class Sheet(NamedTuple):
         return next((name for name, start, end in TINT_SECTORS if start <= hue < end), None)
 
 
+def unmounted(lab: np.ndarray) -> np.ndarray:
+    """The pixels of a sheet without the board it was photographed on (see
+    ``BOARD_ROW``); ``lab``: the picture, rows by columns. All of it when no
+    board shows."""
+    light = lab[..., 0]
+    paper = float(np.median(light[light >= np.quantile(light, 0.8)]))
+    under = light <= paper - TINT_UNDER
+    height, width = under.shape
+    top, bottom, left, right = 0, height, 0, width
+    moved = paper >= TINT_PAPER
+    while moved and bottom - top > 2 and right - left > 2:
+        moved = False
+        if under[top, left:right].mean() >= BOARD_ROW:
+            top, moved = top + 1, True
+        if under[bottom - 1, left:right].mean() >= BOARD_ROW:
+            bottom, moved = bottom - 1, True
+        if under[top:bottom, left].mean() >= BOARD_ROW:
+            left, moved = left + 1, True
+        if under[top:bottom, right - 1].mean() >= BOARD_ROW:
+            right, moved = right - 1, True
+    # Each side: how deep, of how many lines, and its outermost line.
+    sides = (
+        (top, height, lab[0]),
+        (height - bottom, height, lab[-1]),
+        (left, width, lab[:, 0]),
+        (width - right, width, lab[:, -1]),
+    )
+    boards: list[np.ndarray | None] = []
+    for deep, length, line in sides:
+        colour = np.median(line, axis=0)
+        one = float((np.linalg.norm(line - colour, axis=1) <= BOARD_SAME).mean())
+        shown = BOARD_LINES <= deep <= BOARD_DEEP * length and one >= BOARD_ROW
+        boards.append(colour if shown else None)
+    cut = [0, 0, 0, 0]
+    for side, board in enumerate(boards):
+        others = [b for other, b in enumerate(boards) if other != side and b is not None]
+        if board is not None and any(
+            float(np.linalg.norm(board - b)) <= BOARD_SAME for b in others
+        ):
+            cut[side] = sides[side][0]
+    return np.asarray(lab[cut[0] : height - cut[1], cut[2] : width - cut[3]].reshape(-1, 3))
+
+
 def pale(lab: np.ndarray) -> Sheet | None:
     """The paper and the darkest mark of a light, pale sheet (see
     ``TINT_PAPER``); None for any other picture."""
@@ -965,7 +1180,11 @@ def pale(lab: np.ndarray) -> Sheet | None:
 
 def tints(lab: np.ndarray, sheet: Sheet) -> list[tuple[np.ndarray, float, str]]:
     """The cool tints of a pale sheet: (colour, share of the sheet, side),
-    largest first (see ``TINT_PAPER``). No tag goes by them."""
+    largest first (see ``TINT_PAPER``); ``lab``: the sheet without its
+    board (``unmounted``). No tag goes by them: of 19 sheets of the owner's
+    library with one, 9 had no such colour to the eye (the audit of
+    2026-11-12), 6 of them from the grey board the museum photographed
+    them on, which is no longer measured."""
     off = sheet.off(lab)
     far = np.hypot(off[:, 0], off[:, 1])
     hue = np.degrees(np.arctan2(off[:, 1], off[:, 0])) % 360

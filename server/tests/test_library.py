@@ -273,6 +273,80 @@ def test_colour_families() -> None:
     assert family(_lab((120, 80, 50))) == "brown"
     assert family(_lab((235, 230, 215))) == "white"  # aged paper is not "yellow"
     assert family(_lab((15, 15, 18))) == "black"
+    # A sky is blue (light sky blue is at 226 degrees), the sea's green-blue teal.
+    assert family(_lab((135, 206, 235))) == "blue"
+    assert family(_lab((40, 150, 150))) == "teal"
+    # A dark red is a red, a dark orange-brown a brown.
+    assert family(_lab((120, 32, 28))) == "red"
+    assert family(_lab((110, 70, 40))) == "brown"
+    # A vivid vermilion in the light stays red, a pale one is pink.
+    assert family(_lab((255, 90, 70))) == "red"
+    assert family(_lab((240, 170, 175))) == "pink"
+
+
+def test_beige_is_a_family_of_its_own() -> None:
+    from frame_server.library.colors import GROUNDS, named, paleness
+
+    # Yellowed paper, ivory and pale skin are beige; a gold or a lemon is not.
+    for paper in ((226, 204, 168), (214, 190, 150), (235, 215, 185)):
+        assert family(_lab(paper)) == "cream"
+    assert family(_lab((240, 200, 40))) == "yellow"
+    assert family(_lab((236, 226, 150))) == "yellow"  # pale lemon
+    assert family(_lab((150, 120, 80))) == "brown"  # too dark for beige
+    assert "cream" in GROUNDS
+
+    # A sheet of yellowed paper with ink on it is beige and no "orange"
+    # or "yellow" picture; nor warm (the audit of 2026-11-12).
+    pixels = np.empty((200, 200, 3), np.uint8)
+    pixels[:] = (222, 198, 158)
+    pixels[40:160:6, 30:170] = (60, 50, 44)
+    pixels[100:130, 60:140] = (150, 60, 50)  # a wash of red chalk, so it has colour
+    _, tags, shares = analyse(Image.fromarray(pixels))
+    assert "cream" in tags and shares["cream"] > 0.6
+    assert not {"yellow", "orange", "accent:yellow", "accent:orange", "accent:cream"} & set(tags)
+    assert "only:cream" not in tags and "warm" not in tags
+    assert has_colours(tags, ["cream@most"], shares)
+
+    # The same tint is paper all over a sheet and a yellow by a white wall
+    # (Vermeer's bodice): what is beige goes by the picture's light parts.
+    tint = np.array([_lab((234, 204, 140))])
+    assert named(tint, 0.08)[0] == "cream" and named(tint, 0.01)[0] == "yellow"
+    wall = np.array([_lab((236, 234, 228))] * 90 + [_lab((234, 204, 140))] * 10)
+    sheet = np.array([_lab((234, 204, 140))] * 90 + [_lab((60, 50, 44))] * 10)
+    assert paleness(wall) < 0.02 < 0.07 < paleness(sheet)
+
+
+def test_accents_are_named_as_the_shares_are() -> None:
+    # A brown room with a dark brown-red curtain: the bar shows the
+    # curtain, and it is a brown, not a "red accent" (a quarter of the
+    # red accents of the owner's library were such browns).
+    pixels = np.empty((200, 200, 3), np.uint8)
+    pixels[:] = (92, 70, 50)
+    pixels[:80] = (150, 130, 100)
+    pixels[120:160, 80:120] = (104, 52, 36)
+    tags = analyse(Image.fromarray(pixels)).tags
+    assert "accent:red" not in tags and "accent:orange" not in tags
+    # With a robe of a real red it has one.
+    pixels[120:160, 80:120] = (150, 30, 28)
+    assert "accent:red" in analyse(Image.fromarray(pixels)).tags
+
+
+def test_a_colour_the_bar_has_no_room_for_is_an_accent_by_its_pixels() -> None:
+    from frame_server.library.colors import colour_tags, standing_out
+
+    # Grey rocks, a strip of vivid green and red too thin for a swatch of
+    # its own in a picture of many colours: found by its pixels.
+    lab = np.array(
+        [_lab((120, 118, 114))] * 960 + [_lab((40, 150, 60))] * 20 + [_lab((200, 40, 30))] * 20
+    )
+    assert int(standing_out(lab).sum()) == 40
+    tags = colour_tags(lab, spread=0.05, shown=[], monochrome=False)
+    assert {"accent:green", "accent:red"} <= set(tags)
+    # Under a hundredth of the picture is not looked for.
+    few = np.array([_lab((120, 118, 114))] * 995 + [_lab((200, 40, 30))] * 5)
+    assert "accent:red" not in colour_tags(few, spread=0.05, shown=[], monochrome=False)
+    # A picture of one tint has no accent by its pixels (a stamp on an etching).
+    assert "accent:red" not in colour_tags(lab, spread=0.05, shown=[], monochrome=True)
 
 
 def test_analyse_blue_picture() -> None:
@@ -410,8 +484,14 @@ def test_colours_at_levels() -> None:
     tags = ["blue", "accent:red", "cool"]
     assert has_colours(tags, ["blue@much", "red@accent"], shares)
     assert has_colours(tags, ["teal@clear"], shares)
-    assert not has_colours(tags, ["blue@clear"], shares)  # more than that
+    # "At least" (Mateusz 2026-11-12): clear finds what is much, too.
+    assert has_colours(tags, ["blue@clear"], shares)
+    assert not has_colours(tags, ["teal@much"], shares)  # less than that
     assert not has_colours(tags, ["red@clear"], shares)  # less than that
+    assert has_colours(tags, ["red@clear"], shares | {"red": 0.06})  # clear from 6%
+    # An accent is its tag, however much of the picture looks like it.
+    assert has_colours(tags, ["red@accent"], shares | {"red": 0.12})
+    assert not has_colours(tags, ["blue@accent"], shares)  # blue, not a blue accent
     assert not has_colours(tags, ["yellow@accent"], shares)
     assert not has_colours(tags, ["blue@much", "yellow@accent"], shares)  # both must fit
     # Most of its colours (grey and white aside) are blue, and blue and teal.
@@ -423,6 +503,12 @@ def test_colours_at_levels() -> None:
     assert not has_colours(["gray"], ["blue@most"], {"gray": 0.9, "blue": 0.05})
     # A neutral at "most" counts the whole picture.
     assert has_colours(["white"], ["white@most"], {"white": 0.7, "gray": 0.3})
+    # Beige is a ground like white: a blue wash on cream paper is mostly
+    # blue, and the sheet mostly beige only when most of it is.
+    wash = {"cream": 0.6, "blue": 0.3, "gray": 0.1}
+    assert has_colours(["cream", "blue"], ["blue@most"], wash)
+    assert has_colours(["cream", "blue"], ["cream@most"], wash)
+    assert not has_colours(["cream", "blue"], ["cream@most"], wash | {"cream": 0.4, "blue": 0.5})
     assert not has_colours(tags, ["gray@most"], shares)
     # No shares (not analysed yet): no level fits.
     assert not has_colours(tags, ["blue@much"])
@@ -472,6 +558,27 @@ def test_every_picture_has_one_side_of_each_tone_group() -> None:
     for i, colour in enumerate([(200, 40, 40), (40, 80, 200), (40, 160, 60), (230, 200, 40)]):
         patches[i * 50 : (i + 1) * 50] = colour
     assert "colorful" in tones(patches) and "monochrome" not in tones(patches)
+
+
+def test_tonacja_is_seen_against_the_picture_s_own_white() -> None:
+    # An etching in black on yellowed paper: measured from grey it was a
+    # warm, vivid picture; against its paper it is neutral and muted
+    # (Mateusz 2026-11-12 15:16).
+    def tones(img: Image.Image) -> set[str]:
+        return {t.removeprefix(TONE_TAG) for t in analyse(img).tags if t.startswith(TONE_TAG)}
+
+    assert {"neutral", "muted", "monochrome"} <= tones(_etching([(236, 218, 178)]))
+    # Its grey ink, cooler than the paper, makes no cool picture of it.
+    assert "cool" not in tones(_etching([(240, 226, 196)]))
+    # A sunset is warm and vivid with a white cloud in it, too.
+    sunset = np.empty((200, 200, 3), np.uint8)
+    sunset[:] = (235, 120, 40)
+    sunset[20:60, 40:160] = (250, 248, 240)
+    assert {"warm", "vivid"} <= tones(Image.fromarray(sunset))
+    # A colour in the dark counts for less: a near-black brown is muted.
+    dark = np.empty((200, 200, 3), np.uint8)
+    dark[:] = (38, 24, 14)
+    assert "muted" in tones(Image.fromarray(dark))
 
 
 def test_monochrome_is_one_tone() -> None:
@@ -590,11 +697,17 @@ def test_a_sizeable_colour_unlike_the_four_largest_is_shown_too() -> None:
 
 
 def _sheet(
-    washes: bool, mount: bool = False, ink: tuple[int, int, int] = (113, 114, 106)
+    washes: bool,
+    mount: bool = False,
+    ink: tuple[int, int, int] = (113, 114, 106),
+    board: tuple[int, int, int] | None = None,
+    sky: bool = False,
 ) -> Image.Image:
     """A cream sheet drawn on in pencil, like Cézanne's lithograph of the
     bathers: with or without its pale washes, a green one and a sky that
-    is a grey by its numbers; ``mount``: a white mount round it."""
+    is a grey by its numbers; ``mount``: a white mount round it; ``board``:
+    the colour of the board it was photographed on, which shows all round;
+    ``sky``: a wash across the top, down to the picture's edge."""
     rng = np.random.default_rng(7)
     pixels = np.empty((300, 400, 3), float)
     pixels[:] = (243, 235, 227)
@@ -610,6 +723,8 @@ def _sheet(
     if washes:
         wash(slice(40, 160), slice(60, 210), (160, 190, 140))
         wash(slice(40, 120), slice(220, 350), (140, 165, 172))
+    if sky:
+        wash(slice(0, 40), slice(0, 400), (140, 165, 172))
     if mount:
         pixels[:, :60] = (254, 252, 250)
     # The pencil: lines over paper and washes alike, and a shaded place.
@@ -617,6 +732,13 @@ def _sheet(
         pixels[row : row + 3, 40:360] = ink
     pixels[262:290, 250:360] = ink
     pixels[200:250, 250:330] = (176, 174, 166)
+    if board is not None:
+        # The sheet lies on it, and throws a little shadow down and right.
+        laid = np.empty((332, 432, 3), float)
+        laid[:] = board
+        laid[18:320, 18:420] = np.array(board, float) * 0.8
+        laid[16:316, 16:416] = pixels
+        pixels = laid
     noise = rng.integers(-4, 5, pixels.shape)
     return Image.fromarray(np.clip(pixels + noise, 0, 255).astype(np.uint8))
 
@@ -661,6 +783,46 @@ def test_the_tints_of_a_pale_sheet_are_shown(monkeypatch) -> None:
     assert colors.pale(linear_to_oklab(colors._sample(_dark_room(robes=True), 128))) is None
 
 
+def test_the_board_a_sheet_was_photographed_on_is_no_tint() -> None:
+    # The audit of the colours for search, 2026-11-12: of 19 sheets of the
+    # owner's library with a tint, 6 had a "blue" from the grey or lilac
+    # board the museum photographed them on, a frame round the sheet.
+    def sides(lab: np.ndarray) -> list[str]:
+        sheet = colors.pale(lab)
+        assert sheet is not None
+        return sorted(side for _, _, side in colors.tints(lab, sheet))
+
+    def accents(img: Image.Image) -> dict[str | None, ColorSwatch]:
+        sheet = colors.pale(colors.unmounted(linear_to_oklab(colors._grid(img, 128))))
+        assert sheet is not None
+        swatches = analyse(img).swatches
+        return {sheet.side(_oklab(s), colors.TINT_OFF): s for s in swatches if s.accent}
+
+    bare = accents(_sheet(washes=True))
+    for board in ((186, 185, 190), (124, 126, 128), (150, 154, 153)):
+        grid = linear_to_oklab(colors._grid(_sheet(washes=False, board=board), 128))
+        # Measured as it lies there, the board is a blue of the sheet's...
+        assert sides(grid.reshape(-1, 3)) == ["blue"]
+        # ...and the sheet without its board has no tint.
+        inside = colors.unmounted(grid)
+        assert 0.75 * grid[..., 0].size < len(inside) < 0.9 * grid[..., 0].size
+        assert sides(inside) == []
+        # What is painted on the sheet is found as on the bare sheet: its
+        # share is of the sheet, not of the photograph.
+        laid = accents(_sheet(washes=True, board=board))
+        for side in ("green", "blue"):
+            assert abs(laid[side].weight - bare[side].weight) < 0.03
+            assert np.linalg.norm(_oklab(laid[side]) - _oklab(bare[side])) < 0.03
+    # A sky down to the picture's edge is on one side, and is the sheet's:
+    # nothing is cut, and its blue is found.
+    grid = linear_to_oklab(colors._grid(_sheet(washes=False, sky=True), 128))
+    assert len(colors.unmounted(grid)) == grid[..., 0].size
+    assert sides(grid.reshape(-1, 3)) == ["blue"]
+    # Nor is a dark picture cut, whatever lies at its edges.
+    grid = linear_to_oklab(colors._grid(_dark_room(robes=True), 128))
+    assert len(colors.unmounted(grid)) == grid[..., 0].size
+
+
 def _sea(foam: bool) -> Image.Image:
     """A dark sea under a dark sky, like Turner's Dutch men of war: with or
     without the white of its foam, a twentieth of the picture."""
@@ -687,10 +849,12 @@ def test_a_white_that_stands_out_is_among_the_colours() -> None:
     red, green, blue = (int(white.hex[i : i + 2], 16) for i in (1, 3, 5))
     assert white.accent and 0.02 <= white.weight <= 0.06
     assert min(red, green, blue) > 185 and all(not s.accent or s == white for s in swatches)
-    # No tag goes by it: the picture is found as it was.
-    assert [t for t in tags if t.startswith("accent:")] == [
-        t for t in plain_tags if t.startswith("accent:")
-    ]
+    # What the bar shows the picture is found by: "Biel · akcent"
+    # (Mateusz 2026-11-12 15:16).
+    assert "accent:white" in tags and "accent:white" not in plain_tags
+    assert has_colours(tags, ["white@accent"]) and not has_colours(plain_tags, ["white@accent"])
+    # The paper of a drawing is no accent.
+    assert "accent:white" not in analyse(_etching([(244, 242, 236)])).tags
     assert len(swatches) <= 8
     # A print's paper, the light of a pale picture: its colours show them.
     pale = np.empty((200, 200, 3), np.uint8)

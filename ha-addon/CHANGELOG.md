@@ -1,5 +1,45 @@
 # Changelog
 
+## 1.145.64
+
+- Pasek barw: rysunki i ryciny, które muzeum sfotografowało na szarej
+  albo liliowej tekturze, nie mają już szaroliliowej plamki akcentu.
+  Reguła z 1.145.59, która mierzy barwy bladej kartki od koloru papieru
+  (zieleń i błękit u Cézanne'a), brała pas tektury wokół arkusza za
+  błękitne zabarwienie. Teraz serwer rozpoznaje tekturę po tym, że
+  skrajne linie zdjęcia z co najmniej dwóch stron są jednej, tej samej
+  barwy, i mierzy kartkę bez niej. W próbce 530 dzieł z biblioteki
+  zmienia się 13 pasków, wszystkie z takim akcentem; litografie
+  Cézanne'a zostają bez zmian.
+- Po aktualizacji serwer raz przelicza barwy biblioteki z miniatur
+  (razem z przeliczeniem po zmianie barw do szukania, jeśli obie
+  wersje przychodzą naraz).
+
+## 1.145.63
+
+- Szukanie po kolorze, po audycie na 530 dziełach z biblioteki. Nowa
+  barwa „Beż” w arkuszu Kolor: blady, ciepły ton papieru, kości słoniowej
+  i jasnej karnacji. Dotąd liczył się jako żółć albo pomarańcz, przez co
+  „Pomarańcz · główny” i „Żółć · główna” znajdowały prawie same rysunki
+  i ryciny (41 z 42 w próbce).
+- Akcenty i udziały barw nazywa teraz jedna reguła. Ciemny brąz nie jest
+  już „czerwonym akcentem”, błękit nieba jest błękitem, a nie turkusem,
+  ciemna czerwień szat jest czerwienią, a nie brązem. Akcentem jest też
+  barwa, która wyraźnie odstaje od reszty obrazu na co najmniej 1%
+  powierzchni, choć nie zmieściła się na pasku.
+- „Biel · akcent”: biel, która się wybija (piana ciemnego morza, biała
+  szata), ma teraz swój znacznik i można jej szukać.
+- Tonacja liczy temperaturę i nasycenie względem bieli samego obrazu.
+  Czarna rycina na pożółkłym papierze jest neutralna i stonowana, a nie
+  ciepła i żywa. W próbce „Ciepłe” spada z 62% do 43%, „Żywe” z 40% do
+  24%, „Chłodne” rośnie z 3% do 5%.
+- Poziomy barw znaczą „co najmniej”: „obecny” to co najmniej 6% obrazu,
+  „wyraźny” co najmniej 28%. „Czerwień · obecna” znajduje więc także
+  obraz w połowie czerwony. „Akcent” i „główny” znaczą to co dotąd.
+- Po aktualizacji serwer raz przelicza barwy biblioteki (na NAS 1 do 2
+  godzin); do tego czasu wyniki szukania po kolorze są mieszane. Pasek
+  barw w studium się nie zmienia.
+
 ## 1.145.62
 
 - Studium dzieła, analiza kompozycji: rysunek piórkiem na arkuszu rysuje
