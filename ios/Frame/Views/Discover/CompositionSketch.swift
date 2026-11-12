@@ -1074,7 +1074,7 @@ enum Pencil {
         context.fill(loop(center: spot, rx: 8.5, ry: 8, width: 1.4, seed: 40 + number), with: .color(ring ?? ink))
         // (`hand`: written, as the notes are; the face's figures sit low in its tall line)
         context.draw(
-            Text("\(number)").font(hand ? Theme.hand(15) : .system(size: 10.5, weight: .bold)).foregroundStyle(ink),
+            Text("\(number)").font(hand ? Font.hand(15) : .system(size: 10.5, weight: .bold)).foregroundStyle(ink),
             at: hand ? CGPoint(x: spot.x, y: spot.y - 0.5) : spot
         )
     }
