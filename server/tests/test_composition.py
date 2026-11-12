@@ -20,8 +20,10 @@ from frame_server.ai.check import question as check_question
 from frame_server.ai.client import HAIKU, OPUS, SONNET, AiUnavailable, Answer
 from frame_server.ai.composition import (
     BEFORE,
+    CHOSEN,
     COST,
     KIND,
+    LET_ALL,
     REWORK_KEY,
     ComposeJob,
     compose,
@@ -603,7 +605,10 @@ def _old_page(service: FrameService, **extra: Any) -> None:
     )
 
 
-def test_old_pages_are_written_again_as_the_owner_lets_them(service: FrameService) -> None:
+def test_old_pages_are_written_again_as_the_owner_lets_them(
+    service: FrameService, monkeypatch: Any
+) -> None:
+    monkeypatch.setattr("frame_server.ai.composition.LET_ALL", 0)  # a round he was not asked of
     _catalogue(service)
     job = service.ai.jobs[KIND]
     assert isinstance(job, ComposeJob)
@@ -703,6 +708,25 @@ def test_an_answer_without_a_take_is_asked_again_when_let(service: FrameService)
     assert job.failed() == set() and job.wanted(item)
 
 
+def test_the_round_of_the_study_sheet_is_let_for_every_page(service: FrameService) -> None:
+    # Mateusz 2026-11-12: "Przeróbmy proszę wszystkie dotychczasowe."
+    assert ROUND == LET_ALL == 8
+    _catalogue(service)
+    job = service.ai.jobs[KIND]
+    assert isinstance(job, ComposeJob)
+    item = service.library.get("met:1")
+    assert item is not None
+    _old_page(service, **{CHECK_ROUND: 7})
+    assert job.rework() == [] and job.wanted(item)  # no list to set
+    # The one he picked among a page's analyses stays, and a page of this round too.
+    _old_page(service, **{CHECK_ROUND: 7, CHOSEN: True})
+    job.forget()
+    assert not job.wanted(item)
+    _old_page(service, **{CHECK_ROUND: ROUND})
+    job.forget()
+    assert not job.wanted(item)
+
+
 def test_what_wikipedia_says_of_the_composition_comes_first() -> None:
     text = "Intro.\n\n== History ==\n" + "x" * 500 + "\n\n== Composition ==\nA pyramid.\n"
     found = _sections_first(text, ("compos",))
@@ -710,10 +734,11 @@ def test_what_wikipedia_says_of_the_composition_comes_first() -> None:
     assert found.startswith("Intro.")
 
 
-def test_the_owner_lets_pages_be_written_again(tmp_path: Any) -> None:
+def test_the_owner_lets_pages_be_written_again(tmp_path: Any, monkeypatch: Any) -> None:
     from fastapi.testclient import TestClient
     from test_daily import _app
 
+    monkeypatch.setattr("frame_server.ai.composition.LET_ALL", 0)
     app = _app(tmp_path)
     svc: FrameService = app.state.service
     with TestClient(app) as client:

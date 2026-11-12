@@ -112,6 +112,10 @@ PAGES = (DAILY, STUDY)
 #: The works whose pages written before may be written again: ``True`` for
 #: all of them, else a list of item ids (set over ``/api/ai/composition``).
 REWORK_KEY = "composition_rework"
+#: The round the owner let for every page at once, with no list to set
+#: (Mateusz 2026-11-12, seeing the study sheet: "Przeróbmy proszę wszystkie
+#: dotychczasowe."). A round after it asks him again.
+LET_ALL = 8
 #: The take a page had before it was written again, kept to go back to.
 BEFORE = "composition_before"
 #: The works whose analysis the owner asked to be made anew, one at a time
@@ -632,8 +636,9 @@ def wants(
     note: Note | None, rework: bool | list[str], again: set[str] | frozenset[str] = frozenset()
 ) -> bool:
     """A written page whose composition is of an earlier round, when the
-    owner lets it be written again; one without any, always; one whose
-    analysis the owner asked for anew (``again``), always."""
+    owner lets it be written again (:data:`LET_ALL`: he let this round for
+    all; the one he picked among a page's analyses stays); one without any,
+    always; one whose analysis the owner asked for anew (``again``), always."""
     if note is None or "teaser" not in note.data:
         return False
     if note.item_id in again:
@@ -643,6 +648,8 @@ def wants(
     if note.data.get(CHECK_ROUND, 1) >= ROUND:
         return False
     if not page_views(note.data):
+        return True
+    if ROUND <= LET_ALL:
         return True
     return rework is True or (isinstance(rework, list) and note.item_id in rework)
 

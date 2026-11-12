@@ -94,11 +94,13 @@ CHECKED = "composition_checked"
 #: furniture or of a few trees, after the first real analyses; round 6:
 #: readable marks, perspective as rays, Mateusz on Nighthawks; round 7: the
 #: main layout always drawn, a wedge whose vanishing point lies far off as
-#: two lines, as round 6 dropped Nighthawks' wedge). Pages of an
-#: earlier round are written again by ``ai.composition.ComposeJob`` as the
-#: owner lets it.
+#: two lines, as round 6 dropped Nighthawks' wedge; round 8: the study
+#: sheet, 2026-11-12: what to look for said outright, a returning colour's
+#: mark, the picture's field, the strokes of a pen under the marks). Pages
+#: of an earlier round are written again by ``ai.composition.ComposeJob``
+#: as the owner lets it.
 CHECK_ROUND = "composition_round"
-ROUND = 7
+ROUND = 8
 #: Kept in a page that came back without some of what every page has (see
 #: :func:`missing`) though it was asked for twice: what it lacks. A page
 #: without it that lacks them all was written before the second question

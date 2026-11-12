@@ -10,7 +10,9 @@
   telefonu, z cieniem tylko wtedy. Analizę pisze nowa instrukcja, która
   mówi, czego w obrazie szukać, a sprawdzenie zacieśnia za duże pętle.
   Rysunek piórkiem kosztuje około 0,02–0,03 USD na studium. Zapisane
-  studia zostają jak były: „Wykonaj ponowną analizę” rysuje je na nowo.
+  studia serwer przerabia sam, w tle, po jednym (około 0,15 USD na
+  studium, w ramach miesięcznego limitu); poprzednia analiza zostaje
+  zapisana, a analiza wybrana ręcznie spośród wersji zostaje jak jest.
 
 ## 1.145.42
 
