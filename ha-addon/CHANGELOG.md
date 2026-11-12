@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.145.44
+
+- Studium dzieła, „Kolor i światło”: ryciny, rysunki, grafiki i plakaty
+  mają własny pasek barw zamiast płaskich prostokątów. Dzieło jednej
+  barwy (rycina, akwaforta, drzeworyt, rysunek piórkiem, ołówkiem lub
+  węglem) dostaje skalę swoich walorów od najjaśniejszego do
+  najciemniejszego, zrobioną kreską: rzadką w świetle, krzyżowaną w
+  cieniu, rysowaną kreska po kresce na skrawku papieru w barwie tuszu
+  dzieła. Rycina ma równą kreskę rylca i odcisk płyty, rysunek piórkiem
+  swobodniejszą kreskę w brązie, ołówek miękką kreskę z ziarnem papieru.
+  Grafika barwna i plakat dostają odbitki swoich farb: każda barwa jako
+  płaska plama na papierze, odbijana po kolei, z lekkim przesunięciem
+  pasowania; drzeworyt barwny z usłojeniem deski, litografia i plakat z
+  ziarnem kredki i znaczkami pasowania. Próbki farb przy nazwach są
+  zrobione tak samo, na skrawkach papieru. Fotografie zostają przy
+  płaskim pasku.
+
 ## 1.145.43
 
 - Studium dzieła, „Analiza kompozycji”: rysowana jak arkusz studyjny.
