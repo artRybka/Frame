@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.49
+
+- Studium dzieła, analiza kompozycji: akwarela wchodzi płynnie, po całym
+  arkuszu naraz, zamiast rozlewać się z kilku miejsc. Piórko, kreskowanie
+  i kreda rysują się jak dotąd.
+- Akwarelowy podkład jest znów jaśniejszy, taki jak przed 1.145.47;
+  zostaje ogólniejszy (mniej plam, bardziej płaskich). Po aktualizacji
+  serwer robi arkusze od nowa, w tle.
+
 ## 1.145.48
 
 - Odkrywaj, kafelek studium dnia: obraz jest ostry, bo zamiast małej
