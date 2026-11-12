@@ -193,6 +193,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # Discover's first visit then finds its themes worked out.
             threading.Thread(target=discover_api.warm_up, args=(service,), daemon=True).start()
             threading.Thread(target=service.daily.run, name="daily", daemon=True).start()
+            # The sheets the analyses of composition are drawn on are there
+            # before a study is opened (sheets.py).
+            service.sheets.start()
             # Who the catalogue's artists are, from Wikidata: once some
             # minutes after a start (the search knows them then), new ones at
             # night (artist_people.py).
@@ -209,6 +212,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             task.cancel()
         service.ai.stop()
         service.daily.stop()
+        service.sheets.stop()
         if service.night is not None:
             service.night.stop()
         service.library.close()

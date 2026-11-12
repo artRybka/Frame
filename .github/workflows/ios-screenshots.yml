@@ -101,6 +101,9 @@ jobs:
             capture daily 16 "daily-composition-plain-$appearance" -scroll composition -chalkDemo none
             capture daily 16 "daily-composition-shower-lit-$appearance" -scroll composition -demoStudy shower -chalkDemo lit
             capture daily 16 "daily-composition-shower-plain-$appearance" -scroll composition -demoStudy shower -chalkDemo none
+            capture daily 16 "daily-composition-drawing-a-$appearance" -scroll composition -sheetDrawn 0.3
+            capture daily 16 "daily-composition-drawing-b-$appearance" -scroll composition -sheetDrawn 0.62
+            capture daily 16 "daily-composition-drawing-shower-$appearance" -scroll composition -demoStudy shower -sheetDrawn 0.45
             capture daily 16 "daily-detail-geometry-$appearance" -scroll composition -take 1
             capture daily 16 "daily-details-$appearance" -scroll details
             capture daily 16 "daily-legacy-$appearance" -scroll legacy

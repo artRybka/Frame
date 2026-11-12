@@ -690,11 +690,15 @@ def delete_item(item_id: str, svc: Svc) -> dict[str, bool]:
 
 
 @router.get("/library/items/{item_id:item}/thumb")
-async def item_thumb(item_id: str, svc: Svc) -> FileResponse:
+async def item_thumb(item_id: str, svc: Svc, tile: bool = False) -> FileResponse:
     """A work's thumbnail, the catalogue's or any museum work's: the app
-    shows every thumbnail from here, never from the museum itself."""
+    shows every thumbnail from here, never from the museum itself. With
+    ``tile``, as the cover tiles of Odkrywaj show it: the work without the
+    paper or mount around it (``ImageCache.tile``; older apps never ask)."""
     kept = svc.images.kept_thumb(item_id)
     if kept is not None:
+        if tile:
+            kept = await to_thread.run_sync(svc.images.tile, kept, limiter=THUMB_THREADS)
         return FileResponse(
             kept, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"}
         )
@@ -712,6 +716,8 @@ async def item_thumb(item_id: str, svc: Svc) -> FileResponse:
         ) from err
     except (httpx.HTTPError, OSError) as err:
         raise HTTPException(502, f"thumbnail unavailable: {err}") from err
+    if tile:
+        path = await to_thread.run_sync(svc.images.tile, path, limiter=THUMB_THREADS)
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
 
 

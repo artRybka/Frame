@@ -659,8 +659,9 @@ def tasks(service: FrameService) -> list[NightTask]:
     cat, dup, text, disc, idx = "catalogue", "duplicates", "descriptions", "discover", "indexes"
     return [
         NightTask("tidy", tidy, "Porządki w plikach", group=cat),
-        # Keywords and Polish texts nobody waits for, through the Batch API
-        # at half the price (their answers come in by day).
+        # Keywords, Polish texts and the sheets' pen sketches drawn anew
+        # (``ai.redraw``) nobody waits for, through the Batch API at half
+        # the price (their answers come in by day).
         NightTask(
             "language model",
             lambda night: service.ai.order_night(),

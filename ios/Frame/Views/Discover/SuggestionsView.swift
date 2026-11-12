@@ -141,8 +141,10 @@ enum DiscoverLayout {
     static func dayCard(_ row: SuggestionRow, themes: [ArtTheme]) -> ArtTheme? {
         guard let key = row.theme else { return nil }
         let base = themes.first { $0.key == key && $0.group != weekly }
-        var cover: [RemoteItem] = []
-        for remote in row.items where !cover.contains(where: { $0.item.artist == remote.item.artist }) {
+        // The server's pick first (paintings before prints and drawings).
+        var cover = Array((row.cover ?? []).compactMap { id in row.items.first { $0.id == id } }.prefix(4))
+        for remote in row.items where cover.count < 4
+            && !cover.contains(where: { $0.item.artist == remote.item.artist }) {
             cover.append(remote)
             if cover.count == 4 { break }
         }
@@ -310,8 +312,8 @@ struct ThemeCard: View {
                             .overlay {
                                 if index < works.count {
                                     ArtImage(
-                                        ref: works[index].thumb,
-                                        fallback: works[index].thumbFallback,
+                                        ref: works[index].tile,
+                                        fallback: works[index].thumb,
                                         placeholder: works[index].item.summary.placeholderColor,
                                         maxPixel: 240,
                                         subjectFocus: true

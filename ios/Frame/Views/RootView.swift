@@ -19,6 +19,10 @@ enum LaunchRoute {
     /// with headroom (no shadow with the phone held still), "none" leaves
     /// them out.
     static let chalkDemo = UserDefaults.standard.string(forKey: "chalkDemo")
+    /// `-sheetDrawn 0.5`: the composition's sheet stops that far into being
+    /// drawn (0…1 of `SheetPlan.whole`; CI screenshots of it half made).
+    static let sheetDrawn = UserDefaults.standard.object(forKey: "sheetDrawn") == nil
+        ? nil : UserDefaults.standard.double(forKey: "sheetDrawn")
     /// `-demoStudy bedroom|shower|moulin`: the demo's study page shows that
     /// work's analysis of the composition on its sheet (`DemoStudies`).
     /// The composition's take shown first (CI screenshots of the later takes).

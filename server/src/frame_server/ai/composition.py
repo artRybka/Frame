@@ -577,6 +577,7 @@ def written(
         CHECKED: changes,
         CHECK_ROUND: ROUND,
         COST: {k: round(v, 4) for k, v in costs.items()},
+        pen.PEN_KEY: pen.ROUND,
         **({prose.PROSE_KEY: prose.PROSE} if text else {}),
     }
 

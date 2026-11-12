@@ -44,7 +44,28 @@ So the sheet is:
   lifts), given by one who saw the picture (``ai.pen``); none when there
   are none.
 
-No model is asked here; about two seconds a sheet.
+After the first sheets on his phone (2026-11-12 09:47): "Z racji że linie
+kredy rysujemy białe, to akwarelowe tło mogłoby być trochę ciemniejsze",
+"Akwarelowy podkład może być jeszcze ogólniejszy", the pen "gdzieniegdzie
+… 'szkicować'/kreskować ciemniejsze partie", and the sheet should "malować
+/ rysować się na żywo". So (:data:`LOOK` 3):
+
+- the masses are fewer and flatter (:data:`MASSES`, what happens inside a
+  stain counts for less);
+- the pen shades the darker parts with slanted lines, here and there
+  (:func:`hatching`: measured, not asked of a model);
+- the sheet is made as two layers (:func:`layers`): the stains, and what
+  the pen drew with nothing around it, which the app lays down one after
+  the other before the reader; :func:`render` is the two as one, for apps
+  from before that.
+
+That look also laid the light page's stains deeper and left less of it
+bare. Seen on the page, he took the darker ground back (2026-11-12 10:54:
+"akwarela jednak jaśniejsza - tak jak wcześniej"): :data:`LOOK` 4 lays the
+stains as light as before it, and keeps the rest.
+
+No model is asked here; about four seconds a sheet (``sheets.Sheets``
+makes them ahead).
 """
 
 from __future__ import annotations
@@ -66,7 +87,7 @@ Array = npt.NDArray[Any]
 PenStroke = tuple[Sequence[tuple[float, float]], bool, bool]
 
 #: Raised when the look changes, so that sheets made before are made again.
-LOOK = 2
+LOOK = 4
 #: The sheet's longer side.
 LONG = 1500
 #: The app's page and ink (``Theme.paper``, ``Theme.ink``): light, dark.
@@ -76,14 +97,14 @@ INK = {False: (0x1D, 0x1B, 0x18), True: (0xF1, 0xEC, 0xE4)}
 LIFT = 0.15
 #: The masses a picture is gathered into, and the least a mass is (of the
 #: picture): a smaller one joins what surrounds it.
-MASSES = 8
-LEAST = 0.005
+MASSES = 6
+LEAST = 0.012
 #: Where nothing happens a mass must be this much of the picture, and
 #: neighbours there no further apart than this (CIE Lab) are one stain.
-QUIET_LEAST = 0.04
-ALIKE = 15.0
+QUIET_LEAST = 0.06
+ALIKE = 20.0
 #: Neighbours this near in colour are one stain anywhere.
-SAME = 13.0
+SAME = 16.0
 #: The first pale wash under the stains, where things happen.
 FIRST = 0.3
 #: What decides where the page is left bare in a quiet place: how near the
@@ -103,6 +124,19 @@ BARE_MOST = 0.3
 #: How much of the ink a stroke of the nib lays, and its width.
 NIB_INK = 0.66
 NIB = 3.3
+#: The darker parts are hatched here and there: what counts as dark (the
+#: darkest share of the picture, and at least this much under its middle
+#: value, of 1), the least such a part is (of the picture), the lines'
+#: slant (degrees from the horizontal, as a right hand hatches), how far
+#: apart they lie, their least length (pixels), their width and ink.
+HATCH_SHARE = 0.2
+HATCH_UNDER = 0.14
+HATCH_LEAST = 0.006
+HATCH_SLANT = 56.0
+HATCH_APART = 15.0
+HATCH_SHORT = 26.0
+HATCH_NIB = 1.5
+HATCH_INK = 0.5
 
 
 def _colour(rgb: tuple[int, int, int]) -> Array:
@@ -210,7 +244,7 @@ def masses(rgb: Array, seed: int = 1) -> tuple[Array, Array]:
     (from 1) and each mass's colour. What is too small to be a mass joins
     the mass around it, and where little happens a mass must be greater and
     neighbours of nearly one colour are one."""
-    flat = _flat(rgb, 560, 12, 32)
+    flat = _flat(rgb, 560, 16, 40)
     quiet = 1 - busy(rgb, flat.shape[:2])
     true = cv2.cvtColor(flat, cv2.COLOR_BGR2LAB).astype(np.float32)
     true[..., 0] *= 100 / 255
@@ -277,14 +311,14 @@ def _moving(rgb: Array, rng: np.random.Generator) -> Array:
     """The picture's own gradations as soft washes at full size (how much
     light each lets through): what moves inside a stain."""
     h, w = rgb.shape[:2]
-    flat = cv2.cvtColor(_flat(rgb, 840, 10, 30), cv2.COLOR_BGR2RGB)
+    flat = cv2.cvtColor(_flat(rgb, 520, 16, 42), cv2.COLOR_BGR2RGB)
     img = cv2.resize(flat, (w, h), interpolation=cv2.INTER_CUBIC)
     # paint does not keep to the drawing: pushed about a little
     gx, gy = np.meshgrid(np.arange(w, dtype=np.float32), np.arange(h, dtype=np.float32))
     dx, dy = _noise((h, w), 30, rng) * 3.5, _noise((h, w), 30, rng) * 3.5
     img = cv2.remap(img, gx + dx, gy + dy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
     soft = cv2.edgePreservingFilter(
-        cv2.cvtColor(img, cv2.COLOR_RGB2BGR), flags=cv2.RECURS_FILTER, sigma_s=32, sigma_r=0.26
+        cv2.cvtColor(img, cv2.COLOR_RGB2BGR), flags=cv2.RECURS_FILTER, sigma_s=48, sigma_r=0.34
     )
     hsv = cv2.cvtColor(
         cv2.cvtColor(soft, cv2.COLOR_BGR2RGB).astype(np.float32) / 255, cv2.COLOR_RGB2HSV
@@ -329,15 +363,73 @@ def _nib(layer: Array, points: Array, rng: np.random.Generator, width: float) ->
         cv2.line(layer, a, b, 1.0, round(float(w[i]) * 2), cv2.LINE_AA, 2)
 
 
-def render(
+def hatching(rgb: Array, rng: np.random.Generator) -> list[Array]:
+    """The lines that shade the picture's darker parts, here and there
+    (Mateusz 2026-11-12, of the pen: "Gdzieniegdzie mogą też szkicować /
+    kreskować ciemniejsze partie"): parallel, slanted as a right hand lays
+    them, each as long as the dark part is wide there. Measured, not asked
+    of a model: what is dark is plain to see."""
+    h, w = rgb.shape[:2]
+    lab = cv2.cvtColor(rgb, cv2.COLOR_RGB2LAB)[..., 0].astype(np.float32) / 255
+    light: Array = cv2.GaussianBlur(lab, (0, 0), 9)
+    level = min(float(np.quantile(light, HATCH_SHARE)), float(np.median(light)) - HATCH_UNDER)
+    dark = cv2.morphologyEx(
+        (light < level).astype(np.uint8),
+        cv2.MORPH_OPEN,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (17, 17)),
+    )
+    n, comp, stats, _ = cv2.connectedComponentsWithStats(dark, connectivity=8)
+    keep = np.zeros(n, bool)
+    keep[1:] = stats[1:, cv2.CC_STAT_AREA] >= HATCH_LEAST * h * w
+    here = _noise((h, w), 0.09 * max(h, w), rng) > -0.05  # not all of a dark part
+    mask = keep[comp] & here
+    if not mask.any():
+        return []
+    slant = math.radians(HATCH_SLANT + float(rng.uniform(-5, 5)))
+    along = np.array([math.cos(slant), -math.sin(slant)])  # up and to the right
+    across = np.array([math.sin(slant), math.cos(slant)])
+    corners = np.array([(0, 0), (w, 0), (0, h), (w, h)], np.float64)
+    u0, u1 = (corners @ along).min(), (corners @ along).max()
+    v0, v1 = (corners @ across).min(), (corners @ across).max()
+    u = np.arange(u0, u1, 2.0)
+    lines: list[Array] = []
+    for v in np.arange(v0 + HATCH_APART / 2, v1, HATCH_APART):
+        v = v + float(rng.uniform(-0.18, 0.18)) * HATCH_APART
+        spots = u[:, None] * along + v * across
+        x, y = np.round(spots[:, 0]).astype(int), np.round(spots[:, 1]).astype(int)
+        on = (x >= 0) & (x < w) & (y >= 0) & (y < h)
+        on[on] = mask[y[on], x[on]]
+        edges = np.flatnonzero(np.diff(np.concatenate([[0], on.astype(np.int8), [0]])))
+        for start, end in zip(edges[::2], edges[1::2], strict=True):
+            lift = rng.uniform(0, 5, 2)  # a hand does not stop on the edge
+            a, b = u[start] + lift[0], u[end - 1] - lift[1]
+            if b - a < HATCH_SHORT:
+                continue
+            bow = float(rng.uniform(-1.5, 1.5))
+            lines.append(
+                np.array(
+                    [
+                        a * along + v * across,
+                        (a + b) / 2 * along + (v + bow) * across,
+                        b * along + v * across,
+                    ],
+                    np.float32,
+                )
+            )
+    return lines
+
+
+def layers(
     picture: Image.Image,
     strokes: Sequence[PenStroke] = (),
     *,
     dark: bool = False,
     seed: int = 1,
-) -> Image.Image:
-    """The picture (its field alone) as the sheet's underlay: stains and a
-    few strokes of a nib on the app's page, :data:`LONG` pixels long."""
+) -> tuple[Image.Image, Image.Image]:
+    """The picture (its field alone) as the sheet's two layers,
+    :data:`LONG` pixels long: the stains on the app's page, and over them
+    what the pen drew (its strokes and the hatching of the darker parts), on
+    nothing. The app lays one on the other, each as it is made."""
     rng = np.random.default_rng(seed)
     src = np.asarray(picture.convert("RGB"))
     scale = LONG / max(src.shape[:2])
@@ -429,7 +521,7 @@ def render(
         halo_load = (0.16 + 0.14 * np.exp(-np.abs(far - d_out) / 1.1)) * halo
         flat = paints[c][None, None]
         # the stain is flat where nothing happens, and moves where much does
-        own = (0.12 + 0.43 * lively[part])[..., None]
+        own = (0.06 + 0.22 * lively[part])[..., None]
         tint = (1 - own) * flat + own * moving[part]
         if dark:  # on a dark page paint covers instead of staining
             alpha = np.clip((aa * load * 0.9 + (1 - aa) * halo_load * 1.3) * inside[part], 0, 1)
@@ -442,6 +534,14 @@ def render(
     sheet = np.empty((h, w, 3), np.float32)
     sheet[:] = page
     sheet = sheet * (1 - np.clip(cover, 0, 1)[..., None]) + canvas if dark else sheet * canvas
+    wash = Image.fromarray((np.clip(sheet, 0, 1) * 255).astype(np.uint8))
+    # The darker parts hatched, under the strokes. On the dark page the pen
+    # is light: there the hatching is the page's own dark, so that it still
+    # darkens what it shades.
+    shade = np.zeros((h, w), np.float32)
+    for line in hatching(rgb, rng):
+        _nib(shade, line, rng, HATCH_NIB)
+    shaded = np.clip(shade, 0, 1) * inside * HATCH_INK
     # A few strokes of the nib, by one who saw the picture.
     line = np.zeros((h, w), np.float32)
     for points, sharp, closed in strokes:
@@ -451,9 +551,36 @@ def render(
         if closed:
             pts = np.concatenate([pts, pts[:2]])  # closed a little past where it began
         _nib(line, pts if sharp or len(pts) < 3 else _chaikin(pts), rng, NIB)
-    laid = (np.clip(line, 0, 1) * inside * NIB_INK)[..., None]
-    sheet = sheet * (1 - laid) + ink * laid
-    return Image.fromarray((np.clip(sheet, 0, 1) * 255).astype(np.uint8))
+    laid = np.clip(line, 0, 1) * inside * NIB_INK
+    alpha = 1 - (1 - shaded) * (1 - laid)
+    lead = page if dark else ink
+    colour = lead * (shaded * (1 - laid))[..., None] + ink * laid[..., None]
+    colour = colour / np.maximum(alpha, 1e-4)[..., None]
+    drawn = np.dstack([np.where(alpha[..., None] > 0, colour, ink), alpha])
+    pen = Image.fromarray((np.clip(drawn, 0, 1) * 255 + 0.5).astype(np.uint8), "RGBA")
+    return wash, pen
+
+
+def render(
+    picture: Image.Image,
+    strokes: Sequence[PenStroke] = (),
+    *,
+    dark: bool = False,
+    seed: int = 1,
+) -> Image.Image:
+    """The sheet whole, the pen's layer laid on the stains: for apps from
+    before the two were sent apart."""
+    wash, pen = layers(picture, strokes, dark=dark, seed=seed)
+    whole = wash.convert("RGBA")
+    whole.alpha_composite(pen)
+    return whole.convert("RGB")
+
+
+def png(pen: Image.Image) -> bytes:
+    """The pen's layer as the app gets it: on nothing."""
+    out = io.BytesIO()
+    pen.save(out, "PNG", optimize=True)
+    return out.getvalue()
 
 
 def jpeg(sheet: Image.Image) -> bytes:
