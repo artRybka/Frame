@@ -168,7 +168,9 @@ enum SheetPlan {
     /// beside it: an end at a side that heads out of the field is carried
     /// on over the margin, where the server's pen may have gone on.
     static func line(_ stroke: DailyWork.Stroke, in field: CGRect, margin: CGFloat) -> [CGPoint] {
-        var points = stroke.points.map { CGPoint(x: field.minX + $0.x * field.width, y: field.minY + $0.y * field.height) }
+        var points = stroke.points.map { spot in
+            CGPoint(x: field.minX + CGFloat(spot.x) * field.width, y: field.minY + CGFloat(spot.y) * field.height)
+        }
         guard points.count > 1 else { return [] }
         if stroke.closed == true, let first = points.first {
             points.append(first)

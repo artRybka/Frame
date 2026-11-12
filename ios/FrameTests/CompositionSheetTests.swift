@@ -306,7 +306,8 @@ final class CompositionSheetTests: XCTestCase {
         let out = DailyWork.Stroke(points: [Spot(x: 0.5, y: 0.5), Spot(x: 0.99, y: 0.5)], sharp: true)
         let line = SheetPlan.line(out, in: field, margin: field.minX)
         XCTAssertEqual(line.count, 3)
-        XCTAssertEqual(line[0], CGPoint(x: 120, y: 50))
+        XCTAssertEqual(line[0].x, 120, accuracy: 1e-6)
+        XCTAssertEqual(line[0].y, 50, accuracy: 1e-6)
         XCTAssertEqual(line[2].x, 240, accuracy: 1e-6)
         XCTAssertEqual(line[2].y, 50, accuracy: 1e-6)
         // To the left the same, at the stroke's start.
