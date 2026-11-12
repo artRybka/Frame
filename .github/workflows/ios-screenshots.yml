@@ -116,6 +116,10 @@ jobs:
             capture daily 16 "daily-colour-water-$appearance" -scroll colour -paintStyle water
             capture daily 16 "daily-colour-dry-$appearance" -scroll colour -paintStyle dry
             capture daily 16 "daily-colour-dry-mid-$appearance" -scroll colour -paintStyle dry -paintAge 2.4
+            # Small colours as accents: a drop in a round of clean paper, a patch pressed hard.
+            capture daily 16 "daily-colour-water-accents-$appearance" -scroll colour -paintStyle water -paintColours 526c8e:0.221/3b4e79:0.198/6f8593:0.169/303b4b:0.168/a0b07c:0.021/b5a43c:0.011/293690:0.020
+            capture daily 16 "daily-colour-water-accents-mid-$appearance" -scroll colour -paintStyle water -paintAge 2.5 -paintColours 526c8e:0.221/3b4e79:0.198/6f8593:0.169/303b4b:0.168/a0b07c:0.021/b5a43c:0.011/293690:0.020
+            capture daily 16 "daily-colour-dry-accents-$appearance" -scroll colour -paintStyle dry -paintColours 526c8e:0.221/3b4e79:0.198/6f8593:0.169/303b4b:0.168/a0b07c:0.021/b5a43c:0.011/293690:0.020
             capture daily 16 "daily-colour-burin-$appearance" -scroll colour -paintStyle burin -paintColours 918d78:0.28/4c4a3c:0.26/5f5c4b:0.24/78745f:0.22
             capture daily 16 "daily-colour-burin-mid-$appearance" -scroll colour -paintStyle burin -paintAge 1.2 -paintColours 918d78:0.28/4c4a3c:0.26/5f5c4b:0.24/78745f:0.22
             capture daily 16 "daily-colour-pen-$appearance" -scroll colour -paintStyle pen -paintColours c9b79a:0.40/a9856a:0.27/8a5a44:0.20/6b3f30:0.13
@@ -135,6 +139,14 @@ jobs:
             capture daily 16 "daily-journey-full-end-$appearance" -scroll journey-end -journeyWash 1 -journeyDetour YES
             capture detail 14 "detail-$appearance"
             capture detail 16 "detail-about-$appearance" -scroll about
+            # "Kolorystyka" on the card: the bar in the work's technique, there at once.
+            capture detail 16 "detail-palette-$appearance" -scroll palette
+            capture detail 16 "detail-palette-oil-$appearance" -scroll palette -paintStyle oil
+            capture detail 16 "detail-palette-water-$appearance" -scroll palette -paintStyle water -paintColours 526c8e:0.221/3b4e79:0.198/6f8593:0.169/303b4b:0.168/a0b07c:0.021/b5a43c:0.011/293690:0.020
+            capture detail 16 "detail-palette-dry-$appearance" -scroll palette -paintStyle dry -paintColours 526c8e:0.221/3b4e79:0.198/6f8593:0.169/303b4b:0.168/a0b07c:0.021/b5a43c:0.011/293690:0.020
+            capture detail 16 "detail-palette-burin-$appearance" -scroll palette -paintStyle burin -paintColours 918d78:0.28/4c4a3c:0.26/5f5c4b:0.24/78745f:0.22
+            capture detail 16 "detail-palette-woodblock-$appearance" -scroll palette -paintStyle woodblock -paintColours d9cdb0:0.34/c8bc9d:0.22/1f3a5f:0.16/3d5f86:0.12/8fa7b8:0.09/e9e2cf:0.07
+            capture detail 16 "detail-palette-photo-$appearance" -scroll palette -paintStyle photo -paintColours c9c2b4:0.30/2a2826:0.25/8a847a:0.30/565049:0.15
             capture playlists 12 "playlists-$appearance"
             capture suggestions 14 "suggestions-$appearance"
             capture playlist 12 "playlist-$appearance"

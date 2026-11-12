@@ -137,10 +137,11 @@ struct ItemDetailView: View {
             }
             .glowLift($scrolled)
             .onChange(of: polish) {
-                guard LaunchRoute.screen == "detail", LaunchRoute.scroll == "about", polish != nil else { return }  // CI screenshots
+                // CI screenshots
+                guard LaunchRoute.screen == "detail", let scroll = LaunchRoute.scroll, ["about", "palette"].contains(scroll), polish != nil else { return }
                 Task {
                     try? await Task.sleep(for: .seconds(1))
-                    proxy.scrollTo("about", anchor: .top)
+                    proxy.scrollTo(scroll, anchor: scroll == "palette" ? .center : .top)
                 }
             }
         }
@@ -300,7 +301,7 @@ struct ItemDetailView: View {
                 detailsSection(details)
                     .transition(.opacity)
             }
-            if !item.colors.isEmpty { palette(item) }
+            if !item.colors.isEmpty { palette(item).id("palette") }
             about(item)
             studySection(item)
             facts(item)
@@ -1120,28 +1121,32 @@ struct ItemDetailView: View {
         .sensoryFeedback(.success, trigger: next) { _, now in now }
     }
 
+    /// The work's colours as a bar in its own technique, there at once
+    /// and with no shares under it (Mateusz 2026-11-12 10:47: „bez
+    /// procentów”, „bez ruchu, od razu gotowy”); the flat strip for a
+    /// work whose technique says nothing („puste pole techniki -
+    /// wektorowy pasek, ale bez procentów”), none for a sculpture
+    /// („rzeźba - bez paska”).
+    @ViewBuilder
     private func palette(_ item: Item) -> some View {
+        let rows = ColorTag.rows(item.colorTags).filter { !$0.isEmpty }
+        let bare = PaintStyle.sculpted(item)
+        if !bare || !rows.isEmpty {
+            palette(item, bare: bare, rows: rows)
+        }
+    }
+
+    private func palette(_ item: Item, bare: Bool, rows: [[String]]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Eyebrow("Kolorystyka")
-            // Like the strip in "Teraz", taller, with the shares that fit.
-            VStack(spacing: 6) {
-                PaletteStrip(swatches: item.colors, height: 18, cornerRadius: 6)
-                GeometryReader { geo in
-                    let widths = PaletteStrip.widths(item.colors, in: geo.size.width)
-                    HStack(spacing: PaletteStrip.spacing) {
-                        ForEach(Array(item.colors.enumerated()), id: \.offset) { index, swatch in
-                            Text(widths[index] >= 30 ? "\(Int(swatch.weight * 100))%" : "")
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(Theme.inkSoft)
-                                .fixedSize()
-                                .frame(width: widths[index])
-                        }
-                    }
-                }
-                .frame(height: 14)
+            if bare {
+                EmptyView()
+            } else if let style = PaintStyle.of(item), !PaintedStrip.shares(item.colors).isEmpty {
+                PaintedStrip(swatches: item.colors, style: style, seed: Paint.seed(item.id), whole: true)
+            } else {
+                PaletteStrip(swatches: item.colors, height: Paint.bar, cornerRadius: 6)
             }
             // One row each, in the Kolor sheet's order: colours, accents, moods.
-            let rows = ColorTag.rows(item.colorTags).filter { !$0.isEmpty }
             if !rows.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(rows, id: \.self) { row in
