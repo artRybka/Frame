@@ -225,6 +225,18 @@ def _legacy(svc: FrameService, item: Item, essay: Essay) -> list[LegacyWork]:
     return works
 
 
+def _as_drawn(svc: FrameService, item: Item, composition: Composition) -> Composition:
+    """The analysis with, in the take it shows, what its sheet's pen drew
+    (``Sheets.lines``) for the sketch that guided it: the app draws the
+    pen's layer along these as the sheet draws itself."""
+    view = composition.views[0]
+    lines = svc.sheets.lines(item, view)
+    if not lines:
+        return composition
+    shown = view.model_copy(update={"sketch": lines})
+    return composition.model_copy(update={"views": [shown, *composition.views[1:]]})
+
+
 def _work(svc: FrameService, day: date, item: Item, writing: bool, lists: bool = True) -> DailyWork:
     def detail_url(n: int, box: Detail) -> str:
         v = svc.daily.detail_path(item, box).stem.rsplit("-", 1)[-1]
@@ -313,7 +325,9 @@ def page(
         if essay and essay.context
         else [p for p in museum.split("\n\n") if p],
         artist=essay.artist if essay else "",
-        composition=essay.composition if essay and essay.composition.views else None,
+        composition=_as_drawn(svc, item, essay.composition)
+        if essay and essay.composition.views
+        else None,
         composition_sheet=sheet_url(svc, item, essay.composition.views[0])
         if essay and essay.composition.views
         else "",
