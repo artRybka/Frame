@@ -1114,9 +1114,10 @@ def pale(lab: np.ndarray) -> Sheet | None:
 
 def tints(lab: np.ndarray, sheet: Sheet) -> list[tuple[np.ndarray, float, str]]:
     """The cool tints of a pale sheet: (colour, share of the sheet, side),
-    largest first (see ``TINT_PAPER``). No tag goes by them: of 17 sheets
-    of the owner's library with one, 8 had it from the grey board the
-    museum photographed them on (the audit of 2026-11-12)."""
+    largest first (see ``TINT_PAPER``). No tag goes by them: of 19 sheets
+    of the owner's library with one, 9 had no such colour to the eye, 6 of
+    them a tint from the grey board the museum photographed them on (the
+    audit of 2026-11-12)."""
     off = sheet.off(lab)
     far = np.hypot(off[:, 0], off[:, 1])
     hue = np.degrees(np.arctan2(off[:, 1], off[:, 0])) % 360
