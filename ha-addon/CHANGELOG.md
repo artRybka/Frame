@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.145.53
+
+- Studium dzieła, analiza kompozycji: to, co wylewa się poza kadr, jest
+  jedną jednolitą plamą w kolorze tej, która w tym miejscu dochodzi do
+  ramki. Wcześniej margines dostawał lustrzane odbicie obrazu (drugie
+  krzesło obok krzesła).
+- Biel na obrazie zostaje bielą na arkuszu: białe tkaniny, piana, obrus
+  są czystym papierem (w trybie ciemnym jasną farbą) zamiast kremowej
+  plamy jak twarz obok. Zażółcenie starego werniksu nie przeszkadza.
+- Znaki analizy są teraz w kolorze rysunku (ciemne na jasnej stronie,
+  jasne na ciemnej), trochę mocniejsze i grubsze niż szkic piórkiem, a
+  sam szkic pod nimi jest słabszy. Powtórzenia koloru zostają czerwone.
+- Dotknięcie podpisu z numerkiem pod arkuszem podświetla jego znak na
+  arkuszu, a pozostałe znaki i podpisy przygasają; drugie dotknięcie to
+  cofa.
+- Numerek znaku nie zakrywa już grotu strzałki: przy strzałce stoi obok
+  środka jej drogi, a żaden numerek nie trafia w pobliże grotu.
+- Po aktualizacji serwer robi arkusze od nowa, w tle.
+
 ## 1.145.52
 
 - Studium i karta dzieła, pasek barw grafiki i rysunku: gdy odbitka albo

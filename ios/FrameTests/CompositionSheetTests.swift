@@ -90,16 +90,29 @@ final class CompositionSheetTests: XCTestCase {
         XCTAssertGreaterThan(side.maxX, 360 + Pencil.reach - 1)
     }
 
-    func testTheMarksAreWhiteChalkAndAReturningColourRed() {
+    func testTheMarksAreChalkOfThePensColourAndAReturningColourRed() {
         let echo = Mark(shape: "echo", points: [], title: "", text: "")
         let loop = Mark(shape: "loop", points: [], title: "", text: "")
-        XCTAssertEqual(Chalk.color(for: loop), Chalk.white)
+        // The pen's colour on each page, heavier than the sketch under it
+        // and that sketch weaker (Mateusz 2026-11-12 11:31: "szkic pod spodem
+        // słabszy, a linie kredą - ciut mocniejsze i grubsze niż rysunek
+        // teraz. W kolorze rysunku, a powtórki kolorów zostawiamy czerwone").
+        XCTAssertEqual(Chalk.color(for: loop, dark: false), Chalk.ink(dark: false))
+        XCTAssertEqual(Chalk.color(for: loop, dark: true), Chalk.ink(dark: true))
+        XCTAssertNotEqual(Chalk.ink(dark: false), Chalk.ink(dark: true))
+        XCTAssertLessThan(SheetPlan.penShare, 0.75)
+        XCTAssertGreaterThan(SheetPlan.penShare, 0.4)
+        XCTAssertLessThan(Chalk.weight, Pencil.crayonWeight)  // not the broad white stick
+        XCTAssertGreaterThan(Chalk.weight, 0.8)
         // What only answers across the picture is not read as a line that runs there.
-        XCTAssertEqual(Chalk.color(for: echo), Chalk.red)
-        // Brighter than the page's white only where the screen can show it.
+        XCTAssertEqual(Chalk.color(for: echo, dark: false), Chalk.red)
+        XCTAssertEqual(Chalk.color(for: echo, dark: true), Chalk.red)
+        // Brighter than the page's white only where the screen can show
+        // it, and only light chalk (the dark page).
         XCTAssertNil(Chalk.lift(headroom: 1))
         XCTAssertEqual(Chalk.lift(headroom: 8), Chalk.gain)
         XCTAssertEqual(try XCTUnwrap(Chalk.lift(headroom: 1.5)), 1.35, accuracy: 1e-9)
+        XCTAssertNil(Chalk.lift(headroom: 8, dark: false))
         // A point and a half at a full turn of the phone, the shadow the other way; still with Reduce Motion.
         XCTAssertEqual(Chalk.shift, 1.5)
         XCTAssertEqual(Chalk.offset(x: 1, y: -1, shift: Chalk.shift, still: false), CGSize(width: 1.5, height: -1.5))
@@ -129,6 +142,59 @@ final class CompositionSheetTests: XCTestCase {
         XCTAssertEqual(Chalk.castShown(x: 1, y: 0, lit: false, still: false), 1)
     }
 
+    func testANumberDoesNotLieOnAnArrowhead() {
+        // Mateusz 2026-11-12 11:31: "Kółeczko (4) zakrywa grot strzałki".
+        let size = CGSize(width: 345, height: 430)
+        // An arrow of two points that runs out through the lower edge: its
+        // "middle" point was its tip.
+        let down = Mark(shape: "arrow", points: [Spot(x: 0.62, y: 0.78), Spot(x: 0.55, y: 1.0)], title: "Ucięty tułów", text: "")
+        let tip = CGPoint(x: 0.55 * 345, y: 430)
+        let spot = Pencil.numberSpot(for: down, in: size)
+        XCTAssertGreaterThanOrEqual(hypot(spot.x - tip.x, spot.y - tip.y), Pencil.headClear)
+        // Beside the middle of its way, not on the line.
+        let middle = CGPoint(x: 0.585 * 345, y: 0.89 * 430)
+        XCTAssertLessThan(hypot(spot.x - middle.x, spot.y - middle.y), 40)
+        XCTAssertEqual(Pencil.heads(of: [down], in: size), [tip])
+        // Another mark's number that would sit on the head moves aside,
+        // even when the arrow itself has no label.
+        let line = Mark(shape: "line", points: [Spot(x: 0.2, y: 0.9), Spot(x: 0.56, y: 1.0)], title: "Brzeg", text: "")
+        let bare = Mark(shape: "arrow", points: down.points, title: "", text: "")
+        let alone = Pencil.numberSpots(for: [line], in: size)[0]
+        XCTAssertLessThan(hypot(alone.x - tip.x, alone.y - tip.y), Pencil.headClear)
+        let moved = Pencil.numberSpots(for: [line], in: size, among: [line, bare])[0]
+        XCTAssertGreaterThanOrEqual(hypot(moved.x - tip.x, moved.y - tip.y), Pencil.headClear)
+        // A movement's head too.
+        let motion = Mark(shape: "motion", points: [Spot(x: 0.9, y: 0.6), Spot(x: 0.3, y: 0.5)], title: "Lot", text: "")
+        XCTAssertEqual(Pencil.heads(of: [motion, line], in: size).count, 1)
+        // Beside an upright line: to its right; beside a level one: above it.
+        let right = Pencil.beside([CGPoint(x: 100, y: 0), CGPoint(x: 100, y: 200)], at: 0.5, by: 15)
+        XCTAssertEqual(right.x, 115, accuracy: 1e-6)
+        XCTAssertEqual(right.y, 100, accuracy: 1e-6)
+        let above = Pencil.beside([CGPoint(x: 0, y: 50), CGPoint(x: 200, y: 50)], at: 0.25, by: 15)
+        XCTAssertEqual(above.x, 50, accuracy: 1e-6)
+        XCTAssertEqual(above.y, 35, accuracy: 1e-6)
+    }
+
+    func testATappedLabelLightsItsMarkAndTheOthersStepBack() {
+        // Mateusz 2026-11-12 11:31: "Dotknięcie podpisu z numerkiem pod spodem
+        // niech jakoś zapala - wyróżnia wskazane zakreślenie na szkicu powyżej".
+        let named = Mark(shape: "loop", points: [], title: "Twarz", text: "")
+        let plain = Mark(shape: "line", points: [], title: "", text: "")
+        // Labels are numbered among the titled marks only.
+        let marks = [plain, named, plain, named]
+        XCTAssertEqual(CompositionSketch.chosenMark(1, among: marks), 1)
+        XCTAssertEqual(CompositionSketch.chosenMark(2, among: marks), 3)
+        XCTAssertNil(CompositionSketch.chosenMark(3, among: marks))
+        XCTAssertNil(CompositionSketch.chosenMark(nil, among: marks))
+        // The plane of the tapped mark stays whole, the others step back;
+        // nothing tapped, all whole; before the sheet is drawn, none.
+        XCTAssertEqual(ChalkMarks.share(of: [3], chosen: 3, shown: true), 1)
+        XCTAssertEqual(ChalkMarks.share(of: [1], chosen: 3, shown: true), Chalk.aside)
+        XCTAssertEqual(ChalkMarks.share(of: [1], chosen: nil, shown: true), 1)
+        XCTAssertEqual(ChalkMarks.share(of: [3], chosen: 3, shown: false), 0)
+        XCTAssertLessThan(Chalk.aside, 0.5)
+    }
+
     func testAStrokeOfChalkIsAStickNotAPoint() throws {
         let size = CGSize(width: 360, height: 480)
         let line = Mark(shape: "line", points: [Spot(x: 0.1, y: 0.5), Spot(x: 0.9, y: 0.5)], title: "", text: "")
@@ -154,7 +220,7 @@ final class CompositionSheetTests: XCTestCase {
         XCTAssertLessThanOrEqual(try XCTUnwrap(presses.max()), 1)
         XCTAssertGreaterThan(Set(presses.map { Int($0 * 100) }).count, 5)
         XCTAssertEqual(Chalk.kept(1), 1, accuracy: 1e-9)
-        XCTAssertEqual(Chalk.kept(0), 0.42, accuracy: 1e-9)
+        XCTAssertEqual(Chalk.kept(0), 0.55, accuracy: 1e-9)
         let tooth = try XCTUnwrap(Chalk.tooth)
         XCTAssertEqual(tooth.width, Chalk.toothSide * Chalk.toothScale)
     }
@@ -186,20 +252,35 @@ final class CompositionSheetTests: XCTestCase {
         // Nothing under the strokes or beside them: no wash wiped, no edge.
         XCTAssertEqual(pixel(100, 80), [0, 0, 0, 0])
         XCTAssertEqual(pixel(5, 5), [0, 0, 0, 0])
-        // The line in white, across the middle: where the chalk lies thickest
-        // in each column.
+        // The line in the pen's colour (dark on the light page), across the
+        // middle: where the chalk lies thickest in each column.
         let along = (40...160).map { x in (44...56).map { pixel(x, $0) }.max { $0[3] < $1[3] }! }
         let most = along.max { $0[3] < $1[3] }!
         XCTAssertGreaterThan(most[3], 180)
-        XCTAssertGreaterThan(most[2], 180)
+        XCTAssertLessThan(most[2], 70)
         // Chalk, not ink: it is not as thick everywhere (the paper's tooth).
         XCTAssertLessThan(along.map { $0[3] }.min()!, most[3] - 15)
         // The echo's rings and broken line in red.
         let reds = (0..<200).flatMap { x in (10...30).map { y in pixel(x, y) } }.filter { $0[3] > 150 }
         XCTAssertFalse(reds.isEmpty)
         XCTAssertTrue(reds.allSatisfy { $0[0] > $0[2] + 40 })
-        // The copy for a screen with headroom: the same picture, lit.
-        let lit = try XCTUnwrap(ArtGlow.render(plain, gain: Chalk.gain))
+        // On the dark page the same line is light.
+        let night = try XCTUnwrap(ChalkMarks.plain(
+            marks: marks, labelled: CompositionSketch.labelled(marks), room: EdgeInsets(), size: size, scale: 1, dark: true
+        ))
+        try bytes.withUnsafeMutableBytes { buffer in
+            let context = try XCTUnwrap(CGContext(
+                data: buffer.baseAddress, width: 200, height: 100, bitsPerComponent: 8, bytesPerRow: 800,
+                space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ))
+            context.clear(CGRect(x: 0, y: 0, width: 200, height: 100))
+            context.draw(night, in: CGRect(x: 0, y: 0, width: 200, height: 100))
+        }
+        let light = (40...160).flatMap { x in (44...56).map { pixel(x, $0) } }.max { $0[3] < $1[3] }!
+        XCTAssertGreaterThan(light[3], 180)
+        XCTAssertGreaterThan(light[2], 160)
+        // The copy for a screen with headroom (light chalk): the same picture, lit.
+        let lit = try XCTUnwrap(ArtGlow.render(night, gain: Chalk.gain))
         XCTAssertEqual(lit.width, plain.width)
         XCTAssertEqual(lit.height, plain.height)
         // One plane holds one mark: the line alone has no red in it, and

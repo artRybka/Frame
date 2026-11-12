@@ -19,6 +19,10 @@ enum LaunchRoute {
     /// with headroom (no shadow with the phone held still), "none" leaves
     /// them out.
     static let chalkDemo = UserDefaults.standard.string(forKey: "chalkDemo")
+    /// `-chalkChosen 2`: the composition's sheet opens with that label
+    /// tapped, its mark lit and the others stepped back (CI screenshots).
+    static let chalkChosen: Int? = UserDefaults.standard.object(forKey: "chalkChosen") == nil
+        ? nil : UserDefaults.standard.integer(forKey: "chalkChosen")
     /// `-sheetDrawn 0.5`: the composition's sheet stops that far into being
     /// drawn (0…1 of `SheetPlan.whole`; CI screenshots of it half made).
     static let sheetDrawn = UserDefaults.standard.object(forKey: "sheetDrawn") == nil
