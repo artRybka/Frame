@@ -50,9 +50,6 @@ kredy rysujemy białe, to akwarelowe tło mogłoby być trochę ciemniejsze",
 … 'szkicować'/kreskować ciemniejsze partie", and the sheet should "malować
 / rysować się na żywo". So (:data:`LOOK` 3):
 
-- the light page's stains carry more paint (:data:`DEPTH`) and less of the
-  page is left bare there (:data:`BARE_MOST_LIGHT`): white chalk has to
-  show on them;
 - the masses are fewer and flatter (:data:`MASSES`, what happens inside a
   stain counts for less);
 - the pen shades the darker parts with slanted lines, here and there
@@ -61,6 +58,11 @@ kredy rysujemy białe, to akwarelowe tło mogłoby być trochę ciemniejsze",
   the pen drew with nothing around it, which the app lays down one after
   the other before the reader; :func:`render` is the two as one, for apps
   from before that.
+
+That look also laid the light page's stains deeper and left less of it
+bare. Seen on the page, he took the darker ground back (2026-11-12 10:54:
+"akwarela jednak jaśniejsza - tak jak wcześniej"): :data:`LOOK` 4 lays the
+stains as light as before it, and keeps the rest.
 
 No model is asked here; about four seconds a sheet (``sheets.Sheets``
 makes them ahead).
@@ -85,7 +87,7 @@ Array = npt.NDArray[Any]
 PenStroke = tuple[Sequence[tuple[float, float]], bool, bool]
 
 #: Raised when the look changes, so that sheets made before are made again.
-LOOK = 3
+LOOK = 4
 #: The sheet's longer side.
 LONG = 1500
 #: The app's page and ink (``Theme.paper``, ``Theme.ink``): light, dark.
@@ -103,10 +105,6 @@ QUIET_LEAST = 0.06
 ALIKE = 20.0
 #: Neighbours this near in colour are one stain anywhere.
 SAME = 16.0
-#: How much deeper than a first wash the stains are laid on the light page:
-#: the marks over them are white chalk (Mateusz 2026-11-12: "akwarelowe tło
-#: mogłoby być trochę ciemniejsze").
-DEPTH = 1.45
 #: The first pale wash under the stains, where things happen.
 FIRST = 0.3
 #: What decides where the page is left bare in a quiet place: how near the
@@ -123,8 +121,6 @@ GAP = 0.38
 #: the field that is left bare (a picture that is all sky is still painted).
 BARE_THIN = 0.2
 BARE_MOST = 0.3
-#: Less of it on the light page: white chalk is lost on bare paper.
-BARE_MOST_LIGHT = 0.2
 #: How much of the ink a stroke of the nib lays, and its width.
 NIB_INK = 0.66
 NIB = 3.3
@@ -474,7 +470,7 @@ def layers(
     rim = np.clip(1 - inset / (0.3 * min(h, w)), 0, 1)
     chance = _noise((h, w), 0.07 * max(h, w), rng) * 0.8 + _noise((h, w), 18, rng) * 0.2
     bare = (1 - lively) * (BARE_NEAR * near_map + BARE_RIM * rim + BARE_CHANCE * chance)
-    level = max(BARE, float(np.quantile(bare, 1 - (BARE_MOST if dark else BARE_MOST_LIGHT))))
+    level = max(BARE, float(np.quantile(bare, 1 - BARE_MOST)))
     painted = bare < level
     # towards a bare place the wash runs thin before it stops
     thin = np.clip((level - bare) / BARE_THIN, 0, 1)
@@ -532,7 +528,7 @@ def layers(
             canvas[part] = canvas[part] * (1 - alpha[..., None]) + (tint**1.3) * alpha[..., None]
             cover[part] = 1 - (1 - cover[part]) * (1 - alpha)
         else:
-            canvas[part] *= tint ** (aa * load * inside[part] * DEPTH)[..., None]
+            canvas[part] *= tint ** (aa * load * inside[part])[..., None]
             canvas[part] *= flat ** ((1 - aa) * halo_load * inside[part])[..., None]
     page, ink = _colour(PAGE[dark]), _colour(INK[dark])
     sheet = np.empty((h, w, 3), np.float32)
