@@ -67,6 +67,9 @@ READINGS: dict[str, str] = {
     # or printer as the maker; 4: every type the museum gives, not the
     # first alone ("grisaille, painting", "design, drawing"; 2026-11-11).
     "rijks": "4",
+    # 2026-11-12: an artist's name brings all the artist's works, not the
+    # search's one page of 60 (de Chirico: 198).
+    "wikiart": "2",
 }
 #: Pages of a search for one kind (Malarstwo, Fotografia: the key's fifth
 #: part), whichever museum: raised with a change to how such searches ask.

@@ -17,6 +17,7 @@ import re
 import threading
 import time
 from abc import ABC, abstractmethod
+from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,6 +51,7 @@ from .markup import (
 from .met_index import INDEX as MET_INDEX
 from .met_objects import met_objects
 from .models import Item, ItemKind
+from .phrases import words
 from .records import records
 from .rijks_index import local_index as rijks_local_index
 
@@ -2347,14 +2349,20 @@ class WikiArt(Museum):
             self._tokens[(term, number + 1)] = unquote(str(body["paginationToken"]))
         return list(body.get("data") or []), more
 
-    def _results(self, term: str, limit: int, page: int) -> tuple[int, list[Item]]:
+    def _results(
+        self, term: str, limit: int, page: int, asked: list[dict[str, Any]] | None = None
+    ) -> tuple[int, list[Item]]:
+        """``asked``: the search's first page, had already."""
         start = (page - 1) * limit
         first = start // self.page_size + 1
         last = (start + limit - 1) // self.page_size + 1
         found: list[dict[str, Any]] = []
         more = False
         for number in range(first, last + 1):
-            rows, more = self._page(term, number)
+            if number == 1 and asked is not None:
+                rows, more = asked, (term, 2) in self._tokens
+            else:
+                rows, more = self._page(term, number)
             found += rows
             if not more:
                 break
@@ -2364,8 +2372,128 @@ class WikiArt(Museum):
         return (start + limit * 2 if more else seen), items
 
     def search(self, query: str, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
+        """Works matching ``query``; for an artist's name, all of the artist's
+        works WikiArt has, its search's first (the best known) before the
+        rest: its search ends after one page of 60 (Mateusz, 2026-11-12: 60
+        of de Chirico's 198)."""
         term = query.strip()
-        return self._results(term, limit, page) if term else (0, [])
+        if not term:
+            return 0, []
+        works, first = self._whole_artist(term)
+        if works is None:
+            return self._results(term, limit, page, first)
+        start = (page - 1) * limit
+        return len(works), [i for d in works[start : start + limit] if (i := self._map(d))]
+
+    #: Pages of one artist's works asked at most (60 a page).
+    ARTIST_PAGES = 25
+    #: How long an artist's list (and what a search term names) is kept.
+    ARTIST_KEPT = 86400.0
+    #: Artists' whole lists by WikiArt's artist id: (when asked, works).
+    _artists: ClassVar[dict[str, tuple[float, list[dict[str, Any]]]]] = {}
+    #: What a search term names: (when asked, the artist's id or "" for none).
+    _named: ClassVar[dict[str, tuple[float, str]]] = {}
+
+    def _whole_artist(
+        self, term: str
+    ) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]] | None]:
+        """All works of the artist ``term`` names, the search's own first;
+        None when it names none, or when the artist's list cannot be had
+        (the search's one page then, as before). Second: the search's first
+        page when it was asked for here (not asked again)."""
+        known = self._named.get(term)
+        rows: list[dict[str, Any]] | None = None
+        if known is not None and time.monotonic() - known[0] < self.ARTIST_KEPT:
+            artist = known[1]
+        else:
+            rows, _ = self._page(term, 1)
+            artist = self._artist_named(term, rows)
+            if len(self._named) > 500:
+                self._named.clear()
+            self._named[term] = (time.monotonic(), artist)
+        if not artist:
+            return None, rows
+        try:
+            works = self._artist_works(artist)
+        except (httpx.HTTPError, ValueError) as err:
+            log.info("WikiArt works of artist %s (%r): %s", artist, term, err)
+            return None, rows
+        if rows is None:
+            rows, _ = self._page(term, 1)
+        ids = {str(d.get("id")) for d in works}
+        first = [d for d in rows if str(d.get("id")) in ids]
+        seen = {str(d.get("id")) for d in first}
+        return first + [d for d in works if str(d.get("id")) not in seen], rows
+
+    def _artist_named(self, term: str, rows: list[dict[str, Any]]) -> str:
+        """WikiArt's id of the artist ``term`` names: one whose name holds
+        every word of it and who made at least half of the search's works;
+        "" for none ("Monet water lilies" names no artist, "de Chirico"
+        does)."""
+        asked = set(words(term))
+        if not asked or not rows:
+            return ""
+        theirs = [d for d in rows if asked <= set(words(str(d.get("artistName") or "")))]
+        if len(theirs) * 2 < len(rows):
+            return ""
+        ids = Counter(str(d.get("artistId") or "") for d in theirs)
+        ids.pop("", None)
+        if not ids:
+            # The search's short records may not name the artist's id; the
+            # work's own record does.
+            record = self._painting(str(theirs[0].get("id") or ""))
+            return str((record or {}).get("artistId") or "")
+        artist, count = ids.most_common(1)[0]
+        return artist if count * 2 >= len(rows) else ""
+
+    def _artist_works(self, artist: str) -> list[dict[str, Any]]:
+        """Every work of the artist WikiArt names ``artist``, page by page."""
+        kept = self._artists.get(artist)
+        if kept is not None and time.monotonic() - kept[0] < self.ARTIST_KEPT:
+            return kept[1]
+        works: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        token = ""
+        for _ in range(self.ARTIST_PAGES):
+            params = {"id": artist}
+            if token:
+                params["paginationToken"] = token
+            body = self._ask("PaintingsByArtist", params)
+            if not isinstance(body, dict) or not isinstance(body.get("data"), list):
+                raise ValueError("WikiArt gave no list of the artist's works")
+            for d in body["data"]:
+                if isinstance(d, dict) and (key := str(d.get("id") or "")) and key not in seen:
+                    seen.add(key)
+                    works.append(d)
+            token = unquote(str(body.get("paginationToken") or ""))
+            if not body.get("hasMore") or not token:
+                break
+        if len(self._artists) > 200:
+            self._artists.clear()
+        self._artists[artist] = (time.monotonic(), works)
+        return works
+
+    def _ask(self, endpoint: str, params: dict[str, str]) -> Any:
+        """One answer of WikiArt's API, with the owner's session when there
+        is one (asked for anew once when it ran out)."""
+        session = self._session()
+        if session:
+            params = {**params, "authSessionKey": session}
+        resp = self.http.get(f"{self.api}/{endpoint}", params=params)
+        if session and resp.status_code == 500 and "session" in resp.text.lower():
+            params["authSessionKey"] = self._session(fresh=True) or ""  # it ran out
+            resp = self.http.get(f"{self.api}/{endpoint}", params=params)
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        return resp.json()
+
+    def _painting(self, source_id: str) -> dict[str, Any] | None:
+        """A work's own record."""
+        if not source_id:
+            return None
+        body = self._ask("Painting", {"id": source_id})
+        return body if isinstance(body, dict) else None
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         """Paintings of a style; with nothing asked, the most viewed ones."""
@@ -2374,19 +2502,10 @@ class WikiArt(Museum):
         return self._results(spec.style.strip(), limit, page)
 
     def fetch(self, source_id: str) -> Item | None:
-        params = {"id": source_id}
-        if session := self._session():
-            # Without one, WikiArt's free questions run out within the hour.
-            params["authSessionKey"] = session
-        resp = self.http.get(f"{self.api}/Painting", params=params)
-        if session and resp.status_code == 500 and "session" in resp.text.lower():
-            params["authSessionKey"] = self._session(fresh=True) or ""  # it ran out
-            resp = self.http.get(f"{self.api}/Painting", params=params)
-        if resp.status_code == 404:
-            return None
-        resp.raise_for_status()
-        body = resp.json()
-        return self._map(body) if isinstance(body, dict) else None
+        # With the owner's session: without one, WikiArt's free questions
+        # run out within the hour.
+        body = self._painting(source_id)
+        return self._map(body) if body is not None else None
 
 
 # Collections added later live in modules of their own (they build on the

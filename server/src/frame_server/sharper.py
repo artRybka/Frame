@@ -62,7 +62,15 @@ from .imaging.layout import load_image
 from .library import Item, ItemKind
 from .library.colors import tint_spread
 from .library.duplicates import same_work, surname
-from .library.images import BYTES, WEAK_SIDE, display_copy, kept_long, own_copy
+from .library.images import (
+    BYTES,
+    OWNED,
+    OWNED_SOURCE,
+    WEAK_SIDE,
+    display_copy,
+    kept_long,
+    own_copy,
+)
 from .library.likeness import Likeness
 from .library.models import Note, SharperCopy
 from .library.verdict import Place, against
@@ -785,6 +793,25 @@ class Sharper:
         its own or another copy; the look in the background leaves it be."""
         img = self.images.sample(display_copy(copy), urgent=True)
         return self._adopt(item, copy, img, chosen=True)
+
+    def bring(self, item: Item, data: bytes, origin: str = "") -> Item:
+        """A copy the owner brought for ``item``'s picture (a picture's
+        bytes: one bought in Alamy, a scan; Mateusz, 2026-11-12), kept for
+        good and shown in place of its own, as a copy he picked. ``origin``:
+        where it is from, as the card names it. Raises ValueError for what
+        is no picture."""
+        stored = self.library.get(item.id) or item
+        url, img = self.images.keep_owned(stored, data)
+        copy = Item(
+            id=f"{OWNED_SOURCE}:{url.removeprefix(OWNED)}",
+            source=OWNED_SOURCE,
+            source_id=url.removeprefix(OWNED),
+            title=stored.title,
+            artist=stored.artist,
+            museum=origin.strip()[:60] or "Własna kopia",
+            image_url=url,
+        )
+        return self._adopt(stored, copy, img, chosen=True)
 
     def keep_own(self, item: Item) -> Item:
         """Back to the work's own picture, as the owner asked: no copy is

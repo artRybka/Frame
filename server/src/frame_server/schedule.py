@@ -94,6 +94,10 @@ class FrameSettings(BaseModel):
     # switches "wikiart" and "ignore_term" went into it in 1.111.0; saved
     # settings that still carry them are read without them.)
     private_use: bool = False
+    # Konfiguracja → Źródła dzieł → "Kupowanie w Alamy": a work's "…" menu
+    # offers to look for it in Alamy (its personal licence, from £17) and to
+    # bring the bought file in as the work's picture (Mateusz 2026-11-12).
+    alamy: bool = False
     # Collections of everyone's pictures (Commons, Europeana, Openverse,
     # WikiArt) the owner turned off in Konfiguracja → Źródła dzieł: Szukaj
     # and the background don't ask them. Museums chosen in Szukaj still find

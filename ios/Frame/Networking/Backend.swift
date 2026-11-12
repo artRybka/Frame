@@ -64,6 +64,9 @@ protocol FrameBackend: Sendable {
     /// The owner's pick for the work's picture: a copy, or (the work's own
     /// id) its own picture again.
     func chooseCopy(itemID: String, copyID: String) async throws -> Item
+    /// A copy of the work's picture the owner brought (bought in Alamy, a
+    /// scan): kept for good and shown in its place, like a picked copy.
+    func bringCopy(itemID: String, filename: String, data: Data, origin: String) async throws -> Item
     /// One spot of the picture shown now and of the copy, at the frame's
     /// scale; the most detailed one without `x` and `y`.
     func copySpot(itemID: String, copyID: String, x: Double?, y: Double?) async throws -> CopySpot

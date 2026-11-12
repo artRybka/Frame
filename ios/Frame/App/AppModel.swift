@@ -1975,6 +1975,28 @@ final class AppModel {
         return updated
     }
 
+    /// A copy the owner brought for the work's picture (a file bought in
+    /// Alamy and downloaded to Pliki, a scan): its thumbnail and previews
+    /// follow at once, as for a picked copy.
+    func bringCopy(itemID: String, from url: URL, origin: String) async throws -> Item {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        let data = try Data(contentsOf: url)
+        let updated = try await backend.bringCopy(
+            itemID: itemID, filename: url.lastPathComponent, data: data, origin: origin
+        )
+        pictureSeen(itemID, copy: updated.sharper?.itemId ?? "", changed: true)
+        return updated
+    }
+
+    /// Alamy's search for the work: its artist and title (Kupowanie w Alamy).
+    static func alamySearch(_ item: Item) -> URL? {
+        let words = [item.artist, item.title].filter { !$0.isEmpty }.joined(separator: " ")
+        var parts = URLComponents(string: "https://www.alamy.com/search.html")
+        parts?.queryItems = [URLQueryItem(name: "qt", value: words)]
+        return parts?.url
+    }
+
     /// The work was seen showing `copy` ("" its own picture). When that is
     /// not the one it was seen with before (or `changed`), its thumbnail
     /// and previews kept from before are dropped: they showed the old

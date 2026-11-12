@@ -277,7 +277,7 @@ async def put_settings(settings: FrameSettings, svc: Svc, user: CurrentUser) -> 
 #: Settings of Konfiguracja and the frame's name: the owner's (Mateusz,
 #: 2026-10-31); a member changes the schedule, presentation and screen.
 OWNER_SETTINGS = frozenset(
-    {"name", "private_use", "sources_off", "timezone", "status_poll_minutes"}
+    {"name", "private_use", "alamy", "sources_off", "timezone", "status_poll_minutes"}
 )
 
 
