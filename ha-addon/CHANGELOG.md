@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.145.56
+
+- Pasek barw farbą olejną: tłusta plama na papierze pod farbą sięga
+  mniej więcej o połowę bliżej i jest słabsza.
+- Wypukłość farby olejnej jest spokojniejsza i zależy od dzieła: gładka
+  dla tempery, gotyku, renesansu, baroku i w ogóle dzieł sprzed 1800
+  roku, pośrednia dla pierwszej połowy XIX wieku, wyraźna od
+  impresjonistów, a gruba jak dotąd tam, gdzie muzeum podaje styl znany
+  z gęstej farby (postimpresjonizm, ekspresjonizm, fowizm). Aplikacja
+  czyta to ze stylu, techniki i roku dzieła, nie z samego obrazu.
+- Zakładka Teraz: barwy dzieła wracają jako wąski pasek (o połowę
+  niższy niż na karcie dzieła), malowany w technice dzieła.
+- Grafika i rysunek ze skalą walorów: blada barwa też jest odbijana jako
+  plama (zieleń w litografii „Kąpiące się” Cézanne'a była dotąd jednym z
+  szarych tonów).
+- Tylko aplikacja; serwer bez zmian.
+
 ## 1.145.55
 
 - Studium dzieła, analiza kompozycji: znaki analizy wyraźnie odcinają
