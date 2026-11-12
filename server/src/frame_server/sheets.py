@@ -9,7 +9,10 @@ which changes with the analysis, so a sheet is kept by the app for long.
 
 It is kept as its two layers, the stains and what the pen drew, which the
 app lays one on the other as each is "painted" and "drawn" before the
-reader, and whole, for apps from before that.
+reader, and whole, for apps from before that. The layers are kept twice:
+with the page's margin beside the field, where a stain runs out and a
+stroke goes on past the frame (Mateusz 2026-11-12 11:04), and cut back to
+the field, for the app that lays them in the frame.
 
 Making one takes seconds here and much longer on a small server, and the
 reader waited for it on an empty page (Mateusz 2026-11-12: "Po wejściu w
@@ -48,8 +51,16 @@ SHEET_DAYS = 60
 #: The picture a sheet is made from is at most this long: the sheet is no longer.
 SOURCE_SIDE = 2000
 #: What may be asked of a sheet, and the end of the file it is kept in:
-#: whole (apps from before the layers), the stains alone, the pen alone.
-LAYERS = {"": ".jpg", "wash": "-w.jpg", "pen": "-p.png"}
+#: whole (apps from before the layers), the stains alone, the pen alone
+#: (the field, for apps from before the margin), and those two with the
+#: margin beside the field (``sheet.BLEED``).
+LAYERS = {
+    "": ".jpg",
+    "wash": "-w.jpg",
+    "pen": "-p.png",
+    "wash-bleed": "-wb.jpg",
+    "pen-bleed": "-pb.png",
+}
 #: How long the background rests between two sheets made ahead, and before
 #: it looks again once all are made; a work whose picture could not be had
 #: is tried again after this long.
@@ -119,9 +130,11 @@ class Sheets:
         whole.alpha_composite(pen)
         self.dir.mkdir(parents=True, exist_ok=True)
         made = {
-            "": sheets.jpeg(whole.convert("RGB")),
-            "wash": sheets.jpeg(wash),
-            "pen": sheets.png(pen),
+            "": sheets.jpeg(sheets.field(whole.convert("RGB"))),
+            "wash": sheets.jpeg(sheets.field(wash)),
+            "pen": sheets.png(sheets.field(pen)),
+            "wash-bleed": sheets.jpeg(wash),
+            "pen-bleed": sheets.png(pen),
         }
         for layer, data in made.items():
             path = self.path(item, view, dark, layer)

@@ -1025,6 +1025,7 @@ actor DemoBackend: FrameBackend {
         // analysis and sheet under the wave's page.
         work.compositionSheet = DemoStudies.sheet(wave.id)
         work.compositionLayers = true
+        work.compositionBleed = DemoStudies.bleed
         if let first = work.composition?.views?.first {
             work.composition?.views?[0] = DemoStudies.sketched(first, id: wave.id)
         }
@@ -1899,14 +1900,15 @@ actor DemoBackend: FrameBackend {
         return out
     }
 
-    /// "/demo/sheet/<id>?v=1[&dark=1]&layer=wash|pen": a layer of a work's
-    /// study sheet, made by the server's renderer and bundled for the light
-    /// and the dark page (the stains, and what the pen drew over them).
+    /// "/demo/sheet/<id>?v=1[&dark=1]&layer=wash-bleed|pen-bleed": a layer
+    /// of a work's study sheet, made by the server's renderer and bundled
+    /// for the light and the dark page (the stains, and what the pen drew
+    /// over them), with the page's margin beside the field.
     private static func sheet(_ path: String) -> URL? {
         guard let parts = URLComponents(string: path) else { return nil }
         let id = String(parts.path.dropFirst("/demo/sheet/".count))
         let dark = parts.queryItems?.contains { $0.name == "dark" && $0.value == "1" } == true
-        let pen = parts.queryItems?.contains { $0.name == "layer" && $0.value == "pen" } == true
+        let pen = parts.queryItems?.contains { $0.name == "layer" && $0.value?.hasPrefix("pen") == true } == true
         return Bundle.main.url(
             forResource: DemoFraming.stem(id) + (pen ? "-pen" : "-wash") + (dark ? "-dark" : ""),
             withExtension: pen ? "png" : "jpg"

@@ -2220,6 +2220,12 @@ struct DailyWork: Codable, Hashable, Sendable {
     /// app lays down one after the other. Nil from servers before that:
     /// the whole sheet at once.
     var compositionLayers: Bool? = nil
+    /// The layers can be had with the page's margin beside the field too
+    /// ("&layer=wash-bleed", "&layer=pen-bleed"): wider than the field by
+    /// this much of its width on each side, where a stain runs out to the
+    /// screen's edge and a stroke goes on past the frame. Nil from servers
+    /// before that: the layers end at the frame.
+    var compositionBleed: Double? = nil
     /// Every analysis of the composition the page has had, oldest first,
     /// once the owner asked for one anew (else empty; nil from servers
     /// before 1.88).

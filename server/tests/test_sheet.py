@@ -183,14 +183,16 @@ def test_the_sheet_is_two_layers_and_the_pen_hatches_the_dark() -> None:
     (so the stains and the pen come apart), the pen "gdzieniegdzie …
     'szkicować'/kreskować ciemniejsze partie"."""
     stroke = ([(0.1, 0.2), (0.5, 0.25), (0.9, 0.2)], False, False)
-    wash, pen = sheets.layers(_dusk(), [stroke], seed=3)
+    wide_wash, wide_pen = sheets.layers(_dusk(), [stroke], seed=3)
+    # (each with the page's margin beside the field: see the test below)
+    wash, pen = sheets.field(wide_wash), sheets.field(wide_pen)
     assert wash.mode == "RGB" and pen.mode == "RGBA" and wash.size == pen.size == (1500, 1000)
     # One on the other they are the whole sheet.
     whole = wash.convert("RGBA")
     whole.alpha_composite(pen)
     assert whole.convert("RGB").tobytes() == sheets.render(_dusk(), [stroke], seed=3).tobytes()
     # The stains hold no pen: the same with a stroke and without.
-    assert sheets.layers(_dusk(), seed=3)[0].tobytes() == wash.tobytes()
+    assert sheets.layers(_dusk(), seed=3)[0].tobytes() == wide_wash.tobytes()
     drawn = np.asarray(pen)[..., 3] > 40
     assert drawn[190:250, 600:900].any()  # the stroke across the sky
     # Slanted lines over the shadow, with paper between them; none in the sky.
@@ -201,6 +203,57 @@ def test_the_sheet_is_two_layers_and_the_pen_hatches_the_dark() -> None:
     even = np.asarray(sheets.layers(Image.new("RGB", (600, 400), (150, 180, 220)), seed=3)[1])
     assert not even[..., 3].any()
     assert Image.open(io.BytesIO(sheets.png(pen))).mode == "RGBA"
+
+
+def test_a_stain_runs_out_and_a_stroke_goes_on_past_the_frame() -> None:
+    """Mateusz 2026-11-12 11:04: "plamy akwareli mogą w jednym czy max 2
+    miejscach wylewać się i sięgać krawędzi bocznej ekranu. podobnie kreska
+    rysunku - pojedyncza może wystawać poza kadr"."""
+    # Three strokes end at a side heading out of it, one ends inside.
+    strokes = [
+        ([(0.5, 0.2), (0.8, 0.22), (0.99, 0.25)], False, False),
+        ([(0.4, 0.5), (0.2, 0.52), (0.01, 0.5)], False, False),
+        ([(0.99, 0.8), (0.7, 0.8)], False, False),
+        ([(0.3, 0.3), (0.6, 0.35)], False, False),
+    ]
+    side = sheets.bleed(1500)
+    assert side == round(sheets.BLEED * 1500) > 100
+    page = np.array(sheets.PAGE[False], np.int16)
+    for seed in (1, 2, 3, 4, 5, 6):
+        wash, pen = sheets.layers(_crowd(), strokes, seed=seed)
+        assert wash.size == pen.size == (1500 + 2 * side, 1000)
+        assert sheets.field(wash).size == (1500, 1000)
+        # The stains beside the field: in one place or two, each reaching
+        # the layer's end (a phone's screen edge is nearer), the rest bare.
+        stained = np.abs(np.asarray(wash, np.int16) - page).max(axis=2) > 14
+        left, right = stained[:, : side - 4], stained[:, side + 1500 + 4 :]
+        runs = 0
+        for margin, end in ((left, 2), (right, side - 7)):
+            rows = margin.any(axis=1).astype(np.int8)
+            starts = int((np.diff(np.concatenate([[0], rows])) == 1).sum())
+            assert starts <= 2
+            runs += starts
+            if starts:
+                assert margin[:, end].any()  # as far as the layer goes
+            assert rows.mean() < 0.5  # a tongue, not the whole side
+        assert 1 <= runs <= 2
+        # The pen beside the field: one stroke only, on one side.
+        ink = np.asarray(pen)[..., 3] > 60
+        out_left, out_right = ink[:, : side - 6], ink[:, side + 1500 + 6 :]
+        assert out_left.any() != out_right.any()
+        beyond = out_left if out_left.any() else out_right
+        rows = np.flatnonzero(beyond.any(axis=1))
+        assert rows.max() - rows.min() < 120  # one stroke's end, not three
+    # What lies in the field does not depend on what runs out of it: the
+    # same sheet as an app from before the margin gets.
+    assert sheets.field(wash).size == sheets.render(_crowd(), strokes, seed=6).size
+    # No stroke at a side, none goes on; a field bare at its sides spills nothing.
+    calm = sheets.layers(_crowd(), [strokes[3]], seed=3)[1]
+    assert not np.asarray(calm)[:, : side - 6, 3].any()
+    assert not np.asarray(calm)[:, side + 1500 + 6 :, 3].any()
+    bare = np.zeros((1000, 1500), bool)
+    bare[:, 300:1200] = True
+    assert not sheets._spills(bare, side, np.random.default_rng(1)).any()
 
 
 def test_the_sheets_are_made_ahead_of_the_reader(tmp_path: Path) -> None:
@@ -223,7 +276,7 @@ def test_the_sheets_are_made_ahead_of_the_reader(tmp_path: Path) -> None:
         view = svc.sheets.view(item)
         assert view is not None
         for dark in (False, True):
-            for layer in ("", "wash", "pen"):
+            for layer in ("", "wash", "pen", "wash-bleed", "pen-bleed"):
                 assert svc.sheets.path(item, view, dark, layer).is_file()
         # A work whose picture cannot be had does not hold the others up.
         for kept in svc.sheets.dir.iterdir():
@@ -406,9 +459,10 @@ def test_the_app_gets_the_sheet_of_the_take_it_shows(tmp_path: Path) -> None:
         item = svc.library.get("met:1")
         assert item is not None
         view = svc.sheets.view(item)
-        # Each as it is whole, its stains and its pen.
-        assert view is not None and len(list(svc.sheets.dir.glob("*.jpg"))) == 4
-        assert len(list(svc.sheets.dir.glob("*.png"))) == 2
+        # Each as it is whole, its stains and its pen, and those two with
+        # the margin beside the field.
+        assert view is not None and len(list(svc.sheets.dir.glob("*.jpg"))) == 6
+        assert len(list(svc.sheets.dir.glob("*.png"))) == 4
         made = svc.sheets.path(item, view, False).stat().st_mtime_ns
         assert client.get(url).content == got.content
         assert svc.sheets.path(item, view, False).stat().st_size == len(got.content)
@@ -423,6 +477,16 @@ def test_the_app_gets_the_sheet_of_the_take_it_shows(tmp_path: Path) -> None:
         ink = Image.open(io.BytesIO(pen.content))
         assert ink.mode == "RGBA" and ink.size == light.size
         assert client.get(url + "&layer=other").status_code == 422
+        # The app that lets the sheet run out of its frame asks for them
+        # with the page's margin beside the field (Mateusz 2026-11-12 11:04).
+        assert work["composition_bleed"] == sheets.BLEED
+        wider = (light.size[0] + 2 * sheets.bleed(light.size[0]), light.size[1])
+        out = client.get(url + "&layer=wash-bleed")
+        assert out.headers["content-type"] == "image/jpeg"
+        assert Image.open(io.BytesIO(out.content)).size == wider
+        out = client.get(url + "&layer=pen-bleed&dark=1")
+        assert out.headers["content-type"] == "image/png"
+        assert Image.open(io.BytesIO(out.content)).size == wider
         # Another sketch or field is another sheet at another address.
         sketched = view.model_copy(update={"sketch": pen_strokes(SKETCH, (900, 600))})
         assert Sheets.key(sketched) != Sheets.key(view)

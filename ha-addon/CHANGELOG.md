@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.50
+## 1.145.51
 
 - Karta dzieła, „Kolorystyka”: zamiast płaskiego paska z procentami jest
   pasek barw w technice dzieła, ten sam co w Studium („Kolor i światło”):
@@ -22,6 +22,15 @@
   biały czepek w ciemnym wnętrzu), jest teraz wśród barw obrazu jako
   akcent. Po aktualizacji serwer raz przelicza barwy biblioteki (na NAS
   1 do 2 godzin); szukanie po kolorze działa bez zmian.
+
+## 1.145.50
+
+- Studium dzieła, analiza kompozycji: arkusz nie kończy się równo na
+  kadrze. W jednym albo dwóch miejscach plama akwareli wylewa się poza
+  kadr i sięga bocznej krawędzi ekranu, a jedna kreska piórka, która
+  kończy się przy boku, biegnie dalej poza kadr. Po aktualizacji serwer
+  robi arkusze od nowa, w tle.
+
 ## 1.145.49
 
 - Studium dzieła, analiza kompozycji: akwarela wchodzi płynnie, po całym
