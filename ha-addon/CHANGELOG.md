@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.48
+
+- Odkrywaj, kafelek studium dnia: obraz jest ostry, bo zamiast małej
+  miniatury rozciągniętej na szerokość ekranu wchodzi na nią oryginał
+  dzieła (ten sam, który potem otwiera strona studium, więc ta pokazuje
+  go od razu). Kafelek ma też efekty kart „Pod lupą”: jaśniejszy obraz
+  (HDR) u góry, rozbłysk przesuwający się z obrotem telefonu i całą
+  kartę lekko uniesioną nad stronę, z cieniem.
+
 ## 1.145.47
 
 - Studium dzieła, analiza kompozycji: arkusz jest gotowy, zanim otworzysz
