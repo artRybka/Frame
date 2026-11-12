@@ -69,6 +69,10 @@ GROUPS = (
 )
 
 
+#: Techniques of works on paper: a theme of them shows them on its cover.
+PAPER_TECHNIQUES = frozenset({"technique:print", "technique:drawing", "technique:poster"})
+
+
 @dataclass(frozen=True)
 class Theme:
     key: str
@@ -103,6 +107,18 @@ class Theme:
             colors=list(self.colors),
             kinds=[ItemKind.ARTWORK],
         )
+
+    def on_paper(self) -> bool:
+        """A theme of prints, drawings or posters (its group "Grafika i
+        plakat", or techniques of paper and not painting among its terms):
+        its cover shows them. Every other theme's cover shows paintings
+        where it has them (Mateusz 2026-11-12: "na okładce wolałbym
+        malarstwo. Chyba że dana propozycja dotyczy właśnie grafiki czy
+        rysunku")."""
+        if self.group == "Grafika i plakat":
+            return True
+        techniques = {t for t in self.terms if t.startswith("technique:")}
+        return bool(techniques & PAPER_TECHNIQUES) and "technique:painting" not in techniques
 
     def searches(self) -> list[tuple[str, str]]:
         """Museum searches to browse the theme by; none for themes of

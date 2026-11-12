@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.145.46
+
+- Odkrywaj, okładki kart: ryciny i rysunki na kafelkach są przybliżone
+  do samej pracy. Serwer rozpoznaje papier, karton passe-partout albo tło
+  fotografa wokół dzieła (jedna jasna, równa barwa przy krawędzi) i
+  kafelek pokazuje tylko to, co na nim narysowane lub odbite, z wąskim
+  oddechem papieru. Akwaforta Goi na szerokim arkuszu nie wygląda już
+  jak błąd. Karta dzieła, przeglądarka i ramka dalej pokazują cały
+  arkusz.
+- Odkrywaj, okładki kart: serwer wybiera na okładkę najpierw obrazy
+  (malarstwo), nawet gdy w propozycji przeważają ryciny i rysunki; w
+  środku propozycji nic się nie zmienia. Karty o grafice lub rysunku
+  (grupa „Grafika i plakat”, propozycje z techniką ryciny, rysunku albo
+  plakatu bez malarstwa) mają na okładce swoje ryciny i rysunki jak
+  dotąd. Tak samo wybierana jest okładka „Motywu dnia”.
+
 ## 1.145.45
 
 - Studium dzieła, „Kolor i światło”: ryciny, rysunki, grafiki i plakaty

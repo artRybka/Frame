@@ -20,6 +20,7 @@ from PIL import Image
 from ..fsutil import dir_bytes, own_files
 from ..imaging.layout import load_image
 from ..imaging.margins import trim_margins
+from ..imaging.mount import inside_mount
 from .aic import aic_fallback
 from .fragments import PART, split_part
 from .hosts import HostGuard, Resting, guard, is_urgent, urgently, walled
@@ -401,7 +402,11 @@ class ImageCache:
     def __init__(self, root: Path, http: Callable[[], httpx.Client]) -> None:
         self.thumbs = root / "thumbs"
         self.images = root / "images"
+        #: Thumbnails as the cover tiles show them (:meth:`tile`), by the
+        #: thumbnail's name; never without their thumbnail.
+        self.tiles = root / "tiles"
         self.thumbs.mkdir(parents=True, exist_ok=True)
+        self.tiles.mkdir(parents=True, exist_ok=True)
         self.images.mkdir(parents=True, exist_ok=True)
         self.http = http
         #: Sources whose originals need more than a plain download (by source).
@@ -471,6 +476,29 @@ class ImageCache:
 
     def image_path(self, item: Item) -> Path:
         return self.images / f"{item.file_stem}.jpg"
+
+    def tile(self, thumb: Path) -> Path:
+        """The thumbnail ``thumb`` as a cover tile shows it: the work
+        without the paper, mount or backdrop around it
+        (:func:`~frame_server.imaging.mount.inside_mount`; Goya's etchings
+        were a small plate on a wide sheet in the tiles of Odkrywaj,
+        Mateusz 2026-11-12). Worked out again when the thumbnail is newer
+        (another copy); a work with nothing around it gets its thumbnail's
+        copy, so the next ask is a file read too."""
+        path = self.tiles / thumb.name
+        with contextlib.suppress(OSError):
+            if path.stat().st_mtime >= thumb.stat().st_mtime:
+                return path
+        with Image.open(thumb) as img:
+            img.load()
+            cut = inside_mount(img)
+            tmp = path.with_name(f"{path.stem}.{threading.get_ident()}.tmp")
+            if cut is img:
+                tmp.write_bytes(thumb.read_bytes())
+            else:
+                cut.convert("RGB").save(tmp, "JPEG", quality=85)
+        os.replace(tmp, path)
+        return path
 
     def _gate(self, host: str) -> HostGate:
         with self._guard:
@@ -1089,10 +1117,12 @@ class ImageCache:
         )
         for path in others[spare:]:
             path.unlink(missing_ok=True)
+            (self.tiles / path.name).unlink(missing_ok=True)
         return max(len(others) - spare, 0)
 
     def remove(self, item: Item) -> None:
         self.thumb_path(item).unlink(missing_ok=True)
+        (self.tiles / self.thumb_path(item).name).unlink(missing_ok=True)
         self.image_path(item).unlink(missing_ok=True)
         with self._guard:
             self._sizes.pop(item.id, None)

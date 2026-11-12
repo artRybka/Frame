@@ -3,6 +3,9 @@ import Foundation
 /// A picture the UI wants to display.
 enum ImageRef: Hashable, Sendable {
     case thumb(String)  // library item id
+    /// The thumbnail cut to the work inside its paper or mount, for the
+    /// small cover tiles (an older server sends the whole thumbnail).
+    case tile(String)
     case image(String)  // display-size original
     /// The display-size original from a sharper copy (`Item.sharper`);
     /// `version` (the copy's id) keeps it apart from the one before.

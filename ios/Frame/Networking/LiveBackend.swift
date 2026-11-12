@@ -806,6 +806,8 @@ struct LiveBackend: FrameBackend {
         var req: URLRequest
         switch image {
         case let .thumb(id): req = request("/api/library/items/\(escape(id))/thumb")
+        case let .tile(id):
+            req = request("/api/library/items/\(escape(id))/thumb", query: [URLQueryItem(name: "tile", value: "true")])
         case let .image(id): req = request("/api/library/items/\(escape(id))/image")
         case let .original(id, version):
             req = request("/api/library/items/\(escape(id))/image", query: [URLQueryItem(name: "v", value: version)])
