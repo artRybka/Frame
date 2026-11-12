@@ -721,6 +721,16 @@ class ImageCache:
             known = self._sizes.get(item.id)
         return None if known is None else (known[0], known[1])
 
+    def long_side(self, item: Item) -> int | None:
+        """The long side of the picture ``item`` is shown from, when it is
+        known: :func:`said_side`, else the original's as downloaded
+        (:meth:`known_size`); never a thumbnail's. The mark of a small
+        picture (``low_res``) and the order by quality read it."""
+        side = said_side(item)
+        if side is None and (size := self.known_size(item)) is not None and min(size) > 0:
+            side = max(size)
+        return side
+
     def source_size(self, item: Item) -> tuple[int, int, int] | None:
         """The original as its source gave it: (width, height, bytes; 0 when
         not known), for one downloaded here; None when it is not here."""

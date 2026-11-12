@@ -8,8 +8,9 @@ or one its source says; else the original's as it was downloaded,
 600 px): a work of a source that says none has no mark until its original
 is here, and the works of playlists and Ulubione have theirs.
 
-The sizes downloaded are told here once (:func:`known_sizes`) for every
-list of works to mark them without asking.
+How long a picture is is told here once (:func:`known_sizes`:
+``ImageCache.long_side``) for every list of works to mark them without
+asking.
 """
 
 from __future__ import annotations
@@ -24,16 +25,16 @@ from .models import Item, ItemKind
 #: panel from close by (de Chirico's on WikiArt are under 1000 px).
 LOW_SIDE = 1600
 
-Sizes = Callable[[Item], tuple[int, int] | None]
+Sides = Callable[[Item], int | None]
 
-_sizes: Sizes | None = None
+_sides: Sides | None = None
 
 
-def known_sizes(sizes: Sizes | None) -> None:
-    """Where the originals' sizes as downloaded are read
-    (``ImageCache.known_size``); None forgets it."""
-    global _sizes
-    _sizes = sizes
+def known_sizes(sides: Sides | None) -> None:
+    """Where a picture's long side is read (``ImageCache.long_side``); None
+    forgets it (then only :func:`~.images.said_side` counts)."""
+    global _sides
+    _sides = sides
 
 
 def low_side(item: Item, size: tuple[int, int] | None = None) -> int:
@@ -44,9 +45,8 @@ def low_side(item: Item, size: tuple[int, int] | None = None) -> int:
     if item.kind != ItemKind.ARTWORK or item.part_of or item.source in OWN_SOURCES:
         return 0
     side = said_side(item)
-    if side is None:
-        if size is None and _sizes is not None:
-            size = _sizes(item)
-        if size is not None and size[0] > 0 and size[1] > 0:
-            side = max(size)
+    if side is None and size is not None and min(size) > 0:
+        side = max(size)
+    if side is None and _sides is not None:
+        side = _sides(item)
     return side if side is not None and 0 < side < LOW_SIDE else 0

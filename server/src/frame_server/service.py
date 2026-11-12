@@ -226,7 +226,7 @@ class FrameService:
         self.images = ImageCache(settings.data_dir / "library", museum_client)
         self.images.mirrors["europeana"] = europeana_mirrors
         # Tiles and cards mark a picture small for the frame by its size.
-        low_res.known_sizes(self.images.known_size)
+        low_res.known_sizes(self.images.long_side)
         self.images.mirrors["loc"] = loc_mirrors
         # The Courtauld's CMYK scans come white as JPEG: asked again as PNG.
         self.images.repairs[courtauld.HOST] = courtauld.repair

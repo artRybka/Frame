@@ -4,11 +4,14 @@ tiles and on its card (Mateusz 2026-11-12), by a size that is known only."""
 from __future__ import annotations
 
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
+from PIL import Image
 
-from frame_server.library import Item, ItemKind, low_res
+from frame_server.library import ImageCache, Item, ItemKind, low_res
 from frame_server.library.models import ItemSummary, SharperCopy
 
 
@@ -37,9 +40,9 @@ def test_a_thumbnails_size_is_none() -> None:
     # The Met says no size: what it has is its thumbnail's 600 px.
     met = _work("met:1", width=600, height=480)
     assert low_res.low_side(met) == 0
-    low_res.known_sizes(lambda item: (1200, 900) if item.id == "met:1" else None)
+    low_res.known_sizes(lambda item: 1200 if item.id == "met:1" else None)
     assert low_res.low_side(met) == 1200
-    low_res.known_sizes(lambda item: (3800, 3000))
+    low_res.known_sizes(lambda item: 3800)
     assert low_res.low_side(met) == 0
 
 
@@ -65,3 +68,14 @@ def test_only_museum_works() -> None:
 def test_tiles_carry_it() -> None:
     assert ItemSummary.of(_work("wikiart:6", width=760, height=950)).low_side == 950
     assert ItemSummary.of(_work("wikiart:7", width=2000, height=2500)).low_side == 0
+
+
+def test_the_long_side_known_here(tmp_path: Path) -> None:
+    images = ImageCache(tmp_path, lambda: httpx.Client())
+    met = _work("met:9", width=600, height=480)
+    assert images.long_side(met) is None  # a thumbnail's size is none
+    assert images.long_side(_work("wikiart:9", width=760, height=950)) == 950
+    images._remember_size(met, Image.new("RGB", (1300, 1000)))
+    assert images.long_side(met) == 1300
+    low_res.known_sizes(images.long_side)
+    assert low_res.low_side(met) == 1300
