@@ -23,7 +23,7 @@ from frame_server.ai.composition import MAX_DRAWN, compose, draft, question
 from frame_server.ai.daily import CHECK_ROUND, ROUND, TAKE, Box, Spot, _view
 from frame_server.ai.pen import strokes as pen_strokes
 from frame_server.ai.redraw import KIND as PEN
-from frame_server.ai.redraw import PenJob, redrawn
+from frame_server.ai.redraw import PenJob, redrawn, wants
 from frame_server.ai.sketch import draw, grid_fits, measure
 from frame_server.ai.study import KIND as STUDY
 from frame_server.imaging import sheet as sheets
@@ -550,13 +550,136 @@ def test_at_most_five_marks_and_a_sketch_of_some_strokes(service: FrameService) 
     found = draft({"composition": {"views": [view]}}, params)
     assert found is not None and len(found.view.marks) == MAX_DRAWN == 5
     # The pen: fractions of the picture, whatever size it was sent at; too few strokes are none.
-    drawn = pen_strokes(SKETCH, (900, 600))
+    # (On a blank picture nothing can be measured: the strokes stay as drawn.)
+    blank = Image.new("RGB", (900, 600), "white")
+    drawn = pen_strokes(SKETCH, blank)
     assert drawn is not None and len(drawn) == 4
     assert (drawn[1].points[1].x, drawn[1].points[1].y) == (1.0, 0.5) and drawn[1].sharp
-    assert pen_strokes({"szkic": SKETCH["szkic"][:2]}, (900, 600)) is None
-    assert pen_strokes(None, (900, 600)) is None
-    big = pen_strokes(SKETCH, (1800, 1200))  # sent at 1024 × 683: its pixels are of that
-    assert big is not None and round(big[1].points[1].x, 2) == round(900 / 1024, 2)
+    assert pen_strokes({"szkic": SKETCH["szkic"][:2]}, blank) is None
+    assert pen_strokes(None, blank) is None
+    # (sent at 1568 × 1045: its pixels are of that)
+    big = pen_strokes(SKETCH, Image.new("RGB", (1800, 1200), "white"))
+    assert big is not None and round(big[1].points[1].x, 2) == round(900 / 1568, 2)
+
+
+def _ship(size: tuple[int, int] = (900, 600)) -> Image.Image:
+    """A dark hull with a mast and a sail on a pale sea under a pale sky."""
+    img = Image.new("RGB", size, (205, 210, 215))
+    canvas = ImageDraw.Draw(img)
+    canvas.rectangle((0, 400, size[0], size[1]), fill=(150, 165, 175))  # the sea
+    canvas.polygon([(300, 330), (620, 330), (580, 420), (340, 420)], fill=(70, 50, 40))
+    canvas.rectangle((452, 120, 460, 330), fill=(60, 45, 35))  # the mast
+    canvas.ellipse((480, 150, 600, 300), fill=(240, 230, 200))  # the sail
+    return img
+
+
+def _circle(cx: float, cy: float, rx: float, ry: float, n: int = 10) -> list[dict[str, float]]:
+    turn = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    return [{"x": cx + rx * float(np.cos(t)), "y": cy + ry * float(np.sin(t))} for t in turn]
+
+
+def test_a_stroke_is_laid_on_the_pictures_own_edge() -> None:
+    """Mateusz 2026-11-12 14:50, of the pen's drawing: "Może być oczywiście
+    schematyczna, ale teraz nieraz jest chaotyczna"."""
+    from frame_server.ai.daily import MAX_STROKE_POINTS
+    from frame_server.imaging import trace
+
+    rgb = np.asarray(_ship())
+    w, h = 900.0, 600.0
+
+    def line(*spots: tuple[float, float]) -> list[tuple[float, float]]:
+        return [(x / w, y / h) for x, y in spots]
+
+    sail = [(p["x"] / w, p["y"] / h) for p in _circle(548, 232, 60, 75)]  # 8 px beside it
+    hull = line((290, 322), (630, 322), (590, 428), (330, 428))  # 8 to 10 px outside it
+    mast = line((449, 110), (451, 340))
+    sky = line((60, 60), (300, 90), (520, 40), (840, 110))  # along nothing
+    sea = line((40, 520), (860, 540))  # along nothing
+    again = line((296, 326), (624, 326))  # the hull's top once more
+    lines: list[trace.Line] = [
+        (sail, False, True),
+        (hull, True, True),
+        (mast, True, False),
+        (sky, False, False),
+        (sea, True, False),
+        (again, True, False),
+    ]
+    laid = trace.follow(rgb, lines)
+    round_sail, box, pole, *lost = laid
+    assert lost == [None, None, None]
+    assert round_sail is not None and box is not None and pole is not None
+    # The sail's stroke runs on the sail's rim, all the way round, and stays closed.
+    rim = np.array(round_sail[0]) * [w, h]
+    off = np.hypot((rim[:, 0] - 540) / 60, (rim[:, 1] - 225) / 75) - 1
+    assert round_sail[2] and len(rim) >= 6 and float(np.abs(off).max()) < 0.06
+    # The hull keeps its four straight sides, now on the hull's corners.
+    corners = np.array(box[0]) * [w, h]
+    assert box[1] and box[2] and len(corners) == 4
+    true = np.array([(300, 330), (620, 330), (580, 420), (340, 420)], float)
+    assert float(np.abs(corners - true).max()) < 4
+    # A straight stroke stays straight and upright, on one side of the mast.
+    top, foot = np.array(pole[0]) * [w, h]
+    assert len(pole[0]) == 2 and abs(top[0] - foot[0]) < 2 and 450 <= top[0] <= 462
+    # No stroke is put down in more points than a page keeps.
+    assert trace.POINTS <= MAX_STROKE_POINTS
+
+
+def test_the_pen_draws_the_subject_and_little_else() -> None:
+    """Mateusz 2026-11-12 14:50: "Najlepiej gdyby rysunek był dokładny tam
+    gdzie dzieło tego wymaga (temat, postać, istotny fragment) a pominięty
+    lub bardzo ogólny w reszcie dzieła"."""
+    ship = _ship()
+    w, h = 900, 600  # (as the pen sees it: it fits whole)
+
+    def stroke(what: str, spots: Any, **more: Any) -> dict[str, Any]:
+        return {
+            "co": what,
+            "points": _points(*spots) if isinstance(spots, tuple) else spots,
+            **more,
+        }
+
+    answer = {
+        "temat": "statek na morzu",
+        "szkic": [
+            stroke("brzeg morza", ((0, 404), (900, 404)), temat=False, ostra=True),
+            stroke("żagiel", _circle(548, 232, 60, 75), temat=True, zamknieta=True),
+            stroke(
+                "kadłub",
+                ((290, 322), (630, 322), (590, 428), (330, 428)),
+                temat=True,
+                ostra=True,
+                zamknieta=True,
+            ),
+            stroke("maszt", ((449, 110), (451, 340)), temat=True, ostra=True),
+            stroke("chmura", ((60, 60), (300, 90), (520, 40), (840, 110)), temat=False),
+            *[
+                stroke(f"fala {n}", ((40, 440 + 20 * n), (860, 450 + 20 * n)), temat=False)
+                for n in range(6)
+            ],
+        ],
+    }
+    drawn = pen_strokes(answer, ship)
+    assert drawn is not None
+    # The subject first, in the pen's order; the strokes along nothing are gone.
+    assert [(s.closed, s.sharp) for s in drawn] == [
+        (True, False),
+        (True, True),
+        (False, True),
+        (False, True),
+    ]
+    shore = drawn[-1].points
+    assert all(abs(p.y * h - 400) < 3 for p in shore) and shore[-1].x * w > 800
+    # Of what is not the subject only a few strokes are kept at all.
+    crowded = {**answer, "szkic": answer["szkic"][1:4] + answer["szkic"][:1] * 9}
+    blank = Image.new("RGB", (w, h), "white")  # (nothing measured: all that is kept is seen)
+    kept = pen_strokes(crowded, blank)
+    assert kept is not None and len(kept) == 3 + pen.MAX_GENERAL
+    # The pen is told what the analysis points at, and sees the picture larger.
+    asked = pen.question(Image.new("RGB", (3000, 2000)), ["Statek", "Łódź", "Statek", " "])
+    said = asked["messages"][0]["content"][-1]["text"]
+    assert "OBRAZ: 1568 × 1045 px" in said and said.endswith("ANALIZA WSKAZUJE: Statek; Łódź")
+    assert "ANALIZA" not in pen.question(ship)["messages"][0]["content"][-1]["text"]
+    assert "temat" in asked["output_config"]["format"]["schema"]["properties"]
 
 
 def test_the_app_gets_the_sheet_of_the_take_it_shows(tmp_path: Path) -> None:
@@ -607,7 +730,8 @@ def test_the_app_gets_the_sheet_of_the_take_it_shows(tmp_path: Path) -> None:
         assert out.headers["content-type"] == "image/png"
         assert Image.open(io.BytesIO(out.content)).size == wider
         # Another sketch or field is another sheet at another address.
-        sketched = view.model_copy(update={"sketch": pen_strokes(SKETCH, (900, 600))})
+        blank = Image.new("RGB", (900, 600), "white")
+        sketched = view.model_copy(update={"sketch": pen_strokes(SKETCH, blank)})
         assert Sheets.key(sketched) != Sheets.key(view)
         assert Sheets.key(
             view.model_copy(update={"field": Box(x=0.1, y=0.1, w=0.8, h=0.6)})
@@ -674,10 +798,14 @@ def test_sketches_of_an_earlier_pen_are_drawn_again_at_night(service: FrameServi
     # The versions a page keeps of the same field get it too; an answer
     # with no sketch leaves the one there was and is not asked again.
     kept = {**page.data, "composition_versions": [{"composition": page.data["composition"]}]}
-    strokes = pen_strokes(SKETCH, (900, 600))
+    strokes = pen_strokes(SKETCH, Image.new("RGB", (900, 600), "white"))
     assert strokes is not None
     again = redrawn({**kept, pen.PEN_KEY: 1}, strokes[:3] + strokes[:1])
     assert len(page_views(again)[0].sketch) == 4
     assert again["composition_versions"][0]["composition"] == again["composition"]
     left = redrawn({**kept, pen.PEN_KEY: 1}, None)
     assert left["composition"] == kept["composition"] and left[pen.PEN_KEY] == pen.ROUND
+    # The pages of the pen before this one wait for the owner's word (the
+    # redrawing costs): only the first pen's, which he said yes to, are asked.
+    assert wants(page.model_copy(update={"data": {**page.data, pen.PEN_KEY: 1}}))
+    assert not wants(page.model_copy(update={"data": {**page.data, pen.PEN_KEY: 2}}))
