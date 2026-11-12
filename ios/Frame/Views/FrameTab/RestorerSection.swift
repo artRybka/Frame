@@ -12,14 +12,15 @@ struct RestorerSection: View {
     @State private var ordering = false
 
     var body: some View {
-        Group {
+        // A stack, not a Group: a Group with nothing in it runs no task, and
+        // the section waited for its numbers for ever.
+        VStack(alignment: .leading, spacing: 16) {
             if let state {
-                VStack(alignment: .leading, spacing: 16) {
-                    SectionHeader(title: "Kreatywny restaurator", subtitle: "Ulubione w niskiej rozdzielczości")
-                    Card { content(state) }
-                }
+                SectionHeader(title: "Kreatywny restaurator", subtitle: "Ulubione w niskiej rozdzielczości")
+                Card { content(state) }
             }
         }
+        .frame(maxWidth: .infinity, minHeight: 1, alignment: .leading)
         .task {
             // Batches come back while Konfiguracja is open.
             while !Task.isCancelled {
