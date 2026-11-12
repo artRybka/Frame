@@ -1,4 +1,4 @@
-"""The picture in a dozen strokes of a pen: a step of the composition's
+"""The picture in some twenty strokes of a pen: a step of the composition's
 analysis, by Sonnet.
 
 The sheet the analysis is drawn on (``imaging.sheet``) is the picture's
@@ -10,6 +10,16 @@ strokes that mean nothing (2026-11-11), and the dense pencil sketch before
 them looked to the owner "jak kiepski komiks". So a model that sees what
 the picture shows draws them. Opus and Sonnet drew alike on three trial
 pictures (stand-ins, one run each), so the cheaper one does it.
+
+On his phone the owner found the dozen strokes of the first pen a little
+too few and too loose (Mateusz 2026-11-12 09:47: "Rysowane ołówkiem
+'kontury' mogłyby być trochę dokładniejsze, może być ich też trochę
+więcej. Gdzieniegdzie mogą też 'szkicować'/kreskować ciemniejsze partie").
+So this pen (:data:`ROUND` 2) draws 14 to 22, with more points where a
+contour bends, and thinks a little longer over where they lie. The
+hatching of the dark parts is not asked of it: it is measured from the
+picture (``imaging.sheet.hatching``), so every sheet has it at once. The
+sketches drawn before are drawn again at night (``ai.redraw``).
 
 A sheet without them is the stains alone: the step may fail.
 """
@@ -27,9 +37,14 @@ from .daily import MAX_STROKES, Stroke, _dicts, _list, _object, _str, _stroke, i
 SIDE = 1024
 #: Fewer strokes than this say nothing of a picture.
 MIN_STROKES = 4
+#: Which pen drew a page's sketch (kept in the page under :data:`PEN_KEY`;
+#: 1, the first one, when it says nothing).
+ROUND = 2
+PEN_KEY = "pen_round"
 
 SYSTEM = """Rysujesz piórkiem schematyczny szkic jednego obrazu, taki, jaki malarz robi na kartce \
-przed analizą kompozycji: kilkanaście pewnych kresek, po których od razu widać, co gdzie jest. \
+przed analizą kompozycji: około dwudziestu pewnych kresek, po których od razu widać, co gdzie \
+jest. To synteza, nie rysunek konturowy całego obrazu. \
 Barwne plamy akwareli pod szkicem powstają osobno. Ty dajesz samą kreskę.
 
 JAK TO BĘDZIE NARYSOWANE
@@ -42,20 +57,24 @@ CO RYSUJESZ
 - Najpierw największe formy, które niosą obraz: sylwetka głównej postaci albo bryły (jedna kreska \
 na jeden bok sylwetki: ramię i plecy, linia sukni, grzbiet zwierzęcia), głowa jako zamknięty \
 owal, linia horyzontu, krawędź stołu, pień, kalenica dachu, brzeg wody.
-- Potem to, bez czego układu nie da się odczytać: druga i trzecia postać w największym skrócie, \
-najważniejsze otwory i sprzęty, granica światła i cienia, jeśli dzieli obraz.
-- 9–16 kresek. Kreska ma 2–10 punktów. Krótsza niż jedna dwunasta dłuższego boku obrazu powstaje \
-tylko jako zamknięty mały kształt (głowa, owoc, słońce).
+- Potem to, bez czego układu nie da się odczytać: druga i trzecia postać w skrócie, najważniejsze \
+otwory i sprzęty, granica światła i cienia, jeśli dzieli obraz, brzeg dużej ciemnej partii.
+- Na końcu kilka kresek tego, co formy osadza w przestrzeni: linia ściany albo podłogi, pasmo \
+wzgórz, brzeg chmury, rama okna, drugi bok sylwetki, której dałeś dotąd jeden.
+- 14–22 kreski. Kreska ma 3–14 punktów (prosta: 2). Krótsza niż jedna dwunasta dłuższego boku \
+obrazu powstaje tylko jako zamknięty mały kształt (głowa, owoc, słońce).
 
 CZEGO NIE RYSUJESZ
 Szczegółów: oczu, ust, palców, fałd, liści, cegieł, wzoru tkaniny. Nie cieniujesz, nie \
-kreskujesz, nie obrysowujesz każdej plamy koloru. Nie rysujesz ramy obrazu. Jedna forma dostaje \
-jedną kreskę, najwyżej dwie.
+kreskujesz (ciemne partie kreskuje się osobno), nie obrysowujesz każdej plamy koloru. Nie \
+rysujesz ramy obrazu. Jedna forma dostaje jedną kreskę, duża najwyżej trzy.
 
 DOKŁADNOŚĆ
 Punkty leżą dokładnie na konturze albo osi formy, w pikselach obrazu, który dostajesz (wymiary w \
-danych: OBRAZ), od lewego górnego rogu: x w prawo, y w dół. Na łuku stawiaj punkty gęściej, na \
-prostej wystarczą dwa. Dla każdej kreski podaj w "co" nazwę tego, po czym biegnie (2–5 słów).
+danych: OBRAZ), od lewego górnego rogu: x w prawo, y w dół. Zanim podasz punkt, sprawdź go na \
+obrazie: ma leżeć na samej krawędzi formy, nie obok niej, a kreska ma się zaczynać i kończyć tam, \
+gdzie forma. Na łuku stawiaj punkty gęsto (co każde wyraźne ugięcie konturu), na prostej wystarczą \
+dwa. Dla każdej kreski podaj w "co" nazwę tego, po czym biegnie (2–5 słów).
 
 ODPOWIEDŹ: "szkic": lista kresek, każda: "co", "points" (lista {"x", "y"}), "ostra", "zamknieta"."""
 
@@ -83,8 +102,8 @@ def question(img: Image.Image) -> dict[str, Any]:
         system=SYSTEM,
         content=[image_block(small), {"type": "text", "text": text}],
         schema=SCHEMA,
-        max_tokens=6000,
-        effort="low",
+        max_tokens=9000,
+        effort="medium",
     )
 
 

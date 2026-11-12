@@ -2038,6 +2038,17 @@ struct DailyWork: Codable, Hashable, Sendable {
         var text: String
     }
 
+    /// One stroke of the pen sketch on a take's study sheet: a line through
+    /// its points (fractions of the take's field), bent smoothly or, when
+    /// `sharp`, straight from point to point; `closed` back to its start.
+    /// The server draws it into the sheet; the app follows it to lay the
+    /// pen's layer down as if drawn before the reader (`SheetLayers`).
+    struct Stroke: Codable, Hashable, Sendable {
+        var points: [Spot]
+        var sharp: Bool? = nil
+        var closed: Bool? = nil
+    }
+
     /// The take on the composition ("Analiza kompozycji"; older servers sent
     /// "Geometria" and "Geometria detali"): its marks and a grid under them
     /// ("none", "golden", "thirds", "halves", "3x2", "2x3").
@@ -2046,6 +2057,8 @@ struct DailyWork: Codable, Hashable, Sendable {
         var grid: String
         var text: String
         var marks: [Mark]
+        /// The sheet's pen sketch (nil from servers before the sheet).
+        var sketch: [Stroke]? = nil
         /// The picture's own field on a reproduction with margins (a print
         /// on its paper): the sheet shows only it, the grid divides it. The
         /// marks stay fractions of the whole reproduction. Nil: the whole
@@ -2202,6 +2215,11 @@ struct DailyWork: Codable, Hashable, Sendable {
     /// them, on the page's colour ("&dark=1" for the dark page). Nil or
     /// empty from servers before the sheet: the marks go on the picture.
     var compositionSheet: String? = nil
+    /// The sheet can be had as its two layers too ("&layer=wash", the
+    /// stains; "&layer=pen", what the pen drew, clear around it), which the
+    /// app lays down one after the other. Nil from servers before that:
+    /// the whole sheet at once.
+    var compositionLayers: Bool? = nil
     /// Every analysis of the composition the page has had, oldest first,
     /// once the owner asked for one anew (else empty; nil from servers
     /// before 1.88).

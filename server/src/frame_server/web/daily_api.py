@@ -38,6 +38,7 @@ from ..later import entry_key
 from ..library import Item
 from ..library.markup import strip_markup
 from ..service import FrameService
+from ..sheets import LAYERS
 from ..sizes import RealSize
 from .deps import require_owner, require_token, service
 from .library_api import RemoteItem, remote_items
@@ -114,6 +115,10 @@ class DailyWork(BaseModel):
     #: /api/composition/sheet``; the app adds ``&dark=1`` for its dark
     #: page): the picture as stains and a few strokes of a pen.
     composition_sheet: str = ""
+    #: The sheet may be asked for as its two layers too (``&layer=wash``,
+    #: ``&layer=pen``), which the app lays down one after the other, as if
+    #: painted and drawn before the reader.
+    composition_layers: bool = False
     #: Every analysis the page has had, oldest first, once the owner asked
     #: for one anew (else empty).
     composition_versions: list[CompositionVersion] = []
@@ -305,6 +310,7 @@ def page(
         composition_sheet=sheet_url(svc, item, essay.composition.views[0])
         if essay and essay.composition.views
         else "",
+        composition_layers=bool(essay and essay.composition.views),
         composition_versions=[
             CompositionVersion(made=str(v.get("made") or ""), shown=n == pick)
             for n, v in enumerate(kept)
@@ -384,20 +390,27 @@ async def daily_detail(
 
 
 @router.get("/composition/sheet")
-async def composition_sheet(svc: Svc, item: str, v: str = "", dark: bool = False) -> FileResponse:
+async def composition_sheet(
+    svc: Svc, item: str, v: str = "", dark: bool = False, layer: str = ""
+) -> FileResponse:
     """The study sheet the work's analysis of composition is drawn on
     (``imaging.sheet``): the picture as stains and a few strokes of a pen,
-    on the app's light page or its dark one. Made when first asked for
-    (seconds), then kept; ``v`` names the take it belongs to."""
+    on the app's light page or its dark one; ``layer``: the stains alone
+    (``wash``) or the pen alone (``pen``, a PNG with nothing around the
+    lines). Made ahead (``Sheets.ahead``), now when asked for before its
+    turn (seconds), then kept; ``v`` names the take it belongs to."""
+    if layer not in LAYERS:
+        raise HTTPException(422, "no such layer")
     work = svc.library.get(item)
     view = await run_in_threadpool(svc.sheets.view, work, v) if work is not None else None
     if work is None or view is None:
         raise HTTPException(404, "no such analysis")
     try:
-        path = await run_in_threadpool(svc.sheets.sheet, work, view, dark)
+        path = await run_in_threadpool(svc.sheets.sheet, work, view, dark, layer)
     except (httpx.HTTPError, OSError) as err:  # the picture cannot be had
         raise HTTPException(503, "the picture cannot be had now") from err
-    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=604800"})
+    kind = "image/png" if path.suffix == ".png" else "image/jpeg"
+    return FileResponse(path, media_type=kind, headers={"Cache-Control": "max-age=604800"})
 
 
 @router.post("/daily/again", response_model=DailyBrief, dependencies=[Depends(require_owner)])

@@ -2,9 +2,9 @@ import Foundation
 
 /// The demo's analyses of the composition for a few more of its bundled
 /// works, drawn on study sheets made by the server's own renderer
-/// (Resources/DemoImages/<stem>-sheet.jpg and -sheet-dark.jpg): what the
-/// sheet looks like on a wide picture, a tall print in its margins and a
-/// dark one. CI screenshots open one with `-demoStudy <name>`; the demo's
+/// in its two layers (Resources/DemoImages/<stem>-wash.jpg and -pen.png,
+/// "-dark" for the dark page): what the sheet looks like on a wide picture,
+/// a tall print in its margins and a dark one. CI screenshots open one with `-demoStudy <name>`; the demo's
 /// own study stays the wave.
 enum DemoStudies {
     struct Study: Sendable {
@@ -13,8 +13,16 @@ enum DemoStudies {
         let take: DailyWork.Take
     }
 
-    /// Server-style path of a demo work's sheet (the app adds "&dark=1").
+    /// Server-style path of a demo work's sheet (the app adds "&dark=1"
+    /// and "&layer=wash" or "&layer=pen").
     static func sheet(_ id: String) -> String { "/demo/sheet/\(id)?v=1" }
+
+    /// The take with the strokes its sheet's pen was drawn along.
+    static func sketched(_ take: DailyWork.Take, id: String) -> DailyWork.Take {
+        var take = take
+        take.sketch = sketches[id]
+        return take
+    }
 
     /// The study asked for at launch (`-demoStudy bedroom`), if any.
     static var asked: Study? {
@@ -23,6 +31,82 @@ enum DemoStudies {
 
     private typealias Spot = DailyWork.Spot
     private typealias Mark = DailyWork.Mark
+    private typealias Stroke = DailyWork.Stroke
+
+    /// The pen strokes of the demo's sheets, as fractions of each work's
+    /// field (the ones the bundled pen layers were drawn along).
+    static let sketches: [String: [DailyWork.Stroke]] = [
+        "aic:24645": [
+            Stroke(points: [Spot(x: 0.01, y: 0.37), Spot(x: 0.1, y: 0.3), Spot(x: 0.2, y: 0.19), Spot(x: 0.28, y: 0.125), Spot(x: 0.38, y: 0.115), Spot(x: 0.45, y: 0.16), Spot(x: 0.5, y: 0.22), Spot(x: 0.56, y: 0.31), Spot(x: 0.575, y: 0.41)]),
+            Stroke(points: [Spot(x: 0.42, y: 0.19), Spot(x: 0.37, y: 0.3), Spot(x: 0.36, y: 0.42), Spot(x: 0.4, y: 0.55), Spot(x: 0.465, y: 0.67)]),
+            Stroke(points: [Spot(x: 0.03, y: 0.62), Spot(x: 0.15, y: 0.6), Spot(x: 0.27, y: 0.6), Spot(x: 0.34, y: 0.57), Spot(x: 0.4, y: 0.65), Spot(x: 0.5, y: 0.74), Spot(x: 0.62, y: 0.8), Spot(x: 0.75, y: 0.83)]),
+            Stroke(points: [Spot(x: 0.99, y: 0.42), Spot(x: 0.92, y: 0.5), Spot(x: 0.85, y: 0.58), Spot(x: 0.78, y: 0.64), Spot(x: 0.7, y: 0.7), Spot(x: 0.6, y: 0.73)]),
+            Stroke(points: [Spot(x: 0.585, y: 0.725), Spot(x: 0.615, y: 0.675), Spot(x: 0.632, y: 0.655), Spot(x: 0.652, y: 0.678), Spot(x: 0.69, y: 0.725)], sharp: true),
+            Stroke(points: [Spot(x: 0.47, y: 0.7), Spot(x: 0.56, y: 0.725)]),
+            Stroke(points: [Spot(x: 0.69, y: 0.722), Spot(x: 0.78, y: 0.69)]),
+            Stroke(points: [Spot(x: 0.04, y: 0.5), Spot(x: 0.1, y: 0.6), Spot(x: 0.18, y: 0.7), Spot(x: 0.24, y: 0.71)]),
+            Stroke(points: [Spot(x: 0.55, y: 0.725), Spot(x: 0.6, y: 0.757), Spot(x: 0.68, y: 0.76), Spot(x: 0.73, y: 0.735)]),
+            Stroke(points: [Spot(x: 0.44, y: 0.84), Spot(x: 0.52, y: 0.9), Spot(x: 0.62, y: 0.93), Spot(x: 0.72, y: 0.935)]),
+            Stroke(points: [Spot(x: 0.02, y: 0.88), Spot(x: 0.08, y: 0.83), Spot(x: 0.16, y: 0.8), Spot(x: 0.24, y: 0.83), Spot(x: 0.3, y: 0.9)]),
+            Stroke(points: [Spot(x: 0.058, y: 0.09), Spot(x: 0.097, y: 0.09), Spot(x: 0.097, y: 0.3), Spot(x: 0.058, y: 0.3)], sharp: true, closed: true),
+            Stroke(points: [Spot(x: 0.72, y: 0.95), Spot(x: 0.82, y: 0.86), Spot(x: 0.92, y: 0.78), Spot(x: 0.99, y: 0.72)]),
+        ],
+        "aic:28560": [
+            Stroke(points: [Spot(x: 0.595, y: 0.335), Spot(x: 0.65, y: 0.31), Spot(x: 0.75, y: 0.295), Spot(x: 0.85, y: 0.3), Spot(x: 0.915, y: 0.315), Spot(x: 0.935, y: 0.77), Spot(x: 0.615, y: 0.845)], sharp: true, closed: true),
+            Stroke(points: [Spot(x: 0.48, y: 0.5), Spot(x: 0.48, y: 0.27), Spot(x: 0.53, y: 0.255), Spot(x: 0.6, y: 0.255), Spot(x: 0.685, y: 0.265), Spot(x: 0.69, y: 0.31)], sharp: true),
+            Stroke(points: [Spot(x: 0.49, y: 0.5), Spot(x: 0.535, y: 0.64), Spot(x: 0.6, y: 0.83)]),
+            Stroke(points: [Spot(x: 0.52, y: 0.4), Spot(x: 0.585, y: 0.385), Spot(x: 0.6, y: 0.47), Spot(x: 0.595, y: 0.56), Spot(x: 0.54, y: 0.555), Spot(x: 0.51, y: 0.48)], closed: true),
+            Stroke(points: [Spot(x: 0.5, y: 0.31), Spot(x: 0.56, y: 0.285), Spot(x: 0.66, y: 0.3), Spot(x: 0.6, y: 0.35), Spot(x: 0.52, y: 0.37)], closed: true),
+            Stroke(points: [Spot(x: 0.0, y: 0.44), Spot(x: 0.07, y: 0.4), Spot(x: 0.085, y: 0.56)], sharp: true),
+            Stroke(points: [Spot(x: 0.03, y: 0.61), Spot(x: 0.1, y: 0.555), Spot(x: 0.16, y: 0.6), Spot(x: 0.14, y: 0.675), Spot(x: 0.05, y: 0.675)], closed: true),
+            Stroke(points: [Spot(x: 0.03, y: 0.66), Spot(x: 0.02, y: 0.81)]),
+            Stroke(points: [Spot(x: 0.14, y: 0.68), Spot(x: 0.145, y: 0.85)]),
+            Stroke(points: [Spot(x: 0.36, y: 0.33), Spot(x: 0.41, y: 0.305), Spot(x: 0.415, y: 0.41)], sharp: true),
+            Stroke(points: [Spot(x: 0.37, y: 0.44), Spot(x: 0.42, y: 0.405), Spot(x: 0.475, y: 0.43), Spot(x: 0.46, y: 0.475), Spot(x: 0.385, y: 0.475)], closed: true),
+            Stroke(points: [Spot(x: 0.43, y: 0.47), Spot(x: 0.435, y: 0.575)]),
+            Stroke(points: [Spot(x: 0.15, y: 0.36), Spot(x: 0.3, y: 0.335), Spot(x: 0.36, y: 0.385), Spot(x: 0.21, y: 0.42)], sharp: true, closed: true),
+            Stroke(points: [Spot(x: 0.21, y: 0.42), Spot(x: 0.21, y: 0.61)]),
+            Stroke(points: [Spot(x: 0.325, y: 0.39), Spot(x: 0.33, y: 0.585)]),
+            Stroke(points: [Spot(x: 0.235, y: 0.0), Spot(x: 0.385, y: 0.0), Spot(x: 0.385, y: 0.275), Spot(x: 0.245, y: 0.29)], sharp: true, closed: true),
+            Stroke(points: [Spot(x: 0.13, y: 0.545), Spot(x: 0.2, y: 0.49), Spot(x: 0.36, y: 0.48), Spot(x: 0.475, y: 0.475)], sharp: true),
+            Stroke(points: [Spot(x: 0.6, y: 0.99), Spot(x: 0.5, y: 0.72), Spot(x: 0.44, y: 0.5)]),
+        ],
+        "cma:103244": [
+            Stroke(points: [Spot(x: 0.004, y: 0.701), Spot(x: 0.226, y: 0.642), Spot(x: 0.503, y: 0.588), Spot(x: 0.78, y: 0.55), Spot(x: 0.996, y: 0.534)]),
+            Stroke(points: [Spot(x: 0.004, y: 0.819), Spot(x: 0.226, y: 0.76), Spot(x: 0.503, y: 0.701), Spot(x: 0.78, y: 0.658), Spot(x: 0.996, y: 0.631)]),
+            Stroke(points: [Spot(x: 0.281, y: 0.819), Spot(x: 0.292, y: 0.958)]),
+            Stroke(points: [Spot(x: 0.492, y: 0.733), Spot(x: 0.503, y: 0.969)]),
+            Stroke(points: [Spot(x: 0.769, y: 0.679), Spot(x: 0.791, y: 0.958)]),
+            Stroke(points: [Spot(x: 0.94, y: 0.658), Spot(x: 0.957, y: 0.947)]),
+            Stroke(points: [Spot(x: 0.503, y: 0.819), Spot(x: 0.636, y: 0.744), Spot(x: 0.769, y: 0.819)], sharp: true),
+            Stroke(points: [Spot(x: 0.06, y: 0.862), Spot(x: 0.171, y: 0.808), Spot(x: 0.281, y: 0.872)], sharp: true),
+            Stroke(points: [Spot(x: 0.004, y: 0.261), Spot(x: 0.115, y: 0.245), Spot(x: 0.281, y: 0.266), Spot(x: 0.447, y: 0.282), Spot(x: 0.636, y: 0.314), Spot(x: 0.835, y: 0.33), Spot(x: 0.996, y: 0.347)]),
+            Stroke(points: [Spot(x: 0.004, y: 0.341), Spot(x: 0.281, y: 0.363), Spot(x: 0.447, y: 0.379), Spot(x: 0.636, y: 0.389), Spot(x: 0.835, y: 0.422), Spot(x: 0.996, y: 0.438)]),
+            Stroke(points: [Spot(x: 0.06, y: 0.516), Spot(x: 0.281, y: 0.529), Spot(x: 0.492, y: 0.543)]),
+            Stroke(points: [Spot(x: 0.182, y: 0.663), Spot(x: 0.22, y: 0.647), Spot(x: 0.254, y: 0.668), Spot(x: 0.281, y: 0.733), Spot(x: 0.226, y: 0.744), Spot(x: 0.198, y: 0.711)], closed: true),
+            Stroke(points: [Spot(x: 0.364, y: 0.62), Spot(x: 0.403, y: 0.609), Spot(x: 0.431, y: 0.636), Spot(x: 0.425, y: 0.695), Spot(x: 0.386, y: 0.695)], closed: true),
+            Stroke(points: [Spot(x: 0.553, y: 0.572), Spot(x: 0.614, y: 0.561), Spot(x: 0.652, y: 0.577), Spot(x: 0.636, y: 0.652), Spot(x: 0.564, y: 0.652)], closed: true),
+            Stroke(points: [Spot(x: 0.697, y: 0.561), Spot(x: 0.746, y: 0.545), Spot(x: 0.774, y: 0.567), Spot(x: 0.741, y: 0.626), Spot(x: 0.702, y: 0.62)], closed: true),
+            Stroke(points: [Spot(x: 0.885, y: 0.025), Spot(x: 0.951, y: 0.025), Spot(x: 0.951, y: 0.205), Spot(x: 0.885, y: 0.205)], sharp: true, closed: true),
+            Stroke(points: [Spot(x: 0.047, y: 0.803), Spot(x: 0.102, y: 0.803), Spot(x: 0.102, y: 0.945), Spot(x: 0.047, y: 0.945)], sharp: true, closed: true),
+        ],
+        "aic:61128": [
+            Stroke(points: [Spot(x: 0.0, y: 0.47), Spot(x: 0.2, y: 0.62), Spot(x: 0.42, y: 0.8), Spot(x: 0.62, y: 0.985)]),
+            Stroke(points: [Spot(x: 0.14, y: 0.555), Spot(x: 0.24, y: 0.5), Spot(x: 0.33, y: 0.535), Spot(x: 0.31, y: 0.65), Spot(x: 0.245, y: 0.67)], sharp: true, closed: true),
+            Stroke(points: [Spot(x: 0.215, y: 0.19), Spot(x: 0.26, y: 0.175), Spot(x: 0.3, y: 0.21), Spot(x: 0.33, y: 0.33), Spot(x: 0.33, y: 0.47), Spot(x: 0.25, y: 0.52), Spot(x: 0.14, y: 0.555), Spot(x: 0.105, y: 0.42), Spot(x: 0.13, y: 0.3), Spot(x: 0.2, y: 0.27)], closed: true),
+            Stroke(points: [Spot(x: 0.41, y: 0.345), Spot(x: 0.45, y: 0.285), Spot(x: 0.51, y: 0.3), Spot(x: 0.52, y: 0.36), Spot(x: 0.6, y: 0.43), Spot(x: 0.565, y: 0.52), Spot(x: 0.49, y: 0.63), Spot(x: 0.36, y: 0.6), Spot(x: 0.31, y: 0.52), Spot(x: 0.33, y: 0.44)], closed: true),
+            Stroke(points: [Spot(x: 0.575, y: 0.24), Spot(x: 0.655, y: 0.24), Spot(x: 0.665, y: 0.3), Spot(x: 0.565, y: 0.305)], sharp: true, closed: true),
+            Stroke(points: [Spot(x: 0.6, y: 0.31), Spot(x: 0.66, y: 0.35), Spot(x: 0.74, y: 0.4), Spot(x: 0.765, y: 0.52), Spot(x: 0.68, y: 0.6), Spot(x: 0.6, y: 0.57)]),
+            Stroke(points: [Spot(x: 0.505, y: 0.205), Spot(x: 0.565, y: 0.205), Spot(x: 0.572, y: 0.265), Spot(x: 0.5, y: 0.27)], sharp: true, closed: true),
+            Stroke(points: [Spot(x: 0.4, y: 0.06), Spot(x: 0.435, y: 0.05), Spot(x: 0.44, y: 0.1), Spot(x: 0.475, y: 0.17), Spot(x: 0.47, y: 0.27), Spot(x: 0.425, y: 0.27), Spot(x: 0.41, y: 0.16)], closed: true),
+            Stroke(points: [Spot(x: 0.595, y: 0.09), Spot(x: 0.63, y: 0.06), Spot(x: 0.665, y: 0.09), Spot(x: 0.7, y: 0.17), Spot(x: 0.71, y: 0.32), Spot(x: 0.64, y: 0.31), Spot(x: 0.6, y: 0.2)], closed: true),
+            Stroke(points: [Spot(x: 0.735, y: 0.09), Spot(x: 0.76, y: 0.075), Spot(x: 0.785, y: 0.1), Spot(x: 0.82, y: 0.16), Spot(x: 0.83, y: 0.33), Spot(x: 0.845, y: 0.42), Spot(x: 0.735, y: 0.43), Spot(x: 0.73, y: 0.25)], closed: true),
+            Stroke(points: [Spot(x: 0.885, y: 0.3), Spot(x: 0.94, y: 0.275), Spot(x: 0.995, y: 0.31), Spot(x: 0.995, y: 0.5), Spot(x: 0.955, y: 0.555), Spot(x: 0.9, y: 0.52), Spot(x: 0.875, y: 0.4)], closed: true),
+            Stroke(points: [Spot(x: 0.71, y: 0.75), Spot(x: 0.74, y: 0.62), Spot(x: 0.8, y: 0.55), Spot(x: 0.9, y: 0.55), Spot(x: 0.995, y: 0.57)]),
+            Stroke(points: [Spot(x: 0.47, y: 0.85), Spot(x: 0.5, y: 0.62), Spot(x: 0.56, y: 0.565), Spot(x: 0.64, y: 0.6), Spot(x: 0.665, y: 0.72)]),
+            Stroke(points: [Spot(x: 0.135, y: 0.0), Spot(x: 0.135, y: 0.27)]),
+        ],
+    ]
 
     static let named: [String: Study] = [
         "bedroom": Study(

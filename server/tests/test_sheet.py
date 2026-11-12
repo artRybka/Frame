@@ -1,6 +1,6 @@
 """The study sheet an analysis of composition is drawn on: the picture as
-stains and a few strokes of a pen on the app's page (light and dark), made
-when first asked for and kept; the picture's own field on a reproduction
+stains and a few strokes of a pen on the app's page (light and dark), whole
+and as its two layers, made ahead and kept; the picture's own field on a reproduction
 with margins; a colour that returns marked as an echo; at most five marks."""
 
 from __future__ import annotations
@@ -15,11 +15,15 @@ from PIL import Image, ImageDraw
 from test_composition import ANALYSIS_V6, SKETCH, _drawn, _old_page, _pipeline, _points
 from test_daily import _app, _catalogue
 
+from frame_server.ai import AiConfigUpdate, pen
 from frame_server.ai.check import SYSTEM as CHECK_SYSTEM
-from frame_server.ai.client import Answer
+from frame_server.ai.check import page_views
+from frame_server.ai.client import SONNET, Answer
 from frame_server.ai.composition import MAX_DRAWN, compose, draft, question
-from frame_server.ai.daily import TAKE, Box, Spot, _view
+from frame_server.ai.daily import CHECK_ROUND, ROUND, TAKE, Box, Spot, _view
 from frame_server.ai.pen import strokes as pen_strokes
+from frame_server.ai.redraw import KIND as PEN
+from frame_server.ai.redraw import PenJob, redrawn
 from frame_server.ai.sketch import draw, grid_fits, measure
 from frame_server.ai.study import KIND as STUDY
 from frame_server.imaging import sheet as sheets
@@ -95,8 +99,10 @@ def test_where_little_happens_the_wash_is_general_and_leaves_the_page() -> None:
     # paint still lies around what happens (the house).
     light = sheets.render(_scene(), seed=3)
     left = _bare(light)
-    assert 0.1 < left.mean() <= sheets.BARE_MOST + 0.04
-    assert left[60:200, 1150:1450].mean() > 0.9  # the far sky
+    # (Less of it on the light page, where white chalk has to show: Mateusz
+    # 2026-11-12 09:47, "akwarelowe tło mogłoby być trochę ciemniejsze".)
+    assert 0.1 < left.mean() <= sheets.BARE_MOST_LIGHT + 0.04
+    assert left[40:140, 1300:1480].mean() > 0.9  # the far sky
     assert not left[330:780, 430:860].any()  # the house and what is round it
     night = _bare(sheets.render(_scene(), dark=True, seed=3), dark=True)
     assert 0.05 < night.mean() <= sheets.BARE_MOST + 0.04
@@ -155,6 +161,72 @@ def test_the_pen_draws_over_the_stains() -> None:
     assert night[changed].mean() > light.mean()
     # A dot is no stroke, and none at all is no trouble.
     assert sheets.render(_scene(), [([(0.5, 0.5)], False, False)], seed=3).size == (1500, 1000)
+
+
+def _dusk(size: tuple[int, int] = (600, 400)) -> Image.Image:
+    """The scene with a deep shadow across its foot."""
+    img = _scene(size)
+    ImageDraw.Draw(img).rectangle((0, size[1] * 0.72, size[0] * 0.7, size[1]), fill=(28, 34, 30))
+    return img
+
+
+def test_the_sheet_is_two_layers_and_the_pen_hatches_the_dark() -> None:
+    """Mateusz 2026-11-12 09:47: the sheet "malować / rysować się na żywo"
+    (so the stains and the pen come apart), the pen "gdzieniegdzie …
+    'szkicować'/kreskować ciemniejsze partie"."""
+    stroke = ([(0.1, 0.2), (0.5, 0.25), (0.9, 0.2)], False, False)
+    wash, pen = sheets.layers(_dusk(), [stroke], seed=3)
+    assert wash.mode == "RGB" and pen.mode == "RGBA" and wash.size == pen.size == (1500, 1000)
+    # One on the other they are the whole sheet.
+    whole = wash.convert("RGBA")
+    whole.alpha_composite(pen)
+    assert whole.convert("RGB").tobytes() == sheets.render(_dusk(), [stroke], seed=3).tobytes()
+    # The stains hold no pen: the same with a stroke and without.
+    assert sheets.layers(_dusk(), seed=3)[0].tobytes() == wash.tobytes()
+    drawn = np.asarray(pen)[..., 3] > 40
+    assert drawn[190:250, 600:900].any()  # the stroke across the sky
+    # Slanted lines over the shadow, with paper between them; none in the sky.
+    shadow = drawn[760:960, 100:900]
+    assert 0.03 < shadow.mean() < 0.4
+    assert not drawn[40:180, 100:1400].any() and not drawn[260:340, 100:1400].any()
+    # A picture with no part darker than the rest gets none.
+    even = np.asarray(sheets.layers(Image.new("RGB", (600, 400), (150, 180, 220)), seed=3)[1])
+    assert not even[..., 3].any()
+    assert Image.open(io.BytesIO(sheets.png(pen))).mode == "RGBA"
+
+
+def test_the_sheets_are_made_ahead_of_the_reader(tmp_path: Path) -> None:
+    """Mateusz 2026-11-12 09:47: "Po wejściu w studium sporo czasu czekam aż
+    pojawi się obraz analizy kompozycji"."""
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    with TestClient(app):
+        _catalogue(svc)
+        assert svc.sheets.wanting() == [] and svc.sheets.ahead() is False
+        _old_page(svc)
+        item = svc.library.get("met:1")
+        assert item is not None
+        assert [(i.id, dark) for i, _, dark in svc.sheets.wanting()] == [
+            ("met:1", False),
+            ("met:1", True),
+        ]
+        assert svc.sheets.ahead() is True and svc.sheets.ahead() is True
+        assert svc.sheets.wanting() == [] and svc.sheets.ahead() is False
+        view = svc.sheets.view(item)
+        assert view is not None
+        for dark in (False, True):
+            for layer in ("", "wash", "pen"):
+                assert svc.sheets.path(item, view, dark, layer).is_file()
+        # A work whose picture cannot be had does not hold the others up.
+        for kept in svc.sheets.dir.iterdir():
+            kept.unlink()
+
+        def gone(item: Any, urgent: bool = False) -> Any:
+            raise OSError("no picture")
+
+        svc.images.picture = gone  # type: ignore[method-assign]
+        assert svc.sheets.ahead() is True  # tried
+        assert svc.sheets.wanting() == [] and svc.sheets.ahead() is False
 
 
 def test_an_echo_is_rings_and_a_broken_line() -> None:
@@ -326,11 +398,23 @@ def test_the_app_gets_the_sheet_of_the_take_it_shows(tmp_path: Path) -> None:
         item = svc.library.get("met:1")
         assert item is not None
         view = svc.sheets.view(item)
-        assert view is not None and len(list(svc.sheets.dir.glob("*.jpg"))) == 2
+        # Each as it is whole, its stains and its pen.
+        assert view is not None and len(list(svc.sheets.dir.glob("*.jpg"))) == 4
+        assert len(list(svc.sheets.dir.glob("*.png"))) == 2
         made = svc.sheets.path(item, view, False).stat().st_mtime_ns
         assert client.get(url).content == got.content
         assert svc.sheets.path(item, view, False).stat().st_size == len(got.content)
         assert made <= svc.sheets.path(item, view, False).stat().st_mtime_ns
+        # The app that draws the sheet before the reader asks for its two
+        # layers: the stains with no pen, the pen with nothing round it.
+        assert work["composition_layers"] is True
+        wash = client.get(url + "&layer=wash")
+        assert wash.headers["content-type"] == "image/jpeg" and wash.content != got.content
+        pen = client.get(url + "&layer=pen")
+        assert pen.headers["content-type"] == "image/png"
+        ink = Image.open(io.BytesIO(pen.content))
+        assert ink.mode == "RGBA" and ink.size == light.size
+        assert client.get(url + "&layer=other").status_code == 422
         # Another sketch or field is another sheet at another address.
         sketched = view.model_copy(update={"sketch": pen_strokes(SKETCH, (900, 600))})
         assert Sheets.key(sketched) != Sheets.key(view)
@@ -342,3 +426,67 @@ def test_the_app_gets_the_sheet_of_the_take_it_shows(tmp_path: Path) -> None:
         assert client.get("/api/composition/sheet?item=met%3A2").status_code == 404
         assert client.get("/api/composition/sheet?item=nothing%3A1").status_code == 404
     assert STUDY
+
+
+def test_sketches_of_an_earlier_pen_are_drawn_again_at_night(service: FrameService) -> None:
+    """Mateusz 2026-11-12 09:47: the pen's contours "trochę dokładniejsze,
+    może być ich też trochę więcej", in the studies there are too; 08:15,
+    of work nobody waits for: "w pakiecie? Tzn wolniej ale taniej?"."""
+    from test_ai import GOOD_KEY, FakeAnthropic
+    from test_ordered_later import _batched
+
+    _catalogue(service)
+    fake = FakeAnthropic(GOOD_KEY)
+    _batched(fake)
+    # (In fractions: the catalogue's test picture is a few pixels.)
+    fake.answer = {
+        "szkic": [
+            {**s, "points": [{"x": p["x"] / 1024, "y": p["y"] / 683} for p in s["points"]]}
+            for s in SKETCH["szkic"]
+        ]
+    }
+    service.claude.factory = lambda key: fake
+    service.ai_config.set_key(GOOD_KEY)
+    service.ai_config.update(
+        AiConfigUpdate(keywords_artworks=False, keywords_photos=False, pl_text=False)
+    )
+    job = service.ai.jobs[PEN]
+    assert isinstance(job, PenJob) and job.night and job.model == SONNET
+    # A page whose whole analysis is about to be made again gets the new pen with it.
+    _old_page(service, **{CHECK_ROUND: ROUND - 1})
+    item = service.library.get("met:1")
+    assert item is not None and not job.wanted(item)
+    # One that has its analysis: its sketch alone, at night, never at once.
+    _old_page(service, **{CHECK_ROUND: ROUND})
+    service.compose.forget()
+    job._pages = (0.0, set())
+    assert job.wanted(item) and not job.in_library(item)
+    assert service.ai.need_now("met:1", PEN).result(timeout=1) is None
+    assert service.ai.order_night() == 1 and not fake.asked
+    (requests,) = fake.batches.values()
+    asked = requests[0]["params"]
+    assert asked["model"] == SONNET and asked["system"][0]["text"] == pen.SYSTEM
+    assert service.ai.order_night() == 0  # already in a batch
+    fake.ended = True
+    assert service.ai.poll_batches() == 1
+    page = service.library.note("met:1", STUDY)
+    assert page is not None and page.data[pen.PEN_KEY] == pen.ROUND
+    shown = page_views(page.data)[0]
+    assert len(shown.sketch) == 4 and shown.sketch[1].sharp
+    assert [m.title for m in shown.marks]  # the analysis itself is as it was
+    assert not job.wanted(item) and service.ai.order_night() == 0
+    # Another sketch is another sheet, made ahead like any.
+    assert [(i.id, dark) for i, _, dark in service.sheets.wanting()] == [
+        ("met:1", False),
+        ("met:1", True),
+    ]
+    # The versions a page keeps of the same field get it too; an answer
+    # with no sketch leaves the one there was and is not asked again.
+    kept = {**page.data, "composition_versions": [{"composition": page.data["composition"]}]}
+    strokes = pen_strokes(SKETCH, (900, 600))
+    assert strokes is not None
+    again = redrawn({**kept, pen.PEN_KEY: 1}, strokes[:3] + strokes[:1])
+    assert len(page_views(again)[0].sketch) == 4
+    assert again["composition_versions"][0]["composition"] == again["composition"]
+    left = redrawn({**kept, pen.PEN_KEY: 1}, None)
+    assert left["composition"] == kept["composition"] and left[pen.PEN_KEY] == pen.ROUND
