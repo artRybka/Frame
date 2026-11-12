@@ -6,8 +6,6 @@ with margins; a colour that returns marked as an echo; at most five marks."""
 from __future__ import annotations
 
 import io
-import itertools
-import json
 from pathlib import Path
 from typing import Any
 
@@ -147,8 +145,7 @@ def test_neighbouring_stains_make_no_dark_band_and_alike_ones_are_one() -> None:
     _piece, colours = sheets.masses(np.asarray(_halves()), seed=3)
     assert len(colours) - 1 == 2
     for seed in (1, 2, 3):
-        # (the stains alone: the pen draws a line along the seam)
-        sheet = np.asarray(sheets.render(_halves(), seed=seed, lines=[]), np.float32)
+        sheet = np.asarray(sheets.render(_halves(), seed=seed), np.float32)
         rows = sheet[:, 150:1350].sum(axis=2).mean(axis=1) / 3
         blue, red = rows[300:400].mean(), rows[560:660].mean()
         # Across the seam the rows go from the one stain's tone to the
@@ -158,32 +155,20 @@ def test_neighbouring_stains_make_no_dark_band_and_alike_ones_are_one() -> None:
         assert rows[470:530].max() < max(blue, red) + 25
 
 
-def _given(strokes: Any) -> list[sheets.PenLine]:
-    """These strokes as the lines the pen draws (not the picture's own
-    contours, which it draws when it is not told what to)."""
-    return [(points, sharp, closed, 1.0) for points, sharp, closed in strokes]
-
-
 def test_the_pen_draws_over_the_stains() -> None:
-    plain = np.asarray(sheets.render(_scene(), seed=3, lines=[]), np.int32)
+    plain = np.asarray(sheets.render(_scene(), seed=3), np.int32)
     stroke = ([(0.1, 0.2), (0.5, 0.25), (0.9, 0.2)], False, False)
     frame = ([(0.3, 0.35), (0.55, 0.35), (0.55, 0.7), (0.3, 0.7)], True, True)
-    pen = _given([stroke, frame])
-    drawn = np.asarray(sheets.render(_scene(), seed=3, lines=pen), np.int32)
+    drawn = np.asarray(sheets.render(_scene(), [stroke, frame], seed=3), np.int32)
     changed = np.abs(drawn - plain).sum(axis=2) > 60
     assert 0.002 < changed.mean() < 0.03  # a few strokes, not a hatching
     assert changed[300:420, 600:900].any()  # the first stroke, across the sky
     # In the ink of the page it lies on.
     light = drawn[changed].mean(axis=0)
-    night = np.asarray(sheets.render(_scene(), dark=True, seed=3, lines=pen), np.int32)
+    night = np.asarray(sheets.render(_scene(), [stroke, frame], dark=True, seed=3), np.int32)
     assert night[changed].mean() > light.mean()
-    # A lighter line is a thinner one.
-    fine = [(points, sharp, closed, 0.0) for points, sharp, closed, _ in pen]
-    thin = np.asarray(sheets.render(_scene(), seed=3, lines=fine), np.int32)
-    assert 0 < (np.abs(thin - plain).sum(axis=2) > 60).sum() < 0.8 * changed.sum()
     # A dot is no stroke, and none at all is no trouble.
-    dot = _given([([(0.5, 0.5)], False, False)])
-    assert sheets.render(_scene(), seed=3, lines=dot).size == (1500, 1000)
+    assert sheets.render(_scene(), [([(0.5, 0.5)], False, False)], seed=3).size == (1500, 1000)
 
 
 def _dusk(size: tuple[int, int] = (600, 400)) -> Image.Image:
@@ -198,15 +183,14 @@ def test_the_sheet_is_two_layers_and_the_pen_hatches_the_dark() -> None:
     (so the stains and the pen come apart), the pen "gdzieniegdzie …
     'szkicować'/kreskować ciemniejsze partie"."""
     stroke = ([(0.1, 0.2), (0.5, 0.25), (0.9, 0.2)], False, False)
-    wide_wash, wide_pen = sheets.layers(_dusk(), seed=3, lines=_given([stroke]))
+    wide_wash, wide_pen = sheets.layers(_dusk(), [stroke], seed=3)
     # (each with the page's margin beside the field: see the test below)
     wash, pen = sheets.field(wide_wash), sheets.field(wide_pen)
     assert wash.mode == "RGB" and pen.mode == "RGBA" and wash.size == pen.size == (1500, 1000)
     # One on the other they are the whole sheet.
     whole = wash.convert("RGBA")
     whole.alpha_composite(pen)
-    again = sheets.render(_dusk(), seed=3, lines=_given([stroke]))
-    assert whole.convert("RGB").tobytes() == again.tobytes()
+    assert whole.convert("RGB").tobytes() == sheets.render(_dusk(), [stroke], seed=3).tobytes()
     # The stains hold no pen: the same with a stroke and without.
     assert sheets.layers(_dusk(), seed=3)[0].tobytes() == wide_wash.tobytes()
     drawn = np.asarray(pen)[..., 3] > 40
@@ -640,72 +624,6 @@ def test_a_stroke_is_laid_on_the_pictures_own_edge() -> None:
     assert trace.POINTS <= MAX_STROKE_POINTS
 
 
-def test_the_pen_draws_the_pictures_own_contours() -> None:
-    """Mateusz 2026-11-12 15:50: "nadal jest zbyt ogólny. Chciałbym żeby był
-    bardziej szczegółowy. Dokładny. Rysował dzieło, a nie kilka zaznaczeń i
-    obłych brył"."""
-    from frame_server.imaging import trace
-
-    ship = _ship()
-    rgb = np.asarray(ship)
-    w, h = ship.size
-    # Where the picture's forms meet: every line drawn runs there.
-    grey = np.asarray(ship.convert("L"), np.int16)
-    meet = np.zeros((h, w), bool)
-    meet[:, 1:] |= np.diff(grey, axis=1) != 0
-    meet[1:, :] |= np.diff(grey, axis=0) != 0
-    ys, xs = np.nonzero(meet)
-
-    def off(points: Any) -> float:
-        at = np.array(points) * (w, h)
-        far = np.hypot(at[:, None, 0] - xs[None, :], at[:, None, 1] - ys[None, :]).min(axis=1)
-        return float(far.max())
-
-    def walked(lines: Any) -> Any:
-        """The lines' points and those between them."""
-        out = []
-        for points, _ in lines:
-            at = np.array(points) * (w, h)
-            for a, b in itertools.pairwise(at):
-                steps = max(int(np.hypot(*(b - a)) / 4), 1)
-                out.append(a + (b - a) * np.linspace(0, 1, steps + 1)[:, None])
-        return np.concatenate(out)
-
-    drawn = trace.drawing(rgb)
-    assert drawn and max(off(points) for points, _ in drawn) < 4
-    spots = walked(drawn)
-
-    def near(x: float, y: float) -> bool:
-        return bool((np.hypot(spots[:, 0] - x, spots[:, 1] - y) < 12).any())
-
-    # The hull's top and bottom, the mast, the sail's rim, the shore.
-    assert near(460, 330) and near(460, 420) and near(456, 200) and near(600, 225)
-    assert near(100, 400) and near(800, 400)
-    assert all(0.2 <= weight <= 1 for _, weight in drawn)
-    assert trace.run(drawn, (w, h)) > 1.5
-    # With a guide that says the sail is the subject, the sail is drawn
-    # and the rest is at most its long lines (the shore).
-    sail = [(p["x"] / w, p["y"] / h) for p in _circle(540, 225, 60, 75)]
-    guided = trace.drawing(rgb, [(sail, True, True)])
-    spots = walked(guided)
-    assert near(600, 225) and near(100, 400)
-    assert trace.run(guided, (w, h)) <= trace.run(drawn, (w, h))
-    # The sheet draws those lines, not the strokes that guided them; a
-    # picture with nothing to draw keeps the strokes themselves.
-    strokes = [(sail, False, True)]
-    lines = sheets.pen_lines(ship, strokes)
-    assert len(lines) >= 4 and all(sharp and not closed for _, sharp, closed, _ in lines)
-    blank = Image.new("RGB", (w, h), "white")
-    assert sheets.pen_lines(blank, strokes) == [(sail, False, True, 1.0)]
-    assert sheets.pen_lines(blank) == []
-    # The app gets them roughly, a few points each.
-    rough = sheets.paths(lines)
-    assert len(rough) == len(lines) and max(len(points) for points, _, _ in rough) <= 10
-    with_pen = np.asarray(sheets.layers(ship, strokes, seed=2)[1])[..., 3]
-    without = np.asarray(sheets.layers(ship, strokes, seed=2, lines=[])[1])[..., 3]
-    assert int((with_pen > 60).sum()) > int((without > 60).sum()) + 2000
-
-
 def test_the_pen_draws_the_subject_and_little_else() -> None:
     """Mateusz 2026-11-12 14:50: "Najlepiej gdyby rysunek był dokładny tam
     gdzie dzieło tego wymaga (temat, postać, istotny fragment) a pominięty
@@ -749,7 +667,6 @@ def test_the_pen_draws_the_subject_and_little_else() -> None:
         (False, True),
         (False, True),
     ]
-    assert [s.rest for s in drawn] == [False, False, False, True]  # (kept for the sheet)
     shore = drawn[-1].points
     assert all(abs(p.y * h - 400) < 3 for p in shore) and shore[-1].x * w > 800
     # Of what is not the subject only a few strokes are kept at all.
@@ -788,23 +705,6 @@ def test_the_app_gets_the_sheet_of_the_take_it_shows(tmp_path: Path) -> None:
         # the margin beside the field.
         assert view is not None and len(list(svc.sheets.dir.glob("*.jpg"))) == 6
         assert len(list(svc.sheets.dir.glob("*.png"))) == 4
-        # What the sheet's pen drew goes to the app in the take's sketch, for
-        # the sheet to draw itself along; the sheet's address is the take's.
-        assert svc.sheets._lines(item, view).is_file()
-        drawn = [{"points": [[0.1, 0.2], [0.3, 0.4], [0.5, 0.2]], "closed": False}]
-        svc.sheets._lines(item, view).write_text(json.dumps(drawn))
-        again = client.get("/api/study/met:1").json()["work"]
-        (stroke,) = again["composition"]["views"][0]["sketch"]
-        assert stroke["sharp"] and [p["x"] for p in stroke["points"]] == [0.1, 0.3, 0.5]
-        assert again["composition_sheet"] == url
-        # (Not made yet, or nothing drawn: the take's own sketch.)
-        svc.sheets._lines(item, view).write_text("[]")
-        assert svc.sheets.lines(item, view) is None
-        assert (
-            client.get("/api/study/met:1").json()["work"]["composition"]["views"][0]["sketch"] == []
-        )
-        svc.sheets._lines(item, view).unlink()
-        assert svc.sheets.lines(item, view) is None
         made = svc.sheets.path(item, view, False).stat().st_mtime_ns
         assert client.get(url).content == got.content
         assert svc.sheets.path(item, view, False).stat().st_size == len(got.content)

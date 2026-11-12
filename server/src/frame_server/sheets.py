@@ -25,7 +25,6 @@ still made at once.
 from __future__ import annotations
 
 import contextlib
-import json
 import logging
 import threading
 import time
@@ -37,7 +36,6 @@ from PIL import Image
 
 from .ai.check import page_views
 from .ai.composition import PAGES, cropped
-from .ai.daily import Spot, Stroke
 from .ai.jobs import text_hash
 from .imaging import sheet as sheets
 from .imaging.layout import load_image
@@ -96,30 +94,6 @@ class Sheets:
         shade = "d" if dark else "l"
         return self.dir / f"{item.file_stem}-{self.key(view)}-{shade}{LAYERS[layer]}"
 
-    def _lines(self, item: Item, view: View) -> Path:
-        return self.dir / f"{item.file_stem}-{self.key(view)}-lines.json"
-
-    def lines(self, item: Item, view: View) -> list[Stroke] | None:
-        """What the pen drew on the take's sheet, roughly (the picture's
-        own contours, ``imaging.trace``): what the app draws the pen's layer
-        along. None while the sheet is not made, or when its pen drew
-        nothing: the take's own sketch serves then."""
-        path = self._lines(item, view)
-        try:
-            raw = json.loads(path.read_text())
-            path.touch()  # asked for: kept
-            found = [
-                Stroke(
-                    points=[Spot(x=x, y=y) for x, y in line["points"]],
-                    sharp=True,
-                    closed=line.get("closed") is True,
-                )
-                for line in raw
-            ]
-        except (OSError, ValueError, KeyError, TypeError):
-            return None
-        return found or None
-
     def view(self, item: Item, key: str = "") -> View | None:
         """The take whose sheet ``key`` names among those the work's pages
         show (its study, its day's page); the first of them when none does
@@ -151,9 +125,7 @@ class Sheets:
         if view.field is not None:
             img = cropped(img, view.field)
         strokes = [([(p.x, p.y) for p in s.points], s.sharp, s.closed) for s in view.sketch]
-        lines = sheets.pen_lines(img, strokes, [s.rest for s in view.sketch])
-        seed = zlib.crc32(item.id.encode())
-        wash, pen = sheets.layers(img, strokes, dark=dark, seed=seed, lines=lines)
+        wash, pen = sheets.layers(img, strokes, dark=dark, seed=zlib.crc32(item.id.encode()))
         whole = wash.convert("RGBA")
         whole.alpha_composite(pen)
         self.dir.mkdir(parents=True, exist_ok=True)
@@ -169,19 +141,10 @@ class Sheets:
             tmp = path.with_suffix(".tmp")
             tmp.write_bytes(data)
             tmp.replace(path)
-        # What the pen drew, roughly: the app draws its layer along these.
-        drawn = [
-            {"points": [[round(x, 3), round(y, 3)] for x, y in points], "closed": closed}
-            for points, _, closed in sheets.paths(lines)
-        ]
-        path = self._lines(item, view)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(drawn, separators=(",", ":")))
-        tmp.replace(path)
         cutoff = time.time() - SHEET_DAYS * 86400
         for old in self.dir.iterdir():
             with contextlib.suppress(OSError):
-                if old.suffix in (".jpg", ".png", ".json") and old.stat().st_mtime < cutoff:
+                if old.suffix in (".jpg", ".png") and old.stat().st_mtime < cutoff:
                     old.unlink()
 
     # -- made ahead -----------------------------------------------------------
