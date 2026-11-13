@@ -1621,8 +1621,8 @@ class Player:
     def rescore(self) -> int:
         """Once per ``SCORE_VERSION``: analyse the library's pictures again
         from their thumbnails (add-on 0.12: colourful works first; 0.21:
-        colour accents). Measured before writing, written in one
-        transaction; returns how many."""
+        colour accents). Measured before writing, written a portion at a
+        time, marked done after the last; returns how many."""
         if self.library.get_state(SCORE_KEY, 1) >= SCORE_VERSION:
             return 0
         images = self.service.images
@@ -1646,10 +1646,10 @@ class Player:
                 "color_shares": shares,
                 "tint_spread": spread,
             }
-        with self.library.batch():
-            for item_id, changes in analysed.items():
-                self.library.update(item_id, **changes)
-            self.library.set_state(SCORE_KEY, SCORE_VERSION)
+        # A portion at a time: in one transaction the library's lock was
+        # held for all of them and the server answered nobody meanwhile.
+        self.library.update_many(analysed)
+        self.library.set_state(SCORE_KEY, SCORE_VERSION)
         log.info("rescore: %d pictures analysed again", len(analysed))
         return len(analysed)
 
@@ -1675,10 +1675,9 @@ class Player:
                 continue
             if line is not None or item.contour is not None:
                 found[item.id] = line
-        with self.library.batch():
-            for item_id, line in found.items():
-                self.library.update(item_id, contour=line)
-            self.library.set_state(CONTOUR_KEY, CONTOUR_VERSION)
+        # A portion at a time, the mark after the last (1.145.76).
+        self.library.update_many({item_id: {"contour": line} for item_id, line in found.items()})
+        self.library.set_state(CONTOUR_KEY, CONTOUR_VERSION)
         drawn = sum(line is not None for line in found.values())
         log.info("contours: %d pictures with a drawn contour", drawn)
         return drawn

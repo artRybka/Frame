@@ -129,6 +129,42 @@ def test_batch_is_one_transaction(tmp_path) -> None:
     assert lib.count() == 3 and not lib.get("test:1").favorite  # type: ignore[union-attr]
 
 
+def test_many_updates_let_others_at_the_library_between_portions(tmp_path) -> None:
+    """The colours of a hundred thousand works written in one batch held
+    the library, and the event loop that asked for its items, for 107 s."""
+    lib = Library(tmp_path / "lib.db")
+    with lib.batch():
+        for n in range(40):
+            lib.upsert(_item(n))
+    changes = {f"test:{n}": {"title": f"New {n}"} for n in range(40)}
+    changes["test:7"] = {"title": lib.get("test:7").title}  # type: ignore[union-attr]
+    changes["test:gone"] = {"title": "Nobody"}
+
+    started = threading.Event()
+    update = lib.update
+
+    def slow(item_id: str, **fields: object):
+        started.set()
+        time.sleep(0.002)
+        return update(item_id, **fields)
+
+    lib.update = slow  # type: ignore[method-assign]
+    seen: list[int] = []
+
+    def reader() -> None:
+        started.wait()
+        seen.append(sum(i.title.startswith("New") for i in lib.all_items()))
+
+    asking = threading.Thread(target=reader)
+    asking.start()
+    assert lib.update_many(changes, portion=5) == 39  # one as it was, one not there
+    asking.join()
+
+    assert seen and seen[0] < 39  # let in before the last portion
+    again = Library(tmp_path / "lib.db")
+    assert sum(i.title.startswith("New") for i in again.all_items()) == 39
+
+
 def test_state_kept_from_the_loop_never_waits_for_the_lock(tmp_path) -> None:
     """keep_state is read back at once and written by a thread, even while
     another thread holds the library (the frame's question waited 78 s)."""
