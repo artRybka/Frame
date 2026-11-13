@@ -158,3 +158,81 @@ def test_notes_are_kept_in_memory_and_follow_changes(tmp_path) -> None:
     lib.delete("test:1")
     assert lib.notes("keywords") == {}
     assert Library(tmp_path / "lib.db").notes("keywords") == {}
+
+
+def _note(item_id: str, kind: str = "pl_text", **data) -> Note:
+    return Note(item_id=item_id, kind=kind, model="m", prompt_version="1", data=data or {"a": 1})
+
+
+def test_notes_are_first_read_while_the_disk_is_busy(tmp_path) -> None:
+    """A kind's first read goes on a connection of its own: the event loop
+    stood 33 s waiting for the disk while every Polish title was read after
+    a start (2026-11-13)."""
+    lib = Library(tmp_path / "lib.db")
+    lib.upsert(_item(1))
+    lib.save_note(_note("test:1"))
+    fresh = Library(tmp_path / "lib.db")
+    fresh.get("test:1")
+    holder, release = _hold_disk(fresh)
+    try:
+        started = time.monotonic()
+        assert set(fresh.notes("pl_text")) == {"test:1"}
+        assert time.monotonic() - started < 1
+    finally:
+        release.set()
+        holder.join(5)
+
+
+def test_notes_saved_or_forgotten_during_a_first_read_are_kept(tmp_path, monkeypatch) -> None:
+    lib = Library(tmp_path / "lib.db")
+    for n in (1, 2, 3):
+        lib.upsert(_item(n))
+        lib.save_note(_note(f"test:{n}", n=n))
+    lib = Library(tmp_path / "lib.db")
+    real = repo_module._note
+
+    def slow(row):  # the changes come while the rows are being read
+        if row[0] == "test:1":
+            lib.save_note(_note("test:1", n=10))
+            lib.delete_notes("pl_text", "test:2")
+            lib.save_note(_note("test:4", n=4))
+        return real(row)
+
+    monkeypatch.setattr(repo_module, "_note", slow)
+    read = lib.notes("pl_text")
+    monkeypatch.setattr(repo_module, "_note", real)
+    assert {k: v.data["n"] for k, v in read.items()} == {"test:1": 10, "test:3": 3, "test:4": 4}
+    assert {k: v.data["n"] for k, v in lib.notes("pl_text").items()} == {
+        "test:1": 10,
+        "test:3": 3,
+        "test:4": 4,
+    }
+
+
+def test_notes_forgotten_all_during_a_first_read(tmp_path, monkeypatch) -> None:
+    lib = Library(tmp_path / "lib.db")
+    lib.upsert(_item(1))
+    lib.save_note(_note("test:1"))
+    lib = Library(tmp_path / "lib.db")
+    real = repo_module._note
+
+    def slow(row):
+        lib.delete_notes("pl_text")
+        lib.save_note(_note("test:5"))
+        return real(row)
+
+    monkeypatch.setattr(repo_module, "_note", slow)
+    assert set(lib.notes("pl_text")) == {"test:5"}
+    monkeypatch.setattr(repo_module, "_note", real)
+    assert set(lib.notes("pl_text")) == {"test:5"}
+
+
+def test_notes_read_inside_a_write_see_it(tmp_path) -> None:
+    """Inside a write of the same thread the notes are read on its
+    connection: the other would not see what is not committed yet."""
+    lib = Library(tmp_path / "lib.db")
+    lib.upsert(_item(1))
+    with lib.batch():
+        lib.save_note(_note("test:1"))
+        assert set(lib.notes("pl_text")) == {"test:1"}
+    assert set(lib.notes("pl_text")) == {"test:1"}

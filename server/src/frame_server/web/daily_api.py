@@ -213,7 +213,7 @@ class DailyWork(BaseModel):
     #: it is written (a few seconds after the page first opens).
     how_made: str = ""
     how_made_pending: bool = False
-    #: Apps before 1.145.100 drew the stages as pictures: given up, empty.
+    #: Apps before 1.145.102 drew the stages as pictures: given up, empty.
     stages: list[StageView] = Field(default_factory=list)
     stages_study: str = ""
     stages_pending: bool = False

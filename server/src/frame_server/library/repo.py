@@ -71,6 +71,15 @@ TWINS_FIELDS = (
 
 log = logging.getLogger(__name__)
 
+#: Copies deleted as needless (``Player.drop_spare_copies``), each with the
+#: copy kept of its work (library state): a museum's answer bringing one
+#: again is that copy, not a new work. Until 1.145.103 the playlist's fill
+#: took them in anew, the pictures had to find them again, and the copies
+#: came and went ("Vincent van Gogh · słoneczniki", Mateusz 2026-11-13).
+DROPPED_KEY = "dropped_copies"
+#: The newest kept at most.
+DROPPED_MAX = 20_000
+
 #: Seconds the places of the catalogue's works are kept while nothing changes.
 PLACES_KEPT = 600.0
 #: Seconds they are kept whatever the library does meanwhile.
@@ -204,6 +213,9 @@ CREATE TABLE IF NOT EXISTS favorites (
 
 
 _NOTE_COLUMNS = "item_id, kind, model, prompt_version, source_hash, data, created_at"
+#: In a read's changes (``Library._notes_reading``): every note of the kind
+#: was forgotten meanwhile (no item has this id).
+_ALL_NOTES = "\0all"
 
 
 def _note(row: tuple[Any, ...]) -> Note:
@@ -694,6 +706,20 @@ class Library:
         #: them all from the NAS's disk held the library up for seconds.
         self._notes: dict[str, dict[str, Note]] = {}
         self._notes_lock = threading.Lock()
+        #: A kind's notes being read on :meth:`_reader`, and what was saved
+        #: (a note) or forgotten (None) meanwhile, laid over what was read;
+        #: ``_notes_epoch`` goes up when every kept note is dropped (a
+        #: rolled back write), and a read begun before is not kept then.
+        self._notes_reading: dict[str, list[dict[str, Note | None]]] = {}
+        self._notes_epoch = 0
+        #: A second connection for the long reads alone (:meth:`notes`):
+        #: WAL lets it read while the first writes, so a read of every
+        #: note of a kind (seconds on the NAS's disk after a start) no
+        #: longer holds ``_db_lock``, and with it the playlists, the state
+        #: and the event loop (33 s on 2026-11-13 after 1.145.98 read the
+        #: Polish titles at start).
+        self._reader_conn: sqlite3.Connection | None = None
+        self._reader_lock = threading.Lock()
         #: Smart playlists' counts and covers as last worked out, by id.
         self._counted: dict[int, _Counted] = {}
         #: A smart playlist's count and cover may be shown as last worked
@@ -703,6 +729,8 @@ class Library:
         #: A playlist changed is counted at once, and one of hearts once
         #: they change.
         self.counts_may_lag = False
+        #: :data:`DROPPED_KEY` as read once.
+        self._dropped: dict[str, str] | None = None
         #: The catalogue's search index (:class:`SearchIndex`), changed with
         #: every item; one is made at a time, outside ``_lock``, with the
         #: changes made meanwhile kept here and applied when it is done.
@@ -775,6 +803,7 @@ class Library:
                 self._hearts_version += 1
                 with self._notes_lock:
                     self._notes.clear()
+                    self._notes_epoch += 1
                 raise
             finally:
                 self._depth -= 1
@@ -795,6 +824,10 @@ class Library:
             if self._conn is not None:
                 self._conn.close()
                 self._conn = None
+        with self._reader_lock:
+            if self._reader_conn is not None:
+                self._reader_conn.close()
+                self._reader_conn = None
 
     # -- items --------------------------------------------------------------
 
@@ -955,6 +988,9 @@ class Library:
             with self._notes_lock:
                 for kept in self._notes.values():
                     kept.pop(item_id, None)
+                for changes in self._notes_reading.values():
+                    for changed in changes:
+                        changed[item_id] = None
             removed = self._all().pop(item_id)
             self._indexed(item_id, None)
             self._version += 1
@@ -1430,9 +1466,44 @@ class Library:
 
     def twin(self, item: Item) -> Item | None:
         """The library's best copy of ``item``'s work, when that is another
-        item."""
+        item; for a copy deleted as needless, the copy kept of it."""
         best = self.works().best(item)
-        return self.get(best.id) if best is not None and best.id != item.id else None
+        if best is not None:
+            return self.get(best.id) if best.id != item.id else None
+        return self.kept_for(item.id) if self.get(item.id) is None else None
+
+    def dropped(self, kept: dict[str, str]) -> None:
+        """Copies deleted as needless (``kept``: each id -> the copy kept of
+        its work), remembered (:data:`DROPPED_KEY`)."""
+        if not kept:
+            return
+        with self._lock:
+            dropped = dict(self._dropped_copies())
+            for gone, stays in kept.items():
+                dropped.pop(gone, None)
+                dropped[gone] = stays
+            while len(dropped) > DROPPED_MAX:
+                dropped.pop(next(iter(dropped)))
+            self._dropped = dropped
+            self.set_state(DROPPED_KEY, dropped)
+
+    def kept_for(self, item_id: str) -> Item | None:
+        """The copy kept of ``item_id``'s work when it was deleted as a
+        needless copy (through copies deleted later too), if still here."""
+        dropped = self._dropped_copies()
+        seen: set[str] = set()
+        at = item_id
+        while at in dropped and at not in seen:
+            seen.add(at)
+            at = dropped[at]
+            if (held := self.get(at)) is not None:
+                return held
+        return None
+
+    def _dropped_copies(self) -> dict[str, str]:
+        if self._dropped is None:
+            self._dropped = dict(self.get_state(DROPPED_KEY, {}) or {})
+        return self._dropped
 
     def query(
         self,
@@ -2089,20 +2160,86 @@ class Library:
 
     def notes(self, kind: str) -> dict[str, Note]:
         """Every note of one kind, by item (a copy: kept in memory after the
-        first read, as :meth:`save_note` and :meth:`delete_notes` change it)."""
+        first read, as :meth:`save_note` and :meth:`delete_notes` change it).
+
+        The first read goes through :meth:`_reader`, without ``_db_lock``:
+        notes saved or forgotten meanwhile are laid over what it read."""
         with self._notes_lock:
             kept = self._notes.get(kind)
             if kept is not None:
                 return dict(kept)
-        with self._db() as db:
-            rows = db.execute(
-                f"SELECT {_NOTE_COLUMNS} FROM ai_notes WHERE kind = ?", (kind,)
-            ).fetchall()
-            # Kept while the disk's lock is held: no note saved in between.
-            read = {row[0]: _note(row) for row in rows}
+            changed: dict[str, Note | None] = {}
+            self._notes_reading.setdefault(kind, []).append(changed)
+            epoch = self._notes_epoch
+        try:
+            with self._reader() as db:
+                rows = db.execute(
+                    f"SELECT {_NOTE_COLUMNS} FROM ai_notes WHERE kind = ?", (kind,)
+                ).fetchall()
+                read = {row[0]: _note(row) for row in rows}
+        finally:
             with self._notes_lock:
-                self._notes[kind] = read
-                return dict(read)
+                reading = self._notes_reading.get(kind, [])
+                if changed in reading:
+                    reading.remove(changed)
+                if not reading:
+                    self._notes_reading.pop(kind, None)
+        with self._notes_lock:
+            if _ALL_NOTES in changed:  # all forgotten meanwhile
+                read = {}
+            for item_id, note in changed.items():
+                if item_id == _ALL_NOTES:
+                    continue
+                if note is None:
+                    read.pop(item_id, None)
+                else:
+                    read[item_id] = note
+            if self._notes_epoch == epoch:
+                kept = self._notes.setdefault(kind, read)
+                return dict(kept)
+            return dict(read)
+
+    @contextmanager
+    def _reader(self) -> Iterator[sqlite3.Connection]:
+        """The connection for long reads (:meth:`notes`), one at a time,
+        each in a transaction of its own (one snapshot of the disk). Inside
+        a write of this thread's (:meth:`batch`), the first connection: the
+        second would not see what that write has not committed yet."""
+        mine = self._db_lock.acquire(blocking=False)  # free, or this thread's
+        try:
+            inside = mine and self._depth > 0
+            if inside or self._conn is None:
+                # A write of this thread's, or the tables not made yet.
+                with self._db() as db:
+                    if inside:
+                        yield db
+                        return
+        finally:
+            if mine:
+                self._db_lock.release()
+        with self._reader_lock:
+            if self._reader_conn is None:
+                conn = sqlite3.connect(self.path, timeout=30, check_same_thread=False)
+                conn.execute("PRAGMA query_only=1")
+                self._reader_conn = conn
+                weakref.finalize(self, conn.close)
+            conn = self._reader_conn
+            conn.execute("BEGIN")
+            try:
+                yield conn
+            finally:
+                conn.rollback()
+
+    def _note_changed(self, kind: str, item_id: str, note: Note | None) -> None:
+        """A note saved (``note``) or forgotten (None) in the kept notes and
+        in the reads under way (with ``_notes_lock``)."""
+        if (kept := self._notes.get(kind)) is not None:
+            if note is None:
+                kept.pop(item_id, None)
+            else:
+                kept[item_id] = note
+        for changed in self._notes_reading.get(kind, []):
+            changed[item_id] = note
 
     def save_note(self, note: Note) -> Note:
         if not note.created_at:
@@ -2121,8 +2258,7 @@ class Library:
                 ),
             )
             with self._notes_lock:
-                if (kept := self._notes.get(note.kind)) is not None:
-                    kept[note.item_id] = note
+                self._note_changed(note.kind, note.item_id, note)
         self.notes_version += 1
         return note
 
@@ -2138,8 +2274,11 @@ class Library:
             with self._notes_lock:
                 if item_id is None:
                     self._notes.pop(kind, None)
-                elif (kept := self._notes.get(kind)) is not None:
-                    kept.pop(item_id, None)
+                    for changed in self._notes_reading.get(kind, []):
+                        changed.clear()
+                        changed[_ALL_NOTES] = None  # what was read is gone
+                else:
+                    self._note_changed(kind, item_id, None)
         self.notes_version += 1
         return cur.rowcount
 

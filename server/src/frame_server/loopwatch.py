@@ -19,6 +19,7 @@ import sys
 import threading
 import time
 import traceback
+from collections.abc import Sequence
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +38,24 @@ THREAD_DEPTH = 10
 #: where the loop stood, cut out of the log (2026-11-09).
 LOOP_DEPTH = 16
 THREADS_SHOWN = 12
+
+
+def compact(frames: Sequence[traceback.FrameSummary], code: bool = False) -> str:
+    """One line a call, innermost last: the file from its package on, the
+    line, the function, and with ``code`` the line's code: a third of
+    Python's own format, so that a stack fits in a log record."""
+    lines = []
+    for frame in frames:
+        name = frame.filename
+        for marker in ("site-packages/", "/lib/python3"):
+            if marker in name:
+                name = name.rsplit(marker, 1)[1]
+                break
+        line = f"    {name}:{frame.lineno} {frame.name}"
+        if code and frame.line:
+            line += f": {frame.line.strip()[:80]}"
+        lines.append(line)
+    return "\n".join(lines)
 
 
 class LoopWatch:
@@ -79,19 +98,19 @@ class LoopWatch:
                 continue
             stuck_since, told_at = beat_at, stood
             others = self.others()
-            log.warning(
-                "the event loop has stood still for %.0f s, at:\n%s%s",
-                stood,
-                self.stack(),
-                f"\nother threads at work:\n{others}" if others else "",
-            )
+            # Two records: the log keeps a record's start and end only
+            # (logbuffer.LONGEST), and with the threads in the same one the
+            # loop's innermost calls fell in the cut (2026-11-13).
+            log.warning("the event loop has stood still for %.0f s, at:\n%s", stood, self.stack())
+            if others:
+                log.warning("other threads at work while the loop stood:\n%s", others)
 
     def stack(self) -> str:
         """Where the loop's thread is now, innermost call last."""
         frame = sys._current_frames().get(self._ident) if self._ident is not None else None
         if frame is None:
             return "  (the loop's thread is gone)"
-        return "".join(traceback.format_list(traceback.extract_stack(frame)[-LOOP_DEPTH:])).rstrip()
+        return compact(traceback.extract_stack(frame)[-LOOP_DEPTH:], code=True)
 
     def others(self) -> str:
         """The other threads not waiting for work, innermost call last of
@@ -104,7 +123,7 @@ class LoopWatch:
             stack = traceback.extract_stack(frame)
             if not stack or stack[-1].filename.endswith(IDLE):
                 continue
-            calls = "".join(traceback.format_list(stack[-THREAD_DEPTH:])).rstrip()
+            calls = compact(stack[-THREAD_DEPTH:])
             shown.append(f"  thread {names.get(ident, ident)}:\n{calls}")
         more = len(shown) - THREADS_SHOWN
         return "\n".join(shown[:THREADS_SHOWN] + ([f"  and {more} more"] if more > 0 else []))

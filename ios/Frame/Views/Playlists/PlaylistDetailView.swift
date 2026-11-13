@@ -430,7 +430,9 @@ struct PlaylistDetailView: View {
     private func load() async {
         failed = false
         do {
-            model.playlistDetails[playlistID] = try await model.backend.playlist(id: playlistID)
+            let loaded = try await model.backend.playlist(id: playlistID)
+            model.playlistDetails[playlistID] = loaded
+            model.noteOpened(loaded.playlist)
         } catch {
             if Task.isCancelled { return }
             failed = detail == nil

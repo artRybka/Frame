@@ -33,6 +33,22 @@ final class PageLayoutTests: XCTestCase {
         }
     }
 
+    /// The picture on a work's card is as wide as the page (at most 460 pt
+    /// tall), also where the page's stack offers it less height: The
+    /// Mussel Harvest shrank to 250 × 207 pt (Mateusz 2026-11-13).
+    func testTheCardsPictureFillsThePageWhateverHeightItIsOffered() {
+        // A landscape picture as wide as the page; a portrait one 460 pt tall.
+        let pictures: [(aspect: CGFloat, height: CGFloat)] = [(15503.0 / 12844.0, 400 * 12844.0 / 15503.0), (0.75, 460)]
+        for picture in pictures {
+            for offered: CGFloat in [120, 207, 2000] {
+                let box = Color.clear.aspectRatio(picture.aspect, contentMode: .fit).pictureBox()
+                let size = UIHostingController(rootView: box).sizeThatFits(in: CGSize(width: 400, height: offered))
+                XCTAssertEqual(size.width, 400, accuracy: 0.5, "aspect \(picture.aspect), offered \(offered)")
+                XCTAssertEqual(size.height, picture.height, accuracy: 0.5, "aspect \(picture.aspect), offered \(offered)")
+            }
+        }
+    }
+
     /// Pages put their paper with `paperPage()`, never a bare background
     /// that is only as wide as the ScrollView (see Design/Page.swift).
     func testNoPageHasABarePaperBackground() throws {

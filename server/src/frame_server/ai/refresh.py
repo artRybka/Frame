@@ -56,7 +56,7 @@ FIELDS = ("headline", "context", "colour")
 #: How much the new facts must add for the text to be rewritten (of 0–3).
 WORTH = 2
 #: About what each step costs a study through the Batch API: the search
-#: (Sonnet's tokens halved, its searches not; 0.072 a study before 1.145.100,
+#: (Sonnet's tokens halved, its searches not; 0.072 a study before 1.145.102,
 #: about 0.036 searching sparingly) and the rewrite (Opus, text only).
 FACTS_USD = 0.04
 REWRITE_USD = 0.06

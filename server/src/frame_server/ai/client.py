@@ -2,8 +2,9 @@
 
 Every question is a structured one: a stable system prompt (cached), the
 item's content (a thumbnail, its text) and a JSON schema the answer must
-follow. What each answer cost is added to this month's spending, by kind of
-job; nothing more is asked once the owner's monthly limit is reached.
+follow. What each answer cost is added to this period's spending (a month
+from the owner's "Dzień odnowienia"), by kind of job; nothing more is asked
+once the owner's monthly limit is reached.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import anthropic
@@ -134,17 +135,43 @@ def image_block(images: ImageCache, item: Item, max_side: int = IMAGE_SIDE) -> d
     return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": data}}
 
 
-def month(now: datetime | None = None) -> str:
-    return (now or datetime.now(UTC)).strftime("%Y-%m")
+def _month_after(day: date) -> date:
+    return date(day.year + day.month // 12, day.month % 12 + 1, 1)
+
+
+def period(today: date, start_day: int = 1) -> tuple[date, date]:
+    """The billing period ``today`` falls in: its first day and the first
+    day of the next. It begins on ``start_day`` of each month (1..28): the
+    owner's credit may be renewed on another day than the 1st (Mateusz
+    2026-11-13, "Dzień odnowienia")."""
+    start_day = min(max(start_day, 1), 28)
+    if today.day >= start_day:
+        start = today.replace(day=start_day)
+    else:
+        first = today.replace(day=1)
+        start = (first - timedelta(days=1)).replace(day=start_day)
+    return start, _month_after(start).replace(day=start_day)
 
 
 class Spending:
-    """What answers cost, by month and kind of job (kept in the library)."""
+    """What answers cost, by day and kind of job (kept in the library),
+    summed over the billing period (:func:`period`).
 
-    def __init__(self, library: Library, key: str = SPEND_KEY) -> None:
+    Kept by month before 2026-11-13 ("2026-11"): such a month counts whole
+    in the period its 1st falls in, and in the period that began within it
+    the share of its days (until the first day kept) after that beginning."""
+
+    #: Days kept: a little over a year.
+    KEEP_DAYS = 400
+
+    def __init__(
+        self, library: Library, key: str = SPEND_KEY, start_day: Callable[[], int] = lambda: 1
+    ) -> None:
         self.library = library
         #: Where it is kept (Claude's and the image model's are apart).
         self.key = key
+        #: The day of the month the period begins on.
+        self.start_day = start_day
         self._lock = threading.Lock()
 
     def add(self, kind: str, usd: float) -> None:
@@ -152,15 +179,47 @@ class Spending:
             return
         with self._lock:
             spent = self.library.get_state(self.key, {})
-            this = spent.setdefault(month(), {})
+            today = datetime.now(UTC).date()
+            this = spent.setdefault(today.isoformat(), {})
             this[kind] = round(this.get(kind, 0.0) + usd, 6)
+            cutoff = (today - timedelta(days=self.KEEP_DAYS)).isoformat()
+            spent = {k: v for k, v in spent.items() if len(k) != 10 or k >= cutoff}
             self.library.set_state(self.key, spent)
 
-    def by_kind(self, when: str | None = None) -> dict[str, float]:
-        return dict(self.library.get_state(self.key, {}).get(when or month(), {}))
+    def period(self, now: datetime | None = None) -> tuple[date, date]:
+        return period((now or datetime.now(UTC)).date(), self.start_day())
 
-    def total(self, when: str | None = None) -> float:
-        return sum(self.by_kind(when).values())
+    def by_kind(self, now: datetime | None = None) -> dict[str, float]:
+        """This period's spending (the one ``now`` falls in), by kind."""
+        start, end = self.period(now)
+        found: dict[str, float] = {}
+
+        def add(kinds: dict[str, float], share: float) -> None:
+            for kind, usd in kinds.items():
+                found[kind] = found.get(kind, 0.0) + usd * share
+
+        kept: dict[str, dict[str, float]] = self.library.get_state(self.key, {})
+        days = [key for key in kept if len(key) == 10]
+        # The months kept before the days were spent before the first day.
+        before = date.fromisoformat(min(days)) if days else date.max
+        for key, kinds in kept.items():
+            if len(key) == 10:  # a day
+                if start.isoformat() <= key < end.isoformat():
+                    add(kinds, 1.0)
+                continue
+            try:  # a month, from before the days
+                first = date.fromisoformat(f"{key}-01")
+            except ValueError:
+                continue
+            following = min(_month_after(first), before)
+            if start <= first < end:
+                add(kinds, 1.0)
+            elif first < start < following:
+                add(kinds, (following - start).days / (following - first).days)
+        return {k: round(v, 6) for k, v in found.items()}
+
+    def total(self, now: datetime | None = None) -> float:
+        return sum(self.by_kind(now).values())
 
 
 def _text(message: Any) -> str:
@@ -175,7 +234,7 @@ class Claude:
         factory: Callable[[str], Any] | None = None,
     ) -> None:
         self.config = config
-        self.spending = Spending(library)
+        self.spending = Spending(library, start_day=lambda: config.config.period_day)
         self.factory = factory or (
             lambda key: anthropic.Anthropic(api_key=key, max_retries=3, timeout=120.0)
         )

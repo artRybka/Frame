@@ -48,7 +48,8 @@ from .imaging import Palette, RenderSettings, get_palette, render, render_multi
 from .imaging.pipeline import encode_image
 from .kept import KeptOriginals
 from .later import LaterWorks
-from .library import ImageCache, Importer, Library, courtauld, low_res
+from .leftover import Leftover
+from .library import ImageCache, Importer, Item, Library, courtauld, low_res
 from .library.commons import repair_library
 from .library.fragments import Fragments
 from .library.hosts import guard as host_guard
@@ -382,13 +383,7 @@ class FrameService:
         # they add much, at the owner's tap (Konfiguracja).
         self.study_refresh = StudyRefresh(self.library, self.claude, self.web_facts)
         # Its steps on the Lock Screen, and "Studium gotowe" at the end.
-        self.study.on_step = lambda item, status, error: self.notifier.study_step(
-            item.id,
-            status,
-            error,
-            notifications.item_title(self, item) if status == "ready" else "",
-            self.study.progress(item.id),
-        )
+        self.study.on_step = self._study_step
         # Favourite artists' birthdays, for the notifications.
         self.births = Births(self.library)
         # The composition written again for pages written before (as the owner
@@ -457,11 +452,41 @@ class FrameService:
         # The owner's "Popraw detale": a page's details checked over their cuts.
         self.mend = MendJob(self.library, self.images, self.ai_config)
         self.ai.register(self.mend)
+        # What Claude's month leaves at its end goes on more studies.
+        self.leftover = Leftover(
+            self.library,
+            self.ai_config,
+            self.claude,
+            self.ai,
+            self.daily,
+            self.study,
+            self.player,
+            self.cared.ranks,
+        )
 
         #: Heavy work at night, while the server runs its background.
         self.night: NightQueue | None = None
 
         self._tasks: set[asyncio.Task[object]] = set()
+
+    def _study_step(self, item: Item, status: str, error: str) -> None:
+        """A study's step to its Live Activities, "Studium gotowe" at the
+        end; one ordered from the month's rest tells nobody (Mateusz
+        2026-11-13: "dla tych automatycznych bez powiadomień"), unless
+        someone follows it on the Lock Screen."""
+        if (
+            status in ("ready", "failed")
+            and self.leftover.settle(item.id, status)
+            and not self.notifier.study_activities(item.id)
+        ):
+            return
+        self.notifier.study_step(
+            item.id,
+            status,
+            error,
+            notifications.item_title(self, item) if status == "ready" else "",
+            self.study.progress(item.id),
+        )
 
     def _to_come(self, item_id: str) -> bool:
         """The work is the work of a day still to come."""

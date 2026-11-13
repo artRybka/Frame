@@ -1586,6 +1586,39 @@ struct AiSettings: Codable, Hashable, Sendable {
     var geminiMonthlyLimitUsd: Double? = nil
     var geminiSpentUsd: Double? = nil
     var geminiSpentByKind: [String: Double]? = nil
+    /// The day of the month Claude's period begins on (the credit's
+    /// renewal), and the period now as ISO dates. Nil from older servers.
+    var periodDay: Int? = nil
+    var periodStart: String? = nil
+    var periodEnd: String? = nil
+    /// "Resztka miesiąca na studia" (Mateusz 2026-11-13): the switch, the
+    /// period's last days it works in, the reserve it leaves, and how it is
+    /// getting on. Nil from older servers.
+    var leftover: Bool? = nil
+    var leftoverDays: Int? = nil
+    var leftoverReserveUsd: Double? = nil
+    var leftoverState: LeftoverState? = nil
+}
+
+/// What the month's rest does: studies ordered at night in the period's
+/// last days, then the catalogue's keywords and Polish texts.
+struct LeftoverState: Codable, Hashable, Sendable {
+    /// When studies may be ordered this period (ISO dates), and whether now.
+    var opens: String
+    var closes: String
+    var open: Bool
+    /// What the limit leaves above the reserve, less what is on its way.
+    var freeUsd: Double
+    /// What a study is reckoned to cost; measured on this server or not yet.
+    var perStudyUsd: Double
+    var measured: Bool
+    /// This period's studies: ordered, on their way, made, failed.
+    var ordered: Int
+    var inFlight: Int
+    var made: Int
+    var failed: Int
+    /// Works the curator found fit and did not choose, waiting for a study.
+    var candidates: Int
 }
 
 /// "Uzupełnij wcześniejsze studia" (Mateusz 2026-11-13): the studies with
@@ -1627,6 +1660,10 @@ struct AiSettingsUpdate: Encodable, Sendable {
     var monthlyLimitUsd: Double?
     var drawn: Bool?
     var geminiMonthlyLimitUsd: Double?
+    var periodDay: Int?
+    var leftover: Bool?
+    var leftoverDays: Int?
+    var leftoverReserveUsd: Double?
 }
 
 /// `GET /api/ai/review`: "Do sprawdzenia", what the gatekeeper set aside and
@@ -2545,7 +2582,7 @@ struct DailyWork: Codable, Hashable, Sendable {
     /// "Jak powstawał": how the work was painted, in two to four sentences,
     /// from a published technical study the server found (Mateusz
     /// 2026-11-13 21:42: no pictures, no word on where it came from).
-    /// Nil from servers before 1.145.100; `howMadePending` while written.
+    /// Nil from servers before 1.145.102; `howMadePending` while written.
     var howMade: String? = nil
     var howMadePending: Bool? = nil
 

@@ -251,6 +251,10 @@ struct AiSection: View {
                 Divider()
                 progress
             }
+            if settings.leftover != nil {
+                SectionHeader(title: "Resztka miesiąca", subtitle: "Studia z tego, co zostaje z limitu")
+                Card { leftoverRows }
+            }
         }
         .task {
             // Batches and the background move on while Konfiguracja is open.
@@ -452,6 +456,106 @@ struct AiSection: View {
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
         }
+    }
+
+    // MARK: The month's rest
+
+    private static let reserves: [Double] = [0, 5, 10, 20, 30, 50]
+
+    /// "Resztka miesiąca na studia" (Mateusz 2026-11-13): in the period's
+    /// last days the night orders studies of works the curator found fit
+    /// for what the limit leaves above the reserve, then the catalogue's
+    /// keywords and Polish texts; through the Batch, telling nobody.
+    @ViewBuilder
+    private var leftoverRows: some View {
+        toggle(
+            "Studia z resztki miesiąca",
+            hint: "W ostatnich dniach okresu to, co zostaje z limitu ponad zapas, idzie nocą na nowe studia: najpierw dzieła typowane przez kuratora Studium dnia, potem według jego kryteriów, zaczynając od Ulubionych i playlist. Co zostanie, idzie na słowa kluczowe i polskie opisy katalogu. Przez Batch, bez powiadomień.",
+            value: settings.leftover ?? false
+        ) { AiSettingsUpdate(leftover: $0) }
+        Divider()
+        pickerRow(
+            "Dzień odnowienia",
+            hint: "Od tego dnia miesiąca liczy się limit i wydatki Claude, tak jak odnawiają się środki na koncie.",
+            value: settings.periodDay ?? 1,
+            options: Array(1...28),
+            label: { "\($0)." }
+        ) { AiSettingsUpdate(periodDay: $0) }
+        Divider()
+        pickerRow(
+            "Ostatnie dni okresu",
+            hint: "Od kiedy serwer zamawia. W ostatniej dobie już nic, żeby Batch zdążył.",
+            value: settings.leftoverDays ?? 3,
+            options: Array(2...10),
+            label: { "\($0)" }
+        ) { AiSettingsUpdate(leftoverDays: $0) }
+        Divider()
+        pickerRow(
+            "Zapas",
+            hint: "Tyle zostaje z limitu na resztę okresu i na to, czego serwer nie liczy (np. ten sam klucz gdzie indziej).",
+            value: settings.leftoverReserveUsd ?? 10,
+            options: Set(Self.reserves + [settings.leftoverReserveUsd ?? 10]).sorted(),
+            label: { Money.usd($0) }
+        ) { AiSettingsUpdate(leftoverReserveUsd: $0) }
+        if let state = settings.leftoverState {
+            Divider()
+            Label(Self.leftoverNote(state, settings: settings), systemImage: state.open ? "clock" : "calendar")
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func pickerRow<Value: Hashable>(
+        _ title: String, hint: String, value: Value, options: [Value],
+        label: @escaping (Value) -> String, update: @escaping (Value) -> AiSettingsUpdate
+    ) -> some View {
+        let chosen = Binding(
+            get: { value },
+            set: { new in Task { await model.saveAiSettings(update(new)) } }
+        )
+        return HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).foregroundStyle(Theme.ink)
+                Text(hint).font(.caption).foregroundStyle(Theme.inkSoft)
+            }
+            Spacer()
+            Picker(title, selection: chosen) {
+                ForEach(options, id: \.self) { option in
+                    Text(label(option)).tag(option)
+                }
+            }
+            .labelsHidden()
+            .tint(Theme.ink)
+        }
+    }
+
+    /// "28.11" of "2026-11-28".
+    static func dayMonth(_ iso: String) -> String {
+        let parts = iso.split(separator: "-")
+        guard parts.count == 3 else { return iso }
+        return "\(parts[2]).\(parts[1])"
+    }
+
+    /// Where the month's rest is: when it begins, or what it does now.
+    static func leftoverNote(_ state: LeftoverState, settings: AiSettings) -> String {
+        var parts: [String] = []
+        let each = "\(Money.usd(state.perStudyUsd)) za studium" + (state.measured ? " (zmierzone)" : "")
+        if state.open {
+            parts.append("Teraz: wolne ok. \(Money.usd(state.freeUsd)), ok. \(each).")
+        } else if let end = settings.periodEnd {
+            parts.append("Zamawia od \(dayMonth(state.opens)) do \(dayMonth(state.closes)), okres kończy się \(dayMonth(end)). Ok. \(each).")
+        }
+        if state.ordered > 0 {
+            var line = "W tym okresie zamówione: \(state.ordered), gotowe: \(state.made)"
+            if state.inFlight > 0 { line += ", w drodze: \(state.inFlight)" }
+            if state.failed > 0 { line += ", nieudane: \(state.failed)" }
+            parts.append(line + ".")
+        }
+        if state.candidates > 0 {
+            parts.append("Kandydaci kuratora czekający na studium: \(state.candidates).")
+        }
+        return parts.joined(separator: " ")
     }
 
     // MARK: Earlier studies

@@ -50,8 +50,10 @@ def test_a_title_is_suggested_and_found_by_itself(service: FrameService) -> None
     # Only the works with it in their title, not those that mention it.
     found = library.query(PlaylistRules(title="starry night"))[1]
     assert {i.id for i in found} == {"aic:1", "aic:2"}
+    # Words aren't looked for in the museum's description (Mateusz
+    # 2026-11-13): a sky "under a starry night" is no Starry Night.
     words = library.query(PlaylistRules(query='"starry night"'))[1]
-    assert "aic:3" in {i.id for i in words}
+    assert {i.id for i in words} == {"aic:1", "aic:2"}
     # By its Polish title, and with other choices.
     assert [i.id for i in library.query(PlaylistRules(title="Gwiaździsta noc"))[1]] == ["aic:1"]
     assert library.query(PlaylistRules(title="starry night", artists=["Claude Monet"]))[0] == 0
