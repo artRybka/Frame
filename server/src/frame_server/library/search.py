@@ -10,14 +10,15 @@ import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 
-from .importer import Importer, Job, span
+from .importer import Importer, Job, language_of, span
 from .models import Item, PlaylistRules
 from .museums import PLACES_EUROPEANA, PLACES_WD, Discovery, by_artist
-from .phrases import phrases
+from .phrases import phrases, quote
 from .places import QID, SOURCE_PLACES, known_places
-from .repo import matches, said_as, says, search_fits
+from .repo import has_title, matches, said_as, says, search_fits, titled_as
 from .verdict import category_fits
 from .vocabulary import HIGHLIGHT, asked_artists, asked_topics, museum_kind
+from .wording import Wording
 
 #: With colours asked, museum pages of this many works are looked at, until
 #: ``limit`` fit, this many pages are seen or this many seconds have passed.
@@ -35,6 +36,9 @@ PHRASE_PAGES = 3
 #: Works of each museum page that a smart playlist's fetching asks for: the
 #: same works, in the same order, as Szukaj's smaller pages.
 FILL_PAGE = 24
+#: Rounds of a look's searches (``ai.look_words``) asked of each museum, at
+#: most: what a page brings is judged by its thumbnails, a cent a page.
+LOOK_ROUNDS = 3
 
 
 def searched(rules: PlaylistRules) -> PlaylistRules:
@@ -42,12 +46,21 @@ def searched(rules: PlaylistRules) -> PlaylistRules:
     colours and years (as Szukaj sends them)."""
     return PlaylistRules(
         query=rules.query,
+        title=rules.title,
+        look=rules.look,
         artists=rules.artists,
         terms=rules.terms,
         colors=rules.colors,
         year_from=rules.year_from,
         year_to=rules.year_to,
     )
+
+
+def asked_words(rules: PlaylistRules) -> str:
+    """The words the museums are asked: those typed, and a title asked as
+    a phrase (its works are those with it in their title, checked after)."""
+    title = quote([rules.title]) if rules.title.strip() else ""
+    return " ".join(w for w in (rules.query.strip(), title) if w)
 
 
 def museum_text(rules: PlaylistRules, page: int, words: str | None = None) -> str:
@@ -57,7 +70,7 @@ def museum_text(rules: PlaylistRules, page: int, words: str | None = None) -> st
     artists = asked_artists(rules.artists, rules.terms)
     artist = artists[(page - 1) % len(artists)] if artists else ""
     topics = asked_topics(rules.artists, artist, rules.terms)
-    typed = rules.query.strip() if words is None else words
+    typed = asked_words(rules) if words is None else words
     others = " ".join(w for w in (typed, *topics) if w)
     # The artist by the museum's own author field where it has one
     # (``Museum.search_by``): not pages of works only naming them.
@@ -170,7 +183,8 @@ class MuseumSearch:
             return True
         start, end = self.spec.year_from, self.spec.year_to
         return (
-            not self.keys
+            not self.rules.look.strip()
+            and not self.keys
             and not self.places
             and not museum_text(self.rules, 1)
             and not self.rules.colors
@@ -218,23 +232,47 @@ class MuseumSearch:
         colors = rules.colors
         asked = COLOR_PAGE if colors else self.limit
         artists = asked_artists(rules.artists, rules.terms)
-        deeper = artists or phrases(rules.query)
+        deeper = artists or phrases(asked_words(rules))
         left = COLOR_PAGES if colors else ARTIST_PAGES if deeper else 1
+        # Words for how works look: the museums are asked the searches
+        # Haiku made of them in turn, one a page, and what they bring is
+        # judged by how it looks (Mateusz 2026-11-13).
+        looks: list[Wording] = []
+        if rules.look.strip():
+            if importer.look_searches is None or importer.judge_look is None:
+                return
+            looks = importer.look_searches(rules.look)
+            if not looks:
+                return
+            left = max(left, len(looks))
         started = time.monotonic()
         total = fitting = 0
         at: int | None = page
         # The words typed, in each museum's language ("gitara": "guitar"),
         # each phrase quoted where the museum keeps to it.
         named = keys or importer.asked_sources(self.spec.kind)
-        words = importer.asked(rules.query, named) if rules.query.strip() else None
+        wanted = asked_words(rules)
+        words = importer.asked(wanted, named) if wanted else None
         typed = words.texts if words is not None else {}
         said = words.said if words is not None else []
+        # A title only in the works' titles, not anywhere in their texts.
+        titled = importer.asked(quote([rules.title]), named).said if rules.title.strip() else None
         while at is not None and left > 0:
+            look = looks[(at - 1) % len(looks)] if looks else None
             text = museum_text(rules, at)
-            # Several artists take turns, so each page asks for one of them.
-            round_ = (at - 1) // len(artists) + 1 if artists else at
+            if look is not None:
+                text = " ".join(w for w in (text, look.text) if w)
+            # Several artists take turns, so each page asks for one of them;
+            # so do a look's searches.
+            turns = len(artists) or len(looks)
+            round_ = (at - 1) // turns + 1 if turns else at
             if text:
                 texts = {k: museum_text(rules, at, typed.get(k)) for k in named}
+                if look is not None:
+                    texts = {
+                        k: " ".join(w for w in (t, look.in_language(language_of(k))) if w)
+                        for k, t in texts.items()
+                    }
                 count, items, failed = importer.search_all(
                     texts, asked, round_, keys, kind=self.spec.kind
                 )
@@ -250,16 +288,26 @@ class MuseumSearch:
             # after: of the museums' own pages a search of warm paintings
             # judged the colours of every vase and coin (two works in seven
             # minutes, 2026-11-12).
-            said_it = [i for i in items if says(i, said) and self.fits(i)]
+            said_it = [
+                i
+                for i in items
+                if says(i, said) and self.fits(i) and (titled is None or has_title(i, titled))
+            ]
             found = importer.in_colors(said_it, colors)
+            if look is not None and importer.judge_look is not None:
+                found = importer.judge_look(rules.look, found)
             if spare is not None and len(found) < len(items):
                 chosen = {i.id for i in found}
                 spare([i for i in items if i.id not in chosen])
             # The app lays its grid out by the works' shapes.
             importer.measure(found)
             fitting += len(found)
-            # Totals of several artists' searches don't add up page by page.
-            done = not items or (not artists and 0 < count <= round_ * asked)
+            # Totals of several artists' searches don't add up page by page;
+            # a look's searches go on while one of them still brings works.
+            if looks:
+                done = at >= len(looks) * LOOK_ROUNDS or (not items and at >= len(looks))
+            else:
+                done = not items or (not artists and 0 < count <= round_ * asked)
             at = None if done else at + 1
             left -= 1
             yield total, found, failed, at
@@ -320,7 +368,12 @@ def fill(
         pooled=pooled,
         terms=rules.terms,
         # The words as the museums were asked them (translated by then).
-        fits=lambda item: matches(item, rules, said=said_as(rules.query, importer.library.wording)),
+        fits=lambda item: matches(
+            item,
+            rules,
+            said=said_as(rules.query, importer.library.wording),
+            titled=titled_as(rules.title, importer.library.wording),
+        ),
     )
 
 

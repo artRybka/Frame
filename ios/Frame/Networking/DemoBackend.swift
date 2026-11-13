@@ -195,6 +195,7 @@ actor DemoBackend: FrameBackend {
         if !rules.terms.isEmpty && !DemoDiscover.matches(item, terms: rules.terms) { return false }
         if let from = rules.yearFrom, (item.year ?? Int.min) < from { return false }
         if let to = rules.yearTo, (item.year ?? Int.max) > to { return false }
+        if !rules.title.isEmpty, !item.title.localizedCaseInsensitiveContains(rules.title) { return false }
         if !rules.query.isEmpty {
             let haystack = ([item.title, item.artist, item.medium, item.classification, item.culture]
                 + item.styles + item.subjects).joined(separator: " ").lowercased()
@@ -534,7 +535,7 @@ actor DemoBackend: FrameBackend {
             terms: query.terms, colors: query.colors, kinds: query.kinds, sources: query.sources,
             excludeSources: query.excludeSources, places: query.places,
             excludePlaces: query.excludePlaces, yearFrom: query.yearFrom,
-            yearTo: query.yearTo, favoritesOnly: query.favoritesOnly, look: query.look
+            yearTo: query.yearTo, favoritesOnly: query.favoritesOnly, look: query.look, title: query.title
         )
         let listed = listed(for: rules)
         let list = Self.sorted(items.filter { Self.matches($0, rules, listed: listed) }, by: query.sort)

@@ -175,8 +175,13 @@ struct LooksLikeSection: View {
     @State private var found: [ItemSummary] = []
 
     var body: some View {
-        Group {
-            if !found.isEmpty {
+        // Something there also while nothing is found: a task on a Group of
+        // nothing never ran, and the row never came (Mateusz 2026-11-13: "Na
+        // karcie dzieła nie widzę sekcji „podobne wyglądem”").
+        VStack(alignment: .leading, spacing: 0) {
+            if found.isEmpty {
+                Color.clear.frame(height: 0)
+            } else {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(alignment: .firstTextBaseline) {
                         Eyebrow("Podobne wyglądem")

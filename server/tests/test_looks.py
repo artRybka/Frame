@@ -18,7 +18,7 @@ from PIL import Image
 
 from frame_server.ai import AiConfigUpdate, AiUnavailable
 from frame_server.ai.gemini import EMBED_MAX, EMBED_MODEL, EMBED_SIZE, Painter, embed_cost
-from frame_server.library.models import Item, ItemKind
+from frame_server.library.models import Item, ItemKind, PlaylistRules
 from frame_server.looks import KIND, QUERY, LookIndex, Looks
 from frame_server.service import FrameService
 
@@ -505,3 +505,129 @@ def test_a_suggestion_given_up_counts_nothing_more(service: FrameService) -> Non
     _work(service, "met:1", "red", artist="Anna Pejzażystka")
     assert _term_hits(service, "pejzaż", 10)  # counted
     assert _term_hits(service, "pejzaż", 10, gone=lambda: True) == []
+
+
+def test_the_museums_are_asked_a_looks_searches_and_judged_by_it(
+    service: FrameService, looks: tuple[Looks, FakePainter]
+) -> None:
+    """Mateusz 2026-11-13 (card, "Hasła i ocena wyglądem"): Haiku's searches
+    for the look, in each museum's language; what they bring judged by its
+    thumbnail, the numbers kept."""
+    from frame_server.library.search import MuseumSearch
+    from frame_server.library.wording import Wording
+
+    found, painter = looks
+    service.ai_config.set_gemini_key("k")
+    _work(service, "met:1", "red")  # the catalogue's best for red
+    _numbers(found)
+    museum = []
+    for n, colour in enumerate(["red", "blue", "red"], start=10):
+        item = Item(
+            id=f"cma:{n}",
+            source="cma",
+            source_id=str(n),
+            title=f"Work {n}",
+            thumb_url=f"https://example.org/{n}.jpg",
+            kind=ItemKind.ARTWORK,
+        )
+        path = service.images.thumb_path(item)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (64, 48), COLOURS[colour]).save(path, "JPEG")
+        museum.append(item)
+
+    asked: list[dict[str, str]] = []
+    spare: list[str] = []
+
+    class Museums:
+        look_searches = staticmethod(
+            lambda text: [
+                Wording("czerwień", "red sky", "ciel rouge"),
+                Wording("zachód", "sunset", ""),
+            ]
+        )
+        judge_look = staticmethod(found.judge)
+
+        def asked_sources(self, kind: str = "any") -> list[str]:
+            return ["cma", "mnw"]
+
+        def search_all(self, texts, limit, page, keys, kind="any"):  # type: ignore[no-untyped-def]
+            asked.append(dict(texts))
+            brought = museum if page == 1 and texts["cma"] == "red sky" else []
+            return (len(brought), brought, [])
+
+        def in_colors(self, items, colors):  # type: ignore[no-untyped-def]
+            return items
+
+        def measure(self, items) -> None:  # type: ignore[no-untyped-def]
+            return None
+
+    search = MuseumSearch.of(PlaylistRules(look="czerwony red zachód"), keys=["cma", "mnw"])
+    assert not search.empty
+    pages = list(
+        search.pages(Museums(), ["cma", "mnw"], 1, lambda items: spare.extend(i.id for i in items))
+    )  # type: ignore[arg-type]
+    assert asked[0] == {"cma": "red sky", "mnw": "czerwień"}  # Polish museums in Polish
+    assert asked[1] == {"cma": "sunset", "mnw": "zachód"}
+    shown = [i.id for _, items, _, _ in pages for i in items]
+    assert shown == ["cma:10", "cma:12"]  # the blue one does not look red
+    assert "cma:11" in spare  # asked for already: into the catalogue
+    assert {"cma:10", "cma:11", "cma:12"} <= found.index.ids()  # numbers kept
+    painter.key = False
+    assert found.judge("red", museum) == []  # no Google: nothing judged
+
+
+def test_haiku_makes_searches_of_a_look_once(service: FrameService, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from types import SimpleNamespace
+
+    from frame_server.ai import look_words
+
+    words = service.look_words
+    assert words.searches("mglisty poranek") == []  # no key
+    service.ai_config.set_key("sk-ant-test")
+    asked: list[dict[str, Any]] = []
+
+    def ask(kind: str, params: dict[str, Any]) -> SimpleNamespace:
+        asked.append(params)
+        data = {
+            "searches": [
+                {"polish": "mgła rzeka", "english": "fog river", "french": "brume rivière"},
+                {"polish": "", "english": "misty morning", "french": "matin brumeux"},
+                {"polish": "mgła", "english": "Fog river", "french": ""},  # the same again
+                {"polish": "jezioro", "english": "lake mist", "french": ""},
+                {"polish": "x", "english": "one too many", "french": ""},
+            ]
+        }
+        return SimpleNamespace(data=data)
+
+    monkeypatch.setattr(service.claude, "ask", ask)
+    found = words.searches("Mglisty  poranek")
+    assert [(w.text, w.en) for w in found] == [
+        ("mgła rzeka", "fog river"),
+        ("misty morning", "misty morning"),
+        ("jezioro", "lake mist"),
+    ]
+    assert len(found) == look_words.MOST
+    assert words.searches("mglisty poranek") == found and len(asked) == 1
+    assert asked[0]["model"] == look_words.HAIKU
+    # With the translation of Szukaj's words switched off, nothing is asked.
+    service.ai_config.update(AiConfigUpdate(search_words=False))
+    assert words.searches("rwący potok") == [] and len(asked) == 1
+
+
+def test_a_copy_without_numbers_shows_what_its_works_other_copy_looks_like(
+    service: FrameService, looks: tuple[Looks, FakePainter]
+) -> None:
+    """Van Gogh's Sunflowers found by a look had no "Podobne wyglądem": the
+    card showed the work's best copy, the index had another (2026-11-13)."""
+    found, _painter = looks
+    service.ai_config.set_gemini_key("k")
+    _work(service, "met:1", "red", artist="Vincent van Gogh")
+    _work(service, "aic:7", "red")
+    _numbers(found)
+    copy = service.library.upsert(
+        Item(id="wmc:5", source="wmc", source_id="5", title="met:1", artist="Vincent van Gogh")
+    )
+    works = service.library.works()
+    assert works.group_index("wmc:5") == works.group_index("met:1") is not None
+    assert copy.id not in found.index
+    assert [f.item.id for f in found.similar(copy)] == ["aic:7"]

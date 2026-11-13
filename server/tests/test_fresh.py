@@ -244,14 +244,15 @@ def test_a_full_catalogue_takes_nothing_in(museums) -> None:  # noqa: F811
     assert player.catalogue_full and trimmed  # only trimmed back to the limit
     after = {i.id for i in service.library.query(include_excluded=True)[1]}
     assert after == before
-    # What Szukaj shows stays out too.
+    # What Szukaj shows comes in all the same (Mateusz 2026-11-13: "Tak,
+    # pokazane zawsze"); what it brought but did not show stays out.
     service.settings.scheduler = True
-    taken: list[object] = []
-    service.importer.keep_searched = lambda *a, **k: taken.append(a)  # type: ignore[method-assign]
-    service.importer.keep_spare = lambda *a, **k: taken.append(a)  # type: ignore[method-assign]
+    taken: list[str] = []
+    service.importer.keep_searched = lambda *a, **k: taken.append("shown")  # type: ignore[method-assign]
+    service.importer.keep_spare = lambda *a, **k: taken.append("spare")  # type: ignore[method-assign]
     player.keep_searched([])
     player.keep_spare([])
-    assert taken == []
+    assert taken == ["shown"]
     # A higher limit: measured again, it grows.
     player.limit_changed()
     service.images.thumbs_size = lambda: 0

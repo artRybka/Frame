@@ -24,6 +24,7 @@ from .ai.extras import ExtrasJob
 from .ai.gatekeeper import Gatekeeper
 from .ai.gemini import Painter
 from .ai.journey import Journeys
+from .ai.look_words import LookWords
 from .ai.museum_words import MuseumWords
 from .ai.prose import ProseJob
 from .ai.redraw import PenJob
@@ -426,6 +427,11 @@ class FrameService:
         # a smart playlist made of them (Mateusz 2026-11-13).
         self.library.looking = self.looks.looking
         self.library.look_near = self.looks.near
+        # The museums asked for a look by Haiku's searches, what they bring
+        # judged by how it looks (Mateusz 2026-11-13, card).
+        self.look_words = LookWords(self.library, self.claude, self.ai_config)
+        self.importer.look_searches = self.look_words.searches
+        self.importer.judge_look = self.looks.judge
         self.daily.looks_like = self.looks.neighbours
         # A small picture is drawn larger first, before its study (Mateusz
         # 2026-11-13); which works get none: the rules, the sheet's pixels and

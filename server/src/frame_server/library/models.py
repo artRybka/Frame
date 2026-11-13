@@ -464,9 +464,15 @@ class PlaylistRules(BaseModel):
     exclude_ids: list[str] = Field(default_factory=list)
     #: Words for how the works look ("mglisty poranek nad wodą"): of the
     #: works the other rules find, those that look so, nearest first
-    #: (``frame_server.looks``, Mateusz 2026-11-13). No museum is asked
-    #: for it (``search_key`` leaves it out).
+    #: (``frame_server.looks``, Mateusz 2026-11-13). The museums are asked
+    #: by searches Haiku makes of it (``ai.look_words``), what they bring
+    #: judged by how it looks; ``search_key`` leaves it out (what a museum
+    #: brought for it is no word's answer).
     look: str = ""
+    #: A work's title, or words of it ("Gwiaździsta noc"): works whose title
+    #: has them, in Polish or as the museums were asked them; not those that
+    #: only mention them (Mateusz 2026-11-13: "szukanie po tytule dzieła").
+    title: str = ""
 
     @model_validator(mode="before")
     @classmethod
@@ -500,6 +506,9 @@ class PlaylistRules(BaseModel):
             self.year_from,
             self.year_to,
         ]
+        title = " ".join(self.title.casefold().split())
+        if title:  # only then: the keys of searches without one stay as they were
+            asked.append(title)
         if not any(a not in ("", [], None) for a in asked):
             return ""
         text = json.dumps(asked, ensure_ascii=False)
@@ -510,6 +519,7 @@ class PlaylistRules(BaseModel):
         return not (
             self.query.strip()
             or self.look.strip()
+            or self.title.strip()
             or self.artists
             or self.styles
             or self.subjects

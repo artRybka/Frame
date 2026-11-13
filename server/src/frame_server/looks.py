@@ -34,6 +34,7 @@ import threading
 import time
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -43,7 +44,7 @@ import numpy as np
 from PIL import Image
 
 from .ai.client import AiUnavailable
-from .ai.gemini import EMBED_SIZE, NotDrawn, TooHeavy
+from .ai.gemini import EMBED_MAX, EMBED_SIZE, NotDrawn, TooHeavy
 from .library.models import Item, ItemKind
 from .library.verdict import Place, against
 
@@ -59,8 +60,10 @@ log = logging.getLogger(__name__)
 KIND = "looks"
 #: Works sent in one round of the background, and the pause between rounds
 #: while some are left; when none is, it looks again after :data:`IDLE`.
-PER_BATCH = 300
-OPEN = 8
+#: (300 thumbnails weighed 30 MB, over Google's 19; 150 at a time, some
+#: 15 MB, still timed out on the NAS's upload once: 100.)
+PER_BATCH = 100
+OPEN = 24
 #: Seconds between looks at the batches out (a small one is back in minutes).
 POLL = 120.0
 IDLE = 600.0
@@ -402,6 +405,69 @@ class Looks:
             return None
         return [item_id for item_id, _ in self.index.nearest(vector, AMONG_NEAR)]
 
+    def judge(self, text: str, items: Sequence[Item]) -> list[Item]:
+        """Museum works a search for a look brought (``ai.look_words``):
+        those that look as ``text`` says, as near as the catalogue's own
+        answer asks (:data:`NEAR_BEST` below its best, over :data:`FLOOR`),
+        nearest first (Mateusz 2026-11-13, card: "Hasła i ocena wyglądem").
+        Their thumbnails get their numbers now, Google asked at once (some
+        0.01 cent a work), and keep them: the catalogue's background asks
+        nothing again for them, and the next search finds them at home.
+        None when it cannot be asked now."""
+        try:
+            vector = np.asarray(self._words_vector(" ".join(text.split())[:300]))
+        except (AiUnavailable, NotDrawn, httpx.HTTPError) as err:
+            log.info("judging museum works by look: %s", err)
+            return []
+        if not items:
+            return []
+        self._number([i for i in items if i.id not in self.index])
+        best = self.index.nearest(vector, 1)
+        bar = max(FLOOR, (best[0][1] if best else FLOOR) - NEAR_BEST)
+        length = float(np.linalg.norm(vector)) or 1.0
+        scored: list[tuple[float, Item]] = []
+        for item in items:
+            row = self.index.vector(item.id)
+            if row is None:
+                continue
+            norm = float(np.linalg.norm(row)) or 1.0
+            score = float(row @ vector) / (norm * length)
+            if score >= bar:
+                scored.append((score, item))
+        scored.sort(key=lambda s: -s[0])
+        return [item for _, item in scored]
+
+    def _number(self, items: Sequence[Item]) -> None:
+        """Numbers for museum works' thumbnails (downloaded and kept, as the
+        app shows them), asked of Google at once, :data:`EMBED_MAX` at a
+        time; a work whose thumbnail cannot be had is left without."""
+        if not items:
+            return
+
+        def picture(item: Item) -> tuple[Item, Image.Image, int] | None:
+            try:
+                path = self.images.ensure_thumb(item, urgent=True)
+                stamp = int(path.stat().st_mtime)
+                with Image.open(io.BytesIO(path.read_bytes())) as img:
+                    img.load()
+                    return item, img.convert("RGB"), stamp
+            except Exception as err:  # gone, refused, not a picture
+                log.info("no thumbnail of %s to judge by look: %s", item.id, err)
+                return None
+
+        with ThreadPoolExecutor(min(len(items), 8)) as pool:
+            got = [p for p in pool.map(picture, items) if p is not None]
+        for start in range(0, len(got), EMBED_MAX):
+            part = got[start : start + EMBED_MAX]
+            try:
+                vectors = self.painter.embed(KIND, [img for _, img, _ in part])
+            except (AiUnavailable, NotDrawn, httpx.HTTPError) as err:
+                log.info("numbers for museum works: %s", err)
+                return
+            self.index.add(
+                [(item.id, stamp, v) for (item, _, stamp), v in zip(part, vectors, strict=True)]
+            )
+
     def looking(self, text: str, allowed: list[Item]) -> list[Item] | None:
         """:meth:`among` for the library (``Library.looking``): the works
         alone, None when it cannot be asked now."""
@@ -422,15 +488,20 @@ class Looks:
         return self._answer(self.index.nearest(vector, limit * 3), limit, PICTURE_FLOOR)
 
     def similar(self, item: Item, limit: int = 24, place: Place = Place.FOUND) -> list[Found]:
-        """Works that look like ``item``: none until it has its numbers.
-        Its own copies and the work itself are left out; ``place``: where
-        they are shown."""
-        vector = self.index.vector(item.id)
+        """Works that look like ``item``: none until it or another copy of
+        its work has numbers (the card shows the work's best copy, the
+        index may have another: no "Podobne wyglądem" under van Gogh's
+        Sunflowers found by a look, 2026-11-13). Its own copies and the work
+        itself are left out; ``place``: where they are shown."""
+        works = self.library.works()
+        own = works.group_index(item.id)
+        copies = [item.id] + (
+            [c.id for c in works.groups[own] if c.id != item.id] if own is not None else []
+        )
+        vector = next((v for c in copies if (v := self.index.vector(c)) is not None), None)
         if vector is None:
             return []
         near = self.index.nearest(vector, limit * 3 + 8)
-        works = self.library.works()
-        own = works.group_index(item.id)
         near = [
             (i, s) for i, s in near if i != item.id and (own is None or works.group_index(i) != own)
         ]

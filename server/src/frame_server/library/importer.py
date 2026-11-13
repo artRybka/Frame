@@ -122,6 +122,16 @@ SEARCHED_MEMO = 5_000
 SPARE_QUEUE = 400
 #: ... and this many are taken at a time, so works shown meanwhile go first.
 SPARE_BATCH = 24
+#: Those whose thumbnail is not here wait last, their thumbnails fetched as
+#: the museums' limits allow (Mateusz 2026-11-13: "skoro pobieramy już
+#: opis, to może warto już przy okazji zabrać także miniaturę?"); more are
+#: left out.
+FAR_QUEUE = 400
+#: Both queues, kept over a restart (an update took the works shown before
+#: it had taken them in, 2026-11-13), written at most this often (seconds)
+#: as they grow, and after each batch taken.
+SEARCHED_STATE_KEY = "searched_queue"
+SEARCHED_SAVE_EVERY = 10.0
 #: Museum searches answered lately, kept for the same page asked again (a
 #: set of Odkrywaj opened once more): how many and how long. The Met asks
 #: for each of a page's 24 works on its own, so a page takes it seconds.
@@ -271,12 +281,15 @@ class Importer:
         self._searched: OrderedDict[str, Item] = OrderedDict()
         #: Works a search brought but did not show (:meth:`keep_spare`).
         self._spare: OrderedDict[str, Item] = OrderedDict()
+        #: Those of them whose thumbnail is still at the museum.
+        self._far: OrderedDict[str, Item] = OrderedDict()
         self._searched_seen: OrderedDict[str, None] = OrderedDict()
         self._searched_lock = threading.Lock()
         self._searching: threading.Thread | None = None
         #: Techniques of "Sztuki inne" with room left in the catalogue: works
         #: of them a search showed are kept too.
         self._searched_room: tuple[str, ...] = ()
+        self._searched_saved = 0.0
         #: Pages of museum searches (:data:`SEARCH_MEMO`): when asked, how
         #: many in all, the works.
         self._pages: OrderedDict[
@@ -292,6 +305,11 @@ class Importer:
         #: Words typed in Szukaj in the museums' languages (the language
         #: model's, set by the service); none: asked as typed.
         self.translate: Callable[[str, float], Wording] | None = None
+        #: Words for how works look as searches museums answer
+        #: (``ai.look_words.LookWords.searches``), and the works a museum
+        #: brought that look so, nearest first (``looks.Looks.judge``).
+        self.look_searches: Callable[[str], list[Wording]] | None = None
+        self.judge_look: Callable[[str, list[Item]], list[Item]] | None = None
         #: Fragments of works (library/fragments.py), set by the service:
         #: a fragment's id (``<work>~p<n>``) is made from its work's.
         self.fragments: Fragments | None = None
@@ -1317,35 +1335,88 @@ class Importer:
                 if found and found not in item.found_for:
                     item = item.model_copy(update={"found_for": [*item.found_for, found]})
                 self._spare.pop(item.id, None)
+                self._far.pop(item.id, None)
                 self._searched[item.id] = item
             self._start_searched()
+        self._save_searched(soon=True)
 
     def keep_spare(self, items: Iterable[Item], room: Iterable[str] = ()) -> None:
         """Works a search brought but did not show (another colour, other
         years, another artist: :meth:`.search.MuseumSearch.pages`) into the
         catalogue (``pooled``) like :meth:`keep_searched`'s, after them:
-        the museum was asked for them already (Mateusz 2026-11-07). Only
-        those whose thumbnail is here, so they cost no request; they
-        remember no search, as they don't fit it."""
-        here = [i for i in items if self.cache.thumb_path(i).is_file()]
+        the museum was asked for them already (Mateusz 2026-11-07). Those
+        whose thumbnail is here first, as they cost no request; the others
+        after them, their thumbnails fetched as the museums allow (Mateusz
+        2026-11-13). They remember no search, as they don't fit it."""
         with self._searched_lock:
             self._searched_room = tuple(room)
-            for item in here:
+            for item in items:
                 if (
                     item.id in self._searched
                     or item.id in self._spare
+                    or item.id in self._far
                     or item.id in self._searched_seen
                 ):
                     continue
-                if len(self._spare) >= SPARE_QUEUE:
-                    break
-                self._spare[item.id] = item
+                here = self.cache.thumb_path(item).is_file()
+                queue, most = (self._spare, SPARE_QUEUE) if here else (self._far, FAR_QUEUE)
+                if len(queue) < most:
+                    queue[item.id] = item
             self._start_searched()
+        self._save_searched(soon=True)
+
+    def resume_searched(self, room: Iterable[str] = (), spare: bool = True) -> int:
+        """The works waiting to join the catalogue when the server stopped,
+        taken in again (those it has meanwhile left out); those a search
+        brought but did not show only with ``spare``; how many."""
+        kept = self.library.get_state(SEARCHED_STATE_KEY, {}) or {}
+
+        def read(rows: Any) -> list[Item]:
+            found = []
+            for row in rows if isinstance(rows, list) else []:
+                try:
+                    item = Item.model_validate(row)
+                except ValidationError:
+                    continue
+                if self.library.get(item.id) is None:
+                    found.append(item)
+            return found
+
+        searched = read(kept.get("searched"))
+        brought = read(kept.get("spare")) if spare else []
+        with self._searched_lock:
+            self._searched_room = tuple(room)
+            for item in searched:
+                self._searched.setdefault(item.id, item)
+            for item in brought:
+                if item.id not in self._searched:
+                    here = self.cache.thumb_path(item).is_file()
+                    (self._spare if here else self._far).setdefault(item.id, item)
+            self._start_searched()
+        return len(searched) + len(brought)
+
+    def _save_searched(self, soon: bool = False) -> None:
+        """Both queues into the library's state; ``soon``: unless written
+        within :data:`SEARCHED_SAVE_EVERY` seconds (the batch taken writes
+        them anyway)."""
+        with self._searched_lock:
+            now = time.monotonic()
+            if soon and now - self._searched_saved < SEARCHED_SAVE_EVERY:
+                return
+            self._searched_saved = now
+            kept = {
+                "searched": [i.model_dump(mode="json") for i in self._searched.values()],
+                "spare": [
+                    i.model_dump(mode="json") for i in [*self._spare.values(), *self._far.values()]
+                ],
+            }
+        self.library.set_state(SEARCHED_STATE_KEY, kept)
 
     def _start_searched(self) -> None:
         """Starts taking works in, unless it is under way (with
         ``_searched_lock`` held)."""
-        if not (self._searched or self._spare) or (self._searching and self._searching.is_alive()):
+        waiting = self._searched or self._spare or self._far
+        if not waiting or (self._searching and self._searching.is_alive()):
             return
         self._searching = threading.Thread(target=self._take_searched, name="searched", daemon=True)
         self._searching.start()
@@ -1356,16 +1427,20 @@ class Importer:
                 if self._searched:
                     batch = list(self._searched.values())
                     self._searched.clear()
-                elif self._spare:
-                    count = min(SPARE_BATCH, len(self._spare))
-                    batch = [self._spare.popitem(last=False)[1] for _ in range(count)]
+                elif self._spare or self._far:
+                    queue = self._spare or self._far
+                    count = min(SPARE_BATCH, len(queue))
+                    batch = [queue.popitem(last=False)[1] for _ in range(count)]
                 else:
                     self._searching = None
-                    return
+                    batch = []
                 for item in batch:
                     self._searched_seen[item.id] = None
                 while len(self._searched_seen) > SEARCHED_MEMO:
                     self._searched_seen.popitem(last=False)
+            if not batch:
+                self._save_searched()  # nothing left waiting
+                return
             try:
                 self._take(
                     [iter(batch)],
@@ -1378,6 +1453,7 @@ class Importer:
                 )
             except Exception:
                 log.exception("keeping searched works failed")
+            self._save_searched()  # the batch taken (or left out) is no longer waiting
 
     def add_upload(
         self,

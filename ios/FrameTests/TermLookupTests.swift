@@ -94,6 +94,20 @@ final class TermLookupTests: XCTestCase {
         XCTAssertFalse(TermLookup.isName("Claude Monet", typed: "claude"))
         XCTAssertFalse(TermLookup.isName("Claude Monet", typed: "mon"))
 
+        // A work's title typed: its works ("Tytuł"), before a look; one the
+        // words are only part of is a row, not Return's.
+        let starry = TermHit(kind: "title", key: "Gwiaździsta noc", name: "Gwiaździsta noc", item: "met:1", exact: true)
+        let night = TermHit(kind: "title", key: "Noc", name: "Noc", item: "met:2", exact: false)
+        XCTAssertNil(TermLookup.typedTitle(in: [night]))
+        XCTAssertEqual(TermLookup.typedTitle(in: [night, starry]), SearchToken.title("Gwiaździsta noc"))
+        XCTAssertEqual(SearchToken.title("Noc").kindName, "Tytuł")
+        var titled = PlaylistRules()
+        titled.setTokens([SearchToken.title("Gwiaździsta noc")])
+        XCTAssertEqual(titled.title, "Gwiaździsta noc")
+        XCTAssertFalse(titled.isEmpty)
+        XCTAssertEqual(LibraryQuery(rules: titled).title, "Gwiaździsta noc")
+        XCTAssertEqual(titled.tokens(names: [:]), [SearchToken.title("Gwiaździsta noc")])
+
         // The look is a chip of the rules: the groups narrow it, a playlist keeps it.
         var rules = PlaylistRules(terms: ["technique:painting"])
         rules.setTokens(rules.tokens(names: [:]) + [SearchToken.look("mglisty poranek")])

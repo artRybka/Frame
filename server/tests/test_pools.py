@@ -373,3 +373,28 @@ def test_black_and_white_copies_of_paintings_are_left_out(museums, monkeypatch) 
     taken = [service.library.get(i) for i in job.item_ids]
     assert len(taken) == 4 and all("colour" in i.thumb_url for i in taken)
     assert job.skipped >= 4
+
+
+def test_catalogue_trims_the_random_draws_before_what_a_search_showed(museums, monkeypatch) -> None:
+    """Mateusz 2026-11-13 (card: "Tak, pokazane zawsze"): what Szukaj shows
+    joins a full catalogue too, and the night's trim takes the draws first."""
+    service = museums
+    player = service.player
+    _wait(player.grow_catalogue())
+    protected = player._protected()
+    spare = sorted(
+        (
+            i
+            for i in service.library.query(PlaylistRules(kept_only=False), include_excluded=True)[1]
+            if i.pooled and i.id not in protected
+        ),
+        key=lambda i: i.added_at,
+    )
+    assert len(spare) > 2
+    searched, next_one = spare[0], spare[1]
+    service.library.found(searched.id, "q:gitara")
+    service.settings.catalogue_mb = 1
+    monkeypatch.setattr(service.images, "thumbs_size", lambda: 1024 * 1024 + 1)
+    assert player.trim_catalogue() == 1
+    assert service.library.get(searched.id) is not None
+    assert service.library.get(next_one.id) is None

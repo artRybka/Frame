@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.145.98
+
+- Szukaj po tytule. Podczas pisania pojawiają się wiersze „Dzieło” z
+  miniaturą i artystą: do trzech dzieł, których tytuł (polski albo
+  oryginalny, z dowolnej kopii) ma wpisane słowa. Dotknięcie wstawia do pola
+  znacznik „Tytuł”, który szuka tylko w tytułach, a nie w opisach, i
+  znajduje wszystkie wersje dzieła. Muzea są pytane o ten tytuł.
+- Lupa wybiera tytuł, gdy wpisane słowa są tytułem dzieła. Kolejność:
+  artysta, potem tytuł, potem wygląd, na końcu zwykłe słowa.
+- Szukanie wyglądem pyta też muzea. Haiku zamienia opis na dwa lub trzy
+  krótkie hasła w języku każdego muzeum. Miniatury tego, co muzea
+  przyniosą, dostają na bieżąco liczby Google i zostają tylko dzieła nad
+  tym samym progiem co w bazie. To ok. 1 centa za szukanie. Liczby i
+  miniatury zostają na serwerze, a odrzucone dzieła trafiają do katalogu
+  jako zapasowe.
+- Hasła dla muzeów włącza ten sam przełącznik co tłumaczenie słów w Szukaj
+  (Konfiguracja → Claude).
+- Karta dzieła naprawdę pokazuje rząd „Podobne wyglądem”. Aplikacja w
+  ogóle o niego nie pytała, bo zapytanie wisiało na pustym widoku, który
+  się nie pojawiał. Rząd pokazuje się też wtedy, gdy liczby ma tylko inna
+  kopia tego samego dzieła.
+- Miniatury do szukania wyglądem idą do Google w paczkach po 100 zamiast
+  300, bo większa paczka raz nie zdążyła się wysłać z NAS.
+- Dzieła pokazane w Szukaj, które czekają na przyjęcie do bazy, przetrwają
+  restart serwera (np. aktualizację). Wcześniej kolejka była tylko w
+  pamięci i znikała.
+- Pełny katalog przyjmuje dzieła pokazane w Szukaj. Nocne przycinanie
+  usuwa wtedy najpierw dzieła dobrane losowo, a te z Twoich wyszukiwań
+  zostawia na koniec. Dzieła przyniesione, ale niepokazane, przy pełnym
+  katalogu nadal nie wchodzą.
+- Dzieła, które muzeum przyniosło, ale które nie pasowały do wyszukiwania
+  (inny artysta, inne lata, inna technika), trafiają do bazy także bez
+  miniatury na serwerze. Czekają na końcu kolejki, a miniatury są pobierane
+  w tle, w tempie dozwolonym przez każde muzeum.
+
 ## 1.145.97
 
 - Poprawka: szukanie wyglądem nie zatrzymuje już serwera. Słowa

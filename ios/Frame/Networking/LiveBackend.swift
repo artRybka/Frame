@@ -79,6 +79,7 @@ struct LiveBackend: FrameBackend {
         if q.favoritesOnly { query.append(URLQueryItem(name: "favorites", value: "true")) }
         if q.keptOnly { query.append(URLQueryItem(name: "kept", value: "true")) }
         if !q.look.isEmpty { query.append(URLQueryItem(name: "look", value: q.look)) }
+        if !q.title.isEmpty { query.append(URLQueryItem(name: "title", value: q.title)) }
         return try await get("/api/library/items", query: query)
     }
 
@@ -534,6 +535,10 @@ struct LiveBackend: FrameBackend {
         query += rules.colors.map { URLQueryItem(name: "color", value: $0) }
         if let from = rules.yearFrom { query.append(URLQueryItem(name: "year_from", value: String(from))) }
         if let to = rules.yearTo { query.append(URLQueryItem(name: "year_to", value: String(to))) }
+        // A title asked by its words; a look by searches Haiku makes of
+        // it, what the museums bring judged by how it looks (2026-11-13).
+        if !rules.title.isEmpty { query.append(URLQueryItem(name: "title", value: rules.title)) }
+        if !rules.look.isEmpty { query.append(URLQueryItem(name: "look", value: rules.look)) }
         return query
     }
 
