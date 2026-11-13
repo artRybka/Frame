@@ -1774,6 +1774,36 @@ final class FrameAPITests: XCTestCase {
         XCTAssertTrue(text.contains("\"kind\":\"album\""))
     }
 
+    /// Over the grid: the order, short (Mateusz 2026-11-13, variant B).
+    func testPlaylistSortShortCaption() {
+        XCTAssertEqual(PlaylistSort(.artist).shortCaption, "Artysta, A–Z")
+        XCTAssertEqual(PlaylistSort(.year).shortCaption, "Rok, od najstarszych")
+        XCTAssertEqual(PlaylistSort(.year, reverse: true).shortCaption, "Rok, od najnowszych")
+        XCTAssertEqual(PlaylistSort(.added).shortCaption, "Ostatnio dodane")
+        XCTAssertEqual(PlaylistSort(.added, reverse: true).shortCaption, "Kolejność dodania")
+        XCTAssertEqual(PlaylistSort(.format).shortCaption, "Najpierw pionowe")
+        XCTAssertEqual(PlaylistSort(.quality).shortCaption, "Najpierw największe")
+        var unknown = PlaylistSort(.artist)
+        unknown.key = "mood"
+        XCTAssertNil(unknown.shortCaption)
+    }
+
+    /// A rule chip that only repeats the playlist's name is left out.
+    @MainActor
+    func testRulesChipRepeatingTheNameIsLeftOut() {
+        var rules = PlaylistRules()
+        rules.artists = ["Giorgio de Chirico"]
+        XCTAssertFalse(RulesSummary.hasChips(rules, name: "Giorgio de Chirico"))
+        XCTAssertFalse(RulesSummary.hasChips(rules, name: "giorgio de chirico "))
+        XCTAssertTrue(RulesSummary.hasChips(rules, name: "Metafizyka"))
+        XCTAssertTrue(RulesSummary.hasChips(rules, name: nil))
+        rules.yearFrom = 1910
+        XCTAssertTrue(RulesSummary.hasChips(rules, name: "Giorgio de Chirico"))
+        var styles = PlaylistRules()
+        styles.styles = ["Impresjonizm"]
+        XCTAssertFalse(RulesSummary.hasChips(styles, name: "Impresjonizm"))
+    }
+
     func testDemoAlbumPlaylists() async throws {
         let demo = DemoBackend()
         let check = try await demo.checkAlbum(url: "https://www.icloud.com/sharedalbum/#B0aGWZuqDGKPOC")

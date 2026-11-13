@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.75
+
+- Playlista: pod nazwą jest porządek. Zostają tam tylko reguły, które
+  mówią coś więcej niż nazwa (playlista „Giorgio de Chirico” nie ma już
+  pod spodem chipu „Giorgio de Chirico”), i przycisk „Prezentuj na
+  ramce”. Liczba dzieł i kolejność stoją teraz nad siatką, jak jej
+  nagłówek: „188 dzieł” po lewej, „Artysta, A–Z” po prawej. Stuknięcie
+  kolejności otwiera ten sam wybór co „Sortuj” w menu „…”.
+
 ## 1.145.73
 
 - Ponowna analiza kompozycji nie rysuje już podkładu od nowa. Gdy
