@@ -238,3 +238,41 @@ def test_van_gogh_is_suggested_as_himself(tmp_path) -> None:
     assert "Albrecht Dürer" not in dict(found)
     assert lib.query(PlaylistRules(artists=["Vincent van Gogh"]))[0] == 6 + 1  # and the list
     assert lib.query(PlaylistRules(artists=["Albrecht Dürer"]))[0] == 6
+
+
+def test_a_count_is_worked_out_once_and_few_at_a_time() -> None:
+    """Many askers of one count wait for the one under way, and at most
+    ``COUNTING`` counts go through the catalogue at once (2026-11-13:
+    22-40 threads counted the whole catalogue together while typing)."""
+    import threading
+
+    from frame_server.library import term_index as term_module
+    from frame_server.library.search_index import SearchIndex
+
+    lock = threading.Lock()
+    running = most = calls = 0
+
+    def query(rules: PlaylistRules) -> int:
+        nonlocal running, most, calls
+        with lock:
+            running += 1
+            calls += 1
+            most = max(most, running)
+        time.sleep(0.05)
+        with lock:
+            running -= 1
+        return 7
+
+    index = term_module.TermIndex(SearchIndex([]), {}, 1, query)
+    words = [f"w{n % 6}" for n in range(30)]
+    counts: list[int] = []
+    threads = [
+        threading.Thread(target=lambda w=w: counts.append(index.word_count(w))) for w in words
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(5)
+    assert counts == [7] * 30
+    assert calls == 6
+    assert most <= term_module.COUNTING

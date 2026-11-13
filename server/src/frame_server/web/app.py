@@ -107,6 +107,10 @@ SLOW_REQUEST = 2.0  # seconds: an app request this slow goes in the log
 #: The app counts as in use this long after its last request (seconds): the
 #: background's requests to the museums wait meanwhile.
 APP_IN_USE = 120.0
+#: Seconds after a start before the looks' numbers (Gemini) are sent and
+#: the works searches showed before it are taken in.
+LOOKS_DELAY = 180.0
+SEARCHED_DELAY = 90.0
 
 
 def _photo_preset(data: bytes) -> str:
@@ -202,12 +206,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # Google's batches of "Kreatywny restaurator" looked at now and then.
             service.restorer.start()
             service.drawn.start()
-            # The museums' works get their looks as numbers ("G1").
-            service.looks.start()
-            # What searches showed before a restart and had not taken in yet.
-            threading.Thread(
-                target=service.player.resume_searched, name="searched-resume", daemon=True
-            ).start()
+            # The museums' works get their looks as numbers ("G1"), and what
+            # searches showed before a restart and had not taken in yet:
+            # both a while after the start, when the app's first questions
+            # are answered (they read and send thousands of thumbnails; the
+            # server answered in 30-70 s for minutes after 1.145.99 began).
+            for later in (
+                threading.Timer(LOOKS_DELAY, service.looks.start),
+                threading.Timer(SEARCHED_DELAY, service.player.resume_searched),
+            ):
+                later.daemon = True
+                later.start()
             # The earlier studies' facts and rewrites, ordered from the app.
             service.study_refresh.start_thread()
             # Who the catalogue's artists are, from Wikidata: once some
