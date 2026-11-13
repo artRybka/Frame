@@ -612,3 +612,22 @@ def test_haiku_makes_searches_of_a_look_once(service: FrameService, monkeypatch)
     # With the translation of Szukaj's words switched off, nothing is asked.
     service.ai_config.update(AiConfigUpdate(search_words=False))
     assert words.searches("rwący potok") == [] and len(asked) == 1
+
+
+def test_a_copy_without_numbers_shows_what_its_works_other_copy_looks_like(
+    service: FrameService, looks: tuple[Looks, FakePainter]
+) -> None:
+    """Van Gogh's Sunflowers found by a look had no "Podobne wyglądem": the
+    card showed the work's best copy, the index had another (2026-11-13)."""
+    found, _painter = looks
+    service.ai_config.set_gemini_key("k")
+    _work(service, "met:1", "red", artist="Vincent van Gogh")
+    _work(service, "aic:7", "red")
+    _numbers(found)
+    copy = service.library.upsert(
+        Item(id="wmc:5", source="wmc", source_id="5", title="met:1", artist="Vincent van Gogh")
+    )
+    works = service.library.works()
+    assert works.group_index("wmc:5") == works.group_index("met:1") is not None
+    assert copy.id not in found.index
+    assert [f.item.id for f in found.similar(copy)] == ["aic:7"]

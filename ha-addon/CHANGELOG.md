@@ -17,6 +17,9 @@
   jako zapasowe.
 - Hasła dla muzeów włącza ten sam przełącznik co tłumaczenie słów w Szukaj
   (Konfiguracja → Claude).
+- Karta dzieła pokazuje „Podobne wyglądem” także wtedy, gdy liczby ma
+  tylko inna kopia tego samego dzieła (np. Słoneczniki z Monachium
+  znalezione przez kopię z WikiArt).
 
 ## 1.145.97
 

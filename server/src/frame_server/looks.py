@@ -486,15 +486,20 @@ class Looks:
         return self._answer(self.index.nearest(vector, limit * 3), limit, PICTURE_FLOOR)
 
     def similar(self, item: Item, limit: int = 24, place: Place = Place.FOUND) -> list[Found]:
-        """Works that look like ``item``: none until it has its numbers.
-        Its own copies and the work itself are left out; ``place``: where
-        they are shown."""
-        vector = self.index.vector(item.id)
+        """Works that look like ``item``: none until it or another copy of
+        its work has numbers (the card shows the work's best copy, the
+        index may have another: no "Podobne wyglądem" under van Gogh's
+        Sunflowers found by a look, 2026-11-13). Its own copies and the work
+        itself are left out; ``place``: where they are shown."""
+        works = self.library.works()
+        own = works.group_index(item.id)
+        copies = [item.id] + (
+            [c.id for c in works.groups[own] if c.id != item.id] if own is not None else []
+        )
+        vector = next((v for c in copies if (v := self.index.vector(c)) is not None), None)
         if vector is None:
             return []
         near = self.index.nearest(vector, limit * 3 + 8)
-        works = self.library.works()
-        own = works.group_index(item.id)
         near = [
             (i, s) for i, s in near if i != item.id and (own is None or works.group_index(i) != own)
         ]
