@@ -11,6 +11,13 @@ question in the night's batch and, once it is answered, its close-ups
 together in a second one (about 0.15 USD a page). A page whose whole
 analysis is about to be made again (``ComposeJob``) gets the new pen with
 it and is not asked about here.
+
+Where the sheets are drawn by the image model (``drawn``), the analysis
+asks no pen: a page's take drawn there needs none. One the model will not
+draw (Google refuses a nude, or will not redraw a work) is left with the
+server's own sheet, and that one without a pen is its stains alone: such a
+take gets its sketch here, at night, as does any take written without one
+once the image model is off.
 """
 
 from __future__ import annotations
@@ -38,10 +45,12 @@ KIND = "pen"
 
 
 def wants(note: Note | None) -> bool:
-    """A page with an analysis whose sketch an earlier pen drew (or none)."""
-    if note is None or note.data.get(pen.PEN_KEY, 1) >= pen.REDRAWN:
+    """A page with an analysis whose sketch an earlier pen drew, or whose
+    shown take has none (written while the image model drew the sheets)."""
+    shown = page_views(note.data) if note is not None else []
+    if note is None or not shown:
         return False
-    return bool(page_views(note.data))
+    return note.data.get(pen.PEN_KEY, 1) < pen.REDRAWN or not shown[0].sketch
 
 
 def _drawn(composition: Any, field: Box | None, sketch: list[dict[str, Any]]) -> Any:
@@ -97,11 +106,13 @@ class PenJob(NoteJob):
         super().__init__(compose.library, compose.images, compose.config)
         self.compose = compose
         self._pages: tuple[float, set[str]] = (0.0, set())
+        #: Whether the work's take has a sheet drawn by the image model, or
+        #: will have one (``drawn.DrawnSheets.covers``): it needs no pen.
+        self.drawn: Callable[[str, View], bool] = lambda item_id, view: False
 
     def enabled(self) -> bool:
-        """With the pages themselves ("Studium dnia" on); not where the
-        sheets are drawn by the image model, which need no pen."""
-        return self.config.enabled(DAILY) and not self.config.drawn
+        """With the pages themselves ("Studium dnia" on)."""
+        return self.config.enabled(DAILY)
 
     def waiting(self) -> set[str]:
         when, ids = self._pages
@@ -110,7 +121,7 @@ class PenJob(NoteJob):
                 item_id
                 for kind in PAGES
                 for item_id, note in self.library.notes(kind).items()
-                if wants(note)
+                if wants(note) and not self.drawn(item_id, page_views(note.data)[0])
             } - self.compose.waiting()
             self._pages = (time.monotonic(), ids)
         return ids

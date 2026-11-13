@@ -8,7 +8,7 @@ import logging
 from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime, timedelta, tzinfo
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from pathlib import Path
 
 from PIL import Image
@@ -18,6 +18,7 @@ from .ai import AiConfigStore, AiWorker, Claude, DailyJob, KeywordsJob, PlTextJo
 from .ai.audit import Audit
 from .ai.composition import ComposeJob
 from .ai.curator import Curator
+from .ai.daily import View
 from .ai.details import MendJob
 from .ai.extras import ExtrasJob
 from .ai.gatekeeper import Gatekeeper
@@ -383,13 +384,22 @@ class FrameService:
         # lets it) and for pages left without one.
         self.compose = ComposeJob(self.daily.job)
         self.ai.register(self.compose)
-        # The pen sketches of pages drawn by an earlier pen, drawn again at night.
-        self.ai.register(PenJob(self.compose))
+        # The pen sketches of pages drawn by an earlier pen (or by none), drawn
+        # again at night.
+        pen = PenJob(self.compose)
+        self.ai.register(pen)
         # The study sheets the analyses are drawn on, made ahead in the background.
         self.sheets = Sheets(self.library, self.images)
-        # Those sheets drawn by the image model, where the owner gave Google's key.
+        # Those sheets drawn by the image model, where the owner gave Google's key:
+        # not for a take about to be made anew, through Google's Batch for the
+        # Studium dnia written a day ahead; a take they cover needs no pen.
         self.painter = Painter(self.ai_config, self.claude)
         self.drawn = DrawnSheets(self.library, self.images, self.painter)
+        self.drawn.replacing = lambda item_id: (
+            self.compose.enabled() and item_id in self.compose.waiting()
+        )
+        self.drawn.to_come = self._to_come
+        pen.drawn = self._drawn_covers
         # Small pictures of works drawn again larger by the same model
         # ("Kreatywny restaurator"), kept as the owner's pick.
         self.restorer = Restorer(self.library, self.images, self.sharper, self.painter)
@@ -409,6 +419,15 @@ class FrameService:
         self.night: NightQueue | None = None
 
         self._tasks: set[asyncio.Task[object]] = set()
+
+    def _to_come(self, item_id: str) -> bool:
+        """The work is the work of a day still to come."""
+        day = self.daily.day_of(item_id)
+        return day is not None and day > date.today()
+
+    def _drawn_covers(self, item_id: str, view: View) -> bool:
+        item = self.library.get(item_id)
+        return item is not None and self.drawn.covers(item, view)
 
     def _access(self) -> Access:
         """What the owner lets art sources return, and their credentials."""

@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import io
 import re
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -20,10 +21,12 @@ from PIL import Image, ImageDraw, ImageFilter
 from test_composition import _old_page
 from test_daily import _app, _catalogue
 
+import frame_server.drawn as drawn_module
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai import drawn as ai_drawn
 from frame_server.ai.client import AiUnavailable
 from frame_server.ai.daily import CHECK_ROUND, ROUND, Box, Mark, Spot, View
+from frame_server.ai.daily import KIND as DAILY
 from frame_server.ai.drawn import (
     AT_ONCE,
     BLOCKED_TRIES,
@@ -51,7 +54,16 @@ from frame_server.ai.gemini import (
 )
 from frame_server.ai.jobs import listed
 from frame_server.ai.redraw import PenJob
-from frame_server.drawn import KEY_REJECTED, LIMIT, NO_CREDIT, SINCE, TRIES, DrawnSheets
+from frame_server.ai.study import KIND as STUDY
+from frame_server.drawn import (
+    KEY_REJECTED,
+    LIMIT,
+    NO_CREDIT,
+    SINCE,
+    SINCE_LOOK,
+    TRIES,
+    DrawnSheets,
+)
 from frame_server.imaging import drawn as imaging
 from frame_server.imaging.sheet import BLEED, LONG, PAGE, bleed
 from frame_server.service import FrameService
@@ -173,7 +185,8 @@ def test_the_model_is_asked_three_things_and_the_sheet_is_taken_apart() -> None:
     view = _take()
     stand = Stand(view)
     sheet = draw(_scene(), view, stand, seed=3)
-    assert stand.asked == ["underlay", "lines", "spill"]
+    # The study and what runs out of it first (kept, should the lines fail).
+    assert stand.asked == ["underlay", "spill", "lines"]
     assert sheet.cost == {"underlay": 0.05, "lines": 0.052, "spill": 0.043}
     # The page: the field, the sheet's long side long, with the margin on each side.
     assert sheet.size == (LONG, LONG * 2 // 3)
@@ -238,12 +251,12 @@ def test_a_mark_left_out_is_asked_for_once_more_and_a_strange_study_is_refused()
     view = _take()
     stand = Stand(view, leave_out=1)
     sheet = draw(_scene(), view, stand)
-    assert stand.asked == ["underlay", "lines", "lines", "spill"]
+    assert stand.asked == ["underlay", "spill", "lines", "lines"]
     assert all(sheet.layers) and sheet.cost["lines"] == 0.104
     # Left out both times: the sheet goes without that line (the app draws it).
     stand = Stand(view, leave_out=1, always=True)
     sheet = draw(_scene(), view, stand)
-    assert stand.asked == ["underlay", "lines", "lines", "spill"]
+    assert stand.asked == ["underlay", "spill", "lines", "lines"]
     assert [layer is not None for layer in sheet.layers] == [True, False, True]
     # A study that is not the work's framing is asked for again, then given up.
     stand = Stand(view, far=True)
@@ -447,6 +460,7 @@ class Stood:
         self.batches: list[list[Ask]] = []
         self.ready = False
         self.refuse = ""  # the names' ending the model will not draw
+        self.leave_out: int | None = None  # the mark the lines leave out
         self.kw: list[dict[str, Any]] = []
         svc.ai_config.set_gemini_key(GOOGLE_KEY)
         svc.painter.paint = self.paint  # type: ignore[method-assign]
@@ -454,7 +468,7 @@ class Stood:
         svc.painter.batched = self.batched  # type: ignore[method-assign]
 
     def _stand(self) -> Stand:
-        return Stand(_shown(self.svc).inside())
+        return Stand(_shown(self.svc).inside(), leave_out=self.leave_out, always=True)
 
     def paint(self, kind: str, prompt: str, pictures: Any, size: str = "1K", **kw: Any) -> Any:
         self.calls.append(kind)
@@ -519,8 +533,8 @@ def test_a_new_pages_sheet_is_drawn_at_once_and_the_app_gets_it(tmp_path: Path) 
         # The study and the lines without thinking first, the spill by the cheaper model.
         assert stood.kw == [
             {"spill": False, "think": "minimal"},
-            {"spill": False, "think": "minimal"},
             {"spill": True, "model": LITE},
+            {"spill": False, "think": "minimal"},
         ]
 
         work = client.get("/api/study/met:1").json()["work"]
@@ -570,6 +584,40 @@ def test_a_new_pages_sheet_is_drawn_at_once_and_the_app_gets_it(tmp_path: Path) 
         assert client.get("/api/study/met:1").json()["work"]["composition_drawn"] is not None
 
 
+def _began(svc: FrameService, since: str) -> None:
+    """The sheets began to be drawn (in this look) at ``since``."""
+    svc.library.set_state(SINCE, since)
+    svc.library.set_state(SINCE_LOOK, drawn_module.LOOK)
+
+
+def test_a_new_look_draws_every_sheet_anew_through_the_batch_showing_the_old_meanwhile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mateusz 2026-11-13 09:30: "dla istniejących studium - puść proszę
+    podkłady wg. zmienionego promptu"."""
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    with TestClient(app) as client:
+        _catalogue(svc)
+        stood = Stood(svc)
+        _old_page(svc)  # a new page: its sheet drawn at once
+        assert svc.drawn.ahead() is True and stood.calls == [KIND] * 3
+        before = client.get("/api/study/met:1").json()["work"]["composition_drawn"]
+        shown = _shown(svc)
+        assert f"v={DrawnSheets.key(shown)}" in before["sheet"]
+
+        monkeypatch.setattr(drawn_module, "LOOK", drawn_module.LOOK + 1)
+        # Every page is now one saved before: its sheet is drawn anew through
+        # the Batch, nothing at once, and the old sheet is shown meanwhile.
+        assert svc.drawn.at_once() == []
+        assert [item.id for item, _ in svc.drawn.saved()] == ["met:1"]
+        work = client.get("/api/study/met:1").json()["work"]
+        assert work["composition_drawn"] == before and work["composition_drawn_pending"] is False
+        assert client.get(before["sheet"]).status_code == 200
+        assert DrawnSheets.key(shown) != DrawnSheets.key(shown, drawn_module.LOOK - 1)
+        assert stood.calls == [KIND] * 3
+
+
 def test_saved_pages_go_through_the_batch_and_an_analysis_made_anew_at_once(
     tmp_path: Path,
 ) -> None:
@@ -583,7 +631,7 @@ def test_saved_pages_go_through_the_batch_and_an_analysis_made_anew_at_once(
     with TestClient(app) as client:
         _catalogue(svc)
         _old_page(svc, **{CHECK_ROUND: ROUND})
-        svc.library.set_state(SINCE, "9999")  # the sheets began to be drawn after it
+        _began(svc, "9999")  # the sheets began to be drawn after it
         stood = Stood(svc)
         work = client.get("/api/study/met:1").json()["work"]
         assert work["composition_drawn"] is None and work["composition_drawn_pending"] is False
@@ -690,11 +738,14 @@ def test_saved_pages_go_through_the_batch_and_an_analysis_made_anew_at_once(
         assert client.put("/api/study/met:1/composition", json={"shown": 0}).status_code == 200
         assert client.get("/api/study/met:1").json()["work"]["composition_drawn"] is not None
         assert svc.drawn.ahead() is False
-        # With the image model the pen (Opus) has nothing to draw at night.
+        # With the image model the pen has nothing to draw at night: the
+        # take has its sheet.
         pen = next(job for job in svc.ai.jobs.values() if isinstance(job, PenJob))
-        assert pen.enabled() is False
+        pen._pages = (0.0, set())
+        assert pen.enabled() is True and not pen.wanted(item)
         client.put("/api/ai", json={"drawn": False})
-        assert pen.enabled() is True and svc.drawn.ahead() is False
+        pen._pages = (0.0, set())
+        assert not pen.wanted(item) and svc.drawn.ahead() is False
 
 
 def test_trouble_with_the_key_is_told_and_a_work_the_model_refuses_is_left(
@@ -789,7 +840,7 @@ def test_the_batch_keeps_within_the_months_limit_and_leaves_what_is_refused(
     with TestClient(app):
         _catalogue(svc)
         _old_page(svc)
-        svc.library.set_state(SINCE, "9999")
+        _began(svc, "9999")
         stood = Stood(svc)
         # Nothing is handed over that the month's limit does not hold.
         svc.painter.spending.add(KIND, 0.99)
@@ -842,3 +893,161 @@ def test_the_batch_keeps_within_the_months_limit_and_leaves_what_is_refused(
         assert _step(svc) is True
         kept = svc.drawn.meta(item, _shown(svc))
         assert kept is not None and kept["cost"] == {"lines": 0.026}
+
+
+def test_a_take_about_to_be_made_anew_waits_and_tomorrows_page_goes_through_the_batch(
+    tmp_path: Path,
+) -> None:
+    """2026-11-13 (Mateusz: "wszystko współgra z trybem batch"): no sheet
+    for a take the analysis is about to replace; the Studium dnia written a
+    day ahead through Claude's Batch has its sheet through Google's, and at
+    once only when its day has come without it."""
+    from test_ai import GOOD_KEY
+
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    with TestClient(app) as client:
+        _catalogue(svc)
+        stood = Stood(svc)
+        assert svc.drawn.at_once() == []  # the sheets begin to be drawn now
+        svc.ai_config.set_key(GOOD_KEY)
+        _old_page(svc)  # a new page, but of an earlier round: about to be written again
+        item = svc.library.get("met:1")
+        assert item is not None and svc.drawn.replacing("met:1")
+        assert svc.drawn.at_once() == [] and svc.drawn.saved() == []
+        work = client.get("/api/study/met:1").json()["work"]
+        assert work["composition_drawn_pending"] is False
+        assert svc.drawn.ahead() is False and stood.calls == [] and stood.batches == []
+
+        # Tomorrow's page, written today.
+        page = svc.library.note("met:1", STUDY)
+        assert page is not None
+        svc.library.delete_notes(STUDY, "met:1")
+        data = {**page.data, CHECK_ROUND: ROUND}
+        svc.library.save_note(page.model_copy(update={"kind": DAILY, "data": data}))
+        svc.compose.forget()
+        assert not svc.drawn.replacing("met:1")
+        svc.daily.day_of = lambda item_id: date.today() + timedelta(days=1)  # type: ignore[method-assign]
+        assert svc.drawn.at_once() == []
+        assert [i.id for i, _ in svc.drawn.saved()] == ["met:1"]
+        assert not svc.drawn.pending(item, _shown(svc))
+        assert _step(svc) is False and stood.calls == [] and len(stood.batches) == 1
+        # Its day came before Google answered: drawn at once.
+        svc.daily.day_of = lambda item_id: date.today()  # type: ignore[method-assign]
+        assert [i.id for i, _ in svc.drawn.at_once()] == ["met:1"]
+        assert svc.drawn.pending(item, _shown(svc))
+        assert svc.drawn.ahead() is True and stood.calls == [KIND] * 3
+        assert svc.drawn.meta(item, _shown(svc)) is not None
+        # The batch's late answer draws nothing more.
+        stood.ready = True
+        assert _step(svc) is True and _step(svc) is False
+        assert len(stood.batches) == 1 and svc.drawn._batch() is None
+
+
+def test_what_a_failed_sheet_costs_once(tmp_path: Path) -> None:
+    """A study Google will not take is asked for so many times in all, not
+    as many rounds of them; a study paid for is kept when its lines fail;
+    a take the model is left without gets the pen's sketch at night."""
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    with TestClient(app):
+        _catalogue(svc)
+        stood = Stood(svc)
+        assert svc.drawn.at_once() == []
+        _old_page(svc, **{CHECK_ROUND: ROUND})
+        item = svc.library.get("met:1")
+        assert item is not None
+        pen = next(job for job in svc.ai.jobs.values() if isinstance(job, PenJob))
+        assert not pen.wanted(item)  # the image model will draw its sheet
+        drawing = stood.paint
+
+        # The lines refused: the study and its spill are kept, and paid for once.
+        def no_lines(kind: str, prompt: str, pictures: Any, size: str = "1K", **kw: Any) -> Any:
+            if "ONE PENCIL FOR ONE FINDING" in prompt:
+                stood.calls.append("no lines")
+                raise NotDrawn("Google answered 400", "image_recitation")
+            return drawing(kind, prompt, pictures, size, **kw)
+
+        svc.painter.paint = no_lines  # type: ignore[method-assign]
+        assert svc.drawn.ahead() is True and svc.drawn.meta(item, _shown(svc)) is None
+        assert stood.calls == [KIND, KIND, "no lines"]
+        assert len(list(svc.drawn.dir.glob("*-study.png"))) == 1
+        assert len(list(svc.drawn.dir.glob("*-spill.png"))) == 1
+        svc.painter.paint = drawing  # type: ignore[method-assign]
+        svc.drawn.again()
+        stood.calls.clear()
+        assert svc.drawn.ahead() is True and stood.calls == [KIND]
+        kept = svc.drawn.meta(item, _shown(svc))
+        assert kept is not None and set(kept["cost"]) == {"lines"}
+
+        # A nude Google will not take: asked BLOCKED_TRIES times, then left.
+        for path in svc.drawn.dir.glob("*"):
+            path.unlink()
+        svc.drawn = DrawnSheets(svc.library, svc.images, svc.painter)
+        svc.drawn.replacing = lambda item_id: False
+        stood.calls.clear()
+
+        def nude(kind: str, prompt: str, pictures: Any, size: str = "1K", **kw: Any) -> Any:
+            stood.calls.append("nude")
+            raise NotDrawn("Google's answer has no picture", "prohibited_content")
+
+        svc.painter.paint = nude  # type: ignore[method-assign]
+        assert svc.drawn.ahead() is True and stood.calls == ["nude"] * BLOCKED_TRIES
+        svc.drawn.again()
+        assert svc.drawn.at_once() == [] and svc.drawn.saved() == []
+        assert svc.drawn.ahead() is False and len(stood.calls) == BLOCKED_TRIES
+        # Left with the server's sheet, which gets the pen's sketch at night.
+        pen._pages = (0.0, set())
+        assert pen.wanted(item)
+
+
+def test_the_batch_asks_again_for_lines_that_left_a_mark_out(tmp_path: Path) -> None:
+    """As at once (``LINES_TRIES``): the answer with more marks is kept."""
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    with TestClient(app):
+        _catalogue(svc)
+        _old_page(svc, **{CHECK_ROUND: ROUND})
+        _began(svc, "9999")
+        stood = Stood(svc)
+        item = svc.library.get("met:1")
+        assert item is not None
+        stood.ready = True
+        assert _step(svc) is False and _step(svc) is True  # the studies
+        stood.leave_out = 0
+        assert _step(svc) is False and _step(svc) is True  # lines and spill: a mark left out
+        state = svc.drawn._batch()
+        assert state is not None and state["round"] == "lines" and state["again"]
+        assert svc.drawn.meta(item, _shown(svc)) is None
+        assert len(list(svc.drawn.dir.glob("*-marked.png"))) == 1
+        stood.leave_out = None
+        assert _step(svc) is False and _step(svc) is True
+        assert [ask.name.rsplit("/", 1)[1] for ask in stood.batches[2]] == ["lines"]
+        kept = svc.drawn.meta(item, _shown(svc))
+        assert kept is not None and all(kept["layers"])
+        assert kept["cost"]["lines"] == 0.052 and svc.drawn._batch() is None
+        assert not list(svc.drawn.dir.glob("*-marked.png"))
+
+
+def test_an_analysis_made_anew_finds_a_prints_field_again_a_little_off(tmp_path: Path) -> None:
+    """23:20: over the study the work has, the lines alone, also when the
+    new analysis puts the print's field a few pixels elsewhere."""
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    with TestClient(app):
+        _catalogue(svc)
+        _old_page(svc, **{CHECK_ROUND: ROUND})
+        item = svc.library.get("met:1")
+        assert item is not None
+        shown = _shown(svc)
+        first = shown.model_copy(update={"field": Box(x=0.0, y=0.0, w=1.0, h=0.9)})
+        work = svc.drawn._work(item, first)
+        study, _ = Stand(first.inside())(UNDERLAY, [work])
+        svc.drawn._keep_under(item, first, ai_drawn.Under(study))
+        near = shown.model_copy(update={"field": Box(x=0.0, y=0.004, w=1.0, h=0.9)})
+        far = shown.model_copy(update={"field": Box(x=0.0, y=0.0, w=1.0, h=0.7)})
+        assert svc.drawn._under(item, far, svc.drawn._work(item, far)) is None
+        assert svc.drawn._under(item, near) is None  # borrowed only where it is measured
+        under = svc.drawn._under(item, near, svc.drawn._work(item, near))
+        assert under is not None
+        assert svc.drawn._under_file(item, near, "study").is_file()  # now its own too
