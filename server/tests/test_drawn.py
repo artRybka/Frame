@@ -21,10 +21,12 @@ from test_composition import _old_page
 from test_daily import _app, _catalogue
 
 from frame_server.ai import AiConfigUpdate
+from frame_server.ai import drawn as ai_drawn
 from frame_server.ai.client import AiUnavailable
 from frame_server.ai.daily import CHECK_ROUND, ROUND, Box, Mark, Spot, View
 from frame_server.ai.drawn import (
     AT_ONCE,
+    BLOCKED_TRIES,
     KIND,
     LINES,
     SPILL,
@@ -33,11 +35,23 @@ from frame_server.ai.drawn import (
     focus,
     lines_prompt,
     said,
+    study_prompt,
 )
-from frame_server.ai.gemini import MODEL, URL, Ask, GeminiRejected, NoCredit, NotDrawn, Painter
+from frame_server.ai.gemini import (
+    LITE,
+    MODEL,
+    URL,
+    Ask,
+    GeminiRejected,
+    NoCredit,
+    NotDrawn,
+    Painter,
+    blocked,
+    cost,
+)
 from frame_server.ai.jobs import listed
 from frame_server.ai.redraw import PenJob
-from frame_server.drawn import KEY_REJECTED, LIMIT, NO_CREDIT, SINCE, DrawnSheets
+from frame_server.drawn import KEY_REJECTED, LIMIT, NO_CREDIT, SINCE, TRIES, DrawnSheets
 from frame_server.imaging import drawn as imaging
 from frame_server.imaging.sheet import BLEED, LONG, PAGE, bleed
 from frame_server.service import FrameService
@@ -250,6 +264,56 @@ def test_a_mark_left_out_is_asked_for_once_more_and_a_strange_study_is_refused()
     assert "spill" not in sheet.cost
 
 
+def test_the_spill_has_a_painter_of_its_own_and_a_refused_study_is_asked_again() -> None:
+    """2026-11-13 (Mateusz 07:11: "zastanów się jak obniżyć koszt"): the
+    spill may go to a cheaper model; a study Google will not take at all
+    (a nude) is asked for again, as a refusal costs nothing."""
+    view = _take()
+    stand, cheap = Stand(view), Stand(view)
+    sheet = draw(_scene(), view, stand, spill=cheap)
+    assert stand.asked == ["underlay", "lines"] and cheap.asked == ["spill"]
+    assert sheet.cost == {"underlay": 0.05, "lines": 0.052, "spill": 0.043}
+
+    refusals = []
+
+    def shy(prompt: str, pictures: Any) -> tuple[Image.Image, float]:
+        if prompt.startswith(UNDERLAY[:40]) and len(refusals) < BLOCKED_TRIES - 1:
+            refusals.append(prompt)
+            raise NotDrawn("Google answered 400", "prohibited_content")
+        return stand(prompt, pictures)
+
+    sheet = draw(_scene(), view, shy)
+    assert len(refusals) == BLOCKED_TRIES - 1 and sheet.cost["underlay"] == 0.05
+    # Refused every time: given up after so many questions.
+    refusals.clear()
+
+    def never(prompt: str, pictures: Any) -> tuple[Image.Image, float]:
+        refusals.append(prompt)
+        raise NotDrawn("Google answered 400", "prohibited_content")
+
+    with pytest.raises(NotDrawn) as caught:
+        draw(_scene(), view, never)
+    assert len(refusals) == BLOCKED_TRIES and blocked(caught.value.code)
+    # Any other refusal is not asked again here.
+    refusals.clear()
+
+    def recites(prompt: str, pictures: Any) -> tuple[Image.Image, float]:
+        refusals.append(prompt)
+        raise NotDrawn("Google answered 400", "image_recitation")
+
+    with pytest.raises(NotDrawn):
+        draw(_scene(), view, recites)
+    assert len(refusals) == 1 and not blocked("image_recitation") and blocked("IMAGE_SAFETY")
+    # What the cheaper model costs: its picture as much, its words a fifth.
+    usage = {
+        "total_input_tokens": 2000,
+        "total_output_tokens": 1120,
+        "output_tokens_by_modality": [{"modality": "image", "tokens": 1120}],
+    }
+    assert cost(usage, LITE) == round((2000 * 0.25 + 1120 * 30) / 1e6, 4)
+    assert cost(usage) == round((2000 * 1.5 + 1120 * 30) / 1e6, 4)
+
+
 def test_what_the_model_is_told() -> None:
     view = _take()
     assert focus(view) == "„Żagiel”; „Słońce”"
@@ -301,6 +365,34 @@ class FakeGoogle:
             },
         }
         return httpx.Response(self.status, json=body, request=httpx.Request("POST", url))
+
+
+def test_the_study_keeps_the_painters_manner_his_colour_and_his_darks() -> None:
+    """Mateusz 2026-11-13: Matisse's model drawn too exactly (08:27), the
+    colours the analysis names stressed (08:29), darks not left pale (08:30)."""
+    spot = [Spot(x=0.4, y=0.4), Spot(x=0.6, y=0.6)]
+    view = View(
+        title="Analiza",
+        text=(
+            "Postać stoi na środku. Czerwona kołdra jest najmocniejszym akcentem. "
+            "Tło jest ciemne, prawie czarne!"
+        ),
+        marks=[
+            Mark(shape="loop", points=spot, title="Twarz"),
+            Mark(shape="echo", points=spot, title="Dwa krzesła", text="Żółć wraca"),
+            Mark(shape="echo", points=spot, title="Dwie głowy", text="Głowa odpowiada głowie"),
+        ],
+    )
+    said = ai_drawn.colour(view)
+    assert "„Czerwona kołdra jest najmocniejszym akcentem.”" in said
+    assert "„Dwa krzesła: Żółć wraca”" in said
+    assert "Postać stoi" not in said and "Dwie głowy" not in said and "czarne" not in said
+    prompt = study_prompt(view)
+    assert "{COLOUR}" not in prompt and "{SAID}" not in prompt and said in prompt
+    assert "MANNER." in prompt and "Never correct the anatomy" in prompt
+    assert "never black" not in prompt and "ink-dark wash" in prompt
+    plain = study_prompt(View(title="Analiza", text="Postać stoi na środku.", marks=view.marks[:1]))
+    assert "COLOUR." not in plain and "{COLOUR}" not in plain and "MANNER." in plain
 
 
 def test_the_painter_asks_google_and_counts_what_it_cost(service: FrameService) -> None:
@@ -355,6 +447,7 @@ class Stood:
         self.batches: list[list[Ask]] = []
         self.ready = False
         self.refuse = ""  # the names' ending the model will not draw
+        self.kw: list[dict[str, Any]] = []
         svc.ai_config.set_gemini_key(GOOGLE_KEY)
         svc.painter.paint = self.paint  # type: ignore[method-assign]
         svc.painter.batch = self.batch  # type: ignore[method-assign]
@@ -363,8 +456,9 @@ class Stood:
     def _stand(self) -> Stand:
         return Stand(_shown(self.svc).inside())
 
-    def paint(self, kind: str, prompt: str, pictures: Any, size: str = "1K") -> Any:
+    def paint(self, kind: str, prompt: str, pictures: Any, size: str = "1K", **kw: Any) -> Any:
         self.calls.append(kind)
+        self.kw.append({"spill": prompt == SPILL, **kw})
         return self._stand()(prompt, pictures)
 
     def batch(self, kind: str, asks: Any) -> str:
@@ -409,7 +503,7 @@ def test_a_new_pages_sheet_is_drawn_at_once_and_the_app_gets_it(tmp_path: Path) 
         # Without Google's key nothing changes: the server's own sheet.
         view = client.get("/api/ai").json()
         assert view["gemini_key_set"] is False and view["drawn"] is True
-        assert view["drawn_usd"] == 0.15 and view["drawn_batch_usd"] == 0.075
+        assert view["drawn_usd"] == 0.12 and view["drawn_batch_usd"] == 0.06
         assert svc.drawn.ahead() is False
 
         stood = Stood(svc)
@@ -422,6 +516,12 @@ def test_a_new_pages_sheet_is_drawn_at_once_and_the_app_gets_it(tmp_path: Path) 
         assert svc.drawn.saved() == [] and stood.batches == []
         assert svc.drawn.ahead() is True
         assert stood.calls == [KIND] * 3 and svc.drawn.at_once() == []
+        # The study and the lines without thinking first, the spill by the cheaper model.
+        assert stood.kw == [
+            {"spill": False, "think": "minimal"},
+            {"spill": False, "think": "minimal"},
+            {"spill": True, "model": LITE},
+        ]
 
         work = client.get("/api/study/met:1").json()["work"]
         sheet = work["composition_drawn"]
@@ -608,7 +708,7 @@ def test_trouble_with_the_key_is_told_and_a_work_the_model_refuses_is_left(
         _old_page(svc)
 
         # The key's credit is used up: said in Konfiguracja, nothing asked for an hour.
-        def broke(kind: str, prompt: str, pictures: Any, size: str = "1K") -> Any:
+        def broke(kind: str, prompt: str, pictures: Any, size: str = "1K", **kw: Any) -> Any:
             stood.calls.append("broke")
             raise NoCredit("no credit")
 
@@ -624,7 +724,7 @@ def test_trouble_with_the_key_is_told_and_a_work_the_model_refuses_is_left(
         assert view["gemini_key_set"] and view["gemini_key_tail"] == "wxyz"
         assert GOOGLE_KEY not in str(view) and view["gemini_error"] is None
 
-        def refused(kind: str, prompt: str, pictures: Any, size: str = "1K") -> Any:
+        def refused(kind: str, prompt: str, pictures: Any, size: str = "1K", **kw: Any) -> Any:
             raise GeminiRejected("no")
 
         svc.painter.paint = refused  # type: ignore[method-assign]
@@ -662,7 +762,7 @@ def test_trouble_with_the_key_is_told_and_a_work_the_model_refuses_is_left(
 
         # A work the model will not redraw: tried twice, then left with the
         # server's own sheet, and not paid for again.
-        def will_not(kind: str, prompt: str, pictures: Any, size: str = "1K") -> Any:
+        def will_not(kind: str, prompt: str, pictures: Any, size: str = "1K", **kw: Any) -> Any:
             stood.calls.append("will not")
             raise NotDrawn("Google answered 400", "image_recitation")
 
@@ -706,6 +806,15 @@ def test_the_batch_keeps_within_the_months_limit_and_leaves_what_is_refused(
         assert _step(svc) is False and len(stood.batches) == 2
         assert _step(svc) is True
         assert _step(svc) is False and len(stood.batches) == 2 and svc.drawn.saved() == []
+        assert all(ask.think == "minimal" for batch in stood.batches for ask in batch)
+        # Google will not take a nude at all: a refusal costs nothing, so the
+        # work is tried more times before it is left.
+        nude = NotDrawn("Google's answer has no picture", "prohibited_content")
+        assert TRIES < BLOCKED_TRIES
+        for n in range(BLOCKED_TRIES):
+            assert not svc.drawn._left("nude"), n
+            svc.drawn._fail("nude", nude)
+        assert svc.drawn._left("nude")
         # The lines refused: the study alone is no sheet, but it is kept for the work.
         svc.drawn._tried = {}
         stood.refuse = "/lines"

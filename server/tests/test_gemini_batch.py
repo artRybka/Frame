@@ -20,6 +20,7 @@ from frame_server.ai.gemini import (
     GeminiRejected,
     NotDrawn,
     Painter,
+    _request,
     batch_cost,
 )
 from frame_server.service import FrameService
@@ -140,7 +141,11 @@ def test_a_batch_is_sent_and_read_once_by_its_names(
     assert first["generation_config"]["responseModalities"] == ["IMAGE"]
     parts = first["contents"][0]["parts"]
     assert parts[0] == {"text": "draw"} and parts[1]["inline_data"]["mime_type"] == "image/jpeg"
+    assert "thinkingConfig" not in first["generation_config"]  # the model's own default
     assert set(google.headers) == {KEY}
+    # Asked not to think first (the sheets, 2026-11-13): checked live on generateContent.
+    thought = Ask("x", "draw", [Image.new("RGB", (8, 8))], think="minimal")
+    assert _request(thought)["generation_config"]["thinkingConfig"] == {"thinkingLevel": "minimal"}
 
     assert painter.batched(KIND, NAME) is None  # pending
     google.state = "BATCH_STATE_RUNNING"
