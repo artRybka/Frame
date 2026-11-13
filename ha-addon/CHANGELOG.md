@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.145.93
+
+- WikiArt: serwer nie wyłącza już WikiArt na pół godziny, gdy to on sam
+  wstrzymał zapytanie (wyczerpany udział nocnych zadań w godzinowym limicie)
+  albo gdy odpowiedź nie doszła. Za przerwę uznaje tylko prawdziwą odmowę
+  logowania, a jej powód trafia do logu. Sesja WikiArt przeżywa aktualizację
+  serwera (WikiArt daje 10 sesji na godzinę).
+- Karta dzieła z muzeum pyta muzeum o pełne dane tylko raz i trzyma je na
+  stałe, także po aktualizacji serwera.
+- Karta dzieła z muzeum, które chwilowo nie odpowiada, pokazuje dzieło tak,
+  jak widziało je wyszukiwanie, zamiast pustej karty. Gdy serwer nie ma nic,
+  komunikat mówi po polsku, co się stało, zamiast „Serwer odpowiedział 502”.
+
 ## 1.145.92
 
 - Szukanie wyglądem: w Szukaj wystarczy opisać, jak dzieło wygląda

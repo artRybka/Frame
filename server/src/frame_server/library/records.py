@@ -77,6 +77,27 @@ class Records:
                 (source, key, data, now if now is not None else time.time()),
             )
 
+    def put_many(self, source: str, records: dict[str, Any], now: float | None = None) -> None:
+        """Keeps several records at once (one write to the disk)."""
+        at = now if now is not None else time.time()
+        rows = [
+            (source, key, zlib.compress(json.dumps(r, ensure_ascii=False).encode(), 6), at)
+            for key, r in records.items()
+        ]
+        if not rows:
+            return
+        with self._lock:
+            self._db.execute("BEGIN")
+            try:
+                self._db.executemany(
+                    "INSERT OR REPLACE INTO records (source, id, record, at) VALUES (?, ?, ?, ?)",
+                    rows,
+                )
+            except sqlite3.Error:
+                self._db.execute("ROLLBACK")
+                raise
+            self._db.execute("COMMIT")
+
     def __len__(self) -> int:
         with self._lock:
             return int(self._db.execute("SELECT COUNT(*) FROM records").fetchone()[0])
