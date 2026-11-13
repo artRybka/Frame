@@ -23,12 +23,21 @@ a sheet, each answered with a picture, about 0.15 USD together:
    with a smaller study on it.
 
 Each answer differs, so a sheet is made once and kept (``drawn``).
+
+Cheaper since the trial of 2026-11-13 (0.12 USD instead of 0.15, Mateusz
+07:11: "zastanów się jak obniżyć koszt"): the study and the lines are asked
+of a model that does not think first (:data:`THINK`; the same look, and a
+third faster), the spill of Google's cheapest model (``gemini.LITE``),
+which lets a wash run out as well as the dearer one. Asking for the spill
+together with the lines, or sending the work with a stain already painted
+beside it, spoilt the study, so the three questions stay.
 """
 
 from __future__ import annotations
 
 import logging
 import math
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -39,7 +48,7 @@ from PIL import Image
 from ..imaging import drawn
 from .client import AiUnavailable
 from .daily import Mark, Spot, View
-from .gemini import NotDrawn
+from .gemini import NotDrawn, blocked
 from .sketch import _loop_box
 
 log = logging.getLogger(__name__)
@@ -47,10 +56,22 @@ log = logging.getLogger(__name__)
 #: What the sheets are counted as in the month's spending.
 KIND = "sheet"
 #: A sheet is about this much (three answers), for what is told before.
-TYPICAL_USD = 0.15
+TYPICAL_USD = 0.12
+#: How much the model thinks before it draws the study and the lines.
+THINK = "minimal"
+#: A study Google will not take at all (a nude, now and then) is asked for
+#: up to this many times: a refusal costs nothing (Mateusz 2026-11-13 08:26:
+#: "Akty - ograniczmy się do powielania prób (do 8 razy)"; black bars over
+#: the nude let one more work through in the trial, he chose not to).
+BLOCKED_TRIES = 8
 #: The works whose analysis the owner had made anew ("Wykonaj ponowną
 #: analizę"): the new take's sheet is drawn at once (state).
 AT_ONCE = "drawn_at_once"
+#: The study. Mateusz 2026-11-13: its MANNER (08:27: "u Matissa przeszkadza
+#: bardzo dokładny szkic modelki. Kompletnie gubi charakter obrazu"), its
+#: COLOUR (:data:`COLOUR`) and darks as deep as painted (08:30: "podkłady są
+#: chwilami zbyt mdłe, szczególnie przy dziełach ciemnych i wymagających
+#: pokazania czerni czy ciemnej plamy").
 UNDERLAY = """\
 Redraw this painting as a painter's composition study in watercolour and pen on cream paper \
 (#F5F1EA). A study has a hierarchy: it dwells on what the painting is about and only sets down \
@@ -58,57 +79,72 @@ the rest.
 
 GEOMETRY (most important). Keep exactly the framing of the source image. Every figure, object \
 and edge stays at exactly the same position and the same size as in the source, from edge to \
-edge. Do not crop, zoom, shift, rotate or mirror. Do not add a margin, border, frame, mat or \
-the edge of a sheet. The study fills the same rectangle as the painting.
+edge. Do not crop, zoom, shift, rotate or mirror. Do not add a margin, border, frame, mat or the \
+edge of a sheet. The study fills the same rectangle as the painting.
 
-WHAT MATTERS. An analysis of this painting names what matters in it (in Polish): {FOCUS}. \
-These places are the focus of the study. Everything else is the setting.
+WHAT MATTERS. An analysis of this painting names what matters in it (in Polish): {FOCUS}. These \
+places are the focus of the study. Everything else is the setting.
 
 THE FOCUS is finished. The pen draws its real contours precisely, with the few details that \
-tell (a face's features and expression, hands, the things held, the structure of the main \
-object). Economy even here. A face is its outline and the eyes, nose and mouth in a few sure \
-lines, with one light shadow wash: no wrinkles, no hatching on cheeks or brow, no modelling \
-line by line. Hair is a mass: its outline, a few long strokes for the way it falls, one wash \
-and one darker; never curl by curl or strand by strand. Its washes are fuller and truer to the \
-painting's colour, flat, with one darker second wash for its main shadow.
+tell, as the painter drew them (a face's features and expression, hands, the things held, the \
+structure of the main object). Economy even here. A face is its outline and the eyes, nose and \
+mouth in a few sure lines, with one light shadow wash: no wrinkles, no hatching on cheeks or \
+brow, no modelling line by line. Hair is a mass: its outline, a few long strokes for the way it \
+falls, one wash and one darker; never curl by curl or strand by strand. Its washes are fuller \
+and truer to the painting's colour, flat, with one darker second wash for its main shadow.
 
-THE SETTING is never left empty and never detailed. Each big area of it (a sky, a sea, a wall, \
-a floor, a background, a wide dress) gets one broad, diluted wash of its own colour and its \
-own value, so that the painting's big pattern of light and dark reads from across a room: what \
-is dark in the painting is a clearly darker wash, what is light is a pale wash or bare paper. \
-Soft irregular edges; thin gaps of bare paper between some washes; the wash stops raggedly \
-short of the sheet's edge here and there. Here the pen only indicates: a few long loose lines \
-for the main edges and directions, nothing small, no texture.
+THE SETTING is never left empty and never detailed. Each big area of it (a sky, a sea, a wall, a \
+floor, a background, a wide dress) gets one broad wash of its own colour and its own value, so \
+that the painting's big pattern of light and dark reads from across a room: what is dark in the \
+painting is a clearly darker wash, what is light is a pale wash or bare paper. Soft irregular \
+edges; thin gaps of bare paper between some washes; the wash stops raggedly short of the sheet's \
+edge here and there. Here the pen only indicates: a few long loose lines for the main edges and \
+directions, nothing small, no texture.
 
 PEN LINE. A fine ink line, dark grey-brown, clearly readable but delicate: a little stronger \
-than a pencil line, never heavy, never a comic-book outline. Its pressure varies: firmer and \
-darker on the focus and where a form turns, hair-thin in the setting. A little light diagonal \
-hatching in the darkest shadow of the focus only.
+than a pencil line, never heavy (unless the painter's own contour is, see MANNER), never a \
+comic-book outline. Its pressure varies: firmer and darker on the focus and where a form turns, \
+hair-thin in the setting. A little light diagonal hatching in the darkest shadow of the focus \
+only.
 
-DEPTH. The study is light and airy, yet it has depth: three clear steps of value. What is dark \
-in the setting (a dark background, a storm cloud, a shadowed wall or floor) is one broad, \
-schematic wash of a real middle-dark tone, brushed loosely, ragged at its edge, the paper \
-breaking through it here and there. Middle areas are a pale wash. Lights are bare paper. Even \
-the darkest wash stays transparent and is never black. The focus stands out from the setting \
-by richer colour and by the pen, and the dark wash behind or beside it sets it off.
+DEPTH. The study is airy, yet it has depth and the painting's own range of value, from bare \
+paper to the painting's darkest dark. What is dark in the painting (a dark background, a black \
+coat or dress, a storm cloud, a night sky, a shadowed wall or floor) is one broad, schematic \
+wash as deep as it is in the painting: a dark painting gets a dark study, and what is black in \
+the painting is a strong, deep, ink-dark wash, warm or cool as painted. It is brushed loosely, \
+ragged at its edge, the paper breaking through it here and there. Middle areas are a middle or \
+pale wash. Lights are bare paper. The focus stands out from the setting by richer colour and by \
+the pen, and the dark wash behind or beside it sets it off.
 
-THE WASH CARRIES NO DETAIL. Watercolour here is only flat tone and colour. Inside any big \
-shape (the front of a bed, a coat, a hull, a dress) the wash is one flat tone, at most two. No \
-wood grain, no pattern, no texture, no small folds, no modelling of small forms, no cast \
-shadows of small things, no streaks that imitate the painting's brushwork. Whatever detail is \
-kept is drawn by the pen, and only in the focus. A face gets one light second wash for its \
-shadow side, no more.
+THE WASH CARRIES NO DETAIL. Watercolour here is only flat tone and colour. Inside any big shape \
+(the front of a bed, a coat, a hull, a dress) the wash is one flat tone, at most two. No wood \
+grain, no pattern, no texture, no small folds, no modelling of small forms, no cast shadows of \
+small things, no streaks that imitate the painting's brushwork. Whatever detail is kept is drawn \
+by the pen, and only in the focus. A face gets one light second wash for its shadow side, no \
+more.
 
+MANNER. This is a study of this particular painting, so it keeps the painter's own way of \
+drawing and painting. Where the painter simplified, flattened or distorted forms (bold dark \
+outlines, flat areas of colour, a mask-like face, heavy or elongated limbs, tilted perspective), \
+the study keeps exactly that: the same contours, the same simplified features, the same \
+proportions, even where they are not anatomically or optically correct. Never correct the \
+anatomy, never make a face, a body or a space more realistic, more academic or prettier than the \
+painter did. Where the painter outlined figures with a heavy dark contour (as Matisse or Gauguin \
+did), the pen follows it with the same bold contour; a painting modelled in light and shade has \
+no such outline, and its study keeps the fine pen line. A figure the painter flattened into a \
+simple shape stays a simple shape: its outline in a few long lines, no anatomy, no modelling of \
+the body, the face as summary as the painter's (a few strokes, not a portrait). A loose painting \
+gets a loose study, a precise one a precise study.
+{COLOUR}
 BARE PAPER. Only the lightest lights and the gaps: a tenth to a fifth of the sheet.
 
-FIDELITY. Keep poses, expressions and proportions exactly. A face stays the same person: the \
-same age, the same features, the same hair and its colour, the same direction of the gaze. Do \
-not drop any figure or head, however small or half hidden; do not invent objects; do not \
-beautify or modernise.
+FIDELITY. Keep poses, expressions and proportions exactly as painted. A face stays the same \
+person: the same age, the same features, the same hair and its colour, the same direction of the \
+gaze. Do not drop any figure or head, however small or half hidden; do not invent objects; do \
+not beautify or modernise.
 
-DO NOT ADD any text, signature, numbers, labels, arrows, construction lines, geometric \
-diagrams, cast shadows, pencils or other props. The image is only the flat sheet, seen \
-straight on.
+DO NOT ADD any text, signature, numbers, labels, arrows, construction lines, geometric diagrams, \
+cast shadows, pencils or other props. The image is only the flat sheet, seen straight on.
 """
 
 LINES = """\
@@ -201,6 +237,22 @@ The image is only the flat sheet, edge to edge, seen straight on: not a photogra
 no shadow, no table, no frame, no border line round the study. No text, no signature.
 """
 
+#: What the analysis says of the painting's colour, given to the study
+#: (Mateusz 2026-11-13 08:29: "w miejscach akcentu czy tam gdzie kolor jest
+#: wymieniany do analizy podkreślić go na szkicu").
+COLOUR = """
+COLOUR. What the analysis says about the painting's colour (in Polish): {SAID}. Where it \
+names an accent of colour, or a colour that returns in several places, that colour is a little \
+stronger on the study than the washes round it: a clear, true wash of that hue, in exactly \
+those places, so that the accent and its returns are seen at once. Only there; everything else \
+keeps the washes described above.
+"""
+#: A sentence of the analysis that speaks of colour (Polish stems).
+_COLOURED = re.compile(
+    r"akcent|kolor|barw|czerw|żół|żółt|błęk|niebiesk|ziele|ochr|biel|róż|pomarańcz|fiolet|"
+    r"złot|ugr|rdzaw|brąz|granat|purpur|karmin|cynob|szmaragd|turkus|seledyn",
+    re.IGNORECASE,
+)
 #: The marks that say what the picture is about (the study's focus).
 FOCUS_SHAPES = ("loop", "triangle", "rect", "motion")
 
@@ -218,6 +270,18 @@ def focus(view: View) -> str:
     marks = [m.title for m in view.marks if m.shape in FOCUS_SHAPES and m.title]
     main = [k.title for k in view.keys if k.main and k.title]
     return "; ".join(f"„{t}”" for t in dict.fromkeys(marks + main))
+
+
+def colour(view: View) -> str:
+    """What the analysis says of colour: its sentences that name one, and
+    the marks that follow a colour returning ("echo")."""
+    sentences = [t for t in re.split(r"(?<=[.!?])\s+", view.text) if _COLOURED.search(t)]
+    echoes = [
+        f"{m.title}: {m.text}" if m.text else m.title
+        for m in view.marks
+        if m.shape == "echo" and m.title and _COLOURED.search(f"{m.title} {m.text}")
+    ]
+    return " ".join(f"„{t.strip()}”" for t in dict.fromkeys(sentences + echoes))
 
 
 def _pc(spot: Spot) -> str:
@@ -327,7 +391,10 @@ def titled(view: View) -> list[Mark]:
 
 
 def study_prompt(view: View) -> str:
-    return UNDERLAY.replace("{FOCUS}", focus(view) or "—")
+    said = colour(view)
+    return UNDERLAY.replace("{FOCUS}", focus(view) or "—").replace(
+        "{COLOUR}", COLOUR.replace("{SAID}", said) if said else ""
+    )
 
 
 def lines_ask(study: Image.Image, view: View) -> tuple[str, list[str]] | None:
@@ -344,6 +411,18 @@ def _there(layers: Sequence[Any]) -> int:
     return sum(float((layer > 0.3).mean()) >= drawn.NO_MARK for layer in layers)
 
 
+def _asked(paint: Paint, prompt: str, picture: Image.Image) -> tuple[Image.Image, float]:
+    """The study as asked, asked again while Google will not take the
+    question (:data:`BLOCKED_TRIES` at most; refused, it costs nothing)."""
+    for attempt in range(BLOCKED_TRIES):
+        try:
+            return paint(prompt, [picture])
+        except NotDrawn as err:
+            if not blocked(err.code) or attempt == BLOCKED_TRIES - 1:
+                raise
+    raise AssertionError("unreachable")
+
+
 def _study(
     picture: Image.Image, view: View, paint: Paint, costs: dict[str, float]
 ) -> tuple[Image.Image, Any]:
@@ -352,7 +431,7 @@ def _study(
     prompt = study_prompt(view)
     off = math.inf
     for _ in range(2):
-        study, usd = paint(prompt, [picture])
+        study, usd = _asked(paint, prompt, picture)
         costs["underlay"] = costs.get("underlay", 0.0) + usd
         frac, off = drawn.measure(picture, study)
         if off <= drawn.FAR_OFF:
@@ -441,11 +520,17 @@ def put_together(
 
 
 def draw(
-    picture: Image.Image, view: View, paint: Paint, seed: int = 1, under: Under | None = None
+    picture: Image.Image,
+    view: View,
+    paint: Paint,
+    seed: int = 1,
+    under: Under | None = None,
+    spill: Paint | None = None,
 ) -> Sheet:
     """The sheet of a take, asked for now: ``picture`` is the work (its
     field alone, when the take has one) and ``view`` the take as its field
-    sees it (``View.inside``). Over ``under`` (the work's study, had
+    sees it (``View.inside``); ``spill`` paints what runs out of the study
+    (``paint`` itself when None). Over ``under`` (the work's study, had
     before) only the take's lines are asked for (Mateusz 2026-11-12 23:20:
     "gdy zamawiam ponowną analizę, a podkład od Gemini już jest, to rób
     nim tylko kolorowe kreski"). Raises :class:`NotDrawn` when the study
@@ -457,7 +542,7 @@ def draw(
         marked = _marks(study, view, paint, costs)
         spilt = None
         try:
-            spilt, costs["spill"] = paint(SPILL, [drawn.padded(study)[0]])
+            spilt, costs["spill"] = (spill or paint)(SPILL, [drawn.padded(study)[0]])
         except AiUnavailable:
             raise
         except Exception as err:  # the sheet is paid for: it goes without its spill

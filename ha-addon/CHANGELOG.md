@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.81
+
+- Arkusze kompozycji z Gemini są o ok. 20% tańsze: 0,12 zamiast 0,15 USD
+  od razu i ok. 0,06 przez Batch. Szkic i kolorowe kreski model rysuje
+  bez wstępnego „namysłu” (ten sam wygląd, szybciej), a wyjście poza
+  kadr robi tańszy Nano Banana 2 Lite.
+- Akty, których Google nie chce przyjąć (np. Degas), są próbowane do
+  ośmiu razy, bo odmowa nic nie kosztuje i czasem za którymś razem
+  przechodzi. Gdy dalej nic, dzieło zostaje z arkuszem serwera.
+
 ## 1.145.80
 
 - Pasek barw: kreska konturu. Obraz malowany wyraźnym konturem (Matisse,

@@ -32,6 +32,12 @@ if TYPE_CHECKING:
     from .config import AiConfigStore
 
 MODEL = "gemini-nano-banana-2.1"
+#: Google's cheapest image model (Nano Banana 2 Lite): its picture costs as
+#: much as :data:`MODEL`'s, what goes in and its words a fifth. Good enough
+#: for a simple change of a finished picture (a sheet's spill), not for
+#: redrawing a work (trial of 2026-11-13: the study looks like an
+#: illustration, the pencil marks wander).
+LITE = "gemini-3.1-flash-lite-image"
 URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
 MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 REVISION = "2026-05-20"
@@ -46,7 +52,20 @@ BATCH_BYTES = 19_000_000
 BATCH_SHARE = 0.5
 #: USD per million tokens: what goes in, text and thinking out, picture out
 #: (ai.google.dev/pricing, 2026-11-12). A picture at 1K is 1120 tokens.
-PRICE = (1.50, 7.50, 30.0)
+PRICES = {MODEL: (1.50, 7.50, 30.0), LITE: (0.25, 1.50, 30.0)}
+PRICE = PRICES[MODEL]
+#: Google's words for a question it will not take at all (the picture or
+#: the words): nothing is drawn and nothing is paid, so asking again costs
+#: nothing, and now and then the same question goes through (a nude:
+#: Degas's "Retiring" about one time in four, 2026-11-13).
+BLOCKED = ("prohibited_content", "image_prohibited_content", "image_safety", "safety", "blocklist")
+
+
+def blocked(code: str) -> bool:
+    """Whether Google's ``code`` is one of :data:`BLOCKED`."""
+    return code.lower() in BLOCKED
+
+
 PATIENCE = 300.0
 #: Answers worth asking for again: the service is busy or broke off.
 AGAIN = (429, 500, 502, 503, 504)
@@ -84,6 +103,9 @@ class Ask:
     prompt: str
     pictures: Sequence[Image.Image]
     size: str = "1K"
+    #: How much the model thinks first ("minimal", "medium", "high"; None:
+    #: its own default), as :meth:`Painter.paint` takes it.
+    think: str | None = None
 
 
 def _code(answer: httpx.Response) -> str:
@@ -98,9 +120,9 @@ def _code(answer: httpx.Response) -> str:
     return next((w for w in words if isinstance(w, str) and not w.isdigit()), "")
 
 
-def cost(usage: dict[str, Any]) -> float:
-    """What an answer cost, by its own count of tokens."""
-    into, text, picture = PRICE
+def cost(usage: dict[str, Any], model: str = MODEL) -> float:
+    """What an answer of ``model`` cost, by its own count of tokens."""
+    into, text, picture = PRICES.get(model, PRICE)
     pictured = sum(
         part.get("tokens", 0)
         for part in usage.get("output_tokens_by_modality") or []
@@ -137,13 +159,13 @@ def _request(ask: Ask) -> dict[str, Any]:
     """One question as generateContent takes it."""
     parts: list[dict[str, Any]] = [{"text": ask.prompt}]
     parts += [{"inline_data": {"mime_type": "image/jpeg", "data": _jpeg(p)}} for p in ask.pictures]
-    return {
-        "contents": [{"role": "user", "parts": parts}],
-        "generation_config": {
-            "responseModalities": ["IMAGE"],
-            "imageConfig": {"imageSize": ask.size},
-        },
+    config: dict[str, Any] = {
+        "responseModalities": ["IMAGE"],
+        "imageConfig": {"imageSize": ask.size},
     }
+    if ask.think:
+        config["thinkingConfig"] = {"thinkingLevel": ask.think}
+    return {"contents": [{"role": "user", "parts": parts}], "generation_config": config}
 
 
 def _state(raw: dict[str, Any]) -> str:
@@ -176,6 +198,8 @@ def _drawn(answer: dict[str, Any]) -> tuple[Image.Image, float] | NotDrawn:
     if isinstance(error, dict):
         words = (error.get(name) for name in ("status", "reason", "code"))
         code = next((w for w in words if isinstance(w, str) and not w.isdigit()), "")
+        if "prohibited content" in str(error.get("message") or "").lower():
+            code = "prohibited_content"
         return NotDrawn(f"Google: {str(error.get('message') or error)[:300]}", code)
     response = answer.get("response") or {}
     usd = batch_cost(response.get("usageMetadata") or {})
@@ -190,8 +214,8 @@ def _drawn(answer: dict[str, Any]) -> tuple[Image.Image, float] | NotDrawn:
                     return NotDrawn(f"Google's picture cannot be read: {err}")
                 return img.convert("RGB"), usd
     reasons = [str(c.get("finishReason") or "") for c in response.get("candidates") or []]
-    blocked = (response.get("promptFeedback") or {}).get("blockReason")
-    code = next((r for r in [*reasons, str(blocked or "")] if r and r != "STOP"), "")
+    held = (response.get("promptFeedback") or {}).get("blockReason")
+    code = next((r for r in [*reasons, str(held or "")] if r and r != "STOP"), "")
     return NotDrawn("Google's answer has no picture", code.lower())
 
 
@@ -253,22 +277,32 @@ class Painter:
         answer.raise_for_status()
 
     def paint(
-        self, kind: str, prompt: str, pictures: Sequence[Image.Image], size: str = "1K"
+        self,
+        kind: str,
+        prompt: str,
+        pictures: Sequence[Image.Image],
+        size: str = "1K",
+        *,
+        model: str = MODEL,
+        think: str | None = None,
     ) -> tuple[Image.Image, float]:
-        """The model's picture in answer to ``prompt`` and ``pictures``
-        (``size``: "1K", "2K", "4K"), and what it cost, counted as ``kind``
-        in the month's spending. Raises :class:`AiUnavailable` (no key,
-        the month's limit, :class:`GeminiRejected`, :class:`NoCredit`) or
+        """The picture of ``model`` in answer to ``prompt`` and ``pictures``
+        (``size``: "1K", "2K", "4K"; ``think``: how much it thinks first,
+        None for its default), and what it cost, counted as ``kind`` in the
+        month's spending. Raises :class:`AiUnavailable` (no key, the
+        month's limit, :class:`GeminiRejected`, :class:`NoCredit`) or
         :class:`NotDrawn` (this answer)."""
         key = self.config.gemini_key
         if not key:
             raise AiUnavailable("no Google API key")
         self.check_budget()
-        body = {
-            "model": MODEL,
+        body: dict[str, Any] = {
+            "model": model,
             "input": [{"type": "text", "text": prompt}, *(_block(p) for p in pictures)],
             "response_format": {"type": "image", "image_size": size},
         }
+        if think:
+            body["generation_config"] = {"thinking_level": think}
         headers = {"x-goog-api-key": key, "Api-Revision": REVISION}
         answer = None
         with self.http() as http:
@@ -286,7 +320,7 @@ class Painter:
             said = f"Google answered {answer.status_code}: {answer.text[:300]}"
             raise NotDrawn(said, _code(answer))
         raw = answer.json()
-        usd = cost(raw.get("usage") or {})
+        usd = cost(raw.get("usage") or {}, model)
         self.spending.add(kind, usd)
         found: list[str] = []
         _pictures(raw, found)

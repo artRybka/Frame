@@ -1,7 +1,7 @@
 """The study sheets drawn by the image model (``ai.drawn``): made once in
 the background, kept on disk.
 
-A drawn sheet costs about 0.15 USD and every answer of the model differs,
+A drawn sheet costs about 0.12 USD and every answer of the model differs,
 so one is made once for a take and never thrown away by the server (a take
 put aside for another keeps its sheet, should the owner go back to it).
 What is kept for a take (``<work>-<key>-…`` in ``drawn/``):
@@ -59,8 +59,10 @@ from .ai.client import AiUnavailable
 from .ai.composition import PAGES, cropped
 from .ai.drawn import (
     AT_ONCE,
+    BLOCKED_TRIES,
     KIND,
     SPILL,
+    THINK,
     TYPICAL_USD,
     Sheet,
     Under,
@@ -69,7 +71,7 @@ from .ai.drawn import (
     put_together,
     study_prompt,
 )
-from .ai.gemini import Ask, GeminiRejected, NoCredit, NotDrawn, Painter
+from .ai.gemini import LITE, Ask, GeminiRejected, NoCredit, NotDrawn, Painter, blocked
 from .ai.jobs import listed, relist, text_hash
 from .imaging import drawn as imaging
 from .imaging.layout import load_image
@@ -94,7 +96,9 @@ START = 120.0
 REST = 5.0
 IDLE = 60.0
 AGAIN = 3600.0
-#: A take's sheet is tried this many times, then left.
+#: A take's sheet is tried this many times, then left; one Google will not
+#: take at all (``gemini.blocked``: it costs nothing) ``ai.drawn.BLOCKED_TRIES``
+#: times.
 TRIES = 2
 #: The saved pages' takes handed to Google's Batch at a time, how often
 #: its answers are looked for, and about what a sheet costs there.
@@ -107,6 +111,9 @@ KEY_REJECTED = "key_rejected"
 LIMIT = "limit"
 
 Take = tuple["Item", "View"]
+#: Under this ending ``tries.json`` counts the times Google would not take
+#: a take's question at all.
+REFUSED = "!refused"
 
 
 class DrawnSheets:
@@ -281,11 +288,13 @@ class DrawnSheets:
         self._failed[stem] = time.monotonic()
         if count:
             tries = self._tries()
-            tries[stem] = tries.get(stem, 0) + 1
+            name = f"{stem}{REFUSED}" if isinstance(why, NotDrawn) and blocked(why.code) else stem
+            tries[name] = tries.get(name, 0) + 1
             self._write("tries.json", json.dumps(tries).encode())
 
     def _left(self, stem: str) -> bool:
-        return self._tries().get(stem, 0) >= TRIES
+        tries = self._tries()
+        return tries.get(stem, 0) >= TRIES or tries.get(f"{stem}{REFUSED}", 0) >= BLOCKED_TRIES
 
     def _waits(self, stem: str) -> bool:
         when = self._failed.get(stem)
@@ -387,10 +396,11 @@ class DrawnSheets:
     def make(self, item: Item, view: View) -> None:
         """Draws the take's sheet now and keeps it: three paid answers, or
         the lines' alone over the study the work already has."""
-        paint = partial(self.painter.paint, KIND)
+        paint = partial(self.painter.paint, KIND, think=THINK)
+        spill = partial(self.painter.paint, KIND, model=LITE)
         work = self._work(item, view)
         under = self._under(item, view, work)
-        sheet = draw(work, view.inside(), paint, seed=self._seed(item), under=under)
+        sheet = draw(work, view.inside(), paint, seed=self._seed(item), under=under, spill=spill)
         self._keep_under(item, view, sheet.under)
         self._keep(item, view, sheet)
         log.info("sheet of %s drawn: %s", item.id, sheet.cost)
@@ -476,7 +486,7 @@ class DrawnSheets:
                 continue
             under = self._under_name(item, view)
             if self._under(item, view, work) is None and all(ask.name != under for ask in asks):
-                asks.append(Ask(under, study_prompt(view.inside()), [work]))
+                asks.append(Ask(under, study_prompt(view.inside()), [work], think=THINK))
             takes.append([item.id, self.key(view)])
         if takes and not asks:  # each has its study: their lines alone are asked for
             self._set_batch({"round": "lines", "name": "", "takes": takes, "cost": {}})
@@ -546,10 +556,11 @@ class DrawnSheets:
                 continue
             ask = lines_ask(under.study, view.inside())
             if ask is not None:
-                asks.append(Ask(f"{stem}/lines", ask[0], [under.study]))
+                asks.append(Ask(f"{stem}/lines", ask[0], [under.study], think=THINK))
             spill = f"{self._under_name(item, view)}/spill"
             if under.spilt is None and all(ask.name != spill for ask in asks):
-                asks.append(Ask(spill, SPILL, [imaging.padded(under.study)[0]]))
+                # one batch is one model's: the spill stays with it, without thinking
+                asks.append(Ask(spill, SPILL, [imaging.padded(under.study)[0]], think=THINK))
         if not asks:  # nothing to ask: the takes without marks get their page at once
             self._lines_in(state, {})
             return
