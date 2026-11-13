@@ -1616,8 +1616,8 @@ class Player:
     def rescore(self) -> int:
         """Once per ``SCORE_VERSION``: analyse the library's pictures again
         from their thumbnails (add-on 0.12: colourful works first; 0.21:
-        colour accents). Measured before writing, written in one
-        transaction; returns how many."""
+        colour accents). Measured before writing, written a portion at a
+        time, marked done after the last; returns how many."""
         if self.library.get_state(SCORE_KEY, 1) >= SCORE_VERSION:
             return 0
         images = self.service.images
@@ -1641,10 +1641,10 @@ class Player:
                 "color_shares": shares,
                 "tint_spread": spread,
             }
-        with self.library.batch():
-            for item_id, changes in analysed.items():
-                self.library.update(item_id, **changes)
-            self.library.set_state(SCORE_KEY, SCORE_VERSION)
+        # A portion at a time: in one transaction the library's lock was
+        # held for all of them and the server answered nobody meanwhile.
+        self.library.update_many(analysed)
+        self.library.set_state(SCORE_KEY, SCORE_VERSION)
         log.info("rescore: %d pictures analysed again", len(analysed))
         return len(analysed)
 

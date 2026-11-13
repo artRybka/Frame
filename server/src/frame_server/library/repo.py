@@ -17,7 +17,7 @@ import threading
 import time
 import weakref
 from collections import Counter, OrderedDict
-from collections.abc import Callable, Collection, Iterable, Iterator
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
@@ -115,6 +115,12 @@ def _personal(playlist: Playlist) -> bool:
     return playlist.rules.favorites_only or any(t in MINE for t in playlist.rules.terms)
 
 
+#: Items written in one hold of the library's lock by
+#: :meth:`Library.update_many`: about 1 ms each on a NAS.
+PORTION = 200
+#: Seconds the lock is let go for between two portions: a thread that waits
+#: for it takes it then (without a pause the writer has it again first).
+PORTION_PAUSE = 0.005
 #: A regrouping of the works this slow is logged as such: the library
 #: waits for it.
 SLOW_WORKS = 1.0
@@ -855,6 +861,29 @@ class Library:
                 self._catalogue_version += 1
             self._regroup(item, updated, "change")
             return updated
+
+    def update_many(self, changes: Mapping[str, Mapping[str, Any]], portion: int = PORTION) -> int:
+        """:meth:`update` for each of many items (id to its changes), a
+        portion at a time: the library's lock and the disk are let go
+        between portions, so whoever asks for the items meanwhile waits for
+        one portion, not for all of them. The new colours of a hundred
+        thousand works written in one :meth:`batch` held the event loop,
+        and with it the app and the frame, for 107 s on a NAS (2026-11-12).
+
+        Not one transaction: a mark that all of them are written
+        (``set_state``) belongs after the call, so a stop half way has them
+        written again. Returns how many items changed."""
+        ids = list(changes)
+        changed = 0
+        for start in range(0, len(ids), portion):
+            if start:
+                time.sleep(PORTION_PAUSE)
+            with self.batch():
+                for item_id in ids[start : start + portion]:
+                    before = self.get(item_id)
+                    after = self.update(item_id, **changes[item_id])
+                    changed += after is not None and after is not before
+        return changed
 
     def found(self, item_id: str, key: str) -> Item | None:
         """``item_id`` was found by the museums' search ``key``
