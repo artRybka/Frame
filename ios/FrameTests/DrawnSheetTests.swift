@@ -77,11 +77,12 @@ final class DrawnSheetTests: XCTestCase {
         XCTAssertEqual(Shown.one(2).tappedSheet(), .all)
         XCTAssertEqual(lines.map { DrawnSheet.share(of: $0, shown: .all) }, [1, 1, 1, 1])
         // A tap on a note: that line alone ("Dotknięcie wybranej tylko te
-        // jedną"); the same note again brings every one back.
+        // jedną"); the same note again leaves the sketch alone (07:41:
+        // "Odkliknięcie pojedynczej pozycji wraca do szkicu bez adnotacji").
         XCTAssertEqual(Shown.sketch.tappedNote(2), .one(2))
         XCTAssertEqual(Shown.all.tappedNote(2), .one(2))
         XCTAssertEqual(Shown.one(1).tappedNote(2), .one(2))
-        XCTAssertEqual(Shown.one(2).tappedNote(2), .all)
+        XCTAssertEqual(Shown.one(2).tappedNote(2), .sketch)
         XCTAssertEqual(lines.map { DrawnSheet.share(of: $0, shown: .one(2)) }, [0, 0, 1, 0])
         XCTAssertEqual(Shown.one(2).chosen, 2)
         XCTAssertNil(Shown.all.chosen)

@@ -13,8 +13,9 @@
 - Analiza kompozycji (arkusz z modelu graficznego): najpierw widać sam
   szkic z akwarelą. Dotknięcie szkicu pokazuje wszystkie kolorowe linie
   z numerami i siatką, kolejne je chowa. Dotknięcie podpisu pod szkicem
-  zostawia tylko jego linię, ponowne wraca do wszystkich. Gdy szkic jest
-  na ekranie, a strona chwilę (2 s) stoi, adnotacje pojawiają się same.
+  zostawia tylko jego linię (z siatką), ponowne wraca do samego szkicu.
+  Gdy szkic jest na ekranie, a strona chwilę (2 s) stoi, adnotacje
+  pojawiają się same.
 
 ## 1.145.77
 
