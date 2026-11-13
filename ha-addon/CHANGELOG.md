@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.95
+
+- Aplikacja: arkusz analizy kompozycji w trybie ciemnym leży na pasie
+  papieru wydartym u góry i u dołu, od krawędzi do krawędzi ekranu, z
+  białym włóknem wzdłuż rozdarcia i ziarnem papieru. Legenda jest jasnym
+  pismem na ciemnej stronie, a plama i kreska sięgają krawędzi ekranu jak w
+  trybie jasnym.
+
 ## 1.145.93
 
 - WikiArt: serwer nie wyłącza już WikiArt na pół godziny, gdy to on sam
