@@ -14,6 +14,7 @@ import hashlib
 import html
 import json
 import logging
+import math
 import os
 import random
 import re
@@ -2597,14 +2598,15 @@ class WikiArt(Museum):
         return resp.json()
 
     def _painting(self, source_id: str) -> dict[str, Any] | None:
-        """A work's own record, asked once and kept at home
-        (library/records.py): the card, the technique and the museum it
-        hangs in all read it, and each answer is one of the hour's 400."""
+        """A work's own record, asked once and kept at home for good
+        (library/records.py; Mateusz 2026-11-13: "po co ich ponownie pytać
+        o to samo?"): the card, the technique and the museum it hangs in all
+        read it, and each answer is one of the hour's 400."""
         if not source_id:
             return None
         kept = records(self.access.data_dir) if self.access.data_dir else None
         if kept is not None:
-            found, record = kept.get(self.key, source_id)
+            found, record = kept.get(self.key, source_id, days=math.inf)
             if found:
                 return record if isinstance(record, dict) else None
         body = self._ask("Painting", {"id": source_id})

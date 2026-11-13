@@ -170,6 +170,14 @@ def test_a_works_record_is_asked_once(tmp_path: Path) -> None:
         for _ in range(2):
             item = museum("wikiart", http, _access(tmp_path)).fetch("5f770eb2edc2c94890168669")
             assert item is not None and item.medium == "mannequin, cotton"
+        # Kept for good: a year on, still not asked again.
+        from frame_server.library.records import records
+
+        kept = records(tmp_path)
+        found, record = kept.get("wikiart", "5f770eb2edc2c94890168669")
+        assert found
+        kept.put("wikiart", "5f770eb2edc2c94890168669", record, now=time.time() - 400 * 86400)
+        assert museum("wikiart", http, _access(tmp_path)).fetch("5f770eb2edc2c94890168669")
     assert asked == ["login", "Painting"]
 
 
@@ -226,3 +234,34 @@ def test_a_museum_that_does_not_answer_is_told_in_polish() -> None:
     assert museum_trouble("wikiart", httpx.ConnectTimeout("x")).startswith(
         "WikiArt teraz nie odpowiada"
     )
+
+
+def test_a_works_own_record_is_asked_of_its_museum_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mateusz 2026-11-13: "gdy mamy na dysku, to po co ich pytamy?"."""
+    import frame_server.library.importer as importer_module
+    from frame_server.library import Library
+    from frame_server.library.importer import Importer
+
+    work = _work()
+    asked: list[str] = []
+
+    class Museum:
+        def fetch(self, source_id: str) -> object:
+            asked.append(source_id)
+            return work
+
+    monkeypatch.setattr(importer_module, "museum", lambda key, http, access: Museum())
+
+    def importer() -> Importer:
+        return Importer(
+            Library(tmp_path / "lib.db"),
+            None,  # type: ignore[arg-type]
+            None,  # type: ignore[arg-type]
+            access=lambda: _access(tmp_path),
+        )
+
+    for _ in range(2):  # the second after a restart: nothing in memory
+        assert importer().resolve(work.id) == work  # type: ignore[attr-defined]
+    assert asked == ["5f770eb2edc2c94890168669"]

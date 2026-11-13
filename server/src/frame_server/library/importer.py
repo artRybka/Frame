@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import random
 import re
 import secrets
@@ -101,6 +102,11 @@ REMOTE_MEMO = 5000
 #: a card whose museum does not answer: as long as this many days.
 SEEN = "seen"
 SEEN_DAYS = 365.0
+#: Works' own records (a card's, asked of the museum once) kept on disk for
+#: good, as a work the owner keeps is (Mateusz 2026-11-13: "gdy mamy na
+#: dysku, to po co ich pytamy?"). A search's rows are shorter (WikiArt's
+#: name no technique nor the museum it hangs in), so they are not this.
+CARDS = "card"
 #: Sources whose paintings often come as black-and-white copies (album
 #: plates, old photographs): their results' thumbnails are looked at before
 #: they are shown. How many verdicts are remembered.
@@ -334,36 +340,17 @@ class Importer:
         later, after a restart or while its museum does not answer, shows
         them as they were seen (WikiArt refused a login and a work's card
         came up empty with a raw 502, 2026-11-13)."""
-        folder = self._access().data_dir
-        if folder is None:
-            return
-        try:
-            records(folder).put_many(
-                SEEN, {key: item.model_dump(mode="json") for key, item in items.items()}
-            )
-        except (OSError, sqlite3.Error) as err:
-            log.warning("works seen not kept: %s", err)
+        self._store(SEEN, items)
 
     def seen(self, item_id: str) -> Item | None:
         """A museum work as a search showed it lately (:meth:`_keep_seen`)."""
-        folder = self._access().data_dir
-        if folder is None:
-            return None
-        try:
-            found, record = records(folder).get(SEEN, item_id, days=SEEN_DAYS)
-        except (OSError, sqlite3.Error):
-            return None
-        if not found or not isinstance(record, dict):
-            return None
-        try:
-            return Item.model_validate(record)
-        except ValidationError:
-            return None
+        return self._stored(SEEN, item_id, SEEN_DAYS)
 
     def remote(self, item_id: str) -> Item | None:
         """A museum work by its id, without adding it to the library: from
-        recent search results, else asked from the museum; when the museum
-        does not answer, as a search showed it (:meth:`seen`)."""
+        recent search results, else its own record kept on disk (:data:`CARDS`),
+        else asked from the museum; when the museum does not answer, as a
+        search showed it (:meth:`seen`)."""
         with self._remote_lock:
             if item_id in self._remote:
                 return self._remote[item_id]
@@ -372,9 +359,15 @@ class Importer:
         source, _, source_id = item_id.partition(":")
         if source not in self.sources() or not source_id:
             return None
+        access = self.access()
+        card = self._card_key(item_id, access)
+        if (kept := self._stored(CARDS, card, math.inf)) is not None:
+            with self._remote_lock:
+                self._remote[item_id] = kept
+            return kept
         try:
             with self.http() as http:
-                item = museum(source, http, self.access()).fetch(source_id)
+                item = museum(source, http, access).fetch(source_id)
         except httpx.HTTPError as err:
             kept = self.seen(item_id)
             if kept is None:
@@ -385,7 +378,42 @@ class Importer:
             return kept
         if item is not None:
             self.remember([item])
+            self._store(CARDS, {card: item})
         return item
+
+    @staticmethod
+    def _card_key(item_id: str, access: Access) -> str:
+        """A work's own record is kept by the reading of its museum (a new
+        reading asks again, as for pages) and by "Użytek prywatny" (other
+        licences)."""
+        source = item_id.partition(":")[0]
+        return f"{reading(source)}|{int(access.private_use)}|{item_id}"
+
+    def _store(self, store: str, items: Mapping[str, Item]) -> None:
+        folder = self._access().data_dir
+        if folder is None:
+            return
+        try:
+            records(folder).put_many(
+                store, {key: item.model_dump(mode="json") for key, item in items.items()}
+            )
+        except (OSError, sqlite3.Error) as err:
+            log.warning("works not kept (%s): %s", store, err)
+
+    def _stored(self, store: str, key: str, days: float) -> Item | None:
+        folder = self._access().data_dir
+        if folder is None:
+            return None
+        try:
+            found, record = records(folder).get(store, key, days=days)
+        except (OSError, sqlite3.Error):
+            return None
+        if not found or not isinstance(record, dict):
+            return None
+        try:
+            return Item.model_validate(record)
+        except ValidationError:
+            return None
 
     def read_again(self, quiet: Callable[[], bool] = lambda: True) -> int:
         """The kept works whose museum's type tells the server nothing, or

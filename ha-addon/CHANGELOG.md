@@ -6,7 +6,9 @@
   wstrzymał zapytanie (wyczerpany udział nocnych zadań w godzinowym limicie)
   albo gdy odpowiedź nie doszła. Za przerwę uznaje tylko prawdziwą odmowę
   logowania, a jej powód trafia do logu. Sesja WikiArt przeżywa aktualizację
-  serwera (WikiArt daje 10 sesji na godzinę), a rekord dzieła jest pytany raz.
+  serwera (WikiArt daje 10 sesji na godzinę).
+- Karta dzieła z muzeum pyta muzeum o pełne dane tylko raz i trzyma je na
+  stałe, także po aktualizacji serwera.
 - Karta dzieła z muzeum, które chwilowo nie odpowiada, pokazuje dzieło tak,
   jak widziało je wyszukiwanie, zamiast pustej karty. Gdy serwer nie ma nic,
   komunikat mówi po polsku, co się stało, zamiast „Serwer odpowiedział 502”.
