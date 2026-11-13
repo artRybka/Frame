@@ -53,6 +53,7 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
 from PIL import Image
 
 from .ai.check import page_views
@@ -127,6 +128,11 @@ KEY_REJECTED = "key_rejected"
 LIMIT = "limit"
 
 Take = tuple["Item", "View"]
+#: Sheets kept before whose lines strayed (``imaging.doubtful``) have
+#: them drawn anew once: the state says which sweep was made.
+CHECKED = "drawn_lines_checked"
+CHECK = 1
+
 #: Under this ending ``tries.json`` counts the times Google would not take
 #: a take's question at all.
 REFUSED = "!refused"
@@ -803,6 +809,56 @@ class DrawnSheets:
             self._lines_in(state, answers)
         return True
 
+    # -- lines that strayed --------------------------------------------------------
+
+    def _covers(self, stem: str, meta: dict[str, Any]) -> list[float]:
+        """How much of the field each kept line of a sheet covers."""
+        covers = []
+        for n, there in enumerate(meta.get("layers") or [], start=1):
+            if not there:
+                continue
+            try:
+                alpha = np.asarray(Image.open(self.dir / f"{stem}-m{n}.png").getchannel("A"))
+            except (OSError, ValueError):
+                continue
+            covers.append(float((alpha > 120).mean()))
+        return covers
+
+    def _recheck(self) -> None:
+        """Once (:data:`CHECK`): a sheet kept with lines that are not the
+        model's pencils has them drawn anew at once, over the study it
+        keeps (about 0.05 USD). Until 1.145.91 a lines' answer laid askew
+        on its study had the study's own washes and ink lines taken for
+        the pencils it left out: grey and black lines over half the field,
+        their numbers by the edge (Mateusz 2026-11-13 11:44, Pissarro's
+        „Wzgórze Jalais w Pontoise”: "coś się wysypuje warstwa z kolorowymi
+        adnotacjami kredą")."""
+        if self.library.get_state(CHECKED, 0) == CHECK:
+            return
+        found = 0
+        for kind in PAGES:
+            for item_id, note in self.library.notes(kind).items():
+                views = page_views(note.data)
+                item = self.library.get(item_id) if views else None
+                meta = self.meta(item, views[0]) if item is not None else None
+                if item is None or meta is None:
+                    continue
+                stem = self._stem(item, self.key(views[0]))
+                if not imaging.doubtful(meta.get("colours") or [], self._covers(stem, meta)):
+                    continue
+                log.info("the lines of %s strayed: drawn anew", item.id)
+                with contextlib.suppress(OSError):
+                    (self.dir / f"{stem}-meta.json").unlink()
+                self._kept.pop(stem, None)
+                tries = self._tries()
+                if tries.pop(stem, None) is not None:
+                    self._write("tries.json", json.dumps(tries).encode())
+                relist(self.library, AT_ONCE, item.id, on=True)
+                found += 1
+        if found:
+            log.info("%d sheets' lines to be drawn anew", found)
+        self.library.set_state(CHECKED, CHECK)
+
     # -- the background ---------------------------------------------------------
 
     def ahead(self) -> bool:
@@ -810,6 +866,7 @@ class DrawnSheets:
         Batch; False when there is nothing to do now."""
         if not self.enabled() or self._resting():
             return False
+        self._recheck()
         now = self.at_once()
         if now:
             return self._now(*now[0])

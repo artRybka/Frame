@@ -48,15 +48,22 @@ class AiConfig(BaseModel):
     gatekeeper: bool = True
     #: The night audit: 30 works a night looked over, "Do sprawdzenia" (Haiku, at night).
     audit: bool = True
-    #: Szukaj by a sentence: what it asks for as the search's choices (Haiku).
-    sentence: bool = True
     #: The study's "Droga dzieła": the museum's provenance retold as stops (Haiku).
     journey: bool = True
+    #: Facts about a work from the web for its study (Sonnet with the web
+    #: search, once a work, about 0.3 USD; ``ai.web_facts``, "G8").
+    web_facts: bool = True
     #: Google's key (the image model, ``ai.drawn``).
     gemini_api_key: str | None = None
     #: The study sheets of the analyses drawn by the image model (three
     #: pictures a sheet, about 0.15 USD); needs Google's key.
     drawn: bool = True
+    #: How a work was painted, stage by stage, drawn by the image model
+    #: when a published technical study of it was found ("G2").
+    stages: bool = True
+    #: How works look as numbers (Google's embedding model): Szukaj by how a
+    #: work looks, by a photograph, and the works that look alike ("G1").
+    looks: bool = True
     #: Nothing more is asked once this month's cost reaches it.
     monthly_limit_usd: float = Field(5.0, ge=0, le=1000)
     #: The same for the image model, which has a month's limit of its own.
@@ -75,9 +82,11 @@ class AiConfigUpdate(BaseModel):
     twins_judge: bool | None = None
     gatekeeper: bool | None = None
     audit: bool | None = None
-    sentence: bool | None = None
     journey: bool | None = None
+    web_facts: bool | None = None
     drawn: bool | None = None
+    looks: bool | None = None
+    stages: bool | None = None
     monthly_limit_usd: float | None = Field(None, ge=0, le=1000)
     gemini_monthly_limit_usd: float | None = Field(None, ge=0, le=1000)
 
@@ -154,7 +163,7 @@ class AiConfigStore:
             return config.curator
         if kind == "twins_judge":
             return config.twins_judge
-        if kind in ("gatekeeper", "audit", "sentence", "journey"):
+        if kind in ("gatekeeper", "audit", "journey", "web_facts"):
             return bool(getattr(config, kind))
         return True
 

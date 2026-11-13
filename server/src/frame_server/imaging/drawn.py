@@ -74,6 +74,22 @@ NUMBER = 0.02
 THIN = 3
 #: Less pencil than this (of the sheet) is no mark: the model left it out.
 NO_MARK = 0.0006
+#: A pencil as the model made it keeps at least this much of the asked
+#: one's chroma, and its hue within this many degrees (the trial's
+#: pencils: 0.56 of it at least, 5° at most).
+PENCIL_CHROMA = 0.4
+PENCIL_TURN = 25.0
+#: The lines' answer and the study under them are one where they differ
+#: by less than this (RGB, 0…1): the model repaints the study by about
+#: 0.02 drawing over it.
+AGREE_DIFF = 0.08
+#: A mark's line covers this much of the field at most (the trial's and
+#: the first sheets': 2 per cent at most; the two strayed lines of
+#: Pissarro's sheet: 5 and 9).
+LAYER_MOST = 0.04
+#: Less of the answer than this one with the study: it is not drawn over
+#: it (another framing, the study drawn anew), and no line is taken off.
+AGREE_LEAST = 0.5
 
 
 def _rgb(colour: str) -> Array:
@@ -255,6 +271,61 @@ def pencils(
     return [PENCILS[j] for j in pick]
 
 
+def _agree(a: Array, b: Array) -> float:
+    return float((np.linalg.norm(a - b, axis=2) < AGREE_DIFF).mean())
+
+
+def over(base: Image.Image, marked: Image.Image) -> tuple[Array, float]:
+    """Where the model's ``marked`` answer lies on the ``base`` it drew
+    over (as :func:`measure`), and how much of it is that base untouched
+    (0…1). The answer is the base with a few strokes on it, so the place
+    where most of the two are one is right: as it came (the model keeps
+    the framing), as the edges lay it, or as its tones do. Laid by the
+    edges alone, long pencil lines over a calm study can pull it a few per
+    cent askew, and the study's own lines and washes then pass for pencil
+    (Pissarro's „Wzgórze Jalais”, 2026-11-13)."""
+    k = FIT_SIDE / max(base.size)
+    small = max(round(base.width * k), 16), max(round(base.height * k), 16)
+    a = cv2.GaussianBlur(_float(base.resize(small, Image.Resampling.LANCZOS)), (0, 0), 1.0)
+    found: list[Array] = [np.eye(2, 3), measure(base, marked)[0]]
+    b0 = cv2.GaussianBlur(_float(marked.resize(small, Image.Resampling.LANCZOS)), (0, 0), 1.0)
+    grey_a = cv2.GaussianBlur(cv2.cvtColor(a, cv2.COLOR_RGB2GRAY), (0, 0), 1.5)
+    grey_b = cv2.GaussianBlur(cv2.cvtColor(b0, cv2.COLOR_RGB2GRAY), (0, 0), 1.5)
+    warp: Array = np.eye(2, 3, dtype=np.float32)
+    stop = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 100, 1e-5)
+    try:
+        whole = np.full(grey_a.shape, 255, np.uint8)
+        _, warp = cv2.findTransformECC(grey_a, grey_b, warp, cv2.MOTION_AFFINE, stop, whole, 5)
+        tones = np.asarray(warp, np.float64)
+        tones[0, 2] /= small[0]
+        tones[1, 2] /= small[1]
+        tones[0, 1] *= small[1] / small[0]
+        tones[1, 0] *= small[0] / small[1]
+        found.append(tones)
+    except cv2.error:
+        pass
+    best: tuple[float, Array] = (-1.0, found[0])
+    for frac in found:
+        b = cv2.GaussianBlur(_float(laid(marked, frac, small)), (0, 0), 1.0)
+        agree = _agree(a, b)
+        if agree > best[0]:
+            best = (agree, frac)
+    return best[1], best[0]
+
+
+def same_pencil(asked: Array, made: Array) -> bool:
+    """Whether ``made`` is the pencil ``asked`` for as the model drew
+    it: about its hue, not greyer than :data:`PENCIL_CHROMA` of it. What
+    a pencil left out seems to have drawn is the study repainted (a wash
+    made deeper, an ink line drawn again): taken for the pencil, its grey
+    became the mark's colour, and every repainted place its line
+    (Pissarro's „Wzgórze Jalais”, 2026-11-13)."""
+    a, m = _lab(np.stack([asked, made]))
+    ca, cm = math.hypot(a[1], a[2]), math.hypot(m[1], m[2])
+    turn = abs((math.degrees(math.atan2(a[2], a[1]) - math.atan2(m[2], m[1])) + 180) % 360 - 180)
+    return cm >= PENCIL_CHROMA * ca and turn <= PENCIL_TURN
+
+
 def split(
     base: Image.Image, marked: Image.Image, colours: Sequence[str]
 ) -> tuple[list[Array], list[str]]:
@@ -270,11 +341,13 @@ def split(
     dropped.
     """
     size = base.size
+    cols = [_rgb(c) for c in colours]
+    frac, agree = over(base, marked)
+    if agree < AGREE_LEAST:  # not this study under the pencils: nothing is taken off it
+        return [np.zeros((size[1], size[0]), np.float32) for _ in cols], [_hex(c) for c in cols]
     a = cv2.GaussianBlur(_float(base), (0, 0), 0.8)
-    frac, _ = measure(base, marked)
     b = cv2.GaussianBlur(_float(laid(marked, frac, size)), (0, 0), 0.8)
     d = b - a
-    cols = [_rgb(c) for c in colours]
     alphas = np.zeros((len(cols), *d.shape[:2]), np.float32)
     scores = alphas
     strong = np.zeros(d.shape[:2], bool)
@@ -295,7 +368,9 @@ def split(
             for k in range(len(cols)):
                 own = strong & (label == k) & (alphas[k] > 0.75)
                 if own.sum() > 150:
-                    cols[k] = np.median(b[own], axis=0)
+                    made = np.median(b[own], axis=0)
+                    if same_pencil(cols[k], made):
+                        cols[k] = made
     votes = np.stack(
         [
             cv2.GaussianBlur(
@@ -314,13 +389,18 @@ def split(
     for k in range(len(cols)):
         al = np.where(drawn & (label == k), alphas[k], 0).astype(np.float32)
         al = cv2.GaussianBlur(np.clip((al - 0.12) / 0.6, 0, 1), (0, 0), 0.5)
-        n, parts, stats, _ = cv2.connectedComponentsWithStats(
-            (al > 0.25).astype(np.uint8), connectivity=8
-        )
         own = cv2.cvtColor(np.asarray(cols[k], np.float32).reshape(1, 1, 3), cv2.COLOR_RGB2HSV)[
             0, 0
         ]
         turn_ = np.abs((hsv[..., 0] - own[0] + 180) % 360 - 180)
+        # a stroke keeps its pencil's hue: where the study was repainted
+        # next to it (a wash made deeper) the change has another, and a
+        # line touching it must not go with it
+        hued = (turn_ <= 28) & (hsv[..., 1] >= 0.3 * own[1])
+        al = al * (cv2.dilate(((al > 0.5) & hued).astype(np.uint8), np.ones((5, 5), np.uint8)) > 0)
+        n, parts, stats, _ = cv2.connectedComponentsWithStats(
+            (al > 0.25).astype(np.uint8), connectivity=8
+        )
         good = []
         for i in range(1, n):
             if stats[i, cv2.CC_STAT_AREA] < 14:
@@ -336,8 +416,20 @@ def split(
         for _ in range(6):
             near = cv2.dilate(kept.astype(np.uint8), reach) > 0
             kept = np.isin(parts, [i for i in good if near[parts == i].any()])
-        layers.append(al * (cv2.dilate(kept.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0))
+        layer = al * (cv2.dilate(kept.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0)
+        if float((layer > 0.47).mean()) > LAYER_MOST:  # a wash, not a line: as left out
+            layer = np.zeros_like(layer)
+        layers.append(layer)
     return layers, [_hex(c) for c in cols]
+
+
+def doubtful(colours: Sequence[str], covers: Sequence[float]) -> bool:
+    """Whether a sheet kept before has lines that are not the model's
+    pencils: a colour no pencil has (a grey, a black), or a line that
+    covers more than :data:`LAYER_MOST` of the field (a wash)."""
+    pencils = [_rgb(c) for _, c in PENCILS]
+    strange = any(not any(same_pencil(p, _rgb(c)) for p in pencils) for c in colours)
+    return strange or any(cover > LAYER_MOST for cover in covers)
 
 
 def softened(layer: Array, seed: int) -> Array:

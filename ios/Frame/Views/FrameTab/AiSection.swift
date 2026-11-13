@@ -46,7 +46,7 @@ struct AiSection: View {
 
     private var geminiBody: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Model graficzny (Gemini)", subtitle: "Arkusze analizy kompozycji")
+            SectionHeader(title: "Gemini (Google)", subtitle: "Arkusze kompozycji, etapy malowania i szukanie wyglądem")
             Card {
                 if let limit = settings.geminiMonthlyLimitUsd {
                     if settings.geminiKeySet != true {
@@ -67,6 +67,28 @@ struct AiSection: View {
                             value: drawn
                         ) { AiSettingsUpdate(drawn: $0) }
                         if settings.geminiKeySet == true, let note = Self.drawnNote(settings, on: drawn) {
+                            Label(note.text, systemImage: note.icon)
+                                .font(.caption)
+                                .foregroundStyle(note.bad ? Theme.bad : Theme.inkSoft)
+                        }
+                    }
+                    if let stages = settings.stages {
+                        Divider()
+                        toggle(
+                            "Jak powstawał (Studium)",
+                            hint: "Gdy Claude znajdzie badanie techniczne dzieła, model Google rysuje jego etapy według tego badania. Ok. 0,04 USD za etap.",
+                            value: stages
+                        ) { AiSettingsUpdate(stages: $0) }
+                    }
+                    if let looks = settings.looks {
+                        Divider()
+                        toggle(
+                            "Szukanie wyglądem",
+                            hint: "Szukaj po tym, jak dzieło wygląda: opisem, zdjęciem i „Podobne wyglądem”. "
+                                + "Jednorazowo ok. 0,01 centa za dzieło z muzeum, pytanie ułamek centa. Twoje zdjęcia nie trafiają do Google.",
+                            value: looks
+                        ) { AiSettingsUpdate(looks: $0) }
+                        if settings.geminiKeySet == true, let note = Self.looksNote(settings, on: looks) {
                             Label(note.text, systemImage: note.icon)
                                 .font(.caption)
                                 .foregroundStyle(note.bad ? Theme.bad : Theme.inkSoft)
@@ -181,14 +203,6 @@ struct AiSection: View {
                         value: audit
                     ) { AiSettingsUpdate(audit: $0) }
                 }
-                if let sentence = settings.sentence {
-                    Divider()
-                    toggle(
-                        "Szukaj zdaniem",
-                        hint: "Zdanie wpisane w Szukaj zamienia się w wybory wyszukiwania. Ułamek centa za zdanie.",
-                        value: sentence
-                    ) { AiSettingsUpdate(sentence: $0) }
-                }
                 if let journey = settings.journey {
                     Divider()
                     toggle(
@@ -196,6 +210,14 @@ struct AiSection: View {
                         hint: "W studium dzieła droga od pracowni do muzeum, z danych muzeum. Ok. 0,2 centa za dzieło.",
                         value: journey
                     ) { AiSettingsUpdate(journey: $0) }
+                }
+                if let webFacts = settings.webFacts {
+                    Divider()
+                    toggle(
+                        "Fakty z sieci w studium",
+                        hint: "Przed napisaniem studium Claude szuka w sieci badań, losów i wystaw dzieła i wplata je w tekst. Ok. 0,15–0,3 USD za studium.",
+                        value: webFacts
+                    ) { AiSettingsUpdate(webFacts: $0) }
                 }
                 if let count = settings.reviewCount {
                     Divider()
@@ -350,6 +372,18 @@ struct AiSection: View {
             "Zapisane studia bez arkusza: \(waiting + batch), w tym w Batch: \(batch). Razem ok. \(cost).",
             "clock", false
         )
+    }
+
+    /// Under Szukanie wyglądem: how many of the museums' works can be found
+    /// so, or why none get their numbers now.
+    static func looksNote(_ settings: AiSettings, on: Bool) -> (text: String, icon: String, bad: Bool)? {
+        guard on else { return nil }
+        if settings.looksError != nil {
+            return ("Google teraz nie odpowiada, serwer spróbuje ponownie za pół godziny.", "pause.circle", true)
+        }
+        guard let done = settings.looksDone, let total = settings.looksTotal, total > 0 else { return nil }
+        if done >= total { return ("Gotowe: \(Names.works(total)) z muzeów.", "checkmark.circle", false) }
+        return ("Gotowe \(done) z \(total) dzieł z muzeów, reszta w tle.", "clock", false)
     }
 
     // MARK: Switches and money

@@ -40,6 +40,11 @@ struct MuseumSearchView: View {
     @State private var squaresTop: CGFloat = 0
     /// Where the results are scrolled to: back to the top for a new search.
     @State private var position = ScrollPosition(edge: .top)
+    /// The server can search by how works look (Gemini's key, the switch,
+    /// works with their numbers): "Szukaj wyglądem" and "Szukaj zdjęciem".
+    @State private var looksReady = false
+    /// Words or a photograph searched by how works look, on a page of its own.
+    @State private var looking: LooksAsk?
 
     /// The rules' chips, then the colours' and the museums'.
     private var tokens: Binding<[SearchToken]> {
@@ -64,6 +69,12 @@ struct MuseumSearchView: View {
     }
 
     private var asked: Bool { !rules.isEmpty || !sources.isEmpty }
+
+    /// "Szukaj wyglądem" under the words typed, while the server can.
+    private var lookedFor: ((String) -> Void)? {
+        guard looksReady else { return nil }
+        return { words in looking = .words(words) }
+    }
 
     private var searchKey: WorkSearch.Key { WorkSearch.Key(rules: rules, sources: sources) }
 
@@ -112,7 +123,17 @@ struct MuseumSearchView: View {
         }
         // Measured outside the groups' inset: an open group grows it.
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
-        .termSuggestions(lookup, tokens: tokens, focused: $fieldFocused)
+        .termSuggestions(
+            lookup, tokens: tokens, focused: $fieldFocused,
+            lookedFor: lookedFor
+        )
+        .navigationDestination(item: $looking) { ask in
+            LooksResultsView(ask: ask)
+        }
+        .task {
+            guard let status = try? await model.backend.looksStatus() else { return }
+            looksReady = status.enabled && status.ready
+        }
         .termSearch(lookup, tokens: tokens, focused: $fieldFocused)
         // Tapping the field brings the groups back, as does asking nothing.
         .onChange(of: fieldFocused) { _, focused in
@@ -216,6 +237,11 @@ struct MuseumSearchView: View {
 
     private var idle: some View {
         VStack(spacing: 4) {
+            if looksReady {
+                LooksPhotoButton { ask in looking = ask }
+                    .padding(.top, 8)
+                    .transition(.opacity)
+            }
             // Down to the tab bar, so the squares have room below their row
             // (in the middle of the screen) to fall to the bottom.
             SquaresAnimation()

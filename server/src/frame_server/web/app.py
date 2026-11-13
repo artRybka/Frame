@@ -62,6 +62,7 @@ from . import (
     device_api,
     discover_api,
     library_api,
+    looks_api,
     night_api,
     notify_api,
     player_api,
@@ -201,6 +202,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # Google's batches of "Kreatywny restaurator" looked at now and then.
             service.restorer.start()
             service.drawn.start()
+            # The museums' works get their looks as numbers ("G1").
+            service.looks.start()
             # Who the catalogue's artists are, from Wikidata: once some
             # minutes after a start (the search knows them then), new ones at
             # night (artist_people.py).
@@ -220,6 +223,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         service.sheets.stop()
         service.restorer.stop()
         service.drawn.stop()
+        service.looks.stop()
         if service.night is not None:
             service.night.stop()
         service.library.close()
@@ -244,6 +248,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         tailnet_api.router,
         night_api.router,
         restorer_api.router,
+        looks_api.router,
     )
     for router in routers:
         app.include_router(router)

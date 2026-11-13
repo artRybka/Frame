@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.145.92
+
+- Szukanie wyglądem: w Szukaj wystarczy opisać, jak dzieło wygląda
+  („mglisty poranek nad wodą”), i wybrać „Szukaj wyglądem”, albo na pustym
+  Szukaj dotknąć „Szukaj zdjęciem” i wybrać zdjęcie obrazu (z muzeum,
+  pocztówki, książki). Na karcie dzieła na dole jest rząd „Podobne
+  wyglądem”. Szuka model Google (Gemini), tylko wśród dzieł z muzeów;
+  Twoje zdjęcia nie trafiają do Google. Przełącznik i postęp w
+  Konfiguracja → Gemini. Po aktualizacji serwer przygotowuje dzieła w tle
+  (najpierw Ulubione, playlisty i Odkrywaj).
+- Studium dzieła wybiera „Podobne dzieła” także po wyglądzie.
+- Nowe studia są bogatsze: zanim Claude je napisze, szuka w sieci badań
+  konserwatorskich, losów dzieła, wystaw i słów artysty, i wplata te
+  fakty w tekst, bez linków i bez listy źródeł. Ok. 0,15–0,3 USD za studium,
+  przełącznik „Fakty z sieci w studium” w Konfiguracja → Claude.
+- „Jak powstawał” w Studium: gdy istnieje badanie techniczne dzieła, model
+  Google rysuje jego kolejne etapy według tego badania (ostatni to samo
+  dzieło), z opisem z badania. Ok. 0,04 USD za etap, przełącznik w
+  Konfiguracja → Gemini.
+- „Szukaj zdaniem” zniknęło (zastąpiło je szukanie wyglądem).
+
+## 1.145.91
+
+- Kolorowe kreski na arkuszu kompozycji z Gemini nie rozjeżdżają się.
+  Gdy model pominął którąś kreskę, serwer potrafił wziąć za nią fragment
+  samego szkicu (szare plamy i czarne smugi na pół obrazu, numery przy
+  krawędzi, np. Pissarro „Wzgórze Jalais w Pontoise”). Teraz takiej
+  kreski nie ma i model jest pytany o kreski drugi raz. Arkusze już
+  zapisane z takim błędem dostają po aktualizacji serwera nowe kreski
+  na tym samym szkicu (ok. 0,05 USD za arkusz).
+
 ## 1.145.90
 
 - Karta dzieła ma guzik „Dodaj do playlisty” między serduszkiem a „…”

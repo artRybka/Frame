@@ -1,6 +1,7 @@
-"""Haiku at the catalogue's door and in its night audit, Szukaj by a
-sentence, and the background's questions asked at night (Mateusz
-2026-11-10: "wdrażamy: K1, A1, O1, K4")."""
+"""Haiku at the catalogue's door and in its night audit, and the
+background's questions asked at night (Mateusz 2026-11-10: "wdrażamy: K1,
+A1, O1, K4"; A1, Szukaj by a sentence, gave way to Szukaj by how a work
+looks on 2026-11-13, ``test_looks``)."""
 
 from __future__ import annotations
 
@@ -14,7 +15,6 @@ from test_ai import FakeAnthropic, _message, fake  # noqa: F401  (fixture)
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import HAIKU
 from frame_server.ai.keywords import KIND as KEYWORDS
-from frame_server.ai.sentence import Sentence
 from frame_server.library.models import Item, ItemKind, PhotoInfo
 from frame_server.library.verdict import Place, against
 from frame_server.service import FrameService
@@ -246,61 +246,6 @@ def test_the_review_list_in_the_app(
         assert after["set_aside"] == []
     item = service.library.get("wmc:1")
     assert item is not None and not item.seen_as
-
-
-# -- A1: Szukaj by a sentence ----------------------------------------------------------------
-
-
-def test_a_sentence_becomes_the_searchs_chips(service: FrameService) -> None:
-    found = Sentence(service.library, service.claude, service.ai_config).read(
-        {
-            "reading": "Zimowe pejzaże z wodą o zmierzchu",
-            "terms": ["subject:winter", "no:such"],
-            "year_from": 1900,
-            "year_to": 1801,
-            "colours": [{"family": "blue", "level": "much"}, {"family": "mauve", "level": "much"}],
-            "tones": ["dark", "loud"],
-            "artists": ["Claude Monet"],
-            "words": ["  most  nad rzeką ", "", "trzeci", "czwarty"],
-        }
-    )
-    kinds = [(h["kind"], h["key"]) for h in found.hits]
-    assert kinds == [
-        ("artist", "Claude Monet"),
-        ("subject", "subject:winter"),
-        ("period", "years:1801-1900"),
-        ("color", "blue@much"),
-        ("color", "tone:dark"),
-        ("word", "most nad rzeką"),
-    ]
-    assert found.reading == "Zimowe pejzaże z wodą o zmierzchu"
-
-
-def test_a_sentence_is_asked_once_and_only_with_the_switch(
-    service: FrameService,
-    fake: FakeAnthropic,  # noqa: F811
-) -> None:
-    from frame_server.web import create_app
-
-    fake.answer = {
-        "reading": "Morze nocą",
-        "terms": ["subject:sea"],
-        "year_from": 0,
-        "year_to": 0,
-        "colours": [],
-        "tones": [],
-        "artists": [],
-        "words": [],
-    }
-    app = create_app(service.settings)
-    app.state.service = service
-    with TestClient(app) as client:
-        first = client.post("/api/terms/sentence", json={"text": "morze  nocą"}).json()
-        again = client.post("/api/terms/sentence", json={"text": "Morze nocą"}).json()
-        assert first == again and first["hits"][0]["key"] == "subject:sea"
-        assert len(fake.asked) == 1 and fake.asked[0]["model"] == HAIKU
-        service.ai_config.update(AiConfigUpdate(sentence=False))
-        assert client.post("/api/terms/sentence", json={"text": "las"}).status_code == 409
 
 
 # -- O1: the background's questions at night ---------------------------------------------------

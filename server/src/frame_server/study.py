@@ -76,7 +76,7 @@ STATUS_OF: dict[str, Status] = {
 #: How long each part takes before any study was timed here (seconds).
 TYPICAL_PARTS: dict[str, float] = {
     "restoring": 30,
-    "sources": 5,
+    "sources": 60,  # the facts from the web (``ai.web_facts``) are asked here
     "text": 90,
     "text_again": 0,
     "details_check": 15,

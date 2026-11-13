@@ -28,9 +28,9 @@ from .ai.museum_words import MuseumWords
 from .ai.prose import ProseJob
 from .ai.redraw import PenJob
 from .ai.search_words import SearchWords
-from .ai.sentence import Sentence
 from .ai.study import StudyJob
 from .ai.twins_judge import NightJudge
+from .ai.web_facts import WebFacts
 from .albums import Albums
 from .artist_people import ArtistPeople
 from .artist_works import ArtistWorks
@@ -56,6 +56,7 @@ from .library.museums import client as museum_client
 from .library.records import records
 from .library.twins import Twins
 from .library.wikidata import MIRRORED, CommonsCopies
+from .looks import Looks
 from .media import Media
 from .museum_places import MuseumPlaces
 from .night import NightQueue
@@ -72,6 +73,7 @@ from .sharper import Sharper
 from .sheets import Sheets
 from .sizes import Sizes
 from .source_keys import SourceKeys
+from .stages import PaintingStages
 from .status import StatusMonitor
 from .storage import StorageStore
 from .store import ContentInfo, ContentStore
@@ -341,8 +343,6 @@ class FrameService:
         self.cared = Cared(self)
         for tidier in (self.twins, self.twins_judge, self.gatekeeper, self.audit):
             tidier.cared = self.cared.ranks
-        # Szukaj by a sentence (Haiku).
-        self.sentence = Sentence(self.library, self.claude, self.ai_config)
         self.daily.sharper = self.sharper
         self.copies = Copies(self.sharper)
         # The museums of works from Commons, Openverse, WikiArt: looked up
@@ -371,6 +371,9 @@ class FrameService:
         self.places = Places(self.library)
         self.study = Study(self.daily, self.ai, StudyJob(self.library, self.images, self.ai_config))
         self.ai.register(self.study.job)
+        # Facts about a work from the web, for its page (Sonnet with the web search).
+        self.web_facts = WebFacts(self.library, self.claude, self.ai_config)
+        self.daily.job.web_facts = self.study.job.web_facts = self.web_facts.for_study
         # Its steps on the Lock Screen, and "Studium gotowe" at the end.
         self.study.on_step = lambda item, status, error: self.notifier.study_step(
             item.id,
@@ -404,6 +407,18 @@ class FrameService:
         # Small pictures of works drawn again larger by the same model
         # ("Kreatywny restaurator"), kept as the owner's pick.
         self.restorer = Restorer(self.library, self.images, self.sharper, self.painter)
+        # How a work was painted, when a technical study of it was found.
+        self.stages = PaintingStages(
+            self.library, self.images, self.painter, self.web_facts, self.ai_config
+        )
+        # How the museums' works look, as Google's numbers: Szukaj by how a
+        # work looks or by a photograph, and the works that look alike
+        # (Mateusz 2026-11-13, "G1"); those cared about first.
+        self.looks = Looks(
+            self.library, self.images, self.painter, self.ai_config, settings.data_dir / "looks"
+        )
+        self.looks.cared = self.cared.ranks
+        self.daily.looks_like = self.looks.neighbours
         # A small picture is drawn larger first, before its study (Mateusz
         # 2026-11-13); which works get none: the rules, the sheet's pixels and
         # Haiku for a pale sheet between them, shared with the study of the day.

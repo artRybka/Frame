@@ -1,7 +1,9 @@
 """Google's image model (the Interactions API), asked for a picture: the
 one client of everything here that has a picture made (the study sheets of
 ``ai.drawn``; whatever else asks goes through :class:`Painter` too, so that
-there is one key, one count of what was spent and one month's limit).
+there is one key, one count of what was spent and one month's limit). Its
+embedding model too (:meth:`Painter.embed`): the looks of works,
+``library.looks``.
 
 The key is the owner's, given in the app (Konfiguracja; never the
 environment's). What an answer cost is counted from its own ``usage`` into
@@ -65,6 +67,17 @@ def blocked(code: str) -> bool:
     """Whether Google's ``code`` is one of :data:`BLOCKED`."""
     return code.lower() in BLOCKED
 
+
+#: Google's embedding model: a picture or words as numbers in one space,
+#: where works that look alike and the words for how they look lie close.
+EMBED_MODEL = "gemini-embedding-2"
+EMBED_URL = f"{MODELS_URL}/{EMBED_MODEL}:batchEmbedContents"
+#: Numbers kept of each (Google: 768, 1536 or 3072; 768 lose little).
+EMBED_SIZE = 768
+#: USD per million tokens going in: words, pictures (a picture is 258).
+EMBED_PRICES = (0.20, 0.45)
+#: At most this many in one request.
+EMBED_MAX = 20
 
 PATIENCE = 300.0
 #: Answers worth asking for again: the service is busy or broke off.
@@ -132,6 +145,19 @@ def cost(usage: dict[str, Any], model: str = MODEL) -> float:
     said += usage.get("total_thought_tokens", 0)
     spent = usage.get("total_input_tokens", 0) * into + said * text + pictured * picture
     return round(spent / 1e6, 4)
+
+
+def embed_cost(usage: dict[str, Any]) -> float:
+    """What a request of the embedding model cost (its ``usageMetadata``)."""
+    words, pictures = EMBED_PRICES
+    by = {
+        str(part.get("modality", "")).lower(): part.get("tokenCount", 0)
+        for part in usage.get("promptTokenDetails") or []
+    }
+    if not by:
+        by = {"text": usage.get("promptTokenCount", 0)}
+    spent = by.get("text", 0) * words + by.get("image", 0) * pictures
+    return round(spent / 1e6, 6)
 
 
 def batch_cost(usage: dict[str, Any]) -> float:
@@ -329,6 +355,39 @@ class Painter:
         img = Image.open(io.BytesIO(base64.b64decode(found[-1])))
         img.load()
         return img.convert("RGB"), usd
+
+    def embed(self, kind: str, inputs: Sequence[Image.Image | str]) -> list[list[float]]:
+        """The numbers of each of ``inputs`` (a picture, or words as they
+        are, with their task's prefix if any) in the embedding model's
+        space, :data:`EMBED_SIZE` of them, in order; counted as ``kind``.
+        Raises as :meth:`paint` does; :class:`NotDrawn` for an answer that
+        is not one."""
+        key = self.config.gemini_key
+        if not key:
+            raise AiUnavailable("no Google API key")
+        if not inputs or len(inputs) > EMBED_MAX:
+            raise ValueError(f"1 to {EMBED_MAX} inputs at a time")
+        self.check_budget()
+        requests = []
+        for one in inputs:
+            part: dict[str, Any] = (
+                {"text": one}
+                if isinstance(one, str)
+                else {"inline_data": {"mime_type": "image/jpeg", "data": _jpeg(one)}}
+            )
+            requests.append(
+                {
+                    "model": f"models/{EMBED_MODEL}",
+                    "content": {"parts": [part]},
+                    "output_dimensionality": EMBED_SIZE,
+                }
+            )
+        raw = self._send("post", EMBED_URL, key, json={"requests": requests}).json()
+        found = [e.get("values") for e in raw.get("embeddings") or []]
+        if len(found) != len(inputs) or not all(isinstance(v, list) and v for v in found):
+            raise NotDrawn(f"Google's embeddings do not fit the question: {str(raw)[:200]}")
+        self.spending.add(kind, embed_cost(raw.get("usageMetadata") or {}))
+        return [[float(x) for x in v] for v in found]
 
     def batch(self, kind: str, asks: Sequence[Ask]) -> str:
         """Hands the questions to Google's Batch (answered within a day, at

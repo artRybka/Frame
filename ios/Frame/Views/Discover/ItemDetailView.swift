@@ -364,6 +364,7 @@ struct ItemDetailView: View {
             about(item)
             studySection(item)
             facts(item)
+            LooksLikeSection(item: item)
         }
         .padding(.horizontal, Theme.gutter)
         .padding(.bottom, 40)
