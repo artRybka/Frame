@@ -509,18 +509,32 @@ class Twins:
 
     def _artist(self, works: list[Item], until: float) -> tuple[int, int, int]:
         """One artist's new pictures laid over all their works'; how many
-        were looked at, how many copies and details were found."""
+        were looked at, how many copies and details were found.
+
+        First the pictures whose thumbnails are here, written at once: a
+        thumbnail or a large picture to download waits while the app is in
+        use (``hosts.wait_calm``), and until 1.145.99 the copies found
+        meanwhile waited with them, so "Twelve Sunflowers in a Vase" and
+        "Sunflowers / Vase with Twelve Sunflowers", one picture under two
+        titles, stayed two works of a playlist while it was looked at
+        (Mateusz 2026-11-13). Then the thumbnails to fetch, and the large
+        pictures."""
         new = [i for i in works if i.twins_seen < VERSION]
+        new_ids = {i.id for i in new}
         with self._round.timed("grouping"):
             grouped = self.library.works()
         points: dict[str, Keypoints | None] = {}
         #: Pictures whose thumbnail is not here: looked at another time.
         missing: set[str] = set()
 
-        def of(item: Item) -> Keypoints | None:
+        def of(item: Item, fetch: bool = True) -> Keypoints | None:
+            """``item``'s keypoints; a new picture's thumbnail fetched when
+            ``fetch`` (without, it is not here yet: None, asked again)."""
             if item.id not in points:
                 path = self.images.thumb_path(item)
-                if not path.is_file() and item in new:
+                if not path.is_file() and item.id in new_ids:
+                    if not fetch:
+                        return None
                     path = self._thumb(item) or path
                 if not path.is_file():
                     missing.add(item.id)
@@ -534,38 +548,62 @@ class Twins:
                     points[item.id] = None
             return points[item.id]
 
-        fits: dict[tuple[str, str], Fit] = {}
-        looked: list[Item] = []
         pairs = 0
-        done: set[str] = set()
-        for item in new:
-            if self.clock() > until or pairs >= PAIRS_A_ROUND:
-                break
-            mine = of(item)
-            if item.id in missing:
-                if item.id in self._round.gone:
-                    looked.append(item)  # nothing to look at, ever
-                continue  # its own thumbnail not here: not looked at yet
-            for other in works:
-                if other.id == item.id or other.id in done or _apart(item, other):
-                    continue
-                at = grouped.group_index(item.id)
-                if at is not None and at == grouped.group_index(other.id):
-                    continue  # one work already
-                theirs = of(other) if mine is not None else None
-                if mine is None or theirs is None:
-                    continue
-                pairs += 1
-                with self._round.timed("pairs"):
-                    fit = _fit(mine, theirs)
-                if fit is not None:
-                    fits[(item.id, other.id)] = fit
-            done.add(item.id)
-            looked.append(item)
+
+        def lay(items: list[Item], fetch: bool) -> tuple[dict[tuple[str, str], Fit], list[Item]]:
+            """``items`` laid over the artist's works: the fits found and the
+            pictures looked at (those not here yet without ``fetch`` are
+            left for the next call)."""
+            nonlocal pairs
+            fits: dict[tuple[str, str], Fit] = {}
+            looked: list[Item] = []
+            done: set[str] = set()
+            for item in items:
+                if self.clock() > until or pairs >= PAIRS_A_ROUND:
+                    break
+                mine = of(item, fetch)
+                if item.id not in points:
+                    continue  # its thumbnail is fetched in the next call
+                if item.id in missing:
+                    if item.id in self._round.gone:
+                        looked.append(item)  # nothing to look at, ever
+                    continue  # its own thumbnail not here: not looked at yet
+                for other in works:
+                    if other.id == item.id or other.id in done or _apart(item, other):
+                        continue
+                    at = grouped.group_index(item.id)
+                    if at is not None and at == grouped.group_index(other.id):
+                        continue  # one work already
+                    theirs = of(other, fetch) if mine is not None else None
+                    if mine is None or theirs is None:
+                        continue
+                    pairs += 1
+                    with self._round.timed("pairs"):
+                        fit = _fit(mine, theirs)
+                    if fit is not None:
+                        fits[(item.id, other.id)] = fit
+                done.add(item.id)
+                looked.append(item)
+            return fits, looked
+
+        # The pictures here: what they show is written before any download.
+        fits, looked = lay(new, fetch=False)
+        copies = details = 0
+        if looked:
+            with self._round.timed("writes"):
+                copies, details = self._write(works, looked, fits)
+            works = [self.library.get(i.id) or i for i in works]
+            with self._round.timed("grouping"):
+                grouped = self.library.works()
+        # Then those whose thumbnails are fetched first, and the large pictures.
+        first = {i.id for i in looked}
+        later_fits, later = lay([i for i in new if i.id not in first], fetch=True)
+        fits.update(later_fits)
+        looked += later
         large, scenes, large_done = self._large_details(works, looked, fits, grouped, until, of)
         with self._round.timed("writes"):
-            copies, details = self._write(works, looked, fits, large, scenes, large_done)
-        return len(looked), copies, details
+            more, more_details = self._write(works, later, later_fits, large, scenes, large_done)
+        return len(looked), copies + more, details + more_details
 
     def _large_details(
         self,
