@@ -6,6 +6,7 @@ import logging
 import random
 import re
 import secrets
+import sqlite3
 import threading
 import time
 from collections import OrderedDict
@@ -18,6 +19,7 @@ from typing import Any, cast
 
 import httpx
 from PIL import Image
+from pydantic import ValidationError
 
 from ..imaging.palette import Palette
 from .colors import analyse, has_colours, tint_spread
@@ -45,6 +47,7 @@ from .museums import (
 )
 from .pages import reading, search_pages
 from .phrases import quote, tokens
+from .records import records
 from .repo import Library, matches, now_iso
 from .verdict import Place, against
 from .vocabulary import (
@@ -94,6 +97,10 @@ TRANSLATE_SECONDS = 5.0
 #: Museum works seen in search results, kept in memory so that opening one
 #: needs no second request.
 REMOTE_MEMO = 5000
+#: Works searches showed, kept on disk (in library/records.py's store) for
+#: a card whose museum does not answer: as long as this many days.
+SEEN = "seen"
+SEEN_DAYS = 365.0
 #: Sources whose paintings often come as black-and-white copies (album
 #: plates, old photographs): their results' thumbnails are looked at before
 #: they are shown. How many verdicts are remembered.
@@ -310,16 +317,53 @@ class Importer:
             return self._remote.get(item_id)
 
     def remember(self, items: Iterable[Item]) -> None:
+        new: dict[str, Item] = {}
         with self._remote_lock:
             for item in items:
+                if self._remote.get(item.id) != item:
+                    new[item.id] = item
                 self._remote[item.id] = item
                 self._remote.move_to_end(item.id)
             while len(self._remote) > REMOTE_MEMO:
                 self._remote.popitem(last=False)
+        if new:
+            self._keep_seen(new)
+
+    def _keep_seen(self, items: Mapping[str, Item]) -> None:
+        """Works a search showed, kept on disk (:data:`SEEN`): a card opened
+        later, after a restart or while its museum does not answer, shows
+        them as they were seen (WikiArt refused a login and a work's card
+        came up empty with a raw 502, 2026-11-13)."""
+        folder = self._access().data_dir
+        if folder is None:
+            return
+        try:
+            records(folder).put_many(
+                SEEN, {key: item.model_dump(mode="json") for key, item in items.items()}
+            )
+        except (OSError, sqlite3.Error) as err:
+            log.warning("works seen not kept: %s", err)
+
+    def seen(self, item_id: str) -> Item | None:
+        """A museum work as a search showed it lately (:meth:`_keep_seen`)."""
+        folder = self._access().data_dir
+        if folder is None:
+            return None
+        try:
+            found, record = records(folder).get(SEEN, item_id, days=SEEN_DAYS)
+        except (OSError, sqlite3.Error):
+            return None
+        if not found or not isinstance(record, dict):
+            return None
+        try:
+            return Item.model_validate(record)
+        except ValidationError:
+            return None
 
     def remote(self, item_id: str) -> Item | None:
         """A museum work by its id, without adding it to the library: from
-        recent search results, else asked from the museum."""
+        recent search results, else asked from the museum; when the museum
+        does not answer, as a search showed it (:meth:`seen`)."""
         with self._remote_lock:
             if item_id in self._remote:
                 return self._remote[item_id]
@@ -328,8 +372,17 @@ class Importer:
         source, _, source_id = item_id.partition(":")
         if source not in self.sources() or not source_id:
             return None
-        with self.http() as http:
-            item = museum(source, http, self.access()).fetch(source_id)
+        try:
+            with self.http() as http:
+                item = museum(source, http, self.access()).fetch(source_id)
+        except httpx.HTTPError as err:
+            kept = self.seen(item_id)
+            if kept is None:
+                raise
+            log.info("%s: %s; shown as a search saw it", item_id, err)
+            with self._remote_lock:
+                self._remote[item_id] = kept
+            return kept
         if item is not None:
             self.remember([item])
         return item

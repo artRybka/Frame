@@ -48,12 +48,12 @@ from ..imaging.pipeline import (
 )
 from ..library import Facets, Item, ItemKind, ItemSummary, Job, Look, PhotoInfo, PlaylistRules
 from ..library.duplicates import work_key
-from ..library.hosts import Resting, urgent_call
+from ..library.hosts import OverBudget, Resting, urgent_call
 from ..library.images import Gone
 from ..library.importer import ALL
 from ..library.low_res import low_side
 from ..library.models import Framing, SharperCopy
-from ..library.museums import MUSEUMS
+from ..library.museums import MUSEUMS, LoginRefused
 from ..library.repo import Hidden, SortKey, now_iso
 from ..library.search import fill as fill_by_search
 from ..library.seed import PACKS, import_queries, pack
@@ -213,6 +213,22 @@ def _item(svc: FrameService, item_id: str) -> Item:
     return item
 
 
+def museum_trouble(source: str, err: httpx.HTTPError) -> str:
+    """Why a museum gave nothing, in Polish: the app shows such words as
+    they are, rather than "Błąd na serwerze" over the server's English
+    (a raw 502 with WikiArt's refused login on a work's card, 2026-11-13).
+    The server's own words go to the log."""
+    name = MUSEUMS[source].name if source in MUSEUMS else source
+    log.info("%s did not answer: %s", source, err)
+    if isinstance(err, LoginRefused):
+        return f"{name} odrzucił ostatnio logowanie serwera; spróbuj za pół godziny"
+    if isinstance(err, OverBudget):
+        return f"{name}: limit zapytań na tę godzinę wyczerpany; spróbuj później"
+    if isinstance(err, Resting):
+        return f"{name} odpoczywa po odmowie; spróbuj później"
+    return f"{name} teraz nie odpowiada; spróbuj za kilka minut"
+
+
 async def _work(
     svc: FrameService, item_id: str, save: bool = False, threads: CapacityLimiter | None = None
 ) -> Item:
@@ -223,7 +239,8 @@ async def _work(
     try:
         item = await to_thread.run_sync(urgent_call(lookup), item_id, limiter=threads)
     except httpx.HTTPError as err:
-        raise HTTPException(502, f"{item_id}: {err}") from err
+        source = item_id.partition(":")[0]
+        raise HTTPException(502, museum_trouble(source, err)) from err
     if item is None:
         raise HTTPException(404, f"no item {item_id!r}")
     return item
@@ -1311,7 +1328,7 @@ async def museum_search(
                 urgent_call(svc.importer.search), source, texts[source], limit or 24, page
             )
         except httpx.HTTPError as err:
-            raise HTTPException(502, f"{source}: {err}") from err
+            raise HTTPException(502, museum_trouble(source, err)) from err
     else:
         raise HTTPException(404, f"unknown museum {source!r}")
     return RemotePage(
@@ -1326,7 +1343,7 @@ async def museum_import(source: str, request: ImportRequest, svc: Svc) -> Item:
     try:
         item = await run_in_threadpool(svc.importer.import_one, source, request.source_id)
     except httpx.HTTPError as err:
-        raise HTTPException(502, f"{source}: {err}") from err
+        raise HTTPException(502, museum_trouble(source, err)) from err
     if item is None:
         raise HTTPException(404, "not found or not in the public domain")
     return item

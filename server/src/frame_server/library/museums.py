@@ -10,8 +10,11 @@ thumbnail at import time).
 
 from __future__ import annotations
 
+import hashlib
 import html
+import json
 import logging
+import os
 import random
 import re
 import threading
@@ -2218,6 +2221,29 @@ class StatensMuseum(Museum):
         return self._map(found[0]) if found else None
 
 
+class LoginRefused(httpx.HTTPError):
+    """WikiArt refused the owner's login (lately): nothing is asked of it
+    until :attr:`WikiArt.LOGIN_AGAIN` has passed."""
+
+
+def _fingerprint(access: str) -> str:
+    """Which access code a kept session belongs to, without the code."""
+    return hashlib.sha256(access.encode()).hexdigest()[:16]
+
+
+def _error_text(resp: httpx.Response) -> str:
+    """What WikiArt's error answer said, short, for the log."""
+    try:
+        body = resp.json()
+    except ValueError:
+        return resp.text[:120]
+    if isinstance(body, dict):
+        error = body.get("Exception") or body
+        if isinstance(error, dict) and error.get("Message"):
+            return str(error["Message"])[:120]
+    return str(body)[:120]
+
+
 class WikiArt(Museum):
     """WikiArt: newer art too, offered with "Użytek prywatny" (Mateusz,
     2026-11-06: the frame is seen at home only).
@@ -2244,48 +2270,142 @@ class WikiArt(Museum):
 
     #: (search, page) -> token that asks for that page.
     _tokens: ClassVar[dict[tuple[str, int], str]] = {}
-    #: Session keys by access code: (key, when it was given). WikiArt gives
-    #: ten sessions an hour; one is used for SESSION seconds.
+    #: Session keys by access code: (key, when it was given, monotonic).
+    #: WikiArt gives ten sessions an hour (its free package); one is used
+    #: for SESSION seconds, and kept on disk (:meth:`_kept_session`), so
+    #: that an update of the server does not spend one more.
     _sessions: ClassVar[dict[str, tuple[str, float]]] = {}
     _session_lock: ClassVar[threading.Lock] = threading.Lock()
     SESSION = 50 * 60.0
-    #: After a login WikiArt refused, none is tried (nor anything asked)
-    #: for this long: its login answered 500 to 50 tries on 2026-11-08, up
-    #: to eight in two minutes, one for each search, as each restart of the
-    #: server starts without a session and it gives ten an hour.
+    #: A session an answer calls spent is asked anew only when it is at
+    #: least this old: a younger one is not spent, and each new login is
+    #: one of the hour's ten.
+    RENEW_AFTER = 5 * 60.0
+    #: After a login WikiArt refused, none is tried for this long: its login
+    #: answered 500 to 50 tries on 2026-11-08, up to eight in two minutes,
+    #: one for each search, as each restart of the server starts without a
+    #: session and it gives ten an hour. Only WikiArt's own answer counts:
+    #: a request our guard held back (a resting host, the background's
+    #: share of the hour spent) or one that got no answer asked nothing,
+    #: and until 1.145.93 each of them stopped WikiArt for half an hour,
+    #: the owner's card too.
     LOGIN_AGAIN = 30 * 60.0
     #: When a login with each access code was last refused (monotonic).
     _refused: ClassVar[dict[str, float]] = {}
+    #: Kept sessions read already (once a process): file and access code.
+    _loaded: ClassVar[set[str]] = set()
 
-    def _session(self, fresh: bool = False) -> str | None:
-        """A session key from the owner's API keys; None without keys."""
+    def _kept_session(self) -> Path | None:
+        folder = self.access.data_dir
+        return folder / "hosts" / "wikiart-session.json" if folder else None
+
+    def _load_session(self, access: str) -> None:
+        """The session (and a refusal) kept from before a restart."""
+        path = self._kept_session()
+        if path is None or (seen := f"{path}:{_fingerprint(access)}") in self._loaded:
+            return
+        self._loaded.add(seen)
+        try:
+            saved = json.loads(path.read_text())
+        except (OSError, ValueError):
+            return
+        if not isinstance(saved, dict) or saved.get("access") != _fingerprint(access):
+            return
+        now, today = time.monotonic(), time.time()
+        try:
+            given, refused = float(saved.get("given") or 0.0), float(saved.get("refused") or 0.0)
+        except (TypeError, ValueError):
+            return
+        if (session := str(saved.get("session") or "")) and today - given < self.SESSION:
+            self._sessions[access] = (session, now - (today - given))
+        if refused and today - refused < self.LOGIN_AGAIN:
+            self._refused[access] = now - (today - refused)
+
+    def _save_session(self, access: str) -> None:
+        path = self._kept_session()
+        if path is None:
+            return
+        now, today = time.monotonic(), time.time()
+        session, since = self._sessions.get(access, ("", 0.0))
+        refused = self._refused.get(access)
+        saved = {
+            "access": _fingerprint(access),
+            "session": session,
+            "given": today - (now - since) if session else 0.0,
+            "refused": today - (now - refused) if refused is not None else 0.0,
+        }
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(saved))
+            os.replace(tmp, path)
+        except OSError as err:
+            log.warning("WikiArt's session not kept: %s", err)
+
+    def _session(self, renew: str = "") -> str | None:
+        """A session key from the owner's API keys; None without keys.
+        ``renew``: the session an answer called spent (asked anew when it
+        is still the one in use and old enough)."""
         keys = self.access.wikiart_keys
         if not keys:
             return None
         access, secret = keys
         with self._session_lock:
+            self._load_session(access)
             session, since = self._sessions.get(access, ("", 0.0))
-            if fresh or not session or time.monotonic() - since > self.SESSION:
-                refused = self._refused.get(access)
-                if refused is not None and time.monotonic() - refused < self.LOGIN_AGAIN:
-                    left = self.LOGIN_AGAIN - (time.monotonic() - refused)
-                    raise httpx.HTTPError(
-                        f"WikiArt refused a login lately; not asked for {left / 60:.0f} min"
-                    )
-                try:
-                    resp = self.http.get(
-                        f"{self.api}/login", params={"accessCode": access, "secretCode": secret}
-                    )
-                    resp.raise_for_status()
-                    session = str(resp.json().get("SessionKey") or "")
-                    if not session:
-                        raise httpx.HTTPError("WikiArt gave no session")
-                except httpx.HTTPError:
-                    self._refused[access] = time.monotonic()
-                    raise
-                self._refused.pop(access, None)
-                self._sessions[access] = (session, time.monotonic())
+            age = time.monotonic() - since
+            if renew and (renew != session or age < self.RENEW_AFTER):
+                # Another thread has a new one already, or it is too young
+                # to be spent: the answer was about something else.
+                return session or None
+            if not renew and session and age <= self.SESSION:
+                return session
+            refused = self._refused.get(access)
+            if refused is not None and time.monotonic() - refused < self.LOGIN_AGAIN:
+                left = self.LOGIN_AGAIN - (time.monotonic() - refused)
+                raise LoginRefused(
+                    f"WikiArt refused a login lately; not asked for {left / 60:.0f} min"
+                )
+            # A request our guard holds back (Resting) or one without an
+            # answer goes up as it is: WikiArt refused nothing.
+            resp = self.http.get(
+                f"{self.api}/login", params={"accessCode": access, "secretCode": secret}
+            )
+            try:
+                body = resp.json() if resp.status_code == 200 else {}
+            except ValueError:
+                body = {}
+            session = str(body.get("SessionKey") or "") if isinstance(body, dict) else ""
+            if not session:
+                self._refused[access] = time.monotonic()
+                self._sessions.pop(access, None)
+                self._save_session(access)
+                log.warning(
+                    "WikiArt refused a login (%s %s); not asked for %.0f min",
+                    resp.status_code,
+                    _error_text(resp),
+                    self.LOGIN_AGAIN / 60,
+                )
+                raise LoginRefused(f"WikiArt refused a login ({resp.status_code})")
+            self._refused.pop(access, None)
+            self._sessions[access] = (session, time.monotonic())
+            self._save_session(access)
+            log.info("WikiArt gave a session")
             return session
+
+    def _get(self, endpoint: str, params: dict[str, str]) -> httpx.Response:
+        """One request to WikiArt's API with the owner's session when there
+        is one (asked for anew once when the answer says it ran out)."""
+        session = self._session()
+        if session:
+            params = {**params, "authSessionKey": session}
+        resp = self.http.get(f"{self.api}/{endpoint}", params=params)
+        if session and resp.status_code == 500 and "session" in resp.text.lower():
+            fresh = self._session(renew=session)
+            if fresh and fresh != session:
+                params["authSessionKey"] = fresh
+                resp = self.http.get(f"{self.api}/{endpoint}", params=params)
+        return resp
 
     def _map(self, d: dict[str, Any]) -> Item | None:
         image = str(d.get("image") or "")
@@ -2332,13 +2452,7 @@ class WikiArt(Museum):
                     return [], False
             params["paginationToken"] = token
         endpoint = "PaintingSearch" if term else "MostViewedPaintings"
-        session = self._session()
-        if session:
-            params["authSessionKey"] = session
-        resp = self.http.get(f"{self.api}/{endpoint}", params=params)
-        if session and resp.status_code == 500 and "session" in resp.text.lower():
-            params["authSessionKey"] = self._session(fresh=True) or ""  # it ran out
-            resp = self.http.get(f"{self.api}/{endpoint}", params=params)
+        resp = self._get(endpoint, params)
         resp.raise_for_status()
         body = resp.json()
         more = bool(body.get("hasMore")) and bool(body.get("paginationToken"))
@@ -2476,24 +2590,28 @@ class WikiArt(Museum):
     def _ask(self, endpoint: str, params: dict[str, str]) -> Any:
         """One answer of WikiArt's API, with the owner's session when there
         is one (asked for anew once when it ran out)."""
-        session = self._session()
-        if session:
-            params = {**params, "authSessionKey": session}
-        resp = self.http.get(f"{self.api}/{endpoint}", params=params)
-        if session and resp.status_code == 500 and "session" in resp.text.lower():
-            params["authSessionKey"] = self._session(fresh=True) or ""  # it ran out
-            resp = self.http.get(f"{self.api}/{endpoint}", params=params)
+        resp = self._get(endpoint, params)
         if resp.status_code == 404:
             return None
         resp.raise_for_status()
         return resp.json()
 
     def _painting(self, source_id: str) -> dict[str, Any] | None:
-        """A work's own record."""
+        """A work's own record, asked once and kept at home
+        (library/records.py): the card, the technique and the museum it
+        hangs in all read it, and each answer is one of the hour's 400."""
         if not source_id:
             return None
+        kept = records(self.access.data_dir) if self.access.data_dir else None
+        if kept is not None:
+            found, record = kept.get(self.key, source_id)
+            if found:
+                return record if isinstance(record, dict) else None
         body = self._ask("Painting", {"id": source_id})
-        return body if isinstance(body, dict) else None
+        record = body if isinstance(body, dict) else None
+        if kept is not None:
+            kept.put(self.key, source_id, record)
+        return record
 
     def discover(self, spec: Discovery, limit: int = 20, page: int = 1) -> tuple[int, list[Item]]:
         """Paintings of a style; with nothing asked, the most viewed ones."""

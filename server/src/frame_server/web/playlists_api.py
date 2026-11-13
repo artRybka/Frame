@@ -22,6 +22,7 @@ from ..library.icloud import album_token
 from ..service import FrameService
 from ..users import User
 from .deps import CurrentUser, require_token, service
+from .library_api import museum_trouble
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["playlists"])
 Svc = Annotated[FrameService, Depends(service)]
@@ -255,7 +256,7 @@ def add_items(playlist_id: int, body: ItemIds, svc: Svc, user: CurrentUser) -> P
         try:
             svc.importer.save(item_id)
         except httpx.HTTPError as err:
-            raise HTTPException(502, f"{item_id}: {err}") from err
+            raise HTTPException(502, museum_trouble(item_id.partition(":")[0], err)) from err
     # A work the playlist has from another source is not added again.
     works = Works(i for i in map(svc.library.get, playlist.item_ids) if i is not None)
     for item_id in ids[len(playlist.item_ids) :]:
