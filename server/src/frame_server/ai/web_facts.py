@@ -115,16 +115,22 @@ def _plain(text: Any, limit: int = 600) -> str:
     return out[:limit].strip()
 
 
-def parse(text: str) -> Found | None:
-    """The answer's last JSON block (or its last ``{...}``), cleaned; None
-    when there is none."""
+def last_json(text: str) -> dict[str, Any] | None:
+    """The answer's last JSON block (or its last ``{...}``); None when there
+    is none."""
     blocks = re.findall(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S)
     raw = blocks[-1] if blocks else text[text.find("{") : text.rfind("}") + 1]
     try:
         data = json.loads(raw)
     except ValueError:
         return None
-    if not isinstance(data, dict):
+    return data if isinstance(data, dict) else None
+
+
+def parse(text: str) -> Found | None:
+    """The answer's facts and technical study, cleaned; None without them."""
+    data = last_json(text)
+    if data is None:
         return None
     facts = [
         Fact(kind=_plain(f.get("kind"), 40), text=_plain(f.get("text")))
@@ -187,7 +193,7 @@ class WebFacts:
         return self.config.enabled(SWITCH)
 
     @staticmethod
-    def _hash(item: Item) -> str:
+    def source_hash(item: Item) -> str:
         return text_hash(item.title, item.artist, item.date_text)
 
     def found(self, item: Item) -> Found | None:
@@ -196,7 +202,7 @@ class WebFacts:
         note = self.library.note(item.id, KIND)
         if note is None or note.prompt_version != VERSION:
             return None
-        if note.source_hash != self._hash(item):
+        if note.source_hash != self.source_hash(item):
             return None
         try:
             return Found.model_validate(note.data)
@@ -250,7 +256,7 @@ class WebFacts:
                 kind=KIND,
                 model=MODEL,
                 prompt_version=VERSION,
-                source_hash=self._hash(item),
+                source_hash=self.source_hash(item),
                 data=found.model_dump(),
             )
         )

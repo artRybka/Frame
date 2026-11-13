@@ -145,12 +145,26 @@ struct ItemDetailView: View {
                 .animation(.easeOut(duration: 0.3), value: showsCard)
             }
             .glowLift($scrolled)
+            .task {
+                // CI screenshots: "Podobne wyglądem" at the card's end, once
+                // the card and the row are in (whatever the Polish texts do).
+                guard LaunchRoute.screen == "detail", LaunchRoute.scroll == "looks" else { return }
+                for _ in 0 ..< 8 {
+                    try? await Task.sleep(for: .seconds(1.5))
+                    withAnimation(nil) { proxy.scrollTo("looks", anchor: .bottom) }
+                }
+            }
             .onChange(of: polish) {
                 // CI screenshots
-                guard LaunchRoute.screen == "detail", let scroll = LaunchRoute.scroll, ["about", "palette", "title", "picture"].contains(scroll), polish != nil else { return }
+                guard LaunchRoute.screen == "detail", let scroll = LaunchRoute.scroll, ["about", "palette", "title", "picture", "looks"].contains(scroll), polish != nil else { return }
                 Task {
-                    try? await Task.sleep(for: .seconds(1))
-                    proxy.scrollTo(scroll, anchor: ["palette", "picture"].contains(scroll) ? .center : .top)
+                    let anchor: UnitPoint = ["palette", "picture"].contains(scroll) ? .center : scroll == "looks" ? .bottom : .top
+                    // ("looks": the row comes in after its own answer, at the
+                    // card's end: scrolled again until it is there)
+                    for _ in 0 ..< (scroll == "looks" ? 6 : 1) {
+                        try? await Task.sleep(for: .seconds(1))
+                        withAnimation(nil) { proxy.scrollTo(scroll, anchor: anchor) }
+                    }
                 }
             }
         }
@@ -364,7 +378,7 @@ struct ItemDetailView: View {
             about(item)
             studySection(item)
             facts(item)
-            LooksLikeSection(item: item)
+            LooksLikeSection(item: item).id("looks")
         }
         .padding(.horizontal, Theme.gutter)
         .padding(.bottom, 40)

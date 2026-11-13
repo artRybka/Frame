@@ -45,10 +45,24 @@ class FakePainter:
 
     def __init__(self) -> None:
         self.asked: list[list[Image.Image | str]] = []
+        self.batches: list[list[tuple[str, Image.Image]]] = []
+        #: Batches Google is still at.
+        self.waiting: set[str] = set()
         self.key = True
 
     def enabled(self) -> bool:
         return self.key
+
+    def embed_batch(self, kind: str, pictures: Sequence[tuple[str, Image.Image]]) -> str:
+        assert kind == KIND and pictures
+        self.batches.append(list(pictures))
+        return f"batches/{len(self.batches)}"
+
+    def embed_batched(self, kind: str, batch: str) -> dict[str, list[float] | None] | None:
+        if batch in self.waiting:
+            return None
+        pictures = self.batches[int(batch.split("/")[1]) - 1]
+        return {name: _direction(_colour_of(img), lean=10) for name, img in pictures}
 
     def embed(self, kind: str, inputs: Sequence[Image.Image | str]) -> list[list[float]]:
         assert kind == KIND and 0 < len(inputs) <= EMBED_MAX
@@ -80,6 +94,13 @@ def _work(service: FrameService, item_id: str, colour: str, **fields: Any) -> It
     path.parent.mkdir(parents=True, exist_ok=True)
     Image.new("RGB", (64, 48), COLOURS[colour]).save(path, "JPEG")
     return service.library.upsert(item)
+
+
+def _numbers(found: Looks) -> int:
+    """The works sent through the Batch and their numbers read back: how
+    many got them."""
+    found.send()
+    return found.collect()
 
 
 @pytest.fixture
@@ -180,12 +201,12 @@ def test_only_the_museums_works_with_a_thumbnail_are_sent(
     _work(service, "icloud:1", "red", kind=ItemKind.PHOTO)
     gone = Item(id="met:3", source="met", source_id="3", thumb_url="https://example.org/3.jpg")
     service.library.upsert(gone)  # no thumbnail here: not downloaded for this
-    assert found.round() == 2
+    assert _numbers(found) == 2
     assert found.index.ids() == {"met:1", "met:2"}
     assert found.counts() == (2, 3)
-    assert found.round() == 0  # nothing new
+    assert _numbers(found) == 0  # nothing new
     service.ai_config.update(AiConfigUpdate(looks=False))
-    assert not found.enabled() and found.round() == 0
+    assert not found.enabled() and _numbers(found) == 0
 
 
 def test_a_changed_picture_of_a_cared_work_is_sent_again(
@@ -195,14 +216,14 @@ def test_a_changed_picture_of_a_cared_work_is_sent_again(
     service.ai_config.set_gemini_key("k")
     item = _work(service, "met:1", "red")
     found.cared = lambda: {"met:1": 0}
-    assert found.round() == 1
+    assert _numbers(found) == 1
     thumb = service.images.thumb_path(item)
     Image.new("RGB", (64, 48), COLOURS["blue"]).save(thumb, "JPEG")
     stamp = int(thumb.stat().st_mtime) + 5
     import os
 
     os.utime(thumb, (stamp, stamp))
-    assert found.round() == 1
+    assert _numbers(found) == 1
     assert found.index.stamp("met:1") == stamp
 
 
@@ -217,7 +238,7 @@ def test_words_find_works_that_look_so(
     _work(service, "met:1", "red")
     _work(service, "met:2", "blue")
     _work(service, "met:3", "red", excluded=True)  # hidden in the app
-    found.round()
+    _numbers(found)
     asked = len(painter.asked)
     assert [f.item.id for f in found.words("czerwony red zachód")] == ["met:1"]
     assert [f.item.id for f in found.words("  Czerwony   red zachód ")] == ["met:1"]
@@ -233,7 +254,7 @@ def test_a_photograph_and_a_work_find_works_that_look_alike(
     red = _work(service, "met:1", "red")
     _work(service, "aic:7", "red")
     _work(service, "met:2", "blue")
-    found.round()
+    _numbers(found)
     photo = Image.new("RGB", (300, 200), COLOURS["blue"])
     assert [f.item.id for f in found.picture(photo)] == ["met:2"]
     assert [f.item.id for f in found.similar(red)] == ["aic:7"]
@@ -261,7 +282,7 @@ def test_the_api(service: FrameService, looks: tuple[Looks, FakePainter]) -> Non
     service.ai_config.set_gemini_key("k")
     _work(service, "met:1", "red")
     _work(service, "met:2", "blue")
-    found.round()
+    _numbers(found)
     app = create_app(service.settings)
     app.state.service = service
     with TestClient(app) as client:
@@ -294,5 +315,74 @@ def test_works_that_look_alike_come_first_among_the_studys_candidates(
     red = _work(service, "met:1", "red", artist="Anna A")
     _work(service, "aic:7", "red", artist="Bruno B")
     _work(service, "aic:8", "red", artist="Anna A")  # the artist's own: "Inne prace artysty"
-    found.round()
+    _numbers(found)
     assert [i.id for i in service.daily.candidates(red)] == ["aic:7"]
+
+
+def test_the_works_go_through_the_batch_and_wait_for_it(
+    service: FrameService, looks: tuple[Looks, FakePainter]
+) -> None:
+    found, painter = looks
+    service.ai_config.set_gemini_key("k")
+    _work(service, "met:1", "red")
+    _work(service, "met:2", "blue")
+    painter.waiting.add("batches/1")
+    assert found.round() == (0, 2)
+    assert found.send() == 0  # out already: not sent twice
+    assert found.collect() == 0 and len(found.index) == 0
+    painter.waiting.clear()
+    again = Looks(  # a restart keeps the batches out
+        service.library,
+        service.images,
+        painter,
+        service.ai_config,
+        found.root,  # type: ignore[arg-type]
+    )
+    assert again.collect() == 2 and again.index.ids() == {"met:1", "met:2"}
+    assert painter.asked == []  # nothing asked one by one
+
+
+def test_the_embedding_batch_request_and_its_answers(service: FrameService) -> None:
+    sent: list[dict[str, Any]] = []
+    state = {"now": "BATCH_STATE_RUNNING"}
+
+    def google(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            assert request.url.path.endswith(f"/models/{EMBED_MODEL}:asyncBatchEmbedContent")
+            sent.append(json.loads(request.content))
+            return httpx.Response(200, json={"name": "batches/b1", "metadata": {}})
+        assert request.url.path.endswith("/batches/b1")
+        answers = [
+            {
+                "response": {"embedding": {"values": [0.5] * EMBED_SIZE}},
+                "metadata": {"key": "met:1"},
+            },
+            {"error": {"code": 3, "message": "bad picture"}, "metadata": {"key": "met:2"}},
+        ]
+        return httpx.Response(
+            200,
+            json={
+                "name": "batches/b1",
+                "metadata": {"state": state["now"]},
+                "response": {
+                    "inlinedResponses": {"inlinedResponses": answers}
+                },  # as Google answers
+            },
+        )
+
+    service.ai_config.set_gemini_key("k-1")
+    painter = Painter(
+        service.ai_config,
+        service.claude,
+        http=lambda: httpx.Client(transport=httpx.MockTransport(google)),
+    )
+    pictures = [("met:1", Image.new("RGB", (8, 8))), ("met:2", Image.new("RGB", (8, 8)))]
+    assert painter.embed_batch(KIND, pictures) == "batches/b1"
+    request = sent[0]["batch"]["input_config"]["requests"]["requests"][0]
+    assert request["metadata"] == {"key": "met:1"}
+    assert request["request"]["output_dimensionality"] == EMBED_SIZE
+    assert painter.embed_batched(KIND, "batches/b1") is None  # still at it
+    state["now"] = "BATCH_STATE_SUCCEEDED"
+    found = painter.embed_batched(KIND, "batches/b1")
+    assert found is not None and found["met:2"] is None and len(found["met:1"] or []) == EMBED_SIZE
+    assert painter.spending.by_kind()[KIND] == pytest.approx(0.000058, abs=1e-6)  # half price

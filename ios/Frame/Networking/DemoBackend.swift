@@ -75,6 +75,10 @@ actor DemoBackend: FrameBackend {
     private var aiValue = AiSettings(
         keySet: false, keyTail: nil, keyFromApp: false, plText: true, keywordsArtworks: true,
         keywordsPhotos: true, daily: true, searchWords: true, curator: true, twinsJudge: true, gatekeeper: true, audit: true, looks: true, journey: true, webFacts: true, stages: true,
+        studyRefresh: StudyRefresh(
+            waiting: 42, rewriteWaiting: 0, running: false, asked: 0, rewriting: 0,
+            found: 0, rewritten: 0, spentUsd: 0, factsUsd: 4.2, rewriteUsd: 1.26
+        ),
         reviewCount: 2, monthlyLimitUsd: 5, spentUsd: 0,
         keywordsProgress: .init(done: 0, waiting: 0, refused: 0, batchItems: 0, batchDone: 0, preparing: false),
         plTextProgress: nil, error: nil,
@@ -1956,6 +1960,15 @@ actor DemoBackend: FrameBackend {
         aiValue.keyTail = String(key.trimmingCharacters(in: .whitespaces).suffix(4))
         aiValue.keyFromApp = true
         aiValue.keywordsProgress = .init(done: 12, waiting: 34, refused: 0, batchItems: 0, batchDone: 0, preparing: false)
+        return aiValue
+    }
+
+    func startStudyRefresh() async throws -> AiSettings {
+        if var refresh = aiValue.studyRefresh {
+            refresh.asked = refresh.waiting
+            refresh.running = true
+            aiValue.studyRefresh = refresh
+        }
         return aiValue
     }
 

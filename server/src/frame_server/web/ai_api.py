@@ -87,6 +87,28 @@ class AiView(BaseModel):
     looks_done: int = 0
     looks_total: int = 0
     looks_error: str | None = None
+    study_refresh: StudyRefreshView | None = None
+
+
+class StudyRefreshView(BaseModel):
+    """The studies written before the facts from the web, filled in at the
+    owner's tap (``ai.refresh``)."""
+
+    #: Studies with no facts from the web yet, and those whose facts add
+    #: much and wait for their text to be rewritten.
+    waiting: int = 0
+    rewrite_waiting: int = 0
+    #: An order is under way: the studies asked about, being rewritten.
+    running: bool = False
+    asked: int = 0
+    rewriting: int = 0
+    #: So far: studies that got facts, rewritten, what it cost.
+    found: int = 0
+    rewritten: int = 0
+    spent_usd: float = 0.0
+    #: About what the facts of those waiting cost, and their rewrites.
+    facts_usd: float = 0.0
+    rewrite_usd: float = 0.0
 
 
 class KeyUpdate(BaseModel):
@@ -144,6 +166,7 @@ def _view(svc: FrameService) -> AiView:
         looks_done=looks_done,
         looks_total=looks_total,
         looks_error=svc.looks.trouble if config.looks else None,
+        study_refresh=StudyRefreshView(**svc.study_refresh.view()),
     )
 
 
@@ -158,6 +181,22 @@ async def put_ai(update: AiConfigUpdate, svc: Svc) -> AiView:
     svc.ai.wake()
     svc.drawn.again()  # the limit raised, the sheets switched on
     svc.looks.nudge()
+    return await run_in_threadpool(_view, svc)
+
+
+@router.post("/study-refresh", response_model=AiView)
+async def start_study_refresh(svc: Svc) -> AiView:
+    """The studies written before the facts from the web asked about now,
+    through the Batch API (the owner's tap in Konfiguracja)."""
+    if not svc.ai_config.api_key:
+        raise HTTPException(409, "Brak klucza API Anthropic.")
+    try:
+        svc.claude.check_budget()
+    except AiUnavailable as err:
+        raise HTTPException(409, "Osiągnięty miesięczny limit Claude.") from err
+    asked = await run_in_threadpool(svc.study_refresh.start)
+    if not asked and not svc.study_refresh.view()["running"]:
+        raise HTTPException(409, "Nie udało się zamówić (szczegóły w dzienniku serwera).")
     return await run_in_threadpool(_view, svc)
 
 

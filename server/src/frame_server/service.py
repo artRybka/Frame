@@ -27,6 +27,7 @@ from .ai.journey import Journeys
 from .ai.museum_words import MuseumWords
 from .ai.prose import ProseJob
 from .ai.redraw import PenJob
+from .ai.refresh import StudyRefresh
 from .ai.search_words import SearchWords
 from .ai.study import StudyJob
 from .ai.twins_judge import NightJudge
@@ -374,6 +375,9 @@ class FrameService:
         # Facts about a work from the web, for its page (Sonnet with the web search).
         self.web_facts = WebFacts(self.library, self.claude, self.ai_config)
         self.daily.job.web_facts = self.study.job.web_facts = self.web_facts.for_study
+        # The studies written before them filled in with the facts, where
+        # they add much, at the owner's tap (Konfiguracja).
+        self.study_refresh = StudyRefresh(self.library, self.claude, self.web_facts)
         # Its steps on the Lock Screen, and "Studium gotowe" at the end.
         self.study.on_step = lambda item, status, error: self.notifier.study_step(
             item.id,

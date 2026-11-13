@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.145.94
+
+- Szukanie wyglądem przygotowuje dzieła z muzeów przez Batch Google, za
+  pół ceny (ok. 6 USD zamiast 12 dla całej biblioteki). Paczki wracają
+  zwykle w kilka minut, więc biblioteka będzie gotowa w ciągu doby; na
+  bieżąco idą tylko Twoje pytania słowami i zdjęciem.
+- Szukaj: zamiast guzika „Szukaj zdjęciem” na prawym końcu pola
+  wyszukiwania jest ikonka aparatu, widoczna, gdy nic nie jest wpisane ani
+  wybrane. Dotknięcie otwiera aparat, przytrzymanie pozwala wybrać zdjęcie
+  z Biblioteki.
+- Szukaj wyglądem: dotknięcie dzieła na liście wyników otwiera jego kartę
+  i zostaje na niej (wcześniej ekran wracał sam do wyników).
+- Konfiguracja → Claude: „Uzupełnij wcześniejsze studia”. Claude szuka w
+  sieci faktów, których w napisanych już studiach brakuje (badania,
+  losy, wystawy, odbiór), i przepisuje tekst tylko tam, gdzie wiele
+  dodają. Analiza kompozycji, detale i Droga dzieła zostają bez zmian.
+  W pakietach Anthropic, za pół ceny; przycisk pokazuje liczbę studiów i
+  koszt.
+
 ## 1.145.93
 
 - WikiArt: serwer nie wyłącza już WikiArt na pół godziny, gdy to on sam

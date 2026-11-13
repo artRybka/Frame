@@ -181,9 +181,7 @@ struct LooksLikeSection: View {
                     HStack(alignment: .firstTextBaseline) {
                         Eyebrow("Podobne wyglądem")
                         Spacer()
-                        NavigationLink {
-                            LooksResultsView(ask: .like(item.id, item.displayTitle))
-                        } label: {
+                        NavigationLink(value: LooksAsk.like(item.id, item.displayTitle)) {
                             Text("Więcej").font(.caption)
                         }
                     }
@@ -221,36 +219,206 @@ struct LooksLikeSection: View {
     }
 }
 
-/// Szukaj's "Szukaj zdjęciem": a photograph from the library, searched by
-/// how it looks.
-struct LooksPhotoButton: View {
+/// Szukaj's camera (Mateusz 2026-11-13: "obok paska wyszukiwania z prawej -
+/// sama ikonka aparatu widoczna tylko gdy nic nie jest wpisane ani wybrane z
+/// grup", "wywoływać (domyślnie) funkcję aparatu"): an icon at the right end
+/// of the system search field, there while nothing is asked. A tap opens
+/// the camera (the photo library where there is none); held, it offers the
+/// library too. The photograph is searched by how it looks.
+extension View {
+    func looksCamera(shown: Bool, found: @escaping (LooksAsk) -> Void) -> some View {
+        modifier(LooksCamera(shown: shown, found: found))
+    }
+}
+
+private struct LooksCamera: ViewModifier {
     @Environment(AppModel.self) private var model
+    let shown: Bool
     let found: (LooksAsk) -> Void
+    @State private var camera = false
+    @State private var library = false
     @State private var picked: PhotosPickerItem?
 
-    var body: some View {
-        PhotosPicker(selection: $picked, matching: .images) {
-            Label("Szukaj zdjęciem", systemImage: "camera.viewfinder")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(Theme.ink)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 9)
-                .glassEffect(.regular.interactive(), in: Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityHint(Text("Wybierz zdjęcie dzieła, a Szukaj znajdzie podobne"))
-        .onChange(of: picked) { _, item in
-            guard let item else { return }
-            picked = nil
-            Task {
-                guard let data = try? await item.loadTransferable(type: Data.self),
-                      let ask = await Task.detached(priority: .userInitiated, operation: { LooksAsk.picture(from: data) }).value
-                else {
-                    model.notices.warn("Nie udało się wczytać zdjęcia")
-                    return
-                }
-                found(ask)
+    func body(content: Content) -> some View {
+        content
+            .background {
+                SearchFieldCamera(
+                    shown: shown,
+                    onCamera: {
+                        if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                            camera = true
+                        } else {
+                            library = true
+                        }
+                    },
+                    onLibrary: { library = true }
+                )
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
             }
+            .fullScreenCover(isPresented: $camera) {
+                CameraPicker { image in
+                    guard let data = image.jpegData(compressionQuality: 0.9) else { return }
+                    take(data)
+                }
+                .ignoresSafeArea()
+            }
+            .photosPicker(isPresented: $library, selection: $picked, matching: .images)
+            .onChange(of: picked) { _, item in
+                guard let item else { return }
+                picked = nil
+                Task {
+                    guard let data = try? await item.loadTransferable(type: Data.self) else {
+                        model.notices.warn("Nie udało się wczytać zdjęcia")
+                        return
+                    }
+                    take(data)
+                }
+            }
+    }
+
+    private func take(_ data: Data) {
+        Task {
+            guard let ask = await Task.detached(priority: .userInitiated, operation: { LooksAsk.picture(from: data) }).value
+            else {
+                model.notices.warn("Nie udało się wczytać zdjęcia")
+                return
+            }
+            found(ask)
+        }
+    }
+}
+
+/// The camera, as UIKit has it (SwiftUI has none).
+private struct CameraPicker: UIViewControllerRepresentable {
+    let took: (UIImage) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ picker: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: CameraPicker
+
+        init(_ parent: CameraPicker) { self.parent = parent }
+
+        func imagePickerController(
+            _ picker: UIImagePickerController,
+            didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+        ) {
+            if let image = info[.originalImage] as? UIImage { parent.took(image) }
+            parent.dismiss()
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { parent.dismiss() }
+    }
+}
+
+/// Puts the camera button at the right end of the system search field
+/// (`.searchable` gives no place for one): the field's right view, the
+/// place of the microphone in Apple's own fields, while ``shown``.
+private struct SearchFieldCamera: UIViewRepresentable {
+    let shown: Bool
+    let onCamera: () -> Void
+    let onLibrary: () -> Void
+
+    func makeUIView(context: Context) -> Probe {
+        let probe = Probe()
+        probe.isUserInteractionEnabled = false
+        return probe
+    }
+
+    func updateUIView(_ probe: Probe, context: Context) {
+        probe.shown = shown
+        probe.onCamera = onCamera
+        probe.onLibrary = onLibrary
+        probe.apply()
+    }
+
+    static func dismantleUIView(_ probe: Probe, coordinator: ()) {
+        probe.shown = false
+        probe.apply()
+    }
+
+    final class Probe: UIView {
+        var shown = false
+        var onCamera: () -> Void = {}
+        var onLibrary: () -> Void = {}
+        private weak var field: UISearchTextField?
+        private lazy var button: UIButton = {
+            var look = UIButton.Configuration.plain()
+            // Filled and a little smaller than the magnifier, close to the
+            // field's end (Mateusz 2026-11-13: "pełna i trochę drobniejsza").
+            look.image = UIImage(
+                systemName: "camera.fill",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+            )
+            look.baseForegroundColor = .secondaryLabel
+            look.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 0)
+            let button = UIButton(configuration: look)
+            button.accessibilityLabel = "Szukaj zdjęciem"
+            button.accessibilityHint = "Zrób zdjęcie dzieła, a Szukaj znajdzie podobne. Przytrzymaj, by wybrać z Biblioteki."
+            button.addAction(UIAction { [weak self] _ in self?.onCamera() }, for: .primaryActionTriggered)
+            button.menu = UIMenu(children: [
+                UIAction(title: "Zrób zdjęcie", image: UIImage(systemName: "camera")) { [weak self] _ in
+                    self?.onCamera()
+                },
+                UIAction(title: "Wybierz z Biblioteki", image: UIImage(systemName: "photo.on.rectangle")) { [weak self] _ in
+                    self?.onLibrary()
+                },
+            ])
+            button.showsMenuAsPrimaryAction = false
+            button.sizeToFit()
+            return button
+        }()
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            apply()
+            // The system puts the field in place a moment after the page.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.apply() }
+        }
+
+        func apply() {
+            guard let window else {
+                take()
+                return
+            }
+            if field == nil || field?.window == nil { field = Self.searchField(in: window) }
+            guard let field else { return }
+            if shown {
+                if field.rightView !== button {
+                    field.rightView = button
+                    field.rightViewMode = .always
+                }
+            } else {
+                take()
+            }
+        }
+
+        /// The button out of the field.
+        private func take() {
+            guard let field, field.rightView === button else { return }
+            field.rightView = nil
+        }
+
+        /// Szukaj's own field: the one showing, not in a sheet over it.
+        private static func searchField(in view: UIView) -> UISearchTextField? {
+            if let field = view as? UISearchTextField, !field.isHidden, field.alpha > 0.01 {
+                return field
+            }
+            for subview in view.subviews.reversed() {
+                if let field = searchField(in: subview) { return field }
+            }
+            return nil
         }
     }
 }

@@ -72,7 +72,7 @@ def _work(service: FrameService, *, study: bool) -> Item:
         else [],
     )
     found = Found(facts=[Fact(text="Ściany były fioletowe.")], technical=technical)
-    hashed = service.web_facts._hash(item)
+    hashed = service.web_facts.source_hash(item)
     service.library.save_note(
         Note(
             item_id=item.id,

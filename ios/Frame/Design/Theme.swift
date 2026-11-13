@@ -669,6 +669,13 @@ enum Names {
         return tens != 1 && (2 ... 4).contains(ones) ? "zmiany" : "zmian"
     }
 
+    /// "studium", "studia" or "studiów" after `count`.
+    static func studies(_ count: Int) -> String {
+        if count == 1 { return "studium" }
+        let tens = count % 100 / 10, ones = count % 10
+        return tens != 1 && (2 ... 4).contains(ones) ? "studia" : "studiów"
+    }
+
     /// "godzina", "godziny" or "godzin" after `count`.
     static func hours(_ count: Int) -> String {
         if count == 1 { return "godzina" }

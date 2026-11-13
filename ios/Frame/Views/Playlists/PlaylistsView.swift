@@ -176,6 +176,10 @@ struct PlaylistsView: View {
             .navigationDestination(for: String.self) { id in
                 ItemDetailView(itemID: id)
             }
+            // "Podobne wyglądem" → "Więcej" on a work's card, in the same path.
+            .navigationDestination(for: LooksAsk.self) { ask in
+                LooksResultsView(ask: ask)
+            }
             .navigationDestination(for: ArtTheme.self) { theme in
                 ThemeView(theme: theme)
             }

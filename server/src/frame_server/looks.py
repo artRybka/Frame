@@ -15,15 +15,19 @@ elsewhere three van Goghs of Cleveland; 0.23 USD.
 
 Only the museums' works are sent: never the owner's photos nor his own
 works. A work gets its numbers in the background (:meth:`Looks.start`),
-those cared about first, at :data:`PER_ROUND` a round while the
-Gemini page's switch is on and the image model's month's limit allows;
-a work whose picture changed (a sharper copy, the creative restorer) gets
-them anew.
+through Google's Batch at half the price (Mateusz 2026-11-13: "Rozumiem że
+ta praca G1 pójdzie przez batch?"; some 0.006 cent a work): those cared
+about first, :data:`PER_BATCH` works a batch and :data:`OPEN` batches at
+a time, while the Gemini page's switch is on and the image model's
+month's limit allows; a work whose picture changed (a sharper copy, the
+creative restorer) gets them anew. Only words and photographs asked about
+are sent at once.
 """
 
 from __future__ import annotations
 
 import io
+import json
 import logging
 import os
 import threading
@@ -38,7 +42,7 @@ import numpy as np
 from PIL import Image
 
 from .ai.client import AiUnavailable
-from .ai.gemini import EMBED_MAX, EMBED_SIZE, NotDrawn
+from .ai.gemini import EMBED_SIZE, NotDrawn
 from .library.models import Item, ItemKind
 from .library.verdict import Place, against
 
@@ -54,9 +58,13 @@ log = logging.getLogger(__name__)
 KIND = "looks"
 #: Works sent in one round of the background, and the pause between rounds
 #: while some are left; when none is, it looks again after :data:`IDLE`.
-PER_ROUND = 200
-PAUSE = 20.0
+PER_BATCH = 300
+OPEN = 8
+#: Seconds between looks at the batches out (a small one is back in minutes).
+POLL = 120.0
 IDLE = 600.0
+#: The batches out, kept across restarts (the works in each, and their stamps).
+BATCHES = "batches.json"
 #: After Google's trouble (busy, a refusal, the limit): a longer rest.
 REST = 1800.0
 #: Words are asked as a search (Google's own advice for gemini-embedding-2);
@@ -275,6 +283,7 @@ class Looks:
         self.painter = painter
         self.config = config
         self.index = LookIndex(root)
+        self.root = root
         self.clock = clock
         #: The works cared about, by id (``cared.Cared.ranks``): sent first.
         self.cared: Callable[[], dict[str, int]] = dict
@@ -423,6 +432,7 @@ class Looks:
         stamps: without numbers, or with numbers of a picture since changed;
         those cared about first. Only thumbnails already here are sent."""
         have = self.index.ids()
+        out = {item_id for rows in self._out().values() for item_id, _ in rows}
         ranks = self.cared()
         items = [i for i in self.library.all_items() if self.wanted(i)]
         # Cared about first, then those without numbers, then the rest
@@ -432,6 +442,8 @@ class Looks:
         for item in items:
             if len(found) >= limit:
                 break
+            if item.id in out:
+                continue
             if item.id in have and ranks.get(item.id) is None:
                 break  # works not cared about are looked at again only when gone
             seen = self._no_thumb.get(item.id)
@@ -450,33 +462,85 @@ class Looks:
             found.append((item, thumb, stamp))
         return found
 
-    def round(self, limit: int = PER_ROUND) -> int:
-        """Sends up to ``limit`` works for their numbers; how many got them."""
+    # -- the Batch --------------------------------------------------------------------
+
+    def _out(self) -> dict[str, list[tuple[str, int]]]:
+        """The batches out: their works and stamps, by the batch's name."""
+        try:
+            raw = json.loads((self.root / BATCHES).read_text())
+        except (OSError, ValueError):
+            return {}
+        return {
+            str(name): [(str(i), int(stamp)) for i, stamp in rows]
+            for name, rows in raw.items()
+            if isinstance(rows, list)
+        }
+
+    def _keep_out(self, out: dict[str, list[tuple[str, int]]]) -> None:
+        self.root.mkdir(parents=True, exist_ok=True)
+        path = self.root / BATCHES
+        temp = path.with_suffix(".tmp")
+        temp.write_text(json.dumps({name: [list(r) for r in rows] for name, rows in out.items()}))
+        os.replace(temp, path)
+
+    def collect(self) -> int:
+        """The numbers of the batches Google has answered kept; how many
+        works got them. A lost batch is dropped (its works go again)."""
+        out = self._out()
+        done = 0
+        for name, rows in list(out.items()):
+            try:
+                found = self.painter.embed_batched(KIND, name)
+            except NotDrawn as err:
+                log.warning("looks: %s", err)
+                del out[name]
+                continue
+            if found is None:
+                continue
+            stamps = dict(rows)
+            kept = [
+                (item_id, stamps[item_id], vector)
+                for item_id, vector in found.items()
+                if vector is not None and item_id in stamps
+            ]
+            self.index.add(kept)
+            done += len(kept)
+            del out[name]
+        self._keep_out(out)
+        return done
+
+    def send(self) -> int:
+        """Batches sent while fewer than :data:`OPEN` are out; how many
+        works went."""
         if not self.enabled():
             return 0
-        done = 0
-        todo = self.waiting(limit)
-        for start in range(0, len(todo), EMBED_MAX):
-            if self._stop.is_set():
-                break
-            part = todo[start : start + EMBED_MAX]
-            pictures, kept = [], []
-            for item, thumb, stamp in part:
+        out = self._out()
+        sent = 0
+        while len(out) < OPEN and not self._stop.is_set():
+            todo = self.waiting(PER_BATCH)
+            pictures, rows = [], []
+            for item, thumb, stamp in todo:
                 try:
                     with Image.open(io.BytesIO(thumb.read_bytes())) as img:
                         img.load()
-                        pictures.append(img.convert("RGB"))
-                    kept.append((item, stamp))
+                        pictures.append((item.id, img.convert("RGB")))
+                    rows.append((item.id, stamp))
                 except OSError:
-                    continue
+                    self._no_thumb[item.id] = self.clock()
             if not pictures:
-                continue
-            vectors = self.painter.embed(KIND, pictures)
-            self.index.add(
-                [(item.id, stamp, v) for (item, stamp), v in zip(kept, vectors, strict=True)]
-            )
-            done += len(kept)
-        return done
+                break
+            name = self.painter.embed_batch(KIND, pictures)
+            out[name] = rows
+            self._keep_out(out)
+            sent += len(rows)
+            if len(todo) < PER_BATCH:
+                break
+        return sent
+
+    def round(self) -> tuple[int, int]:
+        """Collects what came back, then sends more: (works that got their
+        numbers, works sent)."""
+        return self.collect(), self.send()
 
     def tidy(self) -> int:
         """Rows of works no longer in the library forgotten; how many."""
@@ -506,12 +570,15 @@ class Looks:
                     if self.clock() - tidied > 86_400:
                         self.tidy()
                         tidied = self.clock()
-                    done = self.round()
+                    done, sent = self.round()
                     self.trouble = None
-                    pause = PAUSE if done else IDLE
-                    if done:
+                    pause = POLL if self._out() else IDLE
+                    if done or sent:
                         log.info(
-                            "looks: %d works got their numbers (%d kept)", done, len(self.index)
+                            "looks: %d works got their numbers, %d sent (%d kept)",
+                            done,
+                            sent,
+                            len(self.index),
                         )
                 except (AiUnavailable, NotDrawn) as err:
                     self.trouble = str(err)
