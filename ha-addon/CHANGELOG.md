@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.81
+
+- Delikatniejszy znacznik niskiej rozdzielczości. Zamiast pełnych
+  kropek rastra bursztynowe schodki pikseli, jak ząbkowana krawędź
+  powiększonego zdjęcia: po tytule na miniaturach i w Szukaj oraz na
+  plakietce „950 px” na karcie dzieła.
+
 ## 1.145.80
 
 - Pasek barw: kreska konturu. Obraz malowany wyraźnym konturem (Matisse,
