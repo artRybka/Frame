@@ -606,6 +606,10 @@ class Library:
         #: first (``PlaylistRules.look``); None when that cannot be asked
         #: now. The service puts :meth:`.looks.Looks.looking` here.
         self.looking: Callable[[str, list[Item]], list[Item] | None] | None = None
+        #: The ids of the works that may look as the words say, the only
+        #: ones ``looking`` chooses from; None when that cannot be asked
+        #: now. The service puts :meth:`.looks.Looks.near` here.
+        self.look_near: Callable[[str], list[str] | None] | None = None
         #: The one connection to the disk (:meth:`_db`). Taken after
         #: ``_lock`` when both are held, never before it.
         self._db_lock = threading.RLock()
@@ -1469,11 +1473,25 @@ class Library:
         user: str,
         count_only: bool,
         proposing: bool = False,
+        among: Collection[str] | None = None,
     ) -> list[Item]:
         if rules.look.strip():
-            # What the other rules find, those that look so, nearest first.
+            # What the other rules find, those that look so, nearest first:
+            # only among the works that may (and their copies). The whole
+            # catalogue put through the rules for words alone stood the
+            # server still for minutes (115 000 works, 2026-11-13).
+            closest = self.look_near(rules.look) if self.look_near is not None else None
+            if closest is None:
+                raise _NotNow
+            grouped = self.works()
+            nearby: set[str] = set()
+            for item_id in closest:
+                at = grouped.group_index(item_id)
+                nearby.update([c.id for c in grouped.groups[at]] if at is not None else [item_id])
             plain = rules.model_copy(update={"look": ""})
-            found = self._query(plain, "recent", seed, include_excluded, user, False, proposing)
+            found = self._query(
+                plain, "recent", seed, include_excluded, user, False, proposing, among=nearby
+            )
             looked = self.looking(rules.look, found) if self.looking is not None else None
             if looked is None:
                 raise _NotNow
@@ -1516,7 +1534,10 @@ class Library:
         index = self.search_index(wait=len(self._all()) <= SEARCH_INLINE)
         entries = index.candidates(rules, hearts, said) if index is not None else None
         pool = list(index.items(entries)) if index is not None and entries is not None else None
-        items = [i for i in (self._snapshot() if pool is None else pool) if selected(i)]
+        source: Iterable[Item] = self._snapshot() if pool is None else pool
+        if among is not None:
+            source = [i for i in source if i.id in among]
+        items = [i for i in source if selected(i)]
         if said and not include_excluded:
             # The words of a work are those of all its copies: Vermeer's
             # "The Little Street" has "uliczka" in the Rijksmuseum's copy's

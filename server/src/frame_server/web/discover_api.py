@@ -17,7 +17,7 @@ from weakref import WeakKeyDictionary
 
 import httpx
 from anyio import CapacityLimiter, to_thread
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
@@ -1000,9 +1000,12 @@ def vocabulary() -> list[TermInfo]:
 _POSSESSIVE = re.compile(r"['’]s?$")
 
 
-def _term_hits(svc: FrameService, text: str, limit: int) -> list[TermHit]:
+def _term_hits(
+    svc: FrameService, text: str, limit: int, gone: Callable[[], bool] = lambda: False
+) -> list[TermHit]:
     """Artists, the works' keywords ("wielka fala"), the vocabulary's terms
-    and the typed words last (always there: the app's Return puts them in)."""
+    and the typed words last (always there: the app's Return puts them in).
+    ``gone``: the asker typed on meanwhile, nothing more is counted."""
     index = svc.library.term_index()
     words = text.strip()
     hits = [
@@ -1022,22 +1025,50 @@ def _term_hits(svc: FrameService, text: str, limit: int) -> list[TermHit]:
         if fold(phrase) != fold(words) and _POSSESSIVE.sub("", fold(phrase)) not in named
     ][:3]
     for found in suggest(text, limit=max(limit - len(hits), 3)):
+        if gone():
+            return []
         detail = ", ".join(w.rstrip("*") for w in found.words[:3])
         kind = "period" if found.kind == "years" else found.kind
         count = index.term_count(found.key)
         hits.append(TermHit(kind=kind, key=found.key, name=found.name, detail=detail, count=count))
     hits = hits[:limit]
-    if words:
+    if words and not gone():
         hits.append(TermHit(kind="word", key=words, name=words, count=index.word_count(words)))
     return hits
 
 
+#: Threads counting the suggestions while typing, apart from the server's
+#: own pool. A count goes through the whole catalogue until its search
+#: index is made (after a start, after the night's import): dozens of them
+#: at once, one a letter, took every thread and stood the server still for
+#: minutes, the frame's preview and the panel too (2026-11-13).
+TERM_THREADS = CapacityLimiter(2)
+
+#: The last question of each asker (by their token): one asked before it
+#: was given up by the app when the next letter came.
+_TERMS_ASKED: dict[str, int] = {}
+_TERMS_LOCK = threading.Lock()
+
+
 @router.get("/terms", response_model=list[TermHit])
-async def terms(svc: Svc, q: str, limit: Annotated[int, Query(ge=1, le=20)] = 10) -> list[TermHit]:
+async def terms(
+    request: Request, svc: Svc, q: str, limit: Annotated[int, Query(ge=1, le=20)] = 10
+) -> list[TermHit]:
     """What ``q`` could mean: artists in the library, styles, subjects,
     periods and techniques, and the plain words; each with how many works
-    in the catalogue fit."""
-    return await run_in_threadpool(_term_hits, svc, q, limit)
+    in the catalogue fit. A question the same asker followed with another
+    before its turn came is answered with nothing (the app has let it go)."""
+    who = hashlib.sha256(request.headers.get("authorization", "").encode()).hexdigest()
+    with _TERMS_LOCK:
+        turn = _TERMS_ASKED[who] = _TERMS_ASKED.get(who, 0) + 1
+
+    def gone() -> bool:
+        return _TERMS_ASKED.get(who) != turn
+
+    def answer() -> list[TermHit]:
+        return [] if gone() else _term_hits(svc, q, limit, gone)
+
+    return await to_thread.run_sync(answer, limiter=TERM_THREADS)
 
 
 #: Threads for asking the museums, apart from the server's own pool: a

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.145.97
+
+- Poprawka: szukanie wyglądem nie zatrzymuje już serwera. Słowa
+  porównywano z całym katalogiem (115 tys. dzieł), co po aktualizacji
+  zawiesiło serwer na kilka minut, razem z podglądem w zakładce Teraz. Teraz
+  serwer sprawdza tylko kilka tysięcy dzieł najbliższych słowom, a wynik
+  jest ten sam.
+- Podpowiedzi podczas pisania liczą dzieła najwyżej dwiema naraz i
+  porzucają pytania, które aplikacja już zostawiła po kolejnej literze.
+- Dzieła znów dostają liczby do szukania wyglądem. Paczki 300 miniatur
+  ważyły 30 MB przy limicie Google 19 MB, więc od 16:08 żadna nie
+  przeszła. Za ciężka paczka dzieli się teraz na połowy.
+
 ## 1.145.96
 
 - Szukaj: szukanie wyglądem jest częścią zwykłego szukania. Gdy wpiszesz

@@ -442,3 +442,66 @@ def test_a_smart_playlist_keeps_the_look_and_waits_for_google(
     assert service.library.query(rules) == (0, [])
     painter.key = True  # the empty answer was not kept: asked again
     assert [i.id for i in service.library.query(rules)[1]] == ["met:2"]
+
+
+def test_a_look_puts_only_the_works_near_it_through_the_other_rules(
+    service: FrameService, looks: tuple[Looks, FakePainter], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The whole catalogue put through the rules for a look's words stood
+    the server still for minutes (115 000 works, 2026-11-13): only those
+    the look may choose from are."""
+    from frame_server import looks as looks_module
+    from frame_server.library import repo
+    from frame_server.library.models import PlaylistRules
+
+    found, _painter = looks
+    service.ai_config.set_gemini_key("k")
+    for n, colour in enumerate(["red", "red", "blue", "green", "blue", "green"], start=1):
+        _work(service, f"met:{n}", colour)
+    _numbers(found)
+    monkeypatch.setattr(looks_module, "AMONG_NEAR", 2)
+    seen: set[str] = set()
+    plain = repo.matches
+
+    def spy(item: Item, *args: Any, **kwargs: Any) -> bool:
+        seen.add(item.id)
+        return plain(item, *args, **kwargs)
+
+    monkeypatch.setattr(repo, "matches", spy)
+    total, items = service.library.query(PlaylistRules(look="czerwony red"))
+    assert sorted(i.id for i in items) == ["met:1", "met:2"] and total == 2
+    assert seen == {"met:1", "met:2"}
+
+
+def test_a_batch_too_heavy_for_google_goes_in_halves(
+    service: FrameService, looks: tuple[Looks, FakePainter]
+) -> None:
+    """300 thumbnails weighed 30 MB, Google takes 19: from 16:08 on
+    2026-11-13 no work got its numbers."""
+    from frame_server.ai.gemini import TooHeavy
+
+    found, painter = looks
+    service.ai_config.set_gemini_key("k")
+    for n in range(1, 6):
+        _work(service, f"met:{n}", "red")
+    _work(service, "met:9", "blue")
+    taken = painter.embed_batch
+
+    def embed_batch(kind: str, pictures: Sequence[tuple[str, Image.Image]]) -> str:
+        if len(pictures) > 2 or any(name == "met:9" for name, _ in pictures):
+            raise TooHeavy("too heavy")
+        return taken(kind, pictures)
+
+    painter.embed_batch = embed_batch  # type: ignore[method-assign]
+    assert found.send() == 5  # all but the one too heavy alone
+    assert all(len(b) <= 2 for b in painter.batches)
+    assert found.collect() == 5 and "met:9" not in found.index
+    assert found.send() == 0  # it waits as one without a thumbnail
+
+
+def test_a_suggestion_given_up_counts_nothing_more(service: FrameService) -> None:
+    from frame_server.web.discover_api import _term_hits
+
+    _work(service, "met:1", "red", artist="Anna Pejzażystka")
+    assert _term_hits(service, "pejzaż", 10)  # counted
+    assert _term_hits(service, "pejzaż", 10, gone=lambda: True) == []

@@ -98,6 +98,11 @@ class NoCredit(AiUnavailable):
     """The key's prepaid credit is used up (HTTP 402)."""
 
 
+class TooHeavy(ValueError):
+    """A batch's questions weigh more than Google takes in one request
+    (:data:`BATCH_BYTES`): fewer at a time."""
+
+
 class NotDrawn(Exception):
     """The model gave no picture, or one that cannot be used. ``code``:
     Google's own word for why, when it gave one (``image_recitation``: it
@@ -421,7 +426,7 @@ class Painter:
         ]
         weight = sum(len(json.dumps(r)) for r in requests)
         if weight > BATCH_BYTES:
-            raise ValueError(
+            raise TooHeavy(
                 f"a batch of {len(pictures)} pictures weighs {weight / 1e6:.1f} MB, "
                 f"Google takes {BATCH_BYTES / 1e6:.0f} MB at most: send fewer at a time"
             )
@@ -494,7 +499,7 @@ class Painter:
         requests = [{"request": _request(a), "metadata": {"key": a.name}} for a in asks]
         weight = sum(len(json.dumps(r)) for r in requests)
         if weight > BATCH_BYTES:
-            raise ValueError(
+            raise TooHeavy(
                 f"a batch of {len(asks)} questions weighs {weight / 1e6:.1f} MB, "
                 f"Google takes {BATCH_BYTES / 1e6:.0f} MB at most: send fewer at a time"
             )
