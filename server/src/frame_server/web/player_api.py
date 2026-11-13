@@ -6,6 +6,7 @@ import time
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from .. import build_version
@@ -297,13 +298,17 @@ async def status(svc: Svc, user: CurrentUser, refresh: bool = False) -> StatusVi
         await svc.status.refresh()
     svc.power.publish_status()  # whether the app is silent changes with the clock
     device = svc.status.status
+    # The playlists are read from the disk: in a thread, as the library's
+    # connection may be busy for seconds (the event loop, and with it every
+    # answer of the server, stood 33 s on it after a start, 2026-11-13).
+    playlists = await run_in_threadpool(lambda: len(svc.library.playlists(user.id)))
     return StatusView(
         device=device,
         server=ServerStatus(
             version=build_version(),
             uptime_s=int(time.monotonic() - STARTED),
             library_count=svc.library.count(),
-            playlists=len(svc.library.playlists(user.id)),
+            playlists=playlists,
             jobs_running=sum(not j.finished for j in svc.importer.jobs.values()),
             palette=svc.palette.name,
         ),

@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.145.101
+
+- Serwer nie zamiera już na pierwsze minuty po starcie. Po aktualizacji
+  aplikacja czekała 30–70 s na Teraz, Playlisty i Studia, bo serwer od
+  1.145.98 czyta zaraz po starcie polskie tytuły wszystkich dzieł, a to
+  czytanie trzymało bazę, na którą czekało też zapytanie o stan ramki,
+  i z nim cały serwer. Takie długie odczyty idą teraz osobnym połączeniem
+  z bazą, a stan ramki nie czeka na bazę w głównym wątku.
+- Podpowiedzi w Szukaj liczą każde hasło raz i najwyżej dwa naraz.
+  Przy szybkim pisaniu kilkadziesiąt liczeń całego katalogu szło
+  równocześnie i serwer stawał na kilkanaście sekund.
+- Liczby wyglądu (Gemini) i dzieła z Szukaj zaległe sprzed restartu
+  ruszają dopiero 1,5–3 minuty po starcie.
+- Zapis zatrzymania serwera w logu pokazuje dokładne miejsce (krótszy
+  stos, osobny wpis dla innych wątków).
+
 ## 1.145.100
 
 - Resztka miesiąca na studia (Konfiguracja → Claude, karta „Resztka
