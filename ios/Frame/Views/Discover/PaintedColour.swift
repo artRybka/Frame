@@ -21,6 +21,14 @@ extension Paint {
     }
 }
 
+extension ContourLine {
+    /// The work's drawn contour as the server found it (`Item.contour`).
+    init?(_ item: Item) {
+        guard let found = item.contour else { return nil }
+        self.init(hex: found.hex, length: found.length, width: found.width)
+    }
+}
+
 extension PaintStyle {
     /// CI screenshots: "-paintStyle oil" paints every work that way.
     static let forced: PaintStyle? = UserDefaults.standard.string(forKey: "paintStyle").flatMap(PaintStyle.init(rawValue:))
@@ -91,14 +99,22 @@ struct PaintJob: @unchecked Sendable {
 
     /// The palette bar, `width` points wide.
     /// `relief`: how high an oil paint stands (`Paint.relief`).
+    /// `contour`: the work's drawn contour, round a painted bar's paint.
     static func strip(_ style: PaintStyle, shares: [PaintShare], width: Double, seed: Int, dark: Bool,
-                      relief: Double = Paint.calm.plain) -> PaintJob {
+                      relief: Double = Paint.calm.plain, contour: ContourLine? = nil) -> PaintJob {
+        let line = contour.flatMap { ContourLine.draws(in: style) ? $0 : nil }
+        func painted(_ painter: PaintPainter) -> PaintJob {
+            guard let line else { return PaintJob(painter) }
+            return PaintJob(ContouredStrip(painter, line: line, style: style, seed: seed, dark: dark))
+        }
         switch style {
-        case .oil: return PaintJob(OilStrip(shares: shares, width: width, seed: seed, dark: dark, relief: relief))
-        case .water: return PaintJob(WaterStrip(shares: shares, width: width, seed: seed))
+        case .oil: return painted(OilStrip(shares: shares, width: width, seed: seed, dark: dark, relief: relief))
+        case .water: return painted(WaterStrip(shares: shares, width: width, seed: seed))
         case .dry:
             let strip = DryStrip(shares: shares, width: width, seed: seed)
-            return PaintJob(size: strip.size, length: strip.plan.length) { strip.image(age: $0) }
+            guard let line else { return PaintJob(size: strip.size, length: strip.plan.length) { strip.image(age: $0) } }
+            let drawn = DryContour(strip: strip, line: line, seed: seed, dark: dark)
+            return PaintJob(size: strip.size, length: drawn.length) { drawn.image(age: $0) }
         case .burin, .pen, .pencil:
             return PaintJob(LineStrip(shares: shares, width: width, seed: seed, tool: style.tool ?? .burin), scale: PrintPaint.scale)
         case .woodblock, .litho:
@@ -171,6 +187,73 @@ private enum DryCanvas {
     static func colour(_ rgb: [Double]) -> CGColor {
         CGColor(colorSpace: PaintJob.space, components: [CGFloat(rgb[0] / 255), CGFloat(rgb[1] / 255), CGFloat(rgb[2] / 255), 1])
             ?? CGColor(gray: 0.5, alpha: 1)
+    }
+}
+
+extension PaintFrame {
+    /// A picture's pixels, not multiplied by how much is there.
+    init?(_ image: CGImage) {
+        let wide = image.width, high = image.height
+        guard let context = CGContext(data: nil, width: wide, height: high, bitsPerComponent: 8, bytesPerRow: wide * 4,
+                                      space: PaintJob.space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let data = context.data else { return nil }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: wide, height: high))
+        self.init(wide: wide, high: high)
+        let raw = data.bindMemory(to: UInt8.self, capacity: wide * high * 4)
+        for q in 0..<(wide * high) {
+            let a = Double(raw[4 * q + 3])
+            bytes[4 * q + 3] = raw[4 * q + 3]
+            guard a > 0 else { continue }
+            for k in 0..<3 { bytes[4 * q + k] = Paint.byte(Double(raw[4 * q + k]) * 255 / a) }
+        }
+    }
+}
+
+/// A pastel bar and its contour drawn round it in the same stick, once
+/// its hatching is done (`ContourStroke`).
+final class DryContour: @unchecked Sendable {
+    let strip: DryStrip
+    let line: ContourLine
+    let seed: Int
+    let dark: Bool
+    let length: Double
+    private var stroke: ContourStroke??
+
+    init(strip: DryStrip, line: ContourLine, seed: Int, dark: Bool) {
+        self.strip = strip
+        self.line = line
+        self.seed = seed
+        self.dark = dark
+        length = strip.plan.length + ContourLine.draws
+    }
+
+    func image(age: Double) -> CGImage? {
+        let begins = strip.plan.length
+        guard age > begins, let bar = strip.image(age: begins), var frame = PaintFrame(bar) else { return strip.image(age: age) }
+        if stroke == nil {
+            // Hatching leaves the paper's hollows bare: where the paint is
+            // is told from a little round each pixel.
+            let wide = frame.wide, high = frame.high, r = 3
+            var near = [Double](repeating: 0, count: wide * high)
+            for y in 0..<high {
+                for x in 0..<wide {
+                    var sum = 0.0, n = 0.0
+                    for dy in stride(from: -r, through: r, by: 2) {
+                        for dx in stride(from: -r, through: r, by: 2) {
+                            sum += frame.cover(x + dx, y + dy)
+                            n += 1
+                        }
+                    }
+                    near[y * wide + x] = sum / n
+                }
+            }
+            stroke = .some(ContourStroke(bar: { near[$1 * wide + $0] * 1.4 }, wide: wide, high: high, line: line, style: .dry,
+                                         seed: seed, inside: dark))
+        }
+        if case let .some(.some(stroke)) = stroke {
+            stroke.draw(on: &frame, progress: min(1, (age - begins) / ContourLine.draws), seed: seed)
+        }
+        return frame.image
     }
 }
 
@@ -404,6 +487,8 @@ struct PaintedStrip: View {
     /// tab's narrow one): painted for a place that much wider, so the
     /// strokes are as much finer as the bar is lower.
     var slim: CGFloat = 1
+    /// The work's drawn contour (`Item.contour`), round the paint.
+    var contour: ContourLine?
 
     @State private var width: CGFloat = 0
     @State private var jobs = PaintJobs()
@@ -419,6 +504,14 @@ struct PaintedStrip: View {
         let bits = part.split(separator: ":")
         guard bits.count >= 2, let rgb = Paint.rgb(String(bits[0])), let weight = Double(bits[1]), weight > 0 else { return nil }
         return PaintShare(rgb: rgb, weight: weight, accent: bits.count > 2)
+    }
+
+    /// CI screenshots: "-paintContour 2d1e1d:3.4:1.17" is every work's
+    /// contour (colour, length, width as the server gives them).
+    static let forcedContour: ContourLine? = UserDefaults.standard.string(forKey: "paintContour").flatMap { text in
+        let bits = text.split(separator: ":")
+        guard bits.count == 3, let length = Double(bits[1]), let width = Double(bits[2]) else { return nil }
+        return ContourLine(hex: String(bits[0]), length: length, width: width)
     }
 
     /// The colours it paints: those it can read, the first `most`.
@@ -440,10 +533,14 @@ struct PaintedStrip: View {
             .overlay {
                 if width > 40, !shares.isEmpty {
                     let dark = scheme == .dark, wide = Double((width / slim).rounded())
+                    let line = Self.forcedContour ?? contour
                     let key = "\(style.rawValue)|\(Int(wide))|\(dark)|\(seed)|\(relief)|"
                         + shares.map { "\($0.rgb)\($0.weight)" }.joined(separator: ",")
+                        + (line.map { "|\($0.rgb)\($0.length)\($0.width)" } ?? "")
                     let takes = style.barTime(shares, width: wide)
-                    Painted(job: jobs.job(key) { PaintJob.strip(style, shares: shares, width: wide, seed: seed, dark: dark, relief: relief) },
+                    Painted(job: jobs.job(key) {
+                        PaintJob.strip(style, shares: shares, width: wide, seed: seed, dark: dark, relief: relief, contour: line)
+                    },
                             key: key, after: .distantPast, began: { began($0, takes) }, whole: whole)
                         .scaleEffect(slim)
                 }

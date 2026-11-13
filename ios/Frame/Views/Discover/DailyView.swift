@@ -579,7 +579,8 @@ struct DailyView: View {
                         if !item.colors.isEmpty {
                             if let style, strokes > 0 {
                                 PaintedStrip(swatches: item.colors, style: style, seed: Paint.seed(item.id),
-                                             began: { painted[item.id] = ($0, $1) }, relief: Paint.relief(item))
+                                             began: { painted[item.id] = ($0, $1) }, relief: Paint.relief(item),
+                                             contour: ContourLine(item))
                             } else {
                                 PaletteStrip(swatches: item.colors, height: 26, cornerRadius: 6)
                             }

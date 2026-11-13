@@ -36,6 +36,16 @@ class ColorSwatch(BaseModel):
     accent: bool = False
 
 
+class Contour(BaseModel):
+    """A picture's drawn contour (``library.contour``): the colour its lines
+    are painted in, how much of them there is (their free length, in the
+    picture's short sides) and how wide they are (% of the short side)."""
+
+    hex: str
+    length: float
+    width: float
+
+
 class PhotoInfo(BaseModel):
     taken_at: str | None = None
     latitude: float | None = None
@@ -196,6 +206,9 @@ class Item(BaseModel):
     #: Each colour family's share of the picture (colors.colour_shares), for
     #: colours asked at a level ("blue@much").
     color_shares: dict[str, float] = Field(default_factory=dict)
+    #: Its drawn contour, if it has one (Matisse's black lines): the colour
+    #: bar draws it round its paint (Mateusz 2026-11-13).
+    contour: Contour | None = None
     #: What a language model sees in the picture (ai.keywords): words in
     #: English and Polish searched with the rest of the text, and the
     #: vocabulary's subjects (``"subject:sea"``) it found.
