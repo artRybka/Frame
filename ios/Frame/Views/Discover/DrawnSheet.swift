@@ -16,7 +16,9 @@ import UIKit
 /// picture on a tap any more (20:54); the lines do not shift with the phone's
 /// turn (21:26); the sheet is the light one on both pages, a card on the
 /// dark page (20:54); one wash and one line run out of the field to the
-/// screen's edge (21:59).
+/// screen's edge (21:59). The dark page's card became a strip of paper
+/// torn across the screen, with the notes written light on the page
+/// (2026-11-13 15:13, "C. Wydarty pas przez ekran"; `TornSheet`).
 ///
 /// How the marks come (2026-11-13 07:11: "Najpierw widzimy tylko
 /// szkic/akwarele. Dotknięcie szkicu pokazuje wszystkie adnotacje.
@@ -84,10 +86,16 @@ struct DrawnSheet: View {
 
     /// The paper the sheet is drawn on, on either page.
     static let paper = Chalk.page(dark: false)
-    /// On the dark page the sheet is a card: how far it reaches past the
-    /// text's column on each side, and how round it is.
-    static let cardReach: CGFloat = 12
-    static let cardCorner: CGFloat = 18
+    /// How much of the mark's colour a note's number keeps on the dark
+    /// page, the rest white: the model's pencils are dark for the light
+    /// paper and would sink into the dark page.
+    static let noteInkOnDark = 0.58
+
+    /// A note's number's colour: the mark's own on the light page, lighter
+    /// on the dark one.
+    static func noteInk(_ colour: Color, dark: Bool) -> Color {
+        dark ? colour.mix(with: .white, by: 1 - noteInkOnDark) : colour
+    }
     private static let pixels: CGFloat = 1600
 
     /// A mark of the take as it is shown: its number when it has a note,
@@ -149,24 +157,26 @@ struct DrawnSheet: View {
         let lines = Self.lines(take, drawn)
         let noted = lines.filter { $0.number != nil }
         let dark = scheme == .dark
-        VStack(spacing: 14) {
+        VStack(spacing: dark ? 16 : 14) {
             VStack(spacing: 2) {
                 heading
                 field(lines)
             }
+            // The sheet is the light one: what is written on it is dark ink.
+            .environment(\.colorScheme, .light)
+            .modifier(SheetCard(on: dark, seed: TornPaper.seed(drawn.sheet)))
+            // The notes are on the page: dark ink on the light one, light
+            // on the dark one (2026-11-13 15:13, "C").
             if !noted.isEmpty {
                 LazyVGrid(
                     columns: [GridItem(.flexible(), spacing: 14, alignment: .topLeading), GridItem(.flexible(), alignment: .topLeading)],
                     alignment: .leading,
                     spacing: 12
                 ) {
-                    ForEach(noted) { line in note(line) }
+                    ForEach(noted) { line in note(line, dark: dark) }
                 }
             }
         }
-        // The sheet is the light one: what is written on it is dark ink.
-        .environment(\.colorScheme, .light)
-        .modifier(SheetCard(on: dark))
         .animation(.easeOut(duration: 0.3), value: here)
         .sensoryFeedback(.selection, trigger: taps)
         // Off the screen: the next visit starts from the sketch again.
@@ -336,13 +346,16 @@ struct DrawnSheet: View {
     /// A mark's note: its number in its colour, as on its line, the title
     /// and a line under it by hand. A tap leaves its line alone on the
     /// sketch, another leaves the sketch alone.
-    private func note(_ line: Line) -> some View {
+    private func note(_ line: Line, dark: Bool) -> some View {
         let chosen = shown.chosen
         let lit = chosen == line.number
         return HStack(alignment: .firstTextBaseline, spacing: 5) {
             Canvas { context, size in
                 let spot = CGPoint(x: size.width / 2, y: size.height / 2)
-                Pencil.badge(line.number ?? 0, at: spot, in: &context, ink: line.colour, paper: Self.paper, hand: true)
+                Pencil.badge(
+                    line.number ?? 0, at: spot, in: &context,
+                    ink: Self.noteInk(line.colour, dark: dark), paper: Chalk.page(dark: dark), hand: true
+                )
             }
             .frame(width: 22, height: 22)
             .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 5 }
@@ -403,22 +416,17 @@ private struct StillInView: ViewModifier {
     }
 }
 
-/// The light sheet on the dark page: a card of the sheet's paper a little
-/// wider than the text's column, the study's margins cut at its edge. On
-/// the light page the sheet lies on the page itself and what runs out of
-/// the field goes on to the screen's edge.
+/// The light sheet on the dark page: a strip of paper torn across the
+/// whole screen (`TornSheet`), the study's margins running to the screen's
+/// edges. On the light page the sheet lies on the page itself and what
+/// runs out of the field goes on to the screen's edge.
 private struct SheetCard: ViewModifier {
     let on: Bool
+    let seed: Double
 
     func body(content: Content) -> some View {
         if on {
-            let shape = RoundedRectangle(cornerRadius: DrawnSheet.cardCorner, style: .continuous)
-            content
-                .padding(.vertical, 14)
-                .padding(.horizontal, DrawnSheet.cardReach)
-                .background(DrawnSheet.paper)
-                .clipShape(shape)
-                .padding(.horizontal, -DrawnSheet.cardReach)
+            content.modifier(TornSheet(seed: seed, reach: Theme.gutter))
         } else {
             content
         }

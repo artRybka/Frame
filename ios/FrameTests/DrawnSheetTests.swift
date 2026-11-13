@@ -227,4 +227,43 @@ final class DrawnSheetTests: XCTestCase {
         XCTAssertEqual(raised.geminiMonthlyLimitUsd, 20)
         XCTAssertEqual(raised.monthlyLimitUsd, 5)
     }
+
+    /// On the dark page the sheet is a strip of paper torn across the
+    /// screen (2026-11-13 15:13, "C. Wydarty pas przez ekran"): the tear
+    /// stays in its band, a sheet tears the same way each time and another
+    /// sheet another way, the paper's face lies inside the torn fibre, and
+    /// the notes' numbers are lighter on the dark page only.
+    func testOnTheDarkPageTheSheetIsATornStrip() {
+        let seed = TornPaper.seed("/api/composition/drawn?item=tate%3A1&v=ab12&part=page")
+        XCTAssertEqual(seed, TornPaper.seed("/api/composition/drawn?item=tate%3A1&v=ab12&part=page"))
+        let other = TornPaper.seed("/api/composition/drawn?item=met%3A9&v=cd34&part=page")
+        XCTAssertNotEqual(seed, other)
+
+        let xs = stride(from: CGFloat(0), through: 430, by: 0.5).map { $0 }
+        let tears = xs.map { TornPaper.tear(at: $0, seed: seed) }
+        XCTAssertTrue(tears.allSatisfy { $0 >= 0 && $0 <= TornPaper.depth })
+        // It wanders: not a ruled edge.
+        XCTAssertGreaterThan((tears.max() ?? 0) - (tears.min() ?? 0), TornPaper.depth / 4)
+        XCTAssertNotEqual(tears, xs.map { TornPaper.tear(at: $0, seed: other) })
+        XCTAssertTrue(xs.map { TornPaper.core(at: $0, seed: seed) }.allSatisfy {
+            $0 >= TornPaper.coreLeast && $0 <= TornPaper.coreMost
+        })
+
+        // The face inside the sheet, both of them past the room the title
+        // and the field keep.
+        let rect = CGRect(x: 0, y: 0, width: 393, height: 420)
+        let sheet = TornEdge(seed: seed).path(in: rect)
+        let face = TornEdge(seed: seed, face: true).path(in: rect)
+        XCTAssertTrue(sheet.boundingRect.contains(face.boundingRect))
+        XCTAssertLessThan(TornPaper.depth + TornPaper.coreMost, TornPaper.roomAbove)
+        XCTAssertLessThan(TornPaper.depth + TornPaper.coreMost, TornPaper.roomBelow + Pencil.reach + 2)
+        for x in [CGFloat(10), 120, 300] {
+            XCTAssertTrue(face.contains(CGPoint(x: x, y: TornPaper.roomAbove)))
+            XCTAssertFalse(face.contains(CGPoint(x: x, y: 0.2)))
+        }
+
+        let colour = Color(hexString: "#394f98")!
+        XCTAssertEqual(DrawnSheet.noteInk(colour, dark: false), colour)
+        XCTAssertNotEqual(DrawnSheet.noteInk(colour, dark: true), colour)
+    }
 }
