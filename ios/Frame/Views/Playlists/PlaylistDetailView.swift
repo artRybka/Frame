@@ -30,6 +30,11 @@ struct PlaylistDetailView: View {
             VStack(alignment: .leading, spacing: 22) {
                 if let summary {
                     header(summary)
+                    if summary.itemCount > 0 {
+                        gridHeader(summary)
+                            .padding(.top, 4)
+                            .padding(.bottom, -8)
+                    }
                 } else {
                     HeaderSkeleton()
                 }
@@ -186,20 +191,10 @@ struct PlaylistDetailView: View {
                     .font(.serif(17))
                     .foregroundStyle(Theme.inkSoft)
             }
-            if playlist.kind == .smart && !playlist.rules.isEmpty {
-                RulesSummary(rules: playlist.rules)
-            }
-            VStack(alignment: .leading, spacing: 3) {
-                Text(playlist.countText)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(Theme.inkSoft)
-                if playlist.kind != .album, let caption = playlist.sort?.caption {
-                    Label(caption, systemImage: "arrow.up.arrow.down")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.inkSoft)
-                        .labelStyle(.titleAndIcon)
-                        .contentTransition(.opacity)
-                }
+            // Only rules that say more than the name; the count and the
+            // order head the grid below (Mateusz 2026-11-13, variant B).
+            if playlist.kind == .smart && RulesSummary.hasChips(playlist.rules, name: playlist.name) {
+                RulesSummary(rules: playlist.rules, name: playlist.name)
             }
             if let album = playlist.album {
                 AlbumCard(album: album, sync: playlist.albumSync, syncing: syncing) { sync() }
@@ -276,33 +271,65 @@ struct PlaylistDetailView: View {
         }
     }
 
+    /// Over the works: how many, and in what order. The order opens the
+    /// same choice as "Sortuj" in the "…" menu; on someone else's playlist,
+    /// and on an album, it only tells.
+    private func gridHeader(_ playlist: PlaylistSummary) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(playlist.countText)
+                .font(.serif(19, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+                .contentTransition(.numericText())
+            Spacer(minLength: 0)
+            if playlist.kind != .album, let sort = playlist.sort, let label = sort.shortCaption {
+                if playlist.isMine {
+                    Menu {
+                        sortOptions(sort)
+                    } label: {
+                        SortChip(text: label, busy: sorting, menu: true)
+                    }
+                    .disabled(detail == nil || sorting)
+                    .accessibilityLabel("Sortuj: \(sort.caption ?? label)")
+                } else {
+                    SortChip(text: label, busy: false, menu: false)
+                        .accessibilityLabel(sort.caption ?? label)
+                }
+            }
+        }
+    }
+
     /// "Sortuj" in the "…" menu: the key, then which way round
     /// (Mateusz 2026-11-12: "ustawienie sortowania dajmy w menu „…”").
     private func sortMenu(_ sort: PlaylistSort) -> some View {
         Menu {
-            Picker("Sortuj według", selection: Binding(
-                get: { sort.known },
-                set: { key in if let key, key != sort.known { setSort(PlaylistSort(key)) } }
-            )) {
-                ForEach(PlaylistSort.Key.allCases) { key in
-                    Label(key.title, systemImage: key.systemImage).tag(Optional(key))
-                }
-            }
-            .pickerStyle(.inline)
-            if let key = sort.known {
-                Picker("Kolejność", selection: Binding(
-                    get: { sort.reverse },
-                    set: { reverse in if reverse != sort.reverse { setSort(PlaylistSort(key, reverse: reverse)) } }
-                )) {
-                    Text(key.direction(reverse: false)).tag(false)
-                    Text(key.direction(reverse: true)).tag(true)
-                }
-                .pickerStyle(.inline)
-            }
+            sortOptions(sort)
         } label: {
             Label("Sortuj", systemImage: "arrow.up.arrow.down")
         }
         .disabled(detail == nil || sorting)
+    }
+
+    @ViewBuilder
+    private func sortOptions(_ sort: PlaylistSort) -> some View {
+        Picker("Sortuj według", selection: Binding(
+            get: { sort.known },
+            set: { key in if let key, key != sort.known { setSort(PlaylistSort(key)) } }
+        )) {
+            ForEach(PlaylistSort.Key.allCases) { key in
+                Label(key.title, systemImage: key.systemImage).tag(Optional(key))
+            }
+        }
+        .pickerStyle(.inline)
+        if let key = sort.known {
+            Picker("Kolejność", selection: Binding(
+                get: { sort.reverse },
+                set: { reverse in if reverse != sort.reverse { setSort(PlaylistSort(key, reverse: reverse)) } }
+            )) {
+                Text(key.direction(reverse: false)).tag(false)
+                Text(key.direction(reverse: true)).tag(true)
+            }
+            .pickerStyle(.inline)
+        }
     }
 
     /// Asks the server for the new order: the grid, and the frame's next
@@ -390,6 +417,38 @@ struct PlaylistDetailView: View {
             failed = detail == nil
             model.show(error)
         }
+    }
+}
+
+/// The playlist's order over its grid: a quiet capsule, like a rule chip,
+/// with a chevron when it opens the choice.
+private struct SortChip: View {
+    let text: String
+    let busy: Bool
+    let menu: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if busy {
+                ProgressView().controlSize(.mini)
+            } else {
+                Image(systemName: "arrow.up.arrow.down")
+                    .imageScale(.small)
+            }
+            Text(text)
+                .lineLimit(1)
+                .contentTransition(.opacity)
+            if menu {
+                Image(systemName: "chevron.down")
+                    .font(.caption2.weight(.semibold))
+            }
+        }
+        .font(.footnote.weight(.medium))
+        .foregroundStyle(Theme.inkSoft)
+        .padding(.horizontal, 11)
+        .padding(.vertical, 6)
+        .background(Theme.mat.opacity(0.7), in: Capsule())
+        .contentShape(Capsule())
     }
 }
 
