@@ -185,8 +185,15 @@ protocol FrameBackend: Sendable {
     func vocabulary() async throws -> [TermInfo]
     /// What typed words could mean: artists, terms and the words themselves.
     func terms(_ text: String) async throws -> [TermHit]
-    /// Szukaj by a sentence: its choices as chips (`POST /api/terms/sentence`).
-    func sentence(_ text: String) async throws -> SentenceReading
+    /// Whether Szukaj may search by how works look (`GET /api/looks`).
+    func looksStatus() async throws -> LooksStatus
+    /// Works that look as the words say ("mglisty poranek nad wodą").
+    func looks(words: String) async throws -> LooksAnswer
+    /// Works that look like a photograph (JPEG); the server keeps none.
+    func looks(picture: Data) async throws -> LooksAnswer
+    /// Works that look like this one ("Podobne wyglądem"); none while it has
+    /// no numbers.
+    func looksLike(itemID: String) async throws -> LooksAnswer
     /// What the museums have for words the catalogue does not know.
     func museumHint(_ text: String) async throws -> MuseumHint
     /// The museums' works for a search's words, artists, terms, colours and

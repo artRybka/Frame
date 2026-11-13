@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.145.91
+
+- Szukanie wyglądem: w Szukaj wystarczy opisać, jak dzieło wygląda
+  („mglisty poranek nad wodą”), i wybrać „Szukaj wyglądem”, albo na pustym
+  Szukaj dotknąć „Szukaj zdjęciem” i wybrać zdjęcie obrazu (z muzeum,
+  pocztówki, książki). Na karcie dzieła na dole jest rząd „Podobne
+  wyglądem”. Szuka model Google (Gemini), tylko wśród dzieł z muzeów;
+  Twoje zdjęcia nie trafiają do Google. Przełącznik i postęp w
+  Konfiguracja → Gemini. Po aktualizacji serwer przygotowuje dzieła w tle
+  (najpierw Ulubione, playlisty i Odkrywaj).
+- Studium dzieła wybiera „Podobne dzieła” także po wyglądzie.
+- „Szukaj zdaniem” zniknęło (zastąpiło je szukanie wyglądem).
+
 ## 1.145.90
 
 - Karta dzieła ma guzik „Dodaj do playlisty” między serduszkiem a „…”

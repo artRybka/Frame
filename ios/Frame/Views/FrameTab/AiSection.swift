@@ -46,7 +46,7 @@ struct AiSection: View {
 
     private var geminiBody: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Model graficzny (Gemini)", subtitle: "Arkusze analizy kompozycji")
+            SectionHeader(title: "Gemini (Google)", subtitle: "Arkusze analizy kompozycji i szukanie wyglądem")
             Card {
                 if let limit = settings.geminiMonthlyLimitUsd {
                     if settings.geminiKeySet != true {
@@ -67,6 +67,20 @@ struct AiSection: View {
                             value: drawn
                         ) { AiSettingsUpdate(drawn: $0) }
                         if settings.geminiKeySet == true, let note = Self.drawnNote(settings, on: drawn) {
+                            Label(note.text, systemImage: note.icon)
+                                .font(.caption)
+                                .foregroundStyle(note.bad ? Theme.bad : Theme.inkSoft)
+                        }
+                    }
+                    if let looks = settings.looks {
+                        Divider()
+                        toggle(
+                            "Szukanie wyglądem",
+                            hint: "Szukaj po tym, jak dzieło wygląda: opisem, zdjęciem i „Podobne wyglądem”. "
+                                + "Jednorazowo ok. 0,01 centa za dzieło z muzeum, pytanie ułamek centa. Twoje zdjęcia nie trafiają do Google.",
+                            value: looks
+                        ) { AiSettingsUpdate(looks: $0) }
+                        if settings.geminiKeySet == true, let note = Self.looksNote(settings, on: looks) {
                             Label(note.text, systemImage: note.icon)
                                 .font(.caption)
                                 .foregroundStyle(note.bad ? Theme.bad : Theme.inkSoft)
@@ -180,14 +194,6 @@ struct AiSection: View {
                         hint: "Co noc 30 losowych dzieł: tytuł, data, polski opis i obraz. Ok. 0,3 USD miesięcznie.",
                         value: audit
                     ) { AiSettingsUpdate(audit: $0) }
-                }
-                if let sentence = settings.sentence {
-                    Divider()
-                    toggle(
-                        "Szukaj zdaniem",
-                        hint: "Zdanie wpisane w Szukaj zamienia się w wybory wyszukiwania. Ułamek centa za zdanie.",
-                        value: sentence
-                    ) { AiSettingsUpdate(sentence: $0) }
                 }
                 if let journey = settings.journey {
                     Divider()
@@ -350,6 +356,18 @@ struct AiSection: View {
             "Zapisane studia bez arkusza: \(waiting + batch), w tym w Batch: \(batch). Razem ok. \(cost).",
             "clock", false
         )
+    }
+
+    /// Under Szukanie wyglądem: how many of the museums' works can be found
+    /// so, or why none get their numbers now.
+    static func looksNote(_ settings: AiSettings, on: Bool) -> (text: String, icon: String, bad: Bool)? {
+        guard on else { return nil }
+        if settings.looksError != nil {
+            return ("Google teraz nie odpowiada, serwer spróbuje ponownie za pół godziny.", "pause.circle", true)
+        }
+        guard let done = settings.looksDone, let total = settings.looksTotal, total > 0 else { return nil }
+        if done >= total { return ("Gotowe: \(Names.works(total)) z muzeów.", "checkmark.circle", false) }
+        return ("Gotowe \(done) z \(total) dzieł z muzeów, reszta w tle.", "clock", false)
     }
 
     // MARK: Switches and money

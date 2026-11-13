@@ -44,7 +44,6 @@ class AiView(BaseModel):
     twins_judge: bool = True
     gatekeeper: bool = True
     audit: bool = True
-    sentence: bool = True
     journey: bool = True
     #: Works on the list "Do sprawdzenia": set aside by the gatekeeper, and
     #: the audit's findings.
@@ -77,6 +76,13 @@ class AiView(BaseModel):
     drawn_waiting: int = 0
     drawn_in_batch: int = 0
     drawn_batch_usd: float = SHEET_USD / 2
+    #: Szukanie wyglądem ("G1"): the switch, the museums' works with their
+    #: numbers so far and all that would have them, and why none are made
+    #: now (Google's trouble, the limit).
+    looks: bool = True
+    looks_done: int = 0
+    looks_total: int = 0
+    looks_error: str | None = None
 
 
 class KeyUpdate(BaseModel):
@@ -97,6 +103,7 @@ def _view(svc: FrameService) -> AiView:
     spent = svc.claude.spending.by_kind()
     painted = svc.painter.spending.by_kind()
     waiting, in_batch = svc.drawn.counts()
+    looks_done, looks_total = svc.looks.counts()
     return AiView(
         key_set=bool(store.api_key),
         key_tail=store.key_tail,
@@ -110,7 +117,6 @@ def _view(svc: FrameService) -> AiView:
         twins_judge=config.twins_judge,
         gatekeeper=config.gatekeeper,
         audit=config.audit,
-        sentence=config.sentence,
         journey=config.journey,
         review_count=len(svc.gatekeeper.written()) + len(svc.audit.written()),
         monthly_limit_usd=config.monthly_limit_usd,
@@ -128,6 +134,10 @@ def _view(svc: FrameService) -> AiView:
         gemini_monthly_limit_usd=config.gemini_monthly_limit_usd,
         gemini_spent_usd=round(sum(painted.values()), 4),
         gemini_spent_by_kind={k: round(v, 4) for k, v in painted.items()},
+        looks=config.looks,
+        looks_done=looks_done,
+        looks_total=looks_total,
+        looks_error=svc.looks.trouble if config.looks else None,
     )
 
 
@@ -141,6 +151,7 @@ async def put_ai(update: AiConfigUpdate, svc: Svc) -> AiView:
     svc.ai_config.update(update)
     svc.ai.wake()
     svc.drawn.again()  # the limit raised, the sheets switched on
+    svc.looks.nudge()
     return await run_in_threadpool(_view, svc)
 
 
@@ -190,6 +201,7 @@ async def put_gemini_key(update: KeyUpdate, svc: Svc) -> AiView:
     except ValueError as err:
         raise HTTPException(400, str(err)) from err
     svc.drawn.again()
+    svc.looks.nudge()
     return await run_in_threadpool(_view, svc)
 
 

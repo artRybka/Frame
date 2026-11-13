@@ -449,8 +449,24 @@ struct LiveBackend: FrameBackend {
         try await get("/api/terms", query: [URLQueryItem(name: "q", value: text)])
     }
 
-    func sentence(_ text: String) async throws -> SentenceReading {
-        try await send("/api/terms/sentence", method: "POST", body: SentenceAsk(text: text))
+    func looksStatus() async throws -> LooksStatus { try await get("/api/looks") }
+
+    func looks(words: String) async throws -> LooksAnswer {
+        try await get("/api/looks/search", query: [URLQueryItem(name: "q", value: words)])
+    }
+
+    func looks(picture: Data) async throws -> LooksAnswer {
+        var form = MultipartForm()
+        form.addFile("file", filename: "photo.jpg", mimeType: "image/jpeg", data: picture)
+        var req = request("/api/looks/picture", method: "POST")
+        req.setValue(form.contentType, forHTTPHeaderField: "Content-Type")
+        req.httpBody = form.body()
+        req.timeoutInterval = 60
+        return try await perform(req)
+    }
+
+    func looksLike(itemID: String) async throws -> LooksAnswer {
+        try await get("/api/library/items/\(escape(itemID))/looks")
     }
 
     func museumHint(_ text: String) async throws -> MuseumHint {

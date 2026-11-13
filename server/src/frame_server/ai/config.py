@@ -48,8 +48,6 @@ class AiConfig(BaseModel):
     gatekeeper: bool = True
     #: The night audit: 30 works a night looked over, "Do sprawdzenia" (Haiku, at night).
     audit: bool = True
-    #: Szukaj by a sentence: what it asks for as the search's choices (Haiku).
-    sentence: bool = True
     #: The study's "Droga dzieła": the museum's provenance retold as stops (Haiku).
     journey: bool = True
     #: Google's key (the image model, ``ai.drawn``).
@@ -57,6 +55,9 @@ class AiConfig(BaseModel):
     #: The study sheets of the analyses drawn by the image model (three
     #: pictures a sheet, about 0.15 USD); needs Google's key.
     drawn: bool = True
+    #: How works look as numbers (Google's embedding model): Szukaj by how a
+    #: work looks, by a photograph, and the works that look alike ("G1").
+    looks: bool = True
     #: Nothing more is asked once this month's cost reaches it.
     monthly_limit_usd: float = Field(5.0, ge=0, le=1000)
     #: The same for the image model, which has a month's limit of its own.
@@ -75,9 +76,9 @@ class AiConfigUpdate(BaseModel):
     twins_judge: bool | None = None
     gatekeeper: bool | None = None
     audit: bool | None = None
-    sentence: bool | None = None
     journey: bool | None = None
     drawn: bool | None = None
+    looks: bool | None = None
     monthly_limit_usd: float | None = Field(None, ge=0, le=1000)
     gemini_monthly_limit_usd: float | None = Field(None, ge=0, le=1000)
 
@@ -154,7 +155,7 @@ class AiConfigStore:
             return config.curator
         if kind == "twins_judge":
             return config.twins_judge
-        if kind in ("gatekeeper", "audit", "sentence", "journey"):
+        if kind in ("gatekeeper", "audit", "journey"):
             return bool(getattr(config, kind))
         return True
 

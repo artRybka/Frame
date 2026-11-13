@@ -78,6 +78,8 @@ POOL = 800
 MIN_SIDE = 1000
 #: Works like the work of the day the model chooses among.
 CANDIDATES = 12
+#: Of them, works that look like it (``looks``) at most.
+LOOKING = 6
 #: The rules' best works (each by another artist) the curator looks at.
 SHORTLIST = 10
 #: Shortlists the curator is asked about for one day, when it sets aside a
@@ -172,6 +174,9 @@ class Daily:
         job.candidates = self.candidates
         self._lock = threading.Lock()
         self._candidates: dict[str, list[str]] = {}
+        #: The ids of works that look most like a work (``looks.Looks``,
+        #: "G1"): among its candidates first, when it has its numbers.
+        self.looks_like: Callable[[str], list[str]] = lambda item_id: []
         #: Per work: the ids of its years, and of other circles (``same_time``).
         self._same_time: dict[str, tuple[list[str], list[str]]] = {}
         self._stop = threading.Event()
@@ -440,6 +445,10 @@ class Daily:
                 ):
                     picked.append(other)
 
+        # Works that look like it, by Google's numbers (none without them):
+        # half the list at most, the model still chooses.
+        looking = (self.library.get(i) for i in self.looks_like(item.id))
+        add([i for i in looking if i is not None], LOOKING)
         for term in [t for t in item.terms if t.startswith(("style:", "years:", "technique:"))]:
             near = PlaylistRules(kinds=[ItemKind.ARTWORK], terms=[term])
             # As ever (highlights, then artists from A to Z): the model
