@@ -223,10 +223,16 @@ def _fold(values: Iterable[str]) -> set[str]:
     return {v.casefold() for v in values if v}
 
 
+class _NotNow(Exception):
+    """Words for how works look that cannot be asked now (no key, Google
+    away): no answer is kept for them."""
+
+
 def _searches(rules: PlaylistRules) -> bool:
     """Rules that look for works (not just "the favourites" or "everything")."""
     return bool(
         rules.query.strip()
+        or rules.look.strip()
         or rules.artists
         or rules.styles
         or rules.subjects
@@ -596,6 +602,10 @@ class Library:
         #: what its source says until the service puts the image cache's
         #: answer here (:meth:`.images.ImageCache.long_side`).
         self.long_side: Callable[[Item], int | None] = said_side
+        #: Of the works given, those that look as the words say, nearest
+        #: first (``PlaylistRules.look``); None when that cannot be asked
+        #: now. The service puts :meth:`.looks.Looks.looking` here.
+        self.looking: Callable[[str, list[Item]], list[Item] | None] | None = None
         #: The one connection to the disk (:meth:`_db`). Taken after
         #: ``_lock`` when both are held, never before it.
         self._db_lock = threading.RLock()
@@ -1436,7 +1446,12 @@ class Library:
             else:
                 items = None
         if items is None:
-            items = self._query(rules, sort, seed, include_excluded, user, limit == 0, proposing)
+            try:
+                items = self._query(
+                    rules, sort, seed, include_excluded, user, limit == 0, proposing
+                )
+            except _NotNow:
+                return 0, []  # asked again next time
             if limit != 0:
                 with self._queries_lock:
                     self._queries[kept] = (made_with, items)
@@ -1455,6 +1470,14 @@ class Library:
         count_only: bool,
         proposing: bool = False,
     ) -> list[Item]:
+        if rules.look.strip():
+            # What the other rules find, those that look so, nearest first.
+            plain = rules.model_copy(update={"look": ""})
+            found = self._query(plain, "recent", seed, include_excluded, user, False, proposing)
+            looked = self.looking(rules.look, found) if self.looking is not None else None
+            if looked is None:
+                raise _NotNow
+            return looked
         # Spare copies of a work stay out, unless a source is asked for.
         spare = (
             frozenset()

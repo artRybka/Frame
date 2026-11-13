@@ -386,3 +386,59 @@ def test_the_embedding_batch_request_and_its_answers(service: FrameService) -> N
     found = painter.embed_batched(KIND, "batches/b1")
     assert found is not None and found["met:2"] is None and len(found["met:1"] or []) == EMBED_SIZE
     assert painter.spending.by_kind()[KIND] == pytest.approx(0.000058, abs=1e-6)  # half price
+
+
+def test_szukaj_narrows_the_look_by_its_other_choices(
+    service: FrameService, looks: tuple[Looks, FakePainter]
+) -> None:
+    """Mateusz 2026-11-13: the works found by how they look in Szukaj's own
+    list, the groups (an artist, a technique, colours) narrowing them."""
+    from frame_server.ai.config import AiConfigUpdate
+    from frame_server.web import create_app
+
+    found, _painter = looks
+    service.ai_config.set_gemini_key("k")
+    _work(service, "met:1", "red", artist="Anna A")
+    _work(service, "met:2", "red", artist="Bruno B")
+    _work(service, "met:3", "blue", artist="Anna A")
+    _work(service, "met:4", "red", artist="Anna A", excluded=True)  # hidden
+    _work(service, "met:5", "red", artist="Anna A", kind=ItemKind.PHOTO)  # never sent
+    _numbers(found)
+    app = create_app(service.settings)
+    app.state.service = service
+    with TestClient(app) as client:
+
+        def ids(**params: Any) -> list[str]:
+            page = client.get("/api/library/items", params=params).json()
+            assert page["total"] >= len(page["items"])
+            return [i["id"] for i in page["items"]]
+
+        assert sorted(ids(look="czerwony red")) == ["met:1", "met:2"]
+        assert ids(look="czerwony red", artist="Anna A") == ["met:1"]
+        assert ids(look="niebieski blue", artist="Anna A") == ["met:3"]
+        assert ids(look="niebieski blue", artist="Bruno B") == []
+        assert ids(look="nic") == []  # far from every work
+        page = client.get("/api/library/items", params={"look": "red", "limit": 1}).json()
+        assert page["total"] == 2 and len(page["items"]) == 1
+        service.ai_config.update(AiConfigUpdate(looks=False))
+        assert client.get("/api/library/items", params={"look": "red"}).status_code == 409
+        assert len(ids()) == 4  # without words for a look: as it was
+
+
+def test_a_smart_playlist_keeps_the_look_and_waits_for_google(
+    service: FrameService, looks: tuple[Looks, FakePainter]
+) -> None:
+    from frame_server.library.models import PlaylistRules
+
+    found, painter = looks
+    service.ai_config.set_gemini_key("k")
+    _work(service, "met:1", "red", artist="Anna A")
+    _work(service, "met:2", "blue", artist="Anna A")
+    _numbers(found)
+    rules = PlaylistRules(look="niebieski blue", artists=["Anna A"])
+    assert not rules.is_empty() and rules.search_key()  # the artist for the museums
+    assert PlaylistRules(look="red").search_key() == ""  # no museum asked for a look
+    painter.key = False
+    assert service.library.query(rules) == (0, [])
+    painter.key = True  # the empty answer was not kept: asked again
+    assert [i.id for i in service.library.query(rules)[1]] == ["met:2"]

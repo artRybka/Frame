@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.145.96
+
+- Szukaj: szukanie wyglądem jest częścią zwykłego szukania. Gdy wpiszesz
+  dwa słowa lub więcej, lupa na klawiaturze szuka dzieł, które tak
+  wyglądają. Słowa stają się znacznikiem z okiem w polu, a dzieła trafiają
+  do tej samej listy wyników, więc techniki, epoki, kolory, muzea i inne
+  grupy je zawężają. Gdy wpiszesz nazwisko artysty, lupa wybiera artystę.
+  Wiersz, który wybierze lupa, stoi w podpowiedziach na górze, wyróżniony
+  tłem i znakiem ↵.
+- Z takiego wyszukiwania można utworzyć playlistę; zachowuje wygląd razem
+  z pozostałymi wyborami.
+- Z podpowiedzi zniknął podgląd „W muzeach” (powtarzał wpisane słowo i
+  pokazywał się także wtedy, gdy baza miała dzieła). Zostali tylko artyści
+  z muzeów, których nie ma w bazie, jako zwykłe podpowiedzi.
+
+## 1.145.95
+
+- Aplikacja: arkusz analizy kompozycji w trybie ciemnym leży na pasie
+  papieru wydartym u góry i u dołu, od krawędzi do krawędzi ekranu, z
+  białym włóknem wzdłuż rozdarcia i ziarnem papieru. Legenda jest jasnym
+  pismem na ciemnej stronie, a plama i kreska sięgają krawędzi ekranu jak w
+  trybie jasnym.
+
 ## 1.145.94
 
 - Szukanie wyglądem przygotowuje dzieła z muzeów przez Batch Google, za

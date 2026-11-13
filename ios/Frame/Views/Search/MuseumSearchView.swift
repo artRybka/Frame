@@ -74,12 +74,6 @@ struct MuseumSearchView: View {
 
     private var asked: Bool { !rules.isEmpty || !sources.isEmpty }
 
-    /// "Szukaj wyglądem" under the words typed, while the server can.
-    private var lookedFor: ((String) -> Void)? {
-        guard looksReady else { return nil }
-        return { words in path.append(LooksAsk.words(words)) }
-    }
-
     private var searchKey: WorkSearch.Key { WorkSearch.Key(rules: rules, sources: sources) }
 
     var body: some View {
@@ -127,13 +121,13 @@ struct MuseumSearchView: View {
         }
         // Measured outside the groups' inset: an open group grows it.
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
-        .termSuggestions(
-            lookup, tokens: tokens, focused: $fieldFocused,
-            lookedFor: lookedFor
-        )
+        // "Szukaj wyglądem" a chip in the field, its works in these
+        // results, the groups narrowing them (Mateusz 2026-11-13).
+        .termSuggestions(lookup, tokens: tokens, focused: $fieldFocused)
         .task {
             guard let status = try? await model.backend.looksStatus() else { return }
             looksReady = status.enabled && status.ready
+            lookup.looks = looksReady
         }
         .termSearch(lookup, tokens: tokens, focused: $fieldFocused)
         // The camera at the field's end, while nothing is typed or picked.
