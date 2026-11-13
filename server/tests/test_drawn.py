@@ -21,9 +21,9 @@ from test_composition import _old_page
 from test_daily import _app, _catalogue
 
 from frame_server.ai import AiConfigUpdate
+from frame_server.ai import drawn as ai_drawn
 from frame_server.ai.client import AiUnavailable
 from frame_server.ai.daily import CHECK_ROUND, ROUND, Box, Mark, Spot, View
-from frame_server.ai import drawn as ai_drawn
 from frame_server.ai.drawn import (
     AT_ONCE,
     BLOCKED_TRIES,
