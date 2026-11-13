@@ -71,6 +71,12 @@ def test_sized_sources_are_asked_for_a_thicker_thumbnail() -> None:
         thumb_url="https://example.org/iiif/x/full/600,/0/default.jpg", width=16555, height=720,
     )  # fmt: skip
     assert thumb_copy(item) == "https://example.org/iiif/x/full/!7358,7358/0/default.jpg"
+    # Yale's server takes long over a size and did not answer !8192,8192 in
+    # time (2026-11-13); the whole file comes at once.
+    yale = item.model_copy(update={"id": "yale:1", "source": "yale"})
+    assert thumb_copy(yale) == "https://example.org/iiif/x/full/full/0/default.jpg"
+    yale.width, yale.height = 40000, 2000  # past what is opened whole here
+    assert "/full/!" in thumb_copy(yale)
     item.width, item.height = 4000, 3000
     assert thumb_copy(item) == ""  # ordinary: its thumbnail address will do
 

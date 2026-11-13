@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.77
+## 1.145.78
 
 - Pasek barw: kreska konturu. Obraz malowany wyraźnym konturem (Matisse,
   Bernard, Beckmann, Kirchner, „Sypialnia” Van Gogha) ma na pasku
@@ -12,7 +12,7 @@
   dostają. Kontury dzieł już zapisanych liczą się raz po aktualizacji
   serwera, osobno od analizy barw.
 
-## 1.145.76
+## 1.145.77
 
 - Serwer nie staje już na koniec przeliczania barw biblioteki. Po
   aktualizacji, która zmienia sposób liczenia barw, wyniki dla ok. 100
@@ -20,6 +20,13 @@
   nie odpowiadał aplikacji ani ramce (107 sekund 12 listopada). Teraz
   zapisuje je porcjami po 200 dzieł i między porcjami obsługuje
   pozostałych.
+
+## 1.145.76
+
+- Yale: także większe miniatury bardzo długich dzieł (zwoje, fryzy)
+  serwer bierze z całego pliku. Po zmianie oryginałów w 1.145.42 odmów
+  Yale było w nocy 142 zamiast 524 i wszystkie pochodziły z dwóch
+  przerw po takiej miniaturze, na którą Yale nie odpowiedziało na czas.
 
 ## 1.145.75
 
