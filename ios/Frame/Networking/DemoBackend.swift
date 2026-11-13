@@ -84,7 +84,13 @@ actor DemoBackend: FrameBackend {
         plTextProgress: nil, error: nil,
         geminiKeySet: true, geminiKeyTail: "wxyz", drawn: true, drawnUsd: 0.15, drawnBatchUsd: 0.075,
         drawnWaiting: 12, drawnInBatch: 20, geminiError: nil,
-        geminiMonthlyLimitUsd: 5, geminiSpentUsd: 1.35, geminiSpentByKind: ["sheet": 1.35]
+        geminiMonthlyLimitUsd: 5, geminiSpentUsd: 1.35, geminiSpentByKind: ["sheet": 1.35],
+        periodDay: 1, periodStart: "2026-11-01", periodEnd: "2026-11-30",
+        leftover: true, leftoverDays: 3, leftoverReserveUsd: 10,
+        leftoverState: LeftoverState(
+            opens: "2026-11-28", closes: "2026-11-29", open: false, freeUsd: 0, perStudyUsd: 0.8,
+            measured: false, ordered: 0, inFlight: 0, made: 0, failed: 0, candidates: 7
+        )
     )
     private var demoAsleep = false
     /// The picture "on its way" to the pretend frame, for the progress bar.
@@ -1887,6 +1893,10 @@ actor DemoBackend: FrameBackend {
         if let value = update.monthlyLimitUsd { aiValue.monthlyLimitUsd = value }
         if let value = update.drawn { aiValue.drawn = value }
         if let value = update.geminiMonthlyLimitUsd { aiValue.geminiMonthlyLimitUsd = value }
+        if let value = update.periodDay { aiValue.periodDay = value }
+        if let value = update.leftover { aiValue.leftover = value }
+        if let value = update.leftoverDays { aiValue.leftoverDays = value }
+        if let value = update.leftoverReserveUsd { aiValue.leftoverReserveUsd = value }
         return aiValue
     }
 

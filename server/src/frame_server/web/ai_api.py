@@ -47,7 +47,7 @@ class AiView(BaseModel):
     journey: bool = True
     #: Facts from the web woven into new studies ("G8").
     web_facts: bool = True
-    #: The study's stages of painting drawn by the image model ("G2").
+    #: The study's "Jak powstawał", told from a technical study ("G2").
     stages: bool = True
     #: Works on the list "Do sprawdzenia": set aside by the gatekeeper, and
     #: the audit's findings.
@@ -88,6 +88,38 @@ class AiView(BaseModel):
     looks_total: int = 0
     looks_error: str | None = None
     study_refresh: StudyRefreshView | None = None
+    #: The day of the month Claude's period begins on, and the period now
+    #: (ISO dates, its first and last day).
+    period_day: int = 1
+    period_start: str | None = None
+    period_end: str | None = None
+    #: "Resztka miesiąca na studia": the switch, its days and reserve, and
+    #: how it is getting on (:class:`LeftoverView`).
+    leftover: bool = False
+    leftover_days: int = 3
+    leftover_reserve_usd: float = 10.0
+    leftover_state: LeftoverView | None = None
+
+
+class LeftoverView(BaseModel):
+    """What the month's rest does (``frame_server.leftover``)."""
+
+    #: When studies may be ordered this period (ISO dates), and whether now.
+    opens: str
+    closes: str
+    open: bool
+    #: What the limit leaves above the reserve, less the studies on their way.
+    free_usd: float
+    #: What a study is reckoned to cost; measured here or not yet.
+    per_study_usd: float
+    measured: bool
+    #: This period: studies ordered, on their way, made, failed.
+    ordered: int
+    in_flight: int
+    made: int
+    failed: int
+    #: Works the curator found fit and did not choose, waiting.
+    candidates: int
 
 
 class StudyRefreshView(BaseModel):
@@ -130,6 +162,7 @@ def _view(svc: FrameService) -> AiView:
     painted = svc.painter.spending.by_kind()
     waiting, in_batch = svc.drawn.counts()
     looks_done, looks_total = svc.looks.counts()
+    leftover = svc.leftover.view()
     return AiView(
         key_set=bool(store.api_key),
         key_tail=store.key_tail,
@@ -167,6 +200,13 @@ def _view(svc: FrameService) -> AiView:
         looks_total=looks_total,
         looks_error=svc.looks.trouble if config.looks else None,
         study_refresh=StudyRefreshView(**svc.study_refresh.view()),
+        period_day=config.period_day,
+        period_start=leftover.pop("period_start"),
+        period_end=leftover.pop("period_end"),
+        leftover=config.leftover,
+        leftover_days=config.leftover_days,
+        leftover_reserve_usd=config.leftover_reserve_usd,
+        leftover_state=LeftoverView(**leftover),
     )
 
 

@@ -99,6 +99,10 @@ class Choice:
     #: by work; another copy found later brings the work back.
     poor_copy: dict[str, str] = field(default_factory=dict)
     usd: float = 0.0
+    #: The works it found fit, the chosen one too, in the shortlist's order:
+    #: those not chosen are the next studies' first candidates
+    #: (``frame_server.leftover``).
+    fit: list[Item] = field(default_factory=list)
 
 
 def _label(n: int, item: Item, ink: float | None) -> str:
@@ -154,8 +158,11 @@ def read(data: dict[str, Any] | None, shortlist: list[Item]) -> Choice:
         raise ValueError("no answer")
     unfit: dict[str, str] = {}
     poor: dict[str, str] = {}
+    fit: set[int] = set()
     for work in data.get("works") or []:
         n = work.get("n")
+        if isinstance(n, int) and 1 <= n <= len(shortlist) and work.get("fit") is True:
+            fit.add(n)
         if isinstance(n, int) and 1 <= n <= len(shortlist) and work.get("fit") is False:
             item = shortlist[n - 1]
             if work.get("photo") is True:
@@ -170,7 +177,14 @@ def read(data: dict[str, Any] | None, shortlist: list[Item]) -> Choice:
     chosen = shortlist[choice - 1] if choice else None
     if chosen is not None and (chosen.id in unfit or chosen.id in poor):
         raise ValueError(f"choice {choice} set aside")
-    return Choice(chosen, reason, unfit, poor)
+    if choice:
+        fit.add(choice)
+    found = [
+        item
+        for n, item in enumerate(shortlist, 1)
+        if n in fit and item.id not in unfit and item.id not in poor
+    ]
+    return Choice(chosen, reason, unfit, poor, fit=found)
 
 
 def choose(

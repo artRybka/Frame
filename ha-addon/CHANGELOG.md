@@ -1,5 +1,89 @@
 # Changelog
 
+## 1.145.104
+
+- Obraz na karcie dzieła znów wypełnia całą szerokość strony (najwyżej
+  460 pt wysokości) i nie kurczy się zaraz po wejściu. Gdy wczytywały się
+  kolejne części karty, strona dawała obrazowi coraz mniej wysokości, a on
+  jako jedyny ustępował: The Mussel Harvest stał mały pośrodku pola. Teraz
+  obraz bierze od strony tylko szerokość. Dotyczy obu widoków: „Oryginał” i
+  „Na ramce”.
+
+## 1.145.103
+
+- Usunięte zbędne kopie dzieła nie wracają. Po starcie serwer usuwa kopie,
+  które obrazy połączyły z innym dziełem, a dobieranie do playlisty
+  pobierało je z muzeów z powrotem jako nowe dzieła, więc w playliście
+  „Vincent van Gogh · słoneczniki” powtórki znikały i wracały. Serwer
+  pamięta teraz każdą usuniętą kopię razem z kopią, która została.
+- Karta playlisty w Playlistach pokazuje tę samą liczbę dzieł co strona
+  playlisty: po otwarciu playlisty karta bierze liczbę i okładkę z niej, a
+  liczenie po starcie serwera zna już angielskie słowa dzieł (wcześniej
+  „słoneczniki” liczyły tylko dzieła opisane po polsku: 9 zamiast 19).
+- Wpisane słowa (Szukaj, edycja playlisty, playlisty) szukają w tytule,
+  autorze, technice, stylu i hasłach dzieła, a nie w długim opisie z muzeum.
+  „Słoneczniki” nie łapią już „La berceuse”, która miała wisieć „między
+  dwoma obrazami słoneczników”, a polskie „most” angielskiego „the most”.
+
+## 1.145.102
+
+- Fakty z sieci do studium kosztują o ponad połowę mniej. Claude
+  najpierw raz szuka dzieła i szuka dalej tylko wtedy, gdy ktoś o nim
+  pisał; wcześniej puszczał od razu sześć wyszukań, często ogólnych. Na
+  próbie dziesięciu dzieł: 3,6 centa zamiast 8,8 za dzieło, 40 faktów
+  zamiast 43, trzy badania techniczne („Jak powstawał”) zamiast jednego.
+  Szacunek przy „Uzupełnij wcześniejsze studia” liczy już nową cenę.
+- „Jak powstawał” w studium bez rysunków: kilka zdań (dwa-trzy, najwyżej
+  cztery) o tym, jak dzieło powstawało, według badania technicznego
+  znalezionego w sieci, zaraz po „Kolor i światło”. Badanie może być
+  przywołane („jak pokazało badanie RTG z 1995 roku…”), ale bez linków i
+  bez wzmianki o szukaniu. Rysunki modelu Google nie wyglądały dobrze i serwer ich już
+  nie zamawia; dzieła, które je dostały, dostaną tekst przy otwarciu
+  studium. Przełącznik przeszedł z Google do ustawień Claude.
+- Wybór dzieła w podpowiedziach Szukaj („Słoneczniki · Dzieło · Vincent
+  van Gogh”) wstawia tytuł razem z artystą, więc pokazuje jego słoneczniki
+  zamiast wszystkich dzieł ze słonecznikami w tytule.
+- Pod dziełami ze Statens Museum for Kunst przez Europeanę zamiast
+  nazwiska stał numer („250_person”). Teraz jest nazwisko, a zapisane
+  już dzieła poprawią się w nocy.
+
+## 1.145.101
+
+- Serwer nie zamiera już na pierwsze minuty po starcie. Po aktualizacji
+  aplikacja czekała 30–70 s na Teraz, Playlisty i Studia, bo serwer od
+  1.145.98 czyta zaraz po starcie polskie tytuły wszystkich dzieł, a to
+  czytanie trzymało bazę, na którą czekało też zapytanie o stan ramki,
+  i z nim cały serwer. Takie długie odczyty idą teraz osobnym połączeniem
+  z bazą, a stan ramki nie czeka na bazę w głównym wątku.
+- Podpowiedzi w Szukaj liczą każde hasło raz i najwyżej dwa naraz.
+  Przy szybkim pisaniu kilkadziesiąt liczeń całego katalogu szło
+  równocześnie i serwer stawał na kilkanaście sekund.
+- Liczby wyglądu (Gemini) i dzieła z Szukaj zaległe sprzed restartu
+  ruszają dopiero 1,5–3 minuty po starcie.
+- Zapis zatrzymania serwera w logu pokazuje dokładne miejsce (krótszy
+  stos, osobny wpis dla innych wątków).
+
+## 1.145.100
+
+- Resztka miesiąca na studia (Konfiguracja → Claude, karta „Resztka
+  miesiąca”, domyślnie wyłączona). W ostatnich dniach okresu (domyślnie 3)
+  to, co zostaje z limitu Claude ponad zapas (domyślnie 10 USD), idzie nocą
+  na nowe studia dzieł przez Batch: najpierw dzieła, które kurator Studium
+  dnia uznał za dobre, ale wybrał inne, potem nowe listy według tych samych
+  reguł i tego samego kuratora, zaczynając od Ulubionych, playlist i
+  Odkrywaj. Najwyżej 25 studiów na noc, jedno na artystę, w ostatniej dobie
+  okresu już nic. Ok. 0,80 USD za studium, potem według zmierzonego kosztu.
+  Te same wyłączenia co dla Studium dnia (szkice, projekty, rękopisy,
+  fotografia, rzeźba, ceramika, słabe kopie). Studia przychodzą bez
+  powiadomień i są w „Studiach dzieł”.
+- Co zostanie po studiach, idzie na słowa kluczowe i polskie opisy dzieł
+  katalogu, które ich jeszcze nie mają (Haiku przez Batch, najpierw
+  Ulubione i playlisty).
+- Dzień odnowienia: limit i wydatki Claude liczą się od wybranego dnia
+  miesiąca, tak jak odnawiają się środki na koncie (domyślnie 1.).
+- Studium dnia nie wybiera dzieła, które ma już studium.
+- Nowe zadanie nocne „Studia z zapasu” w pakiecie „Odkrywaj i ramka”.
+
 ## 1.145.99
 
 - Dwa dzieła z tą samą kopią łączą się w jedno od razu. W playliście

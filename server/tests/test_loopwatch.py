@@ -7,6 +7,7 @@ import asyncio
 import logging
 import threading
 import time
+import traceback
 
 import pytest
 
@@ -79,9 +80,21 @@ async def test_a_stall_shows_the_other_threads_at_work(caplog: pytest.LogCapture
     await asyncio.sleep(0.1)
     task.cancel()
     holder.join(5)
-    stuck = [r.getMessage() for r in caplog.records if "has stood still" in r.getMessage()]
+    texts = [r.getMessage() for r in caplog.records]
+    stuck = [t for t in texts if "has stood still" in t]
     assert len(stuck) == 1
-    loop_part, _, others = stuck[0].partition("other threads at work:")
-    assert "waiting" in loop_part
-    assert "thread holder:" in others and "holding" in others
-    assert "loop-watch" not in others  # the watcher itself is left out
+    assert "waiting" in stuck[0]
+    assert "with lock" in stuck[0]  # the loop's line of code, too
+    others = [t for t in texts if t.startswith("other threads at work")]
+    assert len(others) == 1
+    assert "thread holder:" in others[0] and "holding" in others[0]
+    assert "loop-watch" not in others[0]  # the watcher itself is left out
+
+
+def test_a_stack_is_compact() -> None:
+    from frame_server.loopwatch import compact
+
+    frames = traceback.extract_stack()
+    text = compact(frames, code=True)
+    assert len(text.splitlines()) == len(frames)
+    assert "test_a_stack_is_compact" in text and "extract_stack" in text

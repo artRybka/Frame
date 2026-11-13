@@ -58,8 +58,8 @@ class AiConfig(BaseModel):
     #: The study sheets of the analyses drawn by the image model (three
     #: pictures a sheet, about 0.15 USD); needs Google's key.
     drawn: bool = True
-    #: How a work was painted, stage by stage, drawn by the image model
-    #: when a published technical study of it was found ("G2").
+    #: How a work was painted, told in a few sentences when a published
+    #: technical study of it was found ("G2"; no longer drawn).
     stages: bool = True
     #: How works look as numbers (Google's embedding model): Szukaj by how a
     #: work looks, by a photograph, and the works that look alike ("G1").
@@ -68,6 +68,16 @@ class AiConfig(BaseModel):
     monthly_limit_usd: float = Field(5.0, ge=0, le=1000)
     #: The same for the image model, which has a month's limit of its own.
     gemini_monthly_limit_usd: float = Field(5.0, ge=0, le=1000)
+    #: The day of the month Claude's period begins on, when the owner's
+    #: credit is renewed (Mateusz 2026-11-13): the spending and the limit
+    #: count from it.
+    period_day: int = Field(1, ge=1, le=28)
+    #: "Resztka miesiąca na studia" (Mateusz 2026-11-13): in the period's
+    #: last days, what the limit leaves above a reserve goes on more studies
+    #: of works the curator found worth one (``frame_server.leftover``).
+    leftover: bool = False
+    leftover_days: int = Field(3, ge=2, le=10)
+    leftover_reserve_usd: float = Field(10.0, ge=0, le=1000)
 
 
 class AiConfigUpdate(BaseModel):
@@ -89,6 +99,10 @@ class AiConfigUpdate(BaseModel):
     stages: bool | None = None
     monthly_limit_usd: float | None = Field(None, ge=0, le=1000)
     gemini_monthly_limit_usd: float | None = Field(None, ge=0, le=1000)
+    period_day: int | None = Field(None, ge=1, le=28)
+    leftover: bool | None = None
+    leftover_days: int | None = Field(None, ge=2, le=10)
+    leftover_reserve_usd: float | None = Field(None, ge=0, le=1000)
 
 
 def clean_key(value: str) -> str:
@@ -163,7 +177,7 @@ class AiConfigStore:
             return config.curator
         if kind == "twins_judge":
             return config.twins_judge
-        if kind in ("gatekeeper", "audit", "journey", "web_facts"):
+        if kind in ("gatekeeper", "audit", "journey", "web_facts", "stages"):
             return bool(getattr(config, kind))
         return True
 

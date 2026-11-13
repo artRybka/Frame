@@ -797,3 +797,33 @@ def test_a_copy_named_of_a_hidden_work_is_hidden_with_it(tmp_path) -> None:
     lib.update("wmc:2", copy_of="")
     assert lib.get("wmc:2") not in lib.hidden()
     assert {i.id for i in lib.query()[1]} == {"wmc:2"}
+
+
+def test_a_copy_deleted_as_needless_is_not_taken_in_again(service, monkeypatch) -> None:
+    """The copies the pictures joined are deleted at a start; a playlist's
+    fill brought them back as new works, under titles nothing joins, and
+    the playlist had them twice again ("Vincent van Gogh · słoneczniki",
+    Mateusz 2026-11-13)."""
+    kept = _work("wmc", 1, title="Sunflowers / Vase with Twelve Sunflowers", year=1889, pooled=True)
+    kept = kept.model_copy(update={"width": 4562, "height": 5801})
+    copy = _work("wmc", 2, title="Vase with twelve sunflowers", year=1889, pooled=True)
+    copy = copy.model_copy(update={"width": 550, "height": 684})
+    service.library.upsert(kept)
+    service.library.upsert(copy.model_copy(update={"copy_of": "wmc:1"}))
+    assert service.player.drop_spare_copies() == 1
+    assert service.library.get("wmc:2") is None
+    # The museum's answer brings it again, as the museum has it.
+    monkeypatch.setattr(service.importer, "_analysed", lambda item: item)
+    job = Job(id="j", description="fill")
+    service.importer._take(
+        [iter([copy])], 1, job, before=lambda i: True, after=lambda i: True, pooled=False
+    )
+    assert service.library.get("wmc:2") is None
+    assert service.library.twin(copy) is not None
+    assert service.library.twin(copy).id == "wmc:1"
+    assert [r.item.id for r in remote_items(service, [copy])] == ["wmc:1"]
+    # Remembered over a restart.
+    from frame_server.library import Library
+
+    again = Library(service.library.path)
+    assert again.kept_for("wmc:2") is not None

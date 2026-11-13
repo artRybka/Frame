@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import uuid
 from pathlib import Path
 
@@ -98,7 +99,15 @@ def test_the_round_says_where_its_time_went(
     _picture(service, "wikiart:2", painting.resize((420, 490)), title="The music lesson")
     with caplog.at_level(logging.INFO, logger="frame_server.library.twins"):
         service.twins.look()
-    [line] = [r.getMessage() for r in caplog.records if r.getMessage().startswith("twins: time:")]
+    # Only this thread's round: an import in an earlier test leaves a
+    # search's round sleeping in the background (``Twins.after_search``,
+    # 20 s), and it may log its own line while this one runs.
+    here = threading.get_ident()
+    [line] = [
+        r.getMessage()
+        for r in caplog.records
+        if r.thread == here and r.getMessage().startswith("twins: time:")
+    ]
     for step in ("candidates", "hashes", "keypoints", "pairs", "writes", "grouping"):
         assert f"{step} " in line
     assert "hashes" in line and "(2)" in line  # two pictures hashed

@@ -159,7 +159,7 @@ def test_a_search_shows_the_artists_own_works_first_and_all_of_them(tmp_path) ->
     lib.upsert(
         Item(id="a:2", source="a", source_id="2", title="View of Delft", artist="Johannes Vermeer")
     )
-    lib.upsert(Item(id="a:3", source="a", source_id="3", title="Sea", description="after Vermeer"))
+    lib.upsert(Item(id="a:3", source="a", source_id="3", title="Sea", keywords=["after Vermeer"]))
     lib.upsert(
         Item(
             id="a:4",
@@ -175,7 +175,7 @@ def test_a_search_shows_the_artists_own_works_first_and_all_of_them(tmp_path) ->
     total, first = lib.query(PlaylistRules(query="vermeer"), sort="relevance", limit=60)
     assert total == 124
     assert [i.id for i in first[:2]] == ["a:4", "a:2"]  # his, the highlight first
-    assert first[2].id != "a:3"  # in the title before only in the description
+    assert first[2].id != "a:3"  # in the title before only in the keywords
     _, last = lib.query(PlaylistRules(query="vermeer"), sort="relevance", offset=120, limit=60)
     assert len(last) == 4 and last[-1].id == "a:3"
     # The old apps' "suitability" is relevance for a search.
@@ -226,3 +226,25 @@ def test_an_index_mostly_changed_is_made_anew(tmp_path) -> None:
         threading.Event().wait(0.01)
     assert lib._search is not first
     assert lib.query(PlaylistRules(query="field"))[0] == 10
+
+
+def test_words_only_in_the_museums_description_find_nothing(tmp_path) -> None:
+    """Mateusz 2026-11-13: "La berceuse" was in his sunflowers playlist only
+    because its description says it hung "between two paintings of
+    sunflowers"; Szukaj and playlists alike leave such works out."""
+    lib = Library(tmp_path / "lib.db")
+    lib.upsert(Item(id="a:1", source="a", source_id="1", title="Sunflowers"))
+    lib.upsert(
+        Item(
+            id="a:2",
+            source="a",
+            source_id="2",
+            title="La berceuse",
+            description="To be hung between two paintings of sunflowers.",
+        )
+    )
+    lib.upsert(Item(id="a:3", source="a", source_id="3", title="Vase", keywords=["sunflowers"]))
+    total, items = lib.query(PlaylistRules(query="sunflowers"))
+    assert total == 2 and {i.id for i in items} == {"a:1", "a:3"}
+    item = lib.get("a:2")
+    assert item is not None and not has_words(item, "sunflowers")

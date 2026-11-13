@@ -42,6 +42,11 @@ ARTICLES = (
 )
 
 
+#: Counts of the whole catalogue going on at once, for every index.
+COUNTING = 2
+_counting = threading.BoundedSemaphore(COUNTING)
+
+
 @dataclass(frozen=True)
 class TitleHit:
     """A work whose title has the words typed."""
@@ -90,6 +95,8 @@ class TermIndex:
             key=lambda a: (-a[3], a[1]),
         )
         self._counts: dict[tuple[str, str], int] = {}
+        #: Counts under way, set when done (or failed: asked again).
+        self._running: dict[tuple[str, str], threading.Event] = {}
         self._lock = threading.Lock()
         #: The works' titles (``Library._titles``): folded, as written,
         #: the artist, the work's id.
@@ -100,14 +107,31 @@ class TermIndex:
         return len(self._index)
 
     def _count(self, kind: str, key: str, rules: PlaylistRules) -> int:
-        with self._lock:
-            known = self._counts.get((kind, key))
-        if known is not None:
-            return known
-        count = self._query(rules)
-        with self._lock:
-            self._counts[(kind, key)] = count
-        return count
+        """One count once: an asker of a count under way waits for it, and
+        at most :data:`COUNTING` counts go through the catalogue at a time
+        (22-40 threads counted the whole catalogue at once while words were
+        typed in Szukaj, and the event loop stood for up to 36 s with them,
+        2026-11-13)."""
+        while True:
+            with self._lock:
+                known = self._counts.get((kind, key))
+                if known is not None:
+                    return known
+                running = self._running.get((kind, key))
+                if running is None:
+                    running = self._running[(kind, key)] = threading.Event()
+                    break
+            running.wait()
+        try:
+            with _counting:
+                count = self._query(rules)
+            with self._lock:
+                self._counts[(kind, key)] = count
+            return count
+        finally:
+            with self._lock:
+                self._running.pop((kind, key), None)
+            running.set()
 
     def artists(self, text: str, limit: int = 5) -> list[tuple[str, int]]:
         """Artists whose name has ``text`` in it, most works first; one

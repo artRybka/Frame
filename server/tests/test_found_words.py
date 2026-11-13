@@ -32,7 +32,10 @@ def test_a_museums_answer_without_the_words_is_left_out(service: FrameService) -
     _found(service, 1, vermeer, title="The Milkmaid", artist="Johannes Vermeer")
     _found(service, 2, vermeer, title="The Music Lesson", artist="Gerard ter Borch")
     _found(service, 3, vermeer, title="Three Sheep", artist="Unknown")
-    _found(service, 4, vermeer, title="Copy", description="After Vermeer's Lacemaker")
+    _found(service, 4, vermeer, title="Copy", keywords=["after Vermeer's Lacemaker"])
+    # Only mentioned in the museum's description: not the words' answer
+    # either (Mateusz 2026-11-13).
+    _found(service, 5, vermeer, title="Sea", description="Painted after Vermeer")
     total, items = service.library.query(vermeer)
     assert total == 2 and {i.id for i in items} == {"getty:1", "getty:4"}
     # The chip says what picking it shows.

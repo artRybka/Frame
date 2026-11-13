@@ -176,6 +176,14 @@ final class TermLookup {
         hits.first { $0.kind == SearchToken.titleKind && $0.exact == true }?.token
     }
 
+    /// A title's artist (the server's name for them, as their own row
+    /// has it), as a chip; none for any other chip or an unknown maker.
+    static func artist(of token: SearchToken, in hits: [TermHit]) -> [SearchToken] {
+        guard token.kind == SearchToken.titleKind,
+              let hit = hits.first(where: { $0.id == token.id }), !hit.detail.isEmpty else { return [] }
+        return [SearchToken(kind: "artist", key: hit.detail, name: hit.detail)]
+    }
+
     /// `typed` (folded) is the whole of `name` or its surname, also in the
     /// museums' "Gogh, Vincent van".
     static func isName(_ name: String, typed: String) -> Bool {
@@ -183,9 +191,15 @@ final class TermLookup {
         return full == typed || full.hasSuffix(" " + typed) || full.hasPrefix(typed + ",")
     }
 
-    /// Puts a chip in and empties the field.
+    /// Puts a chip in and empties the field. A work's title comes with its
+    /// artist's chip: "Słoneczniki · Dzieło · Vincent van Gogh" finds his
+    /// sunflowers, not every work with sunflowers in its title (Mateusz
+    /// 2026-11-13 22:45: „Po kliknięciu dostaje jednak listę jak przy słowie
+    /// kluczowym?”).
     func pick(_ token: SearchToken, into tokens: Binding<[SearchToken]>) {
-        if !tokens.wrappedValue.contains(token) { tokens.wrappedValue.append(token) }
+        for chip in [token] + Self.artist(of: token, in: hits) where !tokens.wrappedValue.contains(chip) {
+            tokens.wrappedValue.append(chip)
+        }
         text = ""
         hits = []
         uncounted = []
