@@ -46,7 +46,7 @@ struct AiSection: View {
 
     private var geminiBody: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Gemini (Google)", subtitle: "Arkusze analizy kompozycji i szukanie wyglądem")
+            SectionHeader(title: "Gemini (Google)", subtitle: "Arkusze kompozycji, etapy malowania i szukanie wyglądem")
             Card {
                 if let limit = settings.geminiMonthlyLimitUsd {
                     if settings.geminiKeySet != true {
@@ -71,6 +71,14 @@ struct AiSection: View {
                                 .font(.caption)
                                 .foregroundStyle(note.bad ? Theme.bad : Theme.inkSoft)
                         }
+                    }
+                    if let stages = settings.stages {
+                        Divider()
+                        toggle(
+                            "Jak powstawał (Studium)",
+                            hint: "Gdy Claude znajdzie badanie techniczne dzieła, model Google rysuje jego etapy według tego badania. Ok. 0,04 USD za etap.",
+                            value: stages
+                        ) { AiSettingsUpdate(stages: $0) }
                     }
                     if let looks = settings.looks {
                         Divider()
@@ -202,6 +210,14 @@ struct AiSection: View {
                         hint: "W studium dzieła droga od pracowni do muzeum, z danych muzeum. Ok. 0,2 centa za dzieło.",
                         value: journey
                     ) { AiSettingsUpdate(journey: $0) }
+                }
+                if let webFacts = settings.webFacts {
+                    Divider()
+                    toggle(
+                        "Fakty z sieci w studium",
+                        hint: "Przed napisaniem studium Claude szuka w sieci badań, losów i wystaw dzieła i wplata je w tekst. Ok. 0,3 USD za studium.",
+                        value: webFacts
+                    ) { AiSettingsUpdate(webFacts: $0) }
                 }
                 if let count = settings.reviewCount {
                     Divider()

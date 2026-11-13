@@ -30,6 +30,7 @@ from .ai.redraw import PenJob
 from .ai.search_words import SearchWords
 from .ai.study import StudyJob
 from .ai.twins_judge import NightJudge
+from .ai.web_facts import WebFacts
 from .albums import Albums
 from .artist_people import ArtistPeople
 from .artist_works import ArtistWorks
@@ -72,6 +73,7 @@ from .sharper import Sharper
 from .sheets import Sheets
 from .sizes import Sizes
 from .source_keys import SourceKeys
+from .stages import PaintingStages
 from .status import StatusMonitor
 from .storage import StorageStore
 from .store import ContentInfo, ContentStore
@@ -369,6 +371,9 @@ class FrameService:
         self.places = Places(self.library)
         self.study = Study(self.daily, self.ai, StudyJob(self.library, self.images, self.ai_config))
         self.ai.register(self.study.job)
+        # Facts about a work from the web, for its page (Sonnet with the web search).
+        self.web_facts = WebFacts(self.library, self.claude, self.ai_config)
+        self.daily.job.web_facts = self.study.job.web_facts = self.web_facts.for_study
         # Its steps on the Lock Screen, and "Studium gotowe" at the end.
         self.study.on_step = lambda item, status, error: self.notifier.study_step(
             item.id,
@@ -402,6 +407,10 @@ class FrameService:
         # Small pictures of works drawn again larger by the same model
         # ("Kreatywny restaurator"), kept as the owner's pick.
         self.restorer = Restorer(self.library, self.images, self.sharper, self.painter)
+        # How a work was painted, when a technical study of it was found.
+        self.stages = PaintingStages(
+            self.library, self.images, self.painter, self.web_facts, self.ai_config
+        )
         # How the museums' works look, as Google's numbers: Szukaj by how a
         # work looks or by a photograph, and the works that look alike
         # (Mateusz 2026-11-13, "G1"); those cared about first.

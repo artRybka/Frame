@@ -643,6 +643,8 @@ class Context:
     candidates: list[Item] = field(default_factory=list)
     #: The picture's size as sent, in pixels.
     size: tuple[int, int] | None = None
+    #: Facts from the web (``ai.web_facts``): only for the page's own question.
+    web: tuple[str, ...] = ()
 
 
 def request_text(item: Item, context: Context) -> str:
@@ -686,6 +688,14 @@ def request_text(item: Item, context: Context) -> str:
         lines += ["", "WIKIPEDIA (pl) O DZIELE", context.wiki_pl]
     if context.wiki_en:
         lines += ["", "WIKIPEDIA (en) O DZIELE", context.wiki_en]
+    if context.web:
+        lines += [
+            "",
+            "Z SIECI (fakty o tym dziele z wiarygodnych źródeł: badania, losy, wystawy, odbiór; "
+            "wpleć w tekst te, które go wzbogacają, tam gdzie pasują, naturalnie, bez wzmianki "
+            "o źródłach, stronach czy szukaniu)",
+            *(f"- {fact}" for fact in context.web),
+        ]
     if context.candidates:
         lines += ["", "KANDYDACI (podobne dzieła z katalogu: id | autor | tytuł | data)"]
         lines += [
@@ -1327,6 +1337,9 @@ class DailyJob(NoteJob):
         self.day_of: Callable[[str], date | None] = lambda item_id: None
         #: The catalogue's works like a work, for the model to choose from.
         self.candidates: Callable[[Item], list[Item]] = lambda item: []
+        #: Facts about a work from the web (``WebFacts.for_study``), asked
+        #: once a work before its page is written.
+        self.web_facts: Callable[[Item], list[str]] = lambda item: []
         #: What the sources say of each work being asked about, kept from
         #: the page's question for its composition's (``ai.composition``).
         self._sources: dict[str, Context] = {}
@@ -1370,7 +1383,7 @@ class DailyJob(NoteJob):
 
     def params(self, item: Item) -> dict[str, Any]:
         img = picture(self.images, item)
-        context = replace(self.context(item), size=img.size)
+        context = replace(self.context(item), size=img.size, web=tuple(self.web_facts(item)))
         self._sources[item.id] = context
         text = {"type": "text", "text": request_text(item, context)}
         params = request(

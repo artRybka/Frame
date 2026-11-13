@@ -45,6 +45,10 @@ class AiView(BaseModel):
     gatekeeper: bool = True
     audit: bool = True
     journey: bool = True
+    #: Facts from the web woven into new studies ("G8").
+    web_facts: bool = True
+    #: The study's stages of painting drawn by the image model ("G2").
+    stages: bool = True
     #: Works on the list "Do sprawdzenia": set aside by the gatekeeper, and
     #: the audit's findings.
     review_count: int = 0
@@ -118,6 +122,8 @@ def _view(svc: FrameService) -> AiView:
         gatekeeper=config.gatekeeper,
         audit=config.audit,
         journey=config.journey,
+        web_facts=config.web_facts,
+        stages=config.stages,
         review_count=len(svc.gatekeeper.written()) + len(svc.audit.written()),
         monthly_limit_usd=config.monthly_limit_usd,
         spent_usd=round(sum(spent.values()), 4),

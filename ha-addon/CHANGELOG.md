@@ -11,6 +11,14 @@
   Konfiguracja → Gemini. Po aktualizacji serwer przygotowuje dzieła w tle
   (najpierw Ulubione, playlisty i Odkrywaj).
 - Studium dzieła wybiera „Podobne dzieła” także po wyglądzie.
+- Nowe studia są bogatsze: zanim Claude je napisze, szuka w sieci badań
+  konserwatorskich, losów dzieła, wystaw i słów artysty, i wplata te
+  fakty w tekst, bez linków i bez listy źródeł. Ok. 0,3 USD za studium,
+  przełącznik „Fakty z sieci w studium” w Konfiguracja → Claude.
+- „Jak powstawał” w Studium: gdy istnieje badanie techniczne dzieła, model
+  Google rysuje jego kolejne etapy według tego badania (ostatni to samo
+  dzieło), z opisem z badania. Ok. 0,04 USD za etap, przełącznik w
+  Konfiguracja → Gemini.
 - „Szukaj zdaniem” zniknęło (zastąpiło je szukanie wyglądem).
 
 ## 1.145.90

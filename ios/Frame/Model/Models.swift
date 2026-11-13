@@ -1529,6 +1529,12 @@ struct AiSettings: Codable, Hashable, Sendable {
     var looksError: String? = nil
     /// The study's "Droga dzieła" (Haiku); nil from older servers.
     var journey: Bool? = nil
+    /// Facts from the web woven into new studies (Sonnet with the web
+    /// search); nil from older servers.
+    var webFacts: Bool? = nil
+    /// The study's "Jak powstawał" drawn by the image model; nil from
+    /// older servers.
+    var stages: Bool? = nil
     /// Works on "Do sprawdzenia"; nil from older servers.
     var reviewCount: Int? = nil
     var monthlyLimitUsd: Double
@@ -1577,6 +1583,8 @@ struct AiSettingsUpdate: Encodable, Sendable {
     var audit: Bool?
     var looks: Bool?
     var journey: Bool?
+    var webFacts: Bool?
+    var stages: Bool?
     var monthlyLimitUsd: Double?
     var drawn: Bool?
     var geminiMonthlyLimitUsd: Double?
@@ -2495,6 +2503,18 @@ struct DailyWork: Codable, Hashable, Sendable {
     /// "Droga dzieła": how the work went from its maker to where it is now,
     /// from the museum's provenance (server 1.141).
     var journey: Journey? = nil
+    /// "Jak powstawał": how the work was painted, stage by stage, from a
+    /// published technical study the server found; each stage drawn by the
+    /// image model (`image`, a server path), the last the work itself
+    /// (no image). Nil from servers before 1.145.91.
+    var stages: [PaintingStage]? = nil
+    var stagesPending: Bool? = nil
+
+    struct PaintingStage: Codable, Hashable, Sendable {
+        var title: String
+        var text: String
+        var image: String
+    }
 
     /// The work's way, stop by stop, as the museum's record tells it.
     struct Journey: Codable, Hashable, Sendable {

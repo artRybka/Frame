@@ -151,3 +151,14 @@ def pytest_unconfigure(config: pytest.Config) -> None:
     sys.stdout.flush()
     sys.stderr.flush()
     os._exit(_exit_status)
+
+
+@pytest.fixture(autouse=True)
+def _no_web_facts(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The facts from the web would be one more question before every page
+    the fakes answer: asked only in ``test_web_facts``."""
+    if request.module.__name__.endswith("test_web_facts"):
+        return
+    from frame_server.ai.web_facts import WebFacts
+
+    monkeypatch.setattr(WebFacts, "enabled", lambda self: False)

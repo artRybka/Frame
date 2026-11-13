@@ -38,6 +38,11 @@ FABLE = "claude-fable-5-2"
 SPEND_KEY = "ai_spend"
 #: The Batch API's discount on every token.
 BATCH_DISCOUNT = 0.5
+#: A web search (Anthropic's server tool): 10 USD per 1000.
+SEARCH_USD = 0.01
+#: How many times a question with server tools may be continued after the
+#: API paused its turn (a long run of searches).
+PAUSES = 5
 #: Thumbnails go out at most this big: plenty to tell what a picture shows,
 #: 266 image tokens at 512×384 (the server keeps 640 px ones).
 IMAGE_SIDE = 512
@@ -231,6 +236,31 @@ class Claude:
                 len(_text(message)),
             )
         return self.answer(kind, params["model"], message, batch=False)
+
+    def search(self, kind: str, params: dict[str, Any]) -> tuple[str, float, str]:
+        """A question with server tools (the web search): continued while
+        the API pauses its turn. The answer's text (no schema: the web
+        search's citations do not go with one), what it cost (its tokens
+        and searches, counted) and why it stopped."""
+        self.check_budget()
+        messages = list(params["messages"])
+        usd = 0.0
+        message: Any = None
+        try:
+            for _ in range(PAUSES + 1):
+                message = self.client().messages.create(**{**params, "messages": messages})
+                tools = getattr(message.usage, "server_tool_use", None)
+                searches = (getattr(tools, "web_search_requests", 0) or 0) if tools else 0
+                usd += cost(params["model"], message.usage) + searches * SEARCH_USD
+                if message.stop_reason != "pause_turn":
+                    break
+                messages = [*messages, {"role": "assistant", "content": message.content}]
+        except anthropic.AuthenticationError as err:
+            raise KeyRejected("Anthropic did not accept the key") from err
+        finally:
+            self.spending.add(kind, usd)
+        text = "".join(b.text for b in message.content if b.type == "text")
+        return text, usd, str(message.stop_reason)
 
     def answer(self, kind: str, model: str, message: Any, *, batch: bool) -> Answer:
         usd = cost(model, message.usage, batch)
