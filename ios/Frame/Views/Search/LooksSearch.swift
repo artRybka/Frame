@@ -357,12 +357,14 @@ private struct SearchFieldCamera: UIViewRepresentable {
         private weak var field: UISearchTextField?
         private lazy var button: UIButton = {
             var look = UIButton.Configuration.plain()
+            // Filled and a little smaller than the magnifier, close to the
+            // field's end (Mateusz 2026-11-13: "pełna i trochę drobniejsza").
             look.image = UIImage(
-                systemName: "camera",
-                withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
+                systemName: "camera.fill",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)
             )
             look.baseForegroundColor = .secondaryLabel
-            look.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 8)
+            look.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 0)
             let button = UIButton(configuration: look)
             button.accessibilityLabel = "Szukaj zdjęciem"
             button.accessibilityHint = "Zrób zdjęcie dzieła, a Szukaj znajdzie podobne. Przytrzymaj, by wybrać z Biblioteki."
