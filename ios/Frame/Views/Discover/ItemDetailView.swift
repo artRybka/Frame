@@ -196,6 +196,7 @@ struct ItemDetailView: View {
         .sheet(isPresented: $showingPlaylists) {
             if let item { AddToPlaylistSheet(item: item, beforeAdding: saveCrop) }
         }
+        .task(id: item?.id) { await openSheetForScreenshot() }
         .sheet(isPresented: $findingCopies) {
             if let item { CopiesSheet(item: item) { copyPicked($0) } }
         }
@@ -1330,6 +1331,20 @@ struct ItemDetailView: View {
         .accessibilityHint("Szuka lepszej kopii w innych muzeach")
     }
 
+    /// CI screenshots (`-sheet playlists`): "Do playlisty" open, with one
+    /// playlist ticked.
+    private func openSheetForScreenshot() async {
+        guard LaunchRoute.screen == "detail", let sheet = LaunchRoute.sheet, sheet.hasPrefix("playlists"),
+              model.demoMode, let item, !showingPlaylists
+        else { return }
+        if sheet == "playlists", let first = model.playlists.first(where: { $0.kind == .manual }) {
+            _ = try? await model.backend.addToPlaylist(id: first.id, itemIDs: [item.id])
+            await model.refreshPlaylists()
+        }
+        try? await Task.sleep(for: .seconds(1))
+        showingPlaylists = true
+    }
+
     @ViewBuilder
     private func fact(_ label: String, _ value: String) -> some View {
         if !value.isEmpty {
@@ -1341,74 +1356,6 @@ struct ItemDetailView: View {
             }
             .font(.subheadline)
         }
-    }
-}
-
-/// Pick a manual playlist to add the picture to.
-struct AddToPlaylistSheet: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
-    let item: Item
-    /// Run first, e.g. to save the crop edited for it; false stops the adding.
-    var beforeAdding: () async -> Bool = { true }
-    @State private var newName = ""
-
-    private var manual: [PlaylistSummary] { model.playlists.filter { $0.kind == .manual && $0.isMine } }
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section("Nowa playlista") {
-                    HStack {
-                        TextField("Nazwa, np. Do sypialni", text: $newName)
-                        Button("Utwórz") { Task { await create() } }
-                            .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
-                    }
-                }
-                if !manual.isEmpty {
-                    Section("Twoje playlisty") {
-                        ForEach(manual) { playlist in
-                            Button {
-                                Task { await add(to: playlist.id) }
-                            } label: {
-                                HStack {
-                                    Text(playlist.name).foregroundStyle(Theme.ink)
-                                    Spacer()
-                                    Text(Names.works(playlist.itemCount)).foregroundStyle(Theme.inkSoft)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Dodaj do playlisty")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Zamknij") { dismiss() } }
-            }
-        }
-        .presentationDetents([.medium])
-    }
-
-    private func create() async {
-        guard await beforeAdding() else { return }
-        let playlist = Playlist(name: newName, kind: .manual, itemIds: [item.id])
-        do {
-            _ = try await model.backend.savePlaylist(playlist)
-            await model.refreshPlaylists()
-            model.notices.done("Utworzono „\(newName)”")
-            dismiss()
-        } catch { model.show(error) }
-    }
-
-    private func add(to id: Int) async {
-        guard await beforeAdding() else { return }
-        do {
-            _ = try await model.backend.addToPlaylist(id: id, itemIDs: [item.id])
-            await model.refreshPlaylists()
-            model.notices.done("Dodano do playlisty")
-            dismiss()
-        } catch { model.show(error) }
     }
 }
 

@@ -152,6 +152,8 @@ jobs:
             capture daily 16 "daily-journey-full-$appearance" -scroll journey -journeyWash 1
             capture daily 16 "daily-journey-full-end-$appearance" -scroll journey-end -journeyWash 1 -journeyDetour YES
             capture detail 14 "detail-$appearance"
+            capture detail 16 "detail-playlists-$appearance" -sheet playlists
+            capture detail 16 "detail-playlists-new-$appearance" -sheet playlists-new
             capture detail 16 "detail-about-$appearance" -scroll about
             # "Kolorystyka" on the card: the bar in the work's technique, there at once.
             capture detail 16 "detail-palette-$appearance" -scroll palette

@@ -43,6 +43,10 @@ enum LaunchRoute {
     /// points): "update" on the Serwer tile, "describe" in Konfiguracja → Claude,
     /// "delete-playlist" on a card in Playlisty.
     static let confirm = UserDefaults.standard.string(forKey: "confirm")
+    /// A sheet opened by itself on the work's card: "playlists" (Do
+    /// playlisty, the work put on the first manual playlist first) or
+    /// "playlists-new" (with "Nowa playlista…" being named).
+    static let sheet = UserDefaults.standard.string(forKey: "sheet")
 }
 
 struct RootView: View {
