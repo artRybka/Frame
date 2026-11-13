@@ -14,6 +14,12 @@
   to wiadomo. Rysunki modelu Google nie wyglądały dobrze i serwer ich już
   nie zamawia; dzieła, które je dostały, dostaną tekst przy otwarciu
   studium. Przełącznik przeszedł z Google do ustawień Claude.
+- Wybór dzieła w podpowiedziach Szukaj („Słoneczniki · Dzieło · Vincent
+  van Gogh”) wstawia tytuł razem z artystą, więc pokazuje jego słoneczniki
+  zamiast wszystkich dzieł ze słonecznikami w tytule.
+- Pod dziełami ze Statens Museum for Kunst przez Europeanę zamiast
+  nazwiska stał numer („250_person”). Teraz jest nazwisko, a zapisane
+  już dzieła poprawią się w nocy.
 
 ## 1.145.99
 

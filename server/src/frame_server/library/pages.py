@@ -55,8 +55,9 @@ READINGS: dict[str, str] = {
     # 2026-11-09: Foto Marburg's photographs of works left out; 3: and
     # the Hertziana's; 4: types in every language and as AAT links; 5: one
     # kind asked by its ``what``, posters found so typed (2026-11-10); 6:
-    # the maker from agents' names and contributors, people before firms.
-    "europeana": "6",
+    # the maker from agents' names and contributors, people before firms;
+    # 7: a provider's id for the maker ("250_person") is no name.
+    "europeana": "7",
     # 2026-11-10: one type asked by its field ("Painting"), an artist by
     # the author's (Monet's caricatures under Malarstwo, Mateusz); 3:
     # posters by their classification, typed "Poster" (Monet's oils under
