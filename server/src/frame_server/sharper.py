@@ -755,6 +755,7 @@ class Sharper:
         img: Image.Image,
         chosen: bool = False,
         stand_in: bool = False,
+        restored: bool = False,
     ) -> Item:
         stored = self.library.get(item.id)
         if stored is None:  # a museum work only looked at: kept for a while
@@ -771,6 +772,7 @@ class Sharper:
             chosen=chosen,
             thumb_url=copy.thumb_url,
             stand_in=stand_in,
+            restored=restored,
         )
         updated = self.library.update(item.id, sharper=sharper) or stored
         self.images.adopt(updated, img)
@@ -794,12 +796,13 @@ class Sharper:
         img = self.images.sample(display_copy(copy), urgent=True)
         return self._adopt(item, copy, img, chosen=True)
 
-    def bring(self, item: Item, data: bytes, origin: str = "") -> Item:
+    def bring(self, item: Item, data: bytes, origin: str = "", restored: bool = False) -> Item:
         """A copy the owner brought for ``item``'s picture (a picture's
         bytes: one bought in Alamy, a scan; Mateusz, 2026-11-12), kept for
         good and shown in place of its own, as a copy he picked. ``origin``:
-        where it is from, as the card names it. Raises ValueError for what
-        is no picture."""
+        where it is from, as the card names it. ``restored``: drawn again
+        by the image model (:mod:`frame_server.restorer`). Raises ValueError
+        for what is no picture."""
         stored = self.library.get(item.id) or item
         url, img = self.images.keep_owned(stored, data)
         copy = Item(
@@ -811,7 +814,7 @@ class Sharper:
             museum=origin.strip()[:60] or "Własna kopia",
             image_url=url,
         )
-        return self._adopt(stored, copy, img, chosen=True)
+        return self._adopt(stored, copy, img, chosen=True, restored=restored)
 
     def keep_own(self, item: Item) -> Item:
         """Back to the work's own picture, as the owner asked: no copy is

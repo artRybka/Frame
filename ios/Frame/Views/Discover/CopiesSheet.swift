@@ -512,6 +512,29 @@ struct CopyTag: View {
     }
 }
 
+/// "Kreatywny restaurator" under "Zdjęcie dzieła": AI's sparkles and the
+/// name, in the amber of the low resolution's tag it takes the place of.
+struct RestoredTag: View {
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: LowRes.restoredSymbol).font(.system(size: 9, weight: .semibold))
+            Text(LowRes.restoredName)
+                .font(.system(size: 9.5, weight: .bold))
+                .tracking(0.6)
+                .textCase(.uppercase)
+        }
+        .foregroundStyle(LowRes.tint)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .overlay(
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .strokeBorder(LowRes.tint.opacity(0.5), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Kreatywny restaurator: szczegóły dorysował model AI")
+    }
+}
+
 /// One copy against the picture shown now: the same spot of both at the
 /// frame's scale under a slider, their numbers, and "Użyj tej kopii".
 struct CopyCompare: View {

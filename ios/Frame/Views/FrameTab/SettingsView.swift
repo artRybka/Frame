@@ -274,14 +274,22 @@ struct SettingsPageView: View {
     let page: SettingsPage
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                content
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    content
+                }
+                .pageWidth()
+                .padding(.horizontal, Theme.gutter)
+                .padding(.top, 8)
+                .padding(.bottom, 40)
             }
-            .pageWidth()
-            .padding(.horizontal, Theme.gutter)
-            .padding(.top, 8)
-            .padding(.bottom, 40)
+            .task {
+                // CI screenshots: `-scroll restorer` on the Gemini page.
+                guard page == .gemini, LaunchRoute.scroll == "restorer" else { return }
+                try? await Task.sleep(for: .seconds(4))
+                withAnimation { proxy.scrollTo("restorer", anchor: .center) }
+            }
         }
         .paperPage()
         .scrollDismissesKeyboard(.interactively)
@@ -320,6 +328,7 @@ struct SettingsPageView: View {
             } else {
                 waiting
             }
+            RestorerSection().id("restorer")
         case .library:
             if let counts = model.catalogueCounts {
                 CatalogueCountSection(counts: counts)
