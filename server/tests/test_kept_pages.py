@@ -266,3 +266,21 @@ def test_works_kept_with_a_misread_type_are_read_again(tmp_path: Path) -> None:
     milkmaid = library.get("rijks:200108369")
     assert milkmaid is not None
     assert (milkmaid.artist, milkmaid.classification) == ("Vermeer (possibly)", "painting")
+
+
+def test_europeana_works_kept_with_a_provider_s_id_for_their_maker_are_read_again() -> None:
+    """SMK's "250_person" for Michael Ancher came through Europeana as the
+    artist (Mateusz 2026-11-13, "A Girl with Sunflowers"); only the maker is
+    read again, not a type that tells nothing."""
+    from frame_server.library.importer import _read_anew, _untold
+
+    kept = Item(
+        id="europeana:/2020903/KMS3820",
+        source="europeana",
+        source_id="/2020903/KMS3820",
+        artist="250_person",
+    )
+    assert _untold(kept)
+    assert not _untold(kept.model_copy(update={"artist": "Michael Ancher"}))
+    fresh = kept.model_copy(update={"artist": "Michael Ancher", "classification": "painting"})
+    assert _read_anew(kept, fresh) == {"artist": "Michael Ancher"}

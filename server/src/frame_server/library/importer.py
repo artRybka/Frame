@@ -40,6 +40,7 @@ from .museums import (
     Kind,
     Museum,
     WikimediaCommons,
+    _reference,
     asked_by,
     available,
     client,
@@ -90,7 +91,7 @@ MISREAD = "@language"
 #: The museums whose kept works are read again (:meth:`Importer.read_again`)
 #: when their reading (``pages.READINGS``) changes, and the library's state
 #: that says with which reading each was.
-READ_AGAIN = ("rijks",)
+READ_AGAIN = ("rijks", "europeana")
 READ_AGAIN_KEY = "read_again"
 #: How long a search waits for typed words to be translated (seconds); an
 #: answer that comes later serves the next search.
@@ -224,7 +225,10 @@ class Job:
 
 def _untold(item: Item) -> bool:
     """``item`` is worth reading again from its museum (:meth:`Importer.
-    read_again`)."""
+    read_again`): Europeana's only for a maker kept as the provider's id
+    ("250_person", Michael Ancher's at SMK; reading 7)."""
+    if item.source == "europeana":
+        return _reference(item.artist)
     return MISREAD in (item.artist, item.classification) or not type_tells(item)
 
 
@@ -237,8 +241,10 @@ def _read_anew(item: Item, fresh: Item | None) -> dict[str, str]:
     told = fresh.classification if fresh is not None else ""
     if told != item.classification and (told or item.classification == MISREAD):
         fixes["classification"] = told
-    if item.artist == MISREAD:
+    if item.artist == MISREAD or _reference(item.artist):
         fixes["artist"] = fresh.artist if fresh is not None else ""
+    if item.source == "europeana":
+        fixes.pop("classification", None)  # read again for the maker only
     return fixes
 
 

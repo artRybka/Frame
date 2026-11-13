@@ -108,6 +108,14 @@ def test_europeana_s_maker_from_its_agents_and_contributors() -> None:
         },
     )
     assert artist(linked) == "Henri de Toulouse-Lautrec"
+    # SMK's own id for the painter ("250_person", Michael Ancher) is no
+    # name: his agent's is (Mateusz 2026-11-13, "A Girl with Sunflowers").
+    smk = _europeana(
+        dcCreator=["250_person"],
+        dcCreatorLangAware={"def": ["250_person"]},
+        edmAgentLabelLangAware={"def": ["Ancher, Michael", "Statens Museum for Kunst"]},
+    )
+    assert artist(smk) == "Michael Ancher"
     # A contributor in another role is no author.
     assert artist(_europeana(dcContributor=["Musée X (Leihgeber)"])) == ""
 

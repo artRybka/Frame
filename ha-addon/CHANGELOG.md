@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.145.102
+
+- Fakty z sieci do studium kosztują o ponad połowę mniej. Claude
+  najpierw raz szuka dzieła i szuka dalej tylko wtedy, gdy ktoś o nim
+  pisał; wcześniej puszczał od razu sześć wyszukań, często ogólnych. Na
+  próbie dziesięciu dzieł: 3,6 centa zamiast 8,8 za dzieło, 40 faktów
+  zamiast 43, trzy badania techniczne („Jak powstawał”) zamiast jednego.
+  Szacunek przy „Uzupełnij wcześniejsze studia” liczy już nową cenę.
+- „Jak powstawał” w studium bez rysunków: kilka zdań (dwa-trzy, najwyżej
+  cztery) o tym, jak dzieło powstawało, według badania technicznego
+  znalezionego w sieci, zaraz po „Kolor i światło”. Badanie może być
+  przywołane („jak pokazało badanie RTG z 1995 roku…”), ale bez linków i
+  bez wzmianki o szukaniu. Rysunki modelu Google nie wyglądały dobrze i serwer ich już
+  nie zamawia; dzieła, które je dostały, dostaną tekst przy otwarciu
+  studium. Przełącznik przeszedł z Google do ustawień Claude.
+- Wybór dzieła w podpowiedziach Szukaj („Słoneczniki · Dzieło · Vincent
+  van Gogh”) wstawia tytuł razem z artystą, więc pokazuje jego słoneczniki
+  zamiast wszystkich dzieł ze słonecznikami w tytule.
+- Pod dziełami ze Statens Museum for Kunst przez Europeanę zamiast
+  nazwiska stał numer („250_person”). Teraz jest nazwisko, a zapisane
+  już dzieła poprawią się w nocy.
+
 ## 1.145.101
 
 - Serwer nie zamiera już na pierwsze minuty po starcie. Po aktualizacji

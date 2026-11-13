@@ -58,8 +58,8 @@ class AiConfig(BaseModel):
     #: The study sheets of the analyses drawn by the image model (three
     #: pictures a sheet, about 0.15 USD); needs Google's key.
     drawn: bool = True
-    #: How a work was painted, stage by stage, drawn by the image model
-    #: when a published technical study of it was found ("G2").
+    #: How a work was painted, told in a few sentences when a published
+    #: technical study of it was found ("G2"; no longer drawn).
     stages: bool = True
     #: How works look as numbers (Google's embedding model): Szukaj by how a
     #: work looks, by a photograph, and the works that look alike ("G1").
@@ -177,7 +177,7 @@ class AiConfigStore:
             return config.curator
         if kind == "twins_judge":
             return config.twins_judge
-        if kind in ("gatekeeper", "audit", "journey", "web_facts"):
+        if kind in ("gatekeeper", "audit", "journey", "web_facts", "stages"):
             return bool(getattr(config, kind))
         return True
 

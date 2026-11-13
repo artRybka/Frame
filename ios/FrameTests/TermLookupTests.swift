@@ -101,6 +101,13 @@ final class TermLookupTests: XCTestCase {
         XCTAssertNil(TermLookup.typedTitle(in: [night]))
         XCTAssertEqual(TermLookup.typedTitle(in: [night, starry]), SearchToken.title("Gwiaździsta noc"))
         XCTAssertEqual(SearchToken.title("Noc").kindName, "Tytuł")
+        // A title comes with its artist's chip: his work, not every title
+        // with the word (Mateusz 2026-11-13, "Słoneczniki").
+        let sunflowers = TermHit(kind: "title", key: "Słoneczniki", name: "Słoneczniki",
+                                 detail: "Vincent van Gogh", item: "wmc:1", exact: true)
+        XCTAssertEqual(TermLookup.artist(of: SearchToken.title("Słoneczniki"), in: [sunflowers]),
+                       [SearchToken(kind: "artist", key: "Vincent van Gogh", name: "Vincent van Gogh")])
+        XCTAssertEqual(TermLookup.artist(of: SearchToken.title("Noc"), in: [night]), [])
         var titled = PlaylistRules()
         titled.setTokens([SearchToken.title("Gwiaździsta noc")])
         XCTAssertEqual(titled.title, "Gwiaździsta noc")

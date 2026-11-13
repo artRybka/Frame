@@ -2574,18 +2574,12 @@ struct DailyWork: Codable, Hashable, Sendable {
     /// "Droga dzieła": how the work went from its maker to where it is now,
     /// from the museum's provenance (server 1.141).
     var journey: Journey? = nil
-    /// "Jak powstawał": how the work was painted, stage by stage, from a
-    /// published technical study the server found; each stage drawn by the
-    /// image model (`image`, a server path), the last the work itself
-    /// (no image). Nil from servers before 1.145.92.
-    var stages: [PaintingStage]? = nil
-    var stagesPending: Bool? = nil
-
-    struct PaintingStage: Codable, Hashable, Sendable {
-        var title: String
-        var text: String
-        var image: String
-    }
+    /// "Jak powstawał": how the work was painted, in two to four sentences,
+    /// from a published technical study the server found (Mateusz
+    /// 2026-11-13 21:42: no pictures, no word on where it came from).
+    /// Nil from servers before 1.145.102; `howMadePending` while written.
+    var howMade: String? = nil
+    var howMadePending: Bool? = nil
 
     /// The work's way, stop by stop, as the museum's record tells it.
     struct Journey: Codable, Hashable, Sendable {

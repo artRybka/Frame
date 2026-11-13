@@ -1527,6 +1527,17 @@ def _person(name: str) -> str:
     return name
 
 
+#: A provider's own id for a person, not a name: SMK's "250_person" (Michael
+#: Ancher) in Europeana's dcCreator, shown on the cards as the artist.
+_LOCAL_ID = re.compile(r"^[\w.:#-]*\d[\w.:#-]*_(?:person|agent|actor|creator)\w*$|^\d+$", re.I)
+
+
+def _reference(name: str) -> bool:
+    """An address or an id where a name would be."""
+    name = name.strip()
+    return "://" in name or bool(_LOCAL_ID.match(name))
+
+
 def _bare(name: str) -> str:
     """A name without the roles and dates in brackets: "Mondrian, Piet
     (Künstler/in)" -> "Mondrian, Piet"."""
@@ -1738,14 +1749,15 @@ class Europeana(Museum):
 
     @staticmethod
     def _labels(d: dict[str, Any], field: str) -> list[str]:
-        """``field``'s names by language ("def" mixes in authority URIs)."""
+        """``field``'s names by language ("def" mixes in authority URIs and
+        a provider's own ids: SMK's "250_person" for Michael Ancher)."""
         labels = d.get(f"{field}LangAware") or {}
         found = [
             str(n)
             for lang in ("en", "pl", "def", *labels)
             for n in labels.get(lang) or []
-            if "://" not in str(n)
-        ] or [str(c) for c in d.get(field) or [] if "://" not in str(c)]
+            if not _reference(str(n))
+        ] or [str(c) for c in d.get(field) or [] if not _reference(str(c))]
         return list(dict.fromkeys(found))
 
     def _makers(self, d: dict[str, Any]) -> list[str]:
@@ -1757,7 +1769,7 @@ class Europeana(Museum):
         from .artists import is_artist
 
         creators = self._labels(d, "dcCreator")
-        if not creators and any("://" in str(c) for c in d.get("dcCreator") or []):
+        if not creators and any(_reference(str(c)) for c in d.get("dcCreator") or []):
             agents = d.get("edmAgentLabelLangAware") or {}
             creators = [str(n) for lang in ("en", "def", "pl") for n in agents.get(lang) or []][:1]
         authors = [c for c in self._labels(d, "dcContributor") if self._AUTHOR_ROLE.search(c)]
@@ -1773,7 +1785,7 @@ class Europeana(Museum):
         creators = [str(c) for c in d.get("dcCreator") or []]
         refs = [c for c in creators if EUROPEANA_AGENT.match(c) or WIKIDATA_ENTITY.match(c)]
         if not refs:
-            names = [c for c in creators if not c.startswith("http")][:1]
+            names = [c for c in creators if not _reference(c)][:1]
             # "Kandinsky, Wassily (1866-1944) (Künstler/Hersteller)"
             if names and (died := death_in_name(names[0])) is not None:
                 return died

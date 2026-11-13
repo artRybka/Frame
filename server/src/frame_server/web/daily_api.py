@@ -125,6 +125,8 @@ class DailyBrief(BaseModel):
 
 
 class StageView(BaseModel):
+    """Old apps' "Jak powstawał" (pictures, given up): always empty now."""
+
     title: str
     text: str
     image: str = ""
@@ -206,9 +208,12 @@ class DailyWork(BaseModel):
     size: RealSize | None = None
     #: How it went from its maker to where it is now ("Droga dzieła").
     journey: Journey | None = None
-    #: How the work was painted, from a published technical study
-    #: (``stages``): each stage's picture at ``image`` (the last one is
-    #: the work itself: none); ``stages_pending`` while they are drawn.
+    #: "Jak powstawał": how the work was painted, in a few sentences, from a
+    #: published technical study (``stages``); ``how_made_pending`` while
+    #: it is written (a few seconds after the page first opens).
+    how_made: str = ""
+    how_made_pending: bool = False
+    #: Apps before 1.145.102 drew the stages as pictures: given up, empty.
     stages: list[StageView] = Field(default_factory=list)
     stages_study: str = ""
     stages_pending: bool = False
@@ -378,8 +383,8 @@ def page(
     looking = looking or (lists and size is None and svc.sizes.look_soon(item))
     journey = svc.journeys.journey(item)
     looking = looking or (lists and journey is None and svc.journeys.look_soon(item))
-    made = svc.stages.stages(item)
-    stages_pending = bool(lists and essay and made is None and svc.stages.draw_soon(item))
+    how_made = svc.stages.made(item)
+    how_made_pending = bool(lists and essay and how_made is None and svc.stages.write_soon(item))
     same_time = svc.daily.same_time(item, shown) if lists else []
     born, died = (
         life(item.artist_bio)
@@ -434,16 +439,8 @@ def page(
         pigments=vary_hedges(essay.pigments) if essay else [],
         size=size,
         journey=journey,
-        stages=[
-            StageView(
-                title=stage.title,
-                text=stage.text,
-                image=f"/api/stages/picture?item={quote(item.id)}&n={n}" if stage.drawn else "",
-            )
-            for n, stage in enumerate(made.stages if made else [])
-        ],
-        stages_study=made.what if made else "",
-        stages_pending=stages_pending,
+        how_made=how_made or "",
+        how_made_pending=how_made_pending,
         # While the study is cut it looks the later works up itself
         # (``Study._cut``): asked here too, the museums were asked twice,
         # and the study's "later" part was now and then never told.
@@ -540,17 +537,6 @@ async def composition_drawn(svc: Svc, item: str, v: str, part: str = "page") -> 
         raise HTTPException(404, "no such sheet")
     kind = "image/png" if path.suffix == ".png" else "image/jpeg"
     return FileResponse(path, media_type=kind, headers={"Cache-Control": "max-age=2592000"})
-
-
-@router.get("/stages/picture")
-async def study_stage(svc: Svc, item: str, n: int) -> FileResponse:
-    """A stage of how the work was painted (``DailyWork.stages``), drawn
-    once and kept for good."""
-    work = svc.library.get(item)
-    path = svc.stages.part(work, n) if work is not None else None
-    if path is None:
-        raise HTTPException(404, "no such stage")
-    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=2592000"})
 
 
 @router.post("/daily/again", response_model=DailyBrief, dependencies=[Depends(require_owner)])

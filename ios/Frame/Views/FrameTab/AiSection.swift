@@ -74,14 +74,6 @@ struct AiSection: View {
                                 .foregroundStyle(note.bad ? Theme.bad : Theme.inkSoft)
                         }
                     }
-                    if let stages = settings.stages {
-                        Divider()
-                        toggle(
-                            "Jak powstawał (Studium)",
-                            hint: "Gdy Claude znajdzie badanie techniczne dzieła, model Google rysuje jego etapy według tego badania. Ok. 0,04 USD za etap.",
-                            value: stages
-                        ) { AiSettingsUpdate(stages: $0) }
-                    }
                     if let looks = settings.looks {
                         Divider()
                         toggle(
@@ -217,9 +209,17 @@ struct AiSection: View {
                     Divider()
                     toggle(
                         "Fakty z sieci w studium",
-                        hint: "Przed napisaniem studium Claude szuka w sieci badań, losów i wystaw dzieła i wplata je w tekst. Ok. 0,15–0,3 USD za studium.",
+                        hint: "Przed napisaniem studium Claude szuka w sieci badań, losów i wystaw dzieła i wplata je w tekst. Ok. 2–10 centów za studium.",
                         value: webFacts
                     ) { AiSettingsUpdate(webFacts: $0) }
+                }
+                if let stages = settings.stages {
+                    Divider()
+                    toggle(
+                        "Jak powstawał (Studium)",
+                        hint: "Gdy w sieci jest badanie techniczne dzieła, Claude opisuje w kilku zdaniach, jak powstawało. Ułamek centa za dzieło.",
+                        value: stages
+                    ) { AiSettingsUpdate(stages: $0) }
                 }
                 if let refresh = settings.studyRefresh,
                    refresh.running || refresh.waiting > 0 || refresh.found > 0 {
