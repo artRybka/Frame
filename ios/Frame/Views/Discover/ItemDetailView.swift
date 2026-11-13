@@ -147,10 +147,12 @@ struct ItemDetailView: View {
             .glowLift($scrolled)
             .onChange(of: polish) {
                 // CI screenshots
-                guard LaunchRoute.screen == "detail", let scroll = LaunchRoute.scroll, ["about", "palette", "title", "picture"].contains(scroll), polish != nil else { return }
+                guard LaunchRoute.screen == "detail", let scroll = LaunchRoute.scroll, ["about", "palette", "title", "picture", "looks"].contains(scroll), polish != nil else { return }
                 Task {
-                    try? await Task.sleep(for: .seconds(1))
-                    proxy.scrollTo(scroll, anchor: ["palette", "picture"].contains(scroll) ? .center : .top)
+                    // ("looks": the row comes in after its own answer)
+                    try? await Task.sleep(for: .seconds(scroll == "looks" ? 3 : 1))
+                    let anchor: UnitPoint = ["palette", "picture"].contains(scroll) ? .center : scroll == "looks" ? .bottom : .top
+                    proxy.scrollTo(scroll, anchor: anchor)
                 }
             }
         }
@@ -364,7 +366,7 @@ struct ItemDetailView: View {
             about(item)
             studySection(item)
             facts(item)
-            LooksLikeSection(item: item)
+            LooksLikeSection(item: item).id("looks")
         }
         .padding(.horizontal, Theme.gutter)
         .padding(.bottom, 40)
