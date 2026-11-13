@@ -425,6 +425,7 @@ class FrameService:
         # Szukaj's words for how works look, the groups narrowing them, and
         # a smart playlist made of them (Mateusz 2026-11-13).
         self.library.looking = self.looks.looking
+        self.library.look_near = self.looks.near
         self.daily.looks_like = self.looks.neighbours
         # A small picture is drawn larger first, before its study (Mateusz
         # 2026-11-13); which works get none: the rules, the sheet's pixels and

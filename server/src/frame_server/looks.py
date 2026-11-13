@@ -43,7 +43,7 @@ import numpy as np
 from PIL import Image
 
 from .ai.client import AiUnavailable
-from .ai.gemini import EMBED_SIZE, NotDrawn
+from .ai.gemini import EMBED_SIZE, NotDrawn, TooHeavy
 from .library.models import Item, ItemKind
 from .library.verdict import Place, against
 
@@ -385,6 +385,23 @@ class Looks:
             found.append(Found(item, round(score, 4)))
         return found
 
+    def near(self, text: str) -> list[str] | None:
+        """The ids of the works :meth:`among` chooses from for ``text``
+        (the library puts its other rules through those alone), nearest
+        first; None when it cannot be asked now."""
+        text = " ".join(text.split())[:300]
+        if not text:
+            return []
+        try:
+            self._check()
+            vector = self._words_vector(text)
+        except AiUnavailable:
+            return None
+        except (NotDrawn, httpx.HTTPError) as err:
+            log.warning("Szukanie wyglądem: Google did not answer (%s)", err)
+            return None
+        return [item_id for item_id, _ in self.index.nearest(vector, AMONG_NEAR)]
+
     def looking(self, text: str, allowed: list[Item]) -> list[Item] | None:
         """:meth:`among` for the library (``Library.looking``): the works
         alone, None when it cannot be asked now."""
@@ -589,13 +606,34 @@ class Looks:
                     self._no_thumb[item.id] = self.clock()
             if not pictures:
                 break
-            name = self.painter.embed_batch(KIND, pictures)
-            out[name] = rows
-            self._keep_out(out)
-            sent += len(rows)
+            sent += self._hand(pictures, rows, out)
             if len(todo) < PER_BATCH:
                 break
         return sent
+
+    def _hand(
+        self,
+        pictures: list[tuple[str, Image.Image]],
+        rows: list[tuple[str, int]],
+        out: dict[str, list[tuple[str, int]]],
+    ) -> int:
+        """Hands ``pictures`` to the Batch, in halves while they weigh more
+        than Google takes at once (bigger thumbnails: 300 weighed 30 MB of
+        19, and no work got its numbers from 2026-11-13 16:08 on); how many
+        went. A picture too heavy alone waits as one without a thumbnail."""
+        try:
+            name = self.painter.embed_batch(KIND, pictures)
+        except TooHeavy:
+            if len(pictures) == 1:
+                self._no_thumb[pictures[0][0]] = self.clock()
+                return 0
+            half = len(pictures) // 2
+            return self._hand(pictures[:half], rows[:half], out) + self._hand(
+                pictures[half:], rows[half:], out
+            )
+        out[name] = rows
+        self._keep_out(out)
+        return len(rows)
 
     def round(self) -> tuple[int, int]:
         """Collects what came back, then sends more: (works that got their
