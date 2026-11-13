@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.85
+
+- Arkusze kompozycji z Gemini narysowane przed nowym poleceniem szkicu są
+  rysowane od nowa: z manierą obrazu, akcentami barw i głębszymi ciemnymi
+  plamami. Idą przez Batch Google (ok. 0,06 USD za arkusz, w ciągu kilku
+  godzin), a do tego czasu widać dotychczasowy arkusz.
+
 ## 1.145.84
 
 - Przygotowanie studiów bez płacenia dwa razy: arkusz kompozycji z Gemini
