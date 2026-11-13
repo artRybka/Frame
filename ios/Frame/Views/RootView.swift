@@ -12,7 +12,9 @@ enum LaunchRoute {
     /// Discover at "Studia dzieł".
     static let scroll = UserDefaults.standard.string(forKey: "scroll")
     /// The composition's sheet opens with the picture itself under the
-    /// marks, as after a tap (CI screenshots of that state).
+    /// marks, as after a tap; the image model's sheet stays the sketch
+    /// alone, the marks never coming by themselves (CI screenshots of
+    /// that state).
     static let compositionBare = UserDefaults.standard.bool(forKey: "compositionBare")
     /// `-chalkDemo lit|none` (CI screenshots a picture of the brighter chalk
     /// is put together from): "lit" draws the sheet's marks as on a screen
