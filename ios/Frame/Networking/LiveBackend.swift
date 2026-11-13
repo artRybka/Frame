@@ -785,6 +785,10 @@ struct LiveBackend: FrameBackend {
 
     func deleteAiKey() async throws -> AiSettings { try await send("/api/ai/key", method: "DELETE") }
 
+    func startStudyRefresh() async throws -> AiSettings {
+        try await send("/api/ai/study-refresh", method: "POST")
+    }
+
     func saveGeminiKey(_ key: String) async throws -> AiSettings {
         try await send("/api/ai/gemini-key", method: "PUT", body: AiKeyUpdate(key: key))
     }

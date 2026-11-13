@@ -78,6 +78,11 @@ EMBED_SIZE = 768
 EMBED_PRICES = (0.20, 0.45)
 #: At most this many in one request.
 EMBED_MAX = 20
+#: The embedding model's Batch (answered within a day, at half the price):
+#: how the works' pictures get their numbers in the background.
+EMBED_BATCH_URL = f"{MODELS_URL}/{EMBED_MODEL}:asyncBatchEmbedContent"
+#: Tokens of one picture, to count a batch's cost when its answers do not.
+PICTURE_TOKENS = 258
 
 PATIENCE = 300.0
 #: Answers worth asking for again: the service is busy or broke off.
@@ -207,6 +212,8 @@ def _answers(node: Any) -> list[dict[str, Any]]:
     or ``metadata.output``, under ``inlinedResponses`` once or twice)."""
     if isinstance(node, dict):
         inlined = node.get("inlinedResponses")
+        if inlined is None:  # the embedding model's batch
+            inlined = node.get("inlinedEmbedContentResponses")
         if isinstance(inlined, list):
             return [a for a in inlined if isinstance(a, dict)]
         if isinstance(inlined, dict):
@@ -388,6 +395,87 @@ class Painter:
             raise NotDrawn(f"Google's embeddings do not fit the question: {str(raw)[:200]}")
         self.spending.add(kind, embed_cost(raw.get("usageMetadata") or {}))
         return [[float(x) for x in v] for v in found]
+
+    def embed_batch(self, kind: str, pictures: Sequence[tuple[str, Image.Image]]) -> str:
+        """Hands pictures (each under a name of its own) to the embedding
+        model's Batch, at half the price: the batch's name, to ask
+        :meth:`embed_batched` with. Raises as :meth:`batch` does."""
+        key = self.config.gemini_key
+        if not key:
+            raise AiUnavailable("no Google API key")
+        names = [name for name, _ in pictures]
+        if not names or len(set(names)) != len(names):
+            raise ValueError("a batch needs pictures, each under a name of its own")
+        self.check_budget()
+        requests = [
+            {
+                "request": {
+                    "content": {
+                        "parts": [{"inline_data": {"mime_type": "image/jpeg", "data": _jpeg(img)}}]
+                    },
+                    "output_dimensionality": EMBED_SIZE,
+                },
+                "metadata": {"key": name},
+            }
+            for name, img in pictures
+        ]
+        weight = sum(len(json.dumps(r)) for r in requests)
+        if weight > BATCH_BYTES:
+            raise ValueError(
+                f"a batch of {len(pictures)} pictures weighs {weight / 1e6:.1f} MB, "
+                f"Google takes {BATCH_BYTES / 1e6:.0f} MB at most: send fewer at a time"
+            )
+        body = {
+            "batch": {
+                "display_name": f"frame-{kind}",
+                "input_config": {"requests": {"requests": requests}},
+            }
+        }
+        answer = self._send("post", EMBED_BATCH_URL, key, json=body)
+        name = answer.json().get("name")
+        if not isinstance(name, str) or not name.startswith("batches/"):
+            raise NotDrawn(f"Google's batch has no name: {answer.text[:200]}")
+        return name
+
+    def embed_batched(self, kind: str, batch: str) -> dict[str, list[float] | None] | None:
+        """The numbers of a batch's pictures by their names (None for one
+        Google did not answer); None while Google is at it. What they cost
+        is counted as ``kind`` once, when they are read. Raises as
+        :meth:`batched` does."""
+        key = self.config.gemini_key
+        if not key:
+            raise AiUnavailable("no Google API key")
+        try:
+            answer = self._send("get", f"{BATCHES_URL}/{batch}", key)
+        except (Busy, httpx.HTTPError):
+            return None
+        except NotDrawn as err:
+            raise NotDrawn(f"batch {batch}: {err}", err.code or "lost") from err
+        raw = answer.json()
+        state = _state(raw)
+        if state in ("PENDING", "RUNNING", "UNSPECIFIED", ""):
+            return None
+        if state != "SUCCEEDED":
+            raise NotDrawn(f"batch {batch}: {state.lower()}", state.lower())
+        found: dict[str, list[float] | None] = {}
+        spent = 0.0
+        for at, one in enumerate(_answers(raw)):
+            name = str((one.get("metadata") or {}).get("key") or at)
+            reply = one.get("response") if isinstance(one.get("response"), dict) else one
+            values = ((reply or {}).get("embedding") or {}).get("values")
+            if isinstance(values, list) and values:
+                found[name] = [float(x) for x in values]
+                usage = (reply or {}).get("usageMetadata")
+                tokens = (reply or {}).get("tokenCount")
+                if isinstance(usage, dict):
+                    spent += embed_cost(usage)
+                else:  # a picture's tokens, as the answer counts them or as they are
+                    count = int(str(tokens)) if str(tokens or "").isdigit() else PICTURE_TOKENS
+                    spent += count * EMBED_PRICES[1] / 1e6
+            else:
+                found[name] = None
+        self.spending.add(kind, round(spent * BATCH_SHARE, 6))
+        return found
 
     def batch(self, kind: str, asks: Sequence[Ask]) -> str:
         """Hands the questions to Google's Batch (answered within a day, at

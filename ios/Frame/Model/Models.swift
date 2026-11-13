@@ -1535,6 +1535,9 @@ struct AiSettings: Codable, Hashable, Sendable {
     /// The study's "Jak powstawał" drawn by the image model; nil from
     /// older servers.
     var stages: Bool? = nil
+    /// The studies written before the facts from the web, filled in at a
+    /// tap; nil from older servers.
+    var studyRefresh: StudyRefresh? = nil
     /// Works on "Do sprawdzenia"; nil from older servers.
     var reviewCount: Int? = nil
     var monthlyLimitUsd: Double
@@ -1568,6 +1571,27 @@ struct AiSettings: Codable, Hashable, Sendable {
     var geminiMonthlyLimitUsd: Double? = nil
     var geminiSpentUsd: Double? = nil
     var geminiSpentByKind: [String: Double]? = nil
+}
+
+/// "Uzupełnij wcześniejsze studia" (Mateusz 2026-11-13): the studies with
+/// no facts from the web yet get them through Claude's Batch, and those the
+/// facts add much to a new text about the work's circumstances and colour;
+/// the analysis of composition, the details and the work's road stay.
+struct StudyRefresh: Codable, Hashable, Sendable {
+    /// Studies with no facts yet, and those waiting for their new text.
+    var waiting: Int
+    var rewriteWaiting: Int
+    /// An order is under way: the studies asked about, being rewritten.
+    var running: Bool
+    var asked: Int
+    var rewriting: Int
+    /// So far: studies that got facts, rewritten, what it cost.
+    var found: Int
+    var rewritten: Int
+    var spentUsd: Double
+    /// About what the facts of those waiting cost, and their new texts (at most).
+    var factsUsd: Double
+    var rewriteUsd: Double
 }
 
 /// Only what is set changes.

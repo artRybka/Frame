@@ -204,6 +204,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             service.drawn.start()
             # The museums' works get their looks as numbers ("G1").
             service.looks.start()
+            # The earlier studies' facts and rewrites, ordered from the app.
+            service.study_refresh.start_thread()
             # Who the catalogue's artists are, from Wikidata: once some
             # minutes after a start (the search knows them then), new ones at
             # night (artist_people.py).
@@ -224,6 +226,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         service.restorer.stop()
         service.drawn.stop()
         service.looks.stop()
+        service.study_refresh.stop()
         if service.night is not None:
             service.night.stop()
         service.library.close()

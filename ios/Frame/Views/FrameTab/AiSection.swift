@@ -29,6 +29,8 @@ struct AiSection: View {
     @State private var savingGeminiKey = false
     @State private var estimating = false
     @State private var estimate: AiEstimate?
+    @State private var askRefresh = false
+    @State private var startingRefresh = false
 
     private static let limits: [Double] = [1, 2, 5, 10, 20, 50, 100, 150, 200]
 
@@ -85,7 +87,7 @@ struct AiSection: View {
                         toggle(
                             "Szukanie wyglądem",
                             hint: "Szukaj po tym, jak dzieło wygląda: opisem, zdjęciem i „Podobne wyglądem”. "
-                                + "Jednorazowo ok. 0,01 centa za dzieło z muzeum, pytanie ułamek centa. Twoje zdjęcia nie trafiają do Google.",
+                                + "Dzieła z muzeów przygotowuje raz, przez Batch (ok. 0,006 centa za dzieło), pytanie to ułamek centa. Twoje zdjęcia nie trafiają do Google.",
                             value: looks
                         ) { AiSettingsUpdate(looks: $0) }
                         if settings.geminiKeySet == true, let note = Self.looksNote(settings, on: looks) {
@@ -218,6 +220,11 @@ struct AiSection: View {
                         hint: "Przed napisaniem studium Claude szuka w sieci badań, losów i wystaw dzieła i wplata je w tekst. Ok. 0,15–0,3 USD za studium.",
                         value: webFacts
                     ) { AiSettingsUpdate(webFacts: $0) }
+                }
+                if let refresh = settings.studyRefresh,
+                   refresh.running || refresh.waiting > 0 || refresh.found > 0 {
+                    Divider()
+                    studyRefreshRow(refresh)
                 }
                 if let count = settings.reviewCount {
                     Divider()
@@ -450,6 +457,70 @@ struct AiSection: View {
     // MARK: Progress
 
     @ViewBuilder
+    // MARK: Earlier studies
+
+    /// "Uzupełnij wcześniejsze studia" (Mateusz 2026-11-13): the studies
+    /// written before the facts from the web get them through Claude's
+    /// Batch; only those the facts add much to get a new text.
+    @ViewBuilder
+    private func studyRefreshRow(_ refresh: StudyRefresh) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Uzupełnij wcześniejsze studia").foregroundStyle(Theme.ink)
+            Text(refreshHint(refresh))
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+            if !refresh.running && refresh.waiting > 0 {
+                Button {
+                    askRefresh = true
+                } label: {
+                    HStack {
+                        Text("Uzupełnij \(refresh.waiting) \(Names.studies(refresh.waiting))")
+                        if startingRefresh { ProgressView() }
+                    }
+                }
+                .fontWeight(.semibold)
+                .disabled(!settings.keySet || startingRefresh)
+                .confirmationDialog(
+                    "Uzupełnić \(refresh.waiting) \(Names.studies(refresh.waiting))?",
+                    isPresented: $askRefresh,
+                    titleVisibility: .visible
+                ) {
+                    Button("Uzupełnij") {
+                        Task {
+                            startingRefresh = true
+                            await model.startStudyRefresh()
+                            startingRefresh = false
+                        }
+                    }
+                    Button("Anuluj", role: .cancel) {}
+                } message: {
+                    Text("Fakty ok. \(Money.usd(refresh.factsUsd)), nowe teksty do \(Money.usd(refresh.rewriteUsd)), w pakietach Anthropic. Wyniki w ciągu kilku godzin.")
+                }
+            }
+        }
+    }
+
+    private func refreshHint(_ refresh: StudyRefresh) -> String {
+        if refresh.running {
+            if refresh.rewriting > 0 {
+                return "W toku: nowe teksty z faktami dla \(refresh.rewriting) \(Self.ofStudies(refresh.rewriting)). Wyniki w ciągu kilku godzin."
+            }
+            return "W toku: Claude szuka faktów do \(refresh.asked) \(Self.ofStudies(refresh.asked)). Wyniki w ciągu kilku godzin."
+        }
+        var done = ""
+        if refresh.found > 0 {
+            done = " Dotąd: fakty do \(refresh.found) \(Self.ofStudies(refresh.found)), nowe teksty: \(refresh.rewritten) (\(Money.usd(refresh.spentUsd)))."
+        }
+        if refresh.waiting == 0 {
+            return "Wszystkie studia mają już fakty z sieci." + done
+        }
+        return "\(refresh.waiting) \(Names.studies(refresh.waiting)) bez faktów z sieci. Claude znajdzie, czego w nich brakuje, i przepisze tylko te, którym fakty wiele dodadzą. Kompozycja, detale i Droga dzieła zostają." + done
+    }
+
+    /// "studium" or "studiów" after "do 1", "dla 5".
+    private static func ofStudies(_ count: Int) -> String { count == 1 ? "studium" : "studiów" }
+
     private var progress: some View {
         progressRow("Słowa kluczowe", settings.keywordsProgress)
         if let plText = settings.plTextProgress {

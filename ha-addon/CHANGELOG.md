@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.145.93
+
+- Szukanie wyglądem przygotowuje dzieła z muzeów przez Batch Google, za
+  pół ceny (ok. 6 USD zamiast 12 dla całej biblioteki). Paczki wracają
+  zwykle w kilka minut, więc biblioteka będzie gotowa w ciągu doby; na
+  bieżąco idą tylko Twoje pytania słowami i zdjęciem.
+- Konfiguracja → Claude: „Uzupełnij wcześniejsze studia”. Claude szuka w
+  sieci faktów, których w napisanych już studiach brakuje (badania,
+  losy, wystawy, odbiór), i przepisuje tekst tylko tam, gdzie wiele
+  dodają. Analiza kompozycji, detale i Droga dzieła zostają bez zmian.
+  W pakietach Anthropic, za pół ceny; przycisk pokazuje liczbę studiów i
+  koszt.
+
 ## 1.145.92
 
 - Szukanie wyglądem: w Szukaj wystarczy opisać, jak dzieło wygląda
