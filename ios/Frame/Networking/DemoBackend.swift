@@ -77,7 +77,7 @@ actor DemoBackend: FrameBackend {
         keywordsPhotos: true, daily: true, searchWords: true, curator: true, twinsJudge: true, gatekeeper: true, audit: true, looks: true, journey: true, webFacts: true, stages: true,
         studyRefresh: StudyRefresh(
             waiting: 42, rewriteWaiting: 0, running: false, asked: 0, rewriting: 0,
-            found: 0, rewritten: 0, spentUsd: 0, factsUsd: 7.56, rewriteUsd: 1.26
+            found: 0, rewritten: 0, spentUsd: 0, factsUsd: 4.2, rewriteUsd: 1.26
         ),
         reviewCount: 2, monthlyLimitUsd: 5, spentUsd: 0,
         keywordsProgress: .init(done: 0, waiting: 0, refused: 0, batchItems: 0, batchDone: 0, preparing: false),
