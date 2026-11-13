@@ -50,8 +50,10 @@ COLOUR_SPREAD = (0.01, 0.035)
 #: shares, the swatches and the accents (``named``), beige a family of its
 #: own, accents by the pixels that stand out, a tag for the white accent
 #: and the tints, Tonacja against the picture's own white; 16: a pale
-#: sheet measured without the board it was photographed on (``unmounted``).
-SCORE_VERSION = 16
+#: sheet measured without the board it was photographed on (``unmounted``);
+#: 17: the accents the bar has room for are the most striking, not the
+#: largest (``striking``).
+SCORE_VERSION = 17
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
 #: this chroma / lightness for light ones: a greyish-blue sky does, a beige
@@ -536,7 +538,7 @@ def analyse(img: Image.Image, spread: float | None = None) -> Analysis:
     swatches = [_swatch(c, w) for c, w in dominant + more]
     # A touch is what the eye goes to: it is shown before the least accent.
     room = MAX_SWATCHES - len(swatches) - len(small) - len(white) - len(tinted)
-    swatches += [_swatch(c, w, accent=True) for c, w, _ in accents[: max(room, 0)]]
+    swatches += [_swatch(c, w, accent=True) for c, w, _ in striking(accents, dominant, room)]
     swatches += [_swatch(c, w, accent=True) for c, w in tinted]
     swatches += [_swatch(c, w, accent=True) for c, w, _ in small]
     swatches += [_swatch(c, w, accent=True) for c, w in white]
@@ -975,9 +977,6 @@ def accent_colours(
     coloured |= (off_cast >= max(ACCENT_OFF_CAST, 2.5 * float(np.median(off_cast)))) & (
         chroma >= 0.025
     )
-    shown_chroma = np.array([float(np.hypot(c[1], c[2])) for c, _ in dominant])
-    shown_hue = np.array([float(_hue(c)) for c, _ in dominant])
-    shown_light = np.array([float(c[0]) for c, _ in dominant])
     n = len(lab)
     found: list[tuple[np.ndarray, float, str, float]] = []
     for name, start, end in ACCENT_SECTORS:
@@ -995,9 +994,7 @@ def accent_colours(
         # A dominant colour of about its hue and lightness may show it
         # already, unless the accent is much more vivid (a gold sleeve is
         # no mid brown).
-        gap = np.abs((shown_hue - float(_hue(centre)) + 180) % 360 - 180)
-        near = (gap < 20) & (np.abs(shown_light - centre[0]) < 0.15) & (shown_chroma >= 0.03)
-        shown = float(shown_chroma[near].max()) if near.any() else 0.0
+        shown = _shown_chroma(centre, dominant)
         if vivid < ACCENT_STRONGER * shown and vivid - shown < ACCENT_BRIGHTER:
             continue
         # Its share: the coloured pixels that look like it.
@@ -1019,6 +1016,46 @@ def accent_colours(
         elif len(accents) < MAX_ACCENTS:
             accents.append((centre, share, name))
     return sorted(accents, key=lambda a: -a[1])
+
+
+def _shown_chroma(centre: np.ndarray, dominant: Sequence[tuple[np.ndarray, float]]) -> float:
+    """The chroma of the most colourful dominant colour of about
+    ``centre``'s hue and lightness, the colour that shows it already; 0
+    when none does."""
+    best = 0.0
+    for colour, _ in dominant:
+        chroma = float(np.hypot(colour[1], colour[2]))
+        gap = abs((float(_hue(colour)) - float(_hue(centre)) + 180) % 360 - 180)
+        if gap < 20 and abs(float(colour[0]) - float(centre[0])) < 0.15 and chroma >= 0.03:
+            best = max(best, chroma)
+    return best
+
+
+def striking(
+    accents: Sequence[tuple[np.ndarray, float, str]],
+    dominant: Sequence[tuple[np.ndarray, float]],
+    room: int,
+) -> list[tuple[np.ndarray, float, str]]:
+    """The ``room`` accents the eye goes to first, largest first: by how
+    much more colourful each is than the dominant colour that is like it,
+    and by its size (the square root of its share, as ``accent_colours``
+    ranks them). Not the largest: the red cloak of Delacroix's study for
+    the Massacre at Chios, the picture's most vivid colour, is smaller
+    than its ochres, and the bar had room for those only (Mateusz
+    2026-11-13 10:34: „dlaczego na pasku nie ma tak wyraźnej czerwieni
+    (akcentu)?”)."""
+    if room <= 0:
+        return []
+    if room >= len(accents):
+        return list(accents)
+
+    def stands_out(accent: tuple[np.ndarray, float, str]) -> float:
+        centre, share, _ = accent
+        vivid = float(np.hypot(centre[1], centre[2]))
+        return (vivid - _shown_chroma(centre, dominant)) * float(np.sqrt(share))
+
+    kept = sorted(accents, key=stands_out, reverse=True)[:room]
+    return sorted(kept, key=lambda a: -a[1])
 
 
 def touches(
