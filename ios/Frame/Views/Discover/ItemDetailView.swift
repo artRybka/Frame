@@ -149,10 +149,13 @@ struct ItemDetailView: View {
                 // CI screenshots
                 guard LaunchRoute.screen == "detail", let scroll = LaunchRoute.scroll, ["about", "palette", "title", "picture", "looks"].contains(scroll), polish != nil else { return }
                 Task {
-                    // ("looks": the row comes in after its own answer)
-                    try? await Task.sleep(for: .seconds(scroll == "looks" ? 3 : 1))
                     let anchor: UnitPoint = ["palette", "picture"].contains(scroll) ? .center : scroll == "looks" ? .bottom : .top
-                    proxy.scrollTo(scroll, anchor: anchor)
+                    // ("looks": the row comes in after its own answer, at the
+                    // card's end: scrolled again until it is there)
+                    for _ in 0 ..< (scroll == "looks" ? 6 : 1) {
+                        try? await Task.sleep(for: .seconds(1))
+                        withAnimation(nil) { proxy.scrollTo(scroll, anchor: anchor) }
+                    }
                 }
             }
         }
