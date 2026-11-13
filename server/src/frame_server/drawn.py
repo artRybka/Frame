@@ -48,6 +48,7 @@ import logging
 import threading
 import time
 import zlib
+from collections.abc import Callable
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -57,6 +58,8 @@ from PIL import Image
 from .ai.check import page_views
 from .ai.client import AiUnavailable
 from .ai.composition import PAGES, cropped
+from .ai.daily import KIND as DAILY
+from .ai.daily import Box
 from .ai.drawn import (
     AT_ONCE,
     BLOCKED_TRIES,
@@ -68,8 +71,10 @@ from .ai.drawn import (
     Under,
     draw,
     lines_ask,
+    marks_there,
     put_together,
     study_prompt,
+    underlay,
 )
 from .ai.gemini import LITE, Ask, GeminiRejected, NoCredit, NotDrawn, Painter, blocked
 from .ai.jobs import listed, relist, text_hash
@@ -87,6 +92,9 @@ log = logging.getLogger(__name__)
 LOOK = 1
 #: The picture a sheet is drawn from is at most this long.
 SOURCE_SIDE = 2000
+#: A study drawn for another field of the work serves a take whose field's
+#: edges lie this near its (fractions of the reproduction's sides).
+NEAR_FIELD = 0.015
 #: Since when the pages are new ones (state): when the sheets were first drawn.
 SINCE = "drawn_since"
 #: The background lets the server start first, rests between two sheets,
@@ -136,6 +144,14 @@ class DrawnSheets:
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        #: Whether the work's analysis is about to be made anew (a rework
+        #: of its round, the owner's "Wykonaj ponowną analizę" on its way):
+        #: the take its pages show now gets no sheet, the new one will.
+        self.replacing: Callable[[str], bool] = lambda item_id: False
+        #: Whether the work is the work of a day still to come: its page,
+        #: written a day ahead through Claude's Batch, has its sheet drawn
+        #: through Google's, and at once only once its day has come.
+        self.to_come: Callable[[str], bool] = lambda item_id: False
 
     # -- what is kept ---------------------------------------------------------
 
@@ -218,31 +234,72 @@ class DrawnSheets:
         field = view.field.model_dump_json() if view.field is not None else ""
         return f"{item.file_stem}-u{text_hash(LOOK, field)[:8]}"
 
-    def _under_file(self, item: Item, view: View, part: str) -> Path:
-        return self.dir / f"{self._under_name(item, view)}-{part}.png"
+    def _under_file(self, item: Item, view: View, part: str, name: str | None = None) -> Path:
+        return self.dir / f"{name or self._under_name(item, view)}-{part}.png"
+
+    def _near(self, item: Item, view: View) -> str | None:
+        """The name of the study kept for another field of the work whose
+        edges lie within :data:`NEAR_FIELD` of the take's: an analysis made
+        anew finds a print's field again a few pixels off, and its lines go
+        over the study the work has (Mateusz 2026-11-12 23:20)."""
+        if view.field is None:
+            return None
+        f = view.field
+        best: tuple[float, str] | None = None
+        for path in self.dir.glob(f"{item.file_stem}-u*-field.json"):
+            try:
+                box = Box.model_validate_json(path.read_text())
+            except (OSError, ValueError):
+                continue
+            off = max(
+                abs(box.x - f.x),
+                abs(box.y - f.y),
+                abs(box.x + box.w - f.x - f.w),
+                abs(box.y + box.h - f.y - f.h),
+            )
+            name = path.name.removesuffix("-field.json")
+            if off <= NEAR_FIELD and (best is None or off < best[0]):
+                best = (off, name)
+        return best[1] if best is not None else None
 
     def _under(self, item: Item, view: View, work: Image.Image | None = None) -> Under | None:
         """The study kept for the work and the take's field, with what
         runs out of it; None when there is none. One that is no longer
-        ``work``'s (the work has another picture now) is thrown away."""
+        ``work``'s (the work has another picture now) is thrown away. With
+        ``work``, a study of a near field (:meth:`_near`) that lies on it
+        is taken, and kept as this field's too."""
+        name = self._under_name(item, view)
+        borrowed = False
+        if not self._under_file(item, view, "study").is_file():
+            near = self._near(item, view) if work is not None else None
+            if near is None:
+                return None
+            name, borrowed = near, True
         try:
-            study = Image.open(self._under_file(item, view, "study")).convert("RGB")
+            study = Image.open(self._under_file(item, view, "study", name)).convert("RGB")
         except OSError:
             return None
         if work is not None and imaging.measure(work, study)[1] > imaging.FAR_OFF:
+            if borrowed:  # another field's: it stays that field's
+                return None
             log.info("the study kept for %s is not its picture's any more", item.id)
             for part in ("study", "spill"):
                 with contextlib.suppress(OSError):
                     self._under_file(item, view, part).unlink()
             return None
         try:
-            spilt = Image.open(self._under_file(item, view, "spill")).convert("RGB")
+            spilt = Image.open(self._under_file(item, view, "spill", name)).convert("RGB")
         except OSError:
             spilt = None
-        return Under(study, spilt)
+        under = Under(study, spilt)
+        if borrowed:
+            log.info("the study of %s drawn for a near field is taken", item.id)
+            self._keep_under(item, view, under)
+        return under
 
     def _keep_under(self, item: Item, view: View, under: Under | None) -> None:
-        """Keeps what is not kept yet of what the take was drawn over."""
+        """Keeps what is not kept yet of what the take was drawn over, and
+        the field it was drawn for."""
         if under is None:
             return
         for part, img in (("study", under.study), ("spill", under.spilt)):
@@ -251,6 +308,9 @@ class DrawnSheets:
                 out = io.BytesIO()
                 img.save(out, "PNG")
                 self._write(path.name, out.getvalue())
+        field = self.dir / f"{self._under_name(item, view)}-field.json"
+        if view.field is not None and not field.is_file():
+            self._write(field.name, view.field.model_dump_json().encode())
 
     # -- which are wanted -----------------------------------------------------
 
@@ -280,16 +340,19 @@ class DrawnSheets:
             self._tried = kept if isinstance(kept, dict) else {}
         return self._tried
 
-    def _fail(self, stem: str, why: object, count: bool = True) -> None:
+    def _fail(self, stem: str, why: object, count: bool = True, asked: int = 1) -> None:
         """A take's sheet could not be drawn: tried again in an hour, and
         (``count``: the model's doing, not the picture's or the network's)
-        no more once tried :data:`TRIES` times."""
+        no more once tried :data:`TRIES` times. ``asked``: how many times
+        Google would not take the question this go (at once it is asked up
+        to ``BLOCKED_TRIES`` times in a row; in the Batch, once)."""
         log.warning("sheet %s not drawn: %s", stem, why)
         self._failed[stem] = time.monotonic()
         if count:
             tries = self._tries()
-            name = f"{stem}{REFUSED}" if isinstance(why, NotDrawn) and blocked(why.code) else stem
-            tries[name] = tries.get(name, 0) + 1
+            refused = isinstance(why, NotDrawn) and blocked(why.code)
+            name = f"{stem}{REFUSED}" if refused else stem
+            tries[name] = tries.get(name, 0) + (asked if refused else 1)
             self._write("tries.json", json.dumps(tries).encode())
 
     def _left(self, stem: str) -> bool:
@@ -327,15 +390,25 @@ class DrawnSheets:
             for item_id, note in self.library.notes(kind).items():
                 views = page_views(note.data)
                 item = self.library.get(item_id) if views else None
-                if item is None:
+                if item is None or self.replacing(item_id):
                     continue
                 stem = self._stem(item, self.key(views[0]))
-                if stem in found or self._left(stem) or self.meta(item, views[0]) is not None:
-                    continue
                 made = str(note.created_at)
-                found[stem] = (made, made >= since or item_id in anew, item, views[0])
+                now = item_id in anew or self._new(kind, item_id, made, since)
+                if stem in found:  # the work's study and its day's page: one take
+                    known = found[stem]
+                    found[stem] = (max(made, known[0]), now or known[1], item, known[3])
+                    continue
+                if self._left(stem) or self.meta(item, views[0]) is not None:
+                    continue
+                found[stem] = (made, now, item, views[0])
         newest = sorted(found.values(), key=lambda entry: entry[0], reverse=True)
         return [(now, item, view) for _, now, item, view in newest]
+
+    def _new(self, kind: str, item_id: str, made: str, since: str) -> bool:
+        """A page written since the sheets began to be drawn, but not one
+        of a day still to come (:attr:`to_come`)."""
+        return made >= since and not (kind == DAILY and self.to_come(item_id))
 
     def at_once(self) -> list[Take]:
         """The takes whose sheet is drawn now, in their order."""
@@ -364,11 +437,23 @@ class DrawnSheets:
         stem = self._stem(item, self.key(view))
         if self._left(stem) or self._waits(stem):
             return False
+        if self.replacing(item.id):
+            return False
         if item.id in listed(self.library, AT_ONCE):
             return True
         since = self._since()
-        notes = (self.library.note(item.id, kind) for kind in PAGES)
-        return any(note is not None and str(note.created_at) >= since for note in notes)
+        notes = ((kind, self.library.note(item.id, kind)) for kind in PAGES)
+        return any(
+            note is not None and self._new(kind, item.id, str(note.created_at), since)
+            for kind, note in notes
+        )
+
+    def covers(self, item: Item, view: View) -> bool:
+        """Whether the take has its drawn sheet, or will have one: the
+        image model draws the sheets and has not given this one up."""
+        if self.meta(item, view) is not None:
+            return True
+        return self.enabled() and not self._left(self._stem(item, self.key(view)))
 
     def counts(self) -> tuple[int, int]:
         """How many saved pages' takes still wait for the Batch, and how
@@ -399,9 +484,15 @@ class DrawnSheets:
         paint = partial(self.painter.paint, KIND, think=THINK)
         spill = partial(self.painter.paint, KIND, model=LITE)
         work = self._work(item, view)
+        inside = view.inside()
         under = self._under(item, view, work)
-        sheet = draw(work, view.inside(), paint, seed=self._seed(item), under=under, spill=spill)
-        self._keep_under(item, view, sheet.under)
+        costs: dict[str, float] = {}
+        if under is None:
+            # Kept before the lines are asked for: should they fail, the
+            # study is paid for once, and the next go asks the lines alone.
+            under = underlay(work, inside, paint, spill, costs)
+            self._keep_under(item, view, under)
+        sheet = draw(work, inside, paint, seed=self._seed(item), under=under, costs=costs)
         self._keep(item, view, sheet)
         log.info("sheet of %s drawn: %s", item.id, sheet.cost)
 
@@ -419,8 +510,8 @@ class DrawnSheets:
             log.info("sheets not drawn now: %s", err)
             self._rest(LIMIT)
             return False
-        except NotDrawn as err:  # this answer
-            self._fail(stem, err)
+        except NotDrawn as err:  # this answer (one Google would not take: asked so often)
+            self._fail(stem, err, asked=BLOCKED_TRIES)
             return True
         except Exception as err:  # this one's picture, the network
             self._fail(stem, err, count=False)
@@ -575,7 +666,14 @@ class DrawnSheets:
             self._looked = time.monotonic()
 
     def _lines_in(self, state: dict[str, Any], answers: dict[str, Any]) -> None:
-        """The second round came: the sheets are put together and kept."""
+        """The second round came: the sheets are put together and kept. A
+        take whose answer left a mark out has its lines asked for once more
+        in another round, as at once (``ai.drawn.LINES_TRIES``), and the
+        answer with more of its marks is kept."""
+        again: list[list[str]] = []
+        stems: list[str] = []
+        cost_again: dict[str, dict[str, float]] = {}
+        asked_again = set(state.get("again") or [])
         for stem, item, view in self._each(state):
             cost = dict(state["cost"].get(stem) or {})
             lines = answers.get(f"{stem}/lines")
@@ -588,24 +686,69 @@ class DrawnSheets:
                 if under.spilt is None and isinstance(spill, tuple):
                     under.spilt, cost["spill"] = spill
                     self._keep_under(item, view, under)
-                wanted = lines_ask(under.study, inside) is not None
-                if wanted and not isinstance(lines, tuple):
-                    raise NotDrawn(f"no lines: {lines or 'no answer'}")
-                marked = None
-                if wanted and isinstance(lines, tuple):
-                    marked, cost["lines"] = lines
+                ask = lines_ask(under.study, inside)
+                marked = self._marked(stem)
+                if ask is not None and isinstance(lines, tuple):
+                    answer, usd = lines
+                    cost["lines"] = round(cost.get("lines", 0.0) + usd, 4)
+                    there = marks_there(under.study, answer, ask[1])
+                    if marked is not None:  # the first answer, kept for this one
+                        first = marks_there(under.study, marked, ask[1])
+                        if first >= there:
+                            answer, there = marked, first
+                    marked = answer
+                    if there < len(ask[1]) and stem not in asked_again:
+                        self._keep_marked(stem, marked)
+                        again.append([item.id, self.key(view)])
+                        stems.append(stem)
+                        cost_again[stem] = cost
+                        continue
+                elif ask is not None and marked is None:
+                    code = lines.code if isinstance(lines, NotDrawn) else ""
+                    raise NotDrawn(f"no lines: {lines or 'no answer'}", code)
+                if ask is None:
+                    marked = None  # a take without a mark to draw
                 work = self._work(item, view)
                 seed = self._seed(item)
                 sheet = put_together(work, inside, under.study, marked, under.spilt, cost, seed)
             except NotDrawn as err:
                 self._fail(stem, err)
+                self._drop_marked(stem)
                 continue
             except Exception as err:
                 self._fail(stem, err, count=False)
+                self._drop_marked(stem)
                 continue
             self._keep(item, view, sheet)
+            self._drop_marked(stem)
             log.info("sheet of %s drawn through the batch: %s", item.id, sheet.cost)
-        self._set_batch(None)
+        if again:
+            log.info("%d sheets' lines asked for once more: a mark was left out", len(again))
+            self._set_batch(
+                {"round": "lines", "name": "", "takes": again, "cost": cost_again, "again": stems}
+            )
+        else:
+            self._set_batch(None)
+
+    def _marked_file(self, stem: str) -> Path:
+        return self.dir / f"{stem}-marked.png"
+
+    def _marked(self, stem: str) -> Image.Image | None:
+        """The lines the Batch drew over a take's study the first time,
+        kept while they are asked for once more."""
+        try:
+            return Image.open(self._marked_file(stem)).convert("RGB")
+        except OSError:
+            return None
+
+    def _keep_marked(self, stem: str, marked: Image.Image) -> None:
+        out = io.BytesIO()
+        marked.save(out, "PNG")
+        self._write(self._marked_file(stem).name, out.getvalue())
+
+    def _drop_marked(self, stem: str) -> None:
+        with contextlib.suppress(OSError):
+            self._marked_file(stem).unlink()
 
     def _batched(self) -> bool:
         """A step of the Batch; False when there is nothing to do now."""

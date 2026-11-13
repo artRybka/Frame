@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.145.84
+
+- Przygotowanie studiów bez płacenia dwa razy: arkusz kompozycji z Gemini
+  nie jest rysowany dla analizy, która zaraz zostanie zrobiona od nowa;
+  gdy kolorowe kreski się nie udadzą, następna próba nie płaci drugi raz
+  za szkic; akt, którego Google nie przyjmuje, jest próbowany 8 razy w
+  sumie, a nie 8 razy w każdej z kolejnych prób; ponowna analiza ryciny z
+  marginesem rysuje na istniejącym szkicu same kreski.
+- Studium dnia pisane dzień wcześniej (Batch Claude) dostaje arkusz z
+  Gemini też przez Batch, za połowę ceny; gdy jego dzień przyjdzie, a
+  arkusza jeszcze nie ma, rysuje się od razu. Batch pyta drugi raz o
+  kreski, gdy model pominął któryś znacznik, tak jak przy rysowaniu od
+  razu.
+- Dzieło, którego szkicu Google nie narysuje, dostaje nocą kreskę piórka
+  na arkuszu serwera zamiast samych plam.
+
 ## 1.145.83
 
 - Zmiana zaczęta tuż przed wyjściem z aplikacji kończy się sama. Wybór

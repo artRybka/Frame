@@ -59,6 +59,9 @@ KIND = "sheet"
 TYPICAL_USD = 0.12
 #: How much the model thinks before it draws the study and the lines.
 THINK = "minimal"
+#: The lines are asked for this many times at most while a mark is left
+#: out (the answer with more of them is kept), at once and in the Batch.
+LINES_TRIES = 2
 #: A study Google will not take at all (a nude, now and then) is asked for
 #: up to this many times: a refusal costs nothing (Mateusz 2026-11-13 08:26:
 #: "Akty - ograniczmy się do powielania prób (do 8 razy)"; black bars over
@@ -411,9 +414,17 @@ def _there(layers: Sequence[Any]) -> int:
     return sum(float((layer > 0.3).mean()) >= drawn.NO_MARK for layer in layers)
 
 
+def marks_there(study: Image.Image, marked: Image.Image, colours: Sequence[str]) -> int:
+    """How many of the take's marks (one per pencil in ``colours``) the
+    model drew over ``study`` in its answer ``marked``."""
+    layers, _ = drawn.split(study, marked, colours)
+    return _there(layers)
+
+
 def _asked(paint: Paint, prompt: str, picture: Image.Image) -> tuple[Image.Image, float]:
-    """The study as asked, asked again while Google will not take the
-    question (:data:`BLOCKED_TRIES` at most; refused, it costs nothing)."""
+    """The study (or its lines) as asked, asked again while Google will not
+    take the question (:data:`BLOCKED_TRIES` at most; refused, it costs
+    nothing)."""
     for attempt in range(BLOCKED_TRIES):
         try:
             return paint(prompt, [picture])
@@ -450,13 +461,13 @@ def _marks(
         return None
     prompt, colours = ask
     best: tuple[int, Image.Image] | None = None
-    for _ in range(2):
-        marked, usd = paint(prompt, [study])
+    for _ in range(LINES_TRIES):
+        marked, usd = _asked(paint, prompt, study)
         costs["lines"] = costs.get("lines", 0.0) + usd
-        layers, _ = drawn.split(study, marked, colours)
-        if best is None or _there(layers) > best[0]:
-            best = (_there(layers), marked)
-        if best[0] == len(layers):
+        there = marks_there(study, marked, colours)
+        if best is None or there > best[0]:
+            best = (there, marked)
+        if best[0] == len(colours):
             break
     return best[1] if best is not None else None
 
@@ -519,6 +530,29 @@ def put_together(
     )
 
 
+def underlay(
+    picture: Image.Image,
+    view: View,
+    paint: Paint,
+    spill: Paint | None = None,
+    costs: dict[str, float] | None = None,
+) -> Under:
+    """What a work's takes are drawn over, asked for now: its study, and
+    the study with what runs out of it (``spill`` paints it, ``paint``
+    itself when None; one that cannot be had is left out). Raises
+    :class:`NotDrawn` when the study is not the work's."""
+    costs = costs if costs is not None else {}
+    study, _ = _study(drawn.sent(picture), view, paint, costs)
+    spilt = None
+    try:
+        spilt, costs["spill"] = (spill or paint)(SPILL, [drawn.padded(study)[0]])
+    except AiUnavailable:
+        raise
+    except Exception as err:  # the sheet is paid for: it goes without its spill
+        log.warning("the sheet's spill left out: %s", err)
+    return Under(study, spilt)
+
+
 def draw(
     picture: Image.Image,
     view: View,
@@ -526,6 +560,7 @@ def draw(
     seed: int = 1,
     under: Under | None = None,
     spill: Paint | None = None,
+    costs: dict[str, float] | None = None,
 ) -> Sheet:
     """The sheet of a take, asked for now: ``picture`` is the work (its
     field alone, when the take has one) and ``view`` the take as its field
@@ -533,23 +568,15 @@ def draw(
     (``paint`` itself when None). Over ``under`` (the work's study, had
     before) only the take's lines are asked for (Mateusz 2026-11-12 23:20:
     "gdy zamawiam ponowną analizę, a podkład od Gemini już jest, to rób
-    nim tylko kolorowe kreski"). Raises :class:`NotDrawn` when the study
-    is not the work's; a spill that cannot be had is left out."""
+    nim tylko kolorowe kreski"). ``costs``: what was paid for this sheet
+    before (its study, asked apart), added to. Raises :class:`NotDrawn`
+    when the study is not the work's; a spill that cannot be had is left
+    out."""
     work = drawn.sent(picture)
-    costs: dict[str, float] = {}
+    costs = dict(costs or {})
     if under is None:
-        study, _ = _study(work, view, paint, costs)
-        marked = _marks(study, view, paint, costs)
-        spilt = None
-        try:
-            spilt, costs["spill"] = (spill or paint)(SPILL, [drawn.padded(study)[0]])
-        except AiUnavailable:
-            raise
-        except Exception as err:  # the sheet is paid for: it goes without its spill
-            log.warning("the sheet's spill left out: %s", err)
-        under = Under(study, spilt)
-    else:
-        marked = _marks(under.study, view, paint, costs)
+        under = underlay(work, view, paint, spill, costs)
+    marked = _marks(under.study, view, paint, costs)
     sheet = put_together(work, view, under.study, marked, under.spilt, costs, seed)
     sheet.under = under
     return sheet
