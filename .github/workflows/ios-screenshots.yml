@@ -88,6 +88,7 @@ jobs:
             capture now 16 "now-$appearance"
             capture now 16 "now-colour-oil-$appearance" -paintStyle oil
             capture now 16 "now-colour-water-$appearance" -paintStyle water
+            capture now 16 "now-colour-contour-$appearance" -paintStyle oil -paintRelief 1 -paintColours c07374:0.261/bc3b3f:0.235/c29794:0.164/d5b5ac:0.149/61383a:0.074 -paintContour 2d1e1d:3.4:1.17
             capture now 16 "now-colour-burin-$appearance" -paintStyle burin -paintColours c7bc9a:0.431/7e6e52:0.179/9d7f5a:0.171/ac9c77:0.138/c06e4f:0.044/aa8e38:0.043
             capture discover 12 "discover-$appearance"
             capture discover 14 "discover-studies-$appearance" -scroll studies
@@ -130,6 +131,7 @@ jobs:
             capture daily 16 "daily-colour-water-accents-$appearance" -scroll colour -paintStyle water -paintColours 526c8e:0.221/3b4e79:0.198/6f8593:0.169/303b4b:0.168/a0b07c:0.021/b5a43c:0.011/293690:0.020
             capture daily 16 "daily-colour-water-accents-mid-$appearance" -scroll colour -paintStyle water -paintAge 2.5 -paintColours 526c8e:0.221/3b4e79:0.198/6f8593:0.169/303b4b:0.168/a0b07c:0.021/b5a43c:0.011/293690:0.020
             capture daily 16 "daily-colour-dry-accents-$appearance" -scroll colour -paintStyle dry -paintColours 526c8e:0.221/3b4e79:0.198/6f8593:0.169/303b4b:0.168/a0b07c:0.021/b5a43c:0.011/293690:0.020
+            capture daily 16 "daily-colour-contour-$appearance" -scroll colour -paintStyle oil -paintRelief 1 -paintColours c07374:0.261/bc3b3f:0.235/c29794:0.164/d5b5ac:0.149/61383a:0.074 -paintContour 2d1e1d:3.4:1.17
             capture daily 16 "daily-colour-burin-$appearance" -scroll colour -paintStyle burin -paintColours 918d78:0.28/4c4a3c:0.26/5f5c4b:0.24/78745f:0.22
             capture daily 16 "daily-colour-burin-mid-$appearance" -scroll colour -paintStyle burin -paintAge 1.2 -paintColours 918d78:0.28/4c4a3c:0.26/5f5c4b:0.24/78745f:0.22
             capture daily 16 "daily-colour-burin-patches-$appearance" -scroll colour -paintStyle burin -paintColours c7bc9a:0.431/7e6e52:0.179/9d7f5a:0.171/ac9c77:0.138/c06e4f:0.044/aa8e38:0.043
@@ -159,6 +161,9 @@ jobs:
             capture detail 16 "detail-palette-pencil-patch-$appearance" -scroll palette -paintStyle pencil -paintColours f3ebe3:0.484/d0cec4:0.325/aeb1a5:0.122/909489:0.069/b0bd99:0.105:a/9cabac:0.071:a
             capture detail 16 "detail-palette-water-$appearance" -scroll palette -paintStyle water -paintColours 526c8e:0.221/3b4e79:0.198/6f8593:0.169/303b4b:0.168/a0b07c:0.021/b5a43c:0.011/293690:0.020
             capture detail 16 "detail-palette-dry-$appearance" -scroll palette -paintStyle dry -paintColours 526c8e:0.221/3b4e79:0.198/6f8593:0.169/303b4b:0.168/a0b07c:0.021/b5a43c:0.011/293690:0.020
+            capture detail 16 "detail-palette-contour-oil-$appearance" -scroll palette -paintStyle oil -paintRelief 1 -paintColours c07374:0.261/bc3b3f:0.235/c29794:0.164/d5b5ac:0.149/61383a:0.074 -paintContour 2d1e1d:3.4:1.17
+            capture detail 16 "detail-palette-contour-water-$appearance" -scroll palette -paintStyle water -paintColours c07374:0.261/bc3b3f:0.235/c29794:0.164/d5b5ac:0.149/61383a:0.074 -paintContour 09242b:3.3:1.34
+            capture detail 16 "detail-palette-contour-dry-$appearance" -scroll palette -paintStyle dry -paintColours c07374:0.261/bc3b3f:0.235/c29794:0.164/d5b5ac:0.149/61383a:0.074 -paintContour 231913:9.4:0.79
             capture detail 16 "detail-palette-burin-$appearance" -scroll palette -paintStyle burin -paintColours 918d78:0.28/4c4a3c:0.26/5f5c4b:0.24/78745f:0.22
             capture detail 16 "detail-palette-woodblock-$appearance" -scroll palette -paintStyle woodblock -paintColours d9cdb0:0.34/c8bc9d:0.22/1f3a5f:0.16/3d5f86:0.12/8fa7b8:0.09/e9e2cf:0.07
             capture detail 16 "detail-palette-photo-$appearance" -scroll palette -paintStyle photo -paintColours c9c2b4:0.30/2a2826:0.25/8a847a:0.30/565049:0.15

@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.145.80
+
+- Pasek barw: kreska konturu. Obraz malowany wyraźnym konturem (Matisse,
+  Bernard, Beckmann, Kirchner, „Sypialnia” Van Gogha) ma na pasku
+  „Kolorystyka” cienką kreskę w kolorze swoich linii: czarną, granatową
+  albo ciemnozieloną. Biegnie wzdłuż górnej krawędzi farby, okrąża jej
+  początek i wraca dołem, dalej niż górą; im więcej konturów ma obraz, tym
+  dłuższa. Jest płaska, w manierze techniki (smugi pędzla, brzegi
+  akwareli, ziarno pastelu). Dawne obrazy o ciemnych cieniach jej nie
+  dostają. Kontury dzieł już zapisanych liczą się raz po aktualizacji
+  serwera, osobno od analizy barw.
+
 ## 1.145.79
 
 - Droga dzieła nadąża za przewijaniem. Przy szybszym przewinięciu nie

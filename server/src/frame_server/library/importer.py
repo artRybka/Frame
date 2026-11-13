@@ -22,6 +22,7 @@ from PIL import Image
 from ..imaging.palette import Palette
 from .colors import analyse, has_colours, tint_spread
 from .commons import OWN_SOURCES
+from .contour import contour
 from .dates import text_year
 from .duplicates import better, dedupe
 from .fragments import Fragments, split_part
@@ -429,8 +430,10 @@ class Importer:
         with Image.open(self.cache.ensure_thumb(item)) as thumb:
             spread = tint_spread(thumb)
             colors, tags, shares = analyse(thumb, spread)
+            line = contour(thumb, tags)
         changes: dict[str, Any] = {
             "colors": colors,
+            "contour": line,
             "color_tags": tags,
             "color_shares": shares,
             "tint_spread": spread,
@@ -441,6 +444,7 @@ class Importer:
         with Image.open(self.cache.ensure_thumb(item)) as thumb:
             spread = tint_spread(thumb)
             colors, tags, shares = analyse(thumb, spread)
+            line = contour(thumb, tags)
             width, height = item.width, item.height
             if not width or not height:
                 width, height = thumb.size
@@ -452,6 +456,7 @@ class Importer:
             update={
                 "year": year,
                 "colors": colors,
+                "contour": line,
                 "color_tags": tags,
                 "color_shares": shares,
                 "tint_spread": spread,
