@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.76
+
+- Yale: także większe miniatury bardzo długich dzieł (zwoje, fryzy)
+  serwer bierze z całego pliku. Po zmianie oryginałów w 1.145.42 odmów
+  Yale było w nocy 142 zamiast 524 i wszystkie pochodziły z dwóch
+  przerw po takiej miniaturze, na którą Yale nie odpowiedziało na czas.
+
 ## 1.145.75
 
 - Playlista: pod nazwą jest porządek. Zostają tam tylko reguły, które

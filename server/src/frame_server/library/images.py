@@ -383,7 +383,8 @@ def whole_copy(item: Item) -> str:
 def thumb_copy(item: Item) -> str:
     """An elongated work's address asking for its thumbnail in the size it
     is kept in (:func:`thumb_size`), from a source whose addresses ask for a
-    size (:data:`SIZED`, Commons); "" for any other work or source."""
+    size (:data:`SIZED`, Commons), or for the whole file where a size takes
+    the server long (:data:`SLOW_SIZES`); "" for any other work or source."""
     width, height, url = item.width, item.height, item.image_url
     if not width or not height or not wide(width, height):
         return ""
@@ -391,6 +392,10 @@ def thumb_copy(item: Item) -> str:
     long = max(w, h)
     if item.source in SIZED:
         if _IIIF_FIT.search(url):
+            if item.source in SLOW_SIZES and width * height <= COMMONS_WHOLE:
+                # Yale's server did not answer !8192,8192 and !4674,4674 in
+                # time (the night of 2026-11-13: twice, and the host rested).
+                return _IIIF_FIT.sub("/full/full/", url)
             return _IIIF_FIT.sub(f"/full/!{long},{long}/", url)
         if _SI_MAX.search(url):
             return _SI_MAX.sub(rf"\g<1>{long}", url)
