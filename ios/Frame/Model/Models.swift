@@ -1520,10 +1520,21 @@ struct AiSettings: Codable, Hashable, Sendable {
     var gatekeeper: Bool? = nil
     /// The night audit of 30 works ("Do sprawdzenia"); nil from older servers.
     var audit: Bool? = nil
-    /// Szukaj by a sentence; nil from older servers.
-    var sentence: Bool? = nil
+    /// Szukaj wyglądem (Google's embedding model): the switch, how many
+    /// of the museums' works have their numbers, and why none are made now.
+    /// Nil from older servers.
+    var looks: Bool? = nil
+    var looksDone: Int? = nil
+    var looksTotal: Int? = nil
+    var looksError: String? = nil
     /// The study's "Droga dzieła" (Haiku); nil from older servers.
     var journey: Bool? = nil
+    /// Facts from the web woven into new studies (Sonnet with the web
+    /// search); nil from older servers.
+    var webFacts: Bool? = nil
+    /// The study's "Jak powstawał" drawn by the image model; nil from
+    /// older servers.
+    var stages: Bool? = nil
     /// Works on "Do sprawdzenia"; nil from older servers.
     var reviewCount: Int? = nil
     var monthlyLimitUsd: Double
@@ -1570,8 +1581,10 @@ struct AiSettingsUpdate: Encodable, Sendable {
     var twinsJudge: Bool?
     var gatekeeper: Bool?
     var audit: Bool?
-    var sentence: Bool?
+    var looks: Bool?
     var journey: Bool?
+    var webFacts: Bool?
+    var stages: Bool?
     var monthlyLimitUsd: Double?
     var drawn: Bool?
     var geminiMonthlyLimitUsd: Double?
@@ -1608,16 +1621,21 @@ struct AiReview: Codable, Hashable, Sendable {
     var isEmpty: Bool { setAside.isEmpty && findings.isEmpty }
 }
 
-/// `POST /api/terms/sentence`: what a sentence typed in Szukaj asks for.
-struct SentenceReading: Codable, Hashable, Sendable {
-    /// What the model read it as, in Polish.
-    var reading: String
-    /// The chips to put in.
-    var hits: [TermHit]
+/// `GET /api/looks`: whether Szukaj may offer searching by how works look
+/// (Google's key and the switch: `enabled`; works with their numbers:
+/// `ready`).
+struct LooksStatus: Codable, Hashable, Sendable {
+    var enabled: Bool
+    var ready: Bool
+    var done: Int
+    var total: Int
 }
 
-struct SentenceAsk: Encodable, Sendable {
-    var text: String
+/// Works found by how they look (words, a photograph, a work), nearest
+/// first, with how near each is (0-1).
+struct LooksAnswer: Codable, Hashable, Sendable {
+    var items: [ItemSummary]
+    var scores: [Double]
 }
 
 struct AiKeyUpdate: Encodable, Sendable {
@@ -2485,6 +2503,18 @@ struct DailyWork: Codable, Hashable, Sendable {
     /// "Droga dzieła": how the work went from its maker to where it is now,
     /// from the museum's provenance (server 1.141).
     var journey: Journey? = nil
+    /// "Jak powstawał": how the work was painted, stage by stage, from a
+    /// published technical study the server found; each stage drawn by the
+    /// image model (`image`, a server path), the last the work itself
+    /// (no image). Nil from servers before 1.145.92.
+    var stages: [PaintingStage]? = nil
+    var stagesPending: Bool? = nil
+
+    struct PaintingStage: Codable, Hashable, Sendable {
+        var title: String
+        var text: String
+        var image: String
+    }
 
     /// The work's way, stop by stop, as the museum's record tells it.
     struct Journey: Codable, Hashable, Sendable {

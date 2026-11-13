@@ -74,7 +74,7 @@ actor DemoBackend: FrameBackend {
     ]
     private var aiValue = AiSettings(
         keySet: false, keyTail: nil, keyFromApp: false, plText: true, keywordsArtworks: true,
-        keywordsPhotos: true, daily: true, searchWords: true, curator: true, twinsJudge: true, gatekeeper: true, audit: true, sentence: true, journey: true,
+        keywordsPhotos: true, daily: true, searchWords: true, curator: true, twinsJudge: true, gatekeeper: true, audit: true, looks: true, journey: true, webFacts: true, stages: true,
         reviewCount: 2, monthlyLimitUsd: 5, spentUsd: 0,
         keywordsProgress: .init(done: 0, waiting: 0, refused: 0, batchItems: 0, batchDone: 0, preparing: false),
         plTextProgress: nil, error: nil,
@@ -1369,19 +1369,39 @@ actor DemoBackend: FrameBackend {
         return hits
     }
 
-    /// The demo reads a sentence by its vocabulary's words.
-    func sentence(_ text: String) async throws -> SentenceReading {
-        try await Task.sleep(for: .milliseconds(600))
-        let folded = DemoDiscover.fold(text)
-        let hits = DemoDiscover.terms.filter { term in
-            ([term.name] + term.words).contains { word in
-                let stem = DemoDiscover.fold(word).prefix(5)
-                return stem.count >= 4 && folded.contains(stem)
-            }
-        }
-        .prefix(3)
-        .map { TermHit(kind: $0.kind, key: $0.key, name: $0.name) }
-        return SentenceReading(reading: text, hits: Array(hits))
+    func looksStatus() async throws -> LooksStatus {
+        let works = items.filter { $0.kind == .artwork }.count
+        return LooksStatus(enabled: aiValue.looks != false, ready: works > 0, done: works, total: works)
+    }
+
+    /// The demo has no model: works whose words match, then the rest of
+    /// the paintings, each a little less near.
+    func looks(words: String) async throws -> LooksAnswer {
+        try await Task.sleep(for: .milliseconds(700))
+        let works = items.filter { $0.kind == .artwork }
+        let matching = works.filter { Self.matches($0, PlaylistRules(query: words)) }
+        return Self.answer(matching + works.filter { !matching.contains($0) }.prefix(12))
+    }
+
+    func looks(picture: Data) async throws -> LooksAnswer {
+        try await Task.sleep(for: .milliseconds(900))
+        return Self.answer(Array(items.filter { $0.kind == .artwork }.shuffled().prefix(18)))
+    }
+
+    func looksLike(itemID: String) async throws -> LooksAnswer {
+        guard aiValue.looks != false else { return LooksAnswer(items: [], scores: []) }
+        let works = items.filter { $0.kind == .artwork && $0.id != itemID }
+        // The same works for the same one, as the server's numbers.
+        let seed = itemID.unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
+        let picked = works.indices.filter { ($0 &+ seed) % 3 == 0 }.map { works[$0] }
+        return Self.answer(Array(picked.prefix(10)))
+    }
+
+    private static func answer(_ found: [Item]) -> LooksAnswer {
+        LooksAnswer(
+            items: found.map(\.summary),
+            scores: found.indices.map { 0.68 - Double($0) * 0.004 }
+        )
     }
 
     /// The demo has no museums to ask: a pretend answer for any name.
@@ -1855,8 +1875,10 @@ actor DemoBackend: FrameBackend {
         if let value = update.twinsJudge { aiValue.twinsJudge = value }
         if let value = update.gatekeeper { aiValue.gatekeeper = value }
         if let value = update.audit { aiValue.audit = value }
-        if let value = update.sentence { aiValue.sentence = value }
+        if let value = update.looks { aiValue.looks = value }
         if let value = update.journey { aiValue.journey = value }
+        if let value = update.webFacts { aiValue.webFacts = value }
+        if let value = update.stages { aiValue.stages = value }
         if let value = update.monthlyLimitUsd { aiValue.monthlyLimitUsd = value }
         if let value = update.drawn { aiValue.drawn = value }
         if let value = update.geminiMonthlyLimitUsd { aiValue.geminiMonthlyLimitUsd = value }
