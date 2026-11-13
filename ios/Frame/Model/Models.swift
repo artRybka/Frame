@@ -550,6 +550,19 @@ struct PlaylistSort: Codable, Hashable, Sendable {
         case .quality: "Według rozdzielczości, \(direction)"
         }
     }
+
+    /// Over the playlist's works, short: "Rok, od najstarszych".
+    var shortCaption: String? {
+        guard let known else { return nil }
+        let direction = known.direction(reverse: reverse).lowercased()
+        return switch known {
+        case .artist: "Artysta, \(known.direction(reverse: reverse))"
+        case .year: "Rok, \(direction)"
+        case .added: reverse ? "Kolejność dodania" : "Ostatnio dodane"
+        case .format: known.direction(reverse: reverse)
+        case .quality: reverse ? "Najpierw najmniejsze" : "Najpierw największe"
+        }
+    }
 }
 
 /// The shared iCloud album an album playlist mirrors.

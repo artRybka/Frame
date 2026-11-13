@@ -1095,22 +1095,52 @@ struct PlaylistMenuPreview: View {
 struct RulesSummary: View {
     @Environment(AppModel.self) private var model
     let rules: PlaylistRules
+    /// The playlist's name: a chip saying only that ("Giorgio de Chirico"
+    /// under "Giorgio de Chirico") is left out.
+    var name: String?
 
     var body: some View {
         FlowLayout(spacing: 6) {
-            ForEach(rules.artists, id: \.self) { TagLabel(text: Names.artist($0)) }
-            ForEach(rules.styles, id: \.self) { TagLabel(text: $0) }
-            ForEach(rules.subjects, id: \.self) { TagLabel(text: "#\($0)") }
+            ForEach(rules.artists.filter { !repeatsName(Names.artist($0)) && !repeatsName($0) }, id: \.self) {
+                TagLabel(text: Names.artist($0))
+            }
+            ForEach(rules.styles.filter { !repeatsName($0) }, id: \.self) { TagLabel(text: $0) }
+            ForEach(rules.subjects.filter { !repeatsName($0) }, id: \.self) { TagLabel(text: "#\($0)") }
             ForEach(rules.colors, id: \.self) { TagLabel(text: ColorTag.name($0), colorTag: $0) }
             ForEach(SearchPhrases.tokens(rules.query), id: \.self) { TagLabel(text: "„\($0)”") }
             if let from = rules.yearFrom { TagLabel(text: "od \(String(from))") }
             if let to = rules.yearTo { TagLabel(text: "do \(String(to))") }
-            if rules.favoritesOnly { TagLabel(text: "♥ ulubione") }
+            if rules.favoritesOnly && !repeatsName("ulubione") { TagLabel(text: "♥ ulubione") }
             ForEach(rules.sources, id: \.self) { TagLabel(text: Names.source($0)) }
             ForEach(rules.excludeSources, id: \.self) { TagLabel(text: "bez \(Names.source($0))") }
             ForEach(rules.places, id: \.self) { TagLabel(text: model.placeName($0)) }
             ForEach(rules.excludePlaces, id: \.self) { TagLabel(text: "bez \(model.placeName($0))") }
         }
         .task { if !rules.places.isEmpty || !rules.excludePlaces.isEmpty { await model.loadPlaceNames() } }
+    }
+
+    /// Whether the rule only repeats the playlist's name, letter case and
+    /// accents aside.
+    private func repeatsName(_ text: String) -> Bool {
+        guard let name else { return false }
+        return Self.same(text, name)
+    }
+
+    static func same(_ a: String, _ b: String) -> Bool {
+        a.trimmingCharacters(in: .whitespaces)
+            .compare(b.trimmingCharacters(in: .whitespaces), options: [.caseInsensitive, .diacriticInsensitive])
+            == .orderedSame
+    }
+
+    /// Whether there is any chip left to show under that name.
+    static func hasChips(_ rules: PlaylistRules, name: String?) -> Bool {
+        let repeats = { (text: String) in name.map { same(text, $0) } ?? false }
+        return rules.artists.contains { !repeats(Names.artist($0)) && !repeats($0) }
+            || rules.styles.contains { !repeats($0) }
+            || rules.subjects.contains { !repeats($0) }
+            || !rules.colors.isEmpty || !SearchPhrases.tokens(rules.query).isEmpty
+            || rules.yearFrom != nil || rules.yearTo != nil || (rules.favoritesOnly && !repeats("ulubione"))
+            || !rules.sources.isEmpty || !rules.excludeSources.isEmpty
+            || !rules.places.isEmpty || !rules.excludePlaces.isEmpty
     }
 }
