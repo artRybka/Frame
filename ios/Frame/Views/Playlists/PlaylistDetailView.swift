@@ -17,6 +17,11 @@ struct PlaylistDetailView: View {
     @State private var failed = false
     /// How far the page is scrolled, for the glow at the top.
     @State private var scrolled: CGFloat = 0
+    /// "Kreatywny restaurator" for the owner: the works under 1600 px the
+    /// batch would draw; nil for others, an album, or an older server.
+    @State private var restorer: RestorerState?
+    @State private var askingRestore = false
+    @State private var restoring = false
 
     /// The works as last loaded; nil until the first load.
     private var detail: PlaylistDetail? { model.playlistDetails[playlistID] }
@@ -86,6 +91,7 @@ struct PlaylistDetailView: View {
                         if !isAlbum, let sort = summary?.sort {
                             sortMenu(sort)
                         }
+                        if let restorer { restorerButton(restorer) }
                         Button(isAlbum ? "Usuń zdjęcia z playlisty" : "Usuń dzieła z playlisty", systemImage: "minus.circle") {
                             withAnimation { removingItems = true }
                         }
@@ -103,6 +109,19 @@ struct PlaylistDetailView: View {
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
+                    }
+                    .confirmationDialog(
+                        restorer.map { "Odnowić \(Names.works($0.items))?" } ?? "",
+                        isPresented: $askingRestore,
+                        titleVisibility: .visible,
+                        presenting: restorer
+                    ) { asked in
+                        Button("Odnów") { Task { await restore(asked) } }
+                        Button("Anuluj", role: .cancel) {}
+                    } message: { asked in
+                        Text(
+                            "Model graficzny Google przerysuje dzieła tej playlisty w niskiej rozdzielczości do ok. 2000 px. Około \(Money.usd(asked.usd)) w pakietach Google (połowa zwykłej ceny), w ciągu doby. „Przywróć zdjęcie muzeum” na karcie cofa zmianę."
+                        )
                     }
                     .confirmationDialog("Usunąć playlistę?", isPresented: $confirmDelete, titleVisibility: .visible) {
                         Button("Usuń", role: .destructive) {
@@ -416,6 +435,43 @@ struct PlaylistDetailView: View {
             if Task.isCancelled { return }
             failed = detail == nil
             model.show(error)
+        }
+        if model.isOwner, !isAlbum, summary?.isMine != false {
+            restorer = await model.restorerState(playlistID: playlistID)
+        }
+    }
+
+    /// "Kreatywny restaurator" in the "…" menu, for the owner (Mateusz
+    /// 2026-11-13): the playlist's works under 1600 px drawn again by
+    /// Google's image model, in its batches (half the price, within a day),
+    /// as the favourites are from Konfiguracja → Gemini.
+    private func restorerButton(_ state: RestorerState) -> some View {
+        Button {
+            askingRestore = true
+        } label: {
+            Label {
+                Text("Kreatywny restaurator")
+                Text(restorerLine(state))
+            } icon: {
+                Image(systemName: LowRes.restoredSymbol)
+            }
+        }
+        .disabled(!state.enabled || state.items == 0 || restoring)
+    }
+
+    private func restorerLine(_ state: RestorerState) -> String {
+        if !state.enabled { return "Brak klucza Gemini" }
+        if restoring { return "Wysyłam do Google…" }
+        if state.items > 0 { return "\(Names.works(state.items)) w niskiej rozdzielczości" }
+        if state.waiting > 0 { return "Czeka w pakietach Google" }
+        return "Nie ma czego odnawiać"
+    }
+
+    private func restore(_ asked: RestorerState) async {
+        restoring = true
+        defer { restoring = false }
+        if let fresh = await model.restorePlaylist(id: playlistID, asked: asked.items) {
+            restorer = fresh
         }
     }
 }

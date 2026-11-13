@@ -1746,15 +1746,38 @@ final class AppModel {
     func restoreFavourites() async -> RestorerState? {
         do {
             let state = try await backend.restoreFavourites()
-            if state.waiting == 0 {
-                notices.info("Nie ma czego odnawiać")
-            } else {
-                notices.done("Odnawiam \(Names.pictures(state.waiting))", "Potrwa do doby.")
-            }
+            ordered(state.waiting)
             return state
         } catch {
             show(error)
             return nil
+        }
+    }
+
+    /// The playlist's "…" → "Kreatywny restaurator": nil when the server
+    /// has none (older than this app), quietly.
+    func restorerState(playlistID: Int) async -> RestorerState? {
+        try? await backend.restorer(playlistID: playlistID)
+    }
+
+    /// The playlist's works under 1600 px drawn again in Google's batches
+    /// (Mateusz 2026-11-13); `asked`: how many its line counted.
+    func restorePlaylist(id: Int, asked: Int) async -> RestorerState? {
+        do {
+            let state = try await backend.restorePlaylist(id: id)
+            ordered(max(asked - state.items, 0))
+            return state
+        } catch {
+            show(error)
+            return nil
+        }
+    }
+
+    private func ordered(_ count: Int) {
+        if count == 0 {
+            notices.info("Nie ma czego odnawiać")
+        } else {
+            notices.done("Odnawiam \(Names.pictures(count))", "Potrwa do doby.")
         }
     }
 

@@ -491,6 +491,23 @@ class ImageCache:
         path = self.thumbs / f"{Item.stem_of(item_id)}.jpg"
         return path if path.is_file() else None
 
+    def owned_thumb(self, copy_id: str) -> Path | None:
+        """The thumbnail of a copy the owner brought (``owned:<file>``, a
+        drawing of the creative restorer too), made from its file in
+        ``owned/``; None for another id or a file not here. "Szukaj lepszej
+        kopii" shows the copy in a work's place by its own id, and it had
+        no thumbnail (Mateusz 2026-11-13)."""
+        if not copy_id.startswith(OWNED_SOURCE + ":"):
+            return None
+        source = self.owned / Path(copy_id.removeprefix(OWNED_SOURCE + ":")).name
+        if not source.is_file():
+            return None
+        path = self.thumbs / f"{Item.stem_of(copy_id)}.jpg"
+        with self._lock(f"t:{copy_id}"):
+            if not path.is_file():
+                _save_jpeg(load_image(source), path, THUMB_MAX, 85)
+        return path
+
     def image_path(self, item: Item) -> Path:
         return self.images / f"{item.file_stem}.jpg"
 

@@ -4,6 +4,7 @@ larger by the image model, kept as the owner's pick in the work's own id
 
 from __future__ import annotations
 
+import io
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
@@ -180,6 +181,52 @@ def test_a_batch_refusal_is_noted(app: Any) -> None:
     assert service.library.get(own.id).sharper is None
     assert service.restorer.candidates() == []
     assert service.restorer.order_favourites() == 0
+
+
+def test_a_playlists_works_through_the_batch(app: Any) -> None:
+    """The playlist's "…" → "Kreatywny restaurator" (Mateusz 2026-11-13):
+    its works under the threshold, not only the favourites."""
+    client, service, _web, painter = app
+    own = _small(service)
+    made = client.post(
+        "/api/playlists", json={"name": "Małe", "kind": "manual", "item_ids": [own.id]}
+    )
+    assert made.status_code == 200, made.text
+    playlist_id = made.json()["playlist"]["id"]
+    # Not a favourite: Konfiguracja's line leaves it out, the playlist's has it.
+    assert client.get("/api/ai/restorer").json()["items"] == 0
+    view = client.get(f"/api/ai/restorer/playlists/{playlist_id}").json()
+    assert view == {"enabled": True, "items": 1, "usd": 0.03, "waiting": 0, "restored": 0}
+
+    view = client.post(f"/api/ai/restorer/playlists/{playlist_id}").json()
+    assert view["items"] == 0 and view["waiting"] == 1
+    assert [a.name for a in painter.batches["batches/1"]] == [own.id]
+    # Ordered once: not again while it waits.
+    assert client.post(f"/api/ai/restorer/playlists/{playlist_id}").json()["waiting"] == 1
+    assert list(painter.batches) == ["batches/1"]
+    painter.done.add("batches/1")
+    assert service.restorer.poll() == 1
+    view = client.get(f"/api/ai/restorer/playlists/{playlist_id}").json()
+    assert view["items"] == 0 and view["restored"] == 1
+    assert client.get("/api/ai/restorer/playlists/999").status_code == 404
+
+
+def test_the_drawing_has_a_thumbnail(app: Any) -> None:
+    """The "Szukaj lepszej kopii" sheet shows the picture in the work's place by the
+    copy's own id: the restorer's drawing had no thumbnail (Mateusz
+    2026-11-13)."""
+    client, service, _web, _painter = app
+    own = _small(service, favorite=True)
+    copy_id = client.post(f"/api/library/items/{own.id}/restore").json()["sharper"]["item_id"]
+    assert copy_id.startswith("owned:")
+    stored = service.library.get(own.id)
+    assert service.copies.current(stored).item_id == copy_id
+    thumb = client.get(f"/api/library/items/{copy_id}/thumb")
+    assert thumb.status_code == 200, thumb.text
+    assert thumb.headers["content-type"] == "image/jpeg"
+    with Image.open(io.BytesIO(thumb.content)) as img:
+        assert max(img.size) <= 640 and img.size[0] > img.size[1]
+    assert client.get("/api/library/items/owned:nothing.jpg/thumb").status_code == 404
 
 
 def test_fit() -> None:
