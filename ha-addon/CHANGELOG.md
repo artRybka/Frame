@@ -1,12 +1,21 @@
 # Changelog
 
-## 1.145.77
+## 1.145.78
 
 - Analiza kompozycji (arkusz z modelu graficznego): najpierw widać sam
   szkic z akwarelą. Dotknięcie szkicu pokazuje wszystkie kolorowe linie
   z numerami i siatką, kolejne je chowa. Dotknięcie podpisu pod szkicem
   zostawia tylko jego linię, ponowne wraca do wszystkich. Gdy szkic jest
   na ekranie, a strona chwilę (2 s) stoi, adnotacje pojawiają się same.
+
+## 1.145.77
+
+- Serwer nie staje już na koniec przeliczania barw biblioteki. Po
+  aktualizacji, która zmienia sposób liczenia barw, wyniki dla ok. 100
+  tysięcy dzieł były zapisywane jednym ciągiem i przez ten czas serwer
+  nie odpowiadał aplikacji ani ramce (107 sekund 12 listopada). Teraz
+  zapisuje je porcjami po 200 dzieł i między porcjami obsługuje
+  pozostałych.
 
 ## 1.145.76
 
