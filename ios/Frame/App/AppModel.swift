@@ -171,6 +171,12 @@ final class AppModel {
     /// A museum whose works Szukaj should show: set by holding its name on
     /// a work (the line over the title), taken (and cleared) by the search.
     var placeSearch: PlaceHit?
+    /// A work whose look-alikes Szukaj should show ("Szukaj podobnych" on
+    /// its card), taken (and cleared) by the search.
+    var likeSearch: String?
+    /// The titles of the works asked for their look-alikes, by
+    /// `SearchToken.likeName`: the "Podobne do" chips' names.
+    var likeTitles: [String: String] = [:]
     /// Museums' names by their keys, as Szukaj's "Muzeum" last listed them
     /// (and as works named them): the chips' names.
     var placeNames: [String: String] = [:]
@@ -201,6 +207,14 @@ final class AppModel {
         }
         if placeList.isEmpty { placeList = found }
         for place in found where placeNames[place.key] == nil { placeNames[place.key] = place.name }
+    }
+
+    /// Szukaj with the works that look like the work `id`, titled `title`
+    /// (Mateusz 2026-11-13: "przejście do wyszukiwania").
+    func searchLike(_ id: String, title: String) {
+        guard !id.isEmpty else { return }
+        likeTitles[SearchToken.likeName(id)] = title
+        likeSearch = id
     }
 
     /// Search the works of the museum `key` ("Q190804"), named `name`.
@@ -877,6 +891,7 @@ final class AppModel {
     /// Polish names of the vocabulary's terms by key.
     var termNames: [String: String] {
         Dictionary(vocabulary.map { ($0.key, $0.name) }, uniquingKeysWith: { first, _ in first })
+            .merging(likeTitles) { term, _ in term }
     }
 
     /// While a picture waits for the frame ("Czeka na ramkę"), look now and

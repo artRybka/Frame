@@ -4,15 +4,13 @@ import UIKit
 
 /// Szukaj by how works look (Google's embedding model, Mateusz 2026-11-13,
 /// "G1"): words for how a work looks ("mglisty poranek nad wodą"), a
-/// photograph of one (in a museum, a postcard, a page of a book), and the
-/// works that look like a work ("Podobne wyglądem"). Only the museums' works
-/// are found so; his own photos are never sent to Google.
+/// photograph of one (in a museum, a postcard, a page of a book); the works
+/// that look like a work are Szukaj's chip "Podobne do". Only the museums'
+/// works are found so; his own photos are never sent to Google.
 enum LooksAsk: Hashable, Identifiable {
     case words(String)
     /// A JPEG made small on the phone (`LooksAsk.picture(from:)`).
     case picture(Data)
-    /// Works that look like this one: its id and title.
-    case like(String, String)
 
     var id: Self { self }
 
@@ -20,7 +18,6 @@ enum LooksAsk: Hashable, Identifiable {
         switch self {
         case .words(let words): "„\(words)”"
         case .picture: "Podobne do zdjęcia"
-        case .like: "Podobne wyglądem"
         }
     }
 
@@ -108,10 +105,6 @@ struct LooksResultsView: View {
                     .font(.serif(17, weight: .medium))
                     .foregroundStyle(Theme.ink)
             }
-        case .like(_, let title):
-            Text("Dzieła, które wyglądają jak „\(title)”")
-                .font(.serif(17, weight: .medium))
-                .foregroundStyle(Theme.ink)
         }
     }
 
@@ -143,7 +136,6 @@ struct LooksResultsView: View {
             let answer: LooksAnswer = switch ask {
             case .words(let words): try await model.backend.looks(words: words)
             case .picture(let data): try await model.backend.looks(picture: data)
-            case .like(let id, _): try await model.backend.looksLike(itemID: id)
             }
             withAnimation(.easeOut(duration: 0.25)) { found = answer.items }
         } catch {
@@ -166,13 +158,21 @@ struct LooksResultsView: View {
     }
 }
 
-/// On a work's card: the works that look like it, a row to scroll sideways
-/// ("Podobne wyglądem"). Nothing while it has none (no numbers yet, or the
-/// search switched off).
+/// On a work's card, above its facts: the three works that look most like
+/// it, side by side in their own proportions, standing on one line as on a
+/// wall, title and artist under each; a tap opens the work. Under them
+/// "Szukaj podobnych" with how many there are opens Szukaj with the chip
+/// "Podobne do: …" (Mateusz 2026-11-13, sketch B: "Super, wdrażamy").
+/// Nothing while it has none (no numbers yet, or the search switched off).
 struct LooksLikeSection: View {
     @Environment(AppModel.self) private var model
     let item: Item
     @State private var found: [ItemSummary] = []
+
+    /// The works shown on the card.
+    static let shown = 3
+    /// The works counted ("60+" at this many): the server's most at once.
+    static let counted = 60
 
     var body: some View {
         // Something there also while nothing is found: a task on a Group of
@@ -182,45 +182,88 @@ struct LooksLikeSection: View {
             if found.isEmpty {
                 Color.clear.frame(height: 0)
             } else {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Eyebrow("Podobne wyglądem")
-                        Spacer()
-                        NavigationLink(value: LooksAsk.like(item.id, item.displayTitle)) {
-                            Text("Więcej").font(.caption)
-                        }
-                    }
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(alignment: .top, spacing: 8) {
-                            ForEach(found) { summary in
-                                NavigationLink(value: summary.id) {
-                                    ArtImage(ref: .thumb(summary.id), placeholder: summary.placeholderColor, maxPixel: 400)
-                                        .frame(width: 110 * shape(summary), height: 110)
-                                        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel(summary.title)
-                            }
-                        }
-                        .scrollTargetLayout()
-                    }
-                    .scrollTargetBehavior(.viewAligned)
-                    .edgeToEdgeRow()
+                VStack(alignment: .leading, spacing: 14) {
+                    Eyebrow("Podobne wyglądem")
+                    row
+                    if found.count > Self.shown { searchButton }
                 }
                 .transition(.opacity)
             }
         }
         .task(id: item.id) {
             guard item.kind == .artwork,
-                  let answer = try? await model.backend.looksLike(itemID: item.id)
+                  let answer = try? await model.backend.looksLike(itemID: item.id, limit: Self.counted)
             else { return }
-            withAnimation(.easeOut(duration: 0.25)) { found = Array(answer.items.prefix(12)) }
+            withAnimation(.easeOut(duration: 0.25)) { found = answer.items }
         }
+    }
+
+    private var picked: [ItemSummary] { Array(found.prefix(Self.shown)) }
+
+    /// Three equal columns; the pictures' box as tall as the tallest needs
+    /// (a column wide, at most a portrait's 0.78), each picture in it whole,
+    /// on its bottom line.
+    private var row: some View {
+        let box = max(0.78, picked.map { shape($0) }.min() ?? 1)
+        return HStack(alignment: .top, spacing: 12) {
+            ForEach(0..<Self.shown, id: \.self) { at in
+                if at < picked.count {
+                    tile(picked[at], box: box)
+                } else {
+                    Color.clear.frame(maxWidth: .infinity, maxHeight: 0)
+                }
+            }
+        }
+    }
+
+    private func tile(_ summary: ItemSummary, box: CGFloat) -> some View {
+        NavigationLink(value: summary.id) {
+            VStack(alignment: .leading, spacing: 8) {
+                Color.clear
+                    .aspectRatio(box, contentMode: .fit)
+                    .overlay(alignment: .bottomLeading) {
+                        ArtImage(ref: .thumb(summary.id), placeholder: summary.placeholderColor, maxPixel: 400)
+                            .aspectRatio(shape(summary), contentMode: .fit)
+                    }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(summary.shownTitle)
+                        .font(.serif(14, weight: .semibold))
+                        .foregroundStyle(Theme.ink)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    if !summary.artist.isEmpty {
+                        Text(summary.artist)
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var searchButton: some View {
+        Button {
+            model.searchLike(item.id, title: item.displayTitle)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "eye")
+                Text("Szukaj podobnych")
+                Text(found.count >= Self.counted ? "\(Self.counted)+" : "\(found.count)")
+                    .foregroundStyle(Theme.inkSoft)
+            }
+        }
+        .buttonStyle(SecondaryButtonStyle())
+        .accessibilityHint("Otwiera Szukaj z dziełami podobnymi do tego")
     }
 
     /// Width / height, kept between a tall work and a long one.
     private func shape(_ summary: ItemSummary) -> CGFloat {
-        CGFloat(max(0.6, min(2.0, summary.aspectRatio)))
+        CGFloat(max(0.5, min(2.4, summary.aspectRatio)))
     }
 }
 

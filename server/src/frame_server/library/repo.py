@@ -250,6 +250,7 @@ def _searches(rules: PlaylistRules) -> bool:
         rules.query.strip()
         or rules.title.strip()
         or rules.look.strip()
+        or rules.like.strip()
         or rules.artists
         or rules.styles
         or rules.subjects
@@ -650,6 +651,11 @@ class Library:
         #: ones ``looking`` chooses from; None when that cannot be asked
         #: now. The service puts :meth:`.looks.Looks.near` here.
         self.look_near: Callable[[str], list[str] | None] | None = None
+        #: The ids of the works that look like the work of the id given, one
+        #: copy of each, nearest first (``PlaylistRules.like``); None when
+        #: that cannot be asked now. The service puts
+        #: :meth:`.looks.Looks.alike` here.
+        self.like_near: Callable[[str], list[str] | None] | None = None
         #: The one connection to the disk (:meth:`_db`). Taken after
         #: ``_lock`` when both are held, never before it.
         self._db_lock = threading.RLock()
@@ -1578,6 +1584,31 @@ class Library:
         proposing: bool = False,
         among: Collection[str] | None = None,
     ) -> list[Item]:
+        if rules.like.strip():
+            # The works that look like this one, nearest first, those the
+            # other rules find (Mateusz 2026-11-13: "Szukaj podobnych").
+            ranked = self.like_near(rules.like.strip()) if self.like_near is not None else None
+            if ranked is None:
+                raise _NotNow
+            alike = self.works()
+            places: dict[int | str, int] = {}
+            alike_ids: set[str] = set()
+            for step, item_id in enumerate(ranked):
+                kin = alike.group_index(item_id)
+                places.setdefault(item_id if kin is None else kin, step)
+                alike_ids.update([item_id] if kin is None else [c.id for c in alike.groups[kin]])
+            if among is not None:
+                alike_ids &= set(among)
+            unlike = rules.model_copy(update={"like": "", "look": ""})
+            found_alike = self._query(
+                unlike, "recent", seed, include_excluded, user, False, proposing, among=alike_ids
+            )
+
+            def nearness(item: Item) -> int:
+                kin = alike.group_index(item.id)
+                return places.get(item.id if kin is None else kin, len(places))
+
+            return sorted(found_alike, key=nearness)
         if rules.look.strip():
             # What the other rules find, those that look so, nearest first:
             # only among the works that may (and their copies). The whole

@@ -346,8 +346,8 @@ def fill(
     """Add ``count`` museum works for a smart playlist with ``rules``: what
     Szukaj shows for them, the museums taking turns; works the library has
     already that only the search makes fit count too."""
-    if rules.look.strip():
-        return  # no museum searches by how works look (``PlaylistRules.look``)
+    if rules.look.strip() or rules.like.strip():
+        return  # no museum searches by how works look (``PlaylistRules.look``, ``like``)
     offered = importer.sources()
     if rules.sources and not rules.places and not any(s in offered for s in rules.sources):
         return  # only the owner's own sources (photos, albums)

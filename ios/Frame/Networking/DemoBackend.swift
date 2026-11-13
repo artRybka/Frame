@@ -544,7 +544,13 @@ actor DemoBackend: FrameBackend {
             yearTo: query.yearTo, favoritesOnly: query.favoritesOnly, look: query.look, title: query.title
         )
         let listed = listed(for: rules)
-        let list = Self.sorted(items.filter { Self.matches($0, rules, listed: listed) }, by: query.sort)
+        var list = Self.sorted(items.filter { Self.matches($0, rules, listed: listed) }, by: query.sort)
+        if !query.like.isEmpty {
+            // The works that look like it, nearest first, as the server's numbers.
+            let near = alike(query.like).map(\.id)
+            let fitting = Dictionary(list.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            list = near.compactMap { fitting[$0] }
+        }
         let page = list.dropFirst(query.offset).prefix(query.limit)
         return ItemPage(total: list.count, items: page.map(Self.tile))
     }
@@ -1399,13 +1405,17 @@ actor DemoBackend: FrameBackend {
         return Self.answer(Array(items.filter { $0.kind == .artwork }.shuffled().prefix(18)))
     }
 
-    func looksLike(itemID: String) async throws -> LooksAnswer {
+    func looksLike(itemID: String, limit: Int) async throws -> LooksAnswer {
         guard aiValue.looks != false else { return LooksAnswer(items: [], scores: []) }
-        let works = items.filter { $0.kind == .artwork && $0.id != itemID }
-        // The same works for the same one, as the server's numbers.
+        return Self.answer(Array(alike(itemID).prefix(limit)))
+    }
+
+    /// The works "like" `itemID`: the same ones for the same work, as the
+    /// server's numbers.
+    private func alike(_ itemID: String) -> [Item] {
+        let works = items.filter { $0.kind == .artwork && $0.id != itemID && !$0.excluded }
         let seed = itemID.unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
-        let picked = works.indices.filter { ($0 &+ seed) % 3 == 0 }.map { works[$0] }
-        return Self.answer(Array(picked.prefix(10)))
+        return works.indices.filter { ($0 &+ seed) % 3 == 0 }.map { works[$0] }
     }
 
     private static func answer(_ found: [Item]) -> LooksAnswer {
