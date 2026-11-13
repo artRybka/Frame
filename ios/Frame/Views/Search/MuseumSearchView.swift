@@ -135,6 +135,10 @@ struct MuseumSearchView: View {
             looksReady = status.enabled && status.ready
         }
         .termSearch(lookup, tokens: tokens, focused: $fieldFocused)
+        // The camera at the field's end, while nothing is typed or picked.
+        .looksCamera(shown: looksReady && !asked && lookup.text.isEmpty && looking == nil) { ask in
+            looking = ask
+        }
         // Tapping the field brings the groups back, as does asking nothing.
         .onChange(of: fieldFocused) { _, focused in
             if focused, !groupsShown { withAnimation(.snappy) { groupsShown = true } }
@@ -237,11 +241,6 @@ struct MuseumSearchView: View {
 
     private var idle: some View {
         VStack(spacing: 4) {
-            if looksReady {
-                LooksPhotoButton { ask in looking = ask }
-                    .padding(.top, 8)
-                    .transition(.opacity)
-            }
             // Down to the tab bar, so the squares have room below their row
             // (in the middle of the screen) to fall to the bottom.
             SquaresAnimation()

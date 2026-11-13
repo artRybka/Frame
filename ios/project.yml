@@ -40,6 +40,8 @@ targets:
         NSLocalNetworkUsageDescription: Frame łączy się z serwerem ramki w Twojej sieci domowej.
         # "Zapisz w Zdjęciach" on a work's screen: add-only, Frame never reads the library.
         NSPhotoLibraryAddUsageDescription: Frame zapisuje wybrane dzieła w Twoich Zdjęciach.
+        # Szukaj: the camera in the search field photographs a work to find ones that look like it.
+        NSCameraUsageDescription: Frame robi zdjęcie dzieła, żeby znaleźć w muzeach podobne.
         NSBonjourServices:
           - _frame._tcp
         NSAppTransportSecurity:
