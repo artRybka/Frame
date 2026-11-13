@@ -18,8 +18,9 @@ back to the museum's picture. The gatekeeper does not ask about it
 (``gatekeeper.asked_by_rules``): it is the owner's.
 
 One work at a time from its card ("…" → "Kreatywny restaurator", about
-25 s), or the owner's favourites under the threshold at once from
-Konfiguracja through the Batch API (half the price, within 24 hours,
+25 s), or many at once through the Batch API: the owner's favourites
+under the threshold from Konfiguracja, or a playlist's from its "…"
+(Mateusz 2026-11-13) (half the price, within 24 hours,
 looked at every :data:`POLL` seconds). A picture the model would not draw
 (``image_recitation``: it took a known painting for one it may not copy)
 is noted and never sent again.
@@ -30,7 +31,7 @@ from __future__ import annotations
 import io
 import logging
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -146,22 +147,26 @@ class Restorer:
     def waiting(self) -> set[str]:
         return {i for batch in self._batches() for i in batch.get("ids", [])}
 
-    def candidates(self) -> list[Item]:
-        """The owner's favourites whose picture is known to be small for the
-        frame (``low_res.low_side``), not drawn yet, nor refused, nor
-        waiting in a batch."""
+    def candidates(self, items: Iterable[Item] | None = None) -> list[Item]:
+        """The works whose picture is known to be small for the frame
+        (``low_res.low_side``), not drawn yet, nor refused, nor waiting in
+        a batch: of ``items`` (a playlist's), or of the owner's favourites."""
         skip = self.refused() | self.waiting()
-        found = []
-        for item_id in sorted(self.library.favorites(OWNER_ID)):
-            item = self.library.get(item_id)
-            if item is None or item.id in skip or self.restored(item) or item.excluded:
+        if items is None:
+            found_ids = sorted(self.library.favorites(OWNER_ID))
+            items = (i for i in map(self.library.get, found_ids) if i is not None)
+        found: list[Item] = []
+        seen: set[str] = set()
+        for item in items:
+            if item.id in seen or item.id in skip or self.restored(item) or item.excluded:
                 continue
+            seen.add(item.id)
             if item.look is None and low_side(item) > 0:
                 found.append(item)
         return found
 
-    def estimate(self) -> tuple[int, float]:
-        n = len(self.candidates())
+    def estimate(self, items: Iterable[Item] | None = None) -> tuple[int, float]:
+        n = len(self.candidates(items))
         return n, round(n * BATCH_USD, 2)
 
     def counts(self) -> tuple[int, int]:
@@ -226,8 +231,13 @@ class Restorer:
 
     def order_favourites(self) -> int:
         """The favourites under the threshold sent in batches; how many."""
+        return self.order()
+
+    def order(self, items: Iterable[Item] | None = None) -> int:
+        """The works under the threshold (of ``items``, a playlist's; else
+        the owner's favourites) sent in batches; how many."""
         with self._lock:
-            items = self.candidates()
+            items = self.candidates(items)
             batches = self._batches()
             sent = 0
             for chunk in _chunks(items, PER_BATCH):

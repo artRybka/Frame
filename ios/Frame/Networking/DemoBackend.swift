@@ -626,6 +626,20 @@ actor DemoBackend: FrameBackend {
         return state
     }
 
+    func restorer(playlistID: Int) async throws -> RestorerState {
+        var state = try await restorer()
+        state.items = 4
+        state.usd = 0.12
+        return state
+    }
+
+    func restorePlaylist(id: Int) async throws -> RestorerState {
+        var state = try await restorer(playlistID: id)
+        state.waiting = state.items
+        state.items = 0
+        return state
+    }
+
     func holder(itemID: String, wait: Int) async throws -> HolderView {
         HolderView(status: "none")
     }

@@ -809,6 +809,16 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
+    func restorer(playlistID: Int) async throws -> RestorerState {
+        try await get("/api/ai/restorer/playlists/\(playlistID)")
+    }
+
+    func restorePlaylist(id: Int) async throws -> RestorerState {
+        var req = request("/api/ai/restorer/playlists/\(id)", method: "POST")
+        req.timeoutInterval = 300  // every picture downloaded and sent in batches
+        return try await perform(req)
+    }
+
     func describeLibrary() async throws -> AiStarted {
         try await send("/api/ai/keywords/describe-library", method: "POST")
     }
