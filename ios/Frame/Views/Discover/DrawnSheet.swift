@@ -24,8 +24,8 @@ import UIKit
 /// ‚zawieszona' … to pojawiają się wszystkie adnotacje jak po dotknięciu
 /// szkicu."): the sheet opens as the sketch alone (`Shown.sketch`); a tap
 /// on it brings every line, number and the grid (`.all`), another puts
-/// them away; a tap on a note leaves that one line alone on the sketch
-/// (`.one`); with the field in view and the page still for `still`, the
+/// them away; a tap on a note leaves that one line (and the grid) on the
+/// sketch (`.one`), another tap on it the sketch alone (07:41); with the field in view and the page still for `still`, the
 /// lines come by themselves as after a tap, once a visit: a sheet that
 /// leaves the screen is the sketch alone again when it comes back.
 ///
@@ -50,14 +50,16 @@ struct DrawnSheet: View {
         case sketch
         /// Every line, number, the frame and the grid.
         case all
-        /// The one line (by its note's number) and the frame.
+        /// The one line (by its note's number), the frame and the grid.
         case one(Int)
 
         /// A tap on the sheet: every mark, or none when every one is there.
         func tappedSheet() -> Shown { self == .all ? .sketch : .all }
 
-        /// A tap on a note: its line alone, or every one back when it was.
-        func tappedNote(_ number: Int) -> Shown { self == .one(number) ? .all : .one(number) }
+        /// A tap on a note: its line alone, or the sketch alone again when
+        /// it was (07:41: "Odkliknięcie pojedynczej pozycji wraca do
+        /// szkicu bez adnotacji").
+        func tappedNote(_ number: Int) -> Shown { self == .one(number) ? .sketch : .one(number) }
 
         /// The tapped note's number.
         var chosen: Int? { if case let .one(number) = self { number } else { nil } }
@@ -190,7 +192,7 @@ struct DrawnSheet: View {
                     Text(grid)
                         .font(.hand(15))
                         .foregroundStyle(Theme.inkSoft)
-                        .opacity(shown == .all ? 1 : 0)
+                        .opacity(bare ? 0 : 1)
                         .accessibilityHidden(true)
                 }
             }
@@ -226,7 +228,7 @@ struct DrawnSheet: View {
             .overlay {
                 Canvas { context, size in
                     context.translateBy(x: room, y: room)
-                    rule(in: &context, size: CGSize(width: size.width - 2 * room, height: size.height - 2 * room), grid: shown == .all)
+                    rule(in: &context, size: CGSize(width: size.width - 2 * room, height: size.height - 2 * room))
                 }
                 .padding(-room)
                 .opacity(bare || !here ? 0 : 1)
@@ -302,15 +304,16 @@ struct DrawnSheet: View {
         }
     }
 
-    /// The frame and (with every mark shown) the grid, ruled in graphite.
-    private func rule(in context: inout GraphicsContext, size: CGSize, grid: Bool) {
+    /// The frame and the grid, ruled in graphite (with any mark shown:
+    /// 07:41 "Dotknięcie którejkolwiek adnotacji pokazuje też siatkę").
+    private func rule(in context: inout GraphicsContext, size: CGSize) {
         let graphite = Pencil.lead.opacity(0.55)
         let corners = [CGPoint.zero, CGPoint(x: size.width, y: 0), CGPoint(x: size.width, y: size.height), CGPoint(x: 0, y: size.height)]
         for index in 0..<4 {
             let path = Pencil.ruled(corners[index], corners[(index + 1) % 4], over: Pencil.reach, width: 0.9, seed: 70 + index)
             context.fill(path, with: .color(graphite))
         }
-        for (index, line) in (grid ? Pencil.grid(take.grid, in: size) : []).enumerated() {
+        for (index, line) in Pencil.grid(take.grid, in: size).enumerated() {
             let path = Pencil.ruled(line[0], line[1], over: Pencil.reach, width: 0.9, seed: 90 + index)
             context.fill(path, with: .color(graphite))
         }
@@ -332,7 +335,7 @@ struct DrawnSheet: View {
 
     /// A mark's note: its number in its colour, as on its line, the title
     /// and a line under it by hand. A tap leaves its line alone on the
-    /// sketch, another brings every one back.
+    /// sketch, another leaves the sketch alone.
     private func note(_ line: Line) -> some View {
         let chosen = shown.chosen
         let lit = chosen == line.number
@@ -363,7 +366,7 @@ struct DrawnSheet: View {
             withAnimation(.easeInOut(duration: 0.25)) { shown = shown.tappedNote(number) }
         }
         .accessibilityAddTraits(lit ? [.isButton, .isSelected] : .isButton)
-        .accessibilityHint(lit ? "Pokazuje wszystkie linie kompozycji" : "Pokazuje na szkicu tylko tę linię")
+        .accessibilityHint(lit ? "Chowa linie kompozycji i zostawia sam szkic" : "Pokazuje na szkicu tylko tę linię")
     }
 }
 
