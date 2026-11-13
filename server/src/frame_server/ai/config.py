@@ -157,7 +157,7 @@ class AiConfigStore:
             return config.keywords_artworks or config.keywords_photos
         if kind == "daily":
             return config.daily
-        if kind == "search_words":
+        if kind in ("search_words", "look_words"):  # words for the museums
             return config.search_words
         if kind == "curator":
             return config.curator

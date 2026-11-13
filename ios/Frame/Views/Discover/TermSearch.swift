@@ -147,12 +147,14 @@ final class TermLookup {
     /// What Return picks, the row marked first in the suggestions (Mateusz
     /// 2026-11-13: "domyślna opcja (pod lupą na klawiaturze) gdy wpisano
     /// więcej niż 1 słowo. Wyjątek stanowi nazwisko artysty"): an artist
-    /// whose name or surname was typed, then the words searched by how
-    /// works look, else the words as they are.
+    /// whose name or surname was typed, then a work's title typed, then the
+    /// words searched by how works look, else the words as they are.
     var chosen: SearchToken? {
         let words = trimmed
         guard !words.isEmpty else { return nil }
         if let artist = namedArtist { return artist }
+        // A work's title typed ("gwiaździsta noc"): its works, not a look.
+        if let title = Self.typedTitle(in: hits) { return title }
         if looks, describesLook { return SearchToken.look(words) }
         return SearchToken(kind: "word", key: words, name: words)
     }
@@ -166,6 +168,12 @@ final class TermLookup {
         return artists.first { hit in
             [hit.name, Names.artist(hit.name)].contains { Self.isName($0, typed: typed) }
         }?.token
+    }
+
+    /// The title of a work that the words typed are (the server says so),
+    /// as a chip: Return picks it before a look.
+    static func typedTitle(in hits: [TermHit]) -> SearchToken? {
+        hits.first { $0.kind == SearchToken.titleKind && $0.exact == true }?.token
     }
 
     /// `typed` (folded) is the whole of `name` or its surname, also in the
@@ -577,27 +585,38 @@ struct TermSuggestions: View {
     }
 
     private func hitRow(_ hit: TermHit, fromMuseums: Bool, chosen: Bool) -> some View {
-        row(
+        // A title: its work's thumbnail and artist, no count (mostly one).
+        let titled = hit.kind == SearchToken.titleKind
+        return row(
             mark: fromMuseums ? "museum" : hit.token.kind,
             icon: fromMuseums ? "building.columns" : hit.token.icon,
             title: hit.token.kind == "artist" ? Names.artist(hit.name) : hit.name,
-            kind: fromMuseums ? "Artysta z muzeów" : kindName(of: hit),
-            detail: fromMuseums ? "" : hit.detail,
-            count: fromMuseums || lookup.uncounted.contains(hit.id) ? nil : hit.count,
+            kind: fromMuseums ? "Artysta z muzeów" : titled ? "Dzieło" : kindName(of: hit),
+            detail: fromMuseums ? "" : titled ? Names.artist(hit.detail) : hit.detail,
+            count: fromMuseums || titled || lookup.uncounted.contains(hit.id) ? nil : hit.count,
+            thumb: titled ? hit.item : nil,
             chosen: chosen
         ) { pick(hit.token, fromMuseums: fromMuseums) }
     }
 
     private func row(
         mark tokenKind: String, icon: String, title: String, kind: String, detail: String, count: Int?,
-        chosen: Bool = false, action: @escaping () -> Void
+        thumb: String? = nil, chosen: Bool = false, action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                GroupMark(kind: tokenKind, symbol: icon, side: 17)
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.ink)
-                    .frame(width: 22)
+                if let thumb {
+                    // A work's title: its picture in the mark's place.
+                    ArtImage(ref: .thumb(thumb), placeholder: Theme.mat, maxPixel: 120)
+                        .frame(width: 26, height: 26)
+                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        .accessibilityHidden(true)
+                } else {
+                    GroupMark(kind: tokenKind, symbol: icon, side: 17)
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.ink)
+                        .frame(width: 22)
+                }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title).font(.body).foregroundStyle(Theme.ink).lineLimit(1)
                     Text(detail.isEmpty ? kind : "\(kind) · \(detail)")

@@ -34,6 +34,7 @@ import threading
 import time
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -43,7 +44,7 @@ import numpy as np
 from PIL import Image
 
 from .ai.client import AiUnavailable
-from .ai.gemini import EMBED_SIZE, NotDrawn, TooHeavy
+from .ai.gemini import EMBED_MAX, EMBED_SIZE, NotDrawn, TooHeavy
 from .library.models import Item, ItemKind
 from .library.verdict import Place, against
 
@@ -401,6 +402,69 @@ class Looks:
             log.warning("Szukanie wyglądem: Google did not answer (%s)", err)
             return None
         return [item_id for item_id, _ in self.index.nearest(vector, AMONG_NEAR)]
+
+    def judge(self, text: str, items: Sequence[Item]) -> list[Item]:
+        """Museum works a search for a look brought (``ai.look_words``):
+        those that look as ``text`` says, as near as the catalogue's own
+        answer asks (:data:`NEAR_BEST` below its best, over :data:`FLOOR`),
+        nearest first (Mateusz 2026-11-13, card: "Hasła i ocena wyglądem").
+        Their thumbnails get their numbers now, Google asked at once (some
+        0.01 cent a work), and keep them: the catalogue's background asks
+        nothing again for them, and the next search finds them at home.
+        None when it cannot be asked now."""
+        try:
+            vector = np.asarray(self._words_vector(" ".join(text.split())[:300]))
+        except (AiUnavailable, NotDrawn, httpx.HTTPError) as err:
+            log.info("judging museum works by look: %s", err)
+            return []
+        if not items:
+            return []
+        self._number([i for i in items if i.id not in self.index])
+        best = self.index.nearest(vector, 1)
+        bar = max(FLOOR, (best[0][1] if best else FLOOR) - NEAR_BEST)
+        length = float(np.linalg.norm(vector)) or 1.0
+        scored: list[tuple[float, Item]] = []
+        for item in items:
+            row = self.index.vector(item.id)
+            if row is None:
+                continue
+            norm = float(np.linalg.norm(row)) or 1.0
+            score = float(row @ vector) / (norm * length)
+            if score >= bar:
+                scored.append((score, item))
+        scored.sort(key=lambda s: -s[0])
+        return [item for _, item in scored]
+
+    def _number(self, items: Sequence[Item]) -> None:
+        """Numbers for museum works' thumbnails (downloaded and kept, as the
+        app shows them), asked of Google at once, :data:`EMBED_MAX` at a
+        time; a work whose thumbnail cannot be had is left without."""
+        if not items:
+            return
+
+        def picture(item: Item) -> tuple[Item, Image.Image, int] | None:
+            try:
+                path = self.images.ensure_thumb(item, urgent=True)
+                stamp = int(path.stat().st_mtime)
+                with Image.open(io.BytesIO(path.read_bytes())) as img:
+                    img.load()
+                    return item, img.convert("RGB"), stamp
+            except Exception as err:  # gone, refused, not a picture
+                log.info("no thumbnail of %s to judge by look: %s", item.id, err)
+                return None
+
+        with ThreadPoolExecutor(min(len(items), 8)) as pool:
+            got = [p for p in pool.map(picture, items) if p is not None]
+        for start in range(0, len(got), EMBED_MAX):
+            part = got[start : start + EMBED_MAX]
+            try:
+                vectors = self.painter.embed(KIND, [img for _, img, _ in part])
+            except (AiUnavailable, NotDrawn, httpx.HTTPError) as err:
+                log.info("numbers for museum works: %s", err)
+                return
+            self.index.add(
+                [(item.id, stamp, v) for (item, _, stamp), v in zip(part, vectors, strict=True)]
+            )
 
     def looking(self, text: str, allowed: list[Item]) -> list[Item] | None:
         """:meth:`among` for the library (``Library.looking``): the works

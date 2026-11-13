@@ -242,6 +242,10 @@ class TermHit(BaseModel):
     detail: str = ""
     #: Works in the catalogue (and the owner's library) that fit.
     count: int = 0
+    #: A title: the work that has it, for its thumbnail (kind "title").
+    item: str = ""
+    #: A title the words typed are (not only part of): Return picks it.
+    exact: bool = False
 
 
 class MuseumHint(BaseModel):
@@ -1019,11 +1023,32 @@ def _term_hits(
         for hit in hits
         for spelling in index.names.spellings.get(hit.name, [hit.name])
     }
+    # Works whose title has the words, as typed or as the museums were
+    # asked them ("gwiaździsta noc", "starry night"): no count, a title
+    # is mostly one work (Mateusz 2026-11-13). A title the words are comes
+    # right after the artists, one they are only in after the keywords.
+    titled = (
+        [
+            TermHit(
+                kind="title",
+                key=t.title,
+                name=t.title,
+                detail=index.names.shown(t.artist) if t.artist else "",
+                item=t.item_id,
+                exact=t.exact,
+            )
+            for t in index.titles([words, *_title_forms(svc, words)])
+        ]
+        if words
+        else []
+    )
+    hits += [t for t in titled if t.exact]
     hits += [
         TermHit(kind="word", key=phrase, name=phrase, count=index.word_count(phrase))
         for phrase in index.phrases(text, limit=4)
         if fold(phrase) != fold(words) and _POSSESSIVE.sub("", fold(phrase)) not in named
     ][:3]
+    hits += [t for t in titled if not t.exact]
     for found in suggest(text, limit=max(limit - len(hits), 3)):
         if gone():
             return []
@@ -1048,6 +1073,18 @@ TERM_THREADS = CapacityLimiter(2)
 #: was given up by the app when the next letter came.
 _TERMS_ASKED: dict[str, int] = {}
 _TERMS_LOCK = threading.Lock()
+#: How long the suggestions wait for the English and French of two words
+#: or more, for the titles ("gwiaździsta noc": "The Starry Night").
+TITLE_TRANSLATE_SECONDS = 0.6
+
+
+def _title_forms(svc: FrameService, words: str) -> tuple[str, ...]:
+    """The words as the museums are asked them: known already, or for two
+    words or more a moment's wait for the translation."""
+    if " " in words and len(words) >= 5:
+        said = svc.importer.wording(words, TITLE_TRANSLATE_SECONDS)
+        return tuple(w for w in (said.en, said.fr) if w)
+    return svc.library.wording(words) if svc.library.wording else ()
 
 
 @router.get("/terms", response_model=list[TermHit])
@@ -1228,9 +1265,13 @@ def rules_from(
     colors: list[str] | None = None,
     year_from: int | None = None,
     year_to: int | None = None,
+    title: str = "",
+    look: str = "",
 ) -> PlaylistRules:
     return PlaylistRules(
         query=q,
+        title=" ".join(title.split()),
+        look=" ".join(look.split()),
         artists=artists or [],
         terms=terms or [],
         colors=colors or [],
@@ -1283,6 +1324,8 @@ def museum_search(
     skip: list[str] | None = None,
     place: list[str] | None = None,
     skip_place: list[str] | None = None,
+    title: str = "",
+    look: str = "",
 ) -> MuseumSearch:
     # The sources to ask: a page further of one the search's answers named
     # ("rijks", "wd:Q160112|Q1"), or an older app's museums.
@@ -1293,7 +1336,7 @@ def museum_search(
     offered = {*svc.importer.sources(), *svc.importer.reachable()}
     if unknown := [s for s in keys if s not in offered and not places_in(s)]:
         raise HTTPException(404, f"unknown museum {unknown[0]!r}")
-    rules = rules_from(q, artist, term, color, year_from, year_to)
+    rules = rules_from(q, artist, term, color, year_from, year_to, title, look)
     # Museums left out need not be on offer (any more): they just stay out.
     return MuseumSearch.of(
         rules,
@@ -1356,6 +1399,8 @@ async def search_museums(
     skip_place: Sources = None,
     page: Page = 1,
     limit: Limit = 8,
+    title: str = "",
+    look: str = "",
 ) -> MuseumAnswer:
     """The museums' works for what Discover's search asks (``limit`` from
     each museum; every museum, or those of ``source``, without those of
@@ -1363,7 +1408,20 @@ async def search_museums(
     else works of the periods and technique; with ``color``, those whose
     thumbnails have the colours."""
     search = museum_search(
-        svc, q, artist, term, color, year_from, year_to, source, limit, skip, place, skip_place
+        svc,
+        q,
+        artist,
+        term,
+        color,
+        year_from,
+        year_to,
+        source,
+        limit,
+        skip,
+        place,
+        skip_place,
+        title,
+        look,
     )
     # With none left out, no keys still means every museum.
     # Sources of one kind only (the Library of Congress's photographs) just
@@ -1404,13 +1462,28 @@ async def stream_museums(
     skip_place: Sources = None,
     page: Page = 1,
     limit: Limit = 8,
+    title: str = "",
+    look: str = "",
 ) -> StreamingResponse:
     """Like ``/discover/search``, as the museums answer: a
     :class:`MuseumAnswer` per museum page (JSON lines), with colours several
     pages of each museum. A work comes once, from whichever museum answers
     first, unless a more reliable one brings it later (``replaces``)."""
     search = museum_search(
-        svc, q, artist, term, color, year_from, year_to, source, limit, skip, place, skip_place
+        svc,
+        q,
+        artist,
+        term,
+        color,
+        year_from,
+        year_to,
+        source,
+        limit,
+        skip,
+        place,
+        skip_place,
+        title,
+        look,
     )
     keys = search.asked(svc.importer.asked_sources(search.spec.kind), svc.importer.reachable())
     copies = len(keys) != 1

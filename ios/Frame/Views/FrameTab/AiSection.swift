@@ -169,7 +169,7 @@ struct AiSection: View {
                     Divider()
                     toggle(
                         "Tłumaczenie słów w Szukaj",
-                        hint: "Np. gitara jako guitar dla muzeów zagranicznych.",
+                        hint: "Np. gitara jako guitar dla muzeów zagranicznych, a opis wyglądu jako hasła dla muzeów.",
                         value: searchWords
                     ) { AiSettingsUpdate(searchWords: $0) }
                 }

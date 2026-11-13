@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.145.98
+
+- Szukaj po tytule. Podczas pisania pojawiają się wiersze „Dzieło” z
+  miniaturą i artystą: do trzech dzieł, których tytuł (polski albo
+  oryginalny, z dowolnej kopii) ma wpisane słowa. Dotknięcie wstawia do pola
+  znacznik „Tytuł”, który szuka tylko w tytułach, a nie w opisach, i
+  znajduje wszystkie wersje dzieła. Muzea są pytane o ten tytuł.
+- Lupa wybiera tytuł, gdy wpisane słowa są tytułem dzieła. Kolejność:
+  artysta, potem tytuł, potem wygląd, na końcu zwykłe słowa.
+- Szukanie wyglądem pyta też muzea. Haiku zamienia opis na dwa lub trzy
+  krótkie hasła w języku każdego muzeum. Miniatury tego, co muzea
+  przyniosą, dostają na bieżąco liczby Google i zostają tylko dzieła nad
+  tym samym progiem co w bazie. To ok. 1 centa za szukanie. Liczby i
+  miniatury zostają na serwerze, a odrzucone dzieła trafiają do katalogu
+  jako zapasowe.
+- Hasła dla muzeów włącza ten sam przełącznik co tłumaczenie słów w Szukaj
+  (Konfiguracja → Claude).
+
 ## 1.145.97
 
 - Poprawka: szukanie wyglądem nie zatrzymuje już serwera. Słowa

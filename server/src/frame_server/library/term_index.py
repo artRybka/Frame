@@ -12,13 +12,46 @@ for vermeer showed 114 works). Who is who among the artists
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable, Mapping, Set
+from collections.abc import Callable, Mapping, Sequence, Set
+from dataclasses import dataclass
 
 from .artists import ArtistNames, is_artist
 from .models import PlaylistRules
-from .phrases import quote
+from .phrases import fold as phrase_fold
+from .phrases import has_phrase, quote
 from .search_index import SearchIndex
 from .vocabulary import fold
+
+#: Words a title may start with that nobody types ("The Starry Night").
+ARTICLES = (
+    "the ",
+    "a ",
+    "an ",
+    "la ",
+    "le ",
+    "les ",
+    "l'",
+    "der ",
+    "die ",
+    "das ",
+    "de ",
+    "het ",
+    "el ",
+    "il ",
+    "lo ",
+)
+
+
+@dataclass(frozen=True)
+class TitleHit:
+    """A work whose title has the words typed."""
+
+    title: str
+    artist: str
+    item_id: str
+    #: The words are the title (without "The"), or its start when two words
+    #: or more: Return picks the title.
+    exact: bool
 
 
 class TermIndex:
@@ -33,6 +66,7 @@ class TermIndex:
         query: Callable[[PlaylistRules], int],
         ids: Mapping[str, str] | None = None,
         labels: Mapping[str, str] | None = None,
+        titles: Sequence[tuple[str, str, str, str]] = (),
     ) -> None:
         """``by_artist``: each artist's name as the catalogue spells it, with
         its works (``SearchIndex.by_artist``); ``query``: how many works the
@@ -57,6 +91,10 @@ class TermIndex:
         )
         self._counts: dict[tuple[str, str], int] = {}
         self._lock = threading.Lock()
+        #: The works' titles (``Library._titles``): folded, as written,
+        #: the artist, the work's id.
+        self._titles = list(titles)
+        self._titled: dict[tuple[str, ...], list[TitleHit]] = {}
 
     def __len__(self) -> int:
         return len(self._index)
@@ -113,3 +151,42 @@ class TermIndex:
         """How many works ``words`` as one chip finds: a phrase when there
         are several (:mod:`.phrases`)."""
         return self._count("words", words, PlaylistRules(query=quote([words])))
+
+    def titles(self, forms: Sequence[str], limit: int = 3) -> list[TitleHit]:
+        """Works whose title has the words typed in one of ``forms`` (as
+        typed, as the museums were asked them): the title itself first,
+        then those it starts, then the rest, the shortest first; each work
+        once (Mateusz 2026-11-13: "szukanie po tytule dzieła")."""
+        wanted = tuple(dict.fromkeys(w for w in (phrase_fold(f).strip() for f in forms) if w))
+        if not wanted or len(wanted[0]) < 3:
+            return []
+        with self._lock:
+            kept = self._titled.get(wanted)
+        if kept is not None:
+            return kept[:limit]
+        ranked: dict[str, tuple[tuple[int, int], TitleHit]] = {}
+        for folded, title, artist, item_id in self._titles:
+            for words in wanted:
+                # At a word's start, so that a title shows while it is typed.
+                at_start = (" " + words) in (" " + folded)
+                if not at_start and not has_phrase(words, folded, folded=True):
+                    continue
+                bare = next((folded[len(a) :] for a in ARTICLES if folded.startswith(a)), folded)
+                several = " " in words
+                if words in (folded, bare):
+                    rank = 0
+                elif bare.startswith(words + " ") or folded.startswith(words + " "):
+                    rank = 1 if several else 2
+                else:
+                    rank = 3
+                key = (rank, len(folded))
+                hit = TitleHit(title, artist, item_id, exact=rank <= 1)
+                if item_id not in ranked or key < ranked[item_id][0]:
+                    ranked[item_id] = (key, hit)
+                break
+        found = [hit for _, hit in sorted(ranked.values(), key=lambda r: r[0])][:10]
+        with self._lock:
+            if len(self._titled) > 500:
+                self._titled.clear()
+            self._titled[wanted] = found
+        return found[:limit]

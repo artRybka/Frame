@@ -510,6 +510,8 @@ def test_theme_playlists_and_terms(museums, monkeypatch) -> None:  # noqa: F811
             "name": "Turn",
             "detail": "",
             "count": terms[-1]["count"],
+            "item": "",
+            "exact": False,
         }
         hint = client.get("/api/terms/museums", params={"q": "Kandinsky"}).json()
         assert hint["total"] > 0 and hint["artists"][0]["name"] == "Kandinsky"

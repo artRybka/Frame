@@ -292,6 +292,11 @@ class Importer:
         #: Words typed in Szukaj in the museums' languages (the language
         #: model's, set by the service); none: asked as typed.
         self.translate: Callable[[str, float], Wording] | None = None
+        #: Words for how works look as searches museums answer
+        #: (``ai.look_words.LookWords.searches``), and the works a museum
+        #: brought that look so, nearest first (``looks.Looks.judge``).
+        self.look_searches: Callable[[str], list[Wording]] | None = None
+        self.judge_look: Callable[[str, list[Item]], list[Item]] | None = None
         #: Fragments of works (library/fragments.py), set by the service:
         #: a fragment's id (``<work>~p<n>``) is made from its work's.
         self.fragments: Fragments | None = None

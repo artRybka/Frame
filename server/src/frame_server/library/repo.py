@@ -48,7 +48,7 @@ from .models import (
     PlaylistSummary,
 )
 from .phrases import fold as phrase_fold
-from .phrases import has_phrase, parsed
+from .phrases import has_phrase, parsed, quote
 from .places import Places, known_places, learn_places
 from .search_index import SearchIndex, item_text
 from .term_index import TermIndex
@@ -78,6 +78,10 @@ PLACES_FRESH = 90.0
 #: Seconds between rebuilds of the suggestions' artists while the library
 #: changes (their counts are always the search's own, asked afresh).
 TERM_INDEX_EVERY = 60.0
+#: The Polish titles (``ai.pl_text`` notes, kind :data:`PL_TEXT`) are read
+#: again after this many seconds: titles written meanwhile come in then.
+POLISH_TITLES_FRESH = 300.0
+PL_TEXT = "pl_text"
 #: Share of the search index's entries changed since it was made at which
 #: it is made anew in the background.
 SEARCH_DEAD_SHARE = 0.3
@@ -232,6 +236,7 @@ def _searches(rules: PlaylistRules) -> bool:
     """Rules that look for works (not just "the favourites" or "everything")."""
     return bool(
         rules.query.strip()
+        or rules.title.strip()
         or rules.look.strip()
         or rules.artists
         or rules.styles
@@ -281,8 +286,11 @@ def matches(
     favorites: Collection[str] | None = None,
     key: str | None = None,
     said: list[list[str]] | None = None,
+    titled: list[list[str]] | None = None,
+    titled_ids: Collection[str] = (),
 ) -> bool:
-    """Whether ``item`` fits ``rules``; ``listed`` are the works on the
+    """Whether ``item`` fits ``rules``; ``titled``: the title asked in its
+    forms (:func:`titled_as`, as typed when not given); ``listed`` are the works on the
     person's playlists, for ``mine:playlists``, ``favorites`` their hearts
     (None: anyone's, the stored ``Item.favorite``). A work the museums'
     search for ``rules`` found (``key``: :meth:`PlaylistRules.search_key`,
@@ -322,6 +330,12 @@ def matches(
             return False
         if held_at and held_at in {places.canon(p) for p in rules.exclude_places}:
             return False
+    if (
+        rules.title.strip()
+        and item.id not in titled_ids
+        and not has_title(item, titled_as(rules.title) if titled is None else titled)
+    ):
+        return False
     if item.found_for:
         key = rules.search_key() if key is None else key
         if key and key in item.found_for:
@@ -441,6 +455,20 @@ def says(item: Item, said: list[list[str]]) -> bool:
     if not said:
         return True
     return says_in(phrase_fold(item_text(item)), said)
+
+
+def titled_as(
+    title: str, wording: Callable[[str], tuple[str, ...]] | None = None
+) -> list[list[str]]:
+    """A title asked (``PlaylistRules.title``) as one phrase, in its forms:
+    as typed and as the museums were asked it ("gwiaździsta noc", "starry
+    night")."""
+    return said_as(quote([" ".join(title.split())]), wording)
+
+
+def has_title(item: Item, titled: list[list[str]]) -> bool:
+    """Whether the work's title has the title asked in one of its forms."""
+    return says_in(phrase_fold(item.title), titled)
 
 
 def says_in(folded: str, said: list[list[str]]) -> bool:
@@ -691,6 +719,9 @@ class Library:
         #: copy they are a detail of (``Item.detail_of``), as of a version.
         self._details_kept: tuple[int, dict[str, list[str]]] | None = None
         self._term_index: TermIndex | None = None
+        #: The works' Polish titles, folded, by id, and when they were read
+        #: (:meth:`polish_titles`).
+        self._polish_titles: tuple[float, dict[str, tuple[str, str]]] | None = None
         self._term_index_lock = threading.Lock()
         self._term_index_building = False
         self._term_index_built_at = 0.0
@@ -1262,6 +1293,7 @@ class Library:
             lambda rules: self.query(rules, limit=0)[0],
             ids,
             {qid: str(known.get("en") or "") for qid, known in people.items()},
+            self._titles(),
         )
         learn(index.names)  # who is who for the searches, too
         self._term_index_built_at = time.monotonic()
@@ -1510,6 +1542,9 @@ class Library:
         # The words as typed and as the museums were asked them (English,
         # French): "uliczka" finds "The Little Street" (Mateusz 2026-11-09).
         said = said_as(rules.query, self.wording) if rules.query.strip() else None
+        titled = titled_as(rules.title, self.wording) if rules.title.strip() else None
+        # Works whose Polish title has it ("Gwiaździsta noc" of "The Starry Night").
+        polish = self.titled_ids(titled) if titled else frozenset()
         # Looked up as a set: a list of 2 000 works with no picture cost
         # every query a second, item after item.
         place = Place.PROPOSED if proposing else Place.LISTED
@@ -1528,11 +1563,18 @@ class Library:
                 return False
             if include_excluded and item.excluded:
                 unexcluded = item.model_copy(update={"excluded": False})
-                return matches(unexcluded, rules, listed, hearts, key, said)
-            return matches(item, rules, listed, hearts, key, said)
+                return matches(unexcluded, rules, listed, hearts, key, said, titled, polish)
+            return matches(item, rules, listed, hearts, key, said, titled, polish)
 
         index = self.search_index(wait=len(self._all()) <= SEARCH_INLINE)
-        entries = index.candidates(rules, hearts, said) if index is not None else None
+        # A title's words narrow the catalogue as words do (the title is
+        # checked by itself after).
+        narrowing, narrowed = rules, said
+        if titled and not polish:
+            words = " ".join(w for w in (rules.query.strip(), quote([rules.title.strip()])) if w)
+            narrowing = rules.model_copy(update={"query": words})
+            narrowed = [*(said or []), *titled]
+        entries = index.candidates(narrowing, hearts, narrowed) if index is not None else None
         pool = list(index.items(entries)) if index is not None and entries is not None else None
         source: Iterable[Item] = self._snapshot() if pool is None else pool
         if among is not None:
@@ -1572,7 +1614,9 @@ class Library:
                     if against(copy, place, rules.terms):
                         continue
                     stored = self.get(copy.id)
-                    if stored is not None and matches(stored, plain, listed, hearts, "", None):
+                    if stored is not None and matches(
+                        stored, plain, listed, hearts, "", None, titled, polish
+                    ):
                         items.append(stored)
                         have.add(stored.id)
         if not include_excluded:
@@ -1964,6 +2008,53 @@ class Library:
                 (item_id, kind),
             ).fetchone()
         return None if row is None else _note(row)
+
+    def polish_titles(self) -> dict[str, tuple[str, str]]:
+        """The works' Polish titles (their ``pl_text`` notes), as written
+        and folded, by id: read again after :data:`POLISH_TITLES_FRESH`
+        seconds."""
+        kept = self._polish_titles
+        if kept is not None and time.monotonic() - kept[0] < POLISH_TITLES_FRESH:
+            return kept[1]
+        titles: dict[str, tuple[str, str]] = {}
+        for item_id, note in self.notes(PL_TEXT).items():
+            title = " ".join(str(note.data.get("title") or "").split())
+            if title:
+                titles[item_id] = (title, phrase_fold(title))
+        self._polish_titles = (time.monotonic(), titles)
+        return titles
+
+    def titled_ids(self, titled: list[list[str]]) -> frozenset[str]:
+        """The works whose Polish title has the title asked (:func:`titled_as`)."""
+        return frozenset(
+            i for i, (_, folded) in self.polish_titles().items() if says_in(folded, titled)
+        )
+
+    def _titles(self) -> list[tuple[str, str, str, str]]:
+        """The catalogue's titles for the suggestions (:meth:`TermIndex.titles`):
+        each work once, by its title and by its Polish one (of any copy),
+        as (folded, as written, artist, the id of the copy that stands for it)."""
+        works = self.works()
+        hidden = self.hidden()
+        shown = [
+            i
+            for i in self._snapshot()
+            if not i.excluded
+            and i.look is None
+            and i.kind != ItemKind.PHOTO
+            and i not in hidden
+            and i.title.strip()
+        ]
+        polish = self.polish_titles()
+        out: list[tuple[str, str, str, str]] = []
+        for item in works.once(shown):
+            group = works.group_index(item.id)
+            copies = works.groups[group] if group is not None else [item]
+            out.append((phrase_fold(item.title), item.title, item.artist, item.id))
+            written = next((polish[c.id] for c in copies if c.id in polish), None)
+            if written is not None and written[1] != out[-1][0]:
+                out.append((written[1], written[0], item.artist, item.id))
+        return out
 
     def notes(self, kind: str) -> dict[str, Note]:
         """Every note of one kind, by item (a copy: kept in memory after the

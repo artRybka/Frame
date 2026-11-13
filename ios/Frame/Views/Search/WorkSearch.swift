@@ -189,10 +189,11 @@ final class WorkSearch {
     }
 
     /// Whether the museums have anything for `key`: favourites and
-    /// playlists are the owner's, no museum has them; no museum searches by
-    /// how works look.
+    /// playlists are the owner's, no museum has them. A look is asked of
+    /// them by searches Haiku makes of it, what they bring judged by how it
+    /// looks (Mateusz 2026-11-13).
     private func asksMuseums(_ key: Key) -> Bool {
-        key.museums && !key.rules.asksMine && key.rules.look.isEmpty
+        key.museums && !key.rules.asksMine
     }
 
     /// Takes in the museums' answers as each comes.
