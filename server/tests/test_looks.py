@@ -425,6 +425,51 @@ def test_szukaj_narrows_the_look_by_its_other_choices(
         assert len(ids()) == 4  # without words for a look: as it was
 
 
+def test_szukaj_finds_the_works_like_one_nearest_first(
+    service: FrameService, looks: tuple[Looks, FakePainter]
+) -> None:
+    """"Szukaj podobnych" on a work's card (Mateusz 2026-11-13): Szukaj
+    with the chip "Podobne do", the works that look like it nearest first,
+    the groups narrowing them; no museum is asked."""
+    from frame_server.web import create_app
+
+    found, _painter = looks
+    service.ai_config.set_gemini_key("k")
+
+    def leaning(x: float) -> list[float]:
+        vector = [0.0] * EMBED_SIZE
+        vector[0], vector[1] = 1.0, x
+        return vector
+
+    for n, artist in enumerate(["Anna A", "Bruno B", "Anna A", "Anna A", "Anna A"], start=1):
+        _work(service, f"met:{n}", "red", artist=artist)
+    found.index.add(
+        [
+            ("met:1", 1, leaning(0)),
+            ("met:4", 1, leaning(0.3)),
+            ("met:2", 1, leaning(0.6)),
+            ("met:3", 1, leaning(0.9)),
+            ("met:5", 1, _direction(7)),  # nothing like it
+        ]
+    )
+    app = create_app(service.settings)
+    app.state.service = service
+    with TestClient(app) as client:
+
+        def ids(**params: Any) -> list[str]:
+            page = client.get("/api/library/items", params=params).json()
+            return [i["id"] for i in page["items"]]
+
+        assert ids(like="met:1") == ["met:4", "met:2", "met:3"]
+        assert ids(like="met:1", artist="Anna A") == ["met:4", "met:3"]
+        assert ids(like="met:1", sort="artist") == ["met:4", "met:2", "met:3"]
+        assert ids(like="met:9") == []
+        service.ai_config.update(AiConfigUpdate(looks=False))
+        assert client.get("/api/library/items", params={"like": "met:1"}).status_code == 409
+    rules = PlaylistRules(like="met:1")
+    assert not rules.is_empty() and rules.search_key() == ""  # no museum asked
+
+
 def test_a_smart_playlist_keeps_the_look_and_waits_for_google(
     service: FrameService, looks: tuple[Looks, FakePainter]
 ) -> None:

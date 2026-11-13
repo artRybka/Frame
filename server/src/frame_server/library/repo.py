@@ -238,6 +238,7 @@ def _searches(rules: PlaylistRules) -> bool:
         rules.query.strip()
         or rules.title.strip()
         or rules.look.strip()
+        or rules.like.strip()
         or rules.artists
         or rules.styles
         or rules.subjects
@@ -638,6 +639,11 @@ class Library:
         #: ones ``looking`` chooses from; None when that cannot be asked
         #: now. The service puts :meth:`.looks.Looks.near` here.
         self.look_near: Callable[[str], list[str] | None] | None = None
+        #: The ids of the works that look like the work of the id given, one
+        #: copy of each, nearest first (``PlaylistRules.like``); None when
+        #: that cannot be asked now. The service puts
+        #: :meth:`.looks.Looks.alike` here.
+        self.like_near: Callable[[str], list[str] | None] | None = None
         #: The one connection to the disk (:meth:`_db`). Taken after
         #: ``_lock`` when both are held, never before it.
         self._db_lock = threading.RLock()
@@ -1507,6 +1513,31 @@ class Library:
         proposing: bool = False,
         among: Collection[str] | None = None,
     ) -> list[Item]:
+        if rules.like.strip():
+            # The works that look like this one, nearest first, those the
+            # other rules find (Mateusz 2026-11-13: "Szukaj podobnych").
+            ranked = self.like_near(rules.like.strip()) if self.like_near is not None else None
+            if ranked is None:
+                raise _NotNow
+            grouped = self.works()
+            rank: dict[int | str, int] = {}
+            nearby: set[str] = set()
+            for at, item_id in enumerate(ranked):
+                group = grouped.group_index(item_id)
+                rank.setdefault(item_id if group is None else group, at)
+                nearby.update([item_id] if group is None else [c.id for c in grouped.groups[group]])
+            if among is not None:
+                nearby &= set(among)
+            plain = rules.model_copy(update={"like": "", "look": ""})
+            found = self._query(
+                plain, "recent", seed, include_excluded, user, False, proposing, among=nearby
+            )
+
+            def nearness(item: Item) -> int:
+                group = grouped.group_index(item.id)
+                return rank.get(item.id if group is None else group, len(rank))
+
+            return sorted(found, key=nearness)
         if rules.look.strip():
             # What the other rules find, those that look so, nearest first:
             # only among the works that may (and their copies). The whole

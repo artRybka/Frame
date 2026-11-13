@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.105
+
+- „Podobne wyglądem” na karcie dzieła stoi nad słowami kluczowymi i
+  techniką: trzy najbardziej podobne dzieła obok siebie, każde w swoich
+  proporcjach, z tytułem i artystą; dotknięcie otwiera dzieło. Przycisk
+  „Szukaj podobnych” z liczbą wszystkich znalezionych otwiera Szukaj z
+  chipem „Podobne do: …”: wyniki od najbardziej podobnych, grupy zawężają
+  je jak zwykle, można z nich zrobić playlistę.
+
 ## 1.145.100
 
 - Fakty z sieci do studium kosztują o ponad połowę mniej. Claude

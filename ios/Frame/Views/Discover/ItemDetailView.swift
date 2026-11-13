@@ -377,8 +377,10 @@ struct ItemDetailView: View {
             if !item.colors.isEmpty { palette(item).id("palette") }
             about(item)
             studySection(item)
-            facts(item)
+            // Above the facts (Mateusz 2026-11-13: "umieśćmy ją nad blokiem
+            // ze słowami kluczowymi, techniką etc.").
             LooksLikeSection(item: item).id("looks")
+            facts(item)
         }
         .padding(.horizontal, Theme.gutter)
         .padding(.bottom, 40)

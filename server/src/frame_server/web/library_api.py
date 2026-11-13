@@ -270,10 +270,12 @@ def list_items(
     seed: int = 0,
     look: str = "",
     title: str = "",
+    like: str = "",
 ) -> ItemPage:
     """The catalogue's works for Szukaj's choices. ``look``: words for how
     the works look ("mglisty poranek nad wodą"), the other choices narrowing
-    them, nearest first (Mateusz 2026-11-13); 409 when that cannot be
+    them, nearest first (Mateusz 2026-11-13); ``like``: a work's id, the
+    works that look like it so ("Szukaj podobnych"); 409 when that cannot be
     asked."""
     rules = PlaylistRules(
         query=q,
@@ -295,9 +297,12 @@ def list_items(
         exclude_ids=sorted(svc.images.gone_ids()),
         look=" ".join(look.split()),
         title=" ".join(title.split()),
+        like=like.strip(),
     )
     if rules.look and not svc.looks.ready():
         raise HTTPException(409, "Szukanie wyglądem is not ready")
+    if rules.like and not svc.looks.enabled():
+        raise HTTPException(409, "Szukanie wyglądem is off")
     total, items = svc.library.query(rules, sort=sort, offset=offset, limit=limit, seed=seed)
     if rules.query.strip() or rules.title or rules.artists:
         # Its artists' pictures laid over each other: copies under other

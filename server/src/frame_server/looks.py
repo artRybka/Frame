@@ -90,6 +90,8 @@ PICTURE_FLOOR = 0.60
 #: looked through for words narrowed by the groups, and at most this many
 #: shown, nearest first.
 AMONG_NEAR = 3000
+#: Works Szukaj's "Podobne do" shows at most: the card counts to 60 ("60+").
+ALIKE_MOST = 120
 AMONG_MOST = 240
 #: A work whose thumbnail is not here is looked at again after this long.
 NO_THUMB_AGAIN = 86_400.0
@@ -506,6 +508,18 @@ class Looks:
             (i, s) for i, s in near if i != item.id and (own is None or works.group_index(i) != own)
         ]
         return self._answer(near, limit, PICTURE_FLOOR, relative=False, place=place)
+
+    def alike(self, item_id: str) -> list[str] | None:
+        """The ids of the works that look like the work ``item_id``, nearest
+        first, :data:`ALIKE_MOST` at most, for Szukaj (``Library.like_near``,
+        ``PlaylistRules.like``); None with Szukanie wyglądem off. Asks
+        Google nothing."""
+        if not self.enabled():
+            return None
+        item = self.library.get(item_id)
+        if item is None:
+            return []
+        return [f.item.id for f in self.similar(item, ALIKE_MOST)]
 
     def neighbours(self, item_id: str, limit: int = 12) -> list[str]:
         """The ids of works that look most like ``item_id`` (the study's

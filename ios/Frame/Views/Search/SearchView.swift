@@ -34,5 +34,8 @@ struct SearchView: View {
         .onChange(of: model.placeSearch, initial: true) { _, place in
             if place != nil { path = NavigationPath() }
         }
+        .onChange(of: model.likeSearch, initial: true) { _, like in
+            if like != nil { path = NavigationPath() }
+        }
     }
 }

@@ -441,11 +441,15 @@ struct PlaylistRules: Codable, Hashable, Sendable {
     /// A work's title, or words of it: works with it in their title, not
     /// those only mentioning it (Mateusz 2026-11-13).
     var title: String = ""
+    /// A work's id: the works that look like it, nearest first, the other
+    /// rules narrowing them ("Szukaj podobnych" on a work's card, Mateusz
+    /// 2026-11-13). Only the catalogue's works: no museum is asked.
+    var like: String = ""
 
     /// Whether there are no rules; exceptions (`excludeIds`,
     /// `excludeSources`) don't count.
     var isEmpty: Bool {
-        query.isEmpty && look.isEmpty && title.isEmpty && artists.isEmpty && styles.isEmpty && subjects.isEmpty && terms.isEmpty
+        query.isEmpty && look.isEmpty && like.isEmpty && title.isEmpty && artists.isEmpty && styles.isEmpty && subjects.isEmpty && terms.isEmpty
             && colors.isEmpty
             && kinds.isEmpty && sources.isEmpty && places.isEmpty && yearFrom == nil && yearTo == nil
             && !favoritesOnly
@@ -476,6 +480,7 @@ extension PlaylistRules {
         excludeIds = try c.decodeIfPresent([String].self, forKey: .excludeIds) ?? []  // older servers
         look = try c.decodeIfPresent(String.self, forKey: .look) ?? ""  // before 1.145.96
         title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""  // before 1.145.98
+        like = try c.decodeIfPresent(String.self, forKey: .like) ?? ""  // before 1.145.105
     }
 }
 
@@ -2795,6 +2800,7 @@ struct SearchToken: Hashable, Sendable, Identifiable {
         case "color": "Kolor"
         case SearchToken.lookKind: "Wygląd"
         case SearchToken.titleKind: "Tytuł"
+        case SearchToken.likeKind: "Podobne"
         default: "Słowo"
         }
     }
@@ -2810,7 +2816,7 @@ struct SearchToken: Hashable, Sendable, Identifiable {
         case "mine": MineTerm.named(key)?.icon ?? "person.crop.circle"
         case "museum", SearchToken.museumOut: "building.columns"
         case "color": "circle.fill"
-        case SearchToken.lookKind: "eye"
+        case SearchToken.lookKind, SearchToken.likeKind: "eye"
         case SearchToken.titleKind: "text.quote"
         default: "text.magnifyingglass"
         }
@@ -2837,6 +2843,19 @@ extension SearchToken {
     static func title(_ title: String) -> SearchToken {
         SearchToken(kind: titleKind, key: title, name: title)
     }
+
+    /// The kind of a work whose look-alikes are asked (`PlaylistRules.like`).
+    static let likeKind = "like"
+
+    /// The works that look like the work `id`, as a chip in the field
+    /// ("Podobne do: Słoneczniki").
+    static func like(_ id: String, title: String) -> SearchToken {
+        SearchToken(kind: likeKind, key: id, name: title.isEmpty ? "Podobne do dzieła" : "Podobne do: \(title)")
+    }
+
+    /// The key of a look-alike chip's title in the names given to
+    /// `PlaylistRules.tokens(names:)`.
+    static func likeName(_ id: String) -> String { "like:" + id }
 
     /// A museum's chip: asked alone (with the others picked) or left out
     /// ("bez Yale").
@@ -2975,6 +2994,7 @@ extension PlaylistRules {
         tokens += SearchPhrases.tokens(query).map { SearchToken(kind: "word", key: $0, name: $0) }
         if !title.isEmpty { tokens.append(.title(title)) }
         if !look.isEmpty { tokens.append(.look(look)) }
+        if !like.isEmpty { tokens.append(.like(like, title: names[SearchToken.likeName(like)] ?? "")) }
         return tokens
     }
 
@@ -2988,6 +3008,7 @@ extension PlaylistRules {
         // One look at a time: the last words asked.
         look = tokens.last { $0.kind == SearchToken.lookKind }?.key ?? ""
         title = tokens.last { $0.kind == SearchToken.titleKind }?.key ?? ""
+        like = tokens.last { $0.kind == SearchToken.likeKind }?.key ?? ""
     }
 
     /// "years:1880-1914" as "1880–1914".
@@ -3101,6 +3122,8 @@ struct LibraryQuery: Hashable, Sendable {
     var look = ""
     /// A title, as in `PlaylistRules.title`.
     var title = ""
+    /// A work's id, as in `PlaylistRules.like`.
+    var like = ""
     var sort = "artist"
     var offset = 0
     var limit = 200
@@ -3127,6 +3150,7 @@ struct LibraryQuery: Hashable, Sendable {
         yearTo = rules.yearTo
         look = rules.look
         title = rules.title
+        like = rules.like
         self.sort = sort
         self.limit = limit
     }

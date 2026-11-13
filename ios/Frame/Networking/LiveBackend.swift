@@ -80,6 +80,7 @@ struct LiveBackend: FrameBackend {
         if q.keptOnly { query.append(URLQueryItem(name: "kept", value: "true")) }
         if !q.look.isEmpty { query.append(URLQueryItem(name: "look", value: q.look)) }
         if !q.title.isEmpty { query.append(URLQueryItem(name: "title", value: q.title)) }
+        if !q.like.isEmpty { query.append(URLQueryItem(name: "like", value: q.like)) }
         return try await get("/api/library/items", query: query)
     }
 
@@ -467,8 +468,11 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
-    func looksLike(itemID: String) async throws -> LooksAnswer {
-        try await get("/api/library/items/\(escape(itemID))/looks")
+    func looksLike(itemID: String, limit: Int) async throws -> LooksAnswer {
+        try await get(
+            "/api/library/items/\(escape(itemID))/looks",
+            query: [URLQueryItem(name: "limit", value: String(limit))]
+        )
     }
 
     func museumHint(_ text: String) async throws -> MuseumHint {
