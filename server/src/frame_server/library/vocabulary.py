@@ -920,6 +920,62 @@ def _is_document(classification: str, title: str) -> bool:
     return bool(_VERSO.search(line))
 
 
+#: A page of a sketchbook or a sheet of notes and studies, as its museum
+#: says it (Mateusz 2026-11-13: F.E. Church's "Various Studies near the Pool
+#: of Bethesda", no study). A single "Study" or "Sketch" is not one: an oil
+#: sketch or a finished study may well be worth a page (``ai.study_fit``
+#: looks at those). An album of paintings ("album/sketchbook") is no
+#: sketchbook either.
+_SKETCH_TYPE = re.compile(
+    r"(?<!album/)\b(sketch ?books?|skizzenb[üu]ch\w*|schetsboek\w*|szkicownik\w*|"
+    r"carnets? de croquis)\b",
+    re.IGNORECASE,
+)
+_SKETCH_SHEET = re.compile(
+    r"\b(sketch ?books?|sketch-books?|skizzenb[üu]ch\w*|schetsboek\w*|szkicownik\w*|"
+    r"carnets? de croquis|(?:pages?|leaf|leaves|folio) (?:from|of) (?:an? |the )?(?:\w+ )?"
+    r"(?:sketch ?books?|notebooks?)|sheets? of (?:studies|sketches|notes)|"
+    r"(?:various|several|miscellaneous) (?:studies|sketches)|studies and notes|"
+    r"colou?r notes|feuilles? d'[ée]tudes|studienbl[äa]tt\w*|skizzenbl[äa]tt\w*|schetsblad\w*|"
+    r"studia różne|kart\w* (?:ze )?szkic\w*)\b",
+    re.IGNORECASE,
+)
+
+#: A design, plan or technical drawing: an ornament, a wallpaper, a
+#: building's elevation, a map (Mateusz 2026-11-13: no study).
+_DESIGN_TYPE = re.compile(
+    r"\b(architectural drawings?|architecture|design drawings?|design sketch(?:es)?|"
+    r"technical drawings?|working drawings?|ornament (?:prints?|designs?)|pattern books?|"
+    r"patterns?|wallpapers?|textile designs?|maps?|cartograph\w*|charts?|plans?|elevations?|"
+    r"diagrams?|blueprints?|tracings?|calques?|bouwtekening\w*|landkaart\w*|plattegrond\w*)\b",
+    re.IGNORECASE,
+)
+_DESIGN_TITLE = re.compile(
+    r"^\W*(?:designs? for|project for|projet (?:de|pour)|entwurf f[üu]r|ontwerp voor|"
+    r"pattern for|plan (?:of|for)|ground plan|floor plan|elevation (?:of|for)|"
+    r"(?:cross-)?section (?:of|through)|map of|chart of)\b",
+    re.IGNORECASE,
+)
+
+
+def is_sketch_sheet(item: Item) -> bool:
+    """A sketchbook's page or a sheet of studies and notes."""
+    if item.kind != ItemKind.ARTWORK:
+        return False
+    return bool(
+        _SKETCH_TYPE.search(item.classification) or _SKETCH_SHEET.search(item.title.split("\n")[0])
+    )
+
+
+def is_design(item: Item) -> bool:
+    """A design, plan, map or technical drawing."""
+    if item.kind != ItemKind.ARTWORK:
+        return False
+    return bool(
+        _DESIGN_TYPE.search(item.classification) or _DESIGN_TITLE.search(item.title.split("\n")[0])
+    )
+
+
 #: Museums' types of sculpture and of decorative arts; a type that names a
 #: picture technique comes first ("Miniature Painting").
 _SCULPTURE = re.compile(

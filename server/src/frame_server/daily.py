@@ -46,6 +46,7 @@ from .library.good import copy_quality, sketch_title
 from .library.images import display_copy, said_side
 from .library.models import Note
 from .library.nationality import NATIONALITIES
+from .library.verdict import Place, against
 from .library.vocabulary import archive_own, is_photograph
 
 if TYPE_CHECKING:
@@ -189,6 +190,9 @@ class Daily:
         #: Asks the curator which shortlisted work is worth a page; set by
         #: the service (None: the rules' first stands).
         self.claude: Claude | None = None
+        #: The works found worth no study on their card (``study_gate``):
+        #: never the study of the day either.
+        self.study_unfit: Callable[[], set[str]] = set
 
     # -- the days ----------------------------------------------------------
 
@@ -310,13 +314,15 @@ class Daily:
         rules = PlaylistRules(kinds=[ItemKind.ARTWORK])
         seed = self._seed(day, skipped)
         drawn = self.library.query(rules, sort="random", seed=seed, limit=POOL, proposing=True)[1]
-        unfit = self.unfit()
+        unfit = self.unfit().keys() | self.study_unfit()
         poor = self.poor_copies()
         return [
             i
             for i in drawn
             if i.id not in recent
             and i.id not in unfit
+            # No sketchbook page, sheet of notes or design (Mateusz 2026-11-13).
+            and not against(i, Place.STUDIED)
             and poor.get(i.id) != copy_key(i)
             and i.look is None
             and i.artist

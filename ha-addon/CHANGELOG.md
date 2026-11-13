@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.145.89
+
+- Studium dzieła tylko dla dzieł, które na nie zasługują: karta kartki ze
+  szkicownika, kartki studiów i notatek, prawie pustej kartki z drobnym
+  szkicem, projektu, planu, mapy czy rysunku technicznego oraz własnego
+  zdjęcia nie ma przycisku „Przygotuj studium dzieła”. O bladych
+  rysunkach, których nie rozstrzygają słowa muzeum ani rozkład kreski,
+  decyduje raz Haiku z miniaturą. Takie prace nie zostają też Studium dnia.
+- Dzieło z małym zdjęciem dostaje studium, a pierwszym jego krokiem jest
+  Kreatywny restaurator („Odnawiam zdjęcie dzieła”).
+- Rycina na szerokim marginesie (np. mezzotinta Lucasa) jest analizowana
+  na samej odbitce, więc arkusz kompozycji wreszcie do niej pasuje.
+
 ## 1.145.88
 
 - Kreatywny restaurator nie poddaje się po pierwszej odmowie. Gdy model

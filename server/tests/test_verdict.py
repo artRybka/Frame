@@ -14,6 +14,7 @@ from frame_server.library.verdict import (
     MINDS,
     NAMES,
     OTHER_ART,
+    STUDY_ONLY,
     Place,
     Why,
     against,
@@ -68,7 +69,7 @@ def test_every_kind_of_copy_has_its_reason() -> None:
 
 def test_every_reason_has_a_name() -> None:
     assert set(NAMES) == set(Why)
-    assert set(OTHER_ART.values()) == set(Why) - COPIES
+    assert set(OTHER_ART.values()) == set(Why) - COPIES - STUDY_ONLY
 
 
 #: The place of the verdict each place of the rules matrix asks.
@@ -83,6 +84,7 @@ ASKS = {
     "Strażnik": Place.TIDIED,
     "Nocny przegląd": Place.TIDIED,
     "powtórki": Place.COMPARED,
+    "studium na karcie": Place.STUDIED,
 }
 #: Where a place leaves a work out for a reason of its own, not of the
 #: work's kind: the work of the day wants a large picture and no archive's
@@ -93,6 +95,11 @@ OWN_WISHES = {
     ("Strażnik", "obraz z muzeum"),
     ("Strażnik", "szara grafika z muzeum"),
     ("Strażnik", "plakat"),
+    # A page of sketches, a design: no study of the day (as no study at all).
+    ("studium dnia", "kartka szkiców"),
+    ("studium dnia", "projekt architekta"),
+    ("Strażnik", "kartka szkiców"),
+    ("Strażnik", "projekt architekta"),
 }
 
 

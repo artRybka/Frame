@@ -245,7 +245,7 @@ def test_other_arts_have_no_study_nor_painting_cards(museums) -> None:  # noqa: 
         _work(500, artist="Auguste Rodin", classification="Sculpture", favorite=True)
     )
     assert "Auguste Rodin" not in service.player.taste()
-    assert service.study.status(bust) == ("off", "")
+    assert service.study.status(bust) == ("off", "rzeźba")
     week = _artist_of_the_week([bust] * 10, random.Random(1), set())
     assert week is None
     assert bust.id not in {i.id for i in service.daily.candidates(library.get("aic:0"))}

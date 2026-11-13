@@ -76,6 +76,7 @@ from .status import StatusMonitor
 from .storage import StorageStore
 from .store import ContentInfo, ContentStore
 from .study import Study
+from .study_gate import StudyGate
 from .tailnet import Tailnet
 from .users import Users
 
@@ -403,6 +404,18 @@ class FrameService:
         # Small pictures of works drawn again larger by the same model
         # ("Kreatywny restaurator"), kept as the owner's pick.
         self.restorer = Restorer(self.library, self.images, self.sharper, self.painter)
+        # A small picture is drawn larger first, before its study (Mateusz
+        # 2026-11-13); which works get none: the rules, the sheet's pixels and
+        # Haiku for a pale sheet between them, shared with the study of the day.
+        self.study.restorer = self.restorer
+        self.study.gate = StudyGate(
+            self.library,
+            self.images,
+            self.claude,
+            self.study.job.enabled,
+            self.daily.unfit,
+        )
+        self.daily.study_unfit = self.study.gate.unfit
         # The composition text of pages written before, rewritten once in one
         # voice (their marks stay).
         self.prose = ProseJob(self.daily.job)

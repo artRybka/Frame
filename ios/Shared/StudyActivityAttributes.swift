@@ -39,7 +39,7 @@ struct StudyActivityAttributes: ActivityAttributes {
 
         /// Each part's step (index in `steps`).
         static let stepOfPart: [String: Int] = [
-            "sources": 0,
+            "restoring": 0, "sources": 0,
             "text": 1, "text_again": 1, "details_check": 1,
             "composition": 2, "composition_check": 2, "composition_motion": 2, "composition_text": 2,
             "cutting": 3, "later": 3,
@@ -49,6 +49,8 @@ struct StudyActivityAttributes: ActivityAttributes {
         static let partLines: [String: String] = [
             // In the voice of the one preparing the study (Mateusz 2026-11-07).
             "waiting": "Zaraz zabieram się do pracy",
+            // A small picture drawn larger first (Kreatywny restaurator, 2026-11-13).
+            "restoring": "Odnawiam zdjęcie dzieła",
             "sources": "Zbieram źródła i informacje",
             "text": "Piszę studium",
             "text_again": "Nanoszę korekty",

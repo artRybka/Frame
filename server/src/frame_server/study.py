@@ -23,7 +23,8 @@ from typing import TYPE_CHECKING, Literal
 
 from .ai.client import AiUnavailable
 from .ai.study import KIND, StudyJob
-from .library.vocabulary import other_art
+from .library.low_res import low_side
+from .library.verdict import NAMES, Place, against
 
 if TYPE_CHECKING:
     from .ai import AiWorker
@@ -31,6 +32,8 @@ if TYPE_CHECKING:
     from .daily import Daily
     from .library import Item
     from .library.models import Note
+    from .restorer import Restorer
+    from .study_gate import StudyGate
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +52,7 @@ FAILED = "Claude nie napisał studium tego dzieła."
 #: The app groups them into its four steps (Źródła · Tekst · Kompozycja ·
 #: Detale); ``status`` keeps the three older words for older apps.
 PARTS = (
+    "restoring",
     "sources",
     "text",
     "text_again",
@@ -63,13 +67,15 @@ PARTS = (
 #: Each part as the older apps' status: the long middle is "writing".
 STATUS_OF: dict[str, Status] = {
     "waiting": "waiting",
+    "restoring": "sources",
     "sources": "sources",
     "cutting": "details",
     "later": "details",
-    **{part: "writing" for part in PARTS[1:8]},
+    **{part: "writing" for part in PARTS[2:9]},
 }
 #: How long each part takes before any study was timed here (seconds).
 TYPICAL_PARTS: dict[str, float] = {
+    "restoring": 30,
     "sources": 5,
     "text": 90,
     "text_again": 0,
@@ -128,6 +134,14 @@ class Study:
         self.on_step: Callable[[Item, Status, str], None] | None = None
         #: Where each study asked for now is (:class:`Progress`).
         self._tracks: dict[str, _Track] = {}
+        #: Which works may have a study (``study_gate``); without it only the
+        #: rules are asked.
+        self.gate: StudyGate | None = None
+        #: The creative restorer, drawing a small picture larger before its
+        #: study (Mateusz 2026-11-13); None without Google's key.
+        self.restorer: Restorer | None = None
+        #: Works ordered for later whose picture is drawn first.
+        self._restoring: set[str] = set()
         job.on_stage = self._staged
         daily.on_written = self.adopt
         ai.on_later = self._made_later
@@ -199,6 +213,8 @@ class Study:
                 self.library.delete_notes(KIND, item.id)
             self._errors.pop(item.id, None)
             future = self._borrowed(item) if not again else None
+            if future is None and self._restorable(item):
+                future = self._restored_first(item)
             future = future or self.ai.need_now(item.id, KIND)
             waiting = not future.done() and item.id not in self._cutting
             if not future.done():
@@ -223,7 +239,79 @@ class Study:
         if (borrowed := self._borrowed(item)) is not None:  # the day's page: its study now
             self._written(item.id, borrowed)
             return True
+        if self._restorable(item):
+            with self._lock:
+                if item.id in self._restoring:
+                    return True
+                self._restoring.add(item.id)
+            threading.Thread(
+                target=self._restore_then_later, args=(item,), name="study-restore", daemon=True
+            ).start()
+            return True
         return self.ai.ask_later(item.id, KIND) or self.ai.later(KIND, item.id)
+
+    # -- a small picture drawn larger first ----------------------------------
+
+    def _restorable(self, item: Item) -> bool:
+        """A small picture (``low_res``) the creative restorer may draw
+        larger before its study (Mateusz 2026-11-13: "gdy kopia jest niskiej
+        jakości, to i tak pozwalaj na Studium, ale w pierwszym jego etapie
+        wykonaj kreatywnego restauratora")."""
+        restorer = self.restorer
+        if restorer is None or not restorer.painter.enabled() or low_side(item) <= 0:
+            return False
+        if restorer.restored(item) or item.id in restorer.refused():
+            return False
+        try:
+            restorer.check(item)
+        except Exception:
+            return False
+        return True
+
+    def _restore(self, item: Item) -> None:
+        """The restorer's drawing, kept in place of the picture; the study
+        goes on from the museum's picture when it cannot be had."""
+        assert self.restorer is not None
+        try:
+            self.restorer.restore(self.library.get(item.id) or item)
+        except Exception as err:
+            log.info("study of %s: the picture not drawn again first (%s)", item.id, err)
+
+    def _restored_first(self, item: Item) -> Future[Note | None]:
+        """The study asked for once the restorer has drawn the picture:
+        its future, done when the study's is."""
+        outer: Future[Note | None] = Future()
+        self.job.stages[item.id] = "restoring"
+
+        def run() -> None:
+            self._restore(item)
+            self.job.stages.pop(item.id, None)
+            try:
+                inner = self.ai.need_now(item.id, KIND)
+            except BaseException as err:
+                outer.set_exception(err)
+                return
+
+            def passed(done: Future[Note | None]) -> None:
+                if (err := done.exception()) is not None:
+                    outer.set_exception(err)
+                else:
+                    outer.set_result(done.result())
+
+            inner.add_done_callback(passed)
+
+        threading.Thread(target=run, name="study-restore", daemon=True).start()
+        return outer
+
+    def _restore_then_later(self, item: Item) -> None:
+        try:
+            self._restore(item)
+            self.ai.ask_later(item.id, KIND)
+        except Exception:
+            log.exception("study of %s ordered for later", item.id)
+        finally:
+            with self._lock:
+                self._restoring.discard(item.id)
 
     def _made_later(self, kind: str, item: Item) -> None:
         """A note ordered for later is made: a study is cut and told ready
@@ -314,7 +402,7 @@ class Study:
             if track is None:
                 track = self._tracks[item.id] = _Track(part, now)
                 # Picked up past its start (a batch's answer): not timed.
-                track.whole = part in ("waiting", "sources")
+                track.whole = part in ("waiting", "restoring", "sources")
             elif track.part != part:
                 track.spent[track.part] = track.spent.get(track.part, 0.0) + now - track.since
                 track.part, track.since = part, now
@@ -357,10 +445,14 @@ class Study:
         kept = [t for t in self.library.get_state(TIMINGS_KEY, []) if isinstance(t, dict)]
         if not kept:
             return dict(TYPICAL_PARTS)
-        return {
+        found = {
             part: float(statistics.median(float(t.get(part, 0.0) or 0.0) for t in kept))
             for part in PARTS
         }
+        # Only small pictures are drawn again: the studies that had it.
+        drawn = [float(t["restoring"]) for t in kept if float(t.get("restoring", 0.0) or 0.0) > 0]
+        found["restoring"] = statistics.median(drawn) if drawn else TYPICAL_PARTS["restoring"]
+        return found
 
     def progress(self, item_id: str) -> Progress | None:
         """How far the study asked for now is; None when none is."""
@@ -385,15 +477,23 @@ class Study:
             return ("details" if item.id in self._cutting else "ready"), ""
         if item is not None and item.id in self._asking:
             return STATUS_OF.get(self.job.stages.get(item.id, "waiting"), "writing"), ""
-        if item is not None and other_art(item):
-            return "off", ""  # "Sztuki inne" have no study (Mateusz 2026-11-06)
-        if item is not None and self.ai.later(KIND, item.id):
+        if item is not None and (why := self.why_not(item)) is not None:
+            return "off", why  # Mateusz 2026-11-06, 2026-11-13
+        if item is not None and (self.ai.later(KIND, item.id) or item.id in self._restoring):
             return "later", ""
         if item is not None and (error := self._errors.get(item.id)):
             return "failed", error
         if item is not None and self.requested(item.id) and self.job.failed(item):
             return "failed", FAILED
         return ("none" if self.job.enabled() else "off"), ""
+
+    def why_not(self, item: Item, ask: bool = False) -> str | None:
+        """Why ``item`` may have no study, in Polish; None when it may
+        (``study_gate.StudyGate.why_not``)."""
+        if self.gate is not None:
+            return self.gate.why_not(item, ask)
+        reasons = against(item, Place.STUDIED)
+        return NAMES[reasons[0]] if reasons else None
 
     def detail(self, item: Item, index: int) -> Path | None:
         essay = self.job.essay(item)
