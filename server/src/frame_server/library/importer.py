@@ -295,6 +295,11 @@ class Importer:
         #: Fragments of works (library/fragments.py), set by the service:
         #: a fragment's id (``<work>~p<n>``) is made from its work's.
         self.fragments: Fragments | None = None
+        #: Told of the works each import took into the library (set by the
+        #: service: their pictures are laid over the artist's other works,
+        #: ``twins``, so that a copy under another title is one work before
+        #: the night; Mateusz 2026-11-13, sunflowers twice in a playlist).
+        self.taken: Callable[[list[Item]], None] = lambda items: None
 
     def access(self) -> Access:
         """The owner's current choices, with the shared death-year cache."""
@@ -1228,6 +1233,31 @@ class Importer:
         ``fits`` (a smart playlist's rules) it counts too, when only that
         made it fit."""
         job.total = count
+        taken: list[Item] = []
+        try:
+            self._take_from(streams, count, job, before, after, pooled, terms, most, fits, taken)
+        finally:
+            if taken:
+                try:
+                    self.taken(taken)
+                except Exception:
+                    log.exception("telling of the works taken")
+
+    def _take_from(
+        self,
+        streams: list[Iterator[Item]],
+        count: int,
+        job: Job,
+        before: Callable[[Item], bool],
+        after: Callable[[Item], bool],
+        pooled: bool,
+        terms: list[str] | None,
+        most: int | None,
+        fits: Callable[[Item], bool] | None,
+        taken: list[Item],
+    ) -> None:
+        """:meth:`_take`'s turns; each work put in the library is added to
+        ``taken``."""
         drawn = 0
         most = max(count * 20, 200) if most is None else most
         while streams and job.done < count and drawn < most:
@@ -1269,7 +1299,9 @@ class Importer:
                     job.skipped += 1
                     continue
                 worse = self.library.twin(analysed)  # pooled, from a less reliable source
-                self.library.upsert(analysed.model_copy(update={"pooled": pooled}))
+                kept = analysed.model_copy(update={"pooled": pooled})
+                self.library.upsert(kept)
+                taken.append(kept)
                 if worse is not None and worse.id in job.item_ids:
                     # A better copy of a work taken already, in its place.
                     job.item_ids[job.item_ids.index(worse.id)] = item.id

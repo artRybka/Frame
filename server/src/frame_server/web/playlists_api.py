@@ -118,6 +118,10 @@ def _detail(svc: FrameService, playlist: Playlist) -> PlaylistDetail:
     items = svc.library.playlist_items(playlist)  # in its own order
     if playlist.kind == PlaylistKind.SMART:
         items = items[:DETAIL_LIMIT]  # e.g. one made before empty rules were refused
+    # Pictures not yet laid over their artist's other works (a smart
+    # playlist's are taken in from the museums as it fills): a copy under
+    # another title is one work by the next look (library/twins.py).
+    svc.twins.after_search(items)
     return PlaylistDetail(
         playlist=summary(svc, playlist),
         item_ids=playlist.item_ids,

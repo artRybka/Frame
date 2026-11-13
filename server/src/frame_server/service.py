@@ -331,6 +331,8 @@ class FrameService:
         self.sharper = Sharper(self.library, self.importer, self.images, copies.file)
         # One work under other titles, and details of works, by their pictures.
         self.twins = Twins(self.library, self.images)
+        # Works taken in from the museums are laid over their artist's at once.
+        self.importer.taken = self.twins.after_search
         # What the pictures could not settle, judged at night (Haiku, Batch API).
         self.twins_judge = NightJudge(
             self.library, self.images, self.twins, self.claude, self.ai_config

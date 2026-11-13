@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.145.98
+
+- Dwa dzieła z tą samą kopią łączą się w jedno od razu. W playliście
+  „Vincent van Gogh · słoneczniki” te same obrazy stały po dwa razy pod
+  różnymi tytułami („Sunflowers / Vase with Twelve Sunflowers” i „Twelve
+  Sunflowers in a Vase”), bo dzieła dodane z Szukaj czekały na porównanie
+  obrazów, a to czekało na pobieranie, które wstrzymuje się, gdy używasz
+  aplikacji. Teraz serwer porównuje najpierw obrazy, które już ma, i od
+  razu zapisuje, które są jednym dziełem. Porównanie rusza też po każdym
+  dodaniu dzieł z muzeów i po otwarciu playlisty.
+
 ## 1.145.97
 
 - Poprawka: szukanie wyglądem nie zatrzymuje już serwera. Słowa
