@@ -88,15 +88,23 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-#: Raised when the sheets should all be drawn anew (never lightly: each is paid for).
-LOOK = 1
+#: Raised when the sheets should all be drawn anew (never lightly: each is
+#: paid for). They go through the Batch: the pages are counted as saved
+#: before (:meth:`DrawnSheets._since`), and each keeps showing its sheet of
+#: the look before until the new one is there (:meth:`DrawnSheets.kept`).
+#: 2: the study's new prompt of 1.145.81 for every sheet drawn before
+#: (Mateusz 2026-11-13 09:30: "dla istniejących studium - puść proszę
+#: podkłady wg. zmienionego promptu").
+LOOK = 2
 #: The picture a sheet is drawn from is at most this long.
 SOURCE_SIDE = 2000
 #: A study drawn for another field of the work serves a take whose field's
 #: edges lie this near its (fractions of the reproduction's sides).
 NEAR_FIELD = 0.015
-#: Since when the pages are new ones (state): when the sheets were first drawn.
+#: Since when the pages are new ones (state): when the sheets were first
+#: drawn, or last drawn anew (:data:`LOOK`, kept under ``SINCE_LOOK``).
 SINCE = "drawn_since"
+SINCE_LOOK = "drawn_since_look"
 #: The background lets the server start first, rests between two sheets,
 #: looks again this often when none is wanted; a sheet that could not be
 #: drawn, or the key's trouble, is tried again after this long.
@@ -156,7 +164,7 @@ class DrawnSheets:
     # -- what is kept ---------------------------------------------------------
 
     @staticmethod
-    def key(view: View) -> str:
+    def key(view: View, look: int | None = None) -> str:
         """What a take's drawn sheet is made of, as a few letters: the
         picture's field and where its titled marks lie. Not their words: a
         text put right does not have the sheet paid for again."""
@@ -166,14 +174,14 @@ class DrawnSheets:
             for m in view.marks
             if m.title
         )
-        return text_hash(LOOK, field, marks)[:10]
+        return text_hash(LOOK if look is None else look, field, marks)[:10]
 
     def _stem(self, item: Item, key: str) -> str:
         return f"{item.file_stem}-{key}"
 
-    def meta(self, item: Item, view: View) -> dict[str, Any] | None:
+    def meta(self, item: Item, view: View, look: int | None = None) -> dict[str, Any] | None:
         """What is kept of the take's drawn sheet; None when it has none."""
-        stem = self._stem(item, self.key(view))
+        stem = self._stem(item, self.key(view, look))
         if stem in self._kept:
             return self._kept[stem]
         try:
@@ -184,6 +192,15 @@ class DrawnSheets:
             return None
         self._kept[stem] = kept
         return kept
+
+    def kept(self, item: Item, view: View) -> tuple[str, dict[str, Any]] | None:
+        """The take's sheet to show, and its key: the one of this
+        :data:`LOOK`, or until it is drawn the newest kept before."""
+        for look in range(LOOK, 0, -1):
+            meta = self.meta(item, view, look)
+            if meta is not None:
+                return self.key(view, look), meta
+        return None
 
     def part(self, item: Item, key: str, part: str) -> Path | None:
         """The file of a part of a sheet: ``page``, or ``m1``… (a mark's
@@ -364,10 +381,14 @@ class DrawnSheets:
         return when is not None and time.monotonic() - when < AGAIN
 
     def _since(self) -> str:
+        """Since when a page counts as new: its sheet is drawn at once. When
+        the sheets are drawn anew (:data:`LOOK` raised), from then on: the
+        pages saved before go through the Batch."""
         since = self.library.get_state(SINCE)
-        if not since:
+        if not since or self.library.get_state(SINCE_LOOK, 1) != LOOK:
             since = now_iso()
             self.library.set_state(SINCE, since)
+            self.library.set_state(SINCE_LOOK, LOOK)
         return str(since)
 
     def _shown(self, item_id: str, key: str) -> View | None:

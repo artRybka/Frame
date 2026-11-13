@@ -21,6 +21,7 @@ from PIL import Image, ImageDraw, ImageFilter
 from test_composition import _old_page
 from test_daily import _app, _catalogue
 
+import frame_server.drawn as drawn_module
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai import drawn as ai_drawn
 from frame_server.ai.client import AiUnavailable
@@ -54,7 +55,15 @@ from frame_server.ai.gemini import (
 from frame_server.ai.jobs import listed
 from frame_server.ai.redraw import PenJob
 from frame_server.ai.study import KIND as STUDY
-from frame_server.drawn import KEY_REJECTED, LIMIT, NO_CREDIT, SINCE, TRIES, DrawnSheets
+from frame_server.drawn import (
+    KEY_REJECTED,
+    LIMIT,
+    NO_CREDIT,
+    SINCE,
+    SINCE_LOOK,
+    TRIES,
+    DrawnSheets,
+)
 from frame_server.imaging import drawn as imaging
 from frame_server.imaging.sheet import BLEED, LONG, PAGE, bleed
 from frame_server.service import FrameService
@@ -575,6 +584,40 @@ def test_a_new_pages_sheet_is_drawn_at_once_and_the_app_gets_it(tmp_path: Path) 
         assert client.get("/api/study/met:1").json()["work"]["composition_drawn"] is not None
 
 
+def _began(svc: FrameService, since: str) -> None:
+    """The sheets began to be drawn (in this look) at ``since``."""
+    svc.library.set_state(SINCE, since)
+    svc.library.set_state(SINCE_LOOK, drawn_module.LOOK)
+
+
+def test_a_new_look_draws_every_sheet_anew_through_the_batch_showing_the_old_meanwhile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mateusz 2026-11-13 09:30: "dla istniejących studium - puść proszę
+    podkłady wg. zmienionego promptu"."""
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    with TestClient(app) as client:
+        _catalogue(svc)
+        stood = Stood(svc)
+        _old_page(svc)  # a new page: its sheet drawn at once
+        assert svc.drawn.ahead() is True and stood.calls == [KIND] * 3
+        before = client.get("/api/study/met:1").json()["work"]["composition_drawn"]
+        shown = _shown(svc)
+        assert f"v={DrawnSheets.key(shown)}" in before["sheet"]
+
+        monkeypatch.setattr(drawn_module, "LOOK", drawn_module.LOOK + 1)
+        # Every page is now one saved before: its sheet is drawn anew through
+        # the Batch, nothing at once, and the old sheet is shown meanwhile.
+        assert svc.drawn.at_once() == []
+        assert [item.id for item, _ in svc.drawn.saved()] == ["met:1"]
+        work = client.get("/api/study/met:1").json()["work"]
+        assert work["composition_drawn"] == before and work["composition_drawn_pending"] is False
+        assert client.get(before["sheet"]).status_code == 200
+        assert DrawnSheets.key(shown) != DrawnSheets.key(shown, drawn_module.LOOK - 1)
+        assert stood.calls == [KIND] * 3
+
+
 def test_saved_pages_go_through_the_batch_and_an_analysis_made_anew_at_once(
     tmp_path: Path,
 ) -> None:
@@ -588,7 +631,7 @@ def test_saved_pages_go_through_the_batch_and_an_analysis_made_anew_at_once(
     with TestClient(app) as client:
         _catalogue(svc)
         _old_page(svc, **{CHECK_ROUND: ROUND})
-        svc.library.set_state(SINCE, "9999")  # the sheets began to be drawn after it
+        _began(svc, "9999")  # the sheets began to be drawn after it
         stood = Stood(svc)
         work = client.get("/api/study/met:1").json()["work"]
         assert work["composition_drawn"] is None and work["composition_drawn_pending"] is False
@@ -797,7 +840,7 @@ def test_the_batch_keeps_within_the_months_limit_and_leaves_what_is_refused(
     with TestClient(app):
         _catalogue(svc)
         _old_page(svc)
-        svc.library.set_state(SINCE, "9999")
+        _began(svc, "9999")
         stood = Stood(svc)
         # Nothing is handed over that the month's limit does not hold.
         svc.painter.spending.add(KIND, 0.99)
@@ -965,7 +1008,7 @@ def test_the_batch_asks_again_for_lines_that_left_a_mark_out(tmp_path: Path) -> 
     with TestClient(app):
         _catalogue(svc)
         _old_page(svc, **{CHECK_ROUND: ROUND})
-        svc.library.set_state(SINCE, "9999")
+        _began(svc, "9999")
         stood = Stood(svc)
         item = svc.library.get("met:1")
         assert item is not None

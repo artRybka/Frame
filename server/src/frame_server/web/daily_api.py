@@ -289,11 +289,13 @@ def sheet_url(svc: FrameService, item: Item, view: View) -> str:
 
 def drawn(svc: FrameService, item: Item, view: View) -> tuple[Drawn | None, bool]:
     """The take's drawn sheet as the app gets it, or whether it is being
-    made now (:class:`DailyWork`)."""
-    at = f"item={quote(item.id, safe='')}&v={svc.drawn.key(view)}"
-    kept = svc.drawn.meta(item, view)
-    if kept is None:
+    made now (:class:`DailyWork`). One drawn before the sheets' new look
+    is shown until the new one is there."""
+    found = svc.drawn.kept(item, view)
+    if found is None:
         return None, svc.drawn.pending(item, view)
+    key, kept = found
+    at = f"item={quote(item.id, safe='')}&v={key}"
     width, height = kept["size"]
     marks = [
         DrawnMark(
