@@ -46,9 +46,18 @@ KIND = "web_facts"
 #: The owner's switch (``AiConfig.web_facts``).
 SWITCH = "web_facts"
 VERSION = "web-facts-1"
+#: How long it thinks: "low" with :data:`SPARING` found as much as "medium"
+#: without it (the trial above).
+EFFORT = "low"
 MODEL = SONNET
-#: Searches one question may make (each 0.01 USD): six found as much as ten
-#: in the trial (van Gogh's "Bedroom": 15 facts, about 0.30 USD).
+#: Searches one question may make at most (each 0.01 USD): six found as
+#: much as ten in the trial (van Gogh's "Bedroom": 15 facts, about 0.30 USD).
+#: It searches once first and goes on only where the work was written about
+#: (:data:`SPARING`; Mateusz 2026-11-13: "gdy do dzieła wyników nie ma, albo
+#: są skąpe już przy pierwszym wyszukaniu to może nie warto robić kolejnych?").
+#: On ten works through the Batch: 2 searches a work instead of 6, 0.036 USD
+#: instead of 0.088, 40 facts instead of 43, three technical studies instead
+#: of one (six asked at once had all gone on general pages).
 SEARCHES = 6
 #: Facts kept for a study at most.
 MOST = 16
@@ -77,6 +86,13 @@ Na końcu odpowiedz wyłącznie blokiem ```json z polami:
 {"facts":[{"kind":"technika|losy|wystawy|odbiór|słowa artysty|ciekawostka","text":"…"}],
  "technical_study":{"found":true|false,"what":"czyje badanie i jakimi metodami",\
 "stages":[{"stage":"krótka nazwa etapu","text":"…"}]}}"""
+
+SPARING = """
+
+Oszczędzaj wyszukania: zacznij od jednego ogólnego wyszukania tego dzieła. Szukaj dalej \
+tylko wtedy, gdy wyniki pokazują, że o tym dziele coś napisano (strona muzeum z opisem, \
+katalog, artykuł, badanie). Gdy pierwsze wyszukanie daje tylko podstawowe dane albo nic, \
+zakończ od razu i zwróć to, co masz (także pustą listę)."""
 
 
 class Fact(BaseModel):
@@ -169,10 +185,12 @@ def request(item: Item) -> dict[str, Any]:
     return {
         "model": MODEL,
         "max_tokens": 16000,
-        "system": [{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
+        "system": [
+            {"type": "text", "text": SYSTEM + SPARING, "cache_control": {"type": "ephemeral"}}
+        ],
         "messages": [{"role": "user", "content": question(item)}],
         "tools": [{"type": "web_search_20260209", "name": "web_search", "max_uses": SEARCHES}],
-        "output_config": {"effort": "medium"},
+        "output_config": {"effort": EFFORT},
         "timeout": 600.0,
     }
 

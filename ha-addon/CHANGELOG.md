@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.100
+
+- Fakty z sieci do studium kosztują o ponad połowę mniej. Claude
+  najpierw raz szuka dzieła i szuka dalej tylko wtedy, gdy ktoś o nim
+  pisał; wcześniej puszczał od razu sześć wyszukań, często ogólnych. Na
+  próbie dziesięciu dzieł: 3,6 centa zamiast 8,8 za dzieło, 40 faktów
+  zamiast 43, trzy badania techniczne („Jak powstawał”) zamiast jednego.
+  Szacunek przy „Uzupełnij wcześniejsze studia” liczy już nową cenę.
+
 ## 1.145.99
 
 - Dwa dzieła z tą samą kopią łączą się w jedno od razu. W playliście

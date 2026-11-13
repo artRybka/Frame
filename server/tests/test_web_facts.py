@@ -13,7 +13,7 @@ import pytest
 
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.daily import Context, request_text
-from frame_server.ai.web_facts import KIND, SEARCHES, VERSION, parse
+from frame_server.ai.web_facts import KIND, SEARCHES, SPARING, VERSION, parse
 from frame_server.library import Item
 from frame_server.library.models import ItemKind
 from frame_server.service import FrameService
@@ -118,6 +118,9 @@ def test_the_facts_are_asked_once_and_kept(service: FrameService, fake: FakeClau
     assert params["tools"][0]["max_uses"] == SEARCHES
     assert "The Bedroom" in params["messages"][0]["content"]
     assert "output_config" in params and "format" not in params["output_config"]
+    # One search first, more only where the work was written about.
+    assert params["system"][0]["text"].endswith(SPARING)
+    assert params["output_config"]["effort"] == "low"
     note = service.library.note(item.id, KIND)
     assert note is not None and note.prompt_version == VERSION
     assert "http" not in json.dumps(note.data)  # the pages are kept nowhere
