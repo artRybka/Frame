@@ -19,7 +19,7 @@ from __future__ import annotations
 from collections.abc import Collection
 from enum import StrEnum
 
-from .models import Item
+from .models import Item, ItemKind
 from .vocabulary import (
     DECORATIVE,
     MANUSCRIPTS,
@@ -28,6 +28,7 @@ from .vocabulary import (
     SCULPTURE,
     is_archive_photo,
     is_art_archive_photo,
+    is_design,
     is_detail,
     is_document,
     is_grey_copy,
@@ -35,6 +36,7 @@ from .vocabulary import (
     is_photograph,
     is_postal,
     is_reproduction,
+    is_sketch_sheet,
     object_category,
 )
 
@@ -69,6 +71,13 @@ class Why(StrEnum):
     PHOTOGRAPH = "photograph"
     SCULPTURE = "sculpture"
     DECORATIVE = "decorative"
+    #: Minded by the study alone (:data:`STUDY_ONLY`, Mateusz 2026-11-13):
+    #: a sketchbook's page or a sheet of studies and notes,
+    SKETCHES = "sketches"
+    #: a design, plan, map or technical drawing,
+    DESIGN = "design"
+    #: one of the owner's photographs.
+    SNAPSHOT = "snapshot"
 
 
 #: The reasons that make a work a copy: never what the frame looks for.
@@ -98,7 +107,11 @@ OTHER_ART = {
 
 #: The category each reason of "Sztuki inne" is asked for with.
 CATEGORY = {why: category for category, why in OTHER_ART.items()}
-EVERY = frozenset(Why)
+#: What only a study minds: such works are shown and proposed as before,
+#: they get no "Studium dzieła" (Mateusz 2026-11-13). Never in
+#: :func:`whys`, only in :func:`study_whys`.
+STUDY_ONLY = frozenset({Why.SKETCHES, Why.DESIGN, Why.SNAPSHOT})
+EVERY = frozenset(Why) - STUDY_ONLY
 OTHER = frozenset(OTHER_ART.values())
 
 #: The reasons as the app would say them.
@@ -118,6 +131,9 @@ NAMES = {
     Why.PHOTOGRAPH: "fotografia",
     Why.SCULPTURE: "rzeźba",
     Why.DECORATIVE: "rzemiosło artystyczne",
+    Why.SKETCHES: "kartka szkiców albo notatek",
+    Why.DESIGN: "projekt, plan albo rysunek techniczny",
+    Why.SNAPSHOT: "własne zdjęcie",
 }
 
 
@@ -147,6 +163,19 @@ def whys(item: Item) -> tuple[Why, ...]:
     return tuple(found)
 
 
+def study_whys(item: Item) -> tuple[Why, ...]:
+    """The reasons only a study minds (:data:`STUDY_ONLY`)."""
+    return tuple(
+        why
+        for why, holds in (
+            (Why.SKETCHES, is_sketch_sheet(item)),
+            (Why.DESIGN, is_design(item)),
+            (Why.SNAPSHOT, item.kind == ItemKind.PHOTO),
+        )
+        if holds
+    )
+
+
 def copy_whys(item: Item) -> tuple[Why, ...]:
     """The reasons ``item`` is a copy; none for a work."""
     return tuple(why for why in whys(item) if why in COPIES)
@@ -173,6 +202,11 @@ class Place(StrEnum):
     #: What may be a copy or a detail of another work: the twins, their
     #: judge, the sharper copies.
     COMPARED = "compared"
+    #: What may have a study, "Studium dzieła" (on its card, the work of the
+    #: day): no copy, no work of "Sztuki inne", no sketchbook page, design
+    #: or photograph of the owner's (Mateusz 2026-11-06, 2026-11-13). A
+    #: small picture may: the creative restorer draws it first.
+    STUDIED = "studied"
 
 
 #: The reasons each place minds: of a work the server took in on its own,
@@ -192,6 +226,7 @@ MINDS: dict[Place, tuple[frozenset[Why], frozenset[Why]]] = {
     Place.SOUGHT: (EVERY, EVERY),
     Place.TIDIED: (EVERY, EVERY),
     Place.COMPARED: (COPIES, COPIES),
+    Place.STUDIED: (EVERY | STUDY_ONLY, EVERY | STUDY_ONLY),
 }
 
 
@@ -212,7 +247,8 @@ def against(
     minded = MINDS[place][1 if kept else 0]
     if not minded:
         return ()
-    return tuple(why for why in whys(item) if why in minded and CATEGORY.get(why) not in asked)
+    found = whys(item) + (study_whys(item) if minded & STUDY_ONLY else ())
+    return tuple(why for why in found if why in minded and CATEGORY.get(why) not in asked)
 
 
 def category_fits(item: Item, keys: Collection[str]) -> bool:
