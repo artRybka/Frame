@@ -1062,6 +1062,33 @@ final class FrameAPITests: XCTestCase {
         await waited.value  // let go when the app is back
     }
 
+    func testChangesCutShortGoAgainOnlyToAServerThatKeepsTheirAnswers() throws {
+        let url = try XCTUnwrap(URL(string: "http://frame:8099/api/playlists"))
+        var post = URLRequest(url: url)
+        post.httpMethod = "POST"
+        let keyed = Replays.keyed(post)
+        let key = try XCTUnwrap(keyed.value(forHTTPHeaderField: Replays.keyHeader))
+        XCTAssertEqual(Replays.keyed(keyed).value(forHTTPHeaderField: Replays.keyHeader), key)  // the same key again
+        XCTAssertNil(Replays.keyed(URLRequest(url: url)).value(forHTTPHeaderField: Replays.keyHeader))  // a read
+
+        let replays = Replays()
+        let lost = URLError(.networkConnectionLost)
+        XCTAssertTrue(replays.mayResend(URLRequest(url: url), after: lost))
+        XCTAssertTrue(replays.mayResend(keyed, after: URLError(.cannotConnectToHost)))
+        XCTAssertFalse(replays.mayResend(keyed, after: lost))  // an older server: it may have run
+
+        let marked = try XCTUnwrap(HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: ["Frame-Replays": "1"]))
+        replays.saw(marked)
+        XCTAssertTrue(replays.mayResend(keyed, after: lost))
+        XCTAssertFalse(replays.mayResend(post, after: lost))  // no key, no second run
+
+        let image = try XCTUnwrap(URL(string: "http://frame:8099/panel/images/a.png"))
+        replays.saw(try XCTUnwrap(HTTPURLResponse(url: image, statusCode: 200, httpVersion: nil, headerFields: [:])))
+        XCTAssertTrue(replays.serverKeeps)  // only the API's answers count
+        replays.saw(try XCTUnwrap(HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: [:])))
+        XCTAssertFalse(replays.serverKeeps)
+    }
+
     func testMultipartBodyContainsFieldsAndFile() throws {
         var form = MultipartForm()
         form.addField("hold", "forever")
