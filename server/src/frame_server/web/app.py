@@ -77,6 +77,7 @@ from . import (
 from .deps import require_owner, require_token
 from .ids import EncodedSlashes
 from .purposes import Purposes
+from .replays import Replays
 
 log = logging.getLogger(__name__)
 
@@ -289,6 +290,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             service.store.log_request(entry)
             log.info("panel %s %s -> %s", entry.method, request.url, entry.status)
         return response
+
+    # Outermost: a change cut off by the phone going away is finished here
+    # and answered again from memory when the app asks once more.
+    app.add_middleware(Replays)
 
     auth = [Depends(require_token)]
 

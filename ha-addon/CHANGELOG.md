@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.145.83
+
+- Zmiana zaczęta tuż przed wyjściem z aplikacji kończy się sama. Wybór
+  kopii, ostrzejsza kopia, ulubione, playlista czy wysłanie na ramkę nie
+  kończą się już komunikatem „Przerwane, gdy aplikacja była w tle”:
+  krótkie zmiany dostają od iOS chwilę na dokończenie w tle, a dłuższe
+  serwer robi do końca i pamięta wynik, który aplikacja odbiera po
+  powrocie. Nic nie dzieje się dwa razy. Działa po aktualizacji serwera.
+
+## 1.145.82
+
+- Delikatniejszy znacznik niskiej rozdzielczości. Zamiast pełnych
+  kropek rastra bursztynowe schodki pikseli, jak ząbkowana krawędź
+  powiększonego zdjęcia: po tytule na miniaturach i w Szukaj oraz na
+  plakietce „950 px” na karcie dzieła.
+
 ## 1.145.81
 
 - Arkusze kompozycji z Gemini są o ok. 20% tańsze: 0,12 zamiast 0,15 USD

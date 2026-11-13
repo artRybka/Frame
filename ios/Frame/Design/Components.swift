@@ -279,8 +279,7 @@ struct ArtCard: View {
         } else if let side = item.lowSide, side > 0 {
             text = text
                 + Text("\u{00A0}").font(.serif(15, weight: .medium))
-                + Text(Image(systemName: LowRes.symbol))
-                    .font(.system(size: 11.5, weight: .medium))
+                + Text(LowRes.image)
                     .foregroundStyle(LowRes.tint)
             label += ", \(LowRes.spoken(side))"
         }
@@ -1099,9 +1098,15 @@ struct TitleWithYear: View {
 /// A work whose picture is small for the frame (Mateusz 2026-11-12): its
 /// long side, when known, under the server's `low_res.LOW_SIDE` (1600 px;
 /// the frame's 2560 enlarge it 1.6 times or more). Not a button, so not on
-/// the picture: dots of a coarse screen after the title, as "Pod lupą"'s magnifier.
+/// the picture: after the title, as "Pod lupą"'s magnifier. The pixels of
+/// an enlarged picture's jagged edge, a staircase in two strengths
+/// (Mateusz 2026-11-13, variant D: gentler than the coarse screen's full
+/// dots, `circle.grid.3x3.fill`); drawn in the assets, no SF Symbol has it.
 enum LowRes {
-    static let symbol = "circle.grid.3x3.fill"
+    /// The asset's name (`LowResStairs.imageset`, 11 pt): a template, in
+    /// the text's colour, its pale pixels at 38 %.
+    static let symbol = "LowResStairs"
+    static var image: Image { Image(symbol).renderingMode(.template) }
     /// A picture drawn again by the image model ("Kreatywny restaurator",
     /// Mateusz 2026-11-12): AI's sparkles in the same amber, in place of
     /// the dots.
@@ -1196,7 +1201,9 @@ private struct YearBadge: View {
             ? Color(hex: dark ? 0xE2B45E : 0xB7832A)
             : Color(hex: dark ? 0xF1ECE4 : 0x1D1B18)
         HStack(spacing: 3) {
-            if let symbol {
+            if symbol == LowRes.symbol {
+                LowRes.image
+            } else if let symbol {
                 Image(systemName: symbol).font(.system(size: 11.5, weight: .regular))
             }
             if !date.isEmpty {

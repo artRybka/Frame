@@ -140,13 +140,14 @@ extension SendActivityAttributes.ContentState {
 }
 
 /// A little more time when the app goes away in the middle of a run (about
-/// half a minute), so the Lock Screen card keeps up with the server.
+/// half a minute), so the Lock Screen card keeps up with the server, or a
+/// change sent to the server is answered.
 @MainActor
 final class BackgroundTime {
     private var id = UIBackgroundTaskIdentifier.invalid
 
-    init() {
-        id = UIApplication.shared.beginBackgroundTask(withName: "progress") { [weak self] in
+    init(name: String = "progress") {
+        id = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
             MainActor.assumeIsolated { self?.end() }
         }
     }
