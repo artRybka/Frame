@@ -329,14 +329,13 @@ struct HiddenRoute: Hashable {}
 /// Propozycje dnia opened from their tile (Mateusz 2026-11-09): a header
 /// like a playlist's naming the cards of "Dziś dla Ciebie" they come from,
 /// with "Prezentuj na ramce", over the works four by four, in the order the
-/// frame shows them.
+/// frame shows them, each whole in its own proportions.
 struct SuggestionsPage: View {
     @Environment(AppModel.self) private var model
     @Binding var path: NavigationPath
     @State private var starting = false
 
     private var isActive: Bool { model.settings != nil && model.settings?.playlistId == nil }
-    private static let pair = [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)]
 
     var body: some View {
         ScrollView {
@@ -417,37 +416,21 @@ struct SuggestionsPage: View {
         }
     }
 
-    /// Each four two by two, a little apart from the next: four of one
-    /// card, then four of the next, as the frame shows them.
+    /// Each four a little apart from the next: four of one card, then four
+    /// of the next, as the frame shows them. Within a four the works stand
+    /// whole, in their own proportions, two columns like a playlist's
+    /// (Mateusz 2026-11-13: squares cut every picture).
     private func fours(_ picks: DayPicks) -> some View {
-        LazyVStack(spacing: 18) {
+        LazyVStack(spacing: 34) {
             ForEach(Array(picks.fours.enumerated()), id: \.offset) { _, four in
-                LazyVGrid(columns: Self.pair, spacing: 6) {
-                    ForEach(four) { work in
-                        NavigationLink(value: work.item.id) { tile(work) }
-                            .buttonStyle(.plain)
-                            .contextMenu { QueueButton(itemID: work.item.id) }
-                            .overlay(alignment: .topTrailing) { LikeHeart(item: work.item.summary) }
-                    }
+                MasonryGrid(items: four.map(\.summary)) { summary in
+                    NavigationLink(value: summary.id) { ArtCard(item: summary, showsFavorite: false) }
+                        .buttonStyle(.plain)
+                        .contextMenu { QueueButton(itemID: summary.id) }
+                        .overlay(alignment: .topTrailing) { LikeHeart(item: summary) }
                 }
             }
         }
-    }
-
-    private func tile(_ work: RemoteItem) -> some View {
-        Color.clear
-            .aspectRatio(1, contentMode: .fit)
-            .overlay {
-                ArtImage(
-                    ref: work.thumb,
-                    fallback: work.thumbFallback,
-                    placeholder: work.item.summary.placeholderColor,
-                    maxPixel: 500
-                )
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .accessibilityElement()
-            .accessibilityLabel(work.item.title)
     }
 }
 
