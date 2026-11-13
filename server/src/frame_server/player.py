@@ -39,8 +39,10 @@ from .library import (
 )
 from .library.artists import is_artist
 from .library.colors import SCORE_VERSION, analyse, tint_spread, tint_strength
+from .library.contour import CONTOUR_VERSION, contour
 from .library.icloud import only_copy
 from .library.images import Unavailable
+from .library.models import Contour
 from .library.museums import Kind
 from .library.nationality import life_years, note_years
 from .library.photo_text import photo_line, photo_title
@@ -117,6 +119,8 @@ SET_ASIDE_VERSION = 7
 #: Version of the colour analysis the library's pictures carry (the key is
 #: of the e-paper score it once went with).
 SCORE_KEY = "suitability_version"
+#: Version of the contours the library's pictures carry (``Player.contours``).
+CONTOUR_KEY = "contour_version"
 #: Set once the pictures kept from before lost their blank margins
 #: (``ImageCache.trim_kept``).
 MARGINS_KEY = "margins_trimmed"
@@ -1591,6 +1595,7 @@ class Player:
             self.library.set_state(MARGINS_KEY, True)
             log.info("margins: %d kept pictures trimmed", trimmed)
         self.rescore()
+        self.contours()
         self.service.sharper.thumbs_again()
         # Network work, a work at a time: in its own thread.
         threading.Thread(target=self._copies_once, name="archive slides", daemon=True).start()
@@ -1647,6 +1652,36 @@ class Player:
             self.library.set_state(SCORE_KEY, SCORE_VERSION)
         log.info("rescore: %d pictures analysed again", len(analysed))
         return len(analysed)
+
+    def contours(self) -> int:
+        """Once per ``CONTOUR_VERSION``: the library's pictures' drawn
+        contours (``library.contour``) from their thumbnails, on their own
+        and not with the whole colour analysis (``rescore``), which takes
+        hours on the NAS. A picture that cannot be measured is left without
+        one, never stops the others. Returns how many have one."""
+        if self.library.get_state(CONTOUR_KEY, 0) >= CONTOUR_VERSION:
+            return 0
+        images = self.service.images
+        found: dict[str, Contour | None] = {}
+        for item in self.library.query(include_excluded=True)[1]:
+            path = images.thumb_path(item)
+            if not item.colors or item.kind == ItemKind.PHOTO or not path.is_file():
+                continue
+            try:
+                with Image.open(path) as img:
+                    line = contour(img, item.color_tags)
+            except Exception as err:  # one odd thumbnail must not stop the pass
+                log.warning("contours: %s left without: %s", item.id, err)
+                continue
+            if line is not None or item.contour is not None:
+                found[item.id] = line
+        with self.library.batch():
+            for item_id, line in found.items():
+                self.library.update(item_id, contour=line)
+            self.library.set_state(CONTOUR_KEY, CONTOUR_VERSION)
+        drawn = sum(line is not None for line in found.values())
+        log.info("contours: %d pictures with a drawn contour", drawn)
+        return drawn
 
     def reset_library(self) -> int:
         """Once, on the owner's wish for a clean start: delete the museum works

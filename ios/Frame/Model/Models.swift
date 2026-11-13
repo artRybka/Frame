@@ -11,6 +11,15 @@ struct ColorSwatch: Codable, Hashable, Sendable {
     var accent: Bool?
 }
 
+/// A picture's drawn contour (server `library/contour.py`): its lines'
+/// colour, their free length (in the picture's short sides) and width (%
+/// of the short side).
+struct Contour: Codable, Hashable, Sendable {
+    let hex: String
+    let length: Double
+    let width: Double
+}
+
 enum ItemKind: String, Codable, Hashable, Sendable, CaseIterable {
     case artwork, own, photo
 }
@@ -54,6 +63,9 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
     var width: Int?
     var height: Int?
     var colors: [ColorSwatch]
+    /// Its drawn contour, if it has one (Matisse's black lines): the colour
+    /// bar draws it round its paint (Mateusz 2026-11-13).
+    var contour: Contour? = nil
     var colorTags: [String]
     var suitability: Double?
     var favorite: Bool

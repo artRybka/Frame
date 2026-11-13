@@ -1121,7 +1121,7 @@ struct ArtworkInfo: View {
             if !item.colors.isEmpty, !PaintStyle.sculpted(item) {
                 if let style = PaintStyle.of(item), !PaintedStrip.shares(item.colors).isEmpty {
                     PaintedStrip(swatches: item.colors, style: style, seed: Paint.seed(item.id), whole: true,
-                                 relief: Paint.relief(item), slim: Self.slim)
+                                 relief: Paint.relief(item), slim: Self.slim, contour: ContourLine(item))
                         .padding(.vertical, 4)
                 } else {
                     PaletteStrip(swatches: item.colors).padding(.vertical, 4)

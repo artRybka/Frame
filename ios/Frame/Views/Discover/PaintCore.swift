@@ -1617,3 +1617,296 @@ struct DryPlan: Sendable {
         return out
     }
 }
+
+// MARK: - Contour
+
+/// A work's drawn contour round the bar's paint (Mateusz 2026-11-13 00:31,
+/// the card of Matisse's „Akt z białym szalem”: „aż się prosi na pasku
+/// koloru czarna kreska konturu”; 06:52, of sketch 38: „Kontury kolorowe
+/// także. C, ale kreska od góry trochę krótsza niż dolna. Trzeba uważać, bo
+/// w A i B wyszła zbyt przestrzenna i źle to wygląda.”). The server finds
+/// it (`library/contour.py`); here it is one line in the contour's own
+/// colour along the top of the paint, round its beginning and along its
+/// foot, further than along the top. Flat: no gloss and no height, laid
+/// in the paint as the painter laid it, only in the technique's manner
+/// (oil a brush's few streaks, watercolour pigment gathered at its edges,
+/// pastel broken by the paper's tooth).
+struct ContourLine: Sendable, Hashable {
+    /// Its colour, 0…255 each.
+    var rgb: [Double]
+    /// How much free line the picture has, in its short sides.
+    var length: Double
+    /// How wide the picture's lines are, % of its short side.
+    var width: Double
+
+    init(rgb: [Double], length: Double, width: Double) {
+        self.rgb = rgb
+        self.length = length
+        self.width = width
+    }
+
+    init?(hex: String, length: Double, width: Double) {
+        guard let rgb = Paint.rgb(hex) else { return nil }
+        self.init(rgb: rgb, length: length, width: width)
+    }
+
+    /// How far along the paint its foot's line runs: the more line the
+    /// picture has, the further (sketch 38: 0.45 … 0.95).
+    var reach: Double { min(0.95, max(0.45, 0.45 + (length - 2.5) * 0.07)) }
+    /// The top's line, of the foot's: „trochę krótsza”.
+    static let top = 0.8
+    /// How wide the line is, in points: thin, as the picture's are.
+    var thick: Double { min(3.2, max(1.8, 1.6 + 0.9 * width)) }
+    /// How long drawing it takes, after the paint is down.
+    static let draws = 0.9
+    /// The styles that have it: the painted bars. A print's or a drawing's
+    /// bar is its lines already.
+    static func draws(in style: PaintStyle) -> Bool { style == .oil || style == .water || style == .dry }
+}
+
+/// The contour as it lies on a finished bar `wide` by `high` pixels: for
+/// each pixel how much of the line covers it, how far from the line's
+/// middle (0…1) and when along the line (0…1) the brush gets there.
+struct ContourStroke: Sendable {
+    let wide: Int
+    let high: Int
+    let line: ContourLine
+    let style: PaintStyle
+    private var cover: [Float]
+    private var across: [Float]
+    private var arrive: [Float]
+    /// The line's middle, in pixels, from where the brush comes down.
+    let path: [(x: Double, y: Double)]
+
+    /// `bar(x, y)`: how much paint there is at a pixel of the finished bar.
+    /// `inside`: the line lies on the paint, not half over the paper round
+    /// it (on a dark page a dark line beside the paint is lost).
+    init?(bar: (Int, Int) -> Double, wide: Int, high: Int, line: ContourLine, style: PaintStyle, seed: Int, inside: Bool = false) {
+        self.wide = wide
+        self.high = high
+        self.line = line
+        self.style = style
+        cover = [Float](repeating: 0, count: wide * high)
+        across = [Float](repeating: 1, count: wide * high)
+        arrive = [Float](repeating: 2, count: wide * high)
+        guard let edges = Self.edges(bar: bar, wide: wide, high: high) else { return nil }
+        path = Self.path(edges, reach: line.reach, seed: Double(seed),
+                         inset: inside ? line.thick * Double(Paint.scale) / 2 + 1 : 1)
+        guard path.count > 2 else { return nil }
+        lay(seed: Double(seed))
+    }
+
+    /// The top and the foot of the paint in each column, smoothed as a
+    /// hand drawing round it would, and where the paint begins and ends.
+    static func edges(bar: (Int, Int) -> Double, wide: Int, high: Int) -> (top: [Double], foot: [Double], from: Int, to: Int)? {
+        var top = [Double](repeating: .nan, count: wide), foot = top
+        for x in 0..<wide {
+            var first = -1, last = -1
+            for y in 0..<high where bar(x, y) > 0.6 {
+                if first < 0 { first = y }
+                last = y
+            }
+            if first >= 0, last - first > 4 {
+                top[x] = Double(first)
+                foot[x] = Double(last)
+            }
+        }
+        guard let from = top.firstIndex(where: { !$0.isNaN }), let to = top.lastIndex(where: { !$0.isNaN }), to - from > 20 else { return nil }
+        func filled(_ values: [Double]) -> [Double] {
+            var out = values
+            var lastGood = from
+            for x in from...to where !values[x].isNaN {
+                if x - lastGood > 1 {
+                    for k in (lastGood + 1)..<x {
+                        let t = Double(k - lastGood) / Double(x - lastGood)
+                        out[k] = values[lastGood] + (values[x] - values[lastGood]) * t
+                    }
+                }
+                lastGood = x
+            }
+            for x in 0..<from { out[x] = out[from] }
+            for x in (to + 1)..<max(to + 1, wide) { out[x] = out[to] }
+            // Three passes of a box 9 points wide: near enough a Gaussian.
+            let r = 9 * Paint.scale / 2
+            for _ in 0..<3 {
+                var sum = 0.0, next = out
+                for x in 0..<wide {
+                    let lo = max(0, x - r), hi = min(wide - 1, x + r)
+                    if x == 0 {
+                        sum = out[lo...hi].reduce(0, +)
+                    } else {
+                        if x + r < wide { sum += out[x + r] }
+                        if x - r - 1 >= 0 { sum -= out[x - r - 1] }
+                    }
+                    next[x] = sum / Double(hi - lo + 1)
+                }
+                out = next
+            }
+            return out
+        }
+        return (filled(top), filled(foot), from, to)
+    }
+
+    /// The line's middle: from the top's end back along the top, round the
+    /// paint's beginning and along its foot, a little longer than the top.
+    static func path(_ edges: (top: [Double], foot: [Double], from: Int, to: Int), reach: Double, seed: Double,
+                     inset: Double = 1) -> [(x: Double, y: Double)] {
+        let run = Double(edges.to - edges.from)
+        let start = Double(edges.from)
+        let footEnd = start + run * reach, topEnd = start + run * reach * ContourLine.top
+        func at(_ values: [Double], _ x: Double) -> Double {
+            let i = min(values.count - 1, max(0, Int(x.rounded())))
+            return values[i]
+        }
+        // The hand wanders a little: a slow wave, not the paint's every edge.
+        func wander(_ x: Double, _ k: Double) -> Double {
+            0.5 * Double(Paint.scale) * (sin(x / 41 + seed * 0.37 + k) + 0.5 * sin(x / 13 + seed * 0.91 + 2 * k))
+        }
+        let capX = start + 10 + inset
+        let capTop = at(edges.top, capX) + inset, capFoot = at(edges.foot, capX) - inset
+        let mid = (capTop + capFoot) / 2, half = (capFoot - capTop) / 2
+        var points: [(x: Double, y: Double)] = []
+        let step = 0.5
+        var x = topEnd
+        while x > capX {
+            points.append((x, at(edges.top, x) + inset + wander(x, 0)))
+            x -= step
+        }
+        let round = max(8, Int(Double.pi * half / step))
+        for k in 0...round {
+            let a = Double(k) / Double(round) * Double.pi
+            points.append((capX - (capX - start + 3 - inset) * sin(a), mid - half * cos(a)))
+        }
+        x = capX
+        while x < footEnd {
+            points.append((x, at(edges.foot, x) - inset + wander(x, 1.7)))
+            x += step
+        }
+        return points
+    }
+
+    /// Stamps the brush along the path: the line is as wide as `thick`,
+    /// swelling a little and narrowing where the brush comes down and lifts.
+    private mutating func lay(seed: Double) {
+        let n = path.count
+        let half = line.thick * Double(Paint.scale) / 2
+        for (i, p) in path.enumerated() {
+            let t = Double(i) / Double(n - 1)
+            let taper = 0.35 + 0.65 * min(Paint.ease(t / 0.04), Paint.ease((1 - t) / 0.07))
+            let r = half * (0.88 + 0.12 * sin(t * 19 + seed)) * taper
+            let x0 = max(0, Int(p.x - r - 1)), x1 = min(wide - 1, Int(p.x + r + 1))
+            let y0 = max(0, Int(p.y - r - 1)), y1 = min(high - 1, Int(p.y + r + 1))
+            guard x0 <= x1, y0 <= y1 else { continue }
+            for y in y0...y1 {
+                for x in x0...x1 {
+                    let d = ((Double(x) + 0.5 - p.x) * (Double(x) + 0.5 - p.x) + (Double(y) + 0.5 - p.y) * (Double(y) + 0.5 - p.y)).squareRoot()
+                    let c = Float(min(1, max(0, r + 0.5 - d)))
+                    guard c > 0 else { continue }
+                    let q = y * wide + x
+                    if c > cover[q] {
+                        cover[q] = c
+                        across[q] = Float(min(1, d / max(r, 0.5)))
+                    }
+                    if c > 0.3, arrive[q] > Float(t) { arrive[q] = Float(t) }
+                }
+            }
+        }
+    }
+
+    /// Whether any pixel is covered.
+    var isEmpty: Bool { !cover.contains { $0 > 0 } }
+
+    /// How much of the line covers a pixel once `progress` (0…1) of it is drawn.
+    func covered(_ x: Int, _ y: Int, progress: Double = 1) -> Double {
+        guard x >= 0, y >= 0, x < wide, y < high else { return 0 }
+        let q = y * wide + x
+        guard cover[q] > 0 else { return 0 }
+        let head = min(1, max(0, (progress - Double(arrive[q])) / 0.015))
+        return Double(cover[q]) * head
+    }
+
+    /// The line laid over `frame` (the bar), `progress` of it drawn.
+    func draw(on frame: inout PaintFrame, progress: Double, seed: Int) {
+        guard frame.wide == wide, frame.high == high, progress > 0 else { return }
+        let s = Double(seed)
+        for y in 0..<high {
+            for x in 0..<wide {
+                let q = y * wide + x
+                let c = covered(x, y, progress: progress)
+                guard c > 0 else { continue }
+                let off = Double(across[q])
+                var alpha: Double, shade: Double
+                switch style {
+                case .water:
+                    // Pigment gathers at a wet line's edges.
+                    alpha = 0.8 + 0.17 * Paint.step(0.55, 1, off)
+                    shade = 1 - 0.1 * Paint.step(0.55, 1, off)
+                case .dry:
+                    // The stick leaves the paper's hollows bare.
+                    let tooth = Paint.noise(Double(x) * 0.9, Double(y) * 0.9, s + 17)
+                    alpha = 0.92 * Paint.step(0.18 + 0.3 * off, 0.42 + 0.3 * off, tooth)
+                    shade = 1
+                default:
+                    // A few streaks of the bristles, along the line.
+                    let streak = Paint.noise(off * 5 + s, Double(arrive[q]) * 60, s + 5)
+                    alpha = 0.97 - 0.1 * streak
+                    shade = 0.97 + 0.06 * streak
+                }
+                let a = c * alpha
+                guard a > 0.003 else { continue }
+                let p = 4 * q
+                let below = Double(frame.bytes[p + 3]) / 255
+                let out = a + below * (1 - a)
+                for k in 0..<3 {
+                    let mine = min(255, line.rgb[k] * shade)
+                    let was = Double(frame.bytes[p + k])
+                    frame.bytes[p + k] = Paint.byte((mine * a + was * below * (1 - a)) / max(out, 0.0001))
+                }
+                frame.bytes[p + 3] = Paint.byte(out * 255)
+            }
+        }
+    }
+}
+
+/// A painted bar and its contour, drawn round it once its paint is down.
+final class ContouredStrip: PaintPainter, @unchecked Sendable {
+    let inner: PaintPainter
+    let line: ContourLine
+    let style: PaintStyle
+    let seed: Int
+    let dark: Bool
+    let wide: Int
+    let high: Int
+    let length: Double
+    /// When the contour's drawing begins.
+    let begins: Double
+    private var stroke: ContourStroke??
+
+    init(_ inner: PaintPainter, line: ContourLine, style: PaintStyle, seed: Int, dark: Bool = false) {
+        self.inner = inner
+        self.dark = dark
+        self.line = line
+        self.style = style
+        self.seed = seed
+        wide = inner.wide
+        high = inner.high
+        // An oil bar's paper goes on soaking after its last pull: the line
+        // is drawn as soon as the paint is down, not once the oil has spread.
+        begins = (inner as? OilStrip).map { $0.last + 0.15 } ?? inner.length
+        length = max(inner.length, begins + ContourLine.draws)
+    }
+
+    func frame(age: Double) -> PaintFrame {
+        var frame = inner.frame(age: min(age, inner.length))
+        guard age > begins else { return frame }
+        if stroke == nil {
+            let done = inner.frame(age: inner.length)
+            stroke = .some(ContourStroke(bar: { done.cover($0, $1) }, wide: wide, high: high, line: line, style: style, seed: seed,
+                                         inside: dark))
+        }
+        if case let .some(.some(stroke)) = stroke {
+            stroke.draw(on: &frame, progress: min(1, (age - begins) / ContourLine.draws), seed: seed)
+        }
+        return frame
+    }
+}
