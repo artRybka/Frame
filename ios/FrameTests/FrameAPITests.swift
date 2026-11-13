@@ -1441,6 +1441,24 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(left.itemIds, [manual.itemIds[1]])
     }
 
+    /// "Do playlisty" ticks the manual playlists holding the work, and a
+    /// tap's change shows in the next answer.
+    func testDoPlaylistyTicksThePlaylistsHoldingAWork() async throws {
+        let demo = DemoBackend()
+        let playlists = try await demo.playlists()
+        let bedroom = try XCTUnwrap(playlists.first { $0.kind == .manual && $0.name == "Do sypialni" })
+        let water = try XCTUnwrap(playlists.first { $0.kind == .manual && $0.name == "Woda i fale" })
+        let ticked = try await demo.playlistsHolding(itemID: "aic:28560")
+        XCTAssertEqual(ticked, [PlaylistHolding(playlistId: bedroom.id, itemId: "aic:28560")])
+
+        _ = try await demo.addToPlaylist(id: water.id, itemIDs: ["aic:28560"])
+        let both = try await demo.playlistsHolding(itemID: "aic:28560")
+        XCTAssertEqual(Set(both.map(\.playlistId)), [bedroom.id, water.id])
+        _ = try await demo.removeFromPlaylist(id: bedroom.id, itemID: "aic:28560")
+        let left = try await demo.playlistsHolding(itemID: "aic:28560")
+        XCTAssertEqual(left.map(\.playlistId), [water.id])
+    }
+
     /// "Ile dzieł": a smart playlist holds at most its limit, the rest
     /// waits; with no limit it takes all that match.
     func testASmartPlaylistKeepsToItsLimit() async throws {

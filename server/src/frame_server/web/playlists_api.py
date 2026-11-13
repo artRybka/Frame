@@ -42,6 +42,14 @@ class ItemIds(BaseModel):
     item_ids: list[str]
 
 
+class Holding(BaseModel):
+    """A playlist holding a work: ``item_id`` is the copy it holds, the one
+    to take out (another source's copy of the work counts too)."""
+
+    playlist_id: int
+    item_id: str
+
+
 class AlbumLink(BaseModel):
     url: str
 
@@ -278,6 +286,27 @@ def remove_item(playlist_id: int, item_id: str, svc: Svc, user: CurrentUser) -> 
     if svc.player.settings.playlist_id == playlist_id:
         svc.player.unqueue(item_id)
     return _detail(svc, saved)
+
+
+@router.get("/items/{item_id:item}/playlists", response_model=list[Holding])
+def item_playlists(item_id: str, svc: Svc, user: CurrentUser) -> list[Holding]:
+    """The asking person's manual playlists that hold this work, as the
+    app's "Do playlisty" ticks them: the item itself or another copy of the
+    same work, which adding would not add again."""
+    works = svc.library.works() if svc.library.get(item_id) is not None else None
+    group = works.group_index(item_id) if works is not None else None
+    found: list[Holding] = []
+    for playlist in svc.library.arranged_playlists(user.id):
+        if playlist.kind != PlaylistKind.MANUAL or playlist.owner != user.id:
+            continue
+        assert playlist.id is not None
+        if item_id in playlist.item_ids:
+            found.append(Holding(playlist_id=playlist.id, item_id=item_id))
+        elif works is not None and group is not None:
+            held = next((i for i in playlist.item_ids if works.group_index(i) == group), None)
+            if held is not None:
+                found.append(Holding(playlist_id=playlist.id, item_id=held))
+    return found
 
 
 @router.post("/playlists/{playlist_id}/sync")

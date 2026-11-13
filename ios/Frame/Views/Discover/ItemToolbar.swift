@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// The heart and "…" of a work, top right: on its card and on its study.
-/// "…" holds "Dodaj do playlisty" (the host shows the sheet), "Nie pokazuj
-/// na ramce", the museum's page and "Zapisz w Zdjęciach".
+/// The heart, "Do playlisty" (the host shows `AddToPlaylistSheet`) and "…"
+/// of a work, top right: on its card and on its study (Mateusz 2026-11-13:
+/// the playlists out of "…" onto their own button). "…" holds "Ukryj
+/// dzieło", the copies, the museum's page and "Zapisz w Zdjęciach".
 struct ItemToolbar: ToolbarContent {
     let model: AppModel
     let item: Item
@@ -47,8 +48,11 @@ struct ItemToolbar: ToolbarContent {
                     .contentTransition(.symbolEffect(.replace))
             }
             .accessibilityLabel(item.favorite ? "Usuń z ulubionych" : "Dodaj do ulubionych")
+            Button { addingToPlaylist = true } label: {
+                Image(systemName: "text.badge.plus").foregroundStyle(Theme.ink)
+            }
+            .accessibilityLabel("Dodaj do playlisty")
             Menu {
-                Button("Dodaj do playlisty", systemImage: "text.badge.plus") { addingToPlaylist = true }
                 Button(
                     item.excluded ? "Przywróć dzieło" : "Ukryj dzieło",
                     systemImage: item.excluded ? "eye" : "eye.slash"

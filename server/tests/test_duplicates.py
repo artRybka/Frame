@@ -422,6 +422,33 @@ def test_a_playlist_gets_a_work_once(service) -> None:
     assert detail["item_ids"] == ["met:1", "aic:3"]
 
 
+def test_do_playlisty_ticks_the_playlists_holding_a_work(service) -> None:
+    from frame_server.web import create_app
+
+    app = create_app(service.settings)
+    svc = app.state.service
+    with TestClient(app) as client:
+        for item in (_work("met", 1), _work("wmc", 2), _work("aic", 3, title="Irises")):
+            svc.library.upsert(item)
+
+        def made(name: str, ids: list[str]) -> int:
+            body = {"name": name, "kind": "manual", "item_ids": ids}
+            return int(client.post("/api/playlists", json=body).json()["playlist"]["id"])
+
+        own = made("Wybór", ["met:1"])
+        other = made("Irysy", ["aic:3"])
+        client.post("/api/playlists", json={"name": "Met", "rules": {"sources": ["met"]}})
+
+        # Another copy of the work counts, named so the app takes out that one.
+        held = client.get("/api/items/wmc:2/playlists").json()
+        assert held == [{"playlist_id": own, "item_id": "met:1"}]
+        assert client.get("/api/items/aic:3/playlists").json() == [
+            {"playlist_id": other, "item_id": "aic:3"}
+        ]
+        # A museum's work the library does not have yet is on none.
+        assert client.get("/api/items/rijks:9/playlists").json() == []
+
+
 def test_favorites_playlist_always_stays(service) -> None:
     from frame_server.web import create_app
 

@@ -302,6 +302,10 @@ struct LiveBackend: FrameBackend {
         try await send("/api/playlists/\(id)/items/\(escape(itemID))", method: "DELETE")
     }
 
+    func playlistsHolding(itemID: String) async throws -> [PlaylistHolding] {
+        try await get("/api/items/\(escape(itemID))/playlists")
+    }
+
     func previewRules(_ rules: PlaylistRules) async throws -> RulesPreview {
         try await send("/api/playlists/preview", method: "POST", body: rules)
     }

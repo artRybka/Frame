@@ -653,6 +653,13 @@ struct PlaylistDetail: Codable, Sendable {
     let items: [ItemSummary]
 }
 
+/// One of the person's manual playlists holding a work ("Do playlisty"):
+/// `itemId` is the copy it holds, which may be another source's copy of it.
+struct PlaylistHolding: Codable, Hashable, Sendable {
+    let playlistId: Int
+    let itemId: String
+}
+
 struct RulesPreview: Codable, Sendable {
     let count: Int
     let items: [ItemSummary]

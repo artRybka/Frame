@@ -3275,6 +3275,59 @@
    "item_ids": [],
    "created_at": "",
    "updated_at": ""
+  },
+  {
+   "name": "Do sypialni",
+   "description": "",
+   "kind": "manual",
+   "rules": {
+    "query": "",
+    "artists": [],
+    "styles": [],
+    "subjects": [],
+    "colors": [],
+    "kinds": [],
+    "sources": [],
+    "year_from": null,
+    "year_to": null,
+    "favorites_only": false,
+    "min_suitability": null
+   },
+   "item_ids": [
+    "aic:28560",
+    "aic:14586",
+    "aic:87088",
+    "aic:16568"
+   ],
+   "created_at": "",
+   "updated_at": ""
+  },
+  {
+   "name": "Woda i fale",
+   "description": "",
+   "kind": "manual",
+   "rules": {
+    "query": "",
+    "artists": [],
+    "styles": [],
+    "subjects": [],
+    "colors": [],
+    "kinds": [],
+    "sources": [],
+    "year_from": null,
+    "year_to": null,
+    "favorites_only": false,
+    "min_suitability": null
+   },
+   "item_ids": [
+    "aic:77333",
+    "aic:87008",
+    "aic:16487",
+    "aic:14598",
+    "cma:152499"
+   ],
+   "created_at": "",
+   "updated_at": ""
   }
  ],
  "framing": {

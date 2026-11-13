@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.88
+
+- Karta dzieła ma guzik „Dodaj do playlisty” między serduszkiem a „…”
+  (także w Studium dnia); z menu „…” ta pozycja zniknęła.
+- Nowy arkusz playlist: okładki, liczba dzieł i ptaszek przy
+  playlistach, w których dzieło już jest. Dotknięcie dodaje albo
+  zabiera od razu, a arkusz zostaje otwarty, więc można zaznaczyć kilka.
+  „Nowa playlista…” tworzy playlistę z dziełem w tym samym miejscu.
+  Ptaszki działają po aktualizacji serwera.
+
 ## 1.145.87
 
 - Kreatywny restaurator w playliście. W menu „…” playlisty Właściciel

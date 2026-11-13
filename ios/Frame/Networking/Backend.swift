@@ -117,6 +117,8 @@ protocol FrameBackend: Sendable {
     func addToPlaylist(id: Int, itemIDs: [String]) async throws -> PlaylistDetail
     /// Takes one work out; a smart playlist keeps it in `rules.excludeIds`.
     func removeFromPlaylist(id: Int, itemID: String) async throws -> PlaylistDetail
+    /// The person's manual playlists holding this work or another copy of it.
+    func playlistsHolding(itemID: String) async throws -> [PlaylistHolding]
     func previewRules(_ rules: PlaylistRules) async throws -> RulesPreview
     func play(playlistID: Int) async throws
     /// Propozycje on the frame: the rotation without a playlist.
