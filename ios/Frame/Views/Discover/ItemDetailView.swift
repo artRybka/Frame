@@ -380,6 +380,7 @@ struct ItemDetailView: View {
             facts(item)
             LooksLikeSection(item: item).id("looks")
         }
+        .layoutProbe("column")
         .padding(.horizontal, Theme.gutter)
         .padding(.bottom, 40)
     }
@@ -950,6 +951,7 @@ struct ItemDetailView: View {
                     // that gives no size) shrank a portrait leaf to a stamp.
                     Color.clear
                         .aspectRatio(CGFloat(aspect(item)), contentMode: .fit)
+                        .layoutProbe("box")
                         .overlay {
                             ArtImage(
                                 ref: item.originalRef, fallback: .thumb(item.id), placeholder: .clear,
@@ -979,6 +981,7 @@ struct ItemDetailView: View {
             }
             .frame(maxHeight: 460)
             .frame(maxWidth: .infinity)
+            .layoutProbe("group")
             Picker("Widok", selection: $view.animation(.easeInOut)) {
                 ForEach(ViewMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
@@ -1419,5 +1422,23 @@ struct TitleSkeleton: View {
         .breathing()
         .accessibilityElement()
         .accessibilityLabel("Wczytuję dzieło")
+    }
+}
+
+/// Debug builds (tests): the sizes the card's picture was laid out at, as
+/// they come, to find what squeezes it.
+enum LayoutProbe {
+    nonisolated(unsafe) static var log: [String] = []
+}
+
+extension View {
+    func layoutProbe(_ name: String) -> some View {
+        #if DEBUG
+        onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+            LayoutProbe.log.append("\(name) \(Int(size.width))x\(Int(size.height))")
+        }
+        #else
+        self
+        #endif
     }
 }
