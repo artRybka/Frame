@@ -428,7 +428,7 @@ def test_szukaj_narrows_the_look_by_its_other_choices(
 def test_szukaj_finds_the_works_like_one_nearest_first(
     service: FrameService, looks: tuple[Looks, FakePainter]
 ) -> None:
-    """"Szukaj podobnych" on a work's card (Mateusz 2026-11-13): Szukaj
+    """„Szukaj podobnych” on a work's card (Mateusz 2026-11-13): Szukaj
     with the chip "Podobne do", the works that look like it nearest first,
     the groups narrowing them; no museum is asked."""
     from frame_server.web import create_app
