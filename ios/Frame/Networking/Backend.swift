@@ -191,9 +191,9 @@ protocol FrameBackend: Sendable {
     func looks(words: String) async throws -> LooksAnswer
     /// Works that look like a photograph (JPEG); the server keeps none.
     func looks(picture: Data) async throws -> LooksAnswer
-    /// Works that look like this one ("Podobne wyglądem"); none while it has
-    /// no numbers.
-    func looksLike(itemID: String) async throws -> LooksAnswer
+    /// Works that look like this one ("Podobne wyglądem"), `limit` at most
+    /// (60 the server's most); none while it has no numbers.
+    func looksLike(itemID: String, limit: Int) async throws -> LooksAnswer
     /// What the museums have for words the catalogue does not know.
     func museumHint(_ text: String) async throws -> MuseumHint
     /// The museums' works for a search's words, artists, terms, colours and

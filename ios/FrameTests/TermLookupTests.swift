@@ -126,6 +126,26 @@ final class TermLookupTests: XCTestCase {
         XCTAssertTrue(rules.isEmpty)
     }
 
+    /// "Szukaj podobnych" on a work's card: Szukaj's chip "Podobne do: …",
+    /// kept in the rules (Mateusz 2026-11-13).
+    func testTheWorksLikeOneAreAChipOfTheRules() {
+        var rules = PlaylistRules(terms: ["period:baroque"])
+        let chip = SearchToken.like("met:1", title: "Słoneczniki")
+        XCTAssertEqual(chip.name, "Podobne do: Słoneczniki")
+        XCTAssertEqual(chip.icon, "eye")
+        rules.setTokens(rules.tokens(names: [:]) + [chip])
+        XCTAssertEqual(rules.like, "met:1")
+        XCTAssertEqual(rules.terms, ["period:baroque"])
+        XCTAssertEqual(LibraryQuery(rules: rules).like, "met:1")
+        let names = [SearchToken.likeName("met:1"): "Słoneczniki"]
+        XCTAssertEqual(rules.tokens(names: names).last?.name, "Podobne do: Słoneczniki")
+        XCTAssertEqual(rules.tokens(names: [:]).last?.name, "Podobne do dzieła")
+        rules.setTokens([chip])
+        XCTAssertFalse(rules.isEmpty)
+        rules.setTokens([])
+        XCTAssertTrue(rules.isEmpty)
+    }
+
     func testFoldingIgnoresCaseAndPolishLetters() {
         XCTAssertEqual(TermLookup.fold("Łódź"), "lodz")
         XCTAssertEqual(TermLookup.fold("Chełmoński"), "chelmonski")

@@ -95,7 +95,7 @@ struct RootView: View {
         // "Teraz" shows the full send bar under the picture.
         .onChange(of: tab, initial: true) { _, tab in model.notices.nowTabOpen = tab == .now }
         // A held artist's or museum's name: their works on Szukaj.
-        .onChange(of: model.artistSearch != nil || model.placeSearch != nil) { _, held in
+        .onChange(of: model.artistSearch != nil || model.placeSearch != nil || model.likeSearch != nil) { _, held in
             if held { tab = .search }
         }
         .onChange(of: model.suggestionsOpened) { tab = .discover }

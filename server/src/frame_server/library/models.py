@@ -473,6 +473,12 @@ class PlaylistRules(BaseModel):
     #: has them, in Polish or as the museums were asked them; not those that
     #: only mention them (Mateusz 2026-11-13: "szukanie po tytule dzieła").
     title: str = ""
+    #: A work's id: the works that look like it, nearest first, the other
+    #: rules narrowing them (``frame_server.looks``; Mateusz 2026-11-13,
+    #: "Szukaj podobnych" on a work's card). Only the catalogue's works:
+    #: no museum is asked; ``search_key`` leaves it out. With it, ``look``
+    #: is not asked.
+    like: str = ""
 
     @model_validator(mode="before")
     @classmethod
@@ -519,6 +525,7 @@ class PlaylistRules(BaseModel):
         return not (
             self.query.strip()
             or self.look.strip()
+            or self.like.strip()
             or self.title.strip()
             or self.artists
             or self.styles

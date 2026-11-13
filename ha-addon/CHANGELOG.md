@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.145.106
+
+- „Podobne wyglądem” na karcie dzieła stoi nad słowami kluczowymi i
+  techniką: trzy najbardziej podobne dzieła obok siebie, każde w swoich
+  proporcjach, z tytułem i artystą; dotknięcie otwiera dzieło. Przycisk
+  „Szukaj podobnych” z liczbą wszystkich znalezionych otwiera Szukaj z
+  chipem „Podobne do: …”: wyniki od najbardziej podobnych, grupy zawężają
+  je jak zwykle, można z nich zrobić playlistę.
+
+## 1.145.105
+
+- Propozycje dnia pokazują dzieła w całości. Siatka przycinała każde dzieło
+  do kwadratu, więc rysunkom i grafikom brakowało brzegów, a obrazom
+  stojącym czy leżącym połowy postaci. Teraz każda czwórka stoi w dwóch
+  kolumnach jak w playliście: dzieło w swoich proporcjach, z tytułem i
+  artystą pod spodem. Kolejność czwórek (karta po karcie, tak jak na
+  ramce) bez zmian.
+
 ## 1.145.104
 
 - Obraz na karcie dzieła znów wypełnia całą szerokość strony (najwyżej

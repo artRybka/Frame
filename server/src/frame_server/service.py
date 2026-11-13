@@ -422,6 +422,7 @@ class FrameService:
         # a smart playlist made of them (Mateusz 2026-11-13).
         self.library.looking = self.looks.looking
         self.library.look_near = self.looks.near
+        self.library.like_near = self.looks.alike
         # The museums asked for a look by Haiku's searches, what they bring
         # judged by how it looks (Mateusz 2026-11-13, card).
         self.look_words = LookWords(self.library, self.claude, self.ai_config)

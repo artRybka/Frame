@@ -221,6 +221,15 @@ struct MuseumSearchView: View {
             sources = []
             Task { model.placeSearch = nil }
         }
+        // "Szukaj podobnych" on a work's card: Szukaj with its chip alone.
+        .onChange(of: model.likeSearch, initial: true) { _, like in
+            guard let like else { return }
+            var asked = PlaylistRules()
+            asked.like = like
+            rules = asked
+            sources = []
+            Task { model.likeSearch = nil }
+        }
         .onChange(of: model.hearts) { _, hearts in
             // Liked or unliked on the work's card meanwhile.
             for (id, favorite) in hearts where !liking.contains(id) {
