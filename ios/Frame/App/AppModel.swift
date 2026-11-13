@@ -1736,6 +1736,28 @@ final class AppModel {
         }
     }
 
+    /// Konfiguracja → "Kreatywny restaurator": nil when the server has none
+    /// (older than this app), quietly.
+    func restorerState() async -> RestorerState? {
+        try? await backend.restorer()
+    }
+
+    /// The favourites under 1600 px drawn again in Google's batches.
+    func restoreFavourites() async -> RestorerState? {
+        do {
+            let state = try await backend.restoreFavourites()
+            if state.waiting == 0 {
+                notices.info("Nie ma czego odnawiać")
+            } else {
+                notices.done("Odnawiam \(Names.pictures(state.waiting))", "Potrwa do doby.")
+            }
+            return state
+        } catch {
+            show(error)
+            return nil
+        }
+    }
+
     func describeLibrary() async {
         do {
             let started = try await backend.describeLibrary()
@@ -1999,6 +2021,15 @@ final class AppModel {
     /// (`copyID` its own id): its thumbnail and previews follow at once.
     func chooseCopy(itemID: String, copyID: String) async throws -> Item {
         let updated = try await backend.chooseCopy(itemID: itemID, copyID: copyID)
+        pictureSeen(itemID, copy: updated.sharper?.itemId ?? "", changed: true)
+        return updated
+    }
+
+    /// "Kreatywny restaurator": the work's small picture drawn again larger
+    /// by the image model, kept in its place; its thumbnail and previews
+    /// follow at once, as for a picked copy.
+    func restore(itemID: String) async throws -> Item {
+        let updated = try await backend.restore(itemID: itemID)
         pictureSeen(itemID, copy: updated.sharper?.itemId ?? "", changed: true)
         return updated
     }

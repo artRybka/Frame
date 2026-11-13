@@ -230,6 +230,9 @@ struct ArtCard: View {
                     // the caption's soft ink, not a mark on the picture.
                     title
                         .lineLimit(2)
+                        // A long title gives way in the middle, not at its
+                        // end: the marks after it stay in sight.
+                        .truncationMode(marked ? .middle : .tail)
                     Text(Self.byline(item))
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
@@ -248,6 +251,11 @@ struct ArtCard: View {
     /// The title, and after it, wrapping with the last word: for a "Pod
     /// lupą" work a magnifier, for a picture small for the frame a grid of
     /// pixels (`LowRes`).
+    /// A mark follows the title (`title`).
+    private var marked: Bool {
+        item.zoom == true || item.restored == true || (item.lowSide ?? 0) > 0
+    }
+
     private var title: Text {
         var text = Text(item.title.isEmpty ? "Bez tytułu" : item.title)
             .font(.serif(15, weight: .medium))
@@ -261,7 +269,14 @@ struct ArtCard: View {
                     .foregroundStyle(Theme.inkSoft)
             label += ", można mocno przybliżyć"
         }
-        if let side = item.lowSide, side > 0 {
+        if item.restored == true {
+            text = text
+                + Text("\u{00A0}").font(.serif(15, weight: .medium))
+                + Text(Image(systemName: LowRes.restoredSymbol))
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(LowRes.tint)
+            label += ", odnowione przez kreatywnego restauratora"
+        } else if let side = item.lowSide, side > 0 {
             text = text
                 + Text("\u{00A0}").font(.serif(15, weight: .medium))
                 + Text(Image(systemName: LowRes.symbol))
@@ -1067,11 +1082,17 @@ struct TitleWithYear: View {
     /// A picture small for the frame: its long side on a badge after the
     /// year ("950 px", `LowRes`); 0 or nil, no badge.
     var lowSide: Int? = nil
+    /// Drawn again by the image model: amber sparkles on a badge in place
+    /// of the low resolution's (`LowRes.restoredSymbol`).
+    var restored = false
     @Environment(\.colorScheme) private var scheme
     @Environment(\.displayScale) private var scale
 
     var body: some View {
-        TitleYear.text(title, date: date, font: font, scheme: scheme, scale: scale, zoom: zoom, lowSide: lowSide)
+        TitleYear.text(
+            title, date: date, font: font, scheme: scheme, scale: scale, zoom: zoom, lowSide: lowSide,
+            restored: restored
+        )
     }
 }
 
@@ -1081,6 +1102,11 @@ struct TitleWithYear: View {
 /// the picture: dots of a coarse screen after the title, as "Pod lupą"'s magnifier.
 enum LowRes {
     static let symbol = "circle.grid.3x3.fill"
+    /// A picture drawn again by the image model ("Kreatywny restaurator",
+    /// Mateusz 2026-11-12): AI's sparkles in the same amber, in place of
+    /// the dots.
+    static let restoredSymbol = "sparkles"
+    static let restoredName = "Kreatywny restaurator"
     /// The tint of a warning, as "Szukaj lepszej kopii"'s notes.
     static let tint = Theme.warn
 
@@ -1098,7 +1124,7 @@ enum LowRes {
 enum TitleYear {
     static func text(
         _ title: String, date: String, font: Font, scheme: ColorScheme, scale: CGFloat, zoom: Int? = nil,
-        lowSide: Int? = nil
+        lowSide: Int? = nil, restored: Bool = false
     ) -> Text {
         var text = Text(title).font(font).foregroundStyle(Theme.ink)
         var label = title
@@ -1113,7 +1139,11 @@ enum TitleYear {
             text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)
             label += zoom > 0 ? ", można przybliżyć \(zoom) razy" : ", można mocno przybliżyć"
         }
-        if let lowSide, lowSide > 0,
+        if restored,
+           let badge = badge("", scheme: scheme, scale: scale, symbol: LowRes.restoredSymbol, warn: true) {
+            text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)
+            label += ", odnowione przez kreatywnego restauratora"
+        } else if let lowSide, lowSide > 0,
            let badge = badge("\(lowSide) px", scheme: scheme, scale: scale, symbol: LowRes.symbol, warn: true) {
             text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)
             label += ", \(LowRes.spoken(lowSide))"

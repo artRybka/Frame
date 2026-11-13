@@ -539,7 +539,8 @@ actor DemoBackend: FrameBackend {
     }
 
     func item(id: String) async throws -> Item {
-        guard let item = items.first(where: { $0.id == id }) else { throw BackendError.notFound }
+        guard var item = items.first(where: { $0.id == id }) else { throw BackendError.notFound }
+        if Self.restoredAll, item.kind == .artwork, item.sharper == nil { item.sharper = Self.restoredCopy(item) }
         return item
     }
 
@@ -575,6 +576,7 @@ actor DemoBackend: FrameBackend {
     /// its originals' sizes, and Cleveland's web pictures stand for its
     /// originals here, so the screenshots show the mark (Hiroshige, 900 px).
     private static func lowSide(_ item: Item) -> Int {
+        if restoredAll || item.sharper?.isRestored == true { return 0 }
         // CI screenshots: `-demoLowSide all` marks every work as 950 px.
         if item.kind == .artwork, UserDefaults.standard.string(forKey: "demoLowSide") == "all" { return 950 }
         guard item.kind == .artwork, ["aic", "cma"].contains(item.source),
@@ -586,7 +588,42 @@ actor DemoBackend: FrameBackend {
     private static func tile(_ item: Item) -> ItemSummary {
         var summary = item.summary
         summary.lowSide = lowSide(item)
+        if restoredAll, item.kind == .artwork { summary.restored = true }
         return summary
+    }
+
+    /// CI screenshots: `-demoLowSide restored` shows every work drawn again
+    /// by "Kreatywny restaurator".
+    private static var restoredAll: Bool { UserDefaults.standard.string(forKey: "demoLowSide") == "restored" }
+
+    /// The work's picture as the image model's drawing: the same picture,
+    /// some 2048 px on its long side.
+    private static func restoredCopy(_ item: Item) -> SharperCopy {
+        let width = item.width ?? 900, height = item.height ?? 1200
+        let scale = 2048.0 / Double(max(width, height, 1))
+        return SharperCopy(
+            url: "", itemId: "owned:\(item.id)", source: "owned", museum: "Kreatywny restaurator",
+            width: Int(Double(width) * scale), height: Int(Double(height) * scale), chosen: true, restored: true
+        )
+    }
+
+    func restore(itemID: String) async throws -> Item {
+        try await Task.sleep(for: .seconds(2))
+        return try update(itemID) { $0.sharper = Self.restoredCopy($0) }
+    }
+
+    func restorer() async throws -> RestorerState {
+        RestorerState(
+            enabled: true, items: 7, usd: 0.21, waiting: 0,
+            restored: items.filter { $0.sharper?.isRestored == true }.count
+        )
+    }
+
+    func restoreFavourites() async throws -> RestorerState {
+        var state = try await restorer()
+        state.waiting = state.items
+        state.items = 0
+        return state
     }
 
     func holder(itemID: String, wait: Int) async throws -> HolderView {

@@ -66,6 +66,7 @@ from .player import Player
 from .power import INSTALL_LOOK, WAKE_BURST_SECONDS, PowerManager
 from .progress import ProgressTracker, Stage
 from .rendered import RenderCache, Rendered, render_key
+from .restorer import Restorer
 from .sharper import Sharper
 from .sheets import Sheets
 from .sizes import Sizes
@@ -389,6 +390,9 @@ class FrameService:
         # Those sheets drawn by the image model, where the owner gave Google's key.
         self.painter = Painter(self.ai_config, self.claude)
         self.drawn = DrawnSheets(self.library, self.images, self.painter)
+        # Small pictures of works drawn again larger by the same model
+        # ("Kreatywny restaurator"), kept as the owner's pick.
+        self.restorer = Restorer(self.library, self.images, self.sharper, self.painter)
         # The composition text of pages written before, rewritten once in one
         # voice (their marks stay).
         self.prose = ProseJob(self.daily.job)

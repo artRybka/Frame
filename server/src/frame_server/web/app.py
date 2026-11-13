@@ -66,6 +66,7 @@ from . import (
     notify_api,
     player_api,
     playlists_api,
+    restorer_api,
     sources_api,
     storage_api,
     study_api,
@@ -196,6 +197,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # The sheets the analyses of composition are drawn on are there
             # before a study is opened (sheets.py).
             service.sheets.start()
+            # Google's batches of "Kreatywny restaurator" looked at now and then.
+            service.restorer.start()
             service.drawn.start()
             # Who the catalogue's artists are, from Wikidata: once some
             # minutes after a start (the search knows them then), new ones at
@@ -214,6 +217,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         service.ai.stop()
         service.daily.stop()
         service.sheets.stop()
+        service.restorer.stop()
         service.drawn.stop()
         if service.night is not None:
             service.night.stop()
@@ -238,6 +242,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         sources_api.router,
         tailnet_api.router,
         night_api.router,
+        restorer_api.router,
     )
     for router in routers:
         app.include_router(router)

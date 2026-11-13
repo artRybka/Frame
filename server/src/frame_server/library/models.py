@@ -159,6 +159,10 @@ class SharperCopy(BaseModel):
     #: turning us away), not because it is sharper. It stays: the museum
     #: is not asked again.
     stand_in: bool = False
+    #: Drawn again larger by the image model from the picture shown before
+    #: ("Kreatywny restaurator", Mateusz 2026-11-12): the same work, its
+    #: detail invented, not recovered; kept as the owner's pick.
+    restored: bool = False
 
 
 class Item(BaseModel):
@@ -367,6 +371,10 @@ class ItemSummary(BaseModel):
     #: Its picture's long side when it is known and small for the frame
     #: (``low_res.low_side``), else 0: a mark after the title.
     low_side: int = 0
+    #: Its picture was drawn again by the image model ("Kreatywny
+    #: restaurator": ``SharperCopy.restored``): its mark in place of the
+    #: low resolution's.
+    restored: bool = False
 
     @classmethod
     def of(cls, item: Item) -> ItemSummary:
@@ -375,12 +383,15 @@ class ItemSummary(BaseModel):
         from .zoom import zooms
 
         summary = cls(
-            **item.model_dump(include=set(cls.model_fields) - {"subtitle", "zoom", "low_side"})
+            **item.model_dump(
+                include=set(cls.model_fields) - {"subtitle", "zoom", "low_side", "restored"}
+            )
         )
         summary.zoom = zooms(item)
         summary.low_side = low_side(item)
         if item.sharper is not None:
             summary.picture = item.sharper.item_id
+            summary.restored = item.sharper.restored
         if item.kind == ItemKind.PHOTO:
             summary.title = photo_title(item)
             summary.subtitle = photo_line(item)
