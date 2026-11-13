@@ -954,30 +954,50 @@ struct LiveBackend: FrameBackend {
 
     /// Sends the request. One cut short by the app going away (or sent as
     /// it came back, before the network woke up) goes again once the app
-    /// is back, if nothing can happen twice; otherwise it ends as
-    /// `BackendError.interrupted`, not as a server that did not answer.
+    /// is back, if nothing can happen twice (`Replays.mayResend`); otherwise
+    /// it ends as `BackendError.interrupted`, not as a server that did not answer.
     private func load(_ req: URLRequest) async throws -> (Data, URLResponse) {
         let route = self.route
-        return try await again(req) { req in
+        let (data, response) = try await again(req) { req in
             try await reach(req) { try await route.follow($0) { try await Tailnet.shared.data(for: $0) } }
         }
+        Replays.shared.saw(response)
+        return (data, response)
     }
 
     /// Like `load`, for a response read as it comes.
     private func stream(_ req: URLRequest) async throws -> (URLSession.AsyncBytes, URLResponse) {
-        try await again(req) {
+        let (bytes, response) = try await again(req) {
             try await reach($0) { request in try await Tailnet.shared.send(request) { try await $0.bytes(for: request) } }
+        }
+        Replays.shared.saw(response)
+        return (bytes, response)
+    }
+
+    /// A change goes with a key of its own (`Replays`), and with iOS's
+    /// extra half minute to finish if the app goes away meanwhile.
+    private func again<T>(_ req: URLRequest, _ send: (URLRequest) async throws -> T) async throws -> T {
+        let req = Replays.keyed(req)
+        guard Replays.isChange(req) else { return try await resend(req, send) }
+        let time = await BackgroundTime(name: "change")
+        do {
+            let value = try await resend(req, send)
+            await time.end()
+            return value
+        } catch {
+            await time.end()
+            throw error
         }
     }
 
-    private func again<T>(_ req: URLRequest, _ send: (URLRequest) async throws -> T) async throws -> T {
+    private func resend<T>(_ req: URLRequest, _ send: (URLRequest) async throws -> T) async throws -> T {
         var retries = 0
         while true {
             let mark = Absence.shared.mark()
             do {
                 return try await send(req)
             } catch let error as URLError where Absence.shared.interrupted(error, since: mark) {
-                guard req.httpMethod == "GET" || ServerRoute.neverArrived(error) else { throw BackendError.interrupted }
+                guard Replays.shared.mayResend(req, after: error) else { throw BackendError.interrupted }
                 guard retries < 2 else { throw error }
                 retries += 1
                 await Absence.shared.whenBack(pause: Double(retries))
@@ -994,7 +1014,7 @@ struct LiveBackend: FrameBackend {
             return try await send(req)
         } catch let error as URLError where route.hasRemote && ServerRoute.unreachable(error) {
             guard await route.resolve() != nil,
-                  req.httpMethod == "GET" || ServerRoute.neverArrived(error),
+                  Replays.shared.mayResend(req, after: error),
                   let moved = route.rebased(req)
             else { throw error }
             return try await send(moved)

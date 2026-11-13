@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.81
+
+- Zmiana zaczęta tuż przed wyjściem z aplikacji kończy się sama. Wybór
+  kopii, ostrzejsza kopia, ulubione, playlista czy wysłanie na ramkę nie
+  kończą się już komunikatem „Przerwane, gdy aplikacja była w tle”:
+  krótkie zmiany dostają od iOS chwilę na dokończenie w tle, a dłuższe
+  serwer robi do końca i pamięta wynik, który aplikacja odbiera po
+  powrocie. Nic nie dzieje się dwa razy. Działa po aktualizacji serwera.
+
 ## 1.145.80
 
 - Pasek barw: kreska konturu. Obraz malowany wyraźnym konturem (Matisse,
