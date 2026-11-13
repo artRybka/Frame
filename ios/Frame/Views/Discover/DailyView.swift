@@ -295,7 +295,7 @@ struct DailyView: View {
         .task(id: cropKey) { await loadFraming() }
         .task(id: work?.compositionPending == true || analysingFrom != nil) { await followAnalysis() }
         .task(id: work?.compositionDrawnPending == true) { await followDrawnSheet() }
-        .task(id: work?.stagesPending == true) { await followStages() }
+        .task(id: work?.howMadePending == true) { await followHowMade() }
         .task(id: work?.detailsPending == true || mending) { await followMending() }
     }
 
@@ -525,7 +525,7 @@ struct DailyView: View {
         merged.sameTime = shown.sameTime
         if merged.size == nil { merged.size = shown.size }
         if merged.journey == nil { merged.journey = shown.journey }
-        if (merged.stages ?? []).isEmpty { merged.stages = shown.stages }
+        if (merged.howMade ?? "").isEmpty { merged.howMade = shown.howMade }
         work = merged
     }
 
@@ -597,6 +597,14 @@ struct DailyView: View {
                     }
                     .id("colour")
                 }
+                // "Jak powstawał" (Mateusz 2026-11-13, "G2"): only from a
+                // published technical study; right after "Kolor i światło",
+                // a few sentences, no pictures (21:42).
+                if let howMade = work.howMade, !howMade.isEmpty {
+                    section("Jak powstawał") { prose(howMade) }
+                        .id("howMade")
+                        .transition(.opacity)
+                }
                 if let details = work.details, !details.isEmpty {
                     detailsSection(work, details).id("details")
                 }
@@ -616,15 +624,6 @@ struct DailyView: View {
                     .id("size")
                     // A work studied before the sizes were looked up gets its
                     // size a moment later, once: it fades in, no jump.
-                    .transition(.opacity)
-                }
-                // "Jak powstawał" (Mateusz 2026-11-13, "G2"): only from a
-                // published technical study, after the size.
-                if let stages = work.stages, stages.count >= 2 {
-                    section("Jak powstawał") {
-                        PaintingStagesRow(work: work, stages: stages, column: columnWidth)
-                    }
-                    .id("stages")
                     .transition(.opacity)
                 }
                 // "Droga dzieła" (Mateusz 2026-11-10, "S1"), after the size
@@ -1135,16 +1134,15 @@ struct DailyView: View {
         }
     }
 
-    /// While the image model draws how the work was painted (a minute or
-    /// two after the study first opens): the page is fetched again until
-    /// the stages are on it.
-    private func followStages() async {
-        guard work?.stagesPending == true else { return }
-        for _ in 0..<20 {
-            try? await Task.sleep(for: .seconds(15))
+    /// While "Jak powstawał" is written (a few seconds after the study
+    /// first opens): the page is fetched again until the text is on it.
+    private func followHowMade() async {
+        guard work?.howMadePending == true else { return }
+        for _ in 0..<12 {
+            try? await Task.sleep(for: .seconds(5))
             if Task.isCancelled { return }
             await refreshPage()
-            guard (work?.stages ?? []).isEmpty else { return }
+            guard (work?.howMade ?? "").isEmpty else { return }
         }
     }
 

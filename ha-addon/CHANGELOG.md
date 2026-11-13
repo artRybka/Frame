@@ -8,6 +8,12 @@
   próbie dziesięciu dzieł: 3,6 centa zamiast 8,8 za dzieło, 40 faktów
   zamiast 43, trzy badania techniczne („Jak powstawał”) zamiast jednego.
   Szacunek przy „Uzupełnij wcześniejsze studia” liczy już nową cenę.
+- „Jak powstawał” w studium bez rysunków: kilka zdań (dwa-trzy, najwyżej
+  cztery) o tym, jak dzieło powstawało, według badania technicznego
+  znalezionego w sieci, zaraz po „Kolor i światło”. Bez wzmianki, skąd
+  to wiadomo. Rysunki modelu Google nie wyglądały dobrze i serwer ich już
+  nie zamawia; dzieła, które je dostały, dostaną tekst przy otwarciu
+  studium. Przełącznik przeszedł z Google do ustawień Claude.
 
 ## 1.145.99
 

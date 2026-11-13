@@ -47,7 +47,7 @@ class AiView(BaseModel):
     journey: bool = True
     #: Facts from the web woven into new studies ("G8").
     web_facts: bool = True
-    #: The study's stages of painting drawn by the image model ("G2").
+    #: The study's "Jak powstawał", told from a technical study ("G2").
     stages: bool = True
     #: Works on the list "Do sprawdzenia": set aside by the gatekeeper, and
     #: the audit's findings.

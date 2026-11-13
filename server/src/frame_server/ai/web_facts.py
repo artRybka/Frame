@@ -12,7 +12,7 @@ text; the pages they came from are kept nowhere (Mateusz 2026-11-13 11:43,
 be stored nor written over, so it is not used.
 
 A published technical study's stages of painting are kept with the facts:
-the study's "Jak powstawał" (``G2``) is drawn only from them, never guessed.
+the study's "Jak powstawał" (``G2``) is told only from them, never guessed.
 
 One question per work, kept as a note of :data:`KIND`: a study written
 again asks nothing more.

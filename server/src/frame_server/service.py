@@ -415,9 +415,7 @@ class FrameService:
         # ("Kreatywny restaurator"), kept as the owner's pick.
         self.restorer = Restorer(self.library, self.images, self.sharper, self.painter)
         # How a work was painted, when a technical study of it was found.
-        self.stages = PaintingStages(
-            self.library, self.images, self.painter, self.web_facts, self.ai_config
-        )
+        self.stages = PaintingStages(self.library, self.claude, self.web_facts, self.ai_config)
         # How the museums' works look, as Google's numbers: Szukaj by how a
         # work looks or by a photograph, and the works that look alike
         # (Mateusz 2026-11-13, "G1"); those cared about first.
