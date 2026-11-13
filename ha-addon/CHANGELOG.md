@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.76
+
+- Serwer nie staje już na koniec przeliczania barw biblioteki. Po
+  aktualizacji, która zmienia sposób liczenia barw, wyniki dla ok. 100
+  tysięcy dzieł były zapisywane jednym ciągiem i przez ten czas serwer
+  nie odpowiadał aplikacji ani ramce (107 sekund 12 listopada). Teraz
+  zapisuje je porcjami po 200 dzieł i między porcjami obsługuje
+  pozostałych.
+
 ## 1.145.75
 
 - Playlista: pod nazwą jest porządek. Zostają tam tylko reguły, które
