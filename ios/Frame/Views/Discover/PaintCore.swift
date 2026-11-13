@@ -1672,6 +1672,8 @@ struct ContourStroke: Sendable {
     let high: Int
     let line: ContourLine
     let style: PaintStyle
+    /// Laid on the paint, not round it (the dark look).
+    let inside: Bool
     private var cover: [Float]
     private var across: [Float]
     private var arrive: [Float]
@@ -1686,6 +1688,7 @@ struct ContourStroke: Sendable {
         self.high = high
         self.line = line
         self.style = style
+        self.inside = inside
         cover = [Float](repeating: 0, count: wide * high)
         across = [Float](repeating: 1, count: wide * high)
         arrive = [Float](repeating: 2, count: wide * high)
@@ -1843,8 +1846,11 @@ struct ContourStroke: Sendable {
                     shade = 1 - 0.1 * Paint.step(0.55, 1, off)
                 case .dry:
                     // The stick leaves the paper's hollows bare.
+                    // On the paint (dark look) its own hollows show the
+                    // dark paper: broken less, or the line is lost in them.
                     let tooth = Paint.noise(Double(x) * 0.9, Double(y) * 0.9, s + 17)
-                    alpha = 0.92 * Paint.step(0.18 + 0.3 * off, 0.42 + 0.3 * off, tooth)
+                    let bare = inside ? 0.4 : 1.0
+                    alpha = 0.92 * Paint.step(bare * (0.18 + 0.3 * off), bare * (0.42 + 0.3 * off), tooth)
                     shade = 1
                 default:
                     // A few streaks of the bristles, along the line.
