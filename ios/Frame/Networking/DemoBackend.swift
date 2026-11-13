@@ -890,6 +890,13 @@ actor DemoBackend: FrameBackend {
         return detail(playlist)
     }
 
+    func playlistsHolding(itemID: String) async throws -> [PlaylistHolding] {
+        playlistsByID.values
+            .filter { $0.kind == .manual && $0.itemIds.contains(itemID) }
+            .compactMap { $0.id.map { PlaylistHolding(playlistId: $0, itemId: itemID) } }
+            .sorted { $0.playlistId < $1.playlistId }
+    }
+
     func previewRules(_ rules: PlaylistRules) async throws -> RulesPreview {
         let list = Self.sorted(items.filter { Self.matches($0, rules) }, by: "suitability")
         return RulesPreview(count: list.count, items: list.prefix(24).map(\.summary))
