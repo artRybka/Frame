@@ -370,6 +370,13 @@ final class JourneyRoadTests: XCTestCase {
         // The top of the road on screen: its middle 150 pt down the road.
         reveal.look(CGRect(x: 0, y: -100, width: 350, height: 500))
         XCTAssertFalse(reveal.settled)
+        // What the page has brought up the screen already is there at once
+        // (2026-11-13: „widzi się po prostu pustą stronę”), each as far along
+        // as it would be with the page read briskly: the higher, the further.
+        let atOnce = marks.dots.indices.filter { reveal.drawing($0) >= 0 }
+        XCTAssertTrue(marks.dots.indices.filter { marks.dots[$0] <= 150 }.allSatisfy(atOnce.contains))
+        XCTAssertTrue(atOnce.allSatisfy { marks.dots[$0] <= 150 + RoadMarks.near })
+        for i in atOnce.dropFirst() { XCTAssertLessThanOrEqual(reveal.age(i), reveal.age(i - 1), "stop \(i)") }
         var now = Date(), began: [Int: Int] = [:], frames = 0
         func run(_ seconds: Int) {
             for _ in 0..<(60 * seconds) {
@@ -394,7 +401,7 @@ final class JourneyRoadTests: XCTestCase {
             }
         }
         XCTAssertNotNil(began[0])
-        for i in 1..<marks.dots.count {
+        for i in 1..<marks.dots.count where !atOnce.contains(i) {
             guard let this = began[i], let before = began[i - 1] else { continue }
             // Here the page came to rest with them well up the screen already:
             // they come quickly, and still one after another.
@@ -763,10 +770,16 @@ final class JourneyRoadTests: XCTestCase {
         XCTAssertEqual(reveal.pen, dot + 40, accuracy: 0.01)
         XCTAssertEqual(reveal.mark(2), RoadMarks.clock.dry, accuracy: 0.001)
         XCTAssertTrue(reveal.settled)
-        // A pen far behind where it is to be does not rest as long.
+        // A pen far behind where it is to be does not rest as long; more
+        // than `spur` behind it, not at all (2026-11-13: the page is not
+        // kept waiting): it is there at once, the marks it passed with it.
         let hasty = RoadReveal()
         hasty.lay(marks, still: false)
         hasty.look(CGRect(x: 0, y: mid - 250, width: 350, height: 500))
+        XCTAssertGreaterThanOrEqual(hasty.pen, dot + 40 - RoadMarks.spur)
+        for i in marks.dots.indices where marks.dots[i] <= dot + 40 - RoadMarks.spur {
+            XCTAssertGreaterThanOrEqual(hasty.mark(i), 0, "stop \(i)")
+        }
         var slow = 0, fast = 0
         for _ in 0..<1200 {
             now += 1.0 / 60
@@ -774,9 +787,51 @@ final class JourneyRoadTests: XCTestCase {
             if hasty.pen == marks.dots[0], hasty.mark(0) < RoadMarks.press { fast += 1 }
             if hasty.pen == marks.dots[2], hasty.mark(2) < RoadMarks.press { slow += 1 }
         }
-        XCTAssertGreaterThan(fast, 0)
         XCTAssertLessThan(fast, slow)
         XCTAssertLessThan(fast, 20)
+    }
+
+    @MainActor
+    func testAPageFlungDownFindsTheDrawingThere() throws {
+        // 2026-11-13 07:14: „często przy przewijaniu widzi się po prostu
+        // pustą stronę, droga i punkty powstają za późno i efekt przepada”.
+        let plan = try road(), marks = RoadMarks(plan)
+        let reveal = RoadReveal()
+        reveal.lay(marks, still: false)
+        // Flung from over the road to its middle, before a single tick of
+        // the clock: a phone's screen, what the bars leave of it.
+        let mid = (plan.height / 2).rounded()
+        reveal.look(CGRect(x: 0, y: mid - 338, width: 350, height: 676))
+        let line = mid + RoadMarks.reach(screen: 676) - RoadMarks.spur
+        XCTAssertGreaterThan(line, mid + RoadMarks.near)
+        XCTAssertGreaterThanOrEqual(reveal.pen, line)
+        XCTAssertGreaterThanOrEqual(reveal.thick, line - RoadMarks.spur)
+        XCTAssertLessThanOrEqual(reveal.thick, reveal.pen)
+        let readable = RoadMarks.clock.text + RoadMarks.clock.emerge
+        for i in marks.dots.indices {
+            let dot = marks.dots[i]
+            // Up the screen: its text is all there; at the middle, coming up;
+            // under where a stop begins, only its mark on the line.
+            if dot <= mid + RoadMarks.near - readable * RoadMarks.brisk {
+                XCTAssertGreaterThanOrEqual(reveal.age(i), readable, "stop \(i)")
+            }
+            if dot > mid + RoadMarks.near { XCTAssertLessThan(reveal.age(i), 0, "stop \(i)") }
+            if dot <= line { XCTAssertGreaterThanOrEqual(reveal.mark(i), 0, "stop \(i)") }
+            if i > 0 { XCTAssertLessThanOrEqual(reveal.age(i), reveal.age(i - 1), "stop \(i)") }
+        }
+        XCTAssertFalse(reveal.settled)
+        // From there it goes on in its own time; nothing goes back.
+        var now = Date()
+        let was = marks.dots.indices.map { reveal.age($0) }
+        for _ in 0..<30 {
+            now += 1.0 / 60
+            reveal.tick(now)
+            XCTAssertGreaterThanOrEqual(reveal.pen, line)
+            XCTAssertLessThanOrEqual(reveal.thick, reveal.pen)
+        }
+        for i in marks.dots.indices where was[i] >= 0 {
+            XCTAssertGreaterThanOrEqual(reveal.age(i), min(was[i], RoadMarks.clock.dry), "stop \(i)")
+        }
     }
 
     func testAPageScrolledFastHurriesTheStops() throws {
@@ -1147,8 +1202,9 @@ final class JourneyRoadTests: XCTestCase {
             }
         }
         XCTAssertEqual(reveal.pen, second + RoadMarks.reach(screen: 500), accuracy: 0.01)
-        // The heading is well up the screen by now, so it is circled quickly; not at once.
-        XCTAssertGreaterThan(circling, 3)
+        // The heading is well up the screen by now: it is circled at once
+        // or quickly (2026-11-13: the drawing keeps up with the page).
+        XCTAssertLessThan(circling, 60)
         XCTAssertEqual(reveal.age(count), marks.whole(count), accuracy: 0.001)
         XCTAssertEqual(reveal.age(count + 1), RoadMarks.clock.dry, accuracy: 0.001)
         XCTAssertEqual(reveal.age(count + 2), RoadMarks.clock.dry, accuracy: 0.001)
