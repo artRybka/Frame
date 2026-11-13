@@ -215,7 +215,7 @@ struct AiSection: View {
                     Divider()
                     toggle(
                         "Fakty z sieci w studium",
-                        hint: "Przed napisaniem studium Claude szuka w sieci badań, losów i wystaw dzieła i wplata je w tekst. Ok. 0,3 USD za studium.",
+                        hint: "Przed napisaniem studium Claude szuka w sieci badań, losów i wystaw dzieła i wplata je w tekst. Ok. 0,15–0,3 USD za studium.",
                         value: webFacts
                     ) { AiSettingsUpdate(webFacts: $0) }
                 }

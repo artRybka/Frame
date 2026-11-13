@@ -13,7 +13,7 @@
 - Studium dzieła wybiera „Podobne dzieła” także po wyglądzie.
 - Nowe studia są bogatsze: zanim Claude je napisze, szuka w sieci badań
   konserwatorskich, losów dzieła, wystaw i słów artysty, i wplata te
-  fakty w tekst, bez linków i bez listy źródeł. Ok. 0,3 USD za studium,
+  fakty w tekst, bez linków i bez listy źródeł. Ok. 0,15–0,3 USD za studium,
   przełącznik „Fakty z sieci w studium” w Konfiguracja → Claude.
 - „Jak powstawał” w Studium: gdy istnieje badanie techniczne dzieła, model
   Google rysuje jego kolejne etapy według tego badania (ostatni to samo
