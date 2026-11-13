@@ -462,6 +462,11 @@ class PlaylistRules(BaseModel):
     kept_only: bool = False
     #: Works the owner removed from this smart playlist although they match.
     exclude_ids: list[str] = Field(default_factory=list)
+    #: Words for how the works look ("mglisty poranek nad wodą"): of the
+    #: works the other rules find, those that look so, nearest first
+    #: (``frame_server.looks``, Mateusz 2026-11-13). No museum is asked
+    #: for it (``search_key`` leaves it out).
+    look: str = ""
 
     @model_validator(mode="before")
     @classmethod
@@ -504,6 +509,7 @@ class PlaylistRules(BaseModel):
         """No filter at all: the whole catalogue (exceptions don't count)."""
         return not (
             self.query.strip()
+            or self.look.strip()
             or self.artists
             or self.styles
             or self.subjects

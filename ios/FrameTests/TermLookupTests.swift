@@ -74,6 +74,37 @@ final class TermLookupTests: XCTestCase {
         XCTAssertNil(TermFacet.technique.fieldPrompt)
     }
 
+    /// Return (and the marked row): two words or more searched by how the
+    /// works look while the server can, an artist's name as the artist
+    /// (Mateusz 2026-11-13).
+    func testReturnPicksTheMarkedRow() {
+        let lookup = TermLookup()
+        XCTAssertNil(lookup.chosen)
+        lookup.text = " mglisty poranek "
+        XCTAssertEqual(lookup.chosen, SearchToken(kind: "word", key: "mglisty poranek", name: "mglisty poranek"))
+        lookup.looks = true
+        XCTAssertEqual(lookup.chosen, SearchToken.look("mglisty poranek"))
+        XCTAssertEqual(lookup.chosen?.kindName, "Wygląd")
+        lookup.text = "mgła"
+        XCTAssertEqual(lookup.chosen?.kind, "word")
+        XCTAssertTrue(TermLookup.isName("Claude Monet", typed: "claude monet"))
+        XCTAssertTrue(TermLookup.isName("Claude Monet", typed: "monet"))
+        XCTAssertTrue(TermLookup.isName("Vincent van Gogh", typed: "van gogh"))
+        XCTAssertTrue(TermLookup.isName("Gogh, Vincent van", typed: "gogh"))
+        XCTAssertFalse(TermLookup.isName("Claude Monet", typed: "claude"))
+        XCTAssertFalse(TermLookup.isName("Claude Monet", typed: "mon"))
+
+        // The look is a chip of the rules: the groups narrow it, a playlist keeps it.
+        var rules = PlaylistRules(terms: ["technique:painting"])
+        rules.setTokens(rules.tokens(names: [:]) + [SearchToken.look("mglisty poranek")])
+        XCTAssertEqual(rules.look, "mglisty poranek")
+        XCTAssertEqual(rules.terms, ["technique:painting"])
+        XCTAssertEqual(LibraryQuery(rules: rules).look, "mglisty poranek")
+        XCTAssertEqual(rules.tokens(names: [:]).last, SearchToken.look("mglisty poranek"))
+        rules.setTokens([])
+        XCTAssertTrue(rules.isEmpty)
+    }
+
     func testFoldingIgnoresCaseAndPolishLetters() {
         XCTAssertEqual(TermLookup.fold("Łódź"), "lodz")
         XCTAssertEqual(TermLookup.fold("Chełmoński"), "chelmonski")

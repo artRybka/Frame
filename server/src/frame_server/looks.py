@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import httpx
 import numpy as np
 from PIL import Image
 
@@ -81,6 +82,12 @@ NEAR_BEST = 0.07
 FLOOR = 0.52
 #: A picture (a photograph, a work) is closer to works than words are.
 PICTURE_FLOOR = 0.60
+#: Szukaj's own list (Mateusz 2026-11-13: "strumień dzieł „szukaj wyglądem”
+#: musiałby trafiać w tę samą listę co zwykłe wyszukiwanie"): the works
+#: looked through for words narrowed by the groups, and at most this many
+#: shown, nearest first.
+AMONG_NEAR = 3000
+AMONG_MOST = 240
 #: A work whose thumbnail is not here is looked at again after this long.
 NO_THUMB_AGAIN = 86_400.0
 #: Rows of the numbers worked through at once (some 12 MB as floats).
@@ -335,6 +342,59 @@ class Looks:
             return []
         vector = self._words_vector(text)
         return self._answer(self.index.nearest(vector, limit * 3), limit, FLOOR)
+
+    def among(self, text: str, allowed: Sequence[Item], limit: int = AMONG_MOST) -> list[Found]:
+        """Works of ``allowed`` (what Szukaj's other choices found: a
+        technique, a period, colours, a museum) that look like ``text``
+        says, nearest first: Szukaj's one list (Mateusz 2026-11-13). A copy
+        the index has stands for its work's copy in ``allowed``; only those
+        near the best of them, and over :data:`FLOOR`. Raises
+        :class:`AiUnavailable` when it cannot ask."""
+        text = " ".join(text.split())[:300]
+        if not text:
+            return []
+        self._check()  # also for words asked before (their numbers kept)
+        if not allowed:
+            return []
+        vector = self._words_vector(text)
+        by_id = {i.id: i for i in allowed}
+        works = self.library.works()
+        by_work: dict[int, Item] = {}
+        for one in allowed:
+            group = works.group_index(one.id)
+            if group is not None:
+                by_work.setdefault(group, one)
+        near = self.index.nearest(vector, max(AMONG_NEAR, limit * 3))
+        found: list[Found] = []
+        seen: set[str] = set()
+        bar: float | None = None
+        for item_id, score in near:
+            if len(found) >= limit:
+                break
+            item: Item | None = by_id.get(item_id)
+            if item is None:
+                group = works.group_index(item_id)
+                item = by_work.get(group) if group is not None else None
+            if item is None or item.id in seen:
+                continue
+            if bar is None:
+                bar = max(FLOOR, score - NEAR_BEST)
+            if score < bar:
+                break
+            seen.add(item.id)
+            found.append(Found(item, round(score, 4)))
+        return found
+
+    def looking(self, text: str, allowed: list[Item]) -> list[Item] | None:
+        """:meth:`among` for the library (``Library.looking``): the works
+        alone, None when it cannot be asked now."""
+        try:
+            return [f.item for f in self.among(text, allowed)]
+        except AiUnavailable:
+            return None
+        except (NotDrawn, httpx.HTTPError) as err:
+            log.warning("Szukanie wyglądem: Google did not answer (%s)", err)
+            return None
 
     def picture(self, img: Image.Image, limit: int = MOST) -> list[Found]:
         """Works that look like ``img`` (a photograph of a work, a postcard)."""
