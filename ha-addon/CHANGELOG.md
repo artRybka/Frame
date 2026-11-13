@@ -6,7 +6,9 @@
   ma pozycję „Kreatywny restaurator”: dzieła tej playlisty w niskiej
   rozdzielczości (poniżej 1600 px) idą do modelu graficznego Google w
   pakietach (połowa ceny, ok. 0,03 USD za dzieło) i wracają odnowione w
-  ciągu doby, tak jak Ulubione z Konfiguracji.
+  ciągu doby. Ulubione odnawia się tak samo, z „…” playlisty Ulubione:
+  przycisk „Odnów Ulubione” zniknął z Konfiguracji, gdzie zostało tylko,
+  ile czeka w pakietach Google i ile jest odnowionych.
 - „Szukaj lepszej kopii” pokazuje miniaturę zdjęcia odnowionego przez
   restauratora (i kopii wczytanej z pliku). Działa po aktualizacji
   serwera.

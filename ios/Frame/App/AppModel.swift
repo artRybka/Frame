@@ -1742,18 +1742,6 @@ final class AppModel {
         try? await backend.restorer()
     }
 
-    /// The favourites under 1600 px drawn again in Google's batches.
-    func restoreFavourites() async -> RestorerState? {
-        do {
-            let state = try await backend.restoreFavourites()
-            ordered(state.waiting)
-            return state
-        } catch {
-            show(error)
-            return nil
-        }
-    }
-
     /// The playlist's "…" → "Kreatywny restaurator": nil when the server
     /// has none (older than this app), quietly.
     func restorerState(playlistID: Int) async -> RestorerState? {

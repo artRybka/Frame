@@ -619,13 +619,6 @@ actor DemoBackend: FrameBackend {
         )
     }
 
-    func restoreFavourites() async throws -> RestorerState {
-        var state = try await restorer()
-        state.waiting = state.items
-        state.items = 0
-        return state
-    }
-
     func restorer(playlistID: Int) async throws -> RestorerState {
         var state = try await restorer()
         state.items = 4
