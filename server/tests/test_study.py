@@ -19,7 +19,7 @@ from frame_server.ai.client import OPUS
 from frame_server.ai.study import KIND
 from frame_server.daily import HISTORY_KEY
 from frame_server.service import FrameService
-from frame_server.study import PARTS, TIMINGS_KEY
+from frame_server.study import PARTS, TIMINGS_KEY, TYPICAL_PARTS
 
 
 def _studies(fake: FakeAnthropic) -> list[dict[str, Any]]:
@@ -107,7 +107,10 @@ def test_claude_writes_a_study_once_and_it_is_kept(tmp_path: Path) -> None:
         # Timed, for the next study's "how long".
         (timed,) = svc.library.get_state(TIMINGS_KEY, [])
         assert set(timed) == set(PARTS) and timed["text_again"] == 0
-        assert svc.study.expected() == {k: float(v) for k, v in timed.items()}
+        # Only a small picture is drawn first: its time is of the studies that had it.
+        expected = svc.study.expected()
+        assert expected.pop("restoring") == TYPICAL_PARTS["restoring"]
+        assert expected == {k: float(v) for k, v in timed.items() if k != "restoring"}
         work = view["work"]
         assert work["written"] is True and work["model"] == OPUS
         assert work["title"] == "Wielka fala w Kanagawie"

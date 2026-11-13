@@ -95,6 +95,7 @@ same, tylko nazywają miejsce:
 | `SOUGHT` | Szukaj w muzeach, karty Odkrywaj z muzeów, dobieranie | wszystkie powody | wszystkie powody |
 | `TIDIED` | Strażnik, Nocny przegląd | wszystkie powody | wszystkie powody |
 | `COMPARED` | powtórki, Sędzia, ostrzejsze kopie | kopie | kopie |
+| `STUDIED` | „Studium dzieła” na karcie i pula Studium dnia (od 1.145.89) | wszystkie powody i powody tylko dla studium (`STUDY_ONLY`: kartka szkiców, projekt, własne zdjęcie) | to samo |
 
 Powód z grupy „Sztuki inne” nie liczy się, gdy pytanie prosi o tę
 kategorię (`asked`). Zmiana tego, co widać, to odtąd zmiana komórki tej
@@ -231,7 +232,8 @@ fotografia, rękopis i tak dalej), raz jako dobrane przez serwer i raz jako
 zachowane przez właściciela, i pyta o nie dziesięć miejsc: katalog, katalog
 szukany słowem, pulę Studium dnia, kartę Odkrywaj z katalogu, odczyt
 odpowiedzi muzeum, Szukaj w
-muzeach, kartę Odkrywaj z muzeów, Strażnika, Nocny przegląd i powtórki.
+muzeach, kartę Odkrywaj z muzeów, Strażnika, Nocny przegląd, powtórki i
+„Studium dzieła” na karcie (od 1.145.89).
 Tabela `EXPECTED` to dzisiejsze zachowanie. Zmiana reguły, która przesuwa
 choć jeden znak, wychodzi w teście z nazwą rodzaju i miejsca.
 

@@ -62,6 +62,7 @@ from ..imaging.layout import load_image
 from ..imaging.text import sentences
 from ..library.markup import strip_markup
 from ..library.models import Note
+from ..library.paper import read as read_sheet
 from . import grid as grids
 from . import lines as found_lines
 from . import motion as motions
@@ -412,8 +413,28 @@ def _pole(raw: Any, size: tuple[int, int] | None) -> Box | None:
     return _field({"x": left, "y": top, "w": right - left, "h": bottom - top})
 
 
-def draft(data: dict[str, Any] | None, params: dict[str, Any]) -> Draft | None:
-    """The analysis of an answer (in pixels), or None when it has no take."""
+def plate_of(images: ImageCache, item: Item) -> Box | None:
+    """The plate of a print inside a wide margin, read from its pixels
+    (``library.paper``): the field when the answer gives none (Lucas's
+    mezzotint after Constable, whose sheet the image model never drew to
+    fit, 2026-11-13)."""
+    try:
+        sheet = read_sheet(picture(images, item, CHECK_SIDE))
+    except Exception as err:
+        log.info("composition of %s: its sheet not read (%s)", item.id, err)
+        return None
+    if sheet is None or sheet.plate is None:
+        return None
+    x, y, w, h = sheet.plate
+    return _field({"x": x, "y": y, "w": w, "h": h})
+
+
+def draft(
+    data: dict[str, Any] | None, params: dict[str, Any], plate: Box | None = None
+) -> Draft | None:
+    """The analysis of an answer (in pixels), or None when it has no take.
+    ``plate``: the field when the answer says the picture is the whole
+    reproduction (:func:`plate_of`)."""
     if not data:
         return None
     size = sent_size(params)
@@ -447,7 +468,7 @@ def draft(data: dict[str, Any] | None, params: dict[str, Any]) -> Draft | None:
         for m in _dicts(first.get("marks"))
     }
     po = {_text(m.get("title"), 40): _text(m.get("po"), 80) for m in _dicts(first.get("marks"))}
-    field = _pole(first.get("pole"), size)
+    field = _pole(first.get("pole"), size) or plate
     marks = views[0].marks[:MAX_DRAWN]
     view = views[0].model_copy(
         update={"grid": "none", "keys": keys[:MAX_KEYS], "marks": marks, "field": field}
@@ -639,7 +660,7 @@ def compose(
         step("composition")
     params = question(images, item, context)
     answer = ask(params)
-    found = draft(answer.data, params)
+    found = draft(answer.data, params, plate_of(images, item))
     if not found:
         return {}
     return written(images, item, found, ask, answer.cost_usd, recent, step, penned)
@@ -831,7 +852,7 @@ class ComposeJob(NoteJob):
     def revise(
         self, item: Item, params: dict[str, Any], answer: Answer, ask: Callable[..., Answer]
     ) -> Answer:
-        found = draft(answer.data, params)
+        found = draft(answer.data, params, plate_of(self.images, item))
         if found is None:
             # Kept whole, to see why: the next analysis is not free.
             log.warning(

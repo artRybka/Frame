@@ -84,6 +84,10 @@ WORDS = [
     "Dusk",
     "Dawn",
     "Mist",
+    "Glade",
+    "Shore",
+    "Heath",
+    "Cove",
 ]
 ARCHIVE = sorted(ART_PHOTO_ARCHIVES)[0]
 
@@ -116,6 +120,14 @@ SPECIMENS: dict[str, tuple[str, dict[str, Any]]] = {
     "plakat": ("met", {"classification": "Poster", "medium": "Lithograph"}),
     "odłożone przez Strażnika": ("wikiart", {"seen_as": "not_art"}),
     "mały obraz": ("wikiart", {"width": 800, "height": 600}),
+    "kartka szkiców": (
+        "aic",
+        {"title": "Sheet of Studies with {title}", "classification": "Drawing", "medium": "Chalk"},
+    ),
+    "projekt architekta": (
+        "aic",
+        {"classification": "Architectural drawing", "medium": "Pen and ink on paper"},
+    ),
 }
 
 #: The places asked, in the order of the marks.
@@ -130,33 +142,40 @@ PLACES = (
     "Strażnik",
     "Nocny przegląd",
     "powtórki",
+    "studium na karcie",
 )
 
 #: What the places answer today: "+" shown (or taken on), "-" left out,
-#: for the work as the server took it in, then as the owner kept it.
+#: for the work as the server took it in, then as the owner kept it. The
+#: last place, "Studium dzieła" on a work's card, takes no copy, no work of
+#: "Sztuki inne", no sketchbook page or design (Mateusz 2026-11-13); a small
+#: picture and an archive's colour slide it takes, the creative restorer
+#: drawing them larger first.
 EXPECTED: dict[str, tuple[str, str]] = {
-    "obraz z muzeum": ("+++++++-++", "+++++++-++"),
-    "obraz ze zbioru plików": ("++++++++++", "++++++++++"),
-    "detal w tytule": ("----------", "++--------"),
-    "detal po obrazie": ("----------", "++--------"),
-    "zdjęcie sali z dziełem": ("----------", "++--------"),
-    "reprodukcja": ("----------", "++--------"),
-    "szara kopia obrazu": ("----------", "++--------"),
-    "szara grafika z muzeum": ("+++++++-++", "+++++++-++"),
-    "znaczek": ("----------", "+---------"),
-    "dokument": ("----------", "+---------"),
-    "archiwum fotografii": ("----------", "++--------"),
-    "archiwum sztuki, kolor": ("++-+++++++", "++-+++++++"),
-    "archiwum sztuki, szare": ("----------", "+---------"),
-    "kopia z Openverse": ("----------", "++--------"),
-    "fotografia z Openverse": ("----------", "+---------"),
-    "fotografia z muzeum": ("----+----+", "+---+----+"),
-    "rękopis": ("----+----+", "+---+----+"),
-    "rzeźba": ("----+----+", "+---+----+"),
-    "ceramika": ("----+----+", "+---+----+"),
-    "plakat": ("+++++++-++", "+++++++-++"),
-    "odłożone przez Strażnika": ("----------", "++--------"),
-    "mały obraz": ("++-+++++++", "++-+++++++"),
+    "obraz z muzeum": ("+++++++-+++", "+++++++-+++"),
+    "obraz ze zbioru plików": ("+++++++++++", "+++++++++++"),
+    "detal w tytule": ("-----------", "++---------"),
+    "detal po obrazie": ("-----------", "++---------"),
+    "zdjęcie sali z dziełem": ("-----------", "++---------"),
+    "reprodukcja": ("-----------", "++---------"),
+    "szara kopia obrazu": ("-----------", "++---------"),
+    "szara grafika z muzeum": ("+++++++-+++", "+++++++-+++"),
+    "znaczek": ("-----------", "+----------"),
+    "dokument": ("-----------", "+----------"),
+    "archiwum fotografii": ("-----------", "++---------"),
+    "archiwum sztuki, kolor": ("++-++++++++", "++-++++++++"),
+    "archiwum sztuki, szare": ("-----------", "+----------"),
+    "kopia z Openverse": ("-----------", "++---------"),
+    "fotografia z Openverse": ("-----------", "+----------"),
+    "fotografia z muzeum": ("----+----+-", "+---+----+-"),
+    "rękopis": ("----+----+-", "+---+----+-"),
+    "rzeźba": ("----+----+-", "+---+----+-"),
+    "ceramika": ("----+----+-", "+---+----+-"),
+    "plakat": ("+++++++-+++", "+++++++-+++"),
+    "odłożone przez Strażnika": ("-----------", "++---------"),
+    "mały obraz": ("++-++++++++", "++-++++++++"),
+    "kartka szkiców": ("++-++++-++-", "++-++++-++-"),
+    "projekt architekta": ("++-++++-++-", "++-++++-++-"),
 }
 
 #: K1: works the owner kept that the catalogue lists while it
@@ -236,6 +255,8 @@ def _places(service: FrameService) -> dict[str, Callable[[Item], bool]]:
         "Strażnik": asked_by_rules,
         "Nocny przegląd": lambda i: i.id in audited,
         "powtórki": candidate,
+        # "Studium dzieła" on its card (study.Study.why_not, Mateusz 2026-11-13).
+        "studium na karcie": lambda i: service.study.why_not(i) is None,
     }
 
 
