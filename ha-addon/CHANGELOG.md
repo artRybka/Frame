@@ -9,6 +9,10 @@
 - Akty, których Google nie chce przyjąć (np. Degas), są próbowane do
   ośmiu razy, bo odmowa nic nie kosztuje i czasem za którymś razem
   przechodzi. Gdy dalej nic, dzieło zostaje z arkuszem serwera.
+- Szkic na arkuszu kompozycji trzyma manierę obrazu: nie poprawia
+  anatomii ani twarzy (np. Matisse zostaje płaski i w konturze), akcenty
+  barw, o których mówi analiza, są na nim wyraźne, a ciemne tło i czerń
+  w ciemnych obrazach są naprawdę ciemne.
 
 ## 1.145.80
 
