@@ -454,9 +454,6 @@ struct AiSection: View {
         }
     }
 
-    // MARK: Progress
-
-    @ViewBuilder
     // MARK: Earlier studies
 
     /// "Uzupełnij wcześniejsze studia" (Mateusz 2026-11-13): the studies
@@ -521,6 +518,9 @@ struct AiSection: View {
     /// "studium" or "studiów" after "do 1", "dla 5".
     private static func ofStudies(_ count: Int) -> String { count == 1 ? "studium" : "studiów" }
 
+    // MARK: Progress
+
+    @ViewBuilder
     private var progress: some View {
         progressRow("Słowa kluczowe", settings.keywordsProgress)
         if let plText = settings.plTextProgress {
