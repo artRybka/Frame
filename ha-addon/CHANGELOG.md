@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.88
+
+- Kreatywny restaurator nie poddaje się po pierwszej odmowie. Gdy model
+  Google uzna obraz za chroniony, restaurator próbuje do pięciu razy
+  (odmowa nic nie kosztuje), bo czasem za którymś razem przechodzi. W
+  pakietach odrzucone dzieło wraca samo w następnym pakiecie.
+- Gdy i tak się nie uda, komunikat podaje dzieło: „Rzeź na Chios
+  (studium), Eugène Delacroix” i „Restaurator odmówił pracy, bo to
+  dzieło chronione”.
+
 ## 1.145.87
 
 - Kreatywny restaurator w playliście. W menu „…” playlisty Właściciel

@@ -797,7 +797,7 @@ struct LiveBackend: FrameBackend {
 
     func restore(itemID: String) async throws -> Item {
         var req = request("/api/library/items/\(escape(itemID))/restore", method: "POST")
-        req.timeoutInterval = 180  // the image model draws for half a minute, then it is measured and cut
+        req.timeoutInterval = 300  // half a minute to draw, a refusal asked up to five times
         return try await perform(req)
     }
 
