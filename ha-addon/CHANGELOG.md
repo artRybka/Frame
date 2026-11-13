@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.145.87
+
+- Kreatywny restaurator w playliście. W menu „…” playlisty Właściciel
+  ma pozycję „Kreatywny restaurator”: dzieła tej playlisty w niskiej
+  rozdzielczości (poniżej 1600 px) idą do modelu graficznego Google w
+  pakietach (połowa ceny, ok. 0,03 USD za dzieło) i wracają odnowione w
+  ciągu doby. Ulubione odnawia się tak samo, z „…” playlisty Ulubione:
+  przycisk „Odnów Ulubione” zniknął z Konfiguracji, gdzie zostało tylko,
+  ile czeka w pakietach Google i ile jest odnowionych.
+- „Szukaj lepszej kopii” pokazuje miniaturę zdjęcia odnowionego przez
+  restauratora (i kopii wczytanej z pliku). Działa po aktualizacji
+  serwera.
+
+## 1.145.86
+
+- Pasek barw jednakowy na karcie dzieła i w zakładce Teraz: te same
+  barwy są pasmami, a te same plamkami akcentów.
+- Wyraźne akcenty nie giną: gdy na pasku brakuje miejsca, wchodzą
+  najbardziej wyraziste barwy, nie największe (czerwony płaszcz w
+  studium Delacroix „Rzeź na Chios”). Serwer przelicza barwy biblioteki
+  raz po aktualizacji.
+- Barwna litografia, w której serwer widzi kilka barw (plakat
+  Axentowicza „Sztuka”), ma pasek swoich farb zamiast szarej kredki.
+
 ## 1.145.85
 
 - Arkusze kompozycji z Gemini narysowane przed nowym poleceniem szkicu są

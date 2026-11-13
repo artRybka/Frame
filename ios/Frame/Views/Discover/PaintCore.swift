@@ -118,6 +118,19 @@ enum PaintStyle: String, Sendable, CaseIterable {
         return nil
     }
 
+    /// Whether a work is of one colour for its bar: the server says so, or
+    /// its colours are one colour's tones for the most part, unless the
+    /// server found colour all over it ("colorful": three hues and more).
+    /// Axentowicz's poster for „Sztuka” (red, a pale ochre, greys, a blue)
+    /// lay on a line from a greyish paper to a red ink and was drawn in
+    /// grey crayon (Mateusz 2026-11-13 10:37: „podobny problem tu. Brak
+    /// czerwieni.”); red chalk on its paper has the same colours, two hues
+    /// only.
+    static func mono(_ tags: [String], _ shares: [PaintShare]) -> Bool {
+        if tags.contains("monochrome") { return true }
+        return !tags.contains("colorful") && !shares.isEmpty && PrintPaint.mostlyOne(shares)
+    }
+
     /// Whether a work is a sculpture, by its museum's type or by what it
     /// is made of when nothing says how it is painted: the colours of its
     /// photograph are the stone's and the backdrop's, and it has no bar
@@ -366,14 +379,22 @@ enum Paint {
         return calm.late
     }
 
-    /// Which of the colours are accents on a bar `width` wide: the
-    /// smallest first, while enough of the picture stays under them and
-    /// one colour at least.
-    static func accents(_ shares: [PaintShare], width: Double) -> [Bool] {
+    /// The bar's width (a phone's card) that says which colours are
+    /// accents: under `touch` of it. One width for every bar of a work,
+    /// so the narrow bar of Teraz (painted twice as wide, `slim`) and the
+    /// card's show the same colours as accents (Mateusz 2026-11-13 10:34:
+    /// „dlaczego paski koloru różnią się od siebie składowymi?”: in Teraz
+    /// the ochres of Delacroix's Chios study were bands, on the card dabs).
+    static let room = 350.0
+
+    /// Which of the colours are accents, on whatever bar: the smallest
+    /// first, while each is under `touch` of a bar `room` wide, enough of
+    /// the picture stays under them and one colour at least.
+    static func accents(_ shares: [PaintShare]) -> [Bool] {
         let total = max(shares.reduce(0) { $0 + $1.weight }, 0.000_001)
         var accent = shares.map { _ in false }, kept = total, left = shares.count
         for i in shares.indices.sorted(by: { shares[$0].weight < shares[$1].weight }) {
-            guard width * shares[i].weight / total < touch, left > 1, (kept - shares[i].weight) / total >= ground else { break }
+            guard room * shares[i].weight / total < touch, left > 1, (kept - shares[i].weight) / total >= ground else { break }
             accent[i] = true
             kept -= shares[i].weight
             left -= 1
@@ -561,7 +582,7 @@ final class WaterStrip: PaintPainter, @unchecked Sendable {
     static let round = (least: 8.0, more: 1.5, gap: 0.2, off: (least: 1.7, more: 0.8), pale: 0.34)
 
     init(shares all: [PaintShare], width: Double, seed: Int) {
-        let accent = Paint.accents(all, width: width)
+        let accent = Paint.accents(all)
         let shares = all.indices.filter { !accent[$0] }.map { all[$0] }, small = all.indices.filter { accent[$0] }.map { all[$0] }
         self.shares = shares
         self.width = width
@@ -592,7 +613,7 @@ final class WaterStrip: PaintPainter, @unchecked Sendable {
     /// How long the bar's paint takes to be down: the washes one after
     /// another, then the accents in their rounds of paper.
     static func time(_ shares: [PaintShare], width: Double) -> Double {
-        let small = Paint.accents(shares, width: width).filter { $0 }.count
+        let small = Paint.accents(shares).filter { $0 }.count
         let washes = washed(shares.count - small)
         return small == 0 ? washes : washes + accents.after + Double(small - 1) * accents.apart + accents.spread
     }
@@ -1096,7 +1117,7 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
         let back = Self.back + evened.back * even
         let total = max(shares.reduce(0) { $0 + $1.weight }, 0.000_001)
         // The smallest first, while enough of the picture stays in the pulls.
-        let accent = Paint.accents(shares, width: width)
+        let accent = Paint.accents(shares)
         let mains = shares.indices.filter { !accent[$0] }, small = shares.indices.filter { accent[$0] }
         let ground = max(mains.reduce(0) { $0 + shares[$1].weight }, 0.000_001), room = width - 6
         var random = PaintRandom(seed + 17), x = 0.0, at = 0.0
@@ -1522,7 +1543,7 @@ struct DryPlan: Sendable {
     /// way, so that it sits on the hatching under it.
     init(shares: [PaintShare], width: Double, seed: Int) {
         let Hs = Paint.bar
-        let accent = Paint.accents(shares, width: width)
+        let accent = Paint.accents(shares)
         let mains = shares.indices.filter { !accent[$0] }, small = shares.indices.filter { accent[$0] }
         let m = mains.count
         let spans = Paint.spans(mains.map { shares[$0] }, width: width)

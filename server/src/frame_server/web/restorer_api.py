@@ -1,5 +1,6 @@
 """The creative restorer (``frame_server.restorer``): one work from its card,
-the owner's favourites under the threshold from Konfiguracja."""
+the owner's favourites under the threshold from Konfiguracja, a playlist's
+from its "…" (Mateusz 2026-11-13)."""
 
 from __future__ import annotations
 
@@ -15,8 +16,10 @@ from ..library.hosts import urgent_call
 from ..library.models import Item
 from ..restorer import NotRestored
 from ..service import FrameService
-from .deps import require_owner, service
+from ..users import User
+from .deps import CurrentUser, require_owner, service
 from .library_api import _work
+from .playlists_api import _playlist
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_owner)], tags=["restorer"])
 Svc = Annotated[FrameService, Depends(service)]
@@ -33,8 +36,9 @@ class RestorerView(BaseModel):
     restored: int
 
 
-def _view(svc: FrameService) -> RestorerView:
-    items, usd = svc.restorer.estimate()
+def _view(svc: FrameService, works: list[Item] | None = None) -> RestorerView:
+    """With ``works``, a playlist's line: its works the batch would draw."""
+    items, usd = svc.restorer.estimate(works)
     waiting, restored = svc.restorer.counts()
     return RestorerView(
         enabled=svc.painter.enabled(),
@@ -61,6 +65,33 @@ async def restore_favourites(svc: Svc) -> RestorerView:
     except httpx.HTTPError as err:
         raise HTTPException(502, f"Google did not answer: {err}") from err
     return await run_in_threadpool(_view, svc)
+
+
+def _playlist_works(svc: FrameService, playlist_id: int, user: User) -> list[Item]:
+    return svc.library.playlist_items(_playlist(svc, playlist_id, user))
+
+
+@router.get("/ai/restorer/playlists/{playlist_id}", response_model=RestorerView)
+async def restorer_playlist(playlist_id: int, svc: Svc, user: CurrentUser) -> RestorerView:
+    """The playlist's line: its works whose picture is small for the frame
+    (under ``low_res.LOW_SIDE``) and that the batch would draw."""
+    works = await run_in_threadpool(_playlist_works, svc, playlist_id, user)
+    return await run_in_threadpool(_view, svc, works)
+
+
+@router.post("/ai/restorer/playlists/{playlist_id}", response_model=RestorerView)
+async def restore_playlist(playlist_id: int, svc: Svc, user: CurrentUser) -> RestorerView:
+    """The playlist's works whose picture is small for the frame drawn again
+    through the Batch API (within 24 hours, half the price; the playlist's
+    "…" → "Kreatywny restaurator")."""
+    works = await run_in_threadpool(_playlist_works, svc, playlist_id, user)
+    try:
+        await run_in_threadpool(svc.restorer.order, works)
+    except AiUnavailable as err:
+        raise HTTPException(409, str(err)) from err
+    except httpx.HTTPError as err:
+        raise HTTPException(502, f"Google did not answer: {err}") from err
+    return await run_in_threadpool(_view, svc, works)
 
 
 @router.post("/library/items/{item_id:item}/restore", response_model=Item)

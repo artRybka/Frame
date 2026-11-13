@@ -71,10 +71,13 @@ protocol FrameBackend: Sendable {
     /// by the image model (half a minute) and kept in its place, as a copy
     /// the owner picked. A 422 "refused: …" when the model would not.
     func restore(itemID: String) async throws -> Item
-    /// Konfiguracja: the favourites under 1600 px the batch would draw.
+    /// Konfiguracja: the works waiting in Google's batches and those drawn.
     func restorer() async throws -> RestorerState
-    /// Those favourites drawn again through Google's batches (within a day).
-    func restoreFavourites() async throws -> RestorerState
+    /// The playlist's "…" → "Kreatywny restaurator": its works under
+    /// 1600 px the batch would draw (`items`, about `usd`).
+    func restorer(playlistID: Int) async throws -> RestorerState
+    /// Those works drawn again through Google's batches (within a day).
+    func restorePlaylist(id: Int) async throws -> RestorerState
     /// One spot of the picture shown now and of the copy, at the frame's
     /// scale; the most detailed one without `x` and `y`.
     func copySpot(itemID: String, copyID: String, x: Double?, y: Double?) async throws -> CopySpot

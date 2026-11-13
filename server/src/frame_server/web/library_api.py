@@ -755,6 +755,8 @@ async def item_thumb(item_id: str, svc: Svc, tile: bool = False) -> FileResponse
     ``tile``, as the cover tiles of Odkrywaj show it: the work without the
     paper or mount around it (``ImageCache.tile``; older apps never ask)."""
     kept = svc.images.kept_thumb(item_id)
+    if kept is None:  # a copy the owner brought, or the restorer's drawing
+        kept = await to_thread.run_sync(svc.images.owned_thumb, item_id, limiter=THUMB_THREADS)
     if kept is not None:
         if tile:
             kept = await to_thread.run_sync(svc.images.tile, kept, limiter=THUMB_THREADS)

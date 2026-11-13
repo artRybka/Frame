@@ -46,8 +46,7 @@ extension PaintStyle {
         let shares = item.colors.compactMap { swatch in
             Paint.rgb(swatch.hex).map { PaintShare(rgb: $0, weight: max(swatch.weight, 0), accent: swatch.accent ?? false) }
         }
-        return of(medium: item.medium, classification: item.classification,
-                  mono: item.colorTags.contains("monochrome") || (!shares.isEmpty && PrintPaint.mostlyOne(shares)), warm: warm(colours))
+        return of(medium: item.medium, classification: item.classification, mono: mono(item.colorTags, shares), warm: warm(colours))
     }
 
     /// A sculpture: no bar of colours.
