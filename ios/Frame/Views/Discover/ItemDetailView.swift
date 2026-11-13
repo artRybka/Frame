@@ -313,8 +313,14 @@ struct ItemDetailView: View {
         do {
             copyPicked(try await model.restore(itemID: itemID))
         } catch let BackendError.http(status, body) where status == 422 && body.contains("refused") {
+            // Refused five times on the server (Mateusz 2026-11-13: "tytuł:
+            // "Nazwa dzieła, Autor", treść: "Restaurator odmówił pracy, bo to
+            // dzieło chronione"").
+            let named = item.map { [title($0), $0.artist.isEmpty ? "" : Names.artist($0.artist)] }?
+                .filter { !$0.isEmpty } ?? []
             model.notices.warn(
-                "Restaurator odmówił", "Model uznał obraz za chroniony i nie chce go przerysować."
+                named.isEmpty ? "Restaurator odmówił" : named.joined(separator: ", "),
+                "Restaurator odmówił pracy, bo to dzieło chronione"
             )
         } catch {
             if !error.isCancellation { model.show(error) }

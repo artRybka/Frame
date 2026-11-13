@@ -23,7 +23,9 @@ under the threshold from Konfiguracja, or a playlist's from its "…"
 (Mateusz 2026-11-13) (half the price, within 24 hours,
 looked at every :data:`POLL` seconds). A picture the model would not draw
 (``image_recitation``: it took a known painting for one it may not copy)
-is noted and never sent again.
+is asked for again, :data:`REFUSED_TRIES` times in all (a refusal costs
+nothing: Google answers it with an error and no bill; Mateusz 2026-11-13,
+Delacroix's "Rzeź na Chios"), then noted and never sent again.
 """
 
 from __future__ import annotations
@@ -71,6 +73,11 @@ POLL = 600.0
 BATCH_USD = 0.03
 #: The library state key of the batches waiting.
 BATCHES = "restorer.batches"
+#: A picture the model will not draw is asked for this many times in all,
+#: from its card at once, through the Batch in as many batches (Mateusz
+#: 2026-11-13: "ponawiaj próbę 5 razy"): Google now and then takes the
+#: same question, and a refusal is not paid for.
+REFUSED_TRIES = 5
 
 PROMPT = """This is a small, low-resolution digital photograph of a painting. Produce the same \
 photograph at a higher resolution: a faithful restoration and upscale, as a museum's \
@@ -138,11 +145,19 @@ class Restorer:
             raise NotRestored("large", f"its picture is {side} px already")
 
     def refused(self) -> set[str]:
+        """The works the model would not draw :data:`REFUSED_TRIES` times."""
         return {
             item_id
             for item_id, note in self.library.notes(KIND).items()
-            if note.data.get("status") == "refused"
+            if note.data.get("status") == "refused" and _tries(note.data) >= REFUSED_TRIES
         }
+
+    def _refusals(self, item_id: str) -> int:
+        """How many times the model would not draw the work so far."""
+        note = self.library.note(item_id, KIND)
+        if note is None or note.data.get("status") != "refused":
+            return 0
+        return _tries(note.data)
 
     def waiting(self) -> set[str]:
         return {i for batch in self._batches() for i in batch.get("ids", [])}
@@ -190,13 +205,19 @@ class Restorer:
         if self.restored(stored):  # drawn from the museum's picture, not the drawing
             stored = self.sharper.keep_own(stored)
         picture = self._picture(stored)
-        try:
-            drawn, usd = self.painter.paint(KIND, PROMPT, [picture], size=SIZE)
-        except NotDrawn as err:
-            if refusal(err):
-                self._note(stored.id, "refused", why=str(err)[:300], code=err.code)
-                raise NotRestored("refused", str(err)) from err
-            raise NotRestored("not_drawn", str(err)) from err
+        for attempt in range(1, REFUSED_TRIES + 1):
+            try:
+                drawn, usd = self.painter.paint(KIND, PROMPT, [picture], size=SIZE)
+                break
+            except NotDrawn as err:
+                if not refusal(err):
+                    raise NotRestored("not_drawn", str(err)) from err
+                log.info("restorer: %s refused (%d of %d)", stored.id, attempt, REFUSED_TRIES)
+                if attempt == REFUSED_TRIES:
+                    self._note(
+                        stored.id, "refused", why=str(err)[:300], code=err.code, tries=attempt
+                    )
+                    raise NotRestored("refused", str(err)) from err
         return self._keep(stored, picture, drawn, usd)
 
     def _keep(self, item: Item, picture: Image.Image, drawn: Image.Image, usd: float) -> Item:
@@ -270,8 +291,11 @@ class Restorer:
         return sent
 
     def poll(self) -> int:
-        """The batches done taken in; how many works were drawn."""
+        """The batches done taken in; how many works were drawn. The works
+        the model would not draw yet fewer than :data:`REFUSED_TRIES` times
+        are sent again in a new batch."""
         drawn = 0
+        again: list[str] = []
         with self._lock:
             batches = self._batches()
             left = []
@@ -284,14 +308,25 @@ class Restorer:
                 if answers is None:
                     left.append(batch)
                     continue
-                drawn += self._take(batch, answers)
+                drawn += self._take(batch, answers, again)
             if len(left) != len(batches):
                 self.library.set_state(BATCHES, left)
+        if again:
+            items = [i for i in map(self.library.get, again) if i is not None]
+            try:
+                self.order(items)
+            except Exception as err:  # the next "Odnów" sends them
+                log.info("restorer: refused works not sent again: %s", err)
         return drawn
 
     def _take(
-        self, batch: dict[str, Any], answers: dict[str, tuple[Image.Image, float] | NotDrawn]
+        self,
+        batch: dict[str, Any],
+        answers: dict[str, tuple[Image.Image, float] | NotDrawn],
+        again: list[str],
     ) -> int:
+        """The batch's drawings kept; the works refused fewer than
+        :data:`REFUSED_TRIES` times go into ``again``."""
         drawn = 0
         for item_id, answer in answers.items():
             item = self.library.get(item_id)
@@ -299,7 +334,12 @@ class Restorer:
                 continue
             if isinstance(answer, NotDrawn):
                 if refusal(answer):
-                    self._note(item.id, "refused", why=str(answer)[:300], code=answer.code)
+                    tries = self._refusals(item.id) + 1
+                    self._note(
+                        item.id, "refused", why=str(answer)[:300], code=answer.code, tries=tries
+                    )
+                    if tries < REFUSED_TRIES:
+                        again.append(item.id)
                 else:
                     log.info("restorer: %s not drawn: %s", item.id, answer)
                 continue
@@ -349,6 +389,12 @@ class Restorer:
 #: asked (it takes the work for a protected one, or its content for one it
 #: may not show): never sent again.
 REFUSALS = ("recitation", "prohibited", "safety", "blocklist", "spii")
+
+
+def _tries(data: dict[str, Any]) -> int:
+    """A refusal's count of tries; one for a note from before it was kept."""
+    tries = data.get("tries", 1)
+    return tries if isinstance(tries, int) and tries > 0 else 1
 
 
 def refusal(err: NotDrawn) -> bool:

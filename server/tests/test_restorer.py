@@ -20,7 +20,7 @@ from frame_server.config import Settings
 from frame_server.library import Item, low_res
 from frame_server.library.models import ItemSummary
 from frame_server.library.viewer import OWNER_ID
-from frame_server.restorer import NotRestored, fit
+from frame_server.restorer import REFUSED_TRIES, NotRestored, fit
 from frame_server.service import FrameService
 from frame_server.web.app import create_app
 
@@ -135,8 +135,31 @@ def test_a_refusal_is_noted_and_not_sent_again(app: Any) -> None:
     resp = client.post(f"/api/library/items/{own.id}/restore")
     assert resp.status_code == 422
     assert resp.json()["detail"].startswith("refused:")
+    # Asked five times before it gives up (a refusal costs nothing).
+    assert len(painter.asked) == REFUSED_TRIES == 5
     assert service.library.get(own.id).sharper is None
     assert service.restorer.candidates() == []
+
+
+def test_a_refusal_now_and_then_is_asked_again(app: Any) -> None:
+    """Google now and then takes the question it refused: the card asks
+    again (Mateusz 2026-11-13, Delacroix's "Rzeź na Chios")."""
+    client, service, _web, painter = app
+    own = _small(service, favorite=True)
+    refusals = iter([True, True, False])
+    draw = painter.paint
+
+    def paint(kind: str, prompt: str, pictures: Any, size: str = "1K") -> Any:
+        if next(refusals):
+            painter.asked.append((kind, size))
+            raise NotDrawn("Google answered 400", "image_recitation")
+        return draw(kind, prompt, pictures, size)
+
+    painter.paint = paint
+    resp = client.post(f"/api/library/items/{own.id}/restore")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["sharper"]["restored"]
+    assert len(painter.asked) == 3
 
 
 def test_a_large_picture_is_not_drawn(app: Any) -> None:
@@ -170,7 +193,24 @@ def test_the_favourites_through_the_batch(app: Any) -> None:
     assert view["waiting"] == 0 and view["restored"] == 1 and view["items"] == 0
 
 
-def test_a_batch_refusal_is_noted(app: Any) -> None:
+def test_a_batch_refusal_is_sent_again_then_noted(app: Any) -> None:
+    _client, service, _web, painter = app
+    own = _small(service)
+    service.library.set_favorite(OWNER_ID, own.id, True)
+    painter.refuse.add(SMALL)
+    assert service.restorer.order_favourites() == 1
+    for n in range(1, REFUSED_TRIES + 1):
+        painter.done.add(f"batches/{n}")
+        assert service.restorer.poll() == 0
+    # Each refusal sent again in a batch of its own, five in all.
+    assert len(painter.batches) == REFUSED_TRIES
+    assert service.restorer.waiting() == set()
+    assert service.library.get(own.id).sharper is None
+    assert service.restorer.candidates() == []
+    assert service.restorer.order_favourites() == 0
+
+
+def test_a_batch_refusal_drawn_the_next_time(app: Any) -> None:
     _client, service, _web, painter = app
     own = _small(service)
     service.library.set_favorite(OWNER_ID, own.id, True)
@@ -178,9 +218,12 @@ def test_a_batch_refusal_is_noted(app: Any) -> None:
     assert service.restorer.order_favourites() == 1
     painter.done.add("batches/1")
     assert service.restorer.poll() == 0
-    assert service.library.get(own.id).sharper is None
-    assert service.restorer.candidates() == []
-    assert service.restorer.order_favourites() == 0
+    assert service.restorer.waiting() == {own.id}  # sent again
+    painter.refuse.clear()
+    painter.done.add("batches/2")
+    assert service.restorer.poll() == 1
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None and stored.sharper.restored
 
 
 def test_a_playlists_works_through_the_batch(app: Any) -> None:
