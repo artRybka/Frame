@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.105
+
+- Propozycje dnia pokazują dzieła w całości. Siatka przycinała każde dzieło
+  do kwadratu, więc rysunkom i grafikom brakowało brzegów, a obrazom
+  stojącym czy leżącym połowy postaci. Teraz każda czwórka stoi w dwóch
+  kolumnach jak w playliście: dzieło w swoich proporcjach, z tytułem i
+  artystą pod spodem. Kolejność czwórek (karta po karcie, tak jak na
+  ramce) bez zmian.
+
 ## 1.145.104
 
 - Obraz na karcie dzieła znów wypełnia całą szerokość strony (najwyżej
