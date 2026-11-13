@@ -1519,25 +1519,25 @@ class Library:
             ranked = self.like_near(rules.like.strip()) if self.like_near is not None else None
             if ranked is None:
                 raise _NotNow
-            grouped = self.works()
-            rank: dict[int | str, int] = {}
-            nearby: set[str] = set()
-            for at, item_id in enumerate(ranked):
-                group = grouped.group_index(item_id)
-                rank.setdefault(item_id if group is None else group, at)
-                nearby.update([item_id] if group is None else [c.id for c in grouped.groups[group]])
+            alike = self.works()
+            places: dict[int | str, int] = {}
+            alike_ids: set[str] = set()
+            for step, item_id in enumerate(ranked):
+                kin = alike.group_index(item_id)
+                places.setdefault(item_id if kin is None else kin, step)
+                alike_ids.update([item_id] if kin is None else [c.id for c in alike.groups[kin]])
             if among is not None:
-                nearby &= set(among)
-            plain = rules.model_copy(update={"like": "", "look": ""})
-            found = self._query(
-                plain, "recent", seed, include_excluded, user, False, proposing, among=nearby
+                alike_ids &= set(among)
+            unlike = rules.model_copy(update={"like": "", "look": ""})
+            found_alike = self._query(
+                unlike, "recent", seed, include_excluded, user, False, proposing, among=alike_ids
             )
 
             def nearness(item: Item) -> int:
-                group = grouped.group_index(item.id)
-                return rank.get(item.id if group is None else group, len(rank))
+                kin = alike.group_index(item.id)
+                return places.get(item.id if kin is None else kin, len(places))
 
-            return sorted(found, key=nearness)
+            return sorted(found_alike, key=nearness)
         if rules.look.strip():
             # What the other rules find, those that look so, nearest first:
             # only among the works that may (and their copies). The whole
