@@ -125,6 +125,11 @@ class SearchWords:
         self._local: dict[str, str] = {}
         self._local_at = -LOCAL_EVERY
         self._local_version = -1
+        #: One gathering of the library's words at a time: who comes during
+        #: it waits for its words rather than taking none.
+        self._gathering = threading.Lock()
+        #: A gathering asked for in the background (:meth:`known`).
+        self._regather: Future[Any] | None = None
 
     def wording(self, text: str, wait: float = 5.0) -> Wording:
         """``text`` for each museum's language. The model's answer is waited
@@ -162,8 +167,17 @@ class SearchWords:
         with self._lock:
             known = self._known.get(key)
             local = self._local
+            gathered = self._local_at >= 0
         if known is not None:
             return tuple(w for w in (known.get("en", ""), known.get("fr", "")) if w)
+        if not gathered:
+            # Gathered first by a search's translation (:meth:`wording`)
+            # until 1.145.100: the counts worked out after a start had
+            # "słoneczniki" untranslated, 9 of a playlist's 19 works in
+            # Playlisty (Mateusz 2026-11-13).
+            local = self._words()
+        else:
+            self._words_later()
         words = local or _VOCABULARY
         if key in words:
             return (words[key],)
@@ -177,13 +191,28 @@ class SearchWords:
     def _from_library(self, key: str) -> str:
         """The English of ``key`` from the library's own words: the whole
         text, or every word of it; "" when something is not known."""
-        words = self._library_words()
+        words = self._words()
         if key in words:
             return words[key]
         parts = key.split()
         if len(parts) > 1 and all(p in words for p in parts):
             return " ".join(words[p] for p in parts)
         return ""
+
+    def _words(self) -> dict[str, str]:
+        """The library's words, gathered again when they may be stale."""
+        with self._gathering:
+            return self._library_words()
+
+    def _words_later(self) -> None:
+        """The library's words gathered again in the background when they
+        may be stale: the catalogue's search never waits for it."""
+        with self._lock:
+            stale = time.monotonic() - self._local_at >= LOCAL_EVERY
+            busy = self._regather is not None and not self._regather.done()
+            if not stale or busy or self.library.notes_version == self._local_version:
+                return
+            self._regather = self._pool.submit(self._words)
 
     def _library_words(self) -> dict[str, str]:
         now = time.monotonic()

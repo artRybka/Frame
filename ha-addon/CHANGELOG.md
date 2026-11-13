@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.145.100
+
+- Usunięte zbędne kopie dzieła nie wracają. Po starcie serwer usuwa kopie,
+  które obrazy połączyły z innym dziełem, a dobieranie do playlisty
+  pobierało je z muzeów z powrotem jako nowe dzieła, więc w playliście
+  „Vincent van Gogh · słoneczniki” powtórki znikały i wracały. Serwer
+  pamięta teraz każdą usuniętą kopię razem z kopią, która została.
+- Karta playlisty w Playlistach pokazuje tę samą liczbę dzieł co strona
+  playlisty: po otwarciu playlisty karta bierze liczbę i okładkę z niej, a
+  liczenie po starcie serwera zna już angielskie słowa dzieł (wcześniej
+  „słoneczniki” liczyły tylko dzieła opisane po polsku: 9 zamiast 19).
+- Wpisane słowa (Szukaj, edycja playlisty, playlisty) szukają w tytule,
+  autorze, technice, stylu i hasłach dzieła, a nie w długim opisie z muzeum.
+  „Słoneczniki” nie łapią już „La berceuse”, która miała wisieć „między
+  dwoma obrazami słoneczników”, a polskie „most” angielskiego „the most”.
+
 ## 1.145.99
 
 - Dwa dzieła z tą samą kopią łączą się w jedno od razu. W playliście

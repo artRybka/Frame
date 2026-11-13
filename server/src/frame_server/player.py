@@ -1773,6 +1773,10 @@ class Player:
             for i in map(self.library.get, spare - kept)
             if i is not None and not i.favorite and not i.framing
         ]
+        # Each with the copy that stays: brought again, it is that one.
+        self.library.dropped(
+            {i.id: best.id for i in gone if (best := self.library.twin(i)) is not None}
+        )
         self._forget(gone)
         if gone:
             log.info("catalogue: %d copies of works held from another source deleted", len(gone))

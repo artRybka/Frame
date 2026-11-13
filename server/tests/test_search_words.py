@@ -84,6 +84,26 @@ def test_the_library_knows_some_words_without_the_model(service: FrameService) -
     assert not words.wording("gitara").translated  # no key: as typed
 
 
+def test_the_catalogue_knows_the_library_words_from_the_start(service: FrameService) -> None:
+    """Before any search was translated (the counts of Playlisty after a
+    start): "słoneczniki" in a playlist's rules finds the works whose words
+    are English, 19 works and not 9 (Mateusz 2026-11-13)."""
+    item = service.library.upsert(
+        Item(id="wmc:1", source="wmc", source_id="1", title="Twelve Sunflowers in a Vase")
+    )
+    service.library.save_note(
+        Note(
+            item_id=item.id,
+            kind="keywords",
+            model="m",
+            prompt_version="1",
+            data={"tags_en": ["sunflowers"], "tags_pl": ["słoneczniki"]},
+        )
+    )
+    words = SearchWords(service.library, service.claude, service.ai_config)
+    assert words.known("słoneczniki") == ("sunflowers",)
+
+
 def test_the_owner_can_switch_it_off(service: FrameService, fake: FakeAnthropic) -> None:
     service.ai_config.update(AiConfigUpdate(search_words=False))
     assert not service.search_words.wording("gitara").translated

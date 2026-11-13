@@ -71,6 +71,15 @@ TWINS_FIELDS = (
 
 log = logging.getLogger(__name__)
 
+#: Copies deleted as needless (``Player.drop_spare_copies``), each with the
+#: copy kept of its work (library state): a museum's answer bringing one
+#: again is that copy, not a new work. Until 1.145.100 the playlist's fill
+#: took them in anew, the pictures had to find them again, and the copies
+#: came and went ("Vincent van Gogh · słoneczniki", Mateusz 2026-11-13).
+DROPPED_KEY = "dropped_copies"
+#: The newest kept at most.
+DROPPED_MAX = 20_000
+
 #: Seconds the places of the catalogue's works are kept while nothing changes.
 PLACES_KEPT = 600.0
 #: Seconds they are kept whatever the library does meanwhile.
@@ -697,6 +706,8 @@ class Library:
         #: A playlist changed is counted at once, and one of hearts once
         #: they change.
         self.counts_may_lag = False
+        #: :data:`DROPPED_KEY` as read once.
+        self._dropped: dict[str, str] | None = None
         #: The catalogue's search index (:class:`SearchIndex`), changed with
         #: every item; one is made at a time, outside ``_lock``, with the
         #: changes made meanwhile kept here and applied when it is done.
@@ -1424,9 +1435,44 @@ class Library:
 
     def twin(self, item: Item) -> Item | None:
         """The library's best copy of ``item``'s work, when that is another
-        item."""
+        item; for a copy deleted as needless, the copy kept of it."""
         best = self.works().best(item)
-        return self.get(best.id) if best is not None and best.id != item.id else None
+        if best is not None:
+            return self.get(best.id) if best.id != item.id else None
+        return self.kept_for(item.id) if self.get(item.id) is None else None
+
+    def dropped(self, kept: dict[str, str]) -> None:
+        """Copies deleted as needless (``kept``: each id -> the copy kept of
+        its work), remembered (:data:`DROPPED_KEY`)."""
+        if not kept:
+            return
+        with self._lock:
+            dropped = dict(self._dropped_copies())
+            for gone, stays in kept.items():
+                dropped.pop(gone, None)
+                dropped[gone] = stays
+            while len(dropped) > DROPPED_MAX:
+                dropped.pop(next(iter(dropped)))
+            self._dropped = dropped
+            self.set_state(DROPPED_KEY, dropped)
+
+    def kept_for(self, item_id: str) -> Item | None:
+        """The copy kept of ``item_id``'s work when it was deleted as a
+        needless copy (through copies deleted later too), if still here."""
+        dropped = self._dropped_copies()
+        seen: set[str] = set()
+        at = item_id
+        while at in dropped and at not in seen:
+            seen.add(at)
+            at = dropped[at]
+            if (held := self.get(at)) is not None:
+                return held
+        return None
+
+    def _dropped_copies(self) -> dict[str, str]:
+        if self._dropped is None:
+            self._dropped = dict(self.get_state(DROPPED_KEY, {}) or {})
+        return self._dropped
 
     def query(
         self,

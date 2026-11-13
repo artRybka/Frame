@@ -840,6 +840,16 @@ final class AppModel {
         }
     }
 
+    /// A playlist as its page just loaded it: its card in Playlisty shows
+    /// the same count (a smart playlist's is worked out afresh when opened;
+    /// the card showed 9 works of a page's 19, Mateusz 2026-11-13).
+    func noteOpened(_ summary: PlaylistSummary) {
+        guard let at = playlists.firstIndex(where: { $0.id == summary.id }), playlists[at] != summary else { return }
+        var updated = playlists
+        updated[at] = summary
+        setPlaylists(updated)
+    }
+
     /// The playlists as the server sent them, kept for the next launch.
     private func setPlaylists(_ value: [PlaylistSummary]) {
         playlists = value
