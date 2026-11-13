@@ -1802,6 +1802,10 @@ final class FrameAPITests: XCTestCase {
         var styles = PlaylistRules()
         styles.styles = ["Impresjonizm"]
         XCTAssertFalse(RulesSummary.hasChips(styles, name: "Impresjonizm"))
+        var favourites = PlaylistRules()
+        favourites.favoritesOnly = true
+        XCTAssertFalse(RulesSummary.hasChips(favourites, name: "Ulubione"))
+        XCTAssertTrue(RulesSummary.hasChips(favourites, name: "Paulina"))
     }
 
     func testDemoAlbumPlaylists() async throws {

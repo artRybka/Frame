@@ -1110,7 +1110,7 @@ struct RulesSummary: View {
             ForEach(SearchPhrases.tokens(rules.query), id: \.self) { TagLabel(text: "„\($0)”") }
             if let from = rules.yearFrom { TagLabel(text: "od \(String(from))") }
             if let to = rules.yearTo { TagLabel(text: "do \(String(to))") }
-            if rules.favoritesOnly { TagLabel(text: "♥ ulubione") }
+            if rules.favoritesOnly && !repeatsName("ulubione") { TagLabel(text: "♥ ulubione") }
             ForEach(rules.sources, id: \.self) { TagLabel(text: Names.source($0)) }
             ForEach(rules.excludeSources, id: \.self) { TagLabel(text: "bez \(Names.source($0))") }
             ForEach(rules.places, id: \.self) { TagLabel(text: model.placeName($0)) }
@@ -1139,7 +1139,7 @@ struct RulesSummary: View {
             || rules.styles.contains { !repeats($0) }
             || rules.subjects.contains { !repeats($0) }
             || !rules.colors.isEmpty || !SearchPhrases.tokens(rules.query).isEmpty
-            || rules.yearFrom != nil || rules.yearTo != nil || rules.favoritesOnly
+            || rules.yearFrom != nil || rules.yearTo != nil || (rules.favoritesOnly && !repeats("ulubione"))
             || !rules.sources.isEmpty || !rules.excludeSources.isEmpty
             || !rules.places.isEmpty || !rules.excludePlaces.isEmpty
     }
