@@ -5,12 +5,15 @@ wróżenie. chyba że mielibyśmy jakieś dane dotyczęce techniki").
 Only for a work whose published technical study the facts from the web
 found (``ai.web_facts``: X-rays, infrared, paint samples): Claude tells its
 stages as the study does, in two or three sentences, four at most, after
-"Kolor i światło". Nothing is guessed when there is no study, and nothing
-says where the text came from (Mateusz 2026-11-13 21:42: "rezygnujemy z
+"Kolor i światło". Nothing is guessed when there is no study; the study
+may be named, never a page nor that it was searched for (Mateusz
+2026-11-13 21:42: "rezygnujemy z
 rysowania tego przez Gemini. To nie wyglądało dobrze. Samą sekcję
 zostawiamy, ale sposób powstawania dzieła tylko opisujemy w 2,3 maks 4
 zdaniach. Sekcję umieszczamy po "Kolor i światło". Nie dodajemy przypisu
-opisującego genezę powstania tego tekstu.").
+opisującego genezę powstania tego tekstu."; 22:00: "nazwę badania można
+podać, na zasadzie "jak wykazało badanie RTG z 1995 roku przeprowadzone…"
+etc. Ale nie podajemy linka czy wskazania że to z wyszukania").
 
 Written in the background once the study's page is shown (Sonnet, a
 fraction of a cent) and kept for good.
@@ -50,9 +53,10 @@ opublikowane badanie techniczne tego obrazu.
 
 Opowiedz, jak dzieło powstawało, w dwóch-trzech zdaniach, najwyżej czterech: od pierwszego \
 etapu do ostatniego, to, co najciekawsze (rysunek, podmalówka, warstwy, poprawki malarza). \
-Tylko to, co jest w etapach; nic nie dodawaj ani nie zgaduj. Nie pisz, skąd to wiadomo: bez \
-nazw instytucji, autorów, publikacji, bez „według badania”, „badacze ustalili”; samą metodę \
-(np. „w podczerwieni widać”) wolno wspomnieć, gdy to naturalne. Naturalna, poprawna \
+Tylko to, co jest w etapach i w opisie badania; nic nie dodawaj ani nie zgaduj. Samo badanie \
+możesz przywołać naturalnie, gdy to pomaga („jak pokazało badanie RTG z 1995 roku \
+przeprowadzone w…”), ale bez adresów stron, nazw portali i wzmianki, że to znaleziono w sieci. \
+Naturalna, poprawna \
 polszczyzna, jak w dobrym polskim muzeum: bez superlatywów, ozdobników i zwrotów do \
 czytelnika."""
 
@@ -71,7 +75,8 @@ def question(item: Item, found: Found) -> str:
     listed = "\n".join(
         f"{at}. {s.stage}: {s.text}" for at, s in enumerate(found.technical.stages, start=1)
     )
-    return f"Dzieło: {work}\n\nEtapy według badania:\n{listed}"
+    what = f"\n\nBadanie: {found.technical.what}" if found.technical.what else ""
+    return f"Dzieło: {work}{what}\n\nEtapy według badania:\n{listed}"
 
 
 def sentences(text: str) -> int:

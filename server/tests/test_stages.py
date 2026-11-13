@@ -102,9 +102,9 @@ def test_the_stages_are_told_in_a_few_sentences(
     assert params["model"] == MODEL
     asked = params["messages"][0]["content"][0]["text"]
     assert "1. Rysunek: Czarny rysunek" in asked and "3. Wykończenie" in asked
-    assert "Badanie muzeum" not in asked  # whose study it was is not told
+    assert "Badanie: Badanie muzeum: RTG" in asked  # the study may be named
     system = params["system"][0]["text"]
-    assert "najwyżej czterech" in system and "Nie pisz, skąd to wiadomo" in system
+    assert "najwyżej czterech" in system and "znaleziono w sieci" in system
     assert stages.made(item) == TEXT
     assert not stages.write(item)  # written once
     assert len(client.asked) == 1

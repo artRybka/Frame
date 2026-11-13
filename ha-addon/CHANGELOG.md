@@ -10,8 +10,9 @@
   Szacunek przy „Uzupełnij wcześniejsze studia” liczy już nową cenę.
 - „Jak powstawał” w studium bez rysunków: kilka zdań (dwa-trzy, najwyżej
   cztery) o tym, jak dzieło powstawało, według badania technicznego
-  znalezionego w sieci, zaraz po „Kolor i światło”. Bez wzmianki, skąd
-  to wiadomo. Rysunki modelu Google nie wyglądały dobrze i serwer ich już
+  znalezionego w sieci, zaraz po „Kolor i światło”. Badanie może być
+  przywołane („jak pokazało badanie RTG z 1995 roku…”), ale bez linków i
+  bez wzmianki o szukaniu. Rysunki modelu Google nie wyglądały dobrze i serwer ich już
   nie zamawia; dzieła, które je dostały, dostaną tekst przy otwarciu
   studium. Przełącznik przeszedł z Google do ustawień Claude.
 - Wybór dzieła w podpowiedziach Szukaj („Słoneczniki · Dzieło · Vincent
