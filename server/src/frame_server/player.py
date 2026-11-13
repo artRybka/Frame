@@ -1291,10 +1291,22 @@ class Player:
         """Works a search showed join the catalogue in the background (as
         the catalogue's own draws do, so not while tests run the server);
         those of "Sztuki inne" while their technique has room. ``found``:
-        the museum search that found them, which they fit from then on."""
+        the museum search that found them, which they fit from then on.
+        Also into a full catalogue (Mateusz 2026-11-13, card: "Tak,
+        pokazane zawsze"): the night's trim takes the random draws first."""
         settings = self.service.settings
-        if settings.scheduler and settings.catalogue_mb and not self._full:
+        if settings.scheduler and settings.catalogue_mb:
             self.service.importer.keep_searched(items, room=self.other_art_room(), found=found)
+
+    def resume_searched(self) -> int:
+        """After a start: the works searches showed (and brought) that were
+        still waiting to join the catalogue, taken in now; how many."""
+        settings = self.service.settings
+        if not (settings.scheduler and settings.catalogue_mb):
+            return 0
+        return self.service.importer.resume_searched(
+            room=self.other_art_room(), spare=not self._full
+        )
 
     def keep_spare(self, items: Iterable[Item]) -> None:
         """Works a search brought but did not show join the catalogue too,
@@ -1406,10 +1418,12 @@ class Player:
 
     def trim_catalogue(self) -> int:
         """Keep the catalogue's thumbnails within ``catalogue_mb``: works the
-        server added that nobody kept go, the longest there first. Works the
-        owner looked at (their original is here: a card, the whole screen, a
-        study) go last, the least recently seen first: their originals have
-        a limit of their own, and looking at one again is quick."""
+        server added that nobody kept go, the longest there first; those a
+        search of the owner's showed after the random draws (Mateusz
+        2026-11-13). Works the owner looked at (their original is here: a
+        card, the whole screen, a study) go last, the least recently seen
+        first: their originals have a limit of their own, and looking at
+        one again is quick."""
         images = self.service.images
         limit = self.service.settings.catalogue_mb * 1024 * 1024
         total = images.thumbs_size()
@@ -1426,9 +1440,9 @@ class Player:
             and i.id not in protected
         ]
 
-        def order(item: Item) -> tuple[bool, float, str]:
+        def order(item: Item) -> tuple[bool, bool, float, str]:
             seen = images.used_at(item)
-            return seen is not None, seen or 0.0, item.added_at
+            return seen is not None, bool(item.found_for), seen or 0.0, item.added_at
 
         spare.sort(key=order)
         gone: list[Item] = []

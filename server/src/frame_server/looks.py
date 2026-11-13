@@ -60,8 +60,10 @@ log = logging.getLogger(__name__)
 KIND = "looks"
 #: Works sent in one round of the background, and the pause between rounds
 #: while some are left; when none is, it looks again after :data:`IDLE`.
-PER_BATCH = 300
-OPEN = 8
+#: (300 thumbnails weighed 30 MB, over Google's 19; 150 at a time, some
+#: 15 MB, still timed out on the NAS's upload once: 100.)
+PER_BATCH = 100
+OPEN = 24
 #: Seconds between looks at the batches out (a small one is back in minutes).
 POLL = 120.0
 IDLE = 600.0

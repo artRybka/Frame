@@ -204,6 +204,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             service.drawn.start()
             # The museums' works get their looks as numbers ("G1").
             service.looks.start()
+            # What searches showed before a restart and had not taken in yet.
+            threading.Thread(
+                target=service.player.resume_searched, name="searched-resume", daemon=True
+            ).start()
             # The earlier studies' facts and rewrites, ordered from the app.
             service.study_refresh.start_thread()
             # Who the catalogue's artists are, from Wikidata: once some

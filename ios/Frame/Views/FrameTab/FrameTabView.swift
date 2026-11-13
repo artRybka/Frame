@@ -2451,7 +2451,7 @@ struct LibrarySizeSection: View {
                     ) { mb in await model.setLibraryLimit(catalogueMb: mb) }
                     if storage.isCatalogueFull {
                         Label {
-                            Text("Katalog jest pełny. Serwer nie dobiera już nowych dzieł z muzeów i nie wymienia tych, które ma. Żeby katalog dalej rósł, zwiększ limit.")
+                            Text("Katalog jest pełny. Serwer nie dobiera już nowych dzieł z muzeów, przyjmuje tylko te pokazane w Szukaj. W nocy usuwa najdawniej dobrane, żeby zmieścić się w limicie. Żeby katalog dalej rósł, zwiększ limit.")
                                 .font(.caption)
                                 .foregroundStyle(Theme.ink)
                                 .fixedSize(horizontal: false, vertical: true)

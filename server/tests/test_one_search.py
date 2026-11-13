@@ -348,12 +348,41 @@ def test_works_not_shown_join_the_catalogue_after_the_shown_ones(tmp_path) -> No
     importer._take = lambda streams, *a, **k: taken.append([i.id for i in streams[0]])  # type: ignore[method-assign]
     for n in (1, 2, 4):
         (tmp_path / f"{n}.jpg").write_bytes(b"jpeg")
-    # Only those whose thumbnail is here: they cost no request.
-    importer.keep_spare([_item(1), _item(2), _item(3)])
+    # Those whose thumbnail is here first: they cost no request; the others
+    # last, their thumbnails fetched then (Mateusz 2026-11-13).
+    importer.keep_spare([_item(3), _item(1), _item(2)])
     # Shown meanwhile: it goes first, and once.
     importer.keep_searched([_item(4), _item(2)], found="s:1")
     importer._take_searched()
-    assert taken == [["aic:4", "aic:2"], ["aic:1"]]
+    assert taken == [["aic:4", "aic:2"], ["aic:1"], ["aic:3"]]
     # Seen once, not queued again.
-    importer.keep_spare([_item(1), _item(4)])
-    assert not importer._spare
+    importer.keep_spare([_item(1), _item(4), _item(3)])
+    assert not importer._spare and not importer._far
+
+
+def test_the_works_waiting_to_join_the_catalogue_outlive_a_restart(tmp_path) -> None:
+    """An update restarted the server before it had taken in what searches
+    showed (2026-11-13): the queues are kept, and taken in after a start."""
+    library = Library(tmp_path / "lib.db")
+
+    class Cache:
+        def thumb_path(self, item: Item):  # type: ignore[no-untyped-def]
+            return tmp_path / f"{item.source_id}.jpg"
+
+    (tmp_path / "3.jpg").write_bytes(b"jpeg")
+    importer = Importing(library, Cache(), None)  # type: ignore[arg-type]
+    importer._start_searched = lambda: None  # type: ignore[method-assign]
+    importer.keep_searched([_item(1), _item(2)], found="s:1")
+    importer.keep_spare([_item(3)])  # written within a while of the first: not yet
+    assert len(library.get_state("searched_queue")["searched"]) == 2
+    importer._save_searched()  # as the next batch taken does
+    library.upsert(_item(2))  # taken in meanwhile some other way
+
+    again = Importing(library, Cache(), None)  # type: ignore[arg-type]
+    taken: list[list[str]] = []
+    again._take = lambda streams, *a, **k: taken.append([i.id for i in streams[0]])  # type: ignore[method-assign]
+    assert again.resume_searched() == 2
+    assert again._searching is not None
+    again._searching.join(5)
+    assert taken == [["aic:1"], ["aic:3"]]
+    assert library.get_state("searched_queue") == {"searched": [], "spare": []}

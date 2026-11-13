@@ -17,9 +17,23 @@
   jako zapasowe.
 - Hasła dla muzeów włącza ten sam przełącznik co tłumaczenie słów w Szukaj
   (Konfiguracja → Claude).
-- Karta dzieła pokazuje „Podobne wyglądem” także wtedy, gdy liczby ma
-  tylko inna kopia tego samego dzieła (np. Słoneczniki z Monachium
-  znalezione przez kopię z WikiArt).
+- Karta dzieła naprawdę pokazuje rząd „Podobne wyglądem”. Aplikacja w
+  ogóle o niego nie pytała, bo zapytanie wisiało na pustym widoku, który
+  się nie pojawiał. Rząd pokazuje się też wtedy, gdy liczby ma tylko inna
+  kopia tego samego dzieła.
+- Miniatury do szukania wyglądem idą do Google w paczkach po 100 zamiast
+  300, bo większa paczka raz nie zdążyła się wysłać z NAS.
+- Dzieła pokazane w Szukaj, które czekają na przyjęcie do bazy, przetrwają
+  restart serwera (np. aktualizację). Wcześniej kolejka była tylko w
+  pamięci i znikała.
+- Pełny katalog przyjmuje dzieła pokazane w Szukaj. Nocne przycinanie
+  usuwa wtedy najpierw dzieła dobrane losowo, a te z Twoich wyszukiwań
+  zostawia na koniec. Dzieła przyniesione, ale niepokazane, przy pełnym
+  katalogu nadal nie wchodzą.
+- Dzieła, które muzeum przyniosło, ale które nie pasowały do wyszukiwania
+  (inny artysta, inne lata, inna technika), trafiają do bazy także bez
+  miniatury na serwerze. Czekają na końcu kolejki, a miniatury są pobierane
+  w tle, w tempie dozwolonym przez każde muzeum.
 
 ## 1.145.97
 
