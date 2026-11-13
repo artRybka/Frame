@@ -378,3 +378,101 @@ def test_artist_names_with_a_town_and_file_name_details() -> None:
     assert is_detail(wmc(page + "Vermeer_Little_Street_(d%C3%A9tail).jpg"))
     assert not is_detail(wmc(page + "The_Little_Street_by_Johannes_Vermeer_(1).jpg"))
     assert not is_detail(wmc(page + "Detailed_map_of_Delft.jpg"))
+
+
+def test_copies_by_the_thumbnails_here_are_written_before_a_download(
+    service: FrameService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A thumbnail to fetch waits while the app is in use: the copies the
+    thumbnails at hand show are one work meanwhile ("Sunflowers / Vase with
+    Twelve Sunflowers" and "Twelve Sunflowers in a Vase" twice in a
+    playlist, Mateusz 2026-11-13)."""
+    painting = _print(21, (600, 760))
+    _work(service, "wmc:1", painting, title="Sunflowers / Vase with Twelve Sunflowers")
+    # Another scan, cut a little closer: too far apart for the hashes.
+    other_scan = painting.crop((30, 30, 570, 730)).resize((480, 622))
+    _work(service, "wmc:2", other_scan, title="Twelve Sunflowers in a Vase")
+    late = _work(service, "wikiart:3", _print(22, (600, 760)), title="Fourteen Sunflowers")
+    service.images.thumb_path(late).unlink()
+    asked, let_go = threading.Event(), threading.Event()
+
+    def waiting(item: Item, urgent: bool = False) -> Any:
+        asked.set()
+        let_go.wait(10)
+        raise RuntimeError("resting")
+
+    monkeypatch.setattr(service.images, "ensure_thumb", waiting)
+    looking = threading.Thread(target=service.twins.look)
+    looking.start()
+    try:
+        assert asked.wait(10)
+        copy = service.library.get("wmc:2")
+        assert copy is not None and copy.copy_of == "wmc:1"
+        assert len(_ids(service, "sunflowers")) == 2
+    finally:
+        let_go.set()
+        looking.join(10)
+    waiting_item = service.library.get("wikiart:3")
+    assert waiting_item is not None and waiting_item.twins_seen == 0
+
+
+def test_an_opened_playlist_looks_at_its_works(
+    service: FrameService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from frame_server.library.models import Playlist, PlaylistKind
+    from frame_server.web.playlists_api import _detail
+
+    painting = _print(23, (600, 700))
+    _work(service, "wmc:1", painting, title="Twelve Sunflowers", artist="Vincent van Gogh")
+    asked = threading.Event()
+    keys: list[set[str]] = []
+
+    def look(wanted: set[str] | None = None, **_: object) -> int:
+        keys.append(set(wanted or ()))
+        asked.set()
+        return 0
+
+    monkeypatch.setattr(service.twins, "look", look)
+    service.twins.search_delay = 0
+    saved = service.library.save_playlist(
+        Playlist(
+            name="Vincent van Gogh · słoneczniki",
+            kind=PlaylistKind.SMART,
+            rules=PlaylistRules(artists=["Vincent van Gogh"]),
+        )
+    )
+    _detail(service, saved)
+    assert asked.wait(5)
+    assert len(keys) == 1 and len(keys[0]) == 1
+
+
+def test_works_taken_in_are_looked_at(
+    service: FrameService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from frame_server.library.importer import Job
+
+    told: list[list[str]] = []
+    monkeypatch.setattr(service.importer, "taken", lambda items: told.append([i.id for i in items]))
+    monkeypatch.setattr(service.importer, "_analysed", lambda item: item)
+    item = Item(
+        id="wmc:7",
+        source="wmc",
+        source_id="7",
+        title="Twelve Sunflowers in a Vase",
+        artist="Vincent van Gogh",
+        width=600,
+        height=760,
+    )
+    service.importer._take(
+        [iter([item])],
+        1,
+        Job(id="fill", description="fill"),
+        before=lambda i: True,
+        after=lambda i: True,
+        pooled=True,
+    )
+    assert told == [["wmc:7"]]
+
+
+def test_the_service_tells_the_twins_of_works_taken_in(service: FrameService) -> None:
+    assert service.importer.taken == service.twins.after_search
