@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.145.79
+
+- Droga dzieła nadąża za przewijaniem. Przy szybszym przewinięciu nie
+  ma już pustej strony z piórem dopiero przy pierwszej kropce: linia
+  jest od razu narysowana prawie do dołu ekranu, kropki na niej, a
+  przystanki nad środkiem ekranu są już rozlane i podpisane, tym
+  dalej, im wyżej. Przy wolnym czytaniu wszystko rysuje się jak dotąd.
+
+## 1.145.78
+
+- Analiza kompozycji (arkusz z modelu graficznego): najpierw widać sam
+  szkic z akwarelą. Dotknięcie szkicu pokazuje wszystkie kolorowe linie
+  z numerami i siatką, kolejne je chowa. Dotknięcie podpisu pod szkicem
+  zostawia tylko jego linię (z siatką), ponowne wraca do samego szkicu.
+  Gdy szkic jest na ekranie, a strona chwilę (2 s) stoi, adnotacje
+  pojawiają się same.
+
 ## 1.145.77
 
 - Serwer nie staje już na koniec przeliczania barw biblioteki. Po

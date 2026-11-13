@@ -60,23 +60,32 @@ final class DrawnSheetTests: XCTestCase {
         XCTAssertEqual(DrawnSheet.spots(of: lines[2], in: size), [Pencil.numberSpot(for: lines[2].mark, in: size)])
     }
 
-    func testATapOnTheSheetPutsTheLinesAwayAndATappedNoteLeavesItsOwn() throws {
+    func testTheSheetOpensBareATapBringsEveryLineAndATappedNoteLeavesItsOwn() throws {
         let drawn = DailyWork.Drawn(sheet: "/s", bleed: 0.08, aspect: 1.5, marks: [
             .init(mark: 0, layer: "/m1", colour: "#be4031", numbers: []),
             .init(mark: 2, layer: "/m2", colour: "#394f98", numbers: []),
         ])
         let lines = DrawnSheet.lines(take, drawn)
-        // As drawn: every line whole.
-        XCTAssertEqual(lines.map { DrawnSheet.share(of: $0, chosen: nil, bare: false) }, [1, 1, 1, 1])
-        // The sheet tapped: the sketch alone (20:54: "po dotknięciu
-        // zostaje sam szkic").
-        XCTAssertEqual(lines.map { DrawnSheet.share(of: $0, chosen: nil, bare: true) }, [0, 0, 0, 0])
-        XCTAssertEqual(lines.map { DrawnSheet.share(of: $0, chosen: 2, bare: true) }, [0, 0, 0, 0])
-        // A note tapped: its line stays, the others step back.
-        XCTAssertEqual(
-            lines.map { DrawnSheet.share(of: $0, chosen: 2, bare: false) },
-            [Chalk.aside, Chalk.aside, 1, Chalk.aside]
-        )
+        typealias Shown = DrawnSheet.Shown
+        // At first the sketch alone (2026-11-13 07:11: "Najpierw widzimy
+        // tylko szkic/akwarele").
+        XCTAssertEqual(lines.map { DrawnSheet.share(of: $0, shown: .sketch) }, [0, 0, 0, 0])
+        // A tap on the sketch: every line ("Dotknięcie szkicu pokazuje
+        // wszystkie adnotacje"); another puts them away.
+        XCTAssertEqual(Shown.sketch.tappedSheet(), .all)
+        XCTAssertEqual(Shown.all.tappedSheet(), .sketch)
+        XCTAssertEqual(Shown.one(2).tappedSheet(), .all)
+        XCTAssertEqual(lines.map { DrawnSheet.share(of: $0, shown: .all) }, [1, 1, 1, 1])
+        // A tap on a note: that line alone ("Dotknięcie wybranej tylko te
+        // jedną"); the same note again leaves the sketch alone (07:41:
+        // "Odkliknięcie pojedynczej pozycji wraca do szkicu bez adnotacji").
+        XCTAssertEqual(Shown.sketch.tappedNote(2), .one(2))
+        XCTAssertEqual(Shown.all.tappedNote(2), .one(2))
+        XCTAssertEqual(Shown.one(1).tappedNote(2), .one(2))
+        XCTAssertEqual(Shown.one(2).tappedNote(2), .sketch)
+        XCTAssertEqual(lines.map { DrawnSheet.share(of: $0, shown: .one(2)) }, [0, 0, 1, 0])
+        XCTAssertEqual(Shown.one(2).chosen, 2)
+        XCTAssertNil(Shown.all.chosen)
     }
 
     func testTheGridsNameIsWrittenOnTheSheet() {

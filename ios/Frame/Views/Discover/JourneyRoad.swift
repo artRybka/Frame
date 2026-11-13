@@ -819,6 +819,24 @@ struct RoadMarks: Equatable {
     /// never less than `haste.apart` later: still one after another.
     static let spur: CGFloat = 120
     static let brisk: CGFloat = 60
+    /// However fast the page goes, the drawing keeps up with it (2026-11-13
+    /// 07:14: „często przy przewijaniu widzi się po prostu pustą stronę,
+    /// droga i punkty powstają za późno i efekt przepada”): the hurrying
+    /// above runs on time and could fall behind a page flung down, or one
+    /// whose frames came late. So where the page is sets the least the
+    /// drawing is, whatever the time: the pen is never more than `spur`
+    /// behind where it is to be (a mark it passes so is there, as far
+    /// along as if the pen had passed it at `brisk` points a second), and a
+    /// stop whose dot is up the screen is at least as old as it is `owed`
+    /// (`RoadReveal.keepUp`). A page read slowly is ahead of this: there
+    /// the drawing runs on its own time as before.
+    func least(_ index: Int, mid: CGFloat) -> CGFloat {
+        let owed = max(0, self.owed(index, mid: mid))
+        return min(whole(index), lead(index) + (marked(index) ? max(Self.clock.spill, owed) : owed))
+    }
+
+    /// A mark the pen passed `behind` points ago, at the least.
+    static func landed(behind: CGFloat) -> CGFloat { min(clock.dry, max(0, behind) / brisk) }
     static let haste: (takes: CGFloat, most: CGFloat, apart: CGFloat) = (0.3, 8, 0.08)
     /// A stop's clock, in seconds: its dot comes up at 0, a moment later
     /// (`spill`) the paint starts out of it (08:55: „najpierw pojawia się
@@ -993,6 +1011,9 @@ final class RoadReveal {
     /// was drawn: where the middle of the screen was then.
     @ObservationIgnored private var ended: CGFloat?
 
+    /// The least the pen is with the page where it is (`keepUp`).
+    @ObservationIgnored private var least = -CGFloat.infinity
+
     /// Before anything is drawn: over the rule the line comes out from.
     static let before: CGFloat = -50
     /// With the road's end on screen and the page at rest this long, the
@@ -1087,7 +1108,7 @@ final class RoadReveal {
         for index in drops.indices where marks.marked(index) && drops[index].age < RoadMarks.press {
             far = min(far, marks.rest(index))
         }
-        return max(kept, far)
+        return max(kept, far, least)
     }
 
     /// Whether the stop before `index` has run long enough for it to
@@ -1121,7 +1142,46 @@ final class RoadReveal {
         let over = min(seen.minY - 80, target)
         if pen < over { pen = over }
         if thick < over { thick = over }
+        keepUp()
         if busy { settled = false }
+    }
+
+    /// The drawing at least as far as the page is (`RoadMarks.least`):
+    /// the stops in turn, each only when the one before it is there (and
+    /// has run as long as `after` asks), the pen not past a stop it is to
+    /// wait at (`gates`), and the marks it passes there with it.
+    private func keepUp() {
+        guard ended == nil, !seen.isNull, stops.count == marks.dots.count else {
+            least = -.infinity
+            return
+        }
+        let mid = seen.midY
+        var line = marks.target(mid: mid, ahead: ahead) - RoadMarks.spur
+        var open = true
+        for index in stops.indices {
+            if open, marks.dots[index] <= min(mid + RoadMarks.near, line - 4),
+               index == 0 || drawn[index - 1],
+               index == 0 || marks.after[index].map({ stops[index - 1].age >= $0 }) ?? true {
+                let low = marks.least(index, mid: mid)
+                if !drawn[index] {
+                    drawn[index] = true
+                    latest = time
+                }
+                if stops[index].age < low { stops[index].age = low }
+                // Its mark is on the line, swollen.
+                if marks.marked(index), drops[index].age < RoadMarks.press { drops[index].age = RoadMarks.press }
+            } else {
+                open = false
+            }
+            if let long = marks.gates[index], age(index) < long { line = min(line, marks.dots[index] + 6) }
+        }
+        least = line
+        if pen < line { pen = line }
+        if thick < line - RoadMarks.spur { thick = line - RoadMarks.spur }
+        for index in drops.indices where marks.marked(index) && marks.passed(index, pen: line) {
+            let low = RoadMarks.landed(behind: line - marks.rest(index))
+            if drops[index].age < low { drops[index].age = low }
+        }
     }
 
     /// All of it, dry.
@@ -1190,6 +1250,7 @@ final class RoadReveal {
         last = now
         if waits, now.timeIntervalSince(moved) > Self.rest { ended = seen.midY }
         time += passed
+        keepUp()
         let mid = self.mid
         // The page went back: what is well under the middle of the screen again is undone.
         for index in drawn.indices where drawn[index] && marks.dots[index] > mid + RoadMarks.back {
