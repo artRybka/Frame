@@ -60,7 +60,11 @@ _ENDING = "aeiouy"
 
 def item_text(item: Item) -> str:
     """What typed words are looked for in: the work's title, artist,
-    technique, culture, description, styles, subjects and keywords."""
+    technique, culture, styles, subjects and keywords; not the museum's
+    description, which mentions what isn't there ("La berceuse" was to hang
+    "between two paintings of sunflowers", a portrait's painter "worked in
+    Venice", Polish "most" in "the most famous"; Mateusz 2026-11-13: the
+    words in Szukaj and playlists alike)."""
     return " ".join(
         [
             item.title,
@@ -68,7 +72,6 @@ def item_text(item: Item) -> str:
             item.medium,
             item.classification,
             item.culture,
-            item.description,
             *item.styles,
             *item.subjects,
             *item.keywords,
@@ -181,7 +184,9 @@ class SearchIndex:
         n = len(self._items)
         self._items.append(item)
         self._entry[item.id] = n
-        for word in set(_WORD.findall(fold(item_text(item)))):
+        # The description's words too: terms are still looked for in it
+        # (``vocabulary.text_of``), the typed words no longer (``item_text``).
+        for word in set(_WORD.findall(fold(f"{item_text(item)} {item.description}"))):
             have = self._words.get(word)
             if have is None:
                 self._words[word] = array("i", (n,))

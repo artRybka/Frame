@@ -54,8 +54,8 @@ def test_the_indexes_are_asked_for_the_phrase() -> None:
 
 
 def test_the_catalogue_wants_the_phrase_and_every_chip() -> None:
-    watch = _item(1, title="Nocna straż", description="Portret zbiorowy strażników nocą")
-    apart = _item(2, title="Straż", description="Pejzaż nocą, nocna mgła")
+    watch = _item(1, title="Nocna straż", keywords=["portret zbiorowy", "strażnicy nocą"])
+    apart = _item(2, title="Straż", keywords=["pejzaż nocą", "nocna mgła"])
     rules = PlaylistRules(query=quote(["nocna straż"]))
     assert matches(watch, rules)
     assert not matches(apart, rules)
