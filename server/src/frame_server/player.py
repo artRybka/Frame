@@ -1675,7 +1675,7 @@ class Player:
                 continue
             if line is not None or item.contour is not None:
                 found[item.id] = line
-        # A portion at a time, the mark after the last (1.145.76).
+        # A portion at a time, the mark after the last (Library.update_many, 1.145.77).
         self.library.update_many({item_id: {"contour": line} for item_id, line in found.items()})
         self.library.set_state(CONTOUR_KEY, CONTOUR_VERSION)
         drawn = sum(line is not None for line in found.values())
