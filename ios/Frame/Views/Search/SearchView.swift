@@ -12,11 +12,15 @@ struct SearchView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            MuseumSearchView()
+            MuseumSearchView(path: $path)
                 .navigationTitle("Szukaj")
                 .serverLinkBadge()
                 .navigationDestination(for: String.self) { id in
                     ItemDetailView(itemID: id)
+                }
+                // "Podobne wyglądem" → "Więcej" on a work's card, in the same path.
+                .navigationDestination(for: LooksAsk.self) { ask in
+                    LooksResultsView(ask: ask)
                 }
                 .navigationDestination(for: DailyRoute.self) { route in
                     DailyView(route: route)

@@ -10,6 +10,8 @@
   wyszukiwania jest ikonka aparatu, widoczna, gdy nic nie jest wpisane ani
   wybrane. Dotknięcie otwiera aparat, przytrzymanie pozwala wybrać zdjęcie
   z Biblioteki.
+- Szukaj wyglądem: dotknięcie dzieła na liście wyników otwiera jego kartę
+  i zostaje na niej (wcześniej ekran wracał sam do wyników).
 - Konfiguracja → Claude: „Uzupełnij wcześniejsze studia”. Claude szuka w
   sieci faktów, których w napisanych już studiach brakuje (badania,
   losy, wystawy, odbiór), i przepisuje tekst tylko tam, gdzie wiele

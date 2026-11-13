@@ -43,8 +43,12 @@ struct MuseumSearchView: View {
     /// The server can search by how works look (Gemini's key, the switch,
     /// works with their numbers): "Szukaj wyglądem" and "Szukaj zdjęciem".
     @State private var looksReady = false
-    /// Words or a photograph searched by how works look, on a page of its own.
-    @State private var looking: LooksAsk?
+    /// The search's stack: words or a photograph searched by how works look
+    /// go on it, a page of their own. (Presented apart from it, with
+    /// `navigationDestination(item:)`, the page jumped back from the work a
+    /// tile opened: Mateusz 2026-11-13, "ekran przeskakuje i wraca na listę
+    /// wyników".)
+    @Binding var path: NavigationPath
 
     /// The rules' chips, then the colours' and the museums'.
     private var tokens: Binding<[SearchToken]> {
@@ -73,7 +77,7 @@ struct MuseumSearchView: View {
     /// "Szukaj wyglądem" under the words typed, while the server can.
     private var lookedFor: ((String) -> Void)? {
         guard looksReady else { return nil }
-        return { words in looking = .words(words) }
+        return { words in path.append(LooksAsk.words(words)) }
     }
 
     private var searchKey: WorkSearch.Key { WorkSearch.Key(rules: rules, sources: sources) }
@@ -127,17 +131,14 @@ struct MuseumSearchView: View {
             lookup, tokens: tokens, focused: $fieldFocused,
             lookedFor: lookedFor
         )
-        .navigationDestination(item: $looking) { ask in
-            LooksResultsView(ask: ask)
-        }
         .task {
             guard let status = try? await model.backend.looksStatus() else { return }
             looksReady = status.enabled && status.ready
         }
         .termSearch(lookup, tokens: tokens, focused: $fieldFocused)
         // The camera at the field's end, while nothing is typed or picked.
-        .looksCamera(shown: looksReady && !asked && lookup.text.isEmpty && looking == nil) { ask in
-            looking = ask
+        .looksCamera(shown: looksReady && !asked && lookup.text.isEmpty && path.isEmpty) { ask in
+            path.append(ask)
         }
         // Tapping the field brings the groups back, as does asking nothing.
         .onChange(of: fieldFocused) { _, focused in

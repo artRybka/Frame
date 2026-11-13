@@ -181,9 +181,7 @@ struct LooksLikeSection: View {
                     HStack(alignment: .firstTextBaseline) {
                         Eyebrow("Podobne wyglądem")
                         Spacer()
-                        NavigationLink {
-                            LooksResultsView(ask: .like(item.id, item.displayTitle))
-                        } label: {
+                        NavigationLink(value: LooksAsk.like(item.id, item.displayTitle)) {
                             Text("Więcej").font(.caption)
                         }
                     }
