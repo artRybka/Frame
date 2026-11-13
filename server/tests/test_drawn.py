@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import re
 from datetime import date, timedelta
 from pathlib import Path
@@ -56,6 +57,7 @@ from frame_server.ai.jobs import listed
 from frame_server.ai.redraw import PenJob
 from frame_server.ai.study import KIND as STUDY
 from frame_server.drawn import (
+    CHECKED,
     KEY_REJECTED,
     LIMIT,
     NO_CREDIT,
@@ -1027,6 +1029,97 @@ def test_the_batch_asks_again_for_lines_that_left_a_mark_out(tmp_path: Path) -> 
         assert kept is not None and all(kept["layers"])
         assert kept["cost"]["lines"] == 0.052 and svc.drawn._batch() is None
         assert not list(svc.drawn.dir.glob("*-marked.png"))
+
+
+def _repainted(study: Image.Image, colours: list[str]) -> Image.Image:
+    """The model's lines over ``study`` as it answered for Pissarro's
+    „Wzgórze Jalais”: a long line, two loops, the second pencil left out,
+    and the study repainted besides (a dark mass made deeper, ink strokes
+    drawn again)."""
+    w, h = study.size
+    rgb = np.asarray(study).astype(np.float32)
+    part = rgb[int(0.26 * h) : int(0.9 * h), int(0.68 * w) :]
+    part[:] = part * 0.6 + np.array([40, 45, 35]) * 0.4
+    out = Image.fromarray(rgb.astype(np.uint8))
+    canvas = ImageDraw.Draw(out)
+    for i in range(6):
+        x = 0.05 * w + 30 * i
+        canvas.line([(x, 0.99 * h), (x + 150, 0.78 * h)], fill=(40, 35, 30), width=5)
+    canvas.line([(0.1 * w, 0.52 * h), (0.88 * w, 0.39 * h)], fill=colours[0], width=8)
+    canvas.ellipse((0.59 * w, 0.65 * h, 0.74 * w, 0.8 * h), outline=colours[2], width=8)
+    canvas.ellipse((0.24 * w, 0.59 * h, 0.44 * w, 0.73 * h), outline=colours[3], width=8)
+    return out.filter(ImageFilter.GaussianBlur(0.7))
+
+
+def test_a_pencil_left_out_does_not_take_the_repainted_study_for_its_line() -> None:
+    """Mateusz 2026-11-13 11:44: "coś się wysypuje warstwa z kolorowymi
+    adnotacjami kredą": laid askew by the long pencil line, the answer's
+    study passed for the pencils the model had left out, which turned grey
+    and black and covered half the field."""
+    paper = Image.new("RGB", (1024, 768), PAGE[False])
+    study = Image.blend(_scene((1024, 768)), paper, 0.45)
+    colours = [colour for _, colour in imaging.PENCILS[:4]]
+    marked = _repainted(study, colours)
+    # Laid by the edges alone it lies a few per cent askew; it lies as it came.
+    assert imaging.measure(study, marked)[1] == float("inf")
+    frac, agree = imaging.over(study, marked)
+    assert np.allclose(frac, np.eye(2, 3), atol=0.002) and agree > 0.7
+    # A little off, as the model's answers are, it is laid back.
+    off = marked.transform(
+        marked.size, Image.Transform.AFFINE, (1.02, 0, -8, 0, 1.02, 5), Image.Resampling.BICUBIC
+    ).resize((1000, 760))
+    for answer in (marked, off):
+        layers, made = imaging.split(study, answer, colours)
+        covers = [float((layer > 0.3).mean()) for layer in layers]
+        assert covers[1] < imaging.NO_MARK  # the one left out has none
+        assert all(0.003 < cover < 0.012 for n, cover in enumerate(covers) if n != 1)
+        assert made[1] == colours[1].lower()  # and keeps the pencil's own colour
+        assert not imaging.doubtful(made, covers)
+    # Over another study altogether nothing is taken.
+    other = Image.blend(_scene((1024, 768)).rotate(90, expand=True).resize((1024, 768)), paper, 0.3)
+    layers, made = imaging.split(study, _repainted(other, colours), colours)
+    assert all(float(layer.max()) == 0 for layer in layers) and made == [c.lower() for c in colours]
+    # Pissarro's sheet as it was kept: a grey and a black line, one of them over 9 per cent.
+    pissarro = ["#af9d9a", "#4763a5", "#474a3e", "#c14835", "#d6802d"]
+    assert imaging.doubtful(pissarro, [0.0929, 0.0026, 0.0456, 0.0025, 0.0057])
+    assert imaging.doubtful(pissarro[1:2], [0.09])
+    lodzie = ["#4d6095", "#387340", "#ae372c", "#854a9b", "#268890", "#d27b1e"]
+    assert not imaging.doubtful(lodzie, [0.0076, 0.01, 0.0028, 0.0021, 0.0019, 0.0031])
+
+
+def test_a_sheet_kept_with_strayed_lines_has_them_drawn_anew_once(tmp_path: Path) -> None:
+    """The sheets drawn before the fix: one whose lines are not the
+    pencils' has them drawn again at once, over the study it keeps."""
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    with TestClient(app) as client:
+        _catalogue(svc)
+        stood = Stood(svc)
+        _old_page(svc)
+        assert svc.drawn.ahead() is True and stood.calls == [KIND] * 3
+        assert svc.library.get_state(CHECKED) == drawn_module.CHECK
+        item = svc.library.get("met:1")
+        assert item is not None
+        stem = svc.drawn._stem(item, svc.drawn.key(_shown(svc)))
+        meta_file = svc.drawn.dir / f"{stem}-meta.json"
+        meta = json.loads(meta_file.read_text())
+        good = list(meta["colours"])
+        # As kept by 1.145.90: one line grey.
+        meta["colours"][0] = "#af9d9a"
+        meta_file.write_text(json.dumps(meta))
+        svc.drawn._kept.clear()
+        assert svc.drawn.ahead() is False  # swept once only: nothing to do
+        svc.library.set_state(CHECKED, 0)
+        assert svc.drawn.ahead() is True
+        # Only its lines were asked for, over the study it has.
+        assert stood.calls == [KIND] * 4 and stood.kw[-1] == {"spill": False, "think": "minimal"}
+        kept = svc.drawn.meta(item, _shown(svc))
+        assert kept is not None and kept["colours"] == good
+        assert svc.library.get_state(CHECKED) == drawn_module.CHECK
+        assert "met:1" not in listed(svc.library, AT_ONCE)
+        work = client.get("/api/study/met:1").json()["work"]
+        assert work["composition_drawn"]["marks"][0]["colour"] == good[0]
+        assert svc.drawn.ahead() is False and stood.calls == [KIND] * 4
 
 
 def test_an_analysis_made_anew_finds_a_prints_field_again_a_little_off(tmp_path: Path) -> None:

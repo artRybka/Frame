@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.91
+
+- Kolorowe kreski na arkuszu kompozycji z Gemini nie rozjeżdżają się.
+  Gdy model pominął którąś kreskę, serwer potrafił wziąć za nią fragment
+  samego szkicu (szare plamy i czarne smugi na pół obrazu, numery przy
+  krawędzi, np. Pissarro „Wzgórze Jalais w Pontoise”). Teraz takiej
+  kreski nie ma i model jest pytany o kreski drugi raz. Arkusze już
+  zapisane z takim błędem dostają po aktualizacji serwera nowe kreski
+  na tym samym szkicu (ok. 0,05 USD za arkusz).
+
 ## 1.145.90
 
 - Karta dzieła ma guzik „Dodaj do playlisty” między serduszkiem a „…”
