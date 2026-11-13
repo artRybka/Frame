@@ -6,7 +6,7 @@ import SwiftUI
 /// stays, so several can be ticked in one go; "Nowa playlista…" turns into a
 /// name field in place and makes one with the work in it
 /// (Mateusz 2026-11-13: the old list that closed on the first tap was hard
-/// to use).
+/// to use). A glass card, without a hint under the list.
 struct AddToPlaylistSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -47,10 +47,12 @@ struct AddToPlaylistSheet: View {
                 Section {
                     newRow
                     ForEach(manual) { row($0) }
-                } footer: {
-                    Text("Dotknięcie dodaje dzieło albo je zabiera. Zmiana zapisuje się od razu.")
                 }
+                .listRowBackground(Color.clear)
             }
+            // A glass card: the sheet's own Liquid Glass shows through, no
+            // white under the playlists (Mateusz 2026-11-13 10:54).
+            .scrollContentBackground(.hidden)
             .listSectionSpacing(.compact)
             .navigationTitle("Do playlisty")
             .navigationBarTitleDisplayMode(.inline)
