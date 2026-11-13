@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.145.86
+
+- Pasek barw jednakowy na karcie dzieła i w zakładce Teraz: te same
+  barwy są pasmami, a te same plamkami akcentów.
+- Wyraźne akcenty nie giną: gdy na pasku brakuje miejsca, wchodzą
+  najbardziej wyraziste barwy, nie największe (czerwony płaszcz w
+  studium Delacroix „Rzeź na Chios”). Serwer przelicza barwy biblioteki
+  raz po aktualizacji.
+- Barwna litografia, w której serwer widzi kilka barw (plakat
+  Axentowicza „Sztuka”), ma pasek swoich farb zamiast szarej kredki.
+
 ## 1.145.85
 
 - Arkusze kompozycji z Gemini narysowane przed nowym poleceniem szkicu są

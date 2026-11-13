@@ -418,6 +418,37 @@ def test_analyse_finds_small_vivid_accents() -> None:
     assert not {"blue", "yellow", "red"} & set(tags)
 
 
+def test_the_bar_keeps_the_most_striking_accents_not_the_largest() -> None:
+    # Delacroix's study for the Massacre at Chios (Mateusz 2026-11-13
+    # 10:34: „dlaczego na pasku nie ma tak wyraźnej czerwieni
+    # (akcentu)?”): four large browns and greys, a white, two ochres of
+    # several percent and a smaller red cloak, the most vivid of them.
+    # The bar has room for two accents: the red is one of them.
+    rng = np.random.default_rng(5)
+    pixels = np.empty((240, 240, 3), np.uint8)
+    pixels[:60] = (192, 176, 143)
+    pixels[60:120] = (139, 107, 90)
+    pixels[120:180] = (162, 144, 116)
+    pixels[180:] = (90, 82, 82)
+    pixels[10:50, 10:60] = (196, 161, 85)  # yellow ochre
+    pixels[70:110, 10:50] = (169, 114, 67)  # orange ochre
+    pixels[130:160, 10:42] = (42, 96, 131)  # blue
+    pixels[190:230, 200:230] = (247, 241, 205)  # white
+    pixels[130:160, 150:178] = (181, 60, 50)  # red cloak
+    noise = rng.integers(-5, 6, pixels.shape)
+    img = Image.fromarray(np.clip(pixels.astype(int) + noise, 0, 255).astype(np.uint8))
+    swatches, tags, _ = analyse(img)
+    accents = [s for s in swatches if s.accent]
+    reds = [s for s in accents if family_of(s.hex) == "red"]
+    assert reds, [s.hex for s in swatches]
+    assert "accent:red" in tags
+
+
+def family_of(hex_: str) -> str:
+    rgb = np.array([int(hex_[i : i + 2], 16) for i in (1, 3, 5)], dtype=np.uint8)
+    return family(linear_to_oklab(u8_to_linear(rgb)))
+
+
 def test_colour_tags_go_by_area() -> None:
     # A gold altarpiece with a blue robe on a fifth of it is blue; with a
     # robe of a few percent it is warm, with a blue accent.

@@ -975,4 +975,36 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(PaintStyle.pen.barTime(jatte, width: 350), LineStrip(shares: jatte, width: 350, seed: 5, tool: .pen).last, accuracy: 0.001)
         XCTAssertEqual(PaintStyle.litho.barTime(jatte, width: 350), InkStrip(shares: jatte, width: 350, seed: 5, press: .stone).last, accuracy: 0.001)
     }
+    /// Mateusz 2026-11-13 10:34: „dlaczego paski koloru różnią się od
+    /// siebie składowymi?” Teraz paints its narrow bar twice as wide
+    /// (`slim`); the same colours are accents there and on the card.
+    func testABarShowsTheSameAccentsWhateverItsWidth() {
+        // Delacroix's study for the Massacre at Chios: four browns and greys, two ochres, a red, a blue, a white.
+        let chios = shares([("#c0b08f", 0.228), ("#8b6b5a", 0.202), ("#a29074", 0.2), ("#5a5252", 0.194), ("#c4a155", 0.087),
+                            ("#b54f43", 0.028), ("#2a6083", 0.03), ("#f7f1cd", 0.05)])
+        let card = Paint.accents(chios)
+        XCTAssertEqual(card, [false, false, false, false, true, true, true, true])
+        for width in [330.0, 400, 716, 800] {
+            XCTAssertEqual(OilStrip.pulls(chios, width: width, seed: 5).filter(\.on).map(\.rgb),
+                           OilStrip.pulls(chios, width: 350, seed: 5).filter(\.on).map(\.rgb), "\(width)")
+            XCTAssertEqual(WaterStrip(shares: chios, width: width, seed: 5).touches.map(\.rgb).sorted { $0.lexicographicallyPrecedes($1) },
+                           chios.indices.filter { card[$0] }.map { chios[$0].rgb }.sorted { $0.lexicographicallyPrecedes($1) }, "\(width)")
+        }
+    }
+
+    /// Mateusz 2026-11-13 10:37, of Axentowicz's poster for „Sztuka”, a
+    /// colour lithograph drawn in grey crayon: „podobny problem tu. Brak
+    /// czerwieni.”
+    func testAWorkTheServerFindsColourfulIsNotOfOneColour() {
+        let poster = shares([("#985047", 0.266), ("#d1af90", 0.187), ("#988071", 0.165), ("#b2987c", 0.148)])
+            + [PaintShare(rgb: [29, 58, 84], weight: 0.013, accent: true)]
+        // Its colours alone lie on a line from a greyish paper to a red ink, as red chalk's would.
+        XCTAssertTrue(PrintPaint.mostlyOne(poster))
+        XCTAssertTrue(PaintStyle.mono([], poster))
+        XCTAssertTrue(PaintStyle.mono(["monochrome"], poster))
+        // The server saw red, ochre and blue in it: its inks, printed.
+        XCTAssertFalse(PaintStyle.mono(["red", "colorful"], poster))
+        XCTAssertEqual(PaintStyle.of(medium: "litografia barwna, papier", mono: PaintStyle.mono(["colorful"], poster)), .litho)
+        XCTAssertEqual(PaintStyle.of(medium: "litografia barwna, papier", mono: PaintStyle.mono([], poster)), .pencil)
+    }
 }
