@@ -422,6 +422,9 @@ class FrameService:
             self.library, self.images, self.painter, self.ai_config, settings.data_dir / "looks"
         )
         self.looks.cared = self.cared.ranks
+        # Szukaj's words for how works look, the groups narrowing them, and
+        # a smart playlist made of them (Mateusz 2026-11-13).
+        self.library.looking = self.looks.looking
         self.daily.looks_like = self.looks.neighbours
         # A small picture is drawn larger first, before its study (Mateusz
         # 2026-11-13); which works get none: the rules, the sheet's pixels and

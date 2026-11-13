@@ -928,6 +928,7 @@ struct PickedPhoto: Identifiable, Sendable {
 /// The editor's search, except for an album playlist: the system field at the
 /// bottom of the sheet and the glass groups over it.
 private struct EditorSearch: ViewModifier {
+    @Environment(AppModel.self) private var model
     let enabled: Bool
     let lookup: TermLookup
     let tokens: Binding<[SearchToken]>
@@ -959,6 +960,11 @@ private struct EditorSearch: ViewModifier {
                 .termSearch(lookup, tokens: tokens, focused: focused, keepsNavigationBar: true)
                 .toolbar {
                     DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                }
+                // "Szukaj wyglądem" as in Szukaj, while the server can.
+                .task {
+                    guard let status = try? await model.backend.looksStatus() else { return }
+                    lookup.looks = status.enabled && status.ready
                 }
         } else {
             content

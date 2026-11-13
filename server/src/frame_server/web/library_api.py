@@ -268,7 +268,12 @@ def list_items(
     offset: int = 0,
     limit: Annotated[int, Query(le=200)] = 60,
     seed: int = 0,
+    look: str = "",
 ) -> ItemPage:
+    """The catalogue's works for Szukaj's choices. ``look``: words for how
+    the works look ("mglisty poranek nad wodą"), the other choices narrowing
+    them, nearest first (Mateusz 2026-11-13); 409 when that cannot be
+    asked."""
     rules = PlaylistRules(
         query=q,
         artists=artist or [],
@@ -287,7 +292,10 @@ def list_items(
         kept_only=kept,
         # Works with no picture anywhere: an empty tile helps nobody.
         exclude_ids=sorted(svc.images.gone_ids()),
+        look=" ".join(look.split()),
     )
+    if rules.look and not svc.looks.ready():
+        raise HTTPException(409, "Szukanie wyglądem is not ready")
     total, items = svc.library.query(rules, sort=sort, offset=offset, limit=limit, seed=seed)
     if rules.query.strip() or rules.artists:
         # Its artists' pictures laid over each other: copies under other

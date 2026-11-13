@@ -433,11 +433,15 @@ struct PlaylistRules: Codable, Hashable, Sendable {
     var favoritesOnly: Bool = false
     /// Works taken out of a smart playlist although they match its rules.
     var excludeIds: [String] = []
+    /// Words for how the works look ("mglisty poranek nad wodą"): of the
+    /// works the other rules find, those that look so, nearest first
+    /// (Mateusz 2026-11-13). No museum is asked for it.
+    var look: String = ""
 
     /// Whether there are no rules; exceptions (`excludeIds`,
     /// `excludeSources`) don't count.
     var isEmpty: Bool {
-        query.isEmpty && artists.isEmpty && styles.isEmpty && subjects.isEmpty && terms.isEmpty
+        query.isEmpty && look.isEmpty && artists.isEmpty && styles.isEmpty && subjects.isEmpty && terms.isEmpty
             && colors.isEmpty
             && kinds.isEmpty && sources.isEmpty && places.isEmpty && yearFrom == nil && yearTo == nil
             && !favoritesOnly
@@ -466,6 +470,7 @@ extension PlaylistRules {
         yearTo = try c.decodeIfPresent(Int.self, forKey: .yearTo)
         favoritesOnly = try c.decode(Bool.self, forKey: .favoritesOnly)
         excludeIds = try c.decodeIfPresent([String].self, forKey: .excludeIds) ?? []  // older servers
+        look = try c.decodeIfPresent(String.self, forKey: .look) ?? ""  // before 1.145.95
     }
 }
 
@@ -2765,8 +2770,8 @@ struct MineTerm: Sendable, Identifiable {
 
 /// One chip of a search or of a smart playlist's rules.
 struct SearchToken: Hashable, Sendable, Identifiable {
-    /// artist | word | style | subject | period | technique | mine | museum
-    /// | museum-out (a museum left out) | color, or for rules of older
+    /// artist | word | look | style | subject | period | technique | mine
+    /// | museum | museum-out (a museum left out) | color, or for rules of older
     /// playlists: legacy-style | legacy-subject (museum facet values).
     let kind: String
     let key: String
@@ -2785,6 +2790,7 @@ struct SearchToken: Hashable, Sendable, Identifiable {
         case "museum": "Muzeum"
         case SearchToken.museumOut: "Bez muzeum"
         case "color": "Kolor"
+        case SearchToken.lookKind: "Wygląd"
         default: "Słowo"
         }
     }
@@ -2800,6 +2806,7 @@ struct SearchToken: Hashable, Sendable, Identifiable {
         case "mine": MineTerm.named(key)?.icon ?? "person.crop.circle"
         case "museum", SearchToken.museumOut: "building.columns"
         case "color": "circle.fill"
+        case SearchToken.lookKind: "eye"
         default: "text.magnifyingglass"
         }
     }
@@ -2809,6 +2816,14 @@ extension SearchToken {
     /// The kind of a museum left out: every museum but it is asked
     /// ("wszystkie poza Yale").
     static let museumOut = "museum-out"
+
+    /// The kind of words for how the works look (`PlaylistRules.look`).
+    static let lookKind = "look"
+
+    /// Words searched by how the works look, as a chip in the field.
+    static func look(_ words: String) -> SearchToken {
+        SearchToken(kind: lookKind, key: words, name: words)
+    }
 
     /// A museum's chip: asked alone (with the others picked) or left out
     /// ("bez Yale").
@@ -2945,6 +2960,7 @@ extension PlaylistRules {
         tokens += styles.map { SearchToken(kind: "legacy-style", key: $0, name: $0) }
         tokens += subjects.map { SearchToken(kind: "legacy-subject", key: $0, name: $0) }
         tokens += SearchPhrases.tokens(query).map { SearchToken(kind: "word", key: $0, name: $0) }
+        if !look.isEmpty { tokens.append(.look(look)) }
         return tokens
     }
 
@@ -2955,6 +2971,8 @@ extension PlaylistRules {
         styles = tokens.filter { $0.kind == "legacy-style" }.map(\.key)
         subjects = tokens.filter { $0.kind == "legacy-subject" }.map(\.key)
         query = SearchPhrases.query(tokens.filter { $0.kind == "word" }.map(\.key))
+        // One look at a time: the last words asked.
+        look = tokens.last { $0.kind == SearchToken.lookKind }?.key ?? ""
     }
 
     /// "years:1880-1914" as "1880–1914".
@@ -3064,6 +3082,8 @@ struct LibraryQuery: Hashable, Sendable {
     var favoritesOnly = false
     /// Only works the owner kept, not those the server added to the catalogue.
     var keptOnly = false
+    /// Words for how the works look, as in `PlaylistRules.look`.
+    var look = ""
     var sort = "artist"
     var offset = 0
     var limit = 200
@@ -3088,6 +3108,7 @@ struct LibraryQuery: Hashable, Sendable {
         excludePlaces = rules.excludePlaces
         yearFrom = rules.yearFrom
         yearTo = rules.yearTo
+        look = rules.look
         self.sort = sort
         self.limit = limit
     }

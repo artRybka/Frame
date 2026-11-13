@@ -534,7 +534,7 @@ actor DemoBackend: FrameBackend {
             terms: query.terms, colors: query.colors, kinds: query.kinds, sources: query.sources,
             excludeSources: query.excludeSources, places: query.places,
             excludePlaces: query.excludePlaces, yearFrom: query.yearFrom,
-            yearTo: query.yearTo, favoritesOnly: query.favoritesOnly
+            yearTo: query.yearTo, favoritesOnly: query.favoritesOnly, look: query.look
         )
         let listed = listed(for: rules)
         let list = Self.sorted(items.filter { Self.matches($0, rules, listed: listed) }, by: query.sort)

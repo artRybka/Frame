@@ -140,6 +140,41 @@ final class TermLookup {
     /// Szukaj can search by that ("Szukaj wyglądem").
     var describesLook: Bool { trimmed.split(whereSeparator: \.isWhitespace).count >= 2 }
 
+    /// The server can search by how works look (Szukaj says so): the
+    /// suggestions offer it, and Return picks it for two words or more.
+    var looks = false
+
+    /// What Return picks, the row marked first in the suggestions (Mateusz
+    /// 2026-11-13: "domyślna opcja (pod lupą na klawiaturze) gdy wpisano
+    /// więcej niż 1 słowo. Wyjątek stanowi nazwisko artysty"): an artist
+    /// whose name or surname was typed, then the words searched by how
+    /// works look, else the words as they are.
+    var chosen: SearchToken? {
+        let words = trimmed
+        guard !words.isEmpty else { return nil }
+        if let artist = namedArtist { return artist }
+        if looks, describesLook { return SearchToken.look(words) }
+        return SearchToken(kind: "word", key: words, name: words)
+    }
+
+    /// The suggested artist (the catalogue's, or the museums') whose name
+    /// the words are: "claude monet", "monet", "van gogh".
+    private var namedArtist: SearchToken? {
+        let typed = Self.fold(trimmed)
+        guard typed.count >= 3 else { return nil }
+        let artists = hits.filter { $0.kind == "artist" } + (hint?.artists ?? [])
+        return artists.first { hit in
+            [hit.name, Names.artist(hit.name)].contains { Self.isName($0, typed: typed) }
+        }?.token
+    }
+
+    /// `typed` (folded) is the whole of `name` or its surname, also in the
+    /// museums' "Gogh, Vincent van".
+    static func isName(_ name: String, typed: String) -> Bool {
+        let full = fold(name).split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return full == typed || full.hasSuffix(" " + typed) || full.hasPrefix(typed + ",")
+    }
+
     /// Puts a chip in and empties the field.
     func pick(_ token: SearchToken, into tokens: Binding<[SearchToken]>) {
         if !tokens.wrappedValue.contains(token) { tokens.wrappedValue.append(token) }
@@ -256,9 +291,12 @@ private struct TermSearch: ViewModifier {
                     focused.wrappedValue = false
                     return
                 }
-                guard let typed = lookup.typed() else { return }
-                lookup.pick(typed.token, into: $tokens)
-                if typed.fromMuseums { pickedFromMuseums() }
+                // The row marked in the suggestions: an artist, the words
+                // by how works look, or the words as they are.
+                guard let chosen = lookup.chosen else { return }
+                let fromMuseums = chosen.kind == "word" && (lookup.typed()?.fromMuseums ?? false)
+                lookup.pick(chosen, into: $tokens)
+                if fromMuseums { pickedFromMuseums() }
             }
             .task(id: lookup.trimmed) { await lookup.lookUp(model.backend, vocabulary: model.vocabulary) }
     }
@@ -393,12 +431,10 @@ extension View {
         _ lookup: TermLookup,
         tokens: Binding<[SearchToken]>,
         focused: FocusState<Bool>.Binding,
-        pickedFromMuseums: @escaping () -> Void = {},
-        lookedFor: ((String) -> Void)? = nil
+        pickedFromMuseums: @escaping () -> Void = {}
     ) -> some View {
         modifier(SuggestionsPanel(
-            lookup: lookup, tokens: tokens, focused: focused, pickedFromMuseums: pickedFromMuseums,
-            lookedFor: lookedFor
+            lookup: lookup, tokens: tokens, focused: focused, pickedFromMuseums: pickedFromMuseums
         ))
     }
 }
@@ -413,7 +449,6 @@ private struct SuggestionsPanel: ViewModifier {
     @Binding var tokens: [SearchToken]
     var focused: FocusState<Bool>.Binding
     let pickedFromMuseums: () -> Void
-    let lookedFor: ((String) -> Void)?
     /// The suggestions' own height: the panel is as tall, up to the room
     /// over the field, and scrolls beyond it.
     @State private var listHeight: CGFloat = 44
@@ -438,10 +473,7 @@ private struct SuggestionsPanel: ViewModifier {
                     VStack(spacing: 0) {
                         Spacer(minLength: 12)
                         ScrollView {
-                            TermSuggestions(
-                                lookup: lookup, tokens: $tokens, pickedFromMuseums: pickedFromMuseums,
-                                lookedFor: looking
-                            )
+                            TermSuggestions(lookup: lookup, tokens: $tokens, pickedFromMuseums: pickedFromMuseums)
                                 // Off the glass's rounder corners.
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 6)
@@ -465,15 +497,6 @@ private struct SuggestionsPanel: ViewModifier {
         }
     }
 
-    /// "Szukaj wyglądem" with the keyboard put away (the words stay).
-    private var looking: ((String) -> Void)? {
-        guard let lookedFor else { return nil }
-        return { words in
-            putKeyboardAway()
-            lookedFor(words)
-        }
-    }
-
     /// As in `TermSearch`: SwiftUI's focus alone doesn't always take the
     /// system field's keyboard.
     private func putKeyboardAway() {
@@ -483,7 +506,9 @@ private struct SuggestionsPanel: ViewModifier {
 }
 
 /// While typing: what the words could mean, a tap puts it in as a chip.
-/// Shown in the panel over the field (`termSuggestions`).
+/// The row Return picks (`TermLookup.chosen`) comes first, marked; the
+/// museums' artists the catalogue doesn't have come last. Shown in the panel
+/// over the field (`termSuggestions`).
 struct TermSuggestions: View {
     let lookup: TermLookup
     @Binding var tokens: [SearchToken]
@@ -491,57 +516,31 @@ struct TermSuggestions: View {
     /// for it yet).
     var pickedFromMuseums: () -> Void = {}
 
-    /// "Szukaj wyglądem": the words searched by how works look (Szukaj
-    /// offers it while the server can).
-    var lookedFor: ((String) -> Void)?
+    /// The museums' artists the catalogue's suggestions don't have.
+    private var museumArtists: [TermHit] {
+        let known = Set(lookup.hits.map(\.id))
+        return (lookup.hint?.artists ?? []).filter { !known.contains($0.id) }
+    }
 
     var body: some View {
+        let chosen = lookup.chosen
         VStack(alignment: .leading, spacing: 0) {
-            if let lookedFor, lookup.describesLook {
-                row(
-                    mark: "word", icon: "eye",
-                    title: "Szukaj wyglądem",
-                    kind: "Dzieła, które tak wyglądają", detail: "", count: nil
-                ) { lookedFor(lookup.trimmed) }
+            if let chosen { chosenRow(chosen) }
+            if lookup.looks, lookup.describesLook, chosen?.kind != SearchToken.lookKind {
+                lookRow(chosen: false)
             }
             if lookup.hits.isEmpty, lookup.hint == nil, !lookup.askingMuseums {
                 // Asking the catalogue (the words are still being typed).
                 SearchWaiting(height: 72)
             }
-            ForEach(lookup.hits) { hit in
-                row(
-                    mark: hit.token.kind, icon: hit.token.icon, title: hit.token.kind == "artist" ? Names.artist(hit.name) : hit.name, kind: kindName(of: hit),
-                    detail: hit.detail, count: lookup.uncounted.contains(hit.id) ? nil : hit.count
-                ) { pick(hit.token, fromMuseums: false) }
+            ForEach(lookup.hits.filter { $0.id != chosen?.id }) { hit in
+                hitRow(hit, fromMuseums: false, chosen: false)
+            }
+            ForEach(museumArtists.filter { $0.id != chosen?.id }) { hit in
+                hitRow(hit, fromMuseums: true, chosen: false)
             }
             if lookup.askingMuseums {
-                SearchWaiting(height: 72)
-            } else if let hint = lookup.hint, hint.total > 0 {
-                VStack(alignment: .leading, spacing: 0) {
-                    Eyebrow("W muzeach: \(Names.works(hint.total))", color: Theme.vermilion)
-                        .padding(.horizontal, 12)
-                        .padding(.top, 12)
-                    ForEach(hint.artists) { artist in
-                        row(mark: "museum", icon: "building.columns", title: Names.artist(artist.name), kind: "Artysta z muzeów",
-                            detail: "", count: nil) { pick(artist.token, fromMuseums: true) }
-                    }
-                    row(mark: "museum", icon: "building.columns", title: "„\(lookup.trimmed)” w muzeach", kind: "Słowo",
-                        detail: "", count: nil) {
-                        pick(SearchToken(kind: "word", key: lookup.trimmed, name: lookup.trimmed), fromMuseums: true)
-                    }
-                    if !hint.items.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 6) {
-                                ForEach(hint.items.prefix(6)) { remote in
-                                    ArtImage(ref: remote.thumb, fallback: remote.thumbFallback, placeholder: remote.item.summary.placeholderColor, maxPixel: 200)
-                                        .frame(width: 56, height: 56)
-                                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                                }
-                            }
-                            .padding(12)
-                        }
-                    }
-                }
+                SearchWaiting(height: 44)
             } else if let hint = lookup.hint, hint.total == 0, lookup.hits.allSatisfy({ $0.count == 0 }) {
                 Text("Nic nie znaleziono.")
                     .font(.subheadline)
@@ -553,9 +552,45 @@ struct TermSuggestions: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// The row Return picks.
+    @ViewBuilder
+    private func chosenRow(_ token: SearchToken) -> some View {
+        if token.kind == SearchToken.lookKind {
+            lookRow(chosen: true)
+        } else if let hit = lookup.hits.first(where: { $0.id == token.id }) {
+            hitRow(hit, fromMuseums: false, chosen: true)
+        } else if let hit = museumArtists.first(where: { $0.id == token.id }) {
+            hitRow(hit, fromMuseums: true, chosen: true)
+        } else {
+            row(mark: token.kind, icon: token.icon, title: token.shownName, kind: token.kindName, detail: "",
+                count: nil, chosen: true) { pick(token, fromMuseums: false) }
+        }
+    }
+
+    /// "Szukaj wyglądem": the works that look as the words say, in the same
+    /// results, the groups narrowing them.
+    private func lookRow(chosen: Bool) -> some View {
+        row(
+            mark: SearchToken.lookKind, icon: "eye", title: "Szukaj wyglądem",
+            kind: "Dzieła, które tak wyglądają", detail: "", count: nil, chosen: chosen
+        ) { pick(.look(lookup.trimmed), fromMuseums: false) }
+    }
+
+    private func hitRow(_ hit: TermHit, fromMuseums: Bool, chosen: Bool) -> some View {
+        row(
+            mark: fromMuseums ? "museum" : hit.token.kind,
+            icon: fromMuseums ? "building.columns" : hit.token.icon,
+            title: hit.token.kind == "artist" ? Names.artist(hit.name) : hit.name,
+            kind: fromMuseums ? "Artysta z muzeów" : kindName(of: hit),
+            detail: fromMuseums ? "" : hit.detail,
+            count: fromMuseums || lookup.uncounted.contains(hit.id) ? nil : hit.count,
+            chosen: chosen
+        ) { pick(hit.token, fromMuseums: fromMuseums) }
+    }
+
     private func row(
         mark tokenKind: String, icon: String, title: String, kind: String, detail: String, count: Int?,
-        action: @escaping () -> Void
+        chosen: Bool = false, action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 10) {
@@ -576,12 +611,26 @@ struct TermSuggestions: View {
                         .font(.footnote.monospacedDigit())
                         .foregroundStyle(Theme.inkSoft)
                 }
+                if chosen {
+                    // What the keyboard's search key picks.
+                    Image(systemName: "return")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Theme.inkSoft)
+                        .accessibilityHidden(true)
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
+            .background {
+                if chosen {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Theme.ink.opacity(0.07))
+                }
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityHint(chosen ? "Wybierane klawiszem Szukaj" : "")
     }
 
     /// A word the works were described with ("wielka fala"), apart from

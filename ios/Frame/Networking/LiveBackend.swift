@@ -78,6 +78,7 @@ struct LiveBackend: FrameBackend {
         if let to = q.yearTo { query.append(URLQueryItem(name: "year_to", value: String(to))) }
         if q.favoritesOnly { query.append(URLQueryItem(name: "favorites", value: "true")) }
         if q.keptOnly { query.append(URLQueryItem(name: "kept", value: "true")) }
+        if !q.look.isEmpty { query.append(URLQueryItem(name: "look", value: q.look)) }
         return try await get("/api/library/items", query: query)
     }
 

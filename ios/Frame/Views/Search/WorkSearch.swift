@@ -189,9 +189,10 @@ final class WorkSearch {
     }
 
     /// Whether the museums have anything for `key`: favourites and
-    /// playlists are the owner's, no museum has them.
+    /// playlists are the owner's, no museum has them; no museum searches by
+    /// how works look.
     private func asksMuseums(_ key: Key) -> Bool {
-        key.museums && !key.rules.asksMine
+        key.museums && !key.rules.asksMine && key.rules.look.isEmpty
     }
 
     /// Takes in the museums' answers as each comes.
