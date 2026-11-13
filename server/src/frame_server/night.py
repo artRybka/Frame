@@ -512,6 +512,9 @@ def tasks(service: FrameService) -> list[NightTask]:
     def daily(night: Night) -> None:
         service.daily.tick()
 
+    def leftover(night: Night) -> Done:
+        return Done(*service.leftover.at_night(night.quiet))
+
     def grouping(night: Night) -> None:
         library.works()  # copies of one work together, after the turnover
         library.hearts_to_best()  # a heart follows the work to its best copy
@@ -736,6 +739,9 @@ def tasks(service: FrameService) -> list[NightTask]:
             group=text,
         ),
         NightTask("daily", daily, "Studium dnia", paid=True, group=disc),
+        # In the period's last days, what Claude's limit leaves goes on more
+        # studies (leftover.py), through the Batch API.
+        NightTask("leftover", leftover, "Studia z zapasu", paid=True, group=disc),
         NightTask("playlists", playlists, "Liczniki playlist", group=disc),
         NightTask("frame line", frame_line, "Kolejka ramki", group=disc),
         NightTask("sharper", sharper, "Ostrzejsze kopie", group=cat),

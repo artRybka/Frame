@@ -144,7 +144,14 @@ class Study:
         self._restoring: set[str] = set()
         job.on_stage = self._staged
         daily.on_written = self.adopt
+        daily.studied = self.studied
         ai.on_later = self._made_later
+
+    def studied(self) -> set[str]:
+        """The works with a study, or one asked for or on its way."""
+        with self._lock:
+            restoring = set(self._restoring) | set(self._asking)
+        return set(self.library.get_state(STATE_KEY, [])) | self.ai.later_ids(KIND) | restoring
 
     def requested(self, item_id: str) -> bool:
         return item_id in self.library.get_state(STATE_KEY, [])

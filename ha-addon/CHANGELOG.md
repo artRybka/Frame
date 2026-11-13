@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.145.100
+
+- Resztka miesiąca na studia (Konfiguracja → Claude, karta „Resztka
+  miesiąca”, domyślnie wyłączona). W ostatnich dniach okresu (domyślnie 3)
+  to, co zostaje z limitu Claude ponad zapas (domyślnie 10 USD), idzie nocą
+  na nowe studia dzieł przez Batch: najpierw dzieła, które kurator Studium
+  dnia uznał za dobre, ale wybrał inne, potem nowe listy według tych samych
+  reguł i tego samego kuratora, zaczynając od Ulubionych, playlist i
+  Odkrywaj. Najwyżej 25 studiów na noc, jedno na artystę, w ostatniej dobie
+  okresu już nic. Ok. 0,80 USD za studium, potem według zmierzonego kosztu.
+  Te same wyłączenia co dla Studium dnia (szkice, projekty, rękopisy,
+  fotografia, rzeźba, ceramika, słabe kopie). Studia przychodzą bez
+  powiadomień i są w „Studiach dzieł”.
+- Co zostanie po studiach, idzie na słowa kluczowe i polskie opisy dzieł
+  katalogu, które ich jeszcze nie mają (Haiku przez Batch, najpierw
+  Ulubione i playlisty).
+- Dzień odnowienia: limit i wydatki Claude liczą się od wybranego dnia
+  miesiąca, tak jak odnawiają się środki na koncie (domyślnie 1.).
+- Studium dnia nie wybiera dzieła, które ma już studium.
+- Nowe zadanie nocne „Studia z zapasu” w pakiecie „Odkrywaj i ramka”.
+
 ## 1.145.99
 
 - Dwa dzieła z tą samą kopią łączą się w jedno od razu. W playliście

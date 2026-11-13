@@ -94,6 +94,11 @@ UNFIT_MAX = 5000
 POOR_COPY_KEY = "daily_poor_copy"
 #: The curator's choice of each day: {day: {"item", "reason", "unfit"}}.
 CURATED_KEY = "daily_curated"
+#: The works the curator found fit but did not choose: the first candidates
+#: for more studies (``leftover``, Mateusz 2026-11-13). {id: ISO day it
+#: was found fit}, the newest last.
+RUNNERS_KEY = "daily_runners_up"
+RUNNERS_MAX = 2000
 #: What a sketch's title (``good.SKETCH_TITLE``: the rules put it last; the
 #: curator may still choose one that stands as a work by itself) and a pale
 #: sheet take from a work's score.
@@ -198,6 +203,9 @@ class Daily:
         #: The works found worth no study on their card (``study_gate``):
         #: never the study of the day either.
         self.study_unfit: Callable[[], set[str]] = set
+        #: The works with a study (or one on its way): not the study of the
+        #: day, its page would be paid for twice; set by ``frame_server.study``.
+        self.studied: Callable[[], set[str]] = set
 
     # -- the days ----------------------------------------------------------
 
@@ -271,7 +279,7 @@ class Daily:
         ranked = sorted(pool, key=lambda i: values[i.id], reverse=True)
         first: Item | None = None
         for _ in range(shortlists):
-            shortlist = self._shortlist(ranked)
+            shortlist = self.shortlist(ranked)
             if not shortlist:
                 break
             if first is None:
@@ -319,24 +327,38 @@ class Daily:
         rules = PlaylistRules(kinds=[ItemKind.ARTWORK])
         seed = self._seed(day, skipped)
         drawn = self.library.query(rules, sort="random", seed=seed, limit=POOL, proposing=True)[1]
-        unfit = self.unfit().keys() | self.study_unfit()
-        poor = self.poor_copies()
+        studyable = self.studyable()
         return [
             i
             for i in drawn
             if i.id not in recent
-            and i.id not in unfit
-            # No sketchbook page, sheet of notes or design (Mateusz 2026-11-13).
-            and not against(i, Place.STUDIED)
-            and poor.get(i.id) != copy_key(i)
-            and i.look is None
-            and i.artist
-            # An art archive's old slide: no copy to look at for a quarter of
-            # an hour. (Copies and "Sztuki inne" are not proposed at all.)
-            and not archive_own(i)
-            and (said_side(i) or MIN_SIDE) >= MIN_SIDE
+            and studyable(i)
             and not (recent_artists and made_by(i.artist, recent_artists))
         ]
+
+    def studyable(self) -> Callable[[Item], bool]:
+        """Whether a work may be given a study by the rules of the study of
+        the day (its own picks and ``leftover``'s): not set aside by the
+        curator or the study's gate, no sketch, design or poor copy, an
+        artist known, a picture large enough, and no study yet."""
+        unfit = self.unfit().keys() | self.study_unfit() | self.studied()
+        poor = self.poor_copies()
+
+        def fits(i: Item) -> bool:
+            return (
+                i.id not in unfit
+                # No sketchbook page, sheet of notes or design (Mateusz 2026-11-13).
+                and not against(i, Place.STUDIED)
+                and poor.get(i.id) != copy_key(i)
+                and i.look is None
+                and bool(i.artist)
+                # An art archive's old slide: no copy to look at for a quarter
+                # of an hour. (Copies and "Sztuki inne" are not proposed at all.)
+                and not archive_own(i)
+                and (said_side(i) or MIN_SIDE) >= MIN_SIDE
+            )
+
+        return fits
 
     # -- the curator ---------------------------------------------------------
 
@@ -356,7 +378,7 @@ class Daily:
     def _curated(self) -> bool:
         return self.claude is not None and self.job.enabled()
 
-    def _shortlist(self, ranked: list[Item]) -> list[tuple[Item, float | None]]:
+    def shortlist(self, ranked: list[Item]) -> list[tuple[Item, float | None]]:
         """The rules' best works, each by another artist, with how much of a
         light sheet is marked (None when its picture is not to be had)."""
         picked: list[tuple[Item, float | None]] = []
@@ -377,14 +399,33 @@ class Daily:
             log.info("study of the day: no picture of %s (%s)", item.id, err)
             return None
 
-    def _curate(self, day: date, shortlist: list[tuple[Item, float | None]]) -> Choice | None:
+    def runners_up(self) -> dict[str, str]:
+        """The works the curator found fit and did not choose, with the day."""
+        return dict(self.library.get_state(RUNNERS_KEY, {}))
+
+    def keep_runners_up(self, items: list[Item], day: date) -> None:
+        if not items:
+            return
+        runners = self.runners_up()
+        for item in items:
+            runners.pop(item.id, None)
+            runners[item.id] = day.isoformat()
+        self.library.set_state(RUNNERS_KEY, dict(list(runners.items())[-RUNNERS_MAX:]))
+
+    def drop_runners_up(self, ids: set[str]) -> None:
+        runners = self.runners_up()
+        if ids & runners.keys():
+            self.library.set_state(RUNNERS_KEY, {k: v for k, v in runners.items() if k not in ids})
+
+    def judge(self, shortlist: list[tuple[Item, float | None]], what: str) -> Choice | None:
         """The curator's answer about ``shortlist`` (its work None when it
-        set every one aside); None when it could not answer."""
+        set every one aside), the works it set aside kept; None when it
+        could not answer. ``what``: for the log."""
         assert self.claude is not None
         try:
             choice = curate(self.claude, self.job.images, shortlist)
         except Exception as err:
-            log.warning("study of the day: the curator did not answer (%s)", err)
+            log.warning("%s: the curator did not answer (%s)", what, err)
             return None
         if choice.unfit:
             unfit = self.unfit()
@@ -395,21 +436,31 @@ class Daily:
             poor.update(choice.poor_copy)
             self.library.set_state(POOR_COPY_KEY, dict(list(poor.items())[-UNFIT_MAX:]))
         log.info(
-            "study of the day %s: curator chose %s (%s), set aside %d of %d: %s; "
+            "%s: curator chose %s (%s), found fit %d, set aside %d of %d: %s; "
             "for the photograph: %s",
-            day,
+            what,
             choice.item.id if choice.item else "nothing",
             choice.reason,
+            len(choice.fit),
             len(choice.unfit) + len(choice.poor_copy),
             len(shortlist),
             "; ".join(f"{k}: {v}" for k, v in choice.unfit.items()),
             ", ".join(choice.poor_copy) or "none",
         )
-        if choice.item is None:
+        return choice
+
+    def _curate(self, day: date, shortlist: list[tuple[Item, float | None]]) -> Choice | None:
+        """The curator's answer about ``shortlist`` for ``day``: the works
+        it found fit and did not choose kept for more studies."""
+        choice = self.judge(shortlist, f"study of the day {day}")
+        if choice is None or choice.item is None:
             return choice
+        chosen = choice.item
+        self.keep_runners_up([i for i in choice.fit if i.id != chosen.id], day)
+        self.drop_runners_up({chosen.id})
         curated = self.curated()
         curated[day.isoformat()] = {
-            "item": choice.item.id,
+            "item": chosen.id,
             "reason": choice.reason,
             "unfit": sorted(choice.unfit),
             "poor_copy": sorted(choice.poor_copy),

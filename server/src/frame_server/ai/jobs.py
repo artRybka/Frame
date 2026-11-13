@@ -822,6 +822,55 @@ class AiWorker:
             log.info("language model: %d questions ordered for the night", sent)
         return sent
 
+    def order_rest(
+        self,
+        kinds: tuple[str, ...],
+        usd: float,
+        first: Callable[[list[Item]], list[Item]] = lambda items: items,
+    ) -> int:
+        """The library's items without an up-to-date note of ``kinds``
+        (``first``: in which order), sent through the Batch API for at most
+        ``usd`` in all (Mateusz 2026-11-13: the month's rest, after the
+        studies, on the catalogue's keywords and Polish texts); how many
+        questions went."""
+        sent = 0
+        in_batches = self._batched()
+        for kind in kinds:
+            job = self.jobs.get(kind)
+            if job is None or not job.enabled() or usd <= 0:
+                continue
+            later = self.later_ids(kind)
+            items = first(
+                [
+                    i
+                    for i in self._stale(job, job.in_library)
+                    if (kind, i.id) not in in_batches
+                    and (kind, i.id) not in self._skipped
+                    and i.id not in later
+                ]
+            )
+            while items and job.estimate_items(items) > min(usd, self.claude.budget_left()):
+                items = items[: len(items) // 2]
+            if not items:
+                continue
+            usd -= job.estimate_items(items)
+            for start in range(0, len(items), BATCH_SIZE):
+                sent += self._send_batch(job, items[start : start + BATCH_SIZE])
+        if sent:
+            self._next_poll = time.monotonic() + POLL_SECONDS
+            log.info("language model: %d questions of %s ordered", sent, ", ".join(kinds))
+        return sent
+
+    def batched_usd(self, kinds: tuple[str, ...]) -> float:
+        """About what the questions of ``kinds`` in batches not ended yet cost."""
+        usd = 0.0
+        for record in self._batches():
+            job = self.jobs.get(record["kind"])
+            if job is not None and record["kind"] in kinds and "later" not in record:
+                left = max(len(record["ids"]) - int(record.get("done", 0)), 0)
+                usd += job.estimate_usd(left, True)
+        return usd
+
     def _prepare_batch(self, kind: str) -> None:
         """Send the next chunk of the library; done when nothing is left."""
         job = self.jobs[kind]
