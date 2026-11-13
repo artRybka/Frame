@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.104
+
+- Obraz na karcie dzieła znów wypełnia całą szerokość strony (najwyżej
+  460 pt wysokości) i nie kurczy się zaraz po wejściu. Gdy wczytywały się
+  kolejne części karty, strona dawała obrazowi coraz mniej wysokości, a on
+  jako jedyny ustępował: The Mussel Harvest stał mały pośrodku pola. Teraz
+  obraz bierze od strony tylko szerokość. Dotyczy obu widoków: „Oryginał” i
+  „Na ramce”.
+
 ## 1.145.103
 
 - Usunięte zbędne kopie dzieła nie wracają. Po starcie serwer usuwa kopie,

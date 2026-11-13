@@ -380,6 +380,7 @@ struct ItemDetailView: View {
             facts(item)
             LooksLikeSection(item: item).id("looks")
         }
+        .layoutProbe("column")
         .padding(.horizontal, Theme.gutter)
         .padding(.bottom, 40)
     }
@@ -451,8 +452,7 @@ struct ItemDetailView: View {
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .shadow(color: .black.opacity(0.22), radius: 16, y: 12)
-                    .frame(maxHeight: 460)
-                    .frame(maxWidth: .infinity)
+                    .pictureBox()
                 Picker("Widok", selection: .constant(ViewMode.original)) {
                     ForEach(ViewMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
@@ -950,6 +950,7 @@ struct ItemDetailView: View {
                     // that gives no size) shrank a portrait leaf to a stamp.
                     Color.clear
                         .aspectRatio(CGFloat(aspect(item)), contentMode: .fit)
+                        .layoutProbe("box")
                         .overlay {
                             ArtImage(
                                 ref: item.originalRef, fallback: .thumb(item.id), placeholder: .clear,
@@ -977,8 +978,8 @@ struct ItemDetailView: View {
                     framePreview(item)
                 }
             }
-            .frame(maxHeight: 460)
-            .frame(maxWidth: .infinity)
+            .pictureBox()
+            .layoutProbe("group")
             Picker("Widok", selection: $view.animation(.easeInOut)) {
                 ForEach(ViewMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
@@ -1419,5 +1420,62 @@ struct TitleSkeleton: View {
         .breathing()
         .accessibilityElement()
         .accessibilityLabel("Wczytuję dzieło")
+    }
+}
+
+/// The picture's place on a work's card ("Oryginał", "Na ramce" and the
+/// tile's picture before the work is here): as wide as the page, as tall as
+/// the picture's shape makes it, at most `maxHeight`, whatever height the
+/// page offers. Under a plain `.frame(maxHeight: 460)` the picture took the
+/// height the card's stack offered it, and the stack offered less as the
+/// card's sections came in: the picture was the only part that gave way
+/// (Mateusz 2026-11-13: "zaraz po wejściu w kartę dzieła podgląd dzieła się
+/// zmniejsza i nie wypełnia właściwie pola"; The Mussel Harvest 250 × 207 pt
+/// on a 400 pt page, `CardPictureLayoutTests`).
+struct PictureBox: Layout {
+    var maxHeight: CGFloat = 460
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let picture = subviews.first else { return .zero }
+        // The page's width, never its height.
+        let width = proposal.width.flatMap { $0.isFinite ? $0 : nil }
+        let fitted = picture.sizeThatFits(ProposedViewSize(width: width, height: maxHeight))
+        return CGSize(width: width ?? fitted.width, height: min(fitted.height, maxHeight))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for picture in subviews {
+            picture.place(
+                at: CGPoint(x: bounds.midX, y: bounds.midY), anchor: .center,
+                proposal: ProposedViewSize(width: bounds.width, height: bounds.height)
+            )
+        }
+    }
+}
+
+extension View {
+    /// See `PictureBox`.
+    func pictureBox(maxHeight: CGFloat = 460) -> some View {
+        PictureBox(maxHeight: maxHeight) { self }
+            .frame(maxWidth: .infinity)
+    }
+}
+
+/// Debug builds (tests): the sizes parts of the card were laid out at, as
+/// they come (`CardPictureLayoutTests`).
+enum LayoutProbe {
+    nonisolated(unsafe) static var log: [String] = []
+}
+
+extension View {
+    func layoutProbe(_ name: String) -> some View {
+        #if DEBUG
+        onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+            if LayoutProbe.log.count > 500 { LayoutProbe.log.removeFirst(250) }
+            LayoutProbe.log.append("\(name) \(Int(size.width))x\(Int(size.height))")
+        }
+        #else
+        self
+        #endif
     }
 }
