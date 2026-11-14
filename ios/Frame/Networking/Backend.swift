@@ -15,6 +15,9 @@ enum ImageRef: Hashable, Sendable {
     /// tries crops not saved yet. Without `ownLook` a photo sent once is
     /// framed as the settings frame photos.
     case framePreview(String, settings: FrameSettings? = nil, framing: FramingCrops? = nil, ownLook: Bool = true)
+    /// The museum's photograph of the work, whole ("Pełny kadr"), `side`
+    /// px long at most; `version` keeps a cut's change apart.
+    case museumPhoto(String, side: Int, version: String)
     case path(String)  // server-relative path, e.g. /api/previews/<id>.png
     case url(URL)  // public URL (museum CDN)
 }
@@ -48,6 +51,13 @@ protocol FrameBackend: Sendable {
     /// The card opened: when the work's picture is poor, the server looks
     /// for a sharper copy in other sources; waits up to `wait` seconds.
     func sharpen(itemID: String, wait: Int) async throws -> SharperView
+    /// The card opened: a work not looked at yet is cut down to the work in
+    /// its museum photograph when something is around it (`wait`: seconds).
+    func checkCut(itemID: String, wait: Int) async throws -> CutView
+    /// "Popraw kadr" (the corners of the work as shown) or the paper choice.
+    func setCut(itemID: String, update: CutUpdate) async throws -> Item
+    /// "Cofnij kadrowanie": the museum's photograph whole, for good.
+    func removeCut(itemID: String) async throws -> Item
     /// The card opened on a work whose source gathers pictures (Commons,
     /// Openverse, WikiArt): which museum it is in; waits up to `wait` seconds.
     func holder(itemID: String, wait: Int) async throws -> HolderView

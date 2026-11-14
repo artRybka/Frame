@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from ..imaging.cut import long_share
 from .images import OWN_SOURCES, said_side
 from .models import Item, ItemKind
 
@@ -49,4 +50,8 @@ def low_side(item: Item, size: tuple[int, int] | None = None) -> int:
         side = max(size)
     if side is None and _sides is not None:
         side = _sides(item)
+    shown = item.cut_shown()
+    if side is not None and shown is not None and item.cut is not None:
+        # Sizes are the museum photograph's; the work cut out of it is less.
+        side = round(side * long_share(shown, (round(item.cut.aspect * 1000), 1000)))
     return side if side is not None and 0 < side < LOW_SIDE else 0

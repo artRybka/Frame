@@ -53,6 +53,10 @@ class AiConfig(BaseModel):
     #: Facts about a work from the web for its study (Sonnet with the web
     #: search, once a work, about 0.3 USD; ``ai.web_facts``, "G8").
     web_facts: bool = True
+    #: Museum photographs cut down to the work: the frame, the easel, the
+    #: board around it (Haiku picks them, Opus sets the corners; at night
+    #: and when a card opens, ``ai.crops``).
+    crops: bool = True
     #: Google's key (the image model, ``ai.drawn``).
     gemini_api_key: str | None = None
     #: The study sheets of the analyses drawn by the image model (three
@@ -94,6 +98,7 @@ class AiConfigUpdate(BaseModel):
     audit: bool | None = None
     journey: bool | None = None
     web_facts: bool | None = None
+    crops: bool | None = None
     drawn: bool | None = None
     looks: bool | None = None
     stages: bool | None = None
@@ -177,7 +182,7 @@ class AiConfigStore:
             return config.curator
         if kind == "twins_judge":
             return config.twins_judge
-        if kind in ("gatekeeper", "audit", "journey", "web_facts", "stages"):
+        if kind in ("gatekeeper", "audit", "journey", "web_facts", "stages", "crops"):
             return bool(getattr(config, kind))
         return True
 

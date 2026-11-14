@@ -74,7 +74,7 @@ actor DemoBackend: FrameBackend {
     ]
     private var aiValue = AiSettings(
         keySet: false, keyTail: nil, keyFromApp: false, plText: true, keywordsArtworks: true,
-        keywordsPhotos: true, daily: true, searchWords: true, curator: true, twinsJudge: true, gatekeeper: true, audit: true, looks: true, journey: true, webFacts: true, stages: true,
+        keywordsPhotos: true, daily: true, searchWords: true, curator: true, twinsJudge: true, gatekeeper: true, audit: true, looks: true, journey: true, webFacts: true, crops: true, stages: true,
         studyRefresh: StudyRefresh(
             waiting: 42, rewriteWaiting: 0, running: false, asked: 0, rewriting: 0,
             found: 0, rewritten: 0, spentUsd: 0, factsUsd: 4.2, rewriteUsd: 1.26
@@ -579,6 +579,32 @@ actor DemoBackend: FrameBackend {
             artistNote: item.artistBio, written: "note", sources: ["dane muzeum", "obraz"]
         )
         return PolishView(status: "ready", text: text)
+    }
+
+    /// Nothing is cut in the demo by itself: its pictures are bundled whole.
+    func checkCut(itemID: String, wait: Int) async throws -> CutView {
+        CutView(changed: false, item: try await item(id: itemID))
+    }
+
+    func setCut(itemID: String, update: CutUpdate) async throws -> Item {
+        let stamp = ISO8601DateFormatter().string(from: .now)
+        return try self.update(itemID) { item in
+            var cut = item.cut ?? Cut(aspect: item.width.flatMap { w in item.height.map { Double(w) / Double(max($0, 1)) } } ?? 0.75)
+            cut.by = "owner"
+            cut.at = stamp
+            if let paper = update.paper { cut.paper = paper }
+            if let corners = update.corners {
+                if !cut.paper, cut.plate != nil { cut.plate = corners } else { cut.work = corners }
+            }
+            item.cut = cut
+        }
+    }
+
+    func removeCut(itemID: String) async throws -> Item {
+        let stamp = ISO8601DateFormatter().string(from: .now)
+        return try update(itemID) { item in
+            item.cut = Cut(by: "owner", aspect: item.cut?.aspect ?? 0, around: item.cut?.around ?? [], at: stamp)
+        }
     }
 
     func sharpen(itemID: String, wait: Int) async throws -> SharperView {
@@ -1891,6 +1917,7 @@ actor DemoBackend: FrameBackend {
         if let value = update.curator { aiValue.curator = value }
         if let value = update.twinsJudge { aiValue.twinsJudge = value }
         if let value = update.gatekeeper { aiValue.gatekeeper = value }
+        if let value = update.crops { aiValue.crops = value }
         if let value = update.audit { aiValue.audit = value }
         if let value = update.looks { aiValue.looks = value }
         if let value = update.journey { aiValue.journey = value }
@@ -2042,7 +2069,7 @@ actor DemoBackend: FrameBackend {
         let url: URL?
         switch image {
         case let .thumb(id), let .tile(id): url = Self.bundled(id) ?? imageURLs[id]?.thumb
-        case let .image(id), let .original(id, _): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
+        case let .image(id), let .original(id, _), let .museumPhoto(id, _, _): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
         case let .framePreview(id, settings, framing, _):
             url = framed(id, settings, trying: framing) ?? Self.bundled(id) ?? imageURLs[id]?.thumb
         case let .path(path) where path.hasPrefix("/demo/detail/"):

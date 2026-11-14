@@ -49,6 +49,8 @@ class AiView(BaseModel):
     web_facts: bool = True
     #: The study's "Jak powstawał", told from a technical study ("G2").
     stages: bool = True
+    #: Museum photographs cut down to the work ("Kadrowanie zdjęć dzieł").
+    crops: bool = True
     #: Works on the list "Do sprawdzenia": set aside by the gatekeeper, and
     #: the audit's findings.
     review_count: int = 0
@@ -179,6 +181,7 @@ def _view(svc: FrameService) -> AiView:
         journey=config.journey,
         web_facts=config.web_facts,
         stages=config.stages,
+        crops=config.crops,
         review_count=len(svc.gatekeeper.written()) + len(svc.audit.written()),
         monthly_limit_usd=config.monthly_limit_usd,
         spent_usd=round(sum(spent.values()), 4),

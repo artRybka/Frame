@@ -801,6 +801,17 @@ def tasks(service: FrameService) -> list[NightTask]:
             group=dup,
             ahead=service.audit.ahead,
         ),
+        # Museum photographs cut down to the work: Haiku picks the works
+        # with a frame, an easel or a board around them, Opus sets the
+        # corners (ai/crops.py).
+        NightTask(
+            "crops",
+            critic_night(service.crops, ("przycięte", "przycięte", "przyciętych")),
+            "Kadrowanie zdjęć dzieł",
+            paid=True,
+            group=dup,
+            ahead=service.crops.ahead,
+        ),
         # Once a month: Commons' files with a tile set ("Pod lupą").
         NightTask("tile sets", service.player.tile_sets_at_night, "Kafle „Pod lupą”", group=cat),
         # Downloads, gently, a limited number a night.

@@ -80,6 +80,9 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
     /// A sharper copy of the picture from another source, shown in place
     /// of the museum's own (the server found it when the card was opened).
     var sharper: SharperCopy? = nil
+    /// The work cut out of the museum's photograph (a frame, an easel, a
+    /// board around it; Mateusz 2026-11-14): nil when it never was.
+    var cut: Cut? = nil
     /// The museum the work is in ("Muzeum Narodowe w Warszawie"), not where
     /// its picture is from: "" when the server does not know it (yet), nil
     /// from a server before 1.81.
@@ -116,7 +119,34 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
     /// The display-size original: the sharper copy's under its own address
     /// (the one before stays in the caches under the plain one).
     var originalRef: ImageRef {
-        sharper.map { .original(id, version: $0.itemId) } ?? .image(id)
+        let version = pictureVersion
+        return version.isEmpty ? .image(id) : .original(id, version: version)
+    }
+
+    /// Which picture the work shows: the sharper copy's id ("" its own),
+    /// and the cut's stamp after "|" when it is cut. A change drops the
+    /// pictures kept from before (`AppModel.pictureSeen`).
+    var pictureVersion: String { Cut.version(picture: sharper?.itemId ?? "", cut: cutVersion) }
+
+    /// The cut of the picture shown now: nil without one, when the owner
+    /// keeps the photograph whole, or when it was set on another picture.
+    var cutShown: [[Double]]? {
+        guard let cut, cut.picture == (sharper?.itemId ?? "") else { return nil }
+        return cut.shown
+    }
+
+    var isCropped: Bool { cutShown != nil }
+
+    /// `Item.cut_version` on the server: changes with every change of the cut.
+    var cutVersion: String {
+        guard let cut, cutShown != nil else { return "" }
+        return cut.at.isEmpty ? "cut" : cut.at
+    }
+
+    /// Width / height of the work as shown: the cut's, else nil.
+    var cutAspect: Double? {
+        guard let cut, let shown = cutShown else { return nil }
+        return Cut.aspect(of: shown, photo: cut.aspect)
     }
 
     /// The title: for a photo its caption, else the model's words, else
@@ -136,11 +166,14 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
     }
 
     var summary: ItemSummary {
-        ItemSummary(
+        // A work cut out of its photograph: the tile has the cut's shape.
+        let shape = cutAspect.map { (width ?? 1000, Int((Double(width ?? 1000) / $0).rounded())) }
+        return ItemSummary(
             id: id, kind: kind, source: source, title: displayTitle, artist: artist, dateText: dateText,
-            year: year, colors: colors, width: width, height: height, favorite: favorite,
+            year: year, colors: colors, width: shape?.0 ?? width, height: shape?.1 ?? height, favorite: favorite,
             suitability: suitability, heldBy: heldBy, heldAt: heldAt, picture: sharper?.itemId ?? "",
-            subtitle: photoLine, restored: sharper?.isRestored == true ? true : nil
+            subtitle: photoLine, restored: sharper?.isRestored == true ? true : nil,
+            cropped: isCropped ? true : nil, cut: cutVersion
         )
     }
 }
@@ -208,6 +241,75 @@ struct SharperCopy: Codable, Hashable, Sendable {
 
     var isChosen: Bool { chosen == true }
     var isRestored: Bool { restored == true }
+}
+
+/// The work in its museum photograph, without what is around it (a
+/// frame, an easel, the board; server `Cut`, Mateusz 2026-11-14). Corners
+/// (top-left, top-right, bottom-right, bottom-left) as fractions of the
+/// photograph's width and height.
+struct Cut: Codable, Hashable, Sendable {
+    /// The work as shown (a print with its paper); nil, the photograph whole.
+    var work: [[Double]]? = nil
+    /// A print without its paper ("Sama odbitka"), when known.
+    var plate: [[Double]]? = nil
+    /// "Z papierem" (true) or "Sama odbitka".
+    var paper: Bool = true
+    /// "auto" (the model) or "owner".
+    var by: String = "auto"
+    /// The photograph's width / height.
+    var aspect: Double = 0
+    /// The copy it was set on ("" the museum's own picture).
+    var picture: String = ""
+    /// What was around the work ("frame", "easel", "paper_margin"…).
+    var around: [String] = []
+    var at: String = ""
+
+    var shown: [[Double]]? { !paper && plate != nil ? plate : work }
+    var byOwner: Bool { by == "owner" }
+    /// A print or drawing on its sheet: "Z papierem / Sama odbitka".
+    var hasPaper: Bool { plate != nil || around.contains("paper_margin") || around.contains("page_text") }
+
+    /// The picture's version: the copy's id, and the cut's stamp after "|".
+    static func version(picture: String, cut: String) -> String {
+        cut.isEmpty ? picture : "\(picture)|\(cut)"
+    }
+
+    /// Width / height of the part inside `quad` of a photograph of `photo`
+    /// (width / height).
+    static func aspect(of quad: [[Double]], photo: Double) -> Double? {
+        guard quad.count == 4, quad.allSatisfy({ $0.count == 2 }), photo > 0 else { return nil }
+        func side(_ a: Int, _ b: Int) -> Double {
+            hypot((quad[b][0] - quad[a][0]) * photo, quad[b][1] - quad[a][1])
+        }
+        let width = max(side(0, 1), side(3, 2))
+        let height = max(side(0, 3), side(1, 2))
+        return height > 0 ? width / height : nil
+    }
+
+    /// What was around the work, in Polish, for "Pełny kadr".
+    var aroundText: String {
+        let names: [(String, String)] = [
+            ("frame", "w ramie"), ("easel", "na sztaludze"), ("mount", "w passe-partout"),
+            ("backdrop", "na tle"), ("colour_chart", "z tablicą barw"), ("paper_margin", "na arkuszu"),
+            ("page_text", "na stronie z tekstem"),
+        ]
+        let said = names.filter { around.contains($0.0) }.map(\.1)
+        guard !said.isEmpty else { return "" }
+        return said.count == 1 ? said[0] : said.dropLast().joined(separator: ", ") + " i " + said.last!
+    }
+}
+
+/// The work after its card asked whether its photograph is cut down to
+/// the work: `changed` when it was just now.
+struct CutView: Codable, Hashable, Sendable {
+    var changed: Bool
+    var item: Item
+}
+
+/// The owner's cut ("Popraw kadr") or the paper switch.
+struct CutUpdate: Codable, Hashable, Sendable {
+    var corners: [[Double]]? = nil
+    var paper: Bool? = nil
 }
 
 /// A sharper copy of a work's picture, looked for as its card opens:
@@ -372,6 +474,19 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     /// Its picture was drawn again by the image model ("Kreatywny
     /// restaurator"): amber sparkles in place of the low resolution's dots.
     var restored: Bool? = nil
+    /// Its picture is cut out of the museum's photograph: the crop's mark
+    /// after the date. Nil from a server before 1.146.
+    var cropped: Bool? = nil
+    /// Changes with every change of the cut ("" without one).
+    var cut: String? = nil
+
+    var isCropped: Bool { cropped == true }
+
+    /// `Item.pictureVersion`: the copy and the cut, for `pictureSeen`; nil
+    /// from a server before 1.97.2.
+    var pictureVersion: String? {
+        picture.map { Cut.version(picture: $0, cut: cut ?? "") }
+    }
 
     /// The title "Teraz" shows: Polish when there is one.
     var shownTitle: String { titlePl ?? title }
@@ -1541,6 +1656,9 @@ struct AiSettings: Codable, Hashable, Sendable {
     /// Facts from the web woven into new studies (Sonnet with the web
     /// search); nil from older servers.
     var webFacts: Bool? = nil
+    /// Museum photographs cut down to the work ("Kadrowanie zdjęć dzieł");
+    /// nil from older servers.
+    var crops: Bool? = nil
     /// The study's "Jak powstawał" drawn by the image model; nil from
     /// older servers.
     var stages: Bool? = nil
@@ -1651,6 +1769,7 @@ struct AiSettingsUpdate: Encodable, Sendable {
     var journey: Bool?
     var webFacts: Bool?
     var stages: Bool?
+    var crops: Bool?
     var monthlyLimitUsd: Double?
     var drawn: Bool?
     var geminiMonthlyLimitUsd: Double?

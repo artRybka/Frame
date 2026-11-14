@@ -189,6 +189,14 @@ struct AiSection: View {
                         value: gatekeeper
                     ) { AiSettingsUpdate(gatekeeper: $0) }
                 }
+                if let crops = settings.crops {
+                    Divider()
+                    toggle(
+                        "Kadrowanie zdjęć dzieł",
+                        hint: "Przycina zdjęcia z muzeów do samego dzieła, gdy widać ramę, sztalugę albo tło. Haiku wybiera dzieła, Opus ustawia narożniki. Ok. 1–2 centy za przycięte dzieło.",
+                        value: crops
+                    ) { AiSettingsUpdate(crops: $0) }
+                }
                 if let audit = settings.audit {
                     Divider()
                     toggle(

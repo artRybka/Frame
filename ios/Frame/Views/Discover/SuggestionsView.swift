@@ -557,7 +557,7 @@ struct ZoomWorkCard: View {
         // The card opened from here shows this much while it loads.
         .onAppear {
             ItemPeeks.remember(remote.summary, thumb: remote.thumb)
-            if let picture = remote.summary.picture { model.pictureSeen(remote.id, copy: picture) }
+            if let picture = remote.summary.pictureVersion { model.pictureSeen(remote.id, copy: picture) }
         }
     }
 }

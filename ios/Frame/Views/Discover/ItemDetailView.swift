@@ -25,6 +25,11 @@ struct ItemDetailView: View {
     /// 0 when it is not, as the server told it once the card opened or a
     /// copy was picked; nil, the tile's word for it until then.
     @State private var lowKnown: Int?
+    /// "Popraw kadr" on the whole screen; the museum's photograph large.
+    @State private var correctingCut = false
+    @State private var showingFullPhoto = false
+    /// The cut asked of the server (the print's edge: some seconds).
+    @State private var cutBusy = false
     /// "Kreatywny restaurator" at work (half a minute).
     @State private var restoring = false
     @State private var draft = FramingDraft()
@@ -178,7 +183,9 @@ struct ItemDetailView: View {
                     findingCopies: $findingCopies, pictureSide: pictureSize.map { max($0.0, $0.1) },
                     keepOwn: { Task { await keepOwnPicture() } },
                     bringCopy: { bringingCopy = true },
-                    restore: canRestore(item) ? { Task { await restoreByModel() } } : nil
+                    restore: canRestore(item) ? { Task { await restoreByModel() } } : nil,
+                    correctCut: canCut(item) && model.isOwner ? { correctingCut = true } : nil,
+                    undoCut: canCut(item) && model.isOwner && item.isCropped ? { Task { await undoCut() } } : nil
                 )
             }
         }
@@ -191,6 +198,15 @@ struct ItemDetailView: View {
         .task(id: itemID) { await loadDetails() }
         .task(id: described) { await loadSeen() }
         .task(id: described) { await sharpen() }
+        .task(id: described) { await checkCut() }
+        .fullScreenCover(isPresented: $correctingCut) {
+            if let item {
+                CutEditor(item: item) { corners in await setCut(CutUpdate(corners: corners)) }
+            }
+        }
+        .fullScreenCover(isPresented: $showingFullPhoto) {
+            if let item { MuseumPhotoView(item: item) }
+        }
         .task(id: described) { await findHolder() }
         .task(id: described) { await findMedium() }
         .task(id: view == .frame ? draftKey : "") { await loadFraming() }
@@ -374,6 +390,17 @@ struct ItemDetailView: View {
                 detailsSection(details)
                     .transition(.opacity)
             }
+            // "Pełny kadr": the museum's photograph of a work cut out of it,
+            // and a print's choice of its paper (Mateusz 2026-11-14).
+            if item.isCropped || item.cut?.hasPaper == true {
+                FullPhotoSection(
+                    item: item, busy: cutBusy,
+                    choosePaper: { paper in Task { await setCut(CutUpdate(paper: paper)) } },
+                    correct: { correctingCut = true },
+                    open: { showingFullPhoto = true }
+                )
+                .transition(.opacity)
+            }
             if !item.colors.isEmpty { palette(item).id("palette") }
             about(item)
             studySection(item)
@@ -399,7 +426,7 @@ struct ItemDetailView: View {
                 showPolish(view, animated: false)
             }
             item = fresh
-            if fresh.kind == .artwork { model.pictureSeen(fresh.id, copy: fresh.sharper?.itemId ?? "") }
+            if fresh.kind == .artwork { model.pictureSeen(fresh.id, copy: fresh.pictureVersion) }
             holding = false
             if LaunchRoute.screen == "original" { opened = .original }  // CI screenshots
         } catch {
@@ -514,7 +541,8 @@ struct ItemDetailView: View {
                 font: .serif(30, weight: .semibold),
                 zoom: summary.zoom == true ? Fragments.depth(fragments, scale: displayScale) ?? 0 : nil,
                 lowSide: summary.lowSide,
-                restored: summary.restored == true
+                restored: summary.restored == true,
+                cropped: summary.isCropped
             )
                 .fixedSize(horizontal: false, vertical: true)
             if !summary.artist.isEmpty {
@@ -661,6 +689,51 @@ struct ItemDetailView: View {
         }
     }
 
+    /// A museum's work in the library: its photograph may be cut down to
+    /// the work (not the owner's photos, nor a work drawn again).
+    private func canCut(_ item: Item) -> Bool {
+        item.kind == .artwork && item.look == nil && !item.isFragment
+            && !["upload", "icloud", "cli", "frame"].contains(item.source)
+            && item.sharper?.isRestored != true
+    }
+
+    /// The card opened: a work not looked at yet is looked at by the server
+    /// (a frame, an easel, a board around it), and cut down to the work;
+    /// the card takes the cut picture as it comes.
+    private func checkCut() async {
+        guard let id = described, id == itemID, let item, canCut(item) else { return }
+        guard let view = try? await model.backend.checkCut(itemID: id, wait: 60),
+              !Task.isCancelled, id == itemID, view.changed
+        else { return }
+        cutChanged(view.item)
+    }
+
+    private func cutChanged(_ updated: Item) {
+        withAnimation(.easeInOut(duration: 0.4)) { item = updated }
+        model.pictureSeen(updated.id, copy: updated.pictureVersion, changed: true)
+    }
+
+    /// The owner's corners, or "Z papierem" / "Sama odbitka".
+    private func setCut(_ update: CutUpdate) async -> Bool {
+        cutBusy = true
+        defer { cutBusy = false }
+        do {
+            cutChanged(try await model.backend.setCut(itemID: itemID, update: update))
+            return true
+        } catch {
+            model.show(error)
+            return false
+        }
+    }
+
+    private func undoCut() async {
+        do {
+            cutChanged(try await model.backend.removeCut(itemID: itemID))
+        } catch {
+            model.show(error)
+        }
+    }
+
     /// When the work's picture is poor, the server looks for a sharper copy
     /// in other sources (half a minute or so); one found takes the
     /// picture's place on the card, as it fades in.
@@ -680,7 +753,7 @@ struct ItemDetailView: View {
             }
             if let copy = view.sharper {
                 item?.sharper = copy
-                model.pictureSeen(id, copy: copy.itemId)  // the lists' thumbnail too
+                model.pictureSeen(id, copy: item?.pictureVersion ?? copy.itemId)  // the lists' thumbnail too
                 return
             }
             if view.status != "looking" { return }
@@ -1063,6 +1136,7 @@ struct ItemDetailView: View {
     /// on its thumbnail by the server when the museum gives no size (V&A):
     /// without it such a work would come as landscape.
     private func aspect(_ item: Item) -> Double {
+        if let cut = item.cutAspect { return cut }  // the work cut out of the photograph
         if let size = pictureSize, size.0 > 0, size.1 > 0 { return Double(size.0) / Double(size.1) }
         if let w = item.width, let h = item.height, w > 0, h > 0 { return Double(w) / Double(h) }
         return ItemPeeks.tiles[item.id]?.summary.aspectRatio ?? 4 / 3
@@ -1096,7 +1170,8 @@ struct ItemDetailView: View {
                 // full screen zooms in (a Commons tile set has places).
                 zoom: item.isFragment ? nil : Fragments.depth(fragments, scale: displayScale),
                 lowSide: lowSide,
-                restored: item.sharper?.isRestored == true
+                restored: item.sharper?.isRestored == true,
+                cropped: item.isCropped
             )
                 .fixedSize(horizontal: false, vertical: true)
                 // The museum's title fades into the Polish one.
@@ -1335,7 +1410,7 @@ struct ItemDetailView: View {
                         Text("wybrane przez Ciebie").font(.caption).foregroundStyle(Theme.inkSoft)
                     }
                     if !restored, let side = lowSide, side > 0 {
-                        CopyTag(tag: .init(text: "Niska rozdzielczość", tone: .warn))
+                        CopyTag(tag: .init(text: "Niska rozdzielczość", tone: .plain))
                     }
                 }
                 Image(systemName: "chevron.right")
