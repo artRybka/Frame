@@ -52,8 +52,9 @@ COLOUR_SPREAD = (0.01, 0.035)
 #: and the tints, Tonacja against the picture's own white; 16: a pale
 #: sheet measured without the board it was photographed on (``unmounted``);
 #: 17: the accents the bar has room for are the most striking, not the
-#: largest (``striking``).
-SCORE_VERSION = 17
+#: largest (``striking``); 18: a white that stands out in a dark picture of
+#: one tone (``LIGHT_DARK``).
+SCORE_VERSION = 18
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
 #: this chroma / lightness for light ones: a greyish-blue sky does, a beige
@@ -321,6 +322,9 @@ LIGHT_OVER = 0.3
 LIGHT_NEAR = 0.08
 LIGHT_AREA = 0.01
 LIGHT_WEIGHT = 0.06
+#: A picture of one tone this dark in its middle tone has a white that
+#: stands out, not a paper.
+LIGHT_DARK = 0.45
 #: The tints of a pale sheet (Mateusz 2026-11-12 13:46 and 14:28, of
 #: Cézanne's lithograph in colours „Kąpiące się”, whose bar was a scale of
 #: greys with one small green patch: „dlaczego … nie ma zieleni i
@@ -508,7 +512,12 @@ def analyse(img: Image.Image, spread: float | None = None) -> Analysis:
     shown = [c for c, _ in dominant] + [c for c, _, _ in accents] + [c for c, _, _ in small]
     more = passed_over(merged[len(dominant) :], shown)
     shown += [c for c, _ in more]
-    white = [] if monochrome else lights(fine, shown)
+    # A white that stands out stands out in a dark picture of one tone
+    # too: the white line of a black poster (Mateusz 2026-11-14 19:26, of
+    # Lex Drewinski's „Hommage à Tadeusz Kantor”: „Myślę że musimy
+    # uwzględniać biel?”). In a light one it is the print's paper.
+    dark = float(np.median(fine[:, 0])) < LIGHT_DARK
+    white = lights(fine, shown) if not monochrome or dark else []
     # What the bar shows the picture is found by (Mateusz 2026-11-12
     # 15:16): the white it shows for standing out (here, or as the colour
     # passed over: the robes of Delacroix's Indian) is an accent by name.
