@@ -23,6 +23,8 @@ final class PlaylistScrollTests: XCTestCase {
                 Tab("Playlisty", systemImage: "rectangle.stack", value: 1) {
                     NavigationStack(path: $path) {
                         ScrollView { Color.clear.frame(height: 200) }
+                            // As Playlisty: a large title over the list.
+                            .navigationTitle("Playlisty")
                             .navigationDestination(for: Int.self) { id in PlaylistDetailView(playlistID: id) }
                     }
                     .task {
@@ -80,9 +82,9 @@ final class PlaylistScrollTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(milliseconds))
     }
 
-    private func run(eager: Bool) async throws -> [String] {
-        MasonryProbe.eager = eager
-        defer { MasonryProbe.eager = false }
+    private func run(lazy: Bool?) async throws -> [String] {
+        MasonryProbe.lazy = lazy
+        defer { MasonryProbe.lazy = nil }
         FramePositionProbe.frames = [:]
         let model = AppModel()
         model.playlistDetails[Self.playlistID] = try await detail(model)
@@ -96,7 +98,7 @@ final class PlaylistScrollTests: XCTestCase {
         defer { window.isHidden = true }
         var log: [String] = []
         var problems: [String] = []
-        let mode = eager ? "eager" : "lazy"
+        let mode = lazy.map { $0 ? "lazy" : "plain" } ?? "as shipped"
 
         // Opening: pushed at 0.5 s, settled well before 2.5 s.
         try await pause(1_600)
@@ -144,6 +146,9 @@ final class PlaylistScrollTests: XCTestCase {
         if grid.maxY > visibleBottom + 1 {
             problems.append("\(mode): the last row ends at \(grid.maxY), under the tab bar from \(visibleBottom)")
         }
+        if lazy != true, Set(sizes.map { $0.rounded() }).count > 1 {
+            problems.append("\(mode): the page changed its height while scrolling: \(Set(sizes.map { $0.rounded() }).sorted())")
+        }
         if Set(gridTops).count > 1 {
             problems.append("\(mode): the grid moved in the page while scrolling: \(Set(gridTops).sorted())")
         }
@@ -151,13 +156,16 @@ final class PlaylistScrollTests: XCTestCase {
         return problems
     }
 
-    func testTheLazyGridOpensStillAndScrollsToTheEnd() async throws {
-        let problems = try await run(eager: false)
+    /// 51 works, as the Cézanne playlist: a plain stack, measured whole.
+    func testThePlaylistPageOpensStillAndScrollsToTheEnd() async throws {
+        let problems = try await run(lazy: nil)
         XCTAssertTrue(problems.isEmpty, problems.joined(separator: "\n"))
     }
 
-    func testThePlainGridOpensStillAndScrollsToTheEnd() async throws {
-        let problems = try await run(eager: true)
+    /// The lazy list, for comparison (its height is a guess until the end
+    /// is reached): it must at least reach its end and keep its cover still.
+    func testTheLazyGridStillReachesItsEnd() async throws {
+        let problems = try await run(lazy: true)
         XCTAssertTrue(problems.isEmpty, problems.joined(separator: "\n"))
     }
 }

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.109
+
+- Strona playlisty (do 160 dzieł) ma od wejścia swoją prawdziwą wysokość:
+  nie podskakuje po otwarciu i przewija się do ostatniego rzędu nad
+  paskiem kart. Dotąd siatka zgadywała wysokość dzieł, których jeszcze
+  nie narysowała, i poprawiała ją w trakcie przewijania. Tak samo w
+  Szukaj, tematach i Propozycjach dnia.
+
 ## 1.145.108
 
 - Strona playlisty przewija się do końca i nie skacze. Dzieło, którego
