@@ -222,6 +222,21 @@ niej i w PLAN 3.3zzz186. Zostają więc dwie drogi dopełniania, każda tam,
 gdzie w próbie dawała lepsze dzieła; obie pytają muzea przez tę samą
 warstwę (`library/hosts.py`, `library/policy.py`).
 
+Okładki, oprawy i puste karty (od 1.145.127, decyzja Mateusza z 14.11
+„Wszędzie (jak Strażnik)”): muzea, głównie MNK i MNW, fotografują cały
+szkicownik, sztambuch, album albo chińską książkę i pokazują ich zamkniętą
+okładkę. Słowa tego nie rozstrzygają: „okładka” to często projekt okładki
+artysty (Wyspiański, Mehoffer, Mucha), który zostaje. Strażnik pyta więc
+także dzieła muzeów, ale tylko o to jedno (`seen_as = "blank"`, „Okładka,
+oprawa albo pusta karta”) i tylko te, których słowa mówią o obiekcie
+oprawnym albo odwrociu albo których numer inwentarza obejmuje wiele kart
+(`gatekeeper.bound`: na katalogu z 13.11 ok. 5,8 tys. dzieł), oraz dzieła
+wyglądające jak okładka już odłożona (liczby Szukania wyglądem,
+`Looks.near_ids`, bez pytania Google). Odłożone mają powód `SEEN`, więc
+znikają wszędzie poza tym, co zachował właściciel; lista „Do sprawdzenia”
+pozwala je przywrócić. Próba na 248 dziełach: 32 zgłoszenia, krytyk
+potwierdził 20, wszystkie to okładki albo puste karty.
+
 ## Jak sprawdzić zmianę reguł
 
 ### 1. Co mówi każde miejsce o każdym rodzaju dzieła

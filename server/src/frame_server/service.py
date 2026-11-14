@@ -431,6 +431,8 @@ class FrameService:
         self.library.looking = self.looks.looking
         self.library.look_near = self.looks.near
         self.library.like_near = self.looks.alike
+        # Works that look like a cover set aside are asked about too.
+        self.gatekeeper.alike = self.looks.near_ids
         # The museums asked for a look by Haiku's searches, what they bring
         # judged by how it looks (Mateusz 2026-11-13, card).
         self.look_words = LookWords(self.library, self.claude, self.ai_config)

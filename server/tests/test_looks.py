@@ -135,6 +135,24 @@ def test_a_new_picture_and_a_gone_work_leave_their_old_rows(tmp_path: Path) -> N
     assert (tmp_path / "ids.txt").read_text().count("\n") == 8
 
 
+def test_the_gatekeeper_gets_a_works_close_look_alikes_without_google(
+    looks: tuple[Looks, FakePainter],
+) -> None:
+    found, painter = looks
+    found.index.add(
+        [
+            ("cover", 1, _direction(0)),
+            ("other cover", 1, _direction(0, 1)),
+            ("painting", 1, _direction(1)),
+        ]
+    )
+    painter.key = False  # numbers kept are enough
+    assert found.near_ids("cover") == ["other cover"]
+    assert found.near_ids("cover", 0) == []
+    assert found.near_ids("without numbers") == []
+    assert painter.asked == []
+
+
 def test_a_broken_off_write_keeps_the_whole_rows(tmp_path: Path) -> None:
     index = LookIndex(tmp_path)
     index.add([("a", 1, _direction(0)), ("b", 1, _direction(1))])

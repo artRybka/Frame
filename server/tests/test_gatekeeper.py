@@ -324,3 +324,106 @@ def test_the_judge_is_not_asked_about_what_the_gatekeeper_set_aside(
     service.library.update("openverse:2", seen_as="not_art")
     assert [key for key, *_ in service.twins_judge._pairs({})] == ["wikiart:4|wmc:3"]
     assert list(service.twins.suspects()) == ["wikiart:4|wmc:3"]  # forgotten for good
+
+
+# -- covers, bindings and empty pages of the museums (Mateusz 2026-11-14) -------------
+
+COVER = {"why": "A closed cloth cover of a sketchbook", "blank": True, "confidence": 0.9}
+
+
+def test_a_museums_bound_object_is_asked_only_whether_it_is_a_cover(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    _work(service, "mnk:1", title="Szkicownik nr 8 - informacje ogólne", pooled=True)
+    _work(service, "mnw:2", title="Pejzaż", credit="MNW, Rys.Pol. 16134/1-24", pooled=True)
+    _work(service, "met:3", title="Wheat Field", classification="Painting", pooled=True)
+    _work(service, "europeana:4", title="Martwa natura", pooled=True)
+    keeper = service.gatekeeper
+    assert sorted(i.id for i in keeper.candidates({})) == ["europeana:4", "mnk:1", "mnw:2"]
+    assert [i.id for i in keeper.candidates({})][:2] in (["mnk:1", "mnw:2"], ["mnw:2", "mnk:1"])
+    assert keeper.order()
+    by_id = {r["custom_id"]: r["params"] for r in fake.batches["batch_1"]}
+    museum_text = next(
+        p["system"][0]["text"] for p in by_id.values() if "Szkicownik" in str(p["messages"])
+    )
+    assert '"blank"' in museum_text and '"postal"' not in museum_text
+    gathering = next(p for p in by_id.values() if "Martwa natura" in str(p["messages"]))
+    assert all(f'"{key}"' in gathering["system"][0]["text"] for key in ("postal", "blank"))
+
+
+def test_a_museums_work_is_set_aside_as_a_cover_and_nothing_else(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    _work(service, "mnk:1", title="Szkicownik nr 8", classification="Drawing", pooled=True)
+    _work(service, "mnk:2", title="Album z rysunkami", classification="Drawing", pooled=True)
+    keeper = service.gatekeeper
+    fake.ended = True
+
+    def results(batch_id: str) -> list[SimpleNamespace]:
+        judge = {"w0": {**COVER, "postal": True}, "w1": {**STAMP, "blank": False}}
+        out = []
+        for r in fake.batches[batch_id]:
+            if batch_id == "batch_1":
+                data = judge[r["custom_id"]]
+            else:
+                data = {"why": "A plain closed cover", "verdict": "confirm", "confidence": 0.9}
+            out.append(
+                SimpleNamespace(
+                    custom_id=r["custom_id"],
+                    result=SimpleNamespace(type="succeeded", message=_message(data)),
+                )
+            )
+        return out
+
+    fake.messages.batches.results = results
+    first = [i.id for i in keeper.candidates({})]
+    assert keeper.order() and keeper.collect()
+    claims = keeper.state()["claims"]
+    assert list(claims) == [first[0]]  # a stamp is never claimed of a museum's work
+    assert claims[first[0]]["seen_as"] == "blank"
+    assert keeper.order()
+    critic = fake.batches["batch_2"][0]["params"]
+    assert "closed cover, binding" in str(critic["messages"])
+    assert keeper.collect()
+    item = service.library.get(first[0])
+    assert item is not None and item.seen_as == "blank"
+    for place in (Place.LISTED, Place.FOUND, Place.PROPOSED, Place.SOUGHT, Place.STUDIED):
+        assert against(item, place)
+    # had the owner kept it, his lists and Szukaj would still show it
+    assert not against(item, Place.LISTED, kept=True)
+    assert not against(item, Place.FOUND, kept=True)
+    assert against(item, Place.PROPOSED, kept=True)
+    (written,) = keeper.written()
+    assert written["seen_as"] == "blank"
+    other = service.library.get(first[1])
+    assert other is not None and not other.seen_as
+    # a museum's work is never written as anything else
+    assert not keeper.write(other, {"seen_as": "postal"})
+
+
+def test_works_that_look_like_a_cover_set_aside_are_asked_too(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    _work(service, "mnw:1", title="Starannie wydane ilustracje", classification="Print")
+    _work(service, "mnw:2", title="Pejzaż zimowy", classification="Print", pooled=True)
+    keeper = service.gatekeeper
+    assert keeper.candidates({}) == []  # no word names a bound object
+    state = keeper.state()
+    state["written"] = [{"id": "mnw:9", "seen_as": "blank"}, {"id": "wmc:8", "seen_as": "postal"}]
+    keeper._save(state)
+    asked: list[str] = []
+
+    def alike(item_id: str, limit: int) -> list[str]:
+        asked.append(item_id)
+        return ["mnw:1"]
+
+    keeper.alike = alike
+    assert [i.id for i in keeper.candidates({})] == ["mnw:1"]
+    assert asked == ["mnw:9"]  # only covers' look-alikes
+
+
+def test_the_gatekeeper_asks_szukaj_wygladem_for_look_alikes(service: FrameService) -> None:
+    assert service.gatekeeper.alike == service.looks.near_ids
