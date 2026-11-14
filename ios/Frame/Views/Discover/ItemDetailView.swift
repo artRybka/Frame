@@ -1480,4 +1480,21 @@ extension View {
         self
         #endif
     }
+
+    /// Debug builds (tests): where on screen the view is, as it moves
+    /// (`PlaylistScrollTests`).
+    func framePositionProbe(_ name: String) -> some View {
+        #if DEBUG
+        onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+            FramePositionProbe.frames[name] = frame
+        }
+        #else
+        self
+        #endif
+    }
+}
+
+/// Debug builds (tests): the last frame on screen of the probed views.
+enum FramePositionProbe {
+    nonisolated(unsafe) static var frames: [String: CGRect] = [:]
 }

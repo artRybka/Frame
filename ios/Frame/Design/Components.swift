@@ -456,6 +456,8 @@ struct QueueButton: View {
 /// while scrolling (the results jumped back) and could lose its cards
 /// altogether (an empty screen) until scrolled again.
 ///
+/// Up to `measuredUpTo` works the blocks are a plain stack instead.
+///
 /// A wide work rides in the lazy list with the block above it, so a short
 /// row never comes in alone under a guessed height (the page jumped as a
 /// wide work came on screen). And the works whose pictures are missing
@@ -522,6 +524,14 @@ struct MasonryGrid<Content: View>: View {
         }
         return chunks
     }
+
+    /// Up to this many works the grid is a plain stack, measured whole:
+    /// a lazy list guesses the height of what it has not made yet, so the
+    /// page grew and shrank by thousands of points while scrolling (10 386
+    /// → 7 984 pt for 51 works, `PlaylistScrollTests`), opened with small
+    /// jumps and stopped short of its end (Mateusz 2026-11-14). Longer
+    /// lists stay lazy, so their pictures do not all load at once.
+    static var measuredUpTo: Int { 160 }
 
     /// A column's width on a phone, until the grid is measured.
     static var phoneColumn: Double { 170 }
@@ -605,27 +615,11 @@ struct MasonryGrid<Content: View>: View {
     }
 
     var body: some View {
-        LazyVStack(alignment: .leading, spacing: spacing + 6) {
-            ForEach(Self.chunks(Self.blocks(shown, columns: columns, columnWidth: columnWidth))) { chunk in
-                VStack(alignment: .leading, spacing: spacing + 6) {
-                    if !chunk.columns.isEmpty {
-                        HStack(alignment: .top, spacing: spacing) {
-                            ForEach(Array(chunk.columns.enumerated()), id: \.offset) { _, column in
-                                VStack(spacing: spacing + 6) {
-                                    ForEach(column) { item in
-                                        content(item)
-                                    }
-                                }
-                                .frame(maxWidth: .infinity, alignment: .top)
-                            }
-                        }
-                        .environment(\.artCardAspects, 0.45...Self.wide)
-                    }
-                    ForEach(chunk.rows) { item in
-                        content(item)
-                            .environment(\.artCardAspects, Self.wide...Self.panorama)
-                    }
-                }
+        Group {
+            if MasonryProbe.lazy ?? (items.count > Self.measuredUpTo) {
+                LazyVStack(alignment: .leading, spacing: spacing + 6) { chunkViews }
+            } else {
+                VStack(alignment: .leading, spacing: spacing + 6) { chunkViews }
             }
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
@@ -633,6 +627,36 @@ struct MasonryGrid<Content: View>: View {
             leftOut = Set(items.lazy.map(\.id).filter { model.hidesPicture($0) })
         }
     }
+
+    private var chunkViews: some View {
+        ForEach(Self.chunks(Self.blocks(shown, columns: columns, columnWidth: columnWidth))) { chunk in
+            VStack(alignment: .leading, spacing: spacing + 6) {
+                if !chunk.columns.isEmpty {
+                    HStack(alignment: .top, spacing: spacing) {
+                        ForEach(Array(chunk.columns.enumerated()), id: \.offset) { _, column in
+                            VStack(spacing: spacing + 6) {
+                                ForEach(column) { item in
+                                    content(item)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .top)
+                        }
+                    }
+                    .environment(\.artCardAspects, 0.45...Self.wide)
+                }
+                ForEach(chunk.rows) { item in
+                    content(item)
+                        .environment(\.artCardAspects, Self.wide...Self.panorama)
+                }
+            }
+        }
+    }
+}
+
+/// Tests only: the grid lazy (true) or a plain stack (false) whatever
+/// its length, to compare the two.
+enum MasonryProbe {
+    nonisolated(unsafe) static var lazy: Bool?
 }
 
 private extension ClosedRange where Bound == Double {

@@ -147,6 +147,7 @@ struct PlaylistDetailView: View {
         if !detail.items.isEmpty {
             VStack(spacing: 22) {
                 MasonryGrid(items: detail.items) { item in card(item) }
+                    .framePositionProbe("grid")
                 if detail.playlist.kind == .smart, detail.playlist.itemCount > detail.items.count {
                     // The server lists a part of a very large playlist.
                     Text("Widać \(Names.works(detail.items.count)) z \(detail.playlist.itemCount).")
@@ -201,6 +202,7 @@ struct PlaylistDetailView: View {
                 .aspectRatio(1.6, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .shadow(color: .black.opacity(0.15), radius: 18, y: 10)
+                .framePositionProbe("collage")
             Eyebrow(Self.eyebrow(playlist.kind), color: Theme.vermilion)
             Text(playlist.name)
                 .font(.serif(32, weight: .semibold))
