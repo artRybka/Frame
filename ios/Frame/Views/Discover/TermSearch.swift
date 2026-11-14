@@ -72,7 +72,10 @@ final class TermLookup {
             uncounted = []
         } else {
             guess(words, vocabulary: vocabulary)
-            try? await Task.sleep(for: .milliseconds(120))  // debounce typing
+            // Debounce typing. One or two letters wait longer: their count
+            // goes through nearly the whole catalogue, and the next letter
+            // of a word mostly follows at once (the guess shows meanwhile).
+            try? await Task.sleep(for: .milliseconds(words.count < 3 ? 250 : 120))
             guard !Task.isCancelled else { return }
             do {
                 let found = try await backend.terms(words)

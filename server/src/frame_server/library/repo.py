@@ -99,6 +99,11 @@ SEARCH_INLINE = 5000
 #: Searches whose whole answer is kept for their next pages (while the
 #: library stays as it is).
 QUERIES_KEPT = 16
+#: A list's order is remembered for its next pages this long after its
+#: last page was asked for, and no longer than :data:`ORDER_AT_MOST` after
+#: it was made (``Library.query`` with ``paged``), in seconds.
+ORDER_KEPT = 60.0
+ORDER_AT_MOST = 300.0
 
 
 class _Counted(NamedTuple):
@@ -241,6 +246,43 @@ def _fold(values: Iterable[str]) -> set[str]:
 class _NotNow(Exception):
     """Words for how works look that cannot be asked now (no key, Google
     away): no answer is kept for them."""
+
+
+class Abandoned(Exception):
+    """The asker let the question go while the catalogue was looked through
+    for it (:func:`asked_by`): there is no answer."""
+
+
+#: What this thread's asker says of the question it works on.
+_asker = threading.local()
+#: Works looked at between two looks at whether the asker is still there.
+_ASKER_LOOK = 1024
+
+
+@contextmanager
+def asked_by(gone: Callable[[], bool]) -> Iterator[None]:
+    """While it holds, a look through the catalogue on this thread stops
+    with :class:`Abandoned` once ``gone()`` says its asker has let it go.
+
+    A letter typed in Szukaj asks how many works its words find; the next
+    letter makes that answer worthless, but the count went on to its end,
+    a second and more of the whole catalogue for one letter, and the
+    letters after it waited their turn behind it (the audit of
+    2026-11-14)."""
+    before = getattr(_asker, "gone", None)
+    _asker.gone = gone
+    try:
+        yield
+    finally:
+        _asker.gone = before
+
+
+def _still_asked() -> None:
+    """Stops what this thread works on (:class:`Abandoned`) when its asker
+    has let the question go."""
+    gone = getattr(_asker, "gone", None)
+    if gone is not None and gone():
+        raise Abandoned
 
 
 def _searches(rules: PlaylistRules) -> bool:
@@ -741,6 +783,9 @@ class Library:
             OrderedDict()
         )
         self._queries_lock = threading.Lock()
+        #: The order of lists someone scrolls, for their next pages though
+        #: the library has changed: when made, when last asked, the works.
+        self._orders: OrderedDict[tuple[Any, ...], tuple[float, float, list[Item]]] = OrderedDict()
         #: ``hidden()`` as last worked out: (catalogue version, works, it).
         self._hidden_kept: tuple[tuple[int, int], Works, Hidden] | None = None
         #: The items the pictures showed to be details, by the id of the
@@ -1347,6 +1392,7 @@ class Library:
     def _rebuild_term_index(self) -> None:
         try:
             index = self._build_term_index()
+            index.warm(self._term_index)
             with self._term_index_lock:
                 self._term_index = index
         except Exception:
@@ -1510,6 +1556,7 @@ class Library:
         include_excluded: bool = False,
         user: str | None = None,
         proposing: bool = False,
+        paged: bool = False,
     ) -> tuple[int, list[Item]]:
         """``user``: whose hearts and playlists "Ulubione" and "Moje" mean
         (default: whoever is asking, the owner in the background).
@@ -1522,7 +1569,19 @@ class Library:
         The search index narrows the catalogue to the works the rules may
         fit and only those are checked (:func:`matches`); the whole answer
         is kept for the next pages while the library stays as it is.
-        ``limit=0``: only how many."""
+        ``limit=0``: only how many.
+
+        ``paged``: a list someone scrolls (Szukaj). Its next pages
+        (``offset`` > 0) come from the order its last look made, for
+        :data:`ORDER_KEPT` seconds after the page before, though the
+        library has changed since. While Szukaj is open the museums add
+        works without a pause, a heart is a change too, and each next page
+        went through the whole catalogue again (2 to 12 s on the NAS, the
+        audit of 2026-11-14), in an order that had moved meanwhile: works
+        twice, works skipped. The works of a page are as the library holds
+        them now; one hidden or gone since is left out. The first page is
+        always looked for anew. Not for the owner's own lists ("Ulubione",
+        "Moje"), which a heart changes."""
         rules = rules or PlaylistRules()
         user = user or viewer_id()
         if sort in ("relevance", "suitability") and _searches(rules):
@@ -1530,19 +1589,29 @@ class Library:
         elif sort == "relevance":
             sort = "recent"
         works = self.works()
-        if rules.favorites_only or any(t in MINE for t in rules.terms):
+        mine = rules.favorites_only or any(t in MINE for t in rules.terms)
+        if mine:
             proposing = False
-        kept = (
+        asked = (
             rules.model_dump_json(),
             sort,
             seed if sort in ("random", "good") else 0,
             include_excluded,
             proposing,
             user,
-            self._version,
-            self._hearts_version,
-            self._playlists_version,
         )
+        kept = (*asked, self._version, self._hearts_version, self._playlists_version)
+        # The list whatever is left out of it by id (works with no picture:
+        # one found so while scrolling is no other list).
+        order_key = None
+        if paged and limit != 0 and not mine and not include_excluded:
+            plain = rules.model_copy(update={"exclude_ids": []}) if rules.exclude_ids else rules
+            order_key = (plain.model_dump_json(), *asked[1:])
+        end = None if limit is None else offset + limit
+        if order_key is not None and offset > 0:
+            order = self._order(order_key)
+            if order is not None:
+                return len(order), self._held_now(order[offset:end], rules.exclude_ids)
         # What else decides the answer, compared as the objects they are.
         made_with = (works, known_names(), known_places())
         with self._queries_lock:
@@ -1564,8 +1633,45 @@ class Library:
                     self._queries[kept] = (made_with, items)
                     while len(self._queries) > QUERIES_KEPT:
                         self._queries.popitem(last=False)
-        end = None if limit is None else offset + limit
+        if order_key is not None:
+            now = time.monotonic()
+            with self._queries_lock:
+                had = self._orders.get(order_key)
+                made = had[0] if had is not None and had[2] is items else now
+                self._orders[order_key] = (made, now, items)
+                self._orders.move_to_end(order_key)
+                while len(self._orders) > QUERIES_KEPT:
+                    self._orders.popitem(last=False)
         return len(items), items[offset:end]
+
+    def _order(self, key: tuple[Any, ...]) -> list[Item] | None:
+        """The order remembered for a list's next page (``query`` with
+        ``paged``), None when there is none or it is too old."""
+        now = time.monotonic()
+        with self._queries_lock:
+            had = self._orders.get(key)
+            if had is None:
+                return None
+            made, used, items = had
+            if now - used > ORDER_KEPT or now - made > ORDER_AT_MOST:
+                del self._orders[key]
+                return None
+            self._orders[key] = (made, now, items)
+            self._orders.move_to_end(key)
+            return items
+
+    def _held_now(self, page: list[Item], left_out: Collection[str]) -> list[Item]:
+        """The works of a remembered page as the library holds them now,
+        without those hidden, left out or gone since."""
+        hidden = self.hidden().ids
+        out = set(left_out)
+        held: list[Item] = []
+        for was in page:
+            now = self.get(was.id)
+            if now is None or now.excluded or now.id in hidden or now.id in out:
+                continue
+            held.append(now)
+        return held
 
     def _query(
         self,
@@ -1662,6 +1768,7 @@ class Library:
                 return matches(unexcluded, rules, listed, hearts, key, said, titled, polish)
             return matches(item, rules, listed, hearts, key, said, titled, polish)
 
+        _still_asked()
         index = self.search_index(wait=len(self._all()) <= SEARCH_INLINE)
         # A title's words narrow the catalogue as words do (the title is
         # checked by itself after).
@@ -1675,8 +1782,18 @@ class Library:
         source: Iterable[Item] = self._snapshot() if pool is None else pool
         if among is not None:
             source = [i for i in source if i.id in among]
-        items = [i for i in source if selected(i)]
+        gone = getattr(_asker, "gone", None)
+        if gone is None:
+            items = [i for i in source if selected(i)]
+        else:  # an asker who may let go (:func:`asked_by`)
+            items = []
+            for at, i in enumerate(source):
+                if at % _ASKER_LOOK == 0 and gone():
+                    raise Abandoned
+                if selected(i):
+                    items.append(i)
         if said and not include_excluded:
+            _still_asked()
             # The words of a work are those of all its copies: Vermeer's
             # "The Little Street" has "uliczka" in the Rijksmuseum's copy's
             # keywords and in the title of one on Commons, while another
@@ -1714,6 +1831,7 @@ class Library:
                         items.append(stored)
                         have.add(stored.id)
         if not include_excluded:
+            _still_asked()
             # Copies the owner kept of one work: the best of those asked for
             # stands for them.
             items = self.works().once(items)
@@ -2149,7 +2267,7 @@ class Library:
         for item in works.once(shown):
             group = works.group_index(item.id)
             copies = works.groups[group] if group is not None else [item]
-            out.append((phrase_fold(item.title), item.title, item.artist, item.id))
+            out.append((folded_fields(item)[1], item.title, item.artist, item.id))
             written = next((polish[c.id] for c in copies if c.id in polish), None)
             if written is not None and written[1] != out[-1][0]:
                 out.append((written[1], written[0], item.artist, item.id))
