@@ -246,6 +246,10 @@ struct LooksLikeSection: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// Filled with ink, like the app's other buttons that lead on (Mateusz
+    /// 2026-11-14: "Ten guzik zróbmy w kolorze czarnym"): black with light
+    /// letters on paper, cream with dark ones in the dark, where a black
+    /// one would sink into the page. The count is its letters, fainter.
     private var searchButton: some View {
         Button {
             model.searchLike(item.id, title: item.displayTitle)
@@ -254,10 +258,10 @@ struct LooksLikeSection: View {
                 Image(systemName: "eye")
                 Text("Szukaj podobnych")
                 Text(found.count >= Self.counted ? "\(Self.counted)+" : "\(found.count)")
-                    .foregroundStyle(Theme.inkSoft)
+                    .opacity(0.65)
             }
         }
-        .buttonStyle(SecondaryButtonStyle())
+        .buttonStyle(PrimaryButtonStyle())
         .accessibilityHint("Otwiera Szukaj z dziełami podobnymi do tego")
     }
 
