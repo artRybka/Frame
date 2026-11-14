@@ -540,7 +540,9 @@ def test_commons_renders_what_no_app_reads() -> None:
     assert commons_rendition("https://example.org/drawing.svg", 3840) == ""
 
 
-def test_openverse_drawings_come_rendered_or_not_at_all() -> None:
+def test_openverse_leaves_out_vector_files() -> None:
+    # Commons' SVGs on Openverse are diagrams, plans, maps, crests and
+    # pictograms (Mateusz 2026-11-14: the plan of the room of 20 July 1944).
     def result(n: int, url: str, filetype: str | None) -> dict:
         return {
             "id": f"uuid-{n}",
@@ -565,10 +567,8 @@ def test_openverse_drawings_come_rendered_or_not_at_all() -> None:
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as http:
         _, items = Openverse(http).search("Mondrian")
-    assert [i.title for i in items] == ["Work 1", "Work 3"]
-    drawing, painting = items
-    assert drawing.image_url.endswith("/3840px-Mondrian_SVG_kleeblatt.svg.png")
-    assert drawing.thumb_url.endswith("/500px-Mondrian_SVG_kleeblatt.svg.png")
+    assert [i.title for i in items] == ["Work 3"]
+    (painting,) = items
     assert painting.image_url == results[2]["url"]
     assert painting.thumb_url == results[2]["thumbnail"]
 

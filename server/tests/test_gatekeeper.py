@@ -54,6 +54,7 @@ def _work(service: FrameService, item_id: str, **fields: Any) -> Item:
 NOTHING = {
     "why": "A landscape painting",
     "postal": False,
+    "diagram": False,
     "text": False,
     "room": False,
     "grey_copy": False,
@@ -427,3 +428,61 @@ def test_works_that_look_like_a_cover_set_aside_are_asked_too(
 
 def test_the_gatekeeper_asks_szukaj_wygladem_for_look_alikes(service: FrameService) -> None:
     assert service.gatekeeper.alike == service.looks.near_ids
+
+
+# -- diagrams, plans and maps (Mateusz 2026-11-14) ---------------------------------------
+
+PLAN = {"why": "A floor plan with coloured circles and a legend", "diagram": True}
+
+
+def test_works_asked_before_are_asked_only_about_diagrams(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    _work(service, "europeana:1", title="Martwa natura", pooled=True)
+    _work(service, "openverse:2", title="Lageplan Wolfsschanze", pooled=True)
+    _work(service, "europeana:3", title="Pejzaż", pooled=True)
+    _work(service, "mnk:4", title="Szkicownik nr 8", classification="Drawing", pooled=True)
+    keeper = service.gatekeeper
+    state = keeper.state()
+    state["asked"] = {
+        "europeana:1": {"v": 1, "at": "2026-11-12"},
+        "openverse:2": {"v": 1, "at": "2026-11-12"},
+        "mnk:4": {"v": 1, "at": "2026-11-14"},  # nothing new to ask a museum's
+    }
+    keeper._save(state)
+    # what may be a plan first; a museum's work asked before is not asked again
+    assert [i.id for i in keeper.candidates(keeper.asked())][:1] == ["openverse:2"]
+    assert sorted(i.id for i in keeper.candidates(keeper.asked())) == [
+        "europeana:1",
+        "europeana:3",
+        "openverse:2",
+    ]
+    assert keeper.order()
+    texts = {
+        str(r["params"]["messages"]): r["params"]["system"][0]["text"]
+        for r in fake.batches["batch_1"]
+    }
+    asked_before = next(t for m, t in texts.items() if "Martwa natura" in m)
+    assert '"diagram"' in asked_before and '"postal"' not in asked_before
+    never = next(t for m, t in texts.items() if "Pejzaż" in m)
+    assert all(f'"{key}"' in never for key in ("postal", "diagram", "blank"))
+
+    fake.ended = True
+    _answer(fake, PLAN)
+    assert keeper.collect()
+    assert set(keeper.state()["claims"]) == {"europeana:1", "europeana:3", "openverse:2"}
+    assert keeper.asked()["europeana:1"]["v"] == keeper.version
+    _answer(fake, {"why": "A plan with a legend", "verdict": "confirm", "confidence": 0.9})
+    assert keeper.order() and keeper.collect()
+    item = service.library.get("openverse:2")
+    assert item is not None and item.seen_as == "diagram"
+    for place in (Place.LISTED, Place.FOUND, Place.PROPOSED, Place.SOUGHT, Place.STUDIED):
+        assert against(item, place)
+    assert not keeper.order()  # nothing left: the museum's work stays asked
+
+
+def test_a_museums_work_is_never_set_aside_as_a_plan(service: FrameService) -> None:
+    item = _work(service, "rijks:1", title="Map of Amsterdam", classification="map", pooled=True)
+    assert not service.gatekeeper.write(item, {"seen_as": "diagram"})
+    assert "diagram" not in service.gatekeeper.question(item)["system"][0]["text"]

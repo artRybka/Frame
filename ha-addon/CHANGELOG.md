@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.145.134
+
+- Schematy, plany, mapy i infografiki znikają z katalogu. Pliki wektorowe
+  z Commons, które podawał Openverse (plany, mapy, herby, flagi,
+  piktogramy), wypadają od razu i nie są już pobierane. Pozostałe zdjęcia
+  ze źródeł zbierających Strażnik w nocy pyta też o to, czy są schematem,
+  planem albo mapą; obejrzane wcześniej dostają raz tylko to pytanie.
+  Stare mapy i plany z muzeów zostają.
+
+## 1.145.133
+
+- Pod nazwą playlisty inteligentnej widać teraz wszystkie jej reguły, nie
+  tylko artystę: także słowa tytułu (np. „Bathers”), wygląd, „Podobne do”,
+  style, tematy, epoki i techniki ze słownika, „Moje” oraz rodzaj dzieł.
+  Tytuł ma znak cytatu, wygląd oko, jak te same reguły w Szukaj. Reguła,
+  która tylko powtarza nazwę playlisty, nadal się nie pokazuje.
+
 ## 1.145.132
 
 - Kadrowanie po wejściu w kartę działa też dla dzieła z muzeum, którego

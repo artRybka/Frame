@@ -858,6 +858,21 @@ def is_openverse_copy(item: Item) -> bool:
     return any(host == h or host.endswith(f".{h}") for h in OPENVERSE_COPIES)
 
 
+#: A vector file's name in a Commons address, also in the PNG Commons draws
+#: of it (".../Lageplan_Wolfsschanze.svg/3840px-Lageplan_Wolfsschanze.svg.png").
+_VECTOR_FILE = re.compile(r"\.svg(?:[/?#]|$)", re.IGNORECASE)
+
+
+def is_vector_drawing(item: Item) -> bool:
+    """A vector file from Commons (Openverse's "illustration"): a diagram,
+    a plan, a map, a coat of arms, a flag, a pictogram. All 130 of the
+    catalogue's of 2026-11-13 were such (Mateusz 2026-11-14, the plan of the
+    room of 20 July 1944: "Na pewno nie chce takich obrazków")."""
+    if item.source not in ("openverse", "wmc"):
+        return False
+    return bool(_VECTOR_FILE.search(item.image_url) or _VECTOR_FILE.search(item.thumb_url))
+
+
 #: Printed matter and pages of text: typescripts, brochures, theatre
 #: programmes, proclamations, newspapers, certificates (Europeana and the
 #: Rijksmuseum under "II wojna światowa"; Mateusz 2026-11-09: "kartek z

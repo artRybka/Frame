@@ -20,6 +20,10 @@ that look like one already set aside (``alike``: Szukanie wyglądem's
 numbers), are asked: a cover designed by an artist is a work, so the words
 alone never decide. What was set aside is listed for the owner, who can
 bring any of it back (it is then never asked again).
+Diagrams, plans, maps and infographics were asked about from version 2
+(Mateusz 2026-11-14, a plan of the room of 20 July 1944 from Openverse:
+"Na pewno nie chce takich obrazków"); a work asked by version 1 is asked
+that question alone (:data:`ADDED`), a museum's never.
 """
 
 from __future__ import annotations
@@ -30,6 +34,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..library.models import COLLECTIONS, ItemKind
 from ..library.verdict import Place, against
+from ..library.vocabulary import is_design
 from .client import image_block, request
 from .critic_night import REST, CriticNight
 from .daily import _object, _str
@@ -44,6 +49,7 @@ SWITCH = "gatekeeper"
 #: the app shows. (``Item.seen_as`` keeps the key.)
 SEEN_AS = {
     "postal": "Znaczek, banknot albo koperta",
+    "diagram": "Schemat, plan, mapa albo infografika",
     "text": "Strona z tekstem albo dokument",
     "room": "Zdjęcie sali albo ściany z dziełem",
     "grey_copy": "Czarno-białe zdjęcie obrazu",
@@ -51,10 +57,21 @@ SEEN_AS = {
     "blank": "Okładka, oprawa albo pusta karta",
 }
 #: What a museum's own work can be set aside as: nothing else is asked of it.
+#: (A museum's old map or plan is a print or a drawing: it stays.)
 MUSEUM_SEEN_AS = ("blank",)
+#: The questions each version of the gatekeeper added: a work asked by an
+#: earlier version is asked only those added since.
+ADDED = {2: ("diagram",)}
 #: The judge's question for each, as a yes or no.
 QUESTIONS = {
     "postal": "a postage stamp, a banknote, a coin, an envelope or the back of a postcard",
+    "diagram": (
+        "a diagram, plan, map, chart or infographic made to explain or inform: a floor plan, site "
+        "plan, map, route or metro map, graph, table, family tree, scientific or technical "
+        "diagram, or a symbol, pictogram, flag or coat of arms drawn for reference; usually flat, "
+        "with labels, numbers, a legend or a key. An old map, view or plan engraved, drawn or "
+        "painted as a work of art does not count"
+    ),
     "text": (
         "mostly text: a page of a book, newspaper or magazine, a document, a letter, a title "
         "page, a catalogue card, a notice or poster made only of words"
@@ -83,46 +100,43 @@ QUESTIONS = {
     ),
 }
 
-SYSTEM = (
-    """You check pictures entering the catalogue of a home art frame. The frame shows \
-artworks: paintings, drawings, prints, watercolours, posters, miniatures, photographs and \
+_GATHERED_INTRO = """You check pictures entering the catalogue of a home art frame. The frame \
+shows artworks: paintings, drawings, prints, watercolours, posters, miniatures, photographs and \
 objects made as art, each shown whole by itself. Some sources also carry pictures that are not \
-such an artwork. You get one picture and what its source says about it.
+such an artwork. You get one picture and what its source says about it."""
+_MUSEUM_INTRO = """You check pictures in the catalogue of a home art frame. The frame shows \
+artworks, each shown whole by itself. Museums sometimes photograph a whole bound object \
+instead of its contents. You get one picture and what its museum says about it."""
 
-First write "why": in at most 25 words, what the picture actually shows. Then answer each \
-question with true or false, judging by the picture; titles and types from the source are \
-often wrong. Answer true only when it is plainly so; when in doubt, false.
+
+def prompt(keys: tuple[str, ...], museum: bool = False) -> tuple[str, dict[str, Any]]:
+    """The judge's system prompt and answer schema asking ``keys``."""
+    answer = (
+        "answer each question with true or false" if len(keys) > 1 else "answer with true or false"
+    )
+    system = (
+        (_MUSEUM_INTRO if museum else _GATHERED_INTRO)
+        + f"""
+
+First write "why": in at most 25 words, what the picture actually shows. Then {answer}, \
+judging by the picture; titles and types from the source are often wrong. Answer true only \
+when it is plainly so; when in doubt, false.
 
 """
-    + "\n".join(f'- "{key}": is the picture {text}?' for key, text in QUESTIONS.items())
-    + '\n\nLast, "confidence" from 0 to 1 in your answers.'
-)
+        + "\n".join(f'- "{key}": is the picture {QUESTIONS[key]}?' for key in keys)
+        + '\n\nLast, "confidence" from 0 to 1 in your answers.'
+    )
+    schema = _object(
+        why=_str(),
+        **{key: {"type": "boolean"} for key in keys},
+        confidence={"type": "number"},
+    )
+    return system, schema
 
-SCHEMA = _object(
-    why=_str(),
-    **{key: {"type": "boolean"} for key in QUESTIONS},
-    confidence={"type": "number"},
-)
 
+SYSTEM, SCHEMA = prompt(tuple(SEEN_AS))
 #: The question of a museum's own work.
-MUSEUM_SYSTEM = (
-    """You check pictures in the catalogue of a home art frame. The frame shows artworks, \
-each shown whole by itself. Museums sometimes photograph a whole bound object instead of its \
-contents. You get one picture and what its museum says about it.
-
-First write "why": in at most 25 words, what the picture actually shows. Then answer with true \
-or false, judging by the picture; titles and types from the source are often wrong. Answer true \
-only when it is plainly so; when in doubt, false.
-
-"""
-    + "\n".join(f'- "{key}": is the picture {QUESTIONS[key]}?' for key in MUSEUM_SEEN_AS)
-    + '\n\nLast, "confidence" from 0 to 1 in your answers.'
-)
-MUSEUM_SCHEMA = _object(
-    why=_str(),
-    **{key: {"type": "boolean"} for key in MUSEUM_SEEN_AS},
-    confidence={"type": "number"},
-)
+MUSEUM_SYSTEM, MUSEUM_SCHEMA = prompt(MUSEUM_SEEN_AS, museum=True)
 
 CRITIC = """You check a claim about one catalogue picture before a home art frame acts on it. \
 If the claim is accepted, the picture is left out of the frame's catalogue: a wrong claim \
@@ -216,10 +230,40 @@ def museum(item: Item) -> bool:
     return item.source in COLLECTIONS
 
 
+def keys(item: Item, before: int | None = None) -> tuple[str, ...]:
+    """What the judge asks of ``item``: every question of its kind, or
+    (``before``: the version that asked it last) those added since."""
+    found = MUSEUM_SEEN_AS if museum(item) else tuple(SEEN_AS)
+    if before is None:
+        return found
+    added = {k for v, new in ADDED.items() if v > before for k in new}
+    return tuple(k for k in found if k in added)
+
+
+#: A gathering source's words for a diagram, plan, map or the like: such
+#: works are asked first (the picture decides).
+_CHART = re.compile(
+    r"\b(diagram\w*|schemat\w*|sch[eé]mas?|infogra\w*|charts?|graphs?|wykres\w*|"
+    r"floor ?plans?|ground ?plans?|site ?plans?|lageplan\w*|grundriss\w*|plattegrond\w*|"
+    r"rzut\w*|plans?|planu|maps?|mapa|mapy|map[eę]|karte|carte|kaart\w*|atlas\w*|"
+    r"legend[aes]?|location|locator|blueprints?|stammbaum\w*|family tree|genealog\w*|"
+    r"timeline|flowchart|symbols?|pictograms?|piktogram\w*|flags?|coat of arms|blason|"
+    r"escut|wappen)\b",
+    re.IGNORECASE,
+)
+
+
+def charted(item: Item) -> bool:
+    """A gathering source's work its words say may be a diagram, a plan or
+    a map."""
+    words = f"{item.title}\n{item.classification}\n{' '.join(item.subjects)}"
+    return not museum(item) and bool(_CHART.search(words) or is_design(item))
+
+
 class Gatekeeper(CriticNight):
     kind = KIND
     switch = SWITCH
-    version = 1
+    version = max(ADDED)
     #: About 0.007 cent a work through the Batch API (Haiku 5.5, measured
     #: 2026-11-14): 1000 a night is at most some 2 USD a month, until the
     #: catalogue's backlog (the museums' bound objects among it) is through.
@@ -235,31 +279,48 @@ class Gatekeeper(CriticNight):
         #: numbers of Szukanie wyglądem, ``Looks.near_ids``; Google is not
         #: asked); none without them.
         self.alike: Callable[[str, int], list[str]] = lambda _id, _limit: []
+        #: The version that last asked each work asked before this one
+        #: (:meth:`candidates`): it is asked only what was added since.
+        self.before: dict[str, int] = {}
 
     def candidates(self, asked: dict[str, Any]) -> list[Item]:
         kept_by_owner = self.kept_by_owner()
-        like_cover = self.like_covers()
+        like_cover = self.like_written("blank")
+        like_chart = self.like_written("diagram")
+        self.before = self.earlier()
         found = [
             i
             for i in self.library.all_items()
             if i.id not in asked
             and i.id not in kept_by_owner
             and (asked_by_rules(i) or (i.id in like_cover and _open(i)))
+            and keys(i, self.before.get(i.id))
         ]
         # Favourites, playlists and Discover first (Mateusz 2026-11-11), then
-        # what the owner keeps or saw, then the museums' bound objects (what
-        # he saw in Szukaj, 2026-11-14), then the newest of the catalogue.
+        # what the owner keeps or saw, then what may be a diagram, a plan or
+        # a map (2026-11-14), then the museums' bound objects (what he saw in
+        # Szukaj, 2026-11-14), then the newest of the catalogue.
         found.sort(key=lambda i: i.added_at or "", reverse=True)
         found.sort(key=lambda i: not (museum(i) and (i.id in like_cover or bound(i))))
+        found.sort(key=lambda i: not (not museum(i) and (i.id in like_chart or charted(i))))
         found.sort(key=lambda i: not (not i.pooled or i.favorite or i.show_count > 0))
         cared = self.cared()
         found.sort(key=lambda i: cared.get(i.id, REST))
         return found
 
-    def like_covers(self) -> set[str]:
-        """The works that look like those set aside as a cover: a museum's
-        bound object its words do not name ("Starannie wydane ilustracje…")."""
-        seeds = [w["id"] for w in self.written() if w.get("seen_as") == "blank"]
+    def earlier(self) -> dict[str, int]:
+        """The works an earlier version asked, with that version."""
+        return {
+            k: int(v.get("v") or 1)
+            for k, v in (self.state().get("asked") or {}).items()
+            if isinstance(v, dict) and v.get("v") != self.version
+        }
+
+    def like_written(self, seen_as: str) -> set[str]:
+        """The works that look like those set aside as ``seen_as``: a
+        museum's bound object its words do not name ("Starannie wydane
+        ilustracje…"), a plan its words do not call one."""
+        seeds = [w["id"] for w in self.written() if w.get("seen_as") == seen_as]
         found: set[str] = set()
         for seed in seeds[: self.ALIKE_SEEDS]:
             found.update(self.alike(seed, self.ALIKE_EACH))
@@ -270,7 +331,7 @@ class Gatekeeper(CriticNight):
 
     def question(self, item: Item) -> dict[str, Any]:
         content = [image_block(self.images, item), {"type": "text", "text": facts(item)}]
-        system, schema = (MUSEUM_SYSTEM, MUSEUM_SCHEMA) if museum(item) else (SYSTEM, SCHEMA)
+        system, schema = prompt(keys(item, self.before.get(item.id)), museum(item))
         return request(
             model=self.judge_model, system=system, content=content, schema=schema, max_tokens=3000
         )

@@ -92,6 +92,8 @@ WORDS = [
     "Marsh",
     "Grove",
     "Brook",
+    "Ridge",
+    "Fjord",
 ]
 ARCHIVE = sorted(ART_PHOTO_ARCHIVES)[0]
 
@@ -147,6 +149,16 @@ SPECIMENS: dict[str, tuple[str, dict[str, Any]]] = {
         "mnk",
         {"title": "Szkicownik {title}", "classification": "Drawing", "seen_as": "blank"},
     ),
+    # Commons' vector file on Openverse: a plan, a map, a crest (2026-11-14).
+    "schemat z Commons": (
+        "openverse",
+        {
+            "classification": "illustration",
+            "medium": "",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d8/{slug}.svg/"
+            "3840px-{slug}.svg.png",
+        },
+    ),
 }
 
 #: The places asked, in the order of the marks.
@@ -197,6 +209,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "projekt architekta": ("++-++++-++-", "++-++++-++-"),
     "szkicownik z muzeum": ("+++++++++++", "+++++++++++"),
     "okładka odłożona przez Strażnika": ("-----------", "++---------"),
+    "schemat z Commons": ("-----------", "++---------"),
 }
 
 #: K1: works the owner kept that the catalogue lists while it
@@ -238,6 +251,7 @@ def _work(name: str, pooled: bool) -> Item:
         source_id = f"{says['source_id']}-{'pooled' if pooled else 'kept'}"
     fields["source_id"] = source_id
     fields["title"] = fields["title"].replace("{title}", title)
+    fields["image_url"] = fields["image_url"].replace("{slug}", f"{slug}-{pooled}")
     return Item(
         id=f"{source}:{source_id}",
         kind=ItemKind.ARTWORK,
