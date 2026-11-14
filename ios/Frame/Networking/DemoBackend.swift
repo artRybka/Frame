@@ -1760,7 +1760,7 @@ actor DemoBackend: FrameBackend {
         ]
         let packages: [(String, String, String)] = [
             ("catalogue", "Utrzymanie katalogu", "Nowe dzieła, porządki w plikach, kopie razem, ostrzejsze kopie i oryginały Twoich dzieł."),
-            ("duplicates", "Powtórki i jakość", "Powtórki i detale, sędzia powtórek, strażnik katalogu i nocny przegląd. Najpierw Ulubione, playlisty i Odkrywaj."),
+            ("duplicates", "Powtórki i jakość", "Powtórki i detale, sędzia powtórek, strażnik katalogu, nocny przegląd i kadrowanie zdjęć dzieł. Najpierw Ulubione, playlisty i Odkrywaj."),
             ("descriptions", "Opisy i fakty", "Polskie teksty i słowa kluczowe, kim są artyści, gdzie wiszą dzieła, miasta i miejsca."),
             ("discover", "Odkrywaj i ramka", "Studium dnia, Dziś dla Ciebie, karty Odkrywaj, Propozycje dnia, playlisty, kolejka ramki i urodziny artystów."),
             ("indexes", "Spisy muzeów", "Lokalne spisy kolekcji (Met, NGA, Luwr, Rijksmuseum i inne), odświeżane, gdy przyjdzie pora."),

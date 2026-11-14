@@ -167,7 +167,8 @@ GROUPS: list[tuple[str, str, str]] = [
     (
         "duplicates",
         "Powtórki i jakość",
-        "Powtórki i detale, sędzia powtórek, strażnik katalogu i nocny przegląd. "
+        "Powtórki i detale, sędzia powtórek, strażnik katalogu, nocny przegląd "
+        "i kadrowanie zdjęć dzieł. "
         "Najpierw Ulubione, playlisty i Odkrywaj.",
     ),
     (
