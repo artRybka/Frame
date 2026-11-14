@@ -87,7 +87,8 @@ LAYERS = ("frame_outer", "frame_inner", "mount", "sheet", "plate", "canvas")
 CORNERS = """This is a museum's photograph of one catalogued artwork. Around the work there \
 may be things that are not the work: the backdrop or wall, an easel, a picture frame (gilded \
 or plain), a cardboard mount or passe-partout, the sheet a print was pulled on, conservation \
-strips, a colour chart.
+strips, a colour chart, the block, covers and binding of a sketchbook or album and the edges \
+of the pages under the one shown.
 
 List the nested rectangles you can see, from the outside in, each as its four corners \
 (top-left, top-right, bottom-right, bottom-left) in the coordinates of the grid drawn on the \
@@ -95,8 +96,10 @@ second copy (0-1000 across, 0-1000 down, over the whole photograph). Put each co
 on the visible edge; if the photograph is taken at an angle, the corners need not form a \
 rectangle. Kinds: "frame_outer", "frame_inner" (the frame's opening, where the painted \
 surface starts), "mount" (board/passe-partout), "sheet" (the paper of a print, drawing, \
-poster or page), "plate" (a print's plate mark or the printed/drawn image area), "canvas" \
-(an unframed painting's edge). The backdrop is never listed: it is the photograph.
+poster or page; in a sketchbook or album only the one page shown is a sheet, the book's block \
+and the pages under it are not listed), "plate" (a print's plate mark or the printed/drawn \
+image area), "canvas" (an unframed painting's edge). The backdrop is never listed: it is \
+the photograph.
 
 Then choose:
 - "work": the index of the rectangle that is the artwork itself as one would hang it without \
@@ -106,7 +109,8 @@ the paper's edge or the paper carries part of the work (a signature, a printed t
 a deliberate margin belonging to the design).
 - "with_paper": the index of the sheet if a viewer might want to keep the paper margin \
 (prints with a plate mark), else null.
-- "confident": true only if the edges are clearly visible.
+- "confident": true only if the edges are clearly visible. A page's rounded corners or its \
+bound edge are no reason for doubt: put the corners just inside the rounding, on the page.
 Answer in JSON only."""
 CORNERS_SCHEMA = {
     "type": "object",
@@ -183,11 +187,13 @@ def read_layers(data: dict[str, Any]) -> tuple[Quad | None, Quad | None] | None:
     work_quad = quads[work]
     if work_quad is None:
         return None
+    if kinds[work] == "sheet":
+        return work_quad, None  # the page itself: a sketchbook's block around it is no paper
     paper = data.get("with_paper")
-    sheet = paper if isinstance(paper, int) and 0 <= paper < len(layers) else None
-    if sheet is None:
-        sheet = next((n for n, k in enumerate(kinds) if k == "sheet"), None)
-    if sheet is None or sheet == work or quads[sheet] is None:
+    sheet = paper if isinstance(paper, int) and 0 <= paper < work else None
+    if sheet is None:  # the sheet nearest around the work
+        sheet = next((n for n in range(work - 1, -1, -1) if kinds[n] == "sheet"), None)
+    if sheet is None or quads[sheet] is None:
         return work_quad, None
     return quads[sheet], work_quad
 
@@ -199,7 +205,10 @@ def _now() -> str:
 class Crops(CriticNight):
     kind = KIND
     switch = SWITCH
-    version = 1
+    #: 2 (2026-11-14): a sketchbook's page is the work, not its block, and
+    #: a page's rounded corners are no doubt. Works Opus would not cut are
+    #: asked again; the judge's "nothing around it" stands.
+    version = 2
     judge_model = HAIKU
     critic_model = OPUS
     #: The judge: about 0.01 cent a work through the Batch API, 600 a night
@@ -216,6 +225,14 @@ class Crops(CriticNight):
             self._pool = ThreadPoolExecutor(2, thread_name_prefix="crops")
             self._running: dict[str, Future[bool]] = {}
             self._guard = threading.Lock()
+
+    def asked(self) -> dict[str, Any]:
+        return {
+            k: v
+            for k, v in (self.state().get("asked") or {}).items()
+            if isinstance(v, dict)
+            and (v.get("v") == self.version or (v.get("v") == 1 and v.get("critic") is not False))
+        }
 
     # -- which works --------------------------------------------------------------
 

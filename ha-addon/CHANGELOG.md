@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.126
+
+- Kadrowanie zdjęć dzieł rozpoznaje stronę szkicownika lub albumu: dzieło
+  to sama strona, bez grzbietu, okładki i brzegów kartek pod nią
+  (np. szkice Bierstadta z Met). Zaokrąglone rogi strony nie są już
+  powodem do wątpliwości. Dzieła, których model wcześniej nie był pewien,
+  są pytane ponownie, w nocy albo po wejściu w kartę.
+
 ## 1.145.125
 
 - Pasek „Kolorystyka” sitodruku to płaskie, kryjące warstwy farby z czystą
