@@ -120,6 +120,12 @@ struct PaintJob: @unchecked Sendable {
             return PaintJob(InkStrip(shares: shares, width: width, seed: seed, press: style.press ?? .wood), scale: PrintPaint.scale)
         case .photo:
             return PaintJob(PhotoStrip(shares: shares, width: width, seed: seed), scale: PrintPaint.scale)
+        case .wash:
+            return PaintJob(WashStrip(shares: shares, width: width, seed: seed), scale: PrintPaint.scale)
+        case .gouache:
+            return PaintJob(GouacheStrip(shares: shares, width: width, seed: seed), scale: PrintPaint.scale)
+        case .handColoured:
+            return PaintJob(HandColouredStrip(shares: shares, width: width, seed: seed), scale: PrintPaint.scale)
         }
     }
 
@@ -138,6 +144,10 @@ struct PaintJob: @unchecked Sendable {
             return PaintJob(InkStamp(rgb: rgb, index: index, seed: seed, press: style.press ?? .wood), scale: PrintPaint.scale)
         case .photo:
             return PaintJob(PhotoChip(rgb: rgb, index: index, seed: seed), scale: PrintPaint.scale)
+        case .wash: return PaintJob(WaterDab(rgb: rgb, index: index, seed: seed))
+        case .gouache: return PaintJob(GouacheDab(rgb: rgb, index: index, seed: seed), scale: PrintPaint.scale)
+        case .handColoured:
+            return PaintJob(LinePatch(rgb: rgb, index: index, seed: seed, tool: .burin), scale: PrintPaint.scale)
         }
     }
 }

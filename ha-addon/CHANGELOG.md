@@ -2,6 +2,12 @@
 
 ## 1.145.126
 
+- Trzy nowe wyglądy paska „Kolorystyka”: rysunek lawowany (tusz lub bister
+  rozprowadzony pędzlem) to warstwy laweringu kładzione jedna na drugą z
+  kreską piórka na ciemniejszej połowie; gwasz i farby kryjące (także
+  „opaque watercolor” i „gum tempera” miniatur) to kryjące, matowe
+  pociągnięcia pędzla; grafika kolorowana ręcznie to kreski ryciny z
+  luźno położonymi akwarelami jej kolorów.
 - Pasek „Kolorystyka” idzie za techniką dzieła, a nie za działem muzeum:
   akwarele, rysunki ołówkiem i tuszem z działów „Prints and Drawings” nie
   są już rysowane jak ryciny, a obrazy z działu „Paintings and Sculpture”

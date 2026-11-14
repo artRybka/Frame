@@ -43,6 +43,18 @@ enum PaintStyle: String, Sendable, CaseIterable {
     /// (`PhotoStrip`; Mateusz 2026-11-12 10:47: „fotografia - gradientowy
     /// pasek z lekkim ziarnem”).
     case photo
+    /// A drawing in washes of ink laid with the brush (lavis, „lawowanie”),
+    /// and ink painted with a brush: the tones as washes laid one over
+    /// another, the pen's lines over the darker (`WashStrip`, sketch 40;
+    /// Mateusz 2026-11-14 19:29: „Tak, przygotuj szkice dla 1,2,3,5 i
+    /// złotego akcentu”). Was a pen's lines alone.
+    case wash
+    /// Gouache, bodycolour, gum tempera: opaque matte paint in strokes
+    /// side by side (`GouacheStrip`). Was watercolour.
+    case gouache
+    /// A print coloured by hand: its lines, and loose washes of its
+    /// colours over them (`HandColouredStrip`).
+    case handColoured
 
     /// The tool of a work of lines; nil for any other.
     var tool: LineTool? {
@@ -95,7 +107,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
     /// pen's. Paint named wins over the pencil under it (pencil and
     /// watercolour is a watercolour), a print over the paint on it.
     static func of(medium: String, classification: String = "", mono: Bool = false, warm: Bool = false) -> PaintStyle? {
-        let words = Self.words(medium)
+        let words = Self.paints(Self.words(medium))
         func has(_ list: [String], _ begins: [String], _ whole: Set<String> = []) -> Bool {
             list.contains { word in whole.contains(word) || begins.contains { word.hasPrefix($0) } }
         }
@@ -108,7 +120,8 @@ enum PaintStyle: String, Sendable, CaseIterable {
         // A print its medium says is in colours is its inks, however
         // faded its colours came out ("color woodblock print", „litografia
         // barwna”); one coloured by hand afterwards is not.
-        let byHand = words.contains { word in handColoured.contains { word.hasPrefix($0) } }
+        let byHand = words.contains { word in byHandWords.contains { word.hasPrefix($0) } }
+            || zip(words, words.dropFirst()).contains { $0 == "hand" && byHandWith.contains(where: $1.hasPrefix) }
         let oneInk = mono && (byHand || !words.contains { word in inColours.contains { word.hasPrefix($0) } })
         // An "oil print" is a photograph, not an oil painting and not a print.
         let printed = zip(words, words.dropFirst()).contains { photographed.contains($0) && $1.hasPrefix("print") }
@@ -122,12 +135,14 @@ enum PaintStyle: String, Sendable, CaseIterable {
         if has(all, stone) { return oneInk ? .pencil : .litho }
         // A poster that names no other way it was printed ("druk (proces)"): most were printed in offset.
         if has(all, posters), !has(all, prints.filter { !Self.anyPrint.contains($0) }) { return .offset }
-        if has(all, prints, ["ets", "druk"]) { return oneInk ? .burin : .woodblock }
+        if has(all, prints, ["ets", "druk"]) { return byHand ? .handColoured : oneInk ? .burin : .woodblock }
+        // Washes of ink, or ink laid with a brush, before any chalk or pencil under them.
+        let washed = has(words, washes) || (has(words, brushes) && words.contains { ink.contains($0) || inkBegins.contains(where: $0.hasPrefix) })
         var inked = false
         for word in words {
             for (style, begins, whole) in named where whole.contains(word) || begins.contains(where: { word.hasPrefix($0) }) {
                 // Chalk under a drawing in pen and ink is not what it is made in.
-                if style == .dry, inked { continue }
+                if style == .dry, inked || washed { continue }
                 return style
             }
             if ink.contains(word) || inkBegins.contains(where: { word.hasPrefix($0) }) { inked = true }
@@ -135,7 +150,10 @@ enum PaintStyle: String, Sendable, CaseIterable {
         if words.contains(where: { word in canvas.contains { word.hasPrefix($0) } || word == "tela" }) { return .oil }
         let painting = has(kind, paintings)
         // Ink and colours on silk is a painting, not a drawing in pen.
-        if inked { return !mono && (painting || has(words, colours)) ? nil : .pen }
+        if inked || washed {
+            if !mono && (painting || has(words, colours)) { return nil }
+            return washed ? .wash : .pen
+        }
         if has(words, soft) { return .pencil }
         if painting { return has(words, notOil) ? nil : .oil }
         if mono, has(all, drawings) { return warm ? .pen : .pencil }
@@ -198,6 +216,9 @@ enum PaintStyle: String, Sendable, CaseIterable {
         case .burin, .pen, .pencil: return LineStrip.time(shares.count)
         case .woodblock, .litho, .screen, .offset: return InkStrip.time(shares.count)
         case .photo: return PrintPaint.appear
+        case .wash: return WashStrip.time(shares)
+        case .gouache: return GouacheStrip.time(shares.count)
+        case .handColoured: return HandColouredStrip.time(shares)
         }
     }
 
@@ -211,8 +232,25 @@ enum PaintStyle: String, Sendable, CaseIterable {
         case .burin, .pen, .pencil: 0.24
         case .woodblock, .litho, .screen, .offset: 0.26
         case .photo: 0.24
+        case .wash: 0.22
+        case .gouache: 0.26
+        case .handColoured: 0.24
         }
         return Self.swatchesFrom * bar + gap * Double(index)
+    }
+
+    /// Two words that name one paint, as one: "opaque watercolour" and
+    /// "gum tempera" are gouache.
+    static func paints(_ words: [String]) -> [String] {
+        var out = [String]()
+        for word in words {
+            if let before = out.last, (before == "opaque" && word.hasPrefix("watercol")) || (before == "gum" && word.hasPrefix("tempera")) {
+                out[out.count - 1] = "gouache"
+            } else {
+                out.append(word)
+            }
+        }
+        return out
     }
 
     /// Lower case, no accents, split at what is no letter.
@@ -247,7 +285,9 @@ enum PaintStyle: String, Sendable, CaseIterable {
     private static let inColours = ["color", "colour", "barwn", "wielobarw", "nishiki", "chromo", "polychrom", "couleur", "farbholz",
                                     "farbdruck", "farblitho", "farbig", "kleurendruk", "kleurenhout", "kleurenlitho"]
     /// What says a print was coloured by hand.
-    private static let handColoured = ["hand", "kolorowan", "handgekleur", "handkolor", "enlumin", "rehauss"]
+    private static let byHandWords = ["handcolo", "colorie", "kolorowan", "handgekleur", "handkolor", "enlumin", "rehauss"]
+    /// What follows "hand" when it was coloured by hand ("hand-coloured", "hand-tinted"); "handmade paper" was not.
+    private static let byHandWith = ["colo", "tint", "paint", "finish", "gekleur"]
     /// A soft point.
     private static let soft = ["pencil", "graphit", "grafit", "charcoal", "fusain", "bleistift", "kohle", "potlood", "houtskool", "lapiz",
                                "matita", "carboncino", "silverpoint", "metalpoint", "olowk", "olowek", "wegiel", "wegl"]
@@ -258,6 +298,10 @@ enum PaintStyle: String, Sendable, CaseIterable {
 
     private static let ink: Set<String> = ["ink", "inks", "inkt", "pen", "encre", "plume", "tinte", "feder", "tinta", "atrament", "sepia", "bistre", "bister"]
     private static let inkBegins = ["tusz", "pior", "inchiostr"]
+    /// Washes of ink.
+    private static let washes = ["wash", "lavis", "lave", "lawowan", "laviert", "lavier", "gewassen", "penseel"]
+    /// A brush, which with ink lays it in washes.
+    private static let brushes = ["brush", "pedzl", "pedzel", "pinsel", "pinceau", "pennell"]
 
     /// What only oil or acrylic is painted on.
     private static let canvas = ["canvas", "plotn", "toile", "doek", "leinwand", "lienzo", "laerred"]
@@ -283,8 +327,8 @@ enum PaintStyle: String, Sendable, CaseIterable {
     private static let named: [(PaintStyle, [String], Set<String>)] = [
         (.oil, ["olej", "huile", "olie", "olja", "olje", "olfarb", "oelfarb", "akryl", "acryl", "acril", "tempera", "tempery", "temperow"],
          ["oil", "oils", "ol", "oel", "olio", "oleo"]),
-        (.water, ["watercol", "aquarel", "akwarel", "acuarel", "acquerel", "waterverf", "akvarel", "gouach", "gwasz", "guazzo",
-                  "bodycol", "dekverf", "deckfarb"], []),
+        (.gouache, ["gouach", "gwasz", "guazzo", "bodycol", "dekverf", "deckfarb"], []),
+        (.water, ["watercol", "aquarel", "akwarel", "acuarel", "acquerel", "waterverf", "akvarel"], []),
         (.dry, ["pastel", "kred", "chalk", "craie", "kreide", "krijt", "sanguin", "sangwin"], ["crayon", "crayons"]),
     ]
 }

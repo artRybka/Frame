@@ -29,8 +29,11 @@ final class PaintTests: XCTestCase {
     func testTheMediumNamesTheWayItIsPainted() {
         let oil = ["Oil on canvas", "olej na płótnie", "Huile sur toile", "Öl auf Leinwand", "olieverf op doek", "Olio su tela",
                    "Tempera and gold on wood", "Acrylic on canvas", "akryl, płótno", "Oil and tempera on panel"]
-        let water = ["Watercolor over graphite", "akwarela, papier", "Gouache et aquarelle", "Aquarell auf Papier", "gwasz, tektura",
+        let water = ["Watercolor over graphite", "akwarela, papier", "Aquarelle et gouache", "Aquarell auf Papier",
                      "Watercolour with pen and ink", "tusz, akwarela, papier"]
+        // Opaque paint: gouache, bodycolour, gum tempera (Mateusz 2026-11-14 19:29, sketch 40).
+        let gouache = ["Gouache et aquarelle", "gwasz, tektura", "Opaque watercolor and gold on paper", "Bodycolour on vellum",
+                       "Gum tempera on paper", "Dekverf op papier"]
         let dry = ["pastel on paper", "kredka, papier", "black chalk", "Pastel over watercolour", "pastel, papier naklejony na tekturę",
                    "Red chalk on laid paper", "kreda, papier"]
         // Ink with colours, and whatever names something that is no paint: flat.
@@ -42,6 +45,7 @@ final class PaintTests: XCTestCase {
         for text in photo { XCTAssertEqual(PaintStyle.of(medium: text), .photo, text) }
         for text in oil { XCTAssertEqual(PaintStyle.of(medium: text), .oil, text) }
         for text in water { XCTAssertEqual(PaintStyle.of(medium: text), .water, text) }
+        for text in gouache { XCTAssertEqual(PaintStyle.of(medium: text), .gouache, text) }
         for text in dry { XCTAssertEqual(PaintStyle.of(medium: text), .dry, text) }
         for text in flat { XCTAssertNil(PaintStyle.of(medium: text), text) }
         // What kind of thing it is counts too: a print is no painting.
@@ -134,12 +138,21 @@ final class PaintTests: XCTestCase {
         XCTAssertNotEqual(PaintStyle.of(medium: "Pair of six-panel folding screens; ink and color on paper"), .screen)
         XCTAssertEqual(PaintStyle.of(medium: "plakat, linoryt", mono: true), .burin)
         // A drawing in pen and ink, whatever chalk is under it.
-        for text in ["Pen and brown ink, brown wash, over black chalk", "tusz, papier", "piórko, atrament", "Plume et encre brune", "Feder in Braun",
+        for text in ["Pen and brown ink, over black chalk", "tusz, papier", "piórko, atrament", "Plume et encre brune", "Feder in Braun",
                      "Ink on paper"] {
             XCTAssertEqual(PaintStyle.of(medium: text), .pen, text)
             XCTAssertEqual(PaintStyle.of(medium: text, classification: "Drawings", mono: true), .pen, text)
         }
+        // Washes of ink, and ink laid with a brush: washes, whatever chalk or pencil is under them (sketch 40).
+        for text in ["Pen and brown ink, brown wash, over black chalk", "Black chalk, pen and brown ink, grey wash", "tusz lawowany, papier",
+                     "Plume, encre brune, lavis", "pen en penseel in bruin", "Feder in Braun, laviert", "Brush and black ink on paper",
+                     "Graphite and gray wash"] {
+            XCTAssertEqual(PaintStyle.of(medium: text), .wash, text)
+            XCTAssertEqual(PaintStyle.of(medium: text, classification: "Drawings", mono: true), .wash, text)
+        }
+        XCTAssertEqual(PaintStyle.of(medium: "Watercolor wash over graphite"), .water)
         // Ink with colours is a painting: flat; in ink alone, a brush's tones are a pen's.
+        XCTAssertNil(PaintStyle.of(medium: "Ink, colour and wash on silk", classification: "Paintings"))
         XCTAssertNil(PaintStyle.of(medium: "Ink and color on silk", classification: "Paintings"))
         XCTAssertNil(PaintStyle.of(medium: "Hanging scroll; ink on paper", classification: "Paintings"))
         XCTAssertEqual(PaintStyle.of(medium: "Hanging scroll; ink on paper", classification: "Paintings", mono: true), .pen)
@@ -165,7 +178,13 @@ final class PaintTests: XCTestCase {
             XCTAssertNotEqual(PaintStyle.of(medium: text, mono: true), .burin, text)
             XCTAssertNotEqual(PaintStyle.of(medium: text, mono: true), .pencil, text)
         }
-        XCTAssertEqual(PaintStyle.of(medium: "hand-colored engraving", mono: true), .burin)
+        // A print coloured by hand: its lines and loose washes of its colours, however faint they came out;
+        // a print on handmade paper is not.
+        for text in ["hand-colored engraving", "Etching, hand-coloured", "miedzioryt kolorowany", "Handgekleurde ets", "Ets, met de hand gekleurd", "Gravure coloriée à la main"] {
+            XCTAssertEqual(PaintStyle.of(medium: text), .handColoured, text)
+            XCTAssertEqual(PaintStyle.of(medium: text, mono: true), .handColoured, text)
+        }
+        XCTAssertEqual(PaintStyle.of(medium: "Etching on handmade paper", mono: true), .burin)
         XCTAssertEqual(PaintStyle.of(medium: "drzeworyt poprzeczny, druk (proces), farba drukarska, papier gazetowy", mono: true), .burin)
         // A department of prints and drawings says nothing of which a work is: its medium does.
         let department = "Prints and Drawings"
@@ -451,11 +470,79 @@ final class PaintTests: XCTestCase {
         XCTAssertGreaterThan(seen.max() ?? 0, 0.75)
     }
 
+    /// Sketch 40 (Mateusz 2026-11-14 19:29: „Tak, przygotuj szkice dla
+    /// 1,2,3,5 i złotego akcentu”): washes of ink, gouache, a print
+    /// coloured by hand.
+    func testWashesOfInkGouacheAndAPrintColouredByHand() {
+        func colour(_ frame: PaintFrame, _ x: Double, _ y: Double) -> [Double] {
+            let (i, j) = dot(x, y), c = frame.colour(i, j)
+            return [c.red, c.green, c.blue]
+        }
+        func light(_ frame: PaintFrame, _ x: Double, _ y: Double) -> Double { PrintPaint.lightness(colour(frame, x, y)) }
+        func far(_ a: [Double], _ b: [Double]) -> Double { zip(a, b).map { abs($0 - $1) }.max() ?? 0 }
+        // A drawing in bistre washes: the lightest tone is the paper, each wash darker than the one before, down to the darkest ink.
+        let bistre = shares([("#efe6d2", 0.42), ("#cdb796", 0.2), ("#a1825d", 0.17), ("#6e5136", 0.13), ("#3a2a1c", 0.08)])
+        let wash = WashStrip(shares: bistre, width: 350, seed: 5)
+        XCTAssertEqual(PaintStyle.wash.barTime(bistre, width: 350), wash.length, accuracy: 0.001)
+        XCTAssertEqual(covered(wash.frame(age: 0)), 0)
+        let washed = wash.frame(age: wash.length), spans = Paint.spans(bistre, width: 350)
+        let middles = spans.map { (($0.0 + $0.1) / 2) }
+        let seen = middles.map { x in (0..<9).map { light(washed, x - 4 + Double($0), 6 + 2 * Double($0)) }.reduce(0, +) / 9 }
+        for k in 1..<seen.count { XCTAssertLessThan(seen[k], seen[k - 1] - 0.03, "\(seen)") }
+        XCTAssertLessThan(far(colour(washed, middles[0], 13), bistre[0].rgb), 16)
+        XCTAssertLessThan(abs(seen[4] - PrintPaint.lightness(bistre[4].rgb)), 0.12, "\(seen)")
+        // The pen's lines only over the darker half: none on the first wash, a pen's strokes on the third.
+        func lines(_ x: Double) -> Double {
+            let row = (0..<120).map { light(washed, x - 15 + 0.25 * Double($0), 13) }
+            return (row.max() ?? 0) - (row.min() ?? 0)
+        }
+        XCTAssertLessThan(lines(middles[1]), 0.08)
+        XCTAssertGreaterThan(lines(middles[3]), 0.12)
+        // Before the pen the washes are laid one after another, from the left.
+        let early = wash.frame(age: PrintPaint.appear + WashStrip.apart + 0.2)
+        XCTAssertLessThan(light(early, middles[1], 13), PrintPaint.lightness(bistre[0].rgb) - 0.04)
+        XCTAssertGreaterThan(light(early, middles[4], 13), PrintPaint.lightness(bistre[3].rgb))
+
+        // Gouache: each colour opaque and its own, the paper not through it, laid one after another.
+        let miniature = shares([("#b8442f", 0.24), ("#ded0aa", 0.22), ("#3f6b4a", 0.18), ("#2a3d6b", 0.14), ("#c9a24a", 0.12), ("#1c1a17", 0.10)])
+        let gouache = GouacheStrip(shares: miniature, width: 350, seed: 5)
+        XCTAssertEqual(PaintStyle.gouache.barTime(miniature, width: 350), gouache.last, accuracy: 0.001)
+        let painted = gouache.frame(age: gouache.length), placed = Paint.spans(miniature, width: 350)
+        for (share, span) in zip(miniature, placed) {
+            XCTAssertLessThan(far(colour(painted, (span.0 + span.1) / 2, 13), share.rgb), 20, "\(share.rgb)")
+        }
+        let first = gouache.frame(age: PrintPaint.appear + GouacheStrip.takes)
+        XCTAssertLessThan(far(colour(first, (placed[0].0 + placed[0].1) / 2, 13), miniature[0].rgb), 20)
+        XCTAssertLessThan(far(colour(first, (placed[5].0 + placed[5].1) / 2, 13), InkStrip.paper), 20)
+
+        // A print coloured by hand: the engraver's lines in its ink's tones, its colours washed over them once printed.
+        let print = shares([("#e9dfc8", 0.45), ("#b9ab8f", 0.22), ("#7d705a", 0.16), ("#4a4034", 0.17), ("#b5523a", 0.12), ("#6e8c5a", 0.1),
+                            ("#5d7fa6", 0.08)])
+        let parts = HandColouredStrip.split(print)
+        XCTAssertEqual(parts.tones.count, 4)
+        XCTAssertEqual(parts.colours.map(\.rgb), [[181, 82, 58], [110, 140, 90], [93, 127, 166]])
+        let coloured = HandColouredStrip(shares: print, width: 350, seed: 5)
+        XCTAssertEqual(PaintStyle.handColoured.barTime(print, width: 350), coloured.last, accuracy: 0.001)
+        func red(_ frame: PaintFrame) -> Double {
+            var sum = 0.0
+            for k in 0..<60 {
+                let c = colour(frame, 30 + Double(k), 8 + 0.15 * Double(k))
+                sum += c[0] - c[2]
+            }
+            return sum / 60
+        }
+        let printed = coloured.frame(age: LineStrip.time(4)), done = coloured.frame(age: coloured.length)
+        XCTAssertLessThan(red(printed), 30)
+        XCTAssertGreaterThan(red(done), red(printed) + 25)
+        XCTAssertLessThan((0..<60).map { light(done, 30 + Double($0), 13) }.min() ?? 1, 0.5)
+    }
+
     func testAPaintsSwatchOfAPrintOrADrawingIsASlipOfItsPaper() {
         let middle = Int(Paint.half) * PrintPaint.scale
         var painters = [(String, PaintPainter)]()
         for tool in [LineTool.burin, .pen, .pencil] { painters.append(("\(tool)", LinePatch(rgb: [40, 60, 120], index: 1, seed: 5, tool: tool))) }
         for press in [InkPress.wood, .stone, .screen, .offset] { painters.append(("\(press)", InkStamp(rgb: [40, 60, 120], index: 1, seed: 5, press: press))) }
+        painters.append(("gouache", GouacheDab(rgb: [40, 60, 120], index: 1, seed: 5)))
         for (name, painter) in painters {
             XCTAssertEqual(painter.wide, Int(2 * Paint.half) * PrintPaint.scale, name)
             XCTAssertGreaterThan(painter.length, 0.4, name)
