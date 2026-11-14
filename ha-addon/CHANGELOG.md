@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.129
+
+- Szkic pod analizą kompozycji (podkład z modelu graficznego) jest ogólniejszy
+  i nigdy nie rysuje więcej niż dzieło: mniej kresek, postacie poza tematem
+  jako proste sylwetki, bez dorysowanych twarzy, palców i drobiazgów.
+  Zapisane arkusze ocenia raz tani model, a te zbyt szczegółowe dostają nowy
+  podkład w tle (Batch, ok. 0,04 USD za arkusz); kolorowe kreski analizy
+  zostają bez zmian.
+
 ## 1.145.128
 
 - Trzy nowe wyglądy paska „Kolorystyka”: rysunek lawowany (tusz lub bister
