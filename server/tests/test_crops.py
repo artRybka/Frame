@@ -308,6 +308,30 @@ def test_the_card_cuts_at_once_and_the_owner_corrects_and_restores(
     assert not service.crops.now(item)  # never cut again by itself
 
 
+def test_a_museum_work_only_looked_at_is_cut_too(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+    monkeypatch: Any,
+) -> None:
+    # Kauffmann's Muses (MNW, Mateusz 2026-11-14): opened from a museum,
+    # not in the library yet; the card's check took it as nothing to do.
+    from frame_server.web import create_app
+
+    app = create_app(service.settings)
+    app.state.service = service
+    looked_at = _work(service, "mnw:8", pooled=True)
+    service.library.delete("mnw:8")
+    assert service.library.get("mnw:8") is None
+    monkeypatch.setattr(service.importer, "resolve", lambda item_id: looked_at)
+    answers = iter([{"surround": ["backdrop", "frame"]}, CORNERS])
+    fake.messages.create = lambda **params: (fake.asked.append(params), _message(next(answers)))[1]
+    with TestClient(app) as client:
+        seen = client.post("/api/library/items/mnw:8/cut/check?wait=30").json()
+    assert seen["changed"] and seen["item"]["cut"]["by"] == "auto"
+    stored = service.library.get("mnw:8")
+    assert stored is not None and stored.pooled and stored.cut_shown() is not None
+
+
 def test_a_cut_of_another_picture_is_never_applied(service: FrameService) -> None:
     item = _work(service, "mnw:3", pooled=True)
     cut = Cut(work=TRUE, aspect=W / H, picture="other:1", at="2026-11-14T10:00:00+00:00")
