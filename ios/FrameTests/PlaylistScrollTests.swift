@@ -67,7 +67,9 @@ final class PlaylistScrollTests: XCTestCase {
     private func scrollView(in view: UIView) -> UIScrollView? {
         var found: [UIScrollView] = []
         func walk(_ view: UIView) {
-            if let scroll = view as? UIScrollView, scroll.bounds.width > 300 { found.append(scroll) }
+            if let scroll = view as? UIScrollView, scroll.bounds.width > 300, scroll.contentSize.height > 1_000 {
+                found.append(scroll)
+            }
             view.subviews.forEach(walk)
         }
         walk(view)
@@ -84,7 +86,11 @@ final class PlaylistScrollTests: XCTestCase {
         FramePositionProbe.frames = [:]
         let model = AppModel()
         model.playlistDetails[Self.playlistID] = try await detail(model)
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        // In the test app's own scene, as on the phone: a window outside
+        // any scene lays SwiftUI out but makes no scroll views.
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 402, height: 874)
         window.rootViewController = UIHostingController(rootView: Host().environment(model))
         window.makeKeyAndVisible()
         defer { window.isHidden = true }
@@ -99,7 +105,7 @@ final class PlaylistScrollTests: XCTestCase {
             if let top = FramePositionProbe.frames["collage"]?.minY { tops.append(Double(top)) }
             try await pause(50)
         }
-        let scroll = try XCTUnwrap(scrollView(in: window), "no scroll view")
+        let scroll = try XCTUnwrap(scrollView(in: window), "no scroll view; frames \(FramePositionProbe.frames)")
         let inset = scroll.adjustedContentInset
         let collage = try XCTUnwrap(FramePositionProbe.frames["collage"], "no cover")
         log.append("\(mode) open: inset top \(inset.top) bottom \(inset.bottom), offset \(scroll.contentOffset.y), content \(scroll.contentSize.height), cover top \(collage.minY), cover tops while settling \(Set(tops).sorted())")
