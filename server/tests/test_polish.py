@@ -3,6 +3,7 @@ frame and the app's card."""
 
 from __future__ import annotations
 
+import itertools
 import threading
 import time
 from pathlib import Path
@@ -12,7 +13,7 @@ import httpx
 import pytest
 from conftest import jpeg_bytes
 from fastapi.testclient import TestClient
-from test_ai import GOOD_KEY, FakeAnthropic
+from test_ai import GOOD_KEY, FakeAnthropic, _message
 
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import HAIKU, SONNET, cost
@@ -20,6 +21,7 @@ from frame_server.ai.pl_text import (
     KIND,
     MAX_BODY,
     NOTE_USAGE,
+    STYLES,
     TRANSLATION_USAGE,
     Context,
     PolishText,
@@ -733,3 +735,116 @@ def test_polish_museums_keep_their_own_titles() -> None:
     mnw = _item(source="mnw", source_id="1", title="Bitwa pod Grunwaldem")
     assert own_title_first(mnw, facts) == Facts(qid="Q1", creator_gender="male")
     assert own_title_first(_item(), facts) is facts
+
+
+def _answers(fake: FakeAnthropic, *answers: dict[str, Any]) -> None:
+    """The fake answers these in turn (streamed or not), the last one after."""
+    left = list(answers)
+
+    def create(**params: Any) -> Any:
+        fake.asked.append(params)
+        return _message(left.pop(0) if len(left) > 1 else left[0])
+
+    fake._create = create  # type: ignore[method-assign]
+    fake.messages.create = create
+
+
+NOTE_ANSWER = {**PL_ANSWER, "sources": ["obraz"]}
+
+
+def _style(params: dict[str, Any]) -> str:
+    return str(params["output_config"]["format"]["schema"]["properties"]["style"]["enum"][0])
+
+
+def test_notes_take_the_five_styles_in_turn(service: FrameService, fake: FakeAnthropic) -> None:
+    job = service.pl_text
+    item = _add(service, "met:2", description="")
+    dealt = [_style(job.params(item)) for _ in range(10)]
+    assert set(dealt[:5]) == set(STYLES) and set(dealt[5:]) == set(STYLES)
+    assert all(a != b for a, b in itertools.pairwise(dealt))  # never twice in a row
+    params = job.params(item)
+    question = params["messages"][0]["content"][1]["text"]
+    name, _ = STYLES[_style(params)]
+    assert f"STYL: {name}." in question
+    assert "OSTATNIE POCZĄTKI" not in question  # no notes yet
+
+
+def test_a_note_keeps_its_style_and_the_next_one_hears_how_it_opened(
+    service: FrameService, fake: FakeAnthropic
+) -> None:
+    opening = "Ciężkie chmury nad portem zasłaniają niemal całe niebo nad statkiem."
+    _answers(fake, {**NOTE_ANSWER, "full": opening, "style": "temat"})
+    item = _add(service, "met:2", description="")
+    service.ai.run_one(KIND, "met:2")
+    text = service.pl_text.text(item)
+    assert text is not None and text.written == "note" and text.style == "temat"
+
+    service.pl_text._recent = (0.0, [])  # read again
+    other = _add(service, "met:3", description="")
+    question = service.pl_text.params(other)["messages"][0]["content"][1]["text"]
+    assert "OSTATNIE POCZĄTKI" in question
+    assert "„Ciężkie chmury nad portem zasłaniają niemal całe…”" in question
+
+
+def test_a_museum_text_not_about_the_work_gets_a_note_at_once(
+    service: FrameService, fake: FakeAnthropic
+) -> None:
+    """Haiku finds only the artist's life in the museum's text: Sonnet writes
+    a note, told the text is not about the work."""
+    _answers(fake, {**PL_ANSWER, "about_work": False}, {**NOTE_ANSWER, "style": "opis"})
+    item = _add(service, "met:1", description=DESCRIPTION)
+    service.ai.run_one(KIND, "met:1")
+
+    assert [p["model"] for p in fake.asked] == [HAIKU, SONNET]
+    assert "about_work" in fake.asked[0]["output_config"]["format"]["schema"]["required"]
+    question = fake.asked[1]["messages"][0]["content"][1]["text"]
+    assert "Tekst muzeum (ogólny, nie o tym dziele" in question
+    assert "Opis muzeum:" not in question
+    text = service.pl_text.text(item)
+    assert text is not None and text.written == "note" and text.general
+    # Kept: asked again, it stays a note (and is fresh).
+    assert service.pl_text.written(item) == "note"
+    assert service.ai.run_one(KIND, "met:1") is not None
+    assert len(fake.asked) == 2
+
+
+def test_a_nights_translation_not_about_the_work_asks_for_a_note_next(
+    service: FrameService, fake: FakeAnthropic
+) -> None:
+    """A batch's answer is kept without a second question: the work waits for
+    the next night's note, its texts not shown meanwhile."""
+    from frame_server.library.models import Note
+
+    item = _add(service, "met:1", description=DESCRIPTION)
+    job = service.pl_text
+    note = service.library.save_note(
+        Note(
+            item_id=item.id,
+            kind=KIND,
+            model=HAIKU,
+            prompt_version=job.prompt_version,
+            source_hash=job.source_hash(item),
+            data={**PL_ANSWER, "about_work": False},
+        )
+    )
+    job.apply(item, note)
+    kept = service.library.note(item.id, KIND)
+    assert kept is not None and kept.data == {"general": True}
+    assert not job.fresh(item, kept)
+    assert job.text(item) is None
+    assert job.written(item) == "note"
+    assert job.params(item)["model"] == SONNET
+    # The museum's text changed: it is read as a description again.
+    changed = service.library.upsert(
+        item.model_copy(update={"description": DESCRIPTION + " More."})
+    )
+    assert job.written(changed) == "translation"
+
+
+def test_a_translation_about_the_work_stays_one(service: FrameService, fake: FakeAnthropic) -> None:
+    _answers(fake, {**PL_ANSWER, "about_work": True})
+    item = _add(service, "met:1", description=DESCRIPTION)
+    service.ai.run_one(KIND, "met:1")
+    assert [p["model"] for p in fake.asked] == [HAIKU]
+    text = service.pl_text.text(item)
+    assert text is not None and text.written == "translation" and not text.general

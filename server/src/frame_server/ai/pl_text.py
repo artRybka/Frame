@@ -8,13 +8,23 @@ DESCRIPTION mode, a fuller text for the app, the medium, the date and the
 author's nationality with life years. The nationality is put together from
 a dictionary where the museum's bio allows it (library/nationality.py):
 models keep writing "holenderski" for "Dutch".
+
+A note looks at the work from one of five sides (:data:`STYLES`), dealt
+out in turn so that notes in a row differ (Mateusz 2026-11-14: "losować
+będziemy z 5 różnych stylów"), and is told how the latest notes open. A
+museum text that says nothing about the work itself (the artist's life, a
+series, a collection) is no description: Haiku says so while translating
+it, and Sonnet writes a note instead.
 """
 
 from __future__ import annotations
 
 import json
+import random
 import re
 import threading
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -28,7 +38,7 @@ from ..library.museums import client
 from ..library.nationality import artist_note, fix_note
 from ..library.verdict import Place, against
 from ..library.wikidata import Facts, Wikidata, wikipedia_intro
-from .client import HAIKU, SONNET, cost, image_block, request
+from .client import HAIKU, SONNET, Answer, cost, image_block, request
 from .jobs import NoteJob, Usage, text_hash
 
 if TYPE_CHECKING:
@@ -37,6 +47,8 @@ if TYPE_CHECKING:
 
 KIND = "pl_text"
 #: Changed whenever the prompts change, so older texts are written again.
+#: Not for the five styles of notes (2026-11-14): the texts written before
+#: stay (Mateusz: "te które są zostawiamy").
 PROMPT_VERSION = "pl-1"
 
 #: A description shorter than this ("Gift of ...") is no description.
@@ -56,6 +68,48 @@ WIKI_CHARS = 1200
 
 Written = Literal["translation", "note"]
 SOURCES = ("dane muzeum", "Wikidata", "Wikipedia", "obraz")
+#: How many of the latest notes' openings a note is told not to repeat.
+RECENT = 8
+#: Words of each opening.
+OPENING_WORDS = 7
+#: How long the latest openings are kept between questions (a night's
+#: batch asks hundreds at once).
+RECENT_SECONDS = 60.0
+
+#: The sides a note looks at the work from, dealt out in turn (a shuffled
+#: round of all five, never the same twice in a row); tried on nine Met
+#: works first (https://claude.ai/artifact/Etdn2eQhvP4w6xPai4Jihd).
+STYLES: dict[str, tuple[str, str]] = {
+    "opis": (
+        "Opis",
+        "Opisz dzieło jako całość: co i kogo przedstawia, jak jest ułożone, jakie ma barwy i "
+        "światło, co w nim szczególne.",
+    ),
+    "wzrok": (
+        "Co widać",
+        "Prowadź wzrok po obrazie: od tego, co przyciąga najpierw, przez kolejne miejsca, do "
+        "tego, na co warto spojrzeć dłużej.",
+    ),
+    "warsztat": (
+        "Jak zrobione",
+        "Pisz o tym, jak dzieło zostało zrobione: jak położona jest farba (gładko, grubo, "
+        "widoczne pociągnięcia), rysunek i kontur, kolor i światło, faktura, którymi środkami "
+        "artysta osiąga efekt (mgła, połysk materii, głębia, ruch). W grafice: kreska, druk, "
+        "plamy koloru. Tylko to, co widać na reprodukcji; czego w tej skali nie widać, nie "
+        "zgaduj.",
+    ),
+    "temat": (
+        "Temat",
+        "Kilka zdań o temacie: co znaczy przedstawiona scena, postać albo motyw, skąd się "
+        "wziął (historia, legenda, zwyczaj, gatunek malarski, miejsce), czemu artyści go "
+        "malowali i co z tego widać w tym dziele.",
+    ),
+    "szczegol": (
+        "Szczegół",
+        "Zacznij od jednego szczegółu, który łatwo przeoczyć, i od niego przejdź do całości: "
+        "co ten szczegół mówi o dziele.",
+    ),
+}
 
 #: A translation: the description in, two Polish versions of it out.
 TRANSLATION_USAGE = Usage(input_tokens=500, cache_read_input_tokens=1000, output_tokens=1400)
@@ -91,24 +145,43 @@ TRANSLATE_SYSTEM = f"""{_RULES}
 dopisuj niczego. Nigdy nie przepisuj opisu w oryginalnym języku.
 - Opis muzeum bywa po angielsku, niderlandzku, niemiecku, francusku czy włosku: każdy \
 tłumaczysz na polski. Wszystkie pola odpowiedzi są po polsku.
-- Nie dodawaj faktów, których nie ma w danych."""
+- Nie dodawaj faktów, których nie ma w danych.
+- "about_work": true, gdy opis muzeum mówi o tym konkretnym dziele (co przedstawia, jak \
+powstało, jego dzieje, choćby jednym zdaniem). false, gdy to tylko ogólny tekst: życiorys \
+artysty, opis serii, zbioru, epoki, miejsca albo techniki, bez niczego o samym dziele. Wtedy \
+pozostałe pola i tak wypełnij."""
 
 NOTE_SYSTEM = f"""{_RULES}
-- Muzeum nie podaje opisu dzieła (najwyżej krótką adnotację), więc piszesz krótką notkę na \
-podstawie danych i załączonego obrazu (to reprodukcja tego dzieła).
+- Muzeum nie podaje opisu dzieła (najwyżej krótką adnotację albo ogólny tekst o artyście), \
+więc piszesz krótką notkę na podstawie danych i załączonego obrazu (to reprodukcja tego dzieła).
 - "full": notka do aplikacji, 400–900 znaków.
-- Opisuj tylko to, co widać na obrazie, albo to, co wynika z podanych danych. Nie wymyślaj dat, \
-miejsc, okoliczności powstania, cytatów ani interpretacji spoza tych źródeł. Jeśli czegoś nie \
-wiesz, pomiń to.
+- Notka patrzy na dzieło z jednej strony, wskazanej w pytaniu jako STYL. Pierwsze zdanie i tak \
+mówi, co dzieło przedstawia, ale już z tej strony. Inne strony dzieła pojawiają się najwyżej na \
+marginesie. Nie nazywaj stylu ani nie zapowiadaj, z której strony patrzysz.
+- O samym dziele piszesz tylko to, co widać na obrazie albo wynika z podanych danych. Nie \
+wymyślaj dat, miejsc, okoliczności powstania, zamówień, cytatów ani interpretacji tego \
+konkretnego dzieła. Ogólna, pewna wiedza o temacie (legenda, postać, zwyczaj, gatunek malarski, \
+miejsce) jest dozwolona, gdy styl tego wymaga; jeśli nie jesteś pewien, pomiń.
+- Nie pisz o tym, czego dane nie mówią ("muzeum nie podaje…", "nie wiadomo, kim…"): po prostu \
+to pomiń. Nie kończ zdaniem, które tylko powtarza autora, epokę albo technikę z danych.
+- Nie zaczynaj od "Obraz przedstawia", "Obraz pokazuje" ani "Dzieło przedstawia", ani tak jak \
+notki wymienione w pytaniu jako OSTATNIE POCZĄTKI: inne pierwsze słowa i inna budowa pierwszego \
+zdania.
 - "sources": źródła, z których faktycznie skorzystałeś."""
 
 _FIELDS = ("title", "frame", "full", "medium", "date", "artist_note")
 
 
 def schema(written: Written) -> dict[str, Any]:
-    """The JSON the model answers with."""
-    props: dict[str, Any] = {name: {"type": "string"} for name in _FIELDS}
-    required = list(_FIELDS)
+    """The JSON the model answers with; a translation first says whether the
+    museum's text is about the work at all (:func:`about_work`)."""
+    props: dict[str, Any] = {}
+    required: list[str] = []
+    if written == "translation":
+        props["about_work"] = {"type": "boolean"}
+        required.append("about_work")
+    props |= {name: {"type": "string"} for name in _FIELDS}
+    required += _FIELDS
     if written == "note":
         props["sources"] = {"type": "array", "items": {"type": "string", "enum": list(SOURCES)}}
         required.append("sources")
@@ -189,8 +262,15 @@ def model_for(item: Item) -> str:
     return HAIKU if written_for(item) == "translation" else SONNET
 
 
-def request_text(item: Item, context: Context) -> str:
-    """The work's data, in the same order for every work."""
+def about_work(data: dict[str, Any]) -> bool:
+    """Whether a translation's museum text is about the work: false when
+    Haiku found only the artist's life or the like in it."""
+    return data.get("about_work") is not False
+
+
+def request_text(item: Item, context: Context, general: bool = False) -> str:
+    """The work's data, in the same order for every work; ``general``: the
+    museum's text is about something else than the work (a note is written)."""
     author = item.artist
     if item.artist_bio:
         author = f"{author} ({item.artist_bio})" if author else item.artist_bio
@@ -217,7 +297,12 @@ def request_text(item: Item, context: Context) -> str:
         lines.append(f"Wikipedia (pl): {context.wiki_pl}")
     if context.wiki_en:
         lines.append(f"Wikipedia (en): {context.wiki_en}")
-    if text := description(item):
+    if (text := description(item)) and general:
+        lines.append(
+            "Tekst muzeum (ogólny, nie o tym dziele; najwyżej tło, nie streszczaj go):\n"
+            + text[:WIKI_CHARS]
+        )
+    elif text:
         lines.append(f"Opis muzeum:\n{text}")
     elif short := short_description(item):
         lines.append(f"Krótka adnotacja muzeum (za mało na opis): {short}")
@@ -236,6 +321,10 @@ class PolishText(BaseModel):
     written: Written = "translation"
     #: For a note: what it was written from.
     sources: list[str] = Field(default_factory=list)
+    #: For a note: the side it looks at the work from (:data:`STYLES`).
+    style: str = ""
+    #: The museum's text was not about the work: a note took its place.
+    general: bool = False
 
 
 # Marks of a cut quote: "[...]", "(…)", and a text ending in an ellipsis.
@@ -343,7 +432,7 @@ _EARLY_MAX = 500
 
 def clean(data: dict[str, Any], item: Item, facts: Facts | None) -> PolishText | None:
     """A model's answer made safe to show; ``None`` when it is unusable."""
-    written = written_for(item)
+    written: Written = "note" if "style" in data else written_for(item)
     title = polish_title(data.get("title"), facts, item.artist)
     frame = frame_text(_plain(data.get("frame")))
     full = _paragraphs(data.get("full"))
@@ -367,7 +456,25 @@ def clean(data: dict[str, Any], item: Item, facts: Facts | None) -> PolishText |
         artist_note=note,
         written=written,
         sources=sources,
+        style=str(data.get("style") or "") if written == "note" else "",
+        general=bool(data.get("general")) and written == "note",
     )
+
+
+def opening(text: str) -> str:
+    """The first words of a note, as the next ones are told not to start."""
+    said = sentences(text)
+    words = said[0].split() if said else []
+    return " ".join(words[:OPENING_WORDS]) + ("…" if len(words) > OPENING_WORDS else "")
+
+
+def note_question(data_text: str, style: str, recent: list[str]) -> str:
+    """A note's question: the work's data, its style and how to not start."""
+    name, how = STYLES[style]
+    lines = [data_text, "", f"STYL: {name}. {how}"]
+    if recent:
+        lines += ["", "OSTATNIE POCZĄTKI (nie zaczynaj podobnie):", *(f"„{r}”" for r in recent)]
+    return "\n".join(lines)
 
 
 class PlTextJob(NoteJob):
@@ -395,6 +502,11 @@ class PlTextJob(NoteJob):
         self._heads: dict[str, str] = {}
         #: Titles written ahead of their texts.
         self._titles: dict[str, str] = {}
+        #: The styles still to deal out in this round, and the last one dealt.
+        self._styles: list[str] = []
+        self._last_style = ""
+        #: The latest notes' openings, and when they were read.
+        self._recent: tuple[float, list[str]] = (0.0, [])
 
     @property
     def http(self) -> httpx.Client:
@@ -420,6 +532,8 @@ class PlTextJob(NoteJob):
         if not super().fresh(item, note) or note is None:
             return False
         data = note.data
+        if data.get("general") and "title" not in data:
+            return False  # its museum text is about something else: a note is due
         return "title" not in data or not (
             untranslated(str(data.get("frame", ""))) or untranslated(str(data.get("full", "")))
         )
@@ -430,8 +544,25 @@ class PlTextJob(NoteJob):
             description(item),
         )  # fmt: skip
 
+    def general(self, item: Item, note: Note | None = None) -> bool:
+        """Whether the work's museum text was found to be about something
+        else than the work (by its last translation, its text unchanged)."""
+        if note is None:
+            note = self.library.notes(KIND).get(item.id)
+        return (
+            note is not None
+            and bool(note.data.get("general"))
+            and note.source_hash == self.source_hash(item)
+        )
+
+    def written(self, item: Item) -> Written:
+        """A translation of the museum's description, or a note."""
+        if written_for(item) == "note" or self.general(item):
+            return "note"
+        return "translation"
+
     def estimate_items(self, items: list[Item], batch: bool = True) -> float:
-        notes = sum(1 for i in items if written_for(i) == "note")
+        notes = sum(1 for i in items if self.written(i) == "note")
         return (
             cost(HAIKU, TRANSLATION_USAGE, batch) * (len(items) - notes)
             + cost(SONNET, NOTE_USAGE, batch) * notes
@@ -440,9 +571,10 @@ class PlTextJob(NoteJob):
     def facts(self, item: Item) -> Facts | None:
         return own_title_first(item, self.wikidata.facts(self.http, item))
 
-    def context(self, item: Item) -> Context:
+    def context(self, item: Item, note: bool = False) -> Context:
+        """Wikidata's facts; for a note also the Wikipedia openings."""
         facts = self.facts(item)
-        if written_for(item) == "translation" or facts is None:
+        if not note or facts is None:
             return Context(facts=facts)
         return Context(
             facts=facts,
@@ -454,26 +586,94 @@ class PlTextJob(NoteJob):
         with self._lock:  # asked (again): read from the start
             self._heads.pop(item.id, None)
             self._titles.pop(item.id, None)
-        written = written_for(item)
-        text = {"type": "text", "text": request_text(item, self.context(item))}
-        if written == "translation":
+        if self.written(item) == "translation":
+            text = {"type": "text", "text": request_text(item, self.context(item))}
             return request(
                 model=HAIKU,
                 system=TRANSLATE_SYSTEM,
                 content=[text],
-                schema=schema(written),
+                schema=schema("translation"),
                 max_tokens=6000,
             )
+        return self.note_params(item, general=bool(description(item)))
+
+    def note_params(self, item: Item, general: bool = False) -> dict[str, Any]:
+        """Sonnet's note, in the next style; the style is asked back in the
+        answer (one value allowed), so that a night's batch keeps it too."""
+        style = self.next_style()
+        data_text = request_text(item, self.context(item, note=True), general=general)
+        note_schema = schema("note")
+        note_schema["properties"]["style"] = {"type": "string", "enum": [style]}
+        note_schema["required"].append("style")
         return request(
             model=SONNET,
             system=NOTE_SYSTEM,
-            content=[image_block(self.images, item), text],
-            schema=schema(written),
+            content=[
+                image_block(self.images, item),
+                {"type": "text", "text": note_question(data_text, style, self.recent())},
+            ],
+            schema=note_schema,
             max_tokens=6000,
         )
 
+    def next_style(self) -> str:
+        """The next of a shuffled round of all styles, never the last one again."""
+        with self._lock:
+            if not self._styles:
+                deal = list(STYLES)
+                random.shuffle(deal)
+                if deal[0] == self._last_style:
+                    deal.append(deal.pop(0))
+                self._styles = deal
+            self._last_style = self._styles.pop(0)
+            return self._last_style
+
+    def recent(self) -> list[str]:
+        """How the latest notes open (read again after a minute)."""
+        with self._lock:
+            at, found = self._recent
+            if time.monotonic() - at < RECENT_SECONDS:
+                return list(found)
+        notes = [
+            n
+            for n in self.library.notes(KIND).values()
+            if "sources" in n.data and n.data.get("full")
+        ]
+        notes.sort(key=lambda n: n.created_at, reverse=True)
+        found = []
+        for note in notes:
+            said = opening(str(note.data["full"]))
+            if said and said not in found:
+                found.append(said)
+            if len(found) >= RECENT:
+                break
+        with self._lock:
+            self._recent = (time.monotonic(), found)
+        return list(found)
+
+    def revise(
+        self, item: Item, params: dict[str, Any], answer: Answer, ask: Callable[..., Answer]
+    ) -> Answer:
+        """A translation of a museum text that is not about the work gives
+        way to Sonnet's note, asked at once (a night's batch answer is kept
+        as such and the note asked the next night: :meth:`apply`)."""
+        if params["model"] != HAIKU or answer.data is None or about_work(answer.data):
+            return answer
+        note = ask(self.note_params(item, general=True))
+        if note.data is not None:
+            note.data["general"] = True
+        return note
+
     def apply(self, item: Item, note: Note) -> None:
-        """Keeps the answer cleaned: what the frame and the app show."""
+        """Keeps the answer cleaned: what the frame and the app show. A
+        translation of a museum text that is not about the work is kept as
+        only that, so that a note is asked next (:meth:`fresh`)."""
+        if "style" not in note.data and not about_work(note.data):
+            data: dict[str, Any] = {"general": True}
+            self.library.save_note(note.model_copy(update={"data": data}))
+            with self._lock:
+                self._titles.pop(item.id, None)
+            return
         text = clean(note.data, item, self.facts(item))
         data = text.model_dump() if text is not None else {"failed": True}
         self.library.save_note(note.model_copy(update={"data": data}))

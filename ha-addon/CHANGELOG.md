@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.145.111
+
+- Własne notki o dziełach (gdy muzeum nie daje opisu) piszą się w pięciu
+  stylach, losowanych po kolei tak, żeby ten sam nie wypadł dwa razy z
+  rzędu: opis całości, prowadzenie wzroku po obrazie, jak dzieło jest
+  zrobione, temat (co znaczy scena lub motyw) i jeden łatwy do
+  przeoczenia szczegół. Notka nie zaczyna się już od „Obraz
+  przedstawia…” ani tak jak ostatnie notki, nie pisze, czego dane nie
+  mówią, i nie kończy się powtórzeniem autora. Notki zapisane wcześniej
+  zostają.
+- Gdy muzeum daje jako opis tekst, który nie mówi o dziele (np. krótki
+  życiorys artysty), Haiku to rozpoznaje przy tłumaczeniu i zamiast
+  tłumaczenia powstaje notka Sonneta.
+- Na karcie dzieła pod notką stoi tylko iskierka i „Kurator”, bez listy
+  źródeł. „Pokaż oryginał” znika, gdy muzeum nie daje własnego opisu.
+
 ## 1.145.110
 
 - Guzik „Szukaj podobnych” pod rzędem „Podobne wyglądem” na karcie dzieła
