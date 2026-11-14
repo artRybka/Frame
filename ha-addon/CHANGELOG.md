@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.114
+
+- Na karcie dzieła „Pełny kadr”, „Fragmenty” i „Detale” stoją pod
+  kolorystyką, a nie zaraz pod przyciskami. W „Pełnym kadrze” nie ma już
+  dopisku „zdjęcie muzeum”, a zdanie pod miniaturą kończy się słowami
+  „Prezentowane jest wykadrowane dzieło”.
+
 ## 1.145.113
 
 - Zdjęcia dzieł zrobione z ramą, na sztaludze albo na tle (często Muzeum

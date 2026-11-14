@@ -248,7 +248,7 @@ struct ItemDetailView: View {
         withAnimation(.easeOut(duration: 0.25)) { fragments = found }
     }
 
-    /// Right under the buttons: for a scroll the way to see it sharp. On a
+    /// Under the colours: for a scroll the way to see it sharp. On a
     /// fragment's card, the whole work first, then its fragments with this
     /// one outlined.
     private func fragmentsSection(_ item: Item, _ view: FragmentsView) -> some View {
@@ -381,17 +381,10 @@ struct ItemDetailView: View {
             picture(item)
             titleBlock(item).id("title")
             actions(item)
-            // A tile set is looked at in full screen, not listed.
-            if let fragments, !fragments.fragments.isEmpty, !fragments.tiled {
-                fragmentsSection(item, fragments)
-                    .transition(.opacity)
-            }
-            if let details, details.whole != nil || !details.details.isEmpty {
-                detailsSection(details)
-                    .transition(.opacity)
-            }
-            // "Pełny kadr": the museum's photograph of a work cut out of it,
-            // and a print's choice of its paper (Mateusz 2026-11-14).
+            if !item.colors.isEmpty { palette(item).id("palette") }
+            // Under the colours (Mateusz 2026-11-14): "Pełny kadr", the
+            // museum's photograph of a work cut out of it and a print's
+            // choice of its paper, then the fragments and the details.
             if item.isCropped || item.cut?.hasPaper == true {
                 FullPhotoSection(
                     item: item, busy: cutBusy,
@@ -401,7 +394,15 @@ struct ItemDetailView: View {
                 )
                 .transition(.opacity)
             }
-            if !item.colors.isEmpty { palette(item).id("palette") }
+            // A tile set is looked at in full screen, not listed.
+            if let fragments, !fragments.fragments.isEmpty, !fragments.tiled {
+                fragmentsSection(item, fragments)
+                    .transition(.opacity)
+            }
+            if let details, details.whole != nil || !details.details.isEmpty {
+                detailsSection(details)
+                    .transition(.opacity)
+            }
             about(item)
             studySection(item)
             // Above the facts (Mateusz 2026-11-13: "umieśćmy ją nad blokiem
