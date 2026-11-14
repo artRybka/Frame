@@ -707,11 +707,19 @@ struct TagLabel: View {
     let text: String
     /// A colour or mood tag whose dot leads the text.
     var colorTag: String?
+    /// A symbol before the text, as the chip of the same rule in Szukaj has
+    /// (a title's quote, a look's eye).
+    var systemImage: String?
 
     var body: some View {
         HStack(spacing: 5) {
             if let colorTag {
                 ColorTagDot(tag: colorTag, size: 9)
+            }
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Theme.inkSoft)
             }
             Text(text)
         }

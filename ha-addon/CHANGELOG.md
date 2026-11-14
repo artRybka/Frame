@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.133
+
+- Pod nazwą playlisty inteligentnej widać teraz wszystkie jej reguły, nie
+  tylko artystę: także słowa tytułu (np. „Bathers”), wygląd, „Podobne do”,
+  style, tematy, epoki i techniki ze słownika, „Moje” oraz rodzaj dzieł.
+  Tytuł ma znak cytatu, wygląd oko, jak te same reguły w Szukaj. Reguła,
+  która tylko powtarza nazwę playlisty, nadal się nie pokazuje.
+
 ## 1.145.131
 
 - „Podobne wyglądem” na karcie dzieła: wszystkie trzy obrazy mają jedną

@@ -1078,7 +1078,8 @@ struct PlaylistMenuPreview: View {
     }
 }
 
-/// Human description of smart rules as chips.
+/// Human description of smart rules as chips: every rule the playlist
+/// has (Mateusz 2026-11-14: "komplet parametrów listy inteligentnej").
 struct RulesSummary: View {
     @Environment(AppModel.self) private var model
     let rules: PlaylistRules
@@ -1086,31 +1087,87 @@ struct RulesSummary: View {
     /// under "Giorgio de Chirico") is left out.
     var name: String?
 
-    var body: some View {
-        FlowLayout(spacing: 6) {
-            ForEach(rules.artists.filter { !repeatsName(Names.artist($0)) && !repeatsName($0) }, id: \.self) {
-                TagLabel(text: Names.artist($0))
-            }
-            ForEach(rules.styles.filter { !repeatsName($0) }, id: \.self) { TagLabel(text: $0) }
-            ForEach(rules.subjects.filter { !repeatsName($0) }, id: \.self) { TagLabel(text: "#\($0)") }
-            ForEach(rules.colors, id: \.self) { TagLabel(text: ColorTag.name($0), colorTag: $0) }
-            ForEach(SearchPhrases.tokens(rules.query), id: \.self) { TagLabel(text: "„\($0)”") }
-            if let from = rules.yearFrom { TagLabel(text: "od \(String(from))") }
-            if let to = rules.yearTo { TagLabel(text: "do \(String(to))") }
-            if rules.favoritesOnly && !repeatsName("ulubione") { TagLabel(text: "♥ ulubione") }
-            ForEach(rules.sources, id: \.self) { TagLabel(text: Names.source($0)) }
-            ForEach(rules.excludeSources, id: \.self) { TagLabel(text: "bez \(Names.source($0))") }
-            ForEach(rules.places, id: \.self) { TagLabel(text: model.placeName($0)) }
-            ForEach(rules.excludePlaces, id: \.self) { TagLabel(text: "bez \(model.placeName($0))") }
-        }
-        .task { if !rules.places.isEmpty || !rules.excludePlaces.isEmpty { await model.loadPlaceNames() } }
+    /// One rule as a chip.
+    struct Chip: Hashable {
+        let text: String
+        /// What it says without its marks ("#morze" is "morze"), to compare
+        /// with the name.
+        var plain: String? = nil
+        var icon: String? = nil
+        var colorTag: String? = nil
     }
 
-    /// Whether the rule only repeats the playlist's name, letter case and
-    /// accents aside.
-    private func repeatsName(_ text: String) -> Bool {
-        guard let name else { return false }
-        return Self.same(text, name)
+    var body: some View {
+        FlowLayout(spacing: 6) {
+            let chips = Self.chips(rules, name: name, names: model.termNames, place: model.placeName)
+            ForEach(Array(chips.enumerated()), id: \.offset) { _, chip in
+                TagLabel(text: chip.text, colorTag: chip.colorTag, systemImage: chip.icon)
+            }
+        }
+        .task {
+            if !rules.terms.isEmpty { await model.loadVocabulary() }
+            if !rules.places.isEmpty || !rules.excludePlaces.isEmpty { await model.loadPlaceNames() }
+        }
+    }
+
+    /// Every rule as a chip, those only repeating the name left out.
+    /// `names` gives the Polish names of terms (and look-alikes' titles),
+    /// `place` a museum's name.
+    static func chips(
+        _ rules: PlaylistRules, name: String?, names: [String: String] = [:],
+        place: (String) -> String = { Names.source($0) }
+    ) -> [Chip] {
+        var chips: [Chip] = rules.artists.map { Chip(text: Names.artist($0), plain: $0) }
+        for key in rules.terms {
+            if let mine = MineTerm.named(key) {
+                chips.append(Chip(text: mine.name, icon: mine.icon))
+            } else {
+                chips.append(Chip(text: names[key] ?? PlaylistRules.yearsName(key) ?? Self.termFallback(key)))
+            }
+        }
+        chips += rules.styles.map { Chip(text: $0) }
+        chips += rules.subjects.map { Chip(text: "#\($0)", plain: $0) }
+        if !rules.title.isEmpty {
+            chips.append(Chip(text: rules.title, icon: SearchToken.title(rules.title).icon))
+        }
+        chips += SearchPhrases.tokens(rules.query).map { Chip(text: "„\($0)”", plain: $0) }
+        if !rules.look.isEmpty {
+            chips.append(Chip(text: rules.look, icon: SearchToken.look(rules.look).icon))
+        }
+        if !rules.like.isEmpty {
+            let like = SearchToken.like(rules.like, title: names[SearchToken.likeName(rules.like)] ?? "")
+            chips.append(Chip(text: like.name, icon: like.icon))
+        }
+        chips += rules.colors.map { Chip(text: ColorTag.name($0), colorTag: $0) }
+        if let from = rules.yearFrom { chips.append(Chip(text: "od \(String(from))")) }
+        if let to = rules.yearTo { chips.append(Chip(text: "do \(String(to))")) }
+        if !rules.kinds.isEmpty, Set(rules.kinds) != Set(ItemKind.allCases) {
+            chips += rules.kinds.map { Chip(text: Self.kindName($0)) }
+        }
+        if rules.favoritesOnly { chips.append(Chip(text: "♥ ulubione", plain: "ulubione")) }
+        chips += rules.sources.map { Chip(text: Names.source($0)) }
+        chips += rules.excludeSources.map { Chip(text: "bez \(Names.source($0))") }
+        chips += rules.places.map { Chip(text: place($0)) }
+        chips += rules.excludePlaces.map { Chip(text: "bez \(place($0))") }
+        guard let name else { return chips }
+        return chips.filter { chip in
+            !same(chip.text, name) && !(chip.plain.map { same($0, name) } ?? false)
+        }
+    }
+
+    /// A term the vocabulary has not named yet: "subject:sea" as "sea".
+    static func termFallback(_ key: String) -> String {
+        guard let colon = key.firstIndex(of: ":") else { return key }
+        return String(key[key.index(after: colon)...]).replacingOccurrences(of: "-", with: " ")
+    }
+
+    /// The works of a kind, as a playlist asks for them.
+    static func kindName(_ kind: ItemKind) -> String {
+        switch kind {
+        case .artwork: "dzieła sztuki"
+        case .own: "własne prace"
+        case .photo: "zdjęcia"
+        }
     }
 
     static func same(_ a: String, _ b: String) -> Bool {
@@ -1120,14 +1177,7 @@ struct RulesSummary: View {
     }
 
     /// Whether there is any chip left to show under that name.
-    static func hasChips(_ rules: PlaylistRules, name: String?) -> Bool {
-        let repeats = { (text: String) in name.map { same(text, $0) } ?? false }
-        return rules.artists.contains { !repeats(Names.artist($0)) && !repeats($0) }
-            || rules.styles.contains { !repeats($0) }
-            || rules.subjects.contains { !repeats($0) }
-            || !rules.colors.isEmpty || !SearchPhrases.tokens(rules.query).isEmpty
-            || rules.yearFrom != nil || rules.yearTo != nil || (rules.favoritesOnly && !repeats("ulubione"))
-            || !rules.sources.isEmpty || !rules.excludeSources.isEmpty
-            || !rules.places.isEmpty || !rules.excludePlaces.isEmpty
+    static func hasChips(_ rules: PlaylistRules, name: String?, names: [String: String] = [:]) -> Bool {
+        !chips(rules, name: name, names: names).isEmpty
     }
 }

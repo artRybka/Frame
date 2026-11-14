@@ -1820,6 +1820,46 @@ final class FrameAPITests: XCTestCase {
         XCTAssertTrue(RulesSummary.hasChips(favourites, name: "Paulina"))
     }
 
+    /// Every kind of rule has its chip under the name: a smart playlist's
+    /// title words, look, look-alike, terms, kinds (Mateusz 2026-11-14:
+    /// "Paul Cezanne · Bathers" showed only the artist).
+    @MainActor
+    func testRulesSummaryShowsEveryRule() {
+        var rules = PlaylistRules()
+        rules.artists = ["Paul Cezanne"]
+        rules.title = "Bathers"
+        let name = "Paul Cezanne · Bathers"
+        XCTAssertEqual(RulesSummary.chips(rules, name: name).map(\.text), ["Paul Cezanne", "Bathers"])
+        XCTAssertEqual(RulesSummary.chips(rules, name: name).last?.icon, "text.quote")
+
+        var all = PlaylistRules()
+        all.terms = ["style:impressionism", "years:1880-1914", MineTerm.favorites.key, "subject:sea"]
+        all.look = "mglisty poranek"
+        all.like = "abc"
+        all.kinds = [.photo]
+        all.query = "most \"nad wodą\""
+        all.colors = ["blue"]
+        all.yearFrom = 1800
+        all.yearTo = 1900
+        let texts = RulesSummary.chips(all, name: nil, names: ["style:impressionism": "Impresjonizm"]).map(\.text)
+        XCTAssertEqual(texts, [
+            "Impresjonizm", "1880–1914", "Ulubione", "sea", "„most”", "„nad wodą”", "mglisty poranek",
+            "Podobne do dzieła", ColorTag.name("blue"), "od 1800", "do 1900", "zdjęcia",
+        ])
+        // Every kind is no rule.
+        var kinds = PlaylistRules()
+        kinds.kinds = ItemKind.allCases
+        XCTAssertFalse(RulesSummary.hasChips(kinds, name: nil))
+        // Only a title repeating the name: nothing to show.
+        var title = PlaylistRules()
+        title.title = "Bathers"
+        XCTAssertFalse(RulesSummary.hasChips(title, name: "bathers"))
+        XCTAssertTrue(RulesSummary.hasChips(title, name: "Kąpiące się"))
+        var term = PlaylistRules()
+        term.terms = ["style:impressionism"]
+        XCTAssertFalse(RulesSummary.hasChips(term, name: "Impresjonizm", names: ["style:impressionism": "Impresjonizm"]))
+    }
+
     func testDemoAlbumPlaylists() async throws {
         let demo = DemoBackend()
         let check = try await demo.checkAlbum(url: "https://www.icloud.com/sharedalbum/#B0aGWZuqDGKPOC")
