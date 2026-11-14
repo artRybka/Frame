@@ -1222,11 +1222,6 @@ class Player:
         if have >= POOL_LOW:
             return None
         want = POOL_SIZE - have
-        if playlist.limit is not None:
-            # A full playlist goes round its own works again.
-            want = min(want, playlist.limit - len(items))
-            if want <= 0:
-                return None
         rules = rules.model_copy(update={"kinds": [ItemKind.ARTWORK]})
         if playlist.theme is None:
             # The owner's own playlist: what Szukaj finds for its choices.

@@ -372,7 +372,7 @@ struct PlaylistDetailView: View {
         return Playlist(
             id: summary.id, name: summary.name, description: summary.description, kind: summary.kind,
             rules: summary.rules, itemIds: detail?.itemIds ?? [], album: summary.album,
-            theme: summary.theme, shared: summary.shared, limit: summary.limit
+            theme: summary.theme, shared: summary.shared
         )
     }
 

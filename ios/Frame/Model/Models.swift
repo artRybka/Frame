@@ -617,17 +617,12 @@ struct Playlist: Codable, Hashable, Sendable {
     var theme: String?
     /// "Wspólna": the household sees it too. Nil leaves it as the server has it.
     var shared: Bool?
-    /// A smart playlist's most works; nil: all that match. With more
-    /// matching, the server takes a steady set, favourites first.
-    var limit: Int?
-
     /// "Ulubione", the owner's hearts: always there, never deleted.
     var isFavorites: Bool { kind == .smart && rules.favoritesOnly }
 
-    /// What "Ile dzieł" offers; nil is "Wszystkie".
-    static let limits: [Int?] = [50, 100, 200, 300, nil]
-    /// A new smart playlist's limit.
-    static let defaultLimit = 100
+    /// A smart playlist takes all that match (no "Ile dzieł" since
+    /// 2026-11-14); saving asks the museums for more up to this many.
+    static let fillTarget = 100
 
     /// The photos sent once (server: player.SENT_NAME).
     static let sentName = "Historia przesłanych"
@@ -650,7 +645,6 @@ struct PlaylistSummary: Codable, Identifiable, Hashable, Sendable {
     var ownerName: String?
     var shared: Bool?
     var mine: Bool?
-    var limit: Int?
     /// The order of its works; nil for an album, and from older servers.
     var sort: PlaylistSort?
 

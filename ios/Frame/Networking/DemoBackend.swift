@@ -304,11 +304,7 @@ actor DemoBackend: FrameBackend {
         }
         let listed = listed(for: playlist.rules)
         let found = Self.sorted(items.filter { Self.matches($0, playlist.rules, listed: listed) }, by: "suitability")
-        guard let limit = playlist.limit, found.count > limit else { return Self.ordered(found, by: order(of: playlist)) }
-        // As the server: favourites first, then a steady draw.
-        let taken = Set(found.sorted { ($0.favorite ? 0 : 1, $0.id.hashValue) < ($1.favorite ? 0 : 1, $1.id.hashValue) }
-            .prefix(limit).map(\.id))
-        return Self.ordered(found.filter { taken.contains($0.id) }, by: order(of: playlist))
+        return Self.ordered(found, by: order(of: playlist))
     }
 
     /// The works on the playlists but "Ulubione", when `rules` ask for them
@@ -335,7 +331,7 @@ actor DemoBackend: FrameBackend {
                     name: playlist.name, count: list.count
                 )
             },
-            theme: playlist.theme, limit: playlist.limit,
+            theme: playlist.theme,
             sort: playlist.kind == .album ? nil : order(of: playlist)
         )
     }

@@ -7,7 +7,6 @@ cached copy; SQLite gives durability and atomic writes.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import random
@@ -1915,8 +1914,6 @@ class Library:
             return ordered(items, playlist.order, self.long_side, [i.id for i in items])
         stamp = self._stamp()
         items = dedupe(self.query(playlist.rules, sort=sort or "recent", user=playlist.owner)[1])
-        if playlist.limit:
-            items = limited(items, playlist, self.favorites(playlist.owner))
         if sort is None:
             items = ordered(items, playlist.order, self.long_side)
         if sort is not None or playlist.sort is None:
@@ -2338,24 +2335,3 @@ def fetched_last(items: list[Item], playlist: Playlist) -> list[Item]:
         return items
     taken = {i.id for i in before}
     return before + [i for i in items if i.id not in taken]
-
-
-def limited(
-    items: list[Item], playlist: Playlist, hearts: frozenset[str] | None = None
-) -> list[Item]:
-    """A smart playlist's works within its limit, in the order given: the
-    favourites first (its owner's ``hearts``; without them anyone's), then
-    the others in an order drawn from the rules and the limit, so the same
-    works stay until either changes (Mateusz, 2026-10-31: a steady set)."""
-    limit = playlist.limit
-    if limit is None or len(items) <= limit:
-        return items
-    seed = playlist.rules.model_dump_json(exclude={"exclude_ids"}) + f"|{limit}"
-
-    def drawn(item: Item) -> tuple[bool, str]:
-        digest = hashlib.sha1(f"{seed}|{item.id}".encode()).hexdigest()
-        liked = item.favorite if hearts is None else item.id in hearts
-        return (not liked, digest)
-
-    taken = {i.id for i in sorted(items, key=drawn)[:limit]}
-    return [i for i in items if i.id in taken]
