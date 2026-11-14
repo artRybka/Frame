@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import gc
 import io
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,8 @@ from conftest import jpeg_bytes
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from frame_server import memory
+from frame_server import storage as storage_module
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.config import STATE_KEY
 from frame_server.ai.keywords import KIND
@@ -30,6 +33,7 @@ from frame_server.library.term_index import TermIndex
 from frame_server.library.verdict import Why, whys
 from frame_server.player import TILE_WORKS_KEY
 from frame_server.service import FrameService
+from frame_server.storage import MEASURE_MAX_AGE, USAGE_KEY, StorageUsage
 from frame_server.web import create_app, discover_api
 from frame_server.web.compress import GZIP_FROM
 
@@ -194,6 +198,38 @@ def test_the_app_gets_a_kept_thumbnail_and_its_tile(tmp_path: Path) -> None:
         assert tile.status_code == 200 and tile.headers["cache-control"] == "max-age=86400"
         with Image.open(io.BytesIO(tile.content)) as img:
             assert img.size == (640, 480)  # nothing around it to cut
+
+
+def test_a_phone_that_holds_a_thumbnail_is_told_it_is_still_the_one(tmp_path: Path) -> None:
+    app = create_app(Settings(data_dir=tmp_path, seed_library=False, scheduler=False))
+    kept = jpeg_bytes((90, 120, 200), (640, 480))
+    address = "/api/library/items/met:1/thumb"
+    with TestClient(app) as client:
+        thumbs = tmp_path / "library" / "thumbs"
+        thumbs.mkdir(parents=True, exist_ok=True)
+        (thumbs / "met_1.jpg").write_bytes(kept)
+        stamp = client.get(address).headers["etag"]
+        assert stamp.startswith('"') and stamp.endswith('"')
+        for held in (stamp, f"W/{stamp}", f'"another", {stamp}'):
+            same = client.get(address, headers={"If-None-Match": held})
+            assert same.status_code == 304 and same.content == b""
+            assert "content-length" not in same.headers  # nor a length of nothing
+            assert same.headers["etag"] == stamp  # kept for another day
+            assert same.headers["cache-control"] == "max-age=86400"
+        other = client.get(address, headers={"If-None-Match": '"another"'})
+        assert other.status_code == 200 and other.content == kept
+        # The tile is a file of its own, with a stamp of its own.
+        tile = client.get(address, params={"tile": "true"})
+        again = client.get(
+            address, params={"tile": "true"}, headers={"If-None-Match": tile.headers["etag"]}
+        )
+        assert again.status_code == 304
+        # Another picture of the work (a better copy): sent whole, a new stamp.
+        newer = jpeg_bytes((200, 120, 90), (640, 480))
+        (thumbs / "met_1.jpg").write_bytes(newer + b"\0")
+        changed = client.get(address, headers={"If-None-Match": stamp})
+        assert changed.status_code == 200 and changed.content == newer + b"\0"
+        assert changed.headers["etag"] != stamp
 
 
 # -- Szukaj: a count let go, the next pages of a list --------------------------
@@ -508,3 +544,106 @@ def test_the_apps_larger_answers_go_out_gzipped(tmp_path: Path) -> None:
         assert thumb.status_code == 200 and "content-encoding" not in thumb.headers
         panel = client.get("/panel/content.json")
         assert "content-encoding" not in panel.headers
+
+
+# -- the disk's measure, kept --------------------------------------------------
+
+
+def test_konfiguracja_is_shown_the_kept_measure_and_a_new_one_next_time(
+    service: FrameService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    storage = service.storage
+    item = service.library.upsert(_work("aic:1"))
+    service.images.store(item, jpeg_bytes((200, 40, 40)))
+    first = storage.view().usage  # never measured: measured now
+    assert first.originals_bytes > 0
+    assert storage.view().usage == first  # fresh: the one kept
+
+    # Old by now, and the disk is slow: the page gets the one kept at once.
+    old = first.model_copy(update={"measured_at": first.measured_at - 2 * MEASURE_MAX_AGE})
+    storage._usage = old
+    service.images.remove(item)
+    slow, measure = threading.Event(), storage._measure
+
+    def slowly() -> StorageUsage:
+        slow.wait(10)
+        return measure()
+
+    monkeypatch.setattr(storage, "_measure", slowly)
+    monkeypatch.setattr(storage_module, "SHOWN_WAIT", 0.05)
+    assert storage.view().usage == old
+    again = storage._again
+    assert again is not None and again.is_alive()
+    assert storage.view().usage == old and storage._again is again  # one at a time
+    slow.set()
+    again.join(10)
+    assert storage.view().usage.originals_bytes == 0  # the new one
+
+    # A fast disk answers within the wait: the new one at once.
+    storage._usage = old
+    monkeypatch.setattr(storage_module, "SHOWN_WAIT", 10.0)
+    assert storage.view().usage.originals_bytes == 0
+    # What decides by the measure never takes an old one.
+    storage._usage = old
+    assert storage.usage().measured_at > old.measured_at
+
+
+def test_the_disks_measure_is_kept_over_a_restart_but_not_past_a_trim(tmp_path: Path) -> None:
+    settings = Settings(data_dir=tmp_path, seed_library=False, scheduler=False)
+    service = FrameService(settings)
+    measured = service.storage.usage()
+    _written(service.library, USAGE_KEY)
+    service.library.close()
+
+    service = FrameService(settings)
+    assert service.storage._usage == measured
+    service.storage.forget()  # trimmed: the number is wrong now
+    _written(service.library, USAGE_KEY)
+    service.library.close()
+    assert FrameService(settings).storage._usage is None
+
+
+def _written(library: Library, key: str) -> None:
+    """Wait for the state kept for later (``keep_state``) to reach the disk."""
+    deadline = time.monotonic() + 10
+    while key in library._pending and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert key not in library._pending
+
+
+# -- the server's memory, read from outside ---------------------------------------
+
+
+def test_the_memory_reading_says_what_the_process_and_the_machine_have(tmp_path: Path) -> None:
+    proc, cgroup = tmp_path / "proc", tmp_path / "cgroup"
+    (proc / "self").mkdir(parents=True)
+    cgroup.mkdir()
+    (proc / "self" / "status").write_text(
+        "Name:\tpython\nVmHWM:\t 2400000 kB\nVmRSS:\t 1843200 kB\nVmSwap:\t  409600 kB\n"
+    )
+    (proc / "meminfo").write_text(
+        "MemTotal:        8388608 kB\nMemFree:  100 kB\nMemAvailable:    1048576 kB\n"
+        "SwapTotal:       2097152 kB\nSwapFree:        1048576 kB\n"
+    )
+    (cgroup / "memory.max").write_text("max\n")
+    (cgroup / "memory.current").write_text(f"{3 * 1024**3}\n")
+    assert memory.reading(proc, cgroup) == {
+        "process_mb": {"resident_peak": 2343, "resident": 1800, "swapped": 400},
+        "machine_mb": {"total": 8192, "available": 1024, "swap_total": 2048, "swap_free": 1024},
+        "container_mb": {"used": 3072},
+    }
+    # Not Linux: no numbers, no error.
+    assert memory.reading(tmp_path / "none", tmp_path / "none") == {
+        "process_mb": {},
+        "machine_mb": {},
+        "container_mb": {},
+    }
+
+
+def test_the_owner_reads_the_servers_memory(tmp_path: Path) -> None:
+    app = create_app(Settings(data_dir=tmp_path, seed_library=False, scheduler=False))
+    with TestClient(app) as client:
+        read = client.get("/api/debug/memory").json()
+        assert read["works"] == 0
+        assert {"process_mb", "machine_mb", "container_mb"} <= read.keys()
+        assert read["process_mb"].get("resident", 1) > 0

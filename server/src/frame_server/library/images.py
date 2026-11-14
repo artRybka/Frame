@@ -11,8 +11,9 @@ import re
 import secrets
 import threading
 import time
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Collection, Iterable, Iterator
 from pathlib import Path
+from typing import NamedTuple
 from urllib.parse import urlsplit
 
 import httpx
@@ -237,23 +238,36 @@ def kept_side(item: Item) -> int:
     return TILE_MAX if split_part(item.id) is not None else IMAGE_MAX
 
 
-def _read_whole(path: Path) -> bytes | None:
+class KeptFile(NamedTuple):
+    """A file as it is sent: ``stamp`` changes when the file does (its time
+    and size); ``data`` is None when the asker has this very one."""
+
+    stamp: str
+    data: bytes | None
+
+
+def _read_whole(path: Path, have: Collection[str] = ()) -> KeptFile | None:
     """The file's bytes, None when it is not there: opened, measured and
     read in three calls (``Path.read_bytes`` makes eight, and each is a
-    turn to wait for while another thread works)."""
+    turn to wait for while another thread works). Not read at all when its
+    stamp is one of ``have``."""
     try:
         fd = os.open(path, os.O_RDONLY)
     except (FileNotFoundError, IsADirectoryError):
         return None
     try:
-        size = os.fstat(fd).st_size
+        found = os.fstat(fd)
+        size = found.st_size
+        stamp = f"{found.st_mtime_ns:x}-{size:x}"
+        if stamp in have:
+            return KeptFile(stamp, None)
         data = os.read(fd, size + 1)
         while len(data) < size:  # a short read: the rest
             more = os.read(fd, size - len(data))
             if not more:
                 break
             data += more
-        return data
+        return KeptFile(stamp, data)
     finally:
         os.close(fd)
 
@@ -519,9 +533,19 @@ class ImageCache:
         return path if path.is_file() else None
 
     def thumb_bytes(self, item_id: str, *, tile: bool = False) -> bytes | None:
+        """:meth:`sent_thumb`'s bytes alone."""
+        kept = self.sent_thumb(item_id, tile=tile)
+        return kept.data if kept is not None else None
+
+    def sent_thumb(
+        self, item_id: str, *, tile: bool = False, have: Collection[str] = ()
+    ) -> KeptFile | None:
         """The kept thumbnail of ``item_id`` as it is sent (``tile``: as a
         cover tile shows it), None when there is none here yet; a copy the
-        owner brought has its made (:meth:`owned_thumb`).
+        owner brought has its made (:meth:`owned_thumb`). With ``have``
+        (the stamps the asker holds a thumbnail by), only the stamp when
+        the file is still that one: a phone asks so after a day, and was
+        sent every thumbnail whole again.
 
         All of it in one go, for one thread: while the server is busy
         (a search, the night's work) every step between a request and its
@@ -531,13 +555,13 @@ class ImageCache:
         with as few calls as there are."""
         path = self.thumbs / f"{Item.stem_of(item_id)}.jpg"
         if not tile:
-            data = _read_whole(path)
-            if data is not None:
-                return data
+            found = _read_whole(path, have)
+            if found is not None:
+                return found
         kept = path if tile and path.is_file() else self.owned_thumb(item_id)
         if kept is None:
             return None
-        return _read_whole(self.tile(kept) if tile else kept)
+        return _read_whole(self.tile(kept) if tile else kept, have)
 
     def owned_thumb(self, copy_id: str) -> Path | None:
         """The thumbnail of a copy the owner brought (``owned:<file>``, a

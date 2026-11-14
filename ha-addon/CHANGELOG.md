@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.145.120
+
+- Konfiguracja → Miejsce na serwerze pokazuje się od razu. Serwer pamięta
+  ostatni pomiar dysku (także po restarcie) i pokazuje go natychmiast, a
+  gdy pomiar ma ponad 10 minut, mierzy od nowa w tle; świeży wynik widać
+  od razu, jeśli dysk zdąży w sekundę, inaczej przy następnym otwarciu.
+  Dotąd strona czekała na obejrzenie każdej miniatury i każdego obrazu,
+  na NAS od 3,5 do 45 s. Decyzje serwera (ile miejsca zostało na
+  oryginały) biorą świeży pomiar jak dotąd, a po przycięciu biblioteki
+  liczba jest mierzona od nowa.
+- Miniatury po dobie nie pobierają się od nowa. Telefon trzyma miniaturę
+  dobę, a potem pyta, czy się zmieniła; serwer odpowiada teraz krótkim
+  „bez zmian” zamiast wysyłać ją całą (kilkadziesiąt KB każda), więc
+  siatki otwierane po dniu przerwy i poza domem wypełniają się z pamięci
+  telefonu. Zmieniony obraz dzieła (inna kopia) przychodzi cały jak
+  dotąd. Czas ważności w telefonie zostaje (doba).
+- Nowy odczyt dla właściciela: `GET /api/debug/memory` mówi, ile pamięci
+  zajmuje serwer, ile z niej system odłożył na dysk (swap) i ile ma
+  jeszcze NAS. Katalog żyje w pamięci (około 2,2 GB); jeśli NAS-owi jej
+  brakuje, wszystko zwalnia wielokrotnie, a w logu nic o tym nie ma.
+- Sprawdzone i zostawione bez zmian: rozpoznanie telefonu domownika
+  kosztuje 0,02 ms na zapytanie, a strona tematu, lista muzeów i
+  podpowiedzi z muzeów zatrzymują resztę serwera na 3–5 ms; przeniesienie
+  ich do wątków kosztowałoby tyle samo.
+
 ## 1.145.119
 
 - Karta dzieła nie blokuje już reszty aplikacji. Jej długie pytania do
