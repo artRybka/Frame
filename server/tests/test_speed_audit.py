@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import gc
 import io
+import time
 from pathlib import Path
 from typing import Any
 
@@ -19,16 +20,18 @@ from frame_server.ai import AiConfigUpdate
 from frame_server.ai.config import STATE_KEY
 from frame_server.ai.keywords import KIND
 from frame_server.config import Settings
-from frame_server.library import Item, ItemKind, Library, Look, PlaylistRules
+from frame_server.library import Item, ItemKind, Library, Look, PlaylistRules, zoom
 from frame_server.library import repo as repo_module
 from frame_server.library.memo import PerItem
-from frame_server.library.models import Note
+from frame_server.library.models import Note, SharperCopy
 from frame_server.library.repo import Abandoned, asked_by
 from frame_server.library.search_index import folded_fields, folded_text
 from frame_server.library.term_index import TermIndex
 from frame_server.library.verdict import Why, whys
+from frame_server.player import TILE_WORKS_KEY
 from frame_server.service import FrameService
-from frame_server.web import create_app
+from frame_server.web import create_app, discover_api
+from frame_server.web.compress import GZIP_FROM
 
 
 def _work(item_id: str = "met:1", **kw: Any) -> Item:
@@ -350,3 +353,157 @@ def test_a_new_index_takes_the_titles_words_of_the_one_before(tmp_path: Path) ->
     other.warm(before)
     assert other._title_words is not before._title_words
     assert [hit.title for hit in other.titles(["sunf"])] == ["Sunflowers", "Sunflower field"]
+
+
+# -- Odkrywaj and the start ----------------------------------------------------
+
+
+def test_the_search_index_is_made_once_when_two_wait_for_it(tmp_path: Path) -> None:
+    library = Library(tmp_path / "lib.db")
+    _catalogue(library, 6)
+    made: list[int] = []
+    make = library._make_search
+
+    def counted() -> Any:
+        made.append(1)
+        return make()
+
+    library._make_search = counted  # type: ignore[method-assign]
+    # A query asks for the index without waiting (made behind) while the
+    # suggestions' index, which waits for it, is making it already.
+    with library._search_lock:
+        library._make_search_later()
+        index = library._make_search()
+    for _ in range(200):
+        if not library._search_building:
+            break
+        time.sleep(0.01)
+    assert made == [1] and library.search_index() is index
+    # One worn by changes is still made anew.
+    for n in range(6):
+        for year in (1700, 1701):
+            library.update(f"met:{n}", year=year)
+    for _ in range(200):
+        if not library._search_building and library.search_index() is not index:
+            break
+        time.sleep(0.01)
+    assert len(made) == 2 and library.search_index() is not index
+
+
+def test_a_list_among_some_works_is_that_part_of_the_whole_list(tmp_path: Path) -> None:
+    library = Library(tmp_path / "lib.db")
+    _catalogue(library, 8)
+    # One work twice: the best copy stands for it in the whole list.
+    twice = [
+        library.upsert(_work(f"{source}:77", title="Rain at Dusk", artist="Jan Deszcz", year=1850))
+        for source in ("wmc", "rijks")
+    ]
+    whole = library.query(PlaylistRules(query="rain"), sort="recent")[1]
+    stands = [i.id for i in whole if i.id in {c.id for c in twice}]
+    assert len(stands) == 1
+    some = {"met:1", "met:5", *(c.id for c in twice), "none:0"}
+    total, part = library.query(PlaylistRules(query="rain"), sort="recent", among=some)
+    assert [i.id for i in part] == [i.id for i in whole if i.id in some]
+    assert total == 3 and stands[0] in {i.id for i in part}
+    assert library.query(PlaylistRules(query="rain"), limit=0, among=some)[0] == 3
+
+
+def test_the_row_of_works_to_zoom_is_what_the_whole_list_has_of_them(
+    service: FrameService,
+) -> None:
+    library = service.library
+    try:
+        zoom.known({"100", "200", "300", "400"})
+        sharper = SharperCopy(
+            url="https://upload.wikimedia.org/nw.jpg",
+            item_id="wmc:200",
+            source="wmc",
+            width=3840,
+            height=3124,
+        )
+        works = [
+            _work("rijks:1", title="De Nachtwacht", artist="Rembrandt", sharper=sharper),
+            _work("wmc:100", title="Garden of Earthly Delights", artist="Bosch"),
+            # One work twice: only the copy that stands for it counts.
+            _work("wmc:300", title="The Milkmaid", artist="Johannes Vermeer", year=1660),
+            _work("rijks:3", title="The Milkmaid", artist="Johannes Vermeer", year=1660),
+            _work("wmc:400", title="A Part", artist="Bosch", part_of="wmc:100"),
+            _work("met:5", title="Wheat Field", artist="Vincent van Gogh"),
+        ]
+        for work in works:
+            library.upsert(work.model_copy(update={"pooled": True}))
+        service.library.set_state(TILE_WORKS_KEY, {"at": time.time(), "items": []})
+        whole = library.query(limit=None, proposing=True)[1]
+        expected = sorted(
+            (i for i in whole if zoom.zooms(i)), key=lambda i: (not i.favorite, i.title.casefold())
+        )
+        row = discover_api._zoom_row(service)
+        assert row is not None
+        assert [r.item.id for r in row.items] == [i.id for i in expected]
+        assert {"rijks:1", "wmc:100"} <= {i.id for i in expected}
+        assert "wmc:400" not in {i.id for i in expected}
+    finally:
+        zoom.known(())
+
+
+def test_the_cards_wait_after_works_came_in_but_not_with_a_hole_in_a_cover(
+    service: FrameService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = service.library
+    cover = library.upsert(_work("met:1", title="Rain", artist="Jan Deszcz", pooled=True))
+    monkeypatch.setattr(discover_api, "_cards", (time.monotonic(), {"rain": (1, [cover])}))
+    monkeypatch.setattr(discover_api, "_cards_from", discover_api._cards_key(service))
+    made = discover_api._cards[0]
+    assert not discover_api._cards_stale(service, made)
+    # Works come in (a search in Szukaj): the round waits its time.
+    library.upsert(_work("met:2", title="Snow", artist="Jan Deszcz", pooled=True))
+    assert not discover_api._cards_stale(service, made)
+    assert discover_api._cards_stale(service, made - discover_api.CARDS_TTL)
+    # A cover's work hidden: its card would show a hole, so at once.
+    library.update("met:2", excluded=True)
+    assert not discover_api._cards_stale(service, made)
+    library.update("met:1", excluded=True)
+    assert discover_api._cards_stale(service, made)
+    library.update("met:1", excluded=False)
+    assert not discover_api._cards_stale(service, made)
+    library.delete("met:1")
+    assert discover_api._cards_stale(service, made)
+    # Another day (the covers of the day, the week's themes): at once.
+    library.upsert(cover)
+    monkeypatch.setattr(discover_api, "_cards_from", discover_api._cards_key(service))
+    assert not discover_api._cards_stale(service, made)
+    monkeypatch.setattr(
+        discover_api, "_cards_from", (("another day",), *discover_api._cards_from[1:])
+    )
+    assert discover_api._cards_stale(service, made)
+
+
+def test_the_apps_larger_answers_go_out_gzipped(tmp_path: Path) -> None:
+    app = create_app(Settings(data_dir=tmp_path, seed_library=False, scheduler=False))
+    svc: FrameService = app.state.service
+    with TestClient(app) as client:
+        for n in range(80):
+            svc.library.upsert(
+                _work(f"met:{n}", title=f"Rain no. {n} " + "ż" * 40, artist="Jan Deszcz")
+            )
+        large = client.get("/api/library/items", params={"limit": 80})
+        assert large.status_code == 200 and large.headers["content-encoding"] == "gzip"
+        assert "Accept-Encoding" in large.headers["vary"]
+        assert int(large.headers["content-length"]) == large.num_bytes_downloaded
+        plain = client.get(
+            "/api/library/items", params={"limit": 80}, headers={"Accept-Encoding": "identity"}
+        )
+        assert "content-encoding" not in plain.headers
+        assert plain.json() == large.json() and len(plain.json()["items"]) == 80
+        assert large.num_bytes_downloaded < plain.num_bytes_downloaded // 3
+        assert plain.num_bytes_downloaded >= GZIP_FROM
+        # A short answer, a picture, the panel's: as they are.
+        small = client.get("/api/library/items", params={"limit": 2})
+        assert small.status_code == 200 and "content-encoding" not in small.headers
+        thumbs = tmp_path / "library" / "thumbs"
+        thumbs.mkdir(parents=True, exist_ok=True)
+        (thumbs / "met_1.jpg").write_bytes(jpeg_bytes((90, 120, 200), (1600, 1200)))
+        thumb = client.get("/api/library/items/met:1/thumb")
+        assert thumb.status_code == 200 and "content-encoding" not in thumb.headers
+        panel = client.get("/panel/content.json")
+        assert "content-encoding" not in panel.headers

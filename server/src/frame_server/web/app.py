@@ -76,6 +76,7 @@ from . import (
     update_api,
     users_api,
 )
+from .compress import Compressed
 from .deps import require_owner, require_token
 from .ids import EncodedSlashes
 from .purposes import Purposes
@@ -284,6 +285,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.include_router(router)
     app.add_middleware(Purposes)  # what the museums' requests are for
     app.add_middleware(EncodedSlashes)  # work ids with a slash (SMK)
+    app.add_middleware(Compressed)  # the app's larger answers, gzipped
 
     @app.middleware("http")
     async def log_panel_requests(request: Request, call_next):

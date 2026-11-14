@@ -332,13 +332,28 @@ def _cards_key(svc: FrameService) -> tuple[object, ...]:
 
 
 def _cards_stale(svc: FrameService, stamp: float) -> bool:
-    """Worked out from another catalogue or day; after hearts only, at
-    most every ``CARDS_TTL`` (each heart would mean the whole round)."""
+    """Worked out on another day or before the curator's new cards: at
+    once. After works came in or went, or hearts: at most every
+    ``CARDS_TTL`` (the whole round is a query of the catalogue for every
+    card, and while Szukaj is open the museums' works come in without a
+    pause: round after round, the audit of 2026-11-14), unless a cover
+    lost a work (hidden, or gone: it would show a hole)."""
     key = _cards_key(svc)
     if key == _cards_from:
         return False
-    hearts_only = key[:2] == _cards_from[:2]
-    return not hearts_only or time.monotonic() - stamp >= CARDS_TTL
+    if key[:1] != _cards_from[:1] or time.monotonic() - stamp >= CARDS_TTL:
+        return True
+    return key[1] != _cards_from[1] and _cover_lost(svc)
+
+
+def _cover_lost(svc: FrameService) -> bool:
+    """A work of some card's cover is hidden now, or no longer here."""
+    hidden = svc.library.hidden()
+    return any(
+        item in hidden or not svc.library.has(item.id)
+        for _count, cover in _cards[1].values()
+        for item in cover
+    )
 
 
 def work_out_cards(svc: FrameService, force: bool = False) -> dict[str, tuple[int, list[Item]]]:
@@ -513,11 +528,18 @@ def _zoom_row(svc: FrameService) -> SuggestionRow | None:
     if not zoom.pages():
         return None
     hidden = svc.library.hidden()
-    own = [
-        i for i in svc.library.query(limit=None, proposing=True)[1] if zooms(i) and i not in hidden
-    ]
-    own.sort(key=lambda i: (not i.favorite, i.title.casefold()))
     works = svc.library.works()
+    # The catalogue's works that zoom, as its whole list has them: looked
+    # for among the copies of the works one copy of which zooms (the best
+    # copy stands for a work), not in the whole catalogue (a few seconds on
+    # the NAS after every change of a work, the audit of 2026-11-14).
+    may: set[str] = set()
+    for item in zoom.zooming(svc.library.all_items()):
+        at = works.group_index(item.id)
+        may.update([item.id] if at is None else [c.id for c in works.groups[at]])
+    found = svc.library.query(limit=None, proposing=True, among=may)[1] if may else []
+    own = [i for i in found if zooms(i) and i not in hidden]
+    own.sort(key=lambda i: (not i.favorite, i.title.casefold()))
     fragments = svc.importer.fragments
 
     def work(item: Item) -> str:

@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.145.118
+
+- Odkrywaj nie przelicza już wszystkich kart tematów po każdym dziele,
+  które doszło do katalogu. Gdy w Szukaj muzea dopisywały dzieła, serwer
+  liczył karty bez przerwy (w pomiarze 5 rund w minutę, cała minuta pracy
+  procesora), a wszystko inne czekało. Teraz karty liczą się najwyżej co
+  10 minut; od razu jak dotąd po zmianie dnia, po nowych kartach kuratora
+  i wtedy, gdy okładka straciłaby obraz (dzieło ukryte albo usunięte).
+  Nowe dzieło widać więc w liczniku i okładce tematu do 10 minut później;
+  w samym temacie po otwarciu jak dotąd.
+- Rząd „Pod lupą” nie przegląda już całego katalogu po każdej zmianie
+  dzieła (pokazanie na ramce, opis, serce): `/api/suggestions` 1,0 s →
+  0,3 s w pomiarze (na NAS było 3–9 s). Te same dzieła w tej samej
+  kolejności.
+- Po starcie serwera indeks szukania powstaje raz, nie dwa razy pod rząd
+  (13.11 na NAS 59 s i zaraz potem 29 s): drugi robił wątek, który czekał
+  na pierwszy.
+- Większe odpowiedzi dla aplikacji idą skompresowane (gzip): lista
+  tematów 670 KB → 119 KB, rzędy Odkrywaj 550 KB → 85 KB, Propozycje dnia
+  117 KB → 21 KB, strona wyników 37 KB → 7 KB. Widać to głównie poza
+  domem. Obrazy, odpowiedzi dla ramki i wyniki przychodzące po kawałku
+  idą jak dotąd.
+
 ## 1.145.117
 
 - Podpowiedzi w Szukaj nadążają za pisaniem. Gdy dochodzi kolejna litera,

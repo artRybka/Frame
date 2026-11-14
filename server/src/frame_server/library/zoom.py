@@ -32,10 +32,20 @@ def pages() -> frozenset[str]:
         return _pages
 
 
-def zooms(item: Item) -> bool:
-    """``item``'s picture shown is a Commons file with a tile set."""
+def _zooms(item: Item, listed: frozenset[str]) -> bool:
     if item.part_of:
         return False
     shown = item.sharper.item_id if item.sharper is not None else item.id
     source, _, page = shown.partition(":")
-    return source == "wmc" and page in pages()
+    return source == "wmc" and page in listed
+
+
+def zooms(item: Item) -> bool:
+    """``item``'s picture shown is a Commons file with a tile set."""
+    return _zooms(item, pages())
+
+
+def zooming(items: Iterable[Item]) -> list[Item]:
+    """Those of ``items`` that :func:`zooms`."""
+    listed = pages()
+    return [i for i in items if _zooms(i, listed)] if listed else []
