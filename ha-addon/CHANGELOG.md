@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.145.138
+
+- Kartka leżąca na białej albo szarej tekturze, z której widać tylko wąski
+  pasek, też jest przycinana (Perugino, „Święty Sebastian”, Cleveland).
+  Haiku na miniaturze takiego paska nie zauważał, więc nikt nie pytał
+  Opusa. Teraz serwer sam sprawdza brzegi miniatury: gdy co najmniej z
+  dwóch stron biegnie jednolity pasek innego koloru niż to, co tuż za nim,
+  pyta Opusa o kadr, jak przy ramie albo sztaludze. Tak samo fotografuje
+  wiele grafik Muzeum Narodowe w Warszawie.
+- Dzieła sprawdzone wcześniej są oglądane ponownie przy wejściu w kartę, a
+  te z Ulubionych, playlist i Odkrywaj raz w nocy. Pytanie idzie od razu do
+  Opusa, bez ponownego pytania Haiku.
+- Papier dalej zostaje: gdy Opus wskaże sam obraz odbitki, a kartka
+  wypełnia całe zdjęcie, zdjęcie zostaje całe, a „Pokaż bez marginesu”
+  przycina do odbitki.
+
 ## 1.145.137
 
 - Kadrowanie po wejściu w kartę dzieła przestało działać, gdy przeglądało
