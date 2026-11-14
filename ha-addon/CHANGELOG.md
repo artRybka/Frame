@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.145.129
+
+- Po restarcie serwera zakładka „Teraz” i kolejka ramki nie czekają już na
+  indeks szukania. Gdy ramka grała playlistę, pierwsze spojrzenie na
+  kolejkę (następny obraz rysowany z wyprzedzeniem, zmiana obrazu
+  przypadająca na start) czekało na pogrupowanie dzieł i na indeks w pętli
+  zdarzeń, więc serwer mógł przez ten czas nie odpowiadać wcale (na kopii
+  katalogu pierwsza odpowiedź po 31 s zamiast po 10 s), a „Teraz” po
+  aktualizacji do 1.145.124 czekało na NAS do 48 s. To czekanie idzie
+  teraz w wątku, a „Teraz” pokazuje kolejkę sprzed restartu i dobiera nowe
+  dzieła przy następnym spojrzeniu albo zmianie obrazu.
+- Z logu znikają błędy „No response returned.” (13 w dwie minuty
+  przeglądania). Kompresja odpowiedzi z 1.145.118 wstrzymywała nagłówek
+  odpowiedzi przychodzących wiersz po wierszu (strona tematu, szukanie w
+  muzeach, kopie dzieła) do pierwszego wiersza, więc gdy aplikacja odeszła
+  wcześniej, odpowiedź kończyła się bez nagłówka. Nagłówek takich
+  odpowiedzi wychodzi znów od razu.
+
 ## 1.145.128
 
 - Trzy nowe wyglądy paska „Kolorystyka”: rysunek lawowany (tusz lub bister
