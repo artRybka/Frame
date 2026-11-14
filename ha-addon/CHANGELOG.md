@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.131
+
+- „Podobne wyglądem” na karcie dzieła: wszystkie trzy obrazy mają jedną
+  wysokość i stały odstęp. Wysoki zwój nie wychodzi już nad nagłówek i
+  guzik „Przygotuj studium dzieła”, a długi parawan nie dotyka sąsiada:
+  jest dopasowany do swojej kolumny, niższy, na tej samej linii.
+
 ## 1.145.130
 
 - Po restarcie serwera zakładka „Teraz” i kolejka ramki nie czekają już na
