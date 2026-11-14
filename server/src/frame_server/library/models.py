@@ -14,6 +14,7 @@ from pydantic import (
     SerializationInfo,
     computed_field,
     field_serializer,
+    field_validator,
     model_validator,
 )
 
@@ -607,15 +608,21 @@ class Playlist(BaseModel):
     #: Who made it: only they change it. Others see it when ``shared``.
     owner: str = OWNER_ID
     shared: bool = False
-    #: A smart playlist's most works (None: all that match). With more
-    #: matching, a steady set is taken: favourites first, the rest drawn
-    #: once for these rules and limit (`repo.limited`).
-    limit: int | None = Field(default=None, ge=1)
+    #: Once a smart playlist's most works ("Ile dzieł"). Gone (Mateusz,
+    #: 2026-11-14): every smart playlist takes all that match. The field
+    #: stays so stored playlists and older apps still load; it is always None.
+    limit: int | None = None
     #: The order its owner chose; None: :meth:`order` (artist for a smart
     #: playlist, the order of adding for a manual one).
     sort: PlaylistSort | None = None
     created_at: str = ""
     updated_at: str = ""
+
+    @field_validator("limit", mode="before")
+    @classmethod
+    def _no_limit(cls, value: object) -> None:
+        """A limit, stored or sent by an older app, is dropped."""
+        return None
 
     @property
     def order(self) -> PlaylistSort:

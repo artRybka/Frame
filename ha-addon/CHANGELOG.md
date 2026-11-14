@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.107
+
+- Playlista inteligentna nie ma już ustawienia „Ile dzieł”. Bierze
+  wszystko, co pasuje, tak jak Szukaj, także playlisty zapisane wcześniej
+  z limitem 50–300. Gdy pasuje mniej niż 100 dzieł, pod liczbą stoi jedno
+  zdanie: po zapisaniu brakujące dobiorą się z muzeów w tle. Dzieje się to
+  po cichu, bez paska „pobieram dzieła z muzeów”. Na ramce playlista dalej
+  dobiera nowe dzieła, gdy kończą się niepokazane.
+
 ## 1.145.106
 
 - „Podobne wyglądem” na karcie dzieła stoi nad słowami kluczowymi i

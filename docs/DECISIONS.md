@@ -161,7 +161,7 @@ serwer trzyma tylko jego skrót SHA-256 (`users.py`, klucz `people` w bazie).
 zaproszeń nie ma (każdy w sieci jest właścicielem). Serca są osobne (tabela
 `favorites`); `Item.favorite` w bazie znaczy „ktoś lubi” i dalej chroni
 dzieło przed porządkami. Playlista ma właściciela i `shared`; jej reguły
-(„Ulubione”, limit „Ile dzieł”) liczą się sercami właściciela, także gdy
+(„Ulubione”; do 2026-11-14 także limit „Ile dzieł”) liczą się sercami właściciela, także gdy
 gra ramka. Ograniczenia domownika pilnuje serwer (403), aplikacja tylko
 chowa przyciski. Propozycje i rotacja ramki są wspólne, z gustu całego
 domu.

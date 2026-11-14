@@ -49,8 +49,6 @@ struct PlaylistEditorView: View {
     /// So does "Ulubione", the hearts' playlist.
     private let wasFavorites: Bool
 
-    /// A new playlist starts with `Playlist.defaultLimit` works; one saved
-    /// before there was a limit keeps all that match ("Wszystkie").
     init(playlist: Playlist) {
         var playlist = playlist
         // A range of years from older editors becomes a period chip.
@@ -59,9 +57,6 @@ struct PlaylistEditorView: View {
             if !playlist.rules.terms.contains(years) { playlist.rules.terms.append(years) }
             playlist.rules.yearFrom = nil
             playlist.rules.yearTo = nil
-        }
-        if playlist.id == nil, !playlist.isFavorites, playlist.limit == nil {
-            playlist.limit = Playlist.defaultLimit
         }
         _playlist = State(initialValue: playlist)
         _album = State(initialValue: playlist.album ?? AlbumSource(url: ""))
@@ -91,14 +86,14 @@ struct PlaylistEditorView: View {
     }
 
     /// How many works the playlist misses that the museums are asked for
-    /// after saving: up to its limit ("Wszystkie": up to the default), when
-    /// museums can supply them; nil until the matching works are counted.
+    /// after saving: up to `Playlist.fillTarget`, when museums can supply
+    /// them; nil until the matching works are counted.
     private var missing: Int? {
         guard playlist.kind == .smart, finder.searched == searchKey, let catalogue = finder.catalogue else {
             return nil
         }
         guard fetchBlocker == nil else { return 0 }
-        return max(0, (playlist.limit ?? Playlist.defaultLimit) - catalogue.total)
+        return max(0, Playlist.fillTarget - catalogue.total)
     }
 
     var body: some View {
@@ -286,7 +281,6 @@ struct PlaylistEditorView: View {
                     .foregroundStyle(Theme.bad)
                     .fixedSize(horizontal: false, vertical: true)
                 }
-                limitRow
             }
             // The suggestions are over the field (`termSuggestions`): the
             // works stay put while words are typed.
@@ -326,70 +320,20 @@ struct PlaylistEditorView: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// "Ile dzieł", right under the field: the playlist's limit, and what
-    /// saving does with it (works asked from the museums, or which are taken).
-    private var limitRow: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(playlist.rules.favoritesOnly ? "Ile ulubionych" : "Ile dzieł")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Theme.ink)
-            HStack(spacing: 6) {
-                ForEach(Playlist.limits, id: \.self) { limit in
-                    let chosen = playlist.limit == limit
-                    Button {
-                        withAnimation(.snappy) { playlist.limit = limit }
-                    } label: {
-                        Text(limit.map(String.init) ?? "Wszystkie")
-                            .font(.footnote.weight(.medium))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 7)
-                            .foregroundStyle(chosen ? Theme.paper : Theme.ink)
-                            .background(chosen ? Theme.ink : Theme.ink.opacity(0.06), in: Capsule())
-                            .contentShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(chosen ? .isSelected : [])
-                }
-            }
-            .sensoryFeedback(.selection, trigger: playlist.limit)
-            Text(limitNote)
-                .font(.caption)
-                .foregroundStyle(Theme.inkSoft)
-                .fixedSize(horizontal: false, vertical: true)
-                .contentTransition(.numericText())
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline))
-    }
-
-    /// Under "Ile dzieł": how many match and what saving does about it.
-    private var limitNote: AttributedString {
-        guard let catalogue = finder.catalogue, let missing else {
-            return AttributedString(playlist.rules.isEmpty ? "Wyszukaj albo wybierz grupę, a policzę pasujące." : "Liczę pasujące…")
-        }
-        // As many as Szukaj finds: the catalogue's and the museums' so far.
-        let found = finder.found
-        let matching = "\(found)" + (finder.more ? "+" : "")
-        if let limit = playlist.limit, catalogue.total > limit {
-            var note = AttributedString("Pasuje \(matching), playlista weźmie ")
-            var taken = AttributedString("\(limit)")
-            taken.foregroundColor = Theme.ink
-            note += taken + AttributedString(": najpierw ulubione, reszta losowo.")
-            return note
-        }
+    /// Under a smart playlist's count, while it has fewer than
+    /// `Playlist.fillTarget` works: what saving asks the museums for, or why
+    /// it asks them nothing. (No "Ile dzieł" since Mateusz, 2026-11-14.)
+    private var fillNote: AttributedString? {
+        guard playlist.kind == .smart, let catalogue = finder.catalogue, let missing else { return nil }
         if missing > 0 {
-            var note = AttributedString(found == 0 ? "Jeszcze nic nie pasuje. " : "Pasuje \(matching). ")
-            var asked = AttributedString(found == 0 ? "\(missing) dobiorę z muzeów" : "Brakujące \(missing) dobiorę z muzeów")
+            var note = AttributedString("Po zapisaniu ")
+            var asked = AttributedString("dobiorę z muzeów")
             asked.foregroundColor = Theme.ink
-            note += asked + AttributedString(" w tle po zapisaniu.")
+            note += asked + AttributedString(" w tle, do \(Playlist.fillTarget) dzieł.")
             return note
         }
-        let mine = fetchBlocker.map { " \($0)" } ?? ""
-        return AttributedString((playlist.limit == nil ? "Pasuje \(matching), playlista weźmie wszystkie." : "Pasuje \(matching).") + mine)
+        guard catalogue.total < Playlist.fillTarget, let fetchBlocker else { return nil }
+        return AttributedString(fetchBlocker)
     }
 
     /// The rules' chips, then the colours' and the museums' (the playlist's
@@ -621,6 +565,12 @@ struct PlaylistEditorView: View {
                         .accessibilityHint("Pokazuje dzieła tej playlisty")
                     }
                 }
+                if let fillNote {
+                    Text(fillNote)
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 // What makes the playlist, also while the groups are hidden.
                 TokenSummary(tokens: tokens.wrappedValue)
             }
@@ -637,8 +587,8 @@ struct PlaylistEditorView: View {
     }
 
     /// A smart playlist's works, as Szukaj shows them: the catalogue's
-    /// first, then (paler) the museums', which the playlist takes in up to
-    /// its limit.
+    /// first, then (paler) the museums', which saving asks for (up to
+    /// `Playlist.fillTarget`).
     @ViewBuilder
     private var smartPreview: some View {
         let remotes = fromMuseums
@@ -724,7 +674,6 @@ struct PlaylistEditorView: View {
         guard finder.catalogue != nil else { return "Szukam…" }
         let more = finder.more ? "+" : ""
         if playlist.kind == .manual { return "Znalezione · " + Names.works(finder.found) + more }
-        if let limit = playlist.limit, finder.found > limit { return "\(limit) z " + Names.works(finder.found) + more }
         return Names.works(finder.found) + more
     }
 
@@ -813,18 +762,19 @@ struct PlaylistEditorView: View {
         }
     }
 
-    /// Follows the museum fetch on its card; runs on after the editor closes.
+    /// Asks the museums for the works a smart playlist misses, quietly
+    /// (Mateusz, 2026-11-14: no card with "46 z 87"); the playlists are
+    /// read again once they are in. Runs on after the editor closes.
     @MainActor
-    private static func followFill(_ id: String, name: String, card: Notice.ID, model: AppModel) async throws {
-        let job = try await watchJob(id, backend: model.backend) { job in
-            if job.total > 0 {
-                let seen = job.done + job.failed
-                model.notices.update(card, fraction: Double(seen) / Double(job.total), count: "\(seen) z \(job.total)")
-            }
+    private static func fillQuietly(_ rules: PlaylistRules, count: Int, model: AppModel) async {
+        guard let jobID = try? await model.backend.fillLibrary(rules: rules, count: count),
+              let job = try? await watchJob(jobID, backend: model.backend, progress: { _ in })
+        else { return }
+        if job.done > 0 {
+            model.libraryChanged()
+            await model.refreshPlaylists()
+            await model.refreshFacets()
         }
-        model.notices.end(card, .done, "„\(name)”: dodano \(Names.works(job.done)) z muzeów")
-        await model.refreshPlaylists()
-        await model.refreshFacets()
     }
 
     /// Reads the chosen photos: an upright JPEG with its date and place, and a thumbnail.
@@ -859,7 +809,6 @@ struct PlaylistEditorView: View {
         }
         let uploads = photos.map(\.upload)
         let fetch = missing ?? 0
-        if playlist.kind != .smart { playlist.limit = nil }
         Task { [model] in await Self.store(playlist, uploads: uploads, fetch: fetch, model: model) }
         dismiss()
     }
@@ -886,12 +835,11 @@ struct PlaylistEditorView: View {
                 let jobID = try await model.backend.syncAlbum(playlistID: saved.playlist.id)
                 notices.update(card, title: "„\(name)”: pobieram miniatury zdjęć")
                 try await followSync(jobID, name: name, card: card, model: model)
-            } else if saved.playlist.kind == .smart, fetch > 0 {
-                let jobID = try await model.backend.fillLibrary(rules: playlist.rules, count: fetch)
-                notices.update(card, title: "„\(name)”: pobieram dzieła z muzeów")
-                try await followFill(jobID, name: name, card: card, model: model)
             } else {
                 notices.end(card, .done, "Zapisano „\(name)”")
+                if saved.playlist.kind == .smart, fetch > 0 {
+                    await fillQuietly(playlist.rules, count: fetch, model: model)
+                }
             }
         } catch {
             notices.fail(error, in: card)

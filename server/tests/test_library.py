@@ -248,30 +248,20 @@ def test_a_playlist_sends_the_main_colour_of_each_cover_work(tmp_path) -> None:
     assert [c.hex for c in summary.cover_colors] == ["#406030", "#c8b890"]
 
 
-def test_a_smart_playlist_keeps_a_steady_set_within_its_limit(tmp_path) -> None:
+def test_a_smart_playlist_takes_all_that_match(tmp_path) -> None:
+    """No more "Ile dzieł" (Mateusz, 2026-11-14): a limit, stored or sent
+    by an older app, is dropped and every match is taken."""
     lib = Library(tmp_path / "lib.db")
     for n in range(30):
         lib.upsert(_item(n, artist="A", title=f"Work {n}"))
-    lib.update("test:7", favorite=True)
-    lib.update("test:23", favorite=True)
     playlist = lib.save_playlist(Playlist(name="A", rules=PlaylistRules(artists=["A"]), limit=10))
 
-    first = [i.id for i in lib.playlist_items(playlist)]
-    assert len(first) == 10 and {"test:7", "test:23"} <= set(first)  # hearts first
-    assert lib.playlist_summary(playlist).item_count == 10
-    assert lib.playlist_summary(playlist).limit == 10
-    # The same works every time, in the order asked for.
-    assert [i.id for i in lib.playlist_items(playlist)] == first
-    by_title = [i.id for i in lib.playlist_items(playlist, sort="title")]
-    assert sorted(by_title) == sorted(first)
-    # Another limit draws again; no limit takes all.
-    other = lib.save_playlist(playlist.model_copy(update={"limit": 11}))
-    assert len(set(i.id for i in lib.playlist_items(other)) - set(first)) >= 1
-    assert len(lib.playlist_items(playlist.model_copy(update={"limit": None}))) == 30
-    # A work taken out of the playlist makes room for another one.
-    out = playlist.rules.model_copy(update={"exclude_ids": [first[0]]})
-    fewer = [i.id for i in lib.playlist_items(playlist.model_copy(update={"rules": out}))]
-    assert len(fewer) == 10 and first[0] not in fewer and set(first[1:]) <= set(fewer)
+    assert playlist.limit is None
+    assert len(lib.playlist_items(playlist)) == 30
+    assert lib.playlist_summary(playlist).item_count == 30
+    assert lib.playlist_summary(playlist).limit is None
+    stored = Playlist.model_validate({"name": "B", "limit": 50})
+    assert stored.limit is None
 
 
 def test_mine_finds_favourites_and_works_on_playlists(tmp_path) -> None:
