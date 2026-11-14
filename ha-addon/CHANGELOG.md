@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.126
+
+- Pasek „Kolorystyka” idzie za techniką dzieła, a nie za działem muzeum:
+  akwarele, rysunki ołówkiem i tuszem z działów „Prints and Drawings” nie
+  są już rysowane jak ryciny, a obrazy z działu „Paintings and Sculpture”
+  znów mają pasek. Drzeworyt barwny czy litografia barwna dostają farby
+  nawet wtedy, gdy kolory na zdjęciu wyszły wyblakłe. Plakat opisany tylko
+  jako „druk” ma pasek offsetu.
+
 ## 1.145.125
 
 - Pasek „Kolorystyka” sitodruku to płaskie, kryjące warstwy farby z czystą

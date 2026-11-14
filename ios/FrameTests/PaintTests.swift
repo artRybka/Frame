@@ -107,11 +107,11 @@ final class PaintTests: XCTestCase {
             XCTAssertEqual(PaintStyle.of(medium: text), .woodblock, text)
         }
         XCTAssertEqual(PaintStyle.of(medium: "", classification: "Prints", mono: true), .burin)
-        // From the stone: the inks with the crayon's grain; of one colour, the crayon's lines.
+        // From the stone: the inks with the crayon's grain; of one colour, the crayon's lines; said to be in colours, its inks.
         for text in ["litografia barwna", "Colour lithograph after a pastel", "Chromolithograph", "Lithograph in black and red",
                      "plakat; litografia barwna"] {
             XCTAssertEqual(PaintStyle.of(medium: text), .litho, text)
-            XCTAssertEqual(PaintStyle.of(medium: text, mono: true), .pencil, text)
+            XCTAssertEqual(PaintStyle.of(medium: text, mono: true), text.contains("black") ? .pencil : .litho, text)
         }
         // Through a screen: flat opaque inks, in black too (Mateusz 2026-11-14, of Lex Drewinski's poster:
         // „Technika to sitodruk, czarno-biały, papier. Pasek koloru nie pasuje do tej techniki”).
@@ -127,6 +127,9 @@ final class PaintTests: XCTestCase {
         }
         XCTAssertEqual(PaintStyle.of(medium: "", classification: "Posters"), .offset)
         XCTAssertEqual(PaintStyle.of(medium: "papier", classification: "Plakat", mono: true), .offset)
+        // A poster that says only that it is printed.
+        XCTAssertEqual(PaintStyle.of(medium: "druk (proces), papier", classification: "Poster", mono: true), .offset)
+        XCTAssertEqual(PaintStyle.of(medium: "machinale druk", classification: "poster", mono: true), .offset)
         // A folding screen is no screenprint; a poster cut in wood is a woodcut.
         XCTAssertNotEqual(PaintStyle.of(medium: "Pair of six-panel folding screens; ink and color on paper"), .screen)
         XCTAssertEqual(PaintStyle.of(medium: "plakat, linoryt", mono: true), .burin)
@@ -155,6 +158,22 @@ final class PaintTests: XCTestCase {
         // A painting of one colour is still painted.
         XCTAssertEqual(PaintStyle.of(medium: "Oil on panel", classification: "Paintings", mono: true), .oil)
         XCTAssertEqual(PaintStyle.of(medium: "Gelatin silver print", classification: "Photographs", mono: true), .photo)
+        // A print the medium says is in colours is its inks, though its colours came out faded; one coloured by hand
+        // afterwards and one printed in black ink („farba drukarska”) are not.
+        for text in ["Color woodblock print; oban", "drzeworyt barwny, nishiki-e, tusz, farba wodna, papier", "color lithograph",
+                     "colored lithograph printed in orange on wove paper", "Farbholzschnitt"] {
+            XCTAssertNotEqual(PaintStyle.of(medium: text, mono: true), .burin, text)
+            XCTAssertNotEqual(PaintStyle.of(medium: text, mono: true), .pencil, text)
+        }
+        XCTAssertEqual(PaintStyle.of(medium: "hand-colored engraving", mono: true), .burin)
+        XCTAssertEqual(PaintStyle.of(medium: "drzeworyt poprzeczny, druk (proces), farba drukarska, papier gazetowy", mono: true), .burin)
+        // A department of prints and drawings says nothing of which a work is: its medium does.
+        let department = "Prints and Drawings"
+        XCTAssertEqual(PaintStyle.of(medium: "Watercolor and gouache over graphite on medium, slightly textured, cream laid paper",
+                                     classification: department, mono: true), .water)
+        XCTAssertEqual(PaintStyle.of(medium: "Graphite on medium, smooth, cream wove paper", classification: department, mono: true), .pencil)
+        XCTAssertEqual(PaintStyle.of(medium: "Pen and black ink, brown ink, and graphite", classification: department, mono: true), .pen)
+        XCTAssertEqual(PaintStyle.of(medium: "Etching", classification: department, mono: true), .burin)
         // Which tool or press each is.
         XCTAssertEqual(PaintStyle.allCases.compactMap(\.tool).count, 3)
         XCTAssertEqual(PaintStyle.allCases.compactMap(\.press).count, 4)
@@ -994,7 +1013,9 @@ final class PaintTests: XCTestCase {
         // What is painted, drawn or printed is none, whatever it lies on.
         for (medium, kind) in [("Oil on canvas", "Paintings"), ("Watercolor on ivory", ""), ("Oil on marble", ""), ("", ""), ("", "Painting"),
                                ("Woodcut", "Relief print"), ("tusz, papier brązowy", ""), ("papier brązowy", ""), ("Gelatin silver print", ""),
-                               ("Pen and brown ink", "Drawings"), ("Porcelain", "Ceramics")] {
+                               ("Pen and brown ink", "Drawings"), ("Porcelain", "Ceramics"),
+                               // A museum's department of both.
+                               ("Oil on canvas", "Paintings and Sculpture"), ("Oil on panel", "Paintings and Sculpture")] {
             XCTAssertFalse(PaintStyle.sculpted(medium: medium, classification: kind), "\(medium) \(kind)")
         }
     }
@@ -1059,6 +1080,8 @@ final class PaintTests: XCTestCase {
         // The server saw red, ochre and blue in it: its inks, printed.
         XCTAssertFalse(PaintStyle.mono(["red", "colorful"], poster))
         XCTAssertEqual(PaintStyle.of(medium: "litografia barwna, papier", mono: PaintStyle.mono(["colorful"], poster)), .litho)
-        XCTAssertEqual(PaintStyle.of(medium: "litografia barwna, papier", mono: PaintStyle.mono([], poster)), .pencil)
+        // Its medium says it is in colours: its inks, however one colour's its colours came out.
+        XCTAssertEqual(PaintStyle.of(medium: "litografia barwna, papier", mono: PaintStyle.mono([], poster)), .litho)
+        XCTAssertEqual(PaintStyle.of(medium: "litografia, papier", mono: PaintStyle.mono([], poster)), .pencil)
     }
 }

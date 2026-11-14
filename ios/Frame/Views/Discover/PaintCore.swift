@@ -96,11 +96,20 @@ enum PaintStyle: String, Sendable, CaseIterable {
     /// watercolour is a watercolour), a print over the paint on it.
     static func of(medium: String, classification: String = "", mono: Bool = false, warm: Bool = false) -> PaintStyle? {
         let words = Self.words(medium)
-        let kind = Self.words(classification)
-        let all = words + kind
         func has(_ list: [String], _ begins: [String], _ whole: Set<String> = []) -> Bool {
             list.contains { word in whole.contains(word) || begins.contains { word.hasPrefix($0) } }
         }
+        // A museum's department of prints and drawings says nothing of
+        // which of the two a work is: its watercolours and pencil drawings
+        // were drawn as engravings. Only its medium says.
+        let filed = Self.words(classification)
+        let kind = has(filed, prints) && has(filed, drawings) ? filed.filter { word in !prints.contains { word.hasPrefix($0) } } : filed
+        let all = words + kind
+        // A print its medium says is in colours is its inks, however
+        // faded its colours came out ("color woodblock print", „litografia
+        // barwna”); one coloured by hand afterwards is not.
+        let byHand = words.contains { word in handColoured.contains { word.hasPrefix($0) } }
+        let oneInk = mono && (byHand || !words.contains { word in inColours.contains { word.hasPrefix($0) } })
         // An "oil print" is a photograph, not an oil painting and not a print.
         let printed = zip(words, words.dropFirst()).contains { photographed.contains($0) && $1.hasPrefix("print") }
         if printed || has(all, photographs, ["foto", "photo"]) { return .photo }
@@ -110,10 +119,10 @@ enum PaintStyle: String, Sendable, CaseIterable {
             return .screen
         }
         if has(all, offsets) { return .offset }
-        if has(all, stone) { return mono ? .pencil : .litho }
-        if has(all, prints, ["ets", "druk"]) { return mono ? .burin : .woodblock }
-        // A poster that names no other way it was printed: most were printed in offset.
-        if has(all, posters) { return .offset }
+        if has(all, stone) { return oneInk ? .pencil : .litho }
+        // A poster that names no other way it was printed ("druk (proces)"): most were printed in offset.
+        if has(all, posters), !has(all, prints.filter { !Self.anyPrint.contains($0) }) { return .offset }
+        if has(all, prints, ["ets", "druk"]) { return oneInk ? .burin : .woodblock }
         var inked = false
         for word in words {
             for (style, begins, whole) in named where whole.contains(word) || begins.contains(where: { word.hasPrefix($0) }) {
@@ -160,7 +169,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
         func has(_ list: [String], _ begins: [String]) -> Bool {
             list.contains { word in begins.contains { word.hasPrefix($0) } }
         }
-        if has(kind, sculptures), !has(kind, prints) { return true }
+        if has(kind, sculptures), !has(kind, prints), !has(kind, paintings) { return true }
         guard of(medium: medium, classification: classification) == nil else { return false }
         // Not "brązowy": brown paper is no bronze.
         return has(words(medium), carved) || words(medium).contains { $0 == "braz" || $0 == "brazu" }
@@ -232,6 +241,13 @@ enum PaintStyle: String, Sendable, CaseIterable {
                                  "mezzotint", "drypoint", "monotyp", "drzeworyt", "akwafort", "miedzioryt", "staloryt", "rycin", "sztych",
                                  "grafik", "estamp", "gravure", "houtsne", "radier", "holzschnitt", "kupferstich", "xilogra", "xylogra",
                                  "incisione", "grabado", "farbholz", "kleurenhout"]
+    /// What says only that a work is printed, not how.
+    private static let anyPrint: Set<String> = ["print", "grafik", "estamp"]
+    /// What says a print is in colours.
+    private static let inColours = ["color", "colour", "barwn", "wielobarw", "nishiki", "chromo", "polychrom", "couleur", "farbholz",
+                                    "farbdruck", "farblitho", "farbig", "kleurendruk", "kleurenhout", "kleurenlitho"]
+    /// What says a print was coloured by hand.
+    private static let handColoured = ["hand", "kolorowan", "handgekleur", "handkolor", "enlumin", "rehauss"]
     /// A soft point.
     private static let soft = ["pencil", "graphit", "grafit", "charcoal", "fusain", "bleistift", "kohle", "potlood", "houtskool", "lapiz",
                                "matita", "carboncino", "silverpoint", "metalpoint", "olowk", "olowek", "wegiel", "wegl"]
