@@ -709,7 +709,7 @@ struct ItemDetailView: View {
         model.pictureSeen(updated.id, copy: updated.pictureVersion, changed: true)
     }
 
-    /// The owner's corners, or "Z papierem" / "Sama odbitka".
+    /// The owner's corners, or "Pokaż z marginesem / bez marginesu".
     private func setCut(_ update: CutUpdate) async -> Bool {
         cutBusy = true
         defer { cutBusy = false }

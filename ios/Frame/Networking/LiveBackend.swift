@@ -155,7 +155,7 @@ struct LiveBackend: FrameBackend {
     }
 
     func setCut(itemID: String, update: CutUpdate) async throws -> Item {
-        // "Sama odbitka" the first time asks Opus for the print's edge.
+        // "Pokaż bez marginesu" the first time asks Opus for the print's edge.
         var req = request("/api/library/items/\(escape(itemID))/cut", method: "PUT")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try Self.encoder().encode(update)

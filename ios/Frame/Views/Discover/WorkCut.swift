@@ -52,9 +52,11 @@ private func quadPath(_ quad: [[Double]], in size: CGSize) -> Path {
 }
 
 /// "Pełny kadr" on the work's card: the museum's photograph as it is (no
-/// outline of the cut, Mateusz 2026-11-14), a line on what was around the work, and for a print on
-/// its sheet the choice "Z papierem" / "Sama odbitka" as two small
-/// pictures, the chosen one outlined (Mateusz 2026-11-14, variant A).
+/// outline of the cut; a tap opens "Popraw kadr"), beside it a line on
+/// what was around the work and what is shown, and "Popraw kadr". A work
+/// on paper the same way (Mateusz 2026-11-14 22:42, layout 1), its line
+/// saying whether it is shown with its margin, and "Pokaż bez marginesu" /
+/// "Pokaż z marginesem" above "Popraw kadr".
 struct FullPhotoSection: View {
     let item: Item
     /// Waiting for the server (the print's edge asked of the model).
@@ -75,29 +77,36 @@ struct FullPhotoSection: View {
             Eyebrow("Pełny kadr")
             HStack(alignment: .bottom, spacing: 14) {
                 whole
-                if cut.hasPaper {
-                    Rectangle().fill(Theme.hairline).frame(width: 1).frame(maxHeight: 112)
-                    choice(paper: true)
-                    choice(paper: false)
-                    Spacer(minLength: 0)
-                } else {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(line)
-                            .font(.subheadline)
-                            .foregroundStyle(Theme.inkSoft)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Button("Popraw kadr", action: correct)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Theme.ink)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(line)
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .contentTransition(.opacity)
+                    if cut.hasPaper {
+                        HStack(spacing: 8) {
+                            Button(cut.paper ? "Pokaż bez marginesu" : "Pokaż z marginesem") {
+                                choosePaper(!cut.paper)
+                            }
+                            .disabled(busy)
+                            if busy { ProgressView().controlSize(.small) }
+                        }
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Theme.ink)
                     }
-                    Spacer(minLength: 0)
+                    Button("Popraw kadr", action: correct)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Theme.ink)
                 }
+                Spacer(minLength: 0)
             }
         }
     }
 
     private var line: String {
-        Cut.fullPhotoLine(around: cut.aroundText, cropped: item.isCropped)
+        cut.hasPaper
+            ? cut.paperLine(medium: item.medium)
+            : Cut.fullPhotoLine(around: cut.aroundText, cropped: item.isCropped)
     }
 
     /// The photograph whole; a tap opens the same corners as "Popraw kadr"
@@ -111,36 +120,6 @@ struct FullPhotoSection: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Zdjęcie muzeum w całości")
         .accessibilityHint("Otwiera poprawianie kadru")
-    }
-
-    /// One of the two ways a print is shown, as a small picture.
-    private func choice(paper: Bool) -> some View {
-        let chosen = cut.paper == paper
-        let quad: [[Double]]? = paper ? cut.work : (cut.plate ?? cut.work)
-        return Button {
-            if !chosen { choosePaper(paper) }
-        } label: {
-            VStack(spacing: 8) {
-                QuadCrop(ref: photo, photoAspect: photoAspect, quad: quad, height: paper ? 84 : 72, maxWidth: 76)
-                    // Before the print's edge is known: the sheet's picture,
-                    // drawn in a little, stands for it.
-                    .scaleEffect(!paper && cut.plate == nil ? 0.82 : 1)
-                    .overlay {
-                        if busy, !paper, !chosen { ProgressView().controlSize(.small) }
-                    }
-                    .padding(3)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .strokeBorder(Theme.ink, lineWidth: chosen ? 2 : 0)
-                    }
-                Text(paper ? "Z papierem" : "Sama odbitka")
-                    .font(.caption.weight(chosen ? .semibold : .regular))
-                    .foregroundStyle(chosen ? Theme.ink : Theme.inkSoft)
-            }
-        }
-        .buttonStyle(.plain)
-        .disabled(busy)
-        .accessibilityAddTraits(chosen ? .isSelected : [])
     }
 }
 
