@@ -276,12 +276,17 @@ def test_queueing_a_photo_sent_once_asks_for_its_keywords_now(tmp_path: Path) ->
         try:
             assert client.post(f"/api/library/items/{sent.id}/queue").status_code == 202
             deadline = time.monotonic() + 10
-            while svc.library.note(sent.id, KIND) is None and time.monotonic() < deadline:
+
+            def tagged() -> bool:
+                # The note is saved first, the work's tags right after.
+                held = svc.library.get(sent.id)
+                return held is not None and "subject:sea" in held.terms
+
+            while not tagged() and time.monotonic() < deadline:
                 time.sleep(0.02)
         finally:
             svc.ai.stop()
-        item = svc.library.get(sent.id)
-        assert item is not None and "subject:sea" in item.terms
+        assert tagged()
         view = client.post(f"/api/library/items/{sent.id}/describe").json()
         assert view["status"] == "ready" and "żaglowiec" in view["words"]
 

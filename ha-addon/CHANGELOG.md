@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.145.117
+
+- Podpowiedzi w Szukaj nadążają za pisaniem. Gdy dochodzi kolejna litera,
+  serwer od razu przerywa liczenie dla poprzedniej (dotąd liczył do końca,
+  a nowe pytanie czekało w kolejce). Przy szybkim wpisaniu słowa ostatnia
+  podpowiedź przychodzi 0,2–0,4 s po ostatniej literze zamiast 0,8–4 s.
+  Aplikacja przy jednej i dwóch literach czeka z pytaniem 250 ms zamiast
+  120 ms; to, co zna sama, pokazuje jak dotąd od razu.
+- Przewijanie wyników Szukaj: kolejne strony przychodzą z kolejności
+  ustalonej przy pierwszej stronie (7 ms zamiast 0,45 s w pomiarze, na NAS
+  było 2–12 s), także wtedy, gdy muzea w tym czasie dopisują dzieła albo
+  dajesz serce. Znikają powtórki i dziury między stronami. Dzieło ukryte w
+  międzyczasie nie pojawia się, serce jest zawsze aktualne, a nowe
+  szukanie i pierwsza strona liczą się od nowa. Kolejność jest pamiętana
+  minutę od ostatniej strony, najwyżej 5 minut. Ulubione i „Moje” liczą
+  się zawsze od nowa.
+- Tytuły dzieł w podpowiedziach szukane przez indeks początków słów
+  zamiast przeglądu wszystkich 117 tys. tytułów: średnio 25 ms zamiast
+  180 ms na literę, te same tytuły w tej samej kolejności (porównane na
+  865 pytaniach).
+
 ## 1.145.116
 
 - „Pełny kadr” na karcie dzieła pokazuje zdjęcie muzeum bez przerywanej
