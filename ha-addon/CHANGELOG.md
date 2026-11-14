@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.145.128
+
+- Trzy nowe wyglądy paska „Kolorystyka”: rysunek lawowany (tusz lub bister
+  rozprowadzony pędzlem) to warstwy laweringu kładzione jedna na drugą z
+  kreską piórka na ciemniejszej połowie; gwasz i farby kryjące (także
+  „opaque watercolor” i „gum tempera” miniatur) to kryjące, matowe
+  pociągnięcia pędzla; grafika kolorowana ręcznie to kreski ryciny z
+  luźno położonymi akwarelami jej kolorów.
+- Czarno-biały drzeworyt i linoryt mają pasek jak klocek odbity czernią:
+  wycięcia dłuta jaśniejszych tonów i dwa większe wybrania papieru, w
+  których zostają cienkie grzbiety drewna.
+- Złoto, gdy technika je wymienia (tempera i złoto, złota farba), mieni
+  się na pasku przy przechylaniu telefonu: płatkowe przesuwa się jednym
+  miękkim blaskiem, złota farba dodatkowo błyska drobinkami.
+- Pasek „Kolorystyka” idzie za techniką dzieła, a nie za działem muzeum:
+  akwarele, rysunki ołówkiem i tuszem z działów „Prints and Drawings” nie
+  są już rysowane jak ryciny, a obrazy z działu „Paintings and Sculpture”
+  znów mają pasek. Drzeworyt barwny czy litografia barwna dostają farby
+  nawet wtedy, gdy kolory na zdjęciu wyszły wyblakłe. Plakat opisany tylko
+  jako „druk” ma pasek offsetu.
+- Biel, która wybija się w ciemnym dziele jednobarwnym (biała linia na
+  czarnym plakacie), jest na pasku jako akcent i daje się znaleźć jako
+  „Biel · akcent”. Po aktualizacji serwer raz przelicza kolory biblioteki.
+
 ## 1.145.127
 
 - Zdjęcia samych okładek, opraw, grzbietów i pustych kart (szkicowniki,
