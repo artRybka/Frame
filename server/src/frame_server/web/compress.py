@@ -75,21 +75,28 @@ class Compressed:
         if not _asks(scope):
             await self.app(scope, receive, send)
             return
-        # The answer's head waits for its body: the length and the encoding
-        # are known only then.
+        # The head of an answer that may be packed waits for its body: the
+        # length and the encoding are known only then. Any other head goes
+        # at once: one that comes line by line (a theme's page, a search, a
+        # work's copies) has no line yet, and held, it was never sent when
+        # the app left before the first (Starlette's "No response
+        # returned.", 13 tracebacks in two minutes of browsing, 2026-11-14).
         head: dict[str, Any] | None = None
 
         async def packed(message: dict[str, Any]) -> None:
             nonlocal head
             if message["type"] == "http.response.start":
-                head = message
+                if _packs(message):
+                    head = message
+                else:
+                    await send(message)
                 return
             held, head = head, None
             if held is None:  # the next pieces of an answer in pieces
                 await send(message)
                 return
             body = message.get("body", b"") if message["type"] == "http.response.body" else b""
-            if message.get("more_body") or len(body) < GZIP_FROM or not _packs(held):
+            if message.get("more_body") or len(body) < GZIP_FROM:
                 await send(held)
                 await send(message)
                 return
@@ -112,3 +119,5 @@ class Compressed:
             await send({**message, "body": small})
 
         await self.app(scope, receive, packed)
+        if head is not None:  # ended before any body: the head as it is
+            await send(head)
