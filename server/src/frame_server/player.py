@@ -70,6 +70,7 @@ from .library.vocabulary import (
     object_category,
     other_art,
 )
+from .night import give_way
 from .progress import Stage
 from .schedule import FrameSettings, Presentation, in_quiet_hours, next_change
 
@@ -119,6 +120,17 @@ SET_ASIDE_VERSION = 7
 #: Version of the colour analysis the library's pictures carry (the key is
 #: of the e-paper score it once went with).
 SCORE_KEY = "suitability_version"
+#: How far ``Player.rescore`` has come: the version it works on, the id of
+#: the last picture looked at (they go in the order of their ids) and how
+#: many are analysed. A restart goes on from there: the analysis takes
+#: hours on the NAS, and the server is updated several times a day.
+SCORE_AT_KEY = "suitability_progress"
+#: So many pictures are analysed between two writes (some ten minutes on
+#: the NAS: what a restart loses at most; each write makes the next list
+#: asked for work out its order again).
+RESCORE_PORTION = 5000
+#: ... resting this long at most before a picture while the app is answered.
+RESCORE_REST = 1.0
 #: Version of the contours the library's pictures carry (``Player.contours``).
 CONTOUR_KEY = "contour_version"
 #: Set once the pictures kept from before lost their blank margins
@@ -1650,16 +1662,45 @@ class Player:
     def rescore(self) -> int:
         """Once per ``SCORE_VERSION``: analyse the library's pictures again
         from their thumbnails (add-on 0.12: colourful works first; 0.21:
-        colour accents). Measured before writing, written a portion at a
-        time, marked done after the last; returns how many."""
-        if self.library.get_state(SCORE_KEY, 1) >= SCORE_VERSION:
+        colour accents). Written :data:`RESCORE_PORTION` pictures at a time
+        with how far it has come (:data:`SCORE_AT_KEY`, and a line in the
+        log), so a restart goes on where the last one stopped: kept in
+        memory until the last picture, every update of the server began the
+        hours of it anew (2026-11-14). Rests while the app is answered
+        (``night.give_way``); marked done after the last; returns how many
+        this run analysed."""
+        library = self.library
+        if library.get_state(SCORE_KEY, 1) >= SCORE_VERSION:
             return 0
+        at = library.get_state(SCORE_AT_KEY) or {}
+        if at.get("version") != SCORE_VERSION:
+            at = {}
+        after, before = str(at.get("after", "")), int(at.get("done", 0))
         images = self.service.images
+        items = sorted(library.query(include_excluded=True)[1], key=lambda item: item.id)
+        left = [item for item in items if item.id > after]
+        if after:
+            log.info("rescore: going on after %d pictures, %d works left", before, len(left))
+        started = time.monotonic()
         analysed: dict[str, dict[str, Any]] = {}
-        for item in self.library.query(include_excluded=True)[1]:
+        done = 0
+
+        def write(last: str) -> None:
+            # A portion at a time: in one transaction the library's lock was
+            # held for all of them and the server answered nobody meanwhile.
+            nonlocal analysed, done
+            library.update_many(analysed)
+            done += len(analysed)
+            analysed = {}
+            library.set_state(
+                SCORE_AT_KEY, {"version": SCORE_VERSION, "after": last, "done": before + done}
+            )
+
+        for looked, item in enumerate(left, start=1):
             path = images.thumb_path(item)
             if not item.colors or not path.is_file():
                 continue
+            give_way(RESCORE_REST)  # the app's questions first
             try:
                 with Image.open(path) as img:
                     spread = item.tint_spread
@@ -1675,12 +1716,21 @@ class Player:
                 "color_shares": shares,
                 "tint_spread": spread,
             }
-        # A portion at a time: in one transaction the library's lock was
-        # held for all of them and the server answered nobody meanwhile.
-        self.library.update_many(analysed)
-        self.library.set_state(SCORE_KEY, SCORE_VERSION)
-        log.info("rescore: %d pictures analysed again", len(analysed))
-        return len(analysed)
+            if len(analysed) >= RESCORE_PORTION:
+                write(item.id)
+                log.info(
+                    "rescore: %d pictures analysed again, %d of %d works looked at, %.0f min",
+                    before + done,
+                    len(items) - len(left) + looked,
+                    len(items),
+                    (time.monotonic() - started) / 60,
+                )
+        if left:
+            write(left[-1].id)
+        library.set_state(SCORE_KEY, SCORE_VERSION)
+        library.set_state(SCORE_AT_KEY, None)
+        log.info("rescore: %d pictures analysed again", before + done)
+        return done
 
     def contours(self) -> int:
         """Once per ``CONTOUR_VERSION``: the library's pictures' drawn

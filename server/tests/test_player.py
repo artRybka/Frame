@@ -915,6 +915,95 @@ def test_library_is_scored_again_once(service) -> None:
     assert service.player.rescore() == 0  # only once
 
 
+def test_the_library_is_scored_on_from_where_a_restart_stopped_it(service, monkeypatch) -> None:
+    from frame_server import player as player_module
+    from frame_server.library.colors import SCORE_VERSION
+    from frame_server.player import SCORE_AT_KEY, SCORE_KEY
+
+    library = service.library
+    assert not library.query(include_excluded=True)[1]
+    works = sorted(
+        (
+            service.importer.add_upload(
+                jpeg_bytes((150, 40 * n, 150)), kind=ItemKind.OWN, title=f"Work {n}", artist="Ala"
+            )
+            for n in range(1, 6)
+        ),
+        key=lambda item: item.id,
+    )
+    colours = {work.id: library.get(work.id).colors for work in works}
+
+    def older() -> None:  # the palettes of an older version
+        for work in works:
+            library.update(work.id, colors=colours[work.id][:1])
+        library.set_state(SCORE_KEY, SCORE_VERSION - 1)
+
+    def current() -> list[bool]:
+        return [library.get(work.id).colors == colours[work.id] for work in works]
+
+    class Stopped(Exception):
+        pass
+
+    looked: list[int] = []
+    analyse = player_module.analyse
+
+    def until_the_third(img, spread):
+        if len(looked) == 2:
+            raise Stopped  # the server is updated
+        looked.append(1)
+        return analyse(img, spread)
+
+    def counted(img, spread):
+        looked.append(1)
+        return analyse(img, spread)
+
+    older()
+    monkeypatch.setattr(player_module, "RESCORE_PORTION", 2)
+    monkeypatch.setattr(player_module, "analyse", until_the_third)
+    with pytest.raises(Stopped):
+        service.player.rescore()
+    # The first two are written, with how far it came; not done yet.
+    assert current() == [True, True, False, False, False]
+    assert library.get_state(SCORE_AT_KEY) == {
+        "version": SCORE_VERSION,
+        "after": works[1].id,
+        "done": 2,
+    }
+    assert library.get_state(SCORE_KEY) == SCORE_VERSION - 1
+
+    # After the restart: only the rest.
+    looked.clear()
+    monkeypatch.setattr(player_module, "analyse", counted)
+    assert service.player.rescore() == 3 and len(looked) == 3
+    assert all(current())
+    assert library.get_state(SCORE_KEY) == SCORE_VERSION
+    assert library.get_state(SCORE_AT_KEY) is None
+    assert service.player.rescore() == 0
+
+    # How far an older analysis came says nothing about this one.
+    older()
+    library.set_state(SCORE_AT_KEY, {"version": SCORE_VERSION - 1, "after": "zzz", "done": 9})
+    looked.clear()
+    assert service.player.rescore() == 5 and len(looked) == 5
+    assert all(current())
+
+
+def test_the_analysis_rests_while_the_app_is_answered(service, monkeypatch) -> None:
+    from frame_server import player as player_module
+    from frame_server.library.colors import SCORE_VERSION
+    from frame_server.player import RESCORE_REST, SCORE_KEY
+
+    for n in range(1, 4):
+        service.importer.add_upload(
+            jpeg_bytes((150, 40 * n, 150)), kind=ItemKind.OWN, title=f"Work {n}", artist="Ala"
+        )
+    service.library.set_state(SCORE_KEY, SCORE_VERSION - 1)
+    rested: list[float] = []
+    monkeypatch.setattr(player_module, "give_way", rested.append)
+    assert service.player.rescore() == 3
+    assert rested == [RESCORE_REST] * 3  # before each picture
+
+
 def test_app_gets_the_thumbnail_when_the_original_is_refused(service) -> None:
     from frame_server.web import create_app
 

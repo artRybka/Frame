@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.145.136
+
+- Ponowna analiza kolorów biblioteki (po zmianie sposobu liczenia barw,
+  ostatnio w 1.145.128) nie zaczyna się już od zera po każdej aktualizacji
+  serwera. Dotąd wyniki czekały w pamięci do ostatniego obrazu, a analiza
+  trwa na NAS godziny, więc przy kilku aktualizacjach dziennie mogła się
+  nigdy nie skończyć. Teraz wyniki są zapisywane co 5000 obrazów razem z
+  miejscem, do którego doszła, i po restarcie idzie dalej od tego miejsca.
+- Postęp analizy widać w logu („rescore: … pictures analysed again, … of …
+  works looked at, … min”), a nie dopiero jej koniec.
+- Analiza ustępuje pytaniom aplikacji: przed każdym obrazem czeka (do 1 s),
+  aż serwer skończy odpowiadać. Po starcie 1.145.131 szukanie w jej trakcie
+  trwało na NAS 48 s.
+
 ## 1.145.135
 
 - „Pełny kadr” prac na papierze wygląda jak przy obrazach: zdjęcie muzeum,
