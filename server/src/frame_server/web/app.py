@@ -260,6 +260,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             service.library.counts_may_lag = True
             # The works grouped, the indexes, Discover's cards and the
             # counts: one after another, beside the first questions.
+            service.library.made_after_start = True  # what can, does not wait for them
             threading.Thread(target=after_start, args=(service,), name="start", daemon=True).start()
             threading.Thread(target=service.daily.run, name="daily", daemon=True).start()
             # The sheets the analyses of composition are drawn on are there

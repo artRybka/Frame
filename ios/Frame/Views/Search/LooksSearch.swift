@@ -200,31 +200,35 @@ struct LooksLikeSection: View {
 
     private var picked: [ItemSummary] { Array(found.prefix(Self.shown)) }
 
-    /// Three equal columns; the pictures' box as tall as the tallest needs
-    /// (a column wide, at most a portrait's 0.78), each picture in it whole,
-    /// on its bottom line.
+    /// One line of pictures, all as tall as `LooksRow.pictureHeight` and in
+    /// their own proportions, the same gap between them (Mateusz
+    /// 2026-11-14: tall scrolls stuck out over the heading and the button
+    /// above, a long folding screen ran into its neighbour). A picture too
+    /// long for its share of the row is fitted to its column, shorter, on
+    /// the same bottom line; a tall one keeps a column wide enough for its
+    /// title.
     private var row: some View {
-        let box = max(0.78, picked.map { shape($0) }.min() ?? 1)
-        return HStack(alignment: .top, spacing: 12) {
-            ForEach(0..<Self.shown, id: \.self) { at in
-                if at < picked.count {
-                    tile(picked[at], box: box)
-                } else {
-                    Color.clear.frame(maxWidth: .infinity, maxHeight: 0)
-                }
+        LooksRow(ratios: picked.map { shape($0) }, slots: Self.shown) {
+            ForEach(picked) { summary in
+                tile(summary)
             }
         }
     }
 
-    private func tile(_ summary: ItemSummary, box: CGFloat) -> some View {
+    private func tile(_ summary: ItemSummary) -> some View {
         NavigationLink(value: summary.id) {
             VStack(alignment: .leading, spacing: 8) {
                 Color.clear
-                    .aspectRatio(box, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: LooksRow.pictureHeight)
                     .overlay(alignment: .bottomLeading) {
-                        ArtImage(ref: .thumb(summary.id), placeholder: summary.placeholderColor, maxPixel: 400)
-                            .aspectRatio(shape(summary), contentMode: .fit)
+                        ArtImage(
+                            ref: .thumb(summary.id), placeholder: summary.placeholderColor,
+                            maxPixel: 400, contentMode: .fit
+                        )
+                        .aspectRatio(shape(summary), contentMode: .fit)
                     }
+                    .clipped()
                 VStack(alignment: .leading, spacing: 2) {
                     Text(summary.shownTitle)
                         .font(.serif(14, weight: .semibold))
@@ -265,9 +269,78 @@ struct LooksLikeSection: View {
         .accessibilityHint("Otwiera Szukaj z dziełami podobnymi do tego")
     }
 
-    /// Width / height, kept between a tall work and a long one.
+    /// Width / height, as the picture is (only nonsense kept out).
     private func shape(_ summary: ItemSummary) -> CGFloat {
-        CGFloat(max(0.5, min(2.4, summary.aspectRatio)))
+        LooksRow.ratio(summary.aspectRatio)
+    }
+}
+
+/// The row of "Podobne wyglądem": columns as wide as their pictures are at
+/// `pictureHeight`, never narrower than a title needs, `spacing` between
+/// them. When they don't fit, the widest give way first (each down to what
+/// the others leave), so a long screen shrinks before a tall scroll does.
+/// The columns start at the left; what is left over stays at the right.
+struct LooksRow: Layout {
+    let ratios: [CGFloat]
+    /// The columns the narrowest title width is reckoned from.
+    let slots: Int
+
+    /// Every picture's box: one height for the whole row.
+    static let pictureHeight: CGFloat = 150
+    static let spacing: CGFloat = 12
+    /// A column's least width, as a share of an equal column.
+    static let leastShare: CGFloat = 0.8
+
+    /// Width / height of a picture, as it is (only nonsense kept out).
+    static func ratio(_ aspect: Double) -> CGFloat {
+        guard aspect.isFinite, aspect > 0 else { return 4.0 / 3.0 }
+        return CGFloat(max(0.05, min(40, aspect)))
+    }
+
+    /// The columns' widths in `width`.
+    static func widths(ratios: [CGFloat], width: CGFloat, slots: Int) -> [CGFloat] {
+        guard !ratios.isEmpty else { return [] }
+        let count = ratios.count
+        let room = max(0, width - spacing * CGFloat(count - 1))
+        let least = min(room / CGFloat(count), leastShare * room / CGFloat(max(slots, count)))
+        let wanted = ratios.map { max(least, pictureHeight * $0) }
+        guard wanted.reduce(0, +) > room else { return wanted }
+        // The widest are cut to one width: what the narrower ones leave.
+        let order = wanted.indices.sorted { wanted[$0] < wanted[$1] }
+        var left = room
+        var cap = room / CGFloat(count)
+        for (done, index) in order.enumerated() {
+            cap = left / CGFloat(count - done)
+            if wanted[index] >= cap { break }
+            left -= wanted[index]
+        }
+        return wanted.map { min($0, cap) }
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 360
+        let columns = Self.widths(ratios: fitted(subviews), width: width, slots: slots)
+        let height = zip(subviews, columns)
+            .map { $0.sizeThatFits(ProposedViewSize(width: $1, height: nil)).height }
+            .max() ?? 0
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let columns = Self.widths(ratios: fitted(subviews), width: bounds.width, slots: slots)
+        var x = bounds.minX
+        for (subview, column) in zip(subviews, columns) {
+            subview.place(
+                at: CGPoint(x: x, y: bounds.minY), anchor: .topLeading,
+                proposal: ProposedViewSize(width: column, height: nil)
+            )
+            x += column + Self.spacing
+        }
+    }
+
+    /// One ratio per subview (a missing one, landscape).
+    private func fitted(_ subviews: Subviews) -> [CGFloat] {
+        subviews.indices.map { $0 < ratios.count ? ratios[$0] : 4.0 / 3.0 }
     }
 }
 

@@ -5,10 +5,12 @@ read in one go."""
 
 from __future__ import annotations
 
+import asyncio
 import gc
 import io
 import threading
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +25,7 @@ from frame_server.ai import AiConfigUpdate
 from frame_server.ai.config import STATE_KEY
 from frame_server.ai.keywords import KIND
 from frame_server.config import Settings
-from frame_server.library import Item, ItemKind, Library, Look, PlaylistRules, zoom
+from frame_server.library import Item, ItemKind, Library, Look, Playlist, PlaylistRules, zoom
 from frame_server.library import repo as repo_module
 from frame_server.library.memo import PerItem
 from frame_server.library.models import Note, SharperCopy
@@ -817,3 +819,171 @@ def test_the_apps_questions_are_counted_while_answered(
         assert client.get("/api/no-such-thing").status_code == 404
         assert client.get("/api/health").status_code == 200
         assert night._answering == 0
+
+
+def _playing_hearts(service: FrameService) -> tuple[list[str], Item]:
+    """The frame plays the hearts, all of them shown lately; the line as
+    it stands, and a work that has joined them since (not in the line)."""
+    library, player = service.library, service.player
+    works = [
+        service.importer.add_upload(
+            jpeg_bytes((40 * n, 40, 200)), kind=ItemKind.OWN, title=f"Work {n}", artist="Ala"
+        )
+        for n in range(1, 6)
+    ]
+    lately = datetime.now(UTC).isoformat(timespec="seconds")
+    for item in works[:4]:
+        library.update(item.id, favorite=True, last_shown_at=lately)
+    playlist = library.save_playlist(
+        Playlist(name="Ulubione", rules=PlaylistRules(favorites_only=True))
+    )
+    settings = player.settings
+    settings.playlist_id = playlist.id
+    player.save_settings(settings)
+    line = [i.id for i in player.upcoming(8)]
+    library.update(works[4].id, favorite=True)
+    return line, works[4]
+
+
+def test_teraz_does_not_wait_for_the_lists_the_start_is_making(
+    service: FrameService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library, player = service.library, service.player
+    line, new = _playing_hearts(service)
+    # The server has just started: its thread is at the search index.
+    library.made_after_start = True
+    looked: list[list[str]] = []
+    look = threading.Thread(target=lambda: looked.append([i.id for i in player.upcoming(8)]))
+    with library._search_lock:
+        monkeypatch.setattr(library, "_search", None)
+        assert library.search_coming() and not library.lists_made()
+        look.start()
+        look.join(5)
+        # The line of before the restart, at once.
+        assert looked == [line]
+    library.make_lists()
+    assert not library.search_coming() and library.lists_made()
+    assert player.upcoming(8)[0].id == new.id  # caught up at the next look
+
+
+def test_a_look_at_the_line_waits_for_the_index_as_before_when_no_start_makes_it(
+    service: FrameService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library, player = service.library, service.player
+    _, new = _playing_hearts(service)
+    looked: list[str] = []
+    look = threading.Thread(target=lambda: looked.append(player.upcoming(8)[0].id))
+    with library._search_lock:
+        monkeypatch.setattr(library, "_search", None)
+        look.start()
+        look.join(0.3)
+        assert look.is_alive() and not looked
+    look.join(10)
+    assert looked == [new.id]
+
+
+async def test_the_loop_does_not_wait_for_the_lists_before_the_line_is_looked_at(
+    service: FrameService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library, player = service.library, service.player
+    _playing_hearts(service)
+    made: list[bool] = []
+
+    def upcoming(limit: int = 8) -> list[Item]:
+        made.append(library.lists_made())
+        return []
+
+    def pop_next(*_: Any) -> None:
+        made.append(library.lists_made())
+
+    monkeypatch.setattr(player, "upcoming", upcoming)
+    monkeypatch.setattr(player, "_pop_next", pop_next)
+    for look in (player.render_ahead, player.prefetch, player.next):
+        made.clear()
+        library._search_lock.acquire()  # another thread is making it
+        try:
+            monkeypatch.setattr(library, "_search", None)
+            looking = asyncio.create_task(look())
+            await asyncio.sleep(0.2)  # the loop goes on: the app is answered
+            assert not looking.done() and not made
+        finally:
+            library._search_lock.release()
+        await asyncio.wait_for(looking, 10)
+        assert made and all(made)  # looked at with the lists there
+
+
+async def test_a_stream_left_before_its_first_line_is_no_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app = create_app(Settings(data_dir=tmp_path, seed_library=False, scheduler=False))
+    svc: FrameService = app.state.service
+    svc.library.upsert(_work("met:1", title="Rain", artist="Jan Deszcz"))
+    left = threading.Event()
+    # The sources take their time; the app has gone on to another work.
+    monkeypatch.setattr(svc.copies, "look", lambda item, emit, gone: left.wait(10))
+    monkeypatch.setattr(night, "_answering", 0)
+    asked = [{"type": "http.request", "body": b"", "more_body": False}]
+    sent: list[dict[str, Any]] = []
+    before_it_left: list[int] = []
+
+    async def receive() -> dict[str, Any]:
+        if asked:
+            return asked.pop()
+        await asyncio.sleep(0.2)
+        before_it_left[:] = [m["status"] for m in sent if m["type"] == "http.response.start"]
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict[str, Any]) -> None:
+        sent.append(message)
+
+    path = "/api/library/items/met:1/copies"
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},  # as uvicorn's
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": path,
+        "raw_path": path.encode(),
+        "query_string": b"",
+        "root_path": "",
+        "headers": [(b"accept-encoding", b"gzip")],  # as the app asks
+        "client": ("127.0.0.1", 50000),
+        "server": ("127.0.0.1", 8099),
+    }
+    try:
+        # Not Starlette's "No response returned." (13 tracebacks in the
+        # log in two minutes of browsing, 2026-11-14).
+        await asyncio.wait_for(app(scope, receive, send), 10)
+    finally:
+        left.set()
+    # The stream's head went out at once, not held for a body to pack.
+    assert before_it_left == [200]
+    assert night._answering == 0
+
+
+async def test_an_answer_that_ended_before_its_body_still_has_its_head() -> None:
+    from frame_server.web.compress import Compressed
+
+    head = {
+        "type": "http.response.start",
+        "status": 200,
+        "headers": [(b"content-type", b"application/json")],
+    }
+
+    async def cut_short(scope: dict[str, Any], receive: Any, send: Any) -> None:
+        await send(head)
+
+    sent: list[dict[str, Any]] = []
+
+    async def send(message: dict[str, Any]) -> None:
+        sent.append(message)
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/api/themes",
+        "headers": [(b"accept-encoding", b"gzip")],
+    }
+    await Compressed(cut_short)(scope, None, send)
+    assert sent == [head]

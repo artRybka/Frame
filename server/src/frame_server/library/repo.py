@@ -766,6 +766,10 @@ class Library:
         #: A playlist changed is counted at once, and one of hearts once
         #: they change.
         self.counts_may_lag = False
+        #: Set by the server's start, whose thread groups the works and
+        #: makes the search index (web/app.py ``after_start``): until it
+        #: has, a list asked for waits (:meth:`search_coming`).
+        self.made_after_start = False
         #: :data:`DROPPED_KEY` as read once.
         self._dropped: dict[str, str] | None = None
         #: The catalogue's search index (:class:`SearchIndex`), changed with
@@ -1344,6 +1348,24 @@ class Library:
             return self._search or self._make_search()
         finally:
             self._search_lock.release()
+
+    def search_coming(self) -> bool:
+        """Whether the server's start is still at the works' grouping and
+        the search index: a list asked for now waits for them (most of a
+        minute on the NAS), so what can do without one does not ask."""
+        return self.made_after_start and self._search is None
+
+    def lists_made(self) -> bool:
+        """Whether a list is answered without waiting for the works to be
+        grouped or the search index to be made."""
+        return self._works is not None and self._search is not None
+
+    def make_lists(self) -> None:
+        """What a list needs, made here or waited for while another thread
+        makes it: for a thread to do before the event loop asks for a list
+        (the loop waiting for them held up every answer)."""
+        self.works()
+        self.search_index()
 
     def term_index(self) -> TermIndex:
         """The catalogue as searches see it, for the suggestions while typing.

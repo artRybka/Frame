@@ -661,12 +661,19 @@ class Player:
         they can have come: with the night queue, after works joined the
         catalogue, someone's hearts or a playlist changed, not at every
         look at Teraz (which went through the whole playlist each time
-        once it went round)."""
+        once it went round), and not while the server's start is still
+        making what a playlist's list waits for (Teraz waited 48 s for the
+        search index after an update, 2026-11-14): the line as it stood
+        before the restart, caught up at the next look or change."""
         state, settings = self.state, self.settings
         if not state.queue:
             self._refill(state, settings)
             self._save_state(state)
-        elif self._may_catch_up(settings) and self._catch_up(state, settings):
+        elif (
+            not self.library.search_coming()
+            and self._may_catch_up(settings)
+            and self._catch_up(state, settings)
+        ):
             self._save_state(state)
         items = (self.library.get(i) for i in [*state.requested, *state.queue][:limit])
         return [i for i in items if i is not None]
@@ -1033,6 +1040,7 @@ class Player:
         Not for boards of photos: which photos join one is decided when it
         is shown."""
         settings = self.settings
+        await self._lists()
         upcoming = self.upcoming(1)
         if not upcoming or self.multi(upcoming[0], settings):
             return
@@ -1087,6 +1095,7 @@ class Player:
         ramce" on a playlist): the rotation's own next one, the owner's
         picks wait for the change after it."""
         with self._working():  # busy from the start: the original may take a while
+            await self._lists()
             state, settings = self.state, self.settings
             item = await self._pop_ready(state, settings, picks, origin_of(reason))
             if item is None and state.last_error:
@@ -1148,6 +1157,16 @@ class Player:
                     return cached
         return None
 
+    async def _lists(self) -> None:
+        """Before the line is looked at on the event loop: the works
+        grouped and the search index, which a playlist's list waits for,
+        are waited for in a thread. After a start they are being made for
+        most of a minute, and with the loop the whole server stood still
+        for as long when the frame played a playlist (the first picture
+        drawn ahead, a change due at the start)."""
+        if not self.library.lists_made():
+            await run_in_threadpool(self.library.make_lists)
+
     async def get_ready(self) -> None:
         """After the next pictures changed: download them, draw the first."""
         await self.prefetch()
@@ -1157,6 +1176,7 @@ class Player:
         """Download the originals of the next pictures now, so that a change
         needs no internet, then trim the cache. Never raises."""
         images = self.service.images
+        await self._lists()
         for item in self.upcoming(PREFETCH):
             if images.has_image(item):
                 continue
@@ -1914,6 +1934,7 @@ class Player:
         rescoring.add_done_callback(_log_failure)
         while True:
             try:
+                await self._lists()  # a change due now looks at the line
                 await self.tick()
                 if not ahead:  # after a restart; also loads the ditherer's code
                     ahead = True
