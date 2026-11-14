@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.110
+
+- Guzik „Szukaj podobnych” pod rzędem „Podobne wyglądem” na karcie dzieła
+  jest teraz wypełniony na czarno z jasnym napisem, zamiast obrysu. W
+  trybie ciemnym jest jasny z ciemnym napisem, jak pozostałe wypełnione
+  guziki, żeby nie zlewał się z czarną stroną.
+
 ## 1.145.109
 
 - Strona playlisty (do 160 dzieł) ma od wejścia swoją prawdziwą wysokość:
