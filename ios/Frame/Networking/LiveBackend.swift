@@ -360,9 +360,24 @@ struct LiveBackend: FrameBackend {
 
     // MARK: Discover
 
-    func suggestions() async throws -> [SuggestionRow] { try await get("/api/suggestions") }
+    /// Worked out from the whole catalogue: right after the server started
+    /// it may take a minute or more (the search index is being made). On
+    /// the waits' connections, so that "Teraz" and the playlists asked
+    /// meanwhile do not stand behind them (2026-11-14: six of these held
+    /// the shared four connections for minutes after an update).
+    /// Given three minutes, not one: asked again after a minute, the server
+    /// worked them out once more for nobody.
+    func suggestions() async throws -> [SuggestionRow] {
+        var req = request("/api/suggestions")
+        req.timeoutInterval = 180
+        return try await perform(req, patient: true)
+    }
 
-    func themes() async throws -> [ArtTheme] { try await get("/api/themes") }
+    func themes() async throws -> [ArtTheme] {
+        var req = request("/api/themes")
+        req.timeoutInterval = 180
+        return try await perform(req, patient: true)
+    }
 
     func dailyAgain() async throws -> DailyWork.Brief { try await send("/api/daily/again", method: "POST") }
 

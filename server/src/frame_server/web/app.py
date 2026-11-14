@@ -204,7 +204,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             threading.Thread(target=service.night.run, name="night", daemon=True).start()
             # Playlisty open with the counts last worked out while the
             # catalogue changes: each counted afresh when opened, all at
-            # night, and once now (the counts are not kept over a restart).
+            # night, and once a minute after the start; until then as they
+            # were before it (the search index takes minutes on the NAS).
+            service.library.restore_counts()
             service.library.counts_may_lag = True
             recount = threading.Timer(60.0, service.library.recount)
             recount.daemon = True
