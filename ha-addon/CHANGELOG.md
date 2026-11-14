@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.121
+
+- Konfiguracja → Miejsce na serwerze nie czeka już na dysk także po
+  aktualizacji serwera i po nocnym przycięciu biblioteki. Serwer mierzy
+  wtedy dysk sam, w tle (po starcie po trzech minutach, gdy nie ma
+  zapamiętanego pomiaru; po przycięciu od razu), więc strona otwarta
+  później dostaje gotową liczbę. Na NAS pierwszy pomiar zaraz po starcie
+  1.145.120 trwał ponad dwie minuty i tyle czekała strona.
+
 ## 1.145.120
 
 - Konfiguracja → Miejsce na serwerze pokazuje się od razu. Serwer pamięta
