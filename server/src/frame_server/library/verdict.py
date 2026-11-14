@@ -38,6 +38,7 @@ from .vocabulary import (
     is_postal,
     is_reproduction,
     is_sketch_sheet,
+    is_vector_drawing,
     object_category,
 )
 
@@ -51,6 +52,8 @@ class Why(StrEnum):
     OPENVERSE_PHOTO = "openverse_photo"
     #: Openverse's copy of a work the server asks its museum for itself.
     OPENVERSE_COPY = "openverse_copy"
+    #: A vector file from Commons: a diagram, plan, map, crest or pictogram.
+    VECTOR = "vector"
     #: A detail of a work (its title, or its picture inside another's).
     DETAIL = "detail"
     #: A photograph of a work in its frame or on a museum's wall.
@@ -87,6 +90,7 @@ COPIES = frozenset(
         Why.SEEN,
         Why.OPENVERSE_PHOTO,
         Why.OPENVERSE_COPY,
+        Why.VECTOR,
         Why.DETAIL,
         Why.SCENE,
         Why.ARCHIVE_PHOTO,
@@ -120,6 +124,7 @@ NAMES = {
     Why.SEEN: "odłożone przez Strażnika",
     Why.OPENVERSE_PHOTO: "fotografia z Openverse",
     Why.OPENVERSE_COPY: "kopia z Openverse",
+    Why.VECTOR: "schemat, mapa albo herb z Commons",
     Why.DETAIL: "detal dzieła",
     Why.SCENE: "zdjęcie dzieła w ramie albo na ścianie",
     Why.ARCHIVE_PHOTO: "zdjęcie z archiwum fotografii",
@@ -152,6 +157,7 @@ def _whys(item: Item) -> tuple[Why, ...]:
             (Why.SEEN, bool(item.seen_as)),
             (Why.OPENVERSE_PHOTO, is_photograph(item) and item.source == "openverse"),
             (Why.OPENVERSE_COPY, is_openverse_copy(item)),
+            (Why.VECTOR, is_vector_drawing(item)),
             (Why.DETAIL, is_detail(item)),
             (Why.SCENE, bool(item.scene_of and not item.part_of)),
             (Why.ARCHIVE_PHOTO, is_archive_photo(item)),

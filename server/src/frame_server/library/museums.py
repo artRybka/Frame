@@ -2047,13 +2047,11 @@ class Openverse(Museum):
         image_url, thumb_url = str(d["url"]), str(d.get("thumbnail") or d["url"])
         kind = str(d.get("filetype") or extension(image_url)).casefold()
         if kind in VECTOR:
-            # Neither the app nor Openverse's thumbnailer reads these; Commons
-            # renders its own as PNG, others are left out.
-            original, width = image_url, d.get("width")
-            image_url = commons_rendition(original, 3840, width)
-            thumb_url = commons_rendition(original, 500, width)
-            if not image_url:
-                return None
+            # Commons' vector files are diagrams, plans, maps, crests, flags
+            # and pictograms, not artworks: all 130 of the catalogue's of
+            # 2026-11-13 (Mateusz 2026-11-14, "Na pewno nie chce takich
+            # obrazków"; ``vocabulary.is_vector_drawing``).
+            return None
         attribution = str(d.get("attribution") or "").split(". To view", 1)[0]
         tags = [
             t["name"] for t in d.get("tags") or [] if t.get("name") and t.get("accuracy") is None
