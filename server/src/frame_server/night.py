@@ -99,6 +99,30 @@ def idle_for() -> float:
     return time.monotonic() - _last_used
 
 
+#: The app's questions being answered right now (counted on the event loop).
+_answering = 0
+#: How long the start's work stands back for them at one go, seconds.
+GIVE_WAY = 3.0
+
+
+def answering(by: int) -> None:
+    """One more (1) or one fewer (-1) of the app's questions is being
+    answered."""
+    global _answering
+    _answering += by
+
+
+def give_way(longest: float = GIVE_WAY) -> None:
+    """Called by work nobody waits for, between its pieces: it rests while
+    one of the app's questions is being answered (``longest`` s at most; an
+    answer still streaming does not count). Two threads at work each get
+    half of the processor, so a list asked for during Discover's round of
+    cards after a start took twice its time (2026-11-14)."""
+    until = time.monotonic() + longest
+    while _answering > 0 and time.monotonic() < until:
+        time.sleep(0.05)
+
+
 @dataclass
 class Night:
     """One night's run, as its tasks see it."""

@@ -157,6 +157,50 @@ REPORT_BYTES = 16000
 CAPTURE_BYTES = 15 * 1024 * 1024
 
 
+def tidy_catalogue(service: FrameService) -> None:
+    """A work once, from the most reliable source; Suggestions from the
+    museums as needed."""
+    service.player.drop_spare_copies()
+    if service.settings.seed_library:
+        service.player.top_up()
+
+
+def after_start(service: FrameService) -> None:
+    """The start's heavy work, one piece after another and in the order
+    the app needs it: the works grouped (every list waits for that), the
+    search index, the suggestions while typing, what Discover opens with
+    (its round of cards gives way to the app's questions when cards from
+    before the restart stand, ``discover_api.cards_after_start``), the
+    playlists counted afresh, Suggestions filled when they ran low.
+
+    The grouping was done before the server answered at all (18 s for
+    116 000 works, twice that on the NAS: the panel and "Teraz" waited for
+    it too), and the counts by a timer a minute later, beside Discover's
+    cards when those took longer: two threads at work answer the app half
+    as fast each, and neither is done sooner (the audit of 2026-11-14)."""
+    seed = service.settings.seed_library
+    steps = (
+        ("the works grouped, spare copies dropped", service.player.drop_spare_copies),
+        ("the search index", service.library.search_index),
+        ("the suggestions' index", service.library.term_index),
+        ("Discover's rows", lambda: discover_api.suggestion_rows(service)),
+        ("Discover's cards", lambda: discover_api.cards_after_start(service)),
+        ("the playlists' counts", service.library.recount),
+        # As needed, and asked again by the player's loop: last.
+        ("Suggestions topped up", service.player.top_up if seed else lambda: None),
+    )
+    whole = time.monotonic()
+    for name, step in steps:
+        started = time.monotonic()
+        try:
+            step()
+        except Exception:
+            log.exception("start: %s failed", name)
+        else:
+            log.info("start: %s in %.1f s", name, time.monotonic() - started)
+    log.info("start: all of it in %.1f s", time.monotonic() - whole)
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.load()
     service = FrameService(settings)
@@ -193,9 +237,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         service.albums.migrate()  # once: the album of older settings becomes a playlist
         service.player.reset_library()  # once: a clean start for the catalogue
         service.player.drop_set_aside()  # once: the catalogue leaves them out now
-        service.player.drop_spare_copies()  # a work once, from the most reliable source
-        if settings.seed_library:
-            service.player.top_up()  # Suggestions come from museums, as needed
+        if settings.scheduler:
+            # The works read before the first question (one on the event
+            # loop would hold it for as long); grouping them and what
+            # follows goes after (after_start), with the server answering.
+            service.library.count()
+            # Odkrywaj's cards of today as they stood before the restart.
+            discover_api.restore_cards(service)
+        else:
+            tidy_catalogue(service)
         if settings.scheduler:
             # Heavy work at night, one task at a time (night.py): the
             # catalogue turns over and the cache is tidied then, not by day.
@@ -204,15 +254,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             threading.Thread(target=service.night.run, name="night", daemon=True).start()
             # Playlisty open with the counts last worked out while the
             # catalogue changes: each counted afresh when opened, all at
-            # night, and once a minute after the start; until then as they
-            # were before it (the search index takes minutes on the NAS).
+            # night, and once after the start (after_start); until then as
+            # they were before it.
             service.library.restore_counts()
             service.library.counts_may_lag = True
-            recount = threading.Timer(60.0, service.library.recount)
-            recount.daemon = True
-            recount.start()
-            # Discover's first visit then finds its themes worked out.
-            threading.Thread(target=discover_api.warm_up, args=(service,), daemon=True).start()
+            # The works grouped, the indexes, Discover's cards and the
+            # counts: one after another, beside the first questions.
+            threading.Thread(target=after_start, args=(service,), name="start", daemon=True).start()
             threading.Thread(target=service.daily.run, name="daily", daemon=True).start()
             # The sheets the analyses of composition are drawn on are there
             # before a study is opened (sheets.py).
@@ -293,10 +341,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def log_panel_requests(request: Request, call_next):
-        if request.url.path.startswith("/api/") and not request.url.path.startswith(NOT_USE):
+        asked = request.url.path.startswith("/api/") and not request.url.path.startswith(NOT_USE)
+        if asked:
             night.used()  # the night's work waits while the app is in use
+            night.answering(1)  # and the start's, while this is answered
         started = time.monotonic()
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        finally:
+            if asked:
+                night.answering(-1)
         took = time.monotonic() - started
         if took >= SLOW_REQUEST and request.url.path.startswith("/api/"):
             # The app's requests are not logged otherwise: a slow one shows
