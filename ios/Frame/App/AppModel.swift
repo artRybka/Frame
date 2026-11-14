@@ -386,7 +386,12 @@ final class AppModel {
     func refreshAll() async {
         // Already connected (pull to refresh, back from the background): no
         // spinner unless the server does not answer.
-        let first = connection != .connected
+        // "Łączę z serwerem" lasts until the server answered and "Teraz" is
+        // in; the rest (playlists, the frame's state...) comes in after it
+        // without the spinner. Right after an update the server builds its
+        // search index for minutes, and its playlists waited for it: the
+        // spinner turned on for 3½ minutes (2026-11-14, 1.145.120).
+        var first = connection != .connected
         if first { firstLoads += 1 }
         defer { if first { firstLoads -= 1 } }
         guard await reachServer() else { return }
@@ -415,6 +420,10 @@ final class AppModel {
         }
         self.player = await player.value
         if self.player?.progress?.active == true { trackProgress() }
+        if first {
+            first = false
+            firstLoads -= 1
+        }
         self.status = await status.value
         self.settings = await settings.value
         if let found = await playlists.value { setPlaylists(found) }  // else the last ones stay

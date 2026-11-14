@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.145.122
+
+- Kółko „Łączę z serwerem” w lewym górnym rogu znika, gdy serwer odpowie
+  i wczyta się „Teraz”. Dotąd czekało na wszystkie pytania startowe, także
+  na playlisty, które po aktualizacji serwera czekały na zbudowanie
+  indeksu szukania: kółko kręciło się wtedy przez kilka minut, choć
+  aplikacja była już połączona.
+- Playlisty po restarcie serwera odpowiadają od razu. Serwer pamięta
+  liczby dzieł i okładki playlist inteligentnych także po restarcie i
+  pokazuje je, dopóki nie przeliczy ich od nowa (minutę po starcie, przy
+  otwarciu playlisty i nocą). Playlista z serc liczy się od nowa po
+  zmianie serc, zmieniona playlista od razu, jak dotąd. Po aktualizacji
+  do 1.145.120 playlisty odpowiadały po 46–100 s.
+- Odkrywaj i Propozycje nie zajmują połączeń, którymi idą „Teraz” i
+  playlisty: tematy i propozycje mają własne połączenia i czekają do
+  trzech minut. Dotąd po minucie aplikacja pytała od nowa, a serwer
+  liczył to samo jeszcze raz.
+
+## 1.145.121
+
+- Konfiguracja → Miejsce na serwerze nie czeka już na dysk także po
+  aktualizacji serwera i po nocnym przycięciu biblioteki. Serwer mierzy
+  wtedy dysk sam, w tle (po starcie po trzech minutach, gdy nie ma
+  zapamiętanego pomiaru; po przycięciu od razu), więc strona otwarta
+  później dostaje gotową liczbę. Na NAS pierwszy pomiar zaraz po starcie
+  1.145.120 trwał ponad dwie minuty i tyle czekała strona.
+
 ## 1.145.120
 
 - Konfiguracja → Miejsce na serwerze pokazuje się od razu. Serwer pamięta

@@ -120,6 +120,7 @@ class StorageStore:
         self._usage: StorageUsage | None = self._kept_usage()
         self._measuring = threading.Lock()
         self._again: threading.Thread | None = None
+        self._forgets = 0
         self._starting = threading.Lock()
         self._counts: CatalogueCounts | None = None
         self._counting = threading.Lock()
@@ -195,7 +196,11 @@ class StorageStore:
         with self._measuring:
             usage = self._usage
             if usage is None or time.time() - usage.measured_at > max_age:
-                usage = self._usage = self._measure()
+                forgets = self._forgets
+                usage = self._measure()
+                if forgets != self._forgets:  # trimmed while it was measured
+                    usage = self._measure()
+                self._usage = usage
                 self.library.keep_state(USAGE_KEY, usage.model_dump(mode="json"))
             return usage
 
@@ -211,6 +216,21 @@ class StorageStore:
             return self.usage()
         if time.time() - usage.measured_at <= MEASURE_MAX_AGE:
             return usage
+        again = self._measure_behind()
+        again.join(SHOWN_WAIT)
+        return self._usage or usage
+
+    def measure_behind(self) -> None:
+        """A measurement taken beside, when none is kept: after a start with
+        none (the first of this version) and after the library was trimmed,
+        so that Konfiguracja, opened later, need not wait for the disk
+        (over two minutes while the server was starting, the NAS on
+        2026-11-14)."""
+        if self._usage is None:
+            self._measure_behind()
+
+    def _measure_behind(self) -> threading.Thread:
+        """The thread that measures now: one at a time."""
         with self._starting:
             again = self._again
             if again is None or not again.is_alive():
@@ -218,13 +238,12 @@ class StorageStore:
                     target=self._measure_again, name="storage-measure", daemon=True
                 )
                 again.start()
-        again.join(SHOWN_WAIT)
-        return self._usage or usage
+            return again
 
     def _measure_again(self) -> None:
         try:
             self.usage()
-        except OSError as err:
+        except Exception as err:  # the disk, or the library closed meanwhile
             log.info("storage: not measured: %s", err)
 
     def _kept_usage(self) -> StorageUsage | None:
@@ -237,9 +256,11 @@ class StorageStore:
             return None
 
     def forget(self) -> None:
-        """The library changed a lot (trimmed): measure again when asked."""
+        """The library changed a lot (trimmed): measured again, beside."""
+        self._forgets += 1
         self._usage = None
         self.library.keep_state(USAGE_KEY, None)
+        self._measure_behind()
 
     def _measure(self) -> StorageUsage:
         root = self.settings.data_dir

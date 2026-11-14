@@ -173,6 +173,10 @@ ORDER_KEY = "playlist_order"
 FAVORITES_MOVED_KEY = "favorites_moved"
 #: What was learnt of the museums (:class:`.places.Places`).
 PLACES_STATE = "places"
+#: Smart playlists' counts and covers as last worked out, kept over a
+#: restart (:meth:`Library.restore_counts`): Playlisty right after an
+#: update waited 46–100 s for the search index being made (2026-11-14).
+COUNTS_STATE = "playlist_counts"
 
 
 def sent_key(user_id: str) -> str:
@@ -2010,7 +2014,9 @@ class Library:
             cur = db.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
         self._playlists_version += 1
         with self._lock:
-            self._counted.pop(playlist_id, None)
+            gone = self._counted.pop(playlist_id, None)
+        if gone is not None:
+            self._keep_counts()
         return cur.rowcount > 0
 
     def listed(self, user: str | None = None) -> set[str]:
@@ -2118,7 +2124,50 @@ class Library:
             return
         counted = _Counted(playlist.model_dump_json(), stamp, len(items), *_cover(items))
         with self._lock:
+            before = self._counted.get(playlist.id)
             self._counted[playlist.id] = counted
+        if before is None or before[:1] + before[2:] != counted[:1] + counted[2:]:
+            self._keep_counts()
+
+    def _keep_counts(self) -> None:
+        """The counts as they are now, for the next start (written by a thread)."""
+        with self._lock:
+            kept = {
+                str(playlist_id): {
+                    "key": c.key,
+                    "total": c.total,
+                    "cover": c.cover,
+                    "colors": [swatch.model_dump() for swatch in c.colors],
+                }
+                for playlist_id, c in self._counted.items()
+            }
+        self.keep_state(COUNTS_STATE, kept)
+
+    def restore_counts(self) -> int:
+        """The smart playlists' counts and covers from before the restart,
+        shown as such while :attr:`counts_may_lag` (until each is counted
+        afresh, once a minute after the start, :meth:`recount`). One made of
+        hearts or playlists stands until those change, as before. How many."""
+        try:
+            kept = self.get_state(COUNTS_STATE) or {}
+            stamp = (-1, self._playlists_version, self._hearts_version)
+            restored = {
+                int(playlist_id): _Counted(
+                    str(c["key"]),
+                    stamp,
+                    int(c["total"]),
+                    [str(i) for i in c["cover"]],
+                    [ColorSwatch.model_validate(swatch) for swatch in c["colors"]],
+                )
+                for playlist_id, c in kept.items()
+            }
+        except (ValueError, TypeError, KeyError, AttributeError):
+            log.warning("playlists' counts from before the restart not read", exc_info=True)
+            return 0
+        with self._lock:
+            for playlist_id, counted in restored.items():
+                self._counted.setdefault(playlist_id, counted)
+        return len(restored)
 
     def recount(self) -> None:
         """Every smart playlist counted afresh where the library changed

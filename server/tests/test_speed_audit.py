@@ -588,19 +588,38 @@ def test_konfiguracja_is_shown_the_kept_measure_and_a_new_one_next_time(
     assert storage.usage().measured_at > old.measured_at
 
 
-def test_the_disks_measure_is_kept_over_a_restart_but_not_past_a_trim(tmp_path: Path) -> None:
+def test_the_disks_measure_is_kept_over_a_restart_and_taken_anew_after_a_trim(
+    tmp_path: Path,
+) -> None:
     settings = Settings(data_dir=tmp_path, seed_library=False, scheduler=False)
     service = FrameService(settings)
-    measured = service.storage.usage()
+    assert service.storage._usage is None
+    service.storage.measure_behind()  # none kept: measured beside, after a start
+    again = service.storage._again
+    assert again is not None
+    again.join(10)
+    measured = service.storage._usage
+    assert measured is not None
+    service.storage.measure_behind()  # one kept: nothing to do
+    assert service.storage._again is again
     _written(service.library, USAGE_KEY)
     service.library.close()
 
     service = FrameService(settings)
     assert service.storage._usage == measured
-    service.storage.forget()  # trimmed: the number is wrong now
+    # Trimmed: that number is wrong now, and a new one is taken at once,
+    # beside, for Konfiguracja opened later.
+    item = service.library.upsert(_work("aic:1"))
+    service.images.store(item, jpeg_bytes((200, 40, 40)))
+    service.storage.forget()
+    again = service.storage._again
+    assert again is not None
+    again.join(10)
+    anew = service.storage._usage
+    assert anew is not None and anew != measured and anew.originals_bytes > 0
     _written(service.library, USAGE_KEY)
     service.library.close()
-    assert FrameService(settings).storage._usage is None
+    assert FrameService(settings).storage._usage == anew
 
 
 def _written(library: Library, key: str) -> None:

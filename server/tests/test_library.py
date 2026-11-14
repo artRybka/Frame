@@ -1648,6 +1648,66 @@ def test_playlist_counts_lag_behind_the_catalogue_only(tmp_path) -> None:
     assert lib.playlist_summary(narrower).item_count == 1
 
 
+def test_playlist_counts_outlast_a_restart(tmp_path) -> None:
+    """2026-11-14: right after an update Playlisty waited 46–100 s for the
+    search index being made (on the NAS), and with it the app's spinner.
+    The counts and covers as last worked out are kept over a restart and
+    shown until each is counted afresh; one of hearts stands until they
+    change, a changed playlist is counted at once."""
+    lib = Library(tmp_path / "lib.db")
+    lib.counts_may_lag = True
+    lib.upsert(_item(1, artist="Claude Monet"))
+    lib.upsert(_item(2, artist="Claude Monet"))
+    lib.update("test:1", favorite=True)
+    monet = lib.save_playlist(
+        Playlist(
+            name="Monet", kind=PlaylistKind.SMART, rules=PlaylistRules(artists=["Claude Monet"])
+        )
+    )
+    liked = lib.save_playlist(
+        Playlist(name="Ulubione", kind=PlaylistKind.SMART, rules=PlaylistRules(favorites_only=True))
+    )
+    before = lib.playlist_summary(monet)
+    assert before.item_count == 2 and lib.playlist_summary(liked).item_count == 1
+    lib.close()
+
+    again = Library(tmp_path / "lib.db")
+    assert again.restore_counts() == 2
+    again.counts_may_lag = True
+    asked: list[object] = []
+    searched = again.query
+
+    def query(*args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+        asked.append(args)
+        return searched(*args, **kwargs)  # type: ignore[arg-type]
+
+    again.query = query  # type: ignore[method-assign]
+    restored = again.playlist_summary(monet)
+    assert (restored.item_count, restored.cover_item_ids) == (2, before.cover_item_ids)
+    assert restored.cover_colors == before.cover_colors
+    assert again.playlist_summary(liked).item_count == 1
+    assert asked == []  # neither looked through the catalogue
+
+    again.upsert(_item(3, artist="Claude Monet"))
+    assert again.playlist_summary(monet).item_count == 2  # as before, till counted
+    again.recount()  # a minute after the start
+    assert again.playlist_summary(monet).item_count == 3
+
+    again.update("test:2", favorite=True)
+    assert again.playlist_summary(liked).item_count == 2  # hearts: at once
+    narrower = again.save_playlist(
+        monet.model_copy(update={"rules": PlaylistRules(artists=["Nobody"])})
+    )
+    assert again.playlist_summary(narrower).item_count == 0  # its own change: at once
+    again.close()
+
+    # Nothing kept, or something else under the key: counted as before.
+    fresh = Library(tmp_path / "other.db")
+    assert fresh.restore_counts() == 0
+    fresh.set_state("playlist_counts", {"1": {"key": "x"}})
+    assert fresh.restore_counts() == 0
+
+
 def test_state_is_read_while_another_thread_writes(tmp_path) -> None:
     """2026-11-05: the frame's question read the app's state on the event
     loop and waited 6 s for a long write elsewhere. The key/value state is
