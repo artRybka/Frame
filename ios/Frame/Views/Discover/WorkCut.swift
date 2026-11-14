@@ -73,13 +73,7 @@ struct FullPhotoSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Eyebrow("Pełny kadr")
-                Spacer()
-                Text("zdjęcie muzeum")
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-            }
+            Eyebrow("Pełny kadr")
             HStack(alignment: .bottom, spacing: 14) {
                 whole
                 if cut.hasPaper {
@@ -106,7 +100,7 @@ struct FullPhotoSection: View {
     private var line: String {
         let around = cut.aroundText
         let said = around.isEmpty ? "Muzeum sfotografowało dzieło z otoczeniem." : "Muzeum sfotografowało dzieło \(around)."
-        return item.isCropped ? "\(said) Na ramce i w aplikacji pokazujemy samo dzieło." : said
+        return item.isCropped ? "\(said) Prezentowane jest wykadrowane dzieło." : said
     }
 
     /// The photograph whole, what is shown outlined; a tap opens it large.

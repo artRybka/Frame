@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.115
+
+- Na karcie dzieła „Pełny kadr”, „Fragmenty” i „Detale” stoją pod
+  kolorystyką, a nie zaraz pod przyciskami. W „Pełnym kadrze” nie ma już
+  dopisku „zdjęcie muzeum”, a zdanie pod miniaturą kończy się słowami
+  „Prezentowane jest wykadrowane dzieło”.
+
 ## 1.145.114
 
 - Szukanie słowem jest 3 do 4 razy szybsze (pomiar na katalogu z 13.11,
