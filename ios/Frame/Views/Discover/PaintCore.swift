@@ -27,9 +27,18 @@ enum PaintStyle: String, Sendable, CaseIterable {
     /// A print in colours from blocks (a colour woodcut): its inks'
     /// impressions (`InkStrip`).
     case woodblock
-    /// A print in colours from the stone or the screen (a colour
-    /// lithograph, a poster): its inks' impressions, with the crayon's grain.
+    /// A print in colours from the stone (a colour lithograph): its inks'
+    /// impressions, with the crayon's grain.
     case litho
+    /// A screenprint, in colours or in black (Mateusz 2026-11-14, of Lex
+    /// Drewinski's black and white poster, drawn in a crayon's lines:
+    /// „Technika to sitodruk, czarno-biały, papier. Pasek koloru nie
+    /// pasuje do tej techniki”): each colour a flat layer of opaque ink
+    /// pushed through the screen, its edge cut clean by the stencil.
+    case screen
+    /// An offset print, and a poster that names no other way it was
+    /// printed: flat inks, their lighter tones in the printer's dots.
+    case offset
     /// A photograph: its tones as one gradient under the film's grain
     /// (`PhotoStrip`; Mateusz 2026-11-12 10:47: „fotografia - gradientowy
     /// pasek z lekkim ziarnem”).
@@ -50,6 +59,8 @@ enum PaintStyle: String, Sendable, CaseIterable {
         switch self {
         case .woodblock: .wood
         case .litho: .stone
+        case .screen: .screen
+        case .offset: .offset
         default: nil
         }
     }
@@ -93,8 +104,16 @@ enum PaintStyle: String, Sendable, CaseIterable {
         // An "oil print" is a photograph, not an oil painting and not a print.
         let printed = zip(words, words.dropFirst()).contains { photographed.contains($0) && $1.hasPrefix("print") }
         if printed || has(all, photographs, ["foto", "photo"]) { return .photo }
+        // Through a screen or from an offset plate: flat inks, of one colour or many.
+        let pairs = zip(all, all.dropFirst())
+        if has(all, screens) || pairs.contains(where: { ($0 == "screen" || $0 == "silk") && ($1.hasPrefix("print") || $1 == "screen") }) {
+            return .screen
+        }
+        if has(all, offsets) { return .offset }
         if has(all, stone) { return mono ? .pencil : .litho }
         if has(all, prints, ["ets", "druk"]) { return mono ? .burin : .woodblock }
+        // A poster that names no other way it was printed: most were printed in offset.
+        if has(all, posters) { return .offset }
         var inked = false
         for word in words {
             for (style, begins, whole) in named where whole.contains(word) || begins.contains(where: { word.hasPrefix($0) }) {
@@ -168,7 +187,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
         case .water: return WaterStrip.time(shares, width: width)
         case .dry: return Double(shares.count - 1) * DryPlan.apart + DryPlan.stroke
         case .burin, .pen, .pencil: return LineStrip.time(shares.count)
-        case .woodblock, .litho: return InkStrip.time(shares.count)
+        case .woodblock, .litho, .screen, .offset: return InkStrip.time(shares.count)
         case .photo: return PrintPaint.appear
         }
     }
@@ -181,7 +200,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
         case .water: 0.22
         case .dry: 0.24
         case .burin, .pen, .pencil: 0.24
-        case .woodblock, .litho: 0.26
+        case .woodblock, .litho, .screen, .offset: 0.26
         case .photo: 0.24
         }
         return Self.swatchesFrom * bar + gap * Double(index)
@@ -200,9 +219,14 @@ enum PaintStyle: String, Sendable, CaseIterable {
                                       "inkjet", "collotyp", "calotyp", "tintyp", "ambrotyp", "platinotyp", "salted"]
     /// What a photograph's print is named by.
     private static let photographed: Set<String> = ["oil", "carbon", "silver", "platinum", "palladium", "salt", "paper", "pigment"]
-    /// Printed from the stone or through a screen, and what is printed so: posters.
-    private static let stone = ["lithogra", "litogra", "chromolit", "screenprint", "silkscreen", "serigra", "sitodruk", "offset",
-                                "kleurendruk", "farbdruck", "poster", "plakat", "affiche", "afisz"]
+    /// Printed from the stone, or in colours some way unsaid.
+    private static let stone = ["lithogra", "litogra", "chromolit", "kleurendruk", "farbdruck"]
+    /// Printed through a screen or a stencil.
+    private static let screens = ["screenprint", "silkscreen", "serigra", "sitodruk", "siebdruck", "zeefdruk", "pochoir"]
+    /// Printed in offset, or from a photographed plate in dots.
+    private static let offsets = ["offset", "photolitho", "fotolito", "photomechan", "fotomechan", "halftone", "autotyp"]
+    /// A poster.
+    private static let posters = ["poster", "plakat", "affiche", "afisz"]
     /// Printed from a plate or a block.
     private static let prints = ["print", "etching", "engrav", "woodcut", "woodblock", "linocut", "linoryt", "aquatint", "akwatint",
                                  "mezzotint", "drypoint", "monotyp", "drzeworyt", "akwafort", "miedzioryt", "staloryt", "rycin", "sztych",

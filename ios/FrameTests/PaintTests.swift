@@ -107,14 +107,29 @@ final class PaintTests: XCTestCase {
             XCTAssertEqual(PaintStyle.of(medium: text), .woodblock, text)
         }
         XCTAssertEqual(PaintStyle.of(medium: "", classification: "Prints", mono: true), .burin)
-        // From the stone or the screen, and posters: the inks with the crayon's grain; of one colour, the crayon's lines.
-        for text in ["litografia barwna", "Colour lithograph after a pastel", "Chromolithograph", "Screenprint", "serigrafia", "plakat",
-                     "Lithograph in black and red"] {
+        // From the stone: the inks with the crayon's grain; of one colour, the crayon's lines.
+        for text in ["litografia barwna", "Colour lithograph after a pastel", "Chromolithograph", "Lithograph in black and red",
+                     "plakat; litografia barwna"] {
             XCTAssertEqual(PaintStyle.of(medium: text), .litho, text)
             XCTAssertEqual(PaintStyle.of(medium: text, mono: true), .pencil, text)
         }
-        XCTAssertEqual(PaintStyle.of(medium: "", classification: "Posters"), .litho)
-        XCTAssertEqual(PaintStyle.of(medium: "papier", classification: "Plakat"), .litho)
+        // Through a screen: flat opaque inks, in black too (Mateusz 2026-11-14, of Lex Drewinski's poster:
+        // „Technika to sitodruk, czarno-biały, papier. Pasek koloru nie pasuje do tej techniki”).
+        for text in ["sitodruk, czarno-biały, papier", "Screenprint", "serigrafia", "Sérigraphie", "Siebdruck", "Color silkscreen",
+                     "Screen print on paper", "silk screen", "pochoir"] {
+            XCTAssertEqual(PaintStyle.of(medium: text), .screen, text)
+            XCTAssertEqual(PaintStyle.of(medium: text, classification: "Plakat", mono: true), .screen, text)
+        }
+        // In offset, and a poster that says no more: flat inks, the lighter in dots.
+        for text in ["offset", "druk offsetowy, papier", "Offset lithograph", "Photomechanical print", "plakat"] {
+            XCTAssertEqual(PaintStyle.of(medium: text), .offset, text)
+            XCTAssertEqual(PaintStyle.of(medium: text, mono: true), .offset, text)
+        }
+        XCTAssertEqual(PaintStyle.of(medium: "", classification: "Posters"), .offset)
+        XCTAssertEqual(PaintStyle.of(medium: "papier", classification: "Plakat", mono: true), .offset)
+        // A folding screen is no screenprint; a poster cut in wood is a woodcut.
+        XCTAssertNotEqual(PaintStyle.of(medium: "Pair of six-panel folding screens; ink and color on paper"), .screen)
+        XCTAssertEqual(PaintStyle.of(medium: "plakat, linoryt", mono: true), .burin)
         // A drawing in pen and ink, whatever chalk is under it.
         for text in ["Pen and brown ink, brown wash, over black chalk", "tusz, papier", "piórko, atrament", "Plume et encre brune", "Feder in Braun",
                      "Ink on paper"] {
@@ -142,7 +157,7 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(PaintStyle.of(medium: "Gelatin silver print", classification: "Photographs", mono: true), .photo)
         // Which tool or press each is.
         XCTAssertEqual(PaintStyle.allCases.compactMap(\.tool).count, 3)
-        XCTAssertEqual(PaintStyle.allCases.compactMap(\.press).count, 2)
+        XCTAssertEqual(PaintStyle.allCases.compactMap(\.press).count, 4)
         XCTAssertTrue(PaintStyle.allCases.allSatisfy { $0.tool == nil || $0.press == nil })
     }
 
@@ -378,11 +393,50 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(covered(InkStrip(shares: [], width: 350, seed: 5, press: .wood).frame(age: 1)), 0)
     }
 
+    /// Mateusz 2026-11-14, of Lex Drewinski's black and white screenprinted
+    /// poster drawn in a crayon's lines: „Pasek koloru nie pasuje do tej techniki.”
+    func testAScreenprintIsFlatOpaqueInkAndAnOffsetPrintsLighterTonesInDots() {
+        let poster = shares([("#1d1b1b", 0.72), ("#e9e8e3", 0.14), ("#5a5957", 0.08), ("#a5a4a0", 0.06)])
+        func colour(_ frame: PaintFrame, _ x: Double, _ y: Double) -> [Double] {
+            let (i, j) = dot(x, y), c = frame.colour(i, j)
+            return [c.red, c.green, c.blue]
+        }
+        func far(_ a: [Double], _ b: [Double]) -> Double { zip(a, b).map { abs($0 - $1) }.max() ?? 0 }
+        let spans = Paint.spans(poster, width: 350)
+        // Through the screen: the lighter inks first, the black last; each opaque, its own colour, the paper not through it.
+        let screen = InkStrip(shares: poster, width: 350, seed: 5, press: .screen)
+        XCTAssertEqual(screen.order, [1, 3, 2, 0])
+        let whole = screen.frame(age: screen.length)
+        for (share, span) in zip(poster, spans) {
+            XCTAssertLessThan(far(colour(whole, (span.0 + span.1) / 2, 13), share.rgb), 24, "\(share.rgb)")
+        }
+        XCTAssertLessThanOrEqual(abs(screen.places[0].shift.x), InkPress.screen.register.x)
+        // The stencil's edge is clean: a point or two past it the paper, inside it the ink.
+        let edge = spans[0].1 + screen.places[0].shift.x + 1.3
+        XCTAssertLessThan(PrintPaint.lightness(colour(whole, edge - 2, 13)), 0.4)
+        // In offset black stays solid, the greys are black's dots on the paper, the white is the paper's own.
+        XCTAssertEqual(OffsetTint.of(poster[0].rgb, paper: InkStrip.paper)?.cover, 1)
+        XCTAssertNil(OffsetTint.of([236, 230, 212], paper: InkStrip.paper))
+        let grey = try? XCTUnwrap(OffsetTint.of(poster[2].rgb, paper: InkStrip.paper))
+        XCTAssertEqual(grey?.cover ?? 0, 0.63, accuracy: 0.03)
+        XCTAssertLessThan(grey.map { PrintPaint.lightness($0.ink) } ?? 1, 0.15)
+        // A vivid colour is its own ink all over; a pastel a deeper ink's dots, as much of the paper as makes it.
+        XCTAssertEqual(OffsetTint.of([216, 52, 44], paper: InkStrip.paper)?.cover, 1)
+        let pink = try? XCTUnwrap(OffsetTint.of([231, 185, 166], paper: InkStrip.paper))
+        XCTAssertLessThan(pink?.cover ?? 1, 0.4)
+        let offset = InkStrip(shares: poster, width: 350, seed: 5, press: .offset).frame(age: 9)
+        let middle = (spans[2].0 + spans[2].1) / 2
+        let seen = (0..<40).map { PrintPaint.lightness(colour(offset, middle - 6 + 0.3 * Double($0), 13)) }
+        // Dots: dark and light points side by side, and seen from afar the grey.
+        XCTAssertLessThan(seen.min() ?? 1, 0.3)
+        XCTAssertGreaterThan(seen.max() ?? 0, 0.75)
+    }
+
     func testAPaintsSwatchOfAPrintOrADrawingIsASlipOfItsPaper() {
         let middle = Int(Paint.half) * PrintPaint.scale
         var painters = [(String, PaintPainter)]()
         for tool in [LineTool.burin, .pen, .pencil] { painters.append(("\(tool)", LinePatch(rgb: [40, 60, 120], index: 1, seed: 5, tool: tool))) }
-        for press in [InkPress.wood, .stone] { painters.append(("\(press)", InkStamp(rgb: [40, 60, 120], index: 1, seed: 5, press: press))) }
+        for press in [InkPress.wood, .stone, .screen, .offset] { painters.append(("\(press)", InkStamp(rgb: [40, 60, 120], index: 1, seed: 5, press: press))) }
         for (name, painter) in painters {
             XCTAssertEqual(painter.wide, Int(2 * Paint.half) * PrintPaint.scale, name)
             XCTAssertGreaterThan(painter.length, 0.4, name)
@@ -401,7 +455,7 @@ final class PaintTests: XCTestCase {
                 }
             }
             XCTAssertGreaterThan(blue, 300, name)
-            if name == "wood" || name == "stone" { XCTAssertGreaterThan(blue, 1600, name) } else { XCTAssertGreaterThan(paper, 20, name) }
+            if ["wood", "stone", "screen", "offset"].contains(name) { XCTAssertGreaterThan(blue, 1600, name) } else { XCTAssertGreaterThan(paper, 20, name) }
             let corner = whole.colour(middle - 33, middle)
             XCTAssertGreaterThan(corner.red, 200, name)
         }

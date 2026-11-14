@@ -624,6 +624,31 @@ enum InkPress: Sendable {
     /// The stone: the crayon's grain where the ink thins, and the
     /// printer's register marks.
     case stone
+    /// The screen: opaque ink in an even layer, its edge cut clean by the
+    /// stencil, the mesh faintly in it; lighter inks first, the darker
+    /// laid over them.
+    case screen
+    /// The offset plate: thin inks, crisp, their lighter tones in dots.
+    case offset
+
+    /// How much of what is under an ink shows through it.
+    var sheer: Double {
+        switch self {
+        case .wood, .stone: 0.55
+        case .screen: 0.06
+        case .offset: 0.3
+        }
+    }
+
+    /// How far out of register one impression may lie from its place, in
+    /// points along the bar and across it.
+    var register: (x: Double, y: Double) {
+        switch self {
+        case .wood, .stone: (1.7, 1.6)
+        case .screen: (1.0, 0.8)
+        case .offset: (0.6, 0.5)
+        }
+    }
 }
 
 /// A block's impression: the ink a point takes from a block pressed on
@@ -652,6 +677,17 @@ private struct InkBlock {
             let speck = Paint.noise(x / 0.33, y / 0.33, 87 + seed)
             return min(1, max(0, inside * 1.2 + 0.5)) * (speck > 0.30 + 0.5 * edge ? 0.35 + 0.6 * edge : 1)
                 * (0.9 + 0.1 * Paint.noise(x / 9, y / 9, 83 + seed))
+        case .screen:
+            // The stencil's edge: straight and clean, only the mesh's fine teeth in it; the ink lies even, the mesh faintly in it.
+            let clean = min(min(x - left, right - x), min(y - top, bottom - y)) + 0.22 * (Paint.noise(x / 0.5, y / 0.5, 88 + seed) - 0.5)
+            let mesh = 0.97 + 0.03 * Paint.noise(x / 0.45, y / 0.45, 89 + seed)
+            // The squeegee's pull across the bar leaves faint streaks; here and there the screen let a speck of paper through.
+            let pull = 0.97 + 0.03 * Paint.noise(x / 2.5, y / 40, 90 + seed)
+            let pin = Paint.noise(x / 0.7, y / 0.7, 91 + seed) > 0.9 && Paint.noise(x / 9, y / 9, 92 + seed) > 0.72 ? 0.82 : 1
+            return min(1, max(0, clean * 3 + 0.5)) * mesh * pull * pin
+        case .offset:
+            let clean = min(min(x - left, right - x), min(y - top, bottom - y))
+            return min(1, max(0, clean * 3 + 0.5)) * (0.97 + 0.03 * Paint.noise(x / 6, y / 6, 83 + seed))
         }
     }
 }
@@ -682,8 +718,14 @@ final class InkStrip: PaintPainter, @unchecked Sendable {
     static let apart = 0.34, takes = 0.26
     /// The paper printed on.
     static let paper = [240.0, 232, 212]
-    /// How much of what is under an ink shows through it.
-    static let sheer = 0.55
+    /// How much of what is under a block's or a stone's ink shows through it.
+    static let sheer = InkPress.wood.sheer
+    /// The order the inks are pressed in, by their index: as they lie
+    /// along the bar, but through a screen the lighter first.
+    let order: [Int]
+    /// The ink each colour is printed in and how much of the paper its
+    /// dots cover (1: all of it); nil: none, the paper is that colour.
+    let tints: [OffsetTint?]
 
     /// How long the inks of `count` colours take.
     static func time(_ count: Int) -> Double {
@@ -697,9 +739,14 @@ final class InkStrip: PaintPainter, @unchecked Sendable {
         self.seed = Double(seed)
         (wide, high) = PrintPaint.size(width: width)
         var random = PaintRandom(seed + 57)
+        let register = press.register
         places = Paint.spans(shares, width: width).map { span in
-            (span.0, span.1, (1.7 * (random.next() * 2 - 1), 1.6 * (random.next() * 2 - 1)))
+            (span.0, span.1, (register.x * (random.next() * 2 - 1), register.y * (random.next() * 2 - 1)))
         }
+        order = press == .screen
+            ? shares.indices.sorted { PrintPaint.lightness(shares[$0].rgb) > PrintPaint.lightness(shares[$1].rgb) }
+            : Array(shares.indices)
+        tints = shares.map { press == .offset ? OffsetTint.of($0.rgb, paper: Self.paper) : OffsetTint(ink: $0.rgb, cover: 1) }
         last = Self.time(shares.count)
         length = last
     }
@@ -735,10 +782,13 @@ final class InkStrip: PaintPainter, @unchecked Sendable {
             let top = max(0, Int((place.shift.y - 3 + pad) * S)), bottom = min(high - 1, Int((Paint.bar + place.shift.y + 3 + pad) * S))
             var much = [Float]()
             much.reserveCapacity(max(0, right - left + 1) * max(0, bottom - top + 1))
+            let tint = tints[index], screen = tint.map { OffsetTint.Screen(cover: $0.cover, index: index) }
             if left <= right, top <= bottom {
                 for j in top...bottom {
                     for i in left...right {
-                        much.append(Float(block.ink((Double(i) + 0.5) / S - pad, (Double(j) + 0.5) / S - pad, press: press)))
+                        let x = (Double(i) + 0.5) / S - pad, y = (Double(j) + 0.5) / S - pad
+                        guard let screen else { much.append(0); continue }
+                        much.append(Float(block.ink(x, y, press: press) * screen.dot(x, y)))
                     }
                 }
             }
@@ -753,11 +803,12 @@ final class InkStrip: PaintPainter, @unchecked Sendable {
         var out = PaintFrame(wide: wide, high: high)
         guard age > 0, !shares.isEmpty else { return out }
         var paper = prepare()
-        let sheer = Float(Self.sheer)
-        for (index, ink) in inks.enumerated() {
-            let there = Float(Paint.ease((age - PrintPaint.appear - Double(index) * Self.apart) / Self.takes))
+        let sheer = Float(press.sheer)
+        for (turn, index) in order.enumerated() {
+            let ink = inks[index]
+            let there = Float(Paint.ease((age - PrintPaint.appear - Double(turn) * Self.apart) / Self.takes))
             if there <= 0 || ink.left > ink.right || ink.top > ink.bottom { continue }
-            let colour = shares[index].rgb.map { Float($0) }
+            let colour = (tints[index]?.ink ?? shares[index].rgb).map { Float($0) }
             var q = 0
             for j in ink.top...ink.bottom {
                 for i in ink.left...ink.right {
@@ -793,13 +844,17 @@ final class InkStamp: PaintPainter, @unchecked Sendable {
 
     private let rgb: [Double]
     private let press: InkPress
+    private let index: Int
+    private let tint: OffsetTint?
     private let seed: Double
     private var made: (paper: PrintPaint.Sheet, much: [Float])?
 
     init(rgb: [Double], index: Int, seed: Int, press: InkPress) {
         self.rgb = rgb
         self.press = press
+        self.index = index
         self.seed = Double(seed + 3 * index)
+        tint = press == .offset ? OffsetTint.of(rgb, paper: InkStrip.paper) : OffsetTint(ink: rgb, cover: 1)
     }
 
     func frame(age: Double) -> PaintFrame {
@@ -808,22 +863,89 @@ final class InkStamp: PaintPainter, @unchecked Sendable {
         let S = Double(PrintPaint.scale), half = PrintPaint.markHalf
         if made == nil {
             let block = InkBlock(left: -half, right: half, top: -half, bottom: half, seed: seed)
+            let screen = tint.map { OffsetTint.Screen(cover: $0.cover, index: index) }
             made = (PrintPaint.slip(paper: InkStrip.paper, seed: seed), (0..<(wide * high)).map { k in
                 let x = (Double(k % wide) + 0.5) / S - Paint.half, y = (Double(k / wide) + 0.5) / S - Paint.half
-                return abs(x) > half + 2 || abs(y) > half + 2 ? 0 : Float(block.ink(x, y, press: press))
+                guard let screen, abs(x) <= half + 2, abs(y) <= half + 2 else { return 0 }
+                return Float(block.ink(x, y, press: press) * screen.dot(x, y))
             })
         }
         guard let made else { return out }
         let there = Paint.ease((age - PrintPaint.appear) / InkStrip.takes), shown = Paint.ease(age / PrintPaint.appear)
+        let ink = tint?.ink ?? rgb, sheer = press.sheer
         for k in 0..<(wide * high) where made.paper.cover[k] > 0 {
             let much = Double(made.much[k]) * there, q = 4 * k
             for (c, under) in [made.paper.red[k], made.paper.green[k], made.paper.blue[k]].enumerated() {
                 let under = Double(under)
-                out.bytes[q + c] = Paint.byte(under + (under * rgb[c] / 255 * InkStrip.sheer + rgb[c] * (1 - InkStrip.sheer) - under) * much)
+                out.bytes[q + c] = Paint.byte(under + (under * ink[c] / 255 * sheer + ink[c] * (1 - sheer) - under) * much)
             }
             out.bytes[q + 3] = Paint.byte(255 * Double(made.paper.cover[k]) * shown)
         }
         return out
+    }
+}
+
+/// How an offset print lays one of a work's colours on its paper: a
+/// dark or strong colour in its own ink all over, a lighter one in the
+/// dots of a deeper ink, as much of the paper covered as makes that
+/// colour seen from afar (grey: black's dots on half the paper).
+struct OffsetTint: Sendable, Equatable {
+    var ink: [Double]
+    /// How much of the paper the dots cover; 1: the ink all over.
+    var cover: Double
+
+    /// From how much cover on an ink is laid all over; the least a dot
+    /// covers; how near the paper a colour is the paper's own.
+    /// A colour more vivid than `vivid` is an ink of its own, all over.
+    static let solid = 0.75, least = 0.18, bare = 14.0, vivid = 0.13
+    /// How far apart the dots are, in points, and each ink's angle.
+    static let pitch = 2.2, angles = [45.0, 15, 75, 0]
+
+    /// `rgb`'s ink and cover on `paper`; nil: it is the paper's own colour.
+    static func of(_ rgb: [Double], paper: [Double]) -> OffsetTint? {
+        if zip(rgb, paper).allSatisfy({ abs($0 - $1) < bare }) { return nil }
+        // As little cover as leaves the ink a colour there is: no channel below black or above white.
+        var cover = 0.0
+        for (c, p) in zip(rgb, paper) { cover = max(cover, c < p ? (p - c) / max(p, 1) : (c - p) / max(255 - p, 1)) }
+        let (_, ta, tb) = PrintPaint.lab(rgb)
+        if cover >= solid || (ta * ta + tb * tb).squareRoot() > vivid { return OffsetTint(ink: rgb, cover: 1) }
+        cover = max(cover, least)
+        return OffsetTint(ink: zip(rgb, paper).map { c, p in min(255, max(0, p + (c - p) / cover)) }, cover: cover)
+    }
+
+    /// The printer's dots for one ink: how much ink a point takes.
+    struct Screen: Sendable {
+        let cover: Double
+        let cos: Double, sin: Double
+        let threshold: Double
+
+        init(cover: Double, index: Int) {
+            self.cover = cover
+            let angle = OffsetTint.angles[index % OffsetTint.angles.count] * Double.pi / 180
+            (cos, sin) = (Foundation.cos(angle), Foundation.sin(angle))
+            threshold = cover >= 1 ? -1 : Self.threshold(cover)
+        }
+
+        /// The dots' shape: round where they are few, a chequer at half, round holes where they are many.
+        private static func spot(_ u: Double, _ v: Double) -> Double {
+            0.5 + 0.25 * (Foundation.cos(2 * Double.pi * u) + Foundation.cos(2 * Double.pi * v))
+        }
+
+        /// The height of `spot` above which `cover` of the paper lies.
+        private static func threshold(_ cover: Double) -> Double {
+            let n = 48
+            var heights = [Double]()
+            heights.reserveCapacity(n * n)
+            for j in 0..<n { for i in 0..<n { heights.append(spot((Double(i) + 0.5) / Double(n), (Double(j) + 0.5) / Double(n))) } }
+            heights.sort()
+            return heights[min(n * n - 1, max(0, Int(Double(n * n) * (1 - cover))))]
+        }
+
+        func dot(_ x: Double, _ y: Double) -> Double {
+            guard cover < 1 else { return 1 }
+            let u = (x * cos + y * sin) / OffsetTint.pitch, v = (-x * sin + y * cos) / OffsetTint.pitch
+            return min(1, max(0, (Self.spot(u, v) - threshold) / 0.16 + 0.5))
+        }
     }
 }
 
