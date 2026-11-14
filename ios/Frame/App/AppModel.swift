@@ -1228,7 +1228,7 @@ final class AppModel {
             let item = try await backend.setFavorite(id: id, favorite)
             hearts[id] = item.favorite
             if player?.current?.item?.id == id { player?.current?.item = item }
-            libraryChanged()
+            libraryChanged(afterHearts: true)
             return item
         } catch {
             show(error)
@@ -1255,13 +1255,24 @@ final class AppModel {
 
     /// A work joined or left playlists (Ulubione and smart ones): their
     /// tiles and counts, and the queue in "Teraz", which the server updates.
-    func libraryChanged() {
+    /// `afterHearts`: a heart. A run of them is one refresh, a second after
+    /// the last (each was three requests and two files written, while the
+    /// next heart waited for a connection; the audit of 2026-11-14). The
+    /// page looked at follows every one at once (`libraryRevision`).
+    func libraryChanged(afterHearts: Bool = false) {
         libraryRevision += 1
-        Task {
+        libraryRefresh?.cancel()
+        libraryRefresh = Task {
+            if afterHearts {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
+            }
             await refreshPlaylists()
             await refreshPlayer()
         }
     }
+
+    @ObservationIgnored private var libraryRefresh: Task<Void, Never>?
 
     func saveSettings(_ new: FrameSettings) async {
         let turned = settings?.screenKey != new.screenKey
@@ -1513,9 +1524,21 @@ final class AppModel {
         }
     }
 
+    /// One request at a time: Konfiguracja's sections each ask every 20 s
+    /// while open, and after each change; whoever asks while one is on its
+    /// way gets that one's answer.
     func loadAiSettings() async {
-        aiSettings = try? await backend.aiSettings()
+        if let asked = aiSettingsLoad {
+            await asked.value
+            return
+        }
+        let load = Task { aiSettings = try? await backend.aiSettings() }
+        aiSettingsLoad = load
+        await load.value
+        aiSettingsLoad = nil
     }
+
+    @ObservationIgnored private var aiSettingsLoad: Task<Void, Never>?
 
     func saveAiSettings(_ update: AiSettingsUpdate) async {
         do {

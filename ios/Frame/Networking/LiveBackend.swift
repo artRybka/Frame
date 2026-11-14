@@ -16,6 +16,18 @@ struct LiveBackend: FrameBackend {
         self.init(route: ServerRoute(home: baseURL), token: token)
     }
 
+    /// Connections of their own for the requests that wait at the server.
+    /// A work's card asks who holds it, for its technique, a sharper copy,
+    /// its description and its Polish title at once, each waiting up to
+    /// half a minute, and the shared session has four connections to the
+    /// server: a heart or "Pokaż na ramce" tapped meanwhile stood behind
+    /// them (the audit of 2026-11-14).
+    private static let patient: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.httpMaximumConnectionsPerHost = 8
+        return URLSession(configuration: configuration)
+    }()
+
     static func decoder() -> JSONDecoder {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -91,7 +103,7 @@ struct LiveBackend: FrameBackend {
     func polish(itemID: String, wait: Int, early: Bool) async throws -> PolishView {
         var query = [URLQueryItem(name: "wait", value: String(wait))]
         if early { query.append(URLQueryItem(name: "early", value: "true")) }
-        return try await get("/api/library/items/\(escape(itemID))/polish", query: query)
+        return try await perform(request("/api/library/items/\(escape(itemID))/polish", query: query), patient: true)
     }
 
     func holder(itemID: String, wait: Int) async throws -> HolderView {
@@ -100,7 +112,7 @@ struct LiveBackend: FrameBackend {
             query: [URLQueryItem(name: "wait", value: String(wait))]
         )
         req.timeoutInterval = TimeInterval(wait + 30)
-        return try await perform(req)
+        return try await perform(req, patient: true)
     }
 
     func medium(itemID: String, wait: Int) async throws -> MediumView {
@@ -109,19 +121,19 @@ struct LiveBackend: FrameBackend {
             query: [URLQueryItem(name: "wait", value: String(wait))]
         )
         req.timeoutInterval = TimeInterval(wait + 30)
-        return try await perform(req)
+        return try await perform(req, patient: true)
     }
 
     func fragments(itemID: String) async throws -> FragmentsView {
         var req = request("/api/library/items/\(escape(itemID))/fragments")
         req.timeoutInterval = 60  // the museum may be asked first
-        return try await perform(req)
+        return try await perform(req, patient: true)
     }
 
     func details(itemID: String) async throws -> DetailsView {
         var req = request("/api/library/items/\(escape(itemID))/details")
         req.timeoutInterval = 60  // the museum may be asked first
-        return try await perform(req)
+        return try await perform(req, patient: true)
     }
 
     func sharpen(itemID: String, wait: Int) async throws -> SharperView {
@@ -130,7 +142,7 @@ struct LiveBackend: FrameBackend {
             query: [URLQueryItem(name: "wait", value: String(wait))]
         )
         req.timeoutInterval = TimeInterval(wait + 30)
-        return try await perform(req)
+        return try await perform(req, patient: true)
     }
 
     func checkCut(itemID: String, wait: Int) async throws -> CutView {
@@ -139,7 +151,7 @@ struct LiveBackend: FrameBackend {
             query: [URLQueryItem(name: "wait", value: String(wait))]
         )
         req.timeoutInterval = TimeInterval(wait + 30)
-        return try await perform(req)
+        return try await perform(req, patient: true)
     }
 
     func setCut(itemID: String, update: CutUpdate) async throws -> Item {
@@ -218,7 +230,7 @@ struct LiveBackend: FrameBackend {
             query: [URLQueryItem(name: "wait", value: String(wait))]
         )
         req.timeoutInterval = TimeInterval(wait + 30)
-        return try await perform(req)
+        return try await perform(req, patient: true)
     }
 
     func setFavorite(id: String, _ favorite: Bool) async throws -> Item {
@@ -362,7 +374,7 @@ struct LiveBackend: FrameBackend {
         if !lists { query.append(URLQueryItem(name: "lists", value: "false")) }
         var req = request("/api/daily", query: query)
         req.timeoutInterval = TimeInterval(wait + 30)
-        return try await perform(req)
+        return try await perform(req, patient: true)
     }
 
     func study(itemID: String, wait: Int, lists: Bool) async throws -> StudyView {
@@ -370,7 +382,7 @@ struct LiveBackend: FrameBackend {
         if !lists { query.append(URLQueryItem(name: "lists", value: "false")) }
         var req = request("/api/study/\(escape(itemID))", query: query)
         req.timeoutInterval = TimeInterval(wait + 30)
-        return try await perform(req)
+        return try await perform(req, patient: true)
     }
 
     func studies() async throws -> [StudyBrief] { try await get("/api/studies") }
@@ -695,7 +707,10 @@ struct LiveBackend: FrameBackend {
         try await send("/api/device/screenshot", method: "POST")
     }
 
-    func libraryStorage() async throws -> LibraryStorage { try await get("/api/library/storage") }
+    /// The server looks at every picture for it: on the waits' connections.
+    func libraryStorage() async throws -> LibraryStorage {
+        try await perform(request("/api/library/storage"), patient: true)
+    }
 
     func sourceRequests() async throws -> SourceRequests { try await get("/api/diagnostics/sources") }
 
@@ -1009,8 +1024,9 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
-    private func perform<T: Decodable>(_ req: URLRequest) async throws -> T {
-        let (data, response) = try await load(req)
+    /// `patient`: a request that waits at the server (`Self.patient`).
+    private func perform<T: Decodable>(_ req: URLRequest, patient: Bool = false) async throws -> T {
+        let (data, response) = try await load(req, patient: patient)
         guard let http = response as? HTTPURLResponse else { throw BackendError.invalidResponse }
         guard (200 ..< 300).contains(http.statusCode) else {
             throw BackendError.http(status: http.statusCode, body: String(decoding: data, as: UTF8.self))
@@ -1023,10 +1039,13 @@ struct LiveBackend: FrameBackend {
     /// it came back, before the network woke up) goes again once the app
     /// is back, if nothing can happen twice (`Replays.mayResend`); otherwise
     /// it ends as `BackendError.interrupted`, not as a server that did not answer.
-    private func load(_ req: URLRequest) async throws -> (Data, URLResponse) {
+    private func load(_ req: URLRequest, patient: Bool = false) async throws -> (Data, URLResponse) {
         let route = self.route
+        let session: URLSession = patient ? Self.patient : .shared
         let (data, response) = try await again(req) { req in
-            try await reach(req) { try await route.follow($0) { try await Tailnet.shared.data(for: $0) } }
+            try await reach(req) {
+                try await route.follow($0) { try await Tailnet.shared.data(for: $0, else: session, waits: patient) }
+            }
         }
         Replays.shared.saw(response)
         return (data, response)

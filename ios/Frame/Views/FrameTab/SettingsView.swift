@@ -119,14 +119,21 @@ struct ConnectionSettingsView: View {
         }
         // On the stack, not the list: the list's tasks stop when a page
         // opens over it (and never start when one opens right away).
-        .task { await model.loadLibraryStorage() }
-        .task { await model.loadCatalogueCounts() }
-        .task { await model.loadNightTasks() }
-        .task { await model.loadPanelApp() }
-        .task { await model.loadServerUpdate() }
-        .task { await model.loadAiSettings() }
-        .task { await model.loadSourceKeys() }
-        .task { await model.loadNotifications() }
+        .task {
+            // The disk is measured after the rest has come: the server
+            // looks at every picture for it (up to 45 s on the NAS, the
+            // audit of 2026-11-14), and the page's other rows waited
+            // behind it for the server and for a connection.
+            async let counts: Void = model.loadCatalogueCounts()
+            async let night: Void = model.loadNightTasks()
+            async let panel: Void = model.loadPanelApp()
+            async let update: Void = model.loadServerUpdate()
+            async let ai: Void = model.loadAiSettings()
+            async let keys: Void = model.loadSourceKeys()
+            async let notifications: Void = model.loadNotifications()
+            _ = await (counts, night, panel, update, ai, keys, notifications)
+            await model.loadLibraryStorage()
+        }
         .task { await model.syncTailnet() }
     }
 }

@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.145.119
+
+- Karta dzieła nie blokuje już reszty aplikacji. Jej długie pytania do
+  serwera (gdzie jest dzieło, technika, ostrzejsza kopia, opis, polski
+  tytuł, fragmenty; każde czeka do pół minuty) idą osobnymi połączeniami.
+  Dotąd zajmowały wszystkie cztery połączenia aplikacji z serwerem, więc
+  serce, „Pokaż na ramce” i pasek postępu czekały za nimi nawet 15–30 s.
+- Seria serc to jedno odświeżenie playlist, ukrytych, Propozycji dnia i
+  kolejki, sekundę po ostatnim sercu, zamiast czterech pytań i dwóch
+  zapisów po każdym. Strona, na którą patrzysz, odświeża się po każdym
+  sercu jak dotąd.
+- Konfiguracja: pomiar dysku rusza po wczytaniu reszty strony i idzie
+  osobnym połączeniem (serwer ogląda dla niego każdy obraz, na NAS do
+  45 s), a sekcje Claude i Gemini nie pytają o to samo równolegle.
+- Miniatury z własnego serwera wczytują się po sześć naraz zamiast po
+  cztery: siatka wyników wypełnia się szybciej. Limity muzeów pilnuje
+  serwer, jak dotąd.
+- Zapamiętane ekrany (Odkrywaj, playlisty, ukryte, Propozycje dnia)
+  zapisują się poza głównym wątkiem: bez przycięć po wczytaniu Odkrywaj
+  i po sercu.
+
 ## 1.145.118
 
 - Odkrywaj nie przelicza już wszystkich kart tematów po każdym dziele,

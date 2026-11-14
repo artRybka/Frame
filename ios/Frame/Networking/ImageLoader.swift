@@ -279,7 +279,9 @@ actor ImageLoader {
     private static func download(_ request: URLRequest, priority: Priority) async throws -> Data {
         let session = sessions[priority] ?? .shared
         guard priority == .normal else { return try await fetch(request, session: session) }
-        let host = request.url?.host ?? ""
+        // The frame's own server has a line of its own, a wider one.
+        let own = route?.serves(request) == true
+        let host = (own ? HostGate.own : "") + (request.url?.host ?? "")
         try await gate.enter(host)
         do {
             let data = try await fetch(request, session: session)
@@ -394,8 +396,16 @@ private actor HostGate {
     private var coming: Set<UUID> = []
     private var cancelled: Set<UUID> = []
 
+    /// Before the host of the frame's own server, in the line's name.
+    static let own = "own:"
+
+    /// The frame's own server: as many as the session has connections to
+    /// it. Its thumbnails are files it keeps, or fetched by it within the
+    /// museums' own limits; four at a time left a grid of results filling
+    /// in more slowly than the server gave them (the audit of 2026-11-14).
     private static func limit(_ host: String) -> Int {
-        host.hasSuffix("wikimedia.org") ? 2 : 4
+        if host.hasPrefix(own) { return 6 }
+        return host.hasSuffix("wikimedia.org") ? 2 : 4
     }
 
     func enter(_ host: String) async throws {
