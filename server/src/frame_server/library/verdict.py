@@ -19,6 +19,7 @@ from __future__ import annotations
 from collections.abc import Collection
 from enum import StrEnum
 
+from .memo import PerItem
 from .models import Item, ItemKind
 from .vocabulary import (
     DECORATIVE,
@@ -139,7 +140,12 @@ NAMES = {
 
 def whys(item: Item) -> tuple[Why, ...]:
     """Every reason ``item`` is no picture for the frame; none for a
-    picture."""
+    picture. Worked out once for each record of a work (:mod:`.memo`):
+    every look through the catalogue asks it of every work."""
+    return _WHYS(item)
+
+
+def _whys(item: Item) -> tuple[Why, ...]:
     found = [
         why
         for why, holds in (
@@ -161,6 +167,9 @@ def whys(item: Item) -> tuple[Why, ...]:
     if category is not None:
         found.append(OTHER_ART[category])
     return tuple(found)
+
+
+_WHYS: PerItem[tuple[Why, ...]] = PerItem(_whys)
 
 
 def study_whys(item: Item) -> tuple[Why, ...]:

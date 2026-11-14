@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.145.114
+
+- Szukanie słowem jest 3 do 4 razy szybsze (pomiar na katalogu z 13.11,
+  117 tys. dzieł: „pejzaż” 1,56 s → 0,41 s, „portret kobiety” 0,68 s →
+  0,23 s, jedna litera 6,0 s → 1,6 s), a lista bez filtra dwa razy
+  szybsza. Serwer pamięta przy każdym dziele, czy jest obrazem do
+  pokazania i jak brzmi jego tekst bez akcentów, zamiast liczyć to od
+  nowa dla całego katalogu przy każdym zapytaniu. Wyniki i ich kolejność
+  są te same co dotąd (porównane 1:1 na całym katalogu). Koszt: około
+  125 MB pamięci serwera więcej.
+- Miniatury, które serwer już ma, wychodzą szybciej, gdy serwer jest
+  zajęty (szukanie, praca nocna): przy jednym zajętym wątku 23 ms → około
+  2 ms na miniaturę. Serwer czyta zapisaną miniaturę jednym krokiem poza
+  pętlą obsługującą zapytania, a wątki oddają sobie kolej co 1 ms zamiast
+  co 5 ms.
+- Konfiguracja → Claude otwiera się i odświeża od razu: liczniki „opisane
+  / czekają” liczą się raz i są pamiętane, dopóki nie zmieni się dzieło,
+  opis albo ustawienie (dotąd każde odświeżenie co 20 s przechodziło cały
+  katalog; 0,5 s w pomiarze, na NAS 2–5 s).
+- Aplikacja nie wysyła już przy każdym odświeżeniu zapytania o listę
+  filtrów biblioteki, której żaden ekran nie czytał (0,7–1 s pracy
+  serwera za każdym razem).
+
 ## 1.145.113
 
 - Zdjęcia dzieł zrobione z ramą, na sztaludze albo na tle (często Muzeum

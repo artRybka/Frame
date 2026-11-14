@@ -854,24 +854,6 @@ actor DemoBackend: FrameBackend {
         )
     }
 
-    func facets() async throws -> Facets {
-        func top(_ values: [String]) -> [FacetValue] {
-            Dictionary(values.map { ($0, 1) }, uniquingKeysWith: +)
-                .filter { !$0.key.isEmpty }
-                .map { FacetValue(value: $0.key, count: $0.value) }
-                .sorted { ($0.count, $1.value) > ($1.count, $0.value) }
-        }
-        let visible = items.filter { !$0.excluded }
-        return Facets(
-            artists: top(visible.map(\.artist)),
-            styles: top(visible.flatMap(\.styles)),
-            subjects: top(visible.flatMap(\.subjects)),
-            colors: top(visible.flatMap(\.colorTags)),
-            sources: top(visible.map(\.source)),
-            kinds: top(visible.map(\.kind.rawValue))
-        )
-    }
-
     // MARK: Playlists
 
     func playlists() async throws -> [PlaylistSummary] {

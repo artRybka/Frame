@@ -253,8 +253,6 @@ struct LiveBackend: FrameBackend {
         try await send("/api/player/skip/\(escape(itemID))", method: "POST")
     }
 
-    func facets() async throws -> Facets { try await get("/api/library/facets") }
-
     func framing(itemID: String, orientation: String, automatic: Bool) async throws -> FramingView {
         var query = [URLQueryItem(name: "orientation", value: orientation)]
         if automatic { query.append(URLQueryItem(name: "automatic", value: "true")) }

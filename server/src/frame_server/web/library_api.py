@@ -206,6 +206,9 @@ class ImportSearchRequest(BaseModel):
 #: its own, so it never waits for a grid either.
 THUMB_THREADS = CapacityLimiter(16)
 SHOWN_THREADS = CapacityLimiter(8)
+#: Threads that read a thumbnail already kept (``ImageCache.thumb_bytes``):
+#: a read of a moment, never behind the thumbnails that wait for a museum.
+KEPT_THREADS = CapacityLimiter(8)
 
 
 def _item(svc: FrameService, item_id: str) -> Item:
@@ -884,20 +887,21 @@ def delete_item(item_id: str, svc: Svc) -> dict[str, bool]:
 
 
 @router.get("/library/items/{item_id:item}/thumb")
-async def item_thumb(item_id: str, svc: Svc, tile: bool = False) -> FileResponse:
+async def item_thumb(item_id: str, svc: Svc, tile: bool = False) -> Response:
     """A work's thumbnail, the catalogue's or any museum work's: the app
     shows every thumbnail from here, never from the museum itself. With
     ``tile``, as the cover tiles of Odkrywaj show it: the work without the
-    paper or mount around it (``ImageCache.tile``; older apps never ask)."""
-    kept = svc.images.kept_thumb(item_id)
-    if kept is None:  # a copy the owner brought, or the restorer's drawing
-        kept = await to_thread.run_sync(svc.images.owned_thumb, item_id, limiter=THUMB_THREADS)
+    paper or mount around it (``ImageCache.tile``; older apps never ask).
+
+    One kept here (nearly every one asked for) is looked for and read by
+    one thread and sent whole: the look was a disk call on the event loop,
+    where a slow disk held every other answer up, and the file went out in
+    pieces, each waiting its turn while the server was busy."""
+    kept = await to_thread.run_sync(
+        lambda: svc.images.thumb_bytes(item_id, tile=tile), limiter=KEPT_THREADS
+    )
     if kept is not None:
-        if tile:
-            kept = await to_thread.run_sync(svc.images.tile, kept, limiter=THUMB_THREADS)
-        return FileResponse(
-            kept, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"}
-        )
+        return Response(kept, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
     item = await _work(svc, item_id, threads=THUMB_THREADS)
     try:
         path = await to_thread.run_sync(

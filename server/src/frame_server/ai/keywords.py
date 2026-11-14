@@ -172,6 +172,7 @@ def polish_words(data: dict[str, Any]) -> list[str]:
 
 class KeywordsJob(NoteJob):
     kind = KIND
+    steady = True
     model = HAIKU
     prompt_version = PROMPT_VERSION
     night = True

@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import re
+import sys
 import threading
 import time
 from collections.abc import AsyncIterator
@@ -81,6 +82,9 @@ from .purposes import Purposes
 from .replays import Replays
 
 log = logging.getLogger(__name__)
+
+#: How long a working thread keeps its turn, in seconds (Python's own: 0.005).
+SWITCH_INTERVAL = 0.001
 
 
 def _day_quiet() -> bool:
@@ -163,6 +167,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         logbuffer.install()  # again: uvicorn's logging setup dropped it
         if settings.scheduler:  # the server itself, not a test
             logbuffer.keep_on_disk(settings.data_dir / "logs")
+            # A thread that works (a search through the catalogue, the
+            # night's work) lets another have its turn every 5 ms by
+            # default, and an answer takes several turns: the event loop's
+            # and a thread's. With 1 ms a kept thumbnail went out in 2.3 ms
+            # instead of 7.5 while one thread was busy, and two busy
+            # threads were no slower for it (the audit of 2026-11-14).
+            sys.setswitchinterval(SWITCH_INTERVAL)
         service.notifier.bind(asyncio.get_running_loop())
         if settings.scheduler:
             tasks = [

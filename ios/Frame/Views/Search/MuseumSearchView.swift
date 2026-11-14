@@ -385,14 +385,12 @@ struct MuseumSearchView: View {
     private func setFavorite(_ id: String, _ favorite: Bool) async {
         liking.insert(id)
         defer { liking.remove(id) }
-        let joins = search.results.contains { $0.id == id && !$0.inLibrary }
         search.mark(id, favorite: favorite)
         guard let item = await model.setFavorite(id, favorite) else {
             search.mark(id, favorite: !favorite)
             return
         }
         search.mark(id, favorite: item.favorite)
-        if joins { await model.refreshFacets() }
     }
 }
 

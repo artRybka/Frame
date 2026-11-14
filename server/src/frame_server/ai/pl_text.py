@@ -487,6 +487,7 @@ def note_question(data_text: str, style: str, recent: list[str]) -> str:
 
 class PlTextJob(NoteJob):
     kind = KIND
+    steady = True
     model = HAIKU  # translations; notes ask SONNET (model_for)
     night = True
     prompt_version = PROMPT_VERSION

@@ -28,6 +28,7 @@ from collections.abc import Callable, Hashable, Iterable, Iterator
 from .artists import known_names, name_key
 from .colors import has_colours
 from .given_names import given
+from .memo import PerItem
 from .models import MINE, Item, PlaylistRules
 from .phrases import fold, parsed
 from .phrases import words as phrase_words
@@ -77,6 +78,37 @@ def item_text(item: Item) -> str:
             *item.keywords,
         ]
     )
+
+
+def _folded_text(item: Item) -> str:
+    return fold(item_text(item))
+
+
+def _folded_fields(item: Item) -> tuple[str, str, str]:
+    return (
+        fold(item.artist),
+        fold(item.title),
+        fold(" ".join([*item.styles, *item.subjects, *item.keywords])),
+    )
+
+
+_FOLDED_TEXT: PerItem[str] = PerItem(_folded_text)
+_FOLDED_FIELDS: PerItem[tuple[str, str, str]] = PerItem(_folded_fields)
+
+
+def folded_text(item: Item) -> str:
+    """:func:`item_text` folded (lower case, no accents), as typed words are
+    looked for in it. Worked out once for each record of a work
+    (:mod:`.memo`): a search by a word asked it of every work it could be,
+    and its order of every work found, three quarters of its time."""
+    return _FOLDED_TEXT(item)
+
+
+def folded_fields(item: Item) -> tuple[str, str, str]:
+    """The work's artist, its title, and its styles, subjects and keywords,
+    folded: where a search's words are looked for first
+    (``repo.relevance``). Kept as :func:`folded_text` is."""
+    return _FOLDED_FIELDS(item)
 
 
 def _stem(word: str) -> str:

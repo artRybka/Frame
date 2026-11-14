@@ -20,6 +20,7 @@ from pydantic import (
 )
 
 from ..imaging.layout import Crop, Fit, mm
+from . import memo
 from .places import known_places, migrate_sources, source_place
 from .viewer import OWNER_ID, VIEWER
 
@@ -402,6 +403,13 @@ class Item(BaseModel):
             host = (urlsplit(self.url).hostname or "").removeprefix("www.")
             return next((n for h, n in OPENVERSE_HOSTS.items() if host.endswith(h)), "")
         return ""
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """A record changed where it stands: what was worked out of it
+        before is asked anew (:mod:`.memo`). The library itself never does
+        so, it puts a copy in the record's place."""
+        super().__setattr__(name, value)
+        memo.changed(self)
 
     @property
     def file_stem(self) -> str:

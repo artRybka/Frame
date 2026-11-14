@@ -15,6 +15,7 @@ before it (``imaging.sheet``).
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
@@ -121,11 +122,24 @@ class AiConfigStore:
     def __init__(self, settings: Settings, library: Library) -> None:
         self.settings = settings
         self.library = library
+        #: The settings as last read, with the text they were read from.
+        self._read: tuple[str | None, AiConfig] | None = None
 
     @property
     def config(self) -> AiConfig:
-        saved = self.library.get_state(STATE_KEY)
-        return AiConfig.model_validate(saved) if saved else AiConfig()
+        """The settings as saved. Read anew only when what is saved has
+        changed: the jobs ask them of every work of the catalogue (whether
+        it is theirs to do), and checking the saved text each time took
+        Konfiguracja's Claude page seconds on the NAS (the audit of
+        2026-11-14). Never changed in place: a change is a copy, saved."""
+        text = self.library.state_text(STATE_KEY)
+        read = self._read
+        if read is not None and read[0] == text:
+            return read[1]
+        saved = json.loads(text) if text is not None else None
+        config = AiConfig.model_validate(saved) if saved else AiConfig()
+        self._read = (text, config)
+        return config
 
     @property
     def api_key(self) -> str | None:

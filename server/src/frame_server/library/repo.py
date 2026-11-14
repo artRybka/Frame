@@ -49,7 +49,7 @@ from .models import (
 from .phrases import fold as phrase_fold
 from .phrases import has_phrase, parsed, quote
 from .places import Places, known_places, learn_places
-from .search_index import SearchIndex, item_text
+from .search_index import SearchIndex, folded_fields, folded_text
 from .term_index import TermIndex
 from .verdict import COPIES, Place, Why, against, whys
 from .viewer import OWNER_ID, STORE, viewer_id
@@ -388,7 +388,7 @@ def has_words(item: Item, query: str) -> bool:
     """Whether ``item`` has every token of ``query`` (:mod:`.phrases`): a
     word starting so anywhere in its texts (case and accents aside: "zolw"
     finds "żółw", "art" no longer Stuttgart), a phrase as a phrase."""
-    folded = phrase_fold(item_text(item))
+    folded = folded_text(item)
     for token, wanted in parsed(query):
         if " " in token:
             if not has_phrase(wanted, folded, folded=True):
@@ -425,12 +425,7 @@ def relevance(rules: PlaylistRules) -> Callable[[Item], tuple[Any, ...]]:
         by_them = not rules.artists or made_by(item.artist, rules.artists)
         where = 0
         if checks:
-            fields = [
-                phrase_fold(item.artist),
-                phrase_fold(item.title),
-                phrase_fold(" ".join([*item.styles, *item.subjects, *item.keywords])),
-                phrase_fold(item_text(item)),
-            ]
+            fields = (*folded_fields(item), folded_text(item))
             for check in checks:
                 at = next((n for n, text in enumerate(fields) if check(text)), _FIELDS)
                 where = max(where, at)
@@ -466,7 +461,7 @@ def says(item: Item, said: list[list[str]]) -> bool:
     of the words asked is no answer (Mateusz 2026-11-09)."""
     if not said:
         return True
-    return says_in(phrase_fold(item_text(item)), said)
+    return says_in(folded_text(item), said)
 
 
 def titled_as(
@@ -480,7 +475,7 @@ def titled_as(
 
 def has_title(item: Item, titled: list[list[str]]) -> bool:
     """Whether the work's title has the title asked in one of its forms."""
-    return says_in(phrase_fold(item.title), titled)
+    return says_in(folded_fields(item)[1], titled)
 
 
 def says_in(folded: str, said: list[list[str]]) -> bool:
@@ -1702,9 +1697,7 @@ class Library:
                 if (g := works.group_index(i.id)) is not None and len(works.groups[g]) > 1
             }
             groups = [
-                g
-                for g in near
-                if says_in(" ".join(phrase_fold(item_text(c)) for c in works.groups[g]), said)
+                g for g in near if says_in(" ".join(folded_text(c) for c in works.groups[g]), said)
             ]
             for g in groups:
                 for copy in works.groups[g]:
@@ -2024,10 +2017,17 @@ class Library:
         return kv
 
     def get_state(self, key: str, default: Any = None) -> Any:
+        text = self.state_text(key)
+        return default if text is None else json.loads(text)
+
+    def state_text(self, key: str) -> str | None:
+        """The state under ``key`` as it is written (JSON), None when there
+        is none: for a reader that keeps what it made of it and only asks
+        whether it changed."""
         text = self._pending.get(key)
         if text is None:
             text = self._kv_rows().get(key)
-        return default if text is None else json.loads(text)
+        return text
 
     def set_state(self, key: str, value: Any) -> None:
         text = json.dumps(value)

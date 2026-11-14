@@ -506,23 +506,6 @@ struct ItemPage: Codable, Sendable {
     var items: [ItemSummary]
 }
 
-struct FacetValue: Codable, Hashable, Sendable, Identifiable {
-    let value: String
-    let count: Int
-    var id: String { value }
-}
-
-struct Facets: Codable, Sendable {
-    var artists: [FacetValue]
-    var styles: [FacetValue]
-    var subjects: [FacetValue]
-    var colors: [FacetValue]
-    var sources: [FacetValue]
-    var kinds: [FacetValue]
-
-    static let empty = Facets(artists: [], styles: [], subjects: [], colors: [], sources: [], kinds: [])
-}
-
 struct PlaylistRules: Codable, Hashable, Sendable {
     var query: String = ""
     var artists: [String] = []

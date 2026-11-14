@@ -237,6 +237,27 @@ def kept_side(item: Item) -> int:
     return TILE_MAX if split_part(item.id) is not None else IMAGE_MAX
 
 
+def _read_whole(path: Path) -> bytes | None:
+    """The file's bytes, None when it is not there: opened, measured and
+    read in three calls (``Path.read_bytes`` makes eight, and each is a
+    turn to wait for while another thread works)."""
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except (FileNotFoundError, IsADirectoryError):
+        return None
+    try:
+        size = os.fstat(fd).st_size
+        data = os.read(fd, size + 1)
+        while len(data) < size:  # a short read: the rest
+            more = os.read(fd, size - len(data))
+            if not more:
+                break
+            data += more
+        return data
+    finally:
+        os.close(fd)
+
+
 def _save_jpeg(img: Image.Image, path: Path, max_side: int, quality: int) -> None:
     img = img.convert("RGB")
     if max_side == IMAGE_MAX:  # an original: elongated ones keep more (WIDE)
@@ -496,6 +517,27 @@ class ImageCache:
         only to send a thumbnail already kept)."""
         path = self.thumbs / f"{Item.stem_of(item_id)}.jpg"
         return path if path.is_file() else None
+
+    def thumb_bytes(self, item_id: str, *, tile: bool = False) -> bytes | None:
+        """The kept thumbnail of ``item_id`` as it is sent (``tile``: as a
+        cover tile shows it), None when there is none here yet; a copy the
+        owner brought has its made (:meth:`owned_thumb`).
+
+        All of it in one go, for one thread: while the server is busy
+        (a search, the night's work) every step between a request and its
+        answer waits its turn, about 5 ms each, and a file sent piece by
+        piece took 23 ms a thumbnail where this takes 8 (the audit of
+        2026-11-14). So no ``is_file`` first, and the file is read whole
+        with as few calls as there are."""
+        path = self.thumbs / f"{Item.stem_of(item_id)}.jpg"
+        if not tile:
+            data = _read_whole(path)
+            if data is not None:
+                return data
+        kept = path if tile and path.is_file() else self.owned_thumb(item_id)
+        if kept is None:
+            return None
+        return _read_whole(self.tile(kept) if tile else kept)
 
     def owned_thumb(self, copy_id: str) -> Path | None:
         """The thumbnail of a copy the owner brought (``owned:<file>``, a
