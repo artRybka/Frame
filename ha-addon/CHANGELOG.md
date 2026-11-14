@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.123
+
+- „Pełny kadr” na karcie dzieła: każde zdanie zaczyna się od nowego
+  wiersza, a „i”, „w”, „z” nie zostają na końcu wiersza ani ostatnie
+  słowo samo w wierszu. Tło nie jest wymieniane, gdy dzieło stało na
+  sztaludze albo w ramie („na sztaludze”, nie „na sztaludze i na tle”).
+  Dotknięcie zdjęcia otwiera poprawianie kadru, tak jak „Popraw kadr”.
+
 ## 1.145.122
 
 - Kółko „Łączę z serwerem” w lewym górnym rogu znika, gdy serwer odpowie
