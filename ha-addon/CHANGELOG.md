@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.129
+## 1.145.130
 
 - „Podobne wyglądem” na karcie dzieła: wszystkie trzy obrazy mają jedną
   wysokość i stały odstęp. Wysoki zwój nie wychodzi już nad nagłówek i
