@@ -25,7 +25,7 @@ from test_daily import _app, _catalogue
 import frame_server.drawn as drawn_module
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai import drawn as ai_drawn
-from frame_server.ai.client import AiUnavailable
+from frame_server.ai.client import HAIKU, AiUnavailable, Answer
 from frame_server.ai.daily import CHECK_ROUND, ROUND, Box, Mark, Spot, View
 from frame_server.ai.daily import KIND as DAILY
 from frame_server.ai.drawn import (
@@ -1144,3 +1144,95 @@ def test_an_analysis_made_anew_finds_a_prints_field_again_a_little_off(tmp_path:
         under = svc.drawn._under(item, near, svc.drawn._work(item, near))
         assert under is not None
         assert svc.drawn._under_file(item, near, "study").is_file()  # now its own too
+
+
+def test_a_kept_study_that_says_more_than_its_painting_is_drawn_anew_its_lines_kept(
+    tmp_path: Path,
+) -> None:
+    """Mateusz 2026-11-14 20:33: "ważne żeby rysował raczej mniej niż na
+    dziele a nie więcej (...) Dla studiów tego wymagających w mojej bazie
+    zlec podmianę podkładu"."""
+    assert "LESS THAN THE PAINTING" in UNDERLAY and "never more" in UNDERLAY
+    assert "No hatching anywhere" in UNDERLAY and "Do not drop any figure" not in UNDERLAY
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    with TestClient(app) as client:
+        _catalogue(svc)
+        stood = Stood(svc)
+        _old_page(svc)
+        assert svc.drawn.ahead() is True and stood.calls == [KIND] * 3
+        item = svc.library.get("met:1")
+        assert item is not None
+        view = _shown(svc)
+        # Drawn now, with the study's prompt of now: the judge leaves it.
+        assert (svc.drawn.meta(item, view) or {})["plain"] == ai_drawn.PLAIN
+        assert svc.drawn.unjudged() == [] and svc.drawn.ahead() is False
+
+        verdicts: list[bool] = []
+        asked: list[dict[str, Any]] = []
+
+        def judge(kind: str, params: dict[str, Any], on_text: Any = None) -> Answer:
+            asked.append(params)
+            assert kind == drawn_module.JUDGE_KIND and params["model"] == ai_drawn.JUDGE_MODEL
+            images = [b for b in params["messages"][0]["content"] if b["type"] == "image"]
+            assert len(images) == 2  # the painting and the study
+            return Answer({"more": ["faces"], "redraw": verdicts.pop(0)}, False, 0.0003, HAIKU)
+
+        svc.painter.claude.ask = judge  # type: ignore[method-assign]
+
+        def kept_before() -> None:
+            """As kept before 1.145.128: no word of its study's prompt."""
+            stem = svc.drawn._stem(item, svc.drawn.key(view))
+            path = svc.drawn.dir / f"{stem}-meta.json"
+            meta = json.loads(path.read_text())
+            meta.pop("plain")
+            path.write_text(json.dumps(meta))
+            svc.drawn._kept.clear()
+
+        # Judged plain enough: kept as it is, nothing paid to Google.
+        kept_before()
+        verdicts.append(False)
+        assert [i.id for i, _ in svc.drawn.unjudged()] == ["met:1"]
+        assert svc.drawn.ahead() is True and len(asked) == 1
+        assert svc.drawn.unjudged() == [] and svc.drawn.ahead() is False
+        assert stood.batches == []
+
+        # Judged busy: its study, then what runs out of it, through the Batch.
+        kept_before()
+        stem = svc.drawn._stem(item, svc.drawn.key(view))
+        page_file = svc.drawn.dir / f"{stem}-page.jpg"
+        lines_before = (svc.drawn.dir / f"{stem}-m1.png").read_bytes()
+        meta_before = svc.drawn.meta(item, view)
+        url_before = client.get("/api/study/met:1").json()["work"]["composition_drawn"]["sheet"]
+        verdicts.append(True)
+        assert svc.drawn.ahead() is True and len(asked) == 2
+        page_file.write_bytes(b"the busy study")  # the stand-in draws alike each time
+        assert svc.drawn.unjudged() == []  # waits to be drawn anew
+        assert svc.drawn.ahead() is False
+        assert len(stood.batches) == 1
+        (study,) = stood.batches[0]
+        assert study.name == stem and study.prompt == study_prompt(view.inside())
+        assert svc.drawn.ahead() is False  # the batch is not answered yet
+        stood.ready = True
+        svc.drawn._plain_looked = 0.0
+        assert svc.drawn.ahead() is True  # the studies came
+        assert svc.drawn.ahead() is False and len(stood.batches) == 2
+        (spill,) = stood.batches[1]
+        assert spill.name == f"{stem}/spill" and spill.prompt == SPILL
+        svc.drawn._plain_looked = 0.0
+        assert svc.drawn.ahead() is True  # the spill came: the page laid anew
+        assert page_file.read_bytes()[:2] == b"\xff\xd8"  # a JPEG laid anew
+        assert (svc.drawn.dir / f"{stem}-m1.png").read_bytes() == lines_before
+        meta = svc.drawn.meta(item, view)
+        assert meta is not None and meta_before is not None
+        assert meta["plain"] == ai_drawn.PLAIN and meta["repainted"]
+        assert meta["colours"] == meta_before["colours"]
+        assert meta["numbers"] == meta_before["numbers"]
+        assert not (svc.drawn.dir / f"{stem}-plain.png").exists()
+        # The app gets the new page under another address.
+        sheet = client.get("/api/study/met:1").json()["work"]["composition_drawn"]["sheet"]
+        assert sheet != url_before and sheet.endswith(f"&r={ai_drawn.PLAIN}")
+        assert client.get(sheet).status_code == 200
+        # Done: nothing more is judged or asked.
+        assert svc.drawn.ahead() is False and len(asked) == 2 and len(stood.batches) == 2
+        assert json.loads((svc.drawn.dir / "plain.json").read_text())["redo"] == []

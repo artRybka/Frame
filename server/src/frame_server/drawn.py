@@ -65,15 +65,18 @@ from .ai.drawn import (
     AT_ONCE,
     BLOCKED_TRIES,
     KIND,
+    PLAIN,
     SPILL,
     THINK,
     TYPICAL_USD,
     Sheet,
     Under,
     draw,
+    judge_request,
     lines_ask,
     marks_there,
     put_together,
+    repaged,
     study_prompt,
     underlay,
 )
@@ -133,6 +136,19 @@ Take = tuple["Item", "View"]
 CHECKED = "drawn_lines_checked"
 CHECK = 1
 
+#: Kept sheets whose study says more than its painting (Mateusz 2026-11-14
+#: 20:33: "Dla studiów tego wymagających w mojej bazie zlec podmianę
+#: podkładu"): each kept sheet drawn before ``ai.drawn.PLAIN`` is looked at
+#: by the judge (Haiku, a few hundredths of a cent), and the busy ones have
+#: their study (and what runs out of it) drawn anew through Google's Batch,
+#: about this much each; their lines stay. ``plain.json`` holds the takes
+#: to be drawn anew and the open batch.
+PLAIN_USD = 0.04
+#: What the judgements are counted as in Claude's month.
+JUDGE_KIND = "sheet_judge"
+#: A take whose new study could not be had this many times keeps its old one.
+PLAIN_TRIES = 2
+
 #: Under this ending ``tries.json`` counts the times Google would not take
 #: a take's question at all.
 REFUSED = "!refused"
@@ -155,6 +171,8 @@ class DrawnSheets:
         self._tried: dict[str, int] | None = None
         #: When the batch's answers were last looked for.
         self._looked = 0.0
+        #: And those of the batch of studies drawn anew plainer.
+        self._plain_looked = 0.0
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -220,7 +238,7 @@ class DrawnSheets:
         path = self.dir / f"{self._stem(item, key)}-{name}"
         return path if path.is_file() else None
 
-    def _keep(self, item: Item, view: View, sheet: Sheet) -> None:
+    def _keep(self, item: Item, view: View, sheet: Sheet, plain: bool = False) -> None:
         self.dir.mkdir(parents=True, exist_ok=True)
         stem = self._stem(item, self.key(view))
         files: dict[str, bytes] = {"page.jpg": sheet.page}
@@ -231,6 +249,9 @@ class DrawnSheets:
         meta = {
             "look": LOOK,
             "made": now_iso(),
+            #: The study's prompt, when it is known to be the one of now
+            #: (a study drawn with the sheet); else the judge looks at it.
+            **({"plain": PLAIN} if plain else {}),
             "size": list(sheet.size),
             #: Which of the take's marks each line is (its place among them).
             "marks": titled[: len(sheet.layers)],
@@ -514,13 +535,14 @@ class DrawnSheets:
         inside = view.inside()
         under = self._under(item, view, work)
         costs: dict[str, float] = {}
+        fresh = under is None
         if under is None:
             # Kept before the lines are asked for: should they fail, the
             # study is paid for once, and the next go asks the lines alone.
             under = underlay(work, inside, paint, spill, costs)
             self._keep_under(item, view, under)
         sheet = draw(work, inside, paint, seed=self._seed(item), under=under, costs=costs)
-        self._keep(item, view, sheet)
+        self._keep(item, view, sheet, plain=fresh)
         log.info("sheet of %s drawn: %s", item.id, sheet.cost)
 
     def _now(self, item: Item, view: View) -> bool:
@@ -746,7 +768,7 @@ class DrawnSheets:
                 self._fail(stem, err, count=False)
                 self._drop_marked(stem)
                 continue
-            self._keep(item, view, sheet)
+            self._keep(item, view, sheet, plain="underlay" in cost)
             self._drop_marked(stem)
             log.info("sheet of %s drawn through the batch: %s", item.id, sheet.cost)
         if again:
@@ -859,6 +881,266 @@ class DrawnSheets:
             log.info("%d sheets' lines to be drawn anew", found)
         self.library.set_state(CHECKED, CHECK)
 
+    # -- studies that say more than their painting -------------------------------
+
+    def _plain_state(self) -> dict[str, Any]:
+        try:
+            state = json.loads((self.dir / "plain.json").read_text())
+        except (OSError, ValueError):
+            state = {}
+        if not isinstance(state, dict):
+            state = {}
+        state.setdefault("redo", [])
+        state.setdefault("failed", {})
+        return state
+
+    def _set_plain(self, state: dict[str, Any]) -> None:
+        self._write("plain.json", json.dumps(state).encode())
+
+    def _mark_plain(self, item: Item, view: View, **more: Any) -> None:
+        """The take's sheet is as plain as asked now: the judge leaves it."""
+        stem = self._stem(item, self.key(view))
+        meta = self.meta(item, view)
+        if meta is None:
+            return
+        meta = {**meta, "plain": PLAIN, **more}
+        self._write(f"{stem}-meta.json", json.dumps(meta).encode())
+        self._kept[stem] = meta
+
+    def unjudged(self) -> list[Take]:
+        """The kept sheets of the pages whose study the judge has not looked
+        at yet, and that are not waiting to be drawn anew."""
+        redo = {(i, k) for i, k in self._plain_state()["redo"]}
+        found: dict[str, Take] = {}
+        for kind in PAGES:
+            for item_id, note in self.library.notes(kind).items():
+                views = page_views(note.data)
+                item = self.library.get(item_id) if views else None
+                if item is None:
+                    continue
+                key = self.key(views[0])
+                meta = self.meta(item, views[0])
+                if meta is None or meta.get("plain", 0) >= PLAIN or (item_id, key) in redo:
+                    continue
+                found.setdefault(self._stem(item, key), (item, views[0]))
+        return list(found.values())
+
+    def judge(self, item: Item, view: View) -> bool:
+        """Whether the take's kept study says more than its painting (the
+        judge's answer; False when it gives none). Raises
+        ``ai.client.AiUnavailable`` (no key, Claude's month's limit)."""
+        page = self.part(item, self.key(view), "page")
+        if page is None:
+            return False
+        with Image.open(page) as img:
+            study = img.convert("RGB")
+        work = self._work(item, view)
+        answer = self.painter.claude.ask(JUDGE_KIND, judge_request(work, study))
+        data = answer.data or {}
+        redraw = bool(data.get("redraw"))
+        log.info(
+            "the study of %s judged: %s %s",
+            item.id,
+            "drawn anew" if redraw else "kept",
+            data.get("more") or "",
+        )
+        return redraw
+
+    def _plain(self) -> bool:
+        """A step of drawing the busy studies anew: a judgement, else a
+        step of their batch; False when there is nothing to do now."""
+        state = self._plain_state()
+        batch = state.get("batch")
+        if batch:
+            return self._plain_batched(state, batch)
+        unjudged = self.unjudged()
+        if unjudged:
+            item, view = unjudged[0]
+            try:
+                redraw = self.judge(item, view)
+            except AiUnavailable as err:  # no key, Claude's month's limit: later
+                log.debug("studies not judged now: %s", err)
+                return self._plain_begin(state)
+            except Exception as err:  # the picture, the network: the next one
+                log.warning("the study of %s not judged: %s", item.id, err)
+                redraw = False
+            if redraw:
+                state["redo"].append([item.id, self.key(view)])
+                self._set_plain(state)
+            else:
+                self._mark_plain(item, view)
+            return True
+        return self._plain_begin(state)
+
+    def _plain_takes(self, pairs: list[list[str]]) -> list[tuple[str, Item, View]]:
+        """The takes that the pages still show and that keep their sheet."""
+        found = []
+        for item_id, key in pairs:
+            item = self.library.get(item_id)
+            view = self._shown(item_id, key) if item is not None else None
+            if item is not None and view is not None and self.meta(item, view) is not None:
+                found.append((self._stem(item, key), item, view))
+        return found
+
+    def _plain_begin(self, state: dict[str, Any]) -> bool:
+        """Hands some of the busy studies to the Batch to be drawn anew."""
+        takes = self._plain_takes(state["redo"])
+        afford = int(self.painter.budget_left() / PLAIN_USD)
+        if not takes or afford <= 0:
+            if state["redo"] and not takes:  # gone from the pages meanwhile
+                state["redo"] = []
+                self._set_plain(state)
+            return False
+        asks: list[Ask] = []
+        handed: list[list[str]] = []
+        for stem, item, view in takes[: min(BATCH_TAKES, afford)]:
+            try:
+                work = self._work(item, view)
+            except Exception as err:  # the picture cannot be had: next time
+                log.warning("the study of %s not drawn anew now: %s", item.id, err)
+                continue
+            asks.append(Ask(stem, study_prompt(view.inside()), [work], think=THINK))
+            handed.append([item.id, self.key(view)])
+        if not asks:
+            return False
+        try:
+            name = self._hand(asks)
+        except ValueError as err:  # too heavy: fewer next time
+            log.warning("the studies to be drawn anew not handed over: %s", err)
+            name = None
+        if name is None:
+            return False
+        state["batch"] = {"round": "study", "name": name, "takes": handed}
+        self._set_plain(state)
+        self._plain_looked = time.monotonic()
+        log.info("%d busy studies handed to the batch to be drawn anew", len(handed))
+        return False
+
+    def _plain_file(self, stem: str) -> Path:
+        return self.dir / f"{stem}-plain.png"
+
+    def _plain_batched(self, state: dict[str, Any], batch: dict[str, Any]) -> bool:
+        if not batch["name"]:  # what runs out of the new studies is still to be asked for
+            self._plain_spill(state, batch)
+            return False
+        if self._plain_looked and time.monotonic() - self._plain_looked < BATCH_LOOK:
+            return False
+        self._plain_looked = time.monotonic()
+        try:
+            answers = self.painter.batched(KIND, batch["name"])
+        except NotDrawn as err:  # the batch is lost: its takes wait for another
+            log.warning("the batch of studies drawn anew is lost: %s", err)
+            state.pop("batch", None)
+            self._set_plain(state)
+            return False
+        except Exception as err:  # the key, the network
+            log.warning("the batch of studies drawn anew not looked at: %s", err)
+            return False
+        if answers is None:
+            return False
+        if batch["round"] == "study":
+            self._plain_studies_in(state, batch, answers)
+        else:
+            self._plain_in(state, batch, answers)
+        return True
+
+    def _plain_failed(self, state: dict[str, Any], stem: str, item: Item, view: View) -> None:
+        """A new study could not be had: asked again, then the old one stays."""
+        failed = state["failed"]
+        failed[stem] = failed.get(stem, 0) + 1
+        if failed[stem] >= PLAIN_TRIES:
+            state["redo"] = [p for p in state["redo"] if p != [item.id, self.key(view)]]
+            self._mark_plain(item, view, plain_kept=True)
+
+    def _plain_studies_in(
+        self, state: dict[str, Any], batch: dict[str, Any], answers: dict[str, Any]
+    ) -> None:
+        """The new studies came: each that is its work's is kept apart for
+        the second round (what runs out of it)."""
+        takes = []
+        for stem, item, view in self._plain_takes(batch["takes"]):
+            answer = answers.get(stem)
+            try:
+                if not isinstance(answer, tuple):
+                    raise NotDrawn(str(answer or "no answer"))
+                study = answer[0]
+                _, off = imaging.measure(self._work(item, view), study)
+                if off > imaging.FAR_OFF:
+                    raise NotDrawn(f"the study lies {off:.1f}% off the work")
+            except Exception as err:
+                log.warning("the study of %s not drawn anew: %s", item.id, err)
+                self._plain_failed(state, stem, item, view)
+                continue
+            out = io.BytesIO()
+            study.save(out, "PNG")
+            self._write(self._plain_file(stem).name, out.getvalue())
+            takes.append([item.id, self.key(view)])
+        state["batch"] = {"round": "spill", "name": "", "takes": takes} if takes else None
+        if not takes:
+            state.pop("batch")
+        self._set_plain(state)
+
+    def _plain_spill(self, state: dict[str, Any], batch: dict[str, Any]) -> None:
+        asks: list[Ask] = []
+        for stem, _item, _view in self._plain_takes(batch["takes"]):
+            try:
+                study = Image.open(self._plain_file(stem)).convert("RGB")
+            except OSError:
+                continue
+            asks.append(Ask(f"{stem}/spill", SPILL, [imaging.padded(study)[0]], think=THINK))
+        if not asks:
+            self._plain_in(state, batch, {})
+            return
+        try:
+            name = self._hand(asks)
+        except ValueError as err:
+            log.warning("the new studies' spill not handed over: %s", err)
+            self._plain_in(state, batch, {})  # they go without it
+            return
+        if name is not None:
+            batch["name"] = name
+            self._set_plain(state)
+            self._plain_looked = time.monotonic()
+
+    def _plain_in(
+        self, state: dict[str, Any], batch: dict[str, Any], answers: dict[str, Any]
+    ) -> None:
+        """The second round came: each take's page is laid anew over its new
+        study, its lines kept; the study is the work's from now on (another
+        take's lines go over it)."""
+        done = 0
+        for stem, item, view in self._plain_takes(batch["takes"]):
+            try:
+                study = Image.open(self._plain_file(stem)).convert("RGB")
+            except OSError:
+                continue
+            spill = answers.get(f"{stem}/spill")
+            spilt = spill[0] if isinstance(spill, tuple) else None
+            try:
+                page = repaged(self._work(item, view), study, spilt, self._seed(item))
+            except Exception as err:
+                log.warning("the page of %s not laid anew: %s", item.id, err)
+                self._plain_failed(state, stem, item, view)
+                continue
+            self._write(f"{stem}-page.jpg", page)
+            for part, img in (("study", study), ("spill", spilt)):
+                path = self._under_file(item, view, part)
+                if img is None:
+                    with contextlib.suppress(OSError):
+                        path.unlink()
+                    continue
+                out = io.BytesIO()
+                img.save(out, "PNG")
+                self._write(path.name, out.getvalue())
+            self._mark_plain(item, view, repainted=now_iso())
+            state["redo"] = [p for p in state["redo"] if p != [item.id, self.key(view)]]
+            with contextlib.suppress(OSError):
+                self._plain_file(stem).unlink()
+            done += 1
+        state.pop("batch", None)
+        self._set_plain(state)
+        log.info("%d busy studies drawn anew, their lines kept", done)
+
     # -- the background ---------------------------------------------------------
 
     def ahead(self) -> bool:
@@ -870,7 +1152,7 @@ class DrawnSheets:
         now = self.at_once()
         if now:
             return self._now(*now[0])
-        return self._batched()
+        return self._batched() or self._plain()
 
     def start(self) -> None:
         if self._thread is None:

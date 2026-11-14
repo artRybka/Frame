@@ -35,6 +35,8 @@ beside it, spoilt the study, so the three questions stay.
 
 from __future__ import annotations
 
+import base64
+import io
 import logging
 import math
 import re
@@ -46,7 +48,7 @@ import numpy as np
 from PIL import Image
 
 from ..imaging import drawn
-from .client import AiUnavailable
+from .client import HAIKU, AiUnavailable, request
 from .daily import Mark, Spot, View
 from .gemini import NotDrawn, blocked
 from .sketch import _loop_box
@@ -74,41 +76,57 @@ AT_ONCE = "drawn_at_once"
 #: bardzo dokładny szkic modelki. Kompletnie gubi charakter obrazu"), its
 #: COLOUR (:data:`COLOUR`) and darks as deep as painted (08:30: "podkłady są
 #: chwilami zbyt mdłe, szczególnie przy dziełach ciemnych i wymagających
-#: pokazania czerni czy ciemnej plamy").
+#: pokazania czerni czy ciemnej plamy"). And LESS than the painting, never
+#: more (2026-11-14 20:33, on Matisse's „Radość życia”: "rysuje zbyt
+#: dokładnie (zmyśla) ważne żeby rysował raczej mniej niż na dziele a nie
+#: więcej. Lepiej. Ogólniej i schematyczniej niż za dużo"): the studies
+#: drawn before are looked at by :data:`JUDGE` and the busy ones drawn anew
+#: (``drawn.DrawnSheets``, :data:`PLAIN`).
 UNDERLAY = """\
 Redraw this painting as a painter's composition study in watercolour and pen on cream paper \
-(#F5F1EA). A study has a hierarchy: it dwells on what the painting is about and only sets down \
-the rest.
+(#F5F1EA). A study is a summary: it says less than the painting, never more. It dwells on what \
+the painting is about and only sets down the rest.
 
 GEOMETRY (most important). Keep exactly the framing of the source image. Every figure, object \
 and edge stays at exactly the same position and the same size as in the source, from edge to \
 edge. Do not crop, zoom, shift, rotate or mirror. Do not add a margin, border, frame, mat or the \
 edge of a sheet. The study fills the same rectangle as the painting.
 
+LESS THAN THE PAINTING (the rule over all the others). The study always holds fewer lines, \
+fewer details and fewer things than the painting, everywhere, the focus included. When in doubt, \
+leave it out: a shape the painter only suggested stays a suggestion or a patch of wash; a detail \
+too small or too vague to be sure of is not drawn. Never add anything the painting does not \
+plainly show: no features, fingers, folds, leaves, waves, ornaments, animals, props or figures \
+that are not clearly painted there, and never more of them than are painted. Never sharpen, \
+complete or explain what the painter left open. Use about half the lines a careful copy would \
+need. A schematic, general study is right; a busy, over-exact one is wrong.
+
 WHAT MATTERS. An analysis of this painting names what matters in it (in Polish): {FOCUS}. These \
 places are the focus of the study. Everything else is the setting.
 
-THE FOCUS is finished. The pen draws its real contours precisely, with the few details that \
-tell, as the painter drew them (a face's features and expression, hands, the things held, the \
-structure of the main object). Economy even here. A face is its outline and the eyes, nose and \
-mouth in a few sure lines, with one light shadow wash: no wrinkles, no hatching on cheeks or \
-brow, no modelling line by line. Hair is a mass: its outline, a few long strokes for the way it \
-falls, one wash and one darker; never curl by curl or strand by strand. Its washes are fuller \
-and truer to the painting's colour, flat, with one darker second wash for its main shadow.
+THE FOCUS is the most finished part, and still a summary. The pen draws its main contours, the \
+big shapes and the one or two details that tell (the tilt of a head, the line of an arm, the \
+thing held), as simply as the painter drew them or more simply. A face is its outline and, only \
+where the painter clearly painted them, the eyes, nose and mouth as a few short marks, with at \
+most one light shadow wash: no wrinkles, no lashes, no lips drawn in full, no hatching on cheeks \
+or brow, no modelling. Hair is one mass: its outline and one wash, never curls or strands. Hands \
+are mittens of a few lines; no fingernails or knuckles. Its washes are fuller and truer to the \
+painting's colour, flat, with at most one darker second wash for its main shadow.
 
 THE SETTING is never left empty and never detailed. Each big area of it (a sky, a sea, a wall, a \
-floor, a background, a wide dress) gets one broad wash of its own colour and its own value, so \
-that the painting's big pattern of light and dark reads from across a room: what is dark in the \
-painting is a clearly darker wash, what is light is a pale wash or bare paper. Soft irregular \
-edges; thin gaps of bare paper between some washes; the wash stops raggedly short of the sheet's \
-edge here and there. Here the pen only indicates: a few long loose lines for the main edges and \
-directions, nothing small, no texture.
+floor, a background, a wide dress, a stand of trees) gets one broad wash of its own colour and \
+its own value, so that the painting's big pattern of light and dark reads from across a room: \
+what is dark in the painting is a clearly darker wash, what is light is a pale wash or bare \
+paper. Soft irregular edges; thin gaps of bare paper between some washes; the wash stops raggedly \
+short of the sheet's edge here and there. Here the pen only indicates: a few long loose lines for \
+the main edges and directions, nothing small, no texture. Figures and things in the setting are \
+flat silhouettes: a patch of wash with at most a broken outline of a few strokes; no faces, no \
+hands, no inner lines, no anatomy.
 
 PEN LINE. A fine ink line, dark grey-brown, clearly readable but delicate: a little stronger \
 than a pencil line, never heavy (unless the painter's own contour is, see MANNER), never a \
-comic-book outline. Its pressure varies: firmer and darker on the focus and where a form turns, \
-hair-thin in the setting. A little light diagonal hatching in the darkest shadow of the focus \
-only.
+comic-book outline. Few lines: each one is needed. Its pressure varies: firmer and darker on the \
+focus and where a form turns, hair-thin in the setting. No hatching anywhere: shadow is wash.
 
 DEPTH. The study is airy, yet it has depth and the painting's own range of value, from bare \
 paper to the painting's darkest dark. What is dark in the painting (a dark background, a black \
@@ -120,31 +138,31 @@ pale wash. Lights are bare paper. The focus stands out from the setting by riche
 the pen, and the dark wash behind or beside it sets it off.
 
 THE WASH CARRIES NO DETAIL. Watercolour here is only flat tone and colour. Inside any big shape \
-(the front of a bed, a coat, a hull, a dress) the wash is one flat tone, at most two. No wood \
-grain, no pattern, no texture, no small folds, no modelling of small forms, no cast shadows of \
-small things, no streaks that imitate the painting's brushwork. Whatever detail is kept is drawn \
-by the pen, and only in the focus. A face gets one light second wash for its shadow side, no \
-more.
+(the front of a bed, a coat, a hull, a dress, a body, a mass of foliage) the wash is one flat \
+tone, at most two. No wood grain, no pattern, no texture, no leaves, no small folds, no modelling \
+of small forms, no cast shadows of small things, no streaks that imitate the painting's \
+brushwork. Whatever detail is kept is drawn by the pen, and only in the focus.
 
 MANNER. This is a study of this particular painting, so it keeps the painter's own way of \
-drawing and painting. Where the painter simplified, flattened or distorted forms (bold dark \
-outlines, flat areas of colour, a mask-like face, heavy or elongated limbs, tilted perspective), \
-the study keeps exactly that: the same contours, the same simplified features, the same \
-proportions, even where they are not anatomically or optically correct. Never correct the \
-anatomy, never make a face, a body or a space more realistic, more academic or prettier than the \
-painter did. Where the painter outlined figures with a heavy dark contour (as Matisse or Gauguin \
-did), the pen follows it with the same bold contour; a painting modelled in light and shade has \
-no such outline, and its study keeps the fine pen line. A figure the painter flattened into a \
-simple shape stays a simple shape: its outline in a few long lines, no anatomy, no modelling of \
-the body, the face as summary as the painter's (a few strokes, not a portrait). A loose painting \
-gets a loose study, a precise one a precise study.
+drawing and painting, simplified further, never refined. Where the painter simplified, flattened \
+or distorted forms (bold dark outlines, flat areas of colour, a mask-like face, heavy or \
+elongated limbs, tilted perspective), the study keeps exactly that: the same contours, the same \
+simplified features, the same proportions, even where they are not anatomically or optically \
+correct. Never correct the anatomy, never make a face, a body or a space more realistic, more \
+academic, more detailed or prettier than the painter did. Where the painter outlined figures \
+with a heavy dark contour (as Matisse or Gauguin did), the pen follows it with the same bold \
+contour and nothing inside it; a painting modelled in light and shade has no such outline, and \
+its study keeps the fine pen line. A figure the painter flattened into a simple shape stays a \
+simple shape: its outline in a few long lines, no anatomy, no modelling of the body, the face \
+blank or as summary as the painter's (a few strokes, not a portrait). A loose painting gets an \
+even looser study; a precise one a clear but still simplified study.
 {COLOUR}
 BARE PAPER. Only the lightest lights and the gaps: a tenth to a fifth of the sheet.
 
-FIDELITY. Keep poses, expressions and proportions exactly as painted. A face stays the same \
-person: the same age, the same features, the same hair and its colour, the same direction of the \
-gaze. Do not drop any figure or head, however small or half hidden; do not invent objects; do \
-not beautify or modernise.
+FIDELITY. What is drawn stays true: poses, directions of gaze and proportions as painted, a \
+face the same age and kind of person, hair its own colour. Every figure keeps its place, at \
+least as a patch of wash or a few strokes, however small; nothing is invented, moved, \
+beautified or modernised.
 
 DO NOT ADD any text, signature, numbers, labels, arrows, construction lines, geometric diagrams, \
 cast shadows, pencils or other props. The image is only the flat sheet, seen straight on.
@@ -239,6 +257,70 @@ objects, no figures, no continuation of the scene.
 The image is only the flat sheet, edge to edge, seen straight on: not a photograph of a sheet, \
 no shadow, no table, no frame, no border line round the study. No text, no signature.
 """
+
+#: Which prompt of the study the kept ones were drawn with: a study kept
+#: from before this one is looked at by the judge once and, when it says
+#: more than its painting, drawn anew with its lines kept
+#: (``drawn.DrawnSheets``). 1: "less than the painting" of 2026-11-14.
+PLAIN = 1
+#: Who judges a kept study against its painting, and how large both are
+#: sent (a face's features must be told apart).
+JUDGE_MODEL = HAIKU
+JUDGE_SIDE = 1024
+JUDGE = """\
+You compare a painting (first image) with a watercolour-and-pen composition study of it \
+(second image). A good study is a summary: it says LESS than the painting, never more. It is \
+schematic and general: broad flat washes, few pen lines, the main contours of what matters, \
+small figures as silhouettes.
+
+The study says MORE than the painting (redraw: true) when, anywhere on it, it:
+- draws things the painting does not plainly show: invented facial features, fingers, folds, \
+leaves, waves, ornaments, animals, objects or figures;
+- is more detailed, more finished or more realistic than the painting: full faces with lashes, \
+lips and modelling where the painter painted a summary face or a mask; hair curl by curl; \
+anatomy, muscles or modelling on a figure the painter flattened; textured foliage, wood grain, \
+patterns or many small strokes the painting does not have;
+- covers the background with busy pen work instead of a few loose lines.
+
+It is fine (redraw: false) when it is as simple as the painting or simpler, even if crude, \
+incomplete or loose; a missing detail is never a fault. Small differences of colour or \
+placement do not matter. Judge only by how much is drawn.
+
+List in "more" (English, a few words each, at most four) what the study draws beyond the \
+painting; empty when nothing."""
+JUDGE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["more", "redraw"],
+    "properties": {
+        "more": {"type": "array", "items": {"type": "string"}},
+        "redraw": {"type": "boolean"},
+    },
+}
+
+
+def _picture(img: Image.Image) -> dict[str, Any]:
+    small = img.convert("RGB")
+    small.thumbnail((JUDGE_SIDE, JUDGE_SIDE), Image.Resampling.LANCZOS)
+    out = io.BytesIO()
+    small.save(out, "JPEG", quality=85)
+    data = base64.standard_b64encode(out.getvalue()).decode("ascii")
+    return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": data}}
+
+
+def judge_request(work: Image.Image, study: Image.Image) -> dict[str, Any]:
+    """The question whether a kept ``study`` says more than its ``work``
+    (Messages API parameters, :data:`JUDGE_SCHEMA` the answer's shape)."""
+    content = [
+        {"type": "text", "text": "The painting:"},
+        _picture(work),
+        {"type": "text", "text": "The study:"},
+        _picture(study),
+    ]
+    return request(
+        model=JUDGE_MODEL, system=JUDGE, content=content, schema=JUDGE_SCHEMA, max_tokens=1500
+    )
+
 
 #: What the analysis says of the painting's colour, given to the study
 #: (Mateusz 2026-11-13 08:29: "w miejscach akcentu czy tam gdzie kolor jest
@@ -472,6 +554,44 @@ def _marks(
     return best[1] if best is not None else None
 
 
+def _field(work: Image.Image, study: Image.Image) -> tuple[tuple[int, int], Any, Any]:
+    """The field's size, where the study lies on the work and the study laid
+    on the page as the field. Raises :class:`NotDrawn` when the study is
+    not the work's."""
+    size = drawn.field_size(work)
+    frac, off = drawn.measure(work, study)
+    if off > drawn.FAR_OFF:
+        raise NotDrawn(f"the study lies {off:.1f}% off the work")
+    return size, frac, drawn.on_page(np.asarray(drawn.laid(study, frac, size), np.float32) / 255)
+
+
+def _page(
+    study: Image.Image,
+    spilt: Image.Image | None,
+    frac: Any,
+    size: tuple[int, int],
+    field_: Any,
+    seed: int,
+) -> bytes:
+    spill = None
+    if spilt is not None:
+        try:
+            spill = drawn.spilt(study, spilt, frac, size)
+        except Exception as err:  # the sheet is paid for: it goes without its spill
+            log.warning("the sheet's spill left out: %s", err)
+    return drawn.jpeg(drawn.page(field_, spill, seed))
+
+
+def repaged(
+    work: Image.Image, study: Image.Image, spilt: Image.Image | None, seed: int = 1
+) -> bytes:
+    """A kept sheet's page over another study of the same ``work`` (its
+    lines stay as they are: they lie on the work, not on the study).
+    Raises :class:`NotDrawn` when the study is not the work's."""
+    size, frac, field_ = _field(work, study)
+    return _page(study, spilt, frac, size, field_, seed)
+
+
 def put_together(
     work: Image.Image,
     view: View,
@@ -486,11 +606,7 @@ def put_together(
     marks (``marked``; None when the take has none) and with what runs out
     of it (``spilt``; None: the sheet goes without). Raises
     :class:`NotDrawn` when the study is not the work's."""
-    size = drawn.field_size(work)
-    frac, off = drawn.measure(work, study)
-    if off > drawn.FAR_OFF:
-        raise NotDrawn(f"the study lies {off:.1f}% off the work")
-    field_ = drawn.on_page(np.asarray(drawn.laid(study, frac, size), np.float32) / 255)
+    size, frac, field_ = _field(work, study)
     marks = titled(view)
     layers: list[Any] = []
     colours: list[str] = []
@@ -514,14 +630,8 @@ def put_together(
             [(x / size[0], y / size[1]) for x, y in found]
             for found in drawn.spots(placed, layers, field_)
         ]
-    spill = None
-    if spilt is not None:
-        try:
-            spill = drawn.spilt(study, spilt, frac, size)
-        except Exception as err:  # the sheet is paid for: it goes without its spill
-            log.warning("the sheet's spill left out: %s", err)
     return Sheet(
-        page=drawn.jpeg(drawn.page(field_, spill, seed)),
+        page=_page(study, spilt, frac, size, field_, seed),
         layers=[drawn.png(layer) if _there([layer]) else None for layer in layers],
         colours=colours,
         numbers=numbers,

@@ -326,8 +326,11 @@ def drawn(svc: FrameService, item: Item, view: View) -> tuple[Drawn | None, bool
             start=1,
         )
     ]
+    # A page laid anew over a plainer study (``drawn.DrawnSheets._plain``)
+    # is another address, so that the app's kept one is not shown.
+    again = f"&r={kept.get('plain', 0)}" if kept.get("repainted") else ""
     sheet = Drawn(
-        sheet=f"/api/composition/drawn?{at}&part=page",
+        sheet=f"/api/composition/drawn?{at}&part=page{again}",
         bleed=BLEED,
         aspect=width / height,
         marks=marks,
