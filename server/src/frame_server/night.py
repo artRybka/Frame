@@ -167,7 +167,8 @@ GROUPS: list[tuple[str, str, str]] = [
     (
         "duplicates",
         "Powtórki i jakość",
-        "Powtórki i detale, sędzia powtórek, strażnik katalogu i nocny przegląd. "
+        "Powtórki i detale, sędzia powtórek, strażnik katalogu, nocny przegląd "
+        "i kadrowanie zdjęć dzieł. "
         "Najpierw Ulubione, playlisty i Odkrywaj.",
     ),
     (
@@ -800,6 +801,17 @@ def tasks(service: FrameService) -> list[NightTask]:
             paid=True,
             group=dup,
             ahead=service.audit.ahead,
+        ),
+        # Museum photographs cut down to the work: Haiku picks the works
+        # with a frame, an easel or a board around them, Opus sets the
+        # corners (ai/crops.py).
+        NightTask(
+            "crops",
+            critic_night(service.crops, ("przycięte", "przycięte", "przyciętych")),
+            "Kadrowanie zdjęć dzieł",
+            paid=True,
+            group=dup,
+            ahead=service.crops.ahead,
         ),
         # Once a month: Commons' files with a tile set ("Pod lupą").
         NightTask("tile sets", service.player.tile_sets_at_night, "Kafle „Pod lupą”", group=cat),

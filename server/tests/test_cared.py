@@ -103,7 +103,7 @@ def test_every_task_has_a_package(service: FrameService) -> None:
     listed = [name for g in view["groups"] for name in g["tasks"]]
     assert sorted(listed) == sorted(t["name"] for t in view["tasks"])
     duplicates = next(g for g in view["groups"] if g["key"] == "duplicates")
-    assert duplicates["tasks"] == ["twins", "gatekeeper", "twins judge", "audit"]
+    assert duplicates["tasks"] == ["twins", "gatekeeper", "twins judge", "audit", "crops"]
 
 
 # -- secrets in the log -------------------------------------------------------------------
