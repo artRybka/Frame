@@ -139,6 +139,34 @@ def test_paper_is_kept_and_the_plate_is_the_alternative() -> None:
     assert without is not None and without[0] == (0.2, 0.2)
 
 
+def test_a_sketchbook_page_is_the_work_not_the_book_around_it() -> None:
+    # Bierstadt's tree (Met, Mateusz 2026-11-14): the book's block listed
+    # as a sheet too, the page chosen; the block is no paper to keep.
+    block = grid([(0.19, 0.1), (0.8, 0.1), (0.8, 0.89), (0.19, 0.89)])
+    page = grid([(0.2, 0.11), (0.79, 0.11), (0.79, 0.88), (0.2, 0.88)])
+    data = {
+        "layers": [{"kind": "sheet", "corners": block}, {"kind": "sheet", "corners": page}],
+        "work": 1,
+        "with_paper": None,
+    }
+    read = read_layers(data)
+    assert read is not None
+    shown, without = read
+    assert shown is not None and shown[0] == (0.2, 0.11) and without is None
+
+
+def test_works_opus_would_not_cut_are_asked_again(service: FrameService) -> None:
+    crops = service.crops
+    state = crops.state()
+    state["asked"] = {
+        "met:1": {"v": 1, "at": "2026-11-14"},  # the judge saw nothing
+        "met:2": {"v": 1, "at": "2026-11-14", "critic": False},  # Opus unsure
+        "met:3": {"v": 1, "broken": True},
+    }
+    crops._save(state)
+    assert set(crops.asked()) == {"met:1", "met:3"}
+
+
 # -- the night -----------------------------------------------------------------------
 
 

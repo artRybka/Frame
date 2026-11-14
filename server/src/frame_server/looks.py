@@ -521,6 +521,17 @@ class Looks:
             return []
         return [f.item.id for f in self.similar(item, ALIKE_MOST)]
 
+    def near_ids(self, item_id: str, limit: int = 40) -> list[str]:
+        """The ids of the works whose numbers lie nearest ``item_id``'s, as
+        close as Szukaj's "Podobne do" shows them (:data:`PICTURE_FLOOR`),
+        whatever they are and wherever they are hidden: the gatekeeper's
+        look-alikes of a cover. Asks Google nothing; none without numbers."""
+        vector = self.index.vector(item_id)
+        if vector is None:
+            return []
+        near = self.index.nearest(vector, limit + 1)
+        return [i for i, score in near if i != item_id and score >= PICTURE_FLOOR][:limit]
+
     def neighbours(self, item_id: str, limit: int = 12) -> list[str]:
         """The ids of works that look most like ``item_id`` (the study's
         candidates of works like it, proposed by the server); none without
