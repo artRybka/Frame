@@ -683,8 +683,10 @@ async def check_cut(
     ``wait``: seconds to wait for it."""
     item = await _work(svc, item_id)
     stored = svc.library.get(item.id)
-    if stored is None:
-        return CutView(changed=False, item=item)
+    if stored is None:  # a museum work only looked at: pooled (Kauffmann, MNW, 2026-11-14)
+        if not svc.crops.wanted(item):
+            return CutView(changed=False, item=item)
+        stored = await run_in_threadpool(svc.importer.add, item.model_copy(update={"pooled": True}))
     future = svc.crops.soon(stored)
     if wait:
         with contextlib.suppress(TimeoutError):
