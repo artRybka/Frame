@@ -102,9 +102,14 @@ final class PaintTests: XCTestCase {
     /// „Wdrażamy oba. Jest super.”
     func testAPrintOrADrawingIsShownInItsLinesOrItsInks() {
         // A print of one colour: a scale of tones in the engraver's lines; in colours: its inks.
-        for text in ["Etching and aquatint", "Engraving", "miedzioryt", "akwaforta, papier", "Woodcut", "drzeworyt", "Kupferstich",
-                     "Radierung", "ets", "Mezzotint", "rycina"] {
+        for text in ["Etching and aquatint", "Engraving", "miedzioryt", "akwaforta, papier", "Kupferstich",
+                     "Radierung", "ets", "Mezzotint", "rycina", "drzeworyt sztorcowy", "Holzstich"] {
             XCTAssertEqual(PaintStyle.of(medium: text, mono: true), .burin, text)
+            XCTAssertEqual(PaintStyle.of(medium: text), .woodblock, text)
+        }
+        // Cut in a block (Mateusz 2026-11-14 20:09, of sketch 41: „Drzeworyt C”): a block of black with its cuts.
+        for text in ["Woodcut", "drzeworyt", "Linocut", "linoryt, papier", "Holzschnitt", "houtsnede"] {
+            XCTAssertEqual(PaintStyle.of(medium: text, mono: true), .woodcut, text)
             XCTAssertEqual(PaintStyle.of(medium: text), .woodblock, text)
         }
         for text in ["Color woodblock print; ink and color on paper", "drzeworyt barwny", "Farbholzschnitt", "kleurenhoutsnede"] {
@@ -136,7 +141,7 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(PaintStyle.of(medium: "machinale druk", classification: "poster", mono: true), .offset)
         // A folding screen is no screenprint; a poster cut in wood is a woodcut.
         XCTAssertNotEqual(PaintStyle.of(medium: "Pair of six-panel folding screens; ink and color on paper"), .screen)
-        XCTAssertEqual(PaintStyle.of(medium: "plakat, linoryt", mono: true), .burin)
+        XCTAssertEqual(PaintStyle.of(medium: "plakat, linoryt", mono: true), .woodcut)
         // A drawing in pen and ink, whatever chalk is under it.
         for text in ["Pen and brown ink, over black chalk", "tusz, papier", "piórko, atrament", "Plume et encre brune", "Feder in Braun",
                      "Ink on paper"] {
@@ -535,6 +540,71 @@ final class PaintTests: XCTestCase {
         XCTAssertLessThan(red(printed), 30)
         XCTAssertGreaterThan(red(done), red(printed) + 25)
         XCTAssertLessThan((0..<60).map { light(done, 30 + Double($0), 13) }.min() ?? 1, 0.5)
+    }
+
+    /// Sketch 41 (Mateusz 2026-11-14 20:09: „Drzeworyt C. Złoto super.”).
+    func testAWoodcutIsABlockWithItsCutsAndTheGoldShinesAsThePhoneTurns() {
+        func light(_ frame: PaintFrame, _ x: Double, _ y: Double) -> Double {
+            let (i, j) = dot(x, y), c = frame.colour(i, j)
+            return PrintPaint.lightness([c.red, c.green, c.blue])
+        }
+        // A woodcut in black: the paper bare where the block ends, the block black with its cuts, and two clearings of paper.
+        let woodcut = shares([("#eee7d8", 0.34), ("#1b1a18", 0.44), ("#5e5b55", 0.13), ("#a8a39a", 0.09)])
+        let strip = WoodcutStrip(shares: woodcut, width: 350, seed: 5)
+        XCTAssertEqual(PaintStyle.woodcut.barTime(woodcut, width: 350), strip.last, accuracy: 0.001)
+        XCTAssertEqual(strip.start, Paint.spans(woodcut.sorted { PrintPaint.lightness($0.rgb) > PrintPaint.lightness($1.rgb) }, width: 350)[1].0,
+                       accuracy: 0.001)
+        XCTAssertEqual(strip.clearings.count, 2)
+        let printed = strip.frame(age: strip.length)
+        XCTAssertGreaterThan(light(printed, strip.start / 2, 13), 0.85)
+        for clearing in strip.clearings {
+            // A clearing is mostly paper: gouge strokes side by side, thin ridges of wood between them.
+            let row = (0..<Int(clearing.rx)).map { light(printed, clearing.x - clearing.rx / 2 + Double($0), clearing.y) }
+            XCTAssertGreaterThan(Double(row.filter { $0 > 0.7 }.count) / Double(row.count), 0.45)
+            XCTAssertLessThan(row.min() ?? 1, 0.4)
+        }
+        // Away from the clearings the darkest tone is black, with only the gouge's thin lines in it.
+        let dark = (0..<200).map { light(printed, 330 - 0.3 * Double($0), 13) }
+        XCTAssertGreaterThan(Double(dark.filter { $0 < 0.3 }.count) / 200, 0.5)
+        // Pulled from the left: half way, the right end is still bare.
+        let half = strip.frame(age: PrintPaint.appear + (strip.length - PrintPaint.appear) * 0.3)
+        XCTAssertGreaterThan(light(half, 340, 13), 0.85)
+
+        // Gold: named in the medium, of a painted bar; its colour the warm yellow of some strength that is no accent.
+        XCTAssertEqual(Gold.kind(medium: "tempera and gold on wood", style: .oil), .leaf)
+        XCTAssertEqual(Gold.kind(medium: "Gum tempera, ink, and gold on paper", style: .gouache), .shell)
+        XCTAssertEqual(Gold.kind(medium: "watercolor and gold paint on parchment", style: .water), .shell)
+        XCTAssertEqual(Gold.kind(medium: "tempera i złoto na desce", style: .oil), .leaf)
+        XCTAssertNil(Gold.kind(medium: "Oil on canvas", style: .oil))
+        XCTAssertNil(Gold.kind(medium: "Folding fan; ink on gold paper", style: .pen))
+        let icon = shares([("#7a2e22", 0.26), ("#c9a24a", 0.34), ("#2f3b55", 0.18), ("#3a2a20", 0.14), ("#d9c8a0", 0.08)])
+        XCTAssertEqual(Gold.colour(icon), 1)
+        XCTAssertNil(Gold.colour(shares([("#7a2e22", 0.5), ("#2f3b55", 0.5)])))
+        let place = try? XCTUnwrap(Gold.place(icon, style: .oil, width: 350, kind: .leaf))
+        // On oil, where the gold's pulls lie: after the red's.
+        XCTAssertEqual(place?.from ?? 0, 344 * 0.26 / 0.92, accuracy: 0.5)
+        let gouache = try? XCTUnwrap(Gold.place(icon, style: .gouache, width: 350, kind: .shell))
+        XCTAssertEqual(gouache?.from ?? 0, Paint.spans(icon, width: 350)[1].0 - 1, accuracy: 0.001)
+        // The light travels along it as the phone turns; held straight it is brightest in the middle.
+        guard let place else { return }
+        for kind in [Gold.Kind.leaf, .shell] {
+            let leaf = GoldLeaf(place: Gold.Place(from: place.from, to: place.to, kind: kind), seed: 5)
+            func bright(_ tilt: Double, _ x: Double) -> Double {
+                let frame = leaf.frame(tilt: tilt), S = Double(PrintPaint.scale)
+                var sum = 0.0
+                for k in 0..<20 {
+                    let c = frame.colour(Int((x - leaf.origin.x) * S), Int((4 + Double(k) - leaf.origin.y) * S))
+                    sum += PrintPaint.lightness([c.red, c.green, c.blue])
+                }
+                return sum / 20
+            }
+            let left = place.from + 8, middle = (place.from + place.to) / 2, right = place.to - 8
+            XCTAssertGreaterThan(bright(0, middle), bright(0, left) + 0.03, "\(kind)")
+            XCTAssertGreaterThan(bright(0.8, right), bright(-0.8, right) + 0.05, "\(kind)")
+            XCTAssertGreaterThan(bright(-0.8, left), bright(0.8, left) + 0.05, "\(kind)")
+            XCTAssertEqual(leaf.frame(tilt: 0).cover(leaf.wide / 2, leaf.high / 2), 1, accuracy: 0.01)
+            XCTAssertEqual(leaf.frame(tilt: 0).cover(1, leaf.high / 2), 0, accuracy: 0.01)
+        }
     }
 
     func testAPaintsSwatchOfAPrintOrADrawingIsASlipOfItsPaper() {

@@ -126,6 +126,8 @@ struct PaintJob: @unchecked Sendable {
             return PaintJob(GouacheStrip(shares: shares, width: width, seed: seed), scale: PrintPaint.scale)
         case .handColoured:
             return PaintJob(HandColouredStrip(shares: shares, width: width, seed: seed), scale: PrintPaint.scale)
+        case .woodcut:
+            return PaintJob(WoodcutStrip(shares: shares, width: width, seed: seed), scale: PrintPaint.scale)
         }
     }
 
@@ -148,6 +150,7 @@ struct PaintJob: @unchecked Sendable {
         case .gouache: return PaintJob(GouacheDab(rgb: rgb, index: index, seed: seed), scale: PrintPaint.scale)
         case .handColoured:
             return PaintJob(LinePatch(rgb: rgb, index: index, seed: seed, tool: .burin), scale: PrintPaint.scale)
+        case .woodcut: return PaintJob(InkStamp(rgb: rgb, index: index, seed: seed, press: .wood), scale: PrintPaint.scale)
         }
     }
 }
@@ -373,12 +376,47 @@ final class DryScribble: @unchecked Sendable {
 /// a painter is made once for what it paints.
 final class PaintJobs {
     private var kept: (key: String, job: PaintJob)?
+    private var gold: (key: String, leaf: GoldLeaf?)?
 
     func job(_ key: String, make: () -> PaintJob) -> PaintJob {
         if let kept, kept.key == key { return kept.job }
         let job = make()
         kept = (key, job)
         return job
+    }
+
+    /// The gold over the bar painted for `key`.
+    func gold(_ key: String, make: () -> GoldLeaf?) -> GoldLeaf? {
+        if let gold, gold.key == key { return gold.leaf }
+        let leaf = make()
+        gold = (key, leaf)
+        return leaf
+    }
+}
+
+/// The gold of a work's bar laid over it (`GoldLeaf`), as the phone is
+/// turned (`Tilt`); with "Ogranicz ruch" as held straight. In the
+/// coordinates of the bar's picture (its paper round it included).
+struct GoldShine: View {
+    let leaf: GoldLeaf
+    @Environment(\.accessibilityReduceMotion) private var still
+
+    var body: some View {
+        let tilt = still ? 0 : Tilt.shared.x
+        let S = CGFloat(PrintPaint.scale)
+        Color.clear
+            .overlay(alignment: .topLeading) {
+                if let image = leaf.frame(tilt: tilt).image {
+                    Image(decorative: image, scale: S)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: CGFloat(leaf.wide) / S, height: CGFloat(leaf.high) / S)
+                        .offset(x: CGFloat(Paint.pad + leaf.origin.x), y: CGFloat(Paint.pad + leaf.origin.y))
+                }
+            }
+            .followsTilt()
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 
@@ -498,9 +536,14 @@ struct PaintedStrip: View {
     var slim: CGFloat = 1
     /// The work's drawn contour (`Item.contour`), round the paint.
     var contour: ContourLine?
+    /// The gold its medium names (`Gold.kind`), laid over its colour once the bar is painted.
+    var gold: Gold.Kind?
 
     @State private var width: CGFloat = 0
     @State private var jobs = PaintJobs()
+    /// When the bar's paint is down and its gold comes.
+    @State private var goldAt: Date?
+    @State private var golden = false
     @Environment(\.colorScheme) private var scheme
 
     /// More colours than this are no bar any more, only specks.
@@ -547,11 +590,31 @@ struct PaintedStrip: View {
                         + shares.map { "\($0.rgb)\($0.weight)" }.joined(separator: ",")
                         + (line.map { "|\($0.rgb)\($0.length)\($0.width)" } ?? "")
                     let takes = style.barTime(shares, width: wide)
-                    Painted(job: jobs.job(key) {
+                    let job = jobs.job(key) {
                         PaintJob.strip(style, shares: shares, width: wide, seed: seed, dark: dark, relief: relief, contour: line)
-                    },
-                            key: key, after: .distantPast, began: { began($0, takes) }, whole: whole)
-                        .scaleEffect(slim)
+                    }
+                    let leaf = jobs.gold(key + "|\(String(describing: gold))") {
+                        gold.flatMap { Gold.place(shares, style: style, width: wide, kind: $0) }.map { GoldLeaf(place: $0, seed: seed) }
+                    }
+                    ZStack {
+                        Painted(job: job, key: key, after: .distantPast, began: { start in
+                            began(start, takes)
+                            goldAt = start.addingTimeInterval(takes)
+                        }, whole: whole)
+                        if let leaf, whole || golden {
+                            GoldShine(leaf: leaf)
+                                .frame(width: job.size.width, height: job.size.height)
+                                .transition(.opacity.animation(.easeIn(duration: 0.5)))
+                        }
+                    }
+                    .scaleEffect(slim)
+                    .task(id: goldAt) {
+                        guard let goldAt else { return }
+                        let wait = goldAt.timeIntervalSinceNow
+                        if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+                        guard !Task.isCancelled else { return }
+                        withAnimation(.easeIn(duration: 0.5)) { golden = true }
+                    }
                 }
             }
     }

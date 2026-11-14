@@ -8,6 +8,12 @@
   „opaque watercolor” i „gum tempera” miniatur) to kryjące, matowe
   pociągnięcia pędzla; grafika kolorowana ręcznie to kreski ryciny z
   luźno położonymi akwarelami jej kolorów.
+- Czarno-biały drzeworyt i linoryt mają pasek jak klocek odbity czernią:
+  wycięcia dłuta jaśniejszych tonów i dwa większe wybrania papieru, w
+  których zostają cienkie grzbiety drewna.
+- Złoto, gdy technika je wymienia (tempera i złoto, złota farba), mieni
+  się na pasku przy przechylaniu telefonu: płatkowe przesuwa się jednym
+  miękkim blaskiem, złota farba dodatkowo błyska drobinkami.
 - Pasek „Kolorystyka” idzie za techniką dzieła, a nie za działem muzeum:
   akwarele, rysunki ołówkiem i tuszem z działów „Prints and Drawings” nie
   są już rysowane jak ryciny, a obrazy z działu „Paintings and Sculpture”

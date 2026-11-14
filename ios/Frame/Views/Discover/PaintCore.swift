@@ -55,6 +55,11 @@ enum PaintStyle: String, Sendable, CaseIterable {
     /// A print coloured by hand: its lines, and loose washes of its
     /// colours over them (`HandColouredStrip`).
     case handColoured
+    /// A woodcut or a linocut in black: a block of ink with the gouge's
+    /// cuts in it and two clearings of bare paper (`WoodcutStrip`; Mateusz
+    /// 2026-11-14 20:09, of sketch 41: „Drzeworyt C”). Was the
+    /// engraver's lines.
+    case woodcut
 
     /// The tool of a work of lines; nil for any other.
     var tool: LineTool? {
@@ -135,7 +140,12 @@ enum PaintStyle: String, Sendable, CaseIterable {
         if has(all, stone) { return oneInk ? .pencil : .litho }
         // A poster that names no other way it was printed ("druk (proces)"): most were printed in offset.
         if has(all, posters), !has(all, prints.filter { !Self.anyPrint.contains($0) }) { return .offset }
-        if has(all, prints, ["ets", "druk"]) { return byHand ? .handColoured : oneInk ? .burin : .woodblock }
+        if has(all, prints, ["ets", "druk"]) {
+            if byHand { return .handColoured }
+            // Cut in the plank, not engraved in the end grain ("drzeworyt sztorcowy", a wood engraving): a block of black.
+            let cut = has(all, woodcuts) && !has(all, endGrain)
+            return oneInk ? (cut ? .woodcut : .burin) : .woodblock
+        }
         // Washes of ink, or ink laid with a brush, before any chalk or pencil under them.
         let washed = has(words, washes) || (has(words, brushes) && words.contains { ink.contains($0) || inkBegins.contains(where: $0.hasPrefix) })
         var inked = false
@@ -219,6 +229,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
         case .wash: return WashStrip.time(shares)
         case .gouache: return GouacheStrip.time(shares.count)
         case .handColoured: return HandColouredStrip.time(shares)
+        case .woodcut: return WoodcutStrip.time(shares.count)
         }
     }
 
@@ -235,6 +246,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
         case .wash: 0.22
         case .gouache: 0.26
         case .handColoured: 0.24
+        case .woodcut: 0.26
         }
         return Self.swatchesFrom * bar + gap * Double(index)
     }
@@ -278,7 +290,12 @@ enum PaintStyle: String, Sendable, CaseIterable {
     private static let prints = ["print", "etching", "engrav", "woodcut", "woodblock", "linocut", "linoryt", "aquatint", "akwatint",
                                  "mezzotint", "drypoint", "monotyp", "drzeworyt", "akwafort", "miedzioryt", "staloryt", "rycin", "sztych",
                                  "grafik", "estamp", "gravure", "houtsne", "radier", "holzschnitt", "kupferstich", "xilogra", "xylogra",
-                                 "incisione", "grabado", "farbholz", "kleurenhout"]
+                                 "incisione", "grabado", "farbholz", "kleurenhout", "holzstich"]
+    /// Cut in a block of wood or lino.
+    private static let woodcuts = ["woodcut", "woodblock", "drzeworyt", "houtsne", "holzschnitt", "xilogra", "xylogra", "linocut", "linoryt",
+                                   "linolschnitt", "linoleum", "linosne"]
+    /// Engraved in the end grain: fine lines, not a block of black.
+    private static let endGrain = ["sztorc", "poprzeczn", "holzstich", "houtgravure"]
     /// What says only that a work is printed, not how.
     private static let anyPrint: Set<String> = ["print", "grafik", "estamp"]
     /// What says a print is in colours.
