@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.108
+
+- Strona playlisty przewija się do końca i nie skacze. Dzieło, którego
+  obraz nie wczytał się na ekranie (muzeum chwilowo odmawia), zostaje
+  kafelkiem ze strzałką zamiast znikać i przesuwać wszystkie karty za
+  nim; szerokie dzieło wchodzi na ekran razem z kartami nad nim. Tak samo
+  w Szukaj, tematach i Propozycjach dnia.
+
 ## 1.145.106
 
 - „Podobne wyglądem” na karcie dzieła stoi nad słowami kluczowymi i
