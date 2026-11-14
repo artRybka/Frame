@@ -286,16 +286,42 @@ struct Cut: Codable, Hashable, Sendable {
         return height > 0 ? width / height : nil
     }
 
-    /// What was around the work, in Polish, for "Pełny kadr".
+    /// What was around the work, in Polish, for "Pełny kadr". The backdrop
+    /// only when it is all there was: a frame or an easel stands in front
+    /// of something anyway ("na sztaludze", not "na sztaludze i na tle",
+    /// Mateusz 2026-11-14).
     var aroundText: String {
         let names: [(String, String)] = [
             ("frame", "w ramie"), ("easel", "na sztaludze"), ("mount", "w passe-partout"),
             ("backdrop", "na tle"), ("colour_chart", "z tablicą barw"), ("paper_margin", "na arkuszu"),
             ("page_text", "na stronie z tekstem"),
         ]
-        let said = names.filter { around.contains($0.0) }.map(\.1)
+        var said = names.filter { around.contains($0.0) }.map(\.1)
+        if said.count > 1 { said.removeAll { $0 == "na tle" } }
         guard !said.isEmpty else { return "" }
         return said.count == 1 ? said[0] : said.dropLast().joined(separator: ", ") + " i " + said.last!
+    }
+
+    /// The line under "Pełny kadr": each sentence from a line of its own,
+    /// a one-letter word ("i", "w", "z") never ending a line and the last
+    /// word never alone on one ("…wykadrowane / dzieło.").
+    static func fullPhotoLine(around: String, cropped: Bool) -> String {
+        let place = around.isEmpty ? "z otoczeniem" : around
+        var sentences = ["Muzeum sfotografowało dzieło \(place)."]
+        if cropped { sentences.append("Prezentowane jest wykadrowane dzieło.") }
+        return sentences.map(bound).joined(separator: "\n")
+    }
+
+    /// Spaces after one-letter words, and before the last word, that do not break.
+    static func bound(_ sentence: String) -> String {
+        let words = sentence.split(separator: " ").map(String.init)
+        guard words.count > 1 else { return sentence }
+        var out = words[0]
+        for i in 1..<words.count {
+            let tie = words[i - 1].count == 1 || i == words.count - 1
+            out += (tie ? "\u{00A0}" : " ") + words[i]
+        }
+        return out
     }
 }
 

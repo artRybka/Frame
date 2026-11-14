@@ -17,7 +17,7 @@ from conftest import jpeg_bytes
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from frame_server import memory
+from frame_server import memory, night
 from frame_server import storage as storage_module
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.config import STATE_KEY
@@ -34,6 +34,7 @@ from frame_server.library.verdict import Why, whys
 from frame_server.player import TILE_WORKS_KEY
 from frame_server.service import FrameService
 from frame_server.storage import MEASURE_MAX_AGE, USAGE_KEY, StorageUsage
+from frame_server.web import app as app_module
 from frame_server.web import create_app, discover_api
 from frame_server.web.compress import GZIP_FROM
 
@@ -405,8 +406,8 @@ def test_the_search_index_is_made_once_when_two_wait_for_it(tmp_path: Path) -> N
         return make()
 
     library._make_search = counted  # type: ignore[method-assign]
-    # A query asks for the index without waiting (made behind) while the
-    # suggestions' index, which waits for it, is making it already.
+    # A new index is asked for behind (as when the one there is worn by
+    # changes) while a thread that waits for it is making it already.
     with library._search_lock:
         library._make_search_later()
         index = library._make_search()
@@ -666,3 +667,153 @@ def test_the_owner_reads_the_servers_memory(tmp_path: Path) -> None:
         assert read["works"] == 0
         assert {"process_mb", "machine_mb", "container_mb"} <= read.keys()
         assert read["process_mb"].get("resident", 1) > 0
+
+
+# -- the start ---------------------------------------------------------------
+
+
+def test_a_list_waits_for_the_search_index_while_it_is_made(tmp_path: Path) -> None:
+    library = Library(tmp_path / "lib.db")
+    _catalogue(library, 6)
+    assert library._search is None
+    found: list[int] = []
+    asking = threading.Thread(
+        target=lambda: found.append(library.query(PlaylistRules(query="rain"))[0])
+    )
+    with library._search_lock:  # another thread is making it
+        asking.start()
+        asking.join(0.3)
+        # Not looked for work after work beside the one that makes it.
+        assert asking.is_alive() and not found
+    asking.join(10)
+    assert found == [6] and library._search is not None
+
+
+def test_discovers_cards_stand_again_after_a_restart(
+    service: FrameService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = service.library
+    cover = [
+        library.upsert(_work(f"met:{n}", title=f"Rain no. {n}", artist=f"Jan Deszcz {n}"))
+        for n in range(4)
+    ]
+    monkeypatch.setattr(discover_api, "_cards", (0.0, {}))
+    monkeypatch.setattr(discover_api, "_cards_from", ())
+    key = discover_api._cards_key(service)
+    discover_api._keep_cards(service, key, {"rain": (7, cover), "snow": (0, [])})
+    library.delete("met:3")  # gone since: left out of its cover
+    assert discover_api.restore_cards(service)
+    stamp, cards = discover_api._cards
+    assert cards == {"rain": (7, cover[:3]), "snow": (0, [])}
+    # Shown as they are: worked out again in the start's own turn, not by
+    # the first visit (as cards after works came in, until they are old).
+    assert not discover_api._cards_stale(service, stamp)
+    assert discover_api._cards_stale(service, stamp - discover_api.CARDS_TTL)
+    assert discover_api._theme_cards(service) is cards
+    # ... giving way to the app's questions between the cards.
+    rested: list[int] = []
+    monkeypatch.setattr(discover_api, "give_way", lambda: rested.append(1))
+    discover_api.cards_after_start(service)
+    assert rested and discover_api._cards[1] is not cards
+    assert discover_api._cards_from == discover_api._cards_key(service)
+    # The round's own cards are the ones kept now.
+    assert (
+        library.get_state(discover_api.CARDS_STATE)["cards"].keys() == discover_api._cards[1].keys()
+    )
+    # Cards there already are not replaced by the kept ones.
+    assert not discover_api.restore_cards(service)
+
+
+def test_cards_of_another_day_or_another_shape_are_not_taken(
+    service: FrameService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = service.library
+    work = library.upsert(_work("met:1", title="Rain", artist="Jan Deszcz"))
+    monkeypatch.setattr(discover_api, "_cards", (0.0, {}))
+    monkeypatch.setattr(discover_api, "_cards_from", ())
+    assert not discover_api.restore_cards(service)  # none kept
+    discover_api._keep_cards(service, discover_api._cards_key(service), {"rain": (1, [work])})
+    kept = library.get_state(discover_api.CARDS_STATE)
+    for other in (
+        {**kept, "day": "2020-01-01"},
+        {**kept, "made": ["a curator's card that is no more"]},
+        {"cards": kept["cards"]},
+        {**kept, "cards": {"rain": "seven"}},
+        {**kept, "cards": {}},
+    ):
+        library.keep_state(discover_api.CARDS_STATE, other)
+        assert not discover_api.restore_cards(service)
+        assert discover_api._cards == (0.0, {})
+    # A round nobody has cards from does not rest: someone waits for it.
+    rested: list[int] = []
+    monkeypatch.setattr(discover_api, "give_way", lambda: rested.append(1))
+    discover_api.cards_after_start(service)
+    assert not rested and discover_api._cards[1]
+
+
+def test_the_starts_work_goes_piece_after_piece_and_past_one_that_fails(
+    service: FrameService, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    done: list[str] = []
+
+    def failing() -> None:
+        raise RuntimeError("no names")
+
+    monkeypatch.setattr(service.player, "drop_spare_copies", lambda: done.append("works"))
+    monkeypatch.setattr(service.player, "top_up", lambda: done.append("suggestions"))
+    monkeypatch.setattr(service.library, "search_index", lambda: done.append("index"))
+    monkeypatch.setattr(service.library, "term_index", failing)
+    monkeypatch.setattr(discover_api, "suggestion_rows", lambda _: done.append("rows"))
+    monkeypatch.setattr(discover_api, "cards_after_start", lambda _: done.append("cards"))
+    monkeypatch.setattr(service.library, "recount", lambda: done.append("counts"))
+    with caplog.at_level("INFO", logger="frame_server.web.app"):
+        app_module.after_start(service)
+    # (The fixture's server does not ask the museums: no topping up.)
+    assert done == ["works", "index", "rows", "cards", "counts"]
+    monkeypatch.setattr(service.settings, "seed_library", True)
+    monkeypatch.setattr(service.library, "term_index", lambda: done.append("terms"))
+    del done[:]
+    app_module.after_start(service)
+    assert done == ["works", "index", "terms", "rows", "cards", "counts", "suggestions"]
+    assert "start: the suggestions' index failed" in caplog.text
+    assert "start: the search index in " in caplog.text
+
+
+def test_the_starts_work_rests_while_the_app_is_answered(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(night, "_answering", 0)
+    started = time.monotonic()
+    night.give_way()
+    assert time.monotonic() - started < 0.05
+    # Until the answer is out...
+    night.answering(1)
+    out = threading.Timer(0.2, night.answering, args=(-1,))
+    out.start()
+    started = time.monotonic()
+    night.give_way(5.0)
+    assert 0.15 <= time.monotonic() - started < 3.0
+    out.join()
+    # ... but not for longer than it is given.
+    night.answering(1)
+    started = time.monotonic()
+    night.give_way(0.2)
+    assert 0.2 <= time.monotonic() - started < 3.0
+
+
+def test_the_apps_questions_are_counted_while_answered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app = create_app(Settings(data_dir=tmp_path, seed_library=False, scheduler=False))
+    monkeypatch.setattr(night, "_answering", 0)
+    seen: list[int] = []
+
+    def rows(_: FrameService) -> list[Any]:
+        seen.append(night._answering)
+        return []
+
+    monkeypatch.setattr(discover_api, "suggestion_rows", rows)
+    with TestClient(app) as client:
+        assert client.get("/api/suggestions").json() == []
+        assert seen == [1] and night._answering == 0
+        assert client.get("/api/no-such-thing").status_code == 404
+        assert client.get("/api/health").status_code == 200
+        assert night._answering == 0

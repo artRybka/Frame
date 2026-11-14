@@ -61,7 +61,6 @@ struct FullPhotoSection: View {
     var busy = false
     let choosePaper: (Bool) -> Void
     let correct: () -> Void
-    let open: () -> Void
 
     private var cut: Cut { item.cut ?? Cut() }
     private var photoAspect: Double {
@@ -98,20 +97,20 @@ struct FullPhotoSection: View {
     }
 
     private var line: String {
-        let around = cut.aroundText
-        let said = around.isEmpty ? "Muzeum sfotografowało dzieło z otoczeniem." : "Muzeum sfotografowało dzieło \(around)."
-        return item.isCropped ? "\(said) Prezentowane jest wykadrowane dzieło." : said
+        Cut.fullPhotoLine(around: cut.aroundText, cropped: item.isCropped)
     }
 
-    /// The photograph whole; a tap opens it large.
+    /// The photograph whole; a tap opens the same corners as "Popraw kadr"
+    /// (Mateusz 2026-11-14).
     private var whole: some View {
-        Button(action: open) {
+        Button(action: correct) {
             // No outline of the cut on it (Mateusz 2026-11-14): just the photograph.
             QuadCrop(ref: photo, photoAspect: photoAspect, quad: nil, height: 112, maxWidth: 150)
                 .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Zdjęcie muzeum w całości")
+        .accessibilityHint("Otwiera poprawianie kadru")
     }
 
     /// One of the two ways a print is shown, as a small picture.
@@ -142,27 +141,6 @@ struct FullPhotoSection: View {
         .buttonStyle(.plain)
         .disabled(busy)
         .accessibilityAddTraits(chosen ? .isSelected : [])
-    }
-}
-
-/// The museum's photograph large, as it came ("Pełny kadr" tapped).
-struct MuseumPhotoView: View {
-    let item: Item
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        ZStack(alignment: .topLeading) {
-            Color.black.ignoresSafeArea()
-            ArtImage(
-                ref: .museumPhoto(item.id, side: 2400, version: item.pictureVersion),
-                placeholder: .clear, maxPixel: 2400, contentMode: .fit
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            Button("Zamknij") { dismiss() }
-                .buttonStyle(.glass)
-                .padding(.horizontal, Theme.gutter)
-                .padding(.top, 6)
-        }
     }
 }
 

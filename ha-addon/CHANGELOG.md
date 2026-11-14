@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.145.124
+
+- Serwer po restarcie i po aktualizacji szybciej wraca do pracy, a to, co
+  pokazuje, zostaje takie samo (listy, szukanie, karty i podpowiedzi
+  porównane jeden do jednego). Pełny start na kopii katalogu (116 tys.
+  dzieł; NAS liczy mniej więcej dwa razy dłużej), licząc od uruchomienia:
+  serwer odpowiada po 10 s zamiast 17 s, ramka, „Teraz” i playlisty
+  dostają odpowiedź po 12 s zamiast 19 s, Odkrywaj po 20 s zamiast 103 s,
+  Propozycje po 33 s zamiast 54 s, pierwsze szukanie po 38 s zamiast
+  48 s, podpowiedzi przy pisaniu w Szukaj po 48 s zamiast 83 s. Późniejsza
+  praca serwera jest tak samo szybka jak dotąd.
+- Serwer zaczyna odpowiadać, zanim pogrupuje dzieła katalogu w prace.
+  Ramka, „Teraz”, ustawienia i playlisty nie czekają już na to
+  grupowanie; listy dzieł czekają na nie jak dotąd.
+- Odkrywaj otwiera się po restarcie od razu z dzisiejszymi kartami
+  zapamiętanymi sprzed restartu. Świeża runda kart dolicza się w tle, w
+  swojej kolejce, i podmienia je po chwili. Gdy tego dnia nie było jeszcze
+  żadnej rundy, karty liczą się przy pierwszym otwarciu jak dotąd.
+- Pytania zadane, zanim powstanie indeks szukania, czekają na niego,
+  zamiast przeglądać cały katalog obok wątku, który go buduje. Jedno i
+  drugie naraz trwało kilka razy dłużej: indeks był gotowy 66 s po
+  uruchomieniu, teraz po ok. 30 s (na NAS po aktualizacji do 1.145.120 po 108 s zamiast 19 s).
+- Prace po starcie idą jedna po drugiej w kolejności potrzeb aplikacji:
+  grupowanie dzieł, indeks szukania, podpowiedzi, Propozycje, karty
+  Odkrywaj, liczniki playlist (dotąd po minucie, obok kart), dobranie
+  Propozycji z muzeów, gdy ich brakuje. Runda kart,
+  na którą nikt nie czeka, ustępuje pytaniom aplikacji. W logu serwera
+  każda z tych prac ma wiersz „start: … in … s”.
+
+## 1.145.123
+
+- „Pełny kadr” na karcie dzieła: każde zdanie zaczyna się od nowego
+  wiersza, a „i”, „w”, „z” nie zostają na końcu wiersza ani ostatnie
+  słowo samo w wierszu. Tło nie jest wymieniane, gdy dzieło stało na
+  sztaludze albo w ramie („na sztaludze”, nie „na sztaludze i na tle”).
+  Dotknięcie zdjęcia otwiera poprawianie kadru, tak jak „Popraw kadr”.
+
 ## 1.145.122
 
 - Kółko „Łączę z serwerem” w lewym górnym rogu znika, gdy serwer odpowie

@@ -12,7 +12,7 @@ import time
 from collections import Counter, OrderedDict
 from collections.abc import AsyncIterator, Callable
 from datetime import date
-from typing import Annotated
+from typing import Annotated, cast
 from weakref import WeakKeyDictionary
 
 import httpx
@@ -78,6 +78,7 @@ from ..library.vocabulary import (
 )
 from ..library.zoom import zooms
 from ..museum_places import PlaceHit, commons_picture
+from ..night import give_way
 from ..player import POOL_SIZE, SUGGESTIONS_KEY, TILE_WORKS_KEY
 from ..service import FrameService
 from .deps import require_owner, require_token, service
@@ -121,6 +122,9 @@ _cards_from: tuple[object, ...] = ()
 _rows: dict[str, tuple[tuple[object, ...], list[SuggestionRow]]] = {}
 #: One worker on the cards at a time.
 _cards_lock = threading.Lock()
+#: The cards as last worked out, kept over a restart: the day, the
+#: curator's cards and each card's count and cover (the works' ids).
+CARDS_STATE = "discover_cards"
 #: Pages of themes kept at most (every card's first page, a few more).
 PAGES_KEPT = 400
 
@@ -356,12 +360,15 @@ def _cover_lost(svc: FrameService) -> bool:
     )
 
 
-def work_out_cards(svc: FrameService, force: bool = False) -> dict[str, tuple[int, list[Item]]]:
+def work_out_cards(
+    svc: FrameService, force: bool = False, between: Callable[[], None] | None = None
+) -> dict[str, tuple[int, list[Item]]]:
     """Every theme's count and cover: a query of the whole
     catalogue each, seconds on a NAS, so done at night (``force``) and in
     the background after the catalogue changed, but for the first time (as
     are the week's themes, once a week, and the cards of "Bo lubisz", from
-    the owner's taste then)."""
+    the owner's taste then). ``between``: called before each card's query
+    (a round nobody waits for gives way to the app's questions)."""
     global _cards, _cards_from
     with _cards_lock:
         _, cards = _cards
@@ -379,6 +386,8 @@ def work_out_cards(svc: FrameService, force: bool = False) -> dict[str, tuple[in
         others = [*mine.values(), *THEMES, *OTHER_ART_THEMES, *colour_themes(svc.library, day)]
         pages = _pages_of(svc.library)
         for found in [*weekly, *others]:
+            if between is not None:
+                between()
             stamp = _page_stamp(svc, day)
             total, items = svc.library.query(
                 found.rules(), sort="good", seed=day.toordinal(), proposing=True
@@ -388,7 +397,58 @@ def work_out_cards(svc: FrameService, force: bool = False) -> dict[str, tuple[in
             pages.keep(_page_key(found, 1, viewer_id()), stamp, total, items[:ROW_SIZE])
         _cards = (time.monotonic(), cards)
         _cards_from = key
+        _keep_cards(svc, key, cards)
         return cards
+
+
+def _keep_cards(
+    svc: FrameService, key: tuple[object, ...], cards: dict[str, tuple[int, list[Item]]]
+) -> None:
+    """The cards written down for the next start (:func:`restore_cards`)."""
+    day, made = cast(tuple[date, tuple[str, ...]], key[0])
+    svc.library.keep_state(
+        CARDS_STATE,
+        {
+            "day": day.isoformat(),
+            "made": list(made),
+            "cards": {k: [total, [i.id for i in cover]] for k, (total, cover) in cards.items()},
+        },
+    )
+
+
+def cards_after_start(svc: FrameService) -> None:
+    """The start's round of cards: giving way to the app's questions when
+    cards are there already (restored: nobody waits for this round)."""
+    work_out_cards(svc, between=give_way if _cards[1] else None)
+
+
+def restore_cards(svc: FrameService) -> bool:
+    """After a start: the cards as last worked out before it, when that was
+    today and with the curator's cards of now, so that Odkrywaj opens at
+    once. The round is a query of the catalogue for every card: the first
+    ``/api/themes`` after a start waited 32 s for it on the NAS, up to
+    213 s while the server was still starting (2026-11-14). They stand as
+    cards do after the catalogue changed (:func:`_cards_stale`): worked out
+    again in the start's own turn (``app.after_start``), not beside the
+    first visit. A cover's work that is gone since is left out until then."""
+    global _cards, _cards_from
+    kept = svc.library.get_state(CARDS_STATE)
+    try:
+        key = _cards_key(svc)[0]
+        if kept is None or (date.fromisoformat(kept["day"]), tuple(kept["made"])) != key:
+            return False
+        cards = {
+            k: (int(total), [i for i in map(svc.library.get, cover) if i is not None])
+            for k, (total, cover) in kept["cards"].items()
+        }
+    except (KeyError, TypeError, ValueError):
+        return False  # written by another version
+    with _cards_lock:
+        if _cards[1] or not cards:
+            return False
+        _cards = (time.monotonic(), cards)
+        _cards_from = (key, None, None)  # of today, of a catalogue that was
+    return True
 
 
 def shown_ids(svc: FrameService) -> set[str]:
@@ -757,14 +817,6 @@ async def themes(svc: Svc) -> list[ThemeCard]:
     return await run_in_threadpool(_theme_list, svc)
 
 
-def warm_up(svc: FrameService) -> None:
-    """Work out what Discover opens with, so its first visit after a start
-    does not wait for it; the suggestions while typing first."""
-    svc.library.term_index()
-    work_out_cards(svc)
-    suggestion_rows(svc)
-
-
 def _theme(key: str, svc: FrameService, page: int = 0) -> Theme:
     """The theme ``key``; its first ``page`` opened marks the curator's
     card as seen (made again the next night)."""
@@ -794,6 +846,8 @@ def _new_artist(svc: FrameService) -> ThemeCard | None:
     with _cards_lock:
         stamp, cards = _cards
         _cards = (stamp, {**cards, found.key: (total, cover)})
+        if _cards_from:  # else no round yet: nothing to keep this one with
+            _keep_cards(svc, _cards_from, _cards[1])
     playlists = svc.library.playlists(viewer_id())
     return _card(svc, found, {found.key: (total, cover)}, playlists)
 

@@ -25,9 +25,8 @@ struct ItemDetailView: View {
     /// 0 when it is not, as the server told it once the card opened or a
     /// copy was picked; nil, the tile's word for it until then.
     @State private var lowKnown: Int?
-    /// "Popraw kadr" on the whole screen; the museum's photograph large.
+    /// "Popraw kadr" on the whole screen (also a tap on "Pełny kadr").
     @State private var correctingCut = false
-    @State private var showingFullPhoto = false
     /// The cut asked of the server (the print's edge: some seconds).
     @State private var cutBusy = false
     /// "Kreatywny restaurator" at work (half a minute).
@@ -203,9 +202,6 @@ struct ItemDetailView: View {
             if let item {
                 CutEditor(item: item) { corners in await setCut(CutUpdate(corners: corners)) }
             }
-        }
-        .fullScreenCover(isPresented: $showingFullPhoto) {
-            if let item { MuseumPhotoView(item: item) }
         }
         .task(id: described) { await findHolder() }
         .task(id: described) { await findMedium() }
@@ -389,8 +385,7 @@ struct ItemDetailView: View {
                 FullPhotoSection(
                     item: item, busy: cutBusy,
                     choosePaper: { paper in Task { await setCut(CutUpdate(paper: paper)) } },
-                    correct: { correctingCut = true },
-                    open: { showingFullPhoto = true }
+                    correct: { correctingCut = true }
                 )
                 .transition(.opacity)
             }

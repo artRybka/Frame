@@ -93,9 +93,6 @@ PL_TEXT = "pl_text"
 #: Share of the search index's entries changed since it was made at which
 #: it is made anew in the background.
 SEARCH_DEAD_SHARE = 0.3
-#: A library this small makes its search index when first asked; a larger
-#: one makes it in the background and searches item after item meanwhile.
-SEARCH_INLINE = 5000
 #: Searches whose whole answer is kept for their next pages (while the
 #: library stays as it is).
 QUERIES_KEPT = 16
@@ -1333,15 +1330,13 @@ class Library:
 
         threading.Thread(target=make, name="search-index", daemon=True).start()
 
-    def search_index(self, wait: bool = True) -> SearchIndex | None:
-        """The catalogue's search index; ``wait``: made now when there is
-        none yet (else None, and it is made in the background)."""
+    def search_index(self) -> SearchIndex | None:
+        """The catalogue's search index, made now when there is none yet
+        (waited for when another thread is making it). None only when
+        asked with the library's lock held while it is being made."""
         index = self._search
         if index is not None:
             return index
-        if not wait:
-            self._make_search_later()
-            return None
         # With the library's lock held, the one being made may wait for it.
         if not self._search_lock.acquire(blocking=not self._lock._is_owned()):  # type: ignore[attr-defined]
             return None
@@ -1794,7 +1789,11 @@ class Library:
             return matches(item, rules, listed, hearts, key, said, titled, polish)
 
         _still_asked()
-        index = self.search_index(wait=len(self._all()) <= SEARCH_INLINE)
+        # Waited for when it is not made yet (after a start): looking through
+        # the whole catalogue beside the thread that makes it took the time
+        # of both, for every question asked meanwhile (the index 108 s on
+        # the NAS in place of 19, 2026-11-14). None only with the lock held.
+        index = self.search_index()
         # A title's words narrow the catalogue as words do (the title is
         # checked by itself after).
         narrowing, narrowed = rules, said
