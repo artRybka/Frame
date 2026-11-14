@@ -31,7 +31,7 @@ import queue
 import threading
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -206,6 +206,11 @@ class NoteJob(ABC):
     model: str
     prompt_version: str
     typical: Usage = Usage(input_tokens=600, cache_read_input_tokens=2000, output_tokens=400)
+    #: Whether a work is :meth:`wanted` and its note :meth:`fresh` follows
+    #: from the work, its note and the settings alone, for every work that
+    #: is no photo sent once (``look``): the count of such a job is kept
+    #: until one of them changes (:meth:`AiWorker.progress`).
+    steady = False
 
     def __init__(self, library: Library, images: ImageCache, config: AiConfigStore) -> None:
         self.library = library
@@ -279,6 +284,21 @@ class NoteJob(ABC):
         return self.estimate_usd(len(items), batch)
 
 
+def _count(job: NoteJob, notes: dict[str, Note], items: Iterable[Item]) -> tuple[int, int, int]:
+    """Of ``items``: with ``job``'s note, waiting for one, refused."""
+    done = waiting = refused = 0
+    for item in items:
+        note = notes.get(item.id)
+        if job.fresh(item, note):
+            done += 1
+            assert note is not None
+            if "refused" in note.data or "failed" in note.data:
+                refused += 1
+        elif job.wanted(item):
+            waiting += 1
+    return done, waiting, refused
+
+
 class Progress(BaseModel):
     """One job's state, for the app."""
 
@@ -317,6 +337,9 @@ class AiWorker:
         self._pending: set[tuple[str, str]] = set()
         self._skipped: set[tuple[str, str]] = set()  # thumbnail failed: not this run
         self._preparing: set[str] = set()
+        #: A steady job's count, with what it was made of and the photos
+        #: sent once, which are counted each time (:meth:`_counted`).
+        self._counts: dict[str, tuple[object, tuple[int, int, int], list[Item]]] = {}
         self._asked: dict[tuple[str, str], tuple[threading.Lock, int]] = {}
         self._paused_until = 0.0
         self._next_sweep = 0.0
@@ -747,17 +770,7 @@ class AiWorker:
 
     def progress(self, kind: str) -> Progress:
         job = self.jobs[kind]
-        notes = self.library.notes(kind)
-        done = waiting = refused = 0
-        for item in self.library.all_items():
-            note = notes.get(item.id)
-            if job.fresh(item, note):
-                done += 1
-                assert note is not None
-                if "refused" in note.data or "failed" in note.data:
-                    refused += 1
-            elif job.wanted(item):
-                waiting += 1
+        done, waiting, refused = self._counted(job)
         batches = [b for b in self._batches() if b["kind"] == kind]
         return Progress(
             done=done,
@@ -767,6 +780,34 @@ class AiWorker:
             batch_done=sum(b.get("done", 0) for b in batches),
             preparing=kind in self._preparing,
         )
+
+    def _counted(self, job: NoteJob) -> tuple[int, int, int]:
+        """How many works have ``job``'s note, wait for one, were refused.
+
+        Konfiguracja asks every 20 s while it is open, and each time the
+        whole catalogue was gone through, a hash of each described work's
+        texts worked out (seconds on the NAS, the audit of 2026-11-14). So
+        the count of a :attr:`~NoteJob.steady` job is kept while nothing
+        it is made of has changed: the works, the notes, the settings.
+        Photos sent once are counted each time: theirs also depends on
+        whether they were shown (``sent_photo_ids``), and they are few."""
+        library = self.library
+        made_of = (library.stamp(), library.notes_version, self.config.config)
+        notes = library.notes(job.kind)
+        kept = self._counts.get(job.kind) if job.steady else None
+        if kept is not None and kept[0] == made_of:
+            counts, items = kept[1], kept[2]
+        else:
+            items = library.all_items()
+            if job.steady:
+                sent = [item for item in items if item.look is not None]
+                counts = _count(job, notes, (item for item in items if item.look is None))
+                self._counts[job.kind] = (made_of, counts, sent)
+                items = sent
+            else:
+                counts = (0, 0, 0)
+        more = _count(job, notes, items)
+        return (counts[0] + more[0], counts[1] + more[1], counts[2] + more[2])
 
     # -- the whole library through the Batch API --------------------------
 

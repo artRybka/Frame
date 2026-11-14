@@ -773,7 +773,6 @@ struct PlaylistEditorView: View {
         if job.done > 0 {
             model.libraryChanged()
             await model.refreshPlaylists()
-            await model.refreshFacets()
         }
     }
 

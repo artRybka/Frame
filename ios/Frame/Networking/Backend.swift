@@ -94,7 +94,6 @@ protocol FrameBackend: Sendable {
     func dequeue(itemID: String) async throws -> PlayerView
     /// "Pomiń": a picture waiting in the queue is not shown this round.
     func skip(itemID: String) async throws -> PlayerView
-    func facets() async throws -> Facets
 
     /// How a picture is cropped for `orientation`, and what can be adjusted;
     /// with `automatic` the crops the server would choose, ignoring saved ones.

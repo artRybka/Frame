@@ -122,7 +122,6 @@ final class AppModel {
     /// The heart each work was last given here, for tiles loaded before
     /// (Szukaj's, after the work's card liked it).
     private(set) var hearts: [String: Bool] = [:]
-    var facets = Facets.empty
     /// Works the server found no picture of anywhere (it answered 410):
     /// grids leave them out until the app starts again.
     private(set) var missingPictures: Set<String> = []
@@ -362,7 +361,6 @@ final class AppModel {
         playlists = []
         playlistDetails = [:]
         themeVisits = [:]
-        facets = .empty
         vocabulary = []
         restoreNow()
         restoreDiscover()
@@ -398,7 +396,6 @@ final class AppModel {
         let settings = Task { try? await backend.settings() }
         let playlists = Task { try? await backend.playlists() }
         let hidden = Task { try? await backend.hiddenItems() }
-        let facets = Task { try? await backend.facets() }
         let panelConfig = Task { try? await backend.panelConfig() }
         let me = Task { () -> Result<Me, Error> in
             do { return .success(try await backend.me()) } catch { return .failure(error) }
@@ -424,7 +421,6 @@ final class AppModel {
         // "Ukryte" is a card in Playlisty too: loaded with them, not only
         // when it is opened.
         if let found = await hidden.value { setHidden(found.items) }
-        self.facets = await facets.value ?? .empty
         self.panelConfig = await panelConfig.value
         rememberNow()
         // The APNs token goes to the server on every start (registerPush).
@@ -875,10 +871,6 @@ final class AppModel {
     private func setHidden(_ value: [ItemSummary]) {
         hidden = value
         if !demoMode { HiddenCache.save(value, server: serverURL) }
-    }
-
-    func refreshFacets() async {
-        if let value = try? await backend.facets() { facets = value }
     }
 
     /// The server's words to search by, asked once; `fresh` asks again (a
