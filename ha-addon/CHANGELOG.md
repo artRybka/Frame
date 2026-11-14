@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.130
+
+- Kadrowanie po wejściu w kartę działa też dla dzieła z muzeum, którego
+  nie było jeszcze w bibliotece (np. otwartego z wyników muzeum). Wcześniej
+  takie dzieło przycinało się dopiero przy drugim wejściu albo w nocy.
+
 ## 1.145.129
 
 - Szkic pod analizą kompozycji (podkład z modelu graficznego) jest ogólniejszy
