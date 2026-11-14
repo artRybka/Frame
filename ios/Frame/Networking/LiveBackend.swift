@@ -799,6 +799,10 @@ struct LiveBackend: FrameBackend {
         try await send("/api/ai/study-refresh", method: "POST")
     }
 
+    func startTextReview(check: Bool, restyle: Bool) async throws -> AiSettings {
+        try await send("/api/ai/text-review", method: "POST", body: TextReviewStart(check: check, restyle: restyle))
+    }
+
     func saveGeminiKey(_ key: String) async throws -> AiSettings {
         try await send("/api/ai/gemini-key", method: "PUT", body: AiKeyUpdate(key: key))
     }

@@ -1566,6 +1566,21 @@ final class AppModel {
         notices.done("Zamówione", "Wyniki w ciągu kilku godzin.")
     }
 
+    /// "Przejrzyj zapisane opisy": the order sent through Claude's Batch.
+    func startTextReview(check: Bool, restyle: Bool) async {
+        do {
+            aiSettings = try await backend.startTextReview(check: check, restyle: restyle)
+        } catch BackendError.http(409, let body) {
+            let said = (try? JSONDecoder().decode([String: String].self, from: Data(body.utf8)))?["detail"]
+            notices.fail("Nie zamówiono", said ?? "Spróbuj później.")
+            return
+        } catch {
+            show(error)
+            return
+        }
+        notices.done("Zamówione", "Wyniki w ciągu kilku godzin.")
+    }
+
     func deleteAiKey() async {
         do {
             aiSettings = try await backend.deleteAiKey()

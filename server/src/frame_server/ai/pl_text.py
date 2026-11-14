@@ -325,6 +325,9 @@ class PolishText(BaseModel):
     style: str = ""
     #: The museum's text was not about the work: a note took its place.
     general: bool = False
+    #: For a translation: whether Haiku found the museum's text to be about
+    #: the work (None: kept before it was asked, ``ai.text_review``).
+    about_work: bool | None = None
 
 
 # Marks of a cut quote: "[...]", "(…)", and a text ending in an ellipsis.
@@ -458,6 +461,11 @@ def clean(data: dict[str, Any], item: Item, facts: Facts | None) -> PolishText |
         sources=sources,
         style=str(data.get("style") or "") if written == "note" else "",
         general=bool(data.get("general")) and written == "note",
+        about_work=(
+            data["about_work"]
+            if written == "translation" and isinstance(data.get("about_work"), bool)
+            else None
+        ),
     )
 
 
@@ -637,7 +645,7 @@ class PlTextJob(NoteJob):
         notes = [
             n
             for n in self.library.notes(KIND).values()
-            if "sources" in n.data and n.data.get("full")
+            if n.data.get("written") == "note" and n.data.get("full")
         ]
         notes.sort(key=lambda n: n.created_at, reverse=True)
         found = []
@@ -674,6 +682,9 @@ class PlTextJob(NoteJob):
             with self._lock:
                 self._titles.pop(item.id, None)
             return
+        if "style" in note.data and description(item):
+            # a note in place of a museum text that is not about the work
+            note = note.model_copy(update={"data": {**note.data, "general": True}})
         text = clean(note.data, item, self.facts(item))
         data = text.model_dump() if text is not None else {"failed": True}
         self.library.save_note(note.model_copy(update={"data": data}))

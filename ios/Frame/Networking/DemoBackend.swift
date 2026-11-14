@@ -79,6 +79,11 @@ actor DemoBackend: FrameBackend {
             waiting: 42, rewriteWaiting: 0, running: false, asked: 0, rewriting: 0,
             found: 0, rewritten: 0, spentUsd: 0, factsUsd: 4.2, rewriteUsd: 1.26
         ),
+        textReview: TextReview(
+            translations: 1240, unchecked: 1180, general: 0, unstyled: 310, running: false,
+            checking: 0, writing: 0, checked: 0, found: 0, written: 0, spentUsd: 0,
+            checkUsd: 0.09, noteUsd: 0.007, generalUsd: 0, restyleUsd: 2.22
+        ),
         reviewCount: 2, monthlyLimitUsd: 5, spentUsd: 0,
         keywordsProgress: .init(done: 0, waiting: 0, refused: 0, batchItems: 0, batchDone: 0, preparing: false),
         plTextProgress: nil, error: nil,
@@ -1985,6 +1990,16 @@ actor DemoBackend: FrameBackend {
             refresh.asked = refresh.waiting
             refresh.running = true
             aiValue.studyRefresh = refresh
+        }
+        return aiValue
+    }
+
+    func startTextReview(check: Bool, restyle: Bool) async throws -> AiSettings {
+        if var review = aiValue.textReview {
+            review.checking = check ? review.unchecked : 0
+            review.writing = restyle ? review.unstyled : 0
+            review.running = review.checking + review.writing > 0
+            aiValue.textReview = review
         }
         return aiValue
     }
