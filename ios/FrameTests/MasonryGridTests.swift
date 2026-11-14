@@ -67,6 +67,31 @@ final class MasonryGridTests: XCTestCase {
         }
     }
 
+    /// A wide work never comes into the lazy list alone under a guessed
+    /// height: it rides with the block above it (the playlist page jumped
+    /// as a wide work came on screen, Mateusz 2026-11-14).
+    func testWideWorksRideWithTheBlockAbove() {
+        let items = works(120)
+        let blocks = Grid.blocks(items)
+        let chunks = Grid.chunks(blocks)
+        XCTAssertTrue(blocks.contains { if case .row = $0 { true } else { false } })
+        XCTAssertTrue(chunks.allSatisfy { !$0.columns.isEmpty })
+        XCTAssertEqual(chunks.flatMap { $0.columns.joined().map(\.id) + $0.rows.map(\.id) }, ids(blocks))
+        XCTAssertEqual(Set(chunks.map(\.id)).count, chunks.count)
+    }
+
+    func testWideWorksAtTheTopStartTheList() {
+        let wide = ItemSummary(
+            id: "pano", kind: .artwork, source: "test", title: "Panorama",
+            artist: "", dateText: "", year: nil, colors: [],
+            width: 4, height: 1, favorite: false
+        )
+        let chunks = Grid.chunks(Grid.blocks([wide] + works(12)))
+        XCTAssertEqual(chunks.first?.rows.map(\.id), ["pano"])
+        XCTAssertEqual(chunks.first?.id, "pano")
+        XCTAssertEqual(chunks.flatMap { $0.columns.joined().map(\.id) + $0.rows.map(\.id) }.count, 13)
+    }
+
     func testOneColumnIsOneBlock() {
         XCTAssertEqual(Grid.blocks(works(30), columns: 1).count, 1)
     }

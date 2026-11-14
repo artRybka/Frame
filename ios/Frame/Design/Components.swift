@@ -455,6 +455,14 @@ struct QueueButton: View {
 /// heights of the cards they hadn't made yet, so the grid grew and shrank
 /// while scrolling (the results jumped back) and could lose its cards
 /// altogether (an empty screen) until scrolled again.
+///
+/// A wide work rides in the lazy list with the block above it, so a short
+/// row never comes in alone under a guessed height (the page jumped as a
+/// wide work came on screen). And the works whose pictures are missing
+/// are left out when the list changes, never under the finger: a picture
+/// that fails on screen keeps its tile (with the arrow to try again)
+/// until the list is loaded again, instead of every card after it moving
+/// over, which at the end of a playlist took the page back up each time.
 struct MasonryGrid<Content: View>: View {
     @Environment(AppModel.self) private var model
     let items: [ItemSummary]
@@ -485,6 +493,34 @@ struct MasonryGrid<Content: View>: View {
             case .row(let item): return item.id
             }
         }
+    }
+
+    /// One place in the lazy list: a block of columns with the wide works
+    /// after it.
+    struct Chunk: Identifiable {
+        var columns: [[ItemSummary]] = []
+        var rows: [ItemSummary] = []
+
+        var id: String {
+            if let first = columns.first?.first { return "columns-" + first.id }
+            return rows.first?.id ?? ""
+        }
+    }
+
+    /// The blocks as the lazy list holds them: each wide row joins the
+    /// block above it; only wide works at the very top start one alone.
+    static func chunks(_ blocks: [Block]) -> [Chunk] {
+        var chunks: [Chunk] = []
+        for block in blocks {
+            switch block {
+            case .columns(let buckets):
+                chunks.append(Chunk(columns: buckets))
+            case .row(let item):
+                if chunks.isEmpty { chunks.append(Chunk()) }
+                chunks[chunks.count - 1].rows.append(item)
+            }
+        }
+        return chunks
     }
 
     /// A column's width on a phone, until the grid is measured.
@@ -547,39 +583,55 @@ struct MasonryGrid<Content: View>: View {
 
     /// The grid's width, for how long the titles are in a column.
     @State private var width: CGFloat = 0
+    /// The works left out for their pictures, as they were when the list
+    /// last changed; nil before the first look.
+    @State private var leftOut: Set<String>?
 
     private var columnWidth: Double {
         guard width > 0 else { return Self.phoneColumn }
         return Double((width - spacing * CGFloat(columns - 1)) / CGFloat(columns))
     }
 
+    /// Works with no picture anywhere, or none for now (the museum turned
+    /// the server away): an empty tile helps nobody. Read from the model
+    /// only until the list is first seen, so a failure later does not move
+    /// the cards.
+    private var shown: [ItemSummary] {
+        if let leftOut {
+            return leftOut.isEmpty ? items : items.filter { !leftOut.contains($0.id) }
+        }
+        return model.missingPictures.isEmpty && model.pausedPictures.isEmpty
+            ? items : items.filter { !model.hidesPicture($0.id) }
+    }
+
     var body: some View {
         LazyVStack(alignment: .leading, spacing: spacing + 6) {
-            // Works with no picture anywhere, or none for now (the museum
-            // turned the server away): an empty tile helps nobody.
-            let shown = model.missingPictures.isEmpty && model.pausedPictures.isEmpty
-                ? items : items.filter { !model.hidesPicture($0.id) }
-            ForEach(Self.blocks(shown, columns: columns, columnWidth: columnWidth)) { block in
-                switch block {
-                case .columns(let buckets):
-                    HStack(alignment: .top, spacing: spacing) {
-                        ForEach(Array(buckets.enumerated()), id: \.offset) { _, column in
-                            VStack(spacing: spacing + 6) {
-                                ForEach(column) { item in
-                                    content(item)
+            ForEach(Self.chunks(Self.blocks(shown, columns: columns, columnWidth: columnWidth))) { chunk in
+                VStack(alignment: .leading, spacing: spacing + 6) {
+                    if !chunk.columns.isEmpty {
+                        HStack(alignment: .top, spacing: spacing) {
+                            ForEach(Array(chunk.columns.enumerated()), id: \.offset) { _, column in
+                                VStack(spacing: spacing + 6) {
+                                    ForEach(column) { item in
+                                        content(item)
+                                    }
                                 }
+                                .frame(maxWidth: .infinity, alignment: .top)
                             }
-                            .frame(maxWidth: .infinity, alignment: .top)
                         }
+                        .environment(\.artCardAspects, 0.45...Self.wide)
                     }
-                    .environment(\.artCardAspects, 0.45...Self.wide)
-                case .row(let item):
-                    content(item)
-                        .environment(\.artCardAspects, Self.wide...Self.panorama)
+                    ForEach(chunk.rows) { item in
+                        content(item)
+                            .environment(\.artCardAspects, Self.wide...Self.panorama)
+                    }
                 }
             }
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .onChange(of: items.map(\.id), initial: true) {
+            leftOut = Set(items.lazy.map(\.id).filter { model.hidesPicture($0) })
+        }
     }
 }
 
