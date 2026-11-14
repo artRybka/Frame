@@ -88,6 +88,10 @@ WORDS = [
     "Shore",
     "Heath",
     "Cove",
+    "Dune",
+    "Marsh",
+    "Grove",
+    "Brook",
 ]
 ARCHIVE = sorted(ART_PHOTO_ARCHIVES)[0]
 
@@ -127,6 +131,21 @@ SPECIMENS: dict[str, tuple[str, dict[str, Any]]] = {
     "projekt architekta": (
         "aic",
         {"classification": "Architectural drawing", "medium": "Pen and ink on paper"},
+    ),
+    # A museum's sketchbook as a whole, perhaps photographed by its cover:
+    # the gatekeeper asks only whether it is (Mateusz 2026-11-14).
+    "szkicownik z muzeum": (
+        "mnk",
+        {
+            "title": "Album {title}",
+            "classification": "Drawing",
+            "medium": "ołówek, papier",
+            "credit": "Muzeum Narodowe w Krakowie, MNK III-r.a-1/1-12",
+        },
+    ),
+    "okładka odłożona przez Strażnika": (
+        "mnk",
+        {"title": "Szkicownik {title}", "classification": "Drawing", "seen_as": "blank"},
     ),
 }
 
@@ -176,6 +195,8 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "mały obraz": ("++-++++++++", "++-++++++++"),
     "kartka szkiców": ("++-++++-++-", "++-++++-++-"),
     "projekt architekta": ("++-++++-++-", "++-++++-++-"),
+    "szkicownik z muzeum": ("+++++++++++", "+++++++++++"),
+    "okładka odłożona przez Strażnika": ("-----------", "++---------"),
 }
 
 #: K1: works the owner kept that the catalogue lists while it

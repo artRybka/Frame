@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.127
+
+- Zdjęcia samych okładek, opraw, grzbietów i pustych kart (szkicowniki,
+  sztambuchy, albumy i książki fotografowane przez muzea w całości, głównie
+  MNK i MNW) są nocą odsiewane jak inne dzieła odłożone przez Strażnika:
+  znikają z Szukaj, „Podobne do”, Odkrywaj, propozycji i studiów. Okładki
+  zaprojektowane przez artystów zostają. Te w Ulubionych i na playlistach
+  zostają, a odłożone można przywrócić w „Do sprawdzenia”.
+
 ## 1.145.125
 
 - Pasek „Kolorystyka” sitodruku to płaskie, kryjące warstwy farby z czystą
