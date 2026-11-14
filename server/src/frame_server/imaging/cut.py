@@ -202,3 +202,40 @@ def same_picture(aspect: float, size: tuple[int, int]) -> bool:
     at another size, not another copy."""
     w, h = size
     return w > 0 and h > 0 and abs(w / h - aspect) <= 0.03 * aspect
+
+
+#: :func:`thin_backdrop`: how far in the work is looked for (share of the
+#: picture's short side), and how many sides must show a strip around it.
+BACKDROP_DEPTH = 0.03
+BACKDROP_SIDES = 2
+
+
+def thin_backdrop(img: Image.Image) -> bool:
+    """Whether a thin strip of something plain runs along at least two of
+    the picture's sides, unlike what lies just inside it: a sheet lying on
+    a white or grey board with only a few pixels of the board showing.
+    Haiku looked at the thumbnail and saw nothing around Perugino's Saint
+    Sebastian (Cleveland, a sheet on white, 2026-11-15); the national
+    museum of Warsaw photographs many prints so. A strip as wide as the
+    depth looked at (a paper margin, a wide board) is no thin strip: the
+    judge sees those."""
+    a = np.asarray(img.convert("RGB"), dtype=np.float32)
+    h, w = a.shape[:2]
+    if min(h, w) < 60:
+        return False
+    k = 2  # the outermost pixel is skipped: resizing rings there
+    d = max(6, round(BACKDROP_DEPTH * min(h, w)))
+    sides = (
+        (a[1 : 1 + k, k:-k], a[d : d + k, d:-d]),
+        (a[-1 - k : -1, k:-k], a[-d - k : -d, d:-d]),
+        (a[k:-k, 1 : 1 + k], a[d:-d, d : d + k]),
+        (a[k:-k, -1 - k : -1], a[d:-d, -d - k : -d]),
+    )
+    found = 0
+    for outer, inner in sides:
+        strip, within = outer.reshape(-1, 3), inner.reshape(-1, 3)
+        colour = np.median(strip, axis=0)
+        plain = float((np.abs(strip - colour).max(axis=1) < 12).mean())
+        unlike = float((np.abs(within - colour).max(axis=1) >= 24).mean())
+        found += plain >= 0.9 and unlike >= 0.6
+    return found >= BACKDROP_SIDES

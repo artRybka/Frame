@@ -17,7 +17,7 @@ from test_ai import FakeAnthropic, _message, fake  # noqa: F401  (fixture)
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import HAIKU, OPUS
 from frame_server.ai.crops import read_layers
-from frame_server.imaging.cut import snap, valid, warp, worth_cutting
+from frame_server.imaging.cut import snap, thin_backdrop, valid, warp, worth_cutting
 from frame_server.library.models import Cut, Item, ItemKind, ItemSummary
 from frame_server.service import FrameService
 
@@ -38,6 +38,17 @@ def photo() -> Image.Image:
     inner = rng.integers(20, 90, size=(y1 - y0, x1 - x0, 3), dtype=np.uint8)
     inner[..., 2] += 80
     a[y0:y1, x0:x1] = inner
+    return Image.fromarray(a)
+
+
+def sheet(strip: int = 9, board: tuple[int, int, int] = (250, 248, 240)) -> Image.Image:
+    """A drawing on toned paper lying on a white board, ``strip`` px of
+    the board showing (Perugino's Saint Sebastian, Cleveland)."""
+    rng = np.random.default_rng(2)
+    a = np.zeros((H, W, 3), dtype=np.uint8)
+    a[:] = board
+    paper = rng.integers(120, 190, size=(H - 2 * strip, W - 2 * strip, 3), dtype=np.uint8)
+    a[strip : H - strip, strip : W - strip] = paper
     return Image.fromarray(a)
 
 
@@ -62,7 +73,9 @@ CORNERS = {
 }
 
 
-def _work(service: FrameService, item_id: str, **fields: Any) -> Item:
+def _work(
+    service: FrameService, item_id: str, picture: Image.Image | None = None, **fields: Any
+) -> Item:
     source, _, source_id = item_id.partition(":")
     fields.setdefault("kind", ItemKind.ARTWORK)
     item = Item(
@@ -75,7 +88,7 @@ def _work(service: FrameService, item_id: str, **fields: Any) -> Item:
         height=H,
         **fields,
     )
-    img = photo()
+    img = picture or photo()
     path = service.images.image_path(item)
     path.parent.mkdir(parents=True, exist_ok=True)
     img.save(path, "JPEG", quality=95)
@@ -137,6 +150,10 @@ def test_paper_is_kept_and_the_plate_is_the_alternative() -> None:
     shown, without = read
     assert shown is not None and shown[0] == (0.1, 0.1)
     assert without is not None and without[0] == (0.2, 0.2)
+    # The plate alone, the sheet filling the photograph (a print, MNW): the
+    # paper stays, the plate is the alternative.
+    alone = {"layers": [{"kind": "plate", "corners": plate}], "work": 0, "with_paper": None}
+    assert read_layers(alone) == (None, [(0.2, 0.2), (0.8, 0.2), (0.8, 0.8), (0.2, 0.8)])
 
 
 def test_a_sketchbook_page_is_the_work_not_the_book_around_it() -> None:
@@ -340,3 +357,103 @@ def test_a_cut_of_another_picture_is_never_applied(service: FrameService) -> Non
     service.images.recut(item)
     with Image.open(service.images.image_path(item)) as kept:
         assert kept.size == (W, H)
+
+
+def test_the_cards_cut_is_not_held_back_while_the_app_is_in_use(service: FrameService) -> None:
+    # As the background's, the card's cut waited for a thumbnail while the
+    # owner browsed Odkrywaj; both workers stood and every card after them
+    # waited 60 s for nothing (1.145.136 on the NAS, 2026-11-14 23:20).
+    from frame_server.library import hosts
+
+    crops = service.crops
+    crops._setup()
+    assert crops._pool is not None
+    seen = crops._pool.submit(lambda: (hosts.purpose(), hosts.deferrable())).result()
+    assert seen == ("kadrowanie", False)
+
+
+# -- a thin strip of backdrop -----------------------------------------------------------
+
+
+def test_a_sheet_on_a_thin_strip_of_board_is_told_from_a_work_to_the_edges() -> None:
+    def small(img: Image.Image) -> Image.Image:
+        img.thumbnail((640, 640))
+        return img
+
+    assert thin_backdrop(small(sheet(strip=9)))
+    assert not thin_backdrop(small(sheet(strip=0)))  # the drawing runs to the edges
+    assert not thin_backdrop(small(photo()))  # a wide board: the judge sees that
+    margin = Image.new("RGB", (W, H), (236, 230, 214))  # a print's wide blank margin
+    margin.paste(Image.fromarray(np.full((300, 400, 3), 60, dtype=np.uint8)), (250, 200))
+    assert not thin_backdrop(small(margin))
+
+
+SHEET_CORNERS = {
+    "layers": [
+        {
+            "kind": "sheet",
+            "corners": grid([(0.01, 0.013), (0.99, 0.013), (0.99, 0.987), (0.01, 0.987)]),
+        }
+    ],
+    "work": 0,
+    "with_paper": None,
+    "confident": True,
+    "note": "A drawing on prepared paper on a white board",
+}
+
+
+def test_a_thin_backdrop_the_judge_missed_is_cut_away(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    # Haiku saw nothing around Perugino's Saint Sebastian (2026-11-15).
+    _work(service, "cma:1", picture=sheet(), pooled=True)
+    answers = iter([{"surround": []}, SHEET_CORNERS])
+    fake.messages.create = lambda **params: (fake.asked.append(params), _message(next(answers)))[1]
+    assert service.crops.now(service.library.get("cma:1"))  # type: ignore[arg-type]
+    assert [p["model"] for p in fake.asked] == [HAIKU, OPUS]
+    assert "backdrop" in fake.asked[1]["messages"][0]["content"][-1]["text"]
+    item = service.library.get("cma:1")
+    assert item is not None and item.cut is not None and item.cut_shown() is not None
+    assert service.crops.asked()["cma:1"]["band"] is True
+
+
+def test_works_judged_before_go_to_opus_when_their_card_opens(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    _work(service, "cma:2", picture=sheet(), pooled=True)  # the judge saw nothing
+    paper = _work(service, "mnw:3", picture=sheet(), pooled=True)  # only paper
+    service.library.update(paper.id, cut=Cut(around=["paper_margin"]))
+    _work(service, "cma:4", picture=sheet(strip=0), pooled=True)  # to the edges
+    crops = service.crops
+    state = crops.state()
+    state["asked"] = {i: {"v": 2, "at": "2026-11-14"} for i in ("cma:2", "mnw:3", "cma:4")}
+    crops._save(state)
+    answers = iter([SHEET_CORNERS, SHEET_CORNERS])
+    fake.messages.create = lambda **params: (fake.asked.append(params), _message(next(answers)))[1]
+    for item_id in ("cma:2", "mnw:3", "cma:4"):
+        crops.now(service.library.get(item_id))  # type: ignore[arg-type]
+    assert [p["model"] for p in fake.asked] == [OPUS, OPUS]  # no judge again, none for cma:4
+    for item_id in ("cma:2", "mnw:3"):
+        item = service.library.get(item_id)
+        assert item is not None and item.cut is not None and item.cut_shown() is not None
+    assert "paper_margin" in service.library.get("mnw:3").cut.around  # type: ignore[union-attr]
+    assert not crops.now(service.library.get("cma:2"))  # type: ignore[arg-type]
+    assert len(fake.asked) == 2
+
+
+def test_works_cared_about_are_swept_once_for_a_thin_backdrop(service: FrameService) -> None:
+    _work(service, "cma:5", picture=sheet(), pooled=True)
+    _work(service, "cma:6", picture=sheet(strip=0), pooled=True)
+    _work(service, "cma:7", picture=sheet(), pooled=True)  # nobody cares
+    crops = service.crops
+    crops.cared = lambda: {"cma:5": 0, "cma:6": 1}
+    state = crops.state()
+    state["asked"] = {i: {"v": 2, "at": "2026-11-14"} for i in ("cma:5", "cma:6", "cma:7")}
+    crops._save(state)
+    assert crops.swept() == 1
+    state = crops.state()
+    assert state["claims"] == {"cma:5": {"around": ["backdrop"]}}
+    assert state["asked"]["cma:5"]["band"] is True
+    assert crops.swept() == 0  # once

@@ -180,6 +180,10 @@ THREAD_PURPOSES: tuple[tuple[str, str], ...] = (
     ("holder", "muzeum dzieła"),
     # The card waits for it: not held back while the app is in use.
     ("work-medium", "technika dzieła"),
+    # The card's cut (ai/crops.py): held back like the background's, it
+    # waited for a thumbnail while the owner browsed, and every card after
+    # it waited behind it (Odkrywaj, 2026-11-14 23:20).
+    ("crops", "kadrowanie"),
     ("real-size", "rozmiary"),
     ("artist-works", "dzieła autora"),
     ("later-works", "dzieła autora"),
