@@ -784,7 +784,7 @@ struct ItemDetailView: View {
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
                 }
-                if let polish { polishOrigin(polish) }
+                if let polish { polishOrigin(polish, original: item.description) }
             }
             .id("about")
         }
@@ -915,25 +915,25 @@ struct ItemDetailView: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    private func polishOrigin(_ polish: PolishText) -> some View {
+    /// ``original``: the museum's own text; without one there is nothing to
+    /// show "Pokaż oryginał" for (Mateusz 2026-11-14), the button is left out.
+    private func polishOrigin(_ polish: PolishText, original: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Image(systemName: "sparkles").foregroundStyle(Theme.inkSoft)
-            Text(polish.isNote ? noteOrigin(polish) : "Tłumaczenie maszynowe")
+            // A note says no more than that (Mateusz 2026-11-14: "tylko
+            // iskierki i „kurator”"), not the model and its sources.
+            Text(polish.isNote ? "Kurator" : "Tłumaczenie maszynowe")
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
-            Button(showOriginal ? "Pokaż po polsku" : "Pokaż oryginał") {
-                withAnimation(.easeInOut) { showOriginal.toggle() }
+            if !original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Button(showOriginal ? "Pokaż po polsku" : "Pokaż oryginał") {
+                    withAnimation(.easeInOut) { showOriginal.toggle() }
+                }
+                .font(.footnote.weight(.semibold))
             }
-            .font(.footnote.weight(.semibold))
         }
         .font(.footnote)
-    }
-
-    private func noteOrigin(_ polish: PolishText) -> String {
-        polish.sources.isEmpty
-            ? "Notka napisana przez model"
-            : "Notka napisana przez model na podstawie: \(polish.sources.joined(separator: ", "))"
     }
 
     // MARK: Sections
