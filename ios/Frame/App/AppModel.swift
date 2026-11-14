@@ -2087,7 +2087,7 @@ final class AppModel {
     /// (`copyID` its own id): its thumbnail and previews follow at once.
     func chooseCopy(itemID: String, copyID: String) async throws -> Item {
         let updated = try await backend.chooseCopy(itemID: itemID, copyID: copyID)
-        pictureSeen(itemID, copy: updated.sharper?.itemId ?? "", changed: true)
+        pictureSeen(itemID, copy: updated.pictureVersion, changed: true)
         return updated
     }
 
@@ -2096,7 +2096,7 @@ final class AppModel {
     /// follow at once, as for a picked copy.
     func restore(itemID: String) async throws -> Item {
         let updated = try await backend.restore(itemID: itemID)
-        pictureSeen(itemID, copy: updated.sharper?.itemId ?? "", changed: true)
+        pictureSeen(itemID, copy: updated.pictureVersion, changed: true)
         return updated
     }
 
@@ -2110,7 +2110,7 @@ final class AppModel {
         let updated = try await backend.bringCopy(
             itemID: itemID, filename: url.lastPathComponent, data: data, origin: origin
         )
-        pictureSeen(itemID, copy: updated.sharper?.itemId ?? "", changed: true)
+        pictureSeen(itemID, copy: updated.pictureVersion, changed: true)
         return updated
     }
 

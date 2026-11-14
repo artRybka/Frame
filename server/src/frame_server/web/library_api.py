@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import io
 import logging
 import threading
 import time
@@ -20,13 +21,14 @@ from PIL import Image
 from pydantic import BaseModel, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
-from ..ai import PolishText
+from ..ai import AiUnavailable, PolishText
 from ..ai.keywords import KIND as KEYWORDS
 from ..ai.keywords import polish_words
 from ..ai.museum_words import leftovers, museum_labels
 from ..ai.pl_text import KIND as PL_TEXT
 from ..copies import CopyLine, Spot
 from ..fsutil import own_files
+from ..imaging.cut import valid
 from ..imaging.grids import GRIDS, MIN_PHOTOS, choose, plan_multi
 from ..imaging.interest import InterestMap, interest_of
 from ..imaging.layout import (
@@ -628,6 +630,107 @@ async def sharpen_item(
         held_by=svc.holders.fill(stored or item).held_by,
         held_at=svc.holders.fill(stored or item).held_at,
     )
+
+
+class CutView(BaseModel):
+    """The work after its card asked whether its photograph is cut down to
+    the work (``ai.crops``): ``changed`` when it was just now."""
+
+    changed: bool
+    item: Item
+
+
+class CutUpdate(BaseModel):
+    """The owner's cut ("Popraw kadr"): the corners of the work as shown
+    (top-left, top-right, bottom-right, bottom-left, as fractions of the
+    museum's photograph), and/or "Z papierem / Sama odbitka"."""
+
+    corners: list[tuple[float, float]] | None = None
+    paper: bool | None = None
+
+
+async def _kept_work(svc: FrameService, item_id: str) -> Item:
+    item = await _work(svc, item_id)
+    stored = svc.library.get(item.id)
+    if stored is None:
+        raise HTTPException(404, "only a work in the library is cut")
+    if not svc.crops.wanted(stored):
+        raise HTTPException(422, "only a museum work's photograph is cut")
+    return stored
+
+
+@router.post("/library/items/{item_id:item}/cut/check", response_model=CutView)
+async def check_cut(
+    item_id: str, svc: Svc, wait: Annotated[float, Query(ge=0, le=90)] = 0
+) -> CutView:
+    """The card opened: a work not looked at yet is looked at in the
+    background, and cut down to the work when something is around it.
+    ``wait``: seconds to wait for it."""
+    item = await _work(svc, item_id)
+    stored = svc.library.get(item.id)
+    if stored is None:
+        return CutView(changed=False, item=item)
+    future = svc.crops.soon(stored)
+    if wait:
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), wait)
+    changed = future.done() and future.exception() is None and bool(future.result())
+    return CutView(changed=changed, item=svc.library.get(item.id) or stored)
+
+
+@router.get("/library/items/{item_id:item}/full")
+async def item_full(
+    item_id: str, svc: Svc, side: Annotated[int | None, Query(ge=200, le=4000)] = None
+) -> Response:
+    """The museum's photograph of the work, whole ("Pełny kadr", and what
+    the corners are set on), ``side`` px long at most when given."""
+    item = await _work(svc, item_id, threads=SHOWN_THREADS)
+    try:
+        path = await to_thread.run_sync(svc.images.museum_photo, item, True, limiter=SHOWN_THREADS)
+    except Gone as err:
+        raise HTTPException(410, f"no picture anywhere: {err}") from err
+    except (httpx.HTTPError, OSError) as err:
+        raise HTTPException(502, f"image unavailable: {err}") from err
+    if side is None:
+        return FileResponse(path, media_type="image/jpeg", headers=NO_STORE)
+
+    def smaller() -> bytes:
+        img = load_image(path).convert("RGB")
+        img.thumbnail((side, side), Image.Resampling.LANCZOS)
+        out = io.BytesIO()
+        img.save(out, "JPEG", quality=88)
+        return out.getvalue()
+
+    data = await to_thread.run_sync(smaller, limiter=SHOWN_THREADS)
+    return Response(data, media_type="image/jpeg", headers=NO_STORE)
+
+
+@router.put("/library/items/{item_id:item}/cut", response_model=Item)
+async def put_cut(item_id: str, update: CutUpdate, svc: Svc) -> Item:
+    """ "Popraw kadr": the owner's corners, or the print with its paper or
+    without ("Sama odbitka": Opus finds the print's edge when it is not
+    known yet)."""
+    stored = await _kept_work(svc, item_id)
+    corners = None
+    if update.corners is not None:
+        corners = valid(update.corners)
+        if corners is None:
+            raise HTTPException(422, "the corners make no picture")
+    if corners is None and update.paper is None:
+        raise HTTPException(422, "nothing to change")
+    try:
+        return await run_in_threadpool(svc.crops.set_by_owner, stored, corners, update.paper)
+    except AiUnavailable as err:
+        raise HTTPException(503, str(err)) from err
+    except (httpx.HTTPError, OSError) as err:
+        raise HTTPException(502, f"image unavailable: {err}") from err
+
+
+@router.delete("/library/items/{item_id:item}/cut", response_model=Item)
+async def delete_cut(item_id: str, svc: Svc) -> Item:
+    """ "Przywróć zdjęcie muzeum": the photograph whole, for good."""
+    stored = await _kept_work(svc, item_id)
+    return await run_in_threadpool(svc.crops.give_up, stored)
 
 
 @router.get("/library/items/{item_id:item}/copies")

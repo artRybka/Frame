@@ -244,7 +244,7 @@ struct ArtCard: View {
         .onAppear {
             ItemPeeks.remember(item, thumb: ref ?? .thumb(item.id))
             // Another copy since the thumbnail was kept: had anew.
-            if let picture = item.picture { model.pictureSeen(item.id, copy: picture) }
+            if let picture = item.pictureVersion { model.pictureSeen(item.id, copy: picture) }
         }
     }
 
@@ -253,7 +253,7 @@ struct ArtCard: View {
     /// pixels (`LowRes`).
     /// A mark follows the title (`title`).
     private var marked: Bool {
-        item.zoom == true || item.restored == true || (item.lowSide ?? 0) > 0
+        item.zoom == true || item.restored == true || (item.lowSide ?? 0) > 0 || item.isCropped
     }
 
     private var title: Text {
@@ -261,6 +261,15 @@ struct ArtCard: View {
             .font(.serif(15, weight: .medium))
             .foregroundStyle(Theme.ink)
         var label = item.title
+        // Cut out of the museum's photograph: where the year stands on the
+        // card, here the first mark (Mateusz 2026-11-14).
+        if item.isCropped {
+            text = text
+                + Text("\u{00A0}").font(.serif(15, weight: .medium))
+                + Text(Cropped.image)
+                    .foregroundStyle(Theme.inkSoft)
+            label += ", \(Cropped.spoken)"
+        }
         if item.zoom == true {
             text = text
                 + Text("\u{00A0}").font(.serif(15, weight: .medium))
@@ -1160,13 +1169,16 @@ struct TitleWithYear: View {
     /// Drawn again by the image model: amber sparkles on a badge in place
     /// of the low resolution's (`LowRes.restoredSymbol`).
     var restored = false
+    /// Cut out of the museum's photograph (`Item.cut`): the crop's symbol
+    /// on a badge right after the year (Mateusz 2026-11-14).
+    var cropped = false
     @Environment(\.colorScheme) private var scheme
     @Environment(\.displayScale) private var scale
 
     var body: some View {
         TitleYear.text(
             title, date: date, font: font, scheme: scheme, scale: scale, zoom: zoom, lowSide: lowSide,
-            restored: restored
+            restored: restored, cropped: cropped
         )
     }
 }
@@ -1188,8 +1200,9 @@ enum LowRes {
     /// the dots.
     static let restoredSymbol = "sparkles"
     static let restoredName = "Kreatywny restaurator"
-    /// The tint of a warning, as "Szukaj lepszej kopii"'s notes.
-    static let tint = Theme.warn
+    /// The marks' grey, not a warning's amber (Mateusz 2026-11-14: the
+    /// low resolution's, the restorer's and the crop's marks grey).
+    static let tint = Theme.inkSoft
 
     /// The server's `LOW_SIDE`, for a copy picked on the card before the
     /// server is asked again.
@@ -1201,11 +1214,22 @@ enum LowRes {
     static func spoken(_ side: Int) -> String { "niska rozdzielczość, \(side) pikseli" }
 }
 
+/// A work cut out of the museum's photograph (a frame, an easel, a board
+/// around it; Mateusz 2026-11-14): the crop's symbol on a badge right
+/// after the year, in the marks' grey (`LowRes.tint`), as the other marks.
+enum Cropped {
+    /// The asset's name (`CroppedCorners.imageset`, 11 pt, a template):
+    /// four corners of a frame around a small picture, "the work alone".
+    static let symbol = "CroppedCorners"
+    static var image: Image { Image(symbol).renderingMode(.template) }
+    static let spoken = "przycięte ze zdjęcia muzeum"
+}
+
 @MainActor
 enum TitleYear {
     static func text(
         _ title: String, date: String, font: Font, scheme: ColorScheme, scale: CGFloat, zoom: Int? = nil,
-        lowSide: Int? = nil, restored: Bool = false
+        lowSide: Int? = nil, restored: Bool = false, cropped: Bool = false
     ) -> Text {
         var text = Text(title).font(font).foregroundStyle(Theme.ink)
         var label = title
@@ -1216,16 +1240,20 @@ enum TitleYear {
             text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)
             label += ", \(date)"
         }
+        if cropped, let badge = badge("", scheme: scheme, scale: scale, symbol: Cropped.symbol, soft: true) {
+            text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)
+            label += ", \(Cropped.spoken)"
+        }
         if let zoom, let badge = badge(zoom > 0 ? "\(zoom)×" : "", scheme: scheme, scale: scale, symbol: zoomSymbol) {
             text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)
             label += zoom > 0 ? ", można przybliżyć \(zoom) razy" : ", można mocno przybliżyć"
         }
         if restored,
-           let badge = badge("", scheme: scheme, scale: scale, symbol: LowRes.restoredSymbol, warn: true) {
+           let badge = badge("", scheme: scheme, scale: scale, symbol: LowRes.restoredSymbol, soft: true) {
             text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)
             label += ", odnowione przez kreatywnego restauratora"
         } else if let lowSide, lowSide > 0,
-           let badge = badge("\(lowSide) px", scheme: scheme, scale: scale, symbol: LowRes.symbol, warn: true) {
+           let badge = badge("\(lowSide) px", scheme: scheme, scale: scale, symbol: LowRes.symbol, soft: true) {
             text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)
             label += ", \(LowRes.spoken(lowSide))"
         }
@@ -1246,11 +1274,11 @@ enum TitleYear {
 
     /// The badge drawn once per date, look and screen.
     private static func badge(
-        _ date: String, scheme: ColorScheme, scale: CGFloat, symbol: String? = nil, warn: Bool = false
+        _ date: String, scheme: ColorScheme, scale: CGFloat, symbol: String? = nil, soft: Bool = false
     ) -> Image? {
-        let key = "\(date)|\(symbol ?? "")|\(warn)|\(scheme == .dark)|\(scale)"
+        let key = "\(date)|\(symbol ?? "")|\(soft)|\(scheme == .dark)|\(scale)"
         if let image = drawn[key] { return image }
-        let renderer = ImageRenderer(content: YearBadge(date: date, dark: scheme == .dark, symbol: symbol, warn: warn))
+        let renderer = ImageRenderer(content: YearBadge(date: date, dark: scheme == .dark, symbol: symbol, soft: soft))
         renderer.scale = scale
         guard let cgImage = renderer.cgImage else { return nil }
         // Decorative: VoiceOver reads the date from the text's label.
@@ -1265,20 +1293,25 @@ enum TitleYear {
 /// thin in the title's colour; a label, not a button (Mateusz 2026-11-04,
 /// variant 9: a filled black one looked like "Szczegóły").
 private struct YearBadge: View {
+    /// The year's line: the badges' height without their padding.
+    static let lineHeight = UIFont.systemFont(ofSize: 12.5, weight: .light).lineHeight
     let date: String
     let dark: Bool
     /// A symbol before the figures ("Pod lupą": a magnifier before "17×").
     var symbol: String? = nil
-    /// In the tint of a warning (`LowRes`), not the title's ink.
-    var warn = false
+    /// In the marks' grey (`LowRes.tint`: the low resolution's, the
+    /// restorer's, the crop's), not the title's ink.
+    var soft = false
 
     var body: some View {
-        let ink = warn
-            ? Color(hex: dark ? 0xE2B45E : 0xB7832A)
+        let ink = soft
+            ? Color(hex: dark ? 0xA79F94 : 0x6E675E)
             : Color(hex: dark ? 0xF1ECE4 : 0x1D1B18)
         HStack(spacing: 3) {
             if symbol == LowRes.symbol {
                 LowRes.image
+            } else if symbol == Cropped.symbol {
+                Cropped.image
             } else if let symbol {
                 Image(systemName: symbol).font(.system(size: 11.5, weight: .regular))
             }
@@ -1289,6 +1322,10 @@ private struct YearBadge: View {
                     .tracking(0.3)
             }
         }
+        // A symbol alone (the crop, the restorer's sparkles) is as tall as
+        // the year's badge: all of them stand on one line, the same top and
+        // bottom (Mateusz 2026-11-14).
+        .frame(minHeight: Self.lineHeight)
         .foregroundStyle(ink)
         .padding(.horizontal, 6)
         .padding(.vertical, 2.5)

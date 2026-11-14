@@ -23,6 +23,11 @@ struct ItemToolbar: ToolbarContent {
     /// "Kreatywny restaurator", under "Szukaj lepszej kopii": for a picture
     /// small for the frame (`LowRes`), drawn again by the image model.
     var restore: (() -> Void)? = nil
+    /// "Popraw kadr" / "Przytnij zdjęcie": the corners of the work on its
+    /// museum photograph, on a screen of their own (Mateusz 2026-11-14).
+    var correctCut: (() -> Void)? = nil
+    /// "Cofnij kadrowanie": the museum's photograph whole again.
+    var undoCut: (() -> Void)? = nil
 
     /// Konfiguracja → Źródła dzieł → Kupowanie w Alamy.
     private var buying: Bool { hasCopies && model.settings?.alamy == true }
@@ -60,6 +65,31 @@ struct ItemToolbar: ToolbarContent {
                     Task {
                         if let updated = await model.setExcluded(item.id, !item.excluded) {
                             changed(updated)
+                        }
+                    }
+                }
+                if correctCut != nil || undoCut != nil {
+                    Divider()
+                    if let correctCut {
+                        Button(action: correctCut) {
+                            Label {
+                                Text(item.isCropped ? "Popraw kadr" : "Przytnij zdjęcie")
+                                if item.isCropped {
+                                    Text(item.cut?.byOwner == true ? "Przycięte przez Ciebie" : "Przycięte automatycznie")
+                                }
+                            } icon: {
+                                Cropped.image
+                            }
+                        }
+                    }
+                    if let undoCut {
+                        Button(action: undoCut) {
+                            Label {
+                                Text("Cofnij kadrowanie")
+                                Text("Całe zdjęcie z muzeum")
+                            } icon: {
+                                Image(systemName: "arrow.uturn.backward")
+                            }
                         }
                     }
                 }
