@@ -214,7 +214,7 @@ struct PlaylistDetailView: View {
             }
             // Only rules that say more than the name; the count and the
             // order head the grid below (Mateusz 2026-11-13, variant B).
-            if playlist.kind == .smart && RulesSummary.hasChips(playlist.rules, name: playlist.name) {
+            if playlist.kind == .smart && RulesSummary.hasChips(playlist.rules, name: playlist.name, names: model.termNames) {
                 RulesSummary(rules: playlist.rules, name: playlist.name)
             }
             if let album = playlist.album {
