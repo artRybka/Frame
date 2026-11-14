@@ -237,6 +237,22 @@ znikają wszędzie poza tym, co zachował właściciel; lista „Do sprawdzenia�
 pozwala je przywrócić. Próba na 248 dziełach: 32 zgłoszenia, krytyk
 potwierdził 20, wszystkie to okładki albo puste karty.
 
+Schematy, plany, mapy i infografiki (od 1.145.134, Mateusz 14.11 przy
+planie sali z 20 lipca 1944 z Openverse: „Na pewno nie chce takich
+obrazków”). Dwie drogi. Plik wektorowy z Commons (SVG, także jego PNG
+rysowany przez Commons) ze źródła zbierającego ma nowy powód `VECTOR`
+(„schemat, mapa albo herb z Commons”, `vocabulary.is_vector_drawing`),
+w `COPIES`, więc znika od razu wszędzie poza tym, co zachował właściciel:
+na katalogu z 13.11 było takich 130 ze 164 dzieł z Openverse i wszystkie
+to schematy, mapy, herby, flagi albo piktogramy. Openverse ich już nie
+podaje (`READINGS["openverse"] = "3"`). Pozostałe zdjęcia ze źródeł
+zbierających Strażnik pyta o `seen_as = "diagram"` („Schemat, plan, mapa
+albo infografika”); dzieła oglądane przez wersję 1 dostają raz tylko to
+pytanie (`gatekeeper.ADDED`, na 13.11 ok. 8,4 tys. dzieł, ok. 0,6 USD),
+a te, których słowa mówią o planie albo mapie (`charted`) albo które
+wyglądają jak odłożony schemat, idą pierwsze. Dzieł muzeów się o to nie
+pyta: stara mapa albo plan rytowany czy malowany jak dzieło zostaje.
+
 ## Jak sprawdzić zmianę reguł
 
 ### 1. Co mówi każde miejsce o każdym rodzaju dzieła

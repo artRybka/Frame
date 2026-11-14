@@ -50,8 +50,9 @@ READINGS: dict[str, str] = {
     # 4: archive papers and chemical diagrams left out; 5: archives'
     # documents, backs of paintings and museums' objects too.
     "wmc": "5",
-    # 2026-11-09: searches ask for digitised artworks only, no illustrations.
-    "openverse": "2",
+    # 2026-11-09: searches ask for digitised artworks only, no illustrations;
+    # 3 (2026-11-14): Commons' vector files (diagrams, maps, crests) left out.
+    "openverse": "3",
     # 2026-11-09: Foto Marburg's photographs of works left out; 3: and
     # the Hertziana's; 4: types in every language and as AAT links; 5: one
     # kind asked by its ``what``, posters found so typed (2026-11-10); 6:
