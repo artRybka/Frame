@@ -114,6 +114,23 @@ def has_phrase(
     return _pattern(wanted).search(text) is not None
 
 
+def word_start_of(phrase: str) -> str | None:
+    """What a word of a folded text must start with for the text to have
+    the folded ``phrase``, as :func:`has_phrase` finds it or as it is
+    written at a word's start: the stem of its first word. None when that
+    cannot be told (no word in it, or a sign before its first word)."""
+    found = _WORD.findall(phrase)
+    if not found or not phrase.startswith(found[0]) or fold(phrase) != phrase:
+        return None
+    return _stem(found[0])
+
+
+def word_starts(folded: str, letters: int) -> set[str]:
+    """The first ``letters`` letters (fewer of a shorter word) of each word
+    of a text that is folded already."""
+    return {word[:letters] for word in _WORD.findall(folded)}
+
+
 def fts(query: str) -> str:
     """An FTS5 query of ``query``'s tokens, all of which must be there:
     each word quoted, each phrase as a phrase; nothing typed can be read as

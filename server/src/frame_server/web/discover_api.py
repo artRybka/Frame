@@ -41,7 +41,7 @@ from ..library.museums import places_in
 from ..library.phrases import quote
 from ..library.places import NAME as NAME_KEY
 from ..library.places import OWN, QID, known_places, migrate_sources
-from ..library.repo import Hidden, Library, says
+from ..library.repo import Abandoned, Hidden, Library, asked_by, says
 from ..library.search import MuseumSearch, fill_card
 from ..library.themes import (
     CARD_MIN,
@@ -1103,7 +1103,13 @@ async def terms(
         return _TERMS_ASKED.get(who) != turn
 
     def answer() -> list[TermHit]:
-        return [] if gone() else _term_hits(svc, q, limit, gone)
+        if gone():
+            return []
+        try:
+            with asked_by(gone):  # a count under way stops with the next letter
+                return _term_hits(svc, q, limit, gone)
+        except Abandoned:
+            return []
 
     return await to_thread.run_sync(answer, limiter=TERM_THREADS)
 

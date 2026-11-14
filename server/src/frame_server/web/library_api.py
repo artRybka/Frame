@@ -308,7 +308,9 @@ def list_items(
         raise HTTPException(409, "Szukanie wyglądem is not ready")
     if rules.like and not svc.looks.enabled():
         raise HTTPException(409, "Szukanie wyglądem is off")
-    total, items = svc.library.query(rules, sort=sort, offset=offset, limit=limit, seed=seed)
+    total, items = svc.library.query(
+        rules, sort=sort, offset=offset, limit=limit, seed=seed, paged=True
+    )
     if rules.query.strip() or rules.title or rules.artists:
         # Its artists' pictures laid over each other: copies under other
         # titles and details gone by the next look (library/twins.py).
