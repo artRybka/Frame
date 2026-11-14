@@ -7,7 +7,7 @@ import time
 import httpx
 import numpy as np
 from conftest import jpeg_bytes
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from frame_server.imaging.color import linear_to_oklab, u8_to_linear
 from frame_server.library import (
@@ -921,6 +921,22 @@ def test_a_white_that_stands_out_is_among_the_colours() -> None:
     assert not any(s.accent for s in analyse(Image.fromarray(pale)).swatches)
     # One tint and its paper is one tint: nothing is added to an etching.
     assert not any(s.accent for s in analyse(_etching([(238, 226, 198)])).swatches)
+
+
+def test_the_white_line_of_a_black_poster_is_among_its_colours() -> None:
+    # Mateusz 2026-11-14 19:26, of Lex Drewinski's black and white
+    # screenprint, whose bar had a black and two greys: „Myślę że musimy
+    # uwzględniać biel?”. A picture of one tone, but a dark one: its white
+    # stands out and is no paper.
+    poster = Image.new("RGB", (220, 300), (26, 23, 23))
+    # A profile drawn in one white zigzag line.
+    profile = [(80, 20), (110, 80), (100, 120), (130, 160), (70, 170), (150, 290)]
+    ImageDraw.Draw(poster).line(profile, fill=(232, 230, 228), width=6)
+    swatches, tags, _ = analyse(poster)
+    assert "monochrome" in tags
+    white = [s for s in swatches if s.accent]
+    assert len(white) == 1 and min(int(white[0].hex[i : i + 2], 16) for i in (1, 3, 5)) > 185
+    assert "accent:white" in tags
 
 
 def test_a_stamp_on_an_etching_is_no_accent() -> None:

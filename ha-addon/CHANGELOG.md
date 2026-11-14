@@ -8,6 +8,9 @@
   znów mają pasek. Drzeworyt barwny czy litografia barwna dostają farby
   nawet wtedy, gdy kolory na zdjęciu wyszły wyblakłe. Plakat opisany tylko
   jako „druk” ma pasek offsetu.
+- Biel, która wybija się w ciemnym dziele jednobarwnym (biała linia na
+  czarnym plakacie), jest na pasku jako akcent i daje się znaleźć jako
+  „Biel · akcent”. Po aktualizacji serwer raz przelicza kolory biblioteki.
 
 ## 1.145.125
 
