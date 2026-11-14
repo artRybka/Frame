@@ -54,7 +54,8 @@ final class PlaylistScrollTests: XCTestCase {
     }
 
     private func detail(_ model: AppModel) async throws -> PlaylistDetail {
-        let demo = try XCTUnwrap(try await model.backend.playlists().first { $0.kind == .smart && !$0.isFavorites })
+        let playlists = try await model.backend.playlists()
+        let demo = try XCTUnwrap(playlists.first { $0.kind == .smart && !$0.isFavorites })
         var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(demo)) as? [String: Any])
         let items = Self.works(51)
         json["id"] = Self.playlistID
