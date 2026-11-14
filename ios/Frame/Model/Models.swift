@@ -1547,6 +1547,9 @@ struct AiSettings: Codable, Hashable, Sendable {
     /// The studies written before the facts from the web, filled in at a
     /// tap; nil from older servers.
     var studyRefresh: StudyRefresh? = nil
+    /// "Przejrzyj zapisane opisy": the Polish texts kept, looked over at a
+    /// tap; nil from older servers.
+    var textReview: TextReview? = nil
     /// Works on "Do sprawdzenia"; nil from older servers.
     var reviewCount: Int? = nil
     var monthlyLimitUsd: Double
@@ -1634,6 +1637,38 @@ struct StudyRefresh: Codable, Hashable, Sendable {
     /// About what the facts of those waiting cost, and their new texts (at most).
     var factsUsd: Double
     var rewriteUsd: Double
+}
+
+/// "Przejrzyj zapisane opisy" (Mateusz 2026-11-14): the translations kept
+/// before Haiku said whether the museum's text is about the work checked,
+/// with Sonnet's note where it is not; the notes written before the five
+/// styles written anew. Both through Claude's Batch, at a tap.
+struct TextReview: Codable, Hashable, Sendable {
+    /// Translations kept; not checked yet; found not about the work with
+    /// their note still to come; notes in the old style.
+    var translations: Int
+    var unchecked: Int
+    var general: Int
+    var unstyled: Int
+    /// An order is under way: checks and notes in it.
+    var running: Bool
+    var checking: Int
+    var writing: Int
+    /// So far: checked, found not about the work, notes written, the cost.
+    var checked: Int
+    var found: Int
+    var written: Int
+    var spentUsd: Double
+    /// About what each step costs now, and one note.
+    var checkUsd: Double
+    var noteUsd: Double
+    var generalUsd: Double
+    var restyleUsd: Double
+}
+
+struct TextReviewStart: Encodable, Sendable {
+    var check: Bool
+    var restyle: Bool
 }
 
 /// Only what is set changes.

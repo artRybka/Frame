@@ -295,6 +295,9 @@ protocol FrameBackend: Sendable {
     /// "Uzupełnij wcześniejsze studia": the order sent (409: no key, the
     /// month's limit, nothing ordered).
     func startStudyRefresh() async throws -> AiSettings
+    /// "Przejrzyj zapisane opisy": the order queued (409: no key, the
+    /// month's limit, nothing to look over).
+    func startTextReview(check: Bool, restyle: Bool) async throws -> AiSettings
     func deleteAiKey() async throws -> AiSettings
     /// Google's key for the image model; the server checks it with Google
     /// before keeping it.

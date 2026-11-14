@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.112
+
+- Konfiguracja → Claude: „Przejrzyj zapisane opisy”. Pokazuje, ile jest
+  zapisanych tłumaczeń opisów muzeów i notek w starym stylu, i ile
+  kosztuje każdy krok. „Sprawdź tłumaczenia”: Haiku sprawdza, czy tekst
+  muzeum mówi o samym dziele; gdzie nie (np. życiorys artysty), Sonnet
+  pisze notkę w jego miejsce. „Przepisz notki w nowych stylach”: notki
+  sprzed stylów pisze Sonnet od nowa. Oba kroki przez pakiety Anthropic
+  (połowa ceny), do czasu wyników zostają dotychczasowe teksty.
+
 ## 1.145.111
 
 - Własne notki o dziełach (gdy muzeum nie daje opisu) piszą się w pięciu

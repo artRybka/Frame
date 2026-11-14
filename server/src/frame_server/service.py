@@ -31,6 +31,7 @@ from .ai.redraw import PenJob
 from .ai.refresh import StudyRefresh
 from .ai.search_words import SearchWords
 from .ai.study import StudyJob
+from .ai.text_review import TextReview
 from .ai.twins_judge import NightJudge
 from .ai.web_facts import WebFacts
 from .albums import Albums
@@ -303,6 +304,8 @@ class FrameService:
         self.ai.register(KeywordsJob(self.library, self.images, self.ai_config))
         self.pl_text = PlTextJob(self.library, self.images, self.ai_config)
         self.ai.register(self.pl_text)
+        # The Polish texts kept looked over at the owner's tap (Konfiguracja).
+        self.text_review = TextReview(self.library, self.claude, self.pl_text)
         # Discover's work of the day and its page.
         self.daily = Daily(
             self.library,
