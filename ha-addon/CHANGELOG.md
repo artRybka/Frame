@@ -65,6 +65,11 @@
   180 ms na literę, te same tytuły w tej samej kolejności (porównane na
   865 pytaniach).
 
+## 1.145.116
+
+- „Pełny kadr” na karcie dzieła pokazuje zdjęcie muzeum bez przerywanej
+  linii („mróweczek”) wokół wykadrowanego dzieła.
+
 ## 1.145.115
 
 - Na karcie dzieła „Pełny kadr”, „Fragmenty” i „Detale” stoją pod
