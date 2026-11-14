@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.116
+## 1.145.117
 
 - Podpowiedzi w Szukaj nadążają za pisaniem. Gdy dochodzi kolejna litera,
   serwer od razu przerywa liczenie dla poprzedniej (dotąd liczył do końca,
@@ -20,6 +20,13 @@
   zamiast przeglądu wszystkich 117 tys. tytułów: średnio 25 ms zamiast
   180 ms na literę, te same tytuły w tej samej kolejności (porównane na
   865 pytaniach).
+
+## 1.145.115
+
+- Na karcie dzieła „Pełny kadr”, „Fragmenty” i „Detale” stoją pod
+  kolorystyką, a nie zaraz pod przyciskami. W „Pełnym kadrze” nie ma już
+  dopisku „zdjęcie muzeum”, a zdanie pod miniaturą kończy się słowami
+  „Prezentowane jest wykadrowane dzieło”.
 
 ## 1.145.114
 
