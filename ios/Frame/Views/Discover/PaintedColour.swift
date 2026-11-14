@@ -116,7 +116,7 @@ struct PaintJob: @unchecked Sendable {
             return PaintJob(size: strip.size, length: drawn.length) { drawn.image(age: $0) }
         case .burin, .pen, .pencil:
             return PaintJob(LineStrip(shares: shares, width: width, seed: seed, tool: style.tool ?? .burin), scale: PrintPaint.scale)
-        case .woodblock, .litho:
+        case .woodblock, .litho, .screen, .offset:
             return PaintJob(InkStrip(shares: shares, width: width, seed: seed, press: style.press ?? .wood), scale: PrintPaint.scale)
         case .photo:
             return PaintJob(PhotoStrip(shares: shares, width: width, seed: seed), scale: PrintPaint.scale)
@@ -134,7 +134,7 @@ struct PaintJob: @unchecked Sendable {
             return PaintJob(size: scribble.size, length: DryScribble.length) { scribble.image(age: $0) }
         case .burin, .pen, .pencil:
             return PaintJob(LinePatch(rgb: rgb, index: index, seed: seed, tool: style.tool ?? .burin), scale: PrintPaint.scale)
-        case .woodblock, .litho:
+        case .woodblock, .litho, .screen, .offset:
             return PaintJob(InkStamp(rgb: rgb, index: index, seed: seed, press: style.press ?? .wood), scale: PrintPaint.scale)
         case .photo:
             return PaintJob(PhotoChip(rgb: rgb, index: index, seed: seed), scale: PrintPaint.scale)

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.125
+
+- Pasek „Kolorystyka” sitodruku to płaskie, kryjące warstwy farby z czystą
+  krawędzią szablonu, także dla sitodruku czarno-białego, który dotąd
+  dostawał kreskowanie kredką. Offset i plakat bez podanej techniki mają
+  płaskie farby, a jasne odcienie z kropek rastra. Litografia bez zmian.
+
 ## 1.145.124
 
 - Serwer po restarcie i po aktualizacji szybciej wraca do pracy, a to, co
