@@ -195,7 +195,7 @@ class Cut(BaseModel):
     #: when it is known: shown with ``paper`` off.
     plate: list[tuple[float, float]] | None = None
     #: Prints and drawings keep their paper unless the owner says otherwise
-    #: ("Z papierem / Sama odbitka").
+    #: ("Pokaż z marginesem / bez marginesu").
     paper: bool = True
     #: "auto" (the model) or "owner" (corrected or chosen in the app).
     by: Literal["auto", "owner"] = "auto"
@@ -217,8 +217,8 @@ class Cut(BaseModel):
 
     @property
     def has_paper(self) -> bool:
-        """A print or drawing on its sheet: the app's "Z papierem / Sama
-        odbitka"."""
+        """A print or drawing on its sheet: the app's "Pokaż z marginesem /
+        bez marginesu"."""
         return self.plate is not None or bool({"paper_margin", "page_text"} & set(self.around))
 
 

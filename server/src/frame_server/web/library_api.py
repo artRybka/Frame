@@ -658,7 +658,7 @@ class CutView(BaseModel):
 class CutUpdate(BaseModel):
     """The owner's cut ("Popraw kadr"): the corners of the work as shown
     (top-left, top-right, bottom-right, bottom-left, as fractions of the
-    museum's photograph), and/or "Z papierem / Sama odbitka"."""
+    museum's photograph), and/or "Pokaż z marginesem / bez marginesu"."""
 
     corners: list[tuple[float, float]] | None = None
     paper: bool | None = None
@@ -725,7 +725,7 @@ async def item_full(
 @router.put("/library/items/{item_id:item}/cut", response_model=Item)
 async def put_cut(item_id: str, update: CutUpdate, svc: Svc) -> Item:
     """ "Popraw kadr": the owner's corners, or the print with its paper or
-    without ("Sama odbitka": Opus finds the print's edge when it is not
+    without ("bez marginesu": Opus finds the print's edge when it is not
     known yet)."""
     stored = await _kept_work(svc, item_id)
     corners = None

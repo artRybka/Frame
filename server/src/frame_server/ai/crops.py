@@ -18,7 +18,7 @@ night's other checks ask theirs (:class:`.critic_night.CriticNight`):
 
 Paper is never cut by itself (a poster's printed line, a page around an
 illustration, a print's margin were the trial's only mistakes): a print or
-drawing keeps its sheet; without it ("Sama odbitka") only when the owner
+drawing keeps its sheet; without it ("bez marginesu") only when the owner
 asks, then Opus is asked at once. The same is done when a card opens on a
 work not looked at yet (:meth:`Crops.soon`). The owner corrects the corners
 or gives the cut up in the app; a work he has set is never cut again by
@@ -295,7 +295,7 @@ class Crops(CriticNight):
         if CUT_AROUND & set(around):
             return {"around": around}
         if PAPER & set(around) and item.cut is None:
-            # Only paper: nothing cut, but the card offers "Sama odbitka".
+            # Only paper: nothing cut, but the card offers "Pokaż bez marginesu".
             self.library.update(item.id, cut=Cut(around=around, picture=item.picture_key()))
         return None
 
@@ -389,7 +389,7 @@ class Crops(CriticNight):
         self, item: Item, corners: Quad | None = None, paper: bool | None = None
     ) -> Item:
         """The owner's corners (of the work as shown, with its paper or
-        without), or his "Z papierem / Sama odbitka". Without the sheet when
+        without), or his "Pokaż z marginesem / bez marginesu". Without the sheet when
         no plate is known yet: Opus is asked for it now."""
         old = item.cut if item.cut is not None and not self.stale(item) else None
         with Image.open(self.images.museum_photo(item, urgent=True)) as img:

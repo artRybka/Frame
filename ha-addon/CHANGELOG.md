@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.135
+
+- „Pełny kadr” prac na papierze wygląda jak przy obrazach: zdjęcie muzeum,
+  obok zdanie, co muzeum sfotografowało i co jest pokazywane (np. „Muzeum
+  sfotografowało pastel z marginesem kartki. Prezentowany jest pastel bez
+  marginesu.”), a pod nim „Pokaż z marginesem” albo „Pokaż bez marginesu”
+  i „Popraw kadr”. Zamiast dwóch miniatur „Z papierem” i „Sama odbitka”.
+  Pracę nazywa technika: odbitka, pastel, akwarela, gwasz, rysunek, plakat
+  albo dzieło.
+
 ## 1.145.134
 
 - Schematy, plany, mapy i infografiki znikają z katalogu. Pliki wektorowe

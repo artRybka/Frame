@@ -250,9 +250,9 @@ struct SharperCopy: Codable, Hashable, Sendable {
 struct Cut: Codable, Hashable, Sendable {
     /// The work as shown (a print with its paper); nil, the photograph whole.
     var work: [[Double]]? = nil
-    /// A print without its paper ("Sama odbitka"), when known.
+    /// A print without its paper ("bez marginesu"), when known.
     var plate: [[Double]]? = nil
-    /// "Z papierem" (true) or "Sama odbitka".
+    /// "z marginesem" (true) or "bez marginesu".
     var paper: Bool = true
     /// "auto" (the model) or "owner".
     var by: String = "auto"
@@ -266,7 +266,7 @@ struct Cut: Codable, Hashable, Sendable {
 
     var shown: [[Double]]? { !paper && plate != nil ? plate : work }
     var byOwner: Bool { by == "owner" }
-    /// A print or drawing on its sheet: "Z papierem / Sama odbitka".
+    /// A print or drawing on its sheet: "Pokaż z marginesem / bez marginesu".
     var hasPaper: Bool { plate != nil || around.contains("paper_margin") || around.contains("page_text") }
 
     /// The picture's version: the copy's id, and the cut's stamp after "|".
@@ -312,6 +312,36 @@ struct Cut: Codable, Hashable, Sendable {
         return sentences.map(bound).joined(separator: "\n")
     }
 
+    /// The line under "Pełny kadr" for a work on paper (Mateusz 2026-11-14,
+    /// layout 1): what the museum photographed, then whether the work is
+    /// shown with its paper's margin or without. The work named by its
+    /// technique ("pastel", "odbitkę"), "dzieło" when it says nothing.
+    func paperLine(medium: String) -> String {
+        let work = PaperWork(medium: medium, around: around)
+        var places = Self.places(around.filter { $0 != "paper_margin" && $0 != "page_text" })
+        places.append(around.contains("page_text") ? "na stronie z tekstem" : "z marginesem kartki")
+        let shown = paper ? "z marginesem" : "bez marginesu"
+        return [
+            "Muzeum sfotografowało \(work.accusative) \(Self.joined(places)).",
+            "\(work.shownAs) jest \(work.name) \(shown).",
+        ].map(Self.bound).joined(separator: "\n")
+    }
+
+    private static func places(_ around: [String]) -> [String] {
+        let names: [(String, String)] = [
+            ("frame", "w ramie"), ("easel", "na sztaludze"), ("mount", "w passe-partout"),
+            ("backdrop", "na tle"), ("colour_chart", "z tablicą barw"),
+        ]
+        var said = names.filter { around.contains($0.0) }.map(\.1)
+        if said.count > 1 { said.removeAll { $0 == "na tle" } }
+        return said
+    }
+
+    private static func joined(_ said: [String]) -> String {
+        guard let last = said.last else { return "" }
+        return said.count == 1 ? last : said.dropLast().joined(separator: ", ") + " i " + last
+    }
+
     /// Spaces after one-letter words, and before the last word, that do not break.
     static func bound(_ sentence: String) -> String {
         let words = sentence.split(separator: " ").map(String.init)
@@ -322,6 +352,48 @@ struct Cut: Codable, Hashable, Sendable {
             out += (tie ? "\u{00A0}" : " ") + words[i]
         }
         return out
+    }
+}
+
+/// A work on paper named by its technique, for "Pełny kadr": "pastel",
+/// "odbitka", "akwarela"… in the forms the sentence wants.
+struct PaperWork: Equatable {
+    var name: String
+    var accusative: String
+    /// "Prezentowany" / "Prezentowana" / "Prezentowane".
+    var shownAs: String
+
+    private static let kinds: [([String], PaperWork)] = [
+        (["plakat", "poster", "affiche", "affisch"], PaperWork(name: "plakat", accusative: "plakat", shownAs: "Prezentowany")),
+        (["litograf", "lithograph", "akwafort", "etching", "drzeworyt", "woodcut", "woodblock", "miedzioryt", "engrav", "rycin",
+          "grafik", "print", "odbitk", "mezzotint", "aquatint", "akwatint", "linoryt", "linocut", "sitodruk", "screenprint",
+          "serigraf", "drypoint", "sucha igla", "staloryt", "kseroryt"],
+         PaperWork(name: "odbitka", accusative: "odbitkę", shownAs: "Prezentowana")),
+        (["pastel"], PaperWork(name: "pastel", accusative: "pastel", shownAs: "Prezentowany")),
+        (["gouach", "gwasz", "bodycol"], PaperWork(name: "gwasz", accusative: "gwasz", shownAs: "Prezentowany")),
+        (["watercol", "aquarel", "akwarel", "acuarel", "acquerel"], PaperWork(name: "akwarela", accusative: "akwarelę", shownAs: "Prezentowana")),
+        (["drawing", "rysun", "graphite", "grafit", "pencil", "olowek", "charcoal", "wegiel", "ink", "tusz", "chalk", "kred",
+          "sanguin", "sangwin", "crayon", "pen ", "piorko"],
+         PaperWork(name: "rysunek", accusative: "rysunek", shownAs: "Prezentowany")),
+    ]
+
+    static let work = PaperWork(name: "dzieło", accusative: "dzieło", shownAs: "Prezentowane")
+    static let illustration = PaperWork(name: "ilustracja", accusative: "ilustrację", shownAs: "Prezentowana")
+
+    init(name: String, accusative: String, shownAs: String) {
+        self.name = name
+        self.accusative = accusative
+        self.shownAs = shownAs
+    }
+
+    init(medium: String, around: [String] = []) {
+        if around.contains("page_text") {
+            self = Self.illustration
+            return
+        }
+        let folded = medium.replacingOccurrences(of: "ł", with: "l").replacingOccurrences(of: "Ł", with: "L")
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil) + " "
+        self = Self.kinds.first(where: { kind in kind.0.contains { folded.contains($0) } })?.1 ?? Self.work
     }
 }
 
