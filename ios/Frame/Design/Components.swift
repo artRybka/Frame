@@ -605,27 +605,11 @@ struct MasonryGrid<Content: View>: View {
     }
 
     var body: some View {
-        LazyVStack(alignment: .leading, spacing: spacing + 6) {
-            ForEach(Self.chunks(Self.blocks(shown, columns: columns, columnWidth: columnWidth))) { chunk in
-                VStack(alignment: .leading, spacing: spacing + 6) {
-                    if !chunk.columns.isEmpty {
-                        HStack(alignment: .top, spacing: spacing) {
-                            ForEach(Array(chunk.columns.enumerated()), id: \.offset) { _, column in
-                                VStack(spacing: spacing + 6) {
-                                    ForEach(column) { item in
-                                        content(item)
-                                    }
-                                }
-                                .frame(maxWidth: .infinity, alignment: .top)
-                            }
-                        }
-                        .environment(\.artCardAspects, 0.45...Self.wide)
-                    }
-                    ForEach(chunk.rows) { item in
-                        content(item)
-                            .environment(\.artCardAspects, Self.wide...Self.panorama)
-                    }
-                }
+        Group {
+            if MasonryProbe.eager {
+                VStack(alignment: .leading, spacing: spacing + 6) { chunkViews }
+            } else {
+                LazyVStack(alignment: .leading, spacing: spacing + 6) { chunkViews }
             }
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
@@ -633,6 +617,35 @@ struct MasonryGrid<Content: View>: View {
             leftOut = Set(items.lazy.map(\.id).filter { model.hidesPicture($0) })
         }
     }
+
+    private var chunkViews: some View {
+        ForEach(Self.chunks(Self.blocks(shown, columns: columns, columnWidth: columnWidth))) { chunk in
+            VStack(alignment: .leading, spacing: spacing + 6) {
+                if !chunk.columns.isEmpty {
+                    HStack(alignment: .top, spacing: spacing) {
+                        ForEach(Array(chunk.columns.enumerated()), id: \.offset) { _, column in
+                            VStack(spacing: spacing + 6) {
+                                ForEach(column) { item in
+                                    content(item)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .top)
+                        }
+                    }
+                    .environment(\.artCardAspects, 0.45...Self.wide)
+                }
+                ForEach(chunk.rows) { item in
+                    content(item)
+                        .environment(\.artCardAspects, Self.wide...Self.panorama)
+                }
+            }
+        }
+    }
+}
+
+/// Tests only: the grid as a plain stack, to compare with the lazy one.
+enum MasonryProbe {
+    nonisolated(unsafe) static var eager = false
 }
 
 private extension ClosedRange where Bound == Double {
