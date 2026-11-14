@@ -4,7 +4,7 @@ import Foundation
 /// the next launch shows it at once while fresh rows and themes load: the
 /// study of the day (its tile; only on its day) and "Studia dzieł" too.
 enum DiscoverCache {
-    struct Snapshot: Codable {
+    struct Snapshot: Codable, Sendable {
         var rows: [SuggestionRow]
         var themes: [ArtTheme]
         /// Missing in snapshots from before 1.75.6.
@@ -64,15 +64,24 @@ enum CacheFile {
         return dir.appendingPathComponent("\(name)-\(host).json")
     }
 
+    /// The files are written one after another, off the main thread:
+    /// Discover's is over a megabyte of JSON, and it was put into words and
+    /// onto the disk on the main thread after every load, the playlists'
+    /// and the hidden works' after every heart (the audit of 2026-11-14).
+    private static let writes = DispatchQueue(label: "frame.cache-files", qos: .utility)
+
     static func load<T: Decodable>(_ type: T.Type, _ name: String, server: String) -> T? {
-        guard let url = url(name, server: server), let data = try? Data(contentsOf: url) else { return nil }
+        guard let url = url(name, server: server) else { return nil }
+        // After what is still on its way to the disk.
+        guard let data = writes.sync(execute: { try? Data(contentsOf: url) }) else { return nil }
         return try? LiveBackend.decoder().decode(T.self, from: data)
     }
 
-    static func save<T: Encodable>(_ value: T, _ name: String, server: String) {
-        guard let url = url(name, server: server), let data = try? LiveBackend.encoder().encode(value) else {
-            return
+    static func save<T: Encodable & Sendable>(_ value: T, _ name: String, server: String) {
+        guard let url = url(name, server: server) else { return }
+        writes.async {
+            guard let data = try? LiveBackend.encoder().encode(value) else { return }
+            try? data.write(to: url, options: .atomic)
         }
-        try? data.write(to: url, options: .atomic)
     }
 }

@@ -15,7 +15,7 @@ from typing import Annotated, Any, Literal
 
 import httpx
 from anyio import CapacityLimiter, to_thread
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from PIL import Image
 from pydantic import BaseModel, Field, ValidationError
@@ -206,9 +206,19 @@ class ImportSearchRequest(BaseModel):
 #: its own, so it never waits for a grid either.
 THUMB_THREADS = CapacityLimiter(16)
 SHOWN_THREADS = CapacityLimiter(8)
-#: Threads that read a thumbnail already kept (``ImageCache.thumb_bytes``):
+#: Threads that read a thumbnail already kept (``ImageCache.sent_thumb``):
 #: a read of a moment, never behind the thumbnails that wait for a museum.
 KEPT_THREADS = CapacityLimiter(8)
+#: How long a phone shows a thumbnail without asking about it.
+THUMB_CACHE = "max-age=86400"
+
+
+def _stamps(request: Request) -> frozenset[str]:
+    """The stamps the asker holds this answer by (``If-None-Match``)."""
+    held = request.headers.get("if-none-match")
+    if not held:
+        return frozenset()
+    return frozenset(tag.strip().removeprefix("W/").strip('"') for tag in held.split(","))
 
 
 def _item(svc: FrameService, item_id: str) -> Item:
@@ -889,7 +899,7 @@ def delete_item(item_id: str, svc: Svc) -> dict[str, bool]:
 
 
 @router.get("/library/items/{item_id:item}/thumb")
-async def item_thumb(item_id: str, svc: Svc, tile: bool = False) -> Response:
+async def item_thumb(item_id: str, svc: Svc, request: Request, tile: bool = False) -> Response:
     """A work's thumbnail, the catalogue's or any museum work's: the app
     shows every thumbnail from here, never from the museum itself. With
     ``tile``, as the cover tiles of Odkrywaj show it: the work without the
@@ -898,12 +908,20 @@ async def item_thumb(item_id: str, svc: Svc, tile: bool = False) -> Response:
     One kept here (nearly every one asked for) is looked for and read by
     one thread and sent whole: the look was a disk call on the event loop,
     where a slow disk held every other answer up, and the file went out in
-    pieces, each waiting its turn while the server was busy."""
+    pieces, each waiting its turn while the server was busy.
+
+    It goes with its stamp (``ETag``). A phone keeps a thumbnail for a day
+    and then asks whether it is still the one with that stamp: it is told
+    so (304) in place of the picture again, and keeps it for another day."""
     kept = await to_thread.run_sync(
-        lambda: svc.images.thumb_bytes(item_id, tile=tile), limiter=KEPT_THREADS
+        lambda: svc.images.sent_thumb(item_id, tile=tile, have=_stamps(request)),
+        limiter=KEPT_THREADS,
     )
     if kept is not None:
-        return Response(kept, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
+        headers = {"Cache-Control": THUMB_CACHE, "ETag": f'"{kept.stamp}"'}
+        if kept.data is None:
+            return Response(status_code=304, headers=headers)
+        return Response(kept.data, media_type="image/jpeg", headers=headers)
     item = await _work(svc, item_id, threads=THUMB_THREADS)
     try:
         path = await to_thread.run_sync(
@@ -920,7 +938,7 @@ async def item_thumb(item_id: str, svc: Svc, tile: bool = False) -> Response:
         raise HTTPException(502, f"thumbnail unavailable: {err}") from err
     if tile:
         path = await to_thread.run_sync(svc.images.tile, path, limiter=THUMB_THREADS)
-    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": THUMB_CACHE})
 
 
 @router.get("/library/items/{item_id:item}/image")

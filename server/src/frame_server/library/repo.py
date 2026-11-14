@@ -1313,7 +1313,15 @@ class Library:
         def make() -> None:
             try:
                 with self._search_lock:
-                    self._make_search()
+                    index = self._search
+                    if index is None:
+                        self._make_search()
+                    elif (share := index.dead_share()) > SEARCH_DEAD_SHARE:
+                        log.info("search index: %.0f%% of it is works changed since", share * 100)
+                        self._make_search()
+                    # else: made meanwhile by a thread that waited for it
+                    # (the suggestions' index at start, while a query asked
+                    # for one here: 59 s and 29 s more on the NAS, 2026-11-13).
             except Exception:
                 log.exception("search index: making it failed")
             finally:
@@ -1557,6 +1565,7 @@ class Library:
         user: str | None = None,
         proposing: bool = False,
         paged: bool = False,
+        among: Collection[str] | None = None,
     ) -> tuple[int, list[Item]]:
         """``user``: whose hearts and playlists "Ulubione" and "Moje" mean
         (default: whoever is asking, the owner in the background).
@@ -1581,7 +1590,11 @@ class Library:
         twice, works skipped. The works of a page are as the library holds
         them now; one hidden or gone since is left out. The first page is
         always looked for anew. Not for the owner's own lists ("Ulubione",
-        "Moje"), which a heart changes."""
+        "Moje"), which a heart changes.
+
+        ``among``: only of the works with these ids, as the whole list has
+        them when every copy of each work is among them (the best copy
+        asked for stands for a work); looked for each time, nothing kept."""
         rules = rules or PlaylistRules()
         user = user or viewer_id()
         if sort in ("relevance", "suitability") and _searches(rules):
@@ -1608,6 +1621,14 @@ class Library:
             plain = rules.model_copy(update={"exclude_ids": []}) if rules.exclude_ids else rules
             order_key = (plain.model_dump_json(), *asked[1:])
         end = None if limit is None else offset + limit
+        if among is not None:
+            try:
+                few = self._query(
+                    rules, sort, seed, include_excluded, user, limit == 0, proposing, set(among)
+                )
+            except _NotNow:
+                return 0, []
+            return len(few), few[offset:end]
         if order_key is not None and offset > 0:
             order = self._order(order_key)
             if order is not None:

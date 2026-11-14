@@ -34,7 +34,7 @@ from fastapi import (
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
-from .. import build_version, golden, logbuffer, night, notifications
+from .. import build_version, golden, logbuffer, memory, night, notifications
 from ..artist_people import START_DELAY
 from ..config import Settings
 from ..device import MdcError
@@ -76,6 +76,7 @@ from . import (
     update_api,
     users_api,
 )
+from .compress import Compressed
 from .deps import require_owner, require_token
 from .ids import EncodedSlashes
 from .purposes import Purposes
@@ -284,6 +285,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.include_router(router)
     app.add_middleware(Purposes)  # what the museums' requests are for
     app.add_middleware(EncodedSlashes)  # work ids with a slash (SMK)
+    app.add_middleware(Compressed)  # the app's larger answers, gzipped
 
     @app.middleware("http")
     async def log_panel_requests(request: Request, call_next):
@@ -618,6 +620,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "activity": log.activity.model_dump(),
             "fit": log.fit().model_dump(),
         }
+
+    @app.get("/api/debug/memory", dependencies=[Depends(require_owner)])
+    def memory_reading() -> dict[str, object]:
+        """The server's memory and the machine's (memory.py): whether the
+        catalogue fits, or part of it went to the disk."""
+        return {"works": service.library.count(), **memory.reading()}
 
     log_buffer = logbuffer.install()
 

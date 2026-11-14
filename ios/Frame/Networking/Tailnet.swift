@@ -54,15 +54,21 @@ final class Tailnet: @unchecked Sendable {
         let handle: tailscale
         let api: URLSession
         let images: URLSession
+        /// For the requests that wait at the server (`LiveBackend.patient`).
+        let waits: URLSession
         let address: String?
         /// The loopback address (SOCKS5 and LocalAPI) and LocalAPI's password.
         let loopback: String
         let apiKey: String
 
-        init(handle: tailscale, api: URLSession, images: URLSession, address: String?, loopback: String, apiKey: String) {
+        init(
+            handle: tailscale, api: URLSession, images: URLSession, waits: URLSession,
+            address: String?, loopback: String, apiKey: String
+        ) {
             self.handle = handle
             self.api = api
             self.images = images
+            self.waits = waits
             self.address = address
             self.loopback = loopback
             self.apiKey = apiKey
@@ -298,22 +304,25 @@ final class Tailnet: @unchecked Sendable {
     /// Sends `request` with `body` through the node when it goes to the
     /// server's Tailscale address, else through `fallback`. When the node
     /// cannot be started the request goes through `fallback` too: the
-    /// Tailscale app's VPN may still carry it.
+    /// Tailscale app's VPN may still carry it. `waits`: a request that
+    /// waits at the server, on the node's connections for those.
     func send<T>(
-        _ request: URLRequest, else fallback: URLSession = .shared, images: Bool = false,
+        _ request: URLRequest, else fallback: URLSession = .shared, images: Bool = false, waits: Bool = false,
         _ body: (URLSession) async throws -> T
     ) async throws -> T {
         guard carries(request.url), let node = await ready() else { return try await body(fallback) }
         do {
-            return try await body(images ? node.images : node.api)
+            return try await body(images ? node.images : waits ? node.waits : node.api)
         } catch let error as URLError where Self.lost(error) {
             lose(node)
             throw error
         }
     }
 
-    func data(for request: URLRequest, else fallback: URLSession = .shared) async throws -> (Data, URLResponse) {
-        try await send(request, else: fallback) { try await $0.data(for: request) }
+    func data(
+        for request: URLRequest, else fallback: URLSession = .shared, waits: Bool = false
+    ) async throws -> (Data, URLResponse) {
+        try await send(request, else: fallback, waits: waits) { try await $0.data(for: request) }
     }
 
     /// Errors after which the node's proxy or sockets may be gone.
@@ -468,13 +477,14 @@ final class Tailnet: @unchecked Sendable {
         }
         return Node(
             handle: handle, api: session(images: false), images: session(images: true),
-            address: addresses(handle).first, loopback: proxy, apiKey: apiKey
+            waits: session(images: false), address: addresses(handle).first, loopback: proxy, apiKey: apiKey
         )
     }
 
     private func close(_ old: Node) {
         old.api.invalidateAndCancel()
         old.images.invalidateAndCancel()
+        old.waits.invalidateAndCancel()
         tailscale_close(old.handle)
     }
 

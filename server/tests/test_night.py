@@ -201,11 +201,14 @@ def test_discover_keeps_its_cards_and_rows_while_the_catalogue_stays(museums, mo
     cards = discover_api.work_out_cards(service)
     discover_api.suggestion_rows(service)  # the museums' row of the day comes in
     rows = discover_api.suggestion_rows(service)
-    discover_api._cards = (0.0, cards)  # older than CARDS_TTL
-    assert not discover_api._cards_stale(service, 0.0)
+    # Older than CARDS_TTL (not 0.0: a machine started a moment ago counts
+    # its time from there).
+    old = time.monotonic() - 2 * discover_api.CARDS_TTL
+    discover_api._cards = (old, cards)
+    assert not discover_api._cards_stale(service, old)
     assert discover_api.suggestion_rows(service) is rows
     work = library.upsert(Item(id="cma:9", source="cma", source_id="9", kind=ItemKind.ARTWORK))
-    assert discover_api._cards_stale(service, 0.0)
+    assert discover_api._cards_stale(service, old)
     assert discover_api.suggestion_rows(service) is not rows
     assert discover_api.work_out_cards(service) is not cards
     # Hearts alone: worked out again only once the cards are old enough.

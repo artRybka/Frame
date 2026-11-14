@@ -1,5 +1,74 @@
 # Changelog
 
+## 1.145.120
+
+- Konfiguracja → Miejsce na serwerze pokazuje się od razu. Serwer pamięta
+  ostatni pomiar dysku (także po restarcie) i pokazuje go natychmiast, a
+  gdy pomiar ma ponad 10 minut, mierzy od nowa w tle; świeży wynik widać
+  od razu, jeśli dysk zdąży w sekundę, inaczej przy następnym otwarciu.
+  Dotąd strona czekała na obejrzenie każdej miniatury i każdego obrazu,
+  na NAS od 3,5 do 45 s. Decyzje serwera (ile miejsca zostało na
+  oryginały) biorą świeży pomiar jak dotąd, a po przycięciu biblioteki
+  liczba jest mierzona od nowa.
+- Miniatury po dobie nie pobierają się od nowa. Telefon trzyma miniaturę
+  dobę, a potem pyta, czy się zmieniła; serwer odpowiada teraz krótkim
+  „bez zmian” zamiast wysyłać ją całą (kilkadziesiąt KB każda), więc
+  siatki otwierane po dniu przerwy i poza domem wypełniają się z pamięci
+  telefonu. Zmieniony obraz dzieła (inna kopia) przychodzi cały jak
+  dotąd. Czas ważności w telefonie zostaje (doba).
+- Nowy odczyt dla właściciela: `GET /api/debug/memory` mówi, ile pamięci
+  zajmuje serwer, ile z niej system odłożył na dysk (swap) i ile ma
+  jeszcze NAS. Katalog żyje w pamięci (około 2,2 GB); jeśli NAS-owi jej
+  brakuje, wszystko zwalnia wielokrotnie, a w logu nic o tym nie ma.
+- Sprawdzone i zostawione bez zmian: rozpoznanie telefonu domownika
+  kosztuje 0,02 ms na zapytanie, a strona tematu, lista muzeów i
+  podpowiedzi z muzeów zatrzymują resztę serwera na 3–5 ms; przeniesienie
+  ich do wątków kosztowałoby tyle samo.
+
+## 1.145.119
+
+- Karta dzieła nie blokuje już reszty aplikacji. Jej długie pytania do
+  serwera (gdzie jest dzieło, technika, ostrzejsza kopia, opis, polski
+  tytuł, fragmenty; każde czeka do pół minuty) idą osobnymi połączeniami.
+  Dotąd zajmowały wszystkie cztery połączenia aplikacji z serwerem, więc
+  serce, „Pokaż na ramce” i pasek postępu czekały za nimi nawet 15–30 s.
+- Seria serc to jedno odświeżenie playlist, ukrytych, Propozycji dnia i
+  kolejki, sekundę po ostatnim sercu, zamiast czterech pytań i dwóch
+  zapisów po każdym. Strona, na którą patrzysz, odświeża się po każdym
+  sercu jak dotąd.
+- Konfiguracja: pomiar dysku rusza po wczytaniu reszty strony i idzie
+  osobnym połączeniem (serwer ogląda dla niego każdy obraz, na NAS do
+  45 s), a sekcje Claude i Gemini nie pytają o to samo równolegle.
+- Miniatury z własnego serwera wczytują się po sześć naraz zamiast po
+  cztery: siatka wyników wypełnia się szybciej. Limity muzeów pilnuje
+  serwer, jak dotąd.
+- Zapamiętane ekrany (Odkrywaj, playlisty, ukryte, Propozycje dnia)
+  zapisują się poza głównym wątkiem: bez przycięć po wczytaniu Odkrywaj
+  i po sercu.
+
+## 1.145.118
+
+- Odkrywaj nie przelicza już wszystkich kart tematów po każdym dziele,
+  które doszło do katalogu. Gdy w Szukaj muzea dopisywały dzieła, serwer
+  liczył karty bez przerwy (w pomiarze 5 rund w minutę, cała minuta pracy
+  procesora), a wszystko inne czekało. Teraz karty liczą się najwyżej co
+  10 minut; od razu jak dotąd po zmianie dnia, po nowych kartach kuratora
+  i wtedy, gdy okładka straciłaby obraz (dzieło ukryte albo usunięte).
+  Nowe dzieło widać więc w liczniku i okładce tematu do 10 minut później;
+  w samym temacie po otwarciu jak dotąd.
+- Rząd „Pod lupą” nie przegląda już całego katalogu po każdej zmianie
+  dzieła (pokazanie na ramce, opis, serce): `/api/suggestions` 1,0 s →
+  0,3 s w pomiarze (na NAS było 3–9 s). Te same dzieła w tej samej
+  kolejności.
+- Po starcie serwera indeks szukania powstaje raz, nie dwa razy pod rząd
+  (13.11 na NAS 59 s i zaraz potem 29 s): drugi robił wątek, który czekał
+  na pierwszy.
+- Większe odpowiedzi dla aplikacji idą skompresowane (gzip): lista
+  tematów 670 KB → 119 KB, rzędy Odkrywaj 550 KB → 85 KB, Propozycje dnia
+  117 KB → 21 KB, strona wyników 37 KB → 7 KB. Widać to głównie poza
+  domem. Obrazy, odpowiedzi dla ramki i wyniki przychodzące po kawałku
+  idą jak dotąd.
+
 ## 1.145.117
 
 - Podpowiedzi w Szukaj nadążają za pisaniem. Gdy dochodzi kolejna litera,

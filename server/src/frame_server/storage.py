@@ -8,19 +8,22 @@ defaults; a limit set in the app wins and survives restarts, and picking the
 default again (or resetting) goes back to frame.env. The values live on the
 shared ``Settings``, so the next trim or growth of the catalogue uses them.
 
-Measuring reads a few thousand files, slow on a NAS disk: a measurement is
-kept for a while and taken again after the library was trimmed.
+Measuring asks the disk about every thumbnail and original, slow on a NAS
+disk (3.5 to 45 s, the audit of 2026-11-14): a measurement is kept for a
+while, also over a restart, and taken again after the library was trimmed.
+Konfiguracja is shown the one kept at once (:meth:`StorageStore.shown`).
 """
 
 from __future__ import annotations
 
+import logging
 import shutil
 import threading
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from .fsutil import dir_bytes, own_names
 from .library.icloud import only_copy
@@ -31,6 +34,8 @@ if TYPE_CHECKING:
     from .library import ImageCache, Library
     from .store import ContentStore
 
+log = logging.getLogger(__name__)
+
 #: Up to add-on 0.28: one limit for both, split in frame.env's proportion.
 OLD_KEY = "storage_limit"
 CATALOGUE_KEY = "catalogue_limit"
@@ -38,8 +43,13 @@ ORIGINALS_KEY = "originals_limit"
 #: The originals' default before add-on 0.29, for the old limit's split.
 OLD_CACHE_MB = 500
 MB = 1024 * 1024
+#: The last measurement, kept over a restart.
+USAGE_KEY = "storage_usage"
 #: How long a measurement is good for, in seconds.
 MEASURE_MAX_AGE = 600.0
+#: How long Konfiguracja waits for a new measurement before it is shown the
+#: one kept (seconds): a fast disk answers within it.
+SHOWN_WAIT = 1.0
 #: How long a count of the catalogue is good for, in seconds.
 COUNT_MAX_AGE = 60.0
 #: The frame's long side: an original at least this large shows it whole.
@@ -107,8 +117,10 @@ class StorageStore:
         self.images = images
         self.store = store
         self.defaults = (settings.catalogue_mb, settings.image_cache_mb)
-        self._usage: StorageUsage | None = None
+        self._usage: StorageUsage | None = self._kept_usage()
         self._measuring = threading.Lock()
+        self._again: threading.Thread | None = None
+        self._starting = threading.Lock()
         self._counts: CatalogueCounts | None = None
         self._counting = threading.Lock()
         self._migrate()
@@ -138,7 +150,7 @@ class StorageStore:
             self.library.delete_state(OLD_KEY)
 
     def view(self) -> StorageView:
-        usage = self.usage()
+        usage = self.shown()
         return StorageView(
             usage=usage,
             catalogue_mb=self.settings.catalogue_mb,
@@ -184,11 +196,50 @@ class StorageStore:
             usage = self._usage
             if usage is None or time.time() - usage.measured_at > max_age:
                 usage = self._usage = self._measure()
+                self.library.keep_state(USAGE_KEY, usage.model_dump(mode="json"))
             return usage
+
+    def shown(self) -> StorageUsage:
+        """The measurement for Konfiguracja: the one kept, at once. When it
+        is older than :data:`MEASURE_MAX_AGE` a new one is taken beside it,
+        waited for :data:`SHOWN_WAIT` and shown the next time otherwise: the
+        page stood with a spinner for as long as the disk took (45 s on the
+        NAS after a start). What decides by the measurement (the room for
+        originals) asks :meth:`usage`, as before."""
+        usage = self._usage
+        if usage is None:  # never measured, or the library was trimmed since
+            return self.usage()
+        if time.time() - usage.measured_at <= MEASURE_MAX_AGE:
+            return usage
+        with self._starting:
+            again = self._again
+            if again is None or not again.is_alive():
+                again = self._again = threading.Thread(
+                    target=self._measure_again, name="storage-measure", daemon=True
+                )
+                again.start()
+        again.join(SHOWN_WAIT)
+        return self._usage or usage
+
+    def _measure_again(self) -> None:
+        try:
+            self.usage()
+        except OSError as err:
+            log.info("storage: not measured: %s", err)
+
+    def _kept_usage(self) -> StorageUsage | None:
+        kept = self.library.get_state(USAGE_KEY)
+        if not kept:
+            return None
+        try:
+            return StorageUsage.model_validate(kept)
+        except ValidationError:
+            return None
 
     def forget(self) -> None:
         """The library changed a lot (trimmed): measure again when asked."""
         self._usage = None
+        self.library.keep_state(USAGE_KEY, None)
 
     def _measure(self) -> StorageUsage:
         root = self.settings.data_dir
