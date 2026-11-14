@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.145.113
+
+- Zdjęcia dzieł zrobione z ramą, na sztaludze albo na tle (często Muzeum
+  Narodowe w Warszawie i w Krakowie) są przycinane do samego dzieła: na
+  ramce, w siatkach i na karcie widać tylko obraz. W nocy Haiku wskazuje
+  takie zdjęcia, a Opus ustawia narożniki dzieła, dociągane do krawędzi na
+  zdjęciu; to samo dzieje się od razu po wejściu w kartę dzieła, którego
+  noc jeszcze nie obejrzała. Przycięte dzieło ma przy dacie znaczek z
+  narożnikami kadru.
+- Na karcie przyciętego dzieła sekcja „Pełny kadr” pokazuje całe zdjęcie
+  z muzeum, z zaznaczonym kadrem; dotknięcie otwiera je w całości. Grafiki
+  i rysunki na arkuszu zostają z papierem; obok dwie miniatury „Z
+  papierem” i „Sama odbitka” (pierwsze wybranie samej odbitki pyta Opus o
+  krawędź druku).
+- W menu „…” karty: „Popraw kadr” (albo „Przytnij zdjęcie”) otwiera na
+  całym ekranie zdjęcie z muzeum z czterema narożnikami do przeciągania i
+  lupą, a „Cofnij kadrowanie” wraca do całego zdjęcia na stałe.
+- Konfiguracja → Claude: przełącznik „Kadrowanie zdjęć dzieł”.
+- Znaczki niskiej rozdzielczości, iskierek restauratora i kadrowania są
+  szare zamiast bursztynowych, a plakietka z samą ikonką stoi w jednej
+  linii z plakietką daty.
+
+## 1.145.112
+
+- Konfiguracja → Claude: „Przejrzyj zapisane opisy”. Pokazuje, ile jest
+  zapisanych tłumaczeń opisów muzeów i notek w starym stylu, i ile
+  kosztuje każdy krok. „Sprawdź tłumaczenia”: Haiku sprawdza, czy tekst
+  muzeum mówi o samym dziele; gdzie nie (np. życiorys artysty), Sonnet
+  pisze notkę w jego miejsce. „Przepisz notki w nowych stylach”: notki
+  sprzed stylów pisze Sonnet od nowa. Oba kroki przez pakiety Anthropic
+  (połowa ceny), do czasu wyników zostają dotychczasowe teksty.
+
 ## 1.145.111
 
 - Własne notki o dziełach (gdy muzeum nie daje opisu) piszą się w pięciu

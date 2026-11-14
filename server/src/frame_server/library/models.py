@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from enum import StrEnum
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -177,6 +178,50 @@ class SharperCopy(BaseModel):
     restored: bool = False
 
 
+class Cut(BaseModel):
+    """The work in its museum photograph, without what is around it (a
+    frame, an easel, the board it lies on: ``imaging.cut``, ``ai.crops``;
+    Mateusz 2026-11-14). Corners (top-left, top-right, bottom-right,
+    bottom-left) as fractions of the photograph's width and height. The
+    photograph itself is kept: "Pełny kadr" shows it, and "Przywróć zdjęcie
+    muzeum" goes back to it."""
+
+    #: The work as shown: for a print or drawing with its paper. None: the
+    #: museum's photograph whole (the owner gave the cut up, or there is
+    #: only paper around a print); a work with a cut is never cut again by
+    #: itself.
+    work: list[tuple[float, float]] | None = None
+    #: A print or drawing without its paper (the plate or the image area),
+    #: when it is known: shown with ``paper`` off.
+    plate: list[tuple[float, float]] | None = None
+    #: Prints and drawings keep their paper unless the owner says otherwise
+    #: ("Z papierem / Sama odbitka").
+    paper: bool = True
+    #: "auto" (the model) or "owner" (corrected or chosen in the app).
+    by: Literal["auto", "owner"] = "auto"
+    #: The photograph's width / height when the corners were set: a cut of
+    #: one photograph never cuts another (a copy shown in its place).
+    aspect: float = 0.0
+    #: The picture it was set on: the copy's id (``SharperCopy.item_id``)
+    #: when a copy was shown, else "".
+    picture: str = ""
+    #: What was around the work, as the model saw it ("frame", "easel",
+    #: "mount", "backdrop", "paper_margin"…).
+    around: list[str] = Field(default_factory=list)
+    #: When it was set (ISO): the app's pictures kept from before are had anew.
+    at: str = ""
+
+    def shown(self) -> list[tuple[float, float]] | None:
+        """The corners the picture is cut to, None for the whole photograph."""
+        return self.plate if not self.paper and self.plate is not None else self.work
+
+    @property
+    def has_paper(self) -> bool:
+        """A print or drawing on its sheet: the app's "Z papierem / Sama
+        odbitka"."""
+        return self.plate is not None or bool({"paper_margin", "page_text"} & set(self.around))
+
+
 class Item(BaseModel):
     """One picture the frame can show."""
 
@@ -243,6 +288,10 @@ class Item(BaseModel):
     #: A sharper copy of the picture from another source, shown in place of
     #: the work's own.
     sharper: SharperCopy | None = None
+    #: The work cut out of its museum photograph (:class:`Cut`): what the
+    #: frame, the thumbnails and the studies show; None when nothing was
+    #: decided yet.
+    cut: Cut | None = None
     #: The collection the work is in, as found out for a work from a source
     #: that gathers pictures from many (Wikidata's "collection" of the work
     #: on Commons or WikiArt, the institution on its Commons page, WikiArt's
@@ -315,6 +364,28 @@ class Item(BaseModel):
             return places.key_of(raw, self.sharper.source)
         return places.key_of(raw)
 
+    def cut_shown(self) -> list[tuple[float, float]] | None:
+        """The corners the picture is cut to now (:class:`Cut`): None
+        without a cut, when the owner keeps the photograph whole, or when
+        another picture than the one the cut was set on is shown."""
+        cut = self.cut
+        if cut is None or cut.picture != self.picture_key():
+            return None
+        return cut.shown()
+
+    def picture_key(self) -> str:
+        """Which picture is shown: the copy's id when a copy is, else ""."""
+        return self.sharper.item_id if self.sharper is not None else ""
+
+    def cut_version(self) -> str:
+        """Changes whenever the cut of the picture shown changes (set,
+        corrected, the paper switched, given up): the app's pictures kept
+        from before are had anew. "" without one."""
+        cut = self.cut
+        if cut is None or cut.picture != self.picture_key() or cut.shown() is None:
+            return ""
+        return cut.at or "cut"
+
     def _held_by(self) -> str:
         """The museum's name as the work's data give it."""
         if self.kind != ItemKind.ARTWORK or self.look is not None:
@@ -359,6 +430,24 @@ class Item(BaseModel):
         return value if viewer is None else viewer.likes(self.id)
 
 
+def cut_size(
+    quad: list[tuple[float, float]], aspect: float, width: int | None, height: int | None
+) -> tuple[int, int] | None:
+    """The size of the picture cut to ``quad`` out of a photograph of
+    ``aspect`` (width / height), ``width`` × ``height`` px when known."""
+    if aspect <= 0:
+        return None
+    w = float(width) if width and height else 1000.0 * aspect
+    h = w / aspect
+    (x0, y0), (x1, y1), (x2, y2), (x3, y3) = quad
+    top = math.hypot((x1 - x0) * w, (y1 - y0) * h)
+    bottom = math.hypot((x2 - x3) * w, (y2 - y3) * h)
+    left = math.hypot((x3 - x0) * w, (y3 - y0) * h)
+    right = math.hypot((x2 - x1) * w, (y2 - y1) * h)
+    cw, ch = round(max(top, bottom)), round(max(left, right))
+    return (cw, ch) if cw > 0 and ch > 0 else None
+
+
 class ItemSummary(BaseModel):
     """Compact form for grids and lists."""
 
@@ -397,6 +486,10 @@ class ItemSummary(BaseModel):
     #: restaurator": ``SharperCopy.restored``): its mark in place of the
     #: low resolution's.
     restored: bool = False
+    #: Its picture is cut out of the museum's photograph (``Item.cut``): a
+    #: mark after the title. ``cut``: changes with every change of the cut.
+    cropped: bool = False
+    cut: str = ""
 
     @classmethod
     def of(cls, item: Item) -> ItemSummary:
@@ -406,11 +499,18 @@ class ItemSummary(BaseModel):
 
         summary = cls(
             **item.model_dump(
-                include=set(cls.model_fields) - {"subtitle", "zoom", "low_side", "restored"}
+                include=set(cls.model_fields)
+                - {"subtitle", "zoom", "low_side", "restored", "cropped", "cut"}
             )
         )
         summary.zoom = zooms(item)
         summary.low_side = low_side(item)
+        summary.cut = item.cut_version()
+        shown = item.cut_shown()
+        if shown is not None and item.cut is not None:
+            summary.cropped = True
+            if (size := cut_size(shown, item.cut.aspect, item.width, item.height)) is not None:
+                summary.width, summary.height = size  # the tile's shape is the cut's
         if item.sharper is not None:
             summary.picture = item.sharper.item_id
             summary.restored = item.sharper.restored

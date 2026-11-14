@@ -74,10 +74,15 @@ actor DemoBackend: FrameBackend {
     ]
     private var aiValue = AiSettings(
         keySet: false, keyTail: nil, keyFromApp: false, plText: true, keywordsArtworks: true,
-        keywordsPhotos: true, daily: true, searchWords: true, curator: true, twinsJudge: true, gatekeeper: true, audit: true, looks: true, journey: true, webFacts: true, stages: true,
+        keywordsPhotos: true, daily: true, searchWords: true, curator: true, twinsJudge: true, gatekeeper: true, audit: true, looks: true, journey: true, webFacts: true, crops: true, stages: true,
         studyRefresh: StudyRefresh(
             waiting: 42, rewriteWaiting: 0, running: false, asked: 0, rewriting: 0,
             found: 0, rewritten: 0, spentUsd: 0, factsUsd: 4.2, rewriteUsd: 1.26
+        ),
+        textReview: TextReview(
+            translations: 1240, unchecked: 1180, general: 0, unstyled: 310, running: false,
+            checking: 0, writing: 0, checked: 0, found: 0, written: 0, spentUsd: 0,
+            checkUsd: 0.09, noteUsd: 0.007, generalUsd: 0, restyleUsd: 2.22
         ),
         reviewCount: 2, monthlyLimitUsd: 5, spentUsd: 0,
         keywordsProgress: .init(done: 0, waiting: 0, refused: 0, batchItems: 0, batchDone: 0, preparing: false),
@@ -579,6 +584,32 @@ actor DemoBackend: FrameBackend {
             artistNote: item.artistBio, written: "note", sources: ["dane muzeum", "obraz"]
         )
         return PolishView(status: "ready", text: text)
+    }
+
+    /// Nothing is cut in the demo by itself: its pictures are bundled whole.
+    func checkCut(itemID: String, wait: Int) async throws -> CutView {
+        CutView(changed: false, item: try await item(id: itemID))
+    }
+
+    func setCut(itemID: String, update: CutUpdate) async throws -> Item {
+        let stamp = ISO8601DateFormatter().string(from: .now)
+        return try self.update(itemID) { item in
+            var cut = item.cut ?? Cut(aspect: item.width.flatMap { w in item.height.map { Double(w) / Double(max($0, 1)) } } ?? 0.75)
+            cut.by = "owner"
+            cut.at = stamp
+            if let paper = update.paper { cut.paper = paper }
+            if let corners = update.corners {
+                if !cut.paper, cut.plate != nil { cut.plate = corners } else { cut.work = corners }
+            }
+            item.cut = cut
+        }
+    }
+
+    func removeCut(itemID: String) async throws -> Item {
+        let stamp = ISO8601DateFormatter().string(from: .now)
+        return try update(itemID) { item in
+            item.cut = Cut(by: "owner", aspect: item.cut?.aspect ?? 0, around: item.cut?.around ?? [], at: stamp)
+        }
     }
 
     func sharpen(itemID: String, wait: Int) async throws -> SharperView {
@@ -1716,7 +1747,7 @@ actor DemoBackend: FrameBackend {
         ]
         let packages: [(String, String, String)] = [
             ("catalogue", "Utrzymanie katalogu", "Nowe dzieła, porządki w plikach, kopie razem, ostrzejsze kopie i oryginały Twoich dzieł."),
-            ("duplicates", "Powtórki i jakość", "Powtórki i detale, sędzia powtórek, strażnik katalogu i nocny przegląd. Najpierw Ulubione, playlisty i Odkrywaj."),
+            ("duplicates", "Powtórki i jakość", "Powtórki i detale, sędzia powtórek, strażnik katalogu, nocny przegląd i kadrowanie zdjęć dzieł. Najpierw Ulubione, playlisty i Odkrywaj."),
             ("descriptions", "Opisy i fakty", "Polskie teksty i słowa kluczowe, kim są artyści, gdzie wiszą dzieła, miasta i miejsca."),
             ("discover", "Odkrywaj i ramka", "Studium dnia, Dziś dla Ciebie, karty Odkrywaj, Propozycje dnia, playlisty, kolejka ramki i urodziny artystów."),
             ("indexes", "Spisy muzeów", "Lokalne spisy kolekcji (Met, NGA, Luwr, Rijksmuseum i inne), odświeżane, gdy przyjdzie pora."),
@@ -1873,6 +1904,7 @@ actor DemoBackend: FrameBackend {
         if let value = update.curator { aiValue.curator = value }
         if let value = update.twinsJudge { aiValue.twinsJudge = value }
         if let value = update.gatekeeper { aiValue.gatekeeper = value }
+        if let value = update.crops { aiValue.crops = value }
         if let value = update.audit { aiValue.audit = value }
         if let value = update.looks { aiValue.looks = value }
         if let value = update.journey { aiValue.journey = value }
@@ -1971,6 +2003,16 @@ actor DemoBackend: FrameBackend {
         return aiValue
     }
 
+    func startTextReview(check: Bool, restyle: Bool) async throws -> AiSettings {
+        if var review = aiValue.textReview {
+            review.checking = check ? review.unchecked : 0
+            review.writing = restyle ? review.unstyled : 0
+            review.running = review.checking + review.writing > 0
+            aiValue.textReview = review
+        }
+        return aiValue
+    }
+
     func deleteAiKey() async throws -> AiSettings {
         aiValue.keySet = false
         aiValue.keyTail = nil
@@ -2024,7 +2066,7 @@ actor DemoBackend: FrameBackend {
         let url: URL?
         switch image {
         case let .thumb(id), let .tile(id): url = Self.bundled(id) ?? imageURLs[id]?.thumb
-        case let .image(id), let .original(id, _): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
+        case let .image(id), let .original(id, _), let .museumPhoto(id, _, _): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
         case let .framePreview(id, settings, framing, _):
             url = framed(id, settings, trying: framing) ?? Self.bundled(id) ?? imageURLs[id]?.thumb
         case let .path(path) where path.hasPrefix("/demo/detail/"):

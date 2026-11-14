@@ -31,6 +31,10 @@ struct AiSection: View {
     @State private var estimate: AiEstimate?
     @State private var askRefresh = false
     @State private var startingRefresh = false
+    @State private var reviewCheck = true
+    @State private var reviewRestyle = false
+    @State private var askReview = false
+    @State private var startingReview = false
 
     private static let limits: [Double] = [1, 2, 5, 10, 20, 50, 100, 150, 200]
 
@@ -189,6 +193,14 @@ struct AiSection: View {
                         value: gatekeeper
                     ) { AiSettingsUpdate(gatekeeper: $0) }
                 }
+                if let crops = settings.crops {
+                    Divider()
+                    toggle(
+                        "Kadrowanie zdjęć dzieł",
+                        hint: "Przycina zdjęcia z muzeów do samego dzieła, gdy widać ramę, sztalugę albo tło. Haiku wybiera dzieła, Opus ustawia narożniki. Ok. 1–2 centy za przycięte dzieło.",
+                        value: crops
+                    ) { AiSettingsUpdate(crops: $0) }
+                }
                 if let audit = settings.audit {
                     Divider()
                     toggle(
@@ -225,6 +237,11 @@ struct AiSection: View {
                    refresh.running || refresh.waiting > 0 || refresh.found > 0 {
                     Divider()
                     studyRefreshRow(refresh)
+                }
+                if let review = settings.textReview,
+                   review.running || review.unchecked + review.general + review.unstyled > 0 || review.checked + review.written > 0 {
+                    Divider()
+                    textReviewRow(review)
                 }
                 if let count = settings.reviewCount {
                     Divider()
@@ -621,6 +638,119 @@ struct AiSection: View {
 
     /// "studium" or "studiów" after "do 1", "dla 5".
     private static func ofStudies(_ count: Int) -> String { count == 1 ? "studium" : "studiów" }
+
+    // MARK: Texts kept
+
+    /// "Przejrzyj zapisane opisy" (Mateusz 2026-11-14): the translations
+    /// kept checked by Haiku, Sonnet's note where the museum's text is not
+    /// about the work; the notes in the old style written anew in the five
+    /// styles. Each a switch of its own, both through Claude's Batch.
+    @ViewBuilder
+    private func textReviewRow(_ review: TextReview) -> some View {
+        let toCheck = review.unchecked + review.general
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Przejrzyj zapisane opisy").foregroundStyle(Theme.ink)
+            Text(reviewHint(review))
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+            if !review.running {
+                if toCheck > 0 {
+                    Toggle(isOn: $reviewCheck) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Sprawdź tłumaczenia")
+                            Text(checkHint(review)).font(.caption).foregroundStyle(Theme.inkSoft)
+                        }
+                    }
+                    .tint(Theme.ink)
+                }
+                if review.unstyled > 0 {
+                    Toggle(isOn: $reviewRestyle) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Przepisz notki w nowych stylach")
+                            Text("Sonnet napisze od nowa \(review.unstyled) \(Names.notes(review.unstyled)) sprzed stylów, każdą w jednym z pięciu. Ok. \(Self.usd(review.restyleUsd)).")
+                                .font(.caption)
+                                .foregroundStyle(Theme.inkSoft)
+                        }
+                    }
+                    .tint(Theme.ink)
+                }
+                if toCheck > 0 || review.unstyled > 0 {
+                    let check = reviewCheck && toCheck > 0
+                    let restyle = reviewRestyle && review.unstyled > 0
+                    Button {
+                        askReview = true
+                    } label: {
+                        HStack {
+                            Text("Przejrzyj")
+                            if startingReview { ProgressView() }
+                        }
+                    }
+                    .fontWeight(.semibold)
+                    .disabled(!settings.keySet || startingReview || !(check || restyle))
+                    .confirmationDialog(
+                        "Przejrzeć zapisane opisy?",
+                        isPresented: $askReview,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Przejrzyj") {
+                            Task {
+                                startingReview = true
+                                await model.startTextReview(check: check, restyle: restyle)
+                                startingReview = false
+                            }
+                        }
+                        Button("Anuluj", role: .cancel) {}
+                    } message: {
+                        Text(reviewCost(review, check: check, restyle: restyle))
+                    }
+                }
+            }
+        }
+    }
+
+    private func reviewHint(_ review: TextReview) -> String {
+        if review.running {
+            var parts: [String] = []
+            if review.checking > 0 {
+                parts.append("Haiku sprawdza \(review.checking) \(Names.translations(review.checking))")
+            }
+            if review.writing > 0 {
+                parts.append("Sonnet pisze \(review.writing) \(Names.notes(review.writing))")
+            }
+            return "W toku: " + parts.joined(separator: ", ") + ". Wyniki w ciągu kilku godzin. Do tego czasu zostają dotychczasowe teksty."
+        }
+        var text = "Zapisane: \(review.translations) \(Names.translations(review.translations)) opisów muzeów i \(review.unstyled) \(Names.notes(review.unstyled)) w starym stylu."
+        if review.checked + review.written > 0 {
+            text += " Dotąd sprawdzone: \(review.checked), nie o dziele: \(review.found), nowe notki: \(review.written) (\(Self.usd(review.spentUsd)))."
+        }
+        return text
+    }
+
+    private func checkHint(_ review: TextReview) -> String {
+        var parts: [String] = []
+        if review.unchecked > 0 {
+            parts.append("Haiku sprawdzi \(review.unchecked) \(Names.translations(review.unchecked)), czy tekst muzeum mówi o samym dziele, a nie np. o życiu artysty (ok. \(Self.usd(review.checkUsd))).")
+        }
+        if review.general > 0 {
+            parts.append("Na \(review.general) już znalezionych czeka notka Sonneta (ok. \(Self.usd(review.generalUsd))).")
+        }
+        parts.append("Gdzie nie mówi, Sonnet napisze notkę zamiast tłumaczenia, ok. \(Self.usd(review.noteUsd)) za każdą.")
+        return parts.joined(separator: " ")
+    }
+
+    /// Money as the review tells it: a sum under a cent is not "0,00 USD".
+    private static func usd(_ value: Double) -> String {
+        value > 0 && value < 0.01 ? "poniżej 1 centa" : Money.usd(value)
+    }
+
+    private func reviewCost(_ review: TextReview, check: Bool, restyle: Bool) -> String {
+        var usd = 0.0
+        if check { usd += review.checkUsd + review.generalUsd }
+        if restyle { usd += review.restyleUsd }
+        let extra = check && review.unchecked > 0 ? ", do tego notki tam, gdzie tekst muzeum nie mówi o dziele" : ""
+        return "Ok. \(Self.usd(usd))\(extra), w pakietach Anthropic. Wyniki w ciągu kilku godzin."
+    }
 
     // MARK: Progress
 

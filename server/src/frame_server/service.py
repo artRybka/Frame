@@ -17,6 +17,7 @@ from . import notifications
 from .ai import AiConfigStore, AiWorker, Claude, DailyJob, KeywordsJob, PlTextJob
 from .ai.audit import Audit
 from .ai.composition import ComposeJob
+from .ai.crops import Crops
 from .ai.curator import Curator
 from .ai.daily import View
 from .ai.details import MendJob
@@ -31,6 +32,7 @@ from .ai.redraw import PenJob
 from .ai.refresh import StudyRefresh
 from .ai.search_words import SearchWords
 from .ai.study import StudyJob
+from .ai.text_review import TextReview
 from .ai.twins_judge import NightJudge
 from .ai.web_facts import WebFacts
 from .albums import Albums
@@ -303,6 +305,8 @@ class FrameService:
         self.ai.register(KeywordsJob(self.library, self.images, self.ai_config))
         self.pl_text = PlTextJob(self.library, self.images, self.ai_config)
         self.ai.register(self.pl_text)
+        # The Polish texts kept looked over at the owner's tap (Konfiguracja).
+        self.text_review = TextReview(self.library, self.claude, self.pl_text)
         # Discover's work of the day and its page.
         self.daily = Daily(
             self.library,
@@ -343,10 +347,14 @@ class FrameService:
         # are, and a few works a night looked over (Haiku and its critic).
         self.gatekeeper = Gatekeeper(self.library, self.images, self.claude, self.ai_config)
         self.audit = Audit(self.library, self.images, self.claude, self.ai_config)
+        # Museum photographs cut down to the work (Haiku picks them, Opus
+        # sets the corners): at night and when a card opens.
+        self.crops = Crops(self.library, self.images, self.claude, self.ai_config)
+        self.crops.importer = self.importer
         # Favourites, playlists and Discover's works first in the night's
         # tidying (Mateusz 2026-11-11).
         self.cared = Cared(self)
-        for tidier in (self.twins, self.twins_judge, self.gatekeeper, self.audit):
+        for tidier in (self.twins, self.twins_judge, self.gatekeeper, self.audit, self.crops):
             tidier.cared = self.cared.ranks
         self.daily.sharper = self.sharper
         self.copies = Copies(self.sharper)

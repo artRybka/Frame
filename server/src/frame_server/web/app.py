@@ -230,6 +230,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 later.start()
             # The earlier studies' facts and rewrites, ordered from the app.
             service.study_refresh.start_thread()
+            # The Polish texts kept, looked over as ordered from the app.
+            service.text_review.start_thread()
             # Who the catalogue's artists are, from Wikidata: once some
             # minutes after a start (the search knows them then), new ones at
             # night (artist_people.py).
@@ -251,6 +253,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         service.drawn.stop()
         service.looks.stop()
         service.study_refresh.stop()
+        service.text_review.stop()
         if service.night is not None:
             service.night.stop()
         service.library.close()

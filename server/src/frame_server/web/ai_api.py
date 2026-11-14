@@ -49,6 +49,8 @@ class AiView(BaseModel):
     web_facts: bool = True
     #: The study's "Jak powstawał", told from a technical study ("G2").
     stages: bool = True
+    #: Museum photographs cut down to the work ("Kadrowanie zdjęć dzieł").
+    crops: bool = True
     #: Works on the list "Do sprawdzenia": set aside by the gatekeeper, and
     #: the audit's findings.
     review_count: int = 0
@@ -88,6 +90,7 @@ class AiView(BaseModel):
     looks_total: int = 0
     looks_error: str | None = None
     study_refresh: StudyRefreshView | None = None
+    text_review: TextReviewView | None = None
     #: The day of the month Claude's period begins on, and the period now
     #: (ISO dates, its first and last day).
     period_day: int = 1
@@ -143,6 +146,40 @@ class StudyRefreshView(BaseModel):
     rewrite_usd: float = 0.0
 
 
+class TextReviewView(BaseModel):
+    """The Polish texts kept, looked over at the owner's tap
+    (``ai.text_review``)."""
+
+    #: Translations kept; of them not yet checked by Haiku, and found not to
+    #: be about the work with their note still to come; notes written
+    #: before the five styles.
+    translations: int = 0
+    unchecked: int = 0
+    general: int = 0
+    unstyled: int = 0
+    #: An order is under way: the checks and the notes in it.
+    running: bool = False
+    checking: int = 0
+    writing: int = 0
+    #: So far: translations checked, found not about the work, notes
+    #: written, what it cost.
+    checked: int = 0
+    found: int = 0
+    written: int = 0
+    spent_usd: float = 0.0
+    #: About what each step costs now, and one note.
+    check_usd: float = 0.0
+    note_usd: float = 0.0
+    general_usd: float = 0.0
+    restyle_usd: float = 0.0
+
+
+class TextReviewStart(BaseModel):
+    #: "Sprawdź tłumaczenia" and "Przepisz notki w nowych stylach".
+    check: bool = True
+    restyle: bool = False
+
+
 class KeyUpdate(BaseModel):
     key: str
 
@@ -179,6 +216,7 @@ def _view(svc: FrameService) -> AiView:
         journey=config.journey,
         web_facts=config.web_facts,
         stages=config.stages,
+        crops=config.crops,
         review_count=len(svc.gatekeeper.written()) + len(svc.audit.written()),
         monthly_limit_usd=config.monthly_limit_usd,
         spent_usd=round(sum(spent.values()), 4),
@@ -200,6 +238,7 @@ def _view(svc: FrameService) -> AiView:
         looks_total=looks_total,
         looks_error=svc.looks.trouble if config.looks else None,
         study_refresh=StudyRefreshView(**svc.study_refresh.view()),
+        text_review=TextReviewView(**svc.text_review.view()),
         period_day=config.period_day,
         period_start=leftover.pop("period_start"),
         period_end=leftover.pop("period_end"),
@@ -237,6 +276,22 @@ async def start_study_refresh(svc: Svc) -> AiView:
     asked = await run_in_threadpool(svc.study_refresh.start)
     if not asked and not svc.study_refresh.view()["running"]:
         raise HTTPException(409, "Nie udało się zamówić (szczegóły w dzienniku serwera).")
+    return await run_in_threadpool(_view, svc)
+
+
+@router.post("/text-review", response_model=AiView)
+async def start_text_review(start: TextReviewStart, svc: Svc) -> AiView:
+    """The Polish texts kept looked over through the Batch API (the owner's
+    tap in Konfiguracja): the translations checked, notes written anew."""
+    if not svc.ai_config.api_key:
+        raise HTTPException(409, "Brak klucza API Anthropic.")
+    try:
+        svc.claude.check_budget()
+    except AiUnavailable as err:
+        raise HTTPException(409, "Osiągnięty miesięczny limit Claude.") from err
+    asked = await run_in_threadpool(svc.text_review.start, start.check, start.restyle)
+    if not asked and not svc.text_review.view()["running"]:
+        raise HTTPException(409, "Nie ma czego przejrzeć.")
     return await run_in_threadpool(_view, svc)
 
 

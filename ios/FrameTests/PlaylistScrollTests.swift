@@ -100,8 +100,18 @@ final class PlaylistScrollTests: XCTestCase {
         var problems: [String] = []
         let mode = lazy.map { $0 ? "lazy" : "plain" } ?? "as shipped"
 
-        // Opening: pushed at 0.5 s, settled well before 2.5 s.
-        try await pause(1_600)
+        // Opening: pushed at 0.5 s. The push takes its own time on a busy
+        // runner (once the cover was still at -437 pt at 1.6 s), so wait
+        // until the cover reads the same four times in a row, at most 8 s,
+        // and only then watch it hold still.
+        try await pause(600)
+        var settling: [Double] = []
+        for _ in 0 ..< 80 {
+            if let top = FramePositionProbe.frames["collage"]?.minY { settling.append(Double(top).rounded()) }
+            if settling.count >= 4, Set(settling.suffix(4)).count == 1 { break }
+            try await pause(100)
+        }
+        XCTAssertTrue(settling.count >= 4 && Set(settling.suffix(4)).count == 1, "the page never settled: \(settling)")
         var tops: [Double] = []
         for _ in 0 ..< 30 {
             if let top = FramePositionProbe.frames["collage"]?.minY { tops.append(Double(top)) }

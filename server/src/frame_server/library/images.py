@@ -19,6 +19,7 @@ import httpx
 from PIL import Image
 
 from ..fsutil import dir_bytes, own_files
+from ..imaging.cut import same_picture, warp
 from ..imaging.layout import load_image
 from ..imaging.margins import trim_margins
 from ..imaging.mount import inside_mount
@@ -443,6 +444,11 @@ class ImageCache:
         #: Thumbnails as the cover tiles show them (:meth:`tile`), by the
         #: thumbnail's name; never without their thumbnail.
         self.tiles = root / "tiles"
+        #: Museum photographs of works cut down to the work (``Item.cut``),
+        #: as they came, by the original's name: "Pełny kadr", and the
+        #: corners set again from them.
+        self.full = root / "full"
+        self.full.mkdir(parents=True, exist_ok=True)
         self.thumbs.mkdir(parents=True, exist_ok=True)
         self.tiles.mkdir(parents=True, exist_ok=True)
         self.images.mkdir(parents=True, exist_ok=True)
@@ -553,6 +559,88 @@ class ImageCache:
     def image_path(self, item: Item) -> Path:
         return self.images / f"{item.file_stem}.jpg"
 
+    def full_path(self, item: Item) -> Path:
+        """The museum's photograph of a work whose original is cut down to
+        the work (:meth:`recut`); there only while the cut applies."""
+        return self.full / f"{item.file_stem}.jpg"
+
+    def _photo_path(self, item: Item) -> Path:
+        """The original as the museum gave it: the photograph kept beside a
+        cut one, else the original itself."""
+        full = self.full_path(item)
+        return full if full.is_file() else self.image_path(item)
+
+    @staticmethod
+    def _quad(item: Item, size: tuple[int, int]) -> list[tuple[float, float]] | None:
+        """The corners a picture of ``size`` is cut to for ``item``, None
+        when it is shown whole (no cut, or another picture than the cut's)."""
+        shown = item.cut_shown()
+        if shown is None or item.cut is None or not same_picture(item.cut.aspect, size):
+            return None
+        return shown
+
+    def _keep_original(self, item: Item, img: Image.Image, side: int) -> Path:
+        """``img``, the museum's photograph as downloaded, kept as the work's
+        original: cut down to the work when its cut applies, the photograph
+        kept beside it (:meth:`full_path`)."""
+        path = self.image_path(item)
+        quad = self._quad(item, img.size)
+        if quad is None:
+            _save_jpeg(img, path, side, 92)
+            self.full_path(item).unlink(missing_ok=True)
+        else:
+            _save_jpeg(img, self.full_path(item), side, 92)
+            _save_jpeg(warp(img, quad), path, side, 92)
+        return path
+
+    def recut(self, item: Item) -> bool:
+        """The original and the thumbnail kept here made again after the
+        work's cut changed (set, corrected, the paper switched, given up):
+        from the museum's photograph kept beside a cut original, else from
+        the original itself. A work with no original here loses its
+        thumbnail, had again (and cut) from its address when next asked
+        for. Whether an original was here."""
+        path, full = self.image_path(item), self.full_path(item)
+        here = False
+        with self._lock(f"i:{item.id}"):
+            source = full if full.is_file() else path if path.is_file() else None
+            if source is not None:
+                try:
+                    img = load_image(source)
+                except OSError as err:
+                    log.warning("cut of %s not made: %s", item.id, err)
+                else:
+                    here = True
+                    quad = self._quad(item, img.size)
+                    if quad is None:
+                        if source == full:
+                            os.replace(full, path)  # the photograph whole again
+                    else:
+                        if source == path:
+                            os.replace(path, full)  # kept as it came
+                        _save_jpeg(warp(img, quad), path, kept_side(item), 92)
+        with self._lock(f"t:{item.id}"):
+            thumb = self.thumb_path(item)
+            if here and path.is_file():
+                try:
+                    _save_jpeg(load_image(path), thumb, THUMB_MAX, 85)
+                except OSError:
+                    thumb.unlink(missing_ok=True)
+            else:
+                thumb.unlink(missing_ok=True)
+            (self.tiles / thumb.name).unlink(missing_ok=True)
+        return here
+
+    def museum_photo(self, item: Item, urgent: bool = False) -> Path:
+        """The museum's photograph of the work, whole ("Pełny kadr"; what
+        the corners are set on): kept beside a cut original, else the
+        original, downloaded if need be."""
+        full = self.full_path(item)
+        if full.is_file():
+            return full
+        path = self.ensure_image(item, urgent)
+        return full if full.is_file() else path  # cut as it came in, or whole
+
     def tile(self, thumb: Path) -> Path:
         """The thumbnail ``thumb`` as a cover tile shows it: the work
         without the paper, mount or backdrop around it
@@ -645,7 +733,7 @@ class ImageCache:
         path = self.image_path(item)
         with contextlib.suppress(OSError), self._lock(f"i:{item.id}"):
             if not path.is_file():
-                _save_jpeg(img, path, kept_side(item), 92)
+                self._keep_original(item, img, kept_side(item))
                 self._remember_size(item, img)
                 old = time.time() - LOOKED_AGE
                 os.utime(path, (old, old))
@@ -661,7 +749,12 @@ class ImageCache:
         with self._holding(f"t:{item.id}", item.thumb_url, urgent):
             if not path.is_file():
                 local = self.image_path(item)
-                img = load_image(local) if local.is_file() else self._thumbnail(item, urgent)
+                if local.is_file():
+                    img = load_image(local)
+                else:
+                    img = self._thumbnail(item, urgent)
+                    if (quad := self._quad(item, img.size)) is not None:
+                        img = warp(img, quad)  # the work, as its original is kept
                 _save_jpeg(img, path, THUMB_MAX, 85)
         self._forget_gone(item)
         return path
@@ -905,7 +998,7 @@ class ImageCache:
             if not path.is_file():
                 img = self._original(item, urgent)
                 self._failed.pop(item.id, None)
-                _save_jpeg(img, path, kept_side(item), 92)
+                self._keep_original(item, img, kept_side(item))
                 self._remember_size(item, img)
         self._forget_gone(item)
         return path
@@ -930,11 +1023,12 @@ class ImageCache:
         around it) long after the change (Mateusz, 2026-11-04)."""
         path = self.image_path(item)
         with self._lock(f"i:{item.id}"):
-            _save_jpeg(img, path, IMAGE_MAX, 92)
+            self._keep_original(item, img, IMAGE_MAX)
             self._remember_size(item, img)
             self._failed.pop(item.id, None)
         with self._lock(f"t:{item.id}"):
-            _save_jpeg(img, self.thumb_path(item), THUMB_MAX, 85)
+            _save_jpeg(load_image(path), self.thumb_path(item), THUMB_MAX, 85)
+            (self.tiles / self.thumb_path(item).name).unlink(missing_ok=True)
         self._forget_gone(item)
         return path
 
@@ -945,7 +1039,7 @@ class ImageCache:
         stays when the source gives no more or fails. How many grew."""
         grown = 0
         for item in items:
-            path = self.image_path(item)
+            path = self._photo_path(item)
             if item.source in OWN_SOURCES or not path.is_file():
                 continue
             try:
@@ -961,7 +1055,7 @@ class ImageCache:
                     width, height = kept_size(*img.size)
                     if width * height <= size[0] * size[1]:
                         continue  # the source gives no more
-                    _save_jpeg(img, path, IMAGE_MAX, 92)
+                    self._keep_original(item, img, IMAGE_MAX)
                     self._remember_size(item, img)
             except (httpx.HTTPError, OSError) as err:
                 log.info("elongated %s kept as it was: %s", item.id, err)
@@ -981,7 +1075,7 @@ class ImageCache:
     def cut_before(self, item: Item) -> bool:
         """Whether the original here was cut to the old limit
         (:data:`OLD_MAX`): its source had more, and may be asked for it."""
-        path = self.image_path(item)
+        path = self._photo_path(item)
         if item.source in OWN_SOURCES or split_part(item.id) is not None:
             return False
         known = self.known_size(item)
@@ -999,10 +1093,10 @@ class ImageCache:
         again in the size originals are kept in now; the one here stays
         when the source gives no more. The bytes it grew by (0: it stays).
         Errors of the download are the caller's."""
-        path = self.image_path(item)
+        photo, path = self._photo_path(item), self.image_path(item)
         with self._lock(f"i:{item.id}"):
             try:
-                with Image.open(path) as kept:
+                with Image.open(photo) as kept:
                     size = kept.size
                 before = path.stat().st_size
             except OSError:
@@ -1012,7 +1106,7 @@ class ImageCache:
             if width * height <= size[0] * size[1]:
                 return 0  # the source gives no more
             used = path.stat().st_mtime
-            _save_jpeg(img, path, kept_side(item), 92)
+            self._keep_original(item, img, kept_side(item))
             os.utime(path, (used, used))  # as lately used as it was
             self._remember_size(item, img)
             return max(path.stat().st_size - before, 1)
@@ -1097,6 +1191,7 @@ class ImageCache:
         their place): both are had again from its addresses."""
         with self._lock(f"i:{item.id}"):
             self.image_path(item).unlink(missing_ok=True)
+            self.full_path(item).unlink(missing_ok=True)
         with self._lock(f"t:{item.id}"):
             self.thumb_path(item).unlink(missing_ok=True)
 
@@ -1197,6 +1292,7 @@ class ImageCache:
             if total <= limit_bytes:
                 break
             path.unlink(missing_ok=True)
+            (self.full / path.name).unlink(missing_ok=True)  # its photograph whole
             total -= files[path].st_size
             removed += 1
         return removed
@@ -1225,6 +1321,7 @@ class ImageCache:
         self.thumb_path(item).unlink(missing_ok=True)
         (self.tiles / self.thumb_path(item).name).unlink(missing_ok=True)
         self.image_path(item).unlink(missing_ok=True)
+        self.full_path(item).unlink(missing_ok=True)
         with self._guard:
             self._sizes.pop(item.id, None)
 

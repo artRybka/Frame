@@ -423,7 +423,7 @@ struct DailyView: View {
         if card?.id != work.item.id { card = work.item.item }
         if let fresh = try? await model.backend.item(id: work.item.id) {
             card = fresh
-            model.pictureSeen(fresh.id, copy: fresh.sharper?.itemId ?? "")
+            model.pictureSeen(fresh.id, copy: fresh.pictureVersion)
         }
     }
 

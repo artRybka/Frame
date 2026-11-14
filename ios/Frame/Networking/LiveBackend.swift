@@ -133,6 +133,28 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
+    func checkCut(itemID: String, wait: Int) async throws -> CutView {
+        var req = request(
+            "/api/library/items/\(escape(itemID))/cut/check", method: "POST",
+            query: [URLQueryItem(name: "wait", value: String(wait))]
+        )
+        req.timeoutInterval = TimeInterval(wait + 30)
+        return try await perform(req)
+    }
+
+    func setCut(itemID: String, update: CutUpdate) async throws -> Item {
+        // "Sama odbitka" the first time asks Opus for the print's edge.
+        var req = request("/api/library/items/\(escape(itemID))/cut", method: "PUT")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try Self.encoder().encode(update)
+        req.timeoutInterval = 120
+        return try await perform(req)
+    }
+
+    func removeCut(itemID: String) async throws -> Item {
+        try await send("/api/library/items/\(escape(itemID))/cut", method: "DELETE")
+    }
+
     func copies(itemID: String) async throws -> AsyncThrowingStream<CopyLine, Error> {
         var req = request("/api/library/items/\(escape(itemID))/copies")
         req.timeoutInterval = 120
@@ -797,6 +819,10 @@ struct LiveBackend: FrameBackend {
         try await send("/api/ai/study-refresh", method: "POST")
     }
 
+    func startTextReview(check: Bool, restyle: Bool) async throws -> AiSettings {
+        try await send("/api/ai/text-review", method: "POST", body: TextReviewStart(check: check, restyle: restyle))
+    }
+
     func saveGeminiKey(_ key: String) async throws -> AiSettings {
         try await send("/api/ai/gemini-key", method: "PUT", body: AiKeyUpdate(key: key))
     }
@@ -903,6 +929,11 @@ struct LiveBackend: FrameBackend {
                 query.append(URLQueryItem(name: "framing", value: String(decoding: data, as: UTF8.self)))
             }
             req = request("/api/library/items/\(escape(id))/preview", query: query)
+        case let .museumPhoto(id, side, version):
+            req = request(
+                "/api/library/items/\(escape(id))/full",
+                query: [URLQueryItem(name: "side", value: String(side)), URLQueryItem(name: "v", value: version)]
+            )
         case let .path(path):
             // A query ("?n=0&v=…") goes as the query, not into the path.
             let parts = path.split(separator: "?", maxSplits: 1).map(String.init)
