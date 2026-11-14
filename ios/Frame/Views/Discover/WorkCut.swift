@@ -51,8 +51,8 @@ private func quadPath(_ quad: [[Double]], in size: CGSize) -> Path {
     return path
 }
 
-/// "Pełny kadr" on the work's card: the museum's photograph with what is
-/// shown outlined, a line on what was around the work, and for a print on
+/// "Pełny kadr" on the work's card: the museum's photograph as it is (no
+/// outline of the cut, Mateusz 2026-11-14), a line on what was around the work, and for a print on
 /// its sheet the choice "Z papierem" / "Sama odbitka" as two small
 /// pictures, the chosen one outlined (Mateusz 2026-11-14, variant A).
 struct FullPhotoSection: View {
@@ -103,19 +103,11 @@ struct FullPhotoSection: View {
         return item.isCropped ? "\(said) Prezentowane jest wykadrowane dzieło." : said
     }
 
-    /// The photograph whole, what is shown outlined; a tap opens it large.
+    /// The photograph whole; a tap opens it large.
     private var whole: some View {
         Button(action: open) {
+            // No outline of the cut on it (Mateusz 2026-11-14): just the photograph.
             QuadCrop(ref: photo, photoAspect: photoAspect, quad: nil, height: 112, maxWidth: 150)
-                .overlay {
-                    if let shown = item.cutShown {
-                        GeometryReader { geo in
-                            let path = quadPath(shown, in: geo.size)
-                            path.stroke(.black.opacity(0.45), style: StrokeStyle(lineWidth: 2.5, dash: [4, 3]))
-                            path.stroke(.white, style: StrokeStyle(lineWidth: 1.2, dash: [4, 3]))
-                        }
-                    }
-                }
                 .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
         }
         .buttonStyle(.plain)
