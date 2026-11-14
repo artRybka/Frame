@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.137
+
+- Kadrowanie po wejściu w kartę dzieła przestało działać, gdy przeglądało
+  się Odkrywaj: zapytanie o kadr czekało na miniaturę albo zdjęcie muzeum
+  jak praca w tle, a ta czeka, dopóki aplikacja jest w użyciu. Oba wątki
+  kadrowania stanęły (na NAS od 23:20 UTC 14.11) i każda następna karta
+  czekała 60 s bez skutku. Teraz kadrowanie z karty pobiera obrazy od razu,
+  jak inne rzeczy, na które karta czeka.
+
 ## 1.145.136
 
 - Ponowna analiza kolorów biblioteki (po zmianie sposobu liczenia barw,

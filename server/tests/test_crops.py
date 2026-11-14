@@ -340,3 +340,16 @@ def test_a_cut_of_another_picture_is_never_applied(service: FrameService) -> Non
     service.images.recut(item)
     with Image.open(service.images.image_path(item)) as kept:
         assert kept.size == (W, H)
+
+
+def test_the_cards_cut_is_not_held_back_while_the_app_is_in_use(service: FrameService) -> None:
+    # As the background's, the card's cut waited for a thumbnail while the
+    # owner browsed Odkrywaj; both workers stood and every card after them
+    # waited 60 s for nothing (1.145.136 on the NAS, 2026-11-14 23:20).
+    from frame_server.library import hosts
+
+    crops = service.crops
+    crops._setup()
+    assert crops._pool is not None
+    seen = crops._pool.submit(lambda: (hosts.purpose(), hosts.deferrable())).result()
+    assert seen == ("kadrowanie", False)
