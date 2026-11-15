@@ -679,7 +679,8 @@ async def _kept_work(svc: FrameService, item_id: str) -> Item:
     stored = svc.library.get(item.id)
     if stored is None:
         raise HTTPException(404, "only a work in the library is cut")
-    if not svc.crops.wanted(stored):
+    own = stored.kind == ItemKind.OWN and stored.source == "upload"  # "Dodaj własne dzieło"
+    if not svc.crops.wanted(stored) and not own:
         raise HTTPException(422, "only a museum work's photograph is cut")
     return stored
 

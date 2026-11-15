@@ -68,6 +68,7 @@ from .media import Media
 from .museum_places import MuseumPlaces
 from .night import NightQueue
 from .notifications import Notifier
+from .own_works import OwnWorks
 from .panel_app import POLL, PanelApp
 from .panel_config import PanelConfigStore
 from .places import Places
@@ -355,6 +356,9 @@ class FrameService:
         # sets the corners): at night and when a card opens.
         self.crops = Crops(self.library, self.images, self.claude, self.ai_config)
         self.crops.importer = self.importer
+        self.own_works = OwnWorks(
+            self.library, self.images, self.importer, self.crops, self.sizes, self.claude
+        )
         # A page about a work (its study, the day's) reads the work cut
         # down from its frame: the photograph is looked at first.
         self.daily.job.cutting = self.crops.before_page

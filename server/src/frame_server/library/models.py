@@ -268,6 +268,22 @@ class Cut(BaseModel):
         return self.plate is not None or bool({"paper_margin", "page_text"} & set(self.around))
 
 
+class OwnWork(BaseModel):
+    """What the owner wrote about a work of his own (``ItemKind.OWN``,
+    "Dodaj własne dzieło", Mateusz 2026-11-15) beyond the fields every work
+    has (title, artist, date, technique in ``medium``, his note in
+    ``description``)."""
+
+    #: Where it hangs at home ("Salon").
+    hangs: str = ""
+    #: Where it came from ("Rodzinne, po dziadku", "Kupione w 1998").
+    origin: str = ""
+    #: Its size without the frame, in centimetres; the study's "Rozmiar
+    #: obrazu" draws it (``sizes``).
+    height_cm: float | None = None
+    width_cm: float | None = None
+
+
 class Item(BaseModel):
     """One picture the frame can show."""
 
@@ -342,6 +358,9 @@ class Item(BaseModel):
     #: frame, the thumbnails and the studies show; None when nothing was
     #: decided yet.
     cut: Cut | None = None
+    #: A work of the owner's own: where it hangs, where it came from, its
+    #: size (:class:`OwnWork`); None for every other.
+    own: OwnWork | None = None
     #: The collection the work is in, as found out for a work from a source
     #: that gathers pictures from many (Wikidata's "collection" of the work
     #: on Commons or WikiArt, the institution on its Commons page, WikiArt's
@@ -540,6 +559,9 @@ class ItemSummary(BaseModel):
     #: mark after the title. ``cut``: changes with every change of the cut.
     cropped: bool = False
     cut: str = ""
+    #: ``Item.own``: a work of the owner's own (the card names where it
+    #: hangs above its title, its technique and size below the artist).
+    own: OwnWork | None = None
 
     @classmethod
     def of(cls, item: Item) -> ItemSummary:

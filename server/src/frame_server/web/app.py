@@ -66,6 +66,7 @@ from . import (
     looks_api,
     night_api,
     notify_api,
+    own_api,
     player_api,
     playlists_api,
     restorer_api,
@@ -333,6 +334,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         night_api.router,
         restorer_api.router,
         looks_api.router,
+        own_api.router,
     )
     for router in routers:
         app.include_router(router)

@@ -322,7 +322,11 @@ class Looks:
 
     @staticmethod
     def wanted(item: Item) -> bool:
-        """A museum's work with a picture (never the owner's own)."""
+        """A museum's work with a picture, or a work of the owner's own
+        ("Dodaj własne dzieło": found by its look and among the similar,
+        Mateusz 2026-11-15); never a photograph of his."""
+        if item.kind == ItemKind.OWN:
+            return item.source == "upload"
         return item.kind == ItemKind.ARTWORK and bool(item.thumb_url)
 
     def counts(self) -> tuple[int, int]:
