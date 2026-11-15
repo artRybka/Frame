@@ -11,7 +11,9 @@
   biblioteki.
 - Drzeworyt światłocieniowy (chiaroscuro) ma własny pasek: biel papieru,
   płaskie płyty tonów jednej barwy nadrukowane jedna na drugą i linie
-  płyty konturowej, zamiast czarnego klocka zwykłego drzeworytu.
+  płyty konturowej, zamiast czarnego klocka zwykłego drzeworytu. Rozpoznaje
+  go także opis dzieła, gdy technika mówi tylko „drzeworyt” (np. Jackson
+  według Veronese z Europeany: „cu patru plăci”).
 
 ## 1.145.169
 

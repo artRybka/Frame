@@ -181,7 +181,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
     /// pen's. Paint named wins over the pencil under it, but a drawing with
     /// watercolour is its drawing and its watercolour (`.waterPencil`,
     /// `.waterPen`); a print wins over the paint on it (coloured by hand).
-    static func of(medium: String, classification: String = "", mono: Bool = false, warm: Bool = false) -> PaintStyle? {
+    static func of(medium: String, classification: String = "", mono: Bool = false, warm: Bool = false, about: String = "") -> PaintStyle? {
         let words = Self.paints(Self.words(medium))
         func has(_ list: [String], _ begins: [String], _ whole: Set<String> = []) -> Bool {
             list.contains { word in whole.contains(word) || begins.contains { word.hasPrefix($0) } }
@@ -221,7 +221,10 @@ enum PaintStyle: String, Sendable, CaseIterable {
             // Cut in the plank, not engraved in the end grain ("drzeworyt sztorcowy", a wood engraving): a block of black.
             let cut = has(all, woodcuts) && !has(all, endGrain)
             // Blocks of one colour's tones, one over another: chiaroscuro.
-            if cut, has(all, chiaroscuros) || (oneInk && has(all, blocksNamed)) { return .chiaroscuro }
+            // Its description may say what its medium does not: Jackson after
+            // Veronese (Europeana), "Woodcut process" in one colour's tones,
+            // „Cu patru plăci a imprimat tonurile…”.
+            if cut, has(all, chiaroscuros) || (oneInk && has(all, blocksNamed)) || (oneInk && Self.toldInBlocks(about)) { return .chiaroscuro }
             // Rosin dust bitten into the plate, with or without an etched line: its tones are grain.
             if oneInk, has(all, aquatints) { return .aquatint }
             return oneInk ? (cut ? .woodcut : .burin) : .woodblock
@@ -525,6 +528,34 @@ enum PaintStyle: String, Sendable, CaseIterable {
     private static let chiaroscuros = ["chiaroscur", "swiatlocien", "obscur", "helldunkel", "camaieu", "clairobscur", "claroscur"]
     /// Several blocks named ("from four blocks", „czterema płytami”): a woodcut of one colour's tones.
     private static let blocksNamed = ["blocks", "plyt", "klock", "platten", "stocken", "blokken"]
+    /// Whether a description says a print was pulled from several blocks
+    /// ("from four blocks", „czterema płytami”, „cu patru plăci”) or names
+    /// it a chiaroscuro woodcut.
+    static func toldInBlocks(_ text: String) -> Bool {
+        guard !text.isEmpty else { return false }
+        let told = text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+            .lowercased()
+            .replacingOccurrences(of: "ł", with: "l")
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map(String.init)
+        return zip(told, told.dropFirst()).contains { a, b in
+            (blockCounts.contains(a) && blocksTold.contains(where: b.hasPrefix))
+                || (chiaroscuros.contains(where: a.hasPrefix) && woodcuts.contains(where: b.hasPrefix))
+                || (woodcuts.contains(where: a.hasPrefix) && chiaroscuros.contains(where: b.hasPrefix))
+        }
+    }
+
+    /// How many blocks, in the languages the museums write in.
+    private static let blockCounts: Set<String> = [
+        "2", "3", "4", "5", "6", "two", "three", "four", "five", "six", "several", "multiple",
+        "dwa", "dwoch", "dwoma", "dwiema", "trzy", "trzech", "trzema", "cztery", "czterech", "czterema", "piec", "pieciu", "piecioma", "kilku", "kilkoma",
+        "doua", "doi", "trei", "patru", "cinci", "mai",
+        "zwei", "drei", "vier", "funf", "mehreren", "twee", "drie", "vijf",
+        "deux", "trois", "quatre", "cinq", "plusieurs", "due", "tre", "quattro", "cinque", "dos", "tres", "cuatro", "cinco",
+    ]
+    /// A block or a plate a description names.
+    private static let blocksTold = ["block", "plate", "plyt", "placi", "platt", "planch", "blocc", "matric", "stock", "blok", "klock", "tavol", "legni"]
+
     /// What says only that a work is printed, not how.
     private static let anyPrint: Set<String> = ["print", "grafik", "estamp"]
     /// What says a print is in colours.

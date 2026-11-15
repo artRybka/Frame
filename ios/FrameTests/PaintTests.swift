@@ -1760,6 +1760,16 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(PaintStyle.of(medium: "Woodcut", mono: true), .woodcut)
         XCTAssertEqual(PaintStyle.of(medium: "Color woodcut printed from four blocks"), .woodblock)
         XCTAssertEqual(PaintStyle.of(medium: "chiaroscuro woodcut"), .chiaroscuro)
+        // Jackson after Veronese (Europeana): its medium only "Woodcut process", its description says the blocks.
+        let jackson = "Woodcut process, Woodcut print, Engraving process, woodcut (process)"
+        let told = "Lectura gravorului este selectivă, mult simplificată și redusă la monocromie. Cu patru plăci a imprimat tonurile de umbra naturală."
+        XCTAssertEqual(PaintStyle.of(medium: jackson, classification: "Drawing", mono: true, about: told), .chiaroscuro)
+        XCTAssertEqual(PaintStyle.of(medium: jackson, classification: "Drawing", mono: true), .woodcut)
+        XCTAssertEqual(PaintStyle.of(medium: "Woodcut", mono: true, about: "A chiaroscuro woodcut after Parmigianino."), .chiaroscuro)
+        // Light and shade the description speaks of, or blocks of a print in colours, are not it.
+        XCTAssertEqual(PaintStyle.of(medium: "Woodcut", mono: true, about: "Dürer's strong chiaroscuro models the figures."), .woodcut)
+        XCTAssertEqual(PaintStyle.of(medium: "Color woodcut", about: "Printed from four blocks."), .woodblock)
+        XCTAssertEqual(PaintStyle.of(medium: "Etching", mono: true, about: "Printed from two plates."), .burin)
 
         let veronese = shares([("#967746", 0.236), ("#795e37", 0.233), ("#b29360", 0.175), ("#574126", 0.15)])
         let tones = ChiaroscuroStrip.tones(veronese)
