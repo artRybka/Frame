@@ -616,6 +616,8 @@ struct AiSection: View {
         if use.key == "studies" {
             parts.append("ok. \(Money.usd(use.eachUsd)) za studium")
             if let waiting = use.waiting, waiting > 0 { parts.append("kandydaci kuratora: \(waiting)") }
+        } else if use.waiting == nil && use.key == "descriptions" {
+            parts.append("liczę, ile czeka w katalogu…")
         } else if let waiting = use.waiting {
             if waiting == 0 {
                 parts.append("nic nie czeka")

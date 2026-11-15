@@ -813,10 +813,17 @@ class AiWorker:
 
     def estimate(self, kind: str) -> tuple[int, float]:
         """Items "describe the library" would ask about, and about what it costs."""
+        ids, usd = self.library_waiting(kind)
+        return len(ids), usd
+
+    def library_waiting(self, kind: str) -> tuple[list[str], float]:
+        """The items "describe the library" would ask about (the whole
+        catalogue, not only what the background asks), and about what it
+        costs."""
         job = self.jobs[kind]
         in_batches = self._batched()
         items = [i for i in self._stale(job, job.in_library) if (kind, i.id) not in in_batches]
-        return len(items), job.estimate_items(items)
+        return [i.id for i in items], job.estimate_items(items)
 
     def describe_library(self, kind: str) -> int:
         """Start asking about every item of the library without a note;

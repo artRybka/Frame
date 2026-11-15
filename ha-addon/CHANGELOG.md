@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.163
+
+- Resztka miesiąca: pozycja „Słowa kluczowe i polskie opisy” liczy
+  teraz wszystkie dzieła katalogu, którym ich brakuje, i pokazuje
+  prawdziwy koszt. Wcześniej liczyła tylko dzieła z Ulubionych,
+  playlist i już pokazane, choć noc zamawia opisy dla całego katalogu.
+
 ## 1.145.161
 
 - Resztka miesiąca Claude idzie na to, co wybierzesz, w Twojej kolejności:
