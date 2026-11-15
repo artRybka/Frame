@@ -32,6 +32,8 @@ struct AiSection: View {
     @State private var askRefresh = false
     @State private var startingRefresh = false
     @State private var reviewCheck = true
+    /// CI and Mac screenshots: `-review YES` opens „Do sprawdzenia".
+    @State private var showReview = UserDefaults.standard.bool(forKey: "review")
     @State private var reviewRestyle = false
     @State private var askReview = false
     @State private var startingReview = false
@@ -286,6 +288,7 @@ struct AiSection: View {
                 Card { leftoverRows }
             }
         }
+        .navigationDestination(isPresented: $showReview) { AiReviewView() }
         .task {
             // Batches and the background move on while Konfiguracja is open.
             while !Task.isCancelled {

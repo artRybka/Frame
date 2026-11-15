@@ -1994,6 +1994,15 @@ struct AiReview: Codable, Hashable, Sendable {
         /// Its Polish name ("Tytuł").
         var name: String
         var problem: String
+        /// For a title, a maker or a date: the corrected value ("Popraw na…");
+        /// "" until the audit or "suggest" gave one, nil from an older server.
+        var fix: String? = nil
+        /// For a title: the corrected Polish title.
+        var fixPl: String? = nil
+
+        /// Mended with a value ("Popraw").
+        var valued: Bool { ["title", "artist", "date"].contains(field) }
+        var proposal: String? { fix.flatMap { $0.isEmpty ? nil : $0 } }
     }
 
     struct Entry: Codable, Hashable, Sendable, Identifiable {

@@ -854,6 +854,30 @@ struct LiveBackend: FrameBackend {
         try await send("/api/ai/review/\(escape(itemID))", method: "DELETE")
     }
 
+    func suggestReviewFixes(itemID: String) async throws -> AiReview {
+        try await send("/api/ai/review/\(escape(itemID))/suggest", method: "POST")
+    }
+
+    func applyReviewFix(itemID: String, field: String, value: String, valuePl: String?) async throws -> AiReview {
+        struct Body: Encodable { let field: String; let value: String; let valuePl: String? }
+        return try await send(
+            "/api/ai/review/\(escape(itemID))/fix", method: "POST",
+            body: Body(field: field, value: value, valuePl: valuePl)
+        )
+    }
+
+    func cutReviewed(itemID: String) async throws -> AiReview {
+        try await send("/api/ai/review/\(escape(itemID))/cut", method: "POST")
+    }
+
+    func dropReviewProblem(itemID: String, field: String) async throws -> AiReview {
+        try await send("/api/ai/review/\(escape(itemID))/problems/\(escape(field))", method: "DELETE")
+    }
+
+    func hideReviewed(itemID: String) async throws -> AiReview {
+        try await send("/api/ai/review/\(escape(itemID))/hide", method: "POST")
+    }
+
     func saveAiKey(_ key: String) async throws -> AiSettings {
         try await send("/api/ai/key", method: "PUT", body: AiKeyUpdate(key: key))
     }
