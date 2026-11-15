@@ -3,6 +3,7 @@ studies, the curator's runners-up first (leftover.py)."""
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
@@ -207,3 +208,118 @@ def test_the_app_sees_and_sets_it(tmp_path: Path) -> None:
         assert got["period_day"] == 17 and got["period_start"].endswith("-17")
         assert got["leftover_state"]["per_study_usd"] == leftover_module.STUDY_USD
         assert client.put("/api/ai", json={"period_day": 31}, headers=headers).status_code == 422
+
+
+def test_the_uses_keep_the_owners_order_and_take_in_new_ones(tmp_path: Path) -> None:
+    _, svc, _ = _claude(tmp_path)
+    config = svc.ai_config.config
+    keys = [k for k, _ in leftover_module.uses(config)]
+    assert keys == list(leftover_module.USES)
+    assert dict(leftover_module.uses(config))["audit"] is False  # off until he says
+    # An older list without some uses: they come in after their neighbour.
+    svc.ai_config.update(
+        AiConfigUpdate(leftover_order=["studies", "refresh", "nonsense"], leftover_off=["studies"])
+    )
+    found = leftover_module.uses(svc.ai_config.config)
+    assert [k for k, _ in found] == [
+        "studies",
+        "descriptions",
+        "audit",
+        "refresh",
+        "crops",
+        "text_review",
+    ]
+    assert dict(found)["studies"] is False and dict(found)["audit"] is True
+
+
+def _fake_uses(svc: FrameService, made: list[Any]) -> list[tuple[str, float]]:
+    """Uses that only note what they were given."""
+    calls: list[tuple[str, float]] = []
+
+    def use(key: str, each: float, waiting: int | None, cap: int | None) -> Any:
+        def run(usd: float) -> tuple[int, float, bool]:
+            calls.append((key, round(usd, 2)))
+            n = min(math.floor(usd / each), cap or 10**9, waiting if waiting is not None else 10**9)
+            return n, n * each, waiting is None or n < waiting
+
+        return leftover_module.Use(key, each, lambda: waiting, lambda: True, run, cap)
+
+    uses = [use(*args) for args in made]
+    svc.leftover._made_uses = lambda: uses  # type: ignore[method-assign]
+    return calls
+
+
+def test_the_rest_is_spent_from_the_top_keeping_the_coming_nights(tmp_path: Path) -> None:
+    _, svc, _ = _claude(tmp_path)
+    _switched_on(svc)
+    _spent(svc, 150.0)  # 40 USD above the reserve
+    # 28.11 02:00, the window closes on 30.11: tonight and one night more.
+    assert svc.leftover.nights_left() == 1
+    calls = _fake_uses(
+        svc,
+        [
+            ("refresh", 0.1, 30, None),  # 3 USD, all of it tonight
+            ("studies", 1.0, None, 25),  # 25 tonight, 25 kept for tomorrow
+            ("descriptions", 0.01, 1000, None),  # 10 USD
+        ],
+    )
+    _, said = svc.leftover.at_night()
+    assert calls[0] == ("refresh", 40.0)
+    assert calls[1] == ("studies", 37.0)
+    # 37 - 25 tonight - 25 kept for tomorrow: nothing for the descriptions
+    assert [c[0] for c in calls] == ["refresh", "studies"]
+    assert said.startswith("uzupełnione studia: 30") and "zamówione 25 studiów" in said
+    # The owner puts the descriptions first: they take what they need.
+    svc.ai_config.update(AiConfigUpdate(leftover_order=["descriptions", "refresh", "studies"]))
+    calls.clear()
+    svc.leftover.at_night()
+    assert calls[0] == ("descriptions", 40.0)
+    assert calls[1] == ("refresh", 30.0)
+    # A use switched off is not asked.
+    svc.ai_config.update(AiConfigUpdate(leftover_off=["descriptions", "audit"]))
+    calls.clear()
+    svc.leftover.at_night()
+    assert "descriptions" not in [c[0] for c in calls]
+
+
+def test_the_crops_and_the_audit_take_more_a_night_until_the_period_ends(
+    tmp_path: Path,
+) -> None:
+    _, svc, _ = _claude(tmp_path)
+    crops = svc.crops
+    assert crops.limit(True) == crops.critic_per_night
+    crops.give_extra(100, 40, date(2026, 12, 1))
+    today = date(2026, 11, 28)
+    assert crops.extra(True, today) == 40 and crops.extra(False, today) == 100
+    assert crops.extra(True, date(2026, 12, 1)) == 0  # its period is over
+    crops._extra_used(True, crops.critic_per_night + 15)
+    assert crops.extra(True, today) == 25
+    crops._extra_used(True, crops.critic_per_night - 5)  # its own share only
+    assert crops.extra(True, today) == 25
+    svc.audit.give_extra(70, 0, date(2026, 12, 1))
+    svc.audit.cared = dict
+    assert svc.audit.limit(False) == svc.audit.per_night + svc.audit.extra(False)
+
+
+def test_the_app_orders_the_uses(tmp_path: Path) -> None:
+    app, svc, _ = _claude(tmp_path)
+    token = svc.settings.api_token
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    with TestClient(app) as client:
+        got = client.get("/api/ai", headers=headers).json()
+        uses = got["leftover_state"]["uses"]
+        assert [u["key"] for u in uses] == list(leftover_module.USES)
+        assert all(u["label"] and u["about"] for u in uses)
+        assert next(u for u in uses if u["key"] == "audit")["on"] is False
+        got = client.put(
+            "/api/ai",
+            json={
+                "leftover_order": ["studies", *[k for k in leftover_module.USES if k != "studies"]],
+                "leftover_off": ["crops"],
+            },
+            headers=headers,
+        ).json()
+        uses = got["leftover_state"]["uses"]
+        assert uses[0]["key"] == "studies"
+        on = {u["key"]: u["on"] for u in uses}
+        assert on["crops"] is False and on["audit"] is True
