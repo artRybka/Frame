@@ -85,6 +85,11 @@ TWIN_TIDY = 1
 #: tidied (:meth:`Crops.sheets_out`).
 SHEET_TIDY = 1
 
+#: How long a page about a work waits for its photograph to be looked at
+#: and cut (seconds): the judge and Opus take 5 to 15 s, a minute when the
+#: museum is slow to give the photograph.
+PAGE_WAIT = 90.0
+
 #: The judge's thumbnail, and Opus's picture (the trial's sizes).
 JUDGE_SIDE = 640
 PHOTO_SIDE = 1400
@@ -227,41 +232,61 @@ def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
-def _crop_within(crop: Crop | None, quad: Quad) -> Crop | None:
-    """``crop`` (a part of the whole photograph) as the same part of the
-    picture cut to ``quad``: its centre moved in, its zoom less by as much
-    as the picture is smaller."""
+def _box(quad: Quad | None) -> tuple[float, float, float, float]:
+    """The box (left, top, right, bottom) around ``quad``, the whole
+    photograph for None."""
+    if quad is None:
+        return 0.0, 0.0, 1.0, 1.0
+    xs, ys = [x for x, _ in quad], [y for _, y in quad]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _crop_moved(crop: Crop | None, old: Quad | None, new: Quad | None) -> Crop | None:
+    """``crop`` (a part of the photograph cut to ``old``, None: whole) as
+    the same part of the photograph cut to ``new``: its centre moved, its
+    zoom changed by as much as the picture is smaller or larger."""
     if crop is None:
         return None
-    xs, ys = [x for x, _ in quad], [y for _, y in quad]
-    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
-    if x1 - x0 <= 0 or y1 - y0 <= 0:
+    ox0, oy0, ox1, oy1 = _box(old)
+    nx0, ny0, nx1, ny1 = _box(new)
+    if min(ox1 - ox0, oy1 - oy0, nx1 - nx0, ny1 - ny0) <= 0:
         return crop
-    share = ((x1 - x0) + (y1 - y0)) / 2
+    x = ox0 + crop.x * (ox1 - ox0)
+    y = oy0 + crop.y * (oy1 - oy0)
+    share = ((nx1 - nx0) + (ny1 - ny0)) / ((ox1 - ox0) + (oy1 - oy0))
     return crop.model_copy(
         update={
-            "x": min(1.0, max(0.0, (crop.x - x0) / (x1 - x0))),
-            "y": min(1.0, max(0.0, (crop.y - y0) / (y1 - y0))),
+            "x": min(1.0, max(0.0, (x - nx0) / (nx1 - nx0))),
+            "y": min(1.0, max(0.0, (y - ny0) / (ny1 - ny0))),
             "zoom": min(8.0, max(1.0, crop.zoom * share)),
         }
     )
 
 
-def framing_within(framing: dict[str, Framing], quad: Quad) -> dict[str, Framing]:
-    """The owner's framings, set on the whole photograph, as the same parts
-    of the picture cut to ``quad``: a cut by the model keeps what he chose
-    to show (Wyspiański's „Macierzyństwo”, 2026-11-15: a close-up of the
-    mother's face kept the thin wooden frame of the copy he picked from
-    being cut away)."""
+def framing_moved(
+    framing: dict[str, Framing], old: Quad | None, new: Quad | None
+) -> dict[str, Framing]:
+    """The owner's framings, set on the photograph cut to ``old`` (None:
+    whole), as the same parts of it cut to ``new``: a cut keeps what he
+    chose to show, the model's (Wyspiański's „Macierzyństwo”, 2026-11-15:
+    a close-up of the mother's face kept the thin wooden frame of the copy
+    he picked from being cut away) and his own corrected corners alike
+    (they wiped his framings until the audit of 2026-11-15)."""
     return {
         side: Framing(
-            fill=_crop_within(f.fill, quad),
-            detail=_crop_within(f.detail, quad),
-            picture=_crop_within(f.picture, quad),
-            fit=_crop_within(f.fit, quad),
+            fill=_crop_moved(f.fill, old, new),
+            detail=_crop_moved(f.detail, old, new),
+            picture=_crop_moved(f.picture, old, new),
+            fit=_crop_moved(f.fit, old, new),
         )
         for side, f in framing.items()
     }
+
+
+def framing_within(framing: dict[str, Framing], quad: Quad) -> dict[str, Framing]:
+    """The owner's framings, set on the whole photograph, as the same parts
+    of the picture cut to ``quad`` (:func:`framing_moved`)."""
+    return framing_moved(framing, None, quad)
 
 
 class Crops(CriticNight):
@@ -344,10 +369,14 @@ class Crops(CriticNight):
             return False
 
     def candidates(self, asked: dict[str, Any]) -> list[Item]:
+        # A work asked about is asked again when another copy took the
+        # place of the photograph looked at (``Item.picture_key``): a
+        # sharper copy picked at night was shown whole until its card was
+        # opened (the audit of 2026-11-15).
         found = [
             i
             for i in self.library.all_items()
-            if i.cut is None and i.id not in asked and self.wanted(i)
+            if self.stale(i) and self.wanted(i) and not self._looked_at(asked.get(i.id), i)
         ]
         found.sort(key=lambda i: i.added_at or "", reverse=True)
         found.sort(key=lambda i: i.source not in FIRST_SOURCES)
@@ -355,6 +384,18 @@ class Crops(CriticNight):
         cared = self.cared()
         found.sort(key=lambda i: cared.get(i.id, REST))
         return found
+
+    @staticmethod
+    def _looked_at(entry: dict[str, Any] | None, item: Item) -> bool:
+        """Whether ``entry`` (``asked[id]``) is a look at the picture the
+        work is shown from now; a photograph that could not be had is not
+        asked about again."""
+        if entry is None:
+            return False
+        return bool(entry.get("broken")) or entry.get("p", "") == item.picture_key()
+
+    def noted(self, item: Item) -> dict[str, Any]:
+        return {"p": item.picture_key()}
 
     def _round(self, state: dict[str, Any]) -> tuple[bool, list[tuple[Item, dict[str, Any]]]]:
         critic, found = super()._round(state)
@@ -469,7 +510,7 @@ class Crops(CriticNight):
             return {"around": sorted({*around, "backdrop"}), "band": True}
         if CUT_AROUND & set(around):
             return {"around": around}
-        if PAPER & set(around) and item.cut is None:
+        if PAPER & set(around) and self.stale(item):
             # Only paper: nothing cut, but the card offers "Pokaż bez marginesu".
             self.library.update(item.id, cut=Cut(around=around, picture=item.picture_key()))
         return None
@@ -566,12 +607,13 @@ class Crops(CriticNight):
         the original, the thumbnail, the colours, the study's details."""
         cut = cut.without_twin() if cut is not None else None
         changes: dict[str, Any] = {"cut": cut}
-        if item.framing and cut is not None and cut.by == "owner":
-            changes["framing"] = {}  # set on the picture before: another now
-        elif item.framing and cut is not None and (shown := cut.shown()) is not None:
-            # The model's cut of a picture shown whole (``open_to_cut``):
-            # his framings show the same parts of it cut.
-            changes["framing"] = framing_within(item.framing, shown)
+        if item.framing:
+            # His framings were set on the picture as it was shown: they
+            # show the same parts of it cut anew (or whole again).
+            before = item.cut_shown()
+            after = cut.shown() if cut is not None and cut.picture == item.picture_key() else None
+            if before != after:
+                changes["framing"] = framing_moved(item.framing, before, after)
         updated = self.library.update(item.id, **changes) or item.model_copy(update=changes)
         self.images.recut(updated)
         if self.importer is not None:
@@ -648,6 +690,15 @@ class Crops(CriticNight):
             if len(self._running) > 200:
                 self._running = {k: f for k, f in self._running.items() if not f.done()}
             return future
+
+    def before_page(self, item: Item) -> bool:
+        """:meth:`now` before a page is written about the work (its study,
+        the day's), waited for :data:`PAGE_WAIT` at most: a card that
+        asked meanwhile shares the one look. Whether it was cut; a work
+        not in the library is not looked at (its cut could not be kept)."""
+        if self.library.get(item.id) is None:
+            return False
+        return self.soon(item).result(timeout=PAGE_WAIT)
 
     def now(self, item: Item) -> bool:
         """A card opened: a work not looked at yet (or whose picture changed

@@ -196,6 +196,10 @@ class CriticNight(CheckedNight):
         )
         return True
 
+    def noted(self, item: Item) -> dict[str, Any]:
+        """What else is kept with a work asked about (``asked[id]``)."""
+        return {}
+
     def collect(self) -> bool | None:
         """The batch's answers put in once it is done: True when they were,
         False while it runs, None without one."""
@@ -226,7 +230,7 @@ class CriticNight(CheckedNight):
             data = answer.data or {}
             if not critic:
                 found = None if answer.refused else self.claim(item, data)
-                asked[item_id] = {"v": self.version, "at": at[:10]}
+                asked[item_id] = {"v": self.version, "at": at[:10], **self.noted(item)}
                 if found:
                     claims[item_id] = found
                     counts["claims"] += 1
@@ -235,7 +239,12 @@ class CriticNight(CheckedNight):
                 continue
             claim = claims.pop(item_id, None) or {}
             kept = {} if answer.refused else self.confirmed(item, claim, data)
-            asked[item_id] = {"v": self.version, "at": at[:10], "critic": bool(kept)}
+            asked[item_id] = {
+                "v": self.version,
+                "at": at[:10],
+                "critic": bool(kept),
+                **self.noted(item),
+            }
             if kept and self.write(item, kept):
                 written.insert(0, {"id": item_id, "at": at, **kept})
                 counts["written"] += 1

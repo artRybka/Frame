@@ -594,3 +594,86 @@ def test_the_owners_framing_moves_onto_the_cut_picture(
     )
     fill = whole["landscape"].fill
     assert fill is not None and (fill.x, fill.y, fill.zoom) == (0.5, 0.5, 1.0)
+
+
+def test_the_owners_corners_keep_his_framing(service: FrameService) -> None:
+    # The audit of 2026-11-15: his corrected corners wiped his framings for
+    # the frame; they show the same part of the photograph now, and again
+    # on the whole photograph once he gives the cut up.
+    from frame_server.imaging.layout import Crop
+    from frame_server.library.models import Framing
+
+    item = _work(service, "mnw:7", pooled=True)
+    crops = service.crops
+    item = crops.apply(item, Cut(work=TRUE, aspect=round(W / H, 5)))
+    face = Crop(x=0.3, y=0.4, zoom=2.0)  # set on the cut picture
+    item = service.library.update(item.id, framing={"portrait": Framing(detail=face)}) or item
+    x0, y0 = TRUE[0]
+    x1, y1 = TRUE[2]
+    spot = (x0 + face.x * (x1 - x0), y0 + face.y * (y1 - y0))  # on the photograph
+    wider = [(0.15, 0.12), (0.85, 0.12), (0.85, 0.88), (0.15, 0.88)]
+    item = crops.set_by_owner(item, corners=wider)
+    detail = item.framing["portrait"].detail
+    assert detail is not None
+    assert abs(0.15 + detail.x * 0.7 - spot[0]) < 0.01
+    assert abs(0.12 + detail.y * 0.76 - spot[1]) < 0.01
+    assert detail.zoom > face.zoom  # the picture is larger: the same face closer
+    item = crops.give_up(item)
+    whole = item.framing["portrait"].detail
+    assert whole is not None and abs(whole.x - spot[0]) < 0.01 and abs(whole.y - spot[1]) < 0.01
+
+
+def test_the_night_cuts_a_copy_picked_after_the_photograph_was_looked_at(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    # The audit of 2026-11-15: a sharper copy picked at night took the place
+    # of a photograph cut (or looked at) before, and was shown whole until
+    # its card was opened.
+    from frame_server.library.models import SharperCopy
+
+    cut = _work(service, "mnw:8", pooled=True)
+    looked = _work(service, "mnw:9", pooled=True)
+    crops = service.crops
+    crops.apply(cut, Cut(work=TRUE, aspect=round(W / H, 5)))
+    state = crops.state()
+    state["asked"] = {
+        "mnw:8": {"v": 2, "at": "2026-11-14", "critic": True},
+        "mnw:9": {"v": 2, "at": "2026-11-14"},
+    }
+    crops._save(state)
+    assert crops.candidates(crops.asked()) == []
+    copy = SharperCopy(
+        url="https://example.org/c.jpg", item_id="wmc:1", source="wmc", width=W, height=H
+    )
+    for item_id in ("mnw:8", "mnw:9"):
+        service.library.update(item_id, sharper=copy)
+    assert {i.id for i in crops.candidates(crops.asked())} == {"mnw:8", "mnw:9"}
+    # Asked about at night, the picture looked at is kept: not asked again.
+    fake.ended = True
+    _answer(fake, {"surround": []})
+    assert crops.order() and crops.collect()
+    assert crops.asked()["mnw:9"]["p"] == "wmc:1"
+    assert crops.candidates(crops.asked()) == []
+    assert looked.id in crops.asked()
+
+
+def test_a_page_about_a_work_waits_for_its_cut(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    # The audit of 2026-11-15: a study read the photograph with its frame
+    # and easel when it was written before the work was cut.
+    assert service.daily.job.cutting == service.crops.before_page
+    assert service.study.job.cutting == service.crops.before_page
+    _work(service, "mnw:10", pooled=True)
+    answers = iter([{"surround": ["frame"]}, CORNERS])
+    fake.messages.create = lambda **params: (fake.asked.append(params), _message(next(answers)))[1]
+    item = service.daily.job.cut_first(service.library.get("mnw:10"))  # type: ignore[arg-type]
+    assert item.cut_shown() is not None
+    # Looked at once: the next page asks nothing.
+    assert service.daily.job.cut_first(item).cut == item.cut
+    assert [p["model"] for p in fake.asked] == [HAIKU, OPUS]
+    # A work outside the library is not looked at (its cut could not be kept).
+    outside = Item(id="mnw:11", source="mnw", source_id="11", kind=ItemKind.ARTWORK)
+    assert service.crops.before_page(outside) is False

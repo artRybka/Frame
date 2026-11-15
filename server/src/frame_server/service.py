@@ -351,6 +351,9 @@ class FrameService:
         # sets the corners): at night and when a card opens.
         self.crops = Crops(self.library, self.images, self.claude, self.ai_config)
         self.crops.importer = self.importer
+        # A page about a work (its study, the day's) reads the work cut
+        # down from its frame: the photograph is looked at first.
+        self.daily.job.cutting = self.crops.before_page
         # Favourites, playlists and Discover's works first in the night's
         # tidying (Mateusz 2026-11-11).
         self.cared = Cared(self)
@@ -383,6 +386,7 @@ class FrameService:
         # Town names of photos' coordinates: after each album sync and at night.
         self.places = Places(self.library)
         self.study = Study(self.daily, self.ai, StudyJob(self.library, self.images, self.ai_config))
+        self.study.job.cutting = self.crops.before_page
         self.ai.register(self.study.job)
         # Facts about a work from the web, for its page (Sonnet with the web search).
         self.web_facts = WebFacts(self.library, self.claude, self.ai_config)

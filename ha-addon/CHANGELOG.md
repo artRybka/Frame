@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.145.146
+
+- Detale studium dzieła przyciętego z ramy (lub z kartonu, sztalugi) są
+  wycinane z przyciętego zdjęcia, na którym model je zaznaczył. Dotąd
+  wycinano je ze zdjęcia muzeum z ramą, więc wychodziły przesunięte o
+  szerokość ramy. Studium napisane przed przycięciem dalej wycina detale z
+  całego zdjęcia.
+- Zanim powstanie studium dzieła (z karty, Studium dnia, studia z zapasu),
+  serwer sprawdza zdjęcie i w razie potrzeby wycina ramę, sztalugę czy
+  karton. Studium, kompozycja i szkic opisują wtedy samo dzieło, nie ramę.
+- Gdy w nocy wejdzie ostrzejsza kopia dzieła, nocne kadrowanie obejrzy ją
+  od nowa. Dotąd nowa kopia czekała na kadr do otwarcia karty.
+- Poprawienie kadru zdjęcia („Popraw kadr”) albo jego cofnięcie nie kasuje
+  już kadrowania na ramce: zbliżenia i kadry pokazują ten sam fragment
+  dzieła.
+
 ## 1.145.145
 
 - Dzieło z WikiArt nie dostaje już fałszywego znacznika niskiej

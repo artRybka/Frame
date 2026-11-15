@@ -37,6 +37,7 @@ from .ai.study import KIND as STUDY
 from .ai.study_pick import Choice, copy_key
 from .ai.study_pick import choose as curate
 from .imaging.align import align
+from .imaging.cut import same_picture, warp
 from .imaging.layout import load_image
 from .library import Item, ItemKind, PlaylistRules
 from .library.artists import is_artist, made_by, same_hand
@@ -656,6 +657,8 @@ class Daily:
         copy = _copy_of(item, box)
         if copy:  # cut from a sharper copy: another file, another address
             parts.append(copy)
+        if box.seen is not None and box.seen.cut:  # on the photograph cut to the work
+            parts.append(",".join(f"{x:.4f}:{y:.4f}" for x, y in box.seen.cut))
         key = text_hash(*parts)[:10]
         return self.details_dir / f"{item.file_stem}-{key}.jpg"
 
@@ -676,7 +679,7 @@ class Daily:
         return path
 
     def _cut(self, item: Item, boxes: list[Detail]) -> None:
-        img = self._full_size(item)
+        img, cut = self._full_size(item)
         seen = boxes[0].seen if boxes else None
         places = boxes
         if seen is not None and seen.url and seen.copy_id != _current(item):
@@ -685,6 +688,11 @@ class Daily:
             # where the two copies lie on one another; from the one drawn
             # on when the two cannot be matched (Mateusz 2026-11-03).
             places, img = self._carried(item, boxes, seen, img)
+        elif seen is not None and seen.cut and cut is None:
+            # Drawn on the photograph cut down to the work (``Item.cut``):
+            # the museum's file cut so too, else the details lay a frame's
+            # width off (the audit of 2026-11-15).
+            img = _as_seen(img, seen)
         width, height = img.size
         self.details_dir.mkdir(parents=True, exist_ok=True)
         for box, place in zip(boxes, places, strict=True):
@@ -710,7 +718,7 @@ class Daily:
         copy), with the picture to cut them from: ``img`` when the two copies
         match, else the copy they were drawn on."""
         try:
-            drawn = self.job.images.sample(seen.url)
+            drawn = _as_seen(self.job.images.sample(seen.url), seen)
         except (httpx.HTTPError, OSError) as err:
             log.info("copy %r of %s failed: %s; cut from the current", seen.copy_id, item.id, err)
             return boxes, img
@@ -725,18 +733,23 @@ class Daily:
             carried.append(box.model_copy(update={"x": x, "y": y, "w": w, "h": h}))
         return carried, img
 
-    def _full_size(self, item: Item) -> Image.Image:
-        """The museum's file as it is (the cached original is cut down to
-        the panel's size); the cached one when the museum's cannot be had."""
+    def _full_size(self, item: Item) -> tuple[Image.Image, list[tuple[float, float]] | None]:
+        """The museum's file as it is (the cached original is smaller, and
+        cut down to the work when ``Item.cut`` says so); the museum's
+        photograph kept here when the museum's cannot be had. With the
+        corners it is already cut to: None but for a thumbnail standing in
+        for an original that cannot be had."""
         images = self.job.images
         url = display_copy(item)
         if url and (item.sharper is not None or item.source not in images.fetchers):
             try:
-                return images.sample(url)
+                return images.sample(url), None
             except (httpx.HTTPError, OSError) as err:
                 log.info("full size of %s failed: %s; the cached original", item.id, err)
-        path, _ = images.picture(item, urgent=True)
-        return load_image(path)
+        try:
+            return load_image(images.museum_photo(item, urgent=True)), None
+        except (httpx.HTTPError, OSError):
+            return load_image(images.ensure_thumb(item, urgent=True)), item.cut_shown()
 
     def tick(self, day: date | None = None) -> None:
         """The day's page (asked now when the order of the night before is
@@ -818,6 +831,14 @@ def country(item: Item) -> str:
     if head in NATIONALITIES:
         return NATIONALITIES[head][2]
     return item.culture.strip().casefold()
+
+
+def _as_seen(img: Image.Image, seen: Seen) -> Image.Image:
+    """``img``, a copy's photograph, as the model saw it: cut to the corners
+    ``seen`` notes when it is the photograph they were set on."""
+    if seen.cut and same_picture(seen.aspect, img.size):
+        return warp(img, seen.cut)
+    return img
 
 
 def _current(item: Item) -> str:

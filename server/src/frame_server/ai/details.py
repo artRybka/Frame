@@ -24,7 +24,6 @@ from typing import TYPE_CHECKING, Any
 
 from PIL import Image
 
-from ..library.images import display_copy
 from ..library.models import Note
 from .client import OPUS, Answer, request
 from .daily import (
@@ -42,6 +41,7 @@ from .daily import (
     image_block,
     mend_boxes,
     picture,
+    seen_now,
     sent_size,
 )
 from .daily import KIND as DAILY
@@ -179,9 +179,10 @@ PAGES = (DAILY, STUDY)
 TYPICAL = Usage(input_tokens=9000, cache_read_input_tokens=0, output_tokens=1500)
 
 
-def seen(item: Item) -> Seen:
-    """The copy a page's boxes are drawn on from now on: the one shown."""
-    return Seen(copy_id=item.sharper.item_id if item.sharper else "", url=display_copy(item))
+def seen(item: Item, size: tuple[int, int] | None = None) -> Seen:
+    """The copy (and its cut) a page's boxes are drawn on from now on: the
+    one shown; ``size``: the picture the check was sent."""
+    return seen_now(item, size)
 
 
 def boxes(page: Note, item: Item) -> Essay:
@@ -270,7 +271,10 @@ class MendJob(NoteJob):
             log.warning("details check of %s gave nothing usable", item.id)
             return replace(answer, data={"unusable": True})
         fixed, moved = found
-        return replace(answer, data={"details": fixed, CHECKED: moved, "titles": titles(fixed)})
+        on = seen(self.library.get(item.id) or item, size).model_dump()
+        return replace(
+            answer, data={"details": fixed, CHECKED: moved, "titles": titles(fixed), SEEN: on}
+        )
 
     def apply(self, item: Item, note: Note) -> None:
         """Puts the boxes in each of the work's pages with the same details;
@@ -285,7 +289,7 @@ class MendJob(NoteJob):
                     **page.data,
                     "details": fixed,
                     BOXES: BOXES_VERSION,
-                    SEEN: seen(item).model_dump(),
+                    SEEN: note.data.get(SEEN) or seen(item).model_dump(),
                     CHECKED: note.data.get(CHECKED) or [],
                 }
                 if page.data.get(BOXES) != BOXES_VERSION:

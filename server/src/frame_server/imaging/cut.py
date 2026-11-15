@@ -204,6 +204,32 @@ def same_picture(aspect: float, size: tuple[int, int]) -> bool:
     return w > 0 and h > 0 and abs(w / h - aspect) <= 0.03 * aspect
 
 
+def cut_aspect(quad: Quad, aspect: float, inset: float = INSET) -> float:
+    """The width / height of a photograph of ``aspect`` cut to ``quad``
+    (:func:`warp`'s picture), 0 for a degenerate quad."""
+    q = np.array(quad, dtype=np.float64) * [aspect, 1.0]
+    q = q + (q.mean(axis=0) - q) * inset * 2
+    tl, tr, br, bl = q
+    width = max(np.linalg.norm(tr - tl), np.linalg.norm(br - bl))
+    height = max(np.linalg.norm(bl - tl), np.linalg.norm(br - tr))
+    return float(width / height) if height > 0 else 0.0
+
+
+def cut_seen(quad: Quad | None, aspect: float, size: tuple[int, int] | None) -> Quad | None:
+    """Which picture one of ``size`` is when a photograph of ``aspect`` is
+    cut to ``quad``: the cut one (``quad``) or the photograph whole (None).
+    A size that tells neither (none given, or the two pictures nearly the
+    same shape) is taken for the cut one, the picture shown now."""
+    if quad is None:
+        return None
+    if size is None or not size[0] or not size[1]:
+        return quad
+    shown = cut_aspect(quad, aspect)
+    ratio = size[0] / size[1]
+    off_cut, off_whole = abs(ratio - shown) / shown if shown else 1.0, abs(ratio - aspect) / aspect
+    return None if off_whole < off_cut and same_picture(aspect, size) else quad
+
+
 #: :func:`thin_backdrop`: how far in the work is looked for (share of the
 #: picture's short side), and how many sides must show a strip around it.
 BACKDROP_DEPTH = 0.03
