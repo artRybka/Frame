@@ -196,17 +196,16 @@ struct OwnDescriptionForm: View {
                     }
                 }
             }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(OwnTechnique.techniques, id: \.key) { item in
-                        chip(item.name, dashed: false, selected: technique == item.key) {
-                            technique = technique == item.key ? nil : item.key
-                            text.medium = OwnTechnique.medium(technique: technique, support: support)
-                        }
+            // In rows, as many as fit: a row scrolling sideways was cut at the
+            // screen's edge (simulator screenshots 2026-11-15).
+            FlowLayout(spacing: 6) {
+                ForEach(OwnTechnique.techniques, id: \.key) { item in
+                    chip(item.name, dashed: false, selected: technique == item.key) {
+                        technique = technique == item.key ? nil : item.key
+                        text.medium = OwnTechnique.medium(technique: technique, support: support)
                     }
                 }
             }
-            .scrollClipDisabled()
             HStack(spacing: 6) {
                 ForEach(OwnTechnique.supports, id: \.key) { item in
                     chip(item.name, dashed: false, selected: support == item.key) {

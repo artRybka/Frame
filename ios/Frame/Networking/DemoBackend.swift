@@ -567,7 +567,10 @@ actor DemoBackend: FrameBackend {
     /// A long note, as the language model writes one (400–900 characters),
     /// so the card shows "O dziele" in full in the demo screenshots.
     func polish(itemID: String, wait: Int, early: Bool) async throws -> PolishView {
-        guard let item = items.first(where: { $0.id == itemID }) else { return PolishView(status: "off", text: nil) }
+        // As the server: no Polish texts for his own works (his words stay).
+        guard let item = items.first(where: { $0.id == itemID }), !item.isOwnWork else {
+            return PolishView(status: "off", text: nil)
+        }
         let note = """
         Pierwszy plan zajmuje stół przykryty białym obrusem, na którym stoją kosz z owocami, \
         ciemna butelka i talerz z podłużnymi ciastkami. Obrus układa się w ostre, geometryczne \
@@ -1724,7 +1727,7 @@ actor DemoBackend: FrameBackend {
             id: id, kind: .own, source: "upload", sourceId: "", title: "", artist: "", artistBio: "", dateText: "",
             year: nil, medium: "", classification: "", styles: [], subjects: [], culture: "", museum: "", credit: "",
             license: "", url: "", description: "", imageUrl: "", thumbUrl: "", width: cg.width, height: cg.height,
-            colors: [ColorSwatch(hex: Self.hex(DemoFraming.tint(of: cg)), weight: 1)], colorTags: [],
+            colors: Self.palette(cg), colorTags: [],
             suitability: nil, favorite: false, excluded: false, addedAt: stamp, lastShownAt: nil, showCount: 0,
             photo: nil
         )
@@ -1742,6 +1745,38 @@ actor DemoBackend: FrameBackend {
             isPhoto: false, tint: DemoFraming.tint(of: cg)
         )
         return item
+    }
+
+    /// A few of the picture's colours, as the server would read them: the
+    /// picture drawn 4 × 4 and the five most unlike each other.
+    private static func palette(_ image: CGImage) -> [ColorSwatch] {
+        var pixels = [UInt8](repeating: 0, count: 4 * 16)
+        let drawn: Bool = pixels.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(
+                data: buffer.baseAddress, width: 4, height: 4, bitsPerComponent: 8, bytesPerRow: 16,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            context.interpolationQuality = .medium
+            context.draw(image, in: CGRect(x: 0, y: 0, width: 4, height: 4))
+            return true
+        }
+        guard drawn else { return [] }
+        let colours = (0 ..< 16).map { i in (Int(pixels[i * 4]), Int(pixels[i * 4 + 1]), Int(pixels[i * 4 + 2])) }
+        var chosen = [colours[5]]
+        while chosen.count < 5 {
+            let next = colours.max { a, b in
+                func far(_ c: (Int, Int, Int)) -> Int {
+                    chosen.map { abs($0.0 - c.0) + abs($0.1 - c.1) + abs($0.2 - c.2) }.min() ?? 0
+                }
+                return far(a) < far(b)
+            }
+            guard let next else { break }
+            chosen.append(next)
+        }
+        let weights = [0.34, 0.24, 0.18, 0.14, 0.1]
+        return chosen.enumerated().map { index, c in
+            ColorSwatch(hex: String(format: "#%02x%02x%02x", c.0, c.1, c.2), weight: weights[index])
+        }
     }
 
     private static func hex(_ colour: UIColor) -> String {
