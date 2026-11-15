@@ -181,7 +181,7 @@ struct OwnDescriptionForm: View {
                 .padding(12)
                 .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline))
-            ChipFlow { chips() }
+            FlowLayout(spacing: 6) { chips() }
         }
     }
 
@@ -279,15 +279,6 @@ struct OwnDescriptionForm: View {
     static func number(_ text: String) -> Double? {
         let value = Double(text.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespaces))
         return value.flatMap { $0 > 0 ? $0 : nil }
-    }
-}
-
-/// Chips in rows, as many to a row as fit.
-private struct ChipFlow<Content: View>: View {
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        FlowLayout(spacing: 6) { content() }
     }
 }
 
