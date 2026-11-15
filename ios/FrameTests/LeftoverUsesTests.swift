@@ -48,6 +48,14 @@ final class LeftoverUsesTests: XCTestCase {
         XCTAssertEqual(AiSection.useNote(use), "Wyłączone w ustawieniach wyżej.")
     }
 
+    func testTheCataloguesTextsSayTheyAreBeingCounted() {
+        var use = DemoBackend.leftoverUses[4]
+        XCTAssertEqual(use.key, "descriptions")
+        use.waiting = nil
+        use.waitingUsd = nil
+        XCTAssertEqual(AiSection.useNote(use), "liczę, ile czeka w katalogu…")
+    }
+
     func testTheDemoMovesAndSwitchesTheUses() async throws {
         let demo = DemoBackend()
         var update = AiSettingsUpdate()

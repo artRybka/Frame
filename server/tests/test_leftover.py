@@ -323,3 +323,28 @@ def test_the_app_orders_the_uses(tmp_path: Path) -> None:
         assert uses[0]["key"] == "studies"
         on = {u["key"]: u["on"] for u in uses}
         assert on["crops"] is False and on["audit"] is True
+
+
+def test_the_catalogues_texts_count_every_work_without_them(tmp_path: Path) -> None:
+    """Mateusz 2026-11-15, "czeka 17": "Bardzo dużo dzieł w bazie nie ma
+    jeszcze polskich opisów". The background asks only about the works
+    someone has or was shown; the night's rest about the whole catalogue,
+    and so does its count."""
+    _, svc, _ = _claude(tmp_path)
+    svc.ai_config.update(AiConfigUpdate(pl_text=True, keywords_artworks=True))
+    _add(svc, "met:1", title="Kept", artist="Someone", description="A long story " * 30)
+    for n in range(2, 7):
+        _add(
+            svc,
+            f"met:{n}",
+            title=f"Pooled {n}",
+            artist=f"Painter {n}",
+            description="A long story " * 30,
+            pooled=True,
+        )
+    assert svc.ai.progress("pl_text").waiting < 6  # the background's few
+    assert svc.leftover._texts_estimate() is None  # counted on a thread
+    works, usd = svc.leftover._texts_estimate(wait=True)  # type: ignore[misc]
+    assert works == 6 and usd > 0
+    (texts,) = (u for u in svc.leftover.uses_view() if u["key"] == "descriptions")
+    assert texts["waiting"] == 6 and texts["waiting_usd"] == round(usd, 2)

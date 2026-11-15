@@ -49,6 +49,7 @@ import logging
 import math
 import random
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -159,6 +160,8 @@ OTHER_KINDS = (
 #: at most, from the month's rest.
 CROP_USD, CROP_JUDGE_USD = 0.01, 0.0002
 CROPS_A_NIGHT, CROP_LOOKS_A_NIGHT = 540, 2400
+#: How long the count of the catalogue's texts waiting is kept (s).
+TEXTS_FRESH = 600.0
 #: The audit: Haiku and its critic about a work (a fifth of a cent).
 AUDIT_USD = 0.002
 AUDITS_A_NIGHT = 270
@@ -236,6 +239,9 @@ class Leftover:
         self.crops = crops
         self.audit = audit
         self._lock = threading.Lock()
+        #: The catalogue's texts waiting, as last worked out (when, count, USD).
+        self._texts_kept: tuple[float, tuple[int, float]] | None = None
+        self._counting = False
 
     # -- the state -----------------------------------------------------------
 
@@ -392,6 +398,7 @@ class Leftover:
             self._measure(state)
             self._save(state)
         free = budget = self.free_usd(state)
+        self._texts_estimate(wait=True)  # the catalogue's texts counted now
         nights = self.nights_left()
         self._quiet = quiet
         self._studied = 0
@@ -576,18 +583,60 @@ class Leftover:
     def _order_texts(self, usd: float) -> tuple[int, float, bool]:
         before = self.ai.batched_usd(DESCRIPTIONS)
         sent = self.ai.order_rest(DESCRIPTIONS, usd, self._cared_first)
+        self._texts_kept = None
         return sent, max(self.ai.batched_usd(DESCRIPTIONS) - before, 0.0), False
 
-    def _texts_waiting(self) -> int:
-        return sum(
-            self.ai.progress(kind).waiting for kind in DESCRIPTIONS if self.config.enabled(kind)
-        )
+    def _texts_waiting(self) -> int | None:
+        found = self._texts_estimate()
+        return None if found is None else found[0]
 
     def _text_usd(self) -> float:
-        """About what a description costs through the Batch API."""
+        """About what a work's keywords and Polish text cost through the
+        Batch API, together."""
+        found = self._texts_estimate()
+        if found is not None and found[0]:
+            return found[1] / found[0]
         jobs = [self.ai.jobs.get(k) for k in DESCRIPTIONS]
-        costs = [j.estimate_usd(1, True) for j in jobs if j is not None]
-        return min(costs) if costs else 0.001
+        return sum(j.estimate_usd(1, True) for j in jobs if j is not None) or 0.001
+
+    def _texts_estimate(self, wait: bool = False) -> tuple[int, float] | None:
+        """The catalogue's works without their keywords or Polish text, all
+        of them (as the night orders them, ``AiWorker.order_rest``, not only
+        the few the background asks about), and about what asking costs
+        (Mateusz 2026-11-15, seeing "czeka 17": "Bardzo dużo dzieł w bazie
+        nie ma jeszcze polskich opisów"). It goes through the whole
+        catalogue (seconds on the NAS) and Konfiguracja asks every 20 s, so
+        it is kept for :data:`TEXTS_FRESH` seconds and worked out anew on a
+        thread of its own; until then the last count, or None. ``wait``:
+        worked out now when old (the night)."""
+        kept = self._texts_kept
+        if kept is not None and time.monotonic() - kept[0] < TEXTS_FRESH:
+            return kept[1]
+        if wait:
+            return self._count_texts()
+        with self._lock:
+            if not self._counting:
+                self._counting = True
+                threading.Thread(
+                    target=self._count_texts, name="leftover-texts", daemon=True
+                ).start()
+        return kept[1] if kept is not None else None
+
+    def _count_texts(self) -> tuple[int, float]:
+        try:
+            works: set[str] = set()
+            usd = 0.0
+            for kind in DESCRIPTIONS:
+                if kind not in self.ai.jobs or not self.config.enabled(kind):
+                    continue
+                ids, cost = self.ai.library_waiting(kind)
+                works.update(ids)
+                usd += cost
+            found = (len(works), usd)
+            self._texts_kept = (time.monotonic(), found)
+            return found
+        finally:
+            self._counting = False
 
     def _cared_ids(self, ids: list[str]) -> list[str]:
         """``ids`` with the works cared about first."""
