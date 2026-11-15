@@ -346,7 +346,9 @@ final class LineStrip: PaintPainter, @unchecked Sendable {
     /// The tones and lines of a bar `width` wide. The work's colours are
     /// mixtures of its paper and its ink: the paper is taken as lighter
     /// than the lightest of them, the ink as darker than the darkest.
-    static func plan(_ shares: [PaintShare], width: Double, seed: Int, tool: LineTool) -> Plan {
+    /// `thin`: how much of what each tone asks its lines cover (under a
+    /// drawing's watercolour, `TintedStrip`, its loose lines).
+    static func plan(_ shares: [PaintShare], width: Double, seed: Int, tool: LineTool, thin: Double = 1) -> Plan {
         guard !shares.isEmpty else { return Plan(tones: [], strokes: [], paper: [243, 235, 216], ink: tool.hand.black, last: 0) }
         let hand = tool.hand, H = Paint.bar
         let light = shares.map { PrintPaint.lightness($0.rgb) }
@@ -359,7 +361,7 @@ final class LineStrip: PaintPainter, @unchecked Sendable {
         let top = min(0.97, light[first] + 0.13), bottom = min(light[last] - 0.16, 0.24)
         let spans = Paint.spans(order.map { shares[$0] }, width: width)
         let tones = order.enumerated().map { k, i in
-            let cover = min(0.93, max(0.05, (top - light[i]) / (top - bottom)))
+            let cover = min(0.93, max(0.05, (top - light[i]) / (top - bottom))) * thin
             return Tone(from: spans[k].0, to: spans[k].1, cover: off[i] ? min(Self.over.most, Self.over.thin * cover) : cover, colour: i, patch: off[i])
         }
         var plan = Plan(tones: tones, strokes: [], paper: paper, ink: ink, colours: shares.map(\.rgb), last: 0)
@@ -409,11 +411,11 @@ final class LineStrip: PaintPainter, @unchecked Sendable {
         return plan
     }
 
-    init(shares: [PaintShare], width: Double, seed: Int, tool: LineTool) {
+    init(shares: [PaintShare], width: Double, seed: Int, tool: LineTool, thin: Double = 1) {
         self.tool = tool
         self.width = width
         self.seed = Double(seed)
-        plan = Self.plan(shares, width: width, seed: seed, tool: tool)
+        plan = Self.plan(shares, width: width, seed: seed, tool: tool, thin: thin)
         (wide, high) = PrintPaint.size(width: width)
         last = plan.last
         length = plan.last

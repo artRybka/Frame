@@ -797,12 +797,12 @@ class Sharper:
         return self._adopt(item, copy, img, chosen=True)
 
     def bring(self, item: Item, data: bytes, origin: str = "", restored: bool = False) -> Item:
-        """A copy the owner brought for ``item``'s picture (a picture's
-        bytes: one bought in Alamy, a scan; Mateusz, 2026-11-12), kept for
-        good and shown in place of its own, as a copy he picked. ``origin``:
-        where it is from, as the card names it. ``restored``: drawn again
-        by the image model (:mod:`frame_server.restorer`). Raises ValueError
-        for what is no picture."""
+        """A copy of ``item``'s picture kept for good and shown in place of
+        its own, as a copy the owner picked (a picture's bytes: today the
+        restorer's, :mod:`frame_server.restorer`; files bought in Alamy came
+        this way until 2026-11-15 and stay). ``origin``: where it is from,
+        as the card names it. ``restored``: drawn again by the image model.
+        Raises ValueError for what is no picture."""
         stored = self.library.get(item.id) or item
         url, img = self.images.keep_owned(stored, data)
         copy = Item(

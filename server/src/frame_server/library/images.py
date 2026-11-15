@@ -440,8 +440,8 @@ def thumb_copy(item: Item) -> str:
     return ""
 
 
-#: The address of a copy the owner brought for a work (one bought in Alamy,
-#: a scan of his own): a file in ``owned/``, kept for good, never pruned.
+#: The address of a copy kept for a work for good (the restorer's; once
+#: also files bought in Alamy): a file in ``owned/``, never pruned.
 OWNED = "owned:"
 #: The source such a copy is noted with (``SharperCopy.source``).
 OWNED_SOURCE = "owned"
