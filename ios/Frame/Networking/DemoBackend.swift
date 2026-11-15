@@ -1983,13 +1983,16 @@ actor DemoBackend: FrameBackend {
             )]
         }
         if works.count > 2 {
+            // The work's own title with an auction's note the audit found.
+            var auctioned = works[2].summary
+            auctioned.title += " - Christie's 4 jun 2019"
             review.findings.append(AiReview.Entry(
-                item: works[2].summary, at: "2026-11-10T02:24:00+00:00", by: "audit",
+                item: auctioned, at: "2026-11-10T02:24:00+00:00", by: "audit",
                 problems: [
                     AiReview.Problem(
                         field: "title", name: "Tytuł",
-                        problem: "Tytuł zawiera dopisek o aukcji (Sothebys 12 nov 2019), który nie jest częścią tytułu.",
-                        fix: "Charing Cross Bridge", fixPl: "Most Charing Cross"
+                        problem: "Tytuł zawiera dopisek o aukcji (Christie's 4 jun 2019), który nie jest częścią tytułu.",
+                        fix: works[2].title, fixPl: works[2].summary.titlePl ?? ""
                     ),
                     AiReview.Problem(
                         field: "picture", name: "Obraz",

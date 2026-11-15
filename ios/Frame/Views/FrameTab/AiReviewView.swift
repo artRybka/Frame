@@ -254,9 +254,11 @@ struct AiReviewView: View {
                 )
             }
         } label: {
+            // A long title wraps (a small bordered button keeps one line).
             Text("Popraw na „\(fix)\u{201D}")
                 .multilineTextAlignment(.leading)
                 .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
         }
         Button("Zmień…") { editing = FixEditing(entry: entry, problem: problem) }
     }
