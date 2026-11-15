@@ -150,6 +150,7 @@ jobs:
             # A drawing on tinted paper heightened with white (Huntington), and trois crayons on a pale grey paper.
             capture daily 16 "daily-colour-heightened-$appearance" -scroll colour -paintStyle heightened -paintColours 8a9ba3:0.62/c9cdc6:0.12/4b4e52:0.14/7d6a58:0.07
             capture daily 16 "daily-colour-heightened-mid-$appearance" -scroll colour -paintStyle heightened -paintAge 1.2 -paintColours 8a9ba3:0.62/c9cdc6:0.12/4b4e52:0.14/7d6a58:0.07
+            capture daily 16 "daily-colour-heightened-one-$appearance" -scroll colour -paintStyle heightened -paintColours 979e97:0.969
             capture daily 16 "daily-colour-toned-$appearance" -scroll colour -paintStyle toned -paintColours c3b9af:0.80/5a5650:0.20
             capture daily 16 "daily-colour-trois-crayons-$appearance" -scroll colour -paintStyle heightened -paintColours b7b495:0.63/ae9d7f:0.14/a4866a:0.12/b4b9b2:0.07
             capture daily 16 "daily-colour-woodblock-$appearance" -scroll colour -paintStyle woodblock -paintColours d9cdb0:0.34/c8bc9d:0.22/1f3a5f:0.16/3d5f86:0.12/8fa7b8:0.09/e9e2cf:0.07
