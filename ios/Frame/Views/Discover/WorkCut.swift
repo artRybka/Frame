@@ -183,6 +183,9 @@ struct CutEditor: View {
     @State private var active: Int?
     /// The corner where a drag in its loupe began.
     @State private var loupeFrom: [Double]?
+    /// The corner a drag on the photograph took, and where it was then.
+    @State private var grab: Int?
+    @State private var grabFrom: [Double]?
     @State private var saving = false
 
     init(item: Item, save: @escaping ([[Double]]) async -> Bool) {
@@ -224,6 +227,10 @@ struct CutEditor: View {
     private static let mark = Color(light: 0xF2B93B, dark: 0xF2C14E)
     /// How much larger the photograph is in a loupe than on the screen.
     private static let zoom: CGFloat = 4
+    /// How far from a corner on the photograph a finger still takes it: an
+    /// 80 pt circle, well over Apple's 44 pt, as a corner is small and the
+    /// work is often near the photograph's edge.
+    private static let reach: CGFloat = 40
     private static let names = ["Lewy górny narożnik", "Prawy górny narożnik", "Prawy dolny narożnik", "Lewy dolny narożnik"]
 
     @ViewBuilder
@@ -369,6 +376,7 @@ struct CutEditor: View {
             photoWithCorners(size)
                 .frame(width: size.width, height: size.height)
                 .offset(x: origin.x, y: origin.y)
+            grips(size: size, origin: origin, in: space)
             ForEach(0 ..< 4, id: \.self) { n in
                 loupe(n, photoSize: size, side: side)
                     .position(loupeCentre(n, side: side, in: space))
@@ -394,8 +402,8 @@ struct CutEditor: View {
         }
     }
 
-    /// A corner on the photograph: a bracket along its two edges, and a
-    /// finger's worth around it to drag.
+    /// A corner on the photograph: a bracket along its two edges. It is
+    /// dragged by `grips`.
     private func handle(_ n: Int, in size: CGSize) -> some View {
         let point = CGPoint(x: corners[n][0] * size.width, y: corners[n][1] * size.height)
         return Bracket(corner: point, next: corner(n + 1, in: size), previous: corner(n + 3, in: size))
@@ -406,20 +414,46 @@ struct CutEditor: View {
             .overlay(alignment: .topLeading) {
                 Color.clear
                     .frame(width: 48, height: 48)
-                    .contentShape(Rectangle())
                     .position(point)
-                    .gesture(
-                        DragGesture(minimumDistance: 0, coordinateSpace: .named("cutPhoto"))
-                            .onChanged { drag in
-                                active = n
-                                let x = min(max(drag.location.x / size.width, 0), 1)
-                                let y = min(max(drag.location.y / size.height, 0), 1)
-                                corners[n] = Self.rounded(x, y)
-                            }
-                    )
+                    .accessibilityElement()
                     .accessibilityLabel(Self.names[n])
+                    .allowsHitTesting(false)
             }
-            .coordinateSpace(name: "cutPhoto")
+    }
+
+    /// The corners on the photograph to drag: a circle of `reach` around
+    /// each, also past the photograph's edge; where two meet, the corner
+    /// nearer the finger. The corner moves as far as the finger, not to
+    /// it, so a finger beside it leaves it in sight. The loupes lie above
+    /// and keep their own drag.
+    private func grips(size: CGSize, origin: CGPoint, in space: CGSize) -> some View {
+        let points = corners.map { CGPoint(x: origin.x + $0[0] * size.width, y: origin.y + $0[1] * size.height) }
+        return Color.clear
+            .frame(width: space.width, height: space.height)
+            .contentShape(Reach(points: points, radius: Self.reach))
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { drag in
+                        if grab == nil {
+                            let at = drag.startLocation
+                            grab = points.indices.min {
+                                hypot(points[$0].x - at.x, points[$0].y - at.y) < hypot(points[$1].x - at.x, points[$1].y - at.y)
+                            }
+                            grabFrom = grab.map { corners[$0] }
+                        }
+                        guard let n = grab, let from = grabFrom, size.width > 0, size.height > 0 else { return }
+                        active = n
+                        corners[n] = Self.rounded(
+                            from[0] + Double(drag.translation.width / size.width),
+                            from[1] + Double(drag.translation.height / size.height)
+                        )
+                    }
+                    .onEnded { _ in
+                        grab = nil
+                        grabFrom = nil
+                    }
+            )
+            .accessibilityHidden(true)
     }
 
     private func corner(_ n: Int, in size: CGSize) -> CGPoint {
@@ -468,6 +502,20 @@ struct CutEditor: View {
                 .onEnded { _ in loupeFrom = nil }
         )
         .accessibilityLabel("Lupa: \(Self.names[n].lowercased())")
+    }
+}
+
+/// Circles of `radius` around `points`: where a finger takes a corner.
+private struct Reach: Shape {
+    let points: [CGPoint]
+    let radius: CGFloat
+
+    func path(in _: CGRect) -> Path {
+        var path = Path()
+        for point in points {
+            path.addEllipse(in: CGRect(x: point.x - radius, y: point.y - radius, width: 2 * radius, height: 2 * radius))
+        }
+        return path
     }
 }
 
