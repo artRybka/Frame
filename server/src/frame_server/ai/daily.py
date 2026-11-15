@@ -29,6 +29,7 @@ import httpx
 from PIL import Image
 from pydantic import BaseModel, Field
 
+from ..imaging.cut import cut_seen
 from ..imaging.layout import load_image
 from ..imaging.text import sentences
 from ..library.images import display_copy
@@ -526,6 +527,49 @@ class Seen(BaseModel):
 
     copy_id: str = ""
     url: str = ""
+    #: The corners that copy's photograph was cut to (``Item.cut``) when
+    #: the model looked, [] when it saw it whole, None when the page does
+    #: not say (written before 1.145.146): the details of a work cut down
+    #: from its frame were cut from the photograph with the frame, a frame's
+    #: width off (the audit of 2026-11-15).
+    cut: list[tuple[float, float]] | None = None
+    #: The photograph's width / height the corners are on.
+    aspect: float = 0.0
+
+
+def seen_now(item: Item, size: tuple[int, int] | None = None) -> Seen:
+    """The picture a model reads of ``item`` now (``picture``): its copy
+    and the cut that copy is shown with; ``size``: the picture sent, which
+    tells a cut one from the photograph whole when the cut came after the
+    question (:func:`..imaging.cut.cut_seen`)."""
+    quad = item.cut_shown()
+    aspect = item.cut.aspect if item.cut is not None and quad is not None else 0.0
+    cut = cut_seen(quad, aspect, size) if quad is not None else None
+    return Seen(
+        copy_id=item.sharper.item_id if item.sharper else "",
+        url=display_copy(item),
+        cut=list(cut) if cut is not None else [],
+        aspect=aspect if cut is not None else 0.0,
+    )
+
+
+def seen_before(item: Item, note: Note, seen: Seen | None) -> Seen:
+    """``seen`` of a page that does not say which cut its boxes are on
+    (written before 1.145.146): the cut shown now when the page came after
+    it on the same copy, else the photograph whole. Without ``seen`` the
+    work's own copy, never carried over (no address)."""
+    seen = seen or Seen(copy_id=item.sharper.item_id if item.sharper else "")
+    cut, quad = item.cut, item.cut_shown()
+    after = (
+        cut is not None
+        and quad is not None
+        and bool(cut.at)
+        and note.created_at >= cut.at
+        and cut.picture == seen.copy_id
+    )
+    if after and cut is not None and quad is not None:
+        return seen.model_copy(update={"cut": list(quad), "aspect": cut.aspect})
+    return seen.model_copy(update={"cut": [], "aspect": 0.0})
 
 
 class Detail(BaseModel):
@@ -1381,7 +1425,25 @@ class DailyJob(NoteJob):
     def context(self, item: Item) -> Context:
         return replace(self.sources(item), candidates=self.candidates(item))
 
+    #: The work's photograph cut down to the work before a page is asked
+    #: about it (``Crops.soon``, set by the service): the model reads the
+    #: painting, not its gilt frame and the easel (the audit of 2026-11-15).
+    cutting: Callable[[Item], Any] | None = None
+
+    def cut_first(self, item: Item) -> Item:
+        """``item`` after its photograph was looked at for a frame, an
+        easel or a board around the work, and cut down to it if so (a work
+        looked at before is not asked again); as it was when that fails."""
+        if self.cutting is None:
+            return item
+        try:
+            self.cutting(item)
+        except Exception as err:  # no key, the limit, a timeout: the page goes on
+            log.info("cut of %s before its page: %s", item.id, err)
+        return self.library.get(item.id) or item
+
     def params(self, item: Item) -> dict[str, Any]:
+        item = self.cut_first(item)
         img = picture(self.images, item)
         context = replace(self.context(item), size=img.size, web=tuple(self.web_facts(item)))
         self._sources[item.id] = context
@@ -1411,8 +1473,8 @@ class DailyJob(NoteJob):
         context = self._sources.pop(item.id, None)
         if answer.data is None:
             return answer
-        seen = Seen(copy_id=item.sharper.item_id if item.sharper else "", url=display_copy(item))
         size = sent_size(params)
+        seen = seen_now(self.library.get(item.id) or item, size)
         data = {
             **to_fractions(frame_details(answer.data, size), size),
             BOXES: BOXES_VERSION,
@@ -1442,7 +1504,13 @@ class DailyJob(NoteJob):
         # an order for later replays its answers in the order asked.
         try:
             self._stage(item.id, "details_check")
-            data = check_details(self.images, item, data, ask)
+            checked = check_details(self.images, item, data, ask)
+            if checked is not data:  # boxes on the picture as it is now
+                checked = {
+                    **checked,
+                    SEEN: seen_now(self.library.get(item.id) or item).model_dump(),
+                }
+            data = checked
         except (AiUnavailable, anthropic.APIError) as err:
             log.warning("details of %s not checked: %s", item.id, err)
         except Exception:  # the page is paid for: never lost to its details' check
@@ -1524,8 +1592,11 @@ class DailyJob(NoteJob):
         essay = Essay.model_validate(note.data)
         if note.data.get(BOXES) != BOXES_VERSION:
             essay = mend_boxes(essay, item)
-        if isinstance(raw := note.data.get(SEEN), dict):
-            seen = Seen.model_validate(raw)
+        raw = note.data.get(SEEN)
+        seen = Seen.model_validate(raw) if isinstance(raw, dict) else None
+        if essay.details and (seen is None or seen.cut is None):
+            seen = seen_before(item, note, seen)
+        if seen is not None:
             details = [d.model_copy(update={"seen": seen}) for d in essay.details]
             essay = essay.model_copy(update={"details": details})
         shown = takes(essay.composition.views)

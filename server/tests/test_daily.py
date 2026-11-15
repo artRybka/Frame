@@ -1139,6 +1139,75 @@ def test_details_drawn_on_another_copy_are_cut_from_the_picked_one(
     assert offline.daily.detail_path(item, essay.details[0]) != path
 
 
+def test_details_of_a_work_cut_from_its_frame_are_cut_where_the_model_drew_them(
+    offline: FrameService,
+) -> None:
+    """The audit of 2026-11-15: a page's boxes are drawn on the picture
+    shown, cut down from its frame (``Item.cut``), and were cut from the
+    museum's photograph with the frame, a frame's width off. They are cut
+    from it cut so too; a page from before the cut stays on the whole."""
+    from frame_server.ai.daily import seen_now
+    from frame_server.library.images import display_copy
+    from frame_server.library.models import Cut
+
+    _catalogue(offline)
+    item = offline.library.get("met:1")
+    assert item is not None
+    art = _art()  # the red square at (600, 300)-(700, 400)
+    framed = Image.new("RGB", (2400, 1500), (190, 150, 60))  # a wide gilt frame
+    framed.paste(art, (600, 300))
+    offline.images.sample = lambda url, urgent=False: framed.copy()  # type: ignore[method-assign]
+    quad = [(0.25, 0.2), (0.75, 0.2), (0.75, 0.8), (0.25, 0.8)]
+    job = offline.daily.job
+    essay = clean(ANSWER, [])
+    assert essay is not None
+    on_cut = {"title": "Czerwień", "text": "", "x": 0.5, "y": 1 / 3, "w": 1 / 12, "h": 1 / 9}
+    on_whole = {"title": "Czerwień", "text": "", "x": 0.5, "y": 0.4, "w": 1 / 24, "h": 1 / 15}
+
+    def page(box: dict[str, Any], seen: dict[str, Any] | None) -> None:
+        for old in offline.daily.details_dir.glob("*.jpg"):
+            old.unlink()
+        data = {**essay.model_dump(), "details": [box], "boxes": 2}
+        if seen is not None:
+            data["seen"] = seen
+        offline.library.save_note(
+            Note(
+                item_id=item.id,
+                kind=job.kind,
+                model=OPUS,
+                prompt_version=job.prompt_version,
+                source_hash=job.source_hash(item),
+                data=data,
+            )
+        )
+
+    def red(work: Item) -> bool:
+        path = offline.daily.detail(work, 0)
+        assert path is not None and path.is_file()
+        r, g, b = ImageStat.Stat(Image.open(path).convert("RGB")).mean
+        return r > 180 and g < 70 and b < 70
+
+    cut = Cut(work=quad, aspect=1.6, at="2026-01-01T00:00:00+00:00")
+    item = offline.library.update(item.id, cut=cut, image_url="https://own/1.jpg") or item
+    # A page that says it was drawn on the cut picture.
+    url = display_copy(item)
+    page(on_cut, {"copy_id": "", "url": url, "cut": quad, "aspect": 1.6})
+    assert red(item)
+    # One written after the cut that does not say: the cut picture too.
+    page(on_cut, {"copy_id": "", "url": url})
+    assert red(item)
+    # One written before the cut: the whole photograph, as drawn.
+    later = cut.model_copy(update={"at": "2999-01-01T00:00:00+00:00"})
+    item = offline.library.update(item.id, cut=later) or item
+    page(on_whole, {"copy_id": "", "url": url})
+    assert red(item)
+
+    # Which picture a question sent: told by its shape.
+    assert seen_now(item, (1200, 900)).cut == quad
+    assert seen_now(item, (1600, 1000)).cut == []
+    assert seen_now(item).cut == quad
+
+
 def test_a_detail_that_misses_is_drawn_again() -> None:
     """Hopper's "Automat" (2026-11-03): "Twarz pod kapeluszem" cut the wall
     above the hat. The check over the cuts redraws the box that misses and
