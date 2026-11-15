@@ -434,6 +434,20 @@ private struct StepDots: View {
 enum OwnPicture {
     private static let context = CIContext()
 
+    /// The work inside `corners` of `image`, upright; in the shape of his
+    /// size (`own`) when he gave one near enough, as the server keeps it.
+    static func cut(_ image: UIImage, corners: [[Double]]?, own: OwnWork?) -> UIImage {
+        let upright = cut(image, corners: corners)
+        guard corners != nil, let own, let source = CIImage(image: upright) else { return upright }
+        let w = source.extent.width, h = source.extent.height
+        guard h > 0, let ratio = own.ratio(Double(w / h)) else { return upright }
+        let area = Double(w * h)
+        let width = CGFloat((area * ratio).squareRoot()), height = CGFloat((area / ratio).squareRoot())
+        let scaled = source.transformed(by: CGAffineTransform(scaleX: width / w, y: height / h))
+        guard let cg = context.createCGImage(scaled, from: scaled.extent) else { return upright }
+        return UIImage(cgImage: cg)
+    }
+
     static func cut(_ image: UIImage, corners: [[Double]]?) -> UIImage {
         guard let corners, corners.count == 4, let source = CIImage(image: image) else { return image }
         let w = source.extent.width, h = source.extent.height

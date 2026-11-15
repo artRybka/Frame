@@ -8,7 +8,8 @@ struct OwnDescriptionForm: View {
     @Binding var text: OwnDescription
     /// The work as cut, at the top.
     var picture: UIImage? = nil
-    /// The picture's width / height, to check the size against.
+    /// The picture's width / height as the corners give it, to check the
+    /// size against; the picture takes the size's shape (`OwnWork.ratio`).
     var aspect: Double? = nil
     var hints: OwnHints? = nil
     var readingHints = false
@@ -25,8 +26,9 @@ struct OwnDescriptionForm: View {
             if let picture {
                 Image(uiImage: picture)
                     .resizable()
-                    .scaledToFit()
+                    .aspectRatio(shape(of: picture), contentMode: .fit)
                     .frame(maxWidth: .infinity, maxHeight: 220)
+                    .animation(.easeOut(duration: 0.25), value: shape(of: picture))
                     .shadow(color: .black.opacity(0.18), radius: 12, y: 8)
                     .padding(.top, 4)
             }
@@ -260,15 +262,25 @@ struct OwnDescriptionForm: View {
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline))
     }
 
+    /// The picture as it will be kept: in the shape of his size when he
+    /// gave one near enough the photograph's, as the server cuts it.
+    private func shape(of picture: UIImage) -> Double {
+        let measured = aspect ?? Double(picture.size.width / max(picture.size.height, 1))
+        return OwnWork.ratio(heightCm: text.heightCm, widthCm: text.widthCm, measured: measured) ?? measured
+    }
+
     /// His size against the picture's shape: a size of another shape is
     /// most often height and width swapped, or the frame measured.
     private var sizeWarning: String? {
         guard let aspect, aspect > 0, let height = text.heightCm, let width = text.widthCm, height > 0 else { return nil }
         let given = width / height
         guard abs(given - aspect) / aspect > 0.12 else { return nil }
-        return swapFits
-            ? "Na zdjęciu dzieło jest \(aspect > 1 ? "poziome" : "pionowe"). Może wysokość i szerokość są zamienione?"
-            : "Proporcje nie zgadzają się ze zdjęciem. Mierzysz bez ramy?"
+        if swapFits {
+            return "Na zdjęciu dzieło jest \(aspect > 1 ? "poziome" : "pionowe"). Może wysokość i szerokość są zamienione?"
+        }
+        return OwnWork.ratio(heightCm: height, widthCm: width, measured: aspect) != nil
+            ? "Proporcje różnią się od zdjęcia: dzieło dostanie proporcje z tego wymiaru. Mierzysz bez ramy?"
+            : "Wymiar bardzo odbiega od zdjęcia, więc dzieło zostaje w proporcjach zdjęcia. Sprawdź liczby."
     }
 
     private var swapFits: Bool {
@@ -306,7 +318,7 @@ struct OwnDescriptionSheet: View {
         NavigationStack {
             ScrollView {
                 OwnDescriptionForm(
-                    text: $text, aspect: item.cutAspect ?? item.width.flatMap { w in item.height.map { Double(w) / Double(max($0, 1)) } },
+                    text: $text, aspect: item.cornersAspect ?? item.width.flatMap { w in item.height.map { Double(w) / Double(max($0, 1)) } },
                     places: places
                 )
                 .pageWidth()

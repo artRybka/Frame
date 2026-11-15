@@ -168,8 +168,15 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
         return cut.at.isEmpty ? "cut" : cut.at
     }
 
-    /// Width / height of the work as shown: the cut's, else nil.
+    /// Width / height of the work as shown: the cut's, else nil. A work of
+    /// his own has the shape of the size he gave (`OwnWork.ratio`).
     var cutAspect: Double? {
+        guard let measured = cornersAspect else { return nil }
+        return own?.ratio(measured) ?? measured
+    }
+
+    /// Width / height the cut's corners give, before his size is minded.
+    var cornersAspect: Double? {
         guard let cut, let shown = cutShown else { return nil }
         return Cut.aspect(of: shown, photo: cut.aspect)
     }
@@ -240,6 +247,21 @@ struct OwnWork: Codable, Hashable, Sendable {
 
     static func number(_ value: Double) -> String {
         value.formatted(.number.precision(.fractionLength(0 ... 1)).locale(Locale(identifier: "pl_PL")))
+    }
+
+    /// The work's width / height from his size, as the server cuts it out
+    /// of his photograph (Mateusz 2026-11-15: "Proporcje własnego dzieła
+    /// trzeba wyliczać z podanego wymiaru"); `measured` is the shape the
+    /// corners give. Nil without both sizes, or for one more than twice
+    /// off it (a slip of the finger, not the work).
+    func ratio(_ measured: Double) -> Double? {
+        Self.ratio(heightCm: heightCm, widthCm: widthCm, measured: measured)
+    }
+
+    static func ratio(heightCm: Double?, widthCm: Double?, measured: Double) -> Double? {
+        guard let heightCm, let widthCm, heightCm > 0, widthCm > 0, measured > 0 else { return nil }
+        let given = widthCm / heightCm
+        return (0.5 ... 2.0).contains(given / measured) ? given : nil
     }
 }
 

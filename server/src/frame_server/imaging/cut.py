@@ -15,7 +15,8 @@ bottom-left), each as fractions of the picture's width and height.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import math
+from collections.abc import Callable, Sequence
 
 import cv2
 import numpy as np
@@ -170,17 +171,30 @@ def snap(img: Image.Image, quad: Quad) -> Quad:
     return snapped if snapped is not None else quad
 
 
-def warp(img: Image.Image, quad: Quad, inset: float = INSET) -> Image.Image:
+def warp(
+    img: Image.Image,
+    quad: Quad,
+    inset: float = INSET,
+    ratio: Callable[[float], float | None] | None = None,
+) -> Image.Image:
     """The part of ``img`` inside ``quad``, its perspective set straight, a
     little further in than the corners (``inset``), at the picture's own
-    resolution."""
+    resolution. ``ratio``: the work's width / height when it is known
+    better than the corners tell (a work of the owner's own, measured:
+    ``OwnWork.ratio``), given the shape the corners give; the picture
+    keeps its number of pixels."""
     rgb = img.convert("RGB")
     w, h = rgb.size
     q = np.array(quad, dtype=np.float64) * [w, h]
     q = q + (q.mean(axis=0) - q) * inset * 2
     tl, tr, br, bl = q
-    width = round(max(np.linalg.norm(tr - tl), np.linalg.norm(br - bl)))
-    height = round(max(np.linalg.norm(bl - tl), np.linalg.norm(br - tr)))
+    across = float(max(np.linalg.norm(tr - tl), np.linalg.norm(br - bl)))
+    down = float(max(np.linalg.norm(bl - tl), np.linalg.norm(br - tr)))
+    known = ratio(across / down) if ratio is not None and down > 0 else None
+    if known:
+        area = across * down
+        across, down = math.sqrt(area * known), math.sqrt(area / known)
+    width, height = round(across), round(down)
     width, height = max(width, 1), max(height, 1)
     target = np.array([[0, 0], [width, 0], [width, height], [0, height]], dtype=np.float32)
     matrix = cv2.getPerspectiveTransform(q.astype(np.float32), target)
