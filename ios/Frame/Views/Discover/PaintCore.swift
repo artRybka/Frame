@@ -158,10 +158,11 @@ enum PaintStyle: String, Sendable, CaseIterable {
         let watered = has(words, waters)
         // A print its medium says is in colours is its inks, however
         // faded its colours came out ("color woodblock print", „litografia
-        // barwna”); one coloured by hand afterwards is not. A print with watercolour on it was coloured by hand, though its
-        // medium does not say so ("etching, with watercolour", „akwaforta,
-        // akwarela, gwasz”); one printed in colours with water-based inks
-        // („drzeworyt barwny, … farba wodna”) was not.
+        // barwna”); one coloured by hand afterwards is not. A print with
+        // watercolour on it was coloured by hand, though its medium does not
+        // say so ("etching, with watercolour", „akwaforta, akwarela,
+        // gwasz”); one printed in colours with water-based inks („drzeworyt
+        // barwny, … farba wodna”) was not.
         let byHand = words.contains { word in byHandWords.contains { word.hasPrefix($0) } }
             || zip(words, words.dropFirst()).contains { $0 == "hand" && byHandWith.contains(where: $1.hasPrefix) }
             || ((watered || has(words, gouaches)) && !words.contains { word in inColours.contains { word.hasPrefix($0) } })
