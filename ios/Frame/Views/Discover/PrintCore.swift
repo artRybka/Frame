@@ -347,21 +347,27 @@ final class LineStrip: PaintPainter, @unchecked Sendable {
     /// mixtures of its paper and its ink: the paper is taken as lighter
     /// than the lightest of them, the ink as darker than the darkest.
     /// `thin`: how much of what each tone asks its lines cover (under a
-    /// drawing's watercolour, `TintedStrip`, its loose lines).
-    static func plan(_ shares: [PaintShare], width: Double, seed: Int, tool: LineTool, thin: Double = 1) -> Plan {
+    /// drawing's watercolour, `TintedStrip`, its loose lines). `paper`:
+    /// the paper as it is, not taken from the colours (a drawing on
+    /// tinted paper, `TonedStrip`), and then no colour is a patch;
+    /// `shades`: how light each colour is to be taken for its lines
+    /// (chalk on that paper is no lighter than the paper to the pencil).
+    static func plan(_ shares: [PaintShare], width: Double, seed: Int, tool: LineTool, thin: Double = 1, paper given: [Double]? = nil,
+                     shades: [Double]? = nil) -> Plan {
         guard !shares.isEmpty else { return Plan(tones: [], strokes: [], paper: [243, 235, 216], ink: tool.hand.black, last: 0) }
         let hand = tool.hand, H = Paint.bar
         let light = shares.map { PrintPaint.lightness($0.rgb) }
         let order = shares.indices.sorted { light[$0] > light[$1] }
         // The paper and the ink are the one colour's: a patch of colour is neither.
-        let off = PrintPaint.patches(shares) ?? shares.map { _ in false }
+        let off = given == nil ? PrintPaint.patches(shares) ?? shares.map { _ in false } : shares.map { _ in false }
         let tonal = order.filter { !off[$0] }, first = tonal.first ?? order[0], last = tonal.last ?? order[order.count - 1]
-        let paper = PrintPaint.mixed(shares[first].rgb, [243, 235, 216], 0.82)
+        let paper = given ?? PrintPaint.mixed(shares[first].rgb, [243, 235, 216], 0.82)
         let ink = PrintPaint.mixed(shares[last].rgb, hand.black, 0.8)
-        let top = min(0.97, light[first] + 0.13), bottom = min(light[last] - 0.16, 0.24)
+        let shade = shades ?? light
+        let top = min(0.97, (given.map(PrintPaint.lightness) ?? light[first]) + 0.13), bottom = min(shade[last] - 0.16, 0.24)
         let spans = Paint.spans(order.map { shares[$0] }, width: width)
         let tones = order.enumerated().map { k, i in
-            let cover = min(0.93, max(0.05, (top - light[i]) / (top - bottom))) * thin
+            let cover = min(0.93, max(0.05, (top - shade[i]) / (top - bottom))) * thin
             return Tone(from: spans[k].0, to: spans[k].1, cover: off[i] ? min(Self.over.most, Self.over.thin * cover) : cover, colour: i, patch: off[i])
         }
         var plan = Plan(tones: tones, strokes: [], paper: paper, ink: ink, colours: shares.map(\.rgb), last: 0)
@@ -411,11 +417,12 @@ final class LineStrip: PaintPainter, @unchecked Sendable {
         return plan
     }
 
-    init(shares: [PaintShare], width: Double, seed: Int, tool: LineTool, thin: Double = 1) {
+    init(shares: [PaintShare], width: Double, seed: Int, tool: LineTool, thin: Double = 1, paper: [Double]? = nil,
+         shades: [Double]? = nil) {
         self.tool = tool
         self.width = width
         self.seed = Double(seed)
-        plan = Self.plan(shares, width: width, seed: seed, tool: tool, thin: thin)
+        plan = Self.plan(shares, width: width, seed: seed, tool: tool, thin: thin, paper: paper, shades: shades)
         (wide, high) = PrintPaint.size(width: width)
         last = plan.last
         length = plan.last

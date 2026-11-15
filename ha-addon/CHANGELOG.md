@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.160
+
+- Rysunek kredą, ołówkiem albo węglem na barwionym papierze (niebieskim,
+  szarym, brązowym) ma własny pasek barw: papier w swojej barwie, luźne
+  kreski rysunku gęstniejące z ciemnymi tonami, światła białą kredą,
+  a sangwina czy brązowa kredka kreskami swojej barwy. Tak samo rysunek
+  z białymi światłami i kreda trzech kolorów. Dotąd pasek był szarym
+  kreskowaniem przez całą szerokość, bez papieru i bez bieli.
+
 ## 1.145.159
 
 - Rysunek z akwarelą (ołówek, węgiel, kreda albo pióro z akwarelą) ma
