@@ -53,8 +53,9 @@ COLOUR_SPREAD = (0.01, 0.035)
 #: sheet measured without the board it was photographed on (``unmounted``);
 #: 17: the accents the bar has room for are the most striking, not the
 #: largest (``striking``); 18: a white that stands out in a dark picture of
-#: one tone (``LIGHT_DARK``).
-SCORE_VERSION = 18
+#: one tone (``LIGHT_DARK``); 19: a faint cool colour against a warm
+#: ground (``cast_accents``).
+SCORE_VERSION = 19
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
 #: this chroma / lightness for light ones: a greyish-blue sky does, a beige
@@ -275,6 +276,25 @@ ACCENT_BRIGHTER = 0.045
 #: Accents closer than this (``_distance``, lightness halved) are one.
 ACCENT_TWIN = 0.07
 MAX_ACCENTS = 4
+#: A faint cool colour against a warm ground is an accent too: the grey
+#: water of Kano Hideyori's „Oglądanie klonów w Takao” is blue beside its
+#: gold paper (Mateusz 2026-11-15 00:35: „Może tu też jesteśmy w stanie
+#: dobrać odpowiedni pasek koloru?”; 00:41, of the test on 530 works of
+#: his library: „Zrób proszę taki test.”). The picture's cast (its median
+#: a/b) is warm (``CAST_HUES``) and ``CAST_CHROMA`` strong at least; a
+#: pixel is cool by its own hue (``CAST_COOL``), ``CAST_FAINT`` chroma of
+#: its own at least and under what ``accent_colours`` counts, and
+#: ``CAST_OFF`` (and ``CAST_OFF_TIMES`` the median) from the cast; such
+#: pixels cover ``CAST_AREA`` of the picture. Of 530 works 8 had one: the
+#: blue robes of the Last Supper, Clio's dress in Vermeer's Allegory, a
+#: sky under varnish, an icon's robes.
+CAST_CHROMA = 0.025
+CAST_HUES = (30.0, 110.0)
+CAST_COOL = (("green", 120.0, 175.0), ("blue", 175.0, 290.0))
+CAST_FAINT = 0.006
+CAST_OFF = 0.04
+CAST_OFF_TIMES = 2.5
+CAST_AREA = 0.008
 #: A colour is an accent of a picture (its ``ACCENT_TAG``) also when the
 #: bar does not show it: its pixels that stand out cover ``OUT_AREA`` of
 #: the picture. A pixel stands out when it is ``OUT_TIMES`` as coloured as
@@ -509,6 +529,10 @@ def analyse(img: Image.Image, spread: float | None = None) -> Analysis:
     # and its paper is no accent.
     if monochrome:
         small = []
+    # A faint cool colour on a warm ground, in a picture with colours of its
+    # own: not the grey of a sepia drawing.
+    faint = [] if monochrome or spread < COLOUR_SPREAD[0] else cast_accents(fine, dominant, accents)
+    accents = sorted([*accents, *faint], key=lambda a: -a[1])
     shown = [c for c, _ in dominant] + [c for c, _, _ in accents] + [c for c, _, _ in small]
     more = passed_over(merged[len(dominant) :], shown)
     shown += [c for c, _ in more]
@@ -525,6 +549,8 @@ def analyse(img: Image.Image, spread: float | None = None) -> Analysis:
     pale_parts = paleness(fine)
     passed = not monochrome and any(family(c, pale_parts) == "white" for c, _ in more)
     also = ["white"] if white or passed else []
+    # Named by its own hue when its colour is too faint for a name.
+    also += [name for colour, _, name in faint if family(colour, pale_parts) in GROUNDS]
     # A pale sheet's tints: an accent of a tint's side is as large as the
     # tint; a tint no colour shows is shown as one more accent.
     # The sheet itself: not the board it was photographed on.
@@ -1025,6 +1051,48 @@ def accent_colours(
         elif len(accents) < MAX_ACCENTS:
             accents.append((centre, share, name))
     return sorted(accents, key=lambda a: -a[1])
+
+
+def cast_accents(
+    lab: np.ndarray,
+    dominant: Sequence[tuple[np.ndarray, float]],
+    accents: Sequence[tuple[np.ndarray, float, str]],
+) -> list[tuple[np.ndarray, float, str]]:
+    """The faint cool colours a warm ground makes plain (``CAST_AREA``):
+    (colour, share of the picture, family), as ``accent_colours``; none of
+    a family it found, nor beyond ``MAX_ACCENTS`` with them. Named by the
+    family of their own hue, which their own chroma is too faint for."""
+    cast = np.median(lab[:, 1:], 0)
+    cast_hue = float(np.degrees(np.arctan2(cast[1], cast[0])) % 360)
+    if float(np.hypot(*cast)) < CAST_CHROMA or not CAST_HUES[0] <= cast_hue < CAST_HUES[1]:
+        return []
+    chroma = np.hypot(lab[:, 1], lab[:, 2])
+    hue = _hue(lab)
+    off = np.hypot(lab[:, 1] - cast[0], lab[:, 2] - cast[1])
+    faint = (
+        (chroma >= CAST_FAINT)
+        & (chroma < 0.025)
+        & (off >= max(CAST_OFF, CAST_OFF_TIMES * float(np.median(off))))
+        & (lab[:, 0] > 0.25)
+        & (lab[:, 0] < 0.85)
+    )
+    have = {name for _, _, name in accents}
+    n = len(lab)
+    found: list[tuple[np.ndarray, float, str]] = []
+    for name, start, end in CAST_COOL:
+        # The blue sectors of ``ACCENT_SECTORS`` are teal and blue.
+        if name in have or (name == "blue" and "teal" in have):
+            continue
+        member = faint & (hue >= start) & (hue < end)
+        count = int(member.sum())
+        if count < CAST_AREA * n:
+            continue
+        top = max(1, min(count // 2, int(ACCENT_VIVID * n)))
+        centre = lab[member][np.argsort(-chroma[member])[:top]].mean(0)
+        if any(_distance(centre, c, 0.5) < ACCENT_TWIN for c, _ in dominant):
+            continue
+        found.append((centre, count / n, name))
+    return found[: max(0, MAX_ACCENTS - len(accents))]
 
 
 def _shown_chroma(centre: np.ndarray, dominant: Sequence[tuple[np.ndarray, float]]) -> float:
