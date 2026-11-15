@@ -1932,6 +1932,12 @@ struct LeftoverUse: Codable, Hashable, Sendable, Identifiable {
     /// What it ordered this period, and about what it cost.
     var done: Int
     var doneUsd: Double
+    /// What the owner may set `aNight` to (nil: fixed), and what a night
+    /// takes of what waits and about for how much (Mateusz 2026-11-15: the
+    /// whole catalogue's "824,84 USD" is no night's). Nil from older servers.
+    var aNightOptions: [Int]? = nil
+    var tonight: Int? = nil
+    var tonightUsd: Double? = nil
 
     var id: String { key }
 }
@@ -2016,6 +2022,8 @@ struct AiSettingsUpdate: Encodable, Sendable {
     /// The uses of the month's rest in the owner's order, and those off.
     var leftoverOrder: [String]?
     var leftoverOff: [String]?
+    /// The catalogue's keywords and Polish texts a night at most, works.
+    var leftoverTextsANight: Int?
 }
 
 /// `GET /api/ai/review`: "Do sprawdzenia", what the gatekeeper set aside and

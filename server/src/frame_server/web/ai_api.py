@@ -147,6 +147,12 @@ class LeftoverUseView(BaseModel):
     each_usd: float
     waiting_usd: float | None
     a_night: int | None
+    #: What the owner may set ``a_night`` to (None: fixed), and what a night
+    #: takes of what waits and about for how much (Mateusz 2026-11-15: the
+    #: whole catalogue's "824,84 USD" is no night's).
+    a_night_options: list[int] | None = None
+    tonight: int | None = None
+    tonight_usd: float | None = None
     #: What it ordered this period, and about what it cost.
     done: int
     done_usd: float
