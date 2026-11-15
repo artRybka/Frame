@@ -27,7 +27,7 @@ from frame_server.library.duplicates import (
     title_key,
     work_key,
 )
-from frame_server.library.models import Framing, SharperCopy
+from frame_server.library.models import Cut, Framing, SharperCopy
 from frame_server.library.museums import MUSEUMS, Museum
 from frame_server.web.library_api import remote_items
 
@@ -841,3 +841,24 @@ def test_a_search_tile_marks_the_librarys_picture(service) -> None:
     )
     service.library.upsert(found.model_copy(update={"sharper": copy}))
     assert remote_items(service, [found], copies=False)[0].low_side == 0
+
+
+def test_a_search_tile_of_a_held_work_shows_the_librarys_cut_and_copy(service) -> None:
+    # Odkrywaj's lists (Mateusz 2026-11-15): a museum's answer for a work
+    # the library holds came without its cut and copy, so its tile had no
+    # crop mark and another picture version than the playlists'.
+    found = _work("met", 7, title="Madonna and Child", width=3000, height=4000)
+    copy = SharperCopy(url="u", item_id="wmc:7", source="wmc", width=3000, height=4000, chosen=True)
+    cut = Cut(
+        work=[(0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9)],
+        aspect=0.75,
+        picture="wmc:7",
+        at="2026-11-15T15:00:00",
+    )
+    assert remote_items(service, [found], copies=False)[0].item.cut is None
+    service.library.upsert(found.model_copy(update={"sharper": copy, "cut": cut}))
+    tile = remote_items(service, [found], copies=False)[0].item
+    assert tile.cut_shown() is not None
+    assert tile.cut_version() == "2026-11-15T15:00:00"
+    assert tile.picture_key() == "wmc:7"
+    assert tile.title == "Madonna and Child"  # still the museum's text

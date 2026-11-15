@@ -106,6 +106,10 @@ struct SuggestionsView: View {
             if LaunchRoute.screen == "discover-group", path.isEmpty, let first {  // CI screenshots
                 path.append(ThemeGroupRoute(name: first))
             }
+            // CI screenshots: a theme's works, with the marks after the titles.
+            if LaunchRoute.screen == "discover-theme", path.isEmpty, let theme = groups.first?.themes.first {
+                path.append(theme)
+            }
         }
         .onChange(of: model.daily?.day) { _, day in
             if LaunchRoute.screen == "daily", path.isEmpty, day != nil { path.append(DailyRoute(day: nil)) }  // CI screenshots
@@ -432,6 +436,8 @@ struct WorkTile: View {
     /// cropped closer, with a glossy coat, lifted over the page with the
     /// phone's turn and casting a shadow on it.
     var brighten = false
+    /// The magnifier after the title: not where every card is "Pod lupą".
+    var showsZoom = true
 
     /// How much closer a brightened card crops its picture.
     static let closer: CGFloat = 1.18
@@ -466,10 +472,11 @@ struct WorkTile: View {
                 }
                 .clipped()
             VStack(alignment: .leading, spacing: 4) {
-                Text(shownTitle)
-                    .font(.serif(15, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
+                // The marks after the title, as on every list's tile; not
+                // the magnifier where every card is "Pod lupą".
+                ArtCard.markedTitle(item.summary, title: shownTitle, weight: .semibold, zoom: showsZoom)
                     .lineLimit(2, reservesSpace: true)
+                    .truncationMode(ArtCard.hasMarks(item.summary, zoom: showsZoom) ? .middle : .tail)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(ArtCard.byline(item.summary))
@@ -549,7 +556,7 @@ struct ZoomWorkCard: View {
 
     var body: some View {
         NavigationLink(value: remote.id) {
-            WorkTile(item: remote, brighten: true)
+            WorkTile(item: remote, brighten: true, showsZoom: false)
                 .accessibilityHint("Otwiera dzieło, można je mocno przybliżyć")
         }
         .buttonStyle(.plain)

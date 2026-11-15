@@ -976,8 +976,31 @@ actor DemoBackend: FrameBackend {
 
     // MARK: Discover
 
+    /// The server's `remote_items`: each work with its mark of a small
+    /// picture or of the restorer, as Odkrywaj's tiles show them.
     private func remote(_ list: [Item]) -> [RemoteItem] {
-        list.map { RemoteItem(item: $0, inLibrary: true) }
+        list.map { item in
+            var remote = RemoteItem(item: Self.demoCut(item), inLibrary: true)
+            remote.lowSide = Self.lowSide(item)
+            if Self.restoredAll, item.kind == .artwork { remote.restored = true }
+            return remote
+        }
+    }
+
+    /// Screenshots: `-demoCut some` shows every third work cut out of its
+    /// photograph, so the lists show the crop's mark.
+    private static func demoCut(_ item: Item) -> Item {
+        guard item.kind == .artwork, item.cut == nil,
+              UserDefaults.standard.string(forKey: "demoCut") == "some",
+              item.id.unicodeScalars.reduce(0, { $0 + Int($1.value) }) % 3 == 0
+        else { return item }
+        var cut = item
+        let aspect = item.width.flatMap { w in item.height.map { Double(w) / Double(max($0, 1)) } } ?? 0.75
+        cut.cut = Cut(
+            work: [[0.04, 0.04], [0.96, 0.04], [0.96, 0.96], [0.04, 0.96]], aspect: aspect,
+            picture: item.sharper?.itemId ?? "", around: ["frame"], at: "demo"
+        )
+        return cut
     }
 
     private func works(_ theme: ArtTheme) -> [Item] {

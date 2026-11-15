@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.145.154
+
+- Litografia jednej barwy ma własny pasek barw zamiast kreskowania
+  ołówkiem: każdy ton to ziarno kamienia, które tłusta kredka chwyta
+  mocniej albo słabiej, od rzadkiego pyłu drobnych plamek po aksamitną
+  czerń, tony przechodzą miękko jeden w drugi, a ziarno wyłania się
+  pociągnięciami od jasnego końca do ciemnego. Litografia barwna i rysunek
+  ołówkiem zostają bez zmian.
+
+## 1.145.153
+
+- Dzieła, które nie są prostokątem (wycinanka po konturze rysunku,
+  odłamek, talerz, owal, koło, miniatura w okrągłej oprawie, łuk ołtarza,
+  przedmiot), nie są już kadrowane automatycznie: zostaje całe zdjęcie
+  muzeum. Model kadrujący mówi teraz, jaki kształt ma samo dzieło, i kadruje
+  tylko prostokąty; paski tła z pikseli też nie są wtedy wycinane.
+- Dzieła wykadrowane wcześniej są sprawdzane jeszcze raz (krótkie pytanie o
+  kształt, nocą przez Batch, a od razu przy otwarciu karty) i gdy nie są
+  prostokątem, wracają do całego zdjęcia. Twoje własne kadry zostają, a
+  kadrowania na ramce pokazują ten sam fragment co wcześniej. Detale
+  studium trafiają w to samo miejsce, kolory są liczone od nowa.
+
+## 1.145.152
+
+- Na listach w Odkrywaj (sekcje, „Zobacz wszystkie”, strony motywów i
+  grup, karty Studiów) dzieła mają po tytule te same znaczniki co na
+  playlistach: przycięte ze zdjęcia muzeum, niska rozdzielczość,
+  kreatywny restaurator i Pod lupą. Dzieło z biblioteki pokazuje się tam
+  z wybraną kopią i kadrem, także w Szukaj.
+
 ## 1.145.151
 
 - Pastel ma własny pasek barw zamiast kreskowania kredki: każda barwa jest

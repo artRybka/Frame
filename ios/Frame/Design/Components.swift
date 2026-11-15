@@ -248,31 +248,43 @@ struct ArtCard: View {
         }
     }
 
-    /// The title, and after it, wrapping with the last word: for a "Pod
-    /// lupą" work a magnifier, for a picture small for the frame a grid of
-    /// pixels (`LowRes`).
     /// A mark follows the title (`title`).
-    private var marked: Bool {
-        item.zoom == true || item.restored == true || (item.lowSide ?? 0) > 0 || item.isCropped
-    }
+    private var marked: Bool { Self.hasMarks(item) }
 
     private var title: Text {
-        var text = Text(item.title.isEmpty ? "Bez tytułu" : item.title)
-            .font(.serif(15, weight: .medium))
-            .foregroundStyle(Theme.ink)
-        var label = item.title
+        Self.markedTitle(item, title: item.title.isEmpty ? "Bez tytułu" : item.title, weight: .medium)
+    }
+
+    /// Whether a mark follows `item`'s title (`markedTitle`).
+    static func hasMarks(_ item: ItemSummary, zoom: Bool = true) -> Bool {
+        (zoom && item.zoom == true) || item.restored == true || (item.lowSide ?? 0) > 0 || item.isCropped
+    }
+
+    /// The title, and after it, wrapping with the last word: the crop's
+    /// corners for a work cut out of its photograph, for a "Pod lupą" work
+    /// a magnifier, for a picture small for the frame its pixels' stairs
+    /// (`LowRes`), the restorer's sparkles. Every tile with a work's title
+    /// shows them so: the playlists', Szukaj's, Odkrywaj's (Mateusz
+    /// 2026-11-15: "Na listach w Odkrywaj brakuje znaczników").
+    /// `zoom: false` where every tile is "Pod lupą".
+    static func markedTitle(
+        _ item: ItemSummary, title shown: String, weight: Font.Weight, zoom: Bool = true
+    ) -> Text {
+        let font = Font.serif(15, weight: weight)
+        var text = Text(shown).font(font).foregroundStyle(Theme.ink)
+        var label = shown
         // Cut out of the museum's photograph: where the year stands on the
         // card, here the first mark (Mateusz 2026-11-14).
         if item.isCropped {
             text = text
-                + Text("\u{00A0}").font(.serif(15, weight: .medium))
+                + Text("\u{00A0}").font(font)
                 + Text(Cropped.image)
                     .foregroundStyle(Theme.inkSoft)
             label += ", \(Cropped.spoken)"
         }
-        if item.zoom == true {
+        if zoom, item.zoom == true {
             text = text
-                + Text("\u{00A0}").font(.serif(15, weight: .medium))
+                + Text("\u{00A0}").font(font)
                 + Text(Image(systemName: TitleYear.zoomSymbol))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Theme.inkSoft)
@@ -280,19 +292,19 @@ struct ArtCard: View {
         }
         if item.restored == true {
             text = text
-                + Text("\u{00A0}").font(.serif(15, weight: .medium))
+                + Text("\u{00A0}").font(font)
                 + Text(Image(systemName: LowRes.restoredSymbol))
                     .font(.system(size: 11.5, weight: .medium))
                     .foregroundStyle(LowRes.tint)
             label += ", odnowione przez kreatywnego restauratora"
         } else if let side = item.lowSide, side > 0 {
             text = text
-                + Text("\u{00A0}").font(.serif(15, weight: .medium))
+                + Text("\u{00A0}").font(font)
                 + Text(LowRes.image)
                     .foregroundStyle(LowRes.tint)
             label += ", \(LowRes.spoken(side))"
         }
-        guard label != item.title else { return text }
+        guard label != shown else { return text }
         return text.accessibilityLabel(Text(label))
     }
 
