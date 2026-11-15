@@ -14,8 +14,12 @@ enum PaintStyle: String, Sendable, CaseIterable {
     case oil
     /// Watercolour, gouache: strokes that run into each other on wet paper.
     case water
-    /// Pastel, crayon, chalk: hatching that catches the tooth of the paper.
+    /// Crayon, chalk: hatching that catches the tooth of the paper.
     case dry
+    /// Pastel: each colour rubbed in, laid with the stick's side and drawn
+    /// with its tip (`PastelStrip`, sketch 45; Mateusz 2026-11-15 09:39:
+    /// „Teraz wygląda jak kredka”). Was the crayon's hatching.
+    case pastel
     /// A print of one colour (engraving, etching, woodcut): a scale of its
     /// tones in the engraver's lines (`LineStrip`, `PrintCore.swift`).
     case burin
@@ -152,7 +156,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
         for word in words {
             for (style, begins, whole) in named where whole.contains(word) || begins.contains(where: { word.hasPrefix($0) }) {
                 // Chalk under a drawing in pen and ink is not what it is made in.
-                if style == .dry, inked || washed { continue }
+                if style == .dry || style == .pastel, inked || washed { continue }
                 return style
             }
             if ink.contains(word) || inkBegins.contains(where: { word.hasPrefix($0) }) { inked = true }
@@ -239,6 +243,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
         case .oil: return OilStrip.pulls(shares, width: width, seed: 0).map { $0.at + $0.takes }.max() ?? 0
         case .water: return WaterStrip.time(shares, width: width)
         case .dry: return Double(shares.count - 1) * DryPlan.apart + DryPlan.stroke
+        case .pastel: return PastelStrip.time(shares, width: width)
         case .burin, .pen, .pencil: return LineStrip.time(shares.count)
         case .woodblock, .litho, .screen, .offset: return InkStrip.time(shares.count)
         case .photo: return PrintPaint.appear
@@ -255,7 +260,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
         let gap = switch self {
         case .oil: 0.26
         case .water: 0.22
-        case .dry: 0.24
+        case .dry, .pastel: 0.24
         case .burin, .pen, .pencil: 0.24
         case .woodblock, .litho, .screen, .offset: 0.26
         case .photo: 0.24
@@ -367,7 +372,8 @@ enum PaintStyle: String, Sendable, CaseIterable {
          ["oil", "oils", "ol", "oel", "olio", "oleo"]),
         (.gouache, ["gouach", "gwasz", "guazzo", "bodycol", "dekverf", "deckfarb"], []),
         (.water, ["watercol", "aquarel", "akwarel", "acuarel", "acquerel", "waterverf", "akvarel"], []),
-        (.dry, ["pastel", "kred", "chalk", "craie", "kreide", "krijt", "sanguin", "sangwin"], ["crayon", "crayons"]),
+        (.pastel, ["pastel"], []),
+        (.dry, ["kred", "chalk", "craie", "kreide", "krijt", "sanguin", "sangwin"], ["crayon", "crayons"]),
     ]
 }
 
@@ -1804,7 +1810,7 @@ struct ContourLine: Sendable, Hashable {
     static let draws = 0.9
     /// The styles that have it: the painted bars. A print's or a drawing's
     /// bar is its lines already.
-    static func draws(in style: PaintStyle) -> Bool { style == .oil || style == .water || style == .dry }
+    static func draws(in style: PaintStyle) -> Bool { [.oil, .water, .dry, .pastel].contains(style) }
 }
 
 /// The contour as it lies on a finished bar `wide` by `high` pixels: for
@@ -1987,7 +1993,7 @@ struct ContourStroke: Sendable {
                     // Pigment gathers at a wet line's edges.
                     alpha = 0.8 + 0.17 * Paint.step(0.55, 1, off)
                     shade = 1 - 0.1 * Paint.step(0.55, 1, off)
-                case .dry:
+                case .dry, .pastel:
                     // The stick leaves the paper's hollows bare.
                     // On the paint (dark look) its own hollows show the
                     // dark paper: broken less, or the line is lost in them.

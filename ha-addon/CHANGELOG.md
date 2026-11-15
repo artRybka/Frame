@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.151
+
+- Pastel ma własny pasek barw zamiast kreskowania kredki: każda barwa jest
+  najpierw roztarta palcem, potem kładziona bokiem kredy w spokojnym skosie
+  na całą wysokość paska, a na końcu ma dwie–trzy kreski czubkiem. Akcenty
+  to roztarta plamka z pociągnięciami w tym samym skosie. Kredka i kreda
+  zostają przy kreskowaniu.
+
 ## 1.145.150
 
 - Szkic kompozycji od Gemini jest teraz częścią opracowania studium
