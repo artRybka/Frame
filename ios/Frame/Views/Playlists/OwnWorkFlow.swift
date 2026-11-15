@@ -140,11 +140,11 @@ struct OwnWorkFlow: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    if retaking != nil {
-                        Text("Nowe zdjęcie zastąpi obecne, opis zostanie bez zmian.")
-                            .font(.subheadline)
-                            .foregroundStyle(Theme.inkSoft)
-                    }
+                    Text(retaking == nil
+                         ? "Sfotografuj obraz, rysunek albo grafikę."
+                         : "Nowe zdjęcie zastąpi obecne, opis zostanie bez zmian.")
+                        .font(.serif(17))
+                        .foregroundStyle(Theme.inkSoft)
                     PhotoSketch()
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
