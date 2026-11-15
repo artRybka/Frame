@@ -103,7 +103,7 @@ class LooksPhoto(BaseModel):
 
 @router.post("/looks/photo", response_model=LooksPhoto)
 async def looks_photo(svc: Svc, file: Annotated[UploadFile, File()]) -> LooksPhoto:
-    """"Szukaj zdjęciem" in Szukaj's own list (Mateusz 2026-11-15): the
+    """ "Szukaj zdjęciem" in Szukaj's own list (Mateusz 2026-11-15): the
     photograph's numbers kept under a key that ``/api/library/items?like=``
     and a smart playlist's ``like`` take, as a work's id. The photograph is
     not kept. 409 / 502 as ``/looks/picture``."""
