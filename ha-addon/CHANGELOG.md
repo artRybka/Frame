@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.147
+
+- Stonowana barwa, która zajmuje co najmniej 3% obrazu, a pasek pokazuje ją
+  jako szarość, dostaje akcent swojej barwy: niebieski papier „Maku”
+  Rungego, różowa sukienka u Makowskiego, zielenie u Bouchera. Znajdzie je
+  szukanie po akcencie i widać je w barwach na karcie. Na próbce biblioteki
+  zmienia się 16 z 530 dzieł. Biblioteka przelicza barwy po aktualizacji.
+
 ## 1.145.146
 
 - Detale studium dzieła przyciętego z ramy (lub z kartonu, sztalugi) są

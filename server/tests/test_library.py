@@ -1855,3 +1855,27 @@ def test_a_grey_river_on_a_gold_screen_is_its_blue() -> None:
     drawing[40:160, 40:160] = (120, 108, 90)
     drawing[80:120, 60:140] = (110, 114, 116)
     assert "accent:blue" not in analyse(Image.fromarray(drawing)).tags
+
+
+def test_a_muted_colour_on_some_of_the_picture_is_an_accent() -> None:
+    # Mateusz 2026-11-15 09:06: „A inne, podobne sytuacje? Inne kolory
+    # które nam teraz giną i uciekają?”. A muted blue dress, its folds
+    # blue and grey by turns, on a tenth of a brown portrait: the bar shows
+    # it as a grey, its blue pixels were found by no tag.
+    def portrait(dress: tuple[int, int, int]) -> Image.Image:
+        rng = np.random.default_rng(3)
+        picture = np.empty((200, 200, 3), np.float64)
+        picture[:] = (70, 58, 46)
+        picture[20:100, 40:160] = (190, 150, 120)
+        picture[100:120, 20:180] = (150, 50, 40)
+        picture[0:20, :] = (190, 160, 60)
+        for x in range(0, 200, 16):
+            picture[160:200, x : x + 8] = dress
+            picture[160:200, x + 8 : x + 16] = (118, 116, 112)
+        picture += rng.normal(0, 3, picture.shape)
+        return Image.fromarray(np.clip(picture, 0, 255).astype(np.uint8))
+
+    _, tags, shares = analyse(portrait((98, 114, 130)))
+    assert shares["blue"] >= 0.06 and "accent:blue" in tags
+    # Brown is no such accent: the edge of a book, a stain on a fresco.
+    assert "accent:brown" not in analyse(portrait((112, 96, 80))).tags

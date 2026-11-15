@@ -54,8 +54,9 @@ COLOUR_SPREAD = (0.01, 0.035)
 #: 17: the accents the bar has room for are the most striking, not the
 #: largest (``striking``); 18: a white that stands out in a dark picture of
 #: one tone (``LIGHT_DARK``); 19: a faint cool colour against a warm
-#: ground (``cast_accents``).
-SCORE_VERSION = 19
+#: ground (``cast_accents``); 20: a muted colour present on ``PRESENT``
+#: of the picture is an accent (``PRESENT_AREA``).
+SCORE_VERSION = 20
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
 #: this chroma / lightness for light ones: a greyish-blue sky does, a beige
@@ -100,6 +101,25 @@ PINK_CHROMA = 0.16
 #: Least share of the picture a colour family covers to be part of its
 #: colouring (tag ``"blue"``: "W odcieniach błękitu"); less is an accent at most.
 COLOURING = 0.15
+#: A colour family that covers this much of a picture, and less than its
+#: colouring, is an accent of it however muted (Mateusz 2026-11-15 09:06:
+#: „A inne, podobne sytuacje? Inne kolory które nam teraz giną i
+#: uciekają?”): the bar shows the blue paper of Runge's „Poppy”, the pink
+#: dress of Makowski's girl, but they were found by no tag. Not when a
+#: family next to it (``NEIGHBOURS``) has a tag: the blue and teal of one
+#: river are one colour. Not brown: on the sample its 3 % was the edge of
+#: a book, a stain on a fresco. Of 530 works of his library 16 gained one.
+PRESENT_AREA = 0.03
+NEIGHBOURS = {
+    "red": ("orange", "pink", "brown"),
+    "orange": ("yellow", "red", "brown"),
+    "yellow": ("orange", "green", "brown", "cream"),
+    "green": ("teal", "yellow"),
+    "teal": ("blue", "green"),
+    "blue": ("teal", "purple"),
+    "purple": ("pink", "blue"),
+    "pink": ("red", "purple"),
+}
 #: Tags of colours that are only accents of a picture (``"accent:blue"``),
 #: never with the colour's own tag.
 ACCENT_TAG = "accent:"
@@ -645,6 +665,13 @@ def colour_tags(
     if monochrome is None:
         monochrome = one_tone(lab, spread)
     accents = accented(lab, spread, names, shown, monochrome) | set(also)
+    if spread >= COLOUR_SPREAD[0] and not monochrome:
+        named = set(tags) | accents
+        accents |= {
+            n
+            for n, near in NEIGHBOURS.items()
+            if share[n] >= PRESENT_AREA and not any(m in named for m in near)
+        }
     tags += [ACCENT_TAG + n for n in COLOR_FAMILIES if n in accents and n not in tags]
     tags += [ONLY_TAG + n for n in painted_in(share)]
 
