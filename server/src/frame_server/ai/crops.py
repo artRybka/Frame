@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING, Any
 
 from PIL import Image, ImageDraw
 
-from ..imaging.cut import Quad, snap, thin_backdrop, valid, worth_cutting
+from ..imaging.cut import Quad, backdrop_quad, snap, thin_backdrop, valid, worth_cutting
 from ..imaging.layout import load_image
 from ..library.images import OWN_SOURCES
 from ..library.models import Cut, ItemKind
@@ -65,7 +65,11 @@ FIRST_SOURCES = ("mnw", "mnk")
 
 #: Once the works cared about are looked at for a thin strip of backdrop
 #: the judge missed (:meth:`Crops.swept`); a new number looks again.
-BAND_SWEEP = 1
+BAND_SWEEP = 2
+#: The thin strips' check a work was asked with (``asked[id]["band"]``):
+#: 2 (2026-11-15) falls back on the pixels where Opus was unsure, so works
+#: asked by 1 and left uncut are asked again.
+BAND = 2
 #: Once the cuts kept with a plate that is the work itself are tidied
 #: (:meth:`Crops.untwinned`).
 TWIN_TIDY = 1
@@ -345,21 +349,21 @@ class Crops(CriticNight):
         found: dict[str, dict[str, Any]] = {}
         for item_id in sorted(cared, key=lambda i: cared[i]):
             entry = asked.get(item_id)
-            if entry is None or entry.get("band") or item_id in claims:
+            if entry is None or entry.get("band") == BAND or item_id in claims:
                 continue
             item = self.library.get(item_id)
             if item is None or item.framing or not self.wanted(item):
                 continue
             if self.open_to_cut(item) and self.banded(item):
                 around = item.cut.around if item.cut is not None else []
-                found[item_id] = {"around": sorted({*around, "backdrop"})}
+                found[item_id] = {"around": sorted({*around, "backdrop"}), "band": True}
         state = self.state()
         claims = state.get("claims") or {}
         asked_all = state.get("asked") or {}
         for item_id, claim in found.items():
             claims.setdefault(item_id, claim)
             if isinstance(asked_all.get(item_id), dict):
-                asked_all[item_id]["band"] = True
+                asked_all[item_id]["band"] = BAND
         state["claims"], state["asked"], state["band_sweep"] = claims, asked_all, BAND_SWEEP
         self._save(state)
         log.info("crops: %d works cared about show a thin backdrop, for Opus", len(found))
@@ -382,7 +386,8 @@ class Crops(CriticNight):
     def claim(self, item: Item, data: dict[str, Any]) -> dict[str, Any] | None:
         around = sorted({s for s in data.get("surround") or [] if s in SURROUND})
         if not CUT_AROUND & set(around) and self.banded(item):
-            around = sorted({*around, "backdrop"})  # Perugino, Cleveland, 2026-11-15
+            # Perugino, Cleveland, 2026-11-15: strips the judge missed.
+            return {"around": sorted({*around, "backdrop"}), "band": True}
         if CUT_AROUND & set(around):
             return {"around": around}
         if PAPER & set(around) and item.cut is None:
@@ -435,10 +440,28 @@ class Crops(CriticNight):
     def confirmed(self, item: Item, claim: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
         try:
             found = self.corners(item, data)
+            if (not found or found["work"] is None) and claim.get("band"):
+                found = self.strips(item)
         except OSError as err:
             log.info("crops: the photograph of %s: %s", item.id, err)
             return {}
         return {**claim, **found} if found and found["work"] is not None else {}
+
+    def strips(self, item: Item) -> dict[str, Any] | None:
+        """The photograph without the thin strips of backdrop along its
+        sides, from the pixels (:func:`..imaging.cut.backdrop_quad`): when
+        Opus was unsure of a sheet's edge that nearly meets the
+        photograph's (Munch, Cleveland, 2026-11-15), or named no sheet."""
+        img = self.photo(item)
+        quad = backdrop_quad(img)
+        if quad is None or not worth_cutting(quad):
+            return None
+        return {
+            "work": quad,
+            "plate": None,
+            "aspect": round(img.width / img.height, 5),
+            "note": "thin strips of backdrop, from the pixels",
+        }
 
     def write(self, item: Item, claim: dict[str, Any]) -> bool:
         stored = self.library.get(item.id)
@@ -552,12 +575,15 @@ class Crops(CriticNight):
             return False
         asked = self.asked().get(stored.id)
         again = asked is not None and asked.get("p", "") == stored.picture_key()
-        if asked is not None and again and (asked.get("band") or not self.banded(stored)):
+        if asked is not None and again and (asked.get("band") == BAND or not self.banded(stored)):
             return False  # looked at, and no thin backdrop the judge missed then
         try:
             if again:  # Opus straight away: the judge saw nothing (or only paper) before
                 around = stored.cut.around if stored.cut is not None else []
-                claim: dict[str, Any] | None = {"around": sorted({*around, "backdrop"})}
+                claim: dict[str, Any] | None = {
+                    "around": sorted({*around, "backdrop"}),
+                    "band": True,
+                }
             else:
                 judged = self.claude.ask(KIND, self.question(stored))
                 claim = None if judged.refused else self.claim(stored, judged.data or {})
@@ -576,7 +602,7 @@ class Crops(CriticNight):
             "at": _now()[:10],
             "p": stored.picture_key(),
             "critic": bool(found),
-            "band": True,
+            "band": BAND,
         }
         state["asked"] = asked_all
         (state.get("claims") or {}).pop(stored.id, None)

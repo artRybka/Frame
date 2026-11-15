@@ -239,3 +239,51 @@ def thin_backdrop(img: Image.Image) -> bool:
         unlike = float((np.abs(within - colour).max(axis=1) >= 24).mean())
         found += plain >= 0.9 and unlike >= 0.6
     return found >= BACKDROP_SIDES
+
+
+#: :func:`backdrop_quad`: a strip is cut no deeper than this (share of the
+#: side across it); a line across a strip still counts as backdrop while
+#: this share of it is the strip's colour.
+STRIP_DEEPEST = 0.08
+STRIP_LINE = 0.15
+
+
+def backdrop_quad(img: Image.Image) -> Quad | None:
+    """The picture without the thin strips of backdrop along its sides
+    (:func:`thin_backdrop`), found from the pixels alone: where Opus is
+    unsure of a sheet's edge that nearly meets the photograph's (Munch's
+    Evening, Melancholy I, Cleveland, 2026-11-15). Each side with a plain
+    strip unlike what lies inside it is cut where the strip's colour ends;
+    a skewed sheet loses a sliver of its edge. None without such strips."""
+    small = img.convert("RGB")
+    small.thumbnail((1000, 1000), Image.Resampling.BILINEAR)
+    a = np.asarray(small, dtype=np.float32)
+    h, w = a.shape[:2]
+    if min(h, w) < 60:
+        return None
+    k = 2
+    d = max(6, round(BACKDROP_DEPTH * min(h, w)))
+    # Each side as lines from the outside in: rows from the top, ...
+    sides = (a, a[::-1], a.transpose(1, 0, 2), a.transpose(1, 0, 2)[::-1])
+    depths: list[int] = []
+    for lines in sides:
+        strip = lines[1 : 1 + k, k:-k].reshape(-1, 3)
+        colour = np.median(strip, axis=0)
+        plain = float((np.abs(strip - colour).max(axis=1) < 12).mean())
+        within = lines[d : d + k, d:-d].reshape(-1, 3)
+        unlike = float((np.abs(within - colour).max(axis=1) >= 24).mean())
+        if plain < 0.6 or unlike < 0.6:
+            depths.append(0)
+            continue
+        deepest = round(STRIP_DEEPEST * len(lines))
+        near = (np.abs(lines[:deepest] - colour).max(axis=2) < 16).mean(axis=1)
+        below = np.flatnonzero(near < STRIP_LINE)
+        # A strip that does not end so near the edge is no thin strip (a
+        # board or a colour chart along one side): that side stays.
+        depths.append(int(below[0]) if below.size else 0)
+    if sum(1 for n in depths if n >= 2) < BACKDROP_SIDES:
+        return None
+    top, bottom, left, right = depths
+    x0, x1 = left / w, 1 - right / w
+    y0, y1 = top / h, 1 - bottom / h
+    return [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]

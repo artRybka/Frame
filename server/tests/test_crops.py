@@ -17,7 +17,14 @@ from test_ai import FakeAnthropic, _message, fake  # noqa: F401  (fixture)
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import HAIKU, OPUS
 from frame_server.ai.crops import read_layers
-from frame_server.imaging.cut import snap, thin_backdrop, valid, warp, worth_cutting
+from frame_server.imaging.cut import (
+    backdrop_quad,
+    snap,
+    thin_backdrop,
+    valid,
+    warp,
+    worth_cutting,
+)
 from frame_server.library.models import Cut, Item, ItemKind, ItemSummary
 from frame_server.service import FrameService
 
@@ -415,7 +422,7 @@ def test_a_thin_backdrop_the_judge_missed_is_cut_away(
     assert "backdrop" in fake.asked[1]["messages"][0]["content"][-1]["text"]
     item = service.library.get("cma:1")
     assert item is not None and item.cut is not None and item.cut_shown() is not None
-    assert service.crops.asked()["cma:1"]["band"] is True
+    assert service.crops.asked()["cma:1"]["band"] == 2
 
 
 def test_works_judged_before_go_to_opus_when_their_card_opens(
@@ -454,8 +461,8 @@ def test_works_cared_about_are_swept_once_for_a_thin_backdrop(service: FrameServ
     crops._save(state)
     assert crops.swept() == 1
     state = crops.state()
-    assert state["claims"] == {"cma:5": {"around": ["backdrop"]}}
-    assert state["asked"]["cma:5"]["band"] is True
+    assert state["claims"] == {"cma:5": {"around": ["backdrop"], "band": True}}
+    assert state["asked"]["cma:5"]["band"] == 2
     assert crops.swept() == 0  # once
 
 
@@ -485,3 +492,34 @@ def test_a_plate_that_is_the_work_is_no_paper_to_choose(service: FrameService) -
     assert stored.cut.by == "owner" and stored.cut.work == work
     assert service.library.get("mnk:10").cut.plate is not None  # type: ignore[union-attr]
     assert crops.untwinned() == 0  # once
+
+
+def test_the_strips_alone_are_cut_away_when_opus_is_unsure(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    # Munch's Evening, Melancholy I (Cleveland, 2026-11-15): the strips
+    # found, Opus unsure of a sheet's edge that nearly meets the photograph's.
+    quad = backdrop_quad(sheet(strip=9))
+    assert quad is not None and _near(
+        quad,
+        [(9 / W, 9 / H), (1 - 9 / W, 9 / H), (1 - 9 / W, 1 - 9 / H), (9 / W, 1 - 9 / H)],
+        0.004,
+    )
+    assert backdrop_quad(sheet(strip=0)) is None and backdrop_quad(photo()) is None
+
+    _work(service, "cma:11", picture=sheet(), pooled=True)
+    crops = service.crops
+    state = crops.state()  # asked by 1.145.138: Opus unsure, nothing cut
+    state["asked"] = {
+        "cma:11": {"v": 2, "at": "2026-11-15", "p": "", "critic": False, "band": True}
+    }
+    crops._save(state)
+    answers = iter([{**SHEET_CORNERS, "confident": False}])
+    fake.messages.create = lambda **params: (fake.asked.append(params), _message(next(answers)))[1]
+    assert crops.now(service.library.get("cma:11"))  # type: ignore[arg-type]
+    assert [p["model"] for p in fake.asked] == [OPUS]
+    item = service.library.get("cma:11")
+    assert item is not None and item.cut is not None
+    shown = item.cut_shown()
+    assert shown is not None and _near(shown, quad, 0.004)

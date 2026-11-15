@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.140
+
+- Wąskie paski tła są odcinane także wtedy, gdy Opus nie jest pewien brzegu
+  kartki (Munch, „Wieczór, melancholia I”, Cleveland). Kartka niemal
+  dotyka brzegów zdjęcia, więc Opus odpowiadał „niepewnie” i nic się nie
+  działo. Teraz serwer odcina same paski tła, mierząc je na zdjęciu:
+  z każdej strony, gdzie biegnie jednolity pasek, do miejsca, w którym się
+  kończy. Papier zostaje. Dzieła sprawdzone tak w 1.145.138 i nieprzycięte
+  są sprawdzane jeszcze raz.
+
 ## 1.145.139
 
 - Praca wydrukowana na cienkim papierze naklejonym na karton (np. litografia
