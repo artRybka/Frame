@@ -37,7 +37,8 @@ enum Gold {
     /// Gold, in the museums' languages.
     private static let named = ["gold", "zlot", "zloc", "dore", "dorur", "goud", "vergold", "gilt", "gild", "guld", "pozlot", "pozlac"]
     /// Laid in leaf, and painted.
-    private static let leaves = ["leaf", "platk", "blatt", "feuille", "blad"]
+    private static let leaves = ["leaf", "platk", "blatt", "feuille", "blad", "gild", "gilt", "zlocon", "pozlac", "pozlot", "vergold", "kinji",
+                                 "kinpaku"]
     private static let paints = ["paint", "shell", "powder", "farb", "ink", "tusz", "muschel", "poudre", "verf"]
 
     /// Which of the colours is the gold: a warm yellow of some strength
@@ -108,6 +109,27 @@ final class GoldLeaf: @unchecked Sendable {
     /// `reach[k + 1]` in `flake` and `near`).
     private var flakes: (angle: [Double], reach: [Int32], flake: [Int32], near: [Float])?
     private var kept: (tilt: Int, frame: PaintFrame)?
+    /// The contour where it runs over the gold's picture.
+    private var line: (rgb: [Float], alpha: [Float])??
+
+    private func lined() -> (rgb: [Float], alpha: [Float])? {
+        if let line { return line }
+        guard let drawn = bed?.line else {
+            line = .some(nil)
+            return nil
+        }
+        let S = Double(PrintPaint.scale)
+        var rgb = [Float](repeating: 0, count: 3 * wide * high), alpha = [Float](repeating: 0, count: wide * high)
+        for k in 0..<(wide * high) {
+            let seen = GoldBed.sample(drawn, origin.x + (Double(k % wide) + 0.5) / S, origin.y + (Double(k / wide) + 0.5) / S)
+            alpha[k] = Float(seen.alpha)
+            rgb[3 * k] = Float(seen.rgb[0])
+            rgb[3 * k + 1] = Float(seen.rgb[1])
+            rgb[3 * k + 2] = Float(seen.rgb[2])
+        }
+        line = .some((rgb, alpha))
+        return (rgb, alpha)
+    }
 
     /// The gold from its shadow to its light, 0…1 each.
     static let deep = [0.50, 0.37, 0.13], middle = [0.76, 0.58, 0.24], pale = [0.97, 0.88, 0.58]
@@ -115,13 +137,29 @@ final class GoldLeaf: @unchecked Sendable {
     /// its own angle, how close the flakes lie (points).
     static let glint = [1.0, 0.96, 0.82], sharp = 0.18, cell = 1.05
 
-    init(place: Gold.Place, seed: Int) {
+    /// The bar under it, when the gold is one of its paints (Mateusz
+    /// 2026-11-15 00:27: „czy ono zasłania pasek koloru czy jest jego
+    /// elementem? … Jeżeli jest elementem - to trzeba go dać do wysokości
+    /// paska? Nawet chyba pod czarna linia konturu”): the gold takes the
+    /// shape of its paint (an oil's pulls, a watercolour's wash), and the
+    /// contour drawn round the paint goes over it.
+    private let bed: GoldBed?
+
+    init(place: Gold.Place, seed: Int, bed: GoldBed? = nil) {
         self.place = place
         self.seed = Double(seed)
+        self.bed = bed
         let S = Double(PrintPaint.scale)
-        origin = (place.from - 2, -2)
+        origin = (place.from - 2, -5)
         wide = Int(((place.to - place.from) + 4) * S)
-        high = Int((Paint.bar + 4) * S)
+        high = Int((Paint.bar + 10) * S)
+    }
+
+    /// Makes now what the first turn would: off the main thread, before it is shown.
+    func ready() {
+        _ = prepare()
+        _ = lined()
+        if place.kind == .shell { _ = scatter() }
     }
 
     private func prepare() -> (cover: [Float], tone: [Float], fine: [Float]) {
@@ -131,8 +169,13 @@ final class GoldLeaf: @unchecked Sendable {
         for k in 0..<n {
             let x = origin.x + (Double(k % wide) + 0.5) / S, y = origin.y + (Double(k / wide) + 0.5) / S
             let along = min(x - place.from + 1.0 * (Paint.noise(x / 3, y / 3, 94 + s) - 0.5), place.to - x + 1.0 * (Paint.noise(x / 3, y / 3, 95 + s) - 0.5))
-            let edge = min(along, min(y + 0.3, Paint.bar + 0.3 - y))
-            cover[k] = Float(min(1, max(0, edge * 3 + 0.5)))
+            if let paint = bed?.paint {
+                // As high as its paint, in the paint's own shape.
+                cover[k] = Float(min(1, max(0, along * 3 + 0.5)) * GoldBed.sample(paint, x, y).alpha)
+            } else {
+                let edge = min(along, min(y + 0.3, Paint.bar + 0.3 - y))
+                cover[k] = Float(min(1, max(0, edge * 3 + 0.5)))
+            }
             tone[k] = Float(Paint.noise(x / 12, y / 12, 90 + s))
             var grain = 0.96 + 0.08 * Paint.noise(x / 0.9, y / 0.9, 91 + s)
             // Shell gold is a powder: a little rougher.
@@ -184,6 +227,19 @@ final class GoldLeaf: @unchecked Sendable {
             out.bytes[q + 2] = Paint.byte(255 * blue)
             out.bytes[q + 3] = Paint.byte(255 * Double(cover[k]))
         }
+        // The contour over the gold, where it runs.
+        if let line = lined() {
+            for k in 0..<(wide * high) {
+                let a = Double(line.alpha[k])
+                if a <= 0.003 { continue }
+                let q = 4 * k, below = Double(out.bytes[q + 3]) / 255, all = a + below * (1 - a)
+                for c in 0..<3 {
+                    let was = Double(out.bytes[q + c])
+                    out.bytes[q + c] = Paint.byte((Double(line.rgb[3 * k + c]) * a + was * below * (1 - a)) / max(all, 0.0001))
+                }
+                out.bytes[q + 3] = Paint.byte(255 * all)
+            }
+        }
         kept = (step, out)
         return out
     }
@@ -221,5 +277,38 @@ final class GoldLeaf: @unchecked Sendable {
         }
         flakes = (angle, reach, flake, near)
         return (angle, reach, flake, near)
+    }
+}
+
+/// The bar a gold lies in: its paint, finished, and the contour drawn
+/// round it alone; both in the bar's picture's pixels, whatever its scale.
+struct GoldBed: @unchecked Sendable {
+    var paint: PaintFrame?
+    var line: PaintFrame?
+
+    /// Made anew from a bar's painter of its own (not the one on the page, which paints elsewhere meanwhile).
+    static func of(_ painter: PaintPainter) -> GoldBed {
+        let contoured = painter as? ContouredStrip, inner = contoured?.inner ?? painter
+        // An oil's paint as it is down, before the paper round it soaks its oil up: the gold lies on the paint, not on the stain.
+        let paint = (inner as? OilStrip).map { $0.frame(age: $0.last + 0.05) } ?? inner.frame(age: inner.length)
+        return GoldBed(paint: paint, line: contoured?.lineAlone())
+    }
+
+    /// A frame's colour (0…255) and how much is there at a point of the bar (points from its upper left corner), between its pixels.
+    static func sample(_ frame: PaintFrame, _ x: Double, _ y: Double) -> (rgb: [Double], alpha: Double) {
+        let scale = Double(frame.high) / (Paint.bar + 2 * Paint.pad)
+        let fx = (x + Paint.pad) * scale - 0.5, fy = (y + Paint.pad) * scale - 0.5
+        let i = Int(fx.rounded(.down)), j = Int(fy.rounded(.down)), u = fx - Double(i), v = fy - Double(j)
+        var rgb = [0.0, 0.0, 0.0], alpha = 0.0
+        for (di, dj, w) in [(0, 0, (1 - u) * (1 - v)), (1, 0, u * (1 - v)), (0, 1, (1 - u) * v), (1, 1, u * v)] where w > 0 {
+            let a = frame.cover(i + di, j + dj)
+            if a <= 0 { continue }
+            let c = frame.colour(i + di, j + dj)
+            rgb[0] += c.red * a * w
+            rgb[1] += c.green * a * w
+            rgb[2] += c.blue * a * w
+            alpha += a * w
+        }
+        return alpha > 0 ? (rgb.map { $0 / alpha }, alpha) : ([0, 0, 0], 0)
     }
 }

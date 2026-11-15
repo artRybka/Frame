@@ -37,7 +37,7 @@ final class PaintTests: XCTestCase {
         let dry = ["pastel on paper", "kredka, papier", "black chalk", "Pastel over watercolour", "pastel, papier naklejony na tekturę",
                    "Red chalk on laid paper", "kreda, papier"]
         // Ink with colours, and whatever names something that is no paint: flat.
-        let flat = ["Ink and color on silk", "Bronze", "papier", "Porcelain", "mixed media"]
+        let flat = ["Bronze", "papier", "Porcelain", "mixed media"]
         // A photograph: its tones under grain (Mateusz 2026-11-12 10:47:
         // „fotografia - gradientowy pasek z lekkim ziarnem”).
         let photo = ["Gelatin silver print", "Oil print", "Albumen silver print", "Platinum print",
@@ -61,7 +61,7 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(PaintStyle.of(medium: "canvas"), .oil)
         XCTAssertEqual(PaintStyle.of(medium: "płótno"), .oil)
         XCTAssertEqual(PaintStyle.of(medium: "Watercolor", classification: "Paintings"), .water)
-        XCTAssertNil(PaintStyle.of(medium: "Ink and color on silk", classification: "Paintings"))
+        XCTAssertEqual(PaintStyle.of(medium: "Ink and color on silk", classification: "Paintings"), .water)
         // What the server looks up where the source names nothing (Wikidata's
         // materials, WikiArt's "media", Commons' {{Technique}}, Europeana's
         // record): Wyspiański's "Śpiący Staś" came from WikiArt as a painting.
@@ -91,7 +91,7 @@ final class PaintTests: XCTestCase {
         XCTAssertNil(PaintStyle.of(medium: "", classification: "Ceramics"))
         XCTAssertNil(PaintStyle.of(medium: "", classification: "Textiles"))
         XCTAssertNil(PaintStyle.of(medium: "", classification: "clocks"))
-        XCTAssertNil(PaintStyle.of(medium: "Six-panel folding screen; ink, color and gold on paper"))
+        XCTAssertEqual(PaintStyle.of(medium: "Six-panel folding screen; ink, color and gold on paper"), .gouache)
         XCTAssertFalse(PaintStyle.sculpted(medium: "", classification: ""))
         XCTAssertTrue(PaintStyle.sculpted(medium: "", classification: "Sculpture"))
     }
@@ -156,9 +156,13 @@ final class PaintTests: XCTestCase {
             XCTAssertEqual(PaintStyle.of(medium: text, classification: "Drawings", mono: true), .wash, text)
         }
         XCTAssertEqual(PaintStyle.of(medium: "Watercolor wash over graphite"), .water)
-        // Ink with colours is a painting: flat; in ink alone, a brush's tones are a pen's.
-        XCTAssertNil(PaintStyle.of(medium: "Ink, colour and wash on silk", classification: "Paintings"))
-        XCTAssertNil(PaintStyle.of(medium: "Ink and color on silk", classification: "Paintings"))
+        // Ink with colours is a painting; in ink alone, a brush's tones are a pen's.
+        XCTAssertEqual(PaintStyle.of(medium: "Ink, colour and wash on silk", classification: "Paintings"), .water)
+        // Ink and colours (Mateusz 2026-11-15 00:23, of Sakai Hōitsu's screen): opaque on paper and gold, thin on silk.
+        XCTAssertEqual(PaintStyle.of(medium: "Ink and color on silk", classification: "Paintings"), .water)
+        XCTAssertEqual(PaintStyle.of(medium: "Two-panel folding screen; ink and color on gilded paper", classification: "Painting"), .gouache)
+        XCTAssertEqual(Gold.kind(medium: "Two-panel folding screen; ink and color on gilded paper", style: .gouache), .leaf)
+        XCTAssertEqual(PaintStyle.of(medium: "tusz i barwniki na papierze"), .gouache)
         XCTAssertNil(PaintStyle.of(medium: "Hanging scroll; ink on paper", classification: "Paintings"))
         XCTAssertEqual(PaintStyle.of(medium: "Hanging scroll; ink on paper", classification: "Paintings", mono: true), .pen)
         // A soft point; a paint over it is what the work is in.
@@ -605,6 +609,51 @@ final class PaintTests: XCTestCase {
             XCTAssertEqual(leaf.frame(tilt: 0).cover(leaf.wide / 2, leaf.high / 2), 1, accuracy: 0.01)
             XCTAssertEqual(leaf.frame(tilt: 0).cover(1, leaf.high / 2), 0, accuracy: 0.01)
         }
+    }
+
+    func testTheGoldIsOneOfTheBarsPaintsAsHighAsItAndUnderItsContour() {
+        // Mateusz 2026-11-15 00:27: „czy ono zasłania pasek koloru czy jest jego elementem? … Jeżeli jest elementem - to trzeba
+        // go dać do wysokości paska? Nawet chyba pod czarna linia konturu”.
+        func shares(_ list: [(String, Double)]) -> [PaintShare] { list.map { PaintShare(rgb: Paint.rgb($0.0)!, weight: $0.1, accent: false) } }
+        let icon = shares([("#7a2e22", 0.26), ("#c9a24a", 0.34), ("#2f3b55", 0.18), ("#3a2a20", 0.14), ("#d9c8a0", 0.08)])
+        let line = ContourLine(hex: "#1c1612", length: 3.4, width: 1.17)!
+        let oil = ContouredStrip(OilStrip(shares: icon, width: 350, seed: 5, dark: false, relief: Paint.calm.plain), line: line, style: .oil,
+                                 seed: 5)
+        let bed = GoldBed.of(oil)
+        guard let paint = bed.paint, let drawn = bed.line, let place = Gold.place(icon, style: .oil, width: 350, kind: .leaf) else {
+            return XCTFail("no bed")
+        }
+        let leaf = GoldLeaf(place: place, seed: 5, bed: bed), frame = leaf.frame(tilt: 0), S = Double(PrintPaint.scale)
+        func at(_ x: Double, _ y: Double) -> (cover: Double, light: Double) {
+            let i = Int((x - leaf.origin.x) * S), j = Int((y - leaf.origin.y) * S), c = frame.colour(i, j)
+            return (frame.cover(i, j), PrintPaint.lightness([c.red, c.green, c.blue]))
+        }
+        // Where the paint is, the gold; where it is not, nothing: as high as the paint, in its shape.
+        var both = 0, gold = 0, bare = 0, over = 0
+        for x in stride(from: place.from + 4, to: place.to - 4, by: 1.0) {
+            for y in stride(from: -4.5, to: Paint.bar + 4.5, by: 0.5) {
+                let there = GoldBed.sample(paint, x, y).alpha, seen = at(x, y).cover
+                if there > 0.98 { both += 1; if seen > 0.95 { gold += 1 } }
+                if there < 0.02 { bare += 1; if seen > 0.05 { over += 1 } }
+            }
+        }
+        XCTAssertGreaterThan(both, 1000)
+        XCTAssertGreaterThan(Double(gold) / Double(both), 0.97)
+        XCTAssertEqual(Double(over) / Double(max(1, bare)), 0, accuracy: 0.03)
+        // The contour, drawn round the paint, lies over the gold: dark where it runs.
+        var lined = 0, dark = 0
+        for x in stride(from: place.from + 4, to: place.to - 4, by: 1.0) {
+            for y in stride(from: -4.5, to: Paint.bar + 4.5, by: 0.5) where GoldBed.sample(drawn, x, y).alpha > 0.9 {
+                lined += 1
+                if at(x, y).light < 0.3 { dark += 1 }
+            }
+        }
+        XCTAssertGreaterThan(lined, 20)
+        XCTAssertGreaterThan(Double(dark) / Double(lined), 0.8)
+        // A gouache's gold, without a bed, fills the bar's height and no more.
+        let flat = GoldLeaf(place: place, seed: 5).frame(tilt: 0)
+        XCTAssertEqual(flat.cover(leaf.wide / 2, Int((Paint.bar / 2 + 5) * S)), 1, accuracy: 0.01)
+        XCTAssertEqual(flat.cover(leaf.wide / 2, Int(3 * S)), 0, accuracy: 0.01)
     }
 
     func testAPaintsSwatchOfAPrintOrADrawingIsASlipOfItsPaper() {

@@ -159,9 +159,17 @@ enum PaintStyle: String, Sendable, CaseIterable {
         }
         if words.contains(where: { word in canvas.contains { word.hasPrefix($0) } || word == "tela" }) { return .oil }
         let painting = has(kind, paintings)
-        // Ink and colours on silk is a painting, not a drawing in pen.
+        // Ink and colours is a painting, not a drawing in pen: of East Asia
+        // for the most part, its colours ground minerals bound in glue,
+        // laid opaque on paper and on gold, thin on silk (Mateusz
+        // 2026-11-15 00:23, of Sakai Hōitsu's screen „Paulownie i
+        // chryzantemy”, „ink and color on gilded paper”, shown flat:
+        // „Dlaczego taki pasek kolorów? Możemy to skorygować?”).
         if inked || washed {
-            if !mono && (painting || has(words, colours)) { return nil }
+            if !mono && (painting || has(words, colours)) {
+                guard has(words, colours) else { return nil }
+                return has(words, silks) ? .water : .gouache
+            }
             return washed ? .wash : .pen
         }
         if has(words, soft) { return .pencil }
@@ -310,6 +318,8 @@ enum PaintStyle: String, Sendable, CaseIterable {
                                "matita", "carboncino", "silverpoint", "metalpoint", "olowk", "olowek", "wegiel", "wegl"]
     /// What says there are colours beside the ink.
     private static let colours = ["color", "colour", "kolor", "barw", "couleur", "farb", "kleur", "pigment", "gold", "zlot"]
+    /// Silk, which a painting's colours lie thin on.
+    private static let silks = ["silk", "jedwab", "soie", "seide", "zijde", "seta", "seda"]
     /// A drawing, as the museums file it.
     private static let drawings = ["drawing", "rysun", "tekening", "zeichnung", "dessin", "disegn", "dibuj"]
 
@@ -2022,6 +2032,19 @@ final class ContouredStrip: PaintPainter, @unchecked Sendable {
         // is drawn as soon as the paint is down, not once the oil has spread.
         begins = (inner as? OilStrip).map { $0.last + 0.15 } ?? inner.length
         length = max(inner.length, begins + ContourLine.draws)
+    }
+
+    /// The contour alone, all of it drawn, on nothing.
+    func lineAlone() -> PaintFrame? {
+        if stroke == nil {
+            let done = inner.frame(age: inner.length)
+            stroke = .some(ContourStroke(bar: { done.cover($0, $1) }, wide: wide, high: high, line: line, style: style, seed: seed,
+                                         inside: dark))
+        }
+        guard case let .some(.some(stroke)) = stroke else { return nil }
+        var frame = PaintFrame(wide: wide, high: high)
+        stroke.draw(on: &frame, progress: 1, seed: seed)
+        return frame
     }
 
     func frame(age: Double) -> PaintFrame {

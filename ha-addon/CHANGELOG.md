@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.140
+
+- Parawan malowany tuszem i kolorami na złoconym papierze (Sakai Hōitsu,
+  „Paulownie i chryzantemy”, Cleveland) miał płaski pasek barw. Tusz z
+  kolorami na dziele wielobarwnym jest teraz gwaszem, a na jedwabiu
+  akwarelą; złocony papier daje złoto płatkowe.
+- Złoto w pasku barw jest jedną z jego farb, nie nakładką: na oleju i
+  akwareli ma kształt i wysokość farby, czarny kontur biegnie nad nim, a
+  złoto pojawia się dopiero po narysowaniu konturu.
+
 ## 1.145.138
 
 - Kartka leżąca na białej albo szarej tekturze, z której widać tylko wąski
