@@ -83,7 +83,7 @@ struct FullPhotoSection: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
                                 .frame(width: 96, height: 60)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Zdjęcie muzeum")
+                                Text(item.isOwnWork ? "Twoje zdjęcie" : "Zdjęcie muzeum")
                                     .font(.body)
                                     .foregroundStyle(Theme.ink)
                                 Text(line)
@@ -138,7 +138,7 @@ struct FullPhotoSection: View {
     private var line: String {
         if item.isOwnWork {
             // His own photograph, not a museum's.
-            return item.isCropped ? "Twoje zdjęcie, wycięte do samego dzieła." : "Twoje zdjęcie w całości."
+            return item.isCropped ? "Rama i ściana wycięte, prezentowane jest samo dzieło." : "Prezentowane jest całe zdjęcie."
         }
         return cut.hasPaper
             ? cut.paperLine(medium: item.medium)

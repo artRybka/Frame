@@ -1761,7 +1761,9 @@ actor DemoBackend: FrameBackend {
             return true
         }
         guard drawn else { return [] }
-        let colours = (0 ..< 16).map { i in (Int(pixels[i * 4]), Int(pixels[i * 4 + 1]), Int(pixels[i * 4 + 2])) }
+        let colours: [(Int, Int, Int)] = (0 ..< 16).map { (i: Int) -> (Int, Int, Int) in
+            (Int(pixels[i * 4]), Int(pixels[i * 4 + 1]), Int(pixels[i * 4 + 2]))
+        }
         var chosen = [colours[5]]
         while chosen.count < 5 {
             let next = colours.max { a, b in
