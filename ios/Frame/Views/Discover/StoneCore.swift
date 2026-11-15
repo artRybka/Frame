@@ -126,7 +126,7 @@ final class StoneStrip: PaintPainter, @unchecked Sendable {
     /// How dark the crayon is to make the bar at `x`: each tone's cover,
     /// going over into the next within `blend` of their seam; a patch of
     /// colour's thinner, and only a little way into it.
-    static func cover(_ tones: [LineStrip.Tone], at x: Double, blend: Double = Self.blend) -> Double {
+    static func cover(_ tones: [LineStrip.Tone], at x: Double, blend: Double = StoneStrip.blend) -> Double {
         guard let first = tones.first else { return 0 }
         func own(_ tone: LineStrip.Tone) -> Double { tone.patch ? tone.cover * Self.overPatch : tone.cover }
         var c = own(first)
