@@ -625,7 +625,7 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(PaintStyle.of(medium: "malowanie, papier, jedwab, tusz, farba wodna"), .water)
         // White gouache that only heightens a drawing is not what it is made in; white gouache alone is.
         XCTAssertEqual(PaintStyle.of(medium: "pen and black ink and brush and brown wash, heightened with white gouache"), .wash)
-        XCTAssertEqual(PaintStyle.of(medium: "Graphite, highlighted with white gouache"), .pencil)
+        XCTAssertEqual(PaintStyle.of(medium: "Graphite, highlighted with white gouache"), .heightened)
         XCTAssertEqual(PaintStyle.of(medium: "Pen and brown ink, with brush and brown wash and touches of white gouache"), .wash)
         XCTAssertEqual(PaintStyle.of(medium: "Brown and white gouache on cream board"), .gouache)
         XCTAssertEqual(PaintStyle.of(medium: "gwasz, tusz, piórko, akwarela, ołówek, brystol"), .waterPen)
@@ -663,6 +663,73 @@ final class PaintTests: XCTestCase {
         // The drawing is there before the watercolour.
         let early = strip.frame(age: LineStrip.time(1) * TintedStrip.washes.from - 0.01)
         XCTAssertLessThan(early.colour(i, j).red - early.colour(i, j).blue, 70)
+    }
+
+    /// Mateusz 2026-11-15 17:08, of Daniel Huntington's „Pani Sheppard
+    /// Gandy w pozycji siedzącej” (graphite, black and brown crayon and
+    /// white chalk on blue paper), shown as grey crayon hatched over the
+    /// whole bar: „Kolejny nietypowy przykład paska koloru.” A drawing on
+    /// tinted paper is that paper bare, the drawing's lines on it, its
+    /// lights white chalk and a colour of its own that colour's chalk.
+    func testADrawingOnTintedPaperIsThatPaperItsLinesAndItsChalk() {
+        for text in ["graphite, black crayon, brown crayon and white chalk on blue paper",
+                     "Black chalk, highlighted with  traces of white chalk, on blue-gray paper", "Red, black and white chalks on pale grey paper.",
+                     "Graphite and white heightening on grey-blue paper", "Red chalk, heightened with white, on beige paper",
+                     "pędzel, kredka, czarna kredka, światła bielą, papier", "Graphite, white chalk on brown wove"] {
+            XCTAssertEqual(PaintStyle.of(medium: text), .heightened, text)
+            XCTAssertEqual(PaintStyle.of(medium: text, classification: "Drawing", mono: true), .heightened, text)
+        }
+        for text in ["Black chalk on gray paper", "Graphite on tan wove paper", "charcoal on gray laid paper", "Black crayon, on tan tracing paper",
+                     "red chalk on brown laid paper", "kreda czarna na niebieskim papierze", "craie noire sur papier bleu", "Silverpoint on blue prepared paper"] {
+            XCTAssertEqual(PaintStyle.of(medium: text), .toned, text)
+        }
+        // White paper is no heightening; touches of black crayon are no lights; the paper laid down on is not drawn on.
+        XCTAssertEqual(PaintStyle.of(medium: "Black chalk on white paper"), .dry)
+        XCTAssertEqual(PaintStyle.of(medium: "Graphite on white wove paper"), .pencil)
+        XCTAssertEqual(PaintStyle.of(medium: "Charcoal with stumping and touches of black crayon on ivory laid paper"), .dry)
+        XCTAssertEqual(PaintStyle.of(medium: "Black chalk, on cream laid paper, laid down on tan laid paper"), .dry)
+        XCTAssertEqual(PaintStyle.of(medium: "Graphite on cream wove paper, tipped onto gray wove paper"), .pencil)
+        // In ink, in wash, in pastel or in watercolour it is what it was.
+        XCTAssertEqual(PaintStyle.of(medium: "Pen and brown ink, heightened with white gouache on blue paper"), .pen)
+        XCTAssertEqual(PaintStyle.of(medium: "Pastel on blue paper"), .pastel)
+        XCTAssertEqual(PaintStyle.of(medium: "Brush and gouache on blue paper"), .gouache)
+
+        // Huntington's colours as near as a photograph of the card tells: the paper, a light, the dark and the brown.
+        let sheet = [PaintShare(rgb: [138, 155, 163], weight: 0.62), PaintShare(rgb: [201, 205, 198], weight: 0.12),
+                     PaintShare(rgb: [75, 78, 82], weight: 0.14), PaintShare(rgb: [125, 106, 88], weight: 0.07)]
+        let parts = TonedStrip.parts(sheet, lit: true)
+        XCTAssertEqual(parts.paper, [138, 155, 163])
+        XCTAssertEqual(Set(parts.sticks.keys), [1, 3], "the light is white chalk, the brown a brown crayon, the dark the drawing's")
+        XCTAssertEqual(parts.shares.count, 4, "it has its lights: none added")
+        let strip = TonedStrip(shares: sheet, width: 350, seed: 5, lit: true)
+        XCTAssertEqual(PaintStyle.heightened.barTime(sheet, width: 350), strip.last, accuracy: 0.001)
+        let done = strip.frame(age: strip.length)
+        let spans = LineStrip.plan(parts.shares, width: 350, seed: 5, tool: .pencil, paper: parts.paper, shades: parts.shades).tones
+        func mean(_ colour: Int) -> [Double] {
+            guard let tone = spans.first(where: { $0.colour == colour }) else { return [] }
+            var sum = [0.0, 0.0, 0.0], count = 0.0
+            for x in stride(from: tone.from + 3, to: tone.to - 3, by: 0.5) {
+                for y in stride(from: 4.0, to: 22.0, by: 0.5) {
+                    let (i, j) = dot(x, y), c = done.colour(i, j)
+                    sum = [sum[0] + c.red, sum[1] + c.green, sum[2] + c.blue]
+                    count += 1
+                }
+            }
+            return sum.map { $0 / count }
+        }
+        // The paper's part is the blue paper, the lines over it few; the light lighter, the brown warmer, the dark darker.
+        let paper = mean(0)
+        XCTAssertGreaterThan(paper[2] - paper[0], 15, "\(paper)")
+        XCTAssertLessThan(abs(PrintPaint.lightness(paper) - PrintPaint.lightness([138, 155, 163])), 0.06)
+        XCTAssertGreaterThan(PrintPaint.lightness(mean(1)), PrintPaint.lightness(paper) + 0.04)
+        XCTAssertGreaterThan(mean(3)[0] - mean(3)[2], paper[0] - paper[2] + 20)
+        XCTAssertLessThan(PrintPaint.lightness(mean(2)), PrintPaint.lightness(paper) - 0.08)
+
+        // Heightened with white but nothing in its colours lighter than its paper: the white chalk is there all the same.
+        let laid = [PaintShare(rgb: [116, 129, 126], weight: 0.8), PaintShare(rgb: [96, 105, 102], weight: 0.2)]
+        XCTAssertEqual(TonedStrip.parts(laid, lit: true).shares.count, 3)
+        XCTAssertEqual(TonedStrip.parts(laid, lit: false).shares.count, 2)
+        XCTAssertEqual(TonedStrip.parts(laid, lit: true).sticks[2], TonedStrip.lights.white)
     }
 
     /// Sketch 46 (Mateusz 2026-11-15 15:03: „A”): a lithograph of one

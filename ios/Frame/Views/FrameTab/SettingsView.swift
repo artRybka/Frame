@@ -292,10 +292,14 @@ struct SettingsPageView: View {
                 .padding(.bottom, 40)
             }
             .task {
-                // CI screenshots: `-scroll restorer` on the Gemini page.
-                guard page == .gemini, LaunchRoute.scroll == "restorer" else { return }
+                // CI screenshots: `-scroll restorer` on the Gemini page,
+                // `-scroll leftover` (the month's rest) on Claude's.
+                let target = LaunchRoute.scroll
+                guard (page == .gemini && target == "restorer") || (page == .ai && target == "leftover"),
+                      let target
+                else { return }
                 try? await Task.sleep(for: .seconds(4))
-                withAnimation { proxy.scrollTo("restorer", anchor: .center) }
+                withAnimation { proxy.scrollTo(target, anchor: target == "leftover" ? .top : .center) }
             }
         }
         .paperPage()

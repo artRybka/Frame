@@ -120,8 +120,9 @@ class Audit(CriticNight):
         cared = self.cared()
         first = [i for i in found if i.id in cared]
         rest = [i for i in found if i.id not in cared]
-        picked = random.sample(first, min(len(first), self.per_night))
-        room = self.per_night - len(picked)
+        limit = self.limit(False)  # more when the month's rest pays (``leftover``)
+        picked = random.sample(first, min(len(first), limit))
+        room = limit - len(picked)
         return picked + random.sample(rest, min(len(rest), room))
 
     def facts(self, item: Item) -> str:

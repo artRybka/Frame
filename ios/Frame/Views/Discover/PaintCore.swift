@@ -83,6 +83,19 @@ enum PaintStyle: String, Sendable, CaseIterable {
     case waterPencil
     /// The same in pen and ink with watercolour: the pen's lines.
     case waterPen
+    /// A drawing in chalk, pencil or charcoal on tinted paper (Mateusz
+    /// 2026-11-15 17:08, of Daniel Huntington's „Pani Sheppard Gandy w
+    /// pozycji siedzącej”, graphite and crayons with white chalk „on blue
+    /// paper”, shown as grey crayon hatched over the whole bar: „Kolejny
+    /// nietypowy przykład paska koloru.”): the paper as it is, bare where
+    /// its share is, the drawing's loose lines on it, its lights white
+    /// chalk and a colour of its own (red chalk) that colour's chalk
+    /// (`TonedStrip`). Was the stick's hatching of every colour, or a
+    /// pencil's lines on a cream paper.
+    case toned
+    /// The same heightened with white, on any paper: white chalk is there
+    /// though the work's colours hold nothing lighter than its paper.
+    case heightened
 
     /// The drawing's tool of a drawing with watercolour; nil for any other.
     var drawn: LineTool? {
@@ -198,6 +211,14 @@ enum PaintStyle: String, Sendable, CaseIterable {
            !has(words, ["pastel"]), !has(words, oils, ["oil", "oils", "ol", "oel", "olio", "oleo"]), !has(words, silks) {
             return anyInk ? .waterPen : .waterPencil
         }
+        // A drawing in chalk or a soft point on a tinted paper, or one
+        // heightened with white: its paper, its lines and its chalk.
+        if !anyInk, !washed, !watered, has(words, soft) || has(words, chalks, ["crayon", "crayons"]),
+           !has(words, ["pastel"]), !has(words, oils, ["oil", "oils", "ol", "oel", "olio", "oleo"]), !has(words, gouaches),
+           !has(words, silks) {
+            if Self.lit(words) { return .heightened }
+            if Self.tinted(words) { return .toned }
+        }
         var inked = false
         for word in words {
             for (style, begins, whole) in named where whole.contains(word) || begins.contains(where: { word.hasPrefix($0) }) {
@@ -299,6 +320,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
         case .woodcut: return WoodcutStrip.time(shares.count)
         case .grain, .aquatint: return StoneStrip.time(shares.count)
         case .waterPencil, .waterPen: return TintedStrip.time(shares, width: width)
+        case .toned, .heightened: return TonedStrip.time(shares, lit: self == .heightened)
         }
     }
 
@@ -318,6 +340,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
         case .woodcut: 0.26
         case .grain, .aquatint: 0.26
         case .waterPencil, .waterPen: 0.22
+        case .toned, .heightened: 0.24
         }
         return Self.swatchesFrom * bar + gap * Double(index)
     }
@@ -373,6 +396,58 @@ enum PaintStyle: String, Sendable, CaseIterable {
                                               "witte", "bianco", "biacca"]
     /// What says a paint only heightens: the lights laid on a drawing.
     private static let heightens = ["heighten", "highlight", "rehauss", "touch", "hoh", "gehoh", "opgehoogd", "lumeggi", "swiatl"]
+
+    /// Whether a drawing is heightened with white: a word that says so,
+    /// or white named of anything but its paper ("white chalk", „biała
+    /// kreda”; not "on white paper").
+    static func lit(_ words: [String]) -> Bool {
+        // Not "touches" alone: "touches of black crayon" are no lights.
+        if words.contains(where: { word in heightens.contains(where: word.hasPrefix) && !word.hasPrefix("touch") }) { return true }
+        return words.indices.contains { index in
+            guard whites.contains(words[index]) else { return false }
+            let after = words[(index + 1)...].first { !sheetWords.contains($0) }
+            return !(after.map { word in papers.contains(where: word.hasPrefix) } ?? false)
+                && !(index > 0 && papers.contains(where: words[index - 1].hasPrefix))
+        }
+    }
+
+    /// Whether a drawing is on a tinted paper: a colour said of its paper
+    /// ("on blue paper", "pale grey-blue laid paper", „na niebieskim
+    /// papierze”, "papier bleu"), what is said of a paper between the two;
+    /// not of the paper it is laid down on ("on cream laid paper, laid
+    /// down on tan laid paper").
+    static func tinted(_ words: [String]) -> Bool {
+        func tint(_ word: String) -> Bool {
+            tints.contains(where: word.hasPrefix) || tintsWithin.contains(where: word.contains) || tintWords.contains(word)
+        }
+        func said(_ near: some Sequence<String>) -> Bool {
+            for word in near {
+                if tint(word) { return true }
+                if !sheetWords.contains(word) { return false }
+            }
+            return false
+        }
+        // The first paper named is the one drawn on; the next it is laid down on or mounted on.
+        guard let index = words.firstIndex(where: { word in papers.contains(where: word.hasPrefix) }) else { return false }
+        return said(words[..<index].reversed()) || said(words[(index + 1)...])
+    }
+
+    /// Paper, in the languages the museums write in.
+    private static let papers = ["paper", "papier", "papir", "papel", "carta", "karton", "cardboard"]
+    /// What is said of a paper besides its colour.
+    private static let sheetWords: Set<String> = ["laid", "wove", "antique", "faded", "light", "pale", "dark", "deep", "rough", "heavy", "thin",
+                                                  "thick", "coarse", "handmade", "tracing", "and", "or", "washed", "prepared", "tinted", "toned", "coloured",
+                                                  "colored", "ish", "jasny", "jasnym", "ciemny", "ciemnym", "zeberkowy", "zeberkowym", "czerpany",
+                                                  "czerpanym", "verge", "clair", "fonce", "chiaro", "scuro", "hell", "dunkel", "licht",
+                                                  "donker"]
+    /// A colour of a tinted paper, as a word begins; within a word ("szaroniebieski", "graublau"); a whole word.
+    private static let tints = ["blue", "bluish", "blau", "bleu", "blauw", "niebiesk", "azur", "azzurr", "azul", "grey", "gray", "grau",
+                                "grijs", "szar", "grigi", "grise", "green", "grun", "vert", "groen", "zielon", "brown", "braun", "brun",
+                                "bruin", "brazow", "brunatn", "ochre", "ocher", "ochr", "pink", "rozow", "violet", "purple", "fiolet",
+                                "lilac", "lila", "tinted", "toned", "colored", "coloured", "barwion", "farbig", "gefarbt",
+                                "teint", "getint"]
+    private static let tintsWithin = ["niebiesk", "blau", "blue", "szar", "grau", "zielon"]
+    private static let tintWords: Set<String> = ["tan", "buff", "gris", "rose", "rosa", "grigio", "grigia"]
 
     /// Lower case, no accents, split at what is no letter.
     static func words(_ text: String) -> [String] {

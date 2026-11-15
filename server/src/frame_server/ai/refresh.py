@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from ..library.models import ItemKind, Note
@@ -63,6 +64,8 @@ REWRITE_USD = 0.06
 #: Of the studies asked about, about how many get rewritten (a guess, told
 #: as "up to" in the app until the first answers are in).
 REWRITE_SHARE = 0.5
+#: What a study filled in is reckoned to cost, both steps.
+EACH_USD = FACTS_USD + REWRITE_SHARE * REWRITE_USD
 #: Tries for a work whose answer did not come (an error, no JSON).
 TRIES = 2
 #: How often the thread looks at its batches, and waits when it has none.
@@ -249,9 +252,15 @@ class StudyRefresh(NightOrder):
             effort="medium",
         )
 
-    def start(self) -> int:
+    def start(
+        self,
+        limit: int | None = None,
+        first: Callable[[list[str]], list[str]] = lambda ids: ids,
+    ) -> int:
         """The owner's tap: the studies without facts asked about now (one
-        batch). How many; 0 when an order is under way or none waits."""
+        batch). How many; 0 when an order is under way or none waits. The
+        month's rest (``leftover``) asks ``limit`` of them at most, those
+        ``first`` puts first."""
         with self._lock:
             state = self._state()
             if state.get("facts"):
@@ -259,7 +268,9 @@ class StudyRefresh(NightOrder):
             pages = self._pages()
             requests: list[dict[str, Any]] = []
             items: list[str] = []
-            for item_id in self.waiting():
+            for item_id in first(self.waiting()):
+                if limit is not None and len(items) >= limit:
+                    break
                 item = self._item(item_id)
                 if item is None or self.facts.found(item) is not None:
                     continue

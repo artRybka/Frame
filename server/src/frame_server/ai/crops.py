@@ -482,9 +482,21 @@ class Crops(CriticNight):
             elif claim.get("reshape"):
                 if len(rechecks) < RESHAPE_PER_NIGHT:
                     rechecks.append((item, claim))
-            elif len(found) < self.critic_per_night:
+            elif len(found) < self.limit(True):
                 found.append((item, claim))
         return True, found + rechecks
+
+    def base_limit(self, critic: bool) -> int:
+        return self.critic_per_night if critic else self.per_night
+
+    def asked_in(self, round_: list[tuple[Item, dict[str, Any]]], critic: bool) -> int:
+        # (the outlines asked again have a limit of their own)
+        return sum(1 for _, claim in round_ if not claim.get("reshape"))
+
+    def waiting_claims(self) -> int:
+        """Works the judge found something around, waiting for Opus."""
+        claims = self.state().get("claims") or {}
+        return sum(1 for c in claims.values() if not (c or {}).get("reshape"))
 
     def order(self) -> bool:
         self.reshaped()

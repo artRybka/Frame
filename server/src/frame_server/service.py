@@ -484,6 +484,10 @@ class FrameService:
             self.study,
             self.player,
             self.cared.ranks,
+            refresh=self.study_refresh,
+            review=self.text_review,
+            crops=self.crops,
+            audit=self.audit,
         )
 
         #: Heavy work at night, while the server runs its background.

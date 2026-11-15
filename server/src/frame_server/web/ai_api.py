@@ -126,6 +126,29 @@ class LeftoverView(BaseModel):
     failed: int
     #: Works the curator found fit and did not choose, waiting.
     candidates: int
+    #: What the rest goes on, in the owner's order (Mateusz 2026-11-15).
+    uses: list[LeftoverUseView] = []
+
+
+class LeftoverUseView(BaseModel):
+    """One thing the month's rest may go on (``leftover.USES``)."""
+
+    key: str
+    label: str
+    about: str
+    #: The owner's switch for it here, and whether its own switch (and what
+    #: it needs) lets it run.
+    on: bool
+    able: bool
+    #: How many wait for it (None: more than tell), about what one costs and
+    #: what all of them would; how many it may take a night.
+    waiting: int | None
+    each_usd: float
+    waiting_usd: float | None
+    a_night: int | None
+    #: What it ordered this period, and about what it cost.
+    done: int
+    done_usd: float
 
 
 class StudyRefreshView(BaseModel):
