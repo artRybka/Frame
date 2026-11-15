@@ -432,3 +432,66 @@ private struct SheetCard: ViewModifier {
         }
     }
 }
+
+/// The place of the take's drawn sheet while the image model draws it (a
+/// new page's, an analysis made anew: a minute or two). The server's own
+/// sheet is no longer shown meanwhile, to be taken away when the drawn one
+/// comes (Mateusz 2026-11-15 00:00: "Ten tutaj wisi długo, potem znika -
+/// to mylące"): it stands in only when no drawn sheet comes. The box has
+/// the field's shape, so the page does not jump when the sheet is here.
+struct DrawnSheetComing: View {
+    @Environment(\.colorScheme) private var scheme
+    /// The field's width over its height.
+    let aspect: CGFloat
+    /// Written above the field, as on the sheet: whose work and which.
+    var title = ""
+    /// The text block's width: the field takes all of it.
+    var width: CGFloat? = nil
+
+    var body: some View {
+        let dark = scheme == .dark
+        VStack(spacing: 2) {
+            if !title.isEmpty {
+                HandLines(text: title, size: 17)
+                    .foregroundStyle(Theme.ink.opacity(0.78))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 2)
+            }
+            box
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Theme.ink.opacity(0.035))
+                }
+                .overlay {
+                    VStack(spacing: 10) {
+                        ProgressView()
+                        Text("Gemini rysuje szkic kompozycji…")
+                            .font(.hand(18))
+                            .foregroundStyle(Theme.ink.opacity(0.8))
+                        Text("Zwykle trwa to minutę lub dwie.")
+                            .font(.footnote)
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                    .multilineTextAlignment(.center)
+                    .padding(20)
+                }
+                .padding(.vertical, Pencil.reach + 2)
+                .frame(maxWidth: .infinity)
+        }
+        // On the dark page the sheet to come is a light card, as it will be.
+        .environment(\.colorScheme, .light)
+        .modifier(SheetCard(on: dark, seed: Double(aspect) * 7.1))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Gemini rysuje szkic kompozycji")
+    }
+
+    @ViewBuilder
+    private var box: some View {
+        let aspect = max(aspect, 0.05)
+        if let width, width > 0 {
+            Color.clear.frame(width: width, height: width / aspect)
+        } else {
+            Color.clear.frame(maxWidth: .infinity).aspectRatio(aspect, contentMode: .fit)
+        }
+    }
+}
