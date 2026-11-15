@@ -457,3 +457,31 @@ def test_works_cared_about_are_swept_once_for_a_thin_backdrop(service: FrameServ
     assert state["claims"] == {"cma:5": {"around": ["backdrop"]}}
     assert state["asked"]["cma:5"]["band"] is True
     assert crops.swept() == 0  # once
+
+
+# -- a plate that is the work ---------------------------------------------------------------
+
+
+def test_a_plate_that_is_the_work_is_no_paper_to_choose(service: FrameService) -> None:
+    # Wyczółkowski's lithograph on China paper laid on a card (MNK,
+    # 2026-11-15): "Z papierem" and "Sama odbitka" were the same picture.
+    work = [(0.0537, 0.2137), (0.9362, 0.2216), (0.9426, 0.7871), (0.0507, 0.7867)]
+    plate = [(0.0532, 0.2137), (0.9362, 0.2216), (0.9429, 0.7869), (0.0509, 0.7864)]
+    twin = Cut(work=work, plate=plate, paper=False, by="owner", around=["mount", "paper_margin"])
+    alone = twin.without_twin()
+    assert alone.plate is None and alone.paper and alone.around == ["mount"]
+    assert alone.shown() == work and alone.has_paper is False
+    other = Cut(work=work, plate=[(0.2, 0.3), (0.8, 0.3), (0.8, 0.7), (0.2, 0.7)])
+    assert other.without_twin() is other
+
+    _work(service, "mnk:9", pooled=True)
+    service.library.update("mnk:9", cut=twin)
+    _work(service, "mnk:10", pooled=True)
+    service.library.update("mnk:10", cut=other)
+    crops = service.crops
+    assert crops.untwinned() == 1
+    stored = service.library.get("mnk:9")
+    assert stored is not None and stored.cut is not None and stored.cut.plate is None
+    assert stored.cut.by == "owner" and stored.cut.work == work
+    assert service.library.get("mnk:10").cut.plate is not None  # type: ignore[union-attr]
+    assert crops.untwinned() == 0  # once

@@ -66,6 +66,9 @@ FIRST_SOURCES = ("mnw", "mnk")
 #: Once the works cared about are looked at for a thin strip of backdrop
 #: the judge missed (:meth:`Crops.swept`); a new number looks again.
 BAND_SWEEP = 1
+#: Once the cuts kept with a plate that is the work itself are tidied
+#: (:meth:`Crops.untwinned`).
+TWIN_TIDY = 1
 
 #: The judge's thumbnail, and Opus's picture (the trial's sizes).
 JUDGE_SIDE = 640
@@ -307,7 +310,26 @@ class Crops(CriticNight):
 
     def order(self) -> bool:
         self.swept()
+        self.untwinned()
         return super().order()
+
+    def untwinned(self) -> int:
+        """Once (:data:`TWIN_TIDY`): the cuts kept with a "plate" that is
+        the work itself lose it (:meth:`Cut.without_twin`); the picture
+        shown stays. How many."""
+        state = self.state()
+        if state.get("twin_tidy") == TWIN_TIDY:
+            return 0
+        done = 0
+        for item in self.library.all_items():
+            if item.cut is not None and item.cut.without_twin() is not item.cut:
+                self.library.update(item.id, cut=item.cut.without_twin())
+                done += 1
+        state = self.state()
+        state["twin_tidy"] = TWIN_TIDY
+        self._save(state)
+        log.info("crops: %d cuts lost a plate that was the work itself", done)
+        return done
 
     def swept(self) -> int:
         """Once (:data:`BAND_SWEEP`): the works cared about that the judge
@@ -438,6 +460,7 @@ class Crops(CriticNight):
     def apply(self, item: Item, cut: Cut | None) -> Item:
         """``cut`` kept for the work and its pictures made again from it:
         the original, the thumbnail, the colours, the study's details."""
+        cut = cut.without_twin() if cut is not None else None
         changes: dict[str, Any] = {"cut": cut}
         if item.framing and cut is not None and cut.by == "owner":
             changes["framing"] = {}  # set on the picture before: another now

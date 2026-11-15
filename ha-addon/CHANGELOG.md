@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.139
+
+- Praca wydrukowana na cienkim papierze naklejonym na karton (np. litografia
+  Wyczółkowskiego na papierze chińskim z „Teki Ukraińskiej”, MNK) nie
+  pokazuje już wyboru marginesu, który niczego nie zmienia. Karton jest
+  odcinany jak passe-partout, a sama kartka jest odbitką, więc „z
+  marginesem” i „bez marginesu” dawały ten sam obraz. Gdy obraz odbitki
+  pokrywa się z kartką, serwer zapomina o nim i o „marginesie papieru”, a
+  zapisane już takie kadry porządkuje raz w nocy.
+
 ## 1.145.138
 
 - Kartka leżąca na białej albo szarej tekturze, z której widać tylko wąski
