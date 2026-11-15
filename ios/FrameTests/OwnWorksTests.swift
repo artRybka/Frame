@@ -45,4 +45,12 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertEqual(sent?["date_text"] as? String, "1965")
         XCTAssertEqual(sent?["height_cm"] as? Double, 46)
     }
+
+    func testHisSizeGivesTheWorkItsShape() throws {
+        // The corners give 1.25; he measured 46 × 55 cm: the work is 55 / 46.
+        XCTAssertEqual(try XCTUnwrap(OwnWork(heightCm: 46, widthCm: 55).ratio(1.25)), 55.0 / 46.0, accuracy: 1e-9)
+        // No size, or one far off the photograph (a slip), leaves the corners' shape.
+        XCTAssertNil(OwnWork(heightCm: 46).ratio(1.25))
+        XCTAssertNil(OwnWork(heightCm: 46, widthCm: 550).ratio(1.25))
+    }
 }

@@ -168,8 +168,15 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
         return cut.at.isEmpty ? "cut" : cut.at
     }
 
-    /// Width / height of the work as shown: the cut's, else nil.
+    /// Width / height of the work as shown: the cut's, else nil. A work of
+    /// his own has the shape of the size he gave (`OwnWork.ratio`).
     var cutAspect: Double? {
+        guard let measured = cornersAspect else { return nil }
+        return own?.ratio(measured) ?? measured
+    }
+
+    /// Width / height the cut's corners give, before his size is minded.
+    var cornersAspect: Double? {
         guard let cut, let shown = cutShown else { return nil }
         return Cut.aspect(of: shown, photo: cut.aspect)
     }
@@ -240,6 +247,21 @@ struct OwnWork: Codable, Hashable, Sendable {
 
     static func number(_ value: Double) -> String {
         value.formatted(.number.precision(.fractionLength(0 ... 1)).locale(Locale(identifier: "pl_PL")))
+    }
+
+    /// The work's width / height from his size, as the server cuts it out
+    /// of his photograph (Mateusz 2026-11-15: "Proporcje własnego dzieła
+    /// trzeba wyliczać z podanego wymiaru"); `measured` is the shape the
+    /// corners give. Nil without both sizes, or for one more than twice
+    /// off it (a slip of the finger, not the work).
+    func ratio(_ measured: Double) -> Double? {
+        Self.ratio(heightCm: heightCm, widthCm: widthCm, measured: measured)
+    }
+
+    static func ratio(heightCm: Double?, widthCm: Double?, measured: Double) -> Double? {
+        guard let heightCm, let widthCm, heightCm > 0, widthCm > 0, measured > 0 else { return nil }
+        let given = widthCm / heightCm
+        return (0.5 ... 2.0).contains(given / measured) ? given : nil
     }
 }
 
@@ -686,6 +708,47 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
             return 4.0 / 3.0
         }
         return Double(width) / Double(height)
+    }
+}
+
+/// What a work's card shows of its picture: the copy in its place, its
+/// cut and its cleaning. A list loaded before the card changed one of them
+/// kept the work's tile as it was, so a work just shown without its
+/// varnish had no drop after its title there (Mateusz 2026-11-15 21:44:
+/// "Brakuje ikonki widocznej na liście dzieł w odkrywaj"), and the tile
+/// asked for the picture of before again. `AppModel.asOnCard` lays these
+/// over a list's tile.
+struct PictureMarks: Equatable, Sendable {
+    var picture: String
+    var restored: Bool
+    var cropped: Bool
+    var cut: String?
+    var cleaned: String?
+    var cleanedAt: String?
+
+    init(_ item: Item) {
+        let summary = item.summary
+        picture = summary.picture ?? ""
+        restored = summary.restored == true
+        cropped = summary.isCropped
+        cut = summary.cut
+        cleaned = summary.cleaned
+        cleanedAt = summary.cleanedAt
+    }
+
+    /// `tile` with the picture's marks as the card has them.
+    func on(_ tile: ItemSummary) -> ItemSummary {
+        var tile = tile
+        // Another picture than the list knew: its pixels' count was the
+        // other one's (the card goes by the same, `ItemDetailView.lowSide`).
+        if let known = tile.picture, known != picture { tile.lowSide = nil }
+        tile.picture = picture
+        tile.restored = restored ? true : nil
+        tile.cropped = cropped ? true : nil
+        tile.cut = cut
+        tile.cleaned = cleaned
+        tile.cleanedAt = cleanedAt
+        return tile
     }
 }
 
@@ -2083,6 +2146,12 @@ struct LooksAnswer: Codable, Hashable, Sendable {
     var scores: [Double]
 }
 
+/// `POST /api/looks/photo`: the key a photograph searched is asked by,
+/// as `PlaylistRules.like` ("photo:…").
+struct LooksPhoto: Codable, Hashable, Sendable {
+    var key: String
+}
+
 struct AiKeyUpdate: Encodable, Sendable {
     var key: String
 }
@@ -3216,6 +3285,7 @@ struct SearchToken: Hashable, Sendable, Identifiable {
         case "mine": MineTerm.named(key)?.icon ?? "person.crop.circle"
         case "museum", SearchToken.museumOut: "building.columns"
         case "color": "circle.fill"
+        case SearchToken.likeKind where SearchToken.isPhoto(key): "camera"
         case SearchToken.lookKind, SearchToken.likeKind: "eye"
         case SearchToken.titleKind: "text.quote"
         default: "text.magnifyingglass"
@@ -3250,8 +3320,13 @@ extension SearchToken {
     /// The works that look like the work `id`, as a chip in the field
     /// ("Podobne do: Słoneczniki").
     static func like(_ id: String, title: String) -> SearchToken {
-        SearchToken(kind: likeKind, key: id, name: title.isEmpty ? "Podobne do dzieła" : "Podobne do: \(title)")
+        if isPhoto(id) { return SearchToken(kind: likeKind, key: id, name: "Podobne do zdjęcia") }
+        return SearchToken(kind: likeKind, key: id, name: title.isEmpty ? "Podobne do dzieła" : "Podobne do: \(title)")
     }
+
+    /// Whether a look-alike's key is a photograph searched ("Szukaj
+    /// zdjęciem", `POST /api/looks/photo`), not a work's id.
+    static func isPhoto(_ key: String) -> Bool { key.hasPrefix("photo:") }
 
     /// The key of a look-alike chip's title in the names given to
     /// `PlaylistRules.tokens(names:)`.

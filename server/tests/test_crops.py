@@ -16,7 +16,7 @@ from test_ai import FakeAnthropic, _message, fake  # noqa: F401  (fixture)
 
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import HAIKU, OPUS
-from frame_server.ai.crops import read_layers
+from frame_server.ai.crops import STRIPS_NOTE, read_layers, strips_fit, tilted
 from frame_server.imaging.cut import (
     backdrop_quad,
     sheet_out_to_strips,
@@ -807,3 +807,107 @@ def test_a_study_written_on_a_cut_given_back_keeps_its_boxes() -> None:
     before = Note.model_construct(created_at="2026-11-13T20:00:00+00:00")
     assert seen_before(item, on_cut, None).cut == TRUE
     assert seen_before(item, before, None).cut == []
+
+
+# -- the audit of 2026-11-15: 28 of 178 cuts wrong ---------------------------------------
+
+
+def test_a_prints_own_paper_margin_is_no_strip_of_board() -> None:
+    # Jackson's chiaroscuro woodcut after Veronese (Europeana): the paper
+    # runs off the photograph, its plain margin was cut away as board.
+    plain = (0.05, 0.05, 0.05, 0.05)
+    whole = {
+        "layers": [
+            {"kind": "sheet", "corners": grid([(0, 0), (1, 0), (1, 1), (0, 1)])},
+            {
+                "kind": "plate",
+                "corners": grid([(0.06, 0.06), (0.94, 0.06), (0.94, 0.94), (0.06, 0.94)]),
+            },
+        ]
+    }
+    assert not strips_fit(plain, whole)
+    assert not strips_fit(plain, {})  # nothing named: no telling
+    # A plate the strips run into: its paper, not board.
+    tight = {
+        "layers": [
+            {
+                "kind": "plate",
+                "corners": grid([(0.05, 0.05), (0.95, 0.05), (0.95, 0.95), (0.05, 0.95)]),
+            }
+        ]
+    }
+    assert not strips_fit(plain, tight)
+    # Munch: the strips end on the sheet Opus named.
+    assert strips_fit((0.013, 0.013, 0.012, 0.012), SHEET_CORNERS)
+    # Only a plate named, all four sides plain and clear of it: board.
+    inner = {
+        "layers": [
+            {"kind": "plate", "corners": grid([(0.2, 0.2), (0.8, 0.2), (0.8, 0.8), (0.2, 0.8)])}
+        ]
+    }
+    assert strips_fit(plain, inner)
+    assert not strips_fit((0.05, 0.05, 0.0, 0.05), inner)
+
+
+def _bands(*bands: tuple[int, int]) -> Image.Image:
+    """Nested rectangles, each ``(inset px, grey)`` inside the one before."""
+    a = np.zeros((H, W, 3), dtype=np.uint8)
+    for inset, grey in bands:
+        a[inset : H - inset, inset : W - inset] = grey
+    return Image.fromarray(a)
+
+
+def _box(inset: float) -> list[tuple[float, float]]:
+    return [
+        (inset / W, inset / H),
+        (1 - inset / W, inset / H),
+        (1 - inset / W, 1 - inset / H),
+        (inset / W, 1 - inset / H),
+    ]
+
+
+def test_a_sheets_side_keeps_its_paper_from_the_border_line_inside() -> None:
+    # A woodcut's top paper cut away (MNK 314364): the snap took the black
+    # border line printed just inside the sheet's edge.
+    picture = _bands((0, 150), (60, 230), (68, 30), (71, 230))
+    paper = _box(60)
+    assert not _near(snap(picture, paper), paper, 0.004)  # the line wins
+    assert _near(snap(picture, paper, "sheet"), paper, 0.003)
+    # Opus's line out on the board: the paper's edge is the only one.
+    assert _near(snap(picture, _box(54), "sheet"), paper, 0.003)
+
+
+def test_a_paintings_side_stays_off_the_gilt_slip_outside() -> None:
+    # A still life on copper (MNK 338944): the snap took the slip's outer
+    # edge, the slip was kept.
+    picture = _bands((0, 20), (53, 200), (60, 120))
+    painting = _box(60)
+    assert not _near(snap(picture, painting), painting, 0.004)
+    assert _near(snap(picture, painting, "frame_inner"), painting, 0.003)
+
+
+def test_a_lozenge_is_no_rectangle_at_an_angle() -> None:
+    # Mondrian's Victory Boogie-Woogie (WikiArt) cut into an upright square.
+    assert tilted([(0.5, 0.02), (0.98, 0.5), (0.5, 0.98), (0.02, 0.5)])
+    assert not tilted([(0.1, 0.12), (0.9, 0.1), (0.92, 0.9), (0.08, 0.88)])
+
+
+def test_cuts_from_the_strips_alone_go_back_to_opus_once(service: FrameService) -> None:
+    quad = _box(9)
+    item = _work(service, "eu:13", picture=sheet(), pooled=True)
+    service.crops.apply(item, Cut(work=quad, around=["backdrop"], aspect=W / H))
+    owners = _work(service, "eu:14", picture=sheet(), pooled=True)
+    service.crops.apply(owners, Cut(work=quad, by="owner", aspect=W / H))
+    crops = service.crops
+    state = crops.state()
+    state["written"] = [
+        {"id": i, "at": "2026-11-15T20:00:00+00:00", "work": quad, "note": STRIPS_NOTE}
+        for i in ("eu:13", "eu:14")
+    ]
+    crops._save(state)
+    assert crops.strips_rechecked() == 1
+    stored = service.library.get("eu:13")
+    assert stored is not None and stored.cut is not None and stored.cut_shown() is None
+    assert service.library.get("eu:14").cut.by == "owner"  # type: ignore[union-attr]
+    assert crops.state()["claims"] == {"eu:13": {"around": ["backdrop"], "band": True}}
+    assert crops.strips_rechecked() == 0  # once

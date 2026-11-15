@@ -1,5 +1,67 @@
 # Changelog
 
+## 1.145.175
+
+- Automatyczne kadrowanie trafniejsze. Przegląd 178 automatycznych kadrów:
+  28 złych (16 %). Grafika, której papier wychodzi poza zdjęcie (drzeworyt
+  światłocieniowy Jacksona wg Veronesego, litografie Géricaulta), traciła
+  margines papieru wzięty za pasek tła: paski z pikseli tnie się teraz
+  tylko, gdy kończą się na brzegu kartki wskazanej przez Opusa, a kadry
+  zrobione tak dotąd wracają raz do Opusa. Bok kartki nie przeskakuje już
+  do wewnątrz na drukowaną linię obwiedni, a bok obrazu na zewnątrz na
+  złotą listwę ramy. Romb (obraz postawiony na rogu) nie jest kadrowany.
+
+## 1.145.174
+
+- Szukaj zdjęciem: wyniki pokazują się teraz w zwykłym widoku Szukaj, tak
+  jak „Szukaj podobnych” z karty dzieła. W polu jest chip „Podobne do
+  zdjęcia” (ikona aparatu), nad wynikami miniatura zdjęcia, a grupy
+  (technika, epoka, kolor, muzeum…) zawężają wyniki. Z wyników można
+  utworzyć playlistę inteligentną; serwer trzyma liczby zdjęcia (nie samo
+  zdjęcie), więc playlista działa dalej. To samo zdjęcie drugi raz nie
+  pyta Google. Osobny ekran „Dzieła podobne do tego zdjęcia” zniknął.
+
+## 1.145.173
+
+- Pasek „Kolorystyka” rysunku lawowanego na barwionym papierze albo
+  rozjaśnionego bielą (np. Géricault, „Turecki jeździec w walce”): papier
+  w kolorze pracy, pod spodem kreski kredy albo piórka, lawowania od
+  najjaśniejszego, a biel gwaszem jednym kryjącym pociągnięciem na jasnym
+  końcu paska. Serwer zauważa teraz biel położoną na barwionym papierze
+  (wcześniej brał ją za papier); po aktualizacji ponownie przelicza barwy
+  biblioteki.
+- Drzeworyt światłocieniowy (chiaroscuro) ma własny pasek: biel papieru,
+  płaskie płyty tonów jednej barwy nadrukowane jedna na drugą i linie
+  płyty konturowej, zamiast czarnego klocka zwykłego drzeworytu. Rozpoznaje
+  go także opis dzieła, gdy technika mówi tylko „drzeworyt” (np. Jackson
+  według Veronese z Europeany: „cu patru plăci”).
+
+## 1.145.172
+
+- Własne dzieło dostaje proporcje z podanego wymiaru: obraz wycięty ze
+  zdjęcia jest prostowany do szerokości i wysokości wpisanych w cm, nie do
+  tego, co dały narożniki na zdjęciu robionym pod kątem. Zmiana wymiaru w
+  „Edytuj opis” wycina dzieło na nowo, a dodane wcześniej poprawiają się
+  same po aktualizacji serwera. Wymiar bardzo odbiegający od zdjęcia
+  (ponad dwa razy) uznawany jest za pomyłkę i zostają proporcje zdjęcia;
+  formularz mówi o tym pod wymiarem, a podgląd u góry od razu pokazuje
+  dzieło w nowych proporcjach.
+
+## 1.145.171
+
+- Korekta barw: zdjęty werniks jest teraz widoczny także na obrazach
+  ciemnych w całości. Dotąd barwa była oddawana tylko jaśniejszym partiom
+  (żeby czernie i ciemne zielenie nie robiły się niebieskie), a w takim
+  obrazie prawie wszystko jest ciemne, więc zmiany nie było widać. Próg
+  ciemnych partii liczy się teraz względem danego obrazu, czernie dalej
+  zostają neutralne. Siła korekty to cała propozycja zamiast trzech
+  czwartych, a obraz ciemny w całości wychodzi też jaśniejszy, jak po
+  prawdziwym zdjęciu werniksu. Dzieła skorygowane wcześniej serwer
+  przelicza sam kilka minut po aktualizacji.
+- Kropla „barwy skorygowane” (i znaczek kadru, kopii, restauratora)
+  pojawia się na liście od razu po zmianie na karcie, także na stronie
+  tematu w Odkrywaj otwartej wcześniej.
+
 ## 1.145.170
 
 - Resztka miesiąca Claude: „Słowa kluczowe i polskie opisy” mają limit

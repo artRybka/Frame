@@ -624,9 +624,9 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(PaintStyle.of(medium: "Pastel over watercolour"), .pastel)
         XCTAssertEqual(PaintStyle.of(medium: "malowanie, papier, jedwab, tusz, farba wodna"), .water)
         // White gouache that only heightens a drawing is not what it is made in; white gouache alone is.
-        XCTAssertEqual(PaintStyle.of(medium: "pen and black ink and brush and brown wash, heightened with white gouache"), .wash)
+        XCTAssertEqual(PaintStyle.of(medium: "pen and black ink and brush and brown wash, heightened with white gouache"), .washLit)
         XCTAssertEqual(PaintStyle.of(medium: "Graphite, highlighted with white gouache"), .heightened)
-        XCTAssertEqual(PaintStyle.of(medium: "Pen and brown ink, with brush and brown wash and touches of white gouache"), .wash)
+        XCTAssertEqual(PaintStyle.of(medium: "Pen and brown ink, with brush and brown wash and touches of white gouache"), .washLit)
         XCTAssertEqual(PaintStyle.of(medium: "Brown and white gouache on cream board"), .gouache)
         XCTAssertEqual(PaintStyle.of(medium: "gwasz, tusz, piórko, akwarela, ołówek, brystol"), .waterPen)
         // A print with watercolour on it was coloured by hand; one printed in colours with water-based ink was not.
@@ -1685,5 +1685,104 @@ final class PaintTests: XCTestCase {
         // Its medium says it is in colours: its inks, however one colour's its colours came out.
         XCTAssertEqual(PaintStyle.of(medium: "litografia barwna, papier", mono: PaintStyle.mono([], poster)), .litho)
         XCTAssertEqual(PaintStyle.of(medium: "litografia, papier", mono: PaintStyle.mono([], poster)), .grain)
+    }
+
+    /// Mateusz 2026-11-15 21:36, of Géricault's „Turecki jeździec w walce”
+    /// (brush and brown wash heightened with white gouache over black chalk,
+    /// on brown paper), shown as grey washes on a cream paper under a pen's
+    /// hatching: „Zwłaszcza brakuje bieli.” A wash drawing on tinted paper
+    /// or heightened with white is its own paper, its lines, its washes and
+    /// the white over them.
+    func testAWashDrawingHeightenedWithWhiteIsItsPaperWashesAndWhite() {
+        for text in ["Brush and brown wash, heightened with white gouache over black chalk, with blue wash on brown laid paper",
+                     "Black and white chalk, brush and gray ink on brown paper", "Brush and gray wash, white heightening, graphite on paper"] {
+            XCTAssertEqual(PaintStyle.of(medium: text), .washLitChalk, text)
+            XCTAssertEqual(PaintStyle.of(medium: text, classification: "Drawing", mono: true), .washLitChalk, text)
+        }
+        for text in ["Pen and brown ink, brush and brown wash, heightened with white gouache on blue paper",
+                     "pen and brown ink with gray-brown wash heightened with white on gray-blue paper"] {
+            XCTAssertEqual(PaintStyle.of(medium: text), .washLit, text)
+        }
+        XCTAssertEqual(PaintStyle.of(medium: "Brush and brown wash over black chalk on light brown laid paper"), .washTonedChalk)
+        XCTAssertEqual(PaintStyle.of(medium: "Pen and black ink and gray wash on thin, smooth, brown wove paper"), .washToned)
+        // On a white or cream paper, not heightened: the washes as they were.
+        XCTAssertEqual(PaintStyle.of(medium: "Pen and brown ink, brush and brown wash on cream laid paper"), .wash)
+        XCTAssertEqual(PaintStyle.washLitChalk.drawn, .pencil)
+        XCTAssertEqual(PaintStyle.washLit.drawn, .pen)
+        XCTAssertTrue(PaintStyle.washLit.lit && !PaintStyle.washToned.lit)
+
+        // Géricault's colours as the server finds them now: a white among them.
+        let gericault = [PaintShare(rgb: [81, 73, 58], weight: 0.29), PaintShare(rgb: [100, 91, 73], weight: 0.2),
+                         PaintShare(rgb: [129, 119, 99], weight: 0.16), PaintShare(rgb: [153, 144, 125], weight: 0.14),
+                         PaintShare(rgb: [123, 101, 71], weight: 0.24, accent: true), PaintShare(rgb: [231, 232, 224], weight: 0.04, accent: true)]
+        let parts = LitWashStrip.parts(gericault, lit: true)
+        XCTAssertEqual(parts.paper.rgb, [153, 144, 125], "the brown paper, the lightest that is no white")
+        XCTAssertEqual(parts.whites.map(\.rgb), [[231, 232, 224]])
+        XCTAssertEqual(parts.washes.count, 4)
+        XCTAssertFalse(parts.washes.contains { $0.own }, "a warmer brown is the ink's still")
+        // None in the data, but heightened: white is added; not heightened, none.
+        let plain = Array(gericault.dropLast())
+        XCTAssertEqual(LitWashStrip.parts(plain, lit: true).whites.count, 1)
+        XCTAssertEqual(LitWashStrip.parts(plain, lit: false).whites.count, 0)
+        // A blue wash in it lies in its own place.
+        let blue = gericault + [PaintShare(rgb: [127, 138, 150], weight: 0.06, accent: true)]
+        XCTAssertEqual(LitWashStrip.parts(blue, lit: true).washes.filter(\.own).map(\.share.rgb), [[127, 138, 150]])
+
+        let strip = LitWashStrip(shares: gericault, width: 350, seed: 5, lit: true, tool: .pencil)
+        XCTAssertEqual(PaintStyle.washLitChalk.barTime(gericault, width: 350), strip.last, accuracy: 0.001)
+        let done = strip.frame(age: strip.length)
+        var lightest = 0.0, darkest = 1.0
+        for x in stride(from: 2.0, to: 348, by: 1) {
+            for y in stride(from: 3.0, to: 23, by: 1) {
+                let (i, j) = dot(x, y), c = done.colour(i, j), light = PrintPaint.lightness([c.red, c.green, c.blue])
+                lightest = max(lightest, light)
+                darkest = min(darkest, light)
+            }
+        }
+        XCTAssertGreaterThan(lightest, 0.88, "the white gouache is there")
+        XCTAssertLessThan(darkest, PrintPaint.lightness([81, 73, 58]) + 0.03, "the washes reach the darkest")
+        // The paper is the work's brown, not a cream: at the bar's end, outside the washes.
+        let (i, j) = dot(200, -2), edge = done.colour(i, j)
+        XCTAssertLessThan(PrintPaint.lightness([edge.red, edge.green, edge.blue]), 0.8)
+        // The white comes last.
+        XCTAssertGreaterThanOrEqual(strip.last, LineStrip.time(1))
+    }
+
+    /// Mateusz 2026-11-15 21:50, of a chiaroscuro woodcut after Veronese
+    /// („drzeworyt, czterema płytami (chiaroscuro)”), shown as a black
+    /// woodcut's block: blocks of one colour's tones, the paper's white,
+    /// the key block's lines.
+    func testAChiaroscuroWoodcutIsItsToneBlocksAndThePapersWhite() {
+        for text in ["drzeworyt, czterema płytami (chiaroscuro)", "Chiaroscuro woodcut printed from three blocks", "clair-obscur woodcut",
+                     "Woodcut printed from four blocks in shades of brown"] {
+            XCTAssertEqual(PaintStyle.of(medium: text, mono: true), .chiaroscuro, text)
+        }
+        XCTAssertEqual(PaintStyle.of(medium: "Woodcut", mono: true), .woodcut)
+        XCTAssertEqual(PaintStyle.of(medium: "Color woodcut printed from four blocks"), .woodblock)
+        XCTAssertEqual(PaintStyle.of(medium: "chiaroscuro woodcut"), .chiaroscuro)
+        // Jackson after Veronese (Europeana): its medium only "Woodcut process", its description says the blocks.
+        let jackson = "Woodcut process, Woodcut print, Engraving process, woodcut (process)"
+        let told = "Lectura gravorului este selectivă, mult simplificată și redusă la monocromie. Cu patru plăci a imprimat tonurile de umbra naturală."
+        XCTAssertEqual(PaintStyle.of(medium: jackson, classification: "Drawing", mono: true, about: told), .chiaroscuro)
+        XCTAssertEqual(PaintStyle.of(medium: jackson, classification: "Drawing", mono: true), .woodcut)
+        XCTAssertEqual(PaintStyle.of(medium: "Woodcut", mono: true, about: "A chiaroscuro woodcut after Parmigianino."), .chiaroscuro)
+        // Light and shade the description speaks of, or blocks of a print in colours, are not it.
+        XCTAssertEqual(PaintStyle.of(medium: "Woodcut", mono: true, about: "Dürer's strong chiaroscuro models the figures."), .woodcut)
+        XCTAssertEqual(PaintStyle.of(medium: "Color woodcut", about: "Printed from four blocks."), .woodblock)
+        XCTAssertEqual(PaintStyle.of(medium: "Etching", mono: true, about: "Printed from two plates."), .burin)
+
+        let veronese = shares([("#967746", 0.236), ("#795e37", 0.233), ("#b29360", 0.175), ("#574126", 0.15)])
+        let tones = ChiaroscuroStrip.tones(veronese)
+        XCTAssertEqual(tones.paper.rgb, InkStrip.paper, "no paper among its colours: the paper's white is added")
+        XCTAssertEqual(tones.blocks.map(\.rgb), [[178, 147, 96], [150, 119, 70], [121, 94, 55], [87, 65, 38]])
+        let strip = ChiaroscuroStrip(shares: veronese, width: 350, seed: 5)
+        XCTAssertEqual(PaintStyle.chiaroscuro.barTime(veronese, width: 350), strip.last, accuracy: 0.001)
+        let done = strip.frame(age: strip.length)
+        func light(_ x: Double) -> Double {
+            let (i, j) = dot(x, 13), c = done.colour(i, j)
+            return PrintPaint.lightness([c.red, c.green, c.blue])
+        }
+        XCTAssertGreaterThan(light(8), 0.9, "the paper's white at the light end")
+        XCTAssertLessThan(light(200), light(60), "darker along the bar")
     }
 }

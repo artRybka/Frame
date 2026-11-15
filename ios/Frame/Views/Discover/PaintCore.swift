@@ -96,12 +96,36 @@ enum PaintStyle: String, Sendable, CaseIterable {
     /// The same heightened with white, on any paper: white chalk is there
     /// though the work's colours hold nothing lighter than its paper.
     case heightened
+    /// A drawing in washes of ink and a pen heightened with white, on any
+    /// paper (Mateusz 2026-11-15 21:36, of Géricault's „Turecki jeździec w
+    /// walce”, brown wash heightened with white gouache on brown paper,
+    /// shown as grey washes on a cream paper: „Zwłaszcza brakuje bieli.”):
+    /// its own paper, the lines under the washes, the white gouache over
+    /// them (`LitWashStrip`). Was `wash`.
+    case washLit
+    /// The same over black chalk or graphite, with no pen: chalk's lines.
+    case washLitChalk
+    /// A drawing in washes of ink and a pen on a tinted paper, not
+    /// heightened: its own paper, the lines, the washes.
+    case washToned
+    /// The same over chalk or graphite, with no pen.
+    case washTonedChalk
+
+    /// A chiaroscuro woodcut: blocks of one colour's tones printed one
+    /// over another, the paper's white its lights, the key block's lines
+    /// over them (Mateusz 2026-11-15 21:50, of a print after Veronese,
+    /// „drzeworyt, czterema płytami (chiaroscuro)”, shown as a black
+    /// woodcut; `ChiaroscuroStrip`). Was `woodcut`.
+    case chiaroscuro
+
+    /// Whether a wash drawing is heightened with white.
+    var lit: Bool { self == .washLit || self == .washLitChalk }
 
     /// The drawing's tool of a drawing with watercolour; nil for any other.
     var drawn: LineTool? {
         switch self {
-        case .waterPencil: .pencil
-        case .waterPen: .pen
+        case .waterPencil, .washLitChalk, .washTonedChalk: .pencil
+        case .waterPen, .washLit, .washToned: .pen
         default: nil
         }
     }
@@ -157,7 +181,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
     /// pen's. Paint named wins over the pencil under it, but a drawing with
     /// watercolour is its drawing and its watercolour (`.waterPencil`,
     /// `.waterPen`); a print wins over the paint on it (coloured by hand).
-    static func of(medium: String, classification: String = "", mono: Bool = false, warm: Bool = false) -> PaintStyle? {
+    static func of(medium: String, classification: String = "", mono: Bool = false, warm: Bool = false, about: String = "") -> PaintStyle? {
         let words = Self.paints(Self.words(medium))
         func has(_ list: [String], _ begins: [String], _ whole: Set<String> = []) -> Bool {
             list.contains { word in whole.contains(word) || begins.contains { word.hasPrefix($0) } }
@@ -196,6 +220,11 @@ enum PaintStyle: String, Sendable, CaseIterable {
             if byHand { return .handColoured }
             // Cut in the plank, not engraved in the end grain ("drzeworyt sztorcowy", a wood engraving): a block of black.
             let cut = has(all, woodcuts) && !has(all, endGrain)
+            // Blocks of one colour's tones, one over another: chiaroscuro.
+            // Its description may say what its medium does not: Jackson after
+            // Veronese (Europeana), "Woodcut process" in one colour's tones,
+            // „Cu patru plăci a imprimat tonurile…”.
+            if cut, has(all, chiaroscuros) || (oneInk && has(all, blocksNamed)) || (oneInk && Self.toldInBlocks(about)) { return .chiaroscuro }
             // Rosin dust bitten into the plate, with or without an etched line: its tones are grain.
             if oneInk, has(all, aquatints) { return .aquatint }
             return oneInk ? (cut ? .woodcut : .burin) : .woodblock
@@ -210,6 +239,15 @@ enum PaintStyle: String, Sendable, CaseIterable {
         if watered, anyInk || has(words, soft) || has(words, chalks, ["crayon", "crayons"]),
            !has(words, ["pastel"]), !has(words, oils, ["oil", "oils", "ol", "oel", "olio", "oleo"]), !has(words, silks) {
             return anyInk ? .waterPen : .waterPencil
+        }
+        // Washes of ink on a tinted paper, or heightened with white: the
+        // paper the work shows, its lines (a pen's, or chalk's when it names
+        // no pen), the washes and the white over them.
+        if washed, !watered, !has(words, ["pastel"]), !has(words, oils, ["oil", "oils", "ol", "oel", "olio", "oleo"]),
+           !has(words, gouaches), !has(words, silks), !has(words, colours) {
+            let pen = words.contains { pens.contains($0) || penBegins.contains(where: $0.hasPrefix) }
+            if Self.lit(words) { return pen ? .washLit : .washLitChalk }
+            if Self.tinted(words) { return pen ? .washToned : .washTonedChalk }
         }
         // A drawing in chalk or a soft point on a tinted paper, or one
         // heightened with white: its paper, its lines and its chalk.
@@ -321,6 +359,8 @@ enum PaintStyle: String, Sendable, CaseIterable {
         case .grain, .aquatint: return StoneStrip.time(shares.count)
         case .waterPencil, .waterPen: return TintedStrip.time(shares, width: width)
         case .toned, .heightened: return TonedStrip.time(shares, lit: self == .heightened)
+        case .washLit, .washLitChalk, .washToned, .washTonedChalk: return LitWashStrip.time(shares, width: width, lit: lit)
+        case .chiaroscuro: return ChiaroscuroStrip.time(shares)
         }
     }
 
@@ -341,6 +381,8 @@ enum PaintStyle: String, Sendable, CaseIterable {
         case .grain, .aquatint: 0.26
         case .waterPencil, .waterPen: 0.22
         case .toned, .heightened: 0.24
+        case .washLit, .washLitChalk, .washToned, .washTonedChalk: 0.22
+        case .chiaroscuro: 0.26
         }
         return Self.swatchesFrom * bar + gap * Double(index)
     }
@@ -482,6 +524,38 @@ enum PaintStyle: String, Sendable, CaseIterable {
     /// An aquatint, in the languages the museums write in.
     private static let aquatints = ["aquatint", "akwatint", "aguatint", "acquatint"]
     private static let endGrain = ["sztorc", "poprzeczn", "holzstich", "houtgravure"]
+    /// A chiaroscuro woodcut, named.
+    private static let chiaroscuros = ["chiaroscur", "swiatlocien", "obscur", "helldunkel", "camaieu", "clairobscur", "claroscur"]
+    /// Several blocks named ("from four blocks", „czterema płytami”): a woodcut of one colour's tones.
+    private static let blocksNamed = ["blocks", "plyt", "klock", "platten", "stocken", "blokken"]
+    /// Whether a description says a print was pulled from several blocks
+    /// ("from four blocks", „czterema płytami”, „cu patru plăci”) or names
+    /// it a chiaroscuro woodcut.
+    static func toldInBlocks(_ text: String) -> Bool {
+        guard !text.isEmpty else { return false }
+        let told = text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+            .lowercased()
+            .replacingOccurrences(of: "ł", with: "l")
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map(String.init)
+        return zip(told, told.dropFirst()).contains { a, b in
+            (blockCounts.contains(a) && blocksTold.contains(where: b.hasPrefix))
+                || (chiaroscuros.contains(where: a.hasPrefix) && woodcuts.contains(where: b.hasPrefix))
+                || (woodcuts.contains(where: a.hasPrefix) && chiaroscuros.contains(where: b.hasPrefix))
+        }
+    }
+
+    /// How many blocks, in the languages the museums write in.
+    private static let blockCounts: Set<String> = [
+        "2", "3", "4", "5", "6", "two", "three", "four", "five", "six", "several", "multiple",
+        "dwa", "dwoch", "dwoma", "dwiema", "trzy", "trzech", "trzema", "cztery", "czterech", "czterema", "piec", "pieciu", "piecioma", "kilku", "kilkoma",
+        "doua", "doi", "trei", "patru", "cinci", "mai",
+        "zwei", "drei", "vier", "funf", "mehreren", "twee", "drie", "vijf",
+        "deux", "trois", "quatre", "cinq", "plusieurs", "due", "tre", "quattro", "cinque", "dos", "tres", "cuatro", "cinco",
+    ]
+    /// A block or a plate a description names.
+    private static let blocksTold = ["block", "plate", "plyt", "placi", "platt", "planch", "blocc", "matric", "stock", "blok", "klock", "tavol", "legni"]
+
     /// What says only that a work is printed, not how.
     private static let anyPrint: Set<String> = ["print", "grafik", "estamp"]
     /// What says a print is in colours.
@@ -506,6 +580,9 @@ enum PaintStyle: String, Sendable, CaseIterable {
 
     private static let ink: Set<String> = ["ink", "inks", "inkt", "pen", "encre", "plume", "tinte", "feder", "tinta", "atrament", "sepia", "bistre", "bister"]
     private static let inkBegins = ["tusz", "pior", "inchiostr"]
+    /// A pen, not a brush.
+    private static let pens: Set<String> = ["pen", "pens", "plume", "feder", "penna", "pluma", "pena"]
+    private static let penBegins = ["pior", "rietpen", "ganzenveer"]
     /// Washes of ink.
     private static let washes = ["wash", "lavis", "lave", "lawowan", "laviert", "lavier", "gewassen", "penseel"]
     /// A brush, which with ink lays it in washes.

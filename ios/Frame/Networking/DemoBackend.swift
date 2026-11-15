@@ -1466,18 +1466,11 @@ actor DemoBackend: FrameBackend {
         return LooksStatus(enabled: aiValue.looks != false, ready: works > 0, done: works, total: works)
     }
 
-    /// The demo has no model: works whose words match, then the rest of
-    /// the paintings, each a little less near.
-    func looks(words: String) async throws -> LooksAnswer {
-        try await Task.sleep(for: .milliseconds(700))
-        let works = items.filter { $0.kind == .artwork }
-        let matching = works.filter { Self.matches($0, PlaylistRules(query: words)) }
-        return Self.answer(matching + works.filter { !matching.contains($0) }.prefix(12))
-    }
-
-    func looks(picture: Data) async throws -> LooksAnswer {
+    /// The demo has no model: a photograph is "like" a third of the
+    /// paintings, by its size (`alike`).
+    func lookPhoto(_ picture: Data) async throws -> LooksPhoto {
         try await Task.sleep(for: .milliseconds(900))
-        return Self.answer(Array(items.filter { $0.kind == .artwork }.shuffled().prefix(18)))
+        return LooksPhoto(key: "photo:\(picture.count)")
     }
 
     func looksLike(itemID: String, limit: Int) async throws -> LooksAnswer {
@@ -1710,7 +1703,8 @@ actor DemoBackend: FrameBackend {
     func addOwnWork(_ work: NewOwnWork) async throws -> Item {
         guard let image = incoming[work.token] else { throw BackendError.notFound }
         let id = "upload:" + UUID().uuidString.prefix(12).lowercased()
-        let item = try storeOwn(id: id, image: image, corners: work.corners, by: work.by) { item in
+        let size = OwnWork(heightCm: work.text.heightCm, widthCm: work.text.widthCm)
+        let item = try storeOwn(id: id, image: image, corners: work.corners, by: work.by, own: size) { item in
             Self.describe(&item, work.text)
         }
         incoming[work.token] = nil
@@ -1726,7 +1720,7 @@ actor DemoBackend: FrameBackend {
             throw BackendError.notFound
         }
         items.removeAll { $0.id == itemID }
-        let item = try storeOwn(id: itemID, image: image, corners: photo.corners, by: photo.by) { item in
+        let item = try storeOwn(id: itemID, image: image, corners: photo.corners, by: photo.by, own: before.own) { item in
             item = Item(
                 id: item.id, kind: .own, source: "upload", sourceId: "", title: before.title, artist: before.artist,
                 artistBio: "", dateText: before.dateText, year: before.year, medium: before.medium,
@@ -1743,8 +1737,10 @@ actor DemoBackend: FrameBackend {
 
     /// The photograph whole kept for "Pełny kadr", the work cut out of it
     /// as the picture, as the server keeps them.
-    private func storeOwn(id: String, image: UIImage, corners: [[Double]]?, by: String, _ change: (inout Item) -> Void) throws -> Item {
-        let picture = DemoOwn.cut(image, corners: corners)
+    private func storeOwn(
+        id: String, image: UIImage, corners: [[Double]]?, by: String, own: OwnWork?, _ change: (inout Item) -> Void
+    ) throws -> Item {
+        let picture = DemoOwn.cut(image, corners: corners, own: own)
         guard let data = picture.jpegData(compressionQuality: 0.9), let whole = image.jpegData(compressionQuality: 0.9),
               let cg = picture.cgImage
         else { throw BackendError.invalidResponse }

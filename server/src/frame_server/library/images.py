@@ -605,6 +605,11 @@ class ImageCache:
         return shown
 
     @staticmethod
+    def _ratio(item: Item) -> Callable[[float], float | None] | None:
+        """A work of the owner's own is cut to the shape of his size."""
+        return item.own.ratio if item.own is not None else None
+
+    @staticmethod
     def _clean(item: Item, img: Image.Image) -> Image.Image:
         """``img`` (the work as shown, cut already) with its colours given
         back when the work is shown so (``Item.cleaned``): the varnish
@@ -623,7 +628,7 @@ class ImageCache:
         quad = self._quad(item, img.size)
         if quad is None and item.cleaned_shown() is None:
             return None
-        shown = warp(img, quad) if quad is not None else img.convert("RGB")
+        shown = warp(img, quad, ratio=self._ratio(item)) if quad is not None else img.convert("RGB")
         if side == IMAGE_MAX:
             size = kept_size(*shown.size)
             if size != shown.size:
@@ -702,7 +707,7 @@ class ImageCache:
         comparison."""
         img = load_image(self.museum_photo(item, urgent))
         quad = self._quad(item, img.size)
-        return warp(img, quad) if quad is not None else img
+        return warp(img, quad, ratio=self._ratio(item)) if quad is not None else img
 
     def tile(self, thumb: Path) -> Path:
         """The thumbnail ``thumb`` as a cover tile shows it: the work
@@ -817,7 +822,9 @@ class ImageCache:
                 else:
                     img = self._thumbnail(item, urgent)
                     if (quad := self._quad(item, img.size)) is not None:
-                        img = warp(img, quad)  # the work, as its original is kept
+                        img = warp(
+                            img, quad, ratio=self._ratio(item)
+                        )  # the work, as its original is kept
                     img = self._clean(item, img)
                 _save_jpeg(img, path, THUMB_MAX, 85)
         self._forget_gone(item)

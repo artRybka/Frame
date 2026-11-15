@@ -32,7 +32,7 @@ enum ColourRecovery {
         case .oil: return "oil"
         case .pastel, .gouache: return "opaque"
         case .water, .dry, .burin, .pen, .pencil, .woodblock, .litho, .wash, .handColoured, .woodcut, .grain, .aquatint, .waterPencil,
-             .waterPen, .toned, .heightened: return "paper"
+             .waterPen, .toned, .heightened, .washLit, .washLitChalk, .washToned, .washTonedChalk, .chiaroscuro: return "paper"
         case .screen, .offset, .photo: return nil
         }
     }

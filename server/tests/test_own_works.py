@@ -89,13 +89,26 @@ def test_a_photograph_becomes_a_work_cut_out_of_its_frame(
     item = service.library.get(work["id"])
     assert item is not None and item.kind == ItemKind.OWN
     # The original is the painting alone; the photograph whole stays.
+    # Its shape is his size's (55 × 46 cm), not the corners' (540 × 440 px).
     with Image.open(service.images.image_path(item)) as img:
-        assert abs(img.width / img.height - 540 / 440) < 0.05
+        assert abs(img.width / img.height - 55 / 46) < 0.005
     assert service.images.full_path(item).is_file()
     assert service.sizes.size(item) is not None
     assert (service.sizes.size(item).height, service.sizes.size(item).width) == (46, 55)  # type: ignore[union-attr]
     summary = ItemSummary.of(item)
     assert summary.cropped and summary.own is not None and summary.own.hangs == "Salon"
+
+    # A work added before its picture took his size's shape: cut anew once.
+    own = item.own
+    bare = service.library.update(item.id, own=None)
+    assert bare is not None and service.images.recut(bare)
+    with Image.open(service.images.image_path(item)) as img:
+        assert abs(img.width / img.height - 55 / 46) > 0.01
+    service.library.update(item.id, own=own)
+    assert service.own_works.reshape() == 1
+    with Image.open(service.images.image_path(item)) as img:
+        assert abs(img.width / img.height - 55 / 46) < 0.005
+    assert service.own_works.reshape() == 0
 
 
 def test_his_corners_his_description_a_new_photograph_and_delete(
@@ -125,6 +138,16 @@ def test_his_corners_his_description_a_new_photograph_and_delete(
         again = client.put(f"/api/own/works/{work['id']}", json={**TEXT, "title": "Klif"}).json()
         assert again["title"] == "Klif" and again["own"]["hangs"] == "Salon"
         assert again["cut"]["by"] == "owner"  # the cut stays
+        stored = service.library.get(work["id"])
+        assert stored is not None
+        # Cut anew to the shape of the size he gave now.
+        with Image.open(service.images.image_path(stored)) as img:
+            assert abs(img.width / img.height - 55 / 46) < 0.005
+        # A size far off the photograph (a slip) leaves the corners' shape.
+        client.put(f"/api/own/works/{work['id']}", json={**TEXT, "width_cm": 550})
+        with Image.open(service.images.image_path(stored)) as img:
+            assert abs(img.width / img.height - 540 / 448) < 0.02
+        client.put(f"/api/own/works/{work['id']}", json={**TEXT, "title": "Klif"})
 
         # "Popraw kadr" on his work, as on a museum's.
         put = client.put(f"/api/library/items/{work['id']}/cut", json={"corners": whole[:4]})

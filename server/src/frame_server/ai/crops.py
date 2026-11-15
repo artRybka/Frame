@@ -37,6 +37,7 @@ from __future__ import annotations
 import base64
 import io
 import logging
+import math
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import UTC, datetime
@@ -50,13 +51,14 @@ from ..imaging.cut import (
     backdrop_quad,
     sheet_out_to_strips,
     snap,
+    strip_depths,
     thin_backdrop,
     valid,
     worth_cutting,
 )
 from ..imaging.layout import Crop, load_image
 from ..library.images import OWN_SOURCES
-from ..library.models import NOT_RECTANGLE, SHAPES, Cut, Framing, ItemKind
+from ..library.models import NOT_RECTANGLE, SHAPES, Cut, Framing, ItemKind, quads_close
 from .client import HAIKU, OPUS, image_block, request
 from .critic_night import REST, CriticNight
 from .gatekeeper import facts
@@ -91,6 +93,13 @@ TWIN_TIDY = 1
 #: Once the cuts kept whose sheet lies on its plate on one side are
 #: tidied (:meth:`Crops.sheets_out`).
 SHEET_TIDY = 1
+
+#: Once the cuts set from the pixels' strips alone (:meth:`Crops.strips`)
+#: before they had to agree with Opus's answer are given back whole and
+#: put before Opus again (:meth:`Crops.strips_rechecked`).
+STRIP_TIDY = 1
+#: The note such a cut was written with.
+STRIPS_NOTE = "thin strips of backdrop, from the pixels"
 
 #: Once the cuts set before the work's outline was asked
 #: (:attr:`Cut.shape`) are put before Opus again (:meth:`Crops.reshaped`).
@@ -352,6 +361,91 @@ def framing_within(framing: dict[str, Framing], quad: Quad) -> dict[str, Framing
     return framing_moved(framing, None, quad)
 
 
+#: :func:`strips_fit`: a strip may end this far inside the sheet Opus saw
+#: (his corners are a hundredth or so off), and must end this far outside
+#: the image area he saw within it (a print keeps its paper).
+STRIP_AGREE = 0.012
+PAPER_KEPT = 0.008
+
+
+def strips_fit(depths: tuple[float, float, float, float], data: dict[str, Any]) -> bool:
+    """Whether the thin strips found in the pixels (``depths``: top,
+    bottom, left, right, :func:`..imaging.cut.strip_depths`) are backdrop
+    by what Opus saw (``data``, his answer however sure): each ends on the
+    sheet (or canvas) he named, not inside it, and outside every plate or
+    image area. A print whose paper runs off the photograph has a margin as
+    plain as any board: Jackson's chiaroscuro woodcut after Veronese
+    (Europeana, Mateusz 2026-11-15) lost its margin on two sides and kept
+    it on the other two, Géricault's lithographs (Cleveland, NGA) theirs
+    and the lettering under them. With no sheet named, the strips must
+    run round all four sides and clear of everything he named; with
+    nothing named, nothing tells."""
+    layers = data.get("layers")
+    if not isinstance(layers, list):
+        layers = []
+    named: list[tuple[str, tuple[float, float, float, float]]] = []
+    for layer in layers:
+        quad = _quad(layer) if isinstance(layer, dict) else None
+        if quad is not None:
+            named.append((str(layer.get("kind") or ""), _box(quad)))
+    if not named:
+        return False  # nothing to tell a print's margin from board by
+    top, bottom, left, right = depths
+    # (side's index in a box, where the strip ends, whether it lies at the
+    # box's low end: left or top)
+    ends = [
+        (i, end, low)
+        for i, end, low, depth in (
+            (1, top, True, top),
+            (3, 1 - bottom, False, bottom),
+            (0, left, True, left),
+            (2, 1 - right, False, right),
+        )
+        if depth > 0
+    ]
+    if not ends:
+        return False
+
+    def outside(box: tuple[float, float, float, float], by: float) -> bool:
+        """Every strip ends at least ``by`` outside ``box`` (less than
+        ``-by`` inside it)."""
+        return all((box[i] - end if low else end - box[i]) >= by for i, end, low in ends)
+
+    if any(kind == "plate" for kind, _ in named) and not all(
+        outside(box, PAPER_KEPT) for kind, box in named if kind == "plate"
+    ):
+        return False
+    sheets = [box for kind, box in named if kind in ("sheet", "canvas")]
+    if sheets:
+        return outside(sheets[0], -STRIP_AGREE)
+    return len(ends) == 4 and all(outside(box, PAPER_KEPT) for _, box in named)
+
+
+#: :func:`tilted`: a side this far from upright or level (degrees) is no
+#: perspective of a work standing or lying straight.
+TILT = 25.0
+
+
+def tilted(quad: Quad) -> bool:
+    """Whether ``quad`` stands on a corner: a lozenge (Mondrian's Victory
+    Boogie-Woogie, WikiArt, cut along its edges into an upright square,
+    2026-11-15), not a rectangle at an angle."""
+    for i in range(4):
+        (x0, y0), (x1, y1) = quad[i], quad[(i + 1) % 4]
+        angle = math.degrees(math.atan2(abs(y1 - y0), abs(x1 - x0)))
+        if min(angle, 90.0 - angle) > TILT:
+            return True
+    return False
+
+
+def _kind(data: dict[str, Any], quad: Quad | None) -> str:
+    """The kind Opus named the layer ``quad`` was read from, "" if none."""
+    for layer in data.get("layers") or []:
+        if isinstance(layer, dict) and quad is not None and _quad(layer) == quad:
+            return str(layer.get("kind") or "")
+    return ""
+
+
 def corners_in(img: Image.Image, data: dict[str, Any]) -> dict[str, Any] | None:
     """Opus's answer (:data:`CORNERS_SCHEMA`) as corners set on the edges
     of ``img``, the photograph it was asked about (:meth:`Crops.corners`)."""
@@ -359,10 +453,19 @@ def corners_in(img: Image.Image, data: dict[str, Any]) -> dict[str, Any] | None:
     read = read_layers(data)
     if read is None:
         return None
-    shown = snap(img, read[0]) if read[0] is not None else None
-    plate = snap(img, read[1]) if read[1] is not None else None
+    if read[0] is not None and tilted(read[0]):
+        return None  # a lozenge hung on its point (Mondrian), no upright work
+    shown = snap(img, read[0], _kind(data, read[0])) if read[0] is not None else None
+    plate = snap(img, read[1], "plate") if read[1] is not None else None
     if shown is not None and plate is not None:
         shown = sheet_out_to_strips(img, shown, plate)  # Beksiński, MNK
+    if shown is not None and _kind(data, read[0]) == "sheet":
+        # A sheet taken in from its edge to a line printed on it (a
+        # poster's border, MNK 321605): out to where the board's strip ends,
+        # when the strips are board by Opus's answer (:func:`strips_fit`).
+        depths = strip_depths(img)
+        if strips_fit(depths, data):
+            shown = sheet_out_to_strips(img, shown, None, depths)
     if shown is not None and not worth_cutting(shown):
         shown = None  # the sheet is the photograph: only the plate is cut
     if shown is None and plate is None:
@@ -533,6 +636,7 @@ class Crops(CriticNight):
 
     def order(self) -> bool:
         self.reshaped()
+        self.strips_rechecked()
         self.swept()
         self.untwinned()
         self.sheets_out()
@@ -557,6 +661,46 @@ class Crops(CriticNight):
         self._save(state)
         log.info("crops: %d cuts set before the outline was asked, for Opus", len(found))
         return len(found)
+
+    def strips_rechecked(self) -> int:
+        """Once (:data:`STRIP_TIDY`): the model's cuts made from the pixels'
+        strips alone (1.145.140 to 1.145.170) are given back whole and put
+        before Opus again, whose answer they must now agree with
+        (:func:`strips_fit`): a print's own paper margin had been taken
+        for a strip of board (Jackson after Veronese, Europeana; Géricault,
+        Cleveland and NGA; Mateusz 2026-11-15). Not while a round is under
+        way. How many."""
+        state = self.state()
+        if state.get("strip_tidy") == STRIP_TIDY or state.get("order"):
+            return 0
+        from_strips = {w.get("id"): w for w in self.written() if w.get("note") == STRIPS_NOTE}
+        done = 0
+        for item_id, entry in from_strips.items():
+            item = self.library.get(str(item_id))
+            cut = item.cut if item is not None else None
+            if item is None or cut is None or cut.by != "auto" or self.stale(item):
+                continue
+            if cut.work is None or not quads_close(cut.work, entry.get("work") or []):
+                continue
+            whole = Cut(
+                around=cut.around,
+                aspect=cut.aspect,
+                picture=item.picture_key(),
+                shape=cut.shape,
+                at=_now(),
+            )
+            self.apply(item, whole)
+            state = self.state()
+            claims = state.get("claims") or {}
+            claims[item.id] = {"around": sorted({*cut.around, "backdrop"}), "band": True}
+            state["claims"] = claims
+            self._save(state)
+            done += 1
+        state = self.state()
+        state["strip_tidy"] = STRIP_TIDY
+        self._save(state)
+        log.info("crops: %d cuts made from the pixels' strips alone, given back for Opus", done)
+        return done
 
     def sheets_out(self) -> int:
         """Once (:data:`SHEET_TIDY`): the cuts kept whose sheet lies on
@@ -751,7 +895,7 @@ class Crops(CriticNight):
         try:
             found = self.corners(item, data)
             if (not found or found["work"] is None) and claim.get("band"):
-                found = self.strips(item)
+                found = self.strips(item, data)
                 if found is not None:
                     found["shape"] = shape
         except OSError as err:
@@ -759,20 +903,23 @@ class Crops(CriticNight):
             return {}
         return {**claim, **found} if found and found["work"] is not None else {}
 
-    def strips(self, item: Item) -> dict[str, Any] | None:
+    def strips(self, item: Item, data: dict[str, Any] | None = None) -> dict[str, Any] | None:
         """The photograph without the thin strips of backdrop along its
         sides, from the pixels (:func:`..imaging.cut.backdrop_quad`): when
         Opus was unsure of a sheet's edge that nearly meets the
-        photograph's (Munch, Cleveland, 2026-11-15), or named no sheet."""
+        photograph's (Munch, Cleveland, 2026-11-15). Only where the strips
+        agree with what Opus saw (``data``, :func:`strips_fit`): a print's
+        own paper margin is as plain as a board."""
         img = self.photo(item)
+        depths = strip_depths(img)
         quad = backdrop_quad(img)
-        if quad is None or not worth_cutting(quad):
+        if quad is None or not worth_cutting(quad) or not strips_fit(depths, data or {}):
             return None
         return {
             "work": quad,
             "plate": None,
             "aspect": round(img.width / img.height, 5),
-            "note": "thin strips of backdrop, from the pixels",
+            "note": STRIPS_NOTE,
         }
 
     def write(self, item: Item, claim: dict[str, Any]) -> bool:

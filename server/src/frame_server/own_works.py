@@ -220,6 +220,35 @@ class OwnWorks:
             except OSError:
                 pass
 
+    def reshape(self) -> int:
+        """Once after a start: works added before their pictures took the
+        shape of his size (1.145.168) cut anew to it. How many were."""
+        from .imaging.cut import cut_aspect
+        from .library.models import PlaylistRules
+
+        done = 0
+        for item in self.library.query(PlaylistRules(kinds=[ItemKind.OWN]), include_excluded=True)[
+            1
+        ]:
+            quad, cut = item.cut_shown(), item.cut
+            if item.source != "upload" or item.own is None or quad is None or cut is None:
+                continue
+            ratio = item.own.ratio(cut_aspect(quad, cut.aspect))
+            path = self.images.image_path(item)
+            if ratio is None or not path.is_file():
+                continue
+            try:
+                with Image.open(path) as img:
+                    off = abs(img.width / img.height - ratio) / ratio
+            except OSError:
+                continue
+            if off > 0.01:
+                self.crops.apply(item, cut)
+                done += 1
+        if done:
+            log.info("own works cut to the shape of their size: %d", done)
+        return done
+
     # -- the work ------------------------------------------------------------------
 
     def add(self, token: str, corners: Quad | None, by: str, shape: str, text: Description) -> Item:
@@ -241,9 +270,14 @@ class OwnWorks:
         return item
 
     def describe(self, item: Item, text: Description) -> Item:
-        """ "Edytuj opis": what the owner wrote, again."""
+        """ "Edytuj opis": what the owner wrote, again; a work cut out of
+        his photograph is cut anew to a new size's shape."""
         self._check(item)
-        return self._describe(item, text)
+        before = (item.own.height_cm, item.own.width_cm) if item.own is not None else (None, None)
+        updated = self._describe(item, text)
+        if before != (text.height_cm, text.width_cm) and updated.cut_shown() is not None:
+            updated = self.crops.apply(updated, updated.cut)
+        return updated
 
     def retake(self, item: Item, token: str, corners: Quad | None, by: str, shape: str) -> Item:
         """ "Zrób zdjęcie ponownie": a new photograph of the same work (one

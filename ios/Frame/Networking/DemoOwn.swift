@@ -75,7 +75,9 @@ enum DemoOwn {
     }
 
     /// The work inside `corners` of `image`, upright (the server's `warp`).
-    static func cut(_ image: UIImage, corners: [[Double]]?) -> UIImage { OwnPicture.cut(image, corners: corners) }
+    static func cut(_ image: UIImage, corners: [[Double]]?, own: OwnWork?) -> UIImage {
+        OwnPicture.cut(image, corners: corners, own: own)
+    }
 
     /// The demo's photograph: the work found where it was put.
     static func isDemoPhoto(_ image: UIImage) -> Bool {
