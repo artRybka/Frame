@@ -176,7 +176,10 @@ def remote_items(
                 twin=twin,
                 aspect=svc.importer.known_aspect(item),
                 zoom=zooms(item),
-                low_side=low_side(item),
+                # The library's own (its copy picked, its cut), not the
+                # search's answer: WikiArt's said „600 px” of a work shown
+                # from a copy of 1920 × 2548 (2026-11-15).
+                low_side=low_side(own or item),
                 restored=own is not None and own.sharper is not None and own.sharper.restored,
             ),
         )

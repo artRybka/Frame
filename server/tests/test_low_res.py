@@ -79,3 +79,23 @@ def test_the_long_side_known_here(tmp_path: Path) -> None:
     assert images.long_side(met) == 1300
     low_res.known_sizes(images.long_side)
     assert low_res.low_side(met) == 1300
+
+
+def test_the_downloaded_original_beats_the_size_said(tmp_path: Path) -> None:
+    # Wyspiański's „Macierzyństwo” on WikiArt (2026-11-15): WikiArt said
+    # 433 × 600, its file was 1441 × 1999; the card marked it „600 px”.
+    images = ImageCache(tmp_path, lambda: httpx.Client())
+    work = _work("wikiart:10", width=433, height=600)
+    low_res.known_sizes(images.long_side)
+    assert low_res.low_side(work) == 600  # nothing downloaded yet: what it says
+    images._remember_size(work, Image.new("RGB", (1441, 1999)))
+    assert images.long_side(work) == 1999
+    assert low_res.low_side(work) == 0
+    assert low_res.low_side(work, (1441, 1999)) == 0
+    # A small original stays marked though its source says more.
+    big = _work("wikiart:11", width=3000, height=4000)
+    images._remember_size(big, Image.new("RGB", (900, 1200)))
+    assert low_res.low_side(big) == 1200
+    # A copy picked counts, whatever the work's own was.
+    copy = SharperCopy(url="u", item_id="wmc:93560153", source="wmc", width=1920, height=2548)
+    assert low_res.low_side(big.model_copy(update={"sharper": copy})) == 0

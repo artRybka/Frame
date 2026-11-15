@@ -890,10 +890,14 @@ class ImageCache:
         size = [width, height, int(img.info.get(BYTES) or 0)]
         with self._guard:
             self._sizes[item.id] = size
-            with contextlib.suppress(OSError):
-                tmp = self._sizes_path.with_suffix(".tmp")
-                tmp.write_text(json.dumps(self._sizes))
-                tmp.replace(self._sizes_path)
+            self._save_sizes()
+
+    def _save_sizes(self) -> None:
+        """The sizes kept, on disk (under ``_guard``)."""
+        with contextlib.suppress(OSError):
+            tmp = self._sizes_path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(self._sizes))
+            tmp.replace(self._sizes_path)
 
     def known_size(self, item: Item) -> tuple[int, int] | None:
         """The original's size as its source gave it, when it was kept at
@@ -904,13 +908,16 @@ class ImageCache:
 
     def long_side(self, item: Item) -> int | None:
         """The long side of the picture ``item`` is shown from, when it is
-        known: :func:`said_side`, else the original's as downloaded
-        (:meth:`known_size`); never a thumbnail's. The mark of a small
+        known: a sharper copy's, else the original's as downloaded
+        (:meth:`known_size`), else the one its source says (:func:`said_side`:
+        WikiArt says the size of a smaller rendition now and then, 433 × 600
+        of a file of 1441 × 1999); never a thumbnail's. The mark of a small
         picture (``low_res``) and the order by quality read it."""
-        side = said_side(item)
-        if side is None and (size := self.known_size(item)) is not None and min(size) > 0:
-            side = max(size)
-        return side
+        if item.sharper is not None:
+            return said_side(item)
+        if (size := self.known_size(item)) is not None and min(size) > 0:
+            return max(size)
+        return said_side(item)
 
     def source_size(self, item: Item) -> tuple[int, int, int] | None:
         """The original as its source gave it: (width, height, bytes; 0 when
@@ -1212,10 +1219,14 @@ class ImageCache:
 
     def drop_picture(self, item: Item) -> None:
         """Forget the work's original and thumbnail (another picture takes
-        their place): both are had again from its addresses."""
+        their place): both are had again from its addresses. So is its size
+        (:meth:`long_side` reads it before the one its source says)."""
         with self._lock(f"i:{item.id}"):
             self.image_path(item).unlink(missing_ok=True)
             self.full_path(item).unlink(missing_ok=True)
+            with self._guard:
+                if self._sizes.pop(item.id, None) is not None:
+                    self._save_sizes()
         with self._lock(f"t:{item.id}"):
             self.thumb_path(item).unlink(missing_ok=True)
 

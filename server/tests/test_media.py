@@ -4,6 +4,7 @@ with no technique and the app painted it in oil (Mateusz 2026-11-12)."""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ from test_holders import FakeWeb, _artwork_page, _claim, _commons, _labels
 from frame_server.config import Settings
 from frame_server.holders import Holders
 from frame_server.library import Item, Library
+from frame_server.library.models import Note, SharperCopy
 from frame_server.library.museums import Access, europeana_medium
 from frame_server.media import Media, commons_medium, wikidata_medium
 from frame_server.service import FrameService
@@ -266,3 +268,46 @@ def test_the_cards_look_is_not_held_back_while_the_app_is_in_use() -> None:
     thread.start()
     thread.join()
     assert seen == [("technika dzieła", False)]
+
+
+def test_the_museums_record_of_the_work_it_is_a_copy_of(tmp_path: Path) -> None:
+    # Wyspiański's „Macierzyństwo” on WikiArt (2026-11-15): WikiArt refused
+    # to log in, and the work was found to be MNW's (``copy_of``), which
+    # says „pastel, papier żeberkowy”: no oil paint on its card.
+    web = Web({}, {})
+    library = Library(tmp_path / "lib.db")
+    importer = FakeImporter()
+    mnw = Item(id="mnw:899042", source="mnw", source_id="899042", medium="pastel, papier żeberkowy")
+    importer.remote = lambda item_id: mnw if item_id == mnw.id else None  # type: ignore[attr-defined]
+    media = Media(library, importer, Holders(library, web.client))  # type: ignore[arg-type]
+    work = _stas(copy_of="mnw:899042")
+    library.upsert(work)
+    assert media.look(work, 5) == ("found", "pastel, papier żeberkowy")
+    note = library.note(work.id, "medium")
+    assert note is not None and note.data["from"] == "copy"
+
+
+def test_a_copy_picked_since_is_looked_up_again(tmp_path: Path) -> None:
+    # Nobody said with the work's own picture; the copy picked since has a
+    # Commons page that does.
+    web = Web({"8030452": _artwork_page(" |medium = {{Technique|pastel|paper}}\n")}, {})
+    media, library = _media(tmp_path, web)
+    library.upsert(_stas())
+    library.save_note(
+        Note(
+            item_id=_stas().id,
+            kind="medium",
+            model="",
+            prompt_version="medium-1",
+            data={"medium": "", "from": "", "at": "2026-11-15T07:08:32+00:00", "p": ""},
+        )
+    )
+    media.clock = lambda: datetime(2026, 11, 15, 7, 27, tzinfo=UTC)
+    assert media.known(_stas()) == ("none", "")
+    copy = SharperCopy(
+        url="u", item_id="wmc:8030452", source="wmc", width=1920, height=2548, chosen=True
+    )
+    library.update(_stas().id, sharper=copy)
+    stored = library.get(_stas().id)
+    assert stored is not None and media.known(stored) is None
+    assert media.look(stored, 5) == ("found", "pastel on paper")

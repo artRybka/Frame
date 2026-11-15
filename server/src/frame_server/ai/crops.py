@@ -47,9 +47,9 @@ from ..imaging.cut import (
     valid,
     worth_cutting,
 )
-from ..imaging.layout import load_image
+from ..imaging.layout import Crop, load_image
 from ..library.images import OWN_SOURCES
-from ..library.models import Cut, ItemKind
+from ..library.models import Cut, Framing, ItemKind
 from .client import HAIKU, OPUS, image_block, request
 from .critic_night import REST, CriticNight
 from .gatekeeper import facts
@@ -227,6 +227,43 @@ def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
+def _crop_within(crop: Crop | None, quad: Quad) -> Crop | None:
+    """``crop`` (a part of the whole photograph) as the same part of the
+    picture cut to ``quad``: its centre moved in, its zoom less by as much
+    as the picture is smaller."""
+    if crop is None:
+        return None
+    xs, ys = [x for x, _ in quad], [y for _, y in quad]
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    if x1 - x0 <= 0 or y1 - y0 <= 0:
+        return crop
+    share = ((x1 - x0) + (y1 - y0)) / 2
+    return crop.model_copy(
+        update={
+            "x": min(1.0, max(0.0, (crop.x - x0) / (x1 - x0))),
+            "y": min(1.0, max(0.0, (crop.y - y0) / (y1 - y0))),
+            "zoom": min(8.0, max(1.0, crop.zoom * share)),
+        }
+    )
+
+
+def framing_within(framing: dict[str, Framing], quad: Quad) -> dict[str, Framing]:
+    """The owner's framings, set on the whole photograph, as the same parts
+    of the picture cut to ``quad``: a cut by the model keeps what he chose
+    to show (Wyspiański's „Macierzyństwo”, 2026-11-15: a close-up of the
+    mother's face kept the thin wooden frame of the copy he picked from
+    being cut away)."""
+    return {
+        side: Framing(
+            fill=_crop_within(f.fill, quad),
+            detail=_crop_within(f.detail, quad),
+            picture=_crop_within(f.picture, quad),
+            fit=_crop_within(f.fit, quad),
+        )
+        for side, f in framing.items()
+    }
+
+
 class Crops(CriticNight):
     kind = KIND
     switch = SWITCH
@@ -394,7 +431,7 @@ class Crops(CriticNight):
             if entry is None or entry.get("band") == BAND or item_id in claims:
                 continue
             item = self.library.get(item_id)
-            if item is None or item.framing or not self.wanted(item):
+            if item is None or not self.wanted(item):
                 continue
             if self.open_to_cut(item) and self.banded(item):
                 around = item.cut.around if item.cut is not None else []
@@ -509,8 +546,8 @@ class Crops(CriticNight):
 
     def write(self, item: Item, claim: dict[str, Any]) -> bool:
         stored = self.library.get(item.id)
-        if stored is None or not self.open_to_cut(stored) or stored.framing:
-            return False  # the owner's own cut, or his framings: his
+        if stored is None or not self.open_to_cut(stored):
+            return False  # the owner's own cut: his
         cut = Cut(
             work=claim.get("work"),
             plate=claim.get("plate"),
@@ -531,6 +568,10 @@ class Crops(CriticNight):
         changes: dict[str, Any] = {"cut": cut}
         if item.framing and cut is not None and cut.by == "owner":
             changes["framing"] = {}  # set on the picture before: another now
+        elif item.framing and cut is not None and (shown := cut.shown()) is not None:
+            # The model's cut of a picture shown whole (``open_to_cut``):
+            # his framings show the same parts of it cut.
+            changes["framing"] = framing_within(item.framing, shown)
         updated = self.library.update(item.id, **changes) or item.model_copy(update=changes)
         self.images.recut(updated)
         if self.importer is not None:
@@ -619,6 +660,11 @@ class Crops(CriticNight):
             return False
         asked = self.asked().get(stored.id)
         again = asked is not None and asked.get("p", "") == stored.picture_key()
+        if again and asked is not None and asked.get("critic"):
+            # Opus found the work's edges and nothing was cut: the owner's
+            # framing stopped it before 2026-11-15 (Wyspiański's
+            # „Macierzyństwo” in its thin wooden frame). Asked anew.
+            asked, again = None, False
         if asked is not None and again and (asked.get("band") == BAND or not self.banded(stored)):
             return False  # looked at, and no thin backdrop the judge missed then
         try:
