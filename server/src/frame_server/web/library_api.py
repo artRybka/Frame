@@ -165,8 +165,15 @@ def remote_items(
         elif best := svc.library.twin(held):
             twin = best.id
         own = svc.library.get(item.id)
-        if own is not None:  # the museum's text, the owner's heart
-            item = item.model_copy(update={"favorite": own.favorite})
+        if own is not None:
+            # The museum's text, the owner's heart and the picture the
+            # library shows: its copy and its cut. Without them Odkrywaj's
+            # and Szukaj's tiles of a held work lacked the crop's mark the
+            # playlists show, and a thumbnail kept from one list was had
+            # anew in the other (Mateusz 2026-11-15).
+            item = item.model_copy(
+                update={"favorite": own.favorite, "sharper": own.sharper, "cut": own.cut}
+            )
         found.setdefault(
             item.id,
             RemoteItem(

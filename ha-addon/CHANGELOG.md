@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.152
+
+- Na listach w Odkrywaj (sekcje, „Zobacz wszystkie”, strony motywów i
+  grup, karty Studiów) dzieła mają po tytule te same znaczniki co na
+  playlistach: przycięte ze zdjęcia muzeum, niska rozdzielczość,
+  kreatywny restaurator i Pod lupą. Dzieło z biblioteki pokazuje się tam
+  z wybraną kopią i kadrem, także w Szukaj.
+
 ## 1.145.151
 
 - Pastel ma własny pasek barw zamiast kreskowania kredki: każda barwa jest
