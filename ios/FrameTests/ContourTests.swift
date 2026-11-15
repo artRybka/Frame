@@ -65,7 +65,7 @@ final class ContourTests: XCTestCase {
         XCTAssertTrue(drawn(line: line, age: lined.begins).isEmpty, "nothing before the paint is down")
         XCTAssertGreaterThan(lined.length, lined.begins)
         XCTAssertFalse(drawn(.water, line: line).isEmpty)
-        XCTAssertTrue(ContourLine.draws(in: .oil) && ContourLine.draws(in: .water) && ContourLine.draws(in: .dry))
+        XCTAssertTrue(ContourLine.draws(in: .oil) && ContourLine.draws(in: .water) && ContourLine.draws(in: .dry) && ContourLine.draws(in: .pastel))
         for style in [PaintStyle.burin, .pen, .pencil, .woodblock, .litho, .photo] {
             XCTAssertFalse(ContourLine.draws(in: style), "\(style) shows its lines already")
         }
