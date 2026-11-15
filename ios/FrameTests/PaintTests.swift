@@ -163,6 +163,11 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(PaintStyle.of(medium: "Two-panel folding screen; ink and color on gilded paper", classification: "Painting"), .gouache)
         XCTAssertEqual(Gold.kind(medium: "Two-panel folding screen; ink and color on gilded paper", style: .gouache), .leaf)
         XCTAssertEqual(PaintStyle.of(medium: "tusz i barwniki na papierze"), .gouache)
+        // Colours alone on paper or silk: Kano Hideyori's screen (Mateusz 2026-11-15 00:35).
+        XCTAssertEqual(PaintStyle.of(medium: "Color on paper", classification: "Painting"), .gouache)
+        XCTAssertEqual(PaintStyle.of(medium: "Colors on silk"), .water)
+        XCTAssertEqual(PaintStyle.of(medium: "Color on paper", classification: "Drawing"), nil)
+        XCTAssertEqual(PaintStyle.of(medium: "Paper", classification: "Painting"), nil)
         XCTAssertNil(PaintStyle.of(medium: "Hanging scroll; ink on paper", classification: "Paintings"))
         XCTAssertEqual(PaintStyle.of(medium: "Hanging scroll; ink on paper", classification: "Paintings", mono: true), .pen)
         // A soft point; a paint over it is what the work is in.

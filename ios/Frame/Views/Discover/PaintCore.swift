@@ -173,6 +173,14 @@ enum PaintStyle: String, Sendable, CaseIterable {
             return washed ? .wash : .pen
         }
         if has(words, soft) { return .pencil }
+        // Colours alone on paper or on silk, a painting's or nothing said of
+        // what it is: a painting of East Asia, its mineral colours opaque on
+        // paper, thin on silk (Mateusz 2026-11-15 00:35, of Kano Hideyori's
+        // screen „Oglądanie klonów w Takao”, „Color on paper”, shown flat:
+        // „Może tu też jesteśmy w stanie dobrać odpowiedni pasek koloru?”).
+        if !mono, has(words, colours), has(words, sheets), painting || (!has(kind, drawings) && !has(kind, objects) && !has(kind, prints)) {
+            return has(words, silks) ? .water : .gouache
+        }
         if painting { return has(words, notOil) ? nil : .oil }
         if mono, has(all, drawings) { return warm ? .pen : .pencil }
         // Nothing says how it is made, or only what it is painted on: paint.
@@ -318,6 +326,9 @@ enum PaintStyle: String, Sendable, CaseIterable {
                                "matita", "carboncino", "silverpoint", "metalpoint", "olowk", "olowek", "wegiel", "wegl"]
     /// What says there are colours beside the ink.
     private static let colours = ["color", "colour", "kolor", "barw", "couleur", "farb", "kleur", "pigment", "gold", "zlot"]
+    /// Paper and silk, what a painting in colours alone is painted on.
+    private static let sheets = ["paper", "papier", "papir", "papel", "carta", "scroll", "zwoj", "silk", "jedwab", "soie", "seide",
+                                 "zijde", "seta", "seda"]
     /// Silk, which a painting's colours lie thin on.
     private static let silks = ["silk", "jedwab", "soie", "seide", "zijde", "seta", "seda"]
     /// A drawing, as the museums file it.
