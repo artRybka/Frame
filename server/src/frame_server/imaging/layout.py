@@ -139,7 +139,12 @@ COLUMN_MIN = 0.4  # a column beside it: the text needs the width
 DETAIL_ZOOM = 3.0  # the close-up, if the source has the pixels
 DETAIL_MAX_UPSCALE = 1.6  # enlarge source pixels at most this much, unless...
 DETAIL_MIN_ENLARGEMENT = 1.8  # ...the close-up would be less than this times the picture
-PICTURE_TRIM = 0.02  # a mat window is a bit smaller than the picture behind it
+#: Until 1.145.165 a mat window was 2 % per side smaller than the picture
+#: behind it (the picture enlarged ~4 % to hide a museum's frame or
+#: backdrop at its edge). The automatic cut does that now and the trim only
+#: cut off the work's own edges (Mateusz 2026-11-15): the whole picture is
+#: shown. Saved corrections that kept the old default zoom are read as 1.
+OLD_TRIM_ZOOM = 1 / (1 - 2 * 0.02)
 PIXEL_PITCH_MM = 0.272  # the EM32DX: the app shows the passe-partout in millimetres
 
 
@@ -246,6 +251,7 @@ def plan_layout(
     ``auto`` (the interest analysis) picks the crops, or they are centred,
     and FIT and DESCRIPTION show the whole picture.
     """
+    picture_crop, fit_crop = _untrimmed(picture_crop), _untrimmed(fit_crop)
     resolved = resolve_fit(size, canvas, fit)  # MULTI with one picture: as FIT
     if resolved == Fit.FILL:
         return _plan_fill(size, canvas, caption, crop, auto)
@@ -262,12 +268,21 @@ def _auto(auto: AutoCrop | None, aspect: float, zooms: Sequence[float]) -> list[
 
 
 def whole(size: tuple[int, int]) -> tuple[float, float, float, float]:
-    """The picture in a mat window: its outermost edge stays behind the mat."""
+    """The picture in a mat window: all of it, to its edges."""
     iw, ih = size
-    return iw * PICTURE_TRIM, ih * PICTURE_TRIM, iw * (1 - PICTURE_TRIM), ih * (1 - PICTURE_TRIM)
+    return 0.0, 0.0, float(iw), float(ih)
 
 
-WHOLE = Crop(zoom=1 / (1 - 2 * PICTURE_TRIM))  # FIT uncropped: ``whole`` as a crop
+WHOLE = Crop()  # FIT uncropped: ``whole`` as a crop
+
+
+def _untrimmed(crop: Crop | None) -> Crop | None:
+    """A saved correction whose zoom is the old trimmed default
+    (:data:`OLD_TRIM_ZOOM`, never set by hand to a thousandth) at zoom 1:
+    the owner moved the window or changed its shape, he did not enlarge."""
+    if crop is None or abs(crop.zoom - OLD_TRIM_ZOOM) >= 1e-3:
+        return crop
+    return crop.model_copy(update={"zoom": 1.0})
 
 
 def _fitted(aspect: float, avail_w: int, avail_h: int) -> tuple[int, int]:

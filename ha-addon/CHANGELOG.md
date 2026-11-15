@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.165
+
+- Dzieło w passe-partout i w trybie „Opis” nie jest już lekko powiększane:
+  dotąd okno kartonu chowało po 2 % każdej krawędzi (powiększenie o ok.
+  4 %), żeby ukryć ramę i tło muzeum. Robi to teraz automatyczne
+  kadrowanie, więc na ramce widać dzieło do samych brzegów. Ręczne kadry
+  i zbliżenia zostają bez zmian.
+
 ## 1.145.164
 
 - Korekta barw zamiast podglądu: „Zdejmij werniks” albo „Odżółć papier”
