@@ -1266,18 +1266,10 @@ enum Cropped {
 /// kadrowania) - widoczna w tych samych miejscach co tamte"). In the
 /// marks' grey, after the crop's.
 enum CleanedMark {
-    /// The asset's name (11 pt, a template). Five are drawn until the
-    /// owner picks one from their sheet; a screenshot names another with
-    /// `-cleanedMark wipe|swab|colours|window`.
-    static var symbol: String {
-        switch UserDefaults.standard.string(forKey: "cleanedMark") ?? "" {
-        case "wipe": return "CleanedWipe"
-        case "swab": return "CleanedSwab"
-        case "colours": return "CleanedColours"
-        case "window": return "CleanedWindow"
-        default: return "CleanedDrop"
-        }
-    }
+    /// The asset's name (11 pt, a template): a drop, the solvent a
+    /// conservator takes a varnish off with (Mateusz 2026-11-15 19:32,
+    /// from a sheet of five on real tiles: "A. Kropla").
+    static let symbol = "CleanedDrop"
     static var image: Image { Image(symbol).renderingMode(.template) }
     static let spoken = "barwy skorygowane"
 }

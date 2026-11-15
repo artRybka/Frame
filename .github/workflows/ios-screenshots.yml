@@ -175,11 +175,7 @@ jobs:
             capture detail 16 "detail-cleaned-$appearance" -demoCleaned all -paintStyle oil
             capture detail 16 "detail-cleaned-paper-$appearance" -demoCleaned paper -paintStyle pen
             capture detail 18 "detail-cleaned-compare-$appearance" -sheet recovery -demoCleaned all -paintStyle oil
-            # The mark's candidates, until the owner picks one (`CleanedMark`).
-            for mark in drop wipe swab colours window; do
-              capture discover-theme 14 "cleaned-mark-$mark-tiles-$appearance" -demoCleaned some -cleanedMark "$mark"
-              capture detail 14 "cleaned-mark-$mark-card-$appearance" -demoCleaned all -cleanedMark "$mark" -paintStyle oil
-            done
+            capture discover-theme 14 "discover-theme-cleaned-$appearance" -demoCleaned some
             # "Podobne wyglądem" at the card's end (Szukanie wyglądem, G1).
             capture detail 16 "detail-looks-$appearance" -scroll looks
             # "Kolorystyka" on the card: the bar in the work's technique, there at once.
