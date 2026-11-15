@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.145.148
+
+- Szkic kompozycji od Gemini jest teraz częścią opracowania studium
+  dzieła: krok „Kompozycja” kończy się linią „Rysuję szkic kompozycji”,
+  a pasek postępu, „jeszcze ok. X min”, Live Activity i powiadomienie
+  „Studium gotowe” liczą go razem ze studium. Detale są wycinane w tym
+  samym czasie. Gdy Gemini nie da szkicu (limit, brak środków, odmowa
+  albo ok. 5 minut bez odpowiedzi), studium kończy się jak dotąd, z
+  zapasowym szkicem serwera.
+- Komunikatu „Gemini rysuje szkic kompozycji…” już nie ma.
+- Studium otwarte w trakcie opracowania nie pokazuje tekstu, kompozycji
+  ani detali, tylko obraz, tytuł i kartę „Studium dzieła w trakcie
+  opracowania” z postępem. Gdy studium będzie gotowe, karta gaśnie i w
+  jej miejsce wchodzi całe studium.
+- „Studia dzieł” pokazują studium dopiero gotowe.
+- Po „Wykonaj ponowną analizę” poprzednia analiza zostaje na stronie, aż
+  nowa będzie miała swój szkic.
+
 ## 1.145.147
 
 - Stonowana barwa, która zajmuje co najmniej 3% obrazu, a pasek pokazuje ją

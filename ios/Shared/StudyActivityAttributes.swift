@@ -17,8 +17,8 @@ struct StudyActivityAttributes: ActivityAttributes {
         var error: String?
         /// The part it is at (study.py `PARTS`: sources, text, text_again,
         /// details_check, composition, composition_check, composition_motion,
-        /// composition_text, cutting, later; or waiting); nil from a server
-        /// before 1.118.0.
+        /// composition_text, sketch, cutting, later; or waiting); nil from a
+        /// server before 1.118.0.
         var part: String? = nil
         /// Since when Claude writes it (after any wait), and when it should
         /// be done, judged by the server from the last studies: the bar
@@ -42,6 +42,9 @@ struct StudyActivityAttributes: ActivityAttributes {
             "restoring": 0, "sources": 0,
             "text": 1, "text_again": 1, "details_check": 1,
             "composition": 2, "composition_check": 2, "composition_motion": 2, "composition_text": 2,
+            // The image model's sketch, drawn while the details are cut
+            // (Mateusz 2026-11-15: part of preparing the study).
+            "sketch": 2,
             "cutting": 3, "later": 3,
         ]
 
@@ -59,6 +62,7 @@ struct StudyActivityAttributes: ActivityAttributes {
             "composition_check": "Sprawdzam ślady",
             "composition_motion": "Patrzę na układ i ruch",
             "composition_text": "Opisuję kompozycję",
+            "sketch": "Rysuję szkic kompozycji",
             "cutting": "Wycinam detale z oryginału",
             "later": "Szukam dzieł, które z niego wyrosły",
         ]

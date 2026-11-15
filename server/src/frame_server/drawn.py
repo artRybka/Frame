@@ -34,13 +34,16 @@ zapisane przez Batch po aktualizacji dla obniżenia kosztu lub poprzez
   what runs out of it (``batch.json`` holds where it is, so that a
   restart loses nothing).
 
-While a take's sheet is drawn at once the app says so and waits for it
-(Mateusz 2026-11-15 00:00: the sheet made here, shown first and then
-gone, was confusing); the sheet made here (``sheets``) stands in only
-where none is drawn: a take whose sheet could not be drawn twice (the
-model will not redraw some works), the model resting (no credit, the
-limit), a saved page's take until the Batch brings its sheet. It is no
-longer made ahead for the takes that will have one (:meth:`spares`).
+A study asked for is ready only once its take's sheet is drawn
+(:meth:`DrawnSheets.coming`, Mateusz 2026-11-15 09:56: "Wlicz
+przygotowanie szkicu do czasu potrzebnego na opracowanie studium"), and
+an analysis made anew counts as on its way until then (:meth:`anew`); the
+sheet made here (``sheets``) stands in only where none is drawn (00:00:
+shown first and then gone, it was confusing): a take whose sheet could
+not be drawn twice (the model will not redraw some works), the model
+resting (no credit, the limit), a saved page's take until the Batch
+brings its sheet, a study that waited for its sheet long enough. It is
+no longer made ahead for the takes that will have one (:meth:`spares`).
 """
 
 from __future__ import annotations
@@ -481,9 +484,9 @@ class DrawnSheets:
             if not now and (item.id, self.key(view)) not in there
         ]
 
-    def pending(self, item: Item, view: View) -> bool:
+    def pending(self, item: Item, view: View, wake: bool = True) -> bool:
         """Whether the take's sheet is being drawn now (a minute or two):
-        the app looks again."""
+        the app looks again (``wake``: and the background sets about it)."""
         if not self.enabled() or self._resting() or self.meta(item, view) is not None:
             return False
         stem = self._stem(item, self.key(view))
@@ -500,11 +503,42 @@ class DrawnSheets:
                 note is not None and self._new(kind, item.id, str(note.created_at), since)
                 for kind, note in notes
             )
-        if wanted:
+        if wanted and wake:
             # Someone waits for it on the page: the background, resting
             # between its looks, sets about it now.
             self._wake.set()
         return wanted
+
+    def _page_view(self, item: Item, kinds: tuple[str, ...] = PAGES) -> View | None:
+        """The take the work's page (the first of ``kinds`` it has) shows."""
+        for kind in kinds:
+            note = self.library.note(item.id, kind)
+            views = page_views(note.data) if note is not None else []
+            if views:
+                return views[0]
+        return None
+
+    def coming(self, item: Item, kind: str, wake: bool = True) -> bool:
+        """Whether the sketch of the take the work's ``kind`` page shows is
+        being drawn now: a study waits for it before it is ready (Mateusz
+        2026-11-15: "Wlicz przygotowanie szkicu do czasu potrzebnego na
+        opracowanie studium")."""
+        view = self._page_view(item, (kind,))
+        return view is not None and self.pending(item, view, wake=wake)
+
+    def anew(self, item: Item) -> bool:
+        """Whether the sketch of a take the owner had made anew ("Wykonaj
+        ponowną analizę") is still being drawn: the analysis counts as on
+        its way until it is, so that the page keeps the one before."""
+        if item.id not in listed(self.library, AT_ONCE):
+            return False
+        view = self._page_view(item)
+        return view is not None and self.pending(item, view, wake=False)
+
+    def draws(self) -> bool:
+        """Whether the image model draws the sheets now (Google's key given,
+        not resting on credit or the month's limit)."""
+        return self.enabled() and not self._resting()
 
     def spares(self, item: Item, view: View) -> bool:
         """Whether the server's own sheet of the take (``sheets``) need not

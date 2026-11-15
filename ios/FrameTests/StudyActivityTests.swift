@@ -40,6 +40,9 @@ final class StudyActivityTests: XCTestCase {
         for part in State.stepOfPart.keys { XCTAssertNotNil(State.partLines[part], part) }
         XCTAssertEqual(State(status: "writing", part: "text").stepIndex, 1)
         XCTAssertEqual(State(status: "details", part: "later").stepIndex, 3)
+        // The image model's sketch is part of the composition (Mateusz 2026-11-15).
+        XCTAssertEqual(State(status: "details", part: "sketch").stepIndex, 2)
+        XCTAssertEqual(State(status: "details", part: "sketch").line, "Rysuję szkic kompozycji")
         // Waiting for Claude: no bar.
         XCTAssertNil(State(status: "waiting", part: "waiting").timerRange)
         XCTAssertEqual(State(status: "waiting", part: "waiting").line, "Zaraz zabieram się do pracy")
@@ -56,6 +59,10 @@ final class StudyActivityTests: XCTestCase {
         )
         XCTAssertEqual(AppModel.studyDetail("Ul", state: state, now: start.addingTimeInterval(230)), "„Ul” · trwa dłużej niż zwykle")
         XCTAssertEqual(AppModel.studyDetail("Ul", state: State(status: "writing")), "„Ul” · zwykle 1–3 minuty")
+        // The page of a study still on its way says the same.
+        let range = start...start.addingTimeInterval(200)
+        XCTAssertEqual(StudyComingCard.left(range, now: start.addingTimeInterval(110)), "jeszcze ok. 1½ min")
+        XCTAssertEqual(StudyComingCard.left(range, now: start.addingTimeInterval(230)), "trwa dłużej niż zwykle")
     }
 
     /// A tap on the finished card opens the study, as the notification does.

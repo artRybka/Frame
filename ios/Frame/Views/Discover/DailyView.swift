@@ -183,8 +183,9 @@ struct DailyView: View {
     @State private var analysingFrom: Int?
     /// The drawn sheet that would not load: the server's own is shown.
     @State private var drawnFailed: String?
-    /// The drawn sheet was waited for long enough: the server's own is shown.
-    @State private var drawnLate = false
+    /// A study still being prepared: only that it is on its way, in place
+    /// of its text (`StudyComingCard`), until it is ready.
+    @State private var coming: StudyView?
     /// "Popraw detale" sent: Claude is checking the details (until the
     /// server says it is done).
     @State private var mending = false
@@ -201,6 +202,7 @@ struct DailyView: View {
                     // lone spinner made the page (and its paper) a narrow strip.
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .animation(.easeOut(duration: 0.3), value: work == nil)
+                    .animation(.easeOut(duration: 0.4), value: coming == nil)
             }
             .glowLift($scrolled)
             .onChange(of: work) { _, work in
@@ -274,7 +276,8 @@ struct DailyView: View {
             }
         }
         .onAppear {
-            if let id = route.study { model.studyOpened(itemID: id) }
+            // One still on its way keeps its card on the Lock Screen.
+            if let id = route.study, model.studies[id]?.isPending != true { model.studyOpened(itemID: id) }
         }
         .fullScreenCover(isPresented: $zoomed) {
             if let work {
@@ -303,7 +306,20 @@ struct DailyView: View {
 
     @ViewBuilder
     private var page: some View {
-        if work != nil || !failed {
+        if let coming {
+            // On its way: the picture and the title, and only that it is
+            // being prepared; nothing of its text (Mateusz 2026-11-15).
+            VStack(alignment: .leading, spacing: 6) {
+                picture(work)
+                VStack(alignment: .leading, spacing: 0) {
+                    comingLabel
+                    StudyComingCard(state: coming.activityState)
+                }
+                .transition(.opacity)
+            }
+            .padding(.horizontal, Theme.gutter)
+            .padding(.bottom, 40)
+        } else if work != nil || !failed {
             // The picture stays put while the page fades in under it: the
             // placeholder's thumbnail and the page's picture, faded one over
             // the other, blinked it.
@@ -404,6 +420,22 @@ struct DailyView: View {
         }
     }
 
+    /// The title over a study on its way: the page's, else the card's it
+    /// was opened from.
+    @ViewBuilder
+    private var comingLabel: some View {
+        if let work {
+            header(work)
+        } else if let peek {
+            StudyLabel(
+                title: peek.title.isEmpty ? "Bez tytułu" : peek.title,
+                byline: StudyLabel.byline(peek.item, date: "")
+            )
+        } else {
+            TitleSkeleton().padding(.top, 8)
+        }
+    }
+
     private func load() async {
         failed = false
         if let id = route.study {
@@ -469,26 +501,52 @@ struct DailyView: View {
         }
     }
 
-    /// A study, as the card last heard it (or as last seen), then fresh;
-    /// one still on its way (its card at the bottom says how far) is waited
-    /// for. The text first, which the server has at once; the lists under
-    /// it (similar works, what it led to, other works by the artist), which
+    /// A study, as the card last heard it (or as last seen), then fresh.
+    /// One still on its way shows only that it is (`coming`) and is
+    /// followed until ready: the page comes in then (Mateusz 2026-11-15).
+    /// The text first, which the server has at once; the lists under it
+    /// (similar works, what it led to, other works by the artist), which
     /// take it a few seconds, with the next answer.
     private func loadStudy(_ id: String) async {
-        if let shown = model.studies[id]?.work ?? DailyPeeks.studies[id] { work = shown }
-        for attempt in 0..<12 {
+        let known = model.studies[id]
+        if known?.isPending == true {
+            coming = known
+        } else if let shown = known?.work ?? DailyPeeks.studies[id] {
+            work = shown
+        }
+        var misses = 0
+        for attempt in 0..<180 {
             do {
-                let view = try await model.backend.study(itemID: id, wait: attempt == 0 ? 0 : 25, lists: false)
-                if let fresh = view.work {
-                    show(fresh)
-                    break
+                // Back sooner while it is timed: "jeszcze ok. …" moves on.
+                let wait: Double = attempt == 0 ? 0 : coming?.activityState.timerRange == nil ? 25 : 10
+                let view = try await model.backend.study(itemID: id, wait: wait, lists: false)
+                misses = 0
+                if view.isPending {
+                    coming = view
+                    continue
                 }
-                guard view.isPending else { break }
+                if let fresh = view.work {
+                    if coming != nil {
+                        model.studyOpened(itemID: id)
+                        withAnimation(.easeOut(duration: 0.4)) {
+                            coming = nil
+                            show(fresh)
+                        }
+                    } else {
+                        show(fresh)
+                    }
+                }
+                break
+            } catch let error where !error.isCancellation && coming != nil && misses < 6 {
+                misses += 1
+                try? await Task.sleep(for: .seconds(5))
             } catch {
-                if work == nil, !error.isCancellation { model.show(error) }
+                if work == nil, coming == nil, !error.isCancellation { model.show(error) }
                 break
             }
         }
+        if Task.isCancelled { return }
+        coming = nil
         guard work != nil else {
             failed = true
             return
@@ -1011,17 +1069,10 @@ struct DailyView: View {
                     drawnFailed = drawn.sheet
                 }
                 .padding(.top, 4)
-            } else if work.compositionDrawnPending == true, shown.field == takes.first?.field, !drawnLate {
-                // Being drawn: said, not the server's sheet meanwhile, which
-                // stands in only should none come (Mateusz 2026-11-15 00:00).
-                DrawnSheetComing(
-                    aspect: Self.fieldAspect(aspect(work.item.item), shown.field),
-                    title: Self.sheetTitle(work),
-                    width: column
-                )
-                .padding(.top, 4)
-                .transition(.opacity)
             } else {
+                // The server's own sheet: where none is drawn, or until the
+                // drawn one comes (a study is ready only with it, so rarely:
+                // Mateusz 2026-11-15 "Bez tego komunikatu").
                 CompositionSketch(
                     item: work.item, aspect: aspect(work.item.item), take: shown,
                     sheet: shown.field == takes.first?.field ? work.compositionSheet ?? "" : "",
@@ -1035,7 +1086,6 @@ struct DailyView: View {
         }
         .animation(.easeOut(duration: 0.25), value: work.compositionPending == true || analysingFrom != nil)
         .animation(.easeOut(duration: 0.35), value: work.compositionDrawn?.sheet)
-        .animation(.easeOut(duration: 0.35), value: drawnLate)
     }
 
     /// The shape of a take's field: the picture's, cut to the field.
@@ -1141,21 +1191,18 @@ struct DailyView: View {
         return artist.isEmpty ? work.title : "\(artist), \(work.title)"
     }
 
-    /// While the image model draws the take's sheet (a new page's, an
-    /// analysis made anew; a minute or two): the page is fetched again
-    /// every little while until the sheet is on it. The server says when
-    /// none will come (the model refused the work, the key's trouble): its
-    /// own sheet is shown then, and here too once waited for long enough.
+    /// While the image model still draws the take's sheet on a page that
+    /// is open (the study waited for it long enough; an analysis made anew,
+    /// opened meanwhile): the server's own sheet stands in, and the page is
+    /// fetched again every little while until the drawn one is on it.
     private func followDrawnSheet() async {
         guard work?.compositionDrawnPending == true else { return }
-        drawnLate = false
         for _ in 0..<42 {  // some seven minutes
             try? await Task.sleep(for: .seconds(10))
             if Task.isCancelled { return }
             await refreshPage()
             guard work?.compositionDrawnPending == true, work?.compositionDrawn == nil else { return }
         }
-        drawnLate = true
     }
 
     /// While "Jak powstawał" is written (a few seconds after the study

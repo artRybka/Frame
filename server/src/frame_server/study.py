@@ -4,8 +4,10 @@ whose page becomes the work's study once written (:meth:`Study.adopt`).
 
 The works asked about are kept, so their studies are kept too and opening
 one again costs nothing. Once Claude has written a study, its fragments
-("Detale") are cut from the original before the study is ready, so it opens
-whole.
+("Detale") are cut from the original, and the sketch of its composition is
+drawn by the image model (``drawn``), before the study is ready, so it
+opens whole (Mateusz 2026-11-15: "Wlicz przygotowanie szkicu do czasu
+potrzebnego na opracowanie studium").
 """
 
 from __future__ import annotations
@@ -61,6 +63,7 @@ PARTS = (
     "composition_check",
     "composition_motion",
     "composition_text",
+    "sketch",
     "cutting",
     "later",
 )
@@ -69,6 +72,7 @@ STATUS_OF: dict[str, Status] = {
     "waiting": "waiting",
     "restoring": "sources",
     "sources": "sources",
+    "sketch": "details",
     "cutting": "details",
     "later": "details",
     **{part: "writing" for part in PARTS[2:9]},
@@ -84,6 +88,7 @@ TYPICAL_PARTS: dict[str, float] = {
     "composition_check": 5,
     "composition_motion": 15,
     "composition_text": 20,
+    "sketch": 90,
     "cutting": 10,
     "later": 5,
 }
@@ -91,6 +96,12 @@ TYPICAL_PARTS: dict[str, float] = {
 TIMINGS_KEY = "study_timings"
 #: How many are kept to say how long the next one takes.
 TIMINGS_KEPT = 12
+#: A study waits this long at most for the image model's sketch of its
+#: composition (seconds); after it, it is ready with the server's own
+#: sheet, which the drawn one replaces when it comes.
+SKETCH_WAIT = 300.0
+#: How often the wait for the sketch looks whether it is there (seconds).
+SKETCH_LOOK = 2.0
 
 
 @dataclass(frozen=True)
@@ -142,6 +153,12 @@ class Study:
         self.restorer: Restorer | None = None
         #: Works ordered for later whose picture is drawn first.
         self._restoring: set[str] = set()
+        #: Whether the image model's sketch of the study's composition is
+        #: still being drawn (``drawn.DrawnSheets.coming``): the study is
+        #: ready once it is there. And whether the model draws sketches now
+        #: at all, for how long a study is expected to take.
+        self.sketch_coming: Callable[[Item], bool] = lambda item: False
+        self.sketches: Callable[[], bool] = lambda: False
         job.on_stage = self._staged
         daily.on_written = self.adopt
         daily.studied = self.studied
@@ -352,18 +369,16 @@ class Study:
                 step: tuple[Status, str] = ("failed", self._errors[item_id])
             elif item is None:
                 return
-            elif (essay := self.job.essay(item)) is None:
+            elif self.job.essay(item) is None:
                 step = ("failed", FAILED)
             elif item_id in self._cutting:
                 return  # told when the cutting under way ends
-            elif not essay.details and not essay.legacy:
-                step = ("ready", "")
             else:
+                # Its details cut and its sketch drawn first: "details"
+                # until then, as for the older apps.
                 self._cutting.add(item_id)
                 step = ("details", "")
-        if item is not None and step[0] == "details":
-            self._part(item, "cutting")
-        elif item is not None:
+        if item is not None and step[0] != "details":
             self._step(item, *step)
         if step[0] == "details" and item is not None:
             threading.Thread(
@@ -371,23 +386,49 @@ class Study:
             ).start()
 
     def making(self, item_id: str) -> bool:
-        """Whether the study is being written, or its details cut and its
-        later works looked up (:meth:`_cut`): the page leaves those to it."""
+        """Whether the study is being written, or its details cut, its
+        later works looked up and its sketch drawn (:meth:`_cut`): the page
+        leaves those to it."""
         with self._lock:
             return item_id in self._asking or item_id in self._cutting
 
     def _cut(self, item: Item) -> None:
+        """The written study made whole: its details cut, its later works
+        looked up, while the image model draws the sketch of its
+        composition (in ``drawn``'s own thread); ready once that is there
+        too. The sketch is told rather than the details while it is drawn:
+        it takes longest."""
+        start = time.monotonic()
+
+        def coming() -> bool:
+            try:
+                return self.sketch_coming(item)
+            except Exception:
+                log.exception("sketch of the study of %s", item.id)
+                return False
+
+        def at(part: str) -> None:
+            self._part(item, "sketch" if coming() else part)
+
         try:
-            self.detail(item, 0)
-        except Exception:
-            log.exception("details of the study of %s", item.id)
-        try:
-            # What it led to, with pictures, before the study opens.
             essay = self.job.essay(item)
-            later = self.daily.later
-            if later is not None and essay is not None and later.missing(item.id, essay.legacy):
-                self._part(item, "later")
-                later.look(item, essay.legacy)
+            if essay is not None and (essay.details or essay.legacy):
+                at("cutting")
+                try:
+                    self.detail(item, 0)
+                except Exception:
+                    log.exception("details of the study of %s", item.id)
+                # What it led to, with pictures, before the study opens.
+                later = self.daily.later
+                if later is not None and later.missing(item.id, essay.legacy):
+                    at("later")
+                    later.look(item, essay.legacy)
+            if coming():
+                self._part(item, "sketch")
+                while coming() and time.monotonic() - start < SKETCH_WAIT:
+                    time.sleep(SKETCH_LOOK)
+                if coming():
+                    log.info("study of %s ready without its sketch, still drawn", item.id)
         except Exception:
             log.exception("later works in the study of %s", item.id)
         finally:
@@ -456,9 +497,11 @@ class Study:
             part: float(statistics.median(float(t.get(part, 0.0) or 0.0) for t in kept))
             for part in PARTS
         }
-        # Only small pictures are drawn again: the studies that had it.
-        drawn = [float(t["restoring"]) for t in kept if float(t.get("restoring", 0.0) or 0.0) > 0]
-        found["restoring"] = statistics.median(drawn) if drawn else TYPICAL_PARTS["restoring"]
+        # Only small pictures are drawn again, and sketches only since the
+        # image model draws them: the studies that had it.
+        for part in ("restoring", "sketch"):
+            had = [float(t[part]) for t in kept if float(t.get(part, 0.0) or 0.0) > 0]
+            found[part] = statistics.median(had) if had else TYPICAL_PARTS[part]
         return found
 
     def progress(self, item_id: str) -> Progress | None:
@@ -471,6 +514,8 @@ class Study:
         if started is None or part not in PARTS:
             return Progress(part)
         expected = self.expected()
+        if part != "sketch" and not self.sketches():
+            expected["sketch"] = 0.0  # no sketch drawn: none waited for
         left = expected[part] + sum(expected[p] for p in PARTS[PARTS.index(part) + 1 :])
         if part == "text_again":  # as long as the first answer took
             left += expected["text"]

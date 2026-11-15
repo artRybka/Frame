@@ -105,7 +105,8 @@ class StudyBrief(BaseModel):
 
 
 def _briefs(svc: FrameService) -> list[StudyBrief]:
-    written = svc.study.written()
+    # A study shows here once ready, its details and sketch made too.
+    written = [entry for entry in svc.study.written() if not svc.study.making(entry[0].id)]
     remote = remote_items(svc, [item for item, _, _ in written], copies=False, keep_hidden=True)
     return [
         StudyBrief(
@@ -263,7 +264,11 @@ class CompositionPick(BaseModel):
 def _again_state(svc: FrameService, item_id: str) -> CompositionAgain:
     pages = [svc.library.note(item_id, kind) for kind in PAGES]
     counts = [len(versions(p.data)) for p in pages if p is not None]
-    return CompositionAgain(pending=svc.compose.pending(item_id), versions=max(counts, default=0))
+    item = svc.library.get(item_id)
+    # On its way until the new take's sketch is drawn too (Mateusz
+    # 2026-11-15): the page keeps the analysis before till then.
+    pending = svc.compose.pending(item_id) or (item is not None and svc.drawn.anew(item))
+    return CompositionAgain(pending=pending, versions=max(counts, default=0))
 
 
 @router.post(
