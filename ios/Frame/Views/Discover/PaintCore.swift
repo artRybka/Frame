@@ -1141,6 +1141,20 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
         /// over its height, either way) and over how long its paint rises
         /// out of the wet paint under it (points).
         var round = 1.0, slant = 0.0, rise = 1.6
+        /// How much of the lip a pull's sides stand up in (1: as now), and
+        /// how deep its bristles' grooves are (1: as now).
+        var lip = 1.0, grooves = 1.0
+        /// Short pulls laid over each colour's ground, about one every this
+        /// many points (0: none): partly across the bar, a little lighter or
+        /// darker, as a painter goes over a laid-in colour.
+        var over = 0.0
+        /// A soft hem: the paint thins out this far in from the bar's edge
+        /// (points), along a rough line, not a taped one; nil: none.
+        var hem: Double? = nil
+        /// How unequal the pulls of one colour are in length (0.36: as now).
+        var uneven = 0.36
+        /// The little ridge of wet paint a pull pushes up where it begins in the paint before it.
+        var push = 0.0
 
         static let now = Look(stride: 64, back: 16, own: 1, ragged: 1, mound: 1, tail: true, box: nil, rows: 1, shade: 0, line: 1)
         /// A: short pulls, a calm soft-edged band that ends where it should.
@@ -1153,8 +1167,19 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
         static let rows = Look(stride: 22, back: 7, own: 0.5, ragged: 0.6, mound: 0.45, tail: false, box: 1.2, rows: 2, shade: 0.07, line: 0.6,
                                round: 0.4, slant: 3, rise: 4)
 
+        /// D: the colours laid in with long calm pulls, then gone over with
+        /// short ones, partly across; a soft rough hem.
+        static let over = Look(stride: 64, back: 14, own: 0.4, ragged: 0.8, mound: 0.35, tail: false, box: nil, rows: 1, shade: 0.03, line: 0.6,
+                               round: 0.6, slant: 4, rise: 6, lip: 0.35, grooves: 1.5, over: 17, hem: 1.0, push: 0.3)
+        /// E: short pulls of uneven length, each dragged into the wet paint
+        /// before it (no lip, deeper grooves); a soft rough hem.
+        static let wet = Look(stride: 30, back: 12, own: 0.4, ragged: 0.8, mound: 0.2, tail: false, box: nil, rows: 1, shade: 0.07, line: 0.6,
+                              round: 0.5, slant: 7, rise: 9, lip: 0.3, grooves: 1.6, over: 0, hem: 1.0, uneven: 0.7, push: 0.35)
+
         static func named(_ name: String) -> Look {
             switch name.lowercased() {
+            case "d", "over": return .over
+            case "e", "wet": return .wet
             case "a", "short": return .short
             case "b", "taped": return .taped
             case "c", "rows": return .rows
@@ -1205,6 +1230,8 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
     private struct Laid {
         var index: [Int32] = []
         var along: [Float] = [], cover: [Float] = [], height: [Float] = [], body: [Float] = []
+        /// How much of the height under it gives way to its own (a calmer look: slowly, from its start and sides).
+        var lift: [Float] = []
         var red: [Float] = [], green: [Float] = [], blue: [Float] = []
     }
 
@@ -1313,15 +1340,17 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
         var random = PaintRandom(seed + 17), x = 0.0, at = 0.0
         var pulls = [Pull]()
         var lastIn = [Int?](repeating: nil, count: rows)
+        var grounds = [(from: Double, to: Double, colour: Int)]()
         for (n, i) in mains.enumerated() {
             let w = room * shares[i].weight / ground, count = max(1, Int((w / stride).rounded()))
+            grounds.append((x, x + w, i))
             for j in 0..<(count * rows) {
                 let row = j % rows, q = j / rows
                 // A lower row's pulls are begun half a pull later: the seams do not meet.
                 let shift = row == 0 ? 0.0 : w / Double(count) * 0.5 * Double(row) / Double(rows)
                 // No two pulls of a colour are as long.
                 func edge(_ q: Int) -> Double {
-                    q == 0 || q == count ? Double(q) : Double(q) + 0.36 * (Paint.hash(Double(q), Double(i) + 7 * Double(row), Double(seed) + 23) - 0.5)
+                    q == 0 || q == count ? Double(q) : Double(q) + look.uneven * (Paint.hash(Double(q), Double(i) + 7 * Double(row), Double(seed) + 23) - 0.5)
                 }
                 let from = x + w * edge(q) / Double(count) + (q == 0 ? 0 : shift)
                 let to = min(room, x + w * edge(q + 1) / Double(count) + (q + 1 == count ? 0 : shift))
@@ -1375,8 +1404,49 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
         for end in ends where look.tail {
             pulls[end].full += (0.9 - pulls[end].full) * evened.last * even
         }
+        // Gone over: short pulls on each colour's ground, partly across the bar.
+        if look.over > 0 {
+            var overs = [Pull]()
+            for (n, g) in grounds.enumerated() {
+                let w = g.to - g.from, count = max(1, Int((w / look.over).rounded()))
+                for k in 0..<count {
+                    let h = Paint.hash(Double(k), Double(n), Double(seed) + 61)
+                    let long = 13 + 15 * Paint.hash(Double(k), Double(n), Double(seed) + 62)
+                    var mid = g.from + w * (Double(k) + 0.5 + 0.6 * (h - 0.5)) / Double(count)
+                    mid = min(room - long / 2, max(long / 2 + 2, mid))
+                    var pull = varied(a: mid - long / 2, e: mid + long / 2, touch: false, even: even, random: &random)
+                    let across = Paint.hash(Double(k), Double(n), Double(seed) + 63)
+                    pull.wide = Paint.bar / 2 * (0.32 + 0.3 * across)
+                    pull.dy = (Paint.bar / 2 - pull.wide - 1) * (2 * Paint.hash(Double(k), Double(n), Double(seed) + 64) - 1)
+                    pull.tilt = 0.07 * (2 * Paint.hash(Double(k), Double(n), Double(seed) + 65) - 1)
+                    pull.sway *= 0.3
+                    pull.taper *= 0.6
+                    pull.full = 0.45 + 0.4 * Paint.hash(Double(k), Double(n), Double(seed) + 66)
+                    // Near a neighbour colour the brush carries some of it.
+                    var rgb = shares[g.colour].rgb
+                    let t = (mid - g.from) / max(1, w)
+                    if t < 0.3, n > 0 { rgb = mixed(rgb, shares[grounds[n - 1].colour].rgb, 0.35 * (0.3 - t) / 0.3) }
+                    if t > 0.7, n < grounds.count - 1 { rgb = mixed(rgb, shares[grounds[n + 1].colour].rgb, 0.35 * (t - 0.7) / 0.3) }
+                    let tone = 1 + 0.09 * (2 * Paint.hash(Double(k), Double(n), Double(seed) + 67) - 1)
+                    pull.rgb = rgb.map { min(255, $0 * tone) }
+                    pull.under = shares[g.colour].rgb
+                    pull.carry = (6, 14)
+                    pull.blend = 0.4
+                    pull.mark = 0.25
+                    pull.takes = stroke * 0.6
+                    overs.append(pull)
+                }
+            }
+            // Laid from the left, as the ground was.
+            for var pull in overs.sorted(by: { $0.a < $1.a }) {
+                pull.at = at
+                at += apart * 0.45
+                pulls.append(pull)
+            }
+            at += stroke * 0.6 - apart * 0.45
+        }
         let seams = pulls.dropFirst().map(\.a)
-        at += stroke - apart / Double(rows) + accents.after
+        at += (look.over > 0 ? 0 : stroke - apart / Double(rows)) + accents.after
         var spots = [(at: Double, long: Double)]()
         for (n, i) in small.enumerated() {
             let wish = room * (0.1 + 0.8 * (Double(n) + 0.5 + 0.5 * (random.next() - 0.5)) / Double(small.count))
@@ -1459,6 +1529,8 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
                     let slant = P.touch ? 0 : look.slant * (2 * Paint.hash(di, 3, seed + 211) - 1) * v / Hs
                     let start = 5.5 * P.blob * (0.35 + 0.65 * P.mark) * (1 - max(0, 1 - pow(across, 2.4)).squareRoot()) * (P.touch ? 1 : look.round)
                         + 1.6 * (Paint.noise(v / 2.6, 7.7 * di, 97 + seed) - 0.5) + slant
+                        // In wet paint the bristles' tips come down unevenly.
+                        + (look.lip < 1 && P.mark < 1 && !P.touch ? 2.4 * (Paint.noise(v / 0.55, 4.1 * di, 99 + seed) - 0.5) : 0)
                     if u - start < -0.6 { continue }
                     // Where the paint takes: everywhere while the brush is full; as it dries only where a
                     // bristle still carries some (streaks along the pull) and where the ground stands up
@@ -1478,13 +1550,24 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
                         cover *= Paint.step(-0.35, 0.35, y - top) * Paint.step(-0.35, 0.35, foot - y)
                         taped = exp(-pow((y - top) / 0.7, 2)) + exp(-pow((foot - y) / 0.7, 2))
                     }
+                    // A soft hem: the bristles thin out along a rough line near the bar's edge.
+                    if let hem = look.hem {
+                        let top = hem + 1.1 * (Paint.noise(x / 6, 0.5, 205 + seed) - 0.5) + 0.6 * (Paint.noise(x / 1.4, 1.5, 206 + seed) - 0.5)
+                        let foot = Hs - hem - 1.1 * (Paint.noise(x / 6, 2.5, 207 + seed) - 0.5) - 0.6 * (Paint.noise(x / 1.4, 3.5, 208 + seed) - 0.5)
+                        let room = min(y - top, foot - y)
+                        cover *= Paint.step(-1.2, 0.6, room + 0.9 * (streaks - 0.5))
+                    }
                     if cover <= 0 { continue }
                     // How high it stands: more where there is more of it, most where the brush came down; ridges along the bristles.
-                    let sidelip = exp(-pow((side - 1.3) / 1.25, 2))
+                    let sidelip = exp(-pow((side - 1.3) / 1.25, 2)) * look.lip
                     let down = exp(-pow((u - 3.4 * P.blob) / 3.6, 2)) * Paint.step(0, 2, side)
-                    var hgt = ((0.55 + 0.3 * slow) + 0.34 * ragged * (br - 0.5) * (0.4 + 0.6 * slow) + 0.4 * sidelip) * (0.18 + 0.82 * here)
+                    var hgt = ((0.55 + 0.3 * slow) + 0.34 * ragged * look.grooves * (br - 0.5) * (0.4 + 0.6 * slow) + 0.4 * sidelip) * (0.18 + 0.82 * here)
                         + 0.8 * mound * down * P.blob * P.mark
-                    hgt = max(0.05, hgt) * (look.box == nil ? Paint.step(0, 1.5, side) : 1) * Paint.step(0, P.mark < 1 ? look.rise : 1.6, u - start) + 0.1 + 0.25 * taped
+                    let ramp = (look.box == nil ? Paint.step(0, 1.5, side) : 1) * Paint.step(0, P.mark < 1 ? look.rise : 1.6, u - start)
+                    let calm = look.lip < 1
+                    hgt = max(0.05, hgt) * (calm && !P.on ? 1 : ramp) + 0.1 + 0.25 * taped
+                    if calm, P.mark < 1, !P.on { hgt += look.push * exp(-pow((u - start - 1.8) / 1.4, 2)) * (0.6 + 0.8 * streaks) }
+                    laid.lift.append(Float(calm ? cover * ramp * (P.on ? 0.75 : 1) : cover))
                     let streak = 1 + ragged * (0.1 * (Paint.noise(v / 1.1, 2.3 * di + x / 60, 131 + seed) - 0.5) + 0.06 * (slow - 0.5))
                     var cr = c[0], cg = c[1], cb = c[2]
                     // Over the pull before, which is still wet, the two paints mix: the bristles that picked
@@ -1576,11 +1659,13 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
                     G[k] = Float((Double(pull.green[j]) * body + Double(G[k]) * was * (1 - body)) / on)
                     B[k] = Float((Double(pull.blue[j]) * body + Double(B[k]) * was * (1 - body)) / on)
                     // An accent stands on the paint under it.
+                    // In wet paint (a calmer look) the new paint goes over into the old without a groove at its edge.
                     H[k] = P.on ? Float(Double(H[k]) * (1 - 0.3 * cover) + 0.75 * hgt * cover)
+                        : look.lip < 1 ? Float(Double(H[k]) + (hgt - Double(H[k])) * Double(pull.lift[j]) * Paint.step(-1, 1, head - u))
                         : Float(max(Double(H[k]) * (1 - 0.5 * cover), hgt * cover))
                     A[k] = Float(on)
                 } else {
-                    H[k] = Float(hgt * cover)
+                    H[k] = Float(hgt * (look.lip < 1 ? Double(pull.lift[j]) : cover))
                     A[k] = Float(body)
                     R[k] = pull.red[j]
                     G[k] = pull.green[j]
