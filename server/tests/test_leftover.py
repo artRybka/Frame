@@ -348,3 +348,50 @@ def test_the_catalogues_texts_count_every_work_without_them(tmp_path: Path) -> N
     assert works == 6 and usd > 0
     (texts,) = (u for u in svc.leftover.uses_view() if u["key"] == "descriptions")
     assert texts["waiting"] == 6 and texts["waiting_usd"] == round(usd, 2)
+
+
+def test_the_catalogues_texts_take_the_owners_number_a_night(tmp_path: Path) -> None:
+    """Mateusz 2026-11-15, seeing "czeka 125323 · ok. 824,84 USD": "Jak to
+    zlimitować? To baaaardzo dużo." The night gave the texts all the rest at
+    once; now at most his number of works a night, and the app tells what a
+    night takes, not the whole catalogue."""
+    _, svc, fake = _claude(tmp_path)
+    _switched_on(svc)
+    assert svc.ai_config.config.leftover_texts_a_night == 1000  # by default
+    svc.ai_config.update(AiConfigUpdate(pl_text=True, keywords_artworks=True))
+    # below what the app offers, to see it with a few works
+    svc.ai_config._save(svc.ai_config.config.model_copy(update={"leftover_texts_a_night": 3}))
+    _spent(svc, 150.0)
+    for n in range(1, 8):
+        _add(
+            svc,
+            f"met:{n}",
+            title=f"Work {n}",
+            artist=f"Painter {n}",
+            description="A long story " * 30,
+            pooled=True,
+        )
+    svc.leftover._texts_estimate(wait=True)
+    (texts,) = (u for u in svc.leftover.uses_view() if u["key"] == "descriptions")
+    assert texts["waiting"] == 7 and texts["a_night"] == 3 and texts["tonight"] == 3
+    assert texts["tonight_usd"] > 0 and texts["tonight_usd"] < texts["waiting_usd"]
+    assert texts["a_night_options"] == list(leftover_module.TEXTS_A_NIGHT_OPTIONS)
+    _, said = svc.leftover.at_night()
+    assert "opisy katalogu: 3" in said
+    assert fake.batches  # questions went
+    works = {item_id for record in svc.ai._batches() for item_id in record["ids"].values()}
+    assert len(works) == 3
+    assert svc.leftover._state()["tally"]["descriptions"][0] == 3
+
+
+def test_the_app_sets_the_texts_a_night(tmp_path: Path) -> None:
+    app, svc, _ = _claude(tmp_path)
+    token = svc.settings.api_token
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    with TestClient(app) as client:
+        got = client.put("/api/ai", json={"leftover_texts_a_night": 500}, headers=headers)
+        assert got.status_code == 200
+        uses = got.json()["leftover_state"]["uses"]
+        assert next(u for u in uses if u["key"] == "descriptions")["a_night"] == 500
+        bad = client.put("/api/ai", json={"leftover_texts_a_night": 10}, headers=headers)
+        assert bad.status_code == 422

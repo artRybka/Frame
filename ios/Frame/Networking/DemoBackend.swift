@@ -2136,6 +2136,12 @@ actor DemoBackend: FrameBackend {
             if let off = update.leftoverOff {
                 for index in uses.indices { uses[index].on = !off.contains(uses[index].key) }
             }
+            if let night = update.leftoverTextsANight,
+               let index = uses.firstIndex(where: { $0.key == "descriptions" }) {
+                uses[index].aNight = night
+                uses[index].tonight = min(uses[index].waiting ?? night, night)
+                uses[index].tonightUsd = Double(uses[index].tonight ?? 0) * uses[index].eachUsd
+            }
             aiValue.leftoverState?.uses = uses
         }
         return aiValue
@@ -2481,8 +2487,9 @@ extension DemoBackend {
         LeftoverUse(
             key: "descriptions", label: "Słowa kluczowe i polskie opisy",
             about: "Dzieła katalogu, które ich jeszcze nie mają, najpierw Ulubione i playlisty.",
-            on: true, able: true, waiting: 5300, eachUsd: 0.001, waitingUsd: 5.3, aNight: nil,
-            done: 0, doneUsd: 0
+            on: true, able: true, waiting: 125_323, eachUsd: 0.0066, waitingUsd: 824.84, aNight: 1000,
+            done: 0, doneUsd: 0, aNightOptions: [250, 500, 1000, 2000, 5000, 10000],
+            tonight: 1000, tonightUsd: 6.58
         ),
         LeftoverUse(
             key: "audit", label: "Większy nocny przegląd",

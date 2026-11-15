@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.170
+
+- Resztka miesiąca Claude: „Słowa kluczowe i polskie opisy” mają limit
+  na noc, domyślnie 1000 dzieł (ok. 6,60 USD); pod pozycją menu „do 1000
+  na noc” (250–10 000). Dotąd ta pozycja mogła jednej nocy wziąć całą
+  wolną resztkę. Wiersz pokazuje teraz, ile pójdzie tej nocy i za ile,
+  zamiast kosztu całego zaległego katalogu.
+
 ## 1.145.169
 
 - Korekta kadru: narożnik na zdjęciu łapie się teraz w kole o średnicy
