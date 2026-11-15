@@ -10,7 +10,7 @@ from PIL import Image
 
 from ..imaging.color import linear_to_oklab, linear_to_u8, oklab_to_linear, u8_to_linear
 from ..imaging.layout import load_image
-from .models import ColorSwatch
+from .models import ColorSwatch, Note
 
 # Colour families used for tags and smart playlists. The app shows them
 # with Polish names; keep the keys stable.
@@ -55,8 +55,9 @@ COLOUR_SPREAD = (0.01, 0.035)
 #: largest (``striking``); 18: a white that stands out in a dark picture of
 #: one tone (``LIGHT_DARK``); 19: a faint cool colour against a warm
 #: ground (``cast_accents``); 20: a muted colour present on ``PRESENT``
-#: of the picture is an accent (``PRESENT_AREA``).
-SCORE_VERSION = 20
+#: of the picture is an accent (``PRESENT_AREA``); 21: what may be a blue
+#: under yellowed varnish (``varnished_blue``, ``Item.varnish_blue``).
+SCORE_VERSION = 21
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
 #: this chroma / lightness for light ones: a greyish-blue sky does, a beige
@@ -315,6 +316,26 @@ CAST_FAINT = 0.006
 CAST_OFF = 0.04
 CAST_OFF_TIMES = 2.5
 CAST_AREA = 0.008
+#: A blue that yellowed varnish turned green (Mateusz 2026-11-15 09:34,
+#: card: „Tak, i błękit pod werniksem”; 09:41, after the test: „Wdrożyć”).
+#: On a warm cast (``CAST_HUES``, ``CAST_CHROMA``) a pixel green or teal
+#: by its own hue (``VARNISH_HUES``, ``VARNISH_CHROMA`` at least) is blue
+#: once the cast is taken off (``VARNISH_BLUE``, ``VARNISH_OFF`` from it),
+#: of a middle lightness; such pixels cover ``VARNISH_AREA`` of the
+#: picture. Colours alone cannot tell such a sky from a real green: of the
+#: 15 works of his library that had one, half were Cranach's sky, Bosch's
+#: Mary, Wyczółkowski's water, half the green robes of Cosmas and Damian
+#: and Mehoffer's leaves. So the area is only a question: Haiku is shown
+#: it at night (``ai.varnish``) and the blue it names is the work's
+#: accent (``with_blue``).
+VARNISH_HUES = (120.0, 210.0)
+VARNISH_CHROMA = 0.025
+VARNISH_BLUE = (210.0, 290.0)
+VARNISH_OFF = 0.04
+VARNISH_LIGHT = (0.25, 0.85)
+VARNISH_AREA = 0.01
+#: The kind of the notes with Haiku's answer (``ai.varnish``).
+VARNISH_NOTE = "varnish_blue"
 #: A colour is an accent of a picture (its ``ACCENT_TAG``) also when the
 #: bar does not show it: its pixels that stand out cover ``OUT_AREA`` of
 #: the picture. A pixel stands out when it is ``OUT_TIMES`` as coloured as
@@ -527,6 +548,8 @@ class Analysis(NamedTuple):
     tags: list[str]
     #: Each colour family's share of the picture (``color_shares``).
     shares: dict[str, float]
+    #: The share that may be a blue under varnish (``varnished_blue``).
+    varnish: float = 0.0
 
 
 def analyse(img: Image.Image, spread: float | None = None) -> Analysis:
@@ -598,7 +621,58 @@ def analyse(img: Image.Image, spread: float | None = None) -> Analysis:
     swatches += [_swatch(c, w, accent=True) for c, w, _ in small]
     swatches += [_swatch(c, w, accent=True) for c, w in white]
     tags = colour_tags(fine, spread, shown, monochrome, also)
-    return Analysis(swatches, tags, colour_shares(fine, spread))
+    varnish = 0.0 if monochrome or spread < COLOUR_SPREAD[0] else varnished_blue(fine, tags)
+    return Analysis(swatches, tags, colour_shares(fine, spread), varnish)
+
+
+def varnish_area(lab: np.ndarray) -> np.ndarray:
+    """The pixels (OKLab, any shape) that may be a blue under yellowed
+    varnish (``VARNISH_HUES``...): none unless the picture's cast is warm."""
+    cast = np.median(lab.reshape(-1, 3)[:, 1:], 0)
+    cast_hue = float(np.degrees(np.arctan2(cast[1], cast[0])) % 360)
+    if float(np.hypot(*cast)) < CAST_CHROMA or not CAST_HUES[0] <= cast_hue < CAST_HUES[1]:
+        return np.zeros(lab.shape[:-1], dtype=bool)
+    chroma = np.hypot(lab[..., 1], lab[..., 2])
+    hue = _hue(lab)
+    off = lab[..., 1:] - cast
+    off_hue = np.degrees(np.arctan2(off[..., 1], off[..., 0])) % 360
+    light = lab[..., 0]
+    return np.asarray(
+        (chroma >= VARNISH_CHROMA)
+        & (hue >= VARNISH_HUES[0])
+        & (hue < VARNISH_HUES[1])
+        & (off_hue >= VARNISH_BLUE[0])
+        & (off_hue < VARNISH_BLUE[1])
+        & (np.hypot(off[..., 0], off[..., 1]) >= VARNISH_OFF)
+        & (light > VARNISH_LIGHT[0])
+        & (light < VARNISH_LIGHT[1])
+    )
+
+
+def varnished_blue(lab: np.ndarray, tags: Sequence[str]) -> float:
+    """The share of the picture that may be a blue under varnish
+    (``varnish_area``), to three places; 0 below ``VARNISH_AREA`` or when
+    the picture is found by its blue already."""
+    if "blue" in tags or ACCENT_TAG + "blue" in tags:
+        return 0.0
+    share = float(varnish_area(lab).mean())
+    return round(share, 3) if share >= VARNISH_AREA else 0.0
+
+
+def saw_blue(note: Note | None) -> bool:
+    """Whether Haiku's note (``VARNISH_NOTE``) says the area is blue paint."""
+    return note is not None and note.data.get("painted") == "blue"
+
+
+def with_blue(tags: Sequence[str]) -> list[str]:
+    """``tags`` with the blue Haiku saw under the varnish (``ai.varnish``):
+    an accent, after the picture's other colours and accents."""
+    tags = list(tags)
+    if "blue" in tags or ACCENT_TAG + "blue" in tags:
+        return tags
+    colours = [t for t in tags if t in COLOR_FAMILIES or t.startswith(ACCENT_TAG)]
+    at = tags.index(colours[-1]) + 1 if colours else 0
+    return [*tags[:at], ACCENT_TAG + "blue", *tags[at:]]
 
 
 def colour_shares(lab: np.ndarray, spread: float) -> dict[str, float]:

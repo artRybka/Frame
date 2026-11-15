@@ -34,6 +34,7 @@ from .ai.search_words import SearchWords
 from .ai.study import StudyJob
 from .ai.text_review import TextReview
 from .ai.twins_judge import NightJudge
+from .ai.varnish import VarnishJob
 from .ai.web_facts import WebFacts
 from .albums import Albums
 from .artist_people import ArtistPeople
@@ -303,6 +304,8 @@ class FrameService:
         self.museum_words = MuseumWords(self.library, self.claude, self.ai_config)
         self.ai = AiWorker(self.library, self.images, self.claude, self.ai_config)
         self.ai.register(KeywordsJob(self.library, self.images, self.ai_config))
+        # A green under yellowed varnish that is a blue (Haiku, at night).
+        self.ai.register(VarnishJob(self.library, self.images, self.ai_config))
         self.pl_text = PlTextJob(self.library, self.images, self.ai_config)
         self.ai.register(self.pl_text)
         # The Polish texts kept looked over at the owner's tap (Konfiguracja).

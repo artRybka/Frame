@@ -58,6 +58,9 @@ class AiConfig(BaseModel):
     #: board around it (Haiku picks them, Opus sets the corners; at night
     #: and when a card opens, ``ai.crops``).
     crops: bool = True
+    #: A green that may be a blue under yellowed varnish shown to Haiku at
+    #: night; the blue it names is the work's accent (``ai.varnish``).
+    varnish_blue: bool = True
     #: Google's key (the image model, ``ai.drawn``).
     gemini_api_key: str | None = None
     #: The study sheets of the analyses drawn by the image model (three
@@ -100,6 +103,7 @@ class AiConfigUpdate(BaseModel):
     journey: bool | None = None
     web_facts: bool | None = None
     crops: bool | None = None
+    varnish_blue: bool | None = None
     drawn: bool | None = None
     looks: bool | None = None
     stages: bool | None = None
@@ -196,7 +200,15 @@ class AiConfigStore:
             return config.curator
         if kind == "twins_judge":
             return config.twins_judge
-        if kind in ("gatekeeper", "audit", "journey", "web_facts", "stages", "crops"):
+        if kind in (
+            "gatekeeper",
+            "audit",
+            "journey",
+            "web_facts",
+            "stages",
+            "crops",
+            "varnish_blue",
+        ):
             return bool(getattr(config, kind))
         return True
 

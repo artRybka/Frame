@@ -23,7 +23,7 @@ from PIL import Image
 from pydantic import ValidationError
 
 from ..imaging.palette import Palette
-from .colors import analyse, has_colours, tint_spread
+from .colors import VARNISH_NOTE, analyse, has_colours, saw_blue, tint_spread, with_blue
 from .commons import OWN_SOURCES
 from .contour import contour
 from .dates import text_year
@@ -539,21 +539,24 @@ class Importer:
         its size is the work's and stays."""
         with Image.open(self.cache.ensure_thumb(item)) as thumb:
             spread = tint_spread(thumb)
-            colors, tags, shares = analyse(thumb, spread)
+            colors, tags, shares, varnish = analyse(thumb, spread)
             line = contour(thumb, tags)
+        if varnish and saw_blue(self.library.note(item.id, VARNISH_NOTE)):
+            tags = with_blue(tags)
         changes: dict[str, Any] = {
             "colors": colors,
             "contour": line,
             "color_tags": tags,
             "color_shares": shares,
             "tint_spread": spread,
+            "varnish_blue": varnish,
         }
         return self.library.update(item.id, **changes) or item.model_copy(update=changes)
 
     def _analysed(self, item: Item) -> Item:
         with Image.open(self.cache.ensure_thumb(item)) as thumb:
             spread = tint_spread(thumb)
-            colors, tags, shares = analyse(thumb, spread)
+            colors, tags, shares, varnish = analyse(thumb, spread)
             line = contour(thumb, tags)
             width, height = item.width, item.height
             if not width or not height:
@@ -570,6 +573,7 @@ class Importer:
                 "color_tags": tags,
                 "color_shares": shares,
                 "tint_spread": spread,
+                "varnish_blue": varnish,
                 "width": width,
                 "height": height,
             }
@@ -751,7 +755,7 @@ class Importer:
         try:
             with self._thumbnail(item) as img:
                 spread = tint_spread(img)
-                _, tags, shares = analyse(img, spread)
+                _, tags, shares, _ = analyse(img, spread)
                 self._remember_aspect(item, img)
         except (httpx.HTTPError, OSError, ValueError) as err:
             log.info("no thumbnail of %s to look at: %s", item.id, err)

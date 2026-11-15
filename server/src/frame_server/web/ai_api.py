@@ -51,6 +51,9 @@ class AiView(BaseModel):
     stages: bool = True
     #: Museum photographs cut down to the work ("Kadrowanie zdjęć dzieł").
     crops: bool = True
+    #: Haiku asked whether a green under yellowed varnish is a blue
+    #: ("Błękit pod werniksem").
+    varnish_blue: bool = True
     #: Works on the list "Do sprawdzenia": set aside by the gatekeeper, and
     #: the audit's findings.
     review_count: int = 0
@@ -217,6 +220,7 @@ def _view(svc: FrameService) -> AiView:
         web_facts=config.web_facts,
         stages=config.stages,
         crops=config.crops,
+        varnish_blue=config.varnish_blue,
         review_count=len(svc.gatekeeper.written()) + len(svc.audit.written()),
         monthly_limit_usd=config.monthly_limit_usd,
         spent_usd=round(sum(spent.values()), 4),

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.148
+
+- Błękit pod pożółkłym werniksem: niebo, woda albo szata, które na zdjęciu
+  dzieła wyglądają na zielone, a po odjęciu żółci są niebieskie, nocą
+  ogląda Haiku. Gdy to błękit, dzieło dostaje akcent błękitu i znajdzie je
+  szukanie po barwie (niebo u Cranacha, płaszcz Marii u Boscha, woda u
+  Wyczółkowskiego); prawdziwe zielenie zostają zielone. Grosze miesięcznie,
+  przełącznik „Błękit pod werniksem” w Konfiguracji. Biblioteka przelicza
+  barwy po aktualizacji.
+
 ## 1.145.147
 
 - Stonowana barwa, która zajmuje co najmniej 3% obrazu, a pasek pokazuje ją
