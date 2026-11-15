@@ -25,8 +25,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
     case burin
     /// A drawing in pen and ink: the same scale in a pen's lines.
     case pen
-    /// A drawing in pencil or charcoal, a lithograph of one colour: the
-    /// same scale in a soft point's lines.
+    /// A drawing in pencil or charcoal: the same scale in a soft point's lines.
     case pencil
     /// A print in colours from blocks (a colour woodcut): its inks'
     /// impressions (`InkStrip`).
@@ -64,6 +63,10 @@ enum PaintStyle: String, Sendable, CaseIterable {
     /// 2026-11-14 20:09, of sketch 41: „Drzeworyt C”). Was the
     /// engraver's lines.
     case woodcut
+    /// A lithograph of one colour: its tones in the stone's grain, caught
+    /// more or less by the greasy crayon, no lines (`StoneStrip`, sketch
+    /// 46; Mateusz 2026-11-15 15:03: „A”). Was a pencil's hatching.
+    case grain
 
     /// The tool of a work of lines; nil for any other.
     var tool: LineTool? {
@@ -110,7 +113,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
     /// the most part, `PrintPaint.mostlyOne`): a print of one colour is a
     /// scale of tones in lines, with a patch of colour it has beside them
     /// printed on it; one in colours is its inks; a lithograph of one colour
-    /// is the crayon's. A drawing in ink is a pen's (a painting in ink
+    /// is the stone's grain. A drawing in ink is a pen's (a painting in ink
     /// and colours stays flat), one in pencil or charcoal a soft point's;
     /// a drawing that names no tool goes by its ink, `warm` (brown) a
     /// pen's. Paint named wins over the pencil under it (pencil and
@@ -141,7 +144,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
             return .screen
         }
         if has(all, offsets) { return .offset }
-        if has(all, stone) { return oneInk ? .pencil : .litho }
+        if has(all, stone) { return oneInk ? .grain : .litho }
         // A poster that names no other way it was printed ("druk (proces)"): most were printed in offset.
         if has(all, posters), !has(all, prints.filter { !Self.anyPrint.contains($0) }) { return .offset }
         if has(all, prints, ["ets", "druk"]) {
@@ -251,6 +254,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
         case .gouache: return GouacheStrip.time(shares.count)
         case .handColoured: return HandColouredStrip.time(shares)
         case .woodcut: return WoodcutStrip.time(shares.count)
+        case .grain: return StoneStrip.time(shares.count)
         }
     }
 
@@ -268,6 +272,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
         case .gouache: 0.26
         case .handColoured: 0.24
         case .woodcut: 0.26
+        case .grain: 0.26
         }
         return Self.swatchesFrom * bar + gap * Double(index)
     }

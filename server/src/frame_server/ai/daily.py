@@ -569,6 +569,17 @@ def seen_before(item: Item, note: Note, seen: Seen | None) -> Seen:
     )
     if after and cut is not None and quad is not None:
         return seen.model_copy(update={"cut": list(quad), "aspect": cut.aspect})
+    undone = (
+        cut is not None
+        and cut.undone is not None
+        and bool(cut.undone_at)
+        and cut.undone_at <= note.created_at < cut.at
+        and cut.picture == seen.copy_id
+    )
+    if undone and cut is not None and cut.undone is not None:
+        # Written on the model's cut of a work later found to be no
+        # rectangle and shown whole again (2026-11-15).
+        return seen.model_copy(update={"cut": list(cut.undone), "aspect": cut.aspect})
     return seen.model_copy(update={"cut": [], "aspect": 0.0})
 
 
