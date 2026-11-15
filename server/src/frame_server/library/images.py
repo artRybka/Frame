@@ -24,6 +24,7 @@ from ..imaging.cut import same_picture, warp
 from ..imaging.layout import load_image
 from ..imaging.margins import trim_margins
 from ..imaging.mount import inside_mount
+from ..imaging.recovery import deyellow, unvarnished
 from .aic import aic_fallback
 from .fragments import PART, split_part
 from .hosts import HostGuard, Resting, guard, is_urgent, urgently, walled
@@ -603,27 +604,57 @@ class ImageCache:
             return None
         return shown
 
+    @staticmethod
+    def _clean(item: Item, img: Image.Image) -> Image.Image:
+        """``img`` (the work as shown, cut already) with its colours given
+        back when the work is shown so (``Item.cleaned``): the varnish
+        taken off or the sheet de-yellowed."""
+        cleaned = item.cleaned_shown()
+        if cleaned is None:
+            return img
+        if cleaned.kind == "varnish":
+            return unvarnished(img, cleaned.strength)
+        return deyellow(img, opaque=cleaned.made == "opaque", long=max(img.size))
+
+    def _shown(self, item: Item, img: Image.Image, side: int) -> Image.Image | None:
+        """The museum's photograph ``img`` as the work shows it: cut down to
+        the work and cleaned, no larger than an original is kept (the sums
+        are not done on what is thrown away). None: as it came."""
+        quad = self._quad(item, img.size)
+        if quad is None and item.cleaned_shown() is None:
+            return None
+        shown = warp(img, quad) if quad is not None else img.convert("RGB")
+        if side == IMAGE_MAX:
+            size = kept_size(*shown.size)
+            if size != shown.size:
+                shown = shown.resize(size, Image.Resampling.LANCZOS)
+        elif max(shown.size) > side:
+            shown.thumbnail((side, side), Image.Resampling.LANCZOS)
+        return self._clean(item, shown)
+
     def _keep_original(self, item: Item, img: Image.Image, side: int) -> Path:
         """``img``, the museum's photograph as downloaded, kept as the work's
-        original: cut down to the work when its cut applies, the photograph
-        kept beside it (:meth:`full_path`)."""
+        original: cut down to the work when its cut applies and cleaned
+        when it is shown so, the photograph kept beside it
+        (:meth:`full_path`)."""
         path = self.image_path(item)
-        quad = self._quad(item, img.size)
-        if quad is None:
+        shown = self._shown(item, img, side)
+        if shown is None:
             _save_jpeg(img, path, side, 92)
             self.full_path(item).unlink(missing_ok=True)
         else:
             _save_jpeg(img, self.full_path(item), side, 92)
-            _save_jpeg(warp(img, quad), path, side, 92)
+            _save_jpeg(shown, path, side, 92)
         return path
 
     def recut(self, item: Item) -> bool:
         """The original and the thumbnail kept here made again after the
-        work's cut changed (set, corrected, the paper switched, given up):
-        from the museum's photograph kept beside a cut original, else from
-        the original itself. A work with no original here loses its
-        thumbnail, had again (and cut) from its address when next asked
-        for. Whether an original was here."""
+        work's cut changed (set, corrected, the paper switched, given up)
+        or its cleaning did (``Item.cleaned``): from the museum's
+        photograph kept beside a cut or cleaned original, else from the
+        original itself. A work with no original here loses its thumbnail,
+        had again (cut and cleaned) from its address when next asked for.
+        Whether an original was here."""
         path, full = self.image_path(item), self.full_path(item)
         here = False
         with self._lock(f"i:{item.id}"):
@@ -635,14 +666,14 @@ class ImageCache:
                     log.warning("cut of %s not made: %s", item.id, err)
                 else:
                     here = True
-                    quad = self._quad(item, img.size)
-                    if quad is None:
+                    shown = self._shown(item, img, kept_side(item))
+                    if shown is None:
                         if source == full:
-                            os.replace(full, path)  # the photograph whole again
+                            os.replace(full, path)  # the photograph as it came again
                     else:
                         if source == path:
                             os.replace(path, full)  # kept as it came
-                        _save_jpeg(warp(img, quad), path, kept_side(item), 92)
+                        _save_jpeg(shown, path, kept_side(item), 92)
         with self._lock(f"t:{item.id}"):
             thumb = self.thumb_path(item)
             if here and path.is_file():
@@ -664,6 +695,14 @@ class ImageCache:
             return full
         path = self.ensure_image(item, urgent)
         return full if full.is_file() else path  # cut as it came in, or whole
+
+    def before_cleaning(self, item: Item, urgent: bool = False) -> Image.Image:
+        """The work as it is shown but for its cleaning (``Item.cleaned``):
+        the museum's photograph cut down to the work, for the card's
+        comparison."""
+        img = load_image(self.museum_photo(item, urgent))
+        quad = self._quad(item, img.size)
+        return warp(img, quad) if quad is not None else img
 
     def tile(self, thumb: Path) -> Path:
         """The thumbnail ``thumb`` as a cover tile shows it: the work
@@ -779,6 +818,7 @@ class ImageCache:
                     img = self._thumbnail(item, urgent)
                     if (quad := self._quad(item, img.size)) is not None:
                         img = warp(img, quad)  # the work, as its original is kept
+                    img = self._clean(item, img)
                 _save_jpeg(img, path, THUMB_MAX, 85)
         self._forget_gone(item)
         return path

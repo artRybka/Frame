@@ -657,6 +657,13 @@ class Crops(CriticNight):
         img.thumbnail((PHOTO_SIDE, PHOTO_SIDE), Image.Resampling.LANCZOS)
         around = ", ".join(claim.get("around") or []) or "?"
         text = f"{CORNERS}\n\n{facts(item)}\nSeen around it at a glance: {around}."
+        if claim.get("hint"):
+            # "Do sprawdzenia" → "Przytnij": what the night audit saw, in Polish.
+            text += (
+                f"\nA check of the catalogue noticed (in Polish): {claim['hint']} "
+                "Whatever it names that is not the work (a ruler, a colour chart, a museum's "
+                "label, the board or paper around it) stays outside the work's rectangle."
+            )
         return request(
             model=self.critic_model,
             system="You find artworks in museum photographs.",
@@ -844,6 +851,30 @@ class Crops(CriticNight):
             around=old.around,
             aspect=old.aspect,
             picture=item.picture_key(),
+            by="owner",
+            at=_now(),
+        )
+        self.forget_written(item.id)
+        return self.apply(item, cut)
+
+    def cut_now(self, item: Item, hint: str = "") -> Item | None:
+        """ "Do sprawdzenia" → "Przytnij" (Mateusz 2026-11-15): Opus asked for
+        the work's corners now, told what the night audit saw (``hint``: a
+        ruler, a colour chart, a cut edge), and the cut kept as the owner's,
+        never changed by itself again. None when nothing is found to cut."""
+        answer = self.claude.ask(KIND, self.critic_question(item, {"around": [], "hint": hint}))
+        if answer.refused or not answer.data:
+            return None
+        found = self.corners(item, answer.data, sure=False)
+        if found is None or found["work"] is None:
+            return None
+        cut = Cut(
+            work=found["work"],
+            plate=found["plate"],
+            around=list(item.cut.around) if item.cut is not None else [],
+            aspect=float(found["aspect"]),
+            picture=item.picture_key(),
+            shape=str(found.get("shape") or ""),
             by="owner",
             at=_now(),
         )

@@ -192,6 +192,10 @@ class Restorer:
     # -- one work ---------------------------------------------------------------------
 
     def _picture(self, item: Item) -> Image.Image:
+        if item.cleaned_shown() is not None:
+            # A work shown cleaned (``Item.cleaned``) is drawn from the
+            # picture as it came: the drawing is cleaned after, the same.
+            return self.images.before_cleaning(item, urgent=True).convert("RGB")
         path = self.images.ensure_image(item, urgent=True)
         with Image.open(path) as img:
             return img.convert("RGB")

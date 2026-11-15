@@ -42,6 +42,8 @@ FIELDS = {
     "picture": "Obraz",
 }
 MAX_PROBLEMS = 4
+#: What the owner mends with a value (``ai.review_fix``).
+VALUED = ("title", "artist", "date")
 
 SYSTEM = """You audit the catalogue of a home art frame. You get one artwork: its picture and \
 everything the catalogue knows of it (what its source says, and the Polish title and text the \
@@ -57,9 +59,12 @@ the picture support, without contradicting them? true when there is no Polish te
 - "picture_fits": is the picture the artwork shown upright and whole, without a colour \
 chart, ruler, heavy fading, a strong colour cast or a part cut off?
 Then "problems": for each answer that is false, one entry with "field" (title, artist, date, \
-polish or picture) and "problem": in Polish, at most 20 words, what exactly is wrong. Report \
-only what is plainly wrong; style, taste and missing facts are no problems. Last, \
-"confidence" from 0 to 1."""
+polish or picture) and "problem": in Polish, at most 20 words, what exactly is wrong; then \
+"fix": for a title, a maker or a date, the corrected value as the catalogue should keep it (a \
+title in the language of the catalogue's title, without auction notes, dimensions or numbers; \
+a date as "1889" or "c. 1650"), "" when you cannot tell or for polish and picture; and \
+"fix_pl": for a title only, the work's proper Polish title, else "". Report only what is \
+plainly wrong; style, taste and missing facts are no problems. Last, "confidence" from 0 to 1."""
 
 SCHEMA = _object(
     why=_str(),
@@ -69,7 +74,12 @@ SCHEMA = _object(
     picture_fits={"type": "boolean"},
     problems={
         "type": "array",
-        "items": _object(field={"type": "string", "enum": list(FIELDS)}, problem=_str()),
+        "items": _object(
+            field={"type": "string", "enum": list(FIELDS)},
+            problem=_str(),
+            fix=_str(),
+            fix_pl=_str(),
+        ),
     },
     confidence={"type": "number"},
 )
@@ -96,6 +106,21 @@ CRITIC_SCHEMA = _object(
 def _cut(text: str) -> str:
     text = " ".join(text.split())
     return text if len(text) <= TEXT_CHARS else text[:TEXT_CHARS].rsplit(" ", 1)[0] + " …"
+
+
+def _problem(raw: dict[str, Any]) -> dict[str, Any]:
+    """One problem as kept: its field, what is wrong and, for a title, a
+    maker or a date, the corrected value ("Do sprawdzenia" → "Popraw")."""
+    problem = {
+        "field": str(raw.get("field")),
+        "problem": str(raw.get("problem") or "").strip()[:200],
+    }
+    if problem["field"] in VALUED:
+        for key in ("fix", "fix_pl"):
+            value = " ".join(str(raw.get(key) or "").split()).strip(' "„”')[:300]
+            if value and (key == "fix" or problem["field"] == "title"):
+                problem[key] = value
+    return problem
 
 
 class Audit(CriticNight):
@@ -152,7 +177,7 @@ class Audit(CriticNight):
 
     def claim(self, item: Item, data: dict[str, Any]) -> dict[str, Any] | None:
         problems = [
-            {"field": str(p.get("field")), "problem": str(p.get("problem") or "").strip()[:200]}
+            _problem(p)
             for p in data.get("problems") or []
             if isinstance(p, dict) and p.get("field") in FIELDS and p.get("problem")
         ][:MAX_PROBLEMS]

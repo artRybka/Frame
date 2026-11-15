@@ -1224,6 +1224,63 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(OilStrip(touch: jatte[0].rgb, index: 0, seed: 5, dark: false).look, .before)
     }
 
+    /// Thick paint (sketch 50 F, Mateusz 2026-11-15 19:15: „Raczej F, ale te
+    /// spokojne partie mogą być mniej 3D. Malowane bardziej płasko”): each
+    /// colour a calm, flatter part and a part of many short pulls. Smooth
+    /// paint and paint of no known manner as in 1.145.157 („Wersja Vermeer - super”).
+    func testThickOilPaintHasACalmFlatPartAndAPartOfManyPullsInEachColour() {
+        for relief in [Paint.calm.smooth, Paint.calm.even, Paint.calm.plain] {
+            let even = Paint.even(relief: relief), thick = OilStrip.thick(relief: relief)
+            XCTAssertEqual(thick, 0)
+            let now = OilStrip.pulls(jatte, width: 350, seed: 5, even: even, thick: thick)
+            let was = OilStrip.pulls(jatte, width: 350, seed: 5, even: even, thick: thick, look: .gone)
+            XCTAssertEqual(now.map(\.a), was.map(\.a))
+            XCTAssertEqual(now.map(\.rgb), was.map(\.rgb))
+        }
+        XCTAssertEqual(OilStrip.thick(relief: Paint.calm.late), 1)
+        XCTAssertEqual(OilStrip.thick(relief: Paint.calm.thick), 1)
+        let pulls = OilStrip.pulls(jatte, width: 350, seed: 5, thick: 1)
+        let gone = OilStrip.pulls(jatte, width: 350, seed: 5, thick: 1, look: .gone)
+        let overs = pulls.filter(\.over)
+        // Many more short pulls, but in parts: long stretches of the bar have none over them.
+        XCTAssertGreaterThan(overs.count, gone.filter(\.over).count + 15)
+        var calm = [(from: Double, to: Double)](), x = 0.0
+        while x < 344 {
+            let clear = !overs.contains { $0.a - 1 < x && x < $0.e + 1 }
+            if clear, let last = calm.last, last.to >= x - 0.5 { calm[calm.count - 1].to = x } else if clear { calm.append((x, x)) }
+            x += 0.5
+        }
+        let long = calm.filter { $0.to - $0.from >= 20 }
+        XCTAssertGreaterThanOrEqual(long.count, 3)
+        let still = long.reduce(0) { $0 + $1.to - $1.from }
+        XCTAssertGreaterThan(still, 0.3 * 344)
+        XCTAssertLessThan(still, 0.75 * 344)
+        // The accents keep their places.
+        XCTAssertEqual(pulls.filter(\.on).map(\.a), gone.filter(\.on).map(\.a))
+        // The calm parts lie flatter: less light and shade on them than the same pulls at full height.
+        var raised = OilStrip.Look.laid
+        raised.flat = 0
+        let flat = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.thick).frame(age: 99)
+        let full = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.thick, look: raised).frame(age: 99)
+        /// How much the lightness changes from a point to the one under it, on the average.
+        func shading(_ frame: PaintFrame) -> Double {
+            var sum = 0.0, count = 0.0
+            for part in long {
+                for x in stride(from: part.from + 8, through: part.to - 8, by: 0.5) {
+                    for y in stride(from: 5.0, through: Paint.bar - 5.5, by: 0.5) {
+                        let at = pixel(x, y), q = 4 * (at.1 * frame.wide + at.0), under = q + 4 * frame.wide
+                        let here = Double(frame.bytes[q]) + Double(frame.bytes[q + 1]) + Double(frame.bytes[q + 2])
+                        let there = Double(frame.bytes[under]) + Double(frame.bytes[under + 1]) + Double(frame.bytes[under + 2])
+                        sum += abs(here - there)
+                        count += 1
+                    }
+                }
+            }
+            return sum / max(count, 1)
+        }
+        XCTAssertLessThan(shading(flat), 0.8 * shading(full))
+    }
+
     /// Mateusz 2026-11-11 18:59: „Przy lini kolorów robionych farba
     /// olejna także dodaj „tłustą plamę” na papierze pod spodem.”
     func testThePaperUnderTheOilBarSoaksTheOilUp() {
@@ -1282,10 +1339,11 @@ final class PaintTests: XCTestCase {
         XCTAssertLessThan(Paint.calm.plain, Paint.calm.loose)
         XCTAssertLessThan(Paint.calm.loose, Paint.calm.late)
         XCTAssertLessThanOrEqual(Paint.calm.late, Paint.calm.thick)
-        // The same paint in the same places; the lower it is, the less its light and shade.
-        let thick = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.thick).frame(age: 99)
-        let plain = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.plain).frame(age: 99)
-        let smooth = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.smooth).frame(age: 99)
+        // The same paint in the same places (thick paint's calm parts aside, `.gone`); the lower it is,
+        // the less its light and shade.
+        let thick = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.thick, look: .gone).frame(age: 99)
+        let plain = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.plain, look: .gone).frame(age: 99)
+        let smooth = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.smooth, look: .gone).frame(age: 99)
         /// How much the paint's lightness changes from a pixel to the one under it, on the average.
         func rough(_ frame: PaintFrame) -> Double {
             var sum = 0.0, count = 0.0

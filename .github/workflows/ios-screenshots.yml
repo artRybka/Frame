@@ -170,8 +170,12 @@ jobs:
             capture detail 16 "detail-playlists-$appearance" -sheet playlists
             capture detail 16 "detail-playlists-new-$appearance" -sheet playlists-new
             capture detail 16 "detail-about-$appearance" -scroll about
-            capture detail 18 "detail-recovery-$appearance" -sheet recovery -paintStyle oil
-            capture detail 18 "detail-recovery-paper-$appearance" -sheet recovery -paintStyle pen -demoPaper YES
+            # "Korekta barw": a work shown cleaned (the mark by its title, the
+            # line under the picture), and the comparison with the picture before.
+            capture detail 16 "detail-cleaned-$appearance" -demoCleaned all -paintStyle oil
+            capture detail 16 "detail-cleaned-paper-$appearance" -demoCleaned paper -paintStyle pen
+            capture detail 18 "detail-cleaned-compare-$appearance" -sheet recovery -demoCleaned all -paintStyle oil
+            capture discover-theme 14 "discover-theme-cleaned-$appearance" -demoCleaned some
             # "Podobne wyglądem" at the card's end (Szukanie wyglądem, G1).
             capture detail 16 "detail-looks-$appearance" -scroll looks
             # "Kolorystyka" on the card: the bar in the work's technique, there at once.
@@ -215,6 +219,8 @@ jobs:
             capture connection 10 "connection-ai-$appearance" -settingsPage ai
             capture connection 12 "connection-ai-leftover-$appearance" -settingsPage ai -scroll leftover
             capture connection 10 "connection-gemini-$appearance" -settingsPage gemini
+            capture connection 12 "review-$appearance" -settingsPage ai -review YES
+            capture connection 14 "review-open-$appearance" -settingsPage ai -review YES -reviewOpen YES
             capture connection 10 "connection-library-$appearance" -settingsPage library
             capture connection 10 "connection-night-$appearance" -settingsPage night
             capture connection 12 "night-changes-$appearance" -settingsPage night -nightChanges YES

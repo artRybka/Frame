@@ -136,10 +136,9 @@ enum DemoFraming {
         (captionSize(canvas) * 2.6).rounded()
     }
 
-    /// The picture in a mat window: its outermost edge stays behind the mat
-    /// (layout.whole, PICTURE_TRIM).
+    /// The picture in a mat window: all of it, to its edges (layout.whole).
     static func whole(_ size: CGSize) -> CGRect {
-        CGRect(origin: .zero, size: size).insetBy(dx: size.width * 0.02, dy: size.height * 0.02)
+        CGRect(origin: .zero, size: size)
     }
 
     static func cropBox(_ size: CGSize, aspect: CGFloat, crop: Crop) -> CGRect {
@@ -183,7 +182,7 @@ enum DemoFraming {
     }
 
     /// "Passe-partout" uncropped: `whole` as a crop (layout.WHOLE).
-    static let wholeCrop = Crop(zoom: 1 / (1 - 2 * 0.02))
+    static let wholeCrop = Crop(zoom: 1)
 
     private static func fitted(_ aspect: CGFloat, _ availW: CGFloat, _ availH: CGFloat) -> CGSize {
         if availW / availH > aspect { return CGSize(width: max(1, (availH * aspect).rounded()), height: availH) }

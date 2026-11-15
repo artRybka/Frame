@@ -83,6 +83,10 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
     /// The work cut out of the museum's photograph (a frame, an easel, a
     /// board around it; Mateusz 2026-11-14): nil when it never was.
     var cut: Cut? = nil
+    /// The work shown with the colours time took given back by calculation
+    /// (its aged varnish taken off, its sheet de-yellowed; Mateusz
+    /// 2026-11-15): nil when it is shown as it came.
+    var cleaned: Cleaned? = nil
     /// The museum the work is in ("Muzeum Narodowe w Warszawie"), not where
     /// its picture is from: "" when the server does not know it (yet), nil
     /// from a server before 1.81.
@@ -126,7 +130,25 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
     /// Which picture the work shows: the sharper copy's id ("" its own),
     /// and the cut's stamp after "|" when it is cut. A change drops the
     /// pictures kept from before (`AppModel.pictureSeen`).
-    var pictureVersion: String { Cut.version(picture: sharper?.itemId ?? "", cut: cutVersion) }
+    var pictureVersion: String {
+        Cleaned.version(Cut.version(picture: sharper?.itemId ?? "", cut: cutVersion), cleaned: cleanedVersion)
+    }
+
+    /// How the picture shown now is cleaned: nil without, or when it was
+    /// read on another picture (`Item.cleaned_shown` on the server): another
+    /// copy is another photograph and is shown as it comes, the restorer's
+    /// drawing of the same one is cleaned the same (Mateusz 2026-11-15 18:54).
+    var cleanedShown: Cleaned? {
+        let key = sharper?.itemId ?? ""
+        guard let cleaned, cleaned.picture == key || cleaned.drawn == key else { return nil }
+        return cleaned
+    }
+
+    /// `Item.cleaned_version` on the server: changes with every change of it.
+    var cleanedVersion: String {
+        guard let cleaned = cleanedShown else { return "" }
+        return cleaned.at.isEmpty ? cleaned.kind : cleaned.at
+    }
 
     /// The cut of the picture shown now: nil without one, when the owner
     /// keeps the photograph whole, or when it was set on another picture.
@@ -173,8 +195,29 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
             year: year, colors: colors, width: shape?.0 ?? width, height: shape?.1 ?? height, favorite: favorite,
             suitability: suitability, heldBy: heldBy, heldAt: heldAt, picture: sharper?.itemId ?? "",
             subtitle: photoLine, restored: sharper?.isRestored == true ? true : nil,
-            cropped: isCropped ? true : nil, cut: cutVersion
+            cropped: isCropped ? true : nil, cut: cutVersion,
+            cleaned: cleanedShown?.kind, cleanedAt: cleanedShown == nil ? nil : cleanedVersion
         )
+    }
+}
+
+/// `Cleaned` on the server: the work shown without its aged varnish
+/// ("varnish") or with its sheet de-yellowed ("paper"), by calculation.
+struct Cleaned: Codable, Hashable, Sendable {
+    var kind: String
+    /// How the app said the work is made: "oil", "paper" or "opaque".
+    var made: String? = nil
+    var strength: Double? = nil
+    /// The picture it was read on: the copy's id, "" the work's own.
+    var picture: String = ""
+    /// The restorer's drawing of that picture it shows on too; nil without.
+    var drawn: String? = nil
+    var at: String = ""
+
+    /// The picture's version with the cleaning's stamp after "~" when it
+    /// is cleaned: the pictures kept from before are had anew.
+    static func version(_ picture: String, cleaned: String) -> String {
+        cleaned.isEmpty ? picture : "\(picture)~\(cleaned)"
     }
 }
 
@@ -444,24 +487,12 @@ struct MediumView: Codable, Hashable, Sendable {
     var medium: String = ""
 }
 
-/// What the card's colour recovery preview may show of a work
-/// (`ColourRecovery`), read from its picture by the server, no model
-/// asked: "varnish" (the app does the sum itself: red, green and blue in
-/// linear light times `exp(strength * alpha)`, then times `top / tops`
-/// where that is under one; `tops` at the strengths `steps`), "paper"
-/// (the de-yellowed sheet is a picture of its own, `ImageRef.recovered`)
-/// or "none".
+/// Whether the card may offer a work cleaned (`ColourRecovery`), read from
+/// its picture by the server, no model asked: "varnish" ("Zdejmij
+/// werniks"), "paper" ("Odżółć papier") or "none". (A server of
+/// 1.145.155–161 says more, for the preview with a slider those apps had.)
 struct RecoveryView: Codable, Hashable, Sendable {
     var kind: String
-    /// The strength the slider opens at, and the most it goes to.
-    var strength: Double = 0
-    var most: Double = 1.6
-    var alpha: [Double] = [0.15, 0.36, 1]
-    var top: Double = 0.97
-    var steps: [Double] = []
-    var tops: [Double] = []
-    /// Part of the address a de-yellowed sheet is kept by.
-    var version: Int = 1
 }
 
 /// One copy of a work's picture from another source ("Szukaj lepszej
@@ -597,13 +628,19 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     var cropped: Bool? = nil
     /// Changes with every change of the cut ("" without one).
     var cut: String? = nil
+    /// Its picture is shown cleaned by calculation: "varnish" or "paper";
+    /// "" or nil when not. A mark after the title. `cleanedAt` changes
+    /// with every change of it.
+    var cleaned: String? = nil
+    var cleanedAt: String? = nil
 
     var isCropped: Bool { cropped == true }
+    var isCleaned: Bool { !(cleaned ?? "").isEmpty }
 
     /// `Item.pictureVersion`: the copy and the cut, for `pictureSeen`; nil
     /// from a server before 1.97.2.
     var pictureVersion: String? {
-        picture.map { Cut.version(picture: $0, cut: cut ?? "") }
+        picture.map { Cleaned.version(Cut.version(picture: $0, cut: cut ?? ""), cleaned: cleanedAt ?? "") }
     }
 
     /// The title "Teraz" shows: Polish when there is one.
@@ -1957,6 +1994,15 @@ struct AiReview: Codable, Hashable, Sendable {
         /// Its Polish name ("Tytuł").
         var name: String
         var problem: String
+        /// For a title, a maker or a date: the corrected value ("Popraw na…");
+        /// "" until the audit or "suggest" gave one, nil from an older server.
+        var fix: String? = nil
+        /// For a title: the corrected Polish title.
+        var fixPl: String? = nil
+
+        /// Mended with a value ("Popraw").
+        var valued: Bool { ["title", "artist", "date"].contains(field) }
+        var proposal: String? { fix.flatMap { $0.isEmpty ? nil : $0 } }
     }
 
     struct Entry: Codable, Hashable, Sendable, Identifiable {

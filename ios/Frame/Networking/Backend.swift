@@ -18,10 +18,10 @@ enum ImageRef: Hashable, Sendable {
     /// The museum's photograph of the work, whole ("Pełny kadr"), `side`
     /// px long at most; `version` keeps a cut's change apart.
     case museumPhoto(String, side: Int, version: String)
-    /// The work on paper with its sheet as a well-kept one (the card's
-    /// colour recovery preview); `made`: "paper" or "opaque" (pastel,
-    /// gouache), `version` keeps another picture or calculation apart.
-    case recovered(String, made: String, version: String)
+    /// The work as it is shown but for its cleaning (`Item.cleaned`): the
+    /// picture as it came, for the card's comparison; `version` keeps
+    /// another picture apart.
+    case beforeCleaning(String, version: String)
     case path(String)  // server-relative path, e.g. /api/previews/<id>.png
     case url(URL)  // public URL (museum CDN)
 }
@@ -68,10 +68,15 @@ protocol FrameBackend: Sendable {
     /// The card opened on a work that names no technique: what it is made
     /// with, from its record, Commons or Wikidata; waits up to `wait` seconds.
     func medium(itemID: String, wait: Int) async throws -> MediumView
-    /// Whether the card may offer a simulation of the work's lost colours,
-    /// and with what; `made`: how the app says it is made ("oil", "paper",
-    /// "opaque", `ColourRecovery.made`).
+    /// Whether the card may offer the work cleaned ("Zdejmij werniks",
+    /// "Odżółć papier"); `made`: how the app says it is made ("oil",
+    /// "paper", "opaque", `ColourRecovery.made`).
     func recovery(itemID: String, made: String) async throws -> RecoveryView
+    /// "Zdejmij werniks" / "Odżółć papier": the work shown cleaned from
+    /// now on, everywhere; its colours are measured on the cleaned picture.
+    func clean(itemID: String, made: String) async throws -> Item
+    /// "Przywróć werniks" / "Przywróć ton papieru": the picture as it came.
+    func unclean(itemID: String) async throws -> Item
     /// The work's fragments (a scroll's parts, a Commons tile set): none for most works.
     func fragments(itemID: String) async throws -> FragmentsView
     /// The work's details (pictures of a part of it): none for most works.
@@ -304,6 +309,17 @@ protocol FrameBackend: Sendable {
     func bringBack(itemID: String) async throws -> AiReview
     /// Off the list.
     func dismissReview(itemID: String) async throws -> AiReview
+    /// "Do sprawdzenia": the corrected title, maker or date of a finding
+    /// written before the audit gave them (Haiku, now).
+    func suggestReviewFixes(itemID: String) async throws -> AiReview
+    /// "Popraw": the value on the work (a title with its Polish title).
+    func applyReviewFix(itemID: String, field: String, value: String, valuePl: String?) async throws -> AiReview
+    /// "Przytnij": Opus cuts the work out of its photograph now (422: nothing found).
+    func cutReviewed(itemID: String) async throws -> AiReview
+    /// One problem done elsewhere (a better copy picked).
+    func dropReviewProblem(itemID: String, field: String) async throws -> AiReview
+    /// "Ukryj": the work out of the catalogue and off the list.
+    func hideReviewed(itemID: String) async throws -> AiReview
     /// The server checks the key with Anthropic before keeping it.
     func saveAiKey(_ key: String) async throws -> AiSettings
     /// "Uzupełnij wcześniejsze studia": the order sent (409: no key, the

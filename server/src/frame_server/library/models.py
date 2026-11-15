@@ -195,6 +195,37 @@ SHAPES = ("rectangle", "round", "irregular")
 NOT_RECTANGLE = frozenset({"round", "irregular"})
 
 
+class Cleaned(BaseModel):
+    """The work shown with the colours time took given back by calculation
+    (:mod:`frame_server.imaging.recovery`, :mod:`frame_server.cleaning`;
+    Mateusz 2026-11-15 18:39 UTC: "Wybranie w menu podmienia na wersje z
+    odżółconym papierem / ściągniętym werniksem … Jeżeli wersja podmieniona
+    na skorygowaną to wyliczamy kolory i pasek z wersji po korekcie"): the
+    original, the thumbnail, the colours and what the frame shows are made
+    from the picture so cleaned; the picture as it came is kept beside it,
+    and "Przywróć…" goes back to it."""
+
+    #: An aged varnish taken off (oil, tempera) or the sheet de-yellowed.
+    kind: Literal["varnish", "paper"]
+    #: How the app said the work is made: "oil", "paper" (a medium that
+    #: lets the sheet through) or "opaque" (pastel, gouache: only where the
+    #: sheet shows is changed). Kept so another copy can be cleaned anew.
+    made: str = ""
+    #: The varnish's thickness taken off (``recovery.kept_strength``).
+    strength: float = 0.0
+    #: The picture it was read on: the copy's id (``SharperCopy.item_id``)
+    #: when a copy was shown, else "". Never applied to another photograph:
+    #: "nie wiemy jaką ona ma kolorystykę i automatyczne naniesienie zmian
+    #: barwy mogłoby być błędem" (Mateusz 2026-11-15 18:54).
+    picture: str = ""
+    #: The restorer's drawing of that picture (its copy id), which is the
+    #: same photograph drawn larger and is cleaned the same ("tak dla
+    #: wersji restauratora"); "" without one.
+    drawn: str = ""
+    #: When it was set (ISO): the app's pictures kept from before are had anew.
+    at: str = ""
+
+
 class Cut(BaseModel):
     """The work in its museum photograph, without what is around it (a
     frame, an easel, the board it lies on: ``imaging.cut``, ``ai.crops``;
@@ -342,6 +373,9 @@ class Item(BaseModel):
     #: frame, the thumbnails and the studies show; None when nothing was
     #: decided yet.
     cut: Cut | None = None
+    #: The work's colours given back by calculation (:class:`Cleaned`): a
+    #: varnish taken off or the sheet de-yellowed, at the owner's ask.
+    cleaned: Cleaned | None = None
     #: The collection the work is in, as found out for a work from a source
     #: that gathers pictures from many (Wikidata's "collection" of the work
     #: on Commons or WikiArt, the institution on its Commons page, WikiArt's
@@ -435,6 +469,25 @@ class Item(BaseModel):
         if cut is None or cut.picture != self.picture_key() or cut.shown() is None:
             return ""
         return cut.at or "cut"
+
+    def cleaned_shown(self) -> Cleaned | None:
+        """How the picture shown now is cleaned (:class:`Cleaned`): None
+        without, or when another picture than the one it was read on (or
+        the restorer's drawing of that one) is shown."""
+        cleaned = self.cleaned
+        if cleaned is None:
+            return None
+        key = self.picture_key()
+        if key == cleaned.picture or (cleaned.drawn and key == cleaned.drawn):
+            return cleaned
+        return None
+
+    def cleaned_version(self) -> str:
+        """Changes whenever the cleaning of the picture shown does (set,
+        given up): the app's pictures kept from before are had anew. ""
+        without one."""
+        cleaned = self.cleaned_shown()
+        return "" if cleaned is None else cleaned.at or cleaned.kind
 
     def _held_by(self) -> str:
         """The museum's name as the work's data give it."""
@@ -540,6 +593,11 @@ class ItemSummary(BaseModel):
     #: mark after the title. ``cut``: changes with every change of the cut.
     cropped: bool = False
     cut: str = ""
+    #: Its picture is shown cleaned by calculation (``Item.cleaned``):
+    #: "varnish" or "paper", "" when not; a mark after the title.
+    #: ``cleaned_at``: changes with every change of it.
+    cleaned: str = ""
+    cleaned_at: str = ""
 
     @classmethod
     def of(cls, item: Item) -> ItemSummary:
@@ -551,8 +609,12 @@ class ItemSummary(BaseModel):
             **item.model_dump(
                 include=set(cls.model_fields)
                 - {"subtitle", "zoom", "low_side", "restored", "cropped", "cut"}
+                - {"cleaned", "cleaned_at"}
             )
         )
+        if (cleaned := item.cleaned_shown()) is not None:
+            summary.cleaned = cleaned.kind
+            summary.cleaned_at = item.cleaned_version()
         summary.zoom = zooms(item)
         summary.low_side = low_side(item)
         summary.cut = item.cut_version()

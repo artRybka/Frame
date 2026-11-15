@@ -162,6 +162,18 @@ enum PrintPaint {
         var red: [Float], green: [Float], blue: [Float], cover: [Float]
         /// How much of the page under it its shadow darkens (`laid`), a pixel each; empty: no shadow.
         var shade: [Float] = []
+
+        /// Pixel `k` of a picture: the paper there in `red`, `green`,
+        /// `blue` as far as it covers it, over the strip's shadow on the
+        /// page; `shown`: how far the paper has appeared.
+        func put(_ red: Float, _ green: Float, _ blue: Float, at k: Int, shown: Float, into out: inout PaintFrame) {
+            let paper = cover[k], seen = paper + (shade.isEmpty ? 0 : shade[k] * (1 - paper)), q = 4 * k
+            guard seen > 0 else { return }
+            out.bytes[q] = Paint.byte(Double(red * paper / seen))
+            out.bytes[q + 1] = Paint.byte(Double(green * paper / seen))
+            out.bytes[q + 2] = Paint.byte(Double(blue * paper / seen))
+            out.bytes[q + 3] = Paint.byte(Double(255 * seen * shown))
+        }
     }
 
     /// A strip of paper laid on the page (Mateusz 2026-11-15 17:45: „Krawędzie
@@ -563,10 +575,10 @@ final class LineStrip: PaintPainter, @unchecked Sendable {
             let inside: Float = y >= 0 && y <= Paint.bar ? 1 : 0
             for i in 0..<wide {
                 let k = j * wide + i
-                let cover = sheet.cover[k], shade = sheet.shade.isEmpty ? 0 : sheet.shade[k] * (1 - cover)
+                let cover = sheet.cover[k]
                 if cover <= 0 {
-                    // Only the strip's shadow on the page.
-                    if shade > 0 { out.bytes[4 * k + 3] = Paint.byte(Double(255 * shade * shown)) }
+                    // Only the strip's shadow on the page, if it has one.
+                    sheet.put(0, 0, 0, at: k, shown: shown, into: &out)
                     continue
                 }
                 var red = sheet.red[k], green = sheet.green[k], blue = sheet.blue[k]
@@ -581,11 +593,7 @@ final class LineStrip: PaintPainter, @unchecked Sendable {
                         blue += (ink[2] - blue) * dark
                     }
                 }
-                let q = 4 * k, seen = cover + shade
-                out.bytes[q] = Paint.byte(Double(red * cover / seen))
-                out.bytes[q + 1] = Paint.byte(Double(green * cover / seen))
-                out.bytes[q + 2] = Paint.byte(Double(blue * cover / seen))
-                out.bytes[q + 3] = Paint.byte(Double(255 * seen * shown))
+                sheet.put(red, green, blue, at: k, shown: shown, into: &out)
             }
         }
         if age >= length { whole = out }
