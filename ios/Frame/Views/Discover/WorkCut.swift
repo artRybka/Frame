@@ -136,7 +136,11 @@ struct FullPhotoSection: View {
     }
 
     private var line: String {
-        cut.hasPaper
+        if item.isOwnWork {
+            // His own photograph, not a museum's.
+            return item.isCropped ? "Twoje zdjęcie, wycięte do samego dzieła." : "Twoje zdjęcie w całości."
+        }
+        return cut.hasPaper
             ? cut.paperLine(medium: item.medium)
             : Cut.fullPhotoLine(around: cut.aroundText, cropped: item.isCropped)
     }
@@ -150,7 +154,26 @@ struct FullPhotoSection: View {
 /// moves the corner, so no finger covers it; a corner on the photograph can
 /// be dragged too. "Zapisz" at the top beside "Anuluj".
 struct CutEditor: View {
-    let item: Item
+    /// The photograph the corners are set on: the museum's, or one just
+    /// taken of a work of his own ("Dodaj własne dzieło").
+    enum Photo {
+        case ref(ImageRef)
+        case local(UIImage)
+    }
+
+    let photoSource: Photo
+    /// The photograph's width / height.
+    let photoAspect: Double
+    /// The corners it opens with; nil, a little in from the edges.
+    let initial: [[Double]]?
+    let saveTitle: String
+    let cancelTitle: String
+    /// "Dalej" in the own work's steps: on with the corners as found too.
+    let savesUnchanged: Bool
+    /// Over the hint under the photograph: what was found ("Rama wycięta").
+    let note: String?
+    /// The own work's steps go on: nothing to dismiss.
+    let cancel: (() -> Void)?
     /// Saves the corners (of the work as shown); whether it went.
     let save: ([[Double]]) async -> Bool
     @Environment(\.dismiss) private var dismiss
@@ -162,12 +185,37 @@ struct CutEditor: View {
     @State private var loupeFrom: [Double]?
     @State private var saving = false
 
-    private var photoAspect: Double {
-        if let cut = item.cut, cut.aspect > 0 { return cut.aspect }
-        if let w = item.width, let h = item.height, w > 0, h > 0 { return Double(w) / Double(h) }
-        return 0.75
+    init(item: Item, save: @escaping ([[Double]]) async -> Bool) {
+        let aspect: Double
+        if let cut = item.cut, cut.aspect > 0 {
+            aspect = cut.aspect
+        } else if let w = item.width, let h = item.height, w > 0, h > 0 {
+            aspect = Double(w) / Double(h)
+        } else {
+            aspect = 0.75
+        }
+        self.init(
+            photo: .ref(.museumPhoto(item.id, side: 2400, version: item.pictureVersion)),
+            aspect: aspect, corners: item.cutShown, save: save
+        )
     }
-    private var photo: ImageRef { .museumPhoto(item.id, side: 2400, version: item.pictureVersion) }
+
+    init(
+        photo: Photo, aspect: Double, corners: [[Double]]?, saveTitle: String = "Zapisz",
+        cancelTitle: String = "Anuluj", savesUnchanged: Bool = false, note: String? = nil, cancel: (() -> Void)? = nil,
+        save: @escaping ([[Double]]) async -> Bool
+    ) {
+        photoSource = photo
+        photoAspect = aspect
+        initial = corners
+        self.saveTitle = saveTitle
+        self.cancelTitle = cancelTitle
+        self.savesUnchanged = savesUnchanged
+        self.note = note
+        self.cancel = cancel
+        self.save = save
+    }
+
     /// The corners when nothing is cut yet: a little in from the edges.
     private static let inset: [[Double]] = [[0.06, 0.06], [0.94, 0.06], [0.94, 0.94], [0.06, 0.94]]
     private static let whole: [[Double]] = [[0, 0], [1, 0], [1, 1], [0, 1]]
@@ -178,29 +226,42 @@ struct CutEditor: View {
     private static let zoom: CGFloat = 4
     private static let names = ["Lewy górny narożnik", "Prawy górny narożnik", "Prawy dolny narożnik", "Lewy dolny narożnik"]
 
+    @ViewBuilder
+    private func photoView(_ size: CGSize) -> some View {
+        switch photoSource {
+        case let .ref(ref):
+            ArtImage(ref: ref, placeholder: Theme.mat, maxPixel: 2400, contentMode: .fit)
+                .frame(width: size.width, height: size.height)
+        case let .local(image):
+            Image(uiImage: image)
+                .resizable()
+                .frame(width: size.width, height: size.height)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Button("Anuluj") { dismiss() }
+                Button(cancelTitle) { if let cancel { cancel() } else { dismiss() } }
                     .buttonStyle(.glass)
                     .disabled(saving)
                 Spacer()
                 Button {
                     Task {
                         saving = true
-                        if await save(corners) { dismiss() }
+                        if await save(corners), cancel == nil { dismiss() }
                         saving = false
                     }
                 } label: {
                     HStack(spacing: 8) {
                         if saving { ProgressView().controlSize(.small).tint(Theme.paper) }
-                        Text("Zapisz")
+                        Text(saveTitle)
                     }
                     .foregroundStyle(Theme.paper)
                 }
                 .buttonStyle(.glassProminent)
                 .tint(Theme.ink)
-                .disabled(!changed || saving)
+                .disabled((!changed && !savesUnchanged) || saving)
             }
             .padding(.horizontal, Theme.gutter)
             .padding(.top, 6)
@@ -209,6 +270,14 @@ struct CutEditor: View {
                 if corners.count == 4 { board(in: geo.size) }
             }
             .padding(.horizontal, Theme.gutter)
+            if let note {
+                Text(note)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Theme.ink)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, Theme.gutter)
+                    .padding(.top, 12)
+            }
             Text("Przesuń zdjęcie w lupie albo przeciągnij narożnik.")
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
@@ -227,8 +296,8 @@ struct CutEditor: View {
         .background { Color.clear.paperPage() }
         .onAppear {
             guard corners.isEmpty else { return }
-            corners = item.cutShown ?? Self.inset
-            start = item.cutShown ?? []
+            corners = initial ?? Self.inset
+            start = initial ?? []
         }
     }
 
@@ -310,8 +379,7 @@ struct CutEditor: View {
 
     private func photoWithCorners(_ size: CGSize) -> some View {
         ZStack(alignment: .topLeading) {
-            ArtImage(ref: photo, placeholder: Theme.mat, maxPixel: 2400, contentMode: .fit)
-                .frame(width: size.width, height: size.height)
+            photoView(size)
             // Outside the work dimmed, the work's edges drawn.
             Path { path in
                 path.addRect(CGRect(origin: .zero, size: size))
@@ -373,8 +441,7 @@ struct CutEditor: View {
         return ZStack(alignment: .topLeading) {
             Theme.mat
             ZStack(alignment: .topLeading) {
-                ArtImage(ref: photo, placeholder: Theme.mat, maxPixel: 2400, contentMode: .fit)
-                    .frame(width: large.width, height: large.height)
+                photoView(large)
                 quadPath(corners, in: large)
                     .stroke(Color.white.opacity(0.85), lineWidth: 1)
             }

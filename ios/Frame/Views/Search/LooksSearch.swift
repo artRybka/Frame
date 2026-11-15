@@ -436,7 +436,7 @@ private struct LooksCamera: ViewModifier {
 }
 
 /// The camera, as UIKit has it (SwiftUI has none).
-private struct CameraPicker: UIViewControllerRepresentable {
+struct CameraPicker: UIViewControllerRepresentable {
     let took: (UIImage) -> Void
     @Environment(\.dismiss) private var dismiss
 

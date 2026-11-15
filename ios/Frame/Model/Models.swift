@@ -83,6 +83,9 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
     /// The work cut out of the museum's photograph (a frame, an easel, a
     /// board around it; Mateusz 2026-11-14): nil when it never was.
     var cut: Cut? = nil
+    /// A work of the owner's own ("Dodaj własne dzieło"): where it hangs,
+    /// where it came from, its size as he measured it. Nil for the others.
+    var own: OwnWork? = nil
     /// The museum the work is in ("Muzeum Narodowe w Warszawie"), not where
     /// its picture is from: "" when the server does not know it (yet), nil
     /// from a server before 1.81.
@@ -173,9 +176,37 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
             year: year, colors: colors, width: shape?.0 ?? width, height: shape?.1 ?? height, favorite: favorite,
             suitability: suitability, heldBy: heldBy, heldAt: heldAt, picture: sharper?.itemId ?? "",
             subtitle: photoLine, restored: sharper?.isRestored == true ? true : nil,
-            cropped: isCropped ? true : nil, cut: cutVersion
+            cropped: isCropped ? true : nil, cut: cutVersion, own: own
         )
     }
+}
+
+/// What the owner wrote of a work of his own beyond a museum's fields
+/// (server `OwnWork`, Mateusz 2026-11-15).
+struct OwnWork: Codable, Hashable, Sendable {
+    var hangs: String = ""
+    var origin: String = ""
+    var heightCm: Double? = nil
+    var widthCm: Double? = nil
+
+    /// "46 × 55 cm" (height first, as museums give it); nil without both.
+    var sizeText: String? {
+        guard let heightCm, let widthCm else { return nil }
+        return "\(Self.number(heightCm)) × \(Self.number(widthCm)) cm"
+    }
+
+    static func number(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(0 ... 1)).locale(Locale(identifier: "pl_PL")))
+    }
+}
+
+extension Item {
+    /// Added by the owner from a photograph of his own ("Moja kolekcja").
+    var isOwnWork: Bool { kind == .own && source == "upload" }
+}
+
+extension ItemSummary {
+    var isOwnWork: Bool { kind == .own && source == "upload" }
 }
 
 /// How a photo is named where a work shows its title and author.
@@ -597,6 +628,8 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     var cropped: Bool? = nil
     /// Changes with every change of the cut ("" without one).
     var cut: String? = nil
+    /// `Item.own`.
+    var own: OwnWork? = nil
 
     var isCropped: Bool { cropped == true }
 

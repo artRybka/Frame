@@ -32,6 +32,12 @@ struct ItemToolbar: ToolbarContent {
     var recover: (() -> Void)? = nil
     var recoveryKind = ColourRecovery.Kind.varnish
     var recovering = false
+    /// A work of his own (Mateusz 2026-11-15): "Edytuj opis", "Zrób zdjęcie
+    /// ponownie" and "Usuń z katalogu", asked first (`deletingOwn`).
+    var editOwn: (() -> Void)? = nil
+    var retakeOwn: (() -> Void)? = nil
+    var deleteOwn: (() -> Void)? = nil
+    var deletingOwn: Binding<Bool>? = nil
 
     /// A museum's work, which other sources may have too.
     private var hasCopies: Bool { item.kind == .artwork && item.look == nil }
@@ -69,6 +75,22 @@ struct ItemToolbar: ToolbarContent {
                         }
                     }
                 }
+                if editOwn != nil || retakeOwn != nil {
+                    Divider()
+                    if let editOwn {
+                        Button("Edytuj opis", systemImage: "pencil", action: editOwn)
+                    }
+                    if let retakeOwn {
+                        Button(action: retakeOwn) {
+                            Label {
+                                Text("Zrób zdjęcie ponownie")
+                                Text("Opis zostaje")
+                            } icon: {
+                                Image(systemName: "camera")
+                            }
+                        }
+                    }
+                }
                 if correctCut != nil || undoCut != nil {
                     Divider()
                     if let correctCut {
@@ -87,7 +109,7 @@ struct ItemToolbar: ToolbarContent {
                         Button(action: undoCut) {
                             Label {
                                 Text("Cofnij kadrowanie")
-                                Text("Całe zdjęcie z muzeum")
+                                Text(item.isOwnWork ? "Całe zdjęcie" : "Całe zdjęcie z muzeum")
                             } icon: {
                                 Image(systemName: "arrow.uturn.backward")
                             }
@@ -141,10 +163,26 @@ struct ItemToolbar: ToolbarContent {
                     }
                 }
                 .disabled(savingPhoto)
+                if deleteOwn != nil {
+                    Divider()
+                    Button("Usuń z katalogu", systemImage: "trash", role: .destructive) {
+                        deletingOwn?.wrappedValue = true
+                    }
+                }
             } label: {
                 Image(systemName: "ellipsis.circle").foregroundStyle(Theme.ink)
             }
             .accessibilityLabel("Więcej")
+            // On the menu that asks: on iOS 26 a popover pointing at it.
+            .confirmationDialog(
+                "Usunąć „\(item.title.isEmpty ? "Bez tytułu" : item.title)” z katalogu?",
+                isPresented: deletingOwn ?? .constant(false),
+                titleVisibility: .visible
+            ) {
+                Button("Usuń", role: .destructive) { deleteOwn?() }
+            } message: {
+                Text("Zdjęcie i opis znikną z serwera, także z playlist. Tego nie da się cofnąć.")
+            }
         }
     }
 

@@ -113,6 +113,12 @@ def test_his_corners_his_description_a_new_photograph_and_delete(
             json={"token": token, "corners": mine, "by": "owner", "text": {"title": "Szkic"}},
         ).json()
         assert work["cut"]["by"] == "owner" and work["own"]["height_cm"] is None
+        # "Moje dzieła" in Playlisty: his works, the last added first.
+        listed = client.get(
+            "/api/library/items", params={"kind": "own", "source": "upload", "sort": "recent"}
+        ).json()
+        assert [i["id"] for i in listed["items"]] == [work["id"]]
+        assert listed["items"][0]["own"]["height_cm"] is None
         assert service.sizes.size(service.library.get(work["id"])) is None  # type: ignore[arg-type]
         assert not fake.asked  # nothing asked of Claude
 
