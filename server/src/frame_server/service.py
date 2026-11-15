@@ -42,6 +42,7 @@ from .artist_people import ArtistPeople
 from .artist_works import ArtistWorks
 from .births import Births
 from .cared import Cared
+from .cleaning import Cleaning
 from .config import Settings
 from .copies import Copies
 from .daily import Daily
@@ -355,6 +356,11 @@ class FrameService:
         # sets the corners): at night and when a card opens.
         self.crops = Crops(self.library, self.images, self.claude, self.ai_config)
         self.crops.importer = self.importer
+        # A work shown without its aged varnish, or with its sheet
+        # de-yellowed, when the owner asks (no model: imaging/recovery.py).
+        self.cleaning = Cleaning(self.library, self.images)
+        self.cleaning.importer = self.importer
+        self.sharper.cleaned_again = self.cleaning.renew
         # A page about a work (its study, the day's) reads the work cut
         # down from its frame: the photograph is looked at first.
         self.daily.job.cutting = self.crops.before_page

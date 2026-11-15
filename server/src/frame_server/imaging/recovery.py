@@ -1,5 +1,10 @@
-"""The colours a work has lost, given back by calculation alone: a preview
-on its card, never a change to the work.
+"""The colours a work has lost, given back by calculation alone: first a
+preview on its card, since 2026-11-15 18:39 UTC the work's picture itself
+when the owner asks ("Wybranie w menu podmienia na wersje z odżółconym
+papierem / ściągniętym werniksem", ``Item.cleaned``,
+:mod:`frame_server.cleaning`): with no slider any more ("Z ściągania
+werniksu usuwamy suwak. Zostawiamy tylko poziom propozycji"), at a careful
+share of the proposed strength (:data:`CAREFUL`).
 
 Mateusz 2026-11-15, of works „zgaszone, ściemniałe, zbrązowiałe czy
 stonowane pod werniksem”: a simulation of their colours recovered, as a
@@ -85,6 +90,13 @@ WHITE_FIT = 0.06
 #: down with it, never below ``LEAST`` (the slider is there to try).
 WHITE_CLEAN = 0.3
 LEAST = 0.2
+#: The share of the proposal a work is kept at, now that the owner cannot
+#: weaken it: on the thirty pairs the whole proposal is as far from the
+#: real cleaning as the photograph left alone (2.57 both); three quarters
+#: of it is the nearest overall (2.44: the varnished 3.20 → 2.42, the
+#: others 2.01 → 2.46 instead of 2.79), and the worst miss is 1.4 instead
+#: of 2.3.
+CAREFUL = 0.75
 
 
 @dataclass(frozen=True)
@@ -172,6 +184,29 @@ def unvarnish(lin: FloatArray, strength: float) -> FloatArray:
     if top > TOP:
         out = out * (TOP / top)
     return np.clip(out, 0, 1).astype(np.float32)
+
+
+def kept_strength(img: Image.Image) -> float:
+    """The strength a work is shown without its varnish at (``Item.cleaned``)."""
+    return round(CAREFUL * read_varnish(img).strength, 2)
+
+
+def unvarnished(img: Image.Image, strength: float) -> Image.Image:
+    """``img`` without a varnish of ``strength``, whole and at its own size:
+    how light it gets is read small, the sum goes a band of rows at a time
+    (an original of 4000 px never holds more than a few bands of floats)."""
+    rgb = img.convert("RGB")
+    alpha = np.asarray(ALPHA, dtype=np.float32)
+    small = _small(rgb, 640).reshape(-1, 3)
+    top = float(np.quantile((small * np.exp(strength * alpha)).max(-1), 0.997))
+    factors = np.asarray(gains(strength, top), dtype=np.float32)
+    source = np.asarray(rgb)
+    out = np.empty_like(source)
+    rows = 256
+    for start in range(0, source.shape[0], rows):
+        lin = u8_to_linear(source[start : start + rows])
+        out[start : start + rows] = linear_to_u8(np.clip(lin * factors, 0, 1))
+    return Image.fromarray(out)
 
 
 def read_varnish(img: Image.Image) -> Varnish:
