@@ -29,6 +29,7 @@ struct AiReviewView: View {
     @MainActor private static var openedOnce = false
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 header
@@ -53,6 +54,7 @@ struct AiReviewView: View {
                             note: "Nic nie zostało zmienione. Popraw jednym dotknięciem, odhacz jako sprawdzone albo ukryj dzieło.",
                             entries: review.findings
                         )
+                        .id("findings")
                     }
                 } else if failed {
                     EmptyStateView(
@@ -69,6 +71,15 @@ struct AiReviewView: View {
             .padding(.bottom, 40)
         }
         .paperPage()
+        // Screenshots: `-scroll findings` opens at the night audit's findings.
+        .onChange(of: review?.findings.count) { _, count in
+            guard LaunchRoute.scroll == "findings", (count ?? 0) > 0 else { return }
+            Task {
+                try? await Task.sleep(for: .milliseconds(400))
+                proxy.scrollTo("findings", anchor: .top)
+            }
+        }
+        }
         .navigationTitle("Do sprawdzenia")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await load() }
