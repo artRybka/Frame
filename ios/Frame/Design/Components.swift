@@ -244,15 +244,18 @@ struct ArtCard: View {
         .onAppear {
             ItemPeeks.remember(item, thumb: ref ?? .thumb(item.id))
             // Another copy since the thumbnail was kept: had anew.
-            if let picture = item.pictureVersion { model.pictureSeen(item.id, copy: picture) }
+            if let picture = shown.pictureVersion { model.pictureSeen(item.id, copy: picture) }
         }
     }
 
+    /// The work with the marks its card has had since this list was loaded.
+    private var shown: ItemSummary { model.asOnCard(item) }
+
     /// A mark follows the title (`title`).
-    private var marked: Bool { Self.hasMarks(item) }
+    private var marked: Bool { Self.hasMarks(shown) }
 
     private var title: Text {
-        Self.markedTitle(item, title: item.title.isEmpty ? "Bez tytułu" : item.title, weight: .medium)
+        Self.markedTitle(shown, title: item.title.isEmpty ? "Bez tytułu" : item.title, weight: .medium)
     }
 
     /// Whether a mark follows `item`'s title (`markedTitle`).

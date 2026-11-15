@@ -7,10 +7,12 @@ from __future__ import annotations
 import io
 
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 from test_recovery import YELLOWED, _chroma, _keep, _painting, _sheet, _under_varnish
 
+from frame_server import cleaning
 from frame_server.imaging import recovery
 from frame_server.imaging.color import linear_to_u8, u8_to_linear
 from frame_server.library.models import Cut, ItemSummary, SharperCopy
@@ -39,10 +41,9 @@ def test_the_whole_picture_is_cleaned_as_the_sum_says() -> None:
     whole = np.asarray(recovery.unvarnished(varnished, 0.6)).astype(int)
     by_sum = linear_to_u8(recovery.unvarnish(u8_to_linear(np.asarray(varnished)), 0.6)).astype(int)
     assert np.abs(whole - by_sum).max() <= 2
-    # With no slider, a work is kept at a careful share of the proposal.
-    proposed = recovery.read_varnish(varnished).strength
-    assert recovery.kept_strength(varnished) == round(recovery.CAREFUL * proposed, 2)
-    assert 0 < recovery.kept_strength(varnished) < proposed
+    # With no slider, a work is kept at the proposal ("Zostawiamy tylko
+    # poziom propozycji").
+    assert recovery.kept_strength(varnished) == recovery.read_varnish(varnished).strength > 0
 
 
 def test_a_varnish_taken_off_is_the_works_picture_everywhere(service) -> None:
@@ -58,7 +59,8 @@ def test_a_varnish_taken_off_is_the_works_picture_everywhere(service) -> None:
         assert done.status_code == 200, done.text
         cleaned = done.json()["cleaned"]
         assert cleaned["kind"] == "varnish" and cleaned["made"] == "oil"
-        assert 0.3 <= cleaned["strength"] <= 0.75 and cleaned["at"]
+        assert 0.5 <= cleaned["strength"] <= 0.9 and cleaned["at"]
+        assert cleaned["reading"] == recovery.READING
 
         stored = svc.library.get(oil.id)
         # The original and the thumbnail are the cleaned picture, the
@@ -111,6 +113,50 @@ def test_a_sheet_is_deyellowed_and_what_has_nothing_to_offer_is_refused(service)
             assert refused.status_code == 422, refused.text
             assert svc.library.get(item.id).cleaned is None
         assert client.put(f"/api/library/items/{toned.id}/cleaned").status_code == 422
+
+
+def test_a_work_cleaned_by_an_earlier_sum_is_made_again(service) -> None:
+    """Mateusz 2026-11-15 21:44, of works cleaned with the first sum:
+    "Korekta werniksu - czasem ledwo widoczna"."""
+    _, svc = _app(service)
+    oil = _keep(svc, _under_varnish(_painting(), 0.8), number=1, year=1650)
+    now = svc.cleaning.clean(oil, "oil")
+    assert now.cleaned is not None
+    as_now = svc.images.image_path(oil).read_bytes()
+    # As the first sum left it: three quarters of the proposal, no number.
+    first = now.cleaned.model_copy(
+        update={
+            "strength": round(cleaning.FIRST_SHARE * now.cleaned.strength, 2),
+            "reading": 1,
+            "at": "2026-11-15T20:30:00+00:00",
+        }
+    )
+    old = svc.cleaning.apply(now, first)
+    assert svc.images.image_path(oil).read_bytes() != as_now
+    # Another work's cleaning, whose picture is not the one shown now.
+    other = _keep(svc, _under_varnish(_painting(), 0.8), number=2, year=1650)
+    away = svc.library.update(
+        other.id, cleaned=first.model_copy(update={"picture": "wmc:9", "strength": 0.3})
+    )
+    untouched = svc.images.image_path(other).read_bytes()
+    # A sheet de-yellowed is not the varnish's sum.
+    sheet = _keep(svc, _sheet(YELLOWED), number=3, medium="pen and ink on paper")
+    paper = svc.cleaning.clean(sheet, "paper")
+
+    assert svc.cleaning.catch_up() == 1
+    again = svc.library.get(oil.id)
+    assert again.cleaned.reading == recovery.READING
+    assert again.cleaned.strength == pytest.approx(now.cleaned.strength, abs=0.01)
+    assert again.cleaned.at > old.cleaned.at  # the app has its pictures anew
+    made = np.asarray(Image.open(svc.images.image_path(oil)).convert("RGB")).astype(int)
+    assert np.abs(made - np.asarray(Image.open(io.BytesIO(as_now)).convert("RGB"))).max() <= 3
+    noted = svc.library.get(other.id)
+    assert noted.cleaned.reading == recovery.READING and noted.cleaned.strength == 0.4
+    assert noted.cleaned.picture == away.cleaned.picture
+    assert svc.images.image_path(other).read_bytes() == untouched
+    assert svc.library.get(sheet.id).cleaned == paper.cleaned
+    # Once: nothing is left to make again.
+    assert svc.cleaning.catch_up() == 0
 
 
 def test_a_cut_work_is_cut_then_cleaned(service) -> None:

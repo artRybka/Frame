@@ -689,6 +689,47 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+/// What a work's card shows of its picture: the copy in its place, its
+/// cut and its cleaning. A list loaded before the card changed one of them
+/// kept the work's tile as it was, so a work just shown without its
+/// varnish had no drop after its title there (Mateusz 2026-11-15 21:44:
+/// "Brakuje ikonki widocznej na liście dzieł w odkrywaj"), and the tile
+/// asked for the picture of before again. `AppModel.asOnCard` lays these
+/// over a list's tile.
+struct PictureMarks: Equatable, Sendable {
+    var picture: String
+    var restored: Bool
+    var cropped: Bool
+    var cut: String?
+    var cleaned: String?
+    var cleanedAt: String?
+
+    init(_ item: Item) {
+        let summary = item.summary
+        picture = summary.picture ?? ""
+        restored = summary.restored == true
+        cropped = summary.isCropped
+        cut = summary.cut
+        cleaned = summary.cleaned
+        cleanedAt = summary.cleanedAt
+    }
+
+    /// `tile` with the picture's marks as the card has them.
+    func on(_ tile: ItemSummary) -> ItemSummary {
+        var tile = tile
+        // Another picture than the list knew: its pixels' count was the
+        // other one's (the card goes by the same, `ItemDetailView.lowSide`).
+        if let known = tile.picture, known != picture { tile.lowSide = nil }
+        tile.picture = picture
+        tile.restored = restored ? true : nil
+        tile.cropped = cropped ? true : nil
+        tile.cut = cut
+        tile.cleaned = cleaned
+        tile.cleanedAt = cleanedAt
+        return tile
+    }
+}
+
 struct ItemPage: Codable, Sendable {
     let total: Int
     var items: [ItemSummary]

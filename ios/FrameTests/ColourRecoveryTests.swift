@@ -136,6 +136,50 @@ final class ColourRecoveryTests: XCTestCase {
         XCTAssertNotNil(UIImage(named: CleanedMark.symbol))
     }
 
+    /// A list loaded before the card took the varnish off shows the drop
+    /// when he is back in it, and asks for the cleaned picture (Mateusz
+    /// 2026-11-15 21:44: "Brakuje ikonki widocznej na liście dzieł w
+    /// odkrywaj").
+    @MainActor
+    func testAListLoadedBeforeFollowsTheCard() async throws {
+        let plain = try await work()
+        var tile = plain.summary  // as the list has it
+        tile.lowSide = 600
+        tile.zoom = true
+        XCTAssertFalse(tile.isCleaned)
+
+        var cleaned = plain
+        cleaned.cleaned = Cleaned(kind: "varnish", made: "oil", strength: 0.69, picture: "", at: "t1")
+        let model = AppModel()
+        XCTAssertEqual(model.asOnCard(tile), tile)  // nothing is known of it yet
+        model.cardShows(cleaned, changed: true)
+        let shown = model.asOnCard(tile)
+        XCTAssertTrue(shown.isCleaned)
+        XCTAssertEqual(shown.pictureVersion, cleaned.pictureVersion)
+        XCTAssertNotEqual(shown.pictureVersion, tile.pictureVersion)
+        // What the list alone knows stays: the title, its pixels, the magnifier.
+        XCTAssertEqual(shown.title, tile.title)
+        XCTAssertEqual(shown.lowSide, 600)
+        XCTAssertEqual(shown.zoom, true)
+        // Another work's tile is as it was.
+        var other = tile
+        other.title = "Inne"
+        XCTAssertEqual(PictureMarks(cleaned).on(other).title, "Inne")
+
+        // "Przywróć werniks": the drop goes from the list too.
+        model.cardShows(plain, changed: true)
+        XCTAssertFalse(model.asOnCard(tile).isCleaned)
+        XCTAssertEqual(model.asOnCard(tile).pictureVersion, plain.pictureVersion)
+
+        // Another copy in the picture's place: the list's count of pixels
+        // was the other picture's.
+        var copied = plain
+        copied.sharper = copy
+        model.cardShows(copied, changed: true)
+        XCTAssertNil(model.asOnCard(tile).lowSide)
+        XCTAssertEqual(model.asOnCard(tile).picture, "wmc:9")
+    }
+
     /// The demo takes a varnish off and gives it back, like the server.
     func testTheDemoCleansAndGivesUp() async throws {
         let demo = DemoBackend()

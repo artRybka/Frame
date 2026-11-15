@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.145.170
+
+- Korekta barw: zdjęty werniks jest teraz widoczny także na obrazach
+  ciemnych w całości. Dotąd barwa była oddawana tylko jaśniejszym partiom
+  (żeby czernie i ciemne zielenie nie robiły się niebieskie), a w takim
+  obrazie prawie wszystko jest ciemne, więc zmiany nie było widać. Próg
+  ciemnych partii liczy się teraz względem danego obrazu, czernie dalej
+  zostają neutralne. Siła korekty to cała propozycja zamiast trzech
+  czwartych. Dzieła skorygowane wcześniej serwer przelicza sam kilka
+  minut po aktualizacji.
+- Kropla „barwy skorygowane” (i znaczek kadru, kopii, restauratora)
+  pojawia się na liście od razu po zmianie na karcie, także na stronie
+  tematu w Odkrywaj otwartej wcześniej.
+
 ## 1.145.169
 
 - Korekta kadru: narożnik na zdjęciu łapie się teraz w kole o średnicy

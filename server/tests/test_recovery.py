@@ -130,6 +130,43 @@ def test_the_darks_keep_their_colour_and_lose_the_haze() -> None:
     assert kept > 0.8
 
 
+def test_a_picture_dark_all_over_gets_its_colour_back_too() -> None:
+    """Mateusz 2026-11-15 21:44–21:46, of Gainsborough's "Cottage Children"
+    (half of it under a luminance of 0.017): "Korekta werniksu - czasem
+    ledwo widoczna". What is dark is dark for the picture."""
+    rng = np.random.default_rng(3)
+    lin = np.empty((120, 160, 3), np.float32)
+    lin[:70] = (0.016, 0.024, 0.038)  # a stormy sky
+    lin[70:] = (0.012, 0.009, 0.006)  # the ground
+    lin[100:, :60] = (0.002, 0.002, 0.002)  # a black coat
+    lin[30:60, 60:100] = (0.30, 0.22, 0.17)  # a face
+    lin = (lin * rng.uniform(0.93, 1.0, lin.shape[:2])[..., None]).astype(np.float32)
+    seen = u8_to_linear(linear_to_u8(lin * np.exp(-0.8 * ALPHA) + 0.001))
+    sky, coat = (slice(5, 25), slice(5, 155)), (slice(105, 118), slice(5, 55))
+
+    def blue(picture: np.ndarray, where: tuple[slice, slice]) -> float:
+        patch = picture[where].reshape(-1, 3).mean(0)
+        return float(patch[2] / patch[0])
+
+    assert recovery._dark(seen) < 0.5 * recovery.DARK
+    clean = recovery.unvarnish(seen, 0.7)
+    plain = seen * np.exp(0.7 * ALPHA)
+
+    # The dark sky has a good part of the blue the plain sum gives it; held
+    # to the one threshold of lighter pictures it had next to none.
+    def gained(picture: np.ndarray) -> float:
+        return (blue(picture, sky) - blue(seen, sky)) / (blue(plain, sky) - blue(seen, sky))
+
+    held = recovery._without(seen, 0.7, recovery._black(seen), recovery.DARK)
+    assert gained(clean) > 0.4 > 0.1 > gained(held)
+    # The black coat is still no bluer than it was.
+    assert blue(clean, coat) <= 1.1 * blue(seen, coat)
+    # A picture of ordinary lightness is held to the one threshold as before.
+    assert recovery._dark(u8_to_linear(np.asarray(_under_varnish(_painting(), 0.8)))) == (
+        recovery.DARK
+    )
+
+
 def test_the_proposal_is_what_conservations_took_moved_by_the_white() -> None:
     assert recovery.propose(None) == 0.69  # no white to go by: the typical strength
     assert recovery.propose(0.78) == 0.69

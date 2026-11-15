@@ -447,7 +447,7 @@ struct ItemDetailView: View {
                 showPolish(view, animated: false)
             }
             item = fresh
-            if fresh.kind == .artwork { model.pictureSeen(fresh.id, copy: fresh.pictureVersion) }
+            if fresh.kind == .artwork { model.cardShows(fresh) }
             holding = false
             if LaunchRoute.screen == "original" { opened = .original }  // CI screenshots
         } catch {
@@ -733,7 +733,7 @@ struct ItemDetailView: View {
 
     private func cutChanged(_ updated: Item) {
         withAnimation(.easeInOut(duration: 0.4)) { item = updated }
-        model.pictureSeen(updated.id, copy: updated.pictureVersion, changed: true)
+        model.cardShows(updated, changed: true)
         if updated.isOwnWork { model.ownWorkChanged(updated) }
     }
 
@@ -785,7 +785,8 @@ struct ItemDetailView: View {
             }
             if let copy = view.sharper {
                 item?.sharper = copy
-                model.pictureSeen(id, copy: item?.pictureVersion ?? copy.itemId)  // the lists' thumbnail too
+                // The lists' thumbnail and marks too.
+                if let item { model.cardShows(item) } else { model.pictureSeen(id, copy: copy.itemId) }
                 return
             }
             if view.status != "looking" { return }
