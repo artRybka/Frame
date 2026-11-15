@@ -34,7 +34,7 @@ struct OwnCamera: View {
                 top
                 Spacer(minLength: 12)
                 viewfinder
-                Text(finding == nil ? "Całe dzieło w kadrze, na wprost, bez lampy" : "Szukam dzieła na zdjęciu…")
+                Text(finding == nil ? "Umieść całe dzieło w kadrze" : "Szukam dzieła na zdjęciu…")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.white.opacity(0.85))
                     .multilineTextAlignment(.center)

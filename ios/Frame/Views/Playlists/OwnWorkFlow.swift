@@ -1,11 +1,12 @@
 import CoreImage
 import CoreImage.CIFilterBuiltins
-import PhotosUI
 import SwiftUI
 
 /// "Dodaj własne dzieło" (Mateusz 2026-11-15, variant A with hints): from
 /// the "+" in Playlisty, three steps on the whole screen. A photograph from
-/// the camera (or Photos); the work found in it by the server and cut out
+/// the camera, open at once with one line of advice (or from Photos beside
+/// its shutter; Mateusz 2026-11-15 23:52, sketch A), the steps after it in
+/// the app's own navigation bar; the work found in it by the server and cut out
 /// of its frame and mount, its corners his to move; then what he knows of
 /// it, with what was read off the picture (signature, date, technique) as
 /// chips to take. One work at a time. "Zrób zdjęcie ponownie" on its card
@@ -51,9 +52,6 @@ struct OwnWorkFlow: View {
     @State private var readingHints = false
     @State private var text = OwnDescription()
     @State private var adding = false
-    @State private var camera = false
-    @State private var library = false
-    @State private var picked: PhotosPickerItem?
 
     private var retaking: Item? {
         if case let .retake(item) = mode { return item }
@@ -62,21 +60,12 @@ struct OwnWorkFlow: View {
 
     private var steps: [Step] { retaking == nil ? Step.allCases : [.photo, .cut] }
 
-    /// The first step: the camera itself (A) or a short page of advice
-    /// with the two buttons (B, `-ownLook tips`). Sketches for Mateusz
-    /// 2026-11-15; one goes when he has chosen.
-    private var cameraFirst: Bool { LaunchRoute.ownLook != "tips" }
-
     var body: some View {
         NavigationStack {
             Group {
                 switch step {
                 case .photo:
-                    if cameraFirst {
-                        OwnCamera(close: back, took: take, finding: finding ? photo : nil)
-                    } else {
-                        photoStep
-                    }
+                    OwnCamera(close: back, took: take, finding: finding ? photo : nil)
                 case .cut: cutStep
                 case .describe: describeStep
                 }
@@ -103,23 +92,7 @@ struct OwnWorkFlow: View {
                     .accessibilityElement(children: .combine)
                 }
             }
-            .toolbar(step == .photo && cameraFirst ? .hidden : .visible, for: .navigationBar)
-        }
-        .fullScreenCover(isPresented: $camera) {
-            CameraPicker { image in take(image) }
-                .ignoresSafeArea()
-        }
-        .photosPicker(isPresented: $library, selection: $picked, matching: .images)
-        .onChange(of: picked) { _, item in
-            guard let item else { return }
-            picked = nil
-            Task {
-                guard let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else {
-                    model.notices.warn("Nie udało się wczytać zdjęcia")
-                    return
-                }
-                take(image)
-            }
+            .toolbar(step == .photo ? .hidden : .visible, for: .navigationBar)
         }
         .task { await openForScreenshot() }
     }
@@ -134,69 +107,6 @@ struct OwnWorkFlow: View {
     }
 
     // MARK: 1. The photograph
-
-    /// B: the advice alone, the two buttons under it.
-    private var photoStep: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    Text(retaking == nil
-                         ? "Sfotografuj obraz, rysunek albo grafikę."
-                         : "Nowe zdjęcie zastąpi obecne, opis zostanie bez zmian.")
-                        .font(.serif(17))
-                        .foregroundStyle(Theme.inkSoft)
-                    PhotoSketch()
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                    PhotoTips()
-                    if finding, let photo {
-                        HStack(spacing: 12) {
-                            Image(uiImage: photo)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 56, height: 56)
-                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            Text("Szukam dzieła na zdjęciu…")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(Theme.ink)
-                            Spacer()
-                            ProgressView()
-                        }
-                        .padding(12)
-                        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
-                        .transition(.opacity)
-                    }
-                }
-                .pageWidth()
-                .padding(.horizontal, Theme.gutter)
-                .padding(.top, 12)
-                .padding(.bottom, 24)
-            }
-            VStack(spacing: 10) {
-                Button {
-                    if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                        camera = true
-                    } else if model.demoMode, let demo = DemoOwn.photo() {
-                        take(demo)  // the simulator has no camera
-                    } else {
-                        library = true
-                    }
-                } label: {
-                    Label("Zrób zdjęcie", systemImage: "camera.fill")
-                }
-                .buttonStyle(ActionButtonStyle(prominent: true))
-                Button { library = true } label: {
-                    Label("Wybierz ze Zdjęć", systemImage: "photo.on.rectangle")
-                }
-                .buttonStyle(ActionButtonStyle())
-            }
-            .disabled(finding)
-            .padding(.horizontal, Theme.gutter)
-            .padding(.bottom, 16)
-            .pageWidth()
-        }
-        .animation(.easeOut(duration: 0.25), value: finding)
-    }
 
     /// The photograph upright (the camera's turn drawn in), sent, and the
     /// work looked for in it.
@@ -388,78 +298,6 @@ struct OwnWorkFlow: View {
         return UIGraphicsImageRenderer(size: size, format: format).image { _ in
             image.draw(in: CGRect(origin: .zero, size: size))
         }
-    }
-}
-
-/// A work on a wall between the camera's corner marks: how it is taken.
-private struct PhotoSketch: View {
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
-                .fill(Theme.mat)
-            // The frame and the work in it, a little shadow on the wall.
-            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                .fill(Theme.ink.opacity(0.75))
-                .frame(width: 150, height: 118)
-                .shadow(color: .black.opacity(0.18), radius: 8, y: 6)
-            LinearGradient(
-                colors: [Color(red: 0.55, green: 0.68, blue: 0.80), Color(red: 0.86, green: 0.78, blue: 0.58),
-                         Color(red: 0.42, green: 0.55, blue: 0.40)],
-                startPoint: .top, endPoint: .bottom
-            )
-            .frame(width: 128, height: 96)
-            Rectangle()
-                .strokeBorder(Theme.vermilion.opacity(0.9), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
-                .frame(width: 128, height: 96)
-            Corners()
-                .stroke(Theme.ink, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                .frame(width: 210, height: 170)
-        }
-        .frame(height: 210)
-        .accessibilityHidden(true)
-    }
-
-    private struct Corners: Shape {
-        func path(in rect: CGRect) -> Path {
-            let arm: CGFloat = 18
-            var path = Path()
-            for (x, y, dx, dy) in [(rect.minX, rect.minY, 1.0, 1.0), (rect.maxX, rect.minY, -1.0, 1.0),
-                                   (rect.maxX, rect.maxY, -1.0, -1.0), (rect.minX, rect.maxY, 1.0, -1.0)] {
-                path.move(to: CGPoint(x: x + dx * arm, y: y))
-                path.addLine(to: CGPoint(x: x, y: y))
-                path.addLine(to: CGPoint(x: x, y: y + dy * arm))
-            }
-            return path
-        }
-    }
-}
-
-/// How to photograph a work so it cuts well.
-private struct PhotoTips: View {
-    private static let tips: [(String, String)] = [
-        ("viewfinder", "Całe dzieło w kadrze, z kawałkiem ściany wokół"),
-        ("arrow.up.and.down.and.arrow.left.and.right", "Najlepiej na wprost"),
-        ("sun.max", "Dzienne światło, bez lampy błyskowej i odbić w szybie"),
-    ]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(Self.tips, id: \.1) { symbol, tip in
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    Image(systemName: symbol)
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.vermilion)
-                        .frame(width: 22)
-                    Text(tip)
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.ink)
-                }
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).strokeBorder(Theme.hairline))
     }
 }
 

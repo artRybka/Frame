@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.176
+
+- „Dodaj własne dzieło” otwiera od razu aparat: kadr ze znacznikami
+  narożników, pod nim „Umieść całe dzieło w kadrze”, obok migawki
+  przycisk Zdjęć, w lewym górnym rogu strzałka wstecz. Bez strony
+  z opisem i radami przed aparatem.
+- Kroki Kadr i Opis mają zwykły pasek nawigacji jak reszta aplikacji:
+  strzałka wstecz, tytuł z krokiem („Kadr · 2 z 3”), „Dalej” albo
+  „Dodaj” w prawym górnym rogu, zamiast przycisków „Anuluj” i „Wstecz”.
+
 ## 1.145.175
 
 - Automatyczne kadrowanie trafniejsze. Przegląd 178 automatycznych kadrów:
