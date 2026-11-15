@@ -1320,25 +1320,31 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
         /// calm part with nothing over it and has a part of many short pulls;
         /// how slanted those are (0: along the bar). nil: as `over` lays them.
         var busy: Double? = nil
+        /// How much flatter the calm parts lie than the paint's height would
+        /// have them (19:15: „te spokojne partie mogą być mniej 3D. Malowane
+        /// bardziej płasko”): 0 as laid, 1 level.
+        var flat = 0.0
 
         /// The bar until 1.145.15x: long swaying pulls, the last running dry past the end.
         static let before = Look(back: 16, own: 1, ragged: 1, mound: 1, tail: true, line: 1)
         /// Sketch 48 D: the colours laid in with long calm pulls, then gone
         /// over with short ones partly across; a soft rough hem, an end that
-        /// stops, a thinner contour.
+        /// stops, a thinner contour. Thick paint as sketch 50 F (Mateusz
+        /// 2026-11-15 19:15: „Raczej F”): each colour a calm, flatter part
+        /// and a part of many short pulls along the bar.
         static let laid = Look(back: 14, own: 0.4, ragged: 0.8, mound: 0.35, tail: false, line: 0.6,
-                               round: 0.6, slant: 4, rise: 6, lip: 0.35, grooves: 1.5, over: 17, hem: 1.0, push: 0.3)
-
-        /// Sketch 50 F: thick paint in a calm part and a part of many short pulls along the bar.
-        static let zoned: Look = { var look = laid; look.busy = 0; return look }()
-        /// Sketch 50 G: as F, the short pulls slanted all one way.
+                               round: 0.6, slant: 4, rise: 6, lip: 0.35, grooves: 1.5, over: 17, hem: 1.0, push: 0.3,
+                               busy: 0, flat: 0.9)
+        /// Sketch 48 D for every paint, thick or not (1.145.157).
+        static let gone: Look = { var look = laid; look.busy = nil; look.flat = 0; return look }()
+        /// Sketch 50 G: as laid, the short pulls of thick paint slanted all one way.
         static let slanted: Look = { var look = laid; look.busy = 0.45; return look }()
 
-        /// The look in use; "-oilLook before" shows the old one (screenshots, sketches).
+        /// The look in use; "-oilLook before" shows the old one, "D" 1.145.157's (screenshots, sketches).
         static let current: Look = {
             switch UserDefaults.standard.string(forKey: "oilLook") ?? ProcessInfo.processInfo.environment["OIL_LOOK"] {
             case "before": .before
-            case "F": .zoned
+            case "D": .gone
             case "G": .slanted
             default: .laid
             }
@@ -1705,6 +1711,18 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
         let ragged = (1 - Self.evened.ragged * even) * look.ragged, mound = (1 - Self.evened.mound * even) * look.mound
         // The bar's end: without a dry tail the paint stops there, as a brush lifted in time.
         let end = (pulls.filter { !$0.on }.map(\.e).max() ?? 0) + 1.5
+        // Thick paint's calm parts (`Look.flat`): how far each column is from the short pulls gone over it,
+        // 1 well clear of them, 0 under them.
+        let flat = look.busy != nil && Self.thick(relief: relief) > 0 ? look.flat : 0
+        var still = [Double](repeating: 1, count: wide)
+        if flat > 0 {
+            let overs = pulls.filter(\.over)
+            for px in 0..<wide {
+                let x = -pad + (Double(px) + 0.5) / S
+                let off = overs.map { max($0.a - x, x - $0.e, 0) }.min() ?? 99
+                still[px] = Paint.step(0, 7, off)
+            }
+        }
         var all = [Laid]()
         for (i, P) in pulls.enumerated() {
             var laid = Laid()
@@ -1765,6 +1783,8 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
                     let calm = look.wet
                     hgt = max(0.05, hgt) * (calm && !P.on ? 1 : ramp) + 0.1
                     if calm, P.mark < 1, !P.on { hgt += look.push * exp(-pow((u - start - 1.8) / 1.4, 2)) * (0.6 + 0.8 * streaks) }
+                    // In a calm part of thick paint the ground lies flatter.
+                    if flat > 0, !P.on, !P.over { hgt = 0.7 + (hgt - 0.7) * (1 - flat * still[px]) }
                     laid.lift.append(Float(calm ? cover * ramp * (P.on ? 0.75 : 1) : cover))
                     let streak = 1 + ragged * (0.1 * (Paint.noise(v / 1.1, 2.3 * di + x / 60, 131 + seed) - 0.5) + 0.06 * (slow - 0.5))
                     var cr = c[0], cg = c[1], cb = c[2]

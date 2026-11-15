@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.162
+
+- Pasek barw grubo malowanych obrazów olejnych (np. van Gogh, Matisse):
+  każdy kolor ma duży, spokojny płat malowany płasko i część z wielu
+  krótkich pociągnięć, które leżą na styku z sąsiednim kolorem. Obrazy
+  malowane gładko (np. Vermeer) i dzieła bez daty i stylu bez zmian.
+
 ## 1.145.161
 
 - Resztka miesiąca Claude idzie na to, co wybierzesz, w Twojej kolejności:
