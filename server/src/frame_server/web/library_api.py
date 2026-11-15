@@ -33,6 +33,7 @@ from ..imaging.cut import valid
 from ..imaging.grids import GRIDS, MIN_PHOTOS, choose, plan_multi
 from ..imaging.interest import InterestMap, interest_of
 from ..imaging.layout import (
+    OLD_TRIM_ZOOM,
     WHOLE,
     Crop,
     Fit,
@@ -1467,9 +1468,12 @@ async def reset_framing(item_id: str, svc: Svc, orientation: Orientation) -> Fra
 
 
 def _uncropped(crop: Crop) -> bool:
-    """The picture's window as it is without a correction (layout.WHOLE)."""
-    off = max(abs(crop.zoom - WHOLE.zoom), abs(crop.x - WHOLE.x), abs(crop.y - WHOLE.y))
-    return crop.aspect is None and off < 1e-3
+    """The picture's window as it is without a correction (layout.WHOLE):
+    at zoom 1 in a window of the picture's shape its centre moves nothing.
+    An app that still sends the old trimmed default (layout.OLD_TRIM_ZOOM)
+    is read the same way."""
+    zoom = min(abs(crop.zoom - WHOLE.zoom), abs(crop.zoom - OLD_TRIM_ZOOM))
+    return crop.aspect is None and zoom < 1e-3
 
 
 def _save_framing(

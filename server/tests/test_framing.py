@@ -141,6 +141,27 @@ def test_fit_crop_takes_any_shape() -> None:
     assert (y0 + y1) / 2 == pytest.approx(0.3 * 1200)
 
 
+def test_mat_window_shows_the_work_to_its_edges() -> None:
+    """No enlargement behind the mat (until 1.145.162 2 % a side was hidden):
+    the automatic cut takes a museum's frame away, the work's edges stay."""
+    for fit in (Fit.FIT, Fit.DESCRIPTION):
+        main = plan_layout((800, 1200), CANVAS, fit, margin=0.05).windows[0]
+        assert main.box == pytest.approx((0, 0, 800, 1200)) and main.crop == WHOLE
+    # A saved correction at the old default zoom (only moved, or reshaped)
+    # is read at zoom 1; one enlarged by hand stays as it was.
+    old = 1 / (1 - 2 * 0.02)
+    moved = plan_layout((800, 1200), CANVAS, Fit.FIT, fit_crop=Crop(x=0.4, zoom=old))
+    assert moved.windows[0].box == pytest.approx((0, 0, 800, 1200))
+    square = plan_layout((800, 1200), CANVAS, Fit.FIT, fit_crop=Crop(zoom=old, aspect=1.0))
+    assert square.windows[0].box == pytest.approx((0, 200, 800, 1000))
+    shown = plan_layout(
+        (800, 1200), CANVAS, Fit.DESCRIPTION, picture_crop=Crop(y=0.4, zoom=old)
+    ).windows[0]
+    assert shown.box == pytest.approx((0, 0, 800, 1200))
+    hand = plan_layout((800, 1200), CANVAS, Fit.FIT, fit_crop=Crop(zoom=1.2)).windows[0]
+    assert hand.box[2] - hand.box[0] == pytest.approx(800 / 1.2)
+
+
 def test_picture_tint_follows_the_main_hue() -> None:
     white, black = np.ones(3, np.float32), np.zeros(3, np.float32)
     blue = np.zeros((100, 100, 3), np.float32)
@@ -223,14 +244,6 @@ def test_description_picture_can_be_cropped() -> None:
     x0, y0, x1, y1 = main.box
     assert x1 - x0 == pytest.approx(400) and y1 - y0 == pytest.approx(600)
     assert (x0 + x1) / 2 == pytest.approx(0.3 * 800) and (y0 + y1) / 2 == pytest.approx(480)
-
-
-def test_picture_edge_hides_behind_the_mat() -> None:
-    for fit in (Fit.FIT, Fit.DESCRIPTION):
-        picture = plan_layout((800, 1200), CANVAS, fit).windows[0]
-        x0, y0, x1, y1 = picture.box
-        assert 0 < x0 < 0.05 * 800 and 0 < y0 < 0.05 * 1200
-        assert 0.95 * 800 < x1 < 800 and 0.95 * 1200 < y1 < 1200
 
 
 def test_description_text_block() -> None:

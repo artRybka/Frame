@@ -89,7 +89,7 @@ struct CropTools: View {
                 ForEach(windowShapes, id: \.title) { shape in
                     Button {
                         draft.crops[0].aspect = shape.aspect
-                        draft.crops[0].zoom = shape.aspect == nil ? DemoFraming.wholeCrop.zoom : 1
+                        draft.crops[0].zoom = 1
                     } label: {
                         if sameShape(draft.crops.first?.aspect, shape.aspect) {
                             Label(shape.title, systemImage: "checkmark")
