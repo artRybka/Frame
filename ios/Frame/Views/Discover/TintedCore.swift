@@ -27,8 +27,11 @@ final class TintedStrip: PaintPainter, @unchecked Sendable {
     private let pieces: [(painter: WaterStrip, at: Double, from: Double)]
     private var whole: PaintFrame?
 
-    /// How much of what the drawing's tone asks its lines cover: loose lines.
-    static let thin = 0.75
+    /// How much of what the drawing's tone asks its lines cover: loose
+    /// lines, a pencil's lighter and sparser than a pen's (on the
+    /// simulator at 0.75 a pencil's hatching was as dense as the pen's,
+    /// far more than Stażewski's sparse grey lines).
+    static func thin(_ tool: LineTool) -> Double { tool == .pen ? 0.75 : 0.55 }
     /// How much of the watercolour is there where it is laid: the lines and the paper show a little.
     static let strength = 0.92
     /// When the watercolour begins, as a part of the lines' time; how long
@@ -93,7 +96,7 @@ final class TintedStrip: PaintPainter, @unchecked Sendable {
         let (paper, washes, drops) = Self.split(shares)
         // The drawing's lines are of the paper's tone: as loose all along.
         lines = LineStrip(shares: [PaintShare(rgb: paper?.rgb ?? [243, 235, 216], weight: 1)], width: width, seed: seed, tool: tool,
-                          thin: Self.thin)
+                          thin: Self.thin(tool))
         (wide, high) = (lines.wide, lines.high)
         let placed = Self.places(shares, width: width)
         let begun = lines.length * Self.washes.from
