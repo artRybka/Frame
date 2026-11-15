@@ -31,6 +31,7 @@ from .ai.prose import ProseJob
 from .ai.redraw import PenJob
 from .ai.refresh import StudyRefresh
 from .ai.search_words import SearchWords
+from .ai.study import KIND as STUDY_KIND
 from .ai.study import StudyJob
 from .ai.text_review import TextReview
 from .ai.twins_judge import NightJudge
@@ -422,6 +423,9 @@ class FrameService:
         self.drawn.to_come = self._to_come
         pen.drawn = self._drawn_covers
         self.sheets.spared = self.drawn.spares
+        # A study is ready once its sketch is drawn too (Mateusz 2026-11-15).
+        self.study.sketch_coming = lambda item: self.drawn.coming(item, STUDY_KIND)
+        self.study.sketches = self.drawn.draws
         # Small pictures of works drawn again larger by the same model
         # ("Kreatywny restaurator"), kept as the owner's pick.
         self.restorer = Restorer(self.library, self.images, self.sharper, self.painter)

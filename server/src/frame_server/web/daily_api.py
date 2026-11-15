@@ -183,7 +183,8 @@ class DailyWork(BaseModel):
     #: owner had made anew; a minute or two): the app asks for the page
     #: again until it has ``composition_drawn``.
     composition_drawn_pending: bool = False
-    #: The owner asked for the analysis anew and it is being made.
+    #: The owner asked for the analysis anew and it is being made, with its
+    #: drawn sheet (the page keeps the one before until both are there).
     composition_pending: bool = False
     #: The owner asked for the details to be checked ("Popraw detale"): on its way.
     details_pending: bool = False
@@ -426,7 +427,7 @@ def page(
         ],
         composition_drawn=sheet,
         composition_drawn_pending=drawing,
-        composition_pending=bool(essay) and svc.compose.pending(item.id),
+        composition_pending=bool(essay) and (svc.compose.pending(item.id) or svc.drawn.anew(item)),
         details_pending=bool(essay) and svc.mend.pending(item.id),
         colour=essay.colour if essay else "",
         details=details,
