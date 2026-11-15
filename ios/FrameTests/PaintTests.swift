@@ -941,7 +941,7 @@ final class PaintTests: XCTestCase {
     /// gradient. Akcenty z końca jako pacnięcia na wierzchu.”
     func testOilIsOneBandOfPullsWithTheSmallColoursAsTouchesOnTop() {
         let pulls = OilStrip.pulls(jatte, width: 350, seed: 5)
-        let mains = pulls.filter { !$0.on }, accents = pulls.filter(\.on)
+        let mains = pulls.filter { !$0.on && !$0.over }, accents = pulls.filter(\.on)
         // The four big colours are pulls (the widest in two), the three small ones touches on top.
         XCTAssertEqual(mains.count, 5)
         XCTAssertEqual(accents.map(\.rgb), [jatte[4].rgb, jatte[5].rgb, jatte[6].rgb])
@@ -950,7 +950,7 @@ final class PaintTests: XCTestCase {
         XCTAssertNil(mains[0].under)
         for (before, after) in zip(mains, mains.dropFirst()) {
             // Each begun in the wet paint of the one before, with that paint on the brush.
-            XCTAssertEqual(after.a, before.e - OilStrip.back, accuracy: 0.001)
+            XCTAssertEqual(after.a, before.e - OilStrip.Look.current.back, accuracy: 0.001)
             XCTAssertEqual(after.under, before.rgb)
             XCTAssertGreaterThan(after.blend, 0.3)
             XCTAssertGreaterThan(after.at, before.at)
@@ -1003,7 +1003,7 @@ final class PaintTests: XCTestCase {
     func testOilColoursGoOverIntoEachOther() {
         // Two colours, each wide enough for three pulls.
         let two = shares([("#B03020", 0.5), ("#2040B0", 0.5)])
-        let pulls = OilStrip.pulls(two, width: 350, seed: 5)
+        let pulls = OilStrip.pulls(two, width: 350, seed: 5).filter { !$0.over }
         XCTAssertEqual(pulls.count, 6)
         XCTAssertFalse(pulls.contains(where: \.on))
         // The pull next to the other colour has some of it on the brush; the ones away from it are pure.
@@ -1028,6 +1028,72 @@ final class PaintTests: XCTestCase {
         for (here, next) in zip(between, between.dropFirst()) { XCTAssertLessThan(abs(here - next), 0.36) }
     }
 
+    /// Mateusz 2026-11-15 15:10: „Pasek koloru dla farb jest zbyt
+    /// agresywny. Chciałbym żeby bardziej zamykał się w prostokącie? A w
+    /// ramach jednego odcinka koloru zawierał może więcej pociągnięć
+    /// pędzla?”; 16:03, of sketch 48: „D”.
+    func testTheLaidOilBarKeepsToItsRectangleWithMorePullsInEachColour() {
+        XCTAssertEqual(OilStrip.Look.current, .laid)
+        let pulls = OilStrip.pulls(jatte, width: 350, seed: 5)
+        let grounds = pulls.filter { !$0.on && !$0.over }, overs = pulls.filter(\.over), accents = pulls.filter(\.on)
+        // Each colour laid in, then gone over with short pulls partly across the bar, a little lighter or darker.
+        XCTAssertGreaterThanOrEqual(overs.count, 15)
+        for pull in overs {
+            XCTAssertFalse(pull.on)
+            XCTAssertLessThanOrEqual(pull.e - pull.a, 28.001)
+            XCTAssertLessThan(pull.wide, 0.65 * Paint.bar / 2)
+            XCTAssertLessThanOrEqual(abs(pull.dy) + pull.wide, Paint.bar / 2)
+            XCTAssertGreaterThanOrEqual(pull.a, 0)
+            XCTAssertLessThanOrEqual(pull.e, 350)
+            XCTAssertGreaterThanOrEqual(pull.at, grounds.map(\.at).max() ?? 0)
+            XCTAssertNotNil(pull.under)
+        }
+        XCTAssertTrue(overs.contains { $0.rgb[0] > ($0.under ?? [])[0] } && overs.contains { $0.rgb[0] < ($0.under ?? [])[0] })
+        // The accents still come last, on top.
+        for accent in accents { XCTAssertGreaterThanOrEqual(accent.at, overs.map(\.at).max() ?? 0) }
+
+        let laid = OilStrip(shares: jatte, width: 350, seed: 5, dark: false).frame(age: 99)
+        let before = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, look: .before).frame(age: 99)
+        func alpha(_ frame: PaintFrame, _ x: Int, _ y: Int) -> UInt8 { frame.bytes[4 * (y * frame.wide + x) + 3] }
+        // No dry brush at the bar's end: the paint is whole up to where it stops, and stops there.
+        func end(_ frame: PaintFrame) -> Double {
+            var sum = 0.0, count = 0.0
+            for x in stride(from: 332.0, through: 341, by: 0.5) {
+                for y in stride(from: 6.0, through: 20, by: 0.5) {
+                    let at = pixel(x, y)
+                    sum += frame.cover(at.0, at.1)
+                    count += 1
+                }
+            }
+            return sum / count
+        }
+        XCTAssertGreaterThan(end(laid), 0.9)
+        XCTAssertGreaterThan(end(laid), end(before) + 0.15)
+        let past = pixel(350 - 6 + 5, 13)
+        XCTAssertLessThan(laid.cover(past.0, past.1), 0.05)
+        // Its top and foot keep to a line: they wander less than the old bar's.
+        func wander(_ frame: PaintFrame) -> Double {
+            var tops = [Int](), feet = [Int]()
+            for x in stride(from: 30 * Paint.scale, to: frame.wide - 60 * Paint.scale, by: 2) {
+                let painted = (0..<frame.high).filter { alpha(frame, x, $0) > 200 }
+                if let top = painted.first, let foot = painted.last {
+                    tops.append(top)
+                    feet.append(foot)
+                }
+            }
+            func spread(_ values: [Int]) -> Double { Double((values.max() ?? 0) - (values.min() ?? 0)) / Double(Paint.scale) }
+            return max(spread(tops), spread(feet))
+        }
+        XCTAssertLessThan(wander(laid), 0.6 * wander(before))
+        XCTAssertLessThan(wander(laid), 4)
+        // Its contour is thinner than the picture's lines give.
+        let line = ContourLine(rgb: [30, 27, 24], length: 5, width: 1.1)
+        let contoured = ContouredStrip(OilStrip(shares: jatte, width: 350, seed: 5, dark: false), line: line, style: .oil, seed: 5)
+        XCTAssertEqual(contoured.line.thick, 0.6 * line.thick, accuracy: 0.001)
+        // A paint's swatch is one touch, as it was.
+        XCTAssertEqual(OilStrip(touch: jatte[0].rgb, index: 0, seed: 5, dark: false).look, .before)
+    }
+
     /// Mateusz 2026-11-11 18:59: „Przy lini kolorów robionych farba
     /// olejna także dodaj „tłustą plamę” na papierze pod spodem.”
     func testThePaperUnderTheOilBarSoaksTheOilUp() {
@@ -1040,7 +1106,15 @@ final class PaintTests: XCTestCase {
         // A faint stain round the paint that was not there when the first pulls were just down, and comes slowly.
         let begun = strip.frame(age: 0.5), wet = strip.frame(age: strip.last), soaked = strip.frame(age: strip.length)
         XCTAssertLessThan(count(begun, 12...80), 1200)
-        XCTAssertGreaterThan(count(soaked, 12...80), count(wet, 12...80) + 3000)
+        // Round the paint: paper bare when the paint was down, stained once soaked. (Counted outside the paint:
+        // the laid bar's soft hem has faint paint of its own at its edge.)
+        func stained(_ frame: PaintFrame) -> Int {
+            var count = 0
+            for k in 0..<(frame.wide * frame.high) where wet.bytes[4 * k + 3] < 5 && frame.bytes[4 * k + 3] >= 12 { count += 1 }
+            return count
+        }
+        XCTAssertGreaterThan(stained(soaked), 800)
+        XCTAssertLessThan(stained(wet), 100)
         let half = strip.frame(age: strip.last + OilStrip.soak / 2)
         XCTAssertGreaterThan(count(half, 12...80), count(wet, 12...80))
         XCTAssertLessThan(count(half, 5...80), count(soaked, 5...80))
@@ -1117,8 +1191,10 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(Paint.even(relief: Paint.calm.thick), 0)
         XCTAssertTrue((0.3...0.5).contains(Paint.even(relief: Paint.calm.even)))
         // A lively hand's pulls are those of sketch 30, as they were.
-        let lively = OilStrip.pulls(jatte, width: 350, seed: 5), even = OilStrip.pulls(jatte, width: 350, seed: 5, even: 1)
-        XCTAssertEqual(OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.late).pulls.map(\.tilt), lively.map(\.tilt))
+        let lively = OilStrip.pulls(jatte, width: 350, seed: 5).filter { !$0.over }
+        let even = OilStrip.pulls(jatte, width: 350, seed: 5, even: 1).filter { !$0.over }
+        XCTAssertEqual(OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.late).pulls.filter { !$0.over }.map(\.tilt),
+                       lively.map(\.tilt))
         // As many pulls at the same times, of the same colours' places.
         XCTAssertEqual(even.count, lively.count)
         XCTAssertEqual(even.map(\.at), lively.map(\.at))
@@ -1142,7 +1218,8 @@ final class PaintTests: XCTestCase {
             XCTAssertGreaterThan(even[index].carry.0, 1.5 * lively[index].carry.0)
         }
         // The last pull does not run as dry.
-        if let end = mains.last { XCTAssertGreaterThan(even[end].full, lively[end].full) }
+        // (Only where the last pull runs dry at all: the laid bar stops before.)
+        if let end = mains.last, OilStrip.Look.current.tail { XCTAssertGreaterThan(even[end].full, lively[end].full) }
         // In the picture: the sides of the paint wander less.
         func edge(_ frame: PaintFrame) -> Double {
             // How much the paint's upper edge moves from one column to the next, on the average.

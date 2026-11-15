@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.157
+
+- Pasek barw farby olejnej jest spokojniejszy i trzyma się prostokąta.
+  Każdy kolor jest najpierw położony spokojnym pociągnięciem, a potem
+  przejechany kilkoma krótkimi, odrobinę jaśniejszymi lub ciemniejszymi,
+  przez część wysokości paska. Nowa farba wchodzi w mokrą bez wypukłej
+  obwódki, pasek ma miękki, postrzępiony brzeg i kończy się bez suchego,
+  wystrzępionego ogona. Kontur jest cieńszy. Wypukłość farby dalej zależy
+  od dzieła.
+
 ## 1.145.156
 
 - Akwatinta jednej barwy (także z akwafortą) ma pasek z ziarna zamiast
