@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from collections.abc import Sequence
 from enum import StrEnum
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -178,6 +179,16 @@ class SharperCopy(BaseModel):
     restored: bool = False
 
 
+def quads_close(
+    a: Sequence[Sequence[float]], b: Sequence[Sequence[float]], by: float = 0.012
+) -> bool:
+    """Whether two sets of corners are one: no corner further apart than
+    ``by`` (share of the photograph's side)."""
+    return len(a) == len(b) and all(
+        abs(x - u) <= by and abs(y - v) <= by for (x, y), (u, v) in zip(a, b, strict=True)
+    )
+
+
 class Cut(BaseModel):
     """The work in its museum photograph, without what is around it (a
     frame, an easel, the board it lies on: ``imaging.cut``, ``ai.crops``;
@@ -210,6 +221,17 @@ class Cut(BaseModel):
     around: list[str] = Field(default_factory=list)
     #: When it was set (ISO): the app's pictures kept from before are had anew.
     at: str = ""
+
+    def without_twin(self) -> Cut:
+        """Without a "plate" that is the work itself (Wyczółkowski's
+        lithograph on China paper laid on a card, MNK, 2026-11-15: the card
+        cut away, the China paper is the print; "Z papierem" and "Sama
+        odbitka" were the same picture): no paper to choose, so none named
+        around it either."""
+        if self.plate is None or self.work is None or not quads_close(self.plate, self.work):
+            return self
+        around = [a for a in self.around if a not in ("paper_margin", "page_text")]
+        return self.model_copy(update={"plate": None, "paper": True, "around": around})
 
     def shown(self) -> list[tuple[float, float]] | None:
         """The corners the picture is cut to, None for the whole photograph."""

@@ -17,7 +17,15 @@ from test_ai import FakeAnthropic, _message, fake  # noqa: F401  (fixture)
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import HAIKU, OPUS
 from frame_server.ai.crops import read_layers
-from frame_server.imaging.cut import snap, thin_backdrop, valid, warp, worth_cutting
+from frame_server.imaging.cut import (
+    backdrop_quad,
+    sheet_out_to_strips,
+    snap,
+    thin_backdrop,
+    valid,
+    warp,
+    worth_cutting,
+)
 from frame_server.library.models import Cut, Item, ItemKind, ItemSummary
 from frame_server.service import FrameService
 
@@ -415,7 +423,7 @@ def test_a_thin_backdrop_the_judge_missed_is_cut_away(
     assert "backdrop" in fake.asked[1]["messages"][0]["content"][-1]["text"]
     item = service.library.get("cma:1")
     assert item is not None and item.cut is not None and item.cut_shown() is not None
-    assert service.crops.asked()["cma:1"]["band"] is True
+    assert service.crops.asked()["cma:1"]["band"] == 2
 
 
 def test_works_judged_before_go_to_opus_when_their_card_opens(
@@ -454,6 +462,89 @@ def test_works_cared_about_are_swept_once_for_a_thin_backdrop(service: FrameServ
     crops._save(state)
     assert crops.swept() == 1
     state = crops.state()
-    assert state["claims"] == {"cma:5": {"around": ["backdrop"]}}
-    assert state["asked"]["cma:5"]["band"] is True
+    assert state["claims"] == {"cma:5": {"around": ["backdrop"], "band": True}}
+    assert state["asked"]["cma:5"]["band"] == 2
     assert crops.swept() == 0  # once
+
+
+# -- a plate that is the work ---------------------------------------------------------------
+
+
+def test_a_plate_that_is_the_work_is_no_paper_to_choose(service: FrameService) -> None:
+    # Wyczółkowski's lithograph on China paper laid on a card (MNK,
+    # 2026-11-15): "Z papierem" and "Sama odbitka" were the same picture.
+    work = [(0.0537, 0.2137), (0.9362, 0.2216), (0.9426, 0.7871), (0.0507, 0.7867)]
+    plate = [(0.0532, 0.2137), (0.9362, 0.2216), (0.9429, 0.7869), (0.0509, 0.7864)]
+    twin = Cut(work=work, plate=plate, paper=False, by="owner", around=["mount", "paper_margin"])
+    alone = twin.without_twin()
+    assert alone.plate is None and alone.paper and alone.around == ["mount"]
+    assert alone.shown() == work and alone.has_paper is False
+    other = Cut(work=work, plate=[(0.2, 0.3), (0.8, 0.3), (0.8, 0.7), (0.2, 0.7)])
+    assert other.without_twin() is other
+
+    _work(service, "mnk:9", pooled=True)
+    service.library.update("mnk:9", cut=twin)
+    _work(service, "mnk:10", pooled=True)
+    service.library.update("mnk:10", cut=other)
+    crops = service.crops
+    assert crops.untwinned() == 1
+    stored = service.library.get("mnk:9")
+    assert stored is not None and stored.cut is not None and stored.cut.plate is None
+    assert stored.cut.by == "owner" and stored.cut.work == work
+    assert service.library.get("mnk:10").cut.plate is not None  # type: ignore[union-attr]
+    assert crops.untwinned() == 0  # once
+
+
+def test_the_strips_alone_are_cut_away_when_opus_is_unsure(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    # Munch's Evening, Melancholy I (Cleveland, 2026-11-15): the strips
+    # found, Opus unsure of a sheet's edge that nearly meets the photograph's.
+    quad = backdrop_quad(sheet(strip=9))
+    assert quad is not None and _near(
+        quad,
+        [(9 / W, 9 / H), (1 - 9 / W, 9 / H), (1 - 9 / W, 1 - 9 / H), (9 / W, 1 - 9 / H)],
+        0.004,
+    )
+    assert backdrop_quad(sheet(strip=0)) is None and backdrop_quad(photo()) is None
+
+    _work(service, "cma:11", picture=sheet(), pooled=True)
+    crops = service.crops
+    state = crops.state()  # asked by 1.145.138: Opus unsure, nothing cut
+    state["asked"] = {
+        "cma:11": {"v": 2, "at": "2026-11-15", "p": "", "critic": False, "band": True}
+    }
+    crops._save(state)
+    answers = iter([{**SHEET_CORNERS, "confident": False}])
+    fake.messages.create = lambda **params: (fake.asked.append(params), _message(next(answers)))[1]
+    assert crops.now(service.library.get("cma:11"))  # type: ignore[arg-type]
+    assert [p["model"] for p in fake.asked] == [OPUS]
+    item = service.library.get("cma:11")
+    assert item is not None and item.cut is not None
+    shown = item.cut_shown()
+    assert shown is not None and _near(shown, quad, 0.004)
+
+
+def test_a_sheets_side_taken_for_its_plates_gets_it_back(service: FrameService) -> None:
+    # Beksiński (MNK, 2026-11-15): "z marginesem" lost the right margin,
+    # the sheet's right side lying on the drawing's.
+    img = np.asarray(sheet(strip=9)).copy()
+    img[60:640, 80:820] = 40  # the drawing on the paper
+    picture = Image.fromarray(img)
+    s, r = 9 / W, 1 - 9 / W
+    plate = [(80 / W, 60 / H), (820 / W, 60 / H), (820 / W, 640 / H), (80 / W, 640 / H)]
+    wrong = [(s, 9 / H), (820 / W, 9 / H), (820 / W, 1 - 9 / H), (s, 1 - 9 / H)]
+    fixed = sheet_out_to_strips(picture, wrong, plate)
+    assert all(abs(x - r) < 0.004 for x, _ in (fixed[1], fixed[2]))
+    assert fixed[0] == wrong[0] and fixed[3] == wrong[3]
+    right = [(s, 9 / H), (r, 9 / H), (r, 1 - 9 / H), (s, 1 - 9 / H)]
+    assert sheet_out_to_strips(picture, right, plate) == right
+
+    item = _work(service, "mnk:12", picture=picture, pooled=True)
+    service.crops.apply(item, Cut(work=wrong, plate=plate, by="owner", aspect=W / H))
+    assert service.crops.sheets_out() == 1
+    stored = service.library.get("mnk:12")
+    assert stored is not None and stored.cut is not None and stored.cut.work is not None
+    assert abs(stored.cut.work[1][0] - r) < 0.004
+    assert service.crops.sheets_out() == 0  # once

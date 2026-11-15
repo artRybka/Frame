@@ -414,6 +414,7 @@ class FrameService:
         )
         self.drawn.to_come = self._to_come
         pen.drawn = self._drawn_covers
+        self.sheets.spared = self.drawn.spares
         # Small pictures of works drawn again larger by the same model
         # ("Kreatywny restaurator"), kept as the owner's pick.
         self.restorer = Restorer(self.library, self.images, self.sharper, self.painter)

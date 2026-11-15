@@ -563,6 +563,8 @@ def test_a_new_pages_sheet_is_drawn_at_once_and_the_app_gets_it(tmp_path: Path) 
         assert len({m["colour"] for m in sheet["marks"]}) == len(titled)
         # Kept: nothing more is drawn, nor asked of Google, a restart or not.
         assert svc.drawn.ahead() is False and stood.calls == [KIND] * 3
+        # Nor is the server's own sheet made ahead for it.
+        assert svc.sheets.wanting() == []
         again = DrawnSheets(svc.library, svc.images, svc.painter)
         item = svc.library.get("met:1")
         assert item is not None and again.meta(item, shown) is not None
@@ -832,6 +834,51 @@ def test_trouble_with_the_key_is_told_and_a_work_the_model_refuses_is_left(
         assert fresh.at_once() == [] and fresh.saved() == []
         work = client.get("/api/study/met:1").json()["work"]
         assert work["composition_drawn"] is None and work["composition_drawn_pending"] is False
+
+
+def test_the_servers_own_sheet_stands_in_only_where_none_is_drawn(tmp_path: Path) -> None:
+    """Mateusz 2026-11-15 00:00: "Może generujmy i korzystajmy z niego tylko
+    gdy od Gemini nie dostajemy odpowiedzi?" """
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    with TestClient(app) as client:
+        _catalogue(svc)
+        _old_page(svc)
+        # Without Google's key the server's sheet is the page's: made ahead.
+        assert [(item.id, dark) for item, _, dark in svc.sheets.wanting()] == [
+            ("met:1", False),
+            ("met:1", True),
+        ]
+        stood = Stood(svc)
+        assert svc.sheets.wanting() == []  # the model will draw it
+        # The app waits for the drawn one: the background sets about it now.
+        svc.drawn._wake.clear()
+        work = client.get("/api/study/met:1").json()["work"]
+        assert work["composition_drawn_pending"] is True and svc.drawn._wake.is_set()
+        # Asked for, it is still made.
+        assert client.get(work["composition_sheet"]).status_code == 200
+
+        # The model rests (the key's credit used up): made ahead again.
+        def broke(kind: str, prompt: str, pictures: Any, size: str = "1K", **kw: Any) -> Any:
+            raise NoCredit("no credit")
+
+        svc.painter.paint = broke  # type: ignore[method-assign]
+        assert svc.drawn.ahead() is False
+        assert [dark for _, _, dark in svc.sheets.wanting()] == [True]
+        # A work the model will not redraw, left after two tries: the same.
+        svc.drawn.again()
+        assert svc.sheets.wanting() == []
+
+        def will_not(kind: str, prompt: str, pictures: Any, size: str = "1K", **kw: Any) -> Any:
+            raise NotDrawn("Google answered 400", "image_recitation")
+
+        svc.painter.paint = will_not  # type: ignore[method-assign]
+        for _ in range(2):
+            svc.drawn.again()
+            assert svc.drawn.ahead() is True
+        svc.drawn.again()
+        assert [dark for _, _, dark in svc.sheets.wanting()] == [True]
+        assert stood.calls == []
 
 
 def test_the_batch_keeps_within_the_months_limit_and_leaves_what_is_refused(
