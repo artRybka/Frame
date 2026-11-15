@@ -67,6 +67,10 @@ enum PaintStyle: String, Sendable, CaseIterable {
     /// more or less by the greasy crayon, no lines (`StoneStrip`, sketch
     /// 46; Mateusz 2026-11-15 15:03: „A”). Was a pencil's hatching.
     case grain
+    /// An aquatint of one colour: the same grain, bitten into a plate
+    /// (`StoneStrip(etched:)`; Mateusz 2026-11-15 16:01: „Tak, dodaj do
+    /// akwatinty”). Was the engraver's lines.
+    case aquatint
 
     /// The tool of a work of lines; nil for any other.
     var tool: LineTool? {
@@ -151,6 +155,8 @@ enum PaintStyle: String, Sendable, CaseIterable {
             if byHand { return .handColoured }
             // Cut in the plank, not engraved in the end grain ("drzeworyt sztorcowy", a wood engraving): a block of black.
             let cut = has(all, woodcuts) && !has(all, endGrain)
+            // Rosin dust bitten into the plate, with or without an etched line: its tones are grain.
+            if oneInk, has(all, aquatints) { return .aquatint }
             return oneInk ? (cut ? .woodcut : .burin) : .woodblock
         }
         // Washes of ink, or ink laid with a brush, before any chalk or pencil under them.
@@ -254,7 +260,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
         case .gouache: return GouacheStrip.time(shares.count)
         case .handColoured: return HandColouredStrip.time(shares)
         case .woodcut: return WoodcutStrip.time(shares.count)
-        case .grain: return StoneStrip.time(shares.count)
+        case .grain, .aquatint: return StoneStrip.time(shares.count)
         }
     }
 
@@ -272,7 +278,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
         case .gouache: 0.26
         case .handColoured: 0.24
         case .woodcut: 0.26
-        case .grain: 0.26
+        case .grain, .aquatint: 0.26
         }
         return Self.swatchesFrom * bar + gap * Double(index)
     }
@@ -313,7 +319,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
     /// A poster.
     private static let posters = ["poster", "plakat", "affiche", "afisz"]
     /// Printed from a plate or a block.
-    private static let prints = ["print", "etching", "engrav", "woodcut", "woodblock", "linocut", "linoryt", "aquatint", "akwatint",
+    private static let prints = ["print", "etching", "engrav", "woodcut", "woodblock", "linocut", "linoryt", "aquatint", "akwatint", "aguatint", "acquatint",
                                  "mezzotint", "drypoint", "monotyp", "drzeworyt", "akwafort", "miedzioryt", "staloryt", "rycin", "sztych",
                                  "grafik", "estamp", "gravure", "houtsne", "radier", "holzschnitt", "kupferstich", "xilogra", "xylogra",
                                  "incisione", "grabado", "farbholz", "kleurenhout", "holzstich"]
@@ -321,6 +327,8 @@ enum PaintStyle: String, Sendable, CaseIterable {
     private static let woodcuts = ["woodcut", "woodblock", "drzeworyt", "houtsne", "holzschnitt", "xilogra", "xylogra", "linocut", "linoryt",
                                    "linolschnitt", "linoleum", "linosne"]
     /// Engraved in the end grain: fine lines, not a block of black.
+    /// An aquatint, in the languages the museums write in.
+    private static let aquatints = ["aquatint", "akwatint", "aguatint", "acquatint"]
     private static let endGrain = ["sztorc", "poprzeczn", "holzstich", "houtgravure"]
     /// What says only that a work is printed, not how.
     private static let anyPrint: Set<String> = ["print", "grafik", "estamp"]

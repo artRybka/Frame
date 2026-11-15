@@ -129,8 +129,8 @@ struct PaintJob: @unchecked Sendable {
             return PaintJob(HandColouredStrip(shares: shares, width: width, seed: seed), scale: PrintPaint.scale)
         case .woodcut:
             return PaintJob(WoodcutStrip(shares: shares, width: width, seed: seed), scale: PrintPaint.scale)
-        case .grain:
-            return PaintJob(StoneStrip(shares: shares, width: width, seed: seed), scale: PrintPaint.scale)
+        case .grain, .aquatint:
+            return PaintJob(StoneStrip(shares: shares, width: width, seed: seed, etched: style == .aquatint), scale: PrintPaint.scale)
         }
     }
 
@@ -170,7 +170,7 @@ struct PaintJob: @unchecked Sendable {
         case .handColoured:
             return PaintJob(LinePatch(rgb: rgb, index: index, seed: seed, tool: .burin), scale: PrintPaint.scale)
         case .woodcut: return PaintJob(InkStamp(rgb: rgb, index: index, seed: seed, press: .wood), scale: PrintPaint.scale)
-        case .grain: return PaintJob(InkStamp(rgb: rgb, index: index, seed: seed, press: .stone), scale: PrintPaint.scale)
+        case .grain, .aquatint: return PaintJob(InkStamp(rgb: rgb, index: index, seed: seed, press: .stone), scale: PrintPaint.scale)
         }
     }
 }

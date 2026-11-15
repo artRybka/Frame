@@ -142,6 +142,7 @@ jobs:
             capture daily 16 "daily-colour-pencil-$appearance" -scroll colour -paintStyle pencil -paintColours d2cec4:0.46/a9a59c:0.26/7d7a74:0.18/55534f:0.10
             capture daily 16 "daily-colour-grain-$appearance" -scroll colour -paintStyle grain -paintColours ddd8ca:0.30/b2aea4:0.18/7d7972:0.28/42403c:0.24
             capture daily 16 "daily-colour-grain-mid-$appearance" -scroll colour -paintStyle grain -paintAge 1.0 -paintColours ddd8ca:0.30/b2aea4:0.18/7d7972:0.28/42403c:0.24
+            capture daily 16 "daily-colour-aquatint-$appearance" -scroll colour -paintStyle aquatint -paintColours 918d78:0.28/4c4a3c:0.26/5f5c4b:0.24/78745f:0.22
             capture daily 16 "daily-colour-woodblock-$appearance" -scroll colour -paintStyle woodblock -paintColours d9cdb0:0.34/c8bc9d:0.22/1f3a5f:0.16/3d5f86:0.12/8fa7b8:0.09/e9e2cf:0.07
             capture daily 16 "daily-colour-woodblock-mid-$appearance" -scroll colour -paintStyle woodblock -paintAge 1.2 -paintColours d9cdb0:0.34/c8bc9d:0.22/1f3a5f:0.16/3d5f86:0.12/8fa7b8:0.09/e9e2cf:0.07
             capture daily 16 "daily-colour-litho-$appearance" -scroll colour -paintStyle litho -paintColours 1d1a17:0.30/e8dcc0:0.28/c8a23a:0.18/b5432b:0.14/6f7f4f:0.10
@@ -159,6 +160,8 @@ jobs:
             capture detail 16 "detail-playlists-$appearance" -sheet playlists
             capture detail 16 "detail-playlists-new-$appearance" -sheet playlists-new
             capture detail 16 "detail-about-$appearance" -scroll about
+            capture detail 18 "detail-recovery-$appearance" -sheet recovery -paintStyle oil
+            capture detail 18 "detail-recovery-paper-$appearance" -sheet recovery -paintStyle pen -demoPaper YES
             # "Podobne wyglądem" at the card's end (Szukanie wyglądem, G1).
             capture detail 16 "detail-looks-$appearance" -scroll looks
             # "Kolorystyka" on the card: the bar in the work's technique, there at once.
