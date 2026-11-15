@@ -8,6 +8,11 @@
   akwarelą; złocony papier daje złoto płatkowe.
 - Tak samo obraz w samych kolorach na papierze albo jedwabiu („Color on
   paper”, parawan Kano Hideyoriego „Oglądanie klonów w Takao”, Tokio).
+- Blada chłodna barwa na ciepłym tle (złoty papier, werniks) jest akcentem:
+  szara woda w Takao jest w pasku i w szukaniu „Błękit · akcent”, tak samo
+  niebieskie szaty „Ostatniej Wieczerzy” czy suknia Klio w „Alegorii
+  malarstwa”. Na próbce biblioteki zmienia się 7 z 530 dzieł. Biblioteka
+  przelicza barwy po aktualizacji.
 - Złoto w pasku barw jest jedną z jego farb, nie nakładką: na oleju i
   akwareli ma kształt i wysokość farby, czarny kontur biegnie nad nim, a
   złoto pojawia się dopiero po narysowaniu konturu.

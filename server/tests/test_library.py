@@ -1818,3 +1818,40 @@ def test_playlist_keeps_its_order_when_a_work_changes_in_passing(tmp_path) -> No
         first = [i.id for i in lib.query(chirico.rules, sort=sort, seed=3)[1]]  # type: ignore[arg-type]
         lib.update("test:2", medium=f"Oil, {sort}")
         assert [i.id for i in lib.query(chirico.rules, sort=sort, seed=3)[1]] == first  # type: ignore[arg-type]
+
+
+def _screen(water: bool) -> Image.Image:
+    """A folding screen on gold paper: grounds of browns and cream, maple
+    reds and pines, and (``water``) a grey river, blue only beside the gold."""
+    rng = np.random.default_rng(7)
+    screen = np.empty((200, 480, 3), np.float64)
+    screen[:] = (169, 143, 116)
+    screen[:, 300:] = (138, 118, 93)
+    screen[150:, :] = (107, 97, 79)
+    screen[:40, 60:220] = (196, 172, 146)
+    screen[60:75, 20:220] = (173, 107, 89)
+    screen[20:32, 320:470] = (93, 109, 76)
+    if water:
+        screen[100:135, 150:330] = (90, 101, 110)
+    screen += rng.normal(0, 3, screen.shape)
+    return Image.fromarray(np.clip(screen, 0, 255).astype(np.uint8))
+
+
+def test_a_grey_river_on_a_gold_screen_is_its_blue() -> None:
+    # Mateusz 2026-11-15 00:35, of Kano Hideyori's „Oglądanie klonów w
+    # Takao”, whose bar had its browns and a red and a green only: „Może tu
+    # też jesteśmy w stanie dobrać odpowiedni pasek koloru?”. Its water is
+    # a grey hardly blue at all, blue beside the gold paper.
+    swatches, tags, _ = analyse(_screen(water=True))
+    plain, plain_tags, _ = analyse(_screen(water=False))
+    assert "accent:blue" in tags and "accent:blue" not in plain_tags
+    river = [s for s in swatches if s.accent and s not in plain]
+    assert len(river) == 1
+    red, _green, blue = (int(river[0].hex[i : i + 2], 16) for i in (1, 3, 5))
+    assert blue > red and abs(red - 90) < 25
+    # A sepia drawing's grey is no colour: it has none of its own.
+    drawing = np.empty((200, 200, 3), np.uint8)
+    drawing[:] = (205, 190, 160)
+    drawing[40:160, 40:160] = (120, 108, 90)
+    drawing[80:120, 60:140] = (110, 114, 116)
+    assert "accent:blue" not in analyse(Image.fromarray(drawing)).tags
