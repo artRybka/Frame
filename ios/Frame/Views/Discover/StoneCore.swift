@@ -9,6 +9,12 @@ import Foundation
 // pin-points of paper. Each tone the grain caught as much as the tone asks,
 // the tones going over into one another, a faint trace of the crayon's
 // passes on one diagonal under the grain.
+//
+// An aquatint of one colour (Mateusz 2026-11-15 16:01: „Tak, dodaj do
+// akwatinty”) is grain too: rosin dust melted onto the plate, the acid
+// biting round each speck. No crayon passes, and its tones are stopped out
+// with varnish one after another, so they meet at sharper seams; it is
+// printed from a plate, which leaves its mark in the paper.
 
 /// The bar of a lithograph of one colour: its tones, lightest to darkest,
 /// each as wide as its share (`LineStrip.plan`: the same tones, paper and
@@ -24,6 +30,8 @@ final class StoneStrip: PaintPainter, @unchecked Sendable {
     private let width: Double
     private let seed: Double
     private let ink: [Float]
+    /// An aquatint's: bitten into a plate, not drawn on a stone.
+    private let etched: Bool
     private var made: (cover: [Float], grain: [Float], edge: [Float], along: [Float])?
     private var whole: PaintFrame?
 
@@ -36,6 +44,8 @@ final class StoneStrip: PaintPainter, @unchecked Sendable {
     /// How far (points) a tone goes over into the next, either side of
     /// their seam; and into a patch of colour, whose grain is thin.
     static let blend = 10.0, blendPatch = 3.5
+    /// How far an aquatint's tones go into one another: stopped out, they meet nearly sharp.
+    static let stopped = 2.5
     /// How much of a patch's tone the grain over it keeps: it is printed
     /// in its colour, the crayon only dusts it.
     static let overPatch = 0.45
@@ -49,16 +59,20 @@ final class StoneStrip: PaintPainter, @unchecked Sendable {
         count > 0 ? PrintPaint.appear + 0.9 + 0.15 * Double(count) : 0
     }
 
-    init(shares: [PaintShare], width: Double, seed: Int) {
+    /// `etched`: an aquatint (a plate's mark round it, no crayon passes,
+    /// stopped-out tones meeting sharply, an etcher's black).
+    init(shares: [PaintShare], width: Double, seed: Int, etched: Bool = false) {
         self.width = width
         self.seed = Double(seed)
-        let lines = LineStrip(shares: shares, width: width, seed: seed, tool: .pen)
+        self.etched = etched
+        // The engraver's plan has the same tones; its paper carries a plate's mark.
+        let lines = LineStrip(shares: shares, width: width, seed: seed, tool: etched ? .burin : .pen)
         self.lines = lines
         wide = lines.wide
         high = lines.high
         let tonal = lines.plan.tones.filter { !$0.patch }
         let darkest = (tonal.last ?? lines.plan.tones.last).map { lines.plan.colours[$0.colour] } ?? Self.black
-        ink = PrintPaint.mixed(darkest, Self.black, 0.8).map { Float($0) }
+        ink = PrintPaint.mixed(darkest, etched ? LineTool.burin.hand.black : Self.black, 0.8).map { Float($0) }
         length = Self.time(shares.count)
     }
 
@@ -74,7 +88,8 @@ final class StoneStrip: PaintPainter, @unchecked Sendable {
         var edge = [Float](repeating: 0, count: n), along = [Float](repeating: 0, count: n)
         let angle = Self.lean * Double.pi / 180, ux = cos(angle), uy = -sin(angle), run = 1 / tan(angle)
         var plain = [Double](repeating: 0, count: wide)
-        for i in 0..<wide { plain[i] = Self.cover(lines.plan.tones, at: min(max((Double(i) + 0.5) / S - pad, 0), width)) }
+        let blend = etched ? Self.stopped : Self.blend, passes = etched ? 0 : Self.passes
+        for i in 0..<wide { plain[i] = Self.cover(lines.plan.tones, at: min(max((Double(i) + 0.5) / S - pad, 0), width), blend: blend) }
         for j in rows {
             let y = (Double(j) + 0.5) / S - pad
             for i in 0..<wide {
@@ -88,7 +103,7 @@ final class StoneStrip: PaintPainter, @unchecked Sendable {
                 let u = x * ux + y * uy, v = -x * uy + y * ux
                 let pass = Paint.noise(u / 12.5, v / 2.2, 144 + s)
                 let c = plain[i]
-                cover[q] = Float(min(0.97, max(0, c + Self.passes * (pass - 0.5) * 2 * (1 - 0.6 * c))))
+                cover[q] = Float(min(0.97, max(0, c + passes * (pass - 0.5) * 2 * (1 - 0.6 * c))))
                 // Where the crayon stops: the bar's edges, a little ragged, never ruled.
                 // The crayon thins out over the last point or so.
                 let wob = (Paint.noise(x / 5, y / 5, 145 + s) - 0.5) * 2.4 + (Paint.noise(x / 1.2, y / 1.2, 146 + s) - 0.5) * 0.9
@@ -111,12 +126,12 @@ final class StoneStrip: PaintPainter, @unchecked Sendable {
     /// How dark the crayon is to make the bar at `x`: each tone's cover,
     /// going over into the next within `blend` of their seam; a patch of
     /// colour's thinner, and only a little way into it.
-    static func cover(_ tones: [LineStrip.Tone], at x: Double) -> Double {
+    static func cover(_ tones: [LineStrip.Tone], at x: Double, blend: Double = StoneStrip.blend) -> Double {
         guard let first = tones.first else { return 0 }
         func own(_ tone: LineStrip.Tone) -> Double { tone.patch ? tone.cover * Self.overPatch : tone.cover }
         var c = own(first)
         for (a, b) in zip(tones, tones.dropFirst()) {
-            let reach = a.patch || b.patch ? Self.blendPatch : Self.blend
+            let reach = a.patch || b.patch ? min(blend, Self.blendPatch) : blend
             c += (own(b) - own(a)) * Paint.step(a.to - reach, a.to + reach, x)
         }
         return c

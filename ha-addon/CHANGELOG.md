@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.156
+
+- Akwatinta jednej barwy (także z akwafortą) ma pasek z ziarna zamiast
+  kresek rylca, jak litografia: tony to ziarno kalafonii wytrawione w
+  płycie, bez śladów kredki, tony stykają się ostrzej (kryte werniksem po
+  kolei), a wokół paska jest odcisk płyty. Akwatinta barwna i kolorowana
+  ręcznie bez zmian.
+
 ## 1.145.155
 
 - Podgląd odzyskania barw na karcie dzieła (menu „…”), sam rachunek, bez

@@ -104,7 +104,7 @@ final class PaintTests: XCTestCase {
     /// „Wdrażamy oba. Jest super.”
     func testAPrintOrADrawingIsShownInItsLinesOrItsInks() {
         // A print of one colour: a scale of tones in the engraver's lines; in colours: its inks.
-        for text in ["Etching and aquatint", "Engraving", "miedzioryt", "akwaforta, papier", "Kupferstich",
+        for text in ["Etching", "Engraving", "miedzioryt", "akwaforta, papier", "Kupferstich",
                      "Radierung", "ets", "Mezzotint", "rycina", "drzeworyt sztorcowy", "Holzstich"] {
             XCTAssertEqual(PaintStyle.of(medium: text, mono: true), .burin, text)
             XCTAssertEqual(PaintStyle.of(medium: text), .woodblock, text)
@@ -612,6 +612,24 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(PaintStyle.of(medium: "Lithograph"), .litho)
         // A drawing in pencil keeps its lines.
         XCTAssertEqual(PaintStyle.of(medium: "ołówek, papier"), .pencil)
+        // An aquatint of one colour is grain too, bitten into a plate (16:01: „Tak, dodaj do akwatinty”), with an
+        // etched line or without; in colours, its inks; coloured by hand, its washes.
+        for text in ["Etching and aquatint", "Aquatint", "akwatinta, papier", "akwaforta i akwatinta", "Radierung und Aquatinta",
+                     "aguatinta", "sugar-lift aquatint and drypoint"] {
+            XCTAssertEqual(PaintStyle.of(medium: text, mono: true), .aquatint, text)
+            XCTAssertEqual(PaintStyle.of(medium: text), .woodblock, text)
+        }
+        XCTAssertEqual(PaintStyle.of(medium: "Mezzotint", mono: true), .burin)
+        XCTAssertEqual(PaintStyle.of(medium: "Hand-colored aquatint", mono: true), .handColoured)
+        XCTAssertEqual(PaintStyle.aquatint.barTime(engraving, width: 350), StoneStrip(shares: engraving, width: 350, seed: 5, etched: true).length,
+                       accuracy: 0.001)
+        // Its tones stopped out: they meet more sharply than a lithograph's.
+        let tones = LineStrip.plan(engraving, width: 350, seed: 5, tool: .burin).tones, seam = tones[0].to
+        let soft = StoneStrip.cover(tones, at: seam - 6), sharp = StoneStrip.cover(tones, at: seam - 6, blend: StoneStrip.stopped)
+        XCTAssertEqual(sharp, tones[0].cover, accuracy: 0.001)
+        XCTAssertGreaterThan(soft, sharp + 0.01)
+        let bitten = StoneStrip(shares: engraving, width: 350, seed: 5, etched: true), plate = bitten.frame(age: bitten.length)
+        XCTAssertGreaterThan(darkness(plate, from: 330, to: 348, paper: LineStrip.plan(engraving, width: 350, seed: 5, tool: .burin).paper), 0.3)
         // Géricault's print (Met, 1821): a pale paper and three greys.
         let horses = shares([("#ddd8ca", 0.30), ("#b2aea4", 0.18), ("#7d7972", 0.28), ("#42403c", 0.24)])
         let strip = StoneStrip(shares: horses, width: 350, seed: 5)
