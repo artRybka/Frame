@@ -327,7 +327,7 @@ def test_beige_is_a_family_of_its_own() -> None:
     pixels[:] = (222, 198, 158)
     pixels[40:160:6, 30:170] = (60, 50, 44)
     pixels[100:130, 60:140] = (150, 60, 50)  # a wash of red chalk, so it has colour
-    _, tags, shares = analyse(Image.fromarray(pixels))
+    _, tags, shares, _ = analyse(Image.fromarray(pixels))
     assert "cream" in tags and shares["cream"] > 0.6
     assert not {"yellow", "orange", "accent:yellow", "accent:orange", "accent:cream"} & set(tags)
     assert "only:cream" not in tags and "warm" not in tags
@@ -379,7 +379,7 @@ def test_analyse_blue_picture() -> None:
     import io
 
     img = Image.open(io.BytesIO(jpeg_bytes((40, 80, 200))))
-    swatches, tags, _ = analyse(img)
+    swatches, tags, _, _ = analyse(img)
     assert "blue" in tags and "cool" in tags
     assert swatches[0].hex.startswith("#")
 
@@ -397,7 +397,7 @@ def test_analyse_finds_small_vivid_accents() -> None:
     pixels[110:150, 100:130] = (120, 32, 28)  # skirt
     noise = rng.integers(-6, 7, pixels.shape)
     img = Image.fromarray(np.clip(pixels.astype(int) + noise, 0, 255).astype(np.uint8))
-    swatches, tags, _ = analyse(img)
+    swatches, tags, _, _ = analyse(img)
     dominant = [s for s in swatches if not s.accent]
     accents = [s for s in swatches if s.accent]
     assert 1 <= len(dominant) <= 4 and swatches[: len(dominant)] == dominant  # dominant first
@@ -427,7 +427,7 @@ def test_the_bar_keeps_the_most_striking_accents_not_the_largest() -> None:
     pixels[130:160, 150:178] = (181, 60, 50)  # red cloak
     noise = rng.integers(-5, 6, pixels.shape)
     img = Image.fromarray(np.clip(pixels.astype(int) + noise, 0, 255).astype(np.uint8))
-    swatches, tags, _ = analyse(img)
+    swatches, tags, _, _ = analyse(img)
     accents = [s for s in swatches if s.accent]
     reds = [s for s in accents if family_of(s.hex) == "red"]
     assert reds, [s.hex for s in swatches]
@@ -448,8 +448,8 @@ def test_colour_tags_go_by_area() -> None:
         pixels[100 : 100 + robe_rows, 60:140] = (40, 70, 170)
         return Image.fromarray(pixels)
 
-    _, wide, _ = analyse(altarpiece(100))
-    _, narrow, _ = analyse(altarpiece(10))
+    _, wide, _, _ = analyse(altarpiece(100))
+    _, narrow, _, _ = analyse(altarpiece(10))
     assert "blue" in wide and "accent:blue" not in wide
     assert "blue" not in narrow and "accent:blue" in narrow and "warm" in narrow
     assert has_colours(narrow, ["accent:blue"]) and not has_colours(narrow, ["blue"])
@@ -497,15 +497,15 @@ def test_only_colours_ask_for_pictures_painted_in_them_alone() -> None:
     pixels[:] = (120, 120, 118)
     pixels[:80] = (60, 110, 190)
     pixels[80:150] = (30, 70, 150)
-    _, tags, _ = analyse(Image.fromarray(pixels))
+    _, tags, _, _ = analyse(Image.fromarray(pixels))
     assert "only:blue" in tags and has_colours(tags, ["only:blue", "only:teal"])
     pixels[150:170, :60] = (190, 40, 30)  # a red boat
-    _, tags, _ = analyse(Image.fromarray(pixels))
+    _, tags, _, _ = analyse(Image.fromarray(pixels))
     assert has_colours(tags, ["only:blue", "only:teal", "only:red"])
 
 
 def test_yellowed_paper_is_not_warm() -> None:
-    _, tags, _ = analyse(_etching([(238, 226, 198)]))
+    _, tags, _, _ = analyse(_etching([(238, 226, 198)]))
     assert "warm" not in tags and not any(t.startswith("accent:") for t in tags)
 
 
@@ -524,12 +524,12 @@ def test_colourful_needs_several_hues_far_apart() -> None:
     red, blue, green = (170, 40, 35), (40, 70, 160), (60, 120, 60)
     brown = (110, 70, 40)
     # A Madonna's red and blue with green grass: a few percent each will do.
-    _, madonna, _ = analyse(print_with((red, 8), (blue, 8), (green, 8)))
+    _, madonna, _, _ = analyse(print_with((red, 8), (blue, 8), (green, 8)))
     assert "colorful" in madonna and "monochrome" not in madonna
     # Black and white, sepia on old paper and a two-tone print are not.
-    _, etching, _ = analyse(_etching([(238, 226, 198)]))
-    _, two_tone, _ = analyse(print_with((blue, 40), (brown, 40)))
-    _, chalk, _ = analyse(print_with((red, 60)))
+    _, etching, _, _ = analyse(_etching([(238, 226, 198)]))
+    _, two_tone, _, _ = analyse(print_with((blue, 40), (brown, 40)))
+    _, chalk, _, _ = analyse(print_with((red, 60)))
     for tags in (etching, two_tone, chalk):
         assert "colorful" not in tags
     assert has_colours(madonna, ["colorful"]) and not has_colours(two_tone, ["colorful"])
@@ -692,8 +692,8 @@ def test_a_small_striking_patch_is_among_the_colours() -> None:
     # the Little Street; 21:50: „musi wychodzić także w szukaniu po „akcent:
     # czerwień””. It is of the bricks' own hue and far under an accent's
     # size: a touch among the colours, and a red accent to be found by.
-    swatches, tags, shares = analyse(_street(shutter=True))
-    plain, plain_tags, _ = analyse(_street(shutter=False))
+    swatches, tags, shares, _ = analyse(_street(shutter=True))
+    plain, plain_tags, _, _ = analyse(_street(shutter=False))
     assert set(tags) - set(plain_tags) == {"accent:red"} and set(plain_tags) <= set(tags)
     assert has_colours(tags, ["red@accent"], shares) and has_colours(tags, ["accent:red"])
     assert not has_colours(plain_tags, ["red@accent"], shares)
@@ -725,8 +725,8 @@ def test_a_sizeable_colour_unlike_the_four_largest_is_shown_too() -> None:
     # Mateusz 2026-11-12 12:28, of Delacroix's Indian from Calcutta, whose
     # bar was four darks and a red: „dlaczego np. tu nie ma bieli? … Jest
     # istotnym elementem dzieła.” The four largest colours took every place.
-    swatches, tags, _ = analyse(_dark_room(robes=True))
-    plain, plain_tags, _ = analyse(_dark_room(robes=False))
+    swatches, tags, _, _ = analyse(_dark_room(robes=True))
+    plain, plain_tags, _, _ = analyse(_dark_room(robes=False))
     main = [s for s in swatches if not s.accent]
     assert len(main) == 5 and len([s for s in plain if not s.accent]) <= 4
     light = main[-1]
@@ -811,8 +811,8 @@ def test_the_tints_of_a_pale_sheet_are_shown(monkeypatch) -> None:
     # „dlaczego … nie ma zieleni i niebieskiego pod kreską rysunku?”,
     # „zieleni i błękitu powinno być chyba więcej na pasku a nie taki mały
     # kwadracik?” Its sky is a grey by its numbers, blue beside its paper.
-    swatches, tags, _ = analyse(_sheet(washes=True))
-    plain, plain_tags, _ = analyse(_sheet(washes=False))
+    swatches, tags, _, _ = analyse(_sheet(washes=True))
+    plain, plain_tags, _, _ = analyse(_sheet(washes=False))
     fine = linear_to_oklab(colors._sample(_sheet(washes=True), 128))
     sheet = colors.pale(fine)
     assert sheet is not None
@@ -829,10 +829,10 @@ def test_the_tints_of_a_pale_sheet_are_shown(monkeypatch) -> None:
     assert "monochrome" in plain_tags
     with monkeypatch.context() as patch:
         patch.setattr(colors, "TINT_SHARE", 9.0)
-        before, before_tags, _ = analyse(_sheet(washes=True))
+        before, before_tags, _, _ = analyse(_sheet(washes=True))
     assert tags == before_tags and len(before) == len(swatches) - 1
     # A white mount round a cream sheet is no tint: a wash darkens its paper.
-    mounted, _, _ = analyse(_sheet(washes=False, mount=True))
+    mounted, _, _, _ = analyse(_sheet(washes=False, mount=True))
     assert len(mounted) == len(plain) or not any(s.accent for s in mounted)
     # Nor is a sheet printed in a dark blue one drawn on in pencil, or a dark
     # picture a sheet at all.
@@ -899,8 +899,8 @@ def test_a_white_that_stands_out_is_among_the_colours() -> None:
     # Mateusz 2026-11-12 11:38, of Turner's sea, whose bar had browns and
     # greys only: „biały jest wyraźnie wybijającym się akcentem to trzeba go
     # uwzględnić”. The accents are found by their colour; white has none.
-    swatches, tags, _ = analyse(_sea(foam=True))
-    plain, plain_tags, _ = analyse(_sea(foam=False))
+    swatches, tags, _, _ = analyse(_sea(foam=True))
+    plain, plain_tags, _, _ = analyse(_sea(foam=False))
     assert len(swatches) == len(plain) + 1
     white = swatches[-1]
     red, green, blue = (int(white.hex[i : i + 2], 16) for i in (1, 3, 5))
@@ -932,7 +932,7 @@ def test_the_white_line_of_a_black_poster_is_among_its_colours() -> None:
     # A profile drawn in one white zigzag line.
     profile = [(80, 20), (110, 80), (100, 120), (130, 160), (70, 170), (150, 290)]
     ImageDraw.Draw(poster).line(profile, fill=(232, 230, 228), width=6)
-    swatches, tags, _ = analyse(poster)
+    swatches, tags, _, _ = analyse(poster)
     assert "monochrome" in tags
     white = [s for s in swatches if s.accent]
     assert len(white) == 1 and min(int(white[0].hex[i : i + 2], 16) for i in (1, 3, 5)) > 185
@@ -945,7 +945,7 @@ def test_a_stamp_on_an_etching_is_no_accent() -> None:
     plain = _etching([(238, 226, 198)])
     pixels = np.asarray(plain).copy()
     pixels[200:214, 290:304] = (190, 40, 30)
-    swatches, tags, _ = analyse(Image.fromarray(pixels))
+    swatches, tags, _, _ = analyse(Image.fromarray(pixels))
     assert "monochrome" in tags and "monochrome" in analyse(plain).tags
     assert "accent:red" not in tags and not any(s.accent for s in swatches)
 
@@ -960,7 +960,7 @@ def test_analysis_gives_colour_shares() -> None:
 
 
 def test_monochrome_pictures_have_no_accents() -> None:
-    swatches, _, _ = analyse(_etching([(238, 226, 198)]))
+    swatches, _, _, _ = analyse(_etching([(238, 226, 198)]))
     assert swatches and not any(s.accent for s in swatches)
 
 
@@ -1842,8 +1842,8 @@ def test_a_grey_river_on_a_gold_screen_is_its_blue() -> None:
     # Takao”, whose bar had its browns and a red and a green only: „Może tu
     # też jesteśmy w stanie dobrać odpowiedni pasek koloru?”. Its water is
     # a grey hardly blue at all, blue beside the gold paper.
-    swatches, tags, _ = analyse(_screen(water=True))
-    plain, plain_tags, _ = analyse(_screen(water=False))
+    swatches, tags, _, _ = analyse(_screen(water=True))
+    plain, plain_tags, _, _ = analyse(_screen(water=False))
     assert "accent:blue" in tags and "accent:blue" not in plain_tags
     river = [s for s in swatches if s.accent and s not in plain]
     assert len(river) == 1
@@ -1875,7 +1875,7 @@ def test_a_muted_colour_on_some_of_the_picture_is_an_accent() -> None:
         picture += rng.normal(0, 3, picture.shape)
         return Image.fromarray(np.clip(picture, 0, 255).astype(np.uint8))
 
-    _, tags, shares = analyse(portrait((98, 114, 130)))
+    _, tags, shares, _ = analyse(portrait((98, 114, 130)))
     assert shares["blue"] >= 0.06 and "accent:blue" in tags
     # Brown is no such accent: the edge of a book, a stain on a fresco.
     assert "accent:brown" not in analyse(portrait((112, 96, 80))).tags

@@ -38,7 +38,15 @@ from .library import (
     day_picks,
 )
 from .library.artists import is_artist
-from .library.colors import SCORE_VERSION, analyse, tint_spread, tint_strength
+from .library.colors import (
+    SCORE_VERSION,
+    VARNISH_NOTE,
+    analyse,
+    saw_blue,
+    tint_spread,
+    tint_strength,
+    with_blue,
+)
 from .library.contour import CONTOUR_VERSION, contour
 from .library.icloud import only_copy
 from .library.images import Unavailable
@@ -1682,6 +1690,8 @@ class Player:
         if after:
             log.info("rescore: going on after %d pictures, %d works left", before, len(left))
         started = time.monotonic()
+        # The blue Haiku saw under a work's varnish stays its accent.
+        blue = {i for i, note in library.notes(VARNISH_NOTE).items() if saw_blue(note)}
         analysed: dict[str, dict[str, Any]] = {}
         done = 0
 
@@ -1706,15 +1716,18 @@ class Player:
                     spread = item.tint_spread
                     if spread is None:
                         spread = tint_spread(img)
-                    colors, tags, shares = analyse(img, spread)
+                    colors, tags, shares, varnish = analyse(img, spread)
             except OSError:
                 log.warning("rescore: cannot read %s", path)
                 continue
+            if varnish and item.id in blue:
+                tags = with_blue(tags)
             analysed[item.id] = {
                 "colors": colors,
                 "color_tags": tags,
                 "color_shares": shares,
                 "tint_spread": spread,
+                "varnish_blue": varnish,
             }
             if len(analysed) >= RESCORE_PORTION:
                 write(item.id)

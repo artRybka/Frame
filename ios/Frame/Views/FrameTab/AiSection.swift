@@ -201,6 +201,14 @@ struct AiSection: View {
                         value: crops
                     ) { AiSettingsUpdate(crops: $0) }
                 }
+                if let varnishBlue = settings.varnishBlue {
+                    Divider()
+                    toggle(
+                        "Błękit pod werniksem",
+                        hint: "W nocy Haiku sprawdza, czy zielonkawe niebo, woda albo szata pod pożółkłym werniksem to błękit. Wtedy dzieło znajdziesz po błękicie. Grosze miesięcznie.",
+                        value: varnishBlue
+                    ) { AiSettingsUpdate(varnishBlue: $0) }
+                }
                 if let audit = settings.audit {
                     Divider()
                     toggle(

@@ -1743,6 +1743,9 @@ struct AiSettings: Codable, Hashable, Sendable {
     /// The study's "Jak powstawał" drawn by the image model; nil from
     /// older servers.
     var stages: Bool? = nil
+    /// "Błękit pod werniksem": Haiku asked at night whether a green under
+    /// yellowed varnish is a blue; nil from older servers.
+    var varnishBlue: Bool? = nil
     /// The studies written before the facts from the web, filled in at a
     /// tap; nil from older servers.
     var studyRefresh: StudyRefresh? = nil
@@ -1886,6 +1889,7 @@ struct AiSettingsUpdate: Encodable, Sendable {
     var webFacts: Bool?
     var stages: Bool?
     var crops: Bool?
+    var varnishBlue: Bool?
     var monthlyLimitUsd: Double?
     var drawn: Bool?
     var geminiMonthlyLimitUsd: Double?

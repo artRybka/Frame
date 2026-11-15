@@ -291,6 +291,10 @@ class Item(BaseModel):
     highlight: bool = False
     # colors.tint_spread: ~0 when the picture has no colour of its own.
     tint_spread: float | None = None
+    #: The share of the picture that may be a blue under yellowed varnish
+    #: (``colors.varnished_blue``): 0 when none; Haiku is asked at night
+    #: (``ai.varnish``) whether it is.
+    varnish_blue: float = 0.0
     favorite: bool = False
     #: Hidden in the app ("Ukryj dzieło"): never shown, listed or found, but
     #: in Playlists' "Ukryte"; ``excluded_at`` when (newest first there).
