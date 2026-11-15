@@ -8,8 +8,9 @@
   obrazie prawie wszystko jest ciemne, więc zmiany nie było widać. Próg
   ciemnych partii liczy się teraz względem danego obrazu, czernie dalej
   zostają neutralne. Siła korekty to cała propozycja zamiast trzech
-  czwartych. Dzieła skorygowane wcześniej serwer przelicza sam kilka
-  minut po aktualizacji.
+  czwartych, a obraz ciemny w całości wychodzi też jaśniejszy, jak po
+  prawdziwym zdjęciu werniksu. Dzieła skorygowane wcześniej serwer
+  przelicza sam kilka minut po aktualizacji.
 - Kropla „barwy skorygowane” (i znaczek kadru, kopii, restauratora)
   pojawia się na liście od razu po zmianie na karcie, także na stronie
   tematu w Odkrywaj otwartej wcześniej.

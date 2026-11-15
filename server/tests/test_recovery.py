@@ -139,7 +139,7 @@ def test_a_picture_dark_all_over_gets_its_colour_back_too() -> None:
     lin[:70] = (0.016, 0.024, 0.038)  # a stormy sky
     lin[70:] = (0.012, 0.009, 0.006)  # the ground
     lin[100:, :60] = (0.002, 0.002, 0.002)  # a black coat
-    lin[30:60, 60:100] = (0.30, 0.22, 0.17)  # a face
+    lin[30:60, 60:100] = (0.62, 0.48, 0.40)  # a face
     lin = (lin * rng.uniform(0.93, 1.0, lin.shape[:2])[..., None]).astype(np.float32)
     seen = u8_to_linear(linear_to_u8(lin * np.exp(-0.8 * ALPHA) + 0.001))
     sky, coat = (slice(5, 25), slice(5, 155)), (slice(105, 118), slice(5, 55))
@@ -161,6 +161,19 @@ def test_a_picture_dark_all_over_gets_its_colour_back_too() -> None:
     assert gained(clean) > 0.4 > 0.1 > gained(held)
     # The black coat is still no bluer than it was.
     assert blue(clean, coat) <= 1.1 * blue(seen, coat)
+    # And it comes out lighter (Mateusz 22:08: "Jeszcze mocniej"): its
+    # lights go half the way to the top, in stops; a night's no farther
+    # than those of a picture with its lights at ``LIGHTS_LEAST``.
+    summed = recovery._without(seen, 0.7, recovery._black(seen), recovery._dark(seen))
+    raised = recovery._into_range(summed)
+    top = float(np.quantile(summed.max(-1), 0.997))
+    assert recovery.LIGHTS_LEAST < top < recovery.TOP
+    assert raised == pytest.approx((recovery.TOP / top) ** recovery.LIFT) and raised > 1.2
+    assert np.abs(clean - np.clip(summed * raised, 0, 1)).max() < 1e-6
+    most = (recovery.TOP / recovery.LIGHTS_LEAST) ** recovery.LIFT
+    assert recovery._into_range(summed * 0.2) == pytest.approx(most)
+    # A picture whose lights leave the range is brought into it, as before.
+    assert recovery._into_range(summed * 4) == pytest.approx(recovery.TOP / (4 * top))
     # A picture of ordinary lightness is held to the one threshold as before.
     assert recovery._dark(u8_to_linear(np.asarray(_under_varnish(_painting(), 0.8)))) == (
         recovery.DARK

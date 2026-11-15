@@ -25,9 +25,10 @@ brought back into range (:func:`gains`). In the preview (apps of
 slider, the server reading the picture once: which strength to propose
 (:func:`propose`) and how light the result gets at every strength
 (``Varnish.tops``). The work shown cleaned is made here
-(:func:`unvarnished`), with two things the preview's sum had not: the
+(:func:`unvarnished`), with three things the preview's sum had not: the
 darks keep their own colour (:data:`DARK`, by the picture's own middle:
-:func:`_dark`) and lose the varnish's haze (:data:`DEPTH`).
+:func:`_dark`) and lose the varnish's haze (:data:`DEPTH`), and a picture
+dark all over comes out lighter (:data:`LIFT`).
 
 Paper (drawings, prints, watercolours, pastels). The sheet's tone is read
 as a smooth field (darker edges, old mount lines), every pixel is divided
@@ -97,7 +98,8 @@ LEAST = 0.2
 #: Which sum a work shown cleaned was made with (``Cleaned.reading``): raise
 #: it when :func:`unvarnished` or :func:`kept_strength` changes, and the
 #: works kept cleaned are made again (``Cleaning.catch_up``).
-#: 2 (2026-11-15 21:44): the whole proposal, darks by the picture's middle.
+#: 2 (2026-11-15 21:44): the whole proposal, darks by the picture's middle,
+#: the lights of a dark picture raised.
 READING = 2
 #: Under this luminance (linear light) the varnish's colour is taken off
 #: less and less, and not at all at black: there only the lightness
@@ -128,6 +130,20 @@ DARK = 0.15
 #: took its whole colour off everything lighter than 0.01.
 DARK_BY_MIDDLE = 2.0
 DARK_LEAST = 0.03
+#: A cleaned picture is lighter: where the sum leaves room over the lights
+#: (a picture dark all over), they are raised by this share of the room,
+#: in stops. Mateusz 2026-11-15 22:08, of the Gainsborough with its colour
+#: back but as dark as before: "Jeszcze mocniej". More strength is not the
+#: way (on the thirty pairs half as much again on dark pictures is farther
+#: from the real cleaning: 6.82 for 6.81); lighter lights are: the dark
+#: pictures of the pairs come out of a real cleaning twice as light in the
+#: median (two photographs, though), and with this the sum is nearer it
+#: (6.79; dark pictures 0.31 nearer than the photograph left alone, for
+#: 0.27), the darkest tenth as warm. The Gainsborough comes out 1.6 times
+#: as light. A picture whose lights are darker than :data:`LIGHTS_LEAST`
+#: is a night: raised no more than one with its lights there (1.56 times).
+LIFT = 0.5
+LIGHTS_LEAST = 0.4
 #: Contrast (Mateusz 19:02: "Nie wiem czy nie powinien być minimalnie
 #: większy"): an aged varnish also lays a haze over the darks. The
 #: picture's own black (this centile of its luminance) comes down by
@@ -250,13 +266,20 @@ def _without(lin: FloatArray, strength: float, black: float, dark: float) -> Flo
     return out
 
 
+def _into_range(out: FloatArray) -> float:
+    """What the sum ``out`` is multiplied by: its lightest brought down to
+    :data:`TOP` when it left the range, and raised towards it when the
+    picture is dark all over (:data:`LIFT`)."""
+    top = float(np.quantile(out.max(-1), 0.997))
+    if top > TOP:
+        return TOP / top
+    return float((TOP / max(top, LIGHTS_LEAST)) ** LIFT)
+
+
 def unvarnish(lin: FloatArray, strength: float) -> FloatArray:
     """The picture without a varnish of ``strength``."""
     out = _without(lin, strength, _black(lin), _dark(lin))
-    top = float(np.quantile(out.max(-1), 0.997))
-    if top > TOP:
-        out = out * (TOP / top)
-    return np.clip(out, 0, 1).astype(np.float32)
+    return np.clip(out * _into_range(out), 0, 1).astype(np.float32)
 
 
 def kept_strength(img: Image.Image) -> float:
@@ -279,8 +302,7 @@ def unvarnished(img: Image.Image, strength: float) -> Image.Image:
     rgb = img.convert("RGB")
     small = _small(rgb, 640)
     black, dark = _black(small), _dark(small)
-    top = float(np.quantile(_without(small, strength, black, dark).max(-1), 0.997))
-    scale = TOP / top if top > TOP else 1.0
+    scale = _into_range(_without(small, strength, black, dark))
     source = np.asarray(rgb)
     out = np.empty_like(source)
     rows = 256
