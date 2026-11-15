@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.162
+
+- Paski barw rysunków (ołówek, pióro, rysunek z akwarelą), gwaszu
+  i lawowania leżą na stronie jak pasek papieru: góra i dół równo cięte,
+  końce oddarte, pod spodem delikatny cień. Odbitki (ryciny, drzeworyty,
+  litografie, sitodruk, offset) mają papier poszarpany dookoła jak dotąd.
+
 ## 1.145.161
 
 - Resztka miesiąca Claude idzie na to, co wybierzesz, w Twojej kolejności:
