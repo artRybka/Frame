@@ -530,8 +530,13 @@ def test_a_new_pages_sheet_is_drawn_at_once_and_the_app_gets_it(tmp_path: Path) 
         assert work["composition_sheet"]  # shown meanwhile
         assert [item.id for item, _ in svc.drawn.at_once()] == ["met:1"]
         assert svc.drawn.saved() == [] and stood.batches == []
+        # The study waits for it before it is ready (Mateusz 2026-11-15).
+        item = svc.library.get("met:1")
+        assert item is not None and svc.drawn.draws()
+        assert svc.drawn.coming(item, STUDY) and not svc.drawn.coming(item, DAILY)
         assert svc.drawn.ahead() is True
         assert stood.calls == [KIND] * 3 and svc.drawn.at_once() == []
+        assert not svc.drawn.coming(item, STUDY)
         # The study and the lines without thinking first, the spill by the cheaper model.
         assert stood.kw == [
             {"spill": False, "think": "minimal"},
@@ -724,11 +729,15 @@ def test_saved_pages_go_through_the_batch_and_an_analysis_made_anew_at_once(
         work = client.get("/api/study/met:1").json()["work"]
         assert work["composition_drawn"] is None and work["composition_drawn_pending"] is True
         assert [item.id for item, _ in svc.drawn.at_once()] == ["met:1"]
+        # On its way until its sheet is drawn too: the app keeps the one before.
+        assert work["composition_pending"] is True and svc.drawn.anew(item)
+        assert client.get("/api/study/met:1/composition").json()["pending"] is True
         # 23:20: "a podkład od Gemini już jest, to rób nim tylko kolorowe kreski".
         assert svc.drawn.ahead() is True and stood.calls == [KIND]
         assert listed(svc.library, AT_ONCE) == set() and len(stood.batches) == 2
         work = client.get("/api/study/met:1").json()["work"]
-        assert work["composition_drawn"] is not None
+        assert work["composition_drawn"] is not None and work["composition_pending"] is False
+        assert client.get("/api/study/met:1/composition").json()["pending"] is False
         assert client.get(work["composition_drawn"]["sheet"]).content == first_page
         anew = svc.drawn.meta(item, _shown(svc))
         assert anew is not None and anew["cost"] == {"lines": 0.052}

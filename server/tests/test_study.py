@@ -110,7 +110,11 @@ def test_claude_writes_a_study_once_and_it_is_kept(tmp_path: Path) -> None:
         # Only a small picture is drawn first: its time is of the studies that had it.
         expected = svc.study.expected()
         assert expected.pop("restoring") == TYPICAL_PARTS["restoring"]
-        assert expected == {k: float(v) for k, v in timed.items() if k != "restoring"}
+        # No sketch drawn here (no Google key): the typical one, and none waited for.
+        assert expected.pop("sketch") == TYPICAL_PARTS["sketch"] and timed["sketch"] == 0
+        assert expected == {
+            k: float(v) for k, v in timed.items() if k not in ("restoring", "sketch")
+        }
         work = view["work"]
         assert work["written"] is True and work["model"] == OPUS
         assert work["title"] == "Wielka fala w Kanagawie"
@@ -184,6 +188,70 @@ def test_the_page_leaves_the_later_works_to_the_study_being_made(tmp_path: Path)
         svc.study._cutting.discard("met:1")
         client.get("/api/study/met:1")
         assert asked == ["met:1"]  # the page's own look, once the study is made
+
+
+def test_a_study_is_ready_only_with_its_sketch(tmp_path: Path, monkeypatch: Any) -> None:
+    """Mateusz 2026-11-15: "Wlicz przygotowanie szkicu do czasu potrzebnego
+    na opracowanie studium (do paska postępu i powiadomienia)": the image
+    model's sketch is the study's last part ("sketch", in Kompozycja); the
+    study is "details" (on its way) and not listed until the sketch is
+    drawn, or waited for long enough."""
+    monkeypatch.setattr("frame_server.study.SKETCH_LOOK", 0.02)
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    fake = FakeAnthropic(GOOD_KEY)
+    fake.answer = ANSWER_PX
+    svc.claude.factory = lambda key: fake
+    svc.ai_config.set_key(GOOD_KEY)
+    svc.ai_config.update(AiConfigUpdate(pl_text=False, keywords_artworks=False, daily=False))
+    drawing = {"met:1": True, "met:3": True}
+    svc.study.sketch_coming = lambda item: drawing.get(item.id, False)
+    svc.study.sketches = lambda: True
+    steps: list[tuple[str, str]] = []
+
+    def step(item: Any, status: str, error: str) -> None:
+        progress = svc.study.progress(item.id)
+        steps.append((status, progress.part if progress else ""))
+
+    with TestClient(app) as client:
+        _catalogue(svc)
+        _like(svc)
+        svc.ai.start()
+        try:
+            svc.study.on_step = step
+            client.post("/api/study/met:1?wait=10")
+            for _ in range(200):
+                view = client.get("/api/study/met:1").json()
+                if view["part"] == "sketch":
+                    break
+                time.sleep(0.02)
+            # Written, cut, and waiting for the sketch: still on its way.
+            assert view["status"] == "details" and view["part"] == "sketch", view
+            assert view["started_at"] < view["expected_end"]
+            assert client.get("/api/studies").json() == []
+            assert ("details", "sketch") in steps and steps[-1][0] != "ready"
+            time.sleep(0.3)  # the model draws
+            drawing["met:1"] = False
+            assert _ready(client, "met:1")["status"] == "ready"
+            for _ in range(40):  # told just after the status says so
+                if steps[-1][0] == "ready":
+                    break
+                time.sleep(0.05)
+            assert steps[-1][0] == "ready"
+            assert [b["item"]["item"]["id"] for b in client.get("/api/studies").json()] == ["met:1"]
+            # Timed: the next study expects its sketch to take as long.
+            (timed,) = svc.library.get_state(TIMINGS_KEY, [])
+            assert timed["sketch"] > 0
+            assert svc.study.expected()["sketch"] == timed["sketch"]
+
+            # A sketch that does not come is not waited for past SKETCH_WAIT:
+            # ready with the server's own sheet meanwhile.
+            monkeypatch.setattr("frame_server.study.SKETCH_WAIT", 0.2)
+            client.post("/api/study/met:3?wait=10")
+            assert _ready(client, "met:3")["status"] == "ready"
+            assert drawing["met:3"] is True
+        finally:
+            svc.ai.stop()
 
 
 def test_a_new_study_on_request(tmp_path: Path) -> None:
