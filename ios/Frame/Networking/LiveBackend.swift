@@ -115,6 +115,15 @@ struct LiveBackend: FrameBackend {
         return try await perform(req, patient: true)
     }
 
+    func recovery(itemID: String, made: String) async throws -> RecoveryView {
+        var req = request(
+            "/api/library/items/\(escape(itemID))/recovery",
+            query: [URLQueryItem(name: "made", value: made)]
+        )
+        req.timeoutInterval = 60
+        return try await perform(req, patient: true)
+    }
+
     func medium(itemID: String, wait: Int) async throws -> MediumView {
         var req = request(
             "/api/library/items/\(escape(itemID))/medium", method: "POST",
@@ -963,6 +972,11 @@ struct LiveBackend: FrameBackend {
             req = request(
                 "/api/library/items/\(escape(id))/full",
                 query: [URLQueryItem(name: "side", value: String(side)), URLQueryItem(name: "v", value: version)]
+            )
+        case let .recovered(id, made, version):
+            req = request(
+                "/api/library/items/\(escape(id))/recovery/image",
+                query: [URLQueryItem(name: "made", value: made), URLQueryItem(name: "v", value: version)]
             )
         case let .path(path):
             // A query ("?n=0&v=…") goes as the query, not into the path.

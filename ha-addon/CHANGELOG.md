@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.145.156
+
+- Akwatinta jednej barwy (także z akwafortą) ma pasek z ziarna zamiast
+  kresek rylca, jak litografia: tony to ziarno kalafonii wytrawione w
+  płycie, bez śladów kredki, tony stykają się ostrzej (kryte werniksem po
+  kolei), a wokół paska jest odcisk płyty. Akwatinta barwna i kolorowana
+  ręcznie bez zmian.
+
+## 1.145.155
+
+- Podgląd odzyskania barw na karcie dzieła (menu „…”), sam rachunek, bez
+  modelu i bez kosztu. Obrazy olejne i tempery: „Symulacja odzyskania barw”
+  pokazuje dzieło bez pożółkłego werniksu; na obrazie jest suwak (po lewej
+  „Dziś”, po prawej „Bez werniksu”), pod nim pasek siły z kreską propozycji
+  wyliczonej z bieli obrazu i z tego, ile zdejmowały prawdziwe konserwacje.
+  Rysunki, grafiki, akwarele i pastele na pożółkłym arkuszu: „Odżółć papier”
+  pokazuje arkusz jak dobrze zachowany; kreska i barwy zostają z oryginału,
+  papier barwiony celowo nie dostaje propozycji. To tylko podgląd: nie
+  zmienia dzieła, paska barw, wyszukiwania ani obrazu na ramce.
+
 ## 1.145.154
 
 - Litografia jednej barwy ma własny pasek barw zamiast kreskowania

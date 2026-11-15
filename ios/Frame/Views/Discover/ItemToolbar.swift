@@ -28,6 +28,12 @@ struct ItemToolbar: ToolbarContent {
     var correctCut: (() -> Void)? = nil
     /// "Cofnij kadrowanie": the museum's photograph whole again.
     var undoCut: (() -> Void)? = nil
+    /// "Symulacja odzyskania barw" / "Odżółć papier" (`ColourRecovery`): the
+    /// preview on the card's picture, of `recoveryKind`; the same entry
+    /// ends it while it shows (`recovering`).
+    var recover: (() -> Void)? = nil
+    var recoveryKind = ColourRecovery.Kind.varnish
+    var recovering = false
 
     /// Konfiguracja → Źródła dzieł → Kupowanie w Alamy.
     private var buying: Bool { hasCopies && model.settings?.alamy == true }
@@ -90,6 +96,17 @@ struct ItemToolbar: ToolbarContent {
                             } icon: {
                                 Image(systemName: "arrow.uturn.backward")
                             }
+                        }
+                    }
+                }
+                if let recover {
+                    Divider()
+                    Button(action: recover) {
+                        Label {
+                            Text(recovering ? "Wróć do oryginału" : ColourRecovery.menuTitle(recoveryKind))
+                            Text(recovering ? "Koniec symulacji" : ColourRecovery.menuNote(recoveryKind))
+                        } icon: {
+                            Image(systemName: "circle.lefthalf.filled")
                         }
                     }
                 }
