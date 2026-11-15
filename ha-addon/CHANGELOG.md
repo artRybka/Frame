@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.154
+
+- Litografia jednej barwy ma własny pasek barw zamiast kreskowania
+  ołówkiem: każdy ton to ziarno kamienia, które tłusta kredka chwyta
+  mocniej albo słabiej, od rzadkiego pyłu drobnych plamek po aksamitną
+  czerń, tony przechodzą miękko jeden w drugi, a ziarno wyłania się
+  pociągnięciami od jasnego końca do ciemnego. Litografia barwna i rysunek
+  ołówkiem zostają bez zmian.
+
 ## 1.145.153
 
 - Dzieła, które nie są prostokątem (wycinanka po konturze rysunku,

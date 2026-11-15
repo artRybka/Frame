@@ -118,11 +118,11 @@ final class PaintTests: XCTestCase {
             XCTAssertEqual(PaintStyle.of(medium: text), .woodblock, text)
         }
         XCTAssertEqual(PaintStyle.of(medium: "", classification: "Prints", mono: true), .burin)
-        // From the stone: the inks with the crayon's grain; of one colour, the crayon's lines; said to be in colours, its inks.
+        // From the stone: the inks with the crayon's grain; of one colour, the stone's grain; said to be in colours, its inks.
         for text in ["litografia barwna", "Colour lithograph after a pastel", "Chromolithograph", "Lithograph in black and red",
                      "plakat; litografia barwna"] {
             XCTAssertEqual(PaintStyle.of(medium: text), .litho, text)
-            XCTAssertEqual(PaintStyle.of(medium: text, mono: true), text.contains("black") ? .pencil : .litho, text)
+            XCTAssertEqual(PaintStyle.of(medium: text, mono: true), text.contains("black") ? .grain : .litho, text)
         }
         // Through a screen: flat opaque inks, in black too (Mateusz 2026-11-14, of Lex Drewinski's poster:
         // „Technika to sitodruk, czarno-biały, papier. Pasek koloru nie pasuje do tej techniki”).
@@ -600,6 +600,62 @@ final class PaintTests: XCTestCase {
         // Crayon and chalk keep their hatching.
         XCTAssertEqual(PaintStyle.of(medium: "kredka, papier"), .dry)
         XCTAssertEqual(PaintStyle.of(medium: "pastel, papier"), .pastel)
+    }
+
+    /// Sketch 46 (Mateusz 2026-11-15 15:03: „A”): a lithograph of one
+    /// colour is the stone's grain the crayon caught, not a pencil's lines
+    /// (14:50, of Géricault's „Konie jadące na jarmark”: „Czy to właściwy
+    /// pasek koloru dla litografii?”).
+    func testALithographOfOneColourIsTheStonesGrain() {
+        XCTAssertEqual(PaintStyle.of(medium: "Lithograph", mono: true), .grain)
+        XCTAssertEqual(PaintStyle.of(medium: "litografia, papier", mono: true), .grain)
+        XCTAssertEqual(PaintStyle.of(medium: "Lithograph"), .litho)
+        // A drawing in pencil keeps its lines.
+        XCTAssertEqual(PaintStyle.of(medium: "ołówek, papier"), .pencil)
+        // Géricault's print (Met, 1821): a pale paper and three greys.
+        let horses = shares([("#ddd8ca", 0.30), ("#b2aea4", 0.18), ("#7d7972", 0.28), ("#42403c", 0.24)])
+        let strip = StoneStrip(shares: horses, width: 350, seed: 5)
+        XCTAssertEqual(PaintStyle.grain.barTime(horses, width: 350), strip.length, accuracy: 0.001)
+        XCTAssertEqual(StoneStrip(shares: [], width: 350, seed: 5).frame(age: 1).bytes.filter { $0 > 0 }.count, 0)
+        XCTAssertEqual(strip.frame(age: 0).bytes.filter { $0 > 0 }.count, 0)
+        let plan = LineStrip.plan(horses, width: 350, seed: 5, tool: .pen), done = strip.frame(age: strip.length)
+        // Lightest to darkest, each tone darker than the one before it, the darkest nearly the ink.
+        let dark = plan.tones.map { darkness(done, from: $0.from + 4, to: $0.to - 4, paper: plan.paper) }
+        for (a, b) in zip(dark, dark.dropFirst()) { XCTAssertGreaterThan(b, a + 0.05, "\(dark)") }
+        XCTAssertLessThan(dark[0], 0.25)
+        XCTAssertGreaterThan(dark[3], 0.5)
+        // Grain, not lines: in a middle tone the specks change from one pixel to the next everywhere, across the bar and along it.
+        let middle = plan.tones[2], S = Double(PrintPaint.scale)
+        func light(_ x: Double, _ y: Double) -> Double {
+            let (i, j) = dot(x, y), c = done.colour(i, j)
+            return PrintPaint.lightness([c.red, c.green, c.blue])
+        }
+        let x0 = (middle.from + middle.to) / 2
+        let along = (0..<60).map { light(x0 + Double($0) / S, 13) }, across = (0..<60).map { light(x0, 3 + Double($0) / S) }
+        for row in [along, across] {
+            let jumps = zip(row, row.dropFirst()).filter { abs($0 - $1) > 0.08 }.count
+            XCTAssertGreaterThan(jumps, 12)
+        }
+        // The grain comes out from the light end: part way, the dark end is still paper.
+        let early = strip.frame(age: PrintPaint.appear + (strip.length - PrintPaint.appear) * 0.25)
+        XCTAssertLessThan(darkness(early, from: 330, to: 348, paper: plan.paper), 0.05)
+        XCTAssertGreaterThan(darkness(early, from: 2, to: 30, paper: plan.paper), 0.5 * dark[0])
+        // A patch of colour in it is printed in its colour, the grain thin over it.
+        let red = shares([("#ddd8ca", 0.30), ("#b2aea4", 0.18), ("#b5523f", 0.08), ("#7d7972", 0.2), ("#42403c", 0.24)])
+        let tinted = StoneStrip(shares: red, width: 350, seed: 5), printed = tinted.frame(age: tinted.length)
+        guard let patch = LineStrip.plan(red, width: 350, seed: 5, tool: .pen).tones.first(where: \.patch) else {
+            return XCTFail("the red is a patch")
+        }
+        var sum = (red: 0.0, blue: 0.0)
+        for x in stride(from: patch.from + 4, to: patch.to - 4, by: 0.4) {
+            for y in stride(from: 4.0, to: 22.0, by: 0.4) {
+                let (i, j) = dot(x, y), c = printed.colour(i, j)
+                sum = (sum.red + c.red, sum.blue + c.blue)
+            }
+        }
+        XCTAssertGreaterThan(sum.red, sum.blue * 1.6)
+        // Thin: the patch is lighter than the grey after it, however dark its colour.
+        XCTAssertLessThan(StoneStrip.cover(LineStrip.plan(red, width: 350, seed: 5, tool: .pen).tones, at: (patch.from + patch.to) / 2), 0.12)
     }
 
     /// Sketch 41 (Mateusz 2026-11-14 20:09: „Drzeworyt C. Złoto super.”).
@@ -1345,6 +1401,6 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(PaintStyle.of(medium: "litografia barwna, papier", mono: PaintStyle.mono(["colorful"], poster)), .litho)
         // Its medium says it is in colours: its inks, however one colour's its colours came out.
         XCTAssertEqual(PaintStyle.of(medium: "litografia barwna, papier", mono: PaintStyle.mono([], poster)), .litho)
-        XCTAssertEqual(PaintStyle.of(medium: "litografia, papier", mono: PaintStyle.mono([], poster)), .pencil)
+        XCTAssertEqual(PaintStyle.of(medium: "litografia, papier", mono: PaintStyle.mono([], poster)), .grain)
     }
 }

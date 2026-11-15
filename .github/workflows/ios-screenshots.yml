@@ -140,6 +140,8 @@ jobs:
             capture daily 16 "daily-colour-burin-patches-mid-$appearance" -scroll colour -paintStyle burin -paintAge 1.0 -paintColours c7bc9a:0.431/7e6e52:0.179/9d7f5a:0.171/ac9c77:0.138/c06e4f:0.044/aa8e38:0.043
             capture daily 16 "daily-colour-pen-$appearance" -scroll colour -paintStyle pen -paintColours c9b79a:0.40/a9856a:0.27/8a5a44:0.20/6b3f30:0.13
             capture daily 16 "daily-colour-pencil-$appearance" -scroll colour -paintStyle pencil -paintColours d2cec4:0.46/a9a59c:0.26/7d7a74:0.18/55534f:0.10
+            capture daily 16 "daily-colour-grain-$appearance" -scroll colour -paintStyle grain -paintColours ddd8ca:0.30/b2aea4:0.18/7d7972:0.28/42403c:0.24
+            capture daily 16 "daily-colour-grain-mid-$appearance" -scroll colour -paintStyle grain -paintAge 1.0 -paintColours ddd8ca:0.30/b2aea4:0.18/7d7972:0.28/42403c:0.24
             capture daily 16 "daily-colour-woodblock-$appearance" -scroll colour -paintStyle woodblock -paintColours d9cdb0:0.34/c8bc9d:0.22/1f3a5f:0.16/3d5f86:0.12/8fa7b8:0.09/e9e2cf:0.07
             capture daily 16 "daily-colour-woodblock-mid-$appearance" -scroll colour -paintStyle woodblock -paintAge 1.2 -paintColours d9cdb0:0.34/c8bc9d:0.22/1f3a5f:0.16/3d5f86:0.12/8fa7b8:0.09/e9e2cf:0.07
             capture daily 16 "daily-colour-litho-$appearance" -scroll colour -paintStyle litho -paintColours 1d1a17:0.30/e8dcc0:0.28/c8a23a:0.18/b5432b:0.14/6f7f4f:0.10
