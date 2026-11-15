@@ -29,7 +29,7 @@ enum ColourRecovery {
         switch style {
         case .oil: return "oil"
         case .pastel, .gouache: return "opaque"
-        case .water, .dry, .burin, .pen, .pencil, .woodblock, .litho, .wash, .handColoured, .woodcut: return "paper"
+        case .water, .dry, .burin, .pen, .pencil, .woodblock, .litho, .wash, .handColoured, .woodcut, .grain: return "paper"
         case .screen, .offset, .photo: return nil
         }
     }

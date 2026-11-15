@@ -34,6 +34,7 @@ final class ColourRecoveryTests: XCTestCase {
         XCTAssertEqual(ColourRecovery.made(.pen), "paper")
         XCTAssertEqual(ColourRecovery.made(.water), "paper")
         XCTAssertEqual(ColourRecovery.made(.woodblock), "paper")
+        XCTAssertEqual(ColourRecovery.made(.grain), "paper")  // the stone's lithograph, 1.145.154
         XCTAssertEqual(ColourRecovery.made(.pastel), "opaque")
         XCTAssertEqual(ColourRecovery.made(.gouache), "opaque")
         XCTAssertNil(ColourRecovery.made(.photo))
