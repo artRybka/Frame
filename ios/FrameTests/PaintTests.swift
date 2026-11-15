@@ -646,8 +646,16 @@ final class PaintTests: XCTestCase {
         guard let patch = LineStrip.plan(red, width: 350, seed: 5, tool: .pen).tones.first(where: \.patch) else {
             return XCTFail("the red is a patch")
         }
-        let (i, j) = dot((patch.from + patch.to) / 2, 13), c = printed.colour(i, j)
-        XCTAssertGreaterThan(c.red, c.blue + 30)
+        var sum = (red: 0.0, blue: 0.0)
+        for x in stride(from: patch.from + 4, to: patch.to - 4, by: 0.4) {
+            for y in stride(from: 4.0, to: 22.0, by: 0.4) {
+                let (i, j) = dot(x, y), c = printed.colour(i, j)
+                sum = (sum.red + c.red, sum.blue + c.blue)
+            }
+        }
+        XCTAssertGreaterThan(sum.red, sum.blue * 1.6)
+        // Thin: the patch is lighter than the grey after it, however dark its colour.
+        XCTAssertLessThan(StoneStrip.cover(LineStrip.plan(red, width: 350, seed: 5, tool: .pen).tones, at: (patch.from + patch.to) / 2), 0.12)
     }
 
     /// Sketch 41 (Mateusz 2026-11-14 20:09: „Drzeworyt C. Złoto super.”).

@@ -33,6 +33,14 @@ final class StoneStrip: PaintPainter, @unchecked Sendable {
     /// faint film between the specks; how long (points) the passes take to
     /// fill a place in.
     static let lean = 62.0, passes = 0.12, soft = 0.14, film = 0.12, front = 26.0
+    /// How far (points) a tone goes over into the next, either side of
+    /// their seam; and into a patch of colour, whose grain is thin.
+    static let blend = 10.0, blendPatch = 3.5
+    /// How much of a patch's tone the grain over it keeps: it is printed
+    /// in its colour, the crayon only dusts it.
+    static let overPatch = 0.45
+    /// How dark a speck is: a light tone's are greyer, the darkest's the ink.
+    static let speck = (light: 0.62, dark: 1.0)
     /// Lithographic ink: a warm black, the work's darkest mixed into it.
     static let black = [30.0, 27, 24]
 
@@ -66,13 +74,15 @@ final class StoneStrip: PaintPainter, @unchecked Sendable {
         var edge = [Float](repeating: 0, count: n), along = [Float](repeating: 0, count: n)
         let angle = Self.lean * Double.pi / 180, ux = cos(angle), uy = -sin(angle), run = 1 / tan(angle)
         var plain = [Double](repeating: 0, count: wide)
-        for i in 0..<wide { plain[i] = lines.plan.cover(at: min(max((Double(i) + 0.5) / S - pad, 0), width)) }
+        for i in 0..<wide { plain[i] = Self.cover(lines.plan.tones, at: min(max((Double(i) + 0.5) / S - pad, 0), width)) }
         for j in rows {
             let y = (Double(j) + 0.5) / S - pad
             for i in 0..<wide {
                 let x = (Double(i) + 0.5) / S - pad, q = (j - rows.lowerBound) * wide + i
-                // The sand-ground stone: a fine even tooth, a little coarser here and there.
-                raw[q] = 0.45 * Paint.noise(x / 0.35, y / 0.35, 141 + s) + 0.4 * Paint.noise(x / 0.8, y / 0.8, 142 + s)
+                // The sand-ground stone: a fine even tooth, a little coarser here and there; each
+                // scale on its own slant, so that no rows or columns of the noise's cells show.
+                raw[q] = 0.5 * Paint.noise((0.92 * x - 0.39 * y) / 0.55, (0.39 * x + 0.92 * y) / 0.55, 141 + s)
+                    + 0.35 * Paint.noise((0.8 * x + 0.6 * y) / 1.1, (-0.6 * x + 0.8 * y) / 1.1, 142 + s)
                     + 0.15 * Paint.noise(x / 3.5, y / 3.5, 143 + s)
                 // The crayon's passes: streaks along the diagonal, felt less in the dark.
                 let u = x * ux + y * uy, v = -x * uy + y * ux
@@ -80,10 +90,11 @@ final class StoneStrip: PaintPainter, @unchecked Sendable {
                 let c = plain[i]
                 cover[q] = Float(min(0.97, max(0, c + Self.passes * (pass - 0.5) * 2 * (1 - 0.6 * c))))
                 // Where the crayon stops: the bar's edges, a little ragged, never ruled.
-                let wob = (Paint.noise(x / 6, y / 6, 145 + s) - 0.5) * 0.6 + (Paint.noise(x / 1.5, y / 1.5, 146 + s) - 0.5) * 0.2
-                let wob2 = (Paint.noise(x / 6, y / 6, 147 + s) - 0.5) * 0.6
-                let inside = min(min(x + wob, width - x + wob2), min(y + 0.4 * wob2, H - y + 0.4 * wob))
-                edge[q] = Float(Paint.step(-0.45, 0.45, inside))
+                // The crayon thins out over the last point or so.
+                let wob = (Paint.noise(x / 5, y / 5, 145 + s) - 0.5) * 2.4 + (Paint.noise(x / 1.2, y / 1.2, 146 + s) - 0.5) * 0.9
+                let wob2 = (Paint.noise(x / 5, y / 5, 147 + s) - 0.5) * 2.4 + (Paint.noise(x / 1.2, y / 1.2, 148 + s) - 0.5) * 0.9
+                let inside = min(min(x + 0.5 + wob, width + 0.5 - x + wob2), min(y + 0.6 + 0.6 * wob2, H + 0.6 - y + 0.6 * wob))
+                edge[q] = Float(Paint.step(-0.5, 1.4, inside))
                 along[q] = Float(x - (H / 2 - y) * run)
             }
         }
@@ -95,6 +106,20 @@ final class StoneStrip: PaintPainter, @unchecked Sendable {
         let ready = (cover: cover, grain: grain, edge: edge, along: along)
         made = ready
         return ready
+    }
+
+    /// How dark the crayon is to make the bar at `x`: each tone's cover,
+    /// going over into the next within `blend` of their seam; a patch of
+    /// colour's thinner, and only a little way into it.
+    static func cover(_ tones: [LineStrip.Tone], at x: Double) -> Double {
+        guard let first = tones.first else { return 0 }
+        func own(_ tone: LineStrip.Tone) -> Double { tone.patch ? tone.cover * Self.overPatch : tone.cover }
+        var c = own(first)
+        for (a, b) in zip(tones, tones.dropFirst()) {
+            let reach = a.patch || b.patch ? Self.blendPatch : Self.blend
+            c += (own(b) - own(a)) * Paint.step(a.to - reach, a.to + reach, x)
+        }
+        return c
     }
 
     /// How much of the work's ink the crayon leaves at a pixel for a tone
@@ -115,6 +140,7 @@ final class StoneStrip: PaintPainter, @unchecked Sendable {
         let done = min(1, max(0, (age - PrintPaint.appear) / (length - PrintPaint.appear)))
         let reach = Float(-Self.front + (width + 2 * Self.front) * Paint.ease(done)), front = Float(Self.front)
         let shown = Float(Paint.ease(age / PrintPaint.appear))
+        let light = Float(Self.speck.light), deep = Float(Self.speck.dark)
         for j in 0..<high {
             let drawn = rows.contains(j) && done > 0
             for i in 0..<wide {
@@ -125,7 +151,8 @@ final class StoneStrip: PaintPainter, @unchecked Sendable {
                 if drawn {
                     let q = (j - rows.lowerBound) * wide + i
                     let there = min(1, max(0, (reach - along[q]) / front))
-                    let dark = edge[q] > 0 && there > 0 ? Self.caught(cover[q] * there * there * (3 - 2 * there), grain: grain[q]) * edge[q] : 0
+                    let c = cover[q] * there * there * (3 - 2 * there)
+                    let dark = edge[q] > 0 && there > 0 ? Self.caught(c, grain: grain[q]) * edge[q] * (light + (deep - light) * c) : 0
                     if dark > 0 {
                         red += (ink[0] - red) * dark
                         green += (ink[1] - green) * dark
