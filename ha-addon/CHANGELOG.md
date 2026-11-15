@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.171
+
+- Szukaj zdjęciem: wyniki pokazują się teraz w zwykłym widoku Szukaj, tak
+  jak „Szukaj podobnych” z karty dzieła. W polu jest chip „Podobne do
+  zdjęcia” (ikona aparatu), nad wynikami miniatura zdjęcia, a grupy
+  (technika, epoka, kolor, muzeum…) zawężają wyniki. Z wyników można
+  utworzyć playlistę inteligentną; serwer trzyma liczby zdjęcia (nie samo
+  zdjęcie), więc playlista działa dalej. To samo zdjęcie drugi raz nie
+  pyta Google. Osobny ekran „Dzieła podobne do tego zdjęcia” zniknął.
+
 ## 1.145.170
 
 - Resztka miesiąca Claude: „Słowa kluczowe i polskie opisy” mają limit

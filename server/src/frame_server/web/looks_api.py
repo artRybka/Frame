@@ -85,6 +85,39 @@ async def looks_by_picture(
 ) -> LooksAnswer:
     """Works that look like a photograph (of a work in a museum, a postcard,
     a page of a book). The photograph is not kept."""
+    _, img = await _photograph(file)
+    try:
+        found = await run_in_threadpool(svc.looks.picture, img, limit)
+    except AiUnavailable as err:
+        raise HTTPException(409, str(err)) from err
+    except (NotDrawn, httpx.HTTPError) as err:
+        raise HTTPException(502, f"Google did not answer: {err}") from err
+    return _answer(found)
+
+
+class LooksPhoto(BaseModel):
+    """A photograph searched in Szukaj: the key Szukaj asks as ``like``."""
+
+    key: str
+
+
+@router.post("/looks/photo", response_model=LooksPhoto)
+async def looks_photo(svc: Svc, file: Annotated[UploadFile, File()]) -> LooksPhoto:
+    """"Szukaj zdjęciem" in Szukaj's own list (Mateusz 2026-11-15): the
+    photograph's numbers kept under a key that ``/api/library/items?like=``
+    and a smart playlist's ``like`` take, as a work's id. The photograph is
+    not kept. 409 / 502 as ``/looks/picture``."""
+    data, img = await _photograph(file)
+    try:
+        key = await run_in_threadpool(svc.looks.photo, data, img)
+    except AiUnavailable as err:
+        raise HTTPException(409, str(err)) from err
+    except (NotDrawn, httpx.HTTPError) as err:
+        raise HTTPException(502, f"Google did not answer: {err}") from err
+    return LooksPhoto(key=key)
+
+
+async def _photograph(file: UploadFile) -> tuple[bytes, Image.Image]:
     data = await file.read(PICTURE_BYTES + 1)
     if not data:
         raise HTTPException(422, "empty file")
@@ -95,13 +128,7 @@ async def looks_by_picture(
         img.load()
     except (UnidentifiedImageError, OSError) as err:
         raise HTTPException(422, f"not a picture: {err}") from err
-    try:
-        found = await run_in_threadpool(svc.looks.picture, img, limit)
-    except AiUnavailable as err:
-        raise HTTPException(409, str(err)) from err
-    except (NotDrawn, httpx.HTTPError) as err:
-        raise HTTPException(502, f"Google did not answer: {err}") from err
-    return _answer(found)
+    return data, img
 
 
 @router.get("/library/items/{item_id:item}/looks", response_model=LooksAnswer)

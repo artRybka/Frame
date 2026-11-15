@@ -146,6 +146,21 @@ final class TermLookupTests: XCTestCase {
         XCTAssertTrue(rules.isEmpty)
     }
 
+    /// "Szukaj zdjęciem" in Szukaj's own list (Mateusz 2026-11-15): the
+    /// photograph's key is the chip "Podobne do zdjęcia", kept like a work's.
+    func testAPhotographSearchedIsAChipOfTheRules() {
+        var rules = PlaylistRules(terms: ["period:baroque"])
+        let chip = SearchToken.like("photo:0a1b", title: "")
+        XCTAssertTrue(SearchToken.isPhoto(chip.key))
+        XCTAssertFalse(SearchToken.isPhoto("met:1"))
+        XCTAssertEqual(chip.name, "Podobne do zdjęcia")
+        XCTAssertEqual(chip.icon, "camera")
+        rules.setTokens(rules.tokens(names: [:]) + [chip])
+        XCTAssertEqual(rules.like, "photo:0a1b")
+        XCTAssertEqual(rules.tokens(names: [:]).last?.name, "Podobne do zdjęcia")
+        XCTAssertEqual(LibraryQuery(rules: rules).like, "photo:0a1b")
+    }
+
     func testFoldingIgnoresCaseAndPolishLetters() {
         XCTAssertEqual(TermLookup.fold("Łódź"), "lodz")
         XCTAssertEqual(TermLookup.fold("Chełmoński"), "chelmonski")

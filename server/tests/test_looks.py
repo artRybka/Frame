@@ -490,6 +490,56 @@ def test_szukaj_finds_the_works_like_one_nearest_first(
     assert not rules.is_empty() and rules.search_key() == ""  # no museum asked
 
 
+def test_a_photograph_is_searched_in_szukajs_own_list(
+    service: FrameService, looks: tuple[Looks, FakePainter]
+) -> None:
+    """„Szukaj zdjęciem” as „Szukaj podobnych” (Mateusz 2026-11-15): the
+    photograph's numbers kept under a key Szukaj asks as ``like``, the
+    groups narrowing it, a smart playlist keeping it; the same photograph
+    again asks Google nothing, and the photograph itself is not kept."""
+    from frame_server.web import create_app
+
+    found, painter = looks
+    service.ai_config.set_gemini_key("k")
+    _work(service, "met:1", "red", artist="Anna A")
+    _work(service, "aic:7", "red", artist="Bruno B")
+    _work(service, "met:2", "blue", artist="Anna A")
+    _numbers(found)
+    app = create_app(service.settings)
+    app.state.service = service
+    out = io.BytesIO()
+    Image.new("RGB", (40, 30), COLOURS["red"]).save(out, "JPEG")
+    files = {"file": ("photo.jpg", out.getvalue(), "image/jpeg")}
+    with TestClient(app) as client:
+        key = client.post("/api/looks/photo", files=files).json()["key"]
+        assert key.startswith("photo:")
+        asked = len(painter.asked)
+        assert client.post("/api/looks/photo", files=files).json()["key"] == key
+        assert len(painter.asked) == asked  # the same photograph: Google not asked again
+
+        def ids(**params: Any) -> list[str]:
+            page = client.get("/api/library/items", params=params).json()
+            return [i["id"] for i in page["items"]]
+
+        assert sorted(ids(like=key)) == ["aic:7", "met:1"]
+        assert ids(like=key, artist="Anna A") == ["met:1"]
+        assert ids(like="photo:0000") == []  # a key nobody kept
+        bad = {"file": ("photo.jpg", b"not a picture", "image/jpeg")}
+        assert client.post("/api/looks/photo", files=bad).status_code == 422
+    kept = list((found.root / "photos").iterdir())
+    assert len(kept) == 1 and kept[0].stat().st_size == EMBED_SIZE * 4  # numbers only
+    rules = PlaylistRules(like=key)
+    assert sorted(i.id for i in service.library.query(rules)[1]) == ["aic:7", "met:1"]
+    assert rules.search_key() == ""  # no museum asked
+    painter.key = False
+    with TestClient(app) as client:
+        assert client.post("/api/looks/photo", files=files).status_code == 200  # kept already
+        other = io.BytesIO()
+        Image.new("RGB", (40, 30), COLOURS["blue"]).save(other, "JPEG")
+        new = {"file": ("photo.jpg", other.getvalue(), "image/jpeg")}
+        assert client.post("/api/looks/photo", files=new).status_code == 409
+
+
 def test_a_smart_playlist_keeps_the_look_and_waits_for_google(
     service: FrameService, looks: tuple[Looks, FakePainter]
 ) -> None:
