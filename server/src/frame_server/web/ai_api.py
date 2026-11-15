@@ -19,6 +19,7 @@ from ..ai.gatekeeper import SEEN_AS
 from ..ai.gemini import GeminiRejected
 from ..ai.keywords import KIND as KEYWORDS
 from ..ai.pl_text import KIND as PL_TEXT
+from ..ai.review_fix import ReviewError
 from ..ai.twins_judge import CLAIMS, Verdict, judge
 from ..ai.twins_judge import MODELS as JUDGES
 from ..library.models import ItemSummary
@@ -503,6 +504,11 @@ class ReviewProblem(BaseModel):
     field: str
     name: str
     problem: str
+    #: For a title, a maker or a date: the corrected value ("Popraw"), ""
+    #: until the audit or ``/suggest`` gave one.
+    fix: str = ""
+    #: For a title: the corrected Polish title.
+    fix_pl: str = ""
 
 
 class ReviewEntry(BaseModel):
@@ -537,6 +543,8 @@ def _review(svc: FrameService) -> Review:
                     field=str(p.get("field")),
                     name=AUDIT_FIELDS.get(str(p.get("field")), ""),
                     problem=str(p.get("problem") or ""),
+                    fix=str(p.get("fix") or ""),
+                    fix_pl=str(p.get("fix_pl") or ""),
                 )
                 for p in entry.get("problems") or []
                 if isinstance(p, dict)
@@ -549,7 +557,8 @@ def _review(svc: FrameService) -> Review:
                     by=by,
                     seen_as=seen_as,
                     seen_as_name=SEEN_AS.get(seen_as, ""),
-                    why=str(entry.get("why") or ""),
+                    # In Polish once written so (``ai.review_fix``).
+                    why=str(entry.get("why_pl") or entry.get("why") or ""),
                     problems=problems,
                 )
             )
@@ -564,7 +573,9 @@ def _review(svc: FrameService) -> Review:
 @router.get("/review", response_model=Review)
 async def get_review(svc: Svc) -> Review:
     """ "Do sprawdzenia": what the gatekeeper set aside and what the night
-    audit found, newest first."""
+    audit found, newest first. The gatekeeper's English notes written before
+    it wrote them in Polish are translated meanwhile, for the next look."""
+    svc.review_fixes.translate_soon()
     return await run_in_threadpool(_review, svc)
 
 
@@ -582,3 +593,62 @@ async def dismiss(item_id: str, svc: Svc) -> Review:
     svc.gatekeeper.forget_written(item_id)
     svc.audit.forget_written(item_id)
     return await run_in_threadpool(_review, svc)
+
+
+class ReviewFix(BaseModel):
+    #: "title", "artist" or "date".
+    field: str
+    value: str
+    #: For a title: the Polish title the app shows.
+    value_pl: str | None = None
+
+
+def _review_call(svc: FrameService, call: Any, *args: Any) -> Review:
+    """One of "Do sprawdzenia"'s remedies, then the list as it is now."""
+    try:
+        call(*args)
+    except LookupError as err:
+        raise HTTPException(404, "no such work on the list") from err
+    except ReviewError as err:
+        raise HTTPException(422, str(err)) from err
+    except AiUnavailable as err:
+        raise HTTPException(409, str(err)) from err
+    except (httpx.HTTPError, OSError) as err:
+        raise HTTPException(502, f"Zdjęcie dzieła niedostępne: {err}") from err
+    return _review(svc)
+
+
+@router.post("/review/{item_id:item}/suggest", response_model=Review)
+async def suggest_fixes(item_id: str, svc: Svc) -> Review:
+    """The corrected title, maker or date of a finding written before the
+    audit gave them, asked of Haiku now (a fraction of a cent)."""
+    return await run_in_threadpool(_review_call, svc, svc.review_fixes.suggest, item_id)
+
+
+@router.post("/review/{item_id:item}/fix", response_model=Review)
+async def apply_fix(item_id: str, fix: ReviewFix, svc: Svc) -> Review:
+    """ "Popraw": the owner's value on the work; that problem off the list."""
+    return await run_in_threadpool(
+        _review_call, svc, svc.review_fixes.apply, item_id, fix.field, fix.value, fix.value_pl
+    )
+
+
+@router.post("/review/{item_id:item}/cut", response_model=Review)
+async def cut_finding(item_id: str, svc: Svc) -> Review:
+    """ "Przytnij": Opus finds the work in its photograph now (about 2
+    cents), told what the audit saw; the cut is the owner's."""
+    return await run_in_threadpool(_review_call, svc, svc.review_fixes.cut, item_id)
+
+
+@router.delete("/review/{item_id:item}/problems/{field}", response_model=Review)
+async def drop_problem(item_id: str, field: str, svc: Svc) -> Review:
+    """One problem done elsewhere (a better copy picked): off the list."""
+    return await run_in_threadpool(_review_call, svc, svc.review_fixes.drop, item_id, field)
+
+
+@router.post("/review/{item_id:item}/hide", response_model=Review)
+async def hide_finding(item_id: str, svc: Svc) -> Review:
+    """ "Ukryj": the work out of the catalogue, and off the list."""
+    review = await run_in_threadpool(_review_call, svc, svc.review_fixes.hide, item_id)
+    svc.player.item_changed(item_id)
+    return review

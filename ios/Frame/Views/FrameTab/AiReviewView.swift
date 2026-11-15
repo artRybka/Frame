@@ -19,6 +19,13 @@ struct AiReviewView: View {
     /// The work's card, opened from its title.
     @State private var card: String?
     @Namespace private var zoomSpace
+    /// "Zmień…"/"Popraw…": the value written by hand.
+    @State private var editing: FixEditing?
+    /// "Inna kopia": the work whose copies are open.
+    @State private var copiesFor: Item?
+    /// Works whose corrected values are being asked for, and those asked.
+    @State private var suggesting: Set<String> = []
+    @State private var asked: Set<String> = []
     @MainActor private static var openedOnce = false
 
     var body: some View {
@@ -43,7 +50,7 @@ struct AiReviewView: View {
                     if !review.findings.isEmpty {
                         section(
                             "Znalezione w nocnym przeglądzie",
-                            note: "Nic nie zostało zmienione. Wystarczy przejrzeć i odhaczyć.",
+                            note: "Nic nie zostało zmienione. Popraw jednym dotknięciem, odhacz jako sprawdzone albo ukryj dzieło.",
                             entries: review.findings
                         )
                     }
@@ -65,13 +72,29 @@ struct AiReviewView: View {
         .navigationTitle("Do sprawdzenia")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await load() }
-        .task { await load() }
+        .task {
+            await load()
+            await suggestMissing()
+        }
         .fullScreenCover(item: $opened) { item in
-            OriginalViewer(item: item)
+            OriginalViewer(item: item, whole: true)
                 .navigationTransition(.zoom(sourceID: item.id, in: zoomSpace))
         }
         .navigationDestination(item: $card) { id in
             ItemDetailView(itemID: id)
+        }
+        .sheet(item: $editing) { editing in
+            ReviewFixSheet(editing: editing) { updated in
+                withAnimation(.snappy) { review = updated }
+            }
+        }
+        .sheet(item: $copiesFor) { item in
+            CopiesSheet(item: item) { _ in
+                // A better copy picked: the picture's problem is done.
+                act("audit:" + item.id + "|picture") {
+                    try await model.backend.dropReviewProblem(itemID: item.id, field: "picture")
+                }
+            }
         }
     }
 
@@ -132,16 +155,21 @@ struct AiReviewView: View {
                         .foregroundStyle(Theme.inkSoft)
                 }
                 ForEach(entry.problems, id: \.self) { problem in
-                    Text("\(Text(problem.name + ":").fontWeight(.semibold)) \(problem.problem)")
-                        .font(.caption)
-                        .foregroundStyle(Theme.ink)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("\(Text(problem.name + ":").fontWeight(.semibold)) \(problem.problem)")
+                            .font(.caption)
+                            .foregroundStyle(Theme.ink)
+                        remedies(entry, problem)
+                    }
+                    .padding(.top, 2)
                 }
                 HStack(spacing: 16) {
                     if entry.by == "gatekeeper" {
-                        Button("Przywróć") { act(entry) { try await model.backend.bringBack(itemID: entry.item.id) } }
-                        Button("Zgadza się") { act(entry) { try await model.backend.dismissReview(itemID: entry.item.id) } }
+                        Button("Przywróć") { act(entry.id) { try await model.backend.bringBack(itemID: entry.item.id) } }
+                        Button("Zgadza się") { act(entry.id) { try await model.backend.dismissReview(itemID: entry.item.id) } }
                     } else {
-                        Button("Sprawdzone") { act(entry) { try await model.backend.dismissReview(itemID: entry.item.id) } }
+                        Button("Sprawdzone") { act(entry.id) { try await model.backend.dismissReview(itemID: entry.item.id) } }
+                        Button("Ukryj") { act(entry.id) { try await model.backend.hideReviewed(itemID: entry.item.id) } }
                     }
                     if busy.contains(entry.id) { ProgressView().controlSize(.small) }
                 }
@@ -154,6 +182,103 @@ struct AiReviewView: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 4)
+    }
+
+    /// What mends one problem in a tap (Mateusz 2026-11-15, „Pełne poprawki
+    /// jednym dotknięciem"): a title, a maker or a date put right with the
+    /// value the audit proposes ("Zmień…" to write it otherwise); a picture
+    /// cut by Opus told what the audit saw, or another copy picked.
+    @ViewBuilder
+    private func remedies(_ entry: AiReview.Entry, _ problem: AiReview.Problem) -> some View {
+        let key = entry.id + "|" + problem.field
+        let itemID = entry.item.id
+        Group {
+            if busy.contains(key) {
+                Label {
+                    Text(problem.field == "picture" ? "Szukam krawędzi dzieła…" : "Poprawiam…")
+                } icon: {
+                    ProgressView().controlSize(.small)
+                }
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
+            } else if problem.valued {
+                if let fix = problem.proposal {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) { fixButtons(entry, problem, fix: fix, key: key) }
+                        VStack(alignment: .leading, spacing: 6) { fixButtons(entry, problem, fix: fix, key: key) }
+                    }
+                } else if suggesting.contains(itemID) {
+                    Label {
+                        Text("Szukam poprawki…")
+                    } icon: {
+                        ProgressView().controlSize(.small)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+                } else {
+                    Button("Popraw…") { editing = FixEditing(entry: entry, problem: problem) }
+                }
+            } else if problem.field == "picture" {
+                HStack(spacing: 8) {
+                    Button("Przytnij") {
+                        act(key) { try await model.backend.cutReviewed(itemID: itemID) }
+                    }
+                    Button("Inna kopia") { openCopies(itemID) }
+                }
+            }
+        }
+        .font(.caption.weight(.semibold))
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .tint(Theme.ink)
+        .disabled(busy.contains(key) || busy.contains(entry.id))
+    }
+
+    @ViewBuilder
+    private func fixButtons(_ entry: AiReview.Entry, _ problem: AiReview.Problem, fix: String, key: String) -> some View {
+        Button {
+            act(key) {
+                try await model.backend.applyReviewFix(
+                    itemID: entry.item.id, field: problem.field, value: fix, valuePl: problem.fixPl
+                )
+            }
+        } label: {
+            Text("Popraw na „\(fix)\u{201D}")
+                .multilineTextAlignment(.leading)
+                .lineLimit(3)
+        }
+        Button("Zmień…") { editing = FixEditing(entry: entry, problem: problem) }
+    }
+
+    /// Works found with values still to propose, asked once each while the
+    /// list is open (a fraction of a cent each; findings the audit wrote
+    /// before it gave them).
+    private func suggestMissing() async {
+        guard let review else { return }
+        let waiting = review.findings.filter { entry in
+            !asked.contains(entry.item.id)
+                && entry.problems.contains { $0.valued && $0.fix == "" }
+        }
+        for entry in waiting {
+            asked.insert(entry.item.id)
+            suggesting.insert(entry.item.id)
+            defer { suggesting.remove(entry.item.id) }
+            guard let updated = try? await model.backend.suggestReviewFixes(itemID: entry.item.id) else { continue }
+            withAnimation(.snappy) { self.review = updated }
+        }
+    }
+
+    private func openCopies(_ id: String) {
+        guard opening == nil else { return }
+        opening = id
+        Task {
+            defer { opening = nil }
+            do {
+                copiesFor = try await model.backend.item(id: id)
+            } catch {
+                model.notices.warn("Nie udało się otworzyć kopii", error.localizedDescription)
+            }
+        }
     }
 
     /// The picture, bigger than before and with a magnifier: a tap opens it
@@ -206,7 +331,7 @@ struct AiReviewView: View {
             failed = false
             // Screenshots: `-reviewOpen YES` opens the first picture by itself.
             if UserDefaults.standard.bool(forKey: "reviewOpen"), !Self.openedOnce,
-               let first = (review?.findings.first ?? review?.setAside.first) {
+               let first = (review?.setAside.first ?? review?.findings.first) {
                 Self.openedOnce = true
                 open(first.item.id)
             }
@@ -215,16 +340,112 @@ struct AiReviewView: View {
         }
     }
 
-    private func act(_ entry: AiReview.Entry, _ call: @escaping () async throws -> AiReview) {
-        busy.insert(entry.id)
+    private func act(_ key: String, _ call: @escaping () async throws -> AiReview) {
+        busy.insert(key)
         Task {
-            defer { busy.remove(entry.id) }
+            defer { busy.remove(key) }
             do {
                 let updated = try await call()
                 withAnimation(.snappy) { review = updated }
                 await model.loadAiSettings()
             } catch {
                 model.notices.warn("Nie udało się", error.localizedDescription)
+            }
+        }
+    }
+}
+
+/// A problem's value being written by hand.
+struct FixEditing: Identifiable {
+    let entry: AiReview.Entry
+    let problem: AiReview.Problem
+    var id: String { entry.id + "|" + problem.field }
+}
+
+/// "Zmień…" / "Popraw…" on a finding: the work's title (with its Polish
+/// title), maker or date written by hand, the audit's proposal filled in.
+struct ReviewFixSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let editing: FixEditing
+    let saved: (AiReview) -> Void
+    @State private var value = ""
+    @State private var valuePl = ""
+    @State private var saving = false
+
+    private var problem: AiReview.Problem { editing.problem }
+    private var isTitle: Bool { problem.field == "title" }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text(problem.problem)
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.inkSoft)
+                }
+                Section(isTitle ? "Tytuł w katalogu" : problem.name) {
+                    TextField(problem.name, text: $value, axis: .vertical)
+                }
+                if isTitle {
+                    Section {
+                        TextField("Polski tytuł", text: $valuePl, axis: .vertical)
+                    } header: {
+                        Text("Polski tytuł")
+                    } footer: {
+                        Text("Ten tytuł widać w aplikacji i na ramce. Polski opis dzieła zostanie napisany od nowa z poprawionym tytułem.")
+                    }
+                }
+            }
+            .navigationTitle("Popraw")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Anuluj") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if saving {
+                        ProgressView()
+                    } else {
+                        Button("Zapisz", action: save)
+                            .disabled(value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .onAppear(perform: fill)
+    }
+
+    private func fill() {
+        let item = editing.entry.item
+        switch problem.field {
+        case "title":
+            value = problem.proposal ?? item.title
+            valuePl = problem.fixPl.flatMap { $0.isEmpty ? nil : $0 } ?? item.titlePl ?? ""
+        case "artist":
+            value = problem.proposal ?? item.artist
+        default:
+            value = problem.proposal ?? item.dateText
+        }
+    }
+
+    private func save() {
+        saving = true
+        let pl = valuePl.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task {
+            defer { saving = false }
+            do {
+                let updated = try await model.backend.applyReviewFix(
+                    itemID: editing.entry.item.id,
+                    field: problem.field,
+                    value: value.trimmingCharacters(in: .whitespacesAndNewlines),
+                    valuePl: isTitle && !pl.isEmpty ? pl : nil
+                )
+                saved(updated)
+                dismiss()
+            } catch {
+                model.notices.warn("Nie udało się zapisać", error.localizedDescription)
             }
         }
     }

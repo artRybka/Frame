@@ -3,9 +3,18 @@
 ## 1.145.164
 
 - „Do sprawdzenia”: miniatury są większe, a dotknięcie miniatury otwiera
-  obraz na całym ekranie, z przybliżaniem palcami (widać linijkę, pasek
-  kolorów, uciętą krawędź). Dotknięcie tytułu otwiera kartę dzieła, gdzie
-  są „Popraw kadr”, „Inne kopie” i „Ukryj”.
+  obraz na całym ekranie, w całości, z przybliżaniem palcami (widać
+  linijkę, pasek kolorów, uciętą krawędź). Dotknięcie tytułu otwiera kartę
+  dzieła.
+- Uwagi nocnego przeglądu naprawia się jednym dotknięciem: zły tytuł,
+  autor albo data mają przycisk „Popraw na „…”” z gotową propozycją (przy
+  tytule także polski tytuł; „Zmień…” pozwala wpisać inaczej), linijka,
+  pasek kolorów czy kartka wokół rysunku mają „Przytnij” (Opus szuka
+  krawędzi dzieła, wiedząc, co przegląd zauważył) i „Inna kopia”, a każda
+  pozycja ma „Ukryj”. Propozycje do starszych uwag dopisuje Haiku przy
+  otwarciu listy (ułamek centa za dzieło).
+- Opisy strażnika przy odłożonych dziełach są po polsku; starsze
+  tłumaczą się same przy otwarciu listy.
 
 ## 1.145.161
 

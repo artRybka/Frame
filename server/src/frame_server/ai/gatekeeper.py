@@ -124,12 +124,14 @@ when it is plainly so; when in doubt, false.
 
 """
         + "\n".join(f'- "{key}": is the picture {QUESTIONS[key]}?' for key in keys)
-        + '\n\nLast, "confidence" from 0 to 1 in your answers.'
+        + '\n\nThen "confidence" from 0 to 1 in your answers. Last, "why_pl": your "why" '
+        "in plain Polish, for the frame's owner."
     )
     schema = _object(
         why=_str(),
         **{key: {"type": "boolean"} for key in keys},
         confidence={"type": "number"},
+        why_pl=_str(),
     )
     return system, schema
 
@@ -339,7 +341,9 @@ class Gatekeeper(CriticNight):
     def claim(self, item: Item, data: dict[str, Any]) -> dict[str, Any] | None:
         for key in MUSEUM_SEEN_AS if museum(item) else SEEN_AS:
             if data.get(key) is True:
-                return {"seen_as": key, "why": str(data.get("why") or "")[:300]}
+                found = {"seen_as": key, "why": str(data.get("why") or "")[:300]}
+                why_pl = " ".join(str(data.get("why_pl") or "").split())[:300]
+                return {**found, "why_pl": why_pl} if why_pl else found
         return None
 
     def critic_question(self, item: Item, claim: dict[str, Any]) -> dict[str, Any]:

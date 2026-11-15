@@ -1976,8 +1976,27 @@ actor DemoBackend: FrameBackend {
         if works.count > 1 {
             review.findings = [AiReview.Entry(
                 item: works[1].summary, at: "2026-11-10T02:20:00+00:00", by: "audit",
-                problems: [AiReview.Problem(field: "date", name: "Data", problem: "Rok 1932 jest po śmierci autora (1890).")]
+                problems: [AiReview.Problem(
+                    field: "date", name: "Data", problem: "Rok 1932 jest po śmierci autora (1890).",
+                    fix: "1896", fixPl: ""
+                )]
             )]
+        }
+        if works.count > 2 {
+            review.findings.append(AiReview.Entry(
+                item: works[2].summary, at: "2026-11-10T02:24:00+00:00", by: "audit",
+                problems: [
+                    AiReview.Problem(
+                        field: "title", name: "Tytuł",
+                        problem: "Tytuł zawiera dopisek o aukcji (Sothebys 12 nov 2019), który nie jest częścią tytułu.",
+                        fix: "Charing Cross Bridge", fixPl: "Most Charing Cross"
+                    ),
+                    AiReview.Problem(
+                        field: "picture", name: "Obraz",
+                        problem: "Na zdjęciu widać pasek kolorów i linijkę przy prawej krawędzi."
+                    ),
+                ]
+            ))
         }
         return review
     }()
@@ -2026,6 +2045,37 @@ actor DemoBackend: FrameBackend {
         reviewValue.setAside.removeAll { $0.item.id == itemID }
         reviewValue.findings.removeAll { $0.item.id == itemID }
         return reviewValue
+    }
+
+    func suggestReviewFixes(itemID: String) async throws -> AiReview { reviewValue }
+
+    func applyReviewFix(itemID: String, field: String, value: String, valuePl: String?) async throws -> AiReview {
+        dropProblem(itemID, field)
+        return reviewValue
+    }
+
+    func cutReviewed(itemID: String) async throws -> AiReview {
+        try await Task.sleep(for: .seconds(1))
+        dropProblem(itemID, "picture")
+        return reviewValue
+    }
+
+    func dropReviewProblem(itemID: String, field: String) async throws -> AiReview {
+        dropProblem(itemID, field)
+        return reviewValue
+    }
+
+    func hideReviewed(itemID: String) async throws -> AiReview {
+        reviewValue.findings.removeAll { $0.item.id == itemID }
+        reviewValue.setAside.removeAll { $0.item.id == itemID }
+        return reviewValue
+    }
+
+    private func dropProblem(_ itemID: String, _ field: String) {
+        for i in reviewValue.findings.indices where reviewValue.findings[i].item.id == itemID {
+            reviewValue.findings[i].problems.removeAll { $0.field == field }
+        }
+        reviewValue.findings.removeAll { $0.problems.isEmpty }
     }
 
     func saveAiKey(_ key: String) async throws -> AiSettings {

@@ -304,6 +304,17 @@ protocol FrameBackend: Sendable {
     func bringBack(itemID: String) async throws -> AiReview
     /// Off the list.
     func dismissReview(itemID: String) async throws -> AiReview
+    /// "Do sprawdzenia": the corrected title, maker or date of a finding
+    /// written before the audit gave them (Haiku, now).
+    func suggestReviewFixes(itemID: String) async throws -> AiReview
+    /// "Popraw": the value on the work (a title with its Polish title).
+    func applyReviewFix(itemID: String, field: String, value: String, valuePl: String?) async throws -> AiReview
+    /// "Przytnij": Opus cuts the work out of its photograph now (422: nothing found).
+    func cutReviewed(itemID: String) async throws -> AiReview
+    /// One problem done elsewhere (a better copy picked).
+    func dropReviewProblem(itemID: String, field: String) async throws -> AiReview
+    /// "Ukryj": the work out of the catalogue and off the list.
+    func hideReviewed(itemID: String) async throws -> AiReview
     /// The server checks the key with Anthropic before keeping it.
     func saveAiKey(_ key: String) async throws -> AiSettings
     /// "Uzupełnij wcześniejsze studia": the order sent (409: no key, the

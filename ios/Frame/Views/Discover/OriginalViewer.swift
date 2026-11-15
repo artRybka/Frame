@@ -16,6 +16,10 @@ struct OriginalViewer: View {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(ArtGlow.key) private var brighten = true
     let item: Item
+    /// Opened showing the picture whole, not filling the screen: "Do
+    /// sprawdzenia", where what is wrong is often at an edge (a ruler, a
+    /// colour chart, a cut corner; Mateusz 2026-11-15).
+    var whole = false
     @State private var image: UIImage?
     @State private var failed = false
     @State private var chrome = true
@@ -30,7 +34,7 @@ struct OriginalViewer: View {
         ZStack {
             Color.black.ignoresSafeArea()
             if let image {
-                ZoomableImage(image: image, tiles: tiles) {
+                ZoomableImage(image: image, tiles: tiles, whole: whole) {
                     withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() }
                 }
                 .ignoresSafeArea()
@@ -268,12 +272,15 @@ struct ZoomTile: Equatable {
 struct ZoomableImage: UIViewRepresentable {
     let image: UIImage
     var tiles: [ZoomTile] = []
+    /// Opened whole (fitted), not filling the view.
+    var whole = false
     var onTap: () -> Void = {}
 
     func makeUIView(context: Context) -> ZoomScrollView { ZoomScrollView() }
 
     func updateUIView(_ view: ZoomScrollView, context: Context) {
         view.onTap = onTap
+        view.startsWhole = whole
         view.show(image)
         view.lay(tiles)
     }
@@ -286,6 +293,8 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
     private var fitted: CGSize = .zero
     /// The zoom at which the picture covers the whole view; it opens there.
     private var fillScale: CGFloat = 1
+    /// Laid out whole (the smallest scale) rather than filling the view.
+    var startsWhole = false
     /// Sharper pictures of parts of it, laid on it while zooming in.
     private var tiles: [ZoomTile] = []
     /// The tiles on the picture now, by id, and the size each was asked in.
@@ -350,11 +359,13 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
         deepest()
         let fill = max(bounds.width / imageView.frame.width, bounds.height / imageView.frame.height)
         fillScale = min(maximumZoomScale, max(minimumZoomScale, fill))
-        zoomScale = fillScale
+        zoomScale = startsWhole ? minimumZoomScale : fillScale
         centre()
         // The middle of the picture in the middle of the view.
-        contentOffset = CGPoint(x: (contentSize.width - bounds.width) / 2,
-                                y: (contentSize.height - bounds.height) / 2)
+        contentOffset = startsWhole
+            ? CGPoint(x: -contentInset.left, y: -contentInset.top)
+            : CGPoint(x: (contentSize.width - bounds.width) / 2,
+                      y: (contentSize.height - bounds.height) / 2)
         for tile in tiles { tileViews[tile.id]?.frame = rect(of: tile) }
         lookAtTiles()
     }
