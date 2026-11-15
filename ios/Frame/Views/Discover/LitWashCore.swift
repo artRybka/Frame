@@ -15,8 +15,8 @@ import Foundation
 /// (`parts`), the drawing under the washes in its loose lines (black
 /// chalk, a pen), the washes laid over them from the lightest, each to
 /// the bar's end, a colour off the ink's tones (a blue wash in the sky)
-/// in its own place only; last the white gouache that heightens it,
-/// opaque, laid with the brush over paper and washes alike.
+/// in its own place only; last the white gouache that heightens it, an
+/// opaque stroke over its own place at the bar's light end.
 final class LitWashStrip: PaintPainter, @unchecked Sendable {
     let wide: Int
     let high: Int
@@ -24,17 +24,12 @@ final class LitWashStrip: PaintPainter, @unchecked Sendable {
     /// When the last of its paint is down.
     let last: Double
 
-    /// How the white is laid, while Mateusz chooses (2026-11-15): "A" a
-    /// stroke of its own at the bar's light end, "B" touches of the brush
-    /// over the paper and the first washes.
-    static let look = UserDefaults.standard.string(forKey: "washLook") ?? "A"
-
     private let lines: LineStrip
     private let width: Double
     private let seed: Double
     /// Each wash: where along the bar it begins and ends, its glaze, when it begins.
     private let washes: [(from: Double, to: Double, glaze: [Float], at: Double)]
-    /// Each touch of white: its stroke, its colour, when it begins and how long it takes.
+    /// Each stroke of white: its stroke, its colour, when it begins and how long it takes.
     private let whites: [(stroke: GouacheStroke, rgb: [Float], at: Double, takes: Double)]
     private var made: (much: [[Float]], white: [(left: Int, right: Int, cover: [Float], shade: [Float])])?
     private var whole: PaintFrame?
@@ -51,8 +46,8 @@ final class LitWashStrip: PaintPainter, @unchecked Sendable {
     static let lights = (share: 0.1, white: [246.0, 244, 236])
     /// When the washes begin (a part of the lines' time), how long after
     /// one the next, how long the brush takes along the bar; how long
-    /// after the last wash the white begins, the touches apart and one's time.
-    static let times = (from: 0.45, apart: 0.3, sweeps: 0.45, white: 0.2, touches: 0.11, touch: 0.2, stroke: 0.32)
+    /// after the last wash the white begins, and how long its stroke takes.
+    static let times = (from: 0.45, apart: 0.3, sweeps: 0.45, white: 0.2, stroke: 0.32)
 
     /// The work's colours as the drawing has them: its paper (the lightest
     /// colour that is no white gouache, `gouache`), the white laid on it
@@ -94,7 +89,7 @@ final class LitWashStrip: PaintPainter, @unchecked Sendable {
     }
 
     /// The bar's plan: its paper, each wash (where along the bar it
-    /// begins and ends, its glaze, when it begins), each touch of white
+    /// begins and ends, its glaze, when it begins), each stroke of white
     /// (its stroke, its colour, when it begins, how long it takes) and when
     /// the last is down, the drawing's lines taking `LineStrip.time(1)`.
     static func layout(_ shares: [PaintShare], width: Double, seed: Int, lit: Bool)
@@ -102,62 +97,29 @@ final class LitWashStrip: PaintPainter, @unchecked Sendable {
             whites: [(stroke: GouacheStroke, rgb: [Float], at: Double, takes: Double)], last: Double) {
         let (paper, whites, washes) = parts(shares, lit: lit)
         let drawn = LineStrip.time(1), begun = drawn * times.from
-        // Along the bar, lightest first: the white (its own stroke, "A"), the bare paper, the washes.
-        let laidWhite = look != "B"
-        let order = (laidWhite ? whites : []) + [paper] + washes.map(\.share)
-        let spans = Paint.spans(order, width: width)
-        let first = laidWhite ? whites.count : 0
+        // Along the bar, lightest first: the white, the bare paper, the washes.
+        let spans = Paint.spans(whites + [paper] + washes.map(\.share), width: width)
         var under = paper.rgb, list = [(from: Double, to: Double, glaze: [Float], at: Double)]()
         for (k, wash) in washes.enumerated() {
-            let span = spans[first + 1 + k]
+            let span = spans[whites.count + 1 + k]
             // A colour of its own lies in its place; a tone of the ink runs on to the bar's end, over the ones before.
             let glaze = Brush.glaze(wash.share.rgb, over: wash.own ? paper.rgb : under).map { Float($0) }
             list.append((span.0, wash.own ? span.1 : width + 3, glaze, begun + Double(k) * times.apart))
             if !wash.own { under = wash.share.rgb }
         }
         let washed = washes.isEmpty ? begun : begun + Double(washes.count - 1) * times.apart + times.sweeps
-        // "B": touches over the lighter part of the bar, as much of it as the white's own place would be.
-        let whiteSpans = laidWhite ? Array(spans.prefix(whites.count))
-            : Array(Paint.spans(whites + [paper] + washes.map(\.share), width: width).prefix(whites.count))
-        let touched = touches(whites, width: width, seed: seed, spans: whiteSpans).map { touch -> (stroke: GouacheStroke, rgb: [Float], at: Double, takes: Double) in
-            (touch.stroke, whites[touch.colour].rgb.map { Float($0) }, washed + times.white + touch.at, touch.takes)
-        }
-        let last = max(drawn, washes.isEmpty ? drawn : washed, touched.map { $0.at + $0.takes }.max() ?? 0)
-        return (paper.rgb, list, touched, last)
-    }
-
-    /// The white's strokes along a bar `width` wide, each when it begins
-    /// after the first and how long it takes: "A" a stroke for each white
-    /// over its own place at the bar's light end; "B" touches of the brush
-    /// as much of the bar as its share, over the bar's lighter part.
-    private static func touches(_ whites: [PaintShare], width: Double, seed: Int, spans: [(Double, Double)] = [])
-        -> [(stroke: GouacheStroke, colour: Int, at: Double, takes: Double)] {
+        // The white last, a stroke of opaque gouache over its own place at the
+        // bar's light end (Mateusz 2026-11-15 22:07, of touches of the brush
+        // over the lighter part: „A: biel na jasnym końcu”).
         let H = Paint.bar
-        if look != "B" {
-            return whites.indices.map { index in
-                let span = index < spans.count ? spans[index] : (Double(index) * 20, Double(index + 1) * 20)
-                let stroke = GouacheStroke(from: span.0, to: span.1, top: 0.5, bottom: H - 0.5, dry: span.1 - 3,
-                                           seed: Double(seed) + 23 * Double(index))
-                return (stroke, index, Double(index) * times.apart, times.stroke)
-            }
+        let strokes = whites.indices.map { index -> (stroke: GouacheStroke, rgb: [Float], at: Double, takes: Double) in
+            let span = spans[index]
+            let stroke = GouacheStroke(from: span.0, to: span.1, top: 0.5, bottom: H - 0.5, dry: span.1 - 3,
+                                       seed: Double(seed) + 23 * Double(index))
+            return (stroke, whites[index].rgb.map { Float($0) }, washed + times.white + Double(index) * times.apart, times.stroke)
         }
-        var random = PaintRandom(seed + 515), out = [(stroke: GouacheStroke, colour: Int, at: Double, takes: Double)]()
-        let total = spans.reduce(0) { $0 + $1.1 - $1.0 }
-        for (index, _) in whites.enumerated() {
-            let share = index < spans.count ? spans[index].1 - spans[index].0 : 20
-            // As much of the bar as its share of it: a touch is a stroke some 21 by 5.5 points, run dry towards its end.
-            let count = max(3, Int((share * H / (21 * 5.5)).rounded()))
-            for k in 0..<count {
-                let long = 14 + 14 * random.next(), tall = 3.5 + 4.5 * random.next()
-                let reach = max(60, (width - total) * 0.62)
-                let middle = 8 + (reach - 8) * (Double(k) + 0.2 + 0.6 * random.next()) / Double(count)
-                let top = 1.5 + (H - 3 - tall) * random.next()
-                let stroke = GouacheStroke(from: middle - long / 2, to: middle + long / 2, top: top, bottom: top + tall,
-                                           dry: middle + long * (0.05 + 0.25 * random.next()), seed: Double(seed) + 23 * Double(out.count))
-                out.append((stroke, index, Double(out.count) * times.touches, times.touch))
-            }
-        }
-        return out
+        let last = max(drawn, washes.isEmpty ? drawn : washed, strokes.map { $0.at + $0.takes }.max() ?? 0)
+        return (paper.rgb, list, strokes, last)
     }
 
     init(shares: [PaintShare], width: Double, seed: Int, lit: Bool, tool: LineTool) {

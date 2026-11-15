@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.145.170
+
+- Pasek „Kolorystyka” rysunku lawowanego na barwionym papierze albo
+  rozjaśnionego bielą (np. Géricault, „Turecki jeździec w walce”): papier
+  w kolorze pracy, pod spodem kreski kredy albo piórka, lawowania od
+  najjaśniejszego, a biel gwaszem jednym kryjącym pociągnięciem na jasnym
+  końcu paska. Serwer zauważa teraz biel położoną na barwionym papierze
+  (wcześniej brał ją za papier); po aktualizacji ponownie przelicza barwy
+  biblioteki.
+- Drzeworyt światłocieniowy (chiaroscuro) ma własny pasek: biel papieru,
+  płaskie płyty tonów jednej barwy nadrukowane jedna na drugą i linie
+  płyty konturowej, zamiast czarnego klocka zwykłego drzeworytu.
+
 ## 1.145.169
 
 - Korekta kadru: narożnik na zdjęciu łapie się teraz w kole o średnicy
