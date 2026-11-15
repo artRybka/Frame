@@ -1361,6 +1361,9 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
             pulls[k].full = 0.55 + 0.5 * pulls[k].full
             pulls[k].taper *= 0.45
         }
+        // Without a dry tail the last pull is full to its end: the brush is lifted, not run out
+        // (on the card the old dry teeth still showed at the end).
+        if let end = lastIn, !look.tail { pulls[end].full = 1 }
         // An even hand lifts the brush before it has run dry.
         if let end = lastIn, look.tail {
             pulls[end].full += (0.9 - pulls[end].full) * evened.last * even
@@ -1384,7 +1387,7 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
                     pull.tilt = 0.07 * (2 * Paint.hash(Double(k), Double(n), Double(seed) + 65) - 1) * (1 - evened.own * even)
                     pull.sway *= 0.3
                     pull.taper *= 0.6
-                    pull.full = 0.45 + 0.4 * Paint.hash(Double(k), Double(n), Double(seed) + 66)
+                    pull.full = pull.e > room - 14 ? 1 : 0.45 + 0.4 * Paint.hash(Double(k), Double(n), Double(seed) + 66)
                     // Near a neighbour colour it is the mixture there: half and half where they meet, the
                     // gradient the ground was laid as kept.
                     var ground = shares[g.colour].rgb
@@ -1505,7 +1508,7 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
                     let here = load * (1 - 0.3 * across * across) + 0.14 * (Paint.noise(u / 8, 2.1 * di, 161 + seed) - 0.5) * Paint.step(0, 0.3, gone)
                     let takes = Paint.step(need - 0.09, need + 0.09, here * 1.32 - 0.02)
                     var cover = Paint.step(-0.5, 0.5, side) * Paint.step(-0.5, 0.5, u - start) * takes
-                    if !look.tail { cover *= Paint.step(-2.5, 0.5, end - x) }
+                    if !look.tail { cover *= Paint.step(-1.2, 0.4, end - x + 0.9 * (Paint.noise(y / 3, 0.5, 209 + seed) - 0.5)) }
                     // A soft hem: the bristles thin out along a rough line near the bar's edge.
                     if let hem = look.hem {
                         let top = hem + 1.1 * (Paint.noise(x / 6, 0.5, 205 + seed) - 0.5) + 0.6 * (Paint.noise(x / 1.4, 1.5, 206 + seed) - 0.5)

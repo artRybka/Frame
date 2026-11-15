@@ -1051,7 +1051,7 @@ final class PaintTests: XCTestCase {
         }
         XCTAssertGreaterThan(end(laid), 0.9)
         XCTAssertGreaterThan(end(laid), end(before) + 0.15)
-        let past = pixel(350 - 6 + 4, 13)
+        let past = pixel(350 - 6 + 5, 13)
         XCTAssertLessThan(laid.cover(past.0, past.1), 0.05)
         // Its top and foot keep to a line: they wander less than the old bar's.
         func wander(_ frame: PaintFrame) -> Double {
