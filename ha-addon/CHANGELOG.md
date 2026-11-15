@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.156
+
+- Pasek barw farby olejnej jest spokojniejszy i trzyma się prostokąta.
+  Każdy kolor jest najpierw położony spokojnym pociągnięciem, a potem
+  przejechany kilkoma krótkimi, odrobinę jaśniejszymi lub ciemniejszymi,
+  przez część wysokości paska. Nowa farba wchodzi w mokrą bez wypukłej
+  obwódki, pasek ma miękki, postrzępiony brzeg i kończy się bez suchego,
+  wystrzępionego ogona. Kontur jest cieńszy. Wypukłość farby dalej zależy
+  od dzieła.
+
 ## 1.145.154
 
 - Litografia jednej barwy ma własny pasek barw zamiast kreskowania
