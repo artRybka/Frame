@@ -168,6 +168,8 @@ struct LooksLikeSection: View {
     @Environment(AppModel.self) private var model
     let item: Item
     @State private var found: [ItemSummary] = []
+    /// The card's width, for the height of the row's pictures.
+    @State private var width: CGFloat?
 
     /// The works shown on the card.
     static let shown = 3
@@ -190,6 +192,7 @@ struct LooksLikeSection: View {
                 .transition(.opacity)
             }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .task(id: item.id) {
             guard item.kind == .artwork,
                   let answer = try? await model.backend.looksLike(itemID: item.id, limit: Self.counted)
@@ -206,7 +209,9 @@ struct LooksLikeSection: View {
     /// above, a long folding screen ran into its neighbour). A picture too
     /// long for its share of the row is fitted to its column, shorter, on
     /// the same bottom line; a tall one keeps a column wide enough for its
-    /// title.
+    /// title. The pictures' box is only as tall as the tallest of them, so
+    /// three long screens sit right under the heading (Mateusz 2026-11-15:
+    /// a large empty space above three Japanese screens).
     private var row: some View {
         LooksRow(ratios: picked.map { shape($0) }, slots: Self.shown) {
             ForEach(picked) { summary in
@@ -220,7 +225,7 @@ struct LooksLikeSection: View {
             VStack(alignment: .leading, spacing: 8) {
                 Color.clear
                     .frame(maxWidth: .infinity)
-                    .frame(height: LooksRow.pictureHeight)
+                    .frame(height: pictureBox)
                     .overlay(alignment: .bottomLeading) {
                         ArtImage(
                             ref: .thumb(summary.id), placeholder: summary.placeholderColor,
@@ -269,6 +274,12 @@ struct LooksLikeSection: View {
         .accessibilityHint("Otwiera Szukaj z dziełami podobnymi do tego")
     }
 
+    /// The height every picture of the row is fitted into.
+    private var pictureBox: CGFloat {
+        guard let width, width > 0 else { return LooksRow.pictureHeight }
+        return LooksRow.pictureBox(ratios: picked.map { shape($0) }, width: width, slots: Self.shown)
+    }
+
     /// Width / height, as the picture is (only nonsense kept out).
     private func shape(_ summary: ItemSummary) -> CGFloat {
         LooksRow.ratio(summary.aspectRatio)
@@ -315,6 +326,16 @@ struct LooksRow: Layout {
             left -= wanted[index]
         }
         return wanted.map { min($0, cap) }
+    }
+
+    /// The height of the row's pictures in `width`: the tallest of them as
+    /// fitted to its column, never more than `pictureHeight`. Three long
+    /// screens, each cut to a third of the row, get a low box instead of
+    /// one as tall as a scroll's with nothing in its upper part.
+    static func pictureBox(ratios: [CGFloat], width: CGFloat, slots: Int) -> CGFloat {
+        let columns = widths(ratios: ratios, width: width, slots: slots)
+        let tallest = zip(columns, ratios).map { min(pictureHeight, $0 / $1) }.max()
+        return (tallest ?? pictureHeight).rounded(.up)
     }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.143
+
+- „Podobne wyglądem” na karcie dzieła: szerokie dzieła (parawany,
+  panoramy) stoją zaraz pod nagłówkiem, bez dużego pustego miejsca nad
+  nimi. Wysokość rzędu dopasowuje się do najwyższego obrazu.
+
 ## 1.145.142
 
 - Przygotowywane Studium dzieła nie pokazuje już najpierw arkusza
