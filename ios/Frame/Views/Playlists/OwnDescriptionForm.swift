@@ -34,16 +34,17 @@ struct OwnDescriptionForm: View {
                 hintsBanner
             }
             field("Tytuł", text: $text.title, prompt: "np. Pejzaż z klifem") {
-                hint(hints?.title, label: hints.map { "„\($0.title)”" }) { text.title = $0 }
+                hint(hints?.title, taken: text.title, label: hints.map { "„\($0.title)”" }) { text.title = $0 }
             }
             field("Autor", text: $text.artist, prompt: "Imię i nazwisko") {
-                hint(hints?.artist) { text.artist = $0 }
+                hint(hints?.artist, taken: text.artist) { text.artist = $0 }
             }
             field("Data", text: $text.dateText, prompt: "np. 1965, ok. 1930, lata 70.") {
-                hint(hints?.date) { text.dateText = $0 }
+                hint(hints?.date, taken: text.dateText) { text.dateText = $0 }
             }
             techniqueSection
             sizeSection
+                .id("size")
             VStack(alignment: .leading, spacing: 10) {
                 Eyebrow("Więcej")
                 field("Gdzie wisi", text: $text.hangs, prompt: "np. Salon") {
@@ -128,10 +129,10 @@ struct OwnDescriptionForm: View {
         .transition(.opacity)
     }
 
-    /// A hint not taken yet, as a dashed chip.
+    /// A hint not taken yet, as a dashed chip: gone once the field says it.
     @ViewBuilder
-    private func hint(_ value: String?, label: String? = nil, take: @escaping (String) -> Void) -> some View {
-        if let value, !value.isEmpty {
+    private func hint(_ value: String?, taken: String = "", label: String? = nil, take: @escaping (String) -> Void) -> some View {
+        if let value, !value.isEmpty, value.trimmingCharacters(in: .whitespaces) != taken.trimmingCharacters(in: .whitespaces) {
             chip(label ?? value, dashed: true) { take(value) }
         }
     }

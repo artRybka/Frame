@@ -66,7 +66,7 @@ struct OwnWorkFlow: View {
         VStack(spacing: 0) {
             StepDots(steps: steps.map(\.name), current: steps.firstIndex(of: step) ?? 0)
                 .padding(.top, 10)
-                .padding(.bottom, 6)
+                .padding(.bottom, 16)
             switch step {
             case .photo: photoStep
             case .cut: cutStep
@@ -282,16 +282,26 @@ struct OwnWorkFlow: View {
             }
             .padding(.horizontal, Theme.gutter)
             .padding(.bottom, 12)
-            ScrollView {
-                OwnDescriptionForm(
-                    text: $text, picture: picture, aspect: picture.map { Double($0.size.width / max($0.size.height, 1)) },
-                    hints: hints, readingHints: readingHints, places: places
-                )
-                .pageWidth()
-                .padding(.horizontal, Theme.gutter)
-                .padding(.bottom, 40)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    OwnDescriptionForm(
+                        text: $text, picture: picture, aspect: picture.map { Double($0.size.width / max($0.size.height, 1)) },
+                        hints: hints, readingHints: readingHints, places: places
+                    )
+                    .pageWidth()
+                    .padding(.horizontal, Theme.gutter)
+                    .padding(.bottom, 40)
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: text.hangs) { _, hangs in
+                    // CI screenshots: the lower fields, filled.
+                    guard LaunchRoute.scroll == "filled", !hangs.isEmpty else { return }
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(400))
+                        withAnimation(nil) { proxy.scrollTo("size", anchor: .center) }
+                    }
+                }
             }
-            .scrollDismissesKeyboard(.interactively)
         }
     }
 
@@ -323,15 +333,15 @@ struct OwnWorkFlow: View {
     /// `-screen own-cut|own-describe` (demo): the demo's photograph taken,
     /// the flow at that step.
     private func openForScreenshot() async {
-        guard model.demoMode, ["own-cut", "own-describe"].contains(LaunchRoute.screen), photo == nil,
+        guard model.demoMode, ["own-cut", "own-describe", "own-card"].contains(LaunchRoute.screen), photo == nil,
               let demo = DemoOwn.photo()
         else { return }
         take(demo)
-        guard LaunchRoute.screen == "own-describe" else { return }
+        guard LaunchRoute.screen != "own-cut" else { return }
         for _ in 0 ..< 50 where step != .cut { try? await Task.sleep(for: .milliseconds(200)) }
         guard step == .cut else { return }
         _ = await cutChosen(DemoOwn.work)
-        if LaunchRoute.scroll == "filled" {
+        if LaunchRoute.scroll == "filled" || LaunchRoute.screen == "own-card" {
             try? await Task.sleep(for: .seconds(2))
             text.title = "Spacer po klifie"
             text.artist = "Claude Monet"
@@ -340,6 +350,11 @@ struct OwnWorkFlow: View {
             text.heightCm = 65
             text.widthCm = 81
             text.hangs = "Salon"
+            text.origin = "Prezent od dziadka"
+        }
+        if LaunchRoute.screen == "own-card" {
+            try? await Task.sleep(for: .seconds(1))
+            await add()  // the card opens
         }
     }
 
