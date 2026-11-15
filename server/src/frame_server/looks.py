@@ -565,7 +565,8 @@ class Looks:
             if vector is None:
                 return []
             near = self.index.nearest(vector, ALIKE_MOST * 3 + 8)
-            return [f.item.id for f in self._answer(near, ALIKE_MOST, PICTURE_FLOOR, relative=False)]
+            found = self._answer(near, ALIKE_MOST, PICTURE_FLOOR, relative=False)
+            return [f.item.id for f in found]
         item = self.library.get(item_id)
         if item is None:
             return []
