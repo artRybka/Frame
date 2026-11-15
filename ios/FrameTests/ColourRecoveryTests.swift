@@ -1,30 +1,26 @@
 import XCTest
 @testable import Frame
 
-/// The card's colour recovery preview (`ColourRecovery`): the sum the app
-/// does for a varnish, held to the server's own numbers
-/// (`server/tests/test_recovery.py`).
+/// "Korekta barw" (`ColourRecovery`, `Cleaned`): what a work is offered,
+/// when it is shown cleaned, and how the lists learn of it.
 final class ColourRecoveryTests: XCTestCase {
-    private func told(steps: [Double] = [0, 0.5, 1], tops: [Double] = [0.8, 1.0, 1.4]) -> RecoveryView {
-        RecoveryView(kind: "varnish", strength: 0.69, steps: steps, tops: tops)
+    private func decoded<T: Decodable>(_ json: String) throws -> T {
+        try LiveBackend.decoder().decode(T.self, from: Data(json.utf8))
     }
 
-    private func picture(_ pixels: [[UInt8]]) throws -> CGImage {
-        var bytes: [UInt8] = []
-        for pixel in pixels { bytes += pixel + [UInt8(255)] }
-        let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
-        let provider = try XCTUnwrap(CGDataProvider(data: Data(bytes) as CFData))
-        return try XCTUnwrap(CGImage(
-            width: pixels.count, height: 1, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: pixels.count * 4,
-            space: space, bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
-            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent
-        ))
+    /// A work of the demo's, as it came.
+    private func work() async throws -> Item {
+        let demo = DemoBackend()
+        let themes = try await demo.themes()
+        let page = try await demo.themePage(key: try XCTUnwrap(themes.first).key, page: 1)
+        var item = try XCTUnwrap(page.items.first).item
+        item.sharper = nil
+        item.cleaned = nil
+        return item
     }
 
-    private func pixels(_ image: CGImage) throws -> [[Int]] {
-        let data = try XCTUnwrap(image.dataProvider?.data) as Data
-        let step = image.bitsPerPixel / 8
-        return (0..<image.width).map { x in (0..<3).map { Int(data[x * step + $0]) } }
+    private var copy: SharperCopy {
+        SharperCopy(url: "https://x/2.jpg", itemId: "wmc:9", source: "commons", museum: "Wikimedia Commons", width: 3000, height: 2000)
     }
 
     /// Oil and tempera have a varnish, drawings and prints a sheet; pastel
@@ -36,88 +32,118 @@ final class ColourRecoveryTests: XCTestCase {
         XCTAssertEqual(ColourRecovery.made(.woodblock), "paper")
         XCTAssertEqual(ColourRecovery.made(.grain), "paper")  // the stone's lithograph, 1.145.154
         XCTAssertEqual(ColourRecovery.made(.aquatint), "paper")  // the plate's aquatint, 1.145.156
+        XCTAssertEqual(ColourRecovery.made(.toned), "paper")  // the server reads the sheet's tone itself
         XCTAssertEqual(ColourRecovery.made(.pastel), "opaque")
         XCTAssertEqual(ColourRecovery.made(.gouache), "opaque")
         XCTAssertNil(ColourRecovery.made(.photo))
         XCTAssertNil(ColourRecovery.made(.offset))
         XCTAssertNil(ColourRecovery.made(nil))
-        XCTAssertEqual(ColourRecovery.kind(told()), .varnish)
+        XCTAssertEqual(ColourRecovery.kind(RecoveryView(kind: "varnish")), .varnish)
         XCTAssertEqual(ColourRecovery.kind(RecoveryView(kind: "paper")), .paper)
         XCTAssertNil(ColourRecovery.kind(RecoveryView(kind: "none")))
-        XCTAssertNil(ColourRecovery.kind(nil))
+        XCTAssertNil(ColourRecovery.kind(nil as RecoveryView?))
     }
 
-    /// Between the strengths the server read, the lightest of the result
-    /// is on the line between them; past them, the nearest.
-    func testTheLightestIsReadBetweenTheServersSteps() {
-        let view = told()
-        XCTAssertEqual(ColourRecovery.top(view, strength: 0), 0.8, accuracy: 1e-9)
-        XCTAssertEqual(ColourRecovery.top(view, strength: 0.25), 0.9, accuracy: 1e-9)
-        XCTAssertEqual(ColourRecovery.top(view, strength: 0.75), 1.2, accuracy: 1e-9)
-        XCTAssertEqual(ColourRecovery.top(view, strength: 1), 1.4, accuracy: 1e-9)
-        XCTAssertEqual(ColourRecovery.top(view, strength: 3), 1.4, accuracy: 1e-9)
-        XCTAssertEqual(ColourRecovery.top(told(steps: [], tops: []), strength: 0.5), 0)
-    }
-
-    /// The varnish's colour off each channel, then the whole brought back
-    /// only when its lights would leave the range.
-    func testTheGainsAreTheServers() {
-        // Nothing lighter than the range: the varnish alone.
-        let low = ColourRecovery.gains(told(steps: [0, 1], tops: [0.9, 0.9]), strength: 0.4)
-        XCTAssertEqual(low[0], 1.0618, accuracy: 0.0005)
-        XCTAssertEqual(low[1], 1.1549, accuracy: 0.0005)
-        XCTAssertEqual(low[2], 1.4918, accuracy: 0.0005)
-        // Lights past the range: all three come down together.
-        let high = ColourRecovery.gains(told(steps: [0, 1], tops: [1.3, 1.3]), strength: 0.7)
-        XCTAssertEqual(high[0], 0.8288, accuracy: 0.0005)
-        XCTAssertEqual(high[1], 0.96, accuracy: 0.0005)
-        XCTAssertEqual(high[2], 1.5026, accuracy: 0.0005)
-        // No strength: the picture as it is.
-        XCTAssertEqual(ColourRecovery.gains(told(), strength: 0), [1, 1, 1])
-    }
-
-    /// The sum is done in linear light: the same pixels the server's sum
-    /// gives (`recovery.gains`), to a level or two of rounding.
-    func testThePictureIsDrawnAsTheServerWould() throws {
-        let source = try picture([[200, 170, 90], [240, 225, 160], [40, 30, 20], [90, 120, 150]])
-        let drawn = try XCTUnwrap(ColourRecovery.render(source, gains: [0.8288, 0.96, 1.5026]))
-        let expected = [[184, 167, 109], [221, 221, 192], [36, 29, 26], [82, 118, 180]]
-        for (got, want) in zip(try pixels(drawn), expected) {
-            for channel in 0..<3 {
-                XCTAssertEqual(Double(got[channel]), Double(want[channel]), accuracy: 2, "\(got) for \(want)")
-            }
-        }
-    }
-
-    /// A grey seen through a varnish of 0.8 is a grey again without it.
-    func testAGreyUnderVarnishComesBackGrey() throws {
-        let source = try picture([[178, 165, 130]])
-        let view = told(steps: [0, 1.6], tops: [0.5, 0.5])
-        let drawn = try XCTUnwrap(ColourRecovery.render(source, gains: ColourRecovery.gains(view, strength: 0.8)))
-        let grey = try pixels(drawn)[0]
-        XCTAssertEqual(Double(grey[0]), 188, accuracy: 2)
-        XCTAssertEqual(Double(grey[1]), 188, accuracy: 2)
-        XCTAssertEqual(Double(grey[2]), 188, accuracy: 2)
-    }
-
-    /// The slider's every point is not a picture of its own.
-    func testTheStrengthIsDrawnInSteps() {
-        XCTAssertEqual(ColourRecovery.snapped(0.694), 0.7, accuracy: 1e-9)
-        XCTAssertEqual(ColourRecovery.snapped(0.689), 0.68, accuracy: 1e-9)
-        XCTAssertEqual(ColourRecovery.snapped(0), 0)
-    }
-
-    /// The server's answer as it comes (snake case, every field).
+    /// A server of 1.145.155–161 says more (the preview's slider): only
+    /// the kind is read.
     func testTheServersAnswerIsRead() throws {
-        let json = """
+        let view: RecoveryView = try decoded("""
         {"kind": "varnish", "strength": 0.72, "most": 1.6, "alpha": [0.15, 0.36, 1.0], "top": 0.97,
          "steps": [0.0, 0.1], "tops": [0.81, 0.84], "version": 1}
-        """
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        let view = try decoder.decode(RecoveryView.self, from: Data(json.utf8))
-        XCTAssertEqual(view.strength, 0.72)
-        XCTAssertEqual(view.tops, [0.81, 0.84])
+        """)
         XCTAssertEqual(ColourRecovery.kind(view), .varnish)
+        let none: RecoveryView = try decoded(#"{"kind": "none"}"#)
+        XCTAssertNil(ColourRecovery.kind(none))
+    }
+
+    /// "Korekta barw" (Mateusz 2026-11-15 18:52): the menu takes the
+    /// varnish off or de-yellows the sheet, and gives either back.
+    func testTheWordsAreTheOwners() {
+        XCTAssertEqual(ColourRecovery.menuTitle(.varnish, on: false), "Zdejmij werniks")
+        XCTAssertEqual(ColourRecovery.menuTitle(.paper, on: false), "Odżółć papier")
+        XCTAssertEqual(ColourRecovery.menuTitle(.varnish, on: true), "Przywróć werniks")
+        XCTAssertEqual(ColourRecovery.menuTitle(.paper, on: true), "Przywróć ton papieru")
+        XCTAssertEqual(CleanedMark.spoken, "barwy skorygowane")
+        XCTAssertTrue(ColourRecovery.note(.varnish).contains("Rachunek, nie konserwacja"))
+    }
+
+    /// A work the server sends cleaned: shown so, its pictures had anew, a
+    /// mark in the lists.
+    func testACleanedWorkIsShownSoEverywhere() async throws {
+        let plain = try await work()
+        XCTAssertNil(plain.cleanedShown)
+        XCTAssertFalse(plain.summary.isCleaned)
+
+        var cleaned = plain
+        cleaned.cleaned = try decoded("""
+        {"kind": "varnish", "made": "oil", "strength": 0.52, "picture": "", "drawn": null,
+         "at": "2026-11-15T19:00:00+00:00"}
+        """)
+        XCTAssertEqual(cleaned.cleaned?.strength, 0.52)
+        XCTAssertEqual(ColourRecovery.kind(cleaned.cleanedShown), .varnish)
+        XCTAssertNotEqual(cleaned.pictureVersion, plain.pictureVersion)
+        XCTAssertTrue(cleaned.summary.isCleaned)
+        XCTAssertEqual(cleaned.summary.cleaned, "varnish")
+        XCTAssertNotEqual(cleaned.summary.pictureVersion, plain.summary.pictureVersion)
+
+        // Cleaned again later: the pictures kept by the app are had anew.
+        var again = cleaned
+        again.cleaned?.at = "2026-11-16T08:00:00+00:00"
+        XCTAssertNotEqual(again.pictureVersion, cleaned.pictureVersion)
+        XCTAssertNotEqual(again.summary.pictureVersion, cleaned.summary.pictureVersion)
+    }
+
+    /// Another copy is another photograph, shown as it comes (Mateusz
+    /// 2026-11-15 18:54: "nie wiemy jaką ona ma kolorystykę"); the
+    /// restorer's drawing of the same picture is cleaned the same.
+    func testAnotherCopyIsNotCleanedAndTheRestorersDrawingIs() async throws {
+        var other = try await work()
+        other.sharper = copy
+        other.cleaned = Cleaned(kind: "varnish", made: "oil", strength: 0.52, picture: "", at: "t1")
+        XCTAssertNil(other.cleanedShown)
+        XCTAssertFalse(other.summary.isCleaned)
+        XCTAssertEqual(other.cleanedVersion, "")
+
+        var drawn = other
+        drawn.cleaned = try decoded("""
+        {"kind": "varnish", "made": "oil", "strength": 0.52, "picture": "", "drawn": "wmc:9", "at": "t2"}
+        """)
+        XCTAssertNotNil(drawn.cleanedShown)
+        XCTAssertTrue(drawn.summary.isCleaned)
+
+        // Read on the copy itself: shown on it, not on the work's own picture.
+        var onCopy = other
+        onCopy.cleaned = Cleaned(kind: "paper", made: "paper", strength: 0, picture: "wmc:9", at: "t3")
+        XCTAssertEqual(ColourRecovery.kind(onCopy.cleanedShown), .paper)
+        onCopy.sharper = nil
+        XCTAssertNil(onCopy.cleanedShown)
+    }
+
+    /// The mark stands with the others after the title, in the lists and
+    /// on the card.
+    func testTheMarkStandsWithTheOthers() async throws {
+        var cleaned = try await work()
+        var plain = cleaned.summary
+        plain.zoom = nil
+        plain.restored = nil
+        plain.lowSide = nil
+        plain.cropped = nil
+        XCTAssertFalse(ArtCard.hasMarks(plain))
+        cleaned.cleaned = Cleaned(kind: "varnish", picture: "", at: "t1")
+        var marked = plain
+        marked.cleaned = cleaned.summary.cleaned
+        XCTAssertTrue(ArtCard.hasMarks(marked))
+        XCTAssertNotNil(UIImage(named: CleanedMark.symbol))
+    }
+
+    /// The demo takes a varnish off and gives it back, like the server.
+    func testTheDemoCleansAndGivesUp() async throws {
+        let demo = DemoBackend()
+        let kept = try await demo.items(LibraryQuery())
+        let item = try XCTUnwrap(kept.items.first)
+        let cleaned = try await demo.clean(itemID: item.id, made: "oil")
+        XCTAssertEqual(ColourRecovery.kind(cleaned.cleanedShown), .varnish)
+        let back = try await demo.unclean(itemID: item.id)
+        XCTAssertNil(back.cleaned)
     }
 }

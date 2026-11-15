@@ -135,9 +135,12 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
     }
 
     /// How the picture shown now is cleaned: nil without, or when it was
-    /// read on another picture (`Item.cleaned_shown` on the server).
+    /// read on another picture (`Item.cleaned_shown` on the server): another
+    /// copy is another photograph and is shown as it comes, the restorer's
+    /// drawing of the same one is cleaned the same (Mateusz 2026-11-15 18:54).
     var cleanedShown: Cleaned? {
-        guard let cleaned, cleaned.picture == (sharper?.itemId ?? "") else { return nil }
+        let key = sharper?.itemId ?? ""
+        guard let cleaned, cleaned.picture == key || cleaned.drawn == key else { return nil }
         return cleaned
     }
 
@@ -207,6 +210,8 @@ struct Cleaned: Codable, Hashable, Sendable {
     var strength: Double? = nil
     /// The picture it was read on: the copy's id, "" the work's own.
     var picture: String = ""
+    /// The restorer's drawing of that picture it shows on too; nil without.
+    var drawn: String? = nil
     var at: String = ""
 
     /// The picture's version with the cleaning's stamp after "~" when it

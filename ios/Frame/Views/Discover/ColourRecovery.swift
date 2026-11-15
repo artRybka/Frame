@@ -1,21 +1,23 @@
-import CoreImage
 import CoreImage.CIFilterBuiltins
 import SwiftUI
 
-/// The colours a work has lost, simulated as a preview on its card
-/// (Mateusz 2026-11-15, of works „zgaszone, ściemniałe, zbrązowiałe czy
-/// stonowane pod werniksem”: a simulation of their colours recovered;
-/// „Koncepcja suwaka - super”; works on paper „mogłaby odżółcać papier”;
-/// and, of the trials on thirty real conservations: „Zbudować bez modelu”).
+/// "Korekta barw": a work shown with the colours time took given back by
+/// calculation, its aged varnish taken off or its sheet de-yellowed.
 ///
-/// Oil and tempera: an aged varnish is a yellow filter, one number says how
-/// thick. The server reads the picture once (the strength to propose, how
-/// light the result gets at every strength); the sum itself is done here,
-/// in linear light, while the owner moves the strength: every pixel is
-/// the work's own. Works on paper: the server sends the sheet de-yellowed.
+/// Mateusz 2026-11-15, of works „zgaszone, ściemniałe, zbrązowiałe czy
+/// stonowane pod werniksem”: first a preview on the card with a slider
+/// (1.145.155); then, 18:39: „To działa naprawdę fajnie. Z ściągania
+/// werniksu usuwamy suwak. Zostawiamy tylko poziom propozycji. Wybranie w
+/// menu podmienia na wersje z odżółconym papierem / ściągniętym werniksem
+/// … Jeżeli wersja podmieniona na skorygowaną to wyliczamy kolory i pasek
+/// z wersji po korekcie”; the names, 18:52: „Korekta barw”.
 ///
-/// A preview only: nothing of the work changes, neither its colours under
-/// "Kolor i światło" and in Szukaj, nor its study, nor what the frame shows.
+/// So the menu's entry asks the server for the work cleaned
+/// (`Backend.clean`, `Item.cleaned`): the picture everywhere, the frame's
+/// too, its colours and colour bar measured on it. The same entry gives
+/// it up. The card says what was done in a line under the picture, and
+/// that line opens the comparison with the picture as it came
+/// (`RecoveryWipe`). No model is asked.
 enum ColourRecovery {
     enum Kind: Equatable {
         case varnish, paper
@@ -35,89 +37,78 @@ enum ColourRecovery {
         }
     }
 
-    static func kind(_ view: RecoveryView?) -> Kind? {
-        switch view?.kind ?? "" {
+    /// "varnish" or "paper" as the server names them; nil for anything else.
+    static func kind(named name: String?) -> Kind? {
+        switch name ?? "" {
         case "varnish": return Kind.varnish
         case "paper": return Kind.paper
         default: return nil
         }
     }
 
-    /// The lightest of the result at `strength`, before it is brought into
-    /// range: between the strengths the server read it at.
-    static func top(_ view: RecoveryView, strength: Double) -> Double {
-        guard view.steps.count == view.tops.count, let first = view.steps.first, let last = view.steps.last,
-              view.steps.count > 1
-        else { return 0 }
-        if strength <= first { return view.tops[0] }
-        if strength >= last { return view.tops[view.tops.count - 1] }
-        let after = view.steps.firstIndex { $0 >= strength } ?? view.steps.count - 1
-        let before = max(after - 1, 0)
-        let span = view.steps[after] - view.steps[before]
-        let t = span > 0 ? (strength - view.steps[before]) / span : 0
-        return view.tops[before] + (view.tops[after] - view.tops[before]) * t
-    }
+    /// What the server offers for a work shown as it came.
+    static func kind(_ view: RecoveryView?) -> Kind? { kind(named: view?.kind) }
 
-    /// What red, green and blue (linear light) are multiplied by at
-    /// `strength`: the varnish taken off, then the whole brought back so
-    /// its lights stay in range (the server's `recovery.gains`).
-    static func gains(_ view: RecoveryView, strength: Double) -> [Double] {
-        let lightest = top(view, strength: strength)
-        let scale = lightest > view.top ? view.top / lightest : 1
-        return (0..<3).map { exp(strength * (view.alpha.count == 3 ? view.alpha[$0] : 0)) * scale }
-    }
-
-    /// The strengths the picture is drawn at: a slider's every point would
-    /// be a picture of its own.
-    static func snapped(_ strength: Double) -> Double {
-        (strength * 50).rounded() / 50
-    }
-
-    private static let context = CIContext(options: [.cacheIntermediates: false])
-
-    /// `source` with each channel multiplied in linear light (Core Image's
-    /// own working space), as sRGB again.
-    static func render(_ source: CGImage, gains: [Double]) -> CGImage? {
-        guard gains.count == 3, let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
-        let filter = CIFilter.colorMatrix()
-        filter.inputImage = CIImage(cgImage: source)
-        filter.rVector = CIVector(x: gains[0], y: 0, z: 0, w: 0)
-        filter.gVector = CIVector(x: 0, y: gains[1], z: 0, w: 0)
-        filter.bVector = CIVector(x: 0, y: 0, z: gains[2], w: 0)
-        filter.aVector = CIVector(x: 0, y: 0, z: 0, w: 1)
-        guard let output = filter.outputImage else { return nil }
-        return context.createCGImage(output, from: output.extent, format: .RGBA8, colorSpace: space)
-    }
-
-    /// The picture without a varnish of `strength`.
-    static func image(_ image: UIImage, view: RecoveryView, strength: Double) async -> UIImage? {
-        guard let cg = image.cgImage else { return nil }
-        let factors = gains(view, strength: strength)
-        let scale = image.scale
-        let orientation = image.imageOrientation
-        guard let out = await Task.detached(priority: .userInitiated, operation: { render(cg, gains: factors) }).value
-        else { return nil }
-        return UIImage(cgImage: out, scale: scale, orientation: orientation)
-    }
+    /// How a work shown cleaned is cleaned.
+    static func kind(_ cleaned: Cleaned?) -> Kind? { kind(named: cleaned?.kind) }
 
     // MARK: Words
 
-    static func menuTitle(_ kind: Kind) -> String {
-        kind == .varnish ? "Symulacja odzyskania barw" : "Odżółć papier"
+    /// The menu's entry: the correction, or the way back while it is on.
+    static func menuTitle(_ kind: Kind, on: Bool) -> String {
+        switch (kind, on) {
+        case (.varnish, false): return "Zdejmij werniks"
+        case (.paper, false): return "Odżółć papier"
+        case (.varnish, true): return "Przywróć werniks"
+        case (.paper, true): return "Przywróć ton papieru"
+        }
     }
 
-    static func menuNote(_ kind: Kind) -> String {
-        kind == .varnish ? "Bez pożółkłego werniksu" : "Jak wyglądał świeży arkusz"
+    static func menuNote(_ kind: Kind, on: Bool) -> String {
+        if on { return "Obraz taki, jak przyszedł z muzeum" }
+        return kind == .varnish ? "Barwy bez pożółkłego werniksu" : "Arkusz jak dobrze zachowany"
     }
 
+    /// On the picture while the server makes it again.
+    static func working(_ kind: Kind, on: Bool) -> String {
+        if on { return kind == .varnish ? "Przywracam werniks…" : "Przywracam ton papieru…" }
+        return kind == .varnish ? "Zdejmuję werniks…" : "Odżółcam arkusz…"
+    }
+
+    static func done(_ kind: Kind, on: Bool) -> String {
+        if on { return kind == .varnish ? "Przywrócono werniks" : "Przywrócono ton papieru" }
+        return kind == .varnish ? "Werniks zdjęty" : "Papier odżółcony"
+    }
+
+    /// The comparison's two sides.
+    static let beforeLabel = "Przed korektą"
     static func afterLabel(_ kind: Kind) -> String {
         kind == .varnish ? "Bez werniksu" : "Papier odżółcony"
     }
 
+    /// The line under the picture of a work shown cleaned.
     static func note(_ kind: Kind) -> String {
         kind == .varnish
-            ? "Symulacja barw bez pożółkłego werniksu. Rachunek, nie konserwacja. Siłę ustawiasz sam."
-            : "Arkusz odżółcony rachunkiem. Kreska i barwy z oryginału. Przesuń, żeby porównać."
+            ? "Barwy bez pożółkłego werniksu. Rachunek, nie konserwacja."
+            : "Papier odżółcony rachunkiem. Kreska i barwy z oryginału."
+    }
+
+    // MARK: The demo
+
+    /// The demo and its screenshots have no server to keep the picture as
+    /// it came: the comparison's "before" is the picture as if under an
+    /// aged varnish (the server's `ALPHA` at 0.5).
+    static func underVarnish(_ picture: UIImage) -> UIImage {
+        guard let source = picture.cgImage else { return picture }
+        let filter = CIFilter.colorMatrix()
+        filter.inputImage = CIImage(cgImage: source)
+        filter.rVector = CIVector(x: 0.93, y: 0, z: 0, w: 0)
+        filter.gVector = CIVector(x: 0, y: 0.84, z: 0, w: 0)
+        filter.bVector = CIVector(x: 0, y: 0, z: 0.61, w: 0)
+        guard let output = filter.outputImage,
+              let drawn = CIContext().createCGImage(output, from: output.extent)
+        else { return picture }
+        return UIImage(cgImage: drawn, scale: picture.scale, orientation: picture.imageOrientation)
     }
 
     // MARK: Answers kept
@@ -134,13 +125,14 @@ enum ColourRecovery {
     }
 }
 
-/// The recovered picture over the work's own on its card, wiped by a
-/// divider: left of it the work as it is today, right of it the simulation.
-/// Only the handle is dragged, so the page still scrolls over the picture.
+/// The picture as it came over the cleaned one on the card, wiped by a
+/// divider: left of it the work before the correction, right of it the
+/// work as it is shown. Only the handle is dragged, so the page still
+/// scrolls over the picture.
 struct RecoveryWipe: View {
-    /// The simulation, the size and shape of the picture under it; nil
-    /// while it is made.
-    let after: UIImage?
+    /// The picture before the correction, the size and shape of the one
+    /// under it; nil while it is had.
+    let before: UIImage?
     let kind: ColourRecovery.Kind
     /// Where the divider is, as a share of the width.
     @Binding var split: Double
@@ -154,20 +146,20 @@ struct RecoveryWipe: View {
             let width = proxy.size.width
             let x = width * split
             ZStack(alignment: .topLeading) {
-                if let after {
-                    Image(uiImage: after)
+                if let before {
+                    Image(uiImage: before)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(width: width, height: proxy.size.height)
                         .mask(alignment: .leading) {
-                            Rectangle().padding(.leading, x)
+                            Rectangle().frame(width: max(x, 0))
                         }
                         .transition(.opacity)
                 }
                 HStack(alignment: .top) {
-                    tag("Dziś").opacity(x > 64 ? 1 : 0)
+                    tag(ColourRecovery.beforeLabel).opacity(x > 120 ? 1 : 0)
                     Spacer(minLength: 0)
-                    tag(ColourRecovery.afterLabel(kind)).opacity(width - x > 110 ? 1 : 0)
+                    tag(ColourRecovery.afterLabel(kind)).opacity(width - x > 130 ? 1 : 0)
                 }
                 .padding(8)
                 .allowsHitTesting(false)
@@ -197,14 +189,14 @@ struct RecoveryWipe: View {
                             .onEnded { _ in grabbed = nil }
                     )
                     .accessibilityElement()
-                    .accessibilityLabel("Porównanie: dziś i symulacja")
-                    .accessibilityValue("\(Int((1 - split) * 100)) procent symulacji")
+                    .accessibilityLabel("Porównanie: przed korektą i po niej")
+                    .accessibilityValue("\(Int(split * 100)) procent obrazu przed korektą")
                     .accessibilityAdjustableAction { direction in
-                        let step = direction == .increment ? -0.1 : 0.1
+                        let step = direction == .increment ? 0.1 : -0.1
                         split = min(max(split + step, 0.04), 0.96)
                     }
-                if after == nil {
-                    LoadingBadge(text: kind == .varnish ? "Liczę barwy…" : "Odżółcam arkusz…")
+                if before == nil {
+                    LoadingBadge(text: "Wczytuję obraz przed korektą…")
                         .frame(width: width, height: proxy.size.height)
                 }
             }
@@ -218,105 +210,5 @@ struct RecoveryWipe: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(.black.opacity(0.45), in: Capsule())
-    }
-}
-
-/// The strength of the varnish taken off, under the picture: a narrow strip
-/// from weaker to stronger with a tick where the calculation proposes. The
-/// tick runs down to its word, "propozycja", which stands under it: the
-/// knob opens on the proposal and would hide a tick the track's height.
-struct RecoveryStrength: View {
-    @Binding var strength: Double
-    let proposed: Double
-    let most: Double
-    @State private var grabbed: Double?
-
-    private static let knob: CGFloat = 22
-    /// The height the track and its knob take.
-    private static let rail: CGFloat = 28
-    /// The room the proposal's word is centred in.
-    private static let word: CGFloat = 80
-
-    /// Where a strength is along the strip: the knob's middle.
-    private func place(_ value: Double, _ run: CGFloat) -> CGFloat {
-        Self.knob / 2 + run * CGFloat(min(max(value / max(most, 0.01), 0), 1))
-    }
-
-    var body: some View {
-        GeometryReader { proxy in
-            let width = proxy.size.width
-            let run = max(width - Self.knob, 1)
-            let at = place(proposed, run)
-            let here = place(strength, run)
-            let words = Self.rail + 4
-            ZStack(alignment: .topLeading) {
-                Capsule()
-                    .fill(Theme.hairline)
-                    .frame(width: run, height: 4)
-                    .offset(x: Self.knob / 2, y: Self.rail / 2 - 2)
-                Capsule()
-                    .fill(Theme.inkSoft)
-                    .frame(width: max(here - Self.knob / 2, 0), height: 4)
-                    .offset(x: Self.knob / 2, y: Self.rail / 2 - 2)
-                // The proposal's tick, through the track and out under the
-                // knob.
-                Rectangle()
-                    .fill(Theme.ink)
-                    .frame(width: 2, height: Self.rail / 2 + 10)
-                    .offset(x: at - 1, y: Self.rail / 2 - 7)
-                Circle()
-                    .fill(.white)
-                    .frame(width: Self.knob, height: Self.knob)
-                    .shadow(color: .black.opacity(0.3), radius: 3, y: 1)
-                    .offset(x: here - Self.knob / 2, y: (Self.rail - Self.knob) / 2)
-                Color.clear
-                    .frame(width: width, height: Self.rail)
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { drag in
-                                // The knob follows from where it was; a touch
-                                // on the track elsewhere brings it there.
-                                let start = grabbed ?? (abs(drag.startLocation.x - here) <= Self.knob
-                                    ? strength
-                                    : Double((drag.startLocation.x - Self.knob / 2) / run) * most)
-                                grabbed = start
-                                let moved = start + Double(drag.translation.width / run) * most
-                                // The proposal holds the knob a little as it passes.
-                                let near = abs(moved - proposed) < most * 0.02
-                                strength = near ? proposed : min(max(moved, 0), most)
-                            }
-                            .onEnded { _ in grabbed = nil }
-                    )
-                // The ends' words give way to the proposal's when it
-                // stands by them.
-                HStack {
-                    Text("słabiej").opacity(at > 78 ? 1 : 0)
-                    Spacer(minLength: 0)
-                    Text("mocniej").opacity(at < width - 84 ? 1 : 0)
-                }
-                .frame(width: width)
-                .offset(y: words)
-                Button("propozycja") {
-                    withAnimation(.easeOut(duration: 0.2)) { strength = proposed }
-                }
-                .buttonStyle(.plain)
-                .underline(strength != proposed)
-                .fixedSize()
-                .frame(width: Self.word)
-                .offset(x: min(max(at - Self.word / 2, 0), max(width - Self.word, 0)), y: words)
-            }
-            .font(.caption2)
-            .foregroundStyle(Theme.inkSoft)
-        }
-        .frame(height: Self.rail + 20)
-        .sensoryFeedback(.selection, trigger: strength == proposed) { _, now in now }
-        .accessibilityElement()
-        .accessibilityLabel("Siła symulacji")
-        .accessibilityValue("\(Int(strength / max(most, 0.01) * 100)) procent")
-        .accessibilityAdjustableAction { direction in
-            let step = most / 16 * (direction == .increment ? 1 : -1)
-            strength = min(max(strength + step, 0), most)
-        }
     }
 }

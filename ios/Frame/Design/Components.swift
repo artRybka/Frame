@@ -258,12 +258,14 @@ struct ArtCard: View {
     /// Whether a mark follows `item`'s title (`markedTitle`).
     static func hasMarks(_ item: ItemSummary, zoom: Bool = true) -> Bool {
         (zoom && item.zoom == true) || item.restored == true || (item.lowSide ?? 0) > 0 || item.isCropped
+            || item.isCleaned
     }
 
     /// The title, and after it, wrapping with the last word: the crop's
     /// corners for a work cut out of its photograph, for a "Pod lupą" work
     /// a magnifier, for a picture small for the frame its pixels' stairs
-    /// (`LowRes`), the restorer's sparkles. Every tile with a work's title
+    /// (`LowRes`), the restorer's sparkles, the mark of colours corrected
+    /// (`CleanedMark`). Every tile with a work's title
     /// shows them so: the playlists', Szukaj's, Odkrywaj's (Mateusz
     /// 2026-11-15: "Na listach w Odkrywaj brakuje znaczników").
     /// `zoom: false` where every tile is "Pod lupą".
@@ -281,6 +283,15 @@ struct ArtCard: View {
                 + Text(Cropped.image)
                     .foregroundStyle(Theme.inkSoft)
             label += ", \(Cropped.spoken)"
+        }
+        // Shown with its colours corrected ("Korekta barw"): the next mark,
+        // with the crop's what was done to the picture.
+        if item.isCleaned {
+            text = text
+                + Text("\u{00A0}").font(font)
+                + Text(CleanedMark.image)
+                    .foregroundStyle(Theme.inkSoft)
+            label += ", \(CleanedMark.spoken)"
         }
         if zoom, item.zoom == true {
             text = text
@@ -1192,13 +1203,16 @@ struct TitleWithYear: View {
     /// Cut out of the museum's photograph (`Item.cut`): the crop's symbol
     /// on a badge right after the year (Mateusz 2026-11-14).
     var cropped = false
+    /// Shown with its colours corrected (`Item.cleaned`): its mark on a
+    /// badge after the crop's.
+    var cleaned = false
     @Environment(\.colorScheme) private var scheme
     @Environment(\.displayScale) private var scale
 
     var body: some View {
         TitleYear.text(
             title, date: date, font: font, scheme: scheme, scale: scale, zoom: zoom, lowSide: lowSide,
-            restored: restored, cropped: cropped
+            restored: restored, cropped: cropped, cleaned: cleaned
         )
     }
 }
@@ -1245,11 +1259,34 @@ enum Cropped {
     static let spoken = "przycięte ze zdjęcia muzeum"
 }
 
+/// A work shown with its colours corrected by calculation ("Korekta
+/// barw": its aged varnish taken off or its sheet de-yellowed; Mateusz
+/// 2026-11-15: "ikonkę która będzie mówić że to wersja z poprawioną /
+/// odzyskaną kolorystyką (na wzór ikonek rozdzielczości, restauratora czy
+/// kadrowania) - widoczna w tych samych miejscach co tamte"). In the
+/// marks' grey, after the crop's.
+enum CleanedMark {
+    /// The asset's name (11 pt, a template). Five are drawn until the
+    /// owner picks one from their sheet; a screenshot names another with
+    /// `-cleanedMark wipe|swab|colours|window`.
+    static var symbol: String {
+        switch UserDefaults.standard.string(forKey: "cleanedMark") ?? "" {
+        case "wipe": return "CleanedWipe"
+        case "swab": return "CleanedSwab"
+        case "colours": return "CleanedColours"
+        case "window": return "CleanedWindow"
+        default: return "CleanedDrop"
+        }
+    }
+    static var image: Image { Image(symbol).renderingMode(.template) }
+    static let spoken = "barwy skorygowane"
+}
+
 @MainActor
 enum TitleYear {
     static func text(
         _ title: String, date: String, font: Font, scheme: ColorScheme, scale: CGFloat, zoom: Int? = nil,
-        lowSide: Int? = nil, restored: Bool = false, cropped: Bool = false
+        lowSide: Int? = nil, restored: Bool = false, cropped: Bool = false, cleaned: Bool = false
     ) -> Text {
         var text = Text(title).font(font).foregroundStyle(Theme.ink)
         var label = title
@@ -1263,6 +1300,10 @@ enum TitleYear {
         if cropped, let badge = badge("", scheme: scheme, scale: scale, symbol: Cropped.symbol, soft: true) {
             text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)
             label += ", \(Cropped.spoken)"
+        }
+        if cleaned, let badge = badge("", scheme: scheme, scale: scale, symbol: CleanedMark.symbol, soft: true) {
+            text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)
+            label += ", \(CleanedMark.spoken)"
         }
         if let zoom, let badge = badge(zoom > 0 ? "\(zoom)×" : "", scheme: scheme, scale: scale, symbol: zoomSymbol) {
             text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)
@@ -1332,6 +1373,8 @@ private struct YearBadge: View {
                 LowRes.image
             } else if symbol == Cropped.symbol {
                 Cropped.image
+            } else if symbol == CleanedMark.symbol {
+                CleanedMark.image
             } else if let symbol {
                 Image(systemName: symbol).font(.system(size: 11.5, weight: .regular))
             }

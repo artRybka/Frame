@@ -20,10 +20,14 @@ Two calculations, both in linear light and with every pixel the work's own:
 Varnish (oil, tempera). An aged resin varnish is a yellow filter: it takes
 most of the blue, some green and little red. One number says how thick it
 is; the picture without it is each channel times ``exp(d * ALPHA)``, then
-brought back into range (:func:`gains`). The phone does that sum itself
-while the owner moves the slider; the server only reads the picture once:
-which strength to propose (:func:`propose`) and how light the result gets
-at every strength (``Varnish.tops``).
+brought back into range (:func:`gains`). In the preview (apps of
+1.145.155–161) the phone did that sum itself while the owner moved the
+slider, the server reading the picture once: which strength to propose
+(:func:`propose`) and how light the result gets at every strength
+(``Varnish.tops``). The work shown cleaned is made here
+(:func:`unvarnished`), with two things the preview's sum had not: the
+darks keep their own colour (:data:`DARK`) and lose the varnish's haze
+(:data:`DEPTH`).
 
 Paper (drawings, prints, watercolours, pastels). The sheet's tone is read
 as a smooth field (darker edges, old mount lines), every pixel is divided
@@ -97,6 +101,35 @@ LEAST = 0.2
 #: others 2.01 → 2.46 instead of 2.79), and the worst miss is 1.4 instead
 #: of 2.3.
 CAREFUL = 0.75
+#: Under this luminance (linear light) the varnish's colour is taken off
+#: less and less, and not at all at black: there only the lightness
+#: follows. Mateusz 2026-11-15 19:00–19:05, of works shown cleaned:
+#: "kalkulacja lekko zaniebieszcza czarne / bardzo ciemne fragmenty
+#: dzieła", "I ciemne zielenie - podobnie jak inne partie ciemne dzieła".
+#: What a photograph shows in a picture's darks is mostly the light its
+#: surface throws back, not paint seen through the varnish, so the blue
+#: given back there was never taken. The thirty pairs say the same: the
+#: share of the varnish's colour nearest the real cleaning is none under
+#: 0.01, an eighth to 0.04, three eighths to 0.08, three quarters to 0.15
+#: and all of it above. The darkest tenth of a really cleaned picture
+#: stays warm (OKLab b +1.4, 3 pairs on the blue side); the plain sum left
+#: it at +0.3 with 11 on the blue side, this at +1.1 with 6, as many as
+#: the photographs left alone. Dark greens move a quarter as far to blue.
+DARK = 0.15
+#: Contrast (Mateusz 19:02: "Nie wiem czy nie powinien być minimalnie
+#: większy"): an aged varnish also lays a haze over the darks. The
+#: picture's own black (this centile of its luminance) comes down by
+#: ``DEPTH`` of itself for a varnish of 1. On the pairs the spread of
+#: lightness is 7 % wider in the mean after a real cleaning (in under
+#: half of them, though: two photographs, two lightings); the plain sum
+#: gave 2.5 %, this gives 5.6 % and is no farther from the real cleaning
+#: (6.81 for 6.87, lightness counted; the photograph left alone 7.07).
+BLACK_AT = 0.02
+DEPTH = 0.75
+#: A haze is thin: a picture with no black in it (its darkest a mid-tone)
+#: is not darkened as if that were haze. (The pairs' blacks: 0.001–0.02.)
+BLACK_MOST = 0.02
+_LUMA = (0.2126, 0.7152, 0.0722)
 
 
 @dataclass(frozen=True)
@@ -170,16 +203,36 @@ def propose(white: float | None) -> float:
 def gains(strength: float, top: float) -> tuple[float, float, float]:
     """What red, green and blue (linear light) are multiplied by at
     ``strength``; ``top``: the lightest of the result there
-    (``Varnish.tops``). The app does the same sum in its shader."""
+    (``Varnish.tops``): the preview's sum, which the apps of
+    1.145.155–161 do in their shader."""
     scale = TOP / top if top > TOP else 1.0
     r, g, b = (float(np.exp(strength * a)) * scale for a in ALPHA)
     return r, g, b
 
 
+def _black(lin: FloatArray) -> float:
+    """The picture's own black: the darkest it has, a few specks aside."""
+    return min(float(np.quantile(luminance(lin.reshape(-1, 3)), BLACK_AT)), BLACK_MOST)
+
+
+def _without(lin: FloatArray, strength: float, black: float) -> FloatArray:
+    """``lin`` without a varnish of ``strength``, not yet brought into
+    range: the haze off its darks (``black``: :func:`_black` of the whole
+    picture), then the varnish's colour off, all of it in the lights and
+    less and less under :data:`DARK`, where only the lightness follows."""
+    haze = black * min(DEPTH * strength, 1.0)
+    clear = np.clip((lin - haze) / (1.0 - haze), 0.0, 1.0)
+    colour = np.exp(strength * np.asarray(ALPHA, dtype=np.float32))
+    even = float(colour @ np.asarray(_LUMA, dtype=np.float32))
+    share = np.clip(luminance(clear) / DARK, 0.0, 1.0)
+    share = share * share * (3.0 - 2.0 * share)
+    out: FloatArray = (clear * (even + (colour - even) * share[..., None])).astype(np.float32)
+    return out
+
+
 def unvarnish(lin: FloatArray, strength: float) -> FloatArray:
-    """The picture without a varnish of ``strength`` (tests, and what the
-    app's shader is held to)."""
-    out = lin * np.exp(strength * np.asarray(ALPHA, dtype=np.float32))
+    """The picture without a varnish of ``strength``."""
+    out = _without(lin, strength, _black(lin))
     top = float(np.quantile(out.max(-1), 0.997))
     if top > TOP:
         out = out * (TOP / top)
@@ -193,19 +246,22 @@ def kept_strength(img: Image.Image) -> float:
 
 def unvarnished(img: Image.Image, strength: float) -> Image.Image:
     """``img`` without a varnish of ``strength``, whole and at its own size:
-    how light it gets is read small, the sum goes a band of rows at a time
-    (an original of 4000 px never holds more than a few bands of floats)."""
+    its black and how light it gets are read small, the sum goes a band of
+    rows at a time (an original of 4000 px never holds more than a few
+    bands of floats)."""
     rgb = img.convert("RGB")
-    alpha = np.asarray(ALPHA, dtype=np.float32)
-    small = _small(rgb, 640).reshape(-1, 3)
-    top = float(np.quantile((small * np.exp(strength * alpha)).max(-1), 0.997))
-    factors = np.asarray(gains(strength, top), dtype=np.float32)
+    small = _small(rgb, 640)
+    black = _black(small)
+    top = float(np.quantile(_without(small, strength, black).max(-1), 0.997))
+    scale = TOP / top if top > TOP else 1.0
     source = np.asarray(rgb)
     out = np.empty_like(source)
     rows = 256
     for start in range(0, source.shape[0], rows):
         lin = u8_to_linear(source[start : start + rows])
-        out[start : start + rows] = linear_to_u8(np.clip(lin * factors, 0, 1))
+        out[start : start + rows] = linear_to_u8(
+            np.clip(_without(lin, strength, black) * scale, 0, 1)
+        )
     return Image.fromarray(out)
 
 

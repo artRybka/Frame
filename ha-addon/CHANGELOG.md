@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.145.162
+
+- Korekta barw zamiast podglądu: „Zdejmij werniks” albo „Odżółć papier”
+  w menu „…” karty podmienia dzieło na wersję po korekcie. Widać ją
+  wszędzie: na listach, na karcie, na pełnym ekranie i na ramce, a barwy
+  dzieła i pasek barw są liczone z wersji po korekcie. To samo miejsce
+  w menu cofa zmianę („Przywróć werniks”, „Przywróć ton papieru”).
+- Nie ma już suwaka siły: korekta bierze ostrożne trzy czwarte propozycji
+  z samego obrazu. Pod obrazem jest jedno zdanie o korekcie i przycisk
+  „Porównaj z obrazem przed korektą” (kurtyna: z lewej przed, z prawej po).
+- Dzieło po korekcie ma własny znaczek po tytule, w tych samych miejscach
+  co znaczki kadru, niskiej rozdzielczości i restauratora.
+- Ciemne partie nie niebieszczeją: czernie i ciemne zielenie zachowują
+  swój odcień, a czernie są minimalnie głębsze (trochę większy kontrast).
+- Inna kopia zdjęcia dzieła nie dostaje korekty sama (nie wiadomo, jakie
+  ma barwy). Wersja kreatywnego restauratora dostaje ją, bo powstaje
+  z tego samego zdjęcia.
+
 ## 1.145.161
 
 - Resztka miesiąca Claude idzie na to, co wybierzesz, w Twojej kolejności:
