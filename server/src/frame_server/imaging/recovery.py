@@ -3,8 +3,8 @@ preview on its card, since 2026-11-15 18:39 UTC the work's picture itself
 when the owner asks ("Wybranie w menu podmienia na wersje z odżółconym
 papierem / ściągniętym werniksem", ``Item.cleaned``,
 :mod:`frame_server.cleaning`): with no slider any more ("Z ściągania
-werniksu usuwamy suwak. Zostawiamy tylko poziom propozycji"), at a careful
-share of the proposed strength (:data:`CAREFUL`).
+werniksu usuwamy suwak. Zostawiamy tylko poziom propozycji"), at the
+proposed strength (:func:`kept_strength`).
 
 Mateusz 2026-11-15, of works „zgaszone, ściemniałe, zbrązowiałe czy
 stonowane pod werniksem”: a simulation of their colours recovered, as a
@@ -25,9 +25,10 @@ brought back into range (:func:`gains`). In the preview (apps of
 slider, the server reading the picture once: which strength to propose
 (:func:`propose`) and how light the result gets at every strength
 (``Varnish.tops``). The work shown cleaned is made here
-(:func:`unvarnished`), with two things the preview's sum had not: the
-darks keep their own colour (:data:`DARK`) and lose the varnish's haze
-(:data:`DEPTH`).
+(:func:`unvarnished`), with three things the preview's sum had not: the
+darks keep their own colour (:data:`DARK`, by the picture's own middle:
+:func:`_dark`) and lose the varnish's haze (:data:`DEPTH`), and a picture
+dark all over comes out lighter (:data:`LIFT`).
 
 Paper (drawings, prints, watercolours, pastels). The sheet's tone is read
 as a smooth field (darker edges, old mount lines), every pixel is divided
@@ -94,13 +95,12 @@ WHITE_FIT = 0.06
 #: down with it, never below ``LEAST`` (the slider is there to try).
 WHITE_CLEAN = 0.3
 LEAST = 0.2
-#: The share of the proposal a work is kept at, now that the owner cannot
-#: weaken it: on the thirty pairs the whole proposal is as far from the
-#: real cleaning as the photograph left alone (2.57 both); three quarters
-#: of it is the nearest overall (2.44: the varnished 3.20 → 2.42, the
-#: others 2.01 → 2.46 instead of 2.79), and the worst miss is 1.4 instead
-#: of 2.3.
-CAREFUL = 0.75
+#: Which sum a work shown cleaned was made with (``Cleaned.reading``): raise
+#: it when :func:`unvarnished` or :func:`kept_strength` changes, and the
+#: works kept cleaned are made again (``Cleaning.catch_up``).
+#: 2 (2026-11-15 21:44): the whole proposal, darks by the picture's middle,
+#: the lights of a dark picture raised.
+READING = 2
 #: Under this luminance (linear light) the varnish's colour is taken off
 #: less and less, and not at all at black: there only the lightness
 #: follows. Mateusz 2026-11-15 19:00–19:05, of works shown cleaned:
@@ -114,8 +114,36 @@ CAREFUL = 0.75
 #: and all of it above. The darkest tenth of a really cleaned picture
 #: stays warm (OKLab b +1.4, 3 pairs on the blue side); the plain sum left
 #: it at +0.3 with 11 on the blue side, this at +1.1 with 6, as many as
-#: the photographs left alone. Dark greens move a quarter as far to blue.
+#: the photographs left alone.
 DARK = 0.15
+#: What is dark is dark for the picture: in one that is dark all over the
+#: paint itself lies under :data:`DARK`, and a cleaning that left its colour
+#: alone was no cleaning to the eye. Mateusz 2026-11-15 21:44–21:46, of
+#: Gainsborough's "Cottage Children" (the Met; half of it under 0.017, 98 %
+#: under 0.15): "Korekta werniksu - czasem ledwo widoczna". So the colour
+#: fades out under this many times the picture's median luminance, between
+#: :data:`DARK_LEAST` and :data:`DARK`. On the thirty pairs it is as near
+#: the real cleaning as the one threshold (6.81 both, the whole proposal),
+#: the darkest tenth as warm (+1.1, 6 on the blue side); dark greens move
+#: under half as far to blue as under the plain sum (a quarter with the
+#: one threshold). In the pairs where varnish was the trouble the real cleaning
+#: took its whole colour off everything lighter than 0.01.
+DARK_BY_MIDDLE = 2.0
+DARK_LEAST = 0.03
+#: A cleaned picture is lighter: where the sum leaves room over the lights
+#: (a picture dark all over), they are raised by this share of the room,
+#: in stops. Mateusz 2026-11-15 22:08, of the Gainsborough with its colour
+#: back but as dark as before: "Jeszcze mocniej". More strength is not the
+#: way (on the thirty pairs half as much again on dark pictures is farther
+#: from the real cleaning: 6.82 for 6.81); lighter lights are: the dark
+#: pictures of the pairs come out of a real cleaning twice as light in the
+#: median (two photographs, though), and with this the sum is nearer it
+#: (6.79; dark pictures 0.31 nearer than the photograph left alone, for
+#: 0.27), the darkest tenth as warm. The Gainsborough comes out 1.6 times
+#: as light. A picture whose lights are darker than :data:`LIGHTS_LEAST`
+#: is a night: raised no more than one with its lights there (1.56 times).
+LIFT = 0.5
+LIGHTS_LEAST = 0.4
 #: Contrast (Mateusz 19:02: "Nie wiem czy nie powinien być minimalnie
 #: większy"): an aged varnish also lays a haze over the darks. The
 #: picture's own black (this centile of its luminance) comes down by
@@ -215,52 +243,73 @@ def _black(lin: FloatArray) -> float:
     return min(float(np.quantile(luminance(lin.reshape(-1, 3)), BLACK_AT)), BLACK_MOST)
 
 
-def _without(lin: FloatArray, strength: float, black: float) -> FloatArray:
+def _dark(lin: FloatArray) -> float:
+    """The luminance under which the picture's colour is its darks' own
+    (:data:`DARK_BY_MIDDLE`): :data:`DARK`, less in a picture dark all over."""
+    middle = float(np.median(luminance(lin.reshape(-1, 3))))
+    return float(np.clip(DARK_BY_MIDDLE * middle, DARK_LEAST, DARK))
+
+
+def _without(lin: FloatArray, strength: float, black: float, dark: float) -> FloatArray:
     """``lin`` without a varnish of ``strength``, not yet brought into
     range: the haze off its darks (``black``: :func:`_black` of the whole
     picture), then the varnish's colour off, all of it in the lights and
-    less and less under :data:`DARK`, where only the lightness follows."""
+    less and less under ``dark`` (:func:`_dark` of the whole picture),
+    where only the lightness follows."""
     haze = black * min(DEPTH * strength, 1.0)
     clear = np.clip((lin - haze) / (1.0 - haze), 0.0, 1.0)
     colour = np.exp(strength * np.asarray(ALPHA, dtype=np.float32))
     even = float(colour @ np.asarray(_LUMA, dtype=np.float32))
-    share = np.clip(luminance(clear) / DARK, 0.0, 1.0)
+    share = np.clip(luminance(clear) / dark, 0.0, 1.0)
     share = share * share * (3.0 - 2.0 * share)
     out: FloatArray = (clear * (even + (colour - even) * share[..., None])).astype(np.float32)
     return out
 
 
-def unvarnish(lin: FloatArray, strength: float) -> FloatArray:
-    """The picture without a varnish of ``strength``."""
-    out = _without(lin, strength, _black(lin))
+def _into_range(out: FloatArray) -> float:
+    """What the sum ``out`` is multiplied by: its lightest brought down to
+    :data:`TOP` when it left the range, and raised towards it when the
+    picture is dark all over (:data:`LIFT`)."""
     top = float(np.quantile(out.max(-1), 0.997))
     if top > TOP:
-        out = out * (TOP / top)
-    return np.clip(out, 0, 1).astype(np.float32)
+        return TOP / top
+    return float((TOP / max(top, LIGHTS_LEAST)) ** LIFT)
+
+
+def unvarnish(lin: FloatArray, strength: float) -> FloatArray:
+    """The picture without a varnish of ``strength``."""
+    out = _without(lin, strength, _black(lin), _dark(lin))
+    return np.clip(out * _into_range(out), 0, 1).astype(np.float32)
 
 
 def kept_strength(img: Image.Image) -> float:
-    """The strength a work is shown without its varnish at (``Item.cleaned``)."""
-    return round(CAREFUL * read_varnish(img).strength, 2)
+    """The strength a work is shown without its varnish at
+    (``Item.cleaned``): the proposal ("Zostawiamy tylko poziom
+    propozycji"). Three quarters of it, kept at first (1.145.164: nearer
+    the real cleaning on the thirty pairs under the plain sum, 2.44 for
+    2.57), gained nothing once the darks kept their colour (6.81 and 6.79,
+    lightness counted) and was hard to see: on the pairs a real cleaning
+    moves a picture by 10.7 (OKLab × 100, mean; two photographs, though),
+    three quarters of the proposal by 2.0, the whole by 2.7."""
+    return read_varnish(img).strength
 
 
 def unvarnished(img: Image.Image, strength: float) -> Image.Image:
     """``img`` without a varnish of ``strength``, whole and at its own size:
-    its black and how light it gets are read small, the sum goes a band of
-    rows at a time (an original of 4000 px never holds more than a few
-    bands of floats)."""
+    its black, its middle and how light it gets are read small, the sum
+    goes a band of rows at a time (an original of 4000 px never holds more
+    than a few bands of floats)."""
     rgb = img.convert("RGB")
     small = _small(rgb, 640)
-    black = _black(small)
-    top = float(np.quantile(_without(small, strength, black).max(-1), 0.997))
-    scale = TOP / top if top > TOP else 1.0
+    black, dark = _black(small), _dark(small)
+    scale = _into_range(_without(small, strength, black, dark))
     source = np.asarray(rgb)
     out = np.empty_like(source)
     rows = 256
     for start in range(0, source.shape[0], rows):
         lin = u8_to_linear(source[start : start + rows])
         out[start : start + rows] = linear_to_u8(
-            np.clip(_without(lin, strength, black) * scale, 0, 1)
+            np.clip(_without(lin, strength, black, dark) * scale, 0, 1)
         )
     return Image.fromarray(out)
 

@@ -213,6 +213,9 @@ class Cleaned(BaseModel):
     made: str = ""
     #: The varnish's thickness taken off (``recovery.kept_strength``).
     strength: float = 0.0
+    #: The sum it was taken off with (``recovery.READING``): a work kept
+    #: from an earlier one is made again (``Cleaning.catch_up``).
+    reading: int = 1
     #: The picture it was read on: the copy's id (``SharperCopy.item_id``)
     #: when a copy was shown, else "". Never applied to another photograph:
     #: "nie wiemy jaką ona ma kolorystykę i automatyczne naniesienie zmian
