@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.145.148
+
+- Karta dzieła: „Pełny kadr” to teraz karta z wierszami tuż nad słowami
+  kluczowymi i techniką: miniatura zdjęcia muzeum ze zdaniem, co na nim
+  było, przełącznik „Z marginesem” przy pracach na papierze i „Popraw
+  kadr”.
+- Ekran poprawiania kadru ma cztery lupy, po jednej na narożnik, nad
+  zdjęciem i pod nim. Krzyżyk w lupie to narożnik: przesuwa się go,
+  przesuwając zdjęcie w lupie, więc palec niczego nie zasłania. Narożniki
+  na zdjęciu są kątownikami, „Zapisz” jest u góry obok „Anuluj”, pod
+  zdjęciem „Cofnij zmiany” i „Całe zdjęcie”.
+
 ## 1.145.147
 
 - Stonowana barwa, która zajmuje co najmniej 3% obrazu, a pasek pokazuje ją

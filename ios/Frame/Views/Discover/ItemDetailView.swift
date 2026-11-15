@@ -378,17 +378,6 @@ struct ItemDetailView: View {
             titleBlock(item).id("title")
             actions(item)
             if !item.colors.isEmpty { palette(item).id("palette") }
-            // Under the colours (Mateusz 2026-11-14): "Pełny kadr", the
-            // museum's photograph of a work cut out of it and a print's
-            // choice of its paper, then the fragments and the details.
-            if item.isCropped || item.cut?.hasPaper == true {
-                FullPhotoSection(
-                    item: item, busy: cutBusy,
-                    choosePaper: { paper in Task { await setCut(CutUpdate(paper: paper)) } },
-                    correct: { correctingCut = true }
-                )
-                .transition(.opacity)
-            }
             // A tile set is looked at in full screen, not listed.
             if let fragments, !fragments.fragments.isEmpty, !fragments.tiled {
                 fragmentsSection(item, fragments)
@@ -403,6 +392,18 @@ struct ItemDetailView: View {
             // Above the facts (Mateusz 2026-11-13: "umieśćmy ją nad blokiem
             // ze słowami kluczowymi, techniką etc.").
             LooksLikeSection(item: item).id("looks")
+            // Just above the facts (Mateusz 2026-11-15: „moduł pokażmy nad
+            // blokiem «słowa kluczowe, technika, rodzaj…»”): "Pełny kadr",
+            // the museum's photograph of a work cut out of it and a print's
+            // choice of its paper.
+            if item.isCropped || item.cut?.hasPaper == true {
+                FullPhotoSection(
+                    item: item, busy: cutBusy,
+                    choosePaper: { paper in Task { await setCut(CutUpdate(paper: paper)) } },
+                    correct: { correctingCut = true }
+                )
+                .transition(.opacity)
+            }
             facts(item)
         }
         .layoutProbe("column")
