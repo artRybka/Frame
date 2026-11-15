@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.158
+
+- Kupowanie kopii w Alamy usunięte: w menu „…” dzieła nie ma już „Kup w
+  Alamy” ani „Wczytaj kupioną kopię”, a w Konfiguracji → Źródła dzieł
+  przełącznika „Kupowanie w Alamy”. Kopie wczytane wcześniej zostają
+  zdjęciem swoich dzieł. „Szukaj lepszej kopii” działa jak dotąd.
+
 ## 1.145.157
 
 - Pasek barw farby olejnej jest spokojniejszy i trzyma się prostokąta.
@@ -29,6 +36,7 @@
   pokazuje arkusz jak dobrze zachowany; kreska i barwy zostają z oryginału,
   papier barwiony celowo nie dostaje propozycji. To tylko podgląd: nie
   zmienia dzieła, paska barw, wyszukiwania ani obrazu na ramce.
+
 
 ## 1.145.154
 

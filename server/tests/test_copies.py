@@ -472,21 +472,23 @@ def test_an_aic_work_kept_at_1686_offers_its_download_size(app: Any) -> None:
     assert own.id + "~larger" not in _final(_lines(client, own.id))
 
 
-def test_the_owner_brings_a_bought_copy_kept_for_good(app: Any) -> None:
-    """Bought in Alamy (Mateusz, 2026-11-12): the file is the work's picture
-    from then on, outlives the cache, and "Przywróć zdjęcie muzeum" goes
-    back."""
+def test_a_brought_copy_is_kept_for_good(app: Any) -> None:
+    """A copy brought for the work (the restorer's; bought in Alamy until
+    2026-11-15): the file is the work's picture from then on, outlives the
+    cache, and "Przywróć zdjęcie muzeum" goes back. The app's upload of a
+    bought file is gone."""
     client, service, _web, _hits = app
     own = _own(service, favorite=True)
     bought = _jpeg(_print(1, (5000, 3333)), 92)
 
-    resp = client.post(
+    gone = client.post(
         f"/api/library/items/{own.id}/copy/file",
         files={"file": ("alamy.jpg", bought, "image/jpeg")},
         data={"origin": "Alamy"},
     )
-    assert resp.status_code == 200, resp.text
-    item = resp.json()
+    assert gone.status_code in (404, 405)
+    item = service.sharper.bring(own, bought, "Alamy").model_dump(mode="json")
+    item["favorite"] = service.library.get(own.id).favorite  # type: ignore[union-attr]
     assert item["sharper"]["chosen"] and item["sharper"]["museum"] == "Alamy"
     assert item["sharper"]["source"] == "owned" and item["favorite"]
     assert max(item["sharper"]["width"], item["sharper"]["height"]) == 5000
@@ -500,10 +502,8 @@ def test_the_owner_brings_a_bought_copy_kept_for_good(app: Any) -> None:
     view = client.post(f"/api/library/items/{own.id}/sharpen").json()
     assert view["status"] == "found" and view["sharper"]["source"] == "owned"
 
-    bad = client.post(
-        f"/api/library/items/{own.id}/copy/file", files={"file": ("x.jpg", b"nope", "image/jpeg")}
-    )
-    assert bad.status_code == 422
+    with pytest.raises(ValueError):
+        service.sharper.bring(own, b"nope")
 
     item = client.delete(f"/api/library/items/{own.id}/copy").json()
     assert item["sharper"] is None
