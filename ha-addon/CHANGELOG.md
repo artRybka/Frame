@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.169
+
+- Korekta kadru: narożnik na zdjęciu łapie się teraz w kole o średnicy
+  80 pt (było 48 × 48 pt), także poza krawędzią zdjęcia; gdy koła na
+  siebie zachodzą, bierze się narożnik bliżej palca. Narożnik nie skacze
+  już pod palec, tylko przesuwa się o tyle, o ile palec, więc można go
+  chwycić obok i dalej widzieć.
+
 ## 1.145.168
 
 - Własne dzieła w katalogu: „+” w Playlistach → „Dodaj własne dzieło”.
