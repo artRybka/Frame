@@ -76,6 +76,7 @@ CORNERS = {
     ],
     "work": 1,
     "with_paper": None,
+    "shape": "rectangle",
     "confident": True,
     "note": "A painting in a gilt frame on a grey board",
 }
@@ -405,6 +406,7 @@ SHEET_CORNERS = {
     ],
     "work": 0,
     "with_paper": None,
+    "shape": "rectangle",
     "confident": True,
     "note": "A drawing on prepared paper on a white board",
 }
@@ -677,3 +679,131 @@ def test_a_page_about_a_work_waits_for_its_cut(
     # A work outside the library is not looked at (its cut could not be kept).
     outside = Item(id="mnw:11", source="mnw", source_id="11", kind=ItemKind.ARTWORK)
     assert service.crops.before_page(outside) is False
+
+
+# -- works whose outline is no rectangle -------------------------------------------------
+
+
+def test_a_work_that_is_no_rectangle_is_never_cut(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    # Mateusz 2026-11-15: a gunlock engraving cut out along its drawing on a
+    # grey board, a round miniature in its gilt frame: „nie kadruj”.
+    _work(service, "met:1", picture=sheet(), pooled=True)  # strips the pixels would cut
+    answers = iter([{"surround": ["backdrop", "frame"]}, {**CORNERS, "shape": "round"}])
+    fake.messages.create = lambda **params: (fake.asked.append(params), _message(next(answers)))[1]
+    crops = service.crops
+    assert not crops.now(service.library.get("met:1"))  # type: ignore[arg-type]
+    assert [p["model"] for p in fake.asked] == [HAIKU, OPUS]
+    assert '"shape"' in fake.asked[1]["messages"][0]["content"][-1]["text"]
+    item = service.library.get("met:1")
+    assert item is not None and item.cut is not None
+    assert item.cut.shape == "round" and item.cut_shown() is None and not item.cut.has_paper
+    assert not service.images.full_path(item).exists()
+    assert crops.written() == []
+    assert not crops.now(item)  # never asked again
+    assert len(fake.asked) == 2
+    assert crops.candidates(crops.asked()) == []
+    # The owner may still cut it himself.
+    item = crops.set_by_owner(item, corners=TRUE)
+    assert item.cut is not None and item.cut.by == "owner" and item.cut_shown() == TRUE
+
+
+def test_cuts_set_before_the_outline_was_asked_are_given_back_whole(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    from frame_server.imaging.layout import Crop
+    from frame_server.library.models import Framing
+
+    crops = service.crops
+    aspect = round(W / H, 5)
+    face = Crop(x=0.5, y=0.4, zoom=2.0)
+    for item_id in ("mnw:21", "mnw:22", "mnw:23"):
+        item = _work(service, item_id, pooled=True)
+        crops.apply(item, Cut(work=TRUE, aspect=aspect, at="2026-11-14T10:00:00+00:00"))
+    service.library.update("mnw:21", framing={"portrait": Framing(detail=face)})
+    owner = _work(service, "mnw:24", pooled=True)
+    crops.apply(owner, Cut(work=TRUE, aspect=aspect, by="owner"))
+    shaped = _work(service, "mnw:25", pooled=True)
+    crops.apply(shaped, Cut(work=TRUE, aspect=aspect, shape="rectangle"))
+    assert crops.reshaped() == 3
+    assert crops.reshaped() == 0  # once
+    fake.ended = True
+
+    def results(batch_id: str) -> list[SimpleNamespace]:
+        shapes = {"mnw:21": "round", "mnw:22": "irregular", "mnw:23": "rectangle"}
+        ids = crops.state()["order"]["ids"]
+        return [
+            SimpleNamespace(
+                custom_id=r["custom_id"],
+                result=SimpleNamespace(
+                    type="succeeded",
+                    message=_message({"shape": shapes[ids[r["custom_id"]]], "note": ""}),
+                ),
+            )
+            for r in fake.batches[batch_id]
+        ]
+
+    fake.messages.batches.results = results
+    assert crops.order()
+    asked = fake.batches["batch_1"]
+    assert len(asked) == 3
+    assert all(r["params"]["model"] == OPUS for r in asked)
+    assert [b["type"] for b in asked[0]["params"]["messages"][0]["content"]] == ["image", "text"]
+    assert crops.collect() is True
+
+    for item_id, shape in (("mnw:21", "round"), ("mnw:22", "irregular")):
+        item = service.library.get(item_id)
+        assert item is not None and item.cut is not None
+        assert item.cut.shape == shape and item.cut.by == "auto"
+        assert item.cut_shown() is None and item.cut.undone == TRUE
+        with Image.open(service.images.image_path(item)) as whole:
+            assert whole.size == (W, H)
+        assert not crops.now(item)  # never cut again by itself
+    # His framing shows the same part of the photograph, now whole.
+    detail = service.library.get("mnw:21").framing["portrait"].detail  # type: ignore[union-attr]
+    assert detail is not None
+    assert abs(detail.x - (TRUE[0][0] + face.x * (TRUE[2][0] - TRUE[0][0]))) < 0.01
+    kept = service.library.get("mnw:23")
+    assert kept is not None and kept.cut is not None and kept.cut.shape == "rectangle"
+    assert kept.cut_shown() == TRUE
+    for item_id in ("mnw:24", "mnw:25"):
+        assert service.library.get(item_id).cut_shown() == TRUE  # type: ignore[union-attr]
+    assert crops.written() == []
+    assert not crops.order()
+
+
+def test_a_card_asks_the_outline_of_a_work_cut_before(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    item = _work(service, "met:2", pooled=True)
+    crops = service.crops
+    item = crops.apply(item, Cut(work=TRUE, aspect=round(W / H, 5)))
+    answers = iter([{"shape": "irregular", "note": "cut out along the drawing"}])
+    fake.messages.create = lambda **params: (fake.asked.append(params), _message(next(answers)))[1]
+    assert crops.now(item)
+    assert [p["model"] for p in fake.asked] == [OPUS]
+    stored = service.library.get("met:2")
+    assert stored is not None and stored.cut is not None and stored.cut_shown() is None
+    assert not crops.now(stored)
+    assert len(fake.asked) == 1
+
+
+def test_a_study_written_on_a_cut_given_back_keeps_its_boxes() -> None:
+    from frame_server.ai.daily import Note, seen_before
+
+    cut = Cut(
+        aspect=round(W / H, 5),
+        shape="round",
+        undone=TRUE,
+        undone_at="2026-11-14T10:00:00+00:00",
+        at="2026-11-15T16:00:00+00:00",
+    )
+    item = Item(id="mnw:30", source="mnw", source_id="30", cut=cut)
+    on_cut = Note.model_construct(created_at="2026-11-14T20:00:00+00:00")
+    before = Note.model_construct(created_at="2026-11-13T20:00:00+00:00")
+    assert seen_before(item, on_cut, None).cut == TRUE
+    assert seen_before(item, before, None).cut == []

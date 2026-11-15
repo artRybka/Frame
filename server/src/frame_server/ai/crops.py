@@ -23,6 +23,13 @@ asks, then Opus is asked at once. The same is done when a card opens on a
 work not looked at yet (:meth:`Crops.soon`). The owner corrects the corners
 or gives the cut up in the app; a work he has set is never cut again by
 itself.
+
+A work whose own outline is no rectangle (a cut-out, a shard, a round
+miniature in its gilt frame, a plate, an oval) is never cut (Mateusz
+2026-11-15: „Przy obiektach o kształcie innym niż prostokąt … nie kadruj.
+Już wykadrowane – trzeba przywrócić”): Opus names the outline with the
+corners (``shape``), and the cuts set before it was asked are looked at
+once more (:meth:`Crops.reshaped`, :meth:`Crops.now`) and given back whole.
 """
 
 from __future__ import annotations
@@ -49,7 +56,7 @@ from ..imaging.cut import (
 )
 from ..imaging.layout import Crop, load_image
 from ..library.images import OWN_SOURCES
-from ..library.models import Cut, Framing, ItemKind
+from ..library.models import NOT_RECTANGLE, SHAPES, Cut, Framing, ItemKind
 from .client import HAIKU, OPUS, image_block, request
 from .critic_night import REST, CriticNight
 from .gatekeeper import facts
@@ -84,6 +91,15 @@ TWIN_TIDY = 1
 #: Once the cuts kept whose sheet lies on its plate on one side are
 #: tidied (:meth:`Crops.sheets_out`).
 SHEET_TIDY = 1
+
+#: Once the cuts set before the work's outline was asked
+#: (:attr:`Cut.shape`) are put before Opus again (:meth:`Crops.reshaped`).
+SHAPE_SWEEP = 1
+#: Of those, asked in one night at most (a short question, a smaller
+#: picture: about half a cent each through the Batch API).
+RESHAPE_PER_NIGHT = 300
+#: The picture for that question.
+SHAPE_SIDE = 1000
 
 #: How long a page about a work waits for its photograph to be looked at
 #: and cut (seconds): the judge and Opus take 5 to 15 s, a minute when the
@@ -136,13 +152,20 @@ the paper's edge or the paper carries part of the work (a signature, a printed t
 a deliberate margin belonging to the design).
 - "with_paper": the index of the sheet if a viewer might want to keep the paper margin \
 (prints with a plate mark), else null.
+- "shape": the outline of the artwork itself as it is shown (not of its frame, mount or \
+backdrop): "rectangle" (a canvas, panel, sheet, page or plate, also seen at an angle or with \
+slightly rounded corners), "round" (a circle or an oval: a tondo, a portrait miniature or \
+medallion, a plate or dish, a medal or coin, a work seen through a round or oval opening) or \
+"irregular" (any other outline: a cut-out following the drawn shape, a silhouette, a fragment \
+or shard with broken edges, an arched or shaped panel, a fan, an object). Only a rectangle is \
+cut out of its photograph; for the others still list what you see.
 - "confident": true only if the edges are clearly visible. A page's rounded corners or its \
 bound edge are no reason for doubt: put the corners just inside the rounding, on the page.
 Answer in JSON only."""
 CORNERS_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["layers", "work", "with_paper", "confident", "note"],
+    "required": ["layers", "work", "with_paper", "shape", "confident", "note"],
     "properties": {
         "layers": {
             "type": "array",
@@ -161,10 +184,41 @@ CORNERS_SCHEMA = {
         },
         "work": {"type": ["integer", "null"]},
         "with_paper": {"type": ["integer", "null"]},
+        "shape": {"type": "string", "enum": list(SHAPES)},
         "confident": {"type": "boolean"},
         "note": {"type": "string"},
     },
 }
+
+
+SHAPE = """This is a museum's photograph of one catalogued artwork. What is the outline of \
+the artwork itself as it is shown, not of its frame, mount, the backdrop or the board it lies \
+on?
+- "rectangle": a canvas, a panel, a sheet, a page, a print's plate: four straight sides, also \
+when photographed at an angle or with slightly rounded corners.
+- "round": a circle or an oval: a tondo, a portrait miniature or medallion in its round frame, \
+a plate or dish, a medal or coin, a work seen through a round or oval opening of its frame or \
+mount.
+- "irregular": any other outline: a cut-out following the drawn shape, a silhouette, a \
+fragment or shard with broken edges, an arched or shaped panel, a fan, an object (a vase, a \
+sculpture).
+Answer in JSON only."""
+SHAPE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["shape", "note"],
+    "properties": {
+        "shape": {"type": "string", "enum": list(SHAPES)},
+        "note": {"type": "string"},
+    },
+}
+
+
+def shape_of(data: dict[str, Any]) -> str:
+    """The work's outline in Opus's answer (:data:`SHAPES`), "" when it
+    does not say (an answer to the question before 1.145.153)."""
+    shape = data.get("shape")
+    return shape if isinstance(shape, str) and shape in SHAPES else ""
 
 
 def _block(img: Image.Image) -> dict[str, Any]:
@@ -353,7 +407,25 @@ class Crops(CriticNight):
         board the judge took for the paper's margin)."""
         cut = item.cut
         return cls.stale(item) or (
-            cut is not None and cut.by == "auto" and cut.work is None and cut.plate is None
+            cut is not None
+            and cut.by == "auto"
+            and cut.work is None
+            and cut.plate is None
+            and not cut.not_rectangle
+        )
+
+    @classmethod
+    def unshaped(cls, item: Item) -> bool:
+        """The model's cut of the picture shown, set before the work's
+        outline was asked (:attr:`Cut.shape`): it is asked now, and a work
+        that is no rectangle is given back whole."""
+        cut = item.cut
+        return (
+            cut is not None
+            and cut.by == "auto"
+            and not cls.stale(item)
+            and cut.shown() is not None
+            and cut.shape == ""
         )
 
     def banded(self, item: Item) -> bool:
@@ -398,14 +470,48 @@ class Crops(CriticNight):
         return {"p": item.picture_key()}
 
     def _round(self, state: dict[str, Any]) -> tuple[bool, list[tuple[Item, dict[str, Any]]]]:
-        critic, found = super()._round(state)
-        return critic, found[: self.critic_per_night] if critic else found
+        if not state.get("claims"):
+            return super()._round(state)
+        claims: dict[str, Any] = state["claims"]
+        found: list[tuple[Item, dict[str, Any]]] = []
+        rechecks: list[tuple[Item, dict[str, Any]]] = []
+        for item_id, claim in list(claims.items()):
+            item = self.library.get(item_id)
+            if item is None:
+                claims.pop(item_id, None)
+            elif claim.get("reshape"):
+                if len(rechecks) < RESHAPE_PER_NIGHT:
+                    rechecks.append((item, claim))
+            elif len(found) < self.critic_per_night:
+                found.append((item, claim))
+        return True, found + rechecks
 
     def order(self) -> bool:
+        self.reshaped()
         self.swept()
         self.untwinned()
         self.sheets_out()
         return super().order()
+
+    def reshaped(self) -> int:
+        """Once (:data:`SHAPE_SWEEP`): the model's cuts set before the
+        work's outline was asked are put before Opus with that question
+        alone; a work that is no rectangle is given back whole when the
+        answer comes (:meth:`write`). Not while a round is under way: its
+        answers may bring more. How many."""
+        state = self.state()
+        if state.get("shape_sweep") == SHAPE_SWEEP or state.get("order"):
+            return 0
+        claims = state.get("claims") or {}
+        cared = self.cared()
+        found = [i for i in self.library.all_items() if self.unshaped(i) and i.id not in claims]
+        found.sort(key=lambda i: cared.get(i.id, REST))
+        for item in found:
+            claims[item.id] = {"reshape": True}
+        state["claims"], state["shape_sweep"] = claims, SHAPE_SWEEP
+        self._save(state)
+        log.info("crops: %d cuts set before the outline was asked, for Opus", len(found))
+        return len(found)
 
     def sheets_out(self) -> int:
         """Once (:data:`SHEET_TIDY`): the cuts kept whose sheet lies on
@@ -519,7 +625,22 @@ class Crops(CriticNight):
         """The museum's photograph of the work, whole (downloaded if need be)."""
         return load_image(self.images.museum_photo(item)).convert("RGB")
 
+    def shape_question(self, item: Item) -> dict[str, Any]:
+        """Opus asked only for the work's outline (:data:`SHAPE`)."""
+        img = self.photo(item)
+        img.thumbnail((SHAPE_SIDE, SHAPE_SIDE), Image.Resampling.LANCZOS)
+        return request(
+            model=self.critic_model,
+            system="You find artworks in museum photographs.",
+            content=[_block(img), {"type": "text", "text": f"{SHAPE}\n\n{facts(item)}"}],
+            schema=SHAPE_SCHEMA,
+            max_tokens=3000,
+            effort="low",
+        )
+
     def critic_question(self, item: Item, claim: dict[str, Any]) -> dict[str, Any]:
+        if claim.get("reshape"):
+            return self.shape_question(item)
         img = self.photo(item)
         img.thumbnail((PHOTO_SIDE, PHOTO_SIDE), Image.Resampling.LANCZOS)
         around = ", ".join(claim.get("around") or []) or "?"
@@ -540,6 +661,9 @@ class Crops(CriticNight):
         there is nothing to cut to (or Opus is unsure, with ``sure``)."""
         if sure and data.get("confident") is not True:
             return None
+        shape = shape_of(data)
+        if sure and shape in NOT_RECTANGLE:
+            return None
         read = read_layers(data)
         if read is None:
             return None
@@ -556,14 +680,23 @@ class Crops(CriticNight):
             "work": shown,
             "plate": plate,
             "aspect": round(img.width / img.height, 5),
+            "shape": shape,
             "note": str(data.get("note") or "")[:300],
         }
 
     def confirmed(self, item: Item, claim: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+        shape = shape_of(data)
+        if claim.get("reshape"):
+            return {"reshape": True, "shape": shape} if shape else {}
+        if shape in NOT_RECTANGLE:
+            # No strips from the pixels either: the outline is the work's.
+            return {"around": list(claim.get("around") or []), "shape": shape, "whole": True}
         try:
             found = self.corners(item, data)
             if (not found or found["work"] is None) and claim.get("band"):
                 found = self.strips(item)
+                if found is not None:
+                    found["shape"] = shape
         except OSError as err:
             log.info("crops: the photograph of %s: %s", item.id, err)
             return {}
@@ -586,19 +719,57 @@ class Crops(CriticNight):
         }
 
     def write(self, item: Item, claim: dict[str, Any]) -> bool:
+        """The cut Opus confirmed put on; whether the work was cut. A work
+        that is no rectangle is kept whole, and so is one cut before its
+        outline was asked (``reshape``): given back whole."""
         stored = self.library.get(item.id)
-        if stored is None or not self.open_to_cut(stored):
+        if stored is None:
+            return False
+        if claim.get("reshape"):
+            if self.unshaped(stored):
+                self.reshape(stored, str(claim.get("shape") or ""))
+            return False
+        if not self.open_to_cut(stored):
             return False  # the owner's own cut: his
+        if claim.get("whole"):
+            self.reshape(stored, str(claim.get("shape") or ""))
+            return False
         cut = Cut(
             work=claim.get("work"),
             plate=claim.get("plate"),
             around=list(claim.get("around") or []),
             aspect=float(claim.get("aspect") or 0.0),
             picture=stored.picture_key(),
+            shape=str(claim.get("shape") or ""),
             at=_now(),
         )
         self.apply(stored, cut)
         return True
+
+    def reshape(self, item: Item, shape: str) -> Item:
+        """The work's outline kept (:attr:`Cut.shape`): a rectangle's cut
+        stays as it is; a work of any other outline is shown whole, the
+        model's corners it had kept aside for its study's boxes. Never the
+        owner's cut."""
+        cut = item.cut
+        if shape not in SHAPES or (cut is not None and cut.by == "owner"):
+            return item
+        if shape not in NOT_RECTANGLE:
+            if cut is None or cut.shape == shape:
+                return item
+            return self.library.update(item.id, cut=cut.model_copy(update={"shape": shape})) or item
+        current = cut is not None and not self.stale(item)
+        undone = cut.shown() if cut is not None and current else None
+        whole = Cut(
+            aspect=cut.aspect if cut is not None else 0.0,
+            picture=item.picture_key(),
+            shape=shape,
+            undone=undone,
+            undone_at=cut.at if cut is not None and undone is not None else "",
+            at=_now(),
+        )
+        log.info("crops: %s is %s, shown whole", item.id, shape)
+        return self.apply(item, whole)
 
     # -- putting a cut on -----------------------------------------------------------
 
@@ -691,6 +862,21 @@ class Crops(CriticNight):
                 self._running = {k: f for k, f in self._running.items() if not f.done()}
             return future
 
+    def reshape_now(self, item: Item) -> bool:
+        """A card opened on a work cut before its outline was asked: asked
+        now (:meth:`shape_question`). Whether the cut changed (given back
+        whole)."""
+        try:
+            answer = self.claude.ask(KIND, self.shape_question(item))
+        except Exception as err:  # no key, the limit, a picture gone: the night's again
+            log.info("crops: the outline of %s not asked now (%s)", item.id, err)
+            return False
+        shape = "" if answer.refused else shape_of(answer.data or {})
+        if not shape:
+            return False
+        before = item.cut_shown()
+        return self.reshape(item, shape).cut_shown() != before
+
     def before_page(self, item: Item) -> bool:
         """:meth:`now` before a page is written about the work (its study,
         the day's), waited for :data:`PAGE_WAIT` at most: a card that
@@ -707,6 +893,8 @@ class Crops(CriticNight):
         stored = self.library.get(item.id) or item
         if not self.config.enabled(self.switch) or not self.wanted(stored):
             return False
+        if self.unshaped(stored):
+            return self.reshape_now(stored)
         if not self.open_to_cut(stored):
             return False
         asked = self.asked().get(stored.id)
@@ -742,7 +930,7 @@ class Crops(CriticNight):
             "v": self.version,
             "at": _now()[:10],
             "p": stored.picture_key(),
-            "critic": bool(found),
+            "critic": bool(found and not found.get("whole")),
             "band": BAND,
         }
         state["asked"] = asked_all

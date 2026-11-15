@@ -189,6 +189,12 @@ def quads_close(
     )
 
 
+#: The outlines of a work (``Cut.shape``).
+SHAPES = ("rectangle", "round", "irregular")
+#: Outlines that are not cut to a rectangle.
+NOT_RECTANGLE = frozenset({"round", "irregular"})
+
+
 class Cut(BaseModel):
     """The work in its museum photograph, without what is around it (a
     frame, an easel, the board it lies on: ``imaging.cut``, ``ai.crops``;
@@ -221,6 +227,18 @@ class Cut(BaseModel):
     around: list[str] = Field(default_factory=list)
     #: When it was set (ISO): the app's pictures kept from before are had anew.
     at: str = ""
+    #: The outline of the work itself as the model saw it (:data:`SHAPES`):
+    #: "rectangle", "round" (a tondo, a miniature in its round frame, a
+    #: plate) or "irregular" (a cut-out, a shard, a shaped panel, an
+    #: object); "" when not asked (cuts set before 1.145.153). A work that
+    #: is not a rectangle is never cut by itself (Mateusz 2026-11-15: „Przy
+    #: obiektach o kształcie innym niż prostokąt … nie kadruj”).
+    shape: str = ""
+    #: The model's corners this cut took the place of when a work found not
+    #: to be a rectangle was given back whole, and when they were set: a
+    #: study's boxes drawn on the cut picture still find their place.
+    undone: list[tuple[float, float]] | None = None
+    undone_at: str = ""
 
     def without_twin(self) -> Cut:
         """Without a "plate" that is the work itself (Wyczółkowski's
@@ -232,6 +250,12 @@ class Cut(BaseModel):
             return self
         around = [a for a in self.around if a not in ("paper_margin", "page_text")]
         return self.model_copy(update={"plate": None, "paper": True, "around": around})
+
+    @property
+    def not_rectangle(self) -> bool:
+        """The work's outline is no rectangle (:attr:`shape`): never cut by
+        itself."""
+        return self.shape in NOT_RECTANGLE
 
     def shown(self) -> list[tuple[float, float]] | None:
         """The corners the picture is cut to, None for the whole photograph."""

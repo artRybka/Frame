@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.145.153
+
+- Dzieła, które nie są prostokątem (wycinanka po konturze rysunku,
+  odłamek, talerz, owal, koło, miniatura w okrągłej oprawie, łuk ołtarza,
+  przedmiot), nie są już kadrowane automatycznie: zostaje całe zdjęcie
+  muzeum. Model kadrujący mówi teraz, jaki kształt ma samo dzieło, i kadruje
+  tylko prostokąty; paski tła z pikseli też nie są wtedy wycinane.
+- Dzieła wykadrowane wcześniej są sprawdzane jeszcze raz (krótkie pytanie o
+  kształt, nocą przez Batch, a od razu przy otwarciu karty) i gdy nie są
+  prostokątem, wracają do całego zdjęcia. Twoje własne kadry zostają, a
+  kadrowania na ramce pokazują ten sam fragment co wcześniej. Detale
+  studium trafiają w to samo miejsce, kolory są liczone od nowa.
+
 ## 1.145.152
 
 - Na listach w Odkrywaj (sekcje, „Zobacz wszystkie”, strony motywów i
