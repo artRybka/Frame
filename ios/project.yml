@@ -41,7 +41,7 @@ targets:
         # "Zapisz w Zdjęciach" on a work's screen: add-only, Frame never reads the library.
         NSPhotoLibraryAddUsageDescription: Frame zapisuje wybrane dzieła w Twoich Zdjęciach.
         # Szukaj: the camera in the search field photographs a work to find ones that look like it.
-        NSCameraUsageDescription: Frame robi zdjęcie dzieła, żeby znaleźć w muzeach podobne.
+        NSCameraUsageDescription: Frame robi zdjęcie dzieła, żeby znaleźć w muzeach podobne albo dodać Twoje własne dzieło do kolekcji.
         NSBonjourServices:
           - _frame._tcp
         NSAppTransportSecurity:
