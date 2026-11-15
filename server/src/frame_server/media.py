@@ -9,9 +9,13 @@ takes a work that names none for an oil painting (Mateusz 2026-11-12
 technice dzieł”). What the work is made with is looked up here, when its
 card opens and at night, and kept as the work's ``medium``; only works
 whose ``medium`` is empty are looked up, and nothing a museum said is
-replaced:
+replaced. Nobody's answer is final for the picture it was asked with: a
+copy picked since (whose Commons page may say) is looked up again.
 
-1. the library's copy of the same work from a museum's own collection;
+1. the library's copy of the same work from a museum's own collection,
+   else the museum's record of the work it is found to be a copy of
+   (``Item.copy_of``; Wyspiański's „Macierzyństwo” on WikiArt is MNW's
+   „pastel, papier żeberkowy”, Mateusz 2026-11-15);
 2. the work's own record where the search left it out: WikiArt's work
    (``media``: "pastel, paper"), the V&A's object ("Tempera on panel"),
    Europeana's record (``dctermsMedium``, ``dcFormat``);
@@ -220,8 +224,9 @@ class Media:
         self._turns = threading.Semaphore(THREADS)
         self._lock = threading.Lock()
         self._looking: dict[str, Future[str]] = {}
-        #: The last look's answer ("" for none), and when, by item id.
-        self._known: OrderedDict[str, tuple[str, datetime]] = OrderedDict()
+        #: The last look's answer ("" for none), when, and the picture shown
+        #: then (``Item.picture_key``), by item id.
+        self._known: OrderedDict[str, tuple[str, datetime, str]] = OrderedDict()
 
     # -- what is known ---------------------------------------------------------
 
@@ -250,10 +255,12 @@ class Media:
                 at = datetime.fromisoformat(str(note.data.get("at")))
             except ValueError:
                 return None
-            known = (str(note.data.get("medium") or ""), at)
-        text, at = known
+            known = (str(note.data.get("medium") or ""), at, str(note.data.get("p") or ""))
+        text, at, picture = known
         if text:
             return "found", text
+        if picture != stored.picture_key():
+            return None  # asked with another picture: the copy's page may say
         if self.clock() - at < AGAIN:
             return "none", ""
         return None
@@ -312,7 +319,7 @@ class Media:
         except (httpx.HTTPError, ValueError, KeyError) as err:
             log.info("technique of %s: %s", item.id, err)
             with self._lock:  # in memory only: asked again in a few minutes
-                self._known[item.id] = ("", self.clock() - AGAIN + RETRY)
+                self._known[item.id] = ("", self.clock() - AGAIN + RETRY, self._picture(item))
         except Exception:
             log.exception("technique of %s", item.id)
         finally:
@@ -322,15 +329,33 @@ class Media:
 
     # -- looking -----------------------------------------------------------------
 
+    def _picture(self, item: Item) -> str:
+        """The picture the work is shown from now (``Item.picture_key``)."""
+        return (self.library.get(item.id) or item).picture_key()
+
     def _copy_says(self, item: Item) -> str:
-        """The technique a museum's own copy of the same work names."""
+        """The technique a museum's own copy of the same work names: one
+        in the library, else the record of the museum's work it was found
+        to be a copy of (``Item.copy_of``)."""
         works = self.library.works()
         index = works.group_of(item)
-        if index is None:
-            return ""
-        copies = [c for c in works.groups[index] if c.id != item.id and c.medium.strip()]
+        copies = (
+            [c for c in works.groups[index] if c.id != item.id and c.medium.strip()]
+            if index is not None
+            else []
+        )
         museums = [c for c in copies if c.source in COLLECTIONS]
-        return _clean((museums or copies)[0].medium) if museums or copies else ""
+        if museums or copies:
+            return _clean((museums or copies)[0].medium)
+        root = (self.library.get(item.id) or item).copy_of
+        if not root or root.partition(":")[0] not in COLLECTIONS:
+            return ""
+        try:
+            record = self.importer.remote(root)
+        except httpx.HTTPError as err:
+            log.info("technique of %s from %s: %s", item.id, root, err)
+            return ""
+        return _clean(record.medium) if record is not None else ""
 
     def _record_says(self, item: Item, http: httpx.Client) -> str:
         """The technique the work's own record names (:data:`RECORDS`)."""
@@ -375,7 +400,7 @@ class Media:
 
     def _remember(self, item: Item, text: str, origin: str) -> None:
         with self._lock:
-            self._known[item.id] = (text, self.clock())
+            self._known[item.id] = (text, self.clock(), self._picture(item))
             self._known.move_to_end(item.id)
             while len(self._known) > REMEMBERED:
                 self._known.popitem(last=False)
@@ -391,6 +416,11 @@ class Media:
                 kind=KIND,
                 model="",
                 prompt_version=VERSION,
-                data={"medium": text, "from": origin, "at": self.clock().isoformat()},
+                data={
+                    "medium": text,
+                    "from": origin,
+                    "at": self.clock().isoformat(),
+                    "p": self._picture(item),
+                },
             )
         )

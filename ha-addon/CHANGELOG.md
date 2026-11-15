@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.145.145
+
+- Dzieło z WikiArt nie dostaje już fałszywego znacznika niskiej
+  rozdzielczości: WikiArt podaje czasem rozmiar małej wersji (433 × 600
+  przy pliku 1441 × 1999), więc liczy się rozmiar pobranego zdjęcia. Karta
+  dzieła z wybraną kopią i kafelki w Szukaj liczą znacznik z kopii, nie ze
+  zdjęcia muzeum (Wyspiański, „Macierzyństwo”: „600 px” przy kopii
+  1920 × 2548).
+- Automatyczne kadrowanie wycina ramę także z dzieła, któremu ustawiono
+  kadrowanie na ramce (np. zbliżenie twarzy): to kadrowanie przenosi się na
+  wycięty obraz i pokazuje ten sam fragment. Dzieła, którym rama została z
+  tego powodu, kadrują się przy najbliższym otwarciu karty.
+- Technika dzieła z WikiArt bierze się też z rekordu muzeum, którego jest
+  kopią (MNW: „pastel, papier żeberkowy”), więc pastel nie dostaje paska
+  farby olejnej, gdy WikiArt nie odpowiada. Po wyborze kopii technika jest
+  szukana od nowa na jej stronie w Commons.
+
 ## 1.145.144
 
 - Parawan malowany tuszem i kolorami na złoconym papierze (Sakai Hōitsu,

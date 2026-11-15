@@ -548,3 +548,49 @@ def test_a_sheets_side_taken_for_its_plates_gets_it_back(service: FrameService) 
     assert stored is not None and stored.cut is not None and stored.cut.work is not None
     assert abs(stored.cut.work[1][0] - r) < 0.004
     assert service.crops.sheets_out() == 0  # once
+
+
+# -- the owner's framing ------------------------------------------------------------------
+
+
+def test_the_owners_framing_moves_onto_the_cut_picture(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    # Wyspiański's „Macierzyństwo” (2026-11-15): a copy in a thin wooden
+    # frame, a close-up of the face saved for the portrait frame; Opus
+    # found the frame's opening, and the framing kept the cut from being
+    # written. The card asks again, and the close-up shows the same face.
+    from frame_server.ai.crops import framing_within
+    from frame_server.imaging.layout import Crop
+    from frame_server.library.models import Framing
+
+    face = Crop(x=0.404, y=0.321, zoom=3.915)
+    _work(service, "wikiart:1", pooled=True, framing={"portrait": Framing(detail=face)})
+    crops = service.crops
+    state = crops.state()
+    state["asked"] = {"wikiart:1": {"v": 2, "at": "2026-11-15", "p": "", "critic": True, "band": 2}}
+    crops._save(state)
+    answers = iter([{"surround": ["frame"]}, CORNERS])
+    fake.messages.create = lambda **params: (fake.asked.append(params), _message(next(answers)))[1]
+    assert crops.now(service.library.get("wikiart:1"))  # type: ignore[arg-type]
+    assert [p["model"] for p in fake.asked] == [HAIKU, OPUS]
+    item = service.library.get("wikiart:1")
+    assert item is not None and item.cut is not None
+    shown = item.cut_shown()
+    assert shown is not None
+    detail = item.framing["portrait"].detail
+    assert detail is not None
+    x0, y0 = shown[0]
+    x1, y1 = shown[2]
+    # The same spot of the photograph, now in the cut picture's terms.
+    assert abs(x0 + detail.x * (x1 - x0) - face.x) < 0.01
+    assert abs(y0 + detail.y * (y1 - y0) - face.y) < 0.01
+    assert 1.0 <= detail.zoom < face.zoom
+    assert not crops.now(item)  # cut: not asked again
+    # A framing on a picture filling the cut stays whole.
+    whole = framing_within(
+        {"landscape": Framing(fill=Crop())}, [(0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9)]
+    )
+    fill = whole["landscape"].fill
+    assert fill is not None and (fill.x, fill.y, fill.zoom) == (0.5, 0.5, 1.0)

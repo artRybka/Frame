@@ -827,3 +827,17 @@ def test_a_copy_deleted_as_needless_is_not_taken_in_again(service, monkeypatch) 
 
     again = Library(service.library.path)
     assert again.kept_for("wmc:2") is not None
+
+
+def test_a_search_tile_marks_the_librarys_picture(service) -> None:
+    # Wyspiański's „Macierzyństwo” (2026-11-15): WikiArt's search says
+    # 433 × 600; the library's work shows a copy of 1920 × 2548.
+    found = _work(
+        "wikiart", 1, title="Motherhood", artist="Stanisław Wyspiański", width=433, height=600
+    )
+    assert remote_items(service, [found], copies=False)[0].low_side == 600
+    copy = SharperCopy(
+        url="u", item_id="wmc:93560153", source="wmc", width=1920, height=2548, chosen=True
+    )
+    service.library.upsert(found.model_copy(update={"sharper": copy}))
+    assert remote_items(service, [found], copies=False)[0].low_side == 0

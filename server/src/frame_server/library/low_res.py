@@ -2,11 +2,13 @@
 Mateusz 2026-11-12): a mark after the title on their tiles and on their
 card, so a playlist's weak pictures are seen before the frame shows them.
 
-Only a size that is known counts (``images.said_side``: a sharper copy's,
-or one its source says; else the original's as it was downloaded,
-``ImageCache.known_size``). A thumbnail's size is never one (the Met's
-600 px): a work of a source that says none has no mark until its original
-is here, and the works of playlists and Ulubione have theirs.
+Only a size that is known counts: a sharper copy's; else the original's
+as it was downloaded (``ImageCache.known_size``), which wins over the one
+its source says (``images.said_side``): WikiArt said 433 × 600 of
+Wyspiański's „Macierzyństwo”, whose file is 1441 × 1999, and the card
+marked it „600 px” (Mateusz 2026-11-15). A thumbnail's size is never one
+(the Met's 600 px): a work of a source that says none has no mark until
+its original is here, and the works of playlists and Ulubione have theirs.
 
 How long a picture is is told here once (:func:`known_sizes`:
 ``ImageCache.long_side``) for every list of works to mark them without
@@ -45,11 +47,13 @@ def low_side(item: Item, size: tuple[int, int] | None = None) -> int:
     read it already."""
     if item.kind != ItemKind.ARTWORK or item.part_of or item.source in OWN_SOURCES:
         return 0
-    side = said_side(item)
+    side = said_side(item) if item.sharper is not None else None
     if side is None and size is not None and min(size) > 0:
         side = max(size)
     if side is None and _sides is not None:
         side = _sides(item)
+    if side is None:
+        side = said_side(item)
     shown = item.cut_shown()
     if side is not None and shown is not None and item.cut is not None:
         # Sizes are the museum photograph's; the work cut out of it is less.

@@ -1361,8 +1361,18 @@ struct ItemDetailView: View {
     }
 
     /// The picture's long side when it is small for the frame (`LowRes`).
+    /// The tile's word only when it showed the picture the card shows: a
+    /// tile from before a copy was picked, or a search's (the museum's own
+    /// picture), said „600 px” of Wyspiański's „Macierzyństwo” shown from
+    /// a copy of 1920 × 2548 (Mateusz 2026-11-15); the card asks the server
+    /// only of a work with no copy (`sharpen`), so the copy's size counts.
     private var lowSide: Int? {
-        lowKnown ?? ItemPeeks.tiles[itemID]?.summary.lowSide
+        if let lowKnown { return lowKnown }
+        let tile = ItemPeeks.tiles[itemID]?.summary
+        guard let item else { return tile?.lowSide }
+        if let tile, tile.picture == nil || tile.picture == (item.sharper?.itemId ?? "") { return tile.lowSide }
+        if let copy = item.sharper { return copy.isRestored ? 0 : LowRes.side(max(copy.width, copy.height)) }
+        return nil  // the own picture: the server tells (`sharpen`)
     }
 
     /// Where the picture is from and how large it is, and whether that is
