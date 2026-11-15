@@ -11,6 +11,15 @@ struct AiReviewView: View {
     @State private var failed = false
     /// Works whose answer the server is still taking.
     @State private var busy: Set<String> = []
+    /// The picture open on the whole screen (tap on a thumbnail; Mateusz
+    /// 2026-11-15 „Z miniatury nic nie widzę").
+    @State private var opened: Item?
+    /// The thumbnail whose work is being fetched for the viewer.
+    @State private var opening: String?
+    /// The work's card, opened from its title.
+    @State private var card: String?
+    @Namespace private var zoomSpace
+    @MainActor private static var openedOnce = false
 
     var body: some View {
         ScrollView {
@@ -57,6 +66,13 @@ struct AiReviewView: View {
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await load() }
         .task { await load() }
+        .fullScreenCover(item: $opened) { item in
+            OriginalViewer(item: item)
+                .navigationTransition(.zoom(sourceID: item.id, in: zoomSpace))
+        }
+        .navigationDestination(item: $card) { id in
+            ItemDetailView(itemID: id)
+        }
     }
 
     private var header: some View {
@@ -85,20 +101,26 @@ struct AiReviewView: View {
 
     private func row(_ entry: AiReview.Entry) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            ArtImage(ref: .thumb(entry.item.id), placeholder: entry.item.placeholderColor, maxPixel: 240)
-                .frame(width: 64, height: 64)
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            thumbnail(entry)
             VStack(alignment: .leading, spacing: 4) {
-                Text(entry.item.title.isEmpty ? "Bez tytułu" : entry.item.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Theme.ink)
-                    .lineLimit(2)
-                if !entry.item.artist.isEmpty {
-                    Text(Names.artist(entry.item.artist))
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
-                        .lineLimit(1)
+                Button { card = entry.item.id } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\(Text(entry.item.title.isEmpty ? "Bez tytułu" : entry.item.title)) \(Text(Image(systemName: "chevron.right")).font(.caption.weight(.semibold)).foregroundStyle(Theme.inkSoft))")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Theme.ink)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        if !entry.item.artist.isEmpty {
+                            Text(Names.artist(entry.item.artist))
+                                .font(.caption)
+                                .foregroundStyle(Theme.inkSoft)
+                                .lineLimit(1)
+                        }
+                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityHint(Text("Otwiera kartę dzieła"))
                 if !entry.seenAsName.isEmpty {
                     Text(entry.seenAsName)
                         .font(.caption.weight(.medium))
@@ -134,10 +156,60 @@ struct AiReviewView: View {
         .padding(.vertical, 4)
     }
 
+    /// The picture, bigger than before and with a magnifier: a tap opens it
+    /// on the whole screen, to zoom into (a ruler, a colour chart, a cut
+    /// edge are seen there, not on a thumbnail).
+    private func thumbnail(_ entry: AiReview.Entry) -> some View {
+        Button { open(entry.item.id) } label: {
+            ArtImage(ref: .thumb(entry.item.id), placeholder: entry.item.placeholderColor, maxPixel: 360)
+                .frame(width: 88, height: 88)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .overlay(alignment: .bottomTrailing) {
+                    Group {
+                        if opening == entry.item.id {
+                            ProgressView().controlSize(.mini).tint(.white)
+                        } else {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                    .frame(width: 22, height: 22)
+                    .background(.black.opacity(0.45), in: Circle())
+                    .padding(4)
+                }
+                .matchedTransitionSource(id: entry.item.id, in: zoomSpace) {
+                    $0.clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(entry.item.title.isEmpty ? "Obraz" : entry.item.title))
+        .accessibilityHint(Text("Otwiera obraz na całym ekranie"))
+    }
+
+    private func open(_ id: String) {
+        guard opening == nil else { return }
+        opening = id
+        Task {
+            defer { opening = nil }
+            do {
+                opened = try await model.backend.item(id: id)
+            } catch {
+                model.notices.warn("Nie udało się otworzyć obrazu", error.localizedDescription)
+            }
+        }
+    }
+
     private func load() async {
         do {
             review = try await model.backend.aiReview()
             failed = false
+            // Screenshots: `-reviewOpen YES` opens the first picture by itself.
+            if UserDefaults.standard.bool(forKey: "reviewOpen"), !Self.openedOnce,
+               let first = (review?.findings.first ?? review?.setAside.first) {
+                Self.openedOnce = true
+                open(first.item.id)
+            }
         } catch {
             if review == nil { failed = true }
         }

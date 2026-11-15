@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.164
+
+- „Do sprawdzenia”: miniatury są większe, a dotknięcie miniatury otwiera
+  obraz na całym ekranie, z przybliżaniem palcami (widać linijkę, pasek
+  kolorów, uciętą krawędź). Dotknięcie tytułu otwiera kartę dzieła, gdzie
+  są „Popraw kadr”, „Inne kopie” i „Ukryj”.
+
 ## 1.145.161
 
 - Resztka miesiąca Claude idzie na to, co wybierzesz, w Twojej kolejności:
