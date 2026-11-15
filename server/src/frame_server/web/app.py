@@ -88,6 +88,7 @@ log = logging.getLogger(__name__)
 #: How long a working thread keeps its turn, in seconds (Python's own: 0.005).
 SWITCH_INTERVAL = 0.001
 
+
 def _day_quiet() -> bool:
     """As the night's quiet, by day: waits for the app to be left alone
     (10 minutes at most; else the reading stops until the night)."""
@@ -97,9 +98,11 @@ def _day_quiet() -> bool:
         time.sleep(night.QUIET_LOOK)
     return False
 
+
 def _day_pause(seconds: float) -> bool:
     time.sleep(seconds)
     return True
+
 
 # The panel reports download progress (and failures) here, at the root of the
 # content server, whatever path the manifest came from.
@@ -115,11 +118,13 @@ APP_IN_USE = 120.0
 LOOKS_DELAY = 180.0
 SEARCHED_DELAY = 90.0
 
+
 def _photo_preset(data: bytes) -> str:
     try:
         return preset_for_photo(load_image(data))
     except OSError:
         return "photo"  # not an image: prepare() says so
+
 
 async def poll_status(service: FrameService) -> None:
     """Refresh the panel status now and then. On battery only rarely: every
@@ -137,6 +142,7 @@ async def poll_status(service: FrameService) -> None:
                 await service.status.refresh()
         await asyncio.sleep(max(minutes, 1) * 60)
 
+
 async def sync_albums_periodically(service: FrameService, minutes: int = 30) -> None:
     await asyncio.sleep(20)
     while True:
@@ -145,10 +151,12 @@ async def sync_albums_periodically(service: FrameService, minutes: int = 30) -> 
         await run_in_threadpool(service.albums.sync_all)
         await asyncio.sleep(minutes * 60)
 
+
 # The Frame app's reports: its probe is a few KB of JSON.
 REPORT_BYTES = 16000
 # A screenshot of the panel, JPEG.
 CAPTURE_BYTES = 15 * 1024 * 1024
+
 
 def tidy_catalogue(service: FrameService) -> None:
     """A work once, from the most reliable source; Suggestions from the
@@ -156,6 +164,7 @@ def tidy_catalogue(service: FrameService) -> None:
     service.player.drop_spare_copies()
     if service.settings.seed_library:
         service.player.top_up()
+
 
 def after_start(service: FrameService) -> None:
     """The start's heavy work, one piece after another and in the order
@@ -191,6 +200,7 @@ def after_start(service: FrameService) -> None:
         else:
             log.info("start: %s in %.1f s", name, time.monotonic() - started)
     log.info("start: all of it in %.1f s", time.monotonic() - whole)
+
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.load()
