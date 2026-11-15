@@ -93,6 +93,16 @@ struct ItemDetailView: View {
     /// The work's details, or the whole work on a detail's card
     /// (`DetailStrip`); nil until asked, none for most works.
     @State private var details: DetailsView?
+    /// What the colour recovery preview may show of the picture
+    /// (`ColourRecovery`), once the server has read it; nil: not offered.
+    @State private var recovery: RecoveryView?
+    /// The preview is on the picture: the work today left of the divider,
+    /// the simulation right of it.
+    @State private var recovering = false
+    @State private var recoveryStrength = 0.0
+    @State private var recoverySplit = 0.5
+    /// The simulation as drawn last; nil while the first is made.
+    @State private var recovered: UIImage?
 
     enum Sent { case done, failed }
 
@@ -184,7 +194,9 @@ struct ItemDetailView: View {
                     bringCopy: { bringingCopy = true },
                     restore: canRestore(item) ? { Task { await restoreByModel() } } : nil,
                     correctCut: canCut(item) && model.isOwner ? { correctingCut = true } : nil,
-                    undoCut: canCut(item) && model.isOwner && item.isCropped ? { Task { await undoCut() } } : nil
+                    undoCut: canCut(item) && model.isOwner && item.isCropped ? { Task { await undoCut() } } : nil,
+                    recover: recoveryKind != nil ? { toggleRecovery() } : nil,
+                    recoveryKind: recoveryKind ?? .varnish, recovering: recovering
                 )
             }
         }
@@ -205,6 +217,11 @@ struct ItemDetailView: View {
         }
         .task(id: described) { await findHolder() }
         .task(id: described) { await findMedium() }
+        .task(id: recoveryKey) { await findRecovery() }
+        .onChange(of: view) { _, now in
+            // The simulation is of the original, not of the frame's preview.
+            if now == .frame { recovering = false }
+        }
         .task(id: view == .frame ? draftKey : "") { await loadFraming() }
         .onChange(of: item) { _, item in
             if let item { ItemPeeks.keep(item) }
@@ -1006,6 +1023,134 @@ struct ItemDetailView: View {
         .font(.footnote)
     }
 
+    // MARK: Colour recovery
+
+    private var recoveryKind: ColourRecovery.Kind? { ColourRecovery.kind(recovery) }
+
+    /// The picture, and the way the work is made, that the preview is
+    /// asked for: "" while the card is not here, or for what has nothing
+    /// to recover (photographs, posters, objects).
+    private var recoveryKey: String {
+        guard let item, described == itemID, item.kind == .artwork,
+              let made = ColourRecovery.made(PaintStyle.of(item))
+        else { return "" }
+        return "\(item.id)|\(item.pictureVersion)|\(made)"
+    }
+
+    /// Asks the server what the preview may show, a moment after the card's
+    /// own questions (nothing on the card waits for it). Another picture,
+    /// or a technique found since, starts over.
+    private func findRecovery() async {
+        let key = recoveryKey
+        recovering = false
+        recovered = nil
+        guard !key.isEmpty, let item, let made = ColourRecovery.made(PaintStyle.of(item)) else {
+            recovery = nil
+            return
+        }
+        if let known = ColourRecovery.cached(key) {
+            recovery = known
+            return
+        }
+        recovery = nil
+        try? await Task.sleep(for: .milliseconds(600))
+        guard !Task.isCancelled, let told = try? await model.backend.recovery(itemID: item.id, made: made),
+              !Task.isCancelled, key == recoveryKey
+        else { return }
+        ColourRecovery.keep(told, for: key)
+        recovery = told
+    }
+
+    /// The menu's entry: the preview comes onto the picture, at the
+    /// strength the calculation proposes, or leaves it.
+    private func toggleRecovery() {
+        guard let recovery else { return }
+        if recovering {
+            withAnimation(.easeInOut(duration: 0.3)) { recovering = false }
+            return
+        }
+        recoveryStrength = recovery.strength
+        recoverySplit = 0.5
+        recovered = nil
+        withAnimation(.easeInOut(duration: 0.3)) {
+            view = .original
+            recovering = true
+        }
+    }
+
+    private func loadedPicture(_ ref: ImageRef) async -> UIImage? {
+        guard let request = model.backend.request(for: ref) else { return nil }
+        return try? await ImageLoader.shared.image(for: request, maxPixel: 1800, priority: .high)
+    }
+
+    /// Draws the simulation while the preview is on. Varnish: from the
+    /// picture the card shows, again whenever the strength has moved (one
+    /// at a time, always the latest: a drag never waits in a queue). Paper:
+    /// the server's de-yellowed sheet.
+    private func drawRecovery(_ item: Item, _ told: RecoveryView) async {
+        guard let kind = ColourRecovery.kind(told) else { return }
+        if kind == .paper {
+            let made = ColourRecovery.made(PaintStyle.of(item)) ?? "paper"
+            let sheet = await loadedPicture(
+                .recovered(item.id, made: made, version: "\(told.version)|\(item.pictureVersion)")
+            )
+            if Task.isCancelled { return }
+            if let sheet {
+                withAnimation(.easeOut(duration: 0.3)) { recovered = sheet }
+            } else {
+                withAnimation(.easeInOut(duration: 0.3)) { recovering = false }
+                model.notices.info("Nie udało się odżółcić arkusza", "Spróbuj jeszcze raz za chwilę.")
+            }
+            return
+        }
+        var shown = await loadedPicture(item.originalRef)
+        if shown == nil { shown = await loadedPicture(.thumb(item.id)) }
+        guard let source = shown else {
+            if !Task.isCancelled {
+                withAnimation(.easeInOut(duration: 0.3)) { recovering = false }
+            }
+            return
+        }
+        var drawn: Double?
+        while !Task.isCancelled {
+            let wanted = ColourRecovery.snapped(recoveryStrength)
+            if drawn == wanted {
+                try? await Task.sleep(for: .milliseconds(16))
+                continue
+            }
+            let made = await ColourRecovery.image(source, view: told, strength: wanted)
+            if Task.isCancelled { return }
+            if let made {
+                if recovered == nil {
+                    withAnimation(.easeOut(duration: 0.3)) { recovered = made }
+                } else {
+                    recovered = made
+                }
+            }
+            drawn = wanted
+        }
+    }
+
+    /// Under the picture while the preview is on: the strength (varnish),
+    /// what the preview is, and the way back.
+    @ViewBuilder
+    private func recoveryNote(_ kind: ColourRecovery.Kind, _ told: RecoveryView) -> some View {
+        VStack(spacing: 10) {
+            if kind == .varnish {
+                RecoveryStrength(strength: $recoveryStrength, proposed: told.strength, most: told.most)
+                    .frame(maxWidth: 320)
+            }
+            Text("\(Image(systemName: "sparkles")) \(ColourRecovery.note(kind))")
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Wróć do oryginału") { toggleRecovery() }
+                .font(.footnote.weight(.semibold))
+        }
+        .transition(.opacity)
+    }
+
     // MARK: Sections
 
     private func picture(_ item: Item) -> some View {
@@ -1024,17 +1169,26 @@ struct ItemDetailView: View {
                         .aspectRatio(CGFloat(aspect(item)), contentMode: .fit)
                         .layoutProbe("box")
                         .overlay {
+                            // (Not brightened under the colour recovery
+                            // preview: its two sides are compared as they are.)
                             ArtImage(
                                 ref: item.originalRef, fallback: .thumb(item.id), placeholder: .clear,
-                                maxPixel: 1800, contentMode: .fit, priority: .high, crossfade: true, brighten: true
+                                maxPixel: 1800, contentMode: .fit, priority: .high, crossfade: true, brighten: !recovering
                             )
                                 .background {
                                     ArtImage(
                                         ref: ItemPeeks.tiles[item.id]?.thumb ?? .thumb(item.id),
                                         placeholder: item.placeholderColor, maxPixel: 700,
-                                        contentMode: .fit, priority: .high, brighten: true
+                                        contentMode: .fit, priority: .high, brighten: !recovering
                                     )
                                 }
+                        }
+                        .overlay {
+                            if recovering, let kind = recoveryKind, let recovery {
+                                RecoveryWipe(after: recovered, kind: kind, split: $recoverySplit)
+                                    .task(id: recoveryKey) { await drawRecovery(item, recovery) }
+                                    .transition(.opacity)
+                            }
                         }
                         .contentShape(Rectangle())
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -1063,6 +1217,8 @@ struct ItemDetailView: View {
                     .foregroundStyle(Theme.inkSoft)
                     .multilineTextAlignment(.center)
                     .contentTransition(.opacity)
+            } else if recovering, let kind = recoveryKind, let recovery {
+                recoveryNote(kind, recovery)
             }
         }
         .padding(.top, 8)

@@ -28,6 +28,7 @@ from ..ai.museum_words import leftovers, museum_labels
 from ..ai.pl_text import KIND as PL_TEXT
 from ..copies import CopyLine, Spot
 from ..fsutil import own_files
+from ..imaging import recovery
 from ..imaging.cut import valid
 from ..imaging.grids import GRIDS, MIN_PHOTOS, choose, plan_multi
 from ..imaging.interest import InterestMap, interest_of
@@ -61,6 +62,7 @@ from ..library.search import fill as fill_by_search
 from ..library.seed import PACKS, import_queries, pack
 from ..library.verdict import Place, against
 from ..library.viewer import viewer_id
+from ..library.vocabulary import is_photograph
 from ..library.zoom import zooms
 from ..player import hold_from
 from ..schedule import FrameSettings
@@ -961,6 +963,125 @@ async def item_image(item_id: str, svc: Svc) -> FileResponse:
     # Without the original, its thumbnail: asked for again next time.
     cache = "max-age=86400" if original else "no-store"
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": cache})
+
+
+class RecoveryView(BaseModel):
+    """What the card's colour recovery preview may show of a work
+    (:mod:`frame_server.imaging.recovery`). ``kind``: "varnish" (the app
+    does the sum itself: red, green and blue in linear light times
+    ``exp(d * alpha)``, then times ``top / tops(d)`` where that is under
+    one; ``tops`` at the strengths ``steps``), "paper" (the de-yellowed
+    sheet is at ``…/recovery/image``) or "none" (nothing to offer)."""
+
+    kind: Literal["varnish", "paper", "none"]
+    #: The strength the slider opens at, and the most it goes to.
+    strength: float = 0.0
+    most: float = recovery.D_MAX
+    alpha: tuple[float, float, float] = recovery.ALPHA
+    top: float = recovery.TOP
+    steps: list[float] = []
+    tops: list[float] = []
+    #: Part of the address the app keeps a de-yellowed sheet by.
+    version: int = recovery.VERSION
+
+
+#: How the app says a work is made (its ``PaintStyle``): in oil or tempera,
+#: on paper in a medium that lets the sheet through, or one that covers it.
+Made = Literal["oil", "paper", "opaque"]
+#: Oils painted after this are not offered the varnish simulation: their
+#: varnish, where they have one, has not had the time to yellow.
+VARNISH_UNTIL = 1950
+RECOVERY_CACHE_FILES = 60
+_recovery_locks: dict[str, asyncio.Lock] = {}
+
+
+def _read_small(path: Path, long: int = 640) -> Image.Image:
+    """The picture at ``path``, decoded no larger than it is read at."""
+    with Image.open(path) as kept:
+        kept.draft("RGB", (long, long))
+        return kept.convert("RGB")
+
+
+@router.get("/library/items/{item_id:item}/recovery", response_model=RecoveryView)
+async def item_recovery(item_id: str, made: Made, svc: Svc) -> RecoveryView:
+    """Whether the card may offer a simulation of the work's lost colours,
+    and with what: read from the picture alone, no model asked (Mateusz
+    2026-11-15: „Zbudować bez modelu”). A preview only: nothing of the
+    work, its colours for the search or what the frame shows changes."""
+    item = await _work(svc, item_id, threads=SHOWN_THREADS)
+    if is_photograph(item) or (
+        made == "oil" and item.year is not None and item.year > VARNISH_UNTIL
+    ):
+        return RecoveryView(kind="none")
+    try:
+        path, _ = await to_thread.run_sync(svc.images.picture, item, True, limiter=SHOWN_THREADS)
+    except Gone as err:
+        raise HTTPException(410, f"no picture anywhere: {err}") from err
+    except (httpx.HTTPError, OSError) as err:
+        raise HTTPException(502, f"image unavailable: {err}") from err
+
+    def read() -> RecoveryView:
+        picture = _read_small(path)
+        if made == "oil":
+            found = recovery.read_varnish(picture)
+            return RecoveryView(
+                kind="varnish",
+                strength=found.strength,
+                steps=list(recovery.STEPS),
+                tops=list(found.tops),
+            )
+        state = recovery.sheet_state(recovery.read_sheet(picture), item.medium)
+        return RecoveryView(kind="paper" if state == "yellowed" else "none")
+
+    try:
+        return await to_thread.run_sync(read, limiter=SHOWN_THREADS)
+    except OSError as err:
+        raise HTTPException(502, f"image unavailable: {err}") from err
+
+
+@router.get("/library/items/{item_id:item}/recovery/image")
+async def item_recovery_image(item_id: str, svc: Svc, made: Made = "paper") -> Response:
+    """The work on paper with its sheet as a well-kept one, for the card's
+    preview (``made`` "opaque": pastel and gouache, only where the sheet
+    shows). Kept beside the previews by the picture it was made from."""
+    item = await _work(svc, item_id, threads=SHOWN_THREADS)
+    try:
+        source, original = await to_thread.run_sync(
+            svc.images.picture, item, True, limiter=SHOWN_THREADS
+        )
+    except Gone as err:
+        raise HTTPException(410, f"no picture anywhere: {err}") from err
+    except (httpx.HTTPError, OSError) as err:
+        raise HTTPException(502, f"image unavailable: {err}") from err
+    opaque = made == "opaque"
+
+    def build() -> bytes:
+        with Image.open(source) as kept:
+            sheet = recovery.deyellow(kept, opaque=opaque)
+        return encode_image(sheet, "jpeg", quality=90)
+
+    try:
+        if not original:
+            # From a thumbnail: not kept, the original may come.
+            data = await to_thread.run_sync(build, limiter=SHOWN_THREADS)
+            return Response(data, media_type="image/jpeg", headers=NO_STORE)
+        # By the picture's size, not its date: a picture is dated anew
+        # every time it is used (pruned last).
+        key = hashlib.sha1(
+            f"{recovery.VERSION}{opaque}{source.name}{source.stat().st_size}".encode(),
+            usedforsecurity=False,
+        ).hexdigest()[:12]
+        path = svc.images.thumbs.parent / "recovery" / f"{item.file_stem}-{key}.jpg"
+        if not path.is_file():
+            async with _recovery_locks.setdefault(path.name, asyncio.Lock()):
+                if not path.is_file():
+                    data = await to_thread.run_sync(build, limiter=SHOWN_THREADS)
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(data)
+                    _prune(path.parent, RECOVERY_CACHE_FILES)
+    except OSError as err:
+        raise HTTPException(502, f"image unavailable: {err}") from err
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
 
 
 _preview_locks: dict[str, asyncio.Lock] = {}

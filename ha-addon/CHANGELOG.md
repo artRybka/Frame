@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.145.152
+
+- Podgląd odzyskania barw na karcie dzieła (menu „…”), sam rachunek, bez
+  modelu i bez kosztu. Obrazy olejne i tempery: „Symulacja odzyskania barw”
+  pokazuje dzieło bez pożółkłego werniksu; na obrazie jest suwak (po lewej
+  „Dziś”, po prawej „Bez werniksu”), pod nim pasek siły z kreską propozycji
+  wyliczonej z bieli obrazu i z tego, ile zdejmowały prawdziwe konserwacje.
+  Rysunki, grafiki, akwarele i pastele na pożółkłym arkuszu: „Odżółć papier”
+  pokazuje arkusz jak dobrze zachowany; kreska i barwy zostają z oryginału,
+  papier barwiony celowo nie dostaje propozycji. To tylko podgląd: nie
+  zmienia dzieła, paska barw, wyszukiwania ani obrazu na ramce.
+
 ## 1.145.151
 
 - Pastel ma własny pasek barw zamiast kreskowania kredki: każda barwa jest
