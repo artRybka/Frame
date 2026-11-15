@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.141
+
+- Rysunek z marginesem nie traci już marginesu z jednej strony (Beksiński,
+  „Kobieta niosąca trumnę…”, MNK: „z marginesem” obcinało prawą stronę do
+  samego rysunku). Gdy brzeg kartki leży na brzegu rysunku, a dalej na
+  zewnątrz widać pasek tła, brzeg kartki jest przesuwany tam, gdzie pasek
+  się kończy. Zapisane już tak kadry serwer poprawia raz w nocy.
+
 ## 1.145.140
 
 - Wąskie paski tła są odcinane także wtedy, gdy Opus nie jest pewien brzegu

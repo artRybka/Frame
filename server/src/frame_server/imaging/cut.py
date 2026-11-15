@@ -248,24 +248,22 @@ STRIP_DEEPEST = 0.08
 STRIP_LINE = 0.15
 
 
-def backdrop_quad(img: Image.Image) -> Quad | None:
-    """The picture without the thin strips of backdrop along its sides
-    (:func:`thin_backdrop`), found from the pixels alone: where Opus is
-    unsure of a sheet's edge that nearly meets the photograph's (Munch's
-    Evening, Melancholy I, Cleveland, 2026-11-15). Each side with a plain
-    strip unlike what lies inside it is cut where the strip's colour ends;
-    a skewed sheet loses a sliver of its edge. None without such strips."""
+def strip_depths(img: Image.Image) -> tuple[float, float, float, float]:
+    """How deep a thin strip of backdrop runs in from each side (top,
+    bottom, left, right; shares of the side across it), 0 where there is
+    none: a plain strip along the side, unlike what lies inside it, ending
+    within :data:`STRIP_DEEPEST`."""
     small = img.convert("RGB")
     small.thumbnail((1000, 1000), Image.Resampling.BILINEAR)
     a = np.asarray(small, dtype=np.float32)
     h, w = a.shape[:2]
     if min(h, w) < 60:
-        return None
+        return (0.0, 0.0, 0.0, 0.0)
     k = 2
     d = max(6, round(BACKDROP_DEPTH * min(h, w)))
     # Each side as lines from the outside in: rows from the top, ...
     sides = (a, a[::-1], a.transpose(1, 0, 2), a.transpose(1, 0, 2)[::-1])
-    depths: list[int] = []
+    depths: list[float] = []
     for lines in sides:
         strip = lines[1 : 1 + k, k:-k].reshape(-1, 3)
         colour = np.median(strip, axis=0)
@@ -273,17 +271,57 @@ def backdrop_quad(img: Image.Image) -> Quad | None:
         within = lines[d : d + k, d:-d].reshape(-1, 3)
         unlike = float((np.abs(within - colour).max(axis=1) >= 24).mean())
         if plain < 0.6 or unlike < 0.6:
-            depths.append(0)
+            depths.append(0.0)
             continue
         deepest = round(STRIP_DEEPEST * len(lines))
         near = (np.abs(lines[:deepest] - colour).max(axis=2) < 16).mean(axis=1)
         below = np.flatnonzero(near < STRIP_LINE)
         # A strip that does not end so near the edge is no thin strip (a
         # board or a colour chart along one side): that side stays.
-        depths.append(int(below[0]) if below.size else 0)
-    if sum(1 for n in depths if n >= 2) < BACKDROP_SIDES:
-        return None
+        depths.append(int(below[0]) / len(lines) if below.size and below[0] >= 2 else 0.0)
     top, bottom, left, right = depths
-    x0, x1 = left / w, 1 - right / w
-    y0, y1 = top / h, 1 - bottom / h
+    return (top, bottom, left, right)
+
+
+def backdrop_quad(img: Image.Image) -> Quad | None:
+    """The picture without the thin strips of backdrop along its sides
+    (:func:`strip_depths`), found from the pixels alone: where Opus is
+    unsure of a sheet's edge that nearly meets the photograph's (Munch's
+    Evening, Melancholy I, Cleveland, 2026-11-15). A skewed sheet loses a
+    sliver of its edge. None without strips on two sides at least."""
+    top, bottom, left, right = strip_depths(img)
+    if sum(1 for n in (top, bottom, left, right) if n > 0) < BACKDROP_SIDES:
+        return None
+    x0, x1, y0, y1 = left, 1 - right, top, 1 - bottom
     return [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+
+
+#: :func:`sheet_out_to_strips`: a sheet's side this near its plate's is
+#: taken for the plate's edge, and moved out when the strip ends this much
+#: further out.
+SAME_SIDE = 0.006
+OUT_BY = 0.01
+
+
+def sheet_out_to_strips(img: Image.Image, sheet: Quad, plate: Quad) -> Quad:
+    """``sheet`` with a side that lies on its plate's side moved out to
+    where the backdrop's strip ends there (:func:`strip_depths`): the
+    paper's margin cut away on one side only (Beksiński, MNK, 2026-11-15;
+    the drawing's edge taken for the sheet's on the right)."""
+    top, bottom, left, right = strip_depths(img)
+    out = [list(c) for c in sheet]
+    # (corners, axis, the strip's end, outward sign)
+    for idx, axis, end, sign in (
+        ((0, 1), 1, top, -1),
+        ((2, 3), 1, 1 - bottom, 1),
+        ((0, 3), 0, left, -1),
+        ((1, 2), 0, 1 - right, 1),
+    ):
+        if (sign < 0 and end <= 0) or (sign > 0 and end >= 1):
+            continue
+        on_plate = all(abs(sheet[i][axis] - plate[i][axis]) <= SAME_SIDE for i in idx)
+        further = all((end - sheet[i][axis]) * sign >= OUT_BY for i in idx)
+        if on_plate and further:
+            for i in idx:
+                out[i][axis] = end
+    return [(x, y) for x, y in out]

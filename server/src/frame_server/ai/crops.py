@@ -38,7 +38,15 @@ from typing import TYPE_CHECKING, Any
 
 from PIL import Image, ImageDraw
 
-from ..imaging.cut import Quad, backdrop_quad, snap, thin_backdrop, valid, worth_cutting
+from ..imaging.cut import (
+    Quad,
+    backdrop_quad,
+    sheet_out_to_strips,
+    snap,
+    thin_backdrop,
+    valid,
+    worth_cutting,
+)
 from ..imaging.layout import load_image
 from ..library.images import OWN_SOURCES
 from ..library.models import Cut, ItemKind
@@ -73,6 +81,9 @@ BAND = 2
 #: Once the cuts kept with a plate that is the work itself are tidied
 #: (:meth:`Crops.untwinned`).
 TWIN_TIDY = 1
+#: Once the cuts kept whose sheet lies on its plate on one side are
+#: tidied (:meth:`Crops.sheets_out`).
+SHEET_TIDY = 1
 
 #: The judge's thumbnail, and Opus's picture (the trial's sizes).
 JUDGE_SIDE = 640
@@ -315,7 +326,38 @@ class Crops(CriticNight):
     def order(self) -> bool:
         self.swept()
         self.untwinned()
+        self.sheets_out()
         return super().order()
+
+    def sheets_out(self) -> int:
+        """Once (:data:`SHEET_TIDY`): the cuts kept whose sheet lies on
+        its plate on a side where a strip of backdrop shows further out
+        (:func:`..imaging.cut.sheet_out_to_strips`) get that side back. How
+        many."""
+        state = self.state()
+        if state.get("sheet_tidy") == SHEET_TIDY:
+            return 0
+        done = 0
+        for item in self.library.all_items():
+            cut = item.cut
+            if cut is None or cut.work is None or cut.plate is None:
+                continue
+            full = self.images.full_path(item)
+            if not full.is_file():
+                continue
+            try:
+                with Image.open(full) as img:
+                    work = sheet_out_to_strips(img, cut.work, cut.plate)
+            except OSError:
+                continue
+            if work != cut.work:
+                self.apply(item, cut.model_copy(update={"work": work}))
+                done += 1
+        state = self.state()
+        state["sheet_tidy"] = SHEET_TIDY
+        self._save(state)
+        log.info("crops: %d sheets got back a side taken for their plate's", done)
+        return done
 
     def untwinned(self) -> int:
         """Once (:data:`TWIN_TIDY`): the cuts kept with a "plate" that is
@@ -426,6 +468,8 @@ class Crops(CriticNight):
         img = self.photo(item)
         shown = snap(img, read[0]) if read[0] is not None else None
         plate = snap(img, read[1]) if read[1] is not None else None
+        if shown is not None and plate is not None:
+            shown = sheet_out_to_strips(img, shown, plate)  # Beksiński, MNK
         if shown is not None and not worth_cutting(shown):
             shown = None  # the sheet is the photograph: only the plate is cut
         if shown is None and plate is None:

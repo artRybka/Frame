@@ -19,6 +19,7 @@ from frame_server.ai.client import HAIKU, OPUS
 from frame_server.ai.crops import read_layers
 from frame_server.imaging.cut import (
     backdrop_quad,
+    sheet_out_to_strips,
     snap,
     thin_backdrop,
     valid,
@@ -523,3 +524,27 @@ def test_the_strips_alone_are_cut_away_when_opus_is_unsure(
     assert item is not None and item.cut is not None
     shown = item.cut_shown()
     assert shown is not None and _near(shown, quad, 0.004)
+
+
+def test_a_sheets_side_taken_for_its_plates_gets_it_back(service: FrameService) -> None:
+    # Beksiński (MNK, 2026-11-15): "z marginesem" lost the right margin,
+    # the sheet's right side lying on the drawing's.
+    img = np.asarray(sheet(strip=9)).copy()
+    img[60:640, 80:820] = 40  # the drawing on the paper
+    picture = Image.fromarray(img)
+    s, r = 9 / W, 1 - 9 / W
+    plate = [(80 / W, 60 / H), (820 / W, 60 / H), (820 / W, 640 / H), (80 / W, 640 / H)]
+    wrong = [(s, 9 / H), (820 / W, 9 / H), (820 / W, 1 - 9 / H), (s, 1 - 9 / H)]
+    fixed = sheet_out_to_strips(picture, wrong, plate)
+    assert all(abs(x - r) < 0.004 for x, _ in (fixed[1], fixed[2]))
+    assert fixed[0] == wrong[0] and fixed[3] == wrong[3]
+    right = [(s, 9 / H), (r, 9 / H), (r, 1 - 9 / H), (s, 1 - 9 / H)]
+    assert sheet_out_to_strips(picture, right, plate) == right
+
+    item = _work(service, "mnk:12", picture=picture, pooled=True)
+    service.crops.apply(item, Cut(work=wrong, plate=plate, by="owner", aspect=W / H))
+    assert service.crops.sheets_out() == 1
+    stored = service.library.get("mnk:12")
+    assert stored is not None and stored.cut is not None and stored.cut.work is not None
+    assert abs(stored.cut.work[1][0] - r) < 0.004
+    assert service.crops.sheets_out() == 0  # once
