@@ -451,6 +451,11 @@ final class LineStrip: PaintPainter, @unchecked Sendable {
         return made
     }
 
+    /// The paper with its patches of colour as far as they are printed at
+    /// `age`: what another painter of the same tones (`StoneStrip`) lays
+    /// its own ink on.
+    func paper(age: Double) -> PrintPaint.Sheet { printed(prepare(), age: age) }
+
     /// The paper with its patches of colour as far as they are printed at `age`.
     private func printed(_ paper: PrintPaint.Sheet, age: Double) -> PrintPaint.Sheet {
         guard !blocks.isEmpty else { return paper }

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.152
+
+- Litografia jednej barwy ma własny pasek barw zamiast kreskowania
+  ołówkiem: każdy ton to ziarno kamienia, które tłusta kredka chwyta
+  mocniej albo słabiej, od rzadkiego pyłu drobnych plamek po aksamitną
+  czerń, tony przechodzą miękko jeden w drugi, a ziarno wyłania się
+  pociągnięciami od jasnego końca do ciemnego. Litografia barwna i rysunek
+  ołówkiem zostają bez zmian.
+
 ## 1.145.151
 
 - Pastel ma własny pasek barw zamiast kreskowania kredki: każda barwa jest
