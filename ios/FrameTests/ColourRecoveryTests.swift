@@ -10,7 +10,8 @@ final class ColourRecoveryTests: XCTestCase {
     }
 
     private func picture(_ pixels: [[UInt8]]) throws -> CGImage {
-        let bytes = pixels.flatMap { $0 + [255] }
+        var bytes: [UInt8] = []
+        for pixel in pixels { bytes += pixel + [UInt8(255)] }
         let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
         let provider = try XCTUnwrap(CGDataProvider(data: Data(bytes) as CFData))
         return try XCTUnwrap(CGImage(
