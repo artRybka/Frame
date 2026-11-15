@@ -1466,18 +1466,11 @@ actor DemoBackend: FrameBackend {
         return LooksStatus(enabled: aiValue.looks != false, ready: works > 0, done: works, total: works)
     }
 
-    /// The demo has no model: works whose words match, then the rest of
-    /// the paintings, each a little less near.
-    func looks(words: String) async throws -> LooksAnswer {
-        try await Task.sleep(for: .milliseconds(700))
-        let works = items.filter { $0.kind == .artwork }
-        let matching = works.filter { Self.matches($0, PlaylistRules(query: words)) }
-        return Self.answer(matching + works.filter { !matching.contains($0) }.prefix(12))
-    }
-
-    func looks(picture: Data) async throws -> LooksAnswer {
+    /// The demo has no model: a photograph is "like" a third of the
+    /// paintings, by its size (`alike`).
+    func lookPhoto(_ picture: Data) async throws -> LooksPhoto {
         try await Task.sleep(for: .milliseconds(900))
-        return Self.answer(Array(items.filter { $0.kind == .artwork }.shuffled().prefix(18)))
+        return LooksPhoto(key: "photo:\(picture.count)")
     }
 
     func looksLike(itemID: String, limit: Int) async throws -> LooksAnswer {

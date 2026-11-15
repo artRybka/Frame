@@ -2146,6 +2146,12 @@ struct LooksAnswer: Codable, Hashable, Sendable {
     var scores: [Double]
 }
 
+/// `POST /api/looks/photo`: the key a photograph searched is asked by,
+/// as `PlaylistRules.like` ("photo:…").
+struct LooksPhoto: Codable, Hashable, Sendable {
+    var key: String
+}
+
 struct AiKeyUpdate: Encodable, Sendable {
     var key: String
 }
@@ -3279,6 +3285,7 @@ struct SearchToken: Hashable, Sendable, Identifiable {
         case "mine": MineTerm.named(key)?.icon ?? "person.crop.circle"
         case "museum", SearchToken.museumOut: "building.columns"
         case "color": "circle.fill"
+        case SearchToken.likeKind where SearchToken.isPhoto(key): "camera"
         case SearchToken.lookKind, SearchToken.likeKind: "eye"
         case SearchToken.titleKind: "text.quote"
         default: "text.magnifyingglass"
@@ -3313,8 +3320,13 @@ extension SearchToken {
     /// The works that look like the work `id`, as a chip in the field
     /// ("Podobne do: Słoneczniki").
     static func like(_ id: String, title: String) -> SearchToken {
-        SearchToken(kind: likeKind, key: id, name: title.isEmpty ? "Podobne do dzieła" : "Podobne do: \(title)")
+        if isPhoto(id) { return SearchToken(kind: likeKind, key: id, name: "Podobne do zdjęcia") }
+        return SearchToken(kind: likeKind, key: id, name: title.isEmpty ? "Podobne do dzieła" : "Podobne do: \(title)")
     }
+
+    /// Whether a look-alike's key is a photograph searched ("Szukaj
+    /// zdjęciem", `POST /api/looks/photo`), not a work's id.
+    static func isPhoto(_ key: String) -> Bool { key.hasPrefix("photo:") }
 
     /// The key of a look-alike chip's title in the names given to
     /// `PlaylistRules.tokens(names:)`.

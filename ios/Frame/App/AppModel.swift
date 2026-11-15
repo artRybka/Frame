@@ -182,6 +182,10 @@ final class AppModel {
     /// The titles of the works asked for their look-alikes, by
     /// `SearchToken.likeName`: the "Podobne do" chips' names.
     var likeTitles: [String: String] = [:]
+    /// The photographs searched in Szukaj ("Szukaj zdjęciem"), small, by
+    /// their key (`SearchToken.isPhoto`): shown over the works found like
+    /// them. Only on the phone, and only while the app runs.
+    var lookPhotos: [String: Data] = [:]
     /// Museums' names by their keys, as Szukaj's "Muzeum" last listed them
     /// (and as works named them): the chips' names.
     var placeNames: [String: String] = [:]

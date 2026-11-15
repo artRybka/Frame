@@ -26,6 +26,7 @@ are sent at once.
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import logging
@@ -93,6 +94,9 @@ AMONG_NEAR = 3000
 #: Works Szukaj's "Podobne do" shows at most: the card counts to 60 ("60+").
 ALIKE_MOST = 120
 AMONG_MOST = 240
+#: A photograph searched in Szukaj (``Looks.photo``) is a ``like`` of its
+#: own: this before the key its numbers are kept under (``photos/<key>``).
+PHOTO = "photo:"
 #: A work whose thumbnail is not here is looked at again after this long.
 NO_THUMB_AGAIN = 86_400.0
 #: Rows of the numbers worked through at once (some 12 MB as floats).
@@ -493,6 +497,41 @@ class Looks:
         vector = self.painter.embed(KIND, [small])[0]
         return self._answer(self.index.nearest(vector, limit * 3), limit, PICTURE_FLOOR)
 
+    def photo(self, data: bytes, img: Image.Image) -> str:
+        """Szukaj's "Szukaj zdjęciem" (Mateusz 2026-11-15: "mogłoby się
+        pokazywać zwykłe szukanie i dawać możliwość zawężania wyników,
+        tworzenia playlisty"): the photograph's numbers kept under a key
+        (``photo:…``) that Szukaj then asks as ``PlaylistRules.like``, the
+        groups narrowing it and a smart playlist keeping it. The photograph
+        itself is not kept; the same photograph again asks Google nothing."""
+        key = PHOTO + hashlib.sha256(data).hexdigest()[:20]
+        if self.photo_vector(key) is not None:
+            return key
+        self._check()
+        small = img.convert("RGB")
+        small.thumbnail((640, 640))
+        vector = np.asarray(self.painter.embed(KIND, [small])[0], dtype=np.float32)
+        path = self._photo_path(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        part = path.with_suffix(".new")
+        vector.tofile(part)
+        os.replace(part, path)
+        return key
+
+    def photo_vector(self, key: str) -> np.ndarray | None:
+        """The numbers of a photograph searched (:meth:`photo`), or None."""
+        if not key.startswith(PHOTO):
+            return None
+        try:
+            vector = np.fromfile(self._photo_path(key), dtype=np.float32)
+        except (OSError, ValueError):
+            return None
+        return vector if len(vector) == self.index.size else None
+
+    def _photo_path(self, key: str) -> Path:
+        name = "".join(c for c in key.removeprefix(PHOTO) if c in "0123456789abcdef")
+        return self.root / "photos" / f"{name or '0'}.f32"
+
     def similar(self, item: Item, limit: int = 24, place: Place = Place.FOUND) -> list[Found]:
         """Works that look like ``item``: none until it or another copy of
         its work has numbers (the card shows the work's best copy, the
@@ -514,12 +553,20 @@ class Looks:
         return self._answer(near, limit, PICTURE_FLOOR, relative=False, place=place)
 
     def alike(self, item_id: str) -> list[str] | None:
-        """The ids of the works that look like the work ``item_id``, nearest
-        first, :data:`ALIKE_MOST` at most, for Szukaj (``Library.like_near``,
+        """The ids of the works that look like the work ``item_id`` (or the
+        photograph kept as ``photo:…``, :meth:`photo`), nearest first,
+        :data:`ALIKE_MOST` at most, for Szukaj (``Library.like_near``,
         ``PlaylistRules.like``); None with Szukanie wyglądem off. Asks
         Google nothing."""
         if not self.enabled():
             return None
+        if item_id.startswith(PHOTO):
+            vector = self.photo_vector(item_id)
+            if vector is None:
+                return []
+            near = self.index.nearest(vector, ALIKE_MOST * 3 + 8)
+            found = self._answer(near, ALIKE_MOST, PICTURE_FLOOR, relative=False)
+            return [f.item.id for f in found]
         item = self.library.get(item_id)
         if item is None:
             return []

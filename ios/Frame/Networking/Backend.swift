@@ -206,10 +206,9 @@ protocol FrameBackend: Sendable {
     func terms(_ text: String) async throws -> [TermHit]
     /// Whether Szukaj may search by how works look (`GET /api/looks`).
     func looksStatus() async throws -> LooksStatus
-    /// Works that look as the words say ("mglisty poranek nad wodą").
-    func looks(words: String) async throws -> LooksAnswer
-    /// Works that look like a photograph (JPEG); the server keeps none.
-    func looks(picture: Data) async throws -> LooksAnswer
+    /// A photograph (JPEG) to search by how it looks: the key Szukaj asks
+    /// as `PlaylistRules.like`; the server keeps its numbers, not it.
+    func lookPhoto(_ picture: Data) async throws -> LooksPhoto
     /// Works that look like this one ("Podobne wyglądem"), `limit` at most
     /// (60 the server's most); none while it has no numbers.
     func looksLike(itemID: String, limit: Int) async throws -> LooksAnswer
