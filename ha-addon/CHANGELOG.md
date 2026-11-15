@@ -12,6 +12,16 @@
   Playlistach kafelek „Moje dzieła”. Własne dzieła są na ramce, w
   playlistach, w Szukaj (także zdjęciem) i w studiach jak inne.
 
+## 1.145.159
+
+- Rysunek z akwarelą (ołówek, węgiel, kreda albo pióro z akwarelą) ma
+  własny pasek barw: tyle paska, ile na dziele zajmuje goły papier, to papier
+  z luźnymi kreskami rysunku, reszta barw to laserunki akwareli położone na
+  kreskach, a akcenty to krople akwareli na czystym papierze. Dotąd taki
+  rysunek dostawał samą akwarelę, a ołówek ginął.
+- Biały gwasz, który tylko rozjaśnia rysunek, nie zmienia już paska na
+  gwasz; rycina z akwarelą ma pasek ryciny kolorowanej.
+
 ## 1.145.158
 
 - Kupowanie kopii w Alamy usunięte: w menu „…” dzieła nie ma już „Kup w
@@ -48,6 +58,7 @@
   pokazuje arkusz jak dobrze zachowany; kreska i barwy zostają z oryginału,
   papier barwiony celowo nie dostaje propozycji. To tylko podgląd: nie
   zmienia dzieła, paska barw, wyszukiwania ani obrazu na ramce.
+
 
 ## 1.145.154
 
