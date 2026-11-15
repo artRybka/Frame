@@ -685,6 +685,18 @@ actor DemoBackend: FrameBackend {
         MediumView(status: "none")
     }
 
+    /// The demo's paintings may be tried without their varnish (the app
+    /// does that sum itself); there is no server to de-yellow a sheet.
+    func recovery(itemID: String, made: String) async throws -> RecoveryView {
+        guard made == "oil" else {
+            // Screenshots (`-demoPaper YES`): the paper preview's look. Both
+            // of its sides are the same picture here.
+            return RecoveryView(kind: UserDefaults.standard.bool(forKey: "demoPaper") ? "paper" : "none")
+        }
+        let steps = (0...16).map { Double($0) / 10 }
+        return RecoveryView(kind: "varnish", strength: 0.69, steps: steps, tops: steps.map { 0.8 * exp(0.6 * $0) })
+    }
+
     func fragments(itemID: String) async throws -> FragmentsView {
         FragmentsView(whole: nil, fragments: [])
     }
@@ -2086,7 +2098,7 @@ actor DemoBackend: FrameBackend {
         let url: URL?
         switch image {
         case let .thumb(id), let .tile(id): url = Self.bundled(id) ?? imageURLs[id]?.thumb
-        case let .image(id), let .original(id, _), let .museumPhoto(id, _, _): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
+        case let .image(id), let .original(id, _), let .museumPhoto(id, _, _), let .recovered(id, _, _): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
         case let .framePreview(id, settings, framing, _):
             url = framed(id, settings, trying: framing) ?? Self.bundled(id) ?? imageURLs[id]?.thumb
         case let .path(path) where path.hasPrefix("/demo/detail/"):

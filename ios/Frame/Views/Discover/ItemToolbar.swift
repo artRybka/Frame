@@ -26,6 +26,12 @@ struct ItemToolbar: ToolbarContent {
     var correctCut: (() -> Void)? = nil
     /// "Cofnij kadrowanie": the museum's photograph whole again.
     var undoCut: (() -> Void)? = nil
+    /// "Symulacja odzyskania barw" / "Odżółć papier" (`ColourRecovery`): the
+    /// preview on the card's picture, of `recoveryKind`; the same entry
+    /// ends it while it shows (`recovering`).
+    var recover: (() -> Void)? = nil
+    var recoveryKind = ColourRecovery.Kind.varnish
+    var recovering = false
 
     /// A museum's work, which other sources may have too.
     private var hasCopies: Bool { item.kind == .artwork && item.look == nil }
@@ -85,6 +91,17 @@ struct ItemToolbar: ToolbarContent {
                             } icon: {
                                 Image(systemName: "arrow.uturn.backward")
                             }
+                        }
+                    }
+                }
+                if let recover {
+                    Divider()
+                    Button(action: recover) {
+                        Label {
+                            Text(recovering ? "Wróć do oryginału" : ColourRecovery.menuTitle(recoveryKind))
+                            Text(recovering ? "Koniec symulacji" : ColourRecovery.menuNote(recoveryKind))
+                        } icon: {
+                            Image(systemName: "circle.lefthalf.filled")
                         }
                     }
                 }
