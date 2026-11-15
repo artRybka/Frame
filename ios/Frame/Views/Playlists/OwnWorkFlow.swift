@@ -145,6 +145,9 @@ struct OwnWorkFlow: View {
                             .font(.subheadline)
                             .foregroundStyle(Theme.inkSoft)
                     }
+                    PhotoSketch()
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
                     PhotoTips()
                     if finding, let photo {
                         HStack(spacing: 12) {
@@ -384,6 +387,49 @@ struct OwnWorkFlow: View {
         format.scale = 1
         return UIGraphicsImageRenderer(size: size, format: format).image { _ in
             image.draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
+}
+
+/// A work on a wall between the camera's corner marks: how it is taken.
+private struct PhotoSketch: View {
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
+                .fill(Theme.mat)
+            // The frame and the work in it, a little shadow on the wall.
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(Theme.ink.opacity(0.75))
+                .frame(width: 150, height: 118)
+                .shadow(color: .black.opacity(0.18), radius: 8, y: 6)
+            LinearGradient(
+                colors: [Color(red: 0.55, green: 0.68, blue: 0.80), Color(red: 0.86, green: 0.78, blue: 0.58),
+                         Color(red: 0.42, green: 0.55, blue: 0.40)],
+                startPoint: .top, endPoint: .bottom
+            )
+            .frame(width: 128, height: 96)
+            Rectangle()
+                .strokeBorder(Theme.vermilion.opacity(0.9), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                .frame(width: 128, height: 96)
+            Corners()
+                .stroke(Theme.ink, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                .frame(width: 210, height: 170)
+        }
+        .frame(height: 210)
+        .accessibilityHidden(true)
+    }
+
+    private struct Corners: Shape {
+        func path(in rect: CGRect) -> Path {
+            let arm: CGFloat = 18
+            var path = Path()
+            for (x, y, dx, dy) in [(rect.minX, rect.minY, 1.0, 1.0), (rect.maxX, rect.minY, -1.0, 1.0),
+                                   (rect.maxX, rect.maxY, -1.0, -1.0), (rect.minX, rect.maxY, 1.0, -1.0)] {
+                path.move(to: CGPoint(x: x + dx * arm, y: y))
+                path.addLine(to: CGPoint(x: x, y: y))
+                path.addLine(to: CGPoint(x: x, y: y + dy * arm))
+            }
+            return path
         }
     }
 }

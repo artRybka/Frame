@@ -34,11 +34,17 @@ struct OwnCamera: View {
                 top
                 Spacer(minLength: 12)
                 viewfinder
+                Text(finding == nil ? "Całe dzieło w kadrze, na wprost, bez lampy" : "Szukam dzieła na zdjęciu…")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, Theme.gutter)
+                    .padding(.top, 14)
                 Spacer(minLength: 12)
                 bottom
             }
         }
-        .preferredColorScheme(.dark)
+        .environment(\.colorScheme, .dark)  // the camera's own, the steps after it keep his
         .photosPicker(isPresented: $library, selection: $picked, matching: .images)
         .onChange(of: picked) { _, item in
             guard let item else { return }
@@ -51,7 +57,11 @@ struct OwnCamera: View {
                 took(image)
             }
         }
-        .task { access = await camera.start() }
+        .task {
+            // Screenshots of the later steps take the demo's photograph at once.
+            guard !["own-cut", "own-describe", "own-card"].contains(LaunchRoute.screen) else { return }
+            access = await camera.start()
+        }
         .onDisappear { camera.stop() }
     }
 
@@ -99,20 +109,8 @@ struct OwnCamera: View {
                 .stroke(.white.opacity(0.9), style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 .padding(28)
                 .opacity(finding == nil ? 1 : 0)
-            VStack {
-                Text(finding == nil ? "Całe dzieło z kawałkiem ściany, na wprost, bez lampy" : "Szukam dzieła na zdjęciu…")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .glassEffect(.regular, in: .capsule)
-                    .padding(.top, 14)
-                    .padding(.horizontal, 20)
-                Spacer()
-                if finding != nil {
-                    ProgressView().tint(.white).controlSize(.large).padding(.bottom, 40)
-                }
+            if finding != nil {
+                ProgressView().tint(.white).controlSize(.large)
             }
             if flash { Color.white.transition(.opacity) }
         }
