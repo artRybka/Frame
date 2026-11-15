@@ -56,7 +56,7 @@ final class LooksRowTests: XCTestCase {
     }
 
     func testOneTallWorkKeepsTheFullHeight() {
-        for ratios: [CGFloat] in [[0.4, 2.5, 2.5], [0.33, 0.44, 0.42], [2.66, 0.85, 1.5]] {
+        for ratios: [CGFloat] in [[0.4, 2.5, 2.5], [0.33, 0.44, 0.42], [0.6, 2.66, 1.5]] {
             let box = LooksRow.pictureBox(ratios: ratios, width: width, slots: 3)
             XCTAssertEqual(box, LooksRow.pictureHeight, accuracy: 0.01, "\(ratios)")
         }
