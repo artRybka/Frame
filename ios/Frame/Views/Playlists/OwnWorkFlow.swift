@@ -62,18 +62,49 @@ struct OwnWorkFlow: View {
 
     private var steps: [Step] { retaking == nil ? Step.allCases : [.photo, .cut] }
 
+    /// The first step: the camera itself (A) or a short page of advice
+    /// with the two buttons (B, `-ownLook tips`). Sketches for Mateusz
+    /// 2026-11-15; one goes when he has chosen.
+    private var cameraFirst: Bool { LaunchRoute.ownLook != "tips" }
+
     var body: some View {
-        VStack(spacing: 0) {
-            StepDots(steps: steps.map(\.name), current: steps.firstIndex(of: step) ?? 0)
-                .padding(.top, 10)
-                .padding(.bottom, 16)
-            switch step {
-            case .photo: photoStep
-            case .cut: cutStep
-            case .describe: describeStep
+        NavigationStack {
+            Group {
+                switch step {
+                case .photo:
+                    if cameraFirst {
+                        OwnCamera(close: back, took: take, finding: finding ? photo : nil)
+                    } else {
+                        photoStep
+                    }
+                case .cut: cutStep
+                case .describe: describeStep
+                }
             }
+            .paperPage()
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: back) {
+                        Image(systemName: "chevron.backward")
+                    }
+                    .accessibilityLabel(step == steps.first ? "Zamknij" : "Wstecz")
+                    .disabled(adding)
+                }
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 1) {
+                        Text(retaking == nil ? "Własne dzieło" : "Nowe zdjęcie")
+                            .font(.headline)
+                            .foregroundStyle(Theme.ink)
+                        Text("\(step.name) · \((steps.firstIndex(of: step) ?? 0) + 1) z \(steps.count)")
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            .toolbar(step == .photo && cameraFirst ? .hidden : .visible, for: .navigationBar)
         }
-        .background { Color.clear.paperPage() }
         .fullScreenCover(isPresented: $camera) {
             CameraPicker { image in take(image) }
                 .ignoresSafeArea()
@@ -93,30 +124,28 @@ struct OwnWorkFlow: View {
         .task { await openForScreenshot() }
     }
 
+    /// The arrow at the top left: a step back, out from the first.
+    private func back() {
+        switch step {
+        case .photo: dismiss()
+        case .cut: withAnimation(.easeInOut(duration: 0.3)) { step = .photo }
+        case .describe: withAnimation(.easeInOut(duration: 0.3)) { step = .cut }
+        }
+    }
+
     // MARK: 1. The photograph
 
+    /// B: the advice alone, the two buttons under it.
     private var photoStep: some View {
         VStack(spacing: 0) {
-            HStack {
-                Button("Anuluj") { dismiss() }
-                    .buttonStyle(.glass)
-                Spacer()
-            }
-            .padding(.horizontal, Theme.gutter)
-            .padding(.bottom, 12)
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    Eyebrow(retaking == nil ? "Moja kolekcja" : "Nowe zdjęcie", color: Theme.vermilion)
-                    Text(retaking.map { $0.title.isEmpty ? "Zrób zdjęcie ponownie" : $0.title } ?? "Własne dzieło")
-                        .font(.serif(32, weight: .semibold))
-                        .foregroundStyle(Theme.ink)
-                    Text(retaking == nil
-                         ? "Sfotografuj obraz, rysunek albo grafikę, którą masz w domu. Ramę, passe-partout i ścianę wytnę sam, a narożniki poprawisz w następnym kroku."
-                         : "Nowe zdjęcie zastąpi obecne, opis zostanie bez zmian.")
-                        .font(.serif(17))
-                        .foregroundStyle(Theme.inkSoft)
+                    if retaking != nil {
+                        Text("Nowe zdjęcie zastąpi obecne, opis zostanie bez zmian.")
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.inkSoft)
+                    }
                     PhotoTips()
-                        .padding(.top, 4)
                     if finding, let photo {
                         HStack(spacing: 12) {
                             Image(uiImage: photo)
@@ -124,14 +153,9 @@ struct OwnWorkFlow: View {
                                 .scaledToFill()
                                 .frame(width: 56, height: 56)
                                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Szukam dzieła na zdjęciu…")
-                                    .font(.subheadline.weight(.medium))
-                                    .foregroundStyle(Theme.ink)
-                                Text("Kilka sekund")
-                                    .font(.caption)
-                                    .foregroundStyle(Theme.inkSoft)
-                            }
+                            Text("Szukam dzieła na zdjęciu…")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(Theme.ink)
                             Spacer()
                             ProgressView()
                         }
@@ -142,6 +166,7 @@ struct OwnWorkFlow: View {
                 }
                 .pageWidth()
                 .padding(.horizontal, Theme.gutter)
+                .padding(.top, 12)
                 .padding(.bottom, 24)
             }
             VStack(spacing: 10) {
@@ -210,7 +235,7 @@ struct OwnWorkFlow: View {
         if let photo, let incoming {
             CutEditor(
                 photo: .local(photo), aspect: incoming.aspect, corners: found,
-                saveTitle: retaking == nil ? "Dalej" : "Zapisz", cancelTitle: "Wstecz", savesUnchanged: true,
+                saveTitle: retaking == nil ? "Dalej" : "Zapisz", savesUnchanged: true,
                 note: cutNote,
                 cancel: { withAnimation(.easeInOut(duration: 0.3)) { step = .photo } }
             ) { chosen in
@@ -262,26 +287,6 @@ struct OwnWorkFlow: View {
 
     private var describeStep: some View {
         VStack(spacing: 0) {
-            HStack {
-                Button("Wstecz") { withAnimation(.easeInOut(duration: 0.3)) { step = .cut } }
-                    .buttonStyle(.glass)
-                    .disabled(adding)
-                Spacer()
-                Button {
-                    Task { await add() }
-                } label: {
-                    HStack(spacing: 8) {
-                        if adding { ProgressView().controlSize(.small).tint(Theme.paper) }
-                        Text("Dodaj")
-                    }
-                    .foregroundStyle(Theme.paper)
-                }
-                .buttonStyle(.glassProminent)
-                .tint(Theme.ink)
-                .disabled(adding)
-            }
-            .padding(.horizontal, Theme.gutter)
-            .padding(.bottom, 12)
             ScrollViewReader { proxy in
                 ScrollView {
                     OwnDescriptionForm(
@@ -301,6 +306,16 @@ struct OwnWorkFlow: View {
                         withAnimation(nil) { proxy.scrollTo("size", anchor: .center) }
                     }
                 }
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button {
+                    Task { await add() }
+                } label: {
+                    if adding { ProgressView() } else { Text("Dodaj") }
+                }
+                .disabled(adding)
             }
         }
     }
@@ -377,7 +392,7 @@ struct OwnWorkFlow: View {
 private struct PhotoTips: View {
     private static let tips: [(String, String)] = [
         ("viewfinder", "Całe dzieło w kadrze, z kawałkiem ściany wokół"),
-        ("arrow.up.and.down.and.arrow.left.and.right", "Najlepiej na wprost; ukos wyprostuję"),
+        ("arrow.up.and.down.and.arrow.left.and.right", "Najlepiej na wprost"),
         ("sun.max", "Dzienne światło, bez lampy błyskowej i odbić w szybie"),
     ]
 
@@ -399,34 +414,6 @@ private struct PhotoTips: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).strokeBorder(Theme.hairline))
-    }
-}
-
-/// "Zdjęcie · Kadr · Opis": where in the steps he is.
-private struct StepDots: View {
-    let steps: [String]
-    let current: Int
-
-    var body: some View {
-        HStack(spacing: 8) {
-            ForEach(Array(steps.enumerated()), id: \.offset) { index, name in
-                if index > 0 {
-                    Rectangle().fill(Theme.hairline).frame(width: 18, height: 1)
-                }
-                HStack(spacing: 5) {
-                    Text("\(index + 1)")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(index <= current ? Theme.paper : Theme.inkSoft)
-                        .frame(width: 18, height: 18)
-                        .background(index <= current ? Theme.ink : Theme.mat, in: Circle())
-                    Text(name)
-                        .font(.caption.weight(index == current ? .semibold : .regular))
-                        .foregroundStyle(index == current ? Theme.ink : Theme.inkSoft)
-                }
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Krok \(current + 1) z \(steps.count): \(steps[min(current, steps.count - 1)])")
     }
 }
 

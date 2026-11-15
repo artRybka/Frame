@@ -11,6 +11,9 @@ enum LaunchRoute {
     /// there ("journey-end": at that section's lower part); "studies":
     /// Discover at "Studia dzieł".
     static let scroll = UserDefaults.standard.string(forKey: "scroll")
+    /// `-ownLook tips`: "Dodaj własne dzieło" opens on a page of advice
+    /// instead of the camera (sketches, Mateusz 2026-11-15).
+    static let ownLook = UserDefaults.standard.string(forKey: "ownLook") ?? ""
     /// The composition's sheet opens with the picture itself under the
     /// marks, as after a tap; the image model's sheet stays the sketch
     /// alone, the marks never coming by themselves (CI screenshots of

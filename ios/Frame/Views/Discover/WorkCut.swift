@@ -172,7 +172,8 @@ struct CutEditor: View {
     let savesUnchanged: Bool
     /// Over the hint under the photograph: what was found ("Rama wycięta").
     let note: String?
-    /// The own work's steps go on: nothing to dismiss.
+    /// The own work's steps go on: nothing to dismiss, and the bar (the
+    /// arrow back, "Dalej") is theirs.
     let cancel: (() -> Void)?
     /// Saves the corners (of the work as shown); whether it went.
     let save: ([[Double]]) async -> Bool
@@ -246,33 +247,47 @@ struct CutEditor: View {
         }
     }
 
+    /// "Anuluj" and "Zapisz" over the photograph ("Popraw kadr").
+    private var bar: some View {
+        HStack {
+            Button(cancelTitle) { dismiss() }
+                .buttonStyle(.glass)
+                .disabled(saving)
+            Spacer()
+            Button {
+                Task {
+                    saving = true
+                    if await save(corners) { dismiss() }
+                    saving = false
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    if saving { ProgressView().controlSize(.small).tint(Theme.paper) }
+                    Text(saveTitle)
+                }
+                .foregroundStyle(Theme.paper)
+            }
+            .buttonStyle(.glassProminent)
+            .tint(Theme.ink)
+            .disabled((!changed && !savesUnchanged) || saving)
+        }
+        .padding(.horizontal, Theme.gutter)
+        .padding(.top, 6)
+        .padding(.bottom, 12)
+    }
+
+    /// "Dalej" in the bar of the own work's steps (the arrow back is theirs).
+    private func saveInSteps() {
+        Task {
+            saving = true
+            _ = await save(corners)
+            saving = false
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Button(cancelTitle) { if let cancel { cancel() } else { dismiss() } }
-                    .buttonStyle(.glass)
-                    .disabled(saving)
-                Spacer()
-                Button {
-                    Task {
-                        saving = true
-                        if await save(corners), cancel == nil { dismiss() }
-                        saving = false
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        if saving { ProgressView().controlSize(.small).tint(Theme.paper) }
-                        Text(saveTitle)
-                    }
-                    .foregroundStyle(Theme.paper)
-                }
-                .buttonStyle(.glassProminent)
-                .tint(Theme.ink)
-                .disabled((!changed && !savesUnchanged) || saving)
-            }
-            .padding(.horizontal, Theme.gutter)
-            .padding(.top, 6)
-            .padding(.bottom, 12)
+            if cancel == nil { bar }
             GeometryReader { geo in
                 if corners.count == 4 { board(in: geo.size) }
             }
@@ -301,6 +316,16 @@ struct CutEditor: View {
             .padding(.bottom, 8)
         }
         .background { Color.clear.paperPage() }
+        .toolbar {
+            if cancel != nil {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(action: saveInSteps) {
+                        if saving { ProgressView() } else { Text(saveTitle) }
+                    }
+                    .disabled(saving)
+                }
+            }
+        }
         .onAppear {
             guard corners.isEmpty else { return }
             corners = initial ?? Self.inset
