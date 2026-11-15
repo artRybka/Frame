@@ -165,6 +165,9 @@ TEXTS_FRESH = 600.0
 #: The audit: Haiku and its critic about a work (a fifth of a cent).
 AUDIT_USD = 0.002
 AUDITS_A_NIGHT = 270
+#: What the owner may choose as the catalogue's texts a night
+#: (``AiConfig.leftover_texts_a_night``, Mateusz 2026-11-15).
+TEXTS_A_NIGHT_OPTIONS = (250, 500, 1000, 2000, 5000, 10000)
 
 
 def uses(config: AiConfig) -> list[tuple[str, bool]]:
@@ -196,6 +199,8 @@ class Use:
     run: Callable[[float], tuple[int, float, bool]]
     #: How many a night at most (None: no limit of a night).
     cap: int | None = None
+    #: What the owner may set ``cap`` to in the app (None: fixed).
+    caps: tuple[int, ...] | None = None
 
 
 def studies(n: int) -> str:
@@ -526,6 +531,8 @@ class Leftover:
                 self._texts_waiting,
                 lambda: any(config.enabled(k) for k in DESCRIPTIONS),
                 self._order_texts,
+                cap=config.config.leftover_texts_a_night,
+                caps=TEXTS_A_NIGHT_OPTIONS,
             )
         )
         if audit is not None:
@@ -581,10 +588,15 @@ class Leftover:
         return len(ordered), len(ordered) * each, len(picked) >= count
 
     def _order_texts(self, usd: float) -> tuple[int, float, bool]:
+        """The catalogue's texts for ``usd``, at most the owner's number of
+        works a night (Mateusz 2026-11-15: 125 323 works waiting, and the
+        night gave them all the rest at once): how many works, about what
+        they cost, whether more wait."""
+        cap = self.config.config.leftover_texts_a_night
         before = self.ai.batched_usd(DESCRIPTIONS)
-        sent = self.ai.order_rest(DESCRIPTIONS, usd, self._cared_first)
+        _, works = self.ai.order_rest(DESCRIPTIONS, usd, self._cared_first, cap)
         self._texts_kept = None
-        return sent, max(self.ai.batched_usd(DESCRIPTIONS) - before, 0.0), False
+        return works, max(self.ai.batched_usd(DESCRIPTIONS) - before, 0.0), works >= cap
 
     def _texts_waiting(self) -> int | None:
         found = self._texts_estimate()
@@ -778,6 +790,8 @@ class Leftover:
             if use.key == STUDIES:
                 waiting = len(self.daily.runners_up()) or None
             count, spent = tally.get(use.key) or (0, 0.0)
+            # what a night takes of it (the whole that waits is no night's)
+            tonight = None if use.cap is None or waiting is None else min(waiting, use.cap)
             out.append(
                 {
                     "key": use.key,
@@ -789,6 +803,9 @@ class Leftover:
                     "each_usd": round(use.each, 4),
                     "waiting_usd": None if waiting is None else round(waiting * use.each, 2),
                     "a_night": use.cap,
+                    "a_night_options": None if use.caps is None else list(use.caps),
+                    "tonight": tonight,
+                    "tonight_usd": None if tonight is None else round(tonight * use.each, 2),
                     "done": int(count),
                     "done_usd": round(float(spent), 2),
                 }

@@ -711,6 +711,47 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+/// What a work's card shows of its picture: the copy in its place, its
+/// cut and its cleaning. A list loaded before the card changed one of them
+/// kept the work's tile as it was, so a work just shown without its
+/// varnish had no drop after its title there (Mateusz 2026-11-15 21:44:
+/// "Brakuje ikonki widocznej na liście dzieł w odkrywaj"), and the tile
+/// asked for the picture of before again. `AppModel.asOnCard` lays these
+/// over a list's tile.
+struct PictureMarks: Equatable, Sendable {
+    var picture: String
+    var restored: Bool
+    var cropped: Bool
+    var cut: String?
+    var cleaned: String?
+    var cleanedAt: String?
+
+    init(_ item: Item) {
+        let summary = item.summary
+        picture = summary.picture ?? ""
+        restored = summary.restored == true
+        cropped = summary.isCropped
+        cut = summary.cut
+        cleaned = summary.cleaned
+        cleanedAt = summary.cleanedAt
+    }
+
+    /// `tile` with the picture's marks as the card has them.
+    func on(_ tile: ItemSummary) -> ItemSummary {
+        var tile = tile
+        // Another picture than the list knew: its pixels' count was the
+        // other one's (the card goes by the same, `ItemDetailView.lowSide`).
+        if let known = tile.picture, known != picture { tile.lowSide = nil }
+        tile.picture = picture
+        tile.restored = restored ? true : nil
+        tile.cropped = cropped ? true : nil
+        tile.cut = cut
+        tile.cleaned = cleaned
+        tile.cleanedAt = cleanedAt
+        return tile
+    }
+}
+
 struct ItemPage: Codable, Sendable {
     let total: Int
     var items: [ItemSummary]
@@ -1954,6 +1995,12 @@ struct LeftoverUse: Codable, Hashable, Sendable, Identifiable {
     /// What it ordered this period, and about what it cost.
     var done: Int
     var doneUsd: Double
+    /// What the owner may set `aNight` to (nil: fixed), and what a night
+    /// takes of what waits and about for how much (Mateusz 2026-11-15: the
+    /// whole catalogue's "824,84 USD" is no night's). Nil from older servers.
+    var aNightOptions: [Int]? = nil
+    var tonight: Int? = nil
+    var tonightUsd: Double? = nil
 
     var id: String { key }
 }
@@ -2038,6 +2085,8 @@ struct AiSettingsUpdate: Encodable, Sendable {
     /// The uses of the month's rest in the owner's order, and those off.
     var leftoverOrder: [String]?
     var leftoverOff: [String]?
+    /// The catalogue's keywords and Polish texts a night at most, works.
+    var leftoverTextsANight: Int?
 }
 
 /// `GET /api/ai/review`: "Do sprawdzenia", what the gatekeeper set aside and
@@ -2095,6 +2144,12 @@ struct LooksStatus: Codable, Hashable, Sendable {
 struct LooksAnswer: Codable, Hashable, Sendable {
     var items: [ItemSummary]
     var scores: [Double]
+}
+
+/// `POST /api/looks/photo`: the key a photograph searched is asked by,
+/// as `PlaylistRules.like` ("photo:…").
+struct LooksPhoto: Codable, Hashable, Sendable {
+    var key: String
 }
 
 struct AiKeyUpdate: Encodable, Sendable {
@@ -3230,6 +3285,7 @@ struct SearchToken: Hashable, Sendable, Identifiable {
         case "mine": MineTerm.named(key)?.icon ?? "person.crop.circle"
         case "museum", SearchToken.museumOut: "building.columns"
         case "color": "circle.fill"
+        case SearchToken.likeKind where SearchToken.isPhoto(key): "camera"
         case SearchToken.lookKind, SearchToken.likeKind: "eye"
         case SearchToken.titleKind: "text.quote"
         default: "text.magnifyingglass"
@@ -3264,8 +3320,13 @@ extension SearchToken {
     /// The works that look like the work `id`, as a chip in the field
     /// ("Podobne do: Słoneczniki").
     static func like(_ id: String, title: String) -> SearchToken {
-        SearchToken(kind: likeKind, key: id, name: title.isEmpty ? "Podobne do dzieła" : "Podobne do: \(title)")
+        if isPhoto(id) { return SearchToken(kind: likeKind, key: id, name: "Podobne do zdjęcia") }
+        return SearchToken(kind: likeKind, key: id, name: title.isEmpty ? "Podobne do dzieła" : "Podobne do: \(title)")
     }
+
+    /// Whether a look-alike's key is a photograph searched ("Szukaj
+    /// zdjęciem", `POST /api/looks/photo`), not a work's id.
+    static func isPhoto(_ key: String) -> Bool { key.hasPrefix("photo:") }
 
     /// The key of a look-alike chip's title in the names given to
     /// `PlaylistRules.tokens(names:)`.

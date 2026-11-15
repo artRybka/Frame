@@ -426,6 +426,7 @@ struct StudyCard: View {
 /// A work as a card, like a theme's: the picture on top, its title and
 /// artist below on the card's white ("Studia dzieł", "Pod lupą").
 struct WorkTile: View {
+    @Environment(AppModel.self) private var model
     let item: RemoteItem
     /// The title shown (a study's Polish title; else the work's own).
     var title: String?
@@ -446,6 +447,9 @@ struct WorkTile: View {
         let title = title ?? item.summary.title
         return title.isEmpty ? "Bez tytułu" : title
     }
+
+    /// The work with the marks its card has had since this list was loaded.
+    private var marks: ItemSummary { model.asOnCard(item.summary) }
 
     private var card: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -474,9 +478,9 @@ struct WorkTile: View {
             VStack(alignment: .leading, spacing: 4) {
                 // The marks after the title, as on every list's tile; not
                 // the magnifier where every card is "Pod lupą".
-                ArtCard.markedTitle(item.summary, title: shownTitle, weight: .semibold, zoom: showsZoom)
+                ArtCard.markedTitle(marks, title: shownTitle, weight: .semibold, zoom: showsZoom)
                     .lineLimit(2, reservesSpace: true)
-                    .truncationMode(ArtCard.hasMarks(item.summary, zoom: showsZoom) ? .middle : .tail)
+                    .truncationMode(ArtCard.hasMarks(marks, zoom: showsZoom) ? .middle : .tail)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(ArtCard.byline(item.summary))
@@ -564,7 +568,9 @@ struct ZoomWorkCard: View {
         // The card opened from here shows this much while it loads.
         .onAppear {
             ItemPeeks.remember(remote.summary, thumb: remote.thumb)
-            if let picture = remote.summary.pictureVersion { model.pictureSeen(remote.id, copy: picture) }
+            if let picture = model.asOnCard(remote.summary).pictureVersion {
+                model.pictureSeen(remote.id, copy: picture)
+            }
         }
     }
 }

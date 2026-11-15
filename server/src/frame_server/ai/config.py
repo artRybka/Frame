@@ -91,6 +91,11 @@ class AiConfig(BaseModel):
     #: Kept as set; ``leftover.uses`` puts in what an older list lacks.
     leftover_order: list[str] = Field(default_factory=list, max_length=20)
     leftover_off: list[str] = Field(default_factory=lambda: ["audit"], max_length=20)
+    #: The catalogue's keywords and Polish texts the rest pays for a night at
+    #: most, works (Mateusz 2026-11-15, seeing "czeka 125323 · ok. 824,84
+    #: USD": "Jak to zlimitować?"). Without it the night gave them all the
+    #: rest at once.
+    leftover_texts_a_night: int = Field(1000, ge=1, le=50000)
 
 
 class AiConfigUpdate(BaseModel):
@@ -120,6 +125,7 @@ class AiConfigUpdate(BaseModel):
     leftover_reserve_usd: float | None = Field(None, ge=0, le=1000)
     leftover_order: list[str] | None = Field(None, max_length=20)
     leftover_off: list[str] | None = Field(None, max_length=20)
+    leftover_texts_a_night: int | None = Field(None, ge=100, le=50000)
 
 
 def clean_key(value: str) -> str:

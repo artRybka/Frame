@@ -939,6 +939,42 @@ def test_the_white_line_of_a_black_poster_is_among_its_colours() -> None:
     assert "accent:white" in tags
 
 
+def _wash_on_brown(seed: int = 3) -> Image.Image:
+    """A wash drawing on brown paper heightened with white gouache: the
+    paper, the brown washes over most of it and the white touches."""
+    rng = np.random.default_rng(seed)
+    pixels = np.empty((300, 240, 3), np.uint8)
+    pixels[:] = (150, 141, 122)  # the brown paper
+    pixels[90:300, :] = (101, 92, 74)  # a wash
+    pixels[150:300, 40:220] = (80, 73, 58)  # a darker one
+    pixels[40:70, 60:140] = (130, 120, 100)  # a light wash in the sky
+    pixels[100:112, 70:150] = (236, 236, 230)  # white gouache: a turban, a mane
+    pixels[180:190, 150:200] = (236, 236, 230)
+    noise = rng.integers(-6, 7, pixels.shape)
+    return Image.fromarray(np.clip(pixels.astype(int) + noise, 0, 255).astype(np.uint8))
+
+
+def test_the_white_laid_on_a_tinted_paper_is_among_its_colours() -> None:
+    # Mateusz 2026-11-15 21:36, of Géricault's „Turecki jeździec w walce”
+    # (brown wash heightened with white gouache on brown paper), whose bar
+    # had browns and greys only: „Zwłaszcza brakuje bieli”. A picture of one
+    # tone, neither dark nor light: no colour of it is as light as a white
+    # paper, so the white above them is laid on it.
+    swatches, tags, _, _ = analyse(
+        _wash_on_brown(),
+        medium="Brush and brown wash, heightened with white gouache on brown paper",
+    )
+    assert "monochrome" in tags
+    white = [
+        s for s in swatches if s.accent and min(int(s.hex[i : i + 2], 16) for i in (1, 3, 5)) > 185
+    ]
+    assert len(white) == 1 and 0.01 <= white[0].weight <= 0.06
+    assert "accent:white" in tags
+    # A print greyed all over by its lines: its light is its paper still.
+    printed, printed_tags, _, _ = analyse(_wash_on_brown(), medium="Etching and drypoint")
+    assert "accent:white" not in printed_tags and len(printed) == len(swatches) - 1
+
+
 def test_a_stamp_on_an_etching_is_no_accent() -> None:
     # One tint stays one tint: a collector's small red stamp does not make
     # an etching a picture with a red accent, and its bar has no touch.

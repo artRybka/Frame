@@ -516,14 +516,10 @@ struct LiveBackend: FrameBackend {
 
     func looksStatus() async throws -> LooksStatus { try await get("/api/looks") }
 
-    func looks(words: String) async throws -> LooksAnswer {
-        try await get("/api/looks/search", query: [URLQueryItem(name: "q", value: words)])
-    }
-
-    func looks(picture: Data) async throws -> LooksAnswer {
+    func lookPhoto(_ picture: Data) async throws -> LooksPhoto {
         var form = MultipartForm()
         form.addFile("file", filename: "photo.jpg", mimeType: "image/jpeg", data: picture)
-        var req = request("/api/looks/picture", method: "POST")
+        var req = request("/api/looks/photo", method: "POST")
         req.setValue(form.contentType, forHTTPHeaderField: "Content-Type")
         req.httpBody = form.body()
         req.timeoutInterval = 60

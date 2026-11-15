@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from typing import NamedTuple
 
@@ -56,8 +57,9 @@ COLOUR_SPREAD = (0.01, 0.035)
 #: one tone (``LIGHT_DARK``); 19: a faint cool colour against a warm
 #: ground (``cast_accents``); 20: a muted colour present on ``PRESENT``
 #: of the picture is an accent (``PRESENT_AREA``); 21: what may be a blue
-#: under yellowed varnish (``varnished_blue``, ``Item.varnish_blue``).
-SCORE_VERSION = 21
+#: under yellowed varnish (``varnished_blue``, ``Item.varnish_blue``);
+#: 22: the white laid on a tinted sheet (``LIGHT_TINTED``).
+SCORE_VERSION = 22
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
 #: this chroma / lightness for light ones: a greyish-blue sky does, a beige
@@ -386,6 +388,23 @@ LIGHT_WEIGHT = 0.06
 #: A picture of one tone this dark in its middle tone has a white that
 #: stands out, not a paper.
 LIGHT_DARK = 0.45
+#: A picture of one tone whose colours are all this dark or darker is on
+#: a tinted sheet (brown, blue, grey paper), so a white above them is laid
+#: on it: the white gouache that heightens a wash drawing, not the paper.
+LIGHT_TINTED = 0.75
+#: What says a work is printed from a plate or a block (``printed``).
+PRINTED = re.compile(
+    r"print|etch|engrav|woodcut|woodblock|linocut|aquatint|mezzotint|drypoint|lithogra|burin|eau.forte|pointe.s|gravure"
+    r"|radier|stich|schnitt|estamp|grafik|rycin|sztych|drzeworyt|miedzioryt|staloryt|akwafort|akwatint|litograf|linoryt"
+    r"|sucha ig|incisione|grabado|houtsne"
+)
+
+
+def printed(medium: str) -> bool:
+    """Whether a work's medium says it is a print."""
+    return bool(PRINTED.search(medium.lower()))
+
+
 #: The tints of a pale sheet (Mateusz 2026-11-12 13:46 and 14:28, of
 #: Cézanne's lithograph in colours „Kąpiące się”, whose bar was a scale of
 #: greys with one small green patch: „dlaczego … nie ma zieleni i
@@ -552,10 +571,11 @@ class Analysis(NamedTuple):
     varnish: float = 0.0
 
 
-def analyse(img: Image.Image, spread: float | None = None) -> Analysis:
+def analyse(img: Image.Image, spread: float | None = None, medium: str = "") -> Analysis:
     """Dominant colours, then accents, then the small striking patches
     (``touches``); colour/mood tags and the colour families' shares;
-    ``spread`` is the picture's ``tint_spread`` if already known."""
+    ``spread`` is the picture's ``tint_spread`` if already known; ``medium``
+    the work's (a print's light is its paper, ``printed``)."""
     if spread is None:
         spread = tint_spread(img)
     linear = _sample(img)
@@ -584,7 +604,12 @@ def analyse(img: Image.Image, spread: float | None = None) -> Analysis:
     # Lex Drewinski's „Hommage à Tadeusz Kantor”: „Myślę że musimy
     # uwzględniać biel?”). In a light one it is the print's paper.
     dark = float(np.median(fine[:, 0])) < LIGHT_DARK
-    white = lights(fine, shown) if not monochrome or dark else []
+    # Nor is the white laid on a tinted sheet (Mateusz 2026-11-15 21:36, of
+    # Géricault's „Turecki jeździec w walce”, brown wash heightened with
+    # white gouache on brown paper: „Zwłaszcza brakuje bieli”).
+    # A print's dense lines grey it all over: its light is its paper still.
+    on_tint = max(float(c[0]) for c, _ in dominant) < LIGHT_TINTED and not printed(medium)
+    white = lights(fine, shown) if not monochrome or dark or on_tint else []
     # What the bar shows the picture is found by (Mateusz 2026-11-12
     # 15:16): the white it shows for standing out (here, or as the colour
     # passed over: the robes of Delacroix's Indian) is an accent by name.

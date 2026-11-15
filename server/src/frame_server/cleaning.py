@@ -56,6 +56,9 @@ Kind = Literal["varnish", "paper", "none"]
 VARNISH_UNTIL = 1950
 #: The long side a picture is read at to say what it may be offered.
 READ = 640
+#: The share of the proposal the first sum (``Cleaned.reading`` 1) kept a
+#: work at; the proposal is kept whole since.
+FIRST_SHARE = 0.75
 
 
 class NothingToClean(ValueError):
@@ -128,6 +131,39 @@ class Cleaning:
         cleaned = stored.cleaned.model_copy(update={"drawn": stored.picture_key(), "at": _now()})
         return self.apply(stored, cleaned)
 
+    # -- the sum changed --------------------------------------------------------------
+
+    def catch_up(self) -> int:
+        """The works kept without their varnish by an earlier sum, made
+        again with this one (``recovery.READING``; Mateusz 2026-11-15
+        21:44, of works cleaned with the first: "Korekta werniksu - czasem
+        ledwo widoczna"): once, a while after a start. The strength is the
+        proposal the first sum took three quarters of; a cleaning whose
+        picture is not the one shown now is only noted, and shows the new
+        way when its picture does. How many were made again."""
+        made = 0
+        for item in self.library.all_items():
+            cleaned = item.cleaned
+            if cleaned is None or cleaned.kind != "varnish" or cleaned.reading >= recovery.READING:
+                continue
+            strength = cleaned.strength
+            if cleaned.reading < 2:
+                strength = round(min(strength / FIRST_SHARE, recovery.D_MAX), 2)
+            again = cleaned.model_copy(
+                update={"strength": strength, "reading": recovery.READING, "at": _now()}
+            )
+            try:
+                if item.cleaned_shown() is None:
+                    self.library.update(item.id, cleaned=again)
+                else:
+                    self.apply(item, again)
+                    made += 1
+            except (OSError, ValueError) as err:
+                log.warning("cleaning of %s not made again: %s", item.id, err)
+        if made:
+            log.info("cleanings made again with the sum of now: %d", made)
+        return made
+
     # -- putting it on ----------------------------------------------------------------
 
     def _read(self, item: Item, made: str) -> Cleaned | None:
@@ -143,7 +179,12 @@ class Cleaning:
             return None
         strength = recovery.kept_strength(small) if kind == "varnish" else 0.0
         return Cleaned(
-            kind=kind, made=made, strength=strength, picture=item.picture_key(), at=_now()
+            kind=kind,
+            made=made,
+            strength=strength,
+            reading=recovery.READING,
+            picture=item.picture_key(),
+            at=_now(),
         )
 
     def apply(self, item: Item, cleaned: Cleaned | None) -> Item:

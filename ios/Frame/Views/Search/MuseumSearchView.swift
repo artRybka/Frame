@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The Szukaj tab's search: words, artists, styles, subjects, periods,
 /// techniques, colours and museums as chips, over the catalogue (at once)
@@ -43,11 +44,12 @@ struct MuseumSearchView: View {
     /// The server can search by how works look (Gemini's key, the switch,
     /// works with their numbers): "Szukaj wyglądem" and "Szukaj zdjęciem".
     @State private var looksReady = false
-    /// The search's stack: words or a photograph searched by how works look
-    /// go on it, a page of their own. (Presented apart from it, with
-    /// `navigationDestination(item:)`, the page jumped back from the work a
-    /// tile opened: Mateusz 2026-11-13, "ekran przeskakuje i wraca na listę
-    /// wyników".)
+    /// A photograph taken or picked for "Szukaj zdjęciem", while the server
+    /// turns it into its key: its works then come in these results as the
+    /// chip "Podobne do zdjęcia", the groups narrowing them (Mateusz
+    /// 2026-11-15: "tak jak przy „szukaj podobnych” z karty dzieła").
+    @State private var photoAsking: Data?
+    /// The search's stack: the works opened from the results.
     @Binding var path: NavigationPath
 
     /// The rules' chips, then the colours' and the museums'.
@@ -72,7 +74,14 @@ struct MuseumSearchView: View {
         return (rules, sources)
     }
 
-    private var asked: Bool { !rules.isEmpty || !sources.isEmpty }
+    private var asked: Bool { !rules.isEmpty || !sources.isEmpty || photoAsking != nil }
+
+    /// The photograph searched (or being asked), shown over its works.
+    private var photo: Data? {
+        if let photoAsking { return photoAsking }
+        guard SearchToken.isPhoto(rules.like) else { return nil }
+        return model.lookPhotos[rules.like]
+    }
 
     private var searchKey: WorkSearch.Key { WorkSearch.Key(rules: rules, sources: sources) }
 
@@ -131,8 +140,8 @@ struct MuseumSearchView: View {
         }
         .termSearch(lookup, tokens: tokens, focused: $fieldFocused)
         // The camera at the field's end, while nothing is typed or picked.
-        .looksCamera(shown: looksReady && !asked && lookup.text.isEmpty && path.isEmpty) { ask in
-            path.append(ask)
+        .looksCamera(shown: looksReady && !asked && lookup.text.isEmpty && path.isEmpty) { picture in
+            searchPhoto(picture)
         }
         // Tapping the field brings the groups back, as does asking nothing.
         .onChange(of: fieldFocused) { _, focused in
@@ -169,6 +178,13 @@ struct MuseumSearchView: View {
             // CI screenshots: the Technika sheet with two picked.
             if LaunchRoute.screen == "search-techniques", rules.terms.isEmpty {
                 rules.terms = ["technique:painting", "technique:drawing"]
+            }
+            // Screenshots: "Szukaj zdjęciem" with the demo's photograph of a
+            // painting on a wall (no real photo in the repo).
+            if LaunchRoute.screen == "search-photo", model.demoMode, rules.isEmpty, photoAsking == nil,
+               let wall = DemoOwn.photo()?.jpegData(compressionQuality: 0.9),
+               let small = LookPhoto.small(from: wall) {
+                searchPhoto(small)
             }
             // CI screenshots: every museum but the Met, with a colour.
             if LaunchRoute.screen == "search-museums", rules.excludePlaces.isEmpty {
@@ -263,15 +279,63 @@ struct MuseumSearchView: View {
 
     private var resultsView: some View {
         VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .center, spacing: 12) {
+                if let photo { photoThumb(photo) }
+                VStack(alignment: .leading, spacing: 6) {
                     Text(summary)
                         .font(.serif(17, weight: .medium))
                         .foregroundStyle(Theme.ink)
-                    Spacer()
+                    TokenSummary(tokens: tokens.wrappedValue)
                 }
-                TokenSummary(tokens: tokens.wrappedValue)
+                Spacer(minLength: 0)
             }
+            if photoAsking != nil {
+                SearchWaiting()
+            } else {
+                found
+            }
+        }
+    }
+
+    /// The photograph searched, small, as the search's mark (Mateusz
+    /// 2026-11-15: it stays over the works found like it).
+    @ViewBuilder
+    private func photoThumb(_ data: Data) -> some View {
+        if let image = UIImage(data: data) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 56, height: 56)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .accessibilityLabel("Szukane zdjęcie")
+        }
+    }
+
+    /// "Szukaj zdjęciem": the photograph to the server, its key the
+    /// search's only chip, "Podobne do zdjęcia".
+    private func searchPhoto(_ picture: Data) {
+        photoAsking = picture
+        Task {
+            do {
+                let key = try await model.backend.lookPhoto(picture).key
+                guard photoAsking == picture else { return }
+                model.lookPhotos[key] = picture
+                var asked = PlaylistRules()
+                asked.like = key
+                rules = asked
+                sources = []
+            } catch {
+                if !error.isCancellation { model.notices.warn(LookPhoto.why(error)) }
+            }
+            if photoAsking == picture { photoAsking = nil }
+        }
+    }
+
+    /// The works found, the playlist made of them, and what giving up a
+    /// choice would find when nothing is.
+    @ViewBuilder
+    private var found: some View {
+        VStack(alignment: .leading, spacing: 14) {
             if asked, !nothingFound {
                 Button {
                     // The same search, museums included; the playlist asks
@@ -342,7 +406,7 @@ struct MuseumSearchView: View {
         asked && search.searched == searchKey && search.nothingFound
     }
 
-    private var summary: String { search.summary }
+    private var summary: String { photoAsking != nil ? "Szukam…" : search.summary }
 
     private func heart(_ item: ItemSummary) -> some View {
         TileHeart(favorite: item.favorite) {

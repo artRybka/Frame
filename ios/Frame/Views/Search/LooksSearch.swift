@@ -3,27 +3,16 @@ import SwiftUI
 import UIKit
 
 /// Szukaj by how works look (Google's embedding model, Mateusz 2026-11-13,
-/// "G1"): words for how a work looks ("mglisty poranek nad wodą"), a
-/// photograph of one (in a museum, a postcard, a page of a book); the works
-/// that look like a work are Szukaj's chip "Podobne do". Only the museums'
-/// works are found so; his own photos are never sent to Google.
-enum LooksAsk: Hashable, Identifiable {
-    case words(String)
-    /// A JPEG made small on the phone (`LooksAsk.picture(from:)`).
-    case picture(Data)
-
-    var id: Self { self }
-
-    var title: String {
-        switch self {
-        case .words(let words): "„\(words)”"
-        case .picture: "Podobne do zdjęcia"
-        }
-    }
-
+/// "G1"): words for how a work looks are the chip "Wygląd"; the works that
+/// look like a work, or like a photograph (of a work in a museum, a
+/// postcard, a page of a book), are the chip "Podobne do", in Szukaj's own
+/// list, the groups narrowing them (Mateusz 2026-11-15: "tak jak przy
+/// „szukaj podobnych” z karty dzieła"). Only the museums' works are found
+/// so; his own photos are never sent to Google.
+enum LookPhoto {
     /// The photograph picked, as a JPEG of at most 1024 px a side: the
     /// model sees no more, and an iPhone's HEIC is no picture to the server.
-    static func picture(from original: Data) -> LooksAsk? {
+    static func small(from original: Data) -> Data? {
         guard let image = UIImage(data: original) else { return nil }
         let side = max(image.size.width, image.size.height)
         let scale = min(1, 1024 / max(side, 1))
@@ -33,115 +22,7 @@ enum LooksAsk: Hashable, Identifiable {
         let small = UIGraphicsImageRenderer(size: size, format: format).image { _ in
             image.draw(in: CGRect(origin: .zero, size: size))
         }
-        return small.jpegData(compressionQuality: 0.85).map { LooksAsk.picture($0) }
-    }
-}
-
-/// The works found by how they look, nearest first.
-struct LooksResultsView: View {
-    @Environment(AppModel.self) private var model
-    let ask: LooksAsk
-    @State private var found: [ItemSummary]?
-    @State private var failed: String?
-    @State private var liking: Set<String> = []
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                header
-                if let found {
-                    if found.isEmpty {
-                        Text("Nie znalazłem dzieł, które tak wyglądają.")
-                            .font(.subheadline)
-                            .foregroundStyle(Theme.inkSoft)
-                    } else {
-                        MasonryGrid(items: found) { summary in
-                            NavigationLink(value: summary.id) {
-                                ArtCard(item: summary, showsFavorite: false)
-                            }
-                            .buttonStyle(.plain)
-                            .contextMenu { QueueButton(itemID: summary.id) }
-                            .overlay(alignment: .topTrailing) { heart(summary) }
-                        }
-                    }
-                } else if let failed {
-                    Label(failed, systemImage: "exclamationmark.circle")
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.inkSoft)
-                } else {
-                    SearchWaiting()
-                }
-            }
-            .pageWidth()
-            .padding(.horizontal, Theme.gutter)
-            .padding(.bottom, 32)
-        }
-        .paperPage()
-        .navigationTitle(ask.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .task { await load() }
-        .onChange(of: model.hearts) { _, hearts in
-            for (id, favorite) in hearts where !liking.contains(id) { mark(id, favorite: favorite) }
-        }
-    }
-
-    @ViewBuilder
-    private var header: some View {
-        switch ask {
-        case .words(let words):
-            Text("Dzieła, które wyglądają jak „\(words)”")
-                .font(.serif(17, weight: .medium))
-                .foregroundStyle(Theme.ink)
-        case .picture(let data):
-            HStack(spacing: 12) {
-                if let image = UIImage(data: data) {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 64, height: 64)
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                }
-                Text("Dzieła podobne do tego zdjęcia")
-                    .font(.serif(17, weight: .medium))
-                    .foregroundStyle(Theme.ink)
-            }
-        }
-    }
-
-    private func heart(_ item: ItemSummary) -> some View {
-        TileHeart(favorite: item.favorite) {
-            guard !liking.contains(item.id) else { return }
-            Task { await setFavorite(item.id, !item.favorite) }
-        }
-    }
-
-    private func mark(_ id: String, favorite: Bool) {
-        guard let at = found?.firstIndex(where: { $0.id == id }) else { return }
-        found?[at].favorite = favorite
-    }
-
-    @MainActor
-    private func setFavorite(_ id: String, _ favorite: Bool) async {
-        liking.insert(id)
-        defer { liking.remove(id) }
-        mark(id, favorite: favorite)
-        let item = await model.setFavorite(id, favorite)
-        mark(id, favorite: item?.favorite ?? !favorite)
-    }
-
-    private func load() async {
-        guard found == nil else { return }
-        failed = nil
-        do {
-            let answer: LooksAnswer = switch ask {
-            case .words(let words): try await model.backend.looks(words: words)
-            case .picture(let data): try await model.backend.looks(picture: data)
-            }
-            withAnimation(.easeOut(duration: 0.25)) { found = answer.items }
-        } catch {
-            if error.isCancellation { return }
-            failed = Self.why(error)
-        }
+        return small.jpegData(compressionQuality: 0.85)
     }
 
     /// The server's 409 (no key, switched off, nothing ready yet, the
@@ -372,7 +253,7 @@ struct LooksRow: Layout {
 /// the camera (the photo library where there is none); held, it offers the
 /// library too. The photograph is searched by how it looks.
 extension View {
-    func looksCamera(shown: Bool, found: @escaping (LooksAsk) -> Void) -> some View {
+    func looksCamera(shown: Bool, found: @escaping (Data) -> Void) -> some View {
         modifier(LooksCamera(shown: shown, found: found))
     }
 }
@@ -380,7 +261,7 @@ extension View {
 private struct LooksCamera: ViewModifier {
     @Environment(AppModel.self) private var model
     let shown: Bool
-    let found: (LooksAsk) -> Void
+    let found: (Data) -> Void
     @State private var camera = false
     @State private var library = false
     @State private var picked: PhotosPickerItem?
@@ -425,12 +306,12 @@ private struct LooksCamera: ViewModifier {
 
     private func take(_ data: Data) {
         Task {
-            guard let ask = await Task.detached(priority: .userInitiated, operation: { LooksAsk.picture(from: data) }).value
+            guard let small = await Task.detached(priority: .userInitiated, operation: { LookPhoto.small(from: data) }).value
             else {
                 model.notices.warn("Nie udało się wczytać zdjęcia")
                 return
             }
-            found(ask)
+            found(small)
         }
     }
 }

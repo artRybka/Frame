@@ -604,6 +604,9 @@ struct AiSection: View {
                     Text(Self.useNote(use))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(use.able ? Theme.ink.opacity(0.75) : Theme.inkSoft)
+                    if use.able, let options = use.aNightOptions, let night = use.aNight {
+                        aNightMenu(use, night: night, options: options)
+                    }
                 }
             }
             .tint(Theme.ink)
@@ -612,7 +615,42 @@ struct AiSection: View {
         .contentShape(.rect)
     }
 
-    /// "czeka 412 · ok. 4,12 USD · do 540 na noc", what it did this period.
+    /// "do 1000 na noc ⌄": how many a night the owner lets the use take
+    /// (Mateusz 2026-11-15, the catalogue's texts: "Jak to zlimitować?").
+    private func aNightMenu(_ use: LeftoverUse, night: Int, options: [Int]) -> some View {
+        Menu {
+            Picker("Na noc", selection: Binding(
+                get: { night },
+                set: { new in
+                    Task { await model.saveAiSettings(AiSettingsUpdate(leftoverTextsANight: new)) }
+                }
+            )) {
+                ForEach(Set(options + [night]).sorted(), id: \.self) { option in
+                    Text("do \(Self.count(option)) na noc").tag(option)
+                }
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Text("do \(Self.count(night)) na noc")
+                Image(systemName: "chevron.up.chevron.down").imageScale(.small)
+            }
+            .font(.caption.weight(.medium).monospacedDigit())
+            .foregroundStyle(Theme.ink)
+            .padding(.vertical, 2)
+            .contentShape(.rect)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+    }
+
+    /// "125 323": a count as Polish writes it.
+    static func count(_ n: Int) -> String {
+        n.formatted(.number.grouping(.automatic).locale(Locale(identifier: "pl_PL")))
+    }
+
+    /// "czeka 412 · ok. 4,12 USD · do 540 na noc", what it did this period;
+    /// a use with more waiting than a night takes tells the night's part
+    /// ("czeka 125 323 · tej nocy 1000, ok. 6,58 USD"), not the whole.
     static func useNote(_ use: LeftoverUse) -> String {
         if !use.able { return "Wyłączone w ustawieniach wyżej." }
         var parts: [String] = []
@@ -624,11 +662,13 @@ struct AiSection: View {
         } else if let waiting = use.waiting {
             if waiting == 0 {
                 parts.append("nic nie czeka")
+            } else if let tonight = use.tonight, let usd = use.tonightUsd, tonight < waiting {
+                parts.append("czeka \(count(waiting)) · tej nocy \(count(tonight)), ok. \(Money.usd(usd))")
             } else if let usd = use.waitingUsd {
-                parts.append("czeka \(waiting) · ok. \(Money.usd(usd))")
+                parts.append("czeka \(count(waiting)) · ok. \(Money.usd(usd))")
             }
         }
-        if let night = use.aNight { parts.append("do \(night) na noc") }
+        if let night = use.aNight, use.aNightOptions == nil { parts.append("do \(count(night)) na noc") }
         if use.done > 0 { parts.append("w tym okresie \(use.done), ok. \(Money.usd(use.doneUsd))") }
         return parts.joined(separator: " · ")
     }

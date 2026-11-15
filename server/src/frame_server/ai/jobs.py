@@ -875,13 +875,17 @@ class AiWorker:
         kinds: tuple[str, ...],
         usd: float,
         first: Callable[[list[Item]], list[Item]] = lambda items: items,
-    ) -> int:
+        works: int | None = None,
+    ) -> tuple[int, int]:
         """The library's items without an up-to-date note of ``kinds``
         (``first``: in which order), sent through the Batch API for at most
         ``usd`` in all (Mateusz 2026-11-13: the month's rest, after the
-        studies, on the catalogue's keywords and Polish texts); how many
-        questions went."""
+        studies, on the catalogue's keywords and Polish texts) and, with
+        ``works``, about at most that many items in all (Mateusz 2026-11-15:
+        "Jak to zlimitować?"); how many questions went, and about how many
+        items."""
         sent = 0
+        asked: set[str] = set()
         in_batches = self._batched()
         for kind in kinds:
             job = self.jobs.get(kind)
@@ -897,17 +901,32 @@ class AiWorker:
                     and i.id not in later
                 ]
             )
+            if works is not None:
+                # the items asked about for a kind before first, then new
+                # ones while there is room
+                room = max(works - len(asked), 0)
+                items = [i for i in items if i.id in asked] + [
+                    i for i in items if i.id not in asked
+                ][:room]
             while items and job.estimate_items(items) > min(usd, self.claude.budget_left()):
                 items = items[: len(items) // 2]
             if not items:
                 continue
             usd -= job.estimate_items(items)
             for start in range(0, len(items), BATCH_SIZE):
-                sent += self._send_batch(job, items[start : start + BATCH_SIZE])
+                went = self._send_batch(job, items[start : start + BATCH_SIZE])
+                sent += went
+                if went:
+                    asked.update(i.id for i in items[start : start + BATCH_SIZE])
         if sent:
             self._next_poll = time.monotonic() + POLL_SECONDS
-            log.info("language model: %d questions of %s ordered", sent, ", ".join(kinds))
-        return sent
+            log.info(
+                "language model: %d questions of %s ordered, %d items",
+                sent,
+                ", ".join(kinds),
+                len(asked),
+            )
+        return sent, len(asked)
 
     def batched_usd(self, kinds: tuple[str, ...]) -> float:
         """About what the questions of ``kinds`` in batches not ended yet cost."""

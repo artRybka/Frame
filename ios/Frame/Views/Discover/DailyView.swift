@@ -442,7 +442,7 @@ struct DailyView: View {
         if card?.id != work.item.id { card = work.item.item }
         if let fresh = try? await model.backend.item(id: work.item.id) {
             card = fresh
-            model.pictureSeen(fresh.id, copy: fresh.pictureVersion)
+            model.cardShows(fresh)
         }
     }
 
@@ -1827,10 +1827,6 @@ struct StudySheet: View {
                 }
                 .navigationDestination(for: String.self) { id in
                     ItemDetailView(itemID: id)
-                }
-                // "Podobne wyglądem" → "Więcej" on a work's card, in the same path.
-                .navigationDestination(for: LooksAsk.self) { ask in
-                    LooksResultsView(ask: ask)
                 }
                 .navigationDestination(for: DailyRoute.self) { route in
                     DailyView(route: route)

@@ -138,6 +138,9 @@ final class AppModel {
     /// place), and how many times: their thumbnails and previews on screen
     /// are had anew.
     private(set) var pictureChanges: [String: Int] = [:]
+    /// What the cards opened since launch show of their works' pictures
+    /// (`PictureMarks`): the lists loaded before follow (`asOnCard`).
+    private(set) var cardMarks: [String: PictureMarks] = [:]
     /// Which copy each work showing one was last seen with (its id; works
     /// showing their own are left out), kept across launches: a change made
     /// on another phone is noticed here too.
@@ -179,6 +182,10 @@ final class AppModel {
     /// The titles of the works asked for their look-alikes, by
     /// `SearchToken.likeName`: the "Podobne do" chips' names.
     var likeTitles: [String: String] = [:]
+    /// The photographs searched in Szukaj ("Szukaj zdjęciem"), small, by
+    /// their key (`SearchToken.isPhoto`): shown over the works found like
+    /// them. Only on the phone, and only while the app runs.
+    var lookPhotos: [String: Data] = [:]
     /// Museums' names by their keys, as Szukaj's "Muzeum" last listed them
     /// (and as works named them): the chips' names.
     var placeNames: [String: String] = [:]
@@ -863,7 +870,7 @@ final class AppModel {
         } else {
             ownWorks.insert(summary, at: 0)
         }
-        pictureSeen(item.id, copy: item.pictureVersion, changed: true)
+        cardShows(item, changed: true)
         libraryChanged()
     }
 
@@ -2154,7 +2161,7 @@ final class AppModel {
     /// (`copyID` its own id): its thumbnail and previews follow at once.
     func chooseCopy(itemID: String, copyID: String) async throws -> Item {
         let updated = try await backend.chooseCopy(itemID: itemID, copyID: copyID)
-        pictureSeen(itemID, copy: updated.pictureVersion, changed: true)
+        cardShows(updated, changed: true)
         return updated
     }
 
@@ -2163,9 +2170,22 @@ final class AppModel {
     /// follow at once, as for a picked copy.
     func restore(itemID: String) async throws -> Item {
         let updated = try await backend.restore(itemID: itemID)
-        pictureSeen(itemID, copy: updated.pictureVersion, changed: true)
+        cardShows(updated, changed: true)
         return updated
     }
+
+    /// The work as its card has it now (`changed`: the card just changed
+    /// its copy, cut or cleaning): the tiles of lists loaded before show
+    /// its marks so (`asOnCard`), and its pictures kept from before go
+    /// (`pictureSeen`).
+    func cardShows(_ item: Item, changed: Bool = false) {
+        let marks = PictureMarks(item)
+        if cardMarks[item.id] != marks { cardMarks[item.id] = marks }
+        pictureSeen(item.id, copy: item.pictureVersion, changed: changed)
+    }
+
+    /// A list's tile with the picture's marks its card has had since.
+    func asOnCard(_ tile: ItemSummary) -> ItemSummary { cardMarks[tile.id]?.on(tile) ?? tile }
 
     /// The work was seen showing `copy` ("" its own picture). When that is
     /// not the one it was seen with before (or `changed`), its thumbnail
