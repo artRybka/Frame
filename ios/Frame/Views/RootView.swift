@@ -45,7 +45,8 @@ enum LaunchRoute {
     static let confirm = UserDefaults.standard.string(forKey: "confirm")
     /// A sheet opened by itself on the work's card: "playlists" (Do
     /// playlisty, the work put on the first manual playlist first) or
-    /// "playlists-new" (with "Nowa playlista…" being named).
+    /// "playlists-new" (with "Nowa playlista…" being named); "recovery":
+    /// the colour recovery preview on the card's picture.
     static let sheet = UserDefaults.standard.string(forKey: "sheet")
 }
 

@@ -444,6 +444,26 @@ struct MediumView: Codable, Hashable, Sendable {
     var medium: String = ""
 }
 
+/// What the card's colour recovery preview may show of a work
+/// (`ColourRecovery`), read from its picture by the server, no model
+/// asked: "varnish" (the app does the sum itself: red, green and blue in
+/// linear light times `exp(strength * alpha)`, then times `top / tops`
+/// where that is under one; `tops` at the strengths `steps`), "paper"
+/// (the de-yellowed sheet is a picture of its own, `ImageRef.recovered`)
+/// or "none".
+struct RecoveryView: Codable, Hashable, Sendable {
+    var kind: String
+    /// The strength the slider opens at, and the most it goes to.
+    var strength: Double = 0
+    var most: Double = 1.6
+    var alpha: [Double] = [0.15, 0.36, 1]
+    var top: Double = 0.97
+    var steps: [Double] = []
+    var tops: [Double] = []
+    /// Part of the address a de-yellowed sheet is kept by.
+    var version: Int = 1
+}
+
 /// One copy of a work's picture from another source ("Szukaj lepszej
 /// kopii"), as the server judged it.
 struct CopyView: Codable, Hashable, Sendable, Identifiable {
