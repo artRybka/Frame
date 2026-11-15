@@ -1050,6 +1050,7 @@ struct ItemDetailView: View {
         }
         if let known = ColourRecovery.cached(key) {
             recovery = known
+            recoveryForScreenshot()
             return
         }
         recovery = nil
@@ -1059,6 +1060,14 @@ struct ItemDetailView: View {
         else { return }
         ColourRecovery.keep(told, for: key)
         recovery = told
+        recoveryForScreenshot()
+    }
+
+    /// CI screenshots: `-sheet recovery` puts the preview on the picture.
+    private func recoveryForScreenshot() {
+        guard LaunchRoute.screen == "detail", LaunchRoute.sheet == "recovery", model.demoMode, !recovering
+        else { return }
+        toggleRecovery()
     }
 
     /// The menu's entry: the preview comes onto the picture, at the
