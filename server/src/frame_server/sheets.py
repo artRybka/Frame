@@ -19,7 +19,8 @@ reader waited for it on an empty page (Mateusz 2026-11-12: "Po wejściu w
 studium sporo czasu czekam aż pojawi się obraz analizy kompozycji"). So
 the sheets of the pages there are get made in the background, the newest
 page's first (:meth:`Sheets.ahead`); one asked for before its turn is
-still made at once.
+still made at once. Not those the image model draws (``drawn``): theirs
+is made only when asked for, where the drawn one is not there.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ import logging
 import threading
 import time
 import zlib
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -79,6 +81,10 @@ class Sheets:
         self._making = threading.Lock()
         #: Works whose sheet could not be made ahead, and when.
         self._failed: dict[str, float] = {}
+        #: Whether a take's sheet need not be made ahead: the image model
+        #: draws it (``drawn.DrawnSheets.spares``), and this one stands in
+        #: only when it does not.
+        self.spared: Callable[[Item, View], bool] = lambda item, view: False
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -166,7 +172,7 @@ class Sheets:
                     continue
                 views = page_views(note.data)
                 item = self.library.get(item_id) if views else None
-                if item is None:
+                if item is None or self.spared(item, views[0]):
                     continue
                 for dark in (False, True):
                     if not self.path(item, views[0], dark, "wash").is_file():

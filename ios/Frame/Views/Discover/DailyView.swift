@@ -183,6 +183,8 @@ struct DailyView: View {
     @State private var analysingFrom: Int?
     /// The drawn sheet that would not load: the server's own is shown.
     @State private var drawnFailed: String?
+    /// The drawn sheet was waited for long enough: the server's own is shown.
+    @State private var drawnLate = false
     /// "Popraw detale" sent: Claude is checking the details (until the
     /// server says it is done).
     @State private var mending = false
@@ -1009,6 +1011,16 @@ struct DailyView: View {
                     drawnFailed = drawn.sheet
                 }
                 .padding(.top, 4)
+            } else if work.compositionDrawnPending == true, shown.field == takes.first?.field, !drawnLate {
+                // Being drawn: said, not the server's sheet meanwhile, which
+                // stands in only should none come (Mateusz 2026-11-15 00:00).
+                DrawnSheetComing(
+                    aspect: Self.fieldAspect(aspect(work.item.item), shown.field),
+                    title: Self.sheetTitle(work),
+                    width: column
+                )
+                .padding(.top, 4)
+                .transition(.opacity)
             } else {
                 CompositionSketch(
                     item: work.item, aspect: aspect(work.item.item), take: shown,
@@ -1022,6 +1034,14 @@ struct DailyView: View {
             if !shown.text.isEmpty { prose(shown.text, size: 15) }
         }
         .animation(.easeOut(duration: 0.25), value: work.compositionPending == true || analysingFrom != nil)
+        .animation(.easeOut(duration: 0.35), value: work.compositionDrawn?.sheet)
+        .animation(.easeOut(duration: 0.35), value: drawnLate)
+    }
+
+    /// The shape of a take's field: the picture's, cut to the field.
+    static func fieldAspect(_ picture: CGFloat, _ field: DailyWork.Take.Field?) -> CGFloat {
+        guard let field, field.w > 0, field.h > 0 else { return picture }
+        return picture * CGFloat(field.w / field.h)
     }
 
     /// "Analiza kompozycji": for the owner, held, a menu to make it anew
@@ -1123,15 +1143,19 @@ struct DailyView: View {
 
     /// While the image model draws the take's sheet (a new page's, an
     /// analysis made anew; a minute or two): the page is fetched again
-    /// every little while until the sheet is on it.
+    /// every little while until the sheet is on it. The server says when
+    /// none will come (the model refused the work, the key's trouble): its
+    /// own sheet is shown then, and here too once waited for long enough.
     private func followDrawnSheet() async {
         guard work?.compositionDrawnPending == true else { return }
-        for _ in 0..<30 {  // some seven minutes; the server's own sheet stays after
-            try? await Task.sleep(for: .seconds(15))
+        drawnLate = false
+        for _ in 0..<42 {  // some seven minutes
+            try? await Task.sleep(for: .seconds(10))
             if Task.isCancelled { return }
             await refreshPage()
             guard work?.compositionDrawnPending == true, work?.compositionDrawn == nil else { return }
         }
+        drawnLate = true
     }
 
     /// While "Jak powstawał" is written (a few seconds after the study

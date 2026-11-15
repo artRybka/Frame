@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.145.142
+
+- Przygotowywane Studium dzieła nie pokazuje już najpierw arkusza
+  kompozycji z plamami, który po minucie czy dwóch znikał pod szkicem
+  Gemini. Póki Gemini rysuje, w miejscu arkusza jest napis „Gemini rysuje
+  szkic kompozycji…” w ramce kształtu obrazu, a szkic pojawia się w niej,
+  gdy przyjdzie. Arkusz z plamami zostaje zapasem: gdy Gemini odmówi
+  dzieła, klucz nie działa, skończy się limit albo szkic nie przyjdzie w
+  ciągu ok. 7 minut.
+- Gemini zabiera się do szkicu od razu, gdy aplikacja czeka na stronę
+  (wcześniej do minuty przerwy w tle).
+- Serwer nie robi już z wyprzedzeniem arkuszy z plamami (jasnego i
+  ciemnego) dla studiów, które mają albo dostaną szkic Gemini. Zrobi go
+  dopiero, gdy będzie potrzebny.
+
 ## 1.145.141
 
 - Rysunek z marginesem nie traci już marginesu z jednej strony (Beksiński,

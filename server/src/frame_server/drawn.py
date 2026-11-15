@@ -34,9 +34,13 @@ zapisane przez Batch po aktualizacji dla obniżenia kosztu lub poprzez
   what runs out of it (``batch.json`` holds where it is, so that a
   restart loses nothing).
 
-Until a take's sheet is there the app shows the sheet made here
-(``sheets``). A take whose sheet could not be drawn twice (the model
-will not redraw some works) is left with that one.
+While a take's sheet is drawn at once the app says so and waits for it
+(Mateusz 2026-11-15 00:00: the sheet made here, shown first and then
+gone, was confusing); the sheet made here (``sheets``) stands in only
+where none is drawn: a take whose sheet could not be drawn twice (the
+model will not redraw some works), the model resting (no credit, the
+limit), a saved page's take until the Batch brings its sheet. It is no
+longer made ahead for the takes that will have one (:meth:`spares`).
 """
 
 from __future__ import annotations
@@ -488,13 +492,31 @@ class DrawnSheets:
         if self.replacing(item.id):
             return False
         if item.id in listed(self.library, AT_ONCE):
+            wanted = True
+        else:
+            since = self._since()
+            notes = ((kind, self.library.note(item.id, kind)) for kind in PAGES)
+            wanted = any(
+                note is not None and self._new(kind, item.id, str(note.created_at), since)
+                for kind, note in notes
+            )
+        if wanted:
+            # Someone waits for it on the page: the background, resting
+            # between its looks, sets about it now.
+            self._wake.set()
+        return wanted
+
+    def spares(self, item: Item, view: View) -> bool:
+        """Whether the server's own sheet of the take (``sheets``) need not
+        be made ahead: the take has its drawn sheet, or will have one soon
+        (the model draws, rests for nothing and has not given it up).
+        Mateusz 2026-11-15 00:00: "generujmy i korzystajmy z niego tylko gdy
+        od Gemini nie dostajemy odpowiedzi"; asked for, it is still made."""
+        if self.kept(item, view) is not None:
             return True
-        since = self._since()
-        notes = ((kind, self.library.note(item.id, kind)) for kind in PAGES)
-        return any(
-            note is not None and self._new(kind, item.id, str(note.created_at), since)
-            for kind, note in notes
-        )
+        if not self.enabled() or self._resting():
+            return False
+        return not self._left(self._stem(item, self.key(view)))
 
     def covers(self, item: Item, view: View) -> bool:
         """Whether the take has its drawn sheet, or will have one: the
