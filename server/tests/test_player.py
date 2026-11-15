@@ -947,15 +947,15 @@ def test_the_library_is_scored_on_from_where_a_restart_stopped_it(service, monke
     looked: list[int] = []
     analyse = player_module.analyse
 
-    def until_the_third(img, spread):
+    def until_the_third(img, spread, medium=""):
         if len(looked) == 2:
             raise Stopped  # the server is updated
         looked.append(1)
-        return analyse(img, spread)
+        return analyse(img, spread, medium)
 
-    def counted(img, spread):
+    def counted(img, spread, medium=""):
         looked.append(1)
-        return analyse(img, spread)
+        return analyse(img, spread, medium)
 
     older()
     monkeypatch.setattr(player_module, "RESCORE_PORTION", 2)

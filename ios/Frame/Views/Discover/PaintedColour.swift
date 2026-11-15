@@ -46,7 +46,8 @@ extension PaintStyle {
         let shares = item.colors.compactMap { swatch in
             Paint.rgb(swatch.hex).map { PaintShare(rgb: $0, weight: max(swatch.weight, 0), accent: swatch.accent ?? false) }
         }
-        return of(medium: item.medium, classification: item.classification, mono: mono(item.colorTags, shares), warm: warm(colours))
+        return of(medium: item.medium, classification: item.classification, mono: mono(item.colorTags, shares), warm: warm(colours),
+                  about: item.description)
     }
 
     /// A sculpture: no bar of colours.
@@ -137,6 +138,11 @@ struct PaintJob: @unchecked Sendable {
             return PaintJob(TintedStrip(shares: shares, width: width, seed: seed, tool: style.drawn ?? .pencil), scale: PrintPaint.scale)
         case .toned, .heightened:
             return PaintJob(TonedStrip(shares: shares, width: width, seed: seed, lit: style == .heightened), scale: PrintPaint.scale)
+        case .washLit, .washLitChalk, .washToned, .washTonedChalk:
+            return PaintJob(LitWashStrip(shares: shares, width: width, seed: seed, lit: style.lit, tool: style.drawn ?? .pen),
+                            scale: PrintPaint.scale)
+        case .chiaroscuro:
+            return PaintJob(ChiaroscuroStrip(shares: shares, width: width, seed: seed), scale: PrintPaint.scale)
         }
     }
 
@@ -179,6 +185,11 @@ struct PaintJob: @unchecked Sendable {
         case .grain, .aquatint: return PaintJob(InkStamp(rgb: rgb, index: index, seed: seed, press: .stone), scale: PrintPaint.scale)
         case .waterPencil, .waterPen: return PaintJob(WaterDab(rgb: rgb, index: index, seed: seed))
         case .toned, .heightened: return PaintJob(LinePatch(rgb: rgb, index: index, seed: seed, tool: .pencil), scale: PrintPaint.scale)
+        case .washLit, .washLitChalk, .washToned, .washTonedChalk:
+            // The white that heightens it is gouache; the rest are washes.
+            guard LitWashStrip.gouache(rgb) else { return PaintJob(WaterDab(rgb: rgb, index: index, seed: seed)) }
+            return PaintJob(GouacheDab(rgb: rgb, index: index, seed: seed), scale: PrintPaint.scale)
+        case .chiaroscuro: return PaintJob(InkStamp(rgb: rgb, index: index, seed: seed, press: .wood), scale: PrintPaint.scale)
         }
     }
 }

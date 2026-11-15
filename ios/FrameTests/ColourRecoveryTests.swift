@@ -33,6 +33,8 @@ final class ColourRecoveryTests: XCTestCase {
         XCTAssertEqual(ColourRecovery.made(.grain), "paper")  // the stone's lithograph, 1.145.154
         XCTAssertEqual(ColourRecovery.made(.aquatint), "paper")  // the plate's aquatint, 1.145.156
         XCTAssertEqual(ColourRecovery.made(.toned), "paper")  // the server reads the sheet's tone itself
+        XCTAssertEqual(ColourRecovery.made(.washLit), "paper")
+        XCTAssertEqual(ColourRecovery.made(.chiaroscuro), "paper")
         XCTAssertEqual(ColourRecovery.made(.pastel), "opaque")
         XCTAssertEqual(ColourRecovery.made(.gouache), "opaque")
         XCTAssertNil(ColourRecovery.made(.photo))

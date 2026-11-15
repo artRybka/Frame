@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.145.173
+
+- Pasek „Kolorystyka” rysunku lawowanego na barwionym papierze albo
+  rozjaśnionego bielą (np. Géricault, „Turecki jeździec w walce”): papier
+  w kolorze pracy, pod spodem kreski kredy albo piórka, lawowania od
+  najjaśniejszego, a biel gwaszem jednym kryjącym pociągnięciem na jasnym
+  końcu paska. Serwer zauważa teraz biel położoną na barwionym papierze
+  (wcześniej brał ją za papier); po aktualizacji ponownie przelicza barwy
+  biblioteki.
+- Drzeworyt światłocieniowy (chiaroscuro) ma własny pasek: biel papieru,
+  płaskie płyty tonów jednej barwy nadrukowane jedna na drugą i linie
+  płyty konturowej, zamiast czarnego klocka zwykłego drzeworytu. Rozpoznaje
+  go także opis dzieła, gdy technika mówi tylko „drzeworyt” (np. Jackson
+  według Veronese z Europeany: „cu patru plăci”).
+
 ## 1.145.172
 
 - Własne dzieło dostaje proporcje z podanego wymiaru: obraz wycięty ze
