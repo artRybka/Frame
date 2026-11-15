@@ -26,12 +26,12 @@ struct ItemToolbar: ToolbarContent {
     var correctCut: (() -> Void)? = nil
     /// "Cofnij kadrowanie": the museum's photograph whole again.
     var undoCut: (() -> Void)? = nil
-    /// "Symulacja odzyskania barw" / "Odżółć papier" (`ColourRecovery`): the
-    /// preview on the card's picture, of `recoveryKind`; the same entry
-    /// ends it while it shows (`recovering`).
+    /// "Zdejmij werniks" / "Odżółć papier" (`ColourRecovery`, "Korekta
+    /// barw"): the work shown cleaned from now on, of `recoveryKind`; the
+    /// same entry gives it up while the work is shown so (`cleaned`).
     var recover: (() -> Void)? = nil
     var recoveryKind = ColourRecovery.Kind.varnish
-    var recovering = false
+    var cleaned = false
     /// A work of his own (Mateusz 2026-11-15): "Edytuj opis", "Zrób zdjęcie
     /// ponownie" and "Usuń z katalogu", asked first (`deletingOwn`).
     var editOwn: (() -> Void)? = nil
@@ -120,10 +120,14 @@ struct ItemToolbar: ToolbarContent {
                     Divider()
                     Button(action: recover) {
                         Label {
-                            Text(recovering ? "Wróć do oryginału" : ColourRecovery.menuTitle(recoveryKind))
-                            Text(recovering ? "Koniec symulacji" : ColourRecovery.menuNote(recoveryKind))
+                            Text(ColourRecovery.menuTitle(recoveryKind, on: cleaned))
+                            Text(ColourRecovery.menuNote(recoveryKind, on: cleaned))
                         } icon: {
-                            Image(systemName: "circle.lefthalf.filled")
+                            if cleaned {
+                                Image(systemName: "arrow.uturn.backward")
+                            } else {
+                                CleanedMark.image
+                            }
                         }
                     }
                 }

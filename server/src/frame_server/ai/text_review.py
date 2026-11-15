@@ -17,7 +17,9 @@ A text whose new answer did not come, or came unusable, stays as it was.
 from __future__ import annotations
 
 import logging
+import math
 import threading
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -45,6 +47,9 @@ CHECK_USAGE = Usage(input_tokens=700, cache_read_input_tokens=0, output_tokens=1
 #: its picture, so fewer go together.
 CHECKS_PER_BATCH = 2000
 NOTES_PER_BATCH = 500
+#: Of the translations checked, about how many turn out not to be about the
+#: work and get a note (a guess, for what the month's rest reckons).
+CHECK_NOTE_SHARE = 0.2
 #: How often the thread looks at its batches, and waits when it has none.
 POLL = 300.0
 IDLE = 3600.0
@@ -64,8 +69,9 @@ CHECK_SCHEMA: dict[str, Any] = {
 }
 
 
-def check_usd() -> float:
-    return cost(HAIKU, CHECK_USAGE, batch=True)
+def check_usd(notes: float = 0.0) -> float:
+    """A check; with ``notes``, the share of the notes it brings."""
+    return cost(HAIKU, CHECK_USAGE, batch=True) + notes * note_usd()
 
 
 def note_usd() -> float:
@@ -179,27 +185,58 @@ class TextReview(NightOrder):
         those found not to be about the work, and the notes before the
         styles (``restyle``) queued for the thread to send. How many; 0 when
         an order is under way or nothing waits."""
+        return self._queue(check, restyle)[0]
+
+    def order(
+        self, usd: float, first: Callable[[list[str]], list[str]] = lambda ids: ids
+    ) -> tuple[int, float]:
+        """The month's rest (``leftover``): what ``usd`` pays for, the works
+        ``first`` puts first, the checks before the notes. How many, and
+        about what they will cost."""
+        return self._queue(True, True, usd, first)
+
+    def waiting(self) -> tuple[int, float]:
+        """What a whole review would ask, and about what it would cost."""
+        texts = self.by_step()
+        checks = len(texts["unchecked"])
+        notes = len(texts["general"]) + len(texts["unstyled"])
+        return checks + notes, checks * check_usd(CHECK_NOTE_SHARE) + notes * note_usd()
+
+    def _queue(
+        self,
+        check: bool,
+        restyle: bool,
+        usd: float | None = None,
+        first: Callable[[list[str]], list[str]] = lambda ids: ids,
+    ) -> tuple[int, float]:
         with self._lock:
             state = self._state()
             if state.get("orders") or any((state.get("queue") or {}).values()):
-                return 0
+                return 0, 0.0
             texts = self.by_step()
             queue: dict[str, list[str]] = {"check": [], "note": []}
             if check:
-                queue["check"] = texts["unchecked"]
-                queue["note"] = texts["general"]
+                queue["check"] = first(texts["unchecked"])
+                queue["note"] = first(texts["general"])
             if restyle:
-                queue["note"] += texts["unstyled"]
+                queue["note"] += first(texts["unstyled"])
+            each_check, each_note = check_usd(CHECK_NOTE_SHARE), note_usd()
+            if usd is not None:
+                checks = min(len(queue["check"]), max(math.floor(usd / each_check), 0))
+                queue["check"] = queue["check"][:checks]
+                left = usd - checks * each_check
+                notes = min(len(queue["note"]), max(math.floor(left / each_note), 0))
+                queue["note"] = queue["note"][:notes]
             count = len(queue["check"]) + len(queue["note"])
             if not count:
-                return 0
+                return 0, 0.0
             state["queue"] = queue
             self._save(state)
         log.info(
             "text review: %d checks and %d notes queued", len(queue["check"]), len(queue["note"])
         )
         self._wake.set()
-        return count
+        return count, len(queue["check"]) * each_check + len(queue["note"]) * each_note
 
     def check_request(self, item: Item) -> dict[str, Any]:
         lines = [f"Tytuł: {item.title}"]

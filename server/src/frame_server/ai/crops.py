@@ -515,9 +515,21 @@ class Crops(CriticNight):
             elif claim.get("reshape"):
                 if len(rechecks) < RESHAPE_PER_NIGHT:
                     rechecks.append((item, claim))
-            elif len(found) < self.critic_per_night:
+            elif len(found) < self.limit(True):
                 found.append((item, claim))
         return True, found + rechecks
+
+    def base_limit(self, critic: bool) -> int:
+        return self.critic_per_night if critic else self.per_night
+
+    def asked_in(self, round_: list[tuple[Item, dict[str, Any]]], critic: bool) -> int:
+        # (the outlines asked again have a limit of their own)
+        return sum(1 for _, claim in round_ if not claim.get("reshape"))
+
+    def waiting_claims(self) -> int:
+        """Works the judge found something around, waiting for Opus."""
+        claims = self.state().get("claims") or {}
+        return sum(1 for c in claims.values() if not (c or {}).get("reshape"))
 
     def order(self) -> bool:
         self.reshaped()
@@ -678,6 +690,13 @@ class Crops(CriticNight):
         img.thumbnail((PHOTO_SIDE, PHOTO_SIDE), Image.Resampling.LANCZOS)
         around = ", ".join(claim.get("around") or []) or "?"
         text = f"{CORNERS}\n\n{facts(item)}\nSeen around it at a glance: {around}."
+        if claim.get("hint"):
+            # "Do sprawdzenia" → "Przytnij": what the night audit saw, in Polish.
+            text += (
+                f"\nA check of the catalogue noticed (in Polish): {claim['hint']} "
+                "Whatever it names that is not the work (a ruler, a colour chart, a museum's "
+                "label, the board or paper around it) stays outside the work's rectangle."
+            )
         return request(
             model=self.critic_model,
             system="You find artworks in museum photographs.",
@@ -870,6 +889,30 @@ class Crops(CriticNight):
             around=old.around,
             aspect=old.aspect,
             picture=item.picture_key(),
+            by="owner",
+            at=_now(),
+        )
+        self.forget_written(item.id)
+        return self.apply(item, cut)
+
+    def cut_now(self, item: Item, hint: str = "") -> Item | None:
+        """ "Do sprawdzenia" → "Przytnij" (Mateusz 2026-11-15): Opus asked for
+        the work's corners now, told what the night audit saw (``hint``: a
+        ruler, a colour chart, a cut edge), and the cut kept as the owner's,
+        never changed by itself again. None when nothing is found to cut."""
+        answer = self.claude.ask(KIND, self.critic_question(item, {"around": [], "hint": hint}))
+        if answer.refused or not answer.data:
+            return None
+        found = self.corners(item, answer.data, sure=False)
+        if found is None or found["work"] is None:
+            return None
+        cut = Cut(
+            work=found["work"],
+            plate=found["plate"],
+            around=list(item.cut.around) if item.cut is not None else [],
+            aspect=float(found["aspect"]),
+            picture=item.picture_key(),
+            shape=str(found.get("shape") or ""),
             by="owner",
             at=_now(),
         )

@@ -32,6 +32,8 @@ struct AiSection: View {
     @State private var askRefresh = false
     @State private var startingRefresh = false
     @State private var reviewCheck = true
+    /// CI and Mac screenshots: `-review YES` opens „Do sprawdzenia".
+    @State private var showReview = UserDefaults.standard.bool(forKey: "review")
     @State private var reviewRestyle = false
     @State private var askReview = false
     @State private var startingReview = false
@@ -277,10 +279,16 @@ struct AiSection: View {
                 progress
             }
             if settings.leftover != nil {
-                SectionHeader(title: "Resztka miesiąca", subtitle: "Studia z tego, co zostaje z limitu")
+                SectionHeader(
+                    title: "Resztka miesiąca",
+                    subtitle: settings.leftoverState?.uses == nil
+                        ? "Studia z tego, co zostaje z limitu" : "Na co idzie to, co zostaje z limitu"
+                )
+                .id("leftover")
                 Card { leftoverRows }
             }
         }
+        .navigationDestination(isPresented: $showReview) { AiReviewView() }
         .task {
             // Batches and the background move on while Konfiguracja is open.
             while !Task.isCancelled {
@@ -494,8 +502,10 @@ struct AiSection: View {
     @ViewBuilder
     private var leftoverRows: some View {
         toggle(
-            "Studia z resztki miesiąca",
-            hint: "W ostatnich dniach okresu to, co zostaje z limitu ponad zapas, idzie nocą na nowe studia: najpierw dzieła typowane przez kuratora Studium dnia, potem według jego kryteriów, zaczynając od Ulubionych i playlist. Co zostanie, idzie na słowa kluczowe i polskie opisy katalogu. Przez Batch, bez powiadomień.",
+            settings.leftoverState?.uses == nil ? "Studia z resztki miesiąca" : "Wykorzystaj resztkę miesiąca",
+            hint: settings.leftoverState?.uses == nil
+                ? "W ostatnich dniach okresu to, co zostaje z limitu ponad zapas, idzie nocą na nowe studia: najpierw dzieła typowane przez kuratora Studium dnia, potem według jego kryteriów, zaczynając od Ulubionych i playlist. Co zostanie, idzie na słowa kluczowe i polskie opisy katalogu. Przez Batch, bez powiadomień."
+                : "W ostatnich dniach okresu to, co zostaje z limitu ponad zapas, idzie nocą na to, co włączysz niżej, od góry, póki starcza. Przez Batch, bez powiadomień.",
             value: settings.leftover ?? false
         ) { AiSettingsUpdate(leftover: $0) }
         Divider()
@@ -522,6 +532,10 @@ struct AiSection: View {
             options: Set(Self.reserves + [settings.leftoverReserveUsd ?? 10]).sorted(),
             label: { Money.usd($0) }
         ) { AiSettingsUpdate(leftoverReserveUsd: $0) }
+        if let uses = settings.leftoverState?.uses, !uses.isEmpty {
+            Divider()
+            leftoverUses(uses)
+        }
         if let state = settings.leftoverState {
             Divider()
             Label(Self.leftoverNote(state, settings: settings), systemImage: state.open ? "clock" : "calendar")
@@ -529,6 +543,103 @@ struct AiSection: View {
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// "Na co, w tej kolejności" (Mateusz 2026-11-15, "Lista z
+    /// kolejnością"): each use with its switch; held and dragged onto
+    /// another, it takes that one's place; the server pays from the top.
+    @ViewBuilder
+    private func leftoverUses(_ uses: [LeftoverUse]) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Na co, w tej kolejności").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
+            Text("Serwer płaci od góry, póki starcza. Przytrzymaj pozycję i przeciągnij, żeby zmienić kolejność.")
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        ForEach(Array(uses.enumerated()), id: \.element.key) { index, use in
+            Divider().padding(.leading, 32)
+            leftoverUseRow(use, place: index + 1, uses: uses)
+                .draggable(use.key)
+                .dropDestination(for: String.self) { keys, _ in
+                    guard let key = keys.first, key != use.key else { return false }
+                    moveUse(key, to: use.key, in: uses)
+                    return true
+                }
+                .contextMenu {
+                    if index > 0 {
+                        Button("Wyżej", systemImage: "arrow.up") {
+                            moveUse(use.key, to: uses[index - 1].key, in: uses)
+                        }
+                    }
+                    if index < uses.count - 1 {
+                        Button("Niżej", systemImage: "arrow.down") {
+                            moveUse(use.key, to: uses[index + 1].key, in: uses)
+                        }
+                    }
+                }
+        }
+    }
+
+    private func leftoverUseRow(_ use: LeftoverUse, place: Int, uses: [LeftoverUse]) -> some View {
+        let binding = Binding(
+            get: { use.on },
+            set: { on in
+                let off = uses.filter { $0.key == use.key ? !on : !$0.on }.map(\.key)
+                Task { await model.saveAiSettings(AiSettingsUpdate(leftoverOff: off)) }
+            }
+        )
+        return HStack(alignment: .top, spacing: 10) {
+            Text("\(place)")
+                .font(.caption.weight(.semibold).monospacedDigit())
+                .foregroundStyle(use.on ? Theme.paper : Theme.inkSoft)
+                .frame(width: 22, height: 22)
+                .background(use.on ? Theme.ink : Theme.inkSoft.opacity(0.15), in: .circle)
+                .padding(.top, 1)
+            Toggle(isOn: binding) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(use.label).foregroundStyle(use.able ? Theme.ink : Theme.inkSoft)
+                    Text(use.about).font(.caption).foregroundStyle(Theme.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(Self.useNote(use))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(use.able ? Theme.ink.opacity(0.75) : Theme.inkSoft)
+                }
+            }
+            .tint(Theme.ink)
+        }
+        .padding(.vertical, 2)
+        .contentShape(.rect)
+    }
+
+    /// "czeka 412 · ok. 4,12 USD · do 540 na noc", what it did this period.
+    static func useNote(_ use: LeftoverUse) -> String {
+        if !use.able { return "Wyłączone w ustawieniach wyżej." }
+        var parts: [String] = []
+        if use.key == "studies" {
+            parts.append("ok. \(Money.usd(use.eachUsd)) za studium")
+            if let waiting = use.waiting, waiting > 0 { parts.append("kandydaci kuratora: \(waiting)") }
+        } else if use.waiting == nil && use.key == "descriptions" {
+            parts.append("liczę, ile czeka w katalogu…")
+        } else if let waiting = use.waiting {
+            if waiting == 0 {
+                parts.append("nic nie czeka")
+            } else if let usd = use.waitingUsd {
+                parts.append("czeka \(waiting) · ok. \(Money.usd(usd))")
+            }
+        }
+        if let night = use.aNight { parts.append("do \(night) na noc") }
+        if use.done > 0 { parts.append("w tym okresie \(use.done), ok. \(Money.usd(use.doneUsd))") }
+        return parts.joined(separator: " · ")
+    }
+
+    /// ``key`` taken out and put in ``target``'s place.
+    private func moveUse(_ key: String, to target: String, in uses: [LeftoverUse]) {
+        var order = uses.map(\.key)
+        guard let from = order.firstIndex(of: key), let to = order.firstIndex(of: target) else { return }
+        order.remove(at: from)
+        order.insert(key, at: to)
+        Task { await model.saveAiSettings(AiSettingsUpdate(leftoverOrder: order)) }
     }
 
     private func pickerRow<Value: Hashable>(

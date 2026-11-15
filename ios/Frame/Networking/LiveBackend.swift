@@ -124,6 +124,23 @@ struct LiveBackend: FrameBackend {
         return try await perform(req, patient: true)
     }
 
+    func clean(itemID: String, made: String) async throws -> Item {
+        // The original is made again from the museum's photograph and its
+        // colours measured: seconds on a NAS, more when it is downloaded first.
+        var req = request(
+            "/api/library/items/\(escape(itemID))/cleaned", method: "PUT",
+            query: [URLQueryItem(name: "made", value: made)]
+        )
+        req.timeoutInterval = 120
+        return try await perform(req)
+    }
+
+    func unclean(itemID: String) async throws -> Item {
+        var req = request("/api/library/items/\(escape(itemID))/cleaned", method: "DELETE")
+        req.timeoutInterval = 120
+        return try await perform(req)
+    }
+
     func medium(itemID: String, wait: Int) async throws -> MediumView {
         var req = request(
             "/api/library/items/\(escape(itemID))/medium", method: "POST",
@@ -881,6 +898,30 @@ struct LiveBackend: FrameBackend {
         try await send("/api/ai/review/\(escape(itemID))", method: "DELETE")
     }
 
+    func suggestReviewFixes(itemID: String) async throws -> AiReview {
+        try await send("/api/ai/review/\(escape(itemID))/suggest", method: "POST")
+    }
+
+    func applyReviewFix(itemID: String, field: String, value: String, valuePl: String?) async throws -> AiReview {
+        struct Body: Encodable { let field: String; let value: String; let valuePl: String? }
+        return try await send(
+            "/api/ai/review/\(escape(itemID))/fix", method: "POST",
+            body: Body(field: field, value: value, valuePl: valuePl)
+        )
+    }
+
+    func cutReviewed(itemID: String) async throws -> AiReview {
+        try await send("/api/ai/review/\(escape(itemID))/cut", method: "POST")
+    }
+
+    func dropReviewProblem(itemID: String, field: String) async throws -> AiReview {
+        try await send("/api/ai/review/\(escape(itemID))/problems/\(escape(field))", method: "DELETE")
+    }
+
+    func hideReviewed(itemID: String) async throws -> AiReview {
+        try await send("/api/ai/review/\(escape(itemID))/hide", method: "POST")
+    }
+
     func saveAiKey(_ key: String) async throws -> AiSettings {
         try await send("/api/ai/key", method: "PUT", body: AiKeyUpdate(key: key))
     }
@@ -1006,10 +1047,10 @@ struct LiveBackend: FrameBackend {
                 "/api/library/items/\(escape(id))/full",
                 query: [URLQueryItem(name: "side", value: String(side)), URLQueryItem(name: "v", value: version)]
             )
-        case let .recovered(id, made, version):
+        case let .beforeCleaning(id, version):
             req = request(
-                "/api/library/items/\(escape(id))/recovery/image",
-                query: [URLQueryItem(name: "made", value: made), URLQueryItem(name: "v", value: version)]
+                "/api/library/items/\(escape(id))/cleaned/before",
+                query: [URLQueryItem(name: "v", value: version)]
             )
         case let .path(path):
             // A query ("?n=0&v=…") goes as the query, not into the path.

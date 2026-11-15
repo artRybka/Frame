@@ -116,7 +116,9 @@ struct PaintJob: @unchecked Sendable {
             return PaintJob(size: strip.size, length: drawn.length) { drawn.image(age: $0) }
         case .pastel: return painted(PastelStrip(shares: shares, width: width, seed: seed, dark: dark))
         case .burin, .pen, .pencil:
-            return PaintJob(LineStrip(shares: shares, width: width, seed: seed, tool: style.tool ?? .burin), scale: PrintPaint.scale)
+            // A drawing's paper is laid on the page; a print keeps its own edge (Mateusz 2026-11-15 19:20).
+            return PaintJob(LineStrip(shares: shares, width: width, seed: seed, tool: style.tool ?? .burin, laid: style != .burin),
+                            scale: PrintPaint.scale)
         case .woodblock, .litho, .screen, .offset:
             return PaintJob(InkStrip(shares: shares, width: width, seed: seed, press: style.press ?? .wood), scale: PrintPaint.scale)
         case .photo:
@@ -133,6 +135,8 @@ struct PaintJob: @unchecked Sendable {
             return PaintJob(StoneStrip(shares: shares, width: width, seed: seed, etched: style == .aquatint), scale: PrintPaint.scale)
         case .waterPencil, .waterPen:
             return PaintJob(TintedStrip(shares: shares, width: width, seed: seed, tool: style.drawn ?? .pencil), scale: PrintPaint.scale)
+        case .toned, .heightened:
+            return PaintJob(TonedStrip(shares: shares, width: width, seed: seed, lit: style == .heightened), scale: PrintPaint.scale)
         }
     }
 
@@ -174,6 +178,7 @@ struct PaintJob: @unchecked Sendable {
         case .woodcut: return PaintJob(InkStamp(rgb: rgb, index: index, seed: seed, press: .wood), scale: PrintPaint.scale)
         case .grain, .aquatint: return PaintJob(InkStamp(rgb: rgb, index: index, seed: seed, press: .stone), scale: PrintPaint.scale)
         case .waterPencil, .waterPen: return PaintJob(WaterDab(rgb: rgb, index: index, seed: seed))
+        case .toned, .heightened: return PaintJob(LinePatch(rgb: rgb, index: index, seed: seed, tool: .pencil), scale: PrintPaint.scale)
         }
     }
 }

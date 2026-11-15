@@ -96,16 +96,18 @@ struct ItemDetailView: View {
     /// The work's details, or the whole work on a detail's card
     /// (`DetailStrip`); nil until asked, none for most works.
     @State private var details: DetailsView?
-    /// What the colour recovery preview may show of the picture
-    /// (`ColourRecovery`), once the server has read it; nil: not offered.
+    /// Whether the work may be shown cleaned ("Korekta barw",
+    /// `ColourRecovery`), once the server has read its picture; nil: not
+    /// offered (or shown cleaned already).
     @State private var recovery: RecoveryView?
-    /// The preview is on the picture: the work today left of the divider,
-    /// the simulation right of it.
-    @State private var recovering = false
-    @State private var recoveryStrength = 0.0
+    /// The server makes the picture again, cleaned or as it came.
+    @State private var cleaning = false
+    /// The comparison is on the picture: the work before the correction
+    /// left of the divider, as it is shown right of it.
+    @State private var comparing = false
     @State private var recoverySplit = 0.5
-    /// The simulation as drawn last; nil while the first is made.
-    @State private var recovered: UIImage?
+    /// The picture before the correction; nil while it is had.
+    @State private var beforeCleaning: UIImage?
 
     enum Sent { case done, failed }
 
@@ -197,8 +199,9 @@ struct ItemDetailView: View {
                     restore: canRestore(item) ? { Task { await restoreByModel() } } : nil,
                     correctCut: canCut(item) && model.isOwner ? { correctingCut = true } : nil,
                     undoCut: canCut(item) && model.isOwner && item.isCropped ? { Task { await undoCut() } } : nil,
-                    recover: recoveryKind != nil ? { toggleRecovery() } : nil,
-                    recoveryKind: recoveryKind ?? .varnish, recovering: recovering,
+                    recover: recoveryKind != nil && model.isOwner && !cleaning
+                        ? { Task { await toggleCleaning() } } : nil,
+                    recoveryKind: recoveryKind ?? .varnish, cleaned: item.cleanedShown != nil,
                     editOwn: ownActions(item) ? { editingOwn = true } : nil,
                     retakeOwn: ownActions(item) ? { retakingOwn = true } : nil,
                     deleteOwn: ownActions(item) ? { Task { await deleteOwn() } } : nil,
@@ -233,8 +236,8 @@ struct ItemDetailView: View {
         .task(id: described) { await findMedium() }
         .task(id: recoveryKey) { await findRecovery() }
         .onChange(of: view) { _, now in
-            // The simulation is of the original, not of the frame's preview.
-            if now == .frame { recovering = false }
+            // The comparison is of the original, not of the frame's preview.
+            if now == .frame { comparing = false }
         }
         .task(id: view == .frame ? draftKey : "") { await loadFraming() }
         .onChange(of: item) { _, item in
@@ -560,7 +563,8 @@ struct ItemDetailView: View {
                 zoom: summary.zoom == true ? Fragments.depth(fragments, scale: displayScale) ?? 0 : nil,
                 lowSide: summary.lowSide,
                 restored: summary.restored == true,
-                cropped: summary.isCropped
+                cropped: summary.isCropped,
+                cleaned: summary.isCleaned
             )
                 .fixedSize(horizontal: false, vertical: true)
             if !summary.artist.isEmpty {
@@ -1039,11 +1043,15 @@ struct ItemDetailView: View {
 
     // MARK: Colour recovery
 
-    private var recoveryKind: ColourRecovery.Kind? { ColourRecovery.kind(recovery) }
+    /// What the menu offers: the way back for a work shown cleaned, else
+    /// what the server says its picture may get.
+    private var recoveryKind: ColourRecovery.Kind? {
+        ColourRecovery.kind(item?.cleanedShown) ?? ColourRecovery.kind(recovery)
+    }
 
-    /// The picture, and the way the work is made, that the preview is
-    /// asked for: "" while the card is not here, or for what has nothing
-    /// to recover (photographs, posters, objects).
+    /// The picture, and the way the work is made, that the server is asked
+    /// about: "" while the card is not here, or for what has nothing to
+    /// recover (photographs, posters, objects).
     private var recoveryKey: String {
         guard let item, described == itemID, item.kind == .artwork,
               let made = ColourRecovery.made(PaintStyle.of(item))
@@ -1051,20 +1059,23 @@ struct ItemDetailView: View {
         return "\(item.id)|\(item.pictureVersion)|\(made)"
     }
 
-    /// Asks the server what the preview may show, a moment after the card's
-    /// own questions (nothing on the card waits for it). Another picture,
-    /// or a technique found since, starts over.
+    /// Asks the server whether the work may be shown cleaned, a moment
+    /// after the card's own questions (nothing on the card waits for it).
+    /// Another picture, or a technique found since, starts over; a work
+    /// shown cleaned is not asked about.
     private func findRecovery() async {
         let key = recoveryKey
-        recovering = false
-        recovered = nil
-        guard !key.isEmpty, let item, let made = ColourRecovery.made(PaintStyle.of(item)) else {
+        comparing = false
+        beforeCleaning = nil
+        guard !key.isEmpty, let item, item.cleanedShown == nil,
+              let made = ColourRecovery.made(PaintStyle.of(item))
+        else {
             recovery = nil
+            compareForScreenshot()
             return
         }
         if let known = ColourRecovery.cached(key) {
             recovery = known
-            recoveryForScreenshot()
             return
         }
         recovery = nil
@@ -1074,102 +1085,81 @@ struct ItemDetailView: View {
         else { return }
         ColourRecovery.keep(told, for: key)
         recovery = told
-        recoveryForScreenshot()
     }
 
-    /// CI screenshots: `-sheet recovery` puts the preview on the picture.
-    private func recoveryForScreenshot() {
-        guard LaunchRoute.screen == "detail", LaunchRoute.sheet == "recovery", model.demoMode, !recovering
+    /// CI screenshots: `-sheet recovery` opens the comparison on the
+    /// picture of a work shown cleaned (`-demoCleaned all`).
+    private func compareForScreenshot() {
+        guard LaunchRoute.screen == "detail", LaunchRoute.sheet == "recovery", model.demoMode,
+              item?.cleanedShown != nil, !comparing
         else { return }
-        toggleRecovery()
-    }
-
-    /// The menu's entry: the preview comes onto the picture, at the
-    /// strength the calculation proposes, or leaves it.
-    private func toggleRecovery() {
-        guard let recovery else { return }
-        if recovering {
-            withAnimation(.easeInOut(duration: 0.3)) { recovering = false }
-            return
-        }
-        recoveryStrength = recovery.strength
         recoverySplit = 0.5
-        recovered = nil
+        comparing = true
+    }
+
+    /// The menu's entry: the server makes the work's picture again, cleaned
+    /// ("Zdejmij werniks", "Odżółć papier") or as it came ("Przywróć…"),
+    /// and measures its colours on it. The lists' pictures follow.
+    private func toggleCleaning() async {
+        guard let item, !cleaning else { return }
+        let on = item.cleanedShown != nil
+        guard let kind = recoveryKind, on || ColourRecovery.made(PaintStyle.of(item)) != nil else { return }
         withAnimation(.easeInOut(duration: 0.3)) {
+            comparing = false
             view = .original
-            recovering = true
+            cleaning = true
+        }
+        defer { withAnimation(.easeInOut(duration: 0.3)) { cleaning = false } }
+        do {
+            let updated = on
+                ? try await model.backend.unclean(itemID: item.id)
+                : try await model.backend.clean(
+                    itemID: item.id, made: ColourRecovery.made(PaintStyle.of(item)) ?? "paper"
+                )
+            guard item.id == itemID else { return }
+            cutChanged(updated)
+            model.notices.done(ColourRecovery.done(kind, on: on))
+        } catch BackendError.http(let status, _) where status == 422 {
+            // Read again by the server, the picture has nothing to take off.
+            recovery = nil
+            model.notices.info("Nie ma czego korygować", "Ten obraz nie ma pożółkłego werniksu ani arkusza.")
+        } catch {
+            if !error.isCancellation { model.show(error) }
         }
     }
 
-    private func loadedPicture(_ ref: ImageRef) async -> UIImage? {
-        guard let request = model.backend.request(for: ref) else { return nil }
-        return try? await ImageLoader.shared.image(for: request, maxPixel: 1800, priority: .high)
-    }
-
-    /// Draws the simulation while the preview is on. Varnish: from the
-    /// picture the card shows, again whenever the strength has moved (one
-    /// at a time, always the latest: a drag never waits in a queue). Paper:
-    /// the server's de-yellowed sheet.
-    private func drawRecovery(_ item: Item, _ told: RecoveryView) async {
-        guard let kind = ColourRecovery.kind(told) else { return }
-        if kind == .paper {
-            let made = ColourRecovery.made(PaintStyle.of(item)) ?? "paper"
-            let sheet = await loadedPicture(
-                .recovered(item.id, made: made, version: "\(told.version)|\(item.pictureVersion)")
-            )
-            if Task.isCancelled { return }
-            if let sheet {
-                withAnimation(.easeOut(duration: 0.3)) { recovered = sheet }
-            } else {
-                withAnimation(.easeInOut(duration: 0.3)) { recovering = false }
-                model.notices.info("Nie udało się odżółcić arkusza", "Spróbuj jeszcze raz za chwilę.")
-            }
-            return
-        }
-        var shown = await loadedPicture(item.originalRef)
-        if shown == nil { shown = await loadedPicture(.thumb(item.id)) }
-        guard let source = shown else {
-            if !Task.isCancelled {
-                withAnimation(.easeInOut(duration: 0.3)) { recovering = false }
-            }
-            return
-        }
-        var drawn: Double?
-        while !Task.isCancelled {
-            let wanted = ColourRecovery.snapped(recoveryStrength)
-            if drawn == wanted {
-                try? await Task.sleep(for: .milliseconds(16))
-                continue
-            }
-            let made = await ColourRecovery.image(source, view: told, strength: wanted)
-            if Task.isCancelled { return }
-            if let made {
-                if recovered == nil {
-                    withAnimation(.easeOut(duration: 0.3)) { recovered = made }
-                } else {
-                    recovered = made
-                }
-            }
-            drawn = wanted
+    /// The picture before the correction, for the comparison.
+    private func loadBeforeCleaning(_ item: Item) async {
+        guard beforeCleaning == nil,
+              let request = model.backend.request(for: .beforeCleaning(item.id, version: item.pictureVersion))
+        else { return }
+        let picture = try? await ImageLoader.shared.image(for: request, maxPixel: 1800, priority: .high)
+        if Task.isCancelled { return }
+        if let picture {
+            // (The demo has no server to keep the picture as it came.)
+            let before = model.demoMode ? ColourRecovery.underVarnish(picture) : picture
+            withAnimation(.easeOut(duration: 0.3)) { beforeCleaning = before }
+        } else {
+            withAnimation(.easeInOut(duration: 0.3)) { comparing = false }
+            model.notices.info("Nie udało się wczytać obrazu przed korektą", "Spróbuj jeszcze raz za chwilę.")
         }
     }
 
-    /// Under the picture while the preview is on: the strength (varnish),
-    /// what the preview is, and the way back.
+    /// Under the picture of a work shown cleaned: what was done, and the
+    /// comparison with the picture as it came.
     @ViewBuilder
-    private func recoveryNote(_ kind: ColourRecovery.Kind, _ told: RecoveryView) -> some View {
-        VStack(spacing: 10) {
-            if kind == .varnish {
-                RecoveryStrength(strength: $recoveryStrength, proposed: told.strength, most: told.most)
-                    .frame(maxWidth: 320)
-            }
-            Text("\(Image(systemName: "sparkles")) \(ColourRecovery.note(kind))")
+    private func cleanedNote(_ kind: ColourRecovery.Kind) -> some View {
+        VStack(spacing: 6) {
+            Text("\(CleanedMark.image) \(ColourRecovery.note(kind))")
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-            Button("Wróć do oryginału") { toggleRecovery() }
-                .font(.footnote.weight(.semibold))
+            Button(comparing ? "Ukryj porównanie" : "Porównaj z obrazem przed korektą") {
+                recoverySplit = 0.5
+                withAnimation(.easeInOut(duration: 0.3)) { comparing.toggle() }
+            }
+            .font(.footnote.weight(.semibold))
         }
         .transition(.opacity)
     }
@@ -1192,24 +1182,28 @@ struct ItemDetailView: View {
                         .aspectRatio(CGFloat(aspect(item)), contentMode: .fit)
                         .layoutProbe("box")
                         .overlay {
-                            // (Not brightened under the colour recovery
-                            // preview: its two sides are compared as they are.)
+                            // (Not brightened under the comparison with
+                            // the picture before its colours' correction:
+                            // the two sides are compared as they are.)
                             ArtImage(
                                 ref: item.originalRef, fallback: .thumb(item.id), placeholder: .clear,
-                                maxPixel: 1800, contentMode: .fit, priority: .high, crossfade: true, brighten: !recovering
+                                maxPixel: 1800, contentMode: .fit, priority: .high, crossfade: true, brighten: !comparing
                             )
                                 .background {
                                     ArtImage(
                                         ref: ItemPeeks.tiles[item.id]?.thumb ?? .thumb(item.id),
                                         placeholder: item.placeholderColor, maxPixel: 700,
-                                        contentMode: .fit, priority: .high, brighten: !recovering
+                                        contentMode: .fit, priority: .high, brighten: !comparing
                                     )
                                 }
                         }
                         .overlay {
-                            if recovering, let kind = recoveryKind, let recovery {
-                                RecoveryWipe(after: recovered, kind: kind, split: $recoverySplit)
-                                    .task(id: recoveryKey) { await drawRecovery(item, recovery) }
+                            if comparing, let kind = ColourRecovery.kind(item.cleanedShown) {
+                                RecoveryWipe(before: beforeCleaning, kind: kind, split: $recoverySplit)
+                                    .task(id: recoveryKey) { await loadBeforeCleaning(item) }
+                                    .transition(.opacity)
+                            } else if cleaning, let kind = recoveryKind {
+                                LoadingBadge(text: ColourRecovery.working(kind, on: item.cleanedShown != nil))
                                     .transition(.opacity)
                             }
                         }
@@ -1229,24 +1223,21 @@ struct ItemDetailView: View {
             }
             .pictureBox()
             .layoutProbe("group")
-            // The colour recovery preview's own controls stand right under
-            // the picture, in the picker's place: the strength belongs to
-            // what it changes, and "Wróć do oryginału" brings the picker back.
-            if recovering, view == .original, let kind = recoveryKind, let recovery {
-                recoveryNote(kind, recovery)
-            } else {
-                Picker("Widok", selection: $view.animation(.easeInOut)) {
-                    ForEach(ViewMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 260)
-                if view == .frame {
-                    Text(frameHint)
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
-                        .multilineTextAlignment(.center)
-                        .contentTransition(.opacity)
-                }
+            Picker("Widok", selection: $view.animation(.easeInOut)) {
+                ForEach(ViewMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 260)
+            if view == .frame {
+                Text(frameHint)
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+                    .multilineTextAlignment(.center)
+                    .contentTransition(.opacity)
+            } else if let kind = ColourRecovery.kind(item.cleanedShown) {
+                // A work shown with its colours corrected says so, and
+                // offers the picture before it beside this one.
+                cleanedNote(kind)
             }
         }
         .padding(.top, 8)
@@ -1352,7 +1343,8 @@ struct ItemDetailView: View {
                 zoom: item.isFragment ? nil : Fragments.depth(fragments, scale: displayScale),
                 lowSide: lowSide,
                 restored: item.sharper?.isRestored == true,
-                cropped: item.isCropped
+                cropped: item.isCropped,
+                cleaned: item.cleanedShown != nil
             )
                 .fixedSize(horizontal: false, vertical: true)
                 // The museum's title fades into the Polish one.

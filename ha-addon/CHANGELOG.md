@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.160
+## 1.145.168
 
 - Własne dzieła w katalogu: „+” w Playlistach → „Dodaj własne dzieło”.
   Zdjęcie aparatem albo ze Zdjęć, serwer sam wycina dzieło z ramy,
@@ -11,6 +11,89 @@
   „Zrób zdjęcie ponownie”, „Popraw kadr” i „Usuń z katalogu”, w
   Playlistach kafelek „Moje dzieła”. Własne dzieła są na ramce, w
   playlistach, w Szukaj (także zdjęciem) i w studiach jak inne.
+
+## 1.145.167
+
+- „Do sprawdzenia”: miniatury są większe, a dotknięcie miniatury otwiera
+  obraz na całym ekranie, w całości, z przybliżaniem palcami (widać
+  linijkę, pasek kolorów, uciętą krawędź). Dotknięcie tytułu otwiera kartę
+  dzieła.
+- Uwagi nocnego przeglądu naprawia się jednym dotknięciem: zły tytuł,
+  autor albo data mają przycisk „Popraw na „…”” z gotową propozycją (przy
+  tytule także polski tytuł; „Zmień…” pozwala wpisać inaczej), linijka,
+  pasek kolorów czy kartka wokół rysunku mają „Przytnij” (Opus szuka
+  krawędzi dzieła, wiedząc, co przegląd zauważył) i „Inna kopia”, a każda
+  pozycja ma „Ukryj”. Propozycje do starszych uwag dopisuje Haiku przy
+  otwarciu listy (ułamek centa za dzieło).
+- Opisy strażnika przy odłożonych dziełach są po polsku; starsze
+  tłumaczą się same przy otwarciu listy.
+
+## 1.145.166
+
+- Resztka miesiąca: pozycja „Słowa kluczowe i polskie opisy” liczy
+  teraz wszystkie dzieła katalogu, którym ich brakuje, i pokazuje
+  prawdziwy koszt. Wcześniej liczyła tylko dzieła z Ulubionych,
+  playlist i już pokazane, choć noc zamawia opisy dla całego katalogu.
+
+## 1.145.165
+
+- Dzieło w passe-partout i w trybie „Opis” nie jest już lekko powiększane:
+  dotąd okno kartonu chowało po 2 % każdej krawędzi (powiększenie o ok.
+  4 %), żeby ukryć ramę i tło muzeum. Robi to teraz automatyczne
+  kadrowanie, więc na ramce widać dzieło do samych brzegów. Ręczne kadry
+  i zbliżenia zostają bez zmian.
+
+## 1.145.164
+
+- Korekta barw zamiast podglądu: „Zdejmij werniks” albo „Odżółć papier”
+  w menu „…” karty podmienia dzieło na wersję po korekcie. Widać ją
+  wszędzie: na listach, na karcie, na pełnym ekranie i na ramce, a barwy
+  dzieła i pasek barw są liczone z wersji po korekcie. To samo miejsce
+  w menu cofa zmianę („Przywróć werniks”, „Przywróć ton papieru”).
+- Nie ma już suwaka siły: korekta bierze ostrożne trzy czwarte propozycji
+  z samego obrazu. Pod obrazem jest jedno zdanie o korekcie i przycisk
+  „Porównaj z obrazem przed korektą” (kurtyna: z lewej przed, z prawej po).
+- Dzieło po korekcie ma własny znaczek po tytule, w tych samych miejscach
+  co znaczki kadru, niskiej rozdzielczości i restauratora.
+- Ciemne partie nie niebieszczeją: czernie i ciemne zielenie zachowują
+  swój odcień, a czernie są minimalnie głębsze (trochę większy kontrast).
+- Inna kopia zdjęcia dzieła nie dostaje korekty sama (nie wiadomo, jakie
+  ma barwy). Wersja kreatywnego restauratora dostaje ją, bo powstaje
+  z tego samego zdjęcia.
+
+## 1.145.163
+
+- Paski barw rysunków (ołówek, pióro, rysunek z akwarelą), gwaszu
+  i lawowania leżą na stronie jak pasek papieru: góra i dół równo cięte,
+  końce oddarte, pod spodem delikatny cień. Odbitki (ryciny, drzeworyty,
+  litografie, sitodruk, offset) mają papier poszarpany dookoła jak dotąd.
+
+## 1.145.162
+
+- Pasek barw grubo malowanych obrazów olejnych (np. van Gogh, Matisse):
+  każdy kolor ma duży, spokojny płat malowany płasko i część z wielu
+  krótkich pociągnięć, które leżą na styku z sąsiednim kolorem. Obrazy
+  malowane gładko (np. Vermeer) i dzieła bez daty i stylu bez zmian.
+
+## 1.145.161
+
+- Resztka miesiąca Claude idzie na to, co wybierzesz, w Twojej kolejności:
+  uzupełnienie wcześniejszych studiów, kadrowanie zdjęć dzieł, przegląd
+  zapisanych opisów, nowe studia, słowa kluczowe i polskie opisy oraz
+  większy nocny przegląd (domyślnie wyłączony). Noc płaci od góry, póki
+  starcza, a przy każdej pozycji widać, ile czeka i ile by to kosztowało.
+  Kolejność zmienia się przeciąganiem w Konfiguracji → Claude.
+
+## 1.145.160
+
+- Rysunek kredą, ołówkiem albo węglem na barwionym papierze (niebieskim,
+  szarym, brązowym) ma własny pasek barw: papier w swojej barwie, luźne
+  kreski rysunku gęstniejące z ciemnymi tonami, światła białą kredą,
+  a sangwina czy brązowa kredka kreskami swojej barwy. Tak samo rysunek
+  z białymi światłami i kreda trzech kolorów. Dotąd pasek był szarym
+  kreskowaniem przez całą szerokość, bez papieru i bez bieli.
+- Taki pasek wygląda jak pasek papieru położony na stronie: góra i dół
+  równo cięte, końce oddarte, pod spodem delikatny cień.
 
 ## 1.145.159
 
@@ -58,7 +141,6 @@
   pokazuje arkusz jak dobrze zachowany; kreska i barwy zostają z oryginału,
   papier barwiony celowo nie dostaje propozycji. To tylko podgląd: nie
   zmienia dzieła, paska barw, wyszukiwania ani obrazu na ramce.
-
 
 ## 1.145.154
 

@@ -1645,9 +1645,9 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(tall.windows.map(\.role), ["picture", "detail"])
         XCTAssertEqual(tall.windows[0].rect, CGRect(x: 0, y: 0, width: 480, height: 720))
         XCTAssertNil(tall.captionAt)
-        // The picture's outer edge stays behind the mat.
-        XCTAssertEqual(tall.windows[0].box.minX, 16, accuracy: 0.5)
-        XCTAssertEqual(framed.windows[0].box.maxY, 1176, accuracy: 0.5)
+        // The whole picture, to its edges: nothing hidden behind the mat.
+        XCTAssertEqual(tall.windows[0].box.minX, 0, accuracy: 0.5)
+        XCTAssertEqual(framed.windows[0].box.maxY, 1200, accuracy: 0.5)
         // "Opis": the text below the close-up, which is at least 1.8× the picture.
         XCTAssertGreaterThan(tall.textRect?.minY ?? 0, tall.windows[1].rect.maxY)
         let scale = tall.windows.map { $0.rect.width / $0.box.width }

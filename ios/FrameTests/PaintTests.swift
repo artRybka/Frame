@@ -625,7 +625,7 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(PaintStyle.of(medium: "malowanie, papier, jedwab, tusz, farba wodna"), .water)
         // White gouache that only heightens a drawing is not what it is made in; white gouache alone is.
         XCTAssertEqual(PaintStyle.of(medium: "pen and black ink and brush and brown wash, heightened with white gouache"), .wash)
-        XCTAssertEqual(PaintStyle.of(medium: "Graphite, highlighted with white gouache"), .pencil)
+        XCTAssertEqual(PaintStyle.of(medium: "Graphite, highlighted with white gouache"), .heightened)
         XCTAssertEqual(PaintStyle.of(medium: "Pen and brown ink, with brush and brown wash and touches of white gouache"), .wash)
         XCTAssertEqual(PaintStyle.of(medium: "Brown and white gouache on cream board"), .gouache)
         XCTAssertEqual(PaintStyle.of(medium: "gwasz, tusz, piórko, akwarela, ołówek, brystol"), .waterPen)
@@ -663,6 +663,73 @@ final class PaintTests: XCTestCase {
         // The drawing is there before the watercolour.
         let early = strip.frame(age: LineStrip.time(1) * TintedStrip.washes.from - 0.01)
         XCTAssertLessThan(early.colour(i, j).red - early.colour(i, j).blue, 70)
+    }
+
+    /// Mateusz 2026-11-15 17:08, of Daniel Huntington's „Pani Sheppard
+    /// Gandy w pozycji siedzącej” (graphite, black and brown crayon and
+    /// white chalk on blue paper), shown as grey crayon hatched over the
+    /// whole bar: „Kolejny nietypowy przykład paska koloru.” A drawing on
+    /// tinted paper is that paper bare, the drawing's lines on it, its
+    /// lights white chalk and a colour of its own that colour's chalk.
+    func testADrawingOnTintedPaperIsThatPaperItsLinesAndItsChalk() {
+        for text in ["graphite, black crayon, brown crayon and white chalk on blue paper",
+                     "Black chalk, highlighted with  traces of white chalk, on blue-gray paper", "Red, black and white chalks on pale grey paper.",
+                     "Graphite and white heightening on grey-blue paper", "Red chalk, heightened with white, on beige paper",
+                     "pędzel, kredka, czarna kredka, światła bielą, papier", "Graphite, white chalk on brown wove"] {
+            XCTAssertEqual(PaintStyle.of(medium: text), .heightened, text)
+            XCTAssertEqual(PaintStyle.of(medium: text, classification: "Drawing", mono: true), .heightened, text)
+        }
+        for text in ["Black chalk on gray paper", "Graphite on tan wove paper", "charcoal on gray laid paper", "Black crayon, on tan tracing paper",
+                     "red chalk on brown laid paper", "kreda czarna na niebieskim papierze", "craie noire sur papier bleu", "Silverpoint on blue prepared paper"] {
+            XCTAssertEqual(PaintStyle.of(medium: text), .toned, text)
+        }
+        // White paper is no heightening; touches of black crayon are no lights; the paper laid down on is not drawn on.
+        XCTAssertEqual(PaintStyle.of(medium: "Black chalk on white paper"), .dry)
+        XCTAssertEqual(PaintStyle.of(medium: "Graphite on white wove paper"), .pencil)
+        XCTAssertEqual(PaintStyle.of(medium: "Charcoal with stumping and touches of black crayon on ivory laid paper"), .dry)
+        XCTAssertEqual(PaintStyle.of(medium: "Black chalk, on cream laid paper, laid down on tan laid paper"), .dry)
+        XCTAssertEqual(PaintStyle.of(medium: "Graphite on cream wove paper, tipped onto gray wove paper"), .pencil)
+        // In ink, in wash, in pastel or in watercolour it is what it was.
+        XCTAssertEqual(PaintStyle.of(medium: "Pen and brown ink, heightened with white gouache on blue paper"), .pen)
+        XCTAssertEqual(PaintStyle.of(medium: "Pastel on blue paper"), .pastel)
+        XCTAssertEqual(PaintStyle.of(medium: "Brush and gouache on blue paper"), .gouache)
+
+        // Huntington's colours as near as a photograph of the card tells: the paper, a light, the dark and the brown.
+        let sheet = [PaintShare(rgb: [138, 155, 163], weight: 0.62), PaintShare(rgb: [201, 205, 198], weight: 0.12),
+                     PaintShare(rgb: [75, 78, 82], weight: 0.14), PaintShare(rgb: [125, 106, 88], weight: 0.07)]
+        let parts = TonedStrip.parts(sheet, lit: true)
+        XCTAssertEqual(parts.paper, [138, 155, 163])
+        XCTAssertEqual(Set(parts.sticks.keys), [1, 3], "the light is white chalk, the brown a brown crayon, the dark the drawing's")
+        XCTAssertEqual(parts.shares.count, 4, "it has its lights: none added")
+        let strip = TonedStrip(shares: sheet, width: 350, seed: 5, lit: true)
+        XCTAssertEqual(PaintStyle.heightened.barTime(sheet, width: 350), strip.last, accuracy: 0.001)
+        let done = strip.frame(age: strip.length)
+        let spans = LineStrip.plan(parts.shares, width: 350, seed: 5, tool: .pencil, paper: parts.paper, shades: parts.shades).tones
+        func mean(_ colour: Int) -> [Double] {
+            guard let tone = spans.first(where: { $0.colour == colour }) else { return [] }
+            var sum = [0.0, 0.0, 0.0], count = 0.0
+            for x in stride(from: tone.from + 3, to: tone.to - 3, by: 0.5) {
+                for y in stride(from: 4.0, to: 22.0, by: 0.5) {
+                    let (i, j) = dot(x, y), c = done.colour(i, j)
+                    sum = [sum[0] + c.red, sum[1] + c.green, sum[2] + c.blue]
+                    count += 1
+                }
+            }
+            return sum.map { $0 / count }
+        }
+        // The paper's part is the blue paper, the lines over it few; the light lighter, the brown warmer, the dark darker.
+        let paper = mean(0)
+        XCTAssertGreaterThan(paper[2] - paper[0], 15, "\(paper)")
+        XCTAssertLessThan(abs(PrintPaint.lightness(paper) - PrintPaint.lightness([138, 155, 163])), 0.06)
+        XCTAssertGreaterThan(PrintPaint.lightness(mean(1)), PrintPaint.lightness(paper) + 0.04)
+        XCTAssertGreaterThan(mean(3)[0] - mean(3)[2], paper[0] - paper[2] + 20)
+        XCTAssertLessThan(PrintPaint.lightness(mean(2)), PrintPaint.lightness(paper) - 0.08)
+
+        // Heightened with white but nothing in its colours lighter than its paper: the white chalk is there all the same.
+        let laid = [PaintShare(rgb: [116, 129, 126], weight: 0.8), PaintShare(rgb: [96, 105, 102], weight: 0.2)]
+        XCTAssertEqual(TonedStrip.parts(laid, lit: true).shares.count, 3)
+        XCTAssertEqual(TonedStrip.parts(laid, lit: false).shares.count, 2)
+        XCTAssertEqual(TonedStrip.parts(laid, lit: true).sticks[2], TonedStrip.lights.white)
     }
 
     /// Sketch 46 (Mateusz 2026-11-15 15:03: „A”): a lithograph of one
@@ -1157,6 +1224,63 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(OilStrip(touch: jatte[0].rgb, index: 0, seed: 5, dark: false).look, .before)
     }
 
+    /// Thick paint (sketch 50 F, Mateusz 2026-11-15 19:15: „Raczej F, ale te
+    /// spokojne partie mogą być mniej 3D. Malowane bardziej płasko”): each
+    /// colour a calm, flatter part and a part of many short pulls. Smooth
+    /// paint and paint of no known manner as in 1.145.157 („Wersja Vermeer - super”).
+    func testThickOilPaintHasACalmFlatPartAndAPartOfManyPullsInEachColour() {
+        for relief in [Paint.calm.smooth, Paint.calm.even, Paint.calm.plain] {
+            let even = Paint.even(relief: relief), thick = OilStrip.thick(relief: relief)
+            XCTAssertEqual(thick, 0)
+            let now = OilStrip.pulls(jatte, width: 350, seed: 5, even: even, thick: thick)
+            let was = OilStrip.pulls(jatte, width: 350, seed: 5, even: even, thick: thick, look: .gone)
+            XCTAssertEqual(now.map(\.a), was.map(\.a))
+            XCTAssertEqual(now.map(\.rgb), was.map(\.rgb))
+        }
+        XCTAssertEqual(OilStrip.thick(relief: Paint.calm.late), 1)
+        XCTAssertEqual(OilStrip.thick(relief: Paint.calm.thick), 1)
+        let pulls = OilStrip.pulls(jatte, width: 350, seed: 5, thick: 1)
+        let gone = OilStrip.pulls(jatte, width: 350, seed: 5, thick: 1, look: .gone)
+        let overs = pulls.filter(\.over)
+        // Many more short pulls, but in parts: long stretches of the bar have none over them.
+        XCTAssertGreaterThan(overs.count, gone.filter(\.over).count + 15)
+        var calm = [(from: Double, to: Double)](), x = 0.0
+        while x < 344 {
+            let clear = !overs.contains { $0.a - 1 < x && x < $0.e + 1 }
+            if clear, let last = calm.last, last.to >= x - 0.5 { calm[calm.count - 1].to = x } else if clear { calm.append((x, x)) }
+            x += 0.5
+        }
+        let long = calm.filter { $0.to - $0.from >= 20 }
+        XCTAssertGreaterThanOrEqual(long.count, 3)
+        let still = long.reduce(0) { $0 + $1.to - $1.from }
+        XCTAssertGreaterThan(still, 0.3 * 344)
+        XCTAssertLessThan(still, 0.75 * 344)
+        // The accents keep their places.
+        XCTAssertEqual(pulls.filter(\.on).map(\.a), gone.filter(\.on).map(\.a))
+        // The calm parts lie flatter: less light and shade on them than the same pulls at full height.
+        var raised = OilStrip.Look.laid
+        raised.flat = 0
+        let flat = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.thick).frame(age: 99)
+        let full = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.thick, look: raised).frame(age: 99)
+        /// How much the lightness changes from a point to the one under it, on the average.
+        func shading(_ frame: PaintFrame) -> Double {
+            var sum = 0.0, count = 0.0
+            for part in long {
+                for x in stride(from: part.from + 8, through: part.to - 8, by: 0.5) {
+                    for y in stride(from: 5.0, through: Paint.bar - 5.5, by: 0.5) {
+                        let at = pixel(x, y), q = 4 * (at.1 * frame.wide + at.0), under = q + 4 * frame.wide
+                        let here = Double(frame.bytes[q]) + Double(frame.bytes[q + 1]) + Double(frame.bytes[q + 2])
+                        let there = Double(frame.bytes[under]) + Double(frame.bytes[under + 1]) + Double(frame.bytes[under + 2])
+                        sum += abs(here - there)
+                        count += 1
+                    }
+                }
+            }
+            return sum / max(count, 1)
+        }
+        XCTAssertLessThan(shading(flat), 0.8 * shading(full))
+    }
+
     /// Mateusz 2026-11-11 18:59: „Przy lini kolorów robionych farba
     /// olejna także dodaj „tłustą plamę” na papierze pod spodem.”
     func testThePaperUnderTheOilBarSoaksTheOilUp() {
@@ -1215,10 +1339,11 @@ final class PaintTests: XCTestCase {
         XCTAssertLessThan(Paint.calm.plain, Paint.calm.loose)
         XCTAssertLessThan(Paint.calm.loose, Paint.calm.late)
         XCTAssertLessThanOrEqual(Paint.calm.late, Paint.calm.thick)
-        // The same paint in the same places; the lower it is, the less its light and shade.
-        let thick = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.thick).frame(age: 99)
-        let plain = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.plain).frame(age: 99)
-        let smooth = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.smooth).frame(age: 99)
+        // The same paint in the same places (thick paint's calm parts aside, `.gone`); the lower it is,
+        // the less its light and shade.
+        let thick = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.thick, look: .gone).frame(age: 99)
+        let plain = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.plain, look: .gone).frame(age: 99)
+        let smooth = OilStrip(shares: jatte, width: 350, seed: 5, dark: false, relief: Paint.calm.smooth, look: .gone).frame(age: 99)
         /// How much the paint's lightness changes from a pixel to the one under it, on the average.
         func rough(_ frame: PaintFrame) -> Double {
             var sum = 0.0, count = 0.0

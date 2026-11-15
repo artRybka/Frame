@@ -30,6 +30,7 @@ from .ai.museum_words import MuseumWords
 from .ai.prose import ProseJob
 from .ai.redraw import PenJob
 from .ai.refresh import StudyRefresh
+from .ai.review_fix import ReviewFixes
 from .ai.search_words import SearchWords
 from .ai.study import KIND as STUDY_KIND
 from .ai.study import StudyJob
@@ -42,6 +43,7 @@ from .artist_people import ArtistPeople
 from .artist_works import ArtistWorks
 from .births import Births
 from .cared import Cared
+from .cleaning import Cleaning
 from .config import Settings
 from .copies import Copies
 from .daily import Daily
@@ -359,9 +361,19 @@ class FrameService:
         self.own_works = OwnWorks(
             self.library, self.images, self.importer, self.crops, self.sizes, self.claude
         )
+        # A work shown without its aged varnish, or with its sheet
+        # de-yellowed, when the owner asks (no model: imaging/recovery.py).
+        self.cleaning = Cleaning(self.library, self.images)
+        self.cleaning.importer = self.importer
+        self.sharper.cleaned_again = self.cleaning.renew
         # A page about a work (its study, the day's) reads the work cut
         # down from its frame: the photograph is looked at first.
         self.daily.job.cutting = self.crops.before_page
+        # "Do sprawdzenia": each finding's remedy in one tap (Mateusz 2026-11-15).
+        self.review_fixes = ReviewFixes(
+            self.library, self.images, self.claude, self.gatekeeper, self.audit, self.crops,
+            self.pl_text,
+        )  # fmt: skip
         # Favourites, playlists and Discover's works first in the night's
         # tidying (Mateusz 2026-11-11).
         self.cared = Cared(self)
@@ -488,6 +500,10 @@ class FrameService:
             self.study,
             self.player,
             self.cared.ranks,
+            refresh=self.study_refresh,
+            review=self.text_review,
+            crops=self.crops,
+            audit=self.audit,
         )
 
         #: Heavy work at night, while the server runs its background.

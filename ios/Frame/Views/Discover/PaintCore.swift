@@ -83,6 +83,19 @@ enum PaintStyle: String, Sendable, CaseIterable {
     case waterPencil
     /// The same in pen and ink with watercolour: the pen's lines.
     case waterPen
+    /// A drawing in chalk, pencil or charcoal on tinted paper (Mateusz
+    /// 2026-11-15 17:08, of Daniel Huntington's „Pani Sheppard Gandy w
+    /// pozycji siedzącej”, graphite and crayons with white chalk „on blue
+    /// paper”, shown as grey crayon hatched over the whole bar: „Kolejny
+    /// nietypowy przykład paska koloru.”): the paper as it is, bare where
+    /// its share is, the drawing's loose lines on it, its lights white
+    /// chalk and a colour of its own (red chalk) that colour's chalk
+    /// (`TonedStrip`). Was the stick's hatching of every colour, or a
+    /// pencil's lines on a cream paper.
+    case toned
+    /// The same heightened with white, on any paper: white chalk is there
+    /// though the work's colours hold nothing lighter than its paper.
+    case heightened
 
     /// The drawing's tool of a drawing with watercolour; nil for any other.
     var drawn: LineTool? {
@@ -198,6 +211,14 @@ enum PaintStyle: String, Sendable, CaseIterable {
            !has(words, ["pastel"]), !has(words, oils, ["oil", "oils", "ol", "oel", "olio", "oleo"]), !has(words, silks) {
             return anyInk ? .waterPen : .waterPencil
         }
+        // A drawing in chalk or a soft point on a tinted paper, or one
+        // heightened with white: its paper, its lines and its chalk.
+        if !anyInk, !washed, !watered, has(words, soft) || has(words, chalks, ["crayon", "crayons"]),
+           !has(words, ["pastel"]), !has(words, oils, ["oil", "oils", "ol", "oel", "olio", "oleo"]), !has(words, gouaches),
+           !has(words, silks) {
+            if Self.lit(words) { return .heightened }
+            if Self.tinted(words) { return .toned }
+        }
         var inked = false
         for word in words {
             for (style, begins, whole) in named where whole.contains(word) || begins.contains(where: { word.hasPrefix($0) }) {
@@ -299,6 +320,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
         case .woodcut: return WoodcutStrip.time(shares.count)
         case .grain, .aquatint: return StoneStrip.time(shares.count)
         case .waterPencil, .waterPen: return TintedStrip.time(shares, width: width)
+        case .toned, .heightened: return TonedStrip.time(shares, lit: self == .heightened)
         }
     }
 
@@ -318,6 +340,7 @@ enum PaintStyle: String, Sendable, CaseIterable {
         case .woodcut: 0.26
         case .grain, .aquatint: 0.26
         case .waterPencil, .waterPen: 0.22
+        case .toned, .heightened: 0.24
         }
         return Self.swatchesFrom * bar + gap * Double(index)
     }
@@ -373,6 +396,58 @@ enum PaintStyle: String, Sendable, CaseIterable {
                                               "witte", "bianco", "biacca"]
     /// What says a paint only heightens: the lights laid on a drawing.
     private static let heightens = ["heighten", "highlight", "rehauss", "touch", "hoh", "gehoh", "opgehoogd", "lumeggi", "swiatl"]
+
+    /// Whether a drawing is heightened with white: a word that says so,
+    /// or white named of anything but its paper ("white chalk", „biała
+    /// kreda”; not "on white paper").
+    static func lit(_ words: [String]) -> Bool {
+        // Not "touches" alone: "touches of black crayon" are no lights.
+        if words.contains(where: { word in heightens.contains(where: word.hasPrefix) && !word.hasPrefix("touch") }) { return true }
+        return words.indices.contains { index in
+            guard whites.contains(words[index]) else { return false }
+            let after = words[(index + 1)...].first { !sheetWords.contains($0) }
+            return !(after.map { word in papers.contains(where: word.hasPrefix) } ?? false)
+                && !(index > 0 && papers.contains(where: words[index - 1].hasPrefix))
+        }
+    }
+
+    /// Whether a drawing is on a tinted paper: a colour said of its paper
+    /// ("on blue paper", "pale grey-blue laid paper", „na niebieskim
+    /// papierze”, "papier bleu"), what is said of a paper between the two;
+    /// not of the paper it is laid down on ("on cream laid paper, laid
+    /// down on tan laid paper").
+    static func tinted(_ words: [String]) -> Bool {
+        func tint(_ word: String) -> Bool {
+            tints.contains(where: word.hasPrefix) || tintsWithin.contains(where: word.contains) || tintWords.contains(word)
+        }
+        func said(_ near: some Sequence<String>) -> Bool {
+            for word in near {
+                if tint(word) { return true }
+                if !sheetWords.contains(word) { return false }
+            }
+            return false
+        }
+        // The first paper named is the one drawn on; the next it is laid down on or mounted on.
+        guard let index = words.firstIndex(where: { word in papers.contains(where: word.hasPrefix) }) else { return false }
+        return said(words[..<index].reversed()) || said(words[(index + 1)...])
+    }
+
+    /// Paper, in the languages the museums write in.
+    private static let papers = ["paper", "papier", "papir", "papel", "carta", "karton", "cardboard"]
+    /// What is said of a paper besides its colour.
+    private static let sheetWords: Set<String> = ["laid", "wove", "antique", "faded", "light", "pale", "dark", "deep", "rough", "heavy", "thin",
+                                                  "thick", "coarse", "handmade", "tracing", "and", "or", "washed", "prepared", "tinted", "toned", "coloured",
+                                                  "colored", "ish", "jasny", "jasnym", "ciemny", "ciemnym", "zeberkowy", "zeberkowym", "czerpany",
+                                                  "czerpanym", "verge", "clair", "fonce", "chiaro", "scuro", "hell", "dunkel", "licht",
+                                                  "donker"]
+    /// A colour of a tinted paper, as a word begins; within a word ("szaroniebieski", "graublau"); a whole word.
+    private static let tints = ["blue", "bluish", "blau", "bleu", "blauw", "niebiesk", "azur", "azzurr", "azul", "grey", "gray", "grau",
+                                "grijs", "szar", "grigi", "grise", "green", "grun", "vert", "groen", "zielon", "brown", "braun", "brun",
+                                "bruin", "brazow", "brunatn", "ochre", "ocher", "ochr", "pink", "rozow", "violet", "purple", "fiolet",
+                                "lilac", "lila", "tinted", "toned", "colored", "coloured", "barwion", "farbig", "gefarbt",
+                                "teint", "getint"]
+    private static let tintsWithin = ["niebiesk", "blau", "blue", "szar", "grau", "zielon"]
+    private static let tintWords: Set<String> = ["tan", "buff", "gris", "rose", "rosa", "grigio", "grigia"]
 
     /// Lower case, no accents, split at what is no letter.
     static func words(_ text: String) -> [String] {
@@ -1239,18 +1314,41 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
         var hem: Double? = nil
         /// The little ridge of wet paint a pull pushes up where it begins in the paint before it.
         var push = 0.0
+        /// Thick paint (sketch 50, Mateusz 2026-11-15 18:56: „w ramach jednego
+        /// koloru powinny być i spokojniejsze, duże fragmenty i takie
+        /// składające się z wielu pociągnięć”): each colour's ground keeps a
+        /// calm part with nothing over it and has a part of many short pulls;
+        /// how slanted those are (0: along the bar). nil: as `over` lays them.
+        var busy: Double? = nil
+        /// How much flatter the calm parts lie than the paint's height would
+        /// have them (19:15: „te spokojne partie mogą być mniej 3D. Malowane
+        /// bardziej płasko”): 0 as laid, 1 level.
+        var flat = 0.0
 
         /// The bar until 1.145.15x: long swaying pulls, the last running dry past the end.
         static let before = Look(back: 16, own: 1, ragged: 1, mound: 1, tail: true, line: 1)
         /// Sketch 48 D: the colours laid in with long calm pulls, then gone
         /// over with short ones partly across; a soft rough hem, an end that
-        /// stops, a thinner contour.
+        /// stops, a thinner contour. Thick paint as sketch 50 F (Mateusz
+        /// 2026-11-15 19:15: „Raczej F”): each colour a calm, flatter part
+        /// and a part of many short pulls along the bar.
         static let laid = Look(back: 14, own: 0.4, ragged: 0.8, mound: 0.35, tail: false, line: 0.6,
-                               round: 0.6, slant: 4, rise: 6, lip: 0.35, grooves: 1.5, over: 17, hem: 1.0, push: 0.3)
+                               round: 0.6, slant: 4, rise: 6, lip: 0.35, grooves: 1.5, over: 17, hem: 1.0, push: 0.3,
+                               busy: 0, flat: 0.9)
+        /// Sketch 48 D for every paint, thick or not (1.145.157).
+        static let gone: Look = { var look = laid; look.busy = nil; look.flat = 0; return look }()
+        /// Sketch 50 G: as laid, the short pulls of thick paint slanted all one way.
+        static let slanted: Look = { var look = laid; look.busy = 0.45; return look }()
 
-        /// The look in use; "-oilLook before" shows the old one (screenshots, sketches).
-        static let current: Look = (UserDefaults.standard.string(forKey: "oilLook")
-            ?? ProcessInfo.processInfo.environment["OIL_LOOK"]) == "before" ? .before : .laid
+        /// The look in use; "-oilLook before" shows the old one, "D" 1.145.157's (screenshots, sketches).
+        static let current: Look = {
+            switch UserDefaults.standard.string(forKey: "oilLook") ?? ProcessInfo.processInfo.environment["OIL_LOOK"] {
+            case "before": .before
+            case "D": .gone
+            case "G": .slanted
+            default: .laid
+            }
+        }()
 
         /// Wet paint: no lip, the height given way to slowly.
         var wet: Bool { lip < 1 }
@@ -1309,7 +1407,7 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
         self.width = width
         wide = Int((width + 2 * Paint.pad).rounded()) * Paint.scale
         high = Int(Paint.bar + 2 * Paint.pad) * Paint.scale
-        pulls = Self.pulls(shares, width: width, seed: seed, even: even, look: look)
+        pulls = Self.pulls(shares, width: width, seed: seed, even: even, thick: Self.thick(relief: relief), look: look)
         last = pulls.map { $0.at + $0.takes }.max() ?? 0
         length = last + Self.lag + Self.soak
     }
@@ -1391,7 +1489,13 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
     /// przejście. Tak jakby malarz poszczególnymi pociągnięciami malował
     /// gradient”); then the small colours as touches on top („Akcenty z
     /// końca jako pacnięcia na wierzchu”).
-    static func pulls(_ shares: [PaintShare], width: Double, seed: Int, even: Double = 0, look: Look = .current) -> [Pull] {
+    /// How thickly the picture is painted, for `Look.busy`: 0 up to works
+    /// of no known manner (`Paint.calm.plain`), 1 from `Paint.calm.late` up.
+    static func thick(relief: Double) -> Double {
+        min(1, max(0, (relief - Paint.calm.plain) / (Paint.calm.late - Paint.calm.plain)))
+    }
+
+    static func pulls(_ shares: [PaintShare], width: Double, seed: Int, even: Double = 0, thick: Double = 0, look: Look = .current) -> [Pull] {
         guard !shares.isEmpty else { return [] }
         let back = look.back + evened.back * even
         let total = max(shares.reduce(0) { $0 + $1.weight }, 0.000_001)
@@ -1459,7 +1563,17 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
             // How far from where two colours meet their mixture reaches (points).
             let blended = 40.0
             for (n, g) in grounds.enumerated() {
-                let w = g.to - g.from, count = max(1, Int((w / look.over).rounded()))
+                let w = g.to - g.from
+                // Thick paint: a calm part of each colour left as laid, the rest gone over by many short pulls.
+                if let slope = look.busy, thick > 0 {
+                    // The draws `over` would have made, so the accents keep their places.
+                    for _ in 0..<max(1, Int((w / look.over).rounded())) { _ = varied(a: 0, e: 1, touch: false, even: even, random: &random) }
+                    var own = PaintRandom(seed + 400 + 7 * n)
+                    overs += busy(g: g, n: n, grounds: grounds, shares: shares, seed: seed, even: even, thick: thick,
+                                  slope: slope, room: room, blended: blended, random: &own)
+                    continue
+                }
+                let count = max(1, Int((w / look.over).rounded()))
                 for k in 0..<count {
                     let h = Paint.hash(Double(k), Double(n), Double(seed) + 61)
                     let long = 13 + 15 * Paint.hash(Double(k), Double(n), Double(seed) + 62)
@@ -1541,6 +1655,52 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
         return pulls
     }
 
+    /// Sketch 50: one colour's ground (`g`, the `n`th) of thick paint gone
+    /// over in a part of it by many short pulls, the rest left calm as laid.
+    /// Which part is busy goes in turn: the end of one colour, the start of
+    /// the next, so two busy parts meet and the calm ones stay between.
+    private static func busy(g: (from: Double, to: Double, colour: Int), n: Int, grounds: [(from: Double, to: Double, colour: Int)],
+                             shares: [PaintShare], seed: Int, even: Double, thick: Double, slope: Double, room: Double,
+                             blended: Double, random: inout PaintRandom) -> [Pull] {
+        let w = g.to - g.from, h = Double(seed) + 300
+        // The busy part: about half of a colour (less of a wide one), at least 18 points.
+        let part = min(w, max(18, w * (0.42 + 0.16 * Paint.hash(Double(n), 1, h)) * (0.6 + 0.4 * thick)))
+        let first = n % 2 == 1
+        let from = first ? g.from : g.to - part, to = first ? g.from + part : g.to
+        // Many: one about every 4.5 points, in a few rows across.
+        let count = max(4, Int((part / 4.5).rounded()))
+        var pulls = [Pull]()
+        for k in 0..<count {
+            let q = Double(k), r1 = Paint.hash(q, Double(n), h + 1), r2 = Paint.hash(q, Double(n), h + 2)
+            let long = 9 + 9 * Paint.hash(q, Double(n), h + 3)
+            var mid = from + part * (q + 0.5 + 0.7 * (r1 - 0.5)) / Double(count)
+            mid = min(room - long / 2, max(long / 2 + 2, mid))
+            var pull = varied(a: mid - long / 2, e: mid + long / 2, touch: false, even: even, random: &random)
+            pull.wide = Paint.bar / 2 * (0.3 + 0.28 * Paint.hash(q, Double(n), h + 4))
+            // Rows in turn across the bar, each pull a little off its row.
+            let rows = 3.0, row = (Double(k % 3) + 0.5) / rows * 2 - 1
+            pull.dy = (Paint.bar / 2 - pull.wide - 0.6) * max(-1, min(1, row + 0.35 * (r2 - 0.5)))
+            let lean = slope == 0 ? 0.08 * (2 * Paint.hash(q, Double(n), h + 5) - 1) : slope * (0.85 + 0.3 * Paint.hash(q, Double(n), h + 5))
+            pull.tilt = lean
+            pull.sway *= 0.2
+            pull.taper *= 0.7
+            pull.full = pull.e > room - 14 ? 1 : 0.5 + 0.4 * Paint.hash(q, Double(n), h + 6)
+            var ground = shares[g.colour].rgb
+            if n > 0 { ground = mixed(ground, shares[grounds[n - 1].colour].rgb, 0.5 * max(0, 1 - (mid - g.from) / blended)) }
+            if n < grounds.count - 1 { ground = mixed(ground, shares[grounds[n + 1].colour].rgb, 0.5 * max(0, 1 - (g.to - mid) / blended)) }
+            let tone = 1 + 0.15 * (2 * Paint.hash(q, Double(n), h + 7) - 1)
+            pull.rgb = ground.map { min(255, $0 * tone) }
+            pull.under = ground
+            pull.carry = (5, 11)
+            pull.blend = 0.45
+            pull.mark = 0.5
+            pull.takes = stroke * 0.5
+            pull.over = true
+            pulls.append(pull)
+        }
+        return pulls
+    }
+
     private func ridge(_ i: Double, _ v: Double) -> Double {
         0.5 * Paint.noise(v / 0.62, 3.7 * i, 71 + seed) + 0.5 * Paint.noise(v / 1.9, 3.7 * i, 72 + seed)
     }
@@ -1551,6 +1711,18 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
         let ragged = (1 - Self.evened.ragged * even) * look.ragged, mound = (1 - Self.evened.mound * even) * look.mound
         // The bar's end: without a dry tail the paint stops there, as a brush lifted in time.
         let end = (pulls.filter { !$0.on }.map(\.e).max() ?? 0) + 1.5
+        // Thick paint's calm parts (`Look.flat`): how far each column is from the short pulls gone over it,
+        // 1 well clear of them, 0 under them.
+        let flat = look.busy != nil && Self.thick(relief: relief) > 0 ? look.flat : 0
+        var still = [Double](repeating: 1, count: wide)
+        if flat > 0 {
+            let overs = pulls.filter(\.over)
+            for px in 0..<wide {
+                let x = -pad + (Double(px) + 0.5) / S
+                let off = overs.map { max($0.a - x, x - $0.e, 0) }.min() ?? 99
+                still[px] = Paint.step(0, 7, off)
+            }
+        }
         var all = [Laid]()
         for (i, P) in pulls.enumerated() {
             var laid = Laid()
@@ -1611,6 +1783,8 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
                     let calm = look.wet
                     hgt = max(0.05, hgt) * (calm && !P.on ? 1 : ramp) + 0.1
                     if calm, P.mark < 1, !P.on { hgt += look.push * exp(-pow((u - start - 1.8) / 1.4, 2)) * (0.6 + 0.8 * streaks) }
+                    // In a calm part of thick paint the ground lies flatter.
+                    if flat > 0, !P.on, !P.over { hgt = 0.7 + (hgt - 0.7) * (1 - flat * still[px]) }
                     laid.lift.append(Float(calm ? cover * ramp * (P.on ? 0.75 : 1) : cover))
                     let streak = 1 + ragged * (0.1 * (Paint.noise(v / 1.1, 2.3 * di + x / 60, 131 + seed) - 0.5) + 0.06 * (slow - 0.5))
                     var cr = c[0], cg = c[1], cb = c[2]

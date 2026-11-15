@@ -692,6 +692,12 @@ class PlTextJob(NoteJob):
         with self._lock:
             self._titles.pop(item.id, None)
 
+    def forget_title(self, item_id: str) -> None:
+        """The title picked out of an answer being written, dropped: the
+        owner set the Polish title himself ("Do sprawdzenia" → "Popraw")."""
+        with self._lock:
+            self._titles.pop(item_id, None)
+
     def partial(self, item: Item, piece: str) -> None:
         """Picks the title out of the answer as it is written (a second or
         two in, the texts take several more), for the card to show first."""

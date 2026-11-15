@@ -96,7 +96,8 @@ actor DemoBackend: FrameBackend {
         leftover: true, leftoverDays: 3, leftoverReserveUsd: 10,
         leftoverState: LeftoverState(
             opens: "2026-11-28", closes: "2026-11-29", open: false, freeUsd: 0, perStudyUsd: 0.8,
-            measured: false, ordered: 0, inFlight: 0, made: 0, failed: 0, candidates: 7
+            measured: false, ordered: 0, inFlight: 0, made: 0, failed: 0, candidates: 7,
+            uses: DemoBackend.leftoverUses
         )
     )
     private var demoAsleep = false
@@ -561,7 +562,7 @@ actor DemoBackend: FrameBackend {
     func item(id: String) async throws -> Item {
         guard var item = items.first(where: { $0.id == id }) else { throw BackendError.notFound }
         if Self.restoredAll, item.kind == .artwork, item.sharper == nil { item.sharper = Self.restoredCopy(item) }
-        return item
+        return Self.demoCleaned(item)
     }
 
     /// A long note, as the language model writes one (400–900 characters),
@@ -635,7 +636,7 @@ actor DemoBackend: FrameBackend {
 
     /// A tile: the work's summary with its mark of a small picture.
     private static func tile(_ item: Item) -> ItemSummary {
-        var summary = item.summary
+        var summary = demoCleaned(item).summary
         summary.lowSide = lowSide(item)
         if restoredAll, item.kind == .artwork { summary.restored = true }
         return summary
@@ -690,16 +691,45 @@ actor DemoBackend: FrameBackend {
         MediumView(status: "none")
     }
 
-    /// The demo's paintings may be tried without their varnish (the app
-    /// does that sum itself); there is no server to de-yellow a sheet.
+    /// The demo's paintings may be shown without their varnish; a sheet
+    /// only for the screenshots (`-demoPaper YES`). There is no server to
+    /// do the sums: the picture stays, the mark and the words show.
     func recovery(itemID: String, made: String) async throws -> RecoveryView {
         guard made == "oil" else {
-            // Screenshots (`-demoPaper YES`): the paper preview's look. Both
-            // of its sides are the same picture here.
             return RecoveryView(kind: UserDefaults.standard.bool(forKey: "demoPaper") ? "paper" : "none")
         }
-        let steps = (0...16).map { Double($0) / 10 }
-        return RecoveryView(kind: "varnish", strength: 0.69, steps: steps, tops: steps.map { 0.8 * exp(0.6 * $0) })
+        return RecoveryView(kind: "varnish")
+    }
+
+    func clean(itemID: String, made: String) async throws -> Item {
+        let stamp = ISO8601DateFormatter().string(from: .now)
+        return try update(itemID) { item in
+            item.cleaned = Cleaned(
+                kind: made == "oil" ? "varnish" : "paper", made: made, strength: 0.5,
+                picture: item.sharper?.itemId ?? "", at: stamp
+            )
+        }
+    }
+
+    func unclean(itemID: String) async throws -> Item {
+        try update(itemID) { $0.cleaned = nil }
+    }
+
+    /// Screenshots: `-demoCleaned some` shows every other work cleaned
+    /// (`-demoCleaned paper`: its sheet de-yellowed), so the lists and the
+    /// card show the mark; `-demoCleaned all`, every work.
+    private static func demoCleaned(_ item: Item) -> Item {
+        guard item.kind == .artwork, item.cleaned == nil,
+              let which = UserDefaults.standard.string(forKey: "demoCleaned"),
+              which == "all" || which == "paper"
+                || (which == "some" && item.id.unicodeScalars.reduce(0, { $0 + Int($1.value) }) % 2 == 0)
+        else { return item }
+        var cleaned = item
+        cleaned.cleaned = Cleaned(
+            kind: which == "paper" ? "paper" : "varnish", made: which == "paper" ? "paper" : "oil",
+            strength: 0.5, picture: item.sharper?.itemId ?? "", at: "demo"
+        )
+        return cleaned
     }
 
     func fragments(itemID: String) async throws -> FragmentsView {
@@ -993,7 +1023,7 @@ actor DemoBackend: FrameBackend {
     /// picture or of the restorer, as Odkrywaj's tiles show them.
     private func remote(_ list: [Item]) -> [RemoteItem] {
         list.map { item in
-            var remote = RemoteItem(item: Self.demoCut(item), inLibrary: true)
+            var remote = RemoteItem(item: Self.demoCleaned(Self.demoCut(item)), inLibrary: true)
             remote.lowSide = Self.lowSide(item)
             if Self.restoredAll, item.kind == .artwork { remote.restored = true }
             return remote
@@ -2099,6 +2129,15 @@ actor DemoBackend: FrameBackend {
         if let value = update.leftover { aiValue.leftover = value }
         if let value = update.leftoverDays { aiValue.leftoverDays = value }
         if let value = update.leftoverReserveUsd { aiValue.leftoverReserveUsd = value }
+        if let state = aiValue.leftoverState, var uses = state.uses {
+            if let order = update.leftoverOrder {
+                uses.sort { (order.firstIndex(of: $0.key) ?? .max) < (order.firstIndex(of: $1.key) ?? .max) }
+            }
+            if let off = update.leftoverOff {
+                for index in uses.indices { uses[index].on = !off.contains(uses[index].key) }
+            }
+            aiValue.leftoverState?.uses = uses
+        }
         return aiValue
     }
 
@@ -2116,8 +2155,30 @@ actor DemoBackend: FrameBackend {
         if works.count > 1 {
             review.findings = [AiReview.Entry(
                 item: works[1].summary, at: "2026-11-10T02:20:00+00:00", by: "audit",
-                problems: [AiReview.Problem(field: "date", name: "Data", problem: "Rok 1932 jest po śmierci autora (1890).")]
+                problems: [AiReview.Problem(
+                    field: "date", name: "Data", problem: "Rok 1932 jest po śmierci autora (1890).",
+                    fix: "1896", fixPl: ""
+                )]
             )]
+        }
+        if works.count > 2 {
+            // The work's own title with an auction's note the audit found.
+            var auctioned = works[2].summary
+            auctioned.title += " - Christie's 4 jun 2019"
+            review.findings.append(AiReview.Entry(
+                item: auctioned, at: "2026-11-10T02:24:00+00:00", by: "audit",
+                problems: [
+                    AiReview.Problem(
+                        field: "title", name: "Tytuł",
+                        problem: "Tytuł zawiera dopisek o aukcji (Christie's 4 jun 2019), który nie jest częścią tytułu.",
+                        fix: works[2].title, fixPl: works[2].summary.titlePl ?? ""
+                    ),
+                    AiReview.Problem(
+                        field: "picture", name: "Obraz",
+                        problem: "Na zdjęciu widać pasek kolorów i linijkę przy prawej krawędzi."
+                    ),
+                ]
+            ))
         }
         return review
     }()
@@ -2166,6 +2227,37 @@ actor DemoBackend: FrameBackend {
         reviewValue.setAside.removeAll { $0.item.id == itemID }
         reviewValue.findings.removeAll { $0.item.id == itemID }
         return reviewValue
+    }
+
+    func suggestReviewFixes(itemID: String) async throws -> AiReview { reviewValue }
+
+    func applyReviewFix(itemID: String, field: String, value: String, valuePl: String?) async throws -> AiReview {
+        dropProblem(itemID, field)
+        return reviewValue
+    }
+
+    func cutReviewed(itemID: String) async throws -> AiReview {
+        try await Task.sleep(for: .seconds(1))
+        dropProblem(itemID, "picture")
+        return reviewValue
+    }
+
+    func dropReviewProblem(itemID: String, field: String) async throws -> AiReview {
+        dropProblem(itemID, field)
+        return reviewValue
+    }
+
+    func hideReviewed(itemID: String) async throws -> AiReview {
+        reviewValue.findings.removeAll { $0.item.id == itemID }
+        reviewValue.setAside.removeAll { $0.item.id == itemID }
+        return reviewValue
+    }
+
+    private func dropProblem(_ itemID: String, _ field: String) {
+        for i in reviewValue.findings.indices where reviewValue.findings[i].item.id == itemID {
+            reviewValue.findings[i].problems.removeAll { $0.field == field }
+        }
+        reviewValue.findings.removeAll { $0.problems.isEmpty }
     }
 
     func saveAiKey(_ key: String) async throws -> AiSettings {
@@ -2250,7 +2342,7 @@ actor DemoBackend: FrameBackend {
         case let .thumb(id), let .tile(id): url = Self.bundled(id) ?? imageURLs[id]?.thumb
         case let .museumPhoto(id, _, _) where FileManager.default.fileExists(atPath: DemoFraming.uploadURL(id + "-full").path):
             url = DemoFraming.uploadURL(id + "-full")  // an own work's photograph whole
-        case let .image(id), let .original(id, _), let .museumPhoto(id, _, _), let .recovered(id, _, _): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
+        case let .image(id), let .original(id, _), let .museumPhoto(id, _, _), let .beforeCleaning(id, _): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
         case let .framePreview(id, settings, framing, _):
             url = framed(id, settings, trying: framing) ?? Self.bundled(id) ?? imageURLs[id]?.thumb
         case let .path(path) where path.hasPrefix("/demo/detail/"):
@@ -2357,4 +2449,46 @@ private final class FramingState: @unchecked Sendable {
         get { lock.withLock { uploaded } }
         set { lock.withLock { uploaded = newValue } }
     }
+}
+
+extension DemoBackend {
+    /// The uses of the month's rest as a server of 1.145.161 tells them.
+    static let leftoverUses: [LeftoverUse] = [
+        LeftoverUse(
+            key: "refresh", label: "Uzupełnienie wcześniejszych studiów",
+            about: "Fakty z sieci do studiów sprzed nich; tekst przepisany tam, gdzie wnoszą dużo.",
+            on: true, able: true, waiting: 23, eachUsd: 0.07, waitingUsd: 1.61, aNight: nil,
+            done: 0, doneUsd: 0
+        ),
+        LeftoverUse(
+            key: "crops", label: "Kadrowanie zdjęć dzieł",
+            about: "Więcej dzieł na noc bez ramy, sztalugi i tektury wokół, najpierw Ulubione i playlisty.",
+            on: true, able: true, waiting: 412, eachUsd: 0.01, waitingUsd: 4.12, aNight: 540,
+            done: 0, doneUsd: 0
+        ),
+        LeftoverUse(
+            key: "text_review", label: "Przegląd zapisanych opisów",
+            about: "Tłumaczenia, które nie mówią o dziele, i notki sprzed pięciu stylów.",
+            on: true, able: true, waiting: 1860, eachUsd: 0.0015, waitingUsd: 6.4, aNight: nil,
+            done: 0, doneUsd: 0
+        ),
+        LeftoverUse(
+            key: "studies", label: "Nowe studia",
+            about: "Dzieła typowane przez kuratora Studium dnia, najpierw z Ulubionych i playlist.",
+            on: true, able: true, waiting: 7, eachUsd: 0.8, waitingUsd: 5.6, aNight: 25,
+            done: 0, doneUsd: 0
+        ),
+        LeftoverUse(
+            key: "descriptions", label: "Słowa kluczowe i polskie opisy",
+            about: "Dzieła katalogu, które ich jeszcze nie mają, najpierw Ulubione i playlisty.",
+            on: true, able: true, waiting: 5300, eachUsd: 0.001, waitingUsd: 5.3, aNight: nil,
+            done: 0, doneUsd: 0
+        ),
+        LeftoverUse(
+            key: "audit", label: "Większy nocny przegląd",
+            about: "Więcej dzieł na noc; lista „Do sprawdzenia” dla Ciebie się wydłuży.",
+            on: false, able: true, waiting: nil, eachUsd: 0.002, waitingUsd: nil, aNight: 270,
+            done: 0, doneUsd: 0
+        ),
+    ]
 }
