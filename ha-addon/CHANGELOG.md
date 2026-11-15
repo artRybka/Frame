@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.139
+
+- „Podobne wyglądem” na karcie dzieła: szerokie dzieła (parawany,
+  panoramy) stoją zaraz pod nagłówkiem, bez dużego pustego miejsca nad
+  nimi. Wysokość rzędu dopasowuje się do najwyższego obrazu.
+
 ## 1.145.138
 
 - Kartka leżąca na białej albo szarej tekturze, z której widać tylko wąski
