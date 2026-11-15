@@ -115,7 +115,7 @@ enum ColourRecovery {
 
     static func note(_ kind: Kind) -> String {
         kind == .varnish
-            ? "Symulacja barw bez pożółkłego werniksu. Rachunek, nie konserwacja. Siłę ustawiasz sam, kreska pokazuje propozycję."
+            ? "Symulacja barw bez pożółkłego werniksu. Rachunek, nie konserwacja. Siłę ustawiasz sam."
             : "Arkusz odżółcony rachunkiem. Kreska i barwy z oryginału. Przesuń, żeby porównać."
     }
 
@@ -221,7 +221,9 @@ struct RecoveryWipe: View {
 }
 
 /// The strength of the varnish taken off, under the picture: a narrow strip
-/// from weaker to stronger with a tick where the calculation proposes.
+/// from weaker to stronger with a tick where the calculation proposes. The
+/// tick runs down to its word, "propozycja", which stands under it: the
+/// knob opens on the proposal and would hide a tick the track's height.
 struct RecoveryStrength: View {
     @Binding var strength: Double
     let proposed: Double
@@ -229,6 +231,10 @@ struct RecoveryStrength: View {
     @State private var grabbed: Double?
 
     private static let knob: CGFloat = 22
+    /// The height the track and its knob take.
+    private static let rail: CGFloat = 28
+    /// The room the proposal's word is centred in.
+    private static let word: CGFloat = 80
 
     /// Where a strength is along the strip: the knob's middle.
     private func place(_ value: Double, _ run: CGFloat) -> CGFloat {
@@ -236,63 +242,73 @@ struct RecoveryStrength: View {
     }
 
     var body: some View {
-        VStack(spacing: 4) {
-            GeometryReader { proxy in
-                let run = max(proxy.size.width - Self.knob, 1)
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Theme.hairline)
-                        .frame(height: 4)
-                        .padding(.horizontal, Self.knob / 2)
-                    Capsule()
-                        .fill(Theme.inkSoft)
-                        .frame(width: max(place(strength, run) - Self.knob / 2, 0), height: 4)
-                        .padding(.leading, Self.knob / 2)
-                    // The proposal's tick, through the track.
-                    Rectangle()
-                        .fill(Theme.ink)
-                        .frame(width: 2, height: 14)
-                        .offset(x: place(proposed, run) - 1)
-                    Circle()
-                        .fill(.white)
-                        .frame(width: Self.knob, height: Self.knob)
-                        .shadow(color: .black.opacity(0.3), radius: 3, y: 1)
-                        .offset(x: place(strength, run) - Self.knob / 2)
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let run = max(width - Self.knob, 1)
+            let at = place(proposed, run)
+            let here = place(strength, run)
+            let words = Self.rail + 4
+            ZStack(alignment: .topLeading) {
+                Capsule()
+                    .fill(Theme.hairline)
+                    .frame(width: run, height: 4)
+                    .offset(x: Self.knob / 2, y: Self.rail / 2 - 2)
+                Capsule()
+                    .fill(Theme.inkSoft)
+                    .frame(width: max(here - Self.knob / 2, 0), height: 4)
+                    .offset(x: Self.knob / 2, y: Self.rail / 2 - 2)
+                // The proposal's tick, through the track and out under the
+                // knob.
+                Rectangle()
+                    .fill(Theme.ink)
+                    .frame(width: 2, height: Self.rail / 2 + 10)
+                    .offset(x: at - 1, y: Self.rail / 2 - 7)
+                Circle()
+                    .fill(.white)
+                    .frame(width: Self.knob, height: Self.knob)
+                    .shadow(color: .black.opacity(0.3), radius: 3, y: 1)
+                    .offset(x: here - Self.knob / 2, y: (Self.rail - Self.knob) / 2)
+                Color.clear
+                    .frame(width: width, height: Self.rail)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { drag in
+                                // The knob follows from where it was; a touch
+                                // on the track elsewhere brings it there.
+                                let start = grabbed ?? (abs(drag.startLocation.x - here) <= Self.knob
+                                    ? strength
+                                    : Double((drag.startLocation.x - Self.knob / 2) / run) * most)
+                                grabbed = start
+                                let moved = start + Double(drag.translation.width / run) * most
+                                // The proposal holds the knob a little as it passes.
+                                let near = abs(moved - proposed) < most * 0.02
+                                strength = near ? proposed : min(max(moved, 0), most)
+                            }
+                            .onEnded { _ in grabbed = nil }
+                    )
+                // The ends' words give way to the proposal's when it
+                // stands by them.
+                HStack {
+                    Text("słabiej").opacity(at > 78 ? 1 : 0)
+                    Spacer(minLength: 0)
+                    Text("mocniej").opacity(at < width - 84 ? 1 : 0)
                 }
-                .frame(height: proxy.size.height)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { drag in
-                            // The knob follows from where it was; a touch
-                            // on the track elsewhere brings it there.
-                            let start = grabbed ?? (abs(drag.startLocation.x - place(strength, run)) <= Self.knob
-                                ? strength
-                                : Double((drag.startLocation.x - Self.knob / 2) / run) * most)
-                            grabbed = start
-                            let moved = start + Double(drag.translation.width / run) * most
-                            // The proposal holds the knob a little as it passes.
-                            let near = abs(moved - proposed) < most * 0.02
-                            strength = near ? proposed : min(max(moved, 0), most)
-                        }
-                        .onEnded { _ in grabbed = nil }
-                )
-            }
-            .frame(height: 30)
-            HStack {
-                Text("słabiej")
-                Spacer()
+                .frame(width: width)
+                .offset(y: words)
                 Button("propozycja") {
                     withAnimation(.easeOut(duration: 0.2)) { strength = proposed }
                 }
                 .buttonStyle(.plain)
                 .underline(strength != proposed)
-                Spacer()
-                Text("mocniej")
+                .fixedSize()
+                .frame(width: Self.word)
+                .offset(x: min(max(at - Self.word / 2, 0), max(width - Self.word, 0)), y: words)
             }
             .font(.caption2)
             .foregroundStyle(Theme.inkSoft)
         }
+        .frame(height: Self.rail + 20)
         .sensoryFeedback(.selection, trigger: strength == proposed) { _, now in now }
         .accessibilityElement()
         .accessibilityLabel("Siła symulacji")

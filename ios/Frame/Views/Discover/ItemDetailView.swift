@@ -1215,19 +1215,24 @@ struct ItemDetailView: View {
             }
             .pictureBox()
             .layoutProbe("group")
-            Picker("Widok", selection: $view.animation(.easeInOut)) {
-                ForEach(ViewMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 260)
-            if view == .frame {
-                Text(frameHint)
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-                    .multilineTextAlignment(.center)
-                    .contentTransition(.opacity)
-            } else if recovering, let kind = recoveryKind, let recovery {
+            // The colour recovery preview's own controls stand right under
+            // the picture, in the picker's place: the strength belongs to
+            // what it changes, and "Wróć do oryginału" brings the picker back.
+            if recovering, view == .original, let kind = recoveryKind, let recovery {
                 recoveryNote(kind, recovery)
+            } else {
+                Picker("Widok", selection: $view.animation(.easeInOut)) {
+                    ForEach(ViewMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 260)
+                if view == .frame {
+                    Text(frameHint)
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                        .multilineTextAlignment(.center)
+                        .contentTransition(.opacity)
+                }
             }
         }
         .padding(.top, 8)
