@@ -86,6 +86,11 @@ class AiConfig(BaseModel):
     leftover: bool = False
     leftover_days: int = Field(3, ge=2, le=10)
     leftover_reserve_usd: float = Field(10.0, ge=0, le=1000)
+    #: What the rest goes on, in the owner's order (Mateusz 2026-11-15,
+    #: "Lista z kolejnością"; ``leftover.USES``), and which of them not.
+    #: Kept as set; ``leftover.uses`` puts in what an older list lacks.
+    leftover_order: list[str] = Field(default_factory=list, max_length=20)
+    leftover_off: list[str] = Field(default_factory=lambda: ["audit"], max_length=20)
 
 
 class AiConfigUpdate(BaseModel):
@@ -113,6 +118,8 @@ class AiConfigUpdate(BaseModel):
     leftover: bool | None = None
     leftover_days: int | None = Field(None, ge=2, le=10)
     leftover_reserve_usd: float | None = Field(None, ge=0, le=1000)
+    leftover_order: list[str] | None = Field(None, max_length=20)
+    leftover_off: list[str] | None = Field(None, max_length=20)
 
 
 def clean_key(value: str) -> str:

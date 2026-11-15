@@ -26,6 +26,14 @@ What no study takes (the works or the nights ran out) goes on the
 catalogue's keywords and Polish texts (Mateusz 2026-11-13, "4"): the works
 cared about first, through the Batch API (:meth:`AiWorker.order_rest`).
 
+Since Mateusz 2026-11-15 ("Lista z kolejnością") the studies are one of
+the uses the rest may go on (:data:`USES`), each switched on or off and put
+in an order in Konfiguracja; the night pays them from the top while the
+money lasts. A use with more to do than a night allows (:attr:`Use.cap`)
+keeps what its coming nights in the window will need, so a use below it
+gets only what is left over then (as the catalogue's texts waited for the
+studies before).
+
 One work per artist a night, at most :data:`A_NIGHT`, none in the period's
 last day (a batch may take a day, and what it costs then would count in the
 next period). The works are those the study of the day may have
@@ -42,9 +50,12 @@ import math
 import random
 import threading
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+from .ai import refresh as refresh_module
+from .ai import text_review as review_module
 from .ai.study import KIND
 from .cared import REST
 from .daily import score
@@ -53,8 +64,12 @@ from .library.artists import same_hand
 
 if TYPE_CHECKING:
     from .ai import AiWorker
+    from .ai.audit import Audit
     from .ai.client import Claude
-    from .ai.config import AiConfigStore
+    from .ai.config import AiConfig, AiConfigStore
+    from .ai.crops import Crops
+    from .ai.refresh import StudyRefresh
+    from .ai.text_review import TextReview
     from .daily import Daily
     from .library import Item, Library
     from .player import Player
@@ -79,9 +94,105 @@ LAST_HOURS = 24
 SHORTLISTS = 12
 
 RUNNER, CURATOR = "runner", "curator"
-#: What the rest goes on after the studies: the catalogue's keywords and
-#: Polish texts (Haiku through the Batch API).
+#: The catalogue's keywords and Polish texts (Haiku through the Batch API).
 DESCRIPTIONS = ("keywords", "pl_text")
+
+#: What the rest may go on, in the order it has unless the owner sets
+#: another (Mateusz 2026-11-15): the cheap work on what he has first.
+REFRESH, CROPS, REVIEW, STUDIES, TEXTS, AUDIT = (
+    "refresh",
+    "crops",
+    "text_review",
+    "studies",
+    "descriptions",
+    "audit",
+)
+USES = (REFRESH, CROPS, REVIEW, STUDIES, TEXTS, AUDIT)
+#: Off unless the owner switches it on: it lengthens his own list.
+OFF = (AUDIT,)
+LABELS = {
+    REFRESH: (
+        "Uzupełnienie wcześniejszych studiów",
+        "Fakty z sieci do studiów sprzed nich; tekst przepisany tam, gdzie wnoszą dużo.",
+    ),
+    CROPS: (
+        "Kadrowanie zdjęć dzieł",
+        "Więcej dzieł na noc bez ramy, sztalugi i tektury wokół, najpierw Ulubione i playlisty.",
+    ),
+    REVIEW: (
+        "Przegląd zapisanych opisów",
+        "Tłumaczenia, które nie mówią o dziele, i notki sprzed pięciu stylów.",
+    ),
+    STUDIES: (
+        "Nowe studia",
+        "Dzieła typowane przez kuratora Studium dnia, najpierw z Ulubionych i playlist.",
+    ),
+    TEXTS: (
+        "Słowa kluczowe i polskie opisy",
+        "Dzieła katalogu, które ich jeszcze nie mają, najpierw Ulubione i playlisty.",
+    ),
+    AUDIT: (
+        "Większy nocny przegląd",
+        "Więcej dzieł na noc; lista „Do sprawdzenia” dla Ciebie się wydłuży.",
+    ),
+}
+#: How the night's summary names them.
+SHORT = {
+    REFRESH: "uzupełnione studia",
+    CROPS: "kadrowanie",
+    REVIEW: "przegląd opisów",
+    STUDIES: "nowe studia",
+    TEXTS: "opisy katalogu",
+    AUDIT: "nocny przegląd",
+}
+#: What the other uses are counted under in the spending, left out of what
+#: the studies are measured to cost.
+OTHER_KINDS = (
+    refresh_module.KIND,
+    review_module.KIND,
+    "crops",
+    "audit",
+    *DESCRIPTIONS,
+)
+#: The crops: Opus's corners (about a cent a work through the Batch API)
+#: and Haiku's look around the work (a hundredth of a cent), more a night
+#: at most, from the month's rest.
+CROP_USD, CROP_JUDGE_USD = 0.01, 0.0002
+CROPS_A_NIGHT, CROP_LOOKS_A_NIGHT = 540, 2400
+#: The audit: Haiku and its critic about a work (a fifth of a cent).
+AUDIT_USD = 0.002
+AUDITS_A_NIGHT = 270
+
+
+def uses(config: AiConfig) -> list[tuple[str, bool]]:
+    """The uses in the owner's order, each on or off; those his list lacks
+    in their own place."""
+    order = [k for k in dict.fromkeys(config.leftover_order) if k in USES]
+    for n, key in enumerate(USES):
+        if key not in order:
+            # after the one before it in USES, or first
+            before = [k for k in USES[:n] if k in order]
+            order.insert(order.index(before[-1]) + 1 if before else 0, key)
+    off = set(config.leftover_off)
+    return [(key, key not in off) for key in order]
+
+
+@dataclass
+class Use:
+    """One thing the rest may go on, as the night and the app see it."""
+
+    key: str
+    #: About what one of it costs (USD).
+    each: float
+    #: How many wait for it (None: more than tell).
+    waiting: Callable[[], int | None]
+    #: Its own switch is on (and what it needs is there).
+    able: Callable[[], bool]
+    #: Orders what ``usd`` pays for tonight: how many, about what they will
+    #: cost, and whether it has more to do than it took.
+    run: Callable[[float], tuple[int, float, bool]]
+    #: How many a night at most (None: no limit of a night).
+    cap: int | None = None
 
 
 def studies(n: int) -> str:
@@ -105,6 +216,10 @@ class Leftover:
         player: Player,
         cared: Callable[[], dict[str, int]],
         now: Callable[[], datetime] | None = None,
+        refresh: StudyRefresh | None = None,
+        review: TextReview | None = None,
+        crops: Crops | None = None,
+        audit: Audit | None = None,
     ) -> None:
         self.library = library
         self.config = config
@@ -116,6 +231,10 @@ class Leftover:
         #: The works cared about, by id, with their rank (``Cared.ranks``).
         self.cared = cared
         self.now = now or (lambda: datetime.now(UTC))
+        self.refresh = refresh
+        self.review = review
+        self.crops = crops
+        self.audit = audit
         self._lock = threading.Lock()
 
     # -- the state -----------------------------------------------------------
@@ -195,18 +314,32 @@ class Leftover:
         )
 
     def free_usd(self, state: dict[str, Any] | None = None) -> float:
-        """What may still go on studies: the limit, less the reserve, less
-        what the period cost and what the studies on their way will."""
+        """What may still go on the uses: the limit, less the reserve, less
+        what the period cost and what is on its way will."""
         state = state or self._state()
         config = self.config.config
         coming = len(self._in_flight(state)) * self.per_study(state)
         coming += self.ai.batched_usd(DESCRIPTIONS)
+        coming += self._coming_usd()
         return (
             config.monthly_limit_usd
             - config.leftover_reserve_usd
             - self.claude.spending.total(self.now())
             - coming
         )
+
+    def _coming_usd(self) -> float:
+        """What the other uses ordered and their answers will cost."""
+        usd = 0.0
+        if self.refresh is not None:
+            view = self.refresh.view()
+            usd += view["asked"] * refresh_module.EACH_USD
+            usd += view["rewriting"] * refresh_module.REWRITE_USD
+        if self.review is not None:
+            view = self.review.view()
+            usd += view["checking"] * review_module.check_usd(review_module.CHECK_NOTE_SHARE)
+            usd += view["writing"] * review_module.note_usd()
+        return usd
 
     def _measure(self, state: dict[str, Any]) -> None:
         """The last night's studies all done: what they cost, each."""
@@ -218,8 +351,16 @@ class Leftover:
             return  # some still on their way
         made = len(ids & set(state.get("made") or []))
         if made:
-            spent = self.claude.spending.total(self.now()) - float(batch.get("spent") or 0.0)
-            spent -= float(batch.get("other") or 0.0)  # the catalogue's descriptions
+            now = self.now()
+            spent = self.claude.spending.total(now) - float(batch.get("spent") or 0.0)
+            if "kinds" in batch:
+                # what the other uses' answers cost since
+                then, kinds = batch["kinds"], self.claude.spending.by_kind(now)
+                spent -= sum(
+                    max(kinds.get(k, 0.0) - float(then.get(k, 0.0)), 0.0) for k in OTHER_KINDS
+                )
+            else:
+                spent -= float(batch.get("other") or 0.0)  # the catalogue's descriptions
             each = min(max(spent / made, MEASURED_MIN), MEASURED_MAX)
             state["per_study"] = round(each, 4)
             log.info("leftover studies: %d made, about %.2f USD each", made, each)
@@ -228,11 +369,16 @@ class Leftover:
     # -- the night ---------------------------------------------------------
 
     def enabled(self) -> bool:
-        return bool(self.config.config.leftover and self.study.job.enabled())
+        return bool(self.config.config.leftover and self.config.api_key)
+
+    def nights_left(self) -> int:
+        """The window's nights after tonight's."""
+        _, closes, _ = self.window()
+        return max(math.ceil((closes - self.now()) / timedelta(days=1)) - 1, 0)
 
     def at_night(self, quiet: Callable[[], bool] = lambda: True) -> tuple[int, str]:
-        """Orders what the period's rest pays for: how many, and what it
-        did in Polish."""
+        """Orders what the period's rest pays for, use by use in the owner's
+        order: how many studies, and what it did in Polish."""
         if not self.enabled():
             return 0, "wyłączone"
         now = self.now()
@@ -245,11 +391,169 @@ class Leftover:
             state = self._state()
             self._measure(state)
             self._save(state)
+        free = budget = self.free_usd(state)
+        nights = self.nights_left()
+        self._quiet = quiet
+        self._studied = 0
+        parts: list[str] = []
+        done_by: dict[str, tuple[int, float]] = {}
+        for use, on in self._uses():
+            if not on or not use.able():
+                continue
+            if budget < use.each:
+                continue
+            done, usd, more = use.run(budget)
+            budget -= usd
+            if done:
+                done_by[use.key] = (done, usd)
+                if use.key == STUDIES:
+                    parts.append(f"zamówione {studies(done)}, ok. {usd:.2f} USD")
+                else:
+                    parts.append(f"{SHORT[use.key]}: {done}, ok. {usd:.2f} USD")
+            if more and use.cap and nights:
+                # what this use will want on the window's coming nights
+                waiting = use.waiting()
+                left = use.cap * nights if waiting is None else max(waiting - done, 0)
+                budget -= min(left, use.cap * nights) * use.each
+            if budget <= 0:
+                break
+        if done_by:
+            with self._lock:
+                state = self._state()
+                tally = dict(state.get("tally") or {})
+                for key, (done, usd) in done_by.items():
+                    count, spent = tally.get(key) or (0, 0.0)
+                    tally[key] = (int(count) + done, round(float(spent) + usd, 4))
+                state["tally"] = tally
+                self._save(state)
+        log.info(
+            "month's rest: %.2f USD free, %s",
+            free,
+            "; ".join(f"{k} {n} (about {u:.2f} USD)" for k, (n, u) in done_by.items()) or "nothing",
+        )
+        if not parts:
+            if free < self.per_study(state):
+                return 0, f"brak wolnych środków ({max(free, 0):.2f} USD)"
+            return 0, "nic do zrobienia"
+        return self._studied, "; ".join(parts)
+
+    def _uses(self) -> list[tuple[Use, bool]]:
+        made = {u.key: u for u in self._made_uses()}
+        return [(made[key], on) for key, on in uses(self.config.config) if key in made]
+
+    def _made_uses(self) -> list[Use]:
+        config = self.config
+        found: list[Use] = []
+        refresh, review, crops, audit = self.refresh, self.review, self.crops, self.audit
+        if refresh is not None:
+
+            def refresh_run(usd: float) -> tuple[int, float, bool]:
+                waiting = len(refresh.waiting())
+                n = refresh.start(math.floor(usd / refresh_module.EACH_USD), self._cared_ids)
+                return n, n * refresh_module.EACH_USD, n < waiting
+
+            found.append(
+                Use(
+                    REFRESH,
+                    refresh_module.EACH_USD,
+                    lambda: len(refresh.waiting()),
+                    lambda: config.enabled("web_facts") and self.study.job.enabled(),
+                    refresh_run,
+                )
+            )
+        if crops is not None:
+
+            def crops_run(usd: float) -> tuple[int, float, bool]:
+                waiting = crops.waiting_claims()
+                corners = min(waiting, CROPS_A_NIGHT, math.floor(usd / CROP_USD))
+                # Haiku's look around the works, for the next nights' corners
+                # (those the night's own share does not reach)
+                unseen = len(crops.candidates(crops.asked())) - crops.base_limit(False)
+                rest = usd - corners * CROP_USD
+                looks = min(CROP_LOOKS_A_NIGHT, unseen, math.floor(rest / CROP_JUDGE_USD))
+                looks = max(looks, 0)
+                crops.give_extra(looks, corners, self._period_end())
+                usd = corners * CROP_USD + looks * CROP_JUDGE_USD
+                return corners + looks, usd, waiting > corners
+
+            found.append(
+                Use(
+                    CROPS,
+                    CROP_USD,
+                    crops.waiting_claims,
+                    lambda: config.enabled("crops"),
+                    crops_run,
+                    cap=CROPS_A_NIGHT,
+                )
+            )
+        if review is not None:
+
+            def review_run(usd: float) -> tuple[int, float, bool]:
+                waiting, _ = review.waiting()
+                n, cost = review.order(usd, self._cared_ids)
+                return n, cost, n < waiting
+
+            found.append(
+                Use(
+                    REVIEW,
+                    review_module.check_usd(review_module.CHECK_NOTE_SHARE),
+                    lambda: review.waiting()[0],
+                    lambda: config.enabled("pl_text"),
+                    review_run,
+                )
+            )
+        found.append(
+            Use(
+                STUDIES,
+                self.per_study(),
+                lambda: None,
+                self.study.job.enabled,
+                self._order_studies,
+                cap=A_NIGHT,
+            )
+        )
+        found.append(
+            Use(
+                TEXTS,
+                self._text_usd(),
+                self._texts_waiting,
+                lambda: any(config.enabled(k) for k in DESCRIPTIONS),
+                self._order_texts,
+            )
+        )
+        if audit is not None:
+
+            def audit_run(usd: float) -> tuple[int, float, bool]:
+                n = min(AUDITS_A_NIGHT, math.floor(usd / AUDIT_USD))
+                audit.give_extra(n, 0, self._period_end())
+                return n, n * AUDIT_USD, True
+
+            found.append(
+                Use(
+                    AUDIT,
+                    AUDIT_USD,
+                    lambda: None,
+                    lambda: config.enabled("audit"),
+                    audit_run,
+                    cap=AUDITS_A_NIGHT,
+                )
+            )
+        return found
+
+    def _period_end(self) -> date:
+        _, _, ends = self.window()
+        return ends.date()
+
+    def _order_studies(self, usd: float) -> tuple[int, float, bool]:
+        """Studies for ``usd``: how many, their cost, whether works remain."""
+        now = self.now()
+        state = self._state()
         each = self.per_study(state)
-        free = self.free_usd(state)
-        count = min(A_NIGHT, math.floor(free / each)) if free > 0 else 0
-        picked = self.candidates(count, quiet) if count > 0 else []
-        spent = self.claude.spending.total(now)
+        count = min(A_NIGHT, math.floor(usd / each))
+        if count <= 0:
+            return 0, 0.0, True
+        picked = self.candidates(count, getattr(self, "_quiet", lambda: True))
+        spent, kinds = self.claude.spending.total(now), self.claude.spending.by_kind(now)
         ordered: list[str] = []
         for item, source in picked:
             if not self.study.ask_later(item):
@@ -260,42 +564,35 @@ class Leftover:
                 state["orders"][item.id] = {"at": now.isoformat(), "from": source}
                 self._save(state)
         self.daily.drop_runners_up(set(ordered))
-        # What no study will take goes on the catalogue's keywords and
-        # Polish texts (Mateusz 2026-11-13, "4"): when the studies ran out
-        # of works or money tonight, or on the window's last night.
-        rest = free - len(ordered) * each
-        last = now + timedelta(days=1) >= closes
-        described = 0
-        described_usd = 0.0
-        if rest > 0 and (len(ordered) < count or count == 0 or last):
-            before = self.ai.batched_usd(DESCRIPTIONS)
-            described = self.ai.order_rest(DESCRIPTIONS, rest, self._cared_first)
-            described_usd = max(self.ai.batched_usd(DESCRIPTIONS) - before, 0.0)
         if ordered:
             with self._lock:
                 state = self._state()
                 if not state.get("batch"):
-                    state["batch"] = {"spent": spent, "ids": ordered, "other": described_usd}
+                    state["batch"] = {"spent": spent, "kinds": kinds, "ids": ordered}
                 self._save(state)
-        log.info(
-            "leftover studies: %.2f USD free, %d ordered (%s); %d questions about the "
-            "catalogue (about %.2f USD)",
-            free,
-            len(ordered),
-            ", ".join(ordered) or "none",
-            described,
-            described_usd,
+        self._studied = len(ordered)
+        return len(ordered), len(ordered) * each, len(picked) >= count
+
+    def _order_texts(self, usd: float) -> tuple[int, float, bool]:
+        before = self.ai.batched_usd(DESCRIPTIONS)
+        sent = self.ai.order_rest(DESCRIPTIONS, usd, self._cared_first)
+        return sent, max(self.ai.batched_usd(DESCRIPTIONS) - before, 0.0), False
+
+    def _texts_waiting(self) -> int:
+        return sum(
+            self.ai.progress(kind).waiting for kind in DESCRIPTIONS if self.config.enabled(kind)
         )
-        parts = []
-        if ordered:
-            parts.append(f"zamówione {studies(len(ordered))}, ok. {len(ordered) * each:.2f} USD")
-        if described:
-            parts.append(f"opisy katalogu: {described}, ok. {described_usd:.2f} USD")
-        if not parts:
-            if free < each:
-                return 0, f"brak wolnych środków ({max(free, 0):.2f} USD)"
-            return 0, "brak kandydatów"
-        return len(ordered), "; ".join(parts)
+
+    def _text_usd(self) -> float:
+        """About what a description costs through the Batch API."""
+        jobs = [self.ai.jobs.get(k) for k in DESCRIPTIONS]
+        costs = [j.estimate_usd(1, True) for j in jobs if j is not None]
+        return min(costs) if costs else 0.001
+
+    def _cared_ids(self, ids: list[str]) -> list[str]:
+        """``ids`` with the works cared about first."""
+        ranks = self.cared()
+        return sorted(ids, key=lambda i: ranks.get(i, REST))
 
     def _cared_first(self, items: list[Item]) -> list[Item]:
         """The works cared about first, kept ones before shown ones."""
@@ -412,4 +709,39 @@ class Leftover:
             "made": len(state.get("made") or []),
             "failed": len(state.get("failed") or []),
             "candidates": len(self.daily.runners_up()),
+            "uses": self.uses_view(state),
         }
+
+    def uses_view(self, state: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """The uses in the owner's order: what each is, whether it is on and
+        may run, how many wait and about what they would cost, and what it
+        did this period."""
+        state = state or self._state()
+        tally = state.get("tally") or {}
+        out = []
+        for use, on in self._uses():
+            label, about = LABELS[use.key]
+            try:
+                waiting = use.waiting()
+            except Exception:  # a count is no reason for Konfiguracja to fail
+                log.exception("month's rest: %s could not be counted", use.key)
+                waiting = None
+            if use.key == STUDIES:
+                waiting = len(self.daily.runners_up()) or None
+            count, spent = tally.get(use.key) or (0, 0.0)
+            out.append(
+                {
+                    "key": use.key,
+                    "label": label,
+                    "about": about,
+                    "on": on,
+                    "able": bool(use.able()),
+                    "waiting": waiting,
+                    "each_usd": round(use.each, 4),
+                    "waiting_usd": None if waiting is None else round(waiting * use.each, 2),
+                    "a_night": use.cap,
+                    "done": int(count),
+                    "done_usd": round(float(spent), 2),
+                }
+            )
+        return out

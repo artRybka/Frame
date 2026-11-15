@@ -94,7 +94,8 @@ actor DemoBackend: FrameBackend {
         leftover: true, leftoverDays: 3, leftoverReserveUsd: 10,
         leftoverState: LeftoverState(
             opens: "2026-11-28", closes: "2026-11-29", open: false, freeUsd: 0, perStudyUsd: 0.8,
-            measured: false, ordered: 0, inFlight: 0, made: 0, failed: 0, candidates: 7
+            measured: false, ordered: 0, inFlight: 0, made: 0, failed: 0, candidates: 7,
+            uses: DemoBackend.leftoverUses
         )
     )
     private var demoAsleep = false
@@ -1949,6 +1950,15 @@ actor DemoBackend: FrameBackend {
         if let value = update.leftover { aiValue.leftover = value }
         if let value = update.leftoverDays { aiValue.leftoverDays = value }
         if let value = update.leftoverReserveUsd { aiValue.leftoverReserveUsd = value }
+        if let state = aiValue.leftoverState, var uses = state.uses {
+            if let order = update.leftoverOrder {
+                uses.sort { (order.firstIndex(of: $0.key) ?? .max) < (order.firstIndex(of: $1.key) ?? .max) }
+            }
+            if let off = update.leftoverOff {
+                for index in uses.indices { uses[index].on = !off.contains(uses[index].key) }
+            }
+            aiValue.leftoverState?.uses = uses
+        }
         return aiValue
     }
 
@@ -2205,4 +2215,46 @@ private final class FramingState: @unchecked Sendable {
         get { lock.withLock { uploaded } }
         set { lock.withLock { uploaded = newValue } }
     }
+}
+
+extension DemoBackend {
+    /// The uses of the month's rest as a server of 1.145.161 tells them.
+    static let leftoverUses: [LeftoverUse] = [
+        LeftoverUse(
+            key: "refresh", label: "Uzupełnienie wcześniejszych studiów",
+            about: "Fakty z sieci do studiów sprzed nich; tekst przepisany tam, gdzie wnoszą dużo.",
+            on: true, able: true, waiting: 23, eachUsd: 0.07, waitingUsd: 1.61, aNight: nil,
+            done: 0, doneUsd: 0
+        ),
+        LeftoverUse(
+            key: "crops", label: "Kadrowanie zdjęć dzieł",
+            about: "Więcej dzieł na noc bez ramy, sztalugi i tektury wokół, najpierw Ulubione i playlisty.",
+            on: true, able: true, waiting: 412, eachUsd: 0.01, waitingUsd: 4.12, aNight: 540,
+            done: 0, doneUsd: 0
+        ),
+        LeftoverUse(
+            key: "text_review", label: "Przegląd zapisanych opisów",
+            about: "Tłumaczenia, które nie mówią o dziele, i notki sprzed pięciu stylów.",
+            on: true, able: true, waiting: 1860, eachUsd: 0.0015, waitingUsd: 6.4, aNight: nil,
+            done: 0, doneUsd: 0
+        ),
+        LeftoverUse(
+            key: "studies", label: "Nowe studia",
+            about: "Dzieła typowane przez kuratora Studium dnia, najpierw z Ulubionych i playlist.",
+            on: true, able: true, waiting: 7, eachUsd: 0.8, waitingUsd: 5.6, aNight: 25,
+            done: 0, doneUsd: 0
+        ),
+        LeftoverUse(
+            key: "descriptions", label: "Słowa kluczowe i polskie opisy",
+            about: "Dzieła katalogu, które ich jeszcze nie mają, najpierw Ulubione i playlisty.",
+            on: true, able: true, waiting: 5300, eachUsd: 0.001, waitingUsd: 5.3, aNight: nil,
+            done: 0, doneUsd: 0
+        ),
+        LeftoverUse(
+            key: "audit", label: "Większy nocny przegląd",
+            about: "Więcej dzieł na noc; lista „Do sprawdzenia” dla Ciebie się wydłuży.",
+            on: false, able: true, waiting: nil, eachUsd: 0.002, waitingUsd: nil, aNight: 270,
+            done: 0, doneUsd: 0
+        ),
+    ]
 }

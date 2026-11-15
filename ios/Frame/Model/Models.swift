@@ -1838,6 +1838,32 @@ struct LeftoverState: Codable, Hashable, Sendable {
     var failed: Int
     /// Works the curator found fit and did not choose, waiting for a study.
     var candidates: Int
+    /// What the rest goes on, in the owner's order (Mateusz 2026-11-15,
+    /// "Lista z kolejnością"). Nil from older servers.
+    var uses: [LeftoverUse]? = nil
+}
+
+/// One thing the month's rest may go on; the server pays them from the top
+/// while the money lasts.
+struct LeftoverUse: Codable, Hashable, Sendable, Identifiable {
+    var key: String
+    var label: String
+    var about: String
+    /// The owner's switch here, and whether the use's own switch (and what
+    /// it needs) lets it run.
+    var on: Bool
+    var able: Bool
+    /// How many wait for it (nil: more than tell), about what one costs and
+    /// what all of them would; how many it may take a night.
+    var waiting: Int?
+    var eachUsd: Double
+    var waitingUsd: Double?
+    var aNight: Int?
+    /// What it ordered this period, and about what it cost.
+    var done: Int
+    var doneUsd: Double
+
+    var id: String { key }
 }
 
 /// "Uzupełnij wcześniejsze studia" (Mateusz 2026-11-13): the studies with
@@ -1917,6 +1943,9 @@ struct AiSettingsUpdate: Encodable, Sendable {
     var leftover: Bool?
     var leftoverDays: Int?
     var leftoverReserveUsd: Double?
+    /// The uses of the month's rest in the owner's order, and those off.
+    var leftoverOrder: [String]?
+    var leftoverOff: [String]?
 }
 
 /// `GET /api/ai/review`: "Do sprawdzenia", what the gatekeeper set aside and

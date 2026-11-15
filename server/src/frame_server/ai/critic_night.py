@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from abc import abstractmethod
 from collections.abc import Callable, Mapping
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
 
 from .client import HAIKU
@@ -35,6 +35,8 @@ REST = 2
 JUDGED_MAX = 60_000
 #: What was written (or found), the newest, for the app's list.
 WRITTEN_MAX = 500
+#: The state's key of what the month's rest pays for (``leftover``).
+EXTRA = "extra"
 
 
 class CriticNight(CheckedNight):
@@ -130,6 +132,44 @@ class CriticNight(CheckedNight):
         self._save(state)
         return found
 
+    # -- more from the month's rest ------------------------------------------------
+
+    def base_limit(self, critic: bool) -> int:
+        """Works one round asks about, of its own (``critic``: the critic's)."""
+        return self.per_night
+
+    def extra(self, critic: bool, today: date | None = None) -> int:
+        """Works more the month's rest pays for (``leftover``), until used
+        or its period ends."""
+        extra = self.state().get(EXTRA) or {}
+        day = (today or datetime.now(UTC).date()).isoformat()
+        if str(extra.get("until") or "") <= day:
+            return 0
+        return max(int(extra.get("critic" if critic else "judge") or 0), 0)
+
+    def give_extra(self, judge: int, critic: int, until: date) -> None:
+        """What the month's rest pays for from tonight on, instead of what it
+        paid for before and was not used."""
+        state = self.state()
+        state[EXTRA] = {"judge": judge, "critic": critic, "until": until.isoformat()}
+        self._save(state)
+
+    def limit(self, critic: bool) -> int:
+        return self.base_limit(critic) + self.extra(critic)
+
+    def _extra_used(self, critic: bool, asked: int) -> None:
+        over = asked - self.base_limit(critic)
+        if over <= 0:
+            return
+        state = self.state()
+        extra = dict(state.get(EXTRA) or {})
+        key = "critic" if critic else "judge"
+        if not extra.get(key):
+            return
+        extra[key] = max(int(extra[key]) - over, 0)
+        state[EXTRA] = extra
+        self._save(state)
+
     # -- the night -------------------------------------------------------------------
 
     def _round(self, state: dict[str, Any]) -> tuple[bool, list[tuple[Item, dict[str, Any]]]]:
@@ -137,14 +177,14 @@ class CriticNight(CheckedNight):
         claims: dict[str, Any] = state.get("claims") or {}
         if claims:
             found = []
-            for item_id, claim in list(claims.items())[: self.per_night]:
+            for item_id, claim in list(claims.items())[: self.limit(True)]:
                 item = self.library.get(item_id)
                 if item is not None:
                     found.append((item, claim))
                 else:
                     claims.pop(item_id, None)
             return True, found
-        return False, [(i, {}) for i in self.candidates(self.asked())[: self.per_night]]
+        return False, [(i, {}) for i in self.candidates(self.asked())[: self.limit(False)]]
 
     def order(self) -> bool:
         """The next round (the critic's claims first) asked of the Batch API,
@@ -187,6 +227,7 @@ class CriticNight(CheckedNight):
         state = self.state()
         state["order"] = {"batch": batch, "critic": critic, "ids": ids}
         self._save(state)
+        self._extra_used(critic, self.asked_in(round_, critic))
         log.info(
             "%s: %d works ordered for the %s (batch %s)",
             self.kind,
@@ -195,6 +236,10 @@ class CriticNight(CheckedNight):
             batch,
         )
         return True
+
+    def asked_in(self, round_: list[tuple[Item, dict[str, Any]]], critic: bool) -> int:
+        """Of a round, the works its limit counts."""
+        return len(round_)
 
     def noted(self, item: Item) -> dict[str, Any]:
         """What else is kept with a work asked about (``asked[id]``)."""

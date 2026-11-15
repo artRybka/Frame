@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.161
+
+- Resztka miesiąca Claude idzie na to, co wybierzesz, w Twojej kolejności:
+  uzupełnienie wcześniejszych studiów, kadrowanie zdjęć dzieł, przegląd
+  zapisanych opisów, nowe studia, słowa kluczowe i polskie opisy oraz
+  większy nocny przegląd (domyślnie wyłączony). Noc płaci od góry, póki
+  starcza, a przy każdej pozycji widać, ile czeka i ile by to kosztowało.
+  Kolejność zmienia się przeciąganiem w Konfiguracji → Claude.
+
 ## 1.145.160
 
 - Rysunek kredą, ołówkiem albo węglem na barwionym papierze (niebieskim,
