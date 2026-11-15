@@ -29,8 +29,7 @@ final class PaintTests: XCTestCase {
     func testTheMediumNamesTheWayItIsPainted() {
         let oil = ["Oil on canvas", "olej na płótnie", "Huile sur toile", "Öl auf Leinwand", "olieverf op doek", "Olio su tela",
                    "Tempera and gold on wood", "Acrylic on canvas", "akryl, płótno", "Oil and tempera on panel"]
-        let water = ["Watercolor over graphite", "akwarela, papier", "Aquarelle et gouache", "Aquarell auf Papier",
-                     "Watercolour with pen and ink", "tusz, akwarela, papier"]
+        let water = ["akwarela, papier", "Aquarelle et gouache", "Aquarell auf Papier", "farba wodna, papier"]
         // Opaque paint: gouache, bodycolour, gum tempera (Mateusz 2026-11-14 19:29, sketch 40).
         let gouache = ["Gouache et aquarelle", "gwasz, tektura", "Opaque watercolor and gold on paper", "Bodycolour on vellum",
                        "Gum tempera on paper", "Dekverf op papier"]
@@ -157,7 +156,7 @@ final class PaintTests: XCTestCase {
             XCTAssertEqual(PaintStyle.of(medium: text), .wash, text)
             XCTAssertEqual(PaintStyle.of(medium: text, classification: "Drawings", mono: true), .wash, text)
         }
-        XCTAssertEqual(PaintStyle.of(medium: "Watercolor wash over graphite"), .water)
+        XCTAssertEqual(PaintStyle.of(medium: "Watercolor wash over graphite"), .waterPencil)
         // Ink with colours is a painting; in ink alone, a brush's tones are a pen's.
         XCTAssertEqual(PaintStyle.of(medium: "Ink, colour and wash on silk", classification: "Paintings"), .water)
         // Ink and colours (Mateusz 2026-11-15 00:23, of Sakai Hōitsu's screen): opaque on paper and gold, thin on silk.
@@ -177,7 +176,7 @@ final class PaintTests: XCTestCase {
                      "Silverpoint on prepared paper"] {
             XCTAssertEqual(PaintStyle.of(medium: text), .pencil, text)
         }
-        XCTAssertEqual(PaintStyle.of(medium: "Watercolor over graphite"), .water)
+        XCTAssertEqual(PaintStyle.of(medium: "Watercolor over graphite"), .waterPencil)
         XCTAssertEqual(PaintStyle.of(medium: "Pencil, pen and ink"), .pen)
         XCTAssertEqual(PaintStyle.of(medium: "black chalk and graphite"), .dry)
         // A drawing that names no tool goes by its colours: of one colour, the pen for a brown, the pencil for a grey.
@@ -205,7 +204,7 @@ final class PaintTests: XCTestCase {
         // A department of prints and drawings says nothing of which a work is: its medium does.
         let department = "Prints and Drawings"
         XCTAssertEqual(PaintStyle.of(medium: "Watercolor and gouache over graphite on medium, slightly textured, cream laid paper",
-                                     classification: department, mono: true), .water)
+                                     classification: department, mono: true), .waterPencil)
         XCTAssertEqual(PaintStyle.of(medium: "Graphite on medium, smooth, cream wove paper", classification: department, mono: true), .pencil)
         XCTAssertEqual(PaintStyle.of(medium: "Pen and black ink, brown ink, and graphite", classification: department, mono: true), .pen)
         XCTAssertEqual(PaintStyle.of(medium: "Etching", classification: department, mono: true), .burin)
@@ -600,6 +599,70 @@ final class PaintTests: XCTestCase {
         // Crayon and chalk keep their hatching.
         XCTAssertEqual(PaintStyle.of(medium: "kredka, papier"), .dry)
         XCTAssertEqual(PaintStyle.of(medium: "pastel, papier"), .pastel)
+    }
+
+    /// Sketch 49 (Mateusz 2026-11-15 16:42: „B”): a drawing with
+    /// watercolour is its paper with the drawing's loose lines for the
+    /// sheet's bare share, the rest laid in watercolour over them, the
+    /// accents dropped on the clean paper (16:16, of Henryk Stażewski's
+    /// „Karta ze szkicownika I”, „ołówek, akwarela, papier”, shown as a
+    /// watercolour wash: „trzeba dostosować pasek koloru dla takich
+    /// technik mieszanych”).
+    func testADrawingWithWatercolourIsItsPaperLinesAndWashes() {
+        for text in ["ołówek, akwarela, papier", "Watercolor over graphite", "Black chalk and watercolor", "kredka, ołówek, akwarela, papier",
+                     "technika rysunkowo-malarska, ołówek, farba wodna, papier", "Watercolor and gouache over graphite"] {
+            XCTAssertEqual(PaintStyle.of(medium: text), .waterPencil, text)
+            XCTAssertEqual(PaintStyle.of(medium: text, classification: "Drawing", mono: true), .waterPencil, text)
+        }
+        for text in ["Watercolour with pen and ink", "tusz, akwarela, papier", "pióro, piórko, tusz, akwarela, papier",
+                     "Pen and brown ink with gray washes and watercolor"] {
+            XCTAssertEqual(PaintStyle.of(medium: text), .waterPen, text)
+        }
+        XCTAssertEqual(PaintStyle.waterPencil.drawn, .pencil)
+        XCTAssertEqual(PaintStyle.waterPen.drawn, .pen)
+        // Pastel over watercolour is pastel, oil is paint, ink and colour on silk a painting of East Asia.
+        XCTAssertEqual(PaintStyle.of(medium: "Pastel over watercolour"), .pastel)
+        XCTAssertEqual(PaintStyle.of(medium: "malowanie, papier, jedwab, tusz, farba wodna"), .water)
+        // White gouache that only heightens a drawing is not what it is made in; white gouache alone is.
+        XCTAssertEqual(PaintStyle.of(medium: "pen and black ink and brush and brown wash, heightened with white gouache"), .wash)
+        XCTAssertEqual(PaintStyle.of(medium: "Graphite, highlighted with white gouache"), .pencil)
+        XCTAssertEqual(PaintStyle.of(medium: "Pen and brown ink, with brush and brown wash and touches of white gouache"), .wash)
+        XCTAssertEqual(PaintStyle.of(medium: "Brown and white gouache on cream board"), .gouache)
+        XCTAssertEqual(PaintStyle.of(medium: "gwasz, tusz, piórko, akwarela, ołówek, brystol"), .waterPen)
+        // A print with watercolour on it was coloured by hand; one printed in colours with water-based ink was not.
+        for text in ["etching, with watercolour", "akwaforta, akwarela, gwasz, papier", "Engraving, brush and watercolor on paper"] {
+            XCTAssertEqual(PaintStyle.of(medium: text), .handColoured, text)
+            XCTAssertEqual(PaintStyle.of(medium: text, mono: true), .handColoured, text)
+        }
+        XCTAssertEqual(PaintStyle.of(medium: "drzeworyt barwny, nishiki-e, tusz, farba wodna, papier"), .woodblock)
+
+        // Stażewski's sheet (MNW 536911): 85 % bare paper, its pencil averaged with it, three drops of colour.
+        let sheet = [PaintShare(rgb: [217, 191, 160], weight: 0.855), PaintShare(rgb: [194, 170, 143], weight: 0.099),
+                     PaintShare(rgb: [213, 124, 49], weight: 0.020, accent: true), PaintShare(rgb: [207, 98, 56], weight: 0.017, accent: true),
+                     PaintShare(rgb: [227, 163, 49], weight: 0.015, accent: true)]
+        let parts = TintedStrip.split(sheet)
+        XCTAssertEqual(parts.paper?.rgb, [217, 191, 160])
+        XCTAssertEqual(parts.washes.map(\.rgb), [[194, 170, 143]])
+        XCTAssertEqual(parts.drops.count, 3)
+        let places = TintedStrip.places(sheet, width: 350)
+        XCTAssertEqual(places.washes?.at ?? 0, 350 * 0.855 / 1.006, accuracy: 0.5)
+        for drop in places.drops {
+            XCTAssertGreaterThanOrEqual(drop.long, TintedStrip.drop.least)
+            XCTAssertLessThan(drop.at + drop.long, places.washes?.at ?? 0)
+        }
+        let strip = TintedStrip(shares: sheet, width: 350, seed: 5, tool: .pencil)
+        XCTAssertEqual(PaintStyle.waterPencil.barTime(sheet, width: 350), strip.last, accuracy: 0.001)
+        let done = strip.frame(age: strip.length), paper = LineStrip.plan([sheet[0]], width: 350, seed: 5, tool: .pencil).paper
+        // The paper's part is lines on paper, the drops are colour, the wash darkens the bar's end.
+        let red = places.drops[1], middle = red.at + red.long / 2
+        let (i, j) = dot(middle, 13)
+        let drop = done.colour(i, j)
+        XCTAssertGreaterThan(drop.red - drop.blue, 80)
+        XCTAssertLessThan(darkness(done, from: 190, to: 215, paper: paper), 0.2)
+        XCTAssertGreaterThan(darkness(done, from: 315, to: 345, paper: paper), darkness(done, from: 190, to: 215, paper: paper))
+        // The drawing is there before the watercolour.
+        let early = strip.frame(age: LineStrip.time(1) * TintedStrip.washes.from - 0.01)
+        XCTAssertLessThan(early.colour(i, j).red - early.colour(i, j).blue, 70)
     }
 
     /// Sketch 46 (Mateusz 2026-11-15 15:03: „A”): a lithograph of one

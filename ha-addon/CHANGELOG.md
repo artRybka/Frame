@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.158
+
+- Rysunek z akwarelą (ołówek, węgiel, kreda albo pióro z akwarelą) ma
+  własny pasek barw: tyle paska, ile na dziele zajmuje goły papier, to papier
+  z luźnymi kreskami rysunku, reszta barw to laserunki akwareli położone na
+  kreskach, a akcenty to krople akwareli na czystym papierze. Dotąd taki
+  rysunek dostawał samą akwarelę, a ołówek ginął.
+- Biały gwasz, który tylko rozjaśnia rysunek, nie zmienia już paska na
+  gwasz; rycina z akwarelą ma pasek ryciny kolorowanej.
+
 ## 1.145.156
 
 - Akwatinta jednej barwy (także z akwafortą) ma pasek z ziarna zamiast
