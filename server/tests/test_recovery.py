@@ -59,15 +59,75 @@ def test_taking_the_varnish_off_gives_the_white_back() -> None:
     assert sky[2] > sky[1] > sky[0]
 
 
-def test_the_phone_sum_is_the_servers() -> None:
+def test_the_previews_sum_is_the_plain_one() -> None:
+    """Apps of 1.145.155–161 still draw their preview with ``gains``."""
     picture = _under_varnish(_painting(), 0.9)
     found = recovery.read_varnish(picture)
     lin = u8_to_linear(np.asarray(picture))
-    for strength in (0.0, 0.35, 0.7, 1.6):
+    for strength in (0.35, 0.7, 1.6):
         top = float(np.interp(strength, recovery.STEPS, found.tops))
-        phone = np.clip(lin * np.asarray(recovery.gains(strength, top), np.float32), 0, 1)
-        ours = recovery.unvarnish(lin, strength)
-        assert np.abs(linear_to_u8(phone).astype(int) - linear_to_u8(ours).astype(int)).max() <= 3
+        phone = lin * np.asarray(recovery.gains(strength, top), np.float32)
+        plain = lin * np.exp(strength * ALPHA)
+        plain = plain * min(recovery.TOP / float(np.quantile(plain.max(-1), 0.997)), 1.0)
+        assert np.abs(phone - plain).max() < 0.01
+
+
+def _with_darks() -> np.ndarray:
+    """``_painting`` with a black coat and a dark green meadow in its ground."""
+    lin = _painting()
+    lin[95:, :50] = (0.006, 0.006, 0.006)
+    lin[95:, 60:] = (0.02, 0.04, 0.012)
+    return lin
+
+
+def test_the_darks_keep_their_colour_and_lose_the_haze() -> None:
+    """Mateusz 2026-11-15 19:00–19:05: "kalkulacja lekko zaniebieszcza czarne
+    / bardzo ciemne fragmenty dzieła", "I ciemne zielenie", "kontrast …
+    minimalnie większy"."""
+    coat, meadow = (slice(100, 118), slice(5, 45)), (slice(100, 118), slice(70, 150))
+    linen, sky = (slice(55, 75), slice(100, 135)), (slice(10, 30), slice(10, 150))
+    # What the camera sees: the picture through the varnish, and the light
+    # its surface throws back over everything.
+    seen = u8_to_linear(linear_to_u8(_with_darks() * np.exp(-0.8 * ALPHA) + 0.004))
+    plain = seen * np.exp(0.6 * ALPHA)
+    clean = recovery.unvarnish(seen, 0.6)
+
+    def blue(lin: np.ndarray, where: tuple[slice, slice]) -> float:
+        patch = lin[where].reshape(-1, 3).mean(0)
+        return float(patch[2] / patch[0])
+
+    def lab(lin: np.ndarray, where: tuple[slice, slice]) -> np.ndarray:
+        return linear_to_oklab(lin[where].reshape(-1, 3)).mean(0)
+
+    # The plain sum turned the black coat blue; now it is no bluer than it
+    # was (a little warmer: the neutral haze is off it).
+    assert blue(plain, coat) > 1.4 * blue(seen, coat)
+    assert 0.6 * blue(seen, coat) < blue(clean, coat) <= blue(seen, coat)
+
+    # The dark green keeps the hue it has; the plain sum turned it to blue.
+    def hue(lin: np.ndarray) -> float:
+        found = lab(lin, meadow)
+        return float(np.degrees(np.arctan2(found[2], found[1])))
+
+    assert hue(plain) - hue(seen) > 6
+    assert abs(hue(clean) - hue(seen)) < 3
+    assert lab(clean, meadow)[1] < -0.02  # green still
+    # The lights get all of it: the linen white, the sky blue.
+    assert _chroma(linear_to_u8(clean[linen])) < 0.02
+    assert blue(clean, sky) == pytest.approx(blue(plain, sky), rel=0.03)
+
+    # And the darks are deeper against the lights than the plain sum left them.
+    def depth(lin: np.ndarray) -> float:
+        return float(lab(lin, linen)[0] - lab(lin, coat)[0])
+
+    assert depth(clean) > depth(plain) + 0.01
+    # A picture with no black in it is not darkened as if it had a haze.
+    pale = u8_to_linear(np.asarray(_under_varnish(_painting(), 0.8)))
+    ground = (slice(100, 118), slice(5, 150))
+    kept = (
+        recovery.unvarnish(pale, 0.6)[ground].mean() / (pale * np.exp(0.6 * ALPHA))[ground].mean()
+    )
+    assert kept > 0.8
 
 
 def test_the_proposal_is_what_conservations_took_moved_by_the_white() -> None:

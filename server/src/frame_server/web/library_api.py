@@ -26,6 +26,7 @@ from ..ai.keywords import KIND as KEYWORDS
 from ..ai.keywords import polish_words
 from ..ai.museum_words import leftovers, museum_labels
 from ..ai.pl_text import KIND as PL_TEXT
+from ..cleaning import Made, NothingToClean, by_its_data, offered
 from ..copies import CopyLine, Spot
 from ..fsutil import own_files
 from ..imaging import recovery
@@ -62,7 +63,6 @@ from ..library.search import fill as fill_by_search
 from ..library.seed import PACKS, import_queries, pack
 from ..library.verdict import Place, against
 from ..library.viewer import viewer_id
-from ..library.vocabulary import is_photograph
 from ..library.zoom import zooms
 from ..player import hold_from
 from ..schedule import FrameSettings
@@ -169,12 +169,17 @@ def remote_items(
         own = svc.library.get(item.id)
         if own is not None:
             # The museum's text, the owner's heart and the picture the
-            # library shows: its copy and its cut. Without them Odkrywaj's
+            # library shows: its copy, its cut and its cleaning. Without them Odkrywaj's
             # and Szukaj's tiles of a held work lacked the crop's mark the
             # playlists show, and a thumbnail kept from one list was had
             # anew in the other (Mateusz 2026-11-15).
             item = item.model_copy(
-                update={"favorite": own.favorite, "sharper": own.sharper, "cut": own.cut}
+                update={
+                    "favorite": own.favorite,
+                    "sharper": own.sharper,
+                    "cut": own.cut,
+                    "cleaned": own.cleaned,
+                }
             )
         found.setdefault(
             item.id,
@@ -970,12 +975,6 @@ class RecoveryView(BaseModel):
     version: int = recovery.VERSION
 
 
-#: How the app says a work is made (its ``PaintStyle``): in oil or tempera,
-#: on paper in a medium that lets the sheet through, or one that covers it.
-Made = Literal["oil", "paper", "opaque"]
-#: Oils painted after this are not offered the varnish simulation: their
-#: varnish, where they have one, has not had the time to yellow.
-VARNISH_UNTIL = 1950
 RECOVERY_CACHE_FILES = 60
 _recovery_locks: dict[str, asyncio.Lock] = {}
 
@@ -989,14 +988,14 @@ def _read_small(path: Path, long: int = 640) -> Image.Image:
 
 @router.get("/library/items/{item_id:item}/recovery", response_model=RecoveryView)
 async def item_recovery(item_id: str, made: Made, svc: Svc) -> RecoveryView:
-    """Whether the card may offer a simulation of the work's lost colours,
-    and with what: read from the picture alone, no model asked (Mateusz
-    2026-11-15: „Zbudować bez modelu”). A preview only: nothing of the
-    work, its colours for the search or what the frame shows changes."""
+    """Whether the card may offer the work cleaned ("Zdejmij werniks" /
+    "Odżółć papier", ``PUT …/cleaned``), read from the picture alone, no
+    model asked (Mateusz 2026-11-15: „Zbudować bez modelu”). A work shown
+    cleaned already has nothing more to offer. ``strength`` and ``tops``
+    are for the apps of 1.145.155–161, whose card showed a preview with a
+    slider."""
     item = await _work(svc, item_id, threads=SHOWN_THREADS)
-    if is_photograph(item) or (
-        made == "oil" and item.year is not None and item.year > VARNISH_UNTIL
-    ):
+    if item.cleaned_shown() is not None or not by_its_data(item, made):
         return RecoveryView(kind="none")
     try:
         path, _ = await to_thread.run_sync(svc.images.picture, item, True, limiter=SHOWN_THREADS)
@@ -1015,8 +1014,7 @@ async def item_recovery(item_id: str, made: Made, svc: Svc) -> RecoveryView:
                 steps=list(recovery.STEPS),
                 tops=list(found.tops),
             )
-        state = recovery.sheet_state(recovery.read_sheet(picture), item.medium)
-        return RecoveryView(kind="paper" if state == "yellowed" else "none")
+        return RecoveryView(kind=offered(item, made, picture))
 
     try:
         return await to_thread.run_sync(read, limiter=SHOWN_THREADS)
@@ -1067,6 +1065,65 @@ async def item_recovery_image(item_id: str, svc: Svc, made: Made = "paper") -> R
     except OSError as err:
         raise HTTPException(502, f"image unavailable: {err}") from err
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
+
+
+@router.put("/library/items/{item_id:item}/cleaned", response_model=Item)
+async def put_cleaned(item_id: str, made: Made, svc: Svc) -> Item:
+    """ "Zdejmij werniks" / "Odżółć papier": the work shown from now on
+    without its aged varnish, or with its sheet de-yellowed (Mateusz
+    2026-11-15 18:39 UTC: „Wybranie w menu podmienia na wersje z
+    odżółconym papierem / ściągniętym werniksem”): its original, thumbnail,
+    colours and colour bar are made from the cleaned picture, and the frame
+    shows it. ``made``: how the app says the work is made."""
+    item = await _work(svc, item_id)
+    if item.kind != ItemKind.ARTWORK or item.look is not None:
+        raise HTTPException(422, "only a work's picture is cleaned")
+    stored = svc.library.get(item.id)
+    if stored is None:  # a museum work only looked at: kept for a while, as for its cut
+        stored = await run_in_threadpool(svc.importer.add, item.model_copy(update={"pooled": True}))
+    try:
+        return await run_in_threadpool(urgent_call(lambda: svc.cleaning.clean(stored, made)))
+    except NothingToClean as err:
+        raise HTTPException(422, str(err)) from err
+    except Gone as err:
+        raise HTTPException(410, f"no picture anywhere: {err}") from err
+    except (httpx.HTTPError, OSError) as err:
+        raise HTTPException(502, f"image unavailable: {err}") from err
+
+
+@router.delete("/library/items/{item_id:item}/cleaned", response_model=Item)
+async def delete_cleaned(item_id: str, svc: Svc) -> Item:
+    """ "Przywróć werniks" / "Przywróć ton papieru": the picture as it
+    came again, and its colours measured on it."""
+    item = await _work(svc, item_id)
+    stored = svc.library.get(item.id)
+    if stored is None or stored.cleaned is None:
+        return stored or item
+    return await run_in_threadpool(svc.cleaning.give_up, stored)
+
+
+@router.get("/library/items/{item_id:item}/cleaned/before")
+async def cleaned_before(
+    item_id: str, svc: Svc, side: Annotated[int, Query(ge=64, le=4096)] = 1800
+) -> Response:
+    """The work as it is shown but for its cleaning, for the card's
+    comparison ("Dziś" beside the cleaned picture): the museum's
+    photograph kept beside a cleaned original, cut down to the work."""
+    item = await _work(svc, item_id, threads=SHOWN_THREADS)
+
+    def build() -> bytes:
+        img = svc.images.before_cleaning(item, urgent=True).convert("RGB")
+        img.thumbnail((side, side), Image.Resampling.LANCZOS)
+        return encode_image(img, "jpeg", quality=90)
+
+    try:
+        data = await to_thread.run_sync(build, limiter=SHOWN_THREADS)
+    except Gone as err:
+        raise HTTPException(410, f"no picture anywhere: {err}") from err
+    except (httpx.HTTPError, OSError) as err:
+        raise HTTPException(502, f"image unavailable: {err}") from err
+    # The address carries the picture's version (the app's `v`).
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
 
 
 _preview_locks: dict[str, asyncio.Lock] = {}

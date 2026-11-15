@@ -560,7 +560,7 @@ actor DemoBackend: FrameBackend {
     func item(id: String) async throws -> Item {
         guard var item = items.first(where: { $0.id == id }) else { throw BackendError.notFound }
         if Self.restoredAll, item.kind == .artwork, item.sharper == nil { item.sharper = Self.restoredCopy(item) }
-        return item
+        return Self.demoCleaned(item)
     }
 
     /// A long note, as the language model writes one (400–900 characters),
@@ -631,7 +631,7 @@ actor DemoBackend: FrameBackend {
 
     /// A tile: the work's summary with its mark of a small picture.
     private static func tile(_ item: Item) -> ItemSummary {
-        var summary = item.summary
+        var summary = demoCleaned(item).summary
         summary.lowSide = lowSide(item)
         if restoredAll, item.kind == .artwork { summary.restored = true }
         return summary
@@ -686,16 +686,45 @@ actor DemoBackend: FrameBackend {
         MediumView(status: "none")
     }
 
-    /// The demo's paintings may be tried without their varnish (the app
-    /// does that sum itself); there is no server to de-yellow a sheet.
+    /// The demo's paintings may be shown without their varnish; a sheet
+    /// only for the screenshots (`-demoPaper YES`). There is no server to
+    /// do the sums: the picture stays, the mark and the words show.
     func recovery(itemID: String, made: String) async throws -> RecoveryView {
         guard made == "oil" else {
-            // Screenshots (`-demoPaper YES`): the paper preview's look. Both
-            // of its sides are the same picture here.
             return RecoveryView(kind: UserDefaults.standard.bool(forKey: "demoPaper") ? "paper" : "none")
         }
-        let steps = (0...16).map { Double($0) / 10 }
-        return RecoveryView(kind: "varnish", strength: 0.69, steps: steps, tops: steps.map { 0.8 * exp(0.6 * $0) })
+        return RecoveryView(kind: "varnish")
+    }
+
+    func clean(itemID: String, made: String) async throws -> Item {
+        let stamp = ISO8601DateFormatter().string(from: .now)
+        return try update(itemID) { item in
+            item.cleaned = Cleaned(
+                kind: made == "oil" ? "varnish" : "paper", made: made, strength: 0.5,
+                picture: item.sharper?.itemId ?? "", at: stamp
+            )
+        }
+    }
+
+    func unclean(itemID: String) async throws -> Item {
+        try update(itemID) { $0.cleaned = nil }
+    }
+
+    /// Screenshots: `-demoCleaned some` shows every other work cleaned
+    /// (`-demoCleaned paper`: its sheet de-yellowed), so the lists and the
+    /// card show the mark; `-demoCleaned all`, every work.
+    private static func demoCleaned(_ item: Item) -> Item {
+        guard item.kind == .artwork, item.cleaned == nil,
+              let which = UserDefaults.standard.string(forKey: "demoCleaned"),
+              which == "all" || which == "paper"
+                || (which == "some" && item.id.unicodeScalars.reduce(0, { $0 + Int($1.value) }) % 2 == 0)
+        else { return item }
+        var cleaned = item
+        cleaned.cleaned = Cleaned(
+            kind: which == "paper" ? "paper" : "varnish", made: which == "paper" ? "paper" : "oil",
+            strength: 0.5, picture: item.sharper?.itemId ?? "", at: "demo"
+        )
+        return cleaned
     }
 
     func fragments(itemID: String) async throws -> FragmentsView {
@@ -989,7 +1018,7 @@ actor DemoBackend: FrameBackend {
     /// picture or of the restorer, as Odkrywaj's tiles show them.
     private func remote(_ list: [Item]) -> [RemoteItem] {
         list.map { item in
-            var remote = RemoteItem(item: Self.demoCut(item), inLibrary: true)
+            var remote = RemoteItem(item: Self.demoCleaned(Self.demoCut(item)), inLibrary: true)
             remote.lowSide = Self.lowSide(item)
             if Self.restoredAll, item.kind == .artwork { remote.restored = true }
             return remote
@@ -2108,7 +2137,7 @@ actor DemoBackend: FrameBackend {
         let url: URL?
         switch image {
         case let .thumb(id), let .tile(id): url = Self.bundled(id) ?? imageURLs[id]?.thumb
-        case let .image(id), let .original(id, _), let .museumPhoto(id, _, _), let .recovered(id, _, _): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
+        case let .image(id), let .original(id, _), let .museumPhoto(id, _, _), let .beforeCleaning(id, _): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
         case let .framePreview(id, settings, framing, _):
             url = framed(id, settings, trying: framing) ?? Self.bundled(id) ?? imageURLs[id]?.thumb
         case let .path(path) where path.hasPrefix("/demo/detail/"):

@@ -46,7 +46,8 @@ enum LaunchRoute {
     /// A sheet opened by itself on the work's card: "playlists" (Do
     /// playlisty, the work put on the first manual playlist first) or
     /// "playlists-new" (with "Nowa playlista…" being named); "recovery":
-    /// the colour recovery preview on the card's picture.
+    /// the comparison with the picture before its colours' correction, on
+    /// the card of a work shown cleaned (`-demoCleaned all`).
     static let sheet = UserDefaults.standard.string(forKey: "sheet")
 }
 
