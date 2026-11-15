@@ -700,6 +700,50 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
+    func sendOwnPhoto(_ data: Data) async throws -> OwnIncoming {
+        var form = MultipartForm()
+        form.addFile("file", filename: "photo.jpg", mimeType: "image/jpeg", data: data)
+        var req = request("/api/own/photos", method: "POST")
+        req.setValue(form.contentType, forHTTPHeaderField: "Content-Type")
+        req.httpBody = form.body()
+        req.timeoutInterval = 120
+        return try await perform(req)
+    }
+
+    func findOwnWork(token: String) async throws -> OwnIncoming {
+        var req = request("/api/own/photos/\(escape(token))/find", method: "POST")
+        req.timeoutInterval = 120
+        return try await perform(req)
+    }
+
+    func ownHints(token: String, corners: [[Double]]?) async throws -> OwnHints {
+        var req = request("/api/own/hints", method: "POST")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try Self.encoder().encode(OwnPhotoCut(token: token, corners: corners))
+        req.timeoutInterval = 90
+        return try await perform(req)
+    }
+
+    func addOwnWork(_ work: NewOwnWork) async throws -> Item {
+        var req = request("/api/own/works", method: "POST")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try Self.encoder().encode(work)
+        req.timeoutInterval = 120
+        return try await perform(req)
+    }
+
+    func describeOwnWork(itemID: String, _ text: OwnDescription) async throws -> Item {
+        try await send("/api/own/works/\(escape(itemID))", method: "PUT", body: text)
+    }
+
+    func retakeOwnWork(itemID: String, _ photo: OwnPhotoCut) async throws -> Item {
+        var req = request("/api/own/works/\(escape(itemID))/photo", method: "PUT")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try Self.encoder().encode(photo)
+        req.timeoutInterval = 120
+        return try await perform(req)
+    }
+
     func panelConfig() async throws -> PanelConfig { try await get("/api/device/config") }
 
     func savePanelConfig(_ update: PanelConfigUpdate) async throws -> PanelConfig {

@@ -48,6 +48,8 @@ actor DemoBackend: FrameBackend {
     /// Studies ordered for later ("Przygotuj na później"): they stay so.
     private var laterStudies: Set<String> = []
     private var tailnetValue = TailnetKey(keySet: false)
+    /// "Dodaj własne dzieło": photographs waiting for their work, by token.
+    private var incoming: [String: UIImage] = [:]
     /// The analyses of the composition asked for anew ("Wykonaj ponowną
     /// analizę"), by work: when each was made, the one shown, and when the
     /// one on its way is "made".
@@ -566,7 +568,10 @@ actor DemoBackend: FrameBackend {
     /// A long note, as the language model writes one (400–900 characters),
     /// so the card shows "O dziele" in full in the demo screenshots.
     func polish(itemID: String, wait: Int, early: Bool) async throws -> PolishView {
-        guard let item = items.first(where: { $0.id == itemID }) else { return PolishView(status: "off", text: nil) }
+        // As the server: no Polish texts for his own works (his words stay).
+        guard let item = items.first(where: { $0.id == itemID }), !item.isOwnWork else {
+            return PolishView(status: "off", text: nil)
+        }
         let note = """
         Pierwszy plan zajmuje stół przykryty białym obrusem, na którym stoją kosz z owocami, \
         ciemna butelka i talerz z podłużnymi ciastkami. Obrus układa się w ostre, geometryczne \
@@ -1677,6 +1682,151 @@ actor DemoBackend: FrameBackend {
         return item
     }
 
+    func sendOwnPhoto(_ data: Data) async throws -> OwnIncoming {
+        try await Task.sleep(for: .milliseconds(400))
+        guard let image = UIImage(data: data) else { throw BackendError.http(status: 422, body: "no picture") }
+        let token = UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(24).lowercased()
+        incoming[token] = image
+        return OwnIncoming(token: token, width: Int(image.size.width), height: Int(image.size.height))
+    }
+
+    func findOwnWork(token: String) async throws -> OwnIncoming {
+        guard let image = incoming[token] else { throw BackendError.notFound }
+        try await Task.sleep(for: .seconds(2.5))  // Opus takes a few seconds
+        var seen = OwnIncoming(token: token, width: Int(image.size.width), height: Int(image.size.height))
+        if DemoOwn.isDemoPhoto(image) {
+            seen.corners = DemoOwn.work
+            seen.shape = "rectangle"
+        }
+        return seen
+    }
+
+    func ownHints(token: String, corners: [[Double]]?) async throws -> OwnHints {
+        guard let image = incoming[token] else { throw BackendError.notFound }
+        try await Task.sleep(for: .seconds(1.5))
+        return DemoOwn.isDemoPhoto(image) ? DemoOwn.hints : OwnHints()
+    }
+
+    func addOwnWork(_ work: NewOwnWork) async throws -> Item {
+        guard let image = incoming[work.token] else { throw BackendError.notFound }
+        let id = "upload:" + UUID().uuidString.prefix(12).lowercased()
+        let item = try storeOwn(id: id, image: image, corners: work.corners, by: work.by) { item in
+            Self.describe(&item, work.text)
+        }
+        incoming[work.token] = nil
+        return item
+    }
+
+    func describeOwnWork(itemID: String, _ text: OwnDescription) async throws -> Item {
+        try update(itemID) { Self.describe(&$0, text) }
+    }
+
+    func retakeOwnWork(itemID: String, _ photo: OwnPhotoCut) async throws -> Item {
+        guard let image = incoming[photo.token], let before = items.first(where: { $0.id == itemID }) else {
+            throw BackendError.notFound
+        }
+        items.removeAll { $0.id == itemID }
+        let item = try storeOwn(id: itemID, image: image, corners: photo.corners, by: photo.by) { item in
+            item = Item(
+                id: item.id, kind: .own, source: "upload", sourceId: "", title: before.title, artist: before.artist,
+                artistBio: "", dateText: before.dateText, year: before.year, medium: before.medium,
+                classification: "", styles: [], subjects: [], culture: "", museum: "", credit: "", license: "",
+                url: "", description: before.description, imageUrl: "", thumbUrl: "", width: item.width,
+                height: item.height, colors: before.colors, colorTags: [], suitability: nil, favorite: before.favorite,
+                excluded: before.excluded, addedAt: before.addedAt, lastShownAt: nil, showCount: before.showCount,
+                photo: nil, cut: item.cut, own: before.own
+            )
+        }
+        incoming[photo.token] = nil
+        return item
+    }
+
+    /// The photograph whole kept for "Pełny kadr", the work cut out of it
+    /// as the picture, as the server keeps them.
+    private func storeOwn(id: String, image: UIImage, corners: [[Double]]?, by: String, _ change: (inout Item) -> Void) throws -> Item {
+        let picture = DemoOwn.cut(image, corners: corners)
+        guard let data = picture.jpegData(compressionQuality: 0.9), let whole = image.jpegData(compressionQuality: 0.9),
+              let cg = picture.cgImage
+        else { throw BackendError.invalidResponse }
+        let file = DemoFraming.uploadURL(id)
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: file, options: .atomic)
+        try whole.write(to: DemoFraming.uploadURL(id + "-full"), options: .atomic)
+        let stamp = ISO8601DateFormatter().string(from: .now)
+        var item = Item(
+            id: id, kind: .own, source: "upload", sourceId: "", title: "", artist: "", artistBio: "", dateText: "",
+            year: nil, medium: "", classification: "", styles: [], subjects: [], culture: "", museum: "", credit: "",
+            license: "", url: "", description: "", imageUrl: "", thumbUrl: "", width: cg.width, height: cg.height,
+            colors: Self.palette(cg), colorTags: [],
+            suitability: nil, favorite: false, excluded: false, addedAt: stamp, lastShownAt: nil, showCount: 0,
+            photo: nil
+        )
+        if let corners {
+            // The tile's shape is the work's: the photograph's aspect and the corners.
+            item.cut = Cut(work: corners, by: by == "owner" ? "owner" : "auto",
+                           aspect: Double(image.size.width / max(image.size.height, 1)), at: stamp)
+            item.width = Int(image.size.width)
+            item.height = Int(image.size.height)
+        }
+        change(&item)
+        items.append(item)
+        shared.uploads[id] = DemoFraming.Art(
+            caption: DemoFraming.caption(for: item), text: DemoFraming.textBlock(for: item),
+            isPhoto: false, tint: DemoFraming.tint(of: cg)
+        )
+        return item
+    }
+
+    /// A few of the picture's colours, as the server would read them: the
+    /// picture drawn 4 × 4 and the five most unlike each other.
+    private static func palette(_ image: CGImage) -> [ColorSwatch] {
+        var pixels = [UInt8](repeating: 0, count: 4 * 16)
+        let drawn: Bool = pixels.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(
+                data: buffer.baseAddress, width: 4, height: 4, bitsPerComponent: 8, bytesPerRow: 16,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            context.interpolationQuality = .medium
+            context.draw(image, in: CGRect(x: 0, y: 0, width: 4, height: 4))
+            return true
+        }
+        guard drawn else { return [] }
+        let colours: [(Int, Int, Int)] = (0 ..< 16).map { (i: Int) -> (Int, Int, Int) in
+            (Int(pixels[i * 4]), Int(pixels[i * 4 + 1]), Int(pixels[i * 4 + 2]))
+        }
+        var chosen = [colours[5]]
+        while chosen.count < 5 {
+            let next = colours.max { a, b in
+                func far(_ c: (Int, Int, Int)) -> Int {
+                    chosen.map { abs($0.0 - c.0) + abs($0.1 - c.1) + abs($0.2 - c.2) }.min() ?? 0
+                }
+                return far(a) < far(b)
+            }
+            guard let next else { break }
+            chosen.append(next)
+        }
+        let weights = [0.34, 0.24, 0.18, 0.14, 0.1]
+        return chosen.enumerated().map { index, c in
+            ColorSwatch(hex: String(format: "#%02x%02x%02x", c.0, c.1, c.2), weight: weights[index])
+        }
+    }
+
+    private static func hex(_ colour: UIColor) -> String {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        colour.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return String(format: "#%02x%02x%02x", Int(r * 255), Int(g * 255), Int(b * 255))
+    }
+
+    private static func describe(_ item: inout Item, _ text: OwnDescription) {
+        item.title = text.title
+        item.artist = text.artist
+        item.dateText = text.dateText
+        item.year = text.dateText.firstMatch(of: #/\d{4}/#).flatMap { Int($0.output) }
+        item.medium = text.medium
+        item.description = text.description
+        item.own = OwnWork(hangs: text.hangs, origin: text.origin, heightCm: text.heightCm, widthCm: text.widthCm)
+    }
+
     func deleteItem(id: String) async throws {
         items.removeAll { $0.id == id }
         queue.removeAll { $0 == id }
@@ -2190,6 +2340,8 @@ actor DemoBackend: FrameBackend {
         let url: URL?
         switch image {
         case let .thumb(id), let .tile(id): url = Self.bundled(id) ?? imageURLs[id]?.thumb
+        case let .museumPhoto(id, _, _) where FileManager.default.fileExists(atPath: DemoFraming.uploadURL(id + "-full").path):
+            url = DemoFraming.uploadURL(id + "-full")  // an own work's photograph whole
         case let .image(id), let .original(id, _), let .museumPhoto(id, _, _), let .beforeCleaning(id, _): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
         case let .framePreview(id, settings, framing, _):
             url = framed(id, settings, trying: framing) ?? Self.bundled(id) ?? imageURLs[id]?.thumb

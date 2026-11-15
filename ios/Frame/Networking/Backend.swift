@@ -252,6 +252,17 @@ protocol FrameBackend: Sendable {
     /// A photo sent once, shown another way.
     func setLook(itemID: String, _ look: Look) async throws -> Item
     func deleteItem(id: String) async throws
+    /// "Dodaj własne dzieło": the photograph kept a day on the server.
+    func sendOwnPhoto(_ data: Data) async throws -> OwnIncoming
+    /// The work found in it (Opus, a few seconds); 503 without a key.
+    func findOwnWork(token: String) async throws -> OwnIncoming
+    /// Signature, date, technique, a plain title read off the work (Sonnet).
+    func ownHints(token: String, corners: [[Double]]?) async throws -> OwnHints
+    func addOwnWork(_ work: NewOwnWork) async throws -> Item
+    /// "Edytuj opis".
+    func describeOwnWork(itemID: String, _ text: OwnDescription) async throws -> Item
+    /// "Zrób zdjęcie ponownie": the new photograph, cut; the text stays.
+    func retakeOwnWork(itemID: String, _ photo: OwnPhotoCut) async throws -> Item
     /// The panel's address, PIN and MAC as the server uses them.
     func panelConfig() async throws -> PanelConfig
     func savePanelConfig(_ update: PanelConfigUpdate) async throws -> PanelConfig

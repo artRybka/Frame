@@ -162,6 +162,15 @@ cut out of its photograph; for the others still list what you see.
 - "confident": true only if the edges are clearly visible. A page's rounded corners or its \
 bound edge are no reason for doubt: put the corners just inside the rounding, on the page.
 Answer in JSON only."""
+#: The owner's own photograph of a work of his ("Dodaj własne dzieło",
+#: Mateusz 2026-11-15): taken with a phone at home, often at an angle, the
+#: work hanging on a wall in its frame, sometimes behind glass.
+HOME = CORNERS.replace(
+    "This is a museum's photograph of one catalogued artwork.",
+    "This is a photograph its owner took with a phone of one artwork at home, often at an "
+    "angle and in its frame on a wall, sometimes behind glass with reflections. Find the "
+    "work itself as a museum would catalogue it.",
+)
 CORNERS_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -341,6 +350,30 @@ def framing_within(framing: dict[str, Framing], quad: Quad) -> dict[str, Framing
     """The owner's framings, set on the whole photograph, as the same parts
     of the picture cut to ``quad`` (:func:`framing_moved`)."""
     return framing_moved(framing, None, quad)
+
+
+def corners_in(img: Image.Image, data: dict[str, Any]) -> dict[str, Any] | None:
+    """Opus's answer (:data:`CORNERS_SCHEMA`) as corners set on the edges
+    of ``img``, the photograph it was asked about (:meth:`Crops.corners`)."""
+    shape = shape_of(data)
+    read = read_layers(data)
+    if read is None:
+        return None
+    shown = snap(img, read[0]) if read[0] is not None else None
+    plate = snap(img, read[1]) if read[1] is not None else None
+    if shown is not None and plate is not None:
+        shown = sheet_out_to_strips(img, shown, plate)  # Beksiński, MNK
+    if shown is not None and not worth_cutting(shown):
+        shown = None  # the sheet is the photograph: only the plate is cut
+    if shown is None and plate is None:
+        return None
+    return {
+        "work": shown,
+        "plate": plate,
+        "aspect": round(img.width / img.height, 5),
+        "shape": shape,
+        "note": str(data.get("note") or "")[:300],
+    }
 
 
 class Crops(CriticNight):
@@ -680,28 +713,33 @@ class Crops(CriticNight):
         there is nothing to cut to (or Opus is unsure, with ``sure``)."""
         if sure and data.get("confident") is not True:
             return None
-        shape = shape_of(data)
-        if sure and shape in NOT_RECTANGLE:
+        if sure and shape_of(data) in NOT_RECTANGLE:
             return None
-        read = read_layers(data)
-        if read is None:
+        if read_layers(data) is None:
             return None
-        img = self.photo(item)
-        shown = snap(img, read[0]) if read[0] is not None else None
-        plate = snap(img, read[1]) if read[1] is not None else None
-        if shown is not None and plate is not None:
-            shown = sheet_out_to_strips(img, shown, plate)  # Beksiński, MNK
-        if shown is not None and not worth_cutting(shown):
-            shown = None  # the sheet is the photograph: only the plate is cut
-        if shown is None and plate is None:
+        return corners_in(self.photo(item), data)
+
+    def home_corners(self, img: Image.Image) -> dict[str, Any] | None:
+        """Opus asked for the work in the owner's own photograph of a work
+        of his (:data:`HOME`; "Dodaj własne dzieło", Mateusz 2026-11-15):
+        the corners as :meth:`corners` gives them, whatever its doubt; None
+        when it found nothing to cut to. The night never asks."""
+        small = img.convert("RGB")
+        small.thumbnail((PHOTO_SIDE, PHOTO_SIDE), Image.Resampling.LANCZOS)
+        answer = self.claude.ask(
+            KIND,
+            request(
+                model=self.critic_model,
+                system="You find artworks in photographs.",
+                content=[_block(small), _block(gridded(small)), {"type": "text", "text": HOME}],
+                schema=CORNERS_SCHEMA,
+                max_tokens=8000,
+                effort="medium",
+            ),
+        )
+        if answer.refused or not answer.data:
             return None
-        return {
-            "work": shown,
-            "plate": plate,
-            "aspect": round(img.width / img.height, 5),
-            "shape": shape,
-            "note": str(data.get("note") or "")[:300],
-        }
+        return corners_in(img, answer.data)
 
     def confirmed(self, item: Item, claim: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
         shape = shape_of(data)

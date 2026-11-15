@@ -13,6 +13,8 @@ struct PlaylistsView: View {
     @State private var scrolled: CGFloat = 0
     /// The playlist whose card is being moved with a finger.
     @State private var dragged: Int?
+    /// "Dodaj własne dzieło" on the whole screen.
+    @State private var addingOwn = ["own-start", "own-cut", "own-describe", "own-card"].contains(LaunchRoute.screen)
 
     private var active: PlaylistSummary? {
         guard let id = model.settings?.playlistId else { return nil }
@@ -132,6 +134,13 @@ struct PlaylistsView: View {
                         }
                         // New playlists come from the "+" at the top only
                         // (Mateusz 2026-11-09: no "Nowa playlista" tile).
+                        // His own works, once there is one (Mateusz 2026-11-15).
+                        if !model.ownWorks.isEmpty {
+                            NavigationLink(value: OwnWorksRoute()) {
+                                OwnWorksCard(items: model.ownWorks)
+                            }
+                            .buttonStyle(.plain)
+                        }
                         // Last: the works hidden with "Ukryj dzieło".
                         NavigationLink(value: HiddenRoute()) {
                             HiddenCard(items: model.hidden)
@@ -156,12 +165,35 @@ struct PlaylistsView: View {
             .serverLinkBadge()
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        editing = Playlist(name: "")
+                    // A playlist, or a work of his own into the catalogue
+                    // (Mateusz 2026-11-15, variant A).
+                    Menu {
+                        Button {
+                            editing = Playlist(name: "")
+                        } label: {
+                            Label {
+                                Text("Nowa playlista")
+                                Text("Inteligentna, ręczna albo z albumu")
+                            } icon: {
+                                Image(systemName: "rectangle.stack.badge.plus")
+                            }
+                        }
+                        if model.isOwner {
+                            Button {
+                                addingOwn = true
+                            } label: {
+                                Label {
+                                    Text("Dodaj własne dzieło")
+                                    Text("Zdjęcie obrazu, który masz w domu")
+                                } icon: {
+                                    Image(systemName: "camera")
+                                }
+                            }
+                        }
                     } label: {
                         Image(systemName: "plus")
                     }
-                    .accessibilityLabel("Nowa playlista")
+                    .accessibilityLabel("Dodaj")
                 }
             }
             .navigationDestination(for: Int.self) { id in
@@ -172,6 +204,12 @@ struct PlaylistsView: View {
             }
             .navigationDestination(for: HiddenRoute.self) { _ in
                 HiddenWorksView()
+            }
+            .navigationDestination(for: OwnWorksRoute.self) { _ in
+                OwnWorksView(add: { addingOwn = true })
+            }
+            .fullScreenCover(isPresented: $addingOwn) {
+                OwnWorkFlow(mode: .add) { item in path.append(item.id) }
             }
             .navigationDestination(for: String.self) { id in
                 ItemDetailView(itemID: id)
@@ -205,6 +243,7 @@ struct PlaylistsView: View {
             .onChange(of: model.playlists.first?.id) { _, first in
                 if LaunchRoute.screen == "playlist", path.isEmpty, let first { path.append(first) }
                 if LaunchRoute.screen == "suggestions", path.isEmpty { path.append(SuggestionsRoute()) }
+                if LaunchRoute.screen == "own-works", path.isEmpty { path.append(OwnWorksRoute()) }
                 if LaunchRoute.screen == "editor", editing == nil {
                     editing = Playlist(name: "Błękitne krajobrazy", rules: PlaylistRules(colors: ["blue"]))
                 }

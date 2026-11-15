@@ -208,9 +208,11 @@ def test_the_embedding_request_and_its_cost(service: FrameService) -> None:
 # -- the background ------------------------------------------------------------------------------
 
 
-def test_only_the_museums_works_with_a_thumbnail_are_sent(
+def test_only_the_museums_and_his_own_works_with_a_thumbnail_are_sent(
     service: FrameService, looks: tuple[Looks, FakePainter]
 ) -> None:
+    # His own works too (Mateusz 2026-11-15: "Idzie normalnie do Google"),
+    # never his photographs.
     found, _painter = looks
     service.ai_config.set_gemini_key("k")
     _work(service, "met:1", "red")
@@ -219,9 +221,9 @@ def test_only_the_museums_works_with_a_thumbnail_are_sent(
     _work(service, "icloud:1", "red", kind=ItemKind.PHOTO)
     gone = Item(id="met:3", source="met", source_id="3", thumb_url="https://example.org/3.jpg")
     service.library.upsert(gone)  # no thumbnail here: not downloaded for this
-    assert _numbers(found) == 2
-    assert found.index.ids() == {"met:1", "met:2"}
-    assert found.counts() == (2, 3)
+    assert _numbers(found) == 3
+    assert found.index.ids() == {"met:1", "met:2", "upload:1"}
+    assert found.counts() == (3, 4)
     assert _numbers(found) == 0  # nothing new
     service.ai_config.update(AiConfigUpdate(looks=False))
     assert not found.enabled() and _numbers(found) == 0

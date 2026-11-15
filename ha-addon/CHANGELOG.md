@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.145.168
+
+- Własne dzieła w katalogu: „+” w Playlistach → „Dodaj własne dzieło”.
+  Zdjęcie aparatem albo ze Zdjęć, serwer sam wycina dzieło z ramy,
+  passe-partout i ściany (narożniki można poprawić w lupach), potem opis:
+  tytuł, autor, data, technika, rozmiar, gdzie wisi, skąd, notatka. Z
+  obrazu czytane są podpowiedzi (sygnatura, data, technika, prosty tytuł),
+  które wpisuje się jednym dotknięciem. W karcie dzieła „Edytuj opis”,
+  „Zrób zdjęcie ponownie”, „Popraw kadr” i „Usuń z katalogu”, w
+  Playlistach kafelek „Moje dzieła”. Własne dzieła są na ramce, w
+  playlistach, w Szukaj (także zdjęciem) i w studiach jak inne.
+
 ## 1.145.167
 
 - „Do sprawdzenia”: miniatury są większe, a dotknięcie miniatury otwiera

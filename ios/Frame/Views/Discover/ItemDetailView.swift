@@ -10,6 +10,7 @@ struct ItemDetailView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openStudy) private var openStudy
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.dismiss) private var dismiss
     let itemID: String
     @State private var item: Item?
     @State private var view = ViewMode.original
@@ -29,6 +30,10 @@ struct ItemDetailView: View {
     @State private var cutBusy = false
     /// "Kreatywny restaurator" at work (half a minute).
     @State private var restoring = false
+    /// A work of his own: "Edytuj opis", "Zrób zdjęcie ponownie", "Usuń z katalogu".
+    @State private var editingOwn = false
+    @State private var retakingOwn = false
+    @State private var deletingOwn = false
     @State private var draft = FramingDraft()
     /// Crops saved here: the preview asks for them by name, as the one
     /// cached from before shows the old crop.
@@ -196,7 +201,11 @@ struct ItemDetailView: View {
                     undoCut: canCut(item) && model.isOwner && item.isCropped ? { Task { await undoCut() } } : nil,
                     recover: recoveryKind != nil && model.isOwner && !cleaning
                         ? { Task { await toggleCleaning() } } : nil,
-                    recoveryKind: recoveryKind ?? .varnish, cleaned: item.cleanedShown != nil
+                    recoveryKind: recoveryKind ?? .varnish, cleaned: item.cleanedShown != nil,
+                    editOwn: ownActions(item) ? { editingOwn = true } : nil,
+                    retakeOwn: ownActions(item) ? { retakingOwn = true } : nil,
+                    deleteOwn: ownActions(item) ? { Task { await deleteOwn() } } : nil,
+                    deletingOwn: $deletingOwn
                 )
             }
         }
@@ -209,6 +218,18 @@ struct ItemDetailView: View {
         .fullScreenCover(isPresented: $correctingCut) {
             if let item {
                 CutEditor(item: item) { corners in await setCut(CutUpdate(corners: corners)) }
+            }
+        }
+        .sheet(isPresented: $editingOwn) {
+            if let item {
+                OwnDescriptionSheet(item: item) { updated in
+                    withAnimation(.easeOut(duration: 0.3)) { self.item = updated }
+                }
+            }
+        }
+        .fullScreenCover(isPresented: $retakingOwn) {
+            if let item {
+                OwnWorkFlow(mode: .retake(item)) { updated in cutChanged(updated) }
             }
         }
         .task(id: described) { await findHolder() }
@@ -523,8 +544,8 @@ struct ItemDetailView: View {
         VStack(alignment: .leading, spacing: 6) {
             // The museum the work is in; a source that only gathers
             // pictures (Commons) is no museum, so nothing until it is known.
-            let held = summary.kind == .artwork
-                ? summary.heldBy ?? Names.source(summary.source)
+            let held = summary.isOwnWork ? Names.ownCollection(summary.own?.hangs)
+                : summary.kind == .artwork ? summary.heldBy ?? Names.source(summary.source)
                 : Names.source(summary.source)
             if !held.isEmpty {
                 Eyebrow(held, color: Theme.vermilion)
@@ -693,7 +714,8 @@ struct ItemDetailView: View {
     /// A museum's work in the library: its photograph may be cut down to
     /// the work (not the owner's photos, nor a work drawn again).
     private func canCut(_ item: Item) -> Bool {
-        item.kind == .artwork && item.look == nil && !item.isFragment
+        if item.isOwnWork { return true }  // his own photograph of it
+        return item.kind == .artwork && item.look == nil && !item.isFragment
             && !["upload", "icloud", "cli", "frame"].contains(item.source)
             && item.sharper?.isRestored != true
     }
@@ -702,7 +724,7 @@ struct ItemDetailView: View {
     /// (a frame, an easel, a board around it), and cut down to the work;
     /// the card takes the cut picture as it comes.
     private func checkCut() async {
-        guard let id = described, id == itemID, let item, canCut(item) else { return }
+        guard let id = described, id == itemID, let item, item.kind == .artwork, canCut(item) else { return }
         guard let view = try? await model.backend.checkCut(itemID: id, wait: 60),
               !Task.isCancelled, id == itemID, view.changed
         else { return }
@@ -712,6 +734,15 @@ struct ItemDetailView: View {
     private func cutChanged(_ updated: Item) {
         withAnimation(.easeInOut(duration: 0.4)) { item = updated }
         model.pictureSeen(updated.id, copy: updated.pictureVersion, changed: true)
+        if updated.isOwnWork { model.ownWorkChanged(updated) }
+    }
+
+    /// "Edytuj opis", "Zrób zdjęcie ponownie", "Usuń z katalogu": his own
+    /// work, for the owner.
+    private func ownActions(_ item: Item) -> Bool { item.isOwnWork && model.isOwner }
+
+    private func deleteOwn() async {
+        if await model.deleteOwnWork(itemID) { dismiss() }
     }
 
     /// The owner's corners, or "Pokaż z marginesem / bez marginesu".
@@ -1287,8 +1318,8 @@ struct ItemDetailView: View {
         VStack(alignment: .leading, spacing: 6) {
             // The museum the work is in, not where its picture is from
             // ("Zdjęcie dzieła" says that); nothing while it is not known.
-            let held = item.kind == .artwork
-                ? item.heldBy ?? Names.source(item.source)
+            let held = item.isOwnWork ? Names.ownCollection(item.own?.hangs)
+                : item.kind == .artwork ? item.heldBy ?? Names.source(item.source)
                 : Names.source(item.source)
             if !held.isEmpty {
                 Eyebrow(held, color: Theme.vermilion)
@@ -1490,6 +1521,12 @@ struct ItemDetailView: View {
         Card {
             fact("Słowa kluczowe", keywords(item).joined(separator: ", "))
             fact("Technika", nonEmpty(shownPolish?.medium) ?? item.medium)
+            if let own = item.own {
+                // What he wrote of a work of his own (Mateusz 2026-11-15).
+                fact("Rozmiar", own.sizeText ?? "")
+                fact("Gdzie wisi", own.hangs)
+                fact("Skąd", own.origin)
+            }
             // In Polish once the server answers (as the museum wrote them
             // when it knows no better), not English first.
             let answered = (labels != nil && labels?.status != "waiting") || seenDone

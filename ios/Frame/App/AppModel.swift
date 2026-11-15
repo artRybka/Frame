@@ -110,6 +110,9 @@ final class AppModel {
     var playlists: [PlaylistSummary] = []
     /// The hidden works, for "Ukryte" at the end of Playlisty.
     var hidden: [ItemSummary] = []
+    /// The owner's own works ("Moje dzieła" in Playlisty), the last added
+    /// first: the card shows only once there is one.
+    var ownWorks: [ItemSummary] = []
     /// Each playlist's works as last opened: shown at once when it opens
     /// again while fresh ones load.
     var playlistDetails: [Int: PlaylistDetail] = [:]
@@ -430,6 +433,7 @@ final class AppModel {
         // "Ukryte" is a card in Playlisty too: loaded with them, not only
         // when it is opened.
         if let found = await hidden.value { setHidden(found.items) }
+        Task { await refreshOwnWorks() }
         self.panelConfig = await panelConfig.value
         rememberNow()
         // The APNs token goes to the server on every start (registerPush).
@@ -834,7 +838,46 @@ final class AppModel {
     func refreshPlaylists() async {
         if let value = try? await backend.playlists() { setPlaylists(value) }
         if let value = try? await backend.hiddenItems() { setHidden(value.items) }
+        await refreshOwnWorks()
         await refreshDayPicks()
+    }
+
+    /// "Moje dzieła": the works the owner added from his photographs.
+    func refreshOwnWorks() async {
+        var query = LibraryQuery()
+        query.kinds = [.own]
+        query.sources = ["upload"]
+        query.sort = "recent"
+        query.limit = 500
+        guard let value = try? await backend.items(query) else { return }
+        let found = value.items.filter(\.isOwnWork)
+        if found != ownWorks { ownWorks = found }
+    }
+
+    /// A work of his own added or changed: its card in "Moje dzieła" at once.
+    func ownWorkChanged(_ item: Item) {
+        ItemPeeks.keep(item)
+        let summary = item.summary
+        if let at = ownWorks.firstIndex(where: { $0.id == item.id }) {
+            ownWorks[at] = summary
+        } else {
+            ownWorks.insert(summary, at: 0)
+        }
+        pictureSeen(item.id, copy: item.pictureVersion, changed: true)
+        libraryChanged()
+    }
+
+    /// A work of his own deleted ("Usuń z katalogu").
+    func deleteOwnWork(_ id: String) async -> Bool {
+        do {
+            try await backend.deleteItem(id: id)
+        } catch {
+            show(error)
+            return false
+        }
+        ownWorks.removeAll { $0.id == id }
+        libraryChanged()
+        return true
     }
 
     /// Propozycje dnia as the server has them (made once a day; the first
