@@ -96,7 +96,7 @@ final class TintedStrip: PaintPainter, @unchecked Sendable {
         let (paper, washes, drops) = Self.split(shares)
         // The drawing's lines are of the paper's tone: as loose all along.
         lines = LineStrip(shares: [PaintShare(rgb: paper?.rgb ?? [243, 235, 216], weight: 1)], width: width, seed: seed, tool: tool,
-                          thin: Self.thin(tool))
+                          thin: Self.thin(tool), laid: true)
         (wide, high) = (lines.wide, lines.high)
         let placed = Self.places(shares, width: width)
         let begun = lines.length * Self.washes.from

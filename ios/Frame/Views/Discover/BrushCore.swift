@@ -95,7 +95,8 @@ final class WashStrip: PaintPainter, @unchecked Sendable {
             defer { under = tone.rgb }
             return (spans[index].0, Brush.glaze(tone.rgb, over: under).map { Float($0) })
         }
-        pen = LineStrip(shares: Self.penTones(shares), width: width, seed: seed, tool: .pen)
+        // On the same paper as the washes, so its lines end where the paper does.
+        pen = LineStrip(shares: Self.penTones(shares), width: width, seed: seed, tool: .pen, laid: true)
         penFrom = spans.isEmpty ? 0 : spans[tones.count / 2].0
         ink = (tones.last?.rgb ?? [40, 34, 30]).map { Float($0 * 0.8) }
         last = Self.penAt(tones.count)
@@ -104,7 +105,8 @@ final class WashStrip: PaintPainter, @unchecked Sendable {
 
     private func prepare() -> (sheet: PrintPaint.Sheet, much: [[Float]]) {
         if let made { return made }
-        let sheet = PrintPaint.sheet(paper: paper, width: width, seed: seed, plate: false)
+        // Laid on the page, as a drawing is (Mateusz 2026-11-15 19:20: a print keeps its own edge).
+        let sheet = PrintPaint.sheet(paper: paper, width: width, seed: seed, plate: false, laid: true)
         let S = Double(PrintPaint.scale), pad = Paint.pad, H = Paint.bar, rows = Brush.rows(high: high)
         let much = washes.enumerated().map { index, wash -> [Float] in
             guard let wash else { return [] }
@@ -161,8 +163,10 @@ final class WashStrip: PaintPainter, @unchecked Sendable {
             let wet = rows.contains(j)
             for i in 0..<wide {
                 let k = j * wide + i
-                let cover = sheet.cover[k]
-                if cover <= 0 { continue }
+                if sheet.cover[k] <= 0 {
+                    sheet.put(0, 0, 0, at: k, shown: shown, into: &out)
+                    continue
+                }
                 var red = sheet.red[k], green = sheet.green[k], blue = sheet.blue[k]
                 if wet {
                     let x = (Double(i) + 0.5) / S - pad, q = (j - rows.lowerBound) * wide + i
@@ -185,11 +189,7 @@ final class WashStrip: PaintPainter, @unchecked Sendable {
                         }
                     }
                 }
-                let q = 4 * k
-                out.bytes[q] = Paint.byte(Double(red))
-                out.bytes[q + 1] = Paint.byte(Double(green))
-                out.bytes[q + 2] = Paint.byte(Double(blue))
-                out.bytes[q + 3] = Paint.byte(Double(255 * cover * shown))
+                sheet.put(red, green, blue, at: k, shown: shown, into: &out)
             }
         }
         if age >= length { whole = out }
@@ -275,7 +275,7 @@ final class GouacheStrip: PaintPainter, @unchecked Sendable {
 
     private func prepare() -> (sheet: PrintPaint.Sheet, laid: [(left: Int, right: Int, cover: [Float], shade: [Float])]) {
         if let made { return made }
-        let sheet = PrintPaint.sheet(paper: InkStrip.paper, width: width, seed: seed, plate: false)
+        let sheet = PrintPaint.sheet(paper: InkStrip.paper, width: width, seed: seed, plate: false, laid: true)
         let S = Double(PrintPaint.scale), pad = Paint.pad, rows = Brush.rows(high: high)
         let laid = strokes.map { stroke -> (left: Int, right: Int, cover: [Float], shade: [Float]) in
             let left = max(0, Int((stroke.from - 6 + pad) * S)), right = min(wide - 1, Int((stroke.to + 7 + pad) * S))
@@ -325,12 +325,8 @@ final class GouacheStrip: PaintPainter, @unchecked Sendable {
             }
         }
         let shown = Float(Paint.ease(age / PrintPaint.appear))
-        for k in 0..<(wide * high) where paper.cover[k] > 0 {
-            let q = 4 * k
-            out.bytes[q] = Paint.byte(Double(paper.red[k]))
-            out.bytes[q + 1] = Paint.byte(Double(paper.green[k]))
-            out.bytes[q + 2] = Paint.byte(Double(paper.blue[k]))
-            out.bytes[q + 3] = Paint.byte(Double(255 * paper.cover[k] * shown))
+        for k in 0..<(wide * high) {
+            paper.put(paper.red[k], paper.green[k], paper.blue[k], at: k, shown: shown, into: &out)
         }
         if age >= length { whole = out }
         return out

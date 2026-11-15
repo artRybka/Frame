@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.163
+
+- Paski barw rysunków (ołówek, pióro, rysunek z akwarelą), gwaszu
+  i lawowania leżą na stronie jak pasek papieru: góra i dół równo cięte,
+  końce oddarte, pod spodem delikatny cień. Odbitki (ryciny, drzeworyty,
+  litografie, sitodruk, offset) mają papier poszarpany dookoła jak dotąd.
+
 ## 1.145.162
 
 - Pasek barw grubo malowanych obrazów olejnych (np. van Gogh, Matisse):
