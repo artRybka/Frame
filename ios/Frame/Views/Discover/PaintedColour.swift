@@ -114,6 +114,7 @@ struct PaintJob: @unchecked Sendable {
             guard let line else { return PaintJob(size: strip.size, length: strip.plan.length) { strip.image(age: $0) } }
             let drawn = DryContour(strip: strip, line: line, seed: seed, dark: dark)
             return PaintJob(size: strip.size, length: drawn.length) { drawn.image(age: $0) }
+        case .pastel: return painted(PastelStrip(shares: shares, width: width, seed: seed, dark: dark))
         case .burin, .pen, .pencil:
             return PaintJob(LineStrip(shares: shares, width: width, seed: seed, tool: style.tool ?? .burin), scale: PrintPaint.scale)
         case .woodblock, .litho, .screen, .offset:
@@ -155,6 +156,7 @@ struct PaintJob: @unchecked Sendable {
         case .dry:
             let scribble = DryScribble(rgb: rgb, index: index, seed: seed)
             return PaintJob(size: scribble.size, length: DryScribble.length) { scribble.image(age: $0) }
+        case .pastel: return PaintJob(PastelDab(rgb: rgb, index: index, seed: seed, dark: dark))
         case .burin, .pen, .pencil:
             return PaintJob(LinePatch(rgb: rgb, index: index, seed: seed, tool: style.tool ?? .burin), scale: PrintPaint.scale)
         case .woodblock, .litho, .screen, .offset:

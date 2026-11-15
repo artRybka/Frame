@@ -34,8 +34,9 @@ final class PaintTests: XCTestCase {
         // Opaque paint: gouache, bodycolour, gum tempera (Mateusz 2026-11-14 19:29, sketch 40).
         let gouache = ["Gouache et aquarelle", "gwasz, tektura", "Opaque watercolor and gold on paper", "Bodycolour on vellum",
                        "Gum tempera on paper", "Dekverf op papier"]
-        let dry = ["pastel on paper", "kredka, papier", "black chalk", "Pastel over watercolour", "pastel, papier naklejony na tekturę",
-                   "Red chalk on laid paper", "kreda, papier"]
+        let dry = ["kredka, papier", "black chalk", "Red chalk on laid paper", "kreda, papier", "Sanguine on paper"]
+        // Pastel is rubbed and laid with the side, no hatching (Mateusz 2026-11-15, sketch 45 G1b).
+        let pastel = ["pastel on paper", "Pastel over watercolour", "pastel, papier naklejony na tekturę", "Pastel und Kreide"]
         // Ink with colours, and whatever names something that is no paint: flat.
         let flat = ["Bronze", "papier", "Porcelain", "mixed media"]
         // A photograph: its tones under grain (Mateusz 2026-11-12 10:47:
@@ -47,6 +48,7 @@ final class PaintTests: XCTestCase {
         for text in water { XCTAssertEqual(PaintStyle.of(medium: text), .water, text) }
         for text in gouache { XCTAssertEqual(PaintStyle.of(medium: text), .gouache, text) }
         for text in dry { XCTAssertEqual(PaintStyle.of(medium: text), .dry, text) }
+        for text in pastel { XCTAssertEqual(PaintStyle.of(medium: text), .pastel, text) }
         for text in flat { XCTAssertNil(PaintStyle.of(medium: text), text) }
         // What kind of thing it is counts too: a print is no painting.
         XCTAssertEqual(PaintStyle.of(medium: "oil colours on paper", classification: "Prints"), .woodblock)
@@ -65,11 +67,11 @@ final class PaintTests: XCTestCase {
         // What the server looks up where the source names nothing (Wikidata's
         // materials, WikiArt's "media", Commons' {{Technique}}, Europeana's
         // record): Wyspiański's "Śpiący Staś" came from WikiArt as a painting.
-        XCTAssertEqual(PaintStyle.of(medium: "pastel, paper", classification: "Painting"), .dry)
-        XCTAssertEqual(PaintStyle.of(medium: "paper, pastel", classification: "Painting"), .dry)
+        XCTAssertEqual(PaintStyle.of(medium: "pastel, paper", classification: "Painting"), .pastel)
+        XCTAssertEqual(PaintStyle.of(medium: "paper, pastel", classification: "Painting"), .pastel)
         XCTAssertEqual(PaintStyle.of(medium: "oil paint, poplar panel", classification: "Painting"), .oil)
         XCTAssertEqual(PaintStyle.of(medium: "watercolor paint, paper", classification: "Painting"), .water)
-        XCTAssertEqual(PaintStyle.of(medium: "pastel on cardboard", classification: "Painting"), .dry)
+        XCTAssertEqual(PaintStyle.of(medium: "pastel on cardboard", classification: "Painting"), .pastel)
         XCTAssertEqual(PaintStyle.of(medium: "Olja på duk", classification: "Painting"), .oil)
         XCTAssertNil(PaintStyle.of(medium: "paper", classification: "Paintings"))
         XCTAssertNil(PaintStyle.of(medium: "fresco", classification: "Paintings"))
@@ -549,6 +551,55 @@ final class PaintTests: XCTestCase {
         XCTAssertLessThan(red(printed), 30)
         XCTAssertGreaterThan(red(done), red(printed) + 25)
         XCTAssertLessThan((0..<60).map { light(done, 30 + Double($0), 13) }.min() ?? 1, 0.5)
+    }
+
+    /// Sketch 45 G1b (Mateusz 2026-11-15 10:25: „gdy mamy np. Błękit, to
+    /// jego segment składa się z części rozmazanej, rysowanej bokiem i części
+    /// kreska”): each colour rubbed, then laid with the side, then drawn with the tip.
+    func testAPastelIsRubbedThenLaidWithTheSideThenDrawnWithTheTip() {
+        func coverage(_ frame: PaintFrame) -> Double { covered(frame) / Double(frame.wide * frame.high) }
+        func mean(_ frame: PaintFrame, _ from: Double, _ to: Double) -> (rgb: [Double], cover: Double) {
+            var sum = [0.0, 0, 0], cover = 0.0, count = 0.0
+            for x in stride(from: from + 1, to: to - 1, by: 0.5) {
+                for y in stride(from: 4.0, to: 22.0, by: 0.5) {
+                    let (i, j) = pixel(x, y), c = frame.colour(i, j), w = frame.cover(i, j)
+                    sum[0] += c.red * w; sum[1] += c.green * w; sum[2] += c.blue * w
+                    cover += w; count += 1
+                }
+            }
+            return (sum.map { $0 / max(cover, 1e-6) }, cover / count)
+        }
+        // Wyspiański's „Śpiące dziecko na poduszce”: browns and a pale beige, a red and a violet.
+        let child = shares([("#8c7462", 0.27), ("#b5a28f", 0.23), ("#d8d0c3", 0.22), ("#a28e7b", 0.13), ("#85705f", 0.15),
+                            ("#cf6c53", 0.03), ("#6a4f9a", 0.02)])
+        XCTAssertEqual(PaintStyle.pastel.barTime(jatte, width: 350), PastelStrip(shares: jatte, width: 350, seed: 5).length, accuracy: 0.001)
+        XCTAssertEqual(coverage(PastelStrip(shares: [], width: 350, seed: 5).frame(age: 1)), 0)
+        let mains = child.indices.filter { !Paint.accents(child)[$0] }
+        var pressed: [Double] = []
+        for dark in [false, true] {
+            let strip = PastelStrip(shares: child, width: 350, seed: 5, dark: dark), done = strip.frame(age: strip.length)
+            XCTAssertEqual(PaintStyle.pastel.barTime(child, width: 350), strip.length, accuracy: 0.001)
+            XCTAssertEqual(coverage(strip.frame(age: 0)), 0)
+            XCTAssertLessThan(coverage(strip.frame(age: 0.3 * strip.length)), coverage(done))
+            pressed.append(coverage(done))
+            for (n, part) in PastelStrip.parts(child, width: 350).enumerated() {
+                let colour = child[mains[n]].rgb
+                // The rubbed part is the colour itself, laid nearly whole.
+                let rubbed = mean(done, part.from + 2, part.rubbed - 2)
+                XCTAssertGreaterThan(rubbed.cover, 0.8, "\(colour)")
+                for c in 0..<3 { XCTAssertLessThan(abs(rubbed.rgb[c] - colour[c]), 18, "\(colour)") }
+                XCTAssertGreaterThan(mean(done, part.rubbed, part.side).cover, 0.8, "\(colour)")
+            }
+            // A light colour's lines are drawn darker than it.
+            let pale = PastelStrip.parts(child, width: 350)[2]
+            XCTAssertLessThan(PrintPaint.lightness(mean(done, pale.side, pale.to).rgb),
+                              PrintPaint.lightness(mean(done, pale.from + 2, pale.rubbed - 2).rgb) - 0.05)
+        }
+        // On the dark page it is pressed harder.
+        XCTAssertGreaterThan(pressed[1], pressed[0])
+        // Crayon and chalk keep their hatching.
+        XCTAssertEqual(PaintStyle.of(medium: "kredka, papier"), .dry)
+        XCTAssertEqual(PaintStyle.of(medium: "pastel, papier"), .pastel)
     }
 
     /// Sketch 41 (Mateusz 2026-11-14 20:09: „Drzeworyt C. Złoto super.”).
@@ -1258,6 +1309,7 @@ final class PaintTests: XCTestCase {
         XCTAssertEqual(PaintStyle.oil.barTime(jatte, width: 350), OilStrip(shares: jatte, width: 350, seed: 41, dark: true).last, accuracy: 0.001)
         XCTAssertEqual(PaintStyle.water.barTime(jatte, width: 350), WaterStrip(shares: jatte, width: 350, seed: 5).last, accuracy: 0.001)
         XCTAssertEqual(PaintStyle.dry.barTime(jatte, width: 350), DryPlan(shares: jatte, width: 350, seed: 5).last, accuracy: 0.001)
+        XCTAssertEqual(PaintStyle.pastel.barTime(jatte, width: 350), PastelStrip(shares: jatte, width: 350, seed: 5).length, accuracy: 0.001)
         XCTAssertEqual(PaintStyle.pen.barTime(jatte, width: 350), LineStrip(shares: jatte, width: 350, seed: 5, tool: .pen).last, accuracy: 0.001)
         XCTAssertEqual(PaintStyle.litho.barTime(jatte, width: 350), InkStrip(shares: jatte, width: 350, seed: 5, press: .stone).last, accuracy: 0.001)
     }
