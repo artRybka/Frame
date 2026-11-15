@@ -19,7 +19,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw, ImageFilter
-from test_composition import _old_page
+from test_composition import _old_page as _written
 from test_daily import _app, _catalogue
 
 import frame_server.drawn as drawn_module
@@ -71,6 +71,15 @@ from frame_server.imaging.sheet import BLEED, LONG, PAGE, bleed
 from frame_server.service import FrameService
 
 GOOGLE_KEY = "AIza-test-key-wxyz"
+
+
+def _old_page(svc: FrameService, **extra: Any) -> None:
+    """A study written now, after the sheets began to be drawn (on the NAS
+    long ago): a new page, its sheet drawn at once. Else a second turning
+    over between the page and the first asking of :meth:`DrawnSheets._since`
+    made it an old one (CI, 2026-11-15)."""
+    svc.drawn._since()
+    _written(svc, **extra)
 
 
 def _scene(size: tuple[int, int] = (900, 600)) -> Image.Image:
@@ -852,10 +861,6 @@ def test_the_servers_own_sheet_stands_in_only_where_none_is_drawn(tmp_path: Path
     svc: FrameService = app.state.service
     with TestClient(app) as client:
         _catalogue(svc)
-        # The sheets began to be drawn before the page was written (on the
-        # NAS long ago): else a second turning over between the two made it
-        # an old page, one not drawn at once.
-        svc.drawn._since()
         _old_page(svc)
         # Without Google's key the server's sheet is the page's: made ahead.
         assert [(item.id, dark) for item, _, dark in svc.sheets.wanting()] == [
