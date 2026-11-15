@@ -317,6 +317,17 @@ class OwnWork(BaseModel):
     height_cm: float | None = None
     width_cm: float | None = None
 
+    def ratio(self, measured: float) -> float | None:
+        """The work's width / height from his size, for the picture cut out
+        of his photograph (Mateusz 2026-11-15: "Proporcje własnego dzieła
+        trzeba wyliczać z podanego wymiaru"); ``measured`` is the shape the
+        photograph's corners give. None without both sizes, or for a size
+        more than twice off it (a slip of the finger, not the work)."""
+        if not self.height_cm or not self.width_cm or measured <= 0:
+            return None
+        given = self.width_cm / self.height_cm
+        return given if 0.5 <= given / measured <= 2.0 else None
+
 
 class Item(BaseModel):
     """One picture the frame can show."""

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.145.172
+
+- Własne dzieło dostaje proporcje z podanego wymiaru: obraz wycięty ze
+  zdjęcia jest prostowany do szerokości i wysokości wpisanych w cm, nie do
+  tego, co dały narożniki na zdjęciu robionym pod kątem. Zmiana wymiaru w
+  „Edytuj opis” wycina dzieło na nowo, a dodane wcześniej poprawiają się
+  same po aktualizacji serwera. Wymiar bardzo odbiegający od zdjęcia
+  (ponad dwa razy) uznawany jest za pomyłkę i zostają proporcje zdjęcia;
+  formularz mówi o tym pod wymiarem, a podgląd u góry od razu pokazuje
+  dzieło w nowych proporcjach.
+
 ## 1.145.171
 
 - Korekta barw: zdjęty werniks jest teraz widoczny także na obrazach
