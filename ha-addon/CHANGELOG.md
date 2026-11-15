@@ -8,6 +8,8 @@
   a sangwina czy brązowa kredka kreskami swojej barwy. Tak samo rysunek
   z białymi światłami i kreda trzech kolorów. Dotąd pasek był szarym
   kreskowaniem przez całą szerokość, bez papieru i bez bieli.
+- Taki pasek wygląda jak pasek papieru położony na stronie: góra i dół
+  równo cięte, końce oddarte, pod spodem delikatny cień.
 
 ## 1.145.159
 

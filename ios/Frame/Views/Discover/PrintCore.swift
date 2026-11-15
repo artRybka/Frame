@@ -160,15 +160,27 @@ enum PrintPaint {
     /// The paper: its colour and how much of it is there, a pixel each.
     struct Sheet: Sendable {
         var red: [Float], green: [Float], blue: [Float], cover: [Float]
+        /// How much of the page under it its shadow darkens (`laid`), a pixel each; empty: no shadow.
+        var shade: [Float] = []
     }
+
+    /// A strip of paper laid on the page (Mateusz 2026-11-15 17:45: „Krawędzie
+    /// papieru równiejsze. Góra i dół prawie prosto odcięte. Koniec i
+    /// początek może być oderwany/szarpany. Delikatny cień od paska
+    /// papieru (jakby leżał na stronie)”): how far its cut top and bottom
+    /// waver (points), how much rougher than a sheet's its torn ends are,
+    /// and its shadow: how far down and right it falls, how soft and how dark.
+    static let laid = (cut: 0.12, torn: 1.25, down: 0.9, right: 0.3, soft: 1.3, dark: 0.16)
 
     /// A piece of `paper` under a bar `width` wide: a little uneven at
     /// its edge and in its tone; with a `plate`, the mark the plate
     /// pressed into it, lit from the upper left.
-    static func sheet(paper: [Double], width: Double, seed: Double, plate: Bool) -> Sheet {
+    /// `laid`: a strip laid on the page, cut at its top and bottom, torn
+    /// at its ends, its shadow under it (`PrintPaint.laid`).
+    static func sheet(paper: [Double], width: Double, seed: Double, plate: Bool, laid: Bool = false) -> Sheet {
         let (wide, high) = size(width: width)
         return sheet(paper: paper, wide: wide, high: high, origin: Paint.pad, left: -margin.side, right: width + margin.side,
-                     top: -margin.over, bottom: Paint.bar + margin.over, seed: seed, plate: plate ? width : nil)
+                     top: -margin.over, bottom: Paint.bar + margin.over, seed: seed, plate: plate ? width : nil, laid: laid)
     }
 
     /// The piece of paper under one paint's swatch.
@@ -185,16 +197,33 @@ enum PrintPaint {
     /// from `origin` in from the picture's corner); `plate`: the width of
     /// the plate pressed into it where the bar is.
     static func sheet(paper: [Double], wide: Int, high: Int, origin: Double, left: Double, right: Double, top: Double, bottom: Double,
-                      seed: Double, plate: Double?) -> Sheet {
+                      seed: Double, plate: Double?, laid: Bool = false) -> Sheet {
         let n = wide * high, S = Double(scale), H = Paint.bar
         var out = Sheet(red: [Float](repeating: 0, count: n), green: [Float](repeating: 0, count: n),
                         blue: [Float](repeating: 0, count: n), cover: [Float](repeating: 0, count: n))
+        // How far inside the paper a place is, its edge as uneven as it is there.
+        func inside(_ x: Double, _ y: Double) -> Double {
+            let ragged = 2.2 * (Paint.noise(x / 5, y / 5, 61 + seed) - 0.5) + 0.8 * (Paint.noise(x / 1.6, y / 1.6, 62 + seed) - 0.5)
+            guard laid else { return min(min(x - left, right - x), min(y - top, bottom - y)) + ragged }
+            let cut = min(y - top, bottom - y) + Self.laid.cut * (Paint.noise(x / 9, y / 9, 65 + seed) - 0.5) * 2
+            let torn = min(x - left, right - x) + Self.laid.torn * ragged + 0.5 * (Paint.noise(x / 0.7, y / 0.7, 66 + seed) - 0.5)
+            return min(cut, torn)
+        }
+        if laid {
+            let shadow = Self.laid
+            out.shade = [Float](repeating: 0, count: n)
+            for k in 0..<n {
+                let x = (Double(k % wide) + 0.5) / S - origin, y = (Double(k / wide) + 0.5) / S - origin
+                let under = inside(x - shadow.right, y - shadow.down)
+                if under < -2 * shadow.soft { continue }
+                out.shade[k] = Float(shadow.dark * Paint.ease(min(1, max(0, (under + 2 * shadow.soft) / (3 * shadow.soft)))))
+            }
+        }
         for k in 0..<n {
             let x = (Double(k % wide) + 0.5) / S - origin, y = (Double(k / wide) + 0.5) / S - origin
             let edge = min(min(x - left, right - x), min(y - top, bottom - y))
-            if edge < -2.5 { continue }
-            let ragged = 2.2 * (Paint.noise(x / 5, y / 5, 61 + seed) - 0.5) + 0.8 * (Paint.noise(x / 1.6, y / 1.6, 62 + seed) - 0.5)
-            let cover = min(1, max(0, (edge + ragged) * 1.6 + 0.5))
+            if edge < -4 { continue }
+            let cover = min(1, max(0, inside(x, y) * (laid ? 2.4 : 1.6) + 0.5))
             if cover <= 0 { continue }
             var tone = 1 - 0.035 * (Paint.noise(x / 0.5, y / 0.5, 63 + seed) - 0.5) - 0.03 * (Paint.noise(x / 7, y / 7, 64 + seed) - 0.5)
             if let plate {
@@ -276,6 +305,8 @@ final class LineStrip: PaintPainter, @unchecked Sendable {
     let plan: Plan
 
     private let tool: LineTool
+    /// A strip laid on the page: cut top and bottom, torn ends, a shadow (`PrintPaint.laid`).
+    private let onPage: Bool
     private let width: Double
     private let seed: Double
     private var sheet: PrintPaint.Sheet?
@@ -418,7 +449,8 @@ final class LineStrip: PaintPainter, @unchecked Sendable {
     }
 
     init(shares: [PaintShare], width: Double, seed: Int, tool: LineTool, thin: Double = 1, paper: [Double]? = nil,
-         shades: [Double]? = nil) {
+         shades: [Double]? = nil, laid: Bool = false) {
+        onPage = laid
         self.tool = tool
         self.width = width
         self.seed = Double(seed)
@@ -430,7 +462,7 @@ final class LineStrip: PaintPainter, @unchecked Sendable {
 
     private func prepare() -> PrintPaint.Sheet {
         if let sheet { return sheet }
-        let made = PrintPaint.sheet(paper: plan.paper, width: width, seed: seed, plate: tool == .burin)
+        let made = PrintPaint.sheet(paper: plan.paper, width: width, seed: seed, plate: tool == .burin, laid: onPage)
         sheet = made
         let S = Double(PrintPaint.scale), pad = Paint.pad
         var random = PaintRandom(Int(seed) + 77)
@@ -531,8 +563,12 @@ final class LineStrip: PaintPainter, @unchecked Sendable {
             let inside: Float = y >= 0 && y <= Paint.bar ? 1 : 0
             for i in 0..<wide {
                 let k = j * wide + i
-                let cover = sheet.cover[k]
-                if cover <= 0 { continue }
+                let cover = sheet.cover[k], shade = sheet.shade.isEmpty ? 0 : sheet.shade[k] * (1 - cover)
+                if cover <= 0 {
+                    // Only the strip's shadow on the page.
+                    if shade > 0 { out.bytes[4 * k + 3] = Paint.byte(Double(255 * shade * shown)) }
+                    continue
+                }
                 var red = sheet.red[k], green = sheet.green[k], blue = sheet.blue[k]
                 if lined {
                     var bare: Float = 1
@@ -545,11 +581,11 @@ final class LineStrip: PaintPainter, @unchecked Sendable {
                         blue += (ink[2] - blue) * dark
                     }
                 }
-                let q = 4 * k
-                out.bytes[q] = Paint.byte(Double(red))
-                out.bytes[q + 1] = Paint.byte(Double(green))
-                out.bytes[q + 2] = Paint.byte(Double(blue))
-                out.bytes[q + 3] = Paint.byte(Double(255 * cover * shown))
+                let q = 4 * k, seen = cover + shade
+                out.bytes[q] = Paint.byte(Double(red * cover / seen))
+                out.bytes[q + 1] = Paint.byte(Double(green * cover / seen))
+                out.bytes[q + 2] = Paint.byte(Double(blue * cover / seen))
+                out.bytes[q + 3] = Paint.byte(Double(255 * seen * shown))
             }
         }
         if age >= length { whole = out }

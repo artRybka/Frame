@@ -113,7 +113,8 @@ final class TonedStrip: PaintPainter, @unchecked Sendable {
 
     init(shares: [PaintShare], width: Double, seed: Int, lit: Bool) {
         let (all, paper, shades, sticks) = Self.parts(shares, lit: lit)
-        lines = LineStrip(shares: all, width: width, seed: seed, tool: .pencil, thin: Self.thin, paper: paper, shades: shades)
+        lines = LineStrip(shares: all, width: width, seed: seed, tool: .pencil, thin: Self.thin, paper: paper, shades: shades,
+                          laid: true)
         (wide, high) = (lines.wide, lines.high)
         self.width = width
         self.seed = Double(seed)
