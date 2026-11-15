@@ -518,7 +518,7 @@ struct DailyView: View {
         for attempt in 0..<180 {
             do {
                 // Back sooner while it is timed: "jeszcze ok. …" moves on.
-                let wait: Double = attempt == 0 ? 0 : coming?.activityState.timerRange == nil ? 25 : 10
+                let wait = attempt == 0 ? 0 : coming?.activityState.timerRange == nil ? 25 : 10
                 let view = try await model.backend.study(itemID: id, wait: wait, lists: false)
                 misses = 0
                 if view.isPending {
