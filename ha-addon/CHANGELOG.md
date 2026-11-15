@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.145.175
+
+- Automatyczne kadrowanie trafniejsze. Przegląd 178 automatycznych kadrów:
+  28 złych (16 %). Grafika, której papier wychodzi poza zdjęcie (drzeworyt
+  światłocieniowy Jacksona wg Veronesego, litografie Géricaulta), traciła
+  margines papieru wzięty za pasek tła: paski z pikseli tnie się teraz
+  tylko, gdy kończą się na brzegu kartki wskazanej przez Opusa, a kadry
+  zrobione tak dotąd wracają raz do Opusa. Bok kartki nie przeskakuje już
+  do wewnątrz na drukowaną linię obwiedni, a bok obrazu na zewnątrz na
+  złotą listwę ramy. Romb (obraz postawiony na rogu) nie jest kadrowany.
+
 ## 1.145.174
 
 - Szukaj zdjęciem: wyniki pokazują się teraz w zwykłym widoku Szukaj, tak

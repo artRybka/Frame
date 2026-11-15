@@ -31,6 +31,19 @@ SNAP_SIDE = 1500
 #: long side): the model is a few hundredths off; further, a frame's outer
 #: edge against a white wall would win over its inner edge (Römer, MNW).
 BAND = 0.012
+#: A print's border line or plate mark lies just inside its sheet's edge,
+#: a gilt slip just outside a painting's, and both are stronger edges than
+#: the true one: Opus's line was right and the snap took the line next to
+#: it (a woodcut's top paper cut away, MNK 314364; the gilt slip of a
+#: still life on copper kept, MNK 338944; 2026-11-15). So a sheet's side
+#: takes the outermost edge at least :data:`OUTER_SHARE` as strong as the
+#: strongest (Opus's line may lie out on the backdrop, the paper's edge
+#: is then the only edge), and a painted surface's moves out no further
+#: than :data:`HOLD` (share of the long side).
+OUTER_SHARE = 0.5
+HOLD = 0.004
+OUTWARD = frozenset({"sheet"})
+INWARD = frozenset({"frame_inner", "canvas"})
 #: Points looked for along each side.
 SAMPLES = 160
 #: A point counts when the edge across the side is this strong (Sobel).
@@ -120,11 +133,14 @@ def _gray(img: Image.Image) -> tuple[np.ndarray, float]:
     return cv2.GaussianBlur(gray, (5, 5), 0).astype(np.float32), scale
 
 
-def snap(img: Image.Image, quad: Quad) -> Quad:
+def snap(img: Image.Image, quad: Quad, kind: str = "") -> Quad:
     """``quad`` set on the picture's own edges: along each side, the
     strongest edge across it within :data:`BAND` (the nearer the stronger),
     a straight line through those points, and the corners where the lines
-    meet. A side without a clear straight edge keeps the model's line."""
+    meet. A side without a clear straight edge keeps the model's line. A
+    sheet's side takes the outermost of the strong edges, a painted
+    surface's moves out no more than :data:`HOLD` (``kind``: the layer's,
+    :data:`OUTWARD`, :data:`INWARD`)."""
     gray, _ = _gray(img)
     h, w = gray.shape
     gx = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
@@ -132,7 +148,9 @@ def snap(img: Image.Image, quad: Quad) -> Quad:
     q = np.array(quad, dtype=float) * [w, h]
     centre = q.mean(axis=0)
     reach = BAND * max(w, h)
-    offsets = np.arange(-reach, reach + 1.0)
+    hold = HOLD * max(w, h)
+    # Offsets run inwards (towards the centre) from the model's line.
+    offsets = np.arange(-(hold if kind in INWARD else reach), reach + 1.0)
     weight = 1.0 - 0.5 * np.abs(offsets) / max(reach, 1.0)
     lines: list[tuple[np.ndarray, np.ndarray]] = []
     for i in range(4):
@@ -148,7 +166,11 @@ def snap(img: Image.Image, quad: Quad) -> Quad:
             xi = np.clip(np.round(pts[:, 0]).astype(int), 0, w - 1)
             yi = np.clip(np.round(pts[:, 1]).astype(int), 0, h - 1)
             g = np.abs(gx[yi, xi] * normal[0] + gy[yi, xi] * normal[1])
-            k = int(np.argmax(g * weight))
+            gw = g * weight
+            k = int(np.argmax(gw))
+            if kind in OUTWARD:  # the outermost edge nearly as strong
+                near = np.nonzero((gw >= OUTER_SHARE * gw[k]) & (g > STRENGTH))[0]
+                k = int(near[0]) if len(near) else k
             if g[k] > STRENGTH:
                 found.append(pts[k])
         line = (a, along)
@@ -341,14 +363,25 @@ def backdrop_quad(img: Image.Image) -> Quad | None:
 #: further out.
 SAME_SIDE = 0.006
 OUT_BY = 0.01
+#: Without a plate, a side moves out no further than this: a strip ending
+#: further out runs round a mount the sheet lies in (Art Institute 151445).
+OUT_AT_MOST = 0.03
 
 
-def sheet_out_to_strips(img: Image.Image, sheet: Quad, plate: Quad) -> Quad:
+def sheet_out_to_strips(
+    img: Image.Image,
+    sheet: Quad,
+    plate: Quad | None,
+    depths: tuple[float, float, float, float] | None = None,
+) -> Quad:
     """``sheet`` with a side that lies on its plate's side moved out to
-    where the backdrop's strip ends there (:func:`strip_depths`): the
-    paper's margin cut away on one side only (Beksiński, MNK, 2026-11-15;
-    the drawing's edge taken for the sheet's on the right)."""
-    top, bottom, left, right = strip_depths(img)
+    where the backdrop's strip ends there (:func:`strip_depths`, or
+    ``depths``): the paper's margin cut away on one side only (Beksiński,
+    MNK, 2026-11-15; the drawing's edge taken for the sheet's on the
+    right). Without a ``plate``, any side the strip ends further out from
+    (a poster's printed border taken for its sheet's edge, MNK 321605):
+    the caller has made sure the strips there are backdrop."""
+    top, bottom, left, right = depths if depths is not None else strip_depths(img)
     out = [list(c) for c in sheet]
     # (corners, axis, the strip's end, outward sign)
     for idx, axis, end, sign in (
@@ -359,8 +392,13 @@ def sheet_out_to_strips(img: Image.Image, sheet: Quad, plate: Quad) -> Quad:
     ):
         if (sign < 0 and end <= 0) or (sign > 0 and end >= 1):
             continue
-        on_plate = all(abs(sheet[i][axis] - plate[i][axis]) <= SAME_SIDE for i in idx)
-        further = all((end - sheet[i][axis]) * sign >= OUT_BY for i in idx)
+        on_plate = plate is None or all(
+            abs(sheet[i][axis] - plate[i][axis]) <= SAME_SIDE for i in idx
+        )
+        by = [(end - sheet[i][axis]) * sign for i in idx]
+        further = min(by) >= OUT_BY
+        if plate is None:  # a side a little askew still moves out
+            further = min(by) > 0 and max(by) >= OUT_BY and max(by) <= OUT_AT_MOST
         if on_plate and further:
             for i in idx:
                 out[i][axis] = end
