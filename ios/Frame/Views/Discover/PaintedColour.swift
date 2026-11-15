@@ -131,6 +131,21 @@ struct PaintJob: @unchecked Sendable {
         }
     }
 
+    /// The bar a gold lies in (`GoldBed`), made anew: an oil's or a
+    /// watercolour's paint and its contour; nil for the rest, whose gold
+    /// fills the bar's height.
+    static func bed(_ style: PaintStyle, shares: [PaintShare], width: Double, seed: Int, dark: Bool,
+                    relief: Double = Paint.calm.plain, contour: ContourLine? = nil) -> GoldBed? {
+        let line = contour.flatMap { ContourLine.draws(in: style) ? $0 : nil }
+        let painter: PaintPainter
+        switch style {
+        case .oil: painter = OilStrip(shares: shares, width: width, seed: seed, dark: dark, relief: relief)
+        case .water: painter = WaterStrip(shares: shares, width: width, seed: seed)
+        default: return nil
+        }
+        return GoldBed.of(line.map { ContouredStrip(painter, line: $0, style: style, seed: seed, dark: dark) } ?? painter)
+    }
+
     /// One paint's swatch.
     static func swatch(_ style: PaintStyle, rgb: [Double], index: Int, seed: Int, dark: Bool,
                        relief: Double = Paint.calm.plain) -> PaintJob {
@@ -376,7 +391,6 @@ final class DryScribble: @unchecked Sendable {
 /// a painter is made once for what it paints.
 final class PaintJobs {
     private var kept: (key: String, job: PaintJob)?
-    private var gold: (key: String, leaf: GoldLeaf?)?
 
     func job(_ key: String, make: () -> PaintJob) -> PaintJob {
         if let kept, kept.key == key { return kept.job }
@@ -384,21 +398,20 @@ final class PaintJobs {
         kept = (key, job)
         return job
     }
-
-    /// The gold over the bar painted for `key`.
-    func gold(_ key: String, make: () -> GoldLeaf?) -> GoldLeaf? {
-        if let gold, gold.key == key { return gold.leaf }
-        let leaf = make()
-        gold = (key, leaf)
-        return leaf
-    }
 }
 
-/// The gold of a work's bar laid over it (`GoldLeaf`), as the phone is
+/// The gold of a work's bar laid in it (`GoldLeaf`), as the phone is
 /// turned (`Tilt`); with "Ogranicz ruch" as held straight. In the
-/// coordinates of the bar's picture (its paper round it included).
+/// coordinates of the bar's picture (its paper round it included). Its
+/// leaf is made away from the main thread as soon as it is on the page,
+/// and shown once `shown`.
 struct GoldShine: View {
-    let leaf: GoldLeaf
+    /// What it is made of: a new key, a new leaf.
+    let key: String
+    let make: @Sendable () -> GoldLeaf?
+    let shown: Bool
+    @State private var leaf: GoldLeaf?
+    @State private var made: String?
     @Environment(\.accessibilityReduceMotion) private var still
 
     var body: some View {
@@ -406,7 +419,7 @@ struct GoldShine: View {
         let S = CGFloat(PrintPaint.scale)
         Color.clear
             .overlay(alignment: .topLeading) {
-                if let image = leaf.frame(tilt: tilt).image {
+                if shown, made == key, let leaf, let image = leaf.frame(tilt: tilt).image {
                     Image(decorative: image, scale: S)
                         .resizable()
                         .interpolation(.high)
@@ -414,9 +427,21 @@ struct GoldShine: View {
                         .offset(x: CGFloat(Paint.pad + leaf.origin.x), y: CGFloat(Paint.pad + leaf.origin.y))
                 }
             }
+            .animation(.easeIn(duration: 0.5), value: shown && made == key)
             .followsTilt()
             .allowsHitTesting(false)
             .accessibilityHidden(true)
+            .task(id: key) {
+                let make = make
+                let leaf = await Task.detached(priority: .utility) { () -> GoldLeaf? in
+                    let leaf = make()
+                    leaf?.ready()
+                    return leaf
+                }.value
+                guard !Task.isCancelled else { return }
+                self.leaf = leaf
+                made = key
+            }
     }
 }
 
@@ -536,7 +561,7 @@ struct PaintedStrip: View {
     var slim: CGFloat = 1
     /// The work's drawn contour (`Item.contour`), round the paint.
     var contour: ContourLine?
-    /// The gold its medium names (`Gold.kind`), laid over its colour once the bar is painted.
+    /// The gold its medium names (`Gold.kind`), laid in the place of its colour once the bar is painted.
     var gold: Gold.Kind?
 
     @State private var width: CGFloat = 0
@@ -593,18 +618,21 @@ struct PaintedStrip: View {
                     let job = jobs.job(key) {
                         PaintJob.strip(style, shares: shares, width: wide, seed: seed, dark: dark, relief: relief, contour: line)
                     }
-                    let leaf = jobs.gold(key + "|\(String(describing: gold))") {
-                        gold.flatMap { Gold.place(shares, style: style, width: wide, kind: $0) }.map { GoldLeaf(place: $0, seed: seed) }
-                    }
+                    let place = gold.flatMap { Gold.place(shares, style: style, width: wide, kind: $0) }
                     ZStack {
                         Painted(job: job, key: key, after: .distantPast, began: { start in
                             began(start, takes)
-                            goldAt = start.addingTimeInterval(takes)
+                            // Once its paint is down and the contour drawn round it.
+                            goldAt = start.addingTimeInterval(job.length)
                         }, whole: whole)
-                        if let leaf, whole || golden {
-                            GoldShine(leaf: leaf)
-                                .frame(width: job.size.width, height: job.size.height)
-                                .transition(.opacity.animation(.easeIn(duration: 0.5)))
+                        if let place {
+                            let style = style, seed = seed, relief = relief
+                            GoldShine(key: key + "|\(place.kind)", make: {
+                                GoldLeaf(place: place, seed: seed,
+                                         bed: PaintJob.bed(style, shares: shares, width: wide, seed: seed, dark: dark, relief: relief,
+                                                           contour: line))
+                            }, shown: whole || golden)
+                            .frame(width: job.size.width, height: job.size.height)
                         }
                     }
                     .scaleEffect(slim)

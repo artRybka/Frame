@@ -843,6 +843,10 @@ def test_the_servers_own_sheet_stands_in_only_where_none_is_drawn(tmp_path: Path
     svc: FrameService = app.state.service
     with TestClient(app) as client:
         _catalogue(svc)
+        # The sheets began to be drawn before the page was written (on the
+        # NAS long ago): else a second turning over between the two made it
+        # an old page, one not drawn at once.
+        svc.drawn._since()
         _old_page(svc)
         # Without Google's key the server's sheet is the page's: made ahead.
         assert [(item.id, dark) for item, _, dark in svc.sheets.wanting()] == [
