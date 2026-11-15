@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.157
+
+- Kupowanie kopii w Alamy usunięte: w menu „…” dzieła nie ma już „Kup w
+  Alamy” ani „Wczytaj kupioną kopię”, a w Konfiguracji → Źródła dzieł
+  przełącznika „Kupowanie w Alamy”. Kopie wczytane wcześniej zostają
+  zdjęciem swoich dzieł. „Szukaj lepszej kopii” działa jak dotąd.
+
 ## 1.145.154
 
 - Litografia jednej barwy ma własny pasek barw zamiast kreskowania

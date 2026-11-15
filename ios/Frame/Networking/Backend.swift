@@ -74,9 +74,6 @@ protocol FrameBackend: Sendable {
     /// The owner's pick for the work's picture: a copy, or (the work's own
     /// id) its own picture again.
     func chooseCopy(itemID: String, copyID: String) async throws -> Item
-    /// A copy of the work's picture the owner brought (bought in Alamy, a
-    /// scan): kept for good and shown in its place, like a picked copy.
-    func bringCopy(itemID: String, filename: String, data: Data, origin: String) async throws -> Item
     /// "Kreatywny restaurator": the work's small picture drawn again larger
     /// by the image model (half a minute) and kept in its place, as a copy
     /// the owner picked. A 422 "refused: …" when the model would not.

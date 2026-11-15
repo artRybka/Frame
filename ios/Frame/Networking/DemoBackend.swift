@@ -709,10 +709,6 @@ actor DemoBackend: FrameBackend {
         throw BackendError.notFound
     }
 
-    func bringCopy(itemID: String, filename: String, data: Data, origin: String) async throws -> Item {
-        throw BackendError.notFound
-    }
-
     func describe(itemID: String, wait: Int) async throws -> SeenView {
         SeenView(status: "off", words: [])
     }
