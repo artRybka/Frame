@@ -106,6 +106,10 @@ struct SuggestionsView: View {
             if LaunchRoute.screen == "discover-group", path.isEmpty, let first {  // CI screenshots
                 path.append(ThemeGroupRoute(name: first))
             }
+            // CI screenshots: a theme's works, with the marks after the titles.
+            if LaunchRoute.screen == "discover-theme", path.isEmpty, let theme = groups.first?.themes.first {
+                path.append(theme)
+            }
         }
         .onChange(of: model.daily?.day) { _, day in
             if LaunchRoute.screen == "daily", path.isEmpty, day != nil { path.append(DailyRoute(day: nil)) }  // CI screenshots
