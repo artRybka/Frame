@@ -18,10 +18,10 @@ enum ImageRef: Hashable, Sendable {
     /// The museum's photograph of the work, whole ("Pełny kadr"), `side`
     /// px long at most; `version` keeps a cut's change apart.
     case museumPhoto(String, side: Int, version: String)
-    /// The work on paper with its sheet as a well-kept one (the card's
-    /// colour recovery preview); `made`: "paper" or "opaque" (pastel,
-    /// gouache), `version` keeps another picture or calculation apart.
-    case recovered(String, made: String, version: String)
+    /// The work as it is shown but for its cleaning (`Item.cleaned`): the
+    /// picture as it came, for the card's comparison; `version` keeps
+    /// another picture apart.
+    case beforeCleaning(String, version: String)
     case path(String)  // server-relative path, e.g. /api/previews/<id>.png
     case url(URL)  // public URL (museum CDN)
 }
@@ -68,10 +68,15 @@ protocol FrameBackend: Sendable {
     /// The card opened on a work that names no technique: what it is made
     /// with, from its record, Commons or Wikidata; waits up to `wait` seconds.
     func medium(itemID: String, wait: Int) async throws -> MediumView
-    /// Whether the card may offer a simulation of the work's lost colours,
-    /// and with what; `made`: how the app says it is made ("oil", "paper",
-    /// "opaque", `ColourRecovery.made`).
+    /// Whether the card may offer the work cleaned ("Zdejmij werniks",
+    /// "Odżółć papier"); `made`: how the app says it is made ("oil",
+    /// "paper", "opaque", `ColourRecovery.made`).
     func recovery(itemID: String, made: String) async throws -> RecoveryView
+    /// "Zdejmij werniks" / "Odżółć papier": the work shown cleaned from
+    /// now on, everywhere; its colours are measured on the cleaned picture.
+    func clean(itemID: String, made: String) async throws -> Item
+    /// "Przywróć werniks" / "Przywróć ton papieru": the picture as it came.
+    func unclean(itemID: String) async throws -> Item
     /// The work's fragments (a scroll's parts, a Commons tile set): none for most works.
     func fragments(itemID: String) async throws -> FragmentsView
     /// The work's details (pictures of a part of it): none for most works.

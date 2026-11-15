@@ -18,10 +18,13 @@ show it. "Przywróć…" goes back to the picture as it came.
 No model is asked and nothing is spent. A study written and a composition
 sheet drawn before stay as they are (they cost; the owner asks again).
 
-Another copy of the picture (a sharper one, the work's own again) is
-another photograph: it is read anew and cleaned at its own strength, or
-not at all when its sheet is not yellowed. A copy the restorer drew is
-drawn from the cleaned picture, so it is left as drawn.
+Another copy of the picture (a sharper one, one the owner picked) is
+another photograph: "nie wiemy jaką ona ma kolorystykę i automatyczne
+naniesienie zmian barwy mogłoby być błędem" (Mateusz 2026-11-15 18:54), so
+it is shown as it comes; the cleaning stays with the picture it was read
+on and shows again when that picture does. The restorer's drawing is the
+same photograph drawn larger ("tak dla wersji restauratora"): it is drawn
+from the picture as it came and cleaned the same.
 """
 
 from __future__ import annotations
@@ -31,7 +34,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-import httpx
 from PIL import Image
 
 from .imaging import recovery
@@ -111,26 +113,20 @@ class Cleaning:
 
     # -- another copy takes the picture's place ---------------------------------------
 
-    def renew(self, item: Item) -> Item:
-        """After the work's picture changed (``Sharper``): a cleaning read
-        on the picture before is read anew on this one. A copy the restorer
-        drew was drawn from the cleaned picture: it is left as drawn."""
-        stored = self.library.get(item.id)
+    def renew(self, before: Item) -> Item:
+        """After the work's picture changed (``Sharper``; ``before``: the
+        work as it was). The restorer's drawing of a picture shown cleaned
+        is cleaned the same; any other copy is another photograph and is
+        left as it comes."""
+        stored = self.library.get(before.id)
         if stored is None or stored.cleaned is None or stored.cleaned_shown() is not None:
-            return stored or item
-        made = stored.cleaned.made
-        if stored.sharper is not None and stored.sharper.restored:
-            log.info("cleaning of %s: the restorer's copy is left as drawn", item.id)
-            return self.library.update(item.id, cleaned=None) or stored
-        try:
-            found = self._read(stored, made)
-        except (httpx.HTTPError, OSError) as err:  # read again when the picture next changes
-            log.info("cleaning of %s not renewed: %s", item.id, err)
+            return stored or before
+        if stored.sharper is None or not stored.sharper.restored:
             return stored
-        if found is None:
-            log.info("cleaning of %s: nothing to clean in the new picture", item.id)
-            return self.library.update(item.id, cleaned=None) or stored
-        return self.apply(stored, found)
+        if before.cleaned_shown() is None:
+            return stored  # drawn from a picture that was not shown cleaned
+        cleaned = stored.cleaned.model_copy(update={"drawn": stored.picture_key(), "at": _now()})
+        return self.apply(stored, cleaned)
 
     # -- putting it on ----------------------------------------------------------------
 

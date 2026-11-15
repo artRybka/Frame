@@ -305,8 +305,9 @@ class Sharper:
         #: (by item id) is one; set by the service.
         self.tiled_copies: Callable[[Item], list[Item]] | None = None
         self.is_tiled: Callable[[str], bool] = lambda item_id: False
-        #: Called after the work's picture changed: its cleaning
-        #: (:mod:`frame_server.cleaning`) is read anew on the new one.
+        #: Called after the work's picture changed, with the work as it
+        #: was: its cleaning (:mod:`frame_server.cleaning`) follows it onto
+        #: the restorer's drawing.
         self.cleaned_again: Callable[[Item], object] | None = None
         #: Where a study's details are cut (cut again from a sharper copy).
         self.details_dir = images.thumbs.parent / "details"
@@ -958,8 +959,9 @@ class Sharper:
         for old in self.details_dir.glob(f"{item.file_stem}-*.jpg"):
             old.unlink(missing_ok=True)  # the study's details, from the new picture
         if self.cleaned_again is not None:
-            # A work shown cleaned (``Item.cleaned``): the new picture is
-            # another photograph, read and cleaned anew.
+            # A work shown cleaned (``Item.cleaned``): the restorer's
+            # drawing of it is cleaned the same; ``item`` is the work as
+            # it was before the change.
             self.cleaned_again(item)
 
     def _remember(

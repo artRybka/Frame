@@ -214,8 +214,14 @@ class Cleaned(BaseModel):
     #: The varnish's thickness taken off (``recovery.kept_strength``).
     strength: float = 0.0
     #: The picture it was read on: the copy's id (``SharperCopy.item_id``)
-    #: when a copy was shown, else "". Never applied to another picture.
+    #: when a copy was shown, else "". Never applied to another photograph:
+    #: "nie wiemy jaką ona ma kolorystykę i automatyczne naniesienie zmian
+    #: barwy mogłoby być błędem" (Mateusz 2026-11-15 18:54).
     picture: str = ""
+    #: The restorer's drawing of that picture (its copy id), which is the
+    #: same photograph drawn larger and is cleaned the same ("tak dla
+    #: wersji restauratora"); "" without one.
+    drawn: str = ""
     #: When it was set (ISO): the app's pictures kept from before are had anew.
     at: str = ""
 
@@ -466,12 +472,15 @@ class Item(BaseModel):
 
     def cleaned_shown(self) -> Cleaned | None:
         """How the picture shown now is cleaned (:class:`Cleaned`): None
-        without, or when another picture than the one it was read on is
-        shown."""
+        without, or when another picture than the one it was read on (or
+        the restorer's drawing of that one) is shown."""
         cleaned = self.cleaned
-        if cleaned is None or cleaned.picture != self.picture_key():
+        if cleaned is None:
             return None
-        return cleaned
+        key = self.picture_key()
+        if key == cleaned.picture or (cleaned.drawn and key == cleaned.drawn):
+            return cleaned
+        return None
 
     def cleaned_version(self) -> str:
         """Changes whenever the cleaning of the picture shown does (set,

@@ -156,36 +156,57 @@ def test_a_thumbnail_had_from_its_address_is_cleaned_too(service, monkeypatch) -
     assert _warmth(Image.open(svc.images.ensure_thumb(done))) < 1.35
 
 
-def test_another_copy_is_read_and_cleaned_anew(service) -> None:
+def test_another_copy_is_left_as_it_comes_and_the_restorers_drawing_is_cleaned(service) -> None:
     _, svc = _app(service)
     oil = _keep(svc, _under_varnish(_painting(), 0.8), number=1, year=1650)
     first = svc.cleaning.clean(oil, "oil")
     assert first.cleaned is not None and first.cleaned.picture == ""
 
-    def copy(restored: bool = False) -> SharperCopy:
+    def copy(item_id: str, restored: bool = False) -> SharperCopy:
         return SharperCopy(
             url="https://images.example/copy.jpg",
-            item_id="wmc:9",
+            item_id=item_id,
             source="commons",
             width=160,
             height=120,
             restored=restored,
         )
 
-    # A copy photographed under a thinner varnish takes the picture's place.
-    with_copy = svc.library.update(oil.id, sharper=copy())
+    # Another photograph takes the picture's place: nobody knows its
+    # colours, so it is shown as it comes (Mateusz 2026-11-15 18:54).
+    with_copy = svc.library.update(oil.id, sharper=copy("wmc:9"))
     svc.images.adopt(with_copy, _under_varnish(_painting(), 0.3))
-    assert with_copy.cleaned_shown() is None  # read on another picture
+    after = svc.cleaning.renew(first)
+    assert after.cleaned == first.cleaned and after.cleaned_shown() is None
+    assert ItemSummary.of(after).cleaned == ""
     assert _warmth(Image.open(svc.images.image_path(oil))) > 1.2
-    renewed = svc.cleaning.renew(with_copy)
-    assert renewed.cleaned is not None and renewed.cleaned.picture == "wmc:9"
-    assert renewed.cleaned.strength < first.cleaned.strength
-    assert renewed.cleaned_shown() is not None
-    assert _warmth(Image.open(svc.images.image_path(oil))) < 1.2
+    assert not svc.images.full_path(oil).exists()
 
-    # A copy the restorer drew was drawn from the cleaned picture.
-    drawn = svc.library.update(
-        oil.id, sharper=copy(restored=True).model_copy(update={"item_id": "owned:x.jpg"})
-    )
-    svc.images.adopt(drawn, Image.fromarray(linear_to_u8(_painting())))
-    assert svc.cleaning.renew(drawn).cleaned is None
+    # The work's own picture again: the one the cleaning was read on.
+    own = svc.library.update(oil.id, sharper=None)
+    svc.images.adopt(own, _under_varnish(_painting(), 0.8))
+    assert own.cleaned_shown() is not None
+    assert _warmth(Image.open(svc.images.image_path(oil))) < 1.35
+
+    # The restorer draws it larger, from the picture as it came…
+    assert _warmth(svc.restorer._picture(own)) > 1.6
+    drawn = svc.library.update(oil.id, sharper=copy("owned:x.jpg", restored=True))
+    svc.images.adopt(drawn, _under_varnish(_painting(), 0.8))
+    assert drawn.cleaned_shown() is None
+    # …and the drawing is cleaned the same.
+    kept = svc.cleaning.renew(own)
+    assert kept.cleaned is not None and kept.cleaned.drawn == "owned:x.jpg"
+    assert kept.cleaned.strength == first.cleaned.strength and kept.cleaned.picture == ""
+    assert kept.cleaned_shown() is not None and ItemSummary.of(kept).cleaned == "varnish"
+    assert _warmth(Image.open(svc.images.image_path(oil))) < 1.35
+    assert _warmth(Image.open(svc.images.full_path(oil))) > 1.6
+
+    # A drawing of a picture that was not shown cleaned is left as drawn.
+    other = _keep(svc, _under_varnish(_painting(), 0.8), number=2, year=1650)
+    cleaned = svc.cleaning.clean(other, "oil")
+    stale = svc.library.update(other.id, sharper=copy("wmc:9"))
+    svc.images.adopt(stale, _under_varnish(_painting(), 0.3))
+    redrawn = svc.library.update(other.id, sharper=copy("owned:y.jpg", restored=True))
+    svc.images.adopt(redrawn, _under_varnish(_painting(), 0.3))
+    assert svc.cleaning.renew(stale).cleaned == cleaned.cleaned
+    assert svc.library.get(other.id).cleaned_shown() is None
