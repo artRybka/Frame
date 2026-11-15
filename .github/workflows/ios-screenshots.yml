@@ -156,6 +156,7 @@ jobs:
             capture detail 16 "detail-playlists-new-$appearance" -sheet playlists-new
             capture detail 16 "detail-about-$appearance" -scroll about
             capture detail 18 "detail-recovery-$appearance" -sheet recovery -paintStyle oil
+            capture detail 18 "detail-recovery-paper-$appearance" -sheet recovery -paintStyle pen -demoPaper YES
             # "Podobne wyglądem" at the card's end (Szukanie wyglądem, G1).
             capture detail 16 "detail-looks-$appearance" -scroll looks
             # "Kolorystyka" on the card: the bar in the work's technique, there at once.

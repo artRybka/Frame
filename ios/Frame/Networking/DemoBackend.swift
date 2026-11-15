@@ -688,7 +688,11 @@ actor DemoBackend: FrameBackend {
     /// The demo's paintings may be tried without their varnish (the app
     /// does that sum itself); there is no server to de-yellow a sheet.
     func recovery(itemID: String, made: String) async throws -> RecoveryView {
-        guard made == "oil" else { return RecoveryView(kind: "none") }
+        guard made == "oil" else {
+            // Screenshots (`-demoPaper YES`): the paper preview's look. Both
+            // of its sides are the same picture here.
+            return RecoveryView(kind: UserDefaults.standard.bool(forKey: "demoPaper") ? "paper" : "none")
+        }
         let steps = (0...16).map { Double($0) / 10 }
         return RecoveryView(kind: "varnish", strength: 0.69, steps: steps, tops: steps.map { 0.8 * exp(0.6 * $0) })
     }
