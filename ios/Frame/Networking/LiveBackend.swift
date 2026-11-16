@@ -722,8 +722,13 @@ struct LiveBackend: FrameBackend {
         let _: [String: Int] = try await perform(req)
     }
 
-    func mergeOwnPhotos(token: String) async throws -> OwnMerged {
+    func mergeOwnPhotos(token: String, outline: [[Double]]?) async throws -> OwnMerged {
         var req = request("/api/own/photos/\(escape(token))/merge", method: "POST")
+        if let outline {
+            // What the camera followed: where the work is when the model has no answer.
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try JSONSerialization.data(withJSONObject: ["outline": outline])
+        }
         req.timeoutInterval = 180
         return try await perform(req)
     }

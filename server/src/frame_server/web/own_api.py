@@ -88,6 +88,9 @@ async def send_side(token: str, svc: Svc, file: Annotated[UploadFile, File()]) -
 class MergeAsk(BaseModel):
     #: The work's corners on the first photograph, when the phone knows them.
     corners: list[tuple[float, float]] | None = None
+    #: The rectangle the phone's camera followed at the first photograph:
+    #: where the work is when nothing else says.
+    outline: list[tuple[float, float]] | None = None
 
 
 @router.post("/own/photos/{token}/merge", response_model=Merged)
@@ -97,7 +100,8 @@ async def merge(token: str, svc: Svc, ask: MergeAsk | None = None) -> Merged:
     cents); up to a minute of the server's own work."""
     try:
         corners = _corners(ask.corners) if ask is not None else None
-        return await run_in_threadpool(svc.own_works.merge, token, corners)
+        outline = ask.outline if ask is not None else None
+        return await run_in_threadpool(svc.own_works.merge, token, corners, outline)
     except LookupError as err:
         raise HTTPException(404, str(err)) from err
 

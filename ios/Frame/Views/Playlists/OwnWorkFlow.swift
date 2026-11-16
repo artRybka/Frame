@@ -44,6 +44,8 @@ struct OwnWorkFlow: View {
     @State private var finding = false
     /// The corners the server found; nil when none.
     @State private var found: [[Double]]?
+    /// They are the rectangle the camera followed, not the server's answer.
+    @State private var foundByCamera = false
     /// The corners he went on with; nil, the photograph whole.
     @State private var corners: [[Double]]?
     @State private var cutBy = "auto"
@@ -156,10 +158,16 @@ struct OwnWorkFlow: View {
                     // No key, or Opus could not: he sets the corners himself.
                 }
                 incoming = sent
-                found = sent.corners
+                // Where the model has no answer for a rectangle, the one the
+                // camera followed (Mateusz 2026-11-16: "czy to potrzebne
+                // skoro mamy już dane z iPhone?"): a start nearer than the
+                // photograph whole.
+                let seen = sent.corners == nil && (sent.shape.isEmpty || sent.shape == "rectangle") ? shots.outline : nil
+                found = sent.corners ?? seen
+                foundByCamera = seen != nil
                 if merged != nil, let clean = photo {
                     // What the scan gave, before the cut: the work alone, where it was found.
-                    let both = (OwnPicture.cut(image, corners: sent.corners), OwnPicture.cut(clean, corners: sent.corners))
+                    let both = (OwnPicture.cut(image, corners: found), OwnPicture.cut(clean, corners: found))
                     withAnimation(.easeInOut(duration: 0.3)) { compared = both }
                 } else {
                     withAnimation(.easeInOut(duration: 0.3)) { step = .cut }
@@ -180,7 +188,7 @@ struct OwnWorkFlow: View {
                 else { continue }
                 try await model.backend.sendOwnSide(token: token, data)
             }
-            let done = try await model.backend.mergeOwnPhotos(token: token)
+            let done = try await model.backend.mergeOwnPhotos(token: token, outline: shots.outline)
             guard done.replaced > 0 else { return }
             // For the screen: whole, it is 48 MP.
             let clean = try await model.backend.ownPhoto(token: token, side: Int(OwnPicture.shownSide))
@@ -200,6 +208,7 @@ struct OwnWorkFlow: View {
             return "To dzieło nie jest prostokątem, więc zostaje całe zdjęcie. Możesz je przyciąć sam."
         }
         let glare = merged != nil ? "Odblaski usunięte z trzech zdjęć. " : ""
+        if foundByCamera { return glare + "Zaznaczyłem to, co widział aparat. Popraw narożniki w lupach, jeśli trzeba." }
         if found != nil { return glare + "Rama wycięta. Popraw narożniki w lupach, jeśli trzeba." }
         return glare + "Nie znalazłem dzieła na zdjęciu. Ustaw narożniki sam."
     }

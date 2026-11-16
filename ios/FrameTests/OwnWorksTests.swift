@@ -228,7 +228,10 @@ final class OwnWorksTests: XCTestCase {
         var look = OwnScanLook(number: 2)
         look.advice = .go(left: true)
         XCTAssertNil(look.pill)
+        XCTAssertEqual(look.line, "Przejdź w lewo, celując w dzieło")
+        look.helper = front
         XCTAssertEqual(look.line, "Przejdź w lewo, aż dzieło wypełni ramkę")
+        look.helper = nil
         look.advice = .go(left: false)
         XCTAssertEqual(look.line, "Za daleko w bok, wróć trochę")
         look.advice = .nearer
@@ -257,10 +260,19 @@ final class OwnWorksTests: XCTestCase {
                 XCTAssertEqual(back.y, corner.y, accuracy: 1e-9)
             }
         }
-        // The phone's top to the left: the screen's top is the world's right.
+        // The phone's top to the left: the screen's top edge is the world's
+        // left, its right edge the world's top (Mateusz 2026-11-16: "Nie
+        // obsługuje robienia zdjęcia w poziomie": they were the other way
+        // round, the world upside down).
         let turned = OwnScanView.upright(CGPoint(x: 0.2, y: 0.3), quarter: 1)
-        XCTAssertEqual(turned.x, 0.7, accuracy: 1e-9)
-        XCTAssertEqual(turned.y, 0.2, accuracy: 1e-9)
+        XCTAssertEqual(turned.x, 0.3, accuracy: 1e-9)
+        XCTAssertEqual(turned.y, 0.8, accuracy: 1e-9)
+        let top = OwnScanView.upright(CGPoint(x: 0.5, y: 0.05), quarter: 1)
+        XCTAssertLessThan(top.x, 0.1)
+        let right = OwnScanView.upright(CGPoint(x: 0.95, y: 0.5), quarter: 1)
+        XCTAssertLessThan(right.y, 0.1)
+        // Its top to the right: the other way.
+        XCTAssertGreaterThan(OwnScanView.upright(CGPoint(x: 0.5, y: 0.05), quarter: -1).x, 0.9)
         // A tall work on the screen is a tall work in the world with the
         // phone upright only: on its side the outline is ordered anew.
         let world = OwnScanView.ordered(front.map { OwnScanView.upright($0, quarter: 1) })
@@ -268,6 +280,16 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertEqual(world[0].y, 0.2, accuracy: 1e-9)
         XCTAssertEqual(world[2].x, 0.7, accuracy: 1e-9)
         XCTAssertEqual(world[2].y, 0.8, accuracy: 1e-9)
+        // A work seen from the left on the screen of a phone on its side
+        // is seen from the left in the world: its left side the taller.
+        let seen = OwnScanView.seen(front, from: -30, aspect: 4.0 / 3, focal: OwnScanView.focal * 0.75)
+        let screen = seen.map { OwnScanView.shown($0, quarter: 1) }
+        let back = OwnScanView.ordered(screen.map { OwnScanView.upright($0, quarter: 1) })
+        let sides = OwnScanView.sides(back, aspect: 4.0 / 3)
+        XCTAssertGreaterThan(sides.left, sides.right)
+        // On the screen that taller side lies along the top edge.
+        XCTAssertLessThan(screen[0].y, 0.5)
+        XCTAssertLessThan(screen[3].y, 0.5)
 
         // The largest rectangle is the work, until one is followed.
         let door = [CGPoint(x: 0.05, y: 0.1), CGPoint(x: 0.95, y: 0.1), CGPoint(x: 0.95, y: 0.95), CGPoint(x: 0.05, y: 0.95)]
@@ -285,5 +307,78 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertEqual(OwnScanCompare.split(at: -20, width: 300), 0.04, accuracy: 1e-9)
         XCTAssertEqual(OwnScanCompare.split(at: 400, width: 300), 0.96, accuracy: 1e-9)
         XCTAssertEqual(OwnScanCompare.split(at: 10, width: 0), 0.5, accuracy: 1e-9)
+    }
+
+    /// What the helper draws and counts after the first test on the phone
+    /// (Mateusz 2026-11-16 12:53 UTC): the helper frame in the middle of
+    /// the picture, the word held a moment, the gyroscope and the outline
+    /// as one angle, the track's dot, the ring.
+    func testTheHelperIsSteadyAndInTheMiddle() {
+        // A work that filled the first photograph: from the side its near
+        // half is the larger, and the frame lay against the picture's edge.
+        let wide = [CGPoint(x: 0.06, y: 0.3), CGPoint(x: 0.94, y: 0.3), CGPoint(x: 0.94, y: 0.7), CGPoint(x: 0.06, y: 0.7)]
+        let seen = OwnScanView.seen(wide, from: -30)
+        XCTAssertLessThan(seen.map(\.x).min()!, 0.02)
+        let fitted = OwnScanView.fitted(seen)
+        let xs = fitted.map(\.x), ys = fitted.map(\.y)
+        XCTAssertEqual((xs.min()! + xs.max()!) / 2, 0.5, accuracy: 1e-9)
+        XCTAssertEqual((ys.min()! + ys.max()!) / 2, 0.5, accuracy: 1e-9)
+        XCTAssertLessThanOrEqual(xs.max()! - xs.min()!, 0.84 + 1e-9)
+        // Its shape stays: the left side as much taller as it was.
+        let was = OwnScanView.sides(seen), now = OwnScanView.sides(fitted)
+        XCTAssertEqual(now.left / now.right, was.left / was.right, accuracy: 1e-9)
+
+        // The word changes only once something else has been true a moment.
+        var steady = OwnScanSteady()
+        let start = Date(timeIntervalSinceReferenceDate: 1000)
+        XCTAssertEqual(steady.take(.go(left: true), at: start), .lost)
+        XCTAssertEqual(steady.take(.go(left: true), at: start + 0.3), .go(left: true))
+        XCTAssertEqual(steady.take(.hold, at: start + 0.4), .go(left: true))
+        XCTAssertEqual(steady.take(.go(left: true), at: start + 0.5), .go(left: true))
+        XCTAssertEqual(steady.take(.hold, at: start + 0.6), .go(left: true))
+        XCTAssertEqual(steady.take(.hold, at: start + 0.9), .hold)
+        // A photograph being taken goes on a little beyond the edge.
+        XCTAssertEqual(OwnScanView.side(target: -30, angle: -20), .go(left: true))
+        XCTAssertEqual(OwnScanView.side(target: -30, angle: -20, held: true), .hold)
+        XCTAssertEqual(OwnScanView.side(target: -30, angle: -17, held: true), .go(left: true))
+
+        // The gyroscope's count, drawn towards the outline's when they agree.
+        var stands = OwnScanAngle()
+        XCTAssertEqual(stands.fuse(gyro: -10, seen: nil).angle, -10)
+        let first = stands.fuse(gyro: -10, seen: -14)
+        XCTAssertTrue(first.seen)
+        XCTAssertEqual(first.angle!, -11, accuracy: 1e-9)
+        // Another rectangle on the wall is not believed.
+        let other = stands.fuse(gyro: -10, seen: 40)
+        XCTAssertFalse(other.seen)
+        XCTAssertEqual(other.angle!, -11, accuracy: 1e-9)
+        // Without a gyroscope the outline alone; with neither, nothing.
+        var bare = OwnScanAngle()
+        XCTAssertEqual(bare.fuse(gyro: nil, seen: -25).angle, -25)
+        XCTAssertNil(bare.fuse(gyro: nil, seen: nil).angle)
+
+        // The track: the front in the middle, the side places at four fifths.
+        XCTAssertEqual(OwnScanTrack.place(0, width: 300), 150, accuracy: 1e-9)
+        XCTAssertEqual(OwnScanTrack.place(-30, width: 300), 30, accuracy: 1e-9)
+        XCTAssertEqual(OwnScanTrack.place(30, width: 300), 270, accuracy: 1e-9)
+        XCTAssertEqual(OwnScanTrack.place(-80, width: 300), 0, accuracy: 1e-9)
+        // The ring fills while the phone is held, and is full while the camera writes.
+        let since = Date(timeIntervalSinceReferenceDate: 2000)
+        XCTAssertEqual(OwnShotRing.filled(since: nil, taking: false, now: since), 0)
+        XCTAssertEqual(OwnShotRing.filled(since: since, taking: false, now: since + OwnShotRing.time / 2), 0.5, accuracy: 1e-9)
+        XCTAssertEqual(OwnShotRing.filled(since: since, taking: false, now: since + 5), 1)
+        XCTAssertEqual(OwnShotRing.filled(since: nil, taking: true, now: since), 1)
+
+        // The gyroscope: before a wall about the gravity's line, over a
+        // table about the phone's own upright.
+        let wall = OwnScanGuide.turning(rate: (0, 1, 0), gravity: (0, -1, 0), quarter: 0)
+        XCTAssertEqual(wall!, 1, accuracy: 1e-9)
+        let onItsSide = OwnScanGuide.turning(rate: (1, 0, 0), gravity: (-1, 0, 0), quarter: 1)
+        XCTAssertEqual(onItsSide!, 1, accuracy: 1e-9)
+        let table = OwnScanGuide.turning(rate: (0, 1, 0), gravity: (0, 0, -1), quarter: 0)
+        XCTAssertEqual(table!, 1, accuracy: 1e-9)
+        let tableOnItsSide = OwnScanGuide.turning(rate: (1, 0, 0), gravity: (0, 0, -1), quarter: 1)
+        XCTAssertEqual(tableOnItsSide!, 1, accuracy: 1e-9)
+        XCTAssertNil(OwnScanGuide.turning(rate: (0, 1, 0), gravity: (0, 0, 0), quarter: 0))
     }
 }

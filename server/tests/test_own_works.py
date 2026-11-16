@@ -511,7 +511,15 @@ def test_three_photographs_of_a_work_behind_glass_are_merged_within_its_corners(
             ).status_code
             == 422
         )
-        merged = client.post(f"/api/own/photos/{token}/merge", json={"corners": seen})
+        # No key, so Opus finds no work: the rectangle the phone's camera
+        # followed is where the reflections go (a poor one is none).
+        poor = client.post(
+            f"/api/own/photos/{token}/merge", json={"outline": [(0, 0), (0, 0), (0, 0), (0, 0)]}
+        )
+        assert poor.status_code == 200 and poor.json()["corners"] is None
+        for photo_ in sides:
+            client.post(f"/api/own/photos/{token}/sides", files={"file": ("s.png", png(photo_))})
+        merged = client.post(f"/api/own/photos/{token}/merge", json={"outline": seen})
         assert merged.status_code == 200, merged.text
         assert merged.json()["used"] == 2 and merged.json()["replaced"] > 0.1
         assert merged.json()["corners"] == [list(c) for c in seen]

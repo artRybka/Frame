@@ -23,7 +23,18 @@ its full size, so every detail stays the first photograph's own; the side
 ones only say what is reflection.
 
 The frame's side hides the work's near edge from the side, so a side
-photograph does not count in a band along the edge it was taken from."""
+photograph does not count in a band along the edge it was taken from.
+
+What his first scans on the phone showed (2026-11-16, a dark folder with
+gold letters on a desk, a painting on a screen; "efekt wychodzi nazbyt
+kontrastowy i zbyt nasycony"): a work shines of itself, differently from
+each side, and that is no reflection to take off. So a side view's
+difference from the first is the middle one of each cell's
+(:func:`_apart`), which gilding and varnish are not; the views' white
+balances are held near each other (:data:`BALANCE`); and of the least
+view only a part may be shared veil (:data:`VEIL_MOST`): that veil is
+the one thing here that is supposed, not seen, and all of it made a dark
+work black."""
 
 from __future__ import annotations
 
@@ -49,6 +60,12 @@ LEVELS = ((8, 1500), (4, 1000), (2, 600), (1, 300))
 #: What a unit of shared veil costs beside the layers' smoothness: next
 #: to nothing, only to choose the least of the equally smooth.
 VEIL_COST = 0.002
+#: How far a channel's gain may be from the three's middle one.
+BALANCE = 0.12
+#: A cell of the layers is the middle of so many differences each way.
+CELL = 4
+#: The most of the least view that may be veil all the views share.
+VEIL_MOST = 0.3
 #: The band at the edge a side photograph was taken from, where the
 #: frame's side hides the work (of the work's width).
 HIDDEN = 0.06
@@ -218,6 +235,21 @@ def _coarse(light: Floats, shape: tuple[int, ...]) -> Floats:
     return cv2.resize(light, (shape[1], shape[0]), interpolation=cv2.INTER_AREA)
 
 
+def _apart(apart: Floats, shape: tuple[int, ...]) -> Floats:
+    """What a side view differs from the first by, at the layers' size:
+    the middle one of each cell's differences, and of the cells about it.
+    A reflection is soft and fills a cell; what is the work's own (the
+    shine of gilding or of varnish on a stroke of paint, which moves with
+    the view) and what the laying over missed by a pixel are a few of a
+    cell's and do not count. As a mean they spread: his dark folder with
+    gold letters (2026-11-16) came out with a black halo about each."""
+    h, w = shape[:2]
+    fine = cv2.resize(apart, (w * CELL, h * CELL), interpolation=cv2.INTER_AREA)
+    cells = fine.reshape(h, CELL, w, CELL, 3).transpose(0, 2, 1, 3, 4).reshape(h, w, CELL * CELL, 3)
+    middle = np.ascontiguousarray(np.median(cells, axis=2).astype(np.float32))
+    return cv2.medianBlur(middle, 5)
+
+
 def _counts(views: list[_View], h: int, w: int) -> Floats:
     """Where each view counts (1) at this size: a side one not in the
     band along the edge it was taken from."""
@@ -249,12 +281,19 @@ def _even(views: list[_View]) -> None:
     fx, fy = steps(views[0].light)
     for view in views[1:]:
         sx, sy = steps(view.light)
+        gains = []
         for c in range(3):
             a = np.concatenate([fx[..., c].ravel(), fy[..., c].ravel()])
             b = np.concatenate([sx[..., c].ravel(), sy[..., c].ravel()])
             strong = np.abs(a) >= np.quantile(np.abs(a), 0.9)
-            ratio = b[strong] / a[strong]
-            gain = float(np.clip(np.median(ratio), 0.5, 2.0))
+            gains.append(float(np.clip(np.median(b[strong] / a[strong]), 0.5, 2.0)))
+        # The exposure is one for the three channels; the white balance
+        # moves between two photographs of one wall only so far. More is
+        # the work's own shine (gold letters, which are yellow from the
+        # front and white from the side), not the camera's.
+        middle = sorted(gains)[1]
+        for c in range(3):
+            gain = float(np.clip(gains[c], middle * (1 - BALANCE), middle * (1 + BALANCE)))
             view.light[..., c] /= gain
 
 
@@ -268,8 +307,9 @@ def _reflection(views: list[_View]) -> Floats:
     for shrink, steps in LEVELS:
         w = max(16, LAYER_WIDTH // shrink)
         h = max(16, round(ht * w / wd))
+        first = cv2.GaussianBlur(_coarse(views[0].light, (h, w)), (0, 0), 1.0)
         lights = np.stack(
-            [cv2.GaussianBlur(_coarse(v.light, (h, w)), (0, 0), 1.0) for v in views]
+            [first] + [first + _apart(v.light - views[0].light, (h, w)) for v in views[1:]]
         ).astype(np.float32)
         counts = _counts(views, h, w)
         counted = np.where(counts[..., None] > 0, lights, np.inf)
@@ -285,7 +325,8 @@ def _reflection(views: list[_View]) -> Floats:
             if common is None
             else cv2.resize(common, (w, h), interpolation=cv2.INTER_LINEAR)
         )
-        common = _shared(over, across, down, low, np.minimum(start, low), steps)
+        most = low * np.float32(VEIL_MOST)
+        common = _shared(over, across, down, most, np.minimum(start, most), steps)
     assert common is not None and low is not None and lights is not None
     return np.clip(lights[0] - (low - common), 0, None).astype(np.float32)
 

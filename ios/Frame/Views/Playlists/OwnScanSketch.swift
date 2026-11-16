@@ -6,10 +6,17 @@ import SwiftUI
 /// camera): the demo's wall photograph, turned as the wall shows from the
 /// side, under the camera's own overlay and words. `-screen own-scan
 /// -scanLook front | ready | far | near | lost | side | match | right |
-/// result` ("result": the page after the scan, `OwnScanResult`).
+/// result` ("result": the page after the scan, `OwnScanResult`), with
+/// `-scanGuide frame` the helper frame in place of the track, with
+/// `-scanHeld left` the phone on its side.
 struct OwnScanSketch: View {
     let close: () -> Void
     let name = UserDefaults.standard.string(forKey: "scanLook") ?? "side"
+    /// The way to the side photographs as the helper frame, not the track.
+    let framed = UserDefaults.standard.string(forKey: "scanGuide") == "frame"
+    /// The phone held with its top to the left: what is said over the
+    /// picture turns (the scene's wall stays as it is).
+    let quarter = UserDefaults.standard.string(forKey: "scanHeld") == "left" ? 1 : 0
 
     private var front: [CGPoint] { DemoOwn.outer.map { CGPoint(x: $0[0], y: $0[1]) } }
 
@@ -44,17 +51,35 @@ struct OwnScanSketch: View {
         let live = OwnScanView.seen(front, from: stands)
             .map { CGPoint(x: 0.5 + ($0.x - 0.5) * zoom, y: 0.5 + ($0.y - 0.5) * zoom) }
         var look = OwnScanLook(number: target == nil ? 1 : (name == "right" ? 3 : 2))
-        look.live = name == "lost" ? nil : live
-        look.helper = target.map { OwnScanView.seen(front, from: $0) }
         look.manual = name == "lost"
+        look.quarter = quarter
         if let target {
+            look.helper = framed ? helper : nil
+            look.angle = stands
             look.advice = OwnScanView.side(target: target, angle: stands)
         } else {
+            look.live = name == "lost" ? nil : live
             // The demo's work hangs a little askew: its outline is what "from the front" is here.
             look.advice = name == "ready" ? .hold : name == "lost" ? .lost : OwnScanView.first(live)
             if look.advice == .hold, name == "front" { look.advice = .straight }
         }
         return look
+    }
+
+    /// The helper frame: the work from where the next photograph is taken.
+    private var helper: [CGPoint]? {
+        target.map { OwnScanView.fitted(OwnScanView.seen(front, from: $0)) }
+    }
+
+    /// The work of the first photograph in the helper frame.
+    private var ghost: UIImage? {
+        guard framed, let helper, let photo = DemoOwn.photo() else { return nil }
+        return OwnScanGhost.picture(of: photo, corners: front, onto: helper)
+    }
+
+    /// The ring as it is a moment before the photograph.
+    private var holding: Date? {
+        look.advice == .hold ? Date.now.addingTimeInterval(-OwnShotRing.time * 0.6) : nil
     }
 
     var body: some View {
@@ -112,7 +137,7 @@ struct OwnScanSketch: View {
             if let photo = Self.wall(from: stands) {
                 Image(uiImage: photo).resizable().scaledToFill().scaleEffect(zoom)
             }
-            OwnScanOverlay(look: look)
+            OwnScanOverlay(look: look, ghost: ghost, holding: holding)
         }
         .aspectRatio(3 / 4, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -127,7 +152,7 @@ struct OwnScanSketch: View {
                 StandPlan(taken: look.number - 1)
                     .frame(width: 74, height: 52)
                     .frame(maxWidth: .infinity, alignment: .trailing)
-            } else {
+            } else if look.number == 1 || framed {
                 StandPlan(taken: look.number - 1)
                     .frame(width: 116, height: 78)
             }

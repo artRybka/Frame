@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.145.189
+
+- Aparat do skanu: zamiast skaczącej ramki jest tor jak w panoramie
+  iPhone'a. Idziesz w bok, kropka idzie z Tobą, a zdjęcie robi się, gdy
+  dojdzie do kółka. Strzałki pokazują stronę.
+- Przed zdjęciem wypełnia się okrąg, więc widać, że aparat pracuje.
+- Działa z telefonem trzymanym w poziomie i nad dziełem leżącym na stole.
+- Pierwsze zdjęcie też ma teraz 48 MP (miało 12 MP).
+- Łączenie trzech zdjęć jest łagodniejsze: nie przyciemnia i nie
+  przesyca dzieła, połysk złoceń i werniksu zostaje.
+- Gdy serwer nie znajdzie dzieła na zdjęciu, kadr zaczyna się od tego,
+  co widział aparat.
+
 ## 1.145.188
 
 - Po skanie z trzech zdjęć, gdy udało się zdjąć odbicia, pokazuje się
