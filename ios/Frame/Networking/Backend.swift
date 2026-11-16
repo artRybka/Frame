@@ -266,7 +266,7 @@ protocol FrameBackend: Sendable {
     func sendOwnSide(token: String, _ data: Data) async throws
     /// The glare taken out of the first photograph by the side ones.
     func mergeOwnPhotos(token: String, outline: [[Double]]?) async throws -> OwnMerged
-    /// "Jedno zdjęcie" on "Skan gotowy": the first photograph as it was
+    /// "Na wprost" on "Skan gotowy": the first photograph as it was
     /// taken waits again, in the scan's stead.
     func keepOwnFirstPhoto(token: String) async throws
     /// The photograph as it waits (merged), for "Kadr", `side` px long at most.

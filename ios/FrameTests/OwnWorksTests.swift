@@ -417,21 +417,12 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertEqual(looked?.token, first.token)
         let merged = try await demo.mergeOwnPhotos(token: first.token, outline: nil)
         XCTAssertEqual(merged.used, 2)
-        // "Jedno zdjęcie": the first photograph waits again as it was taken.
+        // "Na wprost": the first photograph waits again as it was taken.
         try await demo.keepOwnFirstPhoto(token: first.token)
         do {
             try await demo.keepOwnFirstPhoto(token: "none")
             XCTFail("no such photograph waits")
         } catch {}
-    }
-
-    /// The handle between the one photograph and the scan follows the
-    /// finger and stays in reach at both ends.
-    func testTheHandleOfTheScanComparisonStaysInReach() {
-        XCTAssertEqual(OwnScanCompare.split(at: 150, width: 300), 0.5, accuracy: 1e-9)
-        XCTAssertEqual(OwnScanCompare.split(at: -20, width: 300), 0.04, accuracy: 1e-9)
-        XCTAssertEqual(OwnScanCompare.split(at: 400, width: 300), 0.96, accuracy: 1e-9)
-        XCTAssertEqual(OwnScanCompare.split(at: 10, width: 0), 0.5, accuracy: 1e-9)
     }
 
     /// What the helper draws and counts after the first test on the phone

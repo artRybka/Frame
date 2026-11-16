@@ -294,7 +294,7 @@ struct OwnWorkFlow: View {
         return await cutDone()
     }
 
-    /// "Jedno zdjęcie" on "Skan gotowy": the server keeps the first
+    /// "Na wprost" on "Skan gotowy": the server keeps the first
     /// photograph as it was taken, and so does the rest of the way.
     private func keepFirst() async -> Bool {
         guard let token = incoming?.token else { return false }
