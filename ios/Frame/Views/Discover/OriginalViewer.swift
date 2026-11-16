@@ -44,7 +44,9 @@ struct OriginalViewer: View {
         ZStack {
             Color.black.ignoresSafeArea()
             if let image = shownImage {
-                ZoomableImage(image: image, tiles: shownOff.isEmpty ? tiles : [], whole: whole) {
+                ZoomableImage(
+                    image: image, tiles: shownOff.isEmpty ? tiles : [], whole: whole, look: Treatment.look(shownOff)
+                ) {
                     withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() }
                 }
                 .ignoresSafeArea()
@@ -179,12 +181,7 @@ struct OriginalViewer: View {
             if !line.isEmpty {
                 Text(line).font(.footnote).opacity(0.75)
             }
-            if let before = Treatment.before(shownOff, kind: ColourRecovery.kind(item.cleanedShown)) {
-                Text(before)
-                    .font(.caption.weight(.semibold))
-                    .opacity(0.8)
-                    .padding(.top, 2)
-            } else if !tiles.isEmpty {
+            if !tiles.isEmpty, shownOff.isEmpty {
                 Label("Przybliż, a ostrzejsze fragmenty (\(tiles.count)) doczytają się same",
                       systemImage: "square.grid.3x3")
                     .font(.caption)
@@ -375,6 +372,9 @@ struct ZoomableImage: UIViewRepresentable {
     var tiles: [ZoomTile] = []
     /// Opened whole (fitted), not filling the view.
     var whole = false
+    /// Which version of the work the picture is (`Treatment.look`): a new
+    /// one fades in over the one before, a sharper copy of the same does not.
+    var look = 0
     var onTap: () -> Void = {}
 
     func makeUIView(context: Context) -> ZoomScrollView { ZoomScrollView() }
@@ -382,7 +382,7 @@ struct ZoomableImage: UIViewRepresentable {
     func updateUIView(_ view: ZoomScrollView, context: Context) {
         view.onTap = onTap
         view.startsWhole = whole
-        view.show(image)
+        view.show(image, look: look)
         view.lay(tiles)
     }
 }
@@ -396,6 +396,9 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
     private var fillScale: CGFloat = 1
     /// Laid out whole (the smallest scale) rather than filling the view.
     var startsWhole = false
+    /// The version of the work shown (`ZoomableImage.look`).
+    private var shownLook = 0
+    static let lookFade: TimeInterval = 0.18
     /// Sharper pictures of parts of it, laid on it while zooming in.
     private var tiles: [ZoomTile] = []
     /// The tiles on the picture now, by id, and the size each was asked in.
@@ -435,12 +438,23 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
 
     /// A sharper copy of the same picture keeps the zoom and place; another
     /// shape is fitted afresh.
-    func show(_ image: UIImage) {
+    func show(_ image: UIImage, look: Int = 0) {
         guard imageView.image !== image else { return }
         let sameShape = imageView.image.map {
             abs($0.size.width / max($0.size.height, 1) - image.size.width / max(image.size.height, 1)) < 0.01
         } ?? false
-        imageView.image = image
+        if look != shownLook, imageView.image != nil {
+            // The work with or without what was done to it: a quick fade,
+            // not a jump (Mateusz 2026-11-16: "Bardzo szybkie, ale przejście").
+            UIView.transition(
+                with: imageView, duration: Self.lookFade,
+                options: [.transitionCrossDissolve, .allowUserInteraction, .beginFromCurrentState],
+                animations: { self.imageView.image = image }
+            )
+        } else {
+            imageView.image = image
+        }
+        shownLook = look
         if !sameShape {
             fitted = .zero
             setNeedsLayout()

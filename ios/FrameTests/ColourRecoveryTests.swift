@@ -107,11 +107,10 @@ final class ColourRecoveryTests: XCTestCase {
         XCTAssertTrue(url.contains("/api/library/items/met:1/treated"), url)
         XCTAssertTrue(url.contains("restored=false") && url.contains("cleaned=true") && url.contains("v=v1"), url)
 
-        XCTAssertNil(Treatment.before([], kind: .varnish))
-        XCTAssertEqual(Treatment.before([.colours], kind: .varnish), "Przed zdjęciem werniksu")
-        XCTAssertEqual(Treatment.before([.colours], kind: .paper), "Przed odżółceniem papieru")
-        XCTAssertEqual(Treatment.before([.restored], kind: nil), "Przed restauracją dzieła")
-        XCTAssertEqual(Treatment.before([.colours, .restored], kind: .varnish), "Przed korektą barw i restauracją dzieła")
+        // Each version of the work is told apart, so the viewer fades between them.
+        let looks = [Set<Treatment>(), [.colours], [.restored], [.colours, .restored]].map(Treatment.look)
+        XCTAssertEqual(Set(looks).count, 4)
+        XCTAssertEqual(Treatment.look([]), 0)
         XCTAssertEqual(LowRes.restoredName, "Restauracja dzieła")
     }
 
