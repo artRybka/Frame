@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.180
+
+- Kadrowanie grafiki leżącej wśród tablicy barw i linijki (Erichsøe,
+  „Selvportræt med Violin”, SMK): pokazuje się sama płyta, a nie kartka
+  razem z tablicą. Model nie wątpi już w płytę tylko dlatego, że kartka
+  wychodzi poza zdjęcie albo leży pod tablicą barw. Dzieło obejrzane
+  wcześniej i zostawione bez kadru jest przy otwarciu karty sprawdzane
+  ponownie (dotąd nigdy, bez śladu w logu). Bok kartki leżący na brzegu
+  zdjęcia zostaje na brzegu. Log mówi, co kadrowanie postanowiło.
+
 ## 1.145.179
 
 - Nowy wygląd kroku Opis przy dodawaniu własnego dzieła i w „Edytuj opis”:
