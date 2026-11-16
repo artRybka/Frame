@@ -1032,7 +1032,8 @@ struct ArtworkInfo: View {
     /// The title held once: the museum's own shows until held again ("Tytuł w oryginale").
     @State private var peeking = false
 
-    /// How much smaller than on the work's card its bar of colours is here.
+    /// How much smaller than it is painted (`Paint.bar`) its bar of colours
+    /// is here: 13 pt, under the 18 of the work's card (`Paint.shown`).
     static let slim: CGFloat = 0.5
 
     private var shown: PolishText? { asked ?? polish }

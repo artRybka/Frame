@@ -650,9 +650,15 @@ enum Paint {
     /// Pixels to a point: the paint is soft, and a third pixel would cost
     /// twice the work for nothing the eye finds.
     static let scale = 2
-    /// The palette bar's height, and how far round it (and round a paint's
-    /// swatch) the picture goes on: paint runs over the edge.
+    /// The palette bar's height as it is painted, and how far round it
+    /// (and round a paint's swatch) the picture goes on: paint runs over
+    /// the edge.
     static let bar = 26.0
+    /// The bar's height as a work's card and the day's picks show it: the
+    /// bar painted at `bar` for a place that much wider, then made smaller,
+    /// so every technique's strokes keep their look, only finer (Mateusz
+    /// 2026-11-16 17:39: „Dajmy 18 pt zamiast 26.”).
+    static let shown = 18.0
     static let pad = 16.0
     /// The least of the bar a colour takes where each has a place of its
     /// own along it (watercolour, pastel): an accent of a hundredth of

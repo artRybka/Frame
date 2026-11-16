@@ -629,7 +629,7 @@ struct DailyView: View {
                                              began: { painted[item.id] = ($0, $1) }, relief: Paint.relief(item),
                                              contour: ContourLine(item), gold: Gold.kind(medium: item.medium, style: style))
                             } else {
-                                PaletteStrip(swatches: item.colors, height: 26, cornerRadius: 6)
+                                PaletteStrip(swatches: item.colors, height: Paint.shown, cornerRadius: 6)
                             }
                         }
                         if !work.colour.isEmpty { prose(work.colour) }
