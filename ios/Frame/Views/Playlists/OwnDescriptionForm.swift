@@ -167,7 +167,8 @@ struct OwnDescriptionForm: View {
     }
 
     private func sizeField(_ prompt: String, text value: Binding<String>, alignment: TextAlignment) -> some View {
-        TextField(prompt, text: value)
+        // No prompt once a number is in: a field keeps its prompt's width.
+        TextField(value.wrappedValue.isEmpty ? prompt : "", text: value)
             .keyboardType(.decimalPad)
             .multilineTextAlignment(alignment)
             .foregroundStyle(Theme.ink)
