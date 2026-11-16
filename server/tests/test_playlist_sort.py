@@ -9,7 +9,8 @@ from fastapi.testclient import TestClient
 
 from frame_server.library import Item, ItemKind, Library, PlaylistRules
 from frame_server.library.models import Playlist, PlaylistKind, PlaylistSort, SharperCopy
-from frame_server.library.repo import ordered
+from frame_server.library.repo import ordered, sent_key
+from frame_server.library.viewer import OWNER_ID
 
 
 def _item(
@@ -145,6 +146,74 @@ def test_a_manual_playlist_keeps_its_order_of_adding_until_sorted(tmp_path) -> N
     assert _ids(library.playlist_items(latest)) == ["2", "1", "3"]
     by_year = playlist.model_copy(update={"sort": PlaylistSort(key="year")})
     assert _ids(library.playlist_items(by_year)) == ["2", "3", "1"]
+
+
+def test_ulubione_by_when_added_is_by_when_liked(tmp_path) -> None:
+    """Mateusz 2026-11-16: "nowopolubione dzieła nie trafiają na górę listy"
+    with Ulubione "Ostatnio dodane": it went by the work's joining the
+    library, not by the heart."""
+    library = Library(tmp_path / "lib.db")
+    library.upsert(_item(1, added_at="2026-10-01T10:00:00+00:00"))  # long in the library
+    library.upsert(_item(2, added_at="2026-11-15T10:00:00+00:00"))
+    library.upsert(_item(3, added_at="2026-11-15T09:00:00+00:00"))
+    library.upsert(_item(4, added_at="2026-11-01T10:00:00+00:00"))
+    # Hearts moved over from before there were people: one time for all.
+    library.set_favorite(OWNER_ID, "wikiart:2", True, at="2026-10-20T08:00:00+00:00")
+    library.set_favorite(OWNER_ID, "wikiart:3", True, at="2026-10-20T08:00:00+00:00")
+    library.set_favorite(OWNER_ID, "wikiart:4", True, at="2026-11-10T08:00:00+00:00")
+    library.set_favorite(OWNER_ID, "wikiart:1", True, at="2026-11-16T06:50:00+00:00")
+    ulubione = library.save_playlist(
+        Playlist(
+            name="Ulubione",
+            kind=PlaylistKind.SMART,
+            rules=PlaylistRules(favorites_only=True),
+            sort=PlaylistSort(key="added"),
+        )
+    )
+    # The newest heart first; the moved ones by their joining the library.
+    assert _ids(library.playlist_items(ulubione)) == ["1", "4", "2", "3"]
+    oldest = ulubione.model_copy(update={"sort": PlaylistSort(key="added", reverse=True)})
+    assert _ids(library.playlist_items(oldest)) == ["3", "2", "4", "1"]
+
+
+def test_a_manual_playlist_by_when_added_is_by_joining_it(tmp_path) -> None:
+    """Mateusz 2026-11-16: "na playlistach ręcznych liczmy datę dodania do
+    nich": a work long in the library, added to the playlist now, is first."""
+    library = Library(tmp_path / "lib.db")
+    library.upsert(_item(1, added_at="2026-10-01T10:00:00+00:00"))
+    library.upsert(_item(2, added_at="2026-11-15T10:00:00+00:00"))
+    playlist = library.save_playlist(
+        Playlist(
+            name="Moje",
+            kind=PlaylistKind.MANUAL,
+            item_ids=["wikiart:2"],
+            sort=PlaylistSort(key="added"),
+        )
+    )
+    playlist = library.save_playlist(
+        playlist.model_copy(update={"item_ids": [*playlist.item_ids, "wikiart:1"]})
+    )
+    assert _ids(library.playlist_items(playlist)) == ["1", "2"]
+
+
+def test_the_sent_history_is_the_latest_sent_first(tmp_path) -> None:
+    """ "Historia przesłanych" keeps each photo sent first in its ids: its
+    "added" turns that round, so it reads like any other playlist."""
+    library = Library(tmp_path / "lib.db")
+    for n in (1, 2, 3):
+        library.upsert(_item(n))
+    history = library.save_playlist(
+        Playlist(
+            name="Historia przesłanych",
+            kind=PlaylistKind.MANUAL,
+            item_ids=["wikiart:3", "wikiart:1", "wikiart:2"],  # 3 sent last
+        )
+    )
+    library.set_state(sent_key(OWNER_ID), history.id)
+    assert _ids(library.playlist_items(history)) == ["3", "1", "2"]
+    assert library.playlist_summary(history).sort == PlaylistSort(key="added")
+    first = history.model_copy(update={"sort": PlaylistSort(key="added", reverse=True)})
+    assert _ids(library.playlist_items(first)) == ["2", "1", "3"]
 
 
 def test_the_app_sets_the_order_and_the_frame_follows(service) -> None:

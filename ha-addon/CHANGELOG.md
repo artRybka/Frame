@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.145.181
+
+- Ulubione posortowane „Ostatnio dodane” stawiają na górze dzieła polubione
+  ostatnio. Dotąd liczyła się data trafienia dzieła do biblioteki, więc
+  serduszko na dziele znanym od dawna zostawiało je daleko w dół listy.
+  Serce przeniesione na lepszą kopię dzieła zachowuje swoją datę.
+- W playlistach ręcznych „Ostatnio dodane” liczy dodanie dzieła do tej
+  playlisty, a nie do biblioteki. W „Historii przesłanych” na górze jest
+  ostatnio przesłane zdjęcie także po wybraniu „Ostatnio dodane” (dotąd
+  wychodziło odwrotnie).
+
 ## 1.145.180
 
 - Kadrowanie grafiki leżącej wśród tablicy barw i linijki (Erichsøe,
