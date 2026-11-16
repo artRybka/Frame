@@ -411,8 +411,10 @@ final class OwnScanGuide {
     /// Not turning just now (the photograph will not blur).
     var steady = false
 
-    @ObservationIgnored private let motion = CMMotionManager()
+    /// One for the app, as Apple asks (the view's state is made anew often).
+    private static let motion = CMMotionManager()
     @ObservationIgnored private var last: TimeInterval?
+    private var motion: CMMotionManager { Self.motion }
 
     var available: Bool { motion.isDeviceMotionAvailable }
 
