@@ -12,7 +12,9 @@ struct OwnScanSketch: View {
     @Environment(\.dismiss) private var dismiss
     private let look = Look(rawValue: UserDefaults.standard.string(forKey: "scanLook") ?? "") ?? .measure
     private let photo = DemoOwn.photo()
-    private let clean = DemoOwn.photo(glare: false)
+    private let clean = DemoOwn.photo(glare: 0)
+    /// A plain reflection, for the comparison.
+    private let glary = DemoOwn.photo(glare: 0.75)
 
     var body: some View {
         ZStack {
@@ -236,8 +238,8 @@ struct OwnScanSketch: View {
             }
             .padding(.horizontal, Theme.gutter)
             Spacer(minLength: 0)
-            if let photo, let clean {
-                let before = DemoOwn.cut(photo, corners: DemoOwn.work, own: nil)
+            if let glary, let clean {
+                let before = DemoOwn.cut(glary, corners: DemoOwn.work, own: nil)
                 let after = DemoOwn.cut(clean, corners: DemoOwn.work, own: nil)
                 VStack(spacing: 10) {
                     comparison(before: before, after: after)
