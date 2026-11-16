@@ -310,7 +310,7 @@ struct ArtCard: View {
                 + Text(Image(systemName: LowRes.restoredSymbol))
                     .font(.system(size: 11.5, weight: .medium))
                     .foregroundStyle(LowRes.tint)
-            label += ", odnowione przez kreatywnego restauratora"
+            label += ", odnowione restauracją dzieła"
         } else if let side = item.lowSide, side > 0 {
             text = text
                 + Text("\u{00A0}").font(font)
@@ -1236,7 +1236,7 @@ enum LowRes {
     /// Mateusz 2026-11-12): AI's sparkles in the same amber, in place of
     /// the dots.
     static let restoredSymbol = "sparkles"
-    static let restoredName = "Kreatywny restaurator"
+    static let restoredName = "Restauracja dzieła"
     /// The marks' grey, not a warning's amber (Mateusz 2026-11-14: the
     /// low resolution's, the restorer's and the crop's marks grey).
     static let tint = Theme.inkSoft
@@ -1307,7 +1307,7 @@ enum TitleYear {
         if restored,
            let badge = badge("", scheme: scheme, scale: scale, symbol: LowRes.restoredSymbol, soft: true) {
             text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)
-            label += ", odnowione przez kreatywnego restauratora"
+            label += ", odnowione restauracją dzieła"
         } else if let lowSide, lowSide > 0,
            let badge = badge("\(lowSide) px", scheme: scheme, scale: scale, symbol: LowRes.symbol, soft: true) {
             text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)

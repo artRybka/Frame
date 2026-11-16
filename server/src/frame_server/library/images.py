@@ -494,6 +494,9 @@ OWNED = "owned:"
 OWNED_SOURCE = "owned"
 #: The longest side such a copy is kept in.
 OWNED_MAX = 8000
+#: How many museum photographs of drawn works the viewer's buttons hold
+#: (:meth:`ImageCache.treated`).
+BEFORE_DRAWN_KEPT = 4
 
 
 class ImageCache:
@@ -544,6 +547,11 @@ class ImageCache:
         self._sizes_path = root / "sizes.json"
         self._sizes: dict[str, list[int]] = self._load_sizes()
         self._locks: dict[str, threading.Lock] = {}
+        #: The museum's own photographs of works the restorer drew again,
+        #: downloaded for the full-screen viewer (:meth:`treated`), by
+        #: address: the last few, so its buttons switch back and forth
+        #: without asking the museum each time.
+        self._before_drawn: dict[str, Image.Image] = {}
         self._gates: dict[str, HostGate] = {}
         self._guard = threading.Lock()
         self.sleep: Callable[[float], None] = time.sleep
@@ -843,6 +851,48 @@ class ImageCache:
         img = load_image(self.museum_photo(item, urgent))
         quad = self._quad(item, img.size)
         return warp(img, quad, ratio=self._ratio(item)) if quad is not None else img
+
+    def treated(
+        self, item: Item, *, restored: bool, cleaned: bool, side: int, urgent: bool = False
+    ) -> Image.Image:
+        """The work as it is shown, with the restorer's drawing
+        (``SharperCopy.restored``) or its cleaning (``Item.cleaned``) left
+        off: the full-screen viewer's two buttons ("Kliknięcie/odkliknięcie
+        pokazuje podgląd z i bez korekt/poprawy", Mateusz 2026-11-16). Cut
+        down to the work as the picture shown is, no longer than ``side``.
+
+        Without the drawing it is the museum's own photograph, which is not
+        kept once the drawing took its place: downloaded again (and held
+        for a while). A cleaning goes with it when it was read on that
+        photograph, a cut when it was set on it, as they would on the work
+        shown so ("Przywróć zdjęcie muzeum")."""
+        shown = item if cleaned else item.model_copy(update={"cleaned": None})
+        drawn = item.sharper is not None and item.sharper.restored
+        if drawn and not restored:
+            shown = shown.model_copy(update={"sharper": None})
+            img = self._own_before_drawn(item, urgent)
+        else:
+            img = load_image(self.museum_photo(item, urgent))
+        made = self._shown(shown, img, side)
+        if made is not None:
+            return made
+        img = img.convert("RGB")
+        if max(img.size) > side:
+            img.thumbnail((side, side), Image.Resampling.LANCZOS)
+        return img
+
+    def _own_before_drawn(self, item: Item, urgent: bool) -> Image.Image:
+        url = own_copy(item)
+        with self._guard:
+            kept = self._before_drawn.get(url)
+        if kept is not None:
+            return kept
+        img = self.sample(url, urgent)
+        with self._guard:
+            self._before_drawn[url] = img
+            while len(self._before_drawn) > BEFORE_DRAWN_KEPT:
+                del self._before_drawn[next(iter(self._before_drawn))]
+        return img
 
     def tile(self, thumb: Path) -> Path:
         """The thumbnail ``thumb`` as a cover tile shows it: the work

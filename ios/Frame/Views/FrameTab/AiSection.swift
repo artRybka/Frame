@@ -48,7 +48,7 @@ struct AiSection: View {
 
     private var geminiBody: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Gemini (Google)", subtitle: "Arkusze kompozycji, szukanie wyglądem, restaurator")
+            SectionHeader(title: "Gemini (Google)", subtitle: "Arkusze kompozycji, szukanie wyglądem, restauracja dzieł")
             Card {
                 if let limit = settings.geminiMonthlyLimitUsd {
                     if settings.geminiKeySet != true {

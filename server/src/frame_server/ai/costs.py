@@ -62,7 +62,7 @@ CLAUDE = (
 GEMINI = (
     Row("drawn", "Arkusze kompozycji", ("sheet",)),
     Row("looks", "Szukanie wyglądem", ("looks",)),
-    Row("restorer", "Kreatywny restaurator", ("restorer",)),
+    Row("restorer", "Restauracja dzieł", ("restorer",)),
 )
 
 OTHER = Row("other", "Inne", ())

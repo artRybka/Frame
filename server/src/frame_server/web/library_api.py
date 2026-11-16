@@ -1182,6 +1182,33 @@ async def cleaned_before(
     return Response(data, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
 
 
+@router.get("/library/items/{item_id:item}/treated")
+async def treated(
+    item_id: str,
+    svc: Svc,
+    restored: bool = True,
+    cleaned: bool = True,
+    side: Annotated[int, Query(ge=64, le=4096)] = 4096,
+) -> Response:
+    """The work as it is shown, with the restorer's drawing or its colours'
+    correction left off (``restored=false``, ``cleaned=false``): the
+    full-screen viewer's two buttons (Mateusz 2026-11-16)."""
+    item = await _work(svc, item_id, threads=SHOWN_THREADS)
+
+    def build() -> bytes:
+        img = svc.images.treated(item, restored=restored, cleaned=cleaned, side=side, urgent=True)
+        return encode_image(img, "jpeg", quality=90)
+
+    try:
+        data = await to_thread.run_sync(build, limiter=SHOWN_THREADS)
+    except Gone as err:
+        raise HTTPException(410, f"no picture anywhere: {err}") from err
+    except (httpx.HTTPError, OSError) as err:
+        raise HTTPException(502, f"image unavailable: {err}") from err
+    # The address carries the picture's version (the app's `v`).
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
+
+
 _preview_locks: dict[str, asyncio.Lock] = {}
 PREVIEW_CACHE_FILES = 200
 #: How long a preview waits for the work's Polish texts (asked first in line).

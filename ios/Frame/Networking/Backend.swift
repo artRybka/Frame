@@ -22,6 +22,10 @@ enum ImageRef: Hashable, Sendable {
     /// picture as it came, for the card's comparison; `version` keeps
     /// another picture apart.
     case beforeCleaning(String, version: String)
+    /// The work as it is shown, with the restorer's drawing or its colours'
+    /// correction left off (`restored`, `cleaned` false): the full-screen
+    /// viewer's buttons; `version` keeps another picture apart.
+    case treated(String, restored: Bool, cleaned: Bool, version: String)
     /// One tile of a work kept larger than its original (`FineView`);
     /// `version` is the tiles' stamp.
     case fine(String, tile: String, version: String)

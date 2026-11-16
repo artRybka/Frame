@@ -272,6 +272,26 @@ def test_the_drawing_has_a_thumbnail(app: Any) -> None:
     assert client.get("/api/library/items/owned:nothing.jpg/thumb").status_code == 404
 
 
+def test_the_viewer_shows_the_museums_picture_beside_the_drawing(app: Any) -> None:
+    """The full-screen viewer's button (Mateusz 2026-11-16): the work
+    without the restorer's drawing is the museum's own photograph."""
+    client, service, _web, _painter = app
+    own = _small(service, favorite=True)
+    assert client.post(f"/api/library/items/{own.id}/restore").status_code == 200
+
+    def size(**query: Any) -> tuple[int, int]:
+        resp = client.get(f"/api/library/items/{own.id}/treated", params=query)
+        assert resp.status_code == 200, resp.text
+        assert resp.headers["content-type"] == "image/jpeg"
+        with Image.open(io.BytesIO(resp.content)) as img:
+            return img.size
+
+    assert size() == (1803, 1200)
+    assert size(restored="false") == SMALL
+    assert size(restored="false", cleaned="false") == SMALL
+    assert size(side=600) == (600, 399)
+
+
 def test_fit() -> None:
     assert fit((900, 600), Image.new("RGB", (1800, 1200))).size == (1800, 1200)
     assert fit((900, 600), Image.new("RGB", (1840, 1200))).size == (1840, 1227)

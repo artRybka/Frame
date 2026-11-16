@@ -247,6 +247,30 @@ def test_another_copy_is_left_as_it_comes_and_the_restorers_drawing_is_cleaned(s
     assert _warmth(Image.open(svc.images.image_path(oil))) < 1.35
     assert _warmth(Image.open(svc.images.full_path(oil))) > 1.6
 
+    # The full-screen viewer's buttons (Mateusz 2026-11-16): the drawing
+    # without its cleaning, and the museum's own photograph (downloaded
+    # again, not kept) with and without it.
+    asked: list[str] = []
+
+    def own_photo(url: str, urgent: bool = False) -> Image.Image:
+        asked.append(url)
+        return _under_varnish(_painting(), 0.8).resize((120, 90))
+
+    svc.images.sample = own_photo  # type: ignore[method-assign]
+
+    def treated(restored: bool, cleaned: bool) -> Image.Image:
+        return svc.images.treated(kept, restored=restored, cleaned=cleaned, side=4096)
+
+    both = treated(True, True)
+    assert _warmth(both) < 1.35 and both.size == Image.open(svc.images.image_path(oil)).size
+    assert _warmth(treated(True, False)) > 1.6
+    plain = (slice(41, 56), slice(75, 101))  # LINEN at the own photograph's size
+    own_cleaned, own_plain = treated(False, True), treated(False, False)
+    assert own_cleaned.size == own_plain.size == (120, 90)
+    assert _warmth(own_cleaned, plain) < 1.35 < 1.6 < _warmth(own_plain, plain)
+    assert asked == ["https://images.example/x.jpg"]  # held between the two
+    assert max(svc.images.treated(kept, restored=True, cleaned=True, side=64).size) == 64
+
     # A drawing of a picture that was not shown cleaned is left as drawn.
     other = _keep(svc, _under_varnish(_painting(), 0.8), number=2, year=1650)
     cleaned = svc.cleaning.clean(other, "oil")

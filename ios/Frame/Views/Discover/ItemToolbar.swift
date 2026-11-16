@@ -18,8 +18,9 @@ struct ItemToolbar: ToolbarContent {
     var pictureSide: Int? = nil
     /// "Przywróć zdjęcie muzeum", while a copy stands in for the work's own.
     var keepOwn: () -> Void = {}
-    /// "Kreatywny restaurator", under "Szukaj lepszej kopii": for a picture
-    /// small for the frame (`LowRes`), drawn again by the image model.
+    /// "Restauracja dzieła" (once "Kreatywny restaurator"), under the
+    /// colours' correction: for a picture small for the frame (`LowRes`),
+    /// drawn again by the image model.
     var restore: (() -> Void)? = nil
     /// "Popraw kadr" / "Przytnij zdjęcie": the corners of the work on its
     /// museum photograph, on a screen of their own (Mateusz 2026-11-14).
@@ -116,8 +117,8 @@ struct ItemToolbar: ToolbarContent {
                         }
                     }
                 }
+                if recover != nil || restore != nil { Divider() }
                 if let recover {
-                    Divider()
                     Button(action: recover) {
                         Label {
                             Text(ColourRecovery.menuTitle(recoveryKind, on: cleaned))
@@ -131,6 +132,18 @@ struct ItemToolbar: ToolbarContent {
                         }
                     }
                 }
+                // Right under the colours' correction, as the other way of
+                // giving the work back (Mateusz 2026-11-16).
+                if let restore {
+                    Button(action: restore) {
+                        Label {
+                            Text(LowRes.restoredName)
+                            Text("Model AI dorysuje szczegóły")
+                        } icon: {
+                            Image(systemName: LowRes.restoredSymbol)
+                        }
+                    }
+                }
                 if hasCopies || !item.url.isEmpty { Divider() }
                 if hasCopies {
                     Button { findingCopies = true } label: {
@@ -139,16 +152,6 @@ struct ItemToolbar: ToolbarContent {
                             Text(copiesNote)
                         } icon: {
                             Image(systemName: "plus.magnifyingglass")
-                        }
-                    }
-                    if let restore {
-                        Button(action: restore) {
-                            Label {
-                                Text("Kreatywny restaurator")
-                                Text("Model AI dorysuje szczegóły")
-                            } icon: {
-                                Image(systemName: LowRes.restoredSymbol)
-                            }
                         }
                     }
                     if item.sharper != nil {

@@ -16,7 +16,7 @@ struct RestorerSection: View {
         // the section waited for its numbers for ever.
         VStack(alignment: .leading, spacing: 16) {
             if let state {
-                SectionHeader(title: "Kreatywny restaurator", subtitle: "Dzieła w niskiej rozdzielczości")
+                SectionHeader(title: "Restauracja dzieł", subtitle: "Dzieła w niskiej rozdzielczości")
                 Card { content(state) }
             }
         }
