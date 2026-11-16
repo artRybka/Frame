@@ -66,7 +66,53 @@ final class ColourRecoveryTests: XCTestCase {
         XCTAssertEqual(ColourRecovery.menuTitle(.varnish, on: true), "Przywróć werniks")
         XCTAssertEqual(ColourRecovery.menuTitle(.paper, on: true), "Przywróć ton papieru")
         XCTAssertEqual(CleanedMark.spoken, "barwy skorygowane")
-        XCTAssertTrue(ColourRecovery.note(.varnish).contains("Rachunek, nie konserwacja"))
+    }
+
+    /// The full-screen viewer's buttons under the cross (Mateusz
+    /// 2026-11-16): only for what was done, the colours' first; a tap asks
+    /// the server for the picture without it.
+    func testTheViewersButtonsAreOnlyForWhatWasDone() async throws {
+        let plain = try await work()
+        XCTAssertEqual(Treatment.done(on: plain), [])
+
+        var cleaned = plain
+        cleaned.cleaned = Cleaned(kind: "varnish", made: "oil", strength: 0.5, picture: "", at: "t1")
+        XCTAssertEqual(Treatment.done(on: cleaned), [.colours])
+
+        var both = cleaned
+        both.sharper = copy
+        both.sharper?.restored = true
+        both.cleaned?.drawn = "wmc:9"
+        XCTAssertEqual(Treatment.done(on: both), [.colours, .restored])
+
+        // Another copy picked is no treatment, and its picture is not cleaned.
+        var picked = cleaned
+        picked.sharper = copy
+        XCTAssertEqual(Treatment.done(on: picked), [])
+
+        XCTAssertNil(Treatment.ref(both, off: []))
+        XCTAssertEqual(
+            Treatment.ref(both, off: [.restored]),
+            .treated(both.id, restored: false, cleaned: true, version: both.pictureVersion)
+        )
+        XCTAssertEqual(
+            Treatment.ref(both, off: [.colours, .restored]),
+            .treated(both.id, restored: false, cleaned: false, version: both.pictureVersion)
+        )
+        let request = try XCTUnwrap(
+            LiveBackend(baseURL: URL(string: "http://frame.local:8099")!, token: "t")
+                .request(for: .treated("met:1", restored: false, cleaned: true, version: "v1"))
+        )
+        let url = try XCTUnwrap(request.url?.absoluteString)
+        XCTAssertTrue(url.contains("/api/library/items/met:1/treated"), url)
+        XCTAssertTrue(url.contains("restored=false") && url.contains("cleaned=true") && url.contains("v=v1"), url)
+
+        XCTAssertNil(Treatment.before([], kind: .varnish))
+        XCTAssertEqual(Treatment.before([.colours], kind: .varnish), "Przed zdjęciem werniksu")
+        XCTAssertEqual(Treatment.before([.colours], kind: .paper), "Przed odżółceniem papieru")
+        XCTAssertEqual(Treatment.before([.restored], kind: nil), "Przed restauracją dzieła")
+        XCTAssertEqual(Treatment.before([.colours, .restored], kind: .varnish), "Przed korektą barw i restauracją dzieła")
+        XCTAssertEqual(LowRes.restoredName, "Restauracja dzieła")
     }
 
     /// A work the server sends cleaned: shown so, its pictures had anew, a

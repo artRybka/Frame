@@ -454,7 +454,7 @@ struct PlaylistDetailView: View {
             askingRestore = true
         } label: {
             Label {
-                Text("Kreatywny restaurator")
+                Text("Restauracja dzieł")
                 Text(restorerLine(state))
             } icon: {
                 Image(systemName: LowRes.restoredSymbol)

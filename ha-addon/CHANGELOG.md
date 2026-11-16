@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.145.191
+
+- W menu „…” dzieła „Kreatywny restaurator” nazywa się teraz
+  „Restauracja dzieła” i stoi zaraz pod „Zdejmij werniks” / „Odżółć
+  papier”.
+- Dzieło po korekcie barw nie ma już pod obrazem opisu ani odnośnika do
+  porównania. Wystarczają znaczki przy tytule.
+- Na pełnym ekranie pod krzyżykiem są okrągłe przyciski z kroplą (korekta
+  barw) i z iskrami (restauracja), tylko gdy dzieło je przeszło.
+  Dotknięcie pokazuje dzieło bez tej poprawki, drugie dotknięcie wraca.
+
 ## 1.145.190
 
 - Zdjęcia z boku mają celownik: okrąg na środku kadru i znacznik na

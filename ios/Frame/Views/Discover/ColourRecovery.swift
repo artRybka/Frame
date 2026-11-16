@@ -15,9 +15,10 @@ import SwiftUI
 /// So the menu's entry asks the server for the work cleaned
 /// (`Backend.clean`, `Item.cleaned`): the picture everywhere, the frame's
 /// too, its colours and colour bar measured on it. The same entry gives
-/// it up. The card says what was done in a line under the picture, and
-/// that line opens the comparison with the picture as it came
-/// (`RecoveryWipe`). No model is asked.
+/// it up. The card says what was done by a mark at the title, and the
+/// full-screen viewer shows the work with and without it (`Treatment`;
+/// Mateusz 2026-11-16, in place of a line and a comparison under the
+/// picture). No model is asked.
 enum ColourRecovery {
     enum Kind: Equatable {
         case varnish, paper
@@ -80,24 +81,11 @@ enum ColourRecovery {
         return kind == .varnish ? "Werniks zdjęty" : "Papier odżółcony"
     }
 
-    /// The comparison's two sides.
-    static let beforeLabel = "Przed korektą"
-    static func afterLabel(_ kind: Kind) -> String {
-        kind == .varnish ? "Bez werniksu" : "Papier odżółcony"
-    }
-
-    /// The line under the picture of a work shown cleaned.
-    static func note(_ kind: Kind) -> String {
-        kind == .varnish
-            ? "Barwy bez pożółkłego werniksu. Rachunek, nie konserwacja."
-            : "Papier odżółcony rachunkiem. Kreska i barwy z oryginału."
-    }
-
     // MARK: The demo
 
     /// The demo and its screenshots have no server to keep the picture as
-    /// it came: the comparison's "before" is the picture as if under an
-    /// aged varnish (the server's `ALPHA` at 0.5).
+    /// it came: the viewer's "before" is the picture as if under an aged
+    /// varnish (the server's `ALPHA` at 0.5).
     static func underVarnish(_ picture: UIImage) -> UIImage {
         guard let source = picture.cgImage else { return picture }
         let filter = CIFilter.colorMatrix()
@@ -122,93 +110,5 @@ enum ColourRecovery {
     @MainActor static func keep(_ view: RecoveryView, for key: String) {
         if known.count > 400 { known.removeAll() }
         known[key] = view
-    }
-}
-
-/// The picture as it came over the cleaned one on the card, wiped by a
-/// divider: left of it the work before the correction, right of it the
-/// work as it is shown. Only the handle is dragged, so the page still
-/// scrolls over the picture.
-struct RecoveryWipe: View {
-    /// The picture before the correction, the size and shape of the one
-    /// under it; nil while it is had.
-    let before: UIImage?
-    let kind: ColourRecovery.Kind
-    /// Where the divider is, as a share of the width.
-    @Binding var split: Double
-    /// Where the divider was when the finger came down.
-    @State private var grabbed: Double?
-
-    static let handle: CGFloat = 36
-
-    var body: some View {
-        GeometryReader { proxy in
-            let width = proxy.size.width
-            let x = width * split
-            ZStack(alignment: .topLeading) {
-                if let before {
-                    Image(uiImage: before)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: width, height: proxy.size.height)
-                        .mask(alignment: .leading) {
-                            Rectangle().frame(width: max(x, 0))
-                        }
-                        .transition(.opacity)
-                }
-                HStack(alignment: .top) {
-                    tag(ColourRecovery.beforeLabel).opacity(x > 120 ? 1 : 0)
-                    Spacer(minLength: 0)
-                    tag(ColourRecovery.afterLabel(kind)).opacity(width - x > 130 ? 1 : 0)
-                }
-                .padding(8)
-                .allowsHitTesting(false)
-                Rectangle()
-                    .fill(.white)
-                    .frame(width: 2, height: proxy.size.height)
-                    .shadow(color: .black.opacity(0.35), radius: 2)
-                    .offset(x: x - 1)
-                    .allowsHitTesting(false)
-                Image(systemName: "chevron.left.chevron.right")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.black.opacity(0.75))
-                    .frame(width: Self.handle, height: Self.handle)
-                    .background(.white, in: Circle())
-                    .shadow(color: .black.opacity(0.3), radius: 4, y: 1)
-                    // A finger's size, whatever the circle's.
-                    .frame(width: 52, height: 64)
-                    .contentShape(Rectangle())
-                    .offset(x: x - 26, y: proxy.size.height / 2 - 32)
-                    .highPriorityGesture(
-                        DragGesture(minimumDistance: 0, coordinateSpace: .global)
-                            .onChanged { drag in
-                                let from = grabbed ?? split
-                                grabbed = from
-                                split = min(max(from + drag.translation.width / max(width, 1), 0.04), 0.96)
-                            }
-                            .onEnded { _ in grabbed = nil }
-                    )
-                    .accessibilityElement()
-                    .accessibilityLabel("Porównanie: przed korektą i po niej")
-                    .accessibilityValue("\(Int(split * 100)) procent obrazu przed korektą")
-                    .accessibilityAdjustableAction { direction in
-                        let step = direction == .increment ? 0.1 : -0.1
-                        split = min(max(split + step, 0.04), 0.96)
-                    }
-                if before == nil {
-                    LoadingBadge(text: "Wczytuję obraz przed korektą…")
-                        .frame(width: width, height: proxy.size.height)
-                }
-            }
-        }
-    }
-
-    private func tag(_ text: String) -> some View {
-        Text(text)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(.black.opacity(0.45), in: Capsule())
     }
 }

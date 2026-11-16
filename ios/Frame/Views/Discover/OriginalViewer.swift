@@ -29,12 +29,22 @@ struct OriginalViewer: View {
     /// colours), and the tiles would not lie on it (Mateusz 2026-11-09,
     /// Bosch's "Garden" bluish under yellowish tiles, a giraffe beside a boar).
     @State private var underlay = false
+    /// What was done to the picture and is left off at the owner's tap on
+    /// its button under the cross (`Treatment`; Mateusz 2026-11-16): the
+    /// buttons say this at once…
+    @State private var off: Set<Treatment> = []
+    /// …and the picture this, once it has come: until then the one before
+    /// stays (no blink to the original between two left-off pictures).
+    @State private var shownOff: Set<Treatment> = []
+    /// The pictures with some left off, as they came, by what is left off.
+    @State private var treated: [Set<Treatment>: UIImage] = [:]
+    @State private var treatFailed = false
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if let image {
-                ZoomableImage(image: image, tiles: tiles, whole: whole) {
+            if let image = shownImage {
+                ZoomableImage(image: image, tiles: shownOff.isEmpty ? tiles : [], whole: whole) {
                     withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() }
                 }
                 .ignoresSafeArea()
@@ -48,14 +58,33 @@ struct OriginalViewer: View {
         }
         .overlay(alignment: .topTrailing) {
             if chrome {
-                Button(action: close) {
-                    Image(systemName: "xmark")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .frame(width: 40, height: 40)
-                        .background(.black.opacity(0.5), in: Circle())
+                VStack(alignment: .trailing, spacing: 12) {
+                    Button(action: close) {
+                        Image(systemName: "xmark")
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .frame(width: 40, height: 40)
+                            .background(.black.opacity(0.5), in: Circle())
+                    }
+                    .accessibilityLabel("Zamknij")
+                    // Under the cross, only for what was done (Mateusz
+                    // 2026-11-16, the places marked on his screenshot).
+                    ForEach(treatments, id: \.self) { treatment in
+                        TreatmentButton(
+                            treatment: treatment, on: !off.contains(treatment),
+                            loading: off != shownOff && off.contains(treatment) != shownOff.contains(treatment)
+                        ) { toggle(treatment) }
+                    }
+                    if treatFailed {
+                        Text("Nie udało się wczytać")
+                            .font(.caption)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(.black.opacity(0.5), in: Capsule())
+                            .transition(.opacity)
+                    }
                 }
-                .accessibilityLabel("Zamknij")
                 .padding(.trailing, 16)
                 .padding(.top, 8)
                 .transition(.opacity)
@@ -69,6 +98,11 @@ struct OriginalViewer: View {
         .accessibilityAction(.escape, close)
         .task(id: item.id) { await load() }
         .task(id: item.fragmentsID) { await loadTiles() }
+        .task(id: off) { await loadTreated() }
+        .onAppear {
+            // CI screenshots: the work shown without all that was done.
+            if model.demoMode, LaunchRoute.sheet == "untreated" { off = Set(treatments) }
+        }
         .onAppear { if brighten { ScreenBoost.shared.raise() } }
         // A swipe down starts closing long before the screen is gone: the
         // brightness goes back from its first frame (and comes up again
@@ -85,6 +119,46 @@ struct OriginalViewer: View {
             // iOS gives the owner's brightness back in the background.
             if phase == .background { ScreenBoost.shared.forget() }
             if phase == .active, brighten { ScreenBoost.shared.raise() }
+        }
+    }
+
+    /// What was done to the work's picture, in the buttons' order.
+    private var treatments: [Treatment] { Treatment.done(on: item) }
+
+    /// The picture with what is left off, once it came; else the work's.
+    private var shownImage: UIImage? {
+        shownOff.isEmpty ? image : treated[shownOff] ?? image
+    }
+
+    private func toggle(_ treatment: Treatment) {
+        UISelectionFeedbackGenerator().selectionChanged()
+        withAnimation(.easeInOut(duration: 0.2)) {
+            treatFailed = false
+            if off.contains(treatment) { off.remove(treatment) } else { off.insert(treatment) }
+        }
+    }
+
+    /// The picture with `off` left off, from the server (made there once
+    /// and kept in the app's cache by its address); the work's own at once
+    /// when nothing is. A picture that does not come puts the buttons back
+    /// as the picture shown is.
+    private func loadTreated() async {
+        let wanted = off
+        if wanted.isEmpty || treated[wanted] != nil {
+            shownOff = wanted
+            return
+        }
+        guard let ref = Treatment.ref(item, off: wanted), let request = model.backend.request(for: ref) else { return }
+        let loaded = try? await ImageLoader.shared.image(for: request, maxPixel: 4096, priority: .high)
+        if Task.isCancelled || wanted != off { return }
+        if let loaded {
+            treated[wanted] = model.demoMode ? Treatment.demo(loaded, off: wanted) : loaded
+            shownOff = wanted
+        } else {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                off = shownOff
+                treatFailed = true
+            }
         }
     }
 
@@ -105,7 +179,12 @@ struct OriginalViewer: View {
             if !line.isEmpty {
                 Text(line).font(.footnote).opacity(0.75)
             }
-            if !tiles.isEmpty {
+            if let before = Treatment.before(shownOff, kind: ColourRecovery.kind(item.cleanedShown)) {
+                Text(before)
+                    .font(.caption.weight(.semibold))
+                    .opacity(0.8)
+                    .padding(.top, 2)
+            } else if !tiles.isEmpty {
                 Label("Przybliż, a ostrzejsze fragmenty (\(tiles.count)) doczytają się same",
                       systemImage: "square.grid.3x3")
                     .font(.caption)

@@ -111,7 +111,7 @@ actor DemoBackend: FrameBackend {
         geminiCosts: [
             AiCost(key: "drawn", label: "Arkusze kompozycji", daysUsd: 0.9, periodUsd: 1.2),
             AiCost(key: "looks", label: "Szukanie wyglądem", daysUsd: 0.02, periodUsd: 0.05),
-            AiCost(key: "restorer", label: "Kreatywny restaurator", daysUsd: 0.1, periodUsd: 0.1),
+            AiCost(key: "restorer", label: "Restauracja dzieł", daysUsd: 0.1, periodUsd: 0.1),
         ]
     )
     private var demoAsleep = false
@@ -2371,7 +2371,7 @@ actor DemoBackend: FrameBackend {
         case let .thumb(id), let .tile(id): url = Self.bundled(id) ?? imageURLs[id]?.thumb
         case let .museumPhoto(id, _, _) where FileManager.default.fileExists(atPath: DemoFraming.uploadURL(id + "-full").path):
             url = DemoFraming.uploadURL(id + "-full")  // an own work's photograph whole
-        case let .image(id), let .original(id, _), let .museumPhoto(id, _, _), let .beforeCleaning(id, _), let .fine(id, _, _): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
+        case let .image(id), let .original(id, _), let .museumPhoto(id, _, _), let .beforeCleaning(id, _), let .treated(id, _, _, _), let .fine(id, _, _): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
         case let .framePreview(id, settings, framing, _):
             url = framed(id, settings, trying: framing) ?? Self.bundled(id) ?? imageURLs[id]?.thumb
         case let .path(path) where path.hasPrefix("/demo/detail/"):

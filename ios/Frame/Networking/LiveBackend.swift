@@ -1078,6 +1078,15 @@ struct LiveBackend: FrameBackend {
                 "/api/library/items/\(escape(id))/cleaned/before",
                 query: [URLQueryItem(name: "v", value: version)]
             )
+        case let .treated(id, restored, cleaned, version):
+            req = request(
+                "/api/library/items/\(escape(id))/treated",
+                query: [
+                    URLQueryItem(name: "restored", value: restored ? "true" : "false"),
+                    URLQueryItem(name: "cleaned", value: cleaned ? "true" : "false"),
+                    URLQueryItem(name: "v", value: version),
+                ]
+            )
         case let .fine(id, tile, version):
             req = request(
                 "/api/library/items/\(escape(id))/fine/\(escape(tile))",
