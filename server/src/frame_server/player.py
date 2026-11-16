@@ -215,6 +215,10 @@ OTHER_ART_ROOM_FOR = 600.0
 NIGHT_BATCHES = 6
 # How long a due change may keep the panel from its night sleep.
 CHANGE_GRACE = timedelta(minutes=3)
+# A picture that waited for the panel and was shown this close before a
+# change takes that change's place (``postpone``): as long as the economy
+# mode's early change (``panel_app.CHANGE_EARLY_DEEP``).
+POSTPONE_PAST = timedelta(minutes=15)
 
 
 def _log_failure(task: asyncio.Task[object]) -> None:
@@ -1948,10 +1952,15 @@ class Player:
         state.next_change_at = next_change(now, self.settings).isoformat(timespec="seconds")
         self._save_state(state)
 
-    def postpone(self) -> None:
-        """A picture that waited for the panel to wake stays until the next change."""
+    def postpone(self, now: datetime | None = None) -> None:
+        """A picture that waited for the panel to wake stays until the next
+        change. It takes the place of a change due within ``POSTPONE_PAST``:
+        the wake was for that one (an alarm rings early; 2026-11-16, the
+        picture sent in the morning was shown at 20:49 and replaced by the
+        21:00 change 11 minutes later)."""
         state = self.state
-        state.next_change_at = next_change(utcnow(), self.settings).isoformat(timespec="seconds")
+        after = (now or utcnow()) + POSTPONE_PAST
+        state.next_change_at = next_change(after, self.settings).isoformat(timespec="seconds")
         self._save_state(state)
 
     # -- scheduler -----------------------------------------------------------

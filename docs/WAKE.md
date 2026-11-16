@@ -905,6 +905,20 @@ bierze ostatni znany stan, a serwer ponawia `reboot` dla tej samej wersji po
 10 min, najwyżej 3 razy (`reboot_at`, `reboot_tries`). Instalacja przeszła
 po „Uruchom ramkę ponownie” (paczka 2.0.7 po samonaprawie serwera).
 
+**Zegar ramki spieszy się w głębokim śnie (1.145.199, 2026-11-16):** po
+dobie snu bez Wi-Fi `webapis.timer` był 654 s do przodu (zgłoszenie
+`clock`), więc budzik na 21:00 dzwonił o 20:49, a zmiana przychodziła
+dopiero przy drugiej pobudce o 21:00 (dwie zmiany, gdy czekał obraz z
+aplikacji). Tempo ok. 0,76 % zgadza się z „20–40 s przed czasem” przy
+kontrolach co godzinę. Serwer wysyła budziki snu bez Wi-Fi przesunięte o
+to, ile zegar zyska do ich godziny, 30 s przed czasem
+(`PanelApp._on_panel`, `CLOCK_GAIN`, `ALARM_LEAD`), i uczy się tempa z
+raportów `clock` (`before_s` przez czas od poprzedniego ustawienia,
+`AppState.clock_gain`). Własne godziny budzików zostają w `wakes`, wysłane
+w `alarm_ms`. W trybie oszczędnym pobudka do 15 min przed zmianą robi ją
+od razu (`CHANGE_EARLY_DEEP`), a obraz czekający na ramkę pokazany tak
+blisko zmiany zajmuje jej miejsce (`Player.postpone`, `POSTPONE_PAST`).
+
 **Odpięcie w trybie oszczędnym (2026-11-04 19:31 UTC):** ostatnie pytanie
 20:31:02 czasu polskiego na zasilaczu, po odpięciu panel od razu w głębokim śnie
 bez słowa do aplikacji (jak w E8). W trybie oszczędnym na zasilaczu nie było

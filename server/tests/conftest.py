@@ -1,5 +1,6 @@
 import sys
 from collections.abc import Iterator
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -162,3 +163,14 @@ def _no_web_facts(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatc
     from frame_server.ai.web_facts import WebFacts
 
     monkeypatch.setattr(WebFacts, "enabled", lambda self: False)
+
+
+@pytest.fixture(autouse=True)
+def _right_panel_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The panel's clock keeps time in a deep sleep and its alarms ring on
+    the dot, unless a test says otherwise: the alarms the app is told to set
+    are then the server's own times (``panel_app.CLOCK_GAIN``)."""
+    from frame_server import panel_app
+
+    monkeypatch.setattr(panel_app, "CLOCK_GAIN", 0.0)
+    monkeypatch.setattr(panel_app, "ALARM_LEAD", timedelta(0))

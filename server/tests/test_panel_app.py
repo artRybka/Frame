@@ -2011,3 +2011,113 @@ async def test_woken_for_a_change_it_is_made_at_once(
     service.player.next_early = next_early  # type: ignore[method-assign]
     await service.app._change_early(AppHello(reason=reason), now)
     assert made == ([True] if early else [])
+
+
+async def test_the_economy_change_comes_at_a_wake_well_before_it(tmp_path: Path) -> None:
+    """2026-11-15/16: the alarm for the 21:00 change rang at 20:49 (the
+    panel's clock gained 11 min in a day's sleep); the panel slept again and
+    the change came at a wake of its own. In the economy mode a wake up to
+    15 min before a change gets it at once."""
+    service = _service(tmp_path)
+    service.player.save_settings(FrameSettings(change_times=["21:00"], power_mode="economy"))
+    now = datetime.now(UTC)
+    made: list[bool] = []
+
+    async def next_early() -> None:
+        made.append(True)
+
+    service.player.next_early = next_early  # type: ignore[method-assign]
+    _next_change(service, now + timedelta(minutes=11))
+    await service.app._change_early(AppHello(reason="start"), now)
+    assert made == [True]
+    _next_change(service, now + timedelta(minutes=20))
+    await service.app._change_early(AppHello(reason="start"), now)
+    assert made == [True]
+
+
+def test_a_waiting_picture_shown_just_before_a_change_takes_its_place(tmp_path: Path) -> None:
+    """2026-11-16: a picture sent from the app in the morning waited for the
+    economy wake; shown at 20:49 it was replaced by the 21:00 change 11 min
+    later. It stays until the change after that one."""
+    service = _service(tmp_path)
+    service.player.save_settings(FrameSettings(change_times=["21:00"], power_mode="economy"))
+    service.power.mark_pending(True)
+    content = service.store.current()
+    assert content is not None
+    hello = BATTERY.model_copy(update={"reason": "start", "shown": "older"})
+    service.app.answer(hello, now=_at("2026-11-16T20:49"))
+    assert service.player.state.next_change_at == _at("2026-11-17T21:00").isoformat()
+
+    # Shown by the button at noon it stays until this evening's change.
+    service.power.mark_pending(True)
+    service.app.answer(hello, now=_at("2026-11-17T12:00"))
+    assert service.player.state.next_change_at == _at("2026-11-17T21:00").isoformat()
+
+
+def test_alarms_are_set_later_by_what_the_panel_clock_gains(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The panel's clock gained 654 s in a day's deep sleep (2026-11-16): an
+    alarm set for 21:00 rang at 20:49. Each alarm of a sleep with the Wi-Fi
+    off is set later by what the clock gains until then, 30 s early."""
+    monkeypatch.setattr(panel_app_module, "CLOCK_GAIN", 0.0076)
+    monkeypatch.setattr(panel_app_module, "ALARM_LEAD", timedelta(seconds=30))
+    service = _service(tmp_path)
+    service.player.save_settings(FrameSettings(change_times=["21:00"], power_mode="economy"))
+    _next_change(service, _at("2026-11-17T21:00"))
+    app = service.app
+    content = service.store.current()
+    assert content is not None
+    hello = BATTERY.model_copy(update={"shown": content.file_id})
+    now = _at("2026-11-16T21:02")
+    answer = app.answer(hello, now=now)
+    assert answer.action == "sleep" and answer.standby == "OFF"
+    assert answer.wake_at == _at("2026-11-17T21:00").isoformat()
+    due = _at("2026-11-17T21:00")
+    gained = 0.0076 * (due - now).total_seconds()
+    assert answer.wake_ms == int((due - timedelta(seconds=30 - gained)).timestamp() * 1000)
+    assert 650 < gained < 660
+    # The server keeps the alarm's own time: the wake is not "the button".
+    assert app.state.wakes == [due.isoformat()]
+
+    # Samsung's refresh on that alarm: its own time, as sent.
+    app.report("sleep", {"refreshFor": answer.wake_ms, "refresh": None})
+    assert app.state.refresh_for == due.isoformat()
+
+
+def test_the_panel_clock_rate_is_learnt_from_the_app(tmp_path: Path) -> None:
+    """The app sets the panel's clock right when it is 2 min off ("clock":
+    before_s, after_s): the rate it gained at since it was last set counts
+    for the next alarms; until the clock is 2 min off again they are made up
+    for from that time."""
+    service = _service(tmp_path)
+    app = service.app
+    first = _at("2026-11-15T20:52")
+    app._note_clock({"ok": True, "value": None, "before_s": 400, "after_s": 0}, first)
+    assert app.state.clock_set_at == first.isoformat()
+    assert app.state.clock_gain is None  # nothing to count from
+    second = first + timedelta(hours=24)
+    app._note_clock({"ok": True, "value": None, "before_s": 864, "after_s": 0}, second)
+    assert app.state.clock_gain == pytest.approx(0.01)
+    third = second + timedelta(hours=24)
+    app._note_clock({"ok": True, "value": None, "before_s": 432, "after_s": 1}, third)
+    assert app.state.clock_gain == pytest.approx(0.0075)
+    # Too short to count, or no rate at all: kept.
+    app._note_clock({"ok": True, "before_s": 200, "after_s": 0}, third + timedelta(hours=1))
+    app._note_clock({"ok": True, "before_s": 99999, "after_s": 0}, third + timedelta(hours=9))
+    assert app.state.clock_gain == pytest.approx(0.0075)
+
+    # Set 1 h ago (gained 27 s, not set again): counted from then.
+    state = app.state
+    state.clock_set_at = second.isoformat()
+    app._save(state)
+    later = second + timedelta(hours=1)
+    due = later + timedelta(hours=10)
+    [ms] = app._on_panel([due], later)
+    expected = due + timedelta(seconds=0.0075 * 11 * 3600)
+    assert ms == int(expected.timestamp() * 1000)
+    # Set a day ago: the app sets it right as it sleeps, counted from now.
+    [ms] = app._on_panel([due], second + timedelta(hours=9, minutes=59))
+    sleep_at = second + timedelta(hours=9, minutes=59)
+    expected = due + timedelta(seconds=0.0075 * (due - sleep_at).total_seconds())
+    assert ms == int(expected.timestamp() * 1000)
