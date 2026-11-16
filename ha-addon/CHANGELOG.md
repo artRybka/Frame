@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.204
+
+- „Dodaj własne dzieło”: gdy obok dzieła leży wzornik barw ColorChecker
+  (Classic, Classic Mini albo strona „Classic” w Passport), serwer
+  ustawia według niego balans bieli, jasność i barwy zdjęcia, także przy
+  skanie z trzech zdjęć. Pod kadrem stoi wtedy „Barwy ustawione według
+  wzornika.”. Bez wzornika wszystko działa jak dotąd.
+
 ## 1.145.203
 
 - Skan („Inteligentne”) dzieła za szybą: odbicie dłoni i smugi schodzą

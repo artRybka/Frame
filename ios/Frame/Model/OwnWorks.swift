@@ -14,6 +14,11 @@ struct OwnIncoming: Codable, Hashable, Sendable {
     /// "rectangle", "round", "irregular"; "" when not asked. Only a
     /// rectangle is cut (`non-rectangular-works`).
     var shape: String = ""
+    /// The corners of a colour chart (ColorChecker) photographed beside
+    /// the work; nil without one. The server set the photograph's colours
+    /// by it (Mateusz 2026-11-16 22:25 UTC: "dodajmy obsługę. Oczywiście
+    /// nie jako obowiązkową, ale opcjonalna").
+    var chart: [[Double]]? = nil
 
     var aspect: Double { height > 0 ? Double(width) / Double(height) : 0.75 }
 }

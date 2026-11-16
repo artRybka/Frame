@@ -39,6 +39,19 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertEqual(summary.own?.sizeText, "46 × 55 cm")
     }
 
+    func testAColourChartBesideTheWorkComesWithThePhotograph() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let with = """
+        {"token": "a1", "width": 3024, "height": 4032, "corners": null, "shape": "",
+         "chart": [[0.7, 0.1], [0.9, 0.1], [0.9, 0.4], [0.7, 0.4]]}
+        """
+        XCTAssertEqual(try decoder.decode(OwnIncoming.self, from: Data(with.utf8)).chart?.count, 4)
+        // A server before the chart, or a photograph without one.
+        let without = #"{"token": "a1", "width": 3024, "height": 4032, "corners": null, "shape": ""}"#
+        XCTAssertNil(try decoder.decode(OwnIncoming.self, from: Data(without.utf8)).chart)
+    }
+
     func testTheDescriptionGoesInTheServersWords() throws {
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
