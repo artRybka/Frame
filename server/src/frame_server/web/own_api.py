@@ -106,6 +106,17 @@ async def merge(token: str, svc: Svc, ask: MergeAsk | None = None) -> Merged:
         raise HTTPException(404, str(err)) from err
 
 
+@router.post("/own/photos/{token}/single")
+async def single(token: str, svc: Svc) -> dict[str, bool]:
+    """The first photograph as it came, in the scan's place: he chose the
+    one photograph on the page that shows the two."""
+    try:
+        await run_in_threadpool(svc.own_works.single, token)
+    except LookupError as err:
+        raise HTTPException(404, str(err)) from err
+    return {"single": True}
+
+
 @router.get("/own/photos/{token}")
 async def photo(token: str, svc: Svc, side: int | None = None) -> Response:
     """The photograph as it waits (after :func:`merge`, without the glare):

@@ -322,6 +322,27 @@ class OwnWorks:
             Image.fromarray(image).save(into, "JPEG", quality=INCOMING_QUALITY)
         return used, round(taken, 4)
 
+    def single(self, token: str) -> None:
+        """The first photograph as it came, back in the scan's place
+        (Mateusz 2026-11-16 19:00 UTC, a collage with a mirror and a
+        circuit board in relief: "daj możliwość wyboru zdjęcia bez korekty
+        usunięcia odbić, tj. „Jedno zdjęcie” - bywa że to lepsze
+        rozwiązanie"). The work is then added from that photograph, and
+        nothing merges the scan's again."""
+        path = self.path(token)
+        folder = self.scans / token
+        first = folder / "first.jpg"
+        if not first.is_file():
+            raise LookupError("no scan of this photograph is kept")
+        shutil.copyfile(first, path)
+        try:
+            info = json.loads((folder / SCAN_INFO).read_text())
+            info["single"] = now_iso()
+            (folder / SCAN_INFO).write_text(json.dumps(info))
+        except (OSError, ValueError) as err:
+            log.warning("scan %s not noted: %s", token, err)
+        log.info("own photograph %s: the one photograph kept, not the scan", token)
+
     def _again(self, token: str, corners: Quad | None) -> None:
         """Before the work is added: the corners he set reach beyond what
         was cleaned around the ones the merge had, so the scan's
@@ -339,7 +360,8 @@ class OwnWorks:
             return
         had = valid(info.get("corners") or [])
         sides = sorted(folder.glob("side*.jpg"))
-        if quad is None or had is None or not sides:
+        # He chose the one photograph over the scan (:meth:`single`).
+        if quad is None or had is None or not sides or info.get("single"):
             return
         cleaned = grown(had).astype(np.float32)
         if all(cv2.pointPolygonTest(cleaned, (x, y), False) >= 0 for x, y in quad):

@@ -733,6 +733,10 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
+    func keepOwnFirstPhoto(token: String) async throws {
+        try await send("/api/own/photos/\(escape(token))/single", method: "POST")
+    }
+
     func fine(itemID: String) async throws -> FineView {
         try await perform(request("/api/library/items/\(escape(itemID))/fine"))
     }

@@ -15,10 +15,16 @@ struct OwnScanResult: View {
     let after: UIImage
     /// Back to the camera, for the three anew.
     let again: () -> Void
-    let next: () -> Void
+    /// On, with the scan or (`true`) with the one photograph from the
+    /// front as it was taken.
+    let next: (_ single: Bool) -> Void
     /// "Dalej" was pressed and the server is at it (a new photograph of a
     /// work he has: cut and kept).
     var busy = false
+    /// Which of the two goes on (Mateusz 2026-11-16 19:00 UTC: "daj
+    /// możliwość wyboru zdjęcia bez korekty usunięcia odbić, tj. „Jedno
+    /// zdjęcie” - bywa że to lepsze rozwiązanie").
+    @State private var single = false
 
     var body: some View {
         ZStack {
@@ -49,22 +55,33 @@ struct OwnScanResult: View {
                 OwnScanCompare(before: before, after: after)
                     .padding(.horizontal, 12)
                 VStack(spacing: 4) {
-                    Text("Odbicia usunięte z trzech zdjęć")
+                    Text(single ? "Zostaje zdjęcie na wprost, bez zmian" : "Odbicia usunięte z trzech zdjęć")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.white.opacity(0.9))
-                    Text("Przesuń, żeby porównać ze zdjęciem na wprost.")
+                    Text("Przesuń, żeby porównać, i wybierz, co zachować.")
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.55))
                 }
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, Theme.gutter)
                 .padding(.top, 14)
+                Picker("Co zachować", selection: $single) {
+                    Text("Jedno zdjęcie").tag(true)
+                    Text("Skan").tag(false)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 300)
+                .padding(.horizontal, Theme.gutter)
+                .padding(.top, 14)
+                .disabled(busy)
                 Spacer(minLength: 12)
                 HStack(spacing: 12) {
                     Button("Powtórz", action: again)
                         .buttonStyle(.glass)
                         .controlSize(.large)
-                    Button(action: next) {
+                    Button {
+                        next(single)
+                    } label: {
                         // The glass is light on this dark page.
                         HStack(spacing: 8) {
                             if busy { ProgressView().controlSize(.small).tint(.black) }

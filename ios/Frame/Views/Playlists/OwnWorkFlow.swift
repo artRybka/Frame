@@ -105,10 +105,12 @@ struct OwnWorkFlow: View {
                         OwnScanResult(
                             before: compared.before, after: compared.after,
                             again: again,
-                            next: {
+                            next: { single in
                                 Task {
                                     going = true
-                                    _ = await cutDone()
+                                    var kept = true
+                                    if single { kept = await keepFirst() }
+                                    if kept { _ = await cutDone() }
                                     going = false
                                 }
                             },
@@ -290,6 +292,21 @@ struct OwnWorkFlow: View {
             return true
         }
         return await cutDone()
+    }
+
+    /// "Jedno zdjęcie" on "Skan gotowy": the server keeps the first
+    /// photograph as it was taken, and so does the rest of the way.
+    private func keepFirst() async -> Bool {
+        guard let token = incoming?.token else { return false }
+        do {
+            try await model.backend.keepOwnFirstPhoto(token: token)
+        } catch {
+            model.show(error)
+            return false
+        }
+        clean = nil
+        merged = nil
+        return true
     }
 
     /// The corners are his and the scan (if any) seen: on to what he
