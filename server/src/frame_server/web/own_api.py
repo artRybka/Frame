@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
@@ -96,11 +96,32 @@ async def merge(token: str, svc: Svc) -> Merged:
 
 
 @router.get("/own/photos/{token}")
-async def photo(token: str, svc: Svc) -> FileResponse:
+async def photo(token: str, svc: Svc, side: int | None = None) -> Response:
     """The photograph as it waits (after :func:`merge`, without the glare):
-    the phone shows it in "Kadr"."""
+    the phone shows it in "Kadr", no longer than ``side`` (whole, it is
+    48 MP and twenty megabytes)."""
+    if side is not None and not 200 <= side <= 9000:
+        raise HTTPException(422, "side: 200–9000")
     try:
-        return FileResponse(svc.own_works.path(token), media_type="image/jpeg")
+        found = await run_in_threadpool(svc.own_works.shown, token, side)
+    except LookupError as err:
+        raise HTTPException(404, str(err)) from err
+    if isinstance(found, bytes):
+        return Response(found, media_type="image/jpeg")
+    return FileResponse(found, media_type="image/jpeg")
+
+
+@router.get("/debug/own-scans")
+async def scans(svc: Svc) -> list[dict[str, object]]:
+    """The scans' photographs kept two weeks for the merging to be tuned
+    on (Mateusz 2026-11-16): each scan's files and what the merge noted."""
+    return await run_in_threadpool(svc.own_works.kept_scans)
+
+
+@router.get("/debug/own-scans/{token}/{name}")
+async def scan_file(token: str, name: str, svc: Svc) -> FileResponse:
+    try:
+        return FileResponse(svc.own_works.scan_file(token, name), media_type="image/jpeg")
     except LookupError as err:
         raise HTTPException(404, str(err)) from err
 

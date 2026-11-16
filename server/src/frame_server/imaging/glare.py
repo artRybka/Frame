@@ -32,6 +32,11 @@ PALE = 0.45
 #: Less of the picture than this is no glare, only noise: nothing is replaced.
 LEAST = 0.0005
 
+#: More of the picture than this is no lamp's glare but a veil over the
+#: glass, which replacing patches only spoils (Mateusz's print behind
+#: glass, 2026-11-16: smears and patches): nothing is replaced.
+MOST = 0.05
+
 #: OpenCV's types are loose: uint8 RGB (H × W × 3) and float32 maps.
 Image = NDArray[Any]
 Floats = NDArray[Any]
@@ -86,7 +91,7 @@ def merge(first: Image, sides: list[Image]) -> Merged:
 
     mask = _glare(small, laid)
     replaced = float((mask > 0.5).mean())
-    if replaced < LEAST:
+    if replaced < LEAST or replaced > MOST:
         return Merged(first, len(laid), 0.0)
     return Merged(_replace(first, laid, mask), len(laid), replaced)
 

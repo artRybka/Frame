@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field, ValidationError
 
-from .fsutil import dir_bytes, own_names
+from .fsutil import dir_bytes, own_dirs, own_names
 from .library.icloud import only_copy
 from .library.models import ItemKind
 
@@ -271,6 +271,9 @@ class StorageStore:
             for i in self.library.query(include_excluded=True)[1]
             if only_copy(i)
         )
+        # His own works as large as he photographed them, and their tiles.
+        fines = own_dirs(self.images.fines) if self.images.fines.is_dir() else ()
+        large = dir_bytes(self.images.masters) + sum(dir_bytes(folder) for folder in fines)
         panel = dir_bytes(self.store.images) + dir_bytes(self.store.previews)
         database = sum(_size(root / f"library.db{end}") for end in ("", "-wal", "-shm"))
         try:
@@ -280,10 +283,10 @@ class StorageStore:
         return StorageUsage(
             catalogue_bytes=catalogue,
             originals_bytes=originals - own,
-            own_bytes=own,
+            own_bytes=own + large,
             panel_bytes=panel,
             database_bytes=database,
-            total_bytes=catalogue + originals + panel + database,
+            total_bytes=catalogue + originals + large + panel + database,
             free_bytes=free,
             measured_at=time.time(),
         )

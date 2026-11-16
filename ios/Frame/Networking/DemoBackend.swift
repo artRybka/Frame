@@ -1719,7 +1719,11 @@ actor DemoBackend: FrameBackend {
         return OwnMerged(token: token, width: Int(image.size.width), height: Int(image.size.height), used: 2, replaced: 0.03)
     }
 
-    func ownPhoto(token: String) async throws -> Data {
+    func fine(itemID: String) async throws -> FineView {
+        FineView()
+    }
+
+    func ownPhoto(token: String, side: Int) async throws -> Data {
         guard let image = incoming[token] else { throw BackendError.notFound }
         // The demo's wall photograph without its lamp, as the scan of three gives it.
         let shown = DemoOwn.isDemoPhoto(image) ? (DemoOwn.photo(glare: 0) ?? image) : image
@@ -2367,7 +2371,7 @@ actor DemoBackend: FrameBackend {
         case let .thumb(id), let .tile(id): url = Self.bundled(id) ?? imageURLs[id]?.thumb
         case let .museumPhoto(id, _, _) where FileManager.default.fileExists(atPath: DemoFraming.uploadURL(id + "-full").path):
             url = DemoFraming.uploadURL(id + "-full")  // an own work's photograph whole
-        case let .image(id), let .original(id, _), let .museumPhoto(id, _, _), let .beforeCleaning(id, _): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
+        case let .image(id), let .original(id, _), let .museumPhoto(id, _, _), let .beforeCleaning(id, _), let .fine(id, _, _): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
         case let .framePreview(id, settings, framing, _):
             url = framed(id, settings, trying: framing) ?? Self.bundled(id) ?? imageURLs[id]?.thumb
         case let .path(path) where path.hasPrefix("/demo/detail/"):

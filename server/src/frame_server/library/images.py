@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import contextlib
+import io
 import json
 import logging
 import math
 import os
 import re
 import secrets
+import shutil
 import threading
 import time
 from collections.abc import Callable, Collection, Iterable, Iterator
@@ -95,6 +97,17 @@ LOOKED_AGE = 365 * 24 * 3600.0
 #: Commons tile set is looked at closely, 2560 showed a twelfth of its
 #: width (Mateusz 2026-11-10).
 TILE_MAX = COMMONS_WIDTH
+#: The long side a photograph of a work of the owner's own is kept with
+#: (Mateusz 2026-11-16: "Dla własnych dzieł ustaw zdecydowanie wyższą jakość
+#: niż 4000px"): his phone's whole 48 MP (8064 × 6048), beside the
+#: :data:`IMAGE_MAX` original the card and the frame work on.
+OWN_MAX = 9000
+#: The side of the tiles the work cut out of that photograph is kept in
+#: for the full-screen viewer (:meth:`ImageCache.fine`): about a screen's
+#: worth each, read as files while zooming in.
+FINE_TILE = 2048
+#: A work that much longer than its original is worth its tiles.
+FINE_MORE = 1.15
 #: A picture whose long side is shorter than this is worth a sharper copy
 #: (the frame is 2560 px long).
 WEAK_SIDE = 2000
@@ -239,6 +252,22 @@ def kept_side(item: Item) -> int:
     return TILE_MAX if split_part(item.id) is not None else IMAGE_MAX
 
 
+#: The list of a work's tiles in its folder (:meth:`ImageCache.fine`).
+FINE_LIST = "tiles.json"
+
+
+class Fine(NamedTuple):
+    """A work of the owner's own in tiles at its photograph's size:
+    ``cols`` × ``rows`` of them, row by row; ``stamp`` changes when they do
+    (another photograph, another cut)."""
+
+    width: int
+    height: int
+    cols: int
+    rows: int
+    stamp: str
+
+
 class KeptFile(NamedTuple):
     """A file as it is sent: ``stamp`` changes when the file does (its time
     and size); ``data`` is None when the asker has this very one."""
@@ -290,6 +319,23 @@ def _save_jpeg(img: Image.Image, path: Path, max_side: int, quality: int) -> Non
     tmp = path.with_name(f"{path.stem}.{threading.get_ident()}.tmp")
     img.save(tmp, "JPEG", quality=quality, optimize=True)
     tmp.replace(path)
+
+
+def _as_kept(data: bytes, size: tuple[int, int]) -> bool:
+    """Whether ``data`` is a JPEG as :func:`load_image` would hand it on
+    (upright, sRGB, no larger than :data:`OWN_MAX`): kept as it is."""
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            return (
+                img.format == "JPEG"
+                and img.mode == "RGB"
+                and img.size == size
+                and max(size) <= OWN_MAX
+                and not img.info.get("icc_profile")
+                and img.getexif().get(0x0112, 1) == 1
+            )
+    except OSError:
+        return False
 
 
 def _retry_after(resp: httpx.Response, attempt: int) -> float:
@@ -464,6 +510,13 @@ class ImageCache:
         #: corners set again from them.
         self.full = root / "full"
         self.full.mkdir(parents=True, exist_ok=True)
+        #: The owner's own photographs of his works as he took them
+        #: (:data:`OWN_MAX`), by the original's name: what the work is cut
+        #: out of, far larger than the original kept for the card.
+        self.masters = root / "masters"
+        #: The works cut out of those at full size, in tiles
+        #: (:meth:`fine`): a folder per work.
+        self.fines = root / "fine"
         self.thumbs.mkdir(parents=True, exist_ok=True)
         self.tiles.mkdir(parents=True, exist_ok=True)
         self.images.mkdir(parents=True, exist_ok=True)
@@ -589,6 +642,81 @@ class ImageCache:
         the work (:meth:`recut`); there only while the cut applies."""
         return self.full / f"{item.file_stem}.jpg"
 
+    def master_path(self, item: Item) -> Path:
+        """The owner's photograph of a work of his own, whole and as large
+        as he took it (:data:`OWN_MAX`); only such works have one."""
+        return self.masters / f"{item.file_stem}.jpg"
+
+    def fine_dir(self, item: Item) -> Path:
+        return self.fines / item.file_stem
+
+    def fine(self, item: Item) -> Fine | None:
+        """The work's picture in tiles at the size his photograph has it
+        (the full-screen viewer lays them on the original while zooming
+        in); None for a work with no more than its original."""
+        try:
+            found = json.loads((self.fine_dir(item) / FINE_LIST).read_text())
+            return Fine(
+                int(found["width"]),
+                int(found["height"]),
+                int(found["cols"]),
+                int(found["rows"]),
+                str(found["stamp"]),
+            )
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+
+    def fine_tile(self, item: Item, row: int, col: int) -> Path | None:
+        path = self.fine_dir(item) / f"{row}-{col}.jpg"
+        return path if path.is_file() else None
+
+    def _lay_fine(self, item: Item, shown: Image.Image) -> None:
+        """``shown``, the work at the size his photograph has it, kept in
+        tiles; none when it is hardly larger than its original."""
+        folder = self.fine_dir(item)
+        shutil.rmtree(folder, ignore_errors=True)
+        width, height = shown.size
+        if max(width, height) < FINE_MORE * max(kept_size(width, height)):
+            return
+        cols, rows = math.ceil(width / FINE_TILE), math.ceil(height / FINE_TILE)
+        making = folder.with_name(f"{folder.name}.{threading.get_ident()}.tmp")
+        shutil.rmtree(making, ignore_errors=True)
+        making.mkdir(parents=True)
+        for row in range(rows):
+            for col in range(cols):
+                box = (
+                    round(col * width / cols),
+                    round(row * height / rows),
+                    round((col + 1) * width / cols),
+                    round((row + 1) * height / rows),
+                )
+                shown.crop(box).save(making / f"{row}-{col}.jpg", "JPEG", quality=92)
+        listed = {
+            "width": width,
+            "height": height,
+            "cols": cols,
+            "rows": rows,
+            "stamp": secrets.token_hex(4),
+        }
+        (making / FINE_LIST).write_text(json.dumps(listed))
+        making.replace(folder)
+
+    def _recut_master(self, item: Item, master: Path) -> None:
+        """The original, the photograph whole and the tiles of a work of
+        the owner's own, from his photograph as he took it: the work is
+        cut out of all its pixels, then made as small as an original is."""
+        path, full = self.image_path(item), self.full_path(item)
+        img = load_image(master)
+        shown = self._shown(item, img, OWN_MAX)
+        if shown is None:
+            full.unlink(missing_ok=True)
+            _save_jpeg(img, path, IMAGE_MAX, 92)
+            self._lay_fine(item, img.convert("RGB"))
+        else:
+            _save_jpeg(img, full, IMAGE_MAX, 92)
+            _save_jpeg(shown, path, IMAGE_MAX, 92)
+            self._lay_fine(item, shown)
+
     def _photo_path(self, item: Item) -> Path:
         """The original as the museum gave it: the photograph kept beside a
         cut one, else the original itself."""
@@ -661,10 +789,17 @@ class ImageCache:
         had again (cut and cleaned) from its address when next asked for.
         Whether an original was here."""
         path, full = self.image_path(item), self.full_path(item)
+        master = self.master_path(item)
         here = False
         with self._lock(f"i:{item.id}"):
             source = full if full.is_file() else path if path.is_file() else None
-            if source is not None:
+            if master.is_file():
+                try:
+                    self._recut_master(item, master)
+                    here = True
+                except OSError as err:
+                    log.warning("cut of %s not made: %s", item.id, err)
+            elif source is not None:
                 try:
                     img = load_image(source)
                 except OSError as err:
@@ -1339,10 +1474,22 @@ class ImageCache:
         except (httpx.HTTPError, OSError):
             return self.ensure_thumb(item, urgent), False
 
-    def store(self, item: Item, data: bytes) -> tuple[int, int]:
-        """Keep an uploaded original; returns its size after EXIF rotation."""
+    def store(self, item: Item, data: bytes, master: bool = False) -> tuple[int, int]:
+        """Keep an uploaded original; returns its size after EXIF rotation.
+        ``master``: a work of the owner's own, whose photograph is kept as
+        large as he took it too (:meth:`master_path`), when it is larger
+        than an original; its tiles are laid by :meth:`recut`."""
         img = load_image(data)
         _save_jpeg(img, self.image_path(item), IMAGE_MAX, 92)
+        kept = self.master_path(item)
+        kept.unlink(missing_ok=True)
+        shutil.rmtree(self.fine_dir(item), ignore_errors=True)
+        if master and max(img.size) >= FINE_MORE * max(kept_size(*img.size)):
+            self.masters.mkdir(parents=True, exist_ok=True)
+            if _as_kept(data, img.size):
+                kept.write_bytes(data)  # ours already: not pressed once more
+            else:
+                _save_jpeg(img, kept, OWN_MAX, 95)
         self.thumb_path(item).unlink(missing_ok=True)
         self.ensure_thumb(item)
         return img.size
@@ -1404,6 +1551,8 @@ class ImageCache:
         (self.tiles / self.thumb_path(item).name).unlink(missing_ok=True)
         self.image_path(item).unlink(missing_ok=True)
         self.full_path(item).unlink(missing_ok=True)
+        self.master_path(item).unlink(missing_ok=True)
+        shutil.rmtree(self.fine_dir(item), ignore_errors=True)
         with self._guard:
             self._sizes.pop(item.id, None)
 

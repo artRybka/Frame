@@ -22,6 +22,9 @@ enum ImageRef: Hashable, Sendable {
     /// picture as it came, for the card's comparison; `version` keeps
     /// another picture apart.
     case beforeCleaning(String, version: String)
+    /// One tile of a work kept larger than its original (`FineView`);
+    /// `version` is the tiles' stamp.
+    case fine(String, tile: String, version: String)
     case path(String)  // server-relative path, e.g. /api/previews/<id>.png
     case url(URL)  // public URL (museum CDN)
 }
@@ -259,8 +262,11 @@ protocol FrameBackend: Sendable {
     func sendOwnSide(token: String, _ data: Data) async throws
     /// The glare taken out of the first photograph by the side ones.
     func mergeOwnPhotos(token: String) async throws -> OwnMerged
-    /// The photograph as it waits (merged), for "Kadr".
-    func ownPhoto(token: String) async throws -> Data
+    /// The photograph as it waits (merged), for "Kadr", `side` px long at most.
+    func ownPhoto(token: String, side: Int) async throws -> Data
+    /// A work of his own at the size his photograph has it, in tiles for
+    /// the full-screen viewer; no tiles for any other work.
+    func fine(itemID: String) async throws -> FineView
     /// Signature, date, technique, a plain title read off the work (Sonnet).
     func ownHints(token: String, corners: [[Double]]?) async throws -> OwnHints
     func addOwnWork(_ work: NewOwnWork) async throws -> Item

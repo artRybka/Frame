@@ -336,3 +336,133 @@ def test_side_photographs_of_something_else_change_nothing() -> None:
     other = rng.integers(0, 255, (600, 450, 3), dtype=np.uint8)
     done = merge(first, [other])
     assert done.used == 0 and done.replaced == 0 and done.image is first
+
+
+def test_a_work_of_his_own_is_kept_as_large_as_he_photographed_it(
+    service: FrameService,
+) -> None:
+    """Mateusz 2026-11-16: "Dla własnych dzieł ustaw zdecydowanie wyższą
+    jakość niż 4000px". The phone's 48 MP whole waits, is kept beside the
+    work, and the work cut out of all its pixels is served in tiles to the
+    full-screen viewer; the original the card and the frame work on stays
+    an original's size."""
+    from frame_server.library.images import FINE_TILE, IMAGE_MAX
+
+    big = photo().resize((8064, 6272), Image.Resampling.BICUBIC)
+    mine = [[0.2, 0.18], [0.8, 0.18], [0.8, 0.82], [0.2, 0.82]]
+    with _client(service) as client:
+        sent = client.post("/api/own/photos", files={"file": ("p.jpg", _jpeg(big))}).json()
+        assert (sent["width"], sent["height"]) == big.size  # not made smaller
+        token = sent["token"]
+        # The phone sets the corners on a smaller copy.
+        small = client.get(f"/api/own/photos/{token}", params={"side": 3000})
+        assert small.status_code == 200
+        with Image.open(io.BytesIO(small.content)) as img:
+            assert max(img.size) == 3000
+        assert client.get(f"/api/own/photos/{token}", params={"side": 20}).status_code == 422
+
+        work = client.post(
+            "/api/own/works",
+            json={"token": token, "corners": mine, "by": "owner", "text": {"title": "Duże"}},
+        ).json()
+        item = service.library.get(work["id"])
+        assert item is not None
+        images = service.images
+        with Image.open(images.master_path(item)) as img:
+            assert img.size == big.size
+        with Image.open(images.full_path(item)) as img:
+            assert max(img.size) == IMAGE_MAX  # "Pełny kadr", as before
+        with Image.open(images.image_path(item)) as img:
+            assert max(img.size) == IMAGE_MAX
+            shape = img.width / img.height
+
+        fine = client.get(f"/api/library/items/{work['id']}/fine").json()
+        # Three fifths of 8064 px across: far more than the original has.
+        assert 4700 < fine["width"] < 4900 and abs(fine["width"] / fine["height"] - shape) < 0.01
+        tiles = fine["tiles"]
+        assert len(tiles) == 3 * 2 and fine["stamp"]
+        assert abs(sum(t["w"] for t in tiles[:3]) - 1) < 1e-9
+        assert abs(sum(t["h"] for t in tiles[::3]) - 1) < 1e-9
+        assert tiles[4]["x"] == tiles[1]["x"] and tiles[4]["y"] == tiles[0]["h"]
+        got = client.get(f"/api/library/items/{work['id']}/fine/{tiles[4]['id']}")
+        assert got.status_code == 200 and got.headers["content-type"] == "image/jpeg"
+        with Image.open(io.BytesIO(got.content)) as img:
+            assert img.width == tiles[4]["pixels"] <= FINE_TILE
+        assert client.get(f"/api/library/items/{work['id']}/fine/9-9").status_code == 404
+
+        # "Popraw kadr": cut anew out of all its pixels, the tiles new.
+        put = client.put(
+            f"/api/library/items/{work['id']}/cut",
+            json={"corners": [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]},
+        )
+        assert put.status_code == 200, put.text
+        wider = client.get(f"/api/library/items/{work['id']}/fine").json()
+        assert wider["width"] > 6000 and wider["stamp"] != fine["stamp"]
+
+        # A small photograph in its place: nothing more than its original.
+        token = client.post("/api/own/photos", files={"file": ("q.jpg", _jpeg(photo()))}).json()[
+            "token"
+        ]
+        new = client.put(
+            f"/api/own/works/{work['id']}/photo",
+            json={"token": token, "corners": mine, "by": "owner"},
+        )
+        assert new.status_code == 200, new.text
+        assert client.get(f"/api/library/items/{work['id']}/fine").json()["tiles"] == []
+        assert not images.master_path(item).exists() and not images.fine_dir(item).exists()
+
+        # A museum's work has none.
+        assert client.get("/api/library/items/upload:nothing/fine").status_code == 404
+
+
+def test_a_scans_photographs_are_kept_two_weeks(service: FrameService) -> None:
+    """Mateusz 2026-11-16 ("Tak, przez 14 dni"): the first photograph as
+    it came and its side ones stay for the merging to be tuned on."""
+    from frame_server.own_works import SCANS_SECONDS
+
+    first = _jpeg(photo())
+    with _client(service) as client:
+        token = client.post("/api/own/photos", files={"file": ("p.jpg", first)}).json()["token"]
+        # Without side photographs it is no scan.
+        client.post(f"/api/own/photos/{token}/merge")
+        assert client.get("/api/debug/own-scans").json() == []
+        for _ in range(2):
+            client.post(f"/api/own/photos/{token}/sides", files={"file": ("s.jpg", first)})
+        client.post(f"/api/own/photos/{token}/merge")
+        kept = client.get("/api/debug/own-scans").json()
+        assert [s["token"] for s in kept] == [token] and kept[0]["used"] == 2
+        assert sorted(kept[0]["files"]) == ["first.jpg", "side1.jpg", "side2.jpg"]
+        got = client.get(f"/api/debug/own-scans/{token}/side2.jpg")
+        assert got.status_code == 200 and len(got.content) == kept[0]["files"]["side2.jpg"]
+        assert client.get(f"/api/debug/own-scans/{token}/scan.json").status_code == 404
+        assert client.get(f"/api/debug/own-scans/{token}/..%2Ffirst.jpg").status_code == 404
+
+    folder = service.own_works.scans / token
+    service.own_works.prune()
+    assert folder.is_dir()
+    old = time.time() - SCANS_SECONDS - 60
+    os.utime(folder, (old, old))
+    service.own_works.prune()
+    assert not folder.exists()
+
+
+def test_a_veil_over_the_whole_glass_is_left_alone() -> None:
+    """Mateusz's print behind glass (2026-11-16): reflections over much of
+    the picture are no lamp's glare, and patches from the side photographs
+    only spoiled it. Left as it is until the three are merged otherwise."""
+    from frame_server.imaging.glare import MOST, merge
+
+    rng = np.random.default_rng(3)
+    h, w = 800, 600
+    work = cv2.resize(
+        rng.integers(0, 200, (40, 30, 3), dtype=np.uint8), (w, h), interpolation=cv2.INTER_CUBIC
+    )
+    work = cv2.add(work, rng.integers(0, 30, (h, w, 3), dtype=np.uint8))
+    first = work
+    for cx, cy in [(150, 150), (450, 150), (150, 400), (450, 400), (300, 650), (300, 280)]:
+        first = _glare(first, cx, cy)
+    done = merge(first, [work, work])
+    assert done.used == 2 and done.replaced == 0 and done.image is first
+    # One lamp is still taken out.
+    one = merge(_glare(work, 300, 400), [work, work])
+    assert 0 < one.replaced < MOST

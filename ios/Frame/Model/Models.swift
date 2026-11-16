@@ -2543,6 +2543,30 @@ struct FragmentPlace: Codable, Hashable, Sendable {
     var unit: CGRect { CGRect(x: x, y: y, width: w, height: h) }
 }
 
+/// A work of the owner's own at the size his photograph has it
+/// (`GET /api/library/items/<id>/fine`; Mateusz 2026-11-16: "zdecydowanie
+/// wyższą jakość niż 4000px"): tiles the full-screen viewer lays on the
+/// original while zooming in. No tiles: the original is all there is.
+struct FineView: Codable, Hashable, Sendable {
+    var width = 0
+    var height = 0
+    /// Changes when the tiles do (another photograph, another cut).
+    var stamp = ""
+    var tiles: [Tile] = []
+
+    struct Tile: Codable, Hashable, Sendable {
+        var id: String
+        var x: Double
+        var y: Double
+        var w: Double
+        var h: Double
+        /// How wide the tile's picture is.
+        var pixels: Int
+
+        var unit: CGRect { CGRect(x: x, y: y, width: w, height: h) }
+    }
+}
+
 struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
     var item: Item
     var inLibrary: Bool

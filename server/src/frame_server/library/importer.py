@@ -1521,7 +1521,8 @@ class Importer:
             photo=photo,
             look=look,
         )
-        width, height = self.cache.store(item, data)
+        # A work of his own keeps his photograph as large as he took it.
+        width, height = self.cache.store(item, data, master=kind == ItemKind.OWN)
         return self.add(item.model_copy(update={"width": width, "height": height}))
 
     def start_job(self, description: str, work: Callable[[Job], None]) -> Job:

@@ -1,5 +1,6 @@
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import ImageIO
 import SwiftUI
 
 /// "Dodaj własne dzieło" (Mateusz 2026-11-15, variant A with hints): from
@@ -127,11 +128,12 @@ struct OwnWorkFlow: View {
         findingText = shots.sides.isEmpty ? "Szukam dzieła na zdjęciu…" : "Łączę trzy zdjęcia, usuwam odblaski…"
         Task {
             defer { finding = false }
-            guard let data = image.jpegData(compressionQuality: 0.9) else { return }
+            // The camera's own file, every pixel of it; a demo's is drawn.
+            guard let data = shots.file(0) ?? image.jpegData(compressionQuality: 0.9) else { return }
             do {
                 var sent = try await model.backend.sendOwnPhoto(data)
                 if !shots.sides.isEmpty {
-                    await merge(shots.sides, token: sent.token)
+                    await merge(shots, token: sent.token)
                     findingText = "Szukam dzieła na zdjęciu…"
                 }
                 do {
@@ -151,15 +153,17 @@ struct OwnWorkFlow: View {
     /// The side photographs sent and laid over the first; where they
     /// took a glare out, the photograph as the server keeps it now. Any
     /// of it failing leaves the first photograph as it was.
-    private func merge(_ sides: [UIImage], token: String) async {
+    private func merge(_ shots: OwnShots, token: String) async {
         do {
-            for side in sides {
-                guard let data = Self.upright(side).jpegData(compressionQuality: 0.9) else { continue }
+            for (index, side) in shots.sides.enumerated() {
+                guard let data = shots.file(index + 1) ?? Self.upright(side).jpegData(compressionQuality: 0.9)
+                else { continue }
                 try await model.backend.sendOwnSide(token: token, data)
             }
             let done = try await model.backend.mergeOwnPhotos(token: token)
             guard done.replaced > 0 else { return }
-            let clean = try await model.backend.ownPhoto(token: token)
+            // For the screen: whole, it is 48 MP.
+            let clean = try await model.backend.ownPhoto(token: token, side: Int(OwnPicture.shownSide))
             if let image = UIImage(data: clean) {
                 photo = image
                 merged = done
@@ -329,7 +333,7 @@ struct OwnWorkFlow: View {
     /// The camera's photograph as it was held: pixels upright, so the
     /// corners mean the same on the phone and on the server.
     static func upright(_ image: UIImage) -> UIImage {
-        let side: CGFloat = 6000  // 48 MP (8064 × 6048) a little smaller, as the server keeps it
+        let side = OwnPicture.shownSide  // for the screen; the server is sent the camera's file
         let scale = min(1, side / max(image.size.width, image.size.height))
         guard image.imageOrientation != .up || scale < 1 else { return image }
         let size = CGSize(width: (image.size.width * scale).rounded(), height: (image.size.height * scale).rounded())
@@ -344,6 +348,33 @@ struct OwnWorkFlow: View {
 /// The work cut out of a photograph on the phone, as the server cuts it.
 enum OwnPicture {
     private static let context = CIContext()
+
+    /// The long side of the photograph the steps show (the corners are set
+    /// on it): the file itself is 48 MP, 200 MB once drawn.
+    static let shownSide: CGFloat = 4000
+
+    /// A photograph's file as a picture for the screen: upright, no longer
+    /// than `shownSide`, read at that size (never whole into memory).
+    static func shown(_ file: Data) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(file as CFData, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: shownSide,
+            kCGImageSourceShouldCacheImmediately: true,
+        ]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        return UIImage(cgImage: cg, scale: 1, orientation: .up)
+    }
+
+    /// Whether the server reads such a file as it is (JPEG, HEIC): others
+    /// (RAW, PNG with its own colours) are drawn anew for it.
+    static func sendable(_ file: Data) -> Bool {
+        guard let source = CGImageSourceCreateWithData(file as CFData, nil),
+              let type = CGImageSourceGetType(source) as String?
+        else { return false }
+        return ["public.jpeg", "public.heic", "public.heif"].contains(type)
+    }
 
     /// The work inside `corners` of `image`, upright; in the shape of his
     /// size (`own`) when he gave one near enough, as the server keeps it.

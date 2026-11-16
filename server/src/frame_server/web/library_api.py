@@ -387,6 +387,60 @@ class FragmentsView(BaseModel):
     places: list[FragmentPlace] = Field(default_factory=list)
 
 
+class FineTile(FragmentPlace):
+    """One tile of a work kept larger than its original: ``id`` names it
+    in the tile's address, its place is in fractions of the whole, and it
+    is ``pixels`` wide."""
+
+    pixels: int
+
+
+class FineView(BaseModel):
+    """A work of the owner's own at the size his photograph has it
+    (Mateusz 2026-11-16: "zdecydowanie wyższą jakość niż 4000px"): the
+    full-screen viewer lays ``tiles`` on the original while zooming in.
+    No tiles: the original is all there is."""
+
+    width: int = 0
+    height: int = 0
+    #: Changes when the tiles do (another photograph, another cut).
+    stamp: str = ""
+    tiles: list[FineTile] = Field(default_factory=list)
+
+
+@router.get("/library/items/{item_id:item}/fine", response_model=FineView)
+async def item_fine(item_id: str, svc: Svc) -> FineView:
+    item = await _work(svc, item_id)
+    fine = await run_in_threadpool(svc.images.fine, item)
+    if fine is None:
+        return FineView()
+    tiles = [
+        FineTile(
+            id=f"{row}-{col}",
+            x=round(col * fine.width / fine.cols) / fine.width,
+            y=round(row * fine.height / fine.rows) / fine.height,
+            w=(round((col + 1) * fine.width / fine.cols) - round(col * fine.width / fine.cols))
+            / fine.width,
+            h=(round((row + 1) * fine.height / fine.rows) - round(row * fine.height / fine.rows))
+            / fine.height,
+            pixels=round((col + 1) * fine.width / fine.cols) - round(col * fine.width / fine.cols),
+        )
+        for row in range(fine.rows)
+        for col in range(fine.cols)
+    ]
+    return FineView(width=fine.width, height=fine.height, stamp=fine.stamp, tiles=tiles)
+
+
+@router.get("/library/items/{item_id:item}/fine/{row}-{col}")
+async def item_fine_tile(item_id: str, row: int, col: int, svc: Svc) -> FileResponse:
+    """One tile; asked with the list's stamp, so it never changes."""
+    item = await _work(svc, item_id)
+    path = svc.images.fine_tile(item, row, col)
+    if path is None:
+        raise HTTPException(404, "no such tile")
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
+
+
 @router.get("/library/items/{item_id:item}/fragments", response_model=FragmentsView)
 async def item_fragments(item_id: str, svc: Svc) -> FragmentsView:
     item = await _work(svc, item_id)

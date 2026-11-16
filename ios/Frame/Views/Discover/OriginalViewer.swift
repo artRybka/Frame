@@ -143,9 +143,15 @@ struct OriginalViewer: View {
         failed = image == nil
     }
 
+    fileprivate func setTiles(_ found: [ZoomTile]) { tiles = found }
+
     /// The work's tiles with their places, when the server knows them
     /// (Commons tile sets; Cleveland's scroll sections have none yet).
     private func loadTiles() async {
+        if item.isOwnWork {
+            await loadFine()
+            return
+        }
         let ids = [item.fragmentsID, item.id]
         guard !item.isFragment, ids.contains(where: { $0.hasPrefix("wmc:") || $0.hasPrefix("cma:") }),
               let view = await Fragments.load(shownWith: item, backend: model.backend),
@@ -183,6 +189,22 @@ struct OriginalViewer: View {
         underlay = true
         image = mosaic
         tiles = found.map { $0.tile }
+    }
+}
+
+extension OriginalViewer {
+    /// A work of his own: the tiles of his photograph's every pixel, laid
+    /// on its original (the same picture, so no underlay of thumbnails).
+    fileprivate func loadFine() async {
+        guard let fine = try? await model.backend.fine(itemID: item.id), !fine.tiles.isEmpty else { return }
+        let found = fine.tiles.compactMap { tile -> ZoomTile? in
+            guard tile.w > 0, tile.h > 0,
+                  let request = model.backend.request(for: .fine(item.id, tile: tile.id, version: fine.stamp))
+            else { return nil }
+            return ZoomTile(id: tile.id, unit: tile.unit, pixels: CGFloat(tile.pixels), request: request)
+        }
+        guard !Task.isCancelled, found.count == fine.tiles.count else { return }
+        setTiles(found)
     }
 }
 
