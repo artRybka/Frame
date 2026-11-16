@@ -333,8 +333,9 @@ struct OwnCamera: View {
             if flash { Color.white.transition(.opacity) }
         }
         .aspectRatio(3 / 4, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .padding(.horizontal, 8)
+        // Across the whole screen, square (Mateusz 2026-11-16 16:44 UTC:
+        // "Na pełną szerokość ekranu? Może bez wyoblonych narożników?").
+        .clipped()
         .animation(.easeOut(duration: 0.25), value: finding == nil)
     }
 
