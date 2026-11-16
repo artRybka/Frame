@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.180
+
+- Ulubione posortowane „Ostatnio dodane” stawiają na górze dzieła polubione
+  ostatnio. Dotąd liczyła się data trafienia dzieła do biblioteki, więc
+  serduszko na dziele znanym od dawna zostawiało je daleko w dół listy.
+  Serce przeniesione na lepszą kopię dzieła zachowuje swoją datę.
+
 ## 1.145.179
 
 - Nowy wygląd kroku Opis przy dodawaniu własnego dzieła i w „Edytuj opis”:

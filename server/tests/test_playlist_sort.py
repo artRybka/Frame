@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from frame_server.library import Item, ItemKind, Library, PlaylistRules
 from frame_server.library.models import Playlist, PlaylistKind, PlaylistSort, SharperCopy
 from frame_server.library.repo import ordered
+from frame_server.library.viewer import OWNER_ID
 
 
 def _item(
@@ -145,6 +146,34 @@ def test_a_manual_playlist_keeps_its_order_of_adding_until_sorted(tmp_path) -> N
     assert _ids(library.playlist_items(latest)) == ["2", "1", "3"]
     by_year = playlist.model_copy(update={"sort": PlaylistSort(key="year")})
     assert _ids(library.playlist_items(by_year)) == ["2", "3", "1"]
+
+
+def test_ulubione_by_when_added_is_by_when_liked(tmp_path) -> None:
+    """Mateusz 2026-11-16: "nowopolubione dzieła nie trafiają na górę listy"
+    with Ulubione "Ostatnio dodane": it went by the work's joining the
+    library, not by the heart."""
+    library = Library(tmp_path / "lib.db")
+    library.upsert(_item(1, added_at="2026-10-01T10:00:00+00:00"))  # long in the library
+    library.upsert(_item(2, added_at="2026-11-15T10:00:00+00:00"))
+    library.upsert(_item(3, added_at="2026-11-15T09:00:00+00:00"))
+    library.upsert(_item(4, added_at="2026-11-01T10:00:00+00:00"))
+    # Hearts moved over from before there were people: one time for all.
+    library.set_favorite(OWNER_ID, "wikiart:2", True, at="2026-10-20T08:00:00+00:00")
+    library.set_favorite(OWNER_ID, "wikiart:3", True, at="2026-10-20T08:00:00+00:00")
+    library.set_favorite(OWNER_ID, "wikiart:4", True, at="2026-11-10T08:00:00+00:00")
+    library.set_favorite(OWNER_ID, "wikiart:1", True, at="2026-11-16T06:50:00+00:00")
+    ulubione = library.save_playlist(
+        Playlist(
+            name="Ulubione",
+            kind=PlaylistKind.SMART,
+            rules=PlaylistRules(favorites_only=True),
+            sort=PlaylistSort(key="added"),
+        )
+    )
+    # The newest heart first; the moved ones by their joining the library.
+    assert _ids(library.playlist_items(ulubione)) == ["1", "4", "2", "3"]
+    oldest = ulubione.model_copy(update={"sort": PlaylistSort(key="added", reverse=True)})
+    assert _ids(library.playlist_items(oldest)) == ["3", "2", "4", "1"]
 
 
 def test_the_app_sets_the_order_and_the_frame_follows(service) -> None:
