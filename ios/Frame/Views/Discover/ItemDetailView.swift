@@ -1450,7 +1450,7 @@ struct ItemDetailView: View {
                 PaintedStrip(swatches: item.colors, style: style, seed: Paint.seed(item.id), whole: true, relief: Paint.relief(item),
                              contour: ContourLine(item), gold: Gold.kind(medium: item.medium, style: style))
             } else {
-                PaletteStrip(swatches: item.colors, height: Paint.bar, cornerRadius: 6)
+                PaletteStrip(swatches: item.colors, height: Paint.shown, cornerRadius: 6)
             }
             // One row each, in the Kolor sheet's order: colours, accents, moods.
             if !rows.isEmpty {

@@ -579,10 +579,11 @@ struct PaintedStrip: View {
     var whole = false
     /// How high an oil paint stands (`Paint.relief`).
     var relief = Paint.calm.plain
-    /// Shown this much smaller than the bar of a work's card (the Teraz
-    /// tab's narrow one): painted for a place that much wider, so the
-    /// strokes are as much finer as the bar is lower.
-    var slim: CGFloat = 1
+    /// Shown this much smaller than it is painted (`Paint.bar`): painted
+    /// for a place that much wider, so the strokes are as much finer as
+    /// the bar is lower. A work's card and the day's picks show it
+    /// `Paint.shown` high, the Teraz tab's narrow one lower still.
+    var slim: CGFloat = Paint.shown / Paint.bar
     /// The work's drawn contour (`Item.contour`), round the paint.
     var contour: ContourLine?
     /// The gold its medium names (`Gold.kind`), laid in the place of its colour once the bar is painted.
