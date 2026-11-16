@@ -427,3 +427,40 @@ def test_fit() -> None:
         fit((900, 600), Image.new("RGB", (2048, 1152)))  # 16:9 for 3:2
     with pytest.raises(NotRestored):
         fit((900, 600), Image.new("RGB", (900, 600)))
+
+
+def test_a_drawing_kept_before_is_put_in_the_pictures_colours(app: Any, monkeypatch: Any) -> None:
+    """The drawings kept before the colours were taken back get them once,
+    nothing drawn again (Mateusz 2026-11-16: "Tak - poproszę")."""
+    from frame_server import restorer as module
+
+    client, service, _web, painter = app
+    own = _small(service, favorite=True)
+    draw = painter._draw
+    painter._draw = lambda picture: Image.fromarray(  # a warmer, darker drawing
+        np.clip(np.asarray(draw(picture), np.float32) * [1.1, 0.95, 0.8], 0, 255).astype(np.uint8)
+    )
+    monkeypatch.setattr(module, "recoloured", lambda picture, drawn: drawn)  # as before
+    assert client.post(f"/api/library/items/{own.id}/restore").status_code == 200
+    monkeypatch.undo()
+    note = service.library.note(own.id, "restorer")
+    old = {k: v for k, v in note.data.items() if k != "colours"}
+    service.library.save_note(note.model_copy(update={"data": old}))
+    before = service.library.get(own.id).sharper.url
+
+    def tint(item: Item) -> np.ndarray:
+        url = service.library.get(item.id).sharper.url
+        return np.asarray(service.images.sample(url), np.float32).mean(axis=(0, 1))
+
+    museum = np.asarray(service.images.before_drawn(own), np.float32).mean(axis=(0, 1))
+    assert np.abs(tint(own) - museum).max() > 10
+    assert len(painter.asked) == 1
+
+    assert service.restorer.recolour_kept() == 1
+    stored = service.library.get(own.id)
+    assert stored.sharper.restored and stored.sharper.url != before
+    assert np.abs(tint(own) - museum).max() < 3
+    assert service.library.note(own.id, "restorer").data["colours"] == module.COLOURS
+    assert len(painter.asked) == 1  # nothing drawn again
+    # Once.
+    assert service.restorer.recolour_kept() == 0

@@ -872,7 +872,7 @@ class ImageCache:
         drawn = item.sharper is not None and item.sharper.restored
         if drawn and not restored:
             shown = shown.model_copy(update={"sharper": None})
-            img = self._own_before_drawn(item, urgent)
+            img = self.before_drawn(item, urgent)
         else:
             img = load_image(self.museum_photo(item, urgent))
         made = self._shown(shown, img, side)
@@ -883,7 +883,10 @@ class ImageCache:
             img.thumbnail((side, side), Image.Resampling.LANCZOS)
         return img
 
-    def _own_before_drawn(self, item: Item, urgent: bool) -> Image.Image:
+    def before_drawn(self, item: Item, urgent: bool = False) -> Image.Image:
+        """The picture the restorer drew ``item``'s drawing from: the
+        museum's own photograph downloaded again (its thumbnail when the
+        original never comes), held for a while."""
         url = own_copy(item)
         with self._guard:
             kept = self._before_drawn.get(url)
