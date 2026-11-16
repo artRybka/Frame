@@ -47,8 +47,9 @@ struct OwnDescriptionForm: View {
             techniqueSection
             sizeSection
                 .id("size")
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 14) {
                 Eyebrow("Więcej")
+                    .padding(.top, 10)
                 field("Gdzie wisi", text: $text.hangs, prompt: "np. Salon") {
                     ForEach(places.filter { $0 != text.hangs }.prefix(4), id: \.self) { place in
                         chip(place, dashed: false) { text.hangs = place }
