@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.198
+
+- Dzieło, którego plik muzeum trzyma obcięty (np. „Zmartwychwstanie
+  Jezusa Chrystusa” Podolińskiego z MNW), pokazywało się jako szary
+  prostokąt z paskiem obrazu u góry. Serwer rozpoznaje taki obraz i
+  traktuje go jak brak obrazu: dzieło znika z list, tak jak dzieła z
+  martwym linkiem. Zapisane już takie obrazy są sprawdzane raz po
+  aktualizacji.
+
 ## 1.145.197
 
 - Restauracja dzieła zachowuje barwy oryginału: z rysunku modelu zostają
