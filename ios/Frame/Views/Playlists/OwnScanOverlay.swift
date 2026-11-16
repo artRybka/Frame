@@ -137,7 +137,14 @@ struct OwnScanOverlay: View {
         GeometryReader { geo in
             let turned = look.quarter != 0
             ZStack {
-                drawn(geo.size)
+                // In the picture's own frame: with the phone on its side
+                // what is said below is as wide as the picture is tall, the
+                // stack grew to that, and the outline, drawn across all it
+                // is given, came out a third longer than the work each way
+                // (Mateusz 2026-11-16 18:49 UTC: "błędna (za wysoka) ramka
+                // wykrycia dzieła dotyczy robienia skanu w poziomie").
+                ZStack { drawn(geo.size) }
+                    .frame(width: geo.size.width, height: geo.size.height)
                 // As the world stands, whichever way the phone is held.
                 said
                     .frame(width: turned ? geo.size.height : geo.size.width, height: turned ? geo.size.width : geo.size.height)

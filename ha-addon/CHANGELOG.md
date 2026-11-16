@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.199
+
+- Skan dzieła z telefonem trzymanym poziomo: żółta ramka wykrytego
+  dzieła była o jedną trzecią za długa (wychodziła ponad i pod obraz),
+  a celownik przy zdjęciach bocznych stał obok środka. Ramka leży teraz
+  dokładnie na dziele, tak jak przy telefonie trzymanym pionowo.
+
 ## 1.145.198
 
 - Dzieło, którego plik muzeum trzyma obcięty (np. „Zmartwychwstanie
