@@ -223,6 +223,27 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertEqual(OwnScanView.side(target: left, angle: -30, away: 1.5), .nearer)
         XCTAssertEqual(OwnScanView.side(target: left, angle: -30, away: 1.2), .hold)
         XCTAssertEqual(OwnScanView.side(target: left, angle: -30, fits: false), .farther)
+        // Standing right with the phone looking past the work: the work's
+        // middle is to be in the sight (Mateusz 2026-11-16 13:35 UTC).
+        XCTAssertEqual(OwnScanView.offAim(front), 0, accuracy: 1e-9)
+        XCTAssertEqual(OwnScanView.offAim(front.map { CGPoint(x: $0.x + 0.2, y: $0.y) }), 0.2, accuracy: 1e-9)
+        XCTAssertEqual(OwnScanView.offAim(front.map { CGPoint(x: $0.x, y: $0.y + 0.15) }), 0.2, accuracy: 1e-9)
+        XCTAssertEqual(OwnScanView.offAim(front.map { CGPoint(x: $0.x + 0.15, y: $0.y) }, aspect: 4.0 / 3), 0.2, accuracy: 1e-9)
+        XCTAssertEqual(OwnScanView.side(target: left, angle: -30, aim: 0.05), .hold)
+        XCTAssertEqual(OwnScanView.side(target: left, angle: -30, aim: 0.2), .aim)
+        XCTAssertEqual(OwnScanView.side(target: left, angle: -30, aim: 0.13), .aim)
+        XCTAssertEqual(OwnScanView.side(target: left, angle: -30, aim: 0.13, held: true), .hold)
+        XCTAssertEqual(OwnScanView.side(target: left, angle: -10, aim: 0.2), .go(left: true))
+        XCTAssertEqual(OwnScanView.side(target: left, angle: -30, fits: false, aim: 0.3), .aim)
+        // And its four corners seen ("łapanie narożników"): on the way
+        // there they are not waited for.
+        XCTAssertEqual(OwnScanView.side(target: left, angle: -30, seen: false), .corners)
+        XCTAssertEqual(OwnScanView.side(target: left, angle: -30, seen: false, held: true), .corners)
+        XCTAssertEqual(OwnScanView.side(target: left, angle: -10, seen: false), .go(left: true))
+        let sight = CGSize(width: 300, height: 400)
+        XCTAssertEqual(OwnScanSight.radius(in: sight), 33, accuracy: 1e-9)
+        XCTAssertTrue(OwnScanSight.inside(CGPoint(x: 0.55, y: 0.45), size: sight))
+        XCTAssertFalse(OwnScanSight.inside(CGPoint(x: 0.65, y: 0.5), size: sight))
 
         // The words: no shutter but when the work's edges are not found.
         var look = OwnScanLook(number: 2)
@@ -236,6 +257,13 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertEqual(look.line, "Za daleko w bok, wróć trochę")
         look.advice = .nearer
         XCTAssertEqual(look.pill?.text, "Podejdź bliżej")
+        look.advice = .aim
+        XCTAssertEqual(look.pill?.text, "Wyceluj w dzieło")
+        look.advice = .corners
+        XCTAssertEqual(look.line, "Nie widzę wszystkich narożników dzieła")
+        look.manual = true
+        XCTAssertEqual(look.line, "Zrób zdjęcie sam, gdy całe dzieło jest w kadrze")
+        look.manual = false
         look.advice = .farther
         XCTAssertEqual(look.pill?.text, "Odsuń się")
         look.advice = .hold

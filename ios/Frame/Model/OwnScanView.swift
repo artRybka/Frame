@@ -200,12 +200,44 @@ enum OwnScanView {
     /// stands at `angle`, `away` times as far as at the front one.
     /// `held`: the photograph is being taken already, which a little
     /// more to either side or a step back does not stop.
-    static func side(target: Double, angle: Double, away: Double = 1, fits: Bool = true, held: Bool = false) -> OwnScanAdvice {
-        guard fits else { return .farther }
+    /// `aim`: how far the work's middle is from the picture's (`offAim`;
+    /// 0 when the camera does not see the work). `seen`: the camera sees
+    /// the work's four corners now (true where it never did, and there is
+    /// nothing to wait for).
+    static func side(
+        target: Double, angle: Double, away: Double = 1, fits: Bool = true, aim: Double = 0, seen: Bool = true,
+        held: Bool = false
+    ) -> OwnScanAdvice {
+        // Cut off because the phone looks past it, or because it is too near.
+        guard fits else { return aim > aimed ? .aim : .farther }
         if away > (held ? far + give / 20 : far) { return .nearer }
         let range = held ? (near.lowerBound - give) ... (near.upperBound + give) : near
-        if (angle < 0) == (target < 0), range.contains(abs(angle)) { return .hold }
+        if (angle < 0) == (target < 0), range.contains(abs(angle)) {
+            // Standing right: the whole work in the picture, its middle in
+            // the picture's (Mateusz 2026-11-16 13:36 UTC: "łapanie
+            // narożników, żeby na pewno ująć cały obraz przy zdjęciu pod
+            // kątem").
+            guard seen else { return .corners }
+            return aim > (held ? aimed + aimGive : aimed) ? .aim : .hold
+        }
         return .go(left: angle > target)
+    }
+
+    /// How far the work's middle may be from the picture's at a side
+    /// photograph, in the picture's short sides: the sight's ring.
+    static let aimed = 0.11
+    /// How much farther a photograph being taken goes on.
+    static let aimGive = 0.04
+
+    /// How far the middle of an outline is from the picture's middle, in
+    /// the picture's short sides (`aspect` wide to high). Walking to the
+    /// side with the phone looking straight on, the work leaves the
+    /// picture; it is to be aimed at (Mateusz 2026-11-16 13:35 UTC:
+    /// "jakiś znacznik (celownik) powinien trzymać środek dzieła przy
+    /// robieniu zdjęć pod kątem").
+    static func offAim(_ outline: [CGPoint], aspect: Double = 0.75) -> Double {
+        let m = middle(outline)
+        return hypot(Double(m.x - 0.5) * max(1, aspect), Double(m.y - 0.5) * max(1, 1 / aspect))
     }
 
     /// How far beyond `near` (degrees) a photograph being taken goes on.
@@ -292,6 +324,10 @@ enum OwnScanAdvice: Equatable {
     case level
     /// Walk on, to the left or to the right.
     case go(left: Bool)
+    /// Standing right, but the phone looks past the work: aim at it.
+    case aim
+    /// Standing right, but the work's four corners are not all seen.
+    case corners
     /// As it should be: keep still, the photograph is being taken.
     case hold
 }

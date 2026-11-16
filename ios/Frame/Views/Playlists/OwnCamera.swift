@@ -79,6 +79,9 @@ struct OwnCamera: View {
     @State private var holdSince: Date?
     /// The shutter is out: the work's edges were not found for a while.
     @State private var manual = false
+    /// Since when he has stood where a side photograph is taken with the
+    /// work's corners not found.
+    @State private var blindSince: Date?
     /// The camera has little light.
     @State private var dim = false
     /// What is drawn over the picture and said under it.
@@ -92,6 +95,9 @@ struct OwnCamera: View {
 
     /// Without an outline for this long, he takes the photograph himself.
     private static let patience: TimeInterval = 5
+    /// Standing where a side photograph is taken without the work's
+    /// corners for this long, the same.
+    private static let blind: TimeInterval = 3
     /// The way to the side photographs is shown by the helper frame, not
     /// by the track (the two shown Mateusz to choose from, 2026-11-16).
     private static let framed = UserDefaults.standard.string(forKey: "scanGuide") == "frame"
@@ -157,10 +163,18 @@ struct OwnCamera: View {
             return look
         }
         look.angle = angle
-        // How far away and whether it is whole: only of an outline that is the work's.
+        // How far away, whether it is whole and where its middle is: only
+        // of an outline that is the work's.
+        let work = fused.seen ? upright : nil
+        look.live = fused.seen ? outline : nil
+        look.aim = look.live.map(OwnScanView.middle)
         look.advice = OwnScanView.side(
-            target: target, angle: angle, away: fused.seen ? away : 1,
-            fits: fused.seen ? (upright.map(OwnScanView.fits) ?? true) : true,
+            target: target, angle: angle, away: work != nil ? away : 1,
+            fits: work.map(OwnScanView.fits) ?? true,
+            aim: work.map { OwnScanView.offAim($0, aspect: aspect) } ?? 0,
+            // Its corners are waited for where the camera found them at
+            // the first photograph.
+            seen: work != nil || front == nil,
             held: steady.said == .hold
         )
         return look
@@ -172,6 +186,18 @@ struct OwnCamera: View {
         guard finding == nil else { return }
         var next = reading()
         if !shooting { next.advice = steady.take(next.advice) } else { next.advice = look.advice }
+        if next.advice == .corners {
+            // Standing right and the corners not found for a while (a dark
+            // frame on a dark wall): he takes the photograph himself.
+            let since = blindSince ?? .now
+            blindSince = since
+            if !manual, Date.now.timeIntervalSince(since) > Self.blind {
+                withAnimation(.easeInOut(duration: 0.25)) { manual = true }
+                next.manual = true
+            }
+        } else if blindSince != nil {
+            blindSince = nil
+        }
         if next != look { look = next }
         watch()
     }
@@ -390,6 +416,7 @@ struct OwnCamera: View {
     private func rest() {
         holdSince = nil
         lostSince = .now
+        blindSince = nil
         manual = access == .ready && !camera.sees
         steady = OwnScanSteady()
         look = reading()

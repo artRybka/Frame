@@ -13,7 +13,8 @@ struct OwnScanLook: Equatable {
     var number = 1
     var advice = OwnScanAdvice.lost
     /// The work's outline as the camera sees it now (0–1 on the screen's
-    /// picture), before the first photograph.
+    /// picture): drawn whole before the first photograph, as its four
+    /// corners before a side one.
     var live: [CGPoint]?
     /// Where it should lie for the side photograph: the helper frame, when
     /// that is how the way is shown (`-scanGuide frame`); nil with the
@@ -26,6 +27,9 @@ struct OwnScanLook: Equatable {
     /// Where the phone stands, in degrees to the side of the work
     /// (negative: to its left); nil before the first photograph.
     var angle: Double?
+    /// The middle of the work on the screen's picture (0–1) before a side
+    /// photograph, when the camera sees the work: what the sight follows.
+    var aim: CGPoint?
     /// How the phone is held: 0 upright, 1 its top to the left, -1 to the
     /// right. The app's screen stays upright, so what is said over the
     /// picture is turned to be read.
@@ -44,6 +48,8 @@ struct OwnScanLook: Equatable {
         case .farther: ("Odsuń się", "arrow.down.right.and.arrow.up.left", Self.wait)
         case .straight: ("Stań na wprost", "arrow.left.and.right", Self.wait)
         case .level: ("Trzymaj telefon prosto", "iphone", Self.wait)
+        case .aim: ("Wyceluj w dzieło", "scope", Self.wait)
+        case .corners: ("Pokaż całe dzieło", "viewfinder", Self.wait)
         case .lost where manual: ("Nie widzę krawędzi dzieła", "viewfinder", .white)
         default: nil
         }
@@ -58,6 +64,9 @@ struct OwnScanLook: Equatable {
         case .farther: return "Dzieło nie mieści się w kadrze"
         case .straight: return "Dzieło widać z boku"
         case .level: return "Telefon jest pochylony"
+        case .aim: return "Dzieło ucieka ze środka kadru"
+        case .corners where manual: return "Zrób zdjęcie sam, gdy całe dzieło jest w kadrze"
+        case .corners: return "Nie widzę wszystkich narożników dzieła"
         case .lost where manual: return "Zrób zdjęcie sam"
         case .go(let left) where number > 1 && left != (number == 2):
             return "Za daleko w bok, wróć trochę"
@@ -77,6 +86,8 @@ struct OwnScanLook: Equatable {
         case .farther: "Całe ma być widoczne, z kawałkiem ściany wokół."
         case .straight: "Przesuń się tak, żeby lewy i prawy bok dzieła były równej wysokości."
         case .level: "Trzymaj go pionowo, na wysokości środka dzieła."
+        case .aim: "Obróć telefon tak, żeby znacznik dzieła wszedł w celownik na środku."
+        case .corners: "Cztery narożniki mają być w kadrze, z kawałkiem ściany wokół."
         case _ where dim: "Mało światła, zdjęcie może wyjść nieostre. Zapal światło, jeśli możesz."
         case .lost where manual: "Tak bywa przy ciemnej ramie na ciemnej ścianie albo w słabym świetle."
         default:
@@ -152,7 +163,7 @@ struct OwnScanOverlay: View {
                 .stroke(look.matched ? OwnScanLook.good : .white,
                         style: StrokeStyle(lineWidth: look.matched ? 4 : 3, lineCap: .round, lineJoin: .round, dash: look.matched ? [] : [10, 8]))
                 .shadow(color: .black.opacity(0.45), radius: 3)
-        } else if let live = look.live {
+        } else if look.number == 1, let live = look.live {
             OutlineShape(corners: live)
                 .stroke(look.matched ? OwnScanLook.good : OwnScanLook.wait,
                         style: StrokeStyle(lineWidth: look.matched ? 4 : 2.5, lineJoin: .round))
@@ -160,6 +171,20 @@ struct OwnScanOverlay: View {
                 // From one look of the camera to the next, not in jumps.
                 .animation(.linear(duration: 0.14), value: live)
                 .transition(.opacity)
+        } else if look.number > 1 {
+            if let live = look.live {
+                // The four corners the photograph must hold.
+                let whole = OwnScanView.fits(live)
+                OutlineShape(corners: live, marks: 0.2)
+                    .stroke(look.matched ? OwnScanLook.good : whole ? .white : OwnScanLook.wait,
+                            style: StrokeStyle(lineWidth: look.matched ? 5 : 4, lineCap: .round, lineJoin: .round))
+                    .shadow(color: .black.opacity(0.45), radius: 3)
+                    .animation(.linear(duration: 0.14), value: live)
+                    .transition(.opacity)
+            }
+            if holding == nil, !taking {
+                OwnScanSight(aim: look.aim, size: size)
+            }
         }
     }
 
@@ -198,6 +223,71 @@ struct OwnScanOverlay: View {
                 .transition(.opacity)
             }
         }
+    }
+}
+
+/// The sight before a side photograph: a ring in the picture's middle
+/// and a mark on the work's middle as the camera follows it. The
+/// photograph is taken with the mark in the ring, so the work is in the
+/// picture's middle from the side too (Mateusz 2026-11-16 13:35 UTC:
+/// "inaczej przechodząc w bok dzieło nie będzie w środku kadru"). Without
+/// the mark (the camera does not find the work's edges) the ring alone
+/// says where to aim.
+struct OwnScanSight: View {
+    /// The work's middle on the picture (0–1), when it is seen.
+    let aim: CGPoint?
+    let size: CGSize
+
+    /// The ring's radius: how far the work's middle may be off.
+    static func radius(in size: CGSize) -> Double {
+        OwnScanView.aimed * Double(min(size.width, size.height))
+    }
+
+    /// The mark is in the ring.
+    static func inside(_ aim: CGPoint, size: CGSize) -> Bool {
+        hypot(Double(aim.x - 0.5) * size.width, Double(aim.y - 0.5) * size.height) <= radius(in: size)
+    }
+
+    var body: some View {
+        let r = Self.radius(in: size)
+        let centre = CGPoint(x: size.width / 2, y: size.height / 2)
+        let good = aim.map { Self.inside($0, size: size) } ?? false
+        ZStack {
+            Circle()
+                .stroke(good ? OwnScanLook.good : .white.opacity(0.85), lineWidth: good ? 3 : 2)
+                .frame(width: r * 2, height: r * 2)
+                .position(centre)
+            // The cross in its middle.
+            Path { path in
+                path.move(to: CGPoint(x: centre.x - 7, y: centre.y))
+                path.addLine(to: CGPoint(x: centre.x + 7, y: centre.y))
+                path.move(to: CGPoint(x: centre.x, y: centre.y - 7))
+                path.addLine(to: CGPoint(x: centre.x, y: centre.y + 7))
+            }
+            .stroke(.white.opacity(0.85), lineWidth: 1.5)
+            if let aim {
+                let at = CGPoint(x: aim.x * size.width, y: aim.y * size.height)
+                if !good {
+                    // From the work to where it should be.
+                    Path { path in
+                        path.move(to: at)
+                        path.addLine(to: centre)
+                    }
+                    .stroke(OwnScanLook.wait.opacity(0.8), style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [2, 6]))
+                }
+                ZStack {
+                    Circle().fill(good ? OwnScanLook.good : OwnScanLook.wait)
+                    Circle().strokeBorder(.black.opacity(0.35), lineWidth: 1)
+                }
+                .frame(width: 20, height: 20)
+                .position(at)
+                .animation(.linear(duration: 0.14), value: aim)
+            }
+        }
+        .shadow(color: .black.opacity(0.5), radius: 3)
+        .animation(.easeOut(duration: 0.15), value: good)
+        .transition(.opacity)
+        .accessibilityHidden(true)
     }
 }
 
@@ -424,6 +514,9 @@ struct OutlineCorners: VectorArithmetic {
 /// An outline through four corners given as fractions of the view.
 struct OutlineShape: Shape {
     var corners: [CGPoint]
+    /// Nil, the outline whole; else only its corners, each with so much
+    /// of its two sides (0–0.5).
+    var marks: Double? = nil
 
     var animatableData: OutlineCorners {
         get { OutlineCorners(corners) }
@@ -434,6 +527,17 @@ struct OutlineShape: Shape {
         var path = Path()
         guard let first = corners.first else { return path }
         func point(_ p: CGPoint) -> CGPoint { CGPoint(x: rect.minX + p.x * rect.width, y: rect.minY + p.y * rect.height) }
+        if let marks {
+            let places = corners.map(point)
+            for (index, corner) in places.enumerated() {
+                let before = places[(index + places.count - 1) % places.count]
+                let after = places[(index + 1) % places.count]
+                path.move(to: CGPoint(x: corner.x + (before.x - corner.x) * marks, y: corner.y + (before.y - corner.y) * marks))
+                path.addLine(to: corner)
+                path.addLine(to: CGPoint(x: corner.x + (after.x - corner.x) * marks, y: corner.y + (after.y - corner.y) * marks))
+            }
+            return path
+        }
         path.move(to: point(first))
         for corner in corners.dropFirst() { path.addLine(to: point(corner)) }
         path.closeSubpath()
