@@ -13,6 +13,7 @@ picture goes to Google for "Szukaj zdjęciem" too, Mateusz 2026-11-15)."""
 
 from __future__ import annotations
 
+import contextlib
 import io
 import json
 import logging
@@ -23,10 +24,11 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import anthropic
 from PIL import Image
 from pydantic import BaseModel, Field
 
-from .ai.client import SONNET, request
+from .ai.client import SONNET, AiUnavailable, request
 from .ai.crops import _block
 from .imaging.cut import Quad, valid, warp
 from .imaging.layout import load_image
@@ -60,6 +62,8 @@ INCOMING_QUALITY = 95
 SCANS_SECONDS = 14 * 24 * 3600
 #: What a scan's folder holds besides its photographs.
 SCAN_INFO = "scan.json"
+#: Beside a waiting photograph: the work Opus found in it.
+FOUND = ".found.json"
 #: A scan's file as :meth:`OwnWorks.merge` names it.
 _SCAN_FILE = re.compile(r"^(first|side[1-9])\.jpg$")
 #: The side the photograph is looked at for the work's corners and hints:
@@ -125,8 +129,10 @@ class Incoming(BaseModel):
 
 
 class Merged(Incoming):
-    """The first photograph with the glare taken out by the side ones:
-    how many could be laid over it, and how much of it they gave (0–1)."""
+    """The first photograph with its reflections taken out by the side
+    ones: how many could be laid over it, and how much was taken (0–1: of
+    the work's light where the work's corners were known, of the
+    photograph's pixels where a lamp's glare alone was replaced)."""
 
     used: int = 0
     replaced: float = 0.0
@@ -238,50 +244,101 @@ class OwnWorks:
         )
         return len(taken) + 1
 
-    def merge(self, token: str) -> Merged:
+    def merge(self, token: str, corners: Quad | None = None) -> Merged:
         """The first photograph without the reflections its side ones do
-        not have (:mod:`.imaging.glare`); kept in its place. Unchanged when
-        none could be laid over it. The photographs as they came are kept
-        two weeks in ``scans/`` (:data:`SCANS_SECONDS`)."""
-        import numpy as np
-
-        from .imaging.glare import merge
-
+        not share, kept in its place. Within the work's ``corners`` (the
+        phone's; else Opus is asked, and :meth:`find` answers the same
+        after) the veil over the glass and what is mirrored in it go
+        (:mod:`.imaging.reflections`); with no corners only a lamp's glare
+        is replaced (:mod:`.imaging.glare`). Unchanged when no side one
+        could be laid over it. The photographs as they came are kept two
+        weeks in ``scans/`` (:data:`SCANS_SECONDS`)."""
         path = self.path(token)
         sides = sorted(self.incoming.glob(f"{token}-side*.jpg"))
         with Image.open(path) as img:
-            first = np.asarray(img.convert("RGB"))
-        photos = []
-        for side in sides:
-            with Image.open(side) as img:
-                photos.append(np.asarray(img.convert("RGB")))
-        done = merge(first, photos)
-        h, w = first.shape[:2]
-        if sides:
-            self._keep_scan(token, path, sides, done.used, done.replaced, (w, h))
-        if done.replaced > 0:
-            Image.fromarray(done.image).save(path, "JPEG", quality=INCOMING_QUALITY)
+            seen = Merged(token=token, width=img.width, height=img.height)
+        if not sides:
+            return seen
+        quad = valid(corners) if corners is not None else None
+        if quad is None:
+            try:
+                found = self.find(token)
+            except (AiUnavailable, anthropic.APIError) as err:
+                log.info("own photograph %s: the work not looked for: %s", token, err)
+                found = None
+            if found is not None:
+                quad, seen.shape = found.corners, found.shape
+        seen.corners = quad
+        self._keep_scan(token, path, sides)
+        seen.used, seen.replaced = self._merge(path, path, sides, quad)
+        self._note_scan(token, seen)
         for side in sides:
             side.unlink(missing_ok=True)
         log.info(
-            "own photograph %s: %d side(s) laid over, %.1f%% glare taken out",
+            "own photograph %s: %d side(s) laid over, %.1f%% %s taken out",
             token,
-            done.used,
-            done.replaced * 100,
+            seen.used,
+            seen.replaced * 100,
+            "of the light" if quad is not None else "glare",
         )
-        return Merged(
-            token=token, width=w, height=h, used=done.used, replaced=round(done.replaced, 4)
-        )
+        return seen
 
-    def _keep_scan(
-        self,
-        token: str,
-        first: Path,
-        sides: list[Path],
-        used: int,
-        replaced: float,
-        size: tuple[int, int],
-    ) -> None:
+    @staticmethod
+    def _merge(first: Path, into: Path, sides: list[Path], quad: Quad | None) -> tuple[int, float]:
+        """``first`` merged with ``sides`` and written to ``into`` (when
+        anything was taken out): how many were laid over, how much went."""
+        import numpy as np
+
+        from .imaging import glare, reflections
+
+        def whole(path: Path, side: int | None = None) -> Any:
+            with Image.open(path) as img:
+                if side is not None:
+                    img.draft("RGB", (side, side))
+                return np.asarray(img.convert("RGB"))
+
+        photo = whole(first)
+        if quad is not None:
+            # The side ones only say what is reflection: small is enough.
+            clean = reflections.merge(
+                photo, [whole(p, reflections.MATCH_SIDE) for p in sides], quad
+            )
+            used, taken, image = clean.used, clean.removed, clean.image
+        else:
+            patched = glare.merge(photo, [whole(p) for p in sides])
+            used, taken, image = patched.used, patched.replaced, patched.image
+        if taken > 0:
+            Image.fromarray(image).save(into, "JPEG", quality=INCOMING_QUALITY)
+        return used, round(taken, 4)
+
+    def _again(self, token: str, corners: Quad | None) -> None:
+        """Before the work is added: the corners he set reach beyond what
+        was cleaned around the ones the merge had, so the scan's
+        photographs are merged once more within his."""
+        import cv2
+        import numpy as np
+
+        from .imaging.reflections import grown
+
+        folder = self.scans / token
+        quad = valid(corners) if corners is not None else None
+        try:
+            info = json.loads((folder / SCAN_INFO).read_text())
+        except (OSError, ValueError):
+            return
+        had = valid(info.get("corners") or [])
+        sides = sorted(folder.glob("side*.jpg"))
+        if quad is None or had is None or not sides:
+            return
+        cleaned = grown(had).astype(np.float32)
+        if all(cv2.pointPolygonTest(cleaned, (x, y), False) >= 0 for x, y in quad):
+            return
+        used, taken = self._merge(folder / "first.jpg", self.path(token), sides, quad)
+        info.update(corners=quad, used=used, replaced=taken, again=now_iso())
+        (folder / SCAN_INFO).write_text(json.dumps(info))
+        log.info("own photograph %s merged again within his corners", token)
+
+    def _keep_scan(self, token: str, first: Path, sides: list[Path]) -> None:
         """The scan's photographs as they came, in a folder of their own."""
         folder = self.scans / token
         try:
@@ -289,16 +346,23 @@ class OwnWorks:
             shutil.copyfile(first, folder / "first.jpg")
             for n, side in enumerate(sides, start=1):
                 shutil.copyfile(side, folder / f"side{n}.jpg")
-            info = {
-                "at": now_iso(),
-                "used": used,
-                "replaced": round(replaced, 4),
-                "width": size[0],
-                "height": size[1],
-            }
-            (folder / SCAN_INFO).write_text(json.dumps(info))
         except OSError as err:
             log.warning("scan %s not kept: %s", token, err)
+
+    def _note_scan(self, token: str, seen: Merged) -> None:
+        """What the merge came to, beside the scan's photographs."""
+        info = {
+            "at": now_iso(),
+            "used": seen.used,
+            "replaced": seen.replaced,
+            "width": seen.width,
+            "height": seen.height,
+            "corners": seen.corners,
+        }
+        try:
+            (self.scans / token / SCAN_INFO).write_text(json.dumps(info))
+        except OSError as err:
+            log.warning("scan %s not noted: %s", token, err)
 
     def kept_scans(self) -> list[dict[str, Any]]:
         """The scans kept, newest first: what :meth:`merge` noted of each
@@ -331,8 +395,15 @@ class OwnWorks:
 
     def find(self, token: str) -> Incoming:
         """The work found in the photograph by Opus (``corners`` None when
-        nothing was, or no key)."""
-        with Image.open(self.path(token)) as img:
+        nothing was, or no key). Asked once of a photograph: :meth:`merge`
+        asks first, and the phone after it."""
+        path = self.path(token)
+        known = path.with_suffix(FOUND)
+        try:
+            return Incoming.model_validate_json(known.read_text())
+        except (OSError, ValueError):
+            pass
+        with Image.open(path) as img:
             seen = Incoming(token=token, width=img.width, height=img.height)
             img.draft("RGB", (LOOK_SIDE, LOOK_SIDE))
             img.load()
@@ -341,6 +412,8 @@ class OwnWorks:
             seen.shape = str(found.get("shape") or "")
             if seen.shape == "rectangle" or not seen.shape:
                 seen.corners = found["work"] or found["plate"]
+        with contextlib.suppress(OSError):
+            known.write_text(seen.model_dump_json())
         return seen
 
     def hints(self, token: str, corners: Quad | None = None) -> Hints:
@@ -372,9 +445,9 @@ class OwnWorks:
         """Photographs whose work was never added, after a day; a scan's
         photographs after two weeks."""
         old = time.time() - KEEP_SECONDS
-        for path in self.incoming.glob("*.jpg"):
+        for path in self.incoming.iterdir():
             try:
-                if path.stat().st_mtime < old:
+                if path.is_file() and path.stat().st_mtime < old:
                     path.unlink()
             except OSError:
                 pass
@@ -423,6 +496,7 @@ class OwnWorks:
         ("Pełny kadr"), its original cut to ``corners`` (``by`` "auto" when
         they are Opus's, "owner" when he set them), and what he wrote."""
         path = self.path(token)
+        self._again(token, corners)
         item = self.importer.add_upload(
             path.read_bytes(),
             kind=ItemKind.OWN,
@@ -432,7 +506,7 @@ class OwnWorks:
         )
         item = self._describe(item, text)
         item = self._cut(item, corners, by, shape)
-        path.unlink(missing_ok=True)
+        self._done(path)
         log.info("own work %s added", item.id)
         return item
 
@@ -451,12 +525,19 @@ class OwnWorks:
         without the lamp's reflection), cut anew; what he wrote stays."""
         self._check(item)
         path = self.path(token)
+        self._again(token, corners)
         self.images.remove(item)
         width, height = self.images.store(item, path.read_bytes(), master=True)
         stored = self.library.update(item.id, width=width, height=height, cut=None) or item
         stored = self._cut(stored, corners, by, shape)
-        path.unlink(missing_ok=True)
+        self._done(path)
         return stored
+
+    @staticmethod
+    def _done(path: Path) -> None:
+        """The waiting photograph and what was found in it, gone."""
+        path.unlink(missing_ok=True)
+        path.with_suffix(FOUND).unlink(missing_ok=True)
 
     @staticmethod
     def _check(item: Item) -> None:
