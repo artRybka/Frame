@@ -196,7 +196,9 @@ class Restorer:
             # A work shown cleaned (``Item.cleaned``) is drawn from the
             # picture as it came: the drawing is cleaned after, the same.
             return self.images.before_cleaning(item, urgent=True).convert("RGB")
-        path = self.images.ensure_image(item, urgent=True)
+        # Without its original (a dead link), the thumbnail the card shows
+        # (``ImageCache.picture``) is what is drawn larger.
+        path, _original = self.images.picture(item, urgent=True)
         with Image.open(path) as img:
             return img.convert("RGB")
 

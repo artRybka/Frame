@@ -1056,6 +1056,20 @@ def test_boxes_of_a_page_from_before_are_mended(offline: FrameService) -> None:
     assert essay is not None and essay.details[0].x == 0.5
 
 
+def test_an_answer_not_yet_cleaned_is_no_page(offline: FrameService) -> None:
+    """The answer is kept as it came a moment before its cleaned page takes
+    its place: a study's status asked just then saw "lewo" for a box's x and
+    the request failed (CI 2026-11-16, test_study_gate)."""
+    _catalogue(offline)
+    item = offline.library.get("met:1")
+    assert item is not None
+    job = offline.daily.job
+    note = Note(item_id="met:1", kind=job.kind, model=OPUS, prompt_version="x", data=ANSWER)
+    job.fresh = lambda item, note: True  # type: ignore[method-assign]
+    offline.library.save_note(note)
+    assert job.essay(item) is None
+
+
 def test_the_likely_paints_do_not_all_start_the_same() -> None:
     """Mateusz 2026-11-03: not „Najpewniej” at every paint, synonyms in turn."""
     paints = [
