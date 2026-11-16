@@ -712,6 +712,33 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
+    func sendOwnSide(token: String, _ data: Data) async throws {
+        var form = MultipartForm()
+        form.addFile("file", filename: "side.jpg", mimeType: "image/jpeg", data: data)
+        var req = request("/api/own/photos/\(escape(token))/sides", method: "POST")
+        req.setValue(form.contentType, forHTTPHeaderField: "Content-Type")
+        req.httpBody = form.body()
+        req.timeoutInterval = 120
+        let _: [String: Int] = try await perform(req)
+    }
+
+    func mergeOwnPhotos(token: String) async throws -> OwnMerged {
+        var req = request("/api/own/photos/\(escape(token))/merge", method: "POST")
+        req.timeoutInterval = 180
+        return try await perform(req)
+    }
+
+    func ownPhoto(token: String) async throws -> Data {
+        var req = request("/api/own/photos/\(escape(token))")
+        req.timeoutInterval = 120
+        let (data, response) = try await load(req)
+        guard let http = response as? HTTPURLResponse else { throw BackendError.invalidResponse }
+        guard (200 ..< 300).contains(http.statusCode) else {
+            throw BackendError.http(status: http.statusCode, body: String(decoding: data, as: UTF8.self))
+        }
+        return data
+    }
+
     func ownHints(token: String, corners: [[Double]]?) async throws -> OwnHints {
         var req = request("/api/own/hints", method: "POST")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")

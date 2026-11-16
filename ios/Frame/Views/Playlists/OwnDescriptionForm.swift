@@ -17,6 +17,8 @@ struct OwnDescriptionForm: View {
     var readingHints = false
     /// Where his other works hang.
     var places: [String] = []
+    /// The size the LiDAR measured, written in when the fields are empty.
+    var measured: OwnDepth.Size? = nil
 
     @State private var heightText = ""
     @State private var widthText = ""
@@ -24,6 +26,8 @@ struct OwnDescriptionForm: View {
     /// field still says it.
     @State private var filled: [String: String] = [:]
     @State private var started = false
+    /// The size written in from the LiDAR: marked while the fields still say it.
+    @State private var measuredIn: OwnDepth.Size?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 26) {
@@ -68,6 +72,14 @@ struct OwnDescriptionForm: View {
                 Divider()
                 VStack(alignment: .leading, spacing: 8) {
                     factRow("Rozmiar") { sizeFields }
+                    if sizeMarked {
+                        Text("Zmierzone czujnikiem LiDAR, bez ramy, z dokładnością do 1–2 cm.")
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .multilineTextAlignment(.trailing)
+                            .transition(.opacity)
+                    }
                     if let warning = sizeWarning { warningLine(warning) }
                 }
                 .id("size")
@@ -93,6 +105,9 @@ struct OwnDescriptionForm: View {
         .onChange(of: hints) { _, hints in
             if let hints { fill(from: hints) }
         }
+        .onChange(of: measured) { _, size in
+            if let size { fill(from: size) }
+        }
         .onChange(of: heightText) { _, value in text.heightCm = Self.number(value) }
         .onChange(of: widthText) { _, value in text.widthCm = Self.number(value) }
         .onChange(of: text.heightCm) { _, value in
@@ -111,6 +126,7 @@ struct OwnDescriptionForm: View {
         heightText = text.heightCm.map(OwnWork.number) ?? ""
         widthText = text.widthCm.map(OwnWork.number) ?? ""
         if let hints { fill(from: hints) }
+        if let measured { fill(from: measured) }
     }
 
     // MARK: Fields
@@ -163,6 +179,13 @@ struct OwnDescriptionForm: View {
             Text("×").foregroundStyle(Theme.inkSoft)
             sizeField("szer.", text: $widthText, alignment: .leading)
             Text("cm").foregroundStyle(Theme.inkSoft)
+            if sizeMarked {
+                Image(systemName: "ruler")
+                    .font(.caption)
+                    .foregroundStyle(Theme.inkSoft)
+                    .accessibilityLabel("zmierzone")
+                    .transition(.opacity)
+            }
         }
     }
 
@@ -280,6 +303,22 @@ struct OwnDescriptionForm: View {
     }
 
     // MARK: The size
+
+    /// The fields still say what the LiDAR measured.
+    private var sizeMarked: Bool {
+        guard let measuredIn else { return false }
+        return text.heightCm == measuredIn.heightCm && text.widthCm == measuredIn.widthCm
+    }
+
+    /// The measured size into empty fields (his numbers stay his).
+    private func fill(from size: OwnDepth.Size) {
+        guard text.heightCm == nil, text.widthCm == nil else { return }
+        withAnimation(.easeOut(duration: 0.25)) {
+            text.heightCm = size.heightCm
+            text.widthCm = size.widthCm
+            measuredIn = size
+        }
+    }
 
     /// The picture as it will be kept: in the shape of his size when he
     /// gave one near enough the photograph's, as the server cuts it.

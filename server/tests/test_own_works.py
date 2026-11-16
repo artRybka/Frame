@@ -312,7 +312,9 @@ def test_the_lamps_reflection_is_taken_out_by_two_photographs_from_the_side(
         assert merged.status_code == 200, merged.text
         assert merged.json()["used"] == 2 and 0.003 < merged.json()["replaced"] < 0.05
         assert (merged.json()["width"], merged.json()["height"]) == (w, h)
-        assert client.post("/api/other/photos/x/merge").status_code == 404
+        got = client.get(f"/api/own/photos/{token}")
+        assert got.status_code == 200 and got.headers["content-type"] == "image/jpeg"
+        assert client.get("/api/own/photos/0123456789abcdef01234567").status_code == 404
         assert client.post("/api/own/photos/0123456789abcdef01234567/merge").status_code == 404
 
     with Image.open(service.own_works.path(token)) as img:

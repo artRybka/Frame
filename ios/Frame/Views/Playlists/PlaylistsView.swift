@@ -14,9 +14,7 @@ struct PlaylistsView: View {
     /// The playlist whose card is being moved with a finger.
     @State private var dragged: Int?
     /// "Dodaj własne dzieło" on the whole screen.
-    @State private var addingOwn = ["own-start", "own-cut", "own-describe", "own-card"].contains(LaunchRoute.screen)
-    /// Sketches of measuring and scanning with the camera (`OwnScanSketch`).
-    @State private var scanSketch = LaunchRoute.screen == "own-scan"
+    @State private var addingOwn = ["own-start", "own-scan", "own-cut", "own-describe", "own-card"].contains(LaunchRoute.screen)
 
     private var active: PlaylistSummary? {
         guard let id = model.settings?.playlistId else { return nil }
@@ -213,7 +211,6 @@ struct PlaylistsView: View {
             .fullScreenCover(isPresented: $addingOwn) {
                 OwnWorkFlow(mode: .add) { item in path.append(item.id) }
             }
-            .fullScreenCover(isPresented: $scanSketch) { OwnScanSketch() }
             .navigationDestination(for: String.self) { id in
                 ItemDetailView(itemID: id)
             }

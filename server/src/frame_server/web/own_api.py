@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
@@ -90,6 +91,16 @@ async def merge(token: str, svc: Svc) -> Merged:
     few seconds of the server's own work)."""
     try:
         return await run_in_threadpool(svc.own_works.merge, token)
+    except LookupError as err:
+        raise HTTPException(404, str(err)) from err
+
+
+@router.get("/own/photos/{token}")
+async def photo(token: str, svc: Svc) -> FileResponse:
+    """The photograph as it waits (after :func:`merge`, without the glare):
+    the phone shows it in "Kadr"."""
+    try:
+        return FileResponse(svc.own_works.path(token), media_type="image/jpeg")
     except LookupError as err:
         raise HTTPException(404, str(err)) from err
 
