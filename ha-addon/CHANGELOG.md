@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.194
+
+- Pełny ekran: przyciski korekty barw i restauracji nie są już
+  przekreślane. Gdy poprawka jest widoczna, kropla jest błękitna, a iskry
+  jasnożółte; gdy wyłączona, ikonka jest przygaszona.
+- Pod tytułem i autorem nie ma już dopisku „Przed …”.
+- Przełączenie wersji dzieła to szybkie, płynne przejście zamiast skoku.
+
 ## 1.145.193
 
 - Aparat własnego dzieła: ikonka z trzema miejscami spod pierwszego

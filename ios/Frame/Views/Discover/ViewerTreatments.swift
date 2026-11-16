@@ -44,15 +44,20 @@ enum Treatment: String, CaseIterable, Hashable, Sendable {
         }
     }
 
-    /// The caption's line while some are left off: "Przed korektą barw",
-    /// "Przed restauracją dzieła", or both.
-    static func before(_ off: Set<Treatment>, kind: ColourRecovery.Kind?) -> String? {
-        switch (off.contains(.colours), off.contains(.restored)) {
-        case (true, true): "Przed korektą barw i restauracją dzieła"
-        case (true, false): kind == .paper ? "Przed odżółceniem papieru" : "Przed zdjęciem werniksu"
-        case (false, true): "Przed restauracją dzieła"
-        case (false, false): nil
+    /// The mark's colour while the picture is shown with it (Mateusz
+    /// 2026-11-16 16:52: "Gdy aktywne - błękitna kropelka i delikatnie
+    /// żółte iskierki"); left off, it is the white of the cross, dimmed.
+    var lit: Color {
+        switch self {
+        case .colours: Color(red: 0.55, green: 0.80, blue: 1.0)
+        case .restored: Color(red: 1.0, green: 0.90, blue: 0.58)
         }
+    }
+
+    /// Which picture is shown, as one number: the viewer fades from one to
+    /// the next (`ZoomableImage.look`).
+    static func look(_ off: Set<Treatment>) -> Int {
+        (off.contains(.colours) ? 1 : 0) + (off.contains(.restored) ? 2 : 0)
     }
 
     /// The demo has no server to keep the pictures before: the colours
@@ -74,8 +79,9 @@ enum Treatment: String, CaseIterable, Hashable, Sendable {
 }
 
 /// One of the viewer's round buttons under the cross, as the cross is:
-/// the treatment's mark, struck through while the picture is shown without
-/// it; a spinner while that picture comes.
+/// the treatment's mark in its colour while the picture is shown with it,
+/// dimmed while without (Mateusz 2026-11-16: "Zamiast przekreślonych
+/// ikonek pokazuj przygaszone"); a spinner while that picture comes.
 struct TreatmentButton: View {
     let treatment: Treatment
     /// The picture is shown with it.
@@ -90,20 +96,9 @@ struct TreatmentButton: View {
                     ProgressView().tint(.white).controlSize(.small)
                 } else {
                     mark
-                        .opacity(on ? 1 : 0.55)
-                        .overlay {
-                            if !on {
-                                Capsule()
-                                    .fill(.white)
-                                    .frame(width: 2, height: 26)
-                                    .rotationEffect(.degrees(-45))
-                                    .shadow(color: .black.opacity(0.5), radius: 0.5)
-                                    .transition(.scale.combined(with: .opacity))
-                            }
-                        }
+                        .foregroundStyle(on ? treatment.lit : .white.opacity(0.4))
                 }
             }
-            .foregroundStyle(.white)
             .frame(width: 40, height: 40)
             .background(.black.opacity(0.5), in: Circle())
             .contentShape(Circle())
