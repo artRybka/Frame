@@ -345,8 +345,78 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertEqual(OwnCameraSession.area(front), 0.24, accuracy: 1e-9)
         XCTAssertEqual(OwnCameraSession.work(among: [front, door], last: nil), door)
         let moved = front.map { CGPoint(x: $0.x + 0.03, y: $0.y - 0.02) }
-        XCTAssertEqual(OwnCameraSession.work(among: [door, moved], last: front), moved)
         XCTAssertNil(OwnCameraSession.work(among: [], last: front))
+        // One a little larger about it (its frame) does not take over.
+        let framed = [CGPoint(x: 0.27, y: 0.17), CGPoint(x: 0.73, y: 0.17), CGPoint(x: 0.73, y: 0.83), CGPoint(x: 0.27, y: 0.83)]
+        XCTAssertEqual(OwnCameraSession.work(among: [framed, moved], last: front), moved)
+        // His painting of bottles, 2026-11-16: the rectangle painted in
+        // its middle was followed; the work about it takes over.
+        XCTAssertTrue(OwnCameraSession.part(front, of: door))
+        XCTAssertFalse(OwnCameraSession.part(front, of: framed))
+        XCTAssertFalse(OwnCameraSession.part(moved.map { CGPoint(x: $0.x + 0.3, y: $0.y) }, of: door))
+        XCTAssertEqual(OwnCameraSession.work(among: [door, moved], last: front), door)
+        // The wall about the work, running out of the picture, is not it,
+        // whether first seen or followed.
+        let wall = [CGPoint(x: 0, y: 0.08), CGPoint(x: 0.97, y: 0.12), CGPoint(x: 0.97, y: 0.9), CGPoint(x: 0.1, y: 0.95)]
+        XCTAssertFalse(OwnCameraSession.whole(wall))
+        XCTAssertEqual(OwnCameraSession.work(among: [wall, front], last: nil), front)
+        XCTAssertEqual(OwnCameraSession.work(among: [wall, front], last: wall), front)
+        XCTAssertEqual(OwnCameraSession.work(among: [wall], last: nil), wall)
+        // The work slips a look and a part of it is found: it stays for a
+        // few looks, then the part is what there is.
+        var shown: [CGPoint]? = door
+        var missed = 0
+        for _ in 0 ..< OwnCameraSession.patience {
+            (shown, missed) = OwnCameraSession.kept(OwnCameraSession.work(among: [front], last: shown), was: shown, missed: missed)
+            XCTAssertEqual(shown, door)
+        }
+        (shown, missed) = OwnCameraSession.kept(OwnCameraSession.work(among: [front], last: shown), was: shown, missed: missed)
+        XCTAssertEqual(shown, front)
+        XCTAssertEqual(missed, 0)
+        // Nothing found is nothing shown, at once.
+        XCTAssertNil(OwnCameraSession.kept(nil, was: door, missed: 0).outline)
+    }
+
+    /// Mateusz 2026-11-16 16:44 UTC ("etap „łączę trzy zdjęcia, usuwam
+    /// odblaski” trwa bardzo długo"): each photograph of a scan goes to
+    /// the server when it is taken, the sides one after another under the
+    /// first's token, and the work is looked for in the first meanwhile.
+    @MainActor
+    func testAScansPhotographsAreSentAsTheyAreTaken() async throws {
+        let demo = DemoBackend()
+        func picture() -> UIImage {
+            UIGraphicsImageRenderer(size: CGSize(width: 40, height: 30)).image { context in
+                UIColor.gray.setFill()
+                context.fill(CGRect(x: 0, y: 0, width: 40, height: 30))
+            }
+        }
+        let sending = OwnSending()
+        // Nothing taken: no side photographs with the server, none looked at.
+        let none = await sending.sidesSent()
+        XCTAssertFalse(none)
+        let unseen = await sending.looked()
+        XCTAssertNil(unseen)
+
+        var shots = OwnShots(first: picture())
+        sending.send(shots, with: demo)
+        let first = try await sending.photo()
+        // One photograph is no scan.
+        let alone = await sending.sidesSent()
+        XCTAssertFalse(alone)
+        shots.sides.append(picture())
+        sending.send(shots, with: demo)
+        shots.sides.append(picture())
+        sending.send(shots, with: demo)
+        // All of them again (the third taken, the steps go on): none twice.
+        sending.send(shots, with: demo)
+        let sent = await sending.sidesSent()
+        XCTAssertTrue(sent)
+        let same = try await sending.photo()
+        XCTAssertEqual(same.token, first.token)
+        let looked = await sending.looked()
+        XCTAssertEqual(looked?.token, first.token)
+        let merged = try await demo.mergeOwnPhotos(token: first.token, outline: nil)
+        XCTAssertEqual(merged.used, 2)
     }
 
     /// The handle between the one photograph and the scan follows the

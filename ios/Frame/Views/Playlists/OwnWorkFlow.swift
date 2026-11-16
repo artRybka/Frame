@@ -61,9 +61,23 @@ struct OwnWorkFlow: View {
     @State private var measured: OwnDepth.Size?
     /// The glare taken out by the side photographs.
     @State private var merged: OwnMerged?
+    /// The first photograph without it, as the server keeps it now.
+    @State private var clean: UIImage?
     /// The first photograph as it was taken and the scan made of the
     /// three, both cut to the work: the page that shows what the scan gave.
     @State private var compared: (before: UIImage, after: UIImage)?
+    /// A scan's photographs on their way to the server from the moment
+    /// each is taken.
+    @State private var sending = OwnSending()
+    /// The server making the three photographs one, while he sets the
+    /// corners on the first.
+    @State private var merging: Task<Void, Never>?
+    /// The server has done with them (whether or not anything was taken out).
+    @State private var mergeEnded = false
+    /// "Dalej" was pressed in "Kadr" and the scan is not made yet.
+    @State private var awaited = false
+    /// "Dalej" was pressed on the scan's page.
+    @State private var going = false
     @State private var findingText = "Szukam dzieła na zdjęciu…"
 
     private var retaking: Item? {
@@ -80,16 +94,29 @@ struct OwnWorkFlow: View {
                 case .photo:
                     if ["own-scan", "own-scan2"].contains(LaunchRoute.screen) {
                         OwnScanSketch(close: back)  // the scan's camera as a scene, for screenshots
-                    } else if let compared {
+                    } else {
+                        OwnCamera(
+                            close: back, took: take, early: early,
+                            finding: finding ? photo : nil, findingText: findingText
+                        )
+                    }
+                case .cut:
+                    if let compared {
                         OwnScanResult(
                             before: compared.before, after: compared.after,
-                            again: { withAnimation(.easeInOut(duration: 0.3)) { self.compared = nil } },
-                            next: { withAnimation(.easeInOut(duration: 0.3)) { step = .cut } }
+                            again: again,
+                            next: {
+                                Task {
+                                    going = true
+                                    _ = await cutDone()
+                                    going = false
+                                }
+                            },
+                            busy: going
                         )
                     } else {
-                        OwnCamera(close: back, took: take, finding: finding ? photo : nil, findingText: findingText)
+                        cutStep
                     }
-                case .cut: cutStep
                 case .describe: describeStep
                 }
             }
@@ -115,7 +142,7 @@ struct OwnWorkFlow: View {
                     .accessibilityElement(children: .combine)
                 }
             }
-            .toolbar(step == .photo ? .hidden : .visible, for: .navigationBar)
+            .toolbar(step == .photo || compared != nil ? .hidden : .visible, for: .navigationBar)
         }
         .task { await openForScreenshot() }
     }
@@ -124,39 +151,62 @@ struct OwnWorkFlow: View {
     private func back() {
         switch step {
         case .photo: dismiss()
-        case .cut: withAnimation(.easeInOut(duration: 0.3)) { step = .photo }
+        case .cut: again()
         case .describe: withAnimation(.easeInOut(duration: 0.3)) { step = .cut }
         }
     }
 
     // MARK: 1. The photograph
 
+    /// A scan's photographs so far (nil: begun anew), the next still to be
+    /// taken: they go to the server meanwhile, and the work is looked for
+    /// in the first (Mateusz 2026-11-16 16:44 UTC: "etap „łączę trzy
+    /// zdjęcia, usuwam odblaski” trwa bardzo długo […] może niektóre
+    /// procesy robić w tle a w międzyczasie wykonać np. Kadrowanie?"; the
+    /// three were sent one after another, some 3 s each, only after the
+    /// third was taken, then Opus looked for the work, 4 s).
+    private func early(_ shots: OwnShots?) {
+        if shots?.sides.isEmpty ?? true { sending = OwnSending() }
+        if let shots { sending.send(shots, with: model.backend) }
+    }
+
+    /// Back to the camera, for the photographs anew.
+    private func again() {
+        sending = OwnSending()
+        merging?.cancel()
+        merging = nil
+        withAnimation(.easeInOut(duration: 0.3)) {
+            compared = nil
+            step = .photo
+        }
+    }
+
     /// The photograph upright (the camera's turn drawn in), sent with the
-    /// ones from the sides, the glare taken out by them, and the work
-    /// looked for in it.
+    /// ones from the sides (what of them is not with the server yet), and
+    /// the work looked for in it. Then "Kadr" at once, on the first
+    /// photograph: the server makes the three one meanwhile.
     private func take(_ shots: OwnShots) {
         let image = Self.upright(shots.first)
         photo = image
         depth = shots.depth
         merged = nil
+        clean = nil
         compared = nil
+        merging?.cancel()
+        merging = nil
+        mergeEnded = false
         finding = true
-        findingText = shots.sides.isEmpty ? "Szukam dzieła na zdjęciu…" : "Łączę trzy zdjęcia, usuwam odblaski…"
+        findingText = shots.sides.isEmpty ? "Szukam dzieła na zdjęciu…" : "Wysyłam zdjęcia…"
         Task {
             defer { finding = false }
-            // The camera's own file, every pixel of it; a demo's is drawn.
-            guard let data = shots.file(0) ?? image.jpegData(compressionQuality: 0.9) else { return }
+            sending.send(shots, with: model.backend)
             do {
-                var sent = try await model.backend.sendOwnPhoto(data)
-                if !shots.sides.isEmpty {
-                    await merge(shots, token: sent.token)
-                    findingText = "Szukam dzieła na zdjęciu…"
-                }
-                do {
-                    sent = try await model.backend.findOwnWork(token: sent.token)
-                } catch {
-                    // No key, or Opus could not: he sets the corners himself.
-                }
+                var sent = try await sending.photo()
+                // Any of the side ones failing leaves the first photograph as it was.
+                let scanned = await sending.sidesSent()
+                if !shots.sides.isEmpty { findingText = "Szukam dzieła na zdjęciu…" }
+                // No key, or Opus could not: he sets the corners himself.
+                if let looked = await sending.looked() { sent = looked }
                 incoming = sent
                 // Where the model has no answer for a rectangle, the one the
                 // camera followed (Mateusz 2026-11-16: "czy to potrzebne
@@ -165,40 +215,32 @@ struct OwnWorkFlow: View {
                 let seen = sent.corners == nil && (sent.shape.isEmpty || sent.shape == "rectangle") ? shots.outline : nil
                 found = sent.corners ?? seen
                 foundByCamera = seen != nil
-                if merged != nil, let clean = photo {
-                    // What the scan gave, before the cut: the work alone, where it was found.
-                    let both = (OwnPicture.cut(image, corners: found), OwnPicture.cut(clean, corners: found))
-                    withAnimation(.easeInOut(duration: 0.3)) { compared = both }
-                } else {
-                    withAnimation(.easeInOut(duration: 0.3)) { step = .cut }
+                if scanned {
+                    let token = sent.token
+                    merging = Task { await merge(token: token, outline: shots.outline) }
                 }
+                withAnimation(.easeInOut(duration: 0.3)) { step = .cut }
             } catch {
+                sending = OwnSending()
                 model.show(error)
             }
         }
     }
 
-    /// The side photographs sent and laid over the first; where they
+    /// The side photographs laid over the first on the server; where they
     /// took a glare out, the photograph as the server keeps it now. Any
     /// of it failing leaves the first photograph as it was.
-    private func merge(_ shots: OwnShots, token: String) async {
-        do {
-            for (index, side) in shots.sides.enumerated() {
-                guard let data = shots.file(index + 1) ?? Self.upright(side).jpegData(compressionQuality: 0.9)
-                else { continue }
-                try await model.backend.sendOwnSide(token: token, data)
-            }
-            let done = try await model.backend.mergeOwnPhotos(token: token, outline: shots.outline)
-            guard done.replaced > 0 else { return }
-            // For the screen: whole, it is 48 MP.
-            let clean = try await model.backend.ownPhoto(token: token, side: Int(OwnPicture.shownSide))
-            if let image = UIImage(data: clean) {
-                photo = image
-                merged = done
-            }
-        } catch {
-            // The first photograph alone, glare and all.
-        }
+    private func merge(token: String, outline: [[Double]]?) async {
+        defer { if incoming?.token == token { mergeEnded = true } }
+        guard let done = try? await model.backend.mergeOwnPhotos(token: token, outline: outline), done.replaced > 0,
+              // For the screen: whole, it is 48 MP.
+              let data = try? await model.backend.ownPhoto(token: token, side: Int(OwnPicture.shownSide)),
+              let image = UIImage(data: data),
+              // He may have gone back to the camera meanwhile.
+              incoming?.token == token, !Task.isCancelled
+        else { return }
+        clean = image
+        merged = done
     }
 
     // MARK: 2. The cut
@@ -207,7 +249,9 @@ struct OwnWorkFlow: View {
         if let shape = incoming?.shape, !shape.isEmpty, shape != "rectangle" {
             return "To dzieło nie jest prostokątem, więc zostaje całe zdjęcie. Możesz je przyciąć sam."
         }
-        let glare = merged != nil ? "Odblaski usunięte z trzech zdjęć. " : ""
+        if awaited { return "Jeszcze chwila: kończę łączyć trzy zdjęcia i usuwać odblaski…" }
+        let glare = merged != nil ? "Odblaski usunięte z trzech zdjęć. "
+            : merging != nil && !mergeEnded ? "W tle łączę trzy zdjęcia i usuwam odblaski. " : ""
         if foundByCamera { return glare + "Zaznaczyłem to, co widział aparat. Popraw narożniki w lupach, jeśli trzeba." }
         if found != nil { return glare + "Rama wycięta. Popraw narożniki w lupach, jeśli trzeba." }
         return glare + "Nie znalazłem dzieła na zdjęciu. Ustaw narożniki sam."
@@ -220,7 +264,7 @@ struct OwnWorkFlow: View {
                 photo: .local(photo), aspect: incoming.aspect, corners: found,
                 saveTitle: retaking == nil ? "Dalej" : "Zapisz", savesUnchanged: true,
                 note: cutNote,
-                cancel: { withAnimation(.easeInOut(duration: 0.3)) { step = .photo } }
+                cancel: again
             ) { chosen in
                 await cutChosen(chosen)
             }
@@ -231,6 +275,27 @@ struct OwnWorkFlow: View {
         let whole = chosen == [[0, 0], [1, 0], [1, 1], [0, 1]]
         corners = whole ? nil : chosen
         cutBy = chosen == found ? "auto" : "owner"
+        guard incoming != nil else { return false }
+        // The scan is made while he sets the corners; what is left of
+        // that is waited for here, under a word of it.
+        if let merging {
+            awaited = !mergeEnded
+            await merging.value
+            awaited = false
+        }
+        if merged != nil, let photo, let clean {
+            // What the scan gave: the work alone, as he cut it.
+            let both = (OwnPicture.cut(photo, corners: corners), OwnPicture.cut(clean, corners: corners))
+            withAnimation(.easeInOut(duration: 0.3)) { compared = both }
+            return true
+        }
+        return await cutDone()
+    }
+
+    /// The corners are his and the scan (if any) seen: on to what he
+    /// knows of the work, or the new photograph kept in the old one's
+    /// place.
+    private func cutDone() async -> Bool {
         guard let incoming else { return false }
         if let item = retaking {
             do {
@@ -247,10 +312,13 @@ struct OwnWorkFlow: View {
                 return false
             }
         }
-        if let photo { picture = OwnPicture.cut(photo, corners: corners) }
+        if let shown = clean ?? photo { picture = OwnPicture.cut(shown, corners: corners) }
         // The LiDAR's size between his corners (none for the photograph whole).
         measured = corners.flatMap { depth?.size($0) }
-        withAnimation(.easeInOut(duration: 0.3)) { step = .describe }
+        withAnimation(.easeInOut(duration: 0.3)) {
+            compared = nil
+            step = .describe
+        }
         readHints()
         return true
     }
@@ -371,6 +439,71 @@ struct OwnWorkFlow: View {
         return UIGraphicsImageRenderer(size: size, format: format).image { _ in
             image.draw(in: CGRect(origin: .zero, size: size))
         }
+    }
+}
+
+/// A scan's photographs on their way to the server from the moment each is
+/// taken, and the work looked for in the first: by the time the third is
+/// taken, only that one is left to send.
+@MainActor
+final class OwnSending {
+    private var first: Task<OwnIncoming, Error>?
+    private var look: Task<OwnIncoming?, Never>?
+    /// One after another: the server numbers them as they come.
+    private var sides: [Task<Void, Error>] = []
+
+    /// The photographs taken so far: those not yet on their way are sent.
+    func send(_ shots: OwnShots, with backend: any FrameBackend) {
+        let first = self.first ?? begin(shots, with: backend)
+        for index in shots.sides.indices.dropFirst(sides.count) {
+            let file = shots.file(index + 1), picture = shots.sides[index], before = sides.last
+            sides.append(Task<Void, Error> {
+                let token = try await first.value.token
+                if let before { try await before.value }
+                // The camera's own file, every pixel of it; a demo's is drawn.
+                guard let data = file ?? OwnWorkFlow.upright(picture).jpegData(compressionQuality: 0.9)
+                else { throw CancellationError() }
+                try await backend.sendOwnSide(token: token, data)
+            })
+        }
+    }
+
+    private func begin(_ shots: OwnShots, with backend: any FrameBackend) -> Task<OwnIncoming, Error> {
+        let file = shots.file(0), picture = shots.first
+        let sent = Task<OwnIncoming, Error> {
+            guard let data = file ?? OwnWorkFlow.upright(picture).jpegData(compressionQuality: 0.9)
+            else { throw CancellationError() }
+            return try await backend.sendOwnPhoto(data)
+        }
+        first = sent
+        look = Task<OwnIncoming?, Never> {
+            guard let token = try? await sent.value.token else { return nil }
+            return try? await backend.findOwnWork(token: token)
+        }
+        return sent
+    }
+
+    /// The first photograph as the server keeps it.
+    func photo() async throws -> OwnIncoming {
+        guard let first else { throw CancellationError() }
+        return try await first.value
+    }
+
+    /// Whether there are side photographs and each is with the server.
+    func sidesSent() async -> Bool {
+        do {
+            for side in sides { try await side.value }
+        } catch {
+            return false
+        }
+        return !sides.isEmpty
+    }
+
+    /// The first photograph with the work found in it; nil when the
+    /// server could not look (no key, Opus down).
+    func looked() async -> OwnIncoming? {
+        guard let look else { return nil }
+        return await look.value
     }
 }
 

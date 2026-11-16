@@ -34,7 +34,18 @@ difference from the first is the middle one of each cell's
 balances are held near each other (:data:`BALANCE`); and of the least
 view only a part may be shared veil (:data:`VEIL_MOST`): that veil is
 the one thing here that is supposed, not seen, and all of it made a dark
-work black."""
+work black.
+
+What his paintings showed (2026-11-16 16:44 UTC, four oils and a print
+behind glass; "Skany wychodzą chyba odrobinę zbyt kontrastowe i ciemne?
+Porównaj proszę zdjęcia na wprost z efektami po połączeniu"): the scans
+were 7 to 11 levels (of 255) darker than the photographs from the front
+and their shadows closed (the 2nd percentile from 12 to 2, from 15 to 6).
+Much of what went was even over the whole work: the sheen of the paint
+and the veil over the glass, which is how the work looks in its room. So
+the light that most of the work has in its layer stays
+(:data:`KEPT`), and only what stands out of it, a reflection with a
+shape, is taken off: 2 to 6 levels darker, the shadows as they were."""
 
 from __future__ import annotations
 
@@ -43,6 +54,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import cv2
+import numba
 import numpy as np
 from numpy.typing import NDArray
 
@@ -66,6 +78,10 @@ BALANCE = 0.12
 CELL = 4
 #: The most of the least view that may be veil all the views share.
 VEIL_MOST = 0.3
+#: The reflection layer's percentile (per channel) that is the work's own
+#: even sheen or veil and stays on it. Not the middle one: a reflection
+#: over more than half of the work would stay whole.
+KEPT = 40
 #: The band at the edge a side photograph was taken from, where the
 #: frame's side hides the work (of the work's width).
 HIDDEN = 0.06
@@ -123,14 +139,18 @@ def merge(first: Image, sides: list[Image], corners: Quad) -> Merged:
     front = cv2.warpPerspective(small, to_work, (wd, ht), flags=cv2.INTER_LINEAR)
 
     views = [_View(_linear(front), 0)]
+    marks = _marks(front)
     for photo in sides:
-        laid = _lay(front, photo)
+        laid = _lay(front, marks, photo)
         if laid is not None:
             views.append(laid)
     if len(views) < 2:
         return Merged(first, 0, 0.0)
 
     layer = _reflection(views)
+    # What most of the work has is not taken off.
+    even = np.percentile(layer.reshape(-1, layer.shape[-1]), KEPT, axis=0)
+    layer = np.clip(layer - even, 0, None).astype(np.float32)
     removed = float(layer.mean() / max(float(_coarse(views[0].light, layer.shape).mean()), 1e-6))
     if not LEAST <= removed <= MOST:
         return Merged(first, len(views) - 1, 0.0)
@@ -194,13 +214,21 @@ def _srgb(light: Floats) -> Image:
     return _FROM_LINEAR[steps]
 
 
-def _lay(front: Image, photo: Image) -> _View | None:
-    """A side photograph laid over the work as the first shows it, or
-    None when too little of them matches (another work, a blur)."""
-    side = _resize(photo, min(1.0, MATCH_SIDE / max(photo.shape[:2])))
+def _marks(img: Image) -> tuple[Any, Any]:
+    """What a photograph is known by in another: its points and what is
+    about each."""
     sift = cv2.SIFT_create(8000, contrastThreshold=0.02)  # type: ignore[attr-defined]
-    k1, d1 = sift.detectAndCompute(cv2.cvtColor(front, cv2.COLOR_RGB2GRAY), None)
-    k2, d2 = sift.detectAndCompute(cv2.cvtColor(side, cv2.COLOR_RGB2GRAY), None)
+    found: tuple[Any, Any] = sift.detectAndCompute(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY), None)
+    return found
+
+
+def _lay(front: Image, marks: tuple[Any, Any], photo: Image) -> _View | None:
+    """A side photograph laid over the work as the first shows it (with
+    its ``marks``), or None when too little of them matches (another
+    work, a blur)."""
+    side = _resize(photo, min(1.0, MATCH_SIDE / max(photo.shape[:2])))
+    k1, d1 = marks
+    k2, d2 = _marks(side)
     if d1 is None or d2 is None or len(k1) < MIN_MATCHES or len(k2) < MIN_MATCHES:
         return None
     pairs = cv2.BFMatcher(cv2.NORM_L2).knnMatch(d2, d1, k=2)
@@ -337,42 +365,100 @@ def _shared(
     """The veil the views share: the least ``m`` (0 … ``most``) with every
     ``m + over[i]`` piecewise smooth. Chambolle and Pock's primal-dual
     steps for Σ‖∇m + ∇over[i]‖₁ + cost·m."""
-    n = over.shape[0]
-    bx = np.zeros_like(over)
-    by = np.zeros_like(over)
-    bx[:, :, :-1] = over[:, :, 1:] - over[:, :, :-1]
-    by[:, :-1] = over[:, 1:] - over[:, :-1]
-    wx, wy = across[..., None], down[..., None]
+    step = 0.99 / math.sqrt(8.0 * over.shape[0])
+    found: Floats = _steps(
+        np.ascontiguousarray(over, np.float32),
+        np.ascontiguousarray(across, np.float32),
+        np.ascontiguousarray(down, np.float32),
+        np.ascontiguousarray(most, np.float32),
+        np.ascontiguousarray(start, np.float32),
+        steps,
+        np.float32(step),
+        np.float32(VEIL_COST * step),
+    )
+    return found
+
+
+@numba.njit(cache=True)
+def _steps(
+    over: Floats,
+    across: Floats,
+    down: Floats,
+    most: Floats,
+    start: Floats,
+    steps: int,
+    step: np.float32,
+    cost: np.float32,
+) -> Floats:
+    """:func:`_shared`'s steps, a pixel at a time: as whole arrays they
+    were the better part of the half minute his phone waited for a scan
+    (2026-11-16, "etap „łączę trzy zdjęcia, usuwam odblaski” trwa bardzo
+    długo")."""
+    n, h, w, channels = over.shape
     px = np.zeros_like(over)
     py = np.zeros_like(over)
-    m = start.astype(np.float32)
+    m = start.copy()
     ahead = m.copy()
-    step = np.float32(0.99 / math.sqrt(8.0 * n))
-    cost = np.float32(VEIL_COST) * step
-    gx = np.zeros_like(m)
-    gy = np.zeros_like(m)
+    sx = np.zeros_like(m)
+    sy = np.zeros_like(m)
+    one = np.float32(1)
     for _ in range(steps):
-        gx[:, :-1] = ahead[:, 1:] - ahead[:, :-1]
-        gy[:-1] = ahead[1:] - ahead[:-1]
-        px = (px + step * (gx + bx)) * wx
-        py = (py + step * (gy + by)) * wy
-        # Onto the unit ball over both directions and the three channels
-        # at once: a step is one step whatever its colour, so the veil
-        # does not come out in coloured patches.
-        size = np.sqrt((px * px + py * py).sum(-1, keepdims=True))
-        np.maximum(size, 1, out=size)
-        px /= size
-        py /= size
-        sx, sy = px.sum(0), py.sum(0)
-        # The divergence of (sx, sy): what the steps above are the adjoint of.
-        div = np.zeros_like(m)
-        div[:, :-1] += sx[:, :-1]
-        div[:, 1:] -= sx[:, :-1]
-        div[:-1] += sy[:-1]
-        div[1:] -= sy[:-1]
-        new = np.clip(m + step * div - cost, 0, most)
-        ahead = 2 * new - m
-        m = new
+        sx[:] = 0
+        sy[:] = 0
+        for i in range(n):
+            for y in range(h):
+                for x in range(w):
+                    wx = across[i, y, x]
+                    wy = down[i, y, x]
+                    size = np.float32(0)
+                    for c in range(channels):
+                        gx = np.float32(0)
+                        gy = np.float32(0)
+                        if x < w - 1:
+                            gx = (ahead[y, x + 1, c] - ahead[y, x, c]) + (
+                                over[i, y, x + 1, c] - over[i, y, x, c]
+                            )
+                        if y < h - 1:
+                            gy = (ahead[y + 1, x, c] - ahead[y, x, c]) + (
+                                over[i, y + 1, x, c] - over[i, y, x, c]
+                            )
+                        a = (px[i, y, x, c] + step * gx) * wx
+                        b = (py[i, y, x, c] + step * gy) * wy
+                        px[i, y, x, c] = a
+                        py[i, y, x, c] = b
+                        size += a * a + b * b
+                    # Onto the unit ball over both directions and the three
+                    # channels at once: a step is one step whatever its
+                    # colour, so the veil does not come out in coloured
+                    # patches.
+                    size = np.float32(math.sqrt(size))
+                    for c in range(channels):
+                        if size > one:
+                            px[i, y, x, c] /= size
+                            py[i, y, x, c] /= size
+                        sx[y, x, c] += px[i, y, x, c]
+                        sy[y, x, c] += py[i, y, x, c]
+        for y in range(h):
+            for x in range(w):
+                for c in range(channels):
+                    # The divergence of (sx, sy): what the steps above are
+                    # the adjoint of.
+                    div = np.float32(0)
+                    if x < w - 1:
+                        div += sx[y, x, c]
+                    if x > 0:
+                        div -= sx[y, x - 1, c]
+                    if y < h - 1:
+                        div += sy[y, x, c]
+                    if y > 0:
+                        div -= sy[y - 1, x, c]
+                    new = m[y, x, c] + step * div - cost
+                    if new > most[y, x, c]:
+                        new = most[y, x, c]
+                    if new < 0:
+                        new = np.float32(0)
+                    ahead[y, x, c] = 2 * new - m[y, x, c]
+                    m[y, x, c] = new
     return m
 
 

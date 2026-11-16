@@ -5,7 +5,9 @@ import SwiftUI
 /// 2026-11-16: "Może dzięki wykonaniu trzech zdjęć jesteśmy w stanie
 /// uzyskać też lepszą jakość reprodukcji?"): the photograph from the front
 /// as it was taken and the scan made of the three, under one handle to
-/// draw across, so that he sees what the scan gave before going on.
+/// draw across, so that he sees what the scan gave before going on. It
+/// comes after "Kadr", both cut as he set the corners: the server makes
+/// the scan while he sets them (2026-11-16 16:44 UTC).
 struct OwnScanResult: View {
     /// The first photograph as the camera took it.
     let before: UIImage
@@ -14,6 +16,9 @@ struct OwnScanResult: View {
     /// Back to the camera, for the three anew.
     let again: () -> Void
     let next: () -> Void
+    /// "Dalej" was pressed and the server is at it (a new photograph of a
+    /// work he has: cut and kept).
+    var busy = false
 
     var body: some View {
         ZStack {
@@ -61,12 +66,16 @@ struct OwnScanResult: View {
                         .controlSize(.large)
                     Button(action: next) {
                         // The glass is light on this dark page.
-                        Text("Dalej").foregroundStyle(.black)
+                        HStack(spacing: 8) {
+                            if busy { ProgressView().controlSize(.small).tint(.black) }
+                            Text("Dalej").foregroundStyle(.black)
+                        }
                     }
                     .buttonStyle(.glassProminent)
                     .tint(.white)
                     .controlSize(.large)
                 }
+                .disabled(busy)
                 .padding(.bottom, 20)
             }
         }
