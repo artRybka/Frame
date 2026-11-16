@@ -425,6 +425,30 @@ final class OwnWorksTests: XCTestCase {
         } catch {}
     }
 
+    /// "Zrób zdjęcie ponownie": the way there closes at once, and the
+    /// new photograph is kept behind the work's card, which takes the
+    /// work as kept (Mateusz 2026-11-16 21:48 UTC, the long "Dalej").
+    @MainActor
+    func testANewPhotographIsKeptBehindTheCard() async throws {
+        let model = AppModel()
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 30)).image { context in
+            UIColor.gray.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 40, height: 30))
+        }
+        let data = try XCTUnwrap(image.jpegData(compressionQuality: 0.9))
+        let first = try await model.backend.sendOwnPhoto(data)
+        let work = try await model.backend.addOwnWork(NewOwnWork(token: first.token, text: OwnDescription()))
+        let next = try await model.backend.sendOwnPhoto(data)
+        model.retakeOwnWork(itemID: work.id, OwnPhotoCut(token: next.token))
+        XCTAssertTrue(model.ownRetaking.contains(work.id))
+        XCTAssertNil(model.ownRetaken[work.id])
+        for _ in 0 ..< 100 where model.ownRetaking.contains(work.id) {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertFalse(model.ownRetaking.contains(work.id))
+        XCTAssertEqual(model.ownRetaken[work.id]?.id, work.id)
+    }
+
     /// What the helper draws and counts after the first test on the phone
     /// (Mateusz 2026-11-16 12:53 UTC): the word held a moment, the
     /// gyroscope and the outline as one angle, the plan's dot, the ring.

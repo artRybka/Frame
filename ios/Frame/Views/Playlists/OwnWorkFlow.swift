@@ -34,7 +34,8 @@ struct OwnWorkFlow: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let mode: Mode
-    /// The work as added (or photographed again): its card opens.
+    /// The work as added: its card opens. (A new photograph of a work he
+    /// has is kept behind its card, `AppModel.retakeOwnWork`.)
     let done: (Item) -> Void
 
     @State private var step = Step.photo
@@ -108,9 +109,11 @@ struct OwnWorkFlow: View {
                             next: { single in
                                 Task {
                                     going = true
+                                    // A new photograph of a work he has: the
+                                    // choice goes with it, behind the card.
                                     var kept = true
-                                    if single { kept = await keepFirst() }
-                                    if kept { _ = await cutDone() }
+                                    if single, retaking == nil { kept = await keepFirst() }
+                                    if kept { _ = await cutDone(single: single) }
                                     going = false
                                 }
                             },
@@ -312,22 +315,17 @@ struct OwnWorkFlow: View {
     /// The corners are his and the scan (if any) seen: on to what he
     /// knows of the work, or the new photograph kept in the old one's
     /// place.
-    private func cutDone() async -> Bool {
+    private func cutDone(single: Bool = false) async -> Bool {
         guard let incoming else { return false }
         if let item = retaking {
-            do {
-                let updated = try await model.backend.retakeOwnWork(
-                    itemID: item.id,
-                    OwnPhotoCut(token: incoming.token, corners: corners, by: cutBy, shape: incoming.shape)
-                )
-                model.ownWorkChanged(updated)
-                done(updated)
-                dismiss()
-                return true
-            } catch {
-                model.show(error)
-                return false
-            }
+            // The server is some seconds at it: the card says so meanwhile.
+            model.retakeOwnWork(
+                itemID: item.id,
+                OwnPhotoCut(token: incoming.token, corners: corners, by: cutBy, shape: incoming.shape),
+                single: single
+            )
+            dismiss()
+            return true
         }
         if let shown = clean ?? photo { picture = OwnPicture.cut(shown, corners: corners) }
         // The LiDAR's size between his corners (none for the photograph whole).
