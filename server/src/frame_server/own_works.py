@@ -44,8 +44,12 @@ log = logging.getLogger(__name__)
 
 #: How long a photograph waits for the owner to add its work.
 KEEP_SECONDS = 24 * 3600
-#: The longest side a photograph is kept with while it waits.
-INCOMING_SIDE = 4000
+#: The longest side a photograph is kept with while it waits (the phone
+#: takes 48 MP, 8064 × 6048, Mateusz 2026-11-16; the work is cut out of it
+#: at up to 4000 px, `originals-4k`).
+INCOMING_SIDE = 6000
+#: Photographs from the side a first one may have (``-side1``, ``-side2``).
+SIDES = 2
 #: A token as :meth:`OwnWorks.take` makes it.
 _TOKEN = re.compile(r"^[0-9a-f]{24}$")
 #: The side the picture is read at for the hints.
@@ -101,6 +105,14 @@ class Incoming(BaseModel):
     #: The work's outline as Opus saw it ("rectangle", "round",
     #: "irregular"; "" when not asked): only a rectangle is cut.
     shape: str = ""
+
+
+class Merged(Incoming):
+    """The first photograph with the glare taken out by the side ones:
+    how many could be laid over it, and how much of it they gave (0–1)."""
+
+    used: int = 0
+    replaced: float = 0.0
 
 
 class Hints(BaseModel):
@@ -172,6 +184,54 @@ class OwnWorks:
         token = secrets.token_hex(12)
         img.save(self.incoming / f"{token}.jpg", "JPEG", quality=93)
         return Incoming(token=token, width=img.width, height=img.height)
+
+    def side(self, token: str, data: bytes) -> int:
+        """Another photograph of the same work taken a little from the side
+        (the scan of three, Mateusz 2026-11-16), kept with the first until
+        :meth:`merge`. How many side photographs it has now."""
+        self.path(token)
+        taken = sorted(self.incoming.glob(f"{token}-side*.jpg"))
+        if len(taken) >= SIDES:
+            raise ValueError("enough side photographs")
+        try:
+            img = load_image(data).convert("RGB")
+        except OSError as err:
+            raise ValueError("no picture") from err
+        img.thumbnail((INCOMING_SIDE, INCOMING_SIDE), Image.Resampling.LANCZOS)
+        img.save(self.incoming / f"{token}-side{len(taken) + 1}.jpg", "JPEG", quality=93)
+        return len(taken) + 1
+
+    def merge(self, token: str) -> Merged:
+        """The first photograph without the reflections its side ones do
+        not have (:mod:`.imaging.glare`); kept in its place, the side ones
+        gone. Unchanged when none could be laid over it."""
+        import numpy as np
+
+        from .imaging.glare import merge
+
+        path = self.path(token)
+        sides = sorted(self.incoming.glob(f"{token}-side*.jpg"))
+        with Image.open(path) as img:
+            first = np.asarray(img.convert("RGB"))
+        photos = []
+        for side in sides:
+            with Image.open(side) as img:
+                photos.append(np.asarray(img.convert("RGB")))
+        done = merge(first, photos)
+        if done.replaced > 0:
+            Image.fromarray(done.image).save(path, "JPEG", quality=93)
+        for side in sides:
+            side.unlink(missing_ok=True)
+        log.info(
+            "own photograph %s: %d side(s) laid over, %.1f%% glare taken out",
+            token,
+            done.used,
+            done.replaced * 100,
+        )
+        h, w = first.shape[:2]
+        return Merged(
+            token=token, width=w, height=h, used=done.used, replaced=round(done.replaced, 4)
+        )
 
     def find(self, token: str) -> Incoming:
         """The work found in the photograph by Opus (``corners`` None when
@@ -347,4 +407,4 @@ class OwnWorks:
         return self.crops.apply(item, cut)
 
 
-__all__ = ["Description", "Hints", "Incoming", "OwnWorks"]
+__all__ = ["Description", "Hints", "Incoming", "Merged", "OwnWorks"]

@@ -91,11 +91,17 @@ struct ConnectionSettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var path: [SettingsPage] = SettingsPage.launch.map { [$0] } ?? []
+    /// „Do sprawdzenia" opened from the top of the list (Mateusz 2026-11-16:
+    /// „wejście w »do sprawdzenia« daj także od razu z ekranu konfiguracji").
+    @State private var reviewing = false
 
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
+                    if let count = model.aiSettings?.reviewCount, count > 0 {
+                        ReviewShortcut(count: count) { reviewing = true }
+                    }
                     ForEach(SettingsPage.Block.allCases, id: \.self) { block in
                         SettingsBlockView(block: block)
                     }
@@ -116,6 +122,7 @@ struct ConnectionSettingsView: View {
             .navigationDestination(for: SettingsPage.self) { page in
                 SettingsPageView(page: page)
             }
+            .navigationDestination(isPresented: $reviewing) { AiReviewView() }
         }
         // On the stack, not the list: the list's tasks stop when a page
         // opens over it (and never start when one opens right away).
@@ -135,6 +142,51 @@ struct ConnectionSettingsView: View {
             await model.loadLibraryStorage()
         }
         .task { await model.syncTailnet() }
+    }
+}
+
+/// „Do sprawdzenia" at the top of Konfiguracja while anything waits there,
+/// as on Konfiguracja → Claude, with how many.
+private struct ReviewShortcut: View {
+    let count: Int
+    let open: () -> Void
+
+    var body: some View {
+        Button(action: open) {
+            HStack(spacing: 12) {
+                Image(systemName: "checklist")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.white)
+                    .frame(width: 30, height: 30)
+                    .background(Theme.vermilion, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Do sprawdzenia")
+                        .foregroundStyle(Theme.ink)
+                    Text("Strażnik i nocny przegląd")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                Text("\(count)")
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(Theme.inkSoft)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Theme.inkSoft.opacity(0.6))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
+                .strokeBorder(Theme.hairline.opacity(0.7))
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(Text("Otwiera listę do sprawdzenia"))
     }
 }
 

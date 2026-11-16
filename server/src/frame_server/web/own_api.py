@@ -7,13 +7,14 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 from ..ai import AiUnavailable
 from ..imaging.cut import valid
 from ..library.models import Item
-from ..own_works import Description, Hints, Incoming
+from ..own_works import Description, Hints, Incoming, Merged
 from ..service import FrameService
 from .deps import require_owner, service
 
@@ -67,6 +68,41 @@ async def send_photo(svc: Svc, file: Annotated[UploadFile, File()]) -> Incoming:
         return await run_in_threadpool(svc.own_works.take, data)
     except ValueError as err:
         raise HTTPException(422, str(err)) from err
+
+
+@router.post("/own/photos/{token}/sides")
+async def send_side(token: str, svc: Svc, file: Annotated[UploadFile, File()]) -> dict[str, int]:
+    """A photograph of the same work from a little to the side (the scan
+    of three): ``{"sides": how many it has now}``."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(422, "empty file")
+    try:
+        return {"sides": await run_in_threadpool(svc.own_works.side, token, data)}
+    except LookupError as err:
+        raise HTTPException(404, str(err)) from err
+    except ValueError as err:
+        raise HTTPException(422, str(err)) from err
+
+
+@router.post("/own/photos/{token}/merge", response_model=Merged)
+async def merge(token: str, svc: Svc) -> Merged:
+    """The reflections taken out by the side photographs (no model, a
+    few seconds of the server's own work)."""
+    try:
+        return await run_in_threadpool(svc.own_works.merge, token)
+    except LookupError as err:
+        raise HTTPException(404, str(err)) from err
+
+
+@router.get("/own/photos/{token}")
+async def photo(token: str, svc: Svc) -> FileResponse:
+    """The photograph as it waits (after :func:`merge`, without the glare):
+    the phone shows it in "Kadr"."""
+    try:
+        return FileResponse(svc.own_works.path(token), media_type="image/jpeg")
+    except LookupError as err:
+        raise HTTPException(404, str(err)) from err
 
 
 @router.post("/own/photos/{token}/find", response_model=Incoming)

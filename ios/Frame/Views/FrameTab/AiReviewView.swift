@@ -21,6 +21,8 @@ struct AiReviewView: View {
     @Namespace private var zoomSpace
     /// "Zmień…"/"Popraw…": the value written by hand.
     @State private var editing: FixEditing?
+    /// "Popraw opis": the Polish texts being mended.
+    @State private var polishing: FixEditing?
     /// "Inna kopia": the work whose copies are open.
     @State private var copiesFor: Item?
     /// Works whose corrected values are being asked for, and those asked.
@@ -96,6 +98,11 @@ struct AiReviewView: View {
         }
         .sheet(item: $editing) { editing in
             ReviewFixSheet(editing: editing) { updated in
+                withAnimation(.snappy) { review = updated }
+            }
+        }
+        .sheet(item: $polishing) { editing in
+            PolishFixSheet(editing: editing) { updated in
                 withAnimation(.snappy) { review = updated }
             }
         }
@@ -229,6 +236,8 @@ struct AiReviewView: View {
                 } else {
                     Button("Popraw…") { editing = FixEditing(entry: entry, problem: problem) }
                 }
+            } else if problem.field == "polish" {
+                Button("Popraw opis") { polishing = FixEditing(entry: entry, problem: problem) }
             } else if problem.field == "picture" {
                 HStack(spacing: 8) {
                     Button("Przytnij") {
@@ -348,6 +357,13 @@ struct AiReviewView: View {
                 Self.openedOnce = true
                 open(first.item.id)
             }
+            // Screenshots: `-reviewPolish YES` opens "Popraw opis" of the first such remark.
+            if UserDefaults.standard.bool(forKey: "reviewPolish"), !Self.openedOnce,
+               let entry = review?.findings.first(where: { $0.problems.contains { $0.field == "polish" } }),
+               let problem = entry.problems.first(where: { $0.field == "polish" }) {
+                Self.openedOnce = true
+                polishing = FixEditing(entry: entry, problem: problem)
+            }
         } catch {
             if review == nil { failed = true }
         }
@@ -454,6 +470,110 @@ struct ReviewFixSheet: View {
                     field: problem.field,
                     value: value.trimmingCharacters(in: .whitespacesAndNewlines),
                     valuePl: isTitle && !pl.isEmpty ? pl : nil
+                )
+                saved(updated)
+                dismiss()
+            } catch {
+                model.notices.warn("Nie udało się zapisać", error.localizedDescription)
+            }
+        }
+    }
+}
+
+/// "Popraw opis" (Mateusz 2026-11-16, de Chirico's self-portrait: „Nie mam
+/// możliwości korygowania takich pomyłek"): Claude mends the Polish texts
+/// where the audit's remark says, and they are shown to be read, changed
+/// by hand if need be, and kept with "Zapisz".
+struct PolishFixSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let editing: FixEditing
+    let saved: (AiReview) -> Void
+    @State private var frame = ""
+    @State private var full = ""
+    @State private var loading = true
+    @State private var failure: String?
+    @State private var saving = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text(editing.problem.problem)
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.inkSoft)
+                }
+                if loading {
+                    Section {
+                        Label {
+                            Text("Claude poprawia opis…")
+                        } icon: {
+                            ProgressView()
+                        }
+                        .foregroundStyle(Theme.inkSoft)
+                    }
+                } else if let failure {
+                    Section {
+                        Text(failure).foregroundStyle(Theme.vermilion)
+                        Button("Spróbuj jeszcze raz") { Task { await propose() } }
+                    }
+                } else {
+                    Section {
+                        TextField("Opis", text: $full, axis: .vertical)
+                            .lineLimit(6...)
+                    } header: {
+                        Text("Opis na karcie")
+                    } footer: {
+                        Text("Poprawione jest tylko to, czego dotyczy uwaga. Możesz jeszcze coś zmienić.")
+                    }
+                    Section("Tekst na ramce") {
+                        TextField("Tekst na ramce", text: $frame, axis: .vertical)
+                            .lineLimit(3...)
+                    }
+                }
+            }
+            .navigationTitle("Popraw opis")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Anuluj") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if saving {
+                        ProgressView()
+                    } else {
+                        Button("Zapisz", action: save)
+                            .disabled(loading || failure != nil
+                                || full.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.large])
+        .task { await propose() }
+    }
+
+    private func propose() async {
+        loading = true
+        failure = nil
+        defer { loading = false }
+        do {
+            let draft = try await model.backend.proposePolish(itemID: editing.entry.item.id)
+            frame = draft.frame
+            full = draft.full
+        } catch {
+            failure = error.localizedDescription
+        }
+    }
+
+    private func save() {
+        saving = true
+        Task {
+            defer { saving = false }
+            do {
+                let updated = try await model.backend.savePolish(
+                    itemID: editing.entry.item.id,
+                    draft: PolishDraft(frame: frame, full: full)
                 )
                 saved(updated)
                 dismiss()

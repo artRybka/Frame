@@ -2091,6 +2091,14 @@ struct AiSettingsUpdate: Encodable, Sendable {
 
 /// `GET /api/ai/review`: "Do sprawdzenia", what the gatekeeper set aside and
 /// what the night audit found, newest first.
+/// "Popraw opis": the Polish texts mended where the audit's remark says,
+/// shown before they are kept.
+struct PolishDraft: Codable, Hashable, Sendable {
+    /// The text on the frame (whole sentences that fit) and the card's.
+    var frame: String
+    var full: String
+}
+
 struct AiReview: Codable, Hashable, Sendable {
     struct Problem: Codable, Hashable, Sendable {
         /// title | artist | date | polish | picture

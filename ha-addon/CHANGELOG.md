@@ -1,5 +1,48 @@
 # Changelog
 
+## 1.145.183
+
+- „Do sprawdzenia”: uwaga do polskiego opisu (np. „tekst mówi o białych
+  literach, a na obrazie są ciemne”) ma przycisk „Popraw opis”. Claude
+  poprawia w opisie tylko to, czego dotyczy uwaga, patrząc na obraz, a Ty
+  widzisz poprawiony tekst na karcie i na ramce, możesz go jeszcze zmienić
+  i zapisujesz. Tak poprawiony opis nie jest potem pisany od nowa.
+- „Do sprawdzenia” jest też od razu na górze Konfiguracji (z liczbą
+  pozycji), gdy coś na niej czeka.
+
+## 1.145.182
+
+- Aparat przy dodawaniu własnego dzieła robi zdjęcia w pełnej
+  rozdzielczości (48 MP na nowszych iPhone'ach), więc dzieło wycięte z
+  ramy jest ostrzejsze.
+- Po pierwszym zdjęciu aparat prosi o dwa kolejne, krok w lewo i w prawo:
+  wystarczy wprowadzić kropkę w kółko, zdjęcie robi się samo. Serwer
+  nakłada je na siebie i usuwa odblaski lampy czy okna na szybie i
+  werniksie. „Pomiń” zostawia samo pierwsze zdjęcie.
+- iPhone z czujnikiem LiDAR (wersje Pro) mierzy wymiar dzieła między
+  narożnikami kadru i wpisuje go w puste pole Rozmiar (z ikoną linijki).
+
+## 1.145.181
+
+- Ulubione posortowane „Ostatnio dodane” stawiają na górze dzieła polubione
+  ostatnio. Dotąd liczyła się data trafienia dzieła do biblioteki, więc
+  serduszko na dziele znanym od dawna zostawiało je daleko w dół listy.
+  Serce przeniesione na lepszą kopię dzieła zachowuje swoją datę.
+- W playlistach ręcznych „Ostatnio dodane” liczy dodanie dzieła do tej
+  playlisty, a nie do biblioteki. W „Historii przesłanych” na górze jest
+  ostatnio przesłane zdjęcie także po wybraniu „Ostatnio dodane” (dotąd
+  wychodziło odwrotnie).
+
+## 1.145.180
+
+- Kadrowanie grafiki leżącej wśród tablicy barw i linijki (Erichsøe,
+  „Selvportræt med Violin”, SMK): pokazuje się sama płyta, a nie kartka
+  razem z tablicą. Model nie wątpi już w płytę tylko dlatego, że kartka
+  wychodzi poza zdjęcie albo leży pod tablicą barw. Dzieło obejrzane
+  wcześniej i zostawione bez kadru jest przy otwarciu karty sprawdzane
+  ponownie (dotąd nigdy, bez śladu w logu). Bok kartki leżący na brzegu
+  zdjęcia zostaje na brzegu. Log mówi, co kadrowanie postanowiło.
+
 ## 1.145.179
 
 - Nowy wygląd kroku Opis przy dodawaniu własnego dzieła i w „Edytuj opis”:

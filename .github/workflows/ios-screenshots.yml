@@ -226,6 +226,7 @@ jobs:
             capture connection 10 "connection-gemini-$appearance" -settingsPage gemini
             capture connection 12 "review-$appearance" -settingsPage ai -review YES
             capture connection 14 "review-open-$appearance" -settingsPage ai -review YES -reviewOpen YES
+            capture connection 14 "review-polish-$appearance" -settingsPage ai -review YES -reviewPolish YES
             capture connection 10 "connection-library-$appearance" -settingsPage library
             capture connection 10 "connection-night-$appearance" -settingsPage night
             capture connection 12 "night-changes-$appearance" -settingsPage night -nightChanges YES

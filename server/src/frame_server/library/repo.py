@@ -129,6 +129,12 @@ def _personal(playlist: Playlist) -> bool:
     return playlist.rules.favorites_only or any(t in MINE for t in playlist.rules.terms)
 
 
+def of_hearts(playlist: Playlist) -> bool:
+    """Made of its owner's hearts (Ulubione, or ``mine:favorites``): its
+    "added" is when a work was liked."""
+    return playlist.rules.favorites_only or MINE_FAVORITES in playlist.rules.terms
+
+
 #: Items written in one hold of the library's lock by
 #: :meth:`Library.update_many`: about 1 ms each on a NAS.
 PORTION = 200
@@ -589,11 +595,14 @@ def ordered(
     order: PlaylistSort,
     long_side: Callable[[Item], int | None] = said_side,
     added: list[str] | None = None,
+    liked_at: Mapping[str, str] | None = None,
 ) -> list[Item]:
     """A playlist's ``items`` in ``order`` (Mateusz 2026-11-12: "Do playlist
     dodaj opcję ich sortowania"). ``added``: a manual playlist's ids in the
     order they were added, its "when added"; a smart one's is the work's
-    joining the library. A work whose key is not known (no artist, no year,
+    joining the library, or for one made of hearts (Ulubione) when the work
+    was liked, ``liked_at`` (Mateusz 2026-11-16: new hearts went nowhere
+    near the top). A work whose key is not known (no artist, no year,
     no size) goes last whichever way; equals by title, then id
     (:func:`_settled`).
 
@@ -614,7 +623,11 @@ def ordered(
             case "added":
                 if added is not None:
                     return at.get(item.id)
-                return item.added_at or None
+                if liked_at is not None and item.id in liked_at:
+                    # Hearts moved over from before there were people share
+                    # one time: those by their joining the library.
+                    return (liked_at[item.id], item.added_at)
+                return (item.added_at, "") if item.added_at else None
             case "format":
                 return item.height / item.width if item.width and item.height else None
             case _:
@@ -1101,9 +1114,21 @@ class Library:
         """Everyone's hearts, by person."""
         return dict(self._hearts())
 
-    def set_favorite(self, user_id: str, item_id: str, liked: bool) -> Item | None:
+    def liked_at(self, user_id: str) -> dict[str, str]:
+        """When ``user_id`` liked each work they like: Ulubione's "added"."""
+        with self._db() as db:
+            rows = db.execute(
+                "SELECT item_id, added_at FROM favorites WHERE user_id = ?", (user_id,)
+            ).fetchall()
+        return {item_id: at for item_id, at in rows}
+
+    def set_favorite(
+        self, user_id: str, item_id: str, liked: bool, at: str | None = None
+    ) -> Item | None:
         """``user_id``'s heart on ``item_id``; the stored ``Item.favorite``
-        says whether anyone likes it (what keeps it in the library)."""
+        says whether anyone likes it (what keeps it in the library). ``at``:
+        when it was liked (a heart moved to a better copy keeps its time),
+        default now."""
         with self._lock:
             if item_id not in self._all():
                 return None
@@ -1113,7 +1138,7 @@ class Library:
                     db.execute(
                         "INSERT OR IGNORE INTO favorites (user_id, item_id, added_at)"
                         " VALUES (?, ?, ?)",
-                        (user_id, item_id, now_iso()),
+                        (user_id, item_id, at or now_iso()),
                     )
                     self._set_hearts(user_id, hearts.get(user_id, frozenset()) | {item_id})
                 else:
@@ -1139,6 +1164,7 @@ class Library:
         hidden = self.hidden()
         moved: list[tuple[str, str, str]] = []
         for user, ids in sorted(self.fans().items()):
+            liked_at: dict[str, str] | None = None
             for item_id in sorted(ids):
                 item = self.get(item_id)
                 if item is None or item.kind != ItemKind.ARTWORK or item.framing:
@@ -1151,7 +1177,10 @@ class Library:
                     continue
                 if best.excluded or best.id in hidden.ids or against(best, Place.LISTED):
                     continue
-                self.set_favorite(user, best.id, True)
+                if liked_at is None:
+                    liked_at = self.liked_at(user)
+                # Where it was in Ulubione "Ostatnio dodane".
+                self.set_favorite(user, best.id, True, at=liked_at.get(item.id))
                 self.set_favorite(user, item.id, False)
                 moved.append((user, item.id, best.id))
         if moved:
@@ -2069,12 +2098,18 @@ class Library:
                 return items
             if sort is not None:
                 return sort_items(items, sort)
-            # Each work where its first copy was added (:func:`dedupe`).
-            return ordered(items, playlist.order, self.long_side, [i.id for i in items])
+            # Each work where its first copy was added (:func:`dedupe`): its
+            # "when added" to this playlist (Mateusz 2026-11-16: "na
+            # playlistach ręcznych liczmy datę dodania do nich").
+            added = [i.id for i in items]
+            if self.sent_history(playlist):
+                added.reverse()  # each one sent goes first
+            return ordered(items, self.order_of(playlist), self.long_side, added)
         stamp = self._stamp()
         items = dedupe(self.query(playlist.rules, sort=sort or "recent", user=playlist.owner)[1])
         if sort is None:
-            items = ordered(items, playlist.order, self.long_side)
+            liked_at = self.liked_at(playlist.owner) if of_hearts(playlist) else None
+            items = ordered(items, playlist.order, self.long_side, liked_at=liked_at)
         if sort is not None or playlist.sort is None:
             # Works fetched for it last, unless its owner chose an order.
             items = fetched_last(items, playlist)
@@ -2100,8 +2135,20 @@ class Library:
             shared=playlist.shared,
             mine=playlist.owner == viewer_id(),
             limit=playlist.limit,
-            sort=None if playlist.kind == PlaylistKind.ALBUM else playlist.order,
+            sort=None if playlist.kind == PlaylistKind.ALBUM else self.order_of(playlist),
         )
+
+    def sent_history(self, playlist: Playlist) -> bool:
+        """Whether it is its owner's "Historia przesłanych", which keeps
+        each photo sent first (``Player.remember_sent``)."""
+        return playlist.id is not None and playlist.id == self.get_state(sent_key(playlist.owner))
+
+    def order_of(self, playlist: Playlist) -> PlaylistSort:
+        """:attr:`Playlist.order`, but "Historia przesłanych" is the latest
+        sent first until its owner chooses (as it always was shown)."""
+        if playlist.sort is None and self.sent_history(playlist):
+            return PlaylistSort(key="added")
+        return playlist.order
 
     def _stamp(self) -> tuple[int, int, int]:
         return (self._version, self._playlists_version, self._hearts_version)

@@ -255,6 +255,12 @@ protocol FrameBackend: Sendable {
     func sendOwnPhoto(_ data: Data) async throws -> OwnIncoming
     /// The work found in it (Opus, a few seconds); 503 without a key.
     func findOwnWork(token: String) async throws -> OwnIncoming
+    /// A photograph of the same work from a little to the side (the scan of three).
+    func sendOwnSide(token: String, _ data: Data) async throws
+    /// The glare taken out of the first photograph by the side ones.
+    func mergeOwnPhotos(token: String) async throws -> OwnMerged
+    /// The photograph as it waits (merged), for "Kadr".
+    func ownPhoto(token: String) async throws -> Data
     /// Signature, date, technique, a plain title read off the work (Sonnet).
     func ownHints(token: String, corners: [[Double]]?) async throws -> OwnHints
     func addOwnWork(_ work: NewOwnWork) async throws -> Item
@@ -330,6 +336,10 @@ protocol FrameBackend: Sendable {
     func dropReviewProblem(itemID: String, field: String) async throws -> AiReview
     /// "Ukryj": the work out of the catalogue and off the list.
     func hideReviewed(itemID: String) async throws -> AiReview
+    /// "Popraw opis": the Polish texts mended by Claude, not kept yet.
+    func proposePolish(itemID: String) async throws -> PolishDraft
+    /// The Polish texts kept as the owner accepted or wrote them.
+    func savePolish(itemID: String, draft: PolishDraft) async throws -> AiReview
     /// The server checks the key with Anthropic before keeping it.
     func saveAiKey(_ key: String) async throws -> AiSettings
     /// "Uzupełnij wcześniejsze studia": the order sent (409: no key, the

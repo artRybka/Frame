@@ -16,7 +16,14 @@ from test_ai import FakeAnthropic, _message, fake  # noqa: F401  (fixture)
 
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import HAIKU, OPUS
-from frame_server.ai.crops import STRIPS_NOTE, read_layers, strips_fit, tilted
+from frame_server.ai.crops import (
+    STRIPS_NOTE,
+    on_photo_edge,
+    plate_for_chart,
+    read_layers,
+    strips_fit,
+    tilted,
+)
 from frame_server.imaging.cut import (
     backdrop_quad,
     sheet_out_to_strips,
@@ -438,7 +445,7 @@ def test_works_judged_before_go_to_opus_when_their_card_opens(
     _work(service, "cma:4", picture=sheet(strip=0), pooled=True)  # to the edges
     crops = service.crops
     state = crops.state()
-    state["asked"] = {i: {"v": 2, "at": "2026-11-14"} for i in ("cma:2", "mnw:3", "cma:4")}
+    state["asked"] = {i: {"v": 2, "at": "2026-11-14", "q": 2} for i in ("cma:2", "mnw:3", "cma:4")}
     crops._save(state)
     answers = iter([SHEET_CORNERS, SHEET_CORNERS])
     fake.messages.create = lambda **params: (fake.asked.append(params), _message(next(answers)))[1]
@@ -515,7 +522,7 @@ def test_the_strips_alone_are_cut_away_when_opus_is_unsure(
     crops = service.crops
     state = crops.state()  # asked by 1.145.138: Opus unsure, nothing cut
     state["asked"] = {
-        "cma:11": {"v": 2, "at": "2026-11-15", "p": "", "critic": False, "band": True}
+        "cma:11": {"v": 2, "at": "2026-11-15", "p": "", "critic": False, "band": True, "q": 2}
     }
     crops._save(state)
     answers = iter([{**SHEET_CORNERS, "confident": False}])
@@ -911,3 +918,43 @@ def test_cuts_from_the_strips_alone_go_back_to_opus_once(service: FrameService) 
     assert service.library.get("eu:14").cut.by == "owner"  # type: ignore[union-attr]
     assert crops.state()["claims"] == {"eu:13": {"around": ["backdrop"], "band": True}}
     assert crops.strips_rechecked() == 0  # once
+
+
+# -- Erichsøe's etching among a colour chart and a ruler (SMK, 2026-11-16) ---------------
+
+
+def test_a_sheet_under_a_colour_chart_shows_its_plate() -> None:
+    plate = [(0.18, 0.09), (0.75, 0.08), (0.77, 0.93), (0.19, 0.93)]
+    off = [(0.0, 0.01), (0.8, 0.0), (0.81, 1.0), (0.0, 1.0)]  # runs off left, top, bottom
+    found = {"work": off, "plate": plate, "aspect": 0.667}
+    assert plate_for_chart(found) == {"work": plate, "plate": None, "aspect": 0.667}
+    assert plate_for_chart({**found, "work": None})["work"] == plate  # the photograph
+    seen = [(0.05, 0.04), (0.95, 0.04), (0.95, 0.96), (0.05, 0.96)]  # its edges all show
+    assert plate_for_chart({**found, "work": seen}) == {**found, "work": seen}
+    assert plate_for_chart({"work": off, "plate": None}) == {"work": off, "plate": None}
+
+
+def test_a_sheets_side_on_the_photographs_edge_stays_there() -> None:
+    said = [(0.0, 0.0), (0.8, 0.0), (0.8, 1.0), (0.0, 1.0)]
+    snapped = [(0.02, 0.013), (0.81, 0.0), (0.815, 0.98), (0.03, 0.99)]
+    assert on_photo_edge(said, snapped) == [(0.0, 0.0), (0.81, 0.0), (0.815, 1.0), (0.0, 1.0)]
+
+
+def test_a_card_asks_again_a_work_left_uncut_by_the_older_question(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    item = _work(service, "smk:15", pooled=True)
+    crops = service.crops
+    state = crops.state()  # Opus unsure of the sheet under the chart: nothing cut, never again
+    state["asked"] = {
+        "smk:15": {"v": 2, "at": "2026-11-12", "p": item.picture_key(), "critic": False, "band": 2}
+    }
+    crops._save(state)
+    answers = iter([{"surround": []}])
+    fake.messages.create = lambda **params: (fake.asked.append(params), _message(next(answers)))[1]
+    assert not crops.now(service.library.get("smk:15"))  # type: ignore[arg-type]
+    assert [p["model"] for p in fake.asked] == [HAIKU]
+    assert crops.asked()["smk:15"]["q"] == 2
+    assert not crops.now(service.library.get("smk:15"))  # type: ignore[arg-type]
+    assert len(fake.asked) == 1  # asked by this question: not again

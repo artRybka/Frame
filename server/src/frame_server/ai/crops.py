@@ -87,6 +87,13 @@ BAND_SWEEP = 2
 #: 2 (2026-11-15) falls back on the pixels where Opus was unsure, so works
 #: asked by 1 and left uncut are asked again.
 BAND = 2
+#: Opus's question a work was asked with (``asked[id]["q"]``): 2
+#: (2026-11-16) is sure of a print's plate when only its sheet runs off
+#: the photograph or under a colour chart (Erichsøe's „Selvportræt med
+#: Violin”, SMK KKS10560, uncut and never asked again when its card
+#: opened). A card opened on a work left uncut by an older question asks
+#: it again; the night does not.
+QUESTION = 2
 #: Once the cuts kept with a plate that is the work itself are tidied
 #: (:meth:`Crops.untwinned`).
 TWIN_TIDY = 1
@@ -168,8 +175,10 @@ medallion, a plate or dish, a medal or coin, a work seen through a round or oval
 "irregular" (any other outline: a cut-out following the drawn shape, a silhouette, a fragment \
 or shard with broken edges, an arched or shaped panel, a fan, an object). Only a rectangle is \
 cut out of its photograph; for the others still list what you see.
-- "confident": true only if the edges are clearly visible. A page's rounded corners or its \
-bound edge are no reason for doubt: put the corners just inside the rounding, on the page.
+- "confident": true only if the edges of the work you chose are clearly visible. A page's \
+rounded corners or its bound edge are no reason for doubt: put the corners just inside the \
+rounding, on the page. Nor is a sheet that runs off the photograph or lies under a colour \
+chart, ruler or label when the work is the plate inside it: list the sheet as far as it shows.
 Answer in JSON only."""
 #: The owner's own photograph of a work of his ("Dodaj własne dzieło",
 #: Mateusz 2026-11-15): taken with a phone at home, often at an angle, the
@@ -446,6 +455,54 @@ def _kind(data: dict[str, Any], quad: Quad | None) -> str:
     return ""
 
 
+#: :func:`plate_for_chart`: a side this near the photograph's edge runs off it.
+OFF_EDGE = 0.02
+
+
+#: :func:`on_photo_edge`: a side Opus put this near the photograph's edge
+#: is on it.
+ON_EDGE = 0.003
+
+
+def on_photo_edge(said: Quad, snapped: Quad) -> Quad:
+    """``snapped`` with the sides Opus put on the photograph's edge back
+    there: a sheet that runs off the photograph has no edge of its own
+    on that side, and the snap took the line of the print's border or of
+    a ruler for it (a Hiroshige whose paper fills the photograph cut to
+    its keyline, 2026-11-16)."""
+    out = [list(c) for c in snapped]
+    for idx, axis, edge in (((0, 1), 1, 0.0), ((1, 2), 0, 1.0), ((2, 3), 1, 1.0), ((0, 3), 0, 0.0)):
+        if all(abs(said[i][axis] - edge) <= ON_EDGE for i in idx):
+            for i in idx:
+                out[i][axis] = edge
+    return [(x, y) for x, y in out]
+
+
+def plate_for_chart(found: dict[str, Any]) -> dict[str, Any]:
+    """``found`` (:func:`corners_in`) with the plate shown instead of a
+    sheet that runs off the photograph on two sides or more (or is the
+    photograph, None) where a colour chart was seen: the chart, a ruler
+    and the museum's label lie on that paper, so showing it shows them
+    (Erichsøe, SMK KKS10560, Mateusz 2026-11-16). The plate is then the
+    work, with no paper to choose."""
+    work, plate = found.get("work"), found.get("plate")
+    if plate is None:
+        return found
+    if work is not None:
+        xs, ys = [x for x, _ in work], [y for _, y in work]
+        off = sum(
+            (
+                max(xs[0], xs[3]) <= OFF_EDGE,
+                min(xs[1], xs[2]) >= 1 - OFF_EDGE,
+                max(ys[0], ys[1]) <= OFF_EDGE,
+                min(ys[2], ys[3]) >= 1 - OFF_EDGE,
+            )
+        )
+        if off < 2:
+            return found
+    return {**found, "work": plate, "plate": None}
+
+
 def corners_in(img: Image.Image, data: dict[str, Any]) -> dict[str, Any] | None:
     """Opus's answer (:data:`CORNERS_SCHEMA`) as corners set on the edges
     of ``img``, the photograph it was asked about (:meth:`Crops.corners`)."""
@@ -456,6 +513,8 @@ def corners_in(img: Image.Image, data: dict[str, Any]) -> dict[str, Any] | None:
     if read[0] is not None and tilted(read[0]):
         return None  # a lozenge hung on its point (Mondrian), no upright work
     shown = snap(img, read[0], _kind(data, read[0])) if read[0] is not None else None
+    if shown is not None and read[0] is not None and _kind(data, read[0]) == "sheet":
+        shown = on_photo_edge(read[0], shown)
     plate = snap(img, read[1], "plate") if read[1] is not None else None
     if shown is not None and plate is not None:
         shown = sheet_out_to_strips(img, shown, plate)  # Beksiński, MNK
@@ -603,7 +662,7 @@ class Crops(CriticNight):
         return bool(entry.get("broken")) or entry.get("p", "") == item.picture_key()
 
     def noted(self, item: Item) -> dict[str, Any]:
-        return {"p": item.picture_key()}
+        return {"p": item.picture_key(), "q": QUESTION}
 
     def _round(self, state: dict[str, Any]) -> tuple[bool, list[tuple[Item, dict[str, Any]]]]:
         if not state.get("claims"):
@@ -901,6 +960,8 @@ class Crops(CriticNight):
         except OSError as err:
             log.info("crops: the photograph of %s: %s", item.id, err)
             return {}
+        if found and "colour_chart" in (claim.get("around") or []):
+            found = plate_for_chart(found)
         return {**claim, **found} if found and found["work"] is not None else {}
 
     def strips(self, item: Item, data: dict[str, Any] | None = None) -> dict[str, Any] | None:
@@ -1132,7 +1193,10 @@ class Crops(CriticNight):
             # framing stopped it before 2026-11-15 (Wyspiański's
             # „Macierzyństwo” in its thin wooden frame). Asked anew.
             asked, again = None, False
+        if again and asked is not None and int(asked.get("q") or 1) < QUESTION:
+            asked, again = None, False  # left uncut by an older question
         if asked is not None and again and (asked.get("band") == BAND or not self.banded(stored)):
+            log.info("crops: %s looked at %s, nothing to cut", stored.id, asked.get("at"))
             return False  # looked at, and no thin backdrop the judge missed then
         try:
             if again:  # Opus straight away: the judge saw nothing (or only paper) before
@@ -1144,11 +1208,24 @@ class Crops(CriticNight):
             else:
                 judged = self.claude.ask(KIND, self.question(stored))
                 claim = None if judged.refused else self.claim(stored, judged.data or {})
+                log.info(
+                    "crops: %s judged: %s",
+                    stored.id,
+                    "refused" if judged.refused else (judged.data or {}).get("surround"),
+                )
             found = None
             if claim:
                 answer = self.claude.ask(KIND, self.critic_question(stored, claim))
                 if not answer.refused:
                     found = self.confirmed(stored, claim, answer.data or {}) or None
+                data = answer.data or {}
+                log.info(
+                    "crops: %s by Opus: %s (sure %s, %s)",
+                    stored.id,
+                    "refused" if answer.refused else ("cut" if found else "nothing cut"),
+                    data.get("confident"),
+                    str(data.get("note") or "")[:120],
+                )
         except Exception as err:  # no key, the limit, a picture gone: the night's again
             log.info("crops: %s not looked at now (%s)", stored.id, err)
             return False
@@ -1160,6 +1237,7 @@ class Crops(CriticNight):
             "p": stored.picture_key(),
             "critic": bool(found and not found.get("whole")),
             "band": BAND,
+            "q": QUESTION,
         }
         state["asked"] = asked_all
         (state.get("claims") or {}).pop(stored.id, None)

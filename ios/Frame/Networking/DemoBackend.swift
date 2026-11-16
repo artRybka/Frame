@@ -1694,6 +1694,25 @@ actor DemoBackend: FrameBackend {
         return seen
     }
 
+    func sendOwnSide(token: String, _ data: Data) async throws {
+        guard incoming[token] != nil else { throw BackendError.notFound }
+        try await Task.sleep(for: .milliseconds(300))
+    }
+
+    func mergeOwnPhotos(token: String) async throws -> OwnMerged {
+        guard let image = incoming[token] else { throw BackendError.notFound }
+        try await Task.sleep(for: .seconds(1.5))
+        return OwnMerged(token: token, width: Int(image.size.width), height: Int(image.size.height), used: 2, replaced: 0.03)
+    }
+
+    func ownPhoto(token: String) async throws -> Data {
+        guard let image = incoming[token] else { throw BackendError.notFound }
+        // The demo's wall photograph without its lamp, as the scan of three gives it.
+        let shown = DemoOwn.isDemoPhoto(image) ? (DemoOwn.photo(glare: 0) ?? image) : image
+        guard let data = shown.jpegData(compressionQuality: 0.9) else { throw BackendError.notFound }
+        return data
+    }
+
     func ownHints(token: String, corners: [[Double]]?) async throws -> OwnHints {
         guard let image = incoming[token] else { throw BackendError.notFound }
         try await Task.sleep(for: .seconds(1.5))
@@ -2160,6 +2179,9 @@ actor DemoBackend: FrameBackend {
                 problems: [AiReview.Problem(
                     field: "date", name: "Data", problem: "Rok 1932 jest po śmierci autora (1890).",
                     fix: "1896", fixPl: ""
+                ), AiReview.Problem(
+                    field: "polish", name: "Polski opis",
+                    problem: "Tekst mówi o czterech kobietach w zimowym pejzażu, a zima to tylko jedna z nich."
                 )]
             )]
         }
@@ -2252,6 +2274,19 @@ actor DemoBackend: FrameBackend {
     func hideReviewed(itemID: String) async throws -> AiReview {
         reviewValue.findings.removeAll { $0.item.id == itemID }
         reviewValue.setAside.removeAll { $0.item.id == itemID }
+        return reviewValue
+    }
+
+    func proposePolish(itemID: String) async throws -> PolishDraft {
+        try await Task.sleep(for: .seconds(1))
+        return PolishDraft(
+            frame: "Cztery kobiety uosabiają pory roku, każda w swoim pejzażu: wiosna wśród kwiatów, lato w kłosach, jesień z winogronami, zima w śniegu.",
+            full: "Cztery kobiety uosabiają pory roku, każda w swoim pejzażu: wiosna wśród kwiatów, lato w kłosach, jesień z winogronami, zima w śniegu.\n\nMucha zamyka je w łukowatych ramach, jak w witrażu, a ich suknie i włosy płyną tym samym rytmem co gałęzie."
+        )
+    }
+
+    func savePolish(itemID: String, draft: PolishDraft) async throws -> AiReview {
+        dropProblem(itemID, "polish")
         return reviewValue
     }
 
