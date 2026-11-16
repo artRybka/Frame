@@ -150,6 +150,10 @@ WIDE_KEY = "wide_originals"
 #: Set once the elongated works' thumbnails thinner than they are made now
 #: were made again or let go (``ImageCache.thin_thumbs_again``, 2026-11-11).
 THIN_THUMBS_KEY = "thin_thumbs"
+#: Set once the kept pictures their museums keep cut off (the rest the
+#: decoder's grey) were let go and their works left out of lists
+#: (``ImageCache.cut_off_again``, 2026-11-16).
+CUT_OFF_KEY = "cut_off_pictures"
 #: Set once the fragments' pictures kept trimmed of margins were let go
 #: (``ImageCache.drop_fragments``, 2026-11-09).
 FRAGMENTS_KEY = "untrimmed_fragments"
@@ -1636,13 +1640,19 @@ class Player:
 
     def _fix_up(self) -> None:
         """Once after an update: the kept pictures without their blank
-        margins, the pictures analysed again, the thumbnails of works shown
+        margins, those cut off by their museums let go, the pictures
+        analysed again, the thumbnails of works shown
         from another source's copy made from it, then the elongated works'
         originals had again larger and their thin thumbnails made again."""
         if not self.library.get_state(MARGINS_KEY, False):
             trimmed = self.service.images.trim_kept()
             self.library.set_state(MARGINS_KEY, True)
             log.info("margins: %d kept pictures trimmed", trimmed)
+        if not self.library.get_state(CUT_OFF_KEY, False):
+            items = self.library.query(include_excluded=True)[1]
+            cut = self.service.images.cut_off_again(items)
+            self.library.set_state(CUT_OFF_KEY, True)
+            log.info("cut-off pictures: %d works left out: %s", len(cut), ", ".join(cut[:20]))
         self.rescore()
         self.contours()
         self.service.sharper.thumbs_again()

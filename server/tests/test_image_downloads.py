@@ -672,3 +672,43 @@ def test_the_background_waits_for_the_app_before_it_holds_a_picture(tmp_path: Pa
     using.clear()
     background.join(5)
     assert not background.is_alive()
+
+
+def _cut_off_jpeg() -> bytes:
+    """A museum's thumbnail made from a file that ends early: the top of
+    the picture, the rest the decoder's grey (MNW's Podoliński, 2026-11-16)."""
+    img = Image.new("RGB", (390, 640), (128, 128, 128))
+    img.paste((180, 110, 70), (0, 0, 390, 45))
+    out = io.BytesIO()
+    img.save(out, "JPEG", quality=85)
+    return out.getvalue()
+
+
+def test_a_picture_the_museum_keeps_cut_off_is_no_picture(tmp_path: Path) -> None:
+    """Every address gives the grey board: the work is gone, as one whose
+    addresses answer 404, and its card shows no grey board."""
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        return httpx.Response(200, content=_cut_off_jpeg())
+
+    cache = ImageCache(tmp_path, lambda: httpx.Client(transport=httpx.MockTransport(handler)))
+    item = _aic(7)
+    with pytest.raises(Gone):
+        cache.ensure_thumb(item)
+    assert not cache.thumb_path(item).exists()
+    assert cache.gone(item.id)
+    with pytest.raises(Gone):
+        cache.picture(item)
+    assert seen
+
+
+def test_kept_cut_off_pictures_are_let_go_once(tmp_path: Path) -> None:
+    cache = ImageCache(tmp_path, lambda: httpx.Client(transport=httpx.MockTransport(_refuse)))
+    cut, whole = _aic(8), _aic(9)
+    cache.thumb_path(cut).write_bytes(_cut_off_jpeg())
+    cache.thumb_path(whole).write_bytes(_jpeg())
+    assert cache.cut_off_again([cut, whole]) == [cut.id]
+    assert not cache.thumb_path(cut).exists() and cache.gone(cut.id)
+    assert cache.thumb_path(whole).is_file() and not cache.gone(whole.id)

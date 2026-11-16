@@ -23,6 +23,7 @@ from PIL import Image
 
 from ..fsutil import dir_bytes, own_files
 from ..imaging.cut import same_picture, warp
+from ..imaging.cut_off import cut_off
 from ..imaging.layout import load_image
 from ..imaging.margins import trim_margins
 from ..imaging.mount import inside_mount
@@ -176,6 +177,20 @@ class Unavailable(OSError):
 class TooLarge(OSError):
     """A picture with more pixels than Pillow opens (a decompression bomb
     to it): the thumbnail stands in for it."""
+
+
+class CutOff(OSError):
+    """A picture its museum keeps cut off (:func:`cut_off`): most of it the
+    decoder's grey. Not a picture of the work, as a web page in its place
+    is not: the address has none for good."""
+
+
+def _whole(img: Image.Image, url: str) -> Image.Image:
+    """``img`` when its file was whole; :class:`CutOff` when it ended early
+    and the rest came grey."""
+    if cut_off(img):
+        raise CutOff(f"{url}: cut off, the rest grey")
+    return img
 
 
 class Gone(Unavailable):
@@ -334,6 +349,18 @@ def _as_kept(data: bytes, size: tuple[int, int]) -> bool:
                 and not img.info.get("icc_profile")
                 and img.getexif().get(0x0112, 1) == 1
             )
+    except OSError:
+        return False
+
+
+def _kept_cut_off(path: Path) -> bool:
+    """Whether the picture kept at ``path`` is cut off (:func:`cut_off`),
+    read at a quarter of its size (JPEG's own scaling: the fill stays its
+    grey)."""
+    try:
+        with Image.open(path) as kept:
+            kept.draft("RGB", (kept.width // 4, kept.height // 4))
+            return cut_off(kept)
     except OSError:
         return False
 
@@ -973,6 +1000,7 @@ class ImageCache:
         except Image.DecompressionBombError as err:
             raise TooLarge(f"{url}: {err}") from err
         img.info[BYTES] = len(data)
+        _whole(img, url)
         repair = self.repairs.get(urlsplit(url).hostname or "")
         if repair is not None:
             img = repair(url, img, lambda other: self._fetch(other, urgent))
@@ -1444,6 +1472,23 @@ class ImageCache:
             changed += 1
         return changed
 
+    def cut_off_again(self, items: Iterable[Item]) -> list[str]:
+        """Once after the update that tells a cut-off picture (:func:`cut_off`):
+        the works whose kept thumbnail or original is one let go of both and
+        left out of lists as works with no picture (:meth:`gone`); their ids.
+        The owner's own are left alone."""
+        found: list[str] = []
+        for item in items:
+            if item.source in OWN_SOURCES:
+                continue
+            paths = [p for p in (self.thumb_path(item), self.image_path(item)) if p.is_file()]
+            if not any(_kept_cut_off(path) for path in paths):
+                continue
+            self.drop_picture(item)
+            self._mark_gone(item)
+            found.append(item.id)
+        return found
+
     def trim_kept(self) -> int:
         """Cut the blank margins off the pictures kept from before
         (:func:`trim_margins`), originals and thumbnails, in place; how many
@@ -1517,7 +1562,7 @@ class ImageCache:
         fetch = self.fetchers.get(item.source)
         if fetch is not None and item.sharper is None:
             data = fetch(item)
-            img = load_image(data)
+            img = _whole(load_image(data), item.id)
             img.info[BYTES] = len(data)
             return img
         urls = self._addresses(item, thumb=False)
