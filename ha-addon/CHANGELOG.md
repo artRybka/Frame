@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.192
+
+- Dzieło, którego oryginału nie da się pobrać (np. martwy odnośnik w
+  Europeanie), jest pokazywane z miniatury. Teraz dostaje znaczek niskiej
+  rozdzielczości z jej rozmiarem, a w menu „…” pojawia się „Restauracja
+  dzieła”, która powiększa tę miniaturę.
+
 ## 1.145.191
 
 - W menu „…” dzieła „Kreatywny restaurator” nazywa się teraz

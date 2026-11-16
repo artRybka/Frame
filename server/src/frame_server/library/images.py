@@ -552,6 +552,8 @@ class ImageCache:
         #: address: the last few, so its buttons switch back and forth
         #: without asking the museum each time.
         self._before_drawn: dict[str, Image.Image] = {}
+        #: Thumbnails' long sides (:meth:`_thumb_side`): (file's stamp, side).
+        self._thumb_sides: dict[str, tuple[int, int]] = {}
         self._gates: dict[str, HostGate] = {}
         self._guard = threading.Lock()
         self.sleep: Callable[[float], None] = time.sleep
@@ -887,7 +889,14 @@ class ImageCache:
             kept = self._before_drawn.get(url)
         if kept is not None:
             return kept
-        img = self.sample(url, urgent)
+        try:
+            img = self.sample(url, urgent)
+        except (httpx.HTTPError, OSError):
+            if not item.thumb_url:
+                raise
+            # The original never came (a dead link): the drawing was drawn
+            # from the source's thumbnail, which is had again instead.
+            img = self.sample(item.thumb_url, urgent)
         with self._guard:
             self._before_drawn[url] = img
             while len(self._before_drawn) > BEFORE_DRAWN_KEPT:
@@ -1147,9 +1156,37 @@ class ImageCache:
         picture (``low_res``) and the order by quality read it."""
         if item.sharper is not None:
             return said_side(item)
+        lately = item.id in self._failed or item.id in self._gone  # no disk, no copies first
+        if lately and self.unavailable(item) and (side := self._thumb_side(item)) is not None:
+            # The original cannot be had, and the card and the frame show
+            # the thumbnail (:meth:`picture`): that is the picture's size.
+            # Europeana's Delaunay "Rythmes" (2026-11-16), a dead Dropbox
+            # link, was 400 × 512 px on the card with no mark and no
+            # "Restauracja dzieła" in its menu.
+            return side
         if (size := self.known_size(item)) is not None and min(size) > 0:
             return max(size)
         return said_side(item)
+
+    def _thumb_side(self, item: Item) -> int | None:
+        """The long side of the thumbnail kept for ``item``, read from its
+        file's header once for each version of the file."""
+        path = self.kept_thumb(item.id)
+        if path is None:
+            return None
+        try:
+            stamp = path.stat().st_mtime_ns
+            with self._guard:
+                kept = self._thumb_sides.get(item.id)
+            if kept is not None and kept[0] == stamp:
+                return kept[1]
+            with Image.open(path) as img:
+                side = max(img.size)
+        except OSError:
+            return None
+        with self._guard:
+            self._thumb_sides[item.id] = (stamp, side)
+        return side
 
     def source_size(self, item: Item) -> tuple[int, int, int] | None:
         """The original as its source gave it: (width, height, bytes; 0 when

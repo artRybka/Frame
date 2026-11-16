@@ -292,6 +292,34 @@ def test_the_viewer_shows_the_museums_picture_beside_the_drawing(app: Any) -> No
     assert size(side=600) == (600, 399)
 
 
+def test_a_work_shown_from_its_thumbnail_is_small_and_drawn_from_it(app: Any) -> None:
+    """A dead link (Europeana's Delaunay "Rythmes", a Dropbox error page,
+    2026-11-16): the card shows the thumbnail, so the work is marked small
+    and "Restauracja dzieła" draws that thumbnail larger."""
+    client, service, web, _painter = app
+    web[OWN] = b"<!doctype html><title>Dropbox - Error</title>"
+    own = _own(service, favorite=True)
+    dead = service.library.update(own.id, width=None, height=None)
+    assert dead is not None and low_res.low_side(dead) == 0  # nothing known yet
+
+    shown = client.get(f"/api/library/items/{own.id}/image")
+    assert shown.status_code == 200 and shown.headers["cache-control"] == "no-store"
+    with Image.open(io.BytesIO(shown.content)) as img:
+        assert img.size == (600, 400)
+    assert service.images.unavailable(dead)
+    assert low_res.low_side(dead) == 600
+
+    resp = client.post(f"/api/library/items/{own.id}/restore")
+    assert resp.status_code == 200, resp.text
+    copy = resp.json()["sharper"]
+    assert copy["restored"] and (copy["width"], copy["height"]) == (1203, 800)
+    # The full screen's button: without the drawing, the thumbnail again.
+    before = client.get(f"/api/library/items/{own.id}/treated", params={"restored": "false"})
+    assert before.status_code == 200, before.text
+    with Image.open(io.BytesIO(before.content)) as img:
+        assert img.size == (600, 400)
+
+
 def test_fit() -> None:
     assert fit((900, 600), Image.new("RGB", (1800, 1200))).size == (1800, 1200)
     assert fit((900, 600), Image.new("RGB", (1840, 1200))).size == (1840, 1227)
