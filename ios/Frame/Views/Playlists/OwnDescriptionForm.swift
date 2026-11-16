@@ -1,9 +1,11 @@
 import SwiftUI
 
-/// What the owner writes of a work of his own: title, author, date,
-/// technique (chips or his own words), size, where it hangs, where it came
-/// from, a note. What was read off the picture waits beside each field as
-/// a dashed chip: a tap takes it, nothing is filled in by itself.
+/// What the owner writes of a work of his own, laid out as the work's card
+/// (Mateusz 2026-11-16 chose sketch C: "od razu wpisane"): the title, the
+/// author and the date in the card's serif with no boxes, the rest as the
+/// card's facts, the note under them. What was read off the picture is
+/// written into the empty fields at once, a small sparkle beside each while
+/// the field still says it, and one line takes it all back ("Wyczyść").
 struct OwnDescriptionForm: View {
     @Binding var text: OwnDescription
     /// The work as cut, at the top.
@@ -15,59 +17,82 @@ struct OwnDescriptionForm: View {
     var readingHints = false
     /// Where his other works hang.
     var places: [String] = []
-    @State private var technique: String?
-    @State private var support: String?
+
     @State private var heightText = ""
     @State private var widthText = ""
+    /// What was written into the fields from the picture: marked while the
+    /// field still says it.
+    @State private var filled: [String: String] = [:]
     @State private var started = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: 26) {
             if let picture {
                 Image(uiImage: picture)
                     .resizable()
                     .aspectRatio(shape(of: picture), contentMode: .fit)
-                    .frame(maxWidth: .infinity, maxHeight: 220)
+                    .frame(maxWidth: .infinity, maxHeight: 260)
                     .animation(.easeOut(duration: 0.25), value: shape(of: picture))
                     .shadow(color: .black.opacity(0.18), radius: 12, y: 8)
-                    .padding(.top, 4)
+                    .padding(.top, 8)
             }
             if readingHints && hints == nil {
-                readingBanner
+                Label("Czytam sygnaturę i technikę z obrazu…", systemImage: "sparkles")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.inkSoft)
+                    .transition(.opacity)
+            } else if !marked.isEmpty {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "sparkles").foregroundStyle(Theme.inkSoft)
+                    Text("Uzupełnione z obrazu. Popraw, jeśli trzeba.")
+                        .foregroundStyle(Theme.inkSoft)
+                    Spacer(minLength: 8)
+                    Button("Wyczyść", action: clearFilled)
+                        .font(.footnote.weight(.semibold))
+                }
+                .font(.footnote)
+                .transition(.opacity)
             }
-            field("Tytuł", text: $text.title, prompt: "np. Pejzaż z klifem") {
-                hint(hints?.title, taken: text.title, label: hints.map { "„\($0.title)”" }) { text.title = $0 }
+            VStack(alignment: .leading, spacing: 10) {
+                serifField("Tytuł", text: $text.title, key: "title", size: 26, weight: .semibold, ink: Theme.ink)
+                serifField("Autor", text: $text.artist, key: "artist", size: 18, ink: Theme.ink)
+                serifField("Data", text: $text.dateText, key: "date", size: 18, ink: Theme.inkSoft)
             }
-            field("Autor", text: $text.artist, prompt: "Imię i nazwisko") {
-                hint(hints?.artist, taken: text.artist) { text.artist = $0 }
-            }
-            field("Data", text: $text.dateText, prompt: "np. 1965, ok. 1930, lata 70.") {
-                hint(hints?.date, taken: text.dateText) { text.dateText = $0 }
-            }
-            techniqueSection
-            sizeSection
-                .id("size")
-            VStack(alignment: .leading, spacing: 14) {
-                Eyebrow("Więcej")
-                    .padding(.top, 10)
-                field("Gdzie wisi", text: $text.hangs, prompt: "np. Salon") {
-                    ForEach(places.filter { $0 != text.hangs }.prefix(4), id: \.self) { place in
-                        chip(place, dashed: false) { text.hangs = place }
+            Card {
+                factRow("Technika") {
+                    HStack(spacing: 6) {
+                        trailingField("np. olej na płótnie", text: $text.medium, key: "medium")
+                        techniqueMenu
                     }
                 }
-                field("Skąd", text: $text.origin, prompt: "Kupione, prezent, po dziadku…") { EmptyView() }
-                VStack(alignment: .leading, spacing: 6) {
-                    label("Notatka")
-                    TextField("Historia dzieła, co warto pamiętać", text: $text.description, axis: .vertical)
-                        .lineLimit(3 ... 10)
-                        .textFieldStyle(.plain)
-                        .padding(12)
-                        .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline))
+                Divider()
+                VStack(alignment: .leading, spacing: 8) {
+                    factRow("Rozmiar") { sizeFields }
+                    if let warning = sizeWarning { warningLine(warning) }
                 }
+                .id("size")
+                Divider()
+                factRow("Gdzie wisi") {
+                    HStack(spacing: 6) {
+                        trailingField("np. Salon", text: $text.hangs, key: "hangs")
+                        if !places.isEmpty { placesMenu }
+                    }
+                }
+                Divider()
+                factRow("Skąd") { trailingField("prezent, po dziadku…", text: $text.origin, key: "origin") }
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                Eyebrow("Notatka")
+                TextField("Historia dzieła, co warto pamiętać", text: $text.description, axis: .vertical)
+                    .font(.serif(17))
+                    .foregroundStyle(Theme.ink)
+                    .lineLimit(2 ... 10)
             }
         }
         .onAppear(perform: start)
+        .onChange(of: hints) { _, hints in
+            if let hints { fill(from: hints) }
+        }
         .onChange(of: heightText) { _, value in text.heightCm = Self.number(value) }
         .onChange(of: widthText) { _, value in text.widthCm = Self.number(value) }
         .onChange(of: text.heightCm) { _, value in
@@ -76,16 +101,8 @@ struct OwnDescriptionForm: View {
         .onChange(of: text.widthCm) { _, value in
             if Self.number(widthText) != value { widthText = value.map(OwnWork.number) ?? "" }
         }
-        .onChange(of: text.medium) { _, value in
-            // Typed or filled: the chips as the line says.
-            if let read = OwnTechnique.read(value) {
-                technique = read.technique
-                support = read.support
-            } else {
-                technique = nil
-                support = nil
-            }
-        }
+        .animation(.easeOut(duration: 0.25), value: hints)
+        .animation(.easeOut(duration: 0.2), value: sizeWarning)
     }
 
     private func start() {
@@ -93,163 +110,176 @@ struct OwnDescriptionForm: View {
         started = true
         heightText = text.heightCm.map(OwnWork.number) ?? ""
         widthText = text.widthCm.map(OwnWork.number) ?? ""
-        if let read = OwnTechnique.read(text.medium) {
-            technique = read.technique
-            support = read.support
-        }
-    }
-
-    // MARK: Hints
-
-    /// While the picture is read; once read, the chips beside the fields
-    /// say it all (Mateusz 2026-11-16: "Podpowiedzi z obrazu… – bez tej
-    /// podpowiedzi").
-    private var readingBanner: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "sparkles")
-                .foregroundStyle(Theme.vermilion)
-            Text("Czytam sygnaturę i technikę z obrazu…")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(Theme.ink)
-            Spacer(minLength: 0)
-            ProgressView().controlSize(.small)
-        }
-        .padding(12)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous).strokeBorder(Theme.hairline))
-        .transition(.opacity)
-    }
-
-    /// A hint not taken yet, as a dashed chip: gone once the field says it.
-    @ViewBuilder
-    private func hint(_ value: String?, taken: String = "", label: String? = nil, take: @escaping (String) -> Void) -> some View {
-        if let value, !value.isEmpty, value.trimmingCharacters(in: .whitespaces) != taken.trimmingCharacters(in: .whitespaces) {
-            chip(label ?? value, dashed: true) { take(value) }
-        }
-    }
-
-    private func chip(_ title: String, dashed: Bool, selected: Bool = false, action: @escaping () -> Void) -> some View {
-        Button {
-            withAnimation(.easeOut(duration: 0.2)) { action() }
-        } label: {
-            HStack(spacing: 5) {
-                if dashed { Image(systemName: "sparkles").font(.caption2) }
-                Text(title).lineLimit(1)
-            }
-            .font(.subheadline)
-            .foregroundStyle(selected ? Theme.paper : Theme.ink)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(selected ? Theme.ink : (dashed ? Color.clear : Theme.card), in: Capsule())
-            .overlay {
-                if dashed {
-                    Capsule().strokeBorder(Theme.vermilion.opacity(0.7), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                } else if !selected {
-                    Capsule().strokeBorder(Theme.hairline)
-                }
-            }
-        }
-        .buttonStyle(.plain)
+        if let hints { fill(from: hints) }
     }
 
     // MARK: Fields
 
-    private func label(_ title: String) -> some View {
-        Text(title)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(Theme.inkSoft)
-            .textCase(.uppercase)
-            .tracking(0.6)
-    }
-
-    private func field<Chips: View>(
-        _ title: String, text value: Binding<String>, prompt: String, @ViewBuilder chips: () -> Chips
+    private func serifField(
+        _ prompt: String, text value: Binding<String>, key: String, size: CGFloat,
+        weight: Font.Weight = .regular, ink: Color
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            label(title)
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
             TextField(prompt, text: value)
-                .textFieldStyle(.plain)
-                .font(.body)
-                .padding(12)
-                .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline))
-            FlowLayout(spacing: 6) { chips() }
+                .font(.serif(size, weight: weight))
+                .foregroundStyle(ink)
+            filledMark(key)
         }
     }
 
-    private var techniqueSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            field("Technika", text: $text.medium, prompt: "np. olej na płótnie") {
-                if let hints, !hints.technique.isEmpty, hints.technique != "unknown" {
-                    let line = OwnTechnique.medium(technique: hints.technique, support: hints.support == "unknown" ? nil : hints.support)
-                    if !line.isEmpty, line != text.medium {
-                        hint(line) { text.medium = $0 }
-                    }
-                }
-            }
-            // In rows, as many as fit: a row scrolling sideways was cut at the
-            // screen's edge (simulator screenshots 2026-11-15).
-            FlowLayout(spacing: 6) {
-                ForEach(OwnTechnique.techniques, id: \.key) { item in
-                    chip(item.name, dashed: false, selected: technique == item.key) {
-                        technique = technique == item.key ? nil : item.key
-                        text.medium = OwnTechnique.medium(technique: technique, support: support)
-                    }
-                }
-            }
-            HStack(spacing: 6) {
-                ForEach(OwnTechnique.supports, id: \.key) { item in
-                    chip(item.name, dashed: false, selected: support == item.key) {
-                        support = support == item.key ? nil : item.key
-                        text.medium = OwnTechnique.medium(technique: technique, support: support)
-                    }
-                }
-            }
-        }
-    }
-
-    private var sizeSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            label("Rozmiar (bez ramy)")
-            HStack(spacing: 10) {
-                sizeField("wys.", text: $heightText)
-                Text("×").foregroundStyle(Theme.inkSoft)
-                sizeField("szer.", text: $widthText)
-                Text("cm").foregroundStyle(Theme.inkSoft)
-            }
-            if let warning = sizeWarning {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .foregroundStyle(Theme.warn)
-                    Text(warning)
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
-                    Spacer(minLength: 0)
-                    if swapFits {
-                        Button("Zamień") {
-                            let height = heightText
-                            heightText = widthText
-                            widthText = height
-                        }
-                        .font(.caption.weight(.semibold))
-                    }
-                }
+    @ViewBuilder
+    private func filledMark(_ key: String) -> some View {
+        if marked.contains(key) {
+            Image(systemName: "sparkles")
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
+                .accessibilityLabel("odczytane z obrazu")
                 .transition(.opacity)
-            }
         }
-        .animation(.easeOut(duration: 0.2), value: sizeWarning)
     }
 
-    private func sizeField(_ prompt: String, text value: Binding<String>) -> some View {
-        TextField(prompt, text: value)
-            .keyboardType(.decimalPad)
-            .multilineTextAlignment(.center)
-            .textFieldStyle(.plain)
-            .padding(.vertical, 12)
-            .frame(width: 92)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline))
+    private func factRow<Value: View>(_ title: String, @ViewBuilder value: () -> Value) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title).foregroundStyle(Theme.inkSoft)
+            Spacer(minLength: 16)
+            value()
+        }
+        .font(.subheadline)
     }
+
+    private func trailingField(_ prompt: String, text value: Binding<String>, key: String) -> some View {
+        HStack(spacing: 4) {
+            TextField(prompt, text: value)
+                .multilineTextAlignment(.trailing)
+                .foregroundStyle(Theme.ink)
+            filledMark(key)  // after the value, as by the title
+        }
+    }
+
+    private var sizeFields: some View {
+        HStack(spacing: 6) {
+            // Both numbers against the "×": "65 × 81", not "65 ×     81".
+            sizeField("wys.", text: $heightText, alignment: .trailing)
+            Text("×").foregroundStyle(Theme.inkSoft)
+            sizeField("szer.", text: $widthText, alignment: .leading)
+            Text("cm").foregroundStyle(Theme.inkSoft)
+        }
+    }
+
+    private func sizeField(_ prompt: String, text value: Binding<String>, alignment: TextAlignment) -> some View {
+        // No prompt once a number is in: a field keeps its prompt's width.
+        TextField(value.wrappedValue.isEmpty ? prompt : "", text: value)
+            .keyboardType(.decimalPad)
+            .multilineTextAlignment(alignment)
+            .foregroundStyle(Theme.ink)
+            .fixedSize()  // as wide as its number (or "wys."): no gap before "cm"
+            .frame(minWidth: 24, alignment: alignment == .trailing ? .trailing : .leading)
+    }
+
+    private func warningLine(_ warning: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(Theme.warn)
+            Text(warning)
+                .foregroundStyle(Theme.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            if swapFits {
+                Button("Zamień") {
+                    let height = heightText
+                    heightText = widthText
+                    widthText = height
+                }
+                .font(.caption.weight(.semibold))
+            }
+        }
+        .font(.caption)
+        .transition(.opacity)
+    }
+
+    /// The techniques and supports, as a menu by the field.
+    private var techniqueMenu: some View {
+        Menu {
+            Section("Technika") {
+                ForEach(OwnTechnique.techniques, id: \.key) { item in
+                    Button(item.name) { setTechnique(item.key) }
+                }
+            }
+            Section("Podłoże") {
+                ForEach(OwnTechnique.supports, id: \.key) { item in
+                    Button(item.name) { setSupport(item.key) }
+                }
+            }
+        } label: {
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Theme.inkSoft)
+                .frame(width: 24, height: 24)
+        }
+        .accessibilityLabel("Wybierz technikę")
+    }
+
+    private var placesMenu: some View {
+        Menu {
+            ForEach(places, id: \.self) { place in
+                Button(place) { text.hangs = place }
+            }
+        } label: {
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Theme.inkSoft)
+                .frame(width: 24, height: 24)
+        }
+        .accessibilityLabel("Gdzie wiszą inne")
+    }
+
+    private func setTechnique(_ key: String) {
+        let support = OwnTechnique.read(text.medium)?.support
+        text.medium = OwnTechnique.medium(technique: key, support: support)
+    }
+
+    private func setSupport(_ key: String) {
+        let technique = OwnTechnique.read(text.medium)?.technique
+        text.medium = OwnTechnique.medium(technique: technique, support: key)
+    }
+
+    // MARK: Filled from the picture
+
+    private static let fields: [(key: String, path: WritableKeyPath<OwnDescription, String>)] = [
+        ("title", \.title), ("artist", \.artist), ("date", \.dateText), ("medium", \.medium),
+    ]
+
+    /// The fields that still say what was read off the picture.
+    private var marked: Set<String> {
+        Set(Self.fields.filter { field in filled[field.key].map { $0 == text[keyPath: field.path] } ?? false }.map(\.key))
+    }
+
+    private func fill(from hints: OwnHints) {
+        let medium = hints.technique.isEmpty || hints.technique == "unknown" ? ""
+            : OwnTechnique.medium(technique: hints.technique, support: hints.support == "unknown" ? nil : hints.support)
+        let read = ["title": hints.title, "artist": hints.artist, "date": hints.date, "medium": medium]
+        var done: [String: String] = [:]
+        withAnimation(.easeOut(duration: 0.25)) {
+            for field in Self.fields {
+                guard let value = read[field.key], !value.isEmpty,
+                      text[keyPath: field.path].trimmingCharacters(in: .whitespaces).isEmpty
+                else { continue }
+                text[keyPath: field.path] = value
+                done[field.key] = value
+            }
+            filled = done
+        }
+    }
+
+    private func clearFilled() {
+        let keys = marked
+        withAnimation(.easeOut(duration: 0.2)) {
+            for field in Self.fields where keys.contains(field.key) { text[keyPath: field.path] = "" }
+            filled = [:]
+        }
+    }
+
+    // MARK: The size
 
     /// The picture as it will be kept: in the shape of his size when he
     /// gave one near enough the photograph's, as the server cuts it.
