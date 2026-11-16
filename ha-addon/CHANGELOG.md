@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.183
+
+- „Do sprawdzenia”: uwaga do polskiego opisu (np. „tekst mówi o białych
+  literach, a na obrazie są ciemne”) ma przycisk „Popraw opis”. Claude
+  poprawia w opisie tylko to, czego dotyczy uwaga, patrząc na obraz, a Ty
+  widzisz poprawiony tekst na karcie i na ramce, możesz go jeszcze zmienić
+  i zapisujesz. Tak poprawiony opis nie jest potem pisany od nowa.
+- „Do sprawdzenia” jest też od razu na górze Konfiguracji (z liczbą
+  pozycji), gdy coś na niej czeka.
+
 ## 1.145.182
 
 - Aparat przy dodawaniu własnego dzieła robi zdjęcia w pełnej

@@ -104,7 +104,7 @@ class TextReview(NightOrder):
         return {
             item_id: note
             for item_id, note in self.library.notes(PL_TEXT).items()
-            if "title" in note.data
+            if "title" in note.data and not note.data.get("by_owner")  # his words stay
         }
 
     @staticmethod

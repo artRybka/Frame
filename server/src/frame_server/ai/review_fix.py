@@ -31,8 +31,10 @@ import threading
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from .client import HAIKU, image_block, request
+from ..imaging.text import MAX_BODY
+from .client import HAIKU, SONNET, image_block, request
 from .daily import _object, _str
+from .pl_text import _paragraphs, _plain, frame_text
 
 if TYPE_CHECKING:
     from ..library import ImageCache, Item, Library
@@ -76,6 +78,17 @@ at most 30 words each, titles and names left as they are. Answer with the transl
 order given, one per note."""
 
 TRANSLATE_SCHEMA = _object(notes={"type": "array", "items": _str()})
+
+POLISH = f"""Poprawiasz polski tekst o dziele sztuki w katalogu domowej ramki. Dostajesz obraz, \
+to, co katalog wie o dziele, obecny tekst na ramkę ("frame") i obecny pełny tekst ("full") \
+oraz uwagę, co w nich jest nie tak.
+
+Popraw tylko to, czego dotyczy uwaga, patrząc na obraz: zdanie z błędem napisz tak, żeby \
+zgadzało się z obrazem i danymi, albo je usuń, jeśli nie da się go poprawić bez zgadywania. \
+Resztę zostaw słowo w słowo: ten sam styl, te same akapity, nic nowego od siebie. \
+"frame": pełne zdania, najwyżej {MAX_BODY} znaków. "full": akapity oddzielone pustą linią."""
+
+POLISH_SCHEMA = _object(frame=_str(), full=_str())
 
 _YEAR = re.compile(r"\b(\d{3,4})\b")
 
@@ -232,6 +245,67 @@ class ReviewFixes:
             raise ReviewError("Nie znalazłem, co wyciąć. Popraw kadr ręcznie na karcie dzieła.")
         self.drop(item_id, "picture")
         return updated
+
+    # -- the Polish text ------------------------------------------------------------------
+
+    def _polish_note(self, item: Item) -> Any:
+        note = self.library.note(item.id, self.pl_text.kind)
+        if note is None or not isinstance(note.data, dict) or not note.data.get("full"):
+            raise ReviewError("To dzieło nie ma jeszcze polskiego opisu")
+        return note
+
+    def propose_polish(self, item_id: str) -> dict[str, str]:
+        """ "Popraw opis": the Polish texts mended where the audit's remark
+        says (Sonnet, now, about a cent), shown to the owner before they
+        are kept (:meth:`save_polish`). Mateusz 2026-11-16, de Chirico's
+        self-portrait: "white letters" on a tablet with dark ones."""
+        item = self._work(item_id)
+        note = self._polish_note(item)
+        found = self.finding(item_id) or {}
+        remark = " ".join(
+            str(p.get("problem") or "")
+            for p in found.get("problems") or []
+            if isinstance(p, dict) and p.get("field") == "polish"
+        )
+        text = (
+            f"{self.audit.facts(item)}\n\n"
+            f"Obecny tekst na ramkę (frame):\n{note.data.get('frame') or ''}\n\n"
+            f"Obecny pełny tekst (full):\n{note.data.get('full') or ''}\n\n"
+            f"Uwaga: {remark or 'sprawdź, czy tekst zgadza się z obrazem'}"
+        )
+        answer = self.claude.ask(
+            self.pl_text.kind,
+            request(
+                model=SONNET,
+                system=POLISH,
+                content=[image_block(self.images, item), {"type": "text", "text": text}],
+                schema=POLISH_SCHEMA,
+                max_tokens=8000,
+            ),
+        )
+        if answer.refused or not answer.data:
+            raise ReviewError("Claude nie poprawił opisu. Spróbuj jeszcze raz.")
+        full = _paragraphs(answer.data.get("full"))
+        frame = frame_text(_plain(answer.data.get("frame"))) or frame_text(full)
+        if not full or not frame:
+            raise ReviewError("Claude nie poprawił opisu. Spróbuj jeszcze raz.")
+        return {"frame": frame, "full": full}
+
+    def save_polish(self, item_id: str, frame: str, full: str) -> None:
+        """The owner's Polish texts kept (as proposed or as he wrote them):
+        the frame's text whole sentences that fit, the card's in paragraphs.
+        The note keeps what it was written from, so it is not written anew."""
+        item = self._work(item_id)
+        note = self._polish_note(item)
+        full = _paragraphs(full)
+        frame = frame_text(_plain(frame)) or frame_text(full)
+        if not full or not frame:
+            raise ReviewError("Pusty opis")
+        data = {**note.data, "frame": frame, "full": full, "by_owner": True}
+        fresh = self.pl_text.source_hash(item)
+        self.library.save_note(note.model_copy(update={"data": data, "source_hash": fresh}))
+        log.info("review: the owner mended the Polish text of %s", item_id)
+        self.drop(item_id, "polish")
 
     def drop(self, item_id: str, field: str) -> None:
         """The finding's ``field`` done (off the list with the last one)."""

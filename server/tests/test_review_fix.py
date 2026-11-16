@@ -226,3 +226,70 @@ def test_the_gatekeepers_notes_in_polish(
     with _client(service) as client:
         review = client.get("/api/ai/review").json()
     assert [e["why"] for e in review["set_aside"]] == ["Mężczyźni na polowaniu", "Strona z tekstem"]
+
+
+def test_popraw_opis_proposes_mended_texts_and_keeps_the_owners(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    from frame_server.ai.client import SONNET
+
+    item = _work(service, "wmc:9", title="Self Portrait", artist="Giorgio de Chirico", pooled=True)
+    text = {
+        "title": "Autoportret",
+        "frame": "Białe litery na tablicy głoszą motto.",
+        "full": "Białe litery na tablicy głoszą motto.\n\nMalarz patrzy w bok.",
+        "written": "note",
+        "style": "eye",
+    }
+    service.library.save_note(
+        Note(
+            item_id="wmc:9",
+            kind="pl_text",
+            model=SONNET,
+            prompt_version="old",
+            source_hash="old",
+            data=text,
+        )
+    )
+    _found(
+        service,
+        {
+            "id": "wmc:9",
+            "at": "2026-11-16T02:00:00+00:00",
+            "problems": [{"field": "polish", "problem": "Litery są ciemne na jasnym tle"}],
+        },
+    )
+    mended = {
+        "frame": "Ciemne litery na jasnej tablicy głoszą motto.",
+        "full": "Ciemne litery na jasnej tablicy głoszą motto.\n\nMalarz patrzy w bok.",
+    }
+    _answers(fake, mended)
+    with _client(service) as client:
+        draft = client.post("/api/ai/review/wmc:9/polish").json()
+        assert draft == mended
+        (asked,) = fake.asked
+        assert asked["model"] == SONNET
+        assert "Litery są ciemne" in str(asked["messages"])
+        assert "Białe litery" in str(asked["messages"])
+        assert len(service.audit.written()) == 1  # nothing kept before he says so
+        full = draft["full"] + " Własne zdanie."
+        after = client.put("/api/ai/review/wmc:9/polish", json={**draft, "full": full}).json()
+        assert after["findings"] == []
+        assert client.post("/api/ai/review/mnk:404/polish").status_code == 404
+    note = service.library.note("wmc:9", "pl_text")
+    assert note is not None and note.data["full"].endswith("Własne zdanie.")
+    assert note.data["title"] == "Autoportret" and note.data["by_owner"]
+    assert service.pl_text.fresh(item, note)  # not written anew by a newer prompt
+    assert all("wmc:9" not in ids for ids in service.text_review.by_step().values())
+
+
+def test_popraw_opis_without_a_polish_text(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    _work(service, "wmc:9", pooled=True)
+    _found(service, {"id": "wmc:9", "at": "", "problems": [{"field": "polish", "problem": "x"}]})
+    with _client(service) as client:
+        answer = client.post("/api/ai/review/wmc:9/polish")
+        assert answer.status_code == 422 and "polskiego opisu" in answer.json()["detail"]
