@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.145.184
+
+- Konfiguracja → Claude i Gemini: na górze tabela „Koszty”, ile każda
+  rzecz kosztowała w ostatnich 7 dniach i w całym okresie, od
+  najdroższych, z sumą. Pod każdym przełącznikiem jego koszt z 7 dni.
+- Przełączniki Claude w trzech grupach (Opisy i szukanie, Studia i
+  Odkrywaj, Nocne porządki), z krótszymi opisami. Postęp słów kluczowych i
+  polskich opisów stoi pod ich przełącznikami.
+- Znikają jednorazowe przyciski „Uzupełnij wcześniejsze studia”,
+  „Przejrzyj zapisane opisy” i „Opisz całą bibliotekę”: tę samą pracę robi
+  nocą „Resztka miesiąca”. „Do sprawdzenia” jest na górze Konfiguracji.
+
 ## 1.145.183
 
 - „Do sprawdzenia”: uwaga do polskiego opisu (np. „tekst mówi o białych

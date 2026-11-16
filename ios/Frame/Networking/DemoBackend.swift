@@ -77,16 +77,7 @@ actor DemoBackend: FrameBackend {
     private var aiValue = AiSettings(
         keySet: false, keyTail: nil, keyFromApp: false, plText: true, keywordsArtworks: true,
         keywordsPhotos: true, daily: true, searchWords: true, curator: true, twinsJudge: true, gatekeeper: true, audit: true, looks: true, journey: true, webFacts: true, crops: true, stages: true, varnishBlue: true,
-        studyRefresh: StudyRefresh(
-            waiting: 42, rewriteWaiting: 0, running: false, asked: 0, rewriting: 0,
-            found: 0, rewritten: 0, spentUsd: 0, factsUsd: 4.2, rewriteUsd: 1.26
-        ),
-        textReview: TextReview(
-            translations: 1240, unchecked: 1180, general: 0, unstyled: 310, running: false,
-            checking: 0, writing: 0, checked: 0, found: 0, written: 0, spentUsd: 0,
-            checkUsd: 0.09, noteUsd: 0.007, generalUsd: 0, restyleUsd: 2.22
-        ),
-        reviewCount: 2, monthlyLimitUsd: 5, spentUsd: 0,
+        reviewCount: 2, monthlyLimitUsd: 20, spentUsd: 11.14,
         keywordsProgress: .init(done: 0, waiting: 0, refused: 0, batchItems: 0, batchDone: 0, preparing: false),
         plTextProgress: nil, error: nil,
         geminiKeySet: true, geminiKeyTail: "wxyz", drawn: true, drawnUsd: 0.15, drawnBatchUsd: 0.075,
@@ -98,7 +89,30 @@ actor DemoBackend: FrameBackend {
             opens: "2026-11-28", closes: "2026-11-29", open: false, freeUsd: 0, perStudyUsd: 0.8,
             measured: false, ordered: 0, inFlight: 0, made: 0, failed: 0, candidates: 7,
             uses: DemoBackend.leftoverUses
-        )
+        ),
+        costDays: 7,
+        claudeCosts: [
+            AiCost(key: "pl_text", label: "Polskie tytuły i opisy", daysUsd: 0.21, periodUsd: 0.64),
+            AiCost(key: "keywords", label: "Słowa kluczowe", daysUsd: 0.04, periodUsd: 0.18),
+            AiCost(key: "search_words", label: "Tłumaczenie słów w Szukaj", daysUsd: 0.003, periodUsd: 0.01),
+            AiCost(key: "daily", label: "Studium dnia (wybór i tekst)", daysUsd: 0.62, periodUsd: 1.31),
+            AiCost(key: "studies", label: "Studia dzieł: kompozycja, detale, szkic", daysUsd: 1.18, periodUsd: 2.07),
+            AiCost(key: "web_facts", label: "Fakty z sieci", daysUsd: 0.35, periodUsd: 0.52),
+            AiCost(key: "stages", label: "Jak powstawał", daysUsd: 0.006, periodUsd: 0.01),
+            AiCost(key: "journey", label: "Droga dzieła", daysUsd: 0.01, periodUsd: 0.02),
+            AiCost(key: "curator", label: "Kurator Odkrywaj", daysUsd: 0.27, periodUsd: 0.48),
+            AiCost(key: "gatekeeper", label: "Strażnik katalogu", daysUsd: 0.09, periodUsd: 0.16),
+            AiCost(key: "twins_judge", label: "Sędzia powtórek", daysUsd: 0.02, periodUsd: 0.05),
+            AiCost(key: "crops", label: "Kadrowanie zdjęć dzieł", daysUsd: 0.43, periodUsd: 0.43),
+            AiCost(key: "varnish_blue", label: "Błękit pod werniksem", daysUsd: 0.004, periodUsd: 0.004),
+            AiCost(key: "audit", label: "Nocny przegląd", daysUsd: 0.06, periodUsd: 0.11),
+            AiCost(key: "study_refresh", label: "Uzupełnianie starszych studiów", daysUsd: 0, periodUsd: 5.15),
+        ],
+        geminiCosts: [
+            AiCost(key: "drawn", label: "Arkusze kompozycji", daysUsd: 0.9, periodUsd: 1.2),
+            AiCost(key: "looks", label: "Szukanie wyglądem", daysUsd: 0.02, periodUsd: 0.05),
+            AiCost(key: "restorer", label: "Kreatywny restaurator", daysUsd: 0.1, periodUsd: 0.1),
+        ]
     )
     private var demoAsleep = false
     /// The picture "on its way" to the pretend frame, for the progress bar.
@@ -2305,25 +2319,6 @@ actor DemoBackend: FrameBackend {
         return aiValue
     }
 
-    func startStudyRefresh() async throws -> AiSettings {
-        if var refresh = aiValue.studyRefresh {
-            refresh.asked = refresh.waiting
-            refresh.running = true
-            aiValue.studyRefresh = refresh
-        }
-        return aiValue
-    }
-
-    func startTextReview(check: Bool, restyle: Bool) async throws -> AiSettings {
-        if var review = aiValue.textReview {
-            review.checking = check ? review.unchecked : 0
-            review.writing = restyle ? review.unstyled : 0
-            review.running = review.checking + review.writing > 0
-            aiValue.textReview = review
-        }
-        return aiValue
-    }
-
     func deleteAiKey() async throws -> AiSettings {
         aiValue.keySet = false
         aiValue.keyTail = nil
@@ -2343,13 +2338,6 @@ actor DemoBackend: FrameBackend {
         aiValue.geminiKeyTail = nil
         aiValue.drawnWaiting = 0
         return aiValue
-    }
-
-    func keywordsEstimate() async throws -> AiEstimate { AiEstimate(items: 1840, usd: 0.32) }
-
-    func describeLibrary() async throws -> AiStarted {
-        aiValue.keywordsProgress.preparing = true
-        return AiStarted(items: 1840)
     }
 
     func wake(sleepAfter: Bool) async throws -> WakeResult {

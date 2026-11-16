@@ -1899,12 +1899,6 @@ struct AiSettings: Codable, Hashable, Sendable {
     /// "Błękit pod werniksem": Haiku asked at night whether a green under
     /// yellowed varnish is a blue; nil from older servers.
     var varnishBlue: Bool? = nil
-    /// The studies written before the facts from the web, filled in at a
-    /// tap; nil from older servers.
-    var studyRefresh: StudyRefresh? = nil
-    /// "Przejrzyj zapisane opisy": the Polish texts kept, looked over at a
-    /// tap; nil from older servers.
-    var textReview: TextReview? = nil
     /// Works on "Do sprawdzenia"; nil from older servers.
     var reviewCount: Int? = nil
     var monthlyLimitUsd: Double
@@ -1950,6 +1944,23 @@ struct AiSettings: Codable, Hashable, Sendable {
     var leftoverDays: Int? = nil
     var leftoverReserveUsd: Double? = nil
     var leftoverState: LeftoverState? = nil
+    /// "Koszty" (Mateusz 2026-11-16: "podaj koszt dla każdej pozycji za
+    /// ostatnie dni"): each thing's money over the last `costDays` days and
+    /// the period so far, Claude's and Google's apart. Nil from older servers.
+    var costDays: Int? = nil
+    var claudeCosts: [AiCost]? = nil
+    var geminiCosts: [AiCost]? = nil
+}
+
+/// One row of "Koszty": a thing the models do, in the owner's words; its key
+/// is its switch's where it has one ("pl_text", "crops", "drawn"…).
+struct AiCost: Codable, Hashable, Sendable, Identifiable {
+    var key: String
+    var label: String
+    var daysUsd: Double
+    var periodUsd: Double
+
+    var id: String { key }
 }
 
 /// What the month's rest does: studies ordered at night in the period's
@@ -2003,59 +2014,6 @@ struct LeftoverUse: Codable, Hashable, Sendable, Identifiable {
     var tonightUsd: Double? = nil
 
     var id: String { key }
-}
-
-/// "Uzupełnij wcześniejsze studia" (Mateusz 2026-11-13): the studies with
-/// no facts from the web yet get them through Claude's Batch, and those the
-/// facts add much to a new text about the work's circumstances and colour;
-/// the analysis of composition, the details and the work's road stay.
-struct StudyRefresh: Codable, Hashable, Sendable {
-    /// Studies with no facts yet, and those waiting for their new text.
-    var waiting: Int
-    var rewriteWaiting: Int
-    /// An order is under way: the studies asked about, being rewritten.
-    var running: Bool
-    var asked: Int
-    var rewriting: Int
-    /// So far: studies that got facts, rewritten, what it cost.
-    var found: Int
-    var rewritten: Int
-    var spentUsd: Double
-    /// About what the facts of those waiting cost, and their new texts (at most).
-    var factsUsd: Double
-    var rewriteUsd: Double
-}
-
-/// "Przejrzyj zapisane opisy" (Mateusz 2026-11-14): the translations kept
-/// before Haiku said whether the museum's text is about the work checked,
-/// with Sonnet's note where it is not; the notes written before the five
-/// styles written anew. Both through Claude's Batch, at a tap.
-struct TextReview: Codable, Hashable, Sendable {
-    /// Translations kept; not checked yet; found not about the work with
-    /// their note still to come; notes in the old style.
-    var translations: Int
-    var unchecked: Int
-    var general: Int
-    var unstyled: Int
-    /// An order is under way: checks and notes in it.
-    var running: Bool
-    var checking: Int
-    var writing: Int
-    /// So far: checked, found not about the work, notes written, the cost.
-    var checked: Int
-    var found: Int
-    var written: Int
-    var spentUsd: Double
-    /// About what each step costs now, and one note.
-    var checkUsd: Double
-    var noteUsd: Double
-    var generalUsd: Double
-    var restyleUsd: Double
-}
-
-struct TextReviewStart: Encodable, Sendable {
-    var check: Bool
-    var restyle: Bool
 }
 
 /// Only what is set changes.
@@ -2193,12 +2151,6 @@ struct TailnetKey: Codable, Hashable, Sendable {
     var address: String?
 }
 
-/// What "Opisz bibliotekę" would ask about, and about what it costs.
-struct AiEstimate: Codable, Hashable, Sendable {
-    var items: Int
-    var usd: Double
-}
-
 /// Konfiguracja → "Kreatywny restaurator": the favourites under 1600 px the
 /// image model would draw again (`items`, about `usd` in Google's batches),
 /// those waiting in batches, and the works drawn so far.
@@ -2208,10 +2160,6 @@ struct RestorerState: Codable, Hashable, Sendable {
     var usd: Double
     var waiting: Int
     var restored: Int
-}
-
-struct AiStarted: Codable, Hashable, Sendable {
-    var items: Int
 }
 
 struct PanelConfigUpdate: Encodable, Sendable {

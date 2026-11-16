@@ -3,13 +3,19 @@ import SwiftUI
 /// Konfiguracja → Claude: Anthropic's API working for the library. What the
 /// model may do, the monthly limit and how far it got; the key is in
 /// Konfiguracja → Klucze i certyfikaty (`part: .key`). The models are fixed
-/// per task on the server: Haiku for keywords and translations, Sonnet for
-/// notes on works without a description.
+/// per task on the server.
 ///
 /// Konfiguracja → Gemini (`part: .gemini`): Google's image model, with a
 /// month's limit and spending of its own (Mateusz 2026-11-12 23:20: "Dla
 /// Gemini trzeba dać osobny segment w Konfiguracja (tak jak Claude) i tam
 /// ustawić osobno limit").
+///
+/// Since 2026-11-16 ("prezentowane pozycje są niejasne… część miała
+/// zastosowanie doraźne… podaj koszt dla każdej pozycji za ostatnie dni"):
+/// both pages start with what each thing cost in the last days, the
+/// switches stand in three groups with a line each and their own money
+/// under them, and the one-off orders (earlier studies, texts kept, the
+/// whole library described) are gone: the month's rest does them.
 struct AiSection: View {
     enum Part {
         /// The switches, the limit and the progress.
@@ -27,22 +33,10 @@ struct AiSection: View {
     @State private var savingKey = false
     @State private var geminiKey = ""
     @State private var savingGeminiKey = false
-    @State private var estimating = false
-    @State private var estimate: AiEstimate?
-    @State private var askRefresh = false
-    @State private var startingRefresh = false
-    @State private var reviewCheck = true
     /// CI and Mac screenshots: `-review YES` opens „Do sprawdzenia".
     @State private var showReview = UserDefaults.standard.bool(forKey: "review")
-    @State private var reviewRestyle = false
-    @State private var askReview = false
-    @State private var startingReview = false
 
     private static let limits: [Double] = [1, 2, 5, 10, 20, 50, 100, 150, 200]
-
-    private var budgetLeft: Double { max(settings.monthlyLimitUsd - settings.spentUsd, 0) }
-
-    private var keywordsOn: Bool { settings.keywordsArtworks || settings.keywordsPhotos }
 
     var body: some View {
         switch part {
@@ -54,7 +48,7 @@ struct AiSection: View {
 
     private var geminiBody: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Gemini (Google)", subtitle: "Arkusze kompozycji, etapy malowania i szukanie wyglądem")
+            SectionHeader(title: "Gemini (Google)", subtitle: "Arkusze kompozycji, szukanie wyglądem, restaurator")
             Card {
                 if let limit = settings.geminiMonthlyLimitUsd {
                     if settings.geminiKeySet != true {
@@ -65,14 +59,26 @@ struct AiSection: View {
                     }
                     spendingRows(
                         limit: limit, spent: settings.geminiSpentUsd ?? 0,
-                        note: "Po przekroczeniu limitu serwer nie pyta modelu graficznego do końca miesiąca. Wydatki Claude liczą się osobno."
+                        note: "Po przekroczeniu limitu Gemini czeka do następnego miesiąca. Claude liczy się osobno."
                     ) { AiSettingsUpdate(geminiMonthlyLimitUsd: $0) }
+                } else {
+                    Label("Ten serwer nie ma jeszcze modelu graficznego. Zaktualizuj serwer.", systemImage: "arrow.down.circle")
+                        .font(.caption)
+                        .foregroundStyle(Theme.inkSoft)
+                }
+            }
+            if let rows = settings.geminiCosts {
+                costSection(rows, since: Self.monthStart())
+            }
+            if settings.geminiMonthlyLimitUsd != nil, settings.drawn != nil || settings.looks != nil {
+                SectionHeader(title: "Co robi Gemini")
+                Card {
                     if let drawn = settings.drawn {
-                        Divider()
                         toggle(
-                            "Arkusze kompozycji z modelu graficznego",
+                            "Arkusze kompozycji",
                             hint: Self.drawnHint(settings),
-                            value: drawn
+                            value: drawn,
+                            cost: "drawn"
                         ) { AiSettingsUpdate(drawn: $0) }
                         if settings.geminiKeySet == true, let note = Self.drawnNote(settings, on: drawn) {
                             Label(note.text, systemImage: note.icon)
@@ -81,12 +87,12 @@ struct AiSection: View {
                         }
                     }
                     if let looks = settings.looks {
-                        Divider()
+                        if settings.drawn != nil { Divider() }
                         toggle(
                             "Szukanie wyglądem",
-                            hint: "Szukaj po tym, jak dzieło wygląda: opisem, zdjęciem i „Podobne wyglądem”. "
-                                + "Dzieła z muzeów przygotowuje raz, przez Batch (ok. 0,006 centa za dzieło), pytanie to ułamek centa. Twoje zdjęcia nie trafiają do Google.",
-                            value: looks
+                            hint: "Szukaj opisem wyglądu, zdjęciem i „Podobne wyglądem”. Twoje zdjęcia nie trafiają do Google.",
+                            value: looks,
+                            cost: "looks"
                         ) { AiSettingsUpdate(looks: $0) }
                         if settings.geminiKeySet == true, let note = Self.looksNote(settings, on: looks) {
                             Label(note.text, systemImage: note.icon)
@@ -94,10 +100,6 @@ struct AiSection: View {
                                 .foregroundStyle(note.bad ? Theme.bad : Theme.inkSoft)
                         }
                     }
-                } else {
-                    Label("Ten serwer nie ma jeszcze modelu graficznego. Zaktualizuj serwer.", systemImage: "arrow.down.circle")
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
                 }
             }
         }
@@ -128,7 +130,7 @@ struct AiSection: View {
 
     private var settingsBody: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Model językowy (Claude)", subtitle: "Słowa kluczowe i polskie opisy dzieł")
+            SectionHeader(title: "Claude (Anthropic)", subtitle: "Opisy, studia i nocne porządki")
             Card {
                 if !settings.keySet {
                     Label("Brak klucza Anthropic. Dodasz go w Kluczach i certyfikatach.", systemImage: "key")
@@ -136,147 +138,29 @@ struct AiSection: View {
                         .foregroundStyle(Theme.warn)
                     Divider()
                 }
-                spending
-                Divider()
-                toggle(
-                    "Polskie tytuły i opisy",
-                    hint: "Tłumaczy Haiku. Dziełom bez opisu notkę pisze Sonnet.",
-                    value: settings.plText
-                ) { AiSettingsUpdate(plText: $0) }
-                Divider()
-                toggle(
-                    "Słowa kluczowe dla dzieł",
-                    hint: "Dla Szukaj i inteligentnych playlist.",
-                    value: settings.keywordsArtworks
-                ) { AiSettingsUpdate(keywordsArtworks: $0) }
-                Divider()
-                toggle(
-                    "Słowa kluczowe dla zdjęć",
-                    hint: "Miniatury zdjęć idą do Anthropic.",
-                    value: settings.keywordsPhotos
-                ) { AiSettingsUpdate(keywordsPhotos: $0) }
-                if let daily = settings.daily {
-                    Divider()
-                    toggle(
-                        "Studium dnia",
-                        hint: "Raz dziennie na górze Odkrywaj, ok. 4 USD miesięcznie.",
-                        value: daily
-                    ) { AiSettingsUpdate(daily: $0) }
+                spendingRows(
+                    limit: settings.monthlyLimitUsd, spent: settings.spentUsd,
+                    note: "Po przekroczeniu limitu Claude czeka do dnia odnowienia."
+                ) { AiSettingsUpdate(monthlyLimitUsd: $0) }
+                if let error = settings.error {
+                    Label("Wstrzymane: \(error). Serwer spróbuje ponownie za kilka minut.", systemImage: "pause.circle")
+                        .font(.caption)
+                        .foregroundStyle(Theme.bad)
                 }
-                if let searchWords = settings.searchWords {
-                    Divider()
-                    toggle(
-                        "Tłumaczenie słów w Szukaj",
-                        hint: "Np. gitara jako guitar dla muzeów zagranicznych, a opis wyglądu jako hasła dla muzeów.",
-                        value: searchWords
-                    ) { AiSettingsUpdate(searchWords: $0) }
-                }
-                if let curator = settings.curator {
-                    Divider()
-                    toggle(
-                        "Kurator Odkrywaj",
-                        hint: "Dwie karty w „Dziś dla Ciebie”, do ok. 3 USD miesięcznie.",
-                        value: curator
-                    ) { AiSettingsUpdate(curator: $0) }
-                }
-                if let twinsJudge = settings.twinsJudge {
-                    Divider()
-                    toggle(
-                        "Sędzia powtórek",
-                        hint: "W nocy ocenia kopie i detale, których nie rozpoznały obrazy. Grosze miesięcznie.",
-                        value: twinsJudge
-                    ) { AiSettingsUpdate(twinsJudge: $0) }
-                }
-                if let gatekeeper = settings.gatekeeper {
-                    Divider()
-                    toggle(
-                        "Strażnik katalogu",
-                        hint: "W nocy odkłada znaczki, strony z tekstem i zdjęcia sal z Commons i Europeany. Do ok. 0,6 USD miesięcznie.",
-                        value: gatekeeper
-                    ) { AiSettingsUpdate(gatekeeper: $0) }
-                }
-                if let crops = settings.crops {
-                    Divider()
-                    toggle(
-                        "Kadrowanie zdjęć dzieł",
-                        hint: "Przycina zdjęcia z muzeów do samego dzieła, gdy widać ramę, sztalugę albo tło. Haiku wybiera dzieła, Opus ustawia narożniki. Ok. 1–2 centy za przycięte dzieło.",
-                        value: crops
-                    ) { AiSettingsUpdate(crops: $0) }
-                }
-                if let varnishBlue = settings.varnishBlue {
-                    Divider()
-                    toggle(
-                        "Błękit pod werniksem",
-                        hint: "W nocy Haiku sprawdza, czy zielonkawe niebo, woda albo szata pod pożółkłym werniksem to błękit. Wtedy dzieło znajdziesz po błękicie. Grosze miesięcznie.",
-                        value: varnishBlue
-                    ) { AiSettingsUpdate(varnishBlue: $0) }
-                }
-                if let audit = settings.audit {
-                    Divider()
-                    toggle(
-                        "Nocny przegląd",
-                        hint: "Co noc 30 losowych dzieł: tytuł, data, polski opis i obraz. Ok. 0,3 USD miesięcznie.",
-                        value: audit
-                    ) { AiSettingsUpdate(audit: $0) }
-                }
-                if let journey = settings.journey {
-                    Divider()
-                    toggle(
-                        "Droga dzieła",
-                        hint: "W studium dzieła droga od pracowni do muzeum, z danych muzeum. Ok. 0,2 centa za dzieło.",
-                        value: journey
-                    ) { AiSettingsUpdate(journey: $0) }
-                }
-                if let webFacts = settings.webFacts {
-                    Divider()
-                    toggle(
-                        "Fakty z sieci w studium",
-                        hint: "Przed napisaniem studium Claude szuka w sieci badań, losów i wystaw dzieła i wplata je w tekst. Ok. 2–10 centów za studium.",
-                        value: webFacts
-                    ) { AiSettingsUpdate(webFacts: $0) }
-                }
-                if let stages = settings.stages {
-                    Divider()
-                    toggle(
-                        "Jak powstawał (Studium)",
-                        hint: "Gdy w sieci jest badanie techniczne dzieła, Claude opisuje w kilku zdaniach, jak powstawało. Ułamek centa za dzieło.",
-                        value: stages
-                    ) { AiSettingsUpdate(stages: $0) }
-                }
-                if let refresh = settings.studyRefresh,
-                   refresh.running || refresh.waiting > 0 || refresh.found > 0 {
-                    Divider()
-                    studyRefreshRow(refresh)
-                }
-                if let review = settings.textReview,
-                   review.running || review.unchecked + review.general + review.unstyled > 0 || review.checked + review.written > 0 {
-                    Divider()
-                    textReviewRow(review)
-                }
-                if let count = settings.reviewCount {
-                    Divider()
-                    NavigationLink {
-                        AiReviewView()
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Do sprawdzenia").foregroundStyle(Theme.ink)
-                                Text("Co strażnik odłożył i co znalazł nocny przegląd.")
-                                    .font(.caption)
-                                    .foregroundStyle(Theme.inkSoft)
-                            }
-                            Spacer()
-                            if count > 0 {
-                                Text("\(count)")
-                                    .font(.subheadline.monospacedDigit())
-                                    .foregroundStyle(Theme.inkSoft)
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-                Divider()
-                progress
+            }
+            if let rows = settings.claudeCosts {
+                costSection(rows, since: settings.periodStart)
+            }
+            SectionHeader(title: "Opisy i szukanie", subtitle: "Dla każdego nowego dzieła, gdy trafia do biblioteki")
+                .id("switches")
+            Card { describing }
+            SectionHeader(title: "Studia i Odkrywaj", subtitle: "Gdy powstaje studium dzieła")
+            Card { studies }
+            if [settings.gatekeeper, settings.twinsJudge, settings.crops, settings.varnishBlue, settings.audit]
+                .contains(where: { $0 != nil }) {
+                SectionHeader(title: "Nocne porządki", subtitle: "Co noc, w pakietach za pół ceny")
+                    .id("night")
+                Card { night }
             }
             if settings.leftover != nil {
                 SectionHeader(
@@ -296,6 +180,127 @@ struct AiSection: View {
                 guard !Task.isCancelled else { return }
                 await model.loadAiSettings()
             }
+        }
+    }
+
+    // MARK: The switches, in three groups
+
+    /// What each new work gets: its Polish texts, its keywords, and the
+    /// words typed in Szukaj said for the museums abroad.
+    @ViewBuilder
+    private var describing: some View {
+        toggle(
+            "Polskie tytuły i opisy",
+            hint: "Haiku tłumaczy opisy muzeów, dziełom bez opisu notkę pisze Sonnet.",
+            value: settings.plText,
+            cost: "pl_text",
+            progress: settings.plTextProgress
+        ) { AiSettingsUpdate(plText: $0) }
+        Divider()
+        toggle(
+            "Słowa kluczowe dla dzieł",
+            hint: "Po nich szukają Szukaj i inteligentne playlisty.",
+            value: settings.keywordsArtworks
+        ) { AiSettingsUpdate(keywordsArtworks: $0) }
+        Divider()
+        toggle(
+            "Słowa kluczowe dla zdjęć",
+            hint: "Miniatury Twoich zdjęć idą wtedy do Anthropic.",
+            value: settings.keywordsPhotos,
+            cost: "keywords",
+            costLabel: "dzieła i zdjęcia",
+            progress: settings.keywordsProgress
+        ) { AiSettingsUpdate(keywordsPhotos: $0) }
+        if let searchWords = settings.searchWords {
+            Divider()
+            toggle(
+                "Tłumaczenie słów w Szukaj",
+                hint: "„gitara” jako „guitar” dla muzeów zagranicznych, opis wyglądu jako ich hasła.",
+                value: searchWords,
+                cost: "search_words"
+            ) { AiSettingsUpdate(searchWords: $0) }
+        }
+    }
+
+    /// What a study is made of, and Discover's own two.
+    @ViewBuilder
+    private var studies: some View {
+        if let daily = settings.daily {
+            toggle(
+                "Studium dnia",
+                hint: "Codziennie jedno dzieło na górze Odkrywaj, opisane jak w albumie.",
+                value: daily,
+                cost: "daily"
+            ) { AiSettingsUpdate(daily: $0) }
+            Divider()
+        }
+        if let webFacts = settings.webFacts {
+            toggle(
+                "Fakty z sieci",
+                hint: "Przed napisaniem studium Claude szuka w sieci badań, losów i wystaw dzieła.",
+                value: webFacts,
+                cost: "web_facts"
+            ) { AiSettingsUpdate(webFacts: $0) }
+            Divider()
+        }
+        if let stages = settings.stages {
+            toggle(
+                "Jak powstawał",
+                hint: "Kilka zdań o powstawaniu dzieła, tylko gdy w sieci jest jego badanie techniczne.",
+                value: stages,
+                cost: "stages"
+            ) { AiSettingsUpdate(stages: $0) }
+            Divider()
+        }
+        if let journey = settings.journey {
+            toggle(
+                "Droga dzieła",
+                hint: "Od pracowni do muzeum, z zapisów muzeum.",
+                value: journey,
+                cost: "journey"
+            ) { AiSettingsUpdate(journey: $0) }
+            Divider()
+        }
+        if let curator = settings.curator {
+            toggle(
+                "Kurator Odkrywaj",
+                hint: "Dwie dodatkowe karty w „Dziś dla Ciebie”.",
+                value: curator,
+                cost: "curator"
+            ) { AiSettingsUpdate(curator: $0) }
+            Divider()
+        }
+        Text("Samo studium (strona, kompozycja, detale) nie ma przełącznika: powstaje, gdy go chcesz, i dla Studium dnia. Jego koszt jest w tabeli wyżej.")
+            .font(.caption)
+            .foregroundStyle(Theme.inkSoft)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// What the night looks over in the catalogue.
+    @ViewBuilder
+    private var night: some View {
+        let rows: [(title: String, hint: String, value: Bool?, cost: String, update: (Bool) -> AiSettingsUpdate)] = [
+            ("Strażnik katalogu",
+             "Odkłada znaczki, strony z tekstem i zdjęcia sal, które przyszły jako dzieła z Commons, Europeany i WikiArt.",
+             settings.gatekeeper, "gatekeeper", { AiSettingsUpdate(gatekeeper: $0) }),
+            ("Sędzia powtórek",
+             "Rozstrzyga, czy dwa podobne obrazy to kopia, detal czy to samo dzieło, gdy nie wystarczy porównanie obrazów.",
+             settings.twinsJudge, "twins_judge", { AiSettingsUpdate(twinsJudge: $0) }),
+            ("Kadrowanie zdjęć dzieł",
+             "Przycina zdjęcia z muzeów do samego dzieła, gdy widać ramę, sztalugę albo tło.",
+             settings.crops, "crops", { AiSettingsUpdate(crops: $0) }),
+            ("Błękit pod werniksem",
+             "Sprawdza, czy zielonkawe niebo albo woda pod pożółkłym werniksem to błękit, żeby dzieło dało się znaleźć po kolorze.",
+             settings.varnishBlue, "varnish_blue", { AiSettingsUpdate(varnishBlue: $0) }),
+            ("Nocny przegląd",
+             "30 losowych dzieł: tytuł, data, opis i obraz. Co nie pasuje, trafia do „Do sprawdzenia”.",
+             settings.audit, "audit", { AiSettingsUpdate(audit: $0) }),
+        ]
+        let shown = rows.filter { $0.value != nil }
+        ForEach(shown.indices, id: \.self) { index in
+            let row = shown[index]
+            if index > 0 { Divider() }
+            toggle(row.title, hint: row.hint, value: row.value ?? false, cost: row.cost, update: row.update)
         }
     }
 
@@ -389,8 +394,8 @@ struct AiSection: View {
     static func drawnHint(_ settings: AiSettings) -> String {
         let now = Money.usd(settings.drawnUsd ?? 0.15)
         let batch = Money.usd(settings.drawnBatchUsd ?? 0.075)
-        return "Szkic akwarelą i piórkiem oraz kolorowe linie rysuje model Google. "
-            + "Nowe studium od razu, ok. \(now); zapisane wcześniej przez Batch, ok. \(batch) za arkusz."
+        return "Szkic akwarelą i piórkiem z kolorowymi liniami w studium. "
+            + "Nowe od razu, ok. \(now) za arkusz; zapisane wcześniej przez Batch, ok. \(batch)."
     }
 
     /// What stands under the switch: the key missing, why none is drawn
@@ -432,27 +437,92 @@ struct AiSection: View {
 
     // MARK: Switches and money
 
+    /// A switch with its line, and under it what it cost in the last days
+    /// (`cost`: its row's key in "Koszty") and how far its work got.
     private func toggle(
-        _ title: String, hint: String, value: Bool, update: @escaping (Bool) -> AiSettingsUpdate
+        _ title: String, hint: String, value: Bool, cost: String? = nil, costLabel: String? = nil,
+        progress: AiSettings.Progress? = nil, update: @escaping (Bool) -> AiSettingsUpdate
     ) -> some View {
         let binding = Binding(
             get: { value },
             set: { new in Task { await model.saveAiSettings(update(new)) } }
         )
+        let notes = [cost.flatMap { costNote($0, label: costLabel) }, progress.flatMap(Self.progressNote)]
+            .compactMap { $0 }
         return Toggle(isOn: binding) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                 Text(hint).font(.caption).foregroundStyle(Theme.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !notes.isEmpty {
+                    Text(notes.joined(separator: " · "))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(Theme.ink.opacity(0.75))
+                        .padding(.top, 1)
+                }
             }
         }
         .tint(Theme.ink)
     }
 
-    private var spending: some View {
-        spendingRows(
-            limit: settings.monthlyLimitUsd, spent: settings.spentUsd,
-            note: "Po przekroczeniu limitu serwer nie pyta modelu do końca miesiąca."
-        ) { AiSettingsUpdate(monthlyLimitUsd: $0) }
+    /// "7 dni: 0,42 USD" for the switch's row in "Koszty" (none: nothing spent).
+    private func costNote(_ key: String, label: String?) -> String? {
+        guard let days = settings.costDays else { return nil }
+        let rows = (settings.claudeCosts ?? []) + (settings.geminiCosts ?? [])
+        let usd = rows.first { $0.key == key }?.daysUsd ?? 0
+        let what = label.map { "\(days) dni (\($0))" } ?? "\(days) dni"
+        return "\(what): \(Self.usd(usd))"
+    }
+
+    /// "gotowe 3691 · czeka 9": how far the background got.
+    static func progressNote(_ progress: AiSettings.Progress) -> String? {
+        var parts = ["gotowe \(count(progress.done))"]
+        if progress.preparing { parts.append("przygotowuję pakiet") }
+        if progress.batchItems > 0 { parts.append("w pakiecie \(progress.batchDone) z \(progress.batchItems)") }
+        if progress.waiting > 0 { parts.append("czeka \(count(progress.waiting))") }
+        return parts.joined(separator: " · ")
+    }
+
+    /// Money as a line tells it: nothing is "0 USD", under a cent is not
+    /// "0,00 USD".
+    static func usd(_ value: Double) -> String {
+        if value <= 0 { return "0 USD" }
+        return value < 0.01 ? "poniżej 1 centa" : Money.usd(value)
+    }
+
+    /// "Koszty": each thing's money over the last days and the period so far,
+    /// the dearest first, and the sum (Mateusz 2026-11-16: "czytelnie podaj
+    /// koszt dla każdej pozycji za ostatnie dni").
+    @ViewBuilder
+    private func costSection(_ rows: [AiCost], since: String?) -> some View {
+        let days = settings.costDays ?? 7
+        SectionHeader(title: "Koszty", subtitle: "Ostatnie \(days) dni i cały okres")
+        Card {
+            if rows.isEmpty {
+                Text("Jeszcze nic nie kosztowało.")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.inkSoft)
+            } else {
+                CostTable(rows: Self.sorted(rows), days: days, since: since.map(Self.dayMonth))
+            }
+        }
+    }
+
+    /// The dearest of the last days first, then of the period; "Inne" last.
+    static func sorted(_ rows: [AiCost]) -> [AiCost] {
+        rows.sorted { a, b in
+            if (a.key == "other") != (b.key == "other") { return b.key == "other" }
+            if a.daysUsd != b.daysUsd { return a.daysUsd > b.daysUsd }
+            return a.periodUsd > b.periodUsd
+        }
+    }
+
+    /// "2026-11-01" of the month today is in: Gemini's month is the calendar's.
+    static func monthStart(_ now: Date = .now) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? .current
+        let parts = calendar.dateComponents([.year, .month], from: now)
+        return String(format: "%04d-%02d-01", parts.year ?? 2026, parts.month ?? 1)
     }
 
     /// A model's month: its limit to choose, and how much of it is spent.
@@ -477,7 +547,7 @@ struct AiSection: View {
         }
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("W tym miesiącu").font(.subheadline).foregroundStyle(Theme.ink)
+                Text("W tym okresie").font(.subheadline).foregroundStyle(Theme.ink)
                 Spacer()
                 Text(Money.usd(spent))
                     .font(.subheadline.monospacedDigit())
@@ -733,273 +803,57 @@ struct AiSection: View {
         }
         return parts.joined(separator: " ")
     }
+}
 
-    // MARK: Earlier studies
+/// "Koszty": what each thing cost over the last days and the period so far,
+/// in USD, and the sum under a rule.
+struct CostTable: View {
+    let rows: [AiCost]
+    let days: Int
+    /// "1.11": the period's first day.
+    let since: String?
 
-    /// "Uzupełnij wcześniejsze studia" (Mateusz 2026-11-13): the studies
-    /// written before the facts from the web get them through Claude's
-    /// Batch; only those the facts add much to get a new text.
-    @ViewBuilder
-    private func studyRefreshRow(_ refresh: StudyRefresh) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Uzupełnij wcześniejsze studia").foregroundStyle(Theme.ink)
-            Text(refreshHint(refresh))
-                .font(.caption)
-                .foregroundStyle(Theme.inkSoft)
-                .fixedSize(horizontal: false, vertical: true)
-            if !refresh.running && refresh.waiting > 0 {
-                Button {
-                    askRefresh = true
-                } label: {
-                    HStack {
-                        Text("Uzupełnij \(refresh.waiting) \(Names.studies(refresh.waiting))")
-                        if startingRefresh { ProgressView() }
-                    }
-                }
-                .fontWeight(.semibold)
-                .disabled(!settings.keySet || startingRefresh)
-                .confirmationDialog(
-                    "Uzupełnić \(refresh.waiting) \(Names.studies(refresh.waiting))?",
-                    isPresented: $askRefresh,
-                    titleVisibility: .visible
-                ) {
-                    Button("Uzupełnij") {
-                        Task {
-                            startingRefresh = true
-                            await model.startStudyRefresh()
-                            startingRefresh = false
-                        }
-                    }
-                    Button("Anuluj", role: .cancel) {}
-                } message: {
-                    Text("Fakty ok. \(Money.usd(refresh.factsUsd)), nowe teksty do \(Money.usd(refresh.rewriteUsd)), w pakietach Anthropic. Wyniki w ciągu kilku godzin.")
-                }
+    var body: some View {
+        Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 9) {
+            GridRow {
+                Text("USD")
+                Text("\(days) dni").gridColumnAlignment(.trailing)
+                Text(since.map { "od \($0)" } ?? "okres").gridColumnAlignment(.trailing)
             }
-        }
-    }
-
-    private func refreshHint(_ refresh: StudyRefresh) -> String {
-        if refresh.running {
-            if refresh.rewriting > 0 {
-                return "W toku: nowe teksty z faktami dla \(refresh.rewriting) \(Self.ofStudies(refresh.rewriting)). Wyniki w ciągu kilku godzin."
-            }
-            return "W toku: Claude szuka faktów do \(refresh.asked) \(Self.ofStudies(refresh.asked)). Wyniki w ciągu kilku godzin."
-        }
-        var done = ""
-        if refresh.found > 0 {
-            done = " Dotąd: fakty do \(refresh.found) \(Self.ofStudies(refresh.found)), nowe teksty: \(refresh.rewritten) (\(Money.usd(refresh.spentUsd)))."
-        }
-        if refresh.waiting == 0 {
-            return "Wszystkie studia mają już fakty z sieci." + done
-        }
-        return "\(refresh.waiting) \(Names.studies(refresh.waiting)) bez faktów z sieci. Claude znajdzie, czego w nich brakuje, i przepisze tylko te, którym fakty wiele dodadzą. Kompozycja, detale i Droga dzieła zostają." + done
-    }
-
-    /// "studium" or "studiów" after "do 1", "dla 5".
-    private static func ofStudies(_ count: Int) -> String { count == 1 ? "studium" : "studiów" }
-
-    // MARK: Texts kept
-
-    /// "Przejrzyj zapisane opisy" (Mateusz 2026-11-14): the translations
-    /// kept checked by Haiku, Sonnet's note where the museum's text is not
-    /// about the work; the notes in the old style written anew in the five
-    /// styles. Each a switch of its own, both through Claude's Batch.
-    @ViewBuilder
-    private func textReviewRow(_ review: TextReview) -> some View {
-        let toCheck = review.unchecked + review.general
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Przejrzyj zapisane opisy").foregroundStyle(Theme.ink)
-            Text(reviewHint(review))
-                .font(.caption)
-                .foregroundStyle(Theme.inkSoft)
-                .fixedSize(horizontal: false, vertical: true)
-            if !review.running {
-                if toCheck > 0 {
-                    Toggle(isOn: $reviewCheck) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Sprawdź tłumaczenia")
-                            Text(checkHint(review)).font(.caption).foregroundStyle(Theme.inkSoft)
-                        }
-                    }
-                    .tint(Theme.ink)
-                }
-                if review.unstyled > 0 {
-                    Toggle(isOn: $reviewRestyle) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Przepisz notki w nowych stylach")
-                            Text("Sonnet napisze od nowa \(review.unstyled) \(Names.notes(review.unstyled)) sprzed stylów, każdą w jednym z pięciu. Ok. \(Self.usd(review.restyleUsd)).")
-                                .font(.caption)
-                                .foregroundStyle(Theme.inkSoft)
-                        }
-                    }
-                    .tint(Theme.ink)
-                }
-                if toCheck > 0 || review.unstyled > 0 {
-                    let check = reviewCheck && toCheck > 0
-                    let restyle = reviewRestyle && review.unstyled > 0
-                    Button {
-                        askReview = true
-                    } label: {
-                        HStack {
-                            Text("Przejrzyj")
-                            if startingReview { ProgressView() }
-                        }
-                    }
-                    .fontWeight(.semibold)
-                    .disabled(!settings.keySet || startingReview || !(check || restyle))
-                    .confirmationDialog(
-                        "Przejrzeć zapisane opisy?",
-                        isPresented: $askReview,
-                        titleVisibility: .visible
-                    ) {
-                        Button("Przejrzyj") {
-                            Task {
-                                startingReview = true
-                                await model.startTextReview(check: check, restyle: restyle)
-                                startingReview = false
-                            }
-                        }
-                        Button("Anuluj", role: .cancel) {}
-                    } message: {
-                        Text(reviewCost(review, check: check, restyle: restyle))
-                    }
-                }
-            }
-        }
-    }
-
-    private func reviewHint(_ review: TextReview) -> String {
-        if review.running {
-            var parts: [String] = []
-            if review.checking > 0 {
-                parts.append("Haiku sprawdza \(review.checking) \(Names.translations(review.checking))")
-            }
-            if review.writing > 0 {
-                parts.append("Sonnet pisze \(review.writing) \(Names.notes(review.writing))")
-            }
-            return "W toku: " + parts.joined(separator: ", ") + ". Wyniki w ciągu kilku godzin. Do tego czasu zostają dotychczasowe teksty."
-        }
-        var text = "Zapisane: \(review.translations) \(Names.translations(review.translations)) opisów muzeów i \(review.unstyled) \(Names.notes(review.unstyled)) w starym stylu."
-        if review.checked + review.written > 0 {
-            text += " Dotąd sprawdzone: \(review.checked), nie o dziele: \(review.found), nowe notki: \(review.written) (\(Self.usd(review.spentUsd)))."
-        }
-        return text
-    }
-
-    private func checkHint(_ review: TextReview) -> String {
-        var parts: [String] = []
-        if review.unchecked > 0 {
-            parts.append("Haiku sprawdzi \(review.unchecked) \(Names.translations(review.unchecked)), czy tekst muzeum mówi o samym dziele, a nie np. o życiu artysty (ok. \(Self.usd(review.checkUsd))).")
-        }
-        if review.general > 0 {
-            parts.append("Na \(review.general) już znalezionych czeka notka Sonneta (ok. \(Self.usd(review.generalUsd))).")
-        }
-        parts.append("Gdzie nie mówi, Sonnet napisze notkę zamiast tłumaczenia, ok. \(Self.usd(review.noteUsd)) za każdą.")
-        return parts.joined(separator: " ")
-    }
-
-    /// Money as the review tells it: a sum under a cent is not "0,00 USD".
-    private static func usd(_ value: Double) -> String {
-        value > 0 && value < 0.01 ? "poniżej 1 centa" : Money.usd(value)
-    }
-
-    private func reviewCost(_ review: TextReview, check: Bool, restyle: Bool) -> String {
-        var usd = 0.0
-        if check { usd += review.checkUsd + review.generalUsd }
-        if restyle { usd += review.restyleUsd }
-        let extra = check && review.unchecked > 0 ? ", do tego notki tam, gdzie tekst muzeum nie mówi o dziele" : ""
-        return "Ok. \(Self.usd(usd))\(extra), w pakietach Anthropic. Wyniki w ciągu kilku godzin."
-    }
-
-    // MARK: Progress
-
-    @ViewBuilder
-    private var progress: some View {
-        progressRow("Słowa kluczowe", settings.keywordsProgress)
-        if let plText = settings.plTextProgress {
-            progressRow("Polskie opisy", plText)
-        }
-        if let error = settings.error {
-            Label("Wstrzymane: \(error). Serwer spróbuje ponownie za kilka minut.", systemImage: "pause.circle")
-                .font(.caption)
-                .foregroundStyle(Theme.bad)
-        }
-        Button {
-            Task {
-                estimating = true
-                estimate = await model.keywordsEstimate()
-                estimating = false
-                if let found = estimate, found.items == 0 {
-                    estimate = nil
-                    model.notices.info("Cała biblioteka ma już słowa kluczowe")
-                } else if let found = estimate, found.usd > budgetLeft {
-                    estimate = nil
-                    model.notices.warn(
-                        "Opisanie biblioteki to około \(Money.usd(found.usd))",
-                        "Więcej niż zostało w limicie (\(Money.usd(budgetLeft)))."
-                    )
-                }
-            }
-        } label: {
-            HStack {
-                Text("Opisz całą bibliotekę")
-                if estimating { ProgressView() }
-            }
-        }
-        .fontWeight(.semibold)
-        .disabled(!settings.keySet || !keywordsOn || estimating || settings.keywordsProgress.preparing)
-        .task {
-            // CI screenshots: where the dialog points.
-            guard LaunchRoute.confirm == "describe" else { return }
-            try? await Task.sleep(for: .seconds(3))
-            estimate = AiEstimate(items: 19022, usd: 2.66)
-        }
-        .confirmationDialog(
-            estimate.map { "Opisać \(Names.pictures($0.items))?" } ?? "",
-            isPresented: Binding(get: { estimate != nil }, set: { if !$0 { estimate = nil } }),
-            titleVisibility: .visible,
-            presenting: estimate
-        ) { _ in
-            Button("Opisz bibliotekę") { Task { await model.describeLibrary() } }
-            Button("Anuluj", role: .cancel) {}
-        } message: { estimate in
-            Text("Około \(Money.usd(estimate.usd)) w pakietach Anthropic (połowa zwykłej ceny). Odpowiedzi przychodzą w ciągu doby. Pozostało w limicie \(Money.usd(budgetLeft)).")
-        }
-        Text("Dokłada cały katalog Odkrywaj, taniej, w pakietach.")
-            .font(.caption)
+            .font(.caption.weight(.semibold))
             .foregroundStyle(Theme.inkSoft)
+            ForEach(rows) { row in
+                GridRow {
+                    Text(row.label)
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    amount(row.daysUsd).foregroundStyle(Theme.ink)
+                    amount(row.periodUsd).foregroundStyle(Theme.inkSoft)
+                }
+            }
+            Divider()
+            GridRow {
+                Text("Razem").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
+                amount(rows.map(\.daysUsd).reduce(0, +)).fontWeight(.semibold).foregroundStyle(Theme.ink)
+                amount(rows.map(\.periodUsd).reduce(0, +)).foregroundStyle(Theme.inkSoft)
+            }
+        }
     }
 
-    private func progressRow(_ title: String, _ progress: AiSettings.Progress) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(title).font(.subheadline).foregroundStyle(Theme.ink)
-                Spacer()
-                Text("\(Names.pictures(progress.done)) gotowe")
-                    .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(Theme.inkSoft)
-            }
-            ForEach(details(progress), id: \.self) { line in
-                Text(line).font(.caption).foregroundStyle(Theme.inkSoft)
-            }
-        }
+    private func amount(_ usd: Double) -> some View {
+        Text(Self.short(usd))
+            .font(.subheadline.monospacedDigit())
+            .lineLimit(1)
+            .fixedSize()
     }
 
-    private func details(_ progress: AiSettings.Progress) -> [String] {
-        var lines: [String] = []
-        if progress.preparing {
-            lines.append("Przygotowuję pakiet dla Anthropic…")
-        }
-        if progress.batchItems > 0 {
-            lines.append("W pakiecie: \(progress.batchDone) z \(progress.batchItems), odpowiedzi w ciągu doby")
-        }
-        if progress.waiting > 0 {
-            lines.append("Czeka na noc: \(progress.waiting) (w pakiecie, za pół ceny)")
-        }
-        if progress.refused > 0 {
-            lines.append("Bez odpowiedzi modelu: \(progress.refused)")
-        }
-        return lines
+    /// "0,42", "<0,01", "–": the table's own column says USD.
+    static func short(_ usd: Double) -> String {
+        if usd <= 0 { return "–" }
+        if usd < 0.01 { return "<0,01" }
+        return usd.formatted(.number.precision(.fractionLength(2)).locale(Locale(identifier: "pl_PL")))
     }
 }
 
