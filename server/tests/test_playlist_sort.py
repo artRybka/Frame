@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from frame_server.library import Item, ItemKind, Library, PlaylistRules
 from frame_server.library.models import Playlist, PlaylistKind, PlaylistSort, SharperCopy
-from frame_server.library.repo import ordered
+from frame_server.library.repo import ordered, sent_key
 from frame_server.library.viewer import OWNER_ID
 
 
@@ -174,6 +174,46 @@ def test_ulubione_by_when_added_is_by_when_liked(tmp_path) -> None:
     assert _ids(library.playlist_items(ulubione)) == ["1", "4", "2", "3"]
     oldest = ulubione.model_copy(update={"sort": PlaylistSort(key="added", reverse=True)})
     assert _ids(library.playlist_items(oldest)) == ["3", "2", "4", "1"]
+
+
+def test_a_manual_playlist_by_when_added_is_by_joining_it(tmp_path) -> None:
+    """Mateusz 2026-11-16: "na playlistach ręcznych liczmy datę dodania do
+    nich": a work long in the library, added to the playlist now, is first."""
+    library = Library(tmp_path / "lib.db")
+    library.upsert(_item(1, added_at="2026-10-01T10:00:00+00:00"))
+    library.upsert(_item(2, added_at="2026-11-15T10:00:00+00:00"))
+    playlist = library.save_playlist(
+        Playlist(
+            name="Moje",
+            kind=PlaylistKind.MANUAL,
+            item_ids=["wikiart:2"],
+            sort=PlaylistSort(key="added"),
+        )
+    )
+    playlist = library.save_playlist(
+        playlist.model_copy(update={"item_ids": [*playlist.item_ids, "wikiart:1"]})
+    )
+    assert _ids(library.playlist_items(playlist)) == ["1", "2"]
+
+
+def test_the_sent_history_is_the_latest_sent_first(tmp_path) -> None:
+    """ "Historia przesłanych" keeps each photo sent first in its ids: its
+    "added" turns that round, so it reads like any other playlist."""
+    library = Library(tmp_path / "lib.db")
+    for n in (1, 2, 3):
+        library.upsert(_item(n))
+    history = library.save_playlist(
+        Playlist(
+            name="Historia przesłanych",
+            kind=PlaylistKind.MANUAL,
+            item_ids=["wikiart:3", "wikiart:1", "wikiart:2"],  # 3 sent last
+        )
+    )
+    library.set_state(sent_key(OWNER_ID), history.id)
+    assert _ids(library.playlist_items(history)) == ["3", "1", "2"]
+    assert library.playlist_summary(history).sort == PlaylistSort(key="added")
+    first = history.model_copy(update={"sort": PlaylistSort(key="added", reverse=True)})
+    assert _ids(library.playlist_items(first)) == ["2", "1", "3"]
 
 
 def test_the_app_sets_the_order_and_the_frame_follows(service) -> None:

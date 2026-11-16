@@ -231,7 +231,7 @@ def sort_playlist(
     if existing.kind == PlaylistKind.ALBUM:
         raise HTTPException(409, "an album keeps the order chosen for it")
     saved = svc.library.save_playlist(existing.model_copy(update={"sort": sort}))
-    if saved.order != existing.order:
+    if svc.library.order_of(saved) != svc.library.order_of(existing):
         svc.player.playlist_changed(playlist_id)  # the frame's next ones follow
     return _detail(svc, saved)
 

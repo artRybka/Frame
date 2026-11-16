@@ -2098,8 +2098,13 @@ class Library:
                 return items
             if sort is not None:
                 return sort_items(items, sort)
-            # Each work where its first copy was added (:func:`dedupe`).
-            return ordered(items, playlist.order, self.long_side, [i.id for i in items])
+            # Each work where its first copy was added (:func:`dedupe`): its
+            # "when added" to this playlist (Mateusz 2026-11-16: "na
+            # playlistach ręcznych liczmy datę dodania do nich").
+            added = [i.id for i in items]
+            if self.sent_history(playlist):
+                added.reverse()  # each one sent goes first
+            return ordered(items, self.order_of(playlist), self.long_side, added)
         stamp = self._stamp()
         items = dedupe(self.query(playlist.rules, sort=sort or "recent", user=playlist.owner)[1])
         if sort is None:
@@ -2130,8 +2135,20 @@ class Library:
             shared=playlist.shared,
             mine=playlist.owner == viewer_id(),
             limit=playlist.limit,
-            sort=None if playlist.kind == PlaylistKind.ALBUM else playlist.order,
+            sort=None if playlist.kind == PlaylistKind.ALBUM else self.order_of(playlist),
         )
+
+    def sent_history(self, playlist: Playlist) -> bool:
+        """Whether it is its owner's "Historia przesłanych", which keeps
+        each photo sent first (``Player.remember_sent``)."""
+        return playlist.id is not None and playlist.id == self.get_state(sent_key(playlist.owner))
+
+    def order_of(self, playlist: Playlist) -> PlaylistSort:
+        """:attr:`Playlist.order`, but "Historia przesłanych" is the latest
+        sent first until its owner chooses (as it always was shown)."""
+        if playlist.sort is None and self.sent_history(playlist):
+            return PlaylistSort(key="added")
+        return playlist.order
 
     def _stamp(self) -> tuple[int, int, int]:
         return (self._version, self._playlists_version, self._hearts_version)
