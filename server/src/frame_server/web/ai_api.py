@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
-from ..ai import AiConfigUpdate, AiUnavailable, KeyRejected, Progress
+from ..ai import AiConfigUpdate, AiUnavailable, KeyRejected, Progress, costs
 from ..ai.audit import FIELDS as AUDIT_FIELDS
 from ..ai.composition import PAGES
 from ..ai.daily import CHECK_ROUND, ROUND
@@ -106,6 +106,21 @@ class AiView(BaseModel):
     leftover_days: int = 3
     leftover_reserve_usd: float = 10.0
     leftover_state: LeftoverView | None = None
+    #: What each thing cost over the last ``cost_days`` days and the period
+    #: so far, Claude's and Google's apart (``ai.costs``).
+    cost_days: int = costs.DAYS
+    claude_costs: list[CostView] = []
+    gemini_costs: list[CostView] = []
+
+
+class CostView(BaseModel):
+    """One row of "Koszty" (``ai.costs``)."""
+
+    #: The switch's key where it has one, else the row's own.
+    key: str
+    label: str
+    days_usd: float
+    period_usd: float
 
 
 class LeftoverView(BaseModel):
@@ -280,6 +295,8 @@ def _view(svc: FrameService) -> AiView:
         leftover_days=config.leftover_days,
         leftover_reserve_usd=config.leftover_reserve_usd,
         leftover_state=LeftoverView(**leftover),
+        claude_costs=[CostView(**row) for row in costs.rows(svc.claude.spending, costs.CLAUDE)],
+        gemini_costs=[CostView(**row) for row in costs.rows(svc.painter.spending, costs.GEMINI)],
     )
 
 

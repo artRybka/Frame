@@ -1633,36 +1633,6 @@ final class AppModel {
         return true
     }
 
-    /// "Uzupełnij wcześniejsze studia": the order sent through Claude's Batch.
-    func startStudyRefresh() async {
-        do {
-            aiSettings = try await backend.startStudyRefresh()
-        } catch BackendError.http(409, let body) {
-            let said = (try? JSONDecoder().decode([String: String].self, from: Data(body.utf8)))?["detail"]
-            notices.fail("Nie zamówiono", said ?? "Spróbuj później.")
-            return
-        } catch {
-            show(error)
-            return
-        }
-        notices.done("Zamówione", "Wyniki w ciągu kilku godzin.")
-    }
-
-    /// "Przejrzyj zapisane opisy": the order sent through Claude's Batch.
-    func startTextReview(check: Bool, restyle: Bool) async {
-        do {
-            aiSettings = try await backend.startTextReview(check: check, restyle: restyle)
-        } catch BackendError.http(409, let body) {
-            let said = (try? JSONDecoder().decode([String: String].self, from: Data(body.utf8)))?["detail"]
-            notices.fail("Nie zamówiono", said ?? "Spróbuj później.")
-            return
-        } catch {
-            show(error)
-            return
-        }
-        notices.done("Zamówione", "Wyniki w ciągu kilku godzin.")
-    }
-
     func deleteAiKey() async {
         do {
             aiSettings = try await backend.deleteAiKey()
@@ -1864,15 +1834,6 @@ final class AppModel {
         await recheckServer()
     }
 
-    func keywordsEstimate() async -> AiEstimate? {
-        do {
-            return try await backend.keywordsEstimate()
-        } catch {
-            show(error)
-            return nil
-        }
-    }
-
     /// Konfiguracja → "Kreatywny restaurator": nil when the server has none
     /// (older than this app), quietly.
     func restorerState() async -> RestorerState? {
@@ -1904,20 +1865,6 @@ final class AppModel {
         } else {
             notices.done("Odnawiam \(Names.pictures(count))", "Potrwa do doby.")
         }
-    }
-
-    func describeLibrary() async {
-        do {
-            let started = try await backend.describeLibrary()
-            if started.items == 0 {
-                notices.info("Cała biblioteka ma już słowa kluczowe")
-            } else {
-                notices.done("Opisuję \(Names.pictures(started.items))", "Potrwa do doby.")
-            }
-        } catch {
-            show(error)
-        }
-        await loadAiSettings()
     }
 
     // MARK: Drawn again (held tiles in Odkrywaj, owner only)

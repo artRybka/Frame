@@ -221,6 +221,21 @@ class Spending:
     def total(self, now: datetime | None = None) -> float:
         return sum(self.by_kind(now).values())
 
+    def last_days(self, days: int, now: datetime | None = None) -> dict[str, float]:
+        """What the last ``days`` days cost (today the last of them), by
+        kind: Konfiguracja's "Ostatnie 7 dni" (Mateusz 2026-11-16: "ciężko
+        się połapać co ile kosztuje"). The months kept before the days are
+        too coarse for it and left out."""
+        today = (now or datetime.now(UTC)).date()
+        first = (today - timedelta(days=days - 1)).isoformat()
+        found: dict[str, float] = {}
+        kept: dict[str, dict[str, float]] = self.library.get_state(self.key, {})
+        for key, kinds in kept.items():
+            if len(key) == 10 and first <= key <= today.isoformat():
+                for kind, usd in kinds.items():
+                    found[kind] = found.get(kind, 0.0) + usd
+        return {k: round(v, 6) for k, v in found.items()}
+
 
 def _text(message: Any) -> str:
     return next((b.text for b in message.content if b.type == "text"), "")

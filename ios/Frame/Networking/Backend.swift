@@ -336,12 +336,6 @@ protocol FrameBackend: Sendable {
     func savePolish(itemID: String, draft: PolishDraft) async throws -> AiReview
     /// The server checks the key with Anthropic before keeping it.
     func saveAiKey(_ key: String) async throws -> AiSettings
-    /// "Uzupełnij wcześniejsze studia": the order sent (409: no key, the
-    /// month's limit, nothing ordered).
-    func startStudyRefresh() async throws -> AiSettings
-    /// "Przejrzyj zapisane opisy": the order queued (409: no key, the
-    /// month's limit, nothing to look over).
-    func startTextReview(check: Bool, restyle: Bool) async throws -> AiSettings
     func deleteAiKey() async throws -> AiSettings
     /// Google's key for the image model; the server checks it with Google
     /// before keeping it.
@@ -357,9 +351,6 @@ protocol FrameBackend: Sendable {
     func saveTailnetKey(_ key: String) async throws -> TailnetKey
     func deleteTailnetKey() async throws -> TailnetKey
     func saveTailnetAddress(_ address: String) async throws -> TailnetKey
-    func keywordsEstimate() async throws -> AiEstimate
-    /// Keywords for the whole library through Anthropic's batches (within a day).
-    func describeLibrary() async throws -> AiStarted
     /// `sleepAfter`: woken only to check its state, so on battery it goes back to light sleep.
     func wake(sleepAfter: Bool) async throws -> WakeResult
     /// The current picture to the panel again; waits until it is downloaded.

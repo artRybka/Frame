@@ -932,14 +932,6 @@ struct LiveBackend: FrameBackend {
 
     func deleteAiKey() async throws -> AiSettings { try await send("/api/ai/key", method: "DELETE") }
 
-    func startStudyRefresh() async throws -> AiSettings {
-        try await send("/api/ai/study-refresh", method: "POST")
-    }
-
-    func startTextReview(check: Bool, restyle: Bool) async throws -> AiSettings {
-        try await send("/api/ai/text-review", method: "POST", body: TextReviewStart(check: check, restyle: restyle))
-    }
-
     func saveGeminiKey(_ key: String) async throws -> AiSettings {
         try await send("/api/ai/gemini-key", method: "PUT", body: AiKeyUpdate(key: key))
     }
@@ -968,8 +960,6 @@ struct LiveBackend: FrameBackend {
         try await send("/api/tailnet/address", method: "PUT", body: ["address": address])
     }
 
-    func keywordsEstimate() async throws -> AiEstimate { try await get("/api/ai/keywords/estimate") }
-
     func restore(itemID: String) async throws -> Item {
         var req = request("/api/library/items/\(escape(itemID))/restore", method: "POST")
         req.timeoutInterval = 300  // half a minute to draw, a refusal asked up to five times
@@ -986,10 +976,6 @@ struct LiveBackend: FrameBackend {
         var req = request("/api/ai/restorer/playlists/\(id)", method: "POST")
         req.timeoutInterval = 300  // every picture downloaded and sent in batches
         return try await perform(req)
-    }
-
-    func describeLibrary() async throws -> AiStarted {
-        try await send("/api/ai/keywords/describe-library", method: "POST")
     }
 
     func wake(sleepAfter: Bool) async throws -> WakeResult {
