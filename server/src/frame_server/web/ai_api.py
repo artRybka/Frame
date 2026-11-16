@@ -639,6 +639,31 @@ async def apply_fix(item_id: str, fix: ReviewFix, svc: Svc) -> Review:
     )
 
 
+class PolishDraft(BaseModel):
+    #: The text on the frame (whole sentences that fit) and the card's.
+    frame: str
+    full: str
+
+
+@router.post("/review/{item_id:item}/polish", response_model=PolishDraft)
+async def propose_polish(item_id: str, svc: Svc) -> PolishDraft:
+    """ "Popraw opis": the Polish texts mended where the audit's remark
+    says (Sonnet, about a cent), not kept until ``PUT``."""
+    drafts: list[dict[str, str]] = []
+    await run_in_threadpool(
+        _review_call, svc, lambda: drafts.append(svc.review_fixes.propose_polish(item_id))
+    )
+    return PolishDraft(**drafts[0])
+
+
+@router.put("/review/{item_id:item}/polish", response_model=Review)
+async def save_polish(item_id: str, draft: PolishDraft, svc: Svc) -> Review:
+    """The owner's Polish texts kept; that problem off the list."""
+    return await run_in_threadpool(
+        _review_call, svc, svc.review_fixes.save_polish, item_id, draft.frame, draft.full
+    )
+
+
 @router.post("/review/{item_id:item}/cut", response_model=Review)
 async def cut_finding(item_id: str, svc: Svc) -> Review:
     """ "Przytnij": Opus finds the work in its photograph now (about 2

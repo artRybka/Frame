@@ -579,6 +579,10 @@ class PlTextJob(NoteJob):
     def fresh(self, item: Item, note: Note | None) -> bool:
         """Up to date; texts kept with an English copy of the museum's
         description (before ``clean`` caught it) are asked for once more."""
+        if note is not None and note.data.get("by_owner"):
+            # Mended by the owner ("Do sprawdzenia"): kept while the work's
+            # facts stay, whatever prompt writes the others.
+            return note.source_hash == self.source_hash(item)
         if not super().fresh(item, note) or note is None:
             return False
         data = note.data

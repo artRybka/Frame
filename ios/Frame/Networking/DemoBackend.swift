@@ -2160,6 +2160,9 @@ actor DemoBackend: FrameBackend {
                 problems: [AiReview.Problem(
                     field: "date", name: "Data", problem: "Rok 1932 jest po śmierci autora (1890).",
                     fix: "1896", fixPl: ""
+                ), AiReview.Problem(
+                    field: "polish", name: "Polski opis",
+                    problem: "Tekst mówi o czterech kobietach w zimowym pejzażu, a zima to tylko jedna z nich."
                 )]
             )]
         }
@@ -2252,6 +2255,19 @@ actor DemoBackend: FrameBackend {
     func hideReviewed(itemID: String) async throws -> AiReview {
         reviewValue.findings.removeAll { $0.item.id == itemID }
         reviewValue.setAside.removeAll { $0.item.id == itemID }
+        return reviewValue
+    }
+
+    func proposePolish(itemID: String) async throws -> PolishDraft {
+        try await Task.sleep(for: .seconds(1))
+        return PolishDraft(
+            frame: "Ciemne litery na jasnej tablicy układają się w łacińskie motto malarza.",
+            full: "Ciemne litery na jasnej tablicy układają się w łacińskie motto malarza.\n\nZa nim otwiera się pusty arkadowy plac, jak w jego metafizycznych miastach."
+        )
+    }
+
+    func savePolish(itemID: String, draft: PolishDraft) async throws -> AiReview {
+        dropProblem(itemID, "polish")
         return reviewValue
     }
 

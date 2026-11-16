@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.180
+
+- „Do sprawdzenia”: uwaga do polskiego opisu (np. „tekst mówi o białych
+  literach, a na obrazie są ciemne”) ma przycisk „Popraw opis”. Claude
+  poprawia w opisie tylko to, czego dotyczy uwaga, patrząc na obraz, a Ty
+  widzisz poprawiony tekst na karcie i na ramce, możesz go jeszcze zmienić
+  i zapisujesz. Tak poprawiony opis nie jest potem pisany od nowa.
+
 ## 1.145.179
 
 - Nowy wygląd kroku Opis przy dodawaniu własnego dzieła i w „Edytuj opis”:

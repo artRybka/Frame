@@ -918,6 +918,14 @@ struct LiveBackend: FrameBackend {
         try await send("/api/ai/review/\(escape(itemID))/hide", method: "POST")
     }
 
+    func proposePolish(itemID: String) async throws -> PolishDraft {
+        try await send("/api/ai/review/\(escape(itemID))/polish", method: "POST")
+    }
+
+    func savePolish(itemID: String, draft: PolishDraft) async throws -> AiReview {
+        try await send("/api/ai/review/\(escape(itemID))/polish", method: "PUT", body: draft)
+    }
+
     func saveAiKey(_ key: String) async throws -> AiSettings {
         try await send("/api/ai/key", method: "PUT", body: AiKeyUpdate(key: key))
     }

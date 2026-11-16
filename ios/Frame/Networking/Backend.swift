@@ -330,6 +330,10 @@ protocol FrameBackend: Sendable {
     func dropReviewProblem(itemID: String, field: String) async throws -> AiReview
     /// "Ukryj": the work out of the catalogue and off the list.
     func hideReviewed(itemID: String) async throws -> AiReview
+    /// "Popraw opis": the Polish texts mended by Claude, not kept yet.
+    func proposePolish(itemID: String) async throws -> PolishDraft
+    /// The Polish texts kept as the owner accepted or wrote them.
+    func savePolish(itemID: String, draft: PolishDraft) async throws -> AiReview
     /// The server checks the key with Anthropic before keeping it.
     func saveAiKey(_ key: String) async throws -> AiSettings
     /// "Uzupełnij wcześniejsze studia": the order sent (409: no key, the
