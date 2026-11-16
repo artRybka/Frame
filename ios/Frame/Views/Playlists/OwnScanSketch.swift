@@ -66,7 +66,6 @@ struct OwnScanSketch: View {
                 Image(uiImage: look == .guided ? (clean ?? photo) : photo)
                     .resizable()
                     .scaledToFill()
-                    .offset(x: look == .guided ? 26 : 0)
             }
             GeometryReader { geo in
                 let size = geo.size
@@ -134,6 +133,21 @@ struct OwnScanSketch: View {
                     .foregroundStyle(.white.opacity(0.55))
             }
         case .glare:
+            Text("Umieść całe dzieło w kadrze")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.white.opacity(0.85))
+        case .guided:
+            Text("Przesuń telefon w lewo, aż kropka wejdzie w kółko")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.white.opacity(0.85))
+                .multilineTextAlignment(.center)
+        case .merged:
+            EmptyView()
+        }
+    }
+
+    /// After the shot: the glare found, one more shot asked for.
+    private var glareCard: some View {
             VStack(alignment: .leading, spacing: 12) {
                 Label("Na szybie jest odblask", systemImage: "sun.max")
                     .font(.subheadline.weight(.semibold))
@@ -145,20 +159,17 @@ struct OwnScanSketch: View {
                 HStack(spacing: 10) {
                     Button("Zostaw tak") {}
                         .buttonStyle(.glass)
-                    Button("Zrób drugie") {}
+                    Button {} label: { Text("Zrób drugie").foregroundStyle(.black) }
                         .buttonStyle(.glassProminent)
+                        .tint(.white)
                 }
                 .controlSize(.large)
             }
+            .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-        case .guided:
-            Text("Przesuń telefon w lewo, aż kropka wejdzie w kółko")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.white.opacity(0.85))
-                .multilineTextAlignment(.center)
-        case .merged:
-            EmptyView()
-        }
+            .glassEffect(in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .padding(.horizontal, Theme.gutter)
+            .padding(.bottom, 8)
     }
 
     @ViewBuilder
@@ -167,7 +178,7 @@ struct OwnScanSketch: View {
         case .measure:
             shutterRow
         case .glare:
-            Color.clear.frame(height: 90)
+            glareCard
         case .guided:
             // The three shots: the first taken, this one, the last.
             HStack(spacing: 14) {
@@ -232,8 +243,8 @@ struct OwnScanSketch: View {
                     comparison(before: before, after: after)
                         .padding(.horizontal, Theme.gutter)
                     HStack {
-                        Text("Jedno zdjęcie").frame(maxWidth: .infinity, alignment: .leading)
-                        Text("Z dwóch zdjęć").frame(maxWidth: .infinity, alignment: .trailing)
+                        Text("Z dwóch zdjęć").frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Jedno zdjęcie").frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.6))
@@ -245,16 +256,17 @@ struct OwnScanSketch: View {
                 .foregroundStyle(.white)
             Spacer(minLength: 0)
             Button {} label: {
-                Text("Dalej").frame(maxWidth: .infinity)
+                Text("Dalej").foregroundStyle(.black).frame(maxWidth: .infinity)
             }
             .buttonStyle(.glassProminent)
+            .tint(.white)
             .controlSize(.large)
             .padding(.horizontal, Theme.gutter)
             .padding(.bottom, 12)
         }
     }
 
-    /// The left half from one shot, the right from two, a line between.
+    /// The left half from two shots, the right (where the glare is) from one, a line between.
     private func comparison(before: UIImage, after: UIImage) -> some View {
         Image(uiImage: after)
             .resizable()
@@ -264,7 +276,7 @@ struct OwnScanSketch: View {
                     Image(uiImage: before)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .mask(alignment: .leading) {
+                        .mask(alignment: .trailing) {
                             Rectangle().frame(width: geo.size.width * 0.5)
                         }
                     Rectangle()

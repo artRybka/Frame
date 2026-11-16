@@ -213,6 +213,7 @@ struct PlaylistsView: View {
             .fullScreenCover(isPresented: $addingOwn) {
                 OwnWorkFlow(mode: .add) { item in path.append(item.id) }
             }
+            .fullScreenCover(isPresented: $scanSketch) { OwnScanSketch() }
             .navigationDestination(for: String.self) { id in
                 ItemDetailView(itemID: id)
             }
