@@ -140,4 +140,32 @@ final class OwnWorksTests: XCTestCase {
         )
         XCTAssertTrue(none.tiles.isEmpty)
     }
+
+    /// The helper frame of the side photographs (Mateusz 2026-11-16: "z
+    /// ramką pomocniczą na ekranie pokazująca gdzie ma się znajdować
+    /// dzieło"): the work's outline as it shows from 30° to the side.
+    func testTheHelperFrameIsTheWorkSeenFromTheSide() throws {
+        let front = [CGPoint(x: 0.2, y: 0.3), CGPoint(x: 0.8, y: 0.3), CGPoint(x: 0.8, y: 0.7), CGPoint(x: 0.2, y: 0.7)]
+        // From the front it is itself.
+        for (seen, was) in zip(OwnScanView.seen(front, from: 0), front) {
+            XCTAssertEqual(seen.x, was.x, accuracy: 1e-9)
+            XCTAssertEqual(seen.y, was.y, accuracy: 1e-9)
+        }
+        // From the left its left side is nearer: taller, and the whole narrower.
+        let left = OwnScanView.seen(front, from: -OwnScanView.side)
+        XCTAssertGreaterThan(left[3].y - left[0].y, 0.4 * 1.1)
+        XCTAssertLessThan(left[2].y - left[1].y, 0.4 * 0.95)
+        XCTAssertLessThan(left[1].x - left[0].x, 0.6 * 0.95)
+        // From the right, the mirror of it.
+        let right = OwnScanView.seen(front, from: OwnScanView.side)
+        XCTAssertEqual(right[2].y - right[1].y, left[3].y - left[0].y, accuracy: 1e-9)
+        XCTAssertEqual(1 - right[1].x, left[0].x, accuracy: 1e-9)
+        // The angle is read back off the outline, and the outline lies in its frame.
+        XCTAssertEqual(try XCTUnwrap(OwnScanView.angle(of: left, front: front)), -30, accuracy: 0.5)
+        let nearly = OwnScanView.seen(front, from: -27)
+        XCTAssertEqual(try XCTUnwrap(OwnScanView.angle(of: nearly, front: front)), -27, accuracy: 0.5)
+        XCTAssertTrue(OwnScanView.near.contains(27))
+        XCTAssertLessThan(OwnScanView.off(nearly, frame: left), 0.03)
+        XCTAssertGreaterThan(OwnScanView.off(front, frame: left), 0.05)
+    }
 }
