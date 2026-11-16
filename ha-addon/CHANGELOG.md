@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.177
+
+- „Moje dzieła” w Playlistach znów pokazuje wszystkie własne dzieła. Od
+  1.145.160 aplikacja prosiła serwer o 500 dzieł naraz, serwer daje
+  najwyżej 200 i odmawiał, więc lista pokazywała tylko dzieło dodane przed
+  chwilą. Teraz lista przychodzi stronami po 200. Dzieła nie zginęły.
+- Kafelek własnego dzieła na listach ma proporcje z podanego wymiaru, jak
+  karta i sam obraz, a nie z narożników na zdjęciu.
+
 ## 1.145.176
 
 - „Dodaj własne dzieło” otwiera od razu aparat: kadr ze znacznikami
