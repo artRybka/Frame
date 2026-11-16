@@ -134,6 +134,11 @@ final class AppModel {
     /// Goes up when the owner taps a picture that did not load: every
     /// picture on screen that failed tries again.
     private(set) var pictureRetries = 0
+    /// Works of his own whose new photograph the server is still cutting
+    /// and keeping (`retakeOwnWork`).
+    private(set) var ownRetaking: Set<String> = []
+    /// Those works as the server kept them, for a card that is open.
+    private(set) var ownRetaken: [String: Item] = [:]
     /// Works whose picture changed since launch (another copy took its
     /// place), and how many times: their thumbnails and previews on screen
     /// are had anew.
@@ -880,6 +885,29 @@ final class AppModel {
         }
         cardShows(item, changed: true)
         libraryChanged()
+    }
+
+    /// "Zrób zdjęcie ponownie", the last step: the server cuts the new
+    /// photograph and keeps it in the old one's place, some six seconds
+    /// of a 48 MP one on the NAS. The way there closes at once (Mateusz
+    /// 2026-11-16 21:48 UTC: "gdy wybieram „Dalej” to bardzo długo ekran
+    /// stoi z kręcącym się kółeczkiem obok „Dalej”") and this goes on
+    /// behind the work's card, which says so (`ownRetaking`) and takes
+    /// the work as kept (`ownRetaken`). `single`: the photograph from the
+    /// front as it was taken, not the scan ("Na wprost").
+    func retakeOwnWork(itemID: String, _ photo: OwnPhotoCut, single: Bool = false) {
+        ownRetaking.insert(itemID)
+        Task {
+            defer { ownRetaking.remove(itemID) }
+            do {
+                if single { try await backend.keepOwnFirstPhoto(token: photo.token) }
+                let updated = try await backend.retakeOwnWork(itemID: itemID, photo)
+                ownWorkChanged(updated)
+                ownRetaken[itemID] = updated
+            } catch {
+                show(error)
+            }
+        }
     }
 
     /// A work of his own deleted ("Usuń z katalogu").

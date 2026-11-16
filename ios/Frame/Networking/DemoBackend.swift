@@ -50,7 +50,7 @@ actor DemoBackend: FrameBackend {
     private var tailnetValue = TailnetKey(keySet: false)
     /// "Dodaj własne dzieło": photographs waiting for their work, by token.
     private var incoming: [String: UIImage] = [:]
-    /// Waiting photographs he kept as the first one alone ("Jedno zdjęcie").
+    /// Waiting photographs he kept as the first one alone ("Na wprost").
     private var unmerged: Set<String> = []
     /// The analyses of the composition asked for anew ("Wykonaj ponowną
     /// analizę"), by work: when each was made, the one shown, and when the

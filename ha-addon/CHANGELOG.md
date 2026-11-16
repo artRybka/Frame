@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.145.202
+
+- „Skan gotowy” bez pionowego suwaka: przełącznik „Na wprost” |
+  „Inteligentne” (domyślnie „Inteligentne”), wybrana wersja płynnie
+  zastępuje drugą.
+- „Zrób zdjęcie ponownie”: po „Dalej” ekran zamyka się od razu. Serwer
+  wycina i zapisuje nowe zdjęcie w tle (około 6 s), karta dzieła pokazuje
+  w tym czasie „Zapisuję nowe zdjęcie…” i sama podmienia obraz.
+- Skan („Inteligentne”) odrobinę głębszy: z równej poświaty światła na
+  dziele zostaje trochę mniej niż dotąd.
+
 ## 1.145.201
 
 - „Skan gotowy”: pod porównaniem jest wybór „Jedno zdjęcie” albo „Skan”.

@@ -181,6 +181,29 @@ struct ItemDetailView: View {
                 }
             }
         }
+        .overlay(alignment: .top) {
+            // "Zrób zdjęcie ponownie": the way there closed at once, the
+            // server is still cutting the new photograph (AppModel.retakeOwnWork).
+            if model.ownRetaking.contains(itemID) {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Zapisuję nowe zdjęcie…")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(Theme.ink)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                .glassEffect()
+                .padding(.top, 8)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .animation(.easeOut(duration: 0.25), value: model.ownRetaking.contains(itemID))
+        .onChange(of: model.ownRetaken[itemID]) { _, kept in
+            guard let kept else { return }
+            withAnimation(.easeInOut(duration: 0.4)) { item = kept }
+        }
         .paperPage(glow: glow, lift: scrolled)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

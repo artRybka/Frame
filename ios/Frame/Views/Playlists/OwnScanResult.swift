@@ -3,11 +3,16 @@ import SwiftUI
 /// The page after the scan of three, when the side photographs took
 /// reflections off the work (stage 4 of the scan's design, Mateusz
 /// 2026-11-16: "Może dzięki wykonaniu trzech zdjęć jesteśmy w stanie
-/// uzyskać też lepszą jakość reprodukcji?"): the photograph from the front
-/// as it was taken and the scan made of the three, under one handle to
-/// draw across, so that he sees what the scan gave before going on. It
-/// comes after "Kadr", both cut as he set the corners: the server makes
-/// the scan while he sets them (2026-11-16 16:44 UTC).
+/// uzyskać też lepszą jakość reprodukcji?"): the scan made of the three
+/// and the photograph from the front as it was taken, one in the other's
+/// place under a switch, so that he sees what the scan gave and chooses
+/// which goes on. It comes after "Kadr", both cut as he set the corners:
+/// the server makes the scan while he sets them (2026-11-16 16:44 UTC).
+///
+/// There was a handle to draw across the two until 2026-11-16 21:48 UTC
+/// (Mateusz: "zrezygnujmy z pionowego suwaka. Wystarczy switch „jedno
+/// zdjęcie / skan” - po wyborze płynnie pokazuje się wybrana opcja.
+/// Domyślnie skan. Zmieńmy nazwę na „na wprost / inteligentne”").
 struct OwnScanResult: View {
     /// The first photograph as the camera took it.
     let before: UIImage
@@ -52,22 +57,18 @@ struct OwnScanResult: View {
                 .padding(.horizontal, Theme.gutter)
                 .padding(.top, 4)
                 Spacer(minLength: 12)
-                OwnScanCompare(before: before, after: after)
+                OwnScanPicture(before: before, after: after, single: single)
                     .padding(.horizontal, 12)
-                VStack(spacing: 4) {
-                    Text(single ? "Zostaje zdjęcie na wprost, bez zmian" : "Odbicia usunięte z trzech zdjęć")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.9))
-                    Text("Przesuń, żeby porównać, i wybierz, co zachować.")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.55))
-                }
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, Theme.gutter)
-                .padding(.top, 14)
-                Picker("Co zachować", selection: $single) {
-                    Text("Jedno zdjęcie").tag(true)
-                    Text("Skan").tag(false)
+                Text(single ? "Zdjęcie na wprost, bez zmian" : "Odbicia usunięte z trzech zdjęć")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .contentTransition(.opacity)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, Theme.gutter)
+                    .padding(.top, 14)
+                Picker("Co zachować", selection: $single.animation(.easeInOut(duration: OwnScanPicture.turn))) {
+                    Text("Na wprost").tag(true)
+                    Text("Inteligentne").tag(false)
                 }
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 300)
@@ -100,74 +101,27 @@ struct OwnScanResult: View {
     }
 }
 
-/// Two pictures of the same view under one handle: the first to its left,
-/// the second to its right; a finger anywhere on them draws it across.
-struct OwnScanCompare: View {
+/// The scan, or the photograph from the front in its place: the same
+/// view of the work, so the one comes up through the other where they
+/// differ and nothing else moves.
+struct OwnScanPicture: View {
     let before: UIImage
     let after: UIImage
-    /// Where the handle stands, across the picture (0–1).
-    @State private var split = 0.5
+    /// The photograph from the front is the one shown.
+    let single: Bool
 
-    /// How far the handle may go, so that it stays in reach.
-    static let reach = 0.04 ... 0.96
-
-    /// Where a finger at `x` of a picture `width` wide puts the handle.
-    static func split(at x: Double, width: Double) -> Double {
-        guard width > 0 else { return 0.5 }
-        return min(max(x / width, reach.lowerBound), reach.upperBound)
-    }
+    /// How long the one takes to come up through the other (seconds).
+    static let turn = 0.35
 
     var body: some View {
         let shape = after.size.height > 0 ? after.size.width / after.size.height : 1
-        GeometryReader { geo in
-            let at = geo.size.width * split
-            ZStack(alignment: .leading) {
-                Image(uiImage: after).resizable().scaledToFill()
-                    .frame(width: geo.size.width, height: geo.size.height)
-                Image(uiImage: before).resizable().scaledToFill()
-                    .frame(width: geo.size.width, height: geo.size.height)
-                    .mask(alignment: .leading) { Rectangle().frame(width: at) }
-                Rectangle().fill(.white).frame(width: 2).offset(x: at - 1)
-                    .shadow(color: .black.opacity(0.4), radius: 2)
-                Image(systemName: "arrow.left.and.right")
-                    .font(.footnote.weight(.bold))
-                    .foregroundStyle(.black)
-                    .frame(width: 34, height: 34)
-                    .background(.white, in: Circle())
-                    .shadow(color: .black.opacity(0.4), radius: 4)
-                    .offset(x: at - 17)
-                tag("Jedno zdjęcie")
-                    .opacity(split > 0.3 ? 1 : 0)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                tag("Skan")
-                    .opacity(split < 0.7 ? 1 : 0)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            }
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { split = Self.split(at: $0.location.x, width: geo.size.width) }
-            )
-        }
-        .aspectRatio(shape, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Porównanie: jedno zdjęcie i skan z trzech")
-        .accessibilityValue("\(Int((split * 100).rounded())) procent")
-        .accessibilityAdjustableAction { direction in
-            let step = direction == .increment ? 0.1 : -0.1
-            split = min(max(split + step, Self.reach.lowerBound), Self.reach.upperBound)
-        }
-    }
-
-    private func tag(_ text: String) -> some View {
-        Text(text)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(.black.opacity(0.55), in: Capsule())
-            .padding(10)
-            .animation(.easeOut(duration: 0.15), value: split > 0.3 && split < 0.7)
+        // The scan lies under, whole; the photograph comes up over it.
+        Color.clear
+            .overlay { Image(uiImage: after).resizable().scaledToFill() }
+            .overlay { Image(uiImage: before).resizable().scaledToFill().opacity(single ? 1 : 0) }
+            .aspectRatio(shape, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(single ? "Zdjęcie na wprost" : "Skan z trzech zdjęć")
     }
 }

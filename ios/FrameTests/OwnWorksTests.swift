@@ -417,7 +417,7 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertEqual(looked?.token, first.token)
         let merged = try await demo.mergeOwnPhotos(token: first.token, outline: nil)
         XCTAssertEqual(merged.used, 2)
-        // "Jedno zdjęcie": the first photograph waits again as it was taken.
+        // "Na wprost": the first photograph waits again as it was taken.
         try await demo.keepOwnFirstPhoto(token: first.token)
         do {
             try await demo.keepOwnFirstPhoto(token: "none")
@@ -425,13 +425,28 @@ final class OwnWorksTests: XCTestCase {
         } catch {}
     }
 
-    /// The handle between the one photograph and the scan follows the
-    /// finger and stays in reach at both ends.
-    func testTheHandleOfTheScanComparisonStaysInReach() {
-        XCTAssertEqual(OwnScanCompare.split(at: 150, width: 300), 0.5, accuracy: 1e-9)
-        XCTAssertEqual(OwnScanCompare.split(at: -20, width: 300), 0.04, accuracy: 1e-9)
-        XCTAssertEqual(OwnScanCompare.split(at: 400, width: 300), 0.96, accuracy: 1e-9)
-        XCTAssertEqual(OwnScanCompare.split(at: 10, width: 0), 0.5, accuracy: 1e-9)
+    /// "Zrób zdjęcie ponownie": the way there closes at once, and the
+    /// new photograph is kept behind the work's card, which takes the
+    /// work as kept (Mateusz 2026-11-16 21:48 UTC, the long "Dalej").
+    @MainActor
+    func testANewPhotographIsKeptBehindTheCard() async throws {
+        let model = AppModel()
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 30)).image { context in
+            UIColor.gray.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 40, height: 30))
+        }
+        let data = try XCTUnwrap(image.jpegData(compressionQuality: 0.9))
+        let first = try await model.backend.sendOwnPhoto(data)
+        let work = try await model.backend.addOwnWork(NewOwnWork(token: first.token, text: OwnDescription()))
+        let next = try await model.backend.sendOwnPhoto(data)
+        model.retakeOwnWork(itemID: work.id, OwnPhotoCut(token: next.token))
+        XCTAssertTrue(model.ownRetaking.contains(work.id))
+        XCTAssertNil(model.ownRetaken[work.id])
+        for _ in 0 ..< 100 where model.ownRetaking.contains(work.id) {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertFalse(model.ownRetaking.contains(work.id))
+        XCTAssertEqual(model.ownRetaken[work.id]?.id, work.id)
     }
 
     /// What the helper draws and counts after the first test on the phone
