@@ -417,6 +417,12 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertEqual(looked?.token, first.token)
         let merged = try await demo.mergeOwnPhotos(token: first.token, outline: nil)
         XCTAssertEqual(merged.used, 2)
+        // "Jedno zdjęcie": the first photograph waits again as it was taken.
+        try await demo.keepOwnFirstPhoto(token: first.token)
+        do {
+            try await demo.keepOwnFirstPhoto(token: "none")
+            XCTFail("no such photograph waits")
+        } catch {}
     }
 
     /// The handle between the one photograph and the scan follows the

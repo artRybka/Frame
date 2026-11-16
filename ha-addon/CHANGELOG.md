@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.145.200
+
+- „Skan gotowy”: pod porównaniem jest wybór „Jedno zdjęcie” albo „Skan”.
+  Po wybraniu „Jedno zdjęcie” dzieło powstaje ze zdjęcia na wprost, bez
+  usuwania odbić.
+- Skan dzieła za szybą: gdy lampa odbita w szybie wypaliła fragment
+  zdjęcia na wprost, serwer bierze ten fragment ze zdjęć bocznych
+  (wcześniej zostawała tam kolorowa plama). Odbicia widoczne tylko na
+  zdjęciu na wprost (ręka, odblask) są rozpoznawane także wtedy, gdy
+  zdjęcia boczne są jaśniejsze.
+- Skan obrazu olejnego: połysk na fakturze farby schodzi z wypukłości, a
+  nie z każdego punktu po równo, więc nie zostają czarne kropki w
+  zagłębieniach; znika też pionowa linia przy krawędzi, gdzie kończyło
+  się usuwanie.
+- Dzieło, które z każdej strony wygląda inaczej (lustro, folia, relief),
+  zostaje jako jedno zdjęcie: serwer niczego w nim nie zmienia.
+- Głęboka rama: ciemny, nakrapiany pasek przy krawędzi grafiki za szybą
+  nie powstaje.
+
 ## 1.145.199
 
 - Skan dzieła z telefonem trzymanym poziomo: żółta ramka wykrytego

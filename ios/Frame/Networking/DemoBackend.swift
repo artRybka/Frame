@@ -50,6 +50,8 @@ actor DemoBackend: FrameBackend {
     private var tailnetValue = TailnetKey(keySet: false)
     /// "Dodaj własne dzieło": photographs waiting for their work, by token.
     private var incoming: [String: UIImage] = [:]
+    /// Waiting photographs he kept as the first one alone ("Jedno zdjęcie").
+    private var unmerged: Set<String> = []
     /// The analyses of the composition asked for anew ("Wykonaj ponowną
     /// analizę"), by work: when each was made, the one shown, and when the
     /// one on its way is "made".
@@ -1719,6 +1721,12 @@ actor DemoBackend: FrameBackend {
         return OwnMerged(token: token, width: Int(image.size.width), height: Int(image.size.height), used: 2, replaced: 0.03)
     }
 
+    func keepOwnFirstPhoto(token: String) async throws {
+        guard incoming[token] != nil else { throw BackendError.notFound }
+        try await Task.sleep(for: .milliseconds(300))
+        unmerged.insert(token)
+    }
+
     func fine(itemID: String) async throws -> FineView {
         FineView()
     }
@@ -1726,7 +1734,8 @@ actor DemoBackend: FrameBackend {
     func ownPhoto(token: String, side: Int) async throws -> Data {
         guard let image = incoming[token] else { throw BackendError.notFound }
         // The demo's wall photograph without its lamp, as the scan of three gives it.
-        let shown = DemoOwn.isDemoPhoto(image) ? (DemoOwn.photo(glare: 0) ?? image) : image
+        let scan = DemoOwn.isDemoPhoto(image) && !unmerged.contains(token)
+        let shown = scan ? (DemoOwn.photo(glare: 0) ?? image) : image
         guard let data = shown.jpegData(compressionQuality: 0.9) else { throw BackendError.notFound }
         return data
     }
