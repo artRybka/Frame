@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.179
+
+- Nowy wygląd kroku Opis przy dodawaniu własnego dzieła i w „Edytuj opis”:
+  jak karta dzieła. Tytuł, autor i data dużą szeryfową czcionką, technika,
+  rozmiar, miejsce i pochodzenie w jednej karcie, technika z menu. To, co
+  udało się odczytać z obrazu, jest od razu wpisane (z iskierką przy polu),
+  „Wyczyść” cofa wszystko naraz.
+
 ## 1.145.178
 
 - Aparat przy dodawaniu własnego dzieła działa też poziomo: telefon

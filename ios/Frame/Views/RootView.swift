@@ -5,8 +5,6 @@ import SwiftUI
 enum LaunchRoute {
     static let screen = UserDefaults.standard.string(forKey: "screen") ?? ""
     static let fit = UserDefaults.standard.string(forKey: "fit")
-    /// Sketches of the own work's description step (`OwnDescriptionLook`): "a", "b", "c".
-    static let descLook = UserDefaults.standard.string(forKey: "descLook").flatMap(OwnDescriptionLook.Look.init)
     static let mat = UserDefaults.standard.string(forKey: "mat")
     /// "end", "author", "composition", "colour", "details", "size", "legacy",
     /// "sametime", "journey": a long page opens scrolled
