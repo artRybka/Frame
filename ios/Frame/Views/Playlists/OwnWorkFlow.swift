@@ -52,6 +52,13 @@ struct OwnWorkFlow: View {
     @State private var readingHints = false
     @State private var text = OwnDescription()
     @State private var adding = false
+    /// The LiDAR's depth of the first photograph, and the size it gave
+    /// between the corners he went on with.
+    @State private var depth: OwnDepth?
+    @State private var measured: OwnDepth.Size?
+    /// The glare taken out by the side photographs.
+    @State private var merged: OwnMerged?
+    @State private var findingText = "Szukam dzieła na zdjęciu…"
 
     private var retaking: Item? {
         if case let .retake(item) = mode { return item }
@@ -65,7 +72,7 @@ struct OwnWorkFlow: View {
             Group {
                 switch step {
                 case .photo:
-                    OwnCamera(close: back, took: take, finding: finding ? photo : nil)
+                    OwnCamera(close: back, took: take, finding: finding ? photo : nil, findingText: findingText)
                 case .cut: cutStep
                 case .describe: describeStep
                 }
@@ -108,17 +115,25 @@ struct OwnWorkFlow: View {
 
     // MARK: 1. The photograph
 
-    /// The photograph upright (the camera's turn drawn in), sent, and the
-    /// work looked for in it.
-    private func take(_ taken: UIImage) {
-        let image = Self.upright(taken)
+    /// The photograph upright (the camera's turn drawn in), sent with the
+    /// ones from the sides, the glare taken out by them, and the work
+    /// looked for in it.
+    private func take(_ shots: OwnShots) {
+        let image = Self.upright(shots.first)
         photo = image
+        depth = shots.depth
+        merged = nil
         finding = true
+        findingText = shots.sides.isEmpty ? "Szukam dzieła na zdjęciu…" : "Łączę trzy zdjęcia, usuwam odblaski…"
         Task {
             defer { finding = false }
             guard let data = image.jpegData(compressionQuality: 0.9) else { return }
             do {
                 var sent = try await model.backend.sendOwnPhoto(data)
+                if !shots.sides.isEmpty {
+                    await merge(shots.sides, token: sent.token)
+                    findingText = "Szukam dzieła na zdjęciu…"
+                }
                 do {
                     sent = try await model.backend.findOwnWork(token: sent.token)
                 } catch {
@@ -133,14 +148,36 @@ struct OwnWorkFlow: View {
         }
     }
 
+    /// The side photographs sent and laid over the first; where they
+    /// took a glare out, the photograph as the server keeps it now. Any
+    /// of it failing leaves the first photograph as it was.
+    private func merge(_ sides: [UIImage], token: String) async {
+        do {
+            for side in sides {
+                guard let data = Self.upright(side).jpegData(compressionQuality: 0.9) else { continue }
+                try await model.backend.sendOwnSide(token: token, data)
+            }
+            let done = try await model.backend.mergeOwnPhotos(token: token)
+            guard done.replaced > 0 else { return }
+            let clean = try await model.backend.ownPhoto(token: token)
+            if let image = UIImage(data: clean) {
+                photo = image
+                merged = done
+            }
+        } catch {
+            // The first photograph alone, glare and all.
+        }
+    }
+
     // MARK: 2. The cut
 
     private var cutNote: String {
         if let shape = incoming?.shape, !shape.isEmpty, shape != "rectangle" {
             return "To dzieło nie jest prostokątem, więc zostaje całe zdjęcie. Możesz je przyciąć sam."
         }
-        if found != nil { return "Rama wycięta. Popraw narożniki w lupach, jeśli trzeba." }
-        return "Nie znalazłem dzieła na zdjęciu. Ustaw narożniki sam."
+        let glare = merged != nil ? "Odblaski usunięte z trzech zdjęć. " : ""
+        if found != nil { return glare + "Rama wycięta. Popraw narożniki w lupach, jeśli trzeba." }
+        return glare + "Nie znalazłem dzieła na zdjęciu. Ustaw narożniki sam."
     }
 
     @ViewBuilder
@@ -178,6 +215,8 @@ struct OwnWorkFlow: View {
             }
         }
         if let photo { picture = OwnPicture.cut(photo, corners: corners) }
+        // The LiDAR's size between his corners (none for the photograph whole).
+        measured = corners.flatMap { depth?.size($0) }
         withAnimation(.easeInOut(duration: 0.3)) { step = .describe }
         readHints()
         return true
@@ -204,7 +243,7 @@ struct OwnWorkFlow: View {
                 ScrollView {
                     OwnDescriptionForm(
                         text: $text, picture: picture, aspect: picture.map { Double($0.size.width / max($0.size.height, 1)) },
-                        hints: hints, readingHints: readingHints, places: places
+                        hints: hints, readingHints: readingHints, places: places, measured: measured
                     )
                     .pageWidth()
                     .padding(.horizontal, Theme.gutter)
@@ -264,11 +303,12 @@ struct OwnWorkFlow: View {
         guard model.demoMode, ["own-cut", "own-describe", "own-card"].contains(LaunchRoute.screen), photo == nil,
               let demo = DemoOwn.photo()
         else { return }
-        take(demo)
+        take(OwnShots(first: demo))
         guard LaunchRoute.screen != "own-cut" else { return }
         for _ in 0 ..< 50 where step != .cut { try? await Task.sleep(for: .milliseconds(200)) }
         guard step == .cut else { return }
         _ = await cutChosen(DemoOwn.work)
+        if LaunchRoute.scroll == "measured" { measured = OwnDepth.Size(heightCm: 65, widthCm: 81) }
         if LaunchRoute.scroll == "filled" || LaunchRoute.screen == "own-card" {
             try? await Task.sleep(for: .seconds(2))
             text.title = "Spacer po klifie"
@@ -289,7 +329,7 @@ struct OwnWorkFlow: View {
     /// The camera's photograph as it was held: pixels upright, so the
     /// corners mean the same on the phone and on the server.
     static func upright(_ image: UIImage) -> UIImage {
-        let side: CGFloat = 4000
+        let side: CGFloat = 6000  // 48 MP (8064 × 6048) a little smaller, as the server keeps it
         let scale = min(1, side / max(image.size.width, image.size.height))
         guard image.imageOrientation != .up || scale < 1 else { return image }
         let size = CGSize(width: (image.size.width * scale).rounded(), height: (image.size.height * scale).rounded())

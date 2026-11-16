@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.145.182
+
+- Aparat przy dodawaniu własnego dzieła robi zdjęcia w pełnej
+  rozdzielczości (48 MP na nowszych iPhone'ach), więc dzieło wycięte z
+  ramy jest ostrzejsze.
+- Po pierwszym zdjęciu aparat prosi o dwa kolejne, krok w lewo i w prawo:
+  wystarczy wprowadzić kropkę w kółko, zdjęcie robi się samo. Serwer
+  nakłada je na siebie i usuwa odblaski lampy czy okna na szybie i
+  werniksie. „Pomiń” zostawia samo pierwsze zdjęcie.
+- iPhone z czujnikiem LiDAR (wersje Pro) mierzy wymiar dzieła między
+  narożnikami kadru i wpisuje go w puste pole Rozmiar (z ikoną linijki).
+
 ## 1.145.181
 
 - Ulubione posortowane „Ostatnio dodane” stawiają na górze dzieła polubione

@@ -18,6 +18,17 @@ struct OwnIncoming: Codable, Hashable, Sendable {
     var aspect: Double { height > 0 ? Double(width) / Double(height) : 0.75 }
 }
 
+/// The first photograph with the glare taken out by the side ones (the
+/// scan of three, Mateusz 2026-11-16): how many could be laid over it and
+/// how much of it they gave (0–1; 0, nothing changed).
+struct OwnMerged: Codable, Hashable, Sendable {
+    var token: String
+    var width: Int
+    var height: Int
+    var used: Int = 0
+    var replaced: Double = 0
+}
+
 /// What was read off the picture (Sonnet), for the description's chips.
 struct OwnHints: Codable, Hashable, Sendable {
     var signature: String = ""
