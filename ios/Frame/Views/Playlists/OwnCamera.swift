@@ -39,9 +39,9 @@ struct OwnShots {
 /// camera finds it, a word of advice, and Photos beside it. The first
 /// photograph is taken from the front, by itself once the work is whole
 /// in the picture, large enough and still; then two more from some 30° to
-/// the left and to the right, each when the work lies in the helper frame
-/// drawn for it (Mateusz 2026-11-16: "pierwsze zdjęcie na wprost, a
-/// kolejne pod większym kątem z ramką pomocniczą na ekranie"; no shutter,
+/// the left and to the right, each when the phone stands there aiming at
+/// the work (Mateusz 2026-11-16: "pierwsze zdjęcie na wprost, a kolejne
+/// pod większym kątem z ramką pomocniczą na ekranie"; no shutter,
 /// "skoro zdjęcie robi się samo", but when the work's edges are not
 /// found). The simulator has no camera: the demo shows its wall
 /// photograph and a shutter.
@@ -90,17 +90,14 @@ struct OwnCamera: View {
     @State private var steady = OwnScanSteady()
     /// Where the phone stands: the gyroscope and the work's outline as one.
     @State private var stands = OwnScanAngle()
-    /// The work of the first photograph in the helper frame (`-scanGuide frame`).
-    @State private var ghost: UIImage?
+    /// How the phone was held at the first photograph (`quarter`).
+    @State private var heldAs = 0
 
     /// Without an outline for this long, he takes the photograph himself.
     private static let patience: TimeInterval = 5
     /// Standing where a side photograph is taken without the work's
     /// corners for this long, the same.
     private static let blind: TimeInterval = 3
-    /// The way to the side photographs is shown by the helper frame, not
-    /// by the track (the two shown Mateusz to choose from, 2026-11-16).
-    private static let framed = UserDefaults.standard.string(forKey: "scanGuide") == "frame"
 
     private var demo: UIImage? { access == .ready ? nil : (model.demoMode ? DemoOwn.photo() : nil) }
 
@@ -125,19 +122,11 @@ struct OwnCamera: View {
         outline.map { corners in OwnScanView.ordered(corners.map { OwnScanView.upright($0, quarter: quarter) }) }
     }
 
-    /// The helper frame on the screen: the first photograph's outline as
-    /// it shows from where the next one is taken, in the picture's middle.
-    private var helper: [CGPoint]? {
-        guard Self.framed, scan != nil else { return nil }
-        let base = front ?? [CGPoint(x: 0.2, y: 0.25), CGPoint(x: 0.8, y: 0.25), CGPoint(x: 0.8, y: 0.75), CGPoint(x: 0.2, y: 0.75)]
-        return OwnScanView.fitted(OwnScanView.seen(base, from: target, aspect: aspect, focal: focal))
-            .map { OwnScanView.shown($0, quarter: quarter) }
-    }
-
     /// What the camera and the gyroscope say now. The angle is the
     /// gyroscope's count drawn towards the outline's (`stands`), so the
-    /// dot on the track goes evenly and stays true.
-    private func reading() -> OwnScanLook {
+    /// dot on the plan goes evenly and stays true. `fresh`: the camera
+    /// has just looked at its picture.
+    private func reading(fresh: Bool = false) -> OwnScanLook {
         var look = OwnScanLook(number: number)
         look.manual = manual
         look.dim = dim
@@ -147,7 +136,6 @@ struct OwnCamera: View {
             look.advice = OwnScanView.first(upright, aspect: aspect)
             return look
         }
-        look.helper = helper
         var seen: Double?
         var away = 1.0
         if let upright, let front, let shape = OwnScanView.shape(of: front, aspect: aspect),
@@ -157,7 +145,7 @@ struct OwnCamera: View {
             seen = now - then
             away = far
         }
-        let fused = stands.fuse(gyro: guide.available ? turned : nil, seen: seen)
+        let fused = stands.fuse(gyro: guide.available ? turned : nil, seen: seen, fresh: fresh)
         guard let angle = fused.angle else {
             look.advice = .lost
             return look
@@ -175,16 +163,19 @@ struct OwnCamera: View {
             // Its corners are waited for where the camera found them at
             // the first photograph.
             seen: work != nil || front == nil,
-            held: steady.said == .hold
+            held: steady.said == .hold,
+            stray: fused.stray
         )
+        // The three are taken with the phone held one way.
+        if quarter != heldAs { look.advice = .rolled }
         return look
     }
 
     /// The camera's and the gyroscope's news onto the screen: the word
     /// only once it has been true a moment, the rest at once.
-    private func refresh() {
+    private func refresh(fresh: Bool = false) {
         guard finding == nil else { return }
-        var next = reading()
+        var next = reading(fresh: fresh)
         if !shooting { next.advice = steady.take(next.advice) } else { next.advice = look.advice }
         if next.advice == .corners {
             // Standing right and the corners not found for a while (a dark
@@ -200,16 +191,6 @@ struct OwnCamera: View {
         }
         if next != look { look = next }
         watch()
-    }
-
-    /// The work of the first photograph in the helper frame, made anew
-    /// for each side and each way of holding the phone.
-    private func drawGhost() {
-        guard let helper, let front, let first = scan?.first else {
-            ghost = nil
-            return
-        }
-        ghost = OwnScanGhost.picture(of: OwnWorkFlow.upright(first), corners: front, onto: helper)
     }
 
     /// The shutter shows: no camera (the demo), or the work is not found.
@@ -249,10 +230,8 @@ struct OwnCamera: View {
             // Between the camera's looks (and without them) the gyroscope keeps the watch.
             if scan != nil { refresh() }
         }
-        .onChange(of: number) { _, _ in drawGhost() }
         .onChange(of: quarter) { _, now in
             guide.quarter = now
-            drawGhost()
             refresh()
         }
         .sensoryFeedback(.impact(weight: .medium), trigger: look.matched) { _, now in now }
@@ -310,8 +289,8 @@ struct OwnCamera: View {
         .padding(.top, 4)
     }
 
-    /// The picture as it will be taken, the work's outline and the helper
-    /// frame over it.
+    /// The picture as it will be taken, with the work's outline and the
+    /// way round it over it.
     private var viewfinder: some View {
         ZStack {
             if let finding {
@@ -338,7 +317,15 @@ struct OwnCamera: View {
                 }
             }
             if finding == nil, access == .ready {
-                OwnScanOverlay(look: look, ghost: ghost, holding: shooting ? nil : holdSince, taking: shooting)
+                OwnScanOverlay(look: look, holding: shooting ? nil : holdSince, taking: shooting)
+            } else if finding == nil, demo != nil {
+                // Without a camera (the demo): where the three are taken from.
+                OwnScanPlan(taken: number - 1, angle: nil, matched: false)
+                    .frame(height: 64)
+                    .frame(maxWidth: 340)
+                    .padding(.horizontal, 30)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, 18)
             }
             if finding != nil {
                 ProgressView().tint(.white).controlSize(.large)
@@ -393,7 +380,7 @@ struct OwnCamera: View {
                 withAnimation(.easeInOut(duration: 0.25)) { manual = true }
             }
         }
-        refresh()
+        refresh(fresh: found != nil)
     }
 
     /// All as the next photograph needs it: the ring fills (`OwnShotRing`),
@@ -419,6 +406,8 @@ struct OwnCamera: View {
         blindSince = nil
         manual = access == .ready && !camera.sees
         steady = OwnScanSteady()
+        // The phone's turns away from the work are counted from here.
+        stands.rest(gyro: turned)
         look = reading()
     }
 
@@ -438,12 +427,15 @@ struct OwnCamera: View {
 
     // MARK: The bottom
 
+    /// Photos before the first photograph, and the shutter when the
+    /// photograph does not take itself. (The three photographs' small
+    /// pictures were here, Mateusz 2026-11-16 15:02 UTC: "nie pokazujmy
+    /// miniaturki 3 miejsc na zdjęcia - niewiele wnosi, a dezorientuje";
+    /// the plan of where to stand is over the picture now.)
     private var bottom: some View {
         ZStack {
             HStack {
-                if let scan {
-                    thumbs(scan)
-                } else {
+                if scan == nil {
                     Button { library = true } label: {
                         Image(systemName: "photo.on.rectangle")
                             .font(.title3)
@@ -455,15 +447,9 @@ struct OwnCamera: View {
                     .accessibilityLabel("Wybierz ze Zdjęć")
                 }
                 Spacer()
-                if byHand {
-                    StandPlan(taken: number - 1).frame(width: 74, height: 52)
-                }
             }
             if byHand {
                 OwnShutter(action: shoot)
-            } else if scan == nil || Self.framed {
-                // Where the three are taken from: the photographs take themselves.
-                StandPlan(taken: number - 1).frame(width: 116, height: 78)
             }
         }
         .frame(height: 82)
@@ -471,28 +457,6 @@ struct OwnCamera: View {
         .opacity(finding == nil ? 1 : 0.4)
         .padding(.horizontal, 32)
         .padding(.bottom, 12)
-    }
-
-    /// The three photographs: the ones taken, the next one marked.
-    private func thumbs(_ scan: OwnShots) -> some View {
-        let taken = [scan.first] + scan.sides
-        return HStack(spacing: 4) {
-            ForEach(0 ..< 3, id: \.self) { index in
-                ZStack {
-                    if index < taken.count {
-                        Image(uiImage: taken[index]).resizable().scaledToFill()
-                    } else {
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .strokeBorder(.white.opacity(index == taken.count ? 0.9 : 0.35), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
-                    }
-                }
-                .frame(width: 22, height: 30)
-                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-            }
-        }
-        .frame(width: 74, height: 52, alignment: .leading)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Zrobione \(taken.count) z 3")
     }
 
     private func shoot() {
@@ -543,6 +507,7 @@ struct OwnCamera: View {
         let seen = upright
         guide.zero()
         stands = OwnScanAngle()
+        heldAs = quarter
         camera.shootFirst { image, file, depth in
             shooting = false
             guard let image else {

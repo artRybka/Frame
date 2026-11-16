@@ -1,5 +1,3 @@
-import CoreImage
-import CoreImage.CIFilterBuiltins
 import SwiftUI
 
 /// What the scan's camera draws over its picture and says under it
@@ -16,10 +14,6 @@ struct OwnScanLook: Equatable {
     /// picture): drawn whole before the first photograph, as its four
     /// corners before a side one.
     var live: [CGPoint]?
-    /// Where it should lie for the side photograph: the helper frame, when
-    /// that is how the way is shown (`-scanGuide frame`); nil with the
-    /// track.
-    var helper: [CGPoint]?
     /// The work has not been seen for a while: he takes the photograph himself.
     var manual = false
     /// Little light: the photograph may come out blurred or grainy.
@@ -40,6 +34,14 @@ struct OwnScanLook: Equatable {
 
     var matched: Bool { advice == .hold }
 
+    /// Which way he is to walk now (true: to the left); nil when not.
+    var walk: Bool? {
+        switch advice {
+        case .go(let left), .turned(let left): number > 1 ? left : nil
+        default: nil
+        }
+    }
+
     /// The word over the picture.
     var pill: (text: String, symbol: String, colour: Color)? {
         switch advice {
@@ -49,6 +51,8 @@ struct OwnScanLook: Equatable {
         case .straight: ("Stań na wprost", "arrow.left.and.right", Self.wait)
         case .level: ("Trzymaj telefon prosto", "iphone", Self.wait)
         case .aim: ("Wyceluj w dzieło", "scope", Self.wait)
+        case .turned: ("Nie obracaj telefonu", "figure.walk", Self.wait)
+        case .rolled: ("Nie obracaj telefonu", "iphone", Self.wait)
         case .corners: ("Pokaż całe dzieło", "viewfinder", Self.wait)
         case .lost where manual: ("Nie widzę krawędzi dzieła", "viewfinder", .white)
         default: nil
@@ -65,6 +69,8 @@ struct OwnScanLook: Equatable {
         case .straight: return "Dzieło widać z boku"
         case .level: return "Telefon jest pochylony"
         case .aim: return "Dzieło ucieka ze środka kadru"
+        case .turned(let left): return "Zrób krok w \(left ? "lewo" : "prawo"), a telefon skieruj na dzieło"
+        case .rolled: return "Trzymaj telefon tak jak przy pierwszym zdjęciu"
         case .corners where manual: return "Zrób zdjęcie sam, gdy całe dzieło jest w kadrze"
         case .corners: return "Nie widzę wszystkich narożników dzieła"
         case .lost where manual: return "Zrób zdjęcie sam"
@@ -74,8 +80,8 @@ struct OwnScanLook: Equatable {
         }
         switch number {
         case 1: return "Stań na wprost dzieła, całe w kadrze"
-        case 2: return helper == nil ? "Przejdź w lewo, celując w dzieło" : "Przejdź w lewo, aż dzieło wypełni ramkę"
-        default: return helper == nil ? "Teraz w prawo, celując w dzieło" : "Teraz w prawo, aż dzieło wypełni ramkę"
+        case 2: return "Zrób krok w lewo, celując w dzieło"
+        default: return "Teraz przejdź w prawo, celując w dzieło"
         }
     }
 
@@ -87,44 +93,41 @@ struct OwnScanLook: Equatable {
         case .straight: "Przesuń się tak, żeby lewy i prawy bok dzieła były równej wysokości."
         case .level: "Trzymaj go pionowo, na wysokości środka dzieła."
         case .aim: "Obróć telefon tak, żeby znacznik dzieła wszedł w celownik na środku."
+        case .turned: "Dzieło trzeba zobaczyć z boku. Sam obrót telefonu tego nie da."
+        case .rolled: "Trzy zdjęcia mają być zrobione tak samo: wszystkie pionowo albo wszystkie poziomo."
         case .corners: "Cztery narożniki mają być w kadrze, z kawałkiem ściany wokół."
         case _ where dim: "Mało światła, zdjęcie może wyjść nieostre. Zapal światło, jeśli możesz."
         case .lost where manual: "Tak bywa przy ciemnej ramie na ciemnej ścianie albo w słabym świetle."
         default:
             number == 1
                 ? "Zdjęcie zrobi się samo, gdy obrys zrobi się zielony."
-                : helper == nil
-                    ? "Zdjęcie zrobi się samo, gdy kropka dojdzie do kółka."
-                    : "Celuj cały czas w dzieło. Zdjęcie zrobi się samo."
+                : "Zdjęcie zrobi się samo, gdy kropka dojdzie do kółka."
         }
     }
 }
 
 /// What is drawn over the camera's picture: before the first photograph
-/// the work's outline as the camera finds it; before a side one a track
-/// as the iPhone's panorama has, on which a dot goes where the phone goes,
-/// to the ring where the photograph is taken (Mateusz 2026-11-16 12:58
-/// UTC: "może wpadniesz na jakiś jeszcze lepszy - np. celowanie AR? jakieś
-/// znaczniki? chciałbym żeby było to możliwie intuicyjne": one thing to
-/// watch, moved by the one thing he does, walking); or, as the other way
-/// shown him to choose from, the helper frame with the work from the
-/// first photograph faint in it ("Może Jesteśmy w stanie pokazać zamiast
-/// ramki wycięty, przezroczysty fragment z 1 zdjęcia?"). Arrows the way
-/// to walk, and a ring that fills while the photograph is taken ("trzeba
-/// dodać jakiś wskaźnik wykonywania zdjęcia - np. wypełniający się
-/// okrąg?").
+/// the work's outline as the camera finds it; before a side one its four
+/// corners and the sight. Under them, on all three, the way round the
+/// work seen from above (`OwnScanPlan`), on which a dot goes where the
+/// phone goes, to the ring where the photograph is taken (Mateusz
+/// 2026-11-16 12:58 UTC: "może wpadniesz na jakiś jeszcze lepszy - np.
+/// celowanie AR? jakieś znaczniki? chciałbym żeby było to możliwie
+/// intuicyjne": one thing to watch, moved by the one thing he does,
+/// walking). A walking figure with arrows the way to walk, and a ring
+/// that fills while the photograph is taken ("trzeba dodać jakiś wskaźnik
+/// wykonywania zdjęcia - np. wypełniający się okrąg?").
 struct OwnScanOverlay: View {
     let look: OwnScanLook
-    /// The work of the first photograph as it shows in the helper frame
-    /// (a picture as large as the camera's, clear around it).
-    var ghost: UIImage? = nil
     /// Since when all has been as the photograph needs it.
     var holding: Date? = nil
     /// The camera is taking the photograph.
     var taking = false
 
     /// The word over the picture: on its side the phone's own lines under
-    /// the picture lie sideways, so the line is said here too.
+    /// the picture lie sideways (and are not shown: Mateusz 2026-11-16
+    /// 15:02 UTC "tekst u dołu ekranu się nie obraca i zostaje bokiem"),
+    /// so the line is said here too, with the smaller one under it.
     private var word: (text: String, symbol: String?, colour: Color)? {
         if let pill = look.pill { return (pill.text, pill.symbol, pill.colour) }
         return look.quarter == 0 ? nil : (look.line, nil, .white)
@@ -151,19 +154,7 @@ struct OwnScanOverlay: View {
     /// The outlines, where they are on the screen.
     @ViewBuilder
     private func drawn(_ size: CGSize) -> some View {
-        if let helper = look.helper {
-            if let ghost {
-                Image(uiImage: ghost).resizable()
-                    .frame(width: size.width, height: size.height)
-                    .opacity(look.matched ? 0.3 : 0.5)
-            } else {
-                OutlineShape(corners: helper).fill(.white.opacity(look.matched ? 0 : 0.10))
-            }
-            OutlineShape(corners: helper)
-                .stroke(look.matched ? OwnScanLook.good : .white,
-                        style: StrokeStyle(lineWidth: look.matched ? 4 : 3, lineCap: .round, lineJoin: .round, dash: look.matched ? [] : [10, 8]))
-                .shadow(color: .black.opacity(0.45), radius: 3)
-        } else if look.number == 1, let live = look.live {
+        if look.number == 1, let live = look.live {
             OutlineShape(corners: live)
                 .stroke(look.matched ? OwnScanLook.good : OwnScanLook.wait,
                         style: StrokeStyle(lineWidth: look.matched ? 4 : 2.5, lineJoin: .round))
@@ -188,17 +179,11 @@ struct OwnScanOverlay: View {
         }
     }
 
-    /// The arrows, the ring and the word.
+    /// The arrows, the ring, the plan and the word.
     private var said: some View {
-        ZStack {
-            if look.number > 1, look.helper == nil {
-                OwnScanTrack(taken: look.number - 1, angle: look.angle, matched: look.matched)
-                    .frame(height: 44)
-                    .padding(.horizontal, 30)
-                    .frame(maxHeight: .infinity, alignment: .bottom)
-                    .padding(.bottom, 64)
-            }
-            if case .go(let left) = look.advice, look.number > 1 {
+        let turned = look.quarter != 0
+        return ZStack {
+            if let left = look.walk {
                 OwnScanArrows(left: left)
                     .frame(maxWidth: .infinity, alignment: left ? .leading : .trailing)
                     .padding(.horizontal, 12)
@@ -207,21 +192,45 @@ struct OwnScanOverlay: View {
             if holding != nil || taking {
                 OwnShotRing(since: holding, taking: taking)
             }
-            if let word {
+            VStack(spacing: turned ? 8 : 10) {
+                OwnScanPlan(taken: look.number - 1, angle: look.angle, matched: look.matched)
+                    .frame(height: turned ? 56 : 64)
+                    .frame(maxWidth: 340)
+                    .padding(.horizontal, 30)
+                // Its room is kept, so the plan stays where it is.
+                ZStack { spoken(turned: turned) }
+                    .frame(minHeight: 36)
+            }
+            .frame(maxHeight: .infinity, alignment: .bottom)
+            .padding(.bottom, turned ? 12 : 18)
+        }
+    }
+
+    /// The word, and on a phone held on its side the smaller line with it.
+    @ViewBuilder
+    private func spoken(turned: Bool) -> some View {
+        if let word {
+            VStack(spacing: 2) {
                 Label {
                     Text(word.text)
                 } icon: {
                     if let symbol = word.symbol { Image(systemName: symbol) }
                 }
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.black)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(word.colour, in: Capsule())
-                .frame(maxHeight: .infinity, alignment: .bottom)
-                .padding(.bottom, 18)
-                .transition(.opacity)
+                if turned, !look.matched {
+                    Text(look.note)
+                        .font(.caption)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .opacity(0.75)
+                }
             }
+            .foregroundStyle(.black)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(word.colour, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .frame(maxWidth: 440)
+            .transition(.opacity)
         }
     }
 }
@@ -291,24 +300,38 @@ struct OwnScanSight: View {
     }
 }
 
-/// Which way to walk: three arrowheads, lit one after another that way.
+/// Which way to walk: a walking figure and arrowheads before it, lit one
+/// after another that way. The arrowheads alone were read as "turn the
+/// phone that way" (Mateusz 2026-11-16 15:02 UTC: "Odruchem przy
+/// pokazanych strzałkach jest samo przekręcenie telefonu w lewo").
 struct OwnScanArrows: View {
     let left: Bool
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 20)) { time in
             let phase = time.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.2) / 1.2
-            HStack(spacing: -6) {
-                ForEach(0 ..< 3, id: \.self) { index in
-                    Image(systemName: left ? "chevron.left" : "chevron.right")
-                        .font(.system(size: 30, weight: .heavy))
-                        .opacity(Self.lit(left ? 2 - index : index, at: phase))
+            HStack(spacing: 2) {
+                if !left { figure }
+                HStack(spacing: -6) {
+                    ForEach(0 ..< 3, id: \.self) { index in
+                        Image(systemName: left ? "chevron.left" : "chevron.right")
+                            .font(.system(size: 24, weight: .heavy))
+                            .opacity(Self.lit(left ? 2 - index : index, at: phase))
+                    }
                 }
+                if left { figure }
             }
             .foregroundStyle(.white)
             .shadow(color: .black.opacity(0.55), radius: 4)
         }
         .accessibilityHidden(true)
+    }
+
+    /// He, walking that way (the symbol walks to the right).
+    private var figure: some View {
+        Image(systemName: "figure.walk")
+            .font(.system(size: 36, weight: .semibold))
+            .scaleEffect(x: left ? -1 : 1)
     }
 
     /// How bright the `step`-th arrowhead along the way is at `phase`
@@ -360,97 +383,109 @@ struct OwnShotRing: View {
     }
 }
 
-/// The way round the work as a track across the picture, as the iPhone's
-/// panorama has: the place in front in its middle, the places to the left
-/// and right at its ends, each with the stretch about it where the
-/// photograph is taken; a dot goes along it as the phone goes round the
-/// work.
-struct OwnScanTrack: View {
+/// The way round the work seen from above: the work as a bar at the top,
+/// the place in front of it at the bottom, the places to its left and
+/// right up the arc to either side, each with the stretch about it where
+/// the photograph is taken; a dot goes along the arc as the phone goes
+/// round the work, with a line from it to the work it aims at. The same
+/// drawing on all three photographs (Mateusz 2026-11-16 15:02 UTC, of the
+/// plan that was under the first one only: "nie ma swojej kontynuacji na
+/// kolejnych ekranach"): it was a straight track before the side ones,
+/// which did not say that the way goes round the work.
+struct OwnScanPlan: View {
     /// How many photographs are taken (front, left, right in turn).
     let taken: Int
-    /// Where the phone stands, in degrees to the side of the work.
+    /// Where the phone stands, in degrees to the side of the work; nil
+    /// before the first photograph.
     let angle: Double?
     /// It stands where the next photograph is taken.
     let matched: Bool
 
-    /// How much of the track's half a degree takes: the side places are
-    /// at four fifths of the way to its ends.
-    static let reach = 0.8 / OwnScanView.side
+    /// How far round the drawn arc the side places are, in degrees: the
+    /// way is drawn wider than it is, to be read.
+    static let spread = 58.0
+    /// The dot goes this far beyond the side places.
+    static let most = OwnScanView.side * 1.25
+    /// Where the work's bar is from the top, and how much room the place
+    /// in front has under it.
+    static let top = 5.0
+    static let foot = 17.0
 
-    /// Where `degrees` is along a track `width` wide.
-    static func place(_ degrees: Double, width: Double) -> Double {
-        width * (0.5 + 0.5 * max(-1, min(1, degrees * reach)))
+    /// Where `degrees` to the side of the work is on a plan of `size`.
+    static func place(_ degrees: Double, in size: CGSize) -> CGPoint {
+        let turn = max(-most, min(most, degrees)) / OwnScanView.side * spread * .pi / 180
+        return CGPoint(
+            x: Double(size.width) * (0.5 + 0.46 * sin(turn)),
+            y: top + (Double(size.height) - top - foot) * cos(turn)
+        )
+    }
+
+    /// The arc between two places.
+    static func way(from: Double, to: Double, in size: CGSize) -> Path {
+        var path = Path()
+        let steps = 24
+        for step in 0 ... steps {
+            let point = place(from + (to - from) * Double(step) / Double(steps), in: size)
+            if step == 0 { path.move(to: point) } else { path.addLine(to: point) }
+        }
+        return path
     }
 
     var body: some View {
         GeometryReader { geo in
-            let w = geo.size.width, y = geo.size.height / 2
+            let size = geo.size
+            let work = CGPoint(x: size.width / 2, y: Self.top)
             // Front, left, right: the order they are taken in.
-            let places = [0, -OwnScanView.side, OwnScanView.side].map { Self.place($0, width: w) }
-            Capsule().fill(.white.opacity(0.55))
-                .frame(width: w, height: 3)
-                .position(x: w / 2, y: y)
+            let places = [0, -OwnScanView.side, OwnScanView.side].map { Self.place($0, in: size) }
+            Self.way(from: -Self.most, to: Self.most, in: size)
+                .stroke(.white.opacity(0.55), style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 .shadow(color: .black.opacity(0.5), radius: 2)
             if (1 ... 2).contains(taken) {
                 // Where the next one is taken: from 22° to 38°.
-                let from = Self.place((taken == 1 ? -1 : 1) * OwnScanView.near.lowerBound, width: w)
-                let to = Self.place((taken == 1 ? -1 : 1) * OwnScanView.near.upperBound, width: w)
-                Capsule().fill(matched ? OwnScanLook.good : .white.opacity(0.9))
-                    .frame(width: abs(to - from), height: 9)
-                    .position(x: (from + to) / 2, y: y)
+                let to: Double = taken == 1 ? -1 : 1
+                Self.way(from: to * OwnScanView.near.lowerBound, to: to * OwnScanView.near.upperBound, in: size)
+                    .stroke(matched ? OwnScanLook.good : .white.opacity(0.9), style: StrokeStyle(lineWidth: 9, lineCap: .round))
             }
+            // From where he stands (before the first photograph: is to
+            // stand) to the work he aims at.
+            let from = angle.map { Self.place($0, in: size) } ?? places[min(max(taken, 0), 2)]
+            Path { path in
+                path.move(to: from)
+                path.addLine(to: work)
+            }
+            .stroke(.white.opacity(0.75), style: StrokeStyle(lineWidth: 1.5, dash: [3, 4]))
+            .shadow(color: .black.opacity(0.5), radius: 2)
+            // The work.
+            Capsule().fill(.white)
+                .frame(width: size.width * 0.3, height: 5)
+                .position(work)
+                .shadow(color: .black.opacity(0.5), radius: 2)
             ForEach(0 ..< 3, id: \.self) { index in
-                let done = index < taken, next = index == taken
-                ZStack {
-                    Circle().fill(done ? OwnScanLook.good : .black.opacity(0.45))
-                    Circle().strokeBorder(done || (next && matched) ? OwnScanLook.good : .white.opacity(next ? 1 : 0.5), lineWidth: next ? 3 : 2)
-                    if done { Image(systemName: "checkmark").font(.system(size: 11, weight: .heavy)).foregroundStyle(.black) }
-                }
-                .frame(width: next ? 34 : 22, height: next ? 34 : 22)
-                .position(x: places[index], y: y)
-                .shadow(color: .black.opacity(0.4), radius: 2)
+                mark(index).position(places[index])
             }
             if let angle {
                 // The phone.
                 Circle().fill(.white)
                     .frame(width: 18, height: 18)
                     .shadow(color: .black.opacity(0.6), radius: 3)
-                    .position(x: Self.place(angle, width: w), y: y)
+                    .position(Self.place(angle, in: size))
                     .animation(.linear(duration: 0.1), value: angle)
             }
         }
         .animation(.easeOut(duration: 0.2), value: matched)
         .accessibilityHidden(true)
     }
-}
 
-/// The work of the first photograph as it will show in the helper frame.
-enum OwnScanGhost {
-    private static let context = CIContext()
-    /// The picture's size: the camera's 3 : 4 on the screen.
-    static let size = CGSize(width: 720, height: 960)
-
-    /// `photo` (upright as it was held) cut to `corners` (its work: top
-    /// left, top right, bottom right, bottom left, 0–1) and laid onto
-    /// `frame` (the same corners on the screen's picture), clear around.
-    static func picture(of photo: UIImage, corners: [CGPoint], onto frame: [CGPoint]) -> UIImage? {
-        guard corners.count == 4, frame.count == 4 else { return nil }
-        let work = OwnPicture.cut(photo, corners: corners.map { [Double($0.x), Double($0.y)] })
-        guard let source = CIImage(image: work) else { return nil }
-        // CI's origin is bottom left.
-        func point(_ p: CGPoint) -> CGPoint { CGPoint(x: p.x * size.width, y: (1 - p.y) * size.height) }
-        let lay = CIFilter.perspectiveTransform()
-        lay.inputImage = source
-        lay.topLeft = point(frame[0])
-        lay.topRight = point(frame[1])
-        lay.bottomRight = point(frame[2])
-        lay.bottomLeft = point(frame[3])
-        let whole = CGRect(origin: .zero, size: size)
-        let clear = CIImage(color: .clear).cropped(to: whole)
-        guard let out = lay.outputImage?.composited(over: clear),
-              let cg = context.createCGImage(out, from: whole)
-        else { return nil }
-        return UIImage(cgImage: cg)
+    /// A place a photograph is taken from: done, next, or to come.
+    private func mark(_ index: Int) -> some View {
+        let done = index < taken, next = index == taken
+        return ZStack {
+            Circle().fill(done ? OwnScanLook.good : .black.opacity(0.45))
+            Circle().strokeBorder(done || (next && matched) ? OwnScanLook.good : .white.opacity(next ? 1 : 0.5), lineWidth: next ? 3 : 2)
+            if done { Image(systemName: "checkmark").font(.system(size: 11, weight: .heavy)).foregroundStyle(.black) }
+        }
+        .frame(width: next ? 34 : 22, height: next ? 34 : 22)
+        .shadow(color: .black.opacity(0.4), radius: 2)
     }
 }
 
@@ -469,6 +504,10 @@ struct OwnScanCaption: View {
                 .foregroundStyle(.white.opacity(0.55))
                 .multilineTextAlignment(.center)
         }
+        // With the phone on its side these would lie sideways: they are
+        // said over the picture, turned.
+        .opacity(look.quarter == 0 ? 1 : 0)
+        .animation(.easeInOut(duration: 0.3), value: look.quarter)
     }
 }
 
@@ -542,37 +581,6 @@ struct OutlineShape: Shape {
         for corner in corners.dropFirst() { path.addLine(to: point(corner)) }
         path.closeSubpath()
         return path
-    }
-}
-
-/// Where to stand, seen from above: the work as a bar at the top, the
-/// three places before it; those done are filled, the next one is ringed.
-struct StandPlan: View {
-    /// How many photographs are taken (front, left, right in turn).
-    let taken: Int
-    var good = OwnScanLook.good
-
-    var body: some View {
-        GeometryReader { geo in
-            let w = geo.size.width, h = geo.size.height
-            let work = CGPoint(x: w / 2, y: 7)
-            // Front, left, right: the order they are taken in.
-            let places = [CGPoint(x: w / 2, y: h - 9), CGPoint(x: w * 0.14, y: h - 20), CGPoint(x: w * 0.86, y: h - 20)]
-            Capsule().fill(.white).frame(width: w * 0.42, height: 4).position(work)
-            ForEach(0 ..< 3, id: \.self) { index in
-                Path { path in
-                    path.move(to: places[index])
-                    path.addLine(to: work)
-                }
-                .stroke(.white.opacity(index == taken ? 0.7 : 0.2), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                Circle()
-                    .fill(index < taken ? good : .clear)
-                    .overlay(Circle().strokeBorder(index < taken ? good : .white.opacity(index == taken ? 1 : 0.4), lineWidth: 2))
-                    .frame(width: index == taken ? 16 : 12, height: index == taken ? 16 : 12)
-                    .position(places[index])
-            }
-        }
-        .accessibilityHidden(true)
     }
 }
 
