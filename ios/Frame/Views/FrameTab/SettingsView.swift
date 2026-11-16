@@ -162,7 +162,7 @@ private struct ReviewShortcut: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Do sprawdzenia")
                         .foregroundStyle(Theme.ink)
-                    Text("Co strażnik odłożył i co znalazł nocny przegląd")
+                    Text("Strażnik i nocny przegląd")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .lineLimit(1)
