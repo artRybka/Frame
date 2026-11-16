@@ -345,13 +345,15 @@ struct SettingsPageView: View {
             }
             .task {
                 // CI screenshots: `-scroll restorer` on the Gemini page,
-                // `-scroll leftover` (the month's rest) on Claude's.
+                // `-scroll leftover` (the month's rest), `switches` or
+                // `night` on Claude's.
                 let target = LaunchRoute.scroll
-                guard (page == .gemini && target == "restorer") || (page == .ai && target == "leftover"),
+                let onClaudes = ["leftover", "switches", "night"]
+                guard (page == .gemini && target == "restorer") || (page == .ai && onClaudes.contains(target ?? "")),
                       let target
                 else { return }
                 try? await Task.sleep(for: .seconds(4))
-                withAnimation { proxy.scrollTo(target, anchor: target == "leftover" ? .top : .center) }
+                withAnimation { proxy.scrollTo(target, anchor: target == "restorer" ? .center : .top) }
             }
         }
         .paperPage()

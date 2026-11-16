@@ -39,7 +39,7 @@ struct RestorerSection: View {
             Divider()
         }
         Text(
-            "Model graficzny Google przerysowuje małe zdjęcia dzieł do ok. 2000 px. Szczegóły są dorysowane, nie odzyskane, więc takie dzieła mają bursztynowe iskierki. Dzieła playlisty, także Ulubionych, odnowisz w jej menu „…”, pojedyncze dzieło w menu „…” na jego karcie."
+            "Przerysowuje małe zdjęcia dzieł do ok. 2000 px. Szczegóły są dorysowane, dlatego takie dzieła mają bursztynowe iskierki. Zamawiasz w menu „…” playlisty albo dzieła."
         )
         .font(.caption)
         .foregroundStyle(Theme.inkSoft)
@@ -48,6 +48,9 @@ struct RestorerSection: View {
             row("W pakietach Google", Names.pictures(state.waiting))
         }
         row("Odnowione", Names.pictures(state.restored), symbol: LowRes.restoredSymbol)
+        if let settings = model.aiSettings, let days = settings.costDays, let rows = settings.geminiCosts {
+            row("Ostatnie \(days) dni", AiSection.usd(rows.first { $0.key == "restorer" }?.daysUsd ?? 0))
+        }
     }
 
     private func row(_ title: String, _ value: String, symbol: String? = nil) -> some View {

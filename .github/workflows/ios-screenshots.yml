@@ -223,6 +223,8 @@ jobs:
             capture connection 10 "connection-sources-$appearance" -settingsPage sources
             capture connection 10 "connection-ai-$appearance" -settingsPage ai
             capture connection 12 "connection-ai-leftover-$appearance" -settingsPage ai -scroll leftover
+            capture connection 12 "connection-ai-switches-$appearance" -settingsPage ai -scroll switches
+            capture connection 12 "connection-ai-night-$appearance" -settingsPage ai -scroll night
             capture connection 10 "connection-gemini-$appearance" -settingsPage gemini
             capture connection 12 "review-$appearance" -settingsPage ai -review YES
             capture connection 14 "review-open-$appearance" -settingsPage ai -review YES -reviewOpen YES
@@ -237,7 +239,6 @@ jobs:
             capture battery 10 "battery-$appearance"
             # Confirmation dialogs: on iOS 26 a popover on what was tapped.
             capture frame 12 "confirm-update-$appearance" -confirm update
-            capture connection 12 "confirm-describe-$appearance" -settingsPage ai -confirm describe
             capture playlists 12 "confirm-delete-playlist-$appearance" -confirm delete-playlist
             capture museums 8 "museums-$appearance"
             capture search 8 "search-$appearance"

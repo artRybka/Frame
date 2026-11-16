@@ -40,7 +40,7 @@ enum LaunchRoute {
     static let drawn = UserDefaults.standard.object(forKey: "drawn") == nil
         ? nil : UserDefaults.standard.double(forKey: "drawn")
     /// A confirmation dialog opened by itself (CI screenshots of where it
-    /// points): "update" on the Serwer tile, "describe" in Konfiguracja → Claude,
+    /// points): "update" on the Serwer tile,
     /// "delete-playlist" on a card in Playlisty.
     static let confirm = UserDefaults.standard.string(forKey: "confirm")
     /// A sheet opened by itself on the work's card: "playlists" (Do
