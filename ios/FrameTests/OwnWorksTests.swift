@@ -228,7 +228,10 @@ final class OwnWorksTests: XCTestCase {
         var look = OwnScanLook(number: 2)
         look.advice = .go(left: true)
         XCTAssertNil(look.pill)
+        XCTAssertEqual(look.line, "Przejdź w lewo, celując w dzieło")
+        look.helper = front
         XCTAssertEqual(look.line, "Przejdź w lewo, aż dzieło wypełni ramkę")
+        look.helper = nil
         look.advice = .go(left: false)
         XCTAssertEqual(look.line, "Za daleko w bok, wróć trochę")
         look.advice = .nearer

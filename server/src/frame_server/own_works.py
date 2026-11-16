@@ -244,7 +244,7 @@ class OwnWorks:
         )
         return len(taken) + 1
 
-    def merge(self, token: str, corners: Quad | None = None) -> Merged:
+    def merge(self, token: str, corners: Quad | None = None, outline: Quad | None = None) -> Merged:
         """The first photograph without the reflections its side ones do
         not share, kept in its place. Within the work's ``corners`` (the
         phone's; else Opus is asked, and :meth:`find` answers the same
@@ -252,7 +252,16 @@ class OwnWorks:
         (:mod:`.imaging.reflections`); with no corners only a lamp's glare
         is replaced (:mod:`.imaging.glare`). Unchanged when no side one
         could be laid over it. The photographs as they came are kept two
-        weeks in ``scans/`` (:data:`SCANS_SECONDS`)."""
+        weeks in ``scans/`` (:data:`SCANS_SECONDS`).
+
+        ``outline`` is the rectangle the phone's camera followed while the
+        first photograph was taken (Mateusz 2026-11-16: "kadrowanie -
+        rozumiem że teraz robi je model? czy to potrzebne skoro mamy już
+        dane z iPhone?"). It is the largest rectangle there, most often
+        the frame's outer edge, so Opus is still asked for the work within
+        the frame and the mount; where Opus has no answer (no key, or it
+        found none: three of his first five scans) the outline is where
+        the reflections are taken out."""
         path = self.path(token)
         sides = sorted(self.incoming.glob(f"{token}-side*.jpg"))
         with Image.open(path) as img:
@@ -268,6 +277,8 @@ class OwnWorks:
                 found = None
             if found is not None:
                 quad, seen.shape = found.corners, found.shape
+            if quad is None and outline is not None:
+                quad = valid(outline)
         seen.corners = quad
         self._keep_scan(token, path, sides)
         seen.used, seen.replaced = self._merge(path, path, sides, quad)

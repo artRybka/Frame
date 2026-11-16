@@ -110,3 +110,51 @@ def test_photographs_of_something_else_or_nothing_to_take_change_nothing() -> No
     # No work to speak of between the corners.
     tiny = [(0.5, 0.5), (0.52, 0.5), (0.52, 0.52), (0.5, 0.52)]
     assert merge(first, [first], tiny).image is first
+
+
+def test_the_shine_of_the_work_itself_is_no_reflection() -> None:
+    """His dark folder with gold letters, lying on a desk without glass
+    (2026-11-16, "efekt wychodzi nazbyt kontrastowy i zbyt nasycony"):
+    the letters shine from the front and not from the sides, the cover a
+    little. That is how the work looks: it came out black, with a blacker
+    halo about each letter and patches of colour."""
+    scene = _scene()
+    ground = (slice(Y0 + 420, Y1 - 60), slice(X0 + 60, X1 - 60))
+    rng = np.random.default_rng(11)
+    dark = np.float32([0.012, 0.013, 0.02]) + rng.normal(0, 0.001, (*scene[ground].shape[:2], 3))
+    scene[ground] = dark.astype(np.float32)
+    letters = np.zeros((H, W), bool)
+    for x in range(X0 + 100, X1 - 100, 36):
+        letters[Y0 + 470 : Y1 - 110, x : x + 3] = True
+    for y in range(Y0 + 480, Y1 - 120, 90):
+        letters[y : y + 3, X0 + 100 : X1 - 100] = True
+
+    def seen(gold: tuple[float, float, float], sheen: float) -> np.ndarray:
+        light = scene.copy()
+        light[ground] += sheen
+        light[letters] = np.float32(gold)
+        return light
+
+    first = _coded(seen((0.45, 0.34, 0.12), 0.004))
+    left = _coded(_from_side(seen((0.26, 0.24, 0.2), 0.0), -1) * 0.95)
+    right = _coded(_from_side(seen((0.3, 0.25, 0.16), 0.001), 1) * 1.05)
+    done = merge(first, [left, right], CORNERS)
+    assert done.used == 2
+
+    cover = np.zeros((H, W), bool)
+    cover[ground] = True
+    near = cv2.dilate(letters.astype(np.uint8), np.ones((15, 15), np.uint8)).astype(bool)
+    beside = (
+        cover & near & ~cv2.dilate(letters.astype(np.uint8), np.ones((5, 5), np.uint8)).astype(bool)
+    )
+    before, after = first.astype(np.float32), done.image.astype(np.float32)
+    # No halo: the cover beside a letter is as it is away from one.
+    away = cover & ~near
+    assert after[beside].mean() > after[away].mean() * 0.88
+    # The cover is not made black, nor its colour another.
+    assert after[away].mean() > before[away].mean() * 0.75
+    assert np.percentile(after[away], 2) > np.percentile(before[away], 2) * 0.6
+    was, now = before[away].mean(0), after[away].mean(0)
+    assert np.abs(now / now.mean() - was / was.mean()).max() < 0.1
+    # The letters keep their gold.
+    assert after[letters].mean() > before[letters].mean() * 0.9

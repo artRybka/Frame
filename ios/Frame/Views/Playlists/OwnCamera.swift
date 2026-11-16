@@ -20,6 +20,11 @@ struct OwnShots {
     /// The pictures above are small copies for the screen. Empty for the
     /// demo's photographs.
     var files: [Data] = []
+    /// The rectangle the camera followed when the first photograph was
+    /// taken (its corners 0–1 across and down the photograph, from the top
+    /// left round by the right): where the work is when the server's
+    /// model has no answer. Most often the frame's outer edge.
+    var outline: [[Double]]? = nil
 
     /// The file of the `index`-th photograph (0, the first), if it has one.
     func file(_ index: Int) -> Data? {
@@ -522,7 +527,10 @@ struct OwnCamera: View {
             // The side photographs in the first one's light, so that only the reflections differ.
             camera.hold(true)
             withAnimation(.easeInOut(duration: 0.25)) {
-                scan = OwnShots(first: image, depth: depth, files: file.map { [$0] } ?? [])
+                scan = OwnShots(
+                    first: image, depth: depth, files: file.map { [$0] } ?? [],
+                    outline: seen.map { $0.map { [Double($0.x), Double($0.y)] } }
+                )
             }
             rest()
         }

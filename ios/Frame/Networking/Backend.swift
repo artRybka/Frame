@@ -261,7 +261,7 @@ protocol FrameBackend: Sendable {
     /// A photograph of the same work from a little to the side (the scan of three).
     func sendOwnSide(token: String, _ data: Data) async throws
     /// The glare taken out of the first photograph by the side ones.
-    func mergeOwnPhotos(token: String) async throws -> OwnMerged
+    func mergeOwnPhotos(token: String, outline: [[Double]]?) async throws -> OwnMerged
     /// The photograph as it waits (merged), for "Kadr", `side` px long at most.
     func ownPhoto(token: String, side: Int) async throws -> Data
     /// A work of his own at the size his photograph has it, in tiles for
