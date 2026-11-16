@@ -105,11 +105,11 @@ struct OwnDescriptionLook: View {
                         techniqueMenu
                     }
                 }
-                if let line = techniqueHint, look == .a {
+                if let line = techniqueHint, look == .a, line != text.medium {
                     HStack { Spacer(); tagHint(line, taken: text.medium) { text.medium = $0 } }
                 }
                 Divider()
-                factRow("Rozmiar") { sizeFields }
+                factRow("Rozmiar") { sizeFields }.id("size")
                 Divider()
                 factRow("Gdzie wisi") {
                     HStack(spacing: 6) {
@@ -194,10 +194,10 @@ struct OwnDescriptionLook: View {
         }
     }
 
-    private func sizeField(_ prompt: String, text value: Binding<String>) -> some View {
+    private func sizeField(_ prompt: String, text value: Binding<String>, alignment: TextAlignment = .trailing) -> some View {
         TextField(prompt, text: value)
             .keyboardType(.decimalPad)
-            .multilineTextAlignment(.trailing)
+            .multilineTextAlignment(alignment)
             .foregroundStyle(Theme.ink)
             .frame(width: 48)
     }
@@ -311,10 +311,11 @@ struct OwnDescriptionLook: View {
                 Divider()
                 VStack(alignment: .leading, spacing: 6) {
                     rowLabel("Rozmiar bez ramy")
+                        .id("size")
                     HStack(spacing: 6) {
-                        sizeField("wys.", text: $heightText).multilineTextAlignment(.leading)
+                        sizeField("wys.", text: $heightText, alignment: .leading)
                         Text("×").foregroundStyle(Theme.inkSoft)
-                        sizeField("szer.", text: $widthText).multilineTextAlignment(.leading)
+                        sizeField("szer.", text: $widthText, alignment: .leading)
                         Text("cm").foregroundStyle(Theme.inkSoft)
                         Spacer()
                     }
