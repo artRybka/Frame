@@ -171,7 +171,8 @@ struct OwnDescriptionForm: View {
             .keyboardType(.decimalPad)
             .multilineTextAlignment(alignment)
             .foregroundStyle(Theme.ink)
-            .frame(width: 48)
+            .fixedSize()  // as wide as its number (or "wys."): no gap before "cm"
+            .frame(minWidth: 24, alignment: alignment == .trailing ? .trailing : .leading)
     }
 
     private func warningLine(_ warning: String) -> some View {
