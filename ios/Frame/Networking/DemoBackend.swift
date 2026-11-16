@@ -2261,8 +2261,8 @@ actor DemoBackend: FrameBackend {
     func proposePolish(itemID: String) async throws -> PolishDraft {
         try await Task.sleep(for: .seconds(1))
         return PolishDraft(
-            frame: "Ciemne litery na jasnej tablicy układają się w łacińskie motto malarza.",
-            full: "Ciemne litery na jasnej tablicy układają się w łacińskie motto malarza.\n\nZa nim otwiera się pusty arkadowy plac, jak w jego metafizycznych miastach."
+            frame: "Cztery kobiety uosabiają pory roku, każda w swoim pejzażu: wiosna wśród kwiatów, lato w kłosach, jesień z winogronami, zima w śniegu.",
+            full: "Cztery kobiety uosabiają pory roku, każda w swoim pejzażu: wiosna wśród kwiatów, lato w kłosach, jesień z winogronami, zima w śniegu.\n\nMucha zamyka je w łukowatych ramach, jak w witrażu, a ich suknie i włosy płyną tym samym rytmem co gałęzie."
         )
     }
 
