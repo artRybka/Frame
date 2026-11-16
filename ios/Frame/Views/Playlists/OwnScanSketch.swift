@@ -2,28 +2,20 @@ import CoreImage
 import CoreImage.CIFilterBuiltins
 import SwiftUI
 
-/// Sketches of the scan of three done anew, for Mateusz to choose from
-/// before it is built (2026-11-16: "pierwsze zdjęcie na wprost, a kolejne
-/// pod większym kątem z ramką pomocniczą na ekranie pokazująca gdzie ma
-/// się znajdować dzieło"; "kropki działają z opóźnieniem i kąt … jest zbyt
-/// mały"). No camera here: the demo's wall photograph, turned as the wall
-/// shows from the side. `-screen own-scan2 -scanLook front | ready | far
-/// | near | lost | side | match | right | result`. No shutter (Mateusz
-/// 09:52 UTC: "skoro zdjęcie robi się samo, to czy potrzebny jest guzik
-/// robienia zdjęcia?"), but for when the work is not found; the helper
-/// says to come nearer or step back ("Mógłby to robić?").
+/// The scan's camera as the screenshots show it (the simulator has no
+/// camera): the demo's wall photograph, turned as the wall shows from the
+/// side, under the camera's own overlay and words. `-screen own-scan2
+/// -scanLook front | ready | far | near | lost | side | match | right |
+/// result` ("result": a sketch of the page after the scan, not built yet).
 struct OwnScanSketch: View {
     let close: () -> Void
-    let look = UserDefaults.standard.string(forKey: "scanLook") ?? "side"
-
-    private static let good = Color(red: 0.36, green: 0.86, blue: 0.48)
-    private static let wait = Color(red: 1.0, green: 0.80, blue: 0.30)
+    let name = UserDefaults.standard.string(forKey: "scanLook") ?? "side"
 
     private var front: [CGPoint] { DemoOwn.outer.map { CGPoint(x: $0[0], y: $0[1]) } }
 
-    /// Where the phone stands in this sketch, and where it should (degrees).
+    /// Where the phone stands in this look, and where it should (degrees).
     private var stands: Double {
-        switch look {
+        switch name {
         case "side": -13
         case "match": -29
         case "right": 12
@@ -32,58 +24,50 @@ struct OwnScanSketch: View {
     }
 
     private var target: Double? {
-        switch look {
+        switch name {
         case "side", "match": -OwnScanView.side
         case "right": OwnScanView.side
         default: nil
         }
     }
 
-    private var number: Int {
-        switch look {
-        case "side", "match": 2
-        case "right": 3
-        default: 1
-        }
-    }
-
-    private var matched: Bool { look == "match" || look == "ready" }
-
     /// How large the wall shows: the phone too far from it, or too near.
     private var zoom: Double {
-        switch look {
+        switch name {
         case "far": 0.5
         case "near": 1.8
         default: 1
         }
     }
 
-    /// What the helper says over the picture, and in what colour.
-    private var pill: (text: String, symbol: String, colour: Color)? {
-        if matched { return ("Nie ruszaj", "camera.aperture", Self.good) }
-        switch look {
-        case "far": return ("Podejdź bliżej", "arrow.up.left.and.arrow.down.right", Self.wait)
-        case "near": return ("Odsuń się", "arrow.down.right.and.arrow.up.left", Self.wait)
-        case "lost": return ("Nie widzę krawędzi dzieła", "viewfinder", .white)
-        default: return nil
+    private var look: OwnScanLook {
+        let live = OwnScanView.seen(front, from: stands)
+            .map { CGPoint(x: 0.5 + ($0.x - 0.5) * zoom, y: 0.5 + ($0.y - 0.5) * zoom) }
+        var look = OwnScanLook(number: target == nil ? 1 : (name == "right" ? 3 : 2))
+        look.live = name == "lost" ? nil : live
+        look.helper = target.map { OwnScanView.seen(front, from: $0) }
+        look.manual = name == "lost"
+        if let target {
+            look.advice = OwnScanView.side(target: target, angle: stands)
+        } else {
+            // The demo's work hangs a little askew: its outline is what "from the front" is here.
+            look.advice = name == "ready" ? .hold : name == "lost" ? .lost : OwnScanView.first(live)
+            if look.advice == .hold, name == "front" { look.advice = .straight }
         }
-    }
-
-    private func zoomed(_ corners: [CGPoint]) -> [CGPoint] {
-        corners.map { CGPoint(x: 0.5 + ($0.x - 0.5) * zoom, y: 0.5 + ($0.y - 0.5) * zoom) }
+        return look
     }
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if look == "result" {
+            if name == "result" {
                 result
             } else {
                 VStack(spacing: 0) {
                     top
                     Spacer(minLength: 12)
                     viewfinder
-                    caption
+                    OwnScanCaption(look: look)
                         .padding(.horizontal, Theme.gutter)
                         .padding(.top, 14)
                     Spacer(minLength: 12)
@@ -104,14 +88,14 @@ struct OwnScanSketch: View {
             .buttonStyle(.glass)
             .buttonBorderShape(.circle)
             Spacer()
-            Text("Zdjęcie \(number) z 3")
+            Text("Zdjęcie \(look.number) z 3")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .glassEffect()
             Spacer()
-            if number > 1 {
+            if look.number > 1 {
                 Button("Pomiń") {}
                     .buttonStyle(.glass)
             } else {
@@ -127,106 +111,24 @@ struct OwnScanSketch: View {
             Color(red: 0.84, green: 0.80, blue: 0.73)
             if let photo = Self.wall(from: stands) {
                 Image(uiImage: photo).resizable().scaledToFill().scaleEffect(zoom)
-            } else {
-                Color(white: 0.1)
             }
-            GeometryReader { geo in
-                let live = zoomed(OwnScanView.seen(front, from: stands))
-                if let target {
-                    // The helper frame: where the work should lie.
-                    let frame = OwnScanView.seen(front, from: target)
-                    Quad(corners: frame)
-                        .fill(.white.opacity(matched ? 0 : 0.10))
-                    Quad(corners: frame)
-                        .stroke(matched ? Self.good : .white,
-                                style: StrokeStyle(lineWidth: matched ? 4 : 3, lineCap: .round, lineJoin: .round, dash: matched ? [] : [10, 8]))
-                        .shadow(color: .black.opacity(0.45), radius: 3)
-                    if !matched {
-                        // The work as the camera sees it now, and which way to go.
-                        Quad(corners: live)
-                            .stroke(Self.wait, style: StrokeStyle(lineWidth: 2, lineJoin: .round))
-                        Image(systemName: target < stands ? "arrow.left" : "arrow.right")
-                            .font(.system(size: 30, weight: .bold))
-                            .foregroundStyle(.white)
-                            .shadow(color: .black.opacity(0.55), radius: 4)
-                            .position(x: geo.size.width * (target < stands ? 0.085 : 0.915), y: geo.size.height * 0.5)
-                    }
-                } else if look != "lost" {
-                    Quad(corners: live)
-                        .stroke(matched ? Self.good : Self.wait,
-                                style: StrokeStyle(lineWidth: matched ? 4 : 2.5, lineJoin: .round))
-                        .shadow(color: .black.opacity(0.45), radius: 3)
-                }
-            }
-            if let pill {
-                Label(pill.text, systemImage: pill.symbol)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.black)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(pill.colour, in: Capsule())
-                    .frame(maxHeight: .infinity, alignment: .bottom)
-                    .padding(.bottom, 18)
-            }
+            OwnScanOverlay(look: look)
         }
         .aspectRatio(3 / 4, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .padding(.horizontal, 8)
     }
 
-    private var caption: some View {
-        VStack(spacing: 4) {
-            Text(advice)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.white.opacity(0.9))
-                .multilineTextAlignment(.center)
-            Text(note)
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.55))
-                .multilineTextAlignment(.center)
-        }
-    }
-
-    private var advice: String {
-        switch look {
-        case "front": "Stań na wprost dzieła, całe w kadrze"
-        case "ready": "Dobrze. Robię zdjęcie na wprost"
-        case "far": "Dzieło jest za małe w kadrze"
-        case "near": "Dzieło nie mieści się w kadrze"
-        case "lost": "Zrób zdjęcie sam"
-        case "side": "Przejdź w lewo, aż dzieło wypełni ramkę"
-        case "match": "Dobrze. Robię zdjęcie z lewej"
-        case "right": "Teraz w prawo, aż dzieło wypełni ramkę"
-        default: ""
-        }
-    }
-
-    private var note: String {
-        switch look {
-        case "front", "ready": "Zdjęcie zrobi się samo, gdy obrys zrobi się zielony."
-        case "far": "Im bliżej, tym więcej szczegółów na zdjęciu."
-        case "near": "Całe ma być widoczne, z kawałkiem ściany wokół."
-        case "lost": "Tak bywa przy ciemnej ramie na ciemnej ścianie albo w słabym świetle."
-        default: "Celuj cały czas w dzieło. Zdjęcie zrobi się samo."
-        }
-    }
-
     /// Where to stand; the shutter only when the work cannot be found.
     private var bottom: some View {
         ZStack {
-            if look == "lost" {
-                Button {} label: {
-                    ZStack {
-                        Circle().strokeBorder(.white, lineWidth: 4).frame(width: 78, height: 78)
-                        Circle().fill(.white).frame(width: 64, height: 64)
-                    }
-                }
-                .buttonStyle(.plain)
-                StandPlan(taken: number - 1, good: Self.good)
+            if look.manual {
+                OwnShutter {}
+                StandPlan(taken: look.number - 1)
                     .frame(width: 74, height: 52)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             } else {
-                StandPlan(taken: number - 1, good: Self.good)
+                StandPlan(taken: look.number - 1)
                     .frame(width: 116, height: 78)
             }
         }
@@ -354,51 +256,5 @@ struct OwnScanSketch: View {
               let cg = context.createCGImage(out, from: source.extent)
         else { return photo }
         return UIImage(cgImage: cg)
-    }
-}
-
-/// An outline through four corners given as fractions of the view.
-private struct Quad: Shape {
-    let corners: [CGPoint]
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        guard let first = corners.first else { return path }
-        func point(_ p: CGPoint) -> CGPoint { CGPoint(x: rect.minX + p.x * rect.width, y: rect.minY + p.y * rect.height) }
-        path.move(to: point(first))
-        for corner in corners.dropFirst() { path.addLine(to: point(corner)) }
-        path.closeSubpath()
-        return path
-    }
-}
-
-/// Where to stand, seen from above: the work as a bar at the top, the
-/// three places before it; those done are filled, the next one is ringed.
-private struct StandPlan: View {
-    /// How many photographs are taken (front, left, right in turn).
-    let taken: Int
-    let good: Color
-
-    var body: some View {
-        GeometryReader { geo in
-            let w = geo.size.width, h = geo.size.height
-            let work = CGPoint(x: w / 2, y: 7)
-            // Front, left, right: the order they are taken in.
-            let places = [CGPoint(x: w / 2, y: h - 9), CGPoint(x: w * 0.14, y: h - 20), CGPoint(x: w * 0.86, y: h - 20)]
-            Capsule().fill(.white).frame(width: w * 0.42, height: 4).position(work)
-            ForEach(0 ..< 3, id: \.self) { index in
-                Path { path in
-                    path.move(to: places[index])
-                    path.addLine(to: work)
-                }
-                .stroke(.white.opacity(index == taken ? 0.7 : 0.2), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                Circle()
-                    .fill(index < taken ? good : .clear)
-                    .overlay(Circle().strokeBorder(index < taken ? good : .white.opacity(index == taken ? 1 : 0.4), lineWidth: 2))
-                    .frame(width: index == taken ? 16 : 12, height: index == taken ? 16 : 12)
-                    .position(places[index])
-            }
-        }
-        .accessibilityHidden(true)
     }
 }

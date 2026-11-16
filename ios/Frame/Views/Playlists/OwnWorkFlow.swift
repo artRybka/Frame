@@ -73,8 +73,8 @@ struct OwnWorkFlow: View {
             Group {
                 switch step {
                 case .photo:
-                    if LaunchRoute.screen == "own-scan2" {
-                        OwnScanSketch(close: back)  // sketches of the scan done anew
+                    if ["own-scan", "own-scan2"].contains(LaunchRoute.screen) {
+                        OwnScanSketch(close: back)  // the scan's camera as a scene, for screenshots
                     } else {
                         OwnCamera(close: back, took: take, finding: finding ? photo : nil, findingText: findingText)
                     }

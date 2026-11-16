@@ -4,6 +4,7 @@ import ImageIO
 import PhotosUI
 import SwiftUI
 import UIKit
+import Vision
 
 /// What the camera gives the steps after it: the first photograph, the two
 /// taken a little from each side (the scan of three, for the glare), and
@@ -29,11 +30,16 @@ struct OwnShots {
 /// "Dodaj własne dzieło" opening straight on the camera (Mateusz
 /// 2026-11-15: "Po wybraniu „Dodaj własne dzieło” najlepiej byłoby od
 /// razu pokazać aparat ale z dodatkową krótką instrukcją"): the picture
-/// as it will be taken (3 : 4, nothing cut off), corner marks to put the
-/// work between, one line of advice, the shutter, and Photos beside it.
-/// After the first photograph, two more from a little to the left and to
-/// the right: a dot to bring into a ring, each taken by itself once it is
-/// there. The simulator has no camera: the demo shows its wall photograph.
+/// as it will be taken (3 : 4, nothing cut off), the work's outline as the
+/// camera finds it, a word of advice, and Photos beside it. The first
+/// photograph is taken from the front, by itself once the work is whole
+/// in the picture, large enough and still; then two more from some 30° to
+/// the left and to the right, each when the work lies in the helper frame
+/// drawn for it (Mateusz 2026-11-16: "pierwsze zdjęcie na wprost, a
+/// kolejne pod większym kątem z ramką pomocniczą na ekranie"; no shutter,
+/// "skoro zdjęcie robi się samo", but when the work's edges are not
+/// found). The simulator has no camera: the demo shows its wall
+/// photograph and a shutter.
 struct OwnCamera: View {
     /// Leaves the steps (the back arrow at the top left).
     let close: () -> Void
@@ -57,13 +63,87 @@ struct OwnCamera: View {
     /// The scan of three under way: the first photograph taken, the sides to come.
     @State private var scan: OwnShots?
     @State private var guide = OwnScanGuide()
-    /// Since when the dot has been still in the ring.
-    @State private var inRingSince: Date?
+    /// The work's outline as the camera sees it now (0–1 on the screen's
+    /// picture), a little smoothed.
+    @State private var outline: [CGPoint]?
+    /// Since when no outline has been seen.
+    @State private var lostSince: Date? = .now
+    /// The outline at the first photograph, as the world stands.
+    @State private var front: [CGPoint]?
+    /// Since when all has been as the next photograph needs it.
+    @State private var holdSince: Date?
+    /// The shutter is out: the work's edges were not found for a while.
+    @State private var manual = false
+    /// The camera has little light.
+    @State private var dim = false
+
+    /// Without an outline for this long, he takes the photograph himself.
+    private static let patience: TimeInterval = 5
 
     private var demo: UIImage? { access == .ready ? nil : (model.demoMode ? DemoOwn.photo() : nil) }
 
     /// Which photograph of the three is next (1: the first).
-    private var number: Int { scan.map { $0.sides.count + 2 } ?? 1 }
+    private var number: Int { scan.map { min($0.sides.count + 2, 3) } ?? 1 }
+
+    // MARK: What the camera sees
+
+    /// How the phone is held: 0 upright, 1 its top to the left, -1 to the right.
+    private var quarter: Int { tilt > 45 ? 1 : tilt < -45 ? -1 : 0 }
+    /// The picture as the world stands: tall, or wide with the phone on its side.
+    private var aspect: Double { quarter == 0 ? 0.75 : 4.0 / 3 }
+    private var focal: Double { quarter == 0 ? camera.focal : camera.focal * 0.75 }
+    /// From where the next side photograph is meant: the left first.
+    private var target: Double { number == 2 ? -OwnScanView.side : OwnScanView.side }
+    /// Where the phone stands by the gyroscope since the first photograph
+    /// (degrees; negative: to the left of the work, aiming at it).
+    private var turned: Double { guide.turned * 180 / .pi }
+
+    /// The outline as the world stands.
+    private var upright: [CGPoint]? {
+        outline.map { corners in OwnScanView.ordered(corners.map { OwnScanView.upright($0, quarter: quarter) }) }
+    }
+
+    /// The work at the first photograph; a plain one in the middle when
+    /// its edges were not found then.
+    private var base: [CGPoint] {
+        front ?? [CGPoint(x: 0.2, y: 0.25), CGPoint(x: 0.8, y: 0.25), CGPoint(x: 0.8, y: 0.75), CGPoint(x: 0.2, y: 0.75)]
+    }
+
+    private func onScreen(_ corners: [CGPoint]) -> [CGPoint] {
+        corners.map { OwnScanView.shown($0, quarter: quarter) }
+    }
+
+    /// What is drawn over the picture and said under it.
+    private var look: OwnScanLook {
+        var look = OwnScanLook(number: number)
+        look.manual = manual
+        look.dim = dim
+        guard scan != nil else {
+            look.live = outline
+            look.advice = OwnScanView.first(upright, aspect: aspect)
+            return look
+        }
+        look.helper = onScreen(OwnScanView.seen(base, from: target, aspect: aspect, focal: focal))
+        if let upright, let front, let shape = OwnScanView.shape(of: front, aspect: aspect),
+           let now = OwnScanView.turn(of: upright, shape: shape, aspect: aspect, focal: focal),
+           let then = OwnScanView.turn(of: front, shape: shape, aspect: aspect, focal: focal),
+           let away = OwnScanView.away(upright, front: front, aspect: aspect),
+           // Another rectangle on the wall is not the work: the gyroscope must agree.
+           !guide.available || abs(now - then - turned) < 20 {
+            look.live = outline
+            look.advice = OwnScanView.side(target: target, angle: now - then, away: away, fits: OwnScanView.fits(upright))
+        } else if guide.available {
+            // The work's edges are not seen: where the phone has turned to.
+            look.live = onScreen(OwnScanView.seen(base, from: turned, aspect: aspect, focal: focal))
+            look.advice = OwnScanView.side(target: target, angle: turned)
+        } else {
+            look.advice = .lost
+        }
+        return look
+    }
+
+    /// The shutter shows: no camera (the demo), or the work is not found.
+    private var byHand: Bool { manual || access != .ready }
 
     var body: some View {
         ZStack {
@@ -95,20 +175,25 @@ struct OwnCamera: View {
                 took(OwnShots(first: image, files: OwnPicture.sendable(data) ? [data] : []))
             }
         }
-        .onChange(of: guide.turned) { _, _ in watchRing() }
-        .sensoryFeedback(.impact(weight: .medium), trigger: inRing) { _, now in now }
+        .onChange(of: guide.turned) { _, _ in
+            // Between the camera's looks (and without them) the gyroscope keeps the watch.
+            if scan != nil { watch() }
+        }
+        .sensoryFeedback(.impact(weight: .medium), trigger: look.matched) { _, now in now }
         .task {
             // Screenshots of the later steps take the demo's photograph at once.
             guard !["own-cut", "own-describe", "own-card"].contains(LaunchRoute.screen) else { return }
             camera.turned = { angle in
                 withAnimation(.easeInOut(duration: 0.3)) { tilt = OwnCameraSession.tilt(angle) }
             }
-            access = await camera.start()
-            if LaunchRoute.screen == "own-scan", access != .ready, let demo {
-                // CI screenshot: the second photograph on its way, the dot halfway to the ring.
-                scan = OwnShots(first: demo)
-                guide.turned = -0.55 * OwnScanGuide.step
+            camera.seen = { found, dark in
+                if dark != dim { dim = dark }
+                see(found)
             }
+            access = await camera.start()
+            // No pictures to look for the work in: he presses the shutter.
+            if access == .ready, !camera.sees { manual = true }
+            guide.start()
         }
         .onDisappear {
             camera.stop()
@@ -127,7 +212,7 @@ struct OwnCamera: View {
             .buttonBorderShape(.circle)
             .accessibilityLabel(scan == nil ? "Zamknij" : "Od nowa")
             Spacer()
-            if scan != nil, finding == nil {
+            if finding == nil, access == .ready || scan != nil {
                 Text("Zdjęcie \(number) z 3")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
@@ -135,17 +220,22 @@ struct OwnCamera: View {
                     .padding(.vertical, 8)
                     .glassEffect()
                 Spacer()
-                // Enough: the photographs taken so far.
-                Button("Pomiń") { finish() }
-                    .buttonStyle(.glass)
-                    .disabled(shooting)
+                if scan != nil {
+                    // Enough: the photographs taken so far.
+                    Button("Pomiń") { finish() }
+                        .buttonStyle(.glass)
+                        .disabled(shooting)
+                } else {
+                    Color.clear.frame(width: 44, height: 44)
+                }
             }
         }
         .padding(.horizontal, Theme.gutter)
         .padding(.top, 4)
     }
 
-    /// The picture as it will be taken, the marks over it, the advice on it.
+    /// The picture as it will be taken, the work's outline and the helper
+    /// frame over it.
     private var viewfinder: some View {
         ZStack {
             if let finding {
@@ -171,11 +261,9 @@ struct OwnCamera: View {
                     .padding(24)
                 }
             }
-            CornerMarks()
-                .stroke(.white.opacity(0.9), style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                .padding(28)
-                .opacity(finding == nil && scan == nil ? 1 : 0)
-            if scan != nil, finding == nil { ring }
+            if finding == nil, access == .ready {
+                OwnScanOverlay(look: look)
+            }
             if finding != nil {
                 ProgressView().tint(.white).controlSize(.large)
             }
@@ -187,57 +275,14 @@ struct OwnCamera: View {
         .animation(.easeOut(duration: 0.25), value: finding == nil)
     }
 
-    // MARK: The scan of three
-
-    /// Where the phone should turn to for the next side photograph: a step
-    /// to the left first (the phone turns right to keep the work in view),
-    /// then past the middle to the right.
-    private var target: Double { number == 2 ? -OwnScanGuide.step : OwnScanGuide.step }
-
-    private var inRing: Bool {
-        scan != nil && abs(guide.turned - target) < OwnScanGuide.near
-    }
-
-    /// The ring where the dot should go, the dot as the phone turns, an arrow between.
-    private var ring: some View {
-        GeometryReader { geo in
-            let mid = geo.size.width / 2, reach = geo.size.width * 0.32, y = geo.size.height / 2
-            let ringX = mid + reach * (target > 0 ? 1 : -1)
-            let dotX = mid + reach * max(-1.5, min(1.5, guide.turned / OwnScanGuide.step))
-            Circle()
-                .stroke(.white, lineWidth: 3)
-                .background(Circle().fill(.white.opacity(inRing ? 0.35 : 0)))
-                .frame(width: 58, height: 58)
-                .position(x: ringX, y: y)
-            if !inRing, abs(ringX - dotX) > 70 {
-                Image(systemName: ringX < dotX ? "arrow.left" : "arrow.right")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.5), radius: 3)
-                    .position(x: (ringX + dotX) / 2, y: y)
-            }
-            Circle()
-                .fill(.white)
-                .frame(width: 22, height: 22)
-                .shadow(color: .black.opacity(0.4), radius: 3)
-                .position(x: dotX, y: y)
-        }
-        .animation(.interactiveSpring, value: guide.turned)
-    }
-
     @ViewBuilder
     private var caption: some View {
         if finding != nil {
             line(findingText)
+        } else if access == .ready {
+            OwnScanCaption(look: look)
         } else if scan != nil {
-            VStack(spacing: 4) {
-                line(number == 2
-                    ? "Zrób krok w lewo, celując w dzieło, aż kropka wejdzie w kółko"
-                    : "Teraz w prawo, za środek, aż kropka wejdzie w kółko")
-                Text("Zdjęcie zrobi się samo. Z trzech usunę odblaski.")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.55))
-            }
+            line(number == 2 ? "Zdjęcie z lewej strony dzieła" : "Zdjęcie z prawej strony dzieła")
         } else {
             line("Umieść całe dzieło w kadrze")
         }
@@ -250,61 +295,98 @@ struct OwnCamera: View {
             .multilineTextAlignment(.center)
     }
 
-    /// The dot still in the ring a moment: the photograph is taken.
-    private func watchRing() {
-        guard scan != nil, !shooting, finding == nil else { return }
-        guard inRing, guide.steady else {
-            inRingSince = nil
+    // MARK: The watch
+
+    /// What the camera found in its latest picture: the work's outline, or none.
+    private func see(_ found: [CGPoint]?) {
+        guard finding == nil, !shooting else { return }
+        if let found {
+            if let old = outline, OwnScanView.off(found, frame: old) < 0.1 {
+                // Its corners tremble from picture to picture.
+                outline = zip(old, found).map { CGPoint(x: $0.x + ($1.x - $0.x) * 0.6, y: $0.y + ($1.y - $0.y) * 0.6) }
+            } else {
+                outline = found
+            }
+            lostSince = nil
+        } else {
+            let since = lostSince ?? .now
+            lostSince = since
+            let gone = Date.now.timeIntervalSince(since)
+            if gone > 0.6 { outline = nil }
+            if gone > Self.patience, !manual, look.advice == .lost {
+                withAnimation(.easeInOut(duration: 0.25)) { manual = true }
+            }
+        }
+        watch()
+    }
+
+    /// All as the next photograph needs it, and still, for a good half second:
+    /// it is taken.
+    private func watch() {
+        // All three taken (and sent, or failing to be): nothing more to take.
+        guard finding == nil, !shooting, access == .ready, (scan?.sides.count ?? 0) < 2 else { return }
+        guard look.advice == .hold, guide.steady || !guide.available else {
+            holdSince = nil
             return
         }
-        guard let since = inRingSince else {
-            inRingSince = .now
+        guard let since = holdSince else {
+            holdSince = .now
             return
         }
-        if Date.now.timeIntervalSince(since) > 0.35 { shoot() }
+        if Date.now.timeIntervalSince(since) > 0.6 { shoot() }
+    }
+
+    /// Before the next photograph: nothing held over from the last.
+    private func rest() {
+        holdSince = nil
+        lostSince = .now
+        manual = access == .ready && !camera.sees
     }
 
     private func startAgain() {
-        guide.stop()
+        camera.hold(false)
+        front = nil
+        rest()
         withAnimation(.easeInOut(duration: 0.25)) { scan = nil }
     }
 
     /// The photographs taken so far go on.
     private func finish() {
         guard let done = scan else { return }
-        guide.stop()
         took(done)
     }
 
-    // MARK: The shutter
+    // MARK: The bottom
 
     private var bottom: some View {
-        HStack {
-            if let scan {
-                thumbs(scan)
+        ZStack {
+            HStack {
+                if let scan {
+                    thumbs(scan)
+                } else {
+                    Button { library = true } label: {
+                        Image(systemName: "photo.on.rectangle")
+                            .font(.title3)
+                            .rotationEffect(.degrees(tilt))
+                            .frame(width: 52, height: 52)
+                    }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.circle)
+                    .accessibilityLabel("Wybierz ze Zdjęć")
+                }
+                Spacer()
+                if byHand {
+                    StandPlan(taken: number - 1).frame(width: 74, height: 52)
+                }
+            }
+            if byHand {
+                OwnShutter(action: shoot)
             } else {
-                Button { library = true } label: {
-                    Image(systemName: "photo.on.rectangle")
-                        .font(.title3)
-                        .rotationEffect(.degrees(tilt))
-                        .frame(width: 52, height: 52)
-                }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
-                .accessibilityLabel("Wybierz ze Zdjęć")
+                // Where to stand: the photographs take themselves.
+                StandPlan(taken: number - 1).frame(width: 116, height: 78)
             }
-            Spacer()
-            Button(action: shoot) {
-                ZStack {
-                    Circle().strokeBorder(.white, lineWidth: 4).frame(width: 78, height: 78)
-                    Circle().fill(.white).frame(width: 64, height: 64)
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Zrób zdjęcie")
-            Spacer()
-            Color.clear.frame(width: 52, height: 52)
         }
+        .frame(height: 82)
         .disabled(shooting || finding != nil)
         .opacity(finding == nil ? 1 : 0.4)
         .padding(.horizontal, 32)
@@ -335,6 +417,11 @@ struct OwnCamera: View {
 
     private func shoot() {
         guard !shooting else { return }
+        if let scan, scan.sides.count >= 2 {
+            // The three could not be sent a moment ago: once more.
+            took(scan)
+            return
+        }
         if access != .ready {
             guard let demo else {
                 library = true
@@ -349,7 +436,7 @@ struct OwnCamera: View {
             return
         }
         shooting = true
-        inRingSince = nil
+        holdSince = nil
         withAnimation(.easeOut(duration: 0.08)) { flash = true }
         Task {
             try? await Task.sleep(for: .milliseconds(90))
@@ -364,6 +451,7 @@ struct OwnCamera: View {
                 }
                 shots.sides.append(image)
                 if let file { shots.files.append(file) }
+                rest()
                 if shots.sides.count >= 2 {
                     scan = shots
                     finish()
@@ -373,54 +461,34 @@ struct OwnCamera: View {
             }
             return
         }
+        // The work as it is seen from the front, for the helper frames.
+        let seen = upright
         camera.shootFirst { image, file, depth in
             shooting = false
             guard let image else {
                 model.notices.warn("Nie udało się zrobić zdjęcia")
                 return
             }
-            let first = OwnShots(first: image, depth: depth, files: file.map { [$0] } ?? [])
-            // Without the motion sensors there is no dot to follow: one photograph.
-            guard guide.available else {
-                took(first)
-                return
+            front = seen
+            guide.zero()
+            // The side photographs in the first one's light, so that only the reflections differ.
+            camera.hold(true)
+            rest()
+            withAnimation(.easeInOut(duration: 0.25)) {
+                scan = OwnShots(first: image, depth: depth, files: file.map { [$0] } ?? [])
             }
-            guide.start()
-            withAnimation(.easeInOut(duration: 0.25)) { scan = first }
         }
-    }
-}
-
-/// Four corners to put the work between.
-private struct CornerMarks: Shape {
-    func path(in rect: CGRect) -> Path {
-        let arm = min(rect.width, rect.height) * 0.09
-        var path = Path()
-        let corners: [(CGPoint, CGFloat, CGFloat)] = [
-            (CGPoint(x: rect.minX, y: rect.minY), 1, 1), (CGPoint(x: rect.maxX, y: rect.minY), -1, 1),
-            (CGPoint(x: rect.maxX, y: rect.maxY), -1, -1), (CGPoint(x: rect.minX, y: rect.maxY), 1, -1),
-        ]
-        for (point, dx, dy) in corners {
-            path.move(to: CGPoint(x: point.x + dx * arm, y: point.y))
-            path.addLine(to: point)
-            path.addLine(to: CGPoint(x: point.x, y: point.y + dy * arm))
-        }
-        return path
     }
 }
 
 /// How far the phone has turned about the upright since the first
 /// photograph of the three (gyroscope, about the gravity's line, so held
-/// upright or on its side alike). Walking a step to the left while aiming
-/// at the work turns it to the right: the angle between the two views.
+/// upright or on its side alike). Walking to the left while aiming at the
+/// work turns it to the right: the angle between the two views. It stands
+/// in for the work's outline when the camera does not find its edges, and
+/// says when the phone is still.
 @Observable
 final class OwnScanGuide {
-    /// About ten degrees: some 20 cm to the side a metre from the work,
-    /// enough for a lamp's reflection to move off the place it hid.
-    static let step = 10.0 * .pi / 180
-    /// Near enough the ring.
-    static let near = 3.0 * .pi / 180
-
     /// Radians to the left (negative: to the right).
     var turned = 0.0
     /// Not turning just now (the photograph will not blur).
@@ -438,7 +506,7 @@ final class OwnScanGuide {
         last = nil
         guard available else { return }
         motion.stopDeviceMotionUpdates()
-        motion.deviceMotionUpdateInterval = 1.0 / 60
+        motion.deviceMotionUpdateInterval = 1.0 / 30
         motion.startDeviceMotionUpdates(to: .main) { [weak self] data, _ in
             guard let self, let data else { return }
             let g = data.gravity, r = data.rotationRate
@@ -448,8 +516,14 @@ final class OwnScanGuide {
             let rate = -(r.x * g.x + r.y * g.y + r.z * g.z) / length
             if let last { turned += rate * (data.timestamp - last) }
             last = data.timestamp
-            steady = (r.x * r.x + r.y * r.y + r.z * r.z).squareRoot() < 0.25
+            let still = (r.x * r.x + r.y * r.y + r.z * r.z).squareRoot() < 0.25
+            if still != steady { steady = still }
         }
+    }
+
+    /// From here: the first photograph is taken.
+    func zero() {
+        turned = 0
     }
 
     func stop() {
@@ -463,12 +537,29 @@ final class OwnScanGuide {
 /// first photograph comes with the LiDAR's depth, for the work's size; when
 /// the LiDAR's photographs have fewer pixels, it is taken once more at once
 /// with the sharper camera, which takes the rest.
-final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
+final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, AVCaptureVideoDataOutputSampleBufferDelegate,
+    @unchecked Sendable {
     enum Access { case none, ready, denied }
 
     let session = AVCaptureSession()
     private let output = AVCapturePhotoOutput()
     private let queue = DispatchQueue(label: "own-camera")
+    /// The camera's running picture, in which the work's outline is looked for.
+    private let frames = AVCaptureVideoDataOutput()
+    private let looking = DispatchQueue(label: "own-camera-looking")
+    /// The work's outline in the latest picture looked at (0–1 across and
+    /// down the upright screen's picture: top left, top right, bottom
+    /// right, bottom left), or none, and whether the camera has little
+    /// light (on the main thread).
+    var seen: (([CGPoint]?, Bool) -> Void)?
+    /// The running picture is looked at (else there is no outline, ever).
+    private(set) var sees = false
+    /// The camera's focal length in half-widths of the upright screen's picture.
+    private(set) var focal = OwnScanView.focal
+    /// On the looking queue: when the last picture was looked at, and the
+    /// outline found in it.
+    private var looked = Date.distantPast
+    private var last: [CGPoint]?
     /// The photograph being taken, on the camera's queue.
     private var pending: ((AVCapturePhoto?) -> Void)?
     /// How the phone is held, by the horizon (also lying flat over a work
@@ -528,6 +619,15 @@ final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, @unchecke
         guard session.canAddInput(input) else { return }
         session.addInput(input)
         if session.outputs.isEmpty, session.canAddOutput(output) { session.addOutput(output) }
+        if !session.outputs.contains(frames), session.canAddOutput(frames) {
+            // Small pictures, the newest only: the outline is all they are for.
+            frames.alwaysDiscardsLateVideoFrames = true
+            frames.automaticallyConfiguresOutputBufferDimensions = false
+            frames.deliversPreviewSizedOutputBuffers = true
+            frames.setSampleBufferDelegate(self, queue: looking)
+            session.addOutput(frames)
+            sees = true
+        }
         // The photo preset may give a format with fewer pixels than the camera has.
         if let best = Self.sharpest(device, depth: depth),
            Self.pixels(best.size) > Self.pixels(Self.largest(device.activeFormat)),
@@ -539,6 +639,73 @@ final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, @unchecke
         output.maxPhotoQualityPrioritization = .quality
         output.isDepthDataDeliveryEnabled = depth && output.isDepthDataDeliverySupported
         current = device
+        // Across the sensor's long side, which stands upright on the screen.
+        let view = Double(device.activeFormat.videoFieldOfView)
+        if view > 20, view < 150 { focal = 4.0 / 3 / tan(view * .pi / 360) }
+    }
+
+    /// The side photographs in the first one's light and colour (so that
+    /// only the reflections differ between them), or the camera's own
+    /// again.
+    func hold(_ locked: Bool) {
+        queue.async { [self] in
+            guard let device = current, (try? device.lockForConfiguration()) != nil else { return }
+            defer { device.unlockForConfiguration() }
+            let exposure: AVCaptureDevice.ExposureMode = locked ? .locked : .continuousAutoExposure
+            if device.isExposureModeSupported(exposure) { device.exposureMode = exposure }
+            let white: AVCaptureDevice.WhiteBalanceMode = locked ? .locked : .continuousAutoWhiteBalance
+            if device.isWhiteBalanceModeSupported(white) { device.whiteBalanceMode = white }
+        }
+    }
+
+    // MARK: The work's outline
+
+    /// How often the running picture is looked at.
+    private static let pace: TimeInterval = 0.11
+
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        guard Date.now.timeIntervalSince(looked) >= Self.pace, let picture = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        looked = .now
+        let request = VNDetectRectanglesRequest()
+        request.maximumObservations = 6
+        request.minimumConfidence = 0.5
+        request.minimumSize = 0.2
+        request.minimumAspectRatio = 0.2
+        request.quadratureTolerance = 30
+        // The sensor's picture lies on its side when the phone (and the screen) is upright.
+        let handler = VNImageRequestHandler(cvPixelBuffer: picture, orientation: .right, options: [:])
+        try? handler.perform([request])
+        let found = (request.results ?? []).map { box in
+            // Vision counts up from the bottom.
+            [box.topLeft, box.topRight, box.bottomRight, box.bottomLeft].map { CGPoint(x: $0.x, y: 1 - $0.y) }
+        }
+        let outline = Self.work(among: found, last: last)
+        last = outline
+        // A long exposure or a high gain: the photograph will be blurred or grainy.
+        let device = (connection.inputPorts.first?.input as? AVCaptureDeviceInput)?.device
+        let dark = device.map { $0.exposureDuration.seconds >= 0.05 || $0.iso >= 1600 } ?? false
+        DispatchQueue.main.async { [weak self] in self?.seen?(outline, dark) }
+    }
+
+    /// Which of the rectangles in the picture is the work: the one that
+    /// was it a moment ago, else the largest.
+    static func work(among found: [[CGPoint]], last: [CGPoint]?) -> [CGPoint]? {
+        if let last, let same = found.min(by: { OwnScanView.off($0, frame: last) < OwnScanView.off($1, frame: last) }),
+           OwnScanView.off(same, frame: last) < 0.12 {
+            return same
+        }
+        return found.max { area($0) < area($1) }
+    }
+
+    /// The area within an outline (the shoelace's).
+    static func area(_ q: [CGPoint]) -> Double {
+        guard q.count > 2 else { return 0 }
+        var sum = 0.0
+        for index in q.indices {
+            let a = q[index], b = q[(index + 1) % q.count]
+            sum += Double(a.x * b.y - b.x * a.y)
+        }
+        return abs(sum) / 2
     }
 
     private static func pixels(_ size: CMVideoDimensions?) -> Int {
