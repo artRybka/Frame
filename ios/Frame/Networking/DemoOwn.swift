@@ -17,8 +17,9 @@ enum DemoOwn {
 
     private static let context = CIContext()
 
-    /// The photograph, as the camera would give it.
-    static func photo() -> UIImage? {
+    /// The photograph, as the camera would give it; `glare`: the glass's
+    /// reflection on it (without: as two shots merged would give it).
+    static func photo(glare withGlare: Bool = true) -> UIImage? {
         guard let url = Bundle.main.url(forResource: DemoFraming.stem(paintingID), withExtension: "jpg"),
               let painting = CIImage(contentsOf: url)
         else { return nil }
@@ -69,7 +70,7 @@ enum DemoOwn {
         glare.color0 = CIColor(red: 1, green: 1, blue: 1, alpha: 0.28)
         glare.color1 = CIColor(red: 1, green: 1, blue: 1, alpha: 0)
         var out = placed.composited(over: wallCI)
-        if let light = glare.outputImage?.cropped(to: wallCI.extent) { out = light.composited(over: out) }
+        if withGlare, let light = glare.outputImage?.cropped(to: wallCI.extent) { out = light.composited(over: out) }
         guard let cg = context.createCGImage(out, from: wallCI.extent) else { return nil }
         return UIImage(cgImage: cg)
     }

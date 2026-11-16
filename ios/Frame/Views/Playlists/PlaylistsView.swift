@@ -15,6 +15,8 @@ struct PlaylistsView: View {
     @State private var dragged: Int?
     /// "Dodaj własne dzieło" on the whole screen.
     @State private var addingOwn = ["own-start", "own-cut", "own-describe", "own-card"].contains(LaunchRoute.screen)
+    /// Sketches of measuring and scanning with the camera (`OwnScanSketch`).
+    @State private var scanSketch = LaunchRoute.screen == "own-scan"
 
     private var active: PlaylistSummary? {
         guard let id = model.settings?.playlistId else { return nil }
