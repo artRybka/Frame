@@ -75,7 +75,7 @@ struct LooksLikeSection: View {
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .task(id: item.id) {
-            guard item.kind == .artwork,
+            guard item.kind == .artwork || item.isOwnWork,  // his own works too (Mateusz 2026-11-16)
                   let answer = try? await model.backend.looksLike(itemID: item.id, limit: Self.counted)
             else { return }
             withAnimation(.easeOut(duration: 0.25)) { found = answer.items }

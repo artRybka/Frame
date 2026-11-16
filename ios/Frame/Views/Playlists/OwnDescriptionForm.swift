@@ -32,8 +32,8 @@ struct OwnDescriptionForm: View {
                     .shadow(color: .black.opacity(0.18), radius: 12, y: 8)
                     .padding(.top, 4)
             }
-            if readingHints || hints != nil {
-                hintsBanner
+            if readingHints && hints == nil {
+                readingBanner
             }
             field("Tytuł", text: $text.title, prompt: "np. Pejzaż z klifem") {
                 hint(hints?.title, taken: text.title, label: hints.map { "„\($0.title)”" }) { text.title = $0 }
@@ -101,30 +101,18 @@ struct OwnDescriptionForm: View {
 
     // MARK: Hints
 
-    private var hintsBanner: some View {
+    /// While the picture is read; once read, the chips beside the fields
+    /// say it all (Mateusz 2026-11-16: "Podpowiedzi z obrazu… – bez tej
+    /// podpowiedzi").
+    private var readingBanner: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "sparkles")
                 .foregroundStyle(Theme.vermilion)
-            VStack(alignment: .leading, spacing: 3) {
-                if readingHints && hints == nil {
-                    Text("Czytam sygnaturę i technikę z obrazu…")
-                        .font(.subheadline.weight(.medium))
-                } else if let hints {
-                    Text("Podpowiedzi z obrazu")
-                        .font(.subheadline.weight(.medium))
-                    if !hints.signature.isEmpty {
-                        Text("Sygnatura: „\(hints.signature)”\(hints.sure ? "" : " (niepewna)")")
-                            .font(.caption)
-                            .foregroundStyle(Theme.inkSoft)
-                    }
-                    Text("Dotknij podpowiedzi przy polu, żeby ją wpisać.")
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
-                }
-            }
-            .foregroundStyle(Theme.ink)
+            Text("Czytam sygnaturę i technikę z obrazu…")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(Theme.ink)
             Spacer(minLength: 0)
-            if readingHints && hints == nil { ProgressView().controlSize(.small) }
+            ProgressView().controlSize(.small)
         }
         .padding(12)
         .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))

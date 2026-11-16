@@ -412,6 +412,7 @@ struct ItemDetailView: View {
                     .transition(.opacity)
             }
             about(item)
+            ownNote(item)
             studySection(item)
             // Above the facts (Mateusz 2026-11-13: "umieśćmy ją nad blokiem
             // ze słowami kluczowymi, techniką etc.").
@@ -868,9 +869,13 @@ struct ItemDetailView: View {
 
     /// "O dziele": the museum's description, its Polish translation or a
     /// note written by the model, with where the text comes from.
+    /// Of a work of his own: the curator's note as of any work (Mateusz
+    /// 2026-11-16: "powinno mieć normalnie tworzoną notatkę"), his own
+    /// note under it, as he wrote it (`ownNote`).
     @ViewBuilder
     private func about(_ item: Item) -> some View {
-        let text = shownPolish?.full ?? item.description
+        let own = item.isOwnWork
+        let text = shownPolish?.full ?? (own ? "" : item.description)
         if !text.isEmpty || polish != nil || polishWaiting {
             VStack(alignment: .leading, spacing: 10) {
                 Eyebrow("O dziele")
@@ -890,9 +895,21 @@ struct ItemDetailView: View {
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
                 }
-                if let polish { polishOrigin(polish, original: item.description) }
+                if let polish { polishOrigin(polish, original: own ? "" : item.description) }
             }
             .id("about")
+        }
+    }
+
+    /// What he wrote of a work of his own ("Notatka"), word for word.
+    @ViewBuilder
+    private func ownNote(_ item: Item) -> some View {
+        let text = item.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        if item.isOwnWork, !text.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Eyebrow("Twoja notatka")
+                ReadingText(text: text)
+            }
         }
     }
 
