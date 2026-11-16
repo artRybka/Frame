@@ -266,6 +266,14 @@ jobs:
             capture crop 18 "crop-$appearance" -fit description -mat black
             capture original 16 "original-$appearance"
             capture notices 9 "notices-$appearance"
+            # The scan of an own work: the camera's helper as a scene (the
+            # simulator has no camera) and the page after the scan.
+            capture own-scan 10 "own-scan-front-$appearance" -scanLook ready
+            capture own-scan 10 "own-scan-far-$appearance" -scanLook far
+            capture own-scan 10 "own-scan-lost-$appearance" -scanLook lost
+            capture own-scan 10 "own-scan-side-$appearance" -scanLook side
+            capture own-scan 10 "own-scan-match-$appearance" -scanLook match
+            capture own-scan 10 "own-scan-result-$appearance" -scanLook result
             # A picture on its way (demo: 4 s, then 2.5 s preparing, 2.5 s
             # sending, 9 s drawing): the bar while sending, then the frame
             # painted over in watercolour, the drawing held early, midway and

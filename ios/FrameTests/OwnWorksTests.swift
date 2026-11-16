@@ -277,4 +277,13 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertEqual(OwnCameraSession.work(among: [door, moved], last: front), moved)
         XCTAssertNil(OwnCameraSession.work(among: [], last: front))
     }
+
+    /// The handle between the one photograph and the scan follows the
+    /// finger and stays in reach at both ends.
+    func testTheHandleOfTheScanComparisonStaysInReach() {
+        XCTAssertEqual(OwnScanCompare.split(at: 150, width: 300), 0.5, accuracy: 1e-9)
+        XCTAssertEqual(OwnScanCompare.split(at: -20, width: 300), 0.04, accuracy: 1e-9)
+        XCTAssertEqual(OwnScanCompare.split(at: 400, width: 300), 0.96, accuracy: 1e-9)
+        XCTAssertEqual(OwnScanCompare.split(at: 10, width: 0), 0.5, accuracy: 1e-9)
+    }
 }
