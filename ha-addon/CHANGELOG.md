@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.203
+
+- Skan („Inteligentne”) dzieła za szybą: odbicie dłoni i smugi schodzą
+  także z rysunku i z ciemnego tła, a nie tylko z gładkich miejsc obok;
+  po wyjętej lampie nie zostaje ciemny pierścień. Obrazy olejne bez zmian.
+
 ## 1.145.202
 
 - „Skan gotowy” bez pionowego suwaka: przełącznik „Na wprost” |
