@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any
 import anthropic
 import httpx
 from PIL import Image
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from ..imaging.cut import cut_seen
 from ..imaging.layout import load_image
@@ -1600,7 +1600,12 @@ class DailyJob(NoteJob):
         note = self.library.note(item.id, self.kind)
         if not self.fresh(item, note) or note is None or "teaser" not in note.data:
             return None
-        essay = Essay.model_validate(note.data)
+        try:
+            essay = Essay.model_validate(note.data)
+        except ValidationError:
+            # The model's answer as it came, kept a moment before :meth:`apply`
+            # puts its cleaned page in its place (``jobs._keep``): not a page yet.
+            return None
         if note.data.get(BOXES) != BOXES_VERSION:
             essay = mend_boxes(essay, item)
         raw = note.data.get(SEEN)

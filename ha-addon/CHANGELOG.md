@@ -6,6 +6,8 @@
   Europeanie), jest pokazywane z miniatury. Teraz dostaje znaczek niskiej
   rozdzielczości z jej rozmiarem, a w menu „…” pojawia się „Restauracja
   dzieła”, która powiększa tę miniaturę.
+- Stan studium sprawdzany w chwili, gdy odpowiedź modelu jest już zapisana,
+  ale jeszcze nieoczyszczona, nie kończy się błędem serwera.
 
 ## 1.145.191
 
