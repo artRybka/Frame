@@ -51,7 +51,7 @@ struct OwnScanLook: Equatable {
         case .straight: ("Stań na wprost", "arrow.left.and.right", Self.wait)
         case .level: ("Trzymaj telefon prosto", "iphone", Self.wait)
         case .aim: ("Wyceluj w dzieło", "scope", Self.wait)
-        case .turned: ("Nie obracaj telefonu", "figure.walk", Self.wait)
+        case .turned: ("Nie obracaj telefonu", "iphone", Self.wait)
         case .rolled: ("Nie obracaj telefonu", "iphone", Self.wait)
         case .corners: ("Pokaż całe dzieło", "viewfinder", Self.wait)
         case .lost where manual: ("Nie widzę krawędzi dzieła", "viewfinder", .white)
@@ -114,8 +114,8 @@ struct OwnScanLook: Equatable {
 /// 2026-11-16 12:58 UTC: "może wpadniesz na jakiś jeszcze lepszy - np.
 /// celowanie AR? jakieś znaczniki? chciałbym żeby było to możliwie
 /// intuicyjne": one thing to watch, moved by the one thing he does,
-/// walking). A walking figure with arrows the way to walk, and a ring
-/// that fills while the photograph is taken ("trzeba dodać jakiś wskaźnik
+/// walking). Arrows the way to walk, and a ring that fills while the
+/// photograph is taken ("trzeba dodać jakiś wskaźnik
 /// wykonywania zdjęcia - np. wypełniający się okrąg?").
 struct OwnScanOverlay: View {
     let look: OwnScanLook
@@ -300,38 +300,27 @@ struct OwnScanSight: View {
     }
 }
 
-/// Which way to walk: a walking figure and arrowheads before it, lit one
-/// after another that way. The arrowheads alone were read as "turn the
-/// phone that way" (Mateusz 2026-11-16 15:02 UTC: "Odruchem przy
-/// pokazanych strzałkach jest samo przekręcenie telefonu w lewo").
+/// Which way to walk: three arrowheads, lit one after another that way.
+/// (A walking figure went before them for a day, against the arrowheads
+/// being read as "turn the phone that way"; Mateusz 2026-11-16 16:44
+/// UTC: "bez ikonki ludzika".)
 struct OwnScanArrows: View {
     let left: Bool
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 20)) { time in
             let phase = time.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.2) / 1.2
-            HStack(spacing: 2) {
-                if !left { figure }
-                HStack(spacing: -6) {
-                    ForEach(0 ..< 3, id: \.self) { index in
-                        Image(systemName: left ? "chevron.left" : "chevron.right")
-                            .font(.system(size: 24, weight: .heavy))
-                            .opacity(Self.lit(left ? 2 - index : index, at: phase))
-                    }
+            HStack(spacing: -6) {
+                ForEach(0 ..< 3, id: \.self) { index in
+                    Image(systemName: left ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 30, weight: .heavy))
+                        .opacity(Self.lit(left ? 2 - index : index, at: phase))
                 }
-                if left { figure }
             }
             .foregroundStyle(.white)
             .shadow(color: .black.opacity(0.55), radius: 4)
         }
         .accessibilityHidden(true)
-    }
-
-    /// He, walking that way (the symbol walks to the right).
-    private var figure: some View {
-        Image(systemName: "figure.walk")
-            .font(.system(size: 36, weight: .semibold))
-            .scaleEffect(x: left ? -1 : 1)
     }
 
     /// How bright the `step`-th arrowhead along the way is at `phase`

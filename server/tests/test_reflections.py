@@ -68,25 +68,37 @@ def _three() -> tuple[np.ndarray, np.ndarray, list[np.ndarray]]:
     return _coded(scene), first, [left, right]
 
 
-def test_the_veil_and_what_the_glass_mirrors_go_from_the_work() -> None:
+def test_what_the_glass_mirrors_goes_from_the_work_and_its_even_veil_stays() -> None:
     """Mateusz's print behind glass: a veil over all of it in the first
     photograph and his own figure in the middle; the side ones have less
     veil and reflections of their own elsewhere. What comes out is the
-    first photograph without them, every other pixel of it untouched."""
+    first photograph without what had a shape, every other pixel of it
+    untouched. The veil that is even over the whole work stays ("Skany
+    wychodzą chyba odrobinę zbyt kontrastowe i ciemne?", 2026-11-16
+    16:44 UTC: taken off, it left his paintings darker than they are)."""
     clean, first, sides = _three()
     done = merge(first, sides, CORNERS)
-    assert done.used == 2 and 0.1 < done.removed < 0.6
+    assert done.used == 2 and 0.03 < done.removed < 0.6
+
+    def over(img: np.ndarray, where: tuple[slice, slice]) -> float:
+        """How much lighter than the work itself."""
+        return float((img[where].astype(int) - clean[where]).mean())
 
     inner = (slice(Y0 + 40, Y1 - 40), slice(X0 + 60, X1 - 60))
-    before = np.abs(first[inner].astype(int) - clean[inner]).mean()
-    after = np.abs(done.image[inner].astype(int) - clean[inner]).mean()
-    assert before > 30 and after < before / 3
-    # The lamp's place is no worse than the rest.
+    # Where the first photograph had its veil alone.
+    calm = (slice(900, 1080), slice(300, 520))
+    veil = over(first, calm)
+    assert veil > 25 and over(done.image, calm) > veil * 0.8
+    # The lamp's place is as the rest.
     lamp = (slice(540, 660), slice(440, 600))
-    assert np.abs(done.image[lamp].astype(int) - clean[lamp]).mean() < before / 3
+    assert over(first, lamp) > veil + 40
+    assert abs(over(done.image, lamp) - over(done.image, calm)) < 4
     # The window one side photograph had mirrored has left nothing.
     window = (slice(320, 600), slice(580, 840))
-    assert np.abs(done.image[window].astype(int) - clean[window]).mean() < before / 3
+    assert abs(over(done.image, window) - over(done.image, calm)) < 4
+    # Nowhere lighter than it was.
+    assert over(done.image, inner) < over(first, inner)
+    assert (done.image[inner].astype(int) <= first[inner].astype(int) + 1).all()
     # The first photograph's own grain stays: only something smooth went.
     took = first[inner].astype(np.float32) - done.image[inner]
     assert np.abs(took - cv2.GaussianBlur(took, (0, 0), 3)).mean() < 2.5

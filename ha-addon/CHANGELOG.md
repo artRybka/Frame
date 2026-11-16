@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.195
+## 1.145.196
 
 - Restauracja dzieła zachowuje barwy oryginału: z rysunku modelu zostają
   szczegóły, a tony i kolory wracają ze zdjęcia muzeum. Na pięciu pracach
@@ -8,6 +8,21 @@
 - Gdy Nano Banana 2.1 dwa razy zawiedzie (odmowa, brak obrazu albo obraz
   w innych proporcjach), restauracja prosi o rysunek droższy Nano Banana
   Pro. Dotyczy karty dzieła i pakietów Google.
+
+## 1.145.195
+
+- Skan własnego dzieła wychodził ciemniejszy i bardziej kontrastowy niż
+  zdjęcie na wprost. Teraz z dzieła schodzą tylko odbicia o kształcie
+  (lampa, okno, sylwetka), a równy połysk farby i lekka zasłona na szkle
+  zostają, więc cienie nie zapadają się w czerń.
+- Po trzecim zdjęciu nie trzeba już czekać pół minuty. Każde zdjęcie
+  idzie do serwera od razu po zrobieniu, a zaraz po trzecim otwiera się
+  kadrowanie. Serwer łączy zdjęcia w tle, strona „Skan gotowy” pokazuje
+  się po kadrze. Samo łączenie na serwerze jest też szybsze.
+- Aparat: strzałki bez ikonki idącej postaci, obraz na całą szerokość
+  ekranu bez zaokrąglonych rogów, bez przycisku zdjęcia podczas wysyłania.
+- Żółta ramka przy pierwszym zdjęciu lepiej trafia w dzieło: nie zostaje
+  na prostokącie namalowanym w środku obrazu ani na ścianie wokół niego.
 
 ## 1.145.194
 
