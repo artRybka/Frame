@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.145.186
+
+- Skan z trzech zdjęć łączy się po nowemu. Z dzieła za szybą znika welon
+  z całej szyby, odbicie okna i sylwetka fotografującego, a barwy robią
+  się głębsze. Każdy szczegół zostaje ze zdjęcia na wprost; zdjęcia z boku
+  mówią tylko, co jest odbiciem.
+- Dawne łączenie umiało zastąpić tylko małą plamę lampy i przy szybie w
+  jasnym pokoju zostawiało zdjęcie bez zmian.
+- Serwer szuka dzieła na zdjęciu raz: przy łączeniu, a „Szukam dzieła”
+  w aplikacji korzysta potem z tej samej odpowiedzi.
+
 ## 1.145.185
 
 - Własne dzieła w pełnej jakości zdjęcia. Telefon wysyła plik aparatu

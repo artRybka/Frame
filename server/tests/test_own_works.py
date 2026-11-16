@@ -8,6 +8,7 @@ from __future__ import annotations
 import io
 import os
 import time
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -466,3 +467,87 @@ def test_a_veil_over_the_whole_glass_is_left_alone() -> None:
     # One lamp is still taken out.
     one = merge(_glare(work, 300, 400), [work, work])
     assert 0 < one.replaced < MOST
+
+
+def test_three_photographs_of_a_work_behind_glass_are_merged_within_its_corners(
+    service: FrameService,
+) -> None:
+    """Mateusz 2026-11-16 (his print behind glass): the veil over the
+    glass and what it mirrors go within the work's corners, the phone's
+    here; the corners he then sets wider than what was cleaned have the
+    scan's photographs merged once more."""
+    from test_reflections import CORNERS, X0, X1, Y0, Y1, _three
+
+    clean, first, sides = _three()
+
+    def png(img: np.ndarray) -> bytes:
+        out = io.BytesIO()
+        Image.fromarray(img).save(out, "PNG")
+        return out.getvalue()
+
+    inner = (slice(Y0 + 40, Y1 - 40), slice(X0 + 60, X1 - 60))
+
+    # The work's upper rim, beyond the corners the phone saw.
+    rim = (slice(Y0 + 1, Y0 + 7), slice(X0 + 100, X1 - 100))
+
+    def off(path: Path, where: tuple[slice, slice]) -> float:
+        with Image.open(path) as img:
+            got = np.asarray(img.convert("RGB")).astype(int)
+        return float(np.abs(got[where] - clean[where]).mean())
+
+    with _client(service) as client:
+        token = client.post("/api/own/photos", files={"file": ("p.png", png(first))}).json()[
+            "token"
+        ]
+        for photo_ in sides:
+            client.post(f"/api/own/photos/{token}/sides", files={"file": ("s.png", png(photo_))})
+        path = service.own_works.path(token)
+        veiled, veiled_rim = off(path, inner), off(path, rim)
+        # A little within the work: what the phone (or Opus) saw of it.
+        seen = [(0.22, 0.2), (0.78, 0.2), (0.78, 0.8), (0.22, 0.8)]
+        assert (
+            client.post(
+                f"/api/own/photos/{token}/merge", json={"corners": [(0, 0), (0, 0), (0, 0), (0, 0)]}
+            ).status_code
+            == 422
+        )
+        merged = client.post(f"/api/own/photos/{token}/merge", json={"corners": seen})
+        assert merged.status_code == 200, merged.text
+        assert merged.json()["used"] == 2 and merged.json()["replaced"] > 0.1
+        assert merged.json()["corners"] == [list(c) for c in seen]
+        scan = client.get("/api/debug/own-scans").json()[0]
+        assert scan["corners"] == [list(c) for c in seen] and "again" not in scan
+        # Clean within them; the rim beyond still has its veil.
+        assert off(path, inner) < veiled / 3
+        assert off(path, rim) > veiled_rim * 0.8
+
+        added = client.post(
+            "/api/own/works",
+            json={"token": token, "corners": CORNERS, "by": "owner", "text": TEXT},
+        )
+        assert added.status_code == 200, added.text
+        again = client.get("/api/debug/own-scans").json()[0]
+        assert np.allclose(again["corners"], CORNERS, atol=1e-4) and again["again"]
+
+    item = service.library.get(added.json()["id"])
+    assert item is not None
+    whole = service.images.museum_photo(item, urgent=True)
+    assert off(whole, inner) < veiled / 3 and off(whole, rim) < veiled_rim / 2
+
+
+def test_the_work_is_looked_for_once_in_a_scan(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    """With no corners from the phone the merge asks Opus for them, and
+    the phone's own asking after it costs nothing more."""
+    fake.messages.create = lambda **params: (fake.asked.append(params), _message(CORNERS))[1]
+    first = _jpeg(photo())
+    with _client(service) as client:
+        token = client.post("/api/own/photos", files={"file": ("p.jpg", first)}).json()["token"]
+        client.post(f"/api/own/photos/{token}/sides", files={"file": ("s.jpg", first)})
+        merged = client.post(f"/api/own/photos/{token}/merge").json()
+        assert merged["corners"] is not None and merged["shape"] == "rectangle"
+        found = client.post(f"/api/own/photos/{token}/find").json()
+        assert found["corners"] == merged["corners"]
+        assert len(fake.asked) == 1
