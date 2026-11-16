@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.197
+
+- Restauracja dzieła zachowuje barwy oryginału: z rysunku modelu zostają
+  szczegóły, a tony i kolory wracają ze zdjęcia muzeum. Na pięciu pracach
+  de Chirico odchylenie barw spadło z 1,6–6,0 do 0,5–0,8.
+- Gdy Nano Banana 2.1 dwa razy zawiedzie (odmowa, brak obrazu albo obraz
+  w innych proporcjach), restauracja prosi o rysunek droższy Nano Banana
+  Pro. Dotyczy karty dzieła i pakietów Google.
+
 ## 1.145.196
 
 - Pasek barw na karcie dzieła i w Propozycjach dnia jest niższy: 18 pt
