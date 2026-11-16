@@ -240,6 +240,18 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertEqual(OwnScanView.side(target: left, angle: -30, seen: false), .corners)
         XCTAssertEqual(OwnScanView.side(target: left, angle: -30, seen: false, held: true), .corners)
         XCTAssertEqual(OwnScanView.side(target: left, angle: -10, seen: false), .go(left: true))
+        // Walking to the left turns the phone to the right. Turned to the
+        // left instead (the way the arrows point), it was turned, not
+        // walked with ("Odruchem przy pokazanych strzałkach jest samo
+        // przekręcenie telefonu w lewo").
+        XCTAssertEqual(OwnScanView.side(target: left, angle: 0, stray: 14), .turned(left: true))
+        XCTAssertEqual(OwnScanView.side(target: left, angle: 0, stray: 6), .go(left: true))
+        XCTAssertEqual(OwnScanView.side(target: left, angle: -12, stray: -14), .go(left: true))
+        XCTAssertEqual(OwnScanView.side(target: OwnScanView.side, angle: -30, stray: -14), .turned(left: false))
+        XCTAssertEqual(OwnScanView.side(target: OwnScanView.side, angle: -10, stray: 20), .go(left: false))
+        // Too far to the left and coming back: the phone turns to the left.
+        XCTAssertEqual(OwnScanView.side(target: left, angle: -45, stray: 12), .go(left: false))
+        XCTAssertEqual(OwnScanView.side(target: left, angle: -30, stray: 14), .hold)
         let sight = CGSize(width: 300, height: 400)
         XCTAssertEqual(OwnScanSight.radius(in: sight), 33, accuracy: 1e-9)
         XCTAssertTrue(OwnScanSight.inside(CGPoint(x: 0.55, y: 0.45), size: sight))
@@ -249,12 +261,21 @@ final class OwnWorksTests: XCTestCase {
         var look = OwnScanLook(number: 2)
         look.advice = .go(left: true)
         XCTAssertNil(look.pill)
-        XCTAssertEqual(look.line, "Przejdź w lewo, celując w dzieło")
-        look.helper = front
-        XCTAssertEqual(look.line, "Przejdź w lewo, aż dzieło wypełni ramkę")
-        look.helper = nil
+        XCTAssertEqual(look.line, "Zrób krok w lewo, celując w dzieło")
+        XCTAssertEqual(look.walk, true)
         look.advice = .go(left: false)
         XCTAssertEqual(look.line, "Za daleko w bok, wróć trochę")
+        XCTAssertEqual(look.walk, false)
+        // The phone turned where he was to walk, or held another way than
+        // at the first photograph (Mateusz 2026-11-16 15:02 UTC).
+        look.advice = .turned(left: true)
+        XCTAssertEqual(look.pill?.text, "Nie obracaj telefonu")
+        XCTAssertEqual(look.line, "Zrób krok w lewo, a telefon skieruj na dzieło")
+        XCTAssertEqual(look.walk, true)
+        look.advice = .rolled
+        XCTAssertEqual(look.pill?.text, "Nie obracaj telefonu")
+        XCTAssertEqual(look.line, "Trzymaj telefon tak jak przy pierwszym zdjęciu")
+        XCTAssertNil(look.walk)
         look.advice = .nearer
         XCTAssertEqual(look.pill?.text, "Podejdź bliżej")
         look.advice = .aim
@@ -338,24 +359,9 @@ final class OwnWorksTests: XCTestCase {
     }
 
     /// What the helper draws and counts after the first test on the phone
-    /// (Mateusz 2026-11-16 12:53 UTC): the helper frame in the middle of
-    /// the picture, the word held a moment, the gyroscope and the outline
-    /// as one angle, the track's dot, the ring.
+    /// (Mateusz 2026-11-16 12:53 UTC): the word held a moment, the
+    /// gyroscope and the outline as one angle, the plan's dot, the ring.
     func testTheHelperIsSteadyAndInTheMiddle() {
-        // A work that filled the first photograph: from the side its near
-        // half is the larger, and the frame lay against the picture's edge.
-        let wide = [CGPoint(x: 0.06, y: 0.3), CGPoint(x: 0.94, y: 0.3), CGPoint(x: 0.94, y: 0.7), CGPoint(x: 0.06, y: 0.7)]
-        let seen = OwnScanView.seen(wide, from: -30)
-        XCTAssertLessThan(seen.map(\.x).min()!, 0.02)
-        let fitted = OwnScanView.fitted(seen)
-        let xs = fitted.map(\.x), ys = fitted.map(\.y)
-        XCTAssertEqual((xs.min()! + xs.max()!) / 2, 0.5, accuracy: 1e-9)
-        XCTAssertEqual((ys.min()! + ys.max()!) / 2, 0.5, accuracy: 1e-9)
-        XCTAssertLessThanOrEqual(xs.max()! - xs.min()!, 0.84 + 1e-9)
-        // Its shape stays: the left side as much taller as it was.
-        let was = OwnScanView.sides(seen), now = OwnScanView.sides(fitted)
-        XCTAssertEqual(now.left / now.right, was.left / was.right, accuracy: 1e-9)
-
         // The word changes only once something else has been true a moment.
         var steady = OwnScanSteady()
         let start = Date(timeIntervalSinceReferenceDate: 1000)
@@ -384,12 +390,39 @@ final class OwnWorksTests: XCTestCase {
         var bare = OwnScanAngle()
         XCTAssertEqual(bare.fuse(gyro: nil, seen: -25).angle, -25)
         XCTAssertNil(bare.fuse(gyro: nil, seen: nil).angle)
+        // Between the camera's looks the outline is the last one: the
+        // count is not drawn to it, and the phone turned away from the
+        // work in that while is seen to have turned.
+        var turning = OwnScanAngle()
+        XCTAssertEqual(turning.fuse(gyro: 0, seen: 0).stray, 0)
+        let between = turning.fuse(gyro: 9, seen: 0, fresh: false)
+        XCTAssertTrue(between.seen)
+        XCTAssertEqual(between.angle!, 9, accuracy: 1e-9)
+        XCTAssertEqual(between.stray, 9, accuracy: 1e-9)
+        let away = turning.fuse(gyro: 25, seen: nil, fresh: false)
+        XCTAssertFalse(away.seen)
+        XCTAssertEqual(away.stray, 25, accuracy: 1e-9)
+        // Back at the work, the camera finds it: nothing has strayed.
+        XCTAssertEqual(turning.fuse(gyro: 2, seen: 0).stray, 0)
+        // A photograph taken where the camera does not find the work: from there.
+        turning.rest(gyro: -30)
+        XCTAssertEqual(turning.fuse(gyro: -20, seen: nil).stray, 10, accuracy: 1e-9)
 
-        // The track: the front in the middle, the side places at four fifths.
-        XCTAssertEqual(OwnScanTrack.place(0, width: 300), 150, accuracy: 1e-9)
-        XCTAssertEqual(OwnScanTrack.place(-30, width: 300), 30, accuracy: 1e-9)
-        XCTAssertEqual(OwnScanTrack.place(30, width: 300), 270, accuracy: 1e-9)
-        XCTAssertEqual(OwnScanTrack.place(-80, width: 300), 0, accuracy: 1e-9)
+        // The plan: the work above, the place in front under it in the
+        // middle, the side places up the arc to either side.
+        let plan = CGSize(width: 300, height: 64)
+        let before = OwnScanPlan.place(0, in: plan)
+        XCTAssertEqual(before.x, 150, accuracy: 1e-9)
+        XCTAssertEqual(before.y, 47, accuracy: 1e-9)
+        let leftward = OwnScanPlan.place(-30, in: plan), rightward = OwnScanPlan.place(30, in: plan)
+        XCTAssertLessThan(leftward.x, 60)
+        XCTAssertGreaterThan(leftward.x, 17)
+        XCTAssertLessThan(leftward.y, before.y - 10)
+        XCTAssertEqual(leftward.x + rightward.x, 300, accuracy: 1e-9)
+        XCTAssertEqual(leftward.y, rightward.y, accuracy: 1e-9)
+        // The dot stays on the plan however far he goes.
+        XCTAssertEqual(OwnScanPlan.place(-80, in: plan), OwnScanPlan.place(-37.5, in: plan))
+        XCTAssertGreaterThan(OwnScanPlan.place(-80, in: plan).x, 9)
         // The ring fills while the phone is held, and is full while the camera writes.
         let since = Date(timeIntervalSinceReferenceDate: 2000)
         XCTAssertEqual(OwnShotRing.filled(since: nil, taking: false, now: since), 0)

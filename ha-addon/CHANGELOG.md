@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.145.193
+
+- Aparat własnego dzieła: ikonka z trzema miejscami spod pierwszego
+  zdjęcia jest teraz na obrazie aparatu i zostaje na wszystkich trzech
+  ekranach. To plan widziany z góry: dzieło u góry, łuk wokół niego,
+  kropka idzie po łuku tam, gdzie idziesz z telefonem.
+- Zamiast samych strzałek jest idąca postać ze strzałkami i zdanie „Zrób
+  krok w lewo, celując w dzieło”. Gdy telefon zostanie obrócony w
+  miejscu zamiast przejścia w bok, aparat mówi „Nie obracaj telefonu”.
+- Telefon trzymany poziomo: zdania spod obrazu nie leżą już bokiem, są na
+  obrazie, obrócone razem z telefonem.
+- Miniaturki trzech zdjęć u dołu ekranu zniknęły.
+
 ## 1.145.192
 
 - Dzieło, którego oryginału nie da się pobrać (np. martwy odnośnik w

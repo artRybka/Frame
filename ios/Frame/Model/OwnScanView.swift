@@ -158,26 +158,6 @@ enum OwnScanView {
         }
     }
 
-    // MARK: The helper frame
-
-    /// An outline moved to the middle of the picture, and made smaller
-    /// when it takes more than `most` of it across or down: seen from the
-    /// side a work's near half is the larger, so the helper frame of a
-    /// work that filled the first photograph lay against the picture's
-    /// edge (Mateusz 2026-11-16: "przyklejona do krawędzi ekranu zamiast
-    /// być na środku").
-    static func fitted(_ outline: [CGPoint], most: Double = 0.84) -> [CGPoint] {
-        guard let left = outline.map(\.x).min(), let right = outline.map(\.x).max(),
-              let top = outline.map(\.y).min(), let bottom = outline.map(\.y).max()
-        else { return outline }
-        let width = Double(right - left), height = Double(bottom - top)
-        let scale = min(1, width > 0 ? most / width : 1, height > 0 ? most / height : 1)
-        let middle = CGPoint(x: (left + right) / 2, y: (top + bottom) / 2)
-        return outline.map {
-            CGPoint(x: 0.5 + Double($0.x - middle.x) * scale, y: 0.5 + Double($0.y - middle.y) * scale)
-        }
-    }
-
     // MARK: What to say
 
     /// Before the first photograph: the work whole in the picture, large
@@ -203,10 +183,11 @@ enum OwnScanView {
     /// `aim`: how far the work's middle is from the picture's (`offAim`;
     /// 0 when the camera does not see the work). `seen`: the camera sees
     /// the work's four corners now (true where it never did, and there is
-    /// nothing to wait for).
+    /// nothing to wait for). `stray`: how far the phone has turned since
+    /// the camera last found the work (degrees, as the angle counts).
     static func side(
         target: Double, angle: Double, away: Double = 1, fits: Bool = true, aim: Double = 0, seen: Bool = true,
-        held: Bool = false
+        held: Bool = false, stray: Double = 0
     ) -> OwnScanAdvice {
         // Cut off because the phone looks past it, or because it is too near.
         guard fits else { return aim > aimed ? .aim : .farther }
@@ -220,8 +201,20 @@ enum OwnScanView {
             guard seen else { return .corners }
             return aim > (held ? aimed + aimGive : aimed) ? .aim : .hold
         }
-        return .go(left: angle > target)
+        // Walking to the left while aiming at the work turns the phone to
+        // the right. Turned the way the arrows point instead, it looks
+        // away from the work and stands where it stood (Mateusz
+        // 2026-11-16 15:02 UTC: "Odruchem przy pokazanych strzałkach jest
+        // samo przekręcenie telefonu w lewo gdy strzałki pokazują żeby
+        // przejść w lewo").
+        let left = angle > target
+        if (left ? stray : -stray) > strayed { return .turned(left: left) }
+        return .go(left: left)
     }
+
+    /// Turned so far (degrees) the wrong way since the camera last found
+    /// the work, the phone was turned where he was to walk.
+    static let strayed = 10.0
 
     /// How far the work's middle may be from the picture's at a side
     /// photograph, in the picture's short sides: the sight's ring.
@@ -266,6 +259,9 @@ enum OwnScanView {
 struct OwnScanAngle: Equatable {
     /// What the outline has added to the gyroscope's count so far.
     private(set) var offset = 0.0
+    /// The gyroscope's count when the camera last found the work (or the
+    /// last photograph was taken).
+    private(set) var sighted = 0.0
 
     /// The outline is believed when it is this near the count (another
     /// rectangle on the wall is not the work).
@@ -273,13 +269,27 @@ struct OwnScanAngle: Equatable {
     /// How much of the difference one look at the outline takes away.
     static let pull = 0.25
 
-    /// The angle now, and whether the outline was believed. `gyro`: the
-    /// gyroscope's count (nil without one); `seen`: the outline's.
-    mutating func fuse(gyro: Double?, seen: Double?) -> (angle: Double?, seen: Bool) {
-        guard let gyro else { return (seen, seen != nil) }
-        guard let seen, abs(seen - gyro - offset) < Self.agree else { return (gyro + offset, false) }
-        offset += (seen - gyro - offset) * Self.pull
-        return (gyro + offset, true)
+    /// The angle now, whether the outline was believed, and how far the
+    /// phone has turned since the camera last found the work. `gyro`: the
+    /// gyroscope's count (nil without one); `seen`: the outline's;
+    /// `fresh`: the camera has just looked (between its looks the outline
+    /// is the last one, which the count must not be drawn to: turned
+    /// away from the work in that while, the phone seemed to stand
+    /// still and the count went wrong for good).
+    mutating func fuse(gyro: Double?, seen: Double?, fresh: Bool = true) -> (angle: Double?, seen: Bool, stray: Double) {
+        guard let gyro else { return (seen, seen != nil, 0) }
+        guard let seen, abs(seen - gyro - offset) < Self.agree else { return (gyro + offset, false, gyro - sighted) }
+        if fresh {
+            offset += (seen - gyro - offset) * Self.pull
+            sighted = gyro
+        }
+        return (gyro + offset, true, gyro - sighted)
+    }
+
+    /// A photograph is taken with the gyroscope's count at `gyro`: the
+    /// phone's turns are counted from here.
+    mutating func rest(gyro: Double) {
+        sighted = gyro
     }
 }
 
@@ -324,6 +334,12 @@ enum OwnScanAdvice: Equatable {
     case level
     /// Walk on, to the left or to the right.
     case go(left: Bool)
+    /// The phone was turned where he was to walk (to the left or to
+    /// the right): it looks away from the work.
+    case turned(left: Bool)
+    /// The phone is held another way (upright, on its side) than at the
+    /// first photograph.
+    case rolled
     /// Standing right, but the phone looks past the work: aim at it.
     case aim
     /// Standing right, but the work's four corners are not all seen.

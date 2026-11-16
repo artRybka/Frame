@@ -276,13 +276,12 @@ jobs:
             capture own-scan 10 "own-scan-side-$appearance" -scanLook side
             capture own-scan 10 "own-scan-match-$appearance" -scanLook match
             capture own-scan 10 "own-scan-aim-$appearance" -scanLook aim
+            capture own-scan 10 "own-scan-turned-$appearance" -scanLook turned
             capture own-scan 10 "own-scan-right-$appearance" -scanLook right
-            # The other way to the side photographs: the helper frame with
-            # the first photograph's work in it; and the phone on its side.
-            capture own-scan 10 "own-scan-frame-side-$appearance" -scanLook side -scanGuide frame
-            capture own-scan 10 "own-scan-frame-match-$appearance" -scanLook match -scanGuide frame
-            capture own-scan 10 "own-scan-held-side-$appearance" -scanLook side -scanHeld left
-            capture own-scan 10 "own-scan-result-$appearance" -scanLook result
+            # The phone on its side: what is said turns with it.
+            capture own-scan 12 "own-scan-held-side-$appearance" -scanLook side -scanHeld left
+            capture own-scan 12 "own-scan-held-front-$appearance" -scanLook front -scanHeld left
+            capture own-scan 12 "own-scan-result-$appearance" -scanLook result
             # A picture on its way (demo: 4 s, then 2.5 s preparing, 2.5 s
             # sending, 9 s drawing): the bar while sending, then the frame
             # painted over in watercolour, the drawing held early, midway and

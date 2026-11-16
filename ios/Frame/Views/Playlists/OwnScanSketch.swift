@@ -5,16 +5,14 @@ import SwiftUI
 /// The scan's camera as the screenshots show it (the simulator has no
 /// camera): the demo's wall photograph, turned as the wall shows from the
 /// side, under the camera's own overlay and words. `-screen own-scan
-/// -scanLook front | ready | far | near | lost | side | match | aim | right
-/// | result` ("aim": standing right with the phone looking past the work;
-/// "result": the page after the scan, `OwnScanResult`), with
-/// `-scanGuide frame` the helper frame in place of the track, with
+/// -scanLook front | ready | far | near | lost | side | match | aim |
+/// turned | right | result` ("aim": standing right with the phone looking
+/// past the work; "turned": the phone turned to the left where he was to
+/// walk there; "result": the page after the scan, `OwnScanResult`), with
 /// `-scanHeld left` the phone on its side.
 struct OwnScanSketch: View {
     let close: () -> Void
     let name = UserDefaults.standard.string(forKey: "scanLook") ?? "side"
-    /// The way to the side photographs as the helper frame, not the track.
-    let framed = UserDefaults.standard.string(forKey: "scanGuide") == "frame"
     /// The phone held with its top to the left: what is said over the
     /// picture turns (the scene's wall stays as it is).
     let quarter = UserDefaults.standard.string(forKey: "scanHeld") == "left" ? 1 : 0
@@ -33,7 +31,7 @@ struct OwnScanSketch: View {
 
     private var target: Double? {
         switch name {
-        case "side", "match", "aim": -OwnScanView.side
+        case "side", "match", "aim", "turned": -OwnScanView.side
         case "right": OwnScanView.side
         default: nil
         }
@@ -50,7 +48,7 @@ struct OwnScanSketch: View {
 
     /// How far the phone looks past the work: the wall shows so much to
     /// the side (of the picture's width).
-    private var past: Double { name == "aim" ? 0.17 : name == "side" ? 0.06 : 0 }
+    private var past: Double { name == "aim" ? 0.17 : name == "side" ? 0.06 : name == "turned" ? 0.52 : 0 }
 
     private var look: OwnScanLook {
         let live = OwnScanView.seen(front, from: stands)
@@ -58,8 +56,11 @@ struct OwnScanSketch: View {
         var look = OwnScanLook(number: target == nil ? 1 : (name == "right" ? 3 : 2))
         look.manual = name == "lost"
         look.quarter = quarter
-        if let target {
-            look.helper = framed ? helper : nil
+        if let target, name == "turned" {
+            // The work has left the picture: the gyroscope alone counts.
+            look.angle = stands
+            look.advice = OwnScanView.side(target: target, angle: stands, stray: 22)
+        } else if let target {
             look.angle = stands
             look.live = live
             look.aim = OwnScanView.middle(live)
@@ -71,17 +72,6 @@ struct OwnScanSketch: View {
             if look.advice == .hold, name == "front" { look.advice = .straight }
         }
         return look
-    }
-
-    /// The helper frame: the work from where the next photograph is taken.
-    private var helper: [CGPoint]? {
-        target.map { OwnScanView.fitted(OwnScanView.seen(front, from: $0)) }
-    }
-
-    /// The work of the first photograph in the helper frame.
-    private var ghost: UIImage? {
-        guard framed, let helper, let photo = DemoOwn.photo() else { return nil }
-        return OwnScanGhost.picture(of: photo, corners: front, onto: helper)
     }
 
     /// The ring as it is a moment before the photograph.
@@ -145,26 +135,19 @@ struct OwnScanSketch: View {
                 Image(uiImage: photo).resizable().scaledToFill().scaleEffect(zoom)
                     .visualEffect { [past] content, proxy in content.offset(x: proxy.size.width * past) }
             }
-            OwnScanOverlay(look: look, ghost: ghost, holding: holding)
+            OwnScanOverlay(look: look, holding: holding)
         }
         .aspectRatio(3 / 4, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .padding(.horizontal, 8)
     }
 
-    /// Where to stand; the shutter only when the work cannot be found.
+    /// The shutter, only when the work cannot be found.
     private var bottom: some View {
         ZStack {
-            if look.manual {
-                OwnShutter {}
-                StandPlan(taken: look.number - 1)
-                    .frame(width: 74, height: 52)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            } else if look.number == 1 || framed {
-                StandPlan(taken: look.number - 1)
-                    .frame(width: 116, height: 78)
-            }
+            if look.manual { OwnShutter {} }
         }
+        .frame(maxWidth: .infinity)
         .frame(height: 82)
         .padding(.horizontal, 32)
         .padding(.bottom, 12)
