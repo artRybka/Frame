@@ -161,7 +161,7 @@ struct OwnScanSketch: View {
     private var result: some View {
         if let before = DemoOwn.photo().map({ OwnPicture.cut($0, corners: DemoOwn.work) }),
            let after = DemoOwn.photo(glare: 0).map({ OwnPicture.cut($0, corners: DemoOwn.work) }) {
-            OwnScanResult(before: before, after: after, again: close, next: {})
+            OwnScanResult(before: before, after: after, again: close, next: { _ in })
         }
     }
 

@@ -170,3 +170,97 @@ def test_the_shine_of_the_work_itself_is_no_reflection() -> None:
     assert np.abs(now / now.mean() - was / was.mean()).max() < 0.1
     # The letters keep their gold.
     assert after[letters].mean() > before[letters].mean() * 0.9
+
+
+def test_a_sheen_on_the_paint_goes_from_its_ridges_and_no_furrow_goes_black() -> None:
+    """His oil portrait without glass (2026-11-16 19:01 UTC, "chyba działa
+    zbyt punktowo i z ostrym odcięciem"): the window's sheen lies on the
+    ridges of the paint and not in the furrows between them. Taken off
+    every place alike it left the furrows black and the ridges shining."""
+    scene = _scene()
+    # Strokes of paint: a ridge every sixteen pixels, a furrow between.
+    ridge = np.zeros((H, W), bool)
+    ridge[:, (np.arange(W) % 16) < 8] = True
+    work = np.zeros((H, W), bool)
+    work[Y0:Y1, X0:X1] = True
+    scene[work & ~ridge] *= 0.45
+    lit = np.zeros((H, W), bool)
+    lit[Y0 + 150 : Y0 + 500, X0 + 120 : X0 + 520] = True
+    sheen = np.zeros((H, W, 3), np.float32)
+    sheen[lit & ridge] = np.float32([0.2, 0.22, 0.25])
+    sheen = cv2.GaussianBlur(sheen, (0, 0), 0.8)
+    clean = _coded(scene)
+    first = _coded(scene + sheen)
+    left = _coded(_from_side(scene, -1) * 0.95)
+    right = _coded(_from_side(scene, 1) * 1.05)
+    done = merge(first, [left, right], CORNERS)
+    assert done.used == 2 and done.removed > 0.02
+
+    inner = cv2.erode(lit.astype(np.uint8), np.ones((41, 41), np.uint8)).astype(bool)
+    furrow = inner & ~cv2.dilate(ridge.astype(np.uint8), np.ones((1, 3), np.uint8)).astype(bool)
+    top = inner & cv2.erode(ridge.astype(np.uint8), np.ones((1, 3), np.uint8)).astype(bool)
+    was, now, is_ = (img.astype(np.float32) for img in (first, done.image, clean))
+    # The sheen is mostly gone from the ridges.
+    assert (now[top] - is_[top]).mean() < (was[top] - is_[top]).mean() * 0.5
+    # And the furrows are as dark as they are, no darker.
+    assert now[furrow].mean() > is_[furrow].mean() * 0.85
+    assert np.percentile(now[furrow], 2) > np.percentile(is_[furrow], 2) * 0.6
+
+
+def test_under_a_lamp_that_burnt_the_photograph_the_work_is_what_the_sides_tell() -> None:
+    """His sixteen cows behind glass (2026-11-16 18:16 UTC): the lamp in
+    the glass had burnt the first photograph white over one of them, and
+    nothing of the work was left under it to keep; taken off, it left a
+    patch of colour. Both side photographs show the cow whole."""
+    scene = _scene()
+    yy, xx = np.mgrid[0:H, 0:W]
+    lamp = np.exp(-(((xx - 520) / 45.0) ** 2 + ((yy - 600) / 35.0) ** 2)).astype(np.float32) * 3
+    clean = _coded(scene)
+    first = _coded(scene + _glass(0.05, None, None) + lamp[..., None])
+    left = _coded(_from_side(scene + _glass(0.12, None, None), -1) * 0.9)
+    right = _coded(_from_side(scene + _glass(0.1, None, None), 1) * 1.1)
+    done = merge(first, [left, right], CORNERS)
+    assert done.used == 2
+
+    burnt = lamp > 1.5
+    assert (first[burnt] > 250).mean() > 0.95
+    calm = (slice(900, 1080), slice(300, 520))
+    veil = float((done.image[calm].astype(int) - clean[calm]).mean())
+    off = done.image[burnt].astype(np.float32) - clean[burnt] - veil
+    # The work is there again, in its own colours (grain and all it is
+    # not: the side photographs are smaller).
+    assert abs(float(off.mean())) < 12
+    assert (
+        np.abs(cv2.GaussianBlur(done.image.astype(np.float32) - clean - veil, (0, 0), 4))[
+            burnt
+        ].mean()
+        < 14
+    )
+
+
+def test_views_that_do_not_show_one_flat_work_change_nothing() -> None:
+    """His collage of a mirror, foil and a circuit board in relief
+    (2026-11-16 19:00 UTC): each photograph shows another thing in the
+    mirror and another shine on the foil. No reflection can be told from
+    the work there, and what was made of the three was worse than the
+    one photograph."""
+    scene = _scene()
+
+    def seen(seed: int) -> np.ndarray:
+        rng = np.random.default_rng(seed)
+        light = scene.copy()
+        # Its own picture in every other tile of the work.
+        own = cv2.resize(
+            rng.uniform(0.02, 0.7, (18, 14, 3)).astype(np.float32),
+            (X1 - X0, Y1 - Y0),
+            interpolation=cv2.INTER_NEAREST,
+        )
+        tiles = (np.add.outer(np.arange(Y1 - Y0) // 50, np.arange(X1 - X0) // 50) % 2) == 0
+        light[Y0:Y1, X0:X1][tiles] = own[tiles]
+        return light
+
+    first = _coded(seen(1))
+    left = _coded(_from_side(seen(2), -1) * 0.95)
+    right = _coded(_from_side(seen(3), 1) * 1.05)
+    done = merge(first, [left, right], CORNERS)
+    assert done.used == 2 and done.removed == 0 and done.image is first

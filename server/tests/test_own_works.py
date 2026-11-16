@@ -545,6 +545,36 @@ def test_three_photographs_of_a_work_behind_glass_are_merged_within_its_corners(
     whole = service.images.museum_photo(item, urgent=True)
     assert off(whole, inner) < veiled / 2 and off(whole, rim) < veiled_rim / 2
 
+    # "Jedno zdjęcie" on the page that shows the two (2026-11-16 19:00
+    # UTC): the first photograph as it came is the work, lamps and all,
+    # and his wider corners do not merge the scan's again.
+    with _client(service) as client:
+        token = client.post("/api/own/photos", files={"file": ("p.png", png(first))}).json()[
+            "token"
+        ]
+        assert client.post(f"/api/own/photos/{token}/single").status_code == 404  # no scan yet
+        for photo_ in sides:
+            client.post(f"/api/own/photos/{token}/sides", files={"file": ("s.png", png(photo_))})
+        path = service.own_works.path(token)
+        assert client.post(f"/api/own/photos/{token}/merge", json={"outline": seen}).json()[
+            "replaced"
+        ]
+        assert off(path, inner) < veiled / 2
+        assert client.post(f"/api/own/photos/{token}/single").json() == {"single": True}
+        assert off(path, inner) > veiled * 0.9
+        added = client.post(
+            "/api/own/works",
+            json={"token": token, "corners": CORNERS, "by": "owner", "text": TEXT},
+        )
+        assert added.status_code == 200, added.text
+        kept = client.get("/api/debug/own-scans").json()[0]
+        assert kept["single"] and "again" not in kept
+        assert client.post("/api/own/photos/nope/single").status_code == 404
+    item = service.library.get(added.json()["id"])
+    assert item is not None
+    whole = service.images.museum_photo(item, urgent=True)
+    assert off(whole, inner) > veiled * 0.9
+
 
 def test_the_work_is_looked_for_once_in_a_scan(
     service: FrameService,
