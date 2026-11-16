@@ -50,6 +50,10 @@ struct OwnCamera: View {
     let close: () -> Void
     /// The photographs taken, or the one picked.
     let took: (OwnShots) -> Void
+    /// A scan's photographs so far, when one is taken and more are to
+    /// come (nil: the scan is begun anew): they can be on their way to the
+    /// server while he walks to the side.
+    var early: ((OwnShots?) -> Void)? = nil
     /// The server is looking at the photograph: it stays, frozen, under a word.
     var finding: UIImage? = nil
     var findingText = "Szukam dzieła na zdjęciu…"
@@ -333,8 +337,9 @@ struct OwnCamera: View {
             if flash { Color.white.transition(.opacity) }
         }
         .aspectRatio(3 / 4, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .padding(.horizontal, 8)
+        // Across the whole screen, square (Mateusz 2026-11-16 16:44 UTC:
+        // "Na pełną szerokość ekranu? Może bez wyoblonych narożników?").
+        .clipped()
         .animation(.easeOut(duration: 0.25), value: finding == nil)
     }
 
@@ -416,6 +421,7 @@ struct OwnCamera: View {
         front = nil
         stands = OwnScanAngle()
         withAnimation(.easeInOut(duration: 0.25)) { scan = nil }
+        early?(nil)
         rest()
     }
 
@@ -454,7 +460,10 @@ struct OwnCamera: View {
         }
         .frame(height: 82)
         .disabled(shooting || finding != nil)
-        .opacity(finding == nil ? 1 : 0.4)
+        // Nothing to press while the photographs are sent and made one
+        // (Mateusz 2026-11-16 16:55 UTC: "na tym etapie na pewno nie
+        // powinno być guzika robienia zdjęcia").
+        .opacity(finding == nil ? 1 : 0)
         .padding(.horizontal, 32)
         .padding(.bottom, 12)
     }
@@ -473,7 +482,12 @@ struct OwnCamera: View {
             }
             if var shots = scan {
                 shots.sides.append(demo)
-                if shots.sides.count >= 2 { took(shots) } else { scan = shots }
+                if shots.sides.count >= 2 {
+                    took(shots)
+                } else {
+                    scan = shots
+                    early?(shots)
+                }
             } else {
                 took(OwnShots(first: demo))
             }
@@ -498,6 +512,7 @@ struct OwnCamera: View {
                     finish()
                 } else {
                     withAnimation(.easeInOut(duration: 0.25)) { scan = shots }
+                    early?(shots)
                     rest()
                 }
             }
@@ -518,12 +533,12 @@ struct OwnCamera: View {
             front = seen
             // The side photographs in the first one's light, so that only the reflections differ.
             camera.hold(true)
-            withAnimation(.easeInOut(duration: 0.25)) {
-                scan = OwnShots(
-                    first: image, depth: depth, files: file.map { [$0] } ?? [],
-                    outline: seen.map { $0.map { [Double($0.x), Double($0.y)] } }
-                )
-            }
+            let shots = OwnShots(
+                first: image, depth: depth, files: file.map { [$0] } ?? [],
+                outline: seen.map { $0.map { [Double($0.x), Double($0.y)] } }
+            )
+            withAnimation(.easeInOut(duration: 0.25)) { scan = shots }
+            early?(shots)
             rest()
         }
     }
@@ -633,6 +648,8 @@ final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, AVCapture
     /// outline found in it.
     private var looked = Date.distantPast
     private var last: [CGPoint]?
+    /// Looks in a row in which the work was not found and a part of it was.
+    private var missed = 0
     /// The photograph being taken, on the camera's queue.
     private var pending: ((AVCapturePhoto?) -> Void)?
     /// How the phone is held, by the horizon (also lying flat over a work
@@ -740,11 +757,13 @@ final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, AVCapture
         guard Date.now.timeIntervalSince(looked) >= Self.pace, let picture = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         looked = .now
         let request = VNDetectRectanglesRequest()
-        request.maximumObservations = 6
+        request.maximumObservations = 8
         request.minimumConfidence = 0.5
         request.minimumSize = 0.2
         request.minimumAspectRatio = 0.2
-        request.quadratureTolerance = 30
+        // A work hung high and photographed from below: its corners are
+        // well off square (30 lost his painting of bottles in most looks).
+        request.quadratureTolerance = 40
         // The sensor's picture lies on its side when the phone (and the screen) is upright.
         let handler = VNImageRequestHandler(cvPixelBuffer: picture, orientation: .right, options: [:])
         try? handler.perform([request])
@@ -752,8 +771,9 @@ final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, AVCapture
             // Vision counts up from the bottom.
             [box.topLeft, box.topRight, box.bottomRight, box.bottomLeft].map { CGPoint(x: $0.x, y: 1 - $0.y) }
         }
-        let outline = Self.work(among: found, last: last)
+        let (outline, slipped) = Self.kept(Self.work(among: found, last: last), was: last, missed: missed)
         last = outline
+        missed = slipped
         // A long exposure or a high gain: the photograph will be blurred or grainy.
         let device = (connection.inputPorts.first?.input as? AVCaptureDeviceInput)?.device
         let dark = device.map { $0.exposureDuration.seconds >= 0.05 || $0.iso >= 1600 } ?? false
@@ -761,14 +781,65 @@ final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, AVCapture
     }
 
     /// Which of the rectangles in the picture is the work: the one that
-    /// was it a moment ago, else the largest.
+    /// was it a moment ago, else the largest that is wholly in the picture.
+    ///
+    /// The one followed gives way in two cases (Mateusz 2026-11-16 16:44
+    /// UTC, his painting of bottles photographed from below, "bywa że
+    /// przy robieniu pierwszego zdjęcia program nie łapie kształtu
+    /// obrazu"): it lies within a clearly larger one (it was the blue
+    /// rectangle painted in the middle of the work), or it runs out of the
+    /// picture while another does not (it was the wall about the work with
+    /// its shadow).
     static func work(among found: [[CGPoint]], last: [CGPoint]?) -> [CGPoint]? {
-        if let last, let same = found.min(by: { OwnScanView.off($0, frame: last) < OwnScanView.off($1, frame: last) }),
-           OwnScanView.off(same, frame: last) < 0.12 {
-            return same
-        }
-        return found.max { area($0) < area($1) }
+        let seen = found.filter(whole)
+        let largest = (seen.isEmpty ? found : seen).max { area($0) < area($1) }
+        guard let last, let same = found.min(by: { OwnScanView.off($0, frame: last) < OwnScanView.off($1, frame: last) }),
+              OwnScanView.off(same, frame: last) < 0.12
+        else { return largest }
+        guard let largest, whole(largest) else { return same }
+        if !whole(same) || part(same, of: largest) { return largest }
+        return same
     }
+
+    /// Nearer the picture's edge than this (of its side), a corner is
+    /// taken to lie beyond it.
+    static let edge: CGFloat = 0.015
+    /// So many times the area of the one followed, a rectangle about it
+    /// is the work and the one followed a part of it. (A frame about its
+    /// canvas is less: the outline does not jump between the two.)
+    static let outgrown = 1.5
+
+    /// All of the outline is in the picture.
+    static func whole(_ q: [CGPoint]) -> Bool {
+        q.allSatisfy { min($0.x, $0.y, 1 - $0.x, 1 - $0.y) > edge }
+    }
+
+    /// `inner` lies within `outer` and is clearly smaller.
+    static func part(_ inner: [CGPoint], of outer: [CGPoint]) -> Bool {
+        guard outer.count == 4, area(outer) > area(inner) * outgrown else { return false }
+        // A little more about its middle: the two are seen a few pixels apart.
+        let m = OwnScanView.middle(outer)
+        let wide = outer.map { CGPoint(x: m.x + ($0.x - m.x) * 1.04, y: m.y + ($0.y - m.y) * 1.04) }
+        return inner.allSatisfy { point in
+            let turns = wide.indices.map { index -> CGFloat in
+                let a = wide[index], b = wide[(index + 1) % wide.count]
+                return (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x)
+            }
+            return turns.allSatisfy { $0 >= 0 } || turns.allSatisfy { $0 <= 0 }
+        }
+    }
+
+    /// The outline to show after a look that found `now`, when `was` was
+    /// shown before it: the work itself slips a look now and then (seen
+    /// from below, its corners are far from square) while a part of it is
+    /// still found, and for `patience` looks the work stays.
+    static func kept(_ now: [CGPoint]?, was: [CGPoint]?, missed: Int) -> (outline: [CGPoint]?, missed: Int) {
+        guard let now, let was, missed < patience, part(now, of: was) else { return (now, 0) }
+        return (was, missed + 1)
+    }
+
+    /// Looks (of `pace`) the work is kept for when only a part of it is found.
+    static let patience = 4
 
     /// The area within an outline (the shoelace's).
     static func area(_ q: [CGPoint]) -> Double {

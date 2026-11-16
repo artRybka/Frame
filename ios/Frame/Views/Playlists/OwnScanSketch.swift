@@ -138,8 +138,9 @@ struct OwnScanSketch: View {
             OwnScanOverlay(look: look, holding: holding)
         }
         .aspectRatio(3 / 4, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .padding(.horizontal, 8)
+        // Across the whole screen, square (Mateusz 2026-11-16 16:44 UTC:
+        // "Na pełną szerokość ekranu? Może bez wyoblonych narożników?").
+        .clipped()
     }
 
     /// The shutter, only when the work cannot be found.

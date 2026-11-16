@@ -472,23 +472,26 @@ def test_a_veil_over_the_whole_glass_is_left_alone() -> None:
 def test_three_photographs_of_a_work_behind_glass_are_merged_within_its_corners(
     service: FrameService,
 ) -> None:
-    """Mateusz 2026-11-16 (his print behind glass): the veil over the
-    glass and what it mirrors go within the work's corners, the phone's
-    here; the corners he then sets wider than what was cleaned have the
-    scan's photographs merged once more."""
-    from test_reflections import CORNERS, X0, X1, Y0, Y1, _three
+    """Mateusz 2026-11-16 (his print behind glass): what the glass
+    mirrors goes within the work's corners, the phone's here; the
+    corners he then sets wider than what was cleaned have the scan's
+    photographs merged once more."""
+    from test_reflections import CORNERS, Y0, _coded, _glass, _scene, _three
 
     clean, first, sides = _three()
+    # One lamp more, mirrored at the work's upper rim.
+    first = _coded(_scene() + _glass(0.14, None, (520, 600)) + _glass(0, None, (550, Y0 + 4)))
 
     def png(img: np.ndarray) -> bytes:
         out = io.BytesIO()
         Image.fromarray(img).save(out, "PNG")
         return out.getvalue()
 
-    inner = (slice(Y0 + 40, Y1 - 40), slice(X0 + 60, X1 - 60))
+    # The lamp in the middle of the work.
+    inner = (slice(540, 660), slice(440, 600))
 
-    # The work's upper rim, beyond the corners the phone saw.
-    rim = (slice(Y0 + 1, Y0 + 7), slice(X0 + 100, X1 - 100))
+    # The one at its upper rim, beyond the corners the phone saw.
+    rim = (slice(Y0 + 1, Y0 + 7), slice(470, 630))
 
     def off(path: Path, where: tuple[slice, slice]) -> float:
         with Image.open(path) as img:
@@ -521,12 +524,12 @@ def test_three_photographs_of_a_work_behind_glass_are_merged_within_its_corners(
             client.post(f"/api/own/photos/{token}/sides", files={"file": ("s.png", png(photo_))})
         merged = client.post(f"/api/own/photos/{token}/merge", json={"outline": seen})
         assert merged.status_code == 200, merged.text
-        assert merged.json()["used"] == 2 and merged.json()["replaced"] > 0.1
+        assert merged.json()["used"] == 2 and merged.json()["replaced"] > 0.03
         assert merged.json()["corners"] == [list(c) for c in seen]
         scan = client.get("/api/debug/own-scans").json()[0]
         assert scan["corners"] == [list(c) for c in seen] and "again" not in scan
-        # Clean within them; the rim beyond still has its veil.
-        assert off(path, inner) < veiled / 3
+        # No lamp within them; the one at the rim beyond is still there.
+        assert off(path, inner) < veiled / 2
         assert off(path, rim) > veiled_rim * 0.8
 
         added = client.post(
@@ -540,7 +543,7 @@ def test_three_photographs_of_a_work_behind_glass_are_merged_within_its_corners(
     item = service.library.get(added.json()["id"])
     assert item is not None
     whole = service.images.museum_photo(item, urgent=True)
-    assert off(whole, inner) < veiled / 3 and off(whole, rim) < veiled_rim / 2
+    assert off(whole, inner) < veiled / 2 and off(whole, rim) < veiled_rim / 2
 
 
 def test_the_work_is_looked_for_once_in_a_scan(
