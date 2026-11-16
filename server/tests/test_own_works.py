@@ -9,6 +9,8 @@ import io
 import os
 import time
 
+import cv2
+import numpy as np
 from fastapi.testclient import TestClient
 from PIL import Image
 from test_ai import FakeAnthropic, _message, fake  # noqa: F401  (fixture)
@@ -255,3 +257,80 @@ def test_a_work_of_his_own_gets_a_curators_note_with_his_words_kept() -> None:
         "ok. 1965",
         "olej na płótnie",
     )
+
+
+def _glare(img: np.ndarray, cx: int, cy: int) -> np.ndarray:
+    yy, xx = np.mgrid[0 : img.shape[0], 0 : img.shape[1]]
+    g = np.exp(-(((xx - cx) / 90) ** 2 + ((yy - cy) / 60) ** 2)) * 0.85
+    return np.clip(img * (1 - g[..., None]) + 255 * g[..., None], 0, 255).astype(np.uint8)
+
+
+def test_the_lamps_reflection_is_taken_out_by_two_photographs_from_the_side(
+    service: FrameService,
+) -> None:
+    """The scan of three (Mateusz 2026-11-16): where the first photograph
+    has a glare the side ones have not, their pixels take its place; the
+    rest of it is left as it was."""
+    rng = np.random.default_rng(1)
+    h, w = 1600, 1200
+    work = cv2.resize(
+        rng.integers(0, 200, (40, 30, 3), dtype=np.uint8), (w, h), interpolation=cv2.INTER_CUBIC
+    )
+    work = cv2.add(work, rng.integers(0, 30, (h, w, 3), dtype=np.uint8))
+
+    def side(dx: int, cx: int) -> np.ndarray:
+        src = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
+        dst = np.float32([[dx, 10], [w + dx * 0.7, -15], [w + dx, h + 5], [dx * 1.2, h]])
+        seen = cv2.warpPerspective(
+            work, cv2.getPerspectiveTransform(src, dst), (w, h), borderValue=(90, 90, 90)
+        )
+        return _glare(seen, cx, 500)
+
+    def png(img: np.ndarray) -> bytes:
+        out = io.BytesIO()
+        Image.fromarray(img).save(out, "PNG")
+        return out.getvalue()
+
+    first = _glare(work, 400, 500)
+    with _client(service) as client:
+        token = client.post("/api/own/photos", files={"file": ("p.png", png(first))}).json()[
+            "token"
+        ]
+        for n, (dx, cx) in enumerate([(-60, 700), (60, 150)], start=1):
+            sent = client.post(
+                f"/api/own/photos/{token}/sides", files={"file": ("s.png", png(side(dx, cx)))}
+            )
+            assert sent.status_code == 200, sent.text
+            assert sent.json() == {"sides": n}
+        assert (
+            client.post(
+                f"/api/own/photos/{token}/sides", files={"file": ("s.png", png(first))}
+            ).status_code
+            == 422
+        )
+        merged = client.post(f"/api/own/photos/{token}/merge")
+        assert merged.status_code == 200, merged.text
+        assert merged.json()["used"] == 2 and 0.003 < merged.json()["replaced"] < 0.05
+        assert (merged.json()["width"], merged.json()["height"]) == (w, h)
+        assert client.post("/api/other/photos/x/merge").status_code == 404
+        assert client.post("/api/own/photos/0123456789abcdef01234567/merge").status_code == 404
+
+    with Image.open(service.own_works.path(token)) as img:
+        out = np.asarray(img.convert("RGB")).astype(int)
+    lamp = (slice(450, 550), slice(330, 470))
+    assert np.abs(first[lamp].astype(int) - work[lamp]).mean() > 60
+    assert np.abs(out[lamp] - work[lamp]).mean() < 12
+    # Away from the glare only the JPEG has touched it (the noise is fine grained).
+    away = (slice(1000, 1500), slice(100, 1100))
+    assert np.abs(out[away] - first[away]).mean() < 9
+    assert not list(service.own_works.incoming.glob(f"{token}-side*"))
+
+
+def test_side_photographs_of_something_else_change_nothing() -> None:
+    from frame_server.imaging.glare import merge
+
+    rng = np.random.default_rng(2)
+    first = rng.integers(0, 255, (600, 450, 3), dtype=np.uint8)
+    other = rng.integers(0, 255, (600, 450, 3), dtype=np.uint8)
+    done = merge(first, [other])
+    assert done.used == 0 and done.replaced == 0 and done.image is first
