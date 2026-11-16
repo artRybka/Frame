@@ -124,7 +124,29 @@ EMPTY_CHECK_FOR = timedelta(minutes=3)
 # early, the panel's clock ran 138 s fast on 2026-11-06): the change is
 # made at once. The app waits for the answer this long at most.
 CHANGE_EARLY = timedelta(minutes=3)
+# In the economy mode every wake is a cold boot (two refreshes, ~4 min up):
+# woken this long before a change, the change is made at once rather than
+# at a second wake for it (2026-11-15/16: woken at 20:49 for 21:00, the
+# change came at a wake of its own 11 minutes later).
+CHANGE_EARLY_DEEP = timedelta(minutes=15)
 CHANGE_EARLY_WAIT = 20.0
+# The panel's own clock (webapis.timer, the one its alarms go by) gains in
+# a sleep with the Wi-Fi off: ~0.76 % (654 s in a day's sleep 2026-11-16,
+# 2026-11-15 the same, ~7.5 h at 20:56 2026-11-14, "rings 20-40 s early"
+# after hourly checks). The app sets it right when it is 2 min off or more
+# (app.js setClock, at most hourly), so the server sets each such alarm
+# later by what the clock gains until then, and learns the rate from the
+# app's "clock" reports (``AppState.clock_gain``). Until it has: this one.
+CLOCK_GAIN = 0.0076
+# A rate read over less than this is too coarse (the clock reads to 1 s).
+CLOCK_LEARN_AFTER = timedelta(hours=6)
+# A reading past this is no rate (a clock set by hand, a reset to 2024).
+CLOCK_GAIN_MAX = 0.03
+# The app sets the panel's clock when it is off by this much (CLOCK_RIGHT_MS).
+CLOCK_SET_OFF = timedelta(minutes=2)
+# An alarm rings this long before its time, as it did before the clock was
+# made up for (``RING_EARLY``, Tizen's start alarm 30 s later, app.js).
+ALARM_LEAD = timedelta(seconds=30)
 # "Obudź ramkę" keeps the woken app awake (asking every ``POLL``) this long.
 KEEP_AWAKE = timedelta(minutes=10)
 # "Sprawdź stan" keeps it up this long after it asks: a picture sent right
@@ -252,14 +274,19 @@ def _launch_set(launch: object) -> bool:
     return any(isinstance(t, str) and _CLOCK.fullmatch(t) for t in times)
 
 
-def _refresh_for(data: dict[str, object]) -> str | None:
+def _refresh_for(data: dict[str, object], state: AppState | None = None) -> str | None:
     """A "sleep" report's ``refreshFor`` (ms), when the refresh was set or
-    already there (``refresh`` null or ok)."""
+    already there (``refresh`` null or ok). One of the alarms as sent
+    (``AppState.alarm_ms``, the panel's clock) is that alarm's own time."""
     at, refresh = data.get("refreshFor"), data.get("refresh")
     if not isinstance(at, int | float) or isinstance(at, bool):
         return None
     if refresh is not None and not (isinstance(refresh, dict) and refresh.get("ok") is True):
         return None
+    if state is not None and int(at) in state.alarm_ms:
+        index = state.alarm_ms.index(int(at))
+        if index < len(state.wakes):
+            return state.wakes[index]
     return datetime.fromtimestamp(at / 1000, UTC).isoformat(timespec="seconds")
 
 
@@ -313,6 +340,13 @@ class AppState(BaseModel):
     # "sleep" report says (app.js since 1.104.1). None: not said, an empty
     # check is left alone (a sleep mid-refresh, 2026-11-05 21:00, yellow).
     refresh_for: str | None = None
+    # The alarms as sent to the app (ms, the panel's clock), ``wakes`` in
+    # the panel's terms: its clock gains in a deep sleep (``CLOCK_GAIN``).
+    alarm_ms: list[int] = []
+    # The app last set the panel's clock right (ISO), and what the clock
+    # gains per second as learnt from its reports (None: ``CLOCK_GAIN``).
+    clock_set_at: str | None = None
+    clock_gain: float | None = None
 
 
 class AppHello(BaseModel):
@@ -700,7 +734,12 @@ class PanelApp:
         if state.hold is not None and state.hold.active(now):
             return
         due = state.next_change_at
-        if due is None or not timedelta(0) < datetime.fromisoformat(due) - now <= CHANGE_EARLY:
+        early = (
+            CHANGE_EARLY_DEEP
+            if self.service.player.settings.power_mode == "economy"
+            else CHANGE_EARLY
+        )
+        if due is None or not timedelta(0) < datetime.fromisoformat(due) - now <= early:
             return
         log.info("woken for the change at %s: shown now", due)
         task = asyncio.create_task(player.next_early())
@@ -750,7 +789,7 @@ class PanelApp:
         if power.state.pending_push:
             # It waited for the panel: it stays until the next change.
             power.mark_pending(False)
-            service.player.postpone()
+            service.player.postpone(now)
         common: dict[str, object] = {"code": CODE_VERSION}
         if content is not None:
             common |= {
@@ -820,12 +859,13 @@ class PanelApp:
         state.wifi_lost = False
         state.self_start = False  # until its "sleep" report says so
         state.refresh_for = None  # likewise
+        state.alarm_ms = [_ms(a) for a in alarms] if standby else self._on_panel(alarms, now)
         self._save(state)
         return NextAnswer(
             action="sleep",
             wake_at=state.wake_at,
-            wake_ms=_ms(wake),
-            wakes_ms=[_ms(a) for a in alarms[1:]],
+            wake_ms=state.alarm_ms[0],
+            wakes_ms=state.alarm_ms[1:],
             standby="ON" if standby else "OFF",
             **common,
         )
@@ -909,14 +949,61 @@ class PanelApp:
         state.wifi_lost = False
         state.self_start = False  # until its "sleep" report says so
         state.refresh_for = None  # likewise
+        state.alarm_ms = self._on_panel([until], now) if until else []
         self._save(state)
         return NextAnswer(
             action="sleep",
             wake_at=state.rest_until,
-            wake_ms=_ms(until) if until else None,
+            wake_ms=state.alarm_ms[0] if state.alarm_ms else None,
             standby="OFF",
             **common,
         )
+
+    def _on_panel(self, alarms: list[datetime], now: datetime) -> list[int]:
+        """Alarms of a sleep with the Wi-Fi off as the app sets them (ms):
+        by the panel's clock, which gains in that sleep (``CLOCK_GAIN``),
+        each ``ALARM_LEAD`` early. The app sets the clock right as it goes
+        to sleep when it is ``CLOCK_SET_OFF`` off by then (app.js); else it
+        keeps gaining from the last time it was set."""
+        state = self.state
+        gain = state.clock_gain if state.clock_gain is not None else CLOCK_GAIN
+        since = now
+        if state.clock_set_at is not None:
+            set_at = min(datetime.fromisoformat(state.clock_set_at), now)
+            off = gain * (now - set_at).total_seconds()
+            if abs(off) < CLOCK_SET_OFF.total_seconds():
+                since = set_at
+        return [
+            _ms(a - ALARM_LEAD + timedelta(seconds=gain * (a - since).total_seconds()))
+            for a in alarms
+        ]
+
+    def _note_clock(self, data: dict[str, object], now: datetime) -> None:
+        """The app's "clock" report: the panel's clock was ``before_s`` off
+        and was set right (``after_s`` ~0). Off since the last time it was
+        set: what it gains per second, the next alarms made up for it."""
+        state = self.state
+        before, after = data.get("before_s"), data.get("after_s")
+        if not isinstance(before, int | float) or isinstance(before, bool):
+            return
+        if state.clock_set_at is not None:
+            spent = now - datetime.fromisoformat(state.clock_set_at)
+            if spent >= CLOCK_LEARN_AFTER:
+                gain = before / spent.total_seconds()
+                if abs(gain) <= CLOCK_GAIN_MAX:
+                    old = state.clock_gain
+                    state.clock_gain = gain if old is None else (old + gain) / 2
+                    log.info(
+                        "the panel's clock gained %+d s in %.1f h (%.2f %%), counted as %.2f %%",
+                        before,
+                        spent.total_seconds() / 3600,
+                        gain * 100,
+                        state.clock_gain * 100,
+                    )
+        right = isinstance(after, int | float) and abs(after) < CLOCK_SET_OFF.total_seconds()
+        if data.get("ok") is True and right:
+            state.clock_set_at = now.isoformat(timespec="seconds")
+        self._save(state)
 
     def alarms(self, now: datetime, wake: datetime) -> list[datetime]:
         """The alarms for a sleep with the Wi-Fi off: ``wake`` and every
@@ -1022,8 +1109,10 @@ class PanelApp:
             self.service.status.battery.auto_sleep(data.get("autoSleep"))
             state = self.state
             state.self_start = _launch_set(data.get("launch")) or state.self_start
-            state.refresh_for = _refresh_for(data)
+            state.refresh_for = _refresh_for(data, state)
             self._save(state)
+        elif event == "clock":
+            self._note_clock(data, datetime.now(UTC))
         elif event == "progress":
             loaded, total = data.get("loaded"), data.get("total")
             if isinstance(loaded, int | float) and isinstance(total, int | float) and total > 0:

@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.145.199
+
+- W trybie oszczędnym ramka zmieniała obraz dwa razy: ok. 10 minut przed
+  ustawioną godziną i potem o tej godzinie. Zegar ramki spieszy się we
+  śnie o ok. 11 minut na dobę, więc budzik dzwonił za wcześnie. Serwer
+  przesuwa teraz budzik o tyle, ile zegar ramki zyska do pobudki, i uczy
+  się tego tempa przy każdym ustawieniu zegara.
+- Gdy ramka mimo to obudzi się do 15 minut przed zmianą, zmiana przychodzi
+  od razu, bez drugiej pobudki.
+- Obraz wybrany w aplikacji, który czekał na pobudkę ramki, zostaje na
+  ramce do następnej zmiany i nie znika po kilku minutach.
+
 ## 1.145.198
 
 - Dzieło, którego plik muzeum trzyma obcięty (np. „Zmartwychwstanie
