@@ -236,9 +236,12 @@ struct OwnScanSketch: View {
                 Button("Powtórz") {}
                     .buttonStyle(.glass)
                     .controlSize(.large)
-                Button("Dalej") {}
-                    .buttonStyle(.glassProminent)
-                    .controlSize(.large)
+                Button {} label: {
+                    Text("Dalej").foregroundStyle(.black)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(.white)
+                .controlSize(.large)
             }
             .padding(.bottom, 20)
         }
