@@ -1,4 +1,5 @@
 import ImageIO
+import UIKit
 import simd
 import XCTest
 @testable import Frame
@@ -103,5 +104,40 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertEqual(at(.right), [20, 45])  // upright: the sensor turned a quarter clockwise
         XCTAssertEqual(at(.left), [80, 5])
         XCTAssertEqual(at(.down), [90, 40])
+    }
+
+    /// Mateusz 2026-11-16: "Dla własnych dzieł ustaw zdecydowanie wyższą
+    /// jakość niż 4000px": the server is sent the camera's own files, and
+    /// the work comes back in tiles of every pixel for the full screen.
+    func testThePhotographsAreSentAsTheCameraWroteThem() {
+        let picture = UIImage()
+        var shots = OwnShots(first: picture, files: [Data([1])])
+        XCTAssertEqual(shots.file(0), Data([1]))
+        shots.sides.append(picture)
+        // A side photograph without its file: none is trusted to be in step.
+        XCTAssertNil(shots.file(0))
+        shots.files.append(Data([2]))
+        XCTAssertEqual(shots.file(1), Data([2]))
+        XCTAssertNil(shots.file(2))
+        XCTAssertNil(OwnShots(first: picture).file(0))  // the demo's
+        XCTAssertFalse(OwnPicture.sendable(Data([0, 1, 2])))
+    }
+
+    func testAWorkOfHisOwnComesInTilesOfEveryPixel() throws {
+        let json = """
+        {"width": 4838, "height": 4014, "stamp": "ab12cd34",
+         "tiles": [{"id": "0-0", "x": 0, "y": 0, "w": 0.5, "h": 0.5, "pixels": 2419},
+                   {"id": "0-1", "x": 0.5, "y": 0, "w": 0.5, "h": 0.5, "pixels": 2419}]}
+        """
+        let fine = try LiveBackend.decoder().decode(FineView.self, from: Data(json.utf8))
+        XCTAssertEqual(fine.tiles.count, 2)
+        XCTAssertEqual(fine.tiles[1].unit, CGRect(x: 0.5, y: 0, width: 0.5, height: 0.5))
+        // The whole is as wide as its tiles' pixels reach: twice the 2419.
+        let across = fine.tiles.map { CGFloat($0.pixels) / $0.unit.width }.max()
+        XCTAssertEqual(across, 4838)
+        let none = try LiveBackend.decoder().decode(
+            FineView.self, from: Data(#"{"width": 0, "height": 0, "stamp": "", "tiles": []}"#.utf8)
+        )
+        XCTAssertTrue(none.tiles.isEmpty)
     }
 }

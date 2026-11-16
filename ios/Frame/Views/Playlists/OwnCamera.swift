@@ -13,6 +13,17 @@ struct OwnShots {
     var first: UIImage
     var sides: [UIImage] = []
     var depth: OwnDepth? = nil
+    /// The photographs' own files, the first's and then the sides': every
+    /// pixel as the camera wrote them (48 MP), which is what the server is
+    /// sent (Mateusz 2026-11-16: "zdecydowanie wyższą jakość niż 4000px").
+    /// The pictures above are small copies for the screen. Empty for the
+    /// demo's photographs.
+    var files: [Data] = []
+
+    /// The file of the `index`-th photograph (0, the first), if it has one.
+    func file(_ index: Int) -> Data? {
+        files.count == sides.count + 1 && files.indices.contains(index) ? files[index] : nil
+    }
 }
 
 /// "Dodaj własne dzieło" opening straight on the camera (Mateusz
@@ -74,11 +85,14 @@ struct OwnCamera: View {
             guard let item else { return }
             picked = nil
             Task {
-                guard let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else {
+                guard let data = try? await item.loadTransferable(type: Data.self),
+                      let image = OwnPicture.shown(data) ?? UIImage(data: data)
+                else {
                     model.notices.warn("Nie udało się wczytać zdjęcia")
                     return
                 }
-                took(OwnShots(first: image))
+                // As it is in Photos when the server reads such files, else drawn anew.
+                took(OwnShots(first: image, files: OwnPicture.sendable(data) ? [data] : []))
             }
         }
         .onChange(of: guide.turned) { _, _ in watchRing() }
@@ -342,13 +356,14 @@ struct OwnCamera: View {
             withAnimation(.easeIn(duration: 0.2)) { flash = false }
         }
         if var shots = scan {
-            camera.shoot { image, _ in
+            camera.shoot { image, file, _ in
                 shooting = false
                 guard let image else {
                     model.notices.warn("Nie udało się zrobić zdjęcia")
                     return
                 }
                 shots.sides.append(image)
+                if let file { shots.files.append(file) }
                 if shots.sides.count >= 2 {
                     scan = shots
                     finish()
@@ -358,13 +373,13 @@ struct OwnCamera: View {
             }
             return
         }
-        camera.shootFirst { image, depth in
+        camera.shootFirst { image, file, depth in
             shooting = false
             guard let image else {
                 model.notices.warn("Nie udało się zrobić zdjęcia")
                 return
             }
-            let first = OwnShots(first: image, depth: depth)
+            let first = OwnShots(first: image, depth: depth, files: file.map { [$0] } ?? [])
             // Without the motion sensors there is no dot to follow: one photograph.
             guard guide.available else {
                 took(first)
@@ -571,38 +586,49 @@ final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, @unchecke
     /// The first photograph, with the depth when there is a LiDAR (and,
     /// when the LiDAR's photographs have fewer pixels, the same view again
     /// at once with the sharper camera).
-    func shootFirst(_ took: @escaping (UIImage?, OwnDepth?) -> Void) {
+    func shootFirst(_ took: @escaping (UIImage?, Data?, OwnDepth?) -> Void) {
         let angle = rotation?.videoRotationAngleForHorizonLevelCapture ?? 90
         queue.async { [self] in
             let measuring = lidar != nil && current == lidar && output.isDepthDataDeliveryEnabled
             let view = current?.activeFormat.videoFieldOfView
             capture(angle, depth: measuring) { [self] photo in
-                let image = photo?.fileDataRepresentation().flatMap { UIImage(data: $0) }
+                let file = photo?.fileDataRepresentation()
+                let image = file.flatMap(Self.picture)
                 let depth = photo.flatMap { Self.depth(of: $0, angle: angle, fieldOfView: view, image: image) }
                 guard let sharper, image != nil else {
-                    DispatchQueue.main.async { took(image, depth) }
+                    DispatchQueue.main.async { took(image, file, depth) }
                     return
                 }
                 use(sharper, depth: false)
                 // A moment for the new camera's focus and light.
                 queue.asyncAfter(deadline: .now() + 0.7) { [self] in
                     capture(angle, depth: false) { again in
-                        let sharp = again?.fileDataRepresentation().flatMap { UIImage(data: $0) }
-                        DispatchQueue.main.async { took(sharp ?? image, depth) }
+                        let sharpFile = again?.fileDataRepresentation()
+                        if let sharpFile, let sharp = Self.picture(sharpFile) {
+                            DispatchQueue.main.async { took(sharp, sharpFile, depth) }
+                        } else {
+                            DispatchQueue.main.async { took(image, file, depth) }
+                        }
                     }
                 }
             }
         }
     }
 
+    /// The photograph for the screen: upright, far smaller than its file.
+    private static func picture(_ file: Data) -> UIImage? {
+        OwnPicture.shown(file) ?? UIImage(data: file)
+    }
+
     /// A photograph, upright as the phone is held: tall held upright,
     /// wide held on its side.
-    func shoot(_ took: @escaping (UIImage?, OwnDepth?) -> Void) {
+    func shoot(_ took: @escaping (UIImage?, Data?, OwnDepth?) -> Void) {
         let angle = rotation?.videoRotationAngleForHorizonLevelCapture ?? 90
         queue.async { [self] in
             capture(angle, depth: false) { photo in
-                let image = photo?.fileDataRepresentation().flatMap { UIImage(data: $0) }
-                DispatchQueue.main.async { took(image, nil) }
+                let file = photo?.fileDataRepresentation()
+                let image = file.flatMap(Self.picture)
+                DispatchQueue.main.async { took(image, file, nil) }
             }
         }
     }

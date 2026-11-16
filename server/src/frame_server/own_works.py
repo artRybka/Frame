@@ -13,9 +13,12 @@ picture goes to Google for "Szukaj zdjęciem" too, Mateusz 2026-11-15)."""
 
 from __future__ import annotations
 
+import io
+import json
 import logging
 import re
 import secrets
+import shutil
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -29,6 +32,7 @@ from .imaging.cut import Quad, valid, warp
 from .imaging.layout import load_image
 from .library import Item, ItemKind
 from .library.dates import text_year
+from .library.images import OWN_MAX
 from .library.models import Cut, Note, OwnWork
 from .library.repo import now_iso
 
@@ -44,10 +48,23 @@ log = logging.getLogger(__name__)
 
 #: How long a photograph waits for the owner to add its work.
 KEEP_SECONDS = 24 * 3600
-#: The longest side a photograph is kept with while it waits (the phone
-#: takes 48 MP, 8064 × 6048, Mateusz 2026-11-16; the work is cut out of it
-#: at up to 4000 px, `originals-4k`).
-INCOMING_SIDE = 6000
+#: The longest side a photograph is kept with while it waits: the phone's
+#: 48 MP whole (8064 × 6048), which the work is cut out of and kept at
+#: (Mateusz 2026-11-16: "zdecydowanie wyższą jakość niż 4000px").
+INCOMING_SIDE = OWN_MAX
+#: How good its JPEG is: it is opened and saved once more on the way.
+INCOMING_QUALITY = 95
+#: How long the photographs of a scan (the first as it came and its side
+#: ones) are kept after they were made one, for the merging to be tuned on
+#: (Mateusz 2026-11-16: "Tak, przez 14 dni").
+SCANS_SECONDS = 14 * 24 * 3600
+#: What a scan's folder holds besides its photographs.
+SCAN_INFO = "scan.json"
+#: A scan's file as :meth:`OwnWorks.merge` names it.
+_SCAN_FILE = re.compile(r"^(first|side[1-9])\.jpg$")
+#: The side the photograph is looked at for the work's corners and hints:
+#: a JPEG is opened that much faster at an eighth of 48 MP.
+LOOK_SIDE = 3000
 #: Photographs from the side a first one may have (``-side1``, ``-side2``).
 SIDES = 2
 #: A token as :meth:`OwnWorks.take` makes it.
@@ -161,6 +178,8 @@ class OwnWorks:
         self.claude = claude
         self.incoming = images.images.parent / "incoming"
         self.incoming.mkdir(parents=True, exist_ok=True)
+        #: The photographs of his scans, a folder each, for two weeks.
+        self.scans = images.images.parent / "scans"
 
     # -- the photograph waiting -----------------------------------------------------
 
@@ -182,8 +201,24 @@ class OwnWorks:
             raise ValueError("no picture") from err
         img.thumbnail((INCOMING_SIDE, INCOMING_SIDE), Image.Resampling.LANCZOS)
         token = secrets.token_hex(12)
-        img.save(self.incoming / f"{token}.jpg", "JPEG", quality=93)
+        img.save(self.incoming / f"{token}.jpg", "JPEG", quality=INCOMING_QUALITY)
         return Incoming(token=token, width=img.width, height=img.height)
+
+    def shown(self, token: str, side: int | None = None) -> Path | bytes:
+        """The photograph as it waits, for the phone to set the corners
+        on: the file itself, or a copy no longer than ``side``."""
+        path = self.path(token)
+        if side is None:
+            return path
+        with Image.open(path) as img:
+            if max(img.size) <= side:
+                return path
+            img.draft("RGB", (side, side))
+            small = img.convert("RGB")
+        small.thumbnail((side, side), Image.Resampling.LANCZOS)
+        out = io.BytesIO()
+        small.save(out, "JPEG", quality=90)
+        return out.getvalue()
 
     def side(self, token: str, data: bytes) -> int:
         """Another photograph of the same work taken a little from the side
@@ -198,13 +233,16 @@ class OwnWorks:
         except OSError as err:
             raise ValueError("no picture") from err
         img.thumbnail((INCOMING_SIDE, INCOMING_SIDE), Image.Resampling.LANCZOS)
-        img.save(self.incoming / f"{token}-side{len(taken) + 1}.jpg", "JPEG", quality=93)
+        img.save(
+            self.incoming / f"{token}-side{len(taken) + 1}.jpg", "JPEG", quality=INCOMING_QUALITY
+        )
         return len(taken) + 1
 
     def merge(self, token: str) -> Merged:
         """The first photograph without the reflections its side ones do
-        not have (:mod:`.imaging.glare`); kept in its place, the side ones
-        gone. Unchanged when none could be laid over it."""
+        not have (:mod:`.imaging.glare`); kept in its place. Unchanged when
+        none could be laid over it. The photographs as they came are kept
+        two weeks in ``scans/`` (:data:`SCANS_SECONDS`)."""
         import numpy as np
 
         from .imaging.glare import merge
@@ -218,8 +256,11 @@ class OwnWorks:
             with Image.open(side) as img:
                 photos.append(np.asarray(img.convert("RGB")))
         done = merge(first, photos)
+        h, w = first.shape[:2]
+        if sides:
+            self._keep_scan(token, path, sides, done.used, done.replaced, (w, h))
         if done.replaced > 0:
-            Image.fromarray(done.image).save(path, "JPEG", quality=93)
+            Image.fromarray(done.image).save(path, "JPEG", quality=INCOMING_QUALITY)
         for side in sides:
             side.unlink(missing_ok=True)
         log.info(
@@ -228,17 +269,73 @@ class OwnWorks:
             done.used,
             done.replaced * 100,
         )
-        h, w = first.shape[:2]
         return Merged(
             token=token, width=w, height=h, used=done.used, replaced=round(done.replaced, 4)
         )
+
+    def _keep_scan(
+        self,
+        token: str,
+        first: Path,
+        sides: list[Path],
+        used: int,
+        replaced: float,
+        size: tuple[int, int],
+    ) -> None:
+        """The scan's photographs as they came, in a folder of their own."""
+        folder = self.scans / token
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(first, folder / "first.jpg")
+            for n, side in enumerate(sides, start=1):
+                shutil.copyfile(side, folder / f"side{n}.jpg")
+            info = {
+                "at": now_iso(),
+                "used": used,
+                "replaced": round(replaced, 4),
+                "width": size[0],
+                "height": size[1],
+            }
+            (folder / SCAN_INFO).write_text(json.dumps(info))
+        except OSError as err:
+            log.warning("scan %s not kept: %s", token, err)
+
+    def kept_scans(self) -> list[dict[str, Any]]:
+        """The scans kept, newest first: what :meth:`merge` noted of each
+        and its files with their sizes."""
+        found: list[dict[str, Any]] = []
+        if not self.scans.is_dir():
+            return found
+        for folder in self.scans.iterdir():
+            if not _TOKEN.match(folder.name) or not folder.is_dir():
+                continue
+            try:
+                info = json.loads((folder / SCAN_INFO).read_text())
+            except (OSError, ValueError):
+                info = {}
+            files = {
+                p.name: p.stat().st_size
+                for p in sorted(folder.iterdir())
+                if _SCAN_FILE.match(p.name)
+            }
+            found.append({"token": folder.name, **info, "files": files})
+        return sorted(found, key=lambda scan: str(scan.get("at", "")), reverse=True)
+
+    def scan_file(self, token: str, name: str) -> Path:
+        if not _TOKEN.match(token) or not _SCAN_FILE.match(name):
+            raise LookupError("no such photograph")
+        path = self.scans / token / name
+        if not path.is_file():
+            raise LookupError("the photograph is no longer here")
+        return path
 
     def find(self, token: str) -> Incoming:
         """The work found in the photograph by Opus (``corners`` None when
         nothing was, or no key)."""
         with Image.open(self.path(token)) as img:
-            img.load()
             seen = Incoming(token=token, width=img.width, height=img.height)
+            img.draft("RGB", (LOOK_SIDE, LOOK_SIDE))
+            img.load()
             found = self.crops.home_corners(img)
         if found is not None:
             seen.shape = str(found.get("shape") or "")
@@ -250,6 +347,7 @@ class OwnWorks:
         """Signature, date, technique and a plain title read off the work
         (Sonnet, about a grosz); an empty answer when it refused."""
         with Image.open(self.path(token)) as img:
+            img.draft("RGB", (LOOK_SIDE, LOOK_SIDE))
             img.load()
             picture = warp(img.convert("RGB"), corners) if corners else img.convert("RGB")
         picture.thumbnail((HINT_SIDE, HINT_SIDE), Image.Resampling.LANCZOS)
@@ -271,7 +369,8 @@ class OwnWorks:
         )
 
     def prune(self) -> None:
-        """Photographs whose work was never added, after a day."""
+        """Photographs whose work was never added, after a day; a scan's
+        photographs after two weeks."""
         old = time.time() - KEEP_SECONDS
         for path in self.incoming.glob("*.jpg"):
             try:
@@ -279,6 +378,14 @@ class OwnWorks:
                     path.unlink()
             except OSError:
                 pass
+        old = time.time() - SCANS_SECONDS
+        if self.scans.is_dir():
+            for folder in self.scans.iterdir():
+                try:
+                    if _TOKEN.match(folder.name) and folder.stat().st_mtime < old:
+                        shutil.rmtree(folder, ignore_errors=True)
+                except OSError:
+                    pass
 
     def reshape(self) -> int:
         """Once after a start: works added before their pictures took the
@@ -345,7 +452,7 @@ class OwnWorks:
         self._check(item)
         path = self.path(token)
         self.images.remove(item)
-        width, height = self.images.store(item, path.read_bytes())
+        width, height = self.images.store(item, path.read_bytes(), master=True)
         stored = self.library.update(item.id, width=width, height=height, cut=None) or item
         stored = self._cut(stored, corners, by, shape)
         path.unlink(missing_ok=True)
@@ -393,6 +500,7 @@ class OwnWorks:
     def _cut(self, item: Item, corners: Quad | None, by: str, shape: str) -> Item:
         quad = valid(corners) if corners is not None else None
         if quad is None:
+            self.images.recut(item)  # whole: its tiles from all its pixels
             return item
         with Image.open(self.images.museum_photo(item, urgent=True)) as img:
             aspect = round(img.width / img.height, 5)

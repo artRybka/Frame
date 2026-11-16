@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.145.185
+
+- Własne dzieła w pełnej jakości zdjęcia. Telefon wysyła plik aparatu
+  taki, jaki powstał (48 MP), a serwer wycina dzieło ze wszystkich jego
+  pikseli i trzyma je w całości. Wcześniej dzieło było wycinane ze zdjęcia
+  zmniejszonego do 4000 px i zostawało z niego ok. 2800 px.
+- Na pełnym ekranie własne dzieło da się przybliżyć dużo głębiej:
+  ostrzejsze fragmenty doczytują się same, jak w „Pod lupą”. Karta i
+  ramka pracują dalej na wersji 4000 px, więc nic nie zwalnia.
+- Dzieła dodane wcześniej zostają w dawnej jakości. Pełną dostaną po
+  „Zrób zdjęcie ponownie”.
+- Skan z trzech zdjęć nie psuje już dzieł za szybą: gdy odbicia zajmują
+  dużą część obrazu, zdjęcie na wprost zostaje nietknięte (lepsze łączenie
+  jest w przygotowaniu). Pojedynczy odblask lampy znika jak dotąd.
+- Zdjęcia źródłowe skanu z trzech ujęć zostają na serwerze 14 dni, do
+  strojenia łączenia zdjęć, potem same znikają.
+
 ## 1.145.184
 
 - Konfiguracja → Claude i Gemini: na górze tabela „Koszty”, ile każda

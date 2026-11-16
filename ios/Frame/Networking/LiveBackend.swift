@@ -728,8 +728,12 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
-    func ownPhoto(token: String) async throws -> Data {
-        var req = request("/api/own/photos/\(escape(token))")
+    func fine(itemID: String) async throws -> FineView {
+        try await perform(request("/api/library/items/\(escape(itemID))/fine"))
+    }
+
+    func ownPhoto(token: String, side: Int) async throws -> Data {
+        var req = request("/api/own/photos/\(escape(token))", query: [URLQueryItem(name: "side", value: String(side))])
         req.timeoutInterval = 120
         let (data, response) = try await load(req)
         guard let http = response as? HTTPURLResponse else { throw BackendError.invalidResponse }
@@ -1067,6 +1071,11 @@ struct LiveBackend: FrameBackend {
         case let .beforeCleaning(id, version):
             req = request(
                 "/api/library/items/\(escape(id))/cleaned/before",
+                query: [URLQueryItem(name: "v", value: version)]
+            )
+        case let .fine(id, tile, version):
+            req = request(
+                "/api/library/items/\(escape(id))/fine/\(escape(tile))",
                 query: [URLQueryItem(name: "v", value: version)]
             )
         case let .path(path):
