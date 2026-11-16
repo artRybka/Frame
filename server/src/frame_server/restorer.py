@@ -25,7 +25,17 @@ looked at every :data:`POLL` seconds). A picture the model would not draw
 (``image_recitation``: it took a known painting for one it may not copy)
 is asked for again, :data:`REFUSED_TRIES` times in all (a refusal costs
 nothing: Google answers it with an error and no bill; Mateusz 2026-11-13,
-Delacroix's "Rzeź na Chios"), then noted and never sent again.
+Delacroix's "Rzeź na Chios"), then noted and never sent again. The first
+:data:`FIRST_TRIES` go to Nano Banana 2.1, the rest to the dearer Nano
+Banana Pro (:func:`model_for`; Mateusz 2026-11-16: "gdy pierwsze 2 zawiodą
+odpalajmy pro"), which takes works 2.1 refuses and keeps nearer the
+picture; a drawing 2.1 gave that cannot be used (none, or in other
+proportions) is asked of it again, then of Pro, once.
+
+The drawing comes back in the colours of the picture it was drawn from
+(:func:`recoloured`; Mateusz 2026-11-16: "Bywa że restauracja dzieła
+zmienia nieznacznie kolorystykę"): the model's detail on the museum's
+tones.
 """
 
 from __future__ import annotations
@@ -37,9 +47,12 @@ from collections.abc import Callable, Iterable, Iterator
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+import cv2
+import numpy as np
 from PIL import Image
 
-from .ai.gemini import MODEL, Ask, NotDrawn
+from .ai.gemini import MODEL, PRO, Ask, NotDrawn
+from .imaging.color import linear_to_oklab, linear_to_u8, oklab_to_linear, u8_to_linear
 from .library import Item, ItemKind
 from .library.low_res import LOW_SIDE, low_side
 from .library.models import Note
@@ -63,6 +76,11 @@ LONGEST = 2048
 #: share and are then set right; by more it is not taken.
 SKEW_FIXED = 0.005
 SKEW_MAX = 0.04
+#: How coarse the colours taken back from the museum's picture are, in its
+#: own pixels (:func:`recoloured`): finer than this is the drawing's own
+#: detail; coarse enough that the drawing a pixel off the picture does not
+#: fringe its edges.
+COLOUR_SIGMA = 2.0
 #: Works in one batch: their pictures go in the request (inline, under
 #: the API's 20 MB).
 PER_BATCH = 24
@@ -71,6 +89,8 @@ POLL = 600.0
 #: About what one drawing costs, USD (2K through the Batch API: half of
 #: the 0.06 the trial paid).
 BATCH_USD = 0.03
+#: The same of Pro (:data:`PRO`; the trial paid 0.14 at once).
+PRO_BATCH_USD = 0.07
 #: The library state key of the batches waiting.
 BATCHES = "restorer.batches"
 #: A picture the model will not draw is asked for this many times in all,
@@ -78,6 +98,9 @@ BATCHES = "restorer.batches"
 #: 2026-11-13: "ponawiaj próbę 5 razy"): Google now and then takes the
 #: same question, and a refusal is not paid for.
 REFUSED_TRIES = 5
+#: Tries of Nano Banana 2.1 (:data:`MODEL`) before Pro (:data:`PRO`) is
+#: asked (:func:`model_for`).
+FIRST_TRIES = 2
 
 PROMPT = """This is a small, low-resolution digital photograph of a painting. Produce the same \
 photograph at a higher resolution: a faithful restoration and upscale, as a museum's \
@@ -153,9 +176,10 @@ class Restorer:
         }
 
     def _refusals(self, item_id: str) -> int:
-        """How many times the model would not draw the work so far."""
+        """How many times the model would not draw the work so far, or drew
+        it unusably (:data:`FAILED`)."""
         note = self.library.note(item_id, KIND)
-        if note is None or note.data.get("status") != "refused":
+        if note is None or note.data.get("status") not in ("refused", FAILED):
             return 0
         return _tries(note.data)
 
@@ -181,8 +205,11 @@ class Restorer:
         return found
 
     def estimate(self, items: Iterable[Item] | None = None) -> tuple[int, float]:
-        n = len(self.candidates(items))
-        return n, round(n * BATCH_USD, 2)
+        found = self.candidates(items)
+        usd = sum(
+            BATCH_USD if model_for(self._refusals(i.id)) == MODEL else PRO_BATCH_USD for i in found
+        )
+        return len(found), round(usd, 2)
 
     def counts(self) -> tuple[int, int]:
         """Works waiting in batches, and works drawn again."""
@@ -211,40 +238,66 @@ class Restorer:
         if self.restored(stored):  # drawn from the museum's picture, not the drawing
             stored = self.sharper.keep_own(stored)
         picture = self._picture(stored)
-        for attempt in range(1, REFUSED_TRIES + 1):
+        tries = 0
+        while True:
+            model = model_for(tries)
+            tries += 1
             try:
-                drawn, usd = self.painter.paint(KIND, PROMPT, [picture], size=SIZE)
-                break
+                drawn, usd = self.painter.paint(KIND, PROMPT, [picture], size=SIZE, model=model)
+                return self._keep(stored, picture, drawn, usd, model)
             except NotDrawn as err:
                 if not refusal(err):
-                    raise NotRestored("not_drawn", str(err)) from err
-                log.info("restorer: %s refused (%d of %d)", stored.id, attempt, REFUSED_TRIES)
-                if attempt == REFUSED_TRIES:
+                    if model == PRO:
+                        raise NotRestored("not_drawn", str(err)) from err
+                    log.info("restorer: %s not drawn by %s: %s", stored.id, model, err)
+                    continue
+                log.info(
+                    "restorer: %s refused by %s (%d of %d)", stored.id, model, tries, REFUSED_TRIES
+                )
+                if tries >= REFUSED_TRIES:
                     self._note(
-                        stored.id, "refused", why=str(err)[:300], code=err.code, tries=attempt
+                        stored.id,
+                        "refused",
+                        why=str(err)[:300],
+                        code=err.code,
+                        tries=tries,
+                        model=model,
                     )
                     raise NotRestored("refused", str(err)) from err
-        return self._keep(stored, picture, drawn, usd)
+            except NotRestored:  # drawn in other proportions
+                if model == PRO:
+                    raise
 
-    def _keep(self, item: Item, picture: Image.Image, drawn: Image.Image, usd: float) -> Item:
+    def _keep(
+        self, item: Item, picture: Image.Image, drawn: Image.Image, usd: float, model: str = MODEL
+    ) -> Item:
         try:
-            fitted = fit(picture.size, drawn)
+            fitted = recoloured(picture, fit(picture.size, drawn))
         except NotRestored as err:
-            self._note(item.id, "skewed", why=str(err), usd=usd)
+            self._note(item.id, "skewed", why=str(err), usd=usd, model=model)
             raise
         buf = io.BytesIO()
         fitted.save(buf, "JPEG", quality=95)
         updated = self.sharper.bring(item, buf.getvalue(), ORIGIN, restored=True)
-        self._note(item.id, "done", usd=usd, size=list(fitted.size), own=list(picture.size))
-        log.info("restorer: %s %s → %s (%.3f USD)", item.id, picture.size, fitted.size, usd)
+        self._note(
+            item.id, "done", usd=usd, size=list(fitted.size), own=list(picture.size), model=model
+        )
+        log.info(
+            "restorer: %s %s → %s by %s (%.3f USD)",
+            item.id,
+            picture.size,
+            fitted.size,
+            model,
+            usd,
+        )
         return updated
 
-    def _note(self, item_id: str, status: str, **data: Any) -> None:
+    def _note(self, item_id: str, status: str, *, model: str = MODEL, **data: Any) -> None:
         self.library.save_note(
             Note(
                 item_id=item_id,
                 kind=KIND,
-                model=MODEL,
+                model=model,
                 prompt_version="1",
                 data={"status": status, "at": self.clock().isoformat(), **data},
             )
@@ -264,10 +317,14 @@ class Restorer:
         """The works under the threshold (of ``items``, a playlist's; else
         the owner's favourites) sent in batches; how many."""
         with self._lock:
-            items = self.candidates(items)
+            found = self.candidates(items)
             batches = self._batches()
             sent = 0
-            for chunk in _chunks(items, PER_BATCH):
+            by_model: dict[str, list[Item]] = {}
+            for item in found:
+                by_model.setdefault(model_for(self._refusals(item.id)), []).append(item)
+            chunks = [(m, c) for m, its in by_model.items() for c in _chunks(its, PER_BATCH)]
+            for model, chunk in chunks:
                 pictures: dict[str, Image.Image] = {}  # by the work's id
                 for item in chunk:
                     try:
@@ -280,10 +337,11 @@ class Restorer:
                 if not pictures:
                     continue
                 asks = [Ask(i, PROMPT, [p], SIZE) for i, p in pictures.items()]
-                name = self.painter.batch(KIND, asks)
+                name = self.painter.batch(KIND, asks, model=model)
                 batches.append(
                     {
                         "name": name,
+                        "model": model,
                         "ids": list(pictures),
                         "sizes": {k: list(v.size) for k, v in pictures.items()},
                         "at": self.clock().isoformat(),
@@ -291,7 +349,7 @@ class Restorer:
                 )
                 self.library.set_state(BATCHES, batches)
                 sent += len(pictures)
-                log.info("restorer: batch %s with %d works", name, len(pictures))
+                log.info("restorer: batch %s of %s with %d works", name, model, len(pictures))
         if sent:
             self._wake.set()
         return sent
@@ -307,7 +365,8 @@ class Restorer:
             left = []
             for batch in batches:
                 try:
-                    answers = self.painter.batched(KIND, str(batch["name"]))
+                    model = str(batch.get("model") or MODEL)
+                    answers = self.painter.batched(KIND, str(batch["name"]), model=model)
                 except NotDrawn as err:  # lost: its works may be sent again
                     log.info("restorer: batch %s lost: %s", batch["name"], err)
                     continue
@@ -332,7 +391,9 @@ class Restorer:
         again: list[str],
     ) -> int:
         """The batch's drawings kept; the works refused fewer than
-        :data:`REFUSED_TRIES` times go into ``again``."""
+        :data:`REFUSED_TRIES` times, or drawn unusably by 2.1, go into
+        ``again`` (to Pro after :data:`FIRST_TRIES`)."""
+        model = str(batch.get("model") or MODEL)
         drawn = 0
         for item_id, answer in answers.items():
             item = self.library.get(item_id)
@@ -342,12 +403,18 @@ class Restorer:
                 if refusal(answer):
                     tries = self._refusals(item.id) + 1
                     self._note(
-                        item.id, "refused", why=str(answer)[:300], code=answer.code, tries=tries
+                        item.id,
+                        "refused",
+                        why=str(answer)[:300],
+                        code=answer.code,
+                        tries=tries,
+                        model=model,
                     )
                     if tries < REFUSED_TRIES:
                         again.append(item.id)
                 else:
-                    log.info("restorer: %s not drawn: %s", item.id, answer)
+                    log.info("restorer: %s not drawn by %s: %s", item.id, model, answer)
+                    self._failed(item.id, model, str(answer), again)
                 continue
             if self.restored(item):
                 continue  # drawn from its card meanwhile
@@ -362,12 +429,23 @@ class Restorer:
             if size and tuple(size) != picture.size:
                 continue  # its picture changed meanwhile: drawn from another
             try:
-                self._keep(item, picture, answer[0], answer[1])
+                self._keep(item, picture, answer[0], answer[1], model)
             except (NotRestored, ValueError) as err:
                 log.info("restorer: %s not kept: %s", item.id, err)
+                self._failed(item.id, model, str(err), again)
                 continue
             drawn += 1
         return drawn
+
+    def _failed(self, item_id: str, model: str, why: str, again: list[str]) -> None:
+        """A drawing of the Batch that cannot be used (none, or in other
+        proportions): one of 2.1 counts as a try and is asked again (of
+        Pro after :data:`FIRST_TRIES`); one of Pro waits for the owner."""
+        if model == PRO:
+            return
+        tries = self._refusals(item_id) + 1
+        self._note(item_id, FAILED, why=why[:300], tries=tries, model=model)
+        again.append(item_id)
 
     # -- the background ---------------------------------------------------------------
 
@@ -395,6 +473,16 @@ class Restorer:
 #: asked (it takes the work for a protected one, or its content for one it
 #: may not show): never sent again.
 REFUSALS = ("recitation", "prohibited", "safety", "blocklist", "spii")
+
+
+#: A note's status for a drawing of 2.1 that could not be used.
+FAILED = "failed"
+
+
+def model_for(tries: int) -> str:
+    """The model asked after ``tries`` that failed: Nano Banana 2.1 the
+    first :data:`FIRST_TRIES` times, then Pro."""
+    return MODEL if tries < FIRST_TRIES else PRO
 
 
 def _tries(data: dict[str, Any]) -> int:
@@ -427,9 +515,27 @@ def fit(size: tuple[int, int], drawn: Image.Image) -> Image.Image:
     return drawn.convert("RGB").resize((dw, dh), Image.Resampling.LANCZOS)
 
 
+def recoloured(picture: Image.Image, drawn: Image.Image) -> Image.Image:
+    """``drawn`` in the colours of the picture it was drawn from (Mateusz
+    2026-11-16: "Bywa że „restauracja dzieła” zmienia nieznacznie
+    kolorystykę. Czy możemy po ‚stworzeniu’ jakości przenieść kolorystykę
+    z oryginału?"). In OKLab, the drawing's tones and colours at the
+    picture's own scale (blurred by :data:`COLOUR_SIGMA` of its pixels) are
+    replaced by the picture's; what is finer, the detail the model drew,
+    stays as drawn."""
+    size = drawn.size
+    sigma = COLOUR_SIGMA * max(size) / max(picture.size)
+    own = picture.convert("RGB").resize(size, Image.Resampling.LANCZOS)
+    museum = linear_to_oklab(u8_to_linear(np.asarray(own))).astype(np.float32)
+    lab = linear_to_oklab(u8_to_linear(np.asarray(drawn.convert("RGB")))).astype(np.float32)
+    lab += cv2.GaussianBlur(museum, (0, 0), sigma) - cv2.GaussianBlur(lab, (0, 0), sigma)
+    rgb = linear_to_u8(np.clip(oklab_to_linear(lab), 0.0, 1.0))
+    return Image.fromarray(rgb, "RGB")
+
+
 def _chunks(items: list[Item], n: int) -> Iterator[list[Item]]:
     for at in range(0, len(items), n):
         yield items[at : at + n]
 
 
-__all__ = ["LOW_SIDE", "NotRestored", "Restorer", "fit", "refusal"]
+__all__ = ["LOW_SIDE", "NotRestored", "Restorer", "fit", "recoloured", "refusal"]

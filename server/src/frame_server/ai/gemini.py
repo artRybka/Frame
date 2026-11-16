@@ -40,12 +40,23 @@ MODEL = "gemini-nano-banana-2.1"
 #: redrawing a work (trial of 2026-11-13: the study looks like an
 #: illustration, the pencil marks wander).
 LITE = "gemini-3.1-flash-lite-image"
+#: Google's dearer image model (Nano Banana Pro): a picture some 2.3 times
+#: :data:`MODEL`'s price, nearer the picture it is given and taking works
+#: :data:`MODEL` refuses (de Chirico trial, 2026-11-12). The restorer's
+#: second line (Mateusz 2026-11-16: "gdy pierwsze 2 zawiodą odpalajmy pro").
+PRO = "gemini-3-pro-image"
 URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
 MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 REVISION = "2026-05-20"
+
+
 #: Google's Batch: questions in the request itself (generateContent's
 #: shape), answered within a day at half the price.
-BATCH_URL = f"{MODELS_URL}/{MODEL}:batchGenerateContent"
+def batch_url(model: str = MODEL) -> str:
+    return f"{MODELS_URL}/{model}:batchGenerateContent"
+
+
+BATCH_URL = batch_url()
 BATCHES_URL = "https://generativelanguage.googleapis.com/v1beta"
 #: A batch's questions in the request may weigh this much at most (Google:
 #: 20 MB).
@@ -54,7 +65,7 @@ BATCH_BYTES = 19_000_000
 BATCH_SHARE = 0.5
 #: USD per million tokens: what goes in, text and thinking out, picture out
 #: (ai.google.dev/pricing, 2026-11-12). A picture at 1K is 1120 tokens.
-PRICES = {MODEL: (1.50, 7.50, 30.0), LITE: (0.25, 1.50, 30.0)}
+PRICES = {MODEL: (1.50, 7.50, 30.0), LITE: (0.25, 1.50, 30.0), PRO: (2.00, 12.0, 120.0)}
 PRICE = PRICES[MODEL]
 #: Google's words for a question it will not take at all (the picture or
 #: the words): nothing is drawn and nothing is paid, so asking again costs
@@ -170,10 +181,10 @@ def embed_cost(usage: dict[str, Any]) -> float:
     return round(spent / 1e6, 6)
 
 
-def batch_cost(usage: dict[str, Any]) -> float:
-    """What a batch's answer cost (generateContent's ``usageMetadata``), at
-    the Batch's price."""
-    into, text, picture = PRICE
+def batch_cost(usage: dict[str, Any], model: str = MODEL) -> float:
+    """What a batch's answer of ``model`` cost (generateContent's
+    ``usageMetadata``), at the Batch's price."""
+    into, text, picture = PRICES.get(model, PRICE)
     pictured = sum(
         part.get("tokenCount", 0)
         for part in usage.get("candidatesTokensDetails") or []
@@ -230,7 +241,7 @@ def _answers(node: Any) -> list[dict[str, Any]]:
     return []
 
 
-def _drawn(answer: dict[str, Any]) -> tuple[Image.Image, float] | NotDrawn:
+def _drawn(answer: dict[str, Any], model: str = MODEL) -> tuple[Image.Image, float] | NotDrawn:
     """One answer of a batch: its picture and cost, or why there is none."""
     error = answer.get("error")
     if isinstance(error, dict):
@@ -240,7 +251,7 @@ def _drawn(answer: dict[str, Any]) -> tuple[Image.Image, float] | NotDrawn:
             code = "prohibited_content"
         return NotDrawn(f"Google: {str(error.get('message') or error)[:300]}", code)
     response = answer.get("response") or {}
-    usd = batch_cost(response.get("usageMetadata") or {})
+    usd = batch_cost(response.get("usageMetadata") or {}, model)
     for candidate in response.get("candidates") or []:
         for part in (candidate.get("content") or {}).get("parts") or []:
             data = (part.get("inlineData") or part.get("inline_data") or {}).get("data")
@@ -482,8 +493,8 @@ class Painter:
         self.spending.add(kind, round(spent * BATCH_SHARE, 6))
         return found
 
-    def batch(self, kind: str, asks: Sequence[Ask]) -> str:
-        """Hands the questions to Google's Batch (answered within a day, at
+    def batch(self, kind: str, asks: Sequence[Ask], model: str = MODEL) -> str:
+        """Hands the questions to ``model``'s Batch (answered within a day, at
         half the price): the batch's name, to ask :meth:`batched` with.
         Raises :class:`AiUnavailable` as :meth:`paint` does (no key, the
         month's limit, the key's trouble), ValueError when the questions
@@ -509,16 +520,16 @@ class Painter:
                 "input_config": {"requests": {"requests": requests}},
             }
         }
-        answer = self._send("post", BATCH_URL, key, json=body)
+        answer = self._send("post", batch_url(model), key, json=body)
         name = answer.json().get("name")
         if not isinstance(name, str) or not name.startswith("batches/"):
             raise NotDrawn(f"Google's batch has no name: {answer.text[:200]}")
         return name
 
     def batched(
-        self, kind: str, batch: str
+        self, kind: str, batch: str, model: str = MODEL
     ) -> dict[str, tuple[Image.Image, float] | NotDrawn] | None:
-        """The answers of a batch by the questions' names: a picture and
+        """The answers of a batch of ``model`` by the questions' names: a picture and
         what it cost, or why there is none; None while Google is at it.
         What they cost is counted as ``kind`` once, when they are read.
         Raises :class:`NotDrawn` when the batch itself is lost (expired,
@@ -542,7 +553,7 @@ class Painter:
         spent = 0.0
         for at, one in enumerate(_answers(raw)):
             name = str((one.get("metadata") or {}).get("key") or at)
-            drawn = _drawn(one)
+            drawn = _drawn(one, model)
             if not isinstance(drawn, NotDrawn):
                 spent += drawn[1]
             found[name] = drawn
