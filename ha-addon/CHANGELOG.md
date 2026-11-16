@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.145.187
+
+- Nowy aparat do skanu własnego dzieła. Sam znajduje krawędzie dzieła i
+  rysuje jego obrys; zdjęcie na wprost robi się samo, gdy obrys zrobi się
+  zielony.
+- Kolejne dwa zdjęcia robi się pod większym kątem, ok. 30° z lewej i z
+  prawej. Na ekranie jest ramka pomocnicza, która pokazuje, gdzie ma się
+  znaleźć dzieło, i strzałka, w którą stronę iść. Dawna kropka zniknęła.
+- Nie ma guzika robienia zdjęcia. Pojawia się tylko wtedy, gdy aparat
+  przez kilka sekund nie widzi krawędzi dzieła.
+- Pomocnik podpowiada: „Podejdź bliżej”, „Odsuń się”, „Stań na wprost”,
+  „Trzymaj telefon prosto”, a przy słabym świetle uprzedza, że zdjęcie
+  może wyjść nieostre.
+- Do sprawdzenia na telefonie: czy aparat pewnie łapie krawędzie dzieła
+  i czy strzałki prowadzą w dobrą stronę.
+
 ## 1.145.186
 
 - Skan z trzech zdjęć łączy się po nowemu. Z dzieła za szybą znika welon

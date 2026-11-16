@@ -140,4 +140,141 @@ final class OwnWorksTests: XCTestCase {
         )
         XCTAssertTrue(none.tiles.isEmpty)
     }
+
+    /// The helper frame of the side photographs (Mateusz 2026-11-16: "z
+    /// ramką pomocniczą na ekranie pokazująca gdzie ma się znajdować
+    /// dzieło"): the work's outline as it shows from 30° to the side.
+    func testTheHelperFrameIsTheWorkSeenFromTheSide() throws {
+        let front = [CGPoint(x: 0.2, y: 0.3), CGPoint(x: 0.8, y: 0.3), CGPoint(x: 0.8, y: 0.7), CGPoint(x: 0.2, y: 0.7)]
+        // From the front it is itself.
+        for (seen, was) in zip(OwnScanView.seen(front, from: 0), front) {
+            XCTAssertEqual(seen.x, was.x, accuracy: 1e-9)
+            XCTAssertEqual(seen.y, was.y, accuracy: 1e-9)
+        }
+        // From the left its left side is nearer: taller, and the whole narrower.
+        let left = OwnScanView.seen(front, from: -OwnScanView.side)
+        XCTAssertGreaterThan(left[3].y - left[0].y, 0.4 * 1.1)
+        XCTAssertLessThan(left[2].y - left[1].y, 0.4 * 0.95)
+        XCTAssertLessThan(left[1].x - left[0].x, 0.6 * 0.95)
+        // From the right, the mirror of it.
+        let right = OwnScanView.seen(front, from: OwnScanView.side)
+        XCTAssertEqual(right[2].y - right[1].y, left[3].y - left[0].y, accuracy: 1e-9)
+        XCTAssertEqual(1 - right[1].x, left[0].x, accuracy: 1e-9)
+        // The angle is read back off the outline, and the outline lies in its frame.
+        XCTAssertEqual(try XCTUnwrap(OwnScanView.angle(of: left, front: front)), -30, accuracy: 0.5)
+        let nearly = OwnScanView.seen(front, from: -27)
+        XCTAssertEqual(try XCTUnwrap(OwnScanView.angle(of: nearly, front: front)), -27, accuracy: 0.5)
+        XCTAssertTrue(OwnScanView.near.contains(27))
+        XCTAssertLessThan(OwnScanView.off(nearly, frame: left), 0.03)
+        XCTAssertGreaterThan(OwnScanView.off(front, frame: left), 0.05)
+    }
+
+    /// From where the phone sees the work is read off its outline alone,
+    /// however far away it stands (Mateusz 2026-11-16: "kąt wykonywania
+    /// kolejnych ujęć jest zbyt mały"; the helper counts the angle itself).
+    func testTheAngleIsReadOffTheOutlineWhateverTheDistance() throws {
+        let front = [CGPoint(x: 0.2, y: 0.3), CGPoint(x: 0.8, y: 0.3), CGPoint(x: 0.8, y: 0.7), CGPoint(x: 0.2, y: 0.7)]
+        let shape = try XCTUnwrap(OwnScanView.shape(of: front))
+        XCTAssertEqual(shape, 0.4 / 0.75 / 0.6, accuracy: 1e-9)
+        for degrees in [-38.0, -30, -22, 0, 12, 30] {
+            let outline = OwnScanView.seen(front, from: degrees)
+            XCTAssertEqual(try XCTUnwrap(OwnScanView.turn(of: outline, shape: shape)), degrees, accuracy: 0.01)
+            XCTAssertEqual(try XCTUnwrap(OwnScanView.away(outline, front: front)), 1, accuracy: 0.001)
+        }
+        // Twice as far away the work is half as large: the same angle.
+        let small = front.map { CGPoint(x: 0.5 + ($0.x - 0.5) / 2, y: 0.5 + ($0.y - 0.5) / 2) }
+        XCTAssertEqual(try XCTUnwrap(OwnScanView.turn(of: OwnScanView.seen(small, from: -30), shape: shape)), -30, accuracy: 0.01)
+        XCTAssertEqual(try XCTUnwrap(OwnScanView.away(small, front: front)), 2, accuracy: 0.001)
+        // The phone on its side: a wide picture, the lens as many half-widths shorter.
+        let wide = [CGPoint(x: 0.25, y: 0.2), CGPoint(x: 0.75, y: 0.2), CGPoint(x: 0.75, y: 0.8), CGPoint(x: 0.25, y: 0.8)]
+        let lens = OwnScanView.focal * 0.75
+        let seen = OwnScanView.seen(wide, from: 30, aspect: 4.0 / 3, focal: lens)
+        let wideShape = try XCTUnwrap(OwnScanView.shape(of: wide, aspect: 4.0 / 3))
+        XCTAssertEqual(try XCTUnwrap(OwnScanView.turn(of: seen, shape: wideShape, aspect: 4.0 / 3, focal: lens)), 30, accuracy: 0.01)
+    }
+
+    /// What the helper says (Mateusz 2026-11-16 09:52 UTC: "Czy pomocnik
+    /// przy aparacie mówi żeby zbliżyć się do dzieła, oddalić? Mógłby to
+    /// robić?").
+    func testTheHelperSaysWhereToStand() {
+        let front = [CGPoint(x: 0.2, y: 0.3), CGPoint(x: 0.8, y: 0.3), CGPoint(x: 0.8, y: 0.7), CGPoint(x: 0.2, y: 0.7)]
+        // The first photograph: whole, large enough, from the front.
+        XCTAssertEqual(OwnScanView.first(nil), .lost)
+        XCTAssertEqual(OwnScanView.first(front), .hold)
+        XCTAssertEqual(OwnScanView.first(OwnScanView.seen(front, from: -3)), .hold)
+        XCTAssertEqual(OwnScanView.first(front.map { CGPoint(x: 0.5 + ($0.x - 0.5) / 2, y: 0.5 + ($0.y - 0.5) / 2) }), .nearer)
+        XCTAssertEqual(OwnScanView.first(front.map { CGPoint(x: $0.x - 0.2, y: $0.y) }), .farther)
+        XCTAssertEqual(OwnScanView.first(OwnScanView.seen(front, from: -12)), .straight)
+        let leaning = [CGPoint(x: 0.2, y: 0.3), CGPoint(x: 0.8, y: 0.3), CGPoint(x: 0.74, y: 0.7), CGPoint(x: 0.26, y: 0.7)]
+        XCTAssertEqual(OwnScanView.first(leaning), .level)
+
+        // The one from the left: on to the left, there, too far, back.
+        let left = -OwnScanView.side
+        XCTAssertEqual(OwnScanView.side(target: left, angle: 0), .go(left: true))
+        XCTAssertEqual(OwnScanView.side(target: left, angle: -15), .go(left: true))
+        XCTAssertEqual(OwnScanView.side(target: left, angle: -24), .hold)
+        XCTAssertEqual(OwnScanView.side(target: left, angle: -36), .hold)
+        XCTAssertEqual(OwnScanView.side(target: left, angle: -45), .go(left: false))
+        // The one from the right starts where the left one was taken.
+        XCTAssertEqual(OwnScanView.side(target: OwnScanView.side, angle: -30), .go(left: false))
+        XCTAssertEqual(OwnScanView.side(target: OwnScanView.side, angle: 29), .hold)
+        XCTAssertEqual(OwnScanView.side(target: OwnScanView.side, angle: 44), .go(left: true))
+        // Standing right, but too far away or with the work cut off.
+        XCTAssertEqual(OwnScanView.side(target: left, angle: -30, away: 1.5), .nearer)
+        XCTAssertEqual(OwnScanView.side(target: left, angle: -30, away: 1.2), .hold)
+        XCTAssertEqual(OwnScanView.side(target: left, angle: -30, fits: false), .farther)
+
+        // The words: no shutter but when the work's edges are not found.
+        var look = OwnScanLook(number: 2)
+        look.advice = .go(left: true)
+        XCTAssertNil(look.pill)
+        XCTAssertEqual(look.line, "Przejdź w lewo, aż dzieło wypełni ramkę")
+        look.advice = .go(left: false)
+        XCTAssertEqual(look.line, "Za daleko w bok, wróć trochę")
+        look.advice = .nearer
+        XCTAssertEqual(look.pill?.text, "Podejdź bliżej")
+        look.advice = .farther
+        XCTAssertEqual(look.pill?.text, "Odsuń się")
+        look.advice = .hold
+        XCTAssertTrue(look.matched)
+        XCTAssertEqual(look.line, "Dobrze. Robię zdjęcie z lewej")
+        look.advice = .lost
+        XCTAssertNil(look.pill)
+        look.manual = true
+        XCTAssertEqual(look.line, "Zrób zdjęcie sam")
+    }
+
+    /// The outline's corners in their order, on the screen and as the world
+    /// stands when the phone is held on its side; the work among other
+    /// rectangles in the picture.
+    func testTheOutlineIsOrderedTurnedAndFollowed() {
+        let front = [CGPoint(x: 0.2, y: 0.3), CGPoint(x: 0.8, y: 0.3), CGPoint(x: 0.8, y: 0.7), CGPoint(x: 0.2, y: 0.7)]
+        XCTAssertEqual(OwnScanView.ordered([front[2], front[0], front[3], front[1]]), front)
+        for quarter in [1, -1, 0] {
+            for corner in front {
+                let back = OwnScanView.shown(OwnScanView.upright(corner, quarter: quarter), quarter: quarter)
+                XCTAssertEqual(back.x, corner.x, accuracy: 1e-9)
+                XCTAssertEqual(back.y, corner.y, accuracy: 1e-9)
+            }
+        }
+        // The phone's top to the left: the screen's top is the world's right.
+        let turned = OwnScanView.upright(CGPoint(x: 0.2, y: 0.3), quarter: 1)
+        XCTAssertEqual(turned.x, 0.7, accuracy: 1e-9)
+        XCTAssertEqual(turned.y, 0.2, accuracy: 1e-9)
+        // A tall work on the screen is a tall work in the world with the
+        // phone upright only: on its side the outline is ordered anew.
+        let world = OwnScanView.ordered(front.map { OwnScanView.upright($0, quarter: 1) })
+        XCTAssertEqual(world[0].x, 0.3, accuracy: 1e-9)
+        XCTAssertEqual(world[0].y, 0.2, accuracy: 1e-9)
+        XCTAssertEqual(world[2].x, 0.7, accuracy: 1e-9)
+        XCTAssertEqual(world[2].y, 0.8, accuracy: 1e-9)
+
+        // The largest rectangle is the work, until one is followed.
+        let door = [CGPoint(x: 0.05, y: 0.1), CGPoint(x: 0.95, y: 0.1), CGPoint(x: 0.95, y: 0.95), CGPoint(x: 0.05, y: 0.95)]
+        XCTAssertEqual(OwnCameraSession.area(front), 0.24, accuracy: 1e-9)
+        XCTAssertEqual(OwnCameraSession.work(among: [front, door], last: nil), door)
+        let moved = front.map { CGPoint(x: $0.x + 0.03, y: $0.y - 0.02) }
+        XCTAssertEqual(OwnCameraSession.work(among: [door, moved], last: front), moved)
+        XCTAssertNil(OwnCameraSession.work(among: [], last: front))
+    }
 }

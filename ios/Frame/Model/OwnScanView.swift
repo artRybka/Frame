@@ -1,0 +1,214 @@
+import CoreGraphics
+import Foundation
+
+/// Where a flat work on the wall shows in the camera's picture when the
+/// phone stands off to the side of it, as far away and aiming at its
+/// middle (the scan of three, Mateusz 2026-11-16: "pierwsze zdjęcie na
+/// wprost, a kolejne pod większym kątem z ramką pomocniczą na ekranie
+/// pokazująca gdzie ma się znajdować dzieło"). From the work's outline in
+/// the first photograph comes the helper frame for the side ones: the
+/// shape that outline takes from 30° to the left and to the right.
+enum OwnScanView {
+    /// How far to the side the side photographs are taken, in degrees: a
+    /// lamp's reflection moves about a third of a metre across the work
+    /// from a metre away, while the work's far side is 13 % narrower.
+    static let side = 30.0
+    /// The side photograph is taken between these (the frame is a guide,
+    /// not a gauge).
+    static let near = 22.0 ... 38.0
+    /// The main camera's focal length in half-widths of the upright picture
+    /// (26 mm equivalent: 69° across the sensor's long side).
+    static let focal = 1.94
+
+    /// A point of the front view (0–1 across and down a picture `aspect`
+    /// wide to high) as seen from `degrees` to the side: negative from
+    /// the left, where the work's left side comes nearer and taller.
+    /// `centre`: the work's middle in the front view, which the camera
+    /// keeps aiming at.
+    static func seen(
+        _ point: CGPoint, from degrees: Double, centre: CGPoint, aspect: Double = 0.75, focal: Double = OwnScanView.focal
+    ) -> CGPoint {
+        let turn = degrees * .pi / 180
+        // Across and down from the middle, in focal lengths.
+        let a = Double(point.x - centre.x) * 2 / focal
+        let b = Double(point.y - centre.y) * 2 / aspect / focal
+        let depth = max(1 - a * sin(turn), 0.05)
+        return CGPoint(
+            x: Double(centre.x) + a * cos(turn) / depth * focal / 2,
+            y: Double(centre.y) + b / depth * focal * aspect / 2
+        )
+    }
+
+    /// The outline `corners` (top left, top right, bottom right, bottom
+    /// left, 0–1) as seen from `degrees` to the side.
+    static func seen(
+        _ corners: [CGPoint], from degrees: Double, aspect: Double = 0.75, focal: Double = OwnScanView.focal
+    ) -> [CGPoint] {
+        guard !corners.isEmpty else { return [] }
+        let centre = middle(corners)
+        return corners.map { seen($0, from: degrees, centre: centre, aspect: aspect, focal: focal) }
+    }
+
+    static func middle(_ corners: [CGPoint]) -> CGPoint {
+        let n = CGFloat(max(corners.count, 1))
+        return CGPoint(x: corners.map(\.x).reduce(0, +) / n, y: corners.map(\.y).reduce(0, +) / n)
+    }
+
+    /// From how far to the side an outline is seen, in degrees (negative:
+    /// from the left), by how much taller its left side is than its right:
+    /// the opposite of `seen`. `front`: the same outline from the front.
+    static func angle(of outline: [CGPoint], front: [CGPoint], aspect: Double = 0.75) -> Double? {
+        guard outline.count == 4, front.count == 4 else { return nil }
+        func lean(_ q: [CGPoint]) -> Double {
+            let left = Double(hypot(q[3].x - q[0].x, q[3].y - q[0].y))
+            let right = Double(hypot(q[2].x - q[1].x, q[2].y - q[1].y))
+            return right > 0 ? log(left / right) : 0
+        }
+        let seenLean = lean(outline) - lean(front)
+        // The lean grows evenly enough with the angle to look it up.
+        var best: (angle: Double, off: Double)?
+        for step in -120 ... 120 {
+            let degrees = Double(step) / 2
+            let off = abs(lean(seen(front, from: degrees, aspect: aspect)) - lean(front) - seenLean)
+            if best == nil || off < best!.off { best = (degrees, off) }
+        }
+        return best?.angle
+    }
+
+    // MARK: Reading an outline
+
+    /// Four corners in the order top left, top right, bottom right,
+    /// bottom left, whatever order they came in.
+    static func ordered(_ corners: [CGPoint]) -> [CGPoint] {
+        guard corners.count == 4 else { return corners }
+        let sums = corners.map { $0.x + $0.y }, differences = corners.map { $0.x - $0.y }
+        let topLeft = sums.indices.min { sums[$0] < sums[$1] }!, bottomRight = sums.indices.max { sums[$0] < sums[$1] }!
+        let topRight = differences.indices.max { differences[$0] < differences[$1] }!
+        let bottomLeft = differences.indices.min { differences[$0] < differences[$1] }!
+        guard Set([topLeft, topRight, bottomRight, bottomLeft]).count == 4 else { return corners }
+        return [corners[topLeft], corners[topRight], corners[bottomRight], corners[bottomLeft]]
+    }
+
+    /// The outline's sides in half-widths of the picture (`aspect` wide to high).
+    static func sides(_ q: [CGPoint], aspect: Double = 0.75) -> (left: Double, right: Double, top: Double, bottom: Double) {
+        func length(_ a: CGPoint, _ b: CGPoint) -> Double {
+            hypot(Double(a.x - b.x) * 2, Double(a.y - b.y) * 2 / aspect)
+        }
+        return (length(q[0], q[3]), length(q[1], q[2]), length(q[0], q[1]), length(q[3], q[2]))
+    }
+
+    /// The work's height to its width, from its outline seen from the front.
+    static func shape(of front: [CGPoint], aspect: Double = 0.75) -> Double? {
+        guard front.count == 4 else { return nil }
+        let s = sides(front, aspect: aspect)
+        guard s.top + s.bottom > 0 else { return nil }
+        return (s.left + s.right) / (s.top + s.bottom)
+    }
+
+    /// From how far to the side an outline is seen, in degrees (negative:
+    /// from the left). A side's height on the picture says how far away it
+    /// is; the work's `shape` (height to width) says how far apart its two
+    /// sides are, so the difference of their depths is the angle's sine,
+    /// whatever the distance.
+    static func turn(of outline: [CGPoint], shape: Double, aspect: Double = 0.75, focal: Double = OwnScanView.focal) -> Double? {
+        guard outline.count == 4 else { return nil }
+        let s = sides(outline, aspect: aspect)
+        guard s.left > 0, s.right > 0 else { return nil }
+        let sine = -shape * focal * (1 / s.right - 1 / s.left)
+        return asin(max(-1, min(1, sine))) * 180 / .pi
+    }
+
+    /// How far the phone is from the work now, in its distances at the
+    /// front photograph (1: as far).
+    static func away(_ outline: [CGPoint], front: [CGPoint], aspect: Double = 0.75) -> Double? {
+        guard outline.count == 4, front.count == 4 else { return nil }
+        let now = sides(outline, aspect: aspect), then = sides(front, aspect: aspect)
+        guard now.left > 0, now.right > 0 else { return nil }
+        return (then.left + then.right) / 2 * (1 / now.left + 1 / now.right) / 2
+    }
+
+    /// All of the outline is in the picture, a little off its edges.
+    static func fits(_ outline: [CGPoint]) -> Bool {
+        outline.allSatisfy { (0.015 ... 0.985).contains($0.x) && (0.015 ... 0.985).contains($0.y) }
+    }
+
+    // MARK: The phone on its side
+
+    /// A point of the screen's picture (the app stays upright) where it is
+    /// in the picture as the world stands. `quarter`: 0 the phone upright,
+    /// 1 its top to the left, -1 to the right.
+    static func upright(_ p: CGPoint, quarter: Int) -> CGPoint {
+        switch quarter {
+        case 1: CGPoint(x: 1 - p.y, y: p.x)
+        case -1: CGPoint(x: p.y, y: 1 - p.x)
+        default: p
+        }
+    }
+
+    /// The opposite of `upright`: back onto the screen.
+    static func shown(_ p: CGPoint, quarter: Int) -> CGPoint {
+        switch quarter {
+        case 1: CGPoint(x: p.y, y: 1 - p.x)
+        case -1: CGPoint(x: 1 - p.y, y: p.x)
+        default: p
+        }
+    }
+
+    // MARK: What to say
+
+    /// Before the first photograph: the work whole in the picture, large
+    /// enough, seen from the front.
+    static func first(_ outline: [CGPoint]?, aspect: Double = 0.75) -> OwnScanAdvice {
+        guard let outline, outline.count == 4 else { return .lost }
+        guard fits(outline) else { return .farther }
+        let xs = outline.map(\.x), ys = outline.map(\.y)
+        if xs.max()! - xs.min()! < small, ys.max()! - ys.min()! < small { return .nearer }
+        let s = sides(outline, aspect: aspect)
+        guard s.left > 0, s.right > 0, s.top > 0, s.bottom > 0 else { return .lost }
+        // One side taller: seen from the side. The top or the bottom wider:
+        // the phone leans back or forth.
+        if abs(log(s.left / s.right)) > askew { return .straight }
+        if abs(log(s.top / s.bottom)) > askew { return .level }
+        return .hold
+    }
+
+    /// Before a side photograph meant from `target` degrees: the phone
+    /// stands at `angle`, `away` times as far as at the front one.
+    static func side(target: Double, angle: Double, away: Double = 1, fits: Bool = true) -> OwnScanAdvice {
+        guard fits else { return .farther }
+        if away > far { return .nearer }
+        if (angle < 0) == (target < 0), near.contains(abs(angle)) { return .hold }
+        return .go(left: angle > target)
+    }
+
+    /// The work takes less of the picture than this across and down: come nearer.
+    static let small = 0.5
+    /// Opposite sides differ by more than this (their ratio's logarithm):
+    /// it is not seen from the front.
+    static let askew = 0.08
+    /// Farther than at the front photograph by more than this: come nearer.
+    static let far = 1.3
+
+    /// How well a live outline lies in the helper frame: the largest
+    /// distance between their corners, in picture widths.
+    static func off(_ outline: [CGPoint], frame: [CGPoint]) -> Double {
+        guard outline.count == frame.count, !outline.isEmpty else { return 1 }
+        return zip(outline, frame).map { Double(hypot($0.x - $1.x, $0.y - $1.y)) }.max() ?? 1
+    }
+}
+
+/// What the camera's helper says of the work as the phone sees it.
+enum OwnScanAdvice: Equatable {
+    /// No outline of the work is seen.
+    case lost
+    case nearer
+    case farther
+    /// Stand in front of it.
+    case straight
+    /// Hold the phone upright, at the work's height: it leans back or forth.
+    case level
+    /// Walk on, to the left or to the right.
+    case go(left: Bool)
+    /// As it should be: keep still, the photograph is being taken.
+    case hold
+}
