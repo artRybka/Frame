@@ -136,11 +136,15 @@ enum OwnScanView {
 
     /// A point of the screen's picture (the app stays upright) where it is
     /// in the picture as the world stands. `quarter`: 0 the phone upright,
-    /// 1 its top to the left, -1 to the right.
+    /// 1 its top to the left, -1 to the right. With the top to the left
+    /// the screen's top edge is the world's left and its right edge the
+    /// world's top (they were the other way round until 1.145.189, which
+    /// turned the world upside down: Mateusz 2026-11-16 "Nie obsługuje
+    /// robienia zdjęcia w poziomie").
     static func upright(_ p: CGPoint, quarter: Int) -> CGPoint {
         switch quarter {
-        case 1: CGPoint(x: 1 - p.y, y: p.x)
-        case -1: CGPoint(x: p.y, y: 1 - p.x)
+        case 1: CGPoint(x: p.y, y: 1 - p.x)
+        case -1: CGPoint(x: 1 - p.y, y: p.x)
         default: p
         }
     }
@@ -148,9 +152,29 @@ enum OwnScanView {
     /// The opposite of `upright`: back onto the screen.
     static func shown(_ p: CGPoint, quarter: Int) -> CGPoint {
         switch quarter {
-        case 1: CGPoint(x: p.y, y: 1 - p.x)
-        case -1: CGPoint(x: 1 - p.y, y: p.x)
+        case 1: CGPoint(x: 1 - p.y, y: p.x)
+        case -1: CGPoint(x: p.y, y: 1 - p.x)
         default: p
+        }
+    }
+
+    // MARK: The helper frame
+
+    /// An outline moved to the middle of the picture, and made smaller
+    /// when it takes more than `most` of it across or down: seen from the
+    /// side a work's near half is the larger, so the helper frame of a
+    /// work that filled the first photograph lay against the picture's
+    /// edge (Mateusz 2026-11-16: "przyklejona do krawędzi ekranu zamiast
+    /// być na środku").
+    static func fitted(_ outline: [CGPoint], most: Double = 0.84) -> [CGPoint] {
+        guard let left = outline.map(\.x).min(), let right = outline.map(\.x).max(),
+              let top = outline.map(\.y).min(), let bottom = outline.map(\.y).max()
+        else { return outline }
+        let width = Double(right - left), height = Double(bottom - top)
+        let scale = min(1, width > 0 ? most / width : 1, height > 0 ? most / height : 1)
+        let middle = CGPoint(x: (left + right) / 2, y: (top + bottom) / 2)
+        return outline.map {
+            CGPoint(x: 0.5 + Double($0.x - middle.x) * scale, y: 0.5 + Double($0.y - middle.y) * scale)
         }
     }
 
@@ -174,12 +198,18 @@ enum OwnScanView {
 
     /// Before a side photograph meant from `target` degrees: the phone
     /// stands at `angle`, `away` times as far as at the front one.
-    static func side(target: Double, angle: Double, away: Double = 1, fits: Bool = true) -> OwnScanAdvice {
+    /// `held`: the photograph is being taken already, which a little
+    /// more to either side or a step back does not stop.
+    static func side(target: Double, angle: Double, away: Double = 1, fits: Bool = true, held: Bool = false) -> OwnScanAdvice {
         guard fits else { return .farther }
-        if away > far { return .nearer }
-        if (angle < 0) == (target < 0), near.contains(abs(angle)) { return .hold }
+        if away > (held ? far + give / 20 : far) { return .nearer }
+        let range = held ? (near.lowerBound - give) ... (near.upperBound + give) : near
+        if (angle < 0) == (target < 0), range.contains(abs(angle)) { return .hold }
         return .go(left: angle > target)
     }
+
+    /// How far beyond `near` (degrees) a photograph being taken goes on.
+    static let give = 3.0
 
     /// The work takes less of the picture than this across and down: come nearer.
     static let small = 0.5
@@ -194,6 +224,59 @@ enum OwnScanView {
     static func off(_ outline: [CGPoint], frame: [CGPoint]) -> Double {
         guard outline.count == frame.count, !outline.isEmpty else { return 1 }
         return zip(outline, frame).map { Double(hypot($0.x - $1.x, $0.y - $1.y)) }.max() ?? 1
+    }
+}
+
+/// Where the phone stands, in degrees to the side of the work: the
+/// gyroscope's smooth count, drawn slowly towards what the work's outline
+/// says whenever the two agree (the gyroscope drifts and knows nothing of
+/// where he aims; the outline trembles and is not always seen).
+struct OwnScanAngle: Equatable {
+    /// What the outline has added to the gyroscope's count so far.
+    private(set) var offset = 0.0
+
+    /// The outline is believed when it is this near the count (another
+    /// rectangle on the wall is not the work).
+    static let agree = 20.0
+    /// How much of the difference one look at the outline takes away.
+    static let pull = 0.25
+
+    /// The angle now, and whether the outline was believed. `gyro`: the
+    /// gyroscope's count (nil without one); `seen`: the outline's.
+    mutating func fuse(gyro: Double?, seen: Double?) -> (angle: Double?, seen: Bool) {
+        guard let gyro else { return (seen, seen != nil) }
+        guard let seen, abs(seen - gyro - offset) < Self.agree else { return (gyro + offset, false) }
+        offset += (seen - gyro - offset) * Self.pull
+        return (gyro + offset, true)
+    }
+}
+
+/// What the helper says, held until something else has been true for a
+/// moment: at the edge of "come nearer" or of the side photograph's angle
+/// the word under the picture flickered between two (Mateusz 2026-11-16:
+/// "ramki podpowiedzi, ich skakanie").
+struct OwnScanSteady: Equatable {
+    private(set) var said = OwnScanAdvice.lost
+    private var next: OwnScanAdvice?
+    private var since = Date.distantPast
+
+    /// How long something else must be true before it is said.
+    static let settle: TimeInterval = 0.25
+
+    mutating func take(_ advice: OwnScanAdvice, at now: Date = .now) -> OwnScanAdvice {
+        guard advice != said else {
+            next = nil
+            return said
+        }
+        if next != advice {
+            next = advice
+            since = now
+        }
+        if now.timeIntervalSince(since) >= Self.settle {
+            said = advice
+            next = nil
+        }
+        return said
     }
 }
 
