@@ -103,8 +103,12 @@ CELL = 4
 VEIL_MOST = 0.3
 #: The reflection layer's percentile (per channel) that is the work's own
 #: even sheen or veil and stays on it. Not the middle one: a reflection
-#: over more than half of the work would stay whole.
-KEPT = 40
+#: over more than half of the work would stay whole. 40 until 2026-11-16
+#: 22:19 UTC (Mateusz, an oil portrait scanned in the evening, shown the
+#: scan as it was, B, and with nothing kept, C: "Najbliżej jest jednak B.
+#: Może odrobinę w kierunku C. Ale samo C jest zdecydowanie za ciemne i
+#: zbyt dużo kontrastu").
+KEPT = 30
 #: The width what the first view alone shows is worked out at: a finger
 #: in the glass is a hundredth of the work across.
 ALONE_WIDTH = 512
