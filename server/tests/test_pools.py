@@ -345,7 +345,9 @@ def test_black_and_white_copies_of_paintings_are_left_out(museums, monkeypatch) 
     service = museums
     for key in ("wmc", "europeana"):
         monkeypatch.setitem(MUSEUMS, key, _grey_copies(key))
-    grey = jpeg_bytes((128, 128, 128))
+    # Not the decoder's 128: a picture that grey all over is a cut-off
+    # file, no picture at all (``imaging.cut_off``).
+    grey = jpeg_bytes((100, 100, 100))
     sent: list[str] = []
 
     def answer(request: httpx.Request) -> httpx.Response:

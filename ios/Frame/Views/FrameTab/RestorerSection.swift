@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Konfiguracja → Gemini → "Kreatywny restaurator" (Mateusz 2026-11-12):
 /// works whose picture is small for the frame (under 1600 px, `LowRes`)
-/// drawn again larger by Google's image model (Nano Banana 2.1). Since
+/// drawn again larger by Google's image model (Nano Banana 2.1, Pro when it fails twice). Since
 /// 2026-11-13 they are ordered from a playlist's "…" (Ulubione's too:
 /// "to także przenieś pod "..." w playliście ulubione"), one work from its
 /// card's "…"; here only what waits in Google's batches and what was drawn.
@@ -39,7 +39,7 @@ struct RestorerSection: View {
             Divider()
         }
         Text(
-            "Przerysowuje małe zdjęcia dzieł do ok. 2000 px. Szczegóły są dorysowane, dlatego takie dzieła mają bursztynowe iskierki. Zamawiasz w menu „…” playlisty albo dzieła."
+            "Przerysowuje małe zdjęcia dzieł do ok. 2000 px, w barwach oryginału. Szczegóły są dorysowane, dlatego takie dzieła mają bursztynowe iskierki. Zamawiasz w menu „…” playlisty albo dzieła."
         )
         .font(.caption)
         .foregroundStyle(Theme.inkSoft)

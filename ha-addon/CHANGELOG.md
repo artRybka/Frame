@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.145.198
+
+- Dzieło, którego plik muzeum trzyma obcięty (np. „Zmartwychwstanie
+  Jezusa Chrystusa” Podolińskiego z MNW), pokazywało się jako szary
+  prostokąt z paskiem obrazu u góry. Serwer rozpoznaje taki obraz i
+  traktuje go jak brak obrazu: dzieło znika z list, tak jak dzieła z
+  martwym linkiem. Zapisane już takie obrazy są sprawdzane raz po
+  aktualizacji.
+
+## 1.145.197
+
+- Restauracja dzieła zachowuje barwy oryginału: z rysunku modelu zostają
+  szczegóły, a tony i kolory wracają ze zdjęcia muzeum. Na pięciu pracach
+  de Chirico odchylenie barw spadło z 1,6–6,0 do 0,5–0,8.
+- Gdy Nano Banana 2.1 dwa razy zawiedzie (odmowa, brak obrazu albo obraz
+  w innych proporcjach), restauracja prosi o rysunek droższy Nano Banana
+  Pro. Dotyczy karty dzieła i pakietów Google.
+- Dzieła odnowione wcześniej dostają barwy oryginału raz, po starcie
+  serwera: bez ponownego rysowania i bez kosztu, serwer pobiera jeszcze
+  raz zdjęcie z muzeum.
+
 ## 1.145.196
 
 - Pasek barw na karcie dzieła i w Propozycjach dnia jest niższy: 18 pt
