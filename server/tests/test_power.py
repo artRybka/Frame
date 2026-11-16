@@ -672,9 +672,12 @@ def test_put_to_sleep_from_the_app(tmp_path: Path) -> None:
     """ "Uśpij ramkę" on the charger: the app sleeps at its next question."""
     service = FrameService(_settings(tmp_path, _closed_port()))
     service.ensure_initial_content()
-    # Off on the real clock: just before 22:00 the app would wait for them.
+    # Off on the real clock: just before 22:00 the app would wait for them,
+    # and just before the change (07:00 by default) for it (CI at 06:56 local,
+    # 2026-11-16): the change is put half a day away.
     settings = service.player.settings
     settings.quiet_start = None
+    settings.change_times = [(datetime.now(settings.tz()) + timedelta(hours=12)).strftime("%H:%M")]
     service.player.save_settings(settings)
     charger = AppHello(reason="poll", build="2.0.0", charging=True)
     assert service.app.answer(charger).action == "stay"
