@@ -8,6 +8,9 @@
 - Gdy Nano Banana 2.1 dwa razy zawiedzie (odmowa, brak obrazu albo obraz
   w innych proporcjach), restauracja prosi o rysunek droższy Nano Banana
   Pro. Dotyczy karty dzieła i pakietów Google.
+- Dzieła odnowione wcześniej dostają barwy oryginału raz, po starcie
+  serwera: bez ponownego rysowania i bez kosztu, serwer pobiera jeszcze
+  raz zdjęcie z muzeum.
 
 ## 1.145.195
 

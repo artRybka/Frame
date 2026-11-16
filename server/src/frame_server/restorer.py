@@ -81,6 +81,9 @@ SKEW_MAX = 0.04
 #: detail; coarse enough that the drawing a pixel off the picture does not
 #: fringe its edges.
 COLOUR_SIGMA = 2.0
+#: A drawing's note says it is in the picture's colours (``colours``):
+#: the ones kept before are put in them once (:meth:`Restorer.recolour_kept`).
+COLOURS = 1
 #: Works in one batch: their pictures go in the request (inline, under
 #: the API's 20 MB).
 PER_BATCH = 24
@@ -280,7 +283,13 @@ class Restorer:
         fitted.save(buf, "JPEG", quality=95)
         updated = self.sharper.bring(item, buf.getvalue(), ORIGIN, restored=True)
         self._note(
-            item.id, "done", usd=usd, size=list(fitted.size), own=list(picture.size), model=model
+            item.id,
+            "done",
+            usd=usd,
+            size=list(fitted.size),
+            own=list(picture.size),
+            colours=COLOURS,
+            model=model,
         )
         log.info(
             "restorer: %s %s → %s by %s (%.3f USD)",
@@ -302,6 +311,49 @@ class Restorer:
                 data={"status": status, "at": self.clock().isoformat(), **data},
             )
         )
+
+    # -- the drawings kept before their colours were taken back -----------------------
+
+    def recolour_kept(self) -> int:
+        """The drawings kept before :func:`recoloured` put in the colours
+        of the museum's picture they were drawn from, once (Mateusz
+        2026-11-16: "Tak - poproszę"): nothing is drawn again or paid for,
+        the museum's picture is downloaded again. One that cannot be had
+        now is tried at the next start; how many were put in them."""
+        done = 0
+        for item in list(self.library.all_items()):
+            if self._stop.is_set():
+                break
+            if not self.restored(item) or item.sharper is None:
+                continue
+            note = self.library.note(item.id, KIND)
+            if note is not None and note.data.get("colours") == COLOURS:
+                continue
+            url = item.sharper.url
+            try:
+                drawing = self.images.sample(url)
+                fitted = recoloured(self.images.before_drawn(item), drawing)
+            except Exception as err:
+                log.info("restorer: %s not recoloured: %s", item.id, err)
+                continue
+            buf = io.BytesIO()
+            fitted.save(buf, "JPEG", quality=95)
+            with self._lock:
+                stored = self.library.get(item.id)
+                if stored is None or stored.sharper is None or stored.sharper.url != url:
+                    continue  # drawn again or put back meanwhile
+                try:
+                    self.sharper.bring(stored, buf.getvalue(), ORIGIN, restored=True)
+                except ValueError as err:
+                    log.info("restorer: %s not recoloured: %s", item.id, err)
+                    continue
+                data: dict[str, Any] = dict(note.data) if note is not None else {}
+                status = str(data.pop("status", "done"))
+                data["colours"] = COLOURS
+                self._note(item.id, status, model=note.model if note else MODEL, **data)
+            done += 1
+            log.info("restorer: %s recoloured", item.id)
+        return done
 
     # -- the favourites through the Batch API -----------------------------------------
 
@@ -459,6 +511,10 @@ class Restorer:
         self._wake.set()
 
     def _run(self) -> None:
+        try:
+            self.recolour_kept()
+        except Exception:
+            log.exception("restorer: drawings not recoloured")
         while not self._stop.is_set():
             if self._batches() and self.painter.enabled():
                 try:
