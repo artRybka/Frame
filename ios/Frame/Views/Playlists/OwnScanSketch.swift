@@ -4,9 +4,9 @@ import SwiftUI
 
 /// The scan's camera as the screenshots show it (the simulator has no
 /// camera): the demo's wall photograph, turned as the wall shows from the
-/// side, under the camera's own overlay and words. `-screen own-scan2
+/// side, under the camera's own overlay and words. `-screen own-scan
 /// -scanLook front | ready | far | near | lost | side | match | right |
-/// result` ("result": a sketch of the page after the scan, not built yet).
+/// result` ("result": the page after the scan, `OwnScanResult`).
 struct OwnScanSketch: View {
     let close: () -> Void
     let name = UserDefaults.standard.string(forKey: "scanLook") ?? "side"
@@ -139,94 +139,13 @@ struct OwnScanSketch: View {
 
     // MARK: The result
 
+    /// The page after the scan, with the demo's work with and without its glare.
+    @ViewBuilder
     private var result: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Button(action: close) {
-                    Image(systemName: "chevron.backward")
-                        .font(.body.weight(.semibold))
-                        .frame(width: 44, height: 44)
-                }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
-                Spacer()
-                Text("Skan gotowy")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .glassEffect()
-                Spacer()
-                Color.clear.frame(width: 44, height: 44)
-            }
-            .padding(.horizontal, Theme.gutter)
-            .padding(.top, 4)
-            Spacer(minLength: 12)
-            compare
-            VStack(spacing: 4) {
-                Text("Odblask usunięty z trzech zdjęć")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.9))
-                Text("Przesuń, żeby porównać ze zdjęciem na wprost.")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.55))
-            }
-            .padding(.top, 14)
-            Spacer(minLength: 12)
-            HStack(spacing: 12) {
-                Button("Powtórz") {}
-                    .buttonStyle(.glass)
-                    .controlSize(.large)
-                Button {} label: {
-                    Text("Dalej").foregroundStyle(.black)
-                }
-                .buttonStyle(.glassProminent)
-                .tint(.white)
-                .controlSize(.large)
-            }
-            .padding(.bottom, 20)
+        if let before = DemoOwn.photo().map({ OwnPicture.cut($0, corners: DemoOwn.work) }),
+           let after = DemoOwn.photo(glare: 0).map({ OwnPicture.cut($0, corners: DemoOwn.work) }) {
+            OwnScanResult(before: before, after: after, again: close, next: {})
         }
-    }
-
-    /// The first photograph on the left of the handle, the scan on the right.
-    private var compare: some View {
-        let before = DemoOwn.photo().map { OwnPicture.cut($0, corners: DemoOwn.work) }
-        let after = DemoOwn.photo(glare: 0).map { OwnPicture.cut($0, corners: DemoOwn.work) }
-        let shape = after.map { $0.size.width / max($0.size.height, 1) } ?? 1.3
-        return GeometryReader { geo in
-            let split = geo.size.width * 0.46
-            ZStack(alignment: .leading) {
-                if let after { Image(uiImage: after).resizable().scaledToFill().frame(width: geo.size.width, height: geo.size.height) }
-                if let before {
-                    Image(uiImage: before).resizable().scaledToFill()
-                        .frame(width: geo.size.width, height: geo.size.height)
-                        .mask(alignment: .leading) { Rectangle().frame(width: split) }
-                }
-                Rectangle().fill(.white).frame(width: 2).offset(x: split - 1)
-                Image(systemName: "arrow.left.and.right")
-                    .font(.footnote.weight(.bold))
-                    .foregroundStyle(.black)
-                    .frame(width: 34, height: 34)
-                    .background(.white, in: Circle())
-                    .shadow(color: .black.opacity(0.4), radius: 4)
-                    .offset(x: split - 17)
-                tag("Jedno zdjęcie").frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                tag("Skan").frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            }
-        }
-        .aspectRatio(shape, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .padding(.horizontal, 12)
-    }
-
-    private func tag(_ text: String) -> some View {
-        Text(text)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(.black.opacity(0.55), in: Capsule())
-            .padding(10)
     }
 
     // MARK: The wall from the side

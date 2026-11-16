@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.188
+
+- Po skanie z trzech zdjęć, gdy udało się zdjąć odbicia, pokazuje się
+  strona „Skan gotowy”: przesuwasz uchwyt i porównujesz zdjęcie na wprost
+  ze skanem. „Powtórz” wraca do aparatu, „Dalej” idzie do kadru.
+- Gdy łączenie nic nie zmieniło, po aparacie jest od razu kadr, jak dotąd.
+
 ## 1.145.187
 
 - Nowy aparat do skanu własnego dzieła. Sam znajduje krawędzie dzieła i

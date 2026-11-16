@@ -59,6 +59,9 @@ struct OwnWorkFlow: View {
     @State private var measured: OwnDepth.Size?
     /// The glare taken out by the side photographs.
     @State private var merged: OwnMerged?
+    /// The first photograph as it was taken and the scan made of the
+    /// three, both cut to the work: the page that shows what the scan gave.
+    @State private var compared: (before: UIImage, after: UIImage)?
     @State private var findingText = "Szukam dzieła na zdjęciu…"
 
     private var retaking: Item? {
@@ -75,6 +78,12 @@ struct OwnWorkFlow: View {
                 case .photo:
                     if ["own-scan", "own-scan2"].contains(LaunchRoute.screen) {
                         OwnScanSketch(close: back)  // the scan's camera as a scene, for screenshots
+                    } else if let compared {
+                        OwnScanResult(
+                            before: compared.before, after: compared.after,
+                            again: { withAnimation(.easeInOut(duration: 0.3)) { self.compared = nil } },
+                            next: { withAnimation(.easeInOut(duration: 0.3)) { step = .cut } }
+                        )
                     } else {
                         OwnCamera(close: back, took: take, finding: finding ? photo : nil, findingText: findingText)
                     }
@@ -128,6 +137,7 @@ struct OwnWorkFlow: View {
         photo = image
         depth = shots.depth
         merged = nil
+        compared = nil
         finding = true
         findingText = shots.sides.isEmpty ? "Szukam dzieła na zdjęciu…" : "Łączę trzy zdjęcia, usuwam odblaski…"
         Task {
@@ -147,7 +157,13 @@ struct OwnWorkFlow: View {
                 }
                 incoming = sent
                 found = sent.corners
-                withAnimation(.easeInOut(duration: 0.3)) { step = .cut }
+                if merged != nil, let clean = photo {
+                    // What the scan gave, before the cut: the work alone, where it was found.
+                    let both = (OwnPicture.cut(image, corners: sent.corners), OwnPicture.cut(clean, corners: sent.corners))
+                    withAnimation(.easeInOut(duration: 0.3)) { compared = both }
+                } else {
+                    withAnimation(.easeInOut(duration: 0.3)) { step = .cut }
+                }
             } catch {
                 model.show(error)
             }
