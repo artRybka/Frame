@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.178
+
+- Aparat przy dodawaniu własnego dzieła działa też poziomo: telefon
+  trzymany bokiem robi zdjęcie poziome, wygodniej przy szerokich dziełach.
+- W kroku Opis nie ma już ramki „Podpowiedzi z obrazu”; podpowiedzi
+  zostają przy polach.
+- Własne dzieło dostaje notkę kuratora jak każde inne (z tego, co o nim
+  wpisałeś, Twój tytuł, data i technika zostają), a Twoja notatka jest pod
+  nią. Na karcie pojawia się też „Podobne wyglądem”.
+
 ## 1.145.177
 
 - „Moje dzieła” w Playlistach znów pokazuje wszystkie własne dzieła. Od

@@ -220,3 +220,38 @@ def test_without_a_key_nothing_is_found_and_old_photographs_go(service: FrameSer
     os.utime(path, (old, old))
     service.own_works.prune()
     assert not path.exists()
+
+
+def test_a_work_of_his_own_gets_a_curators_note_with_his_words_kept() -> None:
+    """Mateusz 2026-11-16: "Dzieło dodane ręcznie powinno mieć normalnie
+    tworzoną notatkę": Sonnet's note as for a museum work with no
+    description (however long his own note), his note one of its facts,
+    nothing asked of Wikidata; his title, date and technique stay."""
+    from frame_server.ai.pl_text import PlTextJob, clean, request_text, written_for
+    from frame_server.library import Item
+    from frame_server.library.models import OwnWork
+
+    long_note = "Prezent od dziadka na ślub rodziców. " * 8
+    item = Item(
+        id="upload:abc", kind=ItemKind.OWN, source="upload", source_id="abc",
+        title="Klif nad morzem", artist="Stefan Nowak", date_text="ok. 1965",
+        medium="olej na płótnie", description=long_note,
+        own=OwnWork(hangs="Salon", origin="po dziadku", height_cm=46, width_cm=55),
+    )  # fmt: skip
+    assert PlTextJob.applies(item)
+    assert written_for(item) == "note"
+    asked = request_text(item, None)  # type: ignore[arg-type]  # never read for his own
+    assert "domowej kolekcji" in asked and "Prezent od dziadka" in asked
+    assert "46 × 55 cm" in asked and "po dziadku" in asked and "Muzeum" not in asked
+    text = clean(
+        {"title": "Klify", "frame": "Wysoki klif nad spokojnym morzem w popołudniowym świetle.",
+         "full": "Wysoki klif nad spokojnym morzem.", "medium": "olej", "date": "1965",
+         "artist_note": "", "sources": ["obraz"], "style": "opis"},
+        item, None,
+    )  # fmt: skip
+    assert text is not None and text.written == "note"
+    assert (text.title, text.date, text.medium) == (
+        "Klif nad morzem",
+        "ok. 1965",
+        "olej na płótnie",
+    )

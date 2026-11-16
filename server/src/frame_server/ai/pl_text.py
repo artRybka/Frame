@@ -254,8 +254,16 @@ def short_description(item: Item) -> str:
     return "" if description(item) else strip_markup(item.description)[:MAX_BODY]
 
 
+def is_own(item: Item) -> bool:
+    """A work of the owner's own ("Dodaj własne dzieło"): always a note, as
+    of a museum work with no description (Mateusz 2026-11-16: "powinno mieć
+    normalnie tworzoną notatkę"), his own note one of its facts; his title,
+    date and technique stay as he wrote them."""
+    return item.kind == ItemKind.OWN and item.source == "upload"
+
+
 def written_for(item: Item) -> Written:
-    return "translation" if description(item) else "note"
+    return "translation" if description(item) and not is_own(item) else "note"
 
 
 def model_for(item: Item) -> str:
@@ -274,6 +282,8 @@ def request_text(item: Item, context: Context, general: bool = False) -> str:
     author = item.artist
     if item.artist_bio:
         author = f"{author} ({item.artist_bio})" if author else item.artist_bio
+    if is_own(item):
+        return own_request_text(item)
     lines = [
         f"Muzeum: {item.held_by or item.museum}",
         f"Tytuł (oryginał): {strip_markup(item.title)}",
@@ -306,6 +316,26 @@ def request_text(item: Item, context: Context, general: bool = False) -> str:
         lines.append(f"Opis muzeum:\n{text}")
     elif short := short_description(item):
         lines.append(f"Krótka adnotacja muzeum (za mało na opis): {short}")
+    return "DANE\n" + "\n".join(lines)
+
+
+def own_request_text(item: Item) -> str:
+    """A work of his own: what he wrote, nothing from Wikidata (a family
+    painter's name finds someone else's works there)."""
+    lines = [
+        "Dzieło z domowej kolekcji właściciela ramki (nie z muzeum), sfotografowane telefonem.",
+        f"Tytuł: {strip_markup(item.title)}",
+        f"Autor: {item.artist}",
+        f"Data: {item.date_text}",
+        f"Technika: {item.medium}",
+    ]
+    own = item.own
+    if own is not None and own.height_cm and own.width_cm:
+        lines.append(f"Rozmiar: {own.height_cm:g} × {own.width_cm:g} cm (wys. × szer.)")
+    if own is not None and own.origin:
+        lines.append(f"Skąd w kolekcji: {own.origin}")
+    if text := strip_markup(item.description)[:WIKI_CHARS]:
+        lines.append(f"Notatka właściciela (fakty z niej są pewne; nie przepisuj jej):\n{text}")
     return "DANE\n" + "\n".join(lines)
 
 
@@ -437,6 +467,14 @@ def clean(data: dict[str, Any], item: Item, facts: Facts | None) -> PolishText |
     """A model's answer made safe to show; ``None`` when it is unusable."""
     written: Written = "note" if "style" in data else written_for(item)
     title = polish_title(data.get("title"), facts, item.artist)
+    if is_own(item):
+        # His own words stay (the model's only where he wrote none).
+        data = {
+            **data,
+            "date": item.date_text or data.get("date"),
+            "medium": item.medium or data.get("medium"),
+        }
+        title = strip_markup(item.title).strip()[: TITLE_MAX + 40] or title
     frame = frame_text(_plain(data.get("frame")))
     full = _paragraphs(data.get("full"))
     if untranslated(frame):
@@ -525,7 +563,10 @@ class PlTextJob(NoteJob):
 
     @staticmethod
     def applies(item: Item) -> bool:
-        """Museum works shown on their own; not photos, not taken out."""
+        """Museum works shown on their own and works of his own; not photos,
+        not taken out."""
+        if is_own(item):
+            return not item.excluded
         return item.kind == ItemKind.ARTWORK and item.look is None and not item.excluded
 
     def wanted(self, item: Item) -> bool:
@@ -548,6 +589,8 @@ class PlTextJob(NoteJob):
         )
 
     def source_hash(self, item: Item) -> str:
+        if is_own(item):  # his note is a fact, however short; what he wrote of it too
+            return text_hash(own_request_text(item))
         return text_hash(
             item.title, item.artist, item.artist_bio, item.date_text, item.medium,
             description(item),
@@ -578,6 +621,8 @@ class PlTextJob(NoteJob):
         )
 
     def facts(self, item: Item) -> Facts | None:
+        if is_own(item):
+            return None
         return own_title_first(item, self.wikidata.facts(self.http, item))
 
     def context(self, item: Item, note: bool = False) -> Context:
@@ -604,7 +649,7 @@ class PlTextJob(NoteJob):
                 schema=schema("translation"),
                 max_tokens=6000,
             )
-        return self.note_params(item, general=bool(description(item)))
+        return self.note_params(item, general=bool(description(item)) and not is_own(item))
 
     def note_params(self, item: Item, general: bool = False) -> dict[str, Any]:
         """Sonnet's note, in the next style; the style is asked back in the
@@ -683,7 +728,7 @@ class PlTextJob(NoteJob):
             with self._lock:
                 self._titles.pop(item.id, None)
             return
-        if "style" in note.data and description(item):
+        if "style" in note.data and description(item) and not is_own(item):
             # a note in place of a museum text that is not about the work
             note = note.model_copy(update={"data": {**note.data, "general": True}})
         text = clean(note.data, item, self.facts(item))
@@ -703,6 +748,9 @@ class PlTextJob(NoteJob):
         two in, the texts take several more), for the card to show first."""
         with self._lock:
             if item.id in self._titles:
+                return
+            if is_own(item) and item.title.strip():  # his title, not the model's
+                self._titles[item.id] = strip_markup(item.title).strip()
                 return
             head = self._heads.get(item.id, "") + piece
             self._heads[item.id] = head
@@ -740,6 +788,8 @@ class PlTextJob(NoteJob):
         if not self.fresh(item, note) or note is None or "title" not in note.data:
             return None
         text = PolishText.model_validate(note.data)
+        if is_own(item):
+            return text
         # Wikidata's title, also when it came after the texts; texts written
         # before the name was left out of titles lose it.
         title = polish_title(

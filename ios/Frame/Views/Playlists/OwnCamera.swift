@@ -24,6 +24,10 @@ struct OwnCamera: View {
     @State private var library = false
     @State private var picked: PhotosPickerItem?
     @State private var flash = false
+    /// How far the buttons' icons turn to stay upright: the screen stays
+    /// upright (the app is portrait), the phone may be held sideways for a
+    /// wide work (Mateusz 2026-11-16: "działa tylko w pionie").
+    @State private var tilt: Double = 0
 
     private var demo: UIImage? { access == .ready ? nil : (model.demoMode ? DemoOwn.photo() : nil) }
 
@@ -60,6 +64,9 @@ struct OwnCamera: View {
         .task {
             // Screenshots of the later steps take the demo's photograph at once.
             guard !["own-cut", "own-describe", "own-card"].contains(LaunchRoute.screen) else { return }
+            camera.turned = { angle in
+                withAnimation(.easeInOut(duration: 0.3)) { tilt = OwnCameraSession.tilt(angle) }
+            }
             access = await camera.start()
         }
         .onDisappear { camera.stop() }
@@ -85,7 +92,9 @@ struct OwnCamera: View {
     private var viewfinder: some View {
         ZStack {
             if let finding {
-                Image(uiImage: finding).resizable().scaledToFill()
+                // A wide photograph (the phone held on its side) whole, not cut to the tall frame.
+                Image(uiImage: finding).resizable()
+                    .aspectRatio(contentMode: finding.size.width > finding.size.height ? .fit : .fill)
             } else if access == .ready {
                 OwnCameraPreview(session: camera.session)
             } else if let demo {
@@ -125,6 +134,7 @@ struct OwnCamera: View {
             Button { library = true } label: {
                 Image(systemName: "photo.on.rectangle")
                     .font(.title3)
+                    .rotationEffect(.degrees(tilt))
                     .frame(width: 52, height: 52)
             }
             .buttonStyle(.glass)
@@ -184,7 +194,8 @@ private struct CornerMarks: Shape {
     }
 }
 
-/// The back camera, for photographs (`AVCapturePhotoOutput`).
+/// The back camera, for photographs (`AVCapturePhotoOutput`), upright
+/// as the phone is held: on its side for a wide work, a wide photograph.
 final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
     enum Access { case none, ready, denied }
 
@@ -192,6 +203,19 @@ final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, @unchecke
     private let output = AVCapturePhotoOutput()
     private let queue = DispatchQueue(label: "own-camera")
     private var took: ((UIImage?) -> Void)?
+    /// How the phone is held, by the horizon (also lying flat over a work
+    /// on the table: the last way it was held).
+    private var rotation: AVCaptureDevice.RotationCoordinator?
+    private var watching: NSKeyValueObservation?
+    /// The photograph's turn changed (on the main thread).
+    var turned: ((CGFloat) -> Void)?
+
+    /// The capture's turn as the icons' counter-turn: 90° is the phone
+    /// upright, 0° on its left side (top to the left), 180° on its right.
+    static func tilt(_ angle: CGFloat) -> Double {
+        let turn = Double(90 - angle)
+        return turn > 180 ? turn - 360 : turn < -180 ? turn + 360 : turn
+    }
 
     func start() async -> Access {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -203,6 +227,7 @@ final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, @unchecke
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
               let input = try? AVCaptureDeviceInput(device: device)
         else { return .none }
+        await MainActor.run { follow(device) }
         return await withCheckedContinuation { (done: CheckedContinuation<Access, Never>) in
             queue.async { [self] in
                 if session.inputs.isEmpty {
@@ -219,18 +244,32 @@ final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, @unchecke
         }
     }
 
+    @MainActor
+    private func follow(_ device: AVCaptureDevice) {
+        guard rotation == nil else { return }
+        let rotation = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
+        self.rotation = rotation
+        watching = rotation.observe(\.videoRotationAngleForHorizonLevelCapture, options: [.new]) { [weak self] coordinator, _ in
+            let angle = coordinator.videoRotationAngleForHorizonLevelCapture
+            DispatchQueue.main.async { self?.turned?(angle) }
+        }
+        turned?(rotation.videoRotationAngleForHorizonLevelCapture)
+    }
+
     func stop() {
         queue.async { [session] in
             if session.isRunning { session.stopRunning() }
         }
     }
 
-    /// A photograph, upright as the phone is held (portrait).
+    /// A photograph, upright as the phone is held: tall held upright,
+    /// wide held on its side.
     func shoot(_ took: @escaping (UIImage?) -> Void) {
+        let angle = rotation?.videoRotationAngleForHorizonLevelCapture ?? 90
         queue.async { [self] in
             self.took = took
-            if let connection = output.connection(with: .video), connection.isVideoRotationAngleSupported(90) {
-                connection.videoRotationAngle = 90
+            if let connection = output.connection(with: .video), connection.isVideoRotationAngleSupported(angle) {
+                connection.videoRotationAngle = angle
             }
             let settings = AVCapturePhotoSettings()
             settings.photoQualityPrioritization = .quality
