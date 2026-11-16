@@ -73,7 +73,7 @@ struct OwnDescriptionForm: View {
                 VStack(alignment: .leading, spacing: 8) {
                     factRow("Rozmiar") { sizeFields }
                     if sizeMarked {
-                        Text("Zmierzone czujnikiem LiDAR, bez ramy, z dokładnością do 1–2 cm.")
+                        Text("Zmierzone LiDAR-em, bez ramy, ±1–2 cm.")
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
                             .frame(maxWidth: .infinity, alignment: .trailing)
