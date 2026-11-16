@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.196
+
+- Pasek barw na karcie dzieła i w Propozycjach dnia jest niższy: 18 pt
+  zamiast 26, we wszystkich technikach. Pociągnięcia, faktura i kontur
+  wyglądają jak dotąd, tylko drobniej. Wąski pasek w zakładce Teraz
+  zostaje bez zmian.
+
 ## 1.145.194
 
 - Pełny ekran: przyciski korekty barw i restauracji nie są już
