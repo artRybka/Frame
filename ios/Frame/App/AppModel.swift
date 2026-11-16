@@ -851,13 +851,21 @@ final class AppModel {
 
     /// "Moje dzieła": the works the owner added from his photographs.
     func refreshOwnWorks() async {
+        // Pages of 200, the most the server gives at once: a limit of 500
+        // was refused (422), and the list stayed empty (2026-11-16).
         var query = LibraryQuery()
         query.kinds = [.own]
         query.sources = ["upload"]
         query.sort = "recent"
-        query.limit = 500
-        guard let value = try? await backend.items(query) else { return }
-        let found = value.items.filter(\.isOwnWork)
+        query.limit = 200
+        var found: [ItemSummary] = []
+        while true {
+            query.offset = found.count
+            guard let page = try? await backend.items(query) else { return }
+            found += page.items
+            if page.items.count < query.limit || found.count >= page.total { break }
+        }
+        found = found.filter(\.isOwnWork)
         if found != ownWorks { ownWorks = found }
     }
 

@@ -97,6 +97,9 @@ def test_a_photograph_becomes_a_work_cut_out_of_its_frame(
     assert (service.sizes.size(item).height, service.sizes.size(item).width) == (46, 55)  # type: ignore[union-attr]
     summary = ItemSummary.of(item)
     assert summary.cropped and summary.own is not None and summary.own.hangs == "Salon"
+    # The tile has the shape of his size too, not the corners'.
+    assert summary.width and summary.height
+    assert abs(summary.width / summary.height - 55 / 46) < 0.005
 
     # A work added before its picture took his size's shape: cut anew once.
     own = item.own

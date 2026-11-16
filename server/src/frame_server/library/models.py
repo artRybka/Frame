@@ -659,6 +659,11 @@ class ItemSummary(BaseModel):
             summary.cropped = True
             if (size := cut_size(shown, item.cut.aspect, item.width, item.height)) is not None:
                 summary.width, summary.height = size  # the tile's shape is the cut's
+                ratio = item.own.ratio(size[0] / size[1]) if item.own is not None else None
+                if ratio:  # his work: the shape of the size he gave, as it is cut
+                    area = size[0] * size[1]
+                    summary.width = round(math.sqrt(area * ratio))
+                    summary.height = round(math.sqrt(area / ratio))
         if item.sharper is not None:
             summary.picture = item.sharper.item_id
             summary.restored = item.sharper.restored
