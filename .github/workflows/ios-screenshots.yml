@@ -273,6 +273,7 @@ jobs:
             capture own-scan 10 "own-scan-lost-$appearance" -scanLook lost
             capture own-scan 10 "own-scan-side-$appearance" -scanLook side
             capture own-scan 10 "own-scan-match-$appearance" -scanLook match
+            capture own-scan 10 "own-scan-aim-$appearance" -scanLook aim
             capture own-scan 10 "own-scan-right-$appearance" -scanLook right
             # The other way to the side photographs: the helper frame with
             # the first photograph's work in it; and the phone on its side.

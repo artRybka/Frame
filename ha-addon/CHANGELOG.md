@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.190
+
+- Zdjęcia z boku mają celownik: okrąg na środku kadru i znacznik na
+  środku dzieła. Zdjęcie robi się, gdy znacznik jest w okręgu, więc
+  dzieło zostaje w środku kadru także pod kątem.
+- Aparat pokazuje cztery narożniki dzieła i czeka, aż wszystkie będą w
+  kadrze. Gdy ich nie znajdzie przez 3 sekundy, pokazuje spust.
+
 ## 1.145.189
 
 - Aparat do skanu: zamiast skaczącej ramki jest tor jak w panoramie

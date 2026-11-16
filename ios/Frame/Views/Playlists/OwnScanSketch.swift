@@ -5,8 +5,9 @@ import SwiftUI
 /// The scan's camera as the screenshots show it (the simulator has no
 /// camera): the demo's wall photograph, turned as the wall shows from the
 /// side, under the camera's own overlay and words. `-screen own-scan
-/// -scanLook front | ready | far | near | lost | side | match | right |
-/// result` ("result": the page after the scan, `OwnScanResult`), with
+/// -scanLook front | ready | far | near | lost | side | match | aim | right
+/// | result` ("aim": standing right with the phone looking past the work;
+/// "result": the page after the scan, `OwnScanResult`), with
 /// `-scanGuide frame` the helper frame in place of the track, with
 /// `-scanHeld left` the phone on its side.
 struct OwnScanSketch: View {
@@ -24,7 +25,7 @@ struct OwnScanSketch: View {
     private var stands: Double {
         switch name {
         case "side": -13
-        case "match": -29
+        case "match", "aim": -29
         case "right": 12
         default: 0
         }
@@ -32,7 +33,7 @@ struct OwnScanSketch: View {
 
     private var target: Double? {
         switch name {
-        case "side", "match": -OwnScanView.side
+        case "side", "match", "aim": -OwnScanView.side
         case "right": OwnScanView.side
         default: nil
         }
@@ -47,16 +48,22 @@ struct OwnScanSketch: View {
         }
     }
 
+    /// How far the phone looks past the work: the wall shows so much to
+    /// the side (of the picture's width).
+    private var past: Double { name == "aim" ? 0.17 : name == "side" ? 0.06 : 0 }
+
     private var look: OwnScanLook {
         let live = OwnScanView.seen(front, from: stands)
-            .map { CGPoint(x: 0.5 + ($0.x - 0.5) * zoom, y: 0.5 + ($0.y - 0.5) * zoom) }
+            .map { CGPoint(x: 0.5 + ($0.x - 0.5) * zoom + past, y: 0.5 + ($0.y - 0.5) * zoom) }
         var look = OwnScanLook(number: target == nil ? 1 : (name == "right" ? 3 : 2))
         look.manual = name == "lost"
         look.quarter = quarter
         if let target {
             look.helper = framed ? helper : nil
             look.angle = stands
-            look.advice = OwnScanView.side(target: target, angle: stands)
+            look.live = live
+            look.aim = OwnScanView.middle(live)
+            look.advice = OwnScanView.side(target: target, angle: stands, aim: OwnScanView.offAim(live))
         } else {
             look.live = name == "lost" ? nil : live
             // The demo's work hangs a little askew: its outline is what "from the front" is here.
@@ -136,6 +143,7 @@ struct OwnScanSketch: View {
             Color(red: 0.84, green: 0.80, blue: 0.73)
             if let photo = Self.wall(from: stands) {
                 Image(uiImage: photo).resizable().scaledToFill().scaleEffect(zoom)
+                    .visualEffect { [past] content, proxy in content.offset(x: proxy.size.width * past) }
             }
             OwnScanOverlay(look: look, ghost: ghost, holding: holding)
         }
