@@ -149,26 +149,27 @@ struct OwnDescriptionForm: View {
 
     private func trailingField(_ prompt: String, text value: Binding<String>, key: String) -> some View {
         HStack(spacing: 4) {
-            filledMark(key)
             TextField(prompt, text: value)
                 .multilineTextAlignment(.trailing)
                 .foregroundStyle(Theme.ink)
+            filledMark(key)  // after the value, as by the title
         }
     }
 
     private var sizeFields: some View {
         HStack(spacing: 6) {
-            sizeField("wys.", text: $heightText)
+            // Both numbers against the "×": "65 × 81", not "65 ×     81".
+            sizeField("wys.", text: $heightText, alignment: .trailing)
             Text("×").foregroundStyle(Theme.inkSoft)
-            sizeField("szer.", text: $widthText)
+            sizeField("szer.", text: $widthText, alignment: .leading)
             Text("cm").foregroundStyle(Theme.inkSoft)
         }
     }
 
-    private func sizeField(_ prompt: String, text value: Binding<String>) -> some View {
+    private func sizeField(_ prompt: String, text value: Binding<String>, alignment: TextAlignment) -> some View {
         TextField(prompt, text: value)
             .keyboardType(.decimalPad)
-            .multilineTextAlignment(.trailing)
+            .multilineTextAlignment(alignment)
             .foregroundStyle(Theme.ink)
             .frame(width: 48)
     }
