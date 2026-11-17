@@ -197,7 +197,7 @@ struct OnDemandSheet: View {
     private var footer: String {
         var parts: [String] = []
         if let amount, amount > 0, let each = use.nowEachUsd, each > 0 {
-            var line = "Za \(Money.usd(amount)) ok. \(OnDemandRow.works(Int(amount / each))) (ok. \(Money.usd(each)) za dzieło)"
+            var line = "Za \(Money.usd(amount)) ok. \(OnDemandRow.works(Int(amount / each))) (ok. \(Self.each(each)) za dzieło)"
             if let waiting = use.waiting { line += ", czeka \(AiSection.count(waiting))" }
             parts.append(line + ".")
         }
@@ -220,6 +220,12 @@ struct OnDemandSheet: View {
             starting = false
             if started { dismiss() }
         }
+    }
+
+    /// "0,013 USD": a cent's parts shown, which "0,01 USD" hides.
+    static func each(_ usd: Double) -> String {
+        guard usd < 0.1 else { return Money.usd(usd) }
+        return usd.formatted(.number.precision(.fractionLength(3)).locale(Locale(identifier: "pl_PL"))) + " USD"
     }
 
     /// "10" of 10, "12.5" of 12.5.
