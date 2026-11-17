@@ -496,12 +496,9 @@ def test_his_own_figure_dark_in_the_glass_leaves_no_outline_on_the_paper() -> No
     assert float((now - is_)[calm].mean()) > 0.5 * float((was - is_)[calm].mean())
 
 
-def test_views_that_do_not_show_one_flat_work_change_nothing() -> None:
-    """His collage of a mirror, foil and a circuit board in relief
-    (2026-11-16 19:00 UTC): each photograph shows another thing in the
-    mirror and another shine on the foil. No reflection can be told from
-    the work there, and what was made of the three was worse than the
-    one photograph."""
+def _relief() -> tuple[np.ndarray, list[np.ndarray]]:
+    """Three photographs of a work that is no flat one: each shows its
+    own picture in every other tile of it (a mirror, a shine on foil)."""
     scene = _scene()
 
     def seen(seed: int) -> np.ndarray:
@@ -520,8 +517,36 @@ def test_views_that_do_not_show_one_flat_work_change_nothing() -> None:
     first = _coded(seen(1))
     left = _coded(_from_side(seen(2), -1) * 0.95)
     right = _coded(_from_side(seen(3), 1) * 1.05)
-    done = merge(first, [left, right], CORNERS)
-    assert done.used == 2 and done.removed == 0 and done.image is first
+    return first, [left, right]
+
+
+def test_views_that_do_not_show_one_flat_work_change_nothing_unless_asked() -> None:
+    """His collage of a mirror, foil and a circuit board in relief
+    (2026-11-16 19:00 UTC): each photograph shows another thing in the
+    mirror and another shine on the foil. No reflection can be told from
+    the work there, and what was made of the three was worse than the
+    one photograph.
+
+    Asked for all the same it is made, in doubt, for him to choose
+    between the two with the one photograph proposed (2026-11-17 22:43
+    UTC: "wybór pomiędzy obrazem składanym (inteligentnym) a z
+    pojedynczego zdjęcia - zawsze go dawaj, a w sytuacji gdzie
+    podejrzewasz płaskorzeźbę albo dzieło które wymaga pojedynczego
+    zdjęcia ustawiaj je jako domyślne")."""
+    first, sides = _relief()
+    done = merge(first, sides, CORNERS)
+    assert done.used == 2 and done.removed == 0 and done.image is first and done.doubt
+
+    made = merge(first, sides, CORNERS, anyway=True)
+    assert made.used == 2 and made.removed > 0 and made.doubt
+    assert made.image is not first and made.image.shape == first.shape
+    assert np.abs(made.image.astype(int) - first).mean() > 0.5
+
+    # A flat work behind glass is in no doubt, asked for anyway or not.
+    _, glass, beside = _three()
+    plain, asked = merge(glass, beside, CORNERS), merge(glass, beside, CORNERS, anyway=True)
+    assert not plain.doubt and not asked.doubt
+    assert plain.removed == asked.removed and np.array_equal(plain.image, asked.image)
 
 
 def test_a_side_view_of_a_work_that_is_no_plane_is_laid_on_the_first_place_by_place(

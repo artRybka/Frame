@@ -93,6 +93,12 @@ class MergeAsk(BaseModel):
     #: The rectangle the phone's camera followed at the first photograph:
     #: where the work is when nothing else says.
     outline: list[tuple[float, float]] | None = None
+    #: The phone shows the scan and the photograph from the front to
+    #: choose between whatever the scan came to (from 1.145.229): the scan
+    #: is made also of photographs that show no one flat work, in doubt.
+    #: An app before it showed the scan alone, chosen, where anything was
+    #: taken off, and gets a relief untouched as it did.
+    choice: bool = False
 
 
 @router.post("/own/photos/{token}/merge", response_model=Merged)
@@ -103,7 +109,8 @@ async def merge(token: str, svc: Svc, ask: MergeAsk | None = None) -> Merged:
     try:
         corners = _corners(ask.corners) if ask is not None else None
         outline = ask.outline if ask is not None else None
-        return await run_in_threadpool(svc.own_works.merge, token, corners, outline)
+        choice = ask.choice if ask is not None else False
+        return await run_in_threadpool(svc.own_works.merge, token, corners, outline, choice)
     except LookupError as err:
         raise HTTPException(404, str(err)) from err
 

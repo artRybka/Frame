@@ -109,6 +109,8 @@ struct OwnWorkFlow: View {
                         OwnScanResult(
                             before: compared.before, after: compared.after,
                             scanned: merged != nil,
+                            doubt: merged?.doubt ?? false,
+                            nothing: (merged?.replaced ?? 0) == 0,
                             balance: incoming?.chart == nil ? $balance : nil,
                             again: again,
                             next: { single in
@@ -248,17 +250,23 @@ struct OwnWorkFlow: View {
 
     /// The side photographs laid over the first on the server; where they
     /// took a glare out, the photograph as the server keeps it now. Any
-    /// of it failing leaves the first photograph as it was.
+    /// of it failing leaves the first photograph as it was, with nothing
+    /// to choose between.
     private func merge(token: String, outline: [[Double]]?) async {
         defer { if incoming?.token == token { mergeEnded = true } }
-        guard let done = try? await model.backend.mergeOwnPhotos(token: token, outline: outline), done.replaced > 0,
-              // For the screen: whole, it is 48 MP.
-              let data = try? await model.backend.ownPhoto(token: token, side: Int(OwnPicture.shownSide)),
-              let image = UIImage(data: data),
-              // He may have gone back to the camera meanwhile.
-              incoming?.token == token, !Task.isCancelled
+        guard let done = try? await model.backend.mergeOwnPhotos(token: token, outline: outline), done.used > 0
         else { return }
-        clean = image
+        var made: UIImage?
+        if done.replaced > 0 {
+            // For the screen: whole, it is 48 MP.
+            guard let data = try? await model.backend.ownPhoto(token: token, side: Int(OwnPicture.shownSide)),
+                  let image = UIImage(data: data)
+            else { return }
+            made = image
+        }
+        // He may have gone back to the camera meanwhile.
+        guard incoming?.token == token, !Task.isCancelled else { return }
+        clean = made
         merged = done
     }
 
@@ -270,8 +278,9 @@ struct OwnWorkFlow: View {
         }
         if awaited { return "Jeszcze chwila: kończę łączyć trzy zdjęcia i usuwać odblaski…" }
         let chart = incoming?.chart != nil ? "Barwy ustawione według wzornika. " : ""
-        let glare = chart + (merged != nil ? "Odblaski usunięte z trzech zdjęć. "
-            : merging != nil && !mergeEnded ? "W tle łączę trzy zdjęcia i usuwam odblaski. " : "")
+        let cleaned = merged.map { $0.replaced > 0 && $0.doubt != true } ?? false
+        let glare = chart + (cleaned ? "Odblaski usunięte z trzech zdjęć. "
+            : merged == nil && merging != nil && !mergeEnded ? "W tle łączę trzy zdjęcia i usuwam odblaski. " : "")
         if foundByCamera { return glare + "Zaznaczyłem to, co widział aparat. Popraw narożniki, jeśli trzeba." }
         if found != nil { return glare + "Rama wycięta. Popraw narożniki, jeśli trzeba." }
         return glare + "Nie znalazłem dzieła na zdjęciu. Ustaw narożniki sam."
@@ -303,9 +312,10 @@ struct OwnWorkFlow: View {
             await merging.value
             awaited = false
         }
-        if merged != nil, let photo, let clean {
-            // What the scan gave: the work alone, as he cut it.
-            let both = (OwnPicture.cut(photo, corners: corners), OwnPicture.cut(clean, corners: corners))
+        if merged != nil, let photo {
+            // What the scan gave: the work alone, as he cut it (the same
+            // twice where the side photographs took nothing off).
+            let both = (OwnPicture.cut(photo, corners: corners), OwnPicture.cut(clean ?? photo, corners: corners))
             withAnimation(.easeInOut(duration: 0.3)) { compared = both }
             return true
         }

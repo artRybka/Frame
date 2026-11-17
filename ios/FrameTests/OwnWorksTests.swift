@@ -39,6 +39,23 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertEqual(summary.own?.sizeText, "46 × 55 cm")
     }
 
+    /// The scan of a work that is no flat one comes in doubt, and the
+    /// photograph from the front is then the one chosen at first (Mateusz
+    /// 2026-11-17 22:43 UTC: "w sytuacji gdzie podejrzewasz płaskorzeźbę
+    /// albo dzieło które wymaga pojedynczego zdjęcia ustawiaj je jako
+    /// domyślne").
+    func testAScanInDoubtComesWithTheMerge() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let relief = #"{"token": "a1", "width": 3024, "height": 4032, "used": 2, "replaced": 0.18, "doubt": true}"#
+        let made = try decoder.decode(OwnMerged.self, from: Data(relief.utf8))
+        XCTAssertEqual(made.doubt, true)
+        XCTAssertEqual(made.used, 2)
+        // A server before the choice says nothing of it: no doubt.
+        let before = #"{"token": "a1", "width": 3024, "height": 4032, "used": 2, "replaced": 0.03}"#
+        XCTAssertNil(try decoder.decode(OwnMerged.self, from: Data(before.utf8)).doubt)
+    }
+
     func testAColourChartBesideTheWorkComesWithThePhotograph() throws {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
