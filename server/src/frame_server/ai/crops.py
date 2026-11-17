@@ -566,6 +566,17 @@ def surround_in(
     return None
 
 
+def _owners_frame(cut: Cut) -> dict[str, Any]:
+    """The frame's edge the owner set on ``cut`` (:attr:`Cut.surround_by`),
+    kept when the work is cut anew."""
+    return {
+        "surround": cut.surround,
+        "surround_kind": cut.surround_kind,
+        "surround_by": "owner",
+        "surround_asked": True,
+    }
+
+
 def framed(cut: Cut) -> Cut:
     """``cut`` with the card's "W ramie" as it is now (:attr:`Cut.framed_kind`,
     :attr:`Cut.framed_aspect`, :attr:`Cut.framed_inner`)."""
@@ -1226,6 +1237,8 @@ class Crops(CriticNight):
     def apply(self, item: Item, cut: Cut | None) -> Item:
         """``cut`` kept for the work and its pictures made again from it:
         the original, the thumbnail, the colours, the study's details."""
+        if cut is not None and item.cut is not None and item.cut.surround_by == "owner":
+            cut = cut.model_copy(update=_owners_frame(item.cut))
         cut = framed(cut.without_twin()) if cut is not None else None
         changes: dict[str, Any] = {"cut": cut}
         if item.framing:
@@ -1249,11 +1262,24 @@ class Crops(CriticNight):
         return updated
 
     def set_by_owner(
-        self, item: Item, corners: Quad | None = None, paper: bool | None = None
+        self,
+        item: Item,
+        corners: Quad | None = None,
+        paper: bool | None = None,
+        frame: Quad | None = None,
     ) -> Item:
         """The owner's corners (of the work as shown, with its paper or
         without), or his "Pokaż z marginesem / bez marginesu". Without the sheet when
-        no plate is known yet: Opus is asked for it now."""
+        no plate is known yet: Opus is asked for it now. ``frame``: the
+        outer edge of the frame or passe-partout as he set it (the card's
+        "W ramie"); alone, the work's pictures stay as they are."""
+        alone = frame is not None and corners is None and paper is None
+        if alone and item.cut is not None and item.cut.shown() is not None and not self.stale(item):
+            kind = item.cut.surround_kind or "frame"
+            mine = {"surround": frame, "surround_kind": kind, "surround_by": "owner"}
+            cut = framed(item.cut.model_copy(update={**mine, "surround_asked": True}))
+            log.info("crops: %s frame's edge set by the owner", item.id)
+            return self.library.update(item.id, cut=cut) or item
         old = item.cut if item.cut is not None and not self.stale(item) else None
         with Image.open(self.images.museum_photo(item, urgent=True)) as img:
             aspect = round(img.width / img.height, 5)
@@ -1273,6 +1299,16 @@ class Crops(CriticNight):
                 cut.plate = corners
             else:
                 cut.work = corners
+        if frame is not None:
+            kind = cut.surround_kind or "frame"
+            cut = cut.model_copy(
+                update={
+                    "surround": frame,
+                    "surround_kind": kind,
+                    "surround_by": "owner",
+                    "surround_asked": True,
+                }
+            )
         return self.apply(item, cut)
 
     def give_up(self, item: Item) -> Item:

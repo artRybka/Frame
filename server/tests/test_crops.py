@@ -337,6 +337,22 @@ def test_the_card_cuts_at_once_and_the_owner_corrects_and_restores(
         assert put.json()["cut"]["work"][0] == [0.1, 0.1]
         bad = client.put("/api/library/items/mnw:7/cut", json={"corners": corners[:3]})
         assert bad.status_code == 422
+        # He sets the frame's edge himself („Tak, drugie narożniki dla ramy”):
+        # around his corners, "W ramie" again; the work's pictures stay.
+        before = service.images.image_path(service.library.get("mnw:7")).stat().st_mtime_ns
+        frame = [[0.05, 0.04], [0.95, 0.04], [0.95, 0.96], [0.05, 0.96]]
+        mine = client.put("/api/library/items/mnw:7/cut", json={"frame": frame}).json()["cut"]
+        assert mine["surround_by"] == "owner" and mine["framed_kind"] == "frame"
+        assert mine["work"][0] == [0.1, 0.1] and mine["surround"][0] == [0.05, 0.04]
+        assert client.get("/api/library/items/mnw:7/framed?side=500").status_code == 200
+        after = service.images.image_path(service.library.get("mnw:7")).stat().st_mtime_ns
+        assert after == before
+        # The work cut anew keeps his frame.
+        tighter = [[0.12, 0.12], [0.88, 0.12], [0.88, 0.88], [0.12, 0.88]]
+        again = client.put("/api/library/items/mnw:7/cut", json={"corners": tighter}).json()["cut"]
+        assert again["surround"][0] == [0.05, 0.04] and again["framed_kind"] == "frame"
+        nothing = client.put("/api/library/items/mnw:7/cut", json={"frame": frame[:2]})
+        assert nothing.status_code == 422
 
         gone = client.delete("/api/library/items/mnw:7/cut").json()
         assert gone["cut"]["work"] is None and gone["cut"]["by"] == "owner"
