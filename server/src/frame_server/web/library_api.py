@@ -740,6 +740,9 @@ class CutUpdate(BaseModel):
 
     corners: list[tuple[float, float]] | None = None
     paper: bool | None = None
+    #: The outer edge of the frame or passe-partout around the work, set
+    #: by him (the card's "W ramie").
+    frame: list[tuple[float, float]] | None = None
 
 
 async def _kept_work(svc: FrameService, item_id: str) -> Item:
@@ -840,10 +843,15 @@ async def put_cut(item_id: str, update: CutUpdate, svc: Svc) -> Item:
         corners = valid(update.corners)
         if corners is None:
             raise HTTPException(422, "the corners make no picture")
-    if corners is None and update.paper is None:
+    frame = None
+    if update.frame is not None:
+        frame = valid(update.frame)
+        if frame is None:
+            raise HTTPException(422, "the frame's corners make no picture")
+    if corners is None and update.paper is None and frame is None:
         raise HTTPException(422, "nothing to change")
     try:
-        return await run_in_threadpool(svc.crops.set_by_owner, stored, corners, update.paper)
+        return await run_in_threadpool(svc.crops.set_by_owner, stored, corners, update.paper, frame)
     except AiUnavailable as err:
         raise HTTPException(503, str(err)) from err
     except (httpx.HTTPError, OSError) as err:

@@ -244,7 +244,7 @@ struct ItemDetailView: View {
         .onChange(of: item?.framed) { _, look in if look == nil { leaveFrame() } }
         .fullScreenCover(isPresented: $correctingCut) {
             if let item {
-                CutEditor(item: item) { corners in await setCut(CutUpdate(corners: corners)) }
+                CutEditor(item: item) { update in await setCut(update) }
             }
         }
         .sheet(isPresented: $editingOwn) {
@@ -1307,7 +1307,7 @@ struct ItemDetailView: View {
 
     /// "W ramie"'s picture of the work shown now.
     private func framedRef(_ item: Item) -> ImageRef {
-        let look = item.framed.map { "\($0.kind)\($0.aspect)" } ?? ""
+        let look = item.framed.map { "\($0.kind)\($0.aspect)\($0.inner.minX)\($0.inner.minY)\($0.inner.width)" } ?? ""
         return .framed(item.id, side: 1800, version: "\(item.pictureVersion)|\(look)")
     }
 
@@ -1363,6 +1363,10 @@ struct ItemDetailView: View {
             inFrame = true
             wide = pull >= 0.5
             self.pull = CGFloat(pull)
+        }
+        // `-cutPart work|frame` opens "Popraw kadr" on those corners.
+        if LaunchRoute.screen == "detail", UserDefaults.standard.string(forKey: "cutPart") != nil {
+            correctingCut = true
         }
     }
 

@@ -415,6 +415,9 @@ struct Cut: Codable, Hashable, Sendable {
     var framedAspect: Double? = nil
     /// Where the work is in it: left, top, right, bottom (fractions).
     var framedInner: [Double]? = nil
+    /// The outer edge of the frame or passe-partout on the photograph
+    /// ("Popraw kadr" → "Rama"); nil when none is known.
+    var surround: [[Double]]? = nil
 
     var shown: [[Double]]? { !paper && plate != nil ? plate : work }
     var byOwner: Bool { by == "owner" }
@@ -560,6 +563,8 @@ struct CutView: Codable, Hashable, Sendable {
 struct CutUpdate: Codable, Hashable, Sendable {
     var corners: [[Double]]? = nil
     var paper: Bool? = nil
+    /// The outer edge of the frame or passe-partout, as he set it.
+    var frame: [[Double]]? = nil
 }
 
 /// A sharper copy of a work's picture, looked for as its card opens:

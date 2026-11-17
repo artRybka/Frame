@@ -13,8 +13,7 @@ struct FrameToggle: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: "photo.artframe")
-                .font(.system(size: 15, weight: .semibold))
+            FrameGlyph()
                 .foregroundStyle(on ? Theme.paper : Theme.ink)
                 .frame(width: 34, height: 34)
                 .background(on ? Theme.ink : Theme.mat, in: Circle())
@@ -74,8 +73,7 @@ struct FrameViewerButton: View {
                 if loading {
                     ProgressView().tint(.white).controlSize(.small)
                 } else {
-                    Image(systemName: "photo.artframe")
-                        .font(.system(size: 16, weight: .semibold))
+                    FrameGlyph(scale: 1.08)
                         .foregroundStyle(on ? .white : .white.opacity(0.4))
                 }
             }
@@ -87,5 +85,23 @@ struct FrameViewerButton: View {
         .accessibilityLabel(look.name)
         .accessibilityValue(on ? "włączone" : "wyłączone")
         .accessibilityAddTraits(.isToggle)
+    }
+}
+
+/// The buttons' icon (Mateusz 2026-11-17, „4” of nine on the sheet): a
+/// passe-partout, its edge drawn and a small picture in the middle. SF
+/// Symbols has none that reads as a frame without a landscape in it.
+struct FrameGlyph: View {
+    var scale: CGFloat = 1
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 1.5 * scale)
+                .strokeBorder(lineWidth: 1.6 * scale)
+            Rectangle()
+                .frame(width: 7 * scale, height: 5.5 * scale)
+        }
+        .frame(width: 18 * scale, height: 15 * scale)
+        .accessibilityHidden(true)
     }
 }
