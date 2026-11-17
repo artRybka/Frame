@@ -690,6 +690,10 @@ class SharperView(BaseModel):
     #: The picture's long side when it is small for the frame
     #: (``low_res.low_side``), else 0: the card's mark.
     low_side: int = 0
+    #: ``Item.picture_stamp`` after the look: the original came as another
+    #: photograph than the thumbnail while it ran (a mirror's, the museum
+    #: being down), and the card tells the lists to ask for it again.
+    picture_stamp: str = ""
 
 
 @router.post("/library/items/{item_id:item}/sharpen", response_model=SharperView)
@@ -716,6 +720,7 @@ async def sharpen_item(
         low_side=low_side(stored or item, (size[0], size[1]) if size[0] else None),
         held_by=svc.holders.fill(stored or item).held_by,
         held_at=svc.holders.fill(stored or item).held_at,
+        picture_stamp=(stored or item).picture_stamp,
     )
 
 

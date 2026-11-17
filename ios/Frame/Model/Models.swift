@@ -87,6 +87,11 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
     /// (its aged varnish taken off, its sheet de-yellowed; Mateusz
     /// 2026-11-15): nil when it is shown as it came.
     var cleaned: Cleaned? = nil
+    /// Changes when the work's picture became another photograph with no
+    /// copy in its place (its original kept from a mirror while the museum
+    /// was down, the thumbnail made again from it; Mateusz 2026-11-17):
+    /// "" or nil while it is the one first had.
+    var pictureStamp: String? = nil
     /// A work of the owner's own ("Dodaj własne dzieło"): where it hangs,
     /// where it came from, its size as he measured it. Nil for the others.
     var own: OwnWork? = nil
@@ -126,15 +131,22 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
     /// The display-size original: the sharper copy's under its own address
     /// (the one before stays in the caches under the plain one).
     var originalRef: ImageRef {
-        let version = pictureVersion
+        // Without the photograph's stamp: the card learns it while it shows
+        // that very original (`ItemDetailView.sharpen`), and would ask for
+        // it again; the one kept from before goes in `pictureSeen`.
+        let version = Cleaned.version(
+            Cut.version(picture: sharper?.itemId ?? "", cut: cutVersion), cleaned: cleanedVersion
+        )
         return version.isEmpty ? .image(id) : .original(id, version: version)
     }
 
-    /// Which picture the work shows: the sharper copy's id ("" its own),
-    /// and the cut's stamp after "|" when it is cut. A change drops the
-    /// pictures kept from before (`AppModel.pictureSeen`).
+    /// Which picture the work shows: the sharper copy's id ("" its own)
+    /// with its photograph's stamp after "@" (`pictureStamp`), and the
+    /// cut's stamp after "|" when it is cut. A change drops the pictures
+    /// kept from before (`AppModel.pictureSeen`).
     var pictureVersion: String {
-        Cleaned.version(Cut.version(picture: sharper?.itemId ?? "", cut: cutVersion), cleaned: cleanedVersion)
+        let picture = ItemSummary.photograph(sharper?.itemId ?? "", stamp: pictureStamp)
+        return Cleaned.version(Cut.version(picture: picture, cut: cutVersion), cleaned: cleanedVersion)
     }
 
     /// How the picture shown now is cleaned: nil without, or when it was
@@ -204,7 +216,7 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
             id: id, kind: kind, source: source, title: displayTitle, artist: artist, dateText: dateText,
             year: year, colors: colors, width: shape?.0 ?? width, height: shape?.1 ?? height, favorite: favorite,
             suitability: suitability, heldBy: heldBy, heldAt: heldAt, picture: sharper?.itemId ?? "",
-            subtitle: photoLine, restored: sharper?.isRestored == true ? true : nil,
+            pictureStamp: pictureStamp, subtitle: photoLine, restored: sharper?.isRestored == true ? true : nil,
             cropped: isCropped ? true : nil, cut: cutVersion,
             cleaned: cleanedShown?.kind, cleanedAt: cleanedShown == nil ? nil : cleanedVersion, own: own
         )
@@ -521,6 +533,9 @@ struct SharperView: Codable, Hashable, Sendable {
     var heldAt: String? = nil
     /// `ItemSummary.lowSide`: the card's mark.
     var lowSide: Int? = nil
+    /// `Item.pictureStamp` after the look: the original came as another
+    /// photograph than the thumbnail while it ran; nil from an older server.
+    var pictureStamp: String? = nil
 }
 
 /// The museum a work from Commons, Openverse or WikiArt is in, looked up as
@@ -664,6 +679,9 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     /// Which copy the work shows (`Item.sharper`'s id), "" its own; nil
     /// from a server before 1.97.2. A change drops the thumbnail kept.
     var picture: String? = nil
+    /// `Item.pictureStamp`: changes when the work's picture became another
+    /// photograph of its own. A change drops the thumbnail kept too.
+    var pictureStamp: String? = nil
     /// A photo's line under its title: when and where ("29 października
     /// 2026 · Kraków"); "" for works, nil from an older server.
     var subtitle: String? = nil
@@ -695,7 +713,17 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     /// `Item.pictureVersion`: the copy and the cut, for `pictureSeen`; nil
     /// from a server before 1.97.2.
     var pictureVersion: String? {
-        picture.map { Cleaned.version(Cut.version(picture: $0, cut: cut ?? ""), cleaned: cleanedAt ?? "") }
+        picture.map {
+            let picture = Self.photograph($0, stamp: pictureStamp)
+            return Cleaned.version(Cut.version(picture: picture, cut: cut ?? ""), cleaned: cleanedAt ?? "")
+        }
+    }
+
+    /// The copy's id ("" the work's own) with the photograph's stamp after
+    /// "@" when it has one (`Item.pictureStamp`).
+    static func photograph(_ copy: String, stamp: String?) -> String {
+        guard let stamp, !stamp.isEmpty else { return copy }
+        return "\(copy)@\(stamp)"
     }
 
     /// The title "Teraz" shows: Polish when there is one.
@@ -720,6 +748,8 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
 /// over a list's tile.
 struct PictureMarks: Equatable, Sendable {
     var picture: String
+    /// `Item.pictureStamp`: another photograph of its own since.
+    var stamp: String
     var restored: Bool
     var cropped: Bool
     var cut: String?
@@ -729,6 +759,7 @@ struct PictureMarks: Equatable, Sendable {
     init(_ item: Item) {
         let summary = item.summary
         picture = summary.picture ?? ""
+        stamp = summary.pictureStamp ?? ""
         restored = summary.restored == true
         cropped = summary.isCropped
         cut = summary.cut
@@ -741,8 +772,11 @@ struct PictureMarks: Equatable, Sendable {
         var tile = tile
         // Another picture than the list knew: its pixels' count was the
         // other one's (the card goes by the same, `ItemDetailView.lowSide`).
-        if let known = tile.picture, known != picture { tile.lowSide = nil }
+        if let known = tile.picture, known != picture || (tile.pictureStamp ?? "") != stamp {
+            tile.lowSide = nil
+        }
         tile.picture = picture
+        tile.pictureStamp = stamp.isEmpty ? nil : stamp
         tile.restored = restored ? true : nil
         tile.cropped = cropped ? true : nil
         tile.cut = cut

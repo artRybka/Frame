@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import io
 import json
 import logging
@@ -19,6 +20,7 @@ from typing import NamedTuple
 from urllib.parse import urlsplit
 
 import httpx
+import numpy as np
 from PIL import Image
 
 from ..fsutil import dir_bytes, own_files
@@ -265,6 +267,33 @@ def kept_side(item: Item) -> int:
     Commons' widest rendition, :data:`TILE_MAX`; any other
     :data:`IMAGE_MAX` (more for an elongated one, :func:`kept_size`)."""
     return TILE_MAX if split_part(item.id) is not None else IMAGE_MAX
+
+
+#: Side of the grey squares two pictures are laid against each other in
+#: (:func:`same_photograph`).
+LIKENESS_SIDE = 32
+#: How far apart (the mean difference of their grey squares, each set to
+#: its own mean and spread) two pictures of one shape are when they are
+#: other photographs. A thumbnail and the original it was cut down from
+#: are 0.015 apart, the same photograph cropped 2 % in 0.18, given 10 %
+#: more light or contrast 0.01; Paris Musées' Géricault in its gilt frame
+#: and Commons' photograph of the canvas alone 0.79.
+OTHER_PHOTO = 0.35
+
+
+def _grey_square(img: Image.Image) -> np.ndarray:
+    grey = img.convert("L").resize((LIKENESS_SIDE, LIKENESS_SIDE), Image.Resampling.BOX)
+    a = np.asarray(grey, dtype=np.float64) / 255.0
+    return (a - a.mean()) / (a.std() + 1e-6)
+
+
+def same_photograph(a: Image.Image, b: Image.Image) -> bool:
+    """Whether ``a`` and ``b`` are the same photograph at any size (a
+    thumbnail and its original), not two photographs of the work: one of
+    another shape, or other in what is where (a frame around it in one)."""
+    if not same_picture(a.width / max(a.height, 1), b.size):
+        return False
+    return float(np.abs(_grey_square(a) - _grey_square(b)).mean()) < OTHER_PHOTO
 
 
 #: The list of a work's tiles in its folder (:meth:`ImageCache.fine`).
@@ -557,6 +586,10 @@ class ImageCache:
         #: an aggregator's copy of a museum's file. Called with the item and
         #: whether a thumbnail will do.
         self.mirrors: dict[str, Callable[[Item, bool], list[str]]] = {}
+        #: Told when a work's thumbnail was made again because its original
+        #: came as another photograph (:meth:`thumb_follows`), with the
+        #: thumbnail's new stamp (``Item.picture_stamp``).
+        self.repictured: Callable[[Item, str], None] | None = None
         #: Hosts that serve some pictures wrong, and how to set them right:
         #: called with the address, the picture as read and a way to
         #: download another address (the Courtauld's CMYK scans come white).
@@ -1024,12 +1057,16 @@ class ImageCache:
         owner saw (:meth:`prune`)."""
         img = self.sample(display_copy(item))
         path = self.image_path(item)
+        kept = False
         with contextlib.suppress(OSError), self._lock(f"i:{item.id}"):
             if not path.is_file():
                 self._keep_original(item, img, kept_side(item))
                 self._remember_size(item, img)
                 old = time.time() - LOOKED_AGE
                 os.utime(path, (old, old))
+                kept = True
+        if kept:
+            self.thumb_follows(item)
         return img
 
     def ensure_thumb(self, item: Item, urgent: bool = False) -> Path:
@@ -1331,8 +1368,62 @@ class ImageCache:
                 self._failed.pop(item.id, None)
                 self._keep_original(item, img, kept_side(item))
                 self._remember_size(item, img)
+                # Before another asker waiting for the original goes on: the
+                # card's look for a sharper copy tells the app of it.
+                self.thumb_follows(item)
         self._forget_gone(item)
         return path
+
+    def thumb_follows(self, item: Item) -> str | None:
+        """The thumbnail made again from the original kept here when they
+        are other photographs, and :attr:`repictured` told; the new stamp,
+        None when they are one (or either is not here).
+
+        A work's thumbnail is made once, from its museum's small picture,
+        while its original may come later from elsewhere: a mirror's file
+        when the museum is down, another size of its own that is another
+        photograph. The card then showed Commons' canvas of Géricault's
+        "Paysage italien au tombeau" and every list Paris Musées' photograph
+        of it in a gilt frame, for good (Mateusz 2026-11-17: "Po wejściu
+        zdjęcie się podmieniło. A miniatura została stara")."""
+        if item.source in OWN_SOURCES:
+            return None  # his own: the thumbnail is made from the original
+        path, thumb = self.image_path(item), self.thumb_path(item)
+        with self._lock(f"t:{item.id}"):
+            try:
+                with Image.open(thumb) as kept:
+                    kept.load()
+                    small = kept.convert("RGB")
+                with Image.open(path) as original:
+                    original.draft("RGB", (THUMB_MAX, THUMB_MAX))
+                    shown = original.convert("RGB")
+            except OSError:
+                return None  # no thumbnail yet: made from the original when asked
+            if same_photograph(small, shown):
+                return None
+            try:
+                _save_jpeg(load_image(path), thumb, THUMB_MAX, 85)
+            except OSError as err:
+                log.warning("thumbnail of %s not made again: %s", item.id, err)
+                thumb.unlink(missing_ok=True)  # had again from the original when asked
+                return None
+            (self.tiles / thumb.name).unlink(missing_ok=True)
+            stamp = hashlib.sha1(thumb.read_bytes()).hexdigest()[:12]
+        log.info("thumbnail of %s made again: its original is another photograph", item.id)
+        if self.repictured is not None:
+            self.repictured(item, stamp)
+        return stamp
+
+    def thumbs_follow(self, items: Iterable[Item]) -> int:
+        """Once after the update that keeps thumbnails following their
+        originals (:meth:`thumb_follows`): every work with an original here;
+        how many thumbnails were made again."""
+        here = self.originals_here()
+        made = 0
+        for item in items:
+            if item.file_stem in here and self.thumb_follows(item) is not None:
+                made += 1
+        return made
 
     def keep_owned(self, item: Item, data: bytes) -> tuple[str, Image.Image]:
         """Keep the copy the owner brought for ``item`` (a picture's bytes)
