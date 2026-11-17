@@ -9,7 +9,9 @@ final class FramedLookTests: XCTestCase {
         let url = try XCTUnwrap(Bundle.main.url(forResource: "DemoFramed", withExtension: "json"))
         let file = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
         var fields = try XCTUnwrap((file["items"] as? [[String: Any]])?.first)
-        fields["cut"] = cut ?? NSNull()
+        // The server always sends a cut's every field; the test names only those that matter.
+        let base: [String: Any] = ["paper": true, "by": "auto", "aspect": 1.2, "picture": "", "around": [], "at": ""]
+        fields["cut"] = cut.map { base.merging($0) { _, given in given } } ?? NSNull()
         if let picture {
             fields["sharper"] = ["url": "https://example.org/a.jpg", "item_id": picture, "source": "wmc", "museum": "Wikimedia Commons", "width": 2000, "height": 1500]
         }
