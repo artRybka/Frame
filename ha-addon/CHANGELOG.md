@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.206
+## 1.145.207
 
 - Miniatura idzie za obrazem karty. Gdy serwer pobiera oryginał dzieła z
   innego miejsca niż muzeum (na przykład z Wikimedia Commons, kiedy
@@ -11,6 +11,12 @@
   przy „Paysage italien au tombeau” Géricaulta. Po aktualizacji serwer
   raz przegląda miniatury dzieł, których oryginał już ma, i poprawia
   takie, które pokazują inne zdjęcie.
+
+## 1.145.206
+
+- Konfiguracja: liczba przy „Do sprawdzenia” zgadza się z listą. Liczyła
+  też uwagi o dziełach, których już nie ma w bibliotece (połączone z inną
+  kopią albo usunięte), a lista ich nie pokazuje.
 
 ## 1.145.205
 

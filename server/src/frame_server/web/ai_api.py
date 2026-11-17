@@ -266,7 +266,7 @@ def _view(svc: FrameService) -> AiView:
         stages=config.stages,
         crops=config.crops,
         varnish_blue=config.varnish_blue,
-        review_count=len(svc.gatekeeper.written()) + len(svc.audit.written()),
+        review_count=_review_count(svc),
         monthly_limit_usd=config.monthly_limit_usd,
         spent_usd=round(sum(spent.values()), 4),
         spent_by_kind={k: round(v, 4) for k, v in spent.items()},
@@ -591,6 +591,14 @@ def _review(svc: FrameService) -> Review:
         set_aside=entries("gatekeeper", svc.gatekeeper.written()),
         findings=entries("audit", svc.audit.written()),
     )
+
+
+def _review_count(svc: FrameService) -> int:
+    """What "Do sprawdzenia" lists: an entry whose work is no longer in the
+    library (merged into another copy, removed) is not shown there, so it is
+    not counted either (Mateusz 2026-11-17: 21 by the row, 5 inside)."""
+    written = [*svc.gatekeeper.written(), *svc.audit.written()]
+    return sum(1 for e in written if svc.library.has(str(e.get("id"))))
 
 
 @router.get("/review", response_model=Review)
