@@ -72,13 +72,18 @@ SCAN_INFO = "scan.json"
 #: zmieniła sposób łączenia zdjęć?"). A scan that noted none was made
 #: before 1.145.217 (what 1.145.216 does with a lamp's edge is 1).
 MERGING = 1
-#: A work's photograph is a kept scan's when the two, small and grey, go
-#: together at least this much (1 is the same picture): the scan's first
-#: photograph has the reflections the work's has not, another scan of the
-#: same work is held a little otherwise.
-SCAN_LIKE = 0.9
-#: So small (pixels a side), and of shapes no further apart than this.
-SCAN_LOOK = 32
+#: A work's photograph is a kept scan's when the fine of the two, small
+#: and grey, goes together at least this much (1 is the same picture). Of
+#: his first twelve scans the first photograph and what was made of it
+#: went together 0.82 (his drawing, a lamp taken out of it) to 0.99, and
+#: two scans of one work 0.18 at the most: held by hand, no two have the
+#: work's lines in the same pixels. All of the picture's light, not its
+#: fine alone, told them apart no better than 0.75 from 0.86.
+SCAN_LIKE = 0.6
+#: So small (pixels a side), the fine being what a blur so wide (pixels
+#: of that) takes away, and of shapes no further apart than this.
+SCAN_LOOK = 128
+SCAN_FINE = 2
 SCAN_SHAPE = 0.02
 #: Beside a waiting photograph: the work Opus found in it.
 FOUND = ".found.json"
@@ -191,18 +196,21 @@ class Description(BaseModel):
 
 
 def _look(path: Path) -> tuple[Any, float]:
-    """A photograph small and grey (:data:`SCAN_LOOK` a side, its mean
-    taken off, its length 1), and its width over its height."""
+    """The fine of a photograph small and grey (:data:`SCAN_LOOK` a side,
+    without what :data:`SCAN_FINE` blurs away, its mean taken off, its
+    length 1), and its width over its height."""
     import numpy as np
-    from PIL import ImageOps
+    from PIL import ImageFilter, ImageOps
 
     with Image.open(path) as img:
         img.draft("L", (SCAN_LOOK * 4, SCAN_LOOK * 4))
         upright = ImageOps.exif_transpose(img.convert("L"))
         shape = upright.width / upright.height
-        small = np.asarray(upright.resize((SCAN_LOOK, SCAN_LOOK), Image.Resampling.BOX), float)
-    small = small - small.mean()
-    return small / max(float(np.linalg.norm(small)), 1e-6), shape
+        small = upright.resize((SCAN_LOOK, SCAN_LOOK), Image.Resampling.BOX)
+        coarse = small.filter(ImageFilter.GaussianBlur(SCAN_FINE))
+        fine = np.asarray(small, float) - np.asarray(coarse, float)
+    fine = fine - fine.mean()
+    return fine / max(float(np.linalg.norm(fine)), 1e-6), shape
 
 
 def _alike(one: tuple[Any, float], other: tuple[Any, float]) -> float:
