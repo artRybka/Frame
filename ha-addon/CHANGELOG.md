@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.219
+
+- Zadania: „Słowa kluczowe i polskie opisy” to teraz dwa osobne zadania,
+  „Słowa kluczowe katalogu” i „Polskie opisy katalogu”, każde z własnym
+  „kiedy”, liczbą na noc, kwotami, trybem i „Uruchom teraz”. Dotychczasowe
+  ustawienia, miejsce na liście i wyłączenie przechodzą na oba.
+
 ## 1.145.218
 
 - Ekran poprawiania kadru: tykanie przy wolnym przeciąganiu wreszcie

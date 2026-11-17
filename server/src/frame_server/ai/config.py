@@ -272,6 +272,12 @@ class AiConfigStore:
         self._save(config)
         return config
 
+    def set_tasks(self, tasks: dict[str, TaskSettings], **also: object) -> AiConfig:
+        """Keeps every task's settings (and ``also``)."""
+        config = self.config.model_copy(update={"tasks": tasks, **also})
+        self._save(config)
+        return config
+
     def set_key(self, key: str | None) -> AiConfig:
         """Keep the app's key (None forgets it: frame.env's applies again)."""
         config = self.config.model_copy(update={"api_key": clean_key(key) if key else None})

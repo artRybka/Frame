@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING, Any
 import anthropic
 
 from .ai.client import AiUnavailable
-from .leftover import CROP_JUDGE_USD, CROP_USD, CROPS, DESCRIPTIONS, LABELS, NEVER, TEXTS, task
+from .leftover import CROP_JUDGE_USD, CROP_USD, CROPS, LABELS, NEVER, TEXTS, task
 
 if TYPE_CHECKING:
     from .ai import AiWorker
@@ -50,10 +50,10 @@ log = logging.getLogger(__name__)
 
 STATE_KEY = "on_demand_runs"
 #: What may be run on demand, in Konfiguracja's words (``leftover.LABELS``).
-USES = (TEXTS, CROPS)
+USES = (*TEXTS, CROPS)
 #: The questions asked at once: Haiku's texts are short, Opus's corners long
 #: (and the crops' own pool of two answers the cards meanwhile).
-THREADS = {TEXTS: 4, CROPS: 2}
+THREADS = {**dict.fromkeys(TEXTS, 4), CROPS: 2}
 #: What one run may be given (USD).
 MIN_USD, MAX_USD = 1.0, 500.0
 #: The normal price over the Batch API's.
@@ -146,34 +146,32 @@ class OnDemand:
         plans: dict[str, Plan] = {}
         config, ai = self.config, self.ai
 
-        def texts_one(item_id: str) -> bool | None:
-            item = self.library.get(item_id)
-            if item is None:
-                return None
-            asked = False
-            for kind in DESCRIPTIONS:
+        def text_plan(kind: str) -> Plan:
+            def one(item_id: str) -> bool | None:
+                item = self.library.get(item_id)
                 job = ai.jobs.get(kind)
-                if job is None or not job.enabled() or not job.in_library(item):
-                    continue
+                if item is None or job is None or not job.enabled() or not job.in_library(item):
+                    return None
                 if job.fresh(item, self.library.note(item_id, kind)):
-                    continue
+                    return None
                 ai.run_one(kind, item_id)
-                asked = True
-            return True if asked else None
+                return True
 
-        def texts_waiting() -> list[str]:
-            ids: list[str] = []
-            for kind in DESCRIPTIONS:
-                if kind in ai.jobs and config.enabled(kind):
-                    ids.extend(ai.library_waiting(kind)[0])
-            return self.leftover._cared_ids(list(dict.fromkeys(ids)))
+            def waiting() -> list[str]:
+                if kind not in ai.jobs or not config.enabled(kind):
+                    return []
+                return self.leftover._cared_ids(ai.library_waiting(kind)[0])
 
-        plans[TEXTS] = Plan(
-            each=lambda: FULL_PRICE * self.leftover._text_usd(),
-            waiting=texts_waiting,
-            one=texts_one,
-            able=lambda: any(config.enabled(k) for k in DESCRIPTIONS),
-        )
+            return Plan(
+                each=lambda: FULL_PRICE * self.leftover._text_usd(kind),
+                waiting=waiting,
+                one=one,
+                able=lambda: config.enabled(kind),
+            )
+
+        for kind in TEXTS:
+            if kind in ai.jobs:
+                plans[kind] = text_plan(kind)
         crops = self.crops
         if crops is not None:
 

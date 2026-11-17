@@ -53,6 +53,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from .ai import refresh as refresh_module
@@ -102,15 +103,21 @@ DESCRIPTIONS = ("keywords", "pl_text")
 
 #: What the rest may go on, in the order it has unless the owner sets
 #: another (Mateusz 2026-11-15): the cheap work on what he has first.
-REFRESH, CROPS, REVIEW, STUDIES, TEXTS, AUDIT = (
+REFRESH, CROPS, REVIEW, STUDIES, KEYWORDS, POLISH, AUDIT = (
     "refresh",
     "crops",
     "text_review",
     "studies",
-    "descriptions",
+    "keywords",
+    "pl_text",
     "audit",
 )
-USES = (REFRESH, CROPS, REVIEW, STUDIES, TEXTS, AUDIT)
+USES = (REFRESH, CROPS, REVIEW, STUDIES, KEYWORDS, POLISH, AUDIT)
+#: The catalogue's keywords and its Polish texts, each a task of its own
+#: since Mateusz 2026-11-17 ("czy to nie dwa, odrębne procesy?"); the use
+#: they were one of before, whose settings and place both take on.
+TEXTS = (KEYWORDS, POLISH)
+OLD_TEXTS = "descriptions"
 #: Off unless the owner switches it on: it lengthens his own list.
 OFF = (AUDIT,)
 LABELS = {
@@ -131,9 +138,15 @@ LABELS = {
         "Nowe studia",
         "Dzieła typowane przez kuratora Studium dnia, najpierw z Ulubionych i playlist.",
     ),
-    TEXTS: (
-        "Słowa kluczowe i polskie opisy",
-        "Dzieła katalogu, które ich jeszcze nie mają, najpierw Ulubione i playlisty.",
+    KEYWORDS: (
+        "Słowa kluczowe katalogu",
+        "Dzieła katalogu, które ich jeszcze nie mają, najpierw Ulubione i playlisty. "
+        "Po nich szukają Szukaj i inteligentne playlisty.",
+    ),
+    POLISH: (
+        "Polskie opisy katalogu",
+        "Polski tytuł i opis dzieł katalogu, które ich jeszcze nie mają, "
+        "najpierw Ulubione i playlisty.",
     ),
     AUDIT: (
         "Większy nocny przegląd",
@@ -146,7 +159,8 @@ SHORT = {
     CROPS: "kadrowanie",
     REVIEW: "przegląd opisów",
     STUDIES: "nowe studia",
-    TEXTS: "opisy katalogu",
+    KEYWORDS: "słowa kluczowe katalogu",
+    POLISH: "polskie opisy katalogu",
     AUDIT: "nocny przegląd",
 }
 #: What the other uses are counted under in the spending, left out of what
@@ -180,7 +194,8 @@ WHENS = (IN_REST, EVERY_NIGHT, ONLY_ASKED, NEVER)
 #: Works a night the owner may choose, each use's (none: it has no number
 #: of a night).
 A_NIGHT_CHOICES: dict[str, tuple[int, ...]] = {
-    TEXTS: TEXTS_A_NIGHT_OPTIONS,
+    KEYWORDS: TEXTS_A_NIGHT_OPTIONS,
+    POLISH: TEXTS_A_NIGHT_OPTIONS,
     CROPS: (100, 270, 540, 1000, 2000),
     STUDIES: (5, 10, 25, 50),
     AUDIT: (100, 270, 500, 1000),
@@ -189,22 +204,27 @@ A_NIGHT_CHOICES: dict[str, tuple[int, ...]] = {
 NIGHT_USD_CHOICES = (1.0, 2.0, 5.0, 10.0, 20.0, 50.0)
 PERIOD_USD_CHOICES = (5.0, 10.0, 20.0, 50.0, 100.0, 200.0)
 #: What may ask now instead of through the Batch API (``on_demand.USES``).
-NORMAL = (TEXTS, CROPS)
+NORMAL = (*TEXTS, CROPS)
 
 
 def task(config: AiConfig, key: str) -> TaskSettings:
     """``key``'s settings, its ``when`` filled in: off when the owner's
     older list has it off, else the period's last days."""
-    kept = config.tasks.get(key) or TaskSettings()
+    kept = config.tasks.get(key)
+    off = key in config.leftover_off
+    if kept is None and key in TEXTS:
+        # as the one task the catalogue's texts were before
+        kept = config.tasks.get(OLD_TEXTS)
+        off = off or OLD_TEXTS in config.leftover_off
+    kept = kept or TaskSettings()
     if kept.when is not None:
         return kept
-    return kept.model_copy(update={"when": NEVER if key in config.leftover_off else IN_REST})
+    return kept.model_copy(update={"when": NEVER if off else IN_REST})
 
 
 def set_task(store: AiConfigStore, key: str, update: TaskUpdate) -> TaskSettings:
     """The owner's change of ``key``; raises ValueError for what it cannot
-    be. The older switches are kept in step (``leftover_off``, the
-    catalogue's texts a night)."""
+    be. The older list of those off is kept in step (``leftover_off``)."""
     if key not in USES:
         raise ValueError("Nie ma takiego zadania.")
     config = store.config
@@ -217,20 +237,33 @@ def set_task(store: AiConfigStore, key: str, update: TaskUpdate) -> TaskSettings
     if changes.get("a_night") is not None and key not in A_NIGHT_CHOICES:
         raise ValueError("To zadanie nie ma liczby na noc.")
     settings = task(config, key).model_copy(update=changes)
-    off = [k for k in config.leftover_off if k != key]
-    if settings.when == NEVER:
-        off.append(key)
-    also: dict[str, object] = {"leftover_off": off}
-    if key == TEXTS and settings.a_night:
-        also["leftover_texts_a_night"] = settings.a_night
-    store.set_task(key, settings, **also)
+    tasks = dict(config.tasks)
+    also: dict[str, object] = {}
+    if OLD_TEXTS in tasks or OLD_TEXTS in config.leftover_off or OLD_TEXTS in config.leftover_order:
+        # the catalogue's texts' one task becomes two, each as it was
+        for text in TEXTS:
+            tasks[text] = task(config, text)
+        tasks.pop(OLD_TEXTS, None)
+        order = list(config.leftover_order)
+        if OLD_TEXTS in order:
+            at = order.index(OLD_TEXTS)
+            order[at : at + 1] = [k for k in TEXTS if k not in order]
+        also["leftover_order"] = order
+    tasks[key] = settings
+    also["leftover_off"] = [k for k in USES if (tasks.get(k) or task(config, k)).when == NEVER]
+    store.set_tasks(tasks, **also)
     return settings
 
 
 def uses(config: AiConfig) -> list[tuple[str, bool]]:
     """The uses in the owner's order, each on (the night may order it) or
     off; those his list lacks in their own place."""
-    order = [k for k in dict.fromkeys(config.leftover_order) if k in USES]
+    order: list[str] = []
+    for k in dict.fromkeys(config.leftover_order):
+        if k == OLD_TEXTS:  # the two in its place
+            order.extend(t for t in TEXTS if t not in config.leftover_order)
+        elif k in USES:
+            order.append(k)
     for n, key in enumerate(USES):
         if key not in order:
             # after the one before it in USES, or first
@@ -301,7 +334,7 @@ class Leftover:
         self.audit = audit
         self._lock = threading.Lock()
         #: The catalogue's texts waiting, as last worked out (when, count, USD).
-        self._texts_kept: tuple[float, tuple[int, float]] | None = None
+        self._texts_kept: tuple[float, dict[str, tuple[int, float]]] | None = None
         self._counting = False
         #: The runs on demand (``frame_server.on_demand``), set once made:
         #: what they may still spend is not the night's, and the night
@@ -655,17 +688,20 @@ class Leftover:
                 cap=self._cap(STUDIES, A_NIGHT),
             )
         )
-        found.append(
-            Use(
-                TEXTS,
-                self._text_usd(),
-                self._texts_waiting,
-                lambda: any(config.enabled(k) for k in DESCRIPTIONS),
-                self._order_texts,
-                cap=self._cap(TEXTS, config.config.leftover_texts_a_night),
-                caps=TEXTS_A_NIGHT_OPTIONS,
+        for text in TEXTS:
+            if text not in self.ai.jobs:
+                continue
+            found.append(
+                Use(
+                    text,
+                    self._text_usd(text),
+                    partial(self._texts_waiting, text),
+                    partial(config.enabled, text),
+                    partial(self._order_texts, text),
+                    cap=self._cap(text, config.config.leftover_texts_a_night),
+                    caps=TEXTS_A_NIGHT_OPTIONS,
+                )
             )
-        )
         if audit is not None:
 
             def audit_run(usd: float) -> tuple[int, float, bool]:
@@ -722,40 +758,41 @@ class Leftover:
         self._studied = len(ordered)
         return len(ordered), len(ordered) * each, len(picked) >= count
 
-    def _order_texts(self, usd: float) -> tuple[int, float, bool]:
-        """The catalogue's texts for ``usd``, at most the owner's number of
-        works a night (Mateusz 2026-11-15: 125 323 works waiting, and the
-        night gave them all the rest at once): how many works, about what
-        they cost, whether more wait."""
-        cap = self._cap(TEXTS, self.config.config.leftover_texts_a_night)
-        before = self.ai.batched_usd(DESCRIPTIONS)
-        _, works = self.ai.order_rest(DESCRIPTIONS, usd, self._cared_first, cap)
+    def _order_texts(self, kind: str, usd: float) -> tuple[int, float, bool]:
+        """The catalogue's keywords or Polish texts (``kind``) for ``usd``,
+        at most the owner's number of works a night (Mateusz 2026-11-15:
+        125 323 works waiting, and the night gave them all the rest at
+        once): how many works, about what they cost, whether more wait."""
+        cap = self._cap(kind, self.config.config.leftover_texts_a_night)
+        before = self.ai.batched_usd((kind,))
+        _, works = self.ai.order_rest((kind,), usd, self._cared_first, cap)
         self._texts_kept = None
-        return works, max(self.ai.batched_usd(DESCRIPTIONS) - before, 0.0), works >= cap
+        return works, max(self.ai.batched_usd((kind,)) - before, 0.0), works >= cap
 
-    def _texts_waiting(self) -> int | None:
+    def _texts_waiting(self, kind: str) -> int | None:
         found = self._texts_estimate()
-        return None if found is None else found[0]
+        return None if found is None or kind not in found else found[kind][0]
 
-    def _text_usd(self) -> float:
-        """About what a work's keywords and Polish text cost through the
-        Batch API, together."""
+    def _text_usd(self, kind: str) -> float:
+        """About what a work's keywords or Polish text (``kind``) cost
+        through the Batch API."""
         found = self._texts_estimate()
-        if found is not None and found[0]:
-            return found[1] / found[0]
-        jobs = [self.ai.jobs.get(k) for k in DESCRIPTIONS]
-        return sum(j.estimate_usd(1, True) for j in jobs if j is not None) or 0.001
+        if found is not None and kind in found and found[kind][0]:
+            return found[kind][1] / found[kind][0]
+        job = self.ai.jobs.get(kind)
+        return (job.estimate_usd(1, True) if job is not None else 0.0) or 0.001
 
-    def _texts_estimate(self, wait: bool = False) -> tuple[int, float] | None:
-        """The catalogue's works without their keywords or Polish text, all
-        of them (as the night orders them, ``AiWorker.order_rest``, not only
-        the few the background asks about), and about what asking costs
-        (Mateusz 2026-11-15, seeing "czeka 17": "Bardzo dużo dzieł w bazie
-        nie ma jeszcze polskich opisów"). It goes through the whole
-        catalogue (seconds on the NAS) and Konfiguracja asks every 20 s, so
-        it is kept for :data:`TEXTS_FRESH` seconds and worked out anew on a
-        thread of its own; until then the last count, or None. ``wait``:
-        worked out now when old (the night)."""
+    def _texts_estimate(self, wait: bool = False) -> dict[str, tuple[int, float]] | None:
+        """The catalogue's works without their keywords, and without their
+        Polish text, all of them (as the night orders them,
+        ``AiWorker.order_rest``, not only the few the background asks
+        about), and about what asking costs, by kind (Mateusz 2026-11-15,
+        seeing "czeka 17": "Bardzo dużo dzieł w bazie nie ma jeszcze polskich
+        opisów"). It goes through the whole catalogue (seconds on the NAS)
+        and Konfiguracja asks every 20 s, so it is kept for
+        :data:`TEXTS_FRESH` seconds and worked out anew on a thread of its
+        own; until then the last count, or None. ``wait``: worked out now
+        when old (the night)."""
         kept = self._texts_kept
         if kept is not None and time.monotonic() - kept[0] < TEXTS_FRESH:
             return kept[1]
@@ -769,17 +806,14 @@ class Leftover:
                 ).start()
         return kept[1] if kept is not None else None
 
-    def _count_texts(self) -> tuple[int, float]:
+    def _count_texts(self) -> dict[str, tuple[int, float]]:
         try:
-            works: set[str] = set()
-            usd = 0.0
-            for kind in DESCRIPTIONS:
+            found: dict[str, tuple[int, float]] = {}
+            for kind in TEXTS:
                 if kind not in self.ai.jobs or not self.config.enabled(kind):
                     continue
                 ids, cost = self.ai.library_waiting(kind)
-                works.update(ids)
-                usd += cost
-            found = (len(works), usd)
+                found[kind] = (len(ids), cost)
             self._texts_kept = (time.monotonic(), found)
             return found
         finally:

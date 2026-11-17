@@ -89,7 +89,7 @@ enum SettingsPage: String, Hashable, CaseIterable {
         UserDefaults.standard.string(forKey: "settingsPage").flatMap(SettingsPage.init(rawValue:))
     }
 
-    /// The stack screenshots open: the page, and `-task descriptions` that
+    /// The stack screenshots open: the page, and `-task pl_text` that
     /// task's page in Zadania.
     static var launchPath: NavigationPath {
         var path = NavigationPath()

@@ -2033,6 +2033,11 @@ struct LeftoverState: Codable, Hashable, Sendable {
 /// while the money lasts.
 struct LeftoverUse: Codable, Hashable, Sendable, Identifiable {
     var key: String
+    /// The catalogue's keywords or Polish texts: counted on a thread of their
+    /// own, so a while without a count. Two tasks since 2026-11-17 (Mateusz:
+    /// "czy to nie dwa, odrębne procesy?"); an older server's one is
+    /// "descriptions".
+    var isCatalogueText: Bool { ["keywords", "pl_text", "descriptions"].contains(key) }
     var label: String
     var about: String
     /// The owner's switch here, and whether the use's own switch (and what
