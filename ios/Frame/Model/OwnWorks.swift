@@ -36,7 +36,7 @@ struct OwnMerged: Codable, Hashable, Sendable {
     var height: Int
     var used: Int = 0
     var replaced: Double = 0
-    /// nil from a server before it gave the choice (1.145.228).
+    /// nil from a server before it gave the choice (1.145.229).
     var doubt: Bool? = nil
 }
 

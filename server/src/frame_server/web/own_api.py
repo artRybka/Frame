@@ -94,7 +94,7 @@ class MergeAsk(BaseModel):
     #: where the work is when nothing else says.
     outline: list[tuple[float, float]] | None = None
     #: The phone shows the scan and the photograph from the front to
-    #: choose between whatever the scan came to (from 1.145.228): the scan
+    #: choose between whatever the scan came to (from 1.145.229): the scan
     #: is made also of photographs that show no one flat work, in doubt.
     #: An app before it showed the scan alone, chosen, where anything was
     #: taken off, and gets a relief untouched as it did.

@@ -72,7 +72,7 @@ SCAN_INFO = "scan.json"
 #: zmieniła sposób łączenia zdjęć?"). A scan that noted none was made
 #: before 1.145.217 (what 1.145.216 does with a lamp's edge is 1; side
 #: views settled on the first place by place, 1.145.220, is 2). The scan
-#: made also of a relief for him to choose (1.145.228) changes nothing of
+#: made also of a relief for him to choose (1.145.229) changes nothing of
 #: scans made before it: they note no ``doubt`` and stay as they were.
 MERGING = 2
 #: A work's photograph is a kept scan's when the fine of the two, small
@@ -181,7 +181,7 @@ class Merged(Incoming):
     photographs do not show one flat work in one light the scan is made
     of them all the same, and ``doubt`` says the photograph from the front
     is the one proposed (where the phone gives the choice: an app before
-    1.145.228 gets such a scan untouched, as it did)."""
+    1.145.229 gets such a scan untouched, as it did)."""
 
     used: int = 0
     replaced: float = 0.0

@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.228
+## 1.145.229
 
 - Skan własnego dzieła z trzech zdjęć: przełącznik „Na wprost /
   Inteligentne” jest teraz po każdym skanie. Gdy dzieło nie wygląda na
