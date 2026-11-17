@@ -467,6 +467,24 @@ final class OwnWorksTests: XCTestCase {
     /// zostanie wykryta karta koloru dodaj suwak regulacji balansu
     /// bieli"): the phone draws the picture as the server will make it
     /// (`imaging/balance.py`), and the number goes with the cut.
+    /// The slider's middle draws the knob to itself (Mateusz 2026-11-17
+    /// 21:32 UTC: "Gdy suwak jest w punkcie „0” (domyślnym) to stuknij
+    /// haptyką i delikatnie przyciągnij"): near it the balance is none,
+    /// past the pull it is where the finger is, and no further than the ends.
+    func testTheWhiteBalanceSliderIsDrawnToTheMiddle() {
+        let pull = OwnBalanceSlider.pull
+        XCTAssertEqual(OwnBalanceSlider.settled(0), 0)
+        XCTAssertEqual(OwnBalanceSlider.settled(pull * 0.9), 0)
+        XCTAssertEqual(OwnBalanceSlider.settled(-pull * 0.9), 0)
+        XCTAssertEqual(OwnBalanceSlider.settled(pull * 1.1), pull * 1.1, accuracy: 1e-12)
+        XCTAssertEqual(OwnBalanceSlider.settled(-0.45), -0.45, accuracy: 1e-12)
+        XCTAssertEqual(OwnBalanceSlider.settled(3), 1)
+        XCTAssertEqual(OwnBalanceSlider.settled(-3), -1)
+        // Gently: the pull is a small part of the way, a few points of the track.
+        XCTAssertLessThanOrEqual(pull, 0.1)
+        XCTAssertGreaterThanOrEqual(pull, 0.04)
+    }
+
     func testTheWhiteBalanceIsDrawnAsTheServerMakesItAndGoesWithTheCut() throws {
         // The server's numbers.
         let cool = OwnBalance.gains(-1), warm = OwnBalance.gains(0.5)

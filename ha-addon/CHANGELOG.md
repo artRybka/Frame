@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.227
+
+- Suwak balansu bieli przy własnych dziełach wygląda prościej: okrągły
+  uchwyt między chmurką (chłodniej) a słońcem (cieplej), bez napisów i bez
+  przycisku „Wyzeruj”. Środek, czyli zdjęcie bez zmian, lekko przyciąga
+  uchwyt i stuka pod palcem. Sama aplikacja; serwer bez zmian.
+
 ## 1.145.226
 
 - W trybie oszczędnym ramka budziła się ok. 10 minut po wieczornej zmianie
