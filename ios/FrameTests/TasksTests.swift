@@ -81,4 +81,25 @@ final class TasksTests: XCTestCase {
         XCTAssertFalse(all.contains("Fakty z sieci"))
         XCTAssertFalse(all.contains("Droga dzieła"))
     }
+
+    /// The audit of Zadania (Mateusz 2026-11-17): below Odkrywaj only
+    /// tasks; the night's small checks every night or off; crops and the
+    /// night audit one task each, more at the period's end their option; a
+    /// row tells how it runs and what it cost.
+    func testTheTasksTellOnlyHowTheyRunAndWhatTheyCost() async throws {
+        let settings = try await DemoBackend().aiSettings()
+        let uses = try XCTUnwrap(settings.leftoverState?.uses)
+        let gate = try XCTUnwrap(uses.first { $0.key == "gatekeeper" })
+        XCTAssertTrue(gate.isCheck)
+        XCTAssertEqual(TasksSection.chips(gate), [])
+        XCTAssertEqual(TasksSection.costLine(gate, settings: settings), "7 dni: " + AiSection.usd(0.09))
+        let crops = try XCTUnwrap(uses.first { $0.key == "crops" })
+        XCTAssertFalse(crops.isCheck)
+        XCTAssertEqual(TasksSection.chips(crops), ["Batch ½", "+ koniec okresu"])
+        let texts = try XCTUnwrap(uses.first { $0.key == "pl_text" })
+        XCTAssertEqual(TasksSection.chips(texts), ["Batch ½", "do 1000"])
+        XCTAssertTrue(TasksSection.costLine(texts, settings: settings).hasPrefix("w okresie"))
+        XCTAssertFalse(uses.contains { $0.key == "text_review" || $0.key == "refresh" })
+        XCTAssertEqual(uses.first { $0.key == "audit" }?.label, "Nocny przegląd")
+    }
 }

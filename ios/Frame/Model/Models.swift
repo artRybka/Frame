@@ -2077,8 +2077,18 @@ struct LeftoverUse: Codable, Hashable, Sendable, Identifiable {
     var mode: TaskMode? = nil
     var modes: [TaskMode]? = nil
     var periodSpentUsd: Double? = nil
+    /// When it may run (nil: an older server, any): the night's small
+    /// checks only every night or off (Mateusz 2026-11-17, the audit of
+    /// Zadania).
+    var whens: [TaskWhen]? = nil
+    /// A task that is also the night's own portion (crops, the night audit):
+    /// whether the period's last days add more from the rest (nil: no such
+    /// portion).
+    var moreAtEnd: Bool? = nil
 
     var id: String { key }
+    /// The night's small checks: a switch, nothing to count or spend.
+    var isCheck: Bool { whens == [.night, .off] }
 }
 
 /// When a task of the month's rest runs.
@@ -2100,6 +2110,7 @@ enum TaskMode: String, Codable, Hashable, Sendable {
 /// One task's change; 0 is "no limit of its own".
 struct TaskUpdate: Encodable, Sendable {
     var when: TaskWhen? = nil
+    var moreAtEnd: Bool? = nil
     var aNight: Int? = nil
     var nightUsd: Double? = nil
     var periodUsd: Double? = nil

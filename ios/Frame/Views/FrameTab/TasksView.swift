@@ -41,19 +41,23 @@ struct TasksSection: View {
                 switches(Self.discover(settings))
             }
             .id("study")
-            group("Co noc", "Od 1:30, w pakietach Batch za pół ceny, w tej kolejności") {
-                switches(Self.night(settings))
-                taskRows(uses.filter { $0.when == .night }, divided: true)
+            // Below Odkrywaj only tasks, each with its own page, by when
+            // they run (Mateusz 2026-11-17: "każde zadanie może być
+            // wykonywane rutynowo co noc, na żądanie lub na koniec miesiąca")
+            let older = Self.night(settings).filter { row in !uses.contains { $0.key == row.cost } }
+            group("Co noc", "Od 1:30, w pakietach Batch za pół ceny") {
+                switches(older)  // an older server's night switches
+                taskRows(uses.filter { $0.when == .night }, divided: !older.isEmpty)
             }
             .id("night")
-            group("Z resztki okresu", restSubtitle) {
+            group("Na koniec okresu", restSubtitle) {
                 restSwitch
                 taskRows(uses.filter { ($0.when ?? .rest) == .rest }, divided: true)
             }
             .id("rest")
             let asked = uses.filter { $0.when == .demand }
             if !asked.isEmpty {
-                group("Tylko na żądanie", "Nic samo; uruchamiasz na stronie zadania") {
+                group("Tylko na żądanie", "Uruchamiasz na stronie zadania") {
                     taskRows(asked, divided: false)
                 }
             }
@@ -97,9 +101,9 @@ struct TasksSection: View {
         guard settings.leftover == true else { return "Wyłączone: włączysz niżej" }
         let days = settings.leftoverDays ?? 3
         if let state = settings.leftoverState {
-            return "Ostatnie \(days) dni okresu, od \(AiSection.dayMonth(state.opens)), z tego, co zostaje ponad zapas"
+            return "Ostatnie \(days) dni, od \(AiSection.dayMonth(state.opens)), z tego, co zostaje ponad zapas"
         }
-        return "Ostatnie \(days) dni okresu, z tego, co zostaje ponad zapas"
+        return "Ostatnie \(days) dni, z tego, co zostaje ponad zapas"
     }
 
     private var restSwitch: some View {
@@ -107,12 +111,7 @@ struct TasksSection: View {
             get: { settings.leftover ?? false },
             set: { on in Task { await model.saveAiSettings(AiSettingsUpdate(leftover: on)) } }
         )) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Wykorzystaj resztkę miesiąca")
-                Text("Ile dni i jaki zapas, ustawisz na stronie Claude.")
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-            }
+            Text("Wykorzystaj resztkę okresu")
         }
         .tint(Theme.ink)
     }
@@ -260,6 +259,33 @@ struct TasksSection: View {
         }
     }
 
+    /// How a task runs, as chips: "Batch ½", "do 2000", "+ koniec okresu".
+    static func chips(_ use: LeftoverUse) -> [String] {
+        let when = use.when ?? (use.on ? .rest : .off)
+        guard !use.isCheck, when == .rest || when == .night else { return [] }
+        var chips = [use.mode == .normal ? "Zwykły" : "Batch ½"]
+        if let night = use.aNight, use.moreAtEnd == nil || when == .rest {
+            chips.append("do \(AiSection.count(night))")
+        }
+        if when == .night, use.moreAtEnd == true { chips.append("+ koniec okresu") }
+        return chips
+    }
+
+    /// What a task cost: in the last days where "Koszty" has a row of its
+    /// own, else what it cost this period ("7 dni: 0,43 USD", "w okresie
+    /// 13,16 USD"); "Wyłączone przełącznikiem" when its switch keeps it off.
+    static func costLine(_ use: LeftoverUse, settings: AiSettings) -> String {
+        guard use.able else { return "Wyłączone przełącznikiem w „Od razu”." }
+        // the catalogue's texts and the studies share their row with what
+        // runs at once and Odkrywaj: their own spending is the period's
+        let shared = ["keywords", "pl_text", "studies", "refresh"]
+        if !shared.contains(use.key), let days = settings.costDays,
+           let row = (settings.claudeCosts ?? []).first(where: { $0.key == use.key }) {
+            return "\(days) dni: \(AiSection.usd(row.daysUsd))"
+        }
+        return "w okresie \(AiSection.usd(use.periodSpentUsd ?? use.doneUsd))"
+    }
+
     /// "noc do 10 USD · okres do 50 USD · czeka 125 323 · w okresie 13,16 USD".
     static func line(_ use: LeftoverUse) -> String {
         guard use.able else { return "Wyłączone przełącznikiem wyżej." }
@@ -336,8 +362,8 @@ private struct TaskSwitchRow: View {
     }
 }
 
-/// A task of the month's rest in the list: its name, when and how it runs,
-/// its amounts and what waits; it opens its page.
+/// A task in the list: its name, how it runs and what it cost, nothing
+/// more (Mateusz 2026-11-17: "same nazwy i ew. koszt"); it opens its page.
 private struct TaskRow: View {
     let use: LeftoverUse
     let settings: AiSettings
@@ -348,15 +374,14 @@ private struct TaskRow: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(use.label)
                         .foregroundStyle(running ? Theme.ink : (use.able ? Theme.ink : Theme.inkSoft))
-                    HStack(spacing: 4) {
-                        TaskChip(text: TasksSection.whenChip(when), strong: when != .off && use.able)
-                        if when == .rest || when == .night {
-                            TaskChip(text: use.mode == .normal ? "Zwykły" : "Batch ½")
-                            if let night = use.aNight { TaskChip(text: "do \(AiSection.count(night))") }
+                    let chips = TasksSection.chips(use)
+                    if !chips.isEmpty || running {
+                        HStack(spacing: 4) {
+                            ForEach(chips, id: \.self) { TaskChip(text: $0) }
+                            if running { TaskChip(text: "Teraz", strong: true) }
                         }
-                        if running { TaskChip(text: "Teraz", strong: true) }
                     }
-                    let line = TasksSection.line(use)
+                    let line = TasksSection.costLine(use, settings: settings)
                     if !line.isEmpty {
                         Text(line)
                             .font(.caption.monospacedDigit())
@@ -405,10 +430,6 @@ private struct ServerWorkRow: View {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Prace serwera co noc").foregroundStyle(Theme.ink)
-                    Text("Nowe dzieła z muzeów, pliki, kopie razem, ostrzejsze kopie, Odkrywaj i Propozycje dnia.")
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
-                        .fixedSize(horizontal: false, vertical: true)
                     if let note {
                         Text(note.text)
                             .font(.caption)
@@ -548,15 +569,21 @@ struct TaskPage: View {
     @ViewBuilder
     private func content(_ settings: AiSettings, _ use: LeftoverUse) -> some View {
         let when = use.when ?? (use.on ? .rest : .off)
+        // a portion every night and more at the period's end: the amounts
+        // are the end's
+        let more = when == .night && use.moreAtEnd != nil
+        let amounts = !use.isCheck && (when == .rest || (when == .night && use.moreAtEnd != false))
         Card {
             Text(use.about)
                 .font(.subheadline)
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
-            HStack(alignment: .top) {
-                stat(waitingText(use), use.key == "studies" ? "kandydaci" : "czeka")
-                stat(AiSection.count(use.done), "w tym okresie")
-                stat(AiSection.usd(use.periodSpentUsd ?? use.doneUsd), "koszt w okresie")
+            if !use.isCheck {
+                HStack(alignment: .top) {
+                    stat(waitingText(use), use.key == "studies" ? "kandydaci" : "czeka")
+                    stat(AiSection.count(use.done), "w tym okresie")
+                    stat(AiSection.usd(use.periodSpentUsd ?? use.doneUsd), "koszt w okresie")
+                }
             }
             if !use.able {
                 Label("Wyłączone przełącznikiem na liście Zadań.", systemImage: "exclamationmark.circle")
@@ -567,7 +594,10 @@ struct TaskPage: View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: "Kiedy")
             Card {
-                let choices = TaskWhen.allCases.filter { $0 != .demand || use.nowEachUsd != nil }
+                let allowed = use.whens ?? TaskWhen.allCases
+                let choices = [TaskWhen.night, .rest, .demand, .off].filter {
+                    allowed.contains($0) && ($0 != .demand || use.nowEachUsd != nil)
+                }
                 ForEach(Array(choices.enumerated()), id: \.element) { index, choice in
                     if index > 0 { Divider() }
                     whenRow(choice, chosen: when, settings: settings)
@@ -575,9 +605,27 @@ struct TaskPage: View {
             }
         }
         .id("when")
-        if when == .rest || when == .night {
+        if more {
             VStack(alignment: .leading, spacing: 10) {
-                SectionHeader(title: "Ile i za ile", subtitle: "Pierwsze, co się skończy, zatrzymuje zadanie")
+                SectionHeader(title: "Na koniec okresu")
+                Card {
+                    Toggle(isOn: Binding(
+                        get: { use.moreAtEnd ?? true },
+                        set: { new in save(TaskUpdate(moreAtEnd: new)) }
+                    )) {
+                        Text("Więcej z resztki okresu")
+                    }
+                    .tint(Theme.ink)
+                }
+            }
+            .id("more")
+        }
+        if amounts {
+            VStack(alignment: .leading, spacing: 10) {
+                SectionHeader(
+                    title: more ? "Ile i za ile na koniec okresu" : "Ile i za ile",
+                    subtitle: "Pierwsze, co się skończy, zatrzymuje zadanie"
+                )
                 Card {
                     if let choices = use.aNightChoices, let night = use.aNight {
                         menuRow(
