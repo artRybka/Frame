@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.204
+
+- Ekran poprawiania kadru (także przy skanie własnego dzieła): zdjęcie
+  jest tak duże, jak się mieści, bez czterech lup w rogach. Narożnik
+  chwyta się obok niego i idzie za ruchem palca, a przy wolnym ruchu
+  przesuwa się o ćwierć, więc łatwo trafić co do piksela. Na czas
+  ciągnięcia nad palcem pojawia się lupa. Gdy narożnik trafi na wyraźną
+  krawędź (rama, brzeg kartki), telefon stuka i narożnik lekko do niej
+  przylega; dalszy ruch go odrywa.
+
 ## 1.145.203
 
 - Skan („Inteligentne”) dzieła za szybą: odbicie dłoni i smugi schodzą
