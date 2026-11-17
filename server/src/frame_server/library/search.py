@@ -377,6 +377,23 @@ def fill(
     )
 
 
+def keep_shown(importer: Importer, rules: PlaylistRules, job: Job) -> None:
+    """The works Szukaj's search for ``rules`` showed (the smart playlist
+    editor's paler ones) that are not in the catalogue yet, taken in now:
+    the playlist of them was saved (:meth:`Importer.take_shown`)."""
+    importer.take_shown(
+        rules.search_key(),
+        job,
+        terms=rules.terms,
+        fits=lambda item: matches(
+            item,
+            rules,
+            said=said_as(rules.query, importer.library.wording),
+            titled=titled_as(rules.title, importer.library.wording),
+        ),
+    )
+
+
 def fill_card(
     importer: Importer, rules: PlaylistRules, count: int, job: Job, pooled: bool = False
 ) -> None:

@@ -758,7 +758,8 @@ struct PlaylistEditorView: View {
         }
     }
 
-    /// Asks the museums for the works a smart playlist misses, quietly
+    /// Takes in the museums' works the editor showed and asks the museums
+    /// for `count` more the smart playlist misses (0: only those), quietly
     /// (Mateusz, 2026-11-14: no card with "46 z 87"); the playlists are
     /// read again once they are in. Runs on after the editor closes.
     @MainActor
@@ -804,12 +805,20 @@ struct PlaylistEditorView: View {
         }
         let uploads = photos.map(\.upload)
         let fetch = missing ?? 0
-        Task { [model] in await Self.store(playlist, uploads: uploads, fetch: fetch, model: model) }
+        // The museums' works shown (paler) join the catalogue now, also
+        // when it holds enough for the playlist already (de Chirico,
+        // 2026-11-17: 192 of his, nothing more asked, the shown left out).
+        let shown = playlist.kind == .smart && !fromMuseums.isEmpty
+        Task { [model] in
+            await Self.store(playlist, uploads: uploads, fetch: fetch, shown: shown, model: model)
+        }
         dismiss()
     }
 
     @MainActor
-    private static func store(_ playlist: Playlist, uploads: [PhotoUpload], fetch: Int, model: AppModel) async {
+    private static func store(
+        _ playlist: Playlist, uploads: [PhotoUpload], fetch: Int, shown: Bool, model: AppModel
+    ) async {
         var playlist = playlist
         let name = playlist.name
         let notices = model.notices
@@ -832,7 +841,7 @@ struct PlaylistEditorView: View {
                 try await followSync(jobID, name: name, card: card, model: model)
             } else {
                 notices.end(card, .done, "Zapisano „\(name)”")
-                if saved.playlist.kind == .smart, fetch > 0 {
+                if saved.playlist.kind == .smart, fetch > 0 || shown {
                     await fillQuietly(playlist.rules, count: fetch, model: model)
                 }
             }
