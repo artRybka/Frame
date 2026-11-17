@@ -1687,6 +1687,18 @@ final class AppModel {
         return true
     }
 
+    /// A task's change on its page in Zadania.
+    func saveTask(key: String, _ update: TaskUpdate) async {
+        do {
+            aiSettings = try await backend.saveTask(key: key, update: update)
+        } catch let BackendError.http(409, body) {
+            let said = (try? JSONDecoder().decode([String: String].self, from: Data(body.utf8)))?["detail"]
+            notices.fail("Nie zapisano", said)
+        } catch {
+            show(error)
+        }
+    }
+
     func stopOnDemand(key: String) async {
         do {
             aiSettings = try await backend.stopOnDemand(key: key)

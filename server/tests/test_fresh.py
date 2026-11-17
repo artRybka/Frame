@@ -365,14 +365,14 @@ def test_colour_cards_change_every_week_and_keep_to_paintings(service) -> None:
         COLOUR_CARDS,
         COLOUR_MIN,
         COLOUR_POOL,
-        PAINTERLY_KEY,
+        PAINTINGS_KEY,
         colour_themes,
         painterly_colour_playlists,
     )
 
     library = service.library
-    # Every card but those of "only" colours fits these: oil paintings and
-    # posters with every tag.
+    # Every card but those of "only" colours fits these: oil paintings,
+    # posters and drawings with every tag.
     every = sorted({c for t in COLOUR_POOL for c in t.colors if not c.startswith("only:")})
     fit = [t for t in COLOUR_POOL if not any(c.startswith("only:") for c in t.colors)]
     with library.batch():
@@ -386,6 +386,17 @@ def test_colour_cards_change_every_week_and_keep_to_paintings(service) -> None:
                     title=f"Poster {n}",
                     classification="Poster",
                     medium="Color lithograph",
+                    color_tags=every,
+                    pooled=True,
+                )
+            )
+            # Drawings and watercolours neither (Mateusz 2026-11-17).
+            library.upsert(
+                _work(
+                    200 + n,
+                    title=f"Ships {n}",
+                    classification="Drawing",
+                    medium="Graphite and watercolor on paper",
                     color_tags=every,
                     pooled=True,
                 )
@@ -417,7 +428,24 @@ def test_colour_cards_change_every_week_and_keep_to_paintings(service) -> None:
     mine = library.save_playlist(
         Playlist(name="Moje niebieskie", rules=PlaylistRules(colors=["blue"]))
     )
+    # Those the cards gave drawings too (1.97.0) lose them; one with other
+    # techniques was made so by hand.
+    warm = library.save_playlist(
+        Playlist(
+            name="Ciepłe barwy",
+            rules=PlaylistRules(colors=["warm"], terms=["technique:painting", "technique:drawing"]),
+        )
+    )
+    dark = library.save_playlist(
+        Playlist(
+            name="Mroczne i nastrojowe",
+            theme="dark",
+            rules=PlaylistRules(colors=["dark"], terms=["technique:print"]),
+        )
+    )
     painterly_colour_playlists(library)
-    assert library.playlist(blues.id).rules.terms == ["technique:painting", "technique:drawing"]
+    assert library.playlist(blues.id).rules.terms == ["technique:painting"]
+    assert library.playlist(warm.id).rules.terms == ["technique:painting"]
+    assert library.playlist(dark.id).rules.terms == ["technique:print"]
     assert library.playlist(mine.id).rules.terms == []
-    assert library.get_state(PAINTERLY_KEY)
+    assert library.get_state(PAINTINGS_KEY)

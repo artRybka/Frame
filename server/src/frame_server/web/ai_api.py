@@ -13,6 +13,7 @@ from starlette.concurrency import run_in_threadpool
 from ..ai import AiConfigUpdate, AiUnavailable, KeyRejected, Progress, costs
 from ..ai.audit import FIELDS as AUDIT_FIELDS
 from ..ai.composition import PAGES
+from ..ai.config import TaskUpdate
 from ..ai.daily import CHECK_ROUND, ROUND
 from ..ai.drawn import TYPICAL_USD as SHEET_USD
 from ..ai.gatekeeper import SEEN_AS
@@ -22,6 +23,7 @@ from ..ai.pl_text import KIND as PL_TEXT
 from ..ai.review_fix import ReviewError
 from ..ai.twins_judge import CLAIMS, Verdict, judge
 from ..ai.twins_judge import MODELS as JUDGES
+from ..leftover import NIGHT_USD_CHOICES, PERIOD_USD_CHOICES, set_task
 from ..library.models import ItemSummary
 from ..on_demand import USES as ON_DEMAND
 from ..on_demand import OnDemandError
@@ -148,6 +150,11 @@ class LeftoverView(BaseModel):
     uses: list[LeftoverUseView] = []
     #: What a run on demand may be given now.
     now_free_usd: float = 0.0
+    #: Ordered and held by the runs going, not spent yet (USD).
+    planned_usd: float = 0.0
+    #: What a task's amounts a night and a period may be set to (USD).
+    night_usd_choices: list[float] = list(NIGHT_USD_CHOICES)
+    period_usd_choices: list[float] = list(PERIOD_USD_CHOICES)
 
 
 class LeftoverUseView(BaseModel):
@@ -180,6 +187,18 @@ class LeftoverUseView(BaseModel):
     #: cannot be run now), and the run going or the last one.
     now_each_usd: float | None = None
     run: OnDemandRunView | None = None
+    #: The owner's settings of it as a task (Mateusz 2026-11-17, "Zadania"):
+    #: when it runs ("rest", "night", "demand", "off"), the works a night he
+    #: may choose (``a_night`` is the one chosen), what a night and the
+    #: period may spend on it (None: no amount of its own), how it asks
+    #: ("batch", "normal") and how it may, and what it cost this period.
+    when: str = "rest"
+    a_night_choices: list[int] | None = None
+    night_usd: float | None = None
+    period_usd: float | None = None
+    mode: str = "batch"
+    modes: list[str] = ["batch"]
+    period_spent_usd: float = 0.0
 
 
 class OnDemandRunView(BaseModel):
@@ -202,6 +221,8 @@ class OnDemandRunView(BaseModel):
     started: str | None = None
     ended: str | None = None
     why: str | None = None
+    #: The night started it (the task's mode "Zwykły").
+    night: bool = False
 
 
 class OnDemandStart(BaseModel):
@@ -378,6 +399,17 @@ async def start_on_demand(start: OnDemandStart, svc: Svc) -> AiView:
     try:
         await run_in_threadpool(svc.on_demand.start, start.key, start.usd)
     except OnDemandError as err:
+        raise HTTPException(409, str(err)) from err
+    return await run_in_threadpool(_view, svc)
+
+
+@router.put("/tasks/{key}", response_model=AiView)
+async def put_task(key: str, update: TaskUpdate, svc: Svc) -> AiView:
+    """One task's when, number a night, amounts and mode (Konfiguracja →
+    Zadania)."""
+    try:
+        set_task(svc.ai_config, key, update)
+    except ValueError as err:
         raise HTTPException(409, str(err)) from err
     return await run_in_threadpool(_view, svc)
 

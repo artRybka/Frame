@@ -225,10 +225,13 @@ jobs:
             capture connection 10 "connection-sources-$appearance" -settingsPage sources
             capture connection 10 "connection-ai-$appearance" -settingsPage ai
             capture connection 12 "connection-ai-leftover-$appearance" -settingsPage ai -scroll leftover
-            capture connection 12 "connection-ai-ondemand-$appearance" -settingsPage ai -scroll ondemand -demoRun running
-            capture connection 14 "connection-ai-ondemand-sheet-$appearance" -settingsPage ai -scroll ondemand -onDemandSheet descriptions
-            capture connection 12 "connection-ai-switches-$appearance" -settingsPage ai -scroll switches
-            capture connection 12 "connection-ai-night-$appearance" -settingsPage ai -scroll night
+            capture connection 10 "tasks-$appearance" -settingsPage tasks
+            capture connection 12 "tasks-running-$appearance" -settingsPage tasks -demoRun running
+            capture connection 12 "tasks-night-$appearance" -settingsPage tasks -scroll night
+            capture connection 12 "tasks-rest-$appearance" -settingsPage tasks -scroll rest
+            capture connection 12 "tasks-off-$appearance" -settingsPage tasks -scroll off
+            capture connection 12 "task-descriptions-$appearance" -settingsPage tasks -task descriptions
+            capture connection 14 "task-descriptions-sheet-$appearance" -settingsPage tasks -task descriptions -onDemandSheet descriptions
             capture connection 10 "connection-gemini-$appearance" -settingsPage gemini
             capture connection 12 "review-$appearance" -settingsPage ai -review YES
             capture connection 14 "review-open-$appearance" -settingsPage ai -review YES -reviewOpen YES

@@ -338,6 +338,8 @@ protocol FrameBackend: Sendable {
     func startOnDemand(key: String, usd: Double) async throws -> AiSettings
     /// The run stops after the works it is asking about.
     func stopOnDemand(key: String) async throws -> AiSettings
+    /// One task's when, number a night, amounts and mode (Zadania).
+    func saveTask(key: String, update: TaskUpdate) async throws -> AiSettings
     /// What the tidying of copies changed, the judge's (doubtful) first.
     func tidyChanges() async throws -> TidyChanges
     /// "To nie to samo": the two pictures apart again, for good.

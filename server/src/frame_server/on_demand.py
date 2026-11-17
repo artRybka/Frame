@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING, Any
 import anthropic
 
 from .ai.client import AiUnavailable
-from .leftover import CROP_JUDGE_USD, CROP_USD, CROPS, DESCRIPTIONS, LABELS, TEXTS
+from .leftover import CROP_JUDGE_USD, CROP_USD, CROPS, DESCRIPTIONS, LABELS, NEVER, TEXTS, task
 
 if TYPE_CHECKING:
     from .ai import AiWorker
@@ -68,7 +68,7 @@ FAILS_IN_A_ROW = 8
 PAUSE_SECONDS = 10.0
 
 #: Why a run ended, as the app says it.
-SPENT, EMPTY, LIMIT, STOPPED, ERRORS, RESTART, OFF = (
+SPENT, EMPTY, LIMIT, STOPPED, ERRORS, RESTART, OFF, COUNT = (
     "kwota wykorzystana",
     "nic więcej nie czeka",
     "osiągnięty limit miesiąca (z zapasem)",
@@ -76,6 +76,7 @@ SPENT, EMPTY, LIMIT, STOPPED, ERRORS, RESTART, OFF = (
     "błędy API",
     "przerwane: serwer uruchomiony ponownie",
     "wyłączone w ustawieniach",
+    "liczba na noc osiągnięta",
 )
 
 
@@ -99,9 +100,13 @@ class Plan:
 
 
 class _Run:
-    def __init__(self, key: str, usd: float, record: dict[str, Any]) -> None:
+    def __init__(
+        self, key: str, usd: float, record: dict[str, Any], limit: int | None = None
+    ) -> None:
         self.key = key
         self.usd = usd
+        #: Works at most (a night's run: the task's number a night).
+        self.limit = limit
         self.record = record
         self.lock = threading.Lock()
         self.stopping = False
@@ -223,8 +228,12 @@ class OnDemand:
 
     # -- a run ---------------------------------------------------------------
 
-    def start(self, key: str, usd: float) -> dict[str, Any]:
-        """Starts ``key`` for ``usd``; its record. Raises
+    def start(
+        self, key: str, usd: float, limit: int | None = None, night: bool = False
+    ) -> dict[str, Any]:
+        """Starts ``key`` for ``usd`` (and at most ``limit`` works); its
+        record. ``night``: the night starts it, the task's mode being
+        "Zwykły" (Mateusz 2026-11-17, "Zadania"). Raises
         :class:`OnDemandError` with the reason in Polish."""
         plan = self._plans().get(key)
         if plan is None or key not in USES:
@@ -233,6 +242,8 @@ class OnDemand:
             raise OnDemandError("Brak klucza API Anthropic.")
         if not plan.able():
             raise OnDemandError("To zadanie jest wyłączone w ustawieniach Claude.")
+        if task(self.config.config, key).when == NEVER:
+            raise OnDemandError("To zadanie jest wyłączone w Zadaniach.")
         if not MIN_USD <= usd <= MAX_USD:
             raise OnDemandError(f"Kwota od {MIN_USD:.0f} do {MAX_USD:.0f} USD.")
         if self.running(key):
@@ -255,14 +266,18 @@ class OnDemand:
             "each_usd": round(plan.each(), 4),
             "started": self.now().isoformat(timespec="seconds"),
         }
-        run = _Run(key, usd, record)
+        if night:
+            record["night"] = True
+        if limit:
+            record["limit"] = limit
+        run = _Run(key, usd, record, limit)
         with self._lock:
             self._runs[key] = run
         self._save(run, force=True)
         threading.Thread(
             target=self._go, args=(run, plan), name=f"on-demand-{key}", daemon=True
         ).start()
-        log.info("on demand: %s started for %.2f USD", key, usd)
+        log.info("on demand: %s started for %.2f USD%s", key, usd, " (night)" if night else "")
         return dict(record)
 
     def stop(self, key: str) -> bool:
@@ -300,6 +315,7 @@ class OnDemand:
             run.record["ended"] = self.now().isoformat(timespec="seconds")
         self._save(run, force=True)
         record = run.record
+        self.leftover.count(run.key, int(record["done"]), float(record["spent_usd"]))
         log.info(
             "on demand: %s ended (%s): %d works, %d changed, %d failed, %.2f of %.2f USD",
             run.key,
@@ -335,6 +351,9 @@ class OnDemand:
                 return None
             if self.claude.budget_left() - reserve < held:
                 run.record.setdefault("why", LIMIT)
+                return None
+            if run.limit is not None and run.next >= run.limit:
+                run.record.setdefault("why", COUNT)
                 return None
             if run.next >= len(run.queue):
                 run.record.setdefault("why", EMPTY)
@@ -442,6 +461,7 @@ class OnDemand:
             "started": record.get("started"),
             "ended": record.get("ended"),
             "why": record.get("why"),
+            "night": bool(record.get("night")),
         }
 
 

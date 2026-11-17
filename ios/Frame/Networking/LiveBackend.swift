@@ -937,6 +937,10 @@ struct LiveBackend: FrameBackend {
         try await send("/api/ai/on-demand/\(escape(key))/stop", method: "POST")
     }
 
+    func saveTask(key: String, update: TaskUpdate) async throws -> AiSettings {
+        try await send("/api/ai/tasks/\(escape(key))", method: "PUT", body: update)
+    }
+
     func aiReview() async throws -> AiReview { try await get("/api/ai/review") }
 
     func tidyChanges() async throws -> TidyChanges { try await get("/api/night/changes") }

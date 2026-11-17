@@ -10,6 +10,8 @@ struct OnDemandRow: View {
     let use: LeftoverUse
     /// What a run may be given now (nil: an older server).
     let free: Double?
+    /// The task's page: a large button across the card.
+    var prominent = false
     @State private var asking = false
     @State private var stopping = false
 
@@ -23,15 +25,7 @@ struct OnDemandRow: View {
             going(run)
         } else {
             VStack(alignment: .leading, spacing: 4) {
-                Button {
-                    asking = true
-                } label: {
-                    Label("Uruchom teraz…", systemImage: "bolt")
-                        .font(.caption.weight(.semibold))
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .tint(Theme.ink)
+                startButton
                 .sheet(isPresented: $asking) { OnDemandSheet(use: use, free: free) }
                 .task {
                     // Screenshots: `-onDemandSheet descriptions` opens it.
@@ -48,6 +42,32 @@ struct OnDemandRow: View {
                 }
             }
             .padding(.top, 4)
+        }
+    }
+
+    @ViewBuilder
+    private var startButton: some View {
+        if prominent {
+            Button {
+                asking = true
+            } label: {
+                Label("Uruchom teraz za…", systemImage: "bolt.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .tint(Theme.ink)
+        } else {
+            Button {
+                asking = true
+            } label: {
+                Label("Uruchom teraz…", systemImage: "bolt")
+                    .font(.caption.weight(.semibold))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .tint(Theme.ink)
         }
     }
 
@@ -172,6 +192,8 @@ struct OnDemandSheet: View {
                 }
             }
             .contentMargins(.top, 8, for: .scrollContent)
+            .scrollContentBackground(.hidden)
+            .background { Theme.paper.ignoresSafeArea() }
             .navigationTitle("Uruchom teraz")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
