@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.206
+
+- Konfiguracja: liczba przy „Do sprawdzenia” zgadza się z listą. Liczyła
+  też uwagi o dziełach, których już nie ma w bibliotece (połączone z inną
+  kopią albo usunięte), a lista ich nie pokazuje.
+
 ## 1.145.205
 
 - Skan („Inteligentne”) dzieła za szybą: miękkie, daleko sięgające

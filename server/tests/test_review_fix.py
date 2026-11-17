@@ -293,3 +293,24 @@ def test_popraw_opis_without_a_polish_text(
     with _client(service) as client:
         answer = client.post("/api/ai/review/wmc:9/polish")
         assert answer.status_code == 422 and "polskiego opisu" in answer.json()["detail"]
+
+
+def test_the_count_by_the_row_is_what_the_list_holds(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    """Mateusz 2026-11-17: 21 by „Do sprawdzenia”, 5 inside. Entries whose
+    work left the library (merged, removed) are neither shown nor counted."""
+    _work(service, "mnk:1", pooled=True)
+    _found(service)
+    state = service.audit.state()
+    state["written"] = [*state["written"], {**FINDING, "id": "mnk:gone"}]
+    service.audit._save(state)
+    state = service.gatekeeper.state()
+    state["written"] = [{"id": "wmc:gone", "at": "", "seen_as": "text", "why": "A page"}]
+    service.gatekeeper._save(state)
+    with _client(service) as client:
+        review = client.get("/api/ai/review").json()
+        view = client.get("/api/ai").json()
+    assert len(review["set_aside"]) + len(review["findings"]) == 1
+    assert view["review_count"] == 1
