@@ -2587,14 +2587,15 @@ extension DemoBackend {
             about: "Wygląd dzieła jako liczby: szukanie opisem wyglądu, zdjęciem i „Podobne wyglądem”. Nowe dzieła od razu, potem katalog.",
             on: true, able: true, waiting: 3_120, eachUsd: 0.0001, waitingUsd: 0.31, aNight: 5000,
             done: 4200, doneUsd: 0.42, nowEachUsd: 0.0002, when: .night,
-            aNightChoices: [1000, 5000, 20000], mode: .batch, modes: [.batch, .normal], periodSpentUsd: 0.42
+            aNightChoices: [1000, 5000, 20000], mode: .batch, modes: [.batch, .normal], periodSpentUsd: 0.42,
+            moreAtEnd: false
         ),
         LeftoverUse(
             key: "tidy", label: "Porządki katalogu",
             about: "Odkłada znaczki, strony z tekstem i zdjęcia sal, które przyszły jako dzieła, i rozstrzyga, czy dwa podobne obrazy to kopia, detal czy to samo dzieło.",
             on: true, able: true, waiting: 64, eachUsd: 0.002, waitingUsd: 0.13, aNight: nil,
             done: 310, doneUsd: 0.11, nowEachUsd: 0.004, when: .night, mode: .batch, modes: [.batch, .normal],
-            periodSpentUsd: 0.11
+            periodSpentUsd: 0.11, moreAtEnd: false
         ),
         LeftoverUse(
             key: "audit", label: "Przegląd dzieł",
