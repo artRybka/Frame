@@ -592,7 +592,7 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
             },
             completion: { _ in if !together { self.settle(framing: false) } }
         )
-        if together { settle(framing: true) }
+        if together { settle(framing: true, at: .curveEaseOut) }
     }
 
     /// The place within what a drag may reach (the picture's edges, or its
@@ -627,7 +627,9 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
 
     /// After `swap`: the zoom back within its bounds, gently; `whole`, the
     /// picture (the work in its frame) whole.
-    private func settle(framing whole: Bool) {
+    /// `at`: ease-out when it runs with the fade, so the pull-back starts at
+    /// once and the frame does not first swell past the screen.
+    private func settle(framing whole: Bool, at curve: UIView.AnimationOptions = .curveEaseInOut) {
         let seen = convert(bounds, to: imageView)
         let target: CGFloat? = if zoomScale < 0.999 || (whole && zoomScale > 1.001) {
             1  // whole
@@ -656,7 +658,7 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
         let middle = CGPoint(x: seen.midX, y: seen.midY)
         UIView.animate(
             withDuration: Self.settleTime, delay: 0,
-            options: [.curveEaseInOut, .allowUserInteraction, .beginFromCurrentState],
+            options: [curve, .allowUserInteraction, .beginFromCurrentState],
             animations: {
                 self.zoomScale = target
                 self.centre()
