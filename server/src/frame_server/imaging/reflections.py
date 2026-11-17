@@ -69,7 +69,12 @@ szybą", "chyba działa zbyt punktowo i z ostrym odcięciem"):
   (:data:`HIDDEN_EASE`). The band is as wide as the frame's side shows
   dark in the side view (:func:`_hide`).
 - A collage of a mirror, foil and a circuit board: the side views do not
-  tell one work, and nothing is touched (:data:`NOT_ONE`).
+  tell one work, and nothing is touched (:data:`NOT_ONE`). Unless it is
+  asked for all the same (``anyway``): he has the two to choose between
+  then, with the one photograph proposed (2026-11-17 22:43 UTC, "wybór
+  pomiędzy obrazem składanym (inteligentnym) a z pojedynczego zdjęcia -
+  zawsze go dawaj, a w sytuacji gdzie podejrzewasz płaskorzeźbę albo
+  dzieło które wymaga pojedynczego zdjęcia ustawiaj je jako domyślne").
 
 What the cows showed scanned again (2026-11-16 22:30 UTC, three places
 ringed on a screenshot; "Odbicia w szybie - jest lepiej, ale przejście
@@ -401,12 +406,12 @@ AROUND = 0.015
 #: work (his collage of a mirror, foil and a circuit board, 0.17; glass
 #: and oil 0.02 to 0.07, on his sixteen scans with the side views settled
 #: on the first, which brought the collage down from 0.22 and a small oil
-#: from 0.07 to 0.03), and nothing is touched.
+#: from 0.07 to 0.03), and nothing is touched: the merge is in doubt.
 NOT_ONE = 0.12
 #: Less light than this taken off (of the first photograph's) is nothing.
 LEAST = 0.01
 #: More than this is no reflection: the photographs do not show one work
-#: in one light, and nothing is touched.
+#: in one light, and nothing is touched: in doubt as well.
 MOST = 0.7
 #: Rows worked on at once at full size.
 ROWS = 512
@@ -424,6 +429,10 @@ class Merged:
     #: The share of the first photograph's light within the work that was
     #: reflection and is taken off (0–1).
     removed: float
+    #: The photographs do not show one flat work in one light (a relief, a
+    #: mirror in it: :data:`NOT_ONE`, :data:`MOST`): the first photograph
+    #: alone is likely the better picture of it.
+    doubt: bool = False
 
 
 @dataclass
@@ -437,10 +446,13 @@ class _View:
     hidden: float = HIDDEN
 
 
-def merge(first: Image, sides: list[Image], corners: Quad) -> Merged:
+def merge(first: Image, sides: list[Image], corners: Quad, anyway: bool = False) -> Merged:
     """``first`` (RGB, H × W × 3) without the reflections ``sides`` do not
     share, within ``corners`` (the work: top left, top right, bottom
-    right, bottom left, 0–1 across and down)."""
+    right, bottom left, 0–1 across and down). Where the photographs do
+    not show one flat work in one light it is ``first`` untouched, in
+    doubt; made of them all the same when asked for ``anyway``, and in
+    doubt still."""
     h, w = first.shape[:2]
     quad = grown(corners) * [w, h]
     scale = min(1.0, MATCH_SIDE / max(h, w))
@@ -471,8 +483,9 @@ def merge(first: Image, sides: list[Image], corners: Quad) -> Merged:
     # out of a first view without it.
     front = views[0].light
     alone, swap, differ, told = _alone(views)
-    if differ > NOT_ONE:
-        return Merged(first, len(views) - 1, 0.0)
+    doubt = differ > NOT_ONE
+    if doubt and not anyway:
+        return Merged(first, len(views) - 1, 0.0, True)
     less = front - alone
     # A lamp's light is taken off as well, though the work under it is
     # put in from the side views: a lamp alone on an even veil was
@@ -492,8 +505,9 @@ def merge(first: Image, sides: list[Image], corners: Quad) -> Merged:
     layer = (layer - _kept(layer, held)).astype(np.float32)
     soft = np.clip(cv2.resize(layer, (wd, ht), interpolation=cv2.INTER_CUBIC), 0, None)
     removed = (own + float(soft.mean())) / max(whole, 1e-6)
-    if not LEAST <= removed <= MOST:
-        return Merged(first, len(views) - 1, 0.0)
+    doubt = doubt or removed > MOST
+    if removed < LEAST or (removed > MOST and not anyway):
+        return Merged(first, len(views) - 1, 0.0, doubt)
     # The layer's pixels → the photograph's (a pixel's place is its middle).
     to_photo = (
         _larger(1 / scale, 1 / scale)
@@ -508,7 +522,7 @@ def merge(first: Image, sides: list[Image], corners: Quad) -> Merged:
     if swap is not None:
         mend = mend + _level(now - mend, swap[0], swap[1], beside)
     clean = _subtract(first, (veil, low, share), mend, swap, to_photo, quad)
-    return Merged(clean, len(views) - 1, round(removed, 4))
+    return Merged(clean, len(views) - 1, round(removed, 4), doubt)
 
 
 def _kept(layer: Floats, held: Floats) -> Floats:

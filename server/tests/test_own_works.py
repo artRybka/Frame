@@ -9,6 +9,7 @@ import io
 import os
 import time
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
@@ -611,7 +612,7 @@ def test_a_work_is_scanned_again_from_the_photographs_kept(
 
     seen = [(0.22, 0.2), (0.78, 0.2), (0.78, 0.8), (0.22, 0.8)]
     # A release that took next to nothing out.
-    monkeypatch.setattr(OwnWorks, "_merge", staticmethod(lambda *_: (2, 0.01)))
+    monkeypatch.setattr(OwnWorks, "_merge", staticmethod(lambda *_: (2, 0.01, False)))
     with _client(service) as client:
         token = client.post("/api/own/photos", files={"file": ("p.png", png(first))}).json()[
             "token"
@@ -746,7 +747,7 @@ def test_the_white_balance_he_sets_is_the_works_and_stays_when_it_is_scanned_aga
     assert warmth(service.images.museum_photo(item, urgent=True)) < 0.8 * lit
 
     # A scan: the balance is noted beside its photographs…
-    monkeypatch.setattr(OwnWorks, "_merge", staticmethod(lambda *_: (2, 0.01)))
+    monkeypatch.setattr(OwnWorks, "_merge", staticmethod(lambda *_: (2, 0.01, False)))
     seen = [(0.2, 0.2), (0.8, 0.2), (0.8, 0.8), (0.2, 0.8)]
     with _client(service) as client:
         token = client.post("/api/own/photos", files={"file": ("p.jpg", _jpeg(under_lamp))}).json()[
@@ -770,3 +771,96 @@ def test_the_white_balance_he_sets_is_the_works_and_stays_when_it_is_scanned_aga
     # …and made again of them, the work is as cool as he set it.
     again = service.own_works.rescan(work)
     assert abs(warmth(service.images.museum_photo(again, urgent=True)) - cool) < 0.02
+
+
+def test_he_chooses_between_the_scan_and_the_one_photograph_of_a_relief(
+    service: FrameService,
+) -> None:
+    """Mateusz 2026-11-17 22:43 UTC: "wybór pomiędzy obrazem składanym
+    (inteligentnym) a z pojedynczego zdjęcia - zawsze go dawaj, a w
+    sytuacji gdzie podejrzewasz płaskorzeźbę albo dzieło które wymaga
+    pojedynczego zdjęcia ustawiaj je jako domyślne". Three photographs
+    that show no one flat work were left as the first one, with nothing
+    to choose; now the scan is made of them all the same, and the answer
+    says the one photograph is the one proposed. What he then goes on
+    with is what the work is made of again after an update."""
+    import json
+
+    from test_reflections import CORNERS, _relief, _three
+
+    from frame_server.own_works import SCAN_INFO
+
+    first, sides = _relief()
+
+    def png(img: np.ndarray) -> bytes:
+        out = io.BytesIO()
+        Image.fromarray(img).save(out, "PNG")
+        return out.getvalue()
+
+    def shown(path: Path) -> np.ndarray:
+        with Image.open(path) as img:
+            return np.asarray(img.convert("RGB")).astype(int)
+
+    def scan(
+        first_: np.ndarray, sides_: list[np.ndarray], client: TestClient, choice: bool = True
+    ) -> tuple[str, dict[str, Any]]:
+        token = client.post("/api/own/photos", files={"file": ("p.png", png(first_))}).json()[
+            "token"
+        ]
+        for side in sides_:
+            client.post(f"/api/own/photos/{token}/sides", files={"file": ("s.png", png(side))})
+        merged = client.post(
+            f"/api/own/photos/{token}/merge", json={"corners": CORNERS, "choice": choice}
+        )
+        assert merged.status_code == 200, merged.text
+        return token, merged.json()
+
+    works = service.own_works
+    with _client(service) as client:
+        token, merged = scan(first, sides, client)
+        assert merged["used"] == 2 and merged["doubt"] and merged["replaced"] > 0
+        info = json.loads((works.scans / token / SCAN_INFO).read_text())
+        assert info["doubt"] is True
+        # The scan waits in the photograph's place, the first one beside it.
+        took = shown(works.scans / token / "first.jpg")
+        made = shown(works.path(token))
+        assert np.abs(made - took).mean() > 0.5
+
+        # The one photograph, as proposed: back in its place, and no scan's.
+        assert client.post(f"/api/own/photos/{token}/single").status_code == 200
+        assert np.abs(shown(works.path(token)) - took).mean() < 0.01
+        one = client.post("/api/own/works", json={"token": token, "corners": CORNERS, "text": TEXT})
+        assert one.status_code == 200, one.text
+        assert works.scan_of(service.library.get(one.json()["id"])) is None
+
+        # The scan, his choice against what was proposed: made so again.
+        token, merged = scan(first, sides, client)
+        assert merged["doubt"]
+        kept = client.post(
+            "/api/own/works", json={"token": token, "corners": CORNERS, "text": TEXT}
+        )
+        assert kept.status_code == 200, kept.text
+        item = service.library.get(kept.json()["id"])
+        assert item is not None and works.scan_of(item) == token
+        works.rescan(item)
+        info = json.loads((works.scans / token / SCAN_INFO).read_text())
+        assert info["replaced"] > 0 and info["doubt"] is True
+
+        # A relief scanned before he was given the choice noted no doubt
+        # and was left the one photograph: so it stays.
+        del info["doubt"]
+        (works.scans / token / SCAN_INFO).write_text(json.dumps(info))
+        works.rescan(item)
+        assert json.loads((works.scans / token / SCAN_INFO).read_text())["replaced"] == 0
+
+        # An app from before the choice shows the scan alone where
+        # anything was taken off: a relief comes to it untouched.
+        token, old = scan(first, sides, client, choice=False)
+        assert old["used"] == 2 and old["replaced"] == 0 and old["doubt"]
+        assert json.loads((works.scans / token / SCAN_INFO).read_text())["doubt"] is False
+        assert np.abs(shown(works.path(token)) - took).mean() < 0.01
+
+        # A flat work behind glass: in no doubt, the scan as it was.
+        _, glass, beside = _three()
+        _, plain = scan(glass, beside, client)
+        assert plain["used"] == 2 and not plain["doubt"] and plain["replaced"] > 0.03

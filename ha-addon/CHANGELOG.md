@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.228
+
+- Skan własnego dzieła z trzech zdjęć: przełącznik „Na wprost /
+  Inteligentne” jest teraz po każdym skanie. Gdy dzieło nie wygląda na
+  płaskie (płaskorzeźba, kolaż z lustrem), skan i tak jest składany, ale
+  domyślnie wybrane jest zdjęcie na wprost. Wcześniej takie dzieło
+  zostawało bez wyboru. Wymaga nowej wersji aplikacji.
+
 ## 1.145.227
 
 - Suwak balansu bieli przy własnych dziełach wygląda prościej: okrągły

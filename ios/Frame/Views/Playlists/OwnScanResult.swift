@@ -16,6 +16,14 @@ import SwiftUI
 /// zdjęcie / skan” - po wyborze płynnie pokazuje się wybrana opcja.
 /// Domyślnie skan. Zmieńmy nazwę na „na wprost / inteligentne”").
 ///
+/// The switch is there after every scan of three, also where the side
+/// photographs took nothing off or the work is no flat one; there the
+/// scan is made all the same and the photograph from the front is the one
+/// chosen at first (Mateusz 2026-11-17 22:43 UTC: "wybór pomiędzy obrazem
+/// składanym (inteligentnym) a z pojedynczego zdjęcia - zawsze go dawaj,
+/// a w sytuacji gdzie podejrzewasz płaskorzeźbę albo dzieło które wymaga
+/// pojedynczego zdjęcia ustawiaj je jako domyślne").
+///
 /// With no colour chart beside the work it comes after every "Kadr",
 /// scan or no scan, with the white balance his to set under the picture
 /// (Mateusz 2026-11-17 16:27 UTC: "Gdy przy robieniu zdjęcia dzieła nie
@@ -29,9 +37,14 @@ struct OwnScanResult: View {
     let before: UIImage
     /// The same with the reflections taken off.
     let after: UIImage
-    /// The side photographs took something off: the two differ, and he
-    /// chooses which goes on. Not so, there is the one photograph.
+    /// The side photographs were laid over the first: he chooses which of
+    /// the two goes on. Not so, there is the one photograph.
     var scanned = true
+    /// The three do not show one flat work (a relief, a mirror in it):
+    /// the photograph from the front is the one chosen at first.
+    var doubt = false
+    /// The side photographs took nothing off: the two are the same.
+    var nothing = false
     /// The white balance he sets (-1 cooler … 1 warmer; 0, as taken);
     /// nil where a colour chart set the colours, and there is no slider.
     var balance: Binding<Double>?
@@ -46,13 +59,24 @@ struct OwnScanResult: View {
     /// Which of the two goes on (Mateusz 2026-11-16 19:00 UTC: "daj
     /// możliwość wyboru zdjęcia bez korekty usunięcia odbić, tj. „Jedno
     /// zdjęcie” - bywa że to lepsze rozwiązanie").
-    @State private var single = false
+    @State private var picked: Bool?
     /// The two small, for the slider to draw them anew as it moves, and
     /// as they are at the balance set.
     @State private var small: (before: UIImage, after: UIImage)?
     @State private var tinted: (before: UIImage, after: UIImage)?
 
     private var chosen: Double { balance?.wrappedValue ?? 0 }
+
+    /// The photograph from the front goes on: his choice, and before it
+    /// what the scan is thought of.
+    private var single: Bool { picked ?? doubt }
+
+    /// What the picture shown is, under it.
+    private var said: String {
+        if single { return doubt ? "Na wprost, bo dzieło nie wygląda na płaskie" : "Zdjęcie na wprost, bez zmian" }
+        if doubt { return "Z trzech zdjęć, choć dzieło nie wygląda na płaskie" }
+        return nothing ? "Trzy zdjęcia nie pokazały odbić" : "Odbicia usunięte z trzech zdjęć"
+    }
 
     var body: some View {
         ZStack {
@@ -86,14 +110,14 @@ struct OwnScanResult: View {
                 )
                 .padding(.horizontal, 12)
                 if scanned {
-                    Text(bound: single ? "Zdjęcie na wprost, bez zmian" : "Odbicia usunięte z trzech zdjęć")
+                    Text(bound: said)
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.white.opacity(0.9))
                         .contentTransition(.opacity)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, Theme.gutter)
                         .padding(.top, 14)
-                    Picker("Co zachować", selection: $single.animation(.easeInOut(duration: OwnScanPicture.turn))) {
+                    Picker("Co zachować", selection: Binding(get: { single }, set: { picked = $0 }).animation(.easeInOut(duration: OwnScanPicture.turn))) {
                         Text("Na wprost").tag(true)
                         Text("Inteligentne").tag(false)
                     }
