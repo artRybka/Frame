@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.228
+
+- Pełny ekran: przycisk ramy przełącza płynnie, a dzieło zostaje w tym
+  samym miejscu i powiększeniu. Gdy rama byłaby niewidoczna albo samo
+  dzieło za małe, obraz delikatnie dojeżdża do całości.
+
 ## 1.145.227
 
 - Suwak balansu bieli przy własnych dziełach wygląda prościej: okrągły
