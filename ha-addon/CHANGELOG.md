@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.222
+
+- Zadania: grupa „Przy studium” nazywa się „Odkrywaj” i ma dwa
+  przełączniki, „Studium dnia” i „Propozycje kuratora”. Fakty z sieci,
+  „Jak powstawał” i „Droga dzieła” są częścią studium i działają zawsze.
+- Zadania: przy pozycjach tylko nazwa i koszt z ostatnich dni, bez opisów.
+- Zadania: w „Od razu” przełącznik „Odciski wyglądu (Gemini)” (ten sam co
+  „Szukanie wyglądem” na stronie Gemini).
+
 ## 1.145.221
 
 - Własne dzieło bez wzornika barw: po kadrowaniu jest teraz strona ze

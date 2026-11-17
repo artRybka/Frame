@@ -60,6 +60,14 @@ class TaskUpdate(BaseModel):
     mode: Mode | None = None
 
 
+#: What a study is made of beyond its text: facts from the web, how the work
+#: was painted, its way from the studio to the museum. No switches of their
+#: own since 2026-11-17 (Mateusz: "Zadania składające się na studium są z nim
+#: ściśle powiązane i nie da się ich wyłączyć"); the fields below are kept
+#: for older apps and settings, and are not asked.
+STUDY_PARTS = ("journey", "web_facts", "stages")
+
+
 class AiConfig(BaseModel):
     api_key: str | None = None
     #: Polish titles and descriptions of works.
@@ -247,12 +255,11 @@ class AiConfigStore:
             return config.curator
         if kind == "twins_judge":
             return config.twins_judge
+        if kind in STUDY_PARTS:  # the study's own, no switch of their own
+            return True
         if kind in (
             "gatekeeper",
             "audit",
-            "journey",
-            "web_facts",
-            "stages",
             "crops",
             "varnish_blue",
         ):

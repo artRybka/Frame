@@ -103,7 +103,7 @@ actor DemoBackend: FrameBackend {
             AiCost(key: "web_facts", label: "Fakty z sieci", daysUsd: 0.35, periodUsd: 0.52),
             AiCost(key: "stages", label: "Jak powstawał", daysUsd: 0.006, periodUsd: 0.01),
             AiCost(key: "journey", label: "Droga dzieła", daysUsd: 0.01, periodUsd: 0.02),
-            AiCost(key: "curator", label: "Kurator Odkrywaj", daysUsd: 0.27, periodUsd: 0.48),
+            AiCost(key: "curator", label: "Propozycje kuratora", daysUsd: 0.27, periodUsd: 0.48),
             AiCost(key: "gatekeeper", label: "Strażnik katalogu", daysUsd: 0.09, periodUsd: 0.16),
             AiCost(key: "twins_judge", label: "Sędzia powtórek", daysUsd: 0.02, periodUsd: 0.05),
             AiCost(key: "crops", label: "Kadrowanie zdjęć dzieł", daysUsd: 0.43, periodUsd: 0.43),

@@ -37,12 +37,8 @@ struct TasksSection: View {
             group("Od razu", "Dla każdego nowego dzieła i tego, czego szukasz") {
                 switches(Self.instant(settings))
             }
-            group("Przy studium", "Gdy powstaje studium dzieła, także Studium dnia") {
-                switches(Self.study(settings))
-                Text("Samo studium (strona, kompozycja, detale) nie ma przełącznika: powstaje, gdy go chcesz, i dla Studium dnia.")
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
+            group("Odkrywaj", "Studium dnia i propozycje kuratora") {
+                switches(Self.discover(settings))
             }
             .id("study")
             group("Co noc", "Od 1:30, w pakietach Batch za pół ceny, w tej kolejności") {
@@ -166,67 +162,46 @@ struct TasksSection: View {
         var rows = [
             SwitchTask(
                 title: "Polskie tytuły i opisy",
-                hint: "Haiku tłumaczy opisy muzeów, dziełom bez opisu notkę pisze Sonnet.",
-                value: s.plText, cost: "pl_text", progress: s.plTextProgress
+                value: s.plText, cost: "pl_text"
             ) { AiSettingsUpdate(plText: $0) },
             SwitchTask(
                 title: "Słowa kluczowe dla dzieł",
-                hint: "Po nich szukają Szukaj i inteligentne playlisty.",
-                value: s.keywordsArtworks, cost: "keywords", costLabel: "dzieła i zdjęcia",
-                progress: s.keywordsProgress
+                value: s.keywordsArtworks, cost: "keywords", costLabel: "dzieła i zdjęcia"
             ) { AiSettingsUpdate(keywordsArtworks: $0) },
             SwitchTask(
                 title: "Słowa kluczowe dla zdjęć",
-                hint: "Miniatury Twoich zdjęć idą wtedy do Anthropic.",
                 value: s.keywordsPhotos
             ) { AiSettingsUpdate(keywordsPhotos: $0) },
         ]
         if let words = s.searchWords {
             rows.append(SwitchTask(
                 title: "Tłumaczenie słów w Szukaj",
-                hint: "„gitara” jako „guitar” dla muzeów zagranicznych.",
                 value: words, cost: "search_words"
             ) { AiSettingsUpdate(searchWords: $0) })
+        }
+        // Gemini's looks of each work (Mateusz 2026-11-17: "Czy tu nie
+        // brakuje tworzenia „odcisków” z Gemini?"); its page keeps it too
+        if let looks = s.looks {
+            rows.append(SwitchTask(
+                title: "Odciski wyglądu (Gemini)",
+                value: looks, cost: "looks"
+            ) { AiSettingsUpdate(looks: $0) })
         }
         return rows
     }
 
-    static func study(_ s: AiSettings) -> [SwitchTask] {
+    /// Odkrywaj (Mateusz 2026-11-17: "sprowadźmy do 2 przełączników -
+    /// studium dnia oraz propozycji kuratora. Zadania składające się na
+    /// studium są z nim ściśle powiązane i nie da się ich wyłączyć"): facts
+    /// from the web, how it was painted and its way to the museum are the
+    /// study's own, always on (`ai.config.STUDY_PARTS` on the server).
+    static func discover(_ s: AiSettings) -> [SwitchTask] {
         let rows: [SwitchTask?] = [
             s.daily.map {
-                SwitchTask(
-                    title: "Studium dnia",
-                    hint: "Codziennie jedno dzieło na górze Odkrywaj, opisane jak w albumie.",
-                    value: $0, cost: "daily"
-                ) { AiSettingsUpdate(daily: $0) }
-            },
-            s.webFacts.map {
-                SwitchTask(
-                    title: "Fakty z sieci",
-                    hint: "Przed napisaniem studium Claude szuka w sieci badań, losów i wystaw dzieła.",
-                    value: $0, cost: "web_facts"
-                ) { AiSettingsUpdate(webFacts: $0) }
-            },
-            s.stages.map {
-                SwitchTask(
-                    title: "Jak powstawał",
-                    hint: "Kilka zdań o powstawaniu, gdy w sieci jest badanie techniczne dzieła.",
-                    value: $0, cost: "stages"
-                ) { AiSettingsUpdate(stages: $0) }
-            },
-            s.journey.map {
-                SwitchTask(
-                    title: "Droga dzieła",
-                    hint: "Od pracowni do muzeum, z zapisów muzeum.",
-                    value: $0, cost: "journey"
-                ) { AiSettingsUpdate(journey: $0) }
+                SwitchTask(title: "Studium dnia", value: $0, cost: "daily") { AiSettingsUpdate(daily: $0) }
             },
             s.curator.map {
-                SwitchTask(
-                    title: "Kurator Odkrywaj",
-                    hint: "Dwie dodatkowe karty w „Dziś dla Ciebie”.",
-                    value: $0, cost: "curator"
-                ) { AiSettingsUpdate(curator: $0) }
+                SwitchTask(title: "Propozycje kuratora", value: $0, cost: "curator") { AiSettingsUpdate(curator: $0) }
             },
         ]
         return rows.compactMap { $0 }
@@ -237,35 +212,30 @@ struct TasksSection: View {
             s.gatekeeper.map {
                 SwitchTask(
                     title: "Strażnik katalogu",
-                    hint: "Odkłada znaczki, strony z tekstem i zdjęcia sal, które przyszły jako dzieła.",
                     value: $0, cost: "gatekeeper"
                 ) { AiSettingsUpdate(gatekeeper: $0) }
             },
             s.twinsJudge.map {
                 SwitchTask(
                     title: "Sędzia powtórek",
-                    hint: "Rozstrzyga, czy dwa podobne obrazy to kopia, detal czy to samo dzieło.",
                     value: $0, cost: "twins_judge"
                 ) { AiSettingsUpdate(twinsJudge: $0) }
             },
             s.crops.map {
                 SwitchTask(
                     title: "Kadrowanie zdjęć dzieł",
-                    hint: "Przycina zdjęcia z muzeów do samego dzieła, gdy widać ramę, sztalugę albo tło.",
                     value: $0, cost: "crops"
                 ) { AiSettingsUpdate(crops: $0) }
             },
             s.varnishBlue.map {
                 SwitchTask(
                     title: "Błękit pod werniksem",
-                    hint: "Czy zielonkawe niebo pod pożółkłym werniksem to błękit, dla szukania po kolorze.",
                     value: $0, cost: "varnish_blue"
                 ) { AiSettingsUpdate(varnishBlue: $0) }
             },
             s.audit.map {
                 SwitchTask(
                     title: "Nocny przegląd",
-                    hint: "30 losowych dzieł: tytuł, data, opis i obraz; co nie pasuje, trafia do „Do sprawdzenia”.",
                     value: $0, cost: "audit"
                 ) { AiSettingsUpdate(audit: $0) }
             },
@@ -319,38 +289,33 @@ struct TaskLink: Hashable {
 }
 
 /// A switch of what Claude does, as the list shows it.
+/// A switch in Zadania: its name and what it cost, nothing more (Mateusz
+/// 2026-11-17: "Nie dodawaj eksplikacji pod pozycjami - same nazwy i ew.
+/// koszt").
 struct SwitchTask {
     let title: String
-    let hint: String
     let value: Bool
     /// Its row's key in "Koszty", and how that row names what it counts.
     var cost: String? = nil
     var costLabel: String? = nil
-    var progress: AiSettings.Progress? = nil
     let update: (Bool) -> AiSettingsUpdate
 }
 
-/// A switch, its line, and under it what it cost in the last days and how
-/// far its work got.
+/// A switch, and under it what it cost in the last days.
 private struct TaskSwitchRow: View {
     @Environment(AppModel.self) private var model
     let row: SwitchTask
     let settings: AiSettings
 
     var body: some View {
-        let notes = [costNote, row.progress.flatMap(AiSection.progressNote)].compactMap { $0 }
         Toggle(isOn: Binding(
             get: { row.value },
             set: { new in Task { await model.saveAiSettings(row.update(new)) } }
         )) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.title)
-                Text(row.hint)
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
-                if !notes.isEmpty {
-                    Text(notes.joined(separator: " · "))
+                if let costNote {
+                    Text(costNote)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(Theme.ink.opacity(0.75))
                         .padding(.top, 1)
@@ -363,7 +328,9 @@ private struct TaskSwitchRow: View {
     /// "7 dni: 0,42 USD".
     private var costNote: String? {
         guard let key = row.cost, let days = settings.costDays else { return nil }
-        let usd = (settings.claudeCosts ?? []).first { $0.key == key }?.daysUsd ?? 0
+        // Claude's rows, or Gemini's (the looks)
+        let rows = (settings.claudeCosts ?? []) + (settings.geminiCosts ?? [])
+        let usd = rows.first { $0.key == key }?.daysUsd ?? 0
         let what = row.costLabel.map { "\(days) dni (\($0))" } ?? "\(days) dni"
         return "\(what): \(AiSection.usd(usd))"
     }

@@ -68,4 +68,17 @@ final class TasksTests: XCTestCase {
         XCTAssertNil(studies.periodUsd)
         XCTAssertTrue(studies.on)
     }
+
+    /// Mateusz 2026-11-17: Odkrywaj with two switches, the study's parts
+    /// without any; Gemini's looks among what runs at once; names and costs
+    /// only.
+    func testOdkrywajHasTwoSwitchesAndTheLooksRunAtOnce() async throws {
+        let settings = try await DemoBackend().aiSettings()
+        XCTAssertEqual(TasksSection.discover(settings).map(\.title), ["Studium dnia", "Propozycje kuratora"])
+        let instant = TasksSection.instant(settings).map(\.title)
+        XCTAssertEqual(instant.last, "Odciski wyglądu (Gemini)")
+        let all = instant + TasksSection.night(settings).map(\.title)
+        XCTAssertFalse(all.contains("Fakty z sieci"))
+        XCTAssertFalse(all.contains("Droga dzieła"))
+    }
 }

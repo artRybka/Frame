@@ -323,9 +323,10 @@ def _view(svc: FrameService) -> AiView:
         twins_judge=config.twins_judge,
         gatekeeper=config.gatekeeper,
         audit=config.audit,
-        journey=config.journey,
-        web_facts=config.web_facts,
-        stages=config.stages,
+        # parts of the study, always on (``ai.config.STUDY_PARTS``)
+        journey=True,
+        web_facts=True,
+        stages=True,
         crops=config.crops,
         varnish_blue=config.varnish_blue,
         review_count=_review_count(svc),

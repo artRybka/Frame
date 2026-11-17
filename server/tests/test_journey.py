@@ -201,9 +201,11 @@ def test_no_record_is_kept_as_none_and_the_switch_asks_nothing(
     item = service.library.upsert(_seurat())
     assert journeys.look(item) is None and journeys.asked(item)
     assert fake.asked == []
-    other = service.library.upsert(_seurat().model_copy(update={"id": "aic:1", "source_id": "1"}))
+    service.library.upsert(_seurat().model_copy(update={"id": "aic:1", "source_id": "1"}))
+    # part of the study, no switch of its own (Mateusz 2026-11-17): an older
+    # app's "off" changes nothing
     service.ai_config.update(AiConfigUpdate(journey=False))
-    assert not journeys.look_soon(other)
+    assert journeys.enabled()
 
 
 def test_owners_and_exhibitions_from_wikidata() -> None:

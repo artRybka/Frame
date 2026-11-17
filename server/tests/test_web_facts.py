@@ -11,7 +11,6 @@ from typing import Any
 
 import pytest
 
-from frame_server.ai import AiConfigUpdate
 from frame_server.ai.daily import Context, request_text
 from frame_server.ai.web_facts import KIND, SEARCHES, SPARING, VERSION, parse
 from frame_server.library import Item
@@ -138,12 +137,7 @@ def test_a_paused_turn_goes_on(service: FrameService, fake: FakeClaude) -> None:
     assert fake.asked[1]["messages"][-1]["role"] == "assistant"
 
 
-def test_nothing_is_asked_when_switched_off_or_for_a_photo(
-    service: FrameService, fake: FakeClaude
-) -> None:
-    service.ai_config.update(AiConfigUpdate(web_facts=False))
-    assert service.web_facts.for_study(_work(service)) == []
-    service.ai_config.update(AiConfigUpdate(web_facts=True))
+def test_nothing_is_asked_for_a_photo(service: FrameService, fake: FakeClaude) -> None:
     photo = service.library.upsert(
         Item(id="upload:1", source="upload", source_id="1", kind=ItemKind.PHOTO)
     )
