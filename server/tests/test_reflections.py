@@ -282,6 +282,47 @@ def test_a_finger_in_the_glass_goes_from_the_lines_and_the_dark_as_from_beside_t
     assert abs(float((now[beside] - is_[beside]).mean()) - veil) < 3
 
 
+def test_a_hand_in_the_glass_leaves_no_dark_lines_about_its_fingers() -> None:
+    """His cows the third time (2026-11-17 00:06 UTC, shown the scan of
+    1.145.203: "To dalej nie wygląda idealnie. Czy nie możemy zrobić
+    miękkich, daleko sięgających przejść?"): the fingers went, and each
+    left a dark line along either side, on the plain dark of a print."""
+    scene = _scene()
+    rng = np.random.default_rng(3)
+    yy, xx = np.mgrid[0:H, 0:W]
+    # A plain dark part of the work.
+    plain = np.zeros((H, W), bool)
+    plain[Y0 + 260 : Y0 + 620, X0 + 150 : X0 + 560] = True
+    grain = rng.normal(0, 0.002, (int(plain.sum()), 3)).astype(np.float32)
+    scene[plain] = np.float32([0.035, 0.05, 0.08]) + grain
+    # A hand: fingers fanning out, sharp at their sides, in the first view alone.
+    cx, cy = X0 + 350, Y0 + 640
+    turned, far = np.arctan2(xx - cx, cy - yy), np.hypot(xx - cx, yy - cy)
+    hand = np.zeros((H, W), np.float32)
+    for finger in (-0.5, -0.25, 0.0, 0.25, 0.5):
+        there = (np.abs(turned - finger) * far < 9) & (far > 60) & (far < 330)
+        hand = np.maximum(hand, there.astype(np.float32))
+    hand = cv2.GaussianBlur(hand, (0, 0), 0.8)
+    clean = _coded(scene)
+    first = _coded(
+        scene + _glass(0.02, None, None) + hand[..., None] * np.float32([0.10, 0.07, 0.06])
+    )
+    left = _coded(_from_side(scene + _glass(0.12, None, None), -1) * 0.9)
+    right = _coded(_from_side(scene + _glass(0.10, None, None), 1) * 1.1)
+    done = merge(first, [left, right], CORNERS)
+    assert done.used == 2
+
+    was, now, is_ = (img.astype(np.float32).mean(-1) for img in (first, done.image, clean))
+    within = cv2.erode(plain.astype(np.uint8), np.ones((31, 31), np.uint8)) > 0
+    about = (cv2.dilate(hand, np.ones((41, 41), np.uint8)) > 0.5) & within
+    left_on = (now - is_)[about]
+    left_on = left_on - left_on.mean()
+    assert (was - is_)[about].std() > 12
+    assert left_on.std() < 4.5
+    # No line darker than the print beside a finger (they were 19 levels).
+    assert np.percentile(left_on, 1) > -8
+
+
 def test_views_that_do_not_show_one_flat_work_change_nothing() -> None:
     """His collage of a mirror, foil and a circuit board in relief
     (2026-11-16 19:00 UTC): each photograph shows another thing in the
