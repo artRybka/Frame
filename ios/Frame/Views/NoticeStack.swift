@@ -52,13 +52,13 @@ struct NoticeCard: View {
                 icon
                     .frame(width: 22, height: 22)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(notice.title)
+                    Text(bound: notice.title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.ink)
                         .fixedSize(horizontal: false, vertical: true)
                         .contentTransition(.opacity)
                     if let detail = notice.detail {
-                        Text(detail)
+                        Text(bound: detail)
                             .font(.footnote)
                             .foregroundStyle(Theme.glassInk)
                             .lineLimit(4)
@@ -121,12 +121,12 @@ struct NoticeCard: View {
     @ViewBuilder private var trailing: some View {
         switch notice.kind {
         case .working:
-            Text(notice.count ?? "")
+            Text(bound: notice.count ?? "")
                 .font(.footnote.weight(.medium).monospacedDigit())
                 .foregroundStyle(Theme.glassInk)
         case _ where notice.action != nil:
             HStack(spacing: 10) {
-                Text(notice.action?.label ?? "")
+                Text(bound: notice.action?.label ?? "")
                     .font(.caption2.weight(.semibold))
                     .tracking(LabelButton.tracking)
                     .textCase(.uppercase)

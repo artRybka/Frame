@@ -141,7 +141,7 @@ extension View {
     func placePress(_ key: String?, search: @escaping () -> Void) -> some View {
         if let key, !key.isEmpty {
             pressHold(action: search)
-                .accessibilityHint(Text("Przytrzymaj, by szukać dzieł z tego muzeum"))
+                .accessibilityHint(Text(bound: "Przytrzymaj, by szukać dzieł z tego muzeum"))
                 .accessibilityAction(named: "Szukaj dzieł z tego muzeum") { search() }
         } else {
             self

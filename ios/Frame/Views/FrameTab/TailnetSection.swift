@@ -47,7 +47,7 @@ struct TailnetSection: View {
                         Divider()
                         Toggle(isOn: enabled) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Tailscale w aplikacji")
+                                Text(bound: "Tailscale w aplikacji")
                                 Text("Wyłączony: Frame użyje VPN aplikacji Tailscale.")
                                     .font(.caption)
                                     .foregroundStyle(Theme.inkSoft)
@@ -69,7 +69,7 @@ struct TailnetSection: View {
                     } else {
                         DisclosureGroup(isExpanded: $showLog) {
                             ScrollView(.horizontal) {
-                                Text(log.isEmpty ? "Pusto: Tailscale jeszcze nie startował." : log)
+                                Text(bound: log.isEmpty ? "Pusto: Tailscale jeszcze nie startował." : log)
                                     .font(.caption2.monospaced())
                                     .foregroundStyle(Theme.inkSoft)
                                     .textSelection(.enabled)
@@ -101,7 +101,7 @@ struct TailnetSection: View {
         case .starting:
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text("Łączę z Tailscale…")
+                Text(bound: "Łączę z Tailscale…")
             }
             .font(.subheadline)
             .foregroundStyle(Theme.inkSoft)
@@ -138,14 +138,14 @@ struct TailnetSection: View {
     private var address: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Serwer w Tailscale").font(.caption).foregroundStyle(Theme.inkSoft)
+                Text(bound: "Serwer w Tailscale").font(.caption).foregroundStyle(Theme.inkSoft)
                 if model.findingServer {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
                         Text("Szukam serwera…").foregroundStyle(Theme.inkSoft)
                     }
                 } else if let shown = Self.shown(model.remoteURL) {
-                    Text(shown)
+                    Text(bound: shown)
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .textSelection(.enabled)
@@ -174,7 +174,7 @@ struct TailnetSection: View {
 
     private func line(_ text: String, icon: String, color: Color) -> some View {
         Label {
-            Text(text).fixedSize(horizontal: false, vertical: true)
+            Text(bound: text).fixedSize(horizontal: false, vertical: true)
         } icon: {
             Image(systemName: icon)
         }
@@ -194,7 +194,7 @@ struct TailnetSection: View {
                         .foregroundStyle(Theme.good)
                 }
             }
-            Text("Klucz „Reusable” z tagiem, np. tag:frame-app (Settings → Keys). Domownicy dostaną go z serwera.")
+            Text(bound: "Klucz „Reusable” z tagiem, np. tag:frame-app (Settings → Keys). Domownicy dostaną go z serwera.")
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
@@ -210,7 +210,7 @@ struct TailnetSection: View {
                     }
                 } label: {
                     HStack {
-                        Text("Zapisz i połącz")
+                        Text(bound: "Zapisz i połącz")
                         if saving { ProgressView() }
                     }
                 }

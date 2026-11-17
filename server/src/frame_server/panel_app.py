@@ -147,6 +147,15 @@ CLOCK_SET_OFF = timedelta(minutes=2)
 # An alarm rings this long before its time, as it did before the clock was
 # made up for (``RING_EARLY``, Tizen's start alarm 30 s later, app.js).
 ALARM_LEAD = timedelta(seconds=30)
+# Samsung's daily screen refresh rides on the last alarm of a sleep (app.js
+# refreshAt), by the hour and minute of the panel's clock. Set right as it
+# goes to sleep, that clock passes that hour and minute twice in a day's
+# sleep when it gains: once at the alarm, and once ~10 min after it went
+# to sleep (2026-11-17: woke at 21:10 for nothing, refresh moved to 21:10
+# with the alarm). That first wake is left alone (no app, no redraw); the
+# panel goes back to sleep by itself. Counted this long around it.
+REFRESH_BEFORE = timedelta(minutes=2)
+REFRESH_AFTER = timedelta(minutes=7)
 # "Obudź ramkę" keeps the woken app awake (asking every ``POLL``) this long.
 KEEP_AWAKE = timedelta(minutes=10)
 # "Sprawdź stan" keeps it up this long after it asks: a picture sent right
@@ -1506,7 +1515,27 @@ class PanelApp:
         waiting = self.service.power.state.pending_push
         if not state.asleep or (state.standby and not waiting):
             return False
+        if self._refresh_wake(state, now):
+            return False
         return not (_settling(state, now) or _near_alarm(state, now))
+
+    def _refresh_wake(self, state: AppState, now: datetime) -> bool:
+        """Up now for Samsung's screen refresh, not an alarm: its hour and
+        minute come round before the alarm it rides on (``REFRESH_BEFORE``),
+        about a panel's day earlier, in a sleep with the Wi-Fi off."""
+        if not state.asleep or state.standby or state.refresh_for is None:
+            return False
+        if _near_alarm(state, now):
+            return False
+        gain = state.clock_gain if state.clock_gain is not None else CLOCK_GAIN
+        day = timedelta(days=1) / (1 + gain)  # a day of the panel's clock
+        slept = datetime.fromisoformat(state.slept_at) if state.slept_at else None
+        moment = datetime.fromisoformat(state.refresh_for) - day
+        while slept is not None and moment > slept:
+            if moment - REFRESH_BEFORE <= now <= moment + REFRESH_AFTER:
+                return True
+            moment -= day
+        return False
 
     async def panel_up(self, now: datetime) -> None:
         """The panel answered MDC (a status look): it is up. An app asleep as
@@ -1520,7 +1549,7 @@ class PanelApp:
         heard = self.heard_at or self.started_at
         if not state.active or now - heard < HEARD_EVERY:
             return
-        if _settling(state, now) or _near_alarm(state, now):
+        if _settling(state, now) or _near_alarm(state, now) or self._refresh_wake(state, now):
             return
         if self._kicked is not None and now - self._kicked < KICK_EVERY:
             return
@@ -1563,6 +1592,8 @@ class PanelApp:
         if rung is not None:
             self._kicked = now
             await self._kick(why="was not started by the launcher after its alarm")
+        elif self._refresh_wake(state, now):
+            log.info("Samsung's screen refresh woke the frame: left alone")
         elif self._button_wake(now):
             self._kicked = self._looked = now
             await self._kick(quiet=True)

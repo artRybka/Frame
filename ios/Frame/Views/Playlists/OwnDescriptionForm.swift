@@ -48,7 +48,7 @@ struct OwnDescriptionForm: View {
             } else if !marked.isEmpty {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Image(systemName: "sparkles").foregroundStyle(Theme.inkSoft)
-                    Text("Uzupełnione z obrazu. Popraw, jeśli trzeba.")
+                    Text(bound: "Uzupełnione z obrazu. Popraw, jeśli trzeba.")
                         .foregroundStyle(Theme.inkSoft)
                     Spacer(minLength: 8)
                     Button("Wyczyść", action: clearFilled)
@@ -73,7 +73,7 @@ struct OwnDescriptionForm: View {
                 VStack(alignment: .leading, spacing: 8) {
                     factRow("Rozmiar") { sizeFields }
                     if sizeMarked {
-                        Text("Zmierzone LiDAR-em, bez ramy, ±1–2 cm.")
+                        Text(bound: "Zmierzone LiDAR-em, bez ramy, ±1–2 cm.")
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
                             .frame(maxWidth: .infinity, alignment: .trailing)
@@ -156,7 +156,7 @@ struct OwnDescriptionForm: View {
 
     private func factRow<Value: View>(_ title: String, @ViewBuilder value: () -> Value) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(title).foregroundStyle(Theme.inkSoft)
+            Text(bound: title).foregroundStyle(Theme.inkSoft)
             Spacer(minLength: 16)
             value()
         }
@@ -203,7 +203,7 @@ struct OwnDescriptionForm: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "exclamationmark.triangle")
                 .foregroundStyle(Theme.warn)
-            Text(warning)
+            Text(bound: warning)
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)

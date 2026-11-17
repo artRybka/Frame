@@ -919,6 +919,15 @@ w `alarm_ms`. W trybie oszczędnym pobudka do 15 min przed zmianą robi ją
 od razu (`CHANGE_EARLY_DEEP`), a obraz czekający na ramkę pokazany tak
 blisko zmiany zajmuje jej miejsce (`Player.postpone`, `POSTPONE_PAST`).
 
+**Przegląd ekranu dwa razy w dobowym śnie (1.145.226, 2026-11-17):**
+przegląd Samsunga jedzie na budziku według godziny i minuty zegara ramki
+(`refreshAt`). Gdy zegar zyskuje ok. 11 min na dobę, a przy zaśnięciu jest
+ustawiony dobrze, ramka przechodzi tę godzinę i minutę dwa razy: ok. 10 min
+po zaśnięciu i przy budziku (17.11: 21:10 tego samego wieczoru, budzik na
+21:10:30 według zegara ramki, czyli 21:00). Nie da się tego ominąć
+ustawieniem zegara ani budzika; serwer tę pierwszą pobudkę zostawia bez
+aplikacji (`PanelApp._refresh_wake`), więc obraz nie jest rysowany drugi raz.
+
 **Odpięcie w trybie oszczędnym (2026-11-04 19:31 UTC):** ostatnie pytanie
 20:31:02 czasu polskiego na zasilaczu, po odpięciu panel od razu w głębokim śnie
 bez słowa do aplikacji (jak w E8). W trybie oszczędnym na zasilaczu nie było

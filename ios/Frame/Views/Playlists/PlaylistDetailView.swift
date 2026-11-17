@@ -150,7 +150,7 @@ struct PlaylistDetailView: View {
                     .framePositionProbe("grid")
                 if detail.playlist.kind == .smart, detail.playlist.itemCount > detail.items.count {
                     // The server lists a part of a very large playlist.
-                    Text("Widać \(Names.works(detail.items.count)) z \(detail.playlist.itemCount).")
+                    Text(bound: "Widać \(Names.works(detail.items.count)) z \(detail.playlist.itemCount).")
                         .font(.footnote)
                         .foregroundStyle(Theme.inkSoft)
                         .frame(maxWidth: .infinity)
@@ -204,11 +204,11 @@ struct PlaylistDetailView: View {
                 .shadow(color: .black.opacity(0.15), radius: 18, y: 10)
                 .framePositionProbe("collage")
             Eyebrow(Self.eyebrow(playlist.kind), color: Theme.vermilion)
-            Text(playlist.name)
+            Text(bound: playlist.name)
                 .font(.serif(32, weight: .semibold))
                 .foregroundStyle(Theme.ink)
             if !playlist.description.isEmpty {
-                Text(playlist.description)
+                Text(bound: playlist.description)
                     .font(.serif(17))
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -297,7 +297,7 @@ struct PlaylistDetailView: View {
     /// and on an album, it only tells.
     private func gridHeader(_ playlist: PlaylistSummary) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(playlist.countText)
+            Text(bound: playlist.countText)
                 .font(.serif(19, weight: .semibold))
                 .foregroundStyle(Theme.ink)
                 .contentTransition(.numericText())
@@ -455,7 +455,7 @@ struct PlaylistDetailView: View {
         } label: {
             Label {
                 Text("Restauracja dzieł")
-                Text(restorerLine(state))
+                Text(bound: restorerLine(state))
             } icon: {
                 Image(systemName: LowRes.restoredSymbol)
             }
@@ -495,7 +495,7 @@ private struct SortChip: View {
                 Image(systemName: "arrow.up.arrow.down")
                     .imageScale(.small)
             }
-            Text(text)
+            Text(bound: text)
                 .lineLimit(1)
                 .contentTransition(.opacity)
             if menu {
@@ -601,10 +601,10 @@ struct AlbumCard: View {
                     .font(.title3)
                     .foregroundStyle(Theme.inkSoft)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(sync.flatMap { $0.name.isEmpty ? nil : $0.name } ?? "Album udostępniony")
+                    Text(bound: sync.flatMap { $0.name.isEmpty ? nil : $0.name } ?? "Album udostępniony")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.ink)
-                    Text(status)
+                    Text(bound: status)
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 }
@@ -628,7 +628,7 @@ struct AlbumCard: View {
             HStack {
                 Text("Kolejność").foregroundStyle(Theme.ink)
                 Spacer()
-                Text(album.order.title).foregroundStyle(Theme.inkSoft)
+                Text(bound: album.order.title).foregroundStyle(Theme.inkSoft)
             }
             .font(.subheadline)
         }

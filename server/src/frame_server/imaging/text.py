@@ -14,6 +14,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 from pydantic import BaseModel, Field
 
+from .breaks import NBSP, bound
 from .caption import Font, fit_text, font
 from .layout import Rect
 
@@ -34,9 +35,12 @@ class TextBlock(BaseModel):
 
 
 def wrap(draw: ImageDraw.ImageDraw, text: str, fnt: Font, width: int) -> list[str]:
+    """Lines of ``text`` at most ``width`` wide, broken only where Polish
+    typesetting allows (``breaks.bound``: no "i" or "w" left at a line's end).
+    A bound run wider than the line breaks between its words after all."""
     lines: list[str] = []
     line = ""
-    for word in text.split():
+    for word in _words(text, draw, fnt, width):
         candidate = f"{line} {word}".strip()
         if draw.textlength(candidate, font=fnt) <= width:
             line = candidate
@@ -47,13 +51,27 @@ def wrap(draw: ImageDraw.ImageDraw, text: str, fnt: Font, width: int) -> list[st
         line = word if fits else fit_text(draw, word, fnt, width)
     if line:
         lines.append(line)
-    return lines
+    return [each.replace(NBSP, " ") for each in lines]
+
+
+def _words(text: str, draw: ImageDraw.ImageDraw, fnt: Font, width: int) -> list[str]:
+    """The units a line breaks between: words, with the short ones bound."""
+    words: list[str] = []
+    for unit in re.split(r"[ \t\r\n]+", bound(text).strip()):
+        if not unit:
+            continue
+        if NBSP in unit and draw.textlength(unit, font=fnt) > width:
+            words.extend(unit.split(NBSP))  # wider than a line: binding gives way
+        else:
+            words.append(unit)
+    return words
 
 
 def _ellipsis(draw: ImageDraw.ImageDraw, line: str, fnt: Font, width: int) -> str:
     while line and draw.textlength(line.rstrip(" ,.;:") + " …", font=fnt) > width:
         line = line.rsplit(" ", 1)[0] if " " in line else line[:-1]
-    return line.rstrip(" ,.;:") + " …"
+    # Nor an "i" or "w" just before the ellipsis.
+    return re.sub(r" [aiouwzAIOUWZ]$", "", line.rstrip(" ,.;:")).rstrip(" ,.;:") + " …"
 
 
 def sentences(text: str) -> list[str]:

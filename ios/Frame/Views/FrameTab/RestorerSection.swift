@@ -55,12 +55,12 @@ struct RestorerSection: View {
 
     private func row(_ title: String, _ value: String, symbol: String? = nil) -> some View {
         HStack {
-            Text(title).font(.subheadline).foregroundStyle(Theme.ink)
+            Text(bound: title).font(.subheadline).foregroundStyle(Theme.ink)
             Spacer()
             if let symbol {
                 Image(systemName: symbol).font(.caption).foregroundStyle(LowRes.tint)
             }
-            Text(value)
+            Text(bound: value)
                 .font(.subheadline.monospacedDigit())
                 .foregroundStyle(Theme.inkSoft)
         }

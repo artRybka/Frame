@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.222
+## 1.145.228
 
 - Zadania: grupa „Przy studium” nazywa się „Odkrywaj” i ma dwa
   przełączniki, „Studium dnia” i „Propozycje kuratora”. Fakty z sieci,
@@ -8,6 +8,59 @@
 - Zadania: przy pozycjach tylko nazwa i koszt z ostatnich dni, bez opisów.
 - Zadania: w „Od razu” przełącznik „Odciski wyglądu (Gemini)” (ten sam co
   „Szukanie wyglądem” na stronie Gemini).
+
+## 1.145.227
+
+- Suwak balansu bieli przy własnych dziełach wygląda prościej: okrągły
+  uchwyt między chmurką (chłodniej) a słońcem (cieplej), bez napisów i bez
+  przycisku „Wyzeruj”. Środek, czyli zdjęcie bez zmian, lekko przyciąga
+  uchwyt i stuka pod palcem. Sama aplikacja; serwer bez zmian.
+
+## 1.145.226
+
+- W trybie oszczędnym ramka budziła się ok. 10 minut po wieczornej zmianie
+  jeszcze raz i rysowała ten sam obraz od nowa. Budził ją dzienny przegląd
+  ekranu Samsunga, który przez przesunięty budzik wypadał tego samego
+  wieczoru. Serwer rozpoznaje tę pobudkę i nie uruchamia aplikacji ramki,
+  więc obraz nie jest rysowany drugi raz, a ramka sama wraca do snu.
+
+## 1.145.225
+
+- „Popraw kadr”: przełącznik „Dzieło / Rama”. W „Rama” ustawiasz narożniki
+  zewnętrznej krawędzi ramy albo passe-partout, a „W ramie” w karcie
+  pokazuje zdjęcie przycięte tak, jak je ustawiłeś. Twoja rama zostaje
+  także po ponownym kadrowaniu dzieła; samo przesunięcie ramy nie zmienia
+  obrazu na ramce ani barw.
+- Przycisk „W ramie” ma nową ikonę: passe-partout z małym obrazem w środku.
+
+## 1.145.224
+
+- Karta dzieła: obok „Oryginał / Na ramce” okrągły przycisk z ikoną ramy,
+  gdy muzeum (albo Ty) sfotografowało dzieło w ramie, w passe-partout,
+  albo grafika jest pokazana bez marginesu. Pokazuje zdjęcie przycięte do
+  zewnętrznej krawędzi ramy i wyprostowane, z płynnym odjazdem od samego
+  dzieła. Na ramkę i do barw idzie nadal samo dzieło. Starsze kadry
+  dowiadują się o ramie same, nocą albo przy otwarciu karty.
+
+## 1.145.223
+
+- Inteligentna playlista: szare rysunki z WikiArt (np. „The Mathematicians”
+  de Chirico) trafiają już do katalogu. WikiArt każde dzieło nazywa
+  obrazem, więc ołówkowy rysunek bez koloru był brany za czarno-białą
+  kopię obrazu i odrzucany, choć Szukaj i edycja playlisty go pokazywały.
+  Szare dzieło z WikiArt jest kopią tylko wtedy, gdy jego technika mówi o
+  farbie.
+- „Zapisz” w edycji inteligentnej playlisty od razu bierze do katalogu
+  dzieła z muzeów pokazane w niej bladziej, także gdy katalog ma już dość
+  dzieł dla tej playlisty. Wcześniej czekały w kolejce tła, które stoi,
+  gdy używasz aplikacji, i nie trafiały na playlistę od razu.
+
+## 1.145.222
+
+- Teksty w aplikacji i opis na ramce nie zostawiają już jednoliterowych
+  słów (i, w, z, a…) na końcu wiersza; inicjały zostają z nazwiskiem,
+  „1868 r.” i „XIX wieku” się nie rozdzielają, a myślnik nie zaczyna
+  wiersza. Wymaga nowej wersji aplikacji.
 
 ## 1.145.221
 

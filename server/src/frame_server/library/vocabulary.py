@@ -706,7 +706,14 @@ def archive_own(item: Item) -> bool:
 def may_be_grey_copy(item: Item) -> bool:
     """A work whose picture, if it has no colour, is a black-and-white copy:
     a painting, or anything an art photo archive has. (Real prints and
-    drawings are often colourless; their museums' scans stay.)"""
+    drawings are often colourless; their museums' scans stay.) WikiArt
+    types every work a painting (``museums.WikiArt``), its drawings too:
+    one of its works is a painting only when its medium says so ("oil,
+    canvas"), and its pencil drawings stay (de Chirico's "The
+    Mathematicians", Szukaj showed them and the catalogue left them out as
+    copies; Mateusz 2026-11-17)."""
+    if item.source == "wikiart":
+        return _is_painting("", item.medium)
     return is_painting(item) or is_art_archive_photo(item)
 
 

@@ -116,13 +116,13 @@ struct LooksLikeSection: View {
                     }
                     .clipped()
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(summary.shownTitle)
+                    Text(bound: summary.shownTitle)
                         .font(.serif(14, weight: .semibold))
                         .foregroundStyle(Theme.ink)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                     if !summary.artist.isEmpty {
-                        Text(summary.artist)
+                        Text(bound: summary.artist)
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
                             .lineLimit(1)

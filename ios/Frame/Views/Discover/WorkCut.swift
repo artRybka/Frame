@@ -83,10 +83,10 @@ struct FullPhotoSection: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
                                 .frame(width: 96, height: 60)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(item.isOwnWork ? "Twoje zdjęcie" : "Zdjęcie muzeum")
+                                Text(bound: item.isOwnWork ? "Twoje zdjęcie" : "Zdjęcie muzeum")
                                     .font(.body)
                                     .foregroundStyle(Theme.ink)
-                                Text(line)
+                                Text(bound: line)
                                     .font(.footnote)
                                     .foregroundStyle(Theme.inkSoft)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -104,7 +104,7 @@ struct FullPhotoSection: View {
                         Divider().overlay(Theme.hairline)
                         Toggle(isOn: Binding(get: { cut.paper }, set: { choosePaper($0) })) {
                             HStack(spacing: 8) {
-                                Text("Z marginesem").foregroundStyle(Theme.ink)
+                                Text(bound: "Z marginesem").foregroundStyle(Theme.ink)
                                 if busy { ProgressView().controlSize(.small) }
                             }
                         }
@@ -183,8 +183,19 @@ struct CutEditor: View {
     /// The own work's steps go on: nothing to dismiss, and the bar (the
     /// arrow back, "Dalej") is theirs.
     let cancel: (() -> Void)?
-    /// Saves the corners (of the work as shown); whether it went.
-    let save: ([[Double]]) async -> Bool
+    /// Saves the corners (of the work as shown), whether they changed, and
+    /// the frame's corners when he moved them; whether it went.
+    let save: ([[Double]], Bool, [[Double]]?) async -> Bool
+    /// "Dzieło / Rama" (Mateusz 2026-11-17, „Tak, drugie narożniki dla
+    /// ramy”): the outer edge of the frame or passe-partout set too, for
+    /// the card's "W ramie"; its corners as they are.
+    let framing: Bool
+    let initialFrame: [[Double]]?
+    /// Which corners are in hand.
+    @State private var part = Part.work
+    /// The other part's corners, and where they started.
+    @State private var parked: [[Double]] = []
+    @State private var parkedStart: [[Double]] = []
     @Environment(\.dismiss) private var dismiss
     @State private var corners: [[Double]] = []
     @State private var start: [[Double]] = []
@@ -216,7 +227,11 @@ struct CutEditor: View {
     @State private var edges: EdgeMap?
     @State private var saving = false
 
-    init(item: Item, save: @escaping ([[Double]]) async -> Bool) {
+    enum Part: Hashable {
+        case work, frame
+    }
+
+    init(item: Item, update: @escaping (CutUpdate) async -> Bool) {
         let aspect: Double
         if let cut = item.cut, cut.aspect > 0 {
             aspect = cut.aspect
@@ -227,8 +242,10 @@ struct CutEditor: View {
         }
         self.init(
             photo: .ref(.museumPhoto(item.id, side: 2400, version: item.pictureVersion)),
-            aspect: aspect, corners: item.cutShown, save: save
-        )
+            aspect: aspect, corners: item.cutShown, framing: item.cutShown != nil, frame: item.cut?.surround
+        ) { work, moved, frame in
+            await update(CutUpdate(corners: moved ? work : nil, frame: frame))
+        }
     }
 
     init(
@@ -236,6 +253,20 @@ struct CutEditor: View {
         cancelTitle: String = "Anuluj", savesUnchanged: Bool = false, note: String? = nil, cancel: (() -> Void)? = nil,
         save: @escaping ([[Double]]) async -> Bool
     ) {
+        self.init(
+            photo: photo, aspect: aspect, corners: corners, framing: false, frame: nil, saveTitle: saveTitle,
+            cancelTitle: cancelTitle, savesUnchanged: savesUnchanged, note: note, cancel: cancel
+        ) { work, _, _ in await save(work) }
+    }
+
+    private init(
+        photo: Photo, aspect: Double, corners: [[Double]]?, framing: Bool, frame: [[Double]]?,
+        saveTitle: String = "Zapisz", cancelTitle: String = "Anuluj", savesUnchanged: Bool = false,
+        note: String? = nil, cancel: (() -> Void)? = nil,
+        save: @escaping ([[Double]], Bool, [[Double]]?) async -> Bool
+    ) {
+        self.framing = framing
+        initialFrame = frame
         photoSource = photo
         photoAspect = aspect
         initial = corners
@@ -250,7 +281,19 @@ struct CutEditor: View {
     /// The corners when nothing is cut yet: a little in from the edges.
     private static let inset: [[Double]] = [[0.06, 0.06], [0.94, 0.06], [0.94, 0.94], [0.06, 0.94]]
     private static let whole: [[Double]] = [[0, 0], [1, 0], [1, 1], [0, 1]]
-    private var changed: Bool { corners != start }
+    private var changed: Bool { corners != start || parked != parkedStart }
+    /// The part in hand changed: what "Cofnij zmiany" undoes.
+    private var changedHere: Bool { corners != start }
+    private var workCorners: [[Double]] { part == .work ? corners : parked }
+    private var workStart: [[Double]] { part == .work ? start : parkedStart }
+    private var frameCorners: [[Double]] { part == .frame ? corners : parked }
+    private var frameStart: [[Double]] { part == .frame ? start : parkedStart }
+    /// The frame's corners to save: when he moved them.
+    private var frameToSave: [[Double]]? { framing && frameCorners != frameStart ? frameCorners : nil }
+    /// His frame leaves part of the work out: "W ramie" could not show it.
+    private var frameCutsWork: Bool {
+        framing && frameCorners.count == 4 && workCorners.count == 4 && !encloses(frameCorners, workCorners)
+    }
     /// The cross and the ring of the corner in hand: bright on any picture.
     private static let mark = Color(light: 0xF2B93B, dark: 0xF2C14E)
     /// How much larger the photograph is in the loupe than on the screen.
@@ -300,19 +343,19 @@ struct CutEditor: View {
             Button {
                 Task {
                     saving = true
-                    if await save(corners) { dismiss() }
+                    if await save(workCorners, workCorners != workStart, frameToSave) { dismiss() }
                     saving = false
                 }
             } label: {
                 HStack(spacing: 8) {
                     if saving { ProgressView().controlSize(.small).tint(Theme.paper) }
-                    Text(saveTitle)
+                    Text(bound: saveTitle)
                 }
                 .foregroundStyle(Theme.paper)
             }
             .buttonStyle(.glassProminent)
             .tint(Theme.ink)
-            .disabled((!changed && !savesUnchanged) || saving)
+            .disabled((!changed && !savesUnchanged) || saving || (frameToSave != nil && frameCutsWork))
         }
         .padding(.horizontal, Theme.gutter)
         .padding(.top, 6)
@@ -323,7 +366,7 @@ struct CutEditor: View {
     private func saveInSteps() {
         Task {
             saving = true
-            _ = await save(corners)
+            _ = await save(workCorners, workCorners != workStart, frameToSave)
             saving = false
         }
     }
@@ -331,26 +374,37 @@ struct CutEditor: View {
     var body: some View {
         VStack(spacing: 0) {
             if cancel == nil { bar }
+            if framing {
+                Picker("Narożniki", selection: Binding(get: { part }, set: { choose($0) })) {
+                    Text(bound: "Dzieło").tag(Part.work)
+                    Text(bound: "Rama").tag(Part.frame)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 260)
+                .padding(.horizontal, Theme.gutter)
+                .padding(.bottom, 10)
+                .disabled(saving)
+            }
             GeometryReader { geo in
                 if corners.count == 4 { board(in: geo.size) }
             }
             .padding(.horizontal, Theme.gutter)
             if let note {
-                Text(note)
+                Text(bound: note)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(Theme.ink)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, Theme.gutter)
                     .padding(.top, 12)
             }
-            Text("Przeciągnij narożnik. Bardzo wolny ruch palca ustawia go dokładniej.")
+            Text(bound: hint)
                 .font(.caption)
-                .foregroundStyle(Theme.inkSoft)
+                .foregroundStyle(frameCutsWork && frameToSave != nil ? Theme.ink : Theme.inkSoft)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, Theme.gutter)
                 .padding(.top, 12)
             HStack(spacing: 8) {
-                chip("Cofnij zmiany", symbol: "arrow.uturn.backward", enabled: changed && !saving) {
+                chip("Cofnij zmiany", symbol: "arrow.uturn.backward", enabled: changedHere && !saving) {
                     corners = start.count == 4 ? start : Self.inset
                 }
                 chip("Całe zdjęcie", symbol: "arrow.up.left.and.arrow.down.right", enabled: corners != Self.whole && !saving) {
@@ -368,7 +422,7 @@ struct CutEditor: View {
             if cancel != nil {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(action: saveInSteps) {
-                        if saving { ProgressView() } else { Text(saveTitle) }
+                        if saving { ProgressView() } else { Text(bound: saveTitle) }
                     }
                     .disabled(saving)
                 }
@@ -378,8 +432,40 @@ struct CutEditor: View {
             guard corners.isEmpty else { return }
             corners = initial ?? Self.inset
             start = initial ?? []
+            // No frame's edge known: the photograph's own, to move in.
+            parked = initialFrame ?? Self.whole
+            parkedStart = parked
+            // Screenshots: `-cutPart frame` (with `-screen detail`).
+            if framing, UserDefaults.standard.string(forKey: "cutPart") == "frame" {
+                (corners, parked) = (parked, corners)
+                (start, parkedStart) = (parkedStart, start)
+                part = .frame
+            }
         }
         .task { await findEdges() }
+    }
+
+    /// Under the photograph: how to move a corner, and in "Rama" what the
+    /// frame's edge is for.
+    private var hint: String {
+        guard part == .frame else {
+            return "Przeciągnij narożnik. Bardzo wolny ruch palca ustawia go dokładniej."
+        }
+        if frameCutsWork && frameToSave != nil {
+            return "Rama musi obejmować całe dzieło."
+        }
+        return "Ustaw narożniki na zewnętrznej krawędzi ramy albo passe-partout. Tak pokaże je „W ramie”."
+    }
+
+    /// "Dzieło / Rama": the other corners in hand.
+    private func choose(_ next: Part) {
+        guard next != part, parked.count == 4 else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            (corners, parked) = (parked, corners)
+            (start, parkedStart) = (parkedStart, start)
+            part = next
+            active = nil
+        }
     }
 
     /// While a corner is dragged slower than at full speed, a tick of the
@@ -525,6 +611,12 @@ struct CutEditor: View {
             .fill(.black.opacity(0.42), style: FillStyle(eoFill: true))
             quadPath(corners, in: size)
                 .stroke(Color.white, lineWidth: 1.2)
+            if framing, parked.count == 4 {
+                // The other part's edges, to set these against.
+                quadPath(parked, in: size)
+                    .stroke(Color.white.opacity(0.8), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                    .allowsHitTesting(false)
+            }
             ForEach(0 ..< 4, id: \.self) { n in
                 handle(n, in: size)
             }
@@ -843,5 +935,25 @@ private struct Bracket: Shape {
         path.addLine(to: corner)
         path.addLine(to: toward(next))
         return path
+    }
+}
+
+/// Whether the convex quad `outer` holds every corner of `inner` (with a
+/// hair's room, as the server's "W ramie" does).
+private func encloses(_ outer: [[Double]], _ inner: [[Double]], room: Double = 0.01) -> Bool {
+    guard outer.count == 4, inner.count == 4 else { return false }
+    let sides = (0 ..< 4).map { (outer[$0], outer[($0 + 1) % 4]) }
+    let turn: (([Double], [Double]), [Double]) -> Double = { side, p in
+        let (a, b) = side
+        return (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
+    }
+    // The quad's winding: the sign every inside point shares.
+    let centre = [outer.map { $0[0] }.reduce(0, +) / 4, outer.map { $0[1] }.reduce(0, +) / 4]
+    let sign: Double = sides.map { turn($0, centre) }.reduce(0, +) >= 0 ? 1 : -1
+    return inner.allSatisfy { p in
+        sides.allSatisfy { side in
+            let length = hypot(side.1[0] - side.0[0], side.1[1] - side.0[1])
+            return sign * turn(side, p) >= -room * max(length, 1e-6)
+        }
     }
 }

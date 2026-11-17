@@ -252,13 +252,13 @@ struct ThemeCard: View {
         VStack(alignment: .leading, spacing: 0) {
             cover
             VStack(alignment: .leading, spacing: 4) {
-                Text(Names.theme(theme))
+                Text(bound: Names.theme(theme))
                     .font(.serif(15, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(2, reservesSpace: true)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(theme.description)
+                Text(bound: theme.description)
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .lineLimit(2, reservesSpace: true)
@@ -347,7 +347,7 @@ struct StudyRow: View {
                     SeeAllHeader(title: "Studia dzieł", size: 22, weight: .semibold)
                 }
                 .buttonStyle(.plain)
-                Text("Codzienne i zamówione studia dzieł")
+                Text(bound: "Codzienne i zamówione studia dzieł")
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -383,7 +383,7 @@ struct StudiesGridView: View {
         let studies = model.studyList ?? []
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Codzienne i zamówione studia dzieł")
+                Text(bound: "Codzienne i zamówione studia dzieł")
                     .font(.serif(17))
                     .foregroundStyle(Theme.inkSoft)
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
@@ -483,7 +483,7 @@ struct WorkTile: View {
                     .truncationMode(ArtCard.hasMarks(marks, zoom: showsZoom) ? .middle : .tail)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(ArtCard.byline(item.summary))
+                Text(bound: ArtCard.byline(item.summary))
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .lineLimit(1)
@@ -533,7 +533,7 @@ struct ZoomRow: View {
                     SeeAllHeader(title: row.title, size: 22, weight: .semibold)
                 }
                 .buttonStyle(.plain)
-                Text(Self.subtitle)
+                Text(bound: Self.subtitle)
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -594,7 +594,7 @@ struct SuggestionRowView: View {
                 }
                 .buttonStyle(.plain)
                 if !row.subtitle.isEmpty {
-                    Text(row.subtitle)
+                    Text(bound: row.subtitle)
                         .font(.footnote)
                         .foregroundStyle(Theme.inkSoft)
                 }
@@ -673,7 +673,7 @@ struct ThemeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text(theme.description)
+                Text(bound: theme.description)
                     .font(.serif(17))
                     .foregroundStyle(Theme.inkSoft)
                 actions

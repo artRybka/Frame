@@ -179,7 +179,7 @@ struct TasksSection: View {
             get: { settings.leftover ?? false },
             set: { on in Task { await model.saveAiSettings(AiSettingsUpdate(leftover: on)) } }
         )) {
-            Text("Wykorzystaj resztkę okresu")
+            Text(bound: "Wykorzystaj resztkę okresu")
         }
         .tint(Theme.ink)
     }
@@ -218,7 +218,7 @@ struct TasksSection: View {
             TidyChangesView()
         } label: {
             HStack {
-                Text("Co zmieniła noc").foregroundStyle(Theme.ink)
+                Text(bound: "Co zmieniła noc").foregroundStyle(Theme.ink)
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
@@ -246,7 +246,7 @@ struct TasksSection: View {
             }
             Button("Anuluj", role: .cancel) {}
         } message: {
-            Text("Zadania pójdą po kolei, tak jak w nocy, najwyżej przez 2 godziny. Te z iskierką pytają AI: koszt z Twojego klucza.")
+            Text(bound: "Zadania pójdą po kolei, tak jak w nocy, najwyżej przez 2 godziny. Te z iskierką pytają AI: koszt z Twojego klucza.")
         }
     }
 
@@ -443,11 +443,11 @@ private struct TaskSwitchRow: View {
         )) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
-                    Text(row.title)
+                    Text(bound: row.title)
                     if marked { TaskAiMark() }
                 }
                 if let costNote {
-                    Text(costNote)
+                    Text(bound: costNote)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(Theme.ink.opacity(0.75))
                         .padding(.top, 1)
@@ -479,7 +479,7 @@ private struct TaskRow: View {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 5) {
-                        Text(use.label)
+                        Text(bound: use.label)
                             .foregroundStyle(running ? Theme.ink : (use.able ? Theme.ink : Theme.inkSoft))
                         TaskAiMark()
                     }
@@ -494,7 +494,7 @@ private struct TaskRow: View {
                     }
                     let line = TasksSection.costLine(use, settings: settings)
                     if !line.isEmpty {
-                        Text(line)
+                        Text(bound: line)
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(Theme.inkSoft)
                             .fixedSize(horizontal: false, vertical: true)
@@ -522,7 +522,7 @@ struct TaskChip: View {
     var strong = false
 
     var body: some View {
-        Text(text)
+        Text(bound: text)
             .font(.caption2.weight(.semibold))
             .lineLimit(1)
             .padding(.horizontal, 7)
@@ -573,9 +573,9 @@ private struct ServerTaskRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(row.label).foregroundStyle(Theme.ink)
+                Text(bound: row.label).foregroundStyle(Theme.ink)
                 if let last = Self.lastText(row.entries) {
-                    Text(last.text)
+                    Text(bound: last.text)
                         .font(.caption)
                         .foregroundStyle(last.warn ? Theme.warn : Theme.inkSoft)
                         .lineLimit(2)
@@ -655,9 +655,9 @@ private struct BudgetCard: View {
         let free = max(limit - spent - planned - reserve, 0)
         Card {
             HStack(alignment: .firstTextBaseline) {
-                Text(period).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
+                Text(bound: period).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
                 Spacer()
-                Text("limit \(Money.usd(settings.monthlyLimitUsd))")
+                Text(bound: "limit \(Money.usd(settings.monthlyLimitUsd))")
                     .font(.subheadline)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -687,7 +687,7 @@ private struct BudgetCard: View {
             Divider()
             NavigationLink(value: SettingsPage.ai) {
                 HStack {
-                    Text("Limit, okres, zapas i koszty").foregroundStyle(Theme.ink)
+                    Text(bound: "Limit, okres, zapas i koszty").foregroundStyle(Theme.ink)
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
@@ -711,7 +711,7 @@ private struct BudgetCard: View {
         HStack(spacing: 5) {
             Circle().fill(color).frame(width: 8, height: 8)
                 .overlay(Circle().strokeBorder(Theme.hairline))
-            Text(text)
+            Text(bound: text)
         }
     }
 }
@@ -760,7 +760,7 @@ struct TaskPage: View {
         let more = when == .night && use.moreAtEnd != nil
         let showsAmounts = !use.isCheck && (when == .rest || when == .night)
         Card {
-            Text(use.about)
+            Text(bound: use.about)
                 .font(.subheadline)
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
@@ -812,7 +812,7 @@ struct TaskPage: View {
                         get: { use.moreAtEnd ?? true },
                         set: { new in save(TaskUpdate(moreAtEnd: new)) }
                     )) {
-                        Text("Więcej z resztki okresu")
+                        Text(bound: "Więcej z resztki okresu")
                     }
                     .tint(Theme.ink)
                 }
@@ -844,7 +844,7 @@ struct TaskPage: View {
                         options: amounts(settings.leftoverState?.periodUsdChoices, use.periodUsd),
                         label: { $0 == 0 ? "bez limitu" : TasksSection.amount($0) }
                     ) { new in save(TaskUpdate(periodUsd: new)) }
-                    Text(amountsNote(settings, use))
+                    Text(bound: amountsNote(settings, use))
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
@@ -859,12 +859,12 @@ struct TaskPage: View {
                             get: { use.mode ?? .batch },
                             set: { new in save(TaskUpdate(mode: new)) }
                         )) {
-                            Text("Batch, ½ ceny").tag(TaskMode.batch)
-                            Text("Zwykły, od razu").tag(TaskMode.normal)
+                            Text(bound: "Batch, ½ ceny").tag(TaskMode.batch)
+                            Text(bound: "Zwykły, od razu").tag(TaskMode.normal)
                         }
                         .pickerStyle(.segmented)
                     }
-                    Text(Self.modeNote(use))
+                    Text(bound: Self.modeNote(use))
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
@@ -893,8 +893,8 @@ struct TaskPage: View {
         } label: {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(Self.whenTitle(choice)).foregroundStyle(Theme.ink)
-                    Text(Self.whenHint(choice, settings: settings))
+                    Text(bound: Self.whenTitle(choice)).foregroundStyle(Theme.ink)
+                    Text(bound: Self.whenHint(choice, settings: settings))
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
@@ -916,15 +916,15 @@ struct TaskPage: View {
         label: @escaping (Value) -> String, set: @escaping (Value) -> Void
     ) -> some View {
         HStack {
-            Text(title).foregroundStyle(Theme.ink)
+            Text(bound: title).foregroundStyle(Theme.ink)
             Spacer()
             Menu {
                 Picker(title, selection: Binding(get: { value }, set: set)) {
-                    ForEach(options, id: \.self) { Text(label($0)).tag($0) }
+                    ForEach(options, id: \.self) { Text(bound: label($0)).tag($0) }
                 }
             } label: {
                 HStack(spacing: 3) {
-                    Text(label(value))
+                    Text(bound: label(value))
                     Image(systemName: "chevron.up.chevron.down").imageScale(.small)
                 }
                 .font(.subheadline.weight(.medium).monospacedDigit())
@@ -938,8 +938,8 @@ struct TaskPage: View {
 
     private func stat(_ value: String, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(value).font(.headline.monospacedDigit()).foregroundStyle(Theme.ink)
-            Text(label).font(.caption).foregroundStyle(Theme.inkSoft)
+            Text(bound: value).font(.headline.monospacedDigit()).foregroundStyle(Theme.ink)
+            Text(bound: label).font(.caption).foregroundStyle(Theme.inkSoft)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

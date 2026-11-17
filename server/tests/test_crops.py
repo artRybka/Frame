@@ -323,13 +323,36 @@ def test_the_card_cuts_at_once_and_the_owner_corrects_and_restores(
 
         full = client.get("/api/library/items/mnw:7/full?side=450")
         assert full.status_code == 200
+        # "W ramie": the frame's edge came with the corners.
+        assert seen["item"]["cut"]["framed_kind"] == "frame"
+        inframe = client.get("/api/library/items/mnw:7/framed?side=500")
+        assert inframe.status_code == 200 and inframe.headers["content-type"] == "image/jpeg"
         corners = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
         put = client.put("/api/library/items/mnw:7/cut", json={"corners": corners})
         assert put.status_code == 200, put.text
         assert put.json()["cut"]["by"] == "owner"
+        # His corners reach past the frame's edge: nothing around to show.
+        assert put.json()["cut"]["framed_kind"] == ""
+        assert client.get("/api/library/items/mnw:7/framed").status_code == 404
         assert put.json()["cut"]["work"][0] == [0.1, 0.1]
         bad = client.put("/api/library/items/mnw:7/cut", json={"corners": corners[:3]})
         assert bad.status_code == 422
+        # He sets the frame's edge himself („Tak, drugie narożniki dla ramy”):
+        # around his corners, "W ramie" again; the work's pictures stay.
+        before = service.images.image_path(service.library.get("mnw:7")).stat().st_mtime_ns
+        frame = [[0.05, 0.04], [0.95, 0.04], [0.95, 0.96], [0.05, 0.96]]
+        mine = client.put("/api/library/items/mnw:7/cut", json={"frame": frame}).json()["cut"]
+        assert mine["surround_by"] == "owner" and mine["framed_kind"] == "frame"
+        assert mine["work"][0] == [0.1, 0.1] and mine["surround"][0] == [0.05, 0.04]
+        assert client.get("/api/library/items/mnw:7/framed?side=500").status_code == 200
+        after = service.images.image_path(service.library.get("mnw:7")).stat().st_mtime_ns
+        assert after == before
+        # The work cut anew keeps his frame.
+        tighter = [[0.12, 0.12], [0.88, 0.12], [0.88, 0.88], [0.12, 0.88]]
+        again = client.put("/api/library/items/mnw:7/cut", json={"corners": tighter}).json()["cut"]
+        assert again["surround"][0] == [0.05, 0.04] and again["framed_kind"] == "frame"
+        nothing = client.put("/api/library/items/mnw:7/cut", json={"frame": frame[:2]})
+        assert nothing.status_code == 422
 
         gone = client.delete("/api/library/items/mnw:7/cut").json()
         assert gone["cut"]["work"] is None and gone["cut"]["by"] == "owner"
@@ -982,3 +1005,81 @@ def test_a_claim_is_asked_of_opus_now_on_demand(
     assert item is not None and item.cut is not None and item.cut.by == "auto"
     assert crops.claims_waiting() == [] and crops.claim_now("mnw:1") is None
     assert crops.asked()["mnw:1"]["critic"] is True
+
+
+# -- "W ramie" (Mateusz 2026-11-17) ------------------------------------------------------
+
+
+def test_the_frames_edge_is_kept_with_the_cut_and_shown_set_straight(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    from frame_server.ai.crops import corners_in
+
+    found = corners_in(photo(), CORNERS)
+    assert found is not None and found["surround_kind"] == "frame"
+    outer = [(150 / W, 100 / H), (750 / W, 100 / H), (750 / W, 600 / H), (150 / W, 600 / H)]
+    assert _near(found["surround"], outer, 0.004)
+
+    item = _work(service, "mnw:61", pooled=True)
+    crops = service.crops
+    fake.messages.create = lambda **params: (fake.asked.append(params), _message(CORNERS))[1]
+    item = crops.apply(item, Cut(work=TRUE, aspect=round(W / H, 5), around=["frame"]))
+    assert item.cut is not None and item.cut.framed_kind == ""  # not asked yet
+    assert crops.unsurrounded(item)
+    # The card asks Opus for the frame's edge; the cut stays as it was.
+    crops.now(item)
+    stored = service.library.get("mnw:61")
+    assert stored is not None and stored.cut is not None
+    cut = stored.cut
+    assert cut.surround_asked and cut.surround_kind == "frame" and cut.framed_kind == "frame"
+    assert stored.cut_shown() == TRUE
+    assert abs(cut.framed_aspect - 600 / 500) < 0.02
+    x0, y0, x1, y1 = cut.framed_inner or (0, 0, 0, 0)
+    assert abs(x0 - 30 / 600) < 0.01 and abs(y0 - 30 / 500) < 0.01
+    assert abs(x1 - 570 / 600) < 0.01 and abs(y1 - 470 / 500) < 0.01
+    assert not crops.unsurrounded(stored)
+    asked = len(fake.asked)
+    crops.now(stored)
+    assert len(fake.asked) == asked  # once
+
+    img = service.images.framed(stored, 4000)
+    assert img is not None and abs(img.width / img.height - 600 / 500) < 0.02
+    a = np.asarray(img.convert("RGB")).astype(int)
+    assert abs(a[5, img.width // 2] - (200, 160, 60)).max() < 30  # the gilt frame
+
+
+def test_a_print_shown_without_its_sheet_shows_the_sheet_around_it() -> None:
+    sheet_quad = [(0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9)]
+    plate = [(0.2, 0.2), (0.8, 0.2), (0.8, 0.8), (0.2, 0.8)]
+    cut = Cut(work=sheet_quad, plate=plate, aspect=1.0)
+    assert cut.framed_by() is None  # with its paper: nothing around it
+    bare = cut.model_copy(update={"paper": False})
+    assert bare.framed_by() == (sheet_quad, "paper")
+    from frame_server.ai.crops import framed
+
+    made = framed(bare)
+    assert made.framed_kind == "paper" and abs(made.framed_aspect - 1.0) < 0.01
+
+
+def test_cuts_without_their_frames_edge_are_asked_once_at_night(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    crops = service.crops
+    aspect = round(W / H, 5)
+    for item_id, around in (("mnw:71", ["frame"]), ("mnw:72", ["backdrop"])):
+        item = _work(service, item_id, pooled=True)
+        crops.apply(item, Cut(work=TRUE, aspect=aspect, around=around, shape="rectangle"))
+    assert crops.surrounded() == 1  # a backdrop alone has no frame to show
+    assert crops.surrounded() == 0
+    fake.ended = True
+    _answer(fake, CORNERS)
+    assert crops.order()
+    assert crops.collect() is True
+    framed_one = service.library.get("mnw:71")
+    assert framed_one is not None and framed_one.cut is not None
+    assert framed_one.cut.framed_kind == "frame" and framed_one.cut_shown() == TRUE
+    assert crops.written() == []
+    plain = service.library.get("mnw:72")
+    assert plain is not None and plain.cut is not None and plain.cut.framed_kind == ""

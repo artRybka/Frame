@@ -18,6 +18,10 @@ enum ImageRef: Hashable, Sendable {
     /// The museum's photograph of the work, whole ("Pełny kadr"), `side`
     /// px long at most; `version` keeps a cut's change apart.
     case museumPhoto(String, side: Int, version: String)
+    /// The work in its frame or passe-partout ("W ramie", `Cut.framedKind`):
+    /// the museum's photograph cut to the frame's outer edge and set
+    /// straight, `side` px long at most; `version` keeps a cut's change apart.
+    case framed(String, side: Int, version: String)
     /// The work as it is shown but for its cleaning (`Item.cleaned`): the
     /// picture as it came, for the card's comparison; `version` keeps
     /// another picture apart.

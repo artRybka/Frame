@@ -203,7 +203,7 @@ struct RealSizeDrawing: View {
     }
 
     private func pencilled(_ text: String) -> some View {
-        Text(text)
+        Text(bound: text)
             .font(.hand(17))
             .foregroundStyle(Theme.ink)
             .fixedSize()

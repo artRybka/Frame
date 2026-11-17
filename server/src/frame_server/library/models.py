@@ -273,6 +273,43 @@ class Cut(BaseModel):
     #: study's boxes drawn on the cut picture still find their place.
     undone: list[tuple[float, float]] | None = None
     undone_at: str = ""
+    #: The outer edge of the frame or the passe-partout around the work as
+    #: Opus saw it (``ai.crops.surround_in``): the card's "W ramie" shows
+    #: the photograph cut to it (Mateusz 2026-11-17: „przełącznik
+    #: pokazujący dzieło w ramie albo passe-partout czy z marginesem”).
+    #: None when there is neither, or it was not asked.
+    surround: list[tuple[float, float]] | None = None
+    #: What :attr:`surround` is: "frame" or "mount" ("" without one).
+    surround_kind: str = ""
+    #: "auto" (the model) or "owner": his frame's edge in "Popraw kadr"
+    #: (Mateusz 2026-11-17, „Tak, drugie narożniki dla ramy”), never
+    #: changed by the model again, also when the work is cut anew.
+    surround_by: Literal["auto", "owner"] = "auto"
+    #: Whether Opus was asked for :attr:`surround` (cuts set before
+    #: 1.145.224 were not: asked once, ``Crops.surrounded``).
+    surround_asked: bool = False
+    #: The card's "W ramie" as it is now (``Crops.framed``, set with every
+    #: change of the cut): "frame", "mount", "paper" (a print shown without
+    #: its sheet: the sheet), "" when there is nothing to show around the
+    #: work; the picture's width / height and where the work is in it
+    #: (left, top, right, bottom, fractions), for the app's move from the
+    #: work to its frame.
+    framed_kind: str = ""
+    framed_aspect: float = 0.0
+    framed_inner: tuple[float, float, float, float] | None = None
+
+    def framed_by(self) -> tuple[list[tuple[float, float]], str] | None:
+        """The corners of the card's "W ramie" on the photograph and what
+        they are (:attr:`framed_kind`): the frame's or the passe-partout's
+        outer edge, else a print's sheet when it is shown without it; None
+        for neither, or a work shown whole."""
+        if self.shown() is None:
+            return None
+        if self.surround is not None and self.surround_kind:
+            return self.surround, self.surround_kind
+        if not self.paper and self.plate is not None and self.work is not None:
+            return self.work, "paper"
+        return None
 
     def without_twin(self) -> Cut:
         """Without a "plate" that is the work itself (Wyczółkowski's

@@ -20,6 +20,12 @@ struct OriginalViewer: View {
     /// sprawdzenia", where what is wrong is often at an edge (a ruler, a
     /// colour chart, a cut corner; Mateusz 2026-11-15).
     var whole = false
+    /// Opened on "W ramie" (`FrameToggle`): the work in its frame, as the
+    /// card showed it; its button under the cross shows the work alone.
+    var inFrame = false
+    @State private var framedOn = false
+    @State private var framedImage: UIImage?
+    @State private var framedLoading = false
     @State private var image: UIImage?
     @State private var failed = false
     @State private var chrome = true
@@ -43,7 +49,13 @@ struct OriginalViewer: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if let image = shownImage {
+            if framedOn, let framedImage {
+                ZoomableImage(image: framedImage, tiles: [], whole: true, look: Treatment.look([])) {
+                    withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() }
+                }
+                .ignoresSafeArea()
+                .id("framed")
+            } else if let image = shownImage {
                 ZoomableImage(
                     image: image, tiles: shownOff.isEmpty ? tiles : [], whole: whole, look: Treatment.look(shownOff)
                 ) {
@@ -71,7 +83,12 @@ struct OriginalViewer: View {
                     .accessibilityLabel("Zamknij")
                     // Under the cross, only for what was done (Mateusz
                     // 2026-11-16, the places marked on his screenshot).
-                    ForEach(treatments, id: \.self) { treatment in
+                    if let look = item.framed {
+                        FrameViewerButton(look: look, on: framedOn, loading: framedLoading) {
+                            Task { await toggleFramed() }
+                        }
+                    }
+                    ForEach(framedOn ? [] : treatments, id: \.self) { treatment in
                         TreatmentButton(
                             treatment: treatment, on: !off.contains(treatment),
                             loading: off != shownOff && off.contains(treatment) != shownOff.contains(treatment)
@@ -99,6 +116,7 @@ struct OriginalViewer: View {
         // VoiceOver's two-finger scrub closes it, as the cross does.
         .accessibilityAction(.escape, close)
         .task(id: item.id) { await load() }
+        .task(id: item.id) { if inFrame { await toggleFramed() } }
         .task(id: item.fragmentsID) { await loadTiles() }
         .task(id: off) { await loadTreated() }
         .onAppear {
@@ -122,6 +140,25 @@ struct OriginalViewer: View {
             if phase == .background { ScreenBoost.shared.forget() }
             if phase == .active, brighten { ScreenBoost.shared.raise() }
         }
+    }
+
+    /// "W ramie" on and off: the framed photograph, fetched once.
+    private func toggleFramed() async {
+        UISelectionFeedbackGenerator().selectionChanged()
+        if framedOn {
+            withAnimation(.easeInOut(duration: 0.2)) { framedOn = false }
+            return
+        }
+        if framedImage == nil {
+            guard let look = item.framed else { return }
+            framedLoading = true
+            let version = "\(item.pictureVersion)|\(look.kind)\(look.aspect)"
+            if let request = model.backend.request(for: .framed(item.id, side: 4000, version: version)) {
+                framedImage = try? await ImageLoader.shared.image(for: request, maxPixel: 4096, priority: .high)
+            }
+            framedLoading = false
+        }
+        if framedImage != nil { withAnimation(.easeInOut(duration: 0.2)) { framedOn = true } }
     }
 
     /// What was done to the work's picture, in the buttons' order.
@@ -172,14 +209,14 @@ struct OriginalViewer: View {
 
     private var caption: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(item.displayTitle.isEmpty ? "Bez tytułu" : item.displayTitle)
+            Text(bound: item.displayTitle.isEmpty ? "Bez tytułu" : item.displayTitle)
                 .font(.serif(19, weight: .semibold))
                 .lineLimit(2)
             let line = item.kind == .photo
                 ? item.photoLine
                 : [Names.artist(item.artist), item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
             if !line.isEmpty {
-                Text(line).font(.footnote).opacity(0.75)
+                Text(bound: line).font(.footnote).opacity(0.75)
             }
             if !tiles.isEmpty, shownOff.isEmpty {
                 Label("Przybliż, a ostrzejsze fragmenty (\(tiles.count)) doczytają się same",

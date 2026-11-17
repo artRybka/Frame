@@ -134,13 +134,13 @@ struct PlaceBand: View {
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(place.name)
+                Text(bound: place.name)
                     .font(.serif(18))
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
                     .strikethrough(struck)
                 if !place.city.isEmpty {
-                    Text(place.city.uppercased())
+                    Text(bound: place.city.uppercased())
                         .font(.caption2.weight(.medium))
                         .tracking(1.1)
                         .opacity(0.85)

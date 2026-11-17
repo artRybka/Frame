@@ -33,7 +33,7 @@ struct NameText: UIViewRepresentable {
         let base = UIFont.systemFont(ofSize: size, weight: weight)
         label.font = base.fontDescriptor.withDesign(.serif).map { UIFont(descriptor: $0, size: size) } ?? base
         label.textColor = UIColor(cgColor: color.resolve(in: context.environment).cgColor)
-        label.text = text
+        label.text = text.bound
         label.invalidateIntrinsicContentSize()
     }
 

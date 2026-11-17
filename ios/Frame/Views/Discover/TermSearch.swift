@@ -635,8 +635,8 @@ struct TermSuggestions: View {
                         .frame(width: 22)
                 }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(title).font(.body).foregroundStyle(Theme.ink).lineLimit(1)
-                    Text(detail.isEmpty ? kind : "\(kind) · \(detail)")
+                    Text(bound: title).font(.body).foregroundStyle(Theme.ink).lineLimit(1)
+                    Text(bound: detail.isEmpty ? kind : "\(kind) · \(detail)")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .lineLimit(1)
@@ -694,7 +694,7 @@ struct TokenSummary: View {
                         if item.token.kind == "color" {
                             ColorTagDot(tag: item.token.key, size: 8, stroke: nil)
                         }
-                        Text(item.name).lineLimit(1)
+                        Text(bound: item.name).lineLimit(1)
                     }
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(Theme.inkSoft)

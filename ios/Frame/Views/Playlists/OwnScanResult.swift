@@ -22,7 +22,8 @@ import SwiftUI
 /// zostanie wykryta karta koloru dodaj suwak regulacji balansu bieli":
 /// his works hang under warm lamps, and nothing else says what is white
 /// there). The picture is shown in the balance set; the server keeps the
-/// work's photograph in it (`OwnBalance`).
+/// work's photograph in it (`OwnBalance`). The slider says nothing in
+/// words (`OwnBalanceSlider`).
 struct OwnScanResult: View {
     /// The first photograph as the camera took it.
     let before: UIImage
@@ -85,7 +86,7 @@ struct OwnScanResult: View {
                 )
                 .padding(.horizontal, 12)
                 if scanned {
-                    Text(single ? "Zdjęcie na wprost, bez zmian" : "Odbicia usunięte z trzech zdjęć")
+                    Text(bound: single ? "Zdjęcie na wprost, bez zmian" : "Odbicia usunięte z trzech zdjęć")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.white.opacity(0.9))
                         .contentTransition(.opacity)
@@ -106,7 +107,7 @@ struct OwnScanResult: View {
                     OwnBalanceSlider(balance: balance)
                         .frame(maxWidth: 340)
                         .padding(.horizontal, Theme.gutter)
-                        .padding(.top, scanned ? 18 : 14)
+                        .padding(.top, scanned ? 10 : 8)
                         .disabled(busy)
                 }
                 Spacer(minLength: 12)
@@ -152,13 +153,34 @@ struct OwnScanResult: View {
     }
 }
 
-/// "Balans bieli": cooler to the left, warmer to the right, as taken in
-/// the middle, where it stops of itself; "Wyzeruj" takes it back there.
+/// The white balance's slider: a cloud to the left (cooler), the sun to
+/// the right (warmer), a round knob between them, and nothing written
+/// (Mateusz 2026-11-17 21:32 UTC, of the first one with the system's
+/// slider under "Balans bieli · cieplej" and "Wyzeruj": "Gdy suwak jest
+/// w punkcie „0” (domyślnym) to stuknij haptyką i delikatnie przyciągnij.
+/// Suwak kółko a nie elipsa/zaokrąglony prostokąt. Bez podpowiedzi
+/// „ciepłej, etc”. Bez guzika „wyzeruj”. Bez tekstu „balans bieli”.
+/// Zamiast sniezynki - chmurka."). The middle, as taken, draws the knob
+/// to itself and taps under the finger: that is the way back to none.
 struct OwnBalanceSlider: View {
     @Binding var balance: Double
 
-    /// So near the middle is the middle.
-    static let still = 0.04
+    /// So near the middle (of the way to an end) the knob is drawn to it.
+    static let pull = 0.07
+    /// The knob across, and the height it is caught in (pt).
+    static let knob: CGFloat = 28
+    static let reach: CGFloat = 44
+
+    @Environment(\.isEnabled) private var enabled
+    /// The balance where the finger came down.
+    @State private var from: Double?
+
+    /// The balance with the finger at `raw`: none within the pull of the
+    /// middle, else as far as the finger is, no further than the ends.
+    static func settled(_ raw: Double) -> Double {
+        let at = min(1, max(-1, raw))
+        return abs(at) < pull ? 0 : at
+    }
 
     private var said: String {
         if balance == 0 { return "jak na zdjęciu" }
@@ -166,37 +188,59 @@ struct OwnBalanceSlider: View {
     }
 
     var body: some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 6) {
-                Text("Balans bieli")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.9))
-                Text(said)
-                    .font(.footnote)
-                    .foregroundStyle(.white.opacity(0.6))
-                    .contentTransition(.opacity)
-                Spacer()
-                Button("Wyzeruj") {
-                    withAnimation(.easeOut(duration: 0.2)) { balance = 0 }
+        HStack(spacing: 12) {
+            Image(systemName: "cloud.fill")
+                .foregroundStyle(Color(red: 0.72, green: 0.84, blue: 1))
+            GeometryReader { geo in
+                let room = max(1, geo.size.width - Self.knob)
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(.white.opacity(0.24))
+                        .frame(height: 4)
+                        .padding(.horizontal, Self.knob / 2 - 2)
+                    // The middle, where the photograph is as taken.
+                    Capsule()
+                        .fill(.white.opacity(0.55))
+                        .frame(width: 2, height: 10)
+                        .offset(x: geo.size.width / 2 - 1)
+                    Circle()
+                        .fill(.white)
+                        .frame(width: Self.knob, height: Self.knob)
+                        .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
+                        .offset(x: CGFloat((balance + 1) / 2) * room)
                 }
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(.white)
-                .opacity(balance == 0 ? 0 : 1)
-                .disabled(balance == 0)
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .leading)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { drag in
+                            let began = from ?? balance
+                            from = began
+                            let now = Self.settled(began + 2 * Double(drag.translation.width / room))
+                            guard now != balance else { return }
+                            // Into the middle and out of it the knob goes of itself.
+                            if (now == 0) != (balance == 0) {
+                                withAnimation(.snappy(duration: 0.14)) { balance = now }
+                            } else {
+                                balance = now
+                            }
+                        }
+                        .onEnded { _ in from = nil }
+                )
             }
-            Slider(value: $balance, in: -1 ... 1) {
-                Text("Balans bieli")
-            } minimumValueLabel: {
-                Image(systemName: "snowflake")
-                    .foregroundStyle(Color(red: 0.62, green: 0.8, blue: 1))
-            } maximumValueLabel: {
-                Image(systemName: "sun.max.fill")
-                    .foregroundStyle(Color(red: 1, green: 0.78, blue: 0.42))
-            } onEditingChanged: { moving in
-                if !moving, abs(balance) < Self.still { balance = 0 }
-            }
-            .tint(.white.opacity(0.55))
-            .accessibilityValue(said)
+            .frame(height: Self.reach)
+            Image(systemName: "sun.max.fill")
+                .foregroundStyle(Color(red: 1, green: 0.78, blue: 0.42))
+        }
+        .font(.body)
+        .opacity(enabled ? 1 : 0.5)
+        .sensoryFeedback(.impact(flexibility: .rigid, intensity: 0.7), trigger: balance == 0) { _, now in now }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Balans bieli")
+        .accessibilityValue(said)
+        .accessibilityAdjustableAction { way in
+            let step = way == .increment ? 0.1 : -0.1
+            balance = Self.settled(((balance + step) * 10).rounded() / 10)
         }
     }
 }

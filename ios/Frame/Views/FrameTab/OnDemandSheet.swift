@@ -35,7 +35,7 @@ struct OnDemandRow: View {
                     }
                 }
                 if let run = use.run {
-                    Text(Self.lastNote(run))
+                    Text(bound: Self.lastNote(run))
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
@@ -75,7 +75,7 @@ struct OnDemandRow: View {
         VStack(alignment: .leading, spacing: 4) {
             ProgressView(value: min(run.spentUsd, run.usd), total: max(run.usd, 0.01))
                 .tint(Theme.ink)
-            Text(Self.runningNote(run))
+            Text(bound: Self.runningNote(run))
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
@@ -181,12 +181,12 @@ struct OnDemandSheet: View {
                         Text("USD").foregroundStyle(Theme.inkSoft)
                     }
                 } header: {
-                    Text(use.label)
+                    Text(bound: use.label)
                 } footer: {
-                    Text(footer).foregroundStyle(tooMuch ? Theme.bad : Theme.inkSoft)
+                    Text(bound: footer).foregroundStyle(tooMuch ? Theme.bad : Theme.inkSoft)
                 }
                 Section {
-                    Text(Self.about(use))
+                    Text(bound: Self.about(use))
                         .font(.footnote)
                         .foregroundStyle(Theme.inkSoft)
                 }

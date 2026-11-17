@@ -61,6 +61,7 @@ from ..library.models import Framing, SharperCopy
 from ..library.museums import MUSEUMS, LoginRefused
 from ..library.repo import Hidden, SortKey, now_iso
 from ..library.search import fill as fill_by_search
+from ..library.search import keep_shown
 from ..library.seed import PACKS, import_queries, pack
 from ..library.verdict import Place, against
 from ..library.viewer import viewer_id
@@ -739,6 +740,9 @@ class CutUpdate(BaseModel):
 
     corners: list[tuple[float, float]] | None = None
     paper: bool | None = None
+    #: The outer edge of the frame or passe-partout around the work, set
+    #: by him (the card's "W ramie").
+    frame: list[tuple[float, float]] | None = None
 
 
 async def _kept_work(svc: FrameService, item_id: str) -> Item:
@@ -771,6 +775,34 @@ async def check_cut(
             await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), wait)
     changed = future.done() and future.exception() is None and bool(future.result())
     return CutView(changed=changed, item=svc.library.get(item.id) or stored)
+
+
+@router.get("/library/items/{item_id:item}/framed")
+async def item_framed(
+    item_id: str, svc: Svc, side: Annotated[int, Query(ge=200, le=4000)] = 1800
+) -> Response:
+    """The card's "W ramie": the work in its frame or passe-partout, the
+    photograph cut to the frame's outer edge and set straight
+    (``ImageCache.framed``); 404 when there is nothing around the work."""
+    item = await _work(svc, item_id, threads=SHOWN_THREADS)
+
+    def made() -> bytes | None:
+        img = svc.images.framed(item, side, urgent=True)
+        if img is None:
+            return None
+        out = io.BytesIO()
+        img.convert("RGB").save(out, "JPEG", quality=88)
+        return out.getvalue()
+
+    try:
+        data = await to_thread.run_sync(made, limiter=SHOWN_THREADS)
+    except Gone as err:
+        raise HTTPException(410, f"no picture anywhere: {err}") from err
+    except (httpx.HTTPError, OSError) as err:
+        raise HTTPException(502, f"image unavailable: {err}") from err
+    if data is None:
+        raise HTTPException(404, "nothing around the work")
+    return Response(data, media_type="image/jpeg", headers=NO_STORE)
 
 
 @router.get("/library/items/{item_id:item}/full")
@@ -811,10 +843,15 @@ async def put_cut(item_id: str, update: CutUpdate, svc: Svc) -> Item:
         corners = valid(update.corners)
         if corners is None:
             raise HTTPException(422, "the corners make no picture")
-    if corners is None and update.paper is None:
+    frame = None
+    if update.frame is not None:
+        frame = valid(update.frame)
+        if frame is None:
+            raise HTTPException(422, "the frame's corners make no picture")
+    if corners is None and update.paper is None and frame is None:
         raise HTTPException(422, "nothing to change")
     try:
-        return await run_in_threadpool(svc.crops.set_by_owner, stored, corners, update.paper)
+        return await run_in_threadpool(svc.crops.set_by_owner, stored, corners, update.paper, frame)
     except AiUnavailable as err:
         raise HTTPException(503, str(err)) from err
     except (httpx.HTTPError, OSError) as err:
@@ -1803,12 +1840,15 @@ def pack_import(key: str, svc: Svc) -> dict[str, Any]:
 
 class FillRequest(BaseModel):
     rules: PlaylistRules
-    count: int = Field(100, ge=1, le=500)
+    #: How many more than those the editor showed (0: only those).
+    count: int = Field(100, ge=0, le=500)
 
 
 @router.post("/library/fill")
 def fill(request: FillRequest, svc: Svc) -> dict[str, Any]:
-    """Add museum works a smart playlist with ``rules`` would pick."""
+    """Add museum works a smart playlist with ``rules`` would pick: first
+    those its editor showed (Szukaj's search, the paler ones) and that are
+    still on their way into the catalogue, then ``count`` more."""
     rules = request.rules
     if rules.favorites_only:
         raise HTTPException(422, "favourites can't be fetched from museums")
@@ -1820,8 +1860,16 @@ def fill(request: FillRequest, svc: Svc) -> dict[str, Any]:
         raise HTTPException(422, "the rules allow no museum")
 
     def work(job: Job) -> None:
-        # Szukaj's search for the same choices (Mateusz, 2026-11-07).
-        fill_by_search(svc.importer, rules, request.count, job)
+        shown = Job(id=job.id, description="shown")
+        keep_shown(svc.importer, rules, shown)
+        if request.count:
+            # Szukaj's search for the same choices (Mateusz, 2026-11-07).
+            fill_by_search(svc.importer, rules, request.count, job)
+        job.total += shown.total
+        job.done += shown.done
+        job.skipped += shown.skipped
+        job.failed += shown.failed
+        job.item_ids[:0] = [i for i in shown.item_ids if i not in job.item_ids]
 
     return {"job_id": svc.importer.start_job(f"fill: {request.count}", work).id}
 

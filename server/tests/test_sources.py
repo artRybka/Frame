@@ -499,6 +499,9 @@ def test_one_source_alone_shows_what_it_has(service, monkeypatch) -> None:
         assert len(asked) == 1
         fill = {"rules": {"terms": ["mine:playlists"]}, "count": 10}
         assert client.post("/api/library/fill", json=fill).status_code == 422
+        # Only the works the editor showed (none here): no more asked for.
+        shown = {"rules": {"artists": ["Giorgio de Chirico"]}, "count": 0}
+        assert "job_id" in client.post("/api/library/fill", json=shown).json()
 
 
 def test_search_asks_the_chosen_museums_and_judges_colours(service, monkeypatch) -> None:

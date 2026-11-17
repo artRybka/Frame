@@ -21,7 +21,7 @@ struct OwnWorksCard: View {
                 Text("Moje dzieła")
                     .font(.serif(16, weight: .semibold))
                     .foregroundStyle(Theme.ink)
-                Text(Names.works(items.count))
+                Text(bound: Names.works(items.count))
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -84,11 +84,11 @@ struct OwnWorksView: View {
             Text("Moje dzieła")
                 .font(.serif(32, weight: .semibold))
                 .foregroundStyle(Theme.ink)
-            Text("Dzieła z Twoich zdjęć: na ramce, w playlistach, w Szukaj i w studiach jak każde inne.")
+            Text(bound: "Dzieła z Twoich zdjęć: na ramce, w playlistach, w Szukaj i w studiach jak każde inne.")
                 .font(.serif(17))
                 .foregroundStyle(Theme.inkSoft)
             if !model.ownWorks.isEmpty {
-                Text(Names.works(model.ownWorks.count))
+                Text(bound: Names.works(model.ownWorks.count))
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(Theme.inkSoft)
             }
