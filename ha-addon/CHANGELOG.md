@@ -7,6 +7,7 @@
   pokazuje zdjęcie przycięte tak, jak je ustawiłeś. Twoja rama zostaje
   także po ponownym kadrowaniu dzieła; samo przesunięcie ramy nie zmienia
   obrazu na ramce ani barw.
+- Przycisk „W ramie” ma nową ikonę: passe-partout z małym obrazem w środku.
 
 ## 1.145.224
 
