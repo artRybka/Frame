@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.215
+
+- Ekran poprawiania kadru: narożnik zwalnia dopiero przy naprawdę
+  wolnym ruchu palca (poniżej ok. 90 pt/s, a do ¼ przy kilku pt/s),
+  przejście jest stopniowe i rozłożone w czasie, bez skoku. Zniknęła
+  etykietka „wolno: ¼” pod lupą. Stukanie przy zwalnianiu jest teraz
+  wyraźnym „tyknięciem” jak przy kółku wyboru, coraz gęstszym, im wolniej
+  idzie palec.
+
 ## 1.145.214
 
 - Odkrywaj → „Kolor i nastrój”: karty pokazują tylko malarstwo, bez
