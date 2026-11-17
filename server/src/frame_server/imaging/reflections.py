@@ -9,7 +9,8 @@ of its own (a window, a doorway, his own figure). Replacing bright patches
 (:mod:`.glare`) only made smears there.
 
 The work is flat, so within its corners the side photographs are laid
-over the first with one homography each. In linear light a reflection
+over the first with one homography each (and since 2026-11-17 16:04 UTC
+by what is left after it, :func:`_settled`). In linear light a reflection
 only adds: each view is the work plus its own reflection layer, and the
 views' differences are differences of those layers alone, whatever the
 work shows. Per pixel the least view, ``low``, is the work plus the veil
@@ -135,6 +136,14 @@ tone goes over into the first view's further still
 (:func:`_outward`): on the cows a lamp lay on a print near its edge, and
 from the side a print ends a little elsewhere under its mount.
 
+His small oil on canvas (16:04 UTC, the work's card: "Trochę rzeczy się
+nie zgadza… Tutaj obraz jakby się rozjeżdżał"). The side views lay 4 to
+7 pixels off the first, 22 at the edges: thick paint on a canvas taken
+steeply from the side is no plane. What lay elsewhere was read as a
+reflection, lines came out double and the light paint grey. After the
+homography each side view is now settled on the first place by place
+(:func:`_settled`).
+
 When what :func:`merge` makes of the same photographs changes, raise
 :data:`..own_works.MERGING`: his works scanned before are then made once
 more of their scans' photographs after the update."""
@@ -154,6 +163,25 @@ from numpy.typing import NDArray
 MATCH_SIDE = 2400
 #: Matches a side photograph needs to be laid over the first.
 MIN_MATCHES = 40
+#: A side view is settled on the first by what its squares of so many
+#: pixels are off the first's, one round each (powers of two: the phase
+#: correlation is half a pixel out on other sizes).
+SETTLE_TILES = (128, 128, 64)
+#: What counts as the work's fine there: between so many pixels and so
+#: much of the width.
+SETTLE_FINE = (1.0, 0.005)
+#: A square says how far it is off when the two views' fine agrees in it
+#: so well, when that is no more than so much of the square, and no more
+#: than so many pixels and so much of their own length from what the
+#: squares about it say.
+SETTLE_SURE = 0.1
+SETTLE_FAR = 0.4
+SETTLE_ODD = (1.5, 0.5)
+#: The squares are told from each other over so many of them, and where
+#: none about a place is sure, over so many.
+SETTLE_ABOUT = (0.8, 3.0)
+#: The most a place is moved (of the width).
+SETTLE_MOST = 0.04
 #: The width the reflection layers are worked out at: reflections are
 #: soft, and the work's own grain must not show in them.
 LAYER_WIDTH = 256
@@ -370,9 +398,11 @@ MEND_NOISE = 0.02
 AROUND = 0.015
 #: The side views told in the first's light differ by this much of what
 #: they tell at the middle place of the work: they do not show one flat
-#: work (his collage of a mirror, foil and a circuit board, 0.30; glass
-#: and oil 0.04 to 0.10), and nothing is touched.
-NOT_ONE = 0.2
+#: work (his collage of a mirror, foil and a circuit board, 0.17; glass
+#: and oil 0.02 to 0.07, on his sixteen scans with the side views settled
+#: on the first, which brought the collage down from 0.22 and a small oil
+#: from 0.07 to 0.03), and nothing is touched.
+NOT_ONE = 0.12
 #: Less light than this taken off (of the first photograph's) is nothing.
 LEAST = 0.01
 #: More than this is no reflection: the photographs do not show one work
@@ -616,8 +646,141 @@ def _lay(front: Image, marks: tuple[Any, Any], photo: Image) -> _View | None:
     if min(left, right) <= 0:
         return None
     lean = math.log(left / right)
-    over = cv2.warpPerspective(side, found, (wd, ht), flags=cv2.INTER_LINEAR)
+    over = _settled(front, side, found)
     return _View(_linear(over), -1 if lean > 0.03 else 1 if lean < -0.03 else 0)
+
+
+def _settled(front: Image, side: Image, found: NDArray[Any]) -> Image:
+    """The ``side`` photograph laid over ``front`` by the homography
+    ``found`` and then, place by place, by what its fine is still off
+    the first's.
+
+    His small oil on canvas in a floating frame (2026-11-17 16:04 UTC:
+    "Trochę rzeczy się nie zgadza… czy najpierw nie trzeba dokładnie
+    nanieść poszczególnych zdjęć na siebie a dopiero potem robić dalsze
+    edycje? Tutaj obraz jakby się rozjeżdżał"). One homography laid the
+    side views 4 to 7 pixels off the first, 22 at the edges, of a work
+    1200 wide: a canvas with thick paint, taken steeply from the side, is
+    no plane, nor is the lens without its bend. Every stroke that lay
+    elsewhere was read as a reflection: lines came out double and the
+    light paint grey. His earlier oils were up to 13 pixels off at their
+    corners. What is left is smooth over the work, so it is measured
+    square by square (:func:`_off`), made one field (:func:`_field`) and
+    the photograph is laid again by it, a few rounds: a tenth of a pixel
+    is left."""
+    ht, wd = front.shape[:2]
+    back = np.linalg.inv(found)
+    grid = np.mgrid[0:ht, 0:wd].astype(np.float32)
+    moved = np.zeros((2, ht, wd), np.float32)
+    most = wd * SETTLE_MOST
+
+    def laid() -> Image:
+        at = np.stack([grid[1] + moved[0], grid[0] + moved[1]], -1).reshape(-1, 1, 2)
+        seen = cv2.perspectiveTransform(at.astype(np.float64), back).astype(np.float32)
+        seen = seen.reshape(ht, wd, 2)
+        return cv2.remap(side, seen[..., 0], seen[..., 1], cv2.INTER_LINEAR)
+
+    over = laid()
+    first = _fine(_linear(front))
+    for size in SETTLE_TILES:
+        tile = size
+        while tile > 32 and tile > min(wd, ht) // 4:
+            tile //= 2
+        if tile > min(wd, ht) // 2:
+            break
+        field = _field(_off(first, _fine(_linear(over)), tile), tile, (ht, wd))
+        if field is None:
+            break
+        moved = np.clip(moved + field, -most, most)
+        over = laid()
+    return over
+
+
+def _fine(light: Floats) -> Floats:
+    """What a view is known by from place to place: the fine of its
+    light, whatever the exposure and the veil over it."""
+    tone = np.log(light.mean(-1) + 0.02)
+    wide = max(2 * SETTLE_FINE[0], light.shape[1] * SETTLE_FINE[1])
+    fine = cv2.GaussianBlur(tone, (0, 0), SETTLE_FINE[0]) - cv2.GaussianBlur(tone, (0, 0), wide)
+    return np.asarray(fine, np.float32)
+
+
+def _off(first: Floats, other: Floats, tile: int) -> Floats:
+    """How far ``other`` lies off ``first`` in each square of ``tile``
+    pixels, half a square apart: across, down and how sure (0–1)."""
+    ht, wd = first.shape
+    step = tile // 2
+    window = cv2.createHanningWindow((tile, tile), cv2.CV_32F)
+    rows = range(0, ht - tile + 1, step)
+    cols = range(0, wd - tile + 1, step)
+    off = np.zeros((len(rows), len(cols), 3), np.float32)
+    for i, y in enumerate(rows):
+        for j, x in enumerate(cols):
+            # Copies: the correlation writes into what it is given.
+            one = first[y : y + tile, x : x + tile].copy()
+            two = other[y : y + tile, x : x + tile].copy()
+            (across, down), sure = cv2.phaseCorrelate(one, two, window)
+            off[i, j] = (across, down, sure)
+    return off
+
+
+def _field(off: Floats, tile: int, shape: tuple[int, int]) -> Floats | None:
+    """What the squares say (:func:`_off`) as one smooth field over the
+    work (across and down, 2 × H × W), or None when none of them is sure.
+    A square that says another thing than those about it has a reflection
+    in it, or nothing: it is told by them."""
+    if off.shape[0] < 2 or off.shape[1] < 2:
+        return None
+    far = np.hypot(off[..., 0], off[..., 1])
+    sure = np.where((off[..., 2] >= SETTLE_SURE) & (far <= SETTLE_FAR * tile), off[..., 2], 0)
+    sure = np.clip(sure, 0, 1).astype(np.float32)
+    for _ in range(2):
+        about = _about(np.where(sure[..., None] > 0, off[..., :2], np.nan))
+        odd = np.hypot(off[..., 0] - about[..., 0], off[..., 1] - about[..., 1])
+        allowed = np.maximum(SETTLE_ODD[0], SETTLE_ODD[1] * np.hypot(about[..., 0], about[..., 1]))
+        sure = np.where(odd > allowed, 0, sure).astype(np.float32)  # NaN: nothing about, stays
+    if not sure.any():
+        return None
+
+    def told(sigma: float) -> tuple[Floats, Floats]:
+        edge = cv2.BORDER_REPLICATE
+        weight = cv2.GaussianBlur(sure, (0, 0), sigma, borderType=edge)
+        each = [
+            cv2.GaussianBlur(off[..., k] * sure, (0, 0), sigma, borderType=edge) for k in (0, 1)
+        ]
+        return np.stack(each, -1) / np.maximum(weight, 1e-6)[..., None], weight
+
+    near, weight = told(SETTLE_ABOUT[0])
+    wide, _ = told(SETTLE_ABOUT[1])
+    mesh = np.where(weight[..., None] > 0.2, near, wide).astype(np.float32)
+    # One more square about, going on as the last two did.
+    mesh = np.concatenate([2 * mesh[:1] - mesh[1:2], mesh, 2 * mesh[-1:] - mesh[-2:-1]], 0)
+    mesh = np.concatenate(
+        [2 * mesh[:, :1] - mesh[:, 1:2], mesh, 2 * mesh[:, -1:] - mesh[:, -2:-1]], 1
+    )
+    # A square's middle is where it says it for; the first, one step out.
+    step = tile // 2
+    start = (tile - 1) / 2 - step
+    to_mesh = np.array([[1 / step, 0, -start / step], [0, 1 / step, -start / step]], np.float64)
+    field = cv2.warpAffine(
+        mesh,
+        to_mesh,
+        (shape[1], shape[0]),
+        flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
+        borderMode=cv2.BORDER_REPLICATE,
+    )
+    return np.ascontiguousarray(field.transpose(2, 0, 1))
+
+
+def _about(said: Floats) -> Floats:
+    """The middle one of what each square and the eight about it say
+    (NaN: says nothing; NaN where none of the nine does)."""
+    rows, cols = said.shape[:2]
+    wide = np.pad(said, ((1, 1), (1, 1), (0, 0)), constant_values=np.nan)
+    nine = np.stack([wide[i : i + rows, j : j + cols] for i in range(3) for j in range(3)])
+    none = np.isnan(nine).all(0)
+    middle = np.nanmedian(np.where(none, 0, nine), 0)
+    return np.where(none, np.nan, middle).astype(np.float32)
 
 
 def _coarse(light: Floats, shape: tuple[int, ...]) -> Floats:
