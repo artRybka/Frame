@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.145.218
+
+- Ekran poprawiania kadru: tykanie przy wolnym przeciąganiu wreszcie
+  działa (wcześniej nie odzywało się wcale), coraz gęstsze, im wolniej
+  idzie palec. Pod lupą nie ma już etykietki „na krawędzi”; przyciągnięcie
+  do krawędzi czuć samym stuknięciem.
+
+## 1.145.217
+
+- Własne dzieła: po aktualizacji, która zmienia łączenie zdjęć skanu,
+  serwer sam składa wcześniejsze skany od nowa z trzech zdjęć, które
+  trzyma przez 14 dni, i podmienia obraz dzieła. Kadr i opis zostają.
+  Po tej aktualizacji przerobi tak raz wszystkie skany z ostatnich
+  14 dni (kilka minut po starcie, w tle).
+
 ## 1.145.216
 
 - Skan („Inteligentne”): krawędź fragmentu wstawionego ze zdjęć bocznych

@@ -284,6 +284,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 threading.Timer(LOOKS_DELAY, service.cleaning.catch_up),
                 # His works added before they took the shape of his size.
                 threading.Timer(START_DELAY, service.own_works.reshape),
+                # And those scanned before photographs were merged as now.
+                threading.Timer(LOOKS_DELAY, service.own_works.scanned_again),
             ):
                 later.daemon = True
                 later.start()

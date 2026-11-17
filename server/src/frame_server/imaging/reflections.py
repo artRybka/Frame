@@ -133,7 +133,11 @@ little way outward now and ends by degrees (:data:`GLARE_OUT`), and its
 tone goes over into the first view's further still
 (:data:`GLARE_FEATHER`). Neither over an edge of the work
 (:func:`_outward`): on the cows a lamp lay on a print near its edge, and
-from the side a print ends a little elsewhere under its mount."""
+from the side a print ends a little elsewhere under its mount.
+
+When what :func:`merge` makes of the same photographs changes, raise
+:data:`..own_works.MERGING`: his works scanned before are then made once
+more of their scans' photographs after the update."""
 
 from __future__ import annotations
 

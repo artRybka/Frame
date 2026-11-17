@@ -28,6 +28,7 @@ import anthropic
 from PIL import Image
 from pydantic import BaseModel, Field
 
+from . import build_version
 from .ai.client import SONNET, AiUnavailable, request
 from .ai.crops import _block
 from .imaging.cut import Quad, valid, warp
@@ -63,6 +64,27 @@ INCOMING_QUALITY = 95
 SCANS_SECONDS = 14 * 24 * 3600
 #: What a scan's folder holds besides its photographs.
 SCAN_INFO = "scan.json"
+#: Goes up by one whenever what the merging (:func:`.imaging.reflections.
+#: merge`, :func:`.imaging.glare.merge`) makes of the same photographs
+#: changes. His works scanned before are then made once more of their
+#: scans' photographs after the update (:meth:`OwnWorks.scanned_again`;
+#: Mateusz 2026-11-17 09:30 UTC: "a może być po aktualizacji która
+#: zmieniła sposób łączenia zdjęć?"). A scan that noted none was made
+#: before 1.145.217 (what 1.145.216 does with a lamp's edge is 1).
+MERGING = 1
+#: A work's photograph is a kept scan's when the fine of the two, small
+#: and grey, goes together at least this much (1 is the same picture). Of
+#: his first twelve scans the first photograph and what was made of it
+#: went together 0.82 (his drawing, a lamp taken out of it) to 0.99, and
+#: two scans of one work 0.18 at the most: held by hand, no two have the
+#: work's lines in the same pixels. All of the picture's light, not its
+#: fine alone, told them apart no better than 0.75 from 0.86.
+SCAN_LIKE = 0.6
+#: So small (pixels a side), the fine being what a blur so wide (pixels
+#: of that) takes away, and of shapes no further apart than this.
+SCAN_LOOK = 128
+SCAN_FINE = 2
+SCAN_SHAPE = 0.02
 #: Beside a waiting photograph: the work Opus found in it.
 FOUND = ".found.json"
 #: Beside a waiting photograph: the colour chart found in it and the way
@@ -171,6 +193,32 @@ class Description(BaseModel):
     origin: str = Field("", max_length=300)
     height_cm: float | None = Field(None, gt=0, lt=10000)
     width_cm: float | None = Field(None, gt=0, lt=10000)
+
+
+def _look(path: Path) -> tuple[Any, float]:
+    """The fine of a photograph small and grey (:data:`SCAN_LOOK` a side,
+    without what :data:`SCAN_FINE` blurs away, its mean taken off, its
+    length 1), and its width over its height."""
+    import numpy as np
+    from PIL import ImageFilter, ImageOps
+
+    with Image.open(path) as img:
+        img.draft("L", (SCAN_LOOK * 4, SCAN_LOOK * 4))
+        upright = ImageOps.exif_transpose(img.convert("L"))
+        shape = upright.width / upright.height
+        small = upright.resize((SCAN_LOOK, SCAN_LOOK), Image.Resampling.BOX)
+        coarse = small.filter(ImageFilter.GaussianBlur(SCAN_FINE))
+        fine = np.asarray(small, float) - np.asarray(coarse, float)
+    fine = fine - fine.mean()
+    return fine / max(float(np.linalg.norm(fine)), 1e-6), shape
+
+
+def _alike(one: tuple[Any, float], other: tuple[Any, float]) -> float:
+    """How much two photographs (:func:`_look`) go together, -1 to 1;
+    nothing when they are of another shape."""
+    if abs(one[1] / other[1] - 1) > SCAN_SHAPE:
+        return 0.0
+    return float((one[0] * other[0]).sum())
 
 
 class OwnWorks:
@@ -430,7 +478,7 @@ class OwnWorks:
         if all(cv2.pointPolygonTest(cleaned, (x, y), False) >= 0 for x, y in quad):
             return
         used, taken = self._merge(folder / "first.jpg", self.path(token), sides, quad)
-        info.update(corners=quad, used=used, replaced=taken, again=now_iso())
+        info.update(corners=quad, used=used, replaced=taken, again=now_iso(), merging=MERGING)
         (folder / SCAN_INFO).write_text(json.dumps(info))
         log.info("own photograph %s merged again within his corners", token)
 
@@ -449,6 +497,10 @@ class OwnWorks:
         """What the merge came to, beside the scan's photographs."""
         info = {
             "at": now_iso(),
+            # Which release made it one, and how photographs were merged
+            # then: when that changes the work is made of them once more.
+            "release": build_version(),
+            "merging": MERGING,
             "used": seen.used,
             "replaced": seen.replaced,
             "width": seen.width,
@@ -610,6 +662,7 @@ class OwnWorks:
         )
         item = self._describe(item, text)
         item = self._cut(item, corners, by, shape)
+        self._note_work(token, item)
         self._done(path)
         log.info("own work %s added", item.id)
         return item
@@ -634,7 +687,154 @@ class OwnWorks:
         width, height = self.images.store(item, path.read_bytes(), master=True)
         stored = self.library.update(item.id, width=width, height=height, cut=None) or item
         stored = self._cut(stored, corners, by, shape)
+        self._note_work(token, stored)
         self._done(path)
+        return stored
+
+    # -- the scan it was made of ----------------------------------------------------
+
+    def _note_work(self, token: str, item: Item) -> None:
+        """Which work a kept scan became, beside its photographs."""
+        note = self.scans / token / SCAN_INFO
+        try:
+            info = json.loads(note.read_text())
+            info["item"] = item.id
+            note.write_text(json.dumps(info))
+        except (OSError, ValueError):
+            pass  # no scan: one photograph, or it is gone
+
+    def scan_of(self, item: Item, looks: dict[str, tuple[Any, float]] | None = None) -> str | None:
+        """The kept scan the work's photograph was made of (its token), if
+        its photographs are still here: the newest that noted the work.
+        A work added before scans noted theirs (1.145.217) is the scan its
+        photograph looks like, of those that noted none; and that is noted.
+        ``looks``: what such scans look like, kept from one work to the next."""
+        if item.kind != ItemKind.OWN or item.source != "upload":
+            return None
+        loose: list[str] = []
+        for scan in self.kept_scans():
+            files = scan.get("files", {})
+            if scan.get("single") or "first.jpg" not in files or "side1.jpg" not in files:
+                continue
+            if scan.get("item") == item.id:
+                return str(scan["token"])
+            if "item" not in scan:
+                loose.append(str(scan["token"]))
+        if not loose:
+            return None
+        master = self.images.master_path(item)
+        try:
+            mine = _look(master if master.is_file() else self.images.museum_photo(item))
+        except OSError:
+            return None
+        best, token = SCAN_LIKE, None
+        looks = {} if looks is None else looks
+        for candidate in loose:
+            try:
+                if candidate not in looks:
+                    looks[candidate] = _look(self.scans / candidate / "first.jpg")
+            except OSError:
+                continue
+            like = _alike(mine, looks[candidate])
+            if like > best:
+                best, token = like, candidate
+        if token is not None:
+            self._note_work(token, item)
+            log.info("own work %s: its scan is %s (alike %.3f)", item.id, token, best)
+        return token
+
+    def scanned_again(self) -> int:
+        """Once after a start: his works whose scans were made one before
+        photographs were merged as they are now (:data:`MERGING`), made once
+        more of the photographs kept. How many were.
+
+        Asked whether earlier scans should be made again by a button on
+        the work or by themselves after every update, he said (2026-11-17
+        09:30 UTC): "a może być po aktualizacji która zmieniła sposób
+        łączenia zdjęć?"."""
+        from .library.models import PlaylistRules
+
+        if not self.scans.is_dir():
+            return 0
+        done = 0
+        looks: dict[str, tuple[Any, float]] = {}
+        for item in self.library.query(PlaylistRules(kinds=[ItemKind.OWN]), include_excluded=True)[
+            1
+        ]:
+            try:
+                token = self.scan_of(item, looks)
+                if token is None:
+                    continue
+                info = json.loads((self.scans / token / SCAN_INFO).read_text())
+                if int(info.get("merging") or 0) >= MERGING:
+                    continue
+                self.rescan(item)
+                done += 1
+            except (OSError, ValueError, LookupError) as err:
+                log.warning("own work %s not scanned again: %s", item.id, err)
+        # Scans that are no work's are not looked at again at every start.
+        for scan in self.kept_scans():
+            if "item" not in scan:
+                note = self.scans / str(scan["token"]) / SCAN_INFO
+                try:
+                    info = json.loads(note.read_text())
+                    info["item"] = ""
+                    note.write_text(json.dumps(info))
+                except (OSError, ValueError):
+                    pass
+        if done:
+            log.info("own works scanned again as photographs are merged now: %d", done)
+        return done
+
+    def rescan(self, item: Item) -> Item:
+        """The work's photograph made once more of its scan's photographs
+        (Mateusz 2026-11-17 09:19 UTC, shown what 1.145.216 does with the
+        lamp on his drawing: "Jest idealnie! Czy poprzednie skany przerobią
+        się po wydaniu?"). What takes the reflections out gets better with
+        a release, and a work scanned before it has what the scan came to
+        then. Its cut and what he wrote stay."""
+        self._check(item)
+        token = self.scan_of(item)
+        if token is None:
+            raise LookupError("no scan of this work is kept")
+        folder = self.scans / token
+        info = json.loads((folder / SCAN_INFO).read_text())
+        quad = valid(info.get("corners") or [])
+        again = self.incoming / f"{token}-again.jpg"
+        shutil.copyfile(folder / "first.jpg", again)
+        try:
+            used, taken = self._merge(
+                folder / "first.jpg", again, sorted(folder.glob("side*.jpg")), quad
+            )
+            data = again.read_bytes()
+        finally:
+            again.unlink(missing_ok=True)
+        cut = item.cut
+        self.images.remove(item)
+        width, height = self.images.store(item, data, master=True)
+        stored = self.library.update(item.id, width=width, height=height) or item
+        if cut is not None and cut.shown() is not None:
+            # The same corners: the photograph is the same one. Set anew,
+            # for the app's pictures kept from before to be had again.
+            stored = self.crops.apply(stored, cut.model_copy(update={"at": now_iso()}))
+        else:
+            self.images.recut(stored)
+        info.update(
+            used=used,
+            replaced=taken,
+            again=now_iso(),
+            release=build_version(),
+            merging=MERGING,
+            item=item.id,
+        )
+        (folder / SCAN_INFO).write_text(json.dumps(info))
+        log.info(
+            "own work %s scanned again from %s: %d side(s), %.1f%% taken out",
+            item.id,
+            token,
+            used,
+            taken * 100,
+        )
         return stored
 
     @staticmethod
