@@ -61,6 +61,7 @@ from ..library.models import Framing, SharperCopy
 from ..library.museums import MUSEUMS, LoginRefused
 from ..library.repo import Hidden, SortKey, now_iso
 from ..library.search import fill as fill_by_search
+from ..library.search import keep_shown
 from ..library.seed import PACKS, import_queries, pack
 from ..library.verdict import Place, against
 from ..library.viewer import viewer_id
@@ -1803,12 +1804,15 @@ def pack_import(key: str, svc: Svc) -> dict[str, Any]:
 
 class FillRequest(BaseModel):
     rules: PlaylistRules
-    count: int = Field(100, ge=1, le=500)
+    #: How many more than those the editor showed (0: only those).
+    count: int = Field(100, ge=0, le=500)
 
 
 @router.post("/library/fill")
 def fill(request: FillRequest, svc: Svc) -> dict[str, Any]:
-    """Add museum works a smart playlist with ``rules`` would pick."""
+    """Add museum works a smart playlist with ``rules`` would pick: first
+    those its editor showed (Szukaj's search, the paler ones) and that are
+    still on their way into the catalogue, then ``count`` more."""
     rules = request.rules
     if rules.favorites_only:
         raise HTTPException(422, "favourites can't be fetched from museums")
@@ -1820,8 +1824,16 @@ def fill(request: FillRequest, svc: Svc) -> dict[str, Any]:
         raise HTTPException(422, "the rules allow no museum")
 
     def work(job: Job) -> None:
-        # Szukaj's search for the same choices (Mateusz, 2026-11-07).
-        fill_by_search(svc.importer, rules, request.count, job)
+        shown = Job(id=job.id, description="shown")
+        keep_shown(svc.importer, rules, shown)
+        if request.count:
+            # Szukaj's search for the same choices (Mateusz, 2026-11-07).
+            fill_by_search(svc.importer, rules, request.count, job)
+        job.total += shown.total
+        job.done += shown.done
+        job.skipped += shown.skipped
+        job.failed += shown.failed
+        job.item_ids[:0] = [i for i in shown.item_ids if i not in job.item_ids]
 
     return {"job_id": svc.importer.start_job(f"fill: {request.count}", work).id}
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.145.223
+
+- Inteligentna playlista: szare rysunki z WikiArt (np. „The Mathematicians”
+  de Chirico) trafiają już do katalogu. WikiArt każde dzieło nazywa
+  obrazem, więc ołówkowy rysunek bez koloru był brany za czarno-białą
+  kopię obrazu i odrzucany, choć Szukaj i edycja playlisty go pokazywały.
+  Szare dzieło z WikiArt jest kopią tylko wtedy, gdy jego technika mówi o
+  farbie.
+- „Zapisz” w edycji inteligentnej playlisty od razu bierze do katalogu
+  dzieła z muzeów pokazane w niej bladziej, także gdy katalog ma już dość
+  dzieł dla tej playlisty. Wcześniej czekały w kolejce tła, które stoi,
+  gdy używasz aplikacji, i nie trafiały na playlistę od razu.
+
 ## 1.145.222
 
 - Teksty w aplikacji i opis na ramce nie zostawiają już jednoliterowych
