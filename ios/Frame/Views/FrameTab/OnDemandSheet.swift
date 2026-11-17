@@ -76,6 +76,7 @@ struct OnDemandRow: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .tint(Theme.bad)
             }
         }
         .padding(.top, 4)
@@ -93,10 +94,10 @@ struct OnDemandRow: View {
         return parts.joined(separator: " · ")
     }
 
-    /// "Ostatnio teraz: 3786 dzieł za 49,98 z 50,00 USD, 17.11 · kwota
-    /// wykorzystana".
+    /// "Ostatnie uruchomienie: 3786 dzieł za 49,98 z 50,00 USD, 17.11 ·
+    /// kwota wykorzystana".
     static func lastNote(_ run: OnDemandRun) -> String {
-        var line = "Ostatnio teraz: \(works(run.done)) za \(Money.usd(run.spentUsd)) z \(Money.usd(run.usd))"
+        var line = "Ostatnie uruchomienie: \(works(run.done)) za \(Money.usd(run.spentUsd)) z \(Money.usd(run.usd))"
         if let ended = run.ended, ended.count >= 10 {
             line += ", \(AiSection.dayMonth(String(ended.prefix(10))))"
         }
@@ -143,11 +144,6 @@ struct OnDemandSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    Text(Self.about(use))
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.inkSoft)
-                }
-                Section {
                     Picker("Kwota", selection: Binding(
                         get: { amount.flatMap { a in Self.presets.first { $0 == a } } ?? -1 },
                         set: { text = Self.plain($0) }
@@ -165,12 +161,18 @@ struct OnDemandSheet: View {
                         Text("USD").foregroundStyle(Theme.inkSoft)
                     }
                 } header: {
-                    Text("Kwota")
+                    Text(use.label)
                 } footer: {
                     Text(footer).foregroundStyle(tooMuch ? Theme.bad : Theme.inkSoft)
                 }
+                Section {
+                    Text(Self.about(use))
+                        .font(.footnote)
+                        .foregroundStyle(Theme.inkSoft)
+                }
             }
-            .navigationTitle(use.label)
+            .contentMargins(.top, 8, for: .scrollContent)
+            .navigationTitle("Uruchom teraz")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -180,12 +182,15 @@ struct OnDemandSheet: View {
                     if starting {
                         ProgressView()
                     } else {
-                        Button("Uruchom", action: start).disabled(!valid)
+                        Button("Uruchom", action: start)
+                            .fontWeight(.semibold)
+                            .tint(Theme.ink)
+                            .disabled(!valid)
                     }
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.large])
     }
 
     /// What the amount buys and what may be given.
