@@ -2134,10 +2134,14 @@ struct LeftoverUse: Codable, Hashable, Sendable, Identifiable {
     /// whether the period's last days add more from the rest (nil: no such
     /// portion).
     var moreAtEnd: Bool? = nil
+    /// The night's tasks its "Uruchom teraz" starts when it has no run of
+    /// its own on demand: through the Batch API, as at night.
+    var nightTasks: [String]? = nil
 
     var id: String { key }
-    /// The night's small checks: a switch, nothing to count or spend.
-    var isCheck: Bool { whens == [.night, .off] }
+    /// A check of what comes in (the catalogue's tidying): nothing to count
+    /// or spend of the month's rest.
+    var isCheck: Bool { whens.map { !$0.contains(.rest) && aNight == nil } ?? false }
 }
 
 /// When a task of the month's rest runs.

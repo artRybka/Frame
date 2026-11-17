@@ -2631,33 +2631,25 @@ extension DemoBackend {
             periodSpentUsd: 10.8, moreAtEnd: true
         ),
         LeftoverUse(
-            key: "looks", label: "Odciski wyglądu (Gemini)",
-            about: "Wygląd dzieła jako liczby: szukanie opisem wyglądu, zdjęciem i „Podobne wyglądem”. Nowe dzieła od razu, potem katalog.",
-            on: true, able: true, waiting: 3_120, eachUsd: 0.0001, waitingUsd: 0.31, aNight: 5000,
-            done: 4200, doneUsd: 0.42, nowEachUsd: 0.0002, when: .night,
-            aNightChoices: [1000, 5000, 20000], mode: .batch, modes: [.batch, .normal], periodSpentUsd: 0.42,
-            moreAtEnd: false
-        ),
-        LeftoverUse(
             key: "tidy", label: "Porządki katalogu",
-            about: "Odkłada znaczki, strony z tekstem i zdjęcia sal, które przyszły jako dzieła, i rozstrzyga, czy dwa podobne obrazy to kopia, detal czy to samo dzieło.",
-            on: true, able: true, waiting: 64, eachUsd: 0.002, waitingUsd: 0.13, aNight: nil,
-            done: 310, doneUsd: 0.11, nowEachUsd: 0.004, when: .night, mode: .batch, modes: [.batch, .normal],
-            periodSpentUsd: 0.11, moreAtEnd: false
+            about: "Strażnik odkłada znaczki, strony z tekstem i zdjęcia sal, które przyszły jako dzieła; sędzia rozstrzyga, czy dwa podobne obrazy to kopia, detal czy to samo dzieło.",
+            on: true, able: true, waiting: nil, eachUsd: 0, waitingUsd: nil, aNight: nil,
+            done: 0, doneUsd: 0, when: .night, mode: .batch, modes: [.batch],
+            whens: [.night, .demand, .off], nightTasks: ["gatekeeper", "twins judge"]
         ),
         LeftoverUse(
             key: "audit", label: "Przegląd dzieł",
             about: "Losowe dzieła: tytuł, data, opis i obraz; co nie pasuje, trafia do „Do sprawdzenia”.",
-            on: true, able: true, waiting: nil, eachUsd: 0.002, waitingUsd: nil, aNight: 30,
-            done: 420, doneUsd: 0.84, nowEachUsd: 0.004, when: .night, aNightChoices: [30, 100, 270, 500, 1000],
-            mode: .batch, modes: [.batch, .normal], periodSpentUsd: 0.84, moreAtEnd: false
+            on: true, able: true, waiting: nil, eachUsd: 0.002, waitingUsd: nil, aNight: 270,
+            done: 420, doneUsd: 0.84, when: .night, aNightChoices: [100, 270, 500, 1000],
+            mode: .batch, modes: [.batch], periodSpentUsd: 0.84, moreAtEnd: false, nightTasks: ["audit"]
         ),
         LeftoverUse(
             key: "studies", label: "Nowe studia",
             about: "Dzieła typowane przez kuratora Studium dnia, najpierw z Ulubionych i playlist.",
             on: true, able: true, waiting: 7, eachUsd: 0.8, waitingUsd: 5.6, aNight: 25,
-            done: 0, doneUsd: 0, nowEachUsd: 1.6, when: .rest, aNightChoices: [5, 10, 25, 50], periodUsd: 20,
-            mode: .batch, modes: [.batch, .normal], periodSpentUsd: 0
+            done: 0, doneUsd: 0, when: .rest, aNightChoices: [5, 10, 25, 50], periodUsd: 20,
+            mode: .batch, modes: [.batch], periodSpentUsd: 0, whens: [.rest, .night, .off]
         ),
     ]
 }

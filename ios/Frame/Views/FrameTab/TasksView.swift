@@ -47,7 +47,7 @@ struct TasksSection: View {
             // robi AI a co nie").
             ForEach(Self.groups, id: \.title) { group in
                 let shown = group.keys.compactMap { key in uses.first { $0.key == key } }
-                let daily = group.title == "Odkrywaj" ? Self.discover(settings) : []
+                let daily = Self.switches(group.title, settings)
                 let server = Self.serverRows(group, night)
                 if !shown.isEmpty || !daily.isEmpty || !server.isEmpty {
                     self.group(group.title, nil) {
@@ -105,7 +105,7 @@ struct TasksSection: View {
             ServerWork(names: ["tidy"]),
             ServerWork(package: "indexes", label: "Spisy muzeów"),
         ]),
-        TaskGroup(title: "Obraz", keys: ["crops", "looks"], server: [
+        TaskGroup(title: "Obraz", keys: ["crops"], server: [
             ServerWork(names: ["sharper"]),
             ServerWork(names: ["tile sets"]),
             ServerWork(names: ["kept originals"]),
@@ -277,6 +277,23 @@ struct TasksSection: View {
     /// studium są z nim ściśle powiązane i nie da się ich wyłączyć"): facts
     /// from the web, how it was painted and its way to the museum are the
     /// study's own, always on (`ai.config.STUDY_PARTS` on the server).
+    /// A group's switches, above its tasks: the study of the day and the
+    /// curator's picks; the looks, which Gemini works out in the background
+    /// as works come (no night, no rest: a switch).
+    static func switches(_ group: String, _ s: AiSettings) -> [SwitchTask] {
+        switch group {
+        case "Odkrywaj":
+            return discover(s)
+        case "Obraz":
+            let looks = s.looks.map {
+                SwitchTask(title: "Odciski wyglądu", value: $0, cost: "looks") { AiSettingsUpdate(looks: $0) }
+            }
+            return [looks].compactMap { $0 }
+        default:
+            return []
+        }
+    }
+
     static func discover(_ s: AiSettings) -> [SwitchTask] {
         let rows: [SwitchTask?] = [
             s.daily.map {
@@ -314,8 +331,6 @@ struct TasksSection: View {
                     }
                 },
             ]
-        case "looks":
-            rows = [s.looks.map { SwitchTask(title: "Nowe dzieła od razu", value: $0) { AiSettingsUpdate(looks: $0) } }]
         case "tidy":
             rows = [
                 s.gatekeeper.map {
@@ -369,7 +384,6 @@ struct TasksSection: View {
         "pl_text": ["pl_text"],
         "keywords": ["keywords", "varnish_blue", "search_words"],
         "crops": ["crops"],
-        "looks": ["looks"],
         "tidy": ["gatekeeper", "twins_judge"],
         "audit": ["audit"],
     ]
@@ -633,6 +647,42 @@ private struct ServerTaskRow: View {
     }
 }
 
+/// "Uruchom teraz" of a task the night's runner does (the catalogue's
+/// tidying, the audit): its night's tasks started now.
+private struct NightRunButton: View {
+    @Environment(AppModel.self) private var model
+    @State private var confirm = false
+    let names: [String]
+    let label: String
+
+    private var running: Bool {
+        guard let night = model.nightTasks?.running else { return false }
+        return names.contains { night.tasks.contains($0) && !night.done.contains($0) }
+    }
+
+    var body: some View {
+        Button {
+            confirm = true
+        } label: {
+            Label(running ? "Trwa" : "Uruchom teraz", systemImage: running ? "hourglass" : "play.fill")
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(Theme.ink)
+        .disabled(model.nightTasks?.running != nil)
+        .confirmationDialog(label, isPresented: $confirm, titleVisibility: .visible) {
+            Button("Uruchom teraz") {
+                Task { await model.startNightTasks(names, title: label) }
+            }
+            Button("Anuluj", role: .cancel) {}
+        } message: {
+            Text(bound: "Pyta Claude'a przez Batch, jak w nocy: koszt z Twojego klucza.")
+        }
+        .task { await model.loadNightTasks() }
+    }
+}
+
 /// The AI's mark: a sparkle after the name.
 struct TaskAiMark: View {
     var body: some View {
@@ -744,10 +794,11 @@ struct TaskPage: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             while !Task.isCancelled {
-                let going = use?.run?.running == true
+                let going = use?.run?.running == true || model.nightTasks?.running != nil
                 try? await Task.sleep(for: .seconds(going ? 5 : 20))
                 guard !Task.isCancelled else { return }
                 await model.loadAiSettings()
+                if use?.nightTasks != nil { await model.loadNightTasks() }
             }
         }
     }
@@ -795,7 +846,7 @@ struct TaskPage: View {
             Card {
                 let allowed = use.whens ?? TaskWhen.allCases
                 let choices = [TaskWhen.night, .rest, .demand, .off].filter {
-                    allowed.contains($0) && ($0 != .demand || use.nowEachUsd != nil)
+                    allowed.contains($0) && ($0 != .demand || use.nowEachUsd != nil || use.nightTasks != nil)
                 }
                 ForEach(Array(choices.enumerated()), id: \.element) { index, choice in
                     if index > 0 { Divider() }
@@ -878,6 +929,12 @@ struct TaskPage: View {
                 Card {
                     OnDemandRow(use: use, free: settings.leftoverState?.nowFreeUsd, prominent: true)
                 }
+            }
+            .id("ondemand")
+        } else if let names = use.nightTasks, when != .off, use.able {
+            VStack(alignment: .leading, spacing: 10) {
+                SectionHeader(title: "Na żądanie", subtitle: "Teraz, tak jak w nocy: przez Batch, za pół ceny")
+                Card { NightRunButton(names: names, label: use.label) }
             }
             .id("ondemand")
         }

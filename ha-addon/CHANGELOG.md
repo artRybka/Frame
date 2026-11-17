@@ -2,12 +2,24 @@
 
 ## 1.145.228
 
-- Zadania: grupa „Przy studium” nazywa się „Odkrywaj” i ma dwa
-  przełączniki, „Studium dnia” i „Propozycje kuratora”. Fakty z sieci,
-  „Jak powstawał” i „Droga dzieła” są częścią studium i działają zawsze.
-- Zadania: przy pozycjach tylko nazwa i koszt z ostatnich dni, bez opisów.
-- Zadania: w „Od razu” przełącznik „Odciski wyglądu (Gemini)” (ten sam co
-  „Szukanie wyglądem” na stronie Gemini).
+- Zadania ułożone według tego, co robią: Katalog, Obraz, Opisy i fakty,
+  Odkrywaj. Prace samego serwera stoją w tych samych grupach (z ostatnim
+  przebiegiem i ▶), a to, co robi AI, ma iskierkę. Osobna strona „Prace
+  serwera co noc” zniknęła z Zadań; na dole „Cała noc” uruchamia wszystko.
+- Przy pozycjach tylko nazwa i koszt z ostatnich dni, bez opisów.
+- „Odkrywaj”: dwa przełączniki, „Studium dnia” i „Propozycje kuratora”.
+  Fakty z sieci, „Jak powstawał” i „Droga dzieła” są częścią studium i
+  działają zawsze.
+- „Porządki katalogu” (strażnik i sędzia powtórek): co noc, tylko na
+  żądanie albo wyłączone, z „Uruchom teraz”.
+- „Kadrowanie” i „Przegląd dzieł” to po jednym zadaniu: porcja co noc i
+  więcej z resztki na koniec okresu („Większy nocny przegląd” i „Więcej
+  kadrowania” weszły w nie), albo tylko koniec okresu, tylko na żądanie,
+  wyłączone. „Przegląd dzieł” ma „Uruchom teraz”.
+- „Polskie opisy” obejmują przegląd starszych tłumaczeń (dawny „Przegląd
+  zapisanych opisów”). „Uzupełnienie studiów” pokazuje się tylko, gdy
+  jakieś studium czeka na fakty z sieci.
+- „Odciski wyglądu” (Gemini) jako przełącznik w grupie Obraz.
 
 ## 1.145.227
 

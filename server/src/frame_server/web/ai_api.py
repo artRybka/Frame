@@ -199,6 +199,13 @@ class LeftoverUseView(BaseModel):
     mode: str = "batch"
     modes: list[str] = ["batch"]
     period_spent_usd: float = 0.0
+    #: What ``when`` may be (None: all four), more from the month's rest in
+    #: its last days for a task with a portion every night (None: it has
+    #: none), and the night's tasks "Uruchom teraz" starts when it has no run
+    #: of its own on demand.
+    whens: list[str] | None = None
+    more_at_end: bool | None = None
+    night_tasks: list[str] | None = None
 
 
 class OnDemandRunView(BaseModel):
