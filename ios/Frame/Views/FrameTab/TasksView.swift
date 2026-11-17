@@ -623,7 +623,7 @@ struct TaskPage: View {
         if showsAmounts {
             VStack(alignment: .leading, spacing: 10) {
                 SectionHeader(
-                    title: more ? "Ile i za ile na koniec okresu" : "Ile i za ile",
+                    title: more ? "Ile więcej na koniec okresu" : "Ile i za ile",
                     subtitle: "Pierwsze, co się skończy, zatrzymuje zadanie"
                 )
                 Card {
