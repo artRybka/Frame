@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.145.209
+
+- Bez akt z archiwów udających dzieła. Pliki Archiwów Narodowych USA,
+  które trafiły do Wikimedia Commons jako „obrazy” (puste niemieckie
+  kwestionariusze „Fragebogen” z 1943 roku, zdjęcia samolotów
+  Departamentu Obrony, poligon w Nevadzie), mają teraz własny powód
+  „akta z archiwum państwowego” i nie wchodzą nigdzie: ani do katalogu,
+  ani do wyników Szukaj, ani z wybranej kategorii Commons. Zdjęcie albo
+  obraz, którego autorem archiwum podaje osobę, a nie urząd, zostaje.
+  Listy i wiersze na osobnej kartce (Rijksmuseum „letter”, „poem”) są
+  dokumentami jak inne kartki z tekstem. Rękopisy iluminowane, kaligrafia,
+  plakaty i listy z rysunkiem zostają.
+- Po aktualizacji serwer raz usuwa z katalogu takie akta i dokumenty,
+  które sam kiedyś dobrał (na katalogu z 13 listopada 41 pozycji).
+  Zachowane przez Ciebie (serce, playlista, ramka) zostają.
+
 ## 1.145.208
 
 - Ekran poprawiania kadru: zaraz pod dziełem okrągły przycisk z
