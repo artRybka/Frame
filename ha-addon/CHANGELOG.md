@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.214
+
+- Odkrywaj → „Kolor i nastrój”: karty pokazują tylko malarstwo, bez
+  rysunków, akwarel, grafiki, kaligrafii, rzeźby i zdjęć. Playlisty
+  zrobione wcześniej z tych kart raz tracą rysunki i dopełniają się
+  już tylko obrazami.
+
 ## 1.145.213
 
 - Konfiguracja → Zadania: jedno miejsce na wszystko, co robią Claude i

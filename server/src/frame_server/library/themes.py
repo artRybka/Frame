@@ -890,9 +890,13 @@ THEMES: list[Theme] = [
 
 # -- colour and mood ---------------------------------------------------------------
 
-#: Colour cards show paintings, drawings and watercolours only (Mateusz,
-#: 2026-11-04): no posters, prints or photographs.
-PAINTERLY = ("technique:painting", "technique:drawing")
+#: Colour cards show paintings only (Mateusz 2026-11-17: "Do sekcji Kolor
+#: i nastrój dajemy tylko malarstwo"): no drawings, watercolours, prints,
+#: posters, photographs or calligraphy. Until then (2026-11-04) drawings
+#: and watercolours came too (:data:`DRAWN`).
+PAINTERLY = ("technique:painting",)
+#: What colour cards took beside paintings from 2026-11-04 to 2026-11-17.
+DRAWN = "technique:drawing"
 
 
 def _colour(key: str, name: str, description: str, *colors: str) -> Theme:
@@ -1903,30 +1907,34 @@ def colour_themes(library: Library, day: date) -> list[Theme]:
         return found
 
 
-#: Set once playlists of colour cards keep to paintings and drawings.
-PAINTERLY_KEY = "colour_playlists_painterly"
+#: Set once playlists of colour cards keep to paintings only.
+PAINTINGS_KEY = "colour_playlists_paintings"
 
 
 def painterly_colour_playlists(library: Library) -> None:
-    """Once (1.97.0): playlists made from a colour card (the starters "W
-    odcieniach błękitu" and "Ciepłe barwy" too) keep to paintings, drawings
-    and watercolours, as the cards do now."""
-    if library.get_state(PAINTERLY_KEY, False):
+    """Once: playlists made from a colour card (the starters "W odcieniach
+    błękitu" and "Ciepłe barwy" too) keep to paintings, as the cards do
+    (Mateusz 2026-11-17). Those without a technique get Malarstwo; those
+    the cards gave paintings and drawings (1.97.0) lose the drawings. A
+    playlist with other techniques was made so by hand and stays."""
+    if library.get_state(PAINTINGS_KEY, False):
         return
     by_name = {fold(t.name): t for t in COLOUR_POOL}
     for playlist in library.playlists():
         found = BY_KEY.get(playlist.theme or "") or by_name.get(fold(playlist.name))
         rules = playlist.rules
-        if (
-            found is None
-            or found.group != COLOUR
-            or not rules.colors
-            or any(t.startswith("technique:") for t in rules.terms)
-        ):
+        if found is None or found.group != COLOUR or not rules.colors:
             continue
-        rules = rules.model_copy(update={"terms": [*rules.terms, *PAINTERLY]})
+        techniques = {t for t in rules.terms if t.startswith("technique:")}
+        if not techniques:
+            terms = [*rules.terms, *PAINTERLY]
+        elif techniques == {*PAINTERLY, DRAWN}:
+            terms = [t for t in rules.terms if t != DRAWN]
+        else:
+            continue
+        rules = rules.model_copy(update={"terms": terms})
         library.save_playlist(playlist.model_copy(update={"rules": rules}))
-    library.set_state(PAINTERLY_KEY, True)
+    library.set_state(PAINTINGS_KEY, True)
 
 
 # -- "Bo lubisz" -----------------------------------------------------------------
