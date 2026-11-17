@@ -205,6 +205,8 @@ struct CutEditor: View {
     @State private var gainNow: CGFloat = 1
     /// Counts the ticks of a slowing finger: a light tap of the phone each.
     @State private var slowTicks = 0
+    /// The earliest moment (by the clock) of the next tick.
+    @State private var nextTick = Date.distantPast
     /// The magnet's button under the work; on unless he turned it off.
     @AppStorage("cutMagnet") private var magnetOn = true
     /// The corner lies on an edge of the photograph found by `EdgeMap`.
@@ -362,7 +364,6 @@ struct CutEditor: View {
         .sensoryFeedback(.impact(flexibility: .rigid, intensity: 0.55), trigger: edgeTaps)
         .sensoryFeedback(.selection, trigger: slowTicks)
         .sensoryFeedback(.impact(weight: .light), trigger: magnetOn)
-        .task(id: grab) { await tickWhileSlow() }
         .toolbar {
             if cancel != nil {
                 ToolbarItem(placement: .confirmationAction) {
@@ -383,20 +384,18 @@ struct CutEditor: View {
 
     /// While a corner is dragged slower than at full speed, a tick of the
     /// phone (the picker wheel's), coming faster the slower the finger:
-    /// every 0.25 s just under full speed, every 0.06 s at a quarter. None
-    /// while the finger rests, nor at full speed. (1.145.208 had a soft
-    /// impact at a third of its strength, which he did not feel.)
-    private func tickWhileSlow() async {
-        guard grab != nil else { return }
-        while !Task.isCancelled, grab != nil {
-            let slowness = min(max((1 - gainNow) / 0.75, 0), 1)
-            let interval = 0.25 - 0.19 * Double(slowness)
-            try? await Task.sleep(for: .seconds(interval))
-            guard !Task.isCancelled, grab != nil else { return }
-            if let fingerAt, Date().timeIntervalSince(fingerAt) < 0.25, gainNow < 0.9 {
-                slowTicks += 1
-            }
-        }
+    /// every 0.25 s just under full speed, every 0.06 s at a quarter; only
+    /// as the finger moves, so none while it rests, nor at full speed.
+    /// Called on each movement of the finger. (1.145.208 and 1.145.215
+    /// ticked from a timer that compared the clock with the drag's own
+    /// time, which is not the clock's, so no tick ever came.)
+    private func tickIfSlow() {
+        guard gainNow < 0.9 else { return }
+        let now = Date()
+        guard now >= nextTick else { return }
+        slowTicks += 1
+        let slowness = min(max((1 - gainNow) / 0.75, 0), 1)
+        nextTick = now.addingTimeInterval(0.25 - 0.19 * Double(slowness))
     }
 
     /// The photograph's edges for the magnet, from the picture shown.
@@ -455,21 +454,12 @@ struct CutEditor: View {
                 .position(x: space.width / 2, y: origin.y + size.height + Self.below / 2)
             if let n = grab, let finger {
                 let centre = loupeCentre(finger: finger, in: space)
-                VStack(spacing: 6) {
-                    loupe(n, photoSize: size)
-                    if onEdge {
-                        Text("na krawędzi")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(Theme.paper)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Theme.ink.opacity(0.85), in: Capsule())
-                    }
-                }
-                .frame(width: Self.loupeSide)
-                .position(x: centre.x, y: centre.y + 14)
-                .allowsHitTesting(false)
-                .transition(.opacity)
+                // No tags under it (Mateusz 2026-11-17: „bez etykietki
+                // «na krawędzi»”, as before „¼”).
+                loupe(n, photoSize: size)
+                    .position(x: centre.x, y: centre.y)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
             }
         }
         .frame(width: space.width, height: space.height, alignment: .topLeading)
@@ -520,7 +510,7 @@ struct CutEditor: View {
             centre = CGPoint(x: finger.x + toward * (side / 2 + gap), y: finger.y)
         }
         centre.x = min(max(centre.x, side / 2), space.width - side / 2)
-        centre.y = min(max(centre.y, side / 2), space.height - side / 2 - 22)
+        centre.y = min(max(centre.y, side / 2), space.height - side / 2)
         return centre
     }
 
@@ -617,6 +607,7 @@ struct CutEditor: View {
                         gainNow += (target - gainNow) * (1 - exp(-dt / settle))
                         finger = drag.location
                         fingerAt = drag.time
+                        tickIfSlow()
                         let g = gainNow
                         raw = Self.rounded(raw[0] + Double(dx * g / size.width), raw[1] + Double(dy * g / size.height))
                         corners[n] = magnet(n, size: size)

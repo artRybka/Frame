@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.218
+
+- Ekran poprawiania kadru: tykanie przy wolnym przeciąganiu wreszcie
+  działa (wcześniej nie odzywało się wcale), coraz gęstsze, im wolniej
+  idzie palec. Pod lupą nie ma już etykietki „na krawędzi”; przyciągnięcie
+  do krawędzi czuć samym stuknięciem.
+
 ## 1.145.217
 
 - Własne dzieła: po aktualizacji, która zmienia łączenie zdjęć skanu,
