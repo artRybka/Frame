@@ -2125,3 +2125,41 @@ def test_the_panel_clock_rate_is_learnt_from_the_app(tmp_path: Path) -> None:
     sleep_at = second + timedelta(hours=9, minutes=59)
     expected = due + timedelta(seconds=0.0075 * (due - sleep_at).total_seconds())
     assert ms == int(expected.timestamp() * 1000)
+
+
+async def test_samsungs_refresh_before_its_alarm_is_left_alone(
+    tmp_path: Path, server_ssl: ssl.SSLContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """2026-11-17: the refresh rode on the 21:10:30 alarm (the panel's clock
+    for 21:00), set at 20:52 by a clock set right: at 21:10 the same day it
+    woke the panel, the server took it for the button, started the app and
+    the picture was drawn again. That wake is left alone; the button later
+    still starts the app."""
+    monkeypatch.setattr(panel_app_module, "CLOCK_GAIN", 0.0076)
+    monkeypatch.setattr(panel_app_module, "ALARM_LEAD", timedelta(seconds=30))
+    panel = FakePanel(server_ssl)
+    await panel.start()
+    try:
+        service = _service(tmp_path, panel.port)
+        service.player.save_settings(
+            FrameSettings(change_times=["21:00"], power_mode="economy", quiet_start=None)
+        )
+        _next_change(service, _at("2026-11-18T21:00"))
+        app = service.app
+        content = service.store.current()
+        assert content is not None
+        shown = BATTERY.model_copy(update={"shown": content.file_id})
+        answer = app.answer(shown, now=_at("2026-11-17T20:52:39"))
+        assert answer.action == "sleep" and answer.wake_ms is not None
+        app.report("sleep", {"refreshFor": answer.wake_ms, "refresh": {"ok": True}})
+        app._sleep_reported = None  # the report's own time is the wall clock
+        assert app.state.refresh_for == _at("2026-11-18T21:00").isoformat()
+
+        await app.launcher_up(_at("2026-11-17T21:10:16"))
+        await service.power.tick(_at("2026-11-17T21:11:00"))
+        assert panel.received == []
+
+        await app.launcher_up(_at("2026-11-18T09:00"))
+        assert panel.received == START
+    finally:
+        await panel.stop()

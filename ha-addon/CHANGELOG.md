@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.226
+
+- W trybie oszczędnym ramka budziła się ok. 10 minut po wieczornej zmianie
+  jeszcze raz i rysowała ten sam obraz od nowa. Budził ją dzienny przegląd
+  ekranu Samsunga, który przez przesunięty budzik wypadał tego samego
+  wieczoru. Serwer rozpoznaje tę pobudkę i nie uruchamia aplikacji ramki,
+  więc obraz nie jest rysowany drugi raz, a ramka sama wraca do snu.
+
 ## 1.145.225
 
 - „Popraw kadr”: przełącznik „Dzieło / Rama”. W „Rama” ustawiasz narożniki
