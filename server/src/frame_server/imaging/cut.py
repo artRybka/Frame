@@ -403,3 +403,78 @@ def sheet_out_to_strips(
             for i in idx:
                 out[i][axis] = end
     return [(x, y) for x, y in out]
+
+
+def _straight(q: np.ndarray) -> tuple[np.ndarray, int, int]:
+    """The perspective that sets ``q`` (corners in pixels) straight, as
+    :func:`warp` does, and the straight picture's width and height."""
+    tl, tr, br, bl = q
+    width = max(round(float(max(np.linalg.norm(tr - tl), np.linalg.norm(br - bl)))), 1)
+    height = max(round(float(max(np.linalg.norm(bl - tl), np.linalg.norm(br - tr)))), 1)
+    target = np.array([[0, 0], [width, 0], [width, height], [0, height]], dtype=np.float32)
+    return cv2.getPerspectiveTransform(q.astype(np.float32), target), width, height
+
+
+def _inset(q: np.ndarray, inset: float = INSET) -> np.ndarray:
+    return q + (q.mean(axis=0) - q) * inset * 2
+
+
+def framed_geometry(
+    outer: Quad, work: Quad, aspect: float
+) -> tuple[float, tuple[float, float, float, float]] | None:
+    """The card's "W ramie" (:func:`framed`) for a photograph of
+    ``aspect`` (width / height): the straight picture's width / height,
+    and the box the work as shown (cut to ``work``, :func:`warp`'s inset)
+    takes in it (left, top, right, bottom, fractions). None when the work
+    is not inside ``outer``."""
+    if aspect <= 0:
+        return None
+    scale = np.array([aspect * 1000.0, 1000.0])
+    matrix, width, height = _straight(np.array(outer, dtype=np.float64) * scale)
+    inner = _inset(np.array(work, dtype=np.float64) * scale)
+    pts = cv2.perspectiveTransform(inner.reshape(-1, 1, 2).astype(np.float32), matrix)
+    pts = pts.reshape(-1, 2) / [width, height]
+    xs, ys = pts[:, 0], pts[:, 1]
+    box = (float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max()))
+    if box[0] < -0.01 or box[1] < -0.01 or box[2] > 1.01 or box[3] > 1.01:
+        return None
+    if (box[2] - box[0]) * (box[3] - box[1]) > 0.985:
+        return None  # nothing around the work worth showing
+    clipped = tuple(round(min(1.0, max(0.0, v)), 5) for v in box)
+    return round(width / height, 5), (clipped[0], clipped[1], clipped[2], clipped[3])
+
+
+def framed(
+    img: Image.Image, outer: Quad, work: Quad | None = None, shown: Image.Image | None = None
+) -> Image.Image:
+    """The photograph ``img`` cut to ``outer`` (a frame's or a mount's
+    outer edge) and set straight, the edge itself kept. With ``shown`` (the
+    work as the card shows it: its colours corrected) laid over where the
+    work (``work``) is in it, so the frame holds the same picture."""
+    rgb = img.convert("RGB")
+    w, h = rgb.size
+    matrix, width, height = _straight(np.array(outer, dtype=np.float64) * [w, h])
+    out = cv2.warpPerspective(
+        np.asarray(rgb),
+        matrix,
+        (width, height),
+        flags=cv2.INTER_AREA if max(width, height) < max(w, h) * 0.5 else cv2.INTER_CUBIC,
+        borderMode=cv2.BORDER_REPLICATE,
+    )
+    if shown is not None and work is not None:
+        inner = _inset(np.array(work, dtype=np.float64) * [w, h])
+        dst = cv2.perspectiveTransform(inner.reshape(-1, 1, 2).astype(np.float32), matrix)
+        sw, sh = shown.size
+        src = np.array([[0, 0], [sw, 0], [sw, sh], [0, sh]], dtype=np.float32)
+        lay = cv2.getPerspectiveTransform(src, dst.reshape(-1, 2).astype(np.float32))
+        picture = cv2.warpPerspective(
+            np.asarray(shown.convert("RGB")), lay, (width, height), flags=cv2.INTER_AREA
+        )
+        mask = cv2.warpPerspective(
+            np.full((sh, sw), 255, np.uint8), lay, (width, height), flags=cv2.INTER_LINEAR
+        )
+        a = (mask.astype(np.float32) / 255.0)[..., None]
+        out = (picture * a + out * (1.0 - a)).astype(np.uint8)
+    made = Image.fromarray(out)
+    made.info.update({k: v for k, v in img.info.items() if k != "icc_profile"})
+    return made

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.224
+
+- Karta dzieła: obok „Oryginał / Na ramce” okrągły przycisk z ikoną ramy,
+  gdy muzeum (albo Ty) sfotografowało dzieło w ramie, w passe-partout,
+  albo grafika jest pokazana bez marginesu. Pokazuje zdjęcie przycięte do
+  zewnętrznej krawędzi ramy i wyprostowane, z płynnym odjazdem od samego
+  dzieła. Na ramkę i do barw idzie nadal samo dzieło. Starsze kadry
+  dowiadują się o ramie same, nocą albo przy otwarciu karty.
+
 ## 1.145.223
 
 - Inteligentna playlista: szare rysunki z WikiArt (np. „The Mathematicians”

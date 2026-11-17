@@ -48,7 +48,9 @@ from PIL import Image, ImageDraw
 
 from ..imaging.cut import (
     Quad,
+    area,
     backdrop_quad,
+    framed_geometry,
     sheet_out_to_strips,
     snap,
     strip_depths,
@@ -116,6 +118,21 @@ SHAPE_SWEEP = 1
 RESHAPE_PER_NIGHT = 300
 #: The picture for that question.
 SHAPE_SIDE = 1000
+
+#: Once the cuts set before the frame's or the passe-partout's outer edge
+#: was kept (:attr:`Cut.surround`, the card's "W ramie", Mateusz
+#: 2026-11-17) are put before Opus again for it (:meth:`Crops.surrounded`).
+SURROUND_SWEEP = 1
+#: Of those, asked in one night at most: the corners' whole question,
+#: about a cent each through the Batch API.
+SURROUND_PER_NIGHT = 150
+#: The layers of Opus's answer kept as what surrounds the work, and their
+#: name on the card.
+SURROUND_KINDS = {"frame_outer": "frame", "mount": "mount"}
+#: :func:`surround_in`: a surround this much larger than the work at least.
+SURROUND_LARGER = 1.03
+#: What the judge saw around a work that may have a frame or a mount.
+FRAMED_AROUND = frozenset({"frame", "mount"})
 
 #: How long a page about a work waits for its photograph to be looked at
 #: and cut (seconds): the judge and Opus take 5 to 15 s, a minute when the
@@ -307,6 +324,25 @@ def read_layers(data: dict[str, Any]) -> tuple[Quad | None, Quad | None] | None:
             return None, work_quad
         return work_quad, None
     return quads[sheet], work_quad
+
+
+def _aside(claim: dict[str, Any]) -> bool:
+    """A claim put before Opus beside the night's cutting (the outline
+    asked again, the frame's edge): outside its limit and its counts."""
+    return bool(claim.get("reshape") or claim.get("frame_edge"))
+
+
+def _surround_fields(found: dict[str, Any]) -> dict[str, Any]:
+    """:attr:`Cut.surround` and its kind from Opus's corners
+    (:func:`corners_in`), asked with them; nothing for corners from
+    elsewhere (the pixels' strips)."""
+    if "surround" not in found:
+        return {}
+    return {
+        "surround": found.get("surround"),
+        "surround_kind": str(found.get("surround_kind") or ""),
+        "surround_asked": True,
+    }
 
 
 def _now() -> str:
@@ -503,6 +539,48 @@ def plate_for_chart(found: dict[str, Any]) -> dict[str, Any]:
     return {**found, "work": plate, "plate": None}
 
 
+def surround_in(
+    img: Image.Image, data: dict[str, Any], work: Quad | None
+) -> tuple[Quad, str] | None:
+    """The outer edge of the frame or the passe-partout around ``work`` in
+    Opus's answer (``data``), set on the photograph's edges, and what it is
+    ("frame", "mount"): the outermost such layer around the work and
+    clearly larger than it. None when there is none."""
+    if work is None:
+        return None
+    x0, y0, x1, y1 = _box(work)
+    for layer in data.get("layers") or []:  # from the outside in
+        if not isinstance(layer, dict):
+            continue
+        kind = SURROUND_KINDS.get(str(layer.get("kind") or ""))
+        quad = _quad(layer)
+        if kind is None or quad is None:
+            continue
+        bx0, by0, bx1, by1 = _box(quad)
+        if bx0 > x0 + 0.005 or by0 > y0 + 0.005 or bx1 < x1 - 0.005 or by1 < y1 - 0.005:
+            continue  # not around the work
+        if area(quad) < area(work) * SURROUND_LARGER:
+            continue
+        snapped = snap(img, quad, str(layer.get("kind")))
+        return (snapped if valid(snapped) is not None else quad), kind
+    return None
+
+
+def framed(cut: Cut) -> Cut:
+    """``cut`` with the card's "W ramie" as it is now (:attr:`Cut.framed_kind`,
+    :attr:`Cut.framed_aspect`, :attr:`Cut.framed_inner`)."""
+    by, shown = cut.framed_by(), cut.shown()
+    found = None
+    if by is not None and shown is not None:
+        found = framed_geometry(by[0], shown, cut.aspect)
+    if by is None or found is None:
+        none: dict[str, Any] = {"framed_kind": "", "framed_aspect": 0.0, "framed_inner": None}
+        return cut.model_copy(update=none)
+    return cut.model_copy(
+        update={"framed_kind": by[1], "framed_aspect": found[0], "framed_inner": found[1]}
+    )
+
+
 def corners_in(img: Image.Image, data: dict[str, Any]) -> dict[str, Any] | None:
     """Opus's answer (:data:`CORNERS_SCHEMA`) as corners set on the edges
     of ``img``, the photograph it was asked about (:meth:`Crops.corners`)."""
@@ -529,12 +607,15 @@ def corners_in(img: Image.Image, data: dict[str, Any]) -> dict[str, Any] | None:
         shown = None  # the sheet is the photograph: only the plate is cut
     if shown is None and plate is None:
         return None
+    around = surround_in(img, data, shown)
     return {
         "work": shown,
         "plate": plate,
         "aspect": round(img.width / img.height, 5),
         "shape": shape,
         "note": str(data.get("note") or "")[:300],
+        "surround": around[0] if around is not None else None,
+        "surround_kind": around[1] if around is not None else "",
     }
 
 
@@ -623,6 +704,19 @@ class Crops(CriticNight):
             and cut.shape == ""
         )
 
+    @classmethod
+    def unsurrounded(cls, item: Item) -> bool:
+        """A cut of the picture shown set before the frame's or the
+        passe-partout's outer edge was kept (:attr:`Cut.surround`), where
+        one may be: a frame or a mount seen around the work, or a work of
+        his own (photographed in its frame on a wall). Asked once."""
+        cut = item.cut
+        if cut is None or cut.surround_asked or cut.work is None or item.cut_shown() is None:
+            return False
+        if cut.by == "auto" and cls.stale(item):
+            return False
+        return item.source in OWN_SOURCES or bool(FRAMED_AROUND & set(cut.around))
+
     def banded(self, item: Item) -> bool:
         """A thin strip of backdrop along the thumbnail's sides
         (:func:`..imaging.cut.thin_backdrop`), which the judge misses."""
@@ -670,6 +764,7 @@ class Crops(CriticNight):
         claims: dict[str, Any] = state["claims"]
         found: list[tuple[Item, dict[str, Any]]] = []
         rechecks: list[tuple[Item, dict[str, Any]]] = []
+        surrounds = 0
         for item_id, claim in list(claims.items()):
             item = self.library.get(item_id)
             if item is None:
@@ -677,6 +772,10 @@ class Crops(CriticNight):
             elif claim.get("reshape"):
                 if len(rechecks) < RESHAPE_PER_NIGHT:
                     rechecks.append((item, claim))
+            elif claim.get("frame_edge"):
+                if surrounds < SURROUND_PER_NIGHT:
+                    rechecks.append((item, claim))
+                    surrounds += 1
             elif len(found) < self.limit(True):
                 found.append((item, claim))
         return True, found + rechecks
@@ -686,15 +785,16 @@ class Crops(CriticNight):
 
     def asked_in(self, round_: list[tuple[Item, dict[str, Any]]], critic: bool) -> int:
         # (the outlines asked again have a limit of their own)
-        return sum(1 for _, claim in round_ if not claim.get("reshape"))
+        return sum(1 for _, claim in round_ if not _aside(claim))
 
     def waiting_claims(self) -> int:
         """Works the judge found something around, waiting for Opus."""
         claims = self.state().get("claims") or {}
-        return sum(1 for c in claims.values() if not (c or {}).get("reshape"))
+        return sum(1 for c in claims.values() if not _aside(c or {}))
 
     def order(self) -> bool:
         self.reshaped()
+        self.surrounded()
         self.strips_rechecked()
         self.swept()
         self.untwinned()
@@ -719,6 +819,27 @@ class Crops(CriticNight):
         state["claims"], state["shape_sweep"] = claims, SHAPE_SWEEP
         self._save(state)
         log.info("crops: %d cuts set before the outline was asked, for Opus", len(found))
+        return len(found)
+
+    def surrounded(self) -> int:
+        """Once (:data:`SURROUND_SWEEP`): the cuts set before the frame's or
+        the passe-partout's outer edge was kept are put before Opus for it
+        (:meth:`unsurrounded`), the works cared about first,
+        :data:`SURROUND_PER_NIGHT` a night. Not while a round is under way.
+        How many."""
+        state = self.state()
+        if state.get("surround_sweep") == SURROUND_SWEEP or state.get("order"):
+            return 0
+        claims = state.get("claims") or {}
+        cared = self.cared()
+        found = [i for i in self.library.all_items() if self.unsurrounded(i) and i.id not in claims]
+        found.sort(key=lambda i: cared.get(i.id, REST))
+        for item in found:
+            around = list(item.cut.around) if item.cut else []
+            claims[item.id] = {"frame_edge": True, "around": around}
+        state["claims"], state["surround_sweep"] = claims, SURROUND_SWEEP
+        self._save(state)
+        log.info("crops: %d cuts without their frame's edge, for Opus", len(found))
         return len(found)
 
     def strips_rechecked(self) -> int:
@@ -892,7 +1013,10 @@ class Crops(CriticNight):
         img = self.photo(item)
         img.thumbnail((PHOTO_SIDE, PHOTO_SIDE), Image.Resampling.LANCZOS)
         around = ", ".join(claim.get("around") or []) or "?"
-        text = f"{CORNERS}\n\n{facts(item)}\nSeen around it at a glance: {around}."
+        if item.source in OWN_SOURCES:  # his own photograph (the frame's edge asked)
+            text = f"{HOME}\n\n{facts(item)}"
+        else:
+            text = f"{CORNERS}\n\n{facts(item)}\nSeen around it at a glance: {around}."
         if claim.get("hint"):
             # "Do sprawdzenia" → "Przytnij": what the night audit saw, in Polish.
             text += (
@@ -948,6 +1072,8 @@ class Crops(CriticNight):
         shape = shape_of(data)
         if claim.get("reshape"):
             return {"reshape": True, "shape": shape} if shape else {}
+        if claim.get("frame_edge"):
+            return self.surround_found(item, data)
         if shape in NOT_RECTANGLE:
             # No strips from the pixels either: the outline is the work's.
             return {"around": list(claim.get("around") or []), "shape": shape, "whole": True}
@@ -994,6 +1120,9 @@ class Crops(CriticNight):
             if self.unshaped(stored):
                 self.reshape(stored, str(claim.get("shape") or ""))
             return False
+        if claim.get("frame_edge"):
+            self.surround_write(stored, claim)
+            return False
         if not self.open_to_cut(stored):
             return False  # the owner's own cut: his
         if claim.get("whole"):
@@ -1007,6 +1136,7 @@ class Crops(CriticNight):
             picture=stored.picture_key(),
             shape=str(claim.get("shape") or ""),
             at=_now(),
+            **_surround_fields(claim),
         )
         self.apply(stored, cut)
         return True
@@ -1036,12 +1166,67 @@ class Crops(CriticNight):
         log.info("crops: %s is %s, shown whole", item.id, shape)
         return self.apply(item, whole)
 
+    def surround_found(self, item: Item, data: dict[str, Any]) -> dict[str, Any]:
+        """The frame's or the passe-partout's outer edge around the work
+        as it is cut now, from Opus's corners (``data``)."""
+        cut = item.cut
+        try:
+            found = surround_in(self.photo(item), data, cut.work if cut is not None else None)
+        except OSError as err:
+            log.info("crops: the photograph of %s: %s", item.id, err)
+            return {}
+        return {
+            "frame_edge": True,
+            "quad": found[0] if found is not None else None,
+            "kind": found[1] if found is not None else "",
+        }
+
+    def surround_write(self, item: Item, found: dict[str, Any]) -> Item:
+        """The frame's edge found (:meth:`surround_found`) kept with the
+        work's cut, asked for good; its pictures stay as they are."""
+        cut = item.cut
+        if cut is None or not self.unsurrounded(item):
+            return item
+        kind = str(found.get("kind") or "")
+        quad = found.get("quad") if kind else None
+        found_now = {
+            "surround": quad,
+            "surround_kind": kind if quad else "",
+            "surround_asked": True,
+        }
+        updated = framed(cut.model_copy(update=found_now))
+        log.info("crops: %s around the work: %s", item.id, kind or "nothing")
+        return self.library.update(item.id, cut=updated) or item
+
+    def surround_now(self, item: Item) -> bool:
+        """A card opened on a work cut before its frame's edge was kept
+        (:meth:`unsurrounded`): Opus asked for it now. Whether one was
+        found."""
+        claim = {"frame_edge": True, "around": list(item.cut.around) if item.cut else []}
+        try:
+            answer = self.claude.ask(KIND, self.critic_question(item, claim))
+        except Exception as err:  # no key, the limit, a picture gone: the night's again
+            log.info("crops: the frame of %s not asked now (%s)", item.id, err)
+            return False
+        if answer.refused or not answer.data:
+            return False
+        found = self.surround_found(item, answer.data)
+        if not found:
+            return False
+        claims = self.state().get("claims") or {}
+        if claims.get(item.id, {}).get("frame_edge"):
+            state = self.state()
+            (state.get("claims") or {}).pop(item.id, None)
+            self._save(state)
+        updated = self.surround_write(item, found)
+        return bool(updated.cut is not None and updated.cut.framed_kind)
+
     # -- putting a cut on -----------------------------------------------------------
 
     def apply(self, item: Item, cut: Cut | None) -> Item:
         """``cut`` kept for the work and its pictures made again from it:
         the original, the thumbnail, the colours, the study's details."""
-        cut = cut.without_twin() if cut is not None else None
+        cut = framed(cut.without_twin()) if cut is not None else None
         changes: dict[str, Any] = {"cut": cut}
         if item.framing:
             # His framings were set on the picture as it was shown: they
@@ -1123,6 +1308,7 @@ class Crops(CriticNight):
             shape=str(found.get("shape") or ""),
             by="owner",
             at=_now(),
+            **_surround_fields(found),
         )
         self.forget_written(item.id)
         return self.apply(item, cut)
@@ -1180,7 +1366,13 @@ class Crops(CriticNight):
         since) is looked at now, the judge and then Opus, as at night.
         Whether it was cut."""
         stored = self.library.get(item.id) or item
-        if not self.config.enabled(self.switch) or not self.wanted(stored):
+        if not self.config.enabled(self.switch):
+            return False
+        if self.unsurrounded(stored):
+            # "W ramie" on the card (the app reads the work again)
+            self.surround_now(stored)
+            stored = self.library.get(item.id) or stored
+        if not self.wanted(stored):
             return False
         if self.unshaped(stored):
             return self.reshape_now(stored)
@@ -1238,7 +1430,7 @@ class Crops(CriticNight):
         state = self.state()
         ordered = set(((state.get("order") or {}).get("ids") or {}).values())
         claims = state.get("claims") or {}
-        ids = [k for k, c in claims.items() if not (c or {}).get("reshape") and k not in ordered]
+        ids = [k for k, c in claims.items() if not _aside(c or {}) and k not in ordered]
         cared = self.cared()
         return sorted(ids, key=lambda i: cared.get(i, REST))
 
@@ -1251,7 +1443,7 @@ class Crops(CriticNight):
         claim = (state.get("claims") or {}).get(item_id)
         ordered = set(((state.get("order") or {}).get("ids") or {}).values())
         stored = self.library.get(item_id)
-        if not claim or claim.get("reshape") or item_id in ordered or stored is None:
+        if not claim or _aside(claim) or item_id in ordered or stored is None:
             return None
         answer = self.claude.ask(KIND, self.critic_question(stored, claim))
         found = (

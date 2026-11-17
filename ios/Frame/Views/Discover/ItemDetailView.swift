@@ -14,6 +14,13 @@ struct ItemDetailView: View {
     let itemID: String
     @State private var item: Item?
     @State private var view = ViewMode.original
+    /// "W ramie" (`FrameToggle`, Mateusz 2026-11-17): the framed
+    /// photograph is laid over the work…
+    @State private var inFrame = false
+    /// …the picture's box has its shape…
+    @State private var wide = false
+    /// …and the camera has pulled back from the work to it (0…1, `PullBack`).
+    @State private var pull: CGFloat = 0
     @State private var showingPlaylists = false
     /// "Szukaj lepszej kopii": the sheet of the picture's copies elsewhere.
     @State private var findingCopies = false
@@ -232,6 +239,9 @@ struct ItemDetailView: View {
         .task(id: described) { await loadSeen() }
         .task(id: described) { await sharpen() }
         .task(id: described) { await checkCut() }
+        .task(id: item?.framed == nil ? "" : (item?.pictureVersion ?? "")) { await warmFramed() }
+        .onChange(of: view) { _, mode in if mode == .frame { leaveFrame() } }
+        .onChange(of: item?.framed) { _, look in if look == nil { leaveFrame() } }
         .fullScreenCover(isPresented: $correctingCut) {
             if let item {
                 CutEditor(item: item) { corners in await setCut(CutUpdate(corners: corners)) }
@@ -1168,7 +1178,7 @@ struct ItemDetailView: View {
                     // picture reports, so a guessed shape (4:3 for a museum
                     // that gives no size) shrank a portrait leaf to a stamp.
                     Color.clear
-                        .aspectRatio(CGFloat(aspect(item)), contentMode: .fit)
+                        .aspectRatio(CGFloat(wide ? item.framed?.aspect ?? aspect(item) : aspect(item)), contentMode: .fit)
                         .layoutProbe("box")
                         .overlay {
                             ArtImage(
@@ -1182,6 +1192,17 @@ struct ItemDetailView: View {
                                         contentMode: .fit, priority: .high, brighten: true
                                     )
                                 }
+                        }
+                        .overlay {
+                            // "W ramie": the photograph in its frame, the camera
+                            // pulling back from the work to it.
+                            if inFrame, let look = item.framed {
+                                ArtImage(
+                                    ref: framedRef(item), placeholder: .clear, maxPixel: 1800,
+                                    contentMode: .fill, priority: .high, crossfade: true, brighten: true
+                                )
+                                .modifier(PullBack(pull: pull, inner: look.inner))
+                            }
                         }
                         .overlay {
                             if cleaning, let kind = recoveryKind {
@@ -1205,11 +1226,18 @@ struct ItemDetailView: View {
             }
             .pictureBox()
             .layoutProbe("group")
-            Picker("Widok", selection: $view.animation(.easeInOut)) {
-                ForEach(ViewMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            HStack(spacing: 12) {
+                Picker("Widok", selection: $view.animation(.easeInOut)) {
+                    ForEach(ViewMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 260)
+                // Beside it, only where there is a frame to show (variant C).
+                if view == .original, let look = item.framed {
+                    FrameToggle(look: look, on: wide) { toggleFrame(item) }
+                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                }
             }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 260)
             if view == .frame {
                 Text(bound: frameHint)
                     .font(.caption)
@@ -1225,7 +1253,7 @@ struct ItemDetailView: View {
         .fullScreenCover(item: $opened) { screen in
             switch screen {
             case .original:
-                OriginalViewer(item: item)
+                OriginalViewer(item: item, inFrame: inFrame && wide)
                     .navigationTransition(.zoom(sourceID: item.id, in: zoomSpace))
             case .crop:
                 CropScreen(
@@ -1275,6 +1303,67 @@ struct ItemDetailView: View {
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { cropHome = $0 }
         .accessibilityAddTraits(cropping ? .isButton : [])
         .accessibilityHint(Text(cropping ? "Otwiera kadrowanie na całym ekranie" : ""))
+    }
+
+    /// "W ramie"'s picture of the work shown now.
+    private func framedRef(_ item: Item) -> ImageRef {
+        let look = item.framed.map { "\($0.kind)\($0.aspect)" } ?? ""
+        return .framed(item.id, side: 1800, version: "\(item.pictureVersion)|\(look)")
+    }
+
+    /// "W ramie" on and off: the framed photograph laid over the work at
+    /// the work's size, then the camera pulls back to the whole of it while
+    /// the box takes its shape; off, the other way and the work again.
+    private func toggleFrame(_ item: Item) {
+        guard item.framed != nil else { return }
+        if inFrame {
+            withAnimation(.easeInOut(duration: 0.45)) {
+                pull = 0
+                wide = false
+            } completion: {
+                if !wide { inFrame = false }
+            }
+            return
+        }
+        var still = Transaction()
+        still.disablesAnimations = true
+        withTransaction(still) {
+            pull = 0
+            inFrame = true
+        }
+        Task { @MainActor in
+            await Task.yield()
+            withAnimation(.easeInOut(duration: 0.45)) {
+                pull = 1
+                wide = true
+            }
+        }
+    }
+
+    /// Back to the work alone, at once (another view, another picture).
+    private func leaveFrame() {
+        var still = Transaction()
+        still.disablesAnimations = true
+        withTransaction(still) {
+            inFrame = false
+            wide = false
+            pull = 0
+        }
+    }
+
+    /// The framed photograph fetched as the card opens, so the camera
+    /// pulls back onto it rather than onto nothing.
+    private func warmFramed() async {
+        guard let item, item.framed != nil, let request = model.backend.request(for: framedRef(item)) else { return }
+        _ = try? await ImageLoader.shared.image(for: request, maxPixel: 1800, priority: .normal)
+        // CI and simulator screenshots: `-framePull 1` opens it framed
+        // (`0.5` halfway through the camera's move).
+        if LaunchRoute.screen == "detail", UserDefaults.standard.object(forKey: "framePull") != nil {
+            let pull = UserDefaults.standard.double(forKey: "framePull")  // a launch argument comes as text
+            inFrame = true
+            wide = pull >= 0.5
+            self.pull = CGFloat(pull)
+        }
     }
 
     /// One short line under the preview.

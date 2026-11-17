@@ -174,6 +174,19 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
 
     var isCropped: Bool { cutShown != nil }
 
+    /// The card's "W ramie" for the picture shown now: nil when there is
+    /// nothing around the work to show.
+    var framed: FramedLook? {
+        guard let cut, cutShown != nil, let kind = cut.framedKind, !kind.isEmpty,
+              let aspect = cut.framedAspect, aspect > 0,
+              let inner = cut.framedInner, inner.count == 4, inner[2] > inner[0], inner[3] > inner[1]
+        else { return nil }
+        return FramedLook(
+            kind: kind, aspect: aspect,
+            inner: CGRect(x: inner[0], y: inner[1], width: inner[2] - inner[0], height: inner[3] - inner[1])
+        )
+    }
+
     /// `Item.cut_version` on the server: changes with every change of the cut.
     var cutVersion: String {
         guard let cut, cutShown != nil else { return "" }
@@ -220,6 +233,29 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
             cropped: isCropped ? true : nil, cut: cutVersion,
             cleaned: cleanedShown?.kind, cleanedAt: cleanedShown == nil ? nil : cleanedVersion, own: own
         )
+    }
+}
+
+/// The card's "W ramie" (Mateusz 2026-11-17, variant C: a round button
+/// beside "Oryginał / Na ramce"): the work shown in its frame, its
+/// passe-partout or, for a print shown without it, its sheet, as the
+/// museum photographed it. Only the app's view: the frame and the colours
+/// keep the work alone.
+struct FramedLook: Equatable, Sendable {
+    /// "frame", "mount" or "paper".
+    var kind: String
+    /// The picture's width / height.
+    var aspect: Double
+    /// Where the work is in it (fractions of its width and height).
+    var inner: CGRect
+
+    /// What the button shows, said by VoiceOver and for a moment beside it.
+    var name: String {
+        switch kind {
+        case "mount": "W passe-partout"
+        case "paper": "Z marginesem"
+        default: "W ramie"
+        }
     }
 }
 
@@ -371,6 +407,14 @@ struct Cut: Codable, Hashable, Sendable {
     /// What was around the work ("frame", "easel", "paper_margin"…).
     var around: [String] = []
     var at: String = ""
+    /// The card's "W ramie" (Mateusz 2026-11-17): what is around the work
+    /// in the photograph, "frame", "mount" or "paper" (a print shown
+    /// without its sheet); "" or nil (an older server): nothing to show.
+    var framedKind: String? = nil
+    /// That picture's width / height.
+    var framedAspect: Double? = nil
+    /// Where the work is in it: left, top, right, bottom (fractions).
+    var framedInner: [Double]? = nil
 
     var shown: [[Double]]? { !paper && plate != nil ? plate : work }
     var byOwner: Bool { by == "owner" }

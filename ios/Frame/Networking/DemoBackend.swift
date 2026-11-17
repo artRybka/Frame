@@ -10,7 +10,7 @@ actor DemoBackend: FrameBackend {
     nonisolated var isDemo: Bool { true }
 
     private struct DemoFile: Decodable {
-        let items: [Item]
+        var items: [Item]
         let playlists: [Playlist]
         /// Crops the server's interest analysis chose: item id -> orientation -> crops.
         var framing: [String: [String: DemoFraming.Crops]]?
@@ -196,7 +196,24 @@ actor DemoBackend: FrameBackend {
             let data = try? Data(contentsOf: url),
             let file = try? LiveBackend.decoder().decode(DemoFile.self, from: data)
         else { return DemoFile(items: [], playlists: [], framing: nil, tints: nil) }
-        return file
+        guard framedDemo,
+              let url = Bundle.main.url(forResource: "DemoFramed", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let framed = try? LiveBackend.decoder().decode(FramedFile.self, from: data)
+        else { return file }
+        var more = file
+        more.items = framed.items + file.items
+        return more
+    }
+
+    /// Screenshots: `-demoFramed YES` adds a painting the museum
+    /// photographed in its frame (MNW), cut to the work, first in "Dla
+    /// Ciebie" so `-screen detail` opens it ("W ramie", Mateusz 2026-11-17).
+    static let framedDemo = UserDefaults.standard.bool(forKey: "demoFramed")
+    private static let framedID = "mnw:demo-ramka"
+
+    private struct FramedFile: Decodable {
+        let items: [Item]
     }
 
     // MARK: Matching (mirrors server/src/frame_server/library/repo.py)
@@ -1082,7 +1099,11 @@ actor DemoBackend: FrameBackend {
         return [
             SuggestionRow(
                 key: "for-you", title: "Dla Ciebie", subtitle: "Następne w rotacji Propozycje",
-                items: remote(Array(items.shuffled().prefix(12)))
+                items: remote(Array(
+                    (Self.framedDemo
+                        ? items.filter { $0.id == Self.framedID } + items.filter { $0.id != Self.framedID }.shuffled()
+                        : items.shuffled()).prefix(12)
+                ))
             ),
             SuggestionRow(
                 key: "theme", title: "Motyw dnia: \(theme.name)", subtitle: theme.description,
@@ -2419,6 +2440,9 @@ actor DemoBackend: FrameBackend {
         let url: URL?
         switch image {
         case let .thumb(id), let .tile(id): url = Self.bundled(id) ?? imageURLs[id]?.thumb
+        case let .framed(id, _, _), let .museumPhoto(id, _, _) where Self.bundled(id + "-framed") != nil:
+            url = Self.bundled(id + "-framed")  // `-demoFramed`: a painting photographed in its frame
+        case .framed: url = nil
         case let .museumPhoto(id, _, _) where FileManager.default.fileExists(atPath: DemoFraming.uploadURL(id + "-full").path):
             url = DemoFraming.uploadURL(id + "-full")  // an own work's photograph whole
         case let .image(id), let .original(id, _), let .museumPhoto(id, _, _), let .beforeCleaning(id, _), let .treated(id, _, _, _), let .fine(id, _, _): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
