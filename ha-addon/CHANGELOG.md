@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.145.210
+
+- Skan („Inteligentne”) dzieła za szybą, trzy poprawki po rysunku w
+  szerokim passe-partout: lampa wypalona w zdjęciu na wprost znika cała
+  także wtedy, gdy jedno ze zdjęć bocznych ma w tym miejscu odbicie okna
+  (zostawała zielonkawa plama); własna sylwetka odbita w szybie nie
+  zostaje na papierze jako ciemniejszy kształt z jasnym obrysem; przy
+  brzegu dzieła nie zostaje blady pas odbicia, gdy zdjęcie boczne
+  pokazuje dzieło aż do brzegu. Pod jasnym odbiciem kreski rysunku są
+  brane ze zdjęć bocznych, więc nie bledną.
+
 ## 1.145.209
 
 - Konfiguracja → Claude → „Na co, w tej kolejności”: pod „Słowa kluczowe i
