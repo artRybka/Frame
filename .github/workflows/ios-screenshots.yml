@@ -287,6 +287,12 @@ jobs:
             capture own-scan 12 "own-scan-held-side-$appearance" -scanLook side -scanHeld left
             capture own-scan 12 "own-scan-held-front-$appearance" -scanLook front -scanHeld left
             capture own-scan 12 "own-scan-result-$appearance" -scanLook result
+            # No colour chart beside the work: the white balance under the
+            # picture, as taken and set cooler; and after "Kadr" of one
+            # photograph, where there is no scan to choose.
+            capture own-scan 12 "own-scan-balance-$appearance" -scanLook result -scanBalance cool
+            capture own-balance 18 "own-balance-$appearance" -scanBalance cool
+            capture own-balance 18 "own-balance-none-$appearance"
             # A picture on its way (demo: 4 s, then 2.5 s preparing, 2.5 s
             # sending, 9 s drawing): the bar while sending, then the frame
             # painted over in watercolour, the drawing held early, midway and

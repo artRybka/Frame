@@ -94,6 +94,10 @@ struct OwnPhotoCut: Codable, Hashable, Sendable {
     var corners: [[Double]]?
     var by: String = "auto"
     var shape: String = ""
+    /// The white balance he set where no colour chart was beside the work
+    /// (-1 cooler … 1 warmer; 0, as taken): the server keeps the work's
+    /// photograph in it (Mateusz 2026-11-17 16:27 UTC).
+    var balance: Double = 0
 }
 
 struct NewOwnWork: Codable, Hashable, Sendable {
@@ -101,6 +105,7 @@ struct NewOwnWork: Codable, Hashable, Sendable {
     var corners: [[Double]]?
     var by: String = "auto"
     var shape: String = ""
+    var balance: Double = 0
     var text: OwnDescription
 }
 

@@ -16,6 +16,8 @@ struct OwnScanSketch: View {
     /// The phone held with its top to the left: what is said over the
     /// picture turns (the scene's wall stays as it is).
     let quarter = UserDefaults.standard.string(forKey: "scanHeld") == "left" ? 1 : 0
+    /// The white balance on the page after the scan (`-scanBalance cool|warm`).
+    @State private var balance = OwnBalance.launched
 
     private var front: [CGPoint] { DemoOwn.outer.map { CGPoint(x: $0[0], y: $0[1]) } }
 
@@ -161,7 +163,7 @@ struct OwnScanSketch: View {
     private var result: some View {
         if let before = DemoOwn.photo().map({ OwnPicture.cut($0, corners: DemoOwn.work) }),
            let after = DemoOwn.photo(glare: 0).map({ OwnPicture.cut($0, corners: DemoOwn.work) }) {
-            OwnScanResult(before: before, after: after, again: close, next: { _ in })
+            OwnScanResult(before: before, after: after, balance: $balance, again: close, next: { _ in })
         }
     }
 

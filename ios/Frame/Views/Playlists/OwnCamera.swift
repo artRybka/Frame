@@ -241,7 +241,7 @@ struct OwnCamera: View {
         .sensoryFeedback(.impact(weight: .medium), trigger: look.matched) { _, now in now }
         .task {
             // Screenshots of the later steps take the demo's photograph at once.
-            guard !["own-cut", "own-describe", "own-card"].contains(LaunchRoute.screen) else { return }
+            guard !["own-cut", "own-balance", "own-describe", "own-card"].contains(LaunchRoute.screen) else { return }
             camera.turned = { angle in
                 withAnimation(.easeInOut(duration: 0.3)) { tilt = OwnCameraSession.tilt(angle) }
             }
