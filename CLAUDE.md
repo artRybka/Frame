@@ -25,6 +25,10 @@ uv run mypy src
   mapping, numba error diffusion. Dither against *perceived* ink colours,
   write *device* (nominal) colours. Spectra 6 yellow is lighter than white:
   use `Palette.white_index()` / `neutral_range()`, never "lightest ink".
+  When what the scan's merging (`imaging/reflections.py`, `imaging/glare.py`)
+  makes of the same photographs changes, raise `MERGING` in `own_works.py`:
+  his works scanned in the last two weeks are then made again from their
+  kept photographs after the update.
 - `web/app.py` FastAPI: `/panel/*` for the panel (no auth, must never 404
   once content exists), `/api/*` for the app (Bearer token).
 - Never hand-edit `uv.lock`; use `uv add` / `uv lock`.

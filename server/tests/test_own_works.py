@@ -585,11 +585,14 @@ def test_a_work_is_scanned_again_from_the_photographs_kept(
     lamp on his drawing: "Jest idealnie! Czy poprzednie skany przerobią
     się po wydaniu?". A work scanned before a release has what the scan
     came to then; its photographs are kept two weeks, and it is made of
-    them once more, with its cut and what he wrote as they were."""
+    them once more, with its cut and what he wrote as they were. By
+    itself (09:30 UTC: "a może być po aktualizacji która zmieniła sposób
+    łączenia zdjęć?"): after a start, when the merging has changed."""
     import json
 
     from test_reflections import _three
 
+    from frame_server import own_works
     from frame_server.own_works import SCAN_INFO, OwnWorks
 
     clean, first, sides = _three()
@@ -646,13 +649,14 @@ def test_a_work_is_scanned_again_from_the_photographs_kept(
     assert works.scan_of(item) == token
     assert json.loads(note.read_text())["item"] == item.id
 
-    with _client(service) as client:
-        assert client.get(f"/api/own/works/{one.id}/scan").json()["kept"] is False
-        assert client.post(f"/api/own/works/{one.id}/scan").status_code == 404
-        kept = client.get(f"/api/own/works/{item.id}/scan").json()
-        assert kept["kept"] is True and kept["release"] == kept["now"] != ""
-        done = client.post(f"/api/own/works/{item.id}/scan")
-        assert done.status_code == 200, done.text
+    # After a start nothing is made again while photographs are merged
+    # as they were when the scan was made one…
+    assert info["merging"] == own_works.MERGING
+    assert works.scanned_again() == 0
+    # …and after an update that changed it, his work is.
+    monkeypatch.setattr(own_works, "MERGING", own_works.MERGING + 1)
+    assert works.scanned_again() == 1
+    assert works.scanned_again() == 0
     again = service.library.get(item.id)
     assert again is not None
     assert off(service.images.museum_photo(again, urgent=True)) < veiled / 2

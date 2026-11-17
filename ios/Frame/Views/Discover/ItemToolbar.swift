@@ -37,9 +37,6 @@ struct ItemToolbar: ToolbarContent {
     /// ponownie" and "Usuń z katalogu", asked first (`deletingOwn`).
     var editOwn: (() -> Void)? = nil
     var retakeOwn: (() -> Void)? = nil
-    /// "Przerób skan ponownie": only while the scan's photographs are
-    /// kept on the server (two weeks).
-    var rescanOwn: (() -> Void)? = nil
     var deleteOwn: (() -> Void)? = nil
     var deletingOwn: Binding<Bool>? = nil
 
@@ -91,16 +88,6 @@ struct ItemToolbar: ToolbarContent {
                                 Text("Opis zostaje")
                             } icon: {
                                 Image(systemName: "camera")
-                            }
-                        }
-                    }
-                    if let rescanOwn {
-                        Button(action: rescanOwn) {
-                            Label {
-                                Text("Przerób skan ponownie")
-                                Text("Kadr i opis zostają")
-                            } icon: {
-                                Image(systemName: "arrow.triangle.2.circlepath")
                             }
                         }
                     }

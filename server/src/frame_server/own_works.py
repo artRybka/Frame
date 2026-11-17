@@ -64,6 +64,14 @@ INCOMING_QUALITY = 95
 SCANS_SECONDS = 14 * 24 * 3600
 #: What a scan's folder holds besides its photographs.
 SCAN_INFO = "scan.json"
+#: Goes up by one whenever what the merging (:func:`.imaging.reflections.
+#: merge`, :func:`.imaging.glare.merge`) makes of the same photographs
+#: changes. His works scanned before are then made once more of their
+#: scans' photographs after the update (:meth:`OwnWorks.scanned_again`;
+#: Mateusz 2026-11-17 09:30 UTC: "a może być po aktualizacji która
+#: zmieniła sposób łączenia zdjęć?"). A scan that noted none was made
+#: before 1.145.217 (what 1.145.216 does with a lamp's edge is 1).
+MERGING = 1
 #: A work's photograph is a kept scan's when the two, small and grey, go
 #: together at least this much (1 is the same picture): the scan's first
 #: photograph has the reflections the work's has not, another scan of the
@@ -152,17 +160,6 @@ class Merged(Incoming):
 
     used: int = 0
     replaced: float = 0.0
-
-
-class ScanKept(BaseModel):
-    """Whether a work's photograph can be made once more of its scan's
-    photographs (:meth:`OwnWorks.rescan`), for "Przerób skan ponownie"."""
-
-    kept: bool = False
-    #: The release that made it one last; "" when not noted (before 1.145.217).
-    release: str = ""
-    #: The release this server is.
-    now: str = ""
 
 
 class Hints(BaseModel):
@@ -473,7 +470,7 @@ class OwnWorks:
         if all(cv2.pointPolygonTest(cleaned, (x, y), False) >= 0 for x, y in quad):
             return
         used, taken = self._merge(folder / "first.jpg", self.path(token), sides, quad)
-        info.update(corners=quad, used=used, replaced=taken, again=now_iso())
+        info.update(corners=quad, used=used, replaced=taken, again=now_iso(), merging=MERGING)
         (folder / SCAN_INFO).write_text(json.dumps(info))
         log.info("own photograph %s merged again within his corners", token)
 
@@ -492,8 +489,10 @@ class OwnWorks:
         """What the merge came to, beside the scan's photographs."""
         info = {
             "at": now_iso(),
-            # Which release made it one: a later one may do it better.
+            # Which release made it one, and how photographs were merged
+            # then: when that changes the work is made of them once more.
             "release": build_version(),
+            "merging": MERGING,
             "used": seen.used,
             "replaced": seen.replaced,
             "width": seen.width,
@@ -696,11 +695,12 @@ class OwnWorks:
         except (OSError, ValueError):
             pass  # no scan: one photograph, or it is gone
 
-    def scan_of(self, item: Item) -> str | None:
+    def scan_of(self, item: Item, looks: dict[str, tuple[Any, float]] | None = None) -> str | None:
         """The kept scan the work's photograph was made of (its token), if
         its photographs are still here: the newest that noted the work.
         A work added before scans noted theirs (1.145.217) is the scan its
-        photograph looks like, of those that noted none; and that is noted."""
+        photograph looks like, of those that noted none; and that is noted.
+        ``looks``: what such scans look like, kept from one work to the next."""
         if item.kind != ItemKind.OWN or item.source != "upload":
             return None
         loose: list[str] = []
@@ -720,11 +720,14 @@ class OwnWorks:
         except OSError:
             return None
         best, token = SCAN_LIKE, None
+        looks = {} if looks is None else looks
         for candidate in loose:
             try:
-                like = _alike(mine, _look(self.scans / candidate / "first.jpg"))
+                if candidate not in looks:
+                    looks[candidate] = _look(self.scans / candidate / "first.jpg")
             except OSError:
                 continue
+            like = _alike(mine, looks[candidate])
             if like > best:
                 best, token = like, candidate
         if token is not None:
@@ -732,16 +735,48 @@ class OwnWorks:
             log.info("own work %s: its scan is %s (alike %.3f)", item.id, token, best)
         return token
 
-    def scan_kept(self, item: Item) -> ScanKept:
-        """Whether :meth:`rescan` has anything to make the work of."""
-        token = self.scan_of(item)
-        if token is None:
-            return ScanKept(now=build_version())
-        try:
-            info = json.loads((self.scans / token / SCAN_INFO).read_text())
-        except (OSError, ValueError):
-            info = {}
-        return ScanKept(kept=True, release=str(info.get("release") or ""), now=build_version())
+    def scanned_again(self) -> int:
+        """Once after a start: his works whose scans were made one before
+        photographs were merged as they are now (:data:`MERGING`), made once
+        more of the photographs kept. How many were.
+
+        Asked whether earlier scans should be made again by a button on
+        the work or by themselves after every update, he said (2026-11-17
+        09:30 UTC): "a może być po aktualizacji która zmieniła sposób
+        łączenia zdjęć?"."""
+        from .library.models import PlaylistRules
+
+        if not self.scans.is_dir():
+            return 0
+        done = 0
+        looks: dict[str, tuple[Any, float]] = {}
+        for item in self.library.query(PlaylistRules(kinds=[ItemKind.OWN]), include_excluded=True)[
+            1
+        ]:
+            try:
+                token = self.scan_of(item, looks)
+                if token is None:
+                    continue
+                info = json.loads((self.scans / token / SCAN_INFO).read_text())
+                if int(info.get("merging") or 0) >= MERGING:
+                    continue
+                self.rescan(item)
+                done += 1
+            except (OSError, ValueError, LookupError) as err:
+                log.warning("own work %s not scanned again: %s", item.id, err)
+        # Scans that are no work's are not looked at again at every start.
+        for scan in self.kept_scans():
+            if "item" not in scan:
+                note = self.scans / str(scan["token"]) / SCAN_INFO
+                try:
+                    info = json.loads(note.read_text())
+                    info["item"] = ""
+                    note.write_text(json.dumps(info))
+                except (OSError, ValueError):
+                    pass
+        if done:
+            log.info("own works scanned again as photographs are merged now: %d", done)
+        return done
 
     def rescan(self, item: Item) -> Item:
         """The work's photograph made once more of its scan's photographs
@@ -777,7 +812,12 @@ class OwnWorks:
         else:
             self.images.recut(stored)
         info.update(
-            used=used, replaced=taken, again=now_iso(), release=build_version(), item=item.id
+            used=used,
+            replaced=taken,
+            again=now_iso(),
+            release=build_version(),
+            merging=MERGING,
+            item=item.id,
         )
         (folder / SCAN_INFO).write_text(json.dumps(info))
         log.info(
@@ -853,4 +893,4 @@ class OwnWorks:
         return self.crops.apply(item, cut)
 
 
-__all__ = ["Description", "Hints", "Incoming", "Merged", "OwnWorks", "ScanKept"]
+__all__ = ["Description", "Hints", "Incoming", "Merged", "OwnWorks"]

@@ -780,16 +780,6 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
-    func ownScan(itemID: String) async throws -> OwnScanKept {
-        try await get("/api/own/works/\(escape(itemID))/scan")
-    }
-
-    func rescanOwnWork(itemID: String) async throws -> Item {
-        var req = request("/api/own/works/\(escape(itemID))/scan", method: "POST")
-        req.timeoutInterval = 180
-        return try await perform(req)
-    }
-
     func panelConfig() async throws -> PanelConfig { try await get("/api/device/config") }
 
     func savePanelConfig(_ update: PanelConfigUpdate) async throws -> PanelConfig {

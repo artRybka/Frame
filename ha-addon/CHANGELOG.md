@@ -2,10 +2,11 @@
 
 ## 1.145.217
 
-- Własne dzieła: „Przerób skan ponownie” w menu dzieła. Serwer składa
-  skan jeszcze raz z trzech zdjęć, które trzyma przez 14 dni, tak jak
-  robi to obecna wersja, i podmienia obraz dzieła. Kadr i opis zostają.
-  Działa też dla dzieł zeskanowanych przed tą wersją.
+- Własne dzieła: po aktualizacji, która zmienia łączenie zdjęć skanu,
+  serwer sam składa wcześniejsze skany od nowa z trzech zdjęć, które
+  trzyma przez 14 dni, i podmienia obraz dzieła. Kadr i opis zostają.
+  Po tej aktualizacji przerobi tak raz wszystkie skany z ostatnich
+  14 dni (kilka minut po starcie, w tle).
 
 ## 1.145.216
 
