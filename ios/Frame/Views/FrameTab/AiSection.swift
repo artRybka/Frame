@@ -151,158 +151,41 @@ struct AiSection: View {
             if let rows = settings.claudeCosts {
                 costSection(rows, since: settings.periodStart)
             }
-            SectionHeader(title: "Opisy i szukanie", subtitle: "Dla każdego nowego dzieła, gdy trafia do biblioteki")
-                .id("switches")
-            Card { describing }
-            SectionHeader(title: "Studia i Odkrywaj", subtitle: "Gdy powstaje studium dzieła")
-            Card { studies }
-            if [settings.gatekeeper, settings.twinsJudge, settings.crops, settings.varnishBlue, settings.audit]
-                .contains(where: { $0 != nil }) {
-                SectionHeader(title: "Nocne porządki", subtitle: "Co noc, w pakietach za pół ceny")
-                    .id("night")
-                Card { night }
+            // What Claude does, when and for how much: Zadania (Mateusz
+            // 2026-11-17).
+            Card {
+                NavigationLink(value: SettingsPage.tasks) {
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Zadania").foregroundStyle(Theme.ink)
+                            Text("Co robi Claude, kiedy, ile i za ile; Uruchom teraz")
+                                .font(.caption)
+                                .foregroundStyle(Theme.inkSoft)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
             }
+            .id("switches")
             if settings.leftover != nil {
-                SectionHeader(
-                    title: "Resztka miesiąca",
-                    subtitle: settings.leftoverState?.uses == nil
-                        ? "Studia z tego, co zostaje z limitu" : "Na co idzie to, co zostaje z limitu"
-                )
-                .id("leftover")
+                SectionHeader(title: "Okres i zapas", subtitle: "Od kiedy liczy się limit i ile z niego zostaje")
+                    .id("leftover")
                 Card { leftoverRows }
             }
         }
         .navigationDestination(isPresented: $showReview) { AiReviewView() }
         .task {
-            // Batches and the background move on while Konfiguracja is open;
-            // a run on demand is followed more closely.
+            // Batches and the background move on while Konfiguracja is open.
             while !Task.isCancelled {
-                let going = model.aiSettings?.leftoverState?.uses?.contains { $0.run?.running == true } == true
-                try? await Task.sleep(for: .seconds(going ? 5 : 20))
+                try? await Task.sleep(for: .seconds(20))
                 guard !Task.isCancelled else { return }
                 await model.loadAiSettings()
             }
-        }
-    }
-
-    // MARK: The switches, in three groups
-
-    /// What each new work gets: its Polish texts, its keywords, and the
-    /// words typed in Szukaj said for the museums abroad.
-    @ViewBuilder
-    private var describing: some View {
-        toggle(
-            "Polskie tytuły i opisy",
-            hint: "Haiku tłumaczy opisy muzeów, dziełom bez opisu notkę pisze Sonnet.",
-            value: settings.plText,
-            cost: "pl_text",
-            progress: settings.plTextProgress
-        ) { AiSettingsUpdate(plText: $0) }
-        Divider()
-        toggle(
-            "Słowa kluczowe dla dzieł",
-            hint: "Po nich szukają Szukaj i inteligentne playlisty.",
-            value: settings.keywordsArtworks
-        ) { AiSettingsUpdate(keywordsArtworks: $0) }
-        Divider()
-        toggle(
-            "Słowa kluczowe dla zdjęć",
-            hint: "Miniatury Twoich zdjęć idą wtedy do Anthropic.",
-            value: settings.keywordsPhotos,
-            cost: "keywords",
-            costLabel: "dzieła i zdjęcia",
-            progress: settings.keywordsProgress
-        ) { AiSettingsUpdate(keywordsPhotos: $0) }
-        if let searchWords = settings.searchWords {
-            Divider()
-            toggle(
-                "Tłumaczenie słów w Szukaj",
-                hint: "„gitara” jako „guitar” dla muzeów zagranicznych, opis wyglądu jako ich hasła.",
-                value: searchWords,
-                cost: "search_words"
-            ) { AiSettingsUpdate(searchWords: $0) }
-        }
-    }
-
-    /// What a study is made of, and Discover's own two.
-    @ViewBuilder
-    private var studies: some View {
-        if let daily = settings.daily {
-            toggle(
-                "Studium dnia",
-                hint: "Codziennie jedno dzieło na górze Odkrywaj, opisane jak w albumie.",
-                value: daily,
-                cost: "daily"
-            ) { AiSettingsUpdate(daily: $0) }
-            Divider()
-        }
-        if let webFacts = settings.webFacts {
-            toggle(
-                "Fakty z sieci",
-                hint: "Przed napisaniem studium Claude szuka w sieci badań, losów i wystaw dzieła.",
-                value: webFacts,
-                cost: "web_facts"
-            ) { AiSettingsUpdate(webFacts: $0) }
-            Divider()
-        }
-        if let stages = settings.stages {
-            toggle(
-                "Jak powstawał",
-                hint: "Kilka zdań o powstawaniu dzieła, tylko gdy w sieci jest jego badanie techniczne.",
-                value: stages,
-                cost: "stages"
-            ) { AiSettingsUpdate(stages: $0) }
-            Divider()
-        }
-        if let journey = settings.journey {
-            toggle(
-                "Droga dzieła",
-                hint: "Od pracowni do muzeum, z zapisów muzeum.",
-                value: journey,
-                cost: "journey"
-            ) { AiSettingsUpdate(journey: $0) }
-            Divider()
-        }
-        if let curator = settings.curator {
-            toggle(
-                "Kurator Odkrywaj",
-                hint: "Dwie dodatkowe karty w „Dziś dla Ciebie”.",
-                value: curator,
-                cost: "curator"
-            ) { AiSettingsUpdate(curator: $0) }
-            Divider()
-        }
-        Text("Samo studium (strona, kompozycja, detale) nie ma przełącznika: powstaje, gdy go chcesz, i dla Studium dnia. Jego koszt jest w tabeli wyżej.")
-            .font(.caption)
-            .foregroundStyle(Theme.inkSoft)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-
-    /// What the night looks over in the catalogue.
-    @ViewBuilder
-    private var night: some View {
-        let rows: [(title: String, hint: String, value: Bool?, cost: String, update: (Bool) -> AiSettingsUpdate)] = [
-            ("Strażnik katalogu",
-             "Odkłada znaczki, strony z tekstem i zdjęcia sal, które przyszły jako dzieła z Commons, Europeany i WikiArt.",
-             settings.gatekeeper, "gatekeeper", { AiSettingsUpdate(gatekeeper: $0) }),
-            ("Sędzia powtórek",
-             "Rozstrzyga, czy dwa podobne obrazy to kopia, detal czy to samo dzieło, gdy nie wystarczy porównanie obrazów.",
-             settings.twinsJudge, "twins_judge", { AiSettingsUpdate(twinsJudge: $0) }),
-            ("Kadrowanie zdjęć dzieł",
-             "Przycina zdjęcia z muzeów do samego dzieła, gdy widać ramę, sztalugę albo tło.",
-             settings.crops, "crops", { AiSettingsUpdate(crops: $0) }),
-            ("Błękit pod werniksem",
-             "Sprawdza, czy zielonkawe niebo albo woda pod pożółkłym werniksem to błękit, żeby dzieło dało się znaleźć po kolorze.",
-             settings.varnishBlue, "varnish_blue", { AiSettingsUpdate(varnishBlue: $0) }),
-            ("Nocny przegląd",
-             "30 losowych dzieł: tytuł, data, opis i obraz. Co nie pasuje, trafia do „Do sprawdzenia”.",
-             settings.audit, "audit", { AiSettingsUpdate(audit: $0) }),
-        ]
-        let shown = rows.filter { $0.value != nil }
-        ForEach(shown.indices, id: \.self) { index in
-            let row = shown[index]
-            if index > 0 { Divider() }
-            toggle(row.title, hint: row.hint, value: row.value ?? false, cost: row.cost, update: row.update)
         }
     }
 
@@ -571,16 +454,10 @@ struct AiSection: View {
     /// last days the night orders studies of works the curator found fit
     /// for what the limit leaves above the reserve, then the catalogue's
     /// keywords and Polish texts; through the Batch, telling nobody.
+    /// The period and the month's rest's days and reserve; what the rest
+    /// goes on is set in Zadania (Mateusz 2026-11-17).
     @ViewBuilder
     private var leftoverRows: some View {
-        toggle(
-            settings.leftoverState?.uses == nil ? "Studia z resztki miesiąca" : "Wykorzystaj resztkę miesiąca",
-            hint: settings.leftoverState?.uses == nil
-                ? "W ostatnich dniach okresu to, co zostaje z limitu ponad zapas, idzie nocą na nowe studia: najpierw dzieła typowane przez kuratora Studium dnia, potem według jego kryteriów, zaczynając od Ulubionych i playlist. Co zostanie, idzie na słowa kluczowe i polskie opisy katalogu. Przez Batch, bez powiadomień."
-                : "W ostatnich dniach okresu to, co zostaje z limitu ponad zapas, idzie nocą na to, co włączysz niżej, od góry, póki starcza. Przez Batch, bez powiadomień.",
-            value: settings.leftover ?? false
-        ) { AiSettingsUpdate(leftover: $0) }
-        Divider()
         pickerRow(
             "Dzień odnowienia",
             hint: "Od tego dnia miesiąca liczy się limit i wydatki Claude, tak jak odnawiają się środki na koncie.",
@@ -604,10 +481,6 @@ struct AiSection: View {
             options: Set(Self.reserves + [settings.leftoverReserveUsd ?? 10]).sorted(),
             label: { Money.usd($0) }
         ) { AiSettingsUpdate(leftoverReserveUsd: $0) }
-        if let uses = settings.leftoverState?.uses, !uses.isEmpty {
-            Divider()
-            leftoverUses(uses)
-        }
         if let state = settings.leftoverState {
             Divider()
             Label(Self.leftoverNote(state, settings: settings), systemImage: state.open ? "clock" : "calendar")
@@ -615,107 +488,6 @@ struct AiSection: View {
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
         }
-    }
-
-    /// "Na co, w tej kolejności" (Mateusz 2026-11-15, "Lista z
-    /// kolejnością"): each use with its switch; held and dragged onto
-    /// another, it takes that one's place; the server pays from the top.
-    @ViewBuilder
-    private func leftoverUses(_ uses: [LeftoverUse]) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("Na co, w tej kolejności").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
-            Text("Serwer płaci od góry, póki starcza. Przytrzymaj pozycję i przeciągnij, żeby zmienić kolejność.")
-                .font(.caption)
-                .foregroundStyle(Theme.inkSoft)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        ForEach(Array(uses.enumerated()), id: \.element.key) { index, use in
-            Divider().padding(.leading, 32)
-            leftoverUseRow(use, place: index + 1, uses: uses)
-                .draggable(use.key)
-                .dropDestination(for: String.self) { keys, _ in
-                    guard let key = keys.first, key != use.key else { return false }
-                    moveUse(key, to: use.key, in: uses)
-                    return true
-                }
-                .contextMenu {
-                    if index > 0 {
-                        Button("Wyżej", systemImage: "arrow.up") {
-                            moveUse(use.key, to: uses[index - 1].key, in: uses)
-                        }
-                    }
-                    if index < uses.count - 1 {
-                        Button("Niżej", systemImage: "arrow.down") {
-                            moveUse(use.key, to: uses[index + 1].key, in: uses)
-                        }
-                    }
-                }
-        }
-    }
-
-    private func leftoverUseRow(_ use: LeftoverUse, place: Int, uses: [LeftoverUse]) -> some View {
-        let binding = Binding(
-            get: { use.on },
-            set: { on in
-                let off = uses.filter { $0.key == use.key ? !on : !$0.on }.map(\.key)
-                Task { await model.saveAiSettings(AiSettingsUpdate(leftoverOff: off)) }
-            }
-        )
-        return HStack(alignment: .top, spacing: 10) {
-            Text("\(place)")
-                .font(.caption.weight(.semibold).monospacedDigit())
-                .foregroundStyle(use.on ? Theme.paper : Theme.inkSoft)
-                .frame(width: 22, height: 22)
-                .background(use.on ? Theme.ink : Theme.inkSoft.opacity(0.15), in: .circle)
-                .padding(.top, 1)
-            Toggle(isOn: binding) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(use.label).foregroundStyle(use.able ? Theme.ink : Theme.inkSoft)
-                    Text(use.about).font(.caption).foregroundStyle(Theme.inkSoft)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(Self.useNote(use))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(use.able ? Theme.ink.opacity(0.75) : Theme.inkSoft)
-                    if use.able, let options = use.aNightOptions, let night = use.aNight {
-                        aNightMenu(use, night: night, options: options)
-                    }
-                    if use.able, use.nowEachUsd != nil {
-                        OnDemandRow(use: use, free: settings.leftoverState?.nowFreeUsd)
-                    }
-                }
-            }
-            .tint(Theme.ink)
-        }
-        .padding(.vertical, 2)
-        .contentShape(.rect)
-    }
-
-    /// "do 1000 na noc ⌄": how many a night the owner lets the use take
-    /// (Mateusz 2026-11-15, the catalogue's texts: "Jak to zlimitować?").
-    private func aNightMenu(_ use: LeftoverUse, night: Int, options: [Int]) -> some View {
-        Menu {
-            Picker("Na noc", selection: Binding(
-                get: { night },
-                set: { new in
-                    Task { await model.saveAiSettings(AiSettingsUpdate(leftoverTextsANight: new)) }
-                }
-            )) {
-                ForEach(Set(options + [night]).sorted(), id: \.self) { option in
-                    Text("do \(Self.count(option)) na noc").tag(option)
-                }
-            }
-        } label: {
-            HStack(spacing: 3) {
-                Text("do \(Self.count(night)) na noc")
-                Image(systemName: "chevron.up.chevron.down").imageScale(.small)
-            }
-            .font(.caption.weight(.medium).monospacedDigit())
-            .foregroundStyle(Theme.ink)
-            .padding(.vertical, 2)
-            .contentShape(.rect)
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
     }
 
     /// "125 323": a count as Polish writes it.
@@ -746,15 +518,6 @@ struct AiSection: View {
         if let night = use.aNight, use.aNightOptions == nil { parts.append("do \(count(night)) na noc") }
         if use.done > 0 { parts.append("w tym okresie \(use.done), ok. \(Money.usd(use.doneUsd))") }
         return parts.joined(separator: " · ")
-    }
-
-    /// ``key`` taken out and put in ``target``'s place.
-    private func moveUse(_ key: String, to target: String, in uses: [LeftoverUse]) {
-        var order = uses.map(\.key)
-        guard let from = order.firstIndex(of: key), let to = order.firstIndex(of: target) else { return }
-        order.remove(at: from)
-        order.insert(key, at: to)
-        Task { await model.saveAiSettings(AiSettingsUpdate(leftoverOrder: order)) }
     }
 
     private func pickerRow<Value: Hashable>(

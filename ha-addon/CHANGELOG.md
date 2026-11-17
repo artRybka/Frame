@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.145.210
+
+- Konfiguracja → Zadania: jedno miejsce na wszystko, co robią Claude i
+  serwer. Na górze pasek okresu: wydane, zamówione, wolne i zapas. Niżej
+  zadania według pory: „Od razu” i „Przy studium” (przełączniki opisów,
+  słów kluczowych, faktów z sieci…), „Co noc” (strażnik, sędzia
+  powtórek, kadrowanie, przegląd), „Z resztki okresu”, „Tylko na
+  żądanie”, „Wyłączone” i „Bez Claude” (prace serwera, dawne „Zadania
+  nocne”). Przy każdym zadaniu chipy: kiedy, tryb, ile na noc.
+- Zadania resztki (opisy katalogu, studia, kadrowanie, uzupełnienie
+  studiów, przegląd opisów, większy przegląd) mają własną stronę: kiedy
+  (w ostatnich dniach okresu, co noc, tylko na żądanie, wyłączone), ile
+  dzieł na noc, kwota na noc i na okres (pierwsze, co się skończy,
+  zatrzymuje zadanie), tryb (Batch za pół ceny albo Zwykły, od razu, z
+  ceną za dzieło) i „Uruchom teraz za…”. Zadanie ustawione „co noc”
+  działa przez cały okres, nie tylko w jego ostatnich dniach; w trybie
+  Zwykłym serwer nocą pyta od razu, do kwoty i liczby na noc.
+- Strona Claude ma już tylko limit, koszty, okres i zapas.
+
 ## 1.145.209
 
 - Konfiguracja → Claude → „Na co, w tej kolejności”: pod „Słowa kluczowe i

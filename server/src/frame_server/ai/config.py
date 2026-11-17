@@ -16,7 +16,7 @@ before it (``imaging.sheet``).
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
 
@@ -26,6 +26,38 @@ if TYPE_CHECKING:
 
 STATE_KEY = "ai_config"
 KEY_TAIL = 4
+
+#: When a task of the month's rest runs (``leftover.USES``, Mateusz
+#: 2026-11-17, "Zadania"): in the period's last days, every night, only when
+#: he runs it, or never.
+When = Literal["rest", "night", "demand", "off"]
+#: How it asks: through the Batch API (half the price, within hours) or now.
+Mode = Literal["batch", "normal"]
+
+
+class TaskSettings(BaseModel):
+    """What the owner set for one task (Mateusz 2026-11-17: "prostego
+    konfigurowania zadań planowanych i na żądanie. Z ustawieniem ilości,
+    kwoty, czasu i trybu"). None: as it was before (the rest's window, the
+    task's own number a night, no amount of its own)."""
+
+    when: When | None = None
+    #: Works a night at most.
+    a_night: int | None = Field(None, ge=1, le=50000)
+    #: What a night, and the whole period, may spend on it at most (USD).
+    night_usd: float | None = Field(None, gt=0, le=1000)
+    period_usd: float | None = Field(None, gt=0, le=1000)
+    mode: Mode = "batch"
+
+
+class TaskUpdate(BaseModel):
+    """The app's change of one task; left out stays, 0 is "no limit"."""
+
+    when: When | None = None
+    a_night: int | None = Field(None, ge=0, le=50000)
+    night_usd: float | None = Field(None, ge=0, le=1000)
+    period_usd: float | None = Field(None, ge=0, le=1000)
+    mode: Mode | None = None
 
 
 class AiConfig(BaseModel):
@@ -96,6 +128,8 @@ class AiConfig(BaseModel):
     #: USD": "Jak to zlimitować?"). Without it the night gave them all the
     #: rest at once.
     leftover_texts_a_night: int = Field(1000, ge=1, le=50000)
+    #: Each task's own settings, by its key (``leftover.USES``).
+    tasks: dict[str, TaskSettings] = Field(default_factory=dict)
 
 
 class AiConfigUpdate(BaseModel):
@@ -227,6 +261,14 @@ class AiConfigStore:
 
     def update(self, update: AiConfigUpdate) -> AiConfig:
         config = self.config.model_copy(update=update.model_dump(exclude_none=True))
+        self._save(config)
+        return config
+
+    def set_task(self, key: str, settings: TaskSettings, **also: object) -> AiConfig:
+        """Keeps ``key``'s settings (and ``also``, other fields kept with
+        them)."""
+        tasks = {**self.config.tasks, key: settings}
+        config = self.config.model_copy(update={"tasks": tasks, **also})
         self._save(config)
         return config
 

@@ -2022,6 +2022,11 @@ struct LeftoverState: Codable, Hashable, Sendable {
     /// What a run on demand may be given now: the limit less the reserve,
     /// the period's spending and what is ordered. Nil from older servers.
     var nowFreeUsd: Double? = nil
+    /// Ordered and held by the runs going, not spent yet; what a task's
+    /// amounts a night and a period may be set to. Nil from older servers.
+    var plannedUsd: Double? = nil
+    var nightUsdChoices: [Double]? = nil
+    var periodUsdChoices: [Double]? = nil
 }
 
 /// One thing the month's rest may go on; the server pays them from the top
@@ -2055,8 +2060,45 @@ struct LeftoverUse: Codable, Hashable, Sendable, Identifiable {
     /// last one.
     var nowEachUsd: Double? = nil
     var run: OnDemandRun? = nil
+    /// The owner's settings of it as a task (Mateusz 2026-11-17,
+    /// "Zadania"): when it runs, the works a night he may choose, what a
+    /// night and the period may spend on it (nil: no amount of its own), how
+    /// it asks and how it may, and what it cost this period. Nil from older
+    /// servers.
+    var when: TaskWhen? = nil
+    var aNightChoices: [Int]? = nil
+    var nightUsd: Double? = nil
+    var periodUsd: Double? = nil
+    var mode: TaskMode? = nil
+    var modes: [TaskMode]? = nil
+    var periodSpentUsd: Double? = nil
 
     var id: String { key }
+}
+
+/// When a task of the month's rest runs.
+enum TaskWhen: String, Codable, Hashable, Sendable, CaseIterable {
+    /// In the period's last days, from what the limit leaves.
+    case rest
+    case night
+    /// Only when the owner runs it ("Uruchom teraz").
+    case demand
+    case off
+}
+
+/// How a task asks: through the Batch API (half the price, within hours)
+/// or now, at the full price.
+enum TaskMode: String, Codable, Hashable, Sendable {
+    case batch, normal
+}
+
+/// One task's change; 0 is "no limit of its own".
+struct TaskUpdate: Encodable, Sendable {
+    var when: TaskWhen? = nil
+    var aNight: Int? = nil
+    var nightUsd: Double? = nil
+    var periodUsd: Double? = nil
+    var mode: TaskMode? = nil
 }
 
 /// A use of the month's rest run now for the owner's amount: asked one work
@@ -2080,6 +2122,8 @@ struct OnDemandRun: Codable, Hashable, Sendable {
     var started: String? = nil
     var ended: String? = nil
     var why: String? = nil
+    /// The night started it (the task's mode "Zwykły").
+    var night: Bool? = nil
 }
 
 /// Only what is set changes.
