@@ -2556,36 +2556,9 @@ extension DemoBackend {
 
     /// The uses of the month's rest as a server of 1.145.161 tells them.
     static let leftoverUses: [LeftoverUse] = [
-        check("gatekeeper", "Strażnik katalogu", "Odkłada znaczki, strony z tekstem i zdjęcia sal, które przyszły jako dzieła."),
-        check("twins_judge", "Sędzia powtórek", "Rozstrzyga, czy dwa podobne obrazy to kopia, detal czy to samo dzieło."),
-        check("varnish_blue", "Błękit pod werniksem", "Czy zielonkawe niebo pod pożółkłym werniksem to błękit, dla szukania po kolorze."),
         LeftoverUse(
-            key: "crops", label: "Kadrowanie",
-            about: "Zdjęcia z muzeów przycięte do samego dzieła, bez ramy, sztalugi i tektury wokół, najpierw Ulubione i playlisty.",
-            on: true, able: true, waiting: 412, eachUsd: 0.01, waitingUsd: 4.12, aNight: 540,
-            done: 1080, doneUsd: 10.8, nowEachUsd: 0.0204, when: .night,
-            aNightChoices: [100, 270, 540, 1000, 2000], nightUsd: 3, mode: .batch, modes: [.batch, .normal],
-            periodSpentUsd: 10.8, whens: [.rest, .night, .demand, .off], moreAtEnd: true
-        ),
-        LeftoverUse(
-            key: "studies", label: "Nowe studia",
-            about: "Dzieła typowane przez kuratora Studium dnia, najpierw z Ulubionych i playlist.",
-            on: true, able: true, waiting: 7, eachUsd: 0.8, waitingUsd: 5.6, aNight: 25,
-            done: 0, doneUsd: 0, when: .rest, aNightChoices: [5, 10, 25, 50], periodUsd: 20,
-            mode: .batch, modes: [.batch], periodSpentUsd: 0
-        ),
-        LeftoverUse(
-            key: "keywords", label: "Słowa kluczowe katalogu",
-            about: "Dzieła katalogu, które ich jeszcze nie mają, najpierw Ulubione i playlisty. Po nich szukają Szukaj i inteligentne playlisty.",
-            on: true, able: true, waiting: 98_412, eachUsd: 0.0009, waitingUsd: 88.57, aNight: 2000,
-            done: 0, doneUsd: 0, aNightOptions: [250, 500, 1000, 2000, 5000, 10000],
-            tonight: 2000, tonightUsd: 1.8, nowEachUsd: 0.0018, when: .rest,
-            aNightChoices: [250, 500, 1000, 2000, 5000, 10000], nightUsd: 2,
-            mode: .batch, modes: [.batch, .normal], periodSpentUsd: 0
-        ),
-        LeftoverUse(
-            key: "pl_text", label: "Polskie opisy katalogu",
-            about: "Polski tytuł i opis dzieł katalogu, które ich jeszcze nie mają, najpierw Ulubione i playlisty; potem starsze teksty pisane od nowa.",
+            key: "pl_text", label: "Polskie opisy",
+            about: "Polski tytuł i opis: nowe dzieła od razu, katalog najpierw z Ulubionych i playlist, potem starsze teksty pisane od nowa.",
             on: true, able: true, waiting: 125_323, eachUsd: 0.0066, waitingUsd: 824.84, aNight: 1000,
             done: 0, doneUsd: 0, aNightOptions: [250, 500, 1000, 2000, 5000, 10000],
             tonight: 1000, tonightUsd: 6.58, nowEachUsd: 0.0132, run: demoRun, when: .rest,
@@ -2593,20 +2566,49 @@ extension DemoBackend {
             mode: .batch, modes: [.batch, .normal], periodSpentUsd: 0
         ),
         LeftoverUse(
-            key: "audit", label: "Nocny przegląd",
+            key: "keywords", label: "Słowa kluczowe",
+            about: "Po nich szukają Szukaj i inteligentne playlisty: nowe dzieła od razu, katalog najpierw z Ulubionych i playlist.",
+            on: true, able: true, waiting: 98_412, eachUsd: 0.0009, waitingUsd: 88.57, aNight: 2000,
+            done: 0, doneUsd: 0, aNightOptions: [250, 500, 1000, 2000, 5000, 10000],
+            tonight: 2000, tonightUsd: 1.8, nowEachUsd: 0.0018, when: .rest,
+            aNightChoices: [250, 500, 1000, 2000, 5000, 10000], nightUsd: 2,
+            mode: .batch, modes: [.batch, .normal], periodSpentUsd: 0
+        ),
+        LeftoverUse(
+            key: "crops", label: "Kadrowanie",
+            about: "Zdjęcia z muzeów przycięte do samego dzieła, bez ramy, sztalugi i tektury wokół, najpierw Ulubione i playlisty.",
+            on: true, able: true, waiting: 412, eachUsd: 0.01, waitingUsd: 4.12, aNight: 540,
+            done: 1080, doneUsd: 10.8, nowEachUsd: 0.0204, when: .night,
+            aNightChoices: [100, 270, 540, 1000, 2000], nightUsd: 3, mode: .batch, modes: [.batch, .normal],
+            periodSpentUsd: 10.8, moreAtEnd: true
+        ),
+        LeftoverUse(
+            key: "looks", label: "Odciski wyglądu (Gemini)",
+            about: "Wygląd dzieła jako liczby: szukanie opisem wyglądu, zdjęciem i „Podobne wyglądem”. Nowe dzieła od razu, potem katalog.",
+            on: true, able: true, waiting: 3_120, eachUsd: 0.0001, waitingUsd: 0.31, aNight: 5000,
+            done: 4200, doneUsd: 0.42, nowEachUsd: 0.0002, when: .night,
+            aNightChoices: [1000, 5000, 20000], mode: .batch, modes: [.batch, .normal], periodSpentUsd: 0.42
+        ),
+        LeftoverUse(
+            key: "tidy", label: "Porządki katalogu",
+            about: "Odkłada znaczki, strony z tekstem i zdjęcia sal, które przyszły jako dzieła, i rozstrzyga, czy dwa podobne obrazy to kopia, detal czy to samo dzieło.",
+            on: true, able: true, waiting: 64, eachUsd: 0.002, waitingUsd: 0.13, aNight: nil,
+            done: 310, doneUsd: 0.11, nowEachUsd: 0.004, when: .night, mode: .batch, modes: [.batch, .normal],
+            periodSpentUsd: 0.11
+        ),
+        LeftoverUse(
+            key: "audit", label: "Przegląd dzieł",
             about: "Losowe dzieła: tytuł, data, opis i obraz; co nie pasuje, trafia do „Do sprawdzenia”.",
-            on: true, able: true, waiting: nil, eachUsd: 0.002, waitingUsd: nil, aNight: 270,
-            done: 0, doneUsd: 0, when: .night, aNightChoices: [100, 270, 500, 1000], mode: .batch,
-            modes: [.batch], periodSpentUsd: 0, whens: [.rest, .night, .demand, .off], moreAtEnd: false
+            on: true, able: true, waiting: nil, eachUsd: 0.002, waitingUsd: nil, aNight: 30,
+            done: 420, doneUsd: 0.84, nowEachUsd: 0.004, when: .night, aNightChoices: [30, 100, 270, 500, 1000],
+            mode: .batch, modes: [.batch, .normal], periodSpentUsd: 0.84, moreAtEnd: false
+        ),
+        LeftoverUse(
+            key: "studies", label: "Nowe studia",
+            about: "Dzieła typowane przez kuratora Studium dnia, najpierw z Ulubionych i playlist.",
+            on: true, able: true, waiting: 7, eachUsd: 0.8, waitingUsd: 5.6, aNight: 25,
+            done: 0, doneUsd: 0, nowEachUsd: 1.6, when: .rest, aNightChoices: [5, 10, 25, 50], periodUsd: 20,
+            mode: .batch, modes: [.batch, .normal], periodSpentUsd: 0
         ),
     ]
-
-    /// One of the night's small checks: every night or off.
-    private static func check(_ key: String, _ label: String, _ about: String) -> LeftoverUse {
-        LeftoverUse(
-            key: key, label: label, about: about, on: true, able: true, waiting: nil, eachUsd: 0,
-            waitingUsd: nil, aNight: nil, done: 0, doneUsd: 0, when: .night, mode: .batch,
-            modes: [.batch], whens: [.night, .off]
-        )
-    }
 }

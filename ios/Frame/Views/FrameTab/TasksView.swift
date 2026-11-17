@@ -34,40 +34,27 @@ struct TasksSection: View {
                     OnDemandRow(use: use, free: settings.leftoverState?.nowFreeUsd)
                 }
             }
-            group("Od razu", "Dla każdego nowego dzieła i tego, czego szukasz") {
-                switches(Self.instant(settings))
-            }
-            group("Odkrywaj", "Studium dnia i propozycje kuratora") {
-                switches(Self.discover(settings))
-            }
-            .id("study")
-            // Below Odkrywaj only tasks, each with its own page, by when
-            // they run (Mateusz 2026-11-17: "każde zadanie może być
-            // wykonywane rutynowo co noc, na żądanie lub na koniec miesiąca")
-            let older = Self.night(settings).filter { row in !uses.contains { $0.key == row.cost } }
-            group("Co noc", "Od 1:30, w pakietach Batch za pół ceny") {
-                switches(older)  // an older server's night switches
-                taskRows(uses.filter { $0.when == .night }, divided: !older.isEmpty)
-            }
-            .id("night")
-            group("Na koniec okresu", restSubtitle) {
-                restSwitch
-                taskRows(uses.filter { ($0.when ?? .rest) == .rest }, divided: true)
-            }
-            .id("rest")
-            let asked = uses.filter { $0.when == .demand }
-            if !asked.isEmpty {
-                group("Tylko na żądanie", "Uruchamiasz na stronie zadania") {
-                    taskRows(asked, divided: false)
+            // Named by what they do, each with every when and mode on its
+            // page (Mateusz 2026-11-17: "nazwy określające nie to kiedy coś
+            // się odbywa, tylko co robi… Jeżeli jakieś czynności się
+            // zazębiają lub można je połączyć bo są drobne - to uprośćmy")
+            ForEach(Self.groups, id: \.title) { group in
+                let shown = group.keys.compactMap { key in uses.first { $0.key == key } }
+                let daily = group.title == "Studia" ? Self.discover(settings) : []
+                if !shown.isEmpty || !daily.isEmpty {
+                    self.group(group.title, nil) {
+                        switches(daily)
+                        taskRows(shown, divided: !daily.isEmpty)
+                    }
                 }
             }
-            let off = uses.filter { $0.when == .off }
-            if !off.isEmpty {
-                group("Wyłączone", "Ani nocą, ani na żądanie") {
-                    taskRows(off, divided: false)
-                }
-                .id("off")
+            let known = Set(Self.groups.flatMap(\.keys))
+            let others = uses.filter { !known.contains($0.key) }
+            if !others.isEmpty {
+                group("Inne", nil) { taskRows(others, divided: false) }
             }
+            group("Resztka okresu", restSubtitle) { restSwitch }
+                .id("rest")
             group("Bez Claude", "Praca samego serwera, bez kosztu") {
                 ServerWorkRow()
             }
@@ -86,8 +73,16 @@ struct TasksSection: View {
         }
     }
 
+    /// The tasks by what they do, in this order.
+    static let groups: [(title: String, keys: [String])] = [
+        ("Opisy", ["pl_text", "keywords"]),
+        ("Obraz", ["crops", "looks"]),
+        ("Porządek w katalogu", ["tidy", "audit"]),
+        ("Studia", ["studies", "refresh"]),
+    ]
+
     private func group(
-        _ title: String, _ subtitle: String, @ViewBuilder content: () -> some View
+        _ title: String, _ subtitle: String?, @ViewBuilder content: () -> some View
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: title, subtitle: subtitle)
@@ -157,38 +152,6 @@ struct TasksSection: View {
 
     // MARK: The switches, by when they work
 
-    static func instant(_ s: AiSettings) -> [SwitchTask] {
-        var rows = [
-            SwitchTask(
-                title: "Polskie tytuły i opisy",
-                value: s.plText, cost: "pl_text"
-            ) { AiSettingsUpdate(plText: $0) },
-            SwitchTask(
-                title: "Słowa kluczowe dla dzieł",
-                value: s.keywordsArtworks, cost: "keywords", costLabel: "dzieła i zdjęcia"
-            ) { AiSettingsUpdate(keywordsArtworks: $0) },
-            SwitchTask(
-                title: "Słowa kluczowe dla zdjęć",
-                value: s.keywordsPhotos
-            ) { AiSettingsUpdate(keywordsPhotos: $0) },
-        ]
-        if let words = s.searchWords {
-            rows.append(SwitchTask(
-                title: "Tłumaczenie słów w Szukaj",
-                value: words, cost: "search_words"
-            ) { AiSettingsUpdate(searchWords: $0) })
-        }
-        // Gemini's looks of each work (Mateusz 2026-11-17: "Czy tu nie
-        // brakuje tworzenia „odcisków” z Gemini?"); its page keeps it too
-        if let looks = s.looks {
-            rows.append(SwitchTask(
-                title: "Odciski wyglądu (Gemini)",
-                value: looks, cost: "looks"
-            ) { AiSettingsUpdate(looks: $0) })
-        }
-        return rows
-    }
-
     /// Odkrywaj (Mateusz 2026-11-17: "sprowadźmy do 2 przełączników -
     /// studium dnia oraz propozycji kuratora. Zadania składające się na
     /// studium są z nim ściśle powiązane i nie da się ich wyłączyć"): facts
@@ -206,39 +169,49 @@ struct TasksSection: View {
         return rows.compactMap { $0 }
     }
 
-    static func night(_ s: AiSettings) -> [SwitchTask] {
-        let rows: [SwitchTask?] = [
-            s.gatekeeper.map {
-                SwitchTask(
-                    title: "Strażnik katalogu",
-                    value: $0, cost: "gatekeeper"
-                ) { AiSettingsUpdate(gatekeeper: $0) }
-            },
-            s.twinsJudge.map {
-                SwitchTask(
-                    title: "Sędzia powtórek",
-                    value: $0, cost: "twins_judge"
-                ) { AiSettingsUpdate(twinsJudge: $0) }
-            },
-            s.crops.map {
-                SwitchTask(
-                    title: "Kadrowanie zdjęć dzieł",
-                    value: $0, cost: "crops"
-                ) { AiSettingsUpdate(crops: $0) }
-            },
-            s.varnishBlue.map {
-                SwitchTask(
-                    title: "Błękit pod werniksem",
-                    value: $0, cost: "varnish_blue"
-                ) { AiSettingsUpdate(varnishBlue: $0) }
-            },
-            s.audit.map {
-                SwitchTask(
-                    title: "Nocny przegląd",
-                    value: $0, cost: "audit"
-                ) { AiSettingsUpdate(audit: $0) }
-            },
-        ]
+    /// What a task takes in besides its own work, each with its switch
+    /// (the works at once as they come, the owner's photographs, the colour
+    /// under varnish, the words of Szukaj; the catalogue's two checks).
+    static func extras(_ key: String, _ s: AiSettings) -> [SwitchTask] {
+        let rows: [SwitchTask?]
+        switch key {
+        case "pl_text":
+            rows = [SwitchTask(title: "Nowe dzieła od razu", value: s.plText) { AiSettingsUpdate(plText: $0) }]
+        case "keywords":
+            rows = [
+                SwitchTask(title: "Nowe dzieła od razu", value: s.keywordsArtworks) {
+                    AiSettingsUpdate(keywordsArtworks: $0)
+                },
+                SwitchTask(title: "Twoje zdjęcia", value: s.keywordsPhotos) { AiSettingsUpdate(keywordsPhotos: $0) },
+                s.varnishBlue.map {
+                    SwitchTask(title: "Błękit pod werniksem", value: $0, cost: "varnish_blue") {
+                        AiSettingsUpdate(varnishBlue: $0)
+                    }
+                },
+                s.searchWords.map {
+                    SwitchTask(title: "Tłumaczenie słów w Szukaj", value: $0, cost: "search_words") {
+                        AiSettingsUpdate(searchWords: $0)
+                    }
+                },
+            ]
+        case "looks":
+            rows = [s.looks.map { SwitchTask(title: "Nowe dzieła od razu", value: $0) { AiSettingsUpdate(looks: $0) } }]
+        case "tidy":
+            rows = [
+                s.gatekeeper.map {
+                    SwitchTask(title: "Strażnik katalogu", value: $0, cost: "gatekeeper") {
+                        AiSettingsUpdate(gatekeeper: $0)
+                    }
+                },
+                s.twinsJudge.map {
+                    SwitchTask(title: "Sędzia powtórek", value: $0, cost: "twins_judge") {
+                        AiSettingsUpdate(twinsJudge: $0)
+                    }
+                },
+            ]
+        default:
+            rows = []
+        }
         return rows.compactMap { $0 }
     }
 
@@ -252,36 +225,44 @@ struct TasksSection: View {
     /// What the list's chip says of when a task runs.
     static func whenChip(_ when: TaskWhen) -> String {
         switch when {
-        case .rest: "Resztka okresu"
+        case .rest: "Koniec okresu"
         case .night: "Co noc"
         case .demand: "Na żądanie"
         case .off: "Wyłączone"
         }
     }
 
-    /// How a task runs, as chips: "Batch ½", "do 2000", "+ koniec okresu".
+    /// When and how a task runs, as chips: "Co noc", "Batch ½",
+    /// "+ koniec okresu"; the first is the when.
     static func chips(_ use: LeftoverUse) -> [String] {
         let when = use.when ?? (use.on ? .rest : .off)
-        guard !use.isCheck, when == .rest || when == .night else { return [] }
-        var chips = [use.mode == .normal ? "Zwykły" : "Batch ½"]
-        if let night = use.aNight, use.moreAtEnd == nil || when == .rest {
-            chips.append("do \(AiSection.count(night))")
-        }
+        var chips = [whenChip(when)]
+        guard when != .off else { return chips }
+        chips.append(use.mode == .normal ? "Zwykły" : "Batch ½")
         if when == .night, use.moreAtEnd == true { chips.append("+ koniec okresu") }
         return chips
     }
 
-    /// What a task cost: in the last days where "Koszty" has a row of its
-    /// own, else what it cost this period ("7 dni: 0,43 USD", "w okresie
-    /// 13,16 USD"); "Wyłączone przełącznikiem" when its switch keeps it off.
+    /// The rows of "Koszty" a task's cost is the sum of (what it takes in
+    /// besides its own work too).
+    static let costRows: [String: [String]] = [
+        "pl_text": ["pl_text"],
+        "keywords": ["keywords", "varnish_blue", "search_words"],
+        "crops": ["crops"],
+        "looks": ["looks"],
+        "tidy": ["gatekeeper", "twins_judge"],
+        "audit": ["audit"],
+    ]
+
+    /// What a task cost in the last days, from "Koszty" ("7 dni: 0,43 USD");
+    /// a task without rows of its own (the studies share theirs with
+    /// Odkrywaj) what it cost this period ("w okresie 13,16 USD").
     static func costLine(_ use: LeftoverUse, settings: AiSettings) -> String {
-        guard use.able else { return "Wyłączone przełącznikiem w „Od razu”." }
-        // the catalogue's texts and the studies share their row with what
-        // runs at once and Odkrywaj: their own spending is the period's
-        let shared = ["keywords", "pl_text", "studies", "refresh"]
-        if !shared.contains(use.key), let days = settings.costDays,
-           let row = (settings.claudeCosts ?? []).first(where: { $0.key == use.key }) {
-            return "\(days) dni: \(AiSection.usd(row.daysUsd))"
+        guard use.able else { return "Wyłączone przełącznikiem na stronie zadania." }
+        let rows = (settings.claudeCosts ?? []) + (settings.geminiCosts ?? [])
+        if let keys = costRows[use.key], let days = settings.costDays {
+            let usd = rows.filter { keys.contains($0.key) }.reduce(0) { $0 + $1.daysUsd }
+            return "\(days) dni: \(AiSection.usd(usd))"
         }
         return "w okresie \(AiSection.usd(use.periodSpentUsd ?? use.doneUsd))"
     }
@@ -377,7 +358,9 @@ private struct TaskRow: View {
                     let chips = TasksSection.chips(use)
                     if !chips.isEmpty || running {
                         HStack(spacing: 4) {
-                            ForEach(chips, id: \.self) { TaskChip(text: $0) }
+                            ForEach(Array(chips.enumerated()), id: \.offset) { index, chip in
+                                TaskChip(text: chip, strong: index == 0 && chip != TasksSection.whenChip(.off))
+                            }
                             if running { TaskChip(text: "Teraz", strong: true) }
                         }
                     }
@@ -590,6 +573,19 @@ struct TaskPage: View {
                     .font(.caption)
                     .foregroundStyle(Theme.warn)
             }
+        }
+        let extras = TasksSection.extras(use.key, settings)
+        if !extras.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                SectionHeader(title: "Obejmuje")
+                Card {
+                    ForEach(Array(extras.enumerated()), id: \.element.title) { index, row in
+                        if index > 0 { Divider() }
+                        TaskSwitchRow(row: row, settings: settings)
+                    }
+                }
+            }
+            .id("extras")
         }
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: "Kiedy")

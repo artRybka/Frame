@@ -42,7 +42,7 @@ final class TasksTests: XCTestCase {
         let use = try decoder.decode(LeftoverUse.self, from: Data(json.utf8))
         XCTAssertNil(use.when)
         XCTAssertNil(use.modes)
-        XCTAssertEqual(TasksSection.whenChip(.rest), "Resztka okresu")
+        XCTAssertEqual(TasksSection.whenChip(.rest), "Koniec okresu")
         XCTAssertEqual(TasksSection.amount(2.5), Money.usd(2.5))
         XCTAssertEqual(TasksSection.amount(50), "50 USD")
         XCTAssertTrue(TaskPage.modeNote(use).hasPrefix("Przez Batch"))
@@ -69,37 +69,32 @@ final class TasksTests: XCTestCase {
         XCTAssertTrue(studies.on)
     }
 
-    /// Mateusz 2026-11-17: Odkrywaj with two switches, the study's parts
-    /// without any; Gemini's looks among what runs at once; names and costs
-    /// only.
-    func testOdkrywajHasTwoSwitchesAndTheLooksRunAtOnce() async throws {
-        let settings = try await DemoBackend().aiSettings()
-        XCTAssertEqual(TasksSection.discover(settings).map(\.title), ["Studium dnia", "Propozycje kuratora"])
-        let instant = TasksSection.instant(settings).map(\.title)
-        XCTAssertEqual(instant.last, "Odciski wyglądu (Gemini)")
-        let all = instant + TasksSection.night(settings).map(\.title)
-        XCTAssertFalse(all.contains("Fakty z sieci"))
-        XCTAssertFalse(all.contains("Droga dzieła"))
-    }
-
-    /// The audit of Zadania (Mateusz 2026-11-17): below Odkrywaj only
-    /// tasks; the night's small checks every night or off; crops and the
-    /// night audit one task each, more at the period's end their option; a
-    /// row tells how it runs and what it cost.
-    func testTheTasksTellOnlyHowTheyRunAndWhatTheyCost() async throws {
+    /// Mateusz 2026-11-17: the tasks named by what they do, small ones
+    /// together, every when and mode on each; the study of the day and the
+    /// curator's picks only switches; a row tells when, how and what it
+    /// cost.
+    func testTheTasksAreNamedByWhatTheyDo() async throws {
         let settings = try await DemoBackend().aiSettings()
         let uses = try XCTUnwrap(settings.leftoverState?.uses)
-        let gate = try XCTUnwrap(uses.first { $0.key == "gatekeeper" })
-        XCTAssertTrue(gate.isCheck)
-        XCTAssertEqual(TasksSection.chips(gate), [])
-        XCTAssertEqual(TasksSection.costLine(gate, settings: settings), "7 dni: " + AiSection.usd(0.09))
+        XCTAssertEqual(TasksSection.discover(settings).map(\.title), ["Studium dnia", "Propozycje kuratora"])
+        XCTAssertEqual(TasksSection.groups.map(\.title), ["Opisy", "Obraz", "Porządek w katalogu", "Studia"])
+        let grouped = Set(TasksSection.groups.flatMap(\.keys))
+        XCTAssertTrue(uses.allSatisfy { grouped.contains($0.key) })
+        XCTAssertTrue(uses.allSatisfy { $0.whens == nil && $0.modes == [.batch, .normal] && $0.nowEachUsd != nil })
         let crops = try XCTUnwrap(uses.first { $0.key == "crops" })
-        XCTAssertFalse(crops.isCheck)
-        XCTAssertEqual(TasksSection.chips(crops), ["Batch ½", "+ koniec okresu"])
+        XCTAssertEqual(TasksSection.chips(crops), ["Co noc", "Batch ½", "+ koniec okresu"])
+        XCTAssertEqual(TasksSection.costLine(crops, settings: settings), "7 dni: " + AiSection.usd(0.43))
         let texts = try XCTUnwrap(uses.first { $0.key == "pl_text" })
-        XCTAssertEqual(TasksSection.chips(texts), ["Batch ½", "do 1000"])
-        XCTAssertTrue(TasksSection.costLine(texts, settings: settings).hasPrefix("w okresie"))
-        XCTAssertFalse(uses.contains { $0.key == "text_review" || $0.key == "refresh" })
-        XCTAssertEqual(uses.first { $0.key == "audit" }?.label, "Nocny przegląd")
+        XCTAssertEqual(TasksSection.chips(texts), ["Koniec okresu", "Batch ½"])
+        XCTAssertEqual(TasksSection.costLine(texts, settings: settings), "7 dni: " + AiSection.usd(0.21))
+        let tidy = try XCTUnwrap(uses.first { $0.key == "tidy" })
+        XCTAssertEqual(TasksSection.costLine(tidy, settings: settings), "7 dni: " + AiSection.usd(0.11))
+        let studies = try XCTUnwrap(uses.first { $0.key == "studies" })
+        XCTAssertTrue(TasksSection.costLine(studies, settings: settings).hasPrefix("w okresie"))
+        XCTAssertEqual(TasksSection.extras("tidy", settings).map(\.title), ["Strażnik katalogu", "Sędzia powtórek"])
+        XCTAssertEqual(
+            TasksSection.extras("keywords", settings).map(\.title),
+            ["Nowe dzieła od razu", "Twoje zdjęcia", "Błękit pod werniksem", "Tłumaczenie słów w Szukaj"]
+        )
     }
 }
