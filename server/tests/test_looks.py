@@ -890,11 +890,15 @@ def test_the_numbers_of_before_answer_until_most_works_have_their_three(
     found.round()  # their numbers asked
     found.round()  # and back
     assert not found.old() and len(found.three) == 3
-    assert not (root / "vectors.i8").exists() and not (root / "photos" / "ab.f32").exists()
+    # The numbers of before stay until the owner has seen the three do well.
+    assert (root / "vectors.i8").exists() and (root / "photos" / "ab.f32").exists()
+    assert len(found.index) == 0  # not read
     assert found.alike(PHOTO + "ab") == []  # a photograph of before: asked again
     assert [f.item.id for f in found.similar(red, by="subject")] == ["aic:7"]
     again = Looks(service.library, service.images, painter, service.ai_config, root)  # type: ignore[arg-type]
-    assert not again.old()
+    assert not again.old() and len(again.index) == 0
+    (root / "three" / "ready").unlink()  # back to the numbers of before
+    assert Looks(service.library, service.images, painter, service.ai_config, root).old()  # type: ignore[arg-type]
 
 
 def test_the_sentence_and_the_numbers_of_a_work_asked_of_google(service: FrameService) -> None:

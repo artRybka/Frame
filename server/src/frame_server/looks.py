@@ -206,7 +206,9 @@ class LookIndex:
     may be ``parts`` sets of numbers side by side (the three of a work),
     each with a direction of its own."""
 
-    def __init__(self, root: Path, size: int = EMBED_SIZE, parts: int = 1) -> None:
+    def __init__(
+        self, root: Path, size: int = EMBED_SIZE, parts: int = 1, load: bool = True
+    ) -> None:
         self.root = root
         self.size = size
         self.parts = parts
@@ -218,7 +220,8 @@ class LookIndex:
         self._ids: list[str] = []
         self._row: dict[str, int] = {}
         self._stamps: dict[str, int] = {}
-        self._load()
+        if load:
+            self._load()
 
     @property
     def _vectors(self) -> Path:
@@ -422,14 +425,16 @@ class Looks:
         self.images = images
         self.painter = painter
         self.config = config
-        #: The numbers of before: the whole thumbnail, one set a work.
-        self.index = LookIndex(root)
         #: A work's three: its style, its subject, its sentence (:data:`PART` each).
         self.three = LookIndex(root / "three", size=3 * PART, parts=3)
+        settled = (self.three.root / READY).exists()
+        #: The numbers of before: the whole thumbnail, one set a work (left
+        #: on disk, not read, once the three answer).
+        self.index = LookIndex(root, load=not settled)
         self.root = root
         self.clock = clock
         #: Whether questions are still answered by the numbers of before.
-        self._old = len(self.index) > 0 and not (self.three.root / READY).exists()
+        self._old = len(self.index) > 0 and not settled
         #: The works cared about, by id (``cared.Cared.ranks``): sent first.
         self.cared: Callable[[], dict[str, int]] = dict
         self._words: OrderedDict[str, list[float]] = OrderedDict()
@@ -1230,7 +1235,11 @@ class Looks:
 
     def settle(self) -> bool:
         """Once :data:`READY_SHARE` of the works have their three, they
-        answer and the numbers of before are dropped; whether they answer."""
+        answer; whether they do. The numbers of before (and the photographs
+        searched with them) stay on disk, unread, until the owner has seen
+        that the three do well (Mateusz 2026-11-17: "zostawmy je i nie
+        usuwajmy ich automatycznie zanim nie sprawdzę czy wszystko
+        działa"); without ``three/ready`` they answer again."""
         if not self._old:
             return True
         self._counts = None
@@ -1240,12 +1249,7 @@ class Looks:
         self.three.root.mkdir(parents=True, exist_ok=True)
         (self.three.root / READY).write_text(f"{done}/{total}\n")
         self._old = False
-        self.index.forget(self.index.ids())
-        for path in (self.root / "vectors.i8", self.root / "ids.txt", self.root / BATCHES):
-            path.unlink(missing_ok=True)
-        for path in (self.root / "photos").glob("*.f32"):
-            if not path.name.endswith(".three.f32"):
-                path.unlink(missing_ok=True)
+        self.index = LookIndex(self.root, load=False)
         log.info("looks: %d of %d works have their three; they answer now", done, total)
         return True
 
@@ -1254,7 +1258,8 @@ class Looks:
         kept = {i.id for i in self.library.all_items()}
         gone = self.three.ids() - kept
         self.three.forget(gone)
-        self.index.forget(self.index.ids() - kept)
+        if self._old:
+            self.index.forget(self.index.ids() - kept)
         return len(gone)
 
     def start(self) -> None:
