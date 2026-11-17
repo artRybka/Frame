@@ -163,7 +163,10 @@ struct OriginalViewer: View {
             framedLoading = true
             let version = "\(item.pictureVersion)|\(look.kind)\(look.aspect)\(look.inner.minX)\(look.inner.minY)\(look.inner.width)"
             if let request = model.backend.request(for: .framed(item.id, side: 4000, version: version)) {
-                framedImage = try? await ImageLoader.shared.image(for: request, maxPixel: 4096, priority: .high)
+                let loaded = try? await ImageLoader.shared.image(for: request, maxPixel: 4096, priority: .high)
+                // Decoded before it is shown: a 4000 px picture decoded on
+                // the first frame of the fade held the whole screen up.
+                framedImage = await loaded?.byPreparingForDisplay() ?? loaded
             }
             framedLoading = false
         }
@@ -568,9 +571,11 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
 
     /// The other picture in place of this one with the work where it is on
     /// the screen, the two crossing in a quick fade; then, only where it
-    /// must, a gentle move: the work alone smaller than the screen holds it
-    /// whole grows to fit, a frame not in sight at all comes into view whole.
+    /// must, a gentle move. The frame put on a work not zoomed into comes
+    /// into view whole; on a work he zoomed into, the zoom stays. The work
+    /// alone smaller than the screen holds it whole grows to fit.
     private func swap(to image: UIImage, oldWithin r: CGRect, framing inner: CGRect?) {
+        let zoomedIn = zoomScale > max(fillScale, 1) * 1.02
         let old = imageView.frame.offsetBy(dx: -contentOffset.x, dy: -contentOffset.y)
         let width = old.width / r.width, height = old.height / r.height
         let shown = CGRect(x: old.minX - r.minX * width, y: old.minY - r.minY * height, width: width, height: height)
@@ -582,7 +587,7 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
                 self.imageView.image = image
                 self.refit(showing: shown)
             },
-            completion: { _ in self.settle(framing: inner) }
+            completion: { _ in self.settle(framing: inner != nil && !zoomedIn) }
         )
     }
 
@@ -616,14 +621,11 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
         contentOffset = CGPoint(x: -shown.minX, y: -shown.minY)
     }
 
-    /// After `swap`: the zoom back within its bounds, gently.
-    private func settle(framing inner: CGRect?) {
+    /// After `swap`: the zoom back within its bounds, gently; `whole`, the
+    /// picture (the work in its frame) whole.
+    private func settle(framing whole: Bool) {
         let seen = convert(bounds, to: imageView)
-        let unit = CGRect(x: seen.minX / max(imageView.bounds.width, 1), y: seen.minY / max(imageView.bounds.height, 1),
-                          width: seen.width / max(imageView.bounds.width, 1),
-                          height: seen.height / max(imageView.bounds.height, 1))
-        let frameUnseen = inner.map { $0.insetBy(dx: -0.002, dy: -0.002).contains(unit) } ?? false
-        let target: CGFloat? = if zoomScale < 0.999 || frameUnseen {
+        let target: CGFloat? = if zoomScale < 0.999 || (whole && zoomScale > 1.001) {
             1  // whole
         } else if zoomScale > depth * 1.001 {
             depth
