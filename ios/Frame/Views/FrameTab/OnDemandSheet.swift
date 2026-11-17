@@ -14,6 +14,11 @@ struct OnDemandRow: View {
     @State private var stopping = false
 
     var body: some View {
+        content.id(use.key == "descriptions" ? "ondemand" : "ondemand-\(use.key)")
+    }
+
+    @ViewBuilder
+    private var content: some View {
         if let run = use.run, run.running {
             going(run)
         } else {
@@ -28,6 +33,13 @@ struct OnDemandRow: View {
                 .controlSize(.small)
                 .tint(Theme.ink)
                 .sheet(isPresented: $asking) { OnDemandSheet(use: use, free: free) }
+                .task {
+                    // Screenshots: `-onDemandSheet descriptions` opens it.
+                    if UserDefaults.standard.string(forKey: "onDemandSheet") == use.key {
+                        try? await Task.sleep(for: .seconds(6))
+                        asking = true
+                    }
+                }
                 if let run = use.run {
                     Text(Self.lastNote(run))
                         .font(.caption)
