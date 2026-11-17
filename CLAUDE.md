@@ -61,6 +61,12 @@ take the `screenshots` artifact (input `only`: a regex of shot names, e.g.
 `^confirm-`, to capture just those).
 `.confirmationDialog` goes on the button (or menu, or card) that asks, never
 on a page or section: on iOS 26 it is a popover pointing at that view.
+Polish line breaking (no "i", "w" left at a line's end, `Design/Typography.swift`):
+literals are bound on their own (the main bundle's look-up); a string made at
+run time is shown with `Text(bound: value)` (or `value.bound` for a `Label`,
+`Button`…), never a bare `Text(value)`. Only on what is shown, never on what is
+typed, edited, searched or sent. The frame's "Opis" page does the same on the
+server (`imaging/breaks.py`); keep the two rule sets in step.
 Pages: `.paperPage()` on the ScrollView (never a bare `.background(Theme.paper)`,
 `PageLayoutTests` fails on it) and `.pageWidth()` on its content. A vertical
 ScrollView is only as wide as its content, so a page holding just a spinner or

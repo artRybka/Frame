@@ -22,7 +22,7 @@ struct Eyebrow: View {
     }
 
     var body: some View {
-        Text(text.uppercased())
+        Text(bound: text.uppercased())
             .font(.system(size: 11, weight: .semibold))
             .tracking(1.4)
             .foregroundStyle(color)
@@ -35,11 +35,11 @@ struct SectionHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title)
+            Text(bound: title)
                 .font(.serif(22, weight: .semibold))
                 .foregroundStyle(Theme.ink)
             if let subtitle {
-                Text(subtitle)
+                Text(bound: subtitle)
                     .font(.subheadline)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -233,7 +233,7 @@ struct ArtCard: View {
                         // A long title gives way in the middle, not at its
                         // end: the marks after it stay in sight.
                         .truncationMode(marked ? .middle : .tail)
-                    Text(Self.byline(item))
+                    Text(bound: Self.byline(item))
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .lineLimit(1)
@@ -276,7 +276,7 @@ struct ArtCard: View {
         _ item: ItemSummary, title shown: String, weight: Font.Weight, zoom: Bool = true
     ) -> Text {
         let font = Font.serif(15, weight: weight)
-        var text = Text(shown).font(font).foregroundStyle(Theme.ink)
+        var text = Text(bound: shown).font(font).foregroundStyle(Theme.ink)
         var label = shown
         // Cut out of the museum's photograph: where the year stands on the
         // card, here the first mark (Mateusz 2026-11-14).
@@ -715,7 +715,7 @@ struct Chip: View {
                 if let systemImage {
                     Image(systemName: systemImage).font(.caption.weight(.semibold))
                 }
-                Text(title).font(.subheadline.weight(.medium))
+                Text(bound: title).font(.subheadline.weight(.medium))
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
@@ -747,7 +747,7 @@ struct TagLabel: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(Theme.inkSoft)
             }
-            Text(text)
+            Text(bound: text)
         }
         .font(.caption.weight(.medium))
         .foregroundStyle(Theme.ink)
@@ -1008,8 +1008,8 @@ struct EmptyStateView: View {
             Image(systemName: systemImage)
                 .font(.system(size: 42, weight: .light))
                 .foregroundStyle(Theme.inkSoft)
-            Text(title).font(.serif(20, weight: .semibold)).foregroundStyle(Theme.ink)
-            Text(message)
+            Text(bound: title).font(.serif(20, weight: .semibold)).foregroundStyle(Theme.ink)
+            Text(bound: message)
                 .font(.subheadline)
                 .foregroundStyle(Theme.inkSoft)
                 .multilineTextAlignment(.center)
@@ -1062,7 +1062,7 @@ struct NothingFound: View {
                             if row.token.kind == "color" {
                                 ColorTagDot(tag: row.token.key, size: 9, stroke: nil)
                             }
-                            Text(row.token.shownName).foregroundStyle(Theme.ink)
+                            Text(bound: row.token.shownName).foregroundStyle(Theme.ink)
                             Text("· " + Names.works(row.count)).foregroundStyle(Theme.inkSoft)
                         }
                         .font(.footnote)
@@ -1283,7 +1283,7 @@ enum TitleYear {
         _ title: String, date: String, font: Font, scheme: ColorScheme, scale: CGFloat, zoom: Int? = nil,
         lowSide: Int? = nil, restored: Bool = false, cropped: Bool = false, cleaned: Bool = false
     ) -> Text {
-        var text = Text(title).font(font).foregroundStyle(Theme.ink)
+        var text = Text(bound: title).font(font).foregroundStyle(Theme.ink)
         var label = title
         let date = unbroken(date)
         // An image inside the text wraps with it; it sits on the baseline,
@@ -1374,7 +1374,7 @@ private struct YearBadge: View {
                 Image(systemName: symbol).font(.system(size: 11.5, weight: .regular))
             }
             if !date.isEmpty {
-                Text(date)
+                Text(bound: date)
                     .font(.system(size: 12.5, weight: .light))
                     .monospacedDigit()
                     .tracking(0.3)

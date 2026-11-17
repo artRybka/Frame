@@ -459,7 +459,7 @@ struct PlaylistEditorView: View {
                             album.order = order
                         } label: {
                             HStack {
-                                Text(order.title).foregroundStyle(Theme.ink)
+                                Text(bound: order.title).foregroundStyle(Theme.ink)
                                 Spacer()
                                 if album.order == order {
                                     Image(systemName: "checkmark").foregroundStyle(Theme.ink)
@@ -475,7 +475,7 @@ struct PlaylistEditorView: View {
                 .padding(.horizontal, 14)
                 .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline))
-                Text(album.order.explanation)
+                Text(bound: album.order.explanation)
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
@@ -541,7 +541,7 @@ struct PlaylistEditorView: View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(summary)
+                    Text(bound: summary)
                         .font(.serif(17, weight: .medium))
                         .foregroundStyle(finder.nothingFound ? Theme.bad : Theme.ink)
                         .contentTransition(.numericText())
@@ -562,7 +562,7 @@ struct PlaylistEditorView: View {
                     }
                 }
                 if let fillNote {
-                    Text(fillNote)
+                    Text(bound: fillNote)
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)

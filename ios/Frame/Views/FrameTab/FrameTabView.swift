@@ -249,7 +249,7 @@ struct FrameTabView: View {
                 Eyebrow(model.settings?.name != nil ? panelName : "Samsung \(device?.model ?? "EM32DX")")
                 // Held (as a title is, `PressHold`): rename the frame. The
                 // name is the owner's, so for others it is plain text.
-                Text(frameName)
+                Text(bound: frameName)
                     .font(.serif(26, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                     .multilineTextAlignment(.leading)
@@ -257,7 +257,7 @@ struct FrameTabView: View {
                     .accessibilityAction(named: "Zmień nazwę") {
                         if model.isOwner { startRenaming() }
                     }
-                Text(connectionText)
+                Text(bound: connectionText)
                     .font(.subheadline)
                     .foregroundStyle(connectionColor)
             }
@@ -396,8 +396,8 @@ struct FrameTabView: View {
                         .font(.title2)
                         .foregroundStyle(device?.charging == true ? Theme.warn : Theme.inkSoft)
                         .symbolEffect(.pulse, options: .repeating, isActive: device?.charging == true)
-                    Text(powerText).font(.headline).foregroundStyle(Theme.ink)
-                    Text(powerNote)
+                    Text(bound: powerText).font(.headline).foregroundStyle(Theme.ink)
+                    Text(bound: powerNote)
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 }
@@ -437,11 +437,11 @@ struct FrameTabView: View {
                             .font(.title2)
                             .foregroundStyle(state.color)
                     }
-                    Text(busy ? checkLabel : state.title)
+                    Text(bound: busy ? checkLabel : state.title)
                         .font(.headline)
                         .foregroundStyle(Theme.ink)
                     if !state.note.isEmpty {
-                        Text(state.note)
+                        Text(bound: state.note)
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
                             .lineLimit(2)
@@ -534,15 +534,15 @@ struct FrameTabView: View {
                     Image(systemName: state.working || state.icon == "arrow.down.circle.fill" ? "server.rack" : state.icon)
                         .font(.title2)
                         .foregroundStyle(state.color)
-                    Text(state.title)
+                    Text(bound: state.title)
                         .font(.headline)
                         .monospacedDigit()
                         .foregroundStyle(Theme.ink)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(state.note)
+                        Text(bound: state.note)
                             .foregroundStyle(state.color == Theme.ink ? Theme.ink : Theme.inkSoft)
                         if let detail = state.detail {
-                            Text(detail).foregroundStyle(Theme.inkSoft)
+                            Text(bound: detail).foregroundStyle(Theme.inkSoft)
                         }
                     }
                     .font(.caption)
@@ -796,7 +796,7 @@ struct BatteryRing: View {
                     .foregroundStyle(estimated == nil ? Theme.ink : Theme.inkSoft)
                     .contentTransition(.numericText())
                     .accessibilityLabel(accessibilityLevel)
-                Text(note).font(.caption).foregroundStyle(Theme.inkSoft)
+                Text(bound: note).font(.caption).foregroundStyle(Theme.inkSoft)
             }
         }
     }
@@ -980,7 +980,7 @@ struct ScheduleSection: View {
                 checks: settings.checkMinutes,
                 quiet: hasChecks ? settings.checkQuiet : nil
             )
-            Text(wakeNote)
+            Text(bound: wakeNote)
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
         }
@@ -1000,7 +1000,7 @@ struct ScheduleSection: View {
 
     private func checkQuietRow(_ label: String) -> some View {
         HStack(spacing: 8) {
-            Text(label).foregroundStyle(Theme.inkSoft).fixedSize()
+            Text(bound: label).foregroundStyle(Theme.inkSoft).fixedSize()
             ChangeTimeChip(
                 label: settings.checkQuietStart ?? "22:00",
                 time: time(\.checkQuietStart, fallback: "22:00"),
@@ -1050,7 +1050,7 @@ struct ScheduleSection: View {
 
     private func row<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         HStack {
-            Text(title).foregroundStyle(Theme.ink)
+            Text(bound: title).foregroundStyle(Theme.ink)
             Spacer()
             content()
         }
@@ -1061,7 +1061,7 @@ struct ScheduleSection: View {
     private var changeTimesEditor: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(changeTimesTitle).foregroundStyle(Theme.ink)
+                Text(bound: changeTimesTitle).foregroundStyle(Theme.ink)
                 Spacer()
                 if settings.changeTimes.count < maxTimes {
                     Button {
@@ -1174,7 +1174,7 @@ struct TogglePill: View {
             // Like the label buttons: outlined when off, filled with ink when on.
             HStack(spacing: 6) {
                 Image(systemName: systemImage).font(.footnote.weight(.semibold))
-                Text(title)
+                Text(bound: title)
                     .labelButtonType()
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
@@ -1206,7 +1206,7 @@ struct ChangeTimeChip: View {
     var body: some View {
         Button { editing = true } label: {
             // Outlined like a label button, filled while its wheel is open.
-            Text(label)
+            Text(bound: label)
                 .font(.body.weight(.medium))
                 .monospacedDigit()
                 .padding(.horizontal, 14)
@@ -1438,7 +1438,7 @@ struct PresentationSection: View {
             board: shownBoard
         ) {
             if empty {
-                Text(target == .photo ? "Brak zdjęć w bibliotece" : "Brak dzieł w bibliotece")
+                Text(bound: target == .photo ? "Brak zdjęć w bibliotece" : "Brak dzieł w bibliotece")
                     .font(.caption)
                     .multilineTextAlignment(.center)
                     .foregroundStyle(Theme.inkSoft)
@@ -1498,13 +1498,13 @@ struct PresentationSection: View {
                 if hasMat {
                     Divider()
                     VStack(alignment: .leading, spacing: 10) {
-                        Text(isDescription ? "Kolor passe-partout" : "Kolor").foregroundStyle(Theme.ink)
+                        Text(bound: isDescription ? "Kolor passe-partout" : "Kolor").foregroundStyle(Theme.ink)
                         HStack(spacing: 0) { matSwatches }
                     }
                     Divider()
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
-                            Text(isDescription ? "Szerokość passe-partout" : "Szerokość")
+                            Text(bound: isDescription ? "Szerokość passe-partout" : "Szerokość")
                             Spacer()
                             Text("\(Int(max(Panel.millimetres(presentation.margin.wrappedValue), minMillimetres).rounded())) mm")
                                 .monospacedDigit()
@@ -1553,7 +1553,7 @@ struct FitOption: View {
                 .frame(height: 52)
                 .whiteFrame(3, corner: 1)
                 .miniatureChoice(selected)
-                Text(title)
+                Text(bound: title)
                     .font(.caption2.weight(selected ? .bold : .medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -1694,7 +1694,7 @@ struct MatSwatch: View {
                             .padding(-4)
                     )
                     .padding(.top, 4)  // room for the ring
-                Text(Self.title(name))
+                Text(bound: Self.title(name))
                     .font(.caption2.weight(.medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -1798,7 +1798,7 @@ struct ViewerSection: View {
                         HStack {
                             Text("Siła rozjaśnienia")
                             Spacer()
-                            Text(ArtGlow.label(gain))
+                            Text(bound: ArtGlow.label(gain))
                                 .monospacedDigit()
                                 .foregroundStyle(Theme.inkSoft)
                         }
@@ -1890,7 +1890,7 @@ struct SourcesSection: View {
                 Toggle(isOn: privateUse) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Użytek prywatny")
-                        Text(
+                        Text(bound: 
                             privateUse.wrappedValue
                                 ? "Także licencje Creative Commons, prace chronione, które muzea udostępniają, i WikiArt. Tylko do oglądania w domu."
                                 : "Tylko domena publiczna (CC0)."
@@ -1914,8 +1914,8 @@ struct SourcesSection: View {
                         if index > 0 { Divider() }
                         Toggle(isOn: gatherer(source.key)) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(source.name)
-                                Text(source.about).font(.caption).foregroundStyle(Theme.inkSoft)
+                                Text(bound: source.name)
+                                Text(bound: source.about).font(.caption).foregroundStyle(Theme.inkSoft)
                             }
                         }
                         .tint(Theme.ink)
@@ -1965,7 +1965,7 @@ struct SourceKeyRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(source.name).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
+                Text(bound: source.name).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
                 Spacer()
                 if source.keySet, let tail = source.keyTail {
                     Label("…\(tail)", systemImage: "checkmark.circle.fill")
@@ -1973,7 +1973,7 @@ struct SourceKeyRow: View {
                         .foregroundStyle(Theme.good)
                 }
             }
-            Text(source.about)
+            Text(bound: source.about)
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
@@ -2066,12 +2066,12 @@ struct PanelSection: View {
         _ title: String, hint: String? = nil, error: String? = nil, @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
+            Text(bound: title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
             content()
             if let error {
-                Text(error).font(.caption).foregroundStyle(Theme.bad)
+                Text(bound: error).font(.caption).foregroundStyle(Theme.bad)
             } else if let hint {
-                Text(hint).font(.caption).foregroundStyle(Theme.inkSoft)
+                Text(bound: hint).font(.caption).foregroundStyle(Theme.inkSoft)
             }
         }
     }
@@ -2122,7 +2122,7 @@ struct NoticeRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: icon).foregroundStyle(color)
-            Text(text).font(.caption).foregroundStyle(Theme.ink)
+            Text(bound: text).font(.caption).foregroundStyle(Theme.ink)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -2151,7 +2151,7 @@ struct PanelAppSection: View {
                     HStack {
                         Text("Wersja")
                         Spacer()
-                        Text(app.state.build.map { "\(package.version) · na ramce \($0)" } ?? package.version)
+                        Text(bound: app.state.build.map { "\(package.version) · na ramce \($0)" } ?? package.version)
                             .monospacedDigit()
                             .foregroundStyle(Theme.inkSoft)
                     }
@@ -2200,7 +2200,7 @@ struct PanelCertificatesSection: View {
             SectionHeader(title: "Certyfikaty Samsunga", subtitle: "Do podpisu aplikacji ramki")
             Card {
                 if let expires = app.certificatesExpireAt {
-                    Text(certificatesText(expires))
+                    Text(bound: certificatesText(expires))
                         .font(.caption)
                         .foregroundStyle(Theme.warn)
                 } else if let until = certificatesUntil {
@@ -2294,7 +2294,7 @@ struct ServerSection: View {
                 .font(.subheadline)
                 .foregroundStyle(Theme.bad)
         case .unknown:
-            Text(model.demoMode ? "Przykładowe dzieła bez serwera. Wpisz adres niżej i stuknij „Połącz”." : "Nie połączono")
+            Text(bound: model.demoMode ? "Przykładowe dzieła bez serwera. Wpisz adres niżej i stuknij „Połącz”." : "Nie połączono")
                 .font(.subheadline)
                 .foregroundStyle(Theme.inkSoft)
         }
@@ -2325,7 +2325,7 @@ private struct ServerUpdateRow: View {
             HStack(alignment: .firstTextBaseline) {
                 Text("Wersja serwera").font(.subheadline).foregroundStyle(Theme.ink)
                 Spacer()
-                Text(update.version)
+                Text(bound: update.version)
                     .font(.subheadline.monospacedDigit())
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -2347,7 +2347,7 @@ private struct ServerUpdateRow: View {
                     }
                 } label: {
                     HStack {
-                        Text(update.offersUpdate ? "Aktualizuj serwer" : "Sprawdź aktualizacje")
+                        Text(bound: update.offersUpdate ? "Aktualizuj serwer" : "Sprawdź aktualizacje")
                         if working { ProgressView() }
                     }
                 }
@@ -2385,14 +2385,14 @@ private struct ServerUpdateRow: View {
             caption("Aktualna, sprawdzono \(checked)")
         }
         if update.state == "failed", let error = update.error {
-            Text(error).font(.caption).foregroundStyle(Theme.warn)
+            Text(bound: error).font(.caption).foregroundStyle(Theme.warn)
         } else if let last = update.lastUpdate, last.ok, let at = When.ago(last.at) {
             caption("Zaktualizowano \(at)\(last.toVersion.map { " do \($0)" } ?? "").")
         }
     }
 
     private func caption(_ text: String) -> some View {
-        Text(text)
+        Text(bound: text)
             .font(.caption)
             .foregroundStyle(Theme.inkSoft)
     }
@@ -2464,14 +2464,14 @@ struct LibrarySizeSection: View {
     }
 
     private func caption(_ text: String) -> some View {
-        Text(text)
+        Text(bound: text)
             .font(.caption)
             .foregroundStyle(Theme.inkSoft)
     }
 
     private func row(_ title: String, _ bytes: Int64) -> some View {
         HStack {
-            Text(title).font(.subheadline).foregroundStyle(Theme.ink)
+            Text(bound: title).font(.subheadline).foregroundStyle(Theme.ink)
             Spacer()
             Text(ByteSize.bytes(bytes))
                 .font(.subheadline.monospacedDigit())
@@ -2502,7 +2502,7 @@ private struct LimitRow: View {
         )
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
-                Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
+                Text(bound: title).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
                 Spacer()
                 Text(ByteSize.bytes(used))
                     .font(.subheadline.monospacedDigit())
@@ -2516,7 +2516,7 @@ private struct LimitRow: View {
                 Spacer()
                 Picker("\(title): maksymalnie", selection: limit) {
                     ForEach(Set(options + [defaultMb, limitMb]).sorted(), id: \.self) { mb in
-                        Text(mb == defaultMb ? "\(ByteSize.mb(mb)) · domyślnie" : ByteSize.mb(mb))
+                        Text(bound: mb == defaultMb ? "\(ByteSize.mb(mb)) · domyślnie" : ByteSize.mb(mb))
                             .tag(mb)
                     }
                 }
@@ -2535,7 +2535,7 @@ private struct AddressField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.caption).foregroundStyle(Theme.inkSoft)
+            Text(bound: title).font(.caption).foregroundStyle(Theme.inkSoft)
             TextField(prompt, text: $text)
                 .keyboardType(.URL)
                 .textInputAutocapitalization(.never)
@@ -2598,7 +2598,7 @@ struct WakeStrip: View {
             .frame(height: 20)
             GeometryReader { geo in
                 ForEach(labels(geo.size.width), id: \.minutes) { label in
-                    Text(Self.label(label.minutes))
+                    Text(bound: Self.label(label.minutes))
                         .font(.caption2)
                         .monospacedDigit()
                         .foregroundStyle(Theme.inkSoft)
@@ -2672,7 +2672,7 @@ struct WakeStrip: View {
     private func legend(_ color: Color, _ text: String) -> some View {
         HStack(spacing: 4) {
             RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 9, height: 9)
-            Text(text)
+            Text(bound: text)
         }
     }
 }

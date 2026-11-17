@@ -336,11 +336,11 @@ struct AiSection: View {
             .compactMap { $0 }
         return Toggle(isOn: binding) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                Text(hint).font(.caption).foregroundStyle(Theme.inkSoft)
+                Text(bound: title)
+                Text(bound: hint).font(.caption).foregroundStyle(Theme.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
                 if !notes.isEmpty {
-                    Text(notes.joined(separator: " · "))
+                    Text(bound: notes.joined(separator: " · "))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(Theme.ink.opacity(0.75))
                         .padding(.top, 1)
@@ -440,7 +440,7 @@ struct AiSection: View {
             }
             ProgressView(value: min(spent / max(limit, 0.01), 1))
                 .tint(spent >= limit ? Theme.bad : Theme.ink)
-            Text(note)
+            Text(bound: note)
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
         }
@@ -530,8 +530,8 @@ struct AiSection: View {
         )
         return HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).foregroundStyle(Theme.ink)
-                Text(hint).font(.caption).foregroundStyle(Theme.inkSoft)
+                Text(bound: title).foregroundStyle(Theme.ink)
+                Text(bound: hint).font(.caption).foregroundStyle(Theme.inkSoft)
             }
             Spacer()
             Picker(title, selection: chosen) {
@@ -586,13 +586,13 @@ struct CostTable: View {
             GridRow {
                 Text("USD")
                 Text("\(days) dni").gridColumnAlignment(.trailing)
-                Text(since.map { "od \($0)" } ?? "okres").gridColumnAlignment(.trailing)
+                Text(bound: since.map { "od \($0)" } ?? "okres").gridColumnAlignment(.trailing)
             }
             .font(.caption.weight(.semibold))
             .foregroundStyle(Theme.inkSoft)
             ForEach(rows) { row in
                 GridRow {
-                    Text(row.label)
+                    Text(bound: row.label)
                         .font(.subheadline)
                         .foregroundStyle(Theme.ink)
                         .fixedSize(horizontal: false, vertical: true)
@@ -611,7 +611,7 @@ struct CostTable: View {
     }
 
     private func amount(_ usd: Double) -> some View {
-        Text(Self.short(usd))
+        Text(bound: Self.short(usd))
             .font(.subheadline.monospacedDigit())
             .lineLimit(1)
             .fixedSize()

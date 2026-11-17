@@ -137,7 +137,7 @@ struct OwnWorkFlow: View {
                 }
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 1) {
-                        Text(retaking == nil ? "Własne dzieło" : "Nowe zdjęcie")
+                        Text(bound: retaking == nil ? "Własne dzieło" : "Nowe zdjęcie")
                             .font(.headline)
                             .foregroundStyle(Theme.ink)
                         Text("\(step.name) · \((steps.firstIndex(of: step) ?? 0) + 1) z \(steps.count)")

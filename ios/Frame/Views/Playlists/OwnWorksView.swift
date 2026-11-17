@@ -21,7 +21,7 @@ struct OwnWorksCard: View {
                 Text("Moje dzieła")
                     .font(.serif(16, weight: .semibold))
                     .foregroundStyle(Theme.ink)
-                Text(Names.works(items.count))
+                Text(bound: Names.works(items.count))
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -88,7 +88,7 @@ struct OwnWorksView: View {
                 .font(.serif(17))
                 .foregroundStyle(Theme.inkSoft)
             if !model.ownWorks.isEmpty {
-                Text(Names.works(model.ownWorks.count))
+                Text(bound: Names.works(model.ownWorks.count))
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(Theme.inkSoft)
             }

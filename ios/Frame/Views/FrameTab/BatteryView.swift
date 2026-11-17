@@ -55,7 +55,7 @@ struct BatteryView: View {
                             .foregroundStyle(Theme.ink)
                     }
                 } footer: {
-                    Text(dayFooter)
+                    Text(bound: dayFooter)
                 }
                 .listRowBackground(Theme.card)
                 Section {
@@ -63,7 +63,7 @@ struct BatteryView: View {
                 } header: {
                     Text("Trafność")
                 } footer: {
-                    Text(basis)
+                    Text(bound: basis)
                 }
                 .listRowBackground(Theme.card)
             }
@@ -85,17 +85,17 @@ struct BatteryView: View {
             HStack(spacing: 16) {
                 ring
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(headline)
+                    Text(bound: headline)
                         .font(.serif(28, weight: .semibold))
                         .foregroundStyle(Theme.ink)
-                    Text(subline)
+                    Text(bound: subline)
                         .font(.subheadline)
                         .foregroundStyle(Theme.inkSoft)
                 }
             }
             if let sinceReading {
                 Divider()
-                Text(sinceReading)
+                Text(bound: sinceReading)
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -182,8 +182,8 @@ struct BatteryView: View {
                 .fill(BatteryStack.color(line.kind))
                 .frame(width: 10, height: 10)
             VStack(alignment: .leading, spacing: 2) {
-                Text(BatteryText.lineTitle(line.kind)).foregroundStyle(Theme.ink)
-                Text(detail(line)).font(.caption).foregroundStyle(Theme.inkSoft)
+                Text(bound: BatteryText.lineTitle(line.kind)).foregroundStyle(Theme.ink)
+                Text(bound: detail(line)).font(.caption).foregroundStyle(Theme.inkSoft)
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 2) {
@@ -191,7 +191,7 @@ struct BatteryView: View {
                     .monospacedDigit()
                     .foregroundStyle(Theme.ink)
                 let measured = learnt(line.kind)
-                Text(measured >= 0.6 ? "zmierzone" : measured >= 0.2 ? "częściowo zmierzone" : "założenie")
+                Text(bound: measured >= 0.6 ? "zmierzone" : measured >= 0.2 ? "częściowo zmierzone" : "założenie")
                     .font(.caption2)
                     .foregroundStyle(measured >= 0.6 ? Theme.good : Theme.inkSoft)
             }
@@ -258,7 +258,7 @@ struct BatteryView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(BatteryText.lastSpan(check.hours)): zużyła \(BatteryText.percent(check.used))")
                         .foregroundStyle(Theme.ink)
-                    Text(close
+                    Text(bound: close
                         ? "Wyliczone z tego, co ramka robiła: \(BatteryText.percent(check.expected))."
                         : "Wyliczone \(BatteryText.percent(check.expected)); z kolejnymi odczytami prognoza się poprawi.")
                         .font(.caption)
@@ -353,7 +353,7 @@ struct BatteryChart: View {
                         path.addLine(to: CGPoint(x: geometry.size.width, y: y(mark)))
                     }
                     .stroke(Theme.hairline, lineWidth: 0.5)
-                    Text(mark == 0 ? "0" : "\(Int(mark))%")
+                    Text(bound: mark == 0 ? "0" : "\(Int(mark))%")
                         .font(.system(size: 10))
                         .foregroundStyle(Theme.inkSoft)
                         .lineLimit(1)

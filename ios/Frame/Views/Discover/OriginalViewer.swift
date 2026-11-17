@@ -172,14 +172,14 @@ struct OriginalViewer: View {
 
     private var caption: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(item.displayTitle.isEmpty ? "Bez tytułu" : item.displayTitle)
+            Text(bound: item.displayTitle.isEmpty ? "Bez tytułu" : item.displayTitle)
                 .font(.serif(19, weight: .semibold))
                 .lineLimit(2)
             let line = item.kind == .photo
                 ? item.photoLine
                 : [Names.artist(item.artist), item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
             if !line.isEmpty {
-                Text(line).font(.footnote).opacity(0.75)
+                Text(bound: line).font(.footnote).opacity(0.75)
             }
             if !tiles.isEmpty, shownOff.isEmpty {
                 Label("Przybliż, a ostrzejsze fragmenty (\(tiles.count)) doczytają się same",

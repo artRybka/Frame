@@ -6,6 +6,9 @@ struct FrameApp: App {
     @State private var model = AppModel()
 
     init() {
+        // Every literal the app shows breaks the Polish way: no "i" or "w"
+        // left at a line's end (Typography).
+        Typography.bindAppStrings()
         // Thumbnails the server marks as good for a day stay on disk across
         // launches, so Discover's covers and rows show at once.
         URLCache.shared = URLCache(memoryCapacity: 32 << 20, diskCapacity: 300 << 20)

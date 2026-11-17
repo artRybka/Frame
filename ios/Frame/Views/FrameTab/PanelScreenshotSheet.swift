@@ -126,7 +126,7 @@ struct PanelScreenshotSheet: View {
                 .font(.subheadline)
                 .foregroundStyle(Theme.warn)
         case let .failed(why):
-            Text(why)
+            Text(bound: why)
                 .font(.subheadline)
                 .foregroundStyle(Theme.bad)
         case .done:

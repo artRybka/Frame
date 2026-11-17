@@ -157,7 +157,7 @@ private struct GridOption: View {
                 .frame(height: 52)
                 .whiteFrame(3, corner: 1)
                 .miniatureChoice(selected)
-                Text(title)
+                Text(bound: title)
                     .font(.caption2.weight(selected ? .bold : .medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)

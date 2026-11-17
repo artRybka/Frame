@@ -53,7 +53,7 @@ struct PanelCertificatesSheet: View {
                         }
                     }
                     if let problem {
-                        Text(problem)
+                        Text(bound: problem)
                             .font(.caption)
                             .foregroundStyle(Theme.bad)
                     }
@@ -112,8 +112,8 @@ struct PanelCertificatesSheet: View {
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).foregroundStyle(Theme.ink)
-                    Text(picked?.name ?? "\(role.rawValue).p12 z Plików")
+                    Text(bound: title).foregroundStyle(Theme.ink)
+                    Text(bound: picked?.name ?? "\(role.rawValue).p12 z Plików")
                         .font(.caption)
                         .foregroundStyle(picked == nil ? Theme.inkSoft : Theme.good)
                 }

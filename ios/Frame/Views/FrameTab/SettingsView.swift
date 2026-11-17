@@ -249,11 +249,11 @@ private struct SettingsRow: View {
                     .foregroundStyle(page.block == .art ? Theme.ink : Color.white)
                     .frame(width: 30, height: 30)
                     .background(page.block.tint, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                Text(page.title)
+                Text(bound: page.title)
                     .foregroundStyle(Theme.ink)
                 Spacer(minLength: 8)
                 if let summary {
-                    Text(summary.text)
+                    Text(bound: summary.text)
                         .font(.subheadline)
                         .foregroundStyle(summary.warn ? Theme.warn : Theme.inkSoft)
                         .lineLimit(1)

@@ -83,10 +83,10 @@ struct FullPhotoSection: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
                                 .frame(width: 96, height: 60)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(item.isOwnWork ? "Twoje zdjęcie" : "Zdjęcie muzeum")
+                                Text(bound: item.isOwnWork ? "Twoje zdjęcie" : "Zdjęcie muzeum")
                                     .font(.body)
                                     .foregroundStyle(Theme.ink)
-                                Text(line)
+                                Text(bound: line)
                                     .font(.footnote)
                                     .foregroundStyle(Theme.inkSoft)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -306,7 +306,7 @@ struct CutEditor: View {
             } label: {
                 HStack(spacing: 8) {
                     if saving { ProgressView().controlSize(.small).tint(Theme.paper) }
-                    Text(saveTitle)
+                    Text(bound: saveTitle)
                 }
                 .foregroundStyle(Theme.paper)
             }
@@ -336,7 +336,7 @@ struct CutEditor: View {
             }
             .padding(.horizontal, Theme.gutter)
             if let note {
-                Text(note)
+                Text(bound: note)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(Theme.ink)
                     .multilineTextAlignment(.center)
@@ -368,7 +368,7 @@ struct CutEditor: View {
             if cancel != nil {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(action: saveInSteps) {
-                        if saving { ProgressView() } else { Text(saveTitle) }
+                        if saving { ProgressView() } else { Text(bound: saveTitle) }
                     }
                     .disabled(saving)
                 }

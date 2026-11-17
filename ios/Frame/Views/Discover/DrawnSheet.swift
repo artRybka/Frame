@@ -199,7 +199,7 @@ struct DrawnSheet: View {
                     .foregroundStyle(Theme.ink.opacity(0.78))
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if let grid {
-                    Text(grid)
+                    Text(bound: grid)
                         .font(.hand(15))
                         .foregroundStyle(Theme.inkSoft)
                         .opacity(bare ? 0 : 1)

@@ -282,7 +282,7 @@ struct MuseumSearchView: View {
             HStack(alignment: .center, spacing: 12) {
                 if let photo { photoThumb(photo) }
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(summary)
+                    Text(bound: summary)
                         .font(.serif(17, weight: .medium))
                         .foregroundStyle(Theme.ink)
                     TokenSummary(tokens: tokens.wrappedValue)

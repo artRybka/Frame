@@ -357,7 +357,7 @@ struct OwnCamera: View {
     }
 
     private func line(_ text: String) -> some View {
-        Text(text)
+        Text(bound: text)
             .font(.subheadline.weight(.medium))
             .foregroundStyle(.white.opacity(0.85))
             .multilineTextAlignment(.center)

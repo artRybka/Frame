@@ -67,14 +67,14 @@ struct SourceRequestsSection: View {
         let turnedAway = report.sources.reduce(0) { $0 + $1.week.turnedAway }
         let held = report.sources.reduce(0) { $0 + $1.week.refused }
         return VStack(alignment: .leading, spacing: 4) {
-            Text(SourceRequestText.requests(today) + " dziś")
+            Text(bound: SourceRequestText.requests(today) + " dziś")
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(Theme.ink)
-            Text(SourceRequestText.requests(week) + " w \(report.days) dni")
+            Text(bound: SourceRequestText.requests(week) + " w \(report.days) dni")
                 .font(.subheadline)
                 .foregroundStyle(Theme.inkSoft)
             if turnedAway > 0 || held > 0 {
-                Text(SourceRequestText.refusals(turnedAway: turnedAway, held: held))
+                Text(bound: SourceRequestText.refusals(turnedAway: turnedAway, held: held))
                     .font(.subheadline)
                     .foregroundStyle(turnedAway > 0 ? Theme.warn : Theme.inkSoft)
             } else {
@@ -104,7 +104,7 @@ struct SourceRequestsSection: View {
             }
             .buttonStyle(.plain)
             if showQuiet {
-                Text(quiet.map { SourceRequestText.name($0.name) }.joined(separator: ", "))
+                Text(bound: quiet.map { SourceRequestText.name($0.name) }.joined(separator: ", "))
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -126,7 +126,7 @@ private struct SourceRequestRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
-                Text(SourceRequestText.name(row.name))
+                Text(bound: SourceRequestText.name(row.name))
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(2)
@@ -135,16 +135,16 @@ private struct SourceRequestRow: View {
                     .font(.subheadline.monospacedDigit())
                     .foregroundStyle(Theme.ink)
             }
-            Text(weekLine)
+            Text(bound: weekLine)
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
             if let askers = askersLine {
-                Text(askers)
+                Text(bound: askers)
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
             }
             if row.week.turnedAway > 0 {
-                Text(turnedAwayLine)
+                Text(bound: turnedAwayLine)
                     .font(.caption)
                     .foregroundStyle(Theme.warn)
             }

@@ -82,8 +82,8 @@ struct NotificationsSection: View {
                         set: { on in Task { await model.setNotification(kind.key, on: on) } }
                     )) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(kind.title)
-                            Text(kind.hint).font(.caption).foregroundStyle(Theme.inkSoft)
+                            Text(bound: kind.title)
+                            Text(bound: kind.hint).font(.caption).foregroundStyle(Theme.inkSoft)
                         }
                     }
                     .tint(Theme.ink)
@@ -103,7 +103,7 @@ struct NotificationsSection: View {
         }
         if settings != nil, settings?.key == nil {
             // The owner adds it in Klucze i certyfikaty.
-            Text(model.isOwner
+            Text(bound: model.isOwner
                 ? "Serwer nie ma jeszcze klucza APNs. Dodasz go w Kluczach i certyfikatach."
                 : "Serwer nie ma jeszcze klucza APNs: poproś właściciela ramki, żeby go dodał.")
                 .font(.caption)

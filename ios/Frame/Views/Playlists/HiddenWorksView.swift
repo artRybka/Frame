@@ -49,11 +49,11 @@ struct HiddenWorksView: View {
             Text("Ukryte")
                 .font(.serif(32, weight: .semibold))
                 .foregroundStyle(Theme.ink)
-            Text(Self.explanation)
+            Text(bound: Self.explanation)
                 .font(.serif(17))
                 .foregroundStyle(Theme.inkSoft)
             if !model.hidden.isEmpty {
-                Text(Names.works(model.hidden.count))
+                Text(bound: Names.works(model.hidden.count))
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(Theme.inkSoft)
             }

@@ -59,7 +59,7 @@ struct OwnScanResult: View {
                 Spacer(minLength: 12)
                 OwnScanPicture(before: before, after: after, single: single)
                     .padding(.horizontal, 12)
-                Text(single ? "Zdjęcie na wprost, bez zmian" : "Odbicia usunięte z trzech zdjęć")
+                Text(bound: single ? "Zdjęcie na wprost, bez zmian" : "Odbicia usunięte z trzech zdjęć")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.white.opacity(0.9))
                     .contentTransition(.opacity)

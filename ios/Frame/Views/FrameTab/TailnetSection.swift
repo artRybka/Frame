@@ -69,7 +69,7 @@ struct TailnetSection: View {
                     } else {
                         DisclosureGroup(isExpanded: $showLog) {
                             ScrollView(.horizontal) {
-                                Text(log.isEmpty ? "Pusto: Tailscale jeszcze nie startował." : log)
+                                Text(bound: log.isEmpty ? "Pusto: Tailscale jeszcze nie startował." : log)
                                     .font(.caption2.monospaced())
                                     .foregroundStyle(Theme.inkSoft)
                                     .textSelection(.enabled)
@@ -145,7 +145,7 @@ struct TailnetSection: View {
                         Text("Szukam serwera…").foregroundStyle(Theme.inkSoft)
                     }
                 } else if let shown = Self.shown(model.remoteURL) {
-                    Text(shown)
+                    Text(bound: shown)
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .textSelection(.enabled)
@@ -174,7 +174,7 @@ struct TailnetSection: View {
 
     private func line(_ text: String, icon: String, color: Color) -> some View {
         Label {
-            Text(text).fixedSize(horizontal: false, vertical: true)
+            Text(bound: text).fixedSize(horizontal: false, vertical: true)
         } icon: {
             Image(systemName: icon)
         }

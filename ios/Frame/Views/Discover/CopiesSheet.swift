@@ -112,7 +112,7 @@ struct CopiesSheet: View {
             Eyebrow(title)
             Spacer()
             if let trailing {
-                Text(trailing).font(.caption).foregroundStyle(Theme.inkSoft)
+                Text(bound: trailing).font(.caption).foregroundStyle(Theme.inkSoft)
             }
         }
         .padding(.top, 6)
@@ -149,7 +149,7 @@ struct CopiesSheet: View {
         }
         let hit = found > 0
         let gone = state == .some(nil)
-        return Text(text)
+        return Text(bound: text)
             .font(.caption2.weight(.medium))
             .foregroundStyle(hit ? Theme.paper : gone ? Theme.vermilion : state == nil ? Theme.inkSoft : Theme.ink)
             .padding(.horizontal, 8)
@@ -172,7 +172,7 @@ struct CopiesSheet: View {
             Text("To najlepsza kopia")
                 .font(.title3.weight(.semibold))
                 .fontDesign(.serif)
-            Text(bestNote)
+            Text(bound: bestNote)
                 .font(.footnote)
                 .foregroundStyle(Theme.inkSoft)
                 .multilineTextAlignment(.center)
@@ -339,12 +339,12 @@ struct CopyRow: View {
                 .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
-                    Text(Self.place(copy)).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    Text(bound: Self.place(copy)).font(.subheadline.weight(.semibold)).lineLimit(1)
                     if copy.isCurrent {
                         Text("· obecne").font(.subheadline).foregroundStyle(Theme.inkSoft)
                     }
                 }
-                Text(Self.size(copy))
+                Text(bound: Self.size(copy))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(Theme.inkSoft)
                 if copy.side > 0 && copy.verdict != "off" {
@@ -498,7 +498,7 @@ struct CopyTag: View {
     }
 
     var body: some View {
-        Text(tag.text)
+        Text(bound: tag.text)
             .font(.system(size: 9.5, weight: .bold))
             .tracking(0.6)
             .textCase(.uppercase)
@@ -518,7 +518,7 @@ struct RestoredTag: View {
     var body: some View {
         HStack(spacing: 3) {
             Image(systemName: LowRes.restoredSymbol).font(.system(size: 9, weight: .semibold))
-            Text(LowRes.restoredName)
+            Text(bound: LowRes.restoredName)
                 .font(.system(size: 9.5, weight: .bold))
                 .tracking(0.6)
                 .textCase(.uppercase)
@@ -566,7 +566,7 @@ struct CopyCompare: View {
                 }
                 if copy.choosable {
                     if !copy.fits {
-                        Text(Self.misfit(copy))
+                        Text(bound: Self.misfit(copy))
                             .font(.footnote)
                             .foregroundStyle(Theme.inkSoft)
                     }
@@ -612,7 +612,7 @@ struct CopyCompare: View {
         } label: {
             HStack(spacing: 8) {
                 if picking { ProgressView().tint(copy.fits ? Theme.paper : Theme.ink) }
-                Text(chooseLabel)
+                Text(bound: chooseLabel)
             }
         }
         .disabled(picking)
@@ -682,7 +682,7 @@ struct CopyCompare: View {
     }
 
     private func caption(_ text: String) -> some View {
-        Text(text)
+        Text(bound: text)
             .font(.system(size: 10, weight: .bold))
             .tracking(1)
             .textCase(.uppercase)
@@ -727,7 +727,7 @@ struct CopyCompare: View {
             GridRow {
                 Text("")
                 Text("Obecne").labelButtonType().foregroundStyle(Theme.inkSoft)
-                Text(otherLabel).labelButtonType().foregroundStyle(Theme.inkSoft)
+                Text(bound: otherLabel).labelButtonType().foregroundStyle(Theme.inkSoft)
             }
             Divider()
             row("Plik", current.map(CopyRow.size(_:)) ?? "—", CopyRow.size(copy))
@@ -743,9 +743,9 @@ struct CopyCompare: View {
 
     private func row(_ label: String, _ here: String, _ there: String) -> some View {
         GridRow {
-            Text(label).foregroundStyle(Theme.inkSoft)
-            Text(here).foregroundStyle(Theme.ink)
-            Text(there).foregroundStyle(Theme.ink).fontWeight(.semibold)
+            Text(bound: label).foregroundStyle(Theme.inkSoft)
+            Text(bound: here).foregroundStyle(Theme.ink)
+            Text(bound: there).foregroundStyle(Theme.ink).fontWeight(.semibold)
         }
     }
 

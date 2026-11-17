@@ -18,7 +18,7 @@ struct JoinView: View {
                         .foregroundStyle(Theme.ink)
                         .frame(maxWidth: .infinity)
                         .padding(.top, 24)
-                    Text(headline)
+                    Text(bound: headline)
                         .font(.serif(24, weight: .semibold))
                         .foregroundStyle(Theme.ink)
                         .multilineTextAlignment(.center)
@@ -133,7 +133,7 @@ struct HouseholdSection: View {
                         }
                     }
                 } else if let failed {
-                    Text(failed).font(.caption).foregroundStyle(Theme.inkSoft)
+                    Text(bound: failed).font(.caption).foregroundStyle(Theme.inkSoft)
                 } else {
                     ProgressView().frame(maxWidth: .infinity)
                 }
@@ -164,7 +164,7 @@ struct HouseholdSection: View {
                 Image(systemName: person.isOwner ? "person.crop.circle.badge.checkmark" : "person.crop.circle")
                     .foregroundStyle(Theme.inkSoft)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(person.isOwner ? "\(person.name) (Ty)" : person.name)
+                    Text(bound: person.isOwner ? "\(person.name) (Ty)" : person.name)
                         .font(.subheadline.weight(.semibold))
                     Text("\(person.favorites) w Ulubionych · \(person.playlists) playlist")
                         .font(.caption)
@@ -202,7 +202,7 @@ struct HouseholdSection: View {
             ForEach(person.devices) { device in
                 HStack {
                     Image(systemName: "iphone").font(.caption).foregroundStyle(Theme.inkSoft)
-                    Text(device.name.isEmpty ? "Telefon" : device.name).font(.caption)
+                    Text(bound: device.name.isEmpty ? "Telefon" : device.name).font(.caption)
                     if let seen = When.ago(device.lastSeenAt) {
                         Text("· \(seen)").font(.caption).foregroundStyle(Theme.inkSoft)
                     }
@@ -219,7 +219,7 @@ struct HouseholdSection: View {
     private func inviteRow(_ invite: PendingInvite) -> some View {
         HStack {
             Image(systemName: "envelope").foregroundStyle(Theme.inkSoft)
-            Text(invite.name.isEmpty ? "Zaproszenie na nowy telefon" : "Zaproszenie dla: \(invite.name)")
+            Text(bound: invite.name.isEmpty ? "Zaproszenie na nowy telefon" : "Zaproszenie dla: \(invite.name)")
                 .font(.caption)
             Spacer()
             Button("Anuluj") {
@@ -384,8 +384,8 @@ struct MyAccessView: View {
 
     private func address(_ title: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.caption).foregroundStyle(Theme.inkSoft)
-            Text(value).font(.subheadline).textSelection(.enabled)
+            Text(bound: title).font(.caption).foregroundStyle(Theme.inkSoft)
+            Text(bound: value).font(.subheadline).textSelection(.enabled)
         }
     }
 }

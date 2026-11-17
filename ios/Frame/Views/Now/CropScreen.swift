@@ -135,7 +135,7 @@ struct CropScreen: View {
             .padding(.top, 8)
 
             Group {
-                Text(hint)
+                Text(bound: hint)
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .multilineTextAlignment(.center)

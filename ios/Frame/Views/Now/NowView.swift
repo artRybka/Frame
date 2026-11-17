@@ -196,10 +196,10 @@ struct NowView: View {
                                 .id(shownItem.id)
                         } else if offset == 0, let current = textShowing {
                             Card {
-                                Text(current.title.isEmpty ? "Bez tytułu" : current.title)
+                                Text(bound: current.title.isEmpty ? "Bez tytułu" : current.title)
                                     .font(.serif(26, weight: .semibold))
                                 if !current.description.isEmpty {
-                                    Text(current.description).foregroundStyle(Theme.inkSoft)
+                                    Text(bound: current.description).foregroundStyle(Theme.inkSoft)
                                 }
                             }
                         }
@@ -452,7 +452,7 @@ struct NowView: View {
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { cropHome = $0 }
             .accessibilityAddTraits(canCrop ? .isButton : [])
             .accessibilityHint(Text(canCrop ? "Otwiera kadrowanie na całym ekranie" : ""))
-            .accessibilityValue(Text(redrawing ? "Ramka zmienia obraz" : ""))
+            .accessibilityValue(Text(bound: redrawing ? "Ramka zmienia obraz" : ""))
             // A fresh picture for each one browsed to; the one on the frame
             // keeps its view, so the swap ends without a blink.
             .id(offset == 0 ? "now" : selectedID ?? "")
@@ -513,15 +513,15 @@ struct NowView: View {
             TimelineView(.everyMinute) { _ in
                 VStack(spacing: 3) {
                     if let placeLine {
-                        let place = Text(placeLine).fontWeight(.semibold).foregroundStyle(Theme.vermilion)
-                        let when = Text(nextChange.map { " · \($0)" } ?? "").foregroundStyle(Theme.inkSoft)
+                        let place = Text(bound: placeLine).fontWeight(.semibold).foregroundStyle(Theme.vermilion)
+                        let when = Text(bound: nextChange.map { " · \($0)" } ?? "").foregroundStyle(Theme.inkSoft)
                         let shown = browsedMark.map { Text(" · ").foregroundStyle(Theme.inkSoft) + $0 } ?? Text("")
                         Text("\(place)\(when)\(shown)")
                             .font(.footnote)
                             .multilineTextAlignment(.center)
                     }
                     if let undelivered {
-                        Text(undelivered.explanation)
+                        Text(bound: undelivered.explanation)
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
                             .multilineTextAlignment(.center)
@@ -547,7 +547,7 @@ struct NowView: View {
                 } label: {
                     HStack(spacing: 10) {
                         if sending { ProgressView().tint(Theme.paper) }
-                        Text(primaryTitle)
+                        Text(bound: primaryTitle)
                     }
                 }
                 .buttonStyle(PrimaryButtonStyle())
@@ -571,14 +571,14 @@ struct NowView: View {
     private var schedule: some View {
         VStack(spacing: 4) {
             HStack(spacing: 8) {
-                Text(scheduleLine)
+                Text(bound: scheduleLine)
                 if player?.hold != nil {
                     Button("Odepnij") { Task { await model.releaseHold() } }
                         .fontWeight(.semibold)
                 }
             }
             if let wakeLine {
-                Text(wakeLine)
+                Text(bound: wakeLine)
             }
         }
         .font(.footnote)
@@ -897,12 +897,12 @@ struct OnFrameNote: View {
                 .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
                     Eyebrow("Na ramce nadal")
-                    Text(showing.title.isEmpty ? "Bez tytułu" : showing.title)
+                    Text(bound: showing.title.isEmpty ? "Bez tytułu" : showing.title)
                         .font(.serif(17, weight: .semibold))
                         .foregroundStyle(Theme.ink)
                         .lineLimit(2)
                     if let artist = showing.item?.artist, !artist.isEmpty {
-                        Text(Names.artist(artist))
+                        Text(bound: Names.artist(artist))
                             .font(.subheadline)
                             .foregroundStyle(Theme.inkSoft)
                             .lineLimit(1)
@@ -932,7 +932,7 @@ struct FrameAsleepNote: View {
                     .frame(width: 32)
                 VStack(alignment: .leading, spacing: 4) {
                     Eyebrow(off ? "Ramka wyłączona" : economy ? "Ramka w trybie oszczędnym" : "Ramka śpi")
-                    Text(off ? "Włączysz ją przyciskiem na ramce" : "Aby zmienić obraz wcześniej, naciśnij przycisk na ramce")
+                    Text(bound: off ? "Włączysz ją przyciskiem na ramce" : "Aby zmienić obraz wcześniej, naciśnij przycisk na ramce")
                         .font(.serif(17, weight: .semibold))
                         .foregroundStyle(Theme.ink)
                         .fixedSize(horizontal: false, vertical: true)
@@ -951,7 +951,7 @@ struct LoadingBadge: View {
     var body: some View {
         VStack(spacing: 10) {
             ProgressView().tint(.white)
-            Text(text)
+            Text(bound: text)
                 .font(.footnote.weight(.medium))
                 .foregroundStyle(.white)
         }
@@ -1004,7 +1004,7 @@ struct Greeting: View {
     var body: some View {
         let hour = Calendar.current.component(.hour, from: .now)
         VStack(spacing: 6) {
-            Text((5 ..< 18).contains(hour) ? "Dzień dobry" : "Dobry wieczór")
+            Text(bound: (5 ..< 18).contains(hour) ? "Dzień dobry" : "Dobry wieczór")
                 .font(.serif(22, weight: .semibold))
                 .foregroundStyle(Theme.ink)
             Text("Za chwilę zobaczysz, co wisi na ścianie.")
@@ -1105,7 +1105,7 @@ struct ArtworkInfo: View {
                                 .artistPress { model.artistSearch = item.artist }
                         }
                         if !artistNote.isEmpty {
-                            Text(artistNote).font(.subheadline).foregroundStyle(Theme.inkSoft)
+                            Text(bound: artistNote).font(.subheadline).foregroundStyle(Theme.inkSoft)
                         }
                     }
                 }
@@ -1281,7 +1281,7 @@ struct Strip: View {
                                     .frame(width: Self.tile.width, height: Self.tile.height)
                                     .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                                     .shadow(color: .black.opacity(0.12), radius: 6, y: 4)
-                                Text(item.shownTitle)
+                                Text(bound: item.shownTitle)
                                     .font(.serif(13, weight: .medium))
                                     .foregroundStyle(Theme.ink)
                                     .lineLimit(2)
@@ -1289,7 +1289,7 @@ struct Strip: View {
                                 // In the queue: said under the title, as under
                                 // the frame's preview, not on the picture.
                                 if queued.contains(item.id) {
-                                    Text(item.id == nextQueued ? "Następny w kolejce" : "W kolejce")
+                                    Text(bound: item.id == nextQueued ? "Następny w kolejce" : "W kolejce")
                                         .font(.caption2)
                                         .foregroundStyle(Theme.vermilion)
                                         .frame(width: 120, alignment: .leading)
@@ -1337,6 +1337,6 @@ struct ShownMarkLabel: View {
     static func text(mark: ShownMark, when: String) -> Text {
         let icon = Text(Image(systemName: mark.fromSchedule ? "clock" : "iphone"))
             .foregroundStyle(mark.fromSchedule ? Theme.ink : Theme.vermilion)
-        return Text("\(icon) \(Text(when).foregroundStyle(Theme.inkSoft))")
+        return Text("\(icon) \(Text(bound: when).foregroundStyle(Theme.inkSoft))")
     }
 }

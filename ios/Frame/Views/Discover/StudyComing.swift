@@ -22,7 +22,7 @@ struct StudyComingCard: View {
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 9) {
                     ProgressView().controlSize(.small)
-                    Text(state.line)
+                    Text(bound: state.line)
                         .font(.subheadline)
                         .foregroundStyle(Theme.inkSoft)
                         .contentTransition(.opacity)
@@ -61,7 +61,7 @@ struct StudyComingCard: View {
                     .monospacedDigit()
                 Spacer(minLength: 8)
                 TimelineView(.periodic(from: .now, by: 15)) { context in
-                    Text(Self.left(range, now: context.date))
+                    Text(bound: Self.left(range, now: context.date))
                 }
             }
             .font(.caption)
@@ -86,7 +86,7 @@ struct StudyComingCard: View {
                 HStack(spacing: 4) {
                     Image(systemName: done ? "checkmark" : now ? "circle.fill" : "circle")
                         .font(.system(size: done ? 9 : 6, weight: .bold))
-                    Text(step.label)
+                    Text(bound: step.label)
                 }
                 .font(.caption.weight(now ? .semibold : .regular))
                 .foregroundStyle(now ? Theme.ink : done ? Theme.inkSoft : Theme.inkSoft.opacity(0.55))

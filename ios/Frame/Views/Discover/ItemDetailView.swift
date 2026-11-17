@@ -300,7 +300,7 @@ struct ItemDetailView: View {
             HStack(alignment: .firstTextBaseline) {
                 Eyebrow("Fragmenty")
                 Spacer()
-                Text(item.isFragment ? "\(item.part ?? 0) z \(view.fragments.count)" : "\(view.fragments.count) · przesuń")
+                Text(bound: item.isFragment ? "\(item.part ?? 0) z \(view.fragments.count)" : "\(view.fragments.count) · przesuń")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -586,7 +586,7 @@ struct ItemDetailView: View {
                 NameText(text: Names.artist(summary.artist))
             }
             if photo, !date.isEmpty {
-                Text(date).font(.subheadline).foregroundStyle(Theme.inkSoft)
+                Text(bound: date).font(.subheadline).foregroundStyle(Theme.inkSoft)
             }
         }
     }
@@ -999,7 +999,7 @@ struct ItemDetailView: View {
                             orderStudyLater(item)
                         } label: {
                             Label("Przygotuj na później", systemImage: "clock")
-                            Text(Self.laterHint(state))
+                            Text(bound: Self.laterHint(state))
                         }
                     }
                     if failed, !state.error.isEmpty {
@@ -1042,7 +1042,7 @@ struct ItemDetailView: View {
             prepareStudy(item, again: again)
         } label: {
             Label("Przygotuj na już", systemImage: "sparkles")
-            Text(state.costUsd > 0 ? "W 1–3 minuty · ok. \(Money.usd(state.costUsd))" : "W 1–3 minuty")
+            Text(bound: state.costUsd > 0 ? "W 1–3 minuty · ok. \(Money.usd(state.costUsd))" : "W 1–3 minuty")
         }
     }
 
@@ -1053,7 +1053,7 @@ struct ItemDetailView: View {
     }
 
     private func studyNote(_ text: String, color: Color = Theme.inkSoft) -> some View {
-        Text(text)
+        Text(bound: text)
             .font(.footnote)
             .foregroundStyle(color)
             .fixedSize(horizontal: false, vertical: true)
@@ -1066,7 +1066,7 @@ struct ItemDetailView: View {
             Image(systemName: "sparkles").foregroundStyle(Theme.inkSoft)
             // A note says no more than that (Mateusz 2026-11-14: "tylko
             // iskierki i „kurator”"), not the model and its sources.
-            Text(polish.isNote ? "Kurator" : "Tłumaczenie maszynowe")
+            Text(bound: polish.isNote ? "Kurator" : "Tłumaczenie maszynowe")
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
@@ -1211,7 +1211,7 @@ struct ItemDetailView: View {
             .pickerStyle(.segmented)
             .frame(maxWidth: 260)
             if view == .frame {
-                Text(frameHint)
+                Text(bound: frameHint)
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .multilineTextAlignment(.center)
@@ -1347,13 +1347,13 @@ struct ItemDetailView: View {
                             .artistPress { model.artistSearch = item.artist }
                     }
                     if !bio.isEmpty {
-                        Text(bio).font(.subheadline).foregroundStyle(Theme.inkSoft)
+                        Text(bound: bio).font(.subheadline).foregroundStyle(Theme.inkSoft)
                             .contentTransition(.opacity)
                     }
                 }
             }
             if photo, !date.isEmpty {
-                Text(date).font(.subheadline).foregroundStyle(Theme.inkSoft)
+                Text(bound: date).font(.subheadline).foregroundStyle(Theme.inkSoft)
                     .contentTransition(.opacity)
             }
         }
@@ -1396,7 +1396,7 @@ struct ItemDetailView: View {
             Task { await show(.untilNextChange) }
         } label: {
             Label {
-                Text(sending ? "Wysyłam…" : waiting ?? (sent == .done ? "Wysłano" : "Pokaż na ramce"))
+                Text(bound: sending ? "Wysyłam…" : waiting ?? (sent == .done ? "Wysłano" : "Pokaż na ramce"))
             } icon: {
                 if sending {
                     ProgressView().tint(Theme.paper)
@@ -1570,7 +1570,7 @@ struct ItemDetailView: View {
                 Text("Zdjęcie dzieła").foregroundStyle(Theme.inkSoft)
                 Spacer(minLength: 16)
                 VStack(alignment: .trailing, spacing: 1) {
-                    Text([place, size].compactMap { $0 }.joined(separator: ", "))
+                    Text(bound: [place, size].compactMap { $0 }.joined(separator: ", "))
                         .multilineTextAlignment(.trailing)
                         .foregroundStyle(Theme.ink)
                         .contentTransition(.opacity)
@@ -1612,9 +1612,9 @@ struct ItemDetailView: View {
     private func fact(_ label: String, _ value: String) -> some View {
         if !value.isEmpty {
             HStack(alignment: .firstTextBaseline) {
-                Text(label).foregroundStyle(Theme.inkSoft)
+                Text(bound: label).foregroundStyle(Theme.inkSoft)
                 Spacer(minLength: 16)
-                Text(value).multilineTextAlignment(.trailing).foregroundStyle(Theme.ink)
+                Text(bound: value).multilineTextAlignment(.trailing).foregroundStyle(Theme.ink)
                     .contentTransition(.opacity)
             }
             .font(.subheadline)

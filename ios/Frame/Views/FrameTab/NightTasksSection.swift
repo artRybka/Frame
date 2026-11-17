@@ -110,7 +110,7 @@ private struct NightGroupCard: View {
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 6) {
-                            Text(group.label)
+                            Text(bound: group.label)
                                 .font(.headline)
                                 .foregroundStyle(Theme.ink)
                             if entries.contains(where: \.paid) {
@@ -120,12 +120,12 @@ private struct NightGroupCard: View {
                                     .accessibilityLabel("część pyta Claude'a")
                             }
                         }
-                        Text(group.about)
+                        Text(bound: group.about)
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
                             .fixedSize(horizontal: false, vertical: true)
                         if let last = lastText {
-                            Text(last.text)
+                            Text(bound: last.text)
                                 .font(.caption)
                                 .foregroundStyle(last.warn ? Theme.warn : Theme.inkSoft)
                         }
@@ -164,7 +164,7 @@ private struct NightGroupCard: View {
                     withAnimation(.snappy) { open.toggle() }
                 } label: {
                     HStack {
-                        Text(open ? "Schowaj zadania" : "Zadania (\(entries.count))")
+                        Text(bound: open ? "Schowaj zadania" : "Zadania (\(entries.count))")
                             .font(.subheadline)
                         Spacer()
                         Image(systemName: "chevron.down")
@@ -258,10 +258,10 @@ private struct RunningCard: View {
         Card {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(running.asked ? "Trwa na żądanie" : "Trwa nocna praca")
+                    Text(bound: running.asked ? "Trwa na żądanie" : "Trwa nocna praca")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Theme.inkSoft)
-                    Text(night.label(running.current) ?? (running.stopping ? "Zatrzymuję…" : "Zaczynam…"))
+                    Text(bound: night.label(running.current) ?? (running.stopping ? "Zatrzymuję…" : "Zaczynam…"))
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(Theme.ink)
                 }
@@ -308,7 +308,7 @@ private struct NightTaskRow: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(task.label)
+                    Text(bound: task.label)
                         .font(.subheadline)
                         .foregroundStyle(Theme.ink)
                     if task.paid {
@@ -319,7 +319,7 @@ private struct NightTaskRow: View {
                     }
                 }
                 if let last = lastText {
-                    Text(last.text)
+                    Text(bound: last.text)
                         .font(.caption)
                         .foregroundStyle(last.warn ? Theme.warn : Theme.inkSoft)
                         .lineLimit(3)
@@ -404,7 +404,7 @@ struct CatalogueCountSection: View {
             SectionHeader(title: "Zebrane dzieła", subtitle: "Ile dzieł ma serwer i ile w dużej rozdzielczości")
             Card {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(Names.worksGrouped(counts.works))
+                    Text(bound: Names.worksGrouped(counts.works))
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(Theme.ink)
                     row("Wszystkie obrazy z muzeów, z kopiami i detalami", counts.pictures)
@@ -427,12 +427,12 @@ struct CatalogueCountSection: View {
 
     private func row(_ title: String, _ count: Int) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(title)
+            Text(bound: title)
                 .font(.subheadline)
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 12)
-            Text(count.grouped)
+            Text(bound: count.grouped)
                 .font(.subheadline.monospacedDigit())
                 .foregroundStyle(Theme.inkSoft)
         }

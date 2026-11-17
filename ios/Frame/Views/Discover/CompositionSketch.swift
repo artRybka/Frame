@@ -962,7 +962,7 @@ struct HandLines: View {
         // written smaller, not out of the column.
         WordFlow(space: size * 0.242, pitch: size * 0.95, even: even) {
             ForEach(words.indices, id: \.self) { index in
-                Text(words[index]).font(.hand(size)).lineLimit(1).minimumScaleFactor(0.7)
+                Text(bound: words[index]).font(.hand(size)).lineLimit(1).minimumScaleFactor(0.7)
             }
         }
         .accessibilityElement(children: .ignore)
