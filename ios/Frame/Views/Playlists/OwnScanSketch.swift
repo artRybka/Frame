@@ -110,7 +110,7 @@ struct OwnScanSketch: View {
             .buttonStyle(.glass)
             .buttonBorderShape(.circle)
             Spacer()
-            Text("Zdjęcie \(look.number) z 3")
+            Text(bound: "Zdjęcie \(look.number) z 3")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 14)

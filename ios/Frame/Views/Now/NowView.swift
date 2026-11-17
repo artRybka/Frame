@@ -989,7 +989,7 @@ struct IntroSquares: View {
             } else {
                 SquaresAnimation(inScreenMiddle: false, tapForNext: false)
                     .frame(width: 150, height: 86)
-                Text("Łączę z ramką…")
+                Text(bound: "Łączę z ramką…")
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(Theme.inkSoft)
             }

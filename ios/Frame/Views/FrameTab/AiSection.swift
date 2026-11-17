@@ -158,7 +158,7 @@ struct AiSection: View {
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Zadania").foregroundStyle(Theme.ink)
-                            Text("Co robi Claude, kiedy, ile i za ile; Uruchom teraz")
+                            Text(bound: "Co robi Claude, kiedy, ile i za ile; Uruchom teraz")
                                 .font(.caption)
                                 .foregroundStyle(Theme.inkSoft)
                         }
@@ -206,7 +206,7 @@ struct AiSection: View {
             SecureField(settings.keySet ? "zapisany · wpisz nowy, by zmienić" : "sk-ant-…", text: $key)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-            Text("Z console.anthropic.com → API Keys.")
+            Text(bound: "Z console.anthropic.com → API Keys.")
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
         }
@@ -218,7 +218,7 @@ struct AiSection: View {
             }
         } label: {
             HStack {
-                Text("Zapisz i sprawdź")
+                Text(bound: "Zapisz i sprawdź")
                 if savingKey { ProgressView() }
             }
         }
@@ -249,7 +249,7 @@ struct AiSection: View {
             SecureField(settings.geminiKeySet == true ? "zapisany · wpisz nowy, by zmienić" : "AIza…", text: $geminiKey)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-            Text("Z aistudio.google.com → API keys. Model graficzny rysuje arkusze analizy kompozycji.")
+            Text(bound: "Z aistudio.google.com → API keys. Model graficzny rysuje arkusze analizy kompozycji.")
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
         }
@@ -261,7 +261,7 @@ struct AiSection: View {
             }
         } label: {
             HStack {
-                Text("Zapisz i sprawdź")
+                Text(bound: "Zapisz i sprawdź")
                 if savingGeminiKey { ProgressView() }
             }
         }
@@ -432,7 +432,7 @@ struct AiSection: View {
         }
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("W tym okresie").font(.subheadline).foregroundStyle(Theme.ink)
+                Text(bound: "W tym okresie").font(.subheadline).foregroundStyle(Theme.ink)
                 Spacer()
                 Text(Money.usd(spent))
                     .font(.subheadline.monospacedDigit())

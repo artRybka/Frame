@@ -1,5 +1,4 @@
 import Foundation
-import os
 import SwiftUI
 
 /// Polish line breaking: what must not stay at the end of a line.
@@ -11,13 +10,13 @@ import SwiftUI
 /// a no-break space (U+00A0), one character for one, so ranges into the
 /// text (`SentenceClip`) stay valid.
 ///
-/// Where it applies:
-/// - every string literal the app shows (`Text("…")`, buttons, labels,
-///   titles, alerts): SwiftUI looks those up in the main bundle, and
-///   `bindAppStrings()` binds what the lookup returns;
-/// - `ReadingText` and `NameText`;
-/// - a string made at run time (the server's descriptions, notes, names):
-///   `Text(bound: value)` or `value.bound`.
+/// Where it applies: `Text(bound: value)` for whatever is shown (the
+/// server's descriptions, notes, names, and a sentence written in the code:
+/// `Text(bound: "…")`), `value.bound` where a `Label` or `Button` takes a
+/// string, and `ReadingText` and `NameText` on their own. SwiftUI's own
+/// `Text("…")` cannot be bound from one place: on iOS 26 it never asks the
+/// main bundle for its strings (checked 2026-11-17), so a sentence that can
+/// wrap goes through `Text(bound:)`.
 /// Never on what is typed, edited, searched for or sent back: only on
 /// what is shown. The server does the same on the frame's "Opis" page
 /// (server/src/frame_server/imaging/breaks.py); keep the two in step.
@@ -54,29 +53,6 @@ enum Typography {
     /// `text` as it should be copied or searched: plain spaces again.
     static func unbound(_ text: String) -> String {
         text.replacingOccurrences(of: "\u{00A0}", with: " ")
-    }
-
-    /// Binds every string the app looks up in its bundle, which is every
-    /// literal SwiftUI shows (`Text("…")`, `Button("…")`, `.navigationTitle`).
-    /// Called once, at launch.
-    static func bindAppStrings() {
-        guard !(Bundle.main is BoundBundle) else { return }
-        object_setClass(Bundle.main, BoundBundle.self)
-    }
-}
-
-/// The main bundle, answering its look-ups bound (`Typography.bindAppStrings`).
-/// The answers are kept: the same few hundred strings are asked for again
-/// and again as views are drawn.
-private final class BoundBundle: Bundle {
-    private static let made = OSAllocatedUnfairLock(initialState: [String: String]())
-
-    override func localizedString(forKey key: String, value: String?, table tableName: String?) -> String {
-        let found = super.localizedString(forKey: key, value: value, table: tableName)
-        if let kept = Self.made.withLock({ $0[found] }) { return kept }
-        let bound = Typography.bound(found)
-        Self.made.withLock { $0[found] = bound }
-        return bound
     }
 }
 

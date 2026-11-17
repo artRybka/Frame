@@ -107,7 +107,7 @@ struct TreatmentButton: View {
         .accessibilityLabel(treatment.name)
         .accessibilityValue(on ? "widoczna" : "ukryta")
         .accessibilityAddTraits(.isToggle)
-        .accessibilityHint(Text("Pokazuje dzieło z nią albo bez niej"))
+        .accessibilityHint(Text(bound: "Pokazuje dzieło z nią albo bez niej"))
     }
 
     @ViewBuilder

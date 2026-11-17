@@ -84,7 +84,7 @@ struct NightTasksSection: View {
             }
             Button("Anuluj", role: .cancel) {}
         } message: {
-            Text("Zadania pójdą po kolei, tak jak w nocy, najwyżej przez 2 godziny. Część z nich pyta Claude'a: koszt z Twojego klucza.")
+            Text(bound: "Zadania pójdą po kolei, tak jak w nocy, najwyżej przez 2 godziny. Część z nich pyta Claude'a: koszt z Twojego klucza.")
         }
     }
 }
@@ -144,7 +144,7 @@ private struct NightGroupCard: View {
                                 Text("Co zmieniła noc")
                                     .font(.subheadline)
                                     .foregroundStyle(Theme.ink)
-                                Text("Połączone kopie, detale i zdjęcia na ścianie. Najpierw te z wątpliwościami.")
+                                Text(bound: "Połączone kopie, detale i zdjęcia na ścianie. Najpierw te z wątpliwościami.")
                                     .font(.caption)
                                     .foregroundStyle(Theme.inkSoft)
                             }
@@ -209,7 +209,7 @@ private struct NightGroupCard: View {
                 Button("Anuluj", role: .cancel) {}
             } message: {
                 if entries.contains(where: \.paid) {
-                    Text("Zadania pójdą po kolei, najwyżej przez 2 godziny. Część z nich pyta Claude'a: koszt z Twojego klucza.")
+                    Text(bound: "Zadania pójdą po kolei, najwyżej przez 2 godziny. Część z nich pyta Claude'a: koszt z Twojego klucza.")
                 } else {
                     Text("Zadania pójdą po kolei, najwyżej przez 2 godziny.")
                 }
@@ -352,7 +352,7 @@ private struct NightTaskRow: View {
                     Button("Anuluj", role: .cancel) {}
                 } message: {
                     if task.paid {
-                        Text("Pyta Claude'a: koszt z Twojego klucza.")
+                        Text(bound: "Pyta Claude'a: koszt z Twojego klucza.")
                     }
                 }
             }

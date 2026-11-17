@@ -173,7 +173,7 @@ struct PlaylistsView: View {
                         } label: {
                             Label {
                                 Text("Nowa playlista")
-                                Text("Inteligentna, ręczna albo z albumu")
+                                Text(bound: "Inteligentna, ręczna albo z albumu")
                             } icon: {
                                 Image(systemName: "rectangle.stack.badge.plus")
                             }
@@ -184,7 +184,7 @@ struct PlaylistsView: View {
                             } label: {
                                 Label {
                                     Text("Dodaj własne dzieło")
-                                    Text("Zdjęcie obrazu, który masz w domu")
+                                    Text(bound: "Zdjęcie obrazu, który masz w domu")
                                 } icon: {
                                     Image(systemName: "camera")
                                 }

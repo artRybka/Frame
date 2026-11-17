@@ -39,7 +39,7 @@ struct TasksSection: View {
             }
             group("Przy studium", "Gdy powstaje studium dzieła, także Studium dnia") {
                 switches(Self.study(settings))
-                Text("Samo studium (strona, kompozycja, detale) nie ma przełącznika: powstaje, gdy go chcesz, i dla Studium dnia.")
+                Text(bound: "Samo studium (strona, kompozycja, detale) nie ma przełącznika: powstaje, gdy go chcesz, i dla Studium dnia.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
@@ -113,7 +113,7 @@ struct TasksSection: View {
         )) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Wykorzystaj resztkę miesiąca")
-                Text("Ile dni i jaki zapas, ustawisz na stronie Claude.")
+                Text(bound: "Ile dni i jaki zapas, ustawisz na stronie Claude.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -438,7 +438,7 @@ private struct ServerWorkRow: View {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Prace serwera co noc").foregroundStyle(Theme.ink)
-                    Text("Nowe dzieła z muzeów, pliki, kopie razem, ostrzejsze kopie, Odkrywaj i Propozycje dnia.")
+                    Text(bound: "Nowe dzieła z muzeów, pliki, kopie razem, ostrzejsze kopie, Odkrywaj i Propozycje dnia.")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
@@ -513,7 +513,7 @@ private struct BudgetCard: View {
             Divider()
             NavigationLink(value: SettingsPage.ai) {
                 HStack {
-                    Text("Limit, okres, zapas i koszty").foregroundStyle(Theme.ink)
+                    Text(bound: "Limit, okres, zapas i koszty").foregroundStyle(Theme.ink)
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))

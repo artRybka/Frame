@@ -32,7 +32,7 @@ struct BatteryView: View {
                         .frame(height: 150)
                         .padding(.vertical, 6)
                     } header: {
-                        Text("Ostatni tydzień i dalej")
+                        Text(bound: "Ostatni tydzień i dalej")
                     }
                     .listRowBackground(Theme.card)
                 }

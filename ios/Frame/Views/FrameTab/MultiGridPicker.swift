@@ -81,7 +81,7 @@ struct MultiSettings: View {
         VStack(alignment: .leading, spacing: 12) {
             Toggle("Losowa liczba zdjęć", isOn: $presentation.multiRandom)
             if presentation.multiRandom {
-                Text("Za każdym razem od 2 do 8 zdjęć, w siatce dobranej do ich kształtów.")
+                Text(bound: "Za każdym razem od 2 do 8 zdjęć, w siatce dobranej do ich kształtów.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)

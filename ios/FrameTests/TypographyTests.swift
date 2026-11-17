@@ -41,14 +41,6 @@ final class TypographyTests: XCTestCase {
         XCTAssertEqual(text.bound, bound)
     }
 
-    /// Every literal the app shows comes through the main bundle's look-up.
-    func testTheAppsOwnStringsAreBound() {
-        Typography.bindAppStrings()
-        Typography.bindAppStrings()  // once is enough; twice changes nothing
-        let shown = Bundle.main.localizedString(forKey: "Stuknij dzieło, a trafi tutaj", value: nil, table: nil)
-        XCTAssertEqual(shown, "Stuknij dzieło, a\u{00A0}trafi tutaj")
-    }
-
     /// Styled text keeps its styles where a space becomes a no-break one.
     func testAttributedTextKeepsItsStyles() {
         var bold = AttributedString("sztuki")
@@ -59,5 +51,31 @@ final class TypographyTests: XCTestCase {
         XCTAssertEqual(bound.runs.count, text.runs.count)
         let boldRun = bound.runs.first { $0.inlinePresentationIntent == .stronglyEmphasized }
         XCTAssertEqual(boldRun.map { String(bound[$0.range].characters) }, "sztuki")
+    }
+
+    /// A sentence written in the code goes through `Text(bound:)`: SwiftUI's
+    /// own `Text("…")` would leave its "i" or "w" at a line's end, and no
+    /// one place can bind it (iOS 26 never asks the bundle for it).
+    func testNoSentenceInTheCodeIsShownUnbound() throws {
+        let sources = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Frame")
+        guard FileManager.default.fileExists(atPath: sources.path),
+              let files = FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil)
+        else { throw XCTSkip("sources not next to the tests") }
+        // A plain literal: no interpolation, no Markdown (which needs Text's own init).
+        let literal = try NSRegularExpression(pattern: #"(?<![\w.])Text\("([^"\\\n*`_\[]*)"\)"#)
+        var unbound: [String] = []
+        for case let file as URL in files where file.pathExtension == "swift" {
+            let source = try String(contentsOf: file, encoding: .utf8)
+            let whole = NSRange(source.startIndex..., in: source)
+            for match in literal.matches(in: source, range: whole) {
+                guard let range = Range(match.range(at: 1), in: source) else { continue }
+                let text = String(source[range])
+                if Typography.bound(text) != text { unbound.append("\(file.lastPathComponent): \(text)") }
+            }
+        }
+        XCTAssertEqual(unbound, [], "use Text(bound: \"…\")")
     }
 }

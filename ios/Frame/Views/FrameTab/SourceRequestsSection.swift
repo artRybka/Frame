@@ -91,7 +91,7 @@ struct SourceRequestsSection: View {
                 withAnimation(.snappy) { showQuiet.toggle() }
             } label: {
                 HStack {
-                    Text("Bez zapytań w \(days) dni: \(quiet.count)")
+                    Text(bound: "Bez zapytań w \(days) dni: \(quiet.count)")
                         .font(.subheadline)
                         .foregroundStyle(Theme.ink)
                     Spacer()
@@ -112,7 +112,7 @@ struct SourceRequestsSection: View {
     }
 
     private var legend: some View {
-        Text("Odmowy to odpowiedzi źródła: blokada przed robotami, „za dużo zapytań” (429) i błędy (401, 403, 5xx). Wstrzymane to zapytania, których serwer sam nie wysłał, bo źródło odpoczywa po odmowie albo wyczerpał się jego limit. Część limitu zostaje zawsze na to, na co czekasz w aplikacji.")
+        Text(bound: "Odmowy to odpowiedzi źródła: blokada przed robotami, „za dużo zapytań” (429) i błędy (401, 403, 5xx). Wstrzymane to zapytania, których serwer sam nie wysłał, bo źródło odpoczywa po odmowie albo wyczerpał się jego limit. Część limitu zostaje zawsze na to, na co czekasz w aplikacji.")
             .font(.caption)
             .foregroundStyle(Theme.inkSoft)
     }
@@ -196,7 +196,7 @@ private struct SourceRequestRow: View {
         VStack(alignment: .leading, spacing: 3) {
             ProgressView(value: Double(min(quota.spent, quota.of)), total: Double(max(quota.of, 1)))
                 .tint(quota.spent >= quota.background ? Theme.warn : Theme.good)
-            Text("Limit: \(quota.spent) z \(quota.of) \(SourceRequestText.window(quota.hours)), w tle do \(quota.background)")
+            Text(bound: "Limit: \(quota.spent) z \(quota.of) \(SourceRequestText.window(quota.hours)), w tle do \(quota.background)")
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
         }

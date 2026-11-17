@@ -188,7 +188,7 @@ struct ItemToolbar: ToolbarContent {
             ) {
                 Button("Usuń", role: .destructive) { deleteOwn?() }
             } message: {
-                Text("Zdjęcie i opis znikną z serwera, także z playlist. Tego nie da się cofnąć.")
+                Text(bound: "Zdjęcie i opis znikną z serwera, także z playlist. Tego nie da się cofnąć.")
             }
         }
     }

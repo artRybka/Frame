@@ -347,7 +347,7 @@ struct StudyRow: View {
                     SeeAllHeader(title: "Studia dzieł", size: 22, weight: .semibold)
                 }
                 .buttonStyle(.plain)
-                Text("Codzienne i zamówione studia dzieł")
+                Text(bound: "Codzienne i zamówione studia dzieł")
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -383,7 +383,7 @@ struct StudiesGridView: View {
         let studies = model.studyList ?? []
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Codzienne i zamówione studia dzieł")
+                Text(bound: "Codzienne i zamówione studia dzieł")
                     .font(.serif(17))
                     .foregroundStyle(Theme.inkSoft)
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {

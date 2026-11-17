@@ -553,14 +553,14 @@ struct CopyCompare: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 closeUp
-                Text("Ten sam fragment, w skali ramki. Przesuń suwak; dotknij miniatury, by obejrzeć inne miejsce.")
+                Text(bound: "Ten sam fragment, w skali ramki. Przesuń suwak; dotknij miniatury, by obejrzeć inne miejsce.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                 numbers
                 if copy.notes.contains("whole-work") {
-                    Text("To całe dzieło, a ta pozycja jest tylko jego fragmentem. Nie można jej nim zastąpić, bo zmieniłyby się proporcje i to, co widać na ramce.")
+                    Text(bound: "To całe dzieło, a ta pozycja jest tylko jego fragmentem. Nie można jej nim zastąpić, bo zmieniłyby się proporcje i to, co widać na ramce.")
                         .font(.footnote)
                         .foregroundStyle(Theme.inkSoft)
                 }
@@ -578,7 +578,7 @@ struct CopyCompare: View {
                 }
                 if let url = URL(string: copy.url), !copy.url.isEmpty {
                     Link(destination: url) {
-                        Text("Otwórz w źródle")
+                        Text(bound: "Otwórz w źródle")
                             .labelButtonType()
                             .foregroundStyle(Theme.ink)
                             .underline(color: Theme.hairline)

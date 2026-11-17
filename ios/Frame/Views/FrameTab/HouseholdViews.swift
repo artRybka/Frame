@@ -29,7 +29,7 @@ struct JoinView: View {
                         Label("Własne powiadomienia", systemImage: "bell")
                     }
                     .foregroundStyle(Theme.ink)
-                    Text("Połącz się z domowym Wi-Fi (albo z Tailscale poza domem). Zaproszenie działa raz i przez 30 minut.")
+                    Text(bound: "Połącz się z domowym Wi-Fi (albo z Tailscale poza domem). Zaproszenie działa raz i przez 30 minut.")
                         .font(.footnote)
                         .foregroundStyle(Theme.inkSoft)
                     Button {
@@ -95,7 +95,7 @@ struct HouseholdSection: View {
             Card {
                 if let people {
                     if !people.people {
-                        Text("Serwer nie ma tokenu FRAME_API_TOKEN: bez niego każdy w sieci ma pełny dostęp, więc zaproszenia są wyłączone. Dopisz token w frame.env i uruchom kontener ponownie.")
+                        Text(bound: "Serwer nie ma tokenu FRAME_API_TOKEN: bez niego każdy w sieci ma pełny dostęp, więc zaproszenia są wyłączone. Dopisz token w frame.env i uruchom kontener ponownie.")
                             .font(.caption)
                             .foregroundStyle(Theme.warn)
                     } else {
@@ -126,7 +126,7 @@ struct HouseholdSection: View {
                         ), in: 0 ... 50) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Studia dziennie: \(people.studyLimit)")
-                                Text("Na osobę dziennie, z Twojego klucza Claude.")
+                                Text(bound: "Na osobę dziennie, z Twojego klucza Claude.")
                                     .font(.caption)
                                     .foregroundStyle(Theme.inkSoft)
                             }
@@ -150,7 +150,7 @@ struct HouseholdSection: View {
             .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
             Button("Anuluj", role: .cancel) {}
         } message: {
-            Text("Ta osoba zobaczy ramkę, będzie mieć własne Ulubione i playlisty, ale nie Konfigurację.")
+            Text(bound: "Ta osoba zobaczy ramkę, będzie mieć własne Ulubione i playlisty, ale nie Konfigurację.")
         }
         .sheet(item: $shown, onDismiss: { Task { await load() } }) { shown in
             InviteSheet(title: shown.title, link: shown.link)
@@ -166,7 +166,7 @@ struct HouseholdSection: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(bound: person.isOwner ? "\(person.name) (Ty)" : person.name)
                         .font(.subheadline.weight(.semibold))
-                    Text("\(person.favorites) w Ulubionych · \(person.playlists) playlist")
+                    Text(bound: "\(person.favorites) w Ulubionych · \(person.playlists) playlist")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 }
@@ -195,7 +195,7 @@ struct HouseholdSection: View {
                             Task { await save { try await $0.removePerson(id: person.id) } }
                         }
                     } message: { _ in
-                        Text("Telefony tej osoby przestaną działać, a jej serca i prywatne playlisty znikną. Wspólne playlisty zostaną, już jako Twoje.")
+                        Text(bound: "Telefony tej osoby przestaną działać, a jej serca i prywatne playlisty znikną. Wspólne playlisty zostaną, już jako Twoje.")
                     }
                 }
             }
@@ -277,11 +277,11 @@ struct InviteSheet: View {
                             .background(.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .accessibilityLabel("Kod QR zaproszenia")
                     }
-                    Text("Zeskanuj Aparatem na drugim telefonie z zainstalowaną aplikacją Frame (TestFlight). Kod działa raz, przez 30 minut.")
+                    Text(bound: "Zeskanuj Aparatem na drugim telefonie z zainstalowaną aplikacją Frame (TestFlight). Kod działa raz, przez 30 minut.")
                         .font(.subheadline)
                         .foregroundStyle(Theme.inkSoft)
                         .multilineTextAlignment(.center)
-                    ShareLink(item: link.url, subject: Text("Zaproszenie do ramki"), message: Text("Otwórz na iPhonie z aplikacją Frame.")) {
+                    ShareLink(item: link.url, subject: Text("Zaproszenie do ramki"), message: Text(bound: "Otwórz na iPhonie z aplikacją Frame.")) {
                         Label("Wyślij link", systemImage: "square.and.arrow.up")
                     }
                     .fontWeight(.semibold)
@@ -363,7 +363,7 @@ struct MyAccessView: View {
                                 }
                             }
                         } message: {
-                            Text("Aby wrócić, potrzebne będzie nowe zaproszenie. Twoje Ulubione i playlisty zostaną na serwerze.")
+                            Text(bound: "Aby wrócić, potrzebne będzie nowe zaproszenie. Twoje Ulubione i playlisty zostaną na serwerze.")
                         }
                 }
                 .pageWidth()

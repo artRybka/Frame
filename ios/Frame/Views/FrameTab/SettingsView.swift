@@ -179,7 +179,7 @@ private struct ReviewShortcut: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Do sprawdzenia")
                         .foregroundStyle(Theme.ink)
-                    Text("Strażnik i nocny przegląd")
+                    Text(bound: "Strażnik i nocny przegląd")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .lineLimit(1)
@@ -475,7 +475,7 @@ struct SettingsPageView: View {
     @ViewBuilder
     private var waiting: some View {
         if model.demoMode {
-            Text("Dostępne po połączeniu z serwerem.")
+            Text(bound: "Dostępne po połączeniu z serwerem.")
                 .font(.subheadline)
                 .foregroundStyle(Theme.inkSoft)
                 .frame(maxWidth: .infinity)

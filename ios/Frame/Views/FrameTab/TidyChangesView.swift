@@ -66,7 +66,7 @@ struct TidyChangesView: View {
             Text("Co zmieniła noc")
                 .font(.serif(32, weight: .semibold))
                 .foregroundStyle(Theme.ink)
-            Text("Nic nie jest usuwane. Kopia zostaje w bibliotece, a pokazuje się najlepsza z nich. Detal i zdjęcie na ścianie nie pojawiają się w listach obok dzieła. „To nie to samo” rozdziela parę na stałe.")
+            Text(bound: "Nic nie jest usuwane. Kopia zostaje w bibliotece, a pokazuje się najlepsza z nich. Detal i zdjęcie na ścianie nie pojawiają się w listach obok dzieła. „To nie to samo” rozdziela parę na stałe.")
                 .font(.serif(17))
                 .foregroundStyle(Theme.inkSoft)
         }
@@ -162,7 +162,7 @@ struct TidyChangesView: View {
                         Button("Rozdziel na stałe") { separate(change) }
                         Button("Anuluj", role: .cancel) {}
                     } message: {
-                        Text("Oba wrócą jako osobne dzieła i noc nie połączy ich ponownie.")
+                        Text(bound: "Oba wrócą jako osobne dzieła i noc nie połączy ich ponownie.")
                     }
             }
         }

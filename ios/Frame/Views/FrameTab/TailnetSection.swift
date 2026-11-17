@@ -47,7 +47,7 @@ struct TailnetSection: View {
                         Divider()
                         Toggle(isOn: enabled) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Tailscale w aplikacji")
+                                Text(bound: "Tailscale w aplikacji")
                                 Text("Wyłączony: Frame użyje VPN aplikacji Tailscale.")
                                     .font(.caption)
                                     .foregroundStyle(Theme.inkSoft)
@@ -101,7 +101,7 @@ struct TailnetSection: View {
         case .starting:
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text("Łączę z Tailscale…")
+                Text(bound: "Łączę z Tailscale…")
             }
             .font(.subheadline)
             .foregroundStyle(Theme.inkSoft)
@@ -138,7 +138,7 @@ struct TailnetSection: View {
     private var address: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Serwer w Tailscale").font(.caption).foregroundStyle(Theme.inkSoft)
+                Text(bound: "Serwer w Tailscale").font(.caption).foregroundStyle(Theme.inkSoft)
                 if model.findingServer {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
@@ -194,7 +194,7 @@ struct TailnetSection: View {
                         .foregroundStyle(Theme.good)
                 }
             }
-            Text("Klucz „Reusable” z tagiem, np. tag:frame-app (Settings → Keys). Domownicy dostaną go z serwera.")
+            Text(bound: "Klucz „Reusable” z tagiem, np. tag:frame-app (Settings → Keys). Domownicy dostaną go z serwera.")
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
@@ -210,7 +210,7 @@ struct TailnetSection: View {
                     }
                 } label: {
                     HStack {
-                        Text("Zapisz i połącz")
+                        Text(bound: "Zapisz i połącz")
                         if saving { ProgressView() }
                     }
                 }

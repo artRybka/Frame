@@ -36,7 +36,7 @@ struct PanelCertificatesSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("Nowe pliki wydaje Certificate Manager w Tizen Studio na Macu: profil frame, ten sam DUID ramki i stary certyfikat autora. Przenieś author.p12 i distributor.p12 na telefon, najlepiej przez AirDrop do Plików, i wybierz je tutaj.")
+                    Text(bound: "Nowe pliki wydaje Certificate Manager w Tizen Studio na Macu: profil frame, ten sam DUID ramki i stary certyfikat autora. Przenieś author.p12 i distributor.p12 na telefon, najlepiej przez AirDrop do Plików, i wybierz je tutaj.")
                         .font(.subheadline)
                         .foregroundStyle(Theme.inkSoft)
                     Card {
@@ -57,7 +57,7 @@ struct PanelCertificatesSheet: View {
                             .font(.caption)
                             .foregroundStyle(Theme.bad)
                     }
-                    Text("Serwer sprawdzi hasło i daty, zachowa pliki tylko u siebie i od razu podpisze nimi aplikację ramki. Ramka zainstaluje ją przy najbliższym pytaniu o obraz.")
+                    Text(bound: "Serwer sprawdzi hasło i daty, zachowa pliki tylko u siebie i od razu podpisze nimi aplikację ramki. Ramka zainstaluje ją przy najbliższym pytaniu o obraz.")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 }
@@ -89,7 +89,7 @@ struct PanelCertificatesSheet: View {
                                 Button("Wgraj mimo to", role: .destructive) { Task { await send(newAuthor: true) } }
                                 Button("Anuluj", role: .cancel) {}
                             } message: {
-                                Text("Ten author.p12 ma inny klucz niż certyfikat na serwerze. Ramka może uznać aplikację za inną i jej nie zainstalować. Przy odnawianiu zostaw w Certificate Managerze stary certyfikat autora.")
+                                Text(bound: "Ten author.p12 ma inny klucz niż certyfikat na serwerze. Ramka może uznać aplikację za inną i jej nie zainstalować. Przy odnawianiu zostaw w Certificate Managerze stary certyfikat autora.")
                             }
                     }
                 }

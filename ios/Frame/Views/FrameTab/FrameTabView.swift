@@ -116,7 +116,7 @@ struct FrameTabView: View {
                 }
                 Button("Anuluj", role: .cancel) {}
             } message: {
-                Text("Tak ramka będzie się nazywać w aplikacji.")
+                Text(bound: "Tak ramka będzie się nazywać w aplikacji.")
             }
         }
     }
@@ -410,7 +410,7 @@ struct FrameTabView: View {
             Button("Wyłącz", role: .destructive) { Task { await model.restFrame(hours: nil) } }
             Button("Anuluj", role: .cancel) {}
         } message: {
-            Text("Ramka zaśnie bez Wi-Fi i sama się nie obudzi: obraz zostanie, ale nie zmieni się, a z aplikacji nie da się jej obudzić. Włączysz ją dopiero przyciskiem na ramce.")
+            Text(bound: "Ramka zaśnie bez Wi-Fi i sama się nie obudzi: obraz zostanie, ale nie zmieni się, a z aplikacji nie da się jej obudzić. Włączysz ją dopiero przyciskiem na ramce.")
         }
     }
 
@@ -900,7 +900,7 @@ struct ScheduleSection: View {
                 }
             }
             if playingAlbum?.album != nil {
-                Text("Album ma własną kolejność zdjęć; zmienisz ją w jego playliście.")
+                Text(bound: "Album ma własną kolejność zdjęć; zmienisz ją w jego playliście.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -920,7 +920,7 @@ struct ScheduleSection: View {
                 Spacer(minLength: 0)
             }
             .font(.subheadline)
-            Text("Trwa do najbliższej zmiany. Na baterii ramka śpi wtedy bez Wi-Fi, a zdjęcia wysłane w nocy pokaże rano.")
+            Text(bound: "Trwa do najbliższej zmiany. Na baterii ramka śpi wtedy bez Wi-Fi, a zdjęcia wysłane w nocy pokaże rano.")
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
         }
@@ -1786,7 +1786,7 @@ struct ViewerSection: View {
                 Toggle(isOn: $glow) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Jaśniejsze dzieła")
-                        Text("Na karcie dzieła i w studium obraz świeci trochę jaśniej niż strona (na ekranach z HDR), a w pełnym ekranie telefon rozjaśnia ekran do końca.")
+                        Text(bound: "Na karcie dzieła i w studium obraz świeci trochę jaśniej niż strona (na ekranach z HDR), a w pełnym ekranie telefon rozjaśnia ekran do końca.")
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
                     }
@@ -1921,7 +1921,7 @@ struct SourcesSection: View {
                         .tint(Theme.ink)
                     }
                 }
-                Text("Wyłączone nie dokładają dzieł do Szukaj ani do playlist. Muzeum wybrane w Szukaj i tak znajdzie przez nie swoje dzieła.")
+                Text(bound: "Wyłączone nie dokładają dzieł do Szukaj ani do playlist. Muzeum wybrane w Szukaj i tak znajdzie przez nie swoje dzieła.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .padding(.horizontal, 4)
@@ -1989,7 +1989,7 @@ struct SourceKeyRow: View {
                     }
                 } label: {
                     HStack {
-                        Text("Zapisz i sprawdź")
+                        Text(bound: "Zapisz i sprawdź")
                         if saving { ProgressView() }
                     }
                 }
@@ -2045,7 +2045,7 @@ struct PanelSection: View {
                     Task { await save() }
                 } label: {
                     HStack {
-                        Text("Zapisz i sprawdź")
+                        Text(bound: "Zapisz i sprawdź")
                         if saving { ProgressView() }
                     }
                 }
@@ -2159,12 +2159,12 @@ struct PanelAppSection: View {
                     if Self.waitsForButton(package: package.version, onFrame: app.state.build) {
                         // A restart from the server does not install it: only
                         // a cold start by the button does (E19b, 2026-11-05).
-                        Text("Nowa wersja czeka: przytrzymaj przycisk na ramce ok. 6 s, a potem ok. 3 s, aż mrugnie zielona dioda.")
+                        Text(bound: "Nowa wersja czeka: przytrzymaj przycisk na ramce ok. 6 s, a potem ok. 3 s, aż mrugnie zielona dioda.")
                             .font(.caption)
                             .foregroundStyle(Theme.warn)
                     }
                 } else {
-                    Text("Bez certyfikatów Samsunga serwer nie zbuduje aplikacji. Wgraj je w Kluczach i certyfikatach.")
+                    Text(bound: "Bez certyfikatów Samsunga serwer nie zbuduje aplikacji. Wgraj je w Kluczach i certyfikatach.")
                         .font(.caption)
                         .foregroundStyle(Theme.warn)
                 }
@@ -2273,7 +2273,7 @@ struct ServerSection: View {
         if model.connecting {
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text("Łączę z serwerem…")
+                Text(bound: "Łączę z serwerem…")
             }
             .font(.subheadline)
             .foregroundStyle(Theme.inkSoft)
@@ -2431,7 +2431,7 @@ struct LibrarySizeSection: View {
                     ) { mb in await model.setLibraryLimit(catalogueMb: mb) }
                     if storage.isCatalogueFull {
                         Label {
-                            Text("Katalog jest pełny. Serwer nie dobiera już nowych dzieł z muzeów, przyjmuje tylko te pokazane w Szukaj. W nocy usuwa najdawniej dobrane, żeby zmieścić się w limicie. Żeby katalog dalej rósł, zwiększ limit.")
+                            Text(bound: "Katalog jest pełny. Serwer nie dobiera już nowych dzieł z muzeów, przyjmuje tylko te pokazane w Szukaj. W nocy usuwa najdawniej dobrane, żeby zmieścić się w limicie. Żeby katalog dalej rósł, zwiększ limit.")
                                 .font(.caption)
                                 .foregroundStyle(Theme.ink)
                                 .fixedSize(horizontal: false, vertical: true)

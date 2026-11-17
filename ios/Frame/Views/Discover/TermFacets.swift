@@ -817,7 +817,7 @@ struct TermFacetPanel: View {
         let words = filter.trimmingCharacters(in: .whitespaces)
         if !words.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Nic takiego w tej grupie.")
+                Text(bound: "Nic takiego w tej grupie.")
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
                 Button {

@@ -95,7 +95,7 @@ struct SendSheet: View {
                     VStack(spacing: 12) {
                         Image(systemName: "photo.on.rectangle.angled")
                             .font(.system(size: 40, weight: .light))
-                        Text("Wybierz zdjęcie z rolki")
+                        Text(bound: "Wybierz zdjęcie z rolki")
                             .font(.serif(18, weight: .medium))
                             .multilineTextAlignment(.center)
                     }

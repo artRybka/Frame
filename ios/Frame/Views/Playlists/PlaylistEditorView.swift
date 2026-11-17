@@ -119,7 +119,7 @@ struct PlaylistEditorView: View {
                             )) {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("Wspólna")
-                                    Text("Domownicy też ją widzą i mogą pokazać na ramce; zmieniasz ją tylko Ty.")
+                                    Text(bound: "Domownicy też ją widzą i mogą pokazać na ramce; zmieniasz ją tylko Ty.")
                                         .font(.caption)
                                         .foregroundStyle(Theme.inkSoft)
                                 }
@@ -294,7 +294,7 @@ struct PlaylistEditorView: View {
                 if playlist.kind == .manual {
                     Text("Znajdź dzieła jak w Szukaj i dodaj każde przyciskiem \(Image(systemName: "plus")) przy nim.")
                 } else {
-                    Text("W jednej grupie wystarczy jedno z wybranych, różne grupy muszą pasować razem: np. Impresjonizm lub Secesja, a do tego Morze.")
+                    Text(bound: "W jednej grupie wystarczy jedno z wybranych, różne grupy muszą pasować razem: np. Impresjonizm lub Secesja, a do tego Morze.")
                 }
             }
                 .font(.footnote)
@@ -363,7 +363,7 @@ struct PlaylistEditorView: View {
 
     private var cameraRoll: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Dodaj zdjęcia z rolki aparatu albo znajdź dzieła poniżej i dodaj je plusem.")
+            Text(bound: "Dodaj zdjęcia z rolki aparatu albo znajdź dzieła poniżej i dodaj je plusem.")
                 .font(.subheadline)
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
@@ -376,7 +376,7 @@ struct PlaylistEditorView: View {
                     .frame(maxWidth: .infinity)
             }
             if !photos.isEmpty {
-                Text("\(Names.photos(photos.count)) trafi do biblioteki i do tej playlisty po zapisaniu.")
+                Text(bound: "\(Names.photos(photos.count)) trafi do biblioteki i do tej playlisty po zapisaniu.")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(Theme.ink)
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
@@ -446,7 +446,7 @@ struct PlaylistEditorView: View {
                 .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
                 albumCheckStatus
-                Text("W Zdjęciach: album udostępniony → Osoby → Witryna publiczna → Udostępnij link.")
+                Text(bound: "W Zdjęciach: album udostępniony → Osoby → Witryna publiczna → Udostępnij link.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
             }

@@ -104,7 +104,7 @@ struct FullPhotoSection: View {
                         Divider().overlay(Theme.hairline)
                         Toggle(isOn: Binding(get: { cut.paper }, set: { choosePaper($0) })) {
                             HStack(spacing: 8) {
-                                Text("Z marginesem").foregroundStyle(Theme.ink)
+                                Text(bound: "Z marginesem").foregroundStyle(Theme.ink)
                                 if busy { ProgressView().controlSize(.small) }
                             }
                         }

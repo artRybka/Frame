@@ -140,7 +140,7 @@ struct OwnWorkFlow: View {
                         Text(bound: retaking == nil ? "Własne dzieło" : "Nowe zdjęcie")
                             .font(.headline)
                             .foregroundStyle(Theme.ink)
-                        Text("\(step.name) · \((steps.firstIndex(of: step) ?? 0) + 1) z \(steps.count)")
+                        Text(bound: "\(step.name) · \((steps.firstIndex(of: step) ?? 0) + 1) z \(steps.count)")
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
                     }

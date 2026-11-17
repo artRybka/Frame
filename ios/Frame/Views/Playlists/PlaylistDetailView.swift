@@ -150,7 +150,7 @@ struct PlaylistDetailView: View {
                     .framePositionProbe("grid")
                 if detail.playlist.kind == .smart, detail.playlist.itemCount > detail.items.count {
                     // The server lists a part of a very large playlist.
-                    Text("Widać \(Names.works(detail.items.count)) z \(detail.playlist.itemCount).")
+                    Text(bound: "Widać \(Names.works(detail.items.count)) z \(detail.playlist.itemCount).")
                         .font(.footnote)
                         .foregroundStyle(Theme.inkSoft)
                         .frame(maxWidth: .infinity)

@@ -591,7 +591,7 @@ struct DailyView: View {
                 if work.writing {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
-                        Text("Claude pisze opis i analizę kompozycji…")
+                        Text(bound: "Claude pisze opis i analizę kompozycji…")
                             .font(.footnote)
                             .foregroundStyle(Theme.inkSoft)
                     }
@@ -700,7 +700,7 @@ struct DailyView: View {
                 if listsComing(work) {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
-                        Text("Wczytuję podobne i inne prace artysty…")
+                        Text(bound: "Wczytuję podobne i inne prace artysty…")
                             .font(.footnote)
                             .foregroundStyle(Theme.inkSoft)
                     }
@@ -899,7 +899,7 @@ struct DailyView: View {
         let life = lifeSpan(work).map { "\($0.born)–\($0.died)" }
         return VStack(alignment: .leading, spacing: 10) {
             if name.isEmpty {
-                Text("O autorze")
+                Text(bound: "O autorze")
                     .font(.serif(20, weight: .semibold))
                     .foregroundStyle(Theme.ink)
             } else {
@@ -1325,7 +1325,7 @@ struct DailyView: View {
                                 ArtImage(ref: part.thumb, placeholder: part.item.placeholderColor, maxPixel: 1000, brighten: true)
                                     .frame(width: 170 * shape, height: 170)
                                     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                                Text("Fragment \(index + 1) z \(parts.count)")
+                                Text(bound: "Fragment \(index + 1) z \(parts.count)")
                                     .font(.caption)
                                     .foregroundStyle(Theme.inkSoft)
                             }

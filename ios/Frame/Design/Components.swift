@@ -1052,7 +1052,7 @@ struct NothingFound: View {
                 .accessibilityHint("„\(phrase.name)” jako osobne słowa")
             }
             if !without.isEmpty {
-                Text("Usuń jedno z poniższych:")
+                Text(bound: "Usuń jedno z poniższych:")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .padding(.top, 8)

@@ -37,7 +37,7 @@ struct PanelScreenshotSheet: View {
                 VStack(alignment: .leading, spacing: 16) {
                     picture
                     status
-                    Text("Tak obraz wygląda w pamięci ramki, pomniejszony do 640×360. Na e-papierze kolory są spokojniejsze i złożone z kropek farb.")
+                    Text(bound: "Tak obraz wygląda w pamięci ramki, pomniejszony do 640×360. Na e-papierze kolory są spokojniejsze i złożone z kropek farb.")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 }
@@ -81,7 +81,7 @@ struct PanelScreenshotSheet: View {
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.ink.opacity(0.12)))
                 .accessibilityLabel("Zrzut ekranu ramki")
                 if let clock = When.clock(taken), let ago = When.ago(taken) {
-                    Text("Zrzut z \(clock), \(ago)")
+                    Text(bound: "Zrzut z \(clock), \(ago)")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 }
@@ -98,7 +98,7 @@ struct PanelScreenshotSheet: View {
         case .asking, .waiting:
             HStack(spacing: 8) {
                 ProgressView()
-                Text("Ramka robi zrzut. Jeśli przed chwilą zmieniała obraz, czeka z nim minutę.")
+                Text(bound: "Ramka robi zrzut. Jeśli przed chwilą zmieniała obraz, czeka z nim minutę.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.ink)
             }
@@ -113,12 +113,12 @@ struct PanelScreenshotSheet: View {
                     Label("Zamów zrzut przy następnej pobudce", systemImage: "camera.viewfinder")
                 }
                 .buttonStyle(PrimaryButtonStyle())
-                Text("Zrobi go przy najbliższej pobudce\(Self.at(wake)) i poczuwa wtedy do 4 minut dłużej, co kosztuje trochę baterii.")
+                Text(bound: "Zrobi go przy najbliższej pobudce\(Self.at(wake)) i poczuwa wtedy do 4 minut dłużej, co kosztuje trochę baterii.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
             }
         case let .ordered(wake):
-            Text("Zrzut zamówiony. Ramka zrobi go przy najbliższej pobudce\(Self.at(wake)) i wtedy pojawi się tutaj. Na zasilaczu zrobi go od razu.")
+            Text(bound: "Zrzut zamówiony. Ramka zrobi go przy najbliższej pobudce\(Self.at(wake)) i wtedy pojawi się tutaj. Na zasilaczu zrobi go od razu.")
                 .font(.subheadline)
                 .foregroundStyle(Theme.ink)
         case .late:

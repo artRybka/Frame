@@ -122,7 +122,7 @@ struct AiReviewView: View {
             Text("Do sprawdzenia")
                 .font(.serif(32, weight: .semibold))
                 .foregroundStyle(Theme.ink)
-            Text("Haiku przegląda w nocy obrazy z Commons, Europeany, Openverse i WikiArt oraz 30 losowych dzieł katalogu. Każdą decyzję potwierdza drugi model.")
+            Text(bound: "Haiku przegląda w nocy obrazy z Commons, Europeany, Openverse i WikiArt oraz 30 losowych dzieł katalogu. Każdą decyzję potwierdza drugi model.")
                 .font(.serif(17))
                 .foregroundStyle(Theme.inkSoft)
         }
@@ -422,7 +422,7 @@ struct ReviewFixSheet: View {
                     } header: {
                         Text("Polski tytuł")
                     } footer: {
-                        Text("Ten tytuł widać w aplikacji i na ramce. Polski opis dzieła zostanie napisany od nowa z poprawionym tytułem.")
+                        Text(bound: "Ten tytuł widać w aplikacji i na ramce. Polski opis dzieła zostanie napisany od nowa z poprawionym tytułem.")
                     }
                 }
             }

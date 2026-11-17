@@ -84,7 +84,7 @@ struct OwnWorksView: View {
             Text("Moje dzieła")
                 .font(.serif(32, weight: .semibold))
                 .foregroundStyle(Theme.ink)
-            Text("Dzieła z Twoich zdjęć: na ramce, w playlistach, w Szukaj i w studiach jak każde inne.")
+            Text(bound: "Dzieła z Twoich zdjęć: na ramce, w playlistach, w Szukaj i w studiach jak każde inne.")
                 .font(.serif(17))
                 .foregroundStyle(Theme.inkSoft)
             if !model.ownWorks.isEmpty {
