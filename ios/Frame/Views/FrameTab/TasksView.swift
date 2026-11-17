@@ -303,7 +303,7 @@ struct TasksSection: View {
             if let waiting = use.waiting, waiting > 0 { parts.append("kandydaci \(AiSection.count(waiting))") }
         } else if let waiting = use.waiting {
             parts.append(waiting == 0 ? "nic nie czeka" : "czeka \(AiSection.count(waiting))")
-        } else if use.key == "descriptions" {
+        } else if use.isCatalogueText {
             parts.append("liczę, ile czeka…")
         }
         if let spent = use.periodSpentUsd, spent > 0 {

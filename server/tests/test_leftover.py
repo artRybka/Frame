@@ -223,7 +223,8 @@ def test_the_uses_keep_the_owners_order_and_take_in_new_ones(tmp_path: Path) -> 
     found = leftover_module.uses(svc.ai_config.config)
     assert [k for k, _ in found] == [
         "studies",
-        "descriptions",
+        "keywords",
+        "pl_text",
         "audit",
         "refresh",
         "crops",
@@ -260,7 +261,7 @@ def test_the_rest_is_spent_from_the_top_keeping_the_coming_nights(tmp_path: Path
         [
             ("refresh", 0.1, 30, None),  # 3 USD, all of it tonight
             ("studies", 1.0, None, 25),  # 25 tonight, 25 kept for tomorrow
-            ("descriptions", 0.01, 1000, None),  # 10 USD
+            ("keywords", 0.01, 1000, None),  # 10 USD
         ],
     )
     _, said = svc.leftover.at_night()
@@ -270,16 +271,16 @@ def test_the_rest_is_spent_from_the_top_keeping_the_coming_nights(tmp_path: Path
     assert [c[0] for c in calls] == ["refresh", "studies"]
     assert said.startswith("uzupełnione studia: 30") and "zamówione 25 studiów" in said
     # The owner puts the descriptions first: they take what they need.
-    svc.ai_config.update(AiConfigUpdate(leftover_order=["descriptions", "refresh", "studies"]))
+    svc.ai_config.update(AiConfigUpdate(leftover_order=["keywords", "refresh", "studies"]))
     calls.clear()
     svc.leftover.at_night()
-    assert calls[0] == ("descriptions", 40.0)
+    assert calls[0] == ("keywords", 40.0)
     assert calls[1] == ("refresh", 30.0)
     # A use switched off is not asked.
-    svc.ai_config.update(AiConfigUpdate(leftover_off=["descriptions", "audit"]))
+    svc.ai_config.update(AiConfigUpdate(leftover_off=["keywords", "audit"]))
     calls.clear()
     svc.leftover.at_night()
-    assert "descriptions" not in [c[0] for c in calls]
+    assert "keywords" not in [c[0] for c in calls]
 
 
 def test_the_crops_and_the_audit_take_more_a_night_until_the_period_ends(
@@ -344,10 +345,13 @@ def test_the_catalogues_texts_count_every_work_without_them(tmp_path: Path) -> N
         )
     assert svc.ai.progress("pl_text").waiting < 6  # the background's few
     assert svc.leftover._texts_estimate() is None  # counted on a thread
-    works, usd = svc.leftover._texts_estimate(wait=True)  # type: ignore[misc]
-    assert works == 6 and usd > 0
-    (texts,) = (u for u in svc.leftover.uses_view() if u["key"] == "descriptions")
-    assert texts["waiting"] == 6 and texts["waiting_usd"] == round(usd, 2)
+    found = svc.leftover._texts_estimate(wait=True)
+    assert found is not None
+    for kind in ("keywords", "pl_text"):  # two tasks since 2026-11-17
+        works, usd = found[kind]
+        assert works == 6 and usd > 0
+        (texts,) = (u for u in svc.leftover.uses_view() if u["key"] == kind)
+        assert texts["waiting"] == 6 and texts["waiting_usd"] == round(usd, 2)
 
 
 def test_the_catalogues_texts_take_the_owners_number_a_night(tmp_path: Path) -> None:
@@ -372,16 +376,18 @@ def test_the_catalogues_texts_take_the_owners_number_a_night(tmp_path: Path) -> 
             pooled=True,
         )
     svc.leftover._texts_estimate(wait=True)
-    (texts,) = (u for u in svc.leftover.uses_view() if u["key"] == "descriptions")
+    # the Polish texts: three works' keywords cost less than a cent
+    (texts,) = (u for u in svc.leftover.uses_view() if u["key"] == "pl_text")
     assert texts["waiting"] == 7 and texts["a_night"] == 3 and texts["tonight"] == 3
     assert texts["tonight_usd"] > 0 and texts["tonight_usd"] < texts["waiting_usd"]
     assert texts["a_night_options"] == list(leftover_module.TEXTS_A_NIGHT_OPTIONS)
     _, said = svc.leftover.at_night()
-    assert "opisy katalogu: 3" in said
+    assert "słowa kluczowe katalogu: 3" in said and "polskie opisy katalogu: 3" in said
     assert fake.batches  # questions went
     works = {item_id for record in svc.ai._batches() for item_id in record["ids"].values()}
-    assert len(works) == 3
-    assert svc.leftover._state()["tally"]["descriptions"][0] == 3
+    assert len(works) == 3  # the same three, the cared-for first
+    tally = svc.leftover._state()["tally"]
+    assert tally["keywords"][0] == 3 and tally["pl_text"][0] == 3
 
 
 def test_the_app_sets_the_texts_a_night(tmp_path: Path) -> None:
@@ -392,6 +398,7 @@ def test_the_app_sets_the_texts_a_night(tmp_path: Path) -> None:
         got = client.put("/api/ai", json={"leftover_texts_a_night": 500}, headers=headers)
         assert got.status_code == 200
         uses = got.json()["leftover_state"]["uses"]
-        assert next(u for u in uses if u["key"] == "descriptions")["a_night"] == 500
+        assert next(u for u in uses if u["key"] == "keywords")["a_night"] == 500
+        assert next(u for u in uses if u["key"] == "pl_text")["a_night"] == 500
         bad = client.put("/api/ai", json={"leftover_texts_a_night": 10}, headers=headers)
         assert bad.status_code == 422

@@ -16,7 +16,7 @@ struct OnDemandRow: View {
     @State private var stopping = false
 
     var body: some View {
-        content.id(use.key == "descriptions" ? "ondemand" : "ondemand-\(use.key)")
+        content.id(use.key == "pl_text" ? "ondemand" : "ondemand-\(use.key)")
     }
 
     @ViewBuilder
@@ -28,7 +28,7 @@ struct OnDemandRow: View {
                 startButton
                 .sheet(isPresented: $asking) { OnDemandSheet(use: use, free: free) }
                 .task {
-                    // Screenshots: `-onDemandSheet descriptions` opens it.
+                    // Screenshots: `-onDemandSheet pl_text` opens it.
                     if UserDefaults.standard.string(forKey: "onDemandSheet") == use.key {
                         try? await Task.sleep(for: .seconds(6))
                         asking = true
@@ -259,6 +259,10 @@ struct OnDemandSheet: View {
     static func about(_ use: LeftoverUse) -> String {
         let common = "Serwer pyta Claude od razu, dzieło po dziele, w trybie zwykłym: po pełnej cenie, ok. dwa razy drożej niż nocą przez Batch. Działa, aż wyda kwotę albo nic więcej nie będzie czekać; możesz go zatrzymać. Nie przekroczy miesięcznego limitu ani zapasu, a noc w tym czasie zostawia to zadanie."
         switch use.key {
+        case "keywords":
+            return "Słowa kluczowe dzieł katalogu, które ich jeszcze nie mają, najpierw Ulubione i playlisty. " + common
+        case "pl_text":
+            return "Polski tytuł i opis dzieł katalogu, które ich jeszcze nie mają, najpierw Ulubione i playlisty. " + common
         case "descriptions":
             return "Słowa kluczowe i polskie opisy dzieł katalogu, które ich jeszcze nie mają, najpierw Ulubione i playlisty. " + common
         case "crops":

@@ -48,9 +48,9 @@ final class LeftoverUsesTests: XCTestCase {
         XCTAssertEqual(AiSection.useNote(use), "Wyłączone w ustawieniach wyżej.")
     }
 
-    func testTheCataloguesTextsSayTheyAreBeingCounted() {
-        var use = DemoBackend.leftoverUses[4]
-        XCTAssertEqual(use.key, "descriptions")
+    func testTheCataloguesTextsSayTheyAreBeingCounted() throws {
+        var use = try XCTUnwrap(DemoBackend.leftoverUses.first { $0.key == "pl_text" })
+        XCTAssertTrue(use.isCatalogueText)
         use.waiting = nil
         use.waitingUsd = nil
         XCTAssertEqual(AiSection.useNote(use), "liczę, ile czeka w katalogu…")
@@ -59,8 +59,7 @@ final class LeftoverUsesTests: XCTestCase {
     /// Mateusz 2026-11-15, "czeka 125323 · ok. 824,84 USD": "Jak to
     /// zlimitować?" The row tells what a night takes, and the limit is his.
     func testTheCataloguesTextsTellTheNightsPart() throws {
-        let use = DemoBackend.leftoverUses[4]
-        XCTAssertEqual(use.key, "descriptions")
+        let use = try XCTUnwrap(DemoBackend.leftoverUses.first { $0.key == "pl_text" })
         let note = AiSection.useNote(use)
         XCTAssertTrue(note.contains("tej nocy"), note)
         XCTAssertFalse(note.contains("824"), note)
@@ -84,9 +83,12 @@ final class LeftoverUsesTests: XCTestCase {
         var update = AiSettingsUpdate()
         update.leftoverTextsANight = 500
         let got = try await demo.saveAiSettings(update)
-        let texts = try XCTUnwrap(got.leftoverState?.uses?.first { $0.key == "descriptions" })
-        XCTAssertEqual(texts.aNight, 500)
-        XCTAssertEqual(texts.tonight, 500)
+        // both of the catalogue's texts (two tasks since 2026-11-17)
+        for key in ["keywords", "pl_text"] {
+            let texts = try XCTUnwrap(got.leftoverState?.uses?.first { $0.key == key })
+            XCTAssertEqual(texts.aNight, 500)
+            XCTAssertEqual(texts.tonight, 500)
+        }
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
         let body = String(decoding: try encoder.encode(update), as: UTF8.self)
@@ -96,7 +98,7 @@ final class LeftoverUsesTests: XCTestCase {
     func testTheDemoMovesAndSwitchesTheUses() async throws {
         let demo = DemoBackend()
         var update = AiSettingsUpdate()
-        update.leftoverOrder = ["studies", "refresh", "crops", "text_review", "descriptions", "audit"]
+        update.leftoverOrder = ["studies", "refresh", "crops", "text_review", "keywords", "pl_text", "audit"]
         update.leftoverOff = ["crops"]
         let got = try await demo.saveAiSettings(update)
         let uses = try XCTUnwrap(got.leftoverState?.uses)
@@ -132,12 +134,12 @@ final class LeftoverUsesTests: XCTestCase {
         XCTAssertEqual(OnDemandRow.works(12), "12 dzieł")
 
         let demo = DemoBackend()
-        let started = try await demo.startOnDemand(key: "descriptions", usd: 50)
-        let texts = try XCTUnwrap(started.leftoverState?.uses?.first { $0.key == "descriptions" })
+        let started = try await demo.startOnDemand(key: "pl_text", usd: 50)
+        let texts = try XCTUnwrap(started.leftoverState?.uses?.first { $0.key == "pl_text" })
         XCTAssertEqual(texts.run?.running, true)
         XCTAssertEqual(texts.run?.usd, 50)
-        let stopped = try await demo.stopOnDemand(key: "descriptions")
-        let after = try XCTUnwrap(stopped.leftoverState?.uses?.first { $0.key == "descriptions" })
+        let stopped = try await demo.stopOnDemand(key: "pl_text")
+        let after = try XCTUnwrap(stopped.leftoverState?.uses?.first { $0.key == "pl_text" })
         XCTAssertEqual(after.run?.running, false)
         XCTAssertEqual(after.run.map(OnDemandRow.lastNote)?.contains("zatrzymane"), true)
     }

@@ -2179,11 +2179,12 @@ actor DemoBackend: FrameBackend {
             if let off = update.leftoverOff {
                 for index in uses.indices { uses[index].on = !off.contains(uses[index].key) }
             }
-            if let night = update.leftoverTextsANight,
-               let index = uses.firstIndex(where: { $0.key == "descriptions" }) {
-                uses[index].aNight = night
-                uses[index].tonight = min(uses[index].waiting ?? night, night)
-                uses[index].tonightUsd = Double(uses[index].tonight ?? 0) * uses[index].eachUsd
+            if let night = update.leftoverTextsANight {
+                for index in uses.indices where uses[index].isCatalogueText {
+                    uses[index].aNight = night
+                    uses[index].tonight = min(uses[index].waiting ?? night, night)
+                    uses[index].tonightUsd = Double(uses[index].tonight ?? 0) * uses[index].eachUsd
+                }
             }
             aiValue.leftoverState?.uses = uses
         }
@@ -2582,8 +2583,17 @@ extension DemoBackend {
             mode: .batch, modes: [.batch], periodSpentUsd: 0
         ),
         LeftoverUse(
-            key: "descriptions", label: "Słowa kluczowe i polskie opisy",
-            about: "Dzieła katalogu, które ich jeszcze nie mają, najpierw Ulubione i playlisty.",
+            key: "keywords", label: "Słowa kluczowe katalogu",
+            about: "Dzieła katalogu, które ich jeszcze nie mają, najpierw Ulubione i playlisty. Po nich szukają Szukaj i inteligentne playlisty.",
+            on: true, able: true, waiting: 98_412, eachUsd: 0.0009, waitingUsd: 88.57, aNight: 2000,
+            done: 0, doneUsd: 0, aNightOptions: [250, 500, 1000, 2000, 5000, 10000],
+            tonight: 2000, tonightUsd: 1.8, nowEachUsd: 0.0018, when: .rest,
+            aNightChoices: [250, 500, 1000, 2000, 5000, 10000], nightUsd: 2,
+            mode: .batch, modes: [.batch, .normal], periodSpentUsd: 0
+        ),
+        LeftoverUse(
+            key: "pl_text", label: "Polskie opisy katalogu",
+            about: "Polski tytuł i opis dzieł katalogu, które ich jeszcze nie mają, najpierw Ulubione i playlisty.",
             on: true, able: true, waiting: 125_323, eachUsd: 0.0066, waitingUsd: 824.84, aNight: 1000,
             done: 0, doneUsd: 0, aNightOptions: [250, 500, 1000, 2000, 5000, 10000],
             tonight: 1000, tonightUsd: 6.58, nowEachUsd: 0.0132, run: demoRun, when: .rest,

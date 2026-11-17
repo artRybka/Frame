@@ -230,8 +230,8 @@ jobs:
             capture connection 12 "tasks-night-$appearance" -settingsPage tasks -scroll night
             capture connection 12 "tasks-rest-$appearance" -settingsPage tasks -scroll rest
             capture connection 12 "tasks-off-$appearance" -settingsPage tasks -scroll off
-            capture connection 12 "task-descriptions-$appearance" -settingsPage tasks -task descriptions
-            capture connection 14 "task-descriptions-sheet-$appearance" -settingsPage tasks -task descriptions -onDemandSheet descriptions
+            capture connection 12 "task-pl_text-$appearance" -settingsPage tasks -task pl_text
+            capture connection 14 "task-pl_text-sheet-$appearance" -settingsPage tasks -task pl_text -onDemandSheet pl_text
             capture connection 10 "connection-gemini-$appearance" -settingsPage gemini
             capture connection 12 "review-$appearance" -settingsPage ai -review YES
             capture connection 14 "review-open-$appearance" -settingsPage ai -review YES -reviewOpen YES

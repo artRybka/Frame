@@ -17,7 +17,7 @@ from frame_server import on_demand as on_demand_module
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import HAIKU, cost
 from frame_server.ai.keywords import KIND as KEYWORDS
-from frame_server.leftover import TEXTS
+from frame_server.leftover import KEYWORDS as TEXTS
 from frame_server.on_demand import OnDemand, OnDemandError, Plan
 from frame_server.service import FrameService
 

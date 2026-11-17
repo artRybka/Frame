@@ -6,7 +6,7 @@ import XCTest
 final class TasksTests: XCTestCase {
     func testATasksSettingsDecodeAndTellTheList() throws {
         let json = """
-        {"key": "descriptions", "label": "Słowa kluczowe i polskie opisy", "about": "…",
+        {"key": "pl_text", "label": "Polskie opisy katalogu", "about": "…",
          "on": true, "able": true, "waiting": 125323, "each_usd": 0.0066, "waiting_usd": 824.84,
          "a_night": 1000, "done": 2000, "done_usd": 13.16, "now_each_usd": 0.0132,
          "when": "night", "a_night_choices": [250, 500, 1000], "night_usd": 10,

@@ -17,8 +17,9 @@ from test_on_demand import EACH, _ended, _limit, _works
 from frame_server import leftover as leftover_module
 from frame_server import on_demand as on_demand_module
 from frame_server.ai import AiConfigUpdate
-from frame_server.ai.config import TaskUpdate
-from frame_server.leftover import CROPS, STUDIES, TEXTS, set_task, task
+from frame_server.ai.config import TaskSettings, TaskUpdate
+from frame_server.leftover import CROPS, KEYWORDS, POLISH, STUDIES, set_task, task
+from frame_server.leftover import KEYWORDS as TEXTS
 from frame_server.on_demand import OnDemandError
 from frame_server.service import FrameService
 
@@ -37,7 +38,6 @@ def test_a_task_is_as_it_was_until_the_owner_sets_it(tmp_path: Path) -> None:
     assert task(config, "audit").when == "night" and task(config, "audit").a_night == 500
     # the older switches kept in step
     assert config.leftover_off == [TEXTS]
-    assert config.leftover_texts_a_night == 2000
     assert dict(leftover_module.uses(config))[TEXTS] is False
     # 0 is "no limit of its own"
     set_task(store, TEXTS, TaskUpdate(night_usd=0))
@@ -51,6 +51,35 @@ def test_a_task_is_as_it_was_until_the_owner_sets_it(tmp_path: Path) -> None:
         set_task(store, "nonsense", TaskUpdate(when="night"))
 
 
+def test_the_catalogues_texts_become_two_tasks_as_they_were(tmp_path: Path) -> None:
+    """Mateusz 2026-11-17: "Słowa kluczowe i polskie opisy - czy to nie dwa,
+    odrębne procesy?" The one task they were is two; what he set for it, its
+    place in his order and its switch off hold for both."""
+    _, svc, _ = _claude(tmp_path)
+    store = svc.ai_config
+    old = TaskSettings(when="night", a_night=2000, night_usd=10, mode="normal")
+    store.set_tasks(
+        {"descriptions": old},
+        leftover_order=["studies", "descriptions", "refresh"],
+        leftover_off=["audit"],
+    )
+    for key in (KEYWORDS, POLISH):
+        assert task(store.config, key) == old
+    order = [k for k, _ in leftover_module.uses(store.config)]
+    assert order[:3] == ["studies", KEYWORDS, POLISH] and "descriptions" not in order
+    assert order.index("refresh") > 2
+    # his first change of one keeps the other as it was
+    set_task(store, POLISH, TaskUpdate(when="rest", night_usd=0))
+    config = store.config
+    assert "descriptions" not in config.tasks and "descriptions" not in config.leftover_order
+    assert task(config, KEYWORDS) == old
+    assert task(config, POLISH).when == "rest" and task(config, POLISH).night_usd is None
+    assert config.leftover_order[:3] == ["studies", KEYWORDS, POLISH]
+    # switched off as one, both are off
+    store.set_tasks({}, leftover_off=["descriptions"])
+    assert task(store.config, KEYWORDS).when == "off" == task(store.config, POLISH).when
+
+
 def test_a_task_set_for_every_night_runs_outside_the_last_days(tmp_path: Path) -> None:
     _, svc, _ = _claude(tmp_path)
     svc.ai_config.update(AiConfigUpdate(monthly_limit_usd=200, leftover_reserve_usd=10))
@@ -60,7 +89,7 @@ def test_a_task_set_for_every_night_runs_outside_the_last_days(tmp_path: Path) -
         svc,
         [
             ("refresh", 0.1, 30, None),
-            ("descriptions", 0.01, 100000, 1000),
+            (TEXTS, 0.01, 100000, 1000),
             ("crops", 0.01, 5000, 540),
         ],
     )
@@ -74,7 +103,7 @@ def test_a_task_set_for_every_night_runs_outside_the_last_days(tmp_path: Path) -
     # night's amount, the crops what the limit leaves
     assert [c[0] for c in calls] == [CROPS, TEXTS]
     assert dict(calls)[TEXTS] == 5.0 and dict(calls)[CROPS] == 170.0
-    assert "opisy katalogu: 500" in said and "kadrowanie: 540" in said
+    assert "słowa kluczowe katalogu: 500" in said and "kadrowanie: 540" in said
     # not on demand only, nor off
     set_task(store, TEXTS, TaskUpdate(when="demand"))
     set_task(store, CROPS, TaskUpdate(when="off"))
@@ -87,7 +116,7 @@ def test_a_task_stops_at_its_amount_for_the_period(tmp_path: Path) -> None:
     _, svc, _ = _claude(tmp_path)
     _switched_on(svc)  # the period's last days
     _spent(svc, 150.0)  # 40 USD above the reserve
-    calls = _fake_uses(svc, [("descriptions", 0.01, 100000, None)])
+    calls = _fake_uses(svc, [(TEXTS, 0.01, 100000, None)])
     set_task(svc.ai_config, TEXTS, TaskUpdate(period_usd=10))
     svc.leftover.at_night()
     assert calls == [(TEXTS, 10.0)]
@@ -120,7 +149,7 @@ def test_a_task_in_the_normal_mode_is_asked_now_at_night(
     settings = task(store.config, TEXTS).model_copy(update={"a_night": 4})
     store.set_task(TEXTS, settings)
     _, said = service.leftover.at_night()
-    assert "opisy katalogu: od razu, do 2.00 USD" in said
+    assert "słowa kluczowe katalogu: od razu, do 2.00 USD" in said
     view = _ended(service)
     assert view["night"] is True and view["usd"] == 2.0
     assert view["done"] == 4 and view["why"] == on_demand_module.COUNT
