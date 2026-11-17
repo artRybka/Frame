@@ -6,6 +6,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
+from frame_server.imaging import reflections
 from frame_server.imaging.reflections import grown, merge
 
 H, W = 1400, 1100
@@ -394,6 +395,55 @@ def test_lines_put_in_under_a_lamp_are_as_pale_as_the_lines_about_it() -> None:
     # And the paper under it is the paper about it.
     tone = cv2.GaussianBlur(done.image.astype(np.float32), (0, 0), 8)
     assert float(np.abs(tone[burnt].mean(0) - tone[about].mean(0)).max()) < 6
+
+
+def test_what_is_put_in_under_a_lamp_ends_by_degrees_beyond_the_lamp() -> None:
+    """And shown that (2026-11-17 08:33 UTC): "Świetnie! Korekta koloru
+    bardzo pomogła. A nie możemy delikatnie „wtopić”, rozmyć krawędzi
+    wklejanej łatki? Oczywiście na zewnątrz, tak żeby nie pokazać
+    chowanej lampy czy odbicia". The patch ended on the lamp's soft edge,
+    and what was left of that edge drew the lamp on the paper."""
+    ht, wd = 600, 1600
+    work = np.full((ht, wd, 3), 0.4, np.float32)
+    views = [reflections._View(work.copy(), side) for side in (0, -1, 1)]
+    told = [np.zeros((ht, wd, 3), np.float32) for _ in range(2)]
+    yy, xx = np.mgrid[0:ht, 0:wd]
+    beyond = np.hypot(xx - 800, yy - 300) - 60
+    patch = (beyond <= 0).astype(np.float32)[..., None]
+    beside = reflections._outward(work, patch, wd * reflections.GLARE_FEATHER)
+    wider = reflections._rim(views, told, work, patch, beside)[..., 0]
+    out = wd * reflections.GLARE_OUT
+    # All of the lamp still, and whole a little beyond it.
+    assert float(wider[beyond <= 0].min()) == 1
+    assert float(wider[(beyond > 0) & (beyond < 0.7 * out)].min()) > 0.9
+    # Then less and less, and nothing further off.
+    falling = wider[(beyond > 1.3 * out) & (beyond < 1.7 * out)]
+    assert float(falling.min()) > 0.05 and float(falling.max()) < 0.95
+    assert float(wider[beyond > 2.3 * out].max()) < 0.01
+
+
+def test_what_is_put_in_under_a_lamp_does_not_go_over_the_edge_of_a_print() -> None:
+    """The cows, each print behind its window in a mount, a lamp on one
+    of them near its edge: from the side the print ends a little
+    elsewhere under the mount, and what went outward over that edge was a
+    pale bite in the print and a grey bar on the mount."""
+    ht, wd = 600, 1600
+    work = np.full((ht, wd, 3), 0.4, np.float32)
+    # The mount begins a few pixels from the lamp.
+    work[:, 870:] = 0.8
+    views = [reflections._View(work.copy(), side) for side in (0, -1, 1)]
+    told = [np.zeros((ht, wd, 3), np.float32) for _ in range(2)]
+    yy, xx = np.mgrid[0:ht, 0:wd]
+    beyond = np.hypot(xx - 800, yy - 300) - 60
+    patch = (beyond <= 0).astype(np.float32)[..., None]
+    beside = reflections._outward(work, patch, wd * reflections.GLARE_FEATHER)
+    wider = reflections._rim(views, told, work, patch, beside)[..., 0]
+    out = wd * reflections.GLARE_OUT
+    # Not toward the mount, nor onto it.
+    assert float(wider[(beyond > 0) & (xx >= 862)].max()) == 0
+    assert not np.isfinite(beside[:, 870:]).any()
+    # The other way as ever.
+    assert float(wider[(beyond > 0) & (beyond < 0.7 * out) & (xx < 780)].min()) > 0.9
 
 
 def test_his_own_figure_dark_in_the_glass_leaves_no_outline_on_the_paper() -> None:
