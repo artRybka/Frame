@@ -123,7 +123,17 @@ the lines put in from the side views were black among them: they are
 made as strong as the lines about the patch (:func:`_toned`). The paper
 in the patch is brought to the paper about it once all is taken off
 (:func:`_level`), and the lamp's pale rim is the side views' as well
-where every one of them tells less light (:func:`_rim`)."""
+where every one of them tells less light (:func:`_rim`).
+
+And shown that (08:33 UTC: "A nie możemy delikatnie „wtopić”, rozmyć
+krawędzi wklejanej łatki? Oczywiście na zewnątrz, tak żeby nie pokazać
+chowanej lampy czy odbicia"). The patch ended on the lamp's soft edge,
+and what was left of that edge drew the lamp on the paper. It goes a
+little way outward now and ends by degrees (:data:`GLARE_OUT`), and its
+tone goes over into the first view's further still
+(:data:`GLARE_FEATHER`). Neither over an edge of the work
+(:func:`_outward`): on the cows a lamp lay on a print near its edge, and
+from the side a print ends a little elsewhere under its mount."""
 
 from __future__ import annotations
 
@@ -264,6 +274,20 @@ GLARE_STRENGTH = (0.4, 1.5)
 GLARE_RIM = 0.012
 GLARE_RIM_MORE = (0.04, 0.1)
 GLARE_RIM_OVER = 0.003
+#: And so far outward the patch goes in any case, ending over as much
+#: again: a lamp's edge is soft, and the patch ended on it.
+GLARE_OUT = 0.006
+#: And the patch's tone goes over into the first view's by degrees, so
+#: far outward (of the work's width).
+GLARE_FEATHER = 0.03
+#: Neither goes over an edge of the work, nor nearer to one than
+#: :data:`GLARE_OUT`: where its light steps by this much of what it is
+#: there, or its colour by this much (the share one colour has of the
+#: three). A print ends under its mount there, and each view sees that
+#: end elsewhere; the lines of a drawing are no such step (graphite on
+#: paper is a step of half that colour, and a print pale as its mount
+#: one of little light).
+GLARE_STEP = (0.4, 0.045)
 #: A pixel of a view over this says nothing of what the views differ by.
 BLOWN = 0.85
 #: The band at the edge a side photograph was taken from, where the
@@ -421,8 +445,10 @@ def merge(first: Image, sides: list[Image], corners: Quad) -> Merged:
     # "nothing taken off", and stayed.
     own = float(alone.mean())
     if swap is not None:
-        swap = (_toned(swap[0], less, swap[1]), _rim(views, told, less, swap[1]))
-        work, patch = swap
+        work = _toned(swap[0], less, swap[1])
+        beside = _outward(work, swap[1], wd * GLARE_FEATHER)
+        patch = _rim(views, told, less, swap[1], beside)
+        swap = (work, patch)
         less = less + (work - less) * patch
         alone = alone * (1 - patch)
         front = front + (work - front) * patch
@@ -446,7 +472,7 @@ def merge(first: Image, sides: list[Image], corners: Quad) -> Merged:
     now = front - veil - np.clip(front - low, 0, None) * share
     mend = _mend(now, front, alone, soft, views, told)
     if swap is not None:
-        mend = mend + _level(now - mend, swap[0], swap[1])
+        mend = mend + _level(now - mend, swap[0], swap[1], beside)
     clean = _subtract(first, (veil, low, share), mend, swap, to_photo, quad)
     return Merged(clean, len(views) - 1, round(removed, 4))
 
@@ -963,20 +989,32 @@ def _toned(work: Floats, to: Floats, patch: Floats) -> Floats:
     return np.asarray(plain + light + (work - plain) * strong[..., None], np.float32)
 
 
-def _level(now: Floats, work: Floats, patch: Floats) -> Floats:
+def _level(now: Floats, work: Floats, patch: Floats, beside: Floats) -> Floats:
     """What is to come off ``now`` (the first view cleaned) in ``patch``,
     where it is ``work`` (the side views' telling) put in, for it to lie
-    as far from that telling as the places about the patch do.
+    as far from that telling as the places about the patch do; and off
+    the places next to the patch (so far from it, ``beside``), less and
+    less outward.
 
     The same plate, a quarter of an hour on (2026-11-17 08:20 UTC: "Tło
     papieru także się nieznacznie różni odcieniem"): what is taken off
     after the work is put in under a lamp (the veil, the sheen, the
     mending about it) is not the same in the patch and beside it, and
-    the paper under the lamp came out a few levels lighter and cooler."""
+    the paper under the lamp came out a few levels lighter and cooler.
+
+    And shown that (08:33 UTC: "A nie możemy delikatnie „wtopić”, rozmyć
+    krawędzi wklejanej łatki? Oczywiście na zewnątrz, tak żeby nie
+    pokazać chowanej lampy czy odbicia"): the patch ended at the lamp's
+    edge, and what little of the lamp's glow was left beside it drew
+    that edge. Only the tone goes over; the lines beside the patch stay
+    the first view's (the side views have them a pixel or three off)."""
     ht, wd = now.shape[:2]
-    by = max(3, round(wd * GLARE_NEAR)) | 1
-    free = 1 - cv2.dilate(patch[..., 0], np.ones((by, by), np.uint8))
-    free = (free * free).astype(np.float32)
+    reach = max(2.0, wd * GLARE_FEATHER)
+    outward = np.clip(1 - beside / reach, 0, 1)
+    outward = outward * outward * (3 - 2 * outward)
+    over = np.maximum(patch[..., 0], outward).astype(np.float32)
+    away = cv2.distanceTransform((patch[..., 0] <= 0.5).astype(np.uint8), cv2.DIST_L2, 5)
+    free = ((away > reach) * (1 - patch[..., 0])).astype(np.float32)
     w = max(64, wd // 4)
     h = max(64, round(ht * w / wd))
 
@@ -994,24 +1032,35 @@ def _level(now: Floats, work: Floats, patch: Floats) -> Floats:
         about += cv2.GaussianBlur(beside, (0, 0), wide * w) / np.maximum(some, 1e-6) * sure
         left = left - sure
     about = cv2.resize(about, (wd, ht), interpolation=cv2.INTER_LINEAR)
-    here = cv2.GaussianBlur(apart, (0, 0), max(1.0, GLARE_LINES * wd))
-    return np.asarray((here - about) * patch, np.float32)
+    # Told of the patch and of what is beside it alone: beyond an edge of
+    # the work the two are another thing apart.
+    fine = max(1.0, GLARE_LINES * wd)
+    of = (over > 0).astype(np.float32)
+    here = cv2.GaussianBlur(apart * of[..., None], (0, 0), fine)
+    here = here / np.maximum(cv2.GaussianBlur(of, (0, 0), fine), 1e-3)[..., None]
+    return np.asarray((here - about) * over[..., None], np.float32)
 
 
-def _rim(views: list[_View], told: list[Floats], less: Floats, patch: Floats) -> Floats:
+def _rim(
+    views: list[_View], told: list[Floats], less: Floats, patch: Floats, beside: Floats
+) -> Floats:
     """``patch`` (how much of a place is a glare's, 0–1) with the glare's
     rim: where about it the first view (``less``, without what was told
     to be its own) still has more light than every side view tells. The
     rim of his lamp stayed on the drawing, a pale crescent at its end and
     a pale line along it. Every one of them: the shade of a mount on the
-    edge of a print is in one, and came into the cows as a dark notch."""
+    edge of a print is in one, and came into the cows as a dark notch.
+
+    And a little way outward in any case (so far from it, ``beside``),
+    ending by degrees."""
     wd = less.shape[1]
     by = max(1, round(wd * GLARE_RIM))
     about = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * by + 1, 2 * by + 1))
     zone = cv2.dilate((patch[..., 0] > 0.5).astype(np.float32), about)
     over = max(1.0, wd * GLARE_RIM_OVER)
     more: Floats | None = None
-    for tells, light in _tellings(views, told, GLARE_BLACK):
+    tellings = _tellings(views, told, GLARE_BLACK)
+    for tells, light in tellings:
         lit = cv2.GaussianBlur(tells.mean(-1), (0, 0), over)
         has = cv2.GaussianBlur((less - tells).mean(-1), (0, 0), over) / (lit + GLARE_DARK)
         has = np.where(np.isfinite(light), has, 0).astype(np.float32)
@@ -1019,7 +1068,64 @@ def _rim(views: list[_View], told: list[Floats], less: Floats, patch: Floats) ->
     assert more is not None
     more = np.clip((more - GLARE_RIM_MORE[0]) / (GLARE_RIM_MORE[1] - GLARE_RIM_MORE[0]), 0, 1)
     rim = cv2.GaussianBlur((more * zone).astype(np.float32), (0, 0), over / 2)
-    return np.asarray(np.maximum(patch, rim[..., None]), np.float32)
+    # Outward by degrees (2026-11-17 08:33 UTC: "A nie możemy delikatnie
+    # „wtopić”, rozmyć krawędzi wklejanej łatki? Oczywiście na zewnątrz").
+    out = max(1.0, wd * GLARE_OUT)
+    outward = np.clip(2 - beside / out, 0, 1)
+    outward = outward * outward * (3 - 2 * outward)
+    shown = np.isfinite(np.minimum.reduce([light for _, light in tellings]))
+    wider = np.maximum(rim, outward * shown)
+    return np.asarray(np.maximum(patch, wider[..., None]), np.float32)
+
+
+def _outward(work: Floats, patch: Floats, far: float) -> Floats:
+    """How far each place is from ``patch`` (pixels; infinite beyond
+    ``far``), going about the edges of ``work``: there is no way over a
+    step of its light (:data:`GLARE_STEP`), nor nearer to one than
+    :data:`GLARE_OUT`.
+
+    The cows, each print behind its window in a mount: a lamp lay on a
+    print near its edge, and what was put in from the side went outward
+    over that edge. From the side the print ends a little elsewhere under
+    its mount: a pale bite came into the print's edge, and a grey bar
+    onto the mount above it."""
+    wd = patch.shape[1]
+    by = max(1.0, wd * GLARE_OUT / 2)
+    soft = cv2.GaussianBlur(work, (0, 0), by)
+
+    def step(of: Floats) -> Floats:
+        # A step so high, blurred so far, is as steep as this at its middle.
+        steep = np.hypot(cv2.Sobel(of, cv2.CV_32F, 1, 0), cv2.Sobel(of, cv2.CV_32F, 0, 1)) / 8
+        return np.asarray(steep * by * np.sqrt(2 * np.pi), np.float32)
+
+    light = soft.mean(-1)
+    shares = soft / (soft.sum(-1, keepdims=True) + 3 * GLARE_DARK)
+    edge = step(light) > GLARE_STEP[0] * (light + GLARE_DARK)
+    for colour in range(3):
+        edge |= step(np.ascontiguousarray(shares[..., colour])) > GLARE_STEP[1]
+    near = 2 * max(1, round(wd * GLARE_OUT)) + 1
+    about = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (near, near))
+    way = 1 - cv2.dilate(edge.astype(np.uint8), about)
+    # Nor from what of the patch lies at an edge: that stays as it is.
+    reached = np.minimum((patch[..., 0] > 0.5).astype(np.uint8), way)
+    away = np.where(reached > 0, 0, np.inf).astype(np.float32)
+    if not reached.any():
+        return away
+    # Only about the patch: nothing further is reached.
+    rows, cols = np.nonzero(reached)
+    span = int(np.ceil(far)) + 1
+    top, left = max(0, rows.min() - span), max(0, cols.min() - span)
+    box = (slice(top, rows.max() + span + 1), slice(left, cols.max() + span + 1))
+    reached, way, within = reached[box], way[box], away[box]
+    steps = (
+        cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3)),
+        np.ones((3, 3), np.uint8),
+    )
+    for n in range(1, span):
+        grown = np.maximum(reached, np.minimum(cv2.dilate(reached, steps[n % 2]), way))
+        within[grown > reached] = n
+        reached = grown
+    return away
 
 
 def _one(says: list[Floats], plains: list[Floats], counts: Floats) -> tuple[Floats, Floats]:

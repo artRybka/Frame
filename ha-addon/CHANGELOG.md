@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.216
+
+- Skan („Inteligentne”): krawędź fragmentu wstawionego ze zdjęć bocznych
+  w miejscu lampy jest wtopiona w otoczenie. Fragment wychodzi trochę na
+  zewnątrz i zanika stopniowo, a jego ton przechodzi w ton zdjęcia na
+  wprost, więc nie zostaje obrys lampy ani świetlówki. Na dziełach w
+  passe-partout fragment nie przechodzi przez krawędź odbitki.
+
 ## 1.145.215
 
 - Ekran poprawiania kadru: narożnik zwalnia dopiero przy naprawdę
