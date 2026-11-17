@@ -17,9 +17,17 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from frame_server.ai import AiConfigUpdate, AiUnavailable
-from frame_server.ai.gemini import EMBED_MAX, EMBED_MODEL, EMBED_SIZE, Painter, embed_cost
+from frame_server.ai.gemini import (
+    EMBED_MAX,
+    EMBED_MODEL,
+    EMBED_SIZE,
+    Embedded,
+    NotDrawn,
+    Painter,
+    embed_cost,
+)
 from frame_server.library.models import Item, ItemKind, PlaylistRules
-from frame_server.looks import KIND, QUERY, LookIndex, Looks
+from frame_server.looks import DESCRIBE, KIND, PART, QUERY, TOLD, LookIndex, Looks
 from frame_server.service import FrameService
 
 #: Colours the fake model tells apart, each its own direction.
@@ -40,12 +48,15 @@ def _colour_of(img: Image.Image) -> int:
 
 
 class FakePainter:
-    """Google's embedding model: a picture points the way of its colour,
-    words the way of the colour they name."""
+    """Google's models: a picture's subject points the way of its colour,
+    its style the way of its shape (wide or tall), words the way of the
+    colour they name; Gemini's sentence on a picture names its colour."""
 
     def __init__(self) -> None:
-        self.asked: list[list[Image.Image | str]] = []
-        self.batches: list[list[tuple[str, Image.Image]]] = []
+        self.asked: list[list[Embedded]] = []
+        self.batches: list[list[tuple[str, Embedded]]] = []
+        self.tellings: list[list[tuple[str, Image.Image]]] = []
+        self.told: list[Image.Image] = []
         #: Batches Google is still at.
         self.waiting: set[str] = set()
         self.key = True
@@ -53,7 +64,21 @@ class FakePainter:
     def enabled(self) -> bool:
         return self.key
 
-    def embed_batch(self, kind: str, pictures: Sequence[tuple[str, Image.Image]]) -> str:
+    @staticmethod
+    def point(one: Embedded) -> list[float]:
+        if isinstance(one, str):
+            words = one.removeprefix(QUERY).removeprefix(TOLD)
+            assert words != one
+            at = next((n for n, name in enumerate(COLOURS) if name in words), 5)
+            return _direction(at)
+        if isinstance(one, tuple):
+            ask, img = one
+            if ask.startswith("Represent only the artistic style"):
+                return _direction(20 + (img.width < img.height))
+            return _direction(_colour_of(img), lean=10)
+        return _direction(_colour_of(one), lean=10)
+
+    def embed_batch(self, kind: str, pictures: Sequence[tuple[str, Embedded]]) -> str:
         assert kind == KIND and pictures
         self.batches.append(list(pictures))
         return f"batches/{len(self.batches)}"
@@ -62,24 +87,42 @@ class FakePainter:
         if batch in self.waiting:
             return None
         pictures = self.batches[int(batch.split("/")[1]) - 1]
-        return {name: _direction(_colour_of(img), lean=10) for name, img in pictures}
+        return {name: self.point(one) for name, one in pictures}
 
-    def embed(self, kind: str, inputs: Sequence[Image.Image | str]) -> list[list[float]]:
+    def embed(self, kind: str, inputs: Sequence[Embedded]) -> list[list[float]]:
         assert kind == KIND and 0 < len(inputs) <= EMBED_MAX
         self.asked.append(list(inputs))
-        found = []
-        for one in inputs:
-            if isinstance(one, str):
-                assert one.startswith(QUERY)
-                words = one.removeprefix(QUERY)
-                at = next((n for n, name in enumerate(COLOURS) if name in words), 5)
-                found.append(_direction(at))
-            else:
-                found.append(_direction(_colour_of(one), lean=10))
-        return found
+        return [self.point(one) for one in inputs]
+
+    def describe(self, kind: str, prompt: str, img: Image.Image, longest: int = 160) -> str:
+        assert kind == KIND and prompt == DESCRIBE
+        self.told.append(img)
+        return f"a {list(COLOURS)[_colour_of(img)]} thing"
+
+    def describe_batch(
+        self, kind: str, prompt: str, pictures: Sequence[tuple[str, Image.Image]]
+    ) -> str:
+        assert kind == KIND and prompt == DESCRIBE and pictures
+        assert all(max(img.size) <= 384 for _, img in pictures)
+        self.tellings.append(list(pictures))
+        return f"tellings/{len(self.tellings)}"
+
+    def described(self, kind: str, batch: str) -> dict[str, str | NotDrawn] | None:
+        if batch in self.waiting:
+            return None
+        pictures = self.tellings[int(batch.split("/")[1]) - 1]
+        return {name: f"a {list(COLOURS)[_colour_of(img)]} thing" for name, img in pictures}
 
 
-def _work(service: FrameService, item_id: str, colour: str, **fields: Any) -> Item:
+def _three(at: int, lean: int | None = None, style: int = 20) -> list[float]:
+    """A work's three: its style one way, its subject and its sentence another."""
+    subject = _direction(at, lean)[:PART]
+    return [*_direction(style)[:PART], *subject, *subject]
+
+
+def _work(
+    service: FrameService, item_id: str, colour: str, tall: bool = False, **fields: Any
+) -> Item:
     source, _, source_id = item_id.partition(":")
     fields.setdefault("kind", ItemKind.ARTWORK)
     item = Item(
@@ -92,15 +135,18 @@ def _work(service: FrameService, item_id: str, colour: str, **fields: Any) -> It
     )
     path = service.images.thumb_path(item)
     path.parent.mkdir(parents=True, exist_ok=True)
-    Image.new("RGB", (64, 48), COLOURS[colour]).save(path, "JPEG")
+    Image.new("RGB", (48, 64) if tall else (64, 48), COLOURS[colour]).save(path, "JPEG")
     return service.library.upsert(item)
 
 
 def _numbers(found: Looks) -> int:
-    """The works sent through the Batch and their numbers read back: how
-    many got them."""
-    found.send()
-    return found.collect()
+    """The works sent through the Batch, their sentences and then their
+    numbers read back: how many got them."""
+    done = 0
+    for _ in range(2):
+        found.send()
+        done += found.collect()
+    return done
 
 
 @pytest.fixture
@@ -139,11 +185,11 @@ def test_the_gatekeeper_gets_a_works_close_look_alikes_without_google(
     looks: tuple[Looks, FakePainter],
 ) -> None:
     found, painter = looks
-    found.index.add(
+    found.three.add(
         [
-            ("cover", 1, _direction(0)),
-            ("other cover", 1, _direction(0, 1)),
-            ("painting", 1, _direction(1)),
+            ("cover", 1, _three(0)),
+            ("other cover", 1, _three(0, 1)),
+            ("painting", 1, _three(1, style=21)),
         ]
     )
     painter.key = False  # numbers kept are enough
@@ -222,7 +268,7 @@ def test_only_the_museums_and_his_own_works_with_a_thumbnail_are_sent(
     gone = Item(id="met:3", source="met", source_id="3", thumb_url="https://example.org/3.jpg")
     service.library.upsert(gone)  # no thumbnail here: not downloaded for this
     assert _numbers(found) == 3
-    assert found.index.ids() == {"met:1", "met:2", "upload:1"}
+    assert found.three.ids() == {"met:1", "met:2", "upload:1"}
     assert found.counts() == (3, 4)
     assert _numbers(found) == 0  # nothing new
     service.ai_config.update(AiConfigUpdate(looks=False))
@@ -244,7 +290,7 @@ def test_a_changed_picture_of_a_cared_work_is_sent_again(
 
     os.utime(thumb, (stamp, stamp))
     assert _numbers(found) == 1
-    assert found.index.stamp("met:1") == stamp
+    assert found.three.stamp("met:1") == stamp
 
 
 # -- the questions -------------------------------------------------------------------------------
@@ -346,20 +392,32 @@ def test_the_works_go_through_the_batch_and_wait_for_it(
     service.ai_config.set_gemini_key("k")
     _work(service, "met:1", "red")
     _work(service, "met:2", "blue")
-    painter.waiting.add("batches/1")
-    assert found.round() == (0, 2)
+    painter.waiting.update({"tellings/1", "batches/1"})
+    assert found.round() == (0, 2)  # their sentences asked
     assert found.send() == 0  # out already: not sent twice
-    assert found.collect() == 0 and len(found.index) == 0
+    assert found.collect() == 0 and len(found.three) == 0
+    painter.waiting.discard("tellings/1")
+    assert found.round() == (0, 2)  # the sentences back, the numbers asked
+    assert [n for n, _ in painter.batches[0]] == [
+        f"met:{n}#{p}" for n in (1, 2) for p in ("g", "h", "c")
+    ]
     painter.waiting.clear()
-    again = Looks(  # a restart keeps the batches out
-        service.library,
-        service.images,
-        painter,
-        service.ai_config,
-        found.root,  # type: ignore[arg-type]
-    )
-    assert again.collect() == 2 and again.index.ids() == {"met:1", "met:2"}
-    assert painter.asked == []  # nothing asked one by one
+
+    def restarted() -> Looks:
+        return Looks(
+            service.library,
+            service.images,
+            painter,
+            service.ai_config,
+            found.root,  # type: ignore[arg-type]
+        )
+
+    again = restarted()  # a restart keeps the batches out
+    assert again.collect() == 2 and again.three.ids() == {"met:1", "met:2"}
+    assert painter.asked == [] and painter.told == []  # nothing asked one by one
+    told = (found.three.root / "told.jsonl").read_text().splitlines()
+    assert [json.loads(line)["words"] for line in told] == ["a red thing", "a blue thing"]
+    assert restarted()._told == {}  # numbered: no sentence waits
 
 
 def test_the_embedding_batch_request_and_its_answers(service: FrameService) -> None:
@@ -461,15 +519,20 @@ def test_szukaj_finds_the_works_like_one_nearest_first(
         vector[0], vector[1] = 1.0, x
         return vector
 
+    def three(x: float) -> list[float]:
+        return [*leaning(x)[:PART]] * 3
+
     for n, artist in enumerate(["Anna A", "Bruno B", "Anna A", "Anna A", "Anna A"], start=1):
         _work(service, f"met:{n}", "red", artist=artist)
-    found.index.add(
+    found.three.add(
         [
-            ("met:1", 1, leaning(0)),
-            ("met:4", 1, leaning(0.3)),
-            ("met:2", 1, leaning(0.6)),
-            ("met:3", 1, leaning(0.9)),
-            ("met:5", 1, _direction(7)),  # nothing like it
+            ("met:1", 1, three(0)),
+            ("met:4", 1, three(0.3)),
+            ("met:2", 1, three(0.6)),
+            ("met:3", 1, three(0.9)),
+            ("met:5", 1, [*_direction(7)[:PART]] * 3),  # nothing like it
+            # The catalogue's other works, all unlike them.
+            *((f"cma:{n}", 1, [*_direction(n)[:PART]] * 3) for n in range(30, 40)),
         ]
     )
     app = create_app(service.settings)
@@ -527,7 +590,7 @@ def test_a_photograph_is_searched_in_szukajs_own_list(
         bad = {"file": ("photo.jpg", b"not a picture", "image/jpeg")}
         assert client.post("/api/looks/photo", files=bad).status_code == 422
     kept = list((found.root / "photos").iterdir())
-    assert len(kept) == 1 and kept[0].stat().st_size == EMBED_SIZE * 4  # numbers only
+    assert len(kept) == 1 and kept[0].stat().st_size == 3 * PART * 4  # numbers only
     rules = PlaylistRules(like=key)
     assert sorted(i.id for i in service.library.query(rules)[1]) == ["aic:7", "met:1"]
     assert rules.search_key() == ""  # no museum asked
@@ -600,17 +663,19 @@ def test_a_batch_too_heavy_for_google_goes_in_halves(
     for n in range(1, 6):
         _work(service, f"met:{n}", "red")
     _work(service, "met:9", "blue")
-    taken = painter.embed_batch
+    taken = painter.describe_batch
 
-    def embed_batch(kind: str, pictures: Sequence[tuple[str, Image.Image]]) -> str:
+    def describe_batch(kind: str, prompt: str, pictures: Sequence[tuple[str, Image.Image]]) -> str:
         if len(pictures) > 2 or any(name == "met:9" for name, _ in pictures):
             raise TooHeavy("too heavy")
-        return taken(kind, pictures)
+        return taken(kind, prompt, pictures)
 
-    painter.embed_batch = embed_batch  # type: ignore[method-assign]
+    painter.describe_batch = describe_batch  # type: ignore[method-assign]
     assert found.send() == 5  # all but the one too heavy alone
-    assert all(len(b) <= 2 for b in painter.batches)
-    assert found.collect() == 5 and "met:9" not in found.index
+    assert all(len(b) <= 2 for b in painter.tellings)
+    assert found.collect() == 0 and len(found._told) == 5
+    assert found.send() == 5  # their numbers
+    assert found.collect() == 5 and "met:9" not in found.three
     assert found.send() == 0  # it waits as one without a thumbnail
 
 
@@ -686,7 +751,7 @@ def test_the_museums_are_asked_a_looks_searches_and_judged_by_it(
     shown = [i.id for _, items, _, _ in pages for i in items]
     assert shown == ["cma:10", "cma:12"]  # the blue one does not look red
     assert "cma:11" in spare  # asked for already: into the catalogue
-    assert {"cma:10", "cma:11", "cma:12"} <= found.index.ids()  # numbers kept
+    assert {"cma:10", "cma:11", "cma:12"} <= found.three.ids()  # numbers kept
     painter.key = False
     assert found.judge("red", museum) == []  # no Google: nothing judged
 
@@ -744,5 +809,154 @@ def test_a_copy_without_numbers_shows_what_its_works_other_copy_looks_like(
     )
     works = service.library.works()
     assert works.group_index("wmc:5") == works.group_index("met:1") is not None
-    assert copy.id not in found.index
+    assert copy.id not in found.three
     assert [f.item.id for f in found.similar(copy)] == ["aic:7"]
+
+
+# -- subject and style apart (Mateusz 2026-11-17) ---------------------------------------------
+
+
+def test_szukaj_finds_the_works_like_one_by_subject_or_by_style(
+    service: FrameService, looks: tuple[Looks, FakePainter]
+) -> None:
+    """„Podobne do” with „Temat i styl | Temat | Styl” (Mateusz 2026-11-17:
+    "chciałbym mieć styl i tematykę osobno"): the subject finds the same
+    colour in the other shape, the style the same shape in another colour."""
+    from frame_server.web import create_app
+
+    found, _painter = looks
+    service.ai_config.set_gemini_key("k")
+    _work(service, "met:1", "red")
+    _work(service, "met:2", "red", tall=True)  # its subject, not its style
+    _work(service, "met:3", "blue")  # its style, not its subject
+    _work(service, "met:4", "green", tall=True)  # neither
+    assert _numbers(found) == 4
+    app = create_app(service.settings)
+    app.state.service = service
+    with TestClient(app) as client:
+
+        def ids(**params: Any) -> list[str]:
+            page = client.get("/api/library/items", params=params).json()
+            return [i["id"] for i in page["items"]]
+
+        assert ids(like="met:1", like_by="subject") == ["met:2"]
+        assert ids(like="met:1", like_by="style") == ["met:3"]
+        assert set(ids(like="met:1")) <= {"met:2", "met:3"}
+        assert (
+            client.get("/api/library/items", params={"like": "met:1", "like_by": "x"}).status_code
+            == 422
+        )
+    rules = PlaylistRules(like="met:1", like_by="style")  # a smart playlist keeps it
+    assert [i.id for i in service.library.query(rules)[1]] == ["met:3"]
+    assert PlaylistRules.model_validate({"like": "met:1"}).like_by == ""  # rules kept before
+
+
+def test_the_numbers_of_before_answer_until_most_works_have_their_three(
+    service: FrameService, looks: tuple[Looks, FakePainter]
+) -> None:
+    """The whole thumbnail's numbers answer while the three are made, and
+    are dropped once :data:`READY_SHARE` of the works have them."""
+    from frame_server.looks import PHOTO
+
+    _, painter = looks
+    service.ai_config.set_gemini_key("k")
+    red = _work(service, "met:1", "red")
+    _work(service, "aic:7", "red")
+    _work(service, "met:2", "blue")
+    root = service.looks.root
+    LookIndex(root).add(
+        [
+            ("met:1", 1, _direction(0, 10)),
+            ("aic:7", 1, _direction(0, 10)),
+            ("met:2", 1, _direction(1, 10)),
+        ]
+    )
+    (root / "photos").mkdir(parents=True, exist_ok=True)
+    np.asarray(_direction(1), dtype=np.float32).tofile(root / "photos" / "ab.f32")
+    found = Looks(
+        service.library,
+        service.images,
+        painter,  # type: ignore[arg-type]
+        service.ai_config,
+        root,
+    )
+    assert found.old() and found.ready() and len(found.three) == 0
+    assert [f.item.id for f in found.similar(red, by="style")] == ["aic:7"]
+    assert found.alike(PHOTO + "ab") == ["met:2"]
+    assert [f.item.id for f in found.words("red")] == ["met:1", "aic:7"]
+    found.send()
+    found.collect()
+    assert found.old() and not found.settle()  # sentences only
+    found.round()  # their numbers asked
+    found.round()  # and back
+    assert not found.old() and len(found.three) == 3
+    assert not (root / "vectors.i8").exists() and not (root / "photos" / "ab.f32").exists()
+    assert found.alike(PHOTO + "ab") == []  # a photograph of before: asked again
+    assert [f.item.id for f in found.similar(red, by="subject")] == ["aic:7"]
+    again = Looks(service.library, service.images, painter, service.ai_config, root)  # type: ignore[arg-type]
+    assert not again.old()
+
+
+def test_the_sentence_and_the_numbers_of_a_work_asked_of_google(service: FrameService) -> None:
+    """Gemini Flash-Lite's sentence (low resolution, plain words), and the
+    embedding model asked a picture with words in one request."""
+    from frame_server.ai.gemini import DESCRIBER
+    from frame_server.looks import STYLE_ASK
+
+    sent: list[tuple[str, dict[str, Any]]] = []
+
+    def google(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else {}
+        sent.append((request.url.path, body))
+        if request.url.path.endswith(":generateContent"):
+            return httpx.Response(
+                200,
+                json={
+                    "candidates": [{"content": {"parts": [{"text": " A saint  kneels. "}]}}],
+                    "usageMetadata": {"promptTokenCount": 334, "candidatesTokenCount": 42},
+                },
+            )
+        if request.url.path.endswith(":batchGenerateContent"):
+            return httpx.Response(200, json={"name": "batches/t1"})
+        if request.url.path.endswith("/batches/t1"):
+            answers = [
+                {
+                    "response": {
+                        "candidates": [{"content": {"parts": [{"text": "A ship."}]}}],
+                        "usageMetadata": {"promptTokenCount": 334, "candidatesTokenCount": 42},
+                    },
+                    "metadata": {"key": "met:1"},
+                },
+                {"error": {"code": 3, "message": "no"}, "metadata": {"key": "met:2"}},
+            ]
+            return httpx.Response(
+                200,
+                json={
+                    "metadata": {"state": "BATCH_STATE_SUCCEEDED"},
+                    "response": {"inlinedResponses": {"inlinedResponses": answers}},
+                },
+            )
+        return httpx.Response(
+            200, json={"embeddings": [{"values": [0.1] * EMBED_SIZE} for _ in body["requests"]]}
+        )
+
+    service.ai_config.set_gemini_key("k-1")
+    painter = Painter(
+        service.ai_config,
+        service.claude,
+        http=lambda: httpx.Client(transport=httpx.MockTransport(google)),
+    )
+    img = Image.new("RGB", (8, 8))
+    assert painter.describe(KIND, DESCRIBE, img) == "A saint kneels."
+    path, body = sent[-1]
+    assert path.endswith(f"/models/{DESCRIBER}:generateContent")
+    assert body["generationConfig"]["mediaResolution"] == "MEDIA_RESOLUTION_LOW"
+    assert body["contents"][0]["parts"][1] == {"text": DESCRIBE}
+    usd = (334 * 0.25 + 42 * 1.50) / 1e6
+    assert painter.spending.by_kind()[KIND] == pytest.approx(usd, abs=1e-6)
+    painter.embed(KIND, [(STYLE_ASK, img)])
+    parts = sent[-1][1]["requests"][0]["content"]["parts"]
+    assert parts[0] == {"text": STYLE_ASK} and "inline_data" in parts[1]
+    assert painter.describe_batch(KIND, DESCRIBE, [("met:1", img), ("met:2", img)]) == "batches/t1"
+    told = painter.described(KIND, "batches/t1")
+    assert told is not None and told["met:1"] == "A ship." and isinstance(told["met:2"], NotDrawn)

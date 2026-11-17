@@ -502,11 +502,20 @@ struct FlowLayout: Layout {
         var height: CGFloat = 0
     }
 
+    /// A view's size: as it likes it, but never wider than a row (a chip
+    /// with a long title, "Podobne do: …", ends in "…" instead of running
+    /// off the screen cut short).
+    private func fitted(_ view: LayoutSubview, width: CGFloat) -> CGSize {
+        let ideal = view.sizeThatFits(.unspecified)
+        guard width.isFinite, ideal.width > width else { return ideal }
+        return view.sizeThatFits(ProposedViewSize(width: width, height: nil))
+    }
+
     private func rows(_ subviews: Subviews, width: CGFloat) -> [Row] {
         var rows: [Row] = []
         var row = Row()
         for (index, view) in subviews.enumerated() {
-            let size = view.sizeThatFits(.unspecified)
+            let size = fitted(view, width: width)
             if !row.indices.isEmpty && row.width + spacing + size.width > width {
                 rows.append(row)
                 row = Row()
@@ -531,7 +540,7 @@ struct FlowLayout: Layout {
         for row in rows(subviews, width: bounds.width) {
             var x = bounds.minX + (centred ? max((bounds.width - row.width) / 2, 0) : 0)
             for index in row.indices {
-                let size = subviews[index].sizeThatFits(.unspecified)
+                let size = fitted(subviews[index], width: bounds.width)
                 subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
                 x += size.width + spacing
             }
