@@ -238,6 +238,50 @@ def test_under_a_lamp_that_burnt_the_photograph_the_work_is_what_the_sides_tell(
     )
 
 
+def test_a_finger_in_the_glass_goes_from_the_lines_and_the_dark_as_from_beside_them() -> None:
+    """His sixteen cows scanned again (2026-11-16 22:30 UTC, three places
+    ringed; "Odbicia w szybie - jest lepiej, ale przejście powinno być
+    jeszcze łagodniejsze"): his hand in the glass went from the sky about
+    a cow and stayed on her, in patches, and a finger stayed over the
+    dark of a print."""
+    scene = _scene()
+    yy, xx = np.mgrid[0:H, 0:W]
+    # A drawing in black lines on the work.
+    drawn = np.zeros((H, W), bool)
+    drawn[Y0 + 300 : Y0 + 500, X0 + 230 : X0 + 470] = True
+    lines = drawn & (((xx + yy) % 7 < 2) | ((xx - yy) % 11 < 2))
+    scene[lines] *= 0.08
+    # A finger: a narrow band down the glass, in the first view alone.
+    band = np.exp(-(((xx - (X0 + 330 + (yy - Y0) * 0.15)) / 9.0) ** 4)).astype(np.float32)
+    band[: Y0 + 120] = 0
+    band[Y1 - 80 :] = 0
+    finger = band[..., None] * np.float32([0.10, 0.07, 0.06])
+    clean = _coded(scene)
+    first = _coded(scene + _glass(0.02, None, None) + finger)
+    left = _coded(_from_side(scene + _glass(0.12, None, None), -1) * 0.9)
+    right = _coded(_from_side(scene + _glass(0.10, None, None), 1) * 1.1)
+    done = merge(first, [left, right], CORNERS)
+    assert done.used == 2
+
+    was, now, is_ = (img.astype(np.float32) for img in (first, done.image, clean))
+    calm = (slice(Y0 + 600, Y0 + 800), slice(X0 + 450, X0 + 650))
+    veil = float((now[calm] - is_[calm]).mean())
+    on = band > 0.9
+    grey = is_.mean(-1)
+    dark = on & ~drawn & (grey < np.percentile(grey[on & ~drawn], 25))
+
+    def left_of(where: np.ndarray) -> float:
+        added = float((was[where] - is_[where]).mean() - (was[calm] - is_[calm]).mean())
+        return (float((now[where] - is_[where]).mean()) - veil) / added
+
+    assert left_of(on & ~drawn) < 0.08
+    assert left_of(on & drawn & ~lines) < 0.1
+    assert left_of(dark) < 0.15
+    # And beside it the work is as it was.
+    beside = (band < 0.01) & (cv2.GaussianBlur(band, (0, 0), 12) > 0.05)
+    assert abs(float((now[beside] - is_[beside]).mean()) - veil) < 3
+
+
 def test_views_that_do_not_show_one_flat_work_change_nothing() -> None:
     """His collage of a mirror, foil and a circuit board in relief
     (2026-11-16 19:00 UTC): each photograph shows another thing in the
