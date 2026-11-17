@@ -580,6 +580,9 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
         let width = old.width / r.width, height = old.height / r.height
         let shown = CGRect(x: old.minX - r.minX * width, y: old.minY - r.minY * height, width: width, height: height)
         swapping = true
+        // The frame coming in whole: the camera pulls back while the frame
+        // fades in, not after, so no side of it is ever cut off and waiting.
+        let together = inner != nil && !zoomedIn
         UIView.transition(
             with: self, duration: Self.swapFade,
             options: [.transitionCrossDissolve, .allowUserInteraction],
@@ -587,8 +590,9 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
                 self.imageView.image = image
                 self.refit(showing: shown)
             },
-            completion: { _ in self.settle(framing: inner != nil && !zoomedIn) }
+            completion: { _ in if !together { self.settle(framing: false) } }
         )
+        if together { settle(framing: true) }
     }
 
     /// The place within what a drag may reach (the picture's edges, or its
