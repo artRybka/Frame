@@ -354,6 +354,48 @@ def test_a_lamp_goes_whole_where_a_side_view_has_a_window_in_the_glass() -> None
     assert float(np.abs(around).max()) < 12 and float(around.max() - around.min()) < 8
 
 
+def test_lines_put_in_under_a_lamp_are_as_pale_as_the_lines_about_it() -> None:
+    """The same drawing, shown the plate of the scan after that (2026-11-17
+    08:08 UTC, the lamp's place ringed: "Czy „odzyskiwany” z bocznego
+    zdjęcia fragment nie mógłby być korygowany kolorystycznie do
+    otoczenia? Teraz jeszcze się odcina"). About a lamp the phone presses
+    the photograph flat: the pencil lines are pale there. The side
+    photographs have them as they are, and put in under the lamp they
+    were black among the pale ones."""
+    scene = _scene()
+    yy, xx = np.mgrid[0:H, 0:W]
+    # A sheet with pencil lines across it.
+    sheet = np.zeros((H, W), bool)
+    sheet[Y0 + 150 : Y1 - 60, X0 + 80 : X1 - 80] = True
+    paper = np.float32([0.46, 0.40, 0.30])
+    pencil = 1 - 0.55 * np.exp(-(((((xx + yy) % 18) - 9) / 1.6) ** 2))
+    scene[sheet] = (paper * pencil[..., None].astype(np.float32))[sheet]
+    lamp = np.clip(1.6 - np.hypot((xx - 550) / 110.0, (yy - 620) / 45.0), 0, 1) * 3
+    lamp = cv2.GaussianBlur(lamp.astype(np.float32), (0, 0), 3)
+    # The first photograph keeps half of its lines about the lamp.
+    flat = np.exp(-(((xx - 550) / 260.0) ** 2 + ((yy - 620) / 200.0) ** 2)).astype(np.float32)
+    even = cv2.GaussianBlur(scene, (0, 0), 6)
+    pressed = even + (scene - even) * (1 - 0.5 * flat[..., None])
+    first = _coded(pressed + _glass(0.05, None, None) + lamp[..., None])
+    left = _coded(_from_side(scene + _glass(0.03, None, None), -1) * 0.9)
+    right = _coded(_from_side(scene + _glass(0.04, None, None), 1) * 1.1)
+    done = merge(first, [left, right], CORNERS)
+    assert done.used == 2
+
+    def lines(img: np.ndarray) -> np.ndarray:
+        grey = img.astype(np.float32).mean(-1)
+        return grey - cv2.GaussianBlur(grey, (0, 0), 6)
+
+    burnt = cv2.erode((lamp > 1.5).astype(np.uint8), np.ones((9, 9), np.uint8)) > 0
+    about = (flat > 0.75) & ~(cv2.dilate((lamp > 0.05).astype(np.uint8), np.ones((31, 31))) > 0)
+    was, now = lines(first), lines(done.image)
+    assert float(was[burnt].std()) < 0.3 * float(was[about].std())
+    assert 0.65 < float(now[burnt].std()) / float(now[about].std()) < 1.4
+    # And the paper under it is the paper about it.
+    tone = cv2.GaussianBlur(done.image.astype(np.float32), (0, 0), 8)
+    assert float(np.abs(tone[burnt].mean(0) - tone[about].mean(0)).max()) < 6
+
+
 def test_his_own_figure_dark_in_the_glass_leaves_no_outline_on_the_paper() -> None:
     """The same drawing: he stood before it, and the glass mirrored the
     room about his figure and not in it. The even part of that veil
