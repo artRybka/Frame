@@ -1358,7 +1358,8 @@ struct ItemDetailView: View {
         _ = try? await ImageLoader.shared.image(for: request, maxPixel: 1800, priority: .normal)
         // CI and simulator screenshots: `-framePull 1` opens it framed
         // (`0.5` halfway through the camera's move).
-        if LaunchRoute.screen == "detail", let pull = UserDefaults.standard.object(forKey: "framePull") as? Double {
+        if LaunchRoute.screen == "detail", UserDefaults.standard.object(forKey: "framePull") != nil {
+            let pull = UserDefaults.standard.double(forKey: "framePull")  // a launch argument comes as text
             inFrame = true
             wide = pull >= 0.5
             self.pull = CGFloat(pull)
