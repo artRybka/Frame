@@ -572,7 +572,7 @@ struct TaskPage: View {
         // a portion every night and more at the period's end: the amounts
         // are the end's
         let more = when == .night && use.moreAtEnd != nil
-        let amounts = !use.isCheck && (when == .rest || (when == .night && use.moreAtEnd != false))
+        let showsAmounts = !use.isCheck && (when == .rest || (when == .night && use.moreAtEnd != false))
         Card {
             Text(use.about)
                 .font(.subheadline)
@@ -620,7 +620,7 @@ struct TaskPage: View {
             }
             .id("more")
         }
-        if amounts {
+        if showsAmounts {
             VStack(alignment: .leading, spacing: 10) {
                 SectionHeader(
                     title: more ? "Ile i za ile na koniec okresu" : "Ile i za ile",
