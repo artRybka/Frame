@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.145.208
+
+- Ekran poprawiania kadru: zaraz pod dziełem okrągły przycisk z
+  magnesem włącza i wyłącza przyciąganie narożnika do krawędzi zdjęcia
+  (domyślnie włączone, aplikacja pamięta wybór). Dokładne, wolne
+  celowanie wchodzi i schodzi płynnie, bez przeskoku, a gdy przeciąganie
+  zwalnia, telefon lekko stuka, coraz szybciej, im wolniej idzie palec.
+
+## 1.145.207
+
+- Miniatura idzie za obrazem karty. Gdy serwer pobiera oryginał dzieła z
+  innego miejsca niż muzeum (na przykład z Wikimedia Commons, kiedy
+  muzeum nie odpowiada) i to jest inne zdjęcie niż miniatura (bez ramy,
+  inaczej skadrowane), robi miniaturę na nowo z tego oryginału. Aplikacja
+  dostaje o tym znać i listy, Odkrywaj oraz playlisty pokazują od razu
+  to samo zdjęcie co karta. Tak zostawała stara miniatura w złotej ramie
+  przy „Paysage italien au tombeau” Géricaulta. Po aktualizacji serwer
+  raz przegląda miniatury dzieł, których oryginał już ma, i poprawia
+  takie, które pokazują inne zdjęcie.
+
 ## 1.145.206
 
 - Konfiguracja: liczba przy „Do sprawdzenia” zgadza się z listą. Liczyła

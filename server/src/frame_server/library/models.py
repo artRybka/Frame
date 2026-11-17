@@ -446,6 +446,14 @@ class Item(BaseModel):
     #: The thumbnail's difference hash (``library.picture_hash``), "" while
     #: not worked out, "-" when there is no telling.
     picture_hash: str = ""
+    #: Changes when the work's picture became another photograph with no
+    #: copy taking its place (``ImageCache.thumb_follows``): an original
+    #: kept from a mirror while its museum was down (Paris Musées' gilt
+    #: frame and Commons' canvas of Géricault's "Paysage italien au
+    #: tombeau", Mateusz 2026-11-17), and its thumbnail made again from
+    #: it. "" while the thumbnail is the one first made. The app asks for
+    #: the thumbnail again when it changes, as for ``ItemSummary.picture``.
+    picture_stamp: str = ""
     #: What the catalogue's gatekeeper (``ai.gatekeeper``) found the picture
     #: to be when it is no artwork for the frame ("postal", "text", "room",
     #: "grey_copy", "not_art"), confirmed by its critic; "" else.
@@ -609,6 +617,9 @@ class ItemSummary(BaseModel):
     #: (``Item.sharper``), "" for its own. The app asks for the thumbnail
     #: again when it changes, instead of the one kept from before.
     picture: str = ""
+    #: ``Item.picture_stamp``: changes when the work's picture became
+    #: another photograph of its own; the thumbnail is asked for again.
+    picture_stamp: str = ""
     #: A photo's line under its title: when and where ("29 października
     #: 2026 · Kraków"); "" for works.
     subtitle: str = ""
