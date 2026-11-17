@@ -1051,7 +1051,7 @@ struct TaskPage: View {
         case .demand:
             return "Nic samo; uruchamiasz niżej."
         case .off:
-            return "Ani nocą, ani na żądanie."
+            return "Nie uruchamia się."
         }
     }
 
