@@ -266,8 +266,8 @@ struct OwnWorkFlow: View {
         let chart = incoming?.chart != nil ? "Barwy ustawione według wzornika. " : ""
         let glare = chart + (merged != nil ? "Odblaski usunięte z trzech zdjęć. "
             : merging != nil && !mergeEnded ? "W tle łączę trzy zdjęcia i usuwam odblaski. " : "")
-        if foundByCamera { return glare + "Zaznaczyłem to, co widział aparat. Popraw narożniki w lupach, jeśli trzeba." }
-        if found != nil { return glare + "Rama wycięta. Popraw narożniki w lupach, jeśli trzeba." }
+        if foundByCamera { return glare + "Zaznaczyłem to, co widział aparat. Popraw narożniki, jeśli trzeba." }
+        if found != nil { return glare + "Rama wycięta. Popraw narożniki, jeśli trzeba." }
         return glare + "Nie znalazłem dzieła na zdjęciu. Ustaw narożniki sam."
     }
 

@@ -1,12 +1,29 @@
 # Changelog
 
-## 1.145.204
+## 1.145.205
 
+- Skan („Inteligentne”) dzieła za szybą: miękkie, daleko sięgające
+  przejścia przy odbiciach. Wokół miejsca, w którym zdjęcie na wprost
+  miało własne odbicie (dłoń, smuga, blask), obraz bierzemy ze zdjęć
+  bocznych, a ze zdjęcia na wprost zostaje sam drobny szczegół: na
+  gładkim tle szeroko i stopniowo, przy literach i rysunku ciasno. Po
+  palcach nie zostają już jasno-ciemne kreski ani ciemne kliny między
+  nimi, a na oleju ciemne krążki i blade plamy po blasku.
 - „Dodaj własne dzieło”: gdy obok dzieła leży wzornik barw ColorChecker
   (Classic, Classic Mini albo strona „Classic” w Passport), serwer
   ustawia według niego balans bieli, jasność i barwy zdjęcia, także przy
   skanie z trzech zdjęć. Pod kadrem stoi wtedy „Barwy ustawione według
   wzornika.”. Bez wzornika wszystko działa jak dotąd.
+
+## 1.145.204
+
+- Ekran poprawiania kadru (także przy skanie własnego dzieła): zdjęcie
+  jest tak duże, jak się mieści, bez czterech lup w rogach. Narożnik
+  chwyta się obok niego i idzie za ruchem palca, a przy wolnym ruchu
+  przesuwa się o ćwierć, więc łatwo trafić co do piksela. Na czas
+  ciągnięcia nad palcem pojawia się lupa. Gdy narożnik trafi na wyraźną
+  krawędź (rama, brzeg kartki), telefon stuka i narożnik lekko do niej
+  przylega; dalszy ruch go odrywa.
 
 ## 1.145.203
 
