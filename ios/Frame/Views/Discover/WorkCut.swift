@@ -202,7 +202,7 @@ struct CutEditor: View {
     /// How far the corner moves for a point of the finger now: follows
     /// `gain(speed)` over a fraction of a second, so precision comes in and
     /// goes out smoothly.
-    @State private var gainNow: CGFloat = 0.25
+    @State private var gainNow: CGFloat = 1
     /// Counts the ticks of a slowing finger: a light tap of the phone each.
     @State private var slowTicks = 0
     /// The magnet's button under the work; on unless he turned it off.
@@ -265,9 +265,12 @@ struct CutEditor: View {
     private static let pull: CGFloat = 2
     private static let fast: CGFloat = 400
     /// The finger's speeds (pt/s) between which the corner goes from a
-    /// quarter of the finger's movement to all of it.
-    private static let slowest: CGFloat = 30
-    private static let fastest: CGFloat = 480
+    /// quarter of the finger's movement to all of it: only a really slow
+    /// finger is slowed (Mateusz 2026-11-17, 1.145.208: „Zwolnienie
+    /// następuje zdecydowanie za szybko. To powinno działać przy naprawdę
+    /// wolnym ruchu palca.”).
+    private static let slowest: CGFloat = 8
+    private static let fastest: CGFloat = 90
     /// Room under the work for the magnet's button.
     private static let below: CGFloat = 52
     private static let names = ["Lewy górny narożnik", "Prawy górny narożnik", "Prawy dolny narożnik", "Lewy dolny narożnik"]
@@ -338,7 +341,7 @@ struct CutEditor: View {
                     .padding(.horizontal, Theme.gutter)
                     .padding(.top, 12)
             }
-            Text("Przeciągnij narożnik. Wolny ruch palca ustawia go dokładniej.")
+            Text("Przeciągnij narożnik. Bardzo wolny ruch palca ustawia go dokładniej.")
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
                 .multilineTextAlignment(.center)
@@ -357,8 +360,8 @@ struct CutEditor: View {
         }
         .background { Color.clear.paperPage() }
         .sensoryFeedback(.impact(flexibility: .rigid, intensity: 0.55), trigger: edgeTaps)
-        .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.35), trigger: slowTicks)
-        .sensoryFeedback(.selection, trigger: magnetOn)
+        .sensoryFeedback(.selection, trigger: slowTicks)
+        .sensoryFeedback(.impact(weight: .light), trigger: magnetOn)
         .task(id: grab) { await tickWhileSlow() }
         .toolbar {
             if cancel != nil {
@@ -378,18 +381,19 @@ struct CutEditor: View {
         .task { await findEdges() }
     }
 
-    /// While a corner is dragged slower than at full speed, a light tick of
-    /// the phone, coming faster the slower the finger: every 0.3 s just
-    /// under full speed, every 0.06 s at a quarter. None while the finger
-    /// rests, nor at full speed.
+    /// While a corner is dragged slower than at full speed, a tick of the
+    /// phone (the picker wheel's), coming faster the slower the finger:
+    /// every 0.25 s just under full speed, every 0.06 s at a quarter. None
+    /// while the finger rests, nor at full speed. (1.145.208 had a soft
+    /// impact at a third of its strength, which he did not feel.)
     private func tickWhileSlow() async {
         guard grab != nil else { return }
         while !Task.isCancelled, grab != nil {
             let slowness = min(max((1 - gainNow) / 0.75, 0), 1)
-            let interval = 0.3 - 0.24 * Double(slowness)
+            let interval = 0.25 - 0.19 * Double(slowness)
             try? await Task.sleep(for: .seconds(interval))
             guard !Task.isCancelled, grab != nil else { return }
-            if let fingerAt, Date().timeIntervalSince(fingerAt) < 0.12, gainNow < 0.92 {
+            if let fingerAt, Date().timeIntervalSince(fingerAt) < 0.25, gainNow < 0.9 {
                 slowTicks += 1
             }
         }
@@ -453,8 +457,8 @@ struct CutEditor: View {
                 let centre = loupeCentre(finger: finger, in: space)
                 VStack(spacing: 6) {
                     loupe(n, photoSize: size)
-                    if onEdge || gainNow < 0.4 {
-                        Text(onEdge ? "na krawędzi" : "wolno: ¼")
+                    if onEdge {
+                        Text("na krawędzi")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(Theme.paper)
                             .padding(.horizontal, 8)
@@ -557,16 +561,18 @@ struct CutEditor: View {
     }
 
     /// How far the corner moves for each point the finger moves, by the
-    /// finger's speed: a quarter at a slow finger (up to `slowest`), all of
-    /// it from `fastest`, along a gentle S between (Mateusz 2026-11-17:
+    /// finger's speed: a quarter at a really slow finger (up to `slowest`),
+    /// all of it from `fastest`, along a gentle S over the speed's
+    /// logarithm between, as the eye takes speeds (Mateusz 2026-11-17:
     /// „gdy palec jedzie wolniej, to celowanie jest dokładniejsze”; then
-    /// „czy mogłaby wchodzić / odbywać się płynniej?”). The corner follows
-    /// it through `gainNow`, never at once.
+    /// „czy mogłaby wchodzić / odbywać się płynniej?”, „Kluczem jest to,
+    /// żeby przejście od szybkiego do wolnego przesuwania było płynne, a
+    /// nie skokowe”). The corner follows it through `gainNow`, never at once.
     private func gain(_ speed: CGFloat) -> CGFloat {
         guard speed > Self.slowest else { return 0.25 }
         guard speed < Self.fastest else { return 1 }
-        let t = (speed - Self.slowest) / (Self.fastest - Self.slowest)
-        return 0.25 + 0.75 * t * t * t * (t * (6 * t - 15) + 10)
+        let t = log(speed / Self.slowest) / log(Self.fastest / Self.slowest)
+        return 0.25 + 0.75 * t * t * (3 - 2 * t)
     }
 
     /// The corners on the photograph to drag: a circle of `reach` around
@@ -590,8 +596,10 @@ struct CutEditor: View {
                             raw = grab.map { corners[$0] } ?? []
                             finger = at
                             fingerAt = drag.time
-                            speed = 0
-                            gainNow = 0.25
+                            // A corner taken moves with the finger, until the
+                            // finger goes really slowly.
+                            speed = Self.fastest
+                            gainNow = 1
                             onEdge = false
                         }
                         guard let n = grab, raw.count == 2, let last = finger, let lastAt = fingerAt else { return }
@@ -599,13 +607,13 @@ struct CutEditor: View {
                         let dx = drag.location.x - last.x, dy = drag.location.y - last.y
                         guard dx != 0 || dy != 0 else { return }
                         let dt = CGFloat(max(drag.time.timeIntervalSince(lastAt), 1.0 / 240))
-                        // The speed over about the last tenth of a second, and
-                        // the gain after it, slower going down than up: no
-                        // jerky event jumps either, whatever the event rate.
+                        // The speed over about the last 0.15 s, and the gain
+                        // after it, over 0.4 s going down and 0.15 s going up:
+                        // no jerky event jumps either, whatever the event rate.
                         let now = hypot(dx, dy) / dt
-                        speed += (now - speed) * (1 - exp(-dt / 0.08))
+                        speed += (now - speed) * (1 - exp(-dt / 0.15))
                         let target = gain(speed)
-                        let settle: CGFloat = target < gainNow ? 0.16 : 0.08
+                        let settle: CGFloat = target < gainNow ? 0.4 : 0.15
                         gainNow += (target - gainNow) * (1 - exp(-dt / settle))
                         finger = drag.location
                         fingerAt = drag.time
