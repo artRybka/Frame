@@ -884,7 +884,9 @@ _DOCUMENT = re.compile(
     r"programmes?|theat(?:re|er) programs?|afi[șs] teatral|program\w* teatral\w*|"
     r"documents?|dokument\w*|urkunde\w*|certificates?|diplomas?|"
     r"newspapers?|gazet\w*|kranten?|zeitung\w*|journaux|"
-    r"correspondence|letters? \(correspondence\)|briefe?|"
+    # Letters, poems and charters on a sheet of their own (the Rijksmuseum's
+    # "letter", "poem", 2026-11-17); a drawing on a letter is typed drawing.
+    r"correspondence|letters?|briefe?|poems?|gedicht\w*|oorkonde\w*|"
     r"aanplakbiljet\w*|bekendmaking\w*|bekanntmachung\w*|proclamati\w*|obwieszcz\w*|"
     r"printed matter|drukwerk|druksache|druki|ephemera|texts?|tekst\w*|"
     # Natural history's specimens (Europeana: a bat's skull).
@@ -933,6 +935,49 @@ def _is_document(classification: str, title: str) -> bool:
     if _RECTO.search(line) or _SHEET.search(classification):
         return False
     return bool(_VERSO.search(line))
+
+
+#: A state archive's own records on Commons: the US National Archives' files
+#: (NARA, given through the Digital Public Library of America), described
+#: there with the {{Artwork}} template and so taken in as paintings: blank
+#: German questionnaires of 1943 ("Fragebogen", Textual Reference), the
+#: Department of Defense's photographs of fighter planes, a nuclear test
+#: (Mateusz 2026-11-17: "Nie chcę mieć takich w katalogu"). Commons' search
+#: by words leaves them out since 1.121.6 (``WikimediaCommons.not_art``); a
+#: chosen category and a work asked for again did not.
+_STATE_ARCHIVE = re.compile(
+    r"national archives and records administration|national archives at |"
+    r"\bnara\b|records administration|textual reference",
+    re.IGNORECASE,
+)
+#: An archive's record of an office, not of a person: NARA names the agency
+#: that made the file ("War Department. The Adjutant General's Office. …",
+#: "Department of Defense. American Forces Information Service. …"). A
+#: photographer or a painter it names ("Adams, Ansel, 1902-1984") stays.
+_OFFICE = re.compile(
+    r"\b(departments?|office|bureau|administration|agency|service|division|branch|section|"
+    r"command|corps|commission|board|committee|council|laborator(?:y|ies)|government|"
+    r"ministry|army|navy|air force)\b",
+    re.IGNORECASE,
+)
+
+
+def is_state_record(item: Item) -> bool:
+    """A file of a state archive on Commons: a form, a file, an office's
+    photograph. Its own reason (``verdict.Why.RECORDS``); a picture whose
+    author it names is no record, except a page of its textual records."""
+    if item.kind != ItemKind.ARTWORK or item.source != "wmc":
+        return False
+    return _is_state_record(item.credit, item.artist)
+
+
+@lru_cache(maxsize=PER_WORK)
+def _is_state_record(credit: str, artist: str) -> bool:
+    if not _STATE_ARCHIVE.search(credit):
+        return False
+    if re.search("textual reference", credit, re.IGNORECASE):
+        return True
+    return not artist.strip() or bool(_OFFICE.search(artist))
 
 
 #: A page of a sketchbook or a sheet of notes and studies, as its museum

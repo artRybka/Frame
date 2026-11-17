@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.210
+## 1.145.213
 
 - Konfiguracja → Zadania: jedno miejsce na wszystko, co robią Claude i
   serwer. Na górze pasek okresu: wydane, zamówione, wolne i zapas. Niżej
@@ -18,6 +18,41 @@
   działa przez cały okres, nie tylko w jego ostatnich dniach; w trybie
   Zwykłym serwer nocą pyta od razu, do kwoty i liczby na noc.
 - Strona Claude ma już tylko limit, koszty, okres i zapas.
+
+## 1.145.212
+
+- Skan („Inteligentne”): fragment odzyskany ze zdjęć bocznych w miejscu
+  lampy jest dopasowany do otoczenia. Kreski są tak mocne jak wokół (nie
+  czarne wśród bladych), papier ma ten sam odcień co obok, a blady rąbek
+  lampy też jest brany ze zdjęć bocznych. Na dziełach w passe-partout
+  nie zostaje jasne wcięcie przy krawędzi odbitki obok lampy.
+
+## 1.145.211
+
+- Bez akt z archiwów udających dzieła. Pliki Archiwów Narodowych USA,
+  które trafiły do Wikimedia Commons jako „obrazy” (puste niemieckie
+  kwestionariusze „Fragebogen” z 1943 roku, zdjęcia samolotów
+  Departamentu Obrony, poligon w Nevadzie), mają teraz własny powód
+  „akta z archiwum państwowego” i nie wchodzą nigdzie: ani do katalogu,
+  ani do wyników Szukaj, ani z wybranej kategorii Commons. Zdjęcie albo
+  obraz, którego autorem archiwum podaje osobę, a nie urząd, zostaje.
+  Listy i wiersze na osobnej kartce (Rijksmuseum „letter”, „poem”) są
+  dokumentami jak inne kartki z tekstem. Rękopisy iluminowane, kaligrafia,
+  plakaty i listy z rysunkiem zostają.
+- Po aktualizacji serwer raz usuwa z katalogu takie akta i dokumenty,
+  które sam kiedyś dobrał (na katalogu z 13 listopada 41 pozycji).
+  Zachowane przez Ciebie (serce, playlista, ramka) zostają.
+
+## 1.145.210
+
+- Skan („Inteligentne”) dzieła za szybą, trzy poprawki po rysunku w
+  szerokim passe-partout: lampa wypalona w zdjęciu na wprost znika cała
+  także wtedy, gdy jedno ze zdjęć bocznych ma w tym miejscu odbicie okna
+  (zostawała zielonkawa plama); własna sylwetka odbita w szybie nie
+  zostaje na papierze jako ciemniejszy kształt z jasnym obrysem; przy
+  brzegu dzieła nie zostaje blady pas odbicia, gdy zdjęcie boczne
+  pokazuje dzieło aż do brzegu. Pod jasnym odbiciem kreski rysunku są
+  brane ze zdjęć bocznych, więc nie bledną.
 
 ## 1.145.209
 

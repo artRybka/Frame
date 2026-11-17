@@ -323,6 +323,128 @@ def test_a_hand_in_the_glass_leaves_no_dark_lines_about_its_fingers() -> None:
     assert np.percentile(left_on, 1) > -8
 
 
+def test_a_lamp_goes_whole_where_a_side_view_has_a_window_in_the_glass() -> None:
+    """His drawing behind glass (2026-11-17 06:57 UTC, three places
+    ringed; "Jest coraz lepiej. Ale myślę że można jeszcze poprawić
+    efekt"): the lamp in the first photograph lay where the one from the
+    left had a window in the glass. What both side photographs said was
+    the lamp's was its red alone, and a green patch stayed. The one from
+    the right shows the place as it is."""
+    scene = _scene()
+    yy, xx = np.mgrid[0:H, 0:W]
+    lamp = np.exp(-(((xx - 520) / 45.0) ** 2 + ((yy - 600) / 35.0) ** 2)).astype(np.float32) * 3
+    clean = _coded(scene)
+    first = _coded(scene + _glass(0.05, None, None) + lamp[..., None])
+    left = _coded(_from_side(scene + _glass(0.12, (400, 500, 640, 700), None), -1) * 0.9)
+    right = _coded(_from_side(scene + _glass(0.1, None, None), 1) * 1.1)
+    done = merge(first, [left, right], CORNERS)
+    assert done.used == 2
+
+    burnt = lamp > 1.5
+    calm = (slice(900, 1080), slice(300, 520))
+    veil = float((done.image[calm].astype(int) - clean[calm]).mean())
+    off = done.image[burnt].astype(np.float32) - clean[burnt] - veil
+    assert abs(float(off.mean())) < 12
+    # In its own colours: no colour of the lamp is left over the others.
+    colours = off.mean(0)
+    assert float(colours.max() - colours.min()) < 8
+    # Nor about it, where the lamp was not yet white.
+    about = (lamp > 0.1) & ~burnt
+    around = (done.image[about].astype(np.float32) - clean[about] - veil).mean(0)
+    assert float(np.abs(around).max()) < 12 and float(around.max() - around.min()) < 8
+
+
+def test_lines_put_in_under_a_lamp_are_as_pale_as_the_lines_about_it() -> None:
+    """The same drawing, shown the plate of the scan after that (2026-11-17
+    08:08 UTC, the lamp's place ringed: "Czy „odzyskiwany” z bocznego
+    zdjęcia fragment nie mógłby być korygowany kolorystycznie do
+    otoczenia? Teraz jeszcze się odcina"). About a lamp the phone presses
+    the photograph flat: the pencil lines are pale there. The side
+    photographs have them as they are, and put in under the lamp they
+    were black among the pale ones."""
+    scene = _scene()
+    yy, xx = np.mgrid[0:H, 0:W]
+    # A sheet with pencil lines across it.
+    sheet = np.zeros((H, W), bool)
+    sheet[Y0 + 150 : Y1 - 60, X0 + 80 : X1 - 80] = True
+    paper = np.float32([0.46, 0.40, 0.30])
+    pencil = 1 - 0.55 * np.exp(-(((((xx + yy) % 18) - 9) / 1.6) ** 2))
+    scene[sheet] = (paper * pencil[..., None].astype(np.float32))[sheet]
+    lamp = np.clip(1.6 - np.hypot((xx - 550) / 110.0, (yy - 620) / 45.0), 0, 1) * 3
+    lamp = cv2.GaussianBlur(lamp.astype(np.float32), (0, 0), 3)
+    # The first photograph keeps half of its lines about the lamp.
+    flat = np.exp(-(((xx - 550) / 260.0) ** 2 + ((yy - 620) / 200.0) ** 2)).astype(np.float32)
+    even = cv2.GaussianBlur(scene, (0, 0), 6)
+    pressed = even + (scene - even) * (1 - 0.5 * flat[..., None])
+    first = _coded(pressed + _glass(0.05, None, None) + lamp[..., None])
+    left = _coded(_from_side(scene + _glass(0.03, None, None), -1) * 0.9)
+    right = _coded(_from_side(scene + _glass(0.04, None, None), 1) * 1.1)
+    done = merge(first, [left, right], CORNERS)
+    assert done.used == 2
+
+    def lines(img: np.ndarray) -> np.ndarray:
+        grey = img.astype(np.float32).mean(-1)
+        return grey - cv2.GaussianBlur(grey, (0, 0), 6)
+
+    burnt = cv2.erode((lamp > 1.5).astype(np.uint8), np.ones((9, 9), np.uint8)) > 0
+    about = (flat > 0.75) & ~(cv2.dilate((lamp > 0.05).astype(np.uint8), np.ones((31, 31))) > 0)
+    was, now = lines(first), lines(done.image)
+    assert float(was[burnt].std()) < 0.3 * float(was[about].std())
+    assert 0.65 < float(now[burnt].std()) / float(now[about].std()) < 1.4
+    # And the paper under it is the paper about it.
+    tone = cv2.GaussianBlur(done.image.astype(np.float32), (0, 0), 8)
+    assert float(np.abs(tone[burnt].mean(0) - tone[about].mean(0)).max()) < 6
+
+
+def test_his_own_figure_dark_in_the_glass_leaves_no_outline_on_the_paper() -> None:
+    """The same drawing: he stood before it, and the glass mirrored the
+    room about his figure and not in it. The even part of that veil
+    stays on the work, and it stayed about the figure and not in it: his
+    head and shoulders on the paper, a shade darker, with a pale line
+    along them."""
+    scene = _scene()
+    rng = np.random.default_rng(5)
+    yy, xx = np.mgrid[0:H, 0:W]
+    # A plain sheet where the figure stands.
+    sheet = np.zeros((H, W), bool)
+    sheet[Y0 + 150 : Y1 - 60, X0 + 80 : X1 - 80] = True
+    scene[sheet] = np.float32([0.46, 0.40, 0.30]) + rng.normal(
+        0, 0.004, (int(sheet.sum()), 3)
+    ).astype(np.float32)
+    # Head and shoulders, sharp at the edge.
+    head = ((xx - 550) / 110.0) ** 2 + ((yy - 620) / 130.0) ** 2 < 1
+    figure = head | ((yy > 720) & (yy < 950) & (np.abs(xx - 550) < 150))
+    figure = cv2.GaussianBlur(figure.astype(np.float32), (0, 0), 1.0)
+    veil = _glass(0.08, None, None) * (1 - 0.85 * figure[..., None])
+    clean = _coded(scene)
+    first = _coded(scene + veil)
+    left = _coded(_from_side(scene + _glass(0.03, None, None), -1) * 0.9)
+    right = _coded(_from_side(scene + _glass(0.04, None, None), 1) * 1.1)
+    done = merge(first, [left, right], CORNERS)
+    assert done.used == 2
+
+    was, now, is_ = (img.astype(np.float32).mean(-1) for img in (first, done.image, clean))
+    within = cv2.erode(sheet.astype(np.uint8), np.ones((41, 41), np.uint8)) > 0
+    inside = (cv2.erode(figure, np.ones((25, 25), np.uint8)) > 0.99) & within
+    near = cv2.dilate(figure, np.ones((41, 41), np.uint8)) > 0.01
+    outside = near & (cv2.dilate(figure, np.ones((25, 25), np.uint8)) < 0.01) & within
+    step = float((was - is_)[outside].mean() - (was - is_)[inside].mean())
+    assert step > 10
+    # Beside the figure the paper is nearer to what it is in it than to
+    # what it was: no step, a slow rise to what stays further off.
+    assert abs(float((now - is_)[outside].mean() - (now - is_)[inside].mean())) < 0.4 * step
+    # And along its edge no line: what is left over is as even as beside.
+    edge = (cv2.dilate(figure, np.ones((9, 9), np.uint8)) > 0.01) & ~(
+        cv2.erode(figure, np.ones((9, 9), np.uint8)) > 0.99
+    )
+    edge &= within
+    left_on = cv2.GaussianBlur(now - is_, (0, 0), 1.5)
+    assert left_on[edge].std() < 2.5
+    # Far from him the even veil stays as before.
+    calm = (slice(Y0 + 40, Y0 + 120), slice(X0 + 40, X0 + 160))
+    assert float((now - is_)[calm].mean()) > 0.5 * float((was - is_)[calm].mean())
+
+
 def test_views_that_do_not_show_one_flat_work_change_nothing() -> None:
     """His collage of a mirror, foil and a circuit board in relief
     (2026-11-16 19:00 UTC): each photograph shows another thing in the

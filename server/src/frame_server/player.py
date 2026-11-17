@@ -66,7 +66,7 @@ from .library.themes import (
     thin_other_art,
     thin_searches,
 )
-from .library.verdict import copy_whys
+from .library.verdict import COPIES, Why, copy_whys
 from .library.viewer import OWNER_ID
 from .library.vocabulary import (
     DECORATIVE,
@@ -123,8 +123,13 @@ SET_ASIDE_KEY = "set_aside_dropped"
 #: 3: Girona's photo archive, 4: stamps and Athens' Philatelic Postal Museum,
 #: 5: black-and-white photographs from Foto Marburg and KIK-IRPA,
 #: 6: details by their titles, Openverse's copies of museums' works,
-#: 7: details in file names, photographs described in French).
-SET_ASIDE_VERSION = 7
+#: 7: details in file names, photographs described in French,
+#: 8: state archives' records, letters and poems).
+SET_ASIDE_VERSION = 8
+#: What a version leaves out anew: a catalogue cleaned by the one before
+#: loses only works with these reasons, not those the owner may still bring
+#: back (what the gatekeeper set aside, "Przywróć").
+SET_ASIDE_NEW: dict[int, frozenset[Why]] = {8: frozenset({Why.RECORDS, Why.DOCUMENT})}
 #: Version of the colour analysis the library's pictures carry (the key is
 #: of the e-paper score it once went with).
 SCORE_KEY = "suitability_version"
@@ -1837,9 +1842,13 @@ class Player:
         learnt to leave them out. Works the owner kept, liked, framed or put
         in a playlist stay. Returns how many went."""
         # Version 1 was stored as ``True``.
-        if int(self.library.get_state(SET_ASIDE_KEY, 0)) >= SET_ASIDE_VERSION:
+        done = int(self.library.get_state(SET_ASIDE_KEY, 0))
+        if done >= SET_ASIDE_VERSION:
             return 0
         self.library.set_state(SET_ASIDE_KEY, SET_ASIDE_VERSION)
+        minded = set(COPIES)
+        if done >= SET_ASIDE_VERSION - 1 and SET_ASIDE_VERSION in SET_ASIDE_NEW:
+            minded = set(SET_ASIDE_NEW[SET_ASIDE_VERSION])
         state = self.state
         kept = {i for p in self.library.playlists() for i in p.item_ids}
         kept |= {state.current_item_id or "", *state.current_group, *state.requested}
@@ -1848,7 +1857,7 @@ class Player:
             i
             for i in self.library.query(include_excluded=True)[1]
             if i.pooled
-            and copy_whys(i)  # "Sztuki inne" stay (2026-11-06)
+            and minded.intersection(copy_whys(i))  # "Sztuki inne" stay (2026-11-06)
             and not i.favorite
             and not i.framing
             and i.id not in kept
