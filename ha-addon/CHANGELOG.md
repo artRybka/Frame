@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.206
+
+- Ekran poprawiania kadru: zaraz pod dziełem okrągły przycisk z
+  magnesem włącza i wyłącza przyciąganie narożnika do krawędzi zdjęcia
+  (domyślnie włączone, aplikacja pamięta wybór). Dokładne, wolne
+  celowanie wchodzi i schodzi płynnie, bez przeskoku, a gdy przeciąganie
+  zwalnia, telefon lekko stuka, coraz szybciej, im wolniej idzie palec.
+
 ## 1.145.205
 
 - Skan („Inteligentne”) dzieła za szybą: miękkie, daleko sięgające
