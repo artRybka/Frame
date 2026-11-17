@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.212
+
+- Skan („Inteligentne”): fragment odzyskany ze zdjęć bocznych w miejscu
+  lampy jest dopasowany do otoczenia. Kreski są tak mocne jak wokół (nie
+  czarne wśród bladych), papier ma ten sam odcień co obok, a blady rąbek
+  lampy też jest brany ze zdjęć bocznych. Na dziełach w passe-partout
+  nie zostaje jasne wcięcie przy krawędzi odbitki obok lampy.
+
 ## 1.145.211
 
 - Bez akt z archiwów udających dzieła. Pliki Archiwów Narodowych USA,
