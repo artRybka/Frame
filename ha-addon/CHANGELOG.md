@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.211
+
+- Odkrywaj → „Kolor i nastrój”: karty pokazują tylko malarstwo, bez
+  rysunków, akwarel, grafiki, kaligrafii, rzeźby i zdjęć. Playlisty
+  zrobione wcześniej z tych kart raz tracą rysunki i dopełniają się
+  już tylko obrazami.
+
 ## 1.145.210
 
 - Skan („Inteligentne”) dzieła za szybą, trzy poprawki po rysunku w
