@@ -85,10 +85,32 @@ extension StringProtocol {
     var bound: String { Typography.bound(String(self)) }
 }
 
+extension AttributedString {
+    /// Shown with Polish line breaking (`Typography.bound`), its attributes
+    /// kept: each bound space is swapped for a no-break one in place.
+    var bound: AttributedString {
+        let plain = String(characters)
+        let fixed = Typography.bound(plain)
+        guard fixed != plain else { return self }
+        let changed = zip(plain, fixed).enumerated().filter { $0.element.0 != $0.element.1 }
+        var result = self
+        for (offset, pair) in changed.reversed() {
+            let start = result.characters.index(result.characters.startIndex, offsetBy: offset)
+            result.characters.replaceSubrange(start...start, with: [pair.1])
+        }
+        return result
+    }
+}
+
 extension Text {
     /// A string made at run time, shown with Polish line breaking: no "i"
     /// or "w" left at a line's end (`Typography`).
     init(bound content: some StringProtocol) {
         self.init(verbatim: Typography.bound(String(content)))
+    }
+
+    /// Styled text made at run time, with Polish line breaking.
+    init(bound content: AttributedString) {
+        self.init(content.bound)
     }
 }

@@ -48,4 +48,16 @@ final class TypographyTests: XCTestCase {
         let shown = Bundle.main.localizedString(forKey: "Stuknij dzieło, a trafi tutaj", value: nil, table: nil)
         XCTAssertEqual(shown, "Stuknij dzieło, a\u{00A0}trafi tutaj")
     }
+
+    /// Styled text keeps its styles where a space becomes a no-break one.
+    func testAttributedTextKeepsItsStyles() {
+        var bold = AttributedString("sztuki")
+        bold.inlinePresentationIntent = .stronglyEmphasized
+        let text = AttributedString("krytyk ") + bold + AttributedString(" i kolekcjoner")
+        let bound = text.bound
+        XCTAssertEqual(String(bound.characters), "krytyk sztuki i\u{00A0}kolekcjoner")
+        XCTAssertEqual(bound.runs.count, text.runs.count)
+        let boldRun = bound.runs.first { $0.inlinePresentationIntent == .stronglyEmphasized }
+        XCTAssertEqual(boldRun.map { String(bound[$0.range].characters) }, "sztuki")
+    }
 }
