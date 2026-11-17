@@ -305,11 +305,13 @@ def list_items(
     look: str = "",
     title: str = "",
     like: str = "",
+    like_by: Literal["", "subject", "style"] = "",
 ) -> ItemPage:
     """The catalogue's works for Szukaj's choices. ``look``: words for how
     the works look ("mglisty poranek nad wodą"), the other choices narrowing
     them, nearest first (Mateusz 2026-11-13); ``like``: a work's id, the
-    works that look like it so ("Szukaj podobnych"); 409 when that cannot be
+    works that look like it so ("Szukaj podobnych"), by both their subject
+    and their style or by the one ``like_by`` names; 409 when that cannot be
     asked."""
     rules = PlaylistRules(
         query=q,
@@ -332,6 +334,7 @@ def list_items(
         look=" ".join(look.split()),
         title=" ".join(title.split()),
         like=like.strip(),
+        like_by=like_by if like.strip() else "",
     )
     if rules.look and not svc.looks.ready():
         raise HTTPException(409, "Szukanie wyglądem is not ready")

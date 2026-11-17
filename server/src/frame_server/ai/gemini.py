@@ -65,7 +65,12 @@ BATCH_BYTES = 19_000_000
 BATCH_SHARE = 0.5
 #: USD per million tokens: what goes in, text and thinking out, picture out
 #: (ai.google.dev/pricing, 2026-11-12). A picture at 1K is 1120 tokens.
-PRICES = {MODEL: (1.50, 7.50, 30.0), LITE: (0.25, 1.50, 30.0), PRO: (2.00, 12.0, 120.0)}
+PRICES = {
+    MODEL: (1.50, 7.50, 30.0),
+    LITE: (0.25, 1.50, 30.0),
+    PRO: (2.00, 12.0, 120.0),
+    "gemini-3.1-flash-lite": (0.25, 1.50, 0.0),
+}
 PRICE = PRICES[MODEL]
 #: Google's words for a question it will not take at all (the picture or
 #: the words): nothing is drawn and nothing is paid, so asking again costs
@@ -94,6 +99,16 @@ EMBED_MAX = 20
 EMBED_BATCH_URL = f"{MODELS_URL}/{EMBED_MODEL}:asyncBatchEmbedContent"
 #: Tokens of one picture, to count a batch's cost when its answers do not.
 PICTURE_TOKENS = 258
+#: What the embedding model is given: a picture, words, or words that say
+#: what to see in a picture with it ("only the style", Mateusz 2026-11-17:
+#: "styl i tematykę osobno"), in one request and one answer.
+Embedded = Image.Image | str | tuple[str, Image.Image]
+
+#: Google's cheapest model that reads a picture and says what it shows in
+#: words (Gemini 3.1 Flash-Lite): the works' subject in a sentence, for the
+#: looks (trial of 2026-11-17: as good as the dearer Flash-Lite 3.5 at a
+#: sixth of the price, the picture read at Google's low resolution).
+DESCRIBER = "gemini-3.1-flash-lite"
 
 PATIENCE = 300.0
 #: Answers worth asking for again: the service is busy or broke off.
@@ -200,6 +215,65 @@ def _jpeg(img: Image.Image) -> str:
     out = io.BytesIO()
     img.convert("RGB").save(out, "JPEG", quality=92)
     return base64.b64encode(out.getvalue()).decode()
+
+
+def _embedded(one: Embedded) -> list[dict[str, Any]]:
+    """One of the embedding model's inputs as the parts of its content."""
+    if isinstance(one, str):
+        return [{"text": one}]
+    if isinstance(one, tuple):
+        words, img = one
+        return [{"text": words}, {"inline_data": {"mime_type": "image/jpeg", "data": _jpeg(img)}}]
+    return [{"inline_data": {"mime_type": "image/jpeg", "data": _jpeg(one)}}]
+
+
+def _telling(prompt: str, img: Image.Image, longest: int) -> dict[str, Any]:
+    """A question of :data:`DESCRIBER` about a picture, as generateContent
+    takes it: the picture at Google's low resolution, a short plain answer."""
+    return {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [
+                    {"inline_data": {"mime_type": "image/jpeg", "data": _jpeg(img)}},
+                    {"text": prompt},
+                ],
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.2,
+            "maxOutputTokens": longest,
+            "mediaResolution": "MEDIA_RESOLUTION_LOW",
+        },
+    }
+
+
+def _told(answer: dict[str, Any], share: float = 1.0) -> tuple[str, float] | NotDrawn:
+    """An answer of :data:`DESCRIBER` (generateContent's, or a batch's
+    ``response``): its words and what they cost (``share`` of the price
+    asked at once), or why there are none."""
+    error = answer.get("error")
+    if isinstance(error, dict):
+        words = (error.get(name) for name in ("status", "reason", "code"))
+        code = next((w for w in words if isinstance(w, str) and not w.isdigit()), "")
+        return NotDrawn(f"Google: {str(error.get('message') or error)[:300]}", code)
+    usage = answer.get("usageMetadata") or {}
+    into, out, _ = PRICES[DESCRIBER]
+    said_tokens = usage.get("candidatesTokenCount", 0) + usage.get("thoughtsTokenCount", 0)
+    usd = (usage.get("promptTokenCount", 0) * into + said_tokens * out) / 1e6 * share
+    said = [
+        str(part.get("text") or "")
+        for candidate in answer.get("candidates") or []
+        for part in (candidate.get("content") or {}).get("parts") or []
+        if not part.get("thought")
+    ]
+    text = " ".join(" ".join(said).split())
+    if not text:
+        reasons = [str(c.get("finishReason") or "") for c in answer.get("candidates") or []]
+        held = (answer.get("promptFeedback") or {}).get("blockReason")
+        code = next((r for r in [*reasons, str(held or "")] if r and r != "STOP"), "")
+        return NotDrawn("Google's answer has no words", code.lower())
+    return text, round(usd, 6)
 
 
 def _request(ask: Ask) -> dict[str, Any]:
@@ -379,10 +453,11 @@ class Painter:
         img.load()
         return img.convert("RGB"), usd
 
-    def embed(self, kind: str, inputs: Sequence[Image.Image | str]) -> list[list[float]]:
-        """The numbers of each of ``inputs`` (a picture, or words as they
-        are, with their task's prefix if any) in the embedding model's
-        space, :data:`EMBED_SIZE` of them, in order; counted as ``kind``.
+    def embed(self, kind: str, inputs: Sequence[Embedded]) -> list[list[float]]:
+        """The numbers of each of ``inputs`` (a picture, words as they are,
+        with their task's prefix if any, or words saying what to see in a
+        picture with it) in the embedding model's space,
+        :data:`EMBED_SIZE` of them, in order; counted as ``kind``.
         Raises as :meth:`paint` does; :class:`NotDrawn` for an answer that
         is not one."""
         key = self.config.gemini_key
@@ -391,20 +466,14 @@ class Painter:
         if not inputs or len(inputs) > EMBED_MAX:
             raise ValueError(f"1 to {EMBED_MAX} inputs at a time")
         self.check_budget()
-        requests = []
-        for one in inputs:
-            part: dict[str, Any] = (
-                {"text": one}
-                if isinstance(one, str)
-                else {"inline_data": {"mime_type": "image/jpeg", "data": _jpeg(one)}}
-            )
-            requests.append(
-                {
-                    "model": f"models/{EMBED_MODEL}",
-                    "content": {"parts": [part]},
-                    "output_dimensionality": EMBED_SIZE,
-                }
-            )
+        requests = [
+            {
+                "model": f"models/{EMBED_MODEL}",
+                "content": {"parts": _embedded(one)},
+                "output_dimensionality": EMBED_SIZE,
+            }
+            for one in inputs
+        ]
         raw = self._send("post", EMBED_URL, key, json={"requests": requests}).json()
         found = [e.get("values") for e in raw.get("embeddings") or []]
         if len(found) != len(inputs) or not all(isinstance(v, list) and v for v in found):
@@ -412,8 +481,9 @@ class Painter:
         self.spending.add(kind, embed_cost(raw.get("usageMetadata") or {}))
         return [[float(x) for x in v] for v in found]
 
-    def embed_batch(self, kind: str, pictures: Sequence[tuple[str, Image.Image]]) -> str:
-        """Hands pictures (each under a name of its own) to the embedding
+    def embed_batch(self, kind: str, pictures: Sequence[tuple[str, Embedded]]) -> str:
+        """Hands pictures (each under a name of its own; or words, or words
+        with a picture, as :meth:`embed` takes them) to the embedding
         model's Batch, at half the price: the batch's name, to ask
         :meth:`embed_batched` with. Raises as :meth:`batch` does."""
         key = self.config.gemini_key
@@ -426,9 +496,7 @@ class Painter:
         requests = [
             {
                 "request": {
-                    "content": {
-                        "parts": [{"inline_data": {"mime_type": "image/jpeg", "data": _jpeg(img)}}]
-                    },
+                    "content": {"parts": _embedded(img)},
                     "output_dimensionality": EMBED_SIZE,
                 },
                 "metadata": {"key": name},
@@ -491,6 +559,98 @@ class Painter:
             else:
                 found[name] = None
         self.spending.add(kind, round(spent * BATCH_SHARE, 6))
+        return found
+
+    def describe(self, kind: str, prompt: str, img: Image.Image, longest: int = 160) -> str:
+        """What :data:`DESCRIBER` says of ``img`` in answer to ``prompt``,
+        asked at once (a photograph searched in Szukaj); counted as
+        ``kind``. Raises as :meth:`paint` does; :class:`NotDrawn` when it
+        says nothing (a picture it will not take)."""
+        key = self.config.gemini_key
+        if not key:
+            raise AiUnavailable("no Google API key")
+        self.check_budget()
+        url = f"{MODELS_URL}/{DESCRIBER}:generateContent"
+        raw = self._send("post", url, key, json=_telling(prompt, img, longest)).json()
+        told = _told(raw)
+        if isinstance(told, NotDrawn):
+            raise told
+        self.spending.add(kind, told[1])
+        return told[0]
+
+    def describe_batch(
+        self,
+        kind: str,
+        prompt: str,
+        pictures: Sequence[tuple[str, Image.Image]],
+        longest: int = 160,
+    ) -> str:
+        """Hands :meth:`describe`'s question about each picture (each under
+        a name of its own) to :data:`DESCRIBER`'s Batch, at half the
+        price: the batch's name, to ask :meth:`described` with. Raises as
+        :meth:`batch` does."""
+        key = self.config.gemini_key
+        if not key:
+            raise AiUnavailable("no Google API key")
+        names = [name for name, _ in pictures]
+        if not names or len(set(names)) != len(names):
+            raise ValueError("a batch needs pictures, each under a name of its own")
+        self.check_budget()
+        requests = [
+            {"request": _telling(prompt, img, longest), "metadata": {"key": name}}
+            for name, img in pictures
+        ]
+        weight = sum(len(json.dumps(r)) for r in requests)
+        if weight > BATCH_BYTES:
+            raise TooHeavy(
+                f"a batch of {len(pictures)} pictures weighs {weight / 1e6:.1f} MB, "
+                f"Google takes {BATCH_BYTES / 1e6:.0f} MB at most: send fewer at a time"
+            )
+        body = {
+            "batch": {
+                "display_name": f"frame-{kind}",
+                "input_config": {"requests": {"requests": requests}},
+            }
+        }
+        answer = self._send("post", batch_url(DESCRIBER), key, json=body)
+        name = answer.json().get("name")
+        if not isinstance(name, str) or not name.startswith("batches/"):
+            raise NotDrawn(f"Google's batch has no name: {answer.text[:200]}")
+        return name
+
+    def described(self, kind: str, batch: str) -> dict[str, str | NotDrawn] | None:
+        """The words of a :meth:`describe_batch` by the pictures' names, or
+        why there are none; None while Google is at it. What they cost is
+        counted as ``kind`` once, when they are read. Raises as
+        :meth:`batched` does."""
+        key = self.config.gemini_key
+        if not key:
+            raise AiUnavailable("no Google API key")
+        try:
+            answer = self._send("get", f"{BATCHES_URL}/{batch}", key)
+        except (Busy, httpx.HTTPError):
+            return None
+        except NotDrawn as err:
+            raise NotDrawn(f"batch {batch}: {err}", err.code or "lost") from err
+        raw = answer.json()
+        state = _state(raw)
+        if state in ("PENDING", "RUNNING", "UNSPECIFIED", ""):
+            return None
+        if state != "SUCCEEDED":
+            raise NotDrawn(f"batch {batch}: {state.lower()}", state.lower())
+        found: dict[str, str | NotDrawn] = {}
+        spent = 0.0
+        for at, one in enumerate(_answers(raw)):
+            name = str((one.get("metadata") or {}).get("key") or at)
+            error = one.get("error")
+            reply = {"error": error} if isinstance(error, dict) else one.get("response") or {}
+            told = _told(reply, BATCH_SHARE)
+            if isinstance(told, NotDrawn):
+                found[name] = told
+            else:
+                found[name] = told[0]
+                spent += told[1]
+        self.spending.add(kind, round(spent, 6))
         return found
 
     def batch(self, kind: str, asks: Sequence[Ask], model: str = MODEL) -> str:

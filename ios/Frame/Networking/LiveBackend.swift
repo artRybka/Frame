@@ -93,6 +93,7 @@ struct LiveBackend: FrameBackend {
         if !q.look.isEmpty { query.append(URLQueryItem(name: "look", value: q.look)) }
         if !q.title.isEmpty { query.append(URLQueryItem(name: "title", value: q.title)) }
         if !q.like.isEmpty { query.append(URLQueryItem(name: "like", value: q.like)) }
+        if !q.like.isEmpty, !q.likeBy.isEmpty { query.append(URLQueryItem(name: "like_by", value: q.likeBy)) }
         return try await get("/api/library/items", query: query)
     }
 

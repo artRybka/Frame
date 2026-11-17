@@ -49,6 +49,9 @@ enum LaunchRoute {
     /// the comparison with the picture before its colours' correction, on
     /// the card of a work shown cleaned (`-demoCleaned all`).
     static let sheet = UserDefaults.standard.string(forKey: "sheet")
+    /// "Podobne do" by "subject" or "style" (`-screen search-like`; none:
+    /// both together).
+    static let likeBy = UserDefaults.standard.string(forKey: "likeBy")
 }
 
 struct RootView: View {
@@ -62,7 +65,7 @@ struct RootView: View {
         static var initial: Screen {
             switch LaunchRoute.screen {
             case "discover", "discover-group", "discover-theme", "daily", "detail", "original": .discover
-            case "museums", "search", "search-picker", "search-colors", "search-tones", "search-empty", "search-styles", "search-subjects", "search-techniques", "search-chosen", "search-museums", "search-photo": .search
+            case "museums", "search", "search-picker", "search-colors", "search-tones", "search-empty", "search-styles", "search-subjects", "search-techniques", "search-chosen", "search-museums", "search-photo", "search-like": .search
             case "playlists", "playlist", "suggestions", "editor", "editor-new", "editor-manual",
                  "own-works", "own-start", "own-cut", "own-balance", "own-describe", "own-card", "own-scan", "own-scan2": .playlists
             case "frame", "notices", "connection", "battery", "schedule", "schedule-economy", "presentation", "presentation-photo", "orientation": .frame
