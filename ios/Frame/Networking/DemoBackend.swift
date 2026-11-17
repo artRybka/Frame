@@ -1997,6 +1997,19 @@ actor DemoBackend: FrameBackend {
             ("gatekeeper", "Strażnik katalogu", true, 420, 200, "duplicates"),
             ("audit", "Nocny przegląd dzieł", true, 380, 30, "duplicates"),
             ("kept originals", "Oryginały Twoich dzieł", false, 95, 0, "catalogue"),
+            ("tile sets", "Kafle „Pod lupą”", false, 140, 6, "catalogue"),
+            ("crops", "Kadrowanie zdjęć dzieł", true, 240, 25, "duplicates"),
+            ("artist people", "Kim są artyści", false, 64, 18, "descriptions"),
+            ("museum places", "Miasta muzeów", false, 3.1, 0, "descriptions"),
+            ("media", "Technika dzieł", false, 48, 220, "descriptions"),
+            ("read again", "Rodzaj i autor czytane ponownie", false, 12, 0, "descriptions"),
+            ("places", "Miejsca zdjęć", false, 7.5, 4, "descriptions"),
+            ("leftover", "Studia z zapasu", true, 0.2, 0, "discover"),
+            ("curator", "Dziś dla Ciebie", true, 35, nil, "discover"),
+            ("births", "Urodziny artystów", false, 0.8, nil, "discover"),
+            ("frame line", "Kolejka ramki", false, 2.2, nil, "discover"),
+            ("nga", "Spis National Gallery of Art", false, 0.1, nil, "indexes"),
+            ("louvre", "Spis Luwru", false, 0.1, nil, "indexes"),
             ("rijks", "Spis Rijksmuseum", false, 3_600, 900, "indexes"),
         ]
         let packages: [(String, String, String)] = [
@@ -2014,6 +2027,16 @@ actor DemoBackend: FrameBackend {
             "twins judge": "12 par połączonych, 96 par osobno, 3 odrzucone przez krytyka",
             "gatekeeper": "200 dzieł obejrzanych, 4 odłożone",
             "audit": "30 dzieł obejrzanych, 2 do sprawdzenia",
+            "catalogue": "3 nowe dzieła",
+            "sharper": "12 ostrzejszych kopii",
+            "museums": "300 dzieł, 21 nowych miejsc",
+            "media": "220 technik odczytanych",
+            "artist people": "18 artystów",
+            "tile sets": "6 kompletów kafli",
+            "places": "4 miejsca",
+            "themes": "8 kart",
+            "suggestions": "24 propozycje",
+            "births": "2 artystów ma dziś urodziny",
         ]
         let iso = ISO8601DateFormatter()
         let night = Calendar.current.date(bySettingHour: 2, minute: 10, second: 0, of: .now) ?? .now
@@ -2023,7 +2046,8 @@ actor DemoBackend: FrameBackend {
                 last: NightTasks.LastRun(
                     at: nightAsked[name] ?? iso.string(from: night.addingTimeInterval(took)),
                     took: took, failed: false, count: count,
-                    nothing: count == 0 || name == "met", asked: nightAsked[name] != nil,
+                    nothing: count == 0 || ["met", "nga", "louvre"].contains(name),
+                    asked: nightAsked[name] != nil,
                     summary: demoSummaries[name]
                 )
             )

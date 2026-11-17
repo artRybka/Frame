@@ -3,17 +3,18 @@ import SwiftUI
 /// Konfiguracja → Zadania (Mateusz 2026-11-17: "przebudowania całego menu
 /// „Claude” oraz „Zadania nocne” i wprowadzenia prostego konfigurowania
 /// zadań planowanych i na żądanie. Z ustawieniem ilości, kwoty, czasu i
-/// trybu"; he chose the list grouped by when, each task with its own page):
-/// the month's money on top, what runs now, then every task by when it
-/// runs. The switches of what Claude does for each work stand in their
-/// groups; the tasks of the month's rest open a page of their own (when,
-/// how many and for how much, the mode, "Uruchom teraz"). The server's own
-/// night work is one row, its page as before.
+/// trybu"): the month's money on top, what runs now, then every task by
+/// what it does. The AI's tasks carry a sparkle and open a page of their
+/// own (when, how many and for how much, the mode, "Uruchom teraz"); the
+/// server's own night work stands among them, each row with how it last
+/// went and a button to start it now.
 struct TasksSection: View {
     @Environment(AppModel.self) private var model
     let settings: AiSettings
+    @State private var confirmAll = false
 
     private var uses: [LeftoverUse] { settings.leftoverState?.uses ?? [] }
+    private var night: NightTasks? { model.nightTasks }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -34,52 +35,124 @@ struct TasksSection: View {
                     OnDemandRow(use: use, free: settings.leftoverState?.nowFreeUsd)
                 }
             }
+            if let night, let running = night.running {
+                RunningCard(night: night, running: running)
+            }
             // Named by what they do, each with every when and mode on its
             // page (Mateusz 2026-11-17: "nazwy określające nie to kiedy coś
             // się odbywa, tylko co robi… Jeżeli jakieś czynności się
-            // zazębiają lub można je połączyć bo są drobne - to uprośćmy")
+            // zazębiają lub można je połączyć bo są drobne - to uprośćmy");
+            // the server's own work stands among them, the AI's marked with
+            // a sparkle ("dać do listy powyżej i tylko iskierkami oznaczyć co
+            // robi AI a co nie").
             ForEach(Self.groups, id: \.title) { group in
                 let shown = group.keys.compactMap { key in uses.first { $0.key == key } }
-                let daily = group.title == "Studia" ? Self.discover(settings) : []
-                if !shown.isEmpty || !daily.isEmpty {
+                let daily = group.title == "Odkrywaj" ? Self.discover(settings) : []
+                let server = Self.serverRows(group, night)
+                if !shown.isEmpty || !daily.isEmpty || !server.isEmpty {
                     self.group(group.title, nil) {
                         switches(daily)
                         taskRows(shown, divided: !daily.isEmpty)
+                        serverRows(server, divided: !daily.isEmpty || !shown.isEmpty)
+                        if group.title == "Katalog", night != nil {
+                            Divider()
+                            changesLink
+                        }
                     }
                 }
             }
             let known = Set(Self.groups.flatMap(\.keys))
             let others = uses.filter { !known.contains($0.key) }
-            if !others.isEmpty {
-                group("Inne", nil) { taskRows(others, divided: false) }
+            let otherWork = Self.otherServerRows(night)
+            if !others.isEmpty || !otherWork.isEmpty {
+                group("Inne", nil) {
+                    taskRows(others, divided: false)
+                    serverRows(otherWork, divided: !others.isEmpty)
+                }
             }
             group("Resztka okresu", restSubtitle) { restSwitch }
                 .id("rest")
-            group("Bez Claude", "Praca samego serwera, bez kosztu") {
-                ServerWorkRow()
+            if let night {
+                group("Cała noc", "Co noc od \(night.nightStart) do \(night.nightEnd), po kolei") {
+                    allNightButton(night)
+                }
+                .id("server")
             }
-            .id("server")
         }
         .navigationDestination(for: TaskLink.self) { link in TaskPage(key: link.key) }
         .task {
             // Batches and runs move on while the page is open; a run going
             // is followed more closely.
+            await model.loadNightTasks()
             while !Task.isCancelled {
                 let going = model.aiSettings?.leftoverState?.uses?.contains { $0.run?.running == true } == true
-                try? await Task.sleep(for: .seconds(going ? 5 : 20))
+                    || model.nightTasks?.running != nil
+                try? await Task.sleep(for: .seconds(going ? 4 : 20))
                 guard !Task.isCancelled else { return }
                 await model.loadAiSettings()
+                await model.loadNightTasks()
             }
         }
     }
 
-    /// The tasks by what they do, in this order.
-    static let groups: [(title: String, keys: [String])] = [
-        ("Opisy", ["pl_text", "keywords"]),
-        ("Obraz", ["crops", "looks"]),
-        ("Porządek w katalogu", ["tidy", "audit"]),
-        ("Studia", ["studies", "refresh"]),
+    /// The tasks by what they do, in this order: Claude's and Gemini's
+    /// (`keys`, the uses), then the server's own night work.
+    static let groups: [TaskGroup] = [
+        TaskGroup(title: "Katalog", keys: ["tidy", "audit"], server: [
+            ServerWork(names: ["catalogue"]),
+            ServerWork(names: ["twins"]),
+            ServerWork(names: ["grouping"]),
+            ServerWork(names: ["tidy"]),
+            ServerWork(package: "indexes", label: "Spisy muzeów"),
+        ]),
+        TaskGroup(title: "Obraz", keys: ["crops", "looks"], server: [
+            ServerWork(names: ["sharper"]),
+            ServerWork(names: ["tile sets"]),
+            ServerWork(names: ["kept originals"]),
+        ]),
+        TaskGroup(title: "Opisy i fakty", keys: ["pl_text", "keywords"], server: [
+            ServerWork(names: ["artist people"]),
+            ServerWork(names: ["museums", "museum places"], label: "Gdzie wiszą dzieła"),
+            ServerWork(names: ["media"]),
+            ServerWork(names: ["read again"]),
+            ServerWork(names: ["places"]),
+        ]),
+        TaskGroup(title: "Odkrywaj", keys: ["studies", "refresh"], server: [
+            ServerWork(names: ["themes"]),
+            ServerWork(names: ["suggestions"]),
+            ServerWork(names: ["births"]),
+            ServerWork(names: ["frame line", "playlists"], label: "Kolejka ramki i playlisty"),
+        ]),
     ]
+
+    /// `group`'s server rows the server has, each with its tasks.
+    static func serverRows(_ group: TaskGroup, _ night: NightTasks?) -> [ServerRow] {
+        guard let night else { return [] }
+        return group.server.compactMap { work in
+            let names: [String]
+            if let package = work.package {
+                names = night.groups?.first { $0.key == package }?.tasks ?? []
+            } else {
+                names = work.names
+            }
+            let entries = names.compactMap { name in night.tasks.first { $0.name == name } }
+            guard let first = entries.first else { return nil }
+            return ServerRow(label: work.label ?? first.label, entries: entries)
+        }
+    }
+
+    /// The server's work no group names, Claude's left out (its tasks stand
+    /// above, as uses).
+    static func otherServerRows(_ night: NightTasks?) -> [ServerRow] {
+        guard let night else { return [] }
+        var named = Set<String>()
+        for group in groups {
+            for row in serverRows(group, night) { named.formUnion(row.entries.map(\.name)) }
+        }
+        return night.tasks
+            .filter { !$0.paid && !named.contains($0.name) }
+            .map { ServerRow(label: $0.label, entries: [$0]) }
+    }
 
     private func group(
         _ title: String, _ subtitle: String?, @ViewBuilder content: () -> some View
@@ -127,6 +200,53 @@ struct TasksSection: View {
             if divided || index > 0 { Divider() }
             TaskRow(use: use, settings: settings)
                 .contextMenu { orderMenu(use) }
+        }
+    }
+
+    @ViewBuilder
+    private func serverRows(_ rows: [ServerRow], divided: Bool) -> some View {
+        if let night {
+            ForEach(Array(rows.enumerated()), id: \.element.label) { index, row in
+                if divided || index > 0 { Divider() }
+                ServerTaskRow(row: row, running: night.running)
+            }
+        }
+    }
+
+    private var changesLink: some View {
+        NavigationLink {
+            TidyChangesView()
+        } label: {
+            HStack {
+                Text("Co zmieniła noc").foregroundStyle(Theme.ink)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.inkSoft)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func allNightButton(_ night: NightTasks) -> some View {
+        Button {
+            confirmAll = true
+        } label: {
+            Label("Uruchom całą noc teraz", systemImage: "moon.stars.fill")
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .tint(Theme.ink)
+        .disabled(night.running != nil)
+        .confirmationDialog("Uruchomić całą noc?", isPresented: $confirmAll, titleVisibility: .visible) {
+            Button("Uruchom wszystko (\(night.tasks.count))") {
+                Task { await model.startNightTasks() }
+            }
+            Button("Anuluj", role: .cancel) {}
+        } message: {
+            Text("Zadania pójdą po kolei, tak jak w nocy, najwyżej przez 2 godziny. Te z iskierką pytają AI: koszt z Twojego klucza.")
         }
     }
 
@@ -313,6 +433,8 @@ private struct TaskSwitchRow: View {
     @Environment(AppModel.self) private var model
     let row: SwitchTask
     let settings: AiSettings
+    /// The AI's sparkle; not on a task's own page, where all is the AI's.
+    var marked = true
 
     var body: some View {
         Toggle(isOn: Binding(
@@ -320,7 +442,10 @@ private struct TaskSwitchRow: View {
             set: { new in Task { await model.saveAiSettings(row.update(new)) } }
         )) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(row.title)
+                HStack(spacing: 5) {
+                    Text(row.title)
+                    if marked { AiMark() }
+                }
                 if let costNote {
                     Text(costNote)
                         .font(.caption.monospacedDigit())
@@ -353,8 +478,11 @@ private struct TaskRow: View {
         NavigationLink(value: TaskLink(key: use.key)) {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(use.label)
-                        .foregroundStyle(running ? Theme.ink : (use.able ? Theme.ink : Theme.inkSoft))
+                    HStack(spacing: 5) {
+                        Text(use.label)
+                            .foregroundStyle(running ? Theme.ink : (use.able ? Theme.ink : Theme.inkSoft))
+                        AiMark()
+                    }
                     let chips = TasksSection.chips(use)
                     if !chips.isEmpty || running {
                         HStack(spacing: 4) {
@@ -404,39 +532,114 @@ struct TaskChip: View {
     }
 }
 
-/// The server's own night work, its page as before.
-private struct ServerWorkRow: View {
-    @Environment(AppModel.self) private var model
+/// A group of Zadania: what it does, its AI tasks and the server's own.
+struct TaskGroup {
+    let title: String
+    /// Its uses (Claude's and Gemini's tasks).
+    let keys: [String]
+    let server: [ServerWork]
+}
 
-    var body: some View {
-        NavigationLink(value: SettingsPage.night) {
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Prace serwera co noc").foregroundStyle(Theme.ink)
-                    if let note {
-                        Text(note.text)
-                            .font(.caption)
-                            .foregroundStyle(note.warn ? Theme.warn : Theme.ink.opacity(0.75))
-                    }
-                }
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Theme.inkSoft)
-                    .padding(.top, 4)
-            }
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
+/// The server's own work in a group: one night task, small ones together,
+/// or a whole package (the museums' indexes).
+struct ServerWork {
+    var names: [String] = []
+    var package: String? = nil
+    /// nil: the first task's own name.
+    var label: String? = nil
+}
+
+/// A server row as shown: its name and its tasks.
+struct ServerRow {
+    let label: String
+    let entries: [NightTasks.Entry]
+}
+
+/// The server's own work: its name, how it last went, a button to start
+/// it now. No sparkle: no AI.
+private struct ServerTaskRow: View {
+    @Environment(AppModel.self) private var model
+    @State private var confirm = false
+    let row: ServerRow
+    let running: NightTasks.Running?
+
+    private var names: [String] { row.entries.map(\.name) }
+    private var isCurrent: Bool { running?.current.map { names.contains($0) } == true }
+    private var isWaiting: Bool {
+        guard let running else { return false }
+        return names.contains { running.tasks.contains($0) && !running.done.contains($0) } && !isCurrent
     }
 
-    private var note: (text: String, warn: Bool)? {
-        guard let night = model.nightTasks else { return nil }
-        if let running = night.running {
-            return ("Teraz: \(night.label(running.current) ?? "trwa")", false)
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(row.label).foregroundStyle(Theme.ink)
+                if let last = Self.lastText(row.entries) {
+                    Text(last.text)
+                        .font(.caption)
+                        .foregroundStyle(last.warn ? Theme.warn : Theme.inkSoft)
+                        .lineLimit(2)
+                }
+            }
+            Spacer(minLength: 8)
+            if isCurrent {
+                ProgressView().frame(width: 30, height: 30)
+            } else if isWaiting {
+                Image(systemName: "clock")
+                    .foregroundStyle(Theme.inkSoft)
+                    .frame(width: 30, height: 30)
+                    .accessibilityLabel("czeka w kolejce")
+            } else {
+                Button {
+                    confirm = true
+                } label: {
+                    Image(systemName: "play.fill")
+                        .font(.footnote.weight(.semibold))
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.circle)
+                .tint(Theme.ink)
+                .disabled(running != nil)
+                .accessibilityLabel("Uruchom teraz: \(row.label)")
+                .confirmationDialog(row.label, isPresented: $confirm, titleVisibility: .visible) {
+                    Button("Uruchom teraz") {
+                        Task { await model.startNightTasks(names, title: row.label) }
+                    }
+                    Button("Anuluj", role: .cancel) {}
+                }
+            }
         }
-        if night.tasks.contains(where: { $0.last?.failed == true }) { return ("Ostatnio był błąd", true) }
-        return nil
+        .padding(.vertical, 2)
+    }
+
+    /// "dziś, 03:12 · 41 kopii, 14 detali", "nic do zrobienia", "błąd".
+    static func lastText(_ entries: [NightTasks.Entry]) -> (text: String, warn: Bool)? {
+        let runs = entries.compactMap(\.last)
+        guard let latest = runs.max(by: { $0.at < $1.at }) else { return ("Jeszcze nie było", false) }
+        if runs.contains(where: \.failed) { return ((When.past(latest.at) ?? "") + " · błąd", true) }
+        var parts = [When.past(latest.at) ?? ""]
+        if entries.count == 1 {
+            if let summary = latest.summary, !summary.isEmpty {
+                parts.append(summary)
+            } else if latest.nothing {
+                parts.append("nic do zrobienia")
+            }
+        } else if runs.allSatisfy(\.nothing) {
+            parts.append("nic do zrobienia")
+        }
+        if latest.asked { parts.append("na żądanie") }
+        return (parts.filter { !$0.isEmpty }.joined(separator: " · "), false)
+    }
+}
+
+/// The AI's mark: a sparkle after the name.
+struct AiMark: View {
+    var body: some View {
+        Image(systemName: "sparkle")
+            .font(.caption)
+            .foregroundStyle(Theme.inkSoft)
+            .accessibilityLabel("AI")
     }
 }
 
@@ -581,7 +784,7 @@ struct TaskPage: View {
                 Card {
                     ForEach(Array(extras.enumerated()), id: \.element.title) { index, row in
                         if index > 0 { Divider() }
-                        TaskSwitchRow(row: row, settings: settings)
+                        TaskSwitchRow(row: row, settings: settings, marked: false)
                     }
                 }
             }

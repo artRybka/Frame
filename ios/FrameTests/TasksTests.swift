@@ -77,7 +77,7 @@ final class TasksTests: XCTestCase {
         let settings = try await DemoBackend().aiSettings()
         let uses = try XCTUnwrap(settings.leftoverState?.uses)
         XCTAssertEqual(TasksSection.discover(settings).map(\.title), ["Studium dnia", "Propozycje kuratora"])
-        XCTAssertEqual(TasksSection.groups.map(\.title), ["Opisy", "Obraz", "Porządek w katalogu", "Studia"])
+        XCTAssertEqual(TasksSection.groups.map(\.title), ["Katalog", "Obraz", "Opisy i fakty", "Odkrywaj"])
         let grouped = Set(TasksSection.groups.flatMap(\.keys))
         XCTAssertTrue(uses.allSatisfy { grouped.contains($0.key) })
         XCTAssertTrue(uses.allSatisfy { $0.whens == nil && $0.modes == [.batch, .normal] && $0.nowEachUsd != nil })
@@ -96,5 +96,26 @@ final class TasksTests: XCTestCase {
             TasksSection.extras("keywords", settings).map(\.title),
             ["Nowe dzieła od razu", "Twoje zdjęcia", "Błękit pod werniksem", "Tłumaczenie słów w Szukaj"]
         )
+    }
+
+    /// Mateusz 2026-11-17: "A możemy je dać do listy powyżej i tylko
+    /// iskierkami oznaczyć co robi AI a co nie?": the server's own work in
+    /// the groups by what it does, small tasks together, none left over and
+    /// none of the AI's twice.
+    func testTheServersWorkStandsAmongTheTasks() async throws {
+        let night = try await DemoBackend().nightTasks()
+        let rows = Dictionary(uniqueKeysWithValues: TasksSection.groups.map {
+            ($0.title, TasksSection.serverRows($0, night).map(\.label))
+        })
+        XCTAssertEqual(rows["Katalog"], [
+            "Nowe dzieła do katalogu", "Powtórki i detale", "Kopie razem i podpowiedzi Szukaj",
+            "Porządki w plikach", "Spisy muzeów",
+        ])
+        XCTAssertEqual(rows["Obraz"], ["Ostrzejsze kopie", "Kafle „Pod lupą”", "Oryginały Twoich dzieł"])
+        XCTAssertEqual(rows["Odkrywaj"]?.last, "Kolejka ramki i playlisty")
+        let shown = TasksSection.groups.flatMap { TasksSection.serverRows($0, night) }.flatMap(\.entries)
+        XCTAssertFalse(shown.contains(where: \.paid))
+        XCTAssertEqual(Set(shown.map(\.name)), Set(night.tasks.filter { !$0.paid }.map(\.name)))
+        XCTAssertTrue(TasksSection.otherServerRows(night).isEmpty)
     }
 }
