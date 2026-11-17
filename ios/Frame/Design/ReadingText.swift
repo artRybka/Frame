@@ -25,7 +25,7 @@ struct ReadingText: UIViewRepresentable {
 
     func makeUIView(context: Context) -> UITextView {
         // Shortened: TextKit 1, as SentenceClip counts the lines.
-        let view = lines == nil ? UITextView() : UITextView(usingTextLayoutManager: false)
+        let view = lines == nil ? CopyPlainTextView() : CopyPlainTextView(usingTextLayoutManager: false)
         view.isEditable = false
         view.isSelectable = true
         view.isScrollEnabled = false
@@ -52,7 +52,8 @@ struct ReadingText: UIViewRepresentable {
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineSpacing = lineSpacing
         let attributed = NSAttributedString(
-            string: text,
+            // No "i" or "w" left at a line's end (Typography).
+            string: text.bound,
             attributes: [.font: font, .foregroundColor: ink, .paragraphStyle: paragraph]
         )
         let coordinator = context.coordinator
@@ -126,5 +127,17 @@ struct ReadingText: UIViewRepresentable {
             view.textContainer.lineBreakMode = clip.lines > 0 ? .byTruncatingTail : .byWordWrapping
             view.attributedText = clip.text
         }
+    }
+}
+
+/// A text view whose selection copies with plain spaces: what is pasted
+/// elsewhere (Notatki, a search) carries no no-break spaces (`Typography`).
+private final class CopyPlainTextView: UITextView {
+    override func copy(_ sender: Any?) {
+        guard let range = selectedTextRange, let selected = text(in: range), !selected.isEmpty else {
+            super.copy(sender)
+            return
+        }
+        UIPasteboard.general.string = Typography.unbound(selected)
     }
 }

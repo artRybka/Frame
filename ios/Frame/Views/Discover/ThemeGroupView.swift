@@ -18,7 +18,7 @@ struct SeeAllHeader: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(title)
+            Text(bound: title)
                 .font(.serif(size, weight: weight))
                 .foregroundStyle(Theme.ink)
                 .multilineTextAlignment(.leading)
@@ -65,11 +65,11 @@ struct ThemeGroupView: View {
                 ForEach(sections) { section in
                     if !section.name.isEmpty {
                         HStack(alignment: .firstTextBaseline) {
-                            Text(section.name.uppercased())
+                            Text(bound: section.name.uppercased())
                                 .font(.caption.weight(.semibold))
                                 .tracking(1.1)
                             Spacer()
-                            Text(section.years)
+                            Text(bound: section.years)
                                 .font(.footnote)
                         }
                         .foregroundStyle(Theme.inkSoft)
@@ -132,7 +132,7 @@ struct SuggestionRowGridView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if let subtitle, !subtitle.isEmpty {
-                    Text(subtitle)
+                    Text(bound: subtitle)
                         .font(.serif(17))
                         .foregroundStyle(Theme.inkSoft)
                 }

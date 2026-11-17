@@ -94,7 +94,7 @@ struct CropTools: View {
                         if sameShape(draft.crops.first?.aspect, shape.aspect) {
                             Label(shape.title, systemImage: "checkmark")
                         } else {
-                            Text(shape.title)
+                            Text(bound: shape.title)
                         }
                     }
                 }

@@ -25,7 +25,7 @@ struct SamplePhotosSection: View {
         VStack(alignment: .leading, spacing: 16) {
             SectionHeader(title: "Przykładowe zdjęcia", subtitle: "Do podglądu Prezentacji zdjęć")
             Card {
-                Text("Na nich Prezentacja pokazuje zdjęcia: Passe-partout i Wypełnij na pierwszym, Multi każdy układ w tej kolejności (przy czterech zdjęciach na planszy cztery pierwsze). Przytrzymaj zdjęcie i przesuń, aby zmienić kolejność. Nie trafiają do biblioteki ani na ramkę.")
+                Text(bound: "Na nich Prezentacja pokazuje zdjęcia: Passe-partout i Wypełnij na pierwszym, Multi każdy układ w tej kolejności (przy czterech zdjęciach na planszy cztery pierwsze). Przytrzymaj zdjęcie i przesuń, aby zmienić kolejność. Nie trafiają do biblioteki ani na ramkę.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)

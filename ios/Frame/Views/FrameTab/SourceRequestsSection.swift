@@ -67,14 +67,14 @@ struct SourceRequestsSection: View {
         let turnedAway = report.sources.reduce(0) { $0 + $1.week.turnedAway }
         let held = report.sources.reduce(0) { $0 + $1.week.refused }
         return VStack(alignment: .leading, spacing: 4) {
-            Text(SourceRequestText.requests(today) + " dziś")
+            Text(bound: SourceRequestText.requests(today) + " dziś")
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(Theme.ink)
-            Text(SourceRequestText.requests(week) + " w \(report.days) dni")
+            Text(bound: SourceRequestText.requests(week) + " w \(report.days) dni")
                 .font(.subheadline)
                 .foregroundStyle(Theme.inkSoft)
             if turnedAway > 0 || held > 0 {
-                Text(SourceRequestText.refusals(turnedAway: turnedAway, held: held))
+                Text(bound: SourceRequestText.refusals(turnedAway: turnedAway, held: held))
                     .font(.subheadline)
                     .foregroundStyle(turnedAway > 0 ? Theme.warn : Theme.inkSoft)
             } else {
@@ -91,7 +91,7 @@ struct SourceRequestsSection: View {
                 withAnimation(.snappy) { showQuiet.toggle() }
             } label: {
                 HStack {
-                    Text("Bez zapytań w \(days) dni: \(quiet.count)")
+                    Text(bound: "Bez zapytań w \(days) dni: \(quiet.count)")
                         .font(.subheadline)
                         .foregroundStyle(Theme.ink)
                     Spacer()
@@ -104,7 +104,7 @@ struct SourceRequestsSection: View {
             }
             .buttonStyle(.plain)
             if showQuiet {
-                Text(quiet.map { SourceRequestText.name($0.name) }.joined(separator: ", "))
+                Text(bound: quiet.map { SourceRequestText.name($0.name) }.joined(separator: ", "))
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -112,7 +112,7 @@ struct SourceRequestsSection: View {
     }
 
     private var legend: some View {
-        Text("Odmowy to odpowiedzi źródła: blokada przed robotami, „za dużo zapytań” (429) i błędy (401, 403, 5xx). Wstrzymane to zapytania, których serwer sam nie wysłał, bo źródło odpoczywa po odmowie albo wyczerpał się jego limit. Część limitu zostaje zawsze na to, na co czekasz w aplikacji.")
+        Text(bound: "Odmowy to odpowiedzi źródła: blokada przed robotami, „za dużo zapytań” (429) i błędy (401, 403, 5xx). Wstrzymane to zapytania, których serwer sam nie wysłał, bo źródło odpoczywa po odmowie albo wyczerpał się jego limit. Część limitu zostaje zawsze na to, na co czekasz w aplikacji.")
             .font(.caption)
             .foregroundStyle(Theme.inkSoft)
     }
@@ -126,7 +126,7 @@ private struct SourceRequestRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
-                Text(SourceRequestText.name(row.name))
+                Text(bound: SourceRequestText.name(row.name))
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(2)
@@ -135,16 +135,16 @@ private struct SourceRequestRow: View {
                     .font(.subheadline.monospacedDigit())
                     .foregroundStyle(Theme.ink)
             }
-            Text(weekLine)
+            Text(bound: weekLine)
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
             if let askers = askersLine {
-                Text(askers)
+                Text(bound: askers)
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
             }
             if row.week.turnedAway > 0 {
-                Text(turnedAwayLine)
+                Text(bound: turnedAwayLine)
                     .font(.caption)
                     .foregroundStyle(Theme.warn)
             }
@@ -196,7 +196,7 @@ private struct SourceRequestRow: View {
         VStack(alignment: .leading, spacing: 3) {
             ProgressView(value: Double(min(quota.spent, quota.of)), total: Double(max(quota.of, 1)))
                 .tint(quota.spent >= quota.background ? Theme.warn : Theme.good)
-            Text("Limit: \(quota.spent) z \(quota.of) \(SourceRequestText.window(quota.hours)), w tle do \(quota.background)")
+            Text(bound: "Limit: \(quota.spent) z \(quota.of) \(SourceRequestText.window(quota.hours)), w tle do \(quota.background)")
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
         }

@@ -171,12 +171,12 @@ struct JourneyRoad: View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
                 if !journey.headline.isEmpty {
-                    Text(journey.headline)
+                    Text(bound: journey.headline)
                         .font(.serif(18, weight: .semibold))
                         .foregroundStyle(Theme.ink)
                 }
                 if !journey.lead.isEmpty {
-                    Text(journey.lead)
+                    Text(bound: journey.lead)
                         .font(.serif(16))
                         .foregroundStyle(Theme.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
@@ -211,13 +211,13 @@ struct JourneyRoad: View {
         HStack(alignment: .top, spacing: 18) {
             ForEach(facts, id: \.1) { value, label in
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(value)
+                    Text(bound: value)
                         .font(.serif(19, weight: .semibold))
                         .foregroundStyle(Theme.ink)
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
-                    Text(label)
+                    Text(bound: label)
                         .font(.caption2)
                         .foregroundStyle(Theme.inkSoft)
                         .lineLimit(1)
@@ -443,13 +443,13 @@ struct JourneyRoad: View {
     private func laterHead(_ entry: DailyWork.Legacy, index: Int, name: String) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if !entry.year.isEmpty {
-                Text(entry.year)
+                Text(bound: entry.year)
                     .font(.hand(21))
                     .foregroundStyle(Self.dateOnStain)
                     .lineLimit(1)
                     .onGeometryChange(for: CGSize.self) { $0.size } action: { self.years[index] = $0 }
             }
-            Text(name)
+            Text(bound: name)
                 .font(.serif(16, weight: .semibold))
                 .foregroundStyle(Self.onStain)
                 .multilineTextAlignment(.leading)
@@ -560,9 +560,9 @@ struct JourneyRoad: View {
         // (2026-11-11: „teksty koloru białego (daty nadal czerwone)… w
         // motywie ciemnym tekst czarny, a plamy pod nim białe”).
         let soft = Self.onStain.opacity(dark ? 0.62 : 0.76)
-        let date = Text(stop.year).font(.hand(21)).foregroundStyle(Self.dateOnStain)
-        let place = Text(stop.place).font(.caption).foregroundStyle(soft)
-        let between = Text(stop.place.isEmpty || stop.year.isEmpty ? "" : " · ").font(.caption).foregroundStyle(soft)
+        let date = Text(bound: stop.year).font(.hand(21)).foregroundStyle(Self.dateOnStain)
+        let place = Text(bound: stop.place).font(.caption).foregroundStyle(soft)
+        let between = Text(bound: stop.place.isEmpty || stop.year.isEmpty ? "" : " · ").font(.caption).foregroundStyle(soft)
         return VStack(alignment: leading ? .leading : .trailing, spacing: 0) {
             if !(stop.year.isEmpty && stop.place.isEmpty) {
                 (leading ? Text("\(date)\(between)\(place)") : Text("\(place)\(between)\(date)"))
@@ -571,7 +571,7 @@ struct JourneyRoad: View {
                     // Its own size: the stain is cut to the text's lines.
                     .onGeometryChange(for: CGSize.self) { $0.size } action: { self.heads[index] = $0 }
             }
-            Text(Self.marked(text))
+            Text(bound: Self.marked(text))
                 .font(.serif(15))
                 .foregroundStyle(Self.onStain)
                 .multilineTextAlignment(leading ? .leading : .trailing)
@@ -711,7 +711,7 @@ struct JourneyRoad: View {
             }
         }
         if let best {
-            context.draw(Text(name).font(.serif(15).italic()).kerning(1.8).foregroundStyle(Theme.inkSoft), at: best)
+            context.draw(Text(bound: name).font(.serif(15).italic()).kerning(1.8).foregroundStyle(Theme.inkSoft), at: best)
         }
     }
 

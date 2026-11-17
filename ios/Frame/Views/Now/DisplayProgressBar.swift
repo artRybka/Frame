@@ -21,7 +21,7 @@ struct DisplayProgressBar: View {
                 phases
             }
             if !compact, let message = progress.message, progress.isFailed || progress.isWaiting {
-                Text(message)
+                Text(bound: message)
                     .font(.caption)
                     .foregroundStyle(Theme.glassInk)
                     .lineLimit(2)
@@ -62,7 +62,7 @@ struct DisplayProgressBar: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 if !shownTitle.isEmpty {
-                    Text(shownTitle)
+                    Text(bound: shownTitle)
                         .font(.serif(17, weight: .semibold))
                         .foregroundStyle(Theme.ink)
                         .lineLimit(1)
@@ -73,7 +73,7 @@ struct DisplayProgressBar: View {
                             .scaleEffect(0.8)
                             .frame(width: 16, height: 16)
                     }
-                    Text(progress.stageLabel)
+                    Text(bound: progress.stageLabel)
                         .font(shownTitle.isEmpty ? .footnote.weight(.semibold) : .footnote)
                         .foregroundStyle(shownTitle.isEmpty ? Theme.ink : Theme.inkSoft)
                         .lineLimit(1)
@@ -97,7 +97,7 @@ struct DisplayProgressBar: View {
                     .opacity(0.6)
                     .frame(width: 22, height: 22)
             }
-            Text(progress.stageLabel)
+            Text(bound: progress.stageLabel)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Theme.ink)
                 .lineLimit(1)
@@ -171,7 +171,7 @@ struct DisplayProgressBar: View {
                         Image(systemName: "checkmark")
                             .font(.system(size: 8, weight: .bold))
                     }
-                    Text(phase.label)
+                    Text(bound: phase.label)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
                 }

@@ -97,9 +97,9 @@ struct ItemToolbar: ToolbarContent {
                     if let correctCut {
                         Button(action: correctCut) {
                             Label {
-                                Text(item.isCropped ? "Popraw kadr" : "Przytnij zdjęcie")
+                                Text(bound: item.isCropped ? "Popraw kadr" : "Przytnij zdjęcie")
                                 if item.isCropped {
-                                    Text(item.cut?.byOwner == true ? "Przycięte przez Ciebie" : "Przycięte automatycznie")
+                                    Text(bound: item.cut?.byOwner == true ? "Przycięte przez Ciebie" : "Przycięte automatycznie")
                                 }
                             } icon: {
                                 Cropped.image
@@ -110,7 +110,7 @@ struct ItemToolbar: ToolbarContent {
                         Button(action: undoCut) {
                             Label {
                                 Text("Cofnij kadrowanie")
-                                Text(item.isOwnWork ? "Całe zdjęcie" : "Całe zdjęcie z muzeum")
+                                Text(bound: item.isOwnWork ? "Całe zdjęcie" : "Całe zdjęcie z muzeum")
                             } icon: {
                                 Image(systemName: "arrow.uturn.backward")
                             }
@@ -121,8 +121,8 @@ struct ItemToolbar: ToolbarContent {
                 if let recover {
                     Button(action: recover) {
                         Label {
-                            Text(ColourRecovery.menuTitle(recoveryKind, on: cleaned))
-                            Text(ColourRecovery.menuNote(recoveryKind, on: cleaned))
+                            Text(bound: ColourRecovery.menuTitle(recoveryKind, on: cleaned))
+                            Text(bound: ColourRecovery.menuNote(recoveryKind, on: cleaned))
                         } icon: {
                             if cleaned {
                                 Image(systemName: "arrow.uturn.backward")
@@ -137,7 +137,7 @@ struct ItemToolbar: ToolbarContent {
                 if let restore {
                     Button(action: restore) {
                         Label {
-                            Text(LowRes.restoredName)
+                            Text(bound: LowRes.restoredName)
                             Text("Model AI dorysuje szczegóły")
                         } icon: {
                             Image(systemName: LowRes.restoredSymbol)
@@ -149,7 +149,7 @@ struct ItemToolbar: ToolbarContent {
                     Button { findingCopies = true } label: {
                         Label {
                             Text("Szukaj lepszej kopii")
-                            Text(copiesNote)
+                            Text(bound: copiesNote)
                         } icon: {
                             Image(systemName: "plus.magnifyingglass")
                         }
@@ -188,7 +188,7 @@ struct ItemToolbar: ToolbarContent {
             ) {
                 Button("Usuń", role: .destructive) { deleteOwn?() }
             } message: {
-                Text("Zdjęcie i opis znikną z serwera, także z playlist. Tego nie da się cofnąć.")
+                Text(bound: "Zdjęcie i opis znikną z serwera, także z playlist. Tego nie da się cofnąć.")
             }
         }
     }

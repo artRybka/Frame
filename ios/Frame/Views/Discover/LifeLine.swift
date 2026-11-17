@@ -103,9 +103,9 @@ struct LifeLine: View {
     private func legendText(_ entry: Entry) -> Text {
         switch entry.mark {
         case .work:
-            Text(entry.text).font(.serif(15)).foregroundStyle(Theme.vermilion)
+            Text(bound: entry.text).font(.serif(15)).foregroundStyle(Theme.vermilion)
         case .numbered(_, let event):
-            Text(entry.text).font(.serif(15)).foregroundStyle(event ? Theme.inkSoft : Theme.ink.opacity(0.9))
+            Text(bound: entry.text).font(.serif(15)).foregroundStyle(event ? Theme.inkSoft : Theme.ink.opacity(0.9))
         }
     }
 

@@ -53,7 +53,7 @@ struct NotificationsSection: View {
                     if allowed, settings?.key != nil, settings?.device != nil {
                         testRow
                     } else {
-                        Text("Najpierw włącz powiadomienia na tym telefonie i dodaj klucz APNs.")
+                        Text(bound: "Najpierw włącz powiadomienia na tym telefonie i dodaj klucz APNs.")
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
                     }
@@ -82,8 +82,8 @@ struct NotificationsSection: View {
                         set: { on in Task { await model.setNotification(kind.key, on: on) } }
                     )) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(kind.title)
-                            Text(kind.hint).font(.caption).foregroundStyle(Theme.inkSoft)
+                            Text(bound: kind.title)
+                            Text(bound: kind.hint).font(.caption).foregroundStyle(Theme.inkSoft)
                         }
                     }
                     .tint(Theme.ink)
@@ -103,7 +103,7 @@ struct NotificationsSection: View {
         }
         if settings != nil, settings?.key == nil {
             // The owner adds it in Klucze i certyfikaty.
-            Text(model.isOwner
+            Text(bound: model.isOwner
                 ? "Serwer nie ma jeszcze klucza APNs. Dodasz go w Kluczach i certyfikatach."
                 : "Serwer nie ma jeszcze klucza APNs: poproś właściciela ramki, żeby go dodał.")
                 .font(.caption)
@@ -124,7 +124,7 @@ struct NotificationsSection: View {
             }
         case .notDetermined:
             VStack(alignment: .leading, spacing: 6) {
-                Text("Bateria, błąd wysyłki, Studium dnia i inne.")
+                Text(bound: "Bateria, błąd wysyłki, Studium dnia i inne.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.inkSoft)
                 Button {
@@ -164,7 +164,7 @@ struct NotificationsSection: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Plik AuthKey_….p8 z Apple Developer (Keys → Apple Push Notifications service).")
+                Text(bound: "Plik AuthKey_….p8 z Apple Developer (Keys → Apple Push Notifications service).")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                 Button {

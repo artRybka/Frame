@@ -66,7 +66,7 @@ struct TidyChangesView: View {
             Text("Co zmieniła noc")
                 .font(.serif(32, weight: .semibold))
                 .foregroundStyle(Theme.ink)
-            Text("Nic nie jest usuwane. Kopia zostaje w bibliotece, a pokazuje się najlepsza z nich. Detal i zdjęcie na ścianie nie pojawiają się w listach obok dzieła. „To nie to samo” rozdziela parę na stałe.")
+            Text(bound: "Nic nie jest usuwane. Kopia zostaje w bibliotece, a pokazuje się najlepsza z nich. Detal i zdjęcie na ścianie nie pojawiają się w listach obok dzieła. „To nie to samo” rozdziela parę na stałe.")
                 .font(.serif(17))
                 .foregroundStyle(Theme.inkSoft)
         }
@@ -92,7 +92,7 @@ struct TidyChangesView: View {
                     withAnimation(.snappy) { showSure.toggle() }
                 } label: {
                     HStack {
-                        Text(showSure ? "Schowaj" : "Pokaż (\(entries.count))")
+                        Text(bound: showSure ? "Schowaj" : "Pokaż (\(entries.count))")
                             .font(.subheadline)
                         Spacer()
                         Image(systemName: "chevron.down")
@@ -123,10 +123,10 @@ struct TidyChangesView: View {
                     .padding(.top, 30)
                 picture(change.b, caption: "Dzieło")
             }
-            Text(change.relationName)
+            Text(bound: change.relationName)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(change.by == "judge" ? Theme.vermilion : Theme.ink)
-            Text(titleLine(change.b))
+            Text(bound: titleLine(change.b))
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
                 .lineLimit(2)
@@ -141,7 +141,7 @@ struct TidyChangesView: View {
                     .foregroundStyle(Theme.ink)
             }
             HStack(spacing: 12) {
-                Text(byText(change))
+                Text(bound: byText(change))
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                 Spacer()
@@ -162,7 +162,7 @@ struct TidyChangesView: View {
                         Button("Rozdziel na stałe") { separate(change) }
                         Button("Anuluj", role: .cancel) {}
                     } message: {
-                        Text("Oba wrócą jako osobne dzieła i noc nie połączy ich ponownie.")
+                        Text(bound: "Oba wrócą jako osobne dzieła i noc nie połączy ich ponownie.")
                     }
             }
         }
@@ -175,10 +175,10 @@ struct TidyChangesView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 110)
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            Text(caption)
+            Text(bound: caption)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(Theme.inkSoft)
-            Text(Names.source(item.source))
+            Text(bound: Names.source(item.source))
                 .font(.caption2)
                 .foregroundStyle(Theme.inkSoft)
                 .lineLimit(1)

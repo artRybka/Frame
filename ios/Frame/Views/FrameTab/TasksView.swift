@@ -39,7 +39,7 @@ struct TasksSection: View {
             }
             group("Przy studium", "Gdy powstaje studium dzieła, także Studium dnia") {
                 switches(Self.study(settings))
-                Text("Samo studium (strona, kompozycja, detale) nie ma przełącznika: powstaje, gdy go chcesz, i dla Studium dnia.")
+                Text(bound: "Samo studium (strona, kompozycja, detale) nie ma przełącznika: powstaje, gdy go chcesz, i dla Studium dnia.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
@@ -113,7 +113,7 @@ struct TasksSection: View {
         )) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Wykorzystaj resztkę miesiąca")
-                Text("Ile dni i jaki zapas, ustawisz na stronie Claude.")
+                Text(bound: "Ile dni i jaki zapas, ustawisz na stronie Claude.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -344,13 +344,13 @@ private struct TaskSwitchRow: View {
             set: { new in Task { await model.saveAiSettings(row.update(new)) } }
         )) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(row.title)
-                Text(row.hint)
+                Text(bound: row.title)
+                Text(bound: row.hint)
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
                 if !notes.isEmpty {
-                    Text(notes.joined(separator: " · "))
+                    Text(bound: notes.joined(separator: " · "))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(Theme.ink.opacity(0.75))
                         .padding(.top, 1)
@@ -379,7 +379,7 @@ private struct TaskRow: View {
         NavigationLink(value: TaskLink(key: use.key)) {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(use.label)
+                    Text(bound: use.label)
                         .foregroundStyle(running ? Theme.ink : (use.able ? Theme.ink : Theme.inkSoft))
                     HStack(spacing: 4) {
                         TaskChip(text: TasksSection.whenChip(when), strong: when != .off && use.able)
@@ -391,7 +391,7 @@ private struct TaskRow: View {
                     }
                     let line = TasksSection.line(use)
                     if !line.isEmpty {
-                        Text(line)
+                        Text(bound: line)
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(Theme.inkSoft)
                             .fixedSize(horizontal: false, vertical: true)
@@ -419,7 +419,7 @@ struct TaskChip: View {
     var strong = false
 
     var body: some View {
-        Text(text)
+        Text(bound: text)
             .font(.caption2.weight(.semibold))
             .lineLimit(1)
             .padding(.horizontal, 7)
@@ -438,12 +438,12 @@ private struct ServerWorkRow: View {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Prace serwera co noc").foregroundStyle(Theme.ink)
-                    Text("Nowe dzieła z muzeów, pliki, kopie razem, ostrzejsze kopie, Odkrywaj i Propozycje dnia.")
+                    Text(bound: "Nowe dzieła z muzeów, pliki, kopie razem, ostrzejsze kopie, Odkrywaj i Propozycje dnia.")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
                     if let note {
-                        Text(note.text)
+                        Text(bound: note.text)
                             .font(.caption)
                             .foregroundStyle(note.warn ? Theme.warn : Theme.ink.opacity(0.75))
                     }
@@ -481,7 +481,7 @@ private struct BudgetCard: View {
         let free = max(limit - spent - planned - reserve, 0)
         Card {
             HStack(alignment: .firstTextBaseline) {
-                Text(period).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
+                Text(bound: period).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
                 Spacer()
                 Text("limit \(Money.usd(settings.monthlyLimitUsd))")
                     .font(.subheadline)
@@ -513,7 +513,7 @@ private struct BudgetCard: View {
             Divider()
             NavigationLink(value: SettingsPage.ai) {
                 HStack {
-                    Text("Limit, okres, zapas i koszty").foregroundStyle(Theme.ink)
+                    Text(bound: "Limit, okres, zapas i koszty").foregroundStyle(Theme.ink)
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
@@ -537,7 +537,7 @@ private struct BudgetCard: View {
         HStack(spacing: 5) {
             Circle().fill(color).frame(width: 8, height: 8)
                 .overlay(Circle().strokeBorder(Theme.hairline))
-            Text(text)
+            Text(bound: text)
         }
     }
 }
@@ -582,7 +582,7 @@ struct TaskPage: View {
     private func content(_ settings: AiSettings, _ use: LeftoverUse) -> some View {
         let when = use.when ?? (use.on ? .rest : .off)
         Card {
-            Text(use.about)
+            Text(bound: use.about)
                 .font(.subheadline)
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
@@ -630,7 +630,7 @@ struct TaskPage: View {
                         options: amounts(settings.leftoverState?.periodUsdChoices, use.periodUsd),
                         label: { $0 == 0 ? "bez limitu" : TasksSection.amount($0) }
                     ) { new in save(TaskUpdate(periodUsd: new)) }
-                    Text(amountsNote(settings, use))
+                    Text(bound: amountsNote(settings, use))
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
@@ -650,7 +650,7 @@ struct TaskPage: View {
                         }
                         .pickerStyle(.segmented)
                     }
-                    Text(Self.modeNote(use))
+                    Text(bound: Self.modeNote(use))
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
@@ -679,8 +679,8 @@ struct TaskPage: View {
         } label: {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(Self.whenTitle(choice)).foregroundStyle(Theme.ink)
-                    Text(Self.whenHint(choice, settings: settings))
+                    Text(bound: Self.whenTitle(choice)).foregroundStyle(Theme.ink)
+                    Text(bound: Self.whenHint(choice, settings: settings))
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
@@ -702,7 +702,7 @@ struct TaskPage: View {
         label: @escaping (Value) -> String, set: @escaping (Value) -> Void
     ) -> some View {
         HStack {
-            Text(title).foregroundStyle(Theme.ink)
+            Text(bound: title).foregroundStyle(Theme.ink)
             Spacer()
             Menu {
                 Picker(title, selection: Binding(get: { value }, set: set)) {
@@ -710,7 +710,7 @@ struct TaskPage: View {
                 }
             } label: {
                 HStack(spacing: 3) {
-                    Text(label(value))
+                    Text(bound: label(value))
                     Image(systemName: "chevron.up.chevron.down").imageScale(.small)
                 }
                 .font(.subheadline.weight(.medium).monospacedDigit())
@@ -724,8 +724,8 @@ struct TaskPage: View {
 
     private func stat(_ value: String, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(value).font(.headline.monospacedDigit()).foregroundStyle(Theme.ink)
-            Text(label).font(.caption).foregroundStyle(Theme.inkSoft)
+            Text(bound: value).font(.headline.monospacedDigit()).foregroundStyle(Theme.ink)
+            Text(bound: label).font(.caption).foregroundStyle(Theme.inkSoft)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

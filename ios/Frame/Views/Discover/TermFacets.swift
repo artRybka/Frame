@@ -556,7 +556,7 @@ struct TermFacetBar: View {
                         .font(.subheadline.weight(on ? .semibold : .regular))
                         .imageScale(.small)
                 }
-                Text(value ?? facet.title)
+                Text(bound: value ?? facet.title)
                     .font(.subheadline.weight(on ? .semibold : .medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
@@ -643,7 +643,7 @@ struct TermFacetPanel: View {
                 Button("Wyczyść") { withAnimation(.snappy) { tokens.removeAll(where: facet.holds) } }
                     .disabled(!tokens.contains(where: facet.holds))
                 Spacer()
-                Text(facet.title).font(.headline).foregroundStyle(Theme.ink)
+                Text(bound: facet.title).font(.headline).foregroundStyle(Theme.ink)
                 Spacer()
                 Button("Gotowe", action: close).fontWeight(.semibold)
             }
@@ -654,7 +654,7 @@ struct TermFacetPanel: View {
                 VStack(alignment: .leading, spacing: 16) {
                     content
                     if let footnote {
-                        Text(footnote)
+                        Text(bound: footnote)
                             .font(.footnote)
                             .foregroundStyle(Theme.inkSoft)
                             .multilineTextAlignment(facet == .subject ? .center : .leading)
@@ -817,7 +817,7 @@ struct TermFacetPanel: View {
         let words = filter.trimmingCharacters(in: .whitespaces)
         if !words.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Nic takiego w tej grupie.")
+                Text(bound: "Nic takiego w tej grupie.")
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
                 Button {
@@ -961,7 +961,7 @@ struct TermFacetPanel: View {
         let tones = tokens.filter { $0.kind == "color" && ColorTag.level(of: $0.key) == nil }
         return VStack(alignment: .leading, spacing: 16) {
             Picker("Jak", selection: $colourCard) {
-                Text(colours.isEmpty ? "Kolorystyka" : "Kolorystyka · \(Set(colours.map { ColorTag.family($0.key) }).count)")
+                Text(bound: colours.isEmpty ? "Kolorystyka" : "Kolorystyka · \(Set(colours.map { ColorTag.family($0.key) }).count)")
                     .tag(ColourCard.colours)
                 Text(tones.isEmpty ? "Tonacja" : "Tonacja · \(toneGroupsPicked(tones))").tag(ColourCard.tones)
             }
@@ -1034,7 +1034,7 @@ struct TermFacetPanel: View {
                             if choice == level {
                                 Label(choice.name(for: family).capitalized, systemImage: "checkmark")
                             } else {
-                                Text(choice.name(for: family).capitalized)
+                                Text(bound: choice.name(for: family).capitalized)
                             }
                         }
                         .disabled(level == nil && full)
@@ -1207,11 +1207,11 @@ struct PeriodPicker: View {
         let range = Self.range(axis, in: tokens)
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(heading.title)
+                Text(bound: heading.title)
                     .font(.title3.weight(.semibold))
                     .contentTransition(.numericText())
                 if let aside = heading.aside {
-                    Text(aside)
+                    Text(bound: aside)
                         .font(.subheadline.monospacedDigit())
                         .foregroundStyle(Theme.inkSoft)
                         .lineLimit(1)
@@ -1384,7 +1384,7 @@ struct PeriodPicker: View {
         let box: CGFloat = 80
         let alignment: Alignment = leading ? .leading : (trailing ? .trailing : .center)
         let start = leading ? x - Self.bead / 2 : (trailing ? x + Self.bead / 2 - box : x - box / 2)
-        return Text(text)
+        return Text(bound: text)
             .fixedSize()
             .frame(width: box, alignment: alignment)
             .offset(x: start, y: top)
@@ -1509,7 +1509,7 @@ struct PeriodPicker: View {
                         }
                     }
                     .offset(x: place.from - start, y: (Self.rowHeight - height) / 2)
-                Text(period.name)
+                Text(bound: period.name)
                     .font(.system(size: 12, weight: on ? .semibold : .medium))
                     // Outside the years picked: softer, but still easy to read.
                     .foregroundStyle(faded ? Theme.inkSoft : Theme.ink)
@@ -1735,7 +1735,7 @@ struct StyleFrame: View {
                 }
                 .frame(width: 58, height: 72)
                 .padding(.top, 2)
-                Text(StyleArt.label(key, name: name))
+                Text(bound: StyleArt.label(key, name: name))
                     .font(.system(size: 11, weight: picked ? .semibold : .regular))
                     .foregroundStyle(picked ? Theme.ink : Theme.inkSoft)
                     .multilineTextAlignment(.center)
@@ -1851,12 +1851,12 @@ struct LevelSwatch: View {
                 // room to shrink, so "Pomarańcz" is whole, about as large
                 // as its neighbours, and two levels side by side ("wyraźny",
                 // "obecny") stay two words.
-                Text(ColorTag.name(family))
+                Text(bound: ColorTag.name(family))
                     .font(.system(size: 9.5, weight: level != nil ? .semibold : .regular))
                     .foregroundStyle(level != nil ? Theme.ink : Theme.inkSoft)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
-                Text(level?.name(for: family) ?? " ")
+                Text(bound: level?.name(for: family) ?? " ")
                     .font(.system(size: 9.5, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(1)
@@ -1974,7 +1974,7 @@ struct ToneGroup: View {
             // alone (Mateusz: no word for it). A little lower than a
             // colour's name, clear of the track.
             let side = moods.contains(where: picked)
-            Text(ColorTag.toneTitle(moods[0]))
+            Text(bound: ColorTag.toneTitle(moods[0]))
                 .font(.caption2.weight(side ? .semibold : .regular))
                 .foregroundStyle(side ? Theme.ink : Theme.inkSoft)
                 .lineLimit(1)

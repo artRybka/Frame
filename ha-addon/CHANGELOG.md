@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.222
+
+- Teksty w aplikacji i opis na ramce nie zostawiają już jednoliterowych
+  słów (i, w, z, a…) na końcu wiersza; inicjały zostają z nazwiskiem,
+  „1868 r.” i „XIX wieku” się nie rozdzielają, a myślnik nie zaczyna
+  wiersza. Wymaga nowej wersji aplikacji.
+
 ## 1.145.221
 
 - Własne dzieło bez wzornika barw: po kadrowaniu jest teraz strona ze

@@ -272,7 +272,7 @@ struct OwnCamera: View {
             .accessibilityLabel(scan == nil ? "Zamknij" : "Od nowa")
             Spacer()
             if finding == nil, access == .ready || scan != nil {
-                Text("Zdjęcie \(number) z 3")
+                Text(bound: "Zdjęcie \(number) z 3")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)
@@ -357,7 +357,7 @@ struct OwnCamera: View {
     }
 
     private func line(_ text: String) -> some View {
-        Text(text)
+        Text(bound: text)
             .font(.subheadline.weight(.medium))
             .foregroundStyle(.white.opacity(0.85))
             .multilineTextAlignment(.center)
