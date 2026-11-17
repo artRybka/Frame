@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.145.230
+
+- „Podobne do” w Szukaj można zawęzić do tematu albo stylu: pod chipem jest
+  przełącznik „Temat i styl | Temat | Styl”, także przy szukaniu zdjęciem.
+  Temat łapie to, co przedstawia dzieło (Ukrzyżowanie w temperze, grafice
+  i oleju), styl to, jak jest zrobione (technika, pędzel, światło, paleta).
+  Serwer robi każdemu dziełu nowe odciski przez Batch (ok. 30 USD za cały
+  katalog z limitu Gemini, kilka dni). Do tego czasu wszystko działa jak
+  dotąd, a po 95% przełącza się samo; stare odciski zostają na dysku.
+  Playlisty z „Szukaj zdjęciem” sprzed przełączenia trzeba wtedy wyszukać
+  zdjęciem jeszcze raz.
+- Długi tytuł w chipie „Podobne do: …” kończy się wielokropkiem.
+
 ## 1.145.228
 
 - Zadania ułożone według tego, co robią: Katalog, Obraz, Opisy i fakty,
