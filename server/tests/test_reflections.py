@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import cv2
 import numpy as np
+import pytest
 
 from frame_server.imaging import reflections
 from frame_server.imaging.reflections import grown, merge
@@ -521,3 +522,51 @@ def test_views_that_do_not_show_one_flat_work_change_nothing() -> None:
     right = _coded(_from_side(seen(3), 1) * 1.05)
     done = merge(first, [left, right], CORNERS)
     assert done.used == 2 and done.removed == 0 and done.image is first
+
+
+def test_a_side_view_of_a_work_that_is_no_plane_is_laid_on_the_first_place_by_place(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """His small oil on canvas in a floating frame (2026-11-17 16:04 UTC:
+    "czy najpierw nie trzeba dokładnie nanieść poszczególnych zdjęć na
+    siebie a dopiero potem robić dalsze edycje? Tutaj obraz jakby się
+    rozjeżdżał"): one homography left the side views 4 to 7 pixels off
+    the first, 22 at the edges, and every stroke that lay elsewhere was
+    taken for a reflection. A canvas that bulges, seen from the side,
+    lies on the first to a fraction of a pixel all the same."""
+    scene = _scene()
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    # Seen from the side the middle of the canvas stands out of its plane.
+    bulge = 9 * np.exp(-(((xx - 480) / 260) ** 2 + ((yy - 640) / 330) ** 2))
+    bulged = cv2.remap(scene, xx + bulge, yy + 0.4 * bulge, cv2.INTER_CUBIC)
+    photo = _coded(_from_side(bulged, -1))
+    front = _coded(scene)[Y0:Y1, X0:X1]
+    marks = reflections._marks(front)
+
+    def off(view: reflections._View | None) -> np.ndarray:
+        assert view is not None and view.side == -1
+        fine = reflections._fine(reflections._linear(front))
+        said = reflections._off(fine, reflections._fine(view.light), 128)
+        return np.hypot(said[..., 0], said[..., 1])
+
+    settled = off(reflections._lay(front, marks, photo))
+    assert settled.max() < 0.5
+    monkeypatch.setattr(reflections, "SETTLE_TILES", ())
+    assert off(reflections._lay(front, marks, photo)).max() > 3
+
+
+def test_a_square_with_a_reflection_in_it_does_not_say_where_a_side_view_lies() -> None:
+    """A window in the glass has edges of its own, elsewhere in every
+    view: the square it fills says another thing than the squares about
+    it, and a square of bare paper says nothing. Both are told by those
+    about them."""
+    off = np.zeros((9, 7, 3), np.float32)
+    off[..., 0], off[..., 1], off[..., 2] = 2.0, -1.0, 0.9
+    off[4, 3] = (20.0, 15.0, 0.9)  # a window's edge
+    off[1:3, 1:3, 2] = 0.02  # bare paper
+    off[1:3, 1:3, :2] = (-30.0, 40.0)
+    field = reflections._field(off, 64, (320, 256))
+    assert field is not None and field.shape == (2, 320, 256)
+    assert np.abs(field[0] - 2.0).max() < 0.05 and np.abs(field[1] + 1.0).max() < 0.05
+    off[..., 2] = 0.02
+    assert reflections._field(off, 64, (320, 256)) is None

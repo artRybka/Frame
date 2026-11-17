@@ -70,8 +70,9 @@ SCAN_INFO = "scan.json"
 #: scans' photographs after the update (:meth:`OwnWorks.scanned_again`;
 #: Mateusz 2026-11-17 09:30 UTC: "a może być po aktualizacji która
 #: zmieniła sposób łączenia zdjęć?"). A scan that noted none was made
-#: before 1.145.217 (what 1.145.216 does with a lamp's edge is 1).
-MERGING = 1
+#: before 1.145.217 (what 1.145.216 does with a lamp's edge is 1; side
+#: views settled on the first place by place, 1.145.220, is 2).
+MERGING = 2
 #: A work's photograph is a kept scan's when the fine of the two, small
 #: and grey, goes together at least this much (1 is the same picture). Of
 #: his first twelve scans the first photograph and what was made of it

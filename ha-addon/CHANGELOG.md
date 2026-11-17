@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.220
+
+- Skan własnego dzieła: zdjęcia z boku są teraz nakładane na zdjęcie na
+  wprost dokładnie, kawałek po kawałku, a nie jednym przekształceniem
+  całej płaszczyzny. Na małym obrazie olejnym z grubą farbą leżały obok
+  nawet o 22 piksele, przez co kontury wychodziły podwójne, a jasna
+  farba szarzała; teraz zostaje około dziesiątej części piksela. Ostrzej
+  wychodzą też grafiki za szkłem. Skany z ostatnich 14 dni przerobią się
+  same kilka minut po aktualizacji.
+
 ## 1.145.219
 
 - Zadania: „Słowa kluczowe i polskie opisy” to teraz dwa osobne zadania,
