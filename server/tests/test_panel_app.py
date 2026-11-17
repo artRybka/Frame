@@ -1465,6 +1465,10 @@ def test_a_screenshot_ordered_on_battery_is_taken_at_the_next_wake(tmp_path: Pat
     view = service.app.ask_capture(now + timedelta(minutes=1))
     assert view.asked_at and not view.on_charger and view.wake_at == first.wake_at
 
+    # A restart closes the library, which writes what keep_state kept;
+    # without it the second service may read the folder before that writer
+    # thread did, and see no screenshot ordered (CI, 2026-11-17).
+    service.library.close()
     app = _service(tmp_path).app  # the server restarted
     wake = datetime.fromisoformat(first.wake_at)
     assert len(first.wakes_ms) > 1  # a check with nothing new, yet the app is started
