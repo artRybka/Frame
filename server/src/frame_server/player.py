@@ -150,6 +150,9 @@ WIDE_KEY = "wide_originals"
 #: Set once the elongated works' thumbnails thinner than they are made now
 #: were made again or let go (``ImageCache.thin_thumbs_again``, 2026-11-11).
 THIN_THUMBS_KEY = "thin_thumbs"
+#: Set once the thumbnails showing another photograph than the original
+#: kept were made again from it (``ImageCache.thumbs_follow``, 2026-11-17).
+THUMBS_FOLLOW_KEY = "thumbs_follow"
 #: Set once the kept pictures their museums keep cut off (the rest the
 #: decoder's grey) were let go and their works left out of lists
 #: (``ImageCache.cut_off_again``, 2026-11-16).
@@ -1647,7 +1650,9 @@ class Player:
         margins, those cut off by their museums let go, the pictures
         analysed again, the thumbnails of works shown
         from another source's copy made from it, then the elongated works'
-        originals had again larger and their thin thumbnails made again."""
+        originals had again larger and their thin thumbnails made again,
+        and the thumbnails of another photograph than their original made
+        from it."""
         if not self.library.get_state(MARGINS_KEY, False):
             trimmed = self.service.images.trim_kept()
             self.library.set_state(MARGINS_KEY, True)
@@ -1660,6 +1665,11 @@ class Player:
         self.rescore()
         self.contours()
         self.service.sharper.thumbs_again()
+        if not self.library.get_state(THUMBS_FOLLOW_KEY, False):
+            items = self.library.query(include_excluded=True)[1]
+            remade = self.service.images.thumbs_follow(items)
+            self.library.set_state(THUMBS_FOLLOW_KEY, True)
+            log.info("thumbnails: %d made again from an original of another photograph", remade)
         # Network work, a work at a time: in its own thread.
         threading.Thread(target=self._copies_once, name="archive slides", daemon=True).start()
         if not self.library.get_state(WIDE_KEY, False):

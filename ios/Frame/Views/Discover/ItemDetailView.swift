@@ -797,6 +797,14 @@ struct ItemDetailView: View {
                 withAnimation(.easeOut(duration: 0.3)) { item?.heldBy = held }
                 if let key = view.heldAt, !key.isEmpty { item?.heldAt = key }
             }
+            // Its original came as another photograph than its thumbnail
+            // while the server looked (a mirror's, the museum being down):
+            // the card shows it already, the lists' thumbnail follows
+            // (Mateusz 2026-11-17: "A miniatura została stara").
+            if let stamp = view.pictureStamp, !stamp.isEmpty, item?.pictureStamp != stamp {
+                item?.pictureStamp = stamp
+                if view.sharper == nil, let item { model.cardShows(item) }
+            }
             if let copy = view.sharper {
                 item?.sharper = copy
                 // The lists' thumbnail and marks too.

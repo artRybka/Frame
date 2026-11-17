@@ -942,6 +942,8 @@ class Library:
                         "terms": existing.terms,
                         "found_for": found_together(existing.found_for, item.found_for),
                         "sharper": existing.sharper,
+                        # The thumbnail kept stays the one made again.
+                        "picture_stamp": existing.picture_stamp,
                         "holder": item.holder or existing.holder,
                         # Looked up where the museum's answer said none
                         # (frame_server.media): kept when it says none again.

@@ -155,7 +155,11 @@ struct FullPhotoSection: View {
 /// dragged a loupe beside the finger shows it four times larger; on a
 /// strong edge of the photograph (a frame, a sheet) the phone taps and the
 /// corner is pulled the last 2 pt onto it ("Magnes możliwie delikatny.
-/// Raczej stuknięcie haptyki, a przyciągnięcie minimalne."). The same
+/// Raczej stuknięcie haptyki, a przyciągnięcie minimalne."). Later the
+/// same day: a magnet button under the work (on by default, remembered),
+/// the slow-finger precision eased in and out rather than switched, and
+/// ticks of the phone that come faster as the finger slows ("Brakuje
+/// coraz szybszego stukania haptyki gdy przeciąganie zwalnia"). The same
 /// screen cuts his own works' scans (`OwnWorkFlow`).
 struct CutEditor: View {
     /// The photograph the corners are set on: the museum's, or one just
@@ -195,6 +199,14 @@ struct CutEditor: View {
     @State private var finger: CGPoint?
     @State private var fingerAt: Date?
     @State private var speed: CGFloat = 0
+    /// How far the corner moves for a point of the finger now: follows
+    /// `gain(speed)` over a fraction of a second, so precision comes in and
+    /// goes out smoothly.
+    @State private var gainNow: CGFloat = 0.25
+    /// Counts the ticks of a slowing finger: a light tap of the phone each.
+    @State private var slowTicks = 0
+    /// The magnet's button under the work; on unless he turned it off.
+    @AppStorage("cutMagnet") private var magnetOn = true
     /// The corner lies on an edge of the photograph found by `EdgeMap`.
     @State private var onEdge = false
     /// Counts each time the corner meets an edge: a tap of the phone.
@@ -252,6 +264,12 @@ struct CutEditor: View {
     /// never held.
     private static let pull: CGFloat = 2
     private static let fast: CGFloat = 400
+    /// The finger's speeds (pt/s) between which the corner goes from a
+    /// quarter of the finger's movement to all of it.
+    private static let slowest: CGFloat = 30
+    private static let fastest: CGFloat = 480
+    /// Room under the work for the magnet's button.
+    private static let below: CGFloat = 52
     private static let names = ["Lewy górny narożnik", "Prawy górny narożnik", "Prawy dolny narożnik", "Lewy dolny narożnik"]
 
     @ViewBuilder
@@ -339,6 +357,9 @@ struct CutEditor: View {
         }
         .background { Color.clear.paperPage() }
         .sensoryFeedback(.impact(flexibility: .rigid, intensity: 0.55), trigger: edgeTaps)
+        .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.35), trigger: slowTicks)
+        .sensoryFeedback(.selection, trigger: magnetOn)
+        .task(id: grab) { await tickWhileSlow() }
         .toolbar {
             if cancel != nil {
                 ToolbarItem(placement: .confirmationAction) {
@@ -355,6 +376,23 @@ struct CutEditor: View {
             start = initial ?? []
         }
         .task { await findEdges() }
+    }
+
+    /// While a corner is dragged slower than at full speed, a light tick of
+    /// the phone, coming faster the slower the finger: every 0.3 s just
+    /// under full speed, every 0.06 s at a quarter. None while the finger
+    /// rests, nor at full speed.
+    private func tickWhileSlow() async {
+        guard grab != nil else { return }
+        while !Task.isCancelled, grab != nil {
+            let slowness = min(max((1 - gainNow) / 0.75, 0), 1)
+            let interval = 0.3 - 0.24 * Double(slowness)
+            try? await Task.sleep(for: .seconds(interval))
+            guard !Task.isCancelled, grab != nil else { return }
+            if let fingerAt, Date().timeIntervalSince(fingerAt) < 0.12, gainNow < 0.92 {
+                slowTicks += 1
+            }
+        }
     }
 
     /// The photograph's edges for the magnet, from the picture shown.
@@ -401,18 +439,21 @@ struct CutEditor: View {
     }
 
     private func board(in space: CGSize) -> some View {
-        let size = fitted(space)
-        let origin = CGPoint(x: (space.width - size.width) / 2, y: (space.height - size.height) / 2)
+        let room = CGSize(width: space.width, height: max(space.height - Self.below, 0))
+        let size = fitted(room)
+        let origin = CGPoint(x: (room.width - size.width) / 2, y: (room.height - size.height) / 2)
         return ZStack(alignment: .topLeading) {
             photoWithCorners(size)
                 .frame(width: size.width, height: size.height)
                 .offset(x: origin.x, y: origin.y)
             grips(size: size, origin: origin, in: space)
+            magnetButton
+                .position(x: space.width / 2, y: origin.y + size.height + Self.below / 2)
             if let n = grab, let finger {
                 let centre = loupeCentre(finger: finger, in: space)
                 VStack(spacing: 6) {
                     loupe(n, photoSize: size)
-                    if onEdge || gain(speed) < 0.4 {
+                    if onEdge || gainNow < 0.4 {
                         Text(onEdge ? "na krawędzi" : "wolno: ¼")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(Theme.paper)
@@ -429,6 +470,39 @@ struct CutEditor: View {
         }
         .frame(width: space.width, height: space.height, alignment: .topLeading)
         .animation(.easeOut(duration: 0.15), value: grab)
+    }
+
+    /// The magnet on or off, right under the work (Mateusz 2026-11-17:
+    /// „ikonka magnesu. Domyślnie włączona”): ink when on, paper and
+    /// struck through when off.
+    private var magnetButton: some View {
+        Button {
+            magnetOn.toggle()
+            if !magnetOn { onEdge = false }
+        } label: {
+            ZStack {
+                Circle().fill(magnetOn ? Theme.ink : Theme.card)
+                Circle().strokeBorder(magnetOn ? Color.clear : Theme.hairline)
+                Horseshoe()
+                    .stroke(magnetOn ? Theme.paper : Theme.inkSoft, style: StrokeStyle(lineWidth: 3.2, lineCap: .butt))
+                    .frame(width: 18, height: 18)
+                if !magnetOn {
+                    Path { path in
+                        path.move(to: CGPoint(x: 10, y: 26))
+                        path.addLine(to: CGPoint(x: 26, y: 10))
+                    }
+                    .stroke(Theme.inkSoft, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .frame(width: 36, height: 36)
+                }
+            }
+            .frame(width: 36, height: 36)
+            .contentShape(Circle().inset(by: -6))
+            .animation(.easeInOut(duration: 0.15), value: magnetOn)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Magnes krawędzi")
+        .accessibilityValue(magnetOn ? "włączony" : "wyłączony")
+        .accessibilityHint("Przyciąga narożnik do krawędzi zdjęcia.")
     }
 
     /// The loupe's centre: above the finger, as for text in iOS; when that
@@ -483,15 +557,16 @@ struct CutEditor: View {
     }
 
     /// How far the corner moves for each point the finger moves, by the
-    /// finger's speed: a quarter at a slow finger (up to 60 pt/s), all of
-    /// it from 400 pt/s, smoothly between (Mateusz 2026-11-17: „gdy palec
-    /// jedzie wolniej, to celowanie jest dokładniejsze”).
+    /// finger's speed: a quarter at a slow finger (up to `slowest`), all of
+    /// it from `fastest`, along a gentle S between (Mateusz 2026-11-17:
+    /// „gdy palec jedzie wolniej, to celowanie jest dokładniejsze”; then
+    /// „czy mogłaby wchodzić / odbywać się płynniej?”). The corner follows
+    /// it through `gainNow`, never at once.
     private func gain(_ speed: CGFloat) -> CGFloat {
-        let slow: CGFloat = 60
-        guard speed > slow else { return 0.25 }
-        guard speed < Self.fast else { return 1 }
-        let t = (speed - slow) / (Self.fast - slow)
-        return 0.25 + 0.75 * t * t * (3 - 2 * t)
+        guard speed > Self.slowest else { return 0.25 }
+        guard speed < Self.fastest else { return 1 }
+        let t = (speed - Self.slowest) / (Self.fastest - Self.slowest)
+        return 0.25 + 0.75 * t * t * t * (t * (6 * t - 15) + 10)
     }
 
     /// The corners on the photograph to drag: a circle of `reach` around
@@ -516,18 +591,25 @@ struct CutEditor: View {
                             finger = at
                             fingerAt = drag.time
                             speed = 0
+                            gainNow = 0.25
                             onEdge = false
                         }
                         guard let n = grab, raw.count == 2, let last = finger, let lastAt = fingerAt else { return }
                         active = n
                         let dx = drag.location.x - last.x, dy = drag.location.y - last.y
                         guard dx != 0 || dy != 0 else { return }
-                        let dt = max(drag.time.timeIntervalSince(lastAt), 1.0 / 240)
-                        // Smoothed, so one jerky event does not jump the gain.
-                        speed = speed * 0.6 + hypot(dx, dy) / CGFloat(dt) * 0.4
+                        let dt = CGFloat(max(drag.time.timeIntervalSince(lastAt), 1.0 / 240))
+                        // The speed over about the last tenth of a second, and
+                        // the gain after it, slower going down than up: no
+                        // jerky event jumps either, whatever the event rate.
+                        let now = hypot(dx, dy) / dt
+                        speed += (now - speed) * (1 - exp(-dt / 0.08))
+                        let target = gain(speed)
+                        let settle: CGFloat = target < gainNow ? 0.16 : 0.08
+                        gainNow += (target - gainNow) * (1 - exp(-dt / settle))
                         finger = drag.location
                         fingerAt = drag.time
-                        let g = gain(speed)
+                        let g = gainNow
                         raw = Self.rounded(raw[0] + Double(dx * g / size.width), raw[1] + Double(dy * g / size.height))
                         corners[n] = magnet(n, size: size)
                     }
@@ -547,7 +629,7 @@ struct CutEditor: View {
     private func magnet(_ n: Int, size: CGSize) -> [Double] {
         var placed = raw
         var held = false
-        if let edges, speed < Self.fast {
+        if magnetOn, let edges, speed < Self.fast {
             let along = corners[[3, 2, 1, 0][n]]  // the other end of its upright side
             let across = corners[[1, 0, 3, 2][n]]  // the other end of its level side
             if let x = edges.upright(near: raw[0], from: raw[1], toward: along[1], within: Double(Self.pull / size.width)) {
@@ -595,6 +677,27 @@ struct CutEditor: View {
         .clipShape(Circle())
         .overlay(Circle().strokeBorder(Self.mark, lineWidth: 3))
         .shadow(color: .black.opacity(0.3), radius: 8, y: 3)
+    }
+}
+
+/// A horseshoe magnet, poles up: the magnet's button in `CutEditor`.
+private struct Horseshoe: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width, h = rect.height
+        let r = w * 0.32
+        let centre = CGPoint(x: rect.midX, y: rect.minY + h - r - 1.6)
+        let poles = rect.minY + h * 0.22
+        var path = Path()
+        path.move(to: CGPoint(x: centre.x - r, y: poles + 2))
+        path.addLine(to: CGPoint(x: centre.x - r, y: centre.y))
+        path.addArc(center: centre, radius: r, startAngle: .degrees(180), endAngle: .degrees(0), clockwise: true)
+        path.addLine(to: CGPoint(x: centre.x + r, y: poles + 2))
+        // The poles: the ends, apart from the bend by a gap.
+        for x in [centre.x - r, centre.x + r] {
+            path.move(to: CGPoint(x: x, y: rect.minY))
+            path.addLine(to: CGPoint(x: x, y: poles))
+        }
+        return path
     }
 }
 

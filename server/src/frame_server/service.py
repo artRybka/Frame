@@ -51,6 +51,7 @@ from .device import MdcClient, MdcConnectionError, MdcError, wol
 from .drawn import DrawnSheets
 from .holders import Holders
 from .imaging import Palette, RenderSettings, get_palette, render, render_multi
+from .imaging.cut import same_picture
 from .imaging.pipeline import encode_image
 from .kept import KeptOriginals
 from .later import LaterWorks
@@ -276,6 +277,9 @@ class FrameService:
             access=self._access,
         )
         self.importer.fragments = Fragments(settings.data_dir / "fragments.json", museum_client)
+        # An original kept as another photograph than its thumbnail: the
+        # thumbnail made again, and the app told (Item.picture_stamp).
+        self.images.repictured = self._repictured
         self.status = StatusMonitor(self.panel, self.library)
         # The owner's phone hears of the battery, failed sends, new pictures.
         self.notifier = Notifier(settings.data_dir, self.library)
@@ -544,6 +548,27 @@ class FrameService:
     def _drawn_covers(self, item_id: str, view: View) -> bool:
         item = self.library.get(item_id)
         return item is not None and self.drawn.covers(item, view)
+
+    def _repictured(self, item: Item, stamp: str) -> None:
+        """``item``'s thumbnail was made again from its original, another
+        photograph (``ImageCache.thumb_follows``): the stamp the app asks
+        for the thumbnail again by, the colours measured from it, its
+        picture's hash to be worked out again (``library.twins``), and the
+        shape of the photograph when it is another."""
+        stored = self.library.get(item.id)
+        if stored is None:
+            return  # a museum work only looked at: its thumbnail is all
+        changes: dict[str, object] = {"picture_stamp": stamp, "picture_hash": ""}
+        size = self.images.source_size(stored)
+        if size is not None and size[0] > 0 and size[1] > 0:
+            width, height = stored.width, stored.height
+            if not width or not height or not same_picture(width / height, (size[0], size[1])):
+                changes |= {"width": size[0], "height": size[1]}
+        updated = self.library.update(item.id, **changes) or stored
+        try:
+            self.importer.measure_again(updated)
+        except OSError as err:  # a broken thumbnail: the colours from before
+            log.info("colours of %s: %s", item.id, err)
 
     def _access(self) -> Access:
         """What the owner lets art sources return, and their credentials."""
