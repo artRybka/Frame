@@ -213,6 +213,14 @@ struct OwnWorkFlow: View {
                 // No key, or Opus could not: he sets the corners himself.
                 if let looked = await sending.looked() { sent = looked }
                 incoming = sent
+                // A colour chart beside the work: the server set the
+                // photograph's colours by it, and that photograph is the
+                // one shown from here on ("Kadr", "Na wprost", the header).
+                if sent.chart != nil,
+                   let data = try? await model.backend.ownPhoto(token: sent.token, side: Int(OwnPicture.shownSide)),
+                   let trued = UIImage(data: data) {
+                    photo = trued
+                }
                 // Where the model has no answer for a rectangle, the one the
                 // camera followed (Mateusz 2026-11-16: "czy to potrzebne
                 // skoro mamy już dane z iPhone?"): a start nearer than the
@@ -255,8 +263,9 @@ struct OwnWorkFlow: View {
             return "To dzieło nie jest prostokątem, więc zostaje całe zdjęcie. Możesz je przyciąć sam."
         }
         if awaited { return "Jeszcze chwila: kończę łączyć trzy zdjęcia i usuwać odblaski…" }
-        let glare = merged != nil ? "Odblaski usunięte z trzech zdjęć. "
-            : merging != nil && !mergeEnded ? "W tle łączę trzy zdjęcia i usuwam odblaski. " : ""
+        let chart = incoming?.chart != nil ? "Barwy ustawione według wzornika. " : ""
+        let glare = chart + (merged != nil ? "Odblaski usunięte z trzech zdjęć. "
+            : merging != nil && !mergeEnded ? "W tle łączę trzy zdjęcia i usuwam odblaski. " : "")
         if foundByCamera { return glare + "Zaznaczyłem to, co widział aparat. Popraw narożniki, jeśli trzeba." }
         if found != nil { return glare + "Rama wycięta. Popraw narożniki, jeśli trzeba." }
         return glare + "Nie znalazłem dzieła na zdjęciu. Ustaw narożniki sam."

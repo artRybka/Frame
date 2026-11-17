@@ -41,6 +41,7 @@ from .library.repo import now_iso
 if TYPE_CHECKING:
     from .ai.client import Claude
     from .ai.crops import Crops
+    from .imaging.colorchecker import Chart
     from .library import Library
     from .library.images import ImageCache
     from .library.importer import Importer
@@ -64,6 +65,9 @@ SCANS_SECONDS = 14 * 24 * 3600
 SCAN_INFO = "scan.json"
 #: Beside a waiting photograph: the work Opus found in it.
 FOUND = ".found.json"
+#: Beside a waiting photograph: the colour chart found in it and the way
+#: back to true colours it gave (:mod:`.imaging.colorchecker`).
+CHART = ".chart.json"
 #: A scan's file as :meth:`OwnWorks.merge` names it.
 _SCAN_FILE = re.compile(r"^(first|side[1-9])\.jpg$")
 #: The side the photograph is looked at for the work's corners and hints:
@@ -126,6 +130,9 @@ class Incoming(BaseModel):
     #: The work's outline as Opus saw it ("rectangle", "round",
     #: "irregular"; "" when not asked): only a rectangle is cut.
     shape: str = ""
+    #: The colour chart photographed beside the work (its corners), by
+    #: which the photograph's colours were set; None when there was none.
+    chart: Quad | None = None
 
 
 class Merged(Incoming):
@@ -207,8 +214,57 @@ class OwnWorks:
             raise ValueError("no picture") from err
         img.thumbnail((INCOMING_SIDE, INCOMING_SIDE), Image.Resampling.LANCZOS)
         token = secrets.token_hex(12)
-        img.save(self.incoming / f"{token}.jpg", "JPEG", quality=INCOMING_QUALITY)
-        return Incoming(token=token, width=img.width, height=img.height)
+        path = self.incoming / f"{token}.jpg"
+        chart = self._chart(img)
+        if chart is not None:
+            img = self._true(img, chart)
+            path.with_suffix(CHART).write_text(json.dumps(chart.to_json()))
+            log.info(
+                "own photograph %s: colours set by its chart (off %.3f, now %.3f)",
+                token,
+                chart.off,
+                chart.left,
+            )
+        img.save(path, "JPEG", quality=INCOMING_QUALITY)
+        return Incoming(
+            token=token,
+            width=img.width,
+            height=img.height,
+            chart=list(chart.corners) if chart is not None else None,
+        )
+
+    @staticmethod
+    def _chart(img: Image.Image) -> Chart | None:
+        """A ColorChecker photographed beside the work (Mateusz 2026-11-16
+        22:25 UTC: "dodajmy obsługę. Oczywiście nie jako obowiązkową, ale
+        opcjonalna"), with the way back to true colours it gives."""
+        import numpy as np
+
+        from .imaging import colorchecker
+
+        try:
+            return colorchecker.find(np.asarray(img))
+        except (ValueError, ArithmeticError) as err:  # numpy's LinAlgError is a ValueError
+            log.warning("colour chart not read: %s", err)
+            return None
+
+    @staticmethod
+    def _true(img: Image.Image, chart: Chart) -> Image.Image:
+        """``img`` in the colours its chart gives it."""
+        import numpy as np
+
+        from .imaging import colorchecker
+
+        return Image.fromarray(colorchecker.apply(np.asarray(img), chart))
+
+    def _charted(self, token: str) -> Chart | None:
+        """The chart found in the waiting photograph, if one was."""
+        from .imaging.colorchecker import Chart
+
+        try:
+            return Chart.from_json(json.loads(self.path(token).with_suffix(CHART).read_text()))
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
 
     def shown(self, token: str, side: int | None = None) -> Path | bytes:
         """The photograph as it waits, for the phone to set the corners
@@ -239,6 +295,10 @@ class OwnWorks:
         except OSError as err:
             raise ValueError("no picture") from err
         img.thumbnail((INCOMING_SIDE, INCOMING_SIDE), Image.Resampling.LANCZOS)
+        # In the first one's colours: its chart is in the same light.
+        chart = self._charted(token)
+        if chart is not None:
+            img = self._true(img, chart)
         img.save(
             self.incoming / f"{token}-side{len(taken) + 1}.jpg", "JPEG", quality=INCOMING_QUALITY
         )
@@ -266,6 +326,9 @@ class OwnWorks:
         sides = sorted(self.incoming.glob(f"{token}-side*.jpg"))
         with Image.open(path) as img:
             seen = Merged(token=token, width=img.width, height=img.height)
+        chart = self._charted(token)
+        if chart is not None:
+            seen.chart = list(chart.corners)
         if not sides:
             return seen
         quad = valid(corners) if corners is not None else None
@@ -391,6 +454,8 @@ class OwnWorks:
             "width": seen.width,
             "height": seen.height,
             "corners": seen.corners,
+            # The photographs kept are in the chart's colours already.
+            "chart": chart.to_json() if (chart := self._charted(token)) is not None else None,
         }
         try:
             (self.scans / token / SCAN_INFO).write_text(json.dumps(info))
@@ -436,8 +501,14 @@ class OwnWorks:
             return Incoming.model_validate_json(known.read_text())
         except (OSError, ValueError):
             pass
+        chart = self._charted(token)
         with Image.open(path) as img:
-            seen = Incoming(token=token, width=img.width, height=img.height)
+            seen = Incoming(
+                token=token,
+                width=img.width,
+                height=img.height,
+                chart=list(chart.corners) if chart is not None else None,
+            )
             img.draft("RGB", (LOOK_SIDE, LOOK_SIDE))
             img.load()
             found = self.crops.home_corners(img)
@@ -571,6 +642,7 @@ class OwnWorks:
         """The waiting photograph and what was found in it, gone."""
         path.unlink(missing_ok=True)
         path.with_suffix(FOUND).unlink(missing_ok=True)
+        path.with_suffix(CHART).unlink(missing_ok=True)
 
     @staticmethod
     def _check(item: Item) -> None:
