@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.225
+
+- „Popraw kadr”: przełącznik „Dzieło / Rama”. W „Rama” ustawiasz narożniki
+  zewnętrznej krawędzi ramy albo passe-partout, a „W ramie” w karcie
+  pokazuje zdjęcie przycięte tak, jak je ustawiłeś. Twoja rama zostaje
+  także po ponownym kadrowaniu dzieła; samo przesunięcie ramy nie zmienia
+  obrazu na ramce ani barw.
+
 ## 1.145.224
 
 - Karta dzieła: obok „Oryginał / Na ramce” okrągły przycisk z ikoną ramy,

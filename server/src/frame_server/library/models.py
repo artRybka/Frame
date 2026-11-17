@@ -281,6 +281,10 @@ class Cut(BaseModel):
     surround: list[tuple[float, float]] | None = None
     #: What :attr:`surround` is: "frame" or "mount" ("" without one).
     surround_kind: str = ""
+    #: "auto" (the model) or "owner": his frame's edge in "Popraw kadr"
+    #: (Mateusz 2026-11-17, „Tak, drugie narożniki dla ramy”), never
+    #: changed by the model again, also when the work is cut anew.
+    surround_by: Literal["auto", "owner"] = "auto"
     #: Whether Opus was asked for :attr:`surround` (cuts set before
     #: 1.145.224 were not: asked once, ``Crops.surrounded``).
     surround_asked: bool = False
