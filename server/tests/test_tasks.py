@@ -31,13 +31,15 @@ def test_a_task_is_as_it_was_until_the_owner_sets_it(tmp_path: Path) -> None:
     _, svc, _ = _claude(tmp_path)
     store = svc.ai_config
     assert task(store.config, TEXTS).when == "rest"
-    assert task(store.config, "audit").when == "off"  # off until he says
+    # the audit's portion every night, more at the period's end only when he says
+    audit = task(store.config, "audit")
+    assert audit.when == "night" and audit.more_at_end is False
     set_task(store, "audit", TaskUpdate(when="night", a_night=500))
     set_task(store, TEXTS, TaskUpdate(when="off", a_night=2000, night_usd=5))
     config = store.config
     assert task(config, "audit").when == "night" and task(config, "audit").a_night == 500
     # the older switches kept in step
-    assert config.leftover_off == [TEXTS]
+    assert config.leftover_off == [TEXTS, "audit"]
     assert dict(leftover_module.uses(config))[TEXTS] is False
     # 0 is "no limit of its own"
     set_task(store, TEXTS, TaskUpdate(night_usd=0))
@@ -100,10 +102,11 @@ def test_a_task_set_for_every_night_runs_outside_the_last_days(tmp_path: Path) -
     set_task(store, CROPS, TaskUpdate(when="night"))
     _, said = svc.leftover.at_night()
     # the refresh waits for the period's last days; the texts take their
-    # night's amount, the crops what the limit leaves
-    assert [c[0] for c in calls] == [CROPS, TEXTS]
-    assert dict(calls)[TEXTS] == 5.0 and dict(calls)[CROPS] == 170.0
-    assert "słowa kluczowe katalogu: 500" in said and "kadrowanie: 540" in said
+    # night's amount; the crops every night are their own portion (the rest
+    # only adds to it in the last days)
+    assert [c[0] for c in calls] == [TEXTS]
+    assert dict(calls)[TEXTS] == 5.0
+    assert "słowa kluczowe katalogu: 500" in said and "kadrowanie" not in said
     # not on demand only, nor off
     set_task(store, TEXTS, TaskUpdate(when="demand"))
     set_task(store, CROPS, TaskUpdate(when="off"))
@@ -197,3 +200,63 @@ def test_the_app_sets_a_task(tmp_path: Path) -> None:
         assert (
             client.put("/api/ai/tasks/x", json={"when": "soon"}, headers=headers).status_code == 422
         )
+
+
+def test_each_task_is_what_it_does_with_every_when_it_can_have(tmp_path: Path) -> None:
+    """Mateusz 2026-11-17: "Dlaczego nie wszędzie pełen pakiet opcji? …
+    nazwy określające nie to kiedy coś się odbywa, tylko co robi"; "„Nocny
+    przegląd” chyba trzeba połączyć z „Większy nocny przegląd”"; "Przegląd
+    zapisanych opisów - czy to nie powielenie…". The crops and the audit
+    are one task each with their night's portion; the gatekeeper and the
+    judge of copies are the catalogue's tidying; the saved texts' review is
+    the Polish texts'."""
+    _, svc, _ = _claude(tmp_path)
+    store = svc.ai_config
+    assert "text_review" not in leftover_module.USES
+    assert leftover_module.whens("studies") == ["rest", "night", "off"]
+    assert leftover_module.whens("audit") == ["rest", "night", "demand", "off"]
+    with pytest.raises(ValueError, match="pory"):
+        set_task(store, STUDIES, TaskUpdate(when="demand"))
+
+    # the crops: in the period's last days only, its switch still on, the
+    # night's own portion none but for a run he starts
+    set_task(store, CROPS, TaskUpdate(when="rest"))
+    assert store.config.crops is True and store.task_when(CROPS) == "rest"
+    assert svc.crops.own_limit(False) == 0
+    svc.crops.asked_now = True
+    assert svc.crops.own_limit(False) == svc.crops.base_limit(False)
+    svc.crops.asked_now = False
+    # every night, and more at the end: the rest goes on it in the last days
+    set_task(store, CROPS, TaskUpdate(when="night", more_at_end=True))
+    assert svc.crops.own_limit(False) == svc.crops.base_limit(False)
+    assert leftover_module.rest_when(store.config, CROPS) == "rest"
+    set_task(store, CROPS, TaskUpdate(more_at_end=False))
+    assert leftover_module.rest_when(store.config, CROPS) == "off"
+    set_task(store, CROPS, TaskUpdate(when="off"))
+    assert store.config.crops is False
+    with pytest.raises(ValueError, match="porcji"):
+        set_task(store, STUDIES, TaskUpdate(more_at_end=True))
+
+    # the catalogue's tidying: every night, when asked, or off, its two
+    # switches what it covers
+    assert task(store.config, "tidy").when == "night"
+    set_task(store, "tidy", TaskUpdate(when="demand"))
+    assert store.config.gatekeeper and store.config.twins_judge
+    assert svc.gatekeeper.own_limit(False) == 0
+    assert svc.twins_judge.asked_only("tidy")
+    svc.twins_judge.asked_now = True
+    assert not svc.twins_judge.asked_only("tidy")
+    svc.twins_judge.asked_now = False
+    set_task(store, "tidy", TaskUpdate(when="off"))
+    assert not store.config.gatekeeper and not store.config.twins_judge
+    set_task(store, "tidy", TaskUpdate(when="night"))
+    assert store.config.gatekeeper and store.config.twins_judge
+    assert svc.gatekeeper.own_limit(False) == svc.gatekeeper.base_limit(False)
+    with pytest.raises(ValueError, match="takiej pory"):
+        set_task(store, "tidy", TaskUpdate(when="rest"))
+
+    view = {u["key"]: u for u in svc.leftover.uses_view()}
+    assert view["tidy"]["whens"] == ["night", "demand", "off"]
+    assert view["tidy"]["night_tasks"] == ["gatekeeper", "twins judge"]
+    assert view["audit"]["night_tasks"] == ["audit"] and view["audit"]["more_at_end"] is False
+    assert view[CROPS]["modes"] == ["batch", "normal"] and view[STUDIES]["modes"] == ["batch"]

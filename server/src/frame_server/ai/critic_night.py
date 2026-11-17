@@ -29,6 +29,10 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+#: The task in Zadania each switch's work is (``leftover``): the gatekeeper
+#: is the catalogue's tidying with the judge of copies.
+TASKS = {"gatekeeper": "tidy", "audit": "audit", "crops": "crops"}
+
 #: The rank of a work nobody cares about (``cared``).
 REST = 2
 #: Works remembered as asked, the newest.
@@ -154,11 +158,17 @@ class CriticNight(CheckedNight):
         state[EXTRA] = {"judge": judge, "critic": critic, "until": until.isoformat()}
         self._save(state)
 
+    def own_limit(self, critic: bool) -> int:
+        """The night's own portion: none when the owner has the task run
+        only in the month's last days or when he asks (Zadania), but for a
+        run he started."""
+        return 0 if self.asked_only(TASKS.get(self.switch)) else self.base_limit(critic)
+
     def limit(self, critic: bool) -> int:
-        return self.base_limit(critic) + self.extra(critic)
+        return self.own_limit(critic) + self.extra(critic)
 
     def _extra_used(self, critic: bool, asked: int) -> None:
-        over = asked - self.base_limit(critic)
+        over = asked - self.own_limit(critic)
         if over <= 0:
             return
         state = self.state()

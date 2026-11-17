@@ -249,7 +249,7 @@ private struct NightTaskRows: View {
 }
 
 /// What runs now: the task, how far along, and a way to stop it.
-private struct RunningCard: View {
+struct RunningCard: View {
     @Environment(AppModel.self) private var model
     let night: NightTasks
     let running: NightTasks.Running

@@ -112,22 +112,40 @@ REFRESH, CROPS, REVIEW, STUDIES, KEYWORDS, POLISH, AUDIT = (
     "pl_text",
     "audit",
 )
-USES = (REFRESH, CROPS, REVIEW, STUDIES, KEYWORDS, POLISH, AUDIT)
+#: The saved texts' review is the Polish texts' since 2026-11-17 (Mateusz:
+#: "Przegląd zapisanych opisów - czy to nie powielenie nocnego przeglądu i
+#: częściowo zaszłość?"): the works without a text first, then the older
+#: texts written anew.
+USES = (REFRESH, CROPS, STUDIES, KEYWORDS, POLISH, AUDIT)
+#: Tasks that are also the night's own portion, its switch in ``AiConfig``
+#: (Mateusz 2026-11-17: "„Nocny przegląd” chyba trzeba połączyć z „Większy
+#: nocny przegląd”"): every night the switch's portion, and in the period's
+#: last days more from the rest when the owner wants it (``more_at_end``).
+BASE = {CROPS: "crops", AUDIT: "audit"}
+#: The catalogue's tidying (Mateusz 2026-11-17, "Porządki katalogu"): the
+#: gatekeeper and the judge of copies, each its switch in ``AiConfig``, run
+#: every night, only when the owner asks, or not at all; nothing of the
+#: rest goes on them.
+TIDY = "tidy"
+TIDY_SWITCHES = ("gatekeeper", "twins_judge")
+#: Every task Zadania lists.
+TASKS = (TIDY, *USES)
+#: The night's tasks a task's "Uruchom teraz" starts when it has no run of
+#: its own on demand (``on_demand``): through the Batch API, as at night.
+NIGHT_TASKS = {TIDY: ["gatekeeper", "twins judge"], AUDIT: ["audit"]}
 #: The catalogue's keywords and its Polish texts, each a task of its own
 #: since Mateusz 2026-11-17 ("czy to nie dwa, odrębne procesy?"); the use
 #: they were one of before, whose settings and place both take on.
 TEXTS = (KEYWORDS, POLISH)
 OLD_TEXTS = "descriptions"
-#: Off unless the owner switches it on: it lengthens his own list.
-OFF = (AUDIT,)
 LABELS = {
     REFRESH: (
-        "Uzupełnienie wcześniejszych studiów",
+        "Uzupełnienie studiów",
         "Fakty z sieci do studiów sprzed nich; tekst przepisany tam, gdzie wnoszą dużo.",
     ),
     CROPS: (
-        "Więcej kadrowania",
-        "Ponad zwykłą porcję nocy: więcej dzieł bez ramy, sztalugi i tektury wokół, "
+        "Kadrowanie",
+        "Zdjęcia z muzeów przycięte do samego dzieła, bez ramy, sztalugi i tektury wokół, "
         "najpierw Ulubione i playlisty.",
     ),
     REVIEW: (
@@ -139,18 +157,23 @@ LABELS = {
         "Dzieła typowane przez kuratora Studium dnia, najpierw z Ulubionych i playlist.",
     ),
     KEYWORDS: (
-        "Słowa kluczowe katalogu",
+        "Słowa kluczowe",
         "Dzieła katalogu, które ich jeszcze nie mają, najpierw Ulubione i playlisty. "
         "Po nich szukają Szukaj i inteligentne playlisty.",
     ),
     POLISH: (
-        "Polskie opisy katalogu",
+        "Polskie opisy",
         "Polski tytuł i opis dzieł katalogu, które ich jeszcze nie mają, "
-        "najpierw Ulubione i playlisty.",
+        "najpierw Ulubione i playlisty; potem starsze teksty pisane od nowa.",
     ),
     AUDIT: (
-        "Większy nocny przegląd",
-        "Więcej dzieł na noc; lista „Do sprawdzenia” dla Ciebie się wydłuży.",
+        "Przegląd dzieł",
+        "Losowe dzieła: tytuł, data, opis i obraz; co nie pasuje, trafia do „Do sprawdzenia”.",
+    ),
+    TIDY: (
+        "Porządki katalogu",
+        "Strażnik odkłada znaczki, strony z tekstem i zdjęcia sal, które przyszły jako dzieła; "
+        "sędzia rozstrzyga, czy dwa podobne obrazy to kopia, detal czy to samo dzieło.",
     ),
 }
 #: How the night's summary names them.
@@ -209,7 +232,17 @@ NORMAL = (*TEXTS, CROPS)
 
 def task(config: AiConfig, key: str) -> TaskSettings:
     """``key``'s settings, its ``when`` filled in: off when the owner's
-    older list has it off, else the period's last days."""
+    older list has it off, else the period's last days. A task with the
+    night's own portion is every night while its switch is on
+    (:data:`BASE`); the catalogue's tidying as its switches."""
+    if key == TIDY:
+        return _tidy(config)
+    if key in BASE:
+        return _with_base(config, key)
+    return _kept(config, key)
+
+
+def _kept(config: AiConfig, key: str) -> TaskSettings:
     kept = config.tasks.get(key)
     off = key in config.leftover_off
     if kept is None and key in TEXTS:
@@ -222,13 +255,81 @@ def task(config: AiConfig, key: str) -> TaskSettings:
     return kept.model_copy(update={"when": NEVER if off else IN_REST})
 
 
+def _tidy(config: AiConfig) -> TaskSettings:
+    """The gatekeeper and the judge: off while both switches are off, else
+    as the owner set it here (every night unless he chose "when asked")."""
+    on = any(getattr(config, switch) for switch in TIDY_SWITCHES)
+    kept = config.tasks.get(TIDY)
+    if not on:
+        return TaskSettings(when=NEVER)
+    if kept is not None and kept.when == ONLY_ASKED:
+        return TaskSettings(when=ONLY_ASKED)
+    return TaskSettings(when=EVERY_NIGHT)
+
+
+def _with_base(config: AiConfig, key: str) -> TaskSettings:
+    """A task with the night's own portion as one: its switch (off or not),
+    when its portion runs, and its use of the rest (``more_at_end``).
+    Settings kept before they were one are read so: the switch on is every
+    night, more at the end when the rest's use was on."""
+    kept = _kept(config, key)
+    base = bool(getattr(config, BASE[key]))
+    if kept.more_at_end is None:  # the switch and the rest's use apart
+        more = kept.when in (IN_REST, EVERY_NIGHT)
+        return kept.model_copy(update={"when": EVERY_NIGHT if base else NEVER, "more_at_end": more})
+    if not base and kept.when != NEVER:  # switched off elsewhere
+        return kept.model_copy(update={"when": NEVER})
+    if base and kept.when == NEVER:  # switched on elsewhere
+        return kept.model_copy(update={"when": EVERY_NIGHT})
+    return kept
+
+
+def rest_when(config: AiConfig, key: str) -> str:
+    """When the rest may go on ``key``: a task with the night's own portion
+    every night takes from it only in the period's last days, if the owner
+    wants more then."""
+    settings = task(config, key)
+    when = settings.when or IN_REST
+    if key in BASE and when == EVERY_NIGHT:
+        return IN_REST if settings.more_at_end else NEVER
+    return when
+
+
+def whens(key: str) -> list[str]:
+    """What the owner may choose for ``key``: "when asked" only for what
+    can be run now (on demand, or the night's own tasks)."""
+    if key == TIDY:
+        return [EVERY_NIGHT, ONLY_ASKED, NEVER]
+    if key in NORMAL or key in NIGHT_TASKS:
+        return list(WHENS)
+    return [IN_REST, EVERY_NIGHT, NEVER]
+
+
 def set_task(store: AiConfigStore, key: str, update: TaskUpdate) -> TaskSettings:
     """The owner's change of ``key``; raises ValueError for what it cannot
-    be. The older list of those off is kept in step (``leftover_off``)."""
-    if key not in USES:
+    be. The older list of those off is kept in step (``leftover_off``), and
+    the switches of what is one with its task (``BASE``, ``TIDY``)."""
+    if key not in TASKS:
         raise ValueError("Nie ma takiego zadania.")
     config = store.config
     changes = update.model_dump(exclude_none=True)
+    if changes.get("when") is not None and changes["when"] not in whens(key):
+        raise ValueError("To zadanie nie ma takiej pory.")
+    if key == TIDY:
+        if set(changes) - {"when"}:
+            raise ValueError("Porządki katalogu mają tylko porę.")
+        when = changes.get("when", task(config, key).when)
+        tasks = dict(config.tasks)
+        tasks[TIDY] = TaskSettings(when=when)
+        switches = {s: bool(getattr(config, s)) for s in TIDY_SWITCHES}
+        if when == NEVER:
+            switches = dict.fromkeys(TIDY_SWITCHES, False)
+        elif not any(switches.values()):
+            switches = dict.fromkeys(TIDY_SWITCHES, True)
+        store.set_tasks(tasks, **switches)
+        return task(store.config, key)
+    if "more_at_end" in changes and key not in BASE:
+        raise ValueError("To zadanie nie ma nocnej porcji.")
     for name in ("a_night", "night_usd", "period_usd"):
         if name in changes and not changes[name]:
             changes[name] = None  # 0: no limit of its own
@@ -249,9 +350,17 @@ def set_task(store: AiConfigStore, key: str, update: TaskUpdate) -> TaskSettings
             at = order.index(OLD_TEXTS)
             order[at : at + 1] = [k for k in TEXTS if k not in order]
         also["leftover_order"] = order
+    if key in BASE:
+        # one with its switch: on unless off; when its portion runs is the
+        # night's job's to ask (``AiConfigStore.task_when``)
+        if settings.more_at_end is None:
+            settings = settings.model_copy(update={"more_at_end": True})
+        also[BASE[key]] = settings.when != NEVER
     tasks[key] = settings
-    also["leftover_off"] = [k for k in USES if (tasks.get(k) or task(config, k)).when == NEVER]
     store.set_tasks(tasks, **also)
+    config = store.config
+    off = [k for k in USES if rest_when(config, k) == NEVER]
+    store.set_tasks(dict(config.tasks), leftover_off=off)
     return settings
 
 
@@ -269,7 +378,7 @@ def uses(config: AiConfig) -> list[tuple[str, bool]]:
             # after the one before it in USES, or first
             before = [k for k in USES[:n] if k in order]
             order.insert(order.index(before[-1]) + 1 if before else 0, key)
-    return [(key, task(config, key).when in (IN_REST, EVERY_NIGHT)) for key in order]
+    return [(key, rest_when(config, key) in (IN_REST, EVERY_NIGHT)) for key in order]
 
 
 @dataclass
@@ -495,10 +604,10 @@ class Leftover:
         opens, closes, _ = self.window()
         window = bool(config.leftover) and opens <= now < closes
         planned = [
-            (use, task(config, use.key))
+            (use, task(config, use.key), rest_when(config, use.key))
             for use, _ in self._uses()
-            if task(config, use.key).when == EVERY_NIGHT
-            or (window and task(config, use.key).when == IN_REST)
+            if rest_when(config, use.key) == EVERY_NIGHT
+            or (window and rest_when(config, use.key) == IN_REST)
         ]
         if not planned:
             if not config.leftover:
@@ -519,7 +628,7 @@ class Leftover:
         self._studied = 0
         parts: list[str] = []
         done_by: dict[str, tuple[int, float]] = {}
-        for use, settings in planned:
+        for use, settings, when in planned:
             if not use.able():
                 continue
             if self.on_demand is not None and self.on_demand.running(use.key):
@@ -546,7 +655,7 @@ class Leftover:
                     parts.append(f"zamówione {studies(done)}, ok. {usd:.2f} USD")
                 else:
                     parts.append(f"{SHORT[use.key]}: {done}, ok. {usd:.2f} USD")
-            if more and use.cap and nights and settings.when == IN_REST:
+            if more and use.cap and nights and when == IN_REST:
                 # what this use will want on the window's coming nights
                 waiting = use.waiting()
                 left = use.cap * nights if waiting is None else max(waiting - done, 0)
@@ -662,22 +771,6 @@ class Leftover:
                     cap=self._cap(CROPS, CROPS_A_NIGHT),
                 )
             )
-        if review is not None:
-
-            def review_run(usd: float) -> tuple[int, float, bool]:
-                waiting, _ = review.waiting()
-                n, cost = review.order(usd, self._cared_ids)
-                return n, cost, n < waiting
-
-            found.append(
-                Use(
-                    REVIEW,
-                    review_module.check_usd(review_module.CHECK_NOTE_SHARE),
-                    lambda: review.waiting()[0],
-                    lambda: config.enabled("pl_text"),
-                    review_run,
-                )
-            )
         found.append(
             Use(
                 STUDIES,
@@ -691,13 +784,19 @@ class Leftover:
         for text in TEXTS:
             if text not in self.ai.jobs:
                 continue
+            waiting: Callable[[], int | None] = partial(self._texts_waiting, text)
+            run: Callable[[float], tuple[int, float, bool]] = partial(self._order_texts, text)
+            if text == POLISH and review is not None:
+                # the older texts looked over after the works without one
+                waiting = partial(self._polish_waiting, review)
+                run = partial(self._polish_run, review)
             found.append(
                 Use(
                     text,
                     self._text_usd(text),
-                    partial(self._texts_waiting, text),
+                    waiting,
                     partial(config.enabled, text),
-                    partial(self._order_texts, text),
+                    run,
                     cap=self._cap(text, config.config.leftover_texts_a_night),
                     caps=TEXTS_A_NIGHT_OPTIONS,
                 )
@@ -768,6 +867,24 @@ class Leftover:
         _, works = self.ai.order_rest((kind,), usd, self._cared_first, cap)
         self._texts_kept = None
         return works, max(self.ai.batched_usd((kind,)) - before, 0.0), works >= cap
+
+    def _polish_run(self, review: TextReview, usd: float) -> tuple[int, float, bool]:
+        """The Polish texts: the works without one first; with what is left,
+        the older texts looked over and written anew (``ai.text_review``)."""
+        n, cost, more = self._order_texts(POLISH, usd)
+        rest = usd - cost
+        if more or rest <= 0:
+            return n, cost, more
+        waiting, _ = review.waiting()
+        if not waiting:
+            return n, cost, False
+        m, spent = review.order(rest, self._cared_ids)
+        return n + m, cost + spent, m < waiting
+
+    def _polish_waiting(self, review: TextReview) -> int | None:
+        """The works without a Polish text and the older texts to look over."""
+        texts = self._texts_waiting(POLISH)
+        return None if texts is None else texts + review.waiting()[0]
 
     def _texts_waiting(self, kind: str) -> int | None:
         found = self._texts_estimate()
@@ -960,7 +1077,7 @@ class Leftover:
         state = state or self._state()
         tally = state.get("tally") or {}
         config = self.config.config
-        out = []
+        out = [self._tidy_view()]
         for use, on in self._uses():
             settings = task(config, use.key)
             label, about = LABELS[use.key]
@@ -971,6 +1088,8 @@ class Leftover:
                 waiting = None
             if use.key == STUDIES:
                 waiting = len(self.daily.runners_up()) or None
+            if use.key == REFRESH and waiting == 0:
+                continue  # every study has its facts now: shown when one waits
             count, spent = tally.get(use.key) or (0, 0.0)
             # what a night takes of it (the whole that waits is no night's)
             tonight = None if use.cap is None or waiting is None else min(waiting, use.cap)
@@ -998,6 +1117,34 @@ class Leftover:
                     "mode": settings.mode if use.key in NORMAL else "batch",
                     "modes": ["batch", "normal"] if use.key in NORMAL else ["batch"],
                     "period_spent_usd": round(self.period_spent(use.key), 2),
+                    "whens": whens(use.key),
+                    "more_at_end": settings.more_at_end if use.key in BASE else None,
+                    "night_tasks": NIGHT_TASKS.get(use.key),
                 }
             )
         return out
+
+    def _tidy_view(self) -> dict[str, Any]:
+        """The catalogue's tidying as a task: every night, when asked, or
+        off; what it covers are its two switches."""
+        config = self.config.config
+        label, about = LABELS[TIDY]
+        when = task(config, TIDY).when
+        return {
+            "key": TIDY,
+            "label": label,
+            "about": about,
+            "on": when != NEVER,
+            "able": bool(self.config.api_key),
+            "waiting": None,
+            "each_usd": 0.0,
+            "waiting_usd": None,
+            "a_night": None,
+            "done": 0,
+            "done_usd": 0.0,
+            "when": when,
+            "mode": "batch",
+            "modes": ["batch"],
+            "whens": whens(TIDY),
+            "night_tasks": NIGHT_TASKS[TIDY],
+        }

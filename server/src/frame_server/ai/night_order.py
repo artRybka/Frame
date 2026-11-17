@@ -19,6 +19,7 @@ from .client import AiUnavailable
 if TYPE_CHECKING:
     from ..night import Night
     from .client import Claude
+    from .config import AiConfigStore
 
 log = logging.getLogger(__name__)
 
@@ -87,8 +88,18 @@ class CheckedNight(NightOrder):
     #: The answers put in since :meth:`at_night` began, by outcome
     #: ("written", "rejected", …), for the night's summary.
     tally: dict[str, int]
+    config: AiConfigStore
     #: A batch was ordered ahead of this night's work (:meth:`ahead`).
     _ahead: bool = False
+    #: The owner started it from the app (``Night.asked``): a task he runs
+    #: only when he asks runs now (``AiConfigStore.task_when``).
+    asked_now: bool = False
+
+    def asked_only(self, task: str | None) -> bool:
+        """``task`` runs only when asked, or in the month's last days (its
+        portion), and this is not such a run."""
+        when = self.config.task_when(task) if task else None
+        return when in ("demand", "rest") and not self.asked_now
 
     @abstractmethod
     def order(self) -> bool:
@@ -118,6 +129,13 @@ class CheckedNight(NightOrder):
         """Last night's batch put in, then the rounds asked, each waited for
         while the night is quiet (a batch ordered :meth:`ahead` is waited
         for first)."""
+        self.asked_now = night.asked
+        try:
+            self._night(night)
+        finally:
+            self.asked_now = False
+
+    def _night(self, night: Night) -> None:
         if not self._ahead:
             self.tally = {}
         rounds = self.rounds(self._ahead)

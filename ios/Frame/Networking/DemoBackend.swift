@@ -103,7 +103,7 @@ actor DemoBackend: FrameBackend {
             AiCost(key: "web_facts", label: "Fakty z sieci", daysUsd: 0.35, periodUsd: 0.52),
             AiCost(key: "stages", label: "Jak powstawał", daysUsd: 0.006, periodUsd: 0.01),
             AiCost(key: "journey", label: "Droga dzieła", daysUsd: 0.01, periodUsd: 0.02),
-            AiCost(key: "curator", label: "Kurator Odkrywaj", daysUsd: 0.27, periodUsd: 0.48),
+            AiCost(key: "curator", label: "Propozycje kuratora", daysUsd: 0.27, periodUsd: 0.48),
             AiCost(key: "gatekeeper", label: "Strażnik katalogu", daysUsd: 0.09, periodUsd: 0.16),
             AiCost(key: "twins_judge", label: "Sędzia powtórek", daysUsd: 0.02, periodUsd: 0.05),
             AiCost(key: "crops", label: "Kadrowanie zdjęć dzieł", daysUsd: 0.43, periodUsd: 0.43),
@@ -2018,6 +2018,19 @@ actor DemoBackend: FrameBackend {
             ("gatekeeper", "Strażnik katalogu", true, 420, 200, "duplicates"),
             ("audit", "Nocny przegląd dzieł", true, 380, 30, "duplicates"),
             ("kept originals", "Oryginały Twoich dzieł", false, 95, 0, "catalogue"),
+            ("tile sets", "Kafle „Pod lupą”", false, 140, 6, "catalogue"),
+            ("crops", "Kadrowanie zdjęć dzieł", true, 240, 25, "duplicates"),
+            ("artist people", "Kim są artyści", false, 64, 18, "descriptions"),
+            ("museum places", "Miasta muzeów", false, 3.1, 0, "descriptions"),
+            ("media", "Technika dzieł", false, 48, 220, "descriptions"),
+            ("read again", "Rodzaj i autor czytane ponownie", false, 12, 0, "descriptions"),
+            ("places", "Miejsca zdjęć", false, 7.5, 4, "descriptions"),
+            ("leftover", "Studia z zapasu", true, 0.2, 0, "discover"),
+            ("curator", "Dziś dla Ciebie", true, 35, nil, "discover"),
+            ("births", "Urodziny artystów", false, 0.8, nil, "discover"),
+            ("frame line", "Kolejka ramki", false, 2.2, nil, "discover"),
+            ("nga", "Spis National Gallery of Art", false, 0.1, nil, "indexes"),
+            ("louvre", "Spis Luwru", false, 0.1, nil, "indexes"),
             ("rijks", "Spis Rijksmuseum", false, 3_600, 900, "indexes"),
         ]
         let packages: [(String, String, String)] = [
@@ -2035,6 +2048,16 @@ actor DemoBackend: FrameBackend {
             "twins judge": "12 par połączonych, 96 par osobno, 3 odrzucone przez krytyka",
             "gatekeeper": "200 dzieł obejrzanych, 4 odłożone",
             "audit": "30 dzieł obejrzanych, 2 do sprawdzenia",
+            "catalogue": "3 nowe dzieła",
+            "sharper": "12 ostrzejszych kopii",
+            "museums": "300 dzieł, 21 nowych miejsc",
+            "media": "220 technik odczytanych",
+            "artist people": "18 artystów",
+            "tile sets": "6 kompletów kafli",
+            "places": "4 miejsca",
+            "themes": "8 kart",
+            "suggestions": "24 propozycje",
+            "births": "2 artystów ma dziś urodziny",
         ]
         let iso = ISO8601DateFormatter()
         let night = Calendar.current.date(bySettingHour: 2, minute: 10, second: 0, of: .now) ?? .now
@@ -2044,7 +2067,8 @@ actor DemoBackend: FrameBackend {
                 last: NightTasks.LastRun(
                     at: nightAsked[name] ?? iso.string(from: night.addingTimeInterval(took)),
                     took: took, failed: false, count: count,
-                    nothing: count == 0 || name == "met", asked: nightAsked[name] != nil,
+                    nothing: count == 0 || ["met", "nga", "louvre"].contains(name),
+                    asked: nightAsked[name] != nil,
                     summary: demoSummaries[name]
                 )
             )
@@ -2235,6 +2259,7 @@ actor DemoBackend: FrameBackend {
         if let usd = update.nightUsd { uses[index].nightUsd = usd == 0 ? nil : usd }
         if let usd = update.periodUsd { uses[index].periodUsd = usd == 0 ? nil : usd }
         if let mode = update.mode { uses[index].mode = mode }
+        if let more = update.moreAtEnd { uses[index].moreAtEnd = more }
         aiValue.leftoverState?.uses = uses
         return aiValue
     }
@@ -2580,44 +2605,8 @@ extension DemoBackend {
     /// The uses of the month's rest as a server of 1.145.161 tells them.
     static let leftoverUses: [LeftoverUse] = [
         LeftoverUse(
-            key: "refresh", label: "Uzupełnienie wcześniejszych studiów",
-            about: "Fakty z sieci do studiów sprzed nich; tekst przepisany tam, gdzie wnoszą dużo.",
-            on: true, able: true, waiting: 23, eachUsd: 0.07, waitingUsd: 1.61, aNight: nil,
-            done: 0, doneUsd: 0, when: .rest, mode: .batch, modes: [.batch], periodSpentUsd: 0
-        ),
-        LeftoverUse(
-            key: "crops", label: "Więcej kadrowania",
-            about: "Ponad zwykłą porcję nocy: więcej dzieł bez ramy, sztalugi i tektury wokół, najpierw Ulubione i playlisty.",
-            on: true, able: true, waiting: 412, eachUsd: 0.01, waitingUsd: 4.12, aNight: 540,
-            done: 1080, doneUsd: 10.8, nowEachUsd: 0.0204, when: .night,
-            aNightChoices: [100, 270, 540, 1000, 2000], nightUsd: 3, mode: .batch, modes: [.batch, .normal],
-            periodSpentUsd: 10.8
-        ),
-        LeftoverUse(
-            key: "text_review", label: "Przegląd zapisanych opisów",
-            about: "Tłumaczenia, które nie mówią o dziele, i notki sprzed pięciu stylów.",
-            on: false, able: true, waiting: 1860, eachUsd: 0.0015, waitingUsd: 6.4, aNight: nil,
-            done: 0, doneUsd: 0, when: .demand, mode: .batch, modes: [.batch], periodSpentUsd: 0
-        ),
-        LeftoverUse(
-            key: "studies", label: "Nowe studia",
-            about: "Dzieła typowane przez kuratora Studium dnia, najpierw z Ulubionych i playlist.",
-            on: true, able: true, waiting: 7, eachUsd: 0.8, waitingUsd: 5.6, aNight: 25,
-            done: 0, doneUsd: 0, when: .rest, aNightChoices: [5, 10, 25, 50], periodUsd: 20,
-            mode: .batch, modes: [.batch], periodSpentUsd: 0
-        ),
-        LeftoverUse(
-            key: "keywords", label: "Słowa kluczowe katalogu",
-            about: "Dzieła katalogu, które ich jeszcze nie mają, najpierw Ulubione i playlisty. Po nich szukają Szukaj i inteligentne playlisty.",
-            on: true, able: true, waiting: 98_412, eachUsd: 0.0009, waitingUsd: 88.57, aNight: 2000,
-            done: 0, doneUsd: 0, aNightOptions: [250, 500, 1000, 2000, 5000, 10000],
-            tonight: 2000, tonightUsd: 1.8, nowEachUsd: 0.0018, when: .rest,
-            aNightChoices: [250, 500, 1000, 2000, 5000, 10000], nightUsd: 2,
-            mode: .batch, modes: [.batch, .normal], periodSpentUsd: 0
-        ),
-        LeftoverUse(
-            key: "pl_text", label: "Polskie opisy katalogu",
-            about: "Polski tytuł i opis dzieł katalogu, które ich jeszcze nie mają, najpierw Ulubione i playlisty.",
+            key: "pl_text", label: "Polskie opisy",
+            about: "Polski tytuł i opis: nowe dzieła od razu, katalog najpierw z Ulubionych i playlist, potem starsze teksty pisane od nowa.",
             on: true, able: true, waiting: 125_323, eachUsd: 0.0066, waitingUsd: 824.84, aNight: 1000,
             done: 0, doneUsd: 0, aNightOptions: [250, 500, 1000, 2000, 5000, 10000],
             tonight: 1000, tonightUsd: 6.58, nowEachUsd: 0.0132, run: demoRun, when: .rest,
@@ -2625,11 +2614,42 @@ extension DemoBackend {
             mode: .batch, modes: [.batch, .normal], periodSpentUsd: 0
         ),
         LeftoverUse(
-            key: "audit", label: "Większy nocny przegląd",
-            about: "Więcej dzieł na noc; lista „Do sprawdzenia” dla Ciebie się wydłuży.",
-            on: false, able: true, waiting: nil, eachUsd: 0.002, waitingUsd: nil, aNight: 270,
-            done: 0, doneUsd: 0, when: .off, aNightChoices: [100, 270, 500, 1000], mode: .batch,
-            modes: [.batch], periodSpentUsd: 0
+            key: "keywords", label: "Słowa kluczowe",
+            about: "Po nich szukają Szukaj i inteligentne playlisty: nowe dzieła od razu, katalog najpierw z Ulubionych i playlist.",
+            on: true, able: true, waiting: 98_412, eachUsd: 0.0009, waitingUsd: 88.57, aNight: 2000,
+            done: 0, doneUsd: 0, aNightOptions: [250, 500, 1000, 2000, 5000, 10000],
+            tonight: 2000, tonightUsd: 1.8, nowEachUsd: 0.0018, when: .rest,
+            aNightChoices: [250, 500, 1000, 2000, 5000, 10000], nightUsd: 2,
+            mode: .batch, modes: [.batch, .normal], periodSpentUsd: 0
+        ),
+        LeftoverUse(
+            key: "crops", label: "Kadrowanie",
+            about: "Zdjęcia z muzeów przycięte do samego dzieła, bez ramy, sztalugi i tektury wokół, najpierw Ulubione i playlisty.",
+            on: true, able: true, waiting: 412, eachUsd: 0.01, waitingUsd: 4.12, aNight: 540,
+            done: 1080, doneUsd: 10.8, nowEachUsd: 0.0204, when: .night,
+            aNightChoices: [100, 270, 540, 1000, 2000], nightUsd: 3, mode: .batch, modes: [.batch, .normal],
+            periodSpentUsd: 10.8, moreAtEnd: true
+        ),
+        LeftoverUse(
+            key: "tidy", label: "Porządki katalogu",
+            about: "Strażnik odkłada znaczki, strony z tekstem i zdjęcia sal, które przyszły jako dzieła; sędzia rozstrzyga, czy dwa podobne obrazy to kopia, detal czy to samo dzieło.",
+            on: true, able: true, waiting: nil, eachUsd: 0, waitingUsd: nil, aNight: nil,
+            done: 0, doneUsd: 0, when: .night, mode: .batch, modes: [.batch],
+            whens: [.night, .demand, .off], nightTasks: ["gatekeeper", "twins judge"]
+        ),
+        LeftoverUse(
+            key: "audit", label: "Przegląd dzieł",
+            about: "Losowe dzieła: tytuł, data, opis i obraz; co nie pasuje, trafia do „Do sprawdzenia”.",
+            on: true, able: true, waiting: nil, eachUsd: 0.002, waitingUsd: nil, aNight: 270,
+            done: 420, doneUsd: 0.84, when: .night, aNightChoices: [100, 270, 500, 1000],
+            mode: .batch, modes: [.batch], periodSpentUsd: 0.84, moreAtEnd: false, nightTasks: ["audit"]
+        ),
+        LeftoverUse(
+            key: "studies", label: "Nowe studia",
+            about: "Dzieła typowane przez kuratora Studium dnia, najpierw z Ulubionych i playlist.",
+            on: true, able: true, waiting: 7, eachUsd: 0.8, waitingUsd: 5.6, aNight: 25,
+            done: 0, doneUsd: 0, when: .rest, aNightChoices: [5, 10, 25, 50], periodUsd: 20,
+            mode: .batch, modes: [.batch], periodSpentUsd: 0, whens: [.rest, .night, .off]
         ),
     ]
 }

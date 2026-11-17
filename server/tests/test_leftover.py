@@ -228,7 +228,6 @@ def test_the_uses_keep_the_owners_order_and_take_in_new_ones(tmp_path: Path) -> 
         "audit",
         "refresh",
         "crops",
-        "text_review",
     ]
     assert dict(found)["studies"] is False and dict(found)["audit"] is True
 
@@ -309,7 +308,11 @@ def test_the_app_orders_the_uses(tmp_path: Path) -> None:
     with TestClient(app) as client:
         got = client.get("/api/ai", headers=headers).json()
         uses = got["leftover_state"]["uses"]
-        assert [u["key"] for u in uses] == list(leftover_module.USES)
+        # the catalogue's tidying first; the studies' facts only while one waits
+        keys = [u["key"] for u in uses]
+        assert keys[0] == "tidy"
+        assert keys[1:] == [k for k in leftover_module.USES if k in keys]
+        assert set(leftover_module.USES) - set(keys) <= {"refresh"}
         assert all(u["label"] and u["about"] for u in uses)
         assert next(u for u in uses if u["key"] == "audit")["on"] is False
         got = client.put(
@@ -321,7 +324,7 @@ def test_the_app_orders_the_uses(tmp_path: Path) -> None:
             headers=headers,
         ).json()
         uses = got["leftover_state"]["uses"]
-        assert uses[0]["key"] == "studies"
+        assert uses[1]["key"] == "studies"
         on = {u["key"]: u["on"] for u in uses}
         assert on["crops"] is False and on["audit"] is True
 

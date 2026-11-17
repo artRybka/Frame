@@ -199,6 +199,13 @@ class LeftoverUseView(BaseModel):
     mode: str = "batch"
     modes: list[str] = ["batch"]
     period_spent_usd: float = 0.0
+    #: What ``when`` may be (None: all four), more from the month's rest in
+    #: its last days for a task with a portion every night (None: it has
+    #: none), and the night's tasks "Uruchom teraz" starts when it has no run
+    #: of its own on demand.
+    whens: list[str] | None = None
+    more_at_end: bool | None = None
+    night_tasks: list[str] | None = None
 
 
 class OnDemandRunView(BaseModel):
@@ -323,9 +330,10 @@ def _view(svc: FrameService) -> AiView:
         twins_judge=config.twins_judge,
         gatekeeper=config.gatekeeper,
         audit=config.audit,
-        journey=config.journey,
-        web_facts=config.web_facts,
-        stages=config.stages,
+        # parts of the study, always on (``ai.config.STUDY_PARTS``)
+        journey=True,
+        web_facts=True,
+        stages=True,
         crops=config.crops,
         varnish_blue=config.varnish_blue,
         review_count=_review_count(svc),

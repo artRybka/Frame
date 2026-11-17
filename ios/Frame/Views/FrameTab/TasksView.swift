@@ -3,17 +3,18 @@ import SwiftUI
 /// Konfiguracja → Zadania (Mateusz 2026-11-17: "przebudowania całego menu
 /// „Claude” oraz „Zadania nocne” i wprowadzenia prostego konfigurowania
 /// zadań planowanych i na żądanie. Z ustawieniem ilości, kwoty, czasu i
-/// trybu"; he chose the list grouped by when, each task with its own page):
-/// the month's money on top, what runs now, then every task by when it
-/// runs. The switches of what Claude does for each work stand in their
-/// groups; the tasks of the month's rest open a page of their own (when,
-/// how many and for how much, the mode, "Uruchom teraz"). The server's own
-/// night work is one row, its page as before.
+/// trybu"): the month's money on top, what runs now, then every task by
+/// what it does. The AI's tasks carry a sparkle and open a page of their
+/// own (when, how many and for how much, the mode, "Uruchom teraz"); the
+/// server's own night work stands among them, each row with how it last
+/// went and a button to start it now.
 struct TasksSection: View {
     @Environment(AppModel.self) private var model
     let settings: AiSettings
+    @State private var confirmAll = false
 
     private var uses: [LeftoverUse] { settings.leftoverState?.uses ?? [] }
+    private var night: NightTasks? { model.nightTasks }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -34,60 +35,127 @@ struct TasksSection: View {
                     OnDemandRow(use: use, free: settings.leftoverState?.nowFreeUsd)
                 }
             }
-            group("Od razu", "Dla każdego nowego dzieła i tego, czego szukasz") {
-                switches(Self.instant(settings))
+            if let night, let running = night.running {
+                RunningCard(night: night, running: running)
             }
-            group("Przy studium", "Gdy powstaje studium dzieła, także Studium dnia") {
-                switches(Self.study(settings))
-                Text(bound: "Samo studium (strona, kompozycja, detale) nie ma przełącznika: powstaje, gdy go chcesz, i dla Studium dnia.")
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .id("study")
-            group("Co noc", "Od 1:30, w pakietach Batch za pół ceny, w tej kolejności") {
-                switches(Self.night(settings))
-                taskRows(uses.filter { $0.when == .night }, divided: true)
-            }
-            .id("night")
-            group("Z resztki okresu", restSubtitle) {
-                restSwitch
-                taskRows(uses.filter { ($0.when ?? .rest) == .rest }, divided: true)
-            }
-            .id("rest")
-            let asked = uses.filter { $0.when == .demand }
-            if !asked.isEmpty {
-                group("Tylko na żądanie", "Nic samo; uruchamiasz na stronie zadania") {
-                    taskRows(asked, divided: false)
+            // Named by what they do, each with every when and mode on its
+            // page (Mateusz 2026-11-17: "nazwy określające nie to kiedy coś
+            // się odbywa, tylko co robi… Jeżeli jakieś czynności się
+            // zazębiają lub można je połączyć bo są drobne - to uprośćmy");
+            // the server's own work stands among them, the AI's marked with
+            // a sparkle ("dać do listy powyżej i tylko iskierkami oznaczyć co
+            // robi AI a co nie").
+            ForEach(Self.groups, id: \.title) { group in
+                let shown = group.keys.compactMap { key in uses.first { $0.key == key } }
+                let daily = Self.switches(group.title, settings)
+                let server = Self.serverRows(group, night)
+                if !shown.isEmpty || !daily.isEmpty || !server.isEmpty {
+                    self.group(group.title, nil) {
+                        switches(daily)
+                        taskRows(shown, divided: !daily.isEmpty)
+                        serverRows(server, divided: !daily.isEmpty || !shown.isEmpty)
+                        if group.title == "Katalog", night != nil {
+                            Divider()
+                            changesLink
+                        }
+                    }
                 }
             }
-            let off = uses.filter { $0.when == .off }
-            if !off.isEmpty {
-                group("Wyłączone", "Ani nocą, ani na żądanie") {
-                    taskRows(off, divided: false)
+            let known = Set(Self.groups.flatMap(\.keys))
+            let others = uses.filter { !known.contains($0.key) }
+            let otherWork = Self.otherServerRows(night)
+            if !others.isEmpty || !otherWork.isEmpty {
+                group("Inne", nil) {
+                    taskRows(others, divided: false)
+                    serverRows(otherWork, divided: !others.isEmpty)
                 }
-                .id("off")
             }
-            group("Bez Claude", "Praca samego serwera, bez kosztu") {
-                ServerWorkRow()
+            group("Resztka okresu", restSubtitle) { restSwitch }
+                .id("rest")
+            if let night {
+                group("Cała noc", "Co noc od \(night.nightStart) do \(night.nightEnd), po kolei") {
+                    allNightButton(night)
+                }
+                .id("server")
             }
-            .id("server")
         }
         .navigationDestination(for: TaskLink.self) { link in TaskPage(key: link.key) }
         .task {
             // Batches and runs move on while the page is open; a run going
             // is followed more closely.
+            await model.loadNightTasks()
             while !Task.isCancelled {
                 let going = model.aiSettings?.leftoverState?.uses?.contains { $0.run?.running == true } == true
-                try? await Task.sleep(for: .seconds(going ? 5 : 20))
+                    || model.nightTasks?.running != nil
+                try? await Task.sleep(for: .seconds(going ? 4 : 20))
                 guard !Task.isCancelled else { return }
                 await model.loadAiSettings()
+                await model.loadNightTasks()
             }
         }
     }
 
+    /// The tasks by what they do, in this order: Claude's and Gemini's
+    /// (`keys`, the uses), then the server's own night work.
+    static let groups: [TaskGroup] = [
+        TaskGroup(title: "Katalog", keys: ["tidy", "audit"], server: [
+            ServerWork(names: ["catalogue"]),
+            ServerWork(names: ["twins"]),
+            ServerWork(names: ["grouping"]),
+            ServerWork(names: ["tidy"]),
+            ServerWork(package: "indexes", label: "Spisy muzeów"),
+        ]),
+        TaskGroup(title: "Obraz", keys: ["crops"], server: [
+            ServerWork(names: ["sharper"]),
+            ServerWork(names: ["tile sets"]),
+            ServerWork(names: ["kept originals"]),
+        ]),
+        TaskGroup(title: "Opisy i fakty", keys: ["pl_text", "keywords"], server: [
+            ServerWork(names: ["artist people"]),
+            ServerWork(names: ["museums", "museum places"], label: "Gdzie wiszą dzieła"),
+            ServerWork(names: ["media"]),
+            ServerWork(names: ["read again"]),
+            ServerWork(names: ["places"]),
+        ]),
+        TaskGroup(title: "Odkrywaj", keys: ["studies", "refresh"], server: [
+            ServerWork(names: ["themes"]),
+            ServerWork(names: ["suggestions"]),
+            ServerWork(names: ["births"]),
+            ServerWork(names: ["frame line", "playlists"], label: "Kolejka ramki i playlisty"),
+        ]),
+    ]
+
+    /// `group`'s server rows the server has, each with its tasks.
+    static func serverRows(_ group: TaskGroup, _ night: NightTasks?) -> [ServerRow] {
+        guard let night else { return [] }
+        return group.server.compactMap { work in
+            let names: [String]
+            if let package = work.package {
+                names = night.groups?.first { $0.key == package }?.tasks ?? []
+            } else {
+                names = work.names
+            }
+            let entries = names.compactMap { name in night.tasks.first { $0.name == name } }
+            guard let first = entries.first else { return nil }
+            return ServerRow(label: work.label ?? first.label, entries: entries)
+        }
+    }
+
+    /// The server's work no group names, Claude's left out (its tasks stand
+    /// above, as uses).
+    static func otherServerRows(_ night: NightTasks?) -> [ServerRow] {
+        guard let night else { return [] }
+        var named = Set<String>()
+        for group in groups {
+            for row in serverRows(group, night) { named.formUnion(row.entries.map(\.name)) }
+        }
+        return night.tasks
+            .filter { !$0.paid && !named.contains($0.name) }
+            .map { ServerRow(label: $0.label, entries: [$0]) }
+    }
+
     private func group(
-        _ title: String, _ subtitle: String, @ViewBuilder content: () -> some View
+        _ title: String, _ subtitle: String?, @ViewBuilder content: () -> some View
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: title, subtitle: subtitle)
@@ -101,9 +169,9 @@ struct TasksSection: View {
         guard settings.leftover == true else { return "Wyłączone: włączysz niżej" }
         let days = settings.leftoverDays ?? 3
         if let state = settings.leftoverState {
-            return "Ostatnie \(days) dni okresu, od \(AiSection.dayMonth(state.opens)), z tego, co zostaje ponad zapas"
+            return "Ostatnie \(days) dni, od \(AiSection.dayMonth(state.opens)), z tego, co zostaje ponad zapas"
         }
-        return "Ostatnie \(days) dni okresu, z tego, co zostaje ponad zapas"
+        return "Ostatnie \(days) dni, z tego, co zostaje ponad zapas"
     }
 
     private var restSwitch: some View {
@@ -111,12 +179,7 @@ struct TasksSection: View {
             get: { settings.leftover ?? false },
             set: { on in Task { await model.saveAiSettings(AiSettingsUpdate(leftover: on)) } }
         )) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Wykorzystaj resztkę miesiąca")
-                Text(bound: "Ile dni i jaki zapas, ustawisz na stronie Claude.")
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-            }
+            Text(bound: "Wykorzystaj resztkę okresu")
         }
         .tint(Theme.ink)
     }
@@ -137,6 +200,53 @@ struct TasksSection: View {
             if divided || index > 0 { Divider() }
             TaskRow(use: use, settings: settings)
                 .contextMenu { orderMenu(use) }
+        }
+    }
+
+    @ViewBuilder
+    private func serverRows(_ rows: [ServerRow], divided: Bool) -> some View {
+        if let night {
+            ForEach(Array(rows.enumerated()), id: \.element.label) { index, row in
+                if divided || index > 0 { Divider() }
+                ServerTaskRow(row: row, running: night.running)
+            }
+        }
+    }
+
+    private var changesLink: some View {
+        NavigationLink {
+            TidyChangesView()
+        } label: {
+            HStack {
+                Text(bound: "Co zmieniła noc").foregroundStyle(Theme.ink)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.inkSoft)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func allNightButton(_ night: NightTasks) -> some View {
+        Button {
+            confirmAll = true
+        } label: {
+            Label("Uruchom całą noc teraz", systemImage: "moon.stars.fill")
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .tint(Theme.ink)
+        .disabled(night.running != nil)
+        .confirmationDialog("Uruchomić całą noc?", isPresented: $confirmAll, titleVisibility: .visible) {
+            Button("Uruchom wszystko (\(night.tasks.count))") {
+                Task { await model.startNightTasks() }
+            }
+            Button("Anuluj", role: .cancel) {}
+        } message: {
+            Text(bound: "Zadania pójdą po kolei, tak jak w nocy, najwyżej przez 2 godziny. Te z iskierką pytają AI: koszt z Twojego klucza.")
         }
     }
 
@@ -162,114 +272,81 @@ struct TasksSection: View {
 
     // MARK: The switches, by when they work
 
-    static func instant(_ s: AiSettings) -> [SwitchTask] {
-        var rows = [
-            SwitchTask(
-                title: "Polskie tytuły i opisy",
-                hint: "Haiku tłumaczy opisy muzeów, dziełom bez opisu notkę pisze Sonnet.",
-                value: s.plText, cost: "pl_text", progress: s.plTextProgress
-            ) { AiSettingsUpdate(plText: $0) },
-            SwitchTask(
-                title: "Słowa kluczowe dla dzieł",
-                hint: "Po nich szukają Szukaj i inteligentne playlisty.",
-                value: s.keywordsArtworks, cost: "keywords", costLabel: "dzieła i zdjęcia",
-                progress: s.keywordsProgress
-            ) { AiSettingsUpdate(keywordsArtworks: $0) },
-            SwitchTask(
-                title: "Słowa kluczowe dla zdjęć",
-                hint: "Miniatury Twoich zdjęć idą wtedy do Anthropic.",
-                value: s.keywordsPhotos
-            ) { AiSettingsUpdate(keywordsPhotos: $0) },
-        ]
-        if let words = s.searchWords {
-            rows.append(SwitchTask(
-                title: "Tłumaczenie słów w Szukaj",
-                hint: "„gitara” jako „guitar” dla muzeów zagranicznych.",
-                value: words, cost: "search_words"
-            ) { AiSettingsUpdate(searchWords: $0) })
+    /// Odkrywaj (Mateusz 2026-11-17: "sprowadźmy do 2 przełączników -
+    /// studium dnia oraz propozycji kuratora. Zadania składające się na
+    /// studium są z nim ściśle powiązane i nie da się ich wyłączyć"): facts
+    /// from the web, how it was painted and its way to the museum are the
+    /// study's own, always on (`ai.config.STUDY_PARTS` on the server).
+    /// A group's switches, above its tasks: the study of the day and the
+    /// curator's picks; the looks, which Gemini works out in the background
+    /// as works come (no night, no rest: a switch).
+    static func switches(_ group: String, _ s: AiSettings) -> [SwitchTask] {
+        switch group {
+        case "Odkrywaj":
+            return discover(s)
+        case "Obraz":
+            let looks = s.looks.map {
+                SwitchTask(title: "Odciski wyglądu", value: $0, cost: "looks") { AiSettingsUpdate(looks: $0) }
+            }
+            return [looks].compactMap { $0 }
+        default:
+            return []
         }
-        return rows
     }
 
-    static func study(_ s: AiSettings) -> [SwitchTask] {
+    static func discover(_ s: AiSettings) -> [SwitchTask] {
         let rows: [SwitchTask?] = [
             s.daily.map {
-                SwitchTask(
-                    title: "Studium dnia",
-                    hint: "Codziennie jedno dzieło na górze Odkrywaj, opisane jak w albumie.",
-                    value: $0, cost: "daily"
-                ) { AiSettingsUpdate(daily: $0) }
-            },
-            s.webFacts.map {
-                SwitchTask(
-                    title: "Fakty z sieci",
-                    hint: "Przed napisaniem studium Claude szuka w sieci badań, losów i wystaw dzieła.",
-                    value: $0, cost: "web_facts"
-                ) { AiSettingsUpdate(webFacts: $0) }
-            },
-            s.stages.map {
-                SwitchTask(
-                    title: "Jak powstawał",
-                    hint: "Kilka zdań o powstawaniu, gdy w sieci jest badanie techniczne dzieła.",
-                    value: $0, cost: "stages"
-                ) { AiSettingsUpdate(stages: $0) }
-            },
-            s.journey.map {
-                SwitchTask(
-                    title: "Droga dzieła",
-                    hint: "Od pracowni do muzeum, z zapisów muzeum.",
-                    value: $0, cost: "journey"
-                ) { AiSettingsUpdate(journey: $0) }
+                SwitchTask(title: "Studium dnia", value: $0, cost: "daily") { AiSettingsUpdate(daily: $0) }
             },
             s.curator.map {
-                SwitchTask(
-                    title: "Kurator Odkrywaj",
-                    hint: "Dwie dodatkowe karty w „Dziś dla Ciebie”.",
-                    value: $0, cost: "curator"
-                ) { AiSettingsUpdate(curator: $0) }
+                SwitchTask(title: "Propozycje kuratora", value: $0, cost: "curator") { AiSettingsUpdate(curator: $0) }
             },
         ]
         return rows.compactMap { $0 }
     }
 
-    static func night(_ s: AiSettings) -> [SwitchTask] {
-        let rows: [SwitchTask?] = [
-            s.gatekeeper.map {
-                SwitchTask(
-                    title: "Strażnik katalogu",
-                    hint: "Odkłada znaczki, strony z tekstem i zdjęcia sal, które przyszły jako dzieła.",
-                    value: $0, cost: "gatekeeper"
-                ) { AiSettingsUpdate(gatekeeper: $0) }
-            },
-            s.twinsJudge.map {
-                SwitchTask(
-                    title: "Sędzia powtórek",
-                    hint: "Rozstrzyga, czy dwa podobne obrazy to kopia, detal czy to samo dzieło.",
-                    value: $0, cost: "twins_judge"
-                ) { AiSettingsUpdate(twinsJudge: $0) }
-            },
-            s.crops.map {
-                SwitchTask(
-                    title: "Kadrowanie zdjęć dzieł",
-                    hint: "Przycina zdjęcia z muzeów do samego dzieła, gdy widać ramę, sztalugę albo tło.",
-                    value: $0, cost: "crops"
-                ) { AiSettingsUpdate(crops: $0) }
-            },
-            s.varnishBlue.map {
-                SwitchTask(
-                    title: "Błękit pod werniksem",
-                    hint: "Czy zielonkawe niebo pod pożółkłym werniksem to błękit, dla szukania po kolorze.",
-                    value: $0, cost: "varnish_blue"
-                ) { AiSettingsUpdate(varnishBlue: $0) }
-            },
-            s.audit.map {
-                SwitchTask(
-                    title: "Nocny przegląd",
-                    hint: "30 losowych dzieł: tytuł, data, opis i obraz; co nie pasuje, trafia do „Do sprawdzenia”.",
-                    value: $0, cost: "audit"
-                ) { AiSettingsUpdate(audit: $0) }
-            },
-        ]
+    /// What a task takes in besides its own work, each with its switch
+    /// (the works at once as they come, the owner's photographs, the colour
+    /// under varnish, the words of Szukaj; the catalogue's two checks).
+    static func extras(_ key: String, _ s: AiSettings) -> [SwitchTask] {
+        let rows: [SwitchTask?]
+        switch key {
+        case "pl_text":
+            rows = [SwitchTask(title: "Nowe dzieła od razu", value: s.plText) { AiSettingsUpdate(plText: $0) }]
+        case "keywords":
+            rows = [
+                SwitchTask(title: "Nowe dzieła od razu", value: s.keywordsArtworks) {
+                    AiSettingsUpdate(keywordsArtworks: $0)
+                },
+                SwitchTask(title: "Twoje zdjęcia", value: s.keywordsPhotos) { AiSettingsUpdate(keywordsPhotos: $0) },
+                s.varnishBlue.map {
+                    SwitchTask(title: "Błękit pod werniksem", value: $0, cost: "varnish_blue") {
+                        AiSettingsUpdate(varnishBlue: $0)
+                    }
+                },
+                s.searchWords.map {
+                    SwitchTask(title: "Tłumaczenie słów w Szukaj", value: $0, cost: "search_words") {
+                        AiSettingsUpdate(searchWords: $0)
+                    }
+                },
+            ]
+        case "tidy":
+            rows = [
+                s.gatekeeper.map {
+                    SwitchTask(title: "Strażnik katalogu", value: $0, cost: "gatekeeper") {
+                        AiSettingsUpdate(gatekeeper: $0)
+                    }
+                },
+                s.twinsJudge.map {
+                    SwitchTask(title: "Sędzia powtórek", value: $0, cost: "twins_judge") {
+                        AiSettingsUpdate(twinsJudge: $0)
+                    }
+                },
+            ]
+        default:
+            rows = []
+        }
         return rows.compactMap { $0 }
     }
 
@@ -283,11 +360,45 @@ struct TasksSection: View {
     /// What the list's chip says of when a task runs.
     static func whenChip(_ when: TaskWhen) -> String {
         switch when {
-        case .rest: "Resztka okresu"
+        case .rest: "Koniec okresu"
         case .night: "Co noc"
         case .demand: "Na żądanie"
         case .off: "Wyłączone"
         }
+    }
+
+    /// When and how a task runs, as chips: "Co noc", "Batch ½",
+    /// "+ koniec okresu"; the first is the when.
+    static func chips(_ use: LeftoverUse) -> [String] {
+        let when = use.when ?? (use.on ? .rest : .off)
+        var chips = [whenChip(when)]
+        guard when != .off else { return chips }
+        chips.append(use.mode == .normal ? "Zwykły" : "Batch ½")
+        if when == .night, use.moreAtEnd == true { chips.append("+ koniec okresu") }
+        return chips
+    }
+
+    /// The rows of "Koszty" a task's cost is the sum of (what it takes in
+    /// besides its own work too).
+    static let costRows: [String: [String]] = [
+        "pl_text": ["pl_text"],
+        "keywords": ["keywords", "varnish_blue", "search_words"],
+        "crops": ["crops"],
+        "tidy": ["gatekeeper", "twins_judge"],
+        "audit": ["audit"],
+    ]
+
+    /// What a task cost in the last days, from "Koszty" ("7 dni: 0,43 USD");
+    /// a task without rows of its own (the studies share theirs with
+    /// Odkrywaj) what it cost this period ("w okresie 13,16 USD").
+    static func costLine(_ use: LeftoverUse, settings: AiSettings) -> String {
+        guard use.able else { return "Wyłączone przełącznikiem na stronie zadania." }
+        let rows = (settings.claudeCosts ?? []) + (settings.geminiCosts ?? [])
+        if let keys = costRows[use.key], let days = settings.costDays {
+            let usd = rows.filter { keys.contains($0.key) }.reduce(0) { $0 + $1.daysUsd }
+            return "\(days) dni: \(AiSection.usd(usd))"
+        }
+        return "w okresie \(AiSection.usd(use.periodSpentUsd ?? use.doneUsd))"
     }
 
     /// "noc do 10 USD · okres do 50 USD · czeka 125 323 · w okresie 13,16 USD".
@@ -319,38 +430,38 @@ struct TaskLink: Hashable {
 }
 
 /// A switch of what Claude does, as the list shows it.
+/// A switch in Zadania: its name and what it cost, nothing more (Mateusz
+/// 2026-11-17: "Nie dodawaj eksplikacji pod pozycjami - same nazwy i ew.
+/// koszt").
 struct SwitchTask {
     let title: String
-    let hint: String
     let value: Bool
     /// Its row's key in "Koszty", and how that row names what it counts.
     var cost: String? = nil
     var costLabel: String? = nil
-    var progress: AiSettings.Progress? = nil
     let update: (Bool) -> AiSettingsUpdate
 }
 
-/// A switch, its line, and under it what it cost in the last days and how
-/// far its work got.
+/// A switch, and under it what it cost in the last days.
 private struct TaskSwitchRow: View {
     @Environment(AppModel.self) private var model
     let row: SwitchTask
     let settings: AiSettings
+    /// The AI's sparkle; not on a task's own page, where all is the AI's.
+    var marked = true
 
     var body: some View {
-        let notes = [costNote, row.progress.flatMap(AiSection.progressNote)].compactMap { $0 }
         Toggle(isOn: Binding(
             get: { row.value },
             set: { new in Task { await model.saveAiSettings(row.update(new)) } }
         )) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(bound: row.title)
-                Text(bound: row.hint)
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
-                if !notes.isEmpty {
-                    Text(bound: notes.joined(separator: " · "))
+                HStack(spacing: 5) {
+                    Text(bound: row.title)
+                    if marked { TaskAiMark() }
+                }
+                if let costNote {
+                    Text(bound: costNote)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(Theme.ink.opacity(0.75))
                         .padding(.top, 1)
@@ -363,14 +474,16 @@ private struct TaskSwitchRow: View {
     /// "7 dni: 0,42 USD".
     private var costNote: String? {
         guard let key = row.cost, let days = settings.costDays else { return nil }
-        let usd = (settings.claudeCosts ?? []).first { $0.key == key }?.daysUsd ?? 0
+        // Claude's rows, or Gemini's (the looks)
+        let rows = (settings.claudeCosts ?? []) + (settings.geminiCosts ?? [])
+        let usd = rows.first { $0.key == key }?.daysUsd ?? 0
         let what = row.costLabel.map { "\(days) dni (\($0))" } ?? "\(days) dni"
         return "\(what): \(AiSection.usd(usd))"
     }
 }
 
-/// A task of the month's rest in the list: its name, when and how it runs,
-/// its amounts and what waits; it opens its page.
+/// A task in the list: its name, how it runs and what it cost, nothing
+/// more (Mateusz 2026-11-17: "same nazwy i ew. koszt"); it opens its page.
 private struct TaskRow: View {
     let use: LeftoverUse
     let settings: AiSettings
@@ -379,17 +492,21 @@ private struct TaskRow: View {
         NavigationLink(value: TaskLink(key: use.key)) {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(bound: use.label)
-                        .foregroundStyle(running ? Theme.ink : (use.able ? Theme.ink : Theme.inkSoft))
-                    HStack(spacing: 4) {
-                        TaskChip(text: TasksSection.whenChip(when), strong: when != .off && use.able)
-                        if when == .rest || when == .night {
-                            TaskChip(text: use.mode == .normal ? "Zwykły" : "Batch ½")
-                            if let night = use.aNight { TaskChip(text: "do \(AiSection.count(night))") }
-                        }
-                        if running { TaskChip(text: "Teraz", strong: true) }
+                    HStack(spacing: 5) {
+                        Text(bound: use.label)
+                            .foregroundStyle(running ? Theme.ink : (use.able ? Theme.ink : Theme.inkSoft))
+                        TaskAiMark()
                     }
-                    let line = TasksSection.line(use)
+                    let chips = TasksSection.chips(use)
+                    if !chips.isEmpty || running {
+                        HStack(spacing: 4) {
+                            ForEach(Array(chips.enumerated()), id: \.offset) { index, chip in
+                                TaskChip(text: chip, strong: index == 0 && chip != TasksSection.whenChip(.off))
+                            }
+                            if running { TaskChip(text: "Teraz", strong: true) }
+                        }
+                    }
+                    let line = TasksSection.costLine(use, settings: settings)
                     if !line.isEmpty {
                         Text(bound: line)
                             .font(.caption.monospacedDigit())
@@ -429,43 +546,150 @@ struct TaskChip: View {
     }
 }
 
-/// The server's own night work, its page as before.
-private struct ServerWorkRow: View {
-    @Environment(AppModel.self) private var model
+/// A group of Zadania: what it does, its AI tasks and the server's own.
+struct TaskGroup {
+    let title: String
+    /// Its uses (Claude's and Gemini's tasks).
+    let keys: [String]
+    let server: [ServerWork]
+}
 
-    var body: some View {
-        NavigationLink(value: SettingsPage.night) {
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Prace serwera co noc").foregroundStyle(Theme.ink)
-                    Text(bound: "Nowe dzieła z muzeów, pliki, kopie razem, ostrzejsze kopie, Odkrywaj i Propozycje dnia.")
-                        .font(.caption)
-                        .foregroundStyle(Theme.inkSoft)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if let note {
-                        Text(bound: note.text)
-                            .font(.caption)
-                            .foregroundStyle(note.warn ? Theme.warn : Theme.ink.opacity(0.75))
-                    }
-                }
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Theme.inkSoft)
-                    .padding(.top, 4)
-            }
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
+/// The server's own work in a group: one night task, small ones together,
+/// or a whole package (the museums' indexes).
+struct ServerWork {
+    var names: [String] = []
+    var package: String? = nil
+    /// nil: the first task's own name.
+    var label: String? = nil
+}
+
+/// A server row as shown: its name and its tasks.
+struct ServerRow {
+    let label: String
+    let entries: [NightTasks.Entry]
+}
+
+/// The server's own work: its name, how it last went, a button to start
+/// it now. No sparkle: no AI.
+private struct ServerTaskRow: View {
+    @Environment(AppModel.self) private var model
+    @State private var confirm = false
+    let row: ServerRow
+    let running: NightTasks.Running?
+
+    private var names: [String] { row.entries.map(\.name) }
+    private var isCurrent: Bool { running?.current.map { names.contains($0) } == true }
+    private var isWaiting: Bool {
+        guard let running else { return false }
+        return names.contains { running.tasks.contains($0) && !running.done.contains($0) } && !isCurrent
     }
 
-    private var note: (text: String, warn: Bool)? {
-        guard let night = model.nightTasks else { return nil }
-        if let running = night.running {
-            return ("Teraz: \(night.label(running.current) ?? "trwa")", false)
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(bound: row.label).foregroundStyle(Theme.ink)
+                if let last = Self.lastText(row.entries) {
+                    Text(bound: last.text)
+                        .font(.caption)
+                        .foregroundStyle(last.warn ? Theme.warn : Theme.inkSoft)
+                        .lineLimit(2)
+                }
+            }
+            Spacer(minLength: 8)
+            if isCurrent {
+                ProgressView().frame(width: 30, height: 30)
+            } else if isWaiting {
+                Image(systemName: "clock")
+                    .foregroundStyle(Theme.inkSoft)
+                    .frame(width: 30, height: 30)
+                    .accessibilityLabel("czeka w kolejce")
+            } else {
+                Button {
+                    confirm = true
+                } label: {
+                    Image(systemName: "play.fill")
+                        .font(.footnote.weight(.semibold))
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.circle)
+                .tint(Theme.ink)
+                .disabled(running != nil)
+                .accessibilityLabel("Uruchom teraz: \(row.label)")
+                .confirmationDialog(row.label, isPresented: $confirm, titleVisibility: .visible) {
+                    Button("Uruchom teraz") {
+                        Task { await model.startNightTasks(names, title: row.label) }
+                    }
+                    Button("Anuluj", role: .cancel) {}
+                }
+            }
         }
-        if night.tasks.contains(where: { $0.last?.failed == true }) { return ("Ostatnio był błąd", true) }
-        return nil
+        .padding(.vertical, 2)
+    }
+
+    /// "dziś, 03:12 · 41 kopii, 14 detali", "nic do zrobienia", "błąd".
+    static func lastText(_ entries: [NightTasks.Entry]) -> (text: String, warn: Bool)? {
+        let runs = entries.compactMap(\.last)
+        guard let latest = runs.max(by: { $0.at < $1.at }) else { return ("Jeszcze nie było", false) }
+        if runs.contains(where: \.failed) { return ((When.past(latest.at) ?? "") + " · błąd", true) }
+        var parts = [When.past(latest.at) ?? ""]
+        if entries.count == 1 {
+            if let summary = latest.summary, !summary.isEmpty {
+                parts.append(summary)
+            } else if latest.nothing {
+                parts.append("nic do zrobienia")
+            }
+        } else if runs.allSatisfy(\.nothing) {
+            parts.append("nic do zrobienia")
+        }
+        if latest.asked { parts.append("na żądanie") }
+        return (parts.filter { !$0.isEmpty }.joined(separator: " · "), false)
+    }
+}
+
+/// "Uruchom teraz" of a task the night's runner does (the catalogue's
+/// tidying, the audit): its night's tasks started now.
+private struct NightRunButton: View {
+    @Environment(AppModel.self) private var model
+    @State private var confirm = false
+    let names: [String]
+    let label: String
+
+    private var running: Bool {
+        guard let night = model.nightTasks?.running else { return false }
+        return names.contains { night.tasks.contains($0) && !night.done.contains($0) }
+    }
+
+    var body: some View {
+        Button {
+            confirm = true
+        } label: {
+            Label(running ? "Trwa" : "Uruchom teraz", systemImage: running ? "hourglass" : "play.fill")
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(Theme.ink)
+        .disabled(model.nightTasks?.running != nil)
+        .confirmationDialog(label, isPresented: $confirm, titleVisibility: .visible) {
+            Button("Uruchom teraz") {
+                Task { await model.startNightTasks(names, title: label) }
+            }
+            Button("Anuluj", role: .cancel) {}
+        } message: {
+            Text(bound: "Pyta Claude'a przez Batch, jak w nocy: koszt z Twojego klucza.")
+        }
+        .task { await model.loadNightTasks() }
+    }
+}
+
+/// The AI's mark: a sparkle after the name.
+struct TaskAiMark: View {
+    var body: some View {
+        Image(systemName: "sparkle")
+            .font(.caption)
+            .foregroundStyle(Theme.inkSoft)
+            .accessibilityLabel("AI")
     }
 }
 
@@ -483,7 +707,7 @@ private struct BudgetCard: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(bound: period).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
                 Spacer()
-                Text("limit \(Money.usd(settings.monthlyLimitUsd))")
+                Text(bound: "limit \(Money.usd(settings.monthlyLimitUsd))")
                     .font(.subheadline)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -570,10 +794,11 @@ struct TaskPage: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             while !Task.isCancelled {
-                let going = use?.run?.running == true
+                let going = use?.run?.running == true || model.nightTasks?.running != nil
                 try? await Task.sleep(for: .seconds(going ? 5 : 20))
                 guard !Task.isCancelled else { return }
                 await model.loadAiSettings()
+                if use?.nightTasks != nil { await model.loadNightTasks() }
             }
         }
     }
@@ -581,15 +806,21 @@ struct TaskPage: View {
     @ViewBuilder
     private func content(_ settings: AiSettings, _ use: LeftoverUse) -> some View {
         let when = use.when ?? (use.on ? .rest : .off)
+        // a portion every night and more at the period's end: the amounts
+        // are the end's
+        let more = when == .night && use.moreAtEnd != nil
+        let showsAmounts = !use.isCheck && (when == .rest || when == .night)
         Card {
             Text(bound: use.about)
                 .font(.subheadline)
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
-            HStack(alignment: .top) {
-                stat(waitingText(use), use.key == "studies" ? "kandydaci" : "czeka")
-                stat(AiSection.count(use.done), "w tym okresie")
-                stat(AiSection.usd(use.periodSpentUsd ?? use.doneUsd), "koszt w okresie")
+            if !use.isCheck {
+                HStack(alignment: .top) {
+                    stat(waitingText(use), use.key == "studies" ? "kandydaci" : "czeka")
+                    stat(AiSection.count(use.done), "w tym okresie")
+                    stat(AiSection.usd(use.periodSpentUsd ?? use.doneUsd), "koszt w okresie")
+                }
             }
             if !use.able {
                 Label("Wyłączone przełącznikiem na liście Zadań.", systemImage: "exclamationmark.circle")
@@ -597,10 +828,26 @@ struct TaskPage: View {
                     .foregroundStyle(Theme.warn)
             }
         }
+        let extras = TasksSection.extras(use.key, settings)
+        if !extras.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                SectionHeader(title: "Obejmuje")
+                Card {
+                    ForEach(Array(extras.enumerated()), id: \.element.title) { index, row in
+                        if index > 0 { Divider() }
+                        TaskSwitchRow(row: row, settings: settings, marked: false)
+                    }
+                }
+            }
+            .id("extras")
+        }
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: "Kiedy")
             Card {
-                let choices = TaskWhen.allCases.filter { $0 != .demand || use.nowEachUsd != nil }
+                let allowed = use.whens ?? TaskWhen.allCases
+                let choices = [TaskWhen.night, .rest, .demand, .off].filter {
+                    allowed.contains($0) && ($0 != .demand || use.nowEachUsd != nil || use.nightTasks != nil)
+                }
                 ForEach(Array(choices.enumerated()), id: \.element) { index, choice in
                     if index > 0 { Divider() }
                     whenRow(choice, chosen: when, settings: settings)
@@ -608,9 +855,27 @@ struct TaskPage: View {
             }
         }
         .id("when")
-        if when == .rest || when == .night {
+        if more {
             VStack(alignment: .leading, spacing: 10) {
-                SectionHeader(title: "Ile i za ile", subtitle: "Pierwsze, co się skończy, zatrzymuje zadanie")
+                SectionHeader(title: "Na koniec okresu")
+                Card {
+                    Toggle(isOn: Binding(
+                        get: { use.moreAtEnd ?? true },
+                        set: { new in save(TaskUpdate(moreAtEnd: new)) }
+                    )) {
+                        Text(bound: "Więcej z resztki okresu")
+                    }
+                    .tint(Theme.ink)
+                }
+            }
+            .id("more")
+        }
+        if showsAmounts {
+            VStack(alignment: .leading, spacing: 10) {
+                SectionHeader(
+                    title: "Ile i za ile",
+                    subtitle: "Pierwsze, co się skończy, zatrzymuje zadanie"
+                )
                 Card {
                     if let choices = use.aNightChoices, let night = use.aNight {
                         menuRow(
@@ -645,8 +910,8 @@ struct TaskPage: View {
                             get: { use.mode ?? .batch },
                             set: { new in save(TaskUpdate(mode: new)) }
                         )) {
-                            Text("Batch, ½ ceny").tag(TaskMode.batch)
-                            Text("Zwykły, od razu").tag(TaskMode.normal)
+                            Text(bound: "Batch, ½ ceny").tag(TaskMode.batch)
+                            Text(bound: "Zwykły, od razu").tag(TaskMode.normal)
                         }
                         .pickerStyle(.segmented)
                     }
@@ -664,6 +929,12 @@ struct TaskPage: View {
                 Card {
                     OnDemandRow(use: use, free: settings.leftoverState?.nowFreeUsd, prominent: true)
                 }
+            }
+            .id("ondemand")
+        } else if let names = use.nightTasks, when != .off, use.able {
+            VStack(alignment: .leading, spacing: 10) {
+                SectionHeader(title: "Na żądanie", subtitle: "Teraz, tak jak w nocy: przez Batch, za pół ceny")
+                Card { NightRunButton(names: names, label: use.label) }
             }
             .id("ondemand")
         }
@@ -706,7 +977,7 @@ struct TaskPage: View {
             Spacer()
             Menu {
                 Picker(title, selection: Binding(get: { value }, set: set)) {
-                    ForEach(options, id: \.self) { Text(label($0)).tag($0) }
+                    ForEach(options, id: \.self) { Text(bound: label($0)).tag($0) }
                 }
             } label: {
                 HStack(spacing: 3) {
@@ -780,7 +1051,7 @@ struct TaskPage: View {
         case .demand:
             return "Nic samo; uruchamiasz niżej."
         case .off:
-            return "Ani nocą, ani na żądanie."
+            return "Nie uruchamia się."
         }
     }
 
