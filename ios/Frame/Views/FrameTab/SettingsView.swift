@@ -6,7 +6,7 @@ import SwiftUI
 /// and its update, the app's restart) is not repeated here.
 enum SettingsPage: String, Hashable, CaseIterable {
     case display, notifications, household
-    case sources, ai, gemini, library, night
+    case sources, tasks, ai, gemini, library, night
     case frame, server, keys
     case diagnostics
 
@@ -26,7 +26,10 @@ enum SettingsPage: String, Hashable, CaseIterable {
         var pages: [SettingsPage] {
             switch self {
             case .daily: [.display, .notifications, .household]
-            case .art: [.sources, .ai, .gemini, .library, .night]
+            // "Zadania" holds the server's own night work too (Mateusz
+            // 2026-11-17: one menu of tasks instead of "Claude" and
+            // "Zadania nocne"); its page opens from there.
+            case .art: [.sources, .tasks, .ai, .gemini, .library]
             case .setup: [.frame, .server, .keys]
             case .tools: [.diagnostics]
             }
@@ -49,10 +52,11 @@ enum SettingsPage: String, Hashable, CaseIterable {
         case .notifications: "Powiadomienia"
         case .household: "Domownicy"
         case .sources: "Źródła dzieł"
+        case .tasks: "Zadania"
         case .ai: "Claude"
         case .gemini: "Gemini"
         case .library: "Miejsce na serwerze"
-        case .night: "Zadania nocne"
+        case .night: "Prace serwera"
         case .frame: "Ramka"
         case .server: "Serwer"
         case .keys: "Klucze i certyfikaty"
@@ -66,6 +70,7 @@ enum SettingsPage: String, Hashable, CaseIterable {
         case .notifications: "bell.fill"
         case .household: "person.2.fill"
         case .sources: "building.columns.fill"
+        case .tasks: "list.bullet.rectangle.fill"
         case .ai: "text.book.closed.fill"
         case .gemini: "paintbrush.pointed.fill"
         case .library: "internaldrive.fill"
@@ -83,6 +88,18 @@ enum SettingsPage: String, Hashable, CaseIterable {
     static var launch: SettingsPage? {
         UserDefaults.standard.string(forKey: "settingsPage").flatMap(SettingsPage.init(rawValue:))
     }
+
+    /// The stack screenshots open: the page, and `-task descriptions` that
+    /// task's page in Zadania.
+    static var launchPath: NavigationPath {
+        var path = NavigationPath()
+        guard let page = launch else { return path }
+        path.append(page)
+        if page == .tasks, let key = UserDefaults.standard.string(forKey: "task") {
+            path.append(TaskLink(key: key))
+        }
+        return path
+    }
 }
 
 /// Behind the gear in "Ramka" (the owner's): one short row per page, each
@@ -90,7 +107,7 @@ enum SettingsPage: String, Hashable, CaseIterable {
 struct ConnectionSettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
-    @State private var path: [SettingsPage] = SettingsPage.launch.map { [$0] } ?? []
+    @State private var path = SettingsPage.launchPath
     /// „Do sprawdzenia" opened from the top of the list (Mateusz 2026-11-16:
     /// „wejście w »do sprawdzenia« daj także od razu z ekranu konfiguracji").
     @State private var reviewing = false
@@ -267,6 +284,17 @@ private struct SettingsRow: View {
         case .sources:
             guard let settings = model.settings else { return nil }
             return (settings.privateUse == true ? "Użytek prywatny" : "Domena publiczna", false)
+        case .tasks:
+            if let running = model.aiSettings?.leftoverState?.uses?.first(where: { $0.run?.running == true }) {
+                return ("Teraz: \(running.label)", false)
+            }
+            if let night = model.nightTasks, let running = night.running {
+                return (night.label(running.current) ?? "Trwa", false)
+            }
+            if model.nightTasks?.tasks.contains(where: { $0.last?.failed == true }) == true {
+                return ("Był błąd", true)
+            }
+            return nil
         case .ai:
             guard let ai = model.aiSettings else { return nil }
             return ai.keySet ? (Money.usd(ai.spentUsd), false) : ("Brak klucza", true)
@@ -345,16 +373,17 @@ struct SettingsPageView: View {
             }
             .task {
                 // CI screenshots: `-scroll restorer` on the Gemini page,
-                // `-scroll leftover` (the month's rest), `switches` or
-                // `night` on Claude's; `ondemand` (the catalogue's texts'
-                // "Uruchom teraz").
+                // `-scroll leftover` (the period and the reserve) on
+                // Claude's; `study`, `night`, `rest`, `off` or `server` in
+                // Zadania.
                 let target = LaunchRoute.scroll
-                let onClaudes = ["leftover", "switches", "night", "ondemand"]
-                guard (page == .gemini && target == "restorer") || (page == .ai && onClaudes.contains(target ?? "")),
-                      let target
+                let onTasks = ["study", "night", "rest", "off", "server"]
+                guard (page == .gemini && target == "restorer") || (page == .ai && target == "leftover")
+                    || (page == .tasks && onTasks.contains(target ?? "")),
+                    let target
                 else { return }
                 try? await Task.sleep(for: .seconds(4))
-                withAnimation { proxy.scrollTo(target, anchor: ["restorer", "ondemand"].contains(target) ? .center : .top) }
+                withAnimation { proxy.scrollTo(target, anchor: target == "restorer" ? .center : .top) }
             }
         }
         .paperPage()
@@ -379,6 +408,12 @@ struct SettingsPageView: View {
         case .sources:
             if let settings = model.settings {
                 SourcesSection(settings: settings)
+            } else {
+                waiting
+            }
+        case .tasks:
+            if let ai = model.aiSettings {
+                TasksSection(settings: ai)
             } else {
                 waiting
             }

@@ -57,6 +57,7 @@ from typing import TYPE_CHECKING, Any
 
 from .ai import refresh as refresh_module
 from .ai import text_review as review_module
+from .ai.config import TaskSettings
 from .ai.study import KIND
 from .cared import REST
 from .daily import score
@@ -67,7 +68,7 @@ if TYPE_CHECKING:
     from .ai import AiWorker
     from .ai.audit import Audit
     from .ai.client import Claude
-    from .ai.config import AiConfig, AiConfigStore
+    from .ai.config import AiConfig, AiConfigStore, TaskUpdate
     from .ai.crops import Crops
     from .ai.refresh import StudyRefresh
     from .ai.text_review import TextReview
@@ -118,8 +119,9 @@ LABELS = {
         "Fakty z sieci do studiów sprzed nich; tekst przepisany tam, gdzie wnoszą dużo.",
     ),
     CROPS: (
-        "Kadrowanie zdjęć dzieł",
-        "Więcej dzieł na noc bez ramy, sztalugi i tektury wokół, najpierw Ulubione i playlisty.",
+        "Więcej kadrowania",
+        "Ponad zwykłą porcję nocy: więcej dzieł bez ramy, sztalugi i tektury wokół, "
+        "najpierw Ulubione i playlisty.",
     ),
     REVIEW: (
         "Przegląd zapisanych opisów",
@@ -170,18 +172,71 @@ AUDITS_A_NIGHT = 270
 #: (``AiConfig.leftover_texts_a_night``, Mateusz 2026-11-15).
 TEXTS_A_NIGHT_OPTIONS = (250, 500, 1000, 2000, 5000, 10000)
 
+#: When a use runs (``AiConfig.tasks``, Mateusz 2026-11-17, "Zadania"): in
+#: the period's last days (as before), every night, only when the owner
+#: runs it now, or never.
+IN_REST, EVERY_NIGHT, ONLY_ASKED, NEVER = "rest", "night", "demand", "off"
+WHENS = (IN_REST, EVERY_NIGHT, ONLY_ASKED, NEVER)
+#: Works a night the owner may choose, each use's (none: it has no number
+#: of a night).
+A_NIGHT_CHOICES: dict[str, tuple[int, ...]] = {
+    TEXTS: TEXTS_A_NIGHT_OPTIONS,
+    CROPS: (100, 270, 540, 1000, 2000),
+    STUDIES: (5, 10, 25, 50),
+    AUDIT: (100, 270, 500, 1000),
+}
+#: What a night and a period may spend on a use, as the app offers it (USD).
+NIGHT_USD_CHOICES = (1.0, 2.0, 5.0, 10.0, 20.0, 50.0)
+PERIOD_USD_CHOICES = (5.0, 10.0, 20.0, 50.0, 100.0, 200.0)
+#: What may ask now instead of through the Batch API (``on_demand.USES``).
+NORMAL = (TEXTS, CROPS)
+
+
+def task(config: AiConfig, key: str) -> TaskSettings:
+    """``key``'s settings, its ``when`` filled in: off when the owner's
+    older list has it off, else the period's last days."""
+    kept = config.tasks.get(key) or TaskSettings()
+    if kept.when is not None:
+        return kept
+    return kept.model_copy(update={"when": NEVER if key in config.leftover_off else IN_REST})
+
+
+def set_task(store: AiConfigStore, key: str, update: TaskUpdate) -> TaskSettings:
+    """The owner's change of ``key``; raises ValueError for what it cannot
+    be. The older switches are kept in step (``leftover_off``, the
+    catalogue's texts a night)."""
+    if key not in USES:
+        raise ValueError("Nie ma takiego zadania.")
+    config = store.config
+    changes = update.model_dump(exclude_none=True)
+    for name in ("a_night", "night_usd", "period_usd"):
+        if name in changes and not changes[name]:
+            changes[name] = None  # 0: no limit of its own
+    if changes.get("mode") == "normal" and key not in NORMAL:
+        raise ValueError("To zadanie działa tylko przez Batch.")
+    if changes.get("a_night") is not None and key not in A_NIGHT_CHOICES:
+        raise ValueError("To zadanie nie ma liczby na noc.")
+    settings = task(config, key).model_copy(update=changes)
+    off = [k for k in config.leftover_off if k != key]
+    if settings.when == NEVER:
+        off.append(key)
+    also: dict[str, object] = {"leftover_off": off}
+    if key == TEXTS and settings.a_night:
+        also["leftover_texts_a_night"] = settings.a_night
+    store.set_task(key, settings, **also)
+    return settings
+
 
 def uses(config: AiConfig) -> list[tuple[str, bool]]:
-    """The uses in the owner's order, each on or off; those his list lacks
-    in their own place."""
+    """The uses in the owner's order, each on (the night may order it) or
+    off; those his list lacks in their own place."""
     order = [k for k in dict.fromkeys(config.leftover_order) if k in USES]
     for n, key in enumerate(USES):
         if key not in order:
             # after the one before it in USES, or first
             before = [k for k in USES[:n] if k in order]
             order.insert(order.index(before[-1]) + 1 if before else 0, key)
-    off = set(config.leftover_off)
-    return [(key, key not in off) for key in order]
+    return [(key, task(config, key).when in (IN_REST, EVERY_NIGHT)) for key in order]
 
 
 @dataclass
@@ -395,16 +450,31 @@ class Leftover:
         return max(math.ceil((closes - self.now()) / timedelta(days=1)) - 1, 0)
 
     def at_night(self, quiet: Callable[[], bool] = lambda: True) -> tuple[int, str]:
-        """Orders what the period's rest pays for, use by use in the owner's
-        order: how many studies, and what it did in Polish."""
-        if not self.enabled():
+        """Orders what the owner's tasks may take tonight, use by use in his
+        order: those set for every night, and in the period's last days
+        those set for its rest; how many studies, and what it did in
+        Polish. Each takes at most its own amounts (a night's, what is left
+        of the period's) and what the limit leaves above the reserve."""
+        if not self.config.api_key:
             return 0, "wyłączone"
+        config = self.config.config
         now = self.now()
         opens, closes, _ = self.window()
-        if now < opens:
-            return 0, f"od {opens.date():%d.%m}"
-        if now >= closes:
-            return 0, "ostatnia doba okresu"
+        window = bool(config.leftover) and opens <= now < closes
+        planned = [
+            (use, task(config, use.key))
+            for use, _ in self._uses()
+            if task(config, use.key).when == EVERY_NIGHT
+            or (window and task(config, use.key).when == IN_REST)
+        ]
+        if not planned:
+            if not config.leftover:
+                return 0, "wyłączone"
+            if now < opens:
+                return 0, f"od {opens.date():%d.%m}"
+            if now >= closes:
+                return 0, "ostatnia doba okresu"
+            return 0, "nic do zrobienia"
         with self._lock:
             state = self._state()
             self._measure(state)
@@ -416,14 +486,26 @@ class Leftover:
         self._studied = 0
         parts: list[str] = []
         done_by: dict[str, tuple[int, float]] = {}
-        for use, on in self._uses():
-            if not on or not use.able():
+        for use, settings in planned:
+            if not use.able():
                 continue
             if self.on_demand is not None and self.on_demand.running(use.key):
                 continue  # asked now, for the owner's amount
-            if budget < use.each:
+            room = budget
+            if settings.night_usd:
+                room = min(room, settings.night_usd)
+            spent_before = self.period_spent(use.key)
+            if settings.period_usd:
+                room = min(room, settings.period_usd - spent_before)
+            if room < use.each:
                 continue
-            done, usd, more = use.run(budget)
+            if settings.mode == "normal" and use.key in NORMAL:
+                held = self._ask_now(use, room)
+                if held:
+                    budget -= held
+                    parts.append(f"{SHORT[use.key]}: od razu, do {held:.2f} USD")
+                continue
+            done, usd, more = use.run(room)
             budget -= usd
             if done:
                 done_by[use.key] = (done, usd)
@@ -431,22 +513,20 @@ class Leftover:
                     parts.append(f"zamówione {studies(done)}, ok. {usd:.2f} USD")
                 else:
                     parts.append(f"{SHORT[use.key]}: {done}, ok. {usd:.2f} USD")
-            if more and use.cap and nights:
+            if more and use.cap and nights and settings.when == IN_REST:
                 # what this use will want on the window's coming nights
                 waiting = use.waiting()
                 left = use.cap * nights if waiting is None else max(waiting - done, 0)
-                budget -= min(left, use.cap * nights) * use.each
+                keep = min(left, use.cap * nights) * use.each
+                if settings.night_usd:
+                    keep = min(keep, settings.night_usd * nights)
+                if settings.period_usd:
+                    keep = min(keep, max(settings.period_usd - spent_before - usd, 0.0))
+                budget -= keep
             if budget <= 0:
                 break
-        if done_by:
-            with self._lock:
-                state = self._state()
-                tally = dict(state.get("tally") or {})
-                for key, (done, usd) in done_by.items():
-                    count, spent = tally.get(key) or (0, 0.0)
-                    tally[key] = (int(count) + done, round(float(spent) + usd, 4))
-                state["tally"] = tally
-                self._save(state)
+        for key, (done, usd) in done_by.items():
+            self.count(key, done, usd)
         log.info(
             "month's rest: %.2f USD free, %s",
             free,
@@ -457,6 +537,48 @@ class Leftover:
                 return 0, f"brak wolnych środków ({max(free, 0):.2f} USD)"
             return 0, "nic do zrobienia"
         return self._studied, "; ".join(parts)
+
+    def _ask_now(self, use: Use, usd: float) -> float:
+        """``use`` asked now, not through the Batch API (its mode
+        "Zwykły"), for ``usd`` and its number a night: what the run holds,
+        0 when it could not start."""
+        if self.on_demand is None:
+            return 0.0
+        from .on_demand import MAX_USD, MIN_USD, OnDemandError
+
+        usd = min(round(usd, 2), MAX_USD)
+        if usd < MIN_USD:
+            return 0.0
+        try:
+            self.on_demand.start(use.key, usd, limit=use.cap, night=True)
+        except OnDemandError as err:
+            log.info("month's rest: %s not asked now: %s", use.key, err)
+            return 0.0
+        return usd
+
+    def count(self, key: str, done: int, usd: float) -> None:
+        """What ``key`` did, kept in the period's tally (the night's orders
+        and the runs on demand alike)."""
+        if done <= 0 and usd <= 0:
+            return
+        with self._lock:
+            state = self._state()
+            tally = dict(state.get("tally") or {})
+            count, spent = tally.get(key) or (0, 0.0)
+            tally[key] = (int(count) + done, round(float(spent) + usd, 4))
+            state["tally"] = tally
+            self._save(state)
+
+    def period_spent(self, key: str) -> float:
+        """What ``key`` cost this period: its tally, and what a run of it
+        going now spent so far."""
+        _, spent = (self._state().get("tally") or {}).get(key) or (0, 0.0)
+        usd = float(spent)
+        if self.on_demand is not None and self.on_demand.running(key):
+            view = self.on_demand.view(key)
+            if view is not None:
+                usd += float(view["spent_usd"])
+        return usd
 
     def _uses(self) -> list[tuple[Use, bool]]:
         made = {u.key: u for u in self._made_uses()}
@@ -486,7 +608,7 @@ class Leftover:
 
             def crops_run(usd: float) -> tuple[int, float, bool]:
                 waiting = crops.waiting_claims()
-                corners = min(waiting, CROPS_A_NIGHT, math.floor(usd / CROP_USD))
+                corners = min(waiting, self._cap(CROPS, CROPS_A_NIGHT), math.floor(usd / CROP_USD))
                 # Haiku's look around the works, for the next nights' corners
                 # (those the night's own share does not reach)
                 unseen = len(crops.candidates(crops.asked())) - crops.base_limit(False)
@@ -504,7 +626,7 @@ class Leftover:
                     crops.waiting_claims,
                     lambda: config.enabled("crops"),
                     crops_run,
-                    cap=CROPS_A_NIGHT,
+                    cap=self._cap(CROPS, CROPS_A_NIGHT),
                 )
             )
         if review is not None:
@@ -530,7 +652,7 @@ class Leftover:
                 lambda: None,
                 self.study.job.enabled,
                 self._order_studies,
-                cap=A_NIGHT,
+                cap=self._cap(STUDIES, A_NIGHT),
             )
         )
         found.append(
@@ -540,14 +662,14 @@ class Leftover:
                 self._texts_waiting,
                 lambda: any(config.enabled(k) for k in DESCRIPTIONS),
                 self._order_texts,
-                cap=config.config.leftover_texts_a_night,
+                cap=self._cap(TEXTS, config.config.leftover_texts_a_night),
                 caps=TEXTS_A_NIGHT_OPTIONS,
             )
         )
         if audit is not None:
 
             def audit_run(usd: float) -> tuple[int, float, bool]:
-                n = min(AUDITS_A_NIGHT, math.floor(usd / AUDIT_USD))
+                n = min(self._cap(AUDIT, AUDITS_A_NIGHT), math.floor(usd / AUDIT_USD))
                 audit.give_extra(n, 0, self._period_end())
                 return n, n * AUDIT_USD, True
 
@@ -558,10 +680,14 @@ class Leftover:
                     lambda: None,
                     lambda: config.enabled("audit"),
                     audit_run,
-                    cap=AUDITS_A_NIGHT,
+                    cap=self._cap(AUDIT, AUDITS_A_NIGHT),
                 )
             )
         return found
+
+    def _cap(self, key: str, default: int) -> int:
+        """``key``'s works a night: the owner's number, else its own."""
+        return task(self.config.config, key).a_night or default
 
     def _period_end(self) -> date:
         _, _, ends = self.window()
@@ -572,7 +698,7 @@ class Leftover:
         now = self.now()
         state = self._state()
         each = self.per_study(state)
-        count = min(A_NIGHT, math.floor(usd / each))
+        count = min(self._cap(STUDIES, A_NIGHT), math.floor(usd / each))
         if count <= 0:
             return 0, 0.0, True
         picked = self.candidates(count, getattr(self, "_quiet", lambda: True))
@@ -601,7 +727,7 @@ class Leftover:
         works a night (Mateusz 2026-11-15: 125 323 works waiting, and the
         night gave them all the rest at once): how many works, about what
         they cost, whether more wait."""
-        cap = self.config.config.leftover_texts_a_night
+        cap = self._cap(TEXTS, self.config.config.leftover_texts_a_night)
         before = self.ai.batched_usd(DESCRIPTIONS)
         _, works = self.ai.order_rest(DESCRIPTIONS, usd, self._cared_first, cap)
         self._texts_kept = None
@@ -772,6 +898,8 @@ class Leftover:
             "closes": (closes - timedelta(seconds=1)).date().isoformat(),  # its last day
             "open": opens <= self.now() < closes,
             "free_usd": round(max(self.free_usd(state), 0.0), 2),
+            # what is ordered and held by the runs going, not spent yet
+            "planned_usd": round(max(self._planned_usd(state), 0.0), 2),
             "per_study_usd": round(self.per_study(state), 2),
             "measured": bool(state.get("per_study")),
             "ordered": len(state.get("orders", {})),
@@ -782,14 +910,25 @@ class Leftover:
             "uses": self.uses_view(state),
         }
 
+    def _planned_usd(self, state: dict[str, Any]) -> float:
+        config = self.config.config
+        return (
+            config.monthly_limit_usd
+            - config.leftover_reserve_usd
+            - self.claude.spending.total(self.now())
+            - self.free_usd(state)
+        )
+
     def uses_view(self, state: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """The uses in the owner's order: what each is, whether it is on and
         may run, how many wait and about what they would cost, and what it
         did this period."""
         state = state or self._state()
         tally = state.get("tally") or {}
+        config = self.config.config
         out = []
         for use, on in self._uses():
+            settings = task(config, use.key)
             label, about = LABELS[use.key]
             try:
                 waiting = use.waiting()
@@ -817,6 +956,14 @@ class Leftover:
                     "tonight_usd": None if tonight is None else round(tonight * use.each, 2),
                     "done": int(count),
                     "done_usd": round(float(spent), 2),
+                    # the owner's settings (Mateusz 2026-11-17, "Zadania")
+                    "when": settings.when,
+                    "a_night_choices": list(A_NIGHT_CHOICES.get(use.key, ())) or None,
+                    "night_usd": settings.night_usd,
+                    "period_usd": settings.period_usd,
+                    "mode": settings.mode if use.key in NORMAL else "batch",
+                    "modes": ["batch", "normal"] if use.key in NORMAL else ["batch"],
+                    "period_spent_usd": round(self.period_spent(use.key), 2),
                 }
             )
         return out

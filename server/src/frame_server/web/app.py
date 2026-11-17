@@ -234,7 +234,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             service.ai.start()
         service.app.ensure_package()  # built and signed here (panel_package.py)
         seed_playlists(service.importer)
-        painterly_colour_playlists(service.library)  # once: colour playlists keep to paintings
+        painterly_colour_playlists(service.library)  # once: colour playlists keep to paintings only
         service.albums.migrate()  # once: the album of older settings becomes a playlist
         service.player.reset_library()  # once: a clean start for the catalogue
         service.player.drop_set_aside()  # once: the catalogue leaves them out now

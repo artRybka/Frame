@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.145.215
+
+- Ekran poprawiania kadru: narożnik zwalnia dopiero przy naprawdę
+  wolnym ruchu palca (poniżej ok. 90 pt/s, a do ¼ przy kilku pt/s),
+  przejście jest stopniowe i rozłożone w czasie, bez skoku. Zniknęła
+  etykietka „wolno: ¼” pod lupą. Stukanie przy zwalnianiu jest teraz
+  wyraźnym „tyknięciem” jak przy kółku wyboru, coraz gęstszym, im wolniej
+  idzie palec.
+
+## 1.145.214
+
+- Odkrywaj → „Kolor i nastrój”: karty pokazują tylko malarstwo, bez
+  rysunków, akwarel, grafiki, kaligrafii, rzeźby i zdjęć. Playlisty
+  zrobione wcześniej z tych kart raz tracą rysunki i dopełniają się
+  już tylko obrazami.
+
+## 1.145.213
+
+- Konfiguracja → Zadania: jedno miejsce na wszystko, co robią Claude i
+  serwer. Na górze pasek okresu: wydane, zamówione, wolne i zapas. Niżej
+  zadania według pory: „Od razu” i „Przy studium” (przełączniki opisów,
+  słów kluczowych, faktów z sieci…), „Co noc” (strażnik, sędzia
+  powtórek, kadrowanie, przegląd), „Z resztki okresu”, „Tylko na
+  żądanie”, „Wyłączone” i „Bez Claude” (prace serwera, dawne „Zadania
+  nocne”). Przy każdym zadaniu chipy: kiedy, tryb, ile na noc.
+- Zadania resztki (opisy katalogu, studia, kadrowanie, uzupełnienie
+  studiów, przegląd opisów, większy przegląd) mają własną stronę: kiedy
+  (w ostatnich dniach okresu, co noc, tylko na żądanie, wyłączone), ile
+  dzieł na noc, kwota na noc i na okres (pierwsze, co się skończy,
+  zatrzymuje zadanie), tryb (Batch za pół ceny albo Zwykły, od razu, z
+  ceną za dzieło) i „Uruchom teraz za…”. Zadanie ustawione „co noc”
+  działa przez cały okres, nie tylko w jego ostatnich dniach; w trybie
+  Zwykłym serwer nocą pyta od razu, do kwoty i liczby na noc.
+- Strona Claude ma już tylko limit, koszty, okres i zapas.
+
 ## 1.145.212
 
 - Skan („Inteligentne”): fragment odzyskany ze zdjęć bocznych w miejscu

@@ -225,7 +225,7 @@ final class DrawnSheetTests: XCTestCase {
         XCTAssertEqual(String(data: limit, encoding: .utf8), #"{"gemini_monthly_limit_usd":20}"#)
         let raised = try await demo.saveAiSettings(AiSettingsUpdate(geminiMonthlyLimitUsd: 20))
         XCTAssertEqual(raised.geminiMonthlyLimitUsd, 20)
-        XCTAssertEqual(raised.monthlyLimitUsd, 20)  // Claude's, as the demo has it
+        XCTAssertEqual(raised.monthlyLimitUsd, 100)  // Claude's, as the demo has it
     }
 
     /// On the dark page the sheet is a strip of paper torn across the

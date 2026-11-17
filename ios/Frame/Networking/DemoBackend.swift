@@ -79,7 +79,7 @@ actor DemoBackend: FrameBackend {
     private var aiValue = AiSettings(
         keySet: false, keyTail: nil, keyFromApp: false, plText: true, keywordsArtworks: true,
         keywordsPhotos: true, daily: true, searchWords: true, curator: true, twinsJudge: true, gatekeeper: true, audit: true, looks: true, journey: true, webFacts: true, crops: true, stages: true, varnishBlue: true,
-        reviewCount: 2, monthlyLimitUsd: 20, spentUsd: 11.14,
+        reviewCount: 2, monthlyLimitUsd: 100, spentUsd: 11.14,
         keywordsProgress: .init(done: 0, waiting: 0, refused: 0, batchItems: 0, batchDone: 0, preparing: false),
         plTextProgress: nil, error: nil,
         geminiKeySet: true, geminiKeyTail: "wxyz", drawn: true, drawnUsd: 0.15, drawnBatchUsd: 0.075,
@@ -90,7 +90,8 @@ actor DemoBackend: FrameBackend {
         leftoverState: LeftoverState(
             opens: "2026-11-28", closes: "2026-11-29", open: false, freeUsd: 0, perStudyUsd: 0.8,
             measured: false, ordered: 0, inFlight: 0, made: 0, failed: 0, candidates: 7,
-            uses: DemoBackend.leftoverUses, nowFreeUsd: 58.86
+            uses: DemoBackend.leftoverUses, nowFreeUsd: 72.66, plannedUsd: 6.2,
+            nightUsdChoices: [1, 2, 5, 10, 20, 50], periodUsdChoices: [5, 10, 20, 50, 100, 200]
         ),
         costDays: 7,
         claudeCosts: [
@@ -2201,6 +2202,21 @@ actor DemoBackend: FrameBackend {
         return aiValue
     }
 
+    func saveTask(key: String, update: TaskUpdate) async throws -> AiSettings {
+        guard var uses = aiValue.leftoverState?.uses,
+              let index = uses.firstIndex(where: { $0.key == key }) else { return aiValue }
+        if let when = update.when {
+            uses[index].when = when
+            uses[index].on = when == .rest || when == .night
+        }
+        if let night = update.aNight { uses[index].aNight = night == 0 ? nil : night }
+        if let usd = update.nightUsd { uses[index].nightUsd = usd == 0 ? nil : usd }
+        if let usd = update.periodUsd { uses[index].periodUsd = usd == 0 ? nil : usd }
+        if let mode = update.mode { uses[index].mode = mode }
+        aiValue.leftoverState?.uses = uses
+        return aiValue
+    }
+
     func stopOnDemand(key: String) async throws -> AiSettings {
         guard var uses = aiValue.leftoverState?.uses,
               let index = uses.firstIndex(where: { $0.key == key }),
@@ -2542,38 +2558,44 @@ extension DemoBackend {
             key: "refresh", label: "Uzupełnienie wcześniejszych studiów",
             about: "Fakty z sieci do studiów sprzed nich; tekst przepisany tam, gdzie wnoszą dużo.",
             on: true, able: true, waiting: 23, eachUsd: 0.07, waitingUsd: 1.61, aNight: nil,
-            done: 0, doneUsd: 0
+            done: 0, doneUsd: 0, when: .rest, mode: .batch, modes: [.batch], periodSpentUsd: 0
         ),
         LeftoverUse(
-            key: "crops", label: "Kadrowanie zdjęć dzieł",
-            about: "Więcej dzieł na noc bez ramy, sztalugi i tektury wokół, najpierw Ulubione i playlisty.",
+            key: "crops", label: "Więcej kadrowania",
+            about: "Ponad zwykłą porcję nocy: więcej dzieł bez ramy, sztalugi i tektury wokół, najpierw Ulubione i playlisty.",
             on: true, able: true, waiting: 412, eachUsd: 0.01, waitingUsd: 4.12, aNight: 540,
-            done: 0, doneUsd: 0, nowEachUsd: 0.0204
+            done: 1080, doneUsd: 10.8, nowEachUsd: 0.0204, when: .night,
+            aNightChoices: [100, 270, 540, 1000, 2000], nightUsd: 3, mode: .batch, modes: [.batch, .normal],
+            periodSpentUsd: 10.8
         ),
         LeftoverUse(
             key: "text_review", label: "Przegląd zapisanych opisów",
             about: "Tłumaczenia, które nie mówią o dziele, i notki sprzed pięciu stylów.",
-            on: true, able: true, waiting: 1860, eachUsd: 0.0015, waitingUsd: 6.4, aNight: nil,
-            done: 0, doneUsd: 0
+            on: false, able: true, waiting: 1860, eachUsd: 0.0015, waitingUsd: 6.4, aNight: nil,
+            done: 0, doneUsd: 0, when: .demand, mode: .batch, modes: [.batch], periodSpentUsd: 0
         ),
         LeftoverUse(
             key: "studies", label: "Nowe studia",
             about: "Dzieła typowane przez kuratora Studium dnia, najpierw z Ulubionych i playlist.",
             on: true, able: true, waiting: 7, eachUsd: 0.8, waitingUsd: 5.6, aNight: 25,
-            done: 0, doneUsd: 0
+            done: 0, doneUsd: 0, when: .rest, aNightChoices: [5, 10, 25, 50], periodUsd: 20,
+            mode: .batch, modes: [.batch], periodSpentUsd: 0
         ),
         LeftoverUse(
             key: "descriptions", label: "Słowa kluczowe i polskie opisy",
             about: "Dzieła katalogu, które ich jeszcze nie mają, najpierw Ulubione i playlisty.",
             on: true, able: true, waiting: 125_323, eachUsd: 0.0066, waitingUsd: 824.84, aNight: 1000,
             done: 0, doneUsd: 0, aNightOptions: [250, 500, 1000, 2000, 5000, 10000],
-            tonight: 1000, tonightUsd: 6.58, nowEachUsd: 0.0132, run: demoRun
+            tonight: 1000, tonightUsd: 6.58, nowEachUsd: 0.0132, run: demoRun, when: .rest,
+            aNightChoices: [250, 500, 1000, 2000, 5000, 10000], nightUsd: 10, periodUsd: 50,
+            mode: .batch, modes: [.batch, .normal], periodSpentUsd: 0
         ),
         LeftoverUse(
             key: "audit", label: "Większy nocny przegląd",
             about: "Więcej dzieł na noc; lista „Do sprawdzenia” dla Ciebie się wydłuży.",
             on: false, able: true, waiting: nil, eachUsd: 0.002, waitingUsd: nil, aNight: 270,
-            done: 0, doneUsd: 0
+            done: 0, doneUsd: 0, when: .off, aNightChoices: [100, 270, 500, 1000], mode: .batch,
+            modes: [.batch], periodSpentUsd: 0
         ),
     ]
 }
