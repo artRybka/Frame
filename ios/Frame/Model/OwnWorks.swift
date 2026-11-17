@@ -87,6 +87,15 @@ struct OwnDescription: Codable, Hashable, Sendable {
     }
 }
 
+/// Whether a work of his was scanned and the scan's three photographs are
+/// still on the server (two weeks), for "Przerób skan ponownie"; `release`
+/// made the scan last ("" when not noted), `now` is the server's.
+struct OwnScanKept: Codable, Hashable, Sendable {
+    var kept = false
+    var release = ""
+    var now = ""
+}
+
 /// The photograph sent and the corners of the work on it; `by` "auto" when
 /// they are the server's unchanged, "owner" when he moved them.
 struct OwnPhotoCut: Codable, Hashable, Sendable {

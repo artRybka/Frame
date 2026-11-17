@@ -462,6 +462,33 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertEqual(model.ownRetaken[work.id]?.id, work.id)
     }
 
+    /// "Przerób skan ponownie" (Mateusz 2026-11-17 09:19 UTC: "Czy
+    /// poprzednie skany przerobią się po wydaniu?"): the server makes the
+    /// work of its scan's photographs once more, behind the work's card.
+    @MainActor
+    func testAScanIsMadeAgainBehindTheCard() async throws {
+        let model = AppModel()
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 30)).image { context in
+            UIColor.gray.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 40, height: 30))
+        }
+        let data = try XCTUnwrap(image.jpegData(compressionQuality: 0.9))
+        let first = try await model.backend.sendOwnPhoto(data)
+        let work = try await model.backend.addOwnWork(NewOwnWork(token: first.token, text: OwnDescription()))
+        let kept = try await model.backend.ownScan(itemID: work.id)
+        XCTAssertTrue(kept.kept)
+        model.rescanOwnWork(itemID: work.id)
+        XCTAssertTrue(model.ownRetaking.contains(work.id))
+        XCTAssertTrue(model.ownRescanning.contains(work.id))
+        for _ in 0 ..< 100 where model.ownRetaking.contains(work.id) {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertFalse(model.ownRescanning.contains(work.id))
+        XCTAssertEqual(model.ownRetaken[work.id]?.id, work.id)
+        let none = try await model.backend.ownScan(itemID: "none")
+        XCTAssertFalse(none.kept)
+    }
+
     /// What the helper draws and counts after the first test on the phone
     /// (Mateusz 2026-11-16 12:53 UTC): the word held a moment, the
     /// gyroscope and the outline as one angle, the plan's dot, the ring.

@@ -12,6 +12,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 from test_ai import FakeAnthropic, _message, fake  # noqa: F401  (fixture)
@@ -574,6 +575,96 @@ def test_three_photographs_of_a_work_behind_glass_are_merged_within_its_corners(
     assert item is not None
     whole = service.images.museum_photo(item, urgent=True)
     assert off(whole, inner) > veiled * 0.9
+
+
+def test_a_work_is_scanned_again_from_the_photographs_kept(
+    service: FrameService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mateusz 2026-11-17 09:19 UTC, shown what 1.145.216 does with the
+    lamp on his drawing: "Jest idealnie! Czy poprzednie skany przerobią
+    się po wydaniu?". A work scanned before a release has what the scan
+    came to then; its photographs are kept two weeks, and it is made of
+    them once more, with its cut and what he wrote as they were."""
+    import json
+
+    from test_reflections import _three
+
+    from frame_server.own_works import SCAN_INFO, OwnWorks
+
+    clean, first, sides = _three()
+
+    def png(img: np.ndarray) -> bytes:
+        out = io.BytesIO()
+        Image.fromarray(img).save(out, "PNG")
+        return out.getvalue()
+
+    inner = (slice(540, 660), slice(440, 600))
+
+    def off(path: Path) -> float:
+        with Image.open(path) as img:
+            got = np.asarray(img.convert("RGB")).astype(int)
+        return float(np.abs(got[inner] - clean[inner]).mean())
+
+    seen = [(0.22, 0.2), (0.78, 0.2), (0.78, 0.8), (0.22, 0.8)]
+    # A release that took next to nothing out.
+    monkeypatch.setattr(OwnWorks, "_merge", staticmethod(lambda *_: (2, 0.01)))
+    with _client(service) as client:
+        token = client.post("/api/own/photos", files={"file": ("p.png", png(first))}).json()[
+            "token"
+        ]
+        for photo_ in sides:
+            client.post(f"/api/own/photos/{token}/sides", files={"file": ("s.png", png(photo_))})
+        veiled = off(service.own_works.path(token))
+        client.post(f"/api/own/photos/{token}/merge", json={"outline": seen})
+        added = client.post(
+            "/api/own/works", json={"token": token, "corners": seen, "by": "owner", "text": TEXT}
+        )
+        assert added.status_code == 200, added.text
+        # A work of one photograph has no scan.
+        other = client.post("/api/own/photos", files={"file": ("p.jpg", _jpeg(photo()))}).json()
+        plain = client.post("/api/own/works", json={"token": other["token"], "text": TEXT})
+        assert plain.status_code == 200, plain.text
+    monkeypatch.undo()
+
+    works = service.own_works
+    item = service.library.get(added.json()["id"])
+    one = service.library.get(plain.json()["id"])
+    assert item is not None and one is not None and item.cut is not None
+    assert off(service.images.museum_photo(item, urgent=True)) > veiled * 0.9
+    note = works.scans / token / SCAN_INFO
+    info = json.loads(note.read_text())
+    assert info["item"] == item.id and info["release"]
+    assert works.scan_of(item) == token and works.scan_of(one) is None
+    with pytest.raises(LookupError):
+        works.rescan(one)
+
+    # Added before scans noted their work: it is the one that looks like it.
+    del info["item"]
+    note.write_text(json.dumps(info))
+    assert works.scan_of(one) is None
+    assert works.scan_of(item) == token
+    assert json.loads(note.read_text())["item"] == item.id
+
+    with _client(service) as client:
+        assert client.get(f"/api/own/works/{one.id}/scan").json()["kept"] is False
+        assert client.post(f"/api/own/works/{one.id}/scan").status_code == 404
+        kept = client.get(f"/api/own/works/{item.id}/scan").json()
+        assert kept["kept"] is True and kept["release"] == kept["now"] != ""
+        done = client.post(f"/api/own/works/{item.id}/scan")
+        assert done.status_code == 200, done.text
+    again = service.library.get(item.id)
+    assert again is not None
+    assert off(service.images.museum_photo(again, urgent=True)) < veiled / 2
+    assert again.cut is not None and again.cut.work == item.cut.work
+    assert again.cut.at > item.cut.at and again.title == TEXT["title"]
+    info = json.loads(note.read_text())
+    assert info["again"] and info["used"] == 2 and info["replaced"] > 0.03
+
+    # He chose the one photograph over the scan: nothing to make it of.
+    info["single"] = info["again"]
+    note.write_text(json.dumps(info))
+    assert works.scan_of(item) is None
 
 
 def test_the_work_is_looked_for_once_in_a_scan(

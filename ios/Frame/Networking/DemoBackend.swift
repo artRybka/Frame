@@ -1761,6 +1761,19 @@ actor DemoBackend: FrameBackend {
         try update(itemID) { Self.describe(&$0, text) }
     }
 
+    func ownScan(itemID: String) async throws -> OwnScanKept {
+        let own = items.contains { $0.id == itemID && $0.kind == .own }
+        return OwnScanKept(kept: own, release: "1.145.212", now: "1.145.217")
+    }
+
+    func rescanOwnWork(itemID: String) async throws -> Item {
+        guard let item = items.first(where: { $0.id == itemID && $0.kind == .own }) else {
+            throw BackendError.notFound
+        }
+        try await Task.sleep(for: .milliseconds(300))
+        return item
+    }
+
     func retakeOwnWork(itemID: String, _ photo: OwnPhotoCut) async throws -> Item {
         guard let image = incoming[photo.token], let before = items.first(where: { $0.id == itemID }) else {
             throw BackendError.notFound

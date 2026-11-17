@@ -33,6 +33,8 @@ struct ItemDetailView: View {
     /// A work of his own: "Edytuj opis", "Zrób zdjęcie ponownie", "Usuń z katalogu".
     @State private var editingOwn = false
     @State private var retakingOwn = false
+    /// Its scan's photographs are still on the server: "Przerób skan ponownie".
+    @State private var scanKept = false
     @State private var deletingOwn = false
     @State private var draft = FramingDraft()
     /// Crops saved here: the preview asks for them by name, as the one
@@ -187,7 +189,7 @@ struct ItemDetailView: View {
             if model.ownRetaking.contains(itemID) {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text("Zapisuję nowe zdjęcie…")
+                    Text(model.ownRescanning.contains(itemID) ? "Przerabiam skan…" : "Zapisuję nowe zdjęcie…")
                         .font(.footnote.weight(.medium))
                         .foregroundStyle(Theme.ink)
                 }
@@ -221,6 +223,8 @@ struct ItemDetailView: View {
                     recoveryKind: recoveryKind ?? .varnish, cleaned: item.cleanedShown != nil,
                     editOwn: ownActions(item) ? { editingOwn = true } : nil,
                     retakeOwn: ownActions(item) ? { retakingOwn = true } : nil,
+                    rescanOwn: ownActions(item) && scanKept && !model.ownRetaking.contains(itemID)
+                        ? { model.rescanOwnWork(itemID: itemID) } : nil,
                     deleteOwn: ownActions(item) ? { Task { await deleteOwn() } } : nil,
                     deletingOwn: $deletingOwn
                 )
@@ -232,6 +236,7 @@ struct ItemDetailView: View {
         .task(id: described) { await loadSeen() }
         .task(id: described) { await sharpen() }
         .task(id: described) { await checkCut() }
+        .task(id: described) { await findScan() }
         .fullScreenCover(isPresented: $correctingCut) {
             if let item {
                 CutEditor(item: item) { corners in await setCut(CutUpdate(corners: corners)) }
@@ -754,6 +759,14 @@ struct ItemDetailView: View {
     /// "Edytuj opis", "Zrób zdjęcie ponownie", "Usuń z katalogu": his own
     /// work, for the owner.
     private func ownActions(_ item: Item) -> Bool { item.isOwnWork && model.isOwner }
+
+    /// Whether "Przerób skan ponownie" has anything to make the work of.
+    private func findScan() async {
+        scanKept = false
+        guard let id = described, id == itemID, let item, ownActions(item) else { return }
+        let kept = (try? await model.backend.ownScan(itemID: id))?.kept ?? false
+        if !Task.isCancelled, id == itemID { scanKept = kept }
+    }
 
     private func deleteOwn() async {
         if await model.deleteOwnWork(itemID) { dismiss() }

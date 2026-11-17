@@ -281,6 +281,11 @@ protocol FrameBackend: Sendable {
     func describeOwnWork(itemID: String, _ text: OwnDescription) async throws -> Item
     /// "Zrób zdjęcie ponownie": the new photograph, cut; the text stays.
     func retakeOwnWork(itemID: String, _ photo: OwnPhotoCut) async throws -> Item
+    /// Whether the photographs of the work's scan are still kept.
+    func ownScan(itemID: String) async throws -> OwnScanKept
+    /// "Przerób skan ponownie": the work's photograph made once more of
+    /// its scan's by the release the server is now; cut and text stay.
+    func rescanOwnWork(itemID: String) async throws -> Item
     /// The panel's address, PIN and MAC as the server uses them.
     func panelConfig() async throws -> PanelConfig
     func savePanelConfig(_ update: PanelConfigUpdate) async throws -> PanelConfig

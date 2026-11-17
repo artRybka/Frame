@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.217
+
+- Własne dzieła: „Przerób skan ponownie” w menu dzieła. Serwer składa
+  skan jeszcze raz z trzech zdjęć, które trzyma przez 14 dni, tak jak
+  robi to obecna wersja, i podmienia obraz dzieła. Kadr i opis zostają.
+  Działa też dla dzieł zeskanowanych przed tą wersją.
+
 ## 1.145.216
 
 - Skan („Inteligentne”): krawędź fragmentu wstawionego ze zdjęć bocznych

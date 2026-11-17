@@ -14,7 +14,7 @@ from starlette.concurrency import run_in_threadpool
 from ..ai import AiUnavailable
 from ..imaging.cut import valid
 from ..library.models import Item
-from ..own_works import Description, Hints, Incoming, Merged
+from ..own_works import Description, Hints, Incoming, Merged, ScanKept
 from ..service import FrameService
 from .deps import require_owner, service
 
@@ -200,6 +200,26 @@ async def retake(item_id: str, photo: PhotoCut, svc: Svc) -> Item:
         return await run_in_threadpool(
             svc.own_works.retake, item, photo.token, _corners(photo.corners), photo.by, photo.shape
         )
+    except LookupError as err:
+        raise HTTPException(404, str(err)) from err
+    except ValueError as err:
+        raise HTTPException(422, str(err)) from err
+
+
+@router.get("/own/works/{item_id:item}/scan", response_model=ScanKept)
+async def scan_kept(item_id: str, svc: Svc) -> ScanKept:
+    """Whether the photographs of the work's scan are still kept."""
+    item = await _own(svc, item_id)
+    return await run_in_threadpool(svc.own_works.scan_kept, item)
+
+
+@router.post("/own/works/{item_id:item}/scan", response_model=Item)
+async def rescan(item_id: str, svc: Svc) -> Item:
+    """ "Przerób skan ponownie": the work made once more of its scan's
+    photographs by this release; its cut and its text stay."""
+    item = await _own(svc, item_id)
+    try:
+        return await run_in_threadpool(svc.own_works.rescan, item)
     except LookupError as err:
         raise HTTPException(404, str(err)) from err
     except ValueError as err:

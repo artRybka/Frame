@@ -28,6 +28,7 @@ import anthropic
 from PIL import Image
 from pydantic import BaseModel, Field
 
+from . import build_version
 from .ai.client import SONNET, AiUnavailable, request
 from .ai.crops import _block
 from .imaging.cut import Quad, valid, warp
@@ -63,6 +64,14 @@ INCOMING_QUALITY = 95
 SCANS_SECONDS = 14 * 24 * 3600
 #: What a scan's folder holds besides its photographs.
 SCAN_INFO = "scan.json"
+#: A work's photograph is a kept scan's when the two, small and grey, go
+#: together at least this much (1 is the same picture): the scan's first
+#: photograph has the reflections the work's has not, another scan of the
+#: same work is held a little otherwise.
+SCAN_LIKE = 0.9
+#: So small (pixels a side), and of shapes no further apart than this.
+SCAN_LOOK = 32
+SCAN_SHAPE = 0.02
 #: Beside a waiting photograph: the work Opus found in it.
 FOUND = ".found.json"
 #: Beside a waiting photograph: the colour chart found in it and the way
@@ -145,6 +154,17 @@ class Merged(Incoming):
     replaced: float = 0.0
 
 
+class ScanKept(BaseModel):
+    """Whether a work's photograph can be made once more of its scan's
+    photographs (:meth:`OwnWorks.rescan`), for "Przerób skan ponownie"."""
+
+    kept: bool = False
+    #: The release that made it one last; "" when not noted (before 1.145.217).
+    release: str = ""
+    #: The release this server is.
+    now: str = ""
+
+
 class Hints(BaseModel):
     """What was read off the picture, for the description's chips."""
 
@@ -171,6 +191,29 @@ class Description(BaseModel):
     origin: str = Field("", max_length=300)
     height_cm: float | None = Field(None, gt=0, lt=10000)
     width_cm: float | None = Field(None, gt=0, lt=10000)
+
+
+def _look(path: Path) -> tuple[Any, float]:
+    """A photograph small and grey (:data:`SCAN_LOOK` a side, its mean
+    taken off, its length 1), and its width over its height."""
+    import numpy as np
+    from PIL import ImageOps
+
+    with Image.open(path) as img:
+        img.draft("L", (SCAN_LOOK * 4, SCAN_LOOK * 4))
+        upright = ImageOps.exif_transpose(img.convert("L"))
+        shape = upright.width / upright.height
+        small = np.asarray(upright.resize((SCAN_LOOK, SCAN_LOOK), Image.Resampling.BOX), float)
+    small = small - small.mean()
+    return small / max(float(np.linalg.norm(small)), 1e-6), shape
+
+
+def _alike(one: tuple[Any, float], other: tuple[Any, float]) -> float:
+    """How much two photographs (:func:`_look`) go together, -1 to 1;
+    nothing when they are of another shape."""
+    if abs(one[1] / other[1] - 1) > SCAN_SHAPE:
+        return 0.0
+    return float((one[0] * other[0]).sum())
 
 
 class OwnWorks:
@@ -449,6 +492,8 @@ class OwnWorks:
         """What the merge came to, beside the scan's photographs."""
         info = {
             "at": now_iso(),
+            # Which release made it one: a later one may do it better.
+            "release": build_version(),
             "used": seen.used,
             "replaced": seen.replaced,
             "width": seen.width,
@@ -610,6 +655,7 @@ class OwnWorks:
         )
         item = self._describe(item, text)
         item = self._cut(item, corners, by, shape)
+        self._note_work(token, item)
         self._done(path)
         log.info("own work %s added", item.id)
         return item
@@ -634,7 +680,113 @@ class OwnWorks:
         width, height = self.images.store(item, path.read_bytes(), master=True)
         stored = self.library.update(item.id, width=width, height=height, cut=None) or item
         stored = self._cut(stored, corners, by, shape)
+        self._note_work(token, stored)
         self._done(path)
+        return stored
+
+    # -- the scan it was made of ----------------------------------------------------
+
+    def _note_work(self, token: str, item: Item) -> None:
+        """Which work a kept scan became, beside its photographs."""
+        note = self.scans / token / SCAN_INFO
+        try:
+            info = json.loads(note.read_text())
+            info["item"] = item.id
+            note.write_text(json.dumps(info))
+        except (OSError, ValueError):
+            pass  # no scan: one photograph, or it is gone
+
+    def scan_of(self, item: Item) -> str | None:
+        """The kept scan the work's photograph was made of (its token), if
+        its photographs are still here: the newest that noted the work.
+        A work added before scans noted theirs (1.145.217) is the scan its
+        photograph looks like, of those that noted none; and that is noted."""
+        if item.kind != ItemKind.OWN or item.source != "upload":
+            return None
+        loose: list[str] = []
+        for scan in self.kept_scans():
+            files = scan.get("files", {})
+            if scan.get("single") or "first.jpg" not in files or "side1.jpg" not in files:
+                continue
+            if scan.get("item") == item.id:
+                return str(scan["token"])
+            if "item" not in scan:
+                loose.append(str(scan["token"]))
+        if not loose:
+            return None
+        master = self.images.master_path(item)
+        try:
+            mine = _look(master if master.is_file() else self.images.museum_photo(item))
+        except OSError:
+            return None
+        best, token = SCAN_LIKE, None
+        for candidate in loose:
+            try:
+                like = _alike(mine, _look(self.scans / candidate / "first.jpg"))
+            except OSError:
+                continue
+            if like > best:
+                best, token = like, candidate
+        if token is not None:
+            self._note_work(token, item)
+            log.info("own work %s: its scan is %s (alike %.3f)", item.id, token, best)
+        return token
+
+    def scan_kept(self, item: Item) -> ScanKept:
+        """Whether :meth:`rescan` has anything to make the work of."""
+        token = self.scan_of(item)
+        if token is None:
+            return ScanKept(now=build_version())
+        try:
+            info = json.loads((self.scans / token / SCAN_INFO).read_text())
+        except (OSError, ValueError):
+            info = {}
+        return ScanKept(kept=True, release=str(info.get("release") or ""), now=build_version())
+
+    def rescan(self, item: Item) -> Item:
+        """The work's photograph made once more of its scan's photographs
+        (Mateusz 2026-11-17 09:19 UTC, shown what 1.145.216 does with the
+        lamp on his drawing: "Jest idealnie! Czy poprzednie skany przerobią
+        się po wydaniu?"). What takes the reflections out gets better with
+        a release, and a work scanned before it has what the scan came to
+        then. Its cut and what he wrote stay."""
+        self._check(item)
+        token = self.scan_of(item)
+        if token is None:
+            raise LookupError("no scan of this work is kept")
+        folder = self.scans / token
+        info = json.loads((folder / SCAN_INFO).read_text())
+        quad = valid(info.get("corners") or [])
+        again = self.incoming / f"{token}-again.jpg"
+        shutil.copyfile(folder / "first.jpg", again)
+        try:
+            used, taken = self._merge(
+                folder / "first.jpg", again, sorted(folder.glob("side*.jpg")), quad
+            )
+            data = again.read_bytes()
+        finally:
+            again.unlink(missing_ok=True)
+        cut = item.cut
+        self.images.remove(item)
+        width, height = self.images.store(item, data, master=True)
+        stored = self.library.update(item.id, width=width, height=height) or item
+        if cut is not None and cut.shown() is not None:
+            # The same corners: the photograph is the same one. Set anew,
+            # for the app's pictures kept from before to be had again.
+            stored = self.crops.apply(stored, cut.model_copy(update={"at": now_iso()}))
+        else:
+            self.images.recut(stored)
+        info.update(
+            used=used, replaced=taken, again=now_iso(), release=build_version(), item=item.id
+        )
+        (folder / SCAN_INFO).write_text(json.dumps(info))
+        log.info(
+            "own work %s scanned again from %s: %d side(s), %.1f%% taken out",
+            item.id,
+            token,
+            used,
+            taken * 100,
+        )
         return stored
 
     @staticmethod
@@ -701,4 +853,4 @@ class OwnWorks:
         return self.crops.apply(item, cut)
 
 
-__all__ = ["Description", "Hints", "Incoming", "Merged", "OwnWorks"]
+__all__ = ["Description", "Hints", "Incoming", "Merged", "OwnWorks", "ScanKept"]

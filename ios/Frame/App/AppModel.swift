@@ -139,6 +139,9 @@ final class AppModel {
     private(set) var ownRetaking: Set<String> = []
     /// Those works as the server kept them, for a card that is open.
     private(set) var ownRetaken: [String: Item] = [:]
+    /// Those of them made once more of their scan's photographs
+    /// (`rescanOwnWork`): the card says which of the two goes on.
+    private(set) var ownRescanning: Set<String> = []
     /// Works whose picture changed since launch (another copy took its
     /// place), and how many times: their thumbnails and previews on screen
     /// are had anew.
@@ -902,6 +905,30 @@ final class AppModel {
             do {
                 if single { try await backend.keepOwnFirstPhoto(token: photo.token) }
                 let updated = try await backend.retakeOwnWork(itemID: itemID, photo)
+                ownWorkChanged(updated)
+                ownRetaken[itemID] = updated
+            } catch {
+                show(error)
+            }
+        }
+    }
+
+    /// "Przerób skan ponownie" (Mateusz 2026-11-17 09:19 UTC, shown what
+    /// a new release does with the lamp on his drawing: "Czy poprzednie
+    /// skany przerobią się po wydaniu?"): the server makes the work's
+    /// photograph once more of its scan's three, as the release it is now
+    /// does it, some ten seconds and more. Behind the work's card, like a
+    /// new photograph; the cut and what he wrote stay.
+    func rescanOwnWork(itemID: String) {
+        ownRetaking.insert(itemID)
+        ownRescanning.insert(itemID)
+        Task {
+            defer {
+                ownRetaking.remove(itemID)
+                ownRescanning.remove(itemID)
+            }
+            do {
+                let updated = try await backend.rescanOwnWork(itemID: itemID)
                 ownWorkChanged(updated)
                 ownRetaken[itemID] = updated
             } catch {
