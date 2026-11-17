@@ -33,19 +33,21 @@ from frame_server.library.vocabulary import (
     STYLE_YEARS,
     TERMS,
     artist_matches,
+    is_document,
     is_grey_copy,
     is_grey_painting,
     is_manuscript,
     is_photograph,
     is_postal,
     is_reproduction,
+    is_state_record,
     museum_queries,
     object_category,
     style_artists,
     suggest,
     term,
 )
-from frame_server.player import SET_ASIDE_KEY
+from frame_server.player import SET_ASIDE_KEY, SET_ASIDE_VERSION
 
 
 def _work(n: int, **fields) -> Item:
@@ -463,6 +465,70 @@ def test_catalogue_leaves_manuscripts_out(museums) -> None:  # noqa: F811
     library.set_state(SET_ASIDE_KEY, True)
     library.upsert(plate)
     assert service.player.drop_set_aside() == 1
+
+    # A catalogue cleaned by the version before loses only what the new one
+    # leaves out: the state archives' records, not the grey plate again.
+    library.set_state(SET_ASIDE_KEY, SET_ASIDE_VERSION - 1)
+    library.upsert(plate)
+    form = library.upsert(_nara(8, pooled=True))
+    kept_form = library.upsert(_nara(9))
+    assert service.player.drop_set_aside() == 1
+    assert library.get(form.id) is None and library.get(kept_form.id) is not None
+    assert library.get(plate.id) is not None
+
+
+NARA = (
+    "This file was contributed to Wikimedia Commons by National Archives at College Park - "
+    "Textual Reference as part of a cooperation project."
+)
+
+
+def _nara(n: int, **fields) -> Item:
+    return Item(
+        id=f"wmc:{n}",
+        source="wmc",
+        source_id=str(n),
+        title="KU-1392",
+        classification="Painting",
+        credit=NARA,
+        artist="War Department. The Adjutant General's Office. Captured Records Section.",
+        **fields,
+    )
+
+
+def test_state_archives_records_are_never_pictures() -> None:
+    """Mateusz 2026-11-17: a blank German questionnaire of 1943 from the US
+    National Archives, on Commons as a painting by the War Department."""
+    form = _nara(1)
+    assert is_state_record(form) and against(form, Place.SOUGHT)
+    # An office's photograph from the archive's Still Pictures.
+    still = form.model_copy(
+        update={
+            "credit": NARA.replace("Textual Reference", "Still Pictures"),
+            "artist": "Department of Defense. American Forces Information Service.",
+            "title": "F-117A Nighthawk",
+        }
+    )
+    assert is_state_record(still)
+    # A photographer it names stays a picture, as do its records elsewhere.
+    adams = still.model_copy(update={"artist": "Adams, Ansel, 1902-1984", "title": "Grand Teton"})
+    assert not is_state_record(adams)
+    npg = Item(
+        id="si:1",
+        source="si",
+        source_id="1",
+        title="Charles R. Gill",
+        artist="L. Wieser",
+        credit="National Portrait Gallery, Smithsonian Institution; transfer from the "
+        "National Archives",
+    )
+    assert not is_state_record(npg) and not against(npg, Place.SOUGHT)
+    # The Rijksmuseum's letters and poems are pages of text; a drawing on a
+    # letter is a drawing.
+    for kind in ("letter", "poem"):
+        assert is_document(_work(10, title="Brief aan anoniem", classification=kind))
+    drawn = _work(11, title="A Letter to Eugène Maus, Decorated with Two Apples")
+    assert not is_document(drawn.model_copy(update={"classification": "Drawings"}))
 
 
 def test_theme_playlists_and_terms(museums, monkeypatch) -> None:  # noqa: F811

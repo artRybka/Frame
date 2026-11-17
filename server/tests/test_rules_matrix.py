@@ -40,6 +40,8 @@ from frame_server.service import FrameService
 MONET = "Claude Monet"
 #: A title for each work: no two alike, none another's with a word added.
 WORDS = [
+    "Dunes",
+    "Rain",
     "Poplars",
     "Haystacks",
     "Cathedral",
@@ -114,6 +116,15 @@ SPECIMENS: dict[str, tuple[str, dict[str, Any]]] = {
     ),
     "znaczek": ("europeana", {"classification": "Postage stamp", "medium": ""}),
     "dokument": ("rijks", {"classification": "pamphlet", "medium": ""}),
+    # A US National Archives' file on Commons, typed a painting (2026-11-17).
+    "akta z archiwum": (
+        "wmc",
+        {
+            "credit": "This file was contributed to Wikimedia Commons by National Archives "
+            "and Records Administration as part of a cooperation project.",
+            "artist": "War Department. The Adjutant General's Office. Captured Records Section.",
+        },
+    ),
     "archiwum fotografii": ("europeana", {"source_id": "718~water-lilies"}),
     "archiwum sztuki, kolor": ("europeana", {"credit": ARCHIVE}),
     "archiwum sztuki, szare": ("europeana", {"credit": ARCHIVE, "tint_spread": 0.001}),
@@ -193,6 +204,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "szara grafika z muzeum": ("+++++++-+++", "+++++++-+++"),
     "znaczek": ("-----------", "+----------"),
     "dokument": ("-----------", "+----------"),
+    "akta z archiwum": ("-----------", "+----------"),
     "archiwum fotografii": ("-----------", "++---------"),
     "archiwum sztuki, kolor": ("++-++++++++", "++-++++++++"),
     "archiwum sztuki, szare": ("-----------", "+----------"),
@@ -218,6 +230,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
 BROWSED_NOT_FOUND = {
     "znaczek",
     "dokument",
+    "akta z archiwum",
     "archiwum sztuki, szare",
     "fotografia z Openverse",
     "fotografia z muzeum",

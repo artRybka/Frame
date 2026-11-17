@@ -38,6 +38,7 @@ from .vocabulary import (
     is_postal,
     is_reproduction,
     is_sketch_sheet,
+    is_state_record,
     is_vector_drawing,
     object_category,
 )
@@ -64,6 +65,8 @@ class Why(StrEnum):
     POSTAL = "postal"
     #: A page of text, printed matter, the back of a work.
     DOCUMENT = "document"
+    #: A state archive's record: a form, a file, an office's photograph.
+    RECORDS = "records"
     #: A plate, page, slide or postcard reproducing a work.
     REPRODUCTION = "reproduction"
     #: A black-and-white copy of a painting.
@@ -96,6 +99,7 @@ COPIES = frozenset(
         Why.ARCHIVE_PHOTO,
         Why.POSTAL,
         Why.DOCUMENT,
+        Why.RECORDS,
         Why.REPRODUCTION,
         Why.GREY_COPY,
         Why.GREY_SLIDE,
@@ -130,6 +134,7 @@ NAMES = {
     Why.ARCHIVE_PHOTO: "zdjęcie z archiwum fotografii",
     Why.POSTAL: "znaczek albo banknot",
     Why.DOCUMENT: "dokument albo odwrocie",
+    Why.RECORDS: "akta z archiwum państwowego",
     Why.REPRODUCTION: "reprodukcja",
     Why.GREY_COPY: "czarno-biała kopia",
     Why.GREY_SLIDE: "czarno-białe zdjęcie z archiwum sztuki",
@@ -163,6 +168,7 @@ def _whys(item: Item) -> tuple[Why, ...]:
             (Why.ARCHIVE_PHOTO, is_archive_photo(item)),
             (Why.POSTAL, is_postal(item)),
             (Why.DOCUMENT, is_document(item)),
+            (Why.RECORDS, is_state_record(item)),
             (Why.REPRODUCTION, is_reproduction(item)),
         )
         if holds
@@ -232,7 +238,7 @@ MINDS: dict[Place, tuple[frozenset[Why], frozenset[Why]]] = {
     Place.LISTED: (EVERY, frozenset()),
     # A stamp or a page he kept is no still life, Foto Marburg's grey slide
     # no painting (Mateusz 2026-11-09); a detail he kept is found.
-    Place.FOUND: (EVERY, OTHER | {Why.POSTAL, Why.DOCUMENT, Why.GREY_SLIDE}),
+    Place.FOUND: (EVERY, OTHER | {Why.POSTAL, Why.DOCUMENT, Why.RECORDS, Why.GREY_SLIDE}),
     # The details, reproductions and stamps he kept stay his (Ulubione, his
     # playlists, Szukaj): the server proposes none of them itself (Mateusz
     # 2026-11-11).
