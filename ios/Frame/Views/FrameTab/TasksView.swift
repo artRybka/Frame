@@ -444,7 +444,7 @@ private struct TaskSwitchRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
                     Text(row.title)
-                    if marked { AiMark() }
+                    if marked { TaskAiMark() }
                 }
                 if let costNote {
                     Text(costNote)
@@ -481,7 +481,7 @@ private struct TaskRow: View {
                     HStack(spacing: 5) {
                         Text(use.label)
                             .foregroundStyle(running ? Theme.ink : (use.able ? Theme.ink : Theme.inkSoft))
-                        AiMark()
+                        TaskAiMark()
                     }
                     let chips = TasksSection.chips(use)
                     if !chips.isEmpty || running {
@@ -634,7 +634,7 @@ private struct ServerTaskRow: View {
 }
 
 /// The AI's mark: a sparkle after the name.
-struct AiMark: View {
+struct TaskAiMark: View {
     var body: some View {
         Image(systemName: "sparkle")
             .font(.caption)
