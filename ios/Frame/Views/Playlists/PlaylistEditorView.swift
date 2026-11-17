@@ -119,7 +119,7 @@ struct PlaylistEditorView: View {
                             )) {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("Wspólna")
-                                    Text("Domownicy też ją widzą i mogą pokazać na ramce; zmieniasz ją tylko Ty.")
+                                    Text(bound: "Domownicy też ją widzą i mogą pokazać na ramce; zmieniasz ją tylko Ty.")
                                         .font(.caption)
                                         .foregroundStyle(Theme.inkSoft)
                                 }
@@ -294,7 +294,7 @@ struct PlaylistEditorView: View {
                 if playlist.kind == .manual {
                     Text("Znajdź dzieła jak w Szukaj i dodaj każde przyciskiem \(Image(systemName: "plus")) przy nim.")
                 } else {
-                    Text("W jednej grupie wystarczy jedno z wybranych, różne grupy muszą pasować razem: np. Impresjonizm lub Secesja, a do tego Morze.")
+                    Text(bound: "W jednej grupie wystarczy jedno z wybranych, różne grupy muszą pasować razem: np. Impresjonizm lub Secesja, a do tego Morze.")
                 }
             }
                 .font(.footnote)
@@ -363,7 +363,7 @@ struct PlaylistEditorView: View {
 
     private var cameraRoll: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Dodaj zdjęcia z rolki aparatu albo znajdź dzieła poniżej i dodaj je plusem.")
+            Text(bound: "Dodaj zdjęcia z rolki aparatu albo znajdź dzieła poniżej i dodaj je plusem.")
                 .font(.subheadline)
                 .foregroundStyle(Theme.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
@@ -376,7 +376,7 @@ struct PlaylistEditorView: View {
                     .frame(maxWidth: .infinity)
             }
             if !photos.isEmpty {
-                Text("\(Names.photos(photos.count)) trafi do biblioteki i do tej playlisty po zapisaniu.")
+                Text(bound: "\(Names.photos(photos.count)) trafi do biblioteki i do tej playlisty po zapisaniu.")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(Theme.ink)
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
@@ -446,7 +446,7 @@ struct PlaylistEditorView: View {
                 .background(Theme.card, in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline))
                 albumCheckStatus
-                Text("W Zdjęciach: album udostępniony → Osoby → Witryna publiczna → Udostępnij link.")
+                Text(bound: "W Zdjęciach: album udostępniony → Osoby → Witryna publiczna → Udostępnij link.")
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -459,7 +459,7 @@ struct PlaylistEditorView: View {
                             album.order = order
                         } label: {
                             HStack {
-                                Text(order.title).foregroundStyle(Theme.ink)
+                                Text(bound: order.title).foregroundStyle(Theme.ink)
                                 Spacer()
                                 if album.order == order {
                                     Image(systemName: "checkmark").foregroundStyle(Theme.ink)
@@ -475,7 +475,7 @@ struct PlaylistEditorView: View {
                 .padding(.horizontal, 14)
                 .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline))
-                Text(album.order.explanation)
+                Text(bound: album.order.explanation)
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
@@ -541,7 +541,7 @@ struct PlaylistEditorView: View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(summary)
+                    Text(bound: summary)
                         .font(.serif(17, weight: .medium))
                         .foregroundStyle(finder.nothingFound ? Theme.bad : Theme.ink)
                         .contentTransition(.numericText())
@@ -562,7 +562,7 @@ struct PlaylistEditorView: View {
                     }
                 }
                 if let fillNote {
-                    Text(fillNote)
+                    Text(bound: fillNote)
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
@@ -758,7 +758,8 @@ struct PlaylistEditorView: View {
         }
     }
 
-    /// Asks the museums for the works a smart playlist misses, quietly
+    /// Takes in the museums' works the editor showed and asks the museums
+    /// for `count` more the smart playlist misses (0: only those), quietly
     /// (Mateusz, 2026-11-14: no card with "46 z 87"); the playlists are
     /// read again once they are in. Runs on after the editor closes.
     @MainActor
@@ -804,12 +805,20 @@ struct PlaylistEditorView: View {
         }
         let uploads = photos.map(\.upload)
         let fetch = missing ?? 0
-        Task { [model] in await Self.store(playlist, uploads: uploads, fetch: fetch, model: model) }
+        // The museums' works shown (paler) join the catalogue now, also
+        // when it holds enough for the playlist already (de Chirico,
+        // 2026-11-17: 192 of his, nothing more asked, the shown left out).
+        let shown = playlist.kind == .smart && !fromMuseums.isEmpty
+        Task { [model] in
+            await Self.store(playlist, uploads: uploads, fetch: fetch, shown: shown, model: model)
+        }
         dismiss()
     }
 
     @MainActor
-    private static func store(_ playlist: Playlist, uploads: [PhotoUpload], fetch: Int, model: AppModel) async {
+    private static func store(
+        _ playlist: Playlist, uploads: [PhotoUpload], fetch: Int, shown: Bool, model: AppModel
+    ) async {
         var playlist = playlist
         let name = playlist.name
         let notices = model.notices
@@ -832,7 +841,7 @@ struct PlaylistEditorView: View {
                 try await followSync(jobID, name: name, card: card, model: model)
             } else {
                 notices.end(card, .done, "Zapisano „\(name)”")
-                if saved.playlist.kind == .smart, fetch > 0 {
+                if saved.playlist.kind == .smart, fetch > 0 || shown {
                     await fillQuietly(playlist.rules, count: fetch, model: model)
                 }
             }

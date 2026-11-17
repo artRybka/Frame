@@ -1,0 +1,124 @@
+{
+ "items": [
+  {
+   "id": "mnw:demo-ramka",
+   "kind": "artwork",
+   "source": "mnw",
+   "source_id": "demo-ramka",
+   "title": "Krajobraz z wodą",
+   "artist": "Jan van der Meer II",
+   "artist_bio": "",
+   "date_text": "",
+   "year": null,
+   "medium": "",
+   "classification": "Painting",
+   "styles": [],
+   "subjects": [],
+   "culture": "",
+   "museum": "Muzeum Narodowe w Warszawie",
+   "credit": "",
+   "license": "",
+   "url": "",
+   "description": "",
+   "image_url": "",
+   "thumb_url": "",
+   "width": 1024,
+   "height": 863,
+   "colors": [
+    {
+     "hex": "#2b2010",
+     "weight": 0.234
+    },
+    {
+     "hex": "#aeb59e",
+     "weight": 0.211
+    },
+    {
+     "hex": "#3c2d18",
+     "weight": 0.151
+    },
+    {
+     "hex": "#564d35",
+     "weight": 0.148
+    },
+    {
+     "hex": "#bdbb99",
+     "weight": 0.138
+    },
+    {
+     "hex": "#969c86",
+     "weight": 0.117
+    }
+   ],
+   "color_tags": [
+    "muted",
+    "warm"
+   ],
+   "suitability": 0.7,
+   "favorite": false,
+   "excluded": false,
+   "added_at": "2026-11-17T18:00:00+00:00",
+   "last_shown_at": null,
+   "show_count": 0,
+   "photo": null,
+   "cut": {
+    "work": [
+     [
+      0.02637,
+      0.02549
+     ],
+     [
+      0.97852,
+      0.02549
+     ],
+     [
+      0.97852,
+      0.97914
+     ],
+     [
+      0.02637,
+      0.97914
+     ]
+    ],
+    "plate": null,
+    "paper": true,
+    "by": "auto",
+    "aspect": 1.18656,
+    "picture": "",
+    "around": [
+     "frame"
+    ],
+    "at": "2026-11-17T18:00:00+00:00",
+    "shape": "rectangle",
+    "surround": [
+     [
+      0.0,
+      0.0
+     ],
+     [
+      1.0,
+      0.0
+     ],
+     [
+      1.0,
+      1.0
+     ],
+     [
+      0.0,
+      1.0
+     ]
+    ],
+    "surround_kind": "frame",
+    "surround_asked": true,
+    "framed_kind": "frame",
+    "framed_aspect": 1.187,
+    "framed_inner": [
+     0.03018,
+     0.0293,
+     0.97471,
+     0.97533
+    ]
+   }
+  }
+ ]
+}

@@ -219,13 +219,13 @@ struct OwnScanOverlay: View {
         if let word {
             VStack(spacing: 2) {
                 Label {
-                    Text(word.text)
+                    Text(bound: word.text)
                 } icon: {
                     if let symbol = word.symbol { Image(systemName: symbol) }
                 }
                 .font(.subheadline.weight(.semibold))
                 if turned, !look.matched {
-                    Text(look.note)
+                    Text(bound: look.note)
                         .font(.caption)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
@@ -491,11 +491,11 @@ struct OwnScanCaption: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            Text(look.line)
+            Text(bound: look.line)
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.white.opacity(0.9))
                 .multilineTextAlignment(.center)
-            Text(look.note)
+            Text(bound: look.note)
                 .font(.caption)
                 .foregroundStyle(.white.opacity(0.55))
                 .multilineTextAlignment(.center)

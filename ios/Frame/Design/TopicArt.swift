@@ -189,7 +189,7 @@ struct TopicRow: View {
         Button(action: action) {
             HStack(spacing: 9) {
                 mark
-                Text(title)
+                Text(bound: title)
                     .font(.subheadline.weight(selected ? .semibold : .regular))
                     // One line in a half-width column ("Statki i łodzie" broke
                     // in two); the large accessibility sizes may wrap.

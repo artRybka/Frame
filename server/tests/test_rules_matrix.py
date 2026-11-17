@@ -96,6 +96,10 @@ WORDS = [
     "Brook",
     "Ridge",
     "Fjord",
+    "Willows",
+    "Cliffs",
+    "Lilies",
+    "Orchids",
 ]
 ARCHIVE = sorted(ART_PHOTO_ARCHIVES)[0]
 
@@ -110,6 +114,17 @@ SPECIMENS: dict[str, tuple[str, dict[str, Any]]] = {
     "zdjęcie sali z dziełem": ("wmc", {"scene_of": "met:whole"}),
     "reprodukcja": ("europeana", {"title": "{title} (page 41 crop)"}),
     "szara kopia obrazu": ("wmc", {"tint_spread": 0.001}),
+    # WikiArt types every work a painting: a drawing says nothing of paint
+    # (de Chirico's "The Mathematicians", 2026-11-17).
+    # (Sizes of their own: WikiArt's works of one picture and size are one.)
+    "szary rysunek z WikiArt": (
+        "wikiart",
+        {"medium": "", "tint_spread": 0.001, "width": 2000, "height": 2600},
+    ),
+    "szara kopia obrazu z WikiArt": (
+        "wikiart",
+        {"medium": "oil, canvas", "tint_spread": 0.001, "width": 2600, "height": 2000},
+    ),
     "szara grafika z muzeum": (
         "met",
         {"classification": "Print", "medium": "Etching", "tint_spread": 0.001},
@@ -201,6 +216,8 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "zdjęcie sali z dziełem": ("-----------", "++---------"),
     "reprodukcja": ("-----------", "++---------"),
     "szara kopia obrazu": ("-----------", "++---------"),
+    "szary rysunek z WikiArt": ("+++++++++++", "+++++++++++"),
+    "szara kopia obrazu z WikiArt": ("-----------", "++---------"),
     "szara grafika z muzeum": ("+++++++-+++", "+++++++-+++"),
     "znaczek": ("-----------", "+----------"),
     "dokument": ("-----------", "+----------"),

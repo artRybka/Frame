@@ -122,7 +122,7 @@ struct AiReviewView: View {
             Text("Do sprawdzenia")
                 .font(.serif(32, weight: .semibold))
                 .foregroundStyle(Theme.ink)
-            Text("Haiku przegląda w nocy obrazy z Commons, Europeany, Openverse i WikiArt oraz 30 losowych dzieł katalogu. Każdą decyzję potwierdza drugi model.")
+            Text(bound: "Haiku przegląda w nocy obrazy z Commons, Europeany, Openverse i WikiArt oraz 30 losowych dzieł katalogu. Każdą decyzję potwierdza drugi model.")
                 .font(.serif(17))
                 .foregroundStyle(Theme.inkSoft)
         }
@@ -146,13 +146,13 @@ struct AiReviewView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Button { card = entry.item.id } label: {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("\(Text(entry.item.title.isEmpty ? "Bez tytułu" : entry.item.title)) \(Text(Image(systemName: "chevron.right")).font(.caption.weight(.semibold)).foregroundStyle(Theme.inkSoft))")
+                        Text("\(Text(bound: entry.item.title.isEmpty ? "Bez tytułu" : entry.item.title)) \(Text(Image(systemName: "chevron.right")).font(.caption.weight(.semibold)).foregroundStyle(Theme.inkSoft))")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(Theme.ink)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                         if !entry.item.artist.isEmpty {
-                            Text(Names.artist(entry.item.artist))
+                            Text(bound: Names.artist(entry.item.artist))
                                 .font(.caption)
                                 .foregroundStyle(Theme.inkSoft)
                                 .lineLimit(1)
@@ -163,18 +163,18 @@ struct AiReviewView: View {
                 .buttonStyle(.plain)
                 .accessibilityHint(Text("Otwiera kartę dzieła"))
                 if !entry.seenAsName.isEmpty {
-                    Text(entry.seenAsName)
+                    Text(bound: entry.seenAsName)
                         .font(.caption.weight(.medium))
                         .foregroundStyle(Theme.vermilion)
                 }
                 if !entry.why.isEmpty {
-                    Text(entry.why)
+                    Text(bound: entry.why)
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 }
                 ForEach(entry.problems, id: \.self) { problem in
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("\(Text(problem.name + ":").fontWeight(.semibold)) \(problem.problem)")
+                        Text("\(Text(bound: problem.name + ":").fontWeight(.semibold)) \(problem.problem)")
                             .font(.caption)
                             .foregroundStyle(Theme.ink)
                         remedies(entry, problem)
@@ -213,7 +213,7 @@ struct AiReviewView: View {
         Group {
             if busy.contains(key) {
                 Label {
-                    Text(problem.field == "picture" ? "Szukam krawędzi dzieła…" : "Poprawiam…")
+                    Text(bound: problem.field == "picture" ? "Szukam krawędzi dzieła…" : "Poprawiam…")
                 } icon: {
                     ProgressView().controlSize(.small)
                 }
@@ -409,7 +409,7 @@ struct ReviewFixSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    Text(problem.problem)
+                    Text(bound: problem.problem)
                         .font(.subheadline)
                         .foregroundStyle(Theme.inkSoft)
                 }
@@ -422,7 +422,7 @@ struct ReviewFixSheet: View {
                     } header: {
                         Text("Polski tytuł")
                     } footer: {
-                        Text("Ten tytuł widać w aplikacji i na ramce. Polski opis dzieła zostanie napisany od nowa z poprawionym tytułem.")
+                        Text(bound: "Ten tytuł widać w aplikacji i na ramce. Polski opis dzieła zostanie napisany od nowa z poprawionym tytułem.")
                     }
                 }
             }
@@ -499,7 +499,7 @@ struct PolishFixSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    Text(editing.problem.problem)
+                    Text(bound: editing.problem.problem)
                         .font(.subheadline)
                         .foregroundStyle(Theme.inkSoft)
                 }
@@ -514,7 +514,7 @@ struct PolishFixSheet: View {
                     }
                 } else if let failure {
                     Section {
-                        Text(failure).foregroundStyle(Theme.vermilion)
+                        Text(bound: failure).foregroundStyle(Theme.vermilion)
                         Button("Spróbuj jeszcze raz") { Task { await propose() } }
                     }
                 } else {

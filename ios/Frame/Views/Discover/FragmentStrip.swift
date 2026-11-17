@@ -90,7 +90,7 @@ struct FragmentStrip: View {
                                             .padding(-3)
                                     }
                                 }
-                                Text(isCurrent ? "\(index + 1) · ten" : "\(index + 1)")
+                                Text(bound: isCurrent ? "\(index + 1) · ten" : "\(index + 1)")
                                     .font(.caption2.weight(isCurrent ? .semibold : .regular))
                                     .foregroundStyle(isCurrent ? Theme.vermilion : Theme.inkSoft)
                             }
@@ -133,7 +133,7 @@ struct WholeWorkLink: View {
                     Text("Całe dzieło")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(Theme.ink)
-                    Text(Fragments.title(whole.item.title))
+                    Text(bound: Fragments.title(whole.item.title))
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .lineLimit(1)

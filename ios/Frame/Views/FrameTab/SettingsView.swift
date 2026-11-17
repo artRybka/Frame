@@ -179,7 +179,7 @@ private struct ReviewShortcut: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Do sprawdzenia")
                         .foregroundStyle(Theme.ink)
-                    Text("Strażnik i nocny przegląd")
+                    Text(bound: "Strażnik i nocny przegląd")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .lineLimit(1)
@@ -249,11 +249,11 @@ private struct SettingsRow: View {
                     .foregroundStyle(page.block == .art ? Theme.ink : Color.white)
                     .frame(width: 30, height: 30)
                     .background(page.block.tint, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                Text(page.title)
+                Text(bound: page.title)
                     .foregroundStyle(Theme.ink)
                 Spacer(minLength: 8)
                 if let summary {
-                    Text(summary.text)
+                    Text(bound: summary.text)
                         .font(.subheadline)
                         .foregroundStyle(summary.warn ? Theme.warn : Theme.inkSoft)
                         .lineLimit(1)
@@ -475,7 +475,7 @@ struct SettingsPageView: View {
     @ViewBuilder
     private var waiting: some View {
         if model.demoMode {
-            Text("Dostępne po połączeniu z serwerem.")
+            Text(bound: "Dostępne po połączeniu z serwerem.")
                 .font(.subheadline)
                 .foregroundStyle(Theme.inkSoft)
                 .frame(maxWidth: .infinity)

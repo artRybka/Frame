@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.145.224
+
+- Karta dzieła: obok „Oryginał / Na ramce” okrągły przycisk z ikoną ramy,
+  gdy muzeum (albo Ty) sfotografowało dzieło w ramie, w passe-partout,
+  albo grafika jest pokazana bez marginesu. Pokazuje zdjęcie przycięte do
+  zewnętrznej krawędzi ramy i wyprostowane, z płynnym odjazdem od samego
+  dzieła. Na ramkę i do barw idzie nadal samo dzieło. Starsze kadry
+  dowiadują się o ramie same, nocą albo przy otwarciu karty.
+
+## 1.145.223
+
+- Inteligentna playlista: szare rysunki z WikiArt (np. „The Mathematicians”
+  de Chirico) trafiają już do katalogu. WikiArt każde dzieło nazywa
+  obrazem, więc ołówkowy rysunek bez koloru był brany za czarno-białą
+  kopię obrazu i odrzucany, choć Szukaj i edycja playlisty go pokazywały.
+  Szare dzieło z WikiArt jest kopią tylko wtedy, gdy jego technika mówi o
+  farbie.
+- „Zapisz” w edycji inteligentnej playlisty od razu bierze do katalogu
+  dzieła z muzeów pokazane w niej bladziej, także gdy katalog ma już dość
+  dzieł dla tej playlisty. Wcześniej czekały w kolejce tła, które stoi,
+  gdy używasz aplikacji, i nie trafiały na playlistę od razu.
+
+## 1.145.222
+
+- Teksty w aplikacji i opis na ramce nie zostawiają już jednoliterowych
+  słów (i, w, z, a…) na końcu wiersza; inicjały zostają z nazwiskiem,
+  „1868 r.” i „XIX wieku” się nie rozdzielają, a myślnik nie zaczyna
+  wiersza. Wymaga nowej wersji aplikacji.
+
 ## 1.145.221
 
 - Własne dzieło bez wzornika barw: po kadrowaniu jest teraz strona ze

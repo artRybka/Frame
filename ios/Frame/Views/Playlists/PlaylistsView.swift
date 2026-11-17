@@ -173,7 +173,7 @@ struct PlaylistsView: View {
                         } label: {
                             Label {
                                 Text("Nowa playlista")
-                                Text("Inteligentna, ręczna albo z albumu")
+                                Text(bound: "Inteligentna, ręczna albo z albumu")
                             } icon: {
                                 Image(systemName: "rectangle.stack.badge.plus")
                             }
@@ -184,7 +184,7 @@ struct PlaylistsView: View {
                             } label: {
                                 Label {
                                     Text("Dodaj własne dzieło")
-                                    Text("Zdjęcie obrazu, który masz w domu")
+                                    Text(bound: "Zdjęcie obrazu, który masz w domu")
                                 } icon: {
                                     Image(systemName: "camera")
                                 }
@@ -414,7 +414,7 @@ struct SuggestionsPage: View {
                 .font(.serif(32, weight: .semibold))
                 .foregroundStyle(Theme.ink)
             if !cardNames.isEmpty {
-                Text(cardNames)
+                Text(bound: cardNames)
                     .font(.serif(17))
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -533,7 +533,7 @@ struct NowPlayingCard<Cover: View>: View {
             Eyebrow("Teraz prezentowane", color: Theme.vermilion)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
-            Text(title)
+            Text(bound: title)
                 .font(.serif(21, weight: .semibold))
                 .foregroundStyle(Theme.ink)
                 .lineLimit(2)
@@ -541,7 +541,7 @@ struct NowPlayingCard<Cover: View>: View {
                 .multilineTextAlignment(.leading)
             Spacer(minLength: 0)
             HStack(alignment: .center, spacing: 8) {
-                Text(subtitle)
+                Text(bound: subtitle)
                     .font(.subheadline)
                     .foregroundStyle(Theme.inkSoft)
                     .lineLimit(1)
@@ -672,7 +672,7 @@ struct PlaylistCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
             CardCaption {
-                Text(playlist.name)
+                Text(bound: playlist.name)
                     .font(.serif(16, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(2)
@@ -684,7 +684,7 @@ struct PlaylistCard: View {
                         if let icon = playlist.kind.icon {
                             Image(systemName: icon).font(.caption2)
                         }
-                        Text(playlist.countText).layoutPriority(1)
+                        Text(bound: playlist.countText).layoutPriority(1)
                     }
                     Spacer(minLength: 6)
                     if let owner = sharedBy {
@@ -774,7 +774,7 @@ struct SuggestionsCard: View {
                         OnFrameCount(count: subtitle)
                     } else {
                         Image(systemName: "sparkles").font(.caption2)
-                        Text(subtitle)
+                        Text(bound: subtitle)
                     }
                 }
                 .font(.caption)
@@ -922,7 +922,7 @@ struct HiddenCard: View {
                 Text("Ukryte")
                     .font(.serif(16, weight: .semibold))
                     .foregroundStyle(Theme.ink)
-                Text(items.isEmpty ? "brak" : Names.works(items.count))
+                Text(bound: items.isEmpty ? "brak" : Names.works(items.count))
                     .font(.caption)
                     .foregroundStyle(Theme.inkSoft)
             }
@@ -1052,7 +1052,7 @@ struct CardMenuPreview<Cover: View, Details: View>: View {
                 .frame(width: 112, height: 112)
                 .clipShape(RoundedRectangle(cornerRadius: Self.coverRadius, style: .continuous))
             VStack(alignment: .leading, spacing: 5) {
-                Text(title)
+                Text(bound: title)
                     .font(.serif(19, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(3)
@@ -1080,7 +1080,7 @@ extension CardMenuPreview where Details == Text {
     init(title: String, subtitle: String, @ViewBuilder cover: () -> Cover) {
         self.title = title
         self.cover = cover()
-        details = Text(subtitle)
+        details = Text(bound: subtitle)
     }
 }
 
@@ -1097,7 +1097,7 @@ struct PlaylistMenuPreview: View {
                 if let icon = playlist.kind.icon {
                     Image(systemName: icon).font(.caption2)
                 }
-                Text(playlist.countText)
+                Text(bound: playlist.countText)
                 if playlist.isMine, playlist.shared == true {
                     // As on the card: my shared ones get the icon alone.
                     Image(systemName: "person.2")

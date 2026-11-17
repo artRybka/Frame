@@ -85,7 +85,7 @@ struct OwnScanResult: View {
                 )
                 .padding(.horizontal, 12)
                 if scanned {
-                    Text(single ? "Zdjęcie na wprost, bez zmian" : "Odbicia usunięte z trzech zdjęć")
+                    Text(bound: single ? "Zdjęcie na wprost, bez zmian" : "Odbicia usunięte z trzech zdjęć")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.white.opacity(0.9))
                         .contentTransition(.opacity)

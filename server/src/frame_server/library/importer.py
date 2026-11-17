@@ -292,6 +292,8 @@ class Importer:
         self._searched_seen: OrderedDict[str, None] = OrderedDict()
         self._searched_lock = threading.Lock()
         self._searching: threading.Thread | None = None
+        #: The shown works being taken in now (:meth:`take_shown`).
+        self._taking: list[Item] = []
         #: Techniques of "Sztuki inne" with room left in the catalogue: works
         #: of them a search showed are kept too.
         self._searched_room: tuple[str, ...] = ()
@@ -1466,9 +1468,11 @@ class Importer:
     def _take_searched(self) -> None:
         while True:
             with self._searched_lock:
+                self._taking = []
                 if self._searched:
                     batch = list(self._searched.values())
                     self._searched.clear()
+                    self._taking = batch
                 elif self._spare or self._far:
                     queue = self._spare or self._far
                     count = min(SPARE_BATCH, len(queue))
@@ -1496,6 +1500,44 @@ class Importer:
             except Exception:
                 log.exception("keeping searched works failed")
             self._save_searched()  # the batch taken (or left out) is no longer waiting
+
+    def take_shown(
+        self,
+        key: str,
+        job: Job,
+        terms: list[str] | None = None,
+        fits: Callable[[Item], bool] | None = None,
+    ) -> None:
+        """The works a search for ``key`` showed that are still on their way
+        into the catalogue (:meth:`keep_searched`), taken in now, in
+        ``job``, as the owner's: a smart playlist of that search was saved
+        (Mateusz 2026-11-17, de Chirico: "po kliknięciu Zapisz nie zostają
+        na niej"). The queue's thread is the background's: it waits while
+        the app is in use (``HostGuard.wait_calm``), and a batch of works
+        not shown, their thumbnails still at the museums, held the shown
+        ones behind it for as long as he looked at the playlist."""
+        if not key:
+            return
+        with self._searched_lock:
+            waiting = [i for i in self._searched.values() if key in i.found_for]
+            for item in waiting:
+                del self._searched[item.id]
+                self._searched_seen[item.id] = None
+            # Those the thread took and may be waiting with: whichever is
+            # first takes each, the other finds it in the library.
+            ids = {i.id for i in waiting}
+            waiting += [i for i in self._taking if key in i.found_for and i.id not in ids]
+        if waiting:
+            self._save_searched()
+        self._take(
+            [iter(waiting)],
+            len(waiting),
+            job,
+            before=lambda item: True,
+            after=lambda item: True,
+            terms=terms,
+            fits=fits,
+        )
 
     def add_upload(
         self,

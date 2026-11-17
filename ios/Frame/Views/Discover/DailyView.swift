@@ -82,17 +82,17 @@ struct DailyTile: View {
                     }
                     .clipped()
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(work.title)
+                    Text(bound: work.title)
                         .font(.serif(19, weight: .semibold))
                         .foregroundStyle(Theme.ink)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
-                    Text(byline)
+                    Text(bound: byline)
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .lineLimit(1)
                     HStack(alignment: .bottom, spacing: 10) {
-                        Text(work.teaser)
+                        Text(bound: work.teaser)
                             .font(.serif(14))
                             .foregroundStyle(Theme.ink.opacity(0.85))
                             .lineLimit(2)
@@ -591,7 +591,7 @@ struct DailyView: View {
                 if work.writing {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
-                        Text("Claude pisze opis i analizę kompozycji…")
+                        Text(bound: "Claude pisze opis i analizę kompozycji…")
                             .font(.footnote)
                             .foregroundStyle(Theme.inkSoft)
                     }
@@ -700,7 +700,7 @@ struct DailyView: View {
                 if listsComing(work) {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
-                        Text("Wczytuję podobne i inne prace artysty…")
+                        Text(bound: "Wczytuję podobne i inne prace artysty…")
                             .font(.footnote)
                             .foregroundStyle(Theme.inkSoft)
                     }
@@ -814,7 +814,7 @@ struct DailyView: View {
             Task { await show(work, .untilNextChange) }
         } label: {
             Label {
-                Text(sending ? "Wysyłam…" : waiting ?? (sent == true ? "Wysłano" : "Pokaż na ramce"))
+                Text(bound: sending ? "Wysyłam…" : waiting ?? (sent == true ? "Wysłano" : "Pokaż na ramce"))
             } icon: {
                 if sending {
                     ProgressView().tint(Theme.paper)
@@ -881,7 +881,7 @@ struct DailyView: View {
 
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title)
+            Text(bound: title)
                 .font(.serif(20, weight: .semibold))
                 .foregroundStyle(Theme.ink)
             content()
@@ -899,7 +899,7 @@ struct DailyView: View {
         let life = lifeSpan(work).map { "\($0.born)–\($0.died)" }
         return VStack(alignment: .leading, spacing: 10) {
             if name.isEmpty {
-                Text("O autorze")
+                Text(bound: "O autorze")
                     .font(.serif(20, weight: .semibold))
                     .foregroundStyle(Theme.ink)
             } else {
@@ -907,13 +907,13 @@ struct DailyView: View {
                     Eyebrow("O autorze")
                     // In the pencil's hand, as the composition's notes
                     // (Mateusz 2026-11-03; then 40% larger).
-                    Text(name)
+                    Text(bound: name)
                         .font(.hand(35))
                         .foregroundStyle(Theme.ink)
                         .fixedSize(horizontal: false, vertical: true)
                         .artistPress { model.artistSearch = item.artist }
                     if let life {
-                        Text(life)
+                        Text(bound: life)
                             .font(.subheadline)
                             .monospacedDigit()
                             .foregroundStyle(Theme.inkSoft)
@@ -981,12 +981,12 @@ struct DailyView: View {
                     .frame(width: 26, height: 26)
                     .padding(.top, 1)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(pigment.name)
+                        Text(bound: pigment.name)
                             .font(.serif(15, weight: .semibold))
                             .foregroundStyle(Theme.ink)
                         let line = [pigment.`where`, pigment.text].filter { !$0.isEmpty }.joined(separator: ". ")
                         if !line.isEmpty {
-                            Text(line)
+                            Text(bound: line)
                                 .font(.serif(14))
                                 .foregroundStyle(Theme.inkSoft)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -1000,7 +1000,7 @@ struct DailyView: View {
     }
 
     private func prose(_ text: String, size: CGFloat = 16) -> some View {
-        Text(text)
+        Text(bound: text)
             .font(.serif(size))
             .lineSpacing(3)
             .foregroundStyle(Theme.ink.opacity(0.9))
@@ -1032,7 +1032,7 @@ struct DailyView: View {
                         Button {
                             withAnimation(.easeInOut(duration: 0.2)) { take = index }
                         } label: {
-                            Text(each.title)
+                            Text(bound: each.title)
                                 .font(.caption.weight(.semibold))
                                 .padding(.horizontal, 11)
                                 .padding(.vertical, 6)
@@ -1109,7 +1109,7 @@ struct DailyView: View {
                     Button {
                         pickAnalysis(work, index)
                     } label: {
-                        if version.shown { Label(label, systemImage: "checkmark") } else { Text(label) }
+                        if version.shown { Label(label, systemImage: "checkmark") } else { Text(bound: label) }
                     }
                 }
             }
@@ -1325,7 +1325,7 @@ struct DailyView: View {
                                 ArtImage(ref: part.thumb, placeholder: part.item.placeholderColor, maxPixel: 1000, brighten: true)
                                     .frame(width: 170 * shape, height: 170)
                                     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                                Text("Fragment \(index + 1) z \(parts.count)")
+                                Text(bound: "Fragment \(index + 1) z \(parts.count)")
                                     .font(.caption)
                                     .foregroundStyle(Theme.inkSoft)
                             }
@@ -1366,7 +1366,7 @@ struct DailyView: View {
                             }
                             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                             .padding(.bottom, 5)
-                        Text(detail.title)
+                        Text(bound: detail.title)
                             .font(.serif(16, weight: .semibold))
                             .foregroundStyle(Theme.ink)
                         if !detail.text.isEmpty { prose(detail.text, size: 15) }
@@ -1538,12 +1538,12 @@ struct DailyView: View {
                 NavigationLink(value: work.item.id) {
                     VStack(alignment: .leading, spacing: 4) {
                         gridPicture(work.item)
-                        Text(work.item.item.title)
+                        Text(bound: work.item.item.title)
                             .font(.serif(14, weight: .semibold))
                             .foregroundStyle(Theme.ink)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
-                        Text([Names.artist(work.item.item.artist), work.item.item.dateText].filter { !$0.isEmpty }.joined(separator: ", "))
+                        Text(bound: [Names.artist(work.item.item.artist), work.item.item.dateText].filter { !$0.isEmpty }.joined(separator: ", "))
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
                             .lineLimit(1)
@@ -1551,7 +1551,7 @@ struct DailyView: View {
                             // A quiet note, like a pencilled line beside a
                             // museum label: italic serif in soft ink behind
                             // a thin rule, no colour and no chip.
-                            Text(work.why)
+                            Text(bound: work.why)
                                 .font(.serif(13).italic())
                                 .foregroundStyle(Theme.inkSoft)
                                 .multilineTextAlignment(.leading)
@@ -1587,10 +1587,10 @@ struct DailyView: View {
                     }
                     .frame(width: 11)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(entry.year)
+                        Text(bound: entry.year)
                             .font(.caption.weight(.bold))
                             .foregroundStyle(Theme.vermilion)
-                        Text(entry.title.isEmpty ? Names.artist(entry.who) : "\(Names.artist(entry.who)), „\(entry.title)”")
+                        Text(bound: entry.title.isEmpty ? Names.artist(entry.who) : "\(Names.artist(entry.who)), „\(entry.title)”")
                             .font(.serif(16, weight: .semibold))
                             .foregroundStyle(Theme.ink)
                             .fixedSize(horizontal: false, vertical: true)
@@ -1651,13 +1651,13 @@ struct DailyView: View {
                 NavigationLink(value: other.id) {
                     VStack(alignment: .leading, spacing: 4) {
                         gridPicture(other)
-                        Text(other.item.title.isEmpty ? "Bez tytułu" : other.item.title)
+                        Text(bound: other.item.title.isEmpty ? "Bez tytułu" : other.item.title)
                             .font(.serif(14, weight: .semibold))
                             .foregroundStyle(Theme.ink)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                         if !other.item.dateText.isEmpty {
-                            Text(other.item.dateText)
+                            Text(bound: other.item.dateText)
                                 .font(.caption)
                                 .foregroundStyle(Theme.inkSoft)
                                 .lineLimit(1)
@@ -1680,17 +1680,17 @@ struct DailyView: View {
                     NavigationLink(value: other.id) {
                         VStack(alignment: .leading, spacing: 3) {
                             gridPicture(other, height: 104)
-                            Text(other.item.title.isEmpty ? "Bez tytułu" : other.item.title)
+                            Text(bound: other.item.title.isEmpty ? "Bez tytułu" : other.item.title)
                                 .font(.serif(13, weight: .semibold))
                                 .foregroundStyle(Theme.ink)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
-                            Text(Names.artist(other.item.artist))
+                            Text(bound: Names.artist(other.item.artist))
                                 .font(.caption2)
                                 .foregroundStyle(Theme.inkSoft)
                                 .lineLimit(1)
                             if !other.item.dateText.isEmpty {
-                                Text(other.item.dateText)
+                                Text(bound: other.item.dateText)
                                     .font(.caption2)
                                     .foregroundStyle(Theme.inkSoft)
                                     .lineLimit(1)
@@ -1780,7 +1780,7 @@ struct StudyLabel: View {
     var body: some View {
         let plain = title.count > Self.capitals
         VStack(alignment: .leading, spacing: 3) {
-            Text(plain ? title : title.uppercased(with: Locale(identifier: "pl_PL")))
+            Text(bound: plain ? title : title.uppercased(with: Locale(identifier: "pl_PL")))
                 .font(.system(size: plain ? 13.5 : 12.5, weight: .semibold))
                 .tracking(plain ? 0 : 1.6)
                 .lineSpacing(plain ? 1 : 2)
@@ -1798,7 +1798,7 @@ struct StudyLabel: View {
 
     @ViewBuilder
     private var bylineText: some View {
-        let text = Text(byline)
+        let text = Text(bound: byline)
             .font(.system(size: 13, weight: .light))
             .foregroundStyle(Theme.inkSoft)
             .fixedSize(horizontal: false, vertical: true)

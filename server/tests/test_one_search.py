@@ -386,3 +386,57 @@ def test_the_works_waiting_to_join_the_catalogue_outlive_a_restart(tmp_path) -> 
     again._searching.join(5)
     assert taken == [["aic:1"], ["aic:3"]]
     assert library.get_state("searched_queue") == {"searched": [], "spare": []}
+
+
+def test_saving_a_smart_playlist_takes_in_the_works_its_editor_showed(tmp_path) -> None:
+    """De Chirico, 2026-11-17: the editor showed museum works (paler) that
+    were queued for the catalogue behind a batch of works not shown, whose
+    thumbnails waited while the app was in use; "Zapisz" brought nothing
+    (192 of his in the catalogue, over the 100 a fill tops up to). The
+    shown ones are taken in at once, as the owner's, the others stay queued."""
+    from frame_server.library.search import keep_shown
+
+    library = Library(tmp_path / "lib.db")
+
+    class Cache:
+        def thumb_path(self, item: Item):  # type: ignore[no-untyped-def]
+            return tmp_path / f"{item.source_id}.jpg"
+
+        def remove(self, item: Item) -> None:
+            pass
+
+    importer = Importing(library, Cache(), None)  # type: ignore[arg-type]
+    importer._start_searched = lambda: None  # type: ignore[method-assign]
+    rules = PlaylistRules(artists=["Giorgio de Chirico"])
+    key = rules.search_key()
+    chirico = {"artist": "Giorgio de Chirico"}
+    library.upsert(_item(1, title="Villa Medici", found_for=[key], **chirico))
+    importer.keep_searched(
+        [_item(2, title="The Mathematicians", **chirico), _item(3, title="Gladiators", **chirico)],
+        found=key,
+    )
+    importer.keep_searched([_item(4, title="Guitar")], found="s:other")
+    # One more the queue's thread took and is waiting with.
+    importer._taking = [_item(5, title="Portrait of Graziella", found_for=[key], **chirico)]
+
+    job = Job(id="j", description="fill")
+    keep_shown(importer, rules, job)
+
+    assert job.done == 3 and sorted(job.item_ids) == ["aic:2", "aic:3", "aic:5"]
+    assert library.query(rules)[0] == 4
+    for item in (library.get(f"aic:{n}") for n in (2, 3, 5)):
+        assert item is not None and not item.pooled and key in item.found_for
+    # Another search's work waits its turn; those taken are not queued again.
+    assert list(importer._searched) == ["aic:4"]
+    importer.keep_searched([_item(2, **chirico)], found=key)
+    assert list(importer._searched) == ["aic:4"]
+    assert library.get_state("searched_queue")["searched"][0]["id"] == "aic:4"
+
+
+def test_saving_with_nothing_shown_takes_nothing(tmp_path) -> None:
+    library = Library(tmp_path / "lib.db")
+    importer = Importing(library, None, None)  # type: ignore[arg-type]
+    job = Job(id="j", description="fill")
+    importer.take_shown("", job)
+    importer.take_shown("s:1", job)
+    assert job.done == 0 and job.item_ids == []
