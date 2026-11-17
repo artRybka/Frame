@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.221
+
+- Własne dzieło bez wzornika barw: po kadrowaniu jest teraz strona ze
+  zdjęciem i suwakiem „Balans bieli” (chłodniej, cieplej, „Wyzeruj”).
+  Obraz zmienia się na żywo, a serwer zapisuje dzieło w ustawionym
+  balansie; zostaje on także wtedy, gdy skan jest składany od nowa po
+  aktualizacji. Ze wzornikiem barw nic się nie zmienia. Wymaga nowej
+  wersji aplikacji.
+
 ## 1.145.220
 
 - Skan własnego dzieła: zdjęcia z boku są teraz nakładane na zdjęcie na

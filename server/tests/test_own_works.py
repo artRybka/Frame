@@ -687,3 +687,86 @@ def test_the_work_is_looked_for_once_in_a_scan(
         found = client.post(f"/api/own/photos/{token}/find").json()
         assert found["corners"] == merged["corners"]
         assert len(fake.asked) == 1
+
+
+def test_the_white_balance_he_sets_is_the_works_and_stays_when_it_is_scanned_again(
+    service: FrameService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mateusz 2026-11-17 16:27 UTC: "Gdy przy robieniu zdjęcia dzieła nie
+    zostanie wykryta karta koloru dodaj suwak regulacji balansu bieli".
+    His works hang under warm lamps (a white wall with 3.3 times the red
+    of its blue). What the slider says goes with the cut: the work's
+    photograph is kept in that balance, whole and cut, and a scan made
+    again after an update has the same."""
+    import json
+
+    from frame_server.imaging import balance
+    from frame_server.own_works import SCAN_INFO, OwnWorks
+
+    # A grey stays as light as it was; warmer is more red and less blue.
+    for at in (-1.0, -0.4, 0.3, 1.0):
+        red, green, blue = balance.gains(at)
+        assert abs(0.2126 * red + 0.7152 * green + 0.0722 * blue - 1) < 1e-6
+        assert (red > green > blue) == (at > 0)
+    assert balance.gains(0) == (1.0, 1.0, 1.0) and balance.gains(5) == balance.gains(1)
+    plain = photo()
+    assert balance.apply(plain, 0) is plain
+
+    def warmth(path: Path) -> float:
+        with Image.open(path) as img:
+            got = np.asarray(img.convert("RGB")).astype(float)
+        return float(got[..., 0].mean() / got[..., 2].mean())
+
+    # The photograph as a lamp makes it: what -0.6 takes back.
+    table: list[int] = []
+    for gain in balance.gains(-0.6):
+        table += [
+            round(255 * balance._coded(min(1.0, balance._linear(level / 255) / gain)))
+            for level in range(256)
+        ]
+    under_lamp = plain.point(table)
+    with _client(service) as client:
+        token = client.post("/api/own/photos", files={"file": ("p.jpg", _jpeg(under_lamp))}).json()[
+            "token"
+        ]
+        lit = warmth(service.own_works.path(token))
+        too_far = client.post(
+            "/api/own/works", json={"token": token, "text": TEXT, "balance": -1.5}
+        )
+        assert too_far.status_code == 422
+        added = client.post("/api/own/works", json={"token": token, "text": TEXT, "balance": -0.6})
+        assert added.status_code == 200, added.text
+    item = service.library.get(added.json()["id"])
+    assert item is not None
+    with Image.open(service.images.museum_photo(item, urgent=True)) as img:
+        got = np.asarray(img.convert("RGB").reduce(8)).astype(int)
+    # The photograph as it was before the lamp (but for the JPEG's grain).
+    assert float(np.abs(got - np.asarray(plain.reduce(8)).astype(int)).mean()) < 2
+    assert warmth(service.images.museum_photo(item, urgent=True)) < 0.8 * lit
+
+    # A scan: the balance is noted beside its photographs…
+    monkeypatch.setattr(OwnWorks, "_merge", staticmethod(lambda *_: (2, 0.01)))
+    seen = [(0.2, 0.2), (0.8, 0.2), (0.8, 0.8), (0.2, 0.8)]
+    with _client(service) as client:
+        token = client.post("/api/own/photos", files={"file": ("p.jpg", _jpeg(under_lamp))}).json()[
+            "token"
+        ]
+        for _ in range(2):
+            client.post(
+                f"/api/own/photos/{token}/sides", files={"file": ("s.jpg", _jpeg(under_lamp))}
+            )
+        client.post(f"/api/own/photos/{token}/merge", json={"outline": seen})
+        scanned = client.post(
+            "/api/own/works",
+            json={"token": token, "corners": seen, "by": "owner", "text": TEXT, "balance": -0.6},
+        )
+        assert scanned.status_code == 200, scanned.text
+    work = service.library.get(scanned.json()["id"])
+    assert work is not None
+    assert json.loads((service.own_works.scans / token / SCAN_INFO).read_text())["balance"] == -0.6
+    cool = warmth(service.images.museum_photo(work, urgent=True))
+    assert cool < 0.8 * lit
+    # …and made again of them, the work is as cool as he set it.
+    again = service.own_works.rescan(work)
+    assert abs(warmth(service.images.museum_photo(again, urgent=True)) - cool) < 0.02

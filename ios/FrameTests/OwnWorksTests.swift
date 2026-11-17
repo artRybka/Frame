@@ -462,6 +462,64 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertEqual(model.ownRetaken[work.id]?.id, work.id)
     }
 
+    /// The white balance he sets where no colour chart is beside the work
+    /// (Mateusz 2026-11-17 16:27 UTC: "Gdy przy robieniu zdjęcia dzieła nie
+    /// zostanie wykryta karta koloru dodaj suwak regulacji balansu
+    /// bieli"): the phone draws the picture as the server will make it
+    /// (`imaging/balance.py`), and the number goes with the cut.
+    func testTheWhiteBalanceIsDrawnAsTheServerMakesItAndGoesWithTheCut() throws {
+        // The server's numbers.
+        let cool = OwnBalance.gains(-1), warm = OwnBalance.gains(0.5)
+        XCTAssertEqual(cool.red, 0.6010027, accuracy: 1e-6)
+        XCTAssertEqual(cool.green, 0.9899608, accuracy: 1e-6)
+        XCTAssertEqual(cool.blue, 2.2743328, accuracy: 1e-6)
+        XCTAssertEqual(warm.red, 1.2391982, accuracy: 1e-6)
+        XCTAssertEqual(warm.blue, 0.6370184, accuracy: 1e-6)
+        let none = OwnBalance.gains(0), far = OwnBalance.gains(7)
+        XCTAssertEqual(none.red, 1, accuracy: 1e-12)
+        XCTAssertEqual(none.blue, 1, accuracy: 1e-12)
+        XCTAssertEqual(far.red, OwnBalance.gains(1).red, accuracy: 1e-12)
+
+        // A grey picture, warmer and cooler: the server makes 128 of each
+        // colour (141, 126, 104) at 0.5 and (101, 127, 186) at -1.
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let grey = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8), format: format).image { context in
+            UIColor(red: 128 / 255, green: 128 / 255, blue: 128 / 255, alpha: 1).setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        }
+        func colour(_ image: UIImage) throws -> [Int] {
+            var bytes = [UInt8](repeating: 0, count: 4)
+            let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+            let picture = try XCTUnwrap(image.cgImage)
+            try bytes.withUnsafeMutableBytes { buffer in
+                let context = try XCTUnwrap(CGContext(
+                    data: buffer.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                    space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                ))
+                context.draw(picture, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+            }
+            return bytes.prefix(3).map { Int($0) }
+        }
+        XCTAssertTrue(OwnBalance.tinted(grey, balance: 0) === grey)
+        for (balance, made) in [(0.5, [141, 126, 104]), (-1.0, [101, 127, 186])] {
+            let drawn = try colour(OwnBalance.tinted(grey, balance: balance))
+            for (one, other) in zip(drawn, made) {
+                XCTAssertEqual(Double(one), Double(other), accuracy: 3, "\(balance): \(drawn)")
+            }
+        }
+
+        // It goes to the server with the corners; none says "as taken".
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let cut = OwnPhotoCut(token: "a1", balance: -0.4)
+        let sent = try JSONSerialization.jsonObject(with: encoder.encode(cut)) as? [String: Any]
+        XCTAssertEqual(sent?["balance"] as? Double, -0.4)
+        let work = NewOwnWork(token: "a1", text: OwnDescription())
+        let plain = try JSONSerialization.jsonObject(with: encoder.encode(work)) as? [String: Any]
+        XCTAssertEqual(plain?["balance"] as? Double, 0)
+    }
+
     /// What the helper draws and counts after the first test on the phone
     /// (Mateusz 2026-11-16 12:53 UTC): the word held a moment, the
     /// gyroscope and the outline as one angle, the plan's dot, the ring.

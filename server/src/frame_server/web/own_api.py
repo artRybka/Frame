@@ -8,7 +8,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from ..ai import AiUnavailable
@@ -31,6 +31,8 @@ class PhotoCut(BaseModel):
     corners: list[tuple[float, float]] | None = None
     by: str = "auto"
     shape: str = ""
+    #: The white balance he set (-1 cooler … 1 warmer; 0, as taken).
+    balance: float = Field(default=0.0, ge=-1, le=1)
 
 
 class NewOwnWork(PhotoCut):
@@ -176,7 +178,13 @@ async def add_work(new: NewOwnWork, svc: Svc) -> Item:
     """The work added to the catalogue, cut and described."""
     try:
         return await run_in_threadpool(
-            svc.own_works.add, new.token, _corners(new.corners), new.by, new.shape, new.text
+            svc.own_works.add,
+            new.token,
+            _corners(new.corners),
+            new.by,
+            new.shape,
+            new.text,
+            new.balance,
         )
     except LookupError as err:
         raise HTTPException(404, str(err)) from err
@@ -198,7 +206,13 @@ async def retake(item_id: str, photo: PhotoCut, svc: Svc) -> Item:
     item = await _own(svc, item_id)
     try:
         return await run_in_threadpool(
-            svc.own_works.retake, item, photo.token, _corners(photo.corners), photo.by, photo.shape
+            svc.own_works.retake,
+            item,
+            photo.token,
+            _corners(photo.corners),
+            photo.by,
+            photo.shape,
+            photo.balance,
         )
     except LookupError as err:
         raise HTTPException(404, str(err)) from err
