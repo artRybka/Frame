@@ -473,7 +473,14 @@ struct ItemDetailView: View {
             item = fresh
             if fresh.kind == .artwork { model.cardShows(fresh) }
             holding = false
-            if LaunchRoute.screen == "original" { opened = .original }  // CI screenshots
+            if LaunchRoute.screen == "original" {  // CI screenshots
+                // `-framePull 1`: opened from "W ramie", the work in its frame whole.
+                if fresh.framed != nil, UserDefaults.standard.double(forKey: "framePull") >= 0.5 {
+                    inFrame = true
+                    wide = true
+                }
+                opened = .original
+            }
         } catch {
             holding = false
             if item == nil {

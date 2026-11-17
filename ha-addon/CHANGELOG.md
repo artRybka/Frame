@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.231
+
+- Pełny ekran: dzieło na cały ekran zostaje takie samo po włączeniu ramy
+  (rama jest poza ekranem). Przy wyłączeniu ramy, gdy dzieło w ramie jest
+  mniejsze od ekranu, widok najpierw płynnie zbliża się, aż dzieło wypełni
+  ekran, i dopiero wtedy rama znika.
+
 ## 1.145.230
 
 - Pełny ekran: przycisk ramy przełącza płynnie, a dzieło zostaje w tym
