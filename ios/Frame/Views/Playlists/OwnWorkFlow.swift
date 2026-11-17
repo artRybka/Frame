@@ -67,6 +67,9 @@ struct OwnWorkFlow: View {
     /// The first photograph as it was taken and the scan made of the
     /// three, both cut to the work: the page that shows what the scan gave.
     @State private var compared: (before: UIImage, after: UIImage)?
+    /// The white balance he set on that page (no colour chart beside the
+    /// work): 0, as taken.
+    @State private var balance = 0.0
     /// A scan's photographs on their way to the server from the moment
     /// each is taken.
     @State private var sending = OwnSending()
@@ -105,6 +108,8 @@ struct OwnWorkFlow: View {
                     if let compared {
                         OwnScanResult(
                             before: compared.before, after: compared.after,
+                            scanned: merged != nil,
+                            balance: incoming?.chart == nil ? $balance : nil,
                             again: again,
                             next: { single in
                                 Task {
@@ -197,6 +202,7 @@ struct OwnWorkFlow: View {
         merged = nil
         clean = nil
         compared = nil
+        balance = 0
         merging?.cancel()
         merging = nil
         mergeEnded = false
@@ -303,6 +309,13 @@ struct OwnWorkFlow: View {
             withAnimation(.easeInOut(duration: 0.3)) { compared = both }
             return true
         }
+        if incoming?.chart == nil, let photo {
+            // No colour chart beside it: the work alone, for him to set
+            // its white balance by.
+            let one = OwnPicture.cut(photo, corners: corners)
+            withAnimation(.easeInOut(duration: 0.3)) { compared = (one, one) }
+            return true
+        }
         return await cutDone()
     }
 
@@ -330,13 +343,18 @@ struct OwnWorkFlow: View {
             // The server is some seconds at it: the card says so meanwhile.
             model.retakeOwnWork(
                 itemID: item.id,
-                OwnPhotoCut(token: incoming.token, corners: corners, by: cutBy, shape: incoming.shape),
+                OwnPhotoCut(
+                    token: incoming.token, corners: corners, by: cutBy, shape: incoming.shape,
+                    balance: incoming.chart == nil ? balance : 0
+                ),
                 single: single
             )
             dismiss()
             return true
         }
-        if let shown = clean ?? photo { picture = OwnPicture.cut(shown, corners: corners) }
+        if let shown = clean ?? photo {
+            picture = OwnBalance.tinted(OwnPicture.cut(shown, corners: corners), balance: balance)
+        }
         // The LiDAR's size between his corners (none for the photograph whole).
         measured = corners.flatMap { depth?.size($0) }
         withAnimation(.easeInOut(duration: 0.3)) {
@@ -409,7 +427,10 @@ struct OwnWorkFlow: View {
         defer { adding = false }
         do {
             let item = try await model.backend.addOwnWork(
-                NewOwnWork(token: incoming.token, corners: corners, by: cutBy, shape: incoming.shape, text: text.trimmed)
+                NewOwnWork(
+                    token: incoming.token, corners: corners, by: cutBy, shape: incoming.shape,
+                    balance: incoming.chart == nil ? balance : 0, text: text.trimmed
+                )
             )
             model.ownWorkChanged(item)
             model.notices.info("Dodane do kolekcji", item.title.isEmpty ? "Bez tytułu" : item.title)
@@ -425,7 +446,8 @@ struct OwnWorkFlow: View {
     /// `-screen own-cut|own-describe` (demo): the demo's photograph taken,
     /// the flow at that step.
     private func openForScreenshot() async {
-        guard model.demoMode, ["own-cut", "own-describe", "own-card"].contains(LaunchRoute.screen), photo == nil,
+        let screens = ["own-cut", "own-balance", "own-describe", "own-card"]
+        guard model.demoMode, screens.contains(LaunchRoute.screen), photo == nil,
               let demo = DemoOwn.photo()
         else { return }
         take(OwnShots(first: demo))
@@ -433,6 +455,11 @@ struct OwnWorkFlow: View {
         for _ in 0 ..< 50 where step != .cut { try? await Task.sleep(for: .milliseconds(200)) }
         guard step == .cut else { return }
         _ = await cutChosen(DemoOwn.work)
+        // The page with the white balance (the demo has no colour chart),
+        // as set by `-scanBalance`; the later screens go on from it.
+        balance = OwnBalance.launched
+        guard LaunchRoute.screen != "own-balance" else { return }
+        if compared != nil { _ = await cutDone() }
         if LaunchRoute.scroll == "measured" { measured = OwnDepth.Size(heightCm: 65, widthCm: 81) }
         if LaunchRoute.scroll == "filled" || LaunchRoute.screen == "own-card" {
             try? await Task.sleep(for: .seconds(2))

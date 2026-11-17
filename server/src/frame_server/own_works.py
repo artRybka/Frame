@@ -648,14 +648,24 @@ class OwnWorks:
 
     # -- the work ------------------------------------------------------------------
 
-    def add(self, token: str, corners: Quad | None, by: str, shape: str, text: Description) -> Item:
+    def add(
+        self,
+        token: str,
+        corners: Quad | None,
+        by: str,
+        shape: str,
+        text: Description,
+        balance: float = 0.0,
+    ) -> Item:
         """The work in the catalogue: the photograph whole in ``full/``
         ("Pełny kadr"), its original cut to ``corners`` (``by`` "auto" when
-        they are Opus's, "owner" when he set them), and what he wrote."""
+        they are Opus's, "owner" when he set them), and what he wrote.
+        ``balance``: the white balance he set where no colour chart was
+        beside the work (:mod:`.imaging.balance`; 0, as taken)."""
         path = self.path(token)
         self._again(token, corners)
         item = self.importer.add_upload(
-            path.read_bytes(),
+            self._balanced(path, balance),
             kind=ItemKind.OWN,
             title=text.title.strip(),
             artist=text.artist.strip(),
@@ -663,10 +673,22 @@ class OwnWorks:
         )
         item = self._describe(item, text)
         item = self._cut(item, corners, by, shape)
-        self._note_work(token, item)
+        self._note_work(token, item, balance)
         self._done(path)
         log.info("own work %s added", item.id)
         return item
+
+    @staticmethod
+    def _balanced(path: Path, balance: float) -> bytes:
+        """The photograph at ``path`` in the white balance he set."""
+        from .imaging import balance as white
+
+        if abs(balance) < 1e-3:
+            return path.read_bytes()
+        with Image.open(path) as img:
+            out = io.BytesIO()
+            white.apply(img.convert("RGB"), balance).save(out, "JPEG", quality=INCOMING_QUALITY)
+        return out.getvalue()
 
     def describe(self, item: Item, text: Description) -> Item:
         """ "Edytuj opis": what the owner wrote, again; a work cut out of
@@ -678,28 +700,39 @@ class OwnWorks:
             updated = self.crops.apply(updated, updated.cut)
         return updated
 
-    def retake(self, item: Item, token: str, corners: Quad | None, by: str, shape: str) -> Item:
+    def retake(
+        self,
+        item: Item,
+        token: str,
+        corners: Quad | None,
+        by: str,
+        shape: str,
+        balance: float = 0.0,
+    ) -> Item:
         """ "Zrób zdjęcie ponownie": a new photograph of the same work (one
         without the lamp's reflection), cut anew; what he wrote stays."""
         self._check(item)
         path = self.path(token)
         self._again(token, corners)
         self.images.remove(item)
-        width, height = self.images.store(item, path.read_bytes(), master=True)
+        width, height = self.images.store(item, self._balanced(path, balance), master=True)
         stored = self.library.update(item.id, width=width, height=height, cut=None) or item
         stored = self._cut(stored, corners, by, shape)
-        self._note_work(token, stored)
+        self._note_work(token, stored, balance)
         self._done(path)
         return stored
 
     # -- the scan it was made of ----------------------------------------------------
 
-    def _note_work(self, token: str, item: Item) -> None:
-        """Which work a kept scan became, beside its photographs."""
+    def _note_work(self, token: str, item: Item, balance: float | None = None) -> None:
+        """Which work a kept scan became, beside its photographs, and the
+        white balance he set for it (made again, it has the same)."""
         note = self.scans / token / SCAN_INFO
         try:
             info = json.loads(note.read_text())
             info["item"] = item.id
+            if balance is not None:
+                info["balance"] = round(balance, 3)
             note.write_text(json.dumps(info))
         except (OSError, ValueError):
             pass  # no scan: one photograph, or it is gone
@@ -807,7 +840,7 @@ class OwnWorks:
             used, taken = self._merge(
                 folder / "first.jpg", again, sorted(folder.glob("side*.jpg")), quad
             )
-            data = again.read_bytes()
+            data = self._balanced(again, float(info.get("balance") or 0.0))
         finally:
             again.unlink(missing_ok=True)
         cut = item.cut
