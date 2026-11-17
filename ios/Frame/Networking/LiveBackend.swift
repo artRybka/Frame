@@ -918,6 +918,15 @@ struct LiveBackend: FrameBackend {
         try await send("/api/ai", method: "PUT", body: update)
     }
 
+    func startOnDemand(key: String, usd: Double) async throws -> AiSettings {
+        struct Body: Encodable { let key: String; let usd: Double }
+        return try await send("/api/ai/on-demand", method: "POST", body: Body(key: key, usd: usd))
+    }
+
+    func stopOnDemand(key: String) async throws -> AiSettings {
+        try await send("/api/ai/on-demand/\(escape(key))/stop", method: "POST")
+    }
+
     func aiReview() async throws -> AiReview { try await get("/api/ai/review") }
 
     func tidyChanges() async throws -> TidyChanges { try await get("/api/night/changes") }

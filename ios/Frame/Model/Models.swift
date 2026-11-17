@@ -1985,6 +1985,9 @@ struct LeftoverState: Codable, Hashable, Sendable {
     /// What the rest goes on, in the owner's order (Mateusz 2026-11-15,
     /// "Lista z kolejnością"). Nil from older servers.
     var uses: [LeftoverUse]? = nil
+    /// What a run on demand may be given now: the limit less the reserve,
+    /// the period's spending and what is ordered. Nil from older servers.
+    var nowFreeUsd: Double? = nil
 }
 
 /// One thing the month's rest may go on; the server pays them from the top
@@ -2012,8 +2015,37 @@ struct LeftoverUse: Codable, Hashable, Sendable, Identifiable {
     var aNightOptions: [Int]? = nil
     var tonight: Int? = nil
     var tonightUsd: Double? = nil
+    /// Run now for an amount, at the full price (Mateusz 2026-11-17, "na
+    /// żądanie, w trybie zwykłym"): about what a work costs so (nil: it
+    /// cannot be run now, or an older server), and the run going or the
+    /// last one.
+    var nowEachUsd: Double? = nil
+    var run: OnDemandRun? = nil
 
     var id: String { key }
+}
+
+/// A use of the month's rest run now for the owner's amount: asked one work
+/// after another at the full price until the amount is spent, nothing waits,
+/// the limit (less its reserve) is reached or he stops it.
+struct OnDemandRun: Codable, Hashable, Sendable {
+    var label: String
+    /// The amount given, and what it cost so far.
+    var usd: Double
+    var spentUsd: Double
+    /// Works done; of them changed (described, cut); failed.
+    var done: Int
+    var changed: Int = 0
+    var failed: Int = 0
+    /// Works waiting when it began, and still to go (while it runs).
+    var waiting: Int? = nil
+    var left: Int? = nil
+    var running: Bool
+    var stopping: Bool = false
+    /// When it began and ended (ISO), and why it ended, in Polish.
+    var started: String? = nil
+    var ended: String? = nil
+    var why: String? = nil
 }
 
 /// Only what is set changes.

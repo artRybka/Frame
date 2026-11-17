@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.145.207
+
+- Konfiguracja → Claude → „Na co, w tej kolejności”: pod „Słowa kluczowe i
+  polskie opisy” oraz „Kadrowanie zdjęć dzieł” jest „Uruchom teraz…”.
+  Podajesz kwotę (np. 50 USD), a serwer od razu, w trybie zwykłym (bez
+  Batch, po pełnej cenie), pyta Claude dzieło po dziele, najpierw o
+  Ulubione i playlisty. Działa, aż wyda kwotę albo skończy się kolejka;
+  pod pozycją widać pasek, ile dzieł zrobił i ile wydał, i przycisk
+  „Zatrzymaj”. Nie przekracza miesięcznego limitu ani zapasu, a noc w tym
+  czasie nie zamawia tego samego przez Batch.
+
 ## 1.145.206
 
 - Konfiguracja: liczba przy „Do sprawdzenia” zgadza się z listą. Liczyła

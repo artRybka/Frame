@@ -328,6 +328,11 @@ protocol FrameBackend: Sendable {
     func testPush(device: String) async throws -> PushTestResult
     func aiSettings() async throws -> AiSettings
     func saveAiSettings(_ update: AiSettingsUpdate) async throws -> AiSettings
+    /// A use of the month's rest run now for `usd`, at the full price
+    /// ("Uruchom teraz"); 409 with the reason when it cannot.
+    func startOnDemand(key: String, usd: Double) async throws -> AiSettings
+    /// The run stops after the works it is asking about.
+    func stopOnDemand(key: String) async throws -> AiSettings
     /// What the tidying of copies changed, the judge's (doubtful) first.
     func tidyChanges() async throws -> TidyChanges
     /// "To nie to samo": the two pictures apart again, for good.
