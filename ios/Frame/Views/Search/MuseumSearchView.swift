@@ -186,6 +186,16 @@ struct MuseumSearchView: View {
                let small = LookPhoto.small(from: wall) {
                 searchPhoto(small)
             }
+            // CI screenshots: "Szukaj podobnych" from a work's card, by
+            // subject and style or one of them (`-likeBy`).
+            if LaunchRoute.screen == "search-like", rules.like.isEmpty,
+               let work = try? await model.backend.items(LibraryQuery(rules: PlaylistRules(kinds: [.artwork]), limit: 12)).items.dropFirst(3).first {
+                model.likeTitles[SearchToken.likeName(work.id)] = work.title
+                var asked = PlaylistRules()
+                asked.like = work.id
+                asked.likeBy = LaunchRoute.likeBy ?? ""
+                rules = asked
+            }
             // CI screenshots: every museum but the Met, with a colour.
             if LaunchRoute.screen == "search-museums", rules.excludePlaces.isEmpty {
                 rules.colors = ["blue@much"]
@@ -289,6 +299,11 @@ struct MuseumSearchView: View {
                 }
                 Spacer(minLength: 0)
             }
+            if !rules.like.isEmpty {
+                // "Podobne tematem", "Podobne stylem" or both (Mateusz
+                // 2026-11-17: "rozdział już z poziomu szukania").
+                LikeByPicker(selection: $rules.likeBy)
+            }
             if photoAsking != nil {
                 SearchWaiting()
             } else {
@@ -322,6 +337,7 @@ struct MuseumSearchView: View {
                 model.lookPhotos[key] = picture
                 var asked = PlaylistRules()
                 asked.like = key
+                if LaunchRoute.screen == "search-photo" { asked.likeBy = LaunchRoute.likeBy ?? "" }
                 rules = asked
                 sources = []
             } catch {
@@ -455,6 +471,22 @@ struct MuseumSearchView: View {
             return
         }
         search.mark(id, favorite: item.favorite)
+    }
+}
+
+/// What "Podobne do" finds alike: the work's (or the photograph's) subject
+/// and style together, its subject, or its style.
+struct LikeByPicker: View {
+    @Binding var selection: String
+
+    var body: some View {
+        Picker("Podobne", selection: $selection) {
+            ForEach(LikeBy.allCases) { by in
+                Text(bound: by.title).tag(by.rawValue)
+            }
+        }
+        .pickerStyle(.segmented)
+        .accessibilityIdentifier("likeBy")
     }
 }
 

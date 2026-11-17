@@ -260,6 +260,10 @@ jobs:
             capture search-museums 8 "search-museums-$appearance"
             capture search-museums 10 "search-museums-typed-$appearance" -typed krak
             capture search-photo 12 "search-photo-$appearance"
+            capture search-like 10 "search-like-$appearance"
+            capture search-like 10 "search-like-subject-$appearance" -likeBy subject
+            capture search-like 10 "search-like-style-$appearance" -likeBy style
+            capture search-photo 12 "search-photo-style-$appearance" -likeBy style
             capture search-styles 8 "search-styles-typed-$appearance" -typed impr
             capture search-picker 8 "search-picker-typed-$appearance" -typed 1890
             capture send 8 "send-$appearance"
