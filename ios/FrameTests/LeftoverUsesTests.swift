@@ -104,4 +104,41 @@ final class LeftoverUsesTests: XCTestCase {
         XCTAssertEqual(uses.first { $0.key == "crops" }?.on, false)
         XCTAssertEqual(uses.first { $0.key == "audit" }?.on, true)
     }
+
+    /// Mateusz 2026-11-17: "podaję 50 $ na polskie słowa kluczowe i opisy i
+    /// mogę je puścić od razu". The run comes with the use, and its row tells
+    /// the works and the money.
+    func testARunOnDemandDecodesAndTellsItsMoney() async throws {
+        let json = """
+        {"key": "descriptions", "label": "Słowa", "about": "…", "on": true, "able": true,
+         "waiting": 125323, "each_usd": 0.0066, "waiting_usd": 824.84, "a_night": 1000,
+         "done": 0, "done_usd": 0, "now_each_usd": 0.0132,
+         "run": {"label": "Słowa", "usd": 50, "spent_usd": 12.37, "done": 936, "changed": 936,
+                 "failed": 0, "waiting": 125323, "left": 124387, "running": true,
+                 "stopping": false, "started": "2026-11-17T08:15:00+00:00", "ended": null,
+                 "why": null}}
+        """
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let use = try decoder.decode(LeftoverUse.self, from: Data(json.utf8))
+        let run = try XCTUnwrap(use.run)
+        XCTAssertEqual(use.nowEachUsd, 0.0132)
+        XCTAssertTrue(run.running)
+        let note = OnDemandRow.runningNote(run)
+        XCTAssertTrue(note.hasPrefix("Teraz: 936 dzieł"), note)
+        XCTAssertTrue(note.contains("w kolejce 124"), note)
+        XCTAssertEqual(OnDemandRow.works(1), "1 dzieło")
+        XCTAssertEqual(OnDemandRow.works(3), "3 dzieła")
+        XCTAssertEqual(OnDemandRow.works(12), "12 dzieł")
+
+        let demo = DemoBackend()
+        let started = try await demo.startOnDemand(key: "descriptions", usd: 50)
+        let texts = try XCTUnwrap(started.leftoverState?.uses?.first { $0.key == "descriptions" })
+        XCTAssertEqual(texts.run?.running, true)
+        XCTAssertEqual(texts.run?.usd, 50)
+        let stopped = try await demo.stopOnDemand(key: "descriptions")
+        let after = try XCTUnwrap(stopped.leftoverState?.uses?.first { $0.key == "descriptions" })
+        XCTAssertEqual(after.run?.running, false)
+        XCTAssertEqual(after.run.map(OnDemandRow.lastNote)?.contains("zatrzymane"), true)
+    }
 }

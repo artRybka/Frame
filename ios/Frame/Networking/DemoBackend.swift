@@ -90,7 +90,7 @@ actor DemoBackend: FrameBackend {
         leftoverState: LeftoverState(
             opens: "2026-11-28", closes: "2026-11-29", open: false, freeUsd: 0, perStudyUsd: 0.8,
             measured: false, ordered: 0, inFlight: 0, made: 0, failed: 0, candidates: 7,
-            uses: DemoBackend.leftoverUses
+            uses: DemoBackend.leftoverUses, nowFreeUsd: 58.86
         ),
         costDays: 7,
         claudeCosts: [
@@ -2189,6 +2189,30 @@ actor DemoBackend: FrameBackend {
         return aiValue
     }
 
+    func startOnDemand(key: String, usd: Double) async throws -> AiSettings {
+        guard var uses = aiValue.leftoverState?.uses,
+              let index = uses.firstIndex(where: { $0.key == key }) else { return aiValue }
+        uses[index].run = OnDemandRun(
+            label: uses[index].label, usd: usd, spentUsd: 0, done: 0,
+            waiting: uses[index].waiting, left: uses[index].waiting, running: true,
+            started: ISO8601DateFormatter().string(from: Date())
+        )
+        aiValue.leftoverState?.uses = uses
+        return aiValue
+    }
+
+    func stopOnDemand(key: String) async throws -> AiSettings {
+        guard var uses = aiValue.leftoverState?.uses,
+              let index = uses.firstIndex(where: { $0.key == key }),
+              var run = uses[index].run else { return aiValue }
+        run.running = false
+        run.ended = ISO8601DateFormatter().string(from: Date())
+        run.why = "zatrzymane"
+        uses[index].run = run
+        aiValue.leftoverState?.uses = uses
+        return aiValue
+    }
+
     /// "Do sprawdzenia" in the demo: one work set aside, one finding.
     private lazy var reviewValue: AiReview = {
         let works = items.filter { $0.kind == .artwork }
@@ -2490,6 +2514,28 @@ private final class FramingState: @unchecked Sendable {
 }
 
 extension DemoBackend {
+    /// Screenshots: `-demoRun running` (or `ended`) shows a run on demand of
+    /// the catalogue's texts.
+    static var demoRun: OnDemandRun? {
+        switch UserDefaults.standard.string(forKey: "demoRun") {
+        case "running":
+            return OnDemandRun(
+                label: "Słowa kluczowe i polskie opisy", usd: 50, spentUsd: 12.37, done: 936,
+                changed: 936, failed: 0, waiting: 125_323, left: 124_387, running: true,
+                started: "2026-11-17T08:15:00+00:00"
+            )
+        case "ended":
+            return OnDemandRun(
+                label: "Słowa kluczowe i polskie opisy", usd: 50, spentUsd: 49.98, done: 3786,
+                changed: 3786, failed: 2, waiting: 125_323, running: false,
+                started: "2026-11-17T08:15:00+00:00", ended: "2026-11-17T13:42:00+00:00",
+                why: "kwota wykorzystana"
+            )
+        default:
+            return nil
+        }
+    }
+
     /// The uses of the month's rest as a server of 1.145.161 tells them.
     static let leftoverUses: [LeftoverUse] = [
         LeftoverUse(
@@ -2502,7 +2548,7 @@ extension DemoBackend {
             key: "crops", label: "Kadrowanie zdjęć dzieł",
             about: "Więcej dzieł na noc bez ramy, sztalugi i tektury wokół, najpierw Ulubione i playlisty.",
             on: true, able: true, waiting: 412, eachUsd: 0.01, waitingUsd: 4.12, aNight: 540,
-            done: 0, doneUsd: 0
+            done: 0, doneUsd: 0, nowEachUsd: 0.0204
         ),
         LeftoverUse(
             key: "text_review", label: "Przegląd zapisanych opisów",
@@ -2521,7 +2567,7 @@ extension DemoBackend {
             about: "Dzieła katalogu, które ich jeszcze nie mają, najpierw Ulubione i playlisty.",
             on: true, able: true, waiting: 125_323, eachUsd: 0.0066, waitingUsd: 824.84, aNight: 1000,
             done: 0, doneUsd: 0, aNightOptions: [250, 500, 1000, 2000, 5000, 10000],
-            tonight: 1000, tonightUsd: 6.58
+            tonight: 1000, tonightUsd: 6.58, nowEachUsd: 0.0132, run: demoRun
         ),
         LeftoverUse(
             key: "audit", label: "Większy nocny przegląd",

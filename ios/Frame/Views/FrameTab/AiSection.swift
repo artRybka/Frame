@@ -174,9 +174,11 @@ struct AiSection: View {
         }
         .navigationDestination(isPresented: $showReview) { AiReviewView() }
         .task {
-            // Batches and the background move on while Konfiguracja is open.
+            // Batches and the background move on while Konfiguracja is open;
+            // a run on demand is followed more closely.
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(20))
+                let going = model.aiSettings?.leftoverState?.uses?.contains { $0.run?.running == true } == true
+                try? await Task.sleep(for: .seconds(going ? 5 : 20))
                 guard !Task.isCancelled else { return }
                 await model.loadAiSettings()
             }
@@ -676,6 +678,9 @@ struct AiSection: View {
                         .foregroundStyle(use.able ? Theme.ink.opacity(0.75) : Theme.inkSoft)
                     if use.able, let options = use.aNightOptions, let night = use.aNight {
                         aNightMenu(use, night: night, options: options)
+                    }
+                    if use.able, use.nowEachUsd != nil {
+                        OnDemandRow(use: use, free: settings.leftoverState?.nowFreeUsd)
                     }
                 }
             }

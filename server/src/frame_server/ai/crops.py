@@ -1229,6 +1229,40 @@ class Crops(CriticNight):
         except Exception as err:  # no key, the limit, a picture gone: the night's again
             log.info("crops: %s not looked at now (%s)", stored.id, err)
             return False
+        return self._settle_now(stored, found)
+
+    def claims_waiting(self) -> list[str]:
+        """The works the judge found something around that wait for Opus
+        and are in no batch, the works cared about first (a run on demand,
+        ``frame_server.on_demand``)."""
+        state = self.state()
+        ordered = set(((state.get("order") or {}).get("ids") or {}).values())
+        claims = state.get("claims") or {}
+        ids = [k for k, c in claims.items() if not (c or {}).get("reshape") and k not in ordered]
+        cared = self.cared()
+        return sorted(ids, key=lambda i: cared.get(i, REST))
+
+    def claim_now(self, item_id: str) -> bool | None:
+        """A work the judge found something around, asked of Opus now
+        rather than in the night's batch: whether it was cut; None when its
+        claim is gone (asked meanwhile). What the ask raises (no key, the
+        limit) is the caller's."""
+        state = self.state()
+        claim = (state.get("claims") or {}).get(item_id)
+        ordered = set(((state.get("order") or {}).get("ids") or {}).values())
+        stored = self.library.get(item_id)
+        if not claim or claim.get("reshape") or item_id in ordered or stored is None:
+            return None
+        answer = self.claude.ask(KIND, self.critic_question(stored, claim))
+        found = (
+            None if answer.refused else (self.confirmed(stored, claim, answer.data or {}) or None)
+        )
+        log.info("crops: %s by Opus now: %s", stored.id, "cut" if found else "nothing cut")
+        return self._settle_now(stored, found)
+
+    def _settle_now(self, stored: Item, found: dict[str, Any] | None) -> bool:
+        """What Opus found about a work asked now kept, as the night keeps
+        its answers: whether it was cut."""
         state = self.state()
         asked_all = state.get("asked") or {}
         asked_all[stored.id] = {
