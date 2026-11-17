@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.210
+## 1.145.211
 
 - Bez akt z archiwów udających dzieła. Pliki Archiwów Narodowych USA,
   które trafiły do Wikimedia Commons jako „obrazy” (puste niemieckie
@@ -15,6 +15,17 @@
 - Po aktualizacji serwer raz usuwa z katalogu takie akta i dokumenty,
   które sam kiedyś dobrał (na katalogu z 13 listopada 41 pozycji).
   Zachowane przez Ciebie (serce, playlista, ramka) zostają.
+
+## 1.145.210
+
+- Skan („Inteligentne”) dzieła za szybą, trzy poprawki po rysunku w
+  szerokim passe-partout: lampa wypalona w zdjęciu na wprost znika cała
+  także wtedy, gdy jedno ze zdjęć bocznych ma w tym miejscu odbicie okna
+  (zostawała zielonkawa plama); własna sylwetka odbita w szybie nie
+  zostaje na papierze jako ciemniejszy kształt z jasnym obrysem; przy
+  brzegu dzieła nie zostaje blady pas odbicia, gdy zdjęcie boczne
+  pokazuje dzieło aż do brzegu. Pod jasnym odbiciem kreski rysunku są
+  brane ze zdjęć bocznych, więc nie bledną.
 
 ## 1.145.209
 
