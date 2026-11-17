@@ -773,6 +773,34 @@ async def check_cut(
     return CutView(changed=changed, item=svc.library.get(item.id) or stored)
 
 
+@router.get("/library/items/{item_id:item}/framed")
+async def item_framed(
+    item_id: str, svc: Svc, side: Annotated[int, Query(ge=200, le=4000)] = 1800
+) -> Response:
+    """The card's "W ramie": the work in its frame or passe-partout, the
+    photograph cut to the frame's outer edge and set straight
+    (``ImageCache.framed``); 404 when there is nothing around the work."""
+    item = await _work(svc, item_id, threads=SHOWN_THREADS)
+
+    def made() -> bytes | None:
+        img = svc.images.framed(item, side, urgent=True)
+        if img is None:
+            return None
+        out = io.BytesIO()
+        img.convert("RGB").save(out, "JPEG", quality=88)
+        return out.getvalue()
+
+    try:
+        data = await to_thread.run_sync(made, limiter=SHOWN_THREADS)
+    except Gone as err:
+        raise HTTPException(410, f"no picture anywhere: {err}") from err
+    except (httpx.HTTPError, OSError) as err:
+        raise HTTPException(502, f"image unavailable: {err}") from err
+    if data is None:
+        raise HTTPException(404, "nothing around the work")
+    return Response(data, media_type="image/jpeg", headers=NO_STORE)
+
+
 @router.get("/library/items/{item_id:item}/full")
 async def item_full(
     item_id: str, svc: Svc, side: Annotated[int | None, Query(ge=200, le=4000)] = None

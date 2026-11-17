@@ -1090,6 +1090,11 @@ struct LiveBackend: FrameBackend {
                 "/api/library/items/\(escape(id))/full",
                 query: [URLQueryItem(name: "side", value: String(side)), URLQueryItem(name: "v", value: version)]
             )
+        case let .framed(id, side, version):
+            req = request(
+                "/api/library/items/\(escape(id))/framed",
+                query: [URLQueryItem(name: "side", value: String(side)), URLQueryItem(name: "v", value: version)]
+            )
         case let .beforeCleaning(id, version):
             req = request(
                 "/api/library/items/\(escape(id))/cleaned/before",

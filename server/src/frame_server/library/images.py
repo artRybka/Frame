@@ -24,7 +24,7 @@ import numpy as np
 from PIL import Image
 
 from ..fsutil import dir_bytes, own_files
-from ..imaging.cut import same_picture, warp
+from ..imaging.cut import framed, same_picture, warp
 from ..imaging.cut_off import cut_off
 from ..imaging.layout import load_image
 from ..imaging.margins import trim_margins
@@ -905,6 +905,32 @@ class ImageCache:
             return full
         path = self.ensure_image(item, urgent)
         return full if full.is_file() else path  # cut as it came in, or whole
+
+    def framed(self, item: Item, side: int, urgent: bool = False) -> Image.Image | None:
+        """The card's "W ramie" (Mateusz 2026-11-17): the photograph cut to
+        the outer edge of the work's frame or passe-partout (a print's
+        sheet when it is shown without it, ``Cut.framed_by``) and set
+        straight, no longer than ``side``; the work in it as it is shown
+        when its colours are corrected. None when there is nothing around
+        the work to show, or the cut is another picture's."""
+        cut = item.cut
+        by = cut.framed_by() if cut is not None else None
+        work = item.cut_shown()
+        if cut is None or by is None or work is None or not cut.framed_kind:
+            return None
+        img = load_image(self.museum_photo(item, urgent))
+        if not same_picture(cut.aspect, img.size):
+            return None
+        shown = None
+        if item.cleaned_shown() is not None:
+            try:
+                shown = load_image(self.ensure_image(item, urgent))
+            except OSError:
+                shown = None
+        out = framed(img, by[0], work, shown)
+        if max(out.size) > side:
+            out.thumbnail((side, side), Image.Resampling.LANCZOS)
+        return out
 
     def before_cleaning(self, item: Item, urgent: bool = False) -> Image.Image:
         """The work as it is shown but for its cleaning (``Item.cleaned``):

@@ -156,6 +156,13 @@ class Incoming(BaseModel):
     #: The colour chart photographed beside the work (its corners), by
     #: which the photograph's colours were set; None when there was none.
     chart: Quad | None = None
+    #: The outer edge of the work's frame or passe-partout in the
+    #: photograph, and which ("frame", "mount"), as Opus saw it with the
+    #: corners: the card's "W ramie" (``Cut.surround``).
+    surround: Quad | None = None
+    surround_kind: str = ""
+    #: Whether Opus answered (``surround`` asked).
+    looked: bool = False
 
 
 class Merged(Incoming):
@@ -566,6 +573,9 @@ class OwnWorks:
             img.load()
             found = self.crops.home_corners(img)
         if found is not None:
+            seen.looked = True
+            seen.surround = found.get("surround")
+            seen.surround_kind = str(found.get("surround_kind") or "") if seen.surround else ""
             seen.shape = str(found.get("shape") or "")
             if seen.shape == "rectangle" or not seen.shape:
                 seen.corners = found["work"] or found["plate"]
@@ -662,7 +672,7 @@ class OwnWorks:
             description=text.description.strip(),
         )
         item = self._describe(item, text)
-        item = self._cut(item, corners, by, shape)
+        item = self._cut(item, corners, by, shape, self._surround(token))
         self._note_work(token, item)
         self._done(path)
         log.info("own work %s added", item.id)
@@ -687,7 +697,7 @@ class OwnWorks:
         self.images.remove(item)
         width, height = self.images.store(item, path.read_bytes(), master=True)
         stored = self.library.update(item.id, width=width, height=height, cut=None) or item
-        stored = self._cut(stored, corners, by, shape)
+        stored = self._cut(stored, corners, by, shape, self._surround(token))
         self._note_work(token, stored)
         self._done(path)
         return stored
@@ -884,7 +894,29 @@ class OwnWorks:
             Note(item_id=item.id, kind=SIZE, model="", prompt_version=VERSION, data=data)
         )
 
-    def _cut(self, item: Item, corners: Quad | None, by: str, shape: str) -> Item:
+    def _surround(self, token: str) -> dict[str, Any]:
+        """The frame's edge Opus saw in the photograph (:meth:`find`), as
+        :class:`Cut` keeps it; nothing when he was not asked."""
+        try:
+            seen = Incoming.model_validate_json(self.path(token).with_suffix(FOUND).read_text())
+        except (OSError, ValueError, LookupError):
+            return {}
+        if not seen.looked:
+            return {}
+        return {
+            "surround": seen.surround,
+            "surround_kind": seen.surround_kind if seen.surround else "",
+            "surround_asked": True,
+        }
+
+    def _cut(
+        self,
+        item: Item,
+        corners: Quad | None,
+        by: str,
+        shape: str,
+        surround: dict[str, Any] | None = None,
+    ) -> Item:
         quad = valid(corners) if corners is not None else None
         if quad is None:
             self.images.recut(item)  # whole: its tiles from all its pixels
@@ -898,6 +930,7 @@ class OwnWorks:
             by="owner" if by == "owner" else "auto",
             shape=shape if shape in ("rectangle", "round", "irregular") else "",
             at=now_iso(),
+            **(surround or {}),
         )
         return self.crops.apply(item, cut)
 
