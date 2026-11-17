@@ -958,3 +958,27 @@ def test_a_card_asks_again_a_work_left_uncut_by_the_older_question(
     assert crops.asked()["smk:15"]["q"] == 2
     assert not crops.now(service.library.get("smk:15"))  # type: ignore[arg-type]
     assert len(fake.asked) == 1  # asked by this question: not again
+
+
+def test_a_claim_is_asked_of_opus_now_on_demand(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    """Na żądanie (Mateusz 2026-11-17): the works the judge found something
+    around are asked of Opus now, at the full price, and kept as the
+    night's answers are."""
+    _work(service, "mnw:1", title="Portret", pooled=True)
+    crops = service.crops
+    fake.ended = True
+    _answer(fake, {"surround": ["backdrop", "frame"]})
+    assert crops.order() and crops.collect()
+    assert crops.claims_waiting() == ["mnw:1"]
+
+    fake.answer = CORNERS  # asked now, not in a batch
+    fake.asked.clear()
+    assert crops.claim_now("mnw:1") is True
+    assert [p["model"] for p in fake.asked] == [OPUS] and len(fake.batches) == 1
+    item = service.library.get("mnw:1")
+    assert item is not None and item.cut is not None and item.cut.by == "auto"
+    assert crops.claims_waiting() == [] and crops.claim_now("mnw:1") is None
+    assert crops.asked()["mnw:1"]["critic"] is True

@@ -346,14 +346,15 @@ struct SettingsPageView: View {
             .task {
                 // CI screenshots: `-scroll restorer` on the Gemini page,
                 // `-scroll leftover` (the month's rest), `switches` or
-                // `night` on Claude's.
+                // `night` on Claude's; `ondemand` (the catalogue's texts'
+                // "Uruchom teraz").
                 let target = LaunchRoute.scroll
-                let onClaudes = ["leftover", "switches", "night"]
+                let onClaudes = ["leftover", "switches", "night", "ondemand"]
                 guard (page == .gemini && target == "restorer") || (page == .ai && onClaudes.contains(target ?? "")),
                       let target
                 else { return }
                 try? await Task.sleep(for: .seconds(4))
-                withAnimation { proxy.scrollTo(target, anchor: target == "restorer" ? .center : .top) }
+                withAnimation { proxy.scrollTo(target, anchor: ["restorer", "ondemand"].contains(target) ? .center : .top) }
             }
         }
         .paperPage()

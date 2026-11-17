@@ -71,6 +71,7 @@ from .media import Media
 from .museum_places import MuseumPlaces
 from .night import NightQueue
 from .notifications import Notifier
+from .on_demand import OnDemand
 from .own_works import OwnWorks
 from .panel_app import POLL, PanelApp
 from .panel_config import PanelConfigStore
@@ -509,6 +510,11 @@ class FrameService:
             crops=self.crops,
             audit=self.audit,
         )
+        # One of its uses run now, for the owner's amount, at the full price.
+        self.on_demand = OnDemand(
+            self.library, self.claude, self.ai_config, self.ai, self.leftover, crops=self.crops
+        )
+        self.leftover.on_demand = self.on_demand
 
         #: Heavy work at night, while the server runs its background.
         self.night: NightQueue | None = None

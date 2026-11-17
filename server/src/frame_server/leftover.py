@@ -73,6 +73,7 @@ if TYPE_CHECKING:
     from .ai.text_review import TextReview
     from .daily import Daily
     from .library import Item, Library
+    from .on_demand import OnDemand
     from .player import Player
     from .study import Study
 
@@ -247,6 +248,10 @@ class Leftover:
         #: The catalogue's texts waiting, as last worked out (when, count, USD).
         self._texts_kept: tuple[float, tuple[int, float]] | None = None
         self._counting = False
+        #: The runs on demand (``frame_server.on_demand``), set once made:
+        #: what they may still spend is not the night's, and the night
+        #: leaves a use running now alone.
+        self.on_demand: OnDemand | None = None
 
     # -- the state -----------------------------------------------------------
 
@@ -332,6 +337,8 @@ class Leftover:
         coming = len(self._in_flight(state)) * self.per_study(state)
         coming += self.ai.batched_usd(DESCRIPTIONS)
         coming += self._coming_usd()
+        if self.on_demand is not None:
+            coming += self.on_demand.held_usd()
         return (
             config.monthly_limit_usd
             - config.leftover_reserve_usd
@@ -412,6 +419,8 @@ class Leftover:
         for use, on in self._uses():
             if not on or not use.able():
                 continue
+            if self.on_demand is not None and self.on_demand.running(use.key):
+                continue  # asked now, for the owner's amount
             if budget < use.each:
                 continue
             done, usd, more = use.run(budget)

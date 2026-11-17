@@ -1643,6 +1643,33 @@ final class AppModel {
         }
     }
 
+    /// "Uruchom teraz" (Mateusz 2026-11-17): a use of the month's rest run
+    /// now for `usd`, at the full price. True when it started.
+    func startOnDemand(key: String, usd: Double) async -> Bool {
+        do {
+            aiSettings = try await backend.startOnDemand(key: key, usd: usd)
+        } catch let BackendError.http(409, body) {
+            let said = (try? JSONDecoder().decode([String: String].self, from: Data(body.utf8)))?["detail"]
+            notices.fail("Nie uruchomiono", said)
+            return false
+        } catch {
+            show(error)
+            return false
+        }
+        notices.done("Uruchomione za \(Money.usd(usd))")
+        return true
+    }
+
+    func stopOnDemand(key: String) async {
+        do {
+            aiSettings = try await backend.stopOnDemand(key: key)
+        } catch BackendError.http(404, _) {
+            await loadAiSettings()  // it ended meanwhile
+        } catch {
+            show(error)
+        }
+    }
+
     /// True when the server checked the key with Anthropic and kept it.
     func saveAiKey(_ key: String) async -> Bool {
         do {

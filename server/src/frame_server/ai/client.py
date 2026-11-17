@@ -16,6 +16,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -173,10 +174,27 @@ class Spending:
         #: The day of the month the period begins on.
         self.start_day = start_day
         self._lock = threading.Lock()
+        #: What the meters running on each thread counted (:meth:`meter`).
+        self._meters = threading.local()
+
+    @contextmanager
+    def meter(self) -> Iterator[list[float]]:
+        """Counts what the answers asked on this thread cost while it lasts
+        (a run on demand, ``frame_server.on_demand``): ``[usd]``. What other
+        threads ask meanwhile, even of the same kind, is not counted."""
+        counted = [0.0]
+        meters: list[list[float]] = getattr(self._meters, "on", None) or []
+        self._meters.on = [*meters, counted]
+        try:
+            yield counted
+        finally:
+            self._meters.on = meters
 
     def add(self, kind: str, usd: float) -> None:
         if usd <= 0:
             return
+        for counted in getattr(self._meters, "on", None) or []:
+            counted[0] += usd
         with self._lock:
             spent = self.library.get_state(self.key, {})
             today = datetime.now(UTC).date()

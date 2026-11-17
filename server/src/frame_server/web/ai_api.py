@@ -23,6 +23,8 @@ from ..ai.review_fix import ReviewError
 from ..ai.twins_judge import CLAIMS, Verdict, judge
 from ..ai.twins_judge import MODELS as JUDGES
 from ..library.models import ItemSummary
+from ..on_demand import USES as ON_DEMAND
+from ..on_demand import OnDemandError
 from ..service import FrameService
 from .deps import require_owner, service
 
@@ -144,6 +146,8 @@ class LeftoverView(BaseModel):
     candidates: int
     #: What the rest goes on, in the owner's order (Mateusz 2026-11-15).
     uses: list[LeftoverUseView] = []
+    #: What a run on demand may be given now.
+    now_free_usd: float = 0.0
 
 
 class LeftoverUseView(BaseModel):
@@ -171,6 +175,38 @@ class LeftoverUseView(BaseModel):
     #: What it ordered this period, and about what it cost.
     done: int
     done_usd: float
+    #: Run now for an amount, at the full price (Mateusz 2026-11-17, "na
+    #: żądanie, w trybie zwykłym"): about what a work costs so (None: it
+    #: cannot be run now), and the run going or the last one.
+    now_each_usd: float | None = None
+    run: OnDemandRunView | None = None
+
+
+class OnDemandRunView(BaseModel):
+    """A run on demand (``frame_server.on_demand``)."""
+
+    label: str
+    #: The amount given, what it cost so far.
+    usd: float
+    spent_usd: float
+    #: Works done, of them changed (described, cut), failed.
+    done: int
+    changed: int = 0
+    failed: int = 0
+    #: Works waiting when it began, and still to go (while it runs).
+    waiting: int | None = None
+    left: int | None = None
+    running: bool
+    stopping: bool = False
+    #: When it began and ended (ISO), and why it ended, in Polish.
+    started: str | None = None
+    ended: str | None = None
+    why: str | None = None
+
+
+class OnDemandStart(BaseModel):
+    key: str
+    usd: float
 
 
 class StudyRefreshView(BaseModel):
@@ -248,6 +284,11 @@ def _view(svc: FrameService) -> AiView:
     waiting, in_batch = svc.drawn.counts()
     looks_done, looks_total = svc.looks.counts()
     leftover = svc.leftover.view()
+    for use in leftover["uses"]:
+        if use["key"] in ON_DEMAND:
+            use["now_each_usd"] = svc.on_demand.each_usd(use["key"])
+            use["run"] = svc.on_demand.view(use["key"])
+    leftover["now_free_usd"] = round(svc.on_demand.free_usd(), 2)
     return AiView(
         key_set=bool(store.api_key),
         key_tail=store.key_tail,
@@ -327,6 +368,25 @@ async def start_study_refresh(svc: Svc) -> AiView:
     asked = await run_in_threadpool(svc.study_refresh.start)
     if not asked and not svc.study_refresh.view()["running"]:
         raise HTTPException(409, "Nie udało się zamówić (szczegóły w dzienniku serwera).")
+    return await run_in_threadpool(_view, svc)
+
+
+@router.post("/on-demand", response_model=AiView)
+async def start_on_demand(start: OnDemandStart, svc: Svc) -> AiView:
+    """One of the month's rest's uses run now, for the owner's amount, at
+    the full price (Konfiguracja → Claude → "Uruchom teraz")."""
+    try:
+        await run_in_threadpool(svc.on_demand.start, start.key, start.usd)
+    except OnDemandError as err:
+        raise HTTPException(409, str(err)) from err
+    return await run_in_threadpool(_view, svc)
+
+
+@router.post("/on-demand/{key}/stop", response_model=AiView)
+async def stop_on_demand(key: str, svc: Svc) -> AiView:
+    """The run stops after the works it is asking about."""
+    if not svc.on_demand.stop(key):
+        raise HTTPException(404, "To zadanie teraz nie działa.")
     return await run_in_threadpool(_view, svc)
 
 

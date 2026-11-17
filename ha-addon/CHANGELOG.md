@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.209
+## 1.145.210
 
 - Bez akt z archiwów udających dzieła. Pliki Archiwów Narodowych USA,
   które trafiły do Wikimedia Commons jako „obrazy” (puste niemieckie
@@ -15,6 +15,17 @@
 - Po aktualizacji serwer raz usuwa z katalogu takie akta i dokumenty,
   które sam kiedyś dobrał (na katalogu z 13 listopada 41 pozycji).
   Zachowane przez Ciebie (serce, playlista, ramka) zostają.
+
+## 1.145.209
+
+- Konfiguracja → Claude → „Na co, w tej kolejności”: pod „Słowa kluczowe i
+  polskie opisy” oraz „Kadrowanie zdjęć dzieł” jest „Uruchom teraz…”.
+  Podajesz kwotę (np. 50 USD), a serwer od razu, w trybie zwykłym (bez
+  Batch, po pełnej cenie), pyta Claude dzieło po dziele, najpierw o
+  Ulubione i playlisty. Działa, aż wyda kwotę albo skończy się kolejka;
+  pod pozycją widać pasek, ile dzieł zrobił i ile wydał, i przycisk
+  „Zatrzymaj”. Nie przekracza miesięcznego limitu ani zapasu, a noc w tym
+  czasie nie zamawia tego samego przez Batch.
 
 ## 1.145.208
 
