@@ -192,6 +192,8 @@ struct OnDemandSheet: View {
                 }
             }
             .contentMargins(.top, 8, for: .scrollContent)
+            .scrollContentBackground(.hidden)
+            .background { Theme.paper.ignoresSafeArea() }
             .navigationTitle("Uruchom teraz")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

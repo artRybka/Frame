@@ -101,7 +101,7 @@ struct TasksSection: View {
         guard settings.leftover == true else { return "Wyłączone: włączysz niżej" }
         let days = settings.leftoverDays ?? 3
         if let state = settings.leftoverState {
-            return "Ostatnie \(days) dni (\(AiSection.dayMonth(state.opens))–\(AiSection.dayMonth(state.closes))), z tego, co zostaje ponad zapas"
+            return "Ostatnie \(days) dni okresu, od \(AiSection.dayMonth(state.opens)), z tego, co zostaje ponad zapas"
         }
         return "Ostatnie \(days) dni okresu, z tego, co zostaje ponad zapas"
     }

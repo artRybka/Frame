@@ -79,7 +79,7 @@ actor DemoBackend: FrameBackend {
     private var aiValue = AiSettings(
         keySet: false, keyTail: nil, keyFromApp: false, plText: true, keywordsArtworks: true,
         keywordsPhotos: true, daily: true, searchWords: true, curator: true, twinsJudge: true, gatekeeper: true, audit: true, looks: true, journey: true, webFacts: true, crops: true, stages: true, varnishBlue: true,
-        reviewCount: 2, monthlyLimitUsd: 20, spentUsd: 11.14,
+        reviewCount: 2, monthlyLimitUsd: 100, spentUsd: 11.14,
         keywordsProgress: .init(done: 0, waiting: 0, refused: 0, batchItems: 0, batchDone: 0, preparing: false),
         plTextProgress: nil, error: nil,
         geminiKeySet: true, geminiKeyTail: "wxyz", drawn: true, drawnUsd: 0.15, drawnBatchUsd: 0.075,
@@ -90,7 +90,7 @@ actor DemoBackend: FrameBackend {
         leftoverState: LeftoverState(
             opens: "2026-11-28", closes: "2026-11-29", open: false, freeUsd: 0, perStudyUsd: 0.8,
             measured: false, ordered: 0, inFlight: 0, made: 0, failed: 0, candidates: 7,
-            uses: DemoBackend.leftoverUses, nowFreeUsd: 58.86, plannedUsd: 6.2,
+            uses: DemoBackend.leftoverUses, nowFreeUsd: 72.66, plannedUsd: 6.2,
             nightUsdChoices: [1, 2, 5, 10, 20, 50], periodUsdChoices: [5, 10, 20, 50, 100, 200]
         ),
         costDays: 7,
