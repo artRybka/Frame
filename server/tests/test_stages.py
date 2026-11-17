@@ -117,9 +117,10 @@ def test_nothing_is_told_without_a_technical_study(
     item = _work(service, study=False)
     assert stages.wanted(item) is None and not stages.write_soon(item)
     assert stages.made(item) is None
-    with_study = _work(service, study=True)
+    # part of the study, no switch of its own (Mateusz 2026-11-17): an older
+    # app's "off" changes nothing
     service.ai_config.update(AiConfigUpdate(stages=False))
-    assert not stages.enabled() and not stages.write_soon(with_study)
+    assert stages.enabled()
     assert client.asked == []
 
 

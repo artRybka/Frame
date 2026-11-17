@@ -46,7 +46,7 @@ CLAUDE = (
     Row("web_facts", "Fakty z sieci", ("web_facts",)),
     Row("stages", "Jak powstawał", ("stages",)),
     Row("journey", "Droga dzieła", ("journey",)),
-    Row("curator", "Kurator Odkrywaj", ("curator",)),
+    Row("curator", "Propozycje kuratora", ("curator",)),
     Row("gatekeeper", "Strażnik katalogu", ("gatekeeper",)),
     Row("twins_judge", "Sędzia powtórek", ("twins.judge",)),
     Row("crops", "Kadrowanie zdjęć dzieł", ("crops",)),

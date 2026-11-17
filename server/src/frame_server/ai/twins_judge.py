@@ -364,7 +364,7 @@ class NightJudge(CheckedNight):
     def order(self) -> bool:
         """The next pairs (the critic's first) asked of the Batch API, unless
         a batch is under way or nothing is waiting. Whether one was sent."""
-        if not self.config.enabled("twins_judge"):
+        if not self.config.enabled("twins_judge") or self.asked_only("tidy"):
             return False
         state = self.state()
         if state.get("order"):

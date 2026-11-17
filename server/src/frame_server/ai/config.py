@@ -48,6 +48,10 @@ class TaskSettings(BaseModel):
     night_usd: float | None = Field(None, gt=0, le=1000)
     period_usd: float | None = Field(None, gt=0, le=1000)
     mode: Mode = "batch"
+    #: A task with a portion of its own every night (the crops, the audit):
+    #: more from the month's rest in its last days too. None: settings from
+    #: before 2026-11-17, its switch and the rest's use apart.
+    more_at_end: bool | None = None
 
 
 class TaskUpdate(BaseModel):
@@ -58,6 +62,18 @@ class TaskUpdate(BaseModel):
     night_usd: float | None = Field(None, ge=0, le=1000)
     period_usd: float | None = Field(None, ge=0, le=1000)
     mode: Mode | None = None
+    more_at_end: bool | None = None
+
+
+#: What a study is made of beyond its text: facts from the web, how the work
+#: was painted, its way from the studio to the museum. No switches of their
+#: own since 2026-11-17 (Mateusz: "Zadania składające się na studium są z nim
+#: ściśle powiązane i nie da się ich wyłączyć"); the fields below are kept
+#: for older apps and settings, and are not asked.
+STUDY_PARTS = ("journey", "web_facts", "stages")
+#: Tasks with a portion of their own every night, their switch here
+#: (``leftover.BASE``).
+PORTION_TASKS = ("crops", "audit")
 
 
 class AiConfig(BaseModel):
@@ -247,12 +263,11 @@ class AiConfigStore:
             return config.curator
         if kind == "twins_judge":
             return config.twins_judge
+        if kind in STUDY_PARTS:  # the study's own, no switch of their own
+            return True
         if kind in (
             "gatekeeper",
             "audit",
-            "journey",
-            "web_facts",
-            "stages",
             "crops",
             "varnish_blue",
         ):
@@ -271,6 +286,18 @@ class AiConfigStore:
         config = self.config.model_copy(update={"tasks": tasks, **also})
         self._save(config)
         return config
+
+    def task_when(self, key: str) -> str | None:
+        """When the owner has ``key`` run, as Zadania set it ("night",
+        "rest", "demand", "off"); None when he has not set it there (as
+        before: every night while its switch is on). The night's jobs ask
+        this (``leftover`` resolves the rest)."""
+        kept = self.config.tasks.get(key)
+        if kept is None or kept.when is None:
+            return None
+        if key in PORTION_TASKS and kept.more_at_end is None:
+            return None  # set before the portion and the rest were one
+        return kept.when
 
     def set_tasks(self, tasks: dict[str, TaskSettings], **also: object) -> AiConfig:
         """Keeps every task's settings (and ``also``)."""
