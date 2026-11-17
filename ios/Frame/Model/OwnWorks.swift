@@ -25,13 +25,19 @@ struct OwnIncoming: Codable, Hashable, Sendable {
 
 /// The first photograph with the glare taken out by the side ones (the
 /// scan of three, Mateusz 2026-11-16): how many could be laid over it and
-/// how much of it they gave (0–1; 0, nothing changed).
+/// how much of it they gave (0–1; 0, nothing changed). `doubt`: the
+/// photographs do not show one flat work (a relief, a mirror in it), and
+/// the photograph from the front is the one proposed of the two (Mateusz
+/// 2026-11-17 22:43 UTC: "w sytuacji gdzie podejrzewasz płaskorzeźbę albo
+/// dzieło które wymaga pojedynczego zdjęcia ustawiaj je jako domyślne").
 struct OwnMerged: Codable, Hashable, Sendable {
     var token: String
     var width: Int
     var height: Int
     var used: Int = 0
     var replaced: Double = 0
+    /// nil from a server before it gave the choice (1.145.229).
+    var doubt: Bool? = nil
 }
 
 /// What was read off the picture (Sonnet), for the description's chips.

@@ -724,11 +724,13 @@ struct LiveBackend: FrameBackend {
 
     func mergeOwnPhotos(token: String, outline: [[Double]]?) async throws -> OwnMerged {
         var req = request("/api/own/photos/\(escape(token))/merge", method: "POST")
-        if let outline {
-            // What the camera followed: where the work is when the model has no answer.
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.httpBody = try JSONSerialization.data(withJSONObject: ["outline": outline])
-        }
+        // He is given the two to choose between: the scan is made also of
+        // a work that is no flat one, and comes in doubt.
+        var ask: [String: Any] = ["choice": true]
+        // What the camera followed: where the work is when the model has no answer.
+        if let outline { ask["outline"] = outline }
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ask)
         req.timeoutInterval = 180
         return try await perform(req)
     }

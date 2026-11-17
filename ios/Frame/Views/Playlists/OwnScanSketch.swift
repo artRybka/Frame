@@ -18,6 +18,9 @@ struct OwnScanSketch: View {
     let quarter = UserDefaults.standard.string(forKey: "scanHeld") == "left" ? 1 : 0
     /// The white balance on the page after the scan (`-scanBalance cool|warm`).
     @State private var balance = OwnBalance.launched
+    /// `-scanDoubt YES`: the page after the scan of a work that is no flat
+    /// one, the photograph from the front chosen at first.
+    let doubt = UserDefaults.standard.bool(forKey: "scanDoubt")
 
     private var front: [CGPoint] { DemoOwn.outer.map { CGPoint(x: $0[0], y: $0[1]) } }
 
@@ -163,7 +166,7 @@ struct OwnScanSketch: View {
     private var result: some View {
         if let before = DemoOwn.photo().map({ OwnPicture.cut($0, corners: DemoOwn.work) }),
            let after = DemoOwn.photo(glare: 0).map({ OwnPicture.cut($0, corners: DemoOwn.work) }) {
-            OwnScanResult(before: before, after: after, balance: $balance, again: close, next: { _ in })
+            OwnScanResult(before: before, after: after, doubt: doubt, balance: $balance, again: close, next: { _ in })
         }
     }
 

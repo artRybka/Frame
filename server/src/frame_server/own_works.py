@@ -71,7 +71,9 @@ SCAN_INFO = "scan.json"
 #: Mateusz 2026-11-17 09:30 UTC: "a może być po aktualizacji która
 #: zmieniła sposób łączenia zdjęć?"). A scan that noted none was made
 #: before 1.145.217 (what 1.145.216 does with a lamp's edge is 1; side
-#: views settled on the first place by place, 1.145.220, is 2).
+#: views settled on the first place by place, 1.145.220, is 2). The scan
+#: made also of a relief for him to choose (1.145.229) changes nothing of
+#: scans made before it: they note no ``doubt`` and stay as they were.
 MERGING = 2
 #: A work's photograph is a kept scan's when the fine of the two, small
 #: and grey, goes together at least this much (1 is the same picture). Of
@@ -169,10 +171,21 @@ class Merged(Incoming):
     """The first photograph with its reflections taken out by the side
     ones: how many could be laid over it, and how much was taken (0–1: of
     the work's light where the work's corners were known, of the
-    photograph's pixels where a lamp's glare alone was replaced)."""
+    photograph's pixels where a lamp's glare alone was replaced).
+
+    He has the two to choose between whenever a side one was laid over it
+    (Mateusz 2026-11-17 22:43 UTC: "wybór pomiędzy obrazem składanym
+    (inteligentnym) a z pojedynczego zdjęcia - zawsze go dawaj, a w
+    sytuacji gdzie podejrzewasz płaskorzeźbę albo dzieło które wymaga
+    pojedynczego zdjęcia ustawiaj je jako domyślne"): where the
+    photographs do not show one flat work in one light the scan is made
+    of them all the same, and ``doubt`` says the photograph from the front
+    is the one proposed (where the phone gives the choice: an app before
+    1.145.229 gets such a scan untouched, as it did)."""
 
     used: int = 0
     replaced: float = 0.0
+    doubt: bool = False
 
 
 class Hints(BaseModel):
@@ -360,7 +373,13 @@ class OwnWorks:
         )
         return len(taken) + 1
 
-    def merge(self, token: str, corners: Quad | None = None, outline: Quad | None = None) -> Merged:
+    def merge(
+        self,
+        token: str,
+        corners: Quad | None = None,
+        outline: Quad | None = None,
+        choice: bool = False,
+    ) -> Merged:
         """The first photograph without the reflections its side ones do
         not share, kept in its place. Within the work's ``corners`` (the
         phone's; else Opus is asked, and :meth:`find` answers the same
@@ -377,7 +396,11 @@ class OwnWorks:
         the frame's outer edge, so Opus is still asked for the work within
         the frame and the mount; where Opus has no answer (no key, or it
         found none: three of his first five scans) the outline is where
-        the reflections are taken out."""
+        the reflections are taken out.
+
+        ``choice``: the phone shows him the scan and the first photograph
+        to choose between. The scan is then made also of photographs that
+        show no one flat work, and ``doubt`` proposes the first one."""
         path = self.path(token)
         sides = sorted(self.incoming.glob(f"{token}-side*.jpg"))
         with Image.open(path) as img:
@@ -400,23 +423,29 @@ class OwnWorks:
                 quad = valid(outline)
         seen.corners = quad
         self._keep_scan(token, path, sides)
-        seen.used, seen.replaced = self._merge(path, path, sides, quad)
+        # Made even of a relief when he chooses, the one photograph proposed.
+        seen.used, seen.replaced, seen.doubt = self._merge(path, path, sides, quad, choice)
         self._note_scan(token, seen)
         for side in sides:
             side.unlink(missing_ok=True)
         log.info(
-            "own photograph %s: %d side(s) laid over, %.1f%% %s taken out",
+            "own photograph %s: %d side(s) laid over, %.1f%% %s taken out%s",
             token,
             seen.used,
             seen.replaced * 100,
             "of the light" if quad is not None else "glare",
+            ", not one flat work: the one photograph proposed" if seen.doubt else "",
         )
         return seen
 
     @staticmethod
-    def _merge(first: Path, into: Path, sides: list[Path], quad: Quad | None) -> tuple[int, float]:
+    def _merge(
+        first: Path, into: Path, sides: list[Path], quad: Quad | None, anyway: bool = False
+    ) -> tuple[int, float, bool]:
         """``first`` merged with ``sides`` and written to ``into`` (when
-        anything was taken out): how many were laid over, how much went."""
+        anything was taken out): how many were laid over, how much went,
+        and whether the photographs show no one flat work (in doubt: then
+        nothing is taken out unless asked for ``anyway``)."""
         import numpy as np
 
         from .imaging import glare, reflections
@@ -431,15 +460,15 @@ class OwnWorks:
         if quad is not None:
             # The side ones only say what is reflection: small is enough.
             clean = reflections.merge(
-                photo, [whole(p, reflections.MATCH_SIDE) for p in sides], quad
+                photo, [whole(p, reflections.MATCH_SIDE) for p in sides], quad, anyway
             )
-            used, taken, image = clean.used, clean.removed, clean.image
+            used, taken, image, doubt = clean.used, clean.removed, clean.image, clean.doubt
         else:
             patched = glare.merge(photo, [whole(p) for p in sides])
-            used, taken, image = patched.used, patched.replaced, patched.image
+            used, taken, image, doubt = patched.used, patched.replaced, patched.image, False
         if taken > 0:
             Image.fromarray(image).save(into, "JPEG", quality=INCOMING_QUALITY)
-        return used, round(taken, 4)
+        return used, round(taken, 4), doubt
 
     def single(self, token: str) -> None:
         """The first photograph as it came, back in the scan's place
@@ -485,7 +514,10 @@ class OwnWorks:
         cleaned = grown(had).astype(np.float32)
         if all(cv2.pointPolygonTest(cleaned, (x, y), False) >= 0 for x, y in quad):
             return
-        used, taken = self._merge(folder / "first.jpg", self.path(token), sides, quad)
+        # A scan in doubt he went on with all the same is made as he saw it.
+        used, taken, _ = self._merge(
+            folder / "first.jpg", self.path(token), sides, quad, bool(info.get("doubt"))
+        )
         info.update(corners=quad, used=used, replaced=taken, again=now_iso(), merging=MERGING)
         (folder / SCAN_INFO).write_text(json.dumps(info))
         log.info("own photograph %s merged again within his corners", token)
@@ -511,6 +543,10 @@ class OwnWorks:
             "merging": MERGING,
             "used": seen.used,
             "replaced": seen.replaced,
+            # Made of photographs that show no one flat work, for him to
+            # choose: kept on (he did not take the one photograph, or
+            # ``single`` would say so), it is made so again.
+            "doubt": seen.doubt and seen.replaced > 0,
             "width": seen.width,
             "height": seen.height,
             "corners": seen.corners,
@@ -847,8 +883,14 @@ class OwnWorks:
         again = self.incoming / f"{token}-again.jpg"
         shutil.copyfile(folder / "first.jpg", again)
         try:
-            used, taken = self._merge(
-                folder / "first.jpg", again, sorted(folder.glob("side*.jpg")), quad
+            # A scan from before he was given the choice notes no doubt,
+            # and a relief among them stays the one photograph it was.
+            used, taken, _ = self._merge(
+                folder / "first.jpg",
+                again,
+                sorted(folder.glob("side*.jpg")),
+                quad,
+                bool(info.get("doubt")),
             )
             data = self._balanced(again, float(info.get("balance") or 0.0))
         finally:

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.145.230
+
+- Pełny ekran: przycisk ramy przełącza płynnie, a dzieło zostaje w tym
+  samym miejscu i powiększeniu. Gdy rama byłaby niewidoczna albo samo
+  dzieło za małe, obraz delikatnie dojeżdża do całości.
+
+## 1.145.229
+
+- Skan własnego dzieła z trzech zdjęć: przełącznik „Na wprost /
+  Inteligentne” jest teraz po każdym skanie. Gdy dzieło nie wygląda na
+  płaskie (płaskorzeźba, kolaż z lustrem), skan i tak jest składany, ale
+  domyślnie wybrane jest zdjęcie na wprost. Wcześniej takie dzieło
+  zostawało bez wyboru. Wymaga nowej wersji aplikacji.
+
 ## 1.145.228
 
 - Zadania ułożone według tego, co robią: Katalog, Obraz, Opisy i fakty,
