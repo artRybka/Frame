@@ -713,23 +713,31 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
-    func sendOwnSide(token: String, _ data: Data) async throws {
+    func sendOwnSide(token: String, _ data: Data, angle: Double?) async throws {
         var form = MultipartForm()
         form.addFile("file", filename: "side.jpg", mimeType: "image/jpeg", data: data)
-        var req = request("/api/own/photos/\(escape(token))/sides", method: "POST")
+        var query: [URLQueryItem] = []
+        if let angle, angle.isFinite {
+            // (The server takes -90…90.)
+            let within = max(-90, min(90, angle))
+            query.append(URLQueryItem(name: "angle", value: String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), within)))
+        }
+        var req = request("/api/own/photos/\(escape(token))/sides", method: "POST", query: query)
         req.setValue(form.contentType, forHTTPHeaderField: "Content-Type")
         req.httpBody = form.body()
         req.timeoutInterval = 120
         let _: [String: Int] = try await perform(req)
     }
 
-    func mergeOwnPhotos(token: String, outline: [[Double]]?) async throws -> OwnMerged {
+    func mergeOwnPhotos(token: String, outline: [[Double]]?, trace: [String: Double]) async throws -> OwnMerged {
         var req = request("/api/own/photos/\(escape(token))/merge", method: "POST")
         // He is given the two to choose between: the scan is made also of
         // a work that is no flat one, and comes in doubt.
         var ask: [String: Any] = ["choice": true]
         // What the camera followed: where the work is when the model has no answer.
         if let outline { ask["outline"] = outline }
+        let noted = trace.filter { $0.value.isFinite }
+        if !noted.isEmpty { ask["trace"] = noted }
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: ask)
         req.timeoutInterval = 180

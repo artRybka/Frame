@@ -282,20 +282,40 @@ final class OwnWorksTests: XCTestCase {
         // Too far to the left and coming back: the phone turns to the left.
         XCTAssertEqual(OwnScanView.side(target: left, angle: -45, stray: 12), .go(left: false))
         XCTAssertEqual(OwnScanView.side(target: left, angle: -30, stray: 14), .hold)
-        let sight = CGSize(width: 300, height: 400)
-        XCTAssertEqual(OwnScanSight.radius(in: sight), 33, accuracy: 1e-9)
-        XCTAssertTrue(OwnScanSight.inside(CGPoint(x: 0.55, y: 0.45), size: sight))
-        XCTAssertFalse(OwnScanSight.inside(CGPoint(x: 0.65, y: 0.5), size: sight))
 
         // The words: no shutter but when the work's edges are not found.
         var look = OwnScanLook(number: 2)
-        look.advice = .go(left: true)
+        // The first photograph is taken: round the work, either way
+        // (Mateusz 2026-11-18 14:03 UTC: "po zdjęciu na wprost można
+        // pójść w lewo albo w prawo").
+        look.advice = .either
+        look.angle = 0
         XCTAssertNil(look.pill)
-        XCTAssertEqual(look.line, "Zrób krok w lewo, celując w dzieło")
+        XCTAssertTrue(look.either)
+        XCTAssertNil(look.walk)
+        XCTAssertEqual(look.line, "Przejdź łukiem w lewo albo w prawo")
+        look.advice = .go(left: true)
+        look.angle = -10
+        XCTAssertNil(look.pill)
+        XCTAssertFalse(look.either)
+        XCTAssertEqual(look.line, "Przejdź łukiem w lewo, celując w dzieło")
         XCTAssertEqual(look.walk, true)
+        // Beyond where the photograph is taken: back a little.
         look.advice = .go(left: false)
+        look.angle = -45
         XCTAssertEqual(look.line, "Za daleko w bok, wróć trochę")
         XCTAssertEqual(look.walk, false)
+        // The left has its photograph: the right now.
+        look.left = true
+        look.angle = -30
+        XCTAssertEqual(look.line, "Lewa strona gotowa, teraz w prawo")
+        look.left = false
+        look.right = true
+        look.advice = .go(left: true)
+        look.angle = 30
+        XCTAssertEqual(look.line, "Prawa strona gotowa, teraz w lewo")
+        look.right = false
+        look.angle = -10
         // The phone turned where he was to walk, or held another way than
         // at the first photograph (Mateusz 2026-11-16 15:02 UTC).
         look.advice = .turned(left: true)
@@ -320,6 +340,8 @@ final class OwnWorksTests: XCTestCase {
         look.advice = .hold
         XCTAssertTrue(look.matched)
         XCTAssertEqual(look.line, "Dobrze. Robię zdjęcie z lewej")
+        look.angle = 29
+        XCTAssertEqual(look.line, "Dobrze. Robię zdjęcie z prawej")
         look.advice = .lost
         XCTAssertNil(look.pill)
         look.manual = true
@@ -477,8 +499,13 @@ final class OwnWorksTests: XCTestCase {
         let alone = await sending.sidesSent()
         XCTAssertFalse(alone)
         shots.sides.append(picture())
+        // (Each with the angle the phone counted, when it did.)
+        XCTAssertNil(shots.angle(0))
+        shots.angles.append(-28.4)
+        XCTAssertEqual(shots.angle(0), -28.4)
         sending.send(shots, with: demo)
         shots.sides.append(picture())
+        shots.angles.append(31)
         sending.send(shots, with: demo)
         // All of them again (the third taken, the steps go on): none twice.
         sending.send(shots, with: demo)
@@ -488,7 +515,7 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertEqual(same.token, first.token)
         let looked = await sending.looked()
         XCTAssertEqual(looked?.token, first.token)
-        let merged = try await demo.mergeOwnPhotos(token: first.token, outline: nil)
+        let merged = try await demo.mergeOwnPhotos(token: first.token, outline: nil, trace: ["pinned": 2.4])
         XCTAssertEqual(merged.used, 2)
         // "Na wprost": the first photograph waits again as it was taken.
         try await demo.keepOwnFirstPhoto(token: first.token)
@@ -596,6 +623,127 @@ final class OwnWorksTests: XCTestCase {
         let work = NewOwnWork(token: "a1", text: OwnDescription())
         let plain = try JSONSerialization.jsonObject(with: encoder.encode(work)) as? [String: Any]
         XCTAssertEqual(plain?["balance"] as? Double, 0)
+    }
+
+    /// The scan in one arc (Mateusz 2026-11-18 13:35 UTC: "może da się to
+    /// zbudować jeszcze lepiej, intuicyjniej i szybciej"; 14:03 UTC: "po
+    /// zdjęciu na wprost można pójść w lewo albo w prawo"): either side
+    /// first, a side done with a photograph from where they were always
+    /// taken, one more in passing on the way out.
+    func testTheScanIsOneArcEitherWay() {
+        var arc = OwnScanArc()
+        // In front of the work: either way will do.
+        XCTAssertNil(arc.target(at: 0))
+        XCTAssertNil(arc.target(at: -4))
+        // The side he walks to is the one meant.
+        XCTAssertEqual(arc.target(at: -8), -30)
+        XCTAssertEqual(arc.target(at: 9), 30)
+        // On the way out one more is taken in passing, once a side.
+        XCTAssertFalse(arc.early(at: 9))
+        XCTAssertTrue(arc.early(at: 15))
+        XCTAssertFalse(arc.early(at: 21))
+        arc.took(15.2)
+        XCTAssertFalse(arc.early(at: 16))
+        XCTAssertTrue(arc.early(at: -16))
+        // It does not make the side done: only one from 22–38° does.
+        XCTAssertFalse(arc.done(left: false))
+        XCTAssertEqual(arc.target(at: 18), 30)
+        arc.took(27.5)
+        XCTAssertTrue(arc.done(left: false))
+        XCTAssertFalse(arc.done(left: true))
+        XCTAssertFalse(arc.finished)
+        // The right came first: the left is meant now, wherever he stands.
+        XCTAssertEqual(arc.target(at: 27), -30)
+        XCTAssertEqual(arc.target(at: 0), -30)
+        XCTAssertEqual(OwnScanView.side(target: -30, angle: 27), .go(left: true))
+        arc.took(-35)
+        XCTAssertTrue(arc.finished)
+        XCTAssertNil(arc.target(at: -35))
+        XCTAssertEqual(arc.taken, [15.2, 27.5, -35])
+        // The shutter pressed with no count of where he stands: the left, then the right.
+        var byHand = OwnScanArc()
+        XCTAssertEqual(byHand.next, -30)
+        byHand.took(byHand.next)
+        XCTAssertEqual(byHand.next, 30)
+        byHand.took(byHand.next)
+        XCTAssertTrue(byHand.finished)
+        // A server from before it takes the first two that come: no
+        // extra ones for it, nor for one that has not said which it is.
+        XCTAssertTrue(OwnScanArc.extras(server: OwnScanArc.server))
+        XCTAssertTrue(OwnScanArc.extras(server: "1.146.0"))
+        XCTAssertFalse(OwnScanArc.extras(server: "1.145.240"))
+        XCTAssertFalse(OwnScanArc.extras(server: nil))
+        // A side one is taken as soon as the phone has been still a moment.
+        XCTAssertFalse(OwnScanGuide.still(since: nil, now: 10))
+        XCTAssertFalse(OwnScanGuide.still(since: 9.9, now: 10))
+        XCTAssertTrue(OwnScanGuide.still(since: 9.8, now: 10))
+
+        // The plan: a stretch on either side where its photograph is
+        // taken, within what the dot can reach.
+        let plan = CGSize(width: 300, height: 64)
+        let from = OwnScanPlan.place(-OwnScanView.near.lowerBound, in: plan)
+        let to = OwnScanPlan.place(-OwnScanView.near.upperBound, in: plan)
+        XCTAssertLessThan(to.x, from.x - 30)
+        XCTAssertLessThan(to.y, from.y)
+        XCTAssertGreaterThan(to.x, 9)
+    }
+
+    /// What the hand feels on the way (Mateusz 2026-11-18 14:03 UTC:
+    /// "coraz szybsze tykanie i potwierdzenie wykonania danej strony.
+    /// Zaczyna tykać gdy zaczyna się ruch w porządanym kierunku. (jak
+    /// przy szukaniu airtaga)").
+    func testTheWayToASideTicksFasterAndFaster() {
+        // Where the ticks are felt: every 4° far from where the
+        // photograph is taken, then closer and closer together.
+        XCTAssertEqual(OwnScanTicks.places.count, 22)
+        XCTAssertEqual(OwnScanTicks.places.first, 58)
+        XCTAssertEqual(OwnScanTicks.places.last!, 1.51, accuracy: 0.01)
+        XCTAssertEqual(OwnScanTicks.places, OwnScanTicks.places.sorted(by: >))
+        XCTAssertEqual(OwnScanTicks.behind(60), 0)
+        XCTAssertEqual(OwnScanTicks.behind(52), 2)
+        XCTAssertEqual(OwnScanTicks.behind(22), 10)
+        XCTAssertEqual(OwnScanTicks.behind(16), 11)
+        XCTAssertEqual(OwnScanTicks.behind(0), 22)
+        XCTAssertEqual(OwnScanTicks.strength(52), 0.35, accuracy: 1e-9)
+        XCTAssertEqual(OwnScanTicks.strength(0), 1, accuracy: 1e-9)
+
+        var ticks = OwnScanTicks()
+        let start = Date(timeIntervalSinceReferenceDate: 3000)
+        // In front of the work with no side chosen: nothing.
+        XCTAssertNil(ticks.walked(to: 0, target: nil, at: start))
+        XCTAssertNil(ticks.walked(to: 3, target: nil, at: start + 0.1))
+        // To the left, a degree every tenth of a second.
+        var felt: [(angle: Double, strength: Double)] = []
+        var time = start + 1
+        for step in 6 ... 22 {
+            time += 0.1
+            if let strength = ticks.walked(to: -Double(step), target: -30, at: time) { felt.append((Double(step), strength)) }
+        }
+        // It starts as he sets off, and comes faster and stronger to
+        // where the photograph is taken.
+        XCTAssertEqual(felt.first?.angle, 6)
+        XCTAssertEqual(felt.last?.angle, 21)
+        XCTAssertGreaterThanOrEqual(felt.count, 9)
+        let early = felt.prefix(4), late = felt.suffix(4)
+        XCTAssertGreaterThan(early.last!.angle - early.first!.angle, late.last!.angle - late.first!.angle)
+        XCTAssertEqual(felt.map { $0.strength }, felt.map { $0.strength }.sorted())
+        XCTAssertLessThan(felt.first!.strength, 0.7)
+        XCTAssertGreaterThan(felt.last!.strength, 0.95)
+        // Standing there, beyond it, and walking back: nothing. On again: again.
+        XCTAssertNil(ticks.walked(to: -22, target: -30, at: time + 1))
+        XCTAssertNil(ticks.walked(to: -24, target: -30, at: time + 1.5))
+        XCTAssertNil(ticks.walked(to: -15, target: -30, at: time + 2))
+        XCTAssertNotNil(ticks.walked(to: -20, target: -30, at: time + 3))
+        // The left has its photograph and he stands there still: nothing.
+        // The way to the right ticks from his first steps, lightly so far away.
+        XCTAssertNil(ticks.walked(to: -30, target: 30, at: time + 4))
+        XCTAssertNil(ticks.walked(to: -29, target: 30, at: time + 4.1))
+        XCTAssertEqual(ticks.walked(to: -27, target: 30, at: time + 4.2)!, 0.35, accuracy: 1e-9)
+        // Never two at once.
+        XCTAssertNil(ticks.walked(to: -9, target: 30, at: time + 4.22))
+        XCTAssertNotNil(ticks.walked(to: -9, target: 30, at: time + 4.3))
+        // Both done: nothing more.
+        XCTAssertNil(ticks.walked(to: 30, target: nil, at: time + 6))
     }
 
     /// What the helper draws and counts after the first test on the phone

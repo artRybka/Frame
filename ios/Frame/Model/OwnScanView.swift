@@ -344,9 +344,149 @@ enum OwnScanAdvice: Equatable {
     case aim
     /// Standing right, but the work's four corners are not all seen.
     case corners
-    /// The first photograph is taken and the work is being pinned in the
-    /// room (`OwnArWork`): a moment more before walking.
-    case pinning
+    /// The first photograph is taken: round the work now, to the left or
+    /// to the right, whichever he likes.
+    case either
     /// As it should be: keep still, the photograph is being taken.
     case hold
+}
+
+/// The side photographs of a scan, taken as the phone goes round the work
+/// in one arc (Mateusz 2026-11-18 13:35 UTC, after the marks pinned to
+/// the work: "może da się to zbudować jeszcze lepiej, intuicyjniej i
+/// szybciej… Może kolejne zdjęcia nie muszą być dokładnie pod 30° i
+/// trzeba pozwolić na więcej skanów pod różnymi kątami?"; he chose "Jeden
+/// łuk", and 14:03 UTC: "po zdjęciu na wprost można pójść w lewo albo w
+/// prawo"). A side is done with a photograph from where the scan's were
+/// always taken (`OwnScanView.near`), whichever side comes first; on the
+/// way out to it one more is taken in passing, from nearer the front. The
+/// server makes the scan of the one nearest 30° from each side and keeps
+/// the others, to learn from how small an angle is enough.
+struct OwnScanArc: Equatable {
+    /// From how far to the side each side photograph was taken (degrees;
+    /// negative: from the work's left), in the order they were taken.
+    private(set) var taken: [Double] = []
+
+    /// Where the one more is taken on the way out to a side.
+    static let early = 12.0 ... 20.0
+    /// Nearer the front than this with neither side done, he has not
+    /// chosen a side yet.
+    static let undecided = 6.0
+
+    /// The side has its photograph.
+    func done(left: Bool) -> Bool {
+        taken.contains { ($0 < 0) == left && OwnScanView.near.contains(abs($0)) }
+    }
+
+    var finished: Bool { done(left: true) && done(left: false) }
+
+    /// The side meant now, as the place its photograph is meant from
+    /// (∓`OwnScanView.side`): with one side done the other, with neither
+    /// the one he is walking to. Nil in front of the work with neither
+    /// done (either way will do), and with both.
+    func target(at angle: Double) -> Double? {
+        let left = done(left: true), right = done(left: false)
+        if left, right { return nil }
+        if left { return OwnScanView.side }
+        if right { return -OwnScanView.side }
+        guard abs(angle) >= Self.undecided else { return nil }
+        return angle < 0 ? -OwnScanView.side : OwnScanView.side
+    }
+
+    /// Where a photograph is taken from when the phone cannot say where
+    /// it stands (he presses the shutter): the left, then the right.
+    var next: Double { done(left: true) ? OwnScanView.side : -OwnScanView.side }
+
+    /// The server takes more than two side photographs, and makes the
+    /// scan of the right ones, from this version. One before it took the
+    /// first two that came, whichever they were: it is sent no extra
+    /// ones (nor is one whose version is not known).
+    static let server = "1.145.241"
+
+    static func extras(server version: String?) -> Bool {
+        version.map { !ServerUpdatePrompt.isOlder($0, than: server) } ?? false
+    }
+
+    /// One more photograph is wanted here, in passing: on the way out to
+    /// a side that has none yet.
+    func early(at angle: Double) -> Bool {
+        let left = angle < 0
+        return Self.early.contains(abs(angle)) && !taken.contains { ($0 < 0) == left }
+    }
+
+    mutating func took(_ angle: Double) {
+        taken.append(angle)
+    }
+}
+
+/// The ticking on the way to a side (Mateusz 2026-11-18 14:03 UTC: "dodaj
+/// haptykę - coraz szybsze tykanie i potwierdzenie wykonania danej strony.
+/// Zaczyna tykać gdy zaczyna się ruch w porządanym kierunku. (jak przy
+/// szukaniu airtaga)"). A tick is felt at each of the places along the
+/// way, and they lie closer and closer together towards where the
+/// photograph is taken: walking on, the ticks come faster and faster;
+/// standing, or walking the other way, there are none.
+struct OwnScanTicks: Equatable {
+    /// How far before where a side's photograph is taken the ticks are
+    /// felt (degrees to go, the farthest first): every 4° far from it
+    /// (the way back from the other side), then each a fifth nearer than
+    /// the one before. At a walk: some four a second, then faster and
+    /// faster.
+    static let places: [Double] = {
+        var places = Array(stride(from: 58.0, to: 22.0, by: -4.0))
+        var near = 22.0
+        while near > 1.5 {
+            places.append(near)
+            near *= 0.8
+        }
+        return places
+    }()
+    /// No two ticks nearer than this (seconds): the last ones run together.
+    static let gap: TimeInterval = 0.055
+
+    /// How many of the places lie behind one who has `left` degrees to go.
+    static func behind(_ left: Double) -> Int {
+        places.prefix { $0 >= left }.count
+    }
+
+    /// How strong the tick is with `left` degrees to go (0–1): the
+    /// nearer, the stronger.
+    static func strength(_ left: Double) -> Double {
+        0.35 + 0.65 * (1 - min(1, max(0, left) / 30))
+    }
+
+    private var target: Double?
+    private var heard = 0
+    private var last = Date.distantPast
+
+    /// The phone stands at `angle` on its way to the side whose
+    /// photograph is meant from `target` (nil: none is meant just now).
+    /// How strong a tick is to be felt now (0–1), or none.
+    mutating func walked(to angle: Double, target: Double?, at now: Date = .now) -> Double? {
+        guard let target else {
+            if self.target != nil { self = OwnScanTicks() }
+            return nil
+        }
+        // Degrees to go to where that side's photograph is taken (none: there, or beyond).
+        let edge = OwnScanView.near.lowerBound
+        let left = max(0, target < 0 ? angle + edge : edge - angle)
+        let behind = Self.behind(left)
+        if target != self.target {
+            // A way begins. From the front he has set off already: a tick
+            // at once. To the other side he still stands where the first
+            // side's photograph was taken.
+            let setOff = self.target == nil
+            self.target = target
+            heard = behind
+            guard setOff else { return nil }
+            last = now
+            return Self.strength(left)
+        }
+        // Walked back a stretch: it ticks again when he goes on.
+        if behind < heard - 1 { heard = behind }
+        guard behind > heard, now.timeIntervalSince(last) >= Self.gap else { return nil }
+        heard = behind
+        last = now
+        return Self.strength(left)
+    }
 }

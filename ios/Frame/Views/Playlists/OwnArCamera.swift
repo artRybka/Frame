@@ -9,10 +9,12 @@ import UIKit
 /// where the phone is in the room, so once the work is pinned there
 /// (`OwnArWork`) its corners stay on it whatever the camera makes of the
 /// picture, and the angle to the side is the phone's place, not a count
-/// of its turns. The first photograph stays the camera's own (48 MP, the
-/// LiDAR's depth); these come from the session's sharpest frame (12 MP),
-/// which is plenty for what they are for: telling a reflection from the
-/// work. Only on a phone, never in the simulator (`supported`).
+/// of its turns. Until it is pinned the session tells of the outline its
+/// camera finds, as the camera's own way does. The first photograph
+/// stays the camera's own (48 MP, the LiDAR's depth); these come from the
+/// session's sharpest frame (12 MP), which is plenty for what they are
+/// for: telling a reflection from the work. Only on a phone, never in the
+/// simulator (`supported`).
 final class OwnArSession: NSObject, ARSessionDelegate, @unchecked Sendable {
     /// The phone can follow itself about the room.
     static var supported: Bool { ARWorldTrackingConfiguration.isSupported }
@@ -23,9 +25,11 @@ final class OwnArSession: NSObject, ARSessionDelegate, @unchecked Sendable {
     /// It has been run (on the main thread).
     private var ran = false
     private let looking = DispatchQueue(label: "own-ar-looking")
-    /// The pinned work as the latest picture has it; nil while it is
-    /// still looked for (on the main thread).
-    var seen: ((OwnArSight?) -> Void)?
+    /// What the latest picture has: the work's outline while it is being
+    /// pinned, the pinned work after (on the main thread).
+    var seen: ((OwnArLook) -> Void)?
+    /// The session's first picture has come (on the main thread).
+    var began: (() -> Void)?
     /// The session cannot go on: the camera's own way takes over (on the
     /// main thread).
     var failed: (() -> Void)?
@@ -38,6 +42,12 @@ final class OwnArSession: NSObject, ARSessionDelegate, @unchecked Sendable {
     private var last: [CGPoint]?
     private var settled = 0
     private var quarter = 0
+    /// Also there: for how many looks the outline shown has been kept
+    /// with only a part of it found, when the first picture came, and
+    /// whether the camera's light is held.
+    private var missed = 0
+    private var first: Date?
+    private var held = false
 
     /// How often the picture is looked at for the work, and how often
     /// the pinned work is told of.
@@ -45,6 +55,9 @@ final class OwnArSession: NSObject, ARSessionDelegate, @unchecked Sendable {
     private static let telling: TimeInterval = 0.04
     /// The outline lies where it lay in this many looks before it is pinned.
     private static let looks = 2
+    /// This long after its first picture the session's camera has
+    /// settled on the light, and keeps it.
+    private static let settling: TimeInterval = 0.6
 
     /// `quarter`: how the phone was held at the first photograph.
     func start(quarter: Int) {
@@ -52,6 +65,9 @@ final class OwnArSession: NSObject, ARSessionDelegate, @unchecked Sendable {
             work = nil
             last = nil
             settled = 0
+            missed = 0
+            first = nil
+            held = false
             looked = .distantPast
             self.quarter = quarter
         }
@@ -86,29 +102,51 @@ final class OwnArSession: NSObject, ARSessionDelegate, @unchecked Sendable {
         let camera = frame.camera
         let place = camera.transform.columns.3
         let eye = SIMD3<Float>(place.x, place.y, place.z)
+        if let first {
+            // The side photographs in one light, as the work is seen from
+            // the front: he has hardly left it yet.
+            if !held, now.timeIntervalSince(first) >= Self.settling {
+                held = true
+                hold(true)
+            }
+        } else {
+            first = now
+            DispatchQueue.main.async { [weak self] in self?.began?() }
+        }
         if let work {
             guard now.timeIntervalSince(looked) >= Self.telling else { return }
             looked = now
             let sight = OwnArSight(angle: work.angle(from: eye), away: work.away(from: eye), outline: Self.outline(of: work, in: camera))
-            DispatchQueue.main.async { [weak self] in self?.seen?(sight) }
+            DispatchQueue.main.async { [weak self] in self?.seen?(OwnArLook(sight: sight, tracking: true)) }
             return
         }
         guard now.timeIntervalSince(looked) >= Self.pace else { return }
         looked = now
-        // Before the phone knows where it is, nothing can be pinned.
-        guard case .normal = camera.trackingState else { return }
+        // The work's outline is found and shown at once, as the camera's
+        // own way shows it (Mateusz 2026-11-18 13:35 UTC: "znaczniki co
+        // prawda nie pojawiają się od razu, ale dopiero gdy stanę pod
+        // kątem"): the session knows where the phone is only after it
+        // has moved a little, and until then nothing can be pinned.
         let (found, paper) = OwnCameraSession.looked(at: frame.capturedImage)
-        let outline = OwnCameraSession.work(among: found, paper: paper, last: last)
-        if let outline, let last, OwnScanView.off(outline, frame: last) < 0.04 { settled += 1 } else { settled = 0 }
+        let fresh = OwnCameraSession.work(among: found, paper: paper, last: last)
+        if let fresh, let last, OwnScanView.off(fresh, frame: last) < 0.04 { settled += 1 } else { settled = 0 }
+        let (outline, slipped) = OwnCameraSession.kept(fresh, was: last, missed: missed)
         last = outline
-        guard let outline, OwnCameraSession.whole(outline), settled >= Self.looks,
-              let pinned = pin(outline, frame: frame, session: session, eye: eye)
-        else { return }
-        work = pinned
-        // The side photographs in one light, as the work is seen from the front.
-        hold(true)
-        let sight = OwnArSight(angle: pinned.angle(from: eye), away: pinned.away(from: eye), outline: Self.outline(of: pinned, in: camera))
-        DispatchQueue.main.async { [weak self] in self?.seen?(sight) }
+        missed = slipped
+        var tracking = false
+        if case .normal = camera.trackingState { tracking = true }
+        if tracking, let fresh, OwnCameraSession.whole(fresh), settled >= Self.looks,
+           let pinned = pin(fresh, frame: frame, session: session, eye: eye) {
+            work = pinned
+            if !held {
+                held = true
+                hold(true)
+            }
+            let sight = OwnArSight(angle: pinned.angle(from: eye), away: pinned.away(from: eye), outline: Self.outline(of: pinned, in: camera))
+            DispatchQueue.main.async { [weak self] in self?.seen?(OwnArLook(sight: sight, tracking: true)) }
+            return
+        }
+        DispatchQueue.main.async { [weak self] in self?.seen?(OwnArLook(found: outline, tracking: tracking)) }
     }
 
     /// The outline found in `frame` (on the upright screen's picture) as
