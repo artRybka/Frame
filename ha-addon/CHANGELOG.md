@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.238
+
+- Własne dzieła, aparat: płótno bez ramy jest znajdowane także na
+  zdjęciach z boku. Dotąd aparat szukał samych prostokątów i przy takim
+  płótnie nie znajdował nic (miękka krawędź na tle ściany, mocne linie
+  w samym obrazie), więc zdjęcia z boku trzeba było robić ręcznie.
+  Teraz tam, gdzie prostokątów nie ma, dzieło wskazuje drugi sposób
+  Apple (ten od skanowania dokumentów). Przy dziełach w ramach bez zmian.
+
 ## 1.145.237
 
 - Odkrywaj: kafelki „Studia dzieł” są szersze, 280 pt zamiast 172: na
