@@ -39,6 +39,7 @@ import io
 import logging
 import math
 import threading
+from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
@@ -599,13 +600,21 @@ def _framed_by_owner(cut: Cut, frame: Quad) -> Cut:
     return cut.model_copy(update={**mine, "surround_asked": True})
 
 
-def framed(cut: Cut) -> Cut:
+def shown_in(item: Item) -> Callable[[float], float | None] | None:
+    """The shape a work is shown in when it is not the one its corners
+    give: a work of the owner's own, in the shape of his size
+    (``OwnWork.ratio``, as ``ImageCache`` cuts it)."""
+    return item.own.ratio if item.own is not None else None
+
+
+def framed(cut: Cut, ratio: Callable[[float], float | None] | None = None) -> Cut:
     """``cut`` with the card's "W ramie" as it is now (:attr:`Cut.framed_kind`,
-    :attr:`Cut.framed_aspect`, :attr:`Cut.framed_inner`)."""
+    :attr:`Cut.framed_aspect`, :attr:`Cut.framed_inner`); ``ratio``: the
+    shape the work is shown in when it is not the corners' (:func:`shown_in`)."""
     by, shown = cut.framed_by(), cut.shown()
     found = None
     if by is not None and shown is not None:
-        found = framed_geometry(by[0], shown, cut.aspect)
+        found = framed_geometry(by[0], shown, cut.aspect, ratio)
     if by is None or found is None:
         none: dict[str, Any] = {"framed_kind": "", "framed_aspect": 0.0, "framed_inner": None}
         return cut.model_copy(update=none)
@@ -1297,7 +1306,7 @@ class Crops(CriticNight):
             "surround_kind": kind if quad else "",
             "surround_asked": True,
         }
-        updated = framed(cut.model_copy(update=found_now))
+        updated = framed(cut.model_copy(update=found_now), shown_in(item))
         log.info("crops: %s around the work: %s", item.id, kind or "nothing")
         return self.library.update(item.id, cut=updated) or item
 
@@ -1331,7 +1340,7 @@ class Crops(CriticNight):
         the original, the thumbnail, the colours, the study's details."""
         if cut is not None and item.cut is not None and item.cut.surround_by == "owner":
             cut = cut.model_copy(update=_owners_frame(item.cut))
-        cut = framed(cut.without_twin()) if cut is not None else None
+        cut = framed(cut.without_twin(), shown_in(item)) if cut is not None else None
         changes: dict[str, Any] = {"cut": cut}
         if item.framing:
             # His framings were set on the picture as it was shown: they
@@ -1373,7 +1382,7 @@ class Crops(CriticNight):
             and item.cut.shown() is not None
             and not self.stale(item)
         ):
-            cut = framed(_framed_by_owner(item.cut, frame))
+            cut = framed(_framed_by_owner(item.cut, frame), shown_in(item))
             log.info("crops: %s frame's edge set by the owner", item.id)
             return self.library.update(item.id, cut=cut) or item
         old = item.cut if item.cut is not None and not self.stale(item) else None

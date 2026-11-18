@@ -119,6 +119,89 @@ def test_a_photograph_becomes_a_work_cut_out_of_its_frame(
     assert service.own_works.reshape() == 0
 
 
+def test_the_frame_about_a_work_of_his_own_holds_it_in_the_shape_of_his_size(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    """Mateusz 2026-11-18 21:44 UTC, his "Out of the box" (29 × 40 cm) on
+    the card with its frame on: "Podwójny obraz po wyświetleniu ramy -
+    sprawdzisz z czego wynika i jak naprawić? (To mój skan)". The work is
+    shown in the shape of his size; the frame's photograph, set straight
+    by the frame's own corners, held the work 5% wider, and showed beside
+    the work laid on it: the picture's edge twice, left and right."""
+    from test_crops import FRAME, PAINTING
+
+    from frame_server.ai.crops import framed as as_framed
+
+    fake.messages.create = lambda **params: (fake.asked.append(params), _message(CORNERS))[1]
+    # Narrower than the corners say (540 × 440 px), by a tenth.
+    text = TEXT | {"height_cm": 44, "width_cm": 48}
+    with _client(service) as client:
+        token = client.post("/api/own/photos", files={"file": ("p.jpg", _jpeg(photo()))}).json()[
+            "token"
+        ]
+        found = client.post(f"/api/own/photos/{token}/find").json()
+        added = client.post(
+            "/api/own/works",
+            json={"token": token, "corners": found["corners"], "shape": "rectangle", "text": text},
+        )
+        assert added.status_code == 200, added.text
+    item = service.library.get(added.json()["id"])
+    assert item is not None
+    x0, y0, x1, y1 = FRAME
+    edge = [(x0 / W, y0 / H), (x1 / W, y0 / H), (x1 / W, y1 / H), (x0 / W, y1 / H)]
+    item = service.crops.set_by_owner(item, frame=edge)
+    cut = item.cut
+    assert cut is not None and cut.framed_kind == "frame" and cut.framed_inner is not None
+    with Image.open(service.images.image_path(item)) as img:
+        shown = img.width / img.height
+    assert abs(shown - 48 / 44) < 0.005
+
+    def place(of: Any) -> float:
+        left, top, right, bottom = of.framed_inner
+        return float((right - left) * of.framed_aspect / (bottom - top))
+
+    # The work's place in the frame has the shape the work is shown in…
+    assert abs(place(cut) - shown) < 0.005
+    # …which the frame's own corners do not give it.
+    assert abs(place(as_framed(cut)) - 540 / 440) < 0.01
+    # The frame's photograph is that picture: the painting where the work
+    # is laid, the gilt frame about it.
+    around = service.images.framed(item, 4000)
+    assert around is not None and abs(around.width / around.height - cut.framed_aspect) < 0.005
+    a = np.asarray(around.convert("RGB")).astype(int)
+    left, top, right, bottom = cut.framed_inner
+    for x, y in ((left, 0.5), (right, 0.5), (0.5, top), (0.5, bottom)):
+        px, py = x * around.width, y * around.height
+        inside = a[round(py + (0.5 - y) * 16), round(px + (0.5 - x) * 16)]
+        outside = a[round(py - (0.5 - y) * 16), round(px - (0.5 - x) * 16)]
+        assert inside[2] > inside[0] + 40, (x, y)  # the painting, bluish
+        assert abs(outside - (200, 160, 60)).max() < 30, (x, y)  # the frame
+    assert abs(left - (PAINTING[0] - x0) / (x1 - x0)) < 0.01
+    assert abs(bottom - (PAINTING[3] - y0) / (y1 - y0)) < 0.01
+
+    # A frame set before it took the work's shape (to 1.145.244): given it
+    # once after a start, the work's pictures as they are.
+    service.library.update(item.id, cut=as_framed(cut))
+    assert service.own_works.reshape() == 0
+    again = service.library.get(item.id)
+    assert again is not None and again.cut is not None
+    assert (again.cut.framed_aspect, again.cut.framed_inner) == (
+        cut.framed_aspect,
+        cut.framed_inner,
+    )
+    # He gives another size: the frame goes with the work.
+    with _client(service) as client:
+        told = client.put(f"/api/own/works/{item.id}", json=text | {"width_cm": 52})
+        assert told.status_code == 200, told.text
+    wider = service.library.get(item.id)
+    assert wider is not None and wider.cut is not None
+    assert abs(place(wider.cut) - 52 / 44) < 0.005
+    # A museum's work has no size to go by: its frame is as it was.
+    plain = wider.cut
+    assert as_framed(plain, None).framed_aspect == as_framed(plain).framed_aspect
+
+
 def test_his_corners_his_description_a_new_photograph_and_delete(
     service: FrameService,
     fake: FakeAnthropic,  # noqa: F811
