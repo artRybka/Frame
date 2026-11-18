@@ -132,9 +132,9 @@ private struct PhotoShown: View {
 }
 
 /// "Treść" and "Forma", each on or off, both on at first: what "Podobne
-/// do" finds alike (`PlaylistRules.likeBy`). One of them is always on; the
-/// line under them says what the choice means (Mateusz 2026-11-18: no
-/// "Wyłącz jedno, by szukać po drugim").
+/// do" finds alike (`PlaylistRules.likeBy`). One of them is always on; no
+/// line under them (Mateusz 2026-11-18: "Dajmy jednak zupełnie bez
+/// podpisów").
 struct LikeBySwitches: View {
     @Binding var selection: String
 
@@ -153,10 +153,6 @@ struct LikeBySwitches: View {
                     selection = style ? (subject ? LikeBy.subject.rawValue : selection) : LikeBy.both.rawValue
                 }
             }
-            Text(bound: by.meaning)
-                .font(.footnote)
-                .foregroundStyle(Theme.inkSoft)
-                .contentTransition(.opacity)
         }
         .animation(.snappy(duration: 0.2), value: selection)
         .sensoryFeedback(.selection, trigger: selection)
