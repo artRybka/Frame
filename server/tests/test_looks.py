@@ -964,3 +964,33 @@ def test_the_sentence_and_the_numbers_of_a_work_asked_of_google(service: FrameSe
     assert painter.describe_batch(KIND, DESCRIBE, [("met:1", img), ("met:2", img)]) == "batches/t1"
     told = painter.described(KIND, "batches/t1")
     assert told is not None and told["met:1"] == "A ship." and isinstance(told["met:2"], NotDrawn)
+
+
+def test_google_taking_no_more_batches_leaves_those_out_and_tries_later(
+    service: FrameService, looks: tuple[Looks, FakePainter]
+) -> None:
+    """More batches out at a time (Mateusz 2026-11-18: "Czy można jakoś
+    przyspieszyć tworzenie odcisków?"): when Google takes no more, those out
+    stay and the round ends without trouble."""
+    from frame_server.ai.gemini import Busy
+
+    found, painter = looks
+    service.ai_config.set_gemini_key("k")
+    for n in range(1, 4):
+        _work(service, f"met:{n}", "red")
+    taken = painter.describe_batch
+
+    def describe_batch(kind: str, prompt: str, pictures: Sequence[tuple[str, Image.Image]]) -> str:
+        if len(painter.tellings) >= 1:
+            raise Busy("Google answered 429: too many batches")
+        return taken(kind, prompt, pictures[:1])
+
+    painter.describe_batch = describe_batch  # type: ignore[method-assign]
+    import frame_server.looks as looks_module
+
+    looks_module.PER_TOLD, before = 1, looks_module.PER_TOLD
+    try:
+        assert found.round() == (0, 1)  # one out, then Google said no more
+    finally:
+        looks_module.PER_TOLD = before
+    assert len(found._out("telling.json")) == 1 and found.trouble is None
