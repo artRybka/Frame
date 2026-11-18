@@ -536,7 +536,12 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
             frameView.alpha = shown ? 1 : 0
         }
         reach()
-        centre()
+        // Where one may drag to changes, the place on the screen does not:
+        // UIKit would pull a place now out of reach into it at once (the
+        // work jumped by 2 pt as the frame went, its frame being a little
+        // thicker at the bottom). Kept within reach until he next drags or
+        // zooms (`scrollViewWillBeginDragging`).
+        centre(holding: true)
     }
 
     /// The framed photograph around the work as it is now, its opening on
@@ -735,17 +740,32 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
     /// Keeps what is looked at (`extent`: the work, or the work in its
     /// frame) in the middle when smaller than the screen, and lets a drag
     /// reach its edges when larger: the frame reaches past the work.
-    private func centre() {
+    /// `holding`: the place shown now kept within reach, too.
+    private func centre(holding: Bool = false) {
         placeFrame()
         let e = extent, content = imageView.frame.size
         let x = (bounds.width - e.width) / 2, y = (bounds.height - e.height) / 2
-        contentInset = UIEdgeInsets(
+        var inset = UIEdgeInsets(
             top: y > 0 ? y - e.minY : -e.minY,
             left: x > 0 ? x - e.minX : -e.minX,
             bottom: y > 0 ? y - (content.height - e.maxY) : e.maxY - content.height,
             right: x > 0 ? x - (content.width - e.maxX) : e.maxX - content.width
         )
+        if holding {
+            let at = contentOffset
+            inset.top = max(inset.top, -at.y)
+            inset.left = max(inset.left, -at.x)
+            inset.bottom = max(inset.bottom, at.y + bounds.height - content.height)
+            inset.right = max(inset.right, at.x + bounds.width - content.width)
+        }
+        contentInset = inset
     }
+
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        if !isZooming { centre() }
+    }
+
+    func scrollViewWillBeginZooming(_ scrollView: UIScrollView, with view: UIView?) { centre() }
 
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
 
