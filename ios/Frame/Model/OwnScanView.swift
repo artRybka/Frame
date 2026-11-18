@@ -366,6 +366,11 @@ struct OwnScanArc: Equatable {
     /// From how far to the side each side photograph was taken (degrees;
     /// negative: from the work's left), in the order they were taken.
     private(set) var taken: [Double] = []
+    /// How far out to the left and to the right he has been since the
+    /// first photograph (degrees, 0 and up): the plan's way fills up as
+    /// he walks it (Mateusz 2026-11-18 16:11 UTC: "Może fajnie gdyby obrót
+    /// w lewo/prawo się wypełniał (jak przy skanowaniu pierwszego faceID)").
+    private(set) var been = [0.0, 0.0]
 
     /// Where the one more is taken on the way out to a side.
     static let early = 12.0 ... 20.0
@@ -416,6 +421,20 @@ struct OwnScanArc: Equatable {
 
     mutating func took(_ angle: Double) {
         taken.append(angle)
+        walked(to: angle)
+    }
+
+    /// The phone stands `angle` to the side of the work now.
+    mutating func walked(to angle: Double) {
+        let side = angle < 0 ? 0 : 1
+        let far = min(abs(angle), OwnScanView.near.upperBound)
+        if far > been[side] { been[side] = far }
+    }
+
+    /// How much of a side's way is filled (degrees from the front): all
+    /// of it with the side's photograph taken, else as far as he has been.
+    func filled(left: Bool) -> Double {
+        done(left: left) ? OwnScanView.near.upperBound : been[left ? 0 : 1]
     }
 }
 

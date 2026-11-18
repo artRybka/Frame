@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.145.244
+
+- Własne dzieła, skan za szybą (Twoje „Test” i „Test 4”). Lampa i Twoja
+  sylwetka w szybie na pierwszym zdjęciu myliły serwer co do jasności
+  i barw zdjęć z boku: po lampie zostawała blada plama z zielonymi
+  kreskami, a sylwetka w ogóle nie schodziła. Teraz jasność zdjęć z boku
+  jest liczona z kresek wspólnych z pierwszym zdjęciem.
+- Dzieło za szybą, w którym jedno zdjęcie z boku ma w szybie cały jasny
+  pokój, nie jest już brane za „niepłaskie”: aplikacja proponuje skan,
+  a nie jedno zdjęcie. Kolaż z lustrem i folią zostaje jak był.
+- Po zdjętej sylwetce nie zostaje już ostry obrys, a lampa sięgająca
+  ramy schodzi do końca (zostawała jej końcówka z prostym cięciem).
+- Wklejki pod lampą i w miejscach mocnych odbić mają teraz szczegóły
+  w pełnej rozdzielczości zdjęć z boku (12 MP), a nie w zmniejszeniu:
+  kreski są wyraźnie ostrzejsze. Nie będą tak ostre jak reszta skanu
+  z pierwszego zdjęcia (48 MP).
+- Wtapianie („Teraz nadal widać odcięcie”, „tonacja i kolorystyka na
+  łączeniu”). Pod półprzezroczystym odbiciem w szybie (jasne drzwi nad
+  lewą częścią nieba na „Test 4”) dzieło zostawało bledsze niż obok,
+  z krawędzią odbicia pośrodku. Teraz ton i barwa takich miejsc są
+  brane ze zdjęć z boku i wyrównane do otoczenia, aż do samej ramy,
+  a pod odbiciem tak jasnym jak samo dzieło ze zdjęć z boku jest cały
+  obraz (drzewo przecięte krawędzią odbicia jest całe). Oleje pod
+  werniksem zostają jak były.
+- Karta koloru: skan z kartą wychodził „blado i mdło”, bo wzornik
+  ustawiał też jasność i kontrast, a to dawało pomiar, nie obraz. Teraz
+  barwy są z wzornika, a jasność i kontrast w połowie drogi między
+  wzornikiem a telefonem („Wyważone, pół na pół”). Twój skan z kartą
+  zrobi się sam jeszcze raz.
+- Aplikacja: zdjęcia z boku dostają balans bieli pierwszego zdjęcia
+  (wychodziły chłodniejsze). Do sprawdzenia na Twoim następnym skanie.
+- Aplikacja: droga na bok wypełnia się na planie na zielono, w miarę jak
+  idziesz, jak przy pierwszym skanie Face ID.
+- Twoje skany z ostatnich dwóch tygodni przerobią się same po
+  aktualizacji serwera.
+
 ## 1.145.243
 
 - „Podobne do” w Szukaj i „Podobne wyglądem” w karcie znów odpowiadają

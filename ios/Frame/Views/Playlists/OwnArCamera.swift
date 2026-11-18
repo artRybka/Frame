@@ -28,8 +28,9 @@ final class OwnArSession: NSObject, ARSessionDelegate, @unchecked Sendable {
     /// What the latest picture has: the work's outline while it is being
     /// pinned, the pinned work after (on the main thread).
     var seen: ((OwnArLook) -> Void)?
-    /// The session's first picture has come (on the main thread).
-    var began: (() -> Void)?
+    /// The session's first picture has come, and whether its camera was
+    /// given the first photograph's white balance (on the main thread).
+    var began: ((Bool) -> Void)?
     /// The session cannot go on: the camera's own way takes over (on the
     /// main thread).
     var failed: (() -> Void)?
@@ -48,6 +49,11 @@ final class OwnArSession: NSObject, ARSessionDelegate, @unchecked Sendable {
     private var missed = 0
     private var first: Date?
     private var held = false
+    /// And the first photograph's white balance (the camera's gains for
+    /// red, green and blue) when it could be told, and whether the
+    /// session's camera has been given it.
+    private var white: [Float]?
+    private var tinted = false
 
     /// How often the picture is looked at for the work, and how often
     /// the pinned work is told of.
@@ -59,8 +65,9 @@ final class OwnArSession: NSObject, ARSessionDelegate, @unchecked Sendable {
     /// settled on the light, and keeps it.
     private static let settling: TimeInterval = 0.6
 
-    /// `quarter`: how the phone was held at the first photograph.
-    func start(quarter: Int) {
+    /// `quarter`: how the phone was held at the first photograph;
+    /// `white`: the white balance its camera had then.
+    func start(quarter: Int, white: [Float]? = nil) {
         looking.async { [self] in
             work = nil
             last = nil
@@ -68,8 +75,10 @@ final class OwnArSession: NSObject, ARSessionDelegate, @unchecked Sendable {
             missed = 0
             first = nil
             held = false
+            tinted = false
             looked = .distantPast
             self.quarter = quarter
+            self.white = white
         }
         let configuration = ARWorldTrackingConfiguration()
         configuration.planeDetection = [.vertical, .horizontal]
@@ -111,7 +120,9 @@ final class OwnArSession: NSObject, ARSessionDelegate, @unchecked Sendable {
             }
         } else {
             first = now
-            DispatchQueue.main.async { [weak self] in self?.began?() }
+            tinted = tint(white)
+            let given = tinted
+            DispatchQueue.main.async { [weak self] in self?.began?(given) }
         }
         if let work {
             guard now.timeIntervalSince(looked) >= Self.telling else { return }
@@ -195,7 +206,7 @@ final class OwnArSession: NSObject, ARSessionDelegate, @unchecked Sendable {
 
     /// The session's camera keeps the light and the colour it has now
     /// (so that only the reflections differ between the photographs), or
-    /// follows them again.
+    /// follows them again. The colour it was given (`tint`) it has already.
     private func hold(_ locked: Bool) {
         guard let device = ARWorldTrackingConfiguration.configurableCaptureDeviceForPrimaryCamera,
               (try? device.lockForConfiguration()) != nil
@@ -203,8 +214,36 @@ final class OwnArSession: NSObject, ARSessionDelegate, @unchecked Sendable {
         defer { device.unlockForConfiguration() }
         let exposure: AVCaptureDevice.ExposureMode = locked ? .locked : .continuousAutoExposure
         if device.isExposureModeSupported(exposure) { device.exposureMode = exposure }
+        guard !locked || !tinted else { return }
         let white: AVCaptureDevice.WhiteBalanceMode = locked ? .locked : .continuousAutoWhiteBalance
         if device.isWhiteBalanceModeSupported(white) { device.whiteBalanceMode = white }
+    }
+
+    /// The session's camera in the first photograph's white balance
+    /// (`gains`: red, green, blue, as that camera had them), and whether
+    /// it could be given it. The session's camera settles on the light by
+    /// itself in its first half second, elsewhere than the camera that
+    /// took the first photograph had: on his scans of 2026-11-18 (16:11
+    /// UTC, "w Test i Test 4 które są za szybą mogłoby być lepiej") the
+    /// side photographs had 0.74 to 0.86 of the first's red against the
+    /// green and 1.09 to 1.33 of its blue, more than the server evens out
+    /// between two photographs of one wall.
+    private func tint(_ gains: [Float]?) -> Bool {
+        guard let gains, gains.count == 3, gains.allSatisfy({ $0.isFinite }),
+              let device = ARWorldTrackingConfiguration.configurableCaptureDeviceForPrimaryCamera,
+              device.isWhiteBalanceModeSupported(.locked),
+              device.isLockingWhiteBalanceWithCustomDeviceGainsSupported,
+              device.maxWhiteBalanceGain >= 1,
+              (try? device.lockForConfiguration()) != nil
+        else { return false }
+        defer { device.unlockForConfiguration() }
+        // Gains beyond what this camera has are an exception, not an error.
+        let within = gains.map { min(max($0, 1), device.maxWhiteBalanceGain) }
+        device.setWhiteBalanceModeLocked(
+            with: AVCaptureDevice.WhiteBalanceGains(redGain: within[0], greenGain: within[1], blueGain: within[2]),
+            completionHandler: nil
+        )
+        return true
     }
 
     // MARK: The photograph

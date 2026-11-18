@@ -46,6 +46,7 @@ struct OwnScanSketch: View {
         var taken = OwnScanArc()
         if ["side", "match", "aim", "right"].contains(name) { taken.took(-12.6) }
         if name == "right" { taken.took(-29.4) }
+        if walking { taken.walked(to: stands) }
         return taken
     }
 
@@ -72,6 +73,7 @@ struct OwnScanSketch: View {
         look.left = taken.done(left: true)
         look.right = taken.done(left: false)
         look.shots = taken.taken
+        look.filled = [taken.filled(left: true), taken.filled(left: false)]
         if walking, name == "turned" {
             // The work has left the picture: the gyroscope alone counts.
             look.angle = stands

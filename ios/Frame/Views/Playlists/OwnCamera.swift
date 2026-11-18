@@ -184,6 +184,7 @@ struct OwnCamera: View {
         look.left = arc.done(left: true)
         look.right = arc.done(left: false)
         look.shots = arc.taken
+        look.filled = [arc.filled(left: true), arc.filled(left: false)]
         let angle: Double
         var away = 1.0
         // The work's outline as the world stands, when it is seen.
@@ -269,6 +270,13 @@ struct OwnCamera: View {
         if scan != nil, !busy, let angle = next.angle {
             // The way to the side's photograph ticks, faster and faster.
             haptics.walked(to: angle, target: arc.target(at: angle))
+            // And the plan's way fills up to where he has been.
+            var walked = arc
+            walked.walked(to: angle)
+            if walked != arc {
+                arc = walked
+                next.filled = [arc.filled(left: true), arc.filled(left: false)]
+            }
         }
         if next != look { look = next }
         watch()
@@ -409,7 +417,8 @@ struct OwnCamera: View {
                 // Without a camera (the demo): where they are taken from.
                 OwnScanPlan(
                     front: scan != nil, left: arc.done(left: true), right: arc.done(left: false),
-                    shots: arc.taken, angle: nil, matched: false
+                    shots: arc.taken, filled: [arc.filled(left: true), arc.filled(left: false)],
+                    angle: nil, matched: false
                 )
                     .frame(height: 64)
                     .frame(maxWidth: 340)
@@ -560,9 +569,10 @@ struct OwnCamera: View {
         dim = false
         arLive = false
         let held = heldAs
-        ar.began = {
+        ar.began = { tinted in
             guard pinning else { return }
             note("ar_picture")
+            trace["white_held"] = tinted ? 1 : 0
             withAnimation(.easeOut(duration: 0.15)) { arLive = true }
         }
         ar.seen = { now in
@@ -579,11 +589,17 @@ struct OwnCamera: View {
         }
         ar.failed = { unpin() }
         withAnimation(.easeInOut(duration: 0.2)) { pinning = true }
-        camera.stop {
+        // The side photographs in the first one's white balance: the
+        // session's camera is given what the camera has now.
+        camera.leave { white in
             // (Unless he has begun anew meanwhile.)
             guard pinning else { return }
             note("ar_start")
-            ar.start(quarter: held)
+            if let white, white.count == 3, white[1] > 0 {
+                trace["white_red"] = Double((white[0] / white[1] * 1000).rounded() / 1000)
+                trace["white_blue"] = Double((white[2] / white[1] * 1000).rounded() / 1000)
+            }
+            ar.start(quarter: held, white: white)
         }
     }
 
@@ -1168,6 +1184,18 @@ final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, AVCapture
         queue.async { [session] in
             if session.isRunning { session.stopRunning() }
             if let then { DispatchQueue.main.async(execute: then) }
+        }
+    }
+
+    /// The camera stopped for another session to have it, which is told
+    /// (`then`, on the main thread) the white balance this one had at the
+    /// last: its gains for red, green and blue, nil when it has no camera.
+    func leave(then: @escaping ([Float]?) -> Void) {
+        queue.async { [self] in
+            let gains = session.isRunning ? current?.deviceWhiteBalanceGains : nil
+            let white = gains.map { [$0.redGain, $0.greenGain, $0.blueGain] }
+            if session.isRunning { session.stopRunning() }
+            DispatchQueue.main.async { then(white) }
         }
     }
 

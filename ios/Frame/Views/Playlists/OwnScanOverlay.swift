@@ -21,6 +21,9 @@ struct OwnScanLook: Equatable {
     var right = false
     /// From how far to the side the side photographs so far were taken.
     var shots: [Double] = []
+    /// How much of the way to the left and to the right is walked
+    /// (degrees from the front, `OwnScanArc.filled`).
+    var filled = [0.0, 0.0]
     /// The work has not been seen for a while: he takes the photograph himself.
     var manual = false
     /// Little light: the photograph may come out blurred or grainy.
@@ -215,7 +218,7 @@ struct OwnScanOverlay: View {
             VStack(spacing: turned ? 8 : 10) {
                 OwnScanPlan(
                     front: look.number > 1, left: look.left, right: look.right, shots: look.shots,
-                    angle: look.angle, matched: look.matched
+                    filled: look.filled, angle: look.angle, matched: look.matched
                 )
                     .frame(height: turned ? 56 : 64)
                     .frame(maxWidth: 340)
@@ -348,6 +351,9 @@ struct OwnScanPlan: View {
     var right = false
     /// From how far to the side the side photographs were taken.
     var shots: [Double] = []
+    /// How much of the way to the left and to the right he has walked
+    /// (degrees from the front): so much of it is green.
+    var filled = [0.0, 0.0]
     /// Where the phone stands, in degrees to the side of the work; nil
     /// before the first photograph.
     let angle: Double?
@@ -406,6 +412,23 @@ struct OwnScanPlan: View {
                 Self.way(from: to * OwnScanView.near.lowerBound, to: to * OwnScanView.near.upperBound, in: size)
                     .stroke(stretch(left: side), style: StrokeStyle(lineWidth: 9, lineCap: .round))
                     .shadow(color: .black.opacity(0.35), radius: 2)
+            }
+            // The way fills up as he walks it, as the ring does when a
+            // face is first shown to the phone (Mateusz 2026-11-18 16:11
+            // UTC): thin up to where a side's photograph is taken, and
+            // as wide as that place within it.
+            ForEach([true, false], id: \.self) { side in
+                let to: Double = side ? -1 : 1
+                let far = min(filled[side ? 0 : 1], OwnScanView.near.upperBound)
+                let band = OwnScanView.near.lowerBound
+                if far > 0.5 {
+                    Self.way(from: 0, to: to * min(far, band), in: size)
+                        .stroke(OwnScanLook.good, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                }
+                if far > band {
+                    Self.way(from: to * band, to: to * far, in: size)
+                        .stroke(OwnScanLook.good, style: StrokeStyle(lineWidth: 9, lineCap: .round))
+                }
             }
             // From where he stands (before the first photograph: is to
             // stand) to the work he aims at.

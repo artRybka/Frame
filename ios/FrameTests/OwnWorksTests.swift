@@ -630,6 +630,34 @@ final class OwnWorksTests: XCTestCase {
     /// zdjęciu na wprost można pójść w lewo albo w prawo"): either side
     /// first, a side done with a photograph from where they were always
     /// taken, one more in passing on the way out.
+    /// Mateusz 2026-11-18 16:11 UTC: "Może fajnie gdyby obrót w lewo/prawo
+    /// się wypełniał (jak przy skanowaniu pierwszego faceID)".
+    func testTheWayFillsUpAsHeWalksIt() {
+        var arc = OwnScanArc()
+        XCTAssertEqual(arc.filled(left: true), 0)
+        XCTAssertEqual(arc.filled(left: false), 0)
+        // As far as he has been, and no less for a step back.
+        arc.walked(to: -9)
+        arc.walked(to: -14)
+        arc.walked(to: -11)
+        XCTAssertEqual(arc.filled(left: true), 14)
+        XCTAssertEqual(arc.filled(left: false), 0)
+        // One taken in passing does not fill the side.
+        arc.took(-15)
+        XCTAssertEqual(arc.filled(left: true), 15)
+        // The side's photograph does, to the end of where it is taken.
+        arc.took(-24)
+        XCTAssertEqual(arc.filled(left: true), 38)
+        // On the way back the other side fills from the front.
+        arc.walked(to: -10)
+        XCTAssertEqual(arc.filled(left: false), 0)
+        arc.walked(to: 7)
+        XCTAssertEqual(arc.filled(left: false), 7)
+        // No further than where a photograph is taken.
+        arc.walked(to: 55)
+        XCTAssertEqual(arc.filled(left: false), 38)
+    }
+
     func testTheScanIsOneArcEitherWay() {
         var arc = OwnScanArc()
         // In front of the work: either way will do.
