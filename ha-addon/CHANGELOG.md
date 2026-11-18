@@ -5,7 +5,11 @@
 - Pełny ekran: dzieło na cały ekran zostaje takie samo po włączeniu ramy
   (rama jest poza ekranem). Przy wyłączeniu ramy, gdy dzieło w ramie jest
   mniejsze od ekranu, widok najpierw płynnie zbliża się, aż dzieło wypełni
-  ekran, i dopiero wtedy rama znika.
+  ekran, i dopiero wtedy rama znika. Przenikanie bez chwilowo
+  powiększonego obrazu.
+- „W ramie” działa też dla dzieła po „Restauracji dzieła”: rama z
+  oryginalnego zdjęcia, w środku rysunek restauratora (wcześniej rama
+  znikała).
 
 ## 1.145.230
 
