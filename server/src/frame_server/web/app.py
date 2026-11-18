@@ -46,7 +46,7 @@ from ..library.images import Gone
 from ..library.seed import seed_playlists
 from ..library.style import AUTO, preset_for_photo
 from ..library.themes import painterly_colour_playlists
-from ..loopwatch import LoopWatch
+from ..loopwatch import LoopWatch, request_done, request_started
 from ..night import NightQueue
 from ..night import tasks as night_tasks
 from ..panel_app import CODE_VERSION, WIDGET, AppHello, NextAnswer, app_code
@@ -355,11 +355,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             night.used()  # the night's work waits while the app is in use
             night.answering(1)  # and the start's, while this is answered
         started = time.monotonic()
+        token = request_started(f"{request.method} {request.url.path}") if asked else None
         try:
             response = await call_next(request)
         finally:
             if asked:
                 night.answering(-1)
+            if token is not None:
+                request_done(token)
         took = time.monotonic() - started
         if took >= SLOW_REQUEST and request.url.path.startswith("/api/"):
             # The app's requests are not logged otherwise: a slow one shows

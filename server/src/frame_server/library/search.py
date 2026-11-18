@@ -296,9 +296,8 @@ class MuseumSearch:
             found = importer.in_colors(said_it, colors)
             if look is not None and importer.judge_look is not None:
                 found = importer.judge_look(rules.look, found)
-            if spare is not None and len(found) < len(items):
-                chosen = {i.id for i in found}
-                spare([i for i in items if i.id not in chosen])
+            chosen = {i.id for i in found}
+            left_over = [i for i in items if i.id not in chosen] if spare is not None else []
             # The app lays its grid out by the works' shapes.
             importer.measure(found)
             fitting += len(found)
@@ -310,7 +309,17 @@ class MuseumSearch:
                 done = not items or (not artists and 0 < count <= round_ * asked)
             at = None if done else at + 1
             left -= 1
-            yield total, found, failed, at
+            try:
+                yield total, found, failed, at
+            finally:
+                # The works that don't fit go to the catalogue only once the
+                # ones that do are on their way to the app: keeping them
+                # counts and looks the catalogue over, and the answer stood
+                # behind it (2026-11-18: Chełmoński's "Bociany" a minute and
+                # a half late). Also when the app stops listening: asked for
+                # already, they are not lost.
+                if spare is not None and left_over:
+                    spare(left_over)
             if fitting >= self.limit or time.monotonic() - started > COLOR_SECONDS:
                 return
 

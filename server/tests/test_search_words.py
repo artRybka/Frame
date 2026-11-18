@@ -67,6 +67,48 @@ def test_names_and_english_stay_as_typed(service: FrameService, fake: FakeAnthro
     assert len(fake.asked) == 1
 
 
+def test_words_in_another_language_go_to_the_polish_museums_in_polish(
+    service: FrameService, fake: FakeAnthropic
+) -> None:
+    # The app's hint gave "The Storks" (Bracquemond's print); Warsaw found
+    # nothing for it, its catalogue has Chełmoński's "Bociany" (2026-11-18).
+    fake.answer = {
+        "polish": False,
+        "english": "The Storks",
+        "french": "The Storks",
+        "polish_words": "Bociany",
+    }
+    words = service.search_words.wording("The Storks")
+    assert words.in_language("pl") == "Bociany"
+    assert words.in_language("en") == "The Storks"
+    assert service.search_words.known("the storks") == ("Bociany",)
+    again = SearchWords(service.library, service.claude, service.ai_config)
+    assert again.wording("The Storks").in_language("pl") == "Bociany"
+    assert len(fake.asked) == 1
+    asked = service.importer.asked('"The Storks"', ["mnw", "met"])
+    assert asked.texts == {"mnw": "Bociany", "met": '"The Storks"'}  # Met keeps to phrases
+    assert asked.said == [["The Storks", "Bociany"]]  # either is a match
+
+
+def test_words_remembered_before_their_polish_are_asked_again(
+    service: FrameService, fake: FakeAnthropic
+) -> None:
+    service.search_words._remember("the storks", {})  # as 1.145.232 kept it
+    fake.answer = {
+        "polish": False,
+        "english": "The Storks",
+        "french": "The Storks",
+        "polish_words": "Bociany",
+    }
+    assert service.search_words.wording("The Storks").pl == "Bociany"
+    assert len(fake.asked) == 1
+    # A name stays as typed, and is not asked again.
+    fake.answer = {"polish": False, "english": "Monet", "french": "Monet", "polish_words": "Monet"}
+    assert service.search_words.wording("Monet").in_language("pl") == "Monet"
+    service.search_words.wording("Monet")
+    assert len(fake.asked) == 2
+
+
 def test_the_library_knows_some_words_without_the_model(service: FrameService) -> None:
     item = service.library.upsert(Item(id="aic:1", source="aic", source_id="1", title="Port"))
     service.library.save_note(

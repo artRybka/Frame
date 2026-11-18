@@ -289,6 +289,48 @@ def test_a_search_hands_on_the_works_that_do_not_fit(tmp_path) -> None:
     assert len(spare) == 8 and {i.artist for i in spare} == {"Armand Guillaumin"}
 
 
+def test_the_works_shown_go_before_those_kept_for_the_catalogue(tmp_path) -> None:
+    # Keeping the others counts and looks the catalogue over: the page's
+    # answer waited behind it, Chełmoński's "Bociany" a minute and a half
+    # (2026-11-18). The works shown are handed on first.
+    saved = dict(MUSEUMS)
+    MUSEUMS.clear()
+    MUSEUMS.update(aic=Mentions)
+    Mentions.asked = []
+    told: list[str] = []
+    try:
+        library = Library(tmp_path / "lib.db")
+        importer = Importing(library, None, None)  # type: ignore[arg-type]
+        search = MuseumSearch.of(PlaylistRules(artists=["Vincent van Gogh"]), limit=8)
+        pages = search.pages(importer, ["aic"], 1, lambda items: told.append("spare"))
+        for _total, items, _failed, _after in pages:
+            told.append(f"page of {len(items)}")
+    finally:
+        MUSEUMS.clear()
+        MUSEUMS.update(saved)
+    assert told[:2] == ["page of 0", "spare"]  # the first page names him only
+    assert "page of 8" in told
+
+
+def test_works_kept_for_the_catalogue_when_the_app_stops_listening(tmp_path) -> None:
+    saved = dict(MUSEUMS)
+    MUSEUMS.clear()
+    MUSEUMS.update(aic=Mentions)
+    Mentions.asked = []
+    spare: list[Item] = []
+    try:
+        library = Library(tmp_path / "lib.db")
+        importer = Importing(library, None, None)  # type: ignore[arg-type]
+        search = MuseumSearch.of(PlaylistRules(artists=["Vincent van Gogh"]), limit=8)
+        pages = search.pages(importer, ["aic"], 1, spare.extend)
+        next(pages)  # the first page, then the app goes
+        pages.close()
+    finally:
+        MUSEUMS.clear()
+        MUSEUMS.update(saved)
+    assert len(spare) == 8 and {i.artist for i in spare} == {"Armand Guillaumin"}
+
+
 class Mixed(Museum):
     key = "aic"
     name = "Mixed"
