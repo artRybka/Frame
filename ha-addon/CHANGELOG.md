@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.145.245
+
+- Karta koloru („Dlaczego karta kolorów nie jest tu wykrywana?”,
+  „Podobny problem.”). Karta była na Twoich zdjęciach znajdowana, ale
+  odrzucana jako nieczytelna. W ciemnym pokoju jej czarne pole wyszło na
+  zdjęciu zupełnie czarne (zero), a pod lampą na stole dwa najjaśniejsze
+  pola były prześwietlone. Teraz takie pola są pomijane i karta jest
+  czytana z pozostałych szarości (co najmniej czterech z sześciu).
+- Przy prześwietlonej karcie to, co na zdjęciu jest prześwietlone,
+  wychodzi neutralnie białe, a nie kremowe.
+- Twoje dzisiejsze skany, w których karta nie została odczytana, zrobią
+  się same jeszcze raz z kartą po aktualizacji serwera.
+- Gdy serwer widzi kartę, ale jej nie odczyta, zapisuje to w logu
+  (wcześniej nie zostawał żaden ślad).
+
 ## 1.145.244
 
 - Własne dzieła, skan za szybą (Twoje „Test” i „Test 4”). Lampa i Twoja

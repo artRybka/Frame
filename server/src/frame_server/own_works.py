@@ -640,6 +640,9 @@ class OwnWorks:
             "corners": seen.corners,
             # The photographs kept are in the chart's colours already.
             "chart": chart.to_json() if (chart := self._charted(token)) is not None else None,
+            # How a chart was looked for: read otherwise by a later
+            # release, one may be found that was none (:meth:`_chart_late`).
+            "sought": self._reading(),
         }
         if angles and any(angle is not None for angle in angles.values()):
             # From how far to the side each was taken, as the phone said.
@@ -939,7 +942,8 @@ class OwnWorks:
                 if token is None:
                     continue
                 info = json.loads((self.scans / token / SCAN_INFO).read_text())
-                if int(info.get("merging") or 0) >= MERGING:
+                merged = int(info.get("merging") or 0) >= MERGING
+                if merged and not self._chart_late(self.scans / token, info):
                     continue
                 self.rescan(item)
                 done += 1
@@ -972,6 +976,7 @@ class OwnWorks:
             raise LookupError("no scan of this work is kept")
         folder = self.scans / token
         info = json.loads((folder / SCAN_INFO).read_text())
+        self._chart_late(folder, info)
         self._relit(folder, info)
         quad = valid(info.get("corners") or [])
         again = self.incoming / f"{token}-again.jpg"
@@ -1016,6 +1021,59 @@ class OwnWorks:
             taken * 100,
         )
         return stored
+
+    @staticmethod
+    def _reading() -> int:
+        from .imaging import colorchecker
+
+        return colorchecker.READING
+
+    def _chart_late(self, folder: Path, info: dict[str, Any]) -> bool:
+        """A chart beside the work that was not read when the scan came,
+        read now (Mateusz 2026-11-18 21:14 UTC, a chart on the frame in a
+        dim room: "Dlaczego karta kolorów nie jest tu wykrywana?"; 21:20,
+        one on a table under a lamp: "Podobny problem."; to 1.145.244 a
+        chart whose black patch had no light, or whose white was at the
+        photograph's top, was no chart). The scan's photographs are put
+        in its colours, all of them or none, the chart is noted, and the
+        white balance he may have set without it is let go. Looked for
+        once for each way of reading a chart; whether one was read."""
+        import numpy as np
+
+        from .imaging import colorchecker
+
+        if info.get("chart") or int(info.get("sought") or 0) >= colorchecker.READING:
+            return False
+        info["sought"] = colorchecker.READING
+        chart: Chart | None = None
+        try:
+            with Image.open(folder / "first.jpg") as img:
+                chart = self._chart(img.convert("RGB"))
+            if chart is not None:
+                put: list[tuple[Path, Path]] = []
+                for path in sorted(folder.iterdir()):
+                    if not _SCAN_FILE.match(path.name):
+                        continue
+                    with Image.open(path) as img:
+                        seen = colorchecker.apply(np.asarray(img.convert("RGB")), chart)
+                    into = path.with_suffix(".lit")
+                    Image.fromarray(seen).save(into, "JPEG", quality=INCOMING_QUALITY)
+                    put.append((into, path))
+                for into, path in put:
+                    into.replace(path)
+                info["chart"] = chart.to_json()
+                info["balance"] = 0.0
+                log.info(
+                    "scan %s: its chart read now, colours set by it (off %.3f, now %.3f)",
+                    folder.name,
+                    chart.off,
+                    chart.left,
+                )
+            (folder / SCAN_INFO).write_text(json.dumps(info))
+        except OSError as err:
+            log.warning("scan %s: no chart looked for: %s", folder.name, err)
+            return False
+        return chart is not None
 
     @staticmethod
     def _relit(folder: Path, info: dict[str, Any]) -> None:
