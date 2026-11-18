@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.247
+
+- Szukaj bez tytułu „Szukaj” (ani na górze, ani w pasku) i bez zdania pod
+  „Treść / Forma”. Po przewinięciu wyników w prawym rogu paska jest
+  okrągły przycisk „Utwórz playlistę z tego wyszukiwania”.
+
 ## 1.145.246
 
 - Studium dzieła ma pod „Podobnymi dziełami” ten sam przycisk
