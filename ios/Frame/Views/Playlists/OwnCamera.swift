@@ -184,6 +184,7 @@ struct OwnCamera: View {
         look.left = arc.done(left: true)
         look.right = arc.done(left: false)
         look.shots = arc.taken
+        look.filled = [arc.filled(left: true), arc.filled(left: false)]
         let angle: Double
         var away = 1.0
         // The work's outline as the world stands, when it is seen.
@@ -269,6 +270,13 @@ struct OwnCamera: View {
         if scan != nil, !busy, let angle = next.angle {
             // The way to the side's photograph ticks, faster and faster.
             haptics.walked(to: angle, target: arc.target(at: angle))
+            // And the plan's way fills up to where he has been.
+            var walked = arc
+            walked.walked(to: angle)
+            if walked != arc {
+                arc = walked
+                next.filled = [arc.filled(left: true), arc.filled(left: false)]
+            }
         }
         if next != look { look = next }
         watch()
@@ -409,7 +417,8 @@ struct OwnCamera: View {
                 // Without a camera (the demo): where they are taken from.
                 OwnScanPlan(
                     front: scan != nil, left: arc.done(left: true), right: arc.done(left: false),
-                    shots: arc.taken, angle: nil, matched: false
+                    shots: arc.taken, filled: [arc.filled(left: true), arc.filled(left: false)],
+                    angle: nil, matched: false
                 )
                     .frame(height: 64)
                     .frame(maxWidth: 340)
