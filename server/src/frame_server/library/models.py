@@ -789,6 +789,10 @@ class PlaylistRules(BaseModel):
     #: no museum is asked; ``search_key`` leaves it out. With it, ``look``
     #: is not asked.
     like: str = ""
+    #: What of ``like`` is asked (Mateusz 2026-11-17: "Podobne tematem",
+    #: "Podobne stylem"): "" both its subject and its style, "subject" or
+    #: "style" alone.
+    like_by: Literal["", "subject", "style"] = ""
 
     @model_validator(mode="before")
     @classmethod

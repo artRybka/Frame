@@ -701,11 +701,12 @@ class Library:
         #: ones ``looking`` chooses from; None when that cannot be asked
         #: now. The service puts :meth:`.looks.Looks.near` here.
         self.look_near: Callable[[str], list[str] | None] | None = None
-        #: The ids of the works that look like the work of the id given, one
-        #: copy of each, nearest first (``PlaylistRules.like``); None when
-        #: that cannot be asked now. The service puts
+        #: The ids of the works that look like the work of the id given (by
+        #: both its subject and its style, or by the one named), one copy of
+        #: each, nearest first (``PlaylistRules.like``, ``like_by``); None
+        #: when that cannot be asked now. The service puts
         #: :meth:`.looks.Looks.alike` here.
-        self.like_near: Callable[[str], list[str] | None] | None = None
+        self.like_near: Callable[[str, str], list[str] | None] | None = None
         #: The one connection to the disk (:meth:`_db`). Taken after
         #: ``_lock`` when both are held, never before it.
         self._db_lock = threading.RLock()
@@ -1760,7 +1761,11 @@ class Library:
         if rules.like.strip():
             # The works that look like this one, nearest first, those the
             # other rules find (Mateusz 2026-11-13: "Szukaj podobnych").
-            ranked = self.like_near(rules.like.strip()) if self.like_near is not None else None
+            ranked = (
+                self.like_near(rules.like.strip(), rules.like_by)
+                if self.like_near is not None
+                else None
+            )
             if ranked is None:
                 raise _NotNow
             alike = self.works()
@@ -1772,7 +1777,7 @@ class Library:
                 alike_ids.update([item_id] if kin is None else [c.id for c in alike.groups[kin]])
             if among is not None:
                 alike_ids &= set(among)
-            unlike = rules.model_copy(update={"like": "", "look": ""})
+            unlike = rules.model_copy(update={"like": "", "like_by": "", "look": ""})
             found_alike = self._query(
                 unlike, "recent", seed, include_excluded, user, False, proposing, among=alike_ids
             )
