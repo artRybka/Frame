@@ -344,6 +344,9 @@ enum OwnScanAdvice: Equatable {
     case aim
     /// Standing right, but the work's four corners are not all seen.
     case corners
+    /// The first photograph is taken and the work is being pinned in the
+    /// room (`OwnArWork`): a moment more before walking.
+    case pinning
     /// As it should be: keep still, the photograph is being taken.
     case hold
 }

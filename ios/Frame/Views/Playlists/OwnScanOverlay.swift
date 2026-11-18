@@ -54,6 +54,7 @@ struct OwnScanLook: Equatable {
         case .turned: ("Nie obracaj telefonu", "iphone", Self.wait)
         case .rolled: ("Nie obracaj telefonu", "iphone", Self.wait)
         case .corners: ("Pokaż całe dzieło", "viewfinder", Self.wait)
+        case .pinning: ("Przypinam znaczniki", "pin.fill", .white)
         case .lost where manual: ("Nie widzę krawędzi dzieła", "viewfinder", .white)
         default: nil
         }
@@ -73,6 +74,7 @@ struct OwnScanLook: Equatable {
         case .rolled: return "Trzymaj telefon tak jak przy pierwszym zdjęciu"
         case .corners where manual: return "Zrób zdjęcie sam, gdy całe dzieło jest w kadrze"
         case .corners: return "Nie widzę wszystkich narożników dzieła"
+        case .pinning: return "Jeszcze chwila na wprost dzieła"
         case .lost where manual: return "Zrób zdjęcie sam"
         case .go(let left) where number > 1 && left != (number == 2):
             return "Za daleko w bok, wróć trochę"
@@ -96,6 +98,7 @@ struct OwnScanLook: Equatable {
         case .turned: "Dzieło trzeba zobaczyć z boku. Sam obrót telefonu tego nie da."
         case .rolled: "Trzy zdjęcia mają być zrobione tak samo: wszystkie pionowo albo wszystkie poziomo."
         case .corners: "Cztery narożniki mają być w kadrze, z kawałkiem ściany wokół."
+        case .pinning: "Znaczniki zostaną na narożnikach dzieła, gdy pójdziesz w bok."
         case _ where dim: "Mało światła, zdjęcie może wyjść nieostre. Zapal światło, jeśli możesz."
         case .lost where manual: "Tak bywa przy ciemnej ramie na ciemnej ścianie albo w słabym świetle."
         default:
