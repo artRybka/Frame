@@ -269,6 +269,12 @@ struct MuseumSearchView: View {
         // the same, round, in the bar's corner (Mateusz 2026-11-18: "w
         // zaznaczonym miejscu daj guzik tworzenia playlisty - okrągły").
         .toolbar {
+            // No "Szukaj" in the bar once the big title has scrolled away,
+            // with any search (Mateusz 2026-11-19: "konsekwentnie nie
+            // dajemy go zatem nigdzie"); the big title stays at the top.
+            ToolbarItem(placement: .principal) {
+                Color.clear.frame(width: 1, height: 1).accessibilityHidden(true)
+            }
             if playlistScrolledAway, asked, !nothingFound, path.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: makePlaylist) {
