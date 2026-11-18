@@ -407,6 +407,49 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertNil(OwnCameraSession.kept(nil, was: door, missed: 0).outline)
     }
 
+    /// Mateusz 2026-11-18 08:08 UTC, a canvas with no frame ("ani z jednego
+    /// ani drugiego kąta dzieło nie zostało wykryte automatycznie i
+    /// musiałem robić zdjęcie ręcznie"): the rectangles found nothing in
+    /// most looks, and what Vision takes for a sheet was the canvas in
+    /// every one. The numbers are that scan's.
+    func testACanvasWithNoFrameIsFoundAsASheet() {
+        func q(_ c: [(Double, Double)]) -> [CGPoint] { c.map { CGPoint(x: $0.0, y: $0.1) } }
+        let canvas = q([(0.0903, 0.0586), (0.9375, 0.0664), (0.9097, 0.8203), (0.1111, 0.8164)])
+        let fromLeft = q([(0.201, 0.070), (0.875, 0.203), (0.819, 0.781), (0.188, 0.894)])
+        // No rectangle: the sheet, from the front and from the side.
+        XCTAssertEqual(OwnCameraSession.work(among: [], paper: canvas, last: nil), canvas)
+        XCTAssertEqual(OwnCameraSession.work(among: [], paper: fromLeft, last: canvas), fromLeft)
+        // From 27° to the left, as he stood: the side photograph's angle.
+        let shape = OwnScanView.shape(of: canvas)!
+        let turn = OwnScanView.turn(of: fromLeft, shape: shape)! - OwnScanView.turn(of: canvas, shape: shape)!
+        XCTAssertEqual(turn, -27, accuracy: 2)
+        XCTAssertTrue(OwnScanView.near.contains(abs(turn)))
+        // The rectangles come first: a frame's outer edge stays the work
+        // with the picture in it found as the sheet, and with the sheet
+        // taking in the work hanging beside it (his relief, from the right).
+        let frame = q([(0.10, 0.10), (0.90, 0.10), (0.90, 0.80), (0.10, 0.80)])
+        let picture = q([(0.16, 0.16), (0.84, 0.16), (0.84, 0.74), (0.16, 0.74)])
+        XCTAssertEqual(OwnCameraSession.work(among: [frame], paper: picture, last: nil), frame)
+        let both = q([(0.03, 0.12), (0.92, 0.08), (0.92, 0.82), (0.03, 0.78)])
+        XCTAssertEqual(OwnCameraSession.work(among: [frame], paper: both, last: frame), frame)
+        // A rectangle that is a part of the sheet gives way to it (the
+        // relief's upper half, down to the glasses on it).
+        let upper = q([(0.17, 0.15), (0.78, 0.15), (0.78, 0.38), (0.17, 0.38)])
+        let relief = q([(0.16, 0.14), (0.79, 0.14), (0.79, 0.77), (0.16, 0.77)])
+        XCTAssertEqual(OwnCameraSession.work(among: [upper], paper: relief, last: nil), relief)
+        XCTAssertEqual(OwnCameraSession.work(among: [upper], paper: relief, last: upper), relief)
+        // A sheet running out of the picture, or a scrap, is none.
+        let cut = q([(0.0, 0.0), (0.95, 0.0), (0.2, 0.98), (0.0, 0.98)])
+        XCTAssertNil(OwnCameraSession.work(among: [], paper: cut, last: nil))
+        let scrap = q([(0.05, 0.22), (0.37, 0.22), (0.37, 0.35), (0.05, 0.35)])
+        XCTAssertFalse(OwnCameraSession.large(scrap))
+        XCTAssertNil(OwnCameraSession.work(among: [], paper: scrap, last: nil))
+        XCTAssertEqual(OwnCameraSession.work(among: [frame], paper: scrap, last: nil), frame)
+        // No sheet: as it was.
+        XCTAssertEqual(OwnCameraSession.work(among: [frame], paper: nil, last: nil), frame)
+        XCTAssertNil(OwnCameraSession.work(among: [], paper: nil, last: frame))
+    }
+
     /// Mateusz 2026-11-16 16:44 UTC ("etap „łączę trzy zdjęcia, usuwam
     /// odblaski” trwa bardzo długo"): each photograph of a scan goes to
     /// the server when it is taken, the sides one after another under the

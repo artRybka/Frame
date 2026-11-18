@@ -764,14 +764,24 @@ final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, AVCapture
         // A work hung high and photographed from below: its corners are
         // well off square (30 lost his painting of bottles in most looks).
         request.quadratureTolerance = 40
+        // A canvas with no frame about it: its edge against the wall is
+        // soft and the painting's own lines are not, so the rectangles are
+        // parts of the painting or none (Mateusz 2026-11-18, his landscape
+        // with a bridge: "ani z jednego ani drugiego kąta dzieło nie
+        // zostało wykryte automatycznie"). What Vision takes for a sheet
+        // lying before the camera is the canvas then.
+        let sheet = VNDetectDocumentSegmentationRequest()
         // The sensor's picture lies on its side when the phone (and the screen) is upright.
         let handler = VNImageRequestHandler(cvPixelBuffer: picture, orientation: .right, options: [:])
         try? handler.perform([request])
-        let found = (request.results ?? []).map { box in
-            // Vision counts up from the bottom.
+        try? handler.perform([sheet])
+        // Vision counts up from the bottom.
+        func corners(_ box: VNRectangleObservation) -> [CGPoint] {
             [box.topLeft, box.topRight, box.bottomRight, box.bottomLeft].map { CGPoint(x: $0.x, y: 1 - $0.y) }
         }
-        let (outline, slipped) = Self.kept(Self.work(among: found, last: last), was: last, missed: missed)
+        let found = (request.results ?? []).map(corners)
+        let paper = sheet.results?.first.map(corners)
+        let (outline, slipped) = Self.kept(Self.work(among: found, paper: paper, last: last), was: last, missed: missed)
         last = outline
         missed = slipped
         // A long exposure or a high gain: the photograph will be blurred or grainy.
@@ -799,6 +809,30 @@ final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, AVCapture
         guard let largest, whole(largest) else { return same }
         if !whole(same) || part(same, of: largest) { return largest }
         return same
+    }
+
+    /// The work among the rectangles and what Vision takes for a sheet
+    /// lying before the camera (`paper`). The rectangles come first, as
+    /// they did: about a framed work the sheet is now the frame, now the
+    /// picture in it, now the frame with the one hanging beside it. The
+    /// sheet is the work where the rectangles find nothing (his canvas
+    /// with no frame, 2026-11-18: none in most looks from the front and
+    /// from either side, the sheet in every one) or only a part of it
+    /// (the upper half of a relief, down to the glasses on it). Of his 27
+    /// kept scans' photographs, looked at in four sizes, it changed 23
+    /// looks of 324, each for the better.
+    static func work(among found: [[CGPoint]], paper: [CGPoint]?, last: [CGPoint]?) -> [CGPoint]? {
+        let seen = work(among: found, last: last)
+        guard let paper, paper.count == 4, whole(paper), large(paper) else { return seen }
+        guard let seen else { return paper }
+        return part(seen, of: paper) ? paper : seen
+    }
+
+    /// As large as a rectangle is looked for (`minimumSize`): across and down.
+    static func large(_ q: [CGPoint]) -> Bool {
+        let xs = q.map(\.x), ys = q.map(\.y)
+        guard let left = xs.min(), let right = xs.max(), let top = ys.min(), let bottom = ys.max() else { return false }
+        return right - left >= 0.2 && bottom - top >= 0.2
     }
 
     /// Nearer the picture's edge than this (of its side), a corner is
