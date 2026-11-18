@@ -569,9 +569,10 @@ struct OwnCamera: View {
         dim = false
         arLive = false
         let held = heldAs
-        ar.began = {
+        ar.began = { tinted in
             guard pinning else { return }
             note("ar_picture")
+            trace["white_held"] = tinted ? 1 : 0
             withAnimation(.easeOut(duration: 0.15)) { arLive = true }
         }
         ar.seen = { now in
@@ -588,11 +589,17 @@ struct OwnCamera: View {
         }
         ar.failed = { unpin() }
         withAnimation(.easeInOut(duration: 0.2)) { pinning = true }
-        camera.stop {
+        // The side photographs in the first one's white balance: the
+        // session's camera is given what the camera has now.
+        camera.leave { white in
             // (Unless he has begun anew meanwhile.)
             guard pinning else { return }
             note("ar_start")
-            ar.start(quarter: held)
+            if let white, white.count == 3, white[1] > 0 {
+                trace["white_red"] = Double((white[0] / white[1] * 1000).rounded() / 1000)
+                trace["white_blue"] = Double((white[2] / white[1] * 1000).rounded() / 1000)
+            }
+            ar.start(quarter: held, white: white)
         }
     }
 
@@ -1177,6 +1184,18 @@ final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, AVCapture
         queue.async { [session] in
             if session.isRunning { session.stopRunning() }
             if let then { DispatchQueue.main.async(execute: then) }
+        }
+    }
+
+    /// The camera stopped for another session to have it, which is told
+    /// (`then`, on the main thread) the white balance this one had at the
+    /// last: its gains for red, green and blue, nil when it has no camera.
+    func leave(then: @escaping ([Float]?) -> Void) {
+        queue.async { [self] in
+            let gains = session.isRunning ? current?.deviceWhiteBalanceGains : nil
+            let white = gains.map { [$0.redGain, $0.greenGain, $0.blueGain] }
+            if session.isRunning { session.stopRunning() }
+            DispatchQueue.main.async { then(white) }
         }
     }
 

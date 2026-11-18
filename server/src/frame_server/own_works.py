@@ -74,7 +74,12 @@ SCAN_INFO = "scan.json"
 #: views settled on the first place by place, 1.145.220, is 2). The scan
 #: made also of a relief for him to choose (1.145.229) changes nothing of
 #: scans made before it: they note no ``doubt`` and stay as they were.
-MERGING = 2
+#: The side photographs' light told by the steps they share with the
+#: first, a work behind glass with the room all over one of them no
+#: longer in doubt, a lamp taken out to the frame, what is put in under
+#: it as fine as the side photographs have it, and the tone under a veil
+#: in the glass what the side views show (1.145.244) is 3.
+MERGING = 3
 #: A work's photograph is a kept scan's when the fine of the two, small
 #: and grey, goes together at least this much (1 is the same picture). Of
 #: his first twelve scans the first photograph and what was made of it
@@ -967,6 +972,7 @@ class OwnWorks:
             raise LookupError("no scan of this work is kept")
         folder = self.scans / token
         info = json.loads((folder / SCAN_INFO).read_text())
+        self._relit(folder, info)
         quad = valid(info.get("corners") or [])
         again = self.incoming / f"{token}-again.jpg"
         shutil.copyfile(folder / "first.jpg", again)
@@ -1010,6 +1016,37 @@ class OwnWorks:
             taken * 100,
         )
         return stored
+
+    @staticmethod
+    def _relit(folder: Path, info: dict[str, Any]) -> None:
+        """The scan's photographs, kept by an earlier release as their
+        chart's patches truly are, lit as a chart lights them now (his
+        first scan with a real chart, 2026-11-18 18:13 UTC: "Wyszło
+        trochę blado i mdło"; 19:13: "Wyważone, pół na pół"). Once: the
+        note says how they are lit."""
+        import numpy as np
+
+        from .imaging import colorchecker
+
+        noted = info.get("chart")
+        if not noted or int(noted.get("look") or 0) >= colorchecker.LOOK:
+            return
+        chart = colorchecker.Chart.from_json(noted)
+        lit: list[tuple[Path, Path]] = []
+        for path in sorted(folder.iterdir()):
+            if not _SCAN_FILE.match(path.name):
+                continue
+            with Image.open(path) as img:
+                seen = colorchecker.relit(np.asarray(img.convert("RGB")), chart)
+            into = path.with_suffix(".lit")
+            Image.fromarray(seen).save(into, "JPEG", quality=INCOMING_QUALITY)
+            lit.append((into, path))
+        # All of them or none: a photograph lit twice is no photograph.
+        for into, path in lit:
+            into.replace(path)
+        noted["look"] = colorchecker.LOOK
+        (folder / SCAN_INFO).write_text(json.dumps(info))
+        log.info("scan %s: its photographs lit as a chart lights them now", folder.name)
 
     @staticmethod
     def _done(path: Path) -> None:

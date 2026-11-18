@@ -12,7 +12,7 @@ import pytest
 from PIL import Image
 
 from frame_server.imaging import colorchecker
-from frame_server.imaging.color import linear_to_srgb, srgb_to_linear
+from frame_server.imaging.color import linear_to_oklab, linear_to_srgb, srgb_to_linear
 from frame_server.service import FrameService
 
 WALL = (205, 200, 190)
@@ -78,6 +78,26 @@ def _far(img: np.ndarray) -> float:
     return float(np.mean([np.abs(_field(img, name) - FIELDS[name][1]).mean() for name in FIELDS]))
 
 
+def _cast(img: np.ndarray, name: str) -> float:
+    """How far a field's colour is from its own, however light it is
+    (red and blue beside green, in light)."""
+    seen = srgb_to_linear(_field(img, name) / 255)
+    true = srgb_to_linear(np.array(FIELDS[name][1]) / 255)
+    return float(np.abs(seen / seen[1] - true / true[1]).max())
+
+
+def _luma(img: np.ndarray, name: str) -> float:
+    return float(_field(img, name) @ np.array([0.2126, 0.7152, 0.0722]))
+
+
+def _hue(img: np.ndarray, name: str) -> float:
+    """How far a field's hue is from its own (degrees)."""
+    seen = linear_to_oklab(srgb_to_linear(_field(img, name) / 255).astype(np.float32))
+    true = linear_to_oklab(srgb_to_linear(np.array(FIELDS[name][1]) / 255).astype(np.float32))
+    turn = np.degrees(np.arctan2(seen[2], seen[1]) - np.arctan2(true[2], true[1]))
+    return float(abs((turn + 180) % 360 - 180))
+
+
 @pytest.mark.parametrize("turned", [0.0, 12.0, 90.0, 180.0])
 def test_a_chart_beside_the_work_gives_the_photograph_its_colours(turned: float) -> None:
     photo = _photographed(_scene(_board(colorchecker.REFERENCE.astype(np.uint8)), turned))
@@ -87,13 +107,51 @@ def test_a_chart_beside_the_work_gives_the_photograph_its_colours(turned: float)
     assert chart.off > 0.05 and chart.left < 0.02
     # Where it lies: beside the work, not on it.
     assert all(x > 0.65 for x, _ in chart.corners)
-    true = colorchecker.apply(photo, chart)
+    true = colorchecker.true(photo, chart)
     assert _far(true) < 5
     # The wall too, which the chart knows nothing of.
     assert np.abs(true[100:200, 100:400].reshape(-1, 3).mean(0) - WALL).max() < 6
     # It goes to a file and back the same.
     again = colorchecker.Chart.from_json(chart.to_json())
-    assert np.array_equal(colorchecker.apply(photo, again), true)
+    assert np.array_equal(colorchecker.true(photo, again), true)
+    assert again.look == colorchecker.LOOK
+
+
+def test_the_chart_sets_the_colours_and_how_light_the_photograph_is_by_half() -> None:
+    """His first scan with a real chart (2026-11-18 18:13 UTC: "Wyszło
+    trochę blado i mdło"): the photograph came out as the chart's patches
+    truly are, its blacks a dark grey and the phone's contrast undone.
+    Shown that, the phone's own lightness and the middle of the two
+    (19:13 UTC): "Wyważone, pół na pół"."""
+    photo = _photographed(_scene(_board(colorchecker.REFERENCE.astype(np.uint8))))
+    chart = colorchecker.find(photo)
+    assert chart is not None
+    lit = colorchecker.apply(photo, chart)
+    # Nothing has the lamp's colour any more: the wall, a dark and a
+    # light of the painting are as grey as they are.
+    assert _cast(photo, "light") > 0.2
+    for name in ("light", "dark"):
+        assert _cast(lit, name) < 0.05
+    wall = lit[100:200, 100:400].reshape(-1, 3).mean(0)
+    assert np.abs(wall / wall[1] - np.array(WALL) / WALL[1]).max() < 0.04
+    # And each is half way between as light as it truly is and as light
+    # as the phone had it.
+    true = colorchecker.true(photo, chart)
+    for name in FIELDS:
+        middle = (_luma(true, name) + _luma(photo, name)) / 2
+        assert abs(_luma(lit, name) - middle) < 0.08 * middle + 3, name
+    assert max(abs(_luma(true, name) - _luma(photo, name)) for name in FIELDS) > 8
+    # The colours are the painting's: red is red by as much as it is.
+    for name in ("red", "green", "blue", "skin"):
+        assert _hue(lit, name) < 12, name
+        assert _hue(photo, name) > _hue(lit, name), name
+    # A photograph kept as the patches truly are comes to the same.
+    relit = colorchecker.relit(colorchecker.true(photo, chart), chart)
+    assert np.abs(relit.astype(int) - lit).mean() < 1.5
+    # One noted by an earlier release was kept so.
+    noted = chart.to_json()
+    del noted["look"]
+    assert colorchecker.Chart.from_json(noted).look == 0
 
 
 def test_a_small_chart_is_read_too() -> None:
@@ -101,7 +159,7 @@ def test_a_small_chart_is_read_too() -> None:
     photo = _photographed(_scene(_board(colorchecker.REFERENCE.astype(np.uint8)), size=220))
     chart = colorchecker.find(photo)
     assert chart is not None
-    assert _far(colorchecker.apply(photo, chart)) < 6
+    assert _far(colorchecker.true(photo, chart)) < 6
 
 
 def test_a_glint_on_one_patch_does_not_turn_the_colours() -> None:
@@ -110,7 +168,7 @@ def test_a_glint_on_one_patch_does_not_turn_the_colours() -> None:
     photo = _photographed(_scene(board))
     chart = colorchecker.find(photo)
     assert chart is not None
-    assert _far(colorchecker.apply(photo, chart)) < 6
+    assert _far(colorchecker.true(photo, chart)) < 6
 
 
 def test_without_a_chart_nothing_is_found() -> None:
@@ -136,11 +194,11 @@ def test_the_scans_photographs_are_all_put_in_the_charts_colours(service: FrameS
     seen = own.take(_jpeg(photo))
     assert seen.chart is not None and len(seen.chart) == 4
     with Image.open(own.path(seen.token)) as img:
-        assert _far(np.asarray(img.convert("RGB"))) < 6
+        assert _cast(np.asarray(img.convert("RGB")), "light") < 0.06
     # A side photograph has no chart read of its own: the first one's.
     own.side(seen.token, _jpeg(photo))
     with Image.open(own.incoming / f"{seen.token}-side1.jpg") as img:
-        assert _far(np.asarray(img.convert("RGB"))) < 6
+        assert _cast(np.asarray(img.convert("RGB")), "light") < 0.06
     # The phone is told again when it asks for the work (no key: none found).
     assert own._charted(seen.token) is not None
 
@@ -148,4 +206,4 @@ def test_the_scans_photographs_are_all_put_in_the_charts_colours(service: FrameS
     plain = own.take(_jpeg(photo[:, :1300]))
     assert plain.chart is None
     with Image.open(own.path(plain.token)) as img:
-        assert _far(np.asarray(img.convert("RGB"))) > 12
+        assert _cast(np.asarray(img.convert("RGB")), "light") > 0.2

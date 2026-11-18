@@ -496,6 +496,129 @@ def test_his_own_figure_dark_in_the_glass_leaves_no_outline_on_the_paper() -> No
     assert float((now - is_)[calm].mean()) > 0.5 * float((was - is_)[calm].mean())
 
 
+def test_a_lamp_and_his_figure_in_the_first_photograph_do_not_set_the_side_ones_light() -> None:
+    """His pencil drawing behind glass, scanned in one arc (2026-11-18
+    16:11 UTC: "w Test i Test 4 które są za szybą mogłoby być lepiej"): a
+    lamp burnt into the first photograph and his own figure dark in the
+    glass. The strongest steps of the first were the lamp's rim and the
+    figure's outline, which no side photograph has, and the side ones'
+    exposure and white balance were told by those: a half and a sixth of
+    what they were. The lamp stayed as a pale patch with green lines."""
+    rng = np.random.default_rng(5)
+    yy, xx = np.mgrid[0:600, 0:900]
+    # Pale pencil lines on a sheet.
+    pencil = 1 - 0.35 * np.exp(-(((((xx + yy) % 40) - 20) / 2.5) ** 2))
+    work = np.float32([0.46, 0.40, 0.30]) * pencil[..., None].astype(np.float32)
+    work += rng.normal(0, 0.003, work.shape).astype(np.float32)
+    lamp = (np.hypot((xx - 300) / 150.0, (yy - 200) / 40.0) < 1).astype(np.float32)
+    lamp = cv2.GaussianBlur(lamp, (0, 0), 2.0)[..., None]
+    figure = ((np.abs(xx - 600) < 120) & (yy > 250)).astype(np.float32)
+    figure = cv2.GaussianBlur(figure, (0, 0), 2.0)[..., None]
+    first = np.clip(work + 0.12 * (1 - 0.85 * figure) + 3 * lamp, 0, 1).astype(np.float32)
+    # The side photographs: lighter, and in another white balance.
+    lighter = np.float32([1.2, 1.3, 1.4])
+    views = [
+        reflections._View(first, 0),
+        reflections._View(work * lighter, -1),
+        reflections._View(work * lighter * 0.8, 1),
+    ]
+    reflections._even(views)
+    for view in views[1:]:
+        assert np.abs(np.median(view.light / work, (0, 1)) - 1).max() < 0.05
+
+
+def test_the_room_in_the_glass_all_over_one_side_view_is_no_doubt() -> None:
+    """His Nikifor behind glass (the same day, "Test 4"): from the left
+    the glass was clean, from the right the bright room was all over it,
+    more light than the dark work has. The two differed nearly
+    everywhere, which was taken for a work that is no flat one, and the
+    one photograph with its reflections was proposed. A reflection only
+    adds light: the work is what the darker one shows."""
+    rng = np.random.default_rng(7)
+    ht, wd = 900, 700
+    work = cv2.resize(
+        rng.uniform(0.01, 0.15, (30, 24, 3)).astype(np.float32),
+        (wd, ht),
+        interpolation=cv2.INTER_CUBIC,
+    )
+    work = np.clip(work + rng.normal(0, 0.005, work.shape).astype(np.float32), 0.005, 0.4)
+
+    def room(seed: int) -> np.ndarray:
+        light = np.random.default_rng(seed).uniform(0.02, 0.45, (9, 7, 3)).astype(np.float32)
+        return np.clip(cv2.resize(light, (wd, ht), interpolation=cv2.INTER_CUBIC), 0.02, None)
+
+    def differ(left: np.ndarray, right: np.ndarray) -> float:
+        views = [reflections._View(work + 0.06, 0)]
+        views += [reflections._View(left, -1), reflections._View(right, 1)]
+        return reflections._alone(views)[2]
+
+    assert differ(work + 0.02, work + room(9)) <= reflections.NOT_ONE
+    # A mirror shows each of them another room: that is no flat work.
+    assert differ(room(8), room(9)) > reflections.NOT_ONE
+
+
+def test_a_lamp_that_reaches_the_frame_goes_to_its_end() -> None:
+    """His drawing and his Nikifor, each with a lamp in the glass that
+    reached the frame (2026-11-18 17:39 UTC, shown what was made of them:
+    "znowu pokazują się ostre krawędzie w miejscach podmian"). Along the
+    frame the side photograph taken from there does not show the work,
+    and where one does not, nothing was the first's alone: the lamp's end
+    stayed there, cut off straight where that photograph begins to
+    count. The other one shows the place."""
+    scene = _scene()
+    yy, xx = np.mgrid[0:H, 0:W]
+    lamp = np.exp(-(((xx - X0 - 10) / 70.0) ** 2 + ((yy - 600) / 35.0) ** 2)).astype(np.float32) * 3
+    lamp[:, :X0] = 0
+    clean = _coded(scene)
+    first = _coded(scene + _glass(0.05, None, None) + lamp[..., None])
+    left = _coded(_from_side(scene + _glass(0.12, None, None), -1) * 0.9)
+    right = _coded(_from_side(scene + _glass(0.1, None, None), 1) * 1.1)
+    done = merge(first, [left, right], CORNERS)
+    assert done.used == 2
+
+    calm = (slice(900, 1080), slice(300, 520))
+    veil = float((done.image[calm].astype(int) - clean[calm]).mean())
+    # By the frame, beyond what cleaning about the work's edge softens.
+    end = (lamp > 1.5) & (xx > X0 + 6) & (xx < X0 + 40)
+    assert (first[end] > 250).mean() > 0.95
+    off = done.image[end].astype(np.float32) - clean[end] - veil
+    assert abs(float(off.mean())) < 14 and float((done.image[end] > 250).mean()) < 0.02
+
+
+def test_under_a_lamp_the_work_is_as_fine_as_the_side_photographs_have_it() -> None:
+    """Shown his drawing with the lamp taken out (2026-11-18 17:41 UTC):
+    "wklejki są niższej jakości…". The views are a third of the first
+    photograph's size, and the work put in under a lamp was the views':
+    soft among the first's sharp lines. The side photographs are larger."""
+    rng = np.random.default_rng(3)
+    ht, wd = 300, 400
+    # Lines finer than the views can show, in photographs twice their size.
+    yy, xx = np.mgrid[0 : 2 * ht, 0 : 2 * wd]
+    light = 0.4 + 0.15 * np.sin(xx * 2.2 + yy * 0.3) + rng.normal(0, 0.005, (2 * ht, 2 * wd))
+    photo = _coded(np.repeat(light[..., None], 3, -1).astype(np.float32))
+    whole = reflections._linear(photo)
+    small = cv2.resize(whole, (wd, ht), interpolation=cv2.INTER_AREA)
+    at = np.mgrid[0:ht, 0:wd].astype(np.float32)
+    seen = np.stack([(at[1] + 0.5) * 2 - 0.5, (at[0] + 0.5) * 2 - 0.5], -1)
+    views = [reflections._View(small.copy(), 0)]
+    views += [reflections._View(small.copy(), side, photo=photo, seen=seen) for side in (-1, 1)]
+    told = [np.zeros((ht, wd, 3), np.float32) for _ in range(2)]
+    finer = reflections._finer(views, told, small)
+
+    to_part = np.array([[2, 0, 0.5], [0, 2, 0.5], [0, 0, 1]], np.float64)
+    plain = cv2.warpPerspective(small, to_part, (2 * wd, 2 * ht), flags=cv2.INTER_CUBIC)
+    more = finer(to_part, np.ones((2 * ht, 2 * wd), np.float32))
+    inner = (slice(100, 500), slice(200, 600))
+    soft = float(np.abs(plain - whole)[inner].mean())
+    assert soft > 0.03
+    assert float(np.abs(plain + more - whole)[inner].mean()) < 0.2 * soft
+    # Nothing where there is no glare.
+    part = np.zeros((2 * ht, 2 * wd), np.float32)
+    part[200:300, 300:500] = 1
+    more = finer(to_part, part)
+    assert not more[:200].any() and not more[:, :300].any() and more[200:300, 300:500].any()
+
+
 def _relief() -> tuple[np.ndarray, list[np.ndarray]]:
     """Three photographs of a work that is no flat one: each shows its
     own picture in every other tile of it (a mirror, a shine on foil)."""
@@ -595,3 +718,123 @@ def test_a_square_with_a_reflection_in_it_does_not_say_where_a_side_view_lies() 
     assert np.abs(field[0] - 2.0).max() < 0.05 and np.abs(field[1] + 1.0).max() < 0.05
     off[..., 2] = 0.02
     assert reflections._field(off, 64, (320, 256)) is None
+
+
+def _doorway() -> tuple[np.ndarray, np.ndarray, np.ndarray, list[reflections._View]]:
+    """A work behind glass, the views' size: what it is, what is left on
+    the first view once a lit doorway in the glass over its left came
+    off, the layer that came off, and the views (the one from the left
+    clean, the one from the right with the room all over it)."""
+    rng = np.random.default_rng(11)
+    ht, wd = 420, 600
+    blocks = rng.uniform(0.1, 0.5, (14, 20, 3)).astype(np.float32)
+    work = cv2.resize(blocks, (wd, ht), interpolation=cv2.INTER_CUBIC)
+    work += rng.normal(0, 0.004, work.shape).astype(np.float32)
+    soft = np.zeros_like(work)
+    soft[110:330, :160] = (0.3, 0.27, 0.24)
+    left_on = np.zeros_like(work)
+    left_on[110:330, :160] = (0.05, 0.04, 0.03)
+    room = cv2.resize(rng.uniform(0.08, 0.2, (5, 7, 3)).astype(np.float32), (wd, ht))
+    views = [
+        reflections._View(work + soft + left_on, 0),
+        reflections._View(work * 1.02, -1, hidden=0.06, shows=0.035),
+        reflections._View(work + room, 1, hidden=0.06, shows=0.035),
+    ]
+    return work, left_on, soft, views
+
+
+def test_under_a_veil_in_the_glass_the_tone_is_what_the_side_views_show() -> None:
+    """His Nikifor behind glass (2026-11-18 18:13 UTC: "Teraz nadal widać
+    odcięcie"; 18:19: "Problemem jest chyba tonacja i kolorystyka na
+    łączeniu. Istotne jest wyrównanie nie tylko fragmentami, ale
+    względem nakładanych, półprzejrzystych obszarów"): a lit doorway in
+    the glass over the left of the sky. Taken off, the sky under it
+    stayed paler than the sky beside it, with the doorway's edge between
+    them. What stayed comes off by what the side views show there, up to
+    the frame (where only the view with the room in the glass counts),
+    and nothing comes off where no veil was."""
+    work, left_on, soft, views = _doorway()
+    none = np.zeros_like(work)
+    off, fine = reflections._veiled(work + left_on, soft, views, none)
+    inside = (slice(130, 310), slice(40, 140))
+    assert np.abs(off[inside] - left_on[inside]).mean() < 0.006
+    # The strip along the frame, which the view from the left does not show.
+    strip = (slice(130, 310), slice(8, 20))
+    assert np.abs(off[strip] - left_on[strip]).mean() < 0.012
+    assert np.abs(off[:, 260:]).max() < 0.004
+    # Where the veil is as light as the work under it their fine goes in too.
+    dark = cv2.GaussianBlur((work + left_on).mean(-1), (0, 0), 6.0)[inside] < 0.24
+    assert dark.any() and fine[inside][dark].min() > 0.9 and fine[:, 260:].max() == 0
+
+    # Two photographs say nothing of it.
+    assert not reflections._veiled(work + left_on, soft, views[:2], none)[0].any()
+
+
+def test_under_a_heavy_veil_the_picture_is_the_side_views() -> None:
+    """The doorway's edge ran down through a tree: the half of the tree
+    under it was a ghost of the other half, the phone having pressed
+    what it saw through the veil flat. What is wider than the fine of
+    the work is the side views' there."""
+    work, left_on, soft, views = _doorway()
+    flat = work + left_on
+    under = flat[110:330, :160]
+    flat[110:330, :160] = under.mean((0, 1)) + (under - under.mean((0, 1))) * 0.5
+    off, _ = reflections._veiled(flat, soft, views, np.zeros_like(work))
+    inside = (slice(130, 310), slice(40, 140))
+
+    def wide(of: np.ndarray) -> np.ndarray:
+        return cv2.GaussianBlur(of, (0, 0), 3.0)[inside]
+
+    assert np.abs(wide(flat - work)).mean() > 0.04
+    assert np.abs(wide(flat - off - work)).mean() < 0.008
+
+
+def test_the_sheen_of_an_oil_is_no_veil_in_glass() -> None:
+    """His oil portraits (2026-11-18 16:11 UTC: "Na olejach nie jest
+    źle"): the sheen of the varnish is a large share of the dark paint's
+    light nearly everywhere, and lies on the paint's grain. Held a veil,
+    it made the portrait the side views' picture, a hand gone from pink
+    to ochre. Unless it is strong in itself, it is left as it is."""
+    work, left_on, soft, views = _doorway()
+    dark = work * 0.2
+    views = [reflections._View(v.light - work + dark, v.side, v.hidden, v.shows) for v in views]
+    sheen = np.full_like(work, 0.7)
+    for layer in (soft * 0.15, soft):
+        off, fine = reflections._veiled(dark + left_on, layer, views, sheen)
+        assert not off.any() and not fine.any()
+    # Gouache behind glass has a grain too, here and there: a sheen on
+    # it at the top of the doorway, and the doorway is a veil all the
+    # same, being as light as it is; a weak layer there is the grain's.
+    sheen[:] = 0
+    sheen[110:170, :160] = 0.7
+    off, _ = reflections._veiled(dark + left_on, soft, views, sheen)
+    assert np.abs(off[130:310, 40:140] - left_on[130:310, 40:140]).mean() < 0.01
+    off, _ = reflections._veiled(dark + left_on, soft * 0.15, views, sheen)
+    assert np.abs(off[125:150, 40:140]).max() < 0.004
+    assert np.abs(off[240:310, 40:140] - left_on[240:310, 40:140]).mean() < 0.01
+
+
+def test_a_side_view_shows_the_works_tone_from_where_its_lines_are_the_others() -> None:
+    """Along the frame's side it was taken from a side view counts for
+    nothing (:data:`reflections.HIDDEN`), and there only the other one
+    says what the work is. On his Nikifor that other one had the room in
+    the glass, and the strip by the frame stayed pale. The frame's side
+    hid three hundredths of the width, not six: from where the view's
+    lines are the other views' its tone is the work's."""
+    rng = np.random.default_rng(5)
+    ht, wd = 300, 400
+    lines = cv2.GaussianBlur(rng.uniform(0.1, 0.6, (ht, wd, 1)).astype(np.float32), (0, 0), 1.5)
+    work = np.repeat(lines.reshape(ht, wd, 1), 3, -1)
+    left = work.copy()
+    # The frame's side, with a grain of its own, over the first of it.
+    left[:, :12] = 0.3 + rng.normal(0, 0.05, (ht, 12, 1)).astype(np.float32)
+    views = [reflections._View(work.copy(), 0), reflections._View(left, -1)]
+    views.append(reflections._View(work + 0.1, 1))
+    reflections._hide(views)
+    assert views[1].hidden == reflections.HIDDEN
+    assert 0.03 <= views[1].shows <= 0.05
+    assert views[2].hidden == views[2].shows == reflections.HIDDEN_SHOWN
+    tone = reflections._counts(views, ht, wd, tone=True)
+    whole = reflections._counts(views, ht, wd)
+    assert tone[1][:, 28].min() == 1 and whole[1][:, 28].max() < 0.5
+    assert tone[1][:, :10].max() == 0

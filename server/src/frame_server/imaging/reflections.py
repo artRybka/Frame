@@ -156,6 +156,7 @@ more of their scans' photographs after the update."""
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -192,6 +193,11 @@ SETTLE_MOST = 0.04
 LAYER_WIDTH = 256
 #: The width the views' exposures are compared at.
 EVEN_WIDTH = 192
+#: The steps a view's exposure is told by: the strongest so many of its
+#: own, where they are among the other view's strongest too. And with
+#: fewer such than this, the first view's strongest alone.
+EVEN_STRONG = 0.2
+EVEN_FEW = 50
 #: The pyramid: how much smaller, and how many steps there.
 LEVELS = ((8, 1500), (4, 1000), (2, 600), (1, 300))
 #: What a unit of shared veil costs beside the layers' smoothness: next
@@ -386,6 +392,12 @@ MEND_FINE = 0.0018
 #: lines under it are pale. There the fine is the side views' as well.
 MEND_ALL = (0.2, 0.5)
 MEND_ALL_LIGHT = (0.55, 0.8)
+#: And along an edge of what is taken off: where within this far each
+#: way (of the work's width) that differs by this much of the work's
+#: light (from, and wholly at). What the first view has finer than
+#: :data:`MEND_FINE` there is that edge itself.
+MEND_SHARP_ABOUT = 0.004
+MEND_SHARP = (0.06, 0.15)
 #: But about letters and lines no colour finer than this is theirs.
 MEND_TINT = 0.006
 #: And what is coarser than this stays the first view's as well.
@@ -397,17 +409,51 @@ MEND_REACH = (0.008, 0.025, 0.08, 0.3)
 MEND_SURE = 0.5
 #: Light that differs by less than this says nothing of that line.
 MEND_NOISE = 0.02
+#: Where the soft layer was this much of the light the work is left with
+#: (from, and wholly at; the colour it has the most of), the work was
+#: seen through a veil, and its tone and colour are the side views':
+#: so far about such a place (of the work's width) and over so much more
+#: by degrees. Not where less than this share of the work is free of it.
+VEILED = (0.1, 0.3)
+VEILED_GROW = 0.01
+VEILED_SOFT = 0.02
+VEILED_FREE = 0.15
+#: And no more comes off a place so than this much of what it has.
+VEILED_MOST = 0.75
+#: Under a veil of this much of the work's light (from, and wholly at)
+#: the first view shows its picture pressed flat, and all of it wider
+#: than :data:`MEND_FINE` is the side views': so far about, and over as
+#: much again by degrees.
+VEILED_HEAVY = (0.5, 1.0)
+VEILED_HEAVY_GROW = 0.004
+#: The layer is a sheen on the paint's grain and no veil in glass where
+#: this much of what a place has over the darkest about it is such a
+#: sheen (from, and wholly at; over this far about, of the width), if
+#: the layer is not this much light in itself there.
+VEILED_SHEEN = (0.25, 0.5)
+VEILED_SHEEN_ABOUT = 0.02
+VEILED_STRONG = (0.07, 0.12)
+#: And the whole work is paint under varnish where its veiled places are
+#: such a sheen by this much in the middle (from, and wholly at): his
+#: works behind glass had 0.10 to 0.19 there, his oil portrait 0.34 to
+#: 0.47.
+VEILED_PAINT = (0.22, 0.32)
 #: The work's corners are found by eye (Opus, or he moves them after):
 #: this much more of the photograph around them is cleaned too (of the
 #: work's size, each way), so a cut a little wider has no seam.
 AROUND = 0.015
 #: The side views told in the first's light differ by this much of what
-#: they tell at the middle place of the work: they do not show one flat
-#: work (his collage of a mirror, foil and a circuit board, 0.17; glass
-#: and oil 0.02 to 0.07, on his sixteen scans with the side views settled
-#: on the first, which brought the collage down from 0.22 and a small oil
-#: from 0.07 to 0.03), and nothing is touched: the merge is in doubt.
-NOT_ONE = 0.12
+#: they tell at the middle place of the work, and each of the two has by
+#: :data:`NOT_ONE_EACH` of their light more than the other, the work
+#: over: they do not show one flat work, and nothing is touched: the
+#: merge is in doubt. His collage of a mirror, foil and a circuit board
+#: 0.11 and 0.12; glass and oil to 0.06 and to 0.02 on his twenty-two
+#: scans, but his Nikifor behind glass with the bright room all over one
+#: side view 0.13 and 0.003. (By the first alone, 0.12, while the side
+#: views' exposures were told by the first's strongest steps: the collage
+#: 0.17 then, and the Nikifor "no flat work".)
+NOT_ONE = 0.085
+NOT_ONE_EACH = 0.045
 #: Less light than this taken off (of the first photograph's) is nothing.
 LEAST = 0.01
 #: More than this is no reflection: the photographs do not show one work
@@ -444,6 +490,17 @@ class _View:
     #: The band along that edge where the frame's side hides the work
     #: from this photograph (of the work's width).
     hidden: float = HIDDEN
+    #: And how far in its lines are not yet the other views' (no further
+    #: than ``hidden``): from there on its tone and colour are the
+    #: work's, if not yet what it has finer.
+    shows: float = HIDDEN
+    #: A side view's photograph as it was given, and where each place of
+    #: the view lies in it (across and down): what it shows finer than
+    #: the views' size is put in with the work under a glare.
+    photo: Image | None = None
+    seen: Floats | None = None
+    #: What its light was divided by to be even with the first's.
+    gains: tuple[float, float, float] = (1.0, 1.0, 1.0)
 
 
 def merge(first: Image, sides: list[Image], corners: Quad, anyway: bool = False) -> Merged:
@@ -491,11 +548,13 @@ def merge(first: Image, sides: list[Image], corners: Quad, anyway: bool = False)
     # put in from the side views: a lamp alone on an even veil was
     # "nothing taken off", and stayed.
     own = float(alone.mean())
+    finer = None
     if swap is not None:
         work = _toned(swap[0], less, swap[1])
         beside = _outward(work, swap[1], wd * GLARE_FEATHER)
         patch = _rim(views, told, less, swap[1], beside)
         swap = (work, patch)
+        finer = _finer(views, told, work)
         less = less + (work - less) * patch
         alone = alone * (1 - patch)
         front = front + (work - front) * patch
@@ -518,10 +577,15 @@ def merge(first: Image, sides: list[Image], corners: Quad, anyway: bool = False)
     veil, low, share = _grain(less, alone, soft, views[1:], lamp)
     # The first view as it comes out of that, and what is still to mend.
     now = front - veil - np.clip(front - low, 0, None) * share
-    mend = _mend(now, front, alone, soft, views, told)
+    mend, theirs = _mend(now, front, alone, soft, views, told)
+    veiled, pressed = _veiled(now - mend, soft, views, share)
+    mend = mend + veiled
+    theirs = np.maximum(theirs, pressed)
+    if finer is None and theirs.any():
+        finer = _finer(views, told, _from_sides(views, told, 0.0)[0])
     if swap is not None:
         mend = mend + _level(now - mend, swap[0], swap[1], beside)
-    clean = _subtract(first, (veil, low, share), mend, swap, to_photo, quad)
+    clean = _subtract(first, (veil, low, share), mend, swap, to_photo, quad, finer, theirs)
     return Merged(clean, len(views) - 1, round(removed, 4), doubt)
 
 
@@ -631,7 +695,8 @@ def _lay(front: Image, marks: tuple[Any, Any], photo: Image) -> _View | None:
     """A side photograph laid over the work as the first shows it (with
     its ``marks``), or None when too little of them matches (another
     work, a blur)."""
-    side = _resize(photo, min(1.0, MATCH_SIDE / max(photo.shape[:2])))
+    scale = min(1.0, MATCH_SIDE / max(photo.shape[:2]))
+    side = _resize(photo, scale)
     k1, d1 = marks
     k2, d2 = _marks(side)
     if d1 is None or d2 is None or len(k1) < MIN_MATCHES or len(k2) < MIN_MATCHES:
@@ -660,14 +725,19 @@ def _lay(front: Image, marks: tuple[Any, Any], photo: Image) -> _View | None:
     if min(left, right) <= 0:
         return None
     lean = math.log(left / right)
-    over = _settled(front, side, found)
-    return _View(_linear(over), -1 if lean > 0.03 else 1 if lean < -0.03 else 0)
+    over, seen = _settled(front, side, found)
+    # A pixel's place is its middle, in the photograph as it was given.
+    seen = ((seen + 0.5) / scale - 0.5).astype(np.float32)
+    return _View(
+        _linear(over), -1 if lean > 0.03 else 1 if lean < -0.03 else 0, photo=photo, seen=seen
+    )
 
 
-def _settled(front: Image, side: Image, found: NDArray[Any]) -> Image:
+def _settled(front: Image, side: Image, found: NDArray[Any]) -> tuple[Image, Floats]:
     """The ``side`` photograph laid over ``front`` by the homography
     ``found`` and then, place by place, by what its fine is still off
-    the first's.
+    the first's; and where each place of ``front`` lies in ``side``
+    (across and down).
 
     His small oil on canvas in a floating frame (2026-11-17 16:04 UTC:
     "Trochę rzeczy się nie zgadza… czy najpierw nie trzeba dokładnie
@@ -688,13 +758,13 @@ def _settled(front: Image, side: Image, found: NDArray[Any]) -> Image:
     moved = np.zeros((2, ht, wd), np.float32)
     most = wd * SETTLE_MOST
 
-    def laid() -> Image:
+    def laid() -> tuple[Image, Floats]:
         at = np.stack([grid[1] + moved[0], grid[0] + moved[1]], -1).reshape(-1, 1, 2)
         seen = cv2.perspectiveTransform(at.astype(np.float64), back).astype(np.float32)
         seen = seen.reshape(ht, wd, 2)
-        return cv2.remap(side, seen[..., 0], seen[..., 1], cv2.INTER_LINEAR)
+        return cv2.remap(side, seen[..., 0], seen[..., 1], cv2.INTER_LINEAR), seen
 
-    over = laid()
+    over, seen = laid()
     first = _fine(_linear(front))
     for size in SETTLE_TILES:
         tile = size
@@ -706,8 +776,8 @@ def _settled(front: Image, side: Image, found: NDArray[Any]) -> Image:
         if field is None:
             break
         moved = np.clip(moved + field, -most, most)
-        over = laid()
-    return over
+        over, seen = laid()
+    return over, seen
 
 
 def _fine(light: Floats) -> Floats:
@@ -816,17 +886,19 @@ def _apart(apart: Floats, shape: tuple[int, ...]) -> Floats:
     return cv2.medianBlur(middle, 5)
 
 
-def _counts(views: list[_View], h: int, w: int) -> Floats:
+def _counts(views: list[_View], h: int, w: int, tone: bool = False) -> Floats:
     """How much each view counts (0–1) at this size: a side one not in
     the band along the edge it was taken from, and by degrees beyond it
     (counting at once, what was taken off the work changed in a line
-    down it)."""
+    down it). For the work's ``tone`` and colour alone it counts from
+    where its lines are the other views' (:attr:`_View.shows`), and
+    sooner."""
     counts = np.ones((len(views), h, w), np.float32)
     for n, view in enumerate(views):
         if view.side == 0:
             continue
-        band = max(1, round(w * view.hidden))
-        ease = max(1, round(w * HIDDEN_EASE))
+        band = max(1, round(w * (view.shows if tone else view.hidden)))
+        ease = max(1, round(w * (HIDDEN_SHOWN if tone else HIDDEN_EASE)))
         along = np.clip((np.arange(w, dtype=np.float32) - (band - 1)) / ease, 0, 1)
         counts[n] = along if view.side < 0 else along[::-1]
     return counts
@@ -859,14 +931,16 @@ def _hide(views: list[_View]) -> None:
         own = drawn[n]
         if view.side > 0:
             own, others = own[:, ::-1], [other[:, ::-1] for other in others]
-        shown = True
+        unlike = 0
         for k in range(1, max(2, round(HIDDEN / 0.01))):
             a = own[:, k * strip : (k + 1) * strip]
             like = max(
                 float((a * b).sum() / (math.sqrt(float((a * a).sum() * (b * b).sum())) + 1e-9))
                 for b in (other[:, k * strip : (k + 1) * strip] for other in others)
             )
-            shown = shown and like >= HIDDEN_LIKE
+            if like < HIDDEN_LIKE:
+                unlike = k
+        shown = unlike == 0
         least = HIDDEN_SHOWN if shown else HIDDEN
         mine = view.light.mean(-1)
         if view.side > 0:
@@ -886,14 +960,26 @@ def _hide(views: list[_View]) -> None:
         while 0 < last < reach and dark[last]:
             last += 1
         view.hidden = max(least, min(HIDDEN_MOST, last / wd + HIDDEN_BESIDE))
+        view.shows = min(view.hidden, max(HIDDEN_SHOWN, (unlike + 1.5) * 0.01, last / wd))
 
 
 def _even(views: list[_View]) -> None:
     """The side views brought to the first's exposure and white balance.
-    The work's own edges are in every view and far stronger than a
-    reflection's, so per channel the gain is what the side view's steps
-    across them are of the first's (a reflection only adds light, and no
-    place need be clean of it in both)."""
+    The work's own edges are in every view, so per channel the gain is
+    what the side view's steps across them are of the first's (a
+    reflection only adds light, and no place need be clean of it in
+    both): of the steps that are strong in both.
+
+    His drawing behind glass scanned in one arc (2026-11-18 16:11 UTC:
+    "w Test i Test 4 które są za szybą mogłoby być lepiej"): pencil on
+    paper, a lamp burnt into the first photograph and his own figure dark
+    in the glass. The first view's strongest steps were the lamp's rim
+    and the figure's outline, which no side view has: the gains came out
+    a half and a sixth of what they were, the side views twice and four
+    times too light and blue, and the lamp stayed as a pale patch with
+    green lines in it. (The side photographs are the room tracking's
+    since 1.145.240, in another white balance than the first, which the
+    gains are there to even out.)"""
     shape = (
         max(8, round(views[0].light.shape[0] * EVEN_WIDTH / views[0].light.shape[1])),
         EVEN_WIDTH,
@@ -910,16 +996,23 @@ def _even(views: list[_View]) -> None:
         for c in range(3):
             a = np.concatenate([fx[..., c].ravel(), fy[..., c].ravel()])
             b = np.concatenate([sx[..., c].ravel(), sy[..., c].ravel()])
-            strong = np.abs(a) >= np.quantile(np.abs(a), 0.9)
+            strong = (
+                (np.abs(a) >= np.quantile(np.abs(a), 1 - EVEN_STRONG))
+                & (np.abs(b) >= np.quantile(np.abs(b), 1 - EVEN_STRONG))
+                & (a * b > 0)
+            )
+            if int(strong.sum()) < EVEN_FEW:
+                strong = np.abs(a) >= np.quantile(np.abs(a), 0.9)
             gains.append(float(np.clip(np.median(b[strong] / a[strong]), 0.5, 2.0)))
         # The exposure is one for the three channels; the white balance
         # moves between two photographs of one wall only so far. More is
         # the work's own shine (gold letters, which are yellow from the
         # front and white from the side), not the camera's.
         middle = sorted(gains)[1]
+        gains = [float(np.clip(g, middle * (1 - BALANCE), middle * (1 + BALANCE))) for g in gains]
         for c in range(3):
-            gain = float(np.clip(gains[c], middle * (1 - BALANCE), middle * (1 + BALANCE)))
-            view.light[..., c] /= gain
+            view.light[..., c] /= gains[c]
+        view.gains = (gains[0], gains[1], gains[2])
 
 
 def _reflection(views: list[_View]) -> tuple[Floats, Floats]:
@@ -973,8 +1066,9 @@ def _alone(
     that is a lamp's glare, the work as the side views tell it with how
     much of a place is such (0–1), or None without one; and how far the
     side views are from telling one work (the middle place's, of what
-    they tell there); and what the first view differs from each side
-    view by (:func:`_told`).
+    they tell there; nothing where one of the two is the lighter all
+    over); and what the first view differs from each side view by
+    (:func:`_told`).
 
     His sixteen cows behind glass (2026-11-16 18:16 UTC, "Spójrz na
     efekt skanowania dzieła za szybą"): from the front the glass mirrored
@@ -995,10 +1089,9 @@ def _alone(
     h = max(16, round(ht * w / wd))
     first = _coarse(views[0].light, (h, w))
     counts = _counts(views, h, w)
-    alone: Floats | None = None
-    glare: Floats | None = None
     told = []
     says = []
+    lights = []
     # What is the first view's own is drawn finer than it is told.
     wf = min(ALONE_FINE, wd)
     hf = max(16, round(ht * wf / wd))
@@ -1024,15 +1117,41 @@ def _alone(
             cv2.resize(tells, (wf, hf), interpolation=cv2.INTER_LINEAR),
             counts_fine[n],
         )
-        # Only what every side view says: where one does not show the
-        # work (the frame's side) nothing is the first view's alone.
-        alone = over if alone is None else np.minimum(alone, over)
-        glare = plain if glare is None else np.minimum(glare, plain)
         owns.append(over)
         plains.append(plain)
         told.append(tells)
         says.append(np.clip(side + tells, 0, None) * counts[n][..., None])
-    assert alone is not None and glare is not None
+        lights.append(side)
+
+    def said(parts: list[Floats], count: Floats, light: Floats) -> Floats:
+        # Only what every side view says: where one does not show the
+        # work (the frame's side) nothing is the first view's alone. But
+        # about where the first view (its ``light``) is burnt out: it
+        # shows nothing of the work there, and those that do show the
+        # place say it. (A lamp that reached the frame, 2026-11-18 17:39
+        # UTC: "znowu pokazują się ostre krawędzie w miejscach podmian".
+        # The end of it stayed in the band along the frame, cut off
+        # where the side view from there begins to count.)
+        near = max(3, round(light.shape[1] * GLARE_NEAR)) | 1
+        wide = max(3, round(light.shape[1] * ALONE_SHADE)) | 1
+        blown = cv2.morphologyEx(
+            (light.max(-1) >= BLOWN).astype(np.float32),
+            cv2.MORPH_OPEN,
+            np.ones((near, near), np.uint8),
+        )
+        blown = cv2.dilate(blown, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (wide, wide)))
+        blown = cv2.GaussianBlur(blown, (0, 0), wide / 4)
+        most = np.maximum.reduce(parts)
+        least: Floats | None = None
+        for n, part in enumerate(parts, 1):
+            mute = ((1 - count[n]) * blown)[..., None]
+            part = part + (most - part) * mute
+            least = part if least is None else np.minimum(least, part)
+        assert least is not None
+        return np.asarray(least, np.float32)
+
+    alone = said(owns, counts_fine, fine)
+    glare = said(plains, counts, first)
     if len(says) == 2:
         # Unless one of the two has a reflection of its own there.
         only, second = _one(says, plains, np.minimum(counts[1], counts[2]))
@@ -1074,7 +1193,20 @@ def _alone(
     if len(says) > 1:
         differ = np.abs(says[0] - says[1]).sum(-1) / ((says[0] + says[1]).sum(-1) / 2 + GLARE_DARK)
         both = (counts[1] == 1) & (counts[2] == 1)
-        whole = float(np.median(differ[both])) if both.any() else 0.0
+        if both.any():
+            whole = float(np.median(differ[both]))
+            # A reflection only adds light: with the room in the glass
+            # all over one side view, that one is the lighter of the two
+            # everywhere and the work is what the other shows. Of a work
+            # that is no flat one each is the lighter somewhere. (His
+            # Nikifor behind glass, 2026-11-18 16:11 UTC, "w Test i Test
+            # 4 które są za szybą mogłoby być lepiej": it was "no flat
+            # work", and the one photograph was proposed.)
+            by = (lights[1] - lights[0]).sum(-1)
+            by = (by / ((lights[0] + lights[1]).sum(-1) / 2 + GLARE_DARK))[both]
+            each = min(float(np.clip(by, 0, None).mean()), float(np.clip(-by, 0, None).mean()))
+            if each <= NOT_ONE_EACH:
+                whole = 0.0
     alone = np.clip(alone - (ALONE_FROM + ALONE_FROM_OF * fine), 0, fine * ALONE_MOST)
     # A pixel or two by itself is grain.
     few = max(3, round(wf * ALONE_GRAIN)) | 1
@@ -1377,6 +1509,86 @@ def _from_sides(views: list[_View], told: list[Floats], black: float) -> tuple[F
     return work, (share[..., 0] > 0).astype(np.float32)
 
 
+def _finer(
+    views: list[_View], told: list[Floats], work: Floats
+) -> Callable[[NDArray[np.float64], Floats], Floats]:
+    """What the side photographs show of the work finer than the views'
+    size, as strong as ``work`` (what the views tell under a glare,
+    toned) has their lines: for a part of the first photograph, given
+    where the views' pixels lie in it and how much of each of its places
+    is a glare.
+
+    His drawing with the lamp taken out (Mateusz 2026-11-18 17:41 UTC:
+    "wklejki są niższej jakości…"). The views are a third of the first
+    photograph's size, which is enough to tell a reflection by; what
+    comes off the first leaves it as sharp as it was. But under a lamp
+    the first has nothing, and the work put in there was the views':
+    soft lines among sharp ones. The side photographs are larger than
+    the views, and what they have over them is put in as well."""
+    ht, wd = work.shape[:2]
+    weights = np.array([0.2126, 0.7152, 0.0722], np.float32)
+    tellings = _tellings(views, told, GLARE_BLACK)
+    least = np.minimum.reduce([light for _, light in tellings])
+    wide = max(2.0, GLARE_ABOUT[0] * wd)
+    near = max(3, round(wd * GLARE_NEAR)) | 1
+
+    def lines(of: Floats) -> Floats:
+        grey = of @ weights
+        fine = (grey - cv2.GaussianBlur(grey, (0, 0), 2.0)) ** 2
+        return np.asarray(cv2.GaussianBlur(fine, (0, 0), wide), np.float32)
+
+    mine = lines(work)
+    parts: list[tuple[Image, Floats, Floats, Floats, Floats]] = []
+    whole = np.zeros((ht, wd), np.float32)
+    for view, (_, light) in zip(views[1:], tellings, strict=True):
+        # As much of each as it tells of the work there (:func:`_from_sides`).
+        with np.errstate(invalid="ignore"):
+            share = np.exp(-(light - least) / (0.1 * (np.abs(least) + 0.05)))
+        share = np.where(np.isfinite(light), share, 0).astype(np.float32)
+        whole += share
+        if view.photo is None or view.seen is None:
+            continue
+        strong = np.sqrt(mine / np.maximum(lines(view.light), 1e-12))
+        share = share * np.clip(strong, 0, GLARE_STRENGTH[1])
+        # With the room in the glass over it a view's finest is mostly its
+        # grain (his Nikifor: speckles where the lamp's end had been): the
+        # less of it, the less of its light there is the work's.
+        own = cv2.GaussianBlur(view.light.sum(-1), (0, 0), near / 2)
+        with np.errstate(invalid="ignore"):
+            clear = np.clip(light / np.maximum(own, 1e-6), 0, 1)
+        share = share * np.where(np.isfinite(light), clear * clear, 0).astype(np.float32)
+        parts.append((view.photo, view.seen, view.light, share, np.array(view.gains, np.float32)))
+    whole = np.maximum(whole, 1e-6)
+
+    def fine(to_part: NDArray[np.float64], glare: Floats) -> Floats:
+        out = np.zeros((*glare.shape[:2], 3), np.float32)
+        down, across = np.nonzero(glare > 0)
+        if not len(down) or not parts:
+            return out
+        r0, r1, c0, c1 = down.min(), down.max() + 1, across.min(), across.max() + 1
+        grid = np.mgrid[r0:r1, c0:c1].astype(np.float64)
+        at = np.stack([grid[1], grid[0]], -1).reshape(-1, 1, 2)
+        at = cv2.perspectiveTransform(at, np.linalg.inv(to_part)).astype(np.float32)
+        u, v = at.reshape(r1 - r0, c1 - c0, 2).transpose(2, 0, 1)
+
+        def here(of: Floats, how: int = cv2.INTER_LINEAR) -> Floats:
+            return cv2.remap(of, u, v, how, borderMode=cv2.BORDER_REPLICATE)
+
+        for photo, seen, light, share, gains in parts:
+            sharp = cv2.remap(
+                photo,
+                here(seen[..., 0]),
+                here(seen[..., 1]),
+                cv2.INTER_CUBIC,
+                borderMode=cv2.BORDER_REPLICATE,
+            )
+            more = _linear(sharp) / gains - here(light, cv2.INTER_CUBIC)
+            out[r0:r1, c0:c1] += more * here(share / whole)[..., None]
+        return out
+
+    return fine
+
+
 def _mend(
     now: Floats,
     front: Floats,
@@ -1384,12 +1596,13 @@ def _mend(
     soft: Floats,
     views: list[_View],
     told: list[Floats],
-) -> Floats:
+) -> tuple[Floats, Floats]:
     """What is still to come off ``now`` (the first view, ``front``, with
     its reflections taken off) where the first view had light of its own,
     ``alone``, and along the edges of the ``soft`` layer: there the
     work's picture is the side views', and only the fine of it the first
-    view's. Signed, the views' size.
+    view's. Signed, the views' size; and how much of each place has the
+    side views' fine as well (0–1).
 
     His cows the third time (2026-11-17 00:06 UTC, shown the scan of
     1.145.203: "To dalej nie wygląda idealnie. Czy nie możemy zrobić
@@ -1408,7 +1621,7 @@ def _mend(
     views show a few pixels off. On paint the same takes the dark rings
     and the pale blots a glare left."""
     ht, wd = now.shape[:2]
-    none = np.zeros_like(now)
+    none = np.zeros_like(now), np.zeros((ht, wd), np.float32)
     if len(views) < 3:
         return none
     work, shown = _from_sides(views, told, 0.0)
@@ -1426,17 +1639,7 @@ def _mend(
     if not hard.any() and not edge.any():
         return none
     fine = max(1.0, MEND_FINE * wd)
-
-    def reach(of: Floats, grow: float, soft: float) -> Floats:
-        # Worked out the smaller the further it goes.
-        less = max(1, round(grow * wd) // 8)
-        tiny = cv2.dilate(of, np.ones((less, less), np.uint8))
-        tiny = cv2.resize(tiny, (wd // less, ht // less), interpolation=cv2.INTER_AREA)
-        by = max(1, round(grow * wd / less))
-        about = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * by + 1, 2 * by + 1))
-        over = cv2.GaussianBlur(cv2.dilate(tiny, about), (0, 0), soft * wd / less)
-        over = cv2.resize(over, (wd, ht), interpolation=cv2.INTER_LINEAR)
-        return np.asarray(over * over * (3 - 2 * over), np.float32)
+    reach = _reach
 
     # Far about only where the work is plain: a print lies deeper than
     # its mount, and seen from the side its letters are a few pixels off
@@ -1460,11 +1663,79 @@ def _mend(
     def small(of: Floats) -> Floats:
         return cv2.resize(of, (w, h), interpolation=cv2.INTER_AREA)
 
-    counts = small((free * shown).astype(np.float32))[..., None]
-    theirs, mine = small(work), small(now)
-    squares, both = small(work * work), small(work * now)
-    slope = np.zeros_like(theirs)
-    rest = np.zeros_like(theirs)
+    work = _line(work, now, (free * shown).astype(np.float32))
+
+    # Nor is what is wider than they can tell it theirs: what the first
+    # differs from a side view by is told from so far about
+    # (:data:`ALONE_ABOUT`), and a wide soft light in the first view is
+    # in that telling too.
+    apart = cv2.GaussianBlur(now - work, (0, 0), fine)
+    coarse = cv2.GaussianBlur(small(apart), (0, 0), MEND_COARSE * w)
+    apart = apart - cv2.resize(coarse, (wd, ht), interpolation=cv2.INTER_LINEAR)
+    # About letters and lines the colour of a place is theirs only as it
+    # is over the letters and the dark between them together: the veil a
+    # side view has over the dark between two letters is warm.
+    weights = np.array([0.2126, 0.7152, 0.0722], np.float32)
+    tint = apart - (apart @ weights)[..., None]
+    wider = cv2.GaussianBlur(tint, (0, 0), MEND_TINT * wd)
+    apart = apart - (tint - wider) * (1 - plain[..., None])
+    detail = now - cv2.GaussianBlur(now, (0, 0), fine)
+    # Under a bright reflection the first view's lines are pale (his
+    # drawing behind glass, a lit kitchen over a ladder): the side views'.
+    light = cv2.GaussianBlur(front.max(-1), (0, 0), 2.0)
+    light = np.clip((light - MEND_ALL_LIGHT[0]) / (MEND_ALL_LIGHT[1] - MEND_ALL_LIGHT[0]), 0, 1)
+    pressed = np.clip((much - MEND_ALL[0]) / (MEND_ALL[1] - MEND_ALL[0]), 0, 1) * light * shown
+    pressed = reach(pressed.astype(np.float32), MEND_GROW, MEND_SOFT)
+    # And along a sharp edge of what is taken off: his own figure dark in
+    # the glass with the lit room about it, in focus (2026-11-18 17:39
+    # UTC, shown his drawing scanned in one arc: "znowu pokazują się ostre
+    # krawędzie w miejscach podmian"). What is taken off is softer than
+    # such an edge, and the rest of it, a pixel or two wide, stayed as
+    # the first view's fine: his outline pressed into the paper.
+    taken = cv2.GaussianBlur((alone + soft).max(-1), (0, 0), 1.0)
+    by = max(2, round(MEND_SHARP_ABOUT * wd))
+    about = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * by + 1, 2 * by + 1))
+    sharp = (cv2.dilate(taken, about) - cv2.erode(taken, about)) / (base + MEND_DARK)
+    sharp = np.clip((sharp - MEND_SHARP[0]) / (MEND_SHARP[1] - MEND_SHARP[0]), 0, 1) * shown
+    sharp = cv2.GaussianBlur(cv2.dilate(sharp.astype(np.float32), about), (0, 0), by / 2)
+    pressed = np.maximum(pressed, sharp)[..., None]
+    stays = (detail @ weights)[..., None] * (1 - pressed)
+    stays = stays + (work - cv2.GaussianBlur(work, (0, 0), fine)) * pressed
+    mend = np.asarray((apart + detail - stays) * mask[..., None], np.float32)
+    return mend, np.asarray(pressed[..., 0] * mask, np.float32)
+
+
+def _reach(of: Floats, grow: float, soft: float) -> Floats:
+    """``of`` (0–1) so far about (of the width) and over so much more by
+    degrees: worked out the smaller the further it goes."""
+    ht, wd = of.shape[:2]
+    less = max(1, round(grow * wd) // 8)
+    tiny = cv2.dilate(of, np.ones((less, less), np.uint8))
+    tiny = cv2.resize(tiny, (wd // less, ht // less), interpolation=cv2.INTER_AREA)
+    by = max(1, round(grow * wd / less))
+    about = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * by + 1, 2 * by + 1))
+    over = cv2.GaussianBlur(cv2.dilate(tiny, about), (0, 0), soft * wd / less)
+    over = cv2.resize(over, (wd, ht), interpolation=cv2.INTER_LINEAR)
+    return np.asarray(over * over * (3 - 2 * over), np.float32)
+
+
+def _line(theirs: Floats, mine: Floats, free: Floats) -> Floats:
+    """``theirs`` in the tones of ``mine``: by the line the two pictures
+    keep to about each place, where it is ``free`` (0–1) to say
+    (:data:`MEND_REACH`). Worked out small, it is even over a place and
+    far about."""
+    ht, wd = mine.shape[:2]
+    w = max(64, wd // 4)
+    h = max(64, round(ht * w / wd))
+
+    def small(of: Floats) -> Floats:
+        return cv2.resize(of, (w, h), interpolation=cv2.INTER_AREA)
+
+    counts = small(free)[..., None]
+    side, first = small(theirs), small(mine)
+    squares, both = small(theirs * theirs), small(theirs * mine)
+    slope = np.zeros_like(side)
+    rest = np.zeros_like(side)
     left = np.ones((h, w, 1), np.float32)
     for last, wide in enumerate(MEND_REACH):
         sigma = wide * w
@@ -1474,7 +1745,7 @@ def _mend(
 
         some = about_of(counts)
         by = np.maximum(some, 1e-6)
-        middle, to = about_of(theirs * counts) / by, about_of(mine * counts) / by
+        middle, to = about_of(side * counts) / by, about_of(first * counts) / by
         spread = about_of(squares * counts) / by - middle * middle
         along = about_of(both * counts) / by - middle * to
         steep = np.clip(along / (spread + MEND_NOISE**2), 0.3, 2.0)
@@ -1489,32 +1760,146 @@ def _mend(
     rest = cv2.resize(
         cv2.GaussianBlur(rest, (0, 0), even), (wd, ht), interpolation=cv2.INTER_LINEAR
     )
-    work = slope * work + rest
+    return np.asarray(slope * theirs + rest, np.float32)
 
-    # Nor is what is wider than they can tell it theirs: what the first
-    # differs from a side view by is told from so far about
-    # (:data:`ALONE_ABOUT`), and a wide soft light in the first view is
-    # in that telling too.
-    apart = cv2.GaussianBlur(now - work, (0, 0), fine)
-    coarse = cv2.GaussianBlur(small(apart), (0, 0), MEND_COARSE * w)
-    apart -= cv2.resize(coarse, (wd, ht), interpolation=cv2.INTER_LINEAR)
-    # About letters and lines the colour of a place is theirs only as it
-    # is over the letters and the dark between them together: the veil a
-    # side view has over the dark between two letters is warm.
-    weights = np.array([0.2126, 0.7152, 0.0722], np.float32)
-    tint = apart - (apart @ weights)[..., None]
-    wider = cv2.GaussianBlur(tint, (0, 0), MEND_TINT * wd)
-    apart = apart - (tint - wider) * (1 - plain[..., None])
-    detail = now - cv2.GaussianBlur(now, (0, 0), fine)
-    # Under a bright reflection the first view's lines are pale (his
-    # drawing behind glass, a lit kitchen over a ladder): the side views'.
-    light = cv2.GaussianBlur(front.max(-1), (0, 0), 2.0)
-    light = np.clip((light - MEND_ALL_LIGHT[0]) / (MEND_ALL_LIGHT[1] - MEND_ALL_LIGHT[0]), 0, 1)
-    pressed = np.clip((much - MEND_ALL[0]) / (MEND_ALL[1] - MEND_ALL[0]), 0, 1) * light * shown
-    pressed = reach(pressed.astype(np.float32), MEND_GROW, MEND_SOFT)[..., None]
-    stays = (detail @ weights)[..., None] * (1 - pressed)
-    stays = stays + (work - cv2.GaussianBlur(work, (0, 0), fine)) * pressed
-    return np.asarray((apart + detail - stays) * mask[..., None], np.float32)
+
+def _carried(of: Floats, sure: Floats) -> Floats:
+    """``of`` where it is ``sure`` (0–1), and elsewhere what the sure
+    places about have of it, the nearest first (:data:`MEND_REACH`)."""
+    ht, wd = of.shape[:2]
+    w = max(64, wd // 4)
+    h = max(64, round(ht * w / wd))
+    counts = cv2.resize(sure, (w, h), interpolation=cv2.INTER_AREA)[..., None]
+    have = cv2.resize(of * sure[..., None], (w, h), interpolation=cv2.INTER_AREA)
+    have = have.reshape(h, w, -1)
+    far = np.zeros_like(have)
+    left = np.ones((h, w, 1), np.float32)
+    for last, wide in enumerate(MEND_REACH):
+        some = cv2.GaussianBlur(counts, (0, 0), wide * w).reshape(h, w, 1)
+        about = cv2.GaussianBlur(have, (0, 0), wide * w).reshape(h, w, -1)
+        by = left if last == len(MEND_REACH) - 1 else left * np.clip(some / MEND_SURE, 0, 1)
+        far = far + about / np.maximum(some, 1e-6) * by
+        left = left - by
+    far = cv2.resize(far, (wd, ht), interpolation=cv2.INTER_LINEAR).reshape(ht, wd, -1)
+    sure = sure[..., None]
+    return np.asarray(of * sure + far * (1 - sure), np.float32)
+
+
+def _shown(views: list[_View]) -> tuple[Floats, Floats]:
+    """The work as the side views show it, in their own light, and how
+    sure that is (0–1): about each place mostly the darker of them (a
+    reflection only adds light), and sure where each of them shows the
+    work's tone (:func:`_counts`). Along the frame's side one was taken
+    from only the other does, and that one may have the room in the
+    glass there."""
+    ht, wd = views[0].light.shape[:2]
+    counts = _counts(views, ht, wd, tone=True)[1:]
+    near = max(3, round(wd * GLARE_NEAR)) | 1
+    lights = np.stack([cv2.GaussianBlur(v.light.sum(-1), (0, 0), near / 2) for v in views[1:]])
+    least = np.where(counts > 0, lights, np.inf).min(0)
+    least = np.where(np.isfinite(least), least, 0).astype(np.float32)
+    weigh = np.exp(-(lights - least) / (0.1 * (np.abs(least) + 0.05))) * counts
+    weigh = weigh.astype(np.float32)
+    darker = np.zeros_like(views[0].light)
+    for n, view in enumerate(views[1:]):
+        darker += view.light * weigh[n][..., None]
+    darker /= np.maximum(weigh.sum(0), 1e-6)[..., None]
+    return darker, np.asarray(counts.min(0), np.float32)
+
+
+def _veiled(now: Floats, soft: Floats, views: list[_View], sheen: Floats) -> tuple[Floats, Floats]:
+    """What is still to come off ``now`` (the first view with its
+    reflections taken off and mended) where the ``soft`` layer was a
+    large share of the light the work is left with: its tone and colour
+    there are the side views'. ``sheen`` is how much of what a place has
+    over the darkest about it is a sheen on the work's grain
+    (:func:`_grain`). Signed, the views' size; and how much of each
+    place has the side views' fine as well (0–1).
+
+    His Nikifor behind glass (2026-11-18 18:13 UTC, shown the scan with
+    the side views' light put right: "Wtapianie na pokazanych przykładach
+    - myślę że może być jeszcze lepiej. Teraz nadal widać odcięcie"; and
+    18:19: "Problemem jest chyba tonacja i kolorystyka na łączeniu.
+    Istotne jest wyrównanie nie tylko fragmentami, ale względem
+    nakładanych, półprzejrzystych obszarów"). A lit doorway lay in the
+    glass over the left of the sky, as much light again as the paint has
+    there. Taken off, the sky under it was a pale pink beside the orange
+    next to it, cut off where the doorway ended: the phone presses what
+    it sees through such a veil flat, the even part of the layer stays
+    on (:func:`_kept`), and in the band by the frame only the side view
+    with the room all over it says anything. The view from the left has
+    that sky as it is.
+
+    So under such a veil, and a little way about it by degrees, what is
+    wider than :data:`MEND_TINT` is the side views' picture
+    (:func:`_shown`) in the first view's tones, as the places with no
+    veil have the two (:func:`_line`); what is finer stays the first
+    view's. Where the side views are not sure of the work (the strip
+    along the frame), as much comes off as off the sure places next to
+    it: the veil does not end there.
+
+    Under a veil as light as the work itself (:data:`VEILED_HEAVY`) the
+    first view has little of the picture left: the doorway's edge ran
+    down through a tree, and the half of the tree under it stayed a
+    ghost of the other half. There all that is wider than
+    :data:`MEND_FINE` is the side views', and what they show finer than
+    the views' size goes in with it (:func:`_finer`).
+
+    This is for what glass mirrors. The sheen of an oil's varnish is a
+    large share of its dark paint's light nearly everywhere, and held a
+    veil it made his portraits the side views' pictures, a hand gone
+    from pink to ochre (the same day, 16:11 UTC: "Na olejach nie jest
+    źle"). A sheen lies on the paint's grain (:func:`_grain`), what
+    glass mirrors does not: where the layer is mostly such a sheen it is
+    no veil here, unless it is strong in itself (:data:`VEILED_STRONG`:
+    his doorway on gouache, which has a grain too); and a work whose
+    veiled places are such a sheen for the most part is paint under
+    varnish, with no veil at all (:data:`VEILED_PAINT`)."""
+    ht, wd = now.shape[:2]
+    none = np.zeros_like(now), np.zeros((ht, wd), np.float32)
+    if len(views) < 3:
+        return none
+    sides, sure = _shown(views)
+    left = cv2.GaussianBlur(np.clip(now, 0, None).mean(-1), (0, 0), 2.0)
+    share = cv2.GaussianBlur(soft.max(-1), (0, 0), 2.0) / (left + MEND_DARK)
+    veiled = np.clip((share - VEILED[0]) / (VEILED[1] - VEILED[0]), 0, 1)
+    if not veiled.any():
+        return none
+    paint = float(sheen.max(-1)[veiled > 0].mean())
+    if paint >= VEILED_PAINT[1]:
+        return none
+    veiled *= 1 - max(0.0, (paint - VEILED_PAINT[0]) / (VEILED_PAINT[1] - VEILED_PAINT[0]))
+    grain = cv2.GaussianBlur(sheen.max(-1), (0, 0), VEILED_SHEEN_ABOUT * wd)
+    glass = 1 - np.clip((grain - VEILED_SHEEN[0]) / (VEILED_SHEEN[1] - VEILED_SHEEN[0]), 0, 1)
+    strong = cv2.GaussianBlur(soft.max(-1), (0, 0), 2.0)
+    strong = np.clip((strong - VEILED_STRONG[0]) / (VEILED_STRONG[1] - VEILED_STRONG[0]), 0, 1)
+    veiled = (veiled * np.maximum(glass, strong)).astype(np.float32)
+    if not veiled.any():
+        return none
+    over = _reach(veiled, VEILED_GROW, VEILED_SOFT)
+    free = ((1 - over) ** 2 * sure).astype(np.float32)
+    if float(free.mean()) < VEILED_FREE:
+        # A veil over all of it: nothing says how the two pictures go together.
+        return none
+    theirs = _line(sides, now, free)
+    tint = max(1.0, MEND_TINT * wd)
+    have = cv2.GaussianBlur(sure, (0, 0), tint)
+    apart = cv2.GaussianBlur((now - theirs) * sure[..., None], (0, 0), tint)
+    # The darker side view is the picture as soon as it counts at all.
+    known = np.clip(have * 4, 0, 1)
+    apart = _carried(apart / np.maximum(have, 1e-3)[..., None], known)
+    heavy = np.clip((share - VEILED_HEAVY[0]) / (VEILED_HEAVY[1] - VEILED_HEAVY[0]), 0, 1)
+    heavy = np.minimum(heavy, veiled).astype(np.float32)
+    if heavy.any():
+        heavy = _reach(heavy, VEILED_HEAVY_GROW, VEILED_HEAVY_GROW) * known
+        closer = cv2.GaussianBlur(now - theirs, (0, 0), max(1.0, MEND_FINE * wd))
+        apart = apart + (closer - apart) * heavy[..., None]
+    off = apart * over[..., None]
+    # No more than most of what a place has, and of its three colours
+    # alike: the frame's dark beside the work has no veil on it.
+    most = np.clip(now, 0, None) * VEILED_MOST
+    by = np.where(off > most, most / np.maximum(off, 1e-6), 1.0).min(-1, keepdims=True)
+    return np.asarray(off * by, np.float32), np.asarray(heavy * over, np.float32)
 
 
 def _own(first: Floats, side: Floats, tells: Floats, counts: Floats) -> Floats:
@@ -1794,13 +2179,17 @@ def _subtract(
     swap: tuple[Floats, Floats] | None,
     to_photo: NDArray[np.float64],
     quad: Floats,
+    finer: Callable[[NDArray[np.float64], Floats], Floats] | None = None,
+    theirs: Floats | None = None,
 ) -> Image:
     """``first`` less its reflection ``layer`` (:func:`_grain`, laid on it
     by ``to_photo``) and what is to ``mend`` after (:func:`_mend`, laid
     on it likewise) within ``quad``, at full size, a band of rows at a
     time; and where ``swap`` says so (the work under a glare and how much
     of a place is one, laid on it likewise) that work in the first's
-    stead."""
+    stead, with what the side photographs show ``finer`` than it
+    (:func:`_finer`); that also where what was mended has their fine
+    (``theirs``, laid on it likewise)."""
     veil, low, share = layer
     h, w = first.shape[:2]
     x0 = max(0, math.floor(quad[:, 0].min()) - 8)
@@ -1825,16 +2214,26 @@ def _subtract(
         cv2.fillConvexPoly(inside, np.round(quad - [x0, top]).astype(np.int32), 255)
         soft = cv2.GaussianBlur(inside.astype(np.float32) / 255, (0, 0), feather)[..., None]
         light = _linear(first[top : top + rows, x0:x1])
+        put_in: Floats | None = None
         if swap is not None:
             glare = laid(swap[1], cv2.INTER_LINEAR)
             if glare.any():
-                glare = glare[..., None] * soft
-                light = light + (laid(swap[0], cv2.INTER_CUBIC) - light) * glare
+                put = laid(swap[0], cv2.INTER_CUBIC)
+                if finer is not None:
+                    put = put + finer(shift @ to_photo, glare)
+                light = light + (put - light) * glare[..., None] * soft
+                put_in = glare
         sheen = np.clip(light - laid(low, cv2.INTER_LINEAR), 0, None)
         sheen *= np.clip(laid(share, cv2.INTER_LINEAR), 0, 1)
         light = light - (np.clip(laid(veil, cv2.INTER_CUBIC), 0, None) + sheen) * soft
         if mended:
             light = light - laid(mend, cv2.INTER_CUBIC) * soft
+        if finer is not None and theirs is not None:
+            also = laid(theirs, cv2.INTER_LINEAR)
+            if put_in is not None:
+                also = also * (1 - put_in)
+            if also.any():
+                light = light + finer(shift @ to_photo, also) * also[..., None] * soft
         out[top : top + rows, x0:x1] = _srgb(light)
     return out
 

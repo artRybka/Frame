@@ -25,6 +25,21 @@ back so, come out as the chart's colours (:data:`LEFT_MOST`): it finds
 :func:`apply` does the same to a whole photograph, strip by strip (a
 48 MP one in floats is half a gigabyte).
 
+The chart sets the colours, and how light the photograph is only by
+half. His first scan with a real chart, a small dark oil (2026-11-18
+18:13 UTC: "Wyszło trochę blado i mdło. Sprawdzisz?"): the chart was
+read well, and the photograph came out as the patches truly are, light
+for light. That is a measurement and no picture: the chart's black is a
+dark grey (52 of 255), the phone's contrast was undone, the wall beside
+the work went from 218 to 190, and the chart leant on the canvas in more
+light than the work had. Offered the chart's colours with the lightness
+and contrast the phone gave its greys, he asked for the middle (18:49:
+"A nie lepiej to odrobinę wyważyć?"; shown the three, 19:13: "Wyważone,
+pół na pół"): blacks deeper than the measurement's, lights not as far
+gone as the phone's. So white balance and hues are the chart's, and each
+light is written half way between what it truly is and what the phone
+made of a grey that light (:meth:`Chart.lit`, :data:`PHONE`).
+
 Without a chart nothing here does anything.
 """
 
@@ -84,6 +99,15 @@ HELD = 0.02
 OUTLIER = 3.0
 #: Rows of a photograph put right at a time.
 STRIP = 256
+#: How a photograph kept beside its chart is lit: 0 as the patches truly
+#: are (to 1.145.243), 1 half way from that to how the phone had its
+#: greys.
+LOOK = 1
+#: How much of the way: 0 is the measurement, 1 the phone's lightness
+#: and contrast.
+PHONE = 0.5
+#: How light a colour is (linear light).
+_LUMA = np.array([0.2126, 0.7152, 0.0722])
 
 _ENCODE = np.round(
     np.where(
@@ -111,6 +135,8 @@ class Chart:
     #: how far they are once put back (mean OKLab distance).
     off: float
     left: float
+    #: How the photographs kept beside it are lit (:data:`LOOK`).
+    look: int = LOOK
 
     def to_json(self) -> dict[str, Any]:
         return asdict(self)
@@ -123,11 +149,30 @@ class Chart:
             matrix=[[float(v) for v in row] for row in data["matrix"]],
             off=float(data["off"]),
             left=float(data["left"]),
+            # One noted before the photographs were lit as the phone had them.
+            look=int(data.get("look") or 0),
         )
 
     def curves(self) -> NDArray[np.float32]:
         """Each 8-bit value's true light, per channel (3 × 256)."""
         return np.stack([_curve(np.array(row)) for row in self.greys]).astype(np.float32)
+
+    def lit(self) -> NDArray[np.uint8]:
+        """Each true light (of 65536, any channel) as it is written: its
+        8-bit value, :data:`PHONE` of the way from what that light is to
+        what the photograph had a grey of that light at. That is straight
+        between the six greys, through nothing below the black one, and
+        on above the white one as just below it."""
+        seen = (np.array(self.greys).T @ _LUMA)[::-1]
+        true = _REFERENCE[_GREYS, 1][::-1]
+        light = np.arange(65536) / 65535
+        out = np.interp(light, np.concatenate([[0.0], true]), np.concatenate([[0.0], seen]))
+        over = light > true[-1]
+        steep = (seen[-1] - seen[-2]) / (true[-1] - true[-2])
+        out[over] = seen[-1] + (light[over] - true[-1]) * steep
+        phone = _ENCODE[(np.clip(out, 0.0, 1.0) * 65535 + 0.5).astype(np.uint16)]
+        true_ = _ENCODE.astype(np.float64)
+        return np.asarray(np.round(true_ + (phone - true_) * PHONE), np.uint8)
 
 
 def find(photo: Photo) -> Chart | None:
@@ -170,7 +215,27 @@ def find(photo: Photo) -> Chart | None:
 
 
 def apply(photo: Photo, chart: Chart) -> Photo:
-    """``photo`` (uint8 RGB) in the colours the chart gives it."""
+    """``photo`` (uint8 RGB) in the colours the chart gives it, half as
+    light and as steep as the phone had it (:meth:`Chart.lit`)."""
+    return _put(photo, chart, chart.lit())
+
+
+def true(photo: Photo, chart: Chart) -> Photo:
+    """``photo`` (uint8 RGB) as the chart's patches truly are, light for
+    light: what :func:`apply` gave to 1.145.243."""
+    return _put(photo, chart, _ENCODE)
+
+
+def relit(photo: Photo, chart: Chart) -> Photo:
+    """A photograph kept as :func:`true` gave it, as :func:`apply` gives
+    it now."""
+    values = u8_to_linear(np.arange(256, dtype=np.uint8)).astype(np.float64)
+    return np.asarray(chart.lit()[(values * 65535 + 0.5).astype(np.uint16)][photo])
+
+
+def _put(photo: Photo, chart: Chart, encode: NDArray[np.uint8]) -> Photo:
+    """``photo`` in the chart's true light, each such light written as
+    ``encode`` has it (65536 values)."""
     curves = chart.curves()
     matrix = np.array(chart.matrix, np.float32)
     out = np.empty_like(photo)
@@ -178,7 +243,7 @@ def apply(photo: Photo, chart: Chart) -> Photo:
         strip = photo[top : top + STRIP]
         light = np.stack([curves[c][strip[..., c]] for c in range(3)], axis=-1)
         light = np.clip(cv2.transform(light, matrix), 0.0, 1.0)
-        out[top : top + STRIP] = _ENCODE[(light * 65535 + 0.5).astype(np.uint16)]
+        out[top : top + STRIP] = encode[(light * 65535 + 0.5).astype(np.uint16)]
     return out
 
 
@@ -276,4 +341,4 @@ def _matrix(light: Floats, true: Floats) -> Floats:
     return matrix
 
 
-__all__ = ["Chart", "apply", "find"]
+__all__ = ["LOOK", "Chart", "apply", "find", "relit", "true"]
