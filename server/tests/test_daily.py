@@ -1725,3 +1725,52 @@ def test_a_poor_photograph_comes_back_with_another_copy(tmp_path: Path) -> None:
     asked = _curator(fake, {"works": [], "choice": 0, "reason": "-"})
     svc.daily.pick(DAY + timedelta(days=800))
     assert "Blurred" in _numbers(asked[0])
+
+
+def test_most_studies_of_the_day_are_paintings(offline: FrameService) -> None:
+    """Mateusz 2026-11-18: "żeby jednak w większości przypadków były to
+    studia dla malarstwa a nie grafiki". A print's large copy and long
+    note put it first by the rules; after it, four days of paintings."""
+    for n in range(2):
+        _add(
+            offline,
+            f"aic:{n}",
+            title=f"Print {n}",
+            artist=f"Engraver {n}",
+            classification="Print",
+            medium="Etching",
+            width=4000,
+            description="x" * 300,
+        )
+    for n in range(6):
+        _add(
+            offline,
+            f"met:{n}",
+            title=f"Painting {n}",
+            artist=f"Painter {n}",
+            classification="Paintings",
+            medium="Oil on canvas",
+            width=1100,
+        )
+    picked = [offline.daily.pick(DAY + timedelta(days=d)) for d in range(6)]
+    assert all(p is not None for p in picked)
+    kinds = ["painting" if daily_module.painted(p) else "print" for p in picked if p]
+    assert kinds == ["print", "painting", "painting", "painting", "painting", "print"]
+
+
+def test_a_painting_as_its_museum_says() -> None:
+    def item(**kw: Any) -> Item:
+        return Item(id="x:1", source=kw.pop("source", "met"), source_id="1", **kw)
+
+    assert daily_module.painted(item(classification="Paintings", medium="Oil on canvas"))
+    assert daily_module.painted(item(classification="", medium="Tempera on panel"))
+    assert not daily_module.painted(item(classification="Prints", medium="Etching"))
+    assert not daily_module.painted(item(classification="Drawings", medium="Watercolor"))
+    # WikiArt calls its drawings paintings: their material tells.
+    assert daily_module.painted(item(source="wikiart", classification="painting"))
+    assert daily_module.painted(
+        item(source="wikiart", classification="painting", medium="oil, canvas")
+    )
+    assert not daily_module.painted(
+        item(source="wikiart", classification="painting", medium="pencil, paper")
+    )

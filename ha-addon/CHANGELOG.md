@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.145.236
+
+- Nowe odciski wyglądu (temat i styl) robią się mniej więcej dwa razy
+  szybciej: serwer trzyma u Google więcej paczek naraz i zagląda po
+  odpowiedzi co pół minuty zamiast co dwie.
+
+## 1.145.235
+
+- Studium dnia to głównie malarstwo: po dniu grafiki lub rysunku przez
+  cztery kolejne dni kurator wybiera tylko spośród obrazów. Grafika
+  zostaje, ale najwyżej raz na pięć dni.
+
 ## 1.145.234
 
 - „W ramie”: samo dzieło jest zawsze tym samym obrazem, w swoich
