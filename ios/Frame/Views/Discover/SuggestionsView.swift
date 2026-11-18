@@ -340,6 +340,11 @@ struct ThemeCard: View {
 struct StudyRow: View {
     let studies: [StudyBrief]
 
+    /// A card's width in the row: wider than the other rows' cards, one
+    /// study and a good part of the next on the screen (Mateusz 2026-11-18,
+    /// 280 pt after sketches of 200–300). Its picture keeps the cards' height.
+    static let cardWidth: CGFloat = 280
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
@@ -355,7 +360,7 @@ struct StudyRow: View {
                 LazyHStack(alignment: .top, spacing: 12) {
                     ForEach(studies) { study in
                         NavigationLink(value: study.route) {
-                            StudyCard(study: study).frame(width: 172)
+                            StudyCard(study: study).frame(width: Self.cardWidth)
                         }
                         .buttonStyle(.plain)
                     }
@@ -418,7 +423,7 @@ struct StudyCard: View {
     let study: StudyBrief
 
     var body: some View {
-        WorkTile(item: study.item, title: study.title)
+        WorkTile(item: study.item, title: study.title, sharp: true)
             .accessibilityHint("Otwiera studium dzieła")
     }
 }
@@ -439,6 +444,11 @@ struct WorkTile: View {
     var brighten = false
     /// The magnifier after the title: not where every card is "Pod lupą".
     var showsZoom = true
+    /// The original fades in over the thumbnail (640 px), as on the study
+    /// of the day's tile: the studies' cards are 280 pt wide, 840 px on the
+    /// phone (Mateusz 2026-11-18). At the size the study's page asks for,
+    /// so the page has it at once.
+    var sharp = false
 
     /// How much closer a brightened card crops its picture.
     static let closer: CGFloat = 1.18
@@ -473,6 +483,17 @@ struct WorkTile: View {
                     )
                     // Cropped a little closer than the studies' (2026-11-11).
                     .scaleEffect(brighten ? Self.closer : 1)
+                    .overlay {
+                        if sharp, item.inLibrary {
+                            ArtImage(
+                                ref: item.item.originalRef,
+                                placeholder: .clear,
+                                maxPixel: DailyView.originalPixels,
+                                subjectFocus: true,
+                                crossfade: true
+                            )
+                        }
+                    }
                 }
                 .clipped()
             VStack(alignment: .leading, spacing: 4) {
