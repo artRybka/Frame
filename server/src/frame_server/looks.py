@@ -222,6 +222,8 @@ class LookIndex:
         self._rows = np.zeros((0, size), dtype=np.int8)
         self._norms = np.zeros((0, parts), dtype=np.float32)
         self._means: tuple[int, np.ndarray] | None = None
+        #: Changes whenever the rows are read or written anew (their places move).
+        self.generation = 0
         self._ids: list[str] = []
         self._row: dict[str, int] = {}
         self._stamps: dict[str, int] = {}
@@ -326,6 +328,7 @@ class LookIndex:
     def _rewrite(self) -> None:
         """Only the live rows, written to new files that then take the old
         ones' place."""
+        self.generation += 1
         live = sorted(self._row.items(), key=lambda kv: kv[1])
         at = np.array([row for _, row in live], dtype=np.int64)
         rows = self._rows[at] if len(at) else np.zeros((0, self.size), dtype=np.int8)
@@ -360,7 +363,8 @@ class LookIndex:
 
         def cosine(rows: np.ndarray, norms: np.ndarray) -> np.ndarray:
             with np.errstate(divide="ignore", invalid="ignore"):
-                return np.where(norms[:, 0] > 0, (rows @ query) / norms[:, 0], -1.0)
+                found = rows.astype(np.float32) @ query
+                return np.where(norms[:, 0] > 0, found / norms[:, 0], -1.0)
 
         return self.ranked(cosine, count)
 
@@ -385,8 +389,8 @@ class LookIndex:
         self, score: Callable[[np.ndarray, np.ndarray], np.ndarray], count: int
     ) -> list[tuple[str, float]]:
         """The ``count`` works ``score`` puts highest, highest first, with
-        their score; ``score`` is given rows (as floats) and their parts'
-        lengths, a chunk at a time."""
+        their score; ``score`` is given rows (as they are kept, bytes) and
+        their parts' lengths, a chunk at a time."""
         if count <= 0:
             return []
         with self._lock:
@@ -395,8 +399,18 @@ class LookIndex:
             return []
         scores = np.empty(len(rows), dtype=np.float32)
         for start in range(0, len(rows), CHUNK):
-            part = rows[start : start + CHUNK].astype(np.float32)
+            part = rows[start : start + CHUNK]
             scores[start : start + len(part)] = score(part, norms[start : start + len(part)])
+        return self.top(scores, ids, live, count)
+
+    @staticmethod
+    def top(
+        scores: np.ndarray, ids: Sequence[str], live: dict[str, int], count: int
+    ) -> list[tuple[str, float]]:
+        """The ``count`` live rows of the highest ``scores`` (a row's work
+        and its score), highest first."""
+        if count <= 0 or not len(scores):
+            return []
         scores = np.nan_to_num(scores, nan=-2.0)
         found: list[tuple[str, float]] = []
         take = min(len(scores), count * 3 + 16)
@@ -411,6 +425,89 @@ class LookIndex:
             if len(found) >= count or take >= len(scores):
                 return found[:count]
             take = min(len(scores), take * 4)
+
+
+@dataclass(frozen=True)
+class ShapedRows:
+    """The works' style and subject (:func:`shapes`), a row each as bytes
+    with its length, in the rows' order of their :class:`LookIndex`."""
+
+    means: np.ndarray
+    style: np.ndarray
+    style_norms: np.ndarray
+    subject: np.ndarray
+    subject_norms: np.ndarray
+    ids: Sequence[str]
+    live: dict[str, int]
+
+    @staticmethod
+    def score(rows: np.ndarray, norms: np.ndarray, query: np.ndarray) -> np.ndarray:
+        """Each row's cosine with ``query`` (a unit row)."""
+        found = np.empty(len(rows), dtype=np.float32)
+        for start in range(0, len(rows), CHUNK * 4):
+            part = rows[start : start + CHUNK * 4].astype(np.float32)
+            found[start : start + len(part)] = part @ query
+        return found / np.maximum(norms, 1e-9)
+
+
+class Shaped:
+    """The works' style and subject worked out from their three once and
+    kept (some 80 MB each for 160 000 works): rows added since are worked
+    out when asked; all of them again when the rows were written anew or
+    the works' mean moved (:meth:`LookIndex.means`). The background keeps
+    them ready (:meth:`Looks.round`), so a question seldom waits."""
+
+    def __init__(self, index: LookIndex) -> None:
+        self.index = index
+        self._lock = threading.Lock()
+        self._kept: ShapedRows | None = None
+        self._key: tuple[int, int] | None = None
+
+    def get(self) -> ShapedRows:
+        with self.index._lock:
+            rows, ids, live = self.index._rows, list(self.index._ids), dict(self.index._row)
+            generation = self.index.generation
+        means = self.index.means()
+        key = (generation, id(means))
+        with self._lock:
+            kept = self._kept if self._key == key else None
+            if kept is not None and len(kept.ids) > len(rows):
+                kept = None
+            start = len(kept.ids) if kept is not None else 0
+            if kept is not None and start == len(rows):
+                return kept
+            style, subject = [], []
+            for at in range(start, len(rows), CHUNK):
+                s, t = shapes(rows[at : at + CHUNK].astype(np.float32), means)
+                style.append(LookIndex.quantised(s))
+                subject.append(LookIndex.quantised(t))
+            new_style, new_subject = np.concatenate(style), np.concatenate(subject)
+
+            def lengths(packed: np.ndarray) -> np.ndarray:
+                return np.linalg.norm(packed.astype(np.float32), axis=1).astype(np.float32)
+
+            if kept is None:
+                self._kept = ShapedRows(
+                    means,
+                    new_style,
+                    lengths(new_style),
+                    new_subject,
+                    lengths(new_subject),
+                    ids,
+                    live,
+                )
+            else:
+                self._kept = ShapedRows(
+                    means,
+                    np.concatenate([kept.style, new_style]),
+                    np.concatenate([kept.style_norms, lengths(new_style)]),
+                    np.concatenate([kept.subject, new_subject]),
+                    np.concatenate([kept.subject_norms, lengths(new_subject)]),
+                    ids,
+                    live,
+                )
+            self._key = key
+            return self._kept
 
 
 class Looks:
@@ -432,6 +529,8 @@ class Looks:
         self.config = config
         #: A work's three: its style, its subject, its sentence (:data:`PART` each).
         self.three = LookIndex(root / "three", size=3 * PART, parts=3)
+        #: Their style and subject, worked out once.
+        self.shaped = Shaped(self.three)
         settled = (self.three.root / READY).exists()
         #: The numbers of before: the whole thumbnail, one set a work (left
         #: on disk, not read, once the three answer).
@@ -792,8 +891,9 @@ class Looks:
         subject = _unit(vector[PART : 2 * PART])
 
         def score(rows: np.ndarray, norms: np.ndarray) -> np.ndarray:
-            g = rows[:, :PART] @ style / np.maximum(norms[:, 0], 1e-9)
-            h = rows[:, PART : 2 * PART] @ subject / np.maximum(norms[:, 1], 1e-9)
+            g = rows[:, :PART].astype(np.float32) @ style / np.maximum(norms[:, 0], 1e-9)
+            h = rows[:, PART : 2 * PART].astype(np.float32) @ subject
+            h /= np.maximum(norms[:, 1], 1e-9)
             return (g + h) / 2
 
         near = self.three.ranked(score, limit + 1)
@@ -847,25 +947,32 @@ class Looks:
     ) -> list[tuple[str, float]]:
         if self._old:
             return self.index.nearest(vector, count)
-        return self.three.ranked(lambda rows, _: self._words_score(rows, vector), count)
+        words = _unit(np.asarray(vector, dtype=np.float32)[:PART])
+
+        def score(rows: np.ndarray, norms: np.ndarray) -> np.ndarray:
+            style = rows[:, :PART].astype(np.float32) @ words / np.maximum(norms[:, 0], 1e-9)
+            subject = rows[:, PART : 2 * PART].astype(np.float32) @ words
+            return np.maximum(style, subject / np.maximum(norms[:, 1], 1e-9))
+
+        return self.three.ranked(score, count)
 
     def _alike_near(self, vector: np.ndarray, count: int, by: By = "") -> list[tuple[str, float]]:
         """The works nearest a work's (or a photograph's) numbers, by
-        ``by``; with the numbers of before, simply the nearest."""
+        ``by``; with the numbers of before, simply the nearest. The works'
+        style and subject are worked out once (:class:`Shaped`), not for
+        each question (some 6 s each for 160 000 works, 2026-11-18)."""
         if self._old:
             return self.index.nearest(vector, count)
-        means = self.three.means()
-        style, subject = shapes(np.asarray(vector, dtype=np.float32)[None, :], means)
-
-        def score(rows: np.ndarray, _: np.ndarray) -> np.ndarray:
-            their_style, their_subject = shapes(rows, means)
-            if by == "style":
-                return their_style @ style[0]
-            if by == "subject":
-                return their_subject @ subject[0]
-            return (their_style @ style[0] + their_subject @ subject[0]) / 2
-
-        return self.three.ranked(score, count)
+        shaped = self.shaped.get()
+        style, subject = shapes(np.asarray(vector, dtype=np.float32)[None, :], shaped.means)
+        scores = np.zeros(len(shaped.ids), dtype=np.float32)
+        if by != "subject":
+            scores += shaped.score(shaped.style, shaped.style_norms, style[0])
+        if by != "style":
+            scores += shaped.score(shaped.subject, shaped.subject_norms, subject[0])
+        if not by:
+            scores /= 2
+        return LookIndex.top(scores, shaped.ids, shaped.live, count)
 
     def _answer(
         self,
@@ -1288,6 +1395,11 @@ class Looks:
         """The switch or the key changed: look at once."""
         self._wake.set()
 
+    def _warm(self) -> None:
+        """The works' style and subject worked out before anyone asks."""
+        if not self._old and len(self.three):
+            self.shaped.get()
+
     def _run(self) -> None:
         tidied = 0.0
         while not self._stop.is_set():
@@ -1297,7 +1409,9 @@ class Looks:
                     if self.clock() - tidied > 86_400:
                         self.tidy()
                         tidied = self.clock()
+                    self._warm()
                     done, sent = self.round()
+                    self._warm()
                     self.trouble = None
                     pause = POLL if self._all_out() else IDLE
                     if done or sent:
