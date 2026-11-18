@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.247
+
+- Duży tytuł „Odkrywaj” zostaje szeryfowy także po wejściu w studium
+  dzieła i powrocie (wracał w zwykłym foncie systemowym). Sama aplikacja.
+
 ## 1.145.246
 
 - Studium dzieła ma pod „Podobnymi dziełami” ten sam przycisk
