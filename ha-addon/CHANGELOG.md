@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.234
+
+- Studium dnia to głównie malarstwo: po dniu grafiki lub rysunku przez
+  cztery kolejne dni kurator wybiera tylko spośród obrazów. Grafika
+  zostaje, ale najwyżej raz na pięć dni.
+
 ## 1.145.233
 
 - Szukaj: wyniki z muzeum idą do aplikacji od razu, a dzieła, które nie

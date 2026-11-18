@@ -6,7 +6,9 @@ Rules rank the works: museum works only, large enough, not an artist of
 the last few weeks and never a work of the last year; a little ahead are
 works of the season, works with a round anniversary this year, artists the
 owner likes and works whose museum tells something about them; sketches by
-their titles and pale sheets go last. The first ten (each by another
+their titles and pale sheets go last. Most days are a painting's: after
+a print, drawing or any other work, the next few shortlist paintings only
+(Mateusz 2026-11-18). The first ten (each by another
 artist) go to the curator (``ai.study_pick``, Mateusz 2026-11-11), who
 looks at their pictures, sets aside what is no finished work worth a page
 and chooses one; without it the rules' first stands. Every day is kept, so
@@ -48,7 +50,13 @@ from .library.images import display_copy, said_side
 from .library.models import Note
 from .library.nationality import NATIONALITIES
 from .library.verdict import Place, against
-from .library.vocabulary import archive_own, is_photograph
+from .library.vocabulary import (
+    BY_KEY,
+    archive_own,
+    is_painting,
+    is_photograph,
+    term_matches,
+)
 
 if TYPE_CHECKING:
     from .ai import AiWorker
@@ -105,6 +113,15 @@ RUNNERS_MAX = 2000
 #: sheet take from a work's score.
 SKETCH_PENALTY = 0.3
 PALE_PENALTY = 0.3
+#: Most studies of the day are paintings (Mateusz 2026-11-18: "żeby
+#: jednak w większości przypadków były to studia dla malarstwa a nie
+#: grafiki"): the curator, looking for most to see, chose prints and
+#: drawings rich in fine lines. After a day of any other work, the next
+#: ``PAINTED_DAYS`` shortlist paintings only; then every technique again,
+#: until the curator chooses one other than a painting: at most one day
+#: in ``PAINTED_DAYS + 1`` is a print's or drawing's.
+PAINTED_DAYS = 4
+PAINTING = BY_KEY["technique:painting"]
 #: "W tym samym czasie": works made a few years either side of the work,
 #: elsewhere and by others (Mateusz 2026-11-02); one row scrolled sideways
 #: since 2026-11-03 ("pokazuj więcej dzieł").
@@ -278,6 +295,9 @@ class Daily:
         taste = self.player.taste()
         values = {i.id: score(i, day, taste, rng) for i in pool}
         ranked = sorted(pool, key=lambda i: values[i.id], reverse=True)
+        if self.paintings_only(day):
+            # None to be had: any work rather than no study.
+            ranked = [i for i in ranked if painted(i)] or ranked
         first: Item | None = None
         for _ in range(shortlists):
             shortlist = self.shortlist(ranked)
@@ -299,6 +319,18 @@ class Daily:
             asked = {item.id for item, _ in shortlist}
             ranked = [i for i in ranked if i.id not in asked]
         return first
+
+    def paintings_only(self, day: date) -> bool:
+        """Whether ``day``'s shortlists hold paintings only: one of the
+        ``PAINTED_DAYS`` days before it was another work's."""
+        history = self.history()
+        for back in range(1, PAINTED_DAYS + 1):
+            before = (day - timedelta(days=back)).isoformat()
+            item = self.library.get(history[before]) if before in history else None
+            if item is not None and not painted(item):
+                log.info("study of the day %s: paintings only (%s on %s)", day, item.id, before)
+                return True
+        return False
 
     @staticmethod
     def _seed(day: date, skipped: list[str]) -> int:
@@ -804,6 +836,15 @@ class Daily:
 
     def stop(self) -> None:
         self._stop.set()
+
+
+def painted(item: Item) -> bool:
+    """A painting, as its museum's type or material says (Malarstwo's
+    technique). WikiArt types every work a painting, its drawings too: its
+    material says, when it gives one."""
+    if item.source == "wikiart" and item.medium:
+        return is_painting(item.model_copy(update={"classification": ""}))
+    return term_matches(PAINTING, item)
 
 
 def _pale(ink: float | None) -> bool:
