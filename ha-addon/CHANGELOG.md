@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.145.248
+
+- Zakrzywienie obiektywu („Zakrzywienie obiektywu iPhone? Jakieś
+  możliwości prostowania czy to bardzo skomplikowane?”). Główny aparat
+  iPhone'a rysuje proste linie lekko wygięte na zewnątrz, tym mocniej,
+  im bliżej brzegu zdjęcia: bok ramy wychodził wygięty o ok. 0,4% swojej
+  długości. Zmierzone na krawędziach Twoich ram, tak samo na zdjęciu na
+  wprost, na zdjęciach z boku i na zdjęciach z aparatu iPhone'a.
+- Własne dzieło jest teraz zapisywane bez tego zakrzywienia: zdjęcie jest
+  prostowane przy dodawaniu dzieła, a kadr i narożniki ramy przechodzą
+  razem z nim. W „Kadrze” widzisz jeszcze zdjęcie tak, jak je zrobił
+  telefon; proste jest dzieło w katalogu, „Pełny kadr” i „W ramie”.
+- Prostowane są tylko zdjęcia z obiektywu, który został zmierzony
+  (główny aparat iPhone'a 18 Pro Max, bez zoomu i bez przycięcia).
+  Zdjęcia z innych aparatów zostają takie, jak są.
+- Twoje skany z ostatnich dwóch tygodni wyprostują się same po
+  aktualizacji serwera, także te, przy których wybrałeś „Na wprost”.
+  Kadry i ramy zostają tam, gdzie je ustawiłeś.
+- Dzieło sfotografowane ponownie jednym zdjęciem nie jest już nigdy
+  składane od nowa ze starszego skanu.
+
 ## 1.145.247
 
 - Duży tytuł „Odkrywaj” zostaje szeryfowy także po wejściu w studium

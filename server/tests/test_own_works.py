@@ -1006,3 +1006,259 @@ def test_he_chooses_between_the_scan_and_the_one_photograph_of_a_relief(
         _, glass, beside = _three()
         _, plain = scan(glass, beside, client)
         assert plain["used"] == 2 and not plain["doubt"] and plain["replaced"] > 0.03
+
+
+def test_the_lens_bend_is_taken_out_of_the_work_he_adds(service: FrameService) -> None:
+    """Mateusz 2026-11-18 22:28 UTC, his still life in its frame, the
+    frame's straight sides bowed outward: "Zakrzywienie obiektywu iPhone?
+    Jakieś możliwości prostowania czy to bardzo skomplikowane?". The
+    photograph waits as it was taken (the corners are set on the phone's
+    own copy of it); the work added from it is kept without the bend of
+    the lens its photograph names, where that lens was measured, and the
+    corners and the frame's edge go to where the work is then."""
+    import json
+
+    import test_lens as lens_
+
+    from frame_server.own_works import FOUND, LENS, SCAN_INFO, Incoming
+
+    x0, y0, x1, y1 = lens_.FRAME
+    frame = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+    work = [(x0 + 40, y0 + 40), (x1 - 40, y0 + 40), (x1 - 40, y1 - 40), (x0 + 40, y1 - 40)]
+
+    def drawn(corners: list[tuple[int, int]]) -> list[tuple[float, float]]:
+        """Where the lens drew the scene's ``corners``, 0–1."""
+        half = float(np.hypot(lens_.W, lens_.H)) / 2
+        out = []
+        for x, y in corners:
+            ux, uy = (x - lens_.W / 2) / half, (y - lens_.H / 2) / half
+            f = 1 + lens_.K1 * (ux * ux + uy * uy)
+            out.append(
+                (
+                    round((ux * f * half + lens_.W / 2) / lens_.W, 5),
+                    round((uy * f * half + lens_.H / 2) / lens_.H, 5),
+                )
+            )
+        return out
+
+    def near(got: list[tuple[float, float]] | None, true: list[tuple[int, int]]) -> float:
+        assert got is not None
+        return max(
+            max(abs(gx * lens_.W - x), abs(gy * lens_.H - y))
+            for (gx, gy), (x, y) in zip(got, true, strict=True)
+        )
+
+    def bow(path: Path) -> float:
+        with Image.open(path) as img:
+            return lens_.bow(np.asarray(img.convert("RGB")))
+
+    taken = lens_.bent(lens_.scene())
+    works = service.own_works
+
+    def add(data: bytes, client: TestClient) -> tuple[str, Any]:
+        sent = client.post("/api/own/photos", files={"file": ("p.jpg", data)})
+        assert sent.status_code == 200, sent.text
+        token = sent.json()["token"]
+        waiting = works.path(token)
+        # As taken while it waits; Opus's frame beside it.
+        assert bow(waiting) > 2
+        seen = Incoming(
+            token=token,
+            width=lens_.W,
+            height=lens_.H,
+            corners=drawn(work),
+            surround=drawn(frame),
+            surround_kind="frame",
+            looked=True,
+        )
+        waiting.with_suffix(FOUND).write_text(seen.model_dump_json())
+        added = client.post(
+            "/api/own/works",
+            json={"token": token, "corners": drawn(work), "by": "owner", "text": TEXT},
+        )
+        assert added.status_code == 200, added.text
+        assert not waiting.with_suffix(LENS).exists()
+        item = service.library.get(added.json()["id"])
+        assert item is not None and item.cut is not None
+        return token, item
+
+    with _client(service) as client:
+        # His phone's main camera: straightened, the corners with it.
+        _, item = add(lens_.photograph(img=taken), client)
+        assert bow(service.images.museum_photo(item, urgent=True)) < 0.5
+        assert near(item.cut.work, work) < 0.6 and near(item.cut.surround, frame) < 0.6
+        assert item.cut.framed_kind == "frame"
+
+        # A photograph that names no camera, and another phone's: as taken.
+        for data in (
+            lens_.photograph(model=None, img=taken),
+            lens_.photograph(model="iPhone 16 Pro Max", img=taken),
+        ):
+            _, plain = add(data, client)
+            assert bow(service.images.museum_photo(plain, urgent=True)) > 2
+            assert near(plain.cut.work, work) > 2
+            assert plain.cut.work == [tuple(c) for c in drawn(work)]
+
+        # A scan notes what took it and what was taken out of its work.
+        token = client.post(
+            "/api/own/photos", files={"file": ("p.jpg", lens_.photograph(img=taken))}
+        ).json()["token"]
+        for _ in range(2):
+            client.post(
+                f"/api/own/photos/{token}/sides",
+                files={"file": ("s.jpg", _jpeg(Image.fromarray(taken)))},
+            )
+        client.post(f"/api/own/photos/{token}/merge", json={"corners": drawn(work)})
+        assert bow(works.path(token)) > 2 and bow(works.scans / token / "first.jpg") > 2
+        scanned = client.post(
+            "/api/own/works", json={"token": token, "corners": drawn(work), "text": TEXT}
+        )
+        assert scanned.status_code == 200, scanned.text
+        info = json.loads((works.scans / token / SCAN_INFO).read_text())
+        assert info["lens"]["model"] == lens_.PHONE and info["lens"]["main"]
+        assert info["straight"] == lens_.K1
+        made = service.library.get(scanned.json()["id"])
+        assert made is not None and made.cut is not None
+        assert bow(service.images.museum_photo(made, urgent=True)) < 0.5
+        assert near(made.cut.work, work) < 0.6
+        # Nothing to do after a start; made again, straight as it was.
+        assert works.scanned_again() == 0
+        again = works.rescan(made)
+        assert bow(service.images.museum_photo(again, urgent=True)) < 0.5
+        assert again.cut is not None and again.cut.work == made.cut.work
+
+
+def test_his_earlier_scans_are_set_straight_by_themselves(
+    service: FrameService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Told (2026-11-18) that his scans of the last two weeks would be
+    set straight by themselves: after a start, a work whose kept scan was
+    taken by the app's camera before a scan noted its lens is made of its
+    photographs once more without the bend, its cut moved to where the
+    work is then, once. The one photograph he chose over a scan as well;
+    never from a scan the work was photographed again since."""
+    import json
+
+    import test_lens as lens_
+
+    from frame_server import own_works
+    from frame_server.own_works import SCAN_INFO, OwnWorks
+
+    x0, y0, x1, y1 = lens_.FRAME
+    work = [(x0 + 40, y0 + 40), (x1 - 40, y0 + 40), (x1 - 40, y1 - 40), (x0 + 40, y1 - 40)]
+    half = float(np.hypot(lens_.W, lens_.H)) / 2
+
+    def drawn(corners: list[tuple[int, int]]) -> list[tuple[float, float]]:
+        out = []
+        for x, y in corners:
+            ux, uy = (x - lens_.W / 2) / half, (y - lens_.H / 2) / half
+            f = 1 + lens_.K1 * (ux * ux + uy * uy)
+            out.append(
+                (
+                    round((ux * f * half + lens_.W / 2) / lens_.W, 5),
+                    round((uy * f * half + lens_.H / 2) / lens_.H, 5),
+                )
+            )
+        return out
+
+    def near(got: list[tuple[float, float]] | None) -> float:
+        assert got is not None
+        return max(
+            max(abs(gx * lens_.W - x), abs(gy * lens_.H - y))
+            for (gx, gy), (x, y) in zip(got, work, strict=True)
+        )
+
+    def bow(path: Path) -> float:
+        with Image.open(path) as img:
+            return lens_.bow(np.asarray(img.convert("RGB")))
+
+    taken = _jpeg(Image.fromarray(lens_.bent(lens_.scene())))
+    works = service.own_works
+    # Nothing in the glass: the scan is the first photograph.
+    monkeypatch.setattr(OwnWorks, "_merge", staticmethod(lambda *_: (2, 0.01, False)))
+
+    def scan(client: TestClient, single: bool = False) -> tuple[str, str]:
+        """A work scanned by a release before this one: its scan notes
+        nothing of the lens."""
+        token = client.post("/api/own/photos", files={"file": ("p.jpg", taken)}).json()["token"]
+        for _ in range(2):
+            client.post(f"/api/own/photos/{token}/sides", files={"file": ("s.jpg", taken)})
+        client.post(f"/api/own/photos/{token}/merge", json={"corners": drawn(work)})
+        if single:
+            assert client.post(f"/api/own/photos/{token}/single").status_code == 200
+        added = client.post(
+            "/api/own/works",
+            json={"token": token, "corners": drawn(work), "by": "owner", "text": TEXT},
+        )
+        assert added.status_code == 200, added.text
+        note = works.scans / token / SCAN_INFO
+        info = json.loads(note.read_text())
+        assert info["lens"] is None and "straight" not in info
+        del info["lens"]
+        note.write_text(json.dumps(info))
+        return token, added.json()["id"]
+
+    def photo_of(item_id: str) -> Path:
+        item = service.library.get(item_id)
+        assert item is not None
+        return service.images.museum_photo(item, urgent=True)
+
+    with _client(service) as client:
+        token, first = scan(client)
+        _, chosen = scan(client, single=True)
+        # Photographed again since by one photograph, of which no scan is kept.
+        old, retaken = scan(client)
+        blocks = np.random.default_rng(9).integers(30, 220, (16, 12, 3), dtype=np.uint8)
+        other = _jpeg(Image.fromarray(blocks).resize((lens_.W, lens_.H), Image.Resampling.BICUBIC))
+        sent = client.post("/api/own/photos", files={"file": ("p.jpg", other)}).json()
+        again = client.put(
+            f"/api/own/works/{retaken}/photo",
+            json={"token": sent["token"], "corners": drawn(work), "by": "owner"},
+        )
+        assert again.status_code == 200, again.text
+    for item_id in (first, chosen):
+        assert bow(photo_of(item_id)) > 2
+    his = photo_of(retaken).read_bytes()
+    before = service.library.get(first)
+    assert before is not None and before.cut is not None and near(before.cut.work) > 2
+
+    assert works.scanned_again() == 2
+    for item_id in (first, chosen):
+        made = service.library.get(item_id)
+        assert made is not None and made.cut is not None
+        assert bow(photo_of(item_id)) < 0.5
+        assert near(made.cut.work) < 0.6 and made.cut.by == "owner"
+        assert made.title == TEXT["title"]
+    after = service.library.get(first)
+    # Stamped anew (to the second: the same one on a quick machine).
+    assert after is not None and after.cut is not None and after.cut.at >= before.cut.at
+    info = json.loads((works.scans / token / SCAN_INFO).read_text())
+    assert info["straight"] == lens_.K1 and info["again"]
+    # The one he photographed again is that photograph still, its cut too.
+    assert photo_of(retaken).read_bytes() == his
+    assert "straight" not in json.loads((works.scans / old / SCAN_INFO).read_text())
+    kept = service.library.get(retaken)
+    assert kept is not None and kept.cut is not None
+    assert kept.cut.work == [tuple(c) for c in drawn(work)]
+
+    # Once: nothing after the next start, and made again after a later
+    # update the corners stay where they are.
+    assert works.scanned_again() == 0
+    monkeypatch.setattr(own_works, "MERGING", own_works.MERGING + 1)
+    assert works.scanned_again() == 1  # the one photograph is not merged
+    later = service.library.get(first)
+    assert later is not None and later.cut is not None
+    assert later.cut.work == after.cut.work and bow(photo_of(first)) < 0.5
+
+    # A scan that is no photograph of the sensor's whole (cut, or from
+    # elsewhere) and one that named a lens not measured: as they are.
+    assert OwnWorks._bend({"width": 6048, "height": 8064}) == lens_.K1
+    assert OwnWorks._bend({"width": 8064, "height": 6048}) == lens_.K1
+    assert OwnWorks._bend({"width": 1100, "height": 1400}) is None
+    assert OwnWorks._bend({}) is None
+    assert OwnWorks._bend({"lens": None, "width": 6048, "height": 8064}) is None
+    named = {"model": "iPhone 16 Pro Max", "main": True}
+    assert OwnWorks._bend({"lens": named, "width": 6048, "height": 8064}) is None
+    assert OwnWorks._bend({"lens": {"model": lens_.PHONE, "main": False}}) is None
+    assert OwnWorks._bend({"lens": {"model": lens_.PHONE, "main": True}}) == lens_.K1
