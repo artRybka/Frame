@@ -82,11 +82,16 @@ KIND = "looks"
 #: (300 thumbnails weighed 30 MB, over Google's 19; 150 at a time, some
 #: 15 MB, still timed out on the NAS's upload once: 100.)
 PER_BATCH = 40
-OPEN = 24
+#: Batches out at a time. 24 kept the catalogue's three at some 7300 works
+#: an hour on 2026-11-18 (Google answers in minutes, the server waited):
+#: more out, and looked at sooner (Mateusz 2026-11-18: "Czy można jakoś
+#: przyspieszyć tworzenie odcisków?"), under Google's 100 at a time.
+OPEN = 80
 #: Works whose sentence (:data:`DESCRIBE`) is asked in one batch.
 PER_TOLD = 100
-#: Seconds between looks at the batches out (a small one is back in minutes).
-POLL = 120.0
+#: Seconds between looks at the batches out (a small one is back in minutes;
+#: sending a round takes minutes of its own).
+POLL = 30.0
 IDLE = 600.0
 #: The batches out, kept across restarts (the works in each, and their stamps).
 BATCHES = "batches.json"
@@ -1167,9 +1172,13 @@ class Looks:
                 groups.append(((item_id, stamp), list(zip(names, asks, strict=False))))
             if not groups:
                 break
-            sent += self._hand(
-                groups, lambda part: self.painter.embed_batch(KIND, part), out, BATCHES
-            )
+            try:
+                sent += self._hand(
+                    groups, lambda part: self.painter.embed_batch(KIND, part), out, BATCHES
+                )
+            except NotDrawn as err:  # Google busy, or no more at a time: the next round
+                log.info("looks: no more numbers sent now (%s)", err)
+                return sent
             if len(todo) < PER_BATCH:
                 break
         telling = self._out(TELLING)
@@ -1188,12 +1197,16 @@ class Looks:
                 told.append(((item.id, stamp), [(item.id, small)]))
             if not told:
                 break
-            sent += self._hand(
-                told,
-                lambda part: self.painter.describe_batch(KIND, DESCRIBE, part),
-                telling,
-                TELLING,
-            )
+            try:
+                sent += self._hand(
+                    told,
+                    lambda part: self.painter.describe_batch(KIND, DESCRIBE, part),
+                    telling,
+                    TELLING,
+                )
+            except NotDrawn as err:
+                log.info("looks: no more sentences asked now (%s)", err)
+                return sent
             if len(waiting) < PER_TOLD:
                 break
         return sent
