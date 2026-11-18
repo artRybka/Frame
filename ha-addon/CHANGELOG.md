@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.245
+## 1.145.246
 
 - Studium dzieła ma pod „Podobnymi dziełami” ten sam przycisk
   „Szukaj podobnych” co karta dzieła: otwiera Szukaj z dziełami
@@ -8,6 +8,28 @@
 - „Podobne do” w Szukaj ma nagłówek z miniaturą dzieła (albo zdjęcia),
   tytułem i krzyżykiem, a zamiast „Temat i styl / Temat / Styl” dwa
   przełączniki „Treść” i „Forma”, oba włączone na start.
+
+## 1.145.245
+
+- Karta koloru („Dlaczego karta kolorów nie jest tu wykrywana?”,
+  „Podobny problem.”). Karta była na Twoich zdjęciach znajdowana, ale
+  odrzucana jako nieczytelna. W ciemnym pokoju jej czarne pole wyszło na
+  zdjęciu zupełnie czarne (zero), a pod lampą na stole dwa najjaśniejsze
+  pola były prześwietlone. Teraz takie pola są pomijane i karta jest
+  czytana z pozostałych szarości (co najmniej czterech z sześciu).
+- Przy prześwietlonej karcie to, co na zdjęciu jest prześwietlone,
+  wychodzi neutralnie białe, a nie kremowe.
+- Twoje dzisiejsze skany, w których karta nie została odczytana, zrobią
+  się same jeszcze raz z kartą po aktualizacji serwera.
+- Gdy serwer widzi kartę, ale jej nie odczyta, zapisuje to w logu
+  (wcześniej nie zostawał żaden ślad).
+- „W ramie” przy własnym dziele („Podwójny obraz po wyświetleniu ramy”,
+  „Out of the box”). Dzieło jest pokazywane w proporcjach z wpisanego
+  wymiaru, a zdjęcie ramy pod nim miało proporcje ze zdjęcia, więc przy
+  lewej i prawej krawędzi wystawał spod dzieła ten sam obraz ze zdjęcia
+  ramy. Teraz zdjęcie ramy dostaje proporcje dzieła i otwór ramy leży
+  dokładnie pod nim. Dzieła z ramą poprawią się same po aktualizacji;
+  po zmianie wymiaru w opisie rama idzie za dziełem.
 
 ## 1.145.244
 

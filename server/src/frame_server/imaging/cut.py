@@ -419,21 +419,61 @@ def _inset(q: np.ndarray, inset: float = INSET) -> np.ndarray:
     return q + (q.mean(axis=0) - q) * inset * 2
 
 
+def _in_frame(
+    outer: np.ndarray, work: np.ndarray, ratio: Callable[[float], float | None] | None
+) -> tuple[np.ndarray, int, int, np.ndarray]:
+    """The perspective that sets a frame's outer edge (``outer``, corners
+    in pixels) straight for the card's "W ramie", the straight picture's
+    width and height, and where the work as shown (cut to ``work``,
+    :func:`warp`'s inset) comes to lie in it (its corners there).
+
+    A work shown in another shape than its corners give (``ratio``, as
+    :func:`warp`'s: a work of his own, in the shape of the size he gave)
+    has the frame's picture as much wider or narrower as gives the work
+    in it that shape. Set straight by its own corners alone the frame
+    held the work in the photograph's shape: "Out of the box", 29 × 40 cm,
+    was 5% narrower on the card than its place in the frame, and the
+    frame's photograph showed beside it, the same picture twice (Mateusz
+    2026-11-18 21:44 UTC: "Podwójny obraz po wyświetleniu ramy")."""
+    matrix, width, height = _straight(outer)
+    inner = _inset(work)
+    tl, tr, br, bl = inner
+    across = float(max(np.linalg.norm(tr - tl), np.linalg.norm(br - bl)))
+    down = float(max(np.linalg.norm(bl - tl), np.linalg.norm(br - tr)))
+    pts = cv2.perspectiveTransform(inner.reshape(-1, 1, 2).astype(np.float32), matrix)
+    pts = pts.reshape(-1, 2).astype(np.float64)
+    takes = np.ptp(pts, axis=0)
+    known = ratio(across / down) if ratio is not None and min(across, down) > 0 else None
+    if not known or takes.min() <= 0:
+        return matrix, width, height, pts
+    # As many pixels as before, in the other shape.
+    wider = math.sqrt(known * takes[1] / takes[0])
+    stretch = np.array(
+        [max(round(width * wider), 1) / width, max(round(height / wider), 1) / height]
+    )
+    width, height = round(width * stretch[0]), round(height * stretch[1])
+    return np.diag([*stretch, 1.0]) @ matrix, width, height, pts * stretch
+
+
 def framed_geometry(
-    outer: Quad, work: Quad, aspect: float
+    outer: Quad,
+    work: Quad,
+    aspect: float,
+    ratio: Callable[[float], float | None] | None = None,
 ) -> tuple[float, tuple[float, float, float, float]] | None:
     """The card's "W ramie" (:func:`framed`) for a photograph of
     ``aspect`` (width / height): the straight picture's width / height,
     and the box the work as shown (cut to ``work``, :func:`warp`'s inset)
-    takes in it (left, top, right, bottom, fractions). None when the work
-    is not inside ``outer``."""
+    takes in it (left, top, right, bottom, fractions); of the shape
+    ``ratio`` gives the work, when it gives one (:func:`_in_frame`). None
+    when the work is not inside ``outer``."""
     if aspect <= 0:
         return None
     scale = np.array([aspect * 1000.0, 1000.0])
-    matrix, width, height = _straight(np.array(outer, dtype=np.float64) * scale)
-    inner = _inset(np.array(work, dtype=np.float64) * scale)
-    pts = cv2.perspectiveTransform(inner.reshape(-1, 1, 2).astype(np.float32), matrix)
-    pts = pts.reshape(-1, 2) / [width, height]
+    _, width, height, pts = _in_frame(
+        np.array(outer, dtype=np.float64) * scale, np.array(work, dtype=np.float64) * scale, ratio
+    )
+    pts = pts / [width, height]
     xs, ys = pts[:, 0], pts[:, 1]
     box = (float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max()))
     if box[0] < -0.01 or box[1] < -0.01 or box[2] > 1.01 or box[3] > 1.01:
@@ -445,15 +485,27 @@ def framed_geometry(
 
 
 def framed(
-    img: Image.Image, outer: Quad, work: Quad | None = None, shown: Image.Image | None = None
+    img: Image.Image,
+    outer: Quad,
+    work: Quad | None = None,
+    shown: Image.Image | None = None,
+    ratio: Callable[[float], float | None] | None = None,
 ) -> Image.Image:
     """The photograph ``img`` cut to ``outer`` (a frame's or a mount's
-    outer edge) and set straight, the edge itself kept. With ``shown`` (the
-    work as the card shows it: its colours corrected) laid over where the
-    work (``work``) is in it, so the frame holds the same picture."""
+    outer edge) and set straight, the edge itself kept; the work
+    (``work``) in it of the shape ``ratio`` gives it, when it gives one
+    (:func:`_in_frame`). With ``shown`` (the work as the card shows it:
+    its colours corrected) laid over where the work is in it, so the
+    frame holds the same picture."""
     rgb = img.convert("RGB")
     w, h = rgb.size
-    matrix, width, height = _straight(np.array(outer, dtype=np.float64) * [w, h])
+    corners = np.array(outer, dtype=np.float64) * [w, h]
+    if work is not None:
+        matrix, width, height, dst = _in_frame(
+            corners, np.array(work, dtype=np.float64) * [w, h], ratio
+        )
+    else:
+        matrix, width, height = _straight(corners)
     out = cv2.warpPerspective(
         np.asarray(rgb),
         matrix,
@@ -462,11 +514,9 @@ def framed(
         borderMode=cv2.BORDER_REPLICATE,
     )
     if shown is not None and work is not None:
-        inner = _inset(np.array(work, dtype=np.float64) * [w, h])
-        dst = cv2.perspectiveTransform(inner.reshape(-1, 1, 2).astype(np.float32), matrix)
         sw, sh = shown.size
         src = np.array([[0, 0], [sw, 0], [sw, sh], [0, sh]], dtype=np.float32)
-        lay = cv2.getPerspectiveTransform(src, dst.reshape(-1, 2).astype(np.float32))
+        lay = cv2.getPerspectiveTransform(src, dst.astype(np.float32))
         picture = cv2.warpPerspective(
             np.asarray(shown.convert("RGB")), lay, (width, height), flags=cv2.INTER_AREA
         )

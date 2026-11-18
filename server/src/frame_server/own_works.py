@@ -640,6 +640,9 @@ class OwnWorks:
             "corners": seen.corners,
             # The photographs kept are in the chart's colours already.
             "chart": chart.to_json() if (chart := self._charted(token)) is not None else None,
+            # How a chart was looked for: read otherwise by a later
+            # release, one may be found that was none (:meth:`_chart_late`).
+            "sought": self._reading(),
         }
         if angles and any(angle is not None for angle in angles.values()):
             # From how far to the side each was taken, as the phone said.
@@ -758,11 +761,19 @@ class OwnWorks:
 
     def reshape(self) -> int:
         """Once after a start: works added before their pictures took the
-        shape of his size (1.145.168) cut anew to it. How many were."""
+        shape of his size (1.145.168) cut anew to it. How many were.
+
+        And the frames about them ("W ramie") set before those took the
+        work's shape (1.145.245) given it: the frame held the work in the
+        photograph's shape, the card showed it in his size's, and the
+        frame's photograph showed beside the work (Mateusz 2026-11-18
+        21:44 UTC, "Out of the box": "Podwójny obraz po wyświetleniu
+        ramy")."""
+        from .ai.crops import framed
         from .imaging.cut import cut_aspect
         from .library.models import PlaylistRules
 
-        done = 0
+        done = frames = 0
         for item in self.library.query(PlaylistRules(kinds=[ItemKind.OWN]), include_excluded=True)[
             1
         ]:
@@ -781,8 +792,18 @@ class OwnWorks:
             if off > 0.01:
                 self.crops.apply(item, cut)
                 done += 1
+            elif cut.framed_kind:
+                fresh = framed(cut, item.own.ratio)
+                if (fresh.framed_aspect, fresh.framed_inner) != (
+                    cut.framed_aspect,
+                    cut.framed_inner,
+                ):
+                    self.library.update(item.id, cut=fresh)
+                    frames += 1
         if done:
             log.info("own works cut to the shape of their size: %d", done)
+        if frames:
+            log.info("own works' frames given the shape of their size: %d", frames)
         return done
 
     # -- the work ------------------------------------------------------------------
@@ -939,7 +960,8 @@ class OwnWorks:
                 if token is None:
                     continue
                 info = json.loads((self.scans / token / SCAN_INFO).read_text())
-                if int(info.get("merging") or 0) >= MERGING:
+                merged = int(info.get("merging") or 0) >= MERGING
+                if merged and not self._chart_late(self.scans / token, info):
                     continue
                 self.rescan(item)
                 done += 1
@@ -972,6 +994,7 @@ class OwnWorks:
             raise LookupError("no scan of this work is kept")
         folder = self.scans / token
         info = json.loads((folder / SCAN_INFO).read_text())
+        self._chart_late(folder, info)
         self._relit(folder, info)
         quad = valid(info.get("corners") or [])
         again = self.incoming / f"{token}-again.jpg"
@@ -1016,6 +1039,59 @@ class OwnWorks:
             taken * 100,
         )
         return stored
+
+    @staticmethod
+    def _reading() -> int:
+        from .imaging import colorchecker
+
+        return colorchecker.READING
+
+    def _chart_late(self, folder: Path, info: dict[str, Any]) -> bool:
+        """A chart beside the work that was not read when the scan came,
+        read now (Mateusz 2026-11-18 21:14 UTC, a chart on the frame in a
+        dim room: "Dlaczego karta kolorów nie jest tu wykrywana?"; 21:20,
+        one on a table under a lamp: "Podobny problem."; to 1.145.244 a
+        chart whose black patch had no light, or whose white was at the
+        photograph's top, was no chart). The scan's photographs are put
+        in its colours, all of them or none, the chart is noted, and the
+        white balance he may have set without it is let go. Looked for
+        once for each way of reading a chart; whether one was read."""
+        import numpy as np
+
+        from .imaging import colorchecker
+
+        if info.get("chart") or int(info.get("sought") or 0) >= colorchecker.READING:
+            return False
+        info["sought"] = colorchecker.READING
+        chart: Chart | None = None
+        try:
+            with Image.open(folder / "first.jpg") as img:
+                chart = self._chart(img.convert("RGB"))
+            if chart is not None:
+                put: list[tuple[Path, Path]] = []
+                for path in sorted(folder.iterdir()):
+                    if not _SCAN_FILE.match(path.name):
+                        continue
+                    with Image.open(path) as img:
+                        seen = colorchecker.apply(np.asarray(img.convert("RGB")), chart)
+                    into = path.with_suffix(".lit")
+                    Image.fromarray(seen).save(into, "JPEG", quality=INCOMING_QUALITY)
+                    put.append((into, path))
+                for into, path in put:
+                    into.replace(path)
+                info["chart"] = chart.to_json()
+                info["balance"] = 0.0
+                log.info(
+                    "scan %s: its chart read now, colours set by it (off %.3f, now %.3f)",
+                    folder.name,
+                    chart.off,
+                    chart.left,
+                )
+            (folder / SCAN_INFO).write_text(json.dumps(info))
+        except OSError as err:
+            log.warning("scan %s: no chart looked for: %s", folder.name, err)
+            return False
+        return chart is not None
 
     @staticmethod
     def _relit(folder: Path, info: dict[str, Any]) -> None:
