@@ -77,7 +77,9 @@ SWITCH = "crops"
 SURROUND = ("backdrop", "easel", "frame", "mount", "paper_margin", "page_text", "colour_chart")
 #: Around the work and never part of it: Opus is asked for the corners.
 CUT_AROUND = frozenset({"backdrop", "easel", "frame", "mount", "colour_chart"})
-#: A print's or a page's paper: kept unless the owner says otherwise.
+#: A print's or a page's paper: cut away like a frame, the sheet kept as
+#: the card's "W ramie" (Mateusz 2026-11-18: „Margines kartki traktujmy
+#: jak ramę”).
 PAPER = frozenset({"paper_margin", "page_text"})
 #: Sources that photograph works as they stand, looked at first.
 FIRST_SOURCES = ("mnw", "mnk")
@@ -129,6 +131,13 @@ SURROUND_PER_NIGHT = 150
 #: The layers of Opus's answer kept as what surrounds the work, and their
 #: name on the card.
 SURROUND_KINDS = {"frame_outer": "frame", "mount": "mount"}
+#: Once the cuts kept with a print's paper shown are shown without it, and
+#: the works with only their paper seen around them put before Opus for
+#: their plate (:meth:`Crops.margins_off`; Mateusz 2026-11-18).
+MARGIN_SWEEP = 1
+#: Of those, asked in one night at most: the corners' whole question,
+#: about a cent each through the Batch API.
+SHEET_PER_NIGHT = 150
 #: :func:`surround_in`: a surround this much larger than the work at least.
 SURROUND_LARGER = 1.03
 #: What the judge saw around a work that may have a frame or a mount.
@@ -328,8 +337,9 @@ def read_layers(data: dict[str, Any]) -> tuple[Quad | None, Quad | None] | None:
 
 def _aside(claim: dict[str, Any]) -> bool:
     """A claim put before Opus beside the night's cutting (the outline
-    asked again, the frame's edge): outside its limit and its counts."""
-    return bool(claim.get("reshape") or claim.get("frame_edge"))
+    asked again, the frame's edge, a print's plate under its paper):
+    outside its limit and its counts."""
+    return bool(claim.get("reshape") or claim.get("frame_edge") or claim.get("sheet"))
 
 
 def _surround_fields(found: dict[str, Any]) -> dict[str, Any]:
@@ -577,6 +587,18 @@ def _owners_frame(cut: Cut) -> dict[str, Any]:
     }
 
 
+def _framed_by_owner(cut: Cut, frame: Quad) -> Cut:
+    """``cut`` with the outer edge of the card's "W ramie" the owner set
+    ("Popraw kadr" → "Rama" or "Kartka"): a print's sheet when that is what
+    is around its plate (:meth:`Cut.framed_by`), else the frame's or the
+    passe-partout's edge, never changed by the model again."""
+    if cut.surround is None and not cut.paper and cut.plate is not None:
+        return cut.model_copy(update={"work": frame})
+    kind = cut.surround_kind or "frame"
+    mine = {"surround": frame, "surround_kind": kind, "surround_by": "owner"}
+    return cut.model_copy(update={**mine, "surround_asked": True})
+
+
 def framed(cut: Cut) -> Cut:
     """``cut`` with the card's "W ramie" as it is now (:attr:`Cut.framed_kind`,
     :attr:`Cut.framed_aspect`, :attr:`Cut.framed_inner`)."""
@@ -767,7 +789,8 @@ class Crops(CriticNight):
         return bool(entry.get("broken")) or entry.get("p", "") == item.picture_key()
 
     def noted(self, item: Item) -> dict[str, Any]:
-        return {"p": item.picture_key(), "q": QUESTION}
+        # "sheet": asked since a print's paper is cut away like a frame.
+        return {"p": item.picture_key(), "q": QUESTION, "sheet": True}
 
     def _round(self, state: dict[str, Any]) -> tuple[bool, list[tuple[Item, dict[str, Any]]]]:
         if not state.get("claims"):
@@ -775,7 +798,7 @@ class Crops(CriticNight):
         claims: dict[str, Any] = state["claims"]
         found: list[tuple[Item, dict[str, Any]]] = []
         rechecks: list[tuple[Item, dict[str, Any]]] = []
-        surrounds = 0
+        surrounds = sheets = 0
         for item_id, claim in list(claims.items()):
             item = self.library.get(item_id)
             if item is None:
@@ -787,6 +810,10 @@ class Crops(CriticNight):
                 if surrounds < SURROUND_PER_NIGHT:
                     rechecks.append((item, claim))
                     surrounds += 1
+            elif claim.get("sheet"):
+                if sheets < SHEET_PER_NIGHT:
+                    rechecks.append((item, claim))
+                    sheets += 1
             elif len(found) < self.limit(True):
                 found.append((item, claim))
         return True, found + rechecks
@@ -810,6 +837,7 @@ class Crops(CriticNight):
         self.swept()
         self.untwinned()
         self.sheets_out()
+        self.margins_off()
         return super().order()
 
     def reshaped(self) -> int:
@@ -923,6 +951,64 @@ class Crops(CriticNight):
         log.info("crops: %d sheets got back a side taken for their plate's", done)
         return done
 
+    @classmethod
+    def sheet_only(cls, item: Item) -> bool:
+        """The model's look at the picture shown saw only a print's or a
+        drawing's paper around it and cut nothing (before 2026-11-18 paper
+        was never cut by itself): Opus is asked for the plate under it."""
+        cut = item.cut
+        return (
+            cut is not None
+            and cut.by == "auto"
+            and not cls.stale(item)
+            and cut.work is None
+            and cut.plate is None
+            and not cut.not_rectangle
+            and bool(PAPER & set(cut.around))
+        )
+
+    @staticmethod
+    def margin_shown(item: Item) -> bool:
+        """A cut kept from before showing a print with its paper's margin
+        (the old switch "Z marginesem"), its plate known."""
+        cut = item.cut
+        return cut is not None and cut.paper and cut.plate is not None
+
+    def margins_off(self) -> int:
+        """Once (:data:`MARGIN_SWEEP`; Mateusz 2026-11-18, „Margines kartki
+        traktujmy jak ramę”): the prints and drawings shown with their
+        paper's margin are shown without it, the sheet becoming the card's
+        "W ramie"; those whose paper alone was seen are put before Opus for
+        their plate (:meth:`sheet_only`), the works cared about first,
+        :data:`SHEET_PER_NIGHT` a night. Not while a round is under way.
+        How many changed or were put before Opus."""
+        state = self.state()
+        if state.get("margin_sweep") == MARGIN_SWEEP or state.get("order"):
+            return 0
+        bare = 0
+        asking: list[Item] = []
+        for item in self.library.all_items():
+            if self.margin_shown(item) and item.cut is not None:
+                self.apply(item, item.cut.model_copy(update={"paper": False}))
+                bare += 1
+            elif self.sheet_only(item):
+                asking.append(item)
+        cared = self.cared()
+        asking.sort(key=lambda i: cared.get(i.id, REST))
+        state = self.state()
+        claims = state.get("claims") or {}
+        for item in asking:
+            around = sorted(item.cut.around) if item.cut is not None else []
+            claims.setdefault(item.id, {"around": around, "sheet": True})
+        state["claims"], state["margin_sweep"] = claims, MARGIN_SWEEP
+        self._save(state)
+        log.info(
+            "crops: %d prints shown without their margin, %d for Opus for their plate",
+            bare,
+            len(asking),
+        )
+        return bare + len(asking)
+
     def untwinned(self) -> int:
         """Once (:data:`TWIN_TIDY`): the cuts kept with a "plate" that is
         the work itself lose it (:meth:`Cut.without_twin`); the picture
@@ -996,9 +1082,12 @@ class Crops(CriticNight):
             return {"around": sorted({*around, "backdrop"}), "band": True}
         if CUT_AROUND & set(around):
             return {"around": around}
-        if PAPER & set(around) and self.stale(item):
-            # Only paper: nothing cut, but the card offers "Pokaż bez marginesu".
-            self.library.update(item.id, cut=Cut(around=around, picture=item.picture_key()))
+        if PAPER & set(around):
+            # Only paper: cut away like a frame when Opus finds the plate;
+            # till then (or when it is unsure) the card names the paper.
+            if self.stale(item):
+                self.library.update(item.id, cut=Cut(around=around, picture=item.picture_key()))
+            return {"around": around}
         return None
 
     def photo(self, item: Item) -> Image.Image:
@@ -1090,7 +1179,8 @@ class Crops(CriticNight):
             return {"around": list(claim.get("around") or []), "shape": shape, "whole": True}
         try:
             found = self.corners(item, data)
-            if (not found or found["work"] is None) and claim.get("band"):
+            nothing = not found or (found["work"] is None and found["plate"] is None)
+            if nothing and claim.get("band"):
                 found = self.strips(item, data)
                 if found is not None:
                     found["shape"] = shape
@@ -1099,7 +1189,9 @@ class Crops(CriticNight):
             return {}
         if found and "colour_chart" in (claim.get("around") or []):
             found = plate_for_chart(found)
-        return {**claim, **found} if found and found["work"] is not None else {}
+        # The plate alone, its sheet the photograph: cut to it all the same.
+        cut = found and (found["work"] is not None or found["plate"] is not None)
+        return {**claim, **found} if found and cut else {}
 
     def strips(self, item: Item, data: dict[str, Any] | None = None) -> dict[str, Any] | None:
         """The photograph without the thin strips of backdrop along its
@@ -1274,10 +1366,14 @@ class Crops(CriticNight):
         outer edge of the frame or passe-partout as he set it (the card's
         "W ramie"); alone, the work's pictures stay as they are."""
         alone = frame is not None and corners is None and paper is None
-        if alone and item.cut is not None and item.cut.shown() is not None and not self.stale(item):
-            kind = item.cut.surround_kind or "frame"
-            mine = {"surround": frame, "surround_kind": kind, "surround_by": "owner"}
-            cut = framed(item.cut.model_copy(update={**mine, "surround_asked": True}))
+        if (
+            alone
+            and frame is not None
+            and item.cut is not None
+            and item.cut.shown() is not None
+            and not self.stale(item)
+        ):
+            cut = framed(_framed_by_owner(item.cut, frame))
             log.info("crops: %s frame's edge set by the owner", item.id)
             return self.library.update(item.id, cut=cut) or item
         old = item.cut if item.cut is not None and not self.stale(item) else None
@@ -1300,15 +1396,7 @@ class Crops(CriticNight):
             else:
                 cut.work = corners
         if frame is not None:
-            kind = cut.surround_kind or "frame"
-            cut = cut.model_copy(
-                update={
-                    "surround": frame,
-                    "surround_kind": kind,
-                    "surround_by": "owner",
-                    "surround_asked": True,
-                }
-            )
+            cut = _framed_by_owner(cut, frame)
         return self.apply(item, cut)
 
     def give_up(self, item: Item) -> Item:
@@ -1404,6 +1492,11 @@ class Crops(CriticNight):
         stored = self.library.get(item.id) or item
         if not self.config.enabled(self.switch):
             return False
+        if self.margin_shown(stored) and stored.cut is not None and not self.stale(stored):
+            # Kept from before with its paper's margin: its plate now, the
+            # sheet the card's "W ramie" (Mateusz 2026-11-18).
+            self.apply(stored, stored.cut.model_copy(update={"paper": False}))
+            return True
         if self.unsurrounded(stored):
             # "W ramie" on the card (the app reads the work again)
             self.surround_now(stored)
@@ -1423,13 +1516,23 @@ class Crops(CriticNight):
             asked, again = None, False
         if again and asked is not None and int(asked.get("q") or 1) < QUESTION:
             asked, again = None, False  # left uncut by an older question
-        if asked is not None and again and (asked.get("band") == BAND or not self.banded(stored)):
+        # Only its paper seen before it was cut away like a frame (Mateusz
+        # 2026-11-18): Opus asked for the plate under it.
+        sheet = again and asked is not None and not asked.get("sheet") and self.sheet_only(stored)
+        if (
+            not sheet
+            and asked is not None
+            and again
+            and (asked.get("band") == BAND or not self.banded(stored))
+        ):
             log.info("crops: %s looked at %s, nothing to cut", stored.id, asked.get("at"))
             return False  # looked at, and no thin backdrop the judge missed then
         try:
-            if again:  # Opus straight away: the judge saw nothing (or only paper) before
+            if sheet and stored.cut is not None:
+                claim: dict[str, Any] | None = {"around": sorted(stored.cut.around)}
+            elif again:  # Opus straight away: the judge saw nothing (or only paper) before
                 around = stored.cut.around if stored.cut is not None else []
-                claim: dict[str, Any] | None = {
+                claim = {
                     "around": sorted({*around, "backdrop"}),
                     "band": True,
                 }
@@ -1500,6 +1603,7 @@ class Crops(CriticNight):
             "critic": bool(found and not found.get("whole")),
             "band": BAND,
             "q": QUESTION,
+            "sheet": True,
         }
         state["asked"] = asked_all
         (state.get("claims") or {}).pop(stored.id, None)

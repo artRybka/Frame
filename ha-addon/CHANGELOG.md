@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.145.242
+
+- Margines kartki działa jak rama. Odbitki, rysunki i ilustracje, które
+  muzeum sfotografowało z marginesem kartki, są pokazywane bez niego
+  (w karcie, na liście i na ramce), a całą kartkę pokazuje przycisk
+  z ikoną passe-partout obok „Oryginał / Na ramce”, ten sam co przy
+  obrazach w ramie. Przełącznik „Z marginesem” w „Pełnym kadrze” zniknął.
+- „Popraw kadr” przy takiej odbitce ma „Dzieło / Kartka”: drugie
+  narożniki ustawiają krawędź kartki pokazywanej przyciskiem.
+- Gdy serwer zna tylko kartkę, Opus dopytuje o samą odbitkę: przy
+  otwarciu karty od razu, a w nocy do 150 dzieł (ok. 1 centa za dzieło).
+  Dzieła z wcześniej wybranym „Z marginesem” przechodzą na widok bez
+  marginesu przy pierwszym nocnym przejściu albo przy otwarciu karty.
+  Gdy podpis lub tytuł na marginesie jest częścią dzieła, kartka zostaje
+  w całości.
+
 ## 1.145.241
 
 - Własne dzieła, skan: „jeden łuk”. Po zdjęciu na wprost znaczniki na

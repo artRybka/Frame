@@ -193,6 +193,8 @@ def quads_close(
 SHAPES = ("rectangle", "round", "irregular")
 #: Outlines that are not cut to a rectangle.
 NOT_RECTANGLE = frozenset({"round", "irregular"})
+#: The whole photograph as corners.
+WHOLE: list[tuple[float, float]] = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
 
 
 class Cleaned(BaseModel):
@@ -245,9 +247,12 @@ class Cut(BaseModel):
     #: A print or drawing without its paper (the plate or the image area),
     #: when it is known: shown with ``paper`` off.
     plate: list[tuple[float, float]] | None = None
-    #: Prints and drawings keep their paper unless the owner says otherwise
-    #: ("Pokaż z marginesem / bez marginesu").
-    paper: bool = True
+    #: Whether a print or drawing is shown with its paper's margin. No more
+    #: (Mateusz 2026-11-18: „Margines kartki traktujmy jak ramę”): the
+    #: plate is shown, the sheet is the card's "W ramie" like a frame;
+    #: True only in cuts kept from before (``Crops.margins_off``) and from
+    #: an older app's switch.
+    paper: bool = False
     #: "auto" (the model) or "owner" (corrected or chosen in the app).
     by: Literal["auto", "owner"] = "auto"
     #: The photograph's width / height when the corners were set: a cut of
@@ -307,8 +312,9 @@ class Cut(BaseModel):
             return None
         if self.surround is not None and self.surround_kind:
             return self.surround, self.surround_kind
-        if not self.paper and self.plate is not None and self.work is not None:
-            return self.work, "paper"
+        if not self.paper and self.plate is not None:
+            # The sheet filling the photograph (``work`` None): the photograph.
+            return self.work or WHOLE, "paper"
         return None
 
     def without_twin(self) -> Cut:
@@ -334,8 +340,7 @@ class Cut(BaseModel):
 
     @property
     def has_paper(self) -> bool:
-        """A print or drawing on its sheet: the app's "Pokaż z marginesem /
-        bez marginesu"."""
+        """A print or drawing on its sheet ("Pełny kadr" says so)."""
         return self.plate is not None or bool({"paper_margin", "page_text"} & set(self.around))
 
 
