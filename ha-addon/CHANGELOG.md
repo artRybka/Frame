@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.234
+
+- „W ramie”: samo dzieło jest zawsze tym samym obrazem, w swoich
+  proporcjach, a rama to osobna warstwa pod nim. Na pełnym ekranie dzieło
+  stoi w miejscu i tylko rama płynnie się pojawia albo znika. Na karcie
+  nie ma już przeskoku obrazu na końcu powrotu z ramy.
+
 ## 1.145.233
 
 - Szukaj: wyniki z muzeum idą do aplikacji od razu, a dzieła, które nie

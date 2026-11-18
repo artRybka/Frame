@@ -57,14 +57,13 @@ struct OriginalViewer: View {
             Color.black.ignoresSafeArea()
             if inFrame, !framedAsked {
                 ProgressView().tint(.white)
-            } else if let picture = framedOn ? framedImage : shownImage {
-                // One view for the work and the work in its frame: the work
-                // stays where it is on the screen as its frame comes and
-                // goes (Mateusz 2026-11-17: „przełączenie pomiędzy widokiem
-                // w ramie i bez jest płynne i zachowuje zoom”).
+            } else if let picture = shownImage {
+                // The work never moves as its frame comes and goes; only
+                // the frame fades (Mateusz 2026-11-18).
                 ZoomableImage(
-                    image: picture, tiles: framedOn || !shownOff.isEmpty ? [] : tiles, whole: whole,
-                    look: Treatment.look(framedOn ? [] : shownOff), inner: framedOn ? item.framed?.inner : nil
+                    image: picture, tiles: shownOff.isEmpty ? tiles : [], whole: whole,
+                    look: Treatment.look(shownOff), framed: framedImage, inner: item.framed?.inner,
+                    framedOn: framedOn
                 ) {
                     withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() }
                 }
@@ -95,7 +94,7 @@ struct OriginalViewer: View {
                             Task { await toggleFramed() }
                         }
                     }
-                    ForEach(framedOn ? [] : treatments, id: \.self) { treatment in
+                    ForEach(treatments, id: \.self) { treatment in
                         TreatmentButton(
                             treatment: treatment, on: !off.contains(treatment),
                             loading: off != shownOff && off.contains(treatment) != shownOff.contains(treatment)
@@ -166,7 +165,7 @@ struct OriginalViewer: View {
     private func toggleFramed() async {
         UISelectionFeedbackGenerator().selectionChanged()
         if framedOn {
-            framedOn = false  // the picture itself moves (`ZoomScrollView.swap`)
+            framedOn = false  // the frame fades (`ZoomScrollView.frame`)
             return
         }
         if framedImage == nil {
@@ -435,10 +434,12 @@ struct ZoomableImage: UIViewRepresentable {
     /// Which version of the work the picture is (`Treatment.look`): a new
     /// one fades in over the one before, a sharper copy of the same does not.
     var look = 0
-    /// The picture is the work in its frame ("W ramie"): where the work
-    /// lies in it (fractions). Going from the work to it and back keeps
-    /// the work where it is on the screen (`ZoomScrollView.swap`).
+    /// "W ramie": the work in its frame as photographed, where the work
+    /// lies in it (fractions), and whether it is shown around the work
+    /// (`ZoomScrollView.frame`).
+    var framed: UIImage?
     var inner: CGRect?
+    var framedOn = false
     var onTap: () -> Void = {}
 
     func makeUIView(context: Context) -> ZoomScrollView { ZoomScrollView() }
@@ -446,7 +447,8 @@ struct ZoomableImage: UIViewRepresentable {
     func updateUIView(_ view: ZoomScrollView, context: Context) {
         view.onTap = onTap
         view.startsWhole = whole
-        view.show(image, look: look, inner: inner)
+        view.frame(framed, inner: inner, on: framedOn)
+        view.show(image, look: look)
         view.lay(tiles)
     }
 }
@@ -487,6 +489,9 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
         minimumZoomScale = 1
         maximumZoomScale = 8
         imageView.contentMode = .scaleAspectFit
+        frameView.contentMode = .scaleToFill  // its opening on the work exactly
+        frameView.alpha = 0
+        addSubview(frameView)
         addSubview(imageView)
 
         let double = UITapGestureRecognizer(target: self, action: #selector(doubleTapped(_:)))
@@ -500,29 +505,77 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    /// Where the work lies in the picture shown when that is the work in
-    /// its frame (`ZoomableImage.inner`); nil for the work alone.
-    private var shownInner: CGRect?
-    /// A move between the work and its frame is under way: the zoom may
-    /// be out of its usual bounds until it settles.
-    private var swapping = false
-    static let swapFade: TimeInterval = 0.25
-    static let settleTime: TimeInterval = 0.45
+    /// "W ramie" (Mateusz 2026-11-18: „samo dzieło jest statyczne, a
+    /// animuje się tylko pojawienie lub zniknięcie ramy”): the photograph in
+    /// its frame lies under the work, its opening fitted to the work, and
+    /// only fades in and out. The work stays the same picture at the same
+    /// place and zoom, so its proportions never change either (the framed
+    /// photograph is set straight by the frame's corners, the work by its own).
+    private let frameView = UIImageView()
+    /// Where the work lies in the framed photograph (fractions); nil without.
+    private var frameInner: CGRect?
+    private var frameOn = false
+    static let frameFade: TimeInterval = 0.3
+
+    /// The framed photograph, where the work lies in it, and whether it is
+    /// shown (faded in or out once the picture is laid out).
+    func frame(_ image: UIImage?, inner: CGRect?, on: Bool) {
+        if frameView.image !== image { frameView.image = image }
+        frameInner = inner
+        placeFrame()
+        let shown = on && image != nil && inner != nil
+        guard shown != frameOn else { return }
+        frameOn = shown
+        if fitted == bounds.size, imageView.image != nil {
+            UIView.animate(
+                withDuration: Self.frameFade, delay: 0,
+                options: [.curveEaseInOut, .allowUserInteraction, .beginFromCurrentState],
+                animations: { self.frameView.alpha = shown ? 1 : 0 }
+            )
+        } else {
+            frameView.alpha = shown ? 1 : 0
+        }
+        reach()
+        centre()
+    }
+
+    /// The framed photograph around the work as it is now, its opening on
+    /// the work.
+    private func placeFrame() {
+        guard let inner = frameInner, inner.width > 0, inner.height > 0 else { return }
+        let work = imageView.frame
+        let width = work.width / inner.width, height = work.height / inner.height
+        frameView.frame = CGRect(x: work.minX - inner.minX * width, y: work.minY - inner.minY * height,
+                                 width: width, height: height)
+    }
+
+    /// What may be looked at (content coordinates): the work, and with its
+    /// frame on the frame too.
+    private var extent: CGRect {
+        let work = CGRect(origin: .zero, size: imageView.frame.size)
+        return frameOn ? frameView.frame.union(work) : work
+    }
+
+    /// How far out one may zoom: the work whole, or with its frame on the
+    /// frame whole. Never above the zoom now, so nothing moves when the
+    /// frame goes; the next zoom ends within it (`scrollViewDidEndZooming`).
+    private func reach() {
+        let e = extent
+        let whole = frameOn && e.width > 0 && e.height > 0
+            ? min(bounds.width / (e.width / zoomScale), bounds.height / (e.height / zoomScale))
+            : 1
+        minimumZoomScale = min(1, whole, zoomScale)
+        // Double-tap's "filling the screen" with what is looked at now.
+        if e.width > 0, e.height > 0 {
+            let fill = max(bounds.width / (e.width / zoomScale), bounds.height / (e.height / zoomScale))
+            fillScale = min(maximumZoomScale, max(minimumZoomScale, fill))
+        }
+    }
 
     /// A sharper copy of the same picture keeps the zoom and place; another
-    /// shape is fitted afresh; the work and the work in its frame keep the
-    /// work where it is (`swap`).
-    func show(_ image: UIImage, look: Int = 0, inner: CGRect? = nil) {
+    /// shape is fitted afresh.
+    func show(_ image: UIImage, look: Int = 0) {
         guard imageView.image !== image else { return }
-        if inner != shownInner, imageView.image != nil, fitted == bounds.size, bounds.width > 0,
-           let within = Self.within(from: shownInner, to: inner) {
-            let shownInnerBefore = shownInner
-            shownInner = inner
-            shownLook = look
-            swap(to: image, oldWithin: within, framing: inner, from: shownInnerBefore)
-            return
-        }
-        shownInner = inner
         let sameShape = imageView.image.map {
             abs($0.size.width / max($0.size.height, 1) - image.size.width / max(image.size.height, 1)) < 0.01
         } ?? false
@@ -550,182 +603,28 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
               let size = imageView.image?.size, size.width > 0, size.height > 0
         else { return }
         fitted = bounds.size
+        minimumZoomScale = 1
         zoomScale = 1
         let scale = min(bounds.width / size.width, bounds.height / size.height)
         imageView.frame = CGRect(x: 0, y: 0, width: size.width * scale, height: size.height * scale)
         contentSize = imageView.frame.size
+        placeFrame()
         deepest()
-        let fill = max(bounds.width / imageView.frame.width, bounds.height / imageView.frame.height)
+        reach()
+        // Filling the screen with what is looked at: the work, or the work
+        // in its frame (opened on "W ramie": „na pełną wysokość”).
+        let e = extent
+        let fill = max(bounds.width / e.width, bounds.height / e.height)
         fillScale = min(maximumZoomScale, max(minimumZoomScale, fill))
         zoomScale = startsWhole ? minimumZoomScale : fillScale
         centre()
-        // The middle of the picture in the middle of the view.
+        // The middle of it in the middle of the view.
+        let shown = extent
         contentOffset = startsWhole
             ? CGPoint(x: -contentInset.left, y: -contentInset.top)
-            : CGPoint(x: (contentSize.width - bounds.width) / 2,
-                      y: (contentSize.height - bounds.height) / 2)
+            : CGPoint(x: shown.midX - bounds.width / 2, y: shown.midY - bounds.height / 2)
         for tile in tiles { tileViews[tile.id]?.frame = rect(of: tile) }
         lookAtTiles()
-    }
-
-    // MARK: The work and its frame
-
-    /// Where the picture shown so far lies in the next (fractions of it):
-    /// the work in its frame, or the frame around the work.
-    private static func within(from old: CGRect?, to new: CGRect?) -> CGRect? {
-        if let new, old == nil { return new }
-        if let old, new == nil, old.width > 0, old.height > 0 {
-            return CGRect(x: -old.minX / old.width, y: -old.minY / old.height,
-                          width: 1 / old.width, height: 1 / old.height)
-        }
-        return nil
-    }
-
-    /// The other picture in place of this one (Mateusz 2026-11-17):
-    /// - the work filling the screen (or zoomed into) stays as it is: the
-    ///   frame comes on outside the screen, or goes, in a quick fade;
-    /// - the work smaller than the screen, the frame coming: the frame fades
-    ///   in while the camera pulls back until it is seen whole;
-    /// - the work smaller than the screen, the frame going: the camera first
-    ///   moves in until the work fills the screen, then the frame fades out.
-    /// `oldInner`: where the work lies in the picture shown now, when that
-    /// is the work in its frame.
-    private func swap(to image: UIImage, oldWithin r: CGRect, framing inner: CGRect?, from oldInner: CGRect?) {
-        let old = imageView.frame.offsetBy(dx: -contentOffset.x, dy: -contentOffset.y)
-        let work = oldInner.map {
-            CGRect(x: old.minX + $0.minX * old.width, y: old.minY + $0.minY * old.height,
-                   width: $0.width * old.width, height: $0.height * old.height)
-        } ?? old
-        let covers = work.width >= bounds.width * 0.995 && work.height >= bounds.height * 0.995
-        swapping = true
-        guard inner == nil, !covers, work.width > 0, work.height > 0 else {
-            fade(to: image, oldWithin: r, pullingBack: inner != nil && !covers)
-            return
-        }
-        // Closer, around the work, until it fills the screen; then the fade.
-        let k = max(bounds.width / work.width, bounds.height / work.height)
-        let zoom = zoomScale * k
-        let size = CGSize(width: imageView.frame.width * k, height: imageView.frame.height * k)
-        let place = CGSize(width: work.width * k, height: work.height * k)
-        let offset = CGPoint(x: (oldInner?.minX ?? 0) * size.width - (bounds.width - place.width) / 2,
-                             y: (oldInner?.minY ?? 0) * size.height - (bounds.height - place.height) / 2)
-        maximumZoomScale = max(maximumZoomScale, zoom)
-        UIView.animate(
-            withDuration: Self.settleTime, delay: 0,
-            options: [.curveEaseInOut, .allowUserInteraction, .beginFromCurrentState],
-            animations: {
-                self.zoomScale = zoom
-                self.centre()
-                self.contentOffset = offset
-            },
-            completion: { _ in self.fade(to: image, oldWithin: r, pullingBack: false) }
-        )
-    }
-
-    /// The two pictures crossing in a quick fade with the work where it is
-    /// on the screen; `pullingBack`, the camera at once pulls back to the
-    /// whole picture (the work in its frame) with it.
-    private func fade(to image: UIImage, oldWithin r: CGRect, pullingBack: Bool) {
-        let old = imageView.frame.offsetBy(dx: -contentOffset.x, dy: -contentOffset.y)
-        let width = old.width / r.width, height = old.height / r.height
-        let shown = CGRect(x: old.minX - r.minX * width, y: old.minY - r.minY * height, width: width, height: height)
-        UIView.transition(
-            with: self, duration: Self.swapFade,
-            options: [.transitionCrossDissolve, .allowUserInteraction],
-            animations: {
-                self.imageView.image = image
-                // Only the picture crosses: its new place is taken at once,
-                // or the fade drew the incoming one larger on the way.
-                UIView.performWithoutAnimation { self.refit(showing: shown) }
-            },
-            completion: { _ in if !pullingBack { self.settle(framing: false) } }
-        )
-        if pullingBack { settle(framing: true, at: .curveEaseOut) }
-    }
-
-    /// The place within what a drag may reach (the picture's edges, or its
-    /// middle when it is smaller than the view).
-    private var heldOffset: CGPoint {
-        let lowest = CGPoint(x: -contentInset.left, y: -contentInset.top)
-        let highest = CGPoint(x: contentSize.width - bounds.width + contentInset.right,
-                              y: contentSize.height - bounds.height + contentInset.bottom)
-        return CGPoint(x: min(max(contentOffset.x, lowest.x), max(highest.x, lowest.x)),
-                       y: min(max(contentOffset.y, lowest.y), max(highest.y, lowest.y)))
-    }
-
-    /// Fitted to the view anew, at the zoom and place that show the picture
-    /// at `shown` (on the screen).
-    private func refit(showing shown: CGRect) {
-        guard let size = imageView.image?.size, size.width > 0, size.height > 0 else { return }
-        minimumZoomScale = min(minimumZoomScale, 1)
-        zoomScale = 1
-        let base = min(bounds.width / size.width, bounds.height / size.height)
-        imageView.frame = CGRect(x: 0, y: 0, width: size.width * base, height: size.height * base)
-        contentSize = imageView.frame.size
-        fitted = bounds.size
-        let fill = max(bounds.width / imageView.frame.width, bounds.height / imageView.frame.height)
-        fillScale = min(depth, max(1, fill))
-        let zoom = shown.width / max(imageView.frame.width, 1)
-        minimumZoomScale = min(1, zoom)
-        maximumZoomScale = max(depth, zoom)
-        zoomScale = zoom
-        centre()
-        contentOffset = CGPoint(x: -shown.minX, y: -shown.minY)
-    }
-
-    /// After `swap`: the zoom back within its bounds, gently; `whole`, the
-    /// picture (the work in its frame) whole.
-    /// `at`: ease-out when it runs with the fade, so the pull-back starts at
-    /// once and the frame does not first swell past the screen.
-    private func settle(framing whole: Bool, at curve: UIView.AnimationOptions = .curveEaseInOut) {
-        let seen = convert(bounds, to: imageView)
-        let target: CGFloat? = if zoomScale < 0.999 || (whole && zoomScale > 1.001) {
-            1  // whole
-        } else if zoomScale > depth * 1.001 {
-            depth
-        } else {
-            nil
-        }
-        guard let target else {
-            swapping = false
-            minimumZoomScale = 1
-            deepest()
-            // Looking at the frame's edge, the frame gone: the work's
-            // nearest part slides in, as a drag past the edge would.
-            let held = heldOffset
-            if held != contentOffset {
-                UIView.animate(
-                    withDuration: Self.settleTime, delay: 0,
-                    options: [.curveEaseInOut, .allowUserInteraction, .beginFromCurrentState],
-                    animations: { self.contentOffset = held }
-                )
-            }
-            return
-        }
-        // Around the middle of what is in view, or the whole picture.
-        let middle = CGPoint(x: seen.midX, y: seen.midY)
-        UIView.animate(
-            withDuration: Self.settleTime, delay: 0,
-            options: [curve, .allowUserInteraction, .beginFromCurrentState],
-            animations: {
-                self.zoomScale = target
-                self.centre()
-                let content = self.imageView.frame.size
-                if target <= 1 {
-                    self.contentOffset = CGPoint(x: (content.width - self.bounds.width) / 2,
-                                                 y: (content.height - self.bounds.height) / 2)
-                } else {
-                    self.contentOffset = CGPoint(x: middle.x * target - self.bounds.width / 2,
-                                                 y: middle.y * target - self.bounds.height / 2)
-                }
-            },
-            completion: { _ in
-                self.swapping = false
-                self.minimumZoomScale = 1
-                self.deepest()
-                self.lookAtTiles()
-            }
-        )
     }
 
     // MARK: Tiles
@@ -747,7 +646,7 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
     /// With tiles, zooming goes as deep as their pixels reach (one of
     /// theirs to one of the screen's), within reason.
     private func deepest() {
-        maximumZoomScale = swapping ? max(depth, zoomScale) : depth
+        maximumZoomScale = depth
     }
 
     /// How deep zooming goes for the picture and its tiles.
@@ -833,12 +732,19 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
         tileViews.removeValue(forKey: id)?.removeFromSuperview()
     }
 
-    /// Keeps a picture smaller than the screen in its middle.
+    /// Keeps what is looked at (`extent`: the work, or the work in its
+    /// frame) in the middle when smaller than the screen, and lets a drag
+    /// reach its edges when larger: the frame reaches past the work.
     private func centre() {
-        let size = imageView.frame.size
-        let x = max(0, (bounds.width - size.width) / 2)
-        let y = max(0, (bounds.height - size.height) / 2)
-        contentInset = UIEdgeInsets(top: y, left: x, bottom: y, right: x)
+        placeFrame()
+        let e = extent, content = imageView.frame.size
+        let x = (bounds.width - e.width) / 2, y = (bounds.height - e.height) / 2
+        contentInset = UIEdgeInsets(
+            top: y > 0 ? y - e.minY : -e.minY,
+            left: x > 0 ? x - e.minX : -e.minX,
+            bottom: y > 0 ? y - (content.height - e.maxY) : e.maxY - content.height,
+            right: x > 0 ? x - (content.width - e.maxX) : e.maxX - content.width
+        )
     }
 
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
@@ -849,6 +755,16 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) { tilesMoved() }
+
+    func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
+        // The frame gone while zoomed out to it: the work whole at the most.
+        let low = minimumZoomScale
+        reach()
+        if !frameOn { minimumZoomScale = 1 }
+        if zoomScale < minimumZoomScale * 0.999, low < minimumZoomScale {
+            setZoomScale(minimumZoomScale, animated: true)
+        }
+    }
 
     @objc private func tapped() { onTap() }
 
