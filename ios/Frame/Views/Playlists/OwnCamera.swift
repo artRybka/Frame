@@ -339,7 +339,7 @@ struct OwnCamera: View {
                 Image(uiImage: finding).resizable()
                     .aspectRatio(contentMode: finding.size.width > finding.size.height ? .fit : .fill)
             } else if access == .ready, pinning {
-                OwnArPreview(session: ar.session)
+                OwnArPreview(session: ar.tracking)
             } else if access == .ready {
                 OwnCameraPreview(session: camera.session)
             } else if let demo {

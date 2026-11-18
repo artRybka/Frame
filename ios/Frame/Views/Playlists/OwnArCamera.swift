@@ -17,7 +17,11 @@ final class OwnArSession: NSObject, ARSessionDelegate, @unchecked Sendable {
     /// The phone can follow itself about the room.
     static var supported: Bool { ARWorldTrackingConfiguration.isSupported }
 
-    let session = ARSession()
+    /// Made when first asked for: the view's state is made anew often,
+    /// and most of those never come to the side photographs.
+    private(set) lazy var tracking = ARSession()
+    /// It has been run (on the main thread).
+    private var ran = false
     private let looking = DispatchQueue(label: "own-ar-looking")
     /// The pinned work as the latest picture has it; nil while it is
     /// still looked for (on the main thread).
@@ -61,13 +65,16 @@ final class OwnArSession: NSObject, ARSessionDelegate, @unchecked Sendable {
             // The picture as the camera's own: 4 : 3.
             configuration.videoFormat = wide
         }
-        session.delegate = self
-        session.delegateQueue = looking
-        session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+        ran = true
+        tracking.delegate = self
+        tracking.delegateQueue = looking
+        tracking.run(configuration, options: [.resetTracking, .removeExistingAnchors])
     }
 
     func stop() {
-        session.pause()
+        guard ran else { return }
+        ran = false
+        tracking.pause()
         hold(false)
         looking.async { [self] in work = nil }
     }
@@ -169,9 +176,9 @@ final class OwnArSession: NSObject, ARSessionDelegate, @unchecked Sendable {
     /// A photograph from the session's sharpest frame, upright as the
     /// phone is held (`quarter`), with its file as the server is sent it.
     func shoot(quarter: Int, _ took: @escaping (UIImage?, Data?) -> Void) {
-        session.captureHighResolutionFrame { [self] frame, _ in
+        tracking.captureHighResolutionFrame { [self] frame, _ in
             // Without a sharper one: the running picture.
-            let picture = frame?.capturedImage ?? session.currentFrame?.capturedImage
+            let picture = frame?.capturedImage ?? tracking.currentFrame?.capturedImage
             looking.async {
                 let file = picture.flatMap { Self.file($0, quarter: quarter) }
                 let image = file.flatMap { OwnPicture.shown($0) ?? UIImage(data: $0) }
