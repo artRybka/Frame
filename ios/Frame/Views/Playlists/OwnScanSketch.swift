@@ -6,7 +6,7 @@ import SwiftUI
 /// camera): the demo's wall photograph, turned as the wall shows from the
 /// side, under the camera's own overlay and words. `-screen own-scan
 /// -scanLook front | ready | far | near | lost | side | match | aim |
-/// turned | right | result` ("aim": standing right with the phone looking
+/// turned | right | pinning | result` ("aim": standing right with the phone looking
 /// past the work; "turned": the phone turned to the left where he was to
 /// walk there; "result": the page after the scan, `OwnScanResult`), with
 /// `-scanHeld left` the phone on its side.
@@ -61,7 +61,12 @@ struct OwnScanSketch: View {
         var look = OwnScanLook(number: target == nil ? 1 : (name == "right" ? 3 : 2))
         look.manual = name == "lost"
         look.quarter = quarter
-        if let target, name == "turned" {
+        if name == "pinning" {
+            // Just after the first photograph: the work is being pinned.
+            look.number = 2
+            look.angle = 0
+            look.advice = .pinning
+        } else if let target, name == "turned" {
             // The work has left the picture: the gyroscope alone counts.
             look.angle = stands
             look.advice = OwnScanView.side(target: target, angle: stands, stray: 22)
