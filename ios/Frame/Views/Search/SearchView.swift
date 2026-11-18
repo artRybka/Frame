@@ -13,7 +13,11 @@ struct SearchView: View {
     var body: some View {
         NavigationStack(path: $path) {
             MuseumSearchView(path: $path)
-                .navigationTitle("Szukaj")
+                // No "Szukaj" over it, neither big at the top nor in the
+                // bar when scrolled (Mateusz 2026-11-19: "konsekwentnie nie
+                // dajemy go zatem nigdzie", "Także go usuwamy"): the tab
+                // says where one is.
+                .navigationBarTitleDisplayMode(.inline)
                 .serverLinkBadge()
                 .navigationDestination(for: String.self) { id in
                     ItemDetailView(itemID: id)
