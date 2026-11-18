@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.145.240
+
+- Własne dzieła, skan z trzech zdjęć: po pierwszym zdjęciu aparat
+  przypina znaczniki do narożników dzieła (AR). Idąc w bok widzisz je
+  cały czas na dziele, także wtedy, gdy samo wykrywanie krawędzi by je
+  zgubiło, a kropka na planie pokazuje dokładne miejsce telefonu
+  względem dzieła, nie zliczone obroty. Zdjęcia z boku mają w tym trybie
+  12 Mpx (pierwsze, z którego są wszystkie szczegóły, zostaje w pełnej
+  jakości). Gdy przypięcie się nie uda, aparat działa jak dotąd.
+
+## 1.145.239
+
+- Szukaj w katalogu: dzieło zatytułowane dokładnie tak, jak wpisane słowo,
+  jest pierwsze, a potem dzieła z tym słowem w całości. Dopiero dalej są
+  te, w których słowo tylko tak się zaczyna. „Szał” daje najpierw obraz
+  Podkowińskiego, a nie ptaki Szalewskiej i damy w szalach. „Czwórka”
+  daje obrazy Chełmońskiego przed kartami do gry.
+
 ## 1.145.238
 
 - Własne dzieła, aparat: płótno bez ramy jest znajdowane także na

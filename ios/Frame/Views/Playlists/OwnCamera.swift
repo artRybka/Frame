@@ -96,12 +96,24 @@ struct OwnCamera: View {
     @State private var stands = OwnScanAngle()
     /// How the phone was held at the first photograph (`quarter`).
     @State private var heldAs = 0
+    /// The phone's AR session, which pins the work in the room after the
+    /// first photograph and takes the side ones (`OwnArSession`).
+    @State private var ar = OwnArSession()
+    /// The side photographs go through the AR session: the picture is its.
+    @State private var pinning = false
+    /// Since when the work has been looked for to be pinned.
+    @State private var pinSince: Date?
+    /// The pinned work as the AR session sees it now; nil until it is pinned.
+    @State private var sight: OwnArSight?
 
     /// Without an outline for this long, he takes the photograph himself.
     private static let patience: TimeInterval = 5
     /// Standing where a side photograph is taken without the work's
     /// corners for this long, the same.
     private static let blind: TimeInterval = 3
+    /// The work is pinned within this of the first photograph, or the
+    /// side ones go by the gyroscope's count as they did.
+    private static let pinTime: TimeInterval = 5
 
     private var demo: UIImage? { access == .ready ? nil : (model.demoMode ? DemoOwn.photo() : nil) }
 
@@ -138,6 +150,29 @@ struct OwnCamera: View {
         guard scan != nil else {
             look.live = outline
             look.advice = OwnScanView.first(upright, aspect: aspect)
+            return look
+        }
+        if pinning, let sight {
+            // The work is pinned in the room: where the phone stands and
+            // where the work's corners are on the picture are known,
+            // whatever the camera makes of the picture.
+            let work = upright
+            look.angle = sight.angle
+            look.live = outline
+            look.aim = outline.map(OwnScanView.middle)
+            look.advice = OwnScanView.side(
+                target: target, angle: sight.angle, away: sight.away,
+                fits: work.map(OwnScanView.fits) ?? true,
+                aim: work.map { OwnScanView.offAim($0, aspect: aspect) } ?? 0,
+                seen: work != nil,
+                held: steady.said == .hold
+            )
+            if quarter != heldAs { look.advice = .rolled }
+            return look
+        }
+        if pinning, let pinSince, Date.now.timeIntervalSince(pinSince) < Self.pinTime {
+            look.angle = guide.available ? turned : nil
+            look.advice = .pinning
             return look
         }
         var seen: Double?
@@ -186,7 +221,8 @@ struct OwnCamera: View {
             // frame on a dark wall): he takes the photograph himself.
             let since = blindSince ?? .now
             blindSince = since
-            if !manual, Date.now.timeIntervalSince(since) > Self.blind {
+            // (Not with the work pinned: it is known to be out of the picture.)
+            if !manual, sight == nil, Date.now.timeIntervalSince(since) > Self.blind {
                 withAnimation(.easeInOut(duration: 0.25)) { manual = true }
                 next.manual = true
             }
@@ -256,6 +292,7 @@ struct OwnCamera: View {
         }
         .onDisappear {
             camera.stop()
+            ar.stop()
             guide.stop()
         }
     }
@@ -301,6 +338,8 @@ struct OwnCamera: View {
                 // A wide photograph (the phone held on its side) whole, not cut to the tall frame.
                 Image(uiImage: finding).resizable()
                     .aspectRatio(contentMode: finding.size.width > finding.size.height ? .fit : .fill)
+            } else if access == .ready, pinning {
+                OwnArPreview(session: ar.tracking)
             } else if access == .ready {
                 OwnCameraPreview(session: camera.session)
             } else if let demo {
@@ -417,6 +456,7 @@ struct OwnCamera: View {
     }
 
     private func startAgain() {
+        unpin()
         camera.hold(false)
         front = nil
         stands = OwnScanAngle()
@@ -429,6 +469,49 @@ struct OwnCamera: View {
     private func finish() {
         guard let done = scan else { return }
         took(done)
+    }
+
+    // MARK: The work pinned in the room
+
+    /// After the first photograph: the camera goes to the phone's AR
+    /// session, which looks for the work once more and pins it in the
+    /// room (Mateusz 2026-11-18 08:22 UTC: "znaczniki… naniesione na
+    /// ścianę lub przyklejone do jego ramy"). Its corners then stay on it
+    /// and the angle is the phone's place in the room; until it is pinned
+    /// (and if it never is) the gyroscope counts as before.
+    private func pin() {
+        sight = nil
+        outline = nil
+        dim = false
+        pinSince = .now
+        let held = heldAs
+        ar.seen = { now in
+            guard pinning else { return }
+            if let now {
+                sight = now
+                outline = now.outline
+            }
+            refresh(fresh: true)
+        }
+        ar.failed = { unpin() }
+        withAnimation(.easeInOut(duration: 0.2)) { pinning = true }
+        camera.stop {
+            // (Unless he has begun anew meanwhile.)
+            guard pinning else { return }
+            ar.start(quarter: held)
+        }
+    }
+
+    /// Back to the camera's own session: the scan is begun anew, or the
+    /// AR session cannot go on.
+    private func unpin() {
+        guard pinning else { return }
+        ar.stop()
+        pinning = false
+        sight = nil
+        pinSince = nil
+        outline = nil
+        Task { access = await camera.start() }
     }
 
     // MARK: The bottom
@@ -497,7 +580,7 @@ struct OwnCamera: View {
         shooting = true
         holdSince = nil
         if var shots = scan {
-            camera.shoot { image, file, _ in
+            let taken: (UIImage?, Data?) -> Void = { image, file in
                 shooting = false
                 guard let image else {
                     model.notices.warn("Nie udało się zrobić zdjęcia")
@@ -509,12 +592,19 @@ struct OwnCamera: View {
                 if shots.sides.count >= 2 {
                     scan = shots
                     rest()
+                    // All three are taken: the AR session rests, its last picture stays.
+                    if pinning { ar.stop() }
                     finish()
                 } else {
                     withAnimation(.easeInOut(duration: 0.25)) { scan = shots }
                     early?(shots)
                     rest()
                 }
+            }
+            if pinning {
+                ar.shoot(quarter: heldAs, taken)
+            } else {
+                camera.shoot { image, file, _ in taken(image, file) }
             }
             return
         }
@@ -531,8 +621,12 @@ struct OwnCamera: View {
             }
             blink()
             front = seen
-            // The side photographs in the first one's light, so that only the reflections differ.
-            camera.hold(true)
+            if OwnArSession.supported {
+                pin()
+            } else {
+                // The side photographs in the first one's light, so that only the reflections differ.
+                camera.hold(true)
+            }
             let shots = OwnShots(
                 first: image, depth: depth, files: file.map { [$0] } ?? [],
                 outline: seen.map { $0.map { [Double($0.x), Double($0.y)] } }
@@ -756,6 +850,20 @@ final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, AVCapture
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard Date.now.timeIntervalSince(looked) >= Self.pace, let picture = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         looked = .now
+        let (found, paper) = Self.looked(at: picture)
+        let (outline, slipped) = Self.kept(Self.work(among: found, paper: paper, last: last), was: last, missed: missed)
+        last = outline
+        missed = slipped
+        // A long exposure or a high gain: the photograph will be blurred or grainy.
+        let device = (connection.inputPorts.first?.input as? AVCaptureDeviceInput)?.device
+        let dark = device.map { $0.exposureDuration.seconds >= 0.05 || $0.iso >= 1600 } ?? false
+        DispatchQueue.main.async { [weak self] in self?.seen?(outline, dark) }
+    }
+
+    /// The rectangles in one of the camera's pictures and what Vision
+    /// takes for a sheet lying before it (0–1 across and down the upright
+    /// screen's picture, each from the top left round by the right).
+    static func looked(at picture: CVPixelBuffer) -> (found: [[CGPoint]], paper: [CGPoint]?) {
         let request = VNDetectRectanglesRequest()
         request.maximumObservations = 8
         request.minimumConfidence = 0.5
@@ -779,15 +887,7 @@ final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, AVCapture
         func corners(_ box: VNRectangleObservation) -> [CGPoint] {
             [box.topLeft, box.topRight, box.bottomRight, box.bottomLeft].map { CGPoint(x: $0.x, y: 1 - $0.y) }
         }
-        let found = (request.results ?? []).map(corners)
-        let paper = sheet.results?.first.map(corners)
-        let (outline, slipped) = Self.kept(Self.work(among: found, paper: paper, last: last), was: last, missed: missed)
-        last = outline
-        missed = slipped
-        // A long exposure or a high gain: the photograph will be blurred or grainy.
-        let device = (connection.inputPorts.first?.input as? AVCaptureDeviceInput)?.device
-        let dark = device.map { $0.exposureDuration.seconds >= 0.05 || $0.iso >= 1600 } ?? false
-        DispatchQueue.main.async { [weak self] in self?.seen?(outline, dark) }
+        return ((request.results ?? []).map(corners), sheet.results?.first.map(corners))
     }
 
     /// Which of the rectangles in the picture is the work: the one that
@@ -922,9 +1022,11 @@ final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, AVCapture
         turned?(rotation.videoRotationAngleForHorizonLevelCapture)
     }
 
-    func stop() {
+    /// `then` (on the main thread): the camera is free for another session.
+    func stop(then: (() -> Void)? = nil) {
         queue.async { [session] in
             if session.isRunning { session.stopRunning() }
+            if let then { DispatchQueue.main.async(execute: then) }
         }
     }
 

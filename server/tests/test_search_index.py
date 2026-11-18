@@ -182,6 +182,39 @@ def test_a_search_shows_the_artists_own_works_first_and_all_of_them(tmp_path) ->
     assert lib.query(PlaylistRules(query="vermeer"), sort="suitability", limit=2)[1] == first[:2]
 
 
+def test_one_word_finds_the_work_of_that_title_first(tmp_path) -> None:
+    """Mateusz, 2026-11-18: "Szał" put Szalewska's birds and ladies in
+    shawls before Podkowiński's "Szał"; "Czwórka" playing cards before
+    Chełmoński's."""
+    lib = Library(tmp_path / "lib.db")
+
+    def add(n: int, title: str, artist: str = "", highlight: bool = False) -> None:
+        lib.upsert(
+            Item(
+                id=f"a:{n}",
+                source="a",
+                source_id=str(n),
+                title=title,
+                artist=artist,
+                highlight=highlight,
+            )
+        )
+
+    add(1, "Z cyklu „Ptaki”", "Krystyna Szalewska", highlight=True)
+    add(2, "Młoda dama w białym szalu", "Anna Abel")
+    add(3, "Szkicownik, szkic obrazu „Szał”", "Jan Stanisławski")
+    add(4, "Szał", "Władysław Podkowiński")
+    add(5, "Góral przed szałasem", "Aleksander Kotsis")
+    _, found = lib.query(PlaylistRules(query="Szał"), sort="relevance")
+    assert [i.id for i in found[:2]] == ["a:4", "a:3"]  # the title, then the word whole
+    assert {i.id for i in found[2:]} == {"a:1", "a:2", "a:5"}  # words only starting so
+
+    add(6, "Czwórka pik", "Czesław Tański")
+    add(7, "Czwórka", "Józef Chełmoński")
+    _, found = lib.query(PlaylistRules(query="czwórka"), sort="relevance")
+    assert [i.id for i in found] == ["a:7", "a:6"]
+
+
 def test_the_index_is_made_outside_the_lock_with_the_changes_made_meanwhile(
     tmp_path, monkeypatch
 ) -> None:

@@ -459,30 +459,61 @@ def _check(token: str, wanted: tuple[str, ...]) -> Callable[[str], bool]:
     return lambda text: pattern.search(text) is not None
 
 
+def _fits_first(ranked: tuple[Any, ...]) -> tuple[Any, ...]:
+    """Of :func:`relevance`'s rank, by the artists asked, where the words
+    are, tagged (the "good" sort's first fields)."""
+    return ranked[0], ranked[3], ranked[4]
+
+
+@lru_cache(maxsize=256)
+def whole_word(token: str) -> re.Pattern[str]:
+    """A folded text's word that is ``token`` (folded too), not one only
+    starting so ("szał", not "szalu" or "Szalewska")."""
+    return re.compile(r"(?<!\w)" + re.escape(phrase_fold(token)) + r"(?!\w)")
+
+
+def _bare(text: str) -> str:
+    """Folded words without punctuation: "„Szał”." is "szal"."""
+    return " ".join(re.sub(r"[^\w\s]", " ", text).split())
+
+
 def relevance(rules: PlaylistRules) -> Callable[[Item], tuple[Any, ...]]:
     """How well each work fits a search, for "Trafność": first those by the
     artists asked for (the museums' search also finds what only names
-    them), then those whose artist has the typed words, their title, their
-    keywords and subjects, the rest of their texts; highlights first among
-    equals, then by artist and year (Mateusz 2026-11-09: Vermeer's works
-    first, not works that mention him)."""
+    them), then the works titled just as typed, those with the typed words
+    whole before those with words only starting so, and of each those whose
+    artist has the words, their title, their keywords and subjects, the rest
+    of their texts; highlights first among equals, then by artist and year
+    (Mateusz 2026-11-09: Vermeer's works first, not works that mention him;
+    2026-11-18: "Szał" found Szalewska's birds and ladies in shawls before
+    Podkowiński's "Szał")."""
     tokens = parsed(rules.query)
-    checks = [_check(token, wanted) for token, wanted in tokens if wanted]
+    asked = [(token, wanted) for token, wanted in tokens if wanted]
+    checks = [_check(token, wanted) for token, wanted in asked]
+    wholes = [None if " " in token else whole_word(token).search for token, _wanted in asked]
+    titled = _bare(" ".join(phrase_fold(token) for token, _wanted in asked))
     terms = [t for t in rules.terms if t not in MINE]
 
     def rank(item: Item) -> tuple[Any, ...]:
         by_them = not rules.artists or made_by(item.artist, rules.artists)
         where = 0
+        partly = False
+        just_titled = False
         if checks:
             fields = (*folded_fields(item), folded_text(item))
-            for check in checks:
+            just_titled = bool(titled) and _bare(fields[1]) == titled
+            for check, whole in zip(checks, wholes, strict=True):
                 at = next((n for n, text in enumerate(fields) if check(text)), _FIELDS)
                 where = max(where, at)
                 if where == _FIELDS:
                     break
+                if whole is not None and not any(whole(text) for text in fields):
+                    partly = True
         tagged = all(t in item.terms for t in terms)
         return (
             not by_them,
+            not just_titled,
+            partly,
             where,
             not tagged,
             not item.highlight,
@@ -1924,8 +1955,10 @@ class Library:
         if sort == "good":
             rank = relevance(rules) if _searches(rules) else None
             # How well a work fits what was asked still comes before how
-            # good it is: by the artist asked for, where the words are, tagged.
-            fits = (lambda item: rank(item)[:3]) if rank is not None else None
+            # good it is: by the artist asked for, where the words are, tagged
+            # (not whether the title is just the words, or the words whole:
+            # Szukaj's "Trafność" only, 2026-11-18).
+            fits = (lambda item: _fits_first(rank(item))) if rank is not None else None
             return good_first(items, seed, rules.model_dump_json(), fits)
         return sort_items(items, sort, seed)
 
