@@ -55,12 +55,11 @@ private func quadPath(_ quad: [[Double]], in size: CGSize) -> Path {
 /// (Mateusz 2026-11-15, layout B: „moduł pokażmy nad blokiem «słowa
 /// kluczowe, technika, rodzaj…»”): the museum's photograph small with the
 /// line on what was around the work and what is shown (a tap opens "Popraw
-/// kadr"), for a work on paper a switch "Z marginesem", then "Popraw kadr ›".
+/// kadr"), then "Popraw kadr ›". A print's paper is no switch here any
+/// more (Mateusz 2026-11-18: „Margines kartki traktujmy jak ramę”): its
+/// sheet is the "W ramie" button beside the picture.
 struct FullPhotoSection: View {
     let item: Item
-    /// Waiting for the server (the print's edge asked of the model).
-    var busy = false
-    let choosePaper: (Bool) -> Void
     let correct: () -> Void
 
     private var cut: Cut { item.cut ?? Cut() }
@@ -100,18 +99,6 @@ struct FullPhotoSection: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityHint("Otwiera poprawianie kadru")
-                    if cut.hasPaper {
-                        Divider().overlay(Theme.hairline)
-                        Toggle(isOn: Binding(get: { cut.paper }, set: { choosePaper($0) })) {
-                            HStack(spacing: 8) {
-                                Text(bound: "Z marginesem").foregroundStyle(Theme.ink)
-                                if busy { ProgressView().controlSize(.small) }
-                            }
-                        }
-                        .disabled(busy)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                    }
                     Divider().overlay(Theme.hairline)
                     Button(action: correct) {
                         HStack(spacing: 12) {
@@ -191,6 +178,9 @@ struct CutEditor: View {
     /// the card's "W ramie"; its corners as they are.
     let framing: Bool
     let initialFrame: [[Double]]?
+    /// The outer corners are a print's sheet, not a frame's edge ("Dzieło
+    /// / Kartka", Mateusz 2026-11-18: „Margines kartki traktujmy jak ramę”).
+    let sheet: Bool
     /// Which corners are in hand.
     @State private var part = Part.work
     /// The other part's corners, and where they started.
@@ -240,9 +230,13 @@ struct CutEditor: View {
         } else {
             aspect = 0.75
         }
+        // A print shown without its sheet: the sheet is its "W ramie"
+        // (server `Cut.framed_by`), its edge set as a frame's would be.
+        let sheet = item.cut.map { $0.surround == nil && !$0.paper && $0.plate != nil } ?? false
         self.init(
             photo: .ref(.museumPhoto(item.id, side: 2400, version: item.pictureVersion)),
-            aspect: aspect, corners: item.cutShown, framing: item.cutShown != nil, frame: item.cut?.surround
+            aspect: aspect, corners: item.cutShown, framing: item.cutShown != nil,
+            frame: sheet ? item.cut?.work : item.cut?.surround, sheet: sheet
         ) { work, moved, frame in
             await update(CutUpdate(corners: moved ? work : nil, frame: frame))
         }
@@ -260,13 +254,14 @@ struct CutEditor: View {
     }
 
     private init(
-        photo: Photo, aspect: Double, corners: [[Double]]?, framing: Bool, frame: [[Double]]?,
+        photo: Photo, aspect: Double, corners: [[Double]]?, framing: Bool, frame: [[Double]]?, sheet: Bool = false,
         saveTitle: String = "Zapisz", cancelTitle: String = "Anuluj", savesUnchanged: Bool = false,
         note: String? = nil, cancel: (() -> Void)? = nil,
         save: @escaping ([[Double]], Bool, [[Double]]?) async -> Bool
     ) {
         self.framing = framing
         initialFrame = frame
+        self.sheet = sheet
         photoSource = photo
         photoAspect = aspect
         initial = corners
@@ -377,7 +372,7 @@ struct CutEditor: View {
             if framing {
                 Picker("Narożniki", selection: Binding(get: { part }, set: { choose($0) })) {
                     Text(bound: "Dzieło").tag(Part.work)
-                    Text(bound: "Rama").tag(Part.frame)
+                    Text(bound: sheet ? "Kartka" : "Rama").tag(Part.frame)
                 }
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 260)
@@ -452,7 +447,10 @@ struct CutEditor: View {
             return "Przeciągnij narożnik. Bardzo wolny ruch palca ustawia go dokładniej."
         }
         if frameCutsWork && frameToSave != nil {
-            return "Rama musi obejmować całe dzieło."
+            return sheet ? "Kartka musi obejmować całe dzieło." : "Rama musi obejmować całe dzieło."
+        }
+        if sheet {
+            return "Ustaw narożniki na krawędzi kartki. Tak pokaże ją przycisk przy obrazie."
         }
         return "Ustaw narożniki na zewnętrznej krawędzi ramy albo passe-partout. Tak pokaże je „W ramie”."
     }

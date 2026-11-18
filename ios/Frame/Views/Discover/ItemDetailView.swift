@@ -34,7 +34,6 @@ struct ItemDetailView: View {
     /// "Popraw kadr" on the whole screen (also a tap on "Pełny kadr").
     @State private var correctingCut = false
     /// The cut asked of the server (the print's edge: some seconds).
-    @State private var cutBusy = false
     /// "Kreatywny restaurator" at work (half a minute).
     @State private var restoring = false
     /// A work of his own: "Edytuj opis", "Zrób zdjęcie ponownie", "Usuń z katalogu".
@@ -442,15 +441,11 @@ struct ItemDetailView: View {
             LooksLikeSection(item: item).id("looks")
             // Just above the facts (Mateusz 2026-11-15: „moduł pokażmy nad
             // blokiem «słowa kluczowe, technika, rodzaj…»”): "Pełny kadr",
-            // the museum's photograph of a work cut out of it and a print's
-            // choice of its paper.
+            // the museum's photograph of a work cut out of it, a print's
+            // paper said.
             if item.isCropped || item.cut?.hasPaper == true {
-                FullPhotoSection(
-                    item: item, busy: cutBusy,
-                    choosePaper: { paper in Task { await setCut(CutUpdate(paper: paper)) } },
-                    correct: { correctingCut = true }
-                )
-                .transition(.opacity)
+                FullPhotoSection(item: item, correct: { correctingCut = true })
+                    .transition(.opacity)
             }
             facts(item)
         }
@@ -776,10 +771,8 @@ struct ItemDetailView: View {
         if await model.deleteOwnWork(itemID) { dismiss() }
     }
 
-    /// The owner's corners, or "Pokaż z marginesem / bez marginesu".
+    /// The owner's corners, of the work and of its frame or sheet.
     private func setCut(_ update: CutUpdate) async -> Bool {
-        cutBusy = true
-        defer { cutBusy = false }
         do {
             cutChanged(try await model.backend.setCut(itemID: itemID, update: update))
             return true

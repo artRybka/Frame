@@ -401,12 +401,16 @@ struct SharperCopy: Codable, Hashable, Sendable {
 /// (top-left, top-right, bottom-right, bottom-left) as fractions of the
 /// photograph's width and height.
 struct Cut: Codable, Hashable, Sendable {
-    /// The work as shown (a print with its paper); nil, the photograph whole.
+    /// The work with what is part of it (a print's sheet); nil, the
+    /// photograph whole.
     var work: [[Double]]? = nil
-    /// A print without its paper ("bez marginesu"), when known.
+    /// A print without its paper, when known: what is shown, the sheet
+    /// being its "W ramie" (Mateusz 2026-11-18: „Margines kartki traktujmy
+    /// jak ramę”).
     var plate: [[Double]]? = nil
-    /// "z marginesem" (true) or "bez marginesu".
-    var paper: Bool = true
+    /// The sheet shown too: only in cuts kept from before (the server
+    /// turns them off).
+    var paper: Bool = false
     /// "auto" (the model) or "owner".
     var by: String = "auto"
     /// The photograph's width / height.
@@ -430,7 +434,7 @@ struct Cut: Codable, Hashable, Sendable {
 
     var shown: [[Double]]? { !paper && plate != nil ? plate : work }
     var byOwner: Bool { by == "owner" }
-    /// A print or drawing on its sheet: "Pokaż z marginesem / bez marginesu".
+    /// A print or drawing on its sheet ("Pełny kadr" says so).
     var hasPaper: Bool { plate != nil || around.contains("paper_margin") || around.contains("page_text") }
 
     /// The picture's version: the copy's id, and the cut's stamp after "|".
@@ -478,13 +482,14 @@ struct Cut: Codable, Hashable, Sendable {
 
     /// The line under "Pełny kadr" for a work on paper (Mateusz 2026-11-14,
     /// layout 1): what the museum photographed, then whether the work is
-    /// shown with its paper's margin or without. The work named by its
-    /// technique ("pastel", "odbitkę"), "dzieło" when it says nothing.
+    /// shown with its paper's margin or without (without once its plate is
+    /// known). The work named by its technique ("pastel", "odbitkę"),
+    /// "dzieło" when it says nothing.
     func paperLine(medium: String) -> String {
         let work = PaperWork(medium: medium, around: around)
         var places = Self.places(around.filter { $0 != "paper_margin" && $0 != "page_text" })
         places.append(around.contains("page_text") ? "na stronie z tekstem" : "z marginesem kartki")
-        let shown = paper ? "z marginesem" : "bez marginesu"
+        let shown = !paper && plate != nil ? "bez marginesu" : "z marginesem"
         return [
             "Muzeum sfotografowało \(work.accusative) \(Self.joined(places)).",
             "\(work.shownAs) jest \(work.name) \(shown).",

@@ -42,12 +42,13 @@ final class PaperLineTests: XCTestCase {
     }
 
     func testTheLineSaysWhatIsShown() {
-        let cut = Cut(paper: false, around: ["paper_margin"])
+        let cut = Cut(plate: [[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]], around: ["paper_margin"])
         XCTAssertEqual(
             cut.paperLine(medium: "pastel on paper"),
             "Muzeum sfotografowało pastel z\(hard)marginesem\(hard)kartki.\n"
                 + "Prezentowany jest pastel bez\(hard)marginesu."
         )
+        // Its plate not known yet: the sheet is shown.
         let print = Cut(around: ["backdrop", "mount", "paper_margin"])
         XCTAssertEqual(
             print.paperLine(medium: "etching"),
