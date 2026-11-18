@@ -690,7 +690,17 @@ struct DailyView: View {
                 } else if !work.legacy.isEmpty {
                     section("Dalsze losy") { legacy(work.legacy) }.id("legacy")
                 }
-                if !similarWorks(work).isEmpty { section("Podobne dzieła") { similar(similarWorks(work)) } }
+                if !similarWorks(work).isEmpty {
+                    section("Podobne dzieła") {
+                        similar(similarWorks(work))
+                        // As under the card's "Podobne wyglądem" (Mateusz
+                        // 2026-11-18): the works that look like this one,
+                        // in Szukaj.
+                        LooksSearchButton(itemID: work.item.id, title: work.item.item.displayTitle)
+                            .padding(.top, 6)
+                    }
+                    .id("similar")
+                }
                 if let others = work.byArtist, !others.isEmpty {
                     section("Inne prace artysty") { byArtist(Array(others.prefix(Self.byArtistShown))) }.id("artist")
                 }

@@ -15,9 +15,9 @@ from starlette.concurrency import run_in_threadpool
 from ..ai import AiUnavailable
 from ..ai.gemini import NotDrawn
 from ..library.models import ItemSummary
-from ..looks import Found
+from ..looks import By, Found
 from ..service import FrameService
-from .deps import require_token, service
+from .deps import require_owner, require_token, service
 from .library_api import _work
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["looks"])
@@ -143,3 +143,20 @@ async def looks_like(
     if not svc.looks.enabled():
         return LooksAnswer(items=[], scores=[])
     return _answer(await run_in_threadpool(svc.looks.similar, item, limit))
+
+
+@router.get(
+    "/debug/looks/{item_id:item}", response_model=LooksAnswer, dependencies=[Depends(require_owner)]
+)
+async def looks_near(
+    item_id: str,
+    svc: Svc,
+    by: By = "",
+    count: Annotated[int, Query(ge=1, le=2000)] = 1000,
+) -> LooksAnswer:
+    """The ``count`` works nearest this one by ``by`` (both, "subject",
+    "style"), with their nearness, however near (above the works' mean):
+    for setting where "Podobne do" stops (Mateusz 2026-11-18: "limitem
+    ilości nie powinien być stopień podobieństwa?"). The owner's only."""
+    item = await _work(svc, item_id)
+    return _answer(await run_in_threadpool(svc.looks.similar, item, count, by=by))

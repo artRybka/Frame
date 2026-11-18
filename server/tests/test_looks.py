@@ -547,6 +547,10 @@ def test_szukaj_finds_the_works_like_one_nearest_first(
         assert ids(like="met:1", artist="Anna A") == ["met:4", "met:3"]
         assert ids(like="met:1", sort="artist") == ["met:4", "met:2", "met:3"]
         assert ids(like="met:9") == []
+        # The owner's look at how near they lie, for where to stop.
+        near = client.get("/api/debug/looks/met:1", params={"count": 3, "by": "style"}).json()
+        assert [i["id"] for i in near["items"]] == ["met:4", "met:2", "met:3"]
+        assert near["scores"] == sorted(near["scores"], reverse=True)
         service.ai_config.update(AiConfigUpdate(looks=False))
         assert client.get("/api/library/items", params={"like": "met:1"}).status_code == 409
     rules = PlaylistRules(like="met:1")

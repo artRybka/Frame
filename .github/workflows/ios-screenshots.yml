@@ -98,6 +98,7 @@ jobs:
             capture discover 14 "discover-studies-marks-$appearance" -scroll studies -demoCut some
             capture daily 14 "daily-$appearance"
             capture daily 16 "daily-end-$appearance" -scroll end
+            capture daily 16 "daily-similar-$appearance" -scroll similar-end
             capture daily 16 "daily-composition-$appearance" -scroll composition
             capture daily 16 "daily-composition-picture-$appearance" -scroll composition -compositionBare YES
             capture daily 16 "daily-composition-bedroom-$appearance" -scroll composition -demoStudy bedroom

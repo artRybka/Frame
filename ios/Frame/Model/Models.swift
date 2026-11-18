@@ -966,7 +966,8 @@ enum AlbumOrder: String, Codable, Hashable, Sendable, CaseIterable, Identifiable
 
 /// What "Podobne do" finds alike (`PlaylistRules.likeBy`): a work's subject
 /// and style together, or one of them (Mateusz 2026-11-17: "Podobne
-/// tematem" and "Podobne stylem", chosen in Szukaj).
+/// tematem" and "Podobne stylem", chosen in Szukaj; the style is shown as
+/// "Treść" and "Forma" since 2026-11-18).
 enum LikeBy: String, CaseIterable, Identifiable, Sendable {
     case both = ""
     case subject
@@ -976,9 +977,21 @@ enum LikeBy: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .both: "Temat i styl"
-        case .subject: "Temat"
-        case .style: "Styl"
+        case .both: "Treść i forma"
+        case .subject: "Treść"
+        case .style: "Forma"
+        }
+    }
+
+    /// The line under Szukaj's switches (`LikeBySwitches`): what the
+    /// choice finds. "Treść" and "Forma" (Mateusz 2026-11-18: "treść i
+    /// forma?"), not "Temat" and "Styl": Szukaj has its own "Temat" and
+    /// "Styl" (the movement, the period); "Wykonanie" did not suit.
+    var meaning: String {
+        switch self {
+        case .both: "Podobne w całości."
+        case .subject: "Co przedstawia, w każdej technice."
+        case .style: "Jak wykonane: technika, kreska, kolory, światło."
         }
     }
 }
