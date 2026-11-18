@@ -302,7 +302,7 @@ struct MuseumSearchView: View {
                 Spacer(minLength: 0)
             }
             if !rules.like.isEmpty {
-                // The work (or photograph) and "Temat" / "Forma"
+                // The work (or photograph) and "Treść" / "Forma"
                 // (Mateusz 2026-11-17: "rozdział już z poziomu szukania";
                 // 2026-11-18: the header, two switches instead of three
                 // segments).

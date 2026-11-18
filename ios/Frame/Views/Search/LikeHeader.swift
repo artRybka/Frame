@@ -131,7 +131,7 @@ private struct PhotoShown: View {
     }
 }
 
-/// "Temat" and "Forma", each on or off, both on at first: what "Podobne
+/// "Treść" and "Forma", each on or off, both on at first: what "Podobne
 /// do" finds alike (`PlaylistRules.likeBy`). One of them is always on; the
 /// line under them says what the choice means (Mateusz 2026-11-18: no
 /// "Wyłącz jedno, by szukać po drugim").
