@@ -761,11 +761,19 @@ class OwnWorks:
 
     def reshape(self) -> int:
         """Once after a start: works added before their pictures took the
-        shape of his size (1.145.168) cut anew to it. How many were."""
+        shape of his size (1.145.168) cut anew to it. How many were.
+
+        And the frames about them ("W ramie") set before those took the
+        work's shape (1.145.245) given it: the frame held the work in the
+        photograph's shape, the card showed it in his size's, and the
+        frame's photograph showed beside the work (Mateusz 2026-11-18
+        21:44 UTC, "Out of the box": "Podwójny obraz po wyświetleniu
+        ramy")."""
+        from .ai.crops import framed
         from .imaging.cut import cut_aspect
         from .library.models import PlaylistRules
 
-        done = 0
+        done = frames = 0
         for item in self.library.query(PlaylistRules(kinds=[ItemKind.OWN]), include_excluded=True)[
             1
         ]:
@@ -784,8 +792,18 @@ class OwnWorks:
             if off > 0.01:
                 self.crops.apply(item, cut)
                 done += 1
+            elif cut.framed_kind:
+                fresh = framed(cut, item.own.ratio)
+                if (fresh.framed_aspect, fresh.framed_inner) != (
+                    cut.framed_aspect,
+                    cut.framed_inner,
+                ):
+                    self.library.update(item.id, cut=fresh)
+                    frames += 1
         if done:
             log.info("own works cut to the shape of their size: %d", done)
+        if frames:
+            log.info("own works' frames given the shape of their size: %d", frames)
         return done
 
     # -- the work ------------------------------------------------------------------

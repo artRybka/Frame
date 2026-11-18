@@ -14,6 +14,13 @@
   się same jeszcze raz z kartą po aktualizacji serwera.
 - Gdy serwer widzi kartę, ale jej nie odczyta, zapisuje to w logu
   (wcześniej nie zostawał żaden ślad).
+- „W ramie” przy własnym dziele („Podwójny obraz po wyświetleniu ramy”,
+  „Out of the box”). Dzieło jest pokazywane w proporcjach z wpisanego
+  wymiaru, a zdjęcie ramy pod nim miało proporcje ze zdjęcia, więc przy
+  lewej i prawej krawędzi wystawał spod dzieła ten sam obraz ze zdjęcia
+  ramy. Teraz zdjęcie ramy dostaje proporcje dzieła i otwór ramy leży
+  dokładnie pod nim. Dzieła z ramą poprawią się same po aktualizacji;
+  po zmianie wymiaru w opisie rama idzie za dziełem.
 
 ## 1.145.244
 

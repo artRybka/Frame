@@ -936,7 +936,7 @@ class ImageCache:
                 shown = load_image(self.ensure_image(item, urgent))
             except OSError:
                 shown = None
-        out = framed(img, by[0], work, shown)
+        out = framed(img, by[0], work, shown, self._ratio(item))
         if max(out.size) > side:
             out.thumbnail((side, side), Image.Resampling.LANCZOS)
         return out
