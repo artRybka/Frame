@@ -19,7 +19,7 @@ struct ItemDetailView: View {
     @State private var inFrame = false
     /// …the picture's box has its shape…
     @State private var wide = false
-    /// …and the camera has pulled back from the work to it (0…1, `PullBack`).
+    /// …and the camera has pulled back from the work to it (0…1, `WorkInFrame`).
     @State private var pull: CGFloat = 0
     @State private var showingPlaylists = false
     /// "Szukaj lepszej kopii": the sheet of the picture's copies elsewhere.
@@ -1188,27 +1188,26 @@ struct ItemDetailView: View {
                         .aspectRatio(CGFloat(wide ? item.framed?.aspect ?? aspect(item) : aspect(item)), contentMode: .fit)
                         .layoutProbe("box")
                         .overlay {
-                            ArtImage(
-                                ref: item.originalRef, fallback: .thumb(item.id), placeholder: .clear,
-                                maxPixel: 1800, contentMode: .fit, priority: .high, crossfade: true, brighten: true
-                            )
-                                .background {
-                                    ArtImage(
-                                        ref: ItemPeeks.tiles[item.id]?.thumb ?? .thumb(item.id),
-                                        placeholder: item.placeholderColor, maxPixel: 700,
-                                        contentMode: .fit, priority: .high, brighten: true
-                                    )
-                                }
-                        }
-                        .overlay {
-                            // "W ramie": the photograph in its frame, the camera
-                            // pulling back from the work to it.
-                            if inFrame, let look = item.framed {
+                            // "W ramie": the photograph in its frame under the
+                            // work, the camera pulling back from the work to it;
+                            // the work itself always this picture.
+                            WorkInFrame(pull: pull, inner: inFrame ? item.framed?.inner : nil) {
+                                ArtImage(
+                                    ref: item.originalRef, fallback: .thumb(item.id), placeholder: .clear,
+                                    maxPixel: 1800, contentMode: .fit, priority: .high, crossfade: true, brighten: true
+                                )
+                                    .background {
+                                        ArtImage(
+                                            ref: ItemPeeks.tiles[item.id]?.thumb ?? .thumb(item.id),
+                                            placeholder: item.placeholderColor, maxPixel: 700,
+                                            contentMode: .fit, priority: .high, brighten: true
+                                        )
+                                    }
+                            } around: {
                                 ArtImage(
                                     ref: framedRef(item), placeholder: .clear, maxPixel: 1800,
                                     contentMode: .fill, priority: .high, crossfade: true, brighten: true
                                 )
-                                .modifier(PullBack(pull: pull, inner: look.inner))
                             }
                         }
                         .overlay {
