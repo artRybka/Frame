@@ -24,6 +24,12 @@ struct OriginalViewer: View {
     /// card showed it; its button under the cross shows the work alone.
     var inFrame = false
     @State private var framedOn = false
+    /// Opened on "W ramie": the frame asked for once (in, or not to be
+    /// had). Until then nothing is shown, so the work in its frame is the
+    /// first picture laid out, filling the screen as the work alone would
+    /// (Mateusz 2026-11-18: „na początku na pełnym ekranie (czyli na pełną
+    /// wysokość)”), not the work alone with the frame then put on it.
+    @State private var framedAsked = false
     @State private var framedImage: UIImage?
     @State private var framedLoading = false
     @State private var image: UIImage?
@@ -49,13 +55,15 @@ struct OriginalViewer: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if let picture = framedOn ? framedImage : shownImage {
+            if inFrame, !framedAsked {
+                ProgressView().tint(.white)
+            } else if let picture = framedOn ? framedImage : shownImage {
                 // One view for the work and the work in its frame: the work
                 // stays where it is on the screen as its frame comes and
                 // goes (Mateusz 2026-11-17: „przełączenie pomiędzy widokiem
                 // w ramie i bez jest płynne i zachowuje zoom”).
                 ZoomableImage(
-                    image: picture, tiles: framedOn || !shownOff.isEmpty ? [] : tiles, whole: whole || inFrame,
+                    image: picture, tiles: framedOn || !shownOff.isEmpty ? [] : tiles, whole: whole,
                     look: Treatment.look(framedOn ? [] : shownOff), inner: framedOn ? item.framed?.inner : nil
                 ) {
                     withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() }
@@ -116,7 +124,10 @@ struct OriginalViewer: View {
         .accessibilityAction(.escape, close)
         .task(id: item.id) { await load() }
         .task(id: item.id) {
-            if inFrame { await toggleFramed() }
+            if inFrame {
+                await toggleFramed()
+                framedAsked = true
+            }
             // Simulator recordings: `-frameCycle 4` turns the frame on and
             // off that many times (demo only).
             let cycles = model.demoMode ? UserDefaults.standard.integer(forKey: "frameCycle") : 0

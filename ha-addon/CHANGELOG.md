@@ -6,7 +6,8 @@
   (rama jest poza ekranem). Przy wyłączeniu ramy, gdy dzieło w ramie jest
   mniejsze od ekranu, widok najpierw płynnie zbliża się, aż dzieło wypełni
   ekran, i dopiero wtedy rama znika. Przenikanie bez chwilowo
-  powiększonego obrazu.
+  powiększonego obrazu. Dzieło otwarte „W ramie” wypełnia ekran od
+  początku (na pełną wysokość), jak samo dzieło.
 - „W ramie” działa też dla dzieła po „Restauracji dzieła”: rama z
   oryginalnego zdjęcia, w środku rysunek restauratora (wcześniej rama
   znikała).
