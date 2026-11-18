@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.243
+
+- „Podobne do” w Szukaj i „Podobne wyglądem” w karcie znów odpowiadają
+  od razu: z nowymi odciskami każde pytanie (także przełączenie „Temat” /
+  „Styl”) trwało ok. 8 s, bo serwer liczył styl i temat wszystkich dzieł
+  od nowa. Teraz liczy je raz, w tle, i trzyma gotowe (pytanie ok. 0,2 s).
+
 ## 1.145.242
 
 - Margines kartki działa jak rama. Odbitki, rysunki i ilustracje, które

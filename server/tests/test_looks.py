@@ -27,7 +27,7 @@ from frame_server.ai.gemini import (
     embed_cost,
 )
 from frame_server.library.models import Item, ItemKind, PlaylistRules
-from frame_server.looks import DESCRIBE, KIND, PART, QUERY, TOLD, LookIndex, Looks
+from frame_server.looks import DESCRIBE, KIND, PART, QUERY, TOLD, LookIndex, Looks, Shaped
 from frame_server.service import FrameService
 
 #: Colours the fake model tells apart, each its own direction.
@@ -994,3 +994,33 @@ def test_google_taking_no_more_batches_leaves_those_out_and_tries_later(
     finally:
         looks_module.PER_TOLD = before
     assert len(found._out("telling.json")) == 1 and found.trouble is None
+
+
+def test_the_works_style_and_subject_kept_follow_the_rows(tmp_path: Path) -> None:
+    """Worked out once (some 6 s each question for 160 000 works before,
+    2026-11-18), they follow works added, a work numbered again and the
+    rows written anew, as if worked out afresh."""
+    rng = np.random.default_rng(3)
+
+    def rows(names: list[str]) -> list[tuple[str, int, list[float]]]:
+        return [(n, 1, rng.standard_normal(3 * PART).tolist()) for n in names]
+
+    index = LookIndex(tmp_path, size=3 * PART, parts=3)
+    index.add(rows([f"w{n}" for n in range(200)]))
+    shaped = Shaped(index)
+    first = shaped.get()
+    assert shaped.get() is first
+    index.add(rows(["w5", "new"]))
+    index.forget(["w7"])
+
+    def same(kept: Shaped) -> None:
+        fresh = Shaped(index).get()
+        got = kept.get()
+        assert list(got.ids) == list(fresh.ids) and got.live == fresh.live
+        assert np.array_equal(got.style, fresh.style)
+        assert np.array_equal(got.subject, fresh.subject)
+        assert np.allclose(got.subject_norms, fresh.subject_norms)
+
+    same(shaped)
+    index.forget([f"w{n}" for n in range(10, 80)])
+    same(shaped)
