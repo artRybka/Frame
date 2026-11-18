@@ -505,9 +505,10 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
         guard imageView.image !== image else { return }
         if inner != shownInner, imageView.image != nil, fitted == bounds.size, bounds.width > 0,
            let within = Self.within(from: shownInner, to: inner) {
+            let shownInnerBefore = shownInner
             shownInner = inner
             shownLook = look
-            swap(to: image, oldWithin: within, framing: inner)
+            swap(to: image, oldWithin: within, framing: inner, from: shownInnerBefore)
             return
         }
         shownInner = inner
@@ -569,30 +570,66 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
         return nil
     }
 
-    /// The other picture in place of this one with the work where it is on
-    /// the screen, the two crossing in a quick fade; then, only where it
-    /// must, a gentle move. The frame put on a work not zoomed into comes
-    /// into view whole; on a work he zoomed into, the zoom stays. The work
-    /// alone smaller than the screen holds it whole grows to fit.
-    private func swap(to image: UIImage, oldWithin r: CGRect, framing inner: CGRect?) {
-        let zoomedIn = zoomScale > max(fillScale, 1) * 1.02
+    /// The other picture in place of this one (Mateusz 2026-11-17):
+    /// - the work filling the screen (or zoomed into) stays as it is: the
+    ///   frame comes on outside the screen, or goes, in a quick fade;
+    /// - the work smaller than the screen, the frame coming: the frame fades
+    ///   in while the camera pulls back until it is seen whole;
+    /// - the work smaller than the screen, the frame going: the camera first
+    ///   moves in until the work fills the screen, then the frame fades out.
+    /// `oldInner`: where the work lies in the picture shown now, when that
+    /// is the work in its frame.
+    private func swap(to image: UIImage, oldWithin r: CGRect, framing inner: CGRect?, from oldInner: CGRect?) {
+        let old = imageView.frame.offsetBy(dx: -contentOffset.x, dy: -contentOffset.y)
+        let work = oldInner.map {
+            CGRect(x: old.minX + $0.minX * old.width, y: old.minY + $0.minY * old.height,
+                   width: $0.width * old.width, height: $0.height * old.height)
+        } ?? old
+        let covers = work.width >= bounds.width * 0.995 && work.height >= bounds.height * 0.995
+        swapping = true
+        guard inner == nil, !covers, work.width > 0, work.height > 0 else {
+            fade(to: image, oldWithin: r, pullingBack: inner != nil && !covers)
+            return
+        }
+        // Closer, around the work, until it fills the screen; then the fade.
+        let k = max(bounds.width / work.width, bounds.height / work.height)
+        let zoom = zoomScale * k
+        let size = CGSize(width: imageView.frame.width * k, height: imageView.frame.height * k)
+        let place = CGSize(width: work.width * k, height: work.height * k)
+        let offset = CGPoint(x: (oldInner?.minX ?? 0) * size.width - (bounds.width - place.width) / 2,
+                             y: (oldInner?.minY ?? 0) * size.height - (bounds.height - place.height) / 2)
+        maximumZoomScale = max(maximumZoomScale, zoom)
+        UIView.animate(
+            withDuration: Self.settleTime, delay: 0,
+            options: [.curveEaseInOut, .allowUserInteraction, .beginFromCurrentState],
+            animations: {
+                self.zoomScale = zoom
+                self.centre()
+                self.contentOffset = offset
+            },
+            completion: { _ in self.fade(to: image, oldWithin: r, pullingBack: false) }
+        )
+    }
+
+    /// The two pictures crossing in a quick fade with the work where it is
+    /// on the screen; `pullingBack`, the camera at once pulls back to the
+    /// whole picture (the work in its frame) with it.
+    private func fade(to image: UIImage, oldWithin r: CGRect, pullingBack: Bool) {
         let old = imageView.frame.offsetBy(dx: -contentOffset.x, dy: -contentOffset.y)
         let width = old.width / r.width, height = old.height / r.height
         let shown = CGRect(x: old.minX - r.minX * width, y: old.minY - r.minY * height, width: width, height: height)
-        swapping = true
-        // The frame coming in whole: the camera pulls back while the frame
-        // fades in, not after, so no side of it is ever cut off and waiting.
-        let together = inner != nil && !zoomedIn
         UIView.transition(
             with: self, duration: Self.swapFade,
             options: [.transitionCrossDissolve, .allowUserInteraction],
             animations: {
                 self.imageView.image = image
-                self.refit(showing: shown)
+                // Only the picture crosses: its new place is taken at once,
+                // or the fade drew the incoming one larger on the way.
+                UIView.performWithoutAnimation { self.refit(showing: shown) }
             },
-            completion: { _ in if !together { self.settle(framing: false) } }
+            completion: { _ in if !pullingBack { self.settle(framing: false) } }
         )
-        if together { settle(framing: true, at: .curveEaseOut) }
+        if pullingBack { settle(framing: true, at: .curveEaseOut) }
     }
 
     /// The place within what a drag may reach (the picture's edges, or its
