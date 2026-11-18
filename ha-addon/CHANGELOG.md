@@ -5,6 +5,9 @@
 - Studium dzieła ma pod „Podobnymi dziełami” ten sam przycisk
   „Szukaj podobnych” co karta dzieła: otwiera Szukaj z dziełami
   podobnymi do studiowanego.
+- „Podobne do” w Szukaj ma nagłówek z miniaturą dzieła (albo zdjęcia),
+  tytułem i krzyżykiem, a zamiast „Temat i styl / Temat / Styl” dwa
+  przełączniki „Temat” i „Forma”, oba włączone na start.
 
 ## 1.145.244
 
