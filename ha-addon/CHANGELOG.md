@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.247
+## 1.145.248
 
 - Szukaj bez tytułu „Szukaj” (ani na górze, ani w pasku) i bez zdania pod
   „Treść / Forma”. Po przewinięciu wyników w prawym rogu paska jest
