@@ -290,19 +290,32 @@ struct MuseumSearchView: View {
     private var resultsView: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 12) {
-                if let photo { photoThumb(photo) }
+                // The photograph is in "Podobne do" once it is asked.
+                if let photo, rules.like.isEmpty { photoThumb(photo) }
                 VStack(alignment: .leading, spacing: 6) {
                     Text(bound: summary)
                         .font(.serif(17, weight: .medium))
                         .foregroundStyle(Theme.ink)
-                    TokenSummary(tokens: tokens.wrappedValue)
+                    // "Podobne do" has its own header below.
+                    TokenSummary(tokens: tokens.wrappedValue.filter { $0.kind != SearchToken.likeKind })
                 }
                 Spacer(minLength: 0)
             }
             if !rules.like.isEmpty {
-                // "Podobne tematem", "Podobne stylem" or both (Mateusz
-                // 2026-11-17: "rozdział już z poziomu szukania").
-                LikeByPicker(selection: $rules.likeBy)
+                // The work (or photograph) and "Treść" / "Forma"
+                // (Mateusz 2026-11-17: "rozdział już z poziomu szukania";
+                // 2026-11-18: the header, two switches instead of three
+                // segments).
+                VStack(alignment: .leading, spacing: 14) {
+                    LikeHeader(like: rules.like, photo: photo) {
+                        withAnimation(.snappy) {
+                            rules.like = ""
+                            rules.likeBy = ""
+                        }
+                    }
+                    LikeBySwitches(selection: $rules.likeBy)
+                }
+                .padding(.top, 2)
             }
             if photoAsking != nil {
                 SearchWaiting()
@@ -471,22 +484,6 @@ struct MuseumSearchView: View {
             return
         }
         search.mark(id, favorite: item.favorite)
-    }
-}
-
-/// What "Podobne do" finds alike: the work's (or the photograph's) subject
-/// and style together, its subject, or its style.
-struct LikeByPicker: View {
-    @Binding var selection: String
-
-    var body: some View {
-        Picker("Podobne", selection: $selection) {
-            ForEach(LikeBy.allCases) { by in
-                Text(bound: by.title).tag(by.rawValue)
-            }
-        }
-        .pickerStyle(.segmented)
-        .accessibilityIdentifier("likeBy")
     }
 }
 

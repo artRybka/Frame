@@ -136,23 +136,8 @@ struct LooksLikeSection: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// Filled with ink, like the app's other buttons that lead on (Mateusz
-    /// 2026-11-14: "Ten guzik zróbmy w kolorze czarnym"): black with light
-    /// letters on paper, cream with dark ones in the dark, where a black
-    /// one would sink into the page. The count is its letters, fainter.
     private var searchButton: some View {
-        Button {
-            model.searchLike(item.id, title: item.displayTitle)
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "eye")
-                Text("Szukaj podobnych")
-                Text(found.count >= Self.counted ? "\(Self.counted)+" : "\(found.count)")
-                    .opacity(0.65)
-            }
-        }
-        .buttonStyle(PrimaryButtonStyle())
-        .accessibilityHint("Otwiera Szukaj z dziełami podobnymi do tego")
+        LooksSearchButton(itemID: item.id, title: item.displayTitle, count: found.count)
     }
 
     /// The height every picture of the row is fitted into.
@@ -164,6 +149,54 @@ struct LooksLikeSection: View {
     /// Width / height, as the picture is (only nonsense kept out).
     private func shape(_ summary: ItemSummary) -> CGFloat {
         LooksRow.ratio(summary.aspectRatio)
+    }
+}
+
+/// "Szukaj podobnych N": into Szukaj with the works that look like one
+/// (`AppModel.searchLike`), under the card's "Podobne wyglądem" and the
+/// study's "Podobne dzieła" (Mateusz 2026-11-18: „Na studium dzieła dodaj
+/// guzik szukania podobnych jak w karcie dzieła”). Given no `count`, it
+/// asks the server for one and stays away until some are found.
+///
+/// Filled with ink, like the app's other buttons that lead on (Mateusz
+/// 2026-11-14: "Ten guzik zróbmy w kolorze czarnym"): black with light
+/// letters on paper, cream with dark ones in the dark, where a black one
+/// would sink into the page. The count is its letters, fainter.
+struct LooksSearchButton: View {
+    @Environment(AppModel.self) private var model
+    let itemID: String
+    let title: String
+    var count: Int?
+    @State private var asked: Int?
+
+    private var shown: Int { count ?? asked ?? 0 }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if shown > 0 {
+                Button {
+                    model.searchLike(itemID, title: title)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "eye")
+                        Text(bound: "Szukaj podobnych")
+                        Text(shown >= LooksLikeSection.counted ? "\(LooksLikeSection.counted)+" : "\(shown)")
+                            .opacity(0.65)
+                    }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .accessibilityHint("Otwiera Szukaj z dziełami podobnymi do tego")
+                .transition(.opacity)
+            } else {
+                Color.clear.frame(height: 0)
+            }
+        }
+        .task(id: itemID) {
+            guard count == nil, !itemID.isEmpty,
+                  let answer = try? await model.backend.looksLike(itemID: itemID, limit: LooksLikeSection.counted)
+            else { return }
+            withAnimation(.easeOut(duration: 0.25)) { asked = answer.items.count }
+        }
     }
 }
 
