@@ -535,6 +535,20 @@ class Item(BaseModel):
             return None
         return cut.shown()
 
+    def cut_framed(self) -> list[tuple[float, float]] | None:
+        """Where the work is on the photograph the card's "W ramie" is cut
+        from: the cut shown, or, for the restorer's drawing of the museum's
+        own photograph (``SharperCopy.restored``), the cut set on that
+        photograph: the drawing is of the work alone, laid in its frame
+        (Mateusz 2026-11-18)."""
+        shown = self.cut_shown()
+        if shown is not None:
+            return shown
+        cut, sharper = self.cut, self.sharper
+        if cut is None or sharper is None or not sharper.restored or cut.picture != "":
+            return None
+        return cut.shown()
+
     def picture_key(self) -> str:
         """Which picture is shown: the copy's id when a copy is, else ""."""
         return self.sharper.item_id if self.sharper is not None else ""

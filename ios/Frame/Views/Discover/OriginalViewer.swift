@@ -623,7 +623,9 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
             options: [.transitionCrossDissolve, .allowUserInteraction],
             animations: {
                 self.imageView.image = image
-                self.refit(showing: shown)
+                // Only the picture crosses: its new place is taken at once,
+                // or the fade drew the incoming one larger on the way.
+                UIView.performWithoutAnimation { self.refit(showing: shown) }
             },
             completion: { _ in if !pullingBack { self.settle(framing: false) } }
         )
