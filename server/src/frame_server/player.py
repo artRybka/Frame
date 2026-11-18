@@ -367,6 +367,7 @@ class Player:
         self._full = False
         #: When the room of "Sztuki inne" was counted (monotonic), and it.
         self._other_art_room: tuple[float, dict[str, int]] = (0.0, {})
+        self._counting_room = threading.Lock()
         #: What the line was last checked for new works with (by day).
         self._caught_up_from: tuple[object, ...] = ()
         self._changes = 0  # under way: from the download of the original to the push
@@ -1375,7 +1376,19 @@ class Player:
         the catalogue (only those with room), as last counted within
         :data:`OTHER_ART_ROOM_FOR` unless ``fresh``."""
         counted, room = self._other_art_room
-        if fresh or time.monotonic() - counted >= OTHER_ART_ROOM_FOR or counted == 0.0:
+        if not (fresh or time.monotonic() - counted >= OTHER_ART_ROOM_FOR or counted == 0.0):
+            return room
+        # Counted once at a time: every museum of a search asks this for its
+        # page at once, and each counting the whole catalogue (155 000
+        # works) at the same moment held the server up for a minute and a
+        # half (2026-11-18, Chełmoński's "Bociany"). Those that come while it
+        # is counted take the last count, when there is one.
+        if not self._counting_room.acquire(blocking=fresh or counted == 0.0):
+            return room
+        try:
+            counted, room = self._other_art_room
+            if not fresh and counted != 0.0 and time.monotonic() - counted < OTHER_ART_ROOM_FOR:
+                return room  # counted meanwhile
             works = self._catalogue_works()
             have = Counter(c for i in works if (c := object_category(i)) is not None)
             room = {
@@ -1384,7 +1397,9 @@ class Player:
                 if (wanted := int(share * len(works))) > have[key]
             }
             self._other_art_room = (time.monotonic(), room)
-        return room
+            return room
+        finally:
+            self._counting_room.release()
 
     def _add_other_art(self, job: Job, thin: bool = False) -> None:
         """Top up each technique of "Sztuki inne" towards its share of the

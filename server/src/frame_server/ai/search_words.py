@@ -6,8 +6,9 @@ library already knows is used first: the Polish names of the app's styles
 and subjects, and the model's keywords of described works (each Polish tag
 beside its English one). Anything else is asked of Haiku once and
 remembered; without a key, or with the owner's switch off, only what the
-library knows is translated. The Polish museums always get the words as
-typed.
+library knows is translated. The Polish museums get the words as typed,
+or, typed in another language (a title the app's hint gave in English,
+"The Storks"), in Polish ("Bociany").
 """
 
 from __future__ import annotations
@@ -61,6 +62,12 @@ English writes them ("Wenecja" -> "Venice"). No quotes, no added words, no \
 alternatives.
 - french: the same for a French catalogue ("guitare", "vieille femme").
 
+- polish_words: when polish is false, the text as a Polish museum catalogue \
+would word it, for a title or words in another language ("The Storks" -> \
+"Bociany", "The Night Watch" -> "Straż nocna", "guitar" -> "gitara"). A \
+painting's title as it is known in Polish. Names of people stay as they are. \
+When polish is true, or the text is only a name, repeat the text unchanged.
+
 When polish is false, english and french repeat the text unchanged.
 """
 
@@ -70,14 +77,26 @@ SCHEMA: dict[str, Any] = {
         "polish": {"type": "boolean"},
         "english": {"type": "string"},
         "french": {"type": "string"},
+        "polish_words": {"type": "string"},
     },
-    "required": ["polish", "english", "french"],
+    "required": ["polish", "english", "french", "polish_words"],
     "additionalProperties": False,
 }
 
 
 def _key(text: str) -> str:
     return fold(" ".join(text.split()))
+
+
+def _remembered(text: str, known: dict[str, str]) -> Wording:
+    return Wording(text, known.get("en", ""), known.get("fr", ""), known.get("pl", ""))
+
+
+def _answered(known: dict[str, str] | None) -> bool:
+    """Whether a remembered answer still serves: before 1.145.232 words in
+    another language were remembered as nothing ({}), without their Polish
+    (asked again once)."""
+    return known is not None and bool(known)
 
 
 def _vocabulary() -> dict[str, str]:
@@ -141,8 +160,8 @@ class SearchWords:
             return Wording(text)
         with self._lock:
             known = self._known.get(key)
-        if known is not None:
-            return Wording(text, known.get("en", ""), known.get("fr", ""))
+        if known is not None and _answered(known):
+            return _remembered(text, known)
         local = self._from_library(key)
         if local:
             return Wording(text, en=local)
@@ -158,9 +177,10 @@ class SearchWords:
             return Wording(text)
 
     def known(self, text: str) -> tuple[str, ...]:
-        """The English and French of ``text`` known already: remembered
-        answers and the library's words as last gathered, nothing asked
-        (the catalogue's search asks this for every query)."""
+        """The English and French of ``text`` known already (its Polish,
+        when typed in another language): remembered answers and the
+        library's words as last gathered, nothing asked (the catalogue's
+        search asks this for every query)."""
         key = _key(text)
         if not key:
             return ()
@@ -169,7 +189,9 @@ class SearchWords:
             local = self._local
             gathered = self._local_at >= 0
         if known is not None:
-            return tuple(w for w in (known.get("en", ""), known.get("fr", "")) if w)
+            return tuple(
+                w for w in (known.get("en", ""), known.get("fr", ""), known.get("pl", "")) if w
+            )
         if not gathered:
             # Gathered first by a search's translation (:meth:`wording`)
             # until 1.145.103: the counts worked out after a start had
@@ -240,9 +262,9 @@ class SearchWords:
         museums wait for it."""
         with self._lock:
             known = self._known.get(key)
-            if known is not None:  # answered since the caller looked
+            if known is not None and _answered(known):  # answered since the caller looked
                 done: Future[Wording | None] = Future()
-                done.set_result(Wording(text, known.get("en", ""), known.get("fr", "")))
+                done.set_result(_remembered(text, known))
                 return done
             future = self._asking.get(key)
             if future is None:
@@ -272,13 +294,17 @@ class SearchWords:
             return None
         english = " ".join(str(data.get("english") or "").split())
         french = " ".join(str(data.get("french") or "").split())
+        polish = " ".join(str(data.get("polish_words") or "").split())
         found = {"en": english, "fr": french} if data.get("polish") else {}
         # The same words back: nothing to translate (names, English).
         if fold(english) == key and fold(french) == key:
             found = {}
-        self._remember(key, found)
+        if not data.get("polish") and polish and fold(polish) != key:
+            found["pl"] = polish
+        # Remembered as answered, also when there is nothing to translate.
+        self._remember(key, found or {"pl": ""})
         log.info("search words %r -> %s", text, found or "as typed")
-        return Wording(text, found.get("en", ""), found.get("fr", ""))
+        return _remembered(text, found)
 
     def _remember(self, key: str, found: dict[str, str]) -> None:
         with self._lock:

@@ -9,7 +9,9 @@ thread looks at the loop every second; when it has not moved for
 :data:`STACK_EVERY` while it stays stuck), and how long it stood once it
 moves on. With the loop's stack go the other threads at work: on 2026-11-09
 the loop stood 78 s waiting for the library's lock, and the log could not
-say which thread held it."""
+say which thread held it. The same threads go in the log when an app
+request has waited :data:`REQUEST_STALL_S` with the loop running: its
+thread waits for a lock, or for a pool that is full."""
 
 from __future__ import annotations
 
@@ -38,6 +40,40 @@ THREAD_DEPTH = 10
 #: where the loop stood, cut out of the log (2026-11-09).
 LOOP_DEPTH = 16
 THREADS_SHOWN = 12
+#: An app request still unanswered after this long: the threads at work go
+#: in the log (again every :data:`STACK_EVERY` while one waits). On
+#: 2026-11-18 four GET /api/player waited 27-87 s together with the loop
+#: running, and the log could not say what they waited for.
+REQUEST_STALL_S = 15.0
+
+_asked_lock = threading.Lock()
+#: The app's requests under way: their start (monotonic) and what they are.
+_asked: dict[int, tuple[float, str]] = {}
+_asked_next = 0
+
+
+def request_started(what: str) -> int:
+    """An app request begins (``what``: its method and path); the token
+    for :func:`request_done`."""
+    global _asked_next
+    with _asked_lock:
+        _asked_next += 1
+        _asked[_asked_next] = (time.monotonic(), what)
+        return _asked_next
+
+
+def request_done(token: int) -> None:
+    with _asked_lock:
+        _asked.pop(token, None)
+
+
+def longest_waiting() -> tuple[float, str, int] | None:
+    """The request waiting longest: (seconds, what, how many wait)."""
+    with _asked_lock:
+        if not _asked:
+            return None
+        started, what = min(_asked.values())
+        return time.monotonic() - started, what, len(_asked)
 
 
 def compact(frames: Sequence[traceback.FrameSummary], code: bool = False) -> str:
@@ -60,11 +96,16 @@ def compact(frames: Sequence[traceback.FrameSummary], code: bool = False) -> str
 
 class LoopWatch:
     def __init__(
-        self, stall: float = STALL_S, every: float = STACK_EVERY, beat: float = BEAT_S
+        self,
+        stall: float = STALL_S,
+        every: float = STACK_EVERY,
+        beat: float = BEAT_S,
+        request_stall: float = REQUEST_STALL_S,
     ) -> None:
         self.stall = stall
         self.every = every
         self.beat = beat
+        self.request_stall = request_stall
         self._beat_at = time.monotonic()
         self._ident: int | None = None
         self._stop = threading.Event()
@@ -89,7 +130,24 @@ class LoopWatch:
     def _watch(self) -> None:
         stuck_since: float | None = None  # the last beat before the stall told of
         told_at = 0.0
+        asked_told = 0.0  # when the threads were last shown for a waiting request
         while not self._stop.wait(self.beat):
+            waiting = longest_waiting()
+            now = time.monotonic()
+            if (
+                waiting is not None
+                and waiting[0] >= self.request_stall
+                and now - asked_told >= self.every
+            ):
+                asked_told = now
+                took, what, count = waiting
+                log.warning(
+                    "%s has waited %.0f s (%d requests under way); threads at work:\n%s",
+                    what,
+                    took,
+                    count,
+                    self.others() or "  (none)",
+                )
             beat_at = self._beat_at
             stood = time.monotonic() - beat_at - self.beat
             if stood < self.stall:
