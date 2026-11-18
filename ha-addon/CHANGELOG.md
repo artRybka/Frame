@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.234
+
+- Nowe odciski wyglądu (temat i styl) robią się mniej więcej dwa razy
+  szybciej: serwer trzyma u Google więcej paczek naraz i zagląda po
+  odpowiedzi co pół minuty zamiast co dwie.
+
 ## 1.145.233
 
 - Szukaj: wyniki z muzeum idą do aplikacji od razu, a dzieła, które nie
