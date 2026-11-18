@@ -982,18 +982,6 @@ enum LikeBy: String, CaseIterable, Identifiable, Sendable {
         case .style: "Forma"
         }
     }
-
-    /// The line under Szukaj's switches (`LikeBySwitches`): what the
-    /// choice finds. "Treść" and "Forma" (Mateusz 2026-11-18: "treść i
-    /// forma?"), not "Temat" and "Styl": Szukaj has its own "Temat" and
-    /// "Styl" (the movement, the period); "Wykonanie" did not suit.
-    var meaning: String {
-        switch self {
-        case .both: "Podobne w całości."
-        case .subject: "Co przedstawia, w każdej technice."
-        case .style: "Jak wykonane: technika, kreska, kolory, światło."
-        }
-    }
 }
 
 /// The order of a playlist's works, in the app and on the frame when it

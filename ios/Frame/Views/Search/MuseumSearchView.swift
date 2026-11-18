@@ -49,6 +49,9 @@ struct MuseumSearchView: View {
     /// chip "Podobne do zdjęcia", the groups narrowing them (Mateusz
     /// 2026-11-15: "tak jak przy „szukaj podobnych” z karty dzieła").
     @State private var photoAsking: Data?
+    /// "Utwórz playlistę z tego wyszukiwania" scrolled away: a round one
+    /// in the bar instead (Mateusz 2026-11-18).
+    @State private var playlistScrolledAway = false
     /// The search's stack: the works opened from the results.
     @Binding var path: NavigationPath
 
@@ -262,6 +265,19 @@ struct MuseumSearchView: View {
                 search.mark(id, favorite: favorite)
             }
         }
+        // The list scrolled past "Utwórz playlistę z tego wyszukiwania":
+        // the same, round, in the bar's corner (Mateusz 2026-11-18: "w
+        // zaznaczonym miejscu daj guzik tworzenia playlisty - okrągły").
+        .toolbar {
+            if playlistScrolledAway, asked, !nothingFound, path.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: makePlaylist) {
+                        Image(systemName: "text.badge.plus")
+                    }
+                    .accessibilityLabel("Utwórz playlistę z tego wyszukiwania")
+                }
+            }
+        }
         .sheet(item: $editing) { playlist in
             PlaylistEditorView(playlist: playlist)
         }
@@ -360,26 +376,32 @@ struct MuseumSearchView: View {
         }
     }
 
+    /// A smart playlist of this search, the museums included (the playlist
+    /// asks them for what it misses up to its limit), into its editor.
+    private func makePlaylist() {
+        var playlistRules = rules
+        playlistRules.sources = sources
+        let name = rules.suggestedName(names: model.termNames)
+        editing = Playlist(
+            name: name.isEmpty ? (rules.places + sources).map(model.placeName).joined(separator: " · ") : name,
+            kind: .smart, rules: playlistRules
+        )
+    }
+
     /// The works found, the playlist made of them, and what giving up a
     /// choice would find when nothing is.
     @ViewBuilder
     private var found: some View {
         VStack(alignment: .leading, spacing: 14) {
             if asked, !nothingFound {
-                Button {
-                    // The same search, museums included; the playlist asks
-                    // them for what it misses up to its limit.
-                    var playlistRules = rules
-                    playlistRules.sources = sources
-                    let name = rules.suggestedName(names: model.termNames)
-                    editing = Playlist(
-                        name: name.isEmpty ? (rules.places + sources).map(model.placeName).joined(separator: " · ") : name,
-                        kind: .smart, rules: playlistRules
-                    )
-                } label: {
+                Button(action: makePlaylist) {
                     Label("Utwórz playlistę z tego wyszukiwania", systemImage: "text.badge.plus")
                 }
                 .buttonStyle(PrimaryButtonStyle())
+                .onScrollVisibilityChange(threshold: 0.3) { shown in
+                    withAnimation(.snappy) { playlistScrolledAway = !shown }
+                }
+                .onDisappear { playlistScrolledAway = false }
             }
             // One grid: the server's works first, the museums' coming in
             // under them. Where a work comes from isn't shown.
