@@ -953,7 +953,8 @@ class Importer:
             said = [w.in_language(language) for w in wordings]
             texts[key] = quote(said) if quotes_of(key) else " ".join(said)
         forms = [
-            list(dict.fromkeys(f for f in (w.text, w.en, w.fr) if f.strip())) for w in wordings
+            list(dict.fromkeys(f for f in (w.text, w.en, w.fr, w.pl) if f.strip()))
+            for w in wordings
         ]
         return Asked(texts, [f for f in forms if f])
 

@@ -6,6 +6,7 @@ restore."""
 
 from __future__ import annotations
 
+import io
 from types import SimpleNamespace
 from typing import Any
 
@@ -1047,6 +1048,39 @@ def test_the_frames_edge_is_kept_with_the_cut_and_shown_set_straight(
     assert img is not None and abs(img.width / img.height - 600 / 500) < 0.02
     a = np.asarray(img.convert("RGB")).astype(int)
     assert abs(a[5, img.width // 2] - (200, 160, 60)).max() < 30  # the gilt frame
+
+
+def test_a_work_drawn_by_the_restorer_keeps_its_frame(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+    monkeypatch: Any,
+) -> None:
+    """Mateusz 2026-11-18: "gdy do dzieła … dodałem restauratora, to obraz
+    stracił ramę". The drawing is of the work alone; the frame comes from the
+    museum's photograph, the drawing laid in it."""
+    item = _work(service, "mnw:62", pooled=True)
+    fake.messages.create = lambda **params: (fake.asked.append(params), _message(CORNERS))[1]
+    item = service.crops.apply(item, Cut(work=TRUE, aspect=round(W / H, 5), around=["frame"]))
+    service.crops.now(item)
+    stored = service.library.get("mnw:62")
+    assert stored is not None and service.images.framed(stored, 4000) is not None
+
+    museum = photo()
+    monkeypatch.setattr(service.images, "sample", lambda url, urgent=False: museum.copy())
+    x0, y0, x1, y1 = PAINTING
+    drawing = Image.new("RGB", ((x1 - x0) * 2, (y1 - y0) * 2), (230, 40, 200))
+    buf = io.BytesIO()
+    drawing.save(buf, "JPEG", quality=95)
+    service.sharper.bring(stored, buf.getvalue(), "Kreatywny restaurator", restored=True)
+    drawn = service.library.get("mnw:62")
+    assert drawn is not None and drawn.sharper is not None and drawn.sharper.restored
+    assert drawn.cut is not None and drawn.cut.framed_kind == "frame"
+
+    img = service.images.framed(drawn, 4000)
+    assert img is not None and abs(img.width / img.height - 600 / 500) < 0.02
+    a = np.asarray(img.convert("RGB")).astype(int)
+    assert abs(a[5, img.width // 2] - (200, 160, 60)).max() < 30  # the gilt frame
+    assert abs(a[img.height // 2, img.width // 2] - (230, 40, 200)).max() < 30  # the drawing
 
 
 def test_a_print_shown_without_its_sheet_shows_the_sheet_around_it() -> None:

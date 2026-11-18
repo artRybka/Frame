@@ -11,7 +11,7 @@ import traceback
 
 import pytest
 
-from frame_server.loopwatch import LoopWatch
+from frame_server.loopwatch import LoopWatch, request_done, request_started
 
 
 def held_up(seconds: float) -> None:
@@ -98,3 +98,30 @@ def test_a_stack_is_compact() -> None:
     text = compact(frames, code=True)
     assert len(text.splitlines()) == len(frames)
     assert "test_a_stack_is_compact" in text and "extract_stack" in text
+
+
+async def test_a_request_waiting_long_shows_the_threads_at_work(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # 2026-11-18: four GET /api/player waited 27-87 s together while the
+    # loop ran; the log could not say what for.
+    caplog.set_level(logging.WARNING, logger="frame_server.loopwatch")
+    watch = LoopWatch(stall=5.0, every=10.0, beat=0.05, request_stall=0.3)
+    task = asyncio.create_task(watch.run())
+    release = threading.Event()
+    holder = threading.Thread(target=holding, args=(release,), name="holder")
+    holder.start()
+    token = request_started("GET /api/player")
+    await asyncio.sleep(0.6)
+    request_done(token)
+    quick = request_started("GET /api/health")
+    request_done(quick)
+    release.set()
+    holder.join(5)
+    await asyncio.sleep(0.1)
+    task.cancel()
+    told = [r.getMessage() for r in caplog.records if "has waited" in r.getMessage()]
+    assert len(told) == 1  # once while it waits, not every look
+    assert told[0].startswith("GET /api/player has waited")
+    assert "thread holder:" in told[0] and "holding" in told[0]
+    assert not [r for r in caplog.records if "has stood still" in r.getMessage()]

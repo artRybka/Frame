@@ -912,17 +912,26 @@ class ImageCache:
         sheet when it is shown without it, ``Cut.framed_by``) and set
         straight, no longer than ``side``; the work in it as it is shown
         when its colours are corrected. None when there is nothing around
-        the work to show, or the cut is another picture's."""
+        the work to show, or the cut is another picture's.
+
+        A work drawn again by the restorer (``SharperCopy.restored``) keeps
+        only the drawing of the work: the frame is the museum's photograph
+        (:meth:`before_drawn`) with the drawing laid in it ("gdy do dzieła
+        … dodałem restauratora, to obraz stracił ramę", Mateusz 2026-11-18)."""
         cut = item.cut
         by = cut.framed_by() if cut is not None else None
-        work = item.cut_shown()
+        work = item.cut_framed()
         if cut is None or by is None or work is None or not cut.framed_kind:
             return None
-        img = load_image(self.museum_photo(item, urgent))
+        drawn = item.sharper is not None and item.sharper.restored
+        if drawn:
+            img = self.before_drawn(item, urgent)
+        else:
+            img = load_image(self.museum_photo(item, urgent))
         if not same_picture(cut.aspect, img.size):
             return None
         shown = None
-        if item.cleaned_shown() is not None:
+        if drawn or item.cleaned_shown() is not None:
             try:
                 shown = load_image(self.ensure_image(item, urgent))
             except OSError:

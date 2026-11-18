@@ -346,3 +346,34 @@ def test_photographs_described_in_french_are_photographs() -> None:
         update={"classification": "Arts graphiques", "medium": "Eau-forte"}
     )
     assert object_category(etching) is None
+
+
+def test_the_room_of_other_arts_is_counted_once_at_a_time(museums, monkeypatch) -> None:  # noqa: F811
+    # Every museum of a search asks it for its page at once: each counting
+    # the whole catalogue held the server up (2026-11-18).
+    import threading
+    import time
+
+    player = museums.player
+    player.other_art_room(fresh=True)
+    counted = player._other_art_room
+    player._other_art_room = (counted[0] - 10_000.0, counted[1])  # stale
+    counts: list[int] = []
+    real = player._catalogue_works
+
+    def slow() -> list[Item]:
+        counts.append(1)
+        time.sleep(0.3)
+        return real()
+
+    monkeypatch.setattr(player, "_catalogue_works", slow)
+    rooms: list[dict[str, int]] = []
+    threads = [
+        threading.Thread(target=lambda: rooms.append(player.other_art_room())) for _ in range(6)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(5)
+    assert len(counts) == 1
+    assert len(rooms) == 6

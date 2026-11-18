@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.145.233
+
+- Szukaj: wyniki z muzeum idą do aplikacji od razu, a dzieła, które nie
+  pasują, trafiają do katalogu dopiero potem. Wcześniej odpowiedź czekała,
+  aż serwer przejrzy cały katalog, i „Bociany” Chełmońskiego przyszły
+  półtorej minuty po odpowiedzi muzeum. Liczenie miejsca na „Sztuki inne”
+  robi jeden wątek naraz, nie każde muzeum osobno.
+- Polskie muzea dostają słowa i tytuły wpisane w innym języku po polsku
+  („The Storks” z podpowiedzi to w Warszawie „Bociany”), a dzieło z
+  polskim tytułem pasuje do takiego szukania.
+- Log: gdy zapytanie aplikacji czeka dłużej niż 15 s, zapisuje się, co
+  robią wtedy wątki serwera.
+
+## 1.145.232
+
+- Pełny ekran: dzieło na cały ekran zostaje takie samo po włączeniu ramy
+  (rama jest poza ekranem). Przy wyłączeniu ramy, gdy dzieło w ramie jest
+  mniejsze od ekranu, widok najpierw płynnie zbliża się, aż dzieło wypełni
+  ekran, i dopiero wtedy rama znika. Przenikanie bez chwilowo
+  powiększonego obrazu. Dzieło otwarte „W ramie” wypełnia ekran od
+  początku (na pełną wysokość), jak samo dzieło.
+- „W ramie” działa też dla dzieła po „Restauracji dzieła”: rama z
+  oryginalnego zdjęcia, w środku rysunek restauratora (wcześniej rama
+  znikała).
+
 ## 1.145.231
 
 - „Podobne do” w Szukaj można zawęzić do tematu albo stylu: pod chipem jest

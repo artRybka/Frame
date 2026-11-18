@@ -174,10 +174,19 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
 
     var isCropped: Bool { cutShown != nil }
 
+    /// `Item.cut_framed` on the server: the cut shown, or for the restorer's
+    /// drawing of the museum's own photograph the cut set on that photograph
+    /// (the drawing laid in its frame; Mateusz 2026-11-18).
+    var cutFramed: [[Double]]? {
+        if let shown = cutShown { return shown }
+        guard let cut, sharper?.isRestored == true, cut.picture.isEmpty else { return nil }
+        return cut.shown
+    }
+
     /// The card's "W ramie" for the picture shown now: nil when there is
     /// nothing around the work to show.
     var framed: FramedLook? {
-        guard let cut, cutShown != nil, let kind = cut.framedKind, !kind.isEmpty,
+        guard let cut, cutFramed != nil, let kind = cut.framedKind, !kind.isEmpty,
               let aspect = cut.framedAspect, aspect > 0,
               let inner = cut.framedInner, inner.count == 4, inner[2] > inner[0], inner[3] > inner[1]
         else { return nil }
