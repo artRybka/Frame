@@ -340,6 +340,16 @@ struct ThemeCard: View {
 struct StudyRow: View {
     let studies: [StudyBrief]
 
+    /// A card's width in the row. Debug builds take `-studyWidth N` to try
+    /// other widths on screenshots (Mateusz 2026-11-18: a little wider?).
+    static let cardWidth: CGFloat = {
+        #if DEBUG
+        let asked = UserDefaults.standard.double(forKey: "studyWidth")
+        if asked > 0 { return CGFloat(asked) }
+        #endif
+        return 172
+    }()
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
@@ -355,7 +365,7 @@ struct StudyRow: View {
                 LazyHStack(alignment: .top, spacing: 12) {
                     ForEach(studies) { study in
                         NavigationLink(value: study.route) {
-                            StudyCard(study: study).frame(width: 172)
+                            StudyCard(study: study).frame(width: Self.cardWidth)
                         }
                         .buttonStyle(.plain)
                     }
