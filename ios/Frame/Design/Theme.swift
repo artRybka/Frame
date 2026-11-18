@@ -57,6 +57,17 @@ extension Theme {
     /// Screen titles in the same serif as the section headers: the large
     /// title on each tab and the inline one on pushed screens and sheets.
     /// Only the font changes; colours and bar backgrounds stay the system's.
+    ///
+    /// The fonts go on the bar's `standardAppearance`, not (only) on the
+    /// legacy `largeTitleTextAttributes`/`titleTextAttributes`: once a bar
+    /// has shown a screen whose navigation item carries its own appearance
+    /// (SwiftUI gives one to the study, `DailyView`, for its
+    /// `.toolbar(removing: .title)`), UIKit draws that bar from appearance
+    /// objects only and ignores the legacy attributes for good, so "Odkrywaj"
+    /// came back in the system sans-serif after the study. The appearance is
+    /// a copy of a fresh bar's own default with just the fonts changed; the
+    /// scroll-edge and compact ones stay unset, so UIKit derives them from it
+    /// as it does by default.
     static func serifNavigationTitles() {
         func serif(_ style: UIFont.TextStyle, weight: UIFont.Weight) -> UIFont {
             let size = UIFont.preferredFont(
@@ -67,9 +78,15 @@ extension Theme {
             let font = base.fontDescriptor.withDesign(.serif).map { UIFont(descriptor: $0, size: size) } ?? base
             return UIFontMetrics(forTextStyle: style).scaledFont(for: font)
         }
+        let largeTitle = serif(.largeTitle, weight: .semibold)
+        let title = serif(.headline, weight: .semibold)
+        let appearance = UINavigationBar().standardAppearance.copy()
+        appearance.largeTitleTextAttributes[.font] = largeTitle
+        appearance.titleTextAttributes[.font] = title
         let bar = UINavigationBar.appearance()
-        bar.largeTitleTextAttributes = [.font: serif(.largeTitle, weight: .semibold)]
-        bar.titleTextAttributes = [.font: serif(.headline, weight: .semibold)]
+        bar.standardAppearance = appearance
+        bar.largeTitleTextAttributes = [.font: largeTitle]
+        bar.titleTextAttributes = [.font: title]
     }
 }
 
