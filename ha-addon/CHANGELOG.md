@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.237
+
+- Odkrywaj: kafelki „Studia dzieł” są szersze, 280 pt zamiast 172: na
+  ekranie mieści się jedno studium i spora część następnego. Obrazek ma
+  tę samą wysokość, a na szerszym kafelku wchodzi ostry oryginał, jak na
+  kafelku studium dnia.
+
 ## 1.145.236
 
 - Nowe odciski wyglądu (temat i styl) robią się mniej więcej dwa razy
