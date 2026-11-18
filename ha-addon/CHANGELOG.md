@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.245
+
+- Studium dzieła ma pod „Podobnymi dziełami” ten sam przycisk
+  „Szukaj podobnych” co karta dzieła: otwiera Szukaj z dziełami
+  podobnymi do studiowanego.
+
 ## 1.145.244
 
 - Własne dzieła, skan za szybą (Twoje „Test” i „Test 4”). Lampa i Twoja
