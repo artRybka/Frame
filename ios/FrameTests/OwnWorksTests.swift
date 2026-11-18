@@ -693,12 +693,19 @@ final class OwnWorksTests: XCTestCase {
     /// Zaczyna tykać gdy zaczyna się ruch w porządanym kierunku. (jak
     /// przy szukaniu airtaga)").
     func testTheWayToASideTicksFasterAndFaster() {
-        XCTAssertEqual(OwnScanTicks.behind(0), 0)
-        XCTAssertEqual(OwnScanTicks.behind(0.19), 0)
-        XCTAssertEqual(OwnScanTicks.behind(0.21), 1)
-        XCTAssertEqual(OwnScanTicks.behind(0.5), 3)
-        XCTAssertEqual(OwnScanTicks.behind(1), OwnScanTicks.most)
-        XCTAssertEqual(OwnScanTicks.behind(1.3), OwnScanTicks.most)
+        // Where the ticks are felt: every 4° far from where the
+        // photograph is taken, then closer and closer together.
+        XCTAssertEqual(OwnScanTicks.places.count, 22)
+        XCTAssertEqual(OwnScanTicks.places.first, 58)
+        XCTAssertEqual(OwnScanTicks.places.last!, 1.51, accuracy: 0.01)
+        XCTAssertEqual(OwnScanTicks.places, OwnScanTicks.places.sorted(by: >))
+        XCTAssertEqual(OwnScanTicks.behind(60), 0)
+        XCTAssertEqual(OwnScanTicks.behind(52), 2)
+        XCTAssertEqual(OwnScanTicks.behind(22), 10)
+        XCTAssertEqual(OwnScanTicks.behind(16), 11)
+        XCTAssertEqual(OwnScanTicks.behind(0), 22)
+        XCTAssertEqual(OwnScanTicks.strength(52), 0.35, accuracy: 1e-9)
+        XCTAssertEqual(OwnScanTicks.strength(0), 1, accuracy: 1e-9)
 
         var ticks = OwnScanTicks()
         let start = Date(timeIntervalSinceReferenceDate: 3000)
@@ -715,23 +722,23 @@ final class OwnWorksTests: XCTestCase {
         // It starts as he sets off, and comes faster and stronger to
         // where the photograph is taken.
         XCTAssertEqual(felt.first?.angle, 6)
-        XCTAssertEqual(felt.last?.angle, 22)
+        XCTAssertEqual(felt.last?.angle, 21)
         XCTAssertGreaterThanOrEqual(felt.count, 9)
         let early = felt.prefix(4), late = felt.suffix(4)
         XCTAssertGreaterThan(early.last!.angle - early.first!.angle, late.last!.angle - late.first!.angle)
-        XCTAssertEqual(felt.map(\.strength), felt.map(\.strength).sorted())
-        XCTAssertLessThan(felt.first!.strength, 0.6)
-        XCTAssertEqual(felt.last!.strength, 1, accuracy: 1e-9)
-        // Standing there, and walking back: nothing. On again: again.
+        XCTAssertEqual(felt.map { $0.strength }, felt.map { $0.strength }.sorted())
+        XCTAssertLessThan(felt.first!.strength, 0.7)
+        XCTAssertGreaterThan(felt.last!.strength, 0.95)
+        // Standing there, beyond it, and walking back: nothing. On again: again.
         XCTAssertNil(ticks.walked(to: -22, target: -30, at: time + 1))
         XCTAssertNil(ticks.walked(to: -24, target: -30, at: time + 1.5))
         XCTAssertNil(ticks.walked(to: -15, target: -30, at: time + 2))
         XCTAssertNotNil(ticks.walked(to: -20, target: -30, at: time + 3))
-        // The left has its photograph: the way to the right is counted
-        // from where he stands.
+        // The left has its photograph and he stands there still: nothing.
+        // The way to the right ticks from his first steps, lightly so far away.
         XCTAssertNil(ticks.walked(to: -30, target: 30, at: time + 4))
-        XCTAssertNil(ticks.walked(to: -28, target: 30, at: time + 4.1))
-        XCTAssertNotNil(ticks.walked(to: -19, target: 30, at: time + 4.2))
+        XCTAssertNil(ticks.walked(to: -29, target: 30, at: time + 4.1))
+        XCTAssertEqual(ticks.walked(to: -27, target: 30, at: time + 4.2)!, 0.35, accuracy: 1e-9)
         // Never two at once.
         XCTAssertNil(ticks.walked(to: -9, target: 30, at: time + 4.22))
         XCTAssertNotNil(ticks.walked(to: -9, target: 30, at: time + 4.3))

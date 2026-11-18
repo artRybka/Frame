@@ -736,7 +736,7 @@ struct LiveBackend: FrameBackend {
         var ask: [String: Any] = ["choice": true]
         // What the camera followed: where the work is when the model has no answer.
         if let outline { ask["outline"] = outline }
-        let noted = trace.filter(\.value.isFinite)
+        let noted = trace.filter { $0.value.isFinite }
         if !noted.isEmpty { ask["trace"] = noted }
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: ask)

@@ -427,24 +427,35 @@ struct OwnScanArc: Equatable {
 /// photograph is taken: walking on, the ticks come faster and faster;
 /// standing, or walking the other way, there are none.
 struct OwnScanTicks: Equatable {
-    /// Each place leaves this much of the way that was left at the one before.
-    static let ratio = 0.8
-    /// The places along one way.
-    static let most = 16
+    /// How far before where a side's photograph is taken the ticks are
+    /// felt (degrees to go, the farthest first): every 4° far from it
+    /// (the way back from the other side), then each a fifth nearer than
+    /// the one before. At a walk: some four a second, then faster and
+    /// faster.
+    static let places: [Double] = {
+        var places = Array(stride(from: 58.0, to: 22.0, by: -4.0))
+        var near = 22.0
+        while near > 1.5 {
+            places.append(near)
+            near *= 0.8
+        }
+        return places
+    }()
     /// No two ticks nearer than this (seconds): the last ones run together.
     static let gap: TimeInterval = 0.055
 
-    /// How many of the places lie behind one who has gone `part` (0–1)
-    /// of the way.
-    static func behind(_ part: Double) -> Int {
-        guard part > 0 else { return 0 }
-        guard part < 1 else { return most }
-        return min(most, Int(log(1 - part) / log(ratio)))
+    /// How many of the places lie behind one who has `left` degrees to go.
+    static func behind(_ left: Double) -> Int {
+        places.prefix { $0 >= left }.count
+    }
+
+    /// How strong the tick is with `left` degrees to go (0–1): the
+    /// nearer, the stronger.
+    static func strength(_ left: Double) -> Double {
+        0.35 + 0.65 * (1 - min(1, max(0, left) / 30))
     }
 
     private var target: Double?
-    /// Where the way began (degrees to the side of the work).
-    private var from = 0.0
     private var heard = 0
     private var last = Date.distantPast
 
@@ -456,24 +467,26 @@ struct OwnScanTicks: Equatable {
             if self.target != nil { self = OwnScanTicks() }
             return nil
         }
+        // Degrees to go to where that side's photograph is taken (none: there, or beyond).
+        let edge = OwnScanView.near.lowerBound
+        let left = max(0, target < 0 ? angle + edge : edge - angle)
+        let behind = Self.behind(left)
         if target != self.target {
-            // From the front at first; to the other side, from where he stands.
-            from = self.target == nil ? 0 : angle
+            // A way begins. From the front he has set off already: a tick
+            // at once. To the other side he still stands where the first
+            // side's photograph was taken.
+            let setOff = self.target == nil
             self.target = target
-            heard = 0
+            heard = behind
+            guard setOff else { return nil }
+            last = now
+            return Self.strength(left)
         }
-        let edge = target < 0 ? -OwnScanView.near.lowerBound : OwnScanView.near.lowerBound
-        // Gone the other way first: the way is counted from the farthest he went.
-        if (angle - from) * (edge - from) < 0 { from = angle }
-        let way = edge - from
-        guard abs(way) > 1 else { return nil }
-        let part = (angle - from) / way
-        let behind = Self.behind(part)
         // Walked back a stretch: it ticks again when he goes on.
         if behind < heard - 1 { heard = behind }
         guard behind > heard, now.timeIntervalSince(last) >= Self.gap else { return nil }
         heard = behind
         last = now
-        return 0.35 + 0.65 * min(1, max(0, part))
+        return Self.strength(left)
     }
 }
