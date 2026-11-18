@@ -305,12 +305,6 @@ def test_the_lamps_reflection_is_taken_out_by_two_photographs_from_the_side(
             )
             assert sent.status_code == 200, sent.text
             assert sent.json() == {"sides": n}
-        assert (
-            client.post(
-                f"/api/own/photos/{token}/sides", files={"file": ("s.png", png(first))}
-            ).status_code
-            == 422
-        )
         merged = client.post(f"/api/own/photos/{token}/merge")
         assert merged.status_code == 200, merged.text
         assert merged.json()["used"] == 2 and 0.003 < merged.json()["replaced"] < 0.05
@@ -329,6 +323,71 @@ def test_the_lamps_reflection_is_taken_out_by_two_photographs_from_the_side(
     away = (slice(1000, 1500), slice(100, 1100))
     assert np.abs(out[away] - first[away]).mean() < 9
     assert not list(service.own_works.incoming.glob(f"{token}-side*"))
+
+
+def test_of_several_from_one_side_the_scan_is_made_of_the_one_nearest_thirty_degrees(
+    service: FrameService,
+) -> None:
+    """Mateusz 2026-11-18 ("może kolejne zdjęcia nie muszą być dokładnie
+    pod 30° i trzeba pozwolić na więcej skanów pod różnymi kątami?"; he
+    chose the one arc): the phone takes a few photographs on its way round
+    the work and says from where. The scan is made as it was, of one from
+    each side; the others are kept beside it to learn from."""
+    from frame_server import own_works
+
+    first = _jpeg(photo())
+    with _client(service) as client:
+        token = client.post("/api/own/photos", files={"file": ("p.jpg", first)}).json()["token"]
+        # On the way out to the left, then where it is meant; the right the same.
+        for n, angle in enumerate([-14.2, -27.6, 16.0, 33.1, 24.9, 41.0], start=1):
+            sent = client.post(
+                f"/api/own/photos/{token}/sides",
+                params={"angle": angle},
+                files={"file": ("s.jpg", first)},
+            )
+            assert sent.status_code == 200 and sent.json() == {"sides": n}, sent.text
+        assert own_works.SIDES == 6
+        full = client.post(
+            f"/api/own/photos/{token}/sides", params={"angle": 30}, files={"file": ("s.jpg", first)}
+        )
+        assert full.status_code == 422
+        assert (
+            client.post(
+                f"/api/own/photos/{token}/sides",
+                params={"angle": 120},
+                files={"file": ("s.jpg", first)},
+            ).status_code
+            == 422
+        )
+        merged = client.post(
+            f"/api/own/photos/{token}/merge", json={"trace": {"pinned": 1.4, "side1_rate": 0.3}}
+        )
+        assert merged.status_code == 200 and merged.json()["used"] == 2, merged.text
+        kept = client.get("/api/debug/own-scans").json()[0]
+        assert sorted(kept["files"]) == ["first.jpg"] + [f"more{n}.jpg" for n in (1, 2, 3, 4)] + [
+            "side1.jpg",
+            "side2.jpg",
+        ]
+        assert kept["angles"] == {"side1.jpg": -27.6, "side2.jpg": 33.1} | {
+            "more1.jpg": -14.2,
+            "more2.jpg": 16.0,
+            "more3.jpg": 24.9,
+            "more4.jpg": 41.0,
+        }
+        assert kept["trace"] == {"pinned": 1.4, "side1_rate": 0.3}
+        assert client.get(f"/api/debug/own-scans/{token}/more4.jpg").status_code == 200
+    assert not list(service.own_works.incoming.glob(f"{token}-side*"))
+    assert not service.own_works.path(token).with_suffix(own_works.ANGLES).exists()
+
+    # Where the phone did not say (an app before the one arc): all of them.
+    here = [service.own_works.incoming / f"{token}-side{n}.jpg" for n in (1, 2, 3)]
+    chosen = own_works.OwnWorks.chosen
+    assert chosen(here, {}) == (here, [])
+    assert chosen(here, {1: -30.0, 3: 30.0}) == (here, [])
+    assert chosen(here[:2], {1: -30.0, 2: 29.0}) == (here[:2], [])
+    # Both from one side: the scan is made of the one.
+    assert chosen(here[:2], {1: -16.0, 2: -29.0}) == ([here[1]], [here[0]])
+    assert chosen(here, {1: 12.0, 2: -35.0, 3: 27.0}) == ([here[1], here[2]], [here[0]])
 
 
 def test_side_photographs_of_something_else_change_nothing() -> None:

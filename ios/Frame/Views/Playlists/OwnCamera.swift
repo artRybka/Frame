@@ -6,13 +6,20 @@ import SwiftUI
 import UIKit
 import Vision
 
-/// What the camera gives the steps after it: the first photograph, the two
-/// taken a little from each side (the scan of three, for the glare), and
+/// What the camera gives the steps after it: the first photograph, those
+/// taken from either side of the work (the scan, for the glare), and
 /// the LiDAR's depth for the size (Mateusz 2026-11-16 chose "Wymiar + skan
 /// z 3 zdjęć + 48 MP").
 struct OwnShots {
     var first: UIImage
     var sides: [UIImage] = []
+    /// From how far to the side each side photograph was taken (degrees;
+    /// negative: from the work's left), as the phone counted it.
+    var angles: [Double] = []
+    /// What the camera noted of the scan as it went (seconds after the
+    /// first photograph its marks came, how fast the phone turned at each
+    /// side one…): it goes to the server with the scan, for the tuning.
+    var trace: [String: Double] = [:]
     var depth: OwnDepth? = nil
     /// The photographs' own files, the first's and then the sides': every
     /// pixel as the camera wrote them (48 MP), which is what the server is
@@ -30,6 +37,12 @@ struct OwnShots {
     func file(_ index: Int) -> Data? {
         files.count == sides.count + 1 && files.indices.contains(index) ? files[index] : nil
     }
+
+    /// From how far to the side the `index`-th side photograph was taken,
+    /// when the phone said.
+    func angle(_ index: Int) -> Double? {
+        angles.count == sides.count && angles.indices.contains(index) ? angles[index] : nil
+    }
 }
 
 /// "Dodaj własne dzieło" opening straight on the camera (Mateusz
@@ -38,12 +51,14 @@ struct OwnShots {
 /// as it will be taken (3 : 4, nothing cut off), the work's outline as the
 /// camera finds it, a word of advice, and Photos beside it. The first
 /// photograph is taken from the front, by itself once the work is whole
-/// in the picture, large enough and still; then two more from some 30° to
-/// the left and to the right, each when the phone stands there aiming at
-/// the work (Mateusz 2026-11-16: "pierwsze zdjęcie na wprost, a kolejne
-/// pod większym kątem z ramką pomocniczą na ekranie"; no shutter,
-/// "skoro zdjęcie robi się samo", but when the work's edges are not
-/// found). The simulator has no camera: the demo shows its wall
+/// in the picture, large enough and still; then he walks round the work
+/// in one arc, to the left and to the right in whichever order, and one
+/// from each side takes itself where the phone slows some 30° off
+/// (`OwnScanArc`; Mateusz 2026-11-16: "pierwsze zdjęcie na wprost, a
+/// kolejne pod większym kątem"; no shutter, "skoro zdjęcie robi się
+/// samo", but when the work's edges are not found; 2026-11-18, the one
+/// arc: "może da się to zbudować jeszcze lepiej, intuicyjniej i
+/// szybciej"). The simulator has no camera: the demo shows its wall
 /// photograph and a shutter.
 struct OwnCamera: View {
     /// Leaves the steps (the back arrow at the top left).
@@ -69,8 +84,21 @@ struct OwnCamera: View {
     /// upright (the app is portrait), the phone may be held sideways for a
     /// wide work (Mateusz 2026-11-16: "działa tylko w pionie").
     @State private var tilt: Double = 0
-    /// The scan of three under way: the first photograph taken, the sides to come.
+    /// The scan under way: the first photograph taken, the sides to come.
     @State private var scan: OwnShots?
+    /// The side photographs so far: which sides are done.
+    @State private var arc = OwnScanArc()
+    /// What the hand feels on the way to a side and when it is done.
+    @State private var haptics = OwnScanHaptics()
+    /// When the first photograph was taken, and what the scan has noted
+    /// of itself since (`OwnShots.trace`).
+    @State private var began: Date?
+    @State private var trace: [String: Double] = [:]
+    /// No photographs in passing: one could not be taken, or the server
+    /// is one from before it took them (`OwnScanArc.extras`).
+    @State private var plain = false
+    /// One is being taken in passing: nothing shows of it.
+    @State private var quiet = false
     @State private var guide = OwnScanGuide()
     /// The work's outline as the camera sees it now (0–1 on the screen's
     /// picture).
@@ -101,8 +129,10 @@ struct OwnCamera: View {
     @State private var ar = OwnArSession()
     /// The side photographs go through the AR session: the picture is its.
     @State private var pinning = false
-    /// Since when the work has been looked for to be pinned.
-    @State private var pinSince: Date?
+    /// The AR session's picture has come (the camera changes hands after
+    /// the first photograph and is dark for a moment: until then the
+    /// photograph just taken stays).
+    @State private var arLive = false
     /// The pinned work as the AR session sees it now; nil until it is pinned.
     @State private var sight: OwnArSight?
 
@@ -111,14 +141,15 @@ struct OwnCamera: View {
     /// Standing where a side photograph is taken without the work's
     /// corners for this long, the same.
     private static let blind: TimeInterval = 3
-    /// The work is pinned within this of the first photograph, or the
-    /// side ones go by the gyroscope's count as they did.
-    private static let pinTime: TimeInterval = 5
+    /// One more photograph is taken in passing only while the phone
+    /// turns slower than this (radians a second).
+    private static let passing = 0.6
 
     private var demo: UIImage? { access == .ready ? nil : (model.demoMode ? DemoOwn.photo() : nil) }
 
-    /// Which photograph of the three is next (1: the first).
-    private var number: Int { scan.map { min($0.sides.count + 2, 3) } ?? 1 }
+    /// Which step of the scan this is (1: the first photograph; 2: the
+    /// ones from the sides).
+    private var number: Int { scan == nil ? 1 : 2 }
 
     // MARK: What the camera sees
 
@@ -127,8 +158,6 @@ struct OwnCamera: View {
     /// The picture as the world stands: tall, or wide with the phone on its side.
     private var aspect: Double { quarter == 0 ? 0.75 : 4.0 / 3 }
     private var focal: Double { quarter == 0 ? camera.focal : camera.focal * 0.75 }
-    /// From where the next side photograph is meant: the left first.
-    private var target: Double { number == 2 ? -OwnScanView.side : OwnScanView.side }
     /// Where the phone stands by the gyroscope since the first photograph
     /// (degrees; negative: to the left of the work, aiming at it).
     private var turned: Double { guide.turned * 180 / .pi }
@@ -152,60 +181,66 @@ struct OwnCamera: View {
             look.advice = OwnScanView.first(upright, aspect: aspect)
             return look
         }
+        look.left = arc.done(left: true)
+        look.right = arc.done(left: false)
+        look.shots = arc.taken
+        let angle: Double
+        var away = 1.0
+        // The work's outline as the world stands, when it is seen.
+        let work: [CGPoint]?
+        let seen: Bool
+        var stray = 0.0
         if pinning, let sight {
             // The work is pinned in the room: where the phone stands and
             // where the work's corners are on the picture are known,
             // whatever the camera makes of the picture.
-            let work = upright
-            look.angle = sight.angle
+            angle = sight.angle
+            away = sight.away
+            work = upright
+            seen = work != nil
             look.live = outline
-            look.aim = outline.map(OwnScanView.middle)
-            look.advice = OwnScanView.side(
-                target: target, angle: sight.angle, away: sight.away,
-                fits: work.map(OwnScanView.fits) ?? true,
-                aim: work.map { OwnScanView.offAim($0, aspect: aspect) } ?? 0,
-                seen: work != nil,
-                held: steady.said == .hold
-            )
-            if quarter != heldAs { look.advice = .rolled }
-            return look
-        }
-        if pinning, let pinSince, Date.now.timeIntervalSince(pinSince) < Self.pinTime {
-            look.angle = guide.available ? turned : nil
-            look.advice = .pinning
-            return look
-        }
-        var seen: Double?
-        var away = 1.0
-        if let upright, let front, let shape = OwnScanView.shape(of: front, aspect: aspect),
-           let now = OwnScanView.turn(of: upright, shape: shape, aspect: aspect, focal: focal),
-           let then = OwnScanView.turn(of: front, shape: shape, aspect: aspect, focal: focal),
-           let far = OwnScanView.away(upright, front: front, aspect: aspect) {
-            seen = now - then
-            away = far
-        }
-        let fused = stands.fuse(gyro: guide.available ? turned : nil, seen: seen, fresh: fresh)
-        guard let angle = fused.angle else {
-            look.advice = .lost
-            return look
-        }
-        look.angle = angle
-        // How far away, whether it is whole and where its middle is: only
-        // of an outline that is the work's.
-        let work = fused.seen ? upright : nil
-        look.live = fused.seen ? outline : nil
-        look.aim = look.live.map(OwnScanView.middle)
-        look.advice = OwnScanView.side(
-            target: target, angle: angle, away: work != nil ? away : 1,
-            fits: work.map(OwnScanView.fits) ?? true,
-            aim: work.map { OwnScanView.offAim($0, aspect: aspect) } ?? 0,
+        } else {
+            // Until then (and without an AR session): the gyroscope's
+            // count, drawn towards what the work's outline says.
+            var outlines: Double?
+            if let upright, let front, let shape = OwnScanView.shape(of: front, aspect: aspect),
+               let now = OwnScanView.turn(of: upright, shape: shape, aspect: aspect, focal: focal),
+               let then = OwnScanView.turn(of: front, shape: shape, aspect: aspect, focal: focal),
+               let far = OwnScanView.away(upright, front: front, aspect: aspect) {
+                outlines = now - then
+                away = far
+            }
+            let fused = stands.fuse(gyro: guide.available ? turned : nil, seen: outlines, fresh: fresh)
+            guard let counted = fused.angle else {
+                look.advice = .lost
+                return look
+            }
+            angle = counted
+            // How far away, whether it is whole: only of an outline that is the work's.
+            work = fused.seen ? upright : nil
+            if work == nil { away = 1 }
+            look.live = fused.seen ? outline : nil
             // Its corners are waited for where the camera found them at
             // the first photograph.
-            seen: work != nil || front == nil,
-            held: steady.said == .hold,
-            stray: fused.stray
-        )
-        // The three are taken with the phone held one way.
+            seen = work != nil || front == nil
+            stray = fused.stray
+        }
+        look.angle = angle
+        let fits = work.map(OwnScanView.fits) ?? true
+        if let target = arc.target(at: angle) {
+            look.advice = OwnScanView.side(
+                target: target, angle: angle, away: away, fits: fits,
+                // The whole work in the picture is enough: its middle
+                // need not be in the picture's (the one arc, 2026-11-18).
+                aim: fits ? 0 : work.map { OwnScanView.offAim($0, aspect: aspect) } ?? 0,
+                seen: seen, held: steady.said == .hold, stray: stray
+            )
+        } else {
+            // In front of the work with the first photograph taken: round
+            // it now, either way.
+            look.advice = fits ? .either : .farther
+        }
+        // All are taken with the phone held one way.
         if quarter != heldAs { look.advice = .rolled }
         return look
     }
@@ -215,7 +250,9 @@ struct OwnCamera: View {
     private func refresh(fresh: Bool = false) {
         guard finding == nil else { return }
         var next = reading(fresh: fresh)
-        if !shooting { next.advice = steady.take(next.advice) } else { next.advice = look.advice }
+        // (One taken in passing stops nothing: he walks on.)
+        let busy = shooting && !quiet
+        if !busy { next.advice = steady.take(next.advice) } else { next.advice = look.advice }
         if next.advice == .corners {
             // Standing right and the corners not found for a while (a dark
             // frame on a dark wall): he takes the photograph himself.
@@ -228,6 +265,10 @@ struct OwnCamera: View {
             }
         } else if blindSince != nil {
             blindSince = nil
+        }
+        if scan != nil, !busy, let angle = next.angle {
+            // The way to the side's photograph ticks, faster and faster.
+            haptics.walked(to: angle, target: arc.target(at: angle))
         }
         if next != look { look = next }
         watch()
@@ -309,7 +350,7 @@ struct OwnCamera: View {
             .accessibilityLabel(scan == nil ? "Zamknij" : "Od nowa")
             Spacer()
             if finding == nil, access == .ready || scan != nil {
-                Text(bound: "Zdjęcie \(number) z 3")
+                Text(bound: "Krok \(number) z 2")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)
@@ -340,6 +381,9 @@ struct OwnCamera: View {
                     .aspectRatio(contentMode: finding.size.width > finding.size.height ? .fit : .fill)
             } else if access == .ready, pinning {
                 OwnArPreview(session: ar.tracking)
+                if !arLive, let first = scan?.first {
+                    OwnStill(image: first, quarter: heldAs).transition(.opacity)
+                }
             } else if access == .ready {
                 OwnCameraPreview(session: camera.session)
             } else if let demo {
@@ -360,10 +404,13 @@ struct OwnCamera: View {
                 }
             }
             if finding == nil, access == .ready {
-                OwnScanOverlay(look: look, holding: shooting ? nil : holdSince, taking: shooting)
+                OwnScanOverlay(look: look, holding: shooting ? nil : holdSince, taking: shooting && !quiet)
             } else if finding == nil, demo != nil {
-                // Without a camera (the demo): where the three are taken from.
-                OwnScanPlan(taken: number - 1, angle: nil, matched: false)
+                // Without a camera (the demo): where they are taken from.
+                OwnScanPlan(
+                    front: scan != nil, left: arc.done(left: true), right: arc.done(left: false),
+                    shots: arc.taken, angle: nil, matched: false
+                )
                     .frame(height: 64)
                     .frame(maxWidth: 340)
                     .padding(.horizontal, 30)
@@ -389,7 +436,7 @@ struct OwnCamera: View {
         } else if access == .ready {
             OwnScanCaption(look: look)
         } else if scan != nil {
-            line(number == 2 ? "Zdjęcie z lewej strony dzieła" : "Zdjęcie z prawej strony dzieła")
+            line(arc.done(left: true) ? "Zdjęcie z prawej strony dzieła" : "Zdjęcie z lewej strony dzieła")
         } else {
             line("Umieść całe dzieło w kadrze")
         }
@@ -406,7 +453,7 @@ struct OwnCamera: View {
 
     /// What the camera found in its latest picture: the work's outline, or none.
     private func see(_ found: [CGPoint]?) {
-        guard finding == nil, !shooting else { return }
+        guard finding == nil, !shooting || quiet else { return }
         if let found {
             if let old = outline, OwnScanView.off(found, frame: old) < 0.1 {
                 // Its corners tremble from picture to picture.
@@ -415,6 +462,7 @@ struct OwnCamera: View {
                 outline = found
             }
             lostSince = nil
+            note("outline")
         } else {
             let since = lostSince ?? .now
             lostSince = since
@@ -429,9 +477,18 @@ struct OwnCamera: View {
 
     /// All as the next photograph needs it: the ring fills (`OwnShotRing`),
     /// and once it is full and the phone still, the photograph is taken.
+    /// A side one is taken as soon as the phone is still where it is
+    /// meant from (he slows there and walks on), or, as it always was,
+    /// held there a moment and steady enough.
     private func watch() {
-        // All three taken (and sent, or failing to be): nothing more to take.
-        guard finding == nil, !shooting, access == .ready, (scan?.sides.count ?? 0) < 2 else { return }
+        // All taken (and sent, or failing to be): nothing more to take.
+        guard finding == nil, !shooting, access == .ready, !arc.finished else { return }
+        if scan != nil, !plain, case .go = look.advice, let angle = look.angle, arc.early(at: angle),
+           look.live.map(OwnScanView.fits) == true, guide.available, guide.rate < Self.passing {
+            // On the way out to a side: one more, in passing.
+            shoot(passing: true)
+            return
+        }
         guard look.advice == .hold else {
             if holdSince != nil { withAnimation(.easeOut(duration: 0.2)) { holdSince = nil } }
             return
@@ -440,7 +497,8 @@ struct OwnCamera: View {
             withAnimation(.easeOut(duration: 0.2)) { holdSince = .now }
             return
         }
-        if Date.now.timeIntervalSince(since) >= OwnShotRing.time, guide.steady || !guide.available { shoot() }
+        let held = Date.now.timeIntervalSince(since) >= OwnShotRing.time && (guide.steady || !guide.available)
+        if held || (scan != nil && guide.calm) { shoot() }
     }
 
     /// Before the next photograph: nothing held over from the last.
@@ -460,6 +518,11 @@ struct OwnCamera: View {
         camera.hold(false)
         front = nil
         stands = OwnScanAngle()
+        arc = OwnScanArc()
+        haptics.rest()
+        began = nil
+        trace = [:]
+        plain = false
         withAnimation(.easeInOut(duration: 0.25)) { scan = nil }
         early?(nil)
         rest()
@@ -467,8 +530,16 @@ struct OwnCamera: View {
 
     /// The photographs taken so far go on.
     private func finish() {
-        guard let done = scan else { return }
+        guard var done = scan else { return }
+        done.trace = trace
         took(done)
+    }
+
+    /// The scan notes when something first came, in seconds after its
+    /// first photograph.
+    private func note(_ what: String) {
+        guard let began, trace[what] == nil else { return }
+        trace[what] = (Date.now.timeIntervalSince(began) * 100).rounded() / 100
     }
 
     // MARK: The work pinned in the room
@@ -477,27 +548,41 @@ struct OwnCamera: View {
     /// session, which looks for the work once more and pins it in the
     /// room (Mateusz 2026-11-18 08:22 UTC: "znaczniki… naniesione na
     /// ścianę lub przyklejone do jego ramy"). Its corners then stay on it
-    /// and the angle is the phone's place in the room; until it is pinned
-    /// (and if it never is) the gyroscope counts as before.
+    /// and the angle is the phone's place in the room. He is not kept
+    /// waiting for that: the session only finds its place in the room
+    /// once the phone moves (13:35 UTC: "znaczniki co prawda nie
+    /// pojawiają się od razu, ale dopiero gdy stanę pod kątem"), so the
+    /// corners are drawn at once from what its camera sees and the angle
+    /// is the gyroscope's count, as without it, until the work is pinned.
     private func pin() {
         sight = nil
         outline = nil
         dim = false
-        pinSince = .now
+        arLive = false
         let held = heldAs
+        ar.began = {
+            guard pinning else { return }
+            note("ar_picture")
+            withAnimation(.easeOut(duration: 0.15)) { arLive = true }
+        }
         ar.seen = { now in
             guard pinning else { return }
-            if let now {
-                sight = now
-                outline = now.outline
+            if now.tracking { note("ar_tracking") }
+            if let pinned = now.sight {
+                note("pinned")
+                sight = pinned
+                outline = pinned.outline
+                refresh(fresh: true)
+            } else if sight == nil {
+                see(now.found)
             }
-            refresh(fresh: true)
         }
         ar.failed = { unpin() }
         withAnimation(.easeInOut(duration: 0.2)) { pinning = true }
         camera.stop {
             // (Unless he has begun anew meanwhile.)
             guard pinning else { return }
+            note("ar_start")
             ar.start(quarter: held)
         }
     }
@@ -508,8 +593,8 @@ struct OwnCamera: View {
         guard pinning else { return }
         ar.stop()
         pinning = false
+        arLive = false
         sight = nil
-        pinSince = nil
         outline = nil
         Task { access = await camera.start() }
     }
@@ -538,7 +623,7 @@ struct OwnCamera: View {
                 Spacer()
             }
             if byHand {
-                OwnShutter(action: shoot)
+                OwnShutter { shoot() }
             }
         }
         .frame(height: 82)
@@ -551,10 +636,12 @@ struct OwnCamera: View {
         .padding(.bottom, 12)
     }
 
-    private func shoot() {
+    /// The next photograph. `passing`: one more on the way out to a side,
+    /// taken without a word.
+    private func shoot(passing: Bool = false) {
         guard !shooting else { return }
-        if let scan, scan.sides.count >= 2 {
-            // The three could not be sent a moment ago: once more.
+        if let scan, arc.finished {
+            // They could not be sent a moment ago: once more.
             took(scan)
             return
         }
@@ -565,7 +652,9 @@ struct OwnCamera: View {
             }
             if var shots = scan {
                 shots.sides.append(demo)
-                if shots.sides.count >= 2 {
+                shots.angles.append(arc.next)
+                arc.took(arc.next)
+                if arc.finished {
                     took(shots)
                 } else {
                     scan = shots
@@ -578,27 +667,48 @@ struct OwnCamera: View {
         }
         // The ring turns until the camera has written the photograph.
         shooting = true
+        quiet = passing
         holdSince = nil
         if var shots = scan {
+            // From where: the phone's count, or (he pressed the shutter
+            // with none) the side that is next.
+            let at = look.angle ?? arc.next
+            let rate = guide.rate, pinned = sight != nil
             let taken: (UIImage?, Data?) -> Void = { image, file in
                 shooting = false
                 guard let image else {
-                    model.notices.warn("Nie udało się zrobić zdjęcia")
+                    if passing { plain = true } else { model.notices.warn("Nie udało się zrobić zdjęcia") }
                     return
                 }
-                blink()
+                let had = [arc.done(left: true), arc.done(left: false)]
                 shots.sides.append(image)
+                shots.angles.append(at)
                 if let file { shots.files.append(file) }
-                if shots.sides.count >= 2 {
+                arc.took(at)
+                let name = "side\(shots.sides.count)"
+                note(name)
+                trace[name + "_rate"] = (rate * 100).rounded() / 100
+                trace[name + "_pinned"] = pinned ? 1 : 0
+                shots.trace = trace
+                if had != [arc.done(left: true), arc.done(left: false)] {
+                    // The side is done (14:03 UTC: "potwierdzenie
+                    // wykonania danej strony").
+                    blink()
+                    haptics.done()
+                } else if !passing {
+                    blink()
+                }
+                if arc.finished {
                     scan = shots
                     rest()
-                    // All three are taken: the AR session rests, its last picture stays.
+                    // All are taken: the AR session rests, its last picture stays.
                     if pinning { ar.stop() }
                     finish()
                 } else {
                     withAnimation(.easeInOut(duration: 0.25)) { scan = shots }
                     early?(shots)
-                    rest()
+                    // (One taken in passing: he walks on as he was.)
+                    if !passing { rest() }
                 }
             }
             if pinning {
@@ -621,17 +731,22 @@ struct OwnCamera: View {
             }
             blink()
             front = seen
+            arc = OwnScanArc()
+            haptics.rest()
+            began = .now
+            trace = [:]
+            plain = !OwnScanArc.extras(server: model.serverUpdate?.version)
+            let shots = OwnShots(
+                first: image, depth: depth, files: file.map { [$0] } ?? [],
+                outline: seen.map { $0.map { [Double($0.x), Double($0.y)] } }
+            )
+            withAnimation(.easeInOut(duration: 0.25)) { scan = shots }
             if OwnArSession.supported {
                 pin()
             } else {
                 // The side photographs in the first one's light, so that only the reflections differ.
                 camera.hold(true)
             }
-            let shots = OwnShots(
-                first: image, depth: depth, files: file.map { [$0] } ?? [],
-                outline: seen.map { $0.map { [Double($0.x), Double($0.y)] } }
-            )
-            withAnimation(.easeInOut(duration: 0.25)) { scan = shots }
             early?(shots)
             rest()
         }
@@ -664,6 +779,26 @@ final class OwnScanGuide {
     var steady = false
     /// How the phone is held: 0 upright, 1 its top to the left, -1 to the right.
     @ObservationIgnored var quarter = 0
+    /// How fast the phone turns now, about any line (radians a second).
+    @ObservationIgnored private(set) var rate = 0.0
+    /// Since when (the gyroscope's clock) it has turned slower than
+    /// `quiet`, and that clock now.
+    @ObservationIgnored private var quietSince: TimeInterval?
+    @ObservationIgnored private var clock: TimeInterval = 0
+
+    /// Slower than this (radians a second) for `quietTime`, the phone is
+    /// still: a side photograph is taken at once, with no holding it
+    /// there (the one arc, 2026-11-18).
+    static let quiet = 0.12
+    static let quietTime: TimeInterval = 0.15
+
+    /// How long the phone has been still, by its samples' clock.
+    static func still(since: TimeInterval?, now: TimeInterval) -> Bool {
+        since.map { now - $0 >= quietTime } ?? false
+    }
+
+    /// Still, and has been for a moment.
+    var calm: Bool { Self.still(since: quietSince, now: clock) }
 
     /// How fast the phone turns to the left about the picture's upright
     /// (radians a second). `gravity` and `rate` as the phone has them: x
@@ -689,16 +824,22 @@ final class OwnScanGuide {
     func start() {
         turned = 0
         last = nil
+        rate = 0
+        quietSince = nil
         guard available else { return }
         motion.stopDeviceMotionUpdates()
         motion.deviceMotionUpdateInterval = 1.0 / 30
         motion.startDeviceMotionUpdates(to: .main) { [weak self] data, _ in
             guard let self, let data else { return }
             let g = data.gravity, r = data.rotationRate
-            guard let rate = Self.turning(rate: (r.x, r.y, r.z), gravity: (g.x, g.y, g.z), quarter: quarter) else { return }
-            if let last { turned += rate * (data.timestamp - last) }
+            guard let about = Self.turning(rate: (r.x, r.y, r.z), gravity: (g.x, g.y, g.z), quarter: quarter) else { return }
+            if let last { turned += about * (data.timestamp - last) }
             last = data.timestamp
-            let still = (r.x * r.x + r.y * r.y + r.z * r.z).squareRoot() < 0.25
+            let all = (r.x * r.x + r.y * r.y + r.z * r.z).squareRoot()
+            rate = all
+            clock = data.timestamp
+            if all < Self.quiet { quietSince = quietSince ?? data.timestamp } else { quietSince = nil }
+            let still = all < 0.25
             if still != steady { steady = still }
         }
     }
@@ -1211,5 +1352,60 @@ private struct OwnCameraPreview: UIViewRepresentable {
                 connection.videoRotationAngle = 90
             }
         }
+    }
+}
+
+/// The photograph just taken, standing as the camera's picture did, until
+/// the AR session's picture comes: the camera changes hands after the
+/// first photograph and is dark for a moment.
+private struct OwnStill: View {
+    let image: UIImage
+    /// How the phone was held when it was taken.
+    let quarter: Int
+
+    var body: some View {
+        GeometryReader { geo in
+            let turned = quarter != 0
+            Image(uiImage: image).resizable().scaledToFill()
+                .frame(width: turned ? geo.size.height : geo.size.width, height: turned ? geo.size.width : geo.size.height)
+                .clipped()
+                // As the world stands, on a screen that stays upright.
+                .rotationEffect(.degrees(Double(quarter) * 90))
+                .frame(width: geo.size.width, height: geo.size.height)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// What the hand feels while the scan's side photographs are taken
+/// (Mateusz 2026-11-18 14:03 UTC: "dodaj haptykę - coraz szybsze tykanie i
+/// potwierdzenie wykonania danej strony. Zaczyna tykać gdy zaczyna się
+/// ruch w porządanym kierunku. (jak przy szukaniu airtaga)"): a tick at
+/// each place along the way to a side (`OwnScanTicks`), stronger the
+/// nearer, and the system's "done" when the side has its photograph.
+@MainActor
+final class OwnScanHaptics {
+    private let tick = UIImpactFeedbackGenerator(style: .rigid)
+    private let finished = UINotificationFeedbackGenerator()
+    private var ticks = OwnScanTicks()
+
+    /// The phone stands at `angle` on its way to the side whose
+    /// photograph is meant from `target` (nil: none just now).
+    func walked(to angle: Double, target: Double?) {
+        guard let strength = ticks.walked(to: angle, target: target) else { return }
+        tick.impactOccurred(intensity: strength)
+        tick.prepare()
+    }
+
+    /// A side has its photograph.
+    func done() {
+        finished.notificationOccurred(.success)
+        tick.prepare()
+    }
+
+    /// The scan is begun (anew): the way starts in front of the work.
+    func rest() {
+        ticks = OwnScanTicks()
+        tick.prepare()
     }
 }

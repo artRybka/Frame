@@ -93,13 +93,26 @@ FOUND = ".found.json"
 #: Beside a waiting photograph: the colour chart found in it and the way
 #: back to true colours it gave (:mod:`.imaging.colorchecker`).
 CHART = ".chart.json"
-#: A scan's file as :meth:`OwnWorks.merge` names it.
-_SCAN_FILE = re.compile(r"^(first|side[1-9])\.jpg$")
+#: Beside a waiting photograph: from how far to the side each of its side
+#: ones was taken, where the phone said (their numbers to degrees;
+#: negative: from the work's left).
+ANGLES = ".sides.json"
+#: A scan's file as :meth:`OwnWorks.merge` names it: the first photograph,
+#: the side ones the scan was made of, and those taken besides.
+_SCAN_FILE = re.compile(r"^(first|side[1-9]|more[1-9])\.jpg$")
 #: The side the photograph is looked at for the work's corners and hints:
 #: a JPEG is opened that much faster at an eighth of 48 MP.
 LOOK_SIDE = 3000
-#: Photographs from the side a first one may have (``-side1``, ``-side2``).
-SIDES = 2
+#: Photographs from the side a first one may have (``-side1``…). The scan
+#: is made of one from each side; walking round the work in one arc the
+#: phone takes a few more on the way (Mateusz 2026-11-18: "może kolejne
+#: zdjęcia nie muszą być dokładnie pod 30° i trzeba pozwolić na więcej
+#: skanów pod różnymi kątami?"), kept to learn from what angle is enough.
+SIDES = 6
+#: How far to the side (degrees) the photographs the merging was tuned on
+#: were taken: of those from one side, the nearest to it is the one used.
+SIDE_ANGLE = 30.0
+_SIDE_NUMBER = re.compile(r"-side(\d+)\.jpg$")
 #: A token as :meth:`OwnWorks.take` makes it.
 _TOKEN = re.compile(r"^[0-9a-f]{24}$")
 #: The side the picture is read at for the hints.
@@ -351,11 +364,13 @@ class OwnWorks:
         small.save(out, "JPEG", quality=90)
         return out.getvalue()
 
-    def side(self, token: str, data: bytes) -> int:
+    def side(self, token: str, data: bytes, angle: float | None = None) -> int:
         """Another photograph of the same work taken a little from the side
         (the scan of three, Mateusz 2026-11-16), kept with the first until
-        :meth:`merge`. How many side photographs it has now."""
-        self.path(token)
+        :meth:`merge`. How many side photographs it has now. ``angle``:
+        from how far to the side the phone says it was taken (degrees;
+        negative: from the work's left)."""
+        path = self.path(token)
         taken = sorted(self.incoming.glob(f"{token}-side*.jpg"))
         if len(taken) >= SIDES:
             raise ValueError("enough side photographs")
@@ -371,7 +386,40 @@ class OwnWorks:
         img.save(
             self.incoming / f"{token}-side{len(taken) + 1}.jpg", "JPEG", quality=INCOMING_QUALITY
         )
+        if angle is not None:
+            angles = self._angles(token)
+            angles[len(taken) + 1] = round(angle, 1)
+            path.with_suffix(ANGLES).write_text(json.dumps(angles))
         return len(taken) + 1
+
+    def _angles(self, token: str) -> dict[int, float]:
+        """From how far to the side each side photograph was taken, by its
+        number, where the phone said."""
+        try:
+            noted = json.loads(self.path(token).with_suffix(ANGLES).read_text())
+            return {int(n): float(angle) for n, angle in noted.items()}
+        except (OSError, ValueError, AttributeError):
+            return {}
+
+    @staticmethod
+    def chosen(sides: list[Path], angles: dict[int, float]) -> tuple[list[Path], list[Path]]:
+        """The side photographs the scan is made of, and the others. The
+        merging was tuned on one from each side, some 30° off: with the
+        phone saying where each was taken, the one nearest
+        :data:`SIDE_ANGLE` of those from the left and of those from the
+        right. All of them where the phone did not say (an app before the
+        one arc took just the two)."""
+        best: dict[bool, tuple[float, Path]] = {}
+        for side in sides:
+            number = _SIDE_NUMBER.search(side.name)
+            angle = angles.get(int(number.group(1))) if number else None
+            if angle is None:
+                return sides, []
+            left, off = angle < 0, abs(abs(angle) - SIDE_ANGLE)
+            if left not in best or off < best[left][0]:
+                best[left] = (off, side)
+        used = {side for _, side in best.values()}
+        return [s for s in sides if s in used], [s for s in sides if s not in used]
 
     def merge(
         self,
@@ -379,6 +427,7 @@ class OwnWorks:
         corners: Quad | None = None,
         outline: Quad | None = None,
         choice: bool = False,
+        trace: dict[str, float] | None = None,
     ) -> Merged:
         """The first photograph without the reflections its side ones do
         not share, kept in its place. Within the work's ``corners`` (the
@@ -400,9 +449,14 @@ class OwnWorks:
 
         ``choice``: the phone shows him the scan and the first photograph
         to choose between. The scan is then made also of photographs that
-        show no one flat work, and ``doubt`` proposes the first one."""
+        show no one flat work, and ``doubt`` proposes the first one.
+
+        ``trace``: what the phone noted of the scan as it was taken (when
+        its marks came, how fast it turned at each photograph), kept
+        beside the photographs for the camera to be tuned on."""
         path = self.path(token)
-        sides = sorted(self.incoming.glob(f"{token}-side*.jpg"))
+        angles = self._angles(token)
+        sides, more = self.chosen(sorted(self.incoming.glob(f"{token}-side*.jpg")), angles)
         with Image.open(path) as img:
             seen = Merged(token=token, width=img.width, height=img.height)
         chart = self._charted(token)
@@ -422,20 +476,34 @@ class OwnWorks:
             if quad is None and outline is not None:
                 quad = valid(outline)
         seen.corners = quad
-        self._keep_scan(token, path, sides)
+        kept = self._keep_scan(token, path, sides, more)
         # Made even of a relief when he chooses, the one photograph proposed.
         seen.used, seen.replaced, seen.doubt = self._merge(path, path, sides, quad, choice)
-        self._note_scan(token, seen)
-        for side in sides:
+
+        def at(side: Path) -> float | None:
+            number = _SIDE_NUMBER.search(side.name)
+            return angles.get(int(number.group(1))) if number else None
+
+        self._note_scan(token, seen, {name: at(side) for name, side in kept.items()}, trace)
+        for side in [*sides, *more]:
             side.unlink(missing_ok=True)
+        path.with_suffix(ANGLES).unlink(missing_ok=True)
+        where = ", ".join("?" if at(s) is None else f"{at(s):+.0f}" for s in kept.values())
         log.info(
-            "own photograph %s: %d side(s) laid over, %.1f%% %s taken out%s",
+            "own photograph %s: %d side(s) laid over%s, %.1f%% %s taken out%s",
             token,
             seen.used,
+            f" (of {len(kept)}, from {where}°)" if angles else "",
             seen.replaced * 100,
             "of the light" if quad is not None else "glare",
             ", not one flat work: the one photograph proposed" if seen.doubt else "",
         )
+        if trace:
+            log.info(
+                "own photograph %s: the phone's scan: %s",
+                token,
+                ", ".join(f"{key} {value:g}" for key, value in sorted(trace.items())),
+            )
         return seen
 
     @staticmethod
@@ -522,20 +590,35 @@ class OwnWorks:
         (folder / SCAN_INFO).write_text(json.dumps(info))
         log.info("own photograph %s merged again within his corners", token)
 
-    def _keep_scan(self, token: str, first: Path, sides: list[Path]) -> None:
-        """The scan's photographs as they came, in a folder of their own."""
+    def _keep_scan(
+        self, token: str, first: Path, sides: list[Path], more: list[Path] | None = None
+    ) -> dict[str, Path]:
+        """The scan's photographs as they came, in a folder of their own:
+        the side ones the scan is made of (``side1.jpg``…, which is what
+        it is made of again) and those taken besides (``more1.jpg``…).
+        Which of them became which file there."""
         folder = self.scans / token
+        kept: dict[str, Path] = {}
         try:
             folder.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(first, folder / "first.jpg")
-            for n, side in enumerate(sides, start=1):
-                shutil.copyfile(side, folder / f"side{n}.jpg")
+            for name, photos in (("side", sides), ("more", more or [])):
+                for n, side in enumerate(photos, start=1):
+                    shutil.copyfile(side, folder / f"{name}{n}.jpg")
+                    kept[f"{name}{n}.jpg"] = side
         except OSError as err:
             log.warning("scan %s not kept: %s", token, err)
+        return kept
 
-    def _note_scan(self, token: str, seen: Merged) -> None:
+    def _note_scan(
+        self,
+        token: str,
+        seen: Merged,
+        angles: dict[str, float | None] | None = None,
+        trace: dict[str, float] | None = None,
+    ) -> None:
         """What the merge came to, beside the scan's photographs."""
-        info = {
+        info: dict[str, Any] = {
             "at": now_iso(),
             # Which release made it one, and how photographs were merged
             # then: when that changes the work is made of them once more.
@@ -553,6 +636,11 @@ class OwnWorks:
             # The photographs kept are in the chart's colours already.
             "chart": chart.to_json() if (chart := self._charted(token)) is not None else None,
         }
+        if angles and any(angle is not None for angle in angles.values()):
+            # From how far to the side each was taken, as the phone said.
+            info["angles"] = angles
+        if trace:
+            info["trace"] = trace
         try:
             (self.scans / token / SCAN_INFO).write_text(json.dumps(info))
         except OSError as err:

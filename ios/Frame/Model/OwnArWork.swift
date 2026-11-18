@@ -125,3 +125,14 @@ struct OwnArSight: Equatable {
     /// lie beyond its edges), nil when the phone looks away from it.
     var outline: [CGPoint]?
 }
+
+/// What the AR session tells of its latest picture.
+struct OwnArLook: Equatable {
+    /// The pinned work, once it is pinned.
+    var sight: OwnArSight?
+    /// Until then: the work's outline as the picture has it (0–1 on the
+    /// upright screen's picture), when one is found.
+    var found: [CGPoint]?
+    /// The session knows where the phone is in the room.
+    var tracking = false
+}

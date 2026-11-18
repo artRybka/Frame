@@ -1734,12 +1734,12 @@ actor DemoBackend: FrameBackend {
         return seen
     }
 
-    func sendOwnSide(token: String, _ data: Data) async throws {
+    func sendOwnSide(token: String, _ data: Data, angle: Double?) async throws {
         guard incoming[token] != nil else { throw BackendError.notFound }
         try await Task.sleep(for: .milliseconds(300))
     }
 
-    func mergeOwnPhotos(token: String, outline: [[Double]]?) async throws -> OwnMerged {
+    func mergeOwnPhotos(token: String, outline: [[Double]]?, trace: [String: Double]) async throws -> OwnMerged {
         guard let image = incoming[token] else { throw BackendError.notFound }
         try await Task.sleep(for: .seconds(1.5))
         return OwnMerged(token: token, width: Int(image.size.width), height: Int(image.size.height), used: 2, replaced: 0.03)

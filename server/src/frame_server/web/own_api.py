@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
@@ -73,14 +73,22 @@ async def send_photo(svc: Svc, file: Annotated[UploadFile, File()]) -> Incoming:
 
 
 @router.post("/own/photos/{token}/sides")
-async def send_side(token: str, svc: Svc, file: Annotated[UploadFile, File()]) -> dict[str, int]:
+async def send_side(
+    token: str,
+    svc: Svc,
+    file: Annotated[UploadFile, File()],
+    angle: Annotated[float | None, Query(ge=-90, le=90)] = None,
+) -> dict[str, int]:
     """A photograph of the same work from a little to the side (the scan
-    of three): ``{"sides": how many it has now}``."""
+    of three): ``{"sides": how many it has now}``. ``angle``: from how far
+    to the side the phone says it was taken (degrees; negative: from the
+    work's left). Of several from one side the scan is made of the one
+    nearest 30°, and the others are kept with it."""
     data = await file.read()
     if not data:
         raise HTTPException(422, "empty file")
     try:
-        return {"sides": await run_in_threadpool(svc.own_works.side, token, data)}
+        return {"sides": await run_in_threadpool(svc.own_works.side, token, data, angle)}
     except LookupError as err:
         raise HTTPException(404, str(err)) from err
     except ValueError as err:
@@ -99,6 +107,10 @@ class MergeAsk(BaseModel):
     #: An app before it showed the scan alone, chosen, where anything was
     #: taken off, and gets a relief untouched as it did.
     choice: bool = False
+    #: What the phone noted of the scan as it was taken (seconds after the
+    #: first photograph its marks came, how fast it turned at each side
+    #: one…): kept beside the scan's photographs, for the camera's tuning.
+    trace: dict[str, float] | None = Field(default=None, max_length=64)
 
 
 @router.post("/own/photos/{token}/merge", response_model=Merged)
@@ -110,7 +122,8 @@ async def merge(token: str, svc: Svc, ask: MergeAsk | None = None) -> Merged:
         corners = _corners(ask.corners) if ask is not None else None
         outline = ask.outline if ask is not None else None
         choice = ask.choice if ask is not None else False
-        return await run_in_threadpool(svc.own_works.merge, token, corners, outline, choice)
+        trace = ask.trace if ask is not None else None
+        return await run_in_threadpool(svc.own_works.merge, token, corners, outline, choice, trace)
     except LookupError as err:
         raise HTTPException(404, str(err)) from err
 

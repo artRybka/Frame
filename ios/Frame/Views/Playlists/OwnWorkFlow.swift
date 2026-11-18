@@ -238,7 +238,7 @@ struct OwnWorkFlow: View {
                 foundByCamera = seen != nil
                 if scanned {
                     let token = sent.token
-                    merging = Task { await merge(token: token, outline: shots.outline) }
+                    merging = Task { await merge(token: token, outline: shots.outline, trace: shots.trace) }
                 }
                 withAnimation(.easeInOut(duration: 0.3)) { step = .cut }
             } catch {
@@ -252,9 +252,9 @@ struct OwnWorkFlow: View {
     /// took a glare out, the photograph as the server keeps it now. Any
     /// of it failing leaves the first photograph as it was, with nothing
     /// to choose between.
-    private func merge(token: String, outline: [[Double]]?) async {
+    private func merge(token: String, outline: [[Double]]?, trace: [String: Double]) async {
         defer { if incoming?.token == token { mergeEnded = true } }
-        guard let done = try? await model.backend.mergeOwnPhotos(token: token, outline: outline), done.used > 0
+        guard let done = try? await model.backend.mergeOwnPhotos(token: token, outline: outline, trace: trace), done.used > 0
         else { return }
         var made: UIImage?
         if done.replaced > 0 {
@@ -518,13 +518,14 @@ final class OwnSending {
         let first = self.first ?? begin(shots, with: backend)
         for index in shots.sides.indices.dropFirst(sides.count) {
             let file = shots.file(index + 1), picture = shots.sides[index], before = sides.last
+            let angle = shots.angle(index)
             sides.append(Task<Void, Error> {
                 let token = try await first.value.token
                 if let before { try await before.value }
                 // The camera's own file, every pixel of it; a demo's is drawn.
                 guard let data = file ?? OwnWorkFlow.upright(picture).jpegData(compressionQuality: 0.9)
                 else { throw CancellationError() }
-                try await backend.sendOwnSide(token: token, data)
+                try await backend.sendOwnSide(token: token, data, angle: angle)
             })
         }
     }

@@ -266,10 +266,15 @@ protocol FrameBackend: Sendable {
     func sendOwnPhoto(_ data: Data) async throws -> OwnIncoming
     /// The work found in it (Opus, a few seconds); 503 without a key.
     func findOwnWork(token: String) async throws -> OwnIncoming
-    /// A photograph of the same work from a little to the side (the scan of three).
-    func sendOwnSide(token: String, _ data: Data) async throws
+    /// A photograph of the same work from the side (the scan), and from
+    /// how far to the side the phone counted it (degrees; negative: from
+    /// the work's left): of several from one side the server makes the
+    /// scan of the one nearest 30°.
+    func sendOwnSide(token: String, _ data: Data, angle: Double?) async throws
     /// The glare taken out of the first photograph by the side ones.
-    func mergeOwnPhotos(token: String, outline: [[Double]]?) async throws -> OwnMerged
+    /// `trace`: what the camera noted of the scan as it went, kept with
+    /// its photographs.
+    func mergeOwnPhotos(token: String, outline: [[Double]]?, trace: [String: Double]) async throws -> OwnMerged
     /// "Na wprost" on "Skan gotowy": the first photograph as it was
     /// taken waits again, in the scan's stead.
     func keepOwnFirstPhoto(token: String) async throws

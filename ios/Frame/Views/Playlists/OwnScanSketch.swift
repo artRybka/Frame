@@ -5,11 +5,14 @@ import SwiftUI
 /// The scan's camera as the screenshots show it (the simulator has no
 /// camera): the demo's wall photograph, turned as the wall shows from the
 /// side, under the camera's own overlay and words. `-screen own-scan
-/// -scanLook front | ready | far | near | lost | side | match | aim |
-/// turned | right | pinning | result` ("aim": standing right with the phone looking
-/// past the work; "turned": the phone turned to the left where he was to
-/// walk there; "result": the page after the scan, `OwnScanResult`), with
-/// `-scanHeld left` the phone on its side.
+/// -scanLook front | ready | far | near | lost | arc | side | match | aim |
+/// turned | right | result` ("arc": the first photograph just taken,
+/// round the work either way now; "side": on the way to the left, one
+/// photograph taken in passing; "match": where the left's is taken;
+/// "aim": there with the phone looking past the work; "turned": the
+/// phone turned to the left where he was to walk there; "right": the
+/// left done, on the way to the right; "result": the page after the
+/// scan, `OwnScanResult`), with `-scanHeld left` the phone on its side.
 struct OwnScanSketch: View {
     let close: () -> Void
     let name = UserDefaults.standard.string(forKey: "scanLook") ?? "side"
@@ -24,22 +27,26 @@ struct OwnScanSketch: View {
 
     private var front: [CGPoint] { DemoOwn.outer.map { CGPoint(x: $0[0], y: $0[1]) } }
 
-    /// Where the phone stands in this look, and where it should (degrees).
+    /// Where the phone stands in this look (degrees to the side).
     private var stands: Double {
         switch name {
         case "side": -13
         case "match", "aim": -29
+        case "turned": -7
         case "right": 12
         default: 0
         }
     }
 
-    private var target: Double? {
-        switch name {
-        case "side", "match", "aim", "turned": -OwnScanView.side
-        case "right": OwnScanView.side
-        default: nil
-        }
+    /// The first photograph is taken in this look: the ones from the sides now.
+    private var walking: Bool { ["arc", "side", "match", "aim", "turned", "right"].contains(name) }
+
+    /// From where the side photographs so far were taken in it.
+    private var arc: OwnScanArc {
+        var taken = OwnScanArc()
+        if ["side", "match", "aim", "right"].contains(name) { taken.took(-12.6) }
+        if name == "right" { taken.took(-29.4) }
+        return taken
     }
 
     /// How large the wall shows: the phone too far from it, or too near.
@@ -58,23 +65,29 @@ struct OwnScanSketch: View {
     private var look: OwnScanLook {
         let live = OwnScanView.seen(front, from: stands)
             .map { CGPoint(x: 0.5 + ($0.x - 0.5) * zoom + past, y: 0.5 + ($0.y - 0.5) * zoom) }
-        var look = OwnScanLook(number: target == nil ? 1 : (name == "right" ? 3 : 2))
+        var look = OwnScanLook(number: walking ? 2 : 1)
         look.manual = name == "lost"
         look.quarter = quarter
-        if name == "pinning" {
-            // Just after the first photograph: the work is being pinned.
-            look.number = 2
-            look.angle = 0
-            look.advice = .pinning
-        } else if let target, name == "turned" {
+        let taken = arc
+        look.left = taken.done(left: true)
+        look.right = taken.done(left: false)
+        look.shots = taken.taken
+        if walking, name == "turned" {
             // The work has left the picture: the gyroscope alone counts.
             look.angle = stands
-            look.advice = OwnScanView.side(target: target, angle: stands, stray: 22)
-        } else if let target {
+            look.advice = OwnScanView.side(target: taken.target(at: stands) ?? -OwnScanView.side, angle: stands, stray: 22)
+        } else if walking {
+            // As the camera has it (`OwnCamera.reading`).
             look.angle = stands
             look.live = live
-            look.aim = OwnScanView.middle(live)
-            look.advice = OwnScanView.side(target: target, angle: stands, aim: OwnScanView.offAim(live))
+            let fits = OwnScanView.fits(live)
+            if let target = taken.target(at: stands) {
+                look.advice = OwnScanView.side(
+                    target: target, angle: stands, fits: fits, aim: fits ? 0 : OwnScanView.offAim(live)
+                )
+            } else {
+                look.advice = fits ? .either : .farther
+            }
         } else {
             look.live = name == "lost" ? nil : live
             // The demo's work hangs a little askew: its outline is what "from the front" is here.
@@ -120,7 +133,7 @@ struct OwnScanSketch: View {
             .buttonStyle(.glass)
             .buttonBorderShape(.circle)
             Spacer()
-            Text(bound: "Zdjęcie \(look.number) z 3")
+            Text(bound: "Krok \(look.number) z 2")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 14)

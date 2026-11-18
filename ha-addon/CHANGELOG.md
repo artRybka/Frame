@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.145.241
+
+- Własne dzieła, skan: „jeden łuk”. Po zdjęciu na wprost znaczniki na
+  narożnikach dzieła są od razu (bez „Przypinam znaczniki” i stania
+  w miejscu), a Ty idziesz łukiem w lewo albo w prawo, w dowolnej
+  kolejności. Zdjęcie z boku robi się samo, gdy zwolnisz na jasnym pasie
+  planu (22–38° od dzieła, jak dotąd); pas robi się zielony, a aparat
+  prowadzi na drugą stronę. Wystarczy, że całe dzieło jest w kadrze, nie
+  trzeba już trafiać jego środkiem w celownik. U góry „Krok 1 z 2”
+  i „Krok 2 z 2”.
+- Haptyka przy skanie: w drodze na bok telefon tyka coraz szybciej
+  i mocniej, im bliżej miejsca zdjęcia (zaczyna, gdy ruszysz w dobrą
+  stronę, milknie, gdy stoisz albo wracasz), a każdą zrobioną stronę
+  potwierdza osobnym sygnałem.
+- Po drodze aparat robi po cichu jeszcze jedno zdjęcie z każdej strony,
+  z mniejszego kąta. Skan składa się jak dotąd z trzech zdjęć (na wprost
+  i z każdej strony to najbliższe 30°), a dodatkowe serwer tylko
+  przechowuje ze skanem, żeby sprawdzić na Twoich dziełach, czy mniejszy
+  kąt też wystarczy. Aplikacja robi je dopiero przy serwerze w tej wersji.
+
 ## 1.145.240
 
 - Własne dzieła, skan z trzech zdjęć: po pierwszym zdjęciu aparat
