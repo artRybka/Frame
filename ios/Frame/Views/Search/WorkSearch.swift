@@ -33,7 +33,7 @@ final class WorkSearch {
     /// The page to ask each museum for more; museums with no more are left out.
     private(set) var next: [String: Int] = [:]
     /// The catalogue had plenty (`plenty`): the museums' first pages wait
-    /// until its end is near (Mateusz, 2026-11-07: "Gdy na serwerze mamy
+    /// until its end is pulled (Mateusz, 2026-11-07: "Gdy na serwerze mamy
     /// sporo odpowiedzi, to nie zadawajmy pytania do muzeów").
     private(set) var museumsWaiting = false
     /// The catalogue is being asked.
@@ -81,8 +81,10 @@ final class WorkSearch {
     /// Rounds bringing no work after which the museums are asked no more.
     private static let emptyRoundsLimit = 3
     /// The catalogue's works for a search, from which the museums are asked
-    /// only once its end is near: a few screens of the grid.
-    static let plenty = 60
+    /// only once its end is pulled (Mateusz 2026-11-19, of the 60 till then:
+    /// "To dajmy nie zawsze, tylko 6", then "Albo wiesz co - 12"). With
+    /// fewer they are asked at once.
+    static let plenty = 12
     /// The catalogue's works asked at a time (the server keeps the whole
     /// answer, so the next pages come at once).
     static let catalogueStep = 120
@@ -136,8 +138,8 @@ final class WorkSearch {
     /// next, less near; in a search the museums, once the server's own works
     /// are all shown (Mateusz 2026-11-19: "Czy ten sam mechanizm możemy
     /// dodać do szukania gdy kończą się wyniki które mamy na serwerze i
-    /// trzeba przeszukać muzea?"). With none shown yet, they come on their
-    /// own.
+    /// trzeba przeszukać muzea?"), from `plenty` of them. With fewer found,
+    /// they come on their own.
     var waitsForPull: Bool {
         guard let catalogue, !searching, !pulledFurther, !catalogue.items.isEmpty else { return false }
         if searched?.rules.like.isEmpty == false { return catalogueMore }
@@ -215,7 +217,7 @@ final class WorkSearch {
         }
         if !Task.isCancelled { searching = false }
         // The catalogue answers at once (it is the server's own); with
-        // plenty in it the museums are asked only when its end comes near.
+        // plenty in it the museums are asked only when its end is pulled.
         if Task.isCancelled || key != searched { return }
         if asksMuseums(key), (catalogue?.total ?? 0) >= Self.plenty {
             museumsWaiting = true
