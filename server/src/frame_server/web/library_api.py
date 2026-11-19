@@ -69,7 +69,8 @@ from ..library.zoom import zooms
 from ..player import hold_from
 from ..schedule import FrameSettings
 from ..service import FrameService
-from .deps import require_owner, require_token, service
+from ..users import User
+from .deps import CurrentUser, require_owner, require_token, service
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["library"])
@@ -287,6 +288,7 @@ async def _work(
 @router.get("/library/items", response_model=ItemPage)
 def list_items(
     svc: Svc,
+    user: CurrentUser,
     q: str = "",
     artist: Annotated[list[str] | None, Query()] = None,
     style: Annotated[list[str] | None, Query()] = None,
@@ -312,6 +314,7 @@ def list_items(
     like_by: Literal["", "subject", "style"] = "",
     like_further: Annotated[int, Query(ge=0, le=3)] = 0,
     seen: bool = False,
+    playlist: int | None = None,
 ) -> ItemPage:
     """The catalogue's works for Szukaj's choices. ``look``: words for how
     the works look ("mglisty poranek nad wodą"), the other choices narrowing
@@ -319,7 +322,9 @@ def list_items(
     works that look like it so ("Szukaj podobnych"), by both their subject
     and their style or by the one ``like_by`` names; 409 when that cannot be
     asked. ``seen``: with ``q``, the works that look as the words say too
-    (Szukaj's "Słowa", Mateusz 2026-11-19)."""
+    (Szukaj's "Słowa", Mateusz 2026-11-19). ``playlist``: only that
+    playlist's works, all of them (its page shows at most 400), in its own
+    order (the magnifier on a playlist's page, Mateusz 2026-11-19)."""
     rules = PlaylistRules(
         query=q,
         seen=seen and bool(q.strip()),
@@ -349,15 +354,37 @@ def list_items(
         raise HTTPException(409, "Szukanie wyglądem is not ready")
     if rules.like and not svc.looks.enabled():
         raise HTTPException(409, "Szukanie wyglądem is off")
-    total, items = svc.library.query(
-        rules, sort=sort, offset=offset, limit=limit, seed=seed, paged=True
-    )
+    if playlist is not None:
+        total, items = _in_playlist(svc, playlist, user, rules, offset, limit)
+    else:
+        total, items = svc.library.query(
+            rules, sort=sort, offset=offset, limit=limit, seed=seed, paged=True
+        )
     if rules.query.strip() or rules.title or rules.artists:
         # Its artists' pictures laid over each other: copies under other
         # titles and details gone by the next look (library/twins.py).
         svc.twins.after_search(items)
     later = rules.seen and svc.library.words_alone() and svc.looks.asking(rules.query)
     return ItemPage(total=total, items=[ItemSummary.of(i) for i in items], later=later)
+
+
+def playlist_works(svc: FrameService, playlist_id: int, user: User) -> list[Item]:
+    """The works of a playlist ``user`` sees, all of them, in its order."""
+    found = svc.library.playlist(playlist_id)
+    if found is None or not found.visible_to(user.id):
+        raise HTTPException(404, f"no playlist {playlist_id}")
+    return svc.library.playlist_items(found)
+
+
+def _in_playlist(
+    svc: FrameService, playlist_id: int, user: User, rules: PlaylistRules, offset: int, limit: int
+) -> tuple[int, list[Item]]:
+    """What ``rules`` find among a playlist's works, in the playlist's order."""
+    works = playlist_works(svc, playlist_id, user)
+    place = {item.id: n for n, item in enumerate(works)}
+    _, found = svc.library.query(rules, among=place.keys())
+    found = sorted(found, key=lambda item: place.get(item.id, len(place)))
+    return len(found), found[offset : offset + limit]
 
 
 @router.get("/library/hidden", response_model=ItemPage)
