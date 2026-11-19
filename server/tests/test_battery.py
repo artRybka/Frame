@@ -5,9 +5,10 @@ from __future__ import annotations
 import math
 from datetime import UTC, datetime, timedelta
 
+import numpy as np
 import pytest
 
-from frame_server.battery import BatteryLog, day_plan
+from frame_server.battery import BatteryLog, day_plan, off_full
 from frame_server.schedule import FrameSettings
 
 START = datetime(2026, 10, 28, 6, 0, tzinfo=UTC)
@@ -281,3 +282,35 @@ def test_an_empty_check_put_to_sleep_over_mdc_lasts_as_seen() -> None:
     assert len(log.activity.checks_slept) == 3
     log.checks_stay_up()
     assert log.activity.check_up(alarm) == pytest.approx(5.5 / 60)
+
+
+def test_hours_at_full_off_the_charger_teach_nothing() -> None:
+    """2026-11-14..19: off the charger the gauge held 100 for 55 h asleep,
+    then 100 -> 92 in three days at one change a day. Those hours made deep
+    sleep free and the forecast 1.15 %/day (79 days); from the last 100 it
+    is about 2 %/day, as the last day used."""
+    full = [
+        [0.0, 100.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        [86400.0, 100.0, 0.0, 24.0, 0.04, 1.0, 1.0],
+        [172800.0, 100.0, 0.0, 48.0, 0.08, 2.0, 2.0],
+    ]
+    assert off_full(full) == full[2:]
+    assert off_full(full[:1]) == full[:1]
+    days = [
+        [86400.0 * (2 + d), 100.0 - 2 * d, 0.0, 48 + 24.0 * d, 0.08 + 0.04 * d, 2.0 + d, 2.0 + d]
+        for d in range(1, 5)
+    ]
+    log = BatteryLog(None)
+    log.runs = [full + days]
+    mean = np.array(log.fit().mean)
+    assert mean[1] * 24 + mean[3] + mean[4] == pytest.approx(2.0, abs=0.4)
+    check = log.check(mean)
+    assert check is not None and check.used == 2 and check.expected == pytest.approx(2, abs=0.4)
+
+
+def test_a_reading_a_day_is_still_checked() -> None:
+    """One change a day reads the battery once a day, a few seconds over 24 h apart."""
+    log = BatteryLog(None)
+    log.runs = [[[0.0, 94.0, 0.0, 0.0, 0.0, 0.0, 0.0], [86404.0, 92.0, 0.0, 24.0, 0.04, 1.0, 1.0]]]
+    check = log.check(np.array([1.7, 0.05, 5.0, 0.02, 0.85]))
+    assert check is not None and check.hours == 24.0 and check.used == 2

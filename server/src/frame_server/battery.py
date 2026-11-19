@@ -71,7 +71,7 @@ SENDS_FOR = timedelta(days=14)
 SENDS_MIN_DAYS = 3
 SEND_BURST = timedelta(minutes=10)
 # The last stretch on battery against what the costs say it should have used.
-CHECK_SPAN = timedelta(hours=24)
+CHECK_SPAN = timedelta(hours=30)  # a reading a day, at the wake: ~24 h and a bit
 CHECK_MIN = timedelta(hours=12)
 RECENT_FOR = timedelta(days=7)
 
@@ -290,6 +290,16 @@ class Fit(BaseModel):
     readings: int
 
 
+def off_full(run: list[list[float]]) -> list[list[float]]:
+    """The run from its last reading of 100: off the charger the gauge holds
+    100 for a while (2026-11-14..16: 55 h asleep at 100, then 2 %/day), and
+    those hours taught deep sleep to cost nothing."""
+    first = 0
+    while first + 1 < len(run) and run[first][1] >= 100 and run[first + 1][1] >= 100:
+        first += 1
+    return run[first:]
+
+
 def fit(runs: list[list[list[float]]]) -> Fit:
     """The costs from the readings, starting from ``PRIOR_MEAN``.
 
@@ -301,7 +311,7 @@ def fit(runs: list[list[list[float]]]) -> Fit:
     precision = np.diag(1 / PRIOR_SD**2)
     target = PRIOR_MEAN / PRIOR_SD**2
     hours, readings = 0.0, 0
-    for run in runs:
+    for run in map(off_full, runs):
         if len(run) < 2:
             continue
         first = np.array(run[0][1:], dtype=float)
@@ -463,7 +473,7 @@ class BatteryLog:
         against what the costs ``mean`` make of what the panel did."""
         if not self.runs:
             return None
-        run = self.runs[-1]
+        run = off_full(self.runs[-1])
         last = run[-1]
         start = next((r for r in run if last[0] - r[0] <= CHECK_SPAN.total_seconds()), None)
         if start is None or last[0] - start[0] < CHECK_MIN.total_seconds():

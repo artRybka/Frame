@@ -420,10 +420,15 @@ struct BatteryChart: View {
     }
 
     /// The first day, today and the day it runs out.
+    /// The first reading, today and the day it runs out, each at least a
+    /// day and an eighth of the axis from the one before (5 days of a
+    /// 3-month axis printed "14.11" and "19.11" over each other).
     private static func ticks(start: Date, end: Date, now: Date) -> [Date] {
+        let gap = max(86400, end.timeIntervalSince(start) / 8)
         var ticks = [start]
-        if now.timeIntervalSince(start) > 86400 { ticks.append(now) }
-        if end.timeIntervalSince(now) > 86400 { ticks.append(end) }
+        for date in [now, end] where date.timeIntervalSince(ticks[ticks.count - 1]) > gap {
+            ticks.append(date)
+        }
         return ticks
     }
 
