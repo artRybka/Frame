@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The marks of the search's groups wherever the app shows them: the group
 /// buttons in Szukaj and the playlist editor, the suggestions while typing,
@@ -6,7 +7,9 @@ import SwiftUI
 /// Muzeum are drawn here in one thin round line like Technika's system
 /// symbol (`scribble.variable`), which the system's calendar, palette and
 /// columns, with their dots and double lines, never matched. Kolor is three
-/// ink dots. Any other kind shows its system symbol (`SearchToken.icon`).
+/// ink dots. "Podobne do dzieła" is two pictures, the front one a work in
+/// its mat (Mateusz 2026-11-19). Any other kind shows its system symbol
+/// (`SearchToken.icon`).
 struct GroupMark: View {
     /// The chip's kind: "period", "style", "subject", "museum", "color"…
     let kind: String
@@ -23,19 +26,24 @@ struct GroupMark: View {
     var body: some View {
         if let shape = Mark(kind: kind) {
             let size = side * scale
-            MarkShape(mark: shape)
-                .stroke(style: StrokeStyle(lineWidth: size * (bold ? 0.11 : 0.085), lineCap: .round, lineJoin: .round))
-                .frame(width: size, height: size)
-                .accessibilityHidden(true)
+            ZStack {
+                MarkShape(mark: shape)
+                    .stroke(style: StrokeStyle(lineWidth: size * shape.line(bold: bold), lineCap: .round, lineJoin: .round))
+                MarkShape(mark: shape, filled: true).fill()
+            }
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
         } else if kind == "color" {
             InkDots()
         } else {
             Image(systemName: symbol ?? SearchToken(kind: kind, key: "", name: "").icon)
+                // Wyróżnienie's full star a little bolder (Mateusz 2026-11-19).
+                .fontWeight(kind == "tag" ? .semibold : nil)
         }
     }
 
     enum Mark {
-        case calendar, palette, landscape, museum
+        case calendar, palette, landscape, museum, framed
 
         init?(kind: String) {
             switch kind {
@@ -43,15 +51,45 @@ struct GroupMark: View {
             case "style", "legacy-style": self = .palette
             case "subject", "legacy-subject": self = .landscape
             case "museum", SearchToken.museumOut: self = .museum
+            case SearchToken.likeWorkMark: self = .framed
             default: return nil
             }
         }
+
+        /// The line, of the box: the two pictures span the whole box (as
+        /// the system's two photographs do), so theirs is thinner.
+        func line(bold: Bool) -> CGFloat {
+            switch self {
+            case .framed: bold ? 0.08 : 0.0625
+            default: bold ? 0.11 : 0.085
+            }
+        }
+    }
+
+    /// The mark as a template picture, for a chip of the search field
+    /// (which shows only pictures and system symbols).
+    static func picture(kind: String, side: CGFloat) -> UIImage? {
+        guard let mark = Mark(kind: kind) else { return nil }
+        let rect = CGRect(x: 0, y: 0, width: side, height: side)
+        let picture = UIGraphicsImageRenderer(size: rect.size).image { context in
+            let cg = context.cgContext
+            cg.setLineWidth(side * mark.line(bold: false))
+            cg.setLineCap(.round)
+            cg.setLineJoin(.round)
+            cg.addPath(MarkShape(mark: mark).path(in: rect).cgPath)
+            cg.strokePath()
+            cg.addPath(MarkShape(mark: mark, filled: true).path(in: rect).cgPath)
+            cg.fillPath()
+        }
+        return picture.withRenderingMode(.alwaysTemplate)
     }
 
     /// The marks on a 24-point grid (the sketch in the project files,
     /// `ikonki-grup/szkic-3.html`), stroked by `GroupMark`.
     struct MarkShape: Shape {
         let mark: Mark
+        /// The parts filled, not stroked: Temat's sun, the work in its mat.
+        var filled = false
 
         func path(in rect: CGRect) -> Path {
             let unit = min(rect.width, rect.height) / 24
@@ -66,6 +104,14 @@ struct GroupMark: View {
                 box(x - radius, y - radius, radius * 2, radius * 2)
             }
             var path = Path()
+            if filled {
+                switch mark {
+                case .landscape: path.addEllipse(in: dot(15.5, 9, 1.4))
+                case .framed: path.addRect(box(9.25, 11.15, 10.1, 6.2))
+                default: break
+                }
+                return path
+            }
             switch mark {
             case .calendar:
                 // A page with its two rings, no days.
@@ -100,6 +146,7 @@ struct GroupMark: View {
                 path.addLine(to: p(12.5, 16))
                 path.addLine(to: p(14.5, 14))
                 path.addLine(to: p(19.3, 19))
+                // The sun, whole (Mateusz 2026-11-19): filled too.
                 path.addEllipse(in: dot(15.5, 9, 1.4))
             case .museum:
                 // An open roof over three columns and the step.
@@ -112,6 +159,23 @@ struct GroupMark: View {
                 }
                 path.move(to: p(4, 20.5))
                 path.addLine(to: p(20, 20.5))
+            case .framed:
+                // The picture behind, tilted: what shows of it (bottom,
+                // left, top, right down to the front one), drawn after the
+                // system's photo.on.rectangle.angled.
+                path.move(to: p(6.9, 17.4))
+                path.addLine(to: p(4.6, 17.1))
+                path.addCurve(to: p(3.7, 16), control1: p(4, 17), control2: p(3.8, 16.6))
+                path.addLine(to: p(2.3, 7.6))
+                path.addCurve(to: p(3.5, 5.95), control1: p(2.15, 6.7), control2: p(2.6, 6.1))
+                path.addLine(to: p(15, 4))
+                path.addCurve(to: p(16.65, 5.2), control1: p(15.9, 3.85), control2: p(16.5, 4.3))
+                path.addLine(to: p(17.15, 8.6))
+                // The work in front, its mat as wide all round (the
+                // picture is filled).
+                path.addRoundedRect(
+                    in: box(6.9, 8.95, 15.4, 11.4), cornerSize: CGSize(width: 1.6 * unit, height: 1.6 * unit)
+                )
             }
             return path
         }
@@ -131,5 +195,13 @@ struct InkDots: View {
             Circle().fill(Theme.iconSquares[1]).frame(width: size, height: size)
         }
         .accessibilityHidden(true)
+    }
+}
+
+extension SearchToken {
+    /// The chip's picture: the drawn mark, else the system symbol.
+    var image: Image {
+        if let drawn = GroupMark.picture(kind: markKind, side: 18) { return Image(uiImage: drawn) }
+        return Image(systemName: icon)
     }
 }

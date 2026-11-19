@@ -57,6 +57,8 @@ final class WorkSearch {
     /// Rounds of museum pages in a row that brought no work.
     @ObservationIgnored private var emptyRounds = 0
     @ObservationIgnored private var loader: Task<Void, Never>?
+    /// "Słowa" asked again for the works that look so (`ItemPage.later`).
+    @ObservationIgnored private var lookingLater: Task<Void, Never>?
     /// The catalogue's question, for its next pages.
     @ObservationIgnored private var catalogueQuery: LibraryQuery?
     /// "Podobne do": the steps of nearness past its own floor asked so far
@@ -182,6 +184,7 @@ final class WorkSearch {
         guard key != searched else { return }
         searched = key
         loader?.cancel()
+        lookingLater?.cancel()
         // Not tied to a view's task: it goes on while a work is open.
         loader = Task { await search(key) }
     }
@@ -211,6 +214,7 @@ final class WorkSearch {
                 catalogue = found
                 catalogueQuery = query
                 hidden = []
+                if found.later == true { lookingLater = Task { await askLater(query, key: key) } }
             }
         } catch {
             if !Task.isCancelled, !error.isCancellation { model.show(error) }
@@ -238,6 +242,26 @@ final class WorkSearch {
             moreIfNeeded()
         }
     }
+
+    /// "Słowa" answered before Google's numbers of the words came: asked
+    /// again, twice at most, and the works that look so put in after those
+    /// with the words, unless more of the list has come meanwhile.
+    private func askLater(_ query: LibraryQuery, key: Key) async {
+        guard let model else { return }
+        for _ in 0..<2 {
+            try? await Task.sleep(for: Self.lookingPause)
+            guard !Task.isCancelled, key == searched,
+                  let shown = catalogue, shown.items.count <= query.limit,
+                  let found = try? await model.backend.items(query),
+                  !Task.isCancelled, key == searched, catalogue?.items.count == shown.items.count
+            else { return }
+            if found.total > shown.total { withAnimation(.snappy) { catalogue = found } }
+            if found.later != true { return }
+        }
+    }
+
+    /// How long "Słowa" wait before they are asked again.
+    static let lookingPause: Duration = .milliseconds(1500)
 
     /// Whether the museums have anything for `key`: favourites and
     /// playlists are the owner's, no museum has them. A look is asked of

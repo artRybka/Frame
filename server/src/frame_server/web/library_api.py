@@ -79,6 +79,10 @@ Svc = Annotated[FrameService, Depends(service)]
 class ItemPage(BaseModel):
     total: int
     items: list[ItemSummary]
+    #: "Słowa" answered with the words alone while Google's numbers of
+    #: them are still on their way: asked again in a moment, the works
+    #: that look so come after (Mateusz 2026-11-19: "wyniki od razu").
+    later: bool = False
 
 
 class ItemPatch(BaseModel):
@@ -307,15 +311,18 @@ def list_items(
     like: str = "",
     like_by: Literal["", "subject", "style"] = "",
     like_further: Annotated[int, Query(ge=0, le=3)] = 0,
+    seen: bool = False,
 ) -> ItemPage:
     """The catalogue's works for Szukaj's choices. ``look``: words for how
     the works look ("mglisty poranek nad wodą"), the other choices narrowing
     them, nearest first (Mateusz 2026-11-13); ``like``: a work's id, the
     works that look like it so ("Szukaj podobnych"), by both their subject
     and their style or by the one ``like_by`` names; 409 when that cannot be
-    asked."""
+    asked. ``seen``: with ``q``, the works that look as the words say too
+    (Szukaj's "Słowa", Mateusz 2026-11-19)."""
     rules = PlaylistRules(
         query=q,
+        seen=seen and bool(q.strip()),
         artists=artist or [],
         styles=style or [],
         subjects=subject or [],
@@ -349,7 +356,8 @@ def list_items(
         # Its artists' pictures laid over each other: copies under other
         # titles and details gone by the next look (library/twins.py).
         svc.twins.after_search(items)
-    return ItemPage(total=total, items=[ItemSummary.of(i) for i in items])
+    later = rules.seen and svc.library.words_alone() and svc.looks.asking(rules.query)
+    return ItemPage(total=total, items=[ItemSummary.of(i) for i in items], later=later)
 
 
 @router.get("/library/hidden", response_model=ItemPage)

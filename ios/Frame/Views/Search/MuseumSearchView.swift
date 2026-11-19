@@ -211,6 +211,13 @@ struct MuseumSearchView: View {
             if LaunchRoute.screen == "museums", rules.isEmpty {
                 rules.artists = ["Utagawa Hiroshige"]
             }
+            // CI screenshots: the suggestions for words typed (their order
+            // and marks, Mateusz 2026-11-19).
+            if LaunchRoute.screen == "search-typed", lookup.text.isEmpty {
+                lookup.text = LaunchRoute.typed ?? "van gogh"
+                try? await Task.sleep(for: .milliseconds(600))
+                fieldFocused = true
+            }
             // CI screenshots: a group's choice alone, the X next to the field.
             if LaunchRoute.screen == "search-chosen", rules.colors.isEmpty {
                 rules.colors = ["blue@much"]
