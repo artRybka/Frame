@@ -52,6 +52,9 @@ struct MuseumSearchView: View {
     /// "Utwórz playlistę z tego wyszukiwania" scrolled away: a round one
     /// in the bar instead (Mateusz 2026-11-18).
     @State private var playlistScrolledAway = false
+    /// How many of the squares at the end of "Podobne do" the pull past the
+    /// end has lit (`PullForMore`); all of them, let go, ask the next step.
+    @State private var pullLit = 0
     /// The search's stack: the works opened from the results.
     @Binding var path: NavigationPath
 
@@ -114,6 +117,27 @@ struct MuseumSearchView: View {
             geometry.contentSize.height - geometry.visibleRect.maxY < geometry.containerSize.height
         } action: { _, near in
             search.scrolled(nearEnd: near)
+        }
+        // How far the end is pulled up past where the list stops.
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            let last = max(
+                geometry.contentSize.height + geometry.contentInsets.bottom - geometry.containerSize.height,
+                -geometry.contentInsets.top
+            )
+            return geometry.contentOffset.y - last
+        } action: { _, past in
+            let lit = search.waitsForPull ? min(PullForMore.count, max(0, Int(past / PullForMore.pullPerSquare))) : 0
+            if lit != pullLit { pullLit = lit }
+        }
+        .onScrollPhaseChange { old, new in
+            // Let go with all the squares lit.
+            guard old == .interacting, new != .interacting, pullLit >= PullForMore.count else { return }
+            pullLit = 0
+            search.askFurther()
+        }
+        .sensoryFeedback(trigger: pullLit) { old, new in
+            guard new > old else { return nil }
+            return new == PullForMore.count ? .impact(weight: .medium) : .selection
         }
         .paperPage()
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -426,7 +450,11 @@ struct MuseumSearchView: View {
                     withAnimation(.snappy) { tokens.wrappedValue.removeAll { $0 == token } }
                 }
             }
-            if search.busy || search.more {
+            if search.waitsForPull {
+                // "Podobne do" less near only when asked for: the end pulled
+                // and let go (Mateusz 2026-11-19).
+                PullForMore(lit: pullLit) { search.askFurther() }
+            } else if search.busy || search.more {
                 // The squares say "waiting" (Mateusz): while the search is
                 // asked, and after as long as a museum may still have more,
                 // also one that hasn't answered and waits to be asked again.

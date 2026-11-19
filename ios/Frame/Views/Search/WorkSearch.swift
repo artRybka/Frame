@@ -67,6 +67,11 @@ final class WorkSearch {
     private var likeFurther = 0
     /// The server's most steps (`looks.ALIKE_FURTHER`).
     static let likeSteps = 3
+    /// A step less near was pulled for (`askFurther`) and is being asked:
+    /// not at the end on its own, so that it is plainly more, on demand
+    /// (Mateusz 2026-11-19: "Chciałbym żeby było warzenie faktycznego
+    /// doczytania na żadanie").
+    private(set) var pulledFurther = false
     @ObservationIgnored private weak var model: AppModel?
 
     /// How long a round that brought nothing waits before the next.
@@ -124,6 +129,22 @@ final class WorkSearch {
     /// The catalogue or a museum may still have more.
     var more: Bool { catalogueMore || museumsWaiting || !next.isEmpty }
 
+    /// "Podobne do" shows all its works of this step: the less near come
+    /// only when the end is pulled (`askFurther`). With none shown yet,
+    /// they come on their own.
+    var waitsForPull: Bool {
+        guard let catalogue, !searching, !pulledFurther, likeFurtherLeft else { return false }
+        return !catalogue.items.isEmpty && catalogue.items.count >= catalogue.total
+    }
+
+    /// The end of "Podobne do" pulled: its next step, less near.
+    func askFurther() {
+        guard waitsForPull else { return }
+        pulledFurther = true
+        nearEnd = true
+        moreIfNeeded()
+    }
+
     /// Still asking: the catalogue, or the museums' first pages.
     var busy: Bool { searching || asking }
 
@@ -158,6 +179,7 @@ final class WorkSearch {
         emptyRounds = 0
         catalogueQuery = nil
         likeFurther = 0
+        pulledFurther = false
         guard !key.isEmpty, let model else {
             catalogue = nil
             searching = false
@@ -241,7 +263,7 @@ final class WorkSearch {
     /// a while, so that the squares at the end keep their word without
     /// asking a museum that is down over and over.
     func moreIfNeeded(after pause: Duration = .zero) {
-        guard nearEnd, !asking, !loadingMore, more, let key = searched, !key.isEmpty else { return }
+        guard nearEnd, !asking, !loadingMore, more, !waitsForPull, let key = searched, !key.isEmpty else { return }
         loadingMore = true
         Task { @MainActor in
             if pause > .zero { try? await Task.sleep(for: pause) }
@@ -291,6 +313,8 @@ final class WorkSearch {
             if further {
                 catalogueQuery = query
                 likeFurther = query.likeFurther
+                // A step that brought nothing goes on to the next one.
+                if !new.isEmpty || !likeFurtherLeft { pulledFurther = false }
                 now = ItemPage(total: max(page.total, now.items.count), items: now.items)
             } else if new.isEmpty {
                 now = ItemPage(total: now.items.count, items: now.items)

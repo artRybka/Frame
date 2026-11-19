@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.256
+
+- „Podobne do”: mniej bliskie dzieła dochodzą teraz tylko na Twoje
+  żądanie. Na końcu listy kwadraciki stoją blade; pociągnij koniec listy
+  w górę, a zapalają się jeden po drugim (z lekkim stuknięciem), i puść,
+  gdy świecą wszystkie: dopiero wtedy dochodzi kolejny stopień. Zwykłe
+  machnięcie, które dobija do końca, niczego nie doczytuje. Stuknięcie
+  w kwadraciki też doczytuje. („Chciałbym żeby było wrażenie faktycznego
+  doczytania na żądanie.”)
+
 ## 1.145.255
 
 - Skan własnego dzieła składa teraz iPhone („Tak, składaj na iPhonie”).
