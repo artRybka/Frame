@@ -126,6 +126,42 @@ def test_photographs_of_something_else_or_nothing_to_take_change_nothing() -> No
     assert merge(first, [first], tiny).image is first
 
 
+def test_a_side_photograph_of_a_work_that_moved_in_part_is_left_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """His MacBook's screen with a conversation running on its right half
+    (2026-11-19 19:35 UTC, "Co tu się wydarzyło?"): by the photograph
+    from the right the conversation had scrolled a quarter of the screen.
+    As many of that photograph's points agreed with the first on the text
+    that had moved as on the half that stood still; on his phone it was
+    laid by the text, a quarter of the screen low, and what it showed
+    there went into the scan as the work under reflections: a grey smear,
+    a dark slab. A photograph that can be laid two ways is left out, as
+    one of something else is."""
+    scene = _scene()
+    # Lines of writing all over the work: much to know a place by.
+    rng = np.random.default_rng(11)
+    for _ in range(2500):
+        x, y = rng.integers(X0 + 4, X1 - 12), rng.integers(Y0 + 4, Y1 - 12)
+        wide, tall = rng.integers(3, 9), rng.integers(3, 9)
+        scene[y : y + tall, x : x + wide] = rng.uniform(0.02, 0.7)
+    first = _coded(scene + _glass(0.14, None, (520, 600)))
+    left = _coded(_from_side(scene + _glass(0.03, (560, 300, 860, 620), None), -1) * 0.9)
+    moved = scene.copy()
+    half = (X0 + X1) // 2
+    moved[Y0:Y1, half:X1] = np.roll(scene[Y0:Y1, half:X1], -(Y1 - Y0) // 4, axis=0)
+    right = _coded(_from_side(moved + _glass(0.04, None, (300, 950)), 1) * 1.1)
+
+    done = merge(first, [left, right], CORNERS)
+    assert done.used == 1
+    # As if it had not been taken.
+    assert (done.image == merge(first, [left], CORNERS).image).all()
+
+    # Not held to one laying, it is laid by one half or the other.
+    monkeypatch.setattr(reflections, "RIVAL", 1e9)
+    assert merge(first, [left, right], CORNERS, anyway=True).used == 2
+
+
 def test_the_shine_of_the_work_itself_is_no_reflection() -> None:
     """His dark folder with gold letters, lying on a desk without glass
     (2026-11-16, "efekt wychodzi nazbyt kontrastowy i zbyt nasycony"):

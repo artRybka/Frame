@@ -48,7 +48,7 @@ enum PhoneScan {
     /// scan: the app is updated apart from the server, and a scan merged
     /// as the server no longer merges is made again there of its kept
     /// photographs.
-    static let merging = 5
+    static let merging = 6
     /// The most the merge holds for each pixel of the first photograph
     /// (1.6 GB of 48 MP, measured on a Mac), and a third more: with less
     /// to spare the server makes the scan.

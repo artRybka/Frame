@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.145.266
+
+- Skan ekranu, na którym coś się w trakcie zmieniło, nie wychodzi już
+  w plamach („Co tu się wydarzyło?”: szara smuga u góry skanu ekranu
+  MacBooka, ciemny prostokąt na dole, cienie na tekście). Między
+  zdjęciem na wprost a zdjęciem z prawej minęło 13 sekund i rozmowa po
+  prawej stronie ekranu przewinęła się o ćwierć jego wysokości. Zdjęcie
+  boczne nakładamy na pierwsze według tego, co na obu jest takie samo, a
+  tu były dwie odpowiedzi prawie równej siły: nieruchoma lewa połowa i
+  przewinięty tekst. Na telefonie wygrał tekst, zdjęcie legło o ćwierć
+  ekranu za nisko i jego ciemne miejsca weszły do skanu jako dzieło spod
+  „odbić” (zdjęte 24,6% światła).
+- Zdjęcie boczne, które da się nałożyć na pierwsze na dwa sprzeczne
+  sposoby, nie wchodzi teraz do skanu, tak jak zdjęcie czegoś innego.
+  Skan powstaje z pozostałych: ten sam ekran wychodzi czysto.
+- W skanach dzieł, które stały w miejscu, nic się nie zmienia: we
+  wszystkich 49 zachowanych skanach żadne zdjęcie nie odpada (drugi
+  sposób nałożenia trzyma tam najwyżej 27 punktów, 3 na każde 100
+  punktów właściwego; w zdjęciu ekranu 158, czyli 57 na 100).
+- To nie był skutek poprawki lampy z 1.145.262: poprzednie składanie
+  daje przy takim nałożeniu ten sam obraz co do piksela.
+- Skany z ostatnich dwóch tygodni zrobią się po aktualizacji serwera od
+  nowa, same; zmieni się tylko skan ekranu.
+
 ## 1.145.265
 
 - Szukaj: muzea czekają na pociągnięcie końca listy, gdy serwer znalazł

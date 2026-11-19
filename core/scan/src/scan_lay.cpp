@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
 #include <tuple>
 
 #include <opencv2/geometry.hpp>
@@ -93,6 +94,30 @@ Marks marks(const Mat& img) {
     return out;
 }
 
+// `_rival`: how many of a side photograph's matches another laying holds
+// than the one found (a work that moved in part between two photographs is
+// laid over in two ways, and is not used).
+int rival(const std::vector<cv::Point2f>& src, const std::vector<cv::Point2f>& dst, const M33& found, int wide) {
+    std::vector<cv::Point2d> from(src.begin(), src.end()), laid;
+    cv::perspectiveTransform(from, laid, found);
+    // Each of the first photograph's points once.
+    std::map<std::pair<float, float>, int> times;
+    for (const auto& d : dst) times[{d.x, d.y}]++;
+    std::vector<cv::Point2f> theirs, ours;
+    for (size_t i = 0; i < src.size(); i++) {
+        double across = laid[i].x - dst[i].x, down = laid[i].y - dst[i].y;
+        if (std::sqrt(across * across + down * down) > RIVAL_FAR * wide && times[{dst[i].x, dst[i].y}] == 1) {
+            theirs.push_back(src[i]);
+            ours.push_back(dst[i]);
+        }
+    }
+    if (static_cast<int>(theirs.size()) < MIN_MATCHES) return 0;
+    Mat held;
+    Mat other = cv::findHomography(theirs, ours, cv::USAC_MAGSAC, 2.0, held);
+    if (other.empty() || held.empty()) return 0;
+    return cv::countNonZero(held);
+}
+
 std::optional<View> lay(const Mat& front, const Marks& first, const Mat& photo) {
     double scale = std::min(1.0, static_cast<double>(MATCH_SIDE) / std::max(photo.rows, photo.cols));
     Lap lap;
@@ -119,6 +144,9 @@ std::optional<View> lay(const Mat& front, const Marks& first, const Mat& photo) 
     if (homography.empty() || inliers.empty() || cv::countNonZero(inliers) < MIN_MATCHES) return std::nullopt;
     M33 found(homography.ptr<double>());
     int ht = front.rows, wd = front.cols;
+    if (rival(src, dst, found, wd) >= std::max<double>(MIN_MATCHES, RIVAL * cv::countNonZero(inliers)))
+        return std::nullopt;
+    lap("rival");
     // The work's corners in the side photograph: all of it must be there,
     // and its taller side is the one the photograph was taken from.
     M33 back = inv(found);

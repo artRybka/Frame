@@ -12,7 +12,7 @@ Image.MAX_IMAGE_PIXELS = None
 from frame_server.imaging import reflections as R
 from frame_server.imaging.cut import valid
 
-STEPS = ['_marks', '_lay', '_settled', '_fine', '_off', '_field', '_about', '_even', '_hide', '_counts',
+STEPS = ['_marks', '_lay', '_rival', '_settled', '_fine', '_off', '_field', '_about', '_even', '_hide', '_counts',
          '_alone', '_told', '_own', '_one', '_toned', '_outward', '_rim', '_tellings', '_from_sides',
          '_finer', '_reflection', '_apart', '_shared', '_kept', '_grain', '_mend', '_reach', '_line',
          '_carried', '_shown', '_veiled', '_level', '_around', '_subtract']

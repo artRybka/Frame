@@ -88,8 +88,13 @@ SCAN_INFO = "scan.json"
 #: A lamp's own wide light not telling what the first photograph differs
 #: from a side one by (2026-11-19: a violet patch on his e-paper frame's
 #: matt screen where the lamp was taken off) is 5: a scan with a lamp in
-#: it changes, one without stays as it was to the pixel.
-MERGING = 5
+#: it changes, one without stays as it was to the pixel. A side
+#: photograph that can be laid over the first in two ways left out
+#: (2026-11-19: his MacBook's screen, its conversation scrolled a quarter
+#: of the screen between two photographs, and one of them laid by the
+#: text that had moved) is 6: a scan of a work that stood still stays as
+#: it was to the pixel.
+MERGING = 6
 #: How a phone that does not say merged (the app before it said).
 PHONE_MERGING = 4
 #: A work's photograph is a kept scan's when the fine of the two, small

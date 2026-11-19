@@ -95,6 +95,8 @@ inline constexpr int MIN_MATCHES = 40;
 inline constexpr double MOST = 0.7;
 inline constexpr double NOT_ONE = 0.085;
 inline constexpr double NOT_ONE_EACH = 0.045;
+inline constexpr double RIVAL = 0.25;
+inline constexpr double RIVAL_FAR = 0.04;
 inline constexpr int ROWS = 512;
 inline constexpr std::array<double, 2> SETTLE_ABOUT{0.8, 3.0};
 inline constexpr double SETTLE_FAR = 0.4;
