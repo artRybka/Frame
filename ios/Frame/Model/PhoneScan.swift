@@ -14,9 +14,14 @@ import UniformTypeIdentifiers
 /// copies of them, and the picture it makes sent to the server to be kept
 /// in the first photograph's place (`FrameBackend.sendOwnScan`).
 ///
-/// The server still makes the scan where the phone cannot: a colour chart
-/// set the photographs' colours there, no corners of the work are known,
-/// the phone has too little memory to spare, or anything of this fails.
+/// A colour chart beside the work set the photograph's colours on the
+/// server: the phone puts its own photographs in them first, by what the
+/// server read of the chart (`ScanCore.chart`; Mateusz 2026-11-19 08:09
+/// UTC: "Czy iPhone będzie także obsługiwać kartę koloru").
+///
+/// The server still makes the scan where the phone cannot: no corners of
+/// the work are known, the phone has too little memory to spare, the
+/// server gives no tables of its chart, or anything of this fails.
 enum PhoneScan {
     // What the server goes by: keep in step with it.
     /// `reflections.MATCH_SIDE`: a side photograph is read as small as its
@@ -54,6 +59,8 @@ enum PhoneScan {
         var columns: Int
         /// Seconds the files took to become pictures.
         var seconds: Double
+        /// They were put in the colours of a chart beside the work.
+        var trued = false
     }
 
     /// What the phone made of a scan.
@@ -67,6 +74,8 @@ enum PhoneScan {
         /// Seconds: the files `read`, the merge itself, the JPEG `written`.
         var read: Double
         var written: Double
+        /// Made of photographs put in a chart's colours (`Read.trued`).
+        var trued = false
     }
 
     // MARK: Which photographs
@@ -218,22 +227,33 @@ enum PhoneScan {
     }
 
     /// A scan's photographs read into `folder` for the merge: the first
-    /// whole, each side one as the server's merge reads its own.
-    static func read(first: Data, sides: [Data], into folder: URL) throws -> Read {
+    /// whole, each side one as the server's merge reads its own. `chart`:
+    /// what the server gives of a colour chart it read in the first one
+    /// (`FrameBackend.ownChartTables`); each is then put in its colours,
+    /// as the server's copies were when they came.
+    static func read(first: Data, sides: [Data], into folder: URL, chart: Data? = nil) throws -> Read {
         let began = ProcessInfo.processInfo.systemUptime
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        var tables: URL?
+        if let chart {
+            let at = folder.appendingPathComponent("chart.tables")
+            try chart.write(to: at)
+            tables = at
+        }
         let firstAt = folder.appendingPathComponent("first.npy")
         // One at a time: the first whole is 200 MB while it is drawn.
         let shape = try autoreleasepool { try write(first, into: firstAt) }
+        if let tables { try ScanCore.chart(firstAt, by: tables) }
         var sidesAt: [URL] = []
         for (n, side) in sides.enumerated() {
             let at = folder.appendingPathComponent("side\(n + 1).npy")
             try autoreleasepool { _ = try write(side, into: at, least: matchSide) }
+            if let tables { try ScanCore.chart(at, by: tables) }
             sidesAt.append(at)
         }
         return Read(
             folder: folder, first: firstAt, sides: sidesAt, rows: shape.rows, columns: shape.columns,
-            seconds: ProcessInfo.processInfo.systemUptime - began
+            seconds: ProcessInfo.processInfo.systemUptime - began, trued: tables != nil
         )
     }
 
@@ -260,7 +280,7 @@ enum PhoneScan {
         }
         return Made(
             corners: corners, note: note, picture: picture, read: read.seconds,
-            written: ProcessInfo.processInfo.systemUptime - began
+            written: ProcessInfo.processInfo.systemUptime - began, trued: read.trued
         )
     }
 
@@ -346,6 +366,9 @@ enum PhoneScan {
             "doubt": made.note.doubt,
             "phone": phone,
         ]
+        // In the colours of the chart the server read: it takes no scan
+        // of a photograph with a chart that is not.
+        if made.trued { note["trued"] = true }
         let noted = trace.filter { $0.value.isFinite }
         if !noted.isEmpty { note["trace"] = noted }
         return (try? JSONSerialization.data(withJSONObject: note, options: [.sortedKeys])) ?? Data("{}".utf8)
@@ -411,8 +434,9 @@ final class OwnPhoneScan {
     }
 
     /// The scan of `shots` within `corners`; nil when the phone could not
-    /// make it (the server then does).
-    func make(_ shots: OwnShots, corners: [[Double]]) async -> PhoneScan.Made? {
+    /// make it (the server then does). `chart`: what the server gives of
+    /// the colour chart it read beside the work (`PhoneScan.read`).
+    func make(_ shots: OwnShots, corners: [[Double]], chart: Data? = nil) async -> PhoneScan.Made? {
         let files = shots.files, folder = self.folder
         guard files.count == shots.sides.count + 1 else { return nil }
         outline = shots.outline
@@ -420,7 +444,9 @@ final class OwnPhoneScan {
         let used = PhoneScan.chosen(angles: shots.sides.indices.map { shots.angle($0) })
         let made = await Task.detached(priority: .userInitiated) { () -> (PhoneScan.Read, PhoneScan.Made)? in
             do {
-                let read = try PhoneScan.read(first: files[0], sides: used.map { files[$0 + 1] }, into: folder)
+                let read = try PhoneScan.read(
+                    first: files[0], sides: used.map { files[$0 + 1] }, into: folder, chart: chart
+                )
                 let scan = try PhoneScan.make(read, corners: corners)
                 return (read, scan)
             } catch {

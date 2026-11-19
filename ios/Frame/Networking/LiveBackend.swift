@@ -700,9 +700,10 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
-    func sendOwnPhoto(_ data: Data) async throws -> OwnIncoming {
+    func sendOwnPhoto(_ data: Data, lens: OwnLens?) async throws -> OwnIncoming {
         var form = MultipartForm()
         form.addFile("file", filename: "photo.jpg", mimeType: "image/jpeg", data: data)
+        if let told = lens?.told { form.addField("lens", told) }
         var req = request("/api/own/photos", method: "POST")
         req.setValue(form.contentType, forHTTPHeaderField: "Content-Type")
         req.httpBody = form.body()
@@ -756,6 +757,17 @@ struct LiveBackend: FrameBackend {
         req.httpBody = form.body()
         req.timeoutInterval = 180
         return try await perform(req)
+    }
+
+    func ownChartTables(token: String) async throws -> Data {
+        var req = request("/api/own/photos/\(escape(token))/chart")
+        req.timeoutInterval = 60
+        let (data, response) = try await load(req)
+        guard let http = response as? HTTPURLResponse else { throw BackendError.invalidResponse }
+        guard (200 ..< 300).contains(http.statusCode) else {
+            throw BackendError.http(status: http.statusCode, body: String(decoding: data, as: UTF8.self))
+        }
+        return data
     }
 
     func keepOwnFirstPhoto(token: String) async throws {

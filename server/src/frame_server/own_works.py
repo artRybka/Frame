@@ -44,6 +44,7 @@ if TYPE_CHECKING:
     from .ai.client import Claude
     from .ai.crops import Crops
     from .imaging.colorchecker import Chart
+    from .imaging.lens import Bend
     from .library import Library
     from .library.images import ImageCache
     from .library.importer import Importer
@@ -205,6 +206,11 @@ class Incoming(BaseModel):
     #: (:meth:`OwnWorks.merged_by_phone`): not where a chart set its
     #: colours here, which the phone's own photographs do not have.
     phone: bool = False
+    #: Where a chart did: the phone may make the scan all the same, of
+    #: its own photographs put in the chart's colours first, by the
+    #: tables it has of :meth:`OwnWorks.tables` (an app that knows of
+    #: none goes by ``phone`` and leaves the scan to the server).
+    tables: bool = False
 
 
 class Merged(Incoming):
@@ -256,10 +262,10 @@ class Description(BaseModel):
     width_cm: float | None = Field(None, gt=0, lt=10000)
 
 
-def _look(path: Path, k1: float | None = None) -> tuple[Any, float]:
+def _look(path: Path, bend: Bend | None = None) -> tuple[Any, float]:
     """The fine of a photograph small and grey (:data:`SCAN_LOOK` a side,
     without what :data:`SCAN_FINE` blurs away, its mean taken off, its
-    length 1), and its width over its height. ``k1``: looked at without
+    length 1), and its width over its height. ``bend``: looked at without
     its lens's bend (:func:`.imaging.lens.straight`), as the work made of
     it is kept."""
     import numpy as np
@@ -270,8 +276,8 @@ def _look(path: Path, k1: float | None = None) -> tuple[Any, float]:
     with Image.open(path) as img:
         img.draft("L", (SCAN_LOOK * 4, SCAN_LOOK * 4))
         upright = ImageOps.exif_transpose(img.convert("L"))
-        if k1:
-            upright = Image.fromarray(lens.straight(np.asarray(upright), k1))
+        if bend:
+            upright = Image.fromarray(lens.straight(np.asarray(upright), bend))
         shape = upright.width / upright.height
         small = upright.resize((SCAN_LOOK, SCAN_LOOK), Image.Resampling.BOX)
         coarse = small.filter(ImageFilter.GaussianBlur(SCAN_FINE))
@@ -319,9 +325,12 @@ class OwnWorks:
             raise LookupError("the photograph is no longer here")
         return path
 
-    def take(self, data: bytes) -> Incoming:
+    def take(self, data: bytes, camera: dict[str, Any] | None = None) -> Incoming:
         """The photograph kept while the owner looks at its cut (turned as
-        the camera held it). Raises ValueError for what is no picture."""
+        the camera held it). ``camera``: what the phone's camera said of
+        its lens for this photograph (``table`` and ``centre``,
+        :class:`.imaging.lens.Bend`), noted with it. Raises ValueError for
+        what is no picture."""
         self.prune()
         try:
             img = load_image(data).convert("RGB")
@@ -330,7 +339,7 @@ class OwnWorks:
         img.thumbnail((INCOMING_SIDE, INCOMING_SIDE), Image.Resampling.LANCZOS)
         token = secrets.token_hex(12)
         path = self.incoming / f"{token}.jpg"
-        self._note_lens(token, path, data)
+        self._note_lens(token, path, data, camera)
         chart = self._chart(img)
         if chart is not None:
             img = self._true(img, chart)
@@ -348,32 +357,58 @@ class OwnWorks:
             height=img.height,
             chart=list(chart.corners) if chart is not None else None,
             phone=chart is None,
+            tables=chart is not None,
         )
 
     @staticmethod
-    def _note_lens(token: str, path: Path, data: bytes) -> None:
+    def _note_lens(
+        token: str, path: Path, data: bytes, camera: dict[str, Any] | None = None
+    ) -> None:
         """What the photograph says took it, beside it while it waits
         (Mateusz 2026-11-18 22:28 UTC, a frame's straight sides bowed:
         "Zakrzywienie obiektywu iPhone? Jakieś możliwości prostowania czy
         to bardzo skomplikowane?"). The photograph waits as it was taken,
         for the corners he sets on his phone's own copy of it to be the
-        same; the work added from it has the bend taken out."""
+        same; the work added from it has the bend taken out.
+
+        ``camera``: the camera's own table of how its lens bent this very
+        photograph (2026-11-19 08:09 UTC: "a nie ma natywnego rozwiązania
+        od Apple w tym zakresie?"), noted with it; what the work is
+        straightened by is chosen of the two (:func:`.imaging.lens.chosen`)."""
         from .imaging import lens
 
         seen = lens.seen(data)
         if seen is None:
             return
+        noted = seen.to_json()
+        own = lens.table(camera.get("table"), camera.get("centre")) if camera else None
+        if own is not None:
+            noted["table"], noted["centre"] = list(own[0]), list(own[1])
         with contextlib.suppress(OSError):
-            path.with_suffix(LENS).write_text(json.dumps(seen.to_json()))
+            path.with_suffix(LENS).write_text(json.dumps(noted))
+        bend = None
+        if seen.main:
+            bend = lens.chosen(seen.bend, noted.get("table"), noted.get("centre"))
+        if bend is None:
+            how = "its lens's bend not known, the work kept as taken"
+        elif bend.table:
+            how = "the work kept without its lens's bend, by the camera's own table"
+        else:
+            how = f"the work kept without its lens's bend ({bend.k1:+.4f})"
+        if own is not None:
+            said = lens.like(lens.Bend(table=own[0], centre=own[1]))
+            how += f"; the camera's table says {said:+.4f} about {own[1][0]:.4f}, {own[1][1]:.4f}"
+            if seen.bend is None:
+                how += ", of a lens not measured" if seen.main else ", not of the main camera whole"
+            elif bend is None or not bend.table:
+                how += f", not what was measured ({seen.bend:+.4f}): not gone by"
         log.info(
             "own photograph %s: taken by %s (%s, %g mm): %s",
             token,
             seen.model,
             seen.lens or "its lens not said",
             seen.film,
-            "its lens's bend not known, the work kept as taken"
-            if seen.bend is None
-            else f"the work kept without its lens's bend ({seen.bend:+.4f})",
+            how,
         )
 
     def _lens(self, token: str) -> dict[str, Any] | None:
@@ -385,33 +420,44 @@ class OwnWorks:
         return noted if isinstance(noted, dict) else None
 
     @staticmethod
-    def _bend(info: dict[str, Any]) -> float | None:
+    def _bend(info: dict[str, Any]) -> Bend | None:
         """The bend of the lens a scan's photographs were taken with, from
-        what the scan noted (``info``): what its camera said of itself;
-        a scan from before one noted that (to 1.145.248) was taken with
-        his phone's main camera by the app, when its first photograph is
-        the sensor's whole. None: not known, the work stays as taken."""
+        what the scan noted (``info``): what its camera said of itself
+        (and of its lens for that photograph, where the phone sent the
+        camera's table); a scan from before one noted that (to 1.145.248)
+        was taken with his phone's main camera by the app, when its first
+        photograph is the sensor's whole. None: not known, the work stays
+        as taken."""
         from .imaging import lens
 
         if "lens" in info:
             noted = info["lens"]
             if not isinstance(noted, dict) or not noted.get("main"):
                 return None
-            return lens.BENDS.get(str(noted.get("model") or ""))
+            measured = lens.BENDS.get(str(noted.get("model") or ""))
+            return lens.chosen(measured, noted.get("table"), noted.get("centre"))
         try:
             size = int(info.get("width") or 0), int(info.get("height") or 0)
         except (TypeError, ValueError):
             return None
-        return lens.BENDS.get(lens.PHONE) if lens.whole(*size) else None
+        measured = lens.BENDS.get(lens.PHONE) if lens.whole(*size) else None
+        return lens.Bend(k1=measured) if measured is not None else None
 
     @staticmethod
-    def _unbent(cut: Cut, size: tuple[int, int], k1: float) -> Cut:
+    def _straight(info: dict[str, Any]) -> Bend | None:
+        """What a scan's work was straightened by, as the scan noted it."""
+        from .imaging.lens import Bend
+
+        return Bend.from_json(info.get("straight"))
+
+    @staticmethod
+    def _unbent(cut: Cut, size: tuple[int, int], bend: Bend) -> Cut:
         """``cut``, set on the photograph as taken (``size``), on it
         straightened."""
         from .imaging import lens
 
         def at(quad: Quad | None) -> Quad | None:
-            return lens.moved(quad, *size, k1) if quad else quad
+            return lens.moved(quad, *size, bend) if quad else quad
 
         return cut.model_copy(
             update={
@@ -454,6 +500,18 @@ class OwnWorks:
             return Chart.from_json(json.loads(self.path(token).with_suffix(CHART).read_text()))
         except (OSError, ValueError, KeyError, TypeError):
             return None
+
+    def tables(self, token: str) -> bytes:
+        """The way to the chart's colours the waiting photograph was put
+        through here, for the phone to put its own photographs of the
+        scan through before it merges them (``colorchecker.tables``).
+        LookupError where no chart was found in it."""
+        from .imaging import colorchecker
+
+        chart = self._charted(token)
+        if chart is None:
+            raise LookupError("no chart was found in the photograph")
+        return colorchecker.tables(chart)
 
     def shown(self, token: str, side: int | None = None) -> Path | bytes:
         """The photograph as it waits, for the phone to set the corners
@@ -682,6 +740,7 @@ class OwnWorks:
         doubt: bool = False,
         trace: dict[str, float] | None = None,
         phone: dict[str, Any] | None = None,
+        trued: bool = False,
     ) -> Merged:
         """The scan as the phone made it of its camera's own photographs
         (Mateusz 2026-11-19 07:42 UTC: "Tak, składaj na iPhonie"; the same
@@ -703,10 +762,16 @@ class OwnWorks:
         than what the phone had cleaned, and it merged again), it takes
         the earlier one's place.
 
+        ``trued``: the phone put its photographs in the colours of the
+        chart read here before it merged them (:meth:`tables`; Mateusz
+        2026-11-19 08:09 UTC asked whether the phone would see to the
+        chart as well). The photographs kept here are in them already.
+
         Raises ValueError for what is no scan of this photograph: no side
         photographs of it are here, the picture is of another size, or
-        its colours were set by a chart here (the phone merged the
-        camera's): the phone then asks :meth:`merge` as before."""
+        its colours were set by a chart here and the phone merged the
+        camera's as they came (or the other way about): the phone then
+        asks :meth:`merge` as before."""
         path = self.path(token)
         folder = self.scans / token
         angles = self._angles(token)
@@ -714,10 +779,15 @@ class OwnWorks:
         again = not sides and (folder / "first.jpg").is_file()
         if not sides and not again:
             raise ValueError("no side photographs of it are here")
-        if self._charted(token) is not None:
+        chart = self._charted(token)
+        if chart is not None and not trued:
             raise ValueError("its colours were set by a chart here")
+        if chart is None and trued:
+            raise ValueError("no chart set its colours here")
         with Image.open(path) as img:
             seen = Merged(token=token, width=img.width, height=img.height, corners=corners)
+        if chart is not None:
+            seen.chart = list(chart.corners)
         seen.used, seen.replaced, seen.doubt = used, round(replaced, 4), doubt
         made = self._upright(data, (seen.width, seen.height)) if seen.replaced > 0 else None
         if seen.replaced > 0 and made is None:
@@ -759,9 +829,10 @@ class OwnWorks:
                 side.unlink(missing_ok=True)
             path.with_suffix(ANGLES).unlink(missing_ok=True)
         log.info(
-            "own photograph %s: merged on the phone%s: %d side(s) laid over, %.1f%% of the light "
+            "own photograph %s: merged on the phone%s%s: %d side(s) laid over, %.1f%% of the light "
             "taken out%s%s",
             token,
+            " in its chart's colours" if trued else "",
             " again within his corners" if again else "",
             seen.used,
             seen.replaced * 100,
@@ -1034,6 +1105,7 @@ class OwnWorks:
                 height=img.height,
                 chart=list(chart.corners) if chart is not None else None,
                 phone=chart is None,
+                tables=chart is not None,
             )
             img.draft("RGB", (LOOK_SIDE, LOOK_SIDE))
             img.load()
@@ -1162,9 +1234,9 @@ class OwnWorks:
         set on the photograph as taken, go with it."""
         path = self.path(token)
         self._again(token, corners)
-        k1, straightened = self._straightening(token)
+        bend, straightened = self._straightening(token)
         item = self.importer.add_upload(
-            self._finished(path, balance, k1),
+            self._finished(path, balance, bend),
             kind=ItemKind.OWN,
             title=text.title.strip(),
             artist=text.artist.strip(),
@@ -1174,42 +1246,42 @@ class OwnWorks:
         item = self._cut(
             item, straightened(corners), by, shape, self._surround(token, straightened)
         )
-        self._note_work(token, item, balance, k1)
+        self._note_work(token, item, balance, bend)
         self._done(path)
         log.info("own work %s added", item.id)
         return item
 
     def _straightening(
         self, token: str
-    ) -> tuple[float | None, Callable[[Quad | None], Quad | None]]:
+    ) -> tuple[Bend | None, Callable[[Quad | None], Quad | None]]:
         """The bend of the lens the waiting photograph was taken with
         (None: not known, or it did not say what took it), and what puts
         corners set on it as taken where they are on it straightened."""
         from .imaging import lens
 
         noted = self._lens(token)
-        k1 = self._bend({"lens": noted}) if noted is not None else None
-        if k1 is None:
+        bend = self._bend({"lens": noted}) if noted is not None else None
+        if bend is None:
             return None, lambda quad: quad
         with Image.open(self.path(token)) as img:
             size = img.size
-        return k1, lambda quad: lens.moved(quad, *size, k1) if quad else quad
+        return bend, lambda quad: lens.moved(quad, *size, bend) if quad else quad
 
     @staticmethod
-    def _finished(path: Path, balance: float, k1: float | None = None) -> bytes:
+    def _finished(path: Path, balance: float, bend: Bend | None = None) -> bytes:
         """The photograph at ``path`` as the work keeps it: without its
-        lens's bend (``k1``), in the white balance he set."""
+        lens's ``bend``, in the white balance he set."""
         import numpy as np
 
         from .imaging import balance as white
         from .imaging import lens
 
-        if abs(balance) < 1e-3 and not k1:
+        if abs(balance) < 1e-3 and not bend:
             return path.read_bytes()
         with Image.open(path) as img:
             photo = img.convert("RGB")
-        if k1:
-            photo = Image.fromarray(lens.straight(np.asarray(photo), k1))
+        if bend:
+            photo = Image.fromarray(lens.straight(np.asarray(photo), bend))
         if abs(balance) >= 1e-3:
             photo = white.apply(photo, balance)
         out = io.BytesIO()
@@ -1240,14 +1312,14 @@ class OwnWorks:
         self._check(item)
         path = self.path(token)
         self._again(token, corners)
-        k1, straightened = self._straightening(token)
+        bend, straightened = self._straightening(token)
         self.images.remove(item)
-        width, height = self.images.store(item, self._finished(path, balance, k1), master=True)
+        width, height = self.images.store(item, self._finished(path, balance, bend), master=True)
         stored = self.library.update(item.id, width=width, height=height, cut=None) or item
         stored = self._cut(
             stored, straightened(corners), by, shape, self._surround(token, straightened)
         )
-        self._note_work(token, stored, balance, k1)
+        self._note_work(token, stored, balance, bend)
         self._done(path)
         return stored
 
@@ -1258,12 +1330,13 @@ class OwnWorks:
         token: str,
         item: Item,
         balance: float | None = None,
-        straight: float | None = None,
+        straight: Bend | None = None,
     ) -> None:
         """Which work a kept scan became, beside its photographs, the
         white balance he set for it (made again, it has the same), and
         the lens's bend taken out of it (``straight``: its corners are
-        on the photograph straightened)."""
+        on the photograph straightened by that, and made again it is
+        straightened by that)."""
         note = self.scans / token / SCAN_INFO
         try:
             info = json.loads(note.read_text())
@@ -1271,7 +1344,7 @@ class OwnWorks:
             if balance is not None:
                 info["balance"] = round(balance, 3)
             if straight is not None:
-                info["straight"] = straight
+                info["straight"] = straight.to_json()
             note.write_text(json.dumps(info))
         except (OSError, ValueError):
             pass  # no scan: one photograph, or it is gone
@@ -1404,7 +1477,8 @@ class OwnWorks:
         self._chart_late(folder, info)
         self._relit(folder, info)
         quad = valid(info.get("corners") or [])
-        k1 = self._bend(info)
+        # What its corners were moved by, when they were: never another.
+        bend = self._straight(info) if "straight" in info else self._bend(info)
         again = self.incoming / f"{token}-again.jpg"
         shutil.copyfile(folder / "first.jpg", again)
         try:
@@ -1419,7 +1493,7 @@ class OwnWorks:
                     quad,
                     bool(info.get("doubt")),
                 )
-            data = self._finished(again, float(info.get("balance") or 0.0), k1)
+            data = self._finished(again, float(info.get("balance") or 0.0), bend)
             with Image.open(again) as img:
                 size = img.size
         finally:
@@ -1428,16 +1502,18 @@ class OwnWorks:
         self.images.remove(item)
         width, height = self.images.store(item, data, master=True)
         stored = self.library.update(item.id, width=width, height=height) or item
-        if k1 is not None and "straight" not in info:
+        if bend is not None and "straight" not in info:
             if cut is not None:
                 # Set on the photograph as taken: where the work is now.
-                cut = self._unbent(cut, size, k1)
+                cut = self._unbent(cut, size, bend)
                 stored = self.library.update(item.id, cut=cut) or stored
             # Noted with the corners, before the pictures are made of
             # them: never moved twice.
-            info["straight"] = k1
+            info["straight"] = bend.to_json()
             (folder / SCAN_INFO).write_text(json.dumps(info))
-            log.info("own work %s: its lens's bend (%+.4f) taken out", item.id, k1)
+            from .imaging import lens
+
+            log.info("own work %s: its lens's bend (%+.4f) taken out", item.id, lens.like(bend))
         if cut is not None and cut.shown() is not None:
             # The same corners: the photograph is the same one. Set anew,
             # for the app's pictures kept from before to be had again.
@@ -1477,11 +1553,9 @@ class OwnWorks:
         would be made of the earlier scan again and that photograph lost:
         it is left as it is."""
         master = self.images.master_path(item)
-        noted = info.get("straight")
-        k1 = float(noted) if isinstance(noted, int | float) else None
         try:
             mine = _look(master if master.is_file() else self.images.museum_photo(item))
-            alike = _alike(mine, _look(folder / "first.jpg", k1))
+            alike = _alike(mine, _look(folder / "first.jpg", self._straight(info)))
         except OSError as err:
             log.warning("own work %s: its scan not looked at: %s", item.id, err)
             return False

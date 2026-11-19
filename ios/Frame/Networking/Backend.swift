@@ -263,7 +263,10 @@ protocol FrameBackend: Sendable {
     func setLook(itemID: String, _ look: Look) async throws -> Item
     func deleteItem(id: String) async throws
     /// "Dodaj własne dzieło": the photograph kept a day on the server.
-    func sendOwnPhoto(_ data: Data) async throws -> OwnIncoming
+    /// `lens`: what the camera said of its lens for it (`OwnLens`), by
+    /// which the server keeps the work straight where it agrees with what
+    /// was measured of that lens.
+    func sendOwnPhoto(_ data: Data, lens: OwnLens?) async throws -> OwnIncoming
     /// The work found in it (Opus, a few seconds); 503 without a key.
     func findOwnWork(token: String) async throws -> OwnIncoming
     /// A photograph of the same work from the side (the scan), and from
@@ -281,6 +284,12 @@ protocol FrameBackend: Sendable {
     /// photograph without its reflections (a JPEG; nil where nothing was
     /// taken off). Refused (422) where the server is to make it itself.
     func sendOwnScan(token: String, note: Data, picture: Data?) async throws -> OwnMerged
+    /// What the server goes by to put a photograph in the colours of the
+    /// colour chart it found in it (`colorchecker.tables`, some 70 kB):
+    /// the phone puts its own photographs of the scan through the same
+    /// before it merges them (`ScanCore.chart`). 404 where no chart was
+    /// found.
+    func ownChartTables(token: String) async throws -> Data
     /// "Na wprost" on "Skan gotowy": the first photograph as it was
     /// taken waits again, in the scan's stead.
     func keepOwnFirstPhoto(token: String) async throws
@@ -492,5 +501,13 @@ extension FrameBackend {
     /// The work's Polish texts, waited for whole.
     func polish(itemID: String, wait: Int) async throws -> PolishView {
         try await polish(itemID: itemID, wait: wait, early: false)
+    }
+}
+
+extension FrameBackend {
+    /// A photograph whose camera said nothing of its lens (one picked
+    /// from Photos, the demo's).
+    func sendOwnPhoto(_ data: Data) async throws -> OwnIncoming {
+        try await sendOwnPhoto(data, lens: nil)
     }
 }

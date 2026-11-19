@@ -136,6 +136,81 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertEqual(at(.down), [90, 40])
     }
 
+    /// What the camera says of its lens for a photograph (Mateusz
+    /// 2026-11-19 08:09 UTC: "a nie ma natywnego rozwiązania od Apple w tym
+    /// zakresie?"): its table as numbers, and the lens's middle where it
+    /// is on the photograph standing upright, however the phone was held.
+    func testTheCamerasWordOfItsLensGoesWithThePhotograph() throws {
+        let said: [Float32] = [0, -0.0004, -0.0015, -0.0034, -0.006, -0.0094, -0.0135, -0.0184, -0.024]
+        var bytes = Data()
+        for value in said {
+            withUnsafeBytes(of: value.bitPattern.littleEndian) { bytes.append(contentsOf: $0) }
+        }
+        // The sensor's own picture lies: 4032 across, 3024 down.
+        let reference = CGSize(width: 4032, height: 3024)
+        let middle = CGPoint(x: 2056.32, y: 1481.76)  // 0.51 across, 0.49 down
+        let lens = try XCTUnwrap(OwnLens(table: bytes, centre: middle, reference: reference, orientation: .right))
+        XCTAssertEqual(lens.table.count, said.count)
+        for (got, want) in zip(lens.table, said) { XCTAssertEqual(got, Double(want), accuracy: 1e-9) }
+        // The phone upright: the sensor's left is the photograph's top.
+        XCTAssertEqual(lens.centre[0], 0.51, accuracy: 1e-6)
+        XCTAssertEqual(lens.centre[1], 0.51, accuracy: 1e-6)
+        func centre(_ orientation: CGImagePropertyOrientation) throws -> [Double] {
+            try XCTUnwrap(OwnLens(table: bytes, centre: middle, reference: reference, orientation: orientation)).centre
+        }
+        XCTAssertEqual(try centre(.up)[1], 0.49, accuracy: 1e-6)
+        XCTAssertEqual(try centre(.left)[0], 0.49, accuracy: 1e-6)
+        XCTAssertEqual(try centre(.left)[1], 0.49, accuracy: 1e-6)
+        XCTAssertEqual(try centre(.down)[0], 0.49, accuracy: 1e-6)
+        // The other way of `OwnDepth.sensor`, however it was held.
+        for orientation in [CGImagePropertyOrientation.up, .right, .left, .down] {
+            let depth = OwnDepth(width: 100, height: 50, values: [], fx: 1, fy: 1, cx: 0, cy: 0, orientation: orientation)
+            let on = depth.sensor([0.1, 0.2])
+            let back = OwnLens.upright(x: on.x / 100, y: on.y / 50, orientation)
+            XCTAssertEqual(back[0], 0.1, accuracy: 1e-9)
+            XCTAssertEqual(back[1], 0.2, accuracy: 1e-9)
+        }
+
+        // As the server takes it: a table and a middle, as JSON.
+        let told = try XCTUnwrap(lens.told)
+        let note = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(told.utf8)) as? [String: Any])
+        XCTAssertEqual((note["table"] as? [Double])?.count, said.count)
+        XCTAssertEqual((note["centre"] as? [Double])?.count, 2)
+        XCTAssertEqual(Set(note.keys), ["centre", "table"])
+
+        // What is no table: cut short, no numbers, a sensor of no size.
+        XCTAssertNil(OwnLens(table: bytes.prefix(6), centre: middle, reference: reference, orientation: .right))
+        XCTAssertNil(OwnLens(table: bytes.prefix(13), centre: middle, reference: reference, orientation: .right))
+        XCTAssertNil(OwnLens(table: bytes, centre: middle, reference: .zero, orientation: .right))
+        var none = Data()
+        for value in [Float32.nan, 0, 0] {
+            withUnsafeBytes(of: value.bitPattern.littleEndian) { none.append(contentsOf: $0) }
+        }
+        XCTAssertNil(OwnLens(table: none, centre: middle, reference: reference, orientation: .right))
+    }
+
+    /// The table goes to the server with the photograph it is of; the
+    /// demo's photographs, and one picked from Photos, have none.
+    func testThePhotographIsSentWithItsLensOrWithout() async throws {
+        let demo = DemoBackend()
+        let wall = try XCTUnwrap(UIGraphicsImageRenderer(size: CGSize(width: 30, height: 40)).image { context in
+            UIColor.gray.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 30, height: 40))
+        }.jpegData(compressionQuality: 0.9))
+        let plain = try await demo.sendOwnPhoto(wall)
+        var bytes = Data()
+        for value in [Float32](repeating: -0.01, count: 8) {
+            withUnsafeBytes(of: value.bitPattern.littleEndian) { bytes.append(contentsOf: $0) }
+        }
+        let lens = OwnLens(
+            table: bytes, centre: CGPoint(x: 2, y: 1.5), reference: CGSize(width: 4, height: 3), orientation: .right
+        )
+        XCTAssertNotNil(lens)
+        let with = try await demo.sendOwnPhoto(wall, lens: lens)
+        XCTAssertNotEqual(plain.token, with.token)
+        XCTAssertEqual(with.width, plain.width)
+    }
+
     /// Mateusz 2026-11-16: "Dla własnych dzieł ustaw zdecydowanie wyższą
     /// jakość niż 4000px": the server is sent the camera's own files, and
     /// the work comes back in tiles of every pixel for the full screen.

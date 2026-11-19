@@ -11,6 +11,7 @@ import math
 import cv2
 import numpy as np
 from PIL import Image
+from pytest import approx
 
 from frame_server.imaging import lens
 
@@ -44,6 +45,17 @@ def where(x: np.ndarray, y: np.ndarray, k1: float) -> tuple[np.ndarray, np.ndarr
         bent = 1 + k1 * (ux**2 + uy**2)
         ux, uy = px / bent, py / bent
     return ux * half + (W - 1) / 2, uy * half + (H - 1) / 2
+
+
+def table(k1: float = K1, count: int = 42, centre: tuple[float, float] = (0.5, 0.5)) -> list[float]:
+    """What a camera whose lens has the bend ``k1`` says of it for a
+    photograph (Apple's ``lensDistortionLookupTable``): how much further
+    out a point is drawn, at ``count`` radii evenly from the lens's
+    middle to the photograph's farthest corner from it."""
+    cx, cy = centre[0] * W, centre[1] * H
+    reach = math.hypot(max(cx, W - cx), max(cy, H - cy))
+    half = math.hypot(W, H) / 2
+    return [float(k1 * (i / (count - 1) * reach / half) ** 2) for i in range(count)]
 
 
 def bent(img: np.ndarray, k1: float = K1) -> np.ndarray:
@@ -167,3 +179,115 @@ def test_only_a_lens_that_was_measured_is_taken_out() -> None:
     }
     assert lens.whole(6048, 8064) and lens.whole(8064, 6048) and lens.whole(5712, 4284)
     assert not lens.whole(1100, 1400) and not lens.whole(0, 0)
+
+
+def test_the_cameras_own_table_takes_the_bend_out_as_the_measured_number_does() -> None:
+    """Mateusz 2026-11-19 08:09 UTC: "Korekta obiektywu - a nie ma
+    natywnego rozwiązania od Apple w tym zakresie?". The camera's table
+    of a photograph says how its lens bent it; a table that says what
+    the one measured term says straightens as that does."""
+    taken = bent(scene())
+    own = lens.Bend(table=tuple(table()))
+    made = lens.straight(taken, own)
+    assert made.shape == taken.shape and made.dtype == taken.dtype
+    assert bow(made) < 0.3
+    by_number = lens.straight(taken, K1).astype(int)
+    assert np.abs(made.astype(int) - by_number).mean() < 0.5
+    assert np.array_equal(lens.straight(taken, lens.Bend(k1=K1)), lens.straight(taken, K1))
+    # As one number, it is the one it was made of; a short table too.
+    assert lens.like(own) == approx(K1, rel=0.01)
+    assert lens.like(lens.Bend(table=tuple(table(count=9)))) == approx(K1, rel=0.03)
+    assert lens.like(lens.Bend(k1=K1)) == K1
+    # A table of no bend at all moves nothing, and is no bend.
+    flat = lens.Bend(table=(0.0,) * 12)
+    assert not flat and np.array_equal(lens.straight(taken, flat), taken)
+    assert lens.Bend(k1=K1) and own and not lens.Bend()
+
+    # Corners set on the photograph as taken go with it, as with the number.
+    x0, y0, x1, y1 = FRAME
+    half = math.hypot(W, H) / 2
+    drawn = []
+    for x, y in [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]:
+        ux, uy = (x - W / 2) / half, (y - H / 2) / half
+        f = 1 + K1 * (ux * ux + uy * uy)
+        drawn.append(((ux * f * half + W / 2) / W, (uy * f * half + H / 2) / H))
+    by_table, by_k1 = lens.moved(drawn, W, H, own), lens.moved(drawn, W, H, K1)
+    for (tx, ty), (kx, ky) in zip(by_table, by_k1, strict=True):
+        assert abs(tx - kx) * W < 0.1 and abs(ty - ky) * H < 0.1
+    assert lens.moved([(0.5, 0.5)], W, H, own) == [(0.5, 0.5)]
+
+
+def test_a_lens_whose_middle_is_not_the_photographs() -> None:
+    """The camera says where its lens's middle is, too: a few pixels off
+    the photograph's. The table is about that."""
+    centre = (0.52, 0.49)
+    cx, cy = centre[0] * W - 0.5, centre[1] * H - 0.5
+    half = math.hypot(W, H) / 2
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float64)
+    # Where such a lens draws the scene's points: the scene's pixels to read.
+    px, py = (xx - cx) / half, (yy - cy) / half
+    ux, uy = px.copy(), py.copy()
+    for _ in range(20):
+        f = 1 + K1 * (ux**2 + uy**2)
+        ux, uy = px / f, py / f
+    taken = cv2.remap(
+        scene(),
+        (ux * half + cx).astype(np.float32),
+        (uy * half + cy).astype(np.float32),
+        cv2.INTER_CUBIC,
+        borderMode=cv2.BORDER_REPLICATE,
+    )
+    own = lens.Bend(table=tuple(table(centre=centre)), centre=centre)
+    assert bow(lens.straight(taken, own)) < 0.3
+    # Taken for a lens in the photograph's middle, a slope is left in
+    # the frame's side: not straight.
+    assert bow(lens.straight(taken, K1)) > 2 * bow(lens.straight(taken, own))
+    assert lens.like(own) == approx(K1, rel=0.08)
+    # A corner goes where the frame's is.
+    x0, y0 = FRAME[:2]
+    u = ((x0 - 0.5 - cx) / half, (y0 - 0.5 - cy) / half)
+    f = 1 + K1 * (u[0] ** 2 + u[1] ** 2)
+    drawn = [((u[0] * f * half + cx + 0.5) / W, (u[1] * f * half + cy + 0.5) / H)]
+    ((mx, my),) = lens.moved(drawn, W, H, own)
+    assert abs(mx * W - x0) < 0.1 and abs(my * H - y0) < 0.1
+
+
+def test_which_of_the_two_a_photograph_is_straightened_by() -> None:
+    """The camera's table where it says what the measurement of that lens
+    says; the measurement where it does not, or there is no table; and a
+    lens that was not measured stays as taken until the table has been
+    seen to say of his lens what the measurement does."""
+    own = table()
+    by_table = lens.chosen(K1, own, [0.5, 0.5])
+    assert by_table is not None and by_table.table == tuple(own) and by_table.centre == (0.5, 0.5)
+    # Within a third of the measured one, either way.
+    for share in (0.7, 1.3):
+        near = lens.chosen(K1, table(K1 * share), (0.5, 0.5))
+        assert near is not None and near.table
+    for other in (table(-K1), table(K1 * 1.5), table(K1 * 0.5), table(0.0)):
+        assert lens.chosen(K1, other, (0.5, 0.5)) == lens.Bend(k1=K1)
+    # No table, or what is none: too short, a number that is none, a
+    # share no main camera has, a middle far from the photograph's.
+    for none in (
+        (None, None),
+        (own[:4], (0.5, 0.5)),
+        ([*own[:-1], float("nan")], (0.5, 0.5)),
+        ([*own[:-1], 0.4], (0.5, 0.5)),
+        (own, (0.7, 0.5)),
+        (own, None),
+        ("table", (0.5, 0.5)),
+        (own, (0.5,)),
+    ):
+        assert lens.table(*none) is None
+        assert lens.chosen(K1, *none) == lens.Bend(k1=K1)
+    # A lens not measured.
+    assert lens.ALONE is False
+    assert lens.chosen(None, own, (0.5, 0.5)) is None
+    assert lens.chosen(None) is None
+
+    # As a scan notes it, and reads it back.
+    assert lens.Bend(k1=K1).to_json() == K1
+    assert lens.Bend.from_json(K1) == lens.Bend(k1=K1)
+    assert lens.Bend.from_json(by_table.to_json()) == by_table
+    assert lens.Bend.from_json(None) is None and lens.Bend.from_json({"table": [1]}) is None
+    assert lens.Bend.from_json(True) is None

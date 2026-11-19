@@ -2,6 +2,61 @@ import Foundation
 import ImageIO
 import simd
 
+/// What the camera says of its own lens for one photograph
+/// (`AVCameraCalibrationData`, which comes with the LiDAR's depth): how it
+/// bent what it drew. Mateusz 2026-11-19 08:09 UTC: "Korekta obiektywu - a
+/// nie ma natywnego rozwiązania od Apple w tym zakresie?". Apple
+/// straightens no photograph of the main camera itself, but gives what one
+/// is straightened by; it goes to the server with a scan's first
+/// photograph (`FrameBackend.sendOwnPhoto`), and the work is kept straight
+/// by it where it says what was measured of that lens (`imaging/lens.py`).
+struct OwnLens: Hashable, Sendable {
+    /// How much further from the lens's middle a point of the straight
+    /// picture is in the photograph, as a share of its distance, at radii
+    /// evenly from that middle to the photograph's farthest corner
+    /// (`lensDistortionLookupTable`).
+    var table: [Double]
+    /// The lens's middle, 0–1 across and down the photograph as it stands
+    /// upright.
+    var centre: [Double]
+
+    /// Of what the camera gives: the table's bytes (32-bit numbers), the
+    /// lens's middle on the sensor's own picture as it lies (`reference`
+    /// its size there), and how the photograph was turned to stand upright.
+    init?(table: Data, centre: CGPoint, reference: CGSize, orientation: CGImagePropertyOrientation) {
+        guard reference.width > 0, reference.height > 0, table.count >= 8, table.count % 4 == 0 else { return nil }
+        let values: [Double] = table.withUnsafeBytes { raw in
+            (0 ..< raw.count / 4).map { Double(raw.loadUnaligned(fromByteOffset: $0 * 4, as: Float32.self)) }
+        }
+        let x = Double(centre.x) / Double(reference.width), y = Double(centre.y) / Double(reference.height)
+        guard values.allSatisfy(\.isFinite), x.isFinite, y.isFinite else { return nil }
+        self.table = values
+        self.centre = Self.upright(x: x, y: y, orientation)
+    }
+
+    /// A point of the sensor's own picture (0–1 across and down it as it
+    /// lies) on the photograph standing upright: `OwnDepth.sensor` the
+    /// other way.
+    static func upright(x: Double, y: Double, _ orientation: CGImagePropertyOrientation) -> [Double] {
+        switch orientation {
+        case .right: return [1 - y, x]  // the phone upright
+        case .left: return [y, 1 - x]
+        case .down: return [1 - x, 1 - y]
+        default: return [x, y]
+        }
+    }
+
+    /// As the server takes it with the photograph (`CameraLens` in
+    /// `web/own_api.py`), as JSON.
+    var told: String? {
+        let note: [String: Any] = ["table": table, "centre": centre]
+        guard JSONSerialization.isValidJSONObject(note),
+              let data = try? JSONSerialization.data(withJSONObject: note, options: [.sortedKeys])
+        else { return nil }
+        return String(decoding: data, as: UTF8.self)
+    }
+}
+
 /// The distance to everything in the first photograph of a work, from the
 /// LiDAR (iPhone Pro), and the size of the work it gives (Mateusz
 /// 2026-11-16: "pobierać jego szacowany wymiar"). The wall is fitted with a
@@ -19,6 +74,8 @@ struct OwnDepth: Sendable {
     let cy: Double
     /// How the photograph was turned to stand upright.
     let orientation: CGImagePropertyOrientation
+    /// What the camera said of its lens for this photograph, when it did.
+    var lens: OwnLens? = nil
 
     struct Size: Equatable, Sendable {
         var heightCm: Double
