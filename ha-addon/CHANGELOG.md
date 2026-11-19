@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.145.252
+
+- Składanie skanu własnego dzieła trochę szybciej, z tym samym obrazem
+  („Musimy się teraz zastanowić nad tym jak przyspieszyć składanie
+  obrazów - teraz trwa to zdecydowanie za długo […] Nie może odbyć się
+  kosztem jakości”). To pierwszy krok próby składania na iPhonie:
+  odchudzone samo składanie na serwerze. Zdjęcia czytają się naraz,
+  zdjęcia z boku nakładają się obok siebie, a ostatni krok (całe zdjęcie
+  w pełnym rozmiarze) idzie dwoma pasami naraz.
+- Sprawdzone na Twoich 48 zachowanych skanach: wynik jest ten sam co do
+  piksela. W chmurze skan składa się o 2–3 s krócej (ok. 18 s zamiast
+  20); ile zyskuje serwer w domu, pokaże Twój następny skan.
+- Przy dwóch pasach naraz skan bierze przez chwilę ok. 0,4 GB pamięci
+  więcej. Gdy serwer ma mniej niż 3 GB wolnej pamięci, ostatni krok
+  idzie po kolei, jak dotąd.
+- W logu serwera przy każdym skanie widać teraz, ile trwała każda część
+  składania, na ilu rdzeniach i przy ilu GB wolnej pamięci. Z tego
+  wyjdzie, co na Twoim serwerze naprawdę trwa najdłużej.
+
 ## 1.145.251
 
 - „Podobne do” w Szukaj pokazuje dzieła według bliskości, a nie stałe 120

@@ -603,9 +603,11 @@ class OwnWorks:
         anything was taken out): how many were laid over, how much went,
         and whether the photographs show no one flat work (in doubt: then
         nothing is taken out unless asked for ``anyway``)."""
+        import os
+
         import numpy as np
 
-        from .imaging import glare, reflections
+        from .imaging import bands, glare, reflections
 
         def whole(path: Path, side: int | None = None) -> Any:
             with Image.open(path) as img:
@@ -613,18 +615,40 @@ class OwnWorks:
                     img.draft("RGB", (side, side))
                 return np.asarray(img.convert("RGB"))
 
-        photo = whole(first)
+        began = time.perf_counter()
+        # The side ones only say what is reflection: small is enough. All
+        # are read at a time: each is a file of its own.
+        small = reflections.MATCH_SIDE if quad is not None else None
+        photo, *others = bands.pool.map(
+            lambda read: whole(*read), [(first, None), *((p, small) for p in sides)]
+        )
+        read = time.perf_counter()
         if quad is not None:
-            # The side ones only say what is reflection: small is enough.
-            clean = reflections.merge(
-                photo, [whole(p, reflections.MATCH_SIDE) for p in sides], quad, anyway
-            )
+            clean = reflections.merge(photo, others, quad, anyway)
             used, taken, image, doubt = clean.used, clean.removed, clean.image, clean.doubt
+            parts = ", ".join(f"{part} {seconds:.1f}" for part, seconds in clean.took.items())
         else:
-            patched = glare.merge(photo, [whole(p) for p in sides])
+            patched = glare.merge(photo, others)
             used, taken, image, doubt = patched.used, patched.replaced, patched.image, False
+            parts = "a glare only"
+        merged = time.perf_counter()
         if taken > 0:
             Image.fromarray(image).save(into, "JPEG", quality=INCOMING_QUALITY)
+        done = time.perf_counter()
+        # What a scan's time goes on is told from his own scans (Mateusz
+        # 2026-11-18 23:34 UTC: "przyspieszyć składanie obrazów - teraz
+        # trwa to zdecydowanie za długo").
+        log.info(
+            "own photograph %s: merged in %.1f s on %d core(s) with %.1f GB to spare: "
+            "read %.1f, %s, written %.1f",
+            into.stem,
+            done - began,
+            os.cpu_count() or 1,
+            reflections.spare(),
+            read - began,
+            parts or "nothing laid",
+            done - merged,
+        )
         return used, round(taken, 4), doubt
 
     def single(self, token: str) -> None:

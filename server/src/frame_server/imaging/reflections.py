@@ -156,14 +156,17 @@ more of their scans' photographs after the update."""
 from __future__ import annotations
 
 import math
+import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import cv2
 import numba
 import numpy as np
 from numpy.typing import NDArray
+
+from . import bands
 
 #: The long side the photographs are laid over each other at.
 MATCH_SIDE = 2400
@@ -461,6 +464,10 @@ LEAST = 0.01
 MOST = 0.7
 #: Rows worked on at once at full size.
 ROWS = 512
+#: And so many such bands at a time, where the machine has this much
+#: memory to spare (GB): a band holds a quarter of a gigabyte the while.
+AT_A_TIME = 2
+SPARE = 3.0
 
 Image = NDArray[Any]
 Floats = NDArray[Any]
@@ -479,6 +486,11 @@ class Merged:
     #: mirror in it: :data:`NOT_ONE`, :data:`MOST`): the first photograph
     #: alone is likely the better picture of it.
     doubt: bool = False
+    #: How long each part of it took, in seconds (the side photographs
+    #: ``laid`` over the first, what is the first's ``own``, the ``layer``
+    #: they share, what was ``mended``, the photograph ``whole``): what a
+    #: scan's time goes on is told from his own scans.
+    took: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -510,6 +522,14 @@ def merge(first: Image, sides: list[Image], corners: Quad, anyway: bool = False)
     not show one flat work in one light it is ``first`` untouched, in
     doubt; made of them all the same when asked for ``anyway``, and in
     doubt still."""
+    took: dict[str, float] = {}
+    last = [time.perf_counter()]
+
+    def mark(part: str) -> None:
+        now = time.perf_counter()
+        took[part] = round(took.get(part, 0.0) + now - last[0], 2)
+        last[0] = now
+
     h, w = first.shape[:2]
     quad = grown(corners) * [w, h]
     scale = min(1.0, MATCH_SIDE / max(h, w))
@@ -526,12 +546,21 @@ def merge(first: Image, sides: list[Image], corners: Quad, anyway: bool = False)
 
     views = [_View(_linear(front), 0)]
     marks = _marks(front)
-    for photo in sides:
-        laid = _lay(front, marks, photo)
+    # The side photographs' points are found here, one photograph after
+    # another: finding them holds a gigabyte the while (OpenCV is on every
+    # core for it by itself), and found by one thread it is the same
+    # gigabyte each time (two at a time, the scan took half as much
+    # memory again: 2.5 GB against 1.7, measured 2026-11-19 on his
+    # scans). The rest of laying each is by itself, so side by side, and
+    # kept in their order.
+    points = [_marks(_resize(photo, _matched(photo))) for photo in sides]
+    each = zip(sides, points, strict=True)
+    for laid in bands.pool.map(lambda of: _lay(front, marks, *of), each):
         if laid is not None:
             views.append(laid)
+    mark("laid")
     if len(views) < 2:
-        return Merged(first, 0, 0.0)
+        return Merged(first, 0, 0.0, took=took)
 
     _even(views)
     _hide(views)
@@ -542,7 +571,8 @@ def merge(first: Image, sides: list[Image], corners: Quad, anyway: bool = False)
     alone, swap, differ, told = _alone(views)
     doubt = differ > NOT_ONE
     if doubt and not anyway:
-        return Merged(first, len(views) - 1, 0.0, True)
+        mark("own")
+        return Merged(first, len(views) - 1, 0.0, True, took)
     less = front - alone
     # A lamp's light is taken off as well, though the work under it is
     # put in from the side views: a lamp alone on an even veil was
@@ -558,6 +588,7 @@ def merge(first: Image, sides: list[Image], corners: Quad, anyway: bool = False)
         less = less + (work - less) * patch
         alone = alone * (1 - patch)
         front = front + (work - front) * patch
+    mark("own")
     views[0] = _View(less, 0)
     layer, held = _reflection(views)
     # What most of the work has is not taken off.
@@ -566,7 +597,8 @@ def merge(first: Image, sides: list[Image], corners: Quad, anyway: bool = False)
     removed = (own + float(soft.mean())) / max(whole, 1e-6)
     doubt = doubt or removed > MOST
     if removed < LEAST or (removed > MOST and not anyway):
-        return Merged(first, len(views) - 1, 0.0, doubt)
+        mark("layer")
+        return Merged(first, len(views) - 1, 0.0, doubt, took)
     # The layer's pixels → the photograph's (a pixel's place is its middle).
     to_photo = (
         _larger(1 / scale, 1 / scale)
@@ -575,6 +607,7 @@ def merge(first: Image, sides: list[Image], corners: Quad, anyway: bool = False)
     )
     lamp = None if swap is None else swap[1]
     veil, low, share = _grain(less, alone, soft, views[1:], lamp)
+    mark("layer")
     # The first view as it comes out of that, and what is still to mend.
     now = front - veil - np.clip(front - low, 0, None) * share
     mend, theirs = _mend(now, front, alone, soft, views, told)
@@ -585,8 +618,10 @@ def merge(first: Image, sides: list[Image], corners: Quad, anyway: bool = False)
         finer = _finer(views, told, _from_sides(views, told, 0.0)[0])
     if swap is not None:
         mend = mend + _level(now - mend, swap[0], swap[1], beside)
+    mark("mended")
     clean = _subtract(first, (veil, low, share), mend, swap, to_photo, quad, finer, theirs)
-    return Merged(clean, len(views) - 1, round(removed, 4), doubt)
+    mark("whole")
+    return Merged(clean, len(views) - 1, round(removed, 4), doubt, took)
 
 
 def _kept(layer: Floats, held: Floats) -> Floats:
@@ -679,8 +714,11 @@ _FROM_LINEAR = (
 
 
 def _srgb(light: Floats) -> Image:
-    steps = np.clip(light * 65535 + 0.5, 0, 65535).astype(np.uint16)
-    return _FROM_LINEAR[steps]
+    """``light`` as a photograph's levels; the light is spent on it."""
+    light *= 65535
+    light += 0.5
+    np.clip(light, 0, 65535, out=light)
+    return _FROM_LINEAR[light.astype(np.uint16)]
 
 
 def _marks(img: Image) -> tuple[Any, Any]:
@@ -691,14 +729,23 @@ def _marks(img: Image) -> tuple[Any, Any]:
     return found
 
 
-def _lay(front: Image, marks: tuple[Any, Any], photo: Image) -> _View | None:
+def _matched(photo: Image) -> float:
+    """How much smaller a side photograph is matched than it was given:
+    its longer side :data:`MATCH_SIDE` at most."""
+    return min(1.0, MATCH_SIDE / max(photo.shape[:2]))
+
+
+def _lay(
+    front: Image, marks: tuple[Any, Any], photo: Image, theirs: tuple[Any, Any] | None = None
+) -> _View | None:
     """A side photograph laid over the work as the first shows it (with
     its ``marks``), or None when too little of them matches (another
-    work, a blur)."""
-    scale = min(1.0, MATCH_SIDE / max(photo.shape[:2]))
+    work, a blur). ``theirs``: the photograph's own marks at the size it
+    is matched at (:func:`_matched`), where they were found already."""
+    scale = _matched(photo)
     side = _resize(photo, scale)
     k1, d1 = marks
-    k2, d2 = _marks(side)
+    k2, d2 = theirs or _marks(side)
     if d1 is None or d2 is None or len(k1) < MIN_MATCHES or len(k2) < MIN_MATCHES:
         return None
     pairs = cv2.BFMatcher(cv2.NORM_L2).knnMatch(d2, d1, k=2)
@@ -1559,17 +1606,26 @@ def _finer(
         share = share * np.where(np.isfinite(light), clear * clear, 0).astype(np.float32)
         parts.append((view.photo, view.seen, view.light, share, np.array(view.gains, np.float32)))
     whole = np.maximum(whole, 1e-6)
+    # Each one's share of them all, once and not at every asking.
+    parts = [(*part[:3], part[3] / whole, part[4]) for part in parts]
 
     def fine(to_part: NDArray[np.float64], glare: Floats) -> Floats:
+        # Asked for band by band of the first photograph, two bands at a
+        # time: what it holds the while is kept small (each step in the
+        # place of the last, and the same numbers as before).
         out = np.zeros((*glare.shape[:2], 3), np.float32)
-        down, across = np.nonzero(glare > 0)
+        some = glare > 0
+        down, across = np.flatnonzero(some.any(1)), np.flatnonzero(some.any(0))
         if not len(down) or not parts:
             return out
-        r0, r1, c0, c1 = down.min(), down.max() + 1, across.min(), across.max() + 1
-        grid = np.mgrid[r0:r1, c0:c1].astype(np.float64)
-        at = np.stack([grid[1], grid[0]], -1).reshape(-1, 1, 2)
-        at = cv2.perspectiveTransform(at, np.linalg.inv(to_part)).astype(np.float32)
-        u, v = at.reshape(r1 - r0, c1 - c0, 2).transpose(2, 0, 1)
+        r0, r1, c0, c1 = down[0], down[-1] + 1, across[0], across[-1] + 1
+        at = np.empty((r1 - r0, c1 - c0, 2), np.float64)
+        at[..., 0] = np.arange(c0, c1)
+        at[..., 1] = np.arange(r0, r1)[:, None]
+        at = cv2.perspectiveTransform(at.reshape(-1, 1, 2), np.linalg.inv(to_part))
+        at = at.reshape(r1 - r0, c1 - c0, 2)
+        u, v = at[..., 0].astype(np.float32), at[..., 1].astype(np.float32)
+        del at
 
         def here(of: Floats, how: int = cv2.INTER_LINEAR) -> Floats:
             return cv2.remap(of, u, v, how, borderMode=cv2.BORDER_REPLICATE)
@@ -1582,8 +1638,11 @@ def _finer(
                 cv2.INTER_CUBIC,
                 borderMode=cv2.BORDER_REPLICATE,
             )
-            more = _linear(sharp) / gains - here(light, cv2.INTER_CUBIC)
-            out[r0:r1, c0:c1] += more * here(share / whole)[..., None]
+            more = _linear(sharp)
+            more /= gains
+            more -= here(light, cv2.INTER_CUBIC)
+            more *= here(share)[..., None]
+            out[r0:r1, c0:c1] += more
         return out
 
     return fine
@@ -2199,13 +2258,12 @@ def _subtract(
     out = first.copy()
     mended = bool(mend.any())
     feather = max(1.5, 0.002 * max(x1 - x0, y1 - y0))
-    for top in range(y0, y1, ROWS):
+
+    def band(top: int) -> None:
         rows = min(ROWS, y1 - top)
         shift = np.array([[1, 0, -x0], [0, 1, -top], [0, 0, 1]], np.float64)
 
-        def laid(
-            what: Floats, how: int, shift: NDArray[np.float64] = shift, rows: int = rows
-        ) -> Floats:
+        def laid(what: Floats, how: int) -> Floats:
             return cv2.warpPerspective(
                 what, shift @ to_photo, (x1 - x0, rows), flags=how, borderMode=cv2.BORDER_REPLICATE
             )
@@ -2220,22 +2278,73 @@ def _subtract(
             if glare.any():
                 put = laid(swap[0], cv2.INTER_CUBIC)
                 if finer is not None:
-                    put = put + finer(shift @ to_photo, glare)
-                light = light + (put - light) * glare[..., None] * soft
+                    put += finer(shift @ to_photo, glare)
+                put -= light
+                put *= glare[..., None]
+                put *= soft
+                light += put
+                del put
                 put_in = glare
-        sheen = np.clip(light - laid(low, cv2.INTER_LINEAR), 0, None)
-        sheen *= np.clip(laid(share, cv2.INTER_LINEAR), 0, 1)
-        light = light - (np.clip(laid(veil, cv2.INTER_CUBIC), 0, None) + sheen) * soft
+        # Each of these in the place of the last: several bands are held
+        # at a time, and a band's picture is 25 MB.
+        sheen = laid(low, cv2.INTER_LINEAR)
+        np.subtract(light, sheen, out=sheen)
+        np.clip(sheen, 0, None, out=sheen)
+        part = laid(share, cv2.INTER_LINEAR)
+        np.clip(part, 0, 1, out=part)
+        sheen *= part
+        part = laid(veil, cv2.INTER_CUBIC)
+        np.clip(part, 0, None, out=part)
+        part += sheen
+        part *= soft
+        light -= part
+        del sheen
         if mended:
-            light = light - laid(mend, cv2.INTER_CUBIC) * soft
+            part = laid(mend, cv2.INTER_CUBIC)
+            part *= soft
+            light -= part
+        del part
         if finer is not None and theirs is not None:
             also = laid(theirs, cv2.INTER_LINEAR)
             if put_in is not None:
                 also = also * (1 - put_in)
             if also.any():
-                light = light + finer(shift @ to_photo, also) * also[..., None] * soft
+                more = finer(shift @ to_photo, also)
+                more *= also[..., None]
+                more *= soft
+                light += more
+                del more
         out[top : top + rows, x0:x1] = _srgb(light)
+
+    # Each band is worked out by itself, so two at a time make the same
+    # picture: this step was a quarter of the scan's time (Mateusz
+    # 2026-11-18 23:34 UTC: "przyspieszyć składanie obrazów - teraz trwa
+    # to zdecydowanie za długo […] Nie może odbyć się kosztem jakości").
+    # Two and no more, and one after another on a machine with little
+    # memory to spare: a band holds a quarter of a gigabyte the while.
+    tops = range(y0, y1, ROWS)
+    lanes = AT_A_TIME if spare() >= SPARE else 1
+
+    def every(nth: int) -> None:
+        for top in tops[nth::lanes]:
+            band(top)
+
+    for _ in bands.pool.map(every, range(lanes)):
+        pass
     return out
 
 
-__all__ = ["Merged", "grown", "merge"]
+def spare() -> float:
+    """The memory this machine has to spare, in GB (much, where it does
+    not say)."""
+    try:
+        with open("/proc/meminfo") as told:
+            for line in told:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) / 1e6
+    except (OSError, ValueError, IndexError):
+        pass
+    return math.inf
+
+
+__all__ = ["Merged", "grown", "merge", "spare"]
