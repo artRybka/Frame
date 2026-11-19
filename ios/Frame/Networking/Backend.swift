@@ -213,8 +213,10 @@ protocol FrameBackend: Sendable {
     func themePlaylist(key: String, play: Bool) async throws -> ThemePlaylist
     /// Every style, subject, period and technique, with Polish names.
     func vocabulary() async throws -> [TermInfo]
-    /// What typed words could mean: artists, terms and the words themselves.
-    func terms(_ text: String) async throws -> [TermHit]
+    /// What typed words could mean: artists, terms and the words themselves;
+    /// with `playlist`, counted in that playlist's works (those it has none
+    /// of left out, but the words).
+    func terms(_ text: String, playlist: Int?) async throws -> [TermHit]
     /// Whether Szukaj may search by how works look (`GET /api/looks`).
     func looksStatus() async throws -> LooksStatus
     /// A photograph (JPEG) to search by how it looks: the key Szukaj asks
@@ -438,6 +440,11 @@ protocol FrameBackend: Sendable {
     func removePerson(id: String) async throws -> People
     func renamePerson(id: String, name: String) async throws -> People
     func savePeopleSettings(_ settings: PeopleSettings) async throws -> People
+}
+
+extension FrameBackend {
+    /// What typed words could mean in the whole catalogue.
+    func terms(_ text: String) async throws -> [TermHit] { try await terms(text, playlist: nil) }
 }
 
 extension FrameBackend {

@@ -22,6 +22,17 @@ struct PlaylistDetailView: View {
     @State private var restorer: RestorerState?
     @State private var askingRestore = false
     @State private var restoring = false
+    /// The magnifier beside "…" (Mateusz 2026-11-19: "Zdecydowanie lupa
+    /// obok"): Szukaj's field and suggestions over the page, for this
+    /// playlist's works alone, all of them; the grid narrows as words are
+    /// typed.
+    @State private var searching = false
+    @State private var lookup = TermLookup()
+    @State private var tokens: [SearchToken] = []
+    @FocusState private var fieldFocused: Bool
+    /// What the search found, and for what.
+    @State private var found: ItemPage?
+    @State private var foundFor: LibraryQuery?
 
     /// The works as last loaded; nil until the first load.
     private var detail: PlaylistDetail? { model.playlistDetails[playlistID] }
@@ -30,11 +41,31 @@ struct PlaylistDetailView: View {
     private var isActive: Bool { model.settings?.playlistId == playlistID }
     private var isAlbum: Bool { summary?.kind == .album }
 
+    /// What the field asks: its chips, and the words being typed as
+    /// "Słowa" (the grid narrows while typing); nil with nothing asked.
+    private var searchQuery: LibraryQuery? {
+        guard searching else { return nil }
+        var asked = tokens
+        let words = lookup.trimmed
+        if !words.isEmpty, !asked.contains(where: { $0.kind == "word" && $0.key == words }) {
+            asked.append(SearchToken(kind: "word", key: words, name: words))
+        }
+        guard !asked.isEmpty else { return nil }
+        var rules = PlaylistRules()
+        rules.setTokens(asked)
+        var query = LibraryQuery(rules: rules, limit: 200)
+        query.playlist = playlistID
+        return query
+    }
+
+    /// The works the search found (the last answer while the next is asked).
+    private var foundShown: ItemPage? { searchQuery == nil ? nil : found }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 if let summary {
-                    header(summary)
+                    if !searching { header(summary) }
                     if summary.itemCount > 0 {
                         gridHeader(summary)
                             .padding(.top, 4)
@@ -67,8 +98,27 @@ struct PlaylistDetailView: View {
         .glowLift($scrolled)
         // Its cover's four works glow at the top, as its card does in Playlisty.
         .paperPage(glow: summary?.coverColors ?? [], lift: scrolled, colours: 4)
+        .modifier(PlaylistSearchField(
+            active: searching, lookup: lookup, tokens: $tokens, focused: $fieldFocused
+        ) {
+            withAnimation(.snappy) {
+                searching = false
+                found = nil
+                foundFor = nil
+            }
+        })
+        .task(id: searchQuery) { await find() }
+        .task { await searchForScreenshot() }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                // Every playlist's works can be searched, also someone
+                // else's and an album's.
+                if !removingItems, !searching {
+                    Button("Szukaj w playliście", systemImage: "magnifyingglass") { startSearch() }
+                        .disabled((summary?.itemCount ?? 0) == 0)
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 if removingItems {
                     Button("Gotowe") { withAnimation { removingItems = false } }
@@ -144,7 +194,15 @@ struct PlaylistDetailView: View {
 
     @ViewBuilder
     private func works(_ detail: PlaylistDetail) -> some View {
-        if !detail.items.isEmpty {
+        if let found = foundShown, found.items.isEmpty {
+            EmptyStateView(
+                title: "Nic nie znaleziono",
+                message: "Żadne dzieło tej playlisty nie pasuje do tego szukania."
+            )
+        } else if let found = foundShown {
+            MasonryGrid(items: found.items) { item in card(item) }
+                .framePositionProbe("grid")
+        } else if !detail.items.isEmpty {
             VStack(spacing: 22) {
                 MasonryGrid(items: detail.items) { item in card(item) }
                     .framePositionProbe("grid")
@@ -297,7 +355,7 @@ struct PlaylistDetailView: View {
     /// and on an album, it only tells.
     private func gridHeader(_ playlist: PlaylistSummary) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(bound: playlist.countText)
+            Text(bound: foundShown.map { Self.foundText($0.total, of: playlist.itemCount) } ?? playlist.countText)
                 .font(.serif(19, weight: .semibold))
                 .foregroundStyle(Theme.ink)
                 .contentTransition(.numericText())
@@ -316,6 +374,63 @@ struct PlaylistDetailView: View {
                         .accessibilityLabel(sort.caption ?? label)
                 }
             }
+        }
+    }
+
+    /// "1 z 6 dzieł": how many of the playlist's works the search found.
+    static func foundText(_ found: Int, of all: Int) -> String {
+        "\(found) z \(all) \(all == 1 ? "dzieła" : "dzieł")"
+    }
+
+    /// The magnifier: the field over the page, with the keyboard.
+    private func startSearch() {
+        lookup.playlist = playlistID
+        lookup.clear()
+        tokens = []
+        withAnimation(.snappy) { searching = true }
+        Task {
+            // "Słowa" find what the works show too: their counts with a plus.
+            if let status = try? await model.backend.looksStatus() {
+                lookup.looks = status.enabled && status.ready
+            }
+        }
+    }
+
+    /// `-screen playlist-search -typed <words>`: the magnifier tapped and
+    /// the words typed; `-scroll found` presses Return after them.
+    private func searchForScreenshot() async {
+        guard LaunchRoute.screen == "playlist-search", !searching else { return }
+        try? await Task.sleep(for: .milliseconds(900))
+        startSearch()
+        try? await Task.sleep(for: .milliseconds(700))
+        lookup.text = LaunchRoute.typed ?? ""
+        guard LaunchRoute.scroll == "found" else { return }
+        try? await Task.sleep(for: .milliseconds(2500))
+        if let chosen = lookup.chosen { lookup.pick(chosen, into: $tokens) }
+        fieldFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
+    /// Asks the server for the playlist's works that fit the field, a
+    /// moment after the last letter; "Słowa" whose works that look so come
+    /// later are asked again then (as in Szukaj).
+    private func find() async {
+        guard let query = searchQuery else {
+            found = nil
+            foundFor = nil
+            return
+        }
+        try? await Task.sleep(for: .milliseconds(foundFor == nil ? 120 : 260))
+        guard !Task.isCancelled else { return }
+        for round in 0 ..< 3 {
+            guard let page = try? await model.backend.items(query), !Task.isCancelled else { return }
+            withAnimation(.snappy) {
+                found = page
+                foundFor = query
+            }
+            guard page.later == true, round < 2 else { return }
+            try? await Task.sleep(for: .milliseconds(1600))
+            guard !Task.isCancelled else { return }
         }
     }
 
@@ -406,6 +521,13 @@ struct PlaylistDetailView: View {
                 withAnimation(.snappy) {
                     model.playlistDetails[playlistID] = updated
                     if updated.items.isEmpty { removingItems = false }
+                    // Out of what the search found too.
+                    if let page = found, page.items.contains(where: { $0.id == item.id }) {
+                        found = ItemPage(
+                            total: max(page.total - 1, 0), items: page.items.filter { $0.id != item.id },
+                            later: page.later
+                        )
+                    }
                 }
                 await model.refreshPlaylists()
             } catch {
@@ -476,6 +598,31 @@ struct PlaylistDetailView: View {
         defer { restoring = false }
         if let fresh = await model.restorePlaylist(id: playlistID, asked: asked.items) {
             restorer = fresh
+        }
+    }
+}
+
+/// Szukaj's field on a playlist's page while its magnifier is on: the
+/// field and its suggestions, counted in the playlist (`TermLookup.playlist`).
+/// Off, the page has no search field at all.
+private struct PlaylistSearchField: ViewModifier {
+    let active: Bool
+    let lookup: TermLookup
+    @Binding var tokens: [SearchToken]
+    var focused: FocusState<Bool>.Binding
+    let onClose: () -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if active {
+            content
+                .termSearch(
+                    lookup, tokens: $tokens, focused: focused, prompt: "Szukaj w tej playliście",
+                    opensAtOnce: true, onClose: onClose
+                )
+                .termSuggestions(lookup, tokens: $tokens, focused: focused)
+        } else {
+            content
         }
     }
 }

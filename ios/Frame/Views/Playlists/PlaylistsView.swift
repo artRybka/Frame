@@ -237,7 +237,9 @@ struct PlaylistsView: View {
             // Made once a day on the server: today's, also on a page kept open overnight.
             .task { await model.refreshDayPicks() }
             .onChange(of: model.playlists.first?.id) { _, first in
-                if LaunchRoute.screen == "playlist", path.isEmpty, let first { path.append(first) }
+                if ["playlist", "playlist-search"].contains(LaunchRoute.screen), path.isEmpty, let first {
+                    path.append(first)
+                }
                 if LaunchRoute.screen == "suggestions", path.isEmpty { path.append(SuggestionsRoute()) }
                 if LaunchRoute.screen == "own-works", path.isEmpty { path.append(OwnWorksRoute()) }
                 if LaunchRoute.screen == "editor", editing == nil {
