@@ -67,10 +67,12 @@ final class WorkSearch {
     private var likeFurther = 0
     /// The server's most steps (`looks.ALIKE_FURTHER`).
     static let likeSteps = 3
-    /// A step less near was pulled for (`askFurther`) and is being asked:
-    /// not at the end on its own, so that it is plainly more, on demand
-    /// (Mateusz 2026-11-19: "Chciałbym żeby było warzenie faktycznego
-    /// doczytania na żadanie").
+    /// "Podobne do" was pulled for more (`askFurther`), being asked: more
+    /// never comes at the end on its own, neither the next page nor the
+    /// next step, so that it is plainly more, on demand (Mateusz
+    /// 2026-11-19: "Chciałbym żeby było warzenie faktycznego doczytania na
+    /// żadanie"; "po kolejnych skokach znowu dociąga szybko, bez
+    /// zatrzymania").
     private(set) var pulledFurther = false
     @ObservationIgnored private weak var model: AppModel?
 
@@ -129,15 +131,17 @@ final class WorkSearch {
     /// The catalogue or a museum may still have more.
     var more: Bool { catalogueMore || museumsWaiting || !next.isEmpty }
 
-    /// "Podobne do" shows all its works of this step: the less near come
-    /// only when the end is pulled (`askFurther`). With none shown yet,
-    /// they come on their own.
+    /// "Podobne do" at the end of what it shows, with more to come: the
+    /// rest of this step or the next, less near, comes only when the end is
+    /// pulled (`askFurther`). With none shown yet, they come on their own.
     var waitsForPull: Bool {
-        guard let catalogue, !searching, !pulledFurther, likeFurtherLeft else { return false }
-        return !catalogue.items.isEmpty && catalogue.items.count >= catalogue.total
+        guard let catalogue, !searching, !pulledFurther, !catalogue.items.isEmpty,
+              searched?.rules.like.isEmpty == false else { return false }
+        return catalogueMore
     }
 
-    /// The end of "Podobne do" pulled: its next step, less near.
+    /// The end of "Podobne do" pulled: its next works, the next page of
+    /// this step or the next step, less near.
     func askFurther() {
         guard waitsForPull else { return }
         pulledFurther = true
@@ -313,12 +317,13 @@ final class WorkSearch {
             if further {
                 catalogueQuery = query
                 likeFurther = query.likeFurther
-                // A step that brought nothing goes on to the next one.
-                if !new.isEmpty || !likeFurtherLeft { pulledFurther = false }
                 now = ItemPage(total: max(page.total, now.items.count), items: now.items)
             } else if new.isEmpty {
                 now = ItemPage(total: now.items.count, items: now.items)
             }
+            // A pull brings something: a page or step with nothing new goes
+            // on to the next.
+            if !new.isEmpty { pulledFurther = false }
             catalogue = now
         } catch {
             // Asked again a while later, while the end is still near.
