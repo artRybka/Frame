@@ -469,9 +469,10 @@ struct MuseumSearchView: View {
                 }
             }
             if search.waitsForPull {
-                // "Podobne do" less near only when asked for: the end pulled
-                // and let go (Mateusz 2026-11-19).
-                PullForMore(lit: pullLit) { search.askFurther() }
+                // "Podobne do" less near, or the museums after the server's
+                // own works, only when asked for: the end pulled and let go
+                // (Mateusz 2026-11-19).
+                PullForMore(lit: pullLit, museums: search.pullsMuseums) { search.askFurther() }
             } else if search.busy || search.more {
                 // The squares say "waiting" (Mateusz): while the search is
                 // asked, and after as long as a museum may still have more,

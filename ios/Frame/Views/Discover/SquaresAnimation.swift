@@ -298,19 +298,24 @@ struct SearchWaiting: View {
     }
 }
 
-/// The end of "Podobne do" while its less near works wait to be asked for:
+/// The end of a search while more waits to be asked for (the museums after
+/// the server's own works, or "Podobne do"'s less near ones):
 /// the squares stand pale in their row and light one by one as the end is
 /// pulled further; let go with all of them lit, the next step comes. A tap
 /// (or VoiceOver's action) asks for it too.
 struct PullForMore: View {
     /// How many are lit.
     let lit: Int
+    /// The museums come next (or more of "Podobne do").
+    var museums = false
     let more: () -> Void
     var height: CGFloat = 96
 
     static let count = SquareGame.indices.count
     /// How far past the end lights one more square.
-    static let pullPerSquare: CGFloat = 12
+    /// 16: all five lit at 80 pt past the end (Mateusz 2026-11-19, at 60:
+    /// "Może machnięcie powinno być odrobinę mocniejsze").
+    static let pullPerSquare: CGFloat = 16
 
     var body: some View {
         let side = SquareGame.side
@@ -332,7 +337,7 @@ struct PullForMore: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: more)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Więcej podobnych")
+        .accessibilityLabel(museums ? "Szukaj w muzeach" : "Więcej podobnych")
         .accessibilityHint("Pociągnij koniec listy albo stuknij, aby doczytać")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(.default, more)

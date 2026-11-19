@@ -131,17 +131,25 @@ final class WorkSearch {
     /// The catalogue or a museum may still have more.
     var more: Bool { catalogueMore || museumsWaiting || !next.isEmpty }
 
-    /// "Podobne do" at the end of what it shows, with more to come: the
-    /// rest of this step or the next, less near, comes only when the end is
-    /// pulled (`askFurther`). With none shown yet, they come on their own.
+    /// The end of what is shown, with more that comes only when the end is
+    /// pulled (`askFurther`): in "Podobne do" the rest of this step or the
+    /// next, less near; in a search the museums, once the server's own works
+    /// are all shown (Mateusz 2026-11-19: "Czy ten sam mechanizm możemy
+    /// dodać do szukania gdy kończą się wyniki które mamy na serwerze i
+    /// trzeba przeszukać muzea?"). With none shown yet, they come on their
+    /// own.
     var waitsForPull: Bool {
-        guard let catalogue, !searching, !pulledFurther, !catalogue.items.isEmpty,
-              searched?.rules.like.isEmpty == false else { return false }
-        return catalogueMore
+        guard let catalogue, !searching, !pulledFurther, !catalogue.items.isEmpty else { return false }
+        if searched?.rules.like.isEmpty == false { return catalogueMore }
+        return museumsWaiting && !catalogueMore
     }
 
-    /// The end of "Podobne do" pulled: its next works, the next page of
-    /// this step or the next step, less near.
+    /// What the pull at the end brings: the museums' works, or more of
+    /// "Podobne do".
+    var pullsMuseums: Bool { museumsWaiting }
+
+    /// The end pulled: the museums' first pages, or the next works of
+    /// "Podobne do", the next page of this step or the next step, less near.
     func askFurther() {
         guard waitsForPull else { return }
         pulledFurther = true

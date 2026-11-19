@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.145.263
+
+- Szukaj: gdy pokazane są już wszystkie dzieła z serwera, a następne
+  przyszłyby z muzeów, na końcu listy stoją blade kwadraciki, jak w
+  „Podobne do”. Muzea są przeszukiwane dopiero po pociągnięciu końca
+  listy (albo stuknięciu w kwadraciki); dalsze strony z muzeów dochodzą
+  już same. („Czy ten sam mechanizm możemy dodać do szukania gdy kończą
+  się wyniki które mamy na serwerze i trzeba przeszukać muzea?”)
+- Pociągnięcie jest odrobinę mocniejsze: wszystkie kwadraciki zapalają
+  się po ok. 80 pt za końcem listy zamiast 60. („Może machnięcie powinno
+  być odrobinę mocniejsze”)
+
 ## 1.145.262
 
 - Skan ramki e-papier nie ma już fioletowej łatki w miejscu lampy
