@@ -100,6 +100,7 @@ struct LiveBackend: FrameBackend {
             query.append(URLQueryItem(name: "like_further", value: String(q.likeFurther)))
         }
         if let playlist = q.playlist { query.append(URLQueryItem(name: "playlist", value: String(playlist))) }
+        if q.playlist != nil, !q.typed.isEmpty { query.append(URLQueryItem(name: "typed", value: q.typed)) }
         return try await get("/api/library/items", query: query)
     }
 

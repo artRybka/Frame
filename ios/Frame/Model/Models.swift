@@ -3845,6 +3845,9 @@ struct LibraryQuery: Hashable, Sendable {
     /// Only this playlist's works, all of them, in its own order (the
     /// magnifier on a playlist's page; the server's `playlist`).
     var playlist: Int?
+    /// With `playlist`: the words being typed in its field, the works that
+    /// anything its suggestions name finds (the server's `typed`).
+    var typed = ""
     var sort = "artist"
     var offset = 0
     var limit = 200

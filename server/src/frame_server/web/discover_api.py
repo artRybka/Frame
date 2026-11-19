@@ -1147,6 +1147,25 @@ def _hit_rules(hit: TermHit) -> PlaylistRules:
     return PlaylistRules(terms=[hit.key])
 
 
+def meant_among(svc: FrameService, typed: str, ids: set[str]) -> set[str]:
+    """The works among ``ids`` that anything the words being typed could
+    mean finds: a playlist's grid while its field is typed in, so that it
+    shows what its suggestions count (Mateusz 2026-11-19, the magnifier:
+    "morze" found nothing while "Morze · Temat" counted 3)."""
+    found: set[str] = set()
+    for hit in _term_hits(svc, typed, 10):
+        if hit.kind == "title":
+            if hit.item in ids:
+                found.add(hit.item)
+            continue
+        rules = _hit_rules(hit)
+        if hit.kind == "word":
+            rules = rules.model_copy(update={"seen": True})  # "Słowa", as Return asks
+        _, items = svc.library.query(rules, among=ids)
+        found |= {item.id for item in items}
+    return found
+
+
 def _counted_in(
     svc: FrameService, hits: list[TermHit], works: list[Item], gone: Callable[[], bool]
 ) -> list[TermHit]:

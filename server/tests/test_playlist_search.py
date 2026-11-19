@@ -68,3 +68,47 @@ def test_the_playlists_works_found_in_its_order(service) -> None:
 
         assert client.get("/api/library/items", params={"playlist": 9999}).status_code == 404
         assert client.get("/api/terms", params={"q": "x", "playlist": 9999}).status_code == 404
+
+
+def test_while_typing_the_grid_shows_what_the_suggestions_count(service) -> None:
+    """Mateusz's first look (2026-11-19): "morze" found none of the playlist
+    while "Morze · Temat" under the field counted 3. Typed words find what
+    any of their suggestions finds; picked, only that."""
+    from frame_server.web import create_app
+
+    app = create_app(service.settings)
+    svc = app.state.service
+    wave = _add(svc, 1, "The Great Wave", "Hokusai", 1831)
+    svc.library.update(wave, subjects=["sea", "waves"])
+    named = _add(svc, 2, "Morze o świcie", "Ivan Aivazovsky", 1850)
+    pond = _add(svc, 3, "Staw z liliami", "Claude Monet", 1899)
+
+    with TestClient(app) as client:
+        pid = client.post(
+            "/api/playlists",
+            json={"name": "Woda", "kind": "manual", "item_ids": [wave, named, pond]},
+        ).json()["playlist"]["id"]
+        sea = next(
+            h
+            for h in client.get("/api/terms", params={"q": "morze", "playlist": pid}).json()
+            if h["key"] == "subject:sea"
+        )
+        assert sea["count"] == 1
+
+        typed = client.get("/api/library/items", params={"typed": "morze", "playlist": pid}).json()
+        assert {i["id"] for i in typed["items"]} == {wave, named} and typed["total"] == 2
+        # Half a word is no word yet, but it is the subject's beginning.
+        half = client.get("/api/library/items", params={"typed": "mor", "playlist": pid}).json()
+        assert wave in {i["id"] for i in half["items"]}
+        assert pond not in {i["id"] for i in half["items"]}
+        # A suggestion picked: only what it finds.
+        picked = client.get(
+            "/api/library/items", params={"term": "subject:sea", "playlist": pid}
+        ).json()
+        assert [i["id"] for i in picked["items"]] == [wave]
+        # Typing on after a chip: within the chip's works.
+        both = client.get(
+            "/api/library/items",
+            params={"artist": "Hokusai", "typed": "morze", "playlist": pid},
+        ).json()
+        assert [i["id"] for i in both["items"]] == [wave]

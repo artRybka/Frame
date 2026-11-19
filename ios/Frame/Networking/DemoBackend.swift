@@ -248,6 +248,9 @@ actor DemoBackend: FrameBackend {
             let haystack = ([item.title, item.artist, item.medium, item.classification, item.culture]
                 + item.styles + item.subjects).joined(separator: " ").lowercased()
             for phrase in SearchPhrases.tokens(rules.query.lowercased()) where !haystack.contains(phrase) {
+                // A word that is a term's Polish name ("morze"): its works, as the server.
+                let named = DemoDiscover.terms.filter { DemoDiscover.fold($0.name) == DemoDiscover.fold(phrase) }
+                if !named.isEmpty, DemoDiscover.matches(item, terms: named.map(\.key)) { continue }
                 return false
             }
         }
@@ -586,7 +589,20 @@ actor DemoBackend: FrameBackend {
         if let id = query.playlist {
             // The playlist's works that fit, in its own order, as the server.
             guard let playlist = playlistsByID[id] else { throw BackendError.notFound }
-            let fitting = Set(list.map(\.id))
+            var fitting = Set(list.map(\.id))
+            if !query.typed.isEmpty {
+                // What the suggestions of the words being typed find.
+                let meant = try await terms(query.typed, playlist: id).reduce(into: Set<String>()) { found, hit in
+                    if let item = hit.item { found.insert(item); return }
+                    let rules = switch hit.kind {
+                    case "artist": PlaylistRules(artists: [hit.key])
+                    case "word": PlaylistRules(query: hit.key)
+                    default: PlaylistRules(terms: [hit.key])
+                    }
+                    found.formUnion(items.filter { Self.matches($0, rules) }.map(\.id))
+                }
+                fitting.formIntersection(meant)
+            }
             list = items(for: playlist).filter { fitting.contains($0.id) }
         }
         if !query.like.isEmpty {

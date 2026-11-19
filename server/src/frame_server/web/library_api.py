@@ -315,6 +315,7 @@ def list_items(
     like_further: Annotated[int, Query(ge=0, le=3)] = 0,
     seen: bool = False,
     playlist: int | None = None,
+    typed: str = "",
 ) -> ItemPage:
     """The catalogue's works for Szukaj's choices. ``look``: words for how
     the works look ("mglisty poranek nad wodą"), the other choices narrowing
@@ -324,7 +325,10 @@ def list_items(
     asked. ``seen``: with ``q``, the works that look as the words say too
     (Szukaj's "Słowa", Mateusz 2026-11-19). ``playlist``: only that
     playlist's works, all of them (its page shows at most 400), in its own
-    order (the magnifier on a playlist's page, Mateusz 2026-11-19)."""
+    order (the magnifier on a playlist's page, Mateusz 2026-11-19); with
+    ``typed``, the words being typed in its field: the works anything its
+    suggestions name finds ("morze": the works with the subject Morze, and
+    "morze" in their words, as the rows under the field count them)."""
     rules = PlaylistRules(
         query=q,
         seen=seen and bool(q.strip()),
@@ -355,7 +359,7 @@ def list_items(
     if rules.like and not svc.looks.enabled():
         raise HTTPException(409, "Szukanie wyglądem is off")
     if playlist is not None:
-        total, items = _in_playlist(svc, playlist, user, rules, offset, limit)
+        total, items = _in_playlist(svc, playlist, user, rules, offset, limit, typed)
     else:
         total, items = svc.library.query(
             rules, sort=sort, offset=offset, limit=limit, seed=seed, paged=True
@@ -377,12 +381,24 @@ def playlist_works(svc: FrameService, playlist_id: int, user: User) -> list[Item
 
 
 def _in_playlist(
-    svc: FrameService, playlist_id: int, user: User, rules: PlaylistRules, offset: int, limit: int
+    svc: FrameService,
+    playlist_id: int,
+    user: User,
+    rules: PlaylistRules,
+    offset: int,
+    limit: int,
+    typed: str = "",
 ) -> tuple[int, list[Item]]:
-    """What ``rules`` find among a playlist's works, in the playlist's order."""
+    """What ``rules`` find among a playlist's works, in the playlist's order;
+    of those, with ``typed``, the ones its suggestions find."""
+    from .discover_api import meant_among
+
     works = playlist_works(svc, playlist_id, user)
     place = {item.id: n for n, item in enumerate(works)}
     _, found = svc.library.query(rules, among=place.keys())
+    if typed.strip():
+        meant = meant_among(svc, typed, set(place))
+        found = [item for item in found if item.id in meant]
     found = sorted(found, key=lambda item: place.get(item.id, len(place)))
     return len(found), found[offset : offset + limit]
 

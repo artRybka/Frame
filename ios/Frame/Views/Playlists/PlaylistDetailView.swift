@@ -41,20 +41,16 @@ struct PlaylistDetailView: View {
     private var isActive: Bool { model.settings?.playlistId == playlistID }
     private var isAlbum: Bool { summary?.kind == .album }
 
-    /// What the field asks: its chips, and the words being typed as
-    /// "Słowa" (the grid narrows while typing); nil with nothing asked.
+    /// What the field asks: its chips, and the words being typed (the grid
+    /// narrows while typing to what their suggestions find, as they count
+    /// it); nil with nothing asked.
     private var searchQuery: LibraryQuery? {
-        guard searching else { return nil }
-        var asked = tokens
-        let words = lookup.trimmed
-        if !words.isEmpty, !asked.contains(where: { $0.kind == "word" && $0.key == words }) {
-            asked.append(SearchToken(kind: "word", key: words, name: words))
-        }
-        guard !asked.isEmpty else { return nil }
+        guard searching, !tokens.isEmpty || lookup.typing else { return nil }
         var rules = PlaylistRules()
-        rules.setTokens(asked)
+        rules.setTokens(tokens)
         var query = LibraryQuery(rules: rules, limit: 200)
         query.playlist = playlistID
+        query.typed = lookup.trimmed
         return query
     }
 
