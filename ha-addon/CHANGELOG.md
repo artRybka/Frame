@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.254
+
+- „Podobne do” w Szukaj: po dojściu do końca listy pojawiają się
+  kwadraciki i dochodzą dzieła mniej bliskie, za każdym razem o stopień
+  dalej: najpierw od 0,50 jak dotąd, potem od 0,45, 0,40 i 0,35 (przy
+  samej „Treści” i samej „Formie” odpowiednio od ich progów). („Chyba
+  próg bliskości jest zbyt ostry. […] Albo po obecnym limicie dodać
+  kwadraciki i doczytanie po kolejnym machnięciu?”) Na górze listy
+  zostają najbliższe; playlista z wyszukiwania bierze tylko je.
+
 ## 1.145.253
 
 - Próba składania skanu na iPhonie („Najpierw próba na iPhonie”). W

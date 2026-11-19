@@ -3802,6 +3802,9 @@ struct LibraryQuery: Hashable, Sendable {
     var like = ""
     /// As in `PlaylistRules.likeBy`.
     var likeBy = ""
+    /// "Podobne do" this many steps less near than its floor (Szukaj's list
+    /// scrolled to its end; the server's `like_further`).
+    var likeFurther = 0
     var sort = "artist"
     var offset = 0
     var limit = 200
