@@ -132,7 +132,7 @@ struct MuseumSearchView: View {
                 if pullLit != 0 { pullLit = 0 }
                 return
             }
-            let past = end.past(short: listEnd.short)
+            let past = listEnd.past(end)
             var lit = min(PullForMore.count, max(0, Int(past / PullForMore.pullPerSquare)))
             if dragging, lit == PullForMore.count { pullArmed = true }
             if pullArmed { lit = PullForMore.count }
@@ -140,11 +140,8 @@ struct MuseumSearchView: View {
         }
         .onScrollPhaseChange { old, new in
             dragging = new == .interacting
-            // At rest, the list is never past its end: where it rests near
-            // the end tells how far short of the insets' end that is.
-            if new == .idle, let short = listEnd.last.short {
-                listEnd.short = min(listEnd.short ?? short, short)
-            }
+            // At rest, the list is never past its end (`ListEndSeen`).
+            if new == .idle { listEnd.rested() }
             guard new != .interacting else { return }
             // Let go with all the squares lit (a fling that springs past
             // the end never arms it: only a finger does).
@@ -626,47 +623,66 @@ struct FlowLayout: Layout {
     }
 }
 
-/// The list's end as last seen, and how far short of the insets' own end
-/// it really stops, learnt where it came to rest.
+/// The list's end as last seen, and where the list really stops, learnt
+/// where it comes to rest. Reckoned from the content's size, bottom inset and
+/// the container, the end lay first some 200 pt too far down ("muszę
+/// przeciągnąć ekran znacząco ponad połowę ekranu") and then, without the
+/// inset, still about 300 pt (Mateusz 2026-11-19, a screenshot: the squares
+/// lit only with the end pulled to the middle of the screen). So nothing is
+/// reckoned: at rest a list is never past its end, so the furthest it has
+/// rested, from its content's bottom, is where it stops, for as long as
+/// the container and its insets stay as they were.
 @MainActor
 final class ListEndSeen {
     var last = ListEnd()
-    var short: CGFloat?
+    /// The furthest rest, as offset less content height, and the frame it
+    /// was seen in.
+    private var rest: CGFloat?
+    private var frame: ListEnd.Frame?
+
+    /// The list came to rest where it last was.
+    func rested() {
+        if frame != last.frame {
+            frame = last.frame
+            rest = nil
+        }
+        let here = last.offset - last.height
+        rest = max(rest ?? here, here)
+    }
+
+    /// How far past its end the list is pulled. Until it has rested once
+    /// in this frame, the end from the size and insets (late rather than
+    /// early); rested only short of the end so far, the squares light a
+    /// little early, until it rests at the end once.
+    func past(_ end: ListEnd) -> CGFloat {
+        guard let rest, frame == end.frame else { return end.offset - end.reckoned }
+        return end.offset - (end.height + rest)
+    }
 }
 
-/// Where a scrolled list stops at its end. The end taken from the content's
-/// size and bottom inset was some 200 pt too far down (the safe area at the
-/// bottom counted twice, it seems): a pull needed two thirds of the screen
-/// (Mateusz 2026-11-19: "muszę przeciągnąć ekran znacząco ponad połowę
-/// ekranu"). Without the bottom inset it is at most that far up; the truth
-/// is learnt where the list comes to rest (`short`).
+/// Where a scrolled list is.
 struct ListEnd: Equatable {
+    struct Frame: Equatable {
+        var container: CGFloat = 0
+        var top: CGFloat = 0
+        var bottom: CGFloat = 0
+    }
+
     var offset: CGFloat = 0
-    /// The end with the bottom inset, and without it.
-    var withInset: CGFloat = 0
-    var without: CGFloat = 0
+    var height: CGFloat = 0
+    var frame = Frame()
+    /// The end from the content's size, its bottom inset and the container.
+    var reckoned: CGFloat = 0
 
     init() {}
 
     init(_ geometry: ScrollGeometry) {
         offset = geometry.contentOffset.y
-        let top = -geometry.contentInsets.top
-        let bare = geometry.contentSize.height - geometry.containerSize.height
-        withInset = max(bare + geometry.contentInsets.bottom, top)
-        without = max(bare, top)
-    }
-
-    /// At rest here: how far short of `withInset` the end is, when the list
-    /// rests between the two ends (so at the end, or just short of it).
-    var short: CGFloat? {
-        guard offset >= without - 1, offset <= withInset + 1 else { return nil }
-        return max(0, withInset - offset)
-    }
-
-    /// How far past the end the list is pulled, the end being `short` of
-    /// `withInset` (until that is known, the nearer end without the inset).
-    func past(short: CGFloat?) -> CGFloat {
-        let end = short.map { max(without, withInset - $0) } ?? without
-        return offset - end
+        height = geometry.contentSize.height
+        frame = Frame(
+            container: geometry.containerSize.height,
+            top: geometry.contentInsets.top, bottom: geometry.contentInsets.bottom
+        )
+        reckoned = max(height + frame.bottom - frame.container, -frame.top)
     }
 }

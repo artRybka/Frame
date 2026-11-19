@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.261
+
+- „Podobne do”: pociągnięcie końca listy liczy się od miejsca, w którym
+  lista naprawdę staje, a nie od wyliczonego (to wciąż wypadało kilkaset
+  punktów za nisko: kwadraciki zapalały się dopiero przy końcu listy
+  w połowie ekranu). Aplikacja zapamiętuje, gdzie lista się zatrzymała;
+  wystarczy raz dojechać do końca i puścić. („Nadal nie działa. Tzn
+  zaskakuje dopiero w miejscu jak na zrzucie.”)
+
 ## 1.145.260
 
 - „Podobne do”: pociągnięcie końca listy jest krótkie, tak jak miało być
