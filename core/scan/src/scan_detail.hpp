@@ -104,6 +104,7 @@ Grain grain(const Mat& less, const Mat& alone, const Mat& soft, const std::vecto
             const Mat* lamp);
 
 // scan_whole.cpp
+Mat around(const Mat& part);
 Mat subtract(const Mat& first, const Grain& layer, const Mat& mend,
              const std::optional<std::pair<Mat, Mat>>& swap, const M33& to_photo,
              const std::array<cv::Point2d, 4>& quad, const Finer& finer, const Mat* theirs);

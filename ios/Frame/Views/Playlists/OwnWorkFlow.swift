@@ -73,11 +73,21 @@ struct OwnWorkFlow: View {
     /// A scan's photographs on their way to the server from the moment
     /// each is taken.
     @State private var sending = OwnSending()
-    /// The server making the three photographs one, while he sets the
-    /// corners on the first.
+    /// The three photographs being made one, while he sets the corners on
+    /// the first: by the phone itself (`PhoneScan`; Mateusz 2026-11-19
+    /// 07:42 UTC: "Tak, składaj na iPhonie"), by the server where the
+    /// phone cannot.
     @State private var merging: Task<Void, Never>?
-    /// The server has done with them (whether or not anything was taken out).
+    /// It is done with them (whether or not anything was taken out).
     @State private var mergeEnded = false
+    /// The phone's own scan of this scan's photographs.
+    @State private var scanning = OwnPhoneScan()
+    /// The corners the phone's scan was made within; nil, the server made it.
+    @State private var cleaned: [[Double]]?
+    /// The phone's scan on its way to the server, which keeps it in the
+    /// first photograph's place; `owed` until it is kept there.
+    @State private var owed: OwnPhoneScan.Owed?
+    @State private var delivering: Task<OwnPhoneScan.Delivery, Never>?
     /// "Dalej" was pressed in "Kadr" and the scan is not made yet.
     @State private var awaited = false
     /// "Dalej" was pressed on the scan's page.
@@ -156,7 +166,10 @@ struct OwnWorkFlow: View {
             }
             .toolbar(step == .photo || compared != nil ? .hidden : .visible, for: .navigationBar)
         }
-        .task { await openForScreenshot() }
+        .task {
+            OwnPhoneScan.sweep()
+            await openForScreenshot()
+        }
     }
 
     /// The arrow at the top left: a step back, out from the first.
@@ -187,6 +200,7 @@ struct OwnWorkFlow: View {
         sending = OwnSending()
         merging?.cancel()
         merging = nil
+        forget()
         withAnimation(.easeInOut(duration: 0.3)) {
             compared = nil
             step = .photo
@@ -208,6 +222,7 @@ struct OwnWorkFlow: View {
         merging?.cancel()
         merging = nil
         mergeEnded = false
+        forget()
         finding = true
         findingText = shots.sides.isEmpty ? "Szukam dzieła na zdjęciu…" : "Wysyłam zdjęcia…"
         Task {
@@ -238,7 +253,18 @@ struct OwnWorkFlow: View {
                 foundByCamera = seen != nil
                 if scanned {
                     let token = sent.token
-                    merging = Task { await merge(token: token, outline: shots.outline, trace: shots.trace) }
+                    // Within the corners the server's merge would go by:
+                    // the model's, else what the camera followed. With
+                    // none, or without the memory to spare, the server
+                    // makes the scan as before.
+                    let within = sent.phone == true ? PhoneScan.valid(sent.corners) ?? PhoneScan.valid(shots.outline) : nil
+                    let here = within != nil && OwnPhoneScan.can(shots, size: (sent.width, sent.height))
+                    merging = Task {
+                        if here, let within, await scanHere(shots, token: token, corners: within) { return }
+                        // He went back to the camera: nothing is asked of the server.
+                        guard !Task.isCancelled else { return }
+                        await merge(token: token, outline: shots.outline, trace: shots.trace)
+                    }
                 }
                 withAnimation(.easeInOut(duration: 0.3)) { step = .cut }
             } catch {
@@ -268,6 +294,101 @@ struct OwnWorkFlow: View {
         guard incoming?.token == token, !Task.isCancelled else { return }
         clean = made
         merged = done
+    }
+
+    /// The scan made by the phone of its camera's own photographs, shown
+    /// as soon as it is made (some 5 s; the server was 34 s at it) and
+    /// sent to the server meanwhile. False when the phone could not make
+    /// it: the server then does.
+    private func scanHere(_ shots: OwnShots, token: String, corners: [[Double]]) async -> Bool {
+        let scanning = self.scanning, heat = ProcessInfo.processInfo.thermalState
+        guard let made = await scanning.make(shots, corners: corners) else { return false }
+        // He may have gone back to the camera meanwhile.
+        guard incoming?.token == token, !Task.isCancelled else { return true }
+        await scanMade(made, by: scanning, token: token, heat: (heat, ProcessInfo.processInfo.thermalState))
+        if incoming?.token == token { mergeEnded = true }
+        return true
+    }
+
+    /// What the phone made of the scan: the first photograph without its
+    /// reflections shown (small, for the screen), and the whole of it on
+    /// its way to the server.
+    private func scanMade(
+        _ made: PhoneScan.Made, by scanning: OwnPhoneScan, token: String,
+        heat: (before: ProcessInfo.ThermalState, after: ProcessInfo.ThermalState)
+    ) async {
+        var shown: UIImage?
+        if made.note.used > 0, let picture = made.picture {
+            // For the screen: whole, it is 48 MP.
+            shown = await Task.detached(priority: .userInitiated) { OwnPicture.shown(picture) }.value
+        }
+        guard let incoming, incoming.token == token, !Task.isCancelled else { return }
+        cleaned = made.corners
+        clean = shown
+        merged = made.note.used > 0
+            ? OwnMerged(
+                token: token, width: incoming.width, height: incoming.height, used: made.note.used,
+                replaced: made.picture == nil ? 0 : made.note.removed, doubt: made.note.doubt
+            )
+            : nil
+        owed = OwnPhoneScan.Owed(
+            token: token, note: PhoneScan.told(made, trace: scanning.trace, heat: heat), picture: made.picture,
+            outline: scanning.outline, trace: scanning.trace
+        )
+        deliver()
+    }
+
+    /// The phone's scan sent to the server, after any sent before it: the
+    /// later one is the one kept.
+    private func deliver() {
+        guard let owed else { return }
+        let backend = model.backend, before = delivering
+        delivering = Task {
+            _ = await before?.value
+            return await OwnPhoneScan.deliver(owed, with: backend)
+        }
+    }
+
+    /// Whether the server keeps the scan he saw, before anything goes on
+    /// from it. What is left of sending it is waited for; lost on the
+    /// way, it is sent once more; not taken by the server, the server
+    /// makes the scan of the photographs it has, as before.
+    private func delivered() async -> Bool {
+        guard let owed, let sent = delivering else { return true }
+        var how = await sent.value
+        if case .lost = how {
+            deliver()
+            how = await delivering?.value ?? how
+        }
+        // He may have gone back to the camera meanwhile.
+        guard self.owed?.token == owed.token else { return false }
+        switch how {
+        case .kept:
+            self.owed = nil
+            delivering = nil
+            return true
+        case .refused:
+            self.owed = nil
+            delivering = nil
+            cleaned = nil
+            clean = nil
+            merged = nil
+            await merge(token: owed.token, outline: owed.outline, trace: owed.trace)
+            return true
+        case let .lost(told):
+            model.show(OwnPhoneScan.Lost(told: told))
+            return false
+        }
+    }
+
+    /// The phone's scan let go of: its photographs, and what was owed
+    /// the server of it.
+    private func forget() {
+        scanning.clear()
+        scanning = OwnPhoneScan()
+        cleaned = nil
+        owed = nil
+        delivering = nil
     }
 
     // MARK: 2. The cut
@@ -312,6 +433,19 @@ struct OwnWorkFlow: View {
             await merging.value
             awaited = false
         }
+        // His corners reach beyond what the phone's scan cleaned: it is
+        // made once more within them, for him to see (the server does so
+        // only as the work is added: its `_again`, which still does when
+        // the phone cannot).
+        if merged != nil, let had = cleaned, let token = incoming?.token, let his = PhoneScan.valid(corners),
+           PhoneScan.beyond(his, cleaned: had) {
+            awaited = true
+            let scanning = self.scanning, heat = ProcessInfo.processInfo.thermalState
+            if let made = await scanning.again(corners: his), made.note.used > 0 {
+                await scanMade(made, by: scanning, token: token, heat: (heat, ProcessInfo.processInfo.thermalState))
+            }
+            awaited = false
+        }
         if merged != nil, let photo {
             // What the scan gave: the work alone, as he cut it (the same
             // twice where the side photographs took nothing off).
@@ -333,6 +467,8 @@ struct OwnWorkFlow: View {
     /// photograph as it was taken, and so does the rest of the way.
     private func keepFirst() async -> Bool {
         guard let token = incoming?.token else { return false }
+        // The server keeps the scan's photographs with the scan: that first.
+        guard await delivered() else { return false }
         do {
             try await model.backend.keepOwnFirstPhoto(token: token)
         } catch {
@@ -349,6 +485,8 @@ struct OwnWorkFlow: View {
     /// place.
     private func cutDone(single: Bool = false) async -> Bool {
         guard let incoming else { return false }
+        // The phone's scan is with the server before the work is made of it.
+        guard await delivered() else { return false }
         if let item = retaking {
             // The server is some seconds at it: the card says so meanwhile.
             model.retakeOwnWork(

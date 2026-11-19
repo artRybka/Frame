@@ -19,6 +19,10 @@ struct OwnIncoming: Codable, Hashable, Sendable {
     /// by it (Mateusz 2026-11-16 22:25 UTC: "dodajmy obsługę. Oczywiście
     /// nie jako obowiązkową, ale opcjonalna").
     var chart: [[Double]]? = nil
+    /// The phone may make the scan of this photograph itself and send it
+    /// (`PhoneScan`): not where a chart set its colours on the server.
+    /// nil from a server that takes no such scan (to 1.145.254).
+    var phone: Bool? = nil
 
     var aspect: Double { height > 0 ? Double(width) / Double(height) : 0.75 }
 }

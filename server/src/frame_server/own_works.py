@@ -79,8 +79,11 @@ SCAN_INFO = "scan.json"
 #: first, a work behind glass with the room all over one of them no
 #: longer in doubt, a lamp taken out to the frame, what is put in under
 #: it as fine as the side photographs have it, and the tone under a veil
-#: in the glass what the side views show (1.145.244) is 3.
-MERGING = 3
+#: in the glass what the side views show (1.145.244) is 3. No more
+#: taken off around the corners than at them (1.145.255: a dark stripe
+#: down the wall beside a frame, and a band along a frame's inner edge) is
+#: 4: within the corners nothing changes, around them "W ramie" does.
+MERGING = 4
 #: A work's photograph is a kept scan's when the fine of the two, small
 #: and grey, goes together at least this much (1 is the same picture). Of
 #: his first twelve scans the first photograph and what was made of it
@@ -116,6 +119,10 @@ _SCAN_FILE = re.compile(r"^(first|side[1-9]|more[1-9])\.jpg$")
 _PHONE_FILE = re.compile(r"^phone\.(npy|json)$")
 #: The most a file of the phone's may be: 48 MP of three bytes each.
 PHONE_BYTES = 200 << 20
+#: The most a scan the phone made itself may be as a file
+#: (:meth:`OwnWorks.merged_by_phone`): a JPEG of 48 MP is some ten
+#: megabytes.
+MERGED_BYTES = 64 << 20
 #: The side the photograph is looked at for the work's corners and hints:
 #: a JPEG is opened that much faster at an eighth of 48 MP.
 LOOK_SIDE = 3000
@@ -194,6 +201,10 @@ class Incoming(BaseModel):
     surround_kind: str = ""
     #: Whether Opus answered (``surround`` asked).
     looked: bool = False
+    #: The phone may make the scan of this photograph itself and send it
+    #: (:meth:`OwnWorks.merged_by_phone`): not where a chart set its
+    #: colours here, which the phone's own photographs do not have.
+    phone: bool = False
 
 
 class Merged(Incoming):
@@ -336,6 +347,7 @@ class OwnWorks:
             width=img.width,
             height=img.height,
             chart=list(chart.corners) if chart is not None else None,
+            phone=chart is None,
         )
 
     @staticmethod
@@ -660,6 +672,142 @@ class OwnWorks:
         )
         return used, round(taken, 4), doubt
 
+    def merged_by_phone(
+        self,
+        token: str,
+        data: bytes | None,
+        corners: Quad,
+        used: int,
+        replaced: float,
+        doubt: bool = False,
+        trace: dict[str, float] | None = None,
+        phone: dict[str, Any] | None = None,
+    ) -> Merged:
+        """The scan as the phone made it of its camera's own photographs
+        (Mateusz 2026-11-19 07:42 UTC: "Tak, składaj na iPhonie"; the same
+        merging there, ``core/scan``, in some 4 s against 34 s here), kept
+        in the first photograph's place as :meth:`merge` keeps the
+        server's: ``data`` the first photograph without its reflections
+        within ``corners`` (a JPEG of its size, upright; None where
+        nothing was taken off, ``replaced`` 0), ``used`` and ``doubt`` as
+        :class:`Merged` has them, ``phone`` what the phone noted of making
+        it. The photographs as they came are kept two weeks as ever: the
+        work is made of them again here when the merging changes. The
+        server does not make the scan as well to hold the two against
+        each other (Mateusz 2026-11-19 08:08 UTC: "Równoległe robienie
+        łączeń na serwerze odpuśćmy. Nie usuwajmy jeszcze kodu na serwerze
+        na wszelki wypadek, ale nie róbmy porównań dla każdego skanu");
+        :meth:`merge` stays for the phone that cannot.
+
+        Sent once more for the same photograph (he set the corners wider
+        than what the phone had cleaned, and it merged again), it takes
+        the earlier one's place.
+
+        Raises ValueError for what is no scan of this photograph: no side
+        photographs of it are here, the picture is of another size, or
+        its colours were set by a chart here (the phone merged the
+        camera's): the phone then asks :meth:`merge` as before."""
+        path = self.path(token)
+        folder = self.scans / token
+        angles = self._angles(token)
+        sides, more = self.chosen(sorted(self.incoming.glob(f"{token}-side*.jpg")), angles)
+        again = not sides and (folder / "first.jpg").is_file()
+        if not sides and not again:
+            raise ValueError("no side photographs of it are here")
+        if self._charted(token) is not None:
+            raise ValueError("its colours were set by a chart here")
+        with Image.open(path) as img:
+            seen = Merged(token=token, width=img.width, height=img.height, corners=corners)
+        seen.used, seen.replaced, seen.doubt = used, round(replaced, 4), doubt
+        made = self._upright(data, (seen.width, seen.height)) if seen.replaced > 0 else None
+        if seen.replaced > 0 and made is None:
+            raise ValueError("no picture")
+        if again:
+            try:
+                info = json.loads((folder / SCAN_INFO).read_text())
+            except (OSError, ValueError) as err:
+                raise ValueError("the scan is not noted") from err
+            if info.get("single"):
+                raise ValueError("he chose the one photograph")
+            if made is None:
+                shutil.copyfile(folder / "first.jpg", path)
+        else:
+            kept = self._keep_scan(token, path, sides, more)
+        if made is not None:
+            path.write_bytes(made)
+        if again:
+            info.update(
+                corners=corners,
+                used=seen.used,
+                replaced=seen.replaced,
+                doubt=seen.doubt and seen.replaced > 0,
+                again=now_iso(),
+                merging=MERGING,
+                phone=phone or {},
+            )
+            (folder / SCAN_INFO).write_text(json.dumps(info))
+        else:
+
+            def at(side: Path) -> float | None:
+                number = _SIDE_NUMBER.search(side.name)
+                return angles.get(int(number.group(1))) if number else None
+
+            self._note_scan(
+                token, seen, {name: at(side) for name, side in kept.items()}, trace, phone or {}
+            )
+            for side in [*sides, *more]:
+                side.unlink(missing_ok=True)
+            path.with_suffix(ANGLES).unlink(missing_ok=True)
+        log.info(
+            "own photograph %s: merged on the phone%s: %d side(s) laid over, %.1f%% of the light "
+            "taken out%s%s",
+            token,
+            " again within his corners" if again else "",
+            seen.used,
+            seen.replaced * 100,
+            ", not one flat work: the one photograph proposed" if seen.doubt else "",
+            f" ({json.dumps(phone, ensure_ascii=False, sort_keys=True)[:1500]})" if phone else "",
+        )
+        if trace and not again:
+            log.info(
+                "own photograph %s: the phone's scan: %s",
+                token,
+                ", ".join(f"{key} {value:g}" for key, value in sorted(trace.items())),
+            )
+        return seen
+
+    @staticmethod
+    def _upright(data: bytes | None, size: tuple[int, int]) -> bytes | None:
+        """The phone's scan as the file kept: its own bytes where they are
+        a plain JPEG (RGB, upright, in no colours of its own), else
+        written as one. None for no picture; ValueError for one that is
+        not ``size``."""
+        if not data:
+            return None
+        try:
+            with Image.open(io.BytesIO(data)) as img:
+                turned = img.getexif().get(0x0112, 1) not in (0, 1)
+                plain = (
+                    img.format == "JPEG"
+                    and img.mode == "RGB"
+                    and not turned
+                    and not img.info.get("icc_profile")
+                )
+                if plain:
+                    if img.size != size:
+                        raise ValueError("not the photograph's size")
+                    img.draft("RGB", (64, 64))
+                    img.load()  # the whole file is read, an eighth of its pixels made
+                    return data
+            drawn = load_image(data).convert("RGB")
+        except OSError as err:
+            raise ValueError("no picture") from err
+        if drawn.size != size:
+            raise ValueError("not the photograph's size")
+        out = io.BytesIO()
+        drawn.save(out, "JPEG", quality=INCOMING_QUALITY)
+        return out.getvalue()
+
     def single(self, token: str) -> None:
         """The first photograph as it came, back in the scan's place
         (Mateusz 2026-11-16 19:00 UTC, a collage with a mirror and a
@@ -738,8 +886,10 @@ class OwnWorks:
         seen: Merged,
         angles: dict[str, float | None] | None = None,
         trace: dict[str, float] | None = None,
+        phone: dict[str, Any] | None = None,
     ) -> None:
-        """What the merge came to, beside the scan's photographs."""
+        """What the merge came to, beside the scan's photographs
+        (``phone``: made there, and what the phone noted of making it)."""
         info: dict[str, Any] = {
             "at": now_iso(),
             # Which release made it one, and how photographs were merged
@@ -770,6 +920,8 @@ class OwnWorks:
             info["angles"] = angles
         if trace:
             info["trace"] = trace
+        if phone is not None:
+            info["phone"] = phone
         try:
             (self.scans / token / SCAN_INFO).write_text(json.dumps(info))
         except OSError as err:
@@ -797,7 +949,8 @@ class OwnWorks:
         return sorted(found, key=lambda scan: str(scan.get("at", "")), reverse=True)
 
     def scan_file(self, token: str, name: str) -> Path:
-        if not _TOKEN.match(token) or not (_SCAN_FILE.match(name) or _PHONE_FILE.match(name)):
+        known = _SCAN_FILE.match(name) or _PHONE_FILE.match(name)
+        if not _TOKEN.match(token) or not known:
             raise LookupError("no such photograph")
         path = self.scans / token / name
         if not path.is_file():
@@ -880,6 +1033,7 @@ class OwnWorks:
                 width=img.width,
                 height=img.height,
                 chart=list(chart.corners) if chart is not None else None,
+                phone=chart is None,
             )
             img.draft("RGB", (LOOK_SIDE, LOOK_SIDE))
             img.load()

@@ -10,6 +10,24 @@ namespace frame::scan {
 
 using namespace np;
 
+Mat around(const Mat& part) {
+    int ht = part.rows, wd = part.cols;
+    double by = AROUND / (1 + 2 * AROUND);
+    int mx = pyround(wd * by), my = pyround(ht * by);
+    if (mx < 1 || my < 1 || wd <= 4 * mx || ht <= 4 * my) return part;
+    cv::Rect within(mx, my, wd - 2 * mx, ht - 2 * my);
+    // "At them" is as far within the corners again.
+    cv::Rect well(2 * mx, 2 * my, wd - 4 * mx, ht - 4 * my);
+    Mat at;
+    // (Isolated: a part of a picture would be given what the picture has around it.)
+    cv::copyMakeBorder(part(well), at, 2 * my, 2 * my, 2 * mx, 2 * mx, cv::BORDER_REPLICATE | cv::BORDER_ISOLATED);
+    // Evened along the edge: a place's own row or column is not drawn out.
+    at = blur(at, std::max(mx, my) / 4.0);
+    Mat out = ew([](float p, float a) { return clipf(p, std::min(a, 0.f), std::max(a, 0.f)); }, part, at);
+    part(within).copyTo(out(within));
+    return out;
+}
+
 Mat subtract(const Mat& first, const Grain& layer, const Mat& mend_, const std::optional<std::pair<Mat, Mat>>& swap,
              const M33& to_photo, const std::array<cv::Point2d, 4>& quad, const Finer& finer_, const Mat* theirs) {
     int h = first.rows, w = first.cols;
@@ -185,6 +203,10 @@ Merged merge(const Mat& first, const std::vector<Mat>& sides, const std::array<c
     theirs = ew([](float a, float b) { return std::max(a, b); }, theirs, pressed);
     if (!finer_ && any(theirs)) finer_ = finer(views, told_, from_sides(views, told_, 0.0).first);
     if (swap) mend_ = ew(plus, mend_, level(ew(minus, now, mend_), swap->first, swap->second, beside));
+    // Around the corners no more goes than at them.
+    on.veil = around(on.veil), on.share = around(on.share);
+    mend_ = around(mend_), theirs = around(theirs);
+    if (swap) swap->second = around(swap->second);
     mark("mended");
     out.image = subtract(first, on, mend_, swap, to_photo, quad, finer_, &theirs);
     out.removed = round4(removed);

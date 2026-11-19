@@ -747,6 +747,17 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
+    func sendOwnScan(token: String, note: Data, picture: Data?) async throws -> OwnMerged {
+        var form = MultipartForm()
+        form.addField("note", String(decoding: note, as: UTF8.self))
+        if let picture { form.addFile("file", filename: "scan.jpg", mimeType: "image/jpeg", data: picture) }
+        var req = request("/api/own/photos/\(escape(token))/merged", method: "POST")
+        req.setValue(form.contentType, forHTTPHeaderField: "Content-Type")
+        req.httpBody = form.body()
+        req.timeoutInterval = 180
+        return try await perform(req)
+    }
+
     func keepOwnFirstPhoto(token: String) async throws {
         try await send("/api/own/photos/\(escape(token))/single", method: "POST")
     }

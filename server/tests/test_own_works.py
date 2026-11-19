@@ -647,6 +647,136 @@ def test_the_phone_merges_a_kept_scan_itself_for_the_trial(service: FrameService
             assert np.array_equal(pixels, np.asarray(img.convert("RGB")))
 
 
+def test_the_phone_makes_the_scan_and_the_server_keeps_it(service: FrameService) -> None:
+    """Mateusz 2026-11-19 07:42 UTC: "Tak, składaj na iPhonie" (some 4 s
+    there against 34 s here). The phone sends the scan it made of its own
+    photographs: it is kept in the first photograph's place as the
+    server's own would be, and the photographs as they came are kept.
+    The server makes none of its own beside it (08:08 UTC: "nie róbmy
+    porównań dla każdego skanu")."""
+    import json
+
+    from test_reflections import CORNERS as WORK
+    from test_reflections import _three
+
+    from frame_server.imaging.reflections import merge
+
+    clean, first, sides = _three()
+    seen = [(0.22, 0.2), (0.78, 0.2), (0.78, 0.8), (0.22, 0.8)]
+    inner = (slice(540, 660), slice(440, 600))  # the lamp in the middle of the work
+
+    def png(img: np.ndarray) -> bytes:
+        out = io.BytesIO()
+        Image.fromarray(img).save(out, "PNG")
+        return out.getvalue()
+
+    def off(path: Path) -> float:
+        with Image.open(path) as img:
+            got = np.asarray(img.convert("RGB")).astype(int)
+        return float(np.abs(got[inner] - clean[inner]).mean())
+
+    def sent(client: TestClient) -> str:
+        token = client.post("/api/own/photos", files={"file": ("p.png", png(first))}).json()
+        assert token["phone"] is True  # no chart set its colours: the phone may merge it
+        for side in sides:
+            client.post(
+                f"/api/own/photos/{token['token']}/sides", files={"file": ("s.png", png(side))}
+            )
+        return str(token["token"])
+
+    def scan(corners: list[tuple[float, float]], **more: object) -> dict[str, str]:
+        note = {"corners": corners, "used": 2, "replaced": 0.0661, **more}
+        return {"note": json.dumps(note)}
+
+    # What the phone makes: the same merging, of the photographs it took.
+    phone = merge(first, sides, seen, True)
+    assert phone.used == 2 and phone.removed > 0.03
+    picture = _jpeg(Image.fromarray(phone.image))
+    told = {"seconds": 3.9, "model": "iPhone19,7", "took": {"laid": 0.96, "whole": 0.57}}
+
+    with _client(service) as client:
+        token = sent(client)
+        path = service.own_works.path(token)
+        folder = service.own_works.scans / token
+        veiled = off(path)
+        url = f"/api/own/photos/{token}/merged"
+
+        # No scan of this photograph: another size, no picture where light
+        # was taken off, corners or a note that are none. Nothing changes.
+        small = _jpeg(Image.fromarray(phone.image[::2, ::2]))
+        for files, data in (
+            ({"file": ("m.jpg", small)}, scan(seen)),
+            ({"file": ("m.jpg", b"nothing")}, scan(seen)),
+            ({}, scan(seen)),
+            ({"file": ("m.jpg", picture)}, scan([(0, 0), (0, 0), (0, 0), (0, 0)])),
+            ({"file": ("m.jpg", picture)}, scan(seen, used=9)),
+            ({"file": ("m.jpg", picture)}, {"note": "[]"}),
+        ):
+            assert client.post(url, files=files or None, data=data).status_code == 422
+        assert client.post(f"/api/own/photos/{'0' * 24}/merged", data=scan(seen)).status_code == 404
+        assert off(path) == veiled and not folder.exists()
+        assert len(list(service.own_works.incoming.glob(f"{token}-side*.jpg"))) == 2
+
+        made = client.post(
+            url,
+            files={"file": ("m.jpg", picture)},
+            data=scan(seen, trace={"arc": 11.5}, phone=told),
+        )
+        assert made.status_code == 200, made.text
+        assert made.json()["used"] == 2 and made.json()["replaced"] == 0.0661
+        assert made.json()["corners"] == [list(c) for c in seen]
+        # The phone's own file is the photograph that waits now.
+        assert path.read_bytes() == picture and off(path) < veiled / 2
+        assert not list(service.own_works.incoming.glob(f"{token}-side*.jpg"))
+        kept = client.get("/api/debug/own-scans").json()[0]
+        assert kept["phone"] == told and kept["trace"] == {"arc": 11.5}
+        assert kept["used"] == 2 and kept["replaced"] == 0.0661
+        # The photographs as they came, and nothing the server made beside them.
+        assert set(kept["files"]) == {"first.jpg", "side1.jpg", "side2.jpg"}
+        assert off(folder / "first.jpg") == veiled
+
+        # He sets the corners wider than what the phone had cleaned: it
+        # merges again within his and sends that, which takes the first
+        # one's place; adding the work then merges nothing here.
+        wider = merge(first, sides, WORK, True)
+        again = _jpeg(Image.fromarray(wider.image))
+        twice = client.post(url, files={"file": ("m.jpg", again)}, data=scan(WORK, replaced=0.07))
+        assert twice.status_code == 200, twice.text
+        noted = client.get("/api/debug/own-scans").json()[0]
+        assert noted["again"] and noted["replaced"] == 0.07 and noted["phone"] == {}
+        assert np.allclose(noted["corners"], WORK) and path.read_bytes() == again
+        added = client.post(
+            "/api/own/works", json={"token": token, "corners": WORK, "by": "owner", "text": TEXT}
+        )
+        assert added.status_code == 200, added.text
+        assert client.get("/api/debug/own-scans").json()[0]["again"] == noted["again"]
+
+        # "Na wprost" has the first photograph back as ever, and then no
+        # scan of the phone's replaces it: he chose the one photograph.
+        token = sent(client)
+        path = service.own_works.path(token)
+        url = f"/api/own/photos/{token}/merged"
+        assert (
+            client.post(url, files={"file": ("m.jpg", picture)}, data=scan(seen)).status_code == 200
+        )
+        assert client.post(f"/api/own/photos/{token}/single").json() == {"single": True}
+        assert off(path) == veiled
+        assert (
+            client.post(url, files={"file": ("m.jpg", picture)}, data=scan(seen)).status_code == 422
+        )
+
+        # Nothing taken off: no picture comes, and the photograph stays.
+        token = sent(client)
+        path = service.own_works.path(token)
+        nothing = client.post(
+            f"/api/own/photos/{token}/merged", data=scan(seen, replaced=0, doubt=True)
+        )
+        assert nothing.status_code == 200, nothing.text
+        assert off(path) == veiled
+        last = client.get("/api/debug/own-scans").json()[0]
+        assert last["token"] == token and last["replaced"] == 0 and last["doubt"] is False
+
+
 def test_a_veil_over_the_whole_glass_is_left_alone() -> None:
     """Mateusz's print behind glass (2026-11-16): reflections over much of
     the picture are no lamp's glare, and patches from the side photographs

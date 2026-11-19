@@ -8,6 +8,11 @@
 # PyPI, which carries them), only the five modules the merge uses, and no
 # acceleration library of anyone's (KleidiCV, Accelerate's LAPACK): the phone
 # is to count as the server does (nor the font it would fetch for putText).
+# Nor OpenCV's own way with numbers on an iPhone: its iOS platform asks the
+# compiler for -ffast-math, and the compiler by itself makes a*b+c one step
+# on arm64 (the trial on his phone, 2026-11-19: 8% of a scan's values a
+# level off the server's, 0.8% four and more; the same sources built for
+# arm64 without either: 0.2% a level off, none four).
 # Built the way OpenCV's own
 # platforms/ios/build_framework.py builds it (APPLE_FRAMEWORK: the modules in
 # one library, for arm64 alone), without the framework put around it after.
@@ -24,7 +29,7 @@ SDIST=https://files.pythonhosted.org/packages/1d/99/76b7c80252aa83c1af16393454aa
 SHA256=b82f9831daab90b725c7c1ee1b36cb5732c367096ac76d119e64e14eb70d5f3c
 MIN_IOS=17.0
 # Raised when what is built of those sources changes.
-BUILD=1
+BUILD=2
 
 ios="$(cd "$(dirname "$0")/.." && pwd)"
 out="$ios/Vendor/OpenCV"
@@ -41,6 +46,9 @@ curl -fsSL --retry 3 -o "$work/sdist.tar.gz" "$SDIST"
 echo "$SHA256  $work/sdist.tar.gz" | shasum -a 256 -c -
 tar -xzf "$work/sdist.tar.gz" -C "$work" "opencv_python_headless-$WHEEL/opencv"
 src="$work/opencv_python_headless-$WHEEL/opencv"
+# Numbers as the server's OpenCV counts them (see above).
+sed -i '' 's/ -ffast-math//' "$src/platforms/ios/cmake/Modules/Platform/iOS.cmake"
+exact="-ffp-contract=off"
 
 build() {
     local sdk=$1 toolchain=$2
@@ -54,6 +62,7 @@ build() {
         cmake -GXcode "$src" \
             -DCMAKE_TOOLCHAIN_FILE="$src/platforms/ios/cmake/Toolchains/Toolchain-${toolchain}_Xcode.cmake" \
             -DIOS_ARCH=arm64 "$@" \
+            -DCMAKE_C_FLAGS="$exact" -DCMAKE_CXX_FLAGS="$exact" \
             -DAPPLE_FRAMEWORK=ON -DFRAMEWORK_NAME=opencv2 \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$dir/install" \
             -DOPENCV_INCLUDE_INSTALL_PATH=include -DOPENCV_3P_LIB_INSTALL_PATH=lib/3rdparty \
@@ -70,6 +79,11 @@ build() {
             { tail -n 60 "$dir/configure.log"; exit 1; }
         grep -E "Baseline|Dispatched|Lapack|Parallel framework|Custom HAL|C\+\+ flags \(Release\)" \
             "$dir/configure.log" || true
+        flags="$(grep -E "C\+\+ flags \(Release\)" "$dir/configure.log" || true)"
+        if [[ "$flags" == *fast-math* || "$flags" != *"$exact"* ]]; then
+            echo "OpenCV would not count as the server does: $flags" >&2
+            exit 1
+        fi
         xcodebuild IPHONEOS_DEPLOYMENT_TARGET=$MIN_IOS ARCHS=arm64 -sdk "$sdk" -configuration Release \
             -parallelizeTargets -jobs "$(sysctl -n hw.ncpu)" -target ALL_BUILD build >"$dir/build.log" ||
             { grep -E "error:|\*\* BUILD FAILED" -B 2 -A 8 "$dir/build.log" | tail -n 120; exit 1; }

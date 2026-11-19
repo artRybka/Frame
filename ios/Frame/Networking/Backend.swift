@@ -275,6 +275,12 @@ protocol FrameBackend: Sendable {
     /// `trace`: what the camera noted of the scan as it went, kept with
     /// its photographs.
     func mergeOwnPhotos(token: String, outline: [[Double]]?, trace: [String: Double]) async throws -> OwnMerged
+    /// The scan the phone made of its own photographs (`PhoneScan`), for
+    /// the server to keep in the first photograph's place as it keeps its
+    /// own: `note` what it came to (`PhoneScan.told`), `picture` the first
+    /// photograph without its reflections (a JPEG; nil where nothing was
+    /// taken off). Refused (422) where the server is to make it itself.
+    func sendOwnScan(token: String, note: Data, picture: Data?) async throws -> OwnMerged
     /// "Na wprost" on "Skan gotowy": the first photograph as it was
     /// taken waits again, in the scan's stead.
     func keepOwnFirstPhoto(token: String) async throws
