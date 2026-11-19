@@ -617,13 +617,15 @@ struct TermSuggestions: View {
                     // (Mateusz 2026-11-19).
                     // In a thin ring, as Artysta's bust is (Mateusz
                     // 2026-11-19: "z obwódką").
+                    // In the marks' column, a point over on each side.
                     ArtImage(ref: .thumb(thumb), placeholder: Theme.mat, maxPixel: 120)
-                        .frame(width: 20, height: 20)
+                        .frame(width: 18, height: 18)
                         .scaleEffect(Self.workZoom)
-                        .frame(width: 20, height: 20)
+                        .frame(width: 18, height: 18)
                         .clipShape(Circle())
                         .padding(3)
-                        .overlay { Circle().strokeBorder(Theme.ink, lineWidth: 1.9) }
+                        .overlay { Circle().strokeBorder(Theme.ink, lineWidth: 1.7) }
+                        .frame(width: 22)
                         .accessibilityHidden(true)
                 } else {
                     GroupMark(kind: tokenKind, symbol: icon, side: tokenKind == SearchToken.likeWorkMark ? 20 : 17)
