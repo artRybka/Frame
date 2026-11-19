@@ -440,6 +440,8 @@ protocol FrameBackend: Sendable {
     func removePerson(id: String) async throws -> People
     func renamePerson(id: String, name: String) async throws -> People
     func savePeopleSettings(_ settings: PeopleSettings) async throws -> People
+    /// Member or guest, and studies a day (server 1.145.271).
+    func setAccess(id: String, _ access: PersonAccess) async throws -> People
 }
 
 extension FrameBackend {

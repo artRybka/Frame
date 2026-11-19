@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from ..library.seed import ensure_favorites
 from ..service import FrameService
-from ..users import JoinError, Role, User
+from ..users import Invite, JoinError, Role, User
 from .deps import CurrentUser, require_owner, service
 
 router = APIRouter(prefix="/api", tags=["users"])
@@ -56,12 +56,15 @@ class PersonView(BaseModel):
     devices: list[DeviceView]
     playlists: int = 0
     favorites: int = 0
+    #: Studies a day they may order (None: the owner, no limit).
+    study_limit: int | None = None
 
 
 class InviteView(BaseModel):
     id: str
     name: str
     user_id: str | None = None
+    role: Role = Role.MEMBER
     expires_at: str
 
 
@@ -69,6 +72,8 @@ class PeopleView(BaseModel):
     people: bool
     users: list[PersonView]
     invites: list[InviteView]
+    #: A member's limit, for apps before 1.145.271 (each person has their
+    #: own since: ``PersonView.study_limit``).
     study_limit: int
 
 
@@ -78,6 +83,8 @@ class InviteRequest(BaseModel):
 
     name: str = Field("", max_length=40)
     user_id: str | None = None
+    #: A new person comes in as a member or a guest.
+    role: Role = Role.MEMBER
 
 
 class NewInvite(BaseModel):
@@ -92,6 +99,17 @@ class Rename(BaseModel):
 
 class PeopleSettings(BaseModel):
     study_limit: int = Field(ge=0, le=100)
+
+
+class Access(BaseModel):
+    """A person made a member or a guest, and their studies a day."""
+
+    role: Role | None = None
+    study_limit: int | None = Field(None, ge=0, le=100)
+
+
+def _invite_view(i: Invite) -> InviteView:
+    return InviteView(id=i.id, name=i.name, user_id=i.user_id, role=i.role, expires_at=i.expires_at)
 
 
 def _me(svc: FrameService, user: User, request: Request) -> MeView:
@@ -125,13 +143,11 @@ def _people(svc: FrameService) -> PeopleView:
                 ],
                 playlists=sum(p.owner == u.id for p in playlists),
                 favorites=len(hearts.get(u.id, ())),
+                study_limit=None if u.is_owner else u.studies_a_day(),
             )
             for u in users.users()
         ],
-        invites=[
-            InviteView(id=i.id, name=i.name, user_id=i.user_id, expires_at=i.expires_at)
-            for i in users.invites()
-        ],
+        invites=[_invite_view(i) for i in users.invites()],
         study_limit=users.study_limit(),
     )
 
@@ -172,15 +188,10 @@ def people(svc: Svc, _: Owner) -> PeopleView:
 @router.post("/users/invites", response_model=NewInvite)
 def invite(body: InviteRequest, svc: Svc, _: Owner) -> NewInvite:
     try:
-        code, found = svc.users.invite(body.name, body.user_id)
+        code, found = svc.users.invite(body.name, body.user_id, body.role)
     except ValueError as err:
         raise HTTPException(422, str(err)) from err
-    return NewInvite(
-        code=code,
-        invite=InviteView(
-            id=found.id, name=found.name, user_id=found.user_id, expires_at=found.expires_at
-        ),
-    )
+    return NewInvite(code=code, invite=_invite_view(found))
 
 
 @router.delete("/users/invites/{invite_id}", response_model=PeopleView)
@@ -200,6 +211,18 @@ def remove_device(device_id: str, svc: Svc, _: Owner) -> PeopleView:
 @router.put("/users/settings", response_model=PeopleView)
 def put_settings(body: PeopleSettings, svc: Svc, _: Owner) -> PeopleView:
     svc.users.set_study_limit(body.study_limit)
+    return _people(svc)
+
+
+@router.put("/users/{user_id}/access", response_model=PeopleView)
+def set_access(user_id: str, body: Access, svc: Svc, _: Owner) -> PeopleView:
+    """Konfiguracja → Domownicy: member or guest, and studies a day."""
+    try:
+        found = svc.users.set_access(user_id, body.role, body.study_limit)
+    except ValueError as err:
+        raise HTTPException(422, str(err)) from err
+    if found is None:
+        raise HTTPException(404, f"no user {user_id}")
     return _people(svc)
 
 

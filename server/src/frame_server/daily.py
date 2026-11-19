@@ -631,7 +631,8 @@ class Daily:
         )
         seed = zlib.crc32(item.id.encode())
         found = self.library.query(rules, sort="random", seed=seed, proposing=True)[1]
-        found.sort(key=lambda i: (not i.favorite, not i.highlight))  # stable
+        liked = self.library.household_likes()
+        found.sort(key=lambda i: (i.id not in liked, not i.highlight))  # stable
         near = [i.id for i in found if abs((i.year or 0) - item.year) <= SAME_TIME_YEARS]
         # An unknown work's circle: the West's, as most of the catalogue.
         home = circle(item) or "west"

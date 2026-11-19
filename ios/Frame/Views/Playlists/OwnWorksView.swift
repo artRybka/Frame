@@ -63,11 +63,9 @@ struct OwnWorksView: View {
         .paperPage()
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if model.isOwner {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: add) { Image(systemName: "camera") }
-                        .accessibilityLabel("Dodaj własne dzieło")
-                }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(action: add) { Image(systemName: "camera") }
+                    .accessibilityLabel("Dodaj własne dzieło")
             }
         }
         .refreshable { await model.refreshOwnWorks() }

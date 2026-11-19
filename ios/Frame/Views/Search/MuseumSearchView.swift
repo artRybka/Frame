@@ -520,8 +520,10 @@ struct MuseumSearchView: View {
             .buttonStyle(.plain)
             .contextMenu {
                 QueueButton(itemID: summary.id)
-                Button("Ukryj dzieło", systemImage: "eye.slash") {
-                    Task { await search.hide(summary.id) }
+                if !model.isGuest {  // hidden from the whole household
+                    Button("Ukryj dzieło", systemImage: "eye.slash") {
+                        Task { await search.hide(summary.id) }
+                    }
                 }
             }
             .overlay(alignment: .topTrailing) { heart(summary) }

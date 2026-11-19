@@ -10,6 +10,8 @@ struct DiscoverView: View {
     /// How far the page is scrolled, for the glow of the study of the day
     /// and its picture's parallax.
     @State private var scrolled: CGFloat = 0
+    /// A guest's "Mój dostęp": they have no "Ramka" tab to find it on.
+    @State private var showingAccess = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -38,6 +40,15 @@ struct DiscoverView: View {
             .paperPage(glow: model.daily?.item.item.colors ?? [], lift: scrolled)
             .navigationTitle("Odkrywaj")
             .serverLinkBadge()
+            .toolbar {
+                if model.isGuest {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { showingAccess = true } label: { Image(systemName: "person.crop.circle") }
+                            .accessibilityLabel("Mój dostęp")
+                    }
+                }
+            }
+            .sheet(isPresented: $showingAccess) { MyAccessView() }
             .navigationDestination(for: String.self) { id in
                 ItemDetailView(itemID: id)
             }

@@ -13,6 +13,7 @@ from collections.abc import Awaitable, Callable, Iterable, Iterator
 from concurrent.futures import Future
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -266,6 +267,12 @@ class PlayerState(BaseModel):
     last_change_origin: str | None = None
     next_change_at: str | None = None
     last_error: str | None = None
+    #: Works sent from the app by someone who sees their cleaning otherwise
+    #: than the owner (``Item.cleaned_by``): whether the frame shows them
+    #: cleaned, as that person sees them (Mateusz 2026-11-19: "tego kto
+    #: wrzuca dane dzieło na ramkę"). Only while on the frame or waiting
+    #: in ``requested``; the rotation goes by the owner's.
+    cleaned_as: dict[str, bool] = Field(default_factory=dict)
 
 
 # Pictures the owner sends from the app (not the schedule, the end of a
@@ -458,6 +465,18 @@ class Player:
             state.queue = [i for i in state.queue if i != item_id]
             self._save_state(state)
 
+    def sent_as_seen(self, item: Item, user: str) -> None:
+        """``item`` sent to the frame by ``user``: shown cleaned or not as
+        they see it, where that is not the owner's way."""
+        state = self.state
+        keep = {state.current_item_id, *state.requested}
+        mine = {k: v for k, v in state.cleaned_as.items() if k in keep and k != item.id}
+        if item.cleaned_differs(user):
+            mine[item.id] = item.cleaned_shown(user) is not None
+        if mine != state.cleaned_as:
+            state.cleaned_as = mine
+            self._save_state(state)
+
     def queue_next(self, item_id: str) -> None:
         """The owner's pick: shown at the next change, before the rest of
         the queue (and before earlier picks), whatever the frame plays."""
@@ -594,10 +613,10 @@ class Player:
         first: favourites count most, then works kept in the library (not
         the ones the server picked) and artists lately searched for."""
         scores: Counter[str] = Counter()
-        hearts = None if user is None else self.library.favorites(user)
+        hearts = self.library.household_likes() if user is None else self.library.favorites(user)
         for item in self.library.query(PlaylistRules(kinds=[ItemKind.ARTWORK]))[1]:
             if is_artist(item.artist) and not other_art(item):
-                liked = item.favorite if hearts is None else item.id in hearts
+                liked = item.id in hearts
                 scores[item.artist] += 3 * liked + (not item.pooled)
         searched: Counter[str] = Counter()
         for key in [searched_key(user)] if user is not None else self._searched_keys():
@@ -1042,6 +1061,20 @@ class Player:
         else:
             await self.next("resume")
 
+    def _original(self, shown: Item, urgent: bool) -> Path:
+        """The original kept, or the one of the person who sent the work
+        and sees its cleaning otherwise (``PlayerState.cleaned_as``)."""
+        images = self.service.images
+        cleaned = self.state.cleaned_as.get(shown.id)
+        reading = shown.cleaned_reading()
+        if (
+            cleaned is not None
+            and reading is not None
+            and cleaned != (shown.cleaned_shown() is not None)
+        ):
+            return images.variant(shown, cleaned, urgent=urgent)
+        return images.ensure_image(shown, urgent)
+
     async def _originals(
         self, board: list[Item], settings: FrameSettings, urgent: bool = True
     ) -> bytes | list[bytes]:
@@ -1049,7 +1082,7 @@ class Player:
         ``urgent`` (a change): before the downloads of the background."""
         images = []
         for shown in board:
-            path = await run_in_threadpool(self.service.images.ensure_image, shown, urgent)
+            path = await run_in_threadpool(self._original, shown, urgent)
             images.append(await run_in_threadpool(path.read_bytes))
         return images if self.multi(board[0], settings) else images[0]
 

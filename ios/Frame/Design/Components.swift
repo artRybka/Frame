@@ -472,8 +472,11 @@ struct QueueButton: View {
     let itemID: String
 
     var body: some View {
-        Button("Dodaj do kolejki", systemImage: QueueButton.symbol) {
-            Task { await model.queueNext(itemID: itemID) }
+        // A guest sends nothing to the frame.
+        if !model.isGuest {
+            Button("Dodaj do kolejki", systemImage: QueueButton.symbol) {
+                Task { await model.queueNext(itemID: itemID) }
+            }
         }
     }
 

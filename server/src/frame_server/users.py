@@ -5,9 +5,14 @@ it always works, so the owner can never be locked out. Every other phone has
 a token of its own, made when it joins with a one-time invitation the owner
 shows as a QR code. The server keeps only hashes of tokens and codes.
 
-A member uses the whole app but Konfiguracja: their own hearts, playlists
-and notifications; the frame, its schedule and the library are shared.
-Decisions: Mateusz, 2026-10-31 (docs/DECISIONS.md, D-users)."""
+A member uses the whole app but Konfiguracja and the frame's power: their
+own hearts, playlists and notifications; the frame, its schedule and the
+library are shared. A guest (Gość, Mateusz 2026-11-19) looks, searches,
+likes and adds works of their own, but never touches the frame: no
+"Teraz", no "Ramka", nothing sent to it; their hearts are their own and
+are not the household's taste. Each person but the owner orders as many
+studies a day as the owner set for them.
+Decisions: Mateusz, 2026-10-31 and 2026-11-19 (docs/DECISIONS.md, D15)."""
 
 from __future__ import annotations
 
@@ -32,13 +37,21 @@ JOIN_TRIES = 5
 JOIN_WINDOW = 600.0  # seconds
 #: How often a phone's "last seen" is written (not at every request).
 SEEN_EVERY = timedelta(minutes=5)
-STUDIES_A_DAY = 5
+#: Studies a day a new member and a new guest may order (Mateusz
+#: 2026-11-19: "domownik - 3 dziennie, gość - 1 dziennie").
+STUDIES_A_DAY = 3
+GUEST_STUDIES_A_DAY = 1
 OWNER_NAME = "Właściciel"
 
 
 class Role(StrEnum):
     OWNER = "owner"
     MEMBER = "member"
+    GUEST = "guest"
+
+
+def default_studies(role: Role) -> int:
+    return GUEST_STUDIES_A_DAY if role == Role.GUEST else STUDIES_A_DAY
 
 
 class User(BaseModel):
@@ -46,10 +59,20 @@ class User(BaseModel):
     name: str
     role: Role = Role.MEMBER
     created_at: str = ""
+    #: Studies a day this person may order (None: what their role starts
+    #: with, ``default_studies``); the owner sets it in Konfiguracja.
+    study_limit: int | None = None
 
     @property
     def is_owner(self) -> bool:
         return self.role == Role.OWNER
+
+    @property
+    def is_guest(self) -> bool:
+        return self.role == Role.GUEST
+
+    def studies_a_day(self) -> int:
+        return self.study_limit if self.study_limit is not None else default_studies(self.role)
 
 
 class Device(BaseModel):
@@ -70,6 +93,8 @@ class Invite(BaseModel):
     #: there (``user_id``: a new phone of theirs, the owner's too).
     name: str = ""
     user_id: str | None = None
+    #: What a new person comes in as: a member or a guest.
+    role: Role = Role.MEMBER
     created_at: str = ""
     expires_at: str = ""
 
@@ -86,7 +111,9 @@ class People(BaseModel):
     users: list[User] = Field(default_factory=list)
     devices: list[Device] = Field(default_factory=list)
     invites: list[Invite] = Field(default_factory=list)
-    #: Studies a member may order a day (Konfiguracja → Domownicy).
+    #: Studies a day for the members who have no limit of their own: what
+    #: Konfiguracja → Domownicy set before each person had one (apps before
+    #: 1.145.271 still set it). Unused since.
     study_limit: int = STUDIES_A_DAY
     studies: dict[str, StudyOrders] = Field(default_factory=dict)
 
@@ -152,7 +179,13 @@ class Users:
         return [i for i in self._load().invites if i.expires_at > now]
 
     def study_limit(self) -> int:
-        return self._load().study_limit
+        """What older apps show as the one limit: a member's."""
+        member = next((u for u in self._load().users if u.role == Role.MEMBER), None)
+        return member.studies_a_day() if member is not None else STUDIES_A_DAY
+
+    def guests(self) -> frozenset[str]:
+        """The guests' ids: their hearts are not the household's taste."""
+        return frozenset(u.id for u in self._load().users if u.role == Role.GUEST)
 
     # -- who is asking ----------------------------------------------------------
 
@@ -194,9 +227,12 @@ class Users:
 
     # -- invitations --------------------------------------------------------------
 
-    def invite(self, name: str = "", user_id: str | None = None) -> tuple[str, Invite]:
-        """A one-time code for a new member (``name``) or a new phone of
-        someone already there (``user_id``). Returns the code once."""
+    def invite(
+        self, name: str = "", user_id: str | None = None, role: Role = Role.MEMBER
+    ) -> tuple[str, Invite]:
+        """A one-time code for a new member or guest (``name``, ``role``) or
+        a new phone of someone already there (``user_id``). Returns the code
+        once."""
         if not self.enabled:
             raise ValueError("serwer nie ma tokenu FRAME_API_TOKEN")
         name = name.strip()
@@ -204,6 +240,8 @@ class Users:
             raise ValueError("podaj imię")
         if user_id is not None and self.user(user_id) is None:
             raise ValueError(f"nie ma osoby {user_id}")
+        if role == Role.OWNER:
+            raise ValueError("właściciel jest jeden")
         code = secrets.token_urlsafe(16)
         now = _now()
         invite = Invite(
@@ -211,6 +249,7 @@ class Users:
             code_hash=digest(code),
             name=name,
             user_id=user_id,
+            role=role,
             created_at=_stamp(now),
             expires_at=_stamp(now + INVITE_FOR),
         )
@@ -261,7 +300,10 @@ class Users:
                     raise JoinError("tej osoby nie ma już na serwerze")
             else:
                 user = User(
-                    id=f"u-{secrets.token_hex(4)}", name=invite.name, created_at=_stamp(now)
+                    id=f"u-{secrets.token_hex(4)}",
+                    name=invite.name,
+                    role=invite.role,
+                    created_at=_stamp(now),
                 )
                 people.users.append(user)
             token = secrets.token_urlsafe(32)
@@ -320,21 +362,47 @@ class Users:
         return self.user(user_id)
 
     def set_study_limit(self, limit: int) -> None:
+        """The one limit of apps before 1.145.271: every member's."""
         with self._lock:
             people = self._load()
             people.study_limit = max(0, min(limit, 100))
+            for u in people.users:
+                if u.role == Role.MEMBER:
+                    u.study_limit = people.study_limit
             self._save(people)
 
-    # -- studies a member orders ---------------------------------------------------
+    def set_access(
+        self, user_id: str, role: Role | None = None, study_limit: int | None = None
+    ) -> User | None:
+        """Konfiguracja → Domownicy: a person made a member or a guest, and
+        the studies a day they may order."""
+        if user_id == OWNER_ID:
+            raise ValueError("właściciel ma zawsze pełny dostęp")
+        if role == Role.OWNER:
+            raise ValueError("właściciel jest jeden")
+        with self._lock:
+            people = self._load()
+            for u in people.users:
+                if u.id != user_id:
+                    continue
+                if role is not None:
+                    u.role = role
+                if study_limit is not None:
+                    u.study_limit = max(0, min(study_limit, 100))
+            self._save(people)
+        return self.user(user_id)
+
+    # -- studies a member or guest orders ---------------------------------------------------
 
     def studies_left(self, user: User, day: date) -> int | None:
         """Studies ``user`` may still order on ``day``; None: no limit."""
         if user.is_owner:
             return None
         people = self._load()
+        stored = next((u for u in people.users if u.id == user.id), user)
         orders = people.studies.get(user.id)
         used = orders.count if orders is not None and orders.day == day.isoformat() else 0
-        return max(0, people.study_limit - used)
+        return max(0, stored.studies_a_day() - used)
 
     def ordered_study(self, user: User, day: date) -> None:
         if user.is_owner:

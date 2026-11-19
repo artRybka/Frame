@@ -17,11 +17,14 @@ from ..library.models import Item
 from ..restorer import NotRestored
 from ..service import FrameService
 from ..users import User
-from .deps import CurrentUser, require_owner, service
+from .deps import CurrentUser, require_owner, require_token, service
 from .library_api import _work
 from .playlists_api import _playlist
 
-router = APIRouter(prefix="/api", dependencies=[Depends(require_owner)], tags=["restorer"])
+#: The batches are the owner's; one work from its card is everyone's
+#: (Mateusz 2026-11-19).
+router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["restorer"])
+Owner = [Depends(require_owner)]
 Svc = Annotated[FrameService, Depends(service)]
 
 
@@ -49,12 +52,12 @@ def _view(svc: FrameService, works: list[Item] | None = None) -> RestorerView:
     )
 
 
-@router.get("/ai/restorer", response_model=RestorerView)
+@router.get("/ai/restorer", response_model=RestorerView, dependencies=Owner)
 async def restorer_view(svc: Svc) -> RestorerView:
     return await run_in_threadpool(_view, svc)
 
 
-@router.post("/ai/restorer/favourites", response_model=RestorerView)
+@router.post("/ai/restorer/favourites", response_model=RestorerView, dependencies=Owner)
 async def restore_favourites(svc: Svc) -> RestorerView:
     """The favourites whose picture is small for the frame drawn again
     through the Batch API (within 24 hours, half the price)."""
@@ -71,7 +74,7 @@ def _playlist_works(svc: FrameService, playlist_id: int, user: User) -> list[Ite
     return svc.library.playlist_items(_playlist(svc, playlist_id, user))
 
 
-@router.get("/ai/restorer/playlists/{playlist_id}", response_model=RestorerView)
+@router.get("/ai/restorer/playlists/{playlist_id}", response_model=RestorerView, dependencies=Owner)
 async def restorer_playlist(playlist_id: int, svc: Svc, user: CurrentUser) -> RestorerView:
     """The playlist's line: its works whose picture is small for the frame
     (under ``low_res.LOW_SIDE``) and that the batch would draw."""
@@ -79,7 +82,9 @@ async def restorer_playlist(playlist_id: int, svc: Svc, user: CurrentUser) -> Re
     return await run_in_threadpool(_view, svc, works)
 
 
-@router.post("/ai/restorer/playlists/{playlist_id}", response_model=RestorerView)
+@router.post(
+    "/ai/restorer/playlists/{playlist_id}", response_model=RestorerView, dependencies=Owner
+)
 async def restore_playlist(playlist_id: int, svc: Svc, user: CurrentUser) -> RestorerView:
     """The playlist's works whose picture is small for the frame drawn again
     through the Batch API (within 24 hours, half the price; the playlist's

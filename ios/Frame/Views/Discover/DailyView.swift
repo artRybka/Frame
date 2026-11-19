@@ -1342,11 +1342,13 @@ struct DailyView: View {
                         }
                         .buttonStyle(.plain)
                         .contextMenu {
-                            Button("Pokaż na ramce", systemImage: "photo") {
-                                Task { _ = await model.show(itemID: part.id, hold: .untilNextChange) }
-                            }
-                            Button("Dodaj do kolejki", systemImage: QueueButton.symbol) {
-                                Task { await model.queueNext(itemID: part.id) }
+                            if !model.isGuest {
+                                Button("Pokaż na ramce", systemImage: "photo") {
+                                    Task { _ = await model.show(itemID: part.id, hold: .untilNextChange) }
+                                }
+                                Button("Dodaj do kolejki", systemImage: QueueButton.symbol) {
+                                    Task { await model.queueNext(itemID: part.id) }
+                                }
                             }
                         }
                     }
@@ -1404,11 +1406,13 @@ struct DailyView: View {
                 if work.item.inLibrary { framePreview(work, width: columnWidth) }
                 if !work.onFrame.isEmpty { prose(work.onFrame, size: 15) }
             }
-            HStack(spacing: 12) {
-                showButton(work)
-                queueButton(work)
+            if !model.isGuest {  // a guest sends nothing to the frame
+                HStack(spacing: 12) {
+                    showButton(work)
+                    queueButton(work)
+                }
+                .labelStyle(ActionLabelStyle())
             }
-            .labelStyle(ActionLabelStyle())
         }
     }
 

@@ -36,6 +36,7 @@ from .hosts import HostGuard, Resting, guard, is_urgent, urgently, walled
 from .markup import commons_rendition, extension
 from .models import Item
 from .policy import DEFAULT_IMAGES, IMAGE_LIMITS, URGENT_EXTRA
+from .viewer import OWNER_ID
 
 log = logging.getLogger(__name__)
 
@@ -963,7 +964,11 @@ class ImageCache:
         for a while). A cleaning goes with it when it was read on that
         photograph, a cut when it was set on it, as they would on the work
         shown so ("Przywróć zdjęcie muzeum")."""
-        shown = item if cleaned else item.model_copy(update={"cleaned": None})
+        # With the cleaning read, whoever sees it so (``Item.cleaned_by``).
+        if cleaned:
+            shown = item.model_copy(update={"cleaned_by": [OWNER_ID]})
+        else:
+            shown = item.model_copy(update={"cleaned": None})
         drawn = item.sharper is not None and item.sharper.restored
         if drawn and not restored:
             shown = shown.model_copy(update={"sharper": None})
@@ -977,6 +982,33 @@ class ImageCache:
         if max(img.size) > side:
             img.thumbnail((side, side), Image.Resampling.LANCZOS)
         return img
+
+    def variant(self, item: Item, cleaned: bool, thumb: bool = False, urgent: bool = False) -> Path:
+        """The original (or, ``thumb``, the thumbnail) as a person sees the
+        work whose choice of its cleaning is not the owner's, by whom what is
+        kept goes (``Item.cleaned_by``; Mateusz 2026-11-19: "indywidualne
+        ustawienia każdego z użytkowników"): with the cleaning read
+        (``cleaned``) or without it. Made once from the museum's photograph
+        and kept beside the thumbnails, by the picture, its cut and its
+        cleaning; one of a kind per work."""
+        reading = item.cleaned_reading()
+        stamp = f"{item.picture_key()}|{item.cut_version()}|{reading.at if reading else ''}"
+        key = hashlib.sha1(stamp.encode()).hexdigest()[:10]
+        end = "t" if thumb else "o"
+        folder = self.thumbs.parent / "variants"
+        path = folder / f"{item.file_stem}-{'c' if cleaned else 'n'}{key}-{end}.jpg"
+        if path.is_file():
+            return path
+        side = THUMB_MAX if thumb else kept_side(item)
+        with self._lock(f"v:{item.id}"):
+            if path.is_file():
+                return path
+            img = self.treated(item, restored=True, cleaned=cleaned, side=side, urgent=urgent)
+            folder.mkdir(parents=True, exist_ok=True)
+            for old in folder.glob(f"{item.file_stem}-*-{end}.jpg"):
+                old.unlink(missing_ok=True)
+            _save_jpeg(img, path, side, 85 if thumb else 92)
+        return path
 
     def before_drawn(self, item: Item, urgent: bool = False) -> Image.Image:
         """The picture the restorer drew ``item``'s drawing from: the

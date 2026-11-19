@@ -781,21 +781,23 @@ struct ThemeView: View {
 
     private var actions: some View {
         HStack(spacing: 10) {
-            Button {
-                Task { await make(play: true) }
-            } label: {
-                Label {
-                    Text("Pokaż na ramce")
-                } icon: {
-                    if playing {
-                        ProgressView().tint(Theme.paper)
-                    } else {
-                        Image(systemName: "photo.fill")
+            if !model.isGuest {  // a guest sends nothing to the frame
+                Button {
+                    Task { await make(play: true) }
+                } label: {
+                    Label {
+                        Text("Pokaż na ramce")
+                    } icon: {
+                        if playing {
+                            ProgressView().tint(Theme.paper)
+                        } else {
+                            Image(systemName: "photo.fill")
+                        }
                     }
                 }
+                .buttonStyle(PrimaryButtonStyle())
+                .sensoryFeedback(.impact(weight: .medium), trigger: playing) { _, now in now }
             }
-            .buttonStyle(PrimaryButtonStyle())
-            .sensoryFeedback(.impact(weight: .medium), trigger: playing) { _, now in now }
             if playlistID == nil {
                 Button {
                     Task { await make(play: false) }

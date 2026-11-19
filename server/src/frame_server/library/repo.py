@@ -722,6 +722,9 @@ class Hidden:
 class Library:
     def __init__(self, path: Path) -> None:
         self.path = path
+        #: The people whose hearts are their own only: the guests
+        #: (``Users.guests``, set by the service).
+        self.quiet_fans: Callable[[], frozenset[str]] = frozenset
         path.parent.mkdir(parents=True, exist_ok=True)
         #: The items, their grouping and the hearts in memory: held only
         #: while they change or are first read, never for a read of the
@@ -1159,6 +1162,18 @@ class Library:
     def fans(self) -> dict[str, frozenset[str]]:
         """Everyone's hearts, by person."""
         return dict(self._hearts())
+
+    def household_likes(self) -> frozenset[str]:
+        """The works anyone of the household likes, a guest's hearts left
+        out (Mateusz 2026-11-19: a guest's hearts are not the house's
+        taste): what the proposals and the frame go by, where
+        ``Item.favorite`` (anyone's) keeps a work in the library."""
+        quiet = self.quiet_fans()
+        liked: set[str] = set()
+        for user, ids in self._hearts().items():
+            if user not in quiet:
+                liked |= ids
+        return frozenset(liked)
 
     def liked_at(self, user_id: str) -> dict[str, str]:
         """When ``user_id`` liked each work they like: Ulubione's "added"."""
