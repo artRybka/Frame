@@ -7,7 +7,8 @@
 # The very sources the server's wheel was built of (opencv-python-headless on
 # PyPI, which carries them), only the five modules the merge uses, and no
 # acceleration library of anyone's (KleidiCV, Accelerate's LAPACK): the phone
-# is to count as the server does. Built the way OpenCV's own
+# is to count as the server does (nor the font it would fetch for putText).
+# Built the way OpenCV's own
 # platforms/ios/build_framework.py builds it (APPLE_FRAMEWORK: the modules in
 # one library, for arm64 alone), without the framework put around it after.
 #
@@ -60,6 +61,7 @@ build() {
             -DBUILD_TESTS=OFF -DBUILD_PERF_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_DOCS=OFF \
             -DBUILD_opencv_apps=OFF -DBUILD_JAVA=OFF -DBUILD_OBJC=OFF \
             -DBUILD_opencv_python2=OFF -DBUILD_opencv_python3=OFF \
+            -DBUILD_opencv_imgcodecs=OFF -DBUILD_opencv_highgui=OFF -DWITH_UNIFONT=OFF \
             -DWITH_IPP=OFF -DWITH_ITT=OFF -DWITH_OPENCL=OFF -DWITH_EIGEN=OFF -DWITH_PROTOBUF=OFF \
             -DWITH_OPENMP=OFF -DWITH_TBB=OFF -DWITH_KLEIDICV=OFF -DWITH_CAROTENE=OFF \
             -DWITH_JPEG=OFF -DWITH_PNG=OFF -DWITH_TIFF=OFF -DWITH_WEBP=OFF -DWITH_OPENJPEG=OFF \
