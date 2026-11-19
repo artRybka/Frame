@@ -23,7 +23,7 @@ final class PullProbeTests: XCTestCase {
         sleep(3)
         shot("2-end")
         mark(app, "rested at the end")
-        for (step, distance) in [80.0, 160.0, 320.0].enumerated() {
+        for (step, distance) in [40.0, 120.0, 120.0].enumerated() {
             mark(app, "pull \(Int(distance))")
             let start = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65))
             let end = start.withOffset(CGVector(dx: 0, dy: -distance))

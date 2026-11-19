@@ -128,12 +128,12 @@ struct MuseumSearchView: View {
         // How far the end is pulled up past where the list stops.
         .onScrollGeometryChange(for: ListEnd.self, of: { ListEnd($0) }) { _, end in
             listEnd.last = end
-            PullProbe.note("geometry", end: end, past: listEnd.past(end), lit: pullLit, waits: search.waitsForPull)
+            PullProbe.note("geometry", end: end, past: end.past, lit: pullLit, waits: search.waitsForPull)
             guard search.waitsForPull else {
                 if pullLit != 0 { pullLit = 0 }
                 return
             }
-            let past = listEnd.past(end)
+            let past = end.past
             var lit = min(PullForMore.count, max(0, Int(past / PullForMore.pullPerSquare)))
             if dragging, lit == PullForMore.count { pullArmed = true }
             if pullArmed { lit = PullForMore.count }
@@ -141,9 +141,7 @@ struct MuseumSearchView: View {
         }
         .onScrollPhaseChange { old, new in
             dragging = new == .interacting
-            PullProbe.note("phase \(old) -> \(new)", end: listEnd.last, past: listEnd.past(listEnd.last), lit: pullLit, waits: search.waitsForPull)
-            // At rest, the list is never past its end (`ListEndSeen`).
-            if new == .idle { listEnd.rested() }
+            PullProbe.note("phase \(old) -> \(new)", end: listEnd.last, past: listEnd.last.past, lit: pullLit, waits: search.waitsForPull)
             guard new != .interacting else { return }
             // Let go with all the squares lit (a fling that springs past
             // the end never arms it: only a finger does).
@@ -626,44 +624,19 @@ struct FlowLayout: Layout {
     }
 }
 
-/// The list's end as last seen, and where the list really stops, learnt
-/// where it comes to rest. Reckoned from the content's size, bottom inset and
-/// the container, the end lay first some 200 pt too far down ("muszę
-/// przeciągnąć ekran znacząco ponad połowę ekranu") and then, without the
-/// inset, still about 300 pt (Mateusz 2026-11-19, a screenshot: the squares
-/// lit only with the end pulled to the middle of the screen). So nothing is
-/// reckoned: at rest a list is never past its end, so the furthest it has
-/// rested, from its content's bottom, is where it stops, for as long as
-/// the container and its insets stay as they were.
+/// The list's geometry as last seen, for the phase changes.
 @MainActor
 final class ListEndSeen {
     var last = ListEnd()
-    /// The furthest rest, as offset less content height, and the frame it
-    /// was seen in.
-    private var rest: CGFloat?
-    private var frame: ListEnd.Frame?
-
-    /// The list came to rest where it last was.
-    func rested() {
-        if frame != last.frame {
-            frame = last.frame
-            rest = nil
-        }
-        let here = last.offset - last.height
-        rest = max(rest ?? here, here)
-    }
-
-    /// How far past its end the list is pulled. Until it has rested once
-    /// in this frame, the end from the size and insets (late rather than
-    /// early); rested only short of the end so far, the squares light a
-    /// little early, until it rests at the end once.
-    func past(_ end: ListEnd) -> CGFloat {
-        guard let rest, frame == end.frame else { return end.offset - end.reckoned }
-        return end.offset - (end.height + rest)
-    }
 }
 
-/// Where a scrolled list is.
+/// Where a scrolled list is, and where it stops. `containerSize` is the
+/// room inside the insets (measured on the simulator, `PullProbeTests`: a
+/// container of 571 pt on an 874 pt screen with insets of 116 and 187), so
+/// the list stops at `contentSize − containerSize − top`. Taken for the
+/// whole screen, the end lay first top + bottom (303 pt) and then the top
+/// inset too far (Mateusz 2026-11-19: "muszę przeciągnąć ekran znacząco
+/// ponad połowę ekranu", then a screenshot with the end at mid-screen).
 struct ListEnd: Equatable {
     struct Frame: Equatable {
         var container: CGFloat = 0
@@ -674,7 +647,7 @@ struct ListEnd: Equatable {
     var offset: CGFloat = 0
     var height: CGFloat = 0
     var frame = Frame()
-    /// The end from the content's size, its bottom inset and the container.
+    /// The offset at which the list stops.
     var reckoned: CGFloat = 0
 
     init() {}
@@ -686,8 +659,11 @@ struct ListEnd: Equatable {
             container: geometry.containerSize.height,
             top: geometry.contentInsets.top, bottom: geometry.contentInsets.bottom
         )
-        reckoned = max(height + frame.bottom - frame.container, -frame.top)
+        reckoned = max(height - frame.container - frame.top, -frame.top)
     }
+
+    /// How far past its end the list is pulled.
+    var past: CGFloat { offset - reckoned }
 }
 
 /// CI's probe of the pull at the end (`-pullLog <path>`, the
