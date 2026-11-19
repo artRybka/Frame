@@ -202,6 +202,60 @@ def test_the_phone_puts_a_charts_colours_as_the_server_does() -> None:
     assert (np.abs(put.astype(int) - picture) > 8).mean() > 0.3  # the chart did set colours
 
 
+def test_the_phone_takes_a_lens_bend_out_as_the_server_does() -> None:
+    """Mateusz 2026-11-19 09:52 UTC: "prostowanie obiektywu. Czy tego
+    także nie lepiej robić na iPhone?". The made-up picture the app's
+    tests straighten with the core (``PhoneScanTests``), by the one
+    measured term and by a camera's table about a middle of its own, and
+    the corners they move both ways: what ``lens.straight``,
+    ``lens.moved`` and ``lens.bent`` make of them here, pixel for pixel.
+    (The core against them on whole photographs, on this processor and on
+    one like the phone's: ``core/scan/tools/lens.py``.)"""
+    import base64
+    import json
+    import re
+
+    import numpy as np
+
+    from frame_server.imaging import lens
+
+    source = IOS / "FrameTests" / "PhoneScanTests.swift"
+    if not source.is_file():
+        pytest.skip("the server's tree without the app beside it")
+    text = source.read_text()
+
+    def held(name: str) -> Any:
+        found = re.search(rf'static let {name} = """\n(.*?)\n\s*"""', text, re.S)
+        assert found is not None, name
+        data = base64.b64decode("".join(found.group(1).split()))
+        return np.frombuffer(data, np.uint8).reshape(48, 36, 3)
+
+    def said(name: str) -> Any:
+        found = re.search(rf"static let {name}(?:: [\[\]A-Za-z]+)? = (.*)\n", text)
+        assert found is not None, name
+        return json.loads(found.group(1))
+
+    number, table, centre = said("lensNumber"), said("lensTable"), said("lensCentre")
+    # The number is the one measured of his phone; the table one the
+    # server would take from a camera, about a middle that is not the
+    # photograph's.
+    assert number == lens.BENDS[lens.PHONE]
+    own = lens.table(table, centre)
+    assert own is not None and own[1] != (0.5, 0.5)
+    bends = [lens.Bend(k1=number), lens.Bend(table=own[0], centre=own[1])]
+    picture = held("lensPicture")
+    corners = [tuple(c) for c in said("lensCorners")]
+    moved, bent = said("lensMoved"), said("lensBent")
+    for n, (bend, name) in enumerate(zip(bends, ("lensByNumber", "lensByTable"), strict=True)):
+        want = held(name)
+        assert (lens.straight(picture, bend) == want).all(), name
+        assert (want != picture).mean() > 0.3  # the bend did move the picture
+        assert lens.moved(corners, 6048, 8064, bend) == [tuple(c) for c in moved[n]]
+        assert lens.bent(corners, 6048, 8064, bend) == [tuple(c) for c in bent[n]]
+    # The two bends are not one another's.
+    assert (held("lensByNumber") != held("lensByTable")).mean() > 0.05
+
+
 def _as_the_core(tables: bytes, photo: Any) -> Any:
     """``photo`` (uint8 RGB) put through a chart's ``tables`` as the core
     does it (``core/scan`` ``scan_chart.cpp``): in float32, one sum after

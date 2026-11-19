@@ -263,8 +263,10 @@ def straight(img: np.ndarray, bend: Bend | float) -> np.ndarray:
     for top in range(0, height, STRIP):
         ys = (np.arange(top, min(top + STRIP, height), dtype=np.float32) - cy) / half
         if bend.table:
-            share = bend.by(np.hypot(xs[None, :], ys[:, None])).astype(np.float32)
-            bent = 1 + share
+            # (The radius by sums and a root of 32 bits each, which every
+            # processor rounds alike: the phone's core does the same.)
+            radius = np.sqrt(xs[None, :] ** 2 + ys[:, None] ** 2)
+            bent = 1 + bend.by(radius).astype(np.float32)
         else:
             bent = 1 + bend.k1 * (xs[None, :] ** 2 + ys[:, None] ** 2)
         out[top : top + len(ys)] = cv2.remap(
@@ -319,11 +321,47 @@ def moved(quad: Quad, width: int, height: int, bend: Bend | float) -> Quad:
     return there
 
 
+def bent(quad: Quad, width: int, height: int, bend: Bend | float) -> Quad:
+    """Where the corners ``quad`` set on the photograph straightened
+    (:func:`straight`) are on it as taken: the other way from
+    :func:`moved`. The phone shows him its photograph straightened and
+    says his corners as they are on the one taken, which is what
+    everything here goes by."""
+    if not isinstance(bend, Bend):
+        bend = Bend(k1=float(bend))
+    if not bend.table:
+        half = math.hypot(width, height) / 2
+        out: Quad = []
+        for x, y in quad:
+            ux, uy = (x - 0.5) * width / half, (y - 0.5) * height / half
+            by = 1 + bend.k1 * (ux * ux + uy * uy)
+            out.append(
+                (
+                    round(min(max(ux * by * half / width + 0.5, 0.0), 1.0), 5),
+                    round(min(max(uy * by * half / height + 0.5, 0.0), 1.0), 5),
+                )
+            )
+        return out
+    cx, cy, reach = bend._middle(width, height)
+    there: Quad = []
+    for x, y in quad:
+        ux, uy = (x * width - 0.5 - cx) / reach, (y * height - 0.5 - cy) / reach
+        by = 1 + float(bend.by(math.hypot(ux, uy)))
+        there.append(
+            (
+                round(min(max((ux * by * reach + cx + 0.5) / width, 0.0), 1.0), 5),
+                round(min(max((uy * by * reach + cy + 0.5) / height, 0.0), 1.0), 5),
+            )
+        )
+    return there
+
+
 __all__ = [
     "BENDS",
     "PHONE",
     "Bend",
     "Seen",
+    "bent",
     "chosen",
     "like",
     "moved",

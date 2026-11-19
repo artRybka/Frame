@@ -291,3 +291,35 @@ def test_which_of_the_two_a_photograph_is_straightened_by() -> None:
     assert lens.Bend.from_json(by_table.to_json()) == by_table
     assert lens.Bend.from_json(None) is None and lens.Bend.from_json({"table": [1]}) is None
     assert lens.Bend.from_json(True) is None
+
+
+def test_corners_set_on_the_photograph_straightened_are_said_as_on_the_one_taken() -> None:
+    """Mateusz 2026-11-19 09:52 UTC: "prostowanie obiektywu. Czy tego
+    także nie lepiej robić na iPhone?". The phone shows him its photograph
+    straightened and he sets the corners on that; everything here goes by
+    corners on the photograph as taken, so the phone says them so
+    (:func:`lens.bent`, the other way from :func:`lens.moved`)."""
+    x0, y0, x1, y1 = FRAME
+    true = [(x0 / W, y0 / H), (x1 / W, y0 / H), (x1 / W, y1 / H), (x0 / W, y1 / H)]
+    half = math.hypot(W, H) / 2
+    off = (0.512, 0.488)
+    for bend in (
+        lens.Bend(k1=K1),
+        lens.Bend(table=tuple(table(K1 * 1.1)), centre=(0.5, 0.5)),
+        lens.Bend(table=tuple(table(K1, 57, off)), centre=off),
+    ):
+        taken = lens.bent(true, W, H, bend)
+        # Where the lens drew them: nearer the middle, a few pixels.
+        assert 3 < abs(taken[0][1] * H - y0) < 12
+        if not bend.table:
+            ux, uy = (x0 - W / 2) / half, (y0 - H / 2) / half
+            f = 1 + K1 * (ux * ux + uy * uy)
+            assert taken[0] == approx(
+                ((ux * f * half + W / 2) / W, (uy * f * half + H / 2) / H), abs=2e-5
+            )
+        # And back: where he set them.
+        back = lens.moved(taken, W, H, bend)
+        assert np.abs(np.array(back) - np.array(true)).max() < 3e-5
+    # No bend, nothing moved; outside the photograph, at its edge.
+    assert lens.bent(true, W, H, 0.0) == [(round(x, 5), round(y, 5)) for x, y in true]
+    assert lens.bent([(0.0, 0.0), (1.0, 1.0)], W, H, -K1) == [(0.0, 0.0), (1.0, 1.0)]
