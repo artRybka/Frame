@@ -1,6 +1,6 @@
 // What the first view alone shows, and the work under a lamp: `_alone`,
-// `_told`, `_own`, `_one`, `_tellings`, `_from_sides`, `_toned`, `_level`,
-// `_rim`, `_outward` of `imaging/reflections.py`.
+// `_lit`, `_told`, `_own`, `_one`, `_tellings`, `_from_sides`, `_toned`,
+// `_level`, `_rim`, `_outward` of `imaging/reflections.py`.
 #include "scan_detail.hpp"
 
 #include <opencv2/geometry.hpp>
@@ -22,7 +22,7 @@ static std::vector<Mat> beside_(const std::vector<Mat>& steps) {
     return out;
 }
 
-Mat told(const Mat& side, const Mat& apart_, const Mat& counts_, const Mat& first) {
+Mat told(const Mat& side, const Mat& apart_, const Mat& counts_, const Mat& first, const Mat* reach) {
     int size = pyround(side.cols * ALONE_ABOUT) | 1;
     auto about_ = [size](const Mat& a) {
         Mat out;
@@ -43,6 +43,8 @@ Mat told(const Mat& side, const Mat& apart_, const Mat& counts_, const Mat& firs
     const float blown = static_cast<float>(BLOWN);
     Mat seen = ew([blown](float c, float f, float s) { return c * ((f < blown && s < blown) ? 1.f : 0.f); }, counts_,
                   max3(first), max3(side));
+    // Nor does a place a lamp's light reaches.
+    if (reach) seen = ew([](float s, float r) { return s * (1 - r); }, seen, *reach);
     Mat weigh = seen;
     Mat tells = zeros(apart_);
     const float few = static_cast<float>(ALONE_FEW);
@@ -50,19 +52,43 @@ Mat told(const Mat& side, const Mat& apart_, const Mat& counts_, const Mat& firs
     for (int round = 0; round < ALONE_ROUNDS; round++) {
         // Strict by degrees: the first telling is pulled by all there is.
         float wide = static_cast<float>(std::pow(2.0, ALONE_ROUNDS - 1 - round));
-        std::vector<Mat> totals(part.size()), somes(part.size());
+        std::vector<Mat> counted(part.size()), differing(part.size()), totals(part.size()), somes(part.size());
         for (size_t k = 0; k < part.size(); k++) {
-            totals[k] = about_(ew([](float o, float w, float a) { return o * w * a; }, part[k], weigh, apart_));
-            somes[k] = about_(ew([](float o, float w) { return o * w; }, part[k], weigh));
+            counted[k] = ew([](float o, float w) { return o * w; }, part[k], weigh);
+            differing[k] = ew([](float c, float a) { return c * a; }, counted[k], apart_);
+            totals[k] = about_(differing[k]);
+            somes[k] = about_(counted[k]);
         }
         std::vector<Mat> near = beside_(totals), near_some = beside_(somes);
         tells = zeros(apart_);
-        for (size_t k = 0; k < part.size(); k++)
+        for (size_t k = 0; k < part.size(); k++) {
+            if (!reach) {
+                tells = ew(
+                    [few](float t, float o, float total, float n, float some, float ns) {
+                        return t + o * (total + few * n) / std::max(some + few * ns, 1e-6f);
+                    },
+                    tells, part[k], totals[k], near[k], somes[k], near_some[k]);
+                continue;
+            }
+            // For a place the lamp's light reaches: where few about are as
+            // light and count, those all over the work tell it as well
+            // (colour by colour, the sums as doubles).
+            cv::Scalar all_some = cv::mean(counted[k]), all_by = cv::mean(differing[k]);
+            cv::Scalar over, any_;
+            for (int c = 0; c < 3; c++) {
+                over[c] = static_cast<float>(all_by[c] / std::max(all_some[c], 1e-9));
+                any_[c] = all_some[c] > 0 ? 1.0 : 0.0;
+            }
+            Mat all_over(apart_.rows, apart_.cols, CV_32FC3, over), has(apart_.rows, apart_.cols, CV_32FC3, any_);
             tells = ew(
-                [few](float t, float o, float total, float n, float some, float ns) {
-                    return t + o * (total + few * n) / std::max(some + few * ns, 1e-6f);
+                [few](float t, float o, float total, float n, float some, float ns, float all, float is, float r) {
+                    float about_here = some + few * ns;
+                    float thin = (1 - clipf(about_here / few, 0.f, 1.f)) * is * r;
+                    float said = (total + few * n) / std::max(about_here, 1e-6f);
+                    return t + o * (said + (all - said) * thin);
                 },
-                tells, part[k], totals[k], near[k], somes[k], near_some[k]);
+                tells, part[k], totals[k], near[k], somes[k], near_some[k], all_over, has, *reach);
+        }
         // A place is off by its colour that is off the most.
         Mat off_ = max3(ew(
             [=](float a, float t, float f) { return std::abs(a - t) / ((off0 + off_of * f) * wide); }, apart_, tells,
@@ -168,40 +194,59 @@ std::pair<Mat, Mat> from_sides(const std::vector<View>& views, const std::vector
     return {work, ew([](float s) { return s > 0 ? 1.f : 0.f; }, share)};
 }
 
+/// `_lit`: where a lamp's light reaches about its glare.
+static Mat lit(const Mat& glare, const Mat& burnt) {
+    int h = glare.rows, w = glare.cols;
+    const float reach_at = static_cast<float>(GLARE_REACH);
+    Mat most = max3(glare);
+    Mat is(h, w, CV_8U);
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+            is.at<uchar>(y, x) = (most.at<float>(y, x) > reach_at || burnt.at<float>(y, x) > 0) ? 1 : 0;
+    Mat which;
+    int some = cv::connectedComponents(is, which);
+    std::vector<char> lamps(static_cast<size_t>(some), 0);
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+            if (burnt.at<float>(y, x) > 0) lamps[static_cast<size_t>(which.at<int>(y, x))] = 1;
+    int far = 2 * std::max(1, pyround(w * GLARE_REACH_FAR)) + 1;
+    Mat near_lamp = dilate(burnt, ellipse(far));
+    Mat out = zeros(h, w);
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            int one_ = which.at<int>(y, x);
+            if (one_ > 0 && lamps[static_cast<size_t>(one_)] && near_lamp.at<float>(y, x) > 0) out.at<float>(y, x) = 1.f;
+        }
+    return out;
+}
+
 Alone alone(const std::vector<View>& views) {
     int ht = views[0].light.rows, wd = views[0].light.cols;
     int w = std::min(ALONE_WIDTH, wd);
     int h = std::max(16, pyround(static_cast<double>(ht) * w / wd));
     Mat first = coarse(views[0].light, h, w);
     std::vector<Mat> counts_ = counts(views, h, w);
-    std::vector<Mat> told_, says, lights, owns, plains;
     // What is the first view's own is drawn finer than it is told.
     int wf = std::min(ALONE_FINE, wd);
     int hf = std::max(16, pyround(static_cast<double>(ht) * wf / wd));
     Mat fine_ = coarse(views[0].light, hf, wf);
     std::vector<Mat> counts_fine = counts(views, hf, wf);
     std::vector<Mat> counts_full = counts(views, ht, wd);
-    Mat most;
+    std::vector<Mat> lights, aparts, fines;
     for (size_t n = 1; n < views.size(); n++) {
-        const View& view = views[n];
         // The middle of five each way: the shine of a gold letter and what
         // the laying over missed are narrower than any reflection.
-        Mat side = median5(coarse(view.light, h, w));
-        Mat apart_ = median5(ew([](float f, float s) { return f - s; }, first, side));
-        Mat tells = told(side, apart_, counts_[n], first);
-        plains.push_back(ew([](float a, float t, float c) { return (a - t) * c; }, apart_, tells, counts_[n]));
-        Mat seen = ew([](float f, float l, float t, float c) { return c > 0 ? f - (l + t) : -INF; }, views[0].light,
-                      view.light, resize(tells, wd, ht, cv::INTER_LINEAR), counts_full[n]);
-        if (most.empty())
-            most = seen;
-        else
-            cv::max(most, seen, most);
-        owns.push_back(
-            own(fine_, coarse(view.light, hf, wf), resize(tells, wf, hf, cv::INTER_LINEAR), counts_fine[n]));
-        told_.push_back(tells);
-        says.push_back(ew([](float s, float t, float c) { return std::max(s + t, 0.f) * c; }, side, tells, counts_[n]));
+        Mat side = median5(coarse(views[n].light, h, w));
         lights.push_back(side);
+        aparts.push_back(median5(ew([](float f, float s) { return f - s; }, first, side)));
+        fines.push_back(coarse(views[n].light, hf, wf));
     }
+    auto tell = [&](const Mat* reach) {
+        std::vector<Mat> out;
+        for (size_t n = 0; n < lights.size(); n++)
+            out.push_back(told(lights[n], aparts[n], counts_[n + 1], first, reach));
+        return out;
+    };
     const float blown_at = static_cast<float>(BLOWN);
     auto burnt_out = [blown_at](const Mat& light) {
         return ew([blown_at](float v) { return v >= blown_at ? 1.f : 0.f; }, max3(light));
@@ -228,112 +273,156 @@ Alone alone(const std::vector<View>& views) {
         return least;
     };
 
-    Mat alone_ = said(owns, counts_fine, fine_);
-    Mat glare = said(plains, counts_, first);
-    if (says.size() == 2) {
-        // Unless one of the two has a reflection of its own there.
-        auto [only, second] = one(says, plains, ew([](float a, float b) { return std::min(a, b); }, counts_[1], counts_[2]));
+    // What the darker one says over what both say, less what is narrow
+    // where the first view (its `light`) shows anything.
+    auto more = [&](const std::vector<Mat>& of, const Mat& least, const Mat& only_, const Mat& second_,
+                    const Mat& light) {
+        Mat over = ew([](float a, float b, float s, float l) { return std::max(a + (b - a) * s - l, 0.f); }, of[0],
+                      of[1], second_, least);
+        int wide = odd(3, least.cols * ALONE_SHADE);
+        Mat about_ = ellipse(wide);
+        int near = odd(3, least.cols * GLARE_NEAR);
+        Mat blown = opened(burnt_out(light), about_);
+        Mat burnt = blur(dilate(blown, square(near)), near / 2.0);
+        Mat broad = opened(over, about_);
+        return ew([](float br, float o, float bu, float on) { return (br + (o - br) * bu) * on; }, broad, over, burnt,
+                  only_);
+    };
 
-        // What the darker one says over what both say, less what is narrow
-        // where the first view (its `light`) shows anything.
-        auto more = [&](const std::vector<Mat>& of, const Mat& least, const Mat& only_, const Mat& second_,
-                        const Mat& light) {
-            Mat over = ew([](float a, float b, float s, float l) { return std::max(a + (b - a) * s - l, 0.f); }, of[0],
-                          of[1], second_, least);
-            int wide = odd(3, least.cols * ALONE_SHADE);
-            Mat about_ = ellipse(wide);
-            int near = odd(3, least.cols * GLARE_NEAR);
-            Mat blown = opened(burnt_out(light), about_);
-            Mat burnt = blur(dilate(blown, square(near)), near / 2.0);
-            Mat broad = opened(over, about_);
-            return ew([](float br, float o, float bu, float on) { return (br + (o - br) * bu) * on; }, broad, over,
-                      burnt, only_);
-        };
-
-        glare = ew([](float g, float m) { return g + m; }, glare, more(plains, glare, only, second, first));
-        Mat only_fine = resize(only, wf, hf, cv::INTER_LINEAR);
-        Mat second_fine = resize(second, wf, hf, cv::INTER_LINEAR);
-        alone_ = ew([](float a, float m) { return a + m; }, alone_, more(owns, alone_, only_fine, second_fine, fine_));
-    }
-    if (views.size() < 3) {
-        // One side view has reflections of its own, and nothing to say
-        // which of the two a difference is.
-        alone_ = zeros(alone_);
-        glare = zeros(glare);
-    }
-    // How far the side views are from telling one work (of what they tell).
-    Mat differ = zeros(h, w);
-    double whole = 0.0;
-    const float dark = static_cast<float>(GLARE_DARK);
-    if (says.size() > 1) {
-        differ = ew([dark](float d, float s) { return d / (s / 2 + dark); },
-                    sum3(ew([](float a, float b) { return std::abs(a - b); }, says[0], says[1])),
-                    sum3(ew([](float a, float b) { return a + b; }, says[0], says[1])));
-        Mat by = ew([dark](float d, float s) { return d / (s / 2 + dark); },
-                    sum3(ew([](float a, float b) { return b - a; }, lights[0], lights[1])),
-                    sum3(ew([](float a, float b) { return a + b; }, lights[0], lights[1])));
-        std::vector<float> where, more_, less_;
-        for (int y = 0; y < h; y++) {
-            const float* c1 = counts_[1].ptr<float>(y);
-            const float* c2 = counts_[2].ptr<float>(y);
-            const float* d = differ.ptr<float>(y);
-            const float* b = by.ptr<float>(y);
-            for (int x = 0; x < w; x++)
-                if (c1[x] == 1 && c2[x] == 1) {
-                    where.push_back(d[x]);
-                    more_.push_back(std::max(b[x], 0.f));
-                    less_.push_back(std::max(-b[x], 0.f));
-                }
+    // By what the views were told to differ by: the first view's own, its
+    // glare, and how far the side views are from telling one work (place by
+    // place, and of the whole).
+    struct Drawn {
+        Mat out, glare, differ;
+        double whole = 0.0;
+    };
+    auto drawn = [&](const std::vector<Mat>& told_) {
+        std::vector<Mat> says, owns, plains;
+        Mat most;
+        for (size_t n = 1; n < views.size(); n++) {
+            const View& view = views[n];
+            const Mat& tells = told_[n - 1];
+            plains.push_back(
+                ew([](float a, float t, float c) { return (a - t) * c; }, aparts[n - 1], tells, counts_[n]));
+            Mat seen = ew([](float f, float l, float t, float c) { return c > 0 ? f - (l + t) : -INF; }, views[0].light,
+                          view.light, resize(tells, wd, ht, cv::INTER_LINEAR), counts_full[n]);
+            if (most.empty())
+                most = seen;
+            else
+                cv::max(most, seen, most);
+            owns.push_back(own(fine_, fines[n - 1], resize(tells, wf, hf, cv::INTER_LINEAR), counts_fine[n]));
+            says.push_back(
+                ew([](float s, float t, float c) { return std::max(s + t, 0.f) * c; }, lights[n - 1], tells, counts_[n]));
         }
-        if (!where.empty()) {
-            whole = static_cast<double>(median(where));
-            // A reflection only adds light: with the room in the glass all
-            // over one side view, that one is the lighter of the two
-            // everywhere and the work is what the other shows.
-            double each = std::min(mean_of(more_), mean_of(less_));
-            if (each <= NOT_ONE_EACH) whole = 0.0;
+        Mat alone_ = said(owns, counts_fine, fine_);
+        Mat glare = said(plains, counts_, first);
+        if (says.size() == 2) {
+            // Unless one of the two has a reflection of its own there.
+            auto [only, second] =
+                one(says, plains, ew([](float a, float b) { return std::min(a, b); }, counts_[1], counts_[2]));
+            glare = ew([](float g, float m) { return g + m; }, glare, more(plains, glare, only, second, first));
+            Mat only_fine = resize(only, wf, hf, cv::INTER_LINEAR);
+            Mat second_fine = resize(second, wf, hf, cv::INTER_LINEAR);
+            alone_ =
+                ew([](float a, float m) { return a + m; }, alone_, more(owns, alone_, only_fine, second_fine, fine_));
         }
-    }
-    const float from = static_cast<float>(ALONE_FROM), from_of = static_cast<float>(ALONE_FROM_OF);
-    const float most_of = static_cast<float>(ALONE_MOST);
-    alone_ = ew([=](float a, float f) { return std::min(std::max(a - (from + from_of * f), 0.f), f * most_of); },
-                alone_, fine_);
-    // A pixel or two by itself is grain.
-    int few = odd(3, wf * ALONE_GRAIN);
-    alone_ = blur(opened(alone_, square(few)), 0.7);
-    Mat out = ew([](float v) { return std::max(v, 0.f); }, resize(alone_, wd, ht, cv::INTER_CUBIC));
-    // Drawn from the plain places about, it is no more on a place than the
-    // place itself has over what some side view tells there.
-    most = blur(ew([](float v) { return std::isfinite(v) ? v : 0.f; }, most), 1.0);
-    out = ew([](float o, float m, float l) { return std::min(std::max(std::min(o, m), 0.f), l); }, out, most,
-             views[0].light);
+        if (views.size() < 3) {
+            // One side view has reflections of its own, and nothing to say
+            // which of the two a difference is.
+            alone_ = zeros(alone_);
+            glare = zeros(glare);
+        }
+        // How far the side views are from telling one work (of what they tell).
+        Drawn is;
+        is.differ = zeros(h, w);
+        const float dark = static_cast<float>(GLARE_DARK);
+        if (says.size() > 1) {
+            is.differ = ew([dark](float d, float s) { return d / (s / 2 + dark); },
+                           sum3(ew([](float a, float b) { return std::abs(a - b); }, says[0], says[1])),
+                           sum3(ew([](float a, float b) { return a + b; }, says[0], says[1])));
+            Mat by = ew([dark](float d, float s) { return d / (s / 2 + dark); },
+                        sum3(ew([](float a, float b) { return b - a; }, lights[0], lights[1])),
+                        sum3(ew([](float a, float b) { return a + b; }, lights[0], lights[1])));
+            std::vector<float> where, more_, less_;
+            for (int y = 0; y < h; y++) {
+                const float* c1 = counts_[1].ptr<float>(y);
+                const float* c2 = counts_[2].ptr<float>(y);
+                const float* d = is.differ.ptr<float>(y);
+                const float* b = by.ptr<float>(y);
+                for (int x = 0; x < w; x++)
+                    if (c1[x] == 1 && c2[x] == 1) {
+                        where.push_back(d[x]);
+                        more_.push_back(std::max(b[x], 0.f));
+                        less_.push_back(std::max(-b[x], 0.f));
+                    }
+            }
+            if (!where.empty()) {
+                is.whole = static_cast<double>(median(where));
+                // A reflection only adds light: with the room in the glass
+                // all over one side view, that one is the lighter of the
+                // two everywhere and the work is what the other shows.
+                double each = std::min(mean_of(more_), mean_of(less_));
+                if (each <= NOT_ONE_EACH) is.whole = 0.0;
+            }
+        }
+        const float from = static_cast<float>(ALONE_FROM), from_of = static_cast<float>(ALONE_FROM_OF);
+        const float most_of = static_cast<float>(ALONE_MOST);
+        alone_ = ew([=](float a, float f) { return std::min(std::max(a - (from + from_of * f), 0.f), f * most_of); },
+                    alone_, fine_);
+        // A pixel or two by itself is grain.
+        int few = odd(3, wf * ALONE_GRAIN);
+        alone_ = blur(opened(alone_, square(few)), 0.7);
+        Mat out = ew([](float v) { return std::max(v, 0.f); }, resize(alone_, wd, ht, cv::INTER_CUBIC));
+        // Drawn from the plain places about, it is no more on a place than
+        // the place itself has over what some side view tells there.
+        most = blur(ew([](float v) { return std::isfinite(v) ? v : 0.f; }, most), 1.0);
+        is.out = ew([](float o, float m, float l) { return std::min(std::max(std::min(o, m), 0.f), l); }, out, most,
+                    views[0].light);
+        is.glare = glare;
+        return is;
+    };
 
-    // A lamp is light of every colour, and no narrow thing.
-    const float glare_at = static_cast<float>(GLARE), colour_at = static_cast<float>(GLARE * GLARE_COLOUR);
-    Mat lamp = ew([=](float most_, float least_) { return (most_ >= glare_at && least_ >= colour_at) ? 1.f : 0.f; },
-                  max3(glare), min3(glare));
+    // A lamp is light of every colour, and no narrow thing; and only where
+    // the side views tell one work under it.
     int near = odd(3, w * GLARE_NEAR);
-    Mat burnt = opened(lamp, square(near));
-    // And only where the side views tell one work under it.
-    Mat is = burnt > 0, which;
-    int some = cv::connectedComponents(is, which);
-    for (int each = 1; each < some; each++) {
-        std::vector<float> there;
-        for (int y = 0; y < h; y++)
-            for (int x = 0; x < w; x++)
-                if (which.at<int>(y, x) == each) there.push_back(differ.at<float>(y, x));
-        if (static_cast<double>(median(there)) > GLARE_DIFFER) burnt.setTo(0, which == each);
-    }
+    const float glare_at = static_cast<float>(GLARE), colour_at = static_cast<float>(GLARE * GLARE_COLOUR);
+    auto lamp = [&](const Mat& glare, const Mat& differ, const Mat* within) {
+        Mat lit_ = ew([=](float most_, float least_) { return (most_ >= glare_at && least_ >= colour_at) ? 1.f : 0.f; },
+                      max3(glare), min3(glare));
+        Mat burnt = opened(lit_, square(near));
+        if (within) burnt.setTo(0, *within <= 0);
+        Mat is = burnt > 0, which;
+        int some = cv::connectedComponents(is, which);
+        for (int each = 1; each < some; each++) {
+            std::vector<float> there;
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                    if (which.at<int>(y, x) == each) there.push_back(differ.at<float>(y, x));
+            if (static_cast<double>(median(there)) > GLARE_DIFFER) burnt.setTo(0, which == each);
+        }
+        return burnt;
+    };
+
     Alone result;
-    result.alone = out;
-    result.differ = whole;
-    result.told = told_;
+    result.told = tell(nullptr);
+    Drawn plain = drawn(result.told);
+    result.alone = plain.out;
+    result.differ = plain.whole;
+    Mat found = lamp(plain.glare, plain.differ, nullptr);
+    if (!any(found)) return result;
+    // Told again without the places the lamp's light reaches; the lamp no
+    // wider than it was found.
+    Mat reach = lit(plain.glare, found);
+    result.told = tell(&reach);
+    Drawn again = drawn(result.told);
+    result.alone = again.out;
+    Mat burnt = lamp(again.glare, again.differ, &found);
     if (!any(burnt)) return result;
     Mat patch = blur(dilate(burnt, square(near)), near / 3.0);
     patch = ew([](float v) { return clipf(v, 0.f, 1.f); }, resize(patch, wd, ht, cv::INTER_LINEAR));
     // The work as the side views tell it there. Where no side view shows
     // the place (the frame's side) nothing is put in.
-    auto [work, shown_] = from_sides(views, told_, GLARE_BLACK);
+    auto [work, shown_] = from_sides(views, result.told, GLARE_BLACK);
     result.swap = std::make_pair(work, ew([](float p, float s) { return p * s; }, patch, shown_));
     return result;
 }

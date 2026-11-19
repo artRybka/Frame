@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.145.260
+
+- Skan ramki e-papier nie ma już fioletowej łatki w miejscu lampy
+  („zobacz na łatkę w górnej części ekranu po zasłonięciu lampy”). Na
+  matowym ekranie lampa miała szeroką poświatę, w barwach karty koloru
+  liliową, i to poświata ustalała, czym zdjęcie na wprost różni się od
+  bocznych. Gdy w skanie jest lampa, liczymy to teraz jeszcze raz bez
+  miejsc, do których sięga jej światło: poświata schodzi razem z lampą,
+  a to, co wstawiamy pod lampę ze zdjęć bocznych, ma barwę dzieła.
+- Lampa nie jest przy tym szersza niż dotąd. Pierwsza wersja poprawki
+  szukała jej od nowa i u Nikifora wstawiała ze zdjęć bocznych także to,
+  co pierwsze zdjęcie pokazuje przez poświatę: jasne wcięcie przy
+  zielonym pasie i rozmyte „W” przy ramie („Dwa nieidealne miejsca na
+  Nikiforze”). Teraz oba miejsca są czyste, blady obłok obok nich
+  zniknął, a jasna smuga pod lampą na odbitce też.
+- Skany bez lampy wychodzą takie same co do piksela (sprawdzone na
+  wszystkich 54 zachowanych skanach). Olejne z połyskiem różnią się o
+  kilka poziomów w miejscu połysku.
+- Karta koloru działa mocniej: jasność i kontrast idą w 3/4 drogi od
+  pomiaru do tego, co zrobił telefon („tak, wolę mocniej - 3/4 w stronę
+  telefonu”), dotąd w połowie. Barwy i balans bieli nadal ustala karta.
+- Skany z lampą i skany z kartą koloru z ostatnich dwóch tygodni zrobią
+  się od nowa po aktualizacji serwera, same.
+- Dzieło leżące na stole da się zeskanować tak jak to na ścianie („może
+  także gdy poziomo - np. odbitka leżąca na stole”). Gdy telefon patrzy
+  w dół, pochylenie mówi czujnik: trzymany poziomo robi zdjęcie mimo
+  nierównego obrysu, a gdy jest przechylony, pomocnik prosi „Trzymaj go
+  poziomo, nad środkiem dzieła.”
+- Aplikacja mówi serwerowi, którą wersją składania zrobiła skan. Skan z
+  aplikacji starszej niż serwer zostanie po starcie serwera złożony
+  jeszcze raz z zachowanych zdjęć, więc kolejność aktualizacji nie ma
+  znaczenia.
+- Skan z lampą trwa na telefonie o około sekundę dłużej (szacunek, czas
+  odczytam z dziennika po Twoich skanach).
+
 ## 1.145.259
 
 - Obiektyw prostuje teraz sam iPhone („prostowanie obiektywu. Czy tego

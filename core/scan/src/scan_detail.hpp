@@ -74,7 +74,7 @@ struct Alone {
     std::vector<Mat> told;
 };
 Alone alone(const std::vector<View>& views);
-Mat told(const Mat& side, const Mat& apart, const Mat& counts, const Mat& first);
+Mat told(const Mat& side, const Mat& apart, const Mat& counts, const Mat& first, const Mat* reach = nullptr);
 Mat own(const Mat& first, const Mat& side, const Mat& tells, const Mat& counts);
 std::pair<Mat, Mat> one(const std::vector<Mat>& says, const std::vector<Mat>& plains, const Mat& counts);
 std::vector<std::pair<Mat, Mat>> tellings(const std::vector<View>& views, const std::vector<Mat>& told,

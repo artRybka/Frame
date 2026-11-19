@@ -28,7 +28,10 @@ uv run mypy src
   When what the scan's merging (`imaging/reflections.py`, `imaging/glare.py`)
   makes of the same photographs changes, raise `MERGING` in `own_works.py`:
   his works scanned in the last two weeks are then made again from their
-  kept photographs after the update.
+  kept photographs after the update. Raise `PhoneScan.merging` in the app
+  with it once the core merges the same (`tests/test_scan_core.py` holds
+  the two): the phone says it with every scan, and a scan made by an app
+  that says less is made again on the server after its next start.
   A work of his own is kept without its lens's bend (`imaging/lens.py`):
   only a lens that was measured (`BENDS`, by the photograph's EXIF model),
   and only when the work is added or made again. The waiting photograph
