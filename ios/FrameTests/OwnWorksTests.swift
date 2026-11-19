@@ -189,6 +189,73 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertNil(OwnLens(table: none, centre: middle, reference: reference, orientation: .right))
     }
 
+    /// The server says with a photograph what its lens's bend is, where it
+    /// knows (Mateusz 2026-11-19 09:52 UTC: "prostowanie obiektywu. Czy
+    /// tego także nie lepiej robić na iPhone?"): the measured number, or
+    /// the camera's own table. He is shown the photograph without it and
+    /// sets the corners on that; they go on as they are on the one taken.
+    @MainActor
+    func testThePhotographComesWithItsLensBendAndTheCornersGoAsTaken() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let head = #"{"token": "0123456789abcdef01234567", "width": 6048, "height": 8064, "shape": "", "phone": true"#
+        let number = head + #", "straight": {"k1": -0.023, "table": [], "centre": [0.5, 0.5]}}"#
+        let table = head + #", "straight": {"k1": 0.0, "table": [0.0, -0.001, -0.004, -0.009, -0.016, -0.025, -0.03, -0.031], "centre": [0.512, 0.488]}}"#
+        let measured = try decoder.decode(OwnIncoming.self, from: Data(number.utf8))
+        XCTAssertEqual(measured.straight, OwnBend(k1: -0.023))
+        let own = try XCTUnwrap(decoder.decode(OwnIncoming.self, from: Data(table.utf8)).straight)
+        XCTAssertEqual(own.table.count, 8)
+        XCTAssertEqual(own.centreX, 0.512)
+        XCTAssertEqual(own.centreY, 0.488)
+        // Not known, or a server that straightens the work itself: none.
+        XCTAssertNil(try decoder.decode(OwnIncoming.self, from: Data((head + #", "straight": null}"#).utf8)).straight)
+        let plain = try decoder.decode(OwnIncoming.self, from: Data((head + "}").utf8))
+        XCTAssertNil(plain.straight)
+        // A middle that is none is the photograph's.
+        XCTAssertEqual(OwnBend(k1: -0.02, centre: []).centreX, 0.5)
+        XCTAssertEqual(try decoder.decode(OwnBend.self, from: Data(#"{"k1": -0.02}"#.utf8)), OwnBend(k1: -0.02))
+
+        // The corners: a barrel straightened, the work's corners lie
+        // further out on what he is shown; said back as taken.
+        let corners = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+        let shown = try XCTUnwrap(OwnWorkFlow.shown(corners, of: measured))
+        XCTAssertLessThan(shown[0][0], 0.1)
+        XCTAssertGreaterThan(shown[2][1], 0.9)
+        let taken = try XCTUnwrap(OwnWorkFlow.taken(shown, of: measured))
+        for (back, was) in zip(taken, corners) {
+            XCTAssertEqual(back[0], was[0], accuracy: 3e-5)
+            XCTAssertEqual(back[1], was[1], accuracy: 3e-5)
+        }
+        // No bend known: as they are, either way; none stay none.
+        XCTAssertEqual(OwnWorkFlow.shown(corners, of: plain), corners)
+        XCTAssertEqual(OwnWorkFlow.taken(corners, of: plain), corners)
+        XCTAssertNil(OwnWorkFlow.shown(nil, of: measured))
+    }
+
+    /// What he is shown of a photograph is without its lens's bend too:
+    /// the same picture, its lines where the server's work will have them.
+    func testWhatHeIsShownIsWithoutTheLensBend() throws {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let size = CGSize(width: 90, height: 120)
+        let drawn = UIGraphicsImageRenderer(size: size, format: format).image { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+            UIColor.black.setFill()
+            context.fill(CGRect(x: 6, y: 8, width: 78, height: 104))
+        }
+        let straight = try XCTUnwrap(OwnPicture.straight(drawn, by: OwnBend(k1: -0.2)))
+        XCTAssertEqual(straight.size, drawn.size)
+        XCTAssertEqual(straight.cgImage?.width, 90)
+        XCTAssertEqual(straight.cgImage?.height, 120)
+        XCTAssertNotEqual(straight.pngData(), drawn.pngData())
+        // No bend to speak of: the picture as it was, to a level.
+        let same = try XCTUnwrap(OwnPicture.straight(drawn, by: OwnBend(k1: 1e-12)))
+        XCTAssertEqual(same.size, drawn.size)
+        // A table that is none: nothing shown of it.
+        XCTAssertNil(OwnPicture.straight(drawn, by: OwnBend(table: [0.01])))
+    }
+
     /// The table goes to the server with the photograph it is of; the
     /// demo's photographs, and one picked from Photos, have none.
     func testThePhotographIsSentWithItsLensOrWithout() async throws {

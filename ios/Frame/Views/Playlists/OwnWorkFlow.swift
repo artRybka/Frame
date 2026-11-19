@@ -1,3 +1,4 @@
+import Accelerate
 import CoreImage
 import CoreImage.CIFilterBuiltins
 import ImageIO
@@ -47,8 +48,16 @@ struct OwnWorkFlow: View {
     @State private var found: [[Double]]?
     /// They are the rectangle the camera followed, not the server's answer.
     @State private var foundByCamera = false
-    /// The corners he went on with; nil, the photograph whole.
+    /// The corners he went on with; nil, the photograph whole. On the
+    /// photograph as taken, which the server, the merge and the LiDAR's
+    /// depth go by.
     @State private var corners: [[Double]]?
+    /// The same as they are on the pictures shown: where the lens's bend
+    /// is known (`OwnIncoming.straight`) he sees the photograph without
+    /// it, as the work will be kept, and sets the corners on that (Mateusz
+    /// 2026-11-19 09:52 UTC: "prostowanie obiektywu. Czy tego także nie
+    /// lepiej robić na iPhone?").
+    @State private var cutShown: [[Double]]?
     @State private var cutBy = "auto"
     /// The work cut out on the phone, for the description's header.
     @State private var picture: UIImage?
@@ -235,7 +244,6 @@ struct OwnWorkFlow: View {
                 if !shots.sides.isEmpty { findingText = "Szukam dzieła na zdjęciu…" }
                 // No key, or Opus could not: he sets the corners himself.
                 if let looked = await sending.looked() { sent = looked }
-                incoming = sent
                 // A colour chart beside the work: the server set the
                 // photograph's colours by it, and that photograph is the
                 // one shown from here on ("Kadr", "Na wprost", the header).
@@ -244,12 +252,25 @@ struct OwnWorkFlow: View {
                    let trued = UIImage(data: data) {
                     photo = trued
                 }
+                // The lens's bend is known: from here on he is shown the
+                // photograph without it, as the work will be kept, and
+                // the phone takes it out of the scan it makes. Where what
+                // is shown cannot be straightened nothing is, and the
+                // server straightens the work as before.
+                if let bend = sent.straight {
+                    let bowed = photo ?? image
+                    let made = await Task.detached(priority: .userInitiated) {
+                        OwnPicture.straight(bowed, by: bend)
+                    }.value
+                    if let made { photo = made } else { sent.straight = nil }
+                }
+                incoming = sent
                 // Where the model has no answer for a rectangle, the one the
                 // camera followed (Mateusz 2026-11-16: "czy to potrzebne
                 // skoro mamy już dane z iPhone?"): a start nearer than the
                 // photograph whole.
                 let seen = sent.corners == nil && (sent.shape.isEmpty || sent.shape == "rectangle") ? shots.outline : nil
-                found = sent.corners ?? seen
+                found = Self.shown(sent.corners ?? seen, of: sent)
                 foundByCamera = seen != nil
                 if scanned {
                     let token = sent.token
@@ -263,8 +284,12 @@ struct OwnWorkFlow: View {
                     let may = charted ? sent.tables == true : sent.phone == true
                     let within = may ? PhoneScan.valid(sent.corners) ?? PhoneScan.valid(shots.outline) : nil
                     let here = within != nil && OwnPhoneScan.can(shots, size: (sent.width, sent.height))
+                    let straight = sent.straight
                     merging = Task {
-                        if here, let within, await scanHere(shots, token: token, corners: within, charted: charted) { return }
+                        if here, let within,
+                           await scanHere(shots, token: token, corners: within, charted: charted, straight: straight) {
+                            return
+                        }
                         // He went back to the camera: nothing is asked of the server.
                         guard !Task.isCancelled else { return }
                         await merge(token: token, outline: shots.outline, trace: shots.trace)
@@ -293,6 +318,13 @@ struct OwnWorkFlow: View {
                   let image = UIImage(data: data)
             else { return }
             made = image
+            // The server's scan is of the photographs as taken (it
+            // straightens the work as it is added): shown as the rest is.
+            if let bend = incoming?.straight, incoming?.token == token {
+                made = await Task.detached(priority: .userInitiated) {
+                    OwnPicture.straight(image, by: bend)
+                }.value ?? image
+            }
         }
         // He may have gone back to the camera meanwhile.
         guard incoming?.token == token, !Task.isCancelled else { return }
@@ -304,7 +336,9 @@ struct OwnWorkFlow: View {
     /// as soon as it is made (some 5 s; the server was 34 s at it) and
     /// sent to the server meanwhile. False when the phone could not make
     /// it: the server then does.
-    private func scanHere(_ shots: OwnShots, token: String, corners: [[Double]], charted: Bool) async -> Bool {
+    private func scanHere(
+        _ shots: OwnShots, token: String, corners: [[Double]], charted: Bool, straight: OwnBend?
+    ) async -> Bool {
         let scanning = self.scanning, heat = ProcessInfo.processInfo.thermalState
         // A colour chart beside the work: the phone's own photographs are
         // put in its colours first, by what the server read of it.
@@ -313,7 +347,8 @@ struct OwnWorkFlow: View {
             guard let given = try? await model.backend.ownChartTables(token: token) else { return false }
             chart = given
         }
-        guard let made = await scanning.make(shots, corners: corners, chart: chart) else { return false }
+        guard let made = await scanning.make(shots, corners: corners, chart: chart, straight: straight)
+        else { return false }
         // He may have gone back to the camera meanwhile.
         guard incoming?.token == token, !Task.isCancelled else { return true }
         await scanMade(made, by: scanning, token: token, heat: (heat, ProcessInfo.processInfo.thermalState))
@@ -434,7 +469,9 @@ struct OwnWorkFlow: View {
 
     private func cutChosen(_ chosen: [[Double]]) async -> Bool {
         let whole = chosen == [[0, 0], [1, 0], [1, 1], [0, 1]]
-        corners = whole ? nil : chosen
+        // Set on the photograph shown; said as on the one taken.
+        cutShown = whole ? nil : chosen
+        corners = whole ? nil : incoming.flatMap { Self.taken(chosen, of: $0) } ?? chosen
         cutBy = chosen == found ? "auto" : "owner"
         guard incoming != nil else { return false }
         // The scan is made while he sets the corners; what is left of
@@ -460,14 +497,14 @@ struct OwnWorkFlow: View {
         if merged != nil, let photo {
             // What the scan gave: the work alone, as he cut it (the same
             // twice where the side photographs took nothing off).
-            let both = (OwnPicture.cut(photo, corners: corners), OwnPicture.cut(clean ?? photo, corners: corners))
+            let both = (OwnPicture.cut(photo, corners: cutShown), OwnPicture.cut(clean ?? photo, corners: cutShown))
             withAnimation(.easeInOut(duration: 0.3)) { compared = both }
             return true
         }
         if incoming?.chart == nil, let photo {
             // No colour chart beside it: the work alone, for him to set
             // its white balance by.
-            let one = OwnPicture.cut(photo, corners: corners)
+            let one = OwnPicture.cut(photo, corners: cutShown)
             withAnimation(.easeInOut(duration: 0.3)) { compared = (one, one) }
             return true
         }
@@ -512,7 +549,7 @@ struct OwnWorkFlow: View {
             return true
         }
         if let shown = clean ?? photo {
-            picture = OwnBalance.tinted(OwnPicture.cut(shown, corners: corners), balance: balance)
+            picture = OwnBalance.tinted(OwnPicture.cut(shown, corners: cutShown), balance: balance)
         }
         // The LiDAR's size between his corners (none for the photograph whole).
         measured = corners.flatMap { depth?.size($0) }
@@ -637,6 +674,22 @@ struct OwnWorkFlow: View {
         }
     }
 
+    /// Corners on a photograph as taken (the server's, the camera's) as
+    /// they are on the photograph shown: without its lens's bend where
+    /// that is known (the server's `lens.moved`).
+    static func shown(_ corners: [[Double]]?, of incoming: OwnIncoming) -> [[Double]]? {
+        guard let corners, let bend = incoming.straight else { return corners }
+        return (try? ScanCore.moved(corners, columns: incoming.width, rows: incoming.height, by: bend)) ?? corners
+    }
+
+    /// The other way: corners he set on the photograph shown as they are
+    /// on the one taken (the server's `lens.bent`).
+    static func taken(_ corners: [[Double]]?, of incoming: OwnIncoming) -> [[Double]]? {
+        guard let corners, let bend = incoming.straight else { return corners }
+        return (try? ScanCore.moved(corners, columns: incoming.width, rows: incoming.height, by: bend, back: true))
+            ?? corners
+    }
+
     /// The camera's photograph as it was held: pixels upright, so the
     /// corners mean the same on the phone and on the server.
     static func upright(_ image: UIImage) -> UIImage {
@@ -741,6 +794,64 @@ enum OwnPicture {
         ]
         guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
         return UIImage(cgImage: cg, scale: 1, orientation: .up)
+    }
+
+    /// `image` as a lens without `bend` would have drawn it (the server's
+    /// `lens.straight`, by the scan's core): what the steps show of a
+    /// photograph whose work the server keeps without its lens's bend. nil
+    /// where it could not be made. A moment of all the phone's cores:
+    /// never on the main thread.
+    static func straight(_ image: UIImage, by bend: OwnBend) -> UIImage? {
+        // (What the steps show is upright already: `OwnWorkFlow.upright`.)
+        guard image.imageOrientation == .up, let cg = image.cgImage else { return nil }
+        let columns = cg.width, rows = cg.height
+        guard columns > 0, rows > 0 else { return nil }
+        // In the picture's own colours where they are plain ones; the
+        // camera's wide ones (and what was drawn of them, which runs past
+        // a byte's ends) in Display P3, which holds them.
+        var spaces: [CGColorSpace] = []
+        if let own = cg.colorSpace, own.model == .rgb, own.supportsOutput, !own.isWideGamutRGB { spaces.append(own) }
+        if let wide = CGColorSpace(name: CGColorSpace.displayP3) { spaces.append(wide) }
+        spaces.append(CGColorSpaceCreateDeviceRGB())
+        var drawing: (context: CGContext, colours: CGColorSpace)?
+        for space in spaces where drawing == nil {
+            if let made = CGContext(
+                data: nil, width: columns, height: rows, bitsPerComponent: 8, bytesPerRow: columns * 4,
+                space: space, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+            ) {
+                drawing = (made, space)
+            }
+        }
+        guard let (context, colours) = drawing else { return nil }
+        context.interpolationQuality = .none  // pixel for pixel
+        context.draw(cg, in: CGRect(x: 0, y: 0, width: columns, height: rows))
+        guard let drawn = context.data else { return nil }
+        var pixels = [UInt8](repeating: 0, count: rows * columns * 3)
+        let rowBytes = context.bytesPerRow
+        let converted = pixels.withUnsafeMutableBytes { raw -> vImage_Error in
+            guard let base = raw.baseAddress else { return kvImageNullPointerArgument }
+            var from = vImage_Buffer(
+                data: drawn, height: vImagePixelCount(rows), width: vImagePixelCount(columns), rowBytes: rowBytes
+            )
+            var to = vImage_Buffer(
+                data: base, height: vImagePixelCount(rows), width: vImagePixelCount(columns), rowBytes: columns * 3
+            )
+            return vImageConvert_RGBA8888toRGB888(&from, &to, vImage_Flags(kvImageNoFlags))
+        }
+        guard converted == kvImageNoError else { return nil }
+        do {
+            try ScanCore.straight(&pixels, rows: rows, columns: columns, by: bend)
+        } catch {
+            return nil
+        }
+        guard let provider = CGDataProvider(data: Data(pixels) as CFData),
+              let made = CGImage(
+                  width: columns, height: rows, bitsPerComponent: 8, bitsPerPixel: 24, bytesPerRow: columns * 3,
+                  space: colours, bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
+                  provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent
+              )
+        else { return nil }
+        return UIImage(cgImage: made, scale: image.scale, orientation: .up)
     }
 
     /// Whether the server reads such a file as it is (JPEG, HEIC): others
