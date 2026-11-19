@@ -558,6 +558,13 @@ def test_szukaj_finds_the_works_like_one_nearest_first(
         assert ids(like="met:1", artist="Anna A") == ["met:4", "met:3"]
         assert ids(like="met:1", sort="artist") == ["met:4", "met:2", "met:3"]
         assert ids(like="met:9") == []
+        assert ids(like="met:1", like_further=3) == ["met:4", "met:2", "met:3"]
+        assert (
+            client.get(
+                "/api/library/items", params={"like": "met:1", "like_further": 4}
+            ).status_code
+            == 422
+        )
         # The owner's look at how near they lie, for where to stop.
         near = client.get("/api/debug/looks/met:1", params={"count": 3, "by": "style"}).json()
         assert [i["id"] for i in near["items"]] == ["met:4", "met:2", "met:3"]
@@ -589,6 +596,10 @@ def test_podobne_do_stops_where_the_works_are_no_longer_near(
     assert len(found.enough(many)) == 31  # 0.80 … 0.50
     assert len(found.enough(many, "subject")) == 23  # 0.80 … 0.58
     assert len(found.enough(many, "style")) == 24  # 0.80 … 0.57
+    # Scrolled to the list's end: a step less near each time, three at most.
+    assert len(found.enough(many, further=1)) == 36  # 0.80 … 0.45
+    assert len(found.enough(many, "subject", further=2)) == 33  # 0.80 … 0.48
+    assert len(found.enough(many, further=3)) == len(found.enough(many, further=9)) == 40
     far = near(*[0.46 - 0.01 * n for n in range(20)])  # his own works: none near
     assert len(found.enough(far)) == ALIKE_LEAST == 8
     assert len(found.enough(far[:5])) == 5

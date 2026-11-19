@@ -812,6 +812,12 @@ class PlaylistRules(BaseModel):
     #: "Podobne stylem"): "" both its subject and its style, "subject" or
     #: "style" alone.
     like_by: Literal["", "subject", "style"] = ""
+    #: How many steps of nearness past ``like``'s own floor are asked
+    #: (``looks.ALIKE_STEP`` each): Szukaj's list, once scrolled to its end,
+    #: brings the less near ones (Mateusz 2026-11-19: "po obecnym limicie
+    #: dodać kwadraciki i doczytanie po kolejnym machnięciu"). A playlist
+    #: keeps 0.
+    like_further: int = Field(default=0, ge=0, le=3)
 
     @model_validator(mode="before")
     @classmethod

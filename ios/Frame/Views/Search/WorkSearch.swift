@@ -59,6 +59,14 @@ final class WorkSearch {
     @ObservationIgnored private var loader: Task<Void, Never>?
     /// The catalogue's question, for its next pages.
     @ObservationIgnored private var catalogueQuery: LibraryQuery?
+    /// "Podobne do": the steps of nearness past its own floor asked so far
+    /// (`LibraryQuery.likeFurther`). Its list at an end, the squares come
+    /// and the next step brings the less near (Mateusz 2026-11-19: "po
+    /// obecnym limicie dodać kwadraciki i doczytanie po kolejnym
+    /// machnięciu").
+    private var likeFurther = 0
+    /// The server's most steps (`looks.ALIKE_FURTHER`).
+    static let likeSteps = 3
     @ObservationIgnored private weak var model: AppModel?
 
     /// How long a round that brought nothing waits before the next.
@@ -104,7 +112,13 @@ final class WorkSearch {
     /// The catalogue has works not yet asked for.
     var catalogueMore: Bool {
         guard let catalogue else { return false }
-        return catalogue.items.count < catalogue.total
+        return catalogue.items.count < catalogue.total || likeFurtherLeft
+    }
+
+    /// "Podobne do" has less near works still to ask for.
+    private var likeFurtherLeft: Bool {
+        guard let like = searched?.rules.like, !like.isEmpty else { return false }
+        return likeFurther < Self.likeSteps
     }
 
     /// The catalogue or a museum may still have more.
@@ -143,6 +157,7 @@ final class WorkSearch {
         museumsWaiting = false
         emptyRounds = 0
         catalogueQuery = nil
+        likeFurther = 0
         guard !key.isEmpty, let model else {
             catalogue = nil
             searching = false
@@ -262,6 +277,10 @@ final class WorkSearch {
     /// catalogue changed meanwhile) ends it where it is.
     private func moreOfCatalogue(_ key: Key) async {
         guard let model, var query = catalogueQuery, let had = catalogue else { return }
+        // "Podobne do" at the end of its works: the next step, less near,
+        // after those already here (the server's order is the same).
+        let further = had.items.count >= had.total && !query.like.isEmpty
+        if further { query.likeFurther += 1 }
         query.offset = had.items.count
         do {
             let page = try await model.backend.items(query)
@@ -269,7 +288,13 @@ final class WorkSearch {
             let known = Set(now.items.map(\.id))
             let new = page.items.filter { !known.contains($0.id) }
             now.items += new
-            if new.isEmpty { now = ItemPage(total: now.items.count, items: now.items) }
+            if further {
+                catalogueQuery = query
+                likeFurther = query.likeFurther
+                now = ItemPage(total: max(page.total, now.items.count), items: now.items)
+            } else if new.isEmpty {
+                now = ItemPage(total: now.items.count, items: now.items)
+            }
             catalogue = now
         } catch {
             // Asked again a while later, while the end is still near.

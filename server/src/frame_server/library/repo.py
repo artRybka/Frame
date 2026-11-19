@@ -737,7 +737,7 @@ class Library:
         #: each, nearest first (``PlaylistRules.like``, ``like_by``); None
         #: when that cannot be asked now. The service puts
         #: :meth:`.looks.Looks.alike` here.
-        self.like_near: Callable[[str, str], list[str] | None] | None = None
+        self.like_near: Callable[[str, str, int], list[str] | None] | None = None
         #: The one connection to the disk (:meth:`_db`). Taken after
         #: ``_lock`` when both are held, never before it.
         self._db_lock = threading.RLock()
@@ -1793,7 +1793,7 @@ class Library:
             # The works that look like this one, nearest first, those the
             # other rules find (Mateusz 2026-11-13: "Szukaj podobnych").
             ranked = (
-                self.like_near(rules.like.strip(), rules.like_by)
+                self.like_near(rules.like.strip(), rules.like_by, rules.like_further)
                 if self.like_near is not None
                 else None
             )
@@ -1808,7 +1808,9 @@ class Library:
                 alike_ids.update([item_id] if kin is None else [c.id for c in alike.groups[kin]])
             if among is not None:
                 alike_ids &= set(among)
-            unlike = rules.model_copy(update={"like": "", "like_by": "", "look": ""})
+            unlike = rules.model_copy(
+                update={"like": "", "like_by": "", "like_further": 0, "look": ""}
+            )
             found_alike = self._query(
                 unlike, "recent", seed, include_excluded, user, False, proposing, among=alike_ids
             )

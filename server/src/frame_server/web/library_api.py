@@ -306,6 +306,7 @@ def list_items(
     title: str = "",
     like: str = "",
     like_by: Literal["", "subject", "style"] = "",
+    like_further: Annotated[int, Query(ge=0, le=3)] = 0,
 ) -> ItemPage:
     """The catalogue's works for Szukaj's choices. ``look``: words for how
     the works look ("mglisty poranek nad wodą"), the other choices narrowing
@@ -335,6 +336,7 @@ def list_items(
         title=" ".join(title.split()),
         like=like.strip(),
         like_by=like_by if like.strip() else "",
+        like_further=like_further if like.strip() else 0,
     )
     if rules.look and not svc.looks.ready():
         raise HTTPException(409, "Szukanie wyglądem is not ready")
