@@ -287,10 +287,16 @@ def test_the_scans_photographs_are_all_put_in_the_charts_colours(service: FrameS
     photo = _photographed(_scene(_board(colorchecker.REFERENCE.astype(np.uint8))))
     seen = own.take(_jpeg(photo))
     assert seen.chart is not None and len(seen.chart) == 4
+    # The phone's own photographs are not in the chart's colours: the scan
+    # of these is the server's to make, and one the phone made is not taken.
+    assert seen.phone is False
     with Image.open(own.path(seen.token)) as img:
         assert _cast(np.asarray(img.convert("RGB")), "light") < 0.06
     # A side photograph has no chart read of its own: the first one's.
     own.side(seen.token, _jpeg(photo))
+    work = [(0.3, 0.3), (0.7, 0.3), (0.7, 0.7), (0.3, 0.7)]
+    with pytest.raises(ValueError, match="chart"):
+        own.merged_by_phone(seen.token, _jpeg(photo), work, 1, 0.05)
     with Image.open(own.incoming / f"{seen.token}-side1.jpg") as img:
         assert _cast(np.asarray(img.convert("RGB")), "light") < 0.06
     # The phone is told again when it asks for the work (no key: none found).
@@ -298,7 +304,7 @@ def test_the_scans_photographs_are_all_put_in_the_charts_colours(service: FrameS
 
     # No chart: the photograph as it came.
     plain = own.take(_jpeg(photo[:, :1300]))
-    assert plain.chart is None
+    assert plain.chart is None and plain.phone is True
     with Image.open(own.path(plain.token)) as img:
         assert _cast(np.asarray(img.convert("RGB")), "light") > 0.2
 

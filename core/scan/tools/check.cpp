@@ -344,6 +344,7 @@ static std::map<std::string, Step> steps() {
         held("rim", rim(c.views("in.0"), c.mats("in.1"), c.mat("in.2"), c.mat("in.3"), c.mat("in.4")), c.mat("out"),
              1e-4);
     };
+    s["_around"] = [](const Call& c) { held("around", around(c.mat("in.0")), c.mat("out")); };
     s["_level"] = [](const Call& c) {
         held("level", level(c.mat("in.0"), c.mat("in.1"), c.mat("in.2"), c.mat("in.3")), c.mat("out"), 1e-4);
     };

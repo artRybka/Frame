@@ -15,7 +15,7 @@ from frame_server.imaging.cut import valid
 STEPS = ['_marks', '_lay', '_settled', '_fine', '_off', '_field', '_about', '_even', '_hide', '_counts',
          '_alone', '_told', '_own', '_one', '_toned', '_outward', '_rim', '_tellings', '_from_sides',
          '_finer', '_reflection', '_apart', '_shared', '_kept', '_grain', '_mend', '_reach', '_line',
-         '_carried', '_shown', '_veiled', '_level', '_subtract']
+         '_carried', '_shown', '_veiled', '_level', '_around', '_subtract']
 #: Steps called very often: only so many of their calls are kept.
 FEW = {'_off': 3, '_fine': 4, '_about': 2, '_counts': 6, '_reach': 8, '_apart': 4, '_shared': 4, '_tellings': 3}
 

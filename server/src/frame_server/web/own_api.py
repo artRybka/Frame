@@ -5,17 +5,25 @@ work added with what he wrote (:mod:`frame_server.own_works`)."""
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from ..ai import AiUnavailable
 from ..imaging.cut import valid
 from ..library.models import Item
-from ..own_works import PHONE_BYTES, Description, Hints, Incoming, Merged
+from ..own_works import (
+    MERGED_BYTES,
+    PHONE_BYTES,
+    SIDES,
+    Description,
+    Hints,
+    Incoming,
+    Merged,
+)
 from ..service import FrameService
 from .deps import require_owner, service
 
@@ -127,6 +135,64 @@ async def merge(token: str, svc: Svc, ask: MergeAsk | None = None) -> Merged:
         return await run_in_threadpool(svc.own_works.merge, token, corners, outline, choice, trace)
     except LookupError as err:
         raise HTTPException(404, str(err)) from err
+
+
+class PhoneScan(BaseModel):
+    """What the phone made of a scan itself: the work's corners it merged
+    within, how many side photographs it laid over the first, how much of
+    the work's light it took off (0: nothing, and no picture comes), and
+    whether the photographs show no one flat work."""
+
+    corners: list[tuple[float, float]]
+    used: int = Field(ge=0, le=SIDES)
+    replaced: float = Field(ge=0, le=1)
+    doubt: bool = False
+    #: As :class:`MergeAsk` has it.
+    trace: dict[str, float] | None = Field(default=None, max_length=64)
+    #: What the phone noted of making it: how long each part took, on
+    #: what phone, with which app and core.
+    phone: dict[str, Any] | None = Field(default=None, max_length=32)
+
+
+@router.post("/own/photos/{token}/merged", response_model=Merged)
+async def merged(
+    token: str,
+    svc: Svc,
+    note: Annotated[str, Form()],
+    file: Annotated[UploadFile | None, File()] = None,
+) -> Merged:
+    """The scan the phone made of its own photographs (the same merging,
+    in a few seconds there), kept in the first photograph's place as
+    :func:`merge` keeps the server's: ``file`` the first photograph
+    without its reflections (a JPEG of its size), ``note`` a
+    :class:`PhoneScan` as JSON. 422 for what is no scan of this
+    photograph (its colours were set by a chart here, no side photographs
+    are with the server…): the phone then asks :func:`merge`."""
+    try:
+        told = PhoneScan.model_validate_json(note)
+    except ValidationError as err:
+        raise HTTPException(422, "the note is no scan's") from err
+    data = await file.read() if file is not None else None
+    if data is not None and len(data) > MERGED_BYTES:
+        raise HTTPException(413, "too large")
+    corners = _corners(told.corners)
+    assert corners is not None
+    try:
+        return await run_in_threadpool(
+            svc.own_works.merged_by_phone,
+            token,
+            data,
+            corners,
+            told.used,
+            told.replaced,
+            told.doubt,
+            told.trace,
+            told.phone,
+        )
+    except LookupError as err:
+        raise HTTPException(404, str(err)) from err
+    except ValueError as err:
+        raise HTTPException(422, str(err)) from err
 
 
 @router.post("/own/photos/{token}/single")
