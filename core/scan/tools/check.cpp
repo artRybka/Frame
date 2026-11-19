@@ -189,6 +189,17 @@ static std::map<std::string, Step> steps() {
         held("laid over", over, c.mat("out.0"), 1.0, true);
         held("where it lies", seen, c.mat("out.1"), 0.01, true);
     };
+    s["_rival"] = [](const Call& c) {
+        auto points = [&](const std::string& key) {
+            Mat table = c.mat(key);
+            std::vector<cv::Point2f> out;
+            for (int i = 0; i < table.rows; i++) out.emplace_back(table.at<float>(i, 0), table.at<float>(i, 1));
+            return out;
+        };
+        held("held by another laying", rival(points("in.0"), points("in.1"), c.m33("in.2"),
+                                             static_cast<int>(c.num("in.3"))),
+             c.num("out"));
+    };
     s["_lay"] = [](const Call& c) {
         auto v = lay(c.mat("in.0"), marks_of(c, "in.1"), c.mat("in.2"));
         if (c.none("out")) {

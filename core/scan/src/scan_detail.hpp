@@ -49,6 +49,7 @@ Mat linear(const Mat& img);
 Mat srgb(const Mat& light);
 Marks marks(const Mat& img);
 std::optional<View> lay(const Mat& front, const Marks& first, const Mat& photo);
+int rival(const std::vector<cv::Point2f>& src, const std::vector<cv::Point2f>& dst, const M33& found, int wide);
 std::pair<Mat, Mat> settled(const Mat& front, const Mat& side, const M33& found);
 Mat fine(const Mat& light);
 Mat off(const Mat& first, const Mat& other, int tile);

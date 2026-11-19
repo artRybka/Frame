@@ -172,6 +172,16 @@ from . import bands
 MATCH_SIDE = 2400
 #: Matches a side photograph needs to be laid over the first.
 MIN_MATCHES = 40
+#: A side photograph that can be laid over the first in two ways is not
+#: used (:func:`_rival`): a match the laying found puts farther than so
+#: much of the work's width from its place is none of that laying's (no
+#: place is moved farther when the photograph is settled,
+#: :data:`SETTLE_MOST`), and when another laying holds so many of those
+#: for each match of the one found (and no fewer than
+#: :data:`MIN_MATCHES`), part of what the two photographs show has moved
+#: between them.
+RIVAL_FAR = 0.04
+RIVAL = 0.25
 #: A side view is settled on the first by what its squares of so many
 #: pixels are off the first's, one round each (powers of two: the phase
 #: correlation is half a pixel out on other sizes).
@@ -787,8 +797,10 @@ def _lay(
 ) -> _View | None:
     """A side photograph laid over the work as the first shows it (with
     its ``marks``), or None when too little of them matches (another
-    work, a blur). ``theirs``: the photograph's own marks at the size it
-    is matched at (:func:`_matched`), where they were found already."""
+    work, a blur) or when they match in two ways (:func:`_rival`: part
+    of the work moved between the two). ``theirs``: the photograph's own
+    marks at the size it is matched at (:func:`_matched`), where they
+    were found already."""
     scale = _matched(photo)
     side = _resize(photo, scale)
     k1, d1 = marks
@@ -805,6 +817,8 @@ def _lay(
     if found is None or inliers is None or int(inliers.sum()) < MIN_MATCHES:
         return None
     ht, wd = front.shape[:2]
+    if _rival(src, dst, found, wd) >= max(MIN_MATCHES, RIVAL * int(inliers.sum())):
+        return None
     # The work's corners in the side photograph: all of it must be there,
     # and its taller side is the one the photograph was taken from.
     back = np.linalg.inv(found)
@@ -825,6 +839,47 @@ def _lay(
     return _View(
         _linear(over), -1 if lean > 0.03 else 1 if lean < -0.03 else 0, photo=photo, seen=seen
     )
+
+
+def _rival(src: Floats, dst: Floats, found: NDArray[Any], wide: int) -> int:
+    """How many of a side photograph's matches (its points ``src`` on the
+    first's ``dst``) another laying holds than the one ``found``, of a
+    work ``wide`` pixels across.
+
+    His MacBook's screen with a conversation running on its right half
+    (2026-11-19 19:35 UTC, "Co tu się wydarzyło?": a grey smear across
+    the top of the scan, a dark slab at its foot, shadows over the
+    lines of text). Thirteen seconds lay between the first photograph
+    and the one from the right, and the conversation had scrolled up a
+    quarter of the screen. That photograph's matches agreed on two
+    layings: 278 of them on the half that stood still, 275 on the text
+    that had moved. Which of two so near wins is a matter of the last
+    bit of the numbers: here the still half did, on his phone the text,
+    and the photograph lay a quarter of the screen too low. Its black
+    tile of icons, the menu bar and the dark above the screen were then
+    what the work is under the first photograph's "reflections", and a
+    quarter of the light went (24.6% there; 24.5% here, laid so by
+    hand, and the same picture to the blot).
+
+    One flat work that stood still is laid over in one way. The matches
+    the found laying puts far from their places (:data:`RIVAL_FAR`) are
+    wrong ones, here and there, and no other laying holds more than a
+    handful of them: 27 at the most in his 49 kept scans (3 for each
+    100 of the found laying's at the most), 158 in that photograph (57
+    for each 100). Each of the first photograph's points counts once: many
+    of a side photograph's points on one of them (the dark about a
+    screen) are held by a laying that folds the photograph into a
+    point, and are no rival."""
+    laid = cv2.perspectiveTransform(src[None].astype(np.float64), found)[0]
+    far = np.linalg.norm(laid - dst, axis=1) > RIVAL_FAR * wide
+    _, which, times = np.unique(dst, axis=0, return_inverse=True, return_counts=True)
+    far &= times[which.ravel()] == 1
+    if int(far.sum()) < MIN_MATCHES:
+        return 0
+    other, held = cv2.findHomography(src[far], dst[far], cv2.USAC_MAGSAC, 2.0)
+    if other is None or held is None:
+        return 0
+    return int(held.sum())
 
 
 def _settled(front: Image, side: Image, found: NDArray[Any]) -> tuple[Image, Floats]:
