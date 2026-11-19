@@ -1283,7 +1283,10 @@ final class FrameAPITests: XCTestCase {
         XCTAssertEqual(tokens[2].kind, "period")
         var back = PlaylistRules()
         back.setTokens(tokens)
-        XCTAssertEqual(back, rules)
+        // The words put in anew are "Słowa" (Mateusz 2026-11-19).
+        var slowa = rules
+        slowa.seen = true
+        XCTAssertEqual(back, slowa)
         XCTAssertEqual(rules.suggestedName(names: ["subject:sea": "Morze"]), "Claude Monet · Morze · 1880–1914")
 
         let demo = DemoBackend()
@@ -1830,7 +1833,7 @@ final class FrameAPITests: XCTestCase {
         rules.title = "Bathers"
         let name = "Paul Cezanne · Bathers"
         XCTAssertEqual(RulesSummary.chips(rules, name: name).map(\.text), ["Paul Cezanne", "Bathers"])
-        XCTAssertEqual(RulesSummary.chips(rules, name: name).last?.icon, "text.quote")
+        XCTAssertEqual(RulesSummary.chips(rules, name: name).last?.icon, "photo.circle")
 
         var all = PlaylistRules()
         all.terms = ["style:impressionism", "years:1880-1914", MineTerm.favorites.key, "subject:sea"]
