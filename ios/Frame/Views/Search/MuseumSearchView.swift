@@ -128,11 +128,12 @@ struct MuseumSearchView: View {
         // How far the end is pulled up past where the list stops.
         .onScrollGeometryChange(for: ListEnd.self, of: { ListEnd($0) }) { _, end in
             listEnd.last = end
+            PullProbe.note("geometry", end: end, past: end.past, lit: pullLit, waits: search.waitsForPull)
             guard search.waitsForPull else {
                 if pullLit != 0 { pullLit = 0 }
                 return
             }
-            let past = end.past(short: listEnd.short)
+            let past = end.past
             var lit = min(PullForMore.count, max(0, Int(past / PullForMore.pullPerSquare)))
             if dragging, lit == PullForMore.count { pullArmed = true }
             if pullArmed { lit = PullForMore.count }
@@ -140,11 +141,7 @@ struct MuseumSearchView: View {
         }
         .onScrollPhaseChange { old, new in
             dragging = new == .interacting
-            // At rest, the list is never past its end: where it rests near
-            // the end tells how far short of the insets' end that is.
-            if new == .idle, let short = listEnd.last.short {
-                listEnd.short = min(listEnd.short ?? short, short)
-            }
+            PullProbe.note("phase \(old) -> \(new)", end: listEnd.last, past: listEnd.last.past, lit: pullLit, waits: search.waitsForPull)
             guard new != .interacting else { return }
             // Let go with all the squares lit (a fling that springs past
             // the end never arms it: only a finger does).
@@ -152,6 +149,7 @@ struct MuseumSearchView: View {
             pullArmed = false
             if armed {
                 pullLit = 0
+                PullProbe.note("asked further", end: listEnd.last, past: 0, lit: 0, waits: search.waitsForPull)
                 search.askFurther()
             }
         }
@@ -626,47 +624,73 @@ struct FlowLayout: Layout {
     }
 }
 
-/// The list's end as last seen, and how far short of the insets' own end
-/// it really stops, learnt where it came to rest.
+/// The list's geometry as last seen, for the phase changes.
 @MainActor
 final class ListEndSeen {
     var last = ListEnd()
-    var short: CGFloat?
 }
 
-/// Where a scrolled list stops at its end. The end taken from the content's
-/// size and bottom inset was some 200 pt too far down (the safe area at the
-/// bottom counted twice, it seems): a pull needed two thirds of the screen
-/// (Mateusz 2026-11-19: "muszę przeciągnąć ekran znacząco ponad połowę
-/// ekranu"). Without the bottom inset it is at most that far up; the truth
-/// is learnt where the list comes to rest (`short`).
+/// Where a scrolled list is, and where it stops. `containerSize` is the
+/// room inside the insets (measured on the simulator, `PullProbeTests`: a
+/// container of 571 pt on an 874 pt screen with insets of 116 and 187), so
+/// the list stops at `contentSize − containerSize − top`. Taken for the
+/// whole screen, the end lay first top + bottom (303 pt) and then the top
+/// inset too far (Mateusz 2026-11-19: "muszę przeciągnąć ekran znacząco
+/// ponad połowę ekranu", then a screenshot with the end at mid-screen).
 struct ListEnd: Equatable {
+    struct Frame: Equatable {
+        var container: CGFloat = 0
+        var top: CGFloat = 0
+        var bottom: CGFloat = 0
+    }
+
     var offset: CGFloat = 0
-    /// The end with the bottom inset, and without it.
-    var withInset: CGFloat = 0
-    var without: CGFloat = 0
+    var height: CGFloat = 0
+    var frame = Frame()
+    /// The offset at which the list stops.
+    var reckoned: CGFloat = 0
 
     init() {}
 
     init(_ geometry: ScrollGeometry) {
         offset = geometry.contentOffset.y
-        let top = -geometry.contentInsets.top
-        let bare = geometry.contentSize.height - geometry.containerSize.height
-        withInset = max(bare + geometry.contentInsets.bottom, top)
-        without = max(bare, top)
+        height = geometry.contentSize.height
+        frame = Frame(
+            container: geometry.containerSize.height,
+            top: geometry.contentInsets.top, bottom: geometry.contentInsets.bottom
+        )
+        reckoned = max(height - frame.container - frame.top, -frame.top)
     }
 
-    /// At rest here: how far short of `withInset` the end is, when the list
-    /// rests between the two ends (so at the end, or just short of it).
-    var short: CGFloat? {
-        guard offset >= without - 1, offset <= withInset + 1 else { return nil }
-        return max(0, withInset - offset)
-    }
+    /// How far past its end the list is pulled.
+    var past: CGFloat { offset - reckoned }
+}
 
-    /// How far past the end the list is pulled, the end being `short` of
-    /// `withInset` (until that is known, the nearer end without the inset).
-    func past(short: CGFloat?) -> CGFloat {
-        let end = short.map { max(without, withInset - $0) } ?? without
-        return offset - end
+/// CI's probe of the pull at the end (`-pullLog <path>`, the
+/// `pull-probe` run of ios-screenshots.yml): every scroll geometry and phase
+/// written to a file on the host, as the simulator sees it. Debug builds only.
+enum PullProbe {
+    #if DEBUG
+    private static let path = UserDefaults.standard.string(forKey: "pullLog")
+    #endif
+
+    @MainActor
+    static func note(_ what: String, end: ListEnd, past: CGFloat, lit: Int, waits: Bool) {
+        #if DEBUG
+        guard let path else { return }
+        let line = String(
+            format: "%.3f %@ offset=%.1f height=%.1f container=%.1f top=%.1f bottom=%.1f reckoned=%.1f past=%.1f lit=%d waits=%@\n",
+            Date.now.timeIntervalSinceReferenceDate, what, end.offset, end.height, end.frame.container,
+            end.frame.top, end.frame.bottom, end.reckoned, past, lit, waits ? "yes" : "no"
+        )
+        guard let data = line.data(using: .utf8) else { return }
+        if let file = FileHandle(forWritingAtPath: path) {
+            file.seekToEndOfFile()
+            file.write(data)
+            try? file.close()
+        } else {
+            FileManager.default.createFile(atPath: path, contents: data)
+        }
+        #endif
     }
 }

@@ -142,7 +142,28 @@ targets:
       base:
         # Frame imports the Tailscale and FrameScan modules: its tests see them too.
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Vendor/Tailscale/include $(SRCROOT)/Vendor/Scan/include
+  # Driven only by ios-screenshots.yml (`only: pull-probe`), never by the
+  # Frame scheme's tests: the pull at the end of "Podobne do" with a finger.
+  FrameUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - FrameUITests
+    dependencies:
+      - target: Frame
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.artrybka.frame.uitests
 schemes:
+  FramePull:
+    build:
+      targets:
+        Frame: all
+        FrameUITests: [test]
+    test:
+      targets:
+        - FrameUITests
   Frame:
     build:
       targets:

@@ -315,8 +315,21 @@ jobs:
             capture swap 16 "swap-drawing-$appearance" -drawn 0.55
             capture swap 16 "swap-drawing-late-$appearance" -drawn 0.8
           done
+      # `only: pull-probe`: a finger pulls the end of "Podobne do"
+      # (FrameUITests/PullProbeTests.swift); what the app measured and a
+      # screenshot of each step come back with the screenshots.
+      - name: Pull probe
+        if: inputs.only == 'pull-probe'
+        run: |
+          xcodebuild test -project Frame.xcodeproj -scheme FramePull \
+            -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO || true
+          mkdir -p shots
+          cp /tmp/frame-pull/* shots/ || true
       - uses: actions/upload-artifact@v4
         with:
           name: screenshots
-          path: ios/shots/*.png
+          path: |
+            ios/shots/*.png
+            ios/shots/*.log
           retention-days: 14
