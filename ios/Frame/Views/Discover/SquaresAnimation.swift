@@ -335,6 +335,6 @@ struct PullForMore: View {
         .accessibilityLabel("Mniej podobne")
         .accessibilityHint("Pociągnij koniec listy albo stuknij, aby doczytać")
         .accessibilityAddTraits(.isButton)
-        .accessibilityAction(perform: more)
+        .accessibilityAction(.default, more)
     }
 }
