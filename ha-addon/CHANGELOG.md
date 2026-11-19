@@ -13,6 +13,11 @@
 - Domownik: z menu zasilania zostaje samo „Obudź ramkę”.
 - Limit studiów dziennie ustawiasz każdej osobie osobno w Konfiguracja →
   Domownicy (domyślnie 3 dla domownika, 1 dla gościa).
+- „Zdejmij werniks” i „Odżółć papier” to teraz ustawienie każdej osoby:
+  ktoś inny w domu widzi dzieło tak, jak sam wybrał. Na pełnym ekranie
+  kółko korekty barw włącza ją i wyłącza na stałe (nie tylko na podgląd).
+  Ramka pokazuje dzieło tak, jak widzi je osoba, która je wysłała; w
+  zwykłej rotacji tak, jak Ty.
 
 ## 1.145.269
 

@@ -1252,8 +1252,11 @@ struct ItemDetailView: View {
         .fullScreenCover(item: $opened) { screen in
             switch screen {
             case .original:
-                OriginalViewer(item: item, inFrame: inFrame && wide)
-                    .navigationTransition(.zoom(sourceID: item.id, in: zoomSpace))
+                OriginalViewer(
+                    item: item, inFrame: inFrame && wide,
+                    cleaningOffered: recoveryKind != nil, onChange: { cutChanged($0) }
+                )
+                .navigationTransition(.zoom(sourceID: item.id, in: zoomSpace))
             case .crop:
                 CropScreen(
                     itemID: item.id, preview: previewRef,

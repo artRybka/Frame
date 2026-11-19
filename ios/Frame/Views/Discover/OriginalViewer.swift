@@ -23,6 +23,15 @@ struct OriginalViewer: View {
     /// Opened on "W ramie" (`FrameToggle`): the work in its frame, as the
     /// card showed it; its button under the cross shows the work alone.
     var inFrame = false
+    /// The card says the work may be shown with its colours corrected, as
+    /// this person does not see it yet: the colours' button is there too.
+    var cleaningOffered = false
+    /// The work changed here (its colours' correction switched on or off,
+    /// for this person): the card follows.
+    var onChange: ((Item) -> Void)? = nil
+    /// The work as it is now, once its colours were switched here.
+    @State private var current: Item?
+    @State private var savingColours = false
     @State private var framedOn = false
     /// Opened on "W ramie": the frame asked for once (in, or not to be
     /// had). Until then nothing is shown, so the work in its frame is the
@@ -62,7 +71,7 @@ struct OriginalViewer: View {
                 // the frame fades (Mateusz 2026-11-18).
                 ZoomableImage(
                     image: picture, tiles: shownOff.isEmpty ? tiles : [], whole: whole,
-                    look: Treatment.look(shownOff), framed: framedImage, inner: item.framed?.inner,
+                    look: Treatment.look(shownOff), framed: framedImage, inner: work.framed?.inner,
                     framedOn: framedOn
                 ) {
                     withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() }
@@ -89,16 +98,25 @@ struct OriginalViewer: View {
                     .accessibilityLabel("Zamknij")
                     // Under the cross, only for what was done (Mateusz
                     // 2026-11-16, the places marked on his screenshot).
-                    if let look = item.framed {
+                    if let look = work.framed {
                         FrameViewerButton(look: look, on: framedOn, loading: framedLoading) {
                             Task { await toggleFramed() }
                         }
                     }
                     ForEach(treatments, id: \.self) { treatment in
-                        TreatmentButton(
-                            treatment: treatment, on: !off.contains(treatment),
-                            loading: off != shownOff && off.contains(treatment) != shownOff.contains(treatment)
-                        ) { toggle(treatment) }
+                        if treatment == .colours {
+                            // Each person's own, kept (Mateusz 2026-11-19:
+                            // "można je włączyć/wyłączyć z pełnego ekranu
+                            // (zapamiętuje się stan)").
+                            TreatmentButton(
+                                treatment: treatment, on: work.cleanedShown != nil, loading: savingColours
+                            ) { Task { await saveColours() } }
+                        } else {
+                            TreatmentButton(
+                                treatment: treatment, on: !off.contains(treatment),
+                                loading: off != shownOff && off.contains(treatment) != shownOff.contains(treatment)
+                            ) { toggle(treatment) }
+                        }
                     }
                     if treatFailed {
                         Text("Nie udało się wczytać")
@@ -121,8 +139,8 @@ struct OriginalViewer: View {
         .statusBarHidden(!chrome)
         // VoiceOver's two-finger scrub closes it, as the cross does.
         .accessibilityAction(.escape, close)
-        .task(id: item.id) { await load() }
-        .task(id: item.id) {
+        .task(id: "\(work.id)|\(work.pictureVersion)") { await load() }
+        .task(id: work.id) {
             if inFrame {
                 await toggleFramed()
                 framedAsked = true
@@ -136,7 +154,7 @@ struct OriginalViewer: View {
                 await toggleFramed()
             }
         }
-        .task(id: item.fragmentsID) { await loadTiles() }
+        .task(id: work.fragmentsID) { await loadTiles() }
         .task(id: off) { await loadTreated() }
         .onAppear {
             // CI screenshots: the work shown without all that was done.
@@ -169,10 +187,10 @@ struct OriginalViewer: View {
             return
         }
         if framedImage == nil {
-            guard let look = item.framed else { return }
+            guard let look = work.framed else { return }
             framedLoading = true
-            let version = "\(item.pictureVersion)|\(look.kind)\(look.aspect)\(look.inner.minX)\(look.inner.minY)\(look.inner.width)"
-            if let request = model.backend.request(for: .framed(item.id, side: 4000, version: version)) {
+            let version = "\(work.pictureVersion)|\(look.kind)\(look.aspect)\(look.inner.minX)\(look.inner.minY)\(look.inner.width)"
+            if let request = model.backend.request(for: .framed(work.id, side: 4000, version: version)) {
                 let loaded = try? await ImageLoader.shared.image(for: request, maxPixel: 4096, priority: .high)
                 // Decoded before it is shown: a 4000 px picture decoded on
                 // the first frame of the fade held the whole screen up.
@@ -183,8 +201,47 @@ struct OriginalViewer: View {
         if framedImage != nil { framedOn = true }
     }
 
-    /// What was done to the work's picture, in the buttons' order.
-    private var treatments: [Treatment] { Treatment.done(on: item) }
+    /// The work as opened, or as it is since its colours were switched here.
+    private var work: Item { current ?? item }
+
+    /// What was done to the work's picture, in the buttons' order; the
+    /// colours' button also where they may be corrected and are not yet.
+    private var treatments: [Treatment] {
+        var found = Treatment.done(on: work)
+        if cleaningOffered || current != nil, work.kind == .artwork, !found.contains(.colours) {
+            found.insert(.colours, at: 0)
+        }
+        return found
+    }
+
+    /// The colours' button: the correction switched on or off for this
+    /// person, kept on the server, and the picture had again as they now
+    /// see it (the card follows).
+    private func saveColours() async {
+        guard !savingColours else { return }
+        let on = work.cleanedShown != nil
+        let made = ColourRecovery.made(PaintStyle.of(work)) ?? "paper"
+        UISelectionFeedbackGenerator().selectionChanged()
+        withAnimation(.easeInOut(duration: 0.2)) {
+            savingColours = true
+            treatFailed = false
+        }
+        defer { withAnimation(.easeInOut(duration: 0.2)) { savingColours = false } }
+        do {
+            let updated = on
+                ? try await model.backend.unclean(itemID: work.id)
+                : try await model.backend.clean(itemID: work.id, made: made)
+            treated = [:]
+            off.remove(.colours)
+            shownOff.remove(.colours)
+            current = updated
+            onChange?(updated)
+        } catch {
+            if !error.isCancellation {
+                withAnimation(.easeInOut(duration: 0.2)) { treatFailed = true }
+            }
+        }
+    }
 
     /// The picture with what is left off, once it came; else the work's.
     private var shownImage: UIImage? {
@@ -209,7 +266,7 @@ struct OriginalViewer: View {
             shownOff = wanted
             return
         }
-        guard let ref = Treatment.ref(item, off: wanted), let request = model.backend.request(for: ref) else { return }
+        guard let ref = Treatment.ref(work, off: wanted), let request = model.backend.request(for: ref) else { return }
         let loaded = try? await ImageLoader.shared.image(for: request, maxPixel: 4096, priority: .high)
         if Task.isCancelled || wanted != off { return }
         if let loaded {
@@ -231,12 +288,12 @@ struct OriginalViewer: View {
 
     private var caption: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(bound: item.displayTitle.isEmpty ? "Bez tytułu" : item.displayTitle)
+            Text(bound: work.displayTitle.isEmpty ? "Bez tytułu" : work.displayTitle)
                 .font(.serif(19, weight: .semibold))
                 .lineLimit(2)
-            let line = item.kind == .photo
-                ? item.photoLine
-                : [Names.artist(item.artist), item.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
+            let line = work.kind == .photo
+                ? work.photoLine
+                : [Names.artist(work.artist), work.dateText].filter { !$0.isEmpty }.joined(separator: " · ")
             if !line.isEmpty {
                 Text(bound: line).font(.footnote).opacity(0.75)
             }
@@ -264,12 +321,12 @@ struct OriginalViewer: View {
     /// never a lone spinner while the original comes), then the copy the
     /// detail screen shows, then a sharper one to zoom into.
     private func load() async {
-        if let request = model.backend.request(for: ItemPeeks.tiles[item.id]?.thumb ?? .thumb(item.id)),
+        if let request = model.backend.request(for: ItemPeeks.tiles[work.id]?.thumb ?? .thumb(work.id)),
            let thumb = try? await ImageLoader.shared.image(for: request, maxPixel: 700, priority: .high) {
             if !underlay { image = thumb }
         }
         for maxPixel: CGFloat in [1800, 4096] {
-            guard let request = model.backend.request(for: item.originalRef) else { break }
+            guard let request = model.backend.request(for: work.originalRef) else { break }
             if let loaded = try? await ImageLoader.shared.image(for: request, maxPixel: maxPixel, priority: .high) {
                 if !underlay { image = loaded }
             }
@@ -283,12 +340,12 @@ struct OriginalViewer: View {
     /// The work's tiles with their places, when the server knows them
     /// (Commons tile sets; Cleveland's scroll sections have none yet).
     private func loadTiles() async {
-        if item.isOwnWork {
+        if work.isOwnWork {
             await loadFine()
             return
         }
-        let ids = [item.fragmentsID, item.id]
-        guard !item.isFragment, ids.contains(where: { $0.hasPrefix("wmc:") || $0.hasPrefix("cma:") }),
+        let ids = [work.fragmentsID, work.id]
+        guard !work.isFragment, ids.contains(where: { $0.hasPrefix("wmc:") || $0.hasPrefix("cma:") }),
               let view = await Fragments.load(shownWith: item, backend: model.backend),
               let places = view.places, !places.isEmpty
         else { return }
@@ -331,10 +388,10 @@ extension OriginalViewer {
     /// A work of his own: the tiles of his photograph's every pixel, laid
     /// on its original (the same picture, so no underlay of thumbnails).
     fileprivate func loadFine() async {
-        guard let fine = try? await model.backend.fine(itemID: item.id), !fine.tiles.isEmpty else { return }
+        guard let fine = try? await model.backend.fine(itemID: work.id), !fine.tiles.isEmpty else { return }
         let found = fine.tiles.compactMap { tile -> ZoomTile? in
             guard tile.w > 0, tile.h > 0,
-                  let request = model.backend.request(for: .fine(item.id, tile: tile.id, version: fine.stamp))
+                  let request = model.backend.request(for: .fine(work.id, tile: tile.id, version: fine.stamp))
             else { return nil }
             return ZoomTile(id: tile.id, unit: tile.unit, pixels: CGFloat(tile.pixels), request: request)
         }

@@ -14,6 +14,7 @@ from pydantic import (
     BaseModel,
     Field,
     SerializationInfo,
+    SerializerFunctionWrapHandler,
     computed_field,
     field_serializer,
     field_validator,
@@ -457,8 +458,16 @@ class Item(BaseModel):
     #: decided yet.
     cut: Cut | None = None
     #: The work's colours given back by calculation (:class:`Cleaned`): a
-    #: varnish taken off or the sheet de-yellowed, at the owner's ask.
+    #: varnish taken off or the sheet de-yellowed, as read on the picture.
     cleaned: Cleaned | None = None
+    #: Who sees it so: each person's own choice (Mateusz 2026-11-19:
+    #: "zdejmij werniks, odżółć papier to indywidualne ustawienia każdego z
+    #: użytkowników"). None: the owner alone (a cleaning from before). The
+    #: original and the thumbnail kept, its colours and the frame's
+    #: rotation go by the owner's; another person's other choice is made
+    #: apart (``ImageCache.variant``), and the frame shows a work they send
+    #: their way (``PlayerState.cleaned_as``).
+    cleaned_by: list[str] | None = None
     #: A work of the owner's own: where it hangs, where it came from, its
     #: size (:class:`OwnWork`); None for every other.
     own: OwnWork | None = None
@@ -578,10 +587,10 @@ class Item(BaseModel):
             return ""
         return cut.at or "cut"
 
-    def cleaned_shown(self) -> Cleaned | None:
-        """How the picture shown now is cleaned (:class:`Cleaned`): None
-        without, or when another picture than the one it was read on (or
-        the restorer's drawing of that one) is shown."""
+    def cleaned_reading(self) -> Cleaned | None:
+        """The cleaning read on the picture shown now (:class:`Cleaned`):
+        None without, or when another picture than the one it was read on
+        (or the restorer's drawing of that one) is shown. Whoever sees it."""
         cleaned = self.cleaned
         if cleaned is None:
             return None
@@ -590,12 +599,30 @@ class Item(BaseModel):
             return cleaned
         return None
 
-    def cleaned_version(self) -> str:
+    def cleaned_viewers(self) -> list[str]:
+        """Who sees the work cleaned (``cleaned_by``)."""
+        if self.cleaned is None:
+            return []
+        return list(self.cleaned_by) if self.cleaned_by is not None else [OWNER_ID]
+
+    def cleaned_shown(self, user: str = OWNER_ID) -> Cleaned | None:
+        """How the picture shown now is cleaned for ``user`` (default the
+        owner: what is kept, measured and shown in rotation)."""
+        reading = self.cleaned_reading()
+        return reading if reading is not None and user in self.cleaned_viewers() else None
+
+    def cleaned_version(self, user: str = OWNER_ID) -> str:
         """Changes whenever the cleaning of the picture shown does (set,
         given up): the app's pictures kept from before are had anew. ""
         without one."""
-        cleaned = self.cleaned_shown()
+        cleaned = self.cleaned_shown(user)
         return "" if cleaned is None else cleaned.at or cleaned.kind
+
+    def cleaned_differs(self, user: str) -> bool:
+        """Whether ``user`` sees the picture otherwise than it is kept."""
+        if self.cleaned_reading() is None:
+            return False
+        return (self.cleaned_shown(user) is None) != (self.cleaned_shown() is None)
 
     def _held_by(self) -> str:
         """The museum's name as the work's data give it."""
@@ -630,6 +657,18 @@ class Item(BaseModel):
     def stem_of(item_id: str) -> str:
         """The name of a work's files (thumbnail, original) without suffix."""
         return item_id.replace(":", "_").replace("/", "_")
+
+    @field_serializer("cleaned", mode="wrap")
+    def _cleaned_for_viewer(
+        self, value: Cleaned | None, handler: SerializerFunctionWrapHandler, info: SerializationInfo
+    ) -> Any:
+        """Stored: the cleaning read. To the app: only when the viewer sees
+        the work so (each person's own, Mateusz 2026-11-19)."""
+        if value is None or (info.context and info.context.get("store")):
+            return handler(value)
+        viewer = VIEWER.get()
+        user = viewer.user_id if viewer is not None else OWNER_ID
+        return handler(value) if user in self.cleaned_viewers() else None
 
     @field_serializer("favorite")
     def _favorite_for_viewer(self, value: bool, info: SerializationInfo) -> bool:
@@ -726,9 +765,11 @@ class ItemSummary(BaseModel):
                 - {"cleaned", "cleaned_at"}
             )
         )
-        if (cleaned := item.cleaned_shown()) is not None:
+        viewer = VIEWER.get()
+        user = viewer.user_id if viewer is not None else OWNER_ID
+        if (cleaned := item.cleaned_shown(user)) is not None:
             summary.cleaned = cleaned.kind
-            summary.cleaned_at = item.cleaned_version()
+            summary.cleaned_at = item.cleaned_version(user)
         summary.zoom = zooms(item)
         summary.low_side = low_side(item)
         summary.cut = item.cut_version()

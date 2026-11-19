@@ -16,6 +16,7 @@ from frame_server import cleaning
 from frame_server.imaging import recovery
 from frame_server.imaging.color import linear_to_u8, u8_to_linear
 from frame_server.library.models import Cut, ItemSummary, SharperCopy
+from frame_server.library.viewer import OWNER_ID
 
 #: The white linen of ``_painting``.
 LINEN = (slice(55, 75), slice(100, 135))
@@ -280,3 +281,72 @@ def test_another_copy_is_left_as_it_comes_and_the_restorers_drawing_is_cleaned(s
     svc.images.adopt(redrawn, _under_varnish(_painting(), 0.3))
     assert svc.cleaning.renew(stale).cleaned == cleaned.cleaned
     assert svc.library.get(other.id).cleaned_shown() is None
+
+
+def test_each_person_sees_the_cleaning_of_their_own(tmp_path) -> None:
+    """Mateusz 2026-11-19: "zdejmij werniks, odżółć papier to indywidualne
+    ustawienia każdego z użytkowników"; on the frame as the one who sent it
+    sees it, in rotation as the owner does."""
+    from test_users import OWNER, _join
+    from test_users import _app as people_app
+
+    app = people_app(tmp_path)
+    svc = app.state.service
+
+    def warmth_of(answer) -> float:
+        assert answer.status_code == 200, answer.text
+        return _warmth(Image.open(io.BytesIO(answer.content)))
+
+    with TestClient(app) as client:
+        oil = _keep(svc, _under_varnish(_painting(), 0.8), number=1, year=1650)
+        member = _join(client)
+        her = client.get("/api/me", headers=member).json()["id"]
+        as_it_came = svc.images.image_path(oil).read_bytes()
+        image = f"/api/library/items/{oil.id}/image"
+
+        # She takes the varnish off: hers alone, what is kept stays as it came.
+        done = client.put(
+            f"/api/library/items/{oil.id}/cleaned", params={"made": "oil"}, headers=member
+        )
+        assert done.status_code == 200, done.text
+        assert done.json()["cleaned"]["kind"] == "varnish"
+        assert svc.images.image_path(oil).read_bytes() == as_it_came
+        owners = client.get(f"/api/library/items/{oil.id}", headers=OWNER).json()
+        assert owners["cleaned"] is None
+        assert warmth_of(client.get(image, headers=member)) < 1.35
+        assert warmth_of(client.get(image, headers=OWNER)) > 1.6
+        thumb = f"/api/library/items/{oil.id}/thumb"
+        assert warmth_of(client.get(thumb, headers=member)) < 1.35
+        assert warmth_of(client.get(thumb, headers=OWNER)) > 1.6
+        # The owner is offered it still, read already.
+        told = client.get(
+            f"/api/library/items/{oil.id}/recovery", params={"made": "oil"}, headers=OWNER
+        )
+        assert told.json()["kind"] == "varnish"
+        told = client.get(
+            f"/api/library/items/{oil.id}/recovery", params={"made": "oil"}, headers=member
+        )
+        assert told.json()["kind"] == "none"
+
+        # Sent by her, the frame shows it as she sees it; in rotation, as he does.
+        stored = svc.library.get(oil.id)
+        svc.player.sent_as_seen(stored, her)
+        assert svc.player.state.cleaned_as == {oil.id: True}
+        assert _warmth(Image.open(svc.player._original(stored, True))) < 1.35
+        svc.player.sent_as_seen(stored, OWNER_ID)
+        assert svc.player.state.cleaned_as == {}
+        assert svc.player._original(stored, True) == svc.images.image_path(oil)
+
+        # He takes it off too: what is kept is cleaned, she sees the same.
+        client.put(f"/api/library/items/{oil.id}/cleaned", params={"made": "oil"}, headers=OWNER)
+        assert _warmth(Image.open(svc.images.image_path(oil))) < 1.35
+        assert sorted(svc.library.get(oil.id).cleaned_by) == sorted([her, OWNER_ID])
+        # She gives it back: her picture as it came, his stays cleaned.
+        back = client.delete(f"/api/library/items/{oil.id}/cleaned", headers=member)
+        assert back.status_code == 200 and back.json()["cleaned"] is None
+        assert warmth_of(client.get(image, headers=member)) > 1.6
+        assert _warmth(Image.open(svc.images.image_path(oil))) < 1.35
+        # He gives it back too: nobody sees it, the reading goes.
+        client.delete(f"/api/library/items/{oil.id}/cleaned", headers=OWNER)
+        assert svc.library.get(oil.id).cleaned is None
+        assert svc.images.image_path(oil).read_bytes() == as_it_came
