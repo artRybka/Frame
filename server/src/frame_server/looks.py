@@ -116,8 +116,23 @@ PICTURE_FLOOR = 0.60
 #: looked through for words narrowed by the groups, and at most this many
 #: shown, nearest first.
 AMONG_NEAR = 3000
-#: Works Szukaj's "Podobne do" shows at most: the card counts to 60 ("60+").
-ALIKE_MOST = 120
+#: Szukaj's "Podobne do" shows the works at least this near the work asked
+#: about, by what is asked (both, the subject, the style): not a fixed
+#: number (Mateusz 2026-11-18: "limitem ilości nie powinien być stopień
+#: podobieństwa?"). From 20 works of the whole catalogue, 1000 nearest each
+#: (sheets of 2026-11-19, `/mnt/project-files/podobne-przelacznik/bliskosc`):
+#: he chose 0.50 for both ("Do żółtego"); the subject's and the style's are
+#: those giving as many works on the median (some 53: from 18 for Mucha to
+#: 300 for Hiroshige).
+ALIKE_FLOOR: dict[str, float] = {"": 0.50, "subject": 0.58, "style": 0.57}
+#: However far the nearest are (his own works, photographed, are all under
+#: 0.50), this many are shown, and no more (Mateusz 2026-11-19: "Minimum -
+#: ustawmy 8, żeby nie pokazywać dzieł niezwiązanych").
+ALIKE_LEAST = 8
+#: ... and at most this many, however many are near.
+ALIKE_MOST = 1000
+#: With the numbers of before (no style nor subject), the fixed most.
+ALIKE_OLD_MOST = 120
 AMONG_MOST = 240
 #: A photograph searched in Szukaj (``Looks.photo``) is a ``like`` of its
 #: own: this before the key its numbers are kept under (``photos/<key>``).
@@ -826,14 +841,20 @@ class Looks:
         return np.asarray(self._joined(g, h, vectors[2] if words else h), dtype=np.float32)
 
     def similar(
-        self, item: Item, limit: int = 24, place: Place = Place.FOUND, by: By = ""
+        self,
+        item: Item,
+        limit: int = 24,
+        place: Place = Place.FOUND,
+        by: By = "",
+        near_enough: bool = False,
     ) -> list[Found]:
         """Works that look like ``item`` (``by``: both its subject and its
         style, or one of them): none until it or another copy of its work
         has numbers (the card shows the work's best copy, the index may
         have another: no "Podobne wyglądem" under van Gogh's Sunflowers
         found by a look, 2026-11-13). Its own copies and the work itself
-        are left out; ``place``: where they are shown."""
+        are left out; ``place``: where they are shown. ``near_enough``:
+        only those Szukaj's "Podobne do" shows (:meth:`enough`)."""
         works = self.library.works()
         own = works.group_index(item.id)
         copies = [item.id] + (
@@ -847,31 +868,56 @@ class Looks:
         near = [
             (i, s) for i, s in near if i != item.id and (own is None or works.group_index(i) != own)
         ]
+        if near_enough:
+            near = self._near_enough(near, by)
         floor = PICTURE_FLOOR if self._old else THREE_FLOOR
-        return self._answer(near, limit, floor, relative=False, place=place)
+        found = self._answer(near, limit, floor, relative=False, place=place)
+        return self.enough(found, by) if near_enough else found
+
+    def enough(self, found: list[Found], by: str = "") -> list[Found]:
+        """Of ``found`` (nearest first), those Szukaj's "Podobne do" shows:
+        at least :data:`ALIKE_FLOOR` near, though :data:`ALIKE_LEAST` of
+        them however far. The numbers of before keep their own floor."""
+        if self._old:
+            return found[:ALIKE_OLD_MOST]
+        floor = ALIKE_FLOOR.get(by, ALIKE_FLOOR[""])
+        near = sum(1 for f in found if f.score >= floor)
+        return found[: max(near, ALIKE_LEAST)]
+
+    def _near_enough(self, near: list[tuple[str, float]], by: str) -> list[tuple[str, float]]:
+        """``near`` (nearest first) without the far ones :meth:`enough`
+        never keeps, so that they are not looked up: past the floor, only
+        enough for :data:`ALIKE_LEAST` works should some nearer be hidden
+        or copies of one."""
+        if self._old:
+            return near
+        floor = ALIKE_FLOOR.get(by, ALIKE_FLOOR[""])
+        under = next((k for k, (_, score) in enumerate(near) if score < floor), len(near))
+        return near[: max(under, ALIKE_LEAST * 3 + 8)]
 
     def alike(self, item_id: str, by: str = "") -> list[str] | None:
         """The ids of the works that look like the work ``item_id`` (or the
         photograph kept as ``photo:…``, :meth:`photo`), by ``by`` (both
         their subject and their style, "subject" or "style"), nearest
-        first, :data:`ALIKE_MOST` at most, for Szukaj
+        first, as near as :meth:`enough` says, for Szukaj
         (``Library.like_near``, ``PlaylistRules.like``); None with Szukanie
         wyglądem off. Asks Google nothing."""
         if not self.enabled():
             return None
         shape: By = by if by in ("subject", "style") else ""  # type: ignore[assignment]
+        most = ALIKE_OLD_MOST if self._old else ALIKE_MOST
         if item_id.startswith(PHOTO):
             vector = self.photo_vector(item_id)
             if vector is None:
                 return []
-            near = self._alike_near(vector, ALIKE_MOST * 3 + 8, shape)
+            near = self._near_enough(self._alike_near(vector, most * 3 + 8, shape), shape)
             floor = PICTURE_FLOOR if self._old else THREE_FLOOR
-            found = self._answer(near, ALIKE_MOST, floor, relative=False)
-            return [f.item.id for f in found]
+            found = self._answer(near, most, floor, relative=False)
+            return [f.item.id for f in self.enough(found, shape)]
         item = self.library.get(item_id)
         if item is None:
             return []
-        return [f.item.id for f in self.similar(item, ALIKE_MOST, by=shape)]
+        return [f.item.id for f in self.similar(item, most, by=shape, near_enough=True)]
 
     def near_ids(self, item_id: str, limit: int = 40) -> list[str]:
         """The ids of the works whose numbers lie nearest ``item_id``'s

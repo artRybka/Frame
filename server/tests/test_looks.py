@@ -27,7 +27,18 @@ from frame_server.ai.gemini import (
     embed_cost,
 )
 from frame_server.library.models import Item, ItemKind, PlaylistRules
-from frame_server.looks import DESCRIBE, KIND, PART, QUERY, TOLD, LookIndex, Looks, Shaped
+from frame_server.looks import (
+    ALIKE_LEAST,
+    DESCRIBE,
+    KIND,
+    PART,
+    QUERY,
+    TOLD,
+    Found,
+    LookIndex,
+    Looks,
+    Shaped,
+)
 from frame_server.service import FrameService
 
 #: Colours the fake model tells apart, each its own direction.
@@ -555,6 +566,32 @@ def test_szukaj_finds_the_works_like_one_nearest_first(
         assert client.get("/api/library/items", params={"like": "met:1"}).status_code == 409
     rules = PlaylistRules(like="met:1")
     assert not rules.is_empty() and rules.search_key() == ""  # no museum asked
+
+
+def test_podobne_do_stops_where_the_works_are_no_longer_near(
+    service: FrameService, looks: tuple[Looks, FakePainter]
+) -> None:
+    """„Podobne do” by how near, not a fixed 120 (Mateusz 2026-11-19, „Do
+    żółtego (0,50)”): from 0.50 for both, its own floor for the subject and
+    the style, though 8 however far („Minimum - ustawmy 8, żeby nie
+    pokazywać dzieł niezwiązanych”)."""
+    found, _painter = looks
+    found.three.add([("met:1", 1, [*_direction(0)[:PART]] * 3)])
+    assert not found.old()
+
+    def near(*scores: float) -> list[Found]:
+        return [
+            Found(Item(id=f"met:{n}", source="met", source_id=str(n), title=str(n)), s)
+            for n, s in enumerate(scores, start=10)
+        ]
+
+    many = near(*[0.8 - 0.01 * n for n in range(40)])  # 0.80 down to 0.41
+    assert len(found.enough(many)) == 31  # 0.80 … 0.50
+    assert len(found.enough(many, "subject")) == 23  # 0.80 … 0.58
+    assert len(found.enough(many, "style")) == 24  # 0.80 … 0.57
+    far = near(*[0.46 - 0.01 * n for n in range(20)])  # his own works: none near
+    assert len(found.enough(far)) == ALIKE_LEAST == 8
+    assert len(found.enough(far[:5])) == 5
 
 
 def test_a_photograph_is_searched_in_szukajs_own_list(

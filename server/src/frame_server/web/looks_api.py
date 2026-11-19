@@ -42,12 +42,16 @@ class LooksAnswer(BaseModel):
 
     items: list[ItemSummary]
     scores: list[float]
+    #: Of these, how many Szukaj's "Podobne do" shows (``Looks.enough``):
+    #: what the card's "Szukaj podobnych" counts. Only on a work's looks.
+    alike: int | None = None
 
 
-def _answer(found: list[Found]) -> LooksAnswer:
+def _answer(found: list[Found], alike: int | None = None) -> LooksAnswer:
     return LooksAnswer(
         items=[ItemSummary.of(f.item) for f in found],
         scores=[f.score for f in found],
+        alike=alike,
     )
 
 
@@ -142,7 +146,8 @@ async def looks_like(
     item = await _work(svc, item_id)
     if not svc.looks.enabled():
         return LooksAnswer(items=[], scores=[])
-    return _answer(await run_in_threadpool(svc.looks.similar, item, limit))
+    found = await run_in_threadpool(svc.looks.similar, item, limit)
+    return _answer(found, alike=len(svc.looks.enough(found)))
 
 
 @router.get(
