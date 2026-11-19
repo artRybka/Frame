@@ -1187,14 +1187,42 @@ async def terms(
         except Abandoned:
             return []
 
-    return await to_thread.run_sync(answer, limiter=TERM_THREADS)
+    hits = await to_thread.run_sync(answer, limiter=TERM_THREADS)
+    words = " ".join(q.split())
+    if hits and len(words) >= PREFETCH_LEAST:
+        # Szukaj's "Słowa": Google's numbers of the words asked ahead once
+        # the typing rests, the search that follows finds them here
+        # (Mateusz 2026-11-19: "wyniki chciałbym od razu").
+        asked = [words, *[h.key for h in hits if h.kind == "word" and h.key != words][:3]]
 
+        def ahead() -> None:
+            if not gone():
+                svc.looks.prefetch(asked)
+
+        timer = threading.Timer(PREFETCH_PAUSE, ahead)
+        timer.daemon = True
+        timer.start()
+    return hits
+
+
+#: Szukaj's suggestions: words typed and resting this long (no next letter
+#: asked) get their numbers asked of Google ahead (``Looks.prefetch``),
+#: when they are this many letters at least.
+PREFETCH_PAUSE = 0.35
+PREFETCH_LEAST = 3
 
 #: Threads for asking the museums, apart from the server's own pool: a
 #: search's stream asks some 19 sources at once, and two quick searches took
 #: the shared pool's 40 threads, so the catalogue's answer, the quickest of
 #: all, waited behind them (2026-11-09: 21 s).
 MUSEUM_THREADS = CapacityLimiter(24)
+
+#: Seconds Szukaj's stream waits for a museum's first answer (Mateusz
+#: 2026-11-19: Paris Musées timed out at 30 s on every page). One later is
+#: told to be asked again (its ``next`` the same page); what it brings is
+#: kept all the same, so the next round of pulling finds it at once ("Jeżeli
+#: muzeum odpowie po tym czasie, to przyjmujmy wynik").
+MUSEUM_PATIENCE = 8.0
 
 
 #: How long the museums' hint, asked while typing, waits for the words'
@@ -1574,17 +1602,21 @@ async def stream_museums(
         svc.player.searched_for(search.rules.artists, viewer_id())
 
     loop = asyncio.get_running_loop()
-    answers: asyncio.Queue[MuseumAnswer | None] = asyncio.Queue()
+    #: Each museum's answers, then its key when it is done.
+    answers: asyncio.Queue[MuseumAnswer | str] = asyncio.Queue()
     #: Set when the app stops listening: no more pages are asked for.
     gone = threading.Event()
+    #: Museums with no answer within MUSEUM_PATIENCE: what they bring is
+    #: kept, not sent, and no further page is asked of them.
+    late: set[str] = set()
 
     spare = keeper(svc)
 
     def ask(key: str) -> None:
-        """One museum's pages onto ``answers``, then None."""
+        """One museum's pages onto ``answers``, then its key."""
         try:
             for total, items, failed, next_ in search.pages(svc.importer, [key], page, spare):
-                if gone.is_set():
+                if gone.is_set() and key not in late:
                     return
                 found = {r.item.id: r for r in remote_items(svc, items, copies)}
                 taken = shown.take(r.item for r in found.values())
@@ -1592,28 +1624,55 @@ async def stream_museums(
                     found[t.item.id].model_copy(update={"work": t.work, "replaces": t.replaces})
                     for t in taken
                 ]
+                keep_found(svc, search, new)
+                if key in late:
+                    log.info(
+                        "%s answered after %.0f s: kept for the next round", key, MUSEUM_PATIENCE
+                    )
+                    return
                 answer = MuseumAnswer(source=key, total=total, items=new, failed=failed, next=next_)
                 loop.call_soon_threadsafe(answers.put_nowait, answer)
-                keep_found(svc, search, new)
         except Exception:
             log.exception("searching %s failed", key)
             failure = MuseumAnswer(source=key, total=0, items=[], failed=[key])
             loop.call_soon_threadsafe(answers.put_nowait, failure)
         finally:
-            loop.call_soon_threadsafe(answers.put_nowait, None)
+            loop.call_soon_threadsafe(answers.put_nowait, key)
 
     async def lines() -> AsyncIterator[str]:
         asking = [
             asyncio.ensure_future(to_thread.run_sync(urgent_call(ask), k, limiter=MUSEUM_THREADS))
             for k in keys
         ]
+        waiting = set(keys)  # no answer yet
+        left = set(keys)  # not done
+        until = loop.time() + MUSEUM_PATIENCE
         try:
-            left = len(asking)
             while left:
-                answer = await answers.get()
-                if answer is None:
-                    left -= 1
-                else:
+                try:
+                    if waiting:
+                        answer = await asyncio.wait_for(
+                            answers.get(), max(0.0, until - loop.time())
+                        )
+                    else:
+                        answer = await answers.get()
+                except TimeoutError:
+                    # Those not answering: asked again with the next round.
+                    for key in sorted(waiting):
+                        late.add(key)
+                        left.discard(key)
+                        log.info(
+                            "%s: no answer within %.0f s, asked again later", key, MUSEUM_PATIENCE
+                        )
+                        later = MuseumAnswer(source=key, total=0, items=[], next=page)
+                        yield later.model_dump_json() + "\n"
+                    waiting = set()
+                    continue
+                if isinstance(answer, str):
+                    left.discard(answer)
+                    waiting.discard(answer)
+                elif answer.source not in late:
+                    waiting.discard(answer.source)
                     yield answer.model_dump_json() + "\n"
         finally:
             gone.set()

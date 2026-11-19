@@ -798,6 +798,14 @@ class PlaylistRules(BaseModel):
     #: judged by how it looks; ``search_key`` leaves it out (what a museum
     #: brought for it is no word's answer).
     look: str = ""
+    #: With ``query``: also the works that look as the words say, the
+    #: works found by how they look and by their words in one list
+    #: (Szukaj's "Słowa", Mateusz 2026-11-19: "Słowa, słowa kluczowe,
+    #: hasła i słowa o tym co widać - może połączyć w jedno?"). Words that
+    #: find many works alone (``repo.SEEN_PLENTY``) are only put in the
+    #: order of how near they look; Google's numbers not here in time: the
+    #: words alone. Older playlists, without it, keep the words alone.
+    seen: bool = False
     #: A work's title, or words of it ("Gwiaździsta noc"): works whose title
     #: has them, in Polish or as the museums were asked them; not those that
     #: only mention them (Mateusz 2026-11-13: "szukanie po tytule dzieła").

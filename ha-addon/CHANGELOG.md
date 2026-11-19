@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.145.268
+
+- Szukaj: „Słowo”, „Słowo kluczowe” i „Szukaj wyglądem” to teraz jedno
+  „Słowa”. Najpierw dzieła z tymi słowami w opisie, pod nimi te, które
+  wyglądają tak, jak mówią słowa; liczba ma plus („9+”), bo dzieła po
+  wyglądzie dochodzą chwilę później, bez skakania listy. („Słowa, słowa
+  kluczowe, hasła i słowa o tym co widać - może połączyć w jedno?”)
+- Podpowiedzi w kolejności A: wpisane słowa, artyści, dzieła, hasła,
+  grupy, artyści z muzeów. Nowe ikony rodzajów z obwódką; „Podobne do”
+  pokazuje sam tytuł dzieła, zdjęcie to „Zdjęcie”.
+- Artysta z muzeów wygląda jak każdy artysta, a inaczej zapisany artysta
+  z podpowiedzi („Van gogh” przy „Vincent van Gogh”) znika.
+- Muzeum, które nie odpowie w 8 s, nie wstrzymuje wyników: jest pytane
+  w następnej rundzie dociągania, a to, co przyniesie później, czeka
+  w katalogu.
+
 ## 1.145.267
 
 - Bateria nie liczy już snu bez Wi-Fi za darmo. Po zdjęciu z ładowarki

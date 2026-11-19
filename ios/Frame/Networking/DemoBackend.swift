@@ -1493,6 +1493,14 @@ actor DemoBackend: FrameBackend {
                 )
             )
         }
+        // Works by their titles, as the server suggests them (its miniature).
+        let titled = items.filter { $0.kind == .artwork && DemoDiscover.fold($0.title).contains(wanted) }
+        hits += titled.prefix(3).map { item in
+            TermHit(
+                kind: SearchToken.titleKind, key: item.title, name: item.title, detail: item.artist, count: 1,
+                item: item.id, exact: DemoDiscover.fold(item.title) == wanted
+            )
+        }
         let words = text.trimmingCharacters(in: .whitespaces)
         let count = items.filter { Self.matches($0, PlaylistRules(query: words)) }.count
         hits.append(TermHit(kind: "word", key: words, name: words, count: count))

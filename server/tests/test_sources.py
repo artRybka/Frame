@@ -675,3 +675,63 @@ def test_colours_look_deeper_and_the_stream_answers_museum_by_museum(service, mo
 
         # Nothing asked of every museum: an empty stream.
         assert client.get("/api/discover/search/stream").text == ""
+
+
+def test_a_museum_not_answering_in_time_is_asked_again_and_what_it_brings_is_kept(
+    service, monkeypatch
+) -> None:
+    """Szukaj's stream waits MUSEUM_PATIENCE for a museum's first answer
+    (Mateusz 2026-11-19: Paris Musées timed out at 30 s on every page); one
+    later is told to be asked again, and what it brings meanwhile is kept,
+    so that the next round has it at once."""
+    import json
+    import threading
+
+    from frame_server.library.museums import MUSEUMS
+    from frame_server.web import create_app, discover_api
+
+    held = threading.Event()
+    answered = threading.Event()
+    asked: list[str] = []
+
+    def answering(key: str, base: type[Openverse] | type[Europeana], slow: bool) -> type:
+        class Answering(base):  # type: ignore[valid-type, misc]
+            def search(self, query, limit=20, page=1):
+                asked.append(key)
+                if slow:
+                    held.wait(5)
+                items = [
+                    self._item(f"{key}-{page}-{n}", title=f"{key} sea {page} {n}")
+                    for n in range(limit)
+                ]
+                if slow:
+                    answered.set()
+                return 100, items
+
+        return Answering
+
+    monkeypatch.setitem(MUSEUMS, "openverse", answering("openverse", Openverse, False))
+    monkeypatch.setitem(MUSEUMS, "europeana", answering("europeana", Europeana, True))
+    monkeypatch.setattr(discover_api, "MUSEUM_PATIENCE", 0.3)
+    app = create_app(service.settings)
+    params = {"q": "sea", "source": ["openverse", "europeana"], "limit": 8}
+    with TestClient(app) as client:
+        with client.stream("GET", "/api/discover/search/stream", params=params) as resp:
+            lines = [json.loads(line) for line in resp.iter_lines() if line]
+        by_source = {line["source"]: line for line in lines}
+        assert len(by_source["openverse"]["items"]) == 8
+        assert by_source["openverse"]["next"] == 2
+        # Europeana late: nothing yet, its first page to be asked again.
+        assert by_source["europeana"]["items"] == []
+        assert by_source["europeana"]["next"] == 1
+        assert by_source["europeana"]["failed"] == []
+        held.set()
+        assert answered.wait(5)
+        threading.Event().wait(0.3)  # kept once its answer is taken in
+        # The next round: Europeana's page from memory, not asked again.
+        asked.clear()
+        params["source"] = ["europeana"]
+        with client.stream("GET", "/api/discover/search/stream", params=params) as resp:
+            again = [json.loads(line) for line in resp.iter_lines() if line]
+        assert len(again[0]["items"]) == 8 and again[0]["next"] == 2
+        assert asked == []
