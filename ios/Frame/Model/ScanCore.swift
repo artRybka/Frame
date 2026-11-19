@@ -59,6 +59,20 @@ enum ScanCore {
         return Note(note)
     }
 
+    /// The picture at `picture` (a `.npy` of rows × columns × RGB) put in
+    /// the colours a colour chart beside the work gives it, in place, as
+    /// the server puts its own copy (`colorchecker.apply`): `tables` the
+    /// file the server gives of the chart it read in the first photograph
+    /// (`FrameBackend.ownChartTables`). Done to each of a scan's
+    /// photographs before `merge`.
+    static func chart(_ picture: URL, by tables: URL) throws {
+        var error = [CChar](repeating: 0, count: 512)
+        let size = Int32(error.count)
+        guard frame_scan_chart_file(picture.path, tables.path, &error, size) == 0 else {
+            throw Failed(told: told(error))
+        }
+    }
+
     /// A scene made up (a work under glass with a lamp in it, photographed
     /// three times), `side` pixels long, merged: nothing read or written.
     /// For a test of the core as it is linked into the app.

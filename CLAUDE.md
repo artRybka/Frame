@@ -34,21 +34,38 @@ uv run mypy src
   and only when the work is added or made again. The waiting photograph
   and a scan's kept ones stay as taken: the phone shows its own copy and
   the corners are set on that (a kept scan notes `lens` and `straight`).
+  The app sends the camera's own table of how its lens bent a scan's
+  first photograph (`AVCameraCalibrationData`, `OwnLens`; Mateusz
+  2026-11-19): the work is straightened by that where it says what
+  `BENDS` says of the lens (`lens.chosen`, within `AGREES`), by the
+  measured number where it does not. Of a lens not measured the table is
+  noted and not gone by while `ALONE` is false: set it only once his own
+  scans' log lines ("the camera's table says …") have shown the two
+  agree. A work made again is straightened by what its scan noted
+  (`straight`: the number or the table), never by another.
   The merge of a scan (`imaging/reflections.py`) is written a second time
   in C++ for the phone (`core/scan`), and the phone makes his scans with
   it (`ios/…/PhoneScan.swift`, sent to `POST /api/own/photos/{token}/merged`;
-  Mateusz 2026-11-19). The server's merge is the spare: a scan with a
-  colour chart, one with no corners found, whatever the phone could not
-  make or send, and his kept scans made again. Nothing is merged on both
-  to be compared. The Python here stays the truth. Its numbers reach the
+  Mateusz 2026-11-19). The server's merge is the spare: a scan with no
+  corners found, whatever the phone could not make or send, and his kept
+  scans made again. Nothing is merged on both to be compared. A colour
+  chart beside the work is read here (`imaging/colorchecker.py`), and the
+  phone puts its own photographs in its colours before it merges them, by
+  what `colorchecker.tables` gives it (`GET /api/own/photos/{token}/chart`,
+  `core/scan/src/scan_chart.cpp`): what `_put` goes by is to be in those
+  tables, and their head (`TABLES`) is raised when they change (a core
+  that knows another head leaves the scan to the server).
+  The Python here stays the truth. Its numbers reach the
   core through `core/scan/tools/constants.py` (`tests/test_scan_core.py`
   fails until `constants.hpp` is made again); a changed step of the merge
   is changed in the core by hand, and checked step by step on a kept scan
   with `tools/golden.py` and `tools/check` (his scans never go into the
-  repo). The same test holds the phone's own rules to the server's (which
-  side photographs, how small, what corners; `PhoneScan`'s numbers) and
-  its reading of a photograph to `load_image`'s (one made-up file read by
-  both, `ios/FrameTests/PhoneScanTests.swift`).
+  repo; `tools/chart.py` and `tools/chart` for the chart's colours). The
+  same test holds the phone's own rules to the server's (which side
+  photographs, how small, what corners; `PhoneScan`'s numbers), its
+  reading of a photograph to `load_image`'s and its putting of a chart's
+  colours to `colorchecker.apply`'s (a made-up file and a made-up chart
+  gone through by both, `ios/FrameTests/PhoneScanTests.swift`).
 - `web/app.py` FastAPI: `/panel/*` for the panel (no auth, must never 404
   once content exists), `/api/*` for the app (Bearer token).
 - Never hand-edit `uv.lock`; use `uv add` / `uv lock`.

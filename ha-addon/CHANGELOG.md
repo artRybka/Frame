@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.145.257
+
+- Skan z kartą koloru też składa teraz iPhone („Czy iPhone będzie także
+  obsługiwać kartę koloru”). Serwer jak dotąd znajduje kartę na pierwszym
+  zdjęciu i wylicza z niej korektę barw, a telefon dostaje tę korektę,
+  nakłada ją na swoje trzy zdjęcia i dopiero wtedy je składa. Wynik jest
+  w barwach karty, tak jak wtedy, gdy składał serwer, tylko po kilku
+  sekundach.
+- Korekta na telefonie daje te same liczby co na serwerze (różnica o
+  jeden poziom w jednej wartości na milion).
+- Prostowanie obiektywu danymi Apple'a („a nie ma natywnego rozwiązania
+  od Apple w tym zakresie?”). Aparat iPhone'a sam nie prostuje zdjęć
+  głównego obiektywu, ale do każdego zdjęcia podaje tabelę, którą można
+  je wyprostować. Aplikacja wysyła ją z pierwszym zdjęciem skanu, a
+  serwer prostuje nią dzieło, gdy mówi ona o Twoim obiektywie to samo, co
+  mój pomiar na ramach Twoich obrazów (z dokładnością do jednej
+  trzeciej). Tabela jest z tego właśnie zdjęcia i zna też środek
+  obiektywu, więc powinna prostować odrobinę dokładniej niż jedna stała.
+  Gdy się z pomiarem nie zgadza, zostaje stała jak dotąd.
+- Dla telefonu, którego obiektywu nie mierzyłem (np. inny iPhone w
+  domu), tabela jest na razie tylko zapisywana przy skanie. Włączę ją
+  dla takich telefonów, gdy Twoje pierwsze skany pokażą w dzienniku
+  serwera, że tabela i pomiar mówią to samo. Odczytana na odwrót
+  wygięłaby dzieło podwójnie i nic by tego nie wykryło.
+- Potrzebna jest nowa aplikacja i aktualizacja serwera. Starsza
+  aplikacja albo starszy serwer zostawiają skan z kartą serwerowi, a
+  obiektyw prostują stałą, jak dotąd.
+
 ## 1.145.256
 
 - „Podobne do”: mniej bliskie dzieła dochodzą teraz tylko na Twoje

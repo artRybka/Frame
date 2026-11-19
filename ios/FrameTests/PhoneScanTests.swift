@@ -267,6 +267,255 @@ final class PhoneScanTests: XCTestCase {
         XCTAssertEqual(PhoneScan.plain(Data()), Data())
     }
 
+    // MARK: A colour chart beside the work
+
+    /// A colour chart as the server read one (`Chart.to_json` there: its
+    /// white and the grey after it at the photograph's top, so the curves
+    /// begin at the third grey), what the server gives the phone of it
+    /// (`colorchecker.tables`, deflated here), a made-up picture (32 × 24,
+    /// RGB) and that picture in the chart's colours as the core puts it.
+    /// `server/tests/test_scan_core.py` takes all four out of here and
+    /// holds them to the server's own `colorchecker.apply`.
+    static let chart = #"{"corners": [[0.70486, 0.37658], [0.90135, 0.36673], [0.9048, 0.55234], [0.70901, 0.55747]], "darkest": 5, "greys": [[1.0, 0.921582, 0.55834, 0.309469, 0.144128, 0.05448], [0.991102, 0.964686, 0.590619, 0.323143, 0.14996, 0.056128], [0.991102, 1.0, 0.838799, 0.456411, 0.215861, 0.082283]], "left": 0.0008, "lightest": 2, "look": 1, "matrix": [[1.129914, -0.061719, -0.068195], [-0.044678, 1.085177, -0.040499], [-0.057307, -0.064547, 1.121854]], "off": 0.1179}"#
+    static let chartTables = """
+    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
+    tfWFYRiGYZqwaua7/g8=
+    """
+    static let chartPicture = """
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+    ////////////////////////////MS3/Mrz/iaT/jfD/DSv/k5v/KAf/8dz/z4P/ZLX/jkT/mjn/uoH/8mH/ik//xSH/FKj/prr/
+    NVj/1b3/L7b/XtX/0YX/a3f/roL/eqz/Os3/Mtr/urj/vPX/WXH/H6r/8PDw8fHx8vLy8/Pz9PT09fX19vb29/f3+Pj4+fn5+vr6
+    +/v7/Pz8/f39/v7+////gRzdQE7FlH/eHs5kJl2th9W6fduK5KhPoEHjuuXolJ31te9U2bd3reRlT4xViAwTAAAAAAAAAAAAAAAA
+    AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+    AAAAAAAAAAAAUTS/LFSPJnplUrMKQcpLTjzZsKD/ZmUrjhJnyEhk7gG43Kv+f6z+wY8jcjtPc9vhYKKgyAC1R5i9LvqUg6ocudWP
+    HvZ9i1lrPqKaj4Z9vIN+7Z8oBuA0bSqAkdeeGmxgpkZ96qQdQVLC3yOQSc3G7fMkL3zt4az+kFMgr5bjqpYtzorH52DcMieGW5FN
+    3B2eOuTEz/qyjl7+a5lVOxCq2jfxXaYbVxVYQMmZnob1eqpFY9QFf27vpbHVTwqPpiVxVS5cPxpZH+tpknNDA0EcqBcLADILsZbN
+    sAeyn60g9JSO5xtRKNEGdJn8fsqJTJ11tU90/S09qLNSPQAn3/VarSa0mv/xUxcf34IU+uitX5SXgFxxdoaC5okcjRYzmKMw19hM
+    SmxfyVKzy02Uniu/uJxoZY49tugLfRwKk/Q4uvitY3EEFADEl+/f8CIrWM/9pJreSeZqmYM22YKAxP9yTYr75R0CP4AObPAv0QmG
+    qV23fgBun9ePFSsY3FZxTnvEw/nRptUyJB2iL5RHLFYJxxsXYKMJkgVh3Hw/wjSd97bk78mizkq162trU0G8cNxwzyFsXKoQ4omK
+    9AGPk39IkvpxvuHWTVqasDpAoloD+c8Ps6DbXKBC2c9Q+oya050UuSmg6XKQ4nat1wJ+tsP9m5J5JV2DtrCtcps/ir7R7mmZfdVA
+    2UKuP3vywl6fhXX8xgeYiSnh9EdInUBIAtuLiQc05ep8h64pMTmtb+oWsBlPLbHq/kM2KK/kUoee3OQJxfaL18eksfnSbQ8ZRRke
+    LZ1/7JcrL+g262CKjWmDj3jvdkpWGZzxDmWrl3IrkfspM+zzkwIVKPb9pmS/QQEutTVSe5jy2iii8sWKKgWrbEZrGWtV2q5AJDP2
+    gCU3CXNkeegffWaL+DefIXj3eDkuc5DUqYIidgF37xbeETxeZcHTuqKlPtAhOe7dLUEcbLpd3prvABiRwrdGDu8iJwWgnzgNVOd9
+    5ZSw+CzfYxmkHBPrvVmChrvRVDDr1IFzp17Wc0wQVPOr+SqQsA91bZ7S1Yjy/sntuWpFuoVlDeasczWxu5ShjXleORlyID1wucaI
+    i5g649jSbAuW88STDJgeHAHWf8+w6Gw0iyNBim5aqAbHBN0QV7q3op5elANeqPePkwaUrm5eZmKBXRtPm0PoHgWz4+Lw/AVPzbm8
+    k894fkMVsCrCqEDWh4hXo6t3heYIFZTY0zTVdgdN23FBsdzlRfWeCSf2eOryi/1XL8zhVulehBMpt0+NITaoYkC8vetaxyeDDSS6
+    EsiwVbt7zKoChIamK7eHe1PUUVBJxKEg/VryOC4bmD+pRcyMcksanqxFiFlrFTmHbTZqEeCil9bSj/Yvc0y4GIlfUFAgNBdpGI8D
+    ssSIUb/k7GwPRg5BB3wteWDcZWmgQNyv5+fGrOV8ASua9ekxKm6Vylgkl75nadYhdypBmRB1QaZ/i3E1Kq6PBBYBEwPKKBHpWgRn
+    0G8lvMniJTER7q8bgP5ALy613vLMihwaWbSnzYsV0wrN6QRUU+WCgD03+pJvTFYAj4c2ojbRZPVlIPLc0LWWMFYyTcNncnL18vAX
+    d3YTt82oAPTZShX5jFq8xsP/4D2ODDUZpud6DCCFHNBNsx52nrLsBI/7/Izh0yK5ofWChP7Sb9XwIjVsDE5RQKQ5HQc8N1FdNClN
+    IHwkoi3gaR/Q8S3imy8TD01iN0p39RCSEg4us6cYgDHDkF0HGysxa7E2+B9b09oRJT6jRWSN/+HmFFlt4wjbuzVZLZDdX77lyu80
+    4Fz423BglZCgmP+4OuPXWfjuh/y0mkccs3Y8TKr+VKLV+5EAELdM8ZdI1ZuE+tV/I7VxV52GvjVPXa+FFsREylX6twM/DXFqnIqL
+    t8OW/AlJ3uvKML5V9pAah06/8t95J/tMa/w8bzlm0+NeX7Frgnnnm6HZfVBtg/0YcaqYe+WupP8Bl/H6p+4qo9NJzV5/GGEXKtmo
+    as4Lbq97wXEzmMAj7WpySrCuiY/pPOZPsFfDYjCjdphMuNLBWMMYQgHvMvoFsyN+jQrNsreiZ75yL5Xev/buBo2A26vrCDq6zpMp
+    dDswAyLoExI0W5RBavuSMYG/pmKti5MKC0uljGxK02vkKxiZiinqxYT29pUFzG9GCAr937fMNVSB9aI+ZxwLDl3q6Fm93s32osxV
+    lXz5RYIkadXGseZHMpaNBfZsPUwi6DDCFsX43dMPnOqeJCuLpt93aLIY8zfAwgh/spXWJprHzbdQ56NQhwVYzhH8wRKH0ZXkbAqt
+    0TJa0dUvRoJCc7gexgUQu2jEfW9lf7XDsGNpm07K+Ij/4AoyG7OU2yO8Dd84TmKk3StQ7VSs9M9yQDToeCU1o+hBEiTP5r3wsJOQ
+    X3B0L89Xg5UAYLZM8ATLPsiFSI9pJcTGH9weohA+57yQPaZ2+uKrOSiXoGNiIn7NdJkgq/jV/iU7xRi3MZOvDAk2yqrJCaMKRqbc
+    LqB0LNbhQ23UrVlcLpVyxX4xU7HGwewIuU/nid/zFyyB5pPCk9dnJ+4JgC5/Rk5rAFNcy4ca
+    """
+    static let chartPut = """
+    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
+    """
+
+    /// What a fixture above holds (base64; `deflated`: packed by zlib
+    /// with no head, as `NSData` unpacks it).
+    private static func held(_ text: String, deflated: Bool = false) throws -> Data {
+        let data = try XCTUnwrap(Data(base64Encoded: text, options: .ignoreUnknownCharacters))
+        guard deflated else { return data }
+        return try (data as NSData).decompressed(using: .zlib) as Data
+    }
+
+    /// The phone puts its own photographs in the colours of the chart the
+    /// server read (Mateusz 2026-11-19 08:09 UTC: "Czy iPhone będzie także
+    /// obsługiwać kartę koloru"), value for value as the core does it on
+    /// any processor, which is the server's `colorchecker.apply` (but for
+    /// a level in one value of a million, where the server's OpenCV adds
+    /// up in one step).
+    func testAChartsColoursArePutAsTheServerPutsThem() throws {
+        let tables = try Self.held(Self.chartTables, deflated: true)
+        XCTAssertEqual(tables.count, 69704)
+        XCTAssertEqual(String(decoding: tables.prefix(8), as: UTF8.self), "FRAMECH1")
+        let pixels = try Self.held(Self.chartPicture), put = try Self.held(Self.chartPut)
+        XCTAssertEqual(pixels.count, 24 * 32 * 3)
+        XCTAssertEqual(put.count, pixels.count)
+        XCTAssertNotEqual(put, pixels)
+
+        let folder = try folder()
+        let picture = folder.appendingPathComponent("picture.npy"), by = folder.appendingPathComponent("chart.tables")
+        let head = ScanPicture.head(rows: 24, columns: 32)
+        try (head + pixels).write(to: picture)
+        try tables.write(to: by)
+        try ScanCore.chart(picture, by: by)
+        let made = try Data(contentsOf: picture)
+        let shape = try XCTUnwrap(ScanPicture.shape(of: made))
+        XCTAssertEqual(shape.rows, 24)
+        XCTAssertEqual(shape.columns, 32)
+        let got = [UInt8](made.suffix(from: made.startIndex + shape.from)), want = [UInt8](put)
+        XCTAssertEqual(got.count, want.count)
+        let off = zip(got, want).enumerated().filter { $0.element.0 != $0.element.1 }
+        let first = off.first.map { "\($0.offset): \($0.element.0) for \($0.element.1)" } ?? "none"
+        XCTAssertTrue(off.isEmpty, "\(off.count) values differ, the first at \(first)")
+
+        // Tables this core does not know (another server's, a file cut
+        // short) put nothing: the picture stays, and the server makes the scan.
+        try (head + pixels).write(to: picture)
+        try tables.prefix(4000).write(to: by)
+        XCTAssertThrowsError(try ScanCore.chart(picture, by: by))
+        var other = tables
+        other[other.startIndex + 7] = UInt8(ascii: "9")
+        try other.write(to: by)
+        XCTAssertThrowsError(try ScanCore.chart(picture, by: by))
+        XCTAssertEqual(try Data(contentsOf: picture), head + pixels)
+        // And what is no picture is not taken for one.
+        try tables.write(to: by)
+        XCTAssertThrowsError(try ScanCore.chart(folder.appendingPathComponent("none.npy"), by: by))
+    }
+
+    /// A scan with a chart beside the work: each of its photographs is put
+    /// in the chart's colours as it is read, and the server is told so (it
+    /// takes no scan of such a photograph that was not).
+    func testAScanWithAChartIsReadInTheChartsColours() throws {
+        let tables = try Self.held(Self.chartTables, deflated: true)
+        let wall = try XCTUnwrap(PhoneScan.jpeg(of: Self.picture(rows: 320, columns: 240) { _, _, colour in
+            UInt8(120 + colour * 30)
+        }))
+        let plain = try PhoneScan.read(first: wall, sides: [wall], into: folder().appendingPathComponent("plain"))
+        let trued = try PhoneScan.read(
+            first: wall, sides: [wall], into: folder().appendingPathComponent("trued"), chart: tables
+        )
+        XCTAssertFalse(plain.trued)
+        XCTAssertTrue(trued.trued)
+        for (taken, put) in zip([plain.first] + plain.sides, [trued.first] + trued.sides) {
+            let before = try Data(contentsOf: taken), after = try Data(contentsOf: put)
+            XCTAssertEqual(before.count, after.count)
+            XCTAssertNotEqual(before, after)
+            let shape = try XCTUnwrap(ScanPicture.shape(of: after))
+            XCTAssertEqual(shape.rows, 320)
+            XCTAssertEqual(shape.columns, 240)
+        }
+        // Tables that are none: the phone makes no scan of it.
+        XCTAssertThrowsError(try PhoneScan.read(
+            first: wall, sides: [wall], into: folder().appendingPathComponent("none"), chart: Data("nothing".utf8)
+        ))
+
+        let corners = [[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]]
+        let made = try PhoneScan.make(trued, corners: corners)
+        XCTAssertTrue(made.trued)
+        let told = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: PhoneScan.told(made, trace: [:], heat: (.nominal, .nominal))
+        ) as? [String: Any])
+        XCTAssertEqual(told["trued"] as? Bool, true)
+        let bare = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: PhoneScan.told(PhoneScan.make(plain, corners: corners), trace: [:], heat: (.nominal, .nominal))
+        ) as? [String: Any])
+        XCTAssertNil(bare["trued"])
+    }
+
+    /// The demo's photographs have no chart: no tables of one.
+    @MainActor
+    func testTheDemoGivesNoTablesOfAChart() async throws {
+        let demo = DemoBackend()
+        do {
+            _ = try await demo.ownChartTables(token: "0123456789abcdef01234567")
+            XCTFail("tables of no chart")
+        } catch {
+            XCTAssertTrue(OwnPhoneScan.refused(error))
+        }
+    }
+
     // MARK: The scan made and sent
 
     /// A scan's photographs are read into files of their own and merged:

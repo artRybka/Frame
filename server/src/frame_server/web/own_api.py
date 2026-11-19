@@ -69,14 +69,37 @@ async def _own(svc: FrameService, item_id: str) -> Item:
     return item
 
 
+class CameraLens(BaseModel):
+    """What the phone's camera says of its own lens for a photograph
+    (``AVCameraCalibrationData``): how much further from the lens's
+    middle a point of the straight picture is in the photograph, at radii
+    evenly from that middle (``centre``, 0–1 across and down the
+    photograph as it stands upright) to the photograph's farthest corner."""
+
+    table: list[float] = Field(min_length=2, max_length=1024)
+    centre: tuple[float, float]
+
+
 @router.post("/own/photos", response_model=Incoming)
-async def send_photo(svc: Svc, file: Annotated[UploadFile, File()]) -> Incoming:
-    """The photograph of a work of his, kept a day while he adds it."""
+async def send_photo(
+    svc: Svc,
+    file: Annotated[UploadFile, File()],
+    lens: Annotated[str | None, Form()] = None,
+) -> Incoming:
+    """The photograph of a work of his, kept a day while he adds it.
+    ``lens``: a :class:`CameraLens` as JSON, when the phone's camera gave
+    one with the photograph; what is none is left out, never refused."""
     data = await file.read()
     if not data:
         raise HTTPException(422, "empty file")
+    camera: dict[str, Any] | None = None
+    if lens:
+        try:
+            camera = CameraLens.model_validate_json(lens).model_dump()
+        except ValidationError:
+            camera = None
     try:
-        return await run_in_threadpool(svc.own_works.take, data)
+        return await run_in_threadpool(svc.own_works.take, data, camera)
     except ValueError as err:
         raise HTTPException(422, str(err)) from err
 
@@ -152,6 +175,9 @@ class PhoneScan(BaseModel):
     #: What the phone noted of making it: how long each part took, on
     #: what phone, with which app and core.
     phone: dict[str, Any] | None = Field(default=None, max_length=32)
+    #: The phone put its photographs in the colours of the chart read
+    #: here first (:func:`chart`).
+    trued: bool = False
 
 
 @router.post("/own/photos/{token}/merged", response_model=Merged)
@@ -166,8 +192,9 @@ async def merged(
     :func:`merge` keeps the server's: ``file`` the first photograph
     without its reflections (a JPEG of its size), ``note`` a
     :class:`PhoneScan` as JSON. 422 for what is no scan of this
-    photograph (its colours were set by a chart here, no side photographs
-    are with the server…): the phone then asks :func:`merge`."""
+    photograph (its colours were set by a chart here and not by the phone,
+    no side photographs are with the server…): the phone then asks
+    :func:`merge`."""
     try:
         told = PhoneScan.model_validate_json(note)
     except ValidationError as err:
@@ -188,11 +215,27 @@ async def merged(
             told.doubt,
             told.trace,
             told.phone,
+            told.trued,
         )
     except LookupError as err:
         raise HTTPException(404, str(err)) from err
     except ValueError as err:
         raise HTTPException(422, str(err)) from err
+
+
+@router.get("/own/photos/{token}/chart")
+async def chart(token: str, svc: Svc) -> Response:
+    """The way to the colours of the chart found in the photograph, for
+    the phone's core to put its own photographs of the scan through
+    before it merges them (``colorchecker.tables``, some 70 kB). 404
+    where no chart was found."""
+    try:
+        return Response(
+            await run_in_threadpool(svc.own_works.tables, token),
+            media_type="application/octet-stream",
+        )
+    except LookupError as err:
+        raise HTTPException(404, str(err)) from err
 
 
 @router.post("/own/photos/{token}/single")

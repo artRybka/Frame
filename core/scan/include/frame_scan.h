@@ -25,6 +25,14 @@ typedef struct frame_scan_note {
 int frame_scan_merge_files(const char* first, const char* const* sides, int count, const double* corners,
                            int anyway, const char* into, frame_scan_note* note, char* error, int error_size);
 
+/* The photograph at `path` (.npy, rows × columns × 3 of 8 bits, RGB) in
+ * the colours a colour chart gives it, in place: `tables` the file the
+ * server gives of the chart it read (`colorchecker.tables`). Done to each
+ * of a scan's photographs before `frame_scan_merge_files`. Zero when it
+ * went well; else what went wrong is said in `error`, and the file is as
+ * it was. */
+int frame_scan_chart_file(const char* path, const char* tables, char* error, int error_size);
+
 /* A scene made up (a work under glass, a lamp in it, photographed three
  * times), `side` pixels long, merged: nothing is read or written. For a
  * test, and to time a phone without a scan at hand. */

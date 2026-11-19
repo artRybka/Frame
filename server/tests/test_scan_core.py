@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -113,3 +114,133 @@ def test_the_phone_and_the_server_read_a_photograph_alike() -> None:
             r, k = divmod(n, 4)
             here = read[r * square + square // 2, k * square + square // 2].astype(int)
             assert np.abs(here - colour).max() <= 6, (side, n, here, colour)
+
+
+def test_a_charts_tables_carry_all_that_puts_its_colours() -> None:
+    """Mateusz 2026-11-19 08:09 UTC: "Czy iPhone będzie także obsługiwać
+    kartę koloru". The phone is given what ``colorchecker.apply`` goes by
+    (``colorchecker.tables``) and puts its own photographs through it
+    before it makes the scan. Read as the core reads them, the tables
+    make of any picture what ``apply`` makes of it: but for a level in
+    one value of a million (the server's OpenCV adds up in one step where
+    the processor can), also with the photograph's top in the chart."""
+    import numpy as np
+    import test_colorchecker as drawn
+
+    from frame_server.imaging import colorchecker
+
+    board = drawn._board(colorchecker.REFERENCE.astype(np.uint8))
+    rng = np.random.default_rng(5)
+    picture = rng.integers(0, 256, (600, 800, 3), dtype=np.uint8)
+    picture[:8] = 255
+    picture[8:16] = 0
+    tops = []
+    for shot in (drawn._photographed, drawn._in_a_dim_room, drawn._under_a_lamp):
+        chart = colorchecker.find(shot(drawn._scene(board)))
+        assert chart is not None
+        tops.append(chart.lightest > 0)
+        tables = colorchecker.tables(chart)
+        for photo in (picture, shot(drawn._scene(board))):
+            want = colorchecker.apply(photo, chart).astype(int)
+            apart = np.abs(_as_the_core(tables, photo).astype(int) - want)
+            assert apart.max() <= 1 and (apart > 0).mean() < 1e-4, shot.__name__
+    assert tops == [False, False, True]
+
+
+def test_the_phone_puts_a_charts_colours_as_the_server_does() -> None:
+    """The chart the app's tests put a made-up picture in the colours of
+    (``PhoneScanTests``), with the tables of it and what the core makes
+    of the picture: the tables are this server's of that chart, the core
+    read them as this file's reading does (value for value), and that is
+    what ``colorchecker.apply`` makes of the picture here."""
+    import base64
+    import json
+    import re
+    import zlib
+
+    import numpy as np
+
+    from frame_server.imaging import colorchecker
+
+    source = IOS / "FrameTests" / "PhoneScanTests.swift"
+    if not source.is_file():
+        pytest.skip("the server's tree without the app beside it")
+    text = source.read_text()
+
+    def held(name: str) -> bytes:
+        found = re.search(rf'static let {name} = """\n(.*?)\n\s*"""', text, re.S)
+        assert found is not None, name
+        return base64.b64decode("".join(found.group(1).split()))
+
+    said = re.search(r'static let chart = #"(.*)"#', text)
+    assert said is not None
+    chart = colorchecker.Chart.from_json(json.loads(said.group(1)))
+    # (Packed with no head: what the phone's ``NSData`` unpacks.)
+    tables = zlib.decompress(held("chartTables"), -15)
+    picture = np.frombuffer(held("chartPicture"), np.uint8).reshape(24, 32, 3)
+    put = np.frombuffer(held("chartPut"), np.uint8).reshape(24, 32, 3)
+
+    mine = colorchecker.tables(chart)
+    head = len(colorchecker.TABLES)
+    floats = head + 4 * (3 * 256 + 256 + 9)
+    assert len(mine) == len(tables) and mine[:head] == tables[:head]
+    # (To the last bit but where a processor's power of 2.4 ends otherwise.)
+    assert np.allclose(
+        np.frombuffer(mine[head:floats], "<f4"),
+        np.frombuffer(tables[head:floats], "<f4"),
+        1e-6,
+        1e-9,
+    )
+    assert mine[floats:] == tables[floats:]
+    # The fixture is of a chart with the photograph's top in it, and of
+    # colours that ran into each other.
+    assert chart.lightest > 0 and abs(chart.matrix[0][1]) > 0.02
+
+    assert (_as_the_core(tables, picture) == put).all()
+    apart = np.abs(colorchecker.apply(picture, chart).astype(int) - put)
+    assert apart.max() <= 1 and (apart > 0).mean() < 0.002
+    assert (np.abs(put.astype(int) - picture) > 8).mean() > 0.3  # the chart did set colours
+
+
+def _as_the_core(tables: bytes, photo: Any) -> Any:
+    """``photo`` (uint8 RGB) put through a chart's ``tables`` as the core
+    does it (``core/scan`` ``scan_chart.cpp``): in float32, one sum after
+    another and nothing fused, so that it comes out the same on every
+    processor."""
+    import numpy as np
+
+    from frame_server.imaging import colorchecker
+
+    head = len(colorchecker.TABLES)
+    assert tables[:head] == colorchecker.TABLES
+    assert len(tables) == head + 4 * (3 * 256 + 256 + 9) + 4 + 8 * 3 + 65536
+    at = head
+
+    def take(kind: str, count: int) -> Any:
+        nonlocal at
+        out = np.frombuffer(tables, kind, count, at)
+        at += out.nbytes
+        return out
+
+    curves = take("<f4", 3 * 256).reshape(3, 256)
+    linear = take("<f4", 256)
+    matrix = take("<f4", 9).reshape(3, 3)
+    top = bool(take("<u4", 1)[0])
+    start = take("<f8", 3)
+    lit = take("u1", 65536)
+    none, all_ = np.float32(0), np.float32(1)
+    light = np.stack([curves[c][photo[..., c]] for c in range(3)], axis=-1)
+    if top:
+        lifted = light.copy()
+        for c in range(3):
+            above = np.float32(max(1.0 - float(start[c]), 1e-6))
+            near = np.clip((linear[photo[..., c]] - np.float32(start[c])) / above, none, all_)
+            others = np.maximum(light[..., (c + 1) % 3], light[..., (c + 2) % 3])
+            lifted[..., c] = light[..., c] + near * np.maximum(others - light[..., c], none)
+        light = lifted
+    out = np.empty_like(photo)
+    for c in range(3):
+        total = matrix[c, 0] * light[..., 0] + matrix[c, 1] * light[..., 1]
+        total = np.clip(total + matrix[c, 2] * light[..., 2], none, all_)
+        out[..., c] = lit[(total * np.float32(65535) + np.float32(0.5)).astype(np.uint16)]
+    return out

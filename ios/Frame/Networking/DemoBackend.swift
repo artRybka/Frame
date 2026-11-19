@@ -1715,7 +1715,7 @@ actor DemoBackend: FrameBackend {
         return item
     }
 
-    func sendOwnPhoto(_ data: Data) async throws -> OwnIncoming {
+    func sendOwnPhoto(_ data: Data, lens: OwnLens?) async throws -> OwnIncoming {
         try await Task.sleep(for: .milliseconds(400))
         guard let image = UIImage(data: data) else { throw BackendError.http(status: 422, body: "no picture") }
         let token = UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(24).lowercased()
@@ -1758,6 +1758,11 @@ actor DemoBackend: FrameBackend {
             token: token, width: Int(image.size.width), height: Int(image.size.height),
             used: told["used"] as? Int ?? 0, replaced: replaced, doubt: told["doubt"] as? Bool
         )
+    }
+
+    func ownChartTables(token: String) async throws -> Data {
+        // The demo's photographs have no chart beside the work.
+        throw BackendError.notFound
     }
 
     func keepOwnFirstPhoto(token: String) async throws {

@@ -263,6 +263,35 @@ def apply(photo: Photo, chart: Chart) -> Photo:
     return _put(photo, chart, chart.lit())
 
 
+#: What begins a chart's :func:`tables`: raised when what follows changes,
+#: and a core that knows another leaves the scan to the server.
+TABLES = b"FRAMECH1"
+
+
+def tables(chart: Chart) -> bytes:
+    """What :func:`apply` goes by, for the phone's core to put its own
+    photographs in the chart's colours before it makes the scan of them
+    (``core/scan`` ``frame_scan_chart_file``; Mateusz 2026-11-19 08:09
+    UTC: "Czy iPhone będzie także obsługiwać kartę koloru"): after
+    :data:`TABLES` each channel's curve (3 × 256 float32), each 8-bit
+    value's own light (256 float32), the matrix (3 × 3 float32), whether
+    the curves end below the photograph's top (:func:`_at_top`; uint32)
+    and where in each channel (3 float64), then how each light is written
+    (:meth:`Chart.lit`, 65536 bytes). The numbers the low end first."""
+    values = u8_to_linear(np.arange(256, dtype=np.uint8))
+    return b"".join(
+        [
+            TABLES,
+            chart.curves().astype("<f4").tobytes(),
+            values.astype("<f4").tobytes(),
+            np.array(chart.matrix, "<f4").tobytes(),
+            np.array([1 if chart.lightest else 0], "<u4").tobytes(),
+            np.array(chart.greys, "<f8").T[chart.lightest].tobytes(),
+            chart.lit().tobytes(),
+        ]
+    )
+
+
 def true(photo: Photo, chart: Chart) -> Photo:
     """``photo`` (uint8 RGB) as the chart's patches truly are, light for
     light: what :func:`apply` gave to 1.145.243."""
