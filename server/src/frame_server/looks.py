@@ -715,6 +715,14 @@ class Looks:
         asking.add_done_callback(gone)
         return asking
 
+    def asking(self, text: str) -> bool:
+        """Whether Google's numbers of ``text`` are on their way (asked,
+        not here yet): a search answered without them can be asked again
+        in a moment."""
+        key = " ".join(text.split())[:300].lower()
+        with self._words_lock:
+            return key in self._asking
+
     def scored(self, text: str, wait: float | None = None) -> list[tuple[str, float]] | None:
         """The works nearest what the words say (:data:`AMONG_NEAR` of
         them), each with how near, nearest first: Szukaj's "Słowa"

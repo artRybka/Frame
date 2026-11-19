@@ -79,6 +79,10 @@ Svc = Annotated[FrameService, Depends(service)]
 class ItemPage(BaseModel):
     total: int
     items: list[ItemSummary]
+    #: "Słowa" answered with the words alone while Google's numbers of
+    #: them are still on their way: asked again in a moment, the works
+    #: that look so come after (Mateusz 2026-11-19: "wyniki od razu").
+    later: bool = False
 
 
 class ItemPatch(BaseModel):
@@ -352,7 +356,8 @@ def list_items(
         # Its artists' pictures laid over each other: copies under other
         # titles and details gone by the next look (library/twins.py).
         svc.twins.after_search(items)
-    return ItemPage(total=total, items=[ItemSummary.of(i) for i in items])
+    later = rules.seen and svc.library.words_alone() and svc.looks.asking(rules.query)
+    return ItemPage(total=total, items=[ItemSummary.of(i) for i in items], later=later)
 
 
 @router.get("/library/hidden", response_model=ItemPage)

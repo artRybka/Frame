@@ -1762,6 +1762,11 @@ class Library:
                     self._orders.popitem(last=False)
         return len(items), items[offset:end]
 
+    def words_alone(self) -> bool:
+        """Whether this thread's last :meth:`query` of "Słowa" answered
+        with the words alone (Google's numbers of them not there)."""
+        return bool(getattr(_short, "words_alone", False))
+
     def _seen(
         self,
         rules: PlaylistRules,

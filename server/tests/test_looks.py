@@ -1147,6 +1147,9 @@ def test_slowa_without_googles_numbers_in_time_answer_with_the_words(
     painter.embed = slow  # type: ignore[method-assign]
     seen = PlaylistRules(query="red", seen=True)
     assert sorted(i.id for i in service.library.query(seen)[1]) == ["met:1", "met:3"]
+    # Szukaj is told to ask again in a moment.
+    assert service.library.words_alone()
+    assert found.asking("red")
     held.set()
     for _ in range(100):
         if found.scored("red", wait=0.1) is not None:
@@ -1162,6 +1165,12 @@ def test_slowa_without_a_key_are_the_words_alone(
     painter.key = False
     items = service.library.query(PlaylistRules(query="red", seen=True))[1]
     assert sorted(i.id for i in items) == ["met:1", "met:3"]
+    # Nothing on its way: nothing to ask again.
+    assert not found_asking(looks, "red")
+
+
+def found_asking(looks: tuple[Looks, FakePainter], text: str) -> bool:
+    return looks[0].asking(text)
 
 
 def test_szukaj_asks_slowa_and_the_suggestions_ask_googles_numbers_ahead(
@@ -1186,6 +1195,7 @@ def test_szukaj_asks_slowa_and_the_suggestions_ask_googles_numbers_ahead(
         asked = len(painter.asked)
         page = client.get("/api/library/items", params={"q": "barn", "seen": True}).json()
         assert {i["id"] for i in page["items"]} >= {"met:1", "met:2"}
+        assert page["later"] is False
         assert len(painter.asked) == asked  # the search asked Google nothing more
         page = client.get("/api/library/items", params={"q": "barn"}).json()
         assert sorted(i["id"] for i in page["items"]) == ["met:1", "met:2"]

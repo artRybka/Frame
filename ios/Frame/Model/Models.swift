@@ -852,6 +852,10 @@ struct PictureMarks: Equatable, Sendable {
 struct ItemPage: Codable, Sendable {
     let total: Int
     var items: [ItemSummary]
+    /// "Słowa" answered with the words alone, Google's numbers of them
+    /// still on their way: asked again in a moment, the works that look so
+    /// come after them (Mateusz 2026-11-19).
+    var later: Bool?
 }
 
 struct PlaylistRules: Codable, Hashable, Sendable {
