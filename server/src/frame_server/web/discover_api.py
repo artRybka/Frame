@@ -81,8 +81,8 @@ from ..museum_places import PlaceHit, commons_picture
 from ..night import give_way
 from ..player import POOL_SIZE, SUGGESTIONS_KEY, TILE_WORKS_KEY
 from ..service import FrameService
-from .deps import require_owner, require_token, service
-from .library_api import RemoteItem, RemotePage, remote_items
+from .deps import CurrentUser, require_owner, require_token, service
+from .library_api import RemoteItem, RemotePage, playlist_works, remote_items
 from .playlists_api import summary
 
 log = logging.getLogger(__name__)
@@ -1138,6 +1138,55 @@ def _term_hits(
     return hits
 
 
+def _hit_rules(hit: TermHit) -> PlaylistRules:
+    """The rules that a suggestion, picked, asks for (as the app makes them)."""
+    if hit.kind == "artist":
+        return PlaylistRules(artists=[hit.key])
+    if hit.kind == "word":
+        return PlaylistRules(query=quote([hit.key]))
+    return PlaylistRules(terms=[hit.key])
+
+
+def meant_among(svc: FrameService, typed: str, ids: set[str]) -> set[str]:
+    """The works among ``ids`` that anything the words being typed could
+    mean finds: a playlist's grid while its field is typed in, so that it
+    shows what its suggestions count (Mateusz 2026-11-19, the magnifier:
+    "morze" found nothing while "Morze · Temat" counted 3)."""
+    found: set[str] = set()
+    for hit in _term_hits(svc, typed, 10):
+        if hit.kind == "title":
+            if hit.item in ids:
+                found.add(hit.item)
+            continue
+        rules = _hit_rules(hit)
+        if hit.kind == "word":
+            rules = rules.model_copy(update={"seen": True})  # "Słowa", as Return asks
+        _, items = svc.library.query(rules, among=ids)
+        found |= {item.id for item in items}
+    return found
+
+
+def _counted_in(
+    svc: FrameService, hits: list[TermHit], works: list[Item], gone: Callable[[], bool]
+) -> list[TermHit]:
+    """The suggestions counted in a playlist's works: none it has no work
+    of, but the words typed (the last row, always there for Return). A
+    title is there when its work is in the playlist."""
+    ids = {item.id for item in works}
+    out: list[TermHit] = []
+    for n, hit in enumerate(hits):
+        if gone():
+            return []
+        if hit.kind == "title":
+            if hit.item in ids:
+                out.append(hit)
+            continue
+        count, _ = svc.library.query(_hit_rules(hit), among=ids, limit=0)
+        if count or n == len(hits) - 1:
+            out.append(hit.model_copy(update={"count": count}))
+    return out
+
+
 #: Threads counting the suggestions while typing, apart from the server's
 #: own pool. A count goes through the whole catalogue until its search
 #: index is made (after a start, after the night's import): dozens of them
@@ -1165,12 +1214,19 @@ def _title_forms(svc: FrameService, words: str) -> tuple[str, ...]:
 
 @router.get("/terms", response_model=list[TermHit])
 async def terms(
-    request: Request, svc: Svc, q: str, limit: Annotated[int, Query(ge=1, le=20)] = 10
+    request: Request,
+    svc: Svc,
+    user: CurrentUser,
+    q: str,
+    limit: Annotated[int, Query(ge=1, le=20)] = 10,
+    playlist: int | None = None,
 ) -> list[TermHit]:
     """What ``q`` could mean: artists in the library, styles, subjects,
     periods and techniques, and the plain words; each with how many works
     in the catalogue fit. A question the same asker followed with another
-    before its turn came is answered with nothing (the app has let it go)."""
+    before its turn came is answered with nothing (the app has let it go).
+    ``playlist``: counted in that playlist's works, those it has none of
+    left out but the words typed (the magnifier on a playlist's page)."""
     who = hashlib.sha256(request.headers.get("authorization", "").encode()).hexdigest()
     with _TERMS_LOCK:
         turn = _TERMS_ASKED[who] = _TERMS_ASKED.get(who, 0) + 1
@@ -1183,7 +1239,10 @@ async def terms(
             return []
         try:
             with asked_by(gone):  # a count under way stops with the next letter
-                return _term_hits(svc, q, limit, gone)
+                hits = _term_hits(svc, q, limit, gone)
+                if playlist is None:
+                    return hits
+                return _counted_in(svc, hits, playlist_works(svc, playlist, user), gone)
         except Abandoned:
             return []
 

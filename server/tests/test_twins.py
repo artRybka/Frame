@@ -133,8 +133,8 @@ def test_a_search_looks_at_its_artists(
     service.twins.search_delay = 0
     from frame_server.web.library_api import list_items
 
-    list_items(service, q="")  # no search: nothing to look at
-    list_items(service, q="vermeer", sort="relevance")
+    list_items(service, service.users.owner(), q="")  # no search: nothing to look at
+    list_items(service, service.users.owner(), q="vermeer", sort="relevance")
     assert asked.wait(5)
     assert len(keys) == 1 and len(keys[0]) == 1
 

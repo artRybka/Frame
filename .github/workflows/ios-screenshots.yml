@@ -208,6 +208,8 @@ jobs:
             capture playlists 12 "playlists-$appearance"
             capture suggestions 14 "suggestions-$appearance"
             capture playlist 12 "playlist-$appearance"
+            capture playlist-search 14 "playlist-search-$appearance" -typed morze
+            capture playlist-search 16 "playlist-search-found-$appearance" -typed morze -scroll found
             capture playlist 12 "lowres-playlist-$appearance" -demoLowSide all
             capture detail 16 "lowres-detail-$appearance" -demoLowSide all
             capture playlist 12 "restored-playlist-$appearance" -demoLowSide restored
