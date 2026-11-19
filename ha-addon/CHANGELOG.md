@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.145.264
+
+- Pociągnięcie końca listy (Szukaj, „Podobne do”) w połowie drogi: komplet
+  kwadracików po ok. 70 pt zamiast 80. („Chyba lepiej będzie gdzieś po
+  środku - 70 pt”)
+- Po pociągnięciu kwadraciki, które czekają na muzea (albo na dalsze
+  „Podobne do”), bawią się tam, gdzie stały te zapalone: koniec listy
+  zostaje podciągnięty, aż przyjdą nowe dzieła, zamiast opadać na dół
+  ekranu. („kwadraciki animowane w miejscu gdzie były te do
+  przeciągnięcia (teraz są zbyt nisko)”)
+
 ## 1.145.263
 
 - Szukaj: gdy pokazane są już wszystkie dzieła z serwera, a następne

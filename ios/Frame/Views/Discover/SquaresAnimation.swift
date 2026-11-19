@@ -313,9 +313,13 @@ struct PullForMore: View {
 
     static let count = SquareGame.indices.count
     /// How far past the end lights one more square.
-    /// 16: all five lit at 80 pt past the end (Mateusz 2026-11-19, at 60:
-    /// "Może machnięcie powinno być odrobinę mocniejsze").
-    static let pullPerSquare: CGFloat = 16
+    /// 14: all five lit at 70 pt past the end (Mateusz 2026-11-19, at 60:
+    /// "Może machnięcie powinno być odrobinę mocniejsze", at 80: "Chyba
+    /// lepiej będzie gdzieś po środku - 70 pt").
+    static let pullPerSquare: CGFloat = 14
+    /// How far the end stays pulled up while what was asked for comes: the
+    /// waiting squares where the lit ones were.
+    static let held = CGFloat(count) * pullPerSquare
 
     var body: some View {
         let side = SquareGame.side
