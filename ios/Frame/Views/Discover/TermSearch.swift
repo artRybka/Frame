@@ -139,26 +139,23 @@ final class TermLookup {
             .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
     }
 
-    /// The words may say how a work looks ("mglisty poranek nad wodą"):
-    /// Szukaj can search by that ("Szukaj wyglądem").
-    var describesLook: Bool { trimmed.split(whereSeparator: \.isWhitespace).count >= 2 }
-
-    /// The server can search by how works look (Szukaj says so): the
-    /// suggestions offer it, and Return picks it for two words or more.
+    /// The server can search by how works look (Szukaj says so). The words
+    /// ("Słowa") find what the works show then too, on the server's side;
+    /// no row of its own any more (Mateusz 2026-11-19).
     var looks = false
 
     /// What Return picks, the row marked first in the suggestions (Mateusz
     /// 2026-11-13: "domyślna opcja (pod lupą na klawiaturze) gdy wpisano
     /// więcej niż 1 słowo. Wyjątek stanowi nazwisko artysty"): an artist
-    /// whose name or surname was typed, then a work's title typed, then the
-    /// words searched by how works look, else the words as they are.
+    /// whose name or surname was typed, then a work's title typed, else the
+    /// words ("Słowa": what the works are described with and what they show,
+    /// Mateusz 2026-11-19).
     var chosen: SearchToken? {
         let words = trimmed
         guard !words.isEmpty else { return nil }
         if let artist = namedArtist { return artist }
-        // A work's title typed ("gwiaździsta noc"): its works, not a look.
+        // A work's title typed ("gwiaździsta noc"): its works.
         if let title = Self.typedTitle(in: hits) { return title }
-        if looks, describesLook { return SearchToken.look(words) }
         return SearchToken(kind: "word", key: words, name: words)
     }
 
@@ -278,7 +275,11 @@ private struct TermSearch: ViewModifier {
             .searchable(
                 text: $lookup.text, tokens: fieldTokens, isPresented: $presented, prompt: Text(lookup.prompt(prompt))
             ) { token in
-                Label(token.shownName, systemImage: token.icon)
+                Label {
+                    Text(bound: token.shownName)
+                } icon: {
+                    token.image
+                }
             }
             // The X: off with the words and every group's choices too.
             .onChange(of: presented) { _, presented in
@@ -531,8 +532,10 @@ private struct SuggestionsPanel: ViewModifier {
 }
 
 /// While typing: what the words could mean, a tap puts it in as a chip.
-/// The row Return picks (`TermLookup.chosen`) comes first, marked; the
-/// museums' artists the catalogue doesn't have come last. Shown in the panel
+/// The row Return picks (`TermLookup.chosen`) comes first, marked, the words
+/// typed ("Słowa") right after it, then artists, works, the works' keywords
+/// and the groups (Mateusz 2026-11-19, order A); the museums' artists the
+/// catalogue doesn't have come last. Shown in the panel
 /// over the field (`termSuggestions`).
 struct TermSuggestions: View {
     let lookup: TermLookup
@@ -551,14 +554,11 @@ struct TermSuggestions: View {
         let chosen = lookup.chosen
         VStack(alignment: .leading, spacing: 0) {
             if let chosen { chosenRow(chosen) }
-            if lookup.looks, lookup.describesLook, chosen?.kind != SearchToken.lookKind {
-                lookRow(chosen: false)
-            }
             if lookup.hits.isEmpty, lookup.hint == nil, !lookup.askingMuseums {
                 // Asking the catalogue (the words are still being typed).
                 SearchWaiting(height: 72)
             }
-            ForEach(lookup.hits.filter { $0.id != chosen?.id }) { hit in
+            ForEach(Self.ordered(lookup.hits, typed: lookup.trimmed).filter { $0.id != chosen?.id }) { hit in
                 hitRow(hit, fromMuseums: false, chosen: false)
             }
             ForEach(museumArtists.filter { $0.id != chosen?.id }) { hit in
@@ -580,9 +580,7 @@ struct TermSuggestions: View {
     /// The row Return picks.
     @ViewBuilder
     private func chosenRow(_ token: SearchToken) -> some View {
-        if token.kind == SearchToken.lookKind {
-            lookRow(chosen: true)
-        } else if let hit = lookup.hits.first(where: { $0.id == token.id }) {
+        if let hit = lookup.hits.first(where: { $0.id == token.id }) {
             hitRow(hit, fromMuseums: false, chosen: true)
         } else if let hit = museumArtists.first(where: { $0.id == token.id }) {
             hitRow(hit, fromMuseums: true, chosen: true)
@@ -592,15 +590,6 @@ struct TermSuggestions: View {
         }
     }
 
-    /// "Szukaj wyglądem": the works that look as the words say, in the same
-    /// results, the groups narrowing them.
-    private func lookRow(chosen: Bool) -> some View {
-        row(
-            mark: SearchToken.lookKind, icon: "eye", title: "Szukaj wyglądem",
-            kind: "Dzieła, które tak wyglądają", detail: "", count: nil, chosen: chosen
-        ) { pick(.look(lookup.trimmed), fromMuseums: false) }
-    }
-
     private func hitRow(_ hit: TermHit, fromMuseums: Bool, chosen: Bool) -> some View {
         // A title: its work's thumbnail and artist, no count (mostly one).
         let titled = hit.kind == SearchToken.titleKind
@@ -608,7 +597,7 @@ struct TermSuggestions: View {
             mark: fromMuseums ? "museum" : hit.token.kind,
             icon: fromMuseums ? "building.columns" : hit.token.icon,
             title: hit.token.kind == "artist" ? Names.artist(hit.name) : hit.name,
-            kind: fromMuseums ? "Artysta z muzeów" : titled ? "Dzieło" : kindName(of: hit),
+            kind: fromMuseums ? "Artysta z muzeów" : titled ? "Dzieło" : hit.token.kindName,
             detail: fromMuseums ? "" : titled ? Names.artist(hit.detail) : hit.detail,
             count: fromMuseums || titled || lookup.uncounted.contains(hit.id) ? nil : hit.count,
             thumb: titled ? hit.item : nil,
@@ -623,13 +612,21 @@ struct TermSuggestions: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 if let thumb {
-                    // A work's title: its picture in the mark's place.
+                    // A work's title: its picture in a circle in the mark's
+                    // place, near enough that a print's margin stays outside
+                    // (Mateusz 2026-11-19).
+                    // In a thin ring, as Artysta's bust is (Mateusz
+                    // 2026-11-19: "z obwódką").
                     ArtImage(ref: .thumb(thumb), placeholder: Theme.mat, maxPixel: 120)
-                        .frame(width: 26, height: 26)
-                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        .frame(width: 20, height: 20)
+                        .scaleEffect(Self.workZoom)
+                        .frame(width: 20, height: 20)
+                        .clipShape(Circle())
+                        .padding(3)
+                        .overlay { Circle().strokeBorder(Theme.ink, lineWidth: 1.9) }
                         .accessibilityHidden(true)
                 } else {
-                    GroupMark(kind: tokenKind, symbol: icon, side: 17)
+                    GroupMark(kind: tokenKind, symbol: icon, side: tokenKind == SearchToken.likeWorkMark ? 20 : 17)
                         .font(.subheadline)
                         .foregroundStyle(Theme.ink)
                         .frame(width: 22)
@@ -669,11 +666,23 @@ struct TermSuggestions: View {
         .accessibilityHint(chosen ? "Wybierane klawiszem Szukaj" : "")
     }
 
-    /// A word the works were described with ("wielka fala"), apart from
-    /// the words typed.
-    private func kindName(of hit: TermHit) -> String {
-        hit.kind == "word" && hit.key != lookup.trimmed ? "Słowo kluczowe" : hit.token.kindName
+    /// The catalogue's suggestions in order A (Mateusz 2026-11-19): the
+    /// words typed, artists, works, keywords, groups; each kind as the
+    /// server sent it.
+    static func ordered(_ hits: [TermHit], typed: String) -> [TermHit] {
+        func rank(_ hit: TermHit) -> Int {
+            switch hit.kind {
+            case "word": hit.key == typed ? 0 : 3
+            case "artist": 1
+            case SearchToken.titleKind: 2
+            default: 4
+            }
+        }
+        return hits.enumerated().sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }.map(\.element)
     }
+
+    /// How near a work's miniature is in its circle.
+    static let workZoom: CGFloat = 1.45
 
     private func pick(_ token: SearchToken, fromMuseums: Bool) {
         lookup.pick(token, into: $tokens)

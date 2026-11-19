@@ -91,6 +91,8 @@ struct LiveBackend: FrameBackend {
         if q.favoritesOnly { query.append(URLQueryItem(name: "favorites", value: "true")) }
         if q.keptOnly { query.append(URLQueryItem(name: "kept", value: "true")) }
         if !q.look.isEmpty { query.append(URLQueryItem(name: "look", value: q.look)) }
+        // "Słowa": also the works that show what the words say.
+        if q.seen, !q.text.isEmpty { query.append(URLQueryItem(name: "seen", value: "true")) }
         if !q.title.isEmpty { query.append(URLQueryItem(name: "title", value: q.title)) }
         if !q.like.isEmpty { query.append(URLQueryItem(name: "like", value: q.like)) }
         if !q.like.isEmpty, !q.likeBy.isEmpty { query.append(URLQueryItem(name: "like_by", value: q.likeBy)) }
@@ -588,8 +590,9 @@ struct LiveBackend: FrameBackend {
     }
 
     private func museumQuery(_ rules: PlaylistRules, sources: [String], page: Int) -> [URLQueryItem] {
+        let (words, look) = Self.museumWords(rules)
         var query = [
-            URLQueryItem(name: "q", value: rules.query),
+            URLQueryItem(name: "q", value: words),
             URLQueryItem(name: "page", value: String(page)),
         ]
         query += sources.map { URLQueryItem(name: "source", value: $0) }
@@ -604,8 +607,19 @@ struct LiveBackend: FrameBackend {
         // A title asked by its words; a look by searches Haiku makes of
         // it, what the museums bring judged by how it looks (2026-11-13).
         if !rules.title.isEmpty { query.append(URLQueryItem(name: "title", value: rules.title)) }
-        if !rules.look.isEmpty { query.append(URLQueryItem(name: "look", value: rules.look)) }
+        if !look.isEmpty { query.append(URLQueryItem(name: "look", value: look)) }
         return query
+    }
+
+    /// The museums' words and look: "Słowa" of two words or more are asked
+    /// as a look was ("mglisty poranek": searches Haiku makes of them, what
+    /// the museums bring judged by how it looks), one word as it is
+    /// (Mateusz 2026-11-19).
+    static func museumWords(_ rules: PlaylistRules) -> (words: String, look: String) {
+        let phrases = SearchPhrases.tokens(rules.query)
+        let count = phrases.reduce(0) { $0 + $1.split(whereSeparator: \.isWhitespace).count }
+        guard rules.seen, rules.look.isEmpty, rules.title.isEmpty, count >= 2 else { return (rules.query, rules.look) }
+        return ("", phrases.joined(separator: " "))
     }
 
     // MARK: Museums

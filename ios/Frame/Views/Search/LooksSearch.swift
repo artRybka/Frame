@@ -184,7 +184,8 @@ struct LooksSearchButton: View {
                     model.searchLike(itemID, title: title)
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: "eye")
+                        // "Podobne do dzieła"'s own mark, as on its chip.
+                        GroupMark(kind: SearchToken.likeWorkMark, side: 20)
                         Text(bound: "Szukaj podobnych")
                         Text(shown >= LooksLikeSection.counted ? "\(LooksLikeSection.counted)+" : "\(shown)")
                             .opacity(0.65)

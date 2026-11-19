@@ -894,6 +894,11 @@ struct PlaylistRules: Codable, Hashable, Sendable {
     /// What "like" is by (`LikeBy`): subject and style together (""), the
     /// subject or the style alone (Mateusz 2026-11-17).
     var likeBy: String = ""
+    /// With `query`: also the works that look as the words say, after
+    /// those with the words (Szukaj's "Słowa", Mateusz 2026-11-19: one row
+    /// for the words, keywords and the look). Rules saved before keep their
+    /// words alone until words are added to them.
+    var seen: Bool = false
 
     /// Whether there are no rules; exceptions (`excludeIds`,
     /// `excludeSources`) don't count.
@@ -931,6 +936,7 @@ extension PlaylistRules {
         title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""  // before 1.145.98
         like = try c.decodeIfPresent(String.self, forKey: .like) ?? ""  // before 1.145.106
         likeBy = try c.decodeIfPresent(String.self, forKey: .likeBy) ?? ""  // before 1.145.231
+        seen = try c.decodeIfPresent(Bool.self, forKey: .seen) ?? false  // before 1.145.266
     }
 }
 
@@ -3470,26 +3476,38 @@ struct SearchToken: Hashable, Sendable, Identifiable {
         case SearchToken.lookKind: "Wygląd"
         case SearchToken.titleKind: "Tytuł"
         case SearchToken.likeKind: "Podobne"
-        default: "Słowo"
+        // The words in the works' descriptions and what they show, one
+        // kind (Mateusz 2026-11-19).
+        default: "Słowa"
         }
     }
 
+    /// The system symbol; Epoka, Styl, Temat, Muzeum and "Podobne do
+    /// dzieła" are drawn (`GroupMark`, `image`), this is only their stand-in.
+    /// The kinds' icons as Mateusz chose them 2026-11-19 (`ikony-4.png`).
     var icon: String {
         switch kind {
-        case "artist": "person"
+        case "artist": "person.crop.circle"
         case "style", "legacy-style": "paintpalette"
-        case "subject", "legacy-subject": "mountain.2"
+        case "subject", "legacy-subject": "photo"
         case "period": "calendar"
         case "technique": "scribble.variable"
-        case "tag": "star"
+        case "tag": "star.fill"
         case "mine": MineTerm.named(key)?.icon ?? "person.crop.circle"
         case "museum", SearchToken.museumOut: "building.columns"
         case "color": "circle.fill"
-        case SearchToken.likeKind where SearchToken.isPhoto(key): "camera"
-        case SearchToken.lookKind, SearchToken.likeKind: "eye"
-        case SearchToken.titleKind: "text.quote"
+        case SearchToken.likeKind: "photo.on.rectangle.angled"
+        case SearchToken.lookKind: "eye"
+        // A work's own miniature in a circle where there is room for it.
+        case SearchToken.titleKind: "photo.circle"
         default: "text.magnifyingglass"
         }
+    }
+
+    /// The kind as `GroupMark` draws it: a work's look-alikes have their
+    /// own mark, a photograph's the system's two photographs.
+    var markKind: String {
+        kind == SearchToken.likeKind && !SearchToken.isPhoto(key) ? SearchToken.likeWorkMark : kind
     }
 }
 
@@ -3516,6 +3534,9 @@ extension SearchToken {
 
     /// The kind of a work whose look-alikes are asked (`PlaylistRules.like`).
     static let likeKind = "like"
+
+    /// `GroupMark`'s kind for the works like a work (not a photograph).
+    static let likeWorkMark = "like-work"
 
     /// The works that look like the work `id`, as a chip in the field
     /// ("Podobne do: Słoneczniki").
@@ -3679,7 +3700,16 @@ extension PlaylistRules {
         terms = tokens.filter { ["style", "subject", "period", "technique", "tag", "mine"].contains($0.kind) }.map(\.key)
         styles = tokens.filter { $0.kind == "legacy-style" }.map(\.key)
         subjects = tokens.filter { $0.kind == "legacy-subject" }.map(\.key)
-        query = SearchPhrases.query(tokens.filter { $0.kind == "word" }.map(\.key))
+        let before = Set(SearchPhrases.tokens(query))
+        let words = tokens.filter { $0.kind == "word" }.map(\.key)
+        query = SearchPhrases.query(words)
+        // New words are "Słowa": also what the works show. Rules saved
+        // with words alone keep them so until words are added.
+        if query.isEmpty {
+            seen = false
+        } else if words.contains(where: { !before.contains($0) }) {
+            seen = true
+        }
         // One look at a time: the last words asked.
         look = tokens.last { $0.kind == SearchToken.lookKind }?.key ?? ""
         title = tokens.last { $0.kind == SearchToken.titleKind }?.key ?? ""
@@ -3802,6 +3832,8 @@ struct LibraryQuery: Hashable, Sendable {
     var like = ""
     /// As in `PlaylistRules.likeBy`.
     var likeBy = ""
+    /// As in `PlaylistRules.seen`.
+    var seen = false
     /// "Podobne do" this many steps less near than its floor (Szukaj's list
     /// scrolled to its end; the server's `like_further`).
     var likeFurther = 0
@@ -3833,6 +3865,7 @@ struct LibraryQuery: Hashable, Sendable {
         title = rules.title
         like = rules.like
         likeBy = rules.likeBy
+        seen = rules.seen
         self.sort = sort
         self.limit = limit
     }

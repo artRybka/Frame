@@ -74,17 +74,20 @@ final class TermLookupTests: XCTestCase {
         XCTAssertNil(TermFacet.technique.fieldPrompt)
     }
 
-    /// Return (and the marked row): two words or more searched by how the
-    /// works look while the server can, an artist's name as the artist
-    /// (Mateusz 2026-11-13).
+    /// Return (and the marked row): an artist's name as the artist
+    /// (Mateusz 2026-11-13), else the words, "Słowa", also while the server
+    /// can search by how works look: what they show is the words' too
+    /// (Mateusz 2026-11-19).
     func testReturnPicksTheMarkedRow() {
         let lookup = TermLookup()
         XCTAssertNil(lookup.chosen)
         lookup.text = " mglisty poranek "
         XCTAssertEqual(lookup.chosen, SearchToken(kind: "word", key: "mglisty poranek", name: "mglisty poranek"))
         lookup.looks = true
-        XCTAssertEqual(lookup.chosen, SearchToken.look("mglisty poranek"))
-        XCTAssertEqual(lookup.chosen?.kindName, "Wygląd")
+        XCTAssertEqual(lookup.chosen, SearchToken(kind: "word", key: "mglisty poranek", name: "mglisty poranek"))
+        XCTAssertEqual(lookup.chosen?.kindName, "Słowa")
+        // An older playlist's look keeps its name.
+        XCTAssertEqual(SearchToken.look("mglisty poranek").kindName, "Wygląd")
         lookup.text = "mgła"
         XCTAssertEqual(lookup.chosen?.kind, "word")
         XCTAssertTrue(TermLookup.isName("Claude Monet", typed: "claude monet"))
@@ -132,7 +135,9 @@ final class TermLookupTests: XCTestCase {
         var rules = PlaylistRules(terms: ["period:baroque"])
         let chip = SearchToken.like("met:1", title: "Słoneczniki")
         XCTAssertEqual(chip.name, "Podobne do: Słoneczniki")
-        XCTAssertEqual(chip.icon, "eye")
+        XCTAssertEqual(chip.icon, "photo.on.rectangle.angled")
+        XCTAssertEqual(chip.markKind, SearchToken.likeWorkMark)
+        XCTAssertEqual(GroupMark.Mark(kind: chip.markKind), .framed)
         rules.setTokens(rules.tokens(names: [:]) + [chip])
         XCTAssertEqual(rules.like, "met:1")
         XCTAssertEqual(rules.terms, ["period:baroque"])
@@ -154,11 +159,60 @@ final class TermLookupTests: XCTestCase {
         XCTAssertTrue(SearchToken.isPhoto(chip.key))
         XCTAssertFalse(SearchToken.isPhoto("met:1"))
         XCTAssertEqual(chip.name, "Podobne do zdjęcia")
-        XCTAssertEqual(chip.icon, "camera")
+        XCTAssertEqual(chip.icon, "photo.on.rectangle.angled")
+        XCTAssertEqual(chip.markKind, SearchToken.likeKind)
+        XCTAssertNil(GroupMark.Mark(kind: chip.markKind))
         rules.setTokens(rules.tokens(names: [:]) + [chip])
         XCTAssertEqual(rules.like, "photo:0a1b")
         XCTAssertEqual(rules.tokens(names: [:]).last?.name, "Podobne do zdjęcia")
         XCTAssertEqual(LibraryQuery(rules: rules).like, "photo:0a1b")
+    }
+
+    /// "Słowa" (Mateusz 2026-11-19): words put in ask the server for what
+    /// the works show too; a playlist saved with words alone keeps them so
+    /// until words are added. The museums are asked two words or more as a
+    /// look, one word as it is.
+    func testWordsPutInAreSlowa() {
+        var rules = PlaylistRules()
+        rules.setTokens([SearchToken(kind: "word", key: "mglisty poranek", name: "mglisty poranek")])
+        XCTAssertTrue(rules.seen)
+        XCTAssertTrue(LibraryQuery(rules: rules).seen)
+        XCTAssertEqual(LiveBackend.museumWords(rules).words, "")
+        XCTAssertEqual(LiveBackend.museumWords(rules).look, "mglisty poranek")
+        rules.setTokens([])
+        XCTAssertFalse(rules.seen)
+
+        var one = PlaylistRules()
+        one.setTokens([SearchToken(kind: "word", key: "mgła", name: "mgła")])
+        XCTAssertTrue(one.seen)
+        XCTAssertEqual(LiveBackend.museumWords(one).words, "mgła")
+        XCTAssertEqual(LiveBackend.museumWords(one).look, "")
+
+        // Saved before: the words alone, also after another chip; not after
+        // another word.
+        var saved = PlaylistRules(query: "\"wielka fala\"")
+        saved.setTokens(saved.tokens(names: [:]) + [SearchToken(kind: "artist", key: "Hokusai", name: "Hokusai")])
+        XCTAssertFalse(saved.seen)
+        XCTAssertEqual(LiveBackend.museumWords(saved).words, "\"wielka fala\"")
+        saved.setTokens(saved.tokens(names: [:]) + [SearchToken(kind: "word", key: "morze", name: "morze")])
+        XCTAssertTrue(saved.seen)
+    }
+
+    /// The suggestions' order A (Mateusz 2026-11-19): the words typed, then
+    /// artists, works, keywords and groups, each kind as the server sent it.
+    func testTheSuggestionsComeInOrderA() {
+        let hits = [
+            TermHit(kind: "style", key: "style:post", name: "Postimpresjonizm"),
+            TermHit(kind: "word", key: "słoneczniki van gogha", name: "słoneczniki van gogha"),
+            TermHit(kind: "title", key: "Sypialnia", name: "Sypialnia", item: "wmc:1", exact: false),
+            TermHit(kind: "artist", key: "Vincent van Gogh", name: "Vincent van Gogh"),
+            TermHit(kind: "artist", key: "Theo van Gogh", name: "Theo van Gogh"),
+            TermHit(kind: "word", key: "van gogh", name: "van gogh"),
+        ]
+        XCTAssertEqual(
+            TermSuggestions.ordered(hits, typed: "van gogh").map(\.key),
+            ["van gogh", "Vincent van Gogh", "Theo van Gogh", "Sypialnia", "słoneczniki van gogha", "style:post"]
+        )
     }
 
     func testFoldingIgnoresCaseAndPolishLetters() {
