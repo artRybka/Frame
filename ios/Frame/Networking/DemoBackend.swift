@@ -1745,6 +1745,21 @@ actor DemoBackend: FrameBackend {
         return OwnMerged(token: token, width: Int(image.size.width), height: Int(image.size.height), used: 2, replaced: 0.03)
     }
 
+    func sendOwnScan(token: String, note: Data, picture: Data?) async throws -> OwnMerged {
+        guard let image = incoming[token] else { throw BackendError.notFound }
+        let told = (try? JSONSerialization.jsonObject(with: note)) as? [String: Any] ?? [:]
+        guard let corners = told["corners"] as? [[Double]], PhoneScan.valid(corners) != nil else {
+            throw BackendError.http(status: 422, body: "{\"detail\": \"corners must be four [x, y] within the picture\"}")
+        }
+        let replaced = told["replaced"] as? Double ?? 0
+        if replaced > 0, picture == nil { throw BackendError.http(status: 422, body: "{\"detail\": \"no picture\"}") }
+        try await Task.sleep(for: .milliseconds(300))
+        return OwnMerged(
+            token: token, width: Int(image.size.width), height: Int(image.size.height),
+            used: told["used"] as? Int ?? 0, replaced: replaced, doubt: told["doubt"] as? Bool
+        )
+    }
+
     func keepOwnFirstPhoto(token: String) async throws {
         guard incoming[token] != nil else { throw BackendError.notFound }
         try await Task.sleep(for: .milliseconds(300))

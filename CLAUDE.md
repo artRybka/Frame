@@ -35,13 +35,20 @@ uv run mypy src
   and a scan's kept ones stay as taken: the phone shows its own copy and
   the corners are set on that (a kept scan notes `lens` and `straight`).
   The merge of a scan (`imaging/reflections.py`) is written a second time
-  in C++ for the phone (`core/scan`, a trial: Konfiguracja → Diagnostyka
-  merges his kept scans with it, `ios/…/ScanTrial.swift`). The Python here
-  stays the truth. Its numbers reach the core through
-  `core/scan/tools/constants.py` (`tests/test_scan_core.py` fails until
-  `constants.hpp` is made again); a changed step of the merge is changed
-  in the core by hand, and checked step by step on a kept scan with
-  `tools/golden.py` and `tools/check` (his scans never go into the repo).
+  in C++ for the phone (`core/scan`), and the phone makes his scans with
+  it (`ios/…/PhoneScan.swift`, sent to `POST /api/own/photos/{token}/merged`;
+  Mateusz 2026-11-19). The server's merge is the spare: a scan with a
+  colour chart, one with no corners found, whatever the phone could not
+  make or send, and his kept scans made again. Nothing is merged on both
+  to be compared. The Python here stays the truth. Its numbers reach the
+  core through `core/scan/tools/constants.py` (`tests/test_scan_core.py`
+  fails until `constants.hpp` is made again); a changed step of the merge
+  is changed in the core by hand, and checked step by step on a kept scan
+  with `tools/golden.py` and `tools/check` (his scans never go into the
+  repo). The same test holds the phone's own rules to the server's (which
+  side photographs, how small, what corners; `PhoneScan`'s numbers) and
+  its reading of a photograph to `load_image`'s (one made-up file read by
+  both, `ios/FrameTests/PhoneScanTests.swift`).
 - `web/app.py` FastAPI: `/panel/*` for the panel (no auth, must never 404
   once content exists), `/api/*` for the app (Bearer token).
 - Never hand-edit `uv.lock`; use `uv add` / `uv lock`.
@@ -84,6 +91,9 @@ server (`imaging/breaks.py`); keep the two rule sets in step.
 `scripts/build-scan.sh` like `Vendor/Tailscale`; CI keeps both in its cache
 (`.github/actions/scan-core`), and building OpenCV anew takes some twenty
 minutes: raise `BUILD` in `build-opencv.sh` only when its options change.
+OpenCV is built there without `-ffast-math` and with `-ffp-contract=off`
+(its own iOS build sets the first; with either, the phone's scan was a
+level off the server's in 8% of its numbers): never take them back out.
 Pages: `.paperPage()` on the ScrollView (never a bare `.background(Theme.paper)`,
 `PageLayoutTests` fails on it) and `.pageWidth()` on its content. A vertical
 ScrollView is only as wide as its content, so a page holding just a spinner or

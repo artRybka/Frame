@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.145.254
+
+- Skan własnego dzieła składa teraz iPhone („Tak, składaj na iPhonie”).
+  Po trzech zdjęciach telefon łączy je sam w kilka sekund (w próbie
+  3,7–5,5 s zamiast ok. 34 s na serwerze) i od razu pokazuje wynik na
+  stronie „Skan gotowy”. Gotowy skan idzie na serwer w tle, a „Dalej”
+  czeka najwyżej na koniec wysyłki. Kolejność kroków jest ta sama.
+- Serwer zostaje jako zapas, z tym samym składaniem co dotąd. Składa
+  skan z kartą koloru, skan, w którym nie znalazły się narożniki dzieła,
+  i każdy, którego telefon nie dał rady złożyć albo wysłać. Nie składa
+  już niczego równolegle i niczego nie porównuje.
+- Gdy ustawisz narożniki szerzej, niż sięgało czyszczenie odbić, telefon
+  składa skan jeszcze raz w Twoich narożnikach i pokazuje go przed
+  „Dalej”. Serwer robił to dopiero przy dodawaniu dzieła.
+- Zniknął pasek przy ramie i ciemniejszy brzeg tuż za narożnikami
+  dzieła, widoczny w „W ramie”: wokół narożników schodzi teraz najwyżej
+  tyle światła, ile przy nich. Twoje skany z ostatnich dwóch tygodni
+  złożą się po aktualizacji serwera jeszcze raz.
+- Biblioteka obrazu w aplikacji liczy teraz tak samo jak serwer. W
+  próbie wynik z telefonu różnił się od serwerowego o jeden poziom w 8%
+  wartości; po zmianie, sprawdzone na procesorze takim jak w iPhonie,
+  w 0,2%.
+- Potrzebna jest nowa aplikacja i aktualizacja serwera. Ze starszym
+  serwerem aplikacja składa skan po staremu, na serwerze.
+
 ## 1.145.253
 
 - Próba składania skanu na iPhonie („Najpierw próba na iPhonie”). W
