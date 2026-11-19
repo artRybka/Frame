@@ -3546,7 +3546,7 @@ extension SearchToken {
     /// work's title alone by its mark of two pictures (Mateusz 2026-11-19:
     /// "skoro dajemy ikonę, to nie piszmy już „Podobne do:”").
     static func like(_ id: String, title: String) -> SearchToken {
-        if isPhoto(id) { return SearchToken(kind: likeKind, key: id, name: "Podobne do zdjęcia") }
+        if isPhoto(id) { return SearchToken(kind: likeKind, key: id, name: "Zdjęcie") }
         return SearchToken(kind: likeKind, key: id, name: title.isEmpty ? "Podobne do dzieła" : title)
     }
 

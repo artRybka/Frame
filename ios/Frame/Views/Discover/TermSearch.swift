@@ -617,6 +617,9 @@ struct TermSuggestions: View {
             kind: titled ? "Dzieło" : hit.token.kindName,
             detail: fromMuseums ? "" : titled ? Names.artist(hit.detail) : hit.detail,
             count: fromMuseums || titled || lookup.uncounted.contains(hit.id) ? nil : hit.count,
+            // "Słowa" find what the works show too: more than the words
+            // count (Mateusz 2026-11-19: "9+ zamiast samego 9").
+            countMore: hit.kind == "word" && lookup.looks,
             thumb: titled ? hit.item : nil,
             chosen: chosen
         ) { pick(hit.token, fromMuseums: fromMuseums) }
@@ -624,7 +627,7 @@ struct TermSuggestions: View {
 
     private func row(
         mark tokenKind: String, icon: String, title: String, kind: String, detail: String, count: Int?,
-        thumb: String? = nil, chosen: Bool = false, action: @escaping () -> Void
+        countMore: Bool = false, thumb: String? = nil, chosen: Bool = false, action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 10) {
@@ -658,8 +661,8 @@ struct TermSuggestions: View {
                         .lineLimit(1)
                 }
                 Spacer()
-                if let count {
-                    Text(count == 0 ? "brak w bazie" : "\(count)")
+                if let count, count > 0 || !countMore {
+                    Text(count == 0 ? "brak w bazie" : countMore ? "\(count)+" : "\(count)")
                         .font(.footnote.monospacedDigit())
                         .foregroundStyle(Theme.inkSoft)
                 }

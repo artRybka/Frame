@@ -153,19 +153,20 @@ final class TermLookupTests: XCTestCase {
     }
 
     /// "Szukaj zdjęciem" in Szukaj's own list (Mateusz 2026-11-15): the
-    /// photograph's key is the chip "Podobne do zdjęcia", kept like a work's.
+    /// photograph's key is the chip "Zdjęcie" by its mark (Mateusz
+    /// 2026-11-19), kept like a work's.
     func testAPhotographSearchedIsAChipOfTheRules() {
         var rules = PlaylistRules(terms: ["period:baroque"])
         let chip = SearchToken.like("photo:0a1b", title: "")
         XCTAssertTrue(SearchToken.isPhoto(chip.key))
         XCTAssertFalse(SearchToken.isPhoto("met:1"))
-        XCTAssertEqual(chip.name, "Podobne do zdjęcia")
+        XCTAssertEqual(chip.name, "Zdjęcie")
         XCTAssertEqual(chip.icon, "photo.on.rectangle.angled")
         XCTAssertEqual(chip.markKind, SearchToken.likeKind)
         XCTAssertNil(GroupMark.Mark(kind: chip.markKind))
         rules.setTokens(rules.tokens(names: [:]) + [chip])
         XCTAssertEqual(rules.like, "photo:0a1b")
-        XCTAssertEqual(rules.tokens(names: [:]).last?.name, "Podobne do zdjęcia")
+        XCTAssertEqual(rules.tokens(names: [:]).last?.name, "Zdjęcie")
         XCTAssertEqual(LibraryQuery(rules: rules).like, "photo:0a1b")
     }
 
