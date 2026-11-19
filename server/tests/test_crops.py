@@ -18,6 +18,7 @@ from test_ai import FakeAnthropic, _message, fake  # noqa: F401  (fixture)
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import HAIKU, OPUS
 from frame_server.ai.crops import (
+    QUESTION,
     STRIPS_NOTE,
     on_photo_edge,
     plate_for_chart,
@@ -469,7 +470,9 @@ def test_works_judged_before_go_to_opus_when_their_card_opens(
     _work(service, "cma:4", picture=sheet(strip=0), pooled=True)  # to the edges
     crops = service.crops
     state = crops.state()
-    state["asked"] = {i: {"v": 2, "at": "2026-11-14", "q": 2} for i in ("cma:2", "mnw:3", "cma:4")}
+    state["asked"] = {
+        i: {"v": 2, "at": "2026-11-14", "q": QUESTION} for i in ("cma:2", "mnw:3", "cma:4")
+    }
     crops._save(state)
     answers = iter([SHEET_CORNERS, SHEET_CORNERS])
     fake.messages.create = lambda **params: (fake.asked.append(params), _message(next(answers)))[1]
@@ -546,7 +549,14 @@ def test_the_strips_alone_are_cut_away_when_opus_is_unsure(
     crops = service.crops
     state = crops.state()  # asked by 1.145.138: Opus unsure, nothing cut
     state["asked"] = {
-        "cma:11": {"v": 2, "at": "2026-11-15", "p": "", "critic": False, "band": True, "q": 2}
+        "cma:11": {
+            "v": 2,
+            "at": "2026-11-15",
+            "p": "",
+            "critic": False,
+            "band": True,
+            "q": QUESTION,
+        }
     }
     crops._save(state)
     answers = iter([{**SHEET_CORNERS, "confident": False}])
@@ -979,7 +989,7 @@ def test_a_card_asks_again_a_work_left_uncut_by_the_older_question(
     fake.messages.create = lambda **params: (fake.asked.append(params), _message(next(answers)))[1]
     assert not crops.now(service.library.get("smk:15"))  # type: ignore[arg-type]
     assert [p["model"] for p in fake.asked] == [HAIKU]
-    assert crops.asked()["smk:15"]["q"] == 2
+    assert crops.asked()["smk:15"]["q"] == QUESTION
     assert not crops.now(service.library.get("smk:15"))  # type: ignore[arg-type]
     assert len(fake.asked) == 1  # asked by this question: not again
 
@@ -1242,7 +1252,7 @@ def test_a_card_opened_shows_the_plate_and_asks_opus_for_one_once(
     alone = _work(service, "aic:6", picture=print_on_sheet(), pooled=True)
     service.library.update(alone.id, cut=Cut(around=["paper_margin"]))
     state = crops.state()
-    state["asked"] = {"aic:6": {"v": 2, "at": "2026-11-14", "p": "", "q": 2, "band": 2}}
+    state["asked"] = {"aic:6": {"v": 2, "at": "2026-11-14", "p": "", "q": QUESTION, "band": 2}}
     crops._save(state)
     fake.messages.create = lambda **params: (fake.asked.append(params), _message(PRINT_CORNERS))[1]
     assert crops.now(service.library.get("aic:6"))  # type: ignore[arg-type]
@@ -1264,3 +1274,31 @@ def test_the_owner_sets_the_sheets_edge_as_a_frames(service: FrameService) -> No
     item = crops.set_by_owner(item, frame=wider)
     assert item.cut is not None and item.cut.work == wider and item.cut.surround is None
     assert item.cut_shown() == _px(PLATE_BOX) and item.cut.framed_kind == "paper"
+
+
+def test_an_unsure_answer_still_cuts_the_backdrop_away(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    # Matejko's sketch for „Hołd Pruski” (MNW 921677, 2026-11-19): the
+    # judge saw a mount and paper, Opus doubted the sheet's torn top edge
+    # and nothing was cut, the dark backdrop's strips all round left on.
+    quad = backdrop_quad(sheet(strip=9))
+    _work(service, "mnw:12", picture=sheet(strip=9, board=(30, 28, 26)), pooled=True)
+    _work(service, "mnw:13", picture=sheet(strip=9, board=(30, 28, 26)), pooled=True)
+    unsure = {**SHEET_CORNERS, "confident": False}
+    off = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+    # A sheet running off the photograph: the strips may be its own margin.
+    inside = {**unsure, "layers": [{"kind": "sheet", "corners": grid(off)}]}
+    answers = iter(
+        [{"surround": ["mount", "paper_margin"]}, unsure, {"surround": ["mount"]}, inside]
+    )
+    fake.messages.create = lambda **params: (fake.asked.append(params), _message(next(answers)))[1]
+    crops = service.crops
+    assert crops.now(service.library.get("mnw:12"))  # type: ignore[arg-type]
+    item = service.library.get("mnw:12")
+    assert item is not None and item.cut is not None
+    shown = item.cut_shown()
+    assert quad is not None and shown is not None and _near(shown, quad, 0.004)
+    assert not crops.now(service.library.get("mnw:13"))  # type: ignore[arg-type]
+    assert [p["model"] for p in fake.asked] == [HAIKU, OPUS, HAIKU, OPUS]
