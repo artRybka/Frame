@@ -29,6 +29,11 @@ uv run mypy src
   makes of the same photographs changes, raise `MERGING` in `own_works.py`:
   his works scanned in the last two weeks are then made again from their
   kept photographs after the update.
+  A work of his own is kept without its lens's bend (`imaging/lens.py`):
+  only a lens that was measured (`BENDS`, by the photograph's EXIF model),
+  and only when the work is added or made again. The waiting photograph
+  and a scan's kept ones stay as taken: the phone shows its own copy and
+  the corners are set on that (a kept scan notes `lens` and `straight`).
 - `web/app.py` FastAPI: `/panel/*` for the panel (no auth, must never 404
   once content exists), `/api/*` for the app (Bearer token).
 - Never hand-edit `uv.lock`; use `uv add` / `uv lock`.
