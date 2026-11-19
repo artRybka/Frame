@@ -108,10 +108,12 @@ final class ScanCoreTests: XCTestCase {
         // What goes to the server is JSON.
         let sent = try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys])
         let back = try XCTUnwrap(JSONSerialization.jsonObject(with: sent) as? [String: Any])
-        XCTAssertEqual(back["seconds"] as? Double, 4.5)
+        // A number written as JSON and read back is the nearest one, not the same to the last bit.
+        XCTAssertEqual(try XCTUnwrap(back["seconds"] as? Double), 4.5, accuracy: 1e-9)
         XCTAssertEqual(back["used"] as? Int, 2)
-        XCTAssertEqual((back["took"] as? [String: Double])?["laid"], 2.5)
-        XCTAssertEqual((back["server"] as? [String: Any])?["replaced"] as? Double, 0.0812)
+        XCTAssertEqual(try XCTUnwrap((back["took"] as? [String: Double])?["laid"]), 2.5, accuracy: 1e-9)
+        let server = try XCTUnwrap(back["server"] as? [String: Any])
+        XCTAssertEqual(try XCTUnwrap(server["replaced"] as? Double), 0.0812, accuracy: 1e-9)
         XCTAssertEqual(back["heat"] as? [Int], [0, 1])
         XCTAssertFalse(try XCTUnwrap(back["model"] as? String).isEmpty)
         XCTAssertTrue(try XCTUnwrap(back["built"] as? String).hasPrefix("OpenCV"))
