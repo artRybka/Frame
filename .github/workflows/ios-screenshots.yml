@@ -264,6 +264,7 @@ jobs:
             capture search-like 10 "search-like-$appearance"
             capture search-like 10 "search-like-subject-$appearance" -likeBy subject
             capture search-like 10 "search-like-style-$appearance" -likeBy style
+            capture search-like 14 "search-like-scrolled-$appearance" -scroll down
             capture search-photo 12 "search-photo-style-$appearance" -likeBy style
             capture search-styles 8 "search-styles-typed-$appearance" -typed impr
             capture search-picker 8 "search-picker-typed-$appearance" -typed 1890

@@ -141,7 +141,11 @@ struct MuseumSearchView: View {
             looksReady = status.enabled && status.ready
             lookup.looks = looksReady
         }
-        .termSearch(lookup, tokens: tokens, focused: $fieldFocused)
+        // The bar stays while a search is open (the system hides it by
+        // default), so the round "Utwórz playlistę" in its corner is there
+        // once the list is scrolled (Mateusz 2026-11-19: "Nie widzę
+        // okrągłego przycisku playlisty").
+        .termSearch(lookup, tokens: tokens, focused: $fieldFocused, keepsNavigationBar: true)
         // The camera at the field's end, while nothing is typed or picked.
         .looksCamera(shown: looksReady && !asked && lookup.text.isEmpty && path.isEmpty) { picture in
             searchPhoto(picture)
@@ -198,6 +202,12 @@ struct MuseumSearchView: View {
                 asked.like = work.id
                 asked.likeBy = LaunchRoute.likeBy ?? ""
                 rules = asked
+                // CI screenshots: scrolled past "Utwórz playlistę z tego
+                // wyszukiwania", the round one in the bar.
+                if LaunchRoute.scroll == "down" {
+                    try? await Task.sleep(for: .seconds(4))
+                    withAnimation { position.scrollTo(y: 700) }
+                }
             }
             // CI screenshots: every museum but the Met, with a colour.
             if LaunchRoute.screen == "search-museums", rules.excludePlaces.isEmpty {
