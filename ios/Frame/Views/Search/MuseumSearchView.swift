@@ -128,6 +128,7 @@ struct MuseumSearchView: View {
         // How far the end is pulled up past where the list stops.
         .onScrollGeometryChange(for: ListEnd.self, of: { ListEnd($0) }) { _, end in
             listEnd.last = end
+            PullProbe.note("geometry", end: end, past: listEnd.past(end), lit: pullLit, waits: search.waitsForPull)
             guard search.waitsForPull else {
                 if pullLit != 0 { pullLit = 0 }
                 return
@@ -140,6 +141,7 @@ struct MuseumSearchView: View {
         }
         .onScrollPhaseChange { old, new in
             dragging = new == .interacting
+            PullProbe.note("phase \(old) -> \(new)", end: listEnd.last, past: listEnd.past(listEnd.last), lit: pullLit, waits: search.waitsForPull)
             // At rest, the list is never past its end (`ListEndSeen`).
             if new == .idle { listEnd.rested() }
             guard new != .interacting else { return }
@@ -149,6 +151,7 @@ struct MuseumSearchView: View {
             pullArmed = false
             if armed {
                 pullLit = 0
+                PullProbe.note("asked further", end: listEnd.last, past: 0, lit: 0, waits: search.waitsForPull)
                 search.askFurther()
             }
         }
@@ -684,5 +687,34 @@ struct ListEnd: Equatable {
             top: geometry.contentInsets.top, bottom: geometry.contentInsets.bottom
         )
         reckoned = max(height + frame.bottom - frame.container, -frame.top)
+    }
+}
+
+/// CI's probe of the pull at the end (`-pullLog <path>`, the
+/// `pull-probe` run of ios-screenshots.yml): every scroll geometry and phase
+/// written to a file on the host, as the simulator sees it. Debug builds only.
+enum PullProbe {
+    #if DEBUG
+    private static let path = UserDefaults.standard.string(forKey: "pullLog")
+    #endif
+
+    @MainActor
+    static func note(_ what: String, end: ListEnd, past: CGFloat, lit: Int, waits: Bool) {
+        #if DEBUG
+        guard let path else { return }
+        let line = String(
+            format: "%.3f %@ offset=%.1f height=%.1f container=%.1f top=%.1f bottom=%.1f reckoned=%.1f past=%.1f lit=%d waits=%@\n",
+            Date.now.timeIntervalSinceReferenceDate, what, end.offset, end.height, end.frame.container,
+            end.frame.top, end.frame.bottom, end.reckoned, past, lit, waits ? "yes" : "no"
+        )
+        guard let data = line.data(using: .utf8) else { return }
+        if let file = FileHandle(forWritingAtPath: path) {
+            file.seekToEndOfFile()
+            file.write(data)
+            try? file.close()
+        } else {
+            FileManager.default.createFile(atPath: path, contents: data)
+        }
+        #endif
     }
 }
