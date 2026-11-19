@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.271
+
+- Kadrowanie zdjęć dzieł: naddarta albo nierówna krawędź kartki nie
+  zatrzymuje już kadrowania (szkic Matejki do „Hołdu pruskiego”, MNW).
+  Gdy model nie jest pewny krawędzi samego dzieła, ciemne tło fotografii
+  wokół i tak jest odcinane, jeśli pasuje do tego, co widział.
+- Dzieła zostawione bez kadru są sprawdzane jeszcze raz przy otwarciu
+  karty.
+
 ## 1.145.269
 
 - Własne dzieło, krok „Opis” (i „Edytuj opis” na karcie): długi tytuł

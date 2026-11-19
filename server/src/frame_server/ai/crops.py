@@ -97,8 +97,10 @@ BAND = 2
 #: the photograph or under a colour chart (Erichsøe's „Selvportræt med
 #: Violin”, SMK KKS10560, uncut and never asked again when its card
 #: opened). A card opened on a work left uncut by an older question asks
-#: it again; the night does not.
-QUESTION = 2
+#: it again; the night does not. 3 (2026-11-19): a sheet's torn edge is
+#: no doubt, and an unsure answer still loses the backdrop's strips
+#: (Matejko's sketch for „Hołd Pruski”, MNW 921677).
+QUESTION = 3
 #: Once the cuts kept with a plate that is the work itself are tidied
 #: (:meth:`Crops.untwinned`).
 TWIN_TIDY = 1
@@ -204,7 +206,8 @@ or shard with broken edges, an arched or shaped panel, a fan, an object). Only a
 cut out of its photograph; for the others still list what you see.
 - "confident": true only if the edges of the work you chose are clearly visible. A page's \
 rounded corners or its bound edge are no reason for doubt: put the corners just inside the \
-rounding, on the page. Nor is a sheet that runs off the photograph or lies under a colour \
+rounding, on the page. Nor is a sheet's torn, deckled or uneven edge: put that side where \
+the paper reaches furthest out. Nor is a sheet that runs off the photograph or lies under a colour \
 chart, ruler or label when the work is the plate inside it: list the sheet as far as it shows.
 Answer in JSON only."""
 #: The owner's own photograph of a work of his ("Dodaj własne dzieło",
@@ -1189,7 +1192,10 @@ class Crops(CriticNight):
         try:
             found = self.corners(item, data)
             nothing = not found or (found["work"] is None and found["plate"] is None)
-            if nothing and claim.get("band"):
+            # Unsure of the work's edge, Opus still saw what lies around it:
+            # the backdrop's strips are cut where they fit his answer (a
+            # torn sheet on its card, Matejko, MNW, 2026-11-19).
+            if nothing and (claim.get("band") or data.get("confident") is not True):
                 found = self.strips(item, data)
                 if found is not None:
                     found["shape"] = shape
