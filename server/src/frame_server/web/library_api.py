@@ -15,7 +15,17 @@ from typing import Annotated, Any, Literal
 
 import httpx
 from anyio import CapacityLimiter, to_thread
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from PIL import Image
 from pydantic import BaseModel, Field, ValidationError
@@ -59,7 +69,7 @@ from ..library.importer import ALL
 from ..library.low_res import low_side
 from ..library.models import Framing, SharperCopy
 from ..library.museums import MUSEUMS, LoginRefused
-from ..library.repo import Hidden, SortKey, now_iso
+from ..library.repo import Abandoned, Hidden, SortKey, asked_by, now_iso
 from ..library.search import fill as fill_by_search
 from ..library.search import keep_shown
 from ..library.seed import PACKS, import_queries, pack
@@ -316,6 +326,7 @@ def list_items(
     seen: bool = False,
     playlist: int | None = None,
     typed: str = "",
+    authorization: Annotated[str, Header()] = "",
 ) -> ItemPage:
     """The catalogue's works for Szukaj's choices. ``look``: words for how
     the works look ("mglisty poranek nad wodą"), the other choices narrowing
@@ -359,7 +370,21 @@ def list_items(
     if rules.like and not svc.looks.enabled():
         raise HTTPException(409, "Szukanie wyglądem is off")
     if playlist is not None:
-        total, items = _in_playlist(svc, playlist, user, rules, offset, limit, typed)
+        # The search one letter ago is let go: they all looked through the
+        # catalogue at once, 3-5 s alone, 16-19 s five letters together,
+        # over a minute beside the work after a start (the NAS, 2026-11-20).
+        asker = f"{hashlib.sha256(authorization.encode()).hexdigest()}:{playlist}"
+        with _PLAYLIST_ASKED_LOCK:
+            turn = _PLAYLIST_ASKED[asker] = _PLAYLIST_ASKED.get(asker, 0) + 1
+
+        def gone() -> bool:
+            return _PLAYLIST_ASKED.get(asker) != turn
+
+        try:
+            with asked_by(gone):
+                total, items = _in_playlist(svc, playlist, user, rules, offset, limit, typed)
+        except Abandoned:
+            return ItemPage(total=0, items=[])  # nobody waits for it
     else:
         total, items = svc.library.query(
             rules, sort=sort, offset=offset, limit=limit, seed=seed, paged=True
@@ -370,6 +395,12 @@ def list_items(
         svc.twins.after_search(items)
     later = rules.seen and svc.library.words_alone() and svc.looks.asking(rules.query)
     return ItemPage(total=total, items=[ItemSummary.of(i) for i in items], later=later)
+
+
+#: The last search inside a playlist of each asker (by their token and the
+#: playlist): one asked before it was let go by the app at the next letter.
+_PLAYLIST_ASKED: dict[str, int] = {}
+_PLAYLIST_ASKED_LOCK = threading.Lock()
 
 
 def playlist_works(svc: FrameService, playlist_id: int, user: User) -> list[Item]:
@@ -396,6 +427,9 @@ def _in_playlist(
     works = playlist_works(svc, playlist_id, user)
     place = {item.id: n for n, item in enumerate(works)}
     _, found = svc.library.query(rules, among=place.keys())
+    # Of a work found, its copy on the playlist (a search by words gives
+    # every copy whose words have them, "Słowa" works that look so too).
+    found = [item for item in found if item.id in place]
     if typed.strip():
         meant = meant_among(svc, typed, set(place))
         found = [item for item in found if item.id in meant]

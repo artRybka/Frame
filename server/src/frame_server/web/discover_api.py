@@ -1158,10 +1158,10 @@ def meant_among(svc: FrameService, typed: str, ids: set[str]) -> set[str]:
             if hit.item in ids:
                 found.add(hit.item)
             continue
-        rules = _hit_rules(hit)
-        if hit.kind == "word":
-            rules = rules.model_copy(update={"seen": True})  # "Słowa", as Return asks
-        _, items = svc.library.query(rules, among=ids)
+        # The words by their texts alone: how works look is asked of the
+        # whole catalogue (Google's numbers ranked, some seconds on the NAS),
+        # once the words are picked (Return), not for every letter.
+        _, items = svc.library.query(_hit_rules(hit), among=ids)
         found |= {item.id for item in items}
     return found
 
