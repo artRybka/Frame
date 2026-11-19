@@ -21,6 +21,20 @@
   robione ponownie z zachowanych zdjęć.
 - Potrzebna jest nowa aplikacja i aktualizacja serwera. Z jedną ze
   stron starszą wszystko działa jak w 1.145.257.
+- Dzieło, które nie jest prostokątem, da się zeskanować („Takiego
+  zdjęcia nie mogę zeskanować - nie wykrywa jego krawędzi”, odbitka ze
+  ściętymi rogami). Aparat oceniał pochylenie telefonu po kształcie
+  obrysu: gdy góra i dół obrysu mają różną szerokość, prosił, żeby
+  trzymać telefon prosto. Przy takim dziele obrys zawsze tak wygląda,
+  więc zdjęcie nie robiło się nigdy. Teraz liczy się też czujnik
+  telefonu: gdy telefon stoi pionowo (do 4°), zdjęcie się robi mimo
+  krzywego obrysu. Dla prostokątnych dzieł na ścianie nic się nie
+  zmienia.
+- Gdy aparat widzi dzieło, a zdjęcie na wprost nie robi się przez 6
+  sekund (prosi, żeby stanąć na wprost albo trzymać telefon prosto, i
+  to nie pomaga), pojawia się przycisk migawki i zdjęcie można zrobić
+  samemu. Dotąd migawka pojawiała się tylko wtedy, gdy aparat nie
+  widział krawędzi wcale.
 
 ## 1.145.257
 

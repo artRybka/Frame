@@ -109,8 +109,12 @@ struct OwnCamera: View {
     @State private var front: [CGPoint]?
     /// Since when all has been as the next photograph needs it.
     @State private var holdSince: Date?
-    /// The shutter is out: the work's edges were not found for a while.
+    /// The shutter is out: the work's edges were not found for a while,
+    /// or found and the photograph not taken (`stuck`).
     @State private var manual = false
+    /// For how long the work has been seen before the first photograph
+    /// with that photograph not taken.
+    @State private var stuck = OwnScanStuck()
     /// Since when he has stood where a side photograph is taken with the
     /// work's corners not found.
     @State private var blindSince: Date?
@@ -178,7 +182,7 @@ struct OwnCamera: View {
         look.quarter = quarter
         guard scan != nil else {
             look.live = outline
-            look.advice = OwnScanView.first(upright, aspect: aspect)
+            look.advice = OwnScanView.first(upright, aspect: aspect, lean: guide.lean)
             return look
         }
         look.left = arc.done(left: true)
@@ -266,6 +270,13 @@ struct OwnCamera: View {
             }
         } else if blindSince != nil {
             blindSince = nil
+        }
+        if scan == nil, !busy, !manual, access == .ready,
+           stuck.take(next.advice, lost: lostSince.map { Date.now.timeIntervalSince($0) }) {
+            // Seen for a while and not taken (a work that is no rectangle
+            // is never seen from the front by its outline): his to take.
+            withAnimation(.easeInOut(duration: 0.25)) { manual = true }
+            next.manual = true
         }
         if scan != nil, !busy, let angle = next.angle {
             // The way to the side's photograph ticks, faster and faster.
@@ -515,6 +526,7 @@ struct OwnCamera: View {
         holdSince = nil
         lostSince = .now
         blindSince = nil
+        stuck = OwnScanStuck()
         manual = access == .ready && !camera.sees
         steady = OwnScanSteady()
         // The phone's turns away from the work are counted from here.
@@ -797,6 +809,9 @@ final class OwnScanGuide {
     @ObservationIgnored var quarter = 0
     /// How fast the phone turns now, about any line (radians a second).
     @ObservationIgnored private(set) var rate = 0.0
+    /// How far the phone leans back (or, negative, forth) off upright
+    /// now, in degrees (`leaning`); nil before it has said.
+    @ObservationIgnored private(set) var lean: Double?
     /// Since when (the gyroscope's clock) it has turned slower than
     /// `quiet`, and that clock now.
     @ObservationIgnored private var quietSince: TimeInterval?
@@ -830,6 +845,17 @@ final class OwnScanGuide {
         return -(r.x * g.x + r.y * g.y + r.z * g.z) / length
     }
 
+    /// How far the phone leans back off upright (degrees; negative:
+    /// forth), held upright or on its side alike: 0 with its screen
+    /// plumb, as it is before a work on the wall seen from its own
+    /// height; 90 lying on its back. `gravity` as the phone has it (x to
+    /// its right, y to its top, z out of its screen).
+    static func leaning(gravity g: (x: Double, y: Double, z: Double)) -> Double? {
+        let length = (g.x * g.x + g.y * g.y + g.z * g.z).squareRoot()
+        guard length > 0.5 else { return nil }
+        return asin(max(-1, min(1, -g.z / length))) * 180 / .pi
+    }
+
     /// One for the app, as Apple asks (the view's state is made anew often).
     private static let motion = CMMotionManager()
     @ObservationIgnored private var last: TimeInterval?
@@ -841,6 +867,7 @@ final class OwnScanGuide {
         turned = 0
         last = nil
         rate = 0
+        lean = nil
         quietSince = nil
         guard available else { return }
         motion.stopDeviceMotionUpdates()
@@ -848,6 +875,7 @@ final class OwnScanGuide {
         motion.startDeviceMotionUpdates(to: .main) { [weak self] data, _ in
             guard let self, let data else { return }
             let g = data.gravity, r = data.rotationRate
+            lean = Self.leaning(gravity: (g.x, g.y, g.z))
             guard let about = Self.turning(rate: (r.x, r.y, r.z), gravity: (g.x, g.y, g.z), quarter: quarter) else { return }
             if let last { turned += about * (data.timestamp - last) }
             last = data.timestamp

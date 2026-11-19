@@ -368,7 +368,7 @@ final class OwnWorksTests: XCTestCase {
     /// What the helper says (Mateusz 2026-11-16 09:52 UTC: "Czy pomocnik
     /// przy aparacie mówi żeby zbliżyć się do dzieła, oddalić? Mógłby to
     /// robić?").
-    func testTheHelperSaysWhereToStand() {
+    func testTheHelperSaysWhereToStand() throws {
         let front = [CGPoint(x: 0.2, y: 0.3), CGPoint(x: 0.8, y: 0.3), CGPoint(x: 0.8, y: 0.7), CGPoint(x: 0.2, y: 0.7)]
         // The first photograph: whole, large enough, from the front.
         XCTAssertEqual(OwnScanView.first(nil), .lost)
@@ -379,6 +379,75 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertEqual(OwnScanView.first(OwnScanView.seen(front, from: -12)), .straight)
         let leaning = [CGPoint(x: 0.2, y: 0.3), CGPoint(x: 0.8, y: 0.3), CGPoint(x: 0.74, y: 0.7), CGPoint(x: 0.26, y: 0.7)]
         XCTAssertEqual(OwnScanView.first(leaning), .level)
+        // The phone says itself how it leans: with its top and bottom
+        // unlike and the phone upright all the same, the work is no
+        // rectangle, and its photograph is taken (Mateusz 2026-11-19
+        // 10:24 UTC, a photograph with its corners cut off, as the camera
+        // outlined it: "Takiego zdjęcia nie mogę zeskanować").
+        let cut = [CGPoint(x: 0.237, y: 0.172), CGPoint(x: 0.725, y: 0.224), CGPoint(x: 0.803, y: 0.811), CGPoint(x: 0.195, y: 0.803)]
+        XCTAssertEqual(OwnScanView.first(cut), .level)
+        XCTAssertEqual(OwnScanView.first(cut, lean: 12), .level)
+        XCTAssertEqual(OwnScanView.first(cut, lean: -7), .level)
+        XCTAssertEqual(OwnScanView.first(cut, lean: 2.5), .hold)
+        XCTAssertEqual(OwnScanView.first(cut, lean: -OwnScanView.plumb), .hold)
+        XCTAssertEqual(OwnScanView.first(leaning, lean: 0), .hold)
+        // Upright says nothing of the side it is seen from, of its size,
+        // or of a work the camera does not see.
+        XCTAssertEqual(OwnScanView.first(OwnScanView.seen(front, from: -12), lean: 0), .straight)
+        XCTAssertEqual(OwnScanView.first(front.map { CGPoint(x: $0.x - 0.2, y: $0.y) }, lean: 0), .farther)
+        XCTAssertEqual(OwnScanView.first(nil, lean: 0), .lost)
+        XCTAssertEqual(OwnScanView.first(front, lean: 30), .hold)
+        // Before a rectangle on the wall its outline asks no more of him
+        // than upright does, but where it all but fills the picture.
+        let pitched = { (height: Double, degrees: Double) -> Double in
+            2 * height / 0.75 / OwnScanView.focal * sin(degrees * .pi / 180)
+        }
+        XCTAssertLessThan(pitched(0.8, OwnScanView.plumb), OwnScanView.askew)
+        XCTAssertGreaterThan(pitched(0.9, OwnScanView.plumb), OwnScanView.askew)
+        // How the phone leans, by its own sense of gravity: upright, on
+        // its side, leaning back, looking down at a table.
+        XCTAssertEqual(try XCTUnwrap(OwnScanGuide.leaning(gravity: (0, -1, 0))), 0, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(OwnScanGuide.leaning(gravity: (1, 0, 0))), 0, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(OwnScanGuide.leaning(gravity: (-0.6, -0.8, 0))), 0, accuracy: 1e-9)
+        let back = 10 * Double.pi / 180
+        XCTAssertEqual(try XCTUnwrap(OwnScanGuide.leaning(gravity: (0, -cos(back), -sin(back)))), 10, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(OwnScanGuide.leaning(gravity: (cos(back), 0, sin(back)))), -10, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(OwnScanGuide.leaning(gravity: (0, 0, -1))), 90, accuracy: 1e-9)
+        XCTAssertNil(OwnScanGuide.leaning(gravity: (0, 0, 0)))
+
+        // Seen and not taken for a while (asked to stand before it, as it
+        // should be and not lasting, the outline in and out of sight): he
+        // is given the shutter. What he can mend himself starts the count
+        // anew, and so does the work out of sight for long.
+        var stuck = OwnScanStuck()
+        let then = Date(timeIntervalSinceReferenceDate: 1000)
+        XCTAssertFalse(stuck.take(.straight, at: then))
+        XCTAssertFalse(stuck.take(.hold, at: then + 2))
+        XCTAssertFalse(stuck.take(.lost, lost: 0.4, at: then + 3))
+        XCTAssertFalse(stuck.take(.level, at: then + OwnScanStuck.patience))
+        XCTAssertTrue(stuck.take(.straight, at: then + OwnScanStuck.patience + 0.2))
+        XCTAssertFalse(stuck.take(.nearer, at: then + 8))
+        XCTAssertFalse(stuck.take(.level, at: then + 13))
+        XCTAssertFalse(stuck.take(.lost, lost: 2, at: then + 14))
+        XCTAssertFalse(stuck.take(.level, at: then + 19.5))
+        XCTAssertFalse(stuck.take(.hold, at: then + 20.5))
+        XCTAssertTrue(stuck.take(.hold, at: then + 26))
+        XCTAssertFalse(stuck.take(.farther, at: then + 27))
+        XCTAssertFalse(stuck.take(.lost, at: then + 40))
+        // And told so, under the word that says what the camera waits for.
+        var asked = OwnScanLook(number: 1)
+        asked.advice = .level
+        XCTAssertEqual(asked.pill?.text, "Trzymaj telefon prosto")
+        XCTAssertEqual(asked.line, "Telefon jest pochylony")
+        asked.manual = true
+        XCTAssertEqual(asked.pill?.text, "Trzymaj telefon prosto")
+        XCTAssertEqual(asked.line, "Możesz też zrobić zdjęcie sam")
+        XCTAssertEqual(asked.note, "Tak bywa, gdy dzieło nie jest prostokątem.")
+        asked.advice = .straight
+        XCTAssertEqual(asked.pill?.text, "Stań na wprost")
+        XCTAssertEqual(asked.line, "Możesz też zrobić zdjęcie sam")
+        asked.advice = .hold
+        XCTAssertEqual(asked.line, "Dobrze. Robię zdjęcie na wprost")
 
         // The one from the left: on to the left, there, too far, back.
         let left = -OwnScanView.side
