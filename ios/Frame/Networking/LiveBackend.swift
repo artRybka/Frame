@@ -99,6 +99,8 @@ struct LiveBackend: FrameBackend {
         if !q.like.isEmpty, q.likeFurther > 0 {
             query.append(URLQueryItem(name: "like_further", value: String(q.likeFurther)))
         }
+        if let playlist = q.playlist { query.append(URLQueryItem(name: "playlist", value: String(playlist))) }
+        if q.playlist != nil, !q.typed.isEmpty { query.append(URLQueryItem(name: "typed", value: q.typed)) }
         return try await get("/api/library/items", query: query)
     }
 
@@ -516,8 +518,10 @@ struct LiveBackend: FrameBackend {
 
     func vocabulary() async throws -> [TermInfo] { try await get("/api/vocabulary") }
 
-    func terms(_ text: String) async throws -> [TermHit] {
-        try await get("/api/terms", query: [URLQueryItem(name: "q", value: text)])
+    func terms(_ text: String, playlist: Int?) async throws -> [TermHit] {
+        var query = [URLQueryItem(name: "q", value: text)]
+        if let playlist { query.append(URLQueryItem(name: "playlist", value: String(playlist))) }
+        return try await get("/api/terms", query: query)
     }
 
     func looksStatus() async throws -> LooksStatus { try await get("/api/looks") }

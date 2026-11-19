@@ -26,6 +26,10 @@ final class TermLookup {
     var trimmed: String { text.trimmingCharacters(in: .whitespaces) }
     var typing: Bool { !trimmed.isEmpty }
 
+    /// The playlist the field searches in (the magnifier on its page):
+    /// the suggestions counted in its works, no museums. nil: Szukaj.
+    var playlist: Int?
+
     /// The open group the field's words narrow (Muzeum, Styl, Temat): no
     /// suggestions then, and Return adds no word. nil: the field searches.
     private(set) var narrowing: TermFacet?
@@ -78,7 +82,7 @@ final class TermLookup {
             try? await Task.sleep(for: .milliseconds(words.count < 3 ? 250 : 120))
             guard !Task.isCancelled else { return }
             do {
-                let found = try await backend.terms(words)
+                let found = try await backend.terms(words, playlist: playlist)
                 if answers.count > 200 { answers.removeAll() }
                 answers[words] = found
                 hits = found
@@ -89,6 +93,8 @@ final class TermLookup {
             }
         }
         // Museums only when the catalogue knows little: they answer slowly.
+        // Never in a playlist: its works are all here.
+        guard playlist == nil else { return }
         let best = hits.filter { $0.kind != "word" }.map(\.count).max() ?? 0
         guard words.count >= 3, best < Self.few else { return }
         try? await Task.sleep(for: .milliseconds(380))
@@ -108,7 +114,8 @@ final class TermLookup {
             Self.fold(hit.name).contains(wanted) || Self.fold(hit.detail).contains(wanted)
         }
         var fresh = uncounted.intersection(guess.map(\.id))
-        for info in vocabulary where guess.count < Self.guessed && Self.startsLike(info, wanted) {
+        // In a playlist a group shows only with its count, from the server.
+        for info in vocabulary where playlist == nil && guess.count < Self.guessed && Self.startsLike(info, wanted) {
             guard !guess.contains(where: { $0.kind == info.kind && $0.key == info.key }) else { continue }
             let hit = TermHit(
                 kind: info.kind, key: info.key, name: info.name,
@@ -227,11 +234,14 @@ extension View {
         focused: FocusState<Bool>.Binding,
         prompt: String = "Artysta albo słowo",
         keepsNavigationBar: Bool = false,
+        opensAtOnce: Bool = false,
+        onClose: @escaping () -> Void = {},
         pickedFromMuseums: @escaping () -> Void = {}
     ) -> some View {
         modifier(TermSearch(
             lookup: lookup, tokens: tokens, focused: focused, prompt: prompt,
-            keepsNavigationBar: keepsNavigationBar, pickedFromMuseums: pickedFromMuseums
+            keepsNavigationBar: keepsNavigationBar, opensAtOnce: opensAtOnce, onClose: onClose,
+            pickedFromMuseums: pickedFromMuseums
         ))
     }
 }
@@ -245,6 +255,10 @@ private struct TermSearch: ViewModifier {
     /// A sheet with Anuluj and Zapisz up top: the open search leaves its
     /// navigation bar where it is (the system hides it by default).
     let keepsNavigationBar: Bool
+    /// Put on the page by a tap (the magnifier on a playlist's page): open,
+    /// with the keyboard, as it comes; its X takes it off again (`onClose`).
+    var opensAtOnce = false
+    var onClose: () -> Void = {}
     let pickedFromMuseums: () -> Void
     @State private var bar = NavigationBarKeeper()
     /// The search is open: the system's round X stands next to the field.
@@ -287,6 +301,14 @@ private struct TermSearch: ViewModifier {
                 guard !presented else { return }
                 lookup.clear()
                 if !tokens.isEmpty { withAnimation(.snappy) { tokens = [] } }
+                if opensAtOnce { onClose() }
+            }
+            .task {
+                guard opensAtOnce, !presented else { return }
+                presented = true
+                // The system focuses the field it presents a moment later.
+                try? await Task.sleep(for: .milliseconds(120))
+                focused.wrappedValue = true
             }
             // A group's choice alone opens the search too, so that its X is
             // there (once its panel has closed: the keyboard the opening
@@ -662,7 +684,7 @@ struct TermSuggestions: View {
                 }
                 Spacer()
                 if let count, count > 0 || !countMore {
-                    Text(count == 0 ? "brak w bazie" : countMore ? "\(count)+" : "\(count)")
+                    Text(count == 0 ? (lookup.playlist == nil ? "brak w bazie" : "brak tutaj") : countMore ? "\(count)+" : "\(count)")
                         .font(.footnote.monospacedDigit())
                         .foregroundStyle(Theme.inkSoft)
                 }

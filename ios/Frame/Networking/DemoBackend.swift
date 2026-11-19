@@ -248,6 +248,9 @@ actor DemoBackend: FrameBackend {
             let haystack = ([item.title, item.artist, item.medium, item.classification, item.culture]
                 + item.styles + item.subjects).joined(separator: " ").lowercased()
             for phrase in SearchPhrases.tokens(rules.query.lowercased()) where !haystack.contains(phrase) {
+                // A word that is a term's Polish name ("morze"): its works, as the server.
+                let named = DemoDiscover.terms.filter { DemoDiscover.fold($0.name) == DemoDiscover.fold(phrase) }
+                if !named.isEmpty, DemoDiscover.matches(item, terms: named.map(\.key)) { continue }
                 return false
             }
         }
@@ -583,6 +586,25 @@ actor DemoBackend: FrameBackend {
         )
         let listed = listed(for: rules)
         var list = Self.sorted(items.filter { Self.matches($0, rules, listed: listed) }, by: query.sort)
+        if let id = query.playlist {
+            // The playlist's works that fit, in its own order, as the server.
+            guard let playlist = playlistsByID[id] else { throw BackendError.notFound }
+            var fitting = Set(list.map(\.id))
+            if !query.typed.isEmpty {
+                // What the suggestions of the words being typed find.
+                let meant = try await terms(query.typed, playlist: id).reduce(into: Set<String>()) { found, hit in
+                    if let item = hit.item { found.insert(item); return }
+                    let rules = switch hit.kind {
+                    case "artist": PlaylistRules(artists: [hit.key])
+                    case "word": PlaylistRules(query: hit.key)
+                    default: PlaylistRules(terms: [hit.key])
+                    }
+                    found.formUnion(items.filter { Self.matches($0, rules) }.map(\.id))
+                }
+                fitting.formIntersection(meant)
+            }
+            list = items(for: playlist).filter { fitting.contains($0.id) }
+        }
         if !query.like.isEmpty {
             // The works that look like it, nearest first, as the server's numbers.
             let near = alike(query.like, by: query.likeBy).map(\.id)
@@ -1475,17 +1497,23 @@ actor DemoBackend: FrameBackend {
 
     func vocabulary() async throws -> [TermInfo] { DemoDiscover.terms }
 
-    func terms(_ text: String) async throws -> [TermHit] {
+    func terms(_ text: String, playlist: Int?) async throws -> [TermHit] {
         let wanted = DemoDiscover.fold(text.trimmingCharacters(in: .whitespaces))
         guard !wanted.isEmpty else { return [] }
+        // In a playlist: its works alone, those it has none of left out.
+        var pool = items
+        if let playlist {
+            guard let found = playlistsByID[playlist] else { throw BackendError.notFound }
+            pool = items(for: found)
+        }
         var hits: [TermHit] = []
-        let artists = Dictionary(grouping: items.filter { DemoDiscover.fold($0.artist).contains(wanted) }, by: \.artist)
+        let artists = Dictionary(grouping: pool.filter { DemoDiscover.fold($0.artist).contains(wanted) }, by: \.artist)
         hits += artists.map { TermHit(kind: "artist", key: $0.key, name: $0.key, count: $0.value.count) }
             .sorted { $0.count > $1.count }
         for term in DemoDiscover.terms {
             let names = [term.name] + term.words
             guard names.contains(where: { DemoDiscover.fold($0).hasPrefix(wanted) }) else { continue }
-            let count = items.filter { Self.matches($0, PlaylistRules(terms: [term.key])) }.count
+            let count = pool.filter { Self.matches($0, PlaylistRules(terms: [term.key])) }.count
             hits.append(
                 TermHit(
                     kind: term.kind, key: term.key, name: term.name,
@@ -1494,15 +1522,16 @@ actor DemoBackend: FrameBackend {
             )
         }
         // Works by their titles, as the server suggests them (its miniature).
-        let titled = items.filter { $0.kind == .artwork && DemoDiscover.fold($0.title).contains(wanted) }
+        let titled = pool.filter { $0.kind == .artwork && DemoDiscover.fold($0.title).contains(wanted) }
         hits += titled.prefix(3).map { item in
             TermHit(
                 kind: SearchToken.titleKind, key: item.title, name: item.title, detail: item.artist, count: 1,
                 item: item.id, exact: DemoDiscover.fold(item.title) == wanted
             )
         }
+        if playlist != nil { hits = hits.filter { $0.count > 0 } }
         let words = text.trimmingCharacters(in: .whitespaces)
-        let count = items.filter { Self.matches($0, PlaylistRules(query: words)) }.count
+        let count = pool.filter { Self.matches($0, PlaylistRules(query: words)) }.count
         hits.append(TermHit(kind: "word", key: words, name: words, count: count))
         return hits
     }

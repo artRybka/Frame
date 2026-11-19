@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.145.270
+
+- Szukanie wewnątrz playlisty: lupa obok „…” na stronie playlisty (także
+  cudzej i albumu) otwiera pole „Szukaj w tej playliście” od razu
+  z klawiaturą. Siatka zawęża się już podczas pisania, nad nią „1 z 6
+  dzieł”, a gdy nic nie pasuje: „Nic nie znaleziono”; X wraca do całej
+  playlisty. („Zdecydowanie lupa obok”)
+- Podpowiedzi te same co w Szukaj (jedno „Słowa”, kolejność A), ale
+  policzone w tej playliście: bez muzeów, wiersze bez dzieł znikają.
+  Szuka wśród wszystkich dzieł playlisty i pokazuje je w jej porządku.
+
 ## 1.145.269
 
 - Własne dzieło, krok „Opis” (i „Edytuj opis” na karcie): długi tytuł
