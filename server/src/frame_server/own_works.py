@@ -315,8 +315,13 @@ class Description(BaseModel):
     title: str = Field("", max_length=300)
     artist: str = Field("", max_length=200)
     date_text: str = Field("", max_length=80)
-    #: Technique and support as one line ("olej na płótnie").
+    #: Technique and support as one line ("olej na płótnie"): the app
+    #: writes it of the two below.
     medium: str = Field("", max_length=200)
+    #: The two as he wrote them ("olej", "płótno"), kept beside the line
+    #: for "Edytuj opis"; "" from an app that has the line alone.
+    technique: str = Field("", max_length=120)
+    support: str = Field("", max_length=120)
     #: His note ("O dziele").
     description: str = Field("", max_length=4000)
     hangs: str = Field("", max_length=120)
@@ -1823,6 +1828,8 @@ class OwnWorks:
             origin=text.origin.strip(),
             height_cm=text.height_cm,
             width_cm=text.width_cm,
+            technique=text.technique.strip(),
+            support=text.support.strip(),
         )
         updated = self.library.update(
             item.id,

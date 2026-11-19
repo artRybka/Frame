@@ -1910,7 +1910,10 @@ actor DemoBackend: FrameBackend {
         item.year = text.dateText.firstMatch(of: #/\d{4}/#).flatMap { Int($0.output) }
         item.medium = text.medium
         item.description = text.description
-        item.own = OwnWork(hangs: text.hangs, origin: text.origin, heightCm: text.heightCm, widthCm: text.widthCm)
+        item.own = OwnWork(
+            hangs: text.hangs, origin: text.origin, heightCm: text.heightCm, widthCm: text.widthCm,
+            technique: text.technique, support: text.support
+        )
     }
 
     func deleteItem(id: String) async throws {

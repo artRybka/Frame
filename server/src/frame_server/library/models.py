@@ -358,6 +358,14 @@ class OwnWork(BaseModel):
     #: obrazu" draws it (``sizes``).
     height_cm: float | None = None
     width_cm: float | None = None
+    #: What it is made with and on, as he wrote the two ("olej", "płótno";
+    #: Mateusz 2026-11-19 20:38 UTC: "zrób dwa osobne pola i składaj z nich
+    #: potem pole technika na karcie dzieła"). ``medium`` is the line the app
+    #: writes of them ("olej na płótnie"). Both "" for a work described
+    #: before, or by an app that knows the line alone: the app then reads
+    #: them off the line.
+    technique: str = ""
+    support: str = ""
 
     def ratio(self, measured: float) -> float | None:
         """The work's width / height from his size, for the picture cut out

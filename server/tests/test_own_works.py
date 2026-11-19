@@ -86,6 +86,9 @@ def test_a_photograph_becomes_a_work_cut_out_of_its_frame(
             "origin": "Rodzinne, po dziadku",
             "height_cm": 46.0,
             "width_cm": 55.0,
+            # An app that writes the technique as one line: the two are not known.
+            "technique": "",
+            "support": "",
         }
         assert work["cut"]["by"] == "auto" and work["cut"]["shape"] == "rectangle"
         # The photograph waits no longer.
@@ -229,6 +232,23 @@ def test_his_corners_his_description_a_new_photograph_and_delete(
         again = client.put(f"/api/own/works/{work['id']}", json={**TEXT, "title": "Klif"}).json()
         assert again["title"] == "Klif" and again["own"]["hangs"] == "Salon"
         assert again["cut"]["by"] == "owner"  # the cut stays
+        # The technique and the support as he wrote the two (Mateusz 2026-11-19
+        # 20:38 UTC), kept beside the line the app wrote of them for the card.
+        two = {**TEXT, "title": "Klif", "technique": " olej ", "support": "płótno"}
+        split = client.put(f"/api/own/works/{work['id']}", json=two).json()
+        assert split["medium"] == "olej na płótnie"
+        assert (split["own"]["technique"], split["own"]["support"]) == ("olej", "płótno")
+        listed = client.get(
+            "/api/library/items", params={"kind": "own", "source": "upload", "sort": "recent"}
+        ).json()
+        assert listed["items"][0]["own"]["support"] == "płótno"
+        # An app that knows the line alone changes it: the two are not kept
+        # to say another thing than the line.
+        line = client.put(
+            f"/api/own/works/{work['id']}", json={**TEXT, "title": "Klif", "medium": "akwarela"}
+        ).json()
+        assert line["medium"] == "akwarela"
+        assert (line["own"]["technique"], line["own"]["support"]) == ("", "")
         stored = service.library.get(work["id"])
         assert stored is not None
         # Cut anew to the shape of the size he gave now.
