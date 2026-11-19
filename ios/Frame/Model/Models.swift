@@ -295,6 +295,12 @@ struct OwnWork: Codable, Hashable, Sendable {
     var origin: String = ""
     var heightCm: Double? = nil
     var widthCm: Double? = nil
+    /// What it is made with and on, as he wrote the two ("olej", "płótno");
+    /// `Item.medium` is the line written of them (`OwnTechnique.line`).
+    /// Nil from a server that keeps the line alone (to 1.145.268), "" for
+    /// a work described before: read off the line then (`OwnTechnique.parts`).
+    var technique: String? = nil
+    var support: String? = nil
 
     /// "46 × 55 cm" (height first, as museums give it); nil without both.
     var sizeText: String? {

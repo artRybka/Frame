@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.145.269
+
+- Własne dzieło, krok „Opis” (i „Edytuj opis” na karcie): długi tytuł
+  łamie się na kolejne linie, zamiast przewijać się w prawo i w lewo.
+  Tak samo autor i data.
+- Autor: po wpisaniu trzech liter pod polem pojawiają się autorzy
+  wcześniej dodanych własnych dzieł, których imię albo nazwisko tak się
+  zaczyna (wielkość liter i polskie znaki nie mają znaczenia); dotknięcie
+  wpisuje całość.
+- Rozmiar: bez napisu „Zmierzone LiDAR-em, bez ramy, ±1–2 cm” pod
+  zmierzonym wymiarem (ikona linijki zostaje).
+- Technika i podłoże to teraz dwa osobne pola, każde z własnym menu.
+  „Technika” na karcie dzieła składa się z obu: „olej” i „płótno” dają
+  „olej na płótnie”; podłoże, którego odmiany aplikacja nie zna, zapisuje
+  się po przecinku, jak w muzeach („akryl, płyta HDF”). Serwer pamięta
+  oba pola osobno, więc „Edytuj opis” pokazuje je tak, jak były wpisane;
+  dzieła opisane wcześniej dostają oba pola odczytane z dotychczasowej
+  linii („olej na płótnie” to „olej” i „płótno”).
+
 ## 1.145.268
 
 - Szukaj: „Słowo”, „Słowo kluczowe” i „Szukaj wyglądem” to teraz jedno
