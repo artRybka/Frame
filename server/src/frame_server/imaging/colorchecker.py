@@ -37,8 +37,19 @@ and contrast the phone gave its greys, he asked for the middle (18:49:
 "A nie lepiej to odrobinę wyważyć?"; shown the three, 19:13: "Wyważone,
 pół na pół"): blacks deeper than the measurement's, lights not as far
 gone as the phone's. So white balance and hues are the chart's, and each
-light is written half way between what it truly is and what the phone
+light is written part of the way from what it truly is to what the phone
 made of a grey that light (:meth:`Chart.lit`, :data:`PHONE`).
+
+Half way it was, to 2026-11-19. Then his e-paper frame, scanned with the
+chart on its screen (2026-11-19 11:01 UTC: "Mam też wrażenie że skan
+pomimo karty koloru jest za mało nasycony? Szczególnie widzę to po
+zieleniach."). The chart's own patches were right in it, a tenth more
+saturated than they are; the frame's green is a quarter of the chart's
+green, and its white a grey. Shown the scan half way, three quarters of
+the way and as the phone lit it, he took the second (11:37 UTC: "tak,
+wolę mocniej - 3/4 w stronę telefonu."). The photographs a scan keeps
+note how they were lit (:data:`LOOK`), and are lit as now when the work
+is made again (:func:`relit`).
 
 A photograph does not always hold the whole chart: in a dim room its
 black patch is written as no light at all, under a lamp its white as the
@@ -122,8 +133,8 @@ OUTLIER = 3.0
 STRIP = 256
 #: How a photograph kept beside its chart is lit: 0 as the patches truly
 #: are (to 1.145.243), 1 half way from that to how the phone had its
-#: greys.
-LOOK = 1
+#: greys (to 2026-11-19), 2 three quarters of the way.
+LOOK = 2
 #: How a chart is read: 1 to 1.145.244 (all six greys in step, each
 #: with light in it), 2 with the greys at the photograph's ends left out
 #: (:func:`_usable`). A kept scan no chart was read in is looked at once
@@ -131,7 +142,9 @@ LOOK = 1
 READING = 2
 #: How much of the way: 0 is the measurement, 1 the phone's lightness
 #: and contrast.
-PHONE = 0.5
+PHONE = 0.75
+#: How much of the way each :data:`LOOK` went.
+_WENT = (0.0, 0.5, PHONE)
 #: How light a colour is (linear light).
 _LUMA = np.array([0.2126, 0.7152, 0.0722])
 
@@ -189,12 +202,12 @@ class Chart:
         """Each 8-bit value's true light, per channel (3 × 256)."""
         return _curves(np.array(self.greys).T, self.lightest, self.darkest).astype(np.float32)
 
-    def lit(self) -> NDArray[np.uint8]:
+    def lit(self, phone_: float = PHONE) -> NDArray[np.uint8]:
         """Each true light (of 65536, any channel) as it is written: its
-        8-bit value, :data:`PHONE` of the way from what that light is to
-        what the photograph had a grey of that light at. That is straight
-        between the greys that count, through nothing below the darkest
-        one, and on above the lightest one as just below it."""
+        8-bit value, :data:`PHONE` of the way (``phone_``) from what that
+        light is to what the photograph had a grey of that light at. That
+        is straight between the greys that count, through nothing below
+        the darkest one, and on above the lightest one as just below it."""
         use = slice(self.lightest, self.darkest + 1)
         seen = (np.array(self.greys).T[use] @ _LUMA)[::-1]
         true = _REFERENCE[_GREYS, 1][use][::-1]
@@ -205,7 +218,7 @@ class Chart:
         out[over] = seen[-1] + (light[over] - true[-1]) * steep
         phone = _ENCODE[(np.clip(out, 0.0, 1.0) * 65535 + 0.5).astype(np.uint16)]
         true_ = _ENCODE.astype(np.float64)
-        return np.asarray(np.round(true_ + (phone - true_) * PHONE), np.uint8)
+        return np.asarray(np.round(true_ + (phone - true_) * phone_), np.uint8)
 
 
 def find(photo: Photo) -> Chart | None:
@@ -258,8 +271,8 @@ def find(photo: Photo) -> Chart | None:
 
 
 def apply(photo: Photo, chart: Chart) -> Photo:
-    """``photo`` (uint8 RGB) in the colours the chart gives it, half as
-    light and as steep as the phone had it (:meth:`Chart.lit`)."""
+    """``photo`` (uint8 RGB) in the colours the chart gives it, most of
+    the way as light and as steep as the phone had it (:meth:`Chart.lit`)."""
     return _put(photo, chart, chart.lit())
 
 
@@ -299,10 +312,18 @@ def true(photo: Photo, chart: Chart) -> Photo:
 
 
 def relit(photo: Photo, chart: Chart) -> Photo:
-    """A photograph kept as :func:`true` gave it, as :func:`apply` gives
-    it now."""
-    values = u8_to_linear(np.arange(256, dtype=np.uint8)).astype(np.float64)
-    return np.asarray(chart.lit()[(values * 65535 + 0.5).astype(np.uint16)][photo])
+    """A photograph kept as an earlier release lit it (``chart.look``:
+    as :func:`true` gave it, or half way to the phone), as :func:`apply`
+    gives it now. Each of its 8-bit values is the light that was written
+    so then (the middle one of those that were), written as now; a value
+    no light was written as is as the ones about it."""
+    was = np.maximum.accumulate(chart.lit(_WENT[min(chart.look, LOOK)]))
+    values = np.arange(256)
+    low = np.searchsorted(was, values, "left")
+    high = np.searchsorted(was, values, "right")
+    written = high > low
+    light = np.interp(values, values[written], ((low + high - 1) / 2)[written])
+    return np.asarray(chart.lit()[np.round(light).astype(np.uint16)][photo])
 
 
 def _put(photo: Photo, chart: Chart, encode: NDArray[np.uint8]) -> Photo:

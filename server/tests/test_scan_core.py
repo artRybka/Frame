@@ -57,6 +57,10 @@ def test_the_phone_goes_by_the_servers_numbers() -> None:
     assert number("leastKept") == cut.LEAST_KEPT
     assert number("square") == cut.SQUARE
     assert number("quality") * 100 == own_works.INCOMING_QUALITY
+    # How its core merges: raised with the server's, once the core is
+    # changed as ``reflections`` was (the server makes a scan that says
+    # less again of its kept photographs).
+    assert number("merging") == own_works.MERGING
 
 
 def test_the_phone_and_the_server_read_a_photograph_alike() -> None:

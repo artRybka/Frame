@@ -397,6 +397,22 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertEqual(OwnScanView.first(front.map { CGPoint(x: $0.x - 0.2, y: $0.y) }, lean: 0), .farther)
         XCTAssertEqual(OwnScanView.first(nil, lean: 0), .lost)
         XCTAssertEqual(OwnScanView.first(front, lean: 30), .hold)
+        // A work lying on a table, the phone over it (Mateusz 2026-11-19
+        // 11:04 UTC: "może także gdy poziomo - np. odbitka leżąca na
+        // stole"): level, the photograph is taken whatever the outline's
+        // sides, for the phone is square over the work both ways. Not
+        // level, it is the phone that leans, whichever sides differ.
+        XCTAssertEqual(OwnScanView.first(cut, lean: 88), .hold)
+        XCTAssertEqual(OwnScanView.first(cut, lean: -(90 - OwnScanView.plumb)), .hold)
+        XCTAssertEqual(OwnScanView.first(cut, lean: 80), .level)
+        XCTAssertEqual(OwnScanView.first(OwnScanView.seen(front, from: -12), lean: 89), .hold)
+        XCTAssertEqual(OwnScanView.first(OwnScanView.seen(front, from: -12), lean: 70), .level)
+        XCTAssertEqual(OwnScanView.first(front, lean: 70), .hold)
+        XCTAssertEqual(OwnScanView.first(front.map { CGPoint(x: $0.x - 0.2, y: $0.y) }, lean: 90), .farther)
+        XCTAssertTrue(OwnScanView.down(60))
+        XCTAssertTrue(OwnScanView.down(-90))
+        XCTAssertFalse(OwnScanView.down(30))
+        XCTAssertFalse(OwnScanView.down(nil))
         // Before a rectangle on the wall its outline asks no more of him
         // than upright does, but where it all but fills the picture.
         let pitched = { (height: Double, degrees: Double) -> Double in
@@ -448,6 +464,13 @@ final class OwnWorksTests: XCTestCase {
         XCTAssertEqual(asked.line, "Możesz też zrobić zdjęcie sam")
         asked.advice = .hold
         XCTAssertEqual(asked.line, "Dobrze. Robię zdjęcie na wprost")
+        // Over a table the phone is held level, not upright.
+        asked.manual = false
+        asked.advice = .level
+        XCTAssertEqual(asked.note, "Trzymaj go pionowo, na wysokości środka dzieła.")
+        asked.down = true
+        XCTAssertEqual(asked.line, "Telefon jest pochylony")
+        XCTAssertEqual(asked.note, "Trzymaj go poziomo, nad środkiem dzieła.")
 
         // The one from the left: on to the left, there, too far, back.
         let left = -OwnScanView.side

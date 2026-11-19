@@ -171,6 +171,17 @@ enum OwnScanView {
         if xs.max()! - xs.min()! < small, ys.max()! - ys.min()! < small { return .nearer }
         let s = sides(outline, aspect: aspect)
         guard s.left > 0, s.right > 0, s.top > 0, s.bottom > 0 else { return .lost }
+        if let lean, down(lean) {
+            // Over a work lying on a table (Mateusz 2026-11-19 11:04 UTC:
+            // "może także gdy poziomo - np. odbitka leżąca na stole"):
+            // gravity says how the phone leans either way. Level, it is
+            // square over the work wherever it is held, and unlike sides
+            // are the work's own; not level, it is the phone that leans,
+            // whichever sides differ (there is no side to stand at).
+            if 90 - abs(lean) <= plumb { return .hold }
+            let askew = abs(log(s.left / s.right)) > askew || abs(log(s.top / s.bottom)) > askew
+            return askew ? .level : .hold
+        }
         // One side taller: seen from the side. The top or the bottom wider:
         // the phone leans back or forth.
         if abs(log(s.left / s.right)) > askew { return .straight }
@@ -187,8 +198,16 @@ enum OwnScanView {
         return .hold
     }
 
+    /// The phone looks down at a work lying before it (or up), by how it
+    /// leans (`OwnScanGuide.leaning`, degrees): where `OwnScanGuide.turning`
+    /// takes it to.
+    static func down(_ lean: Double?) -> Bool {
+        lean.map { abs(sin($0 * .pi / 180)) > 0.75 } ?? false
+    }
+
     /// Leaning back or forth by no more than this (degrees), the phone
-    /// stands upright. Before a rectangle on the wall `askew` asks as
+    /// stands upright; no more than this off lying flat, it is level over
+    /// a table. Before a rectangle on the wall `askew` asks as
     /// much of its outline or less (4° with the work five sixths of the
     /// picture high, 5.6° at six tenths), so nothing changes for one but
     /// where it all but fills the picture (3.3° then).

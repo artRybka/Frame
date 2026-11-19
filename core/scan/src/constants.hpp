@@ -43,6 +43,8 @@ inline constexpr double GLARE_FEATHER = 0.03;
 inline constexpr double GLARE_LINES = 0.006;
 inline constexpr double GLARE_NEAR = 0.006;
 inline constexpr double GLARE_OUT = 0.006;
+inline constexpr double GLARE_REACH = 0.01;
+inline constexpr double GLARE_REACH_FAR = 0.1;
 inline constexpr double GLARE_RIM = 0.012;
 inline constexpr std::array<double, 2> GLARE_RIM_MORE{0.04, 0.1};
 inline constexpr double GLARE_RIM_OVER = 0.003;

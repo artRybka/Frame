@@ -85,7 +85,13 @@ SCAN_INFO = "scan.json"
 #: taken off around the corners than at them (1.145.255: a dark stripe
 #: down the wall beside a frame, and a band along a frame's inner edge) is
 #: 4: within the corners nothing changes, around them "W ramie" does.
-MERGING = 4
+#: A lamp's own wide light not telling what the first photograph differs
+#: from a side one by (2026-11-19: a violet patch on his e-paper frame's
+#: matt screen where the lamp was taken off) is 5: a scan with a lamp in
+#: it changes, one without stays as it was to the pixel.
+MERGING = 5
+#: How a phone that does not say merged (the app before it said).
+PHONE_MERGING = 4
 #: A work's photograph is a kept scan's when the fine of the two, small
 #: and grey, goes together at least this much (1 is the same picture). Of
 #: his first twelve scans the first photograph and what was made of it
@@ -819,6 +825,7 @@ class OwnWorks:
         phone: dict[str, Any] | None = None,
         trued: bool = False,
         straight: LensBend | None = None,
+        merging: int | None = None,
     ) -> Merged:
         """The scan as the phone made it of its camera's own photographs
         (Mateusz 2026-11-19 07:42 UTC: "Tak, składaj na iPhonie"; the same
@@ -855,6 +862,14 @@ class OwnWorks:
         the photographs kept are as taken: made again here, the work is
         straightened here.
 
+        ``merging``: how the phone's core merges (:data:`MERGING` as its
+        app had it; :data:`PHONE_MERGING` for one that does not say). The
+        app is updated apart from the server, and the scan notes the
+        lesser of the two: one made by an app that merges as the server
+        no longer does is made again here of its kept photographs after
+        the next start, as any scan made before the merging changed
+        (:meth:`scanned_again`).
+
         Raises ValueError for what is no scan of this photograph: no side
         photographs of it are here, the picture is of another size, its
         colours were set by a chart here and the phone merged the
@@ -863,6 +878,7 @@ class OwnWorks:
         asks :meth:`merge` as before."""
         path = self.path(token)
         folder = self.scans / token
+        by = min(MERGING, PHONE_MERGING if merging is None else merging)
         angles = self._angles(token)
         sides, more = self.chosen(sorted(self.incoming.glob(f"{token}-side*.jpg")), angles)
         again = not sides and (folder / "first.jpg").is_file()
@@ -912,7 +928,7 @@ class OwnWorks:
                 replaced=seen.replaced,
                 doubt=seen.doubt and seen.replaced > 0,
                 again=now_iso(),
-                merging=MERGING,
+                merging=by,
                 phone=phone or {},
             )
             (folder / SCAN_INFO).write_text(json.dumps(info))
@@ -923,14 +939,14 @@ class OwnWorks:
                 return angles.get(int(number.group(1))) if number else None
 
             self._note_scan(
-                token, seen, {name: at(side) for name, side in kept.items()}, trace, phone or {}
+                token, seen, {name: at(side) for name, side in kept.items()}, trace, phone or {}, by
             )
             for side in [*sides, *more]:
                 side.unlink(missing_ok=True)
             path.with_suffix(ANGLES).unlink(missing_ok=True)
         log.info(
             "own photograph %s: merged on the phone%s%s%s: %d side(s) laid over, %.1f%% of the "
-            "light taken out%s%s",
+            "light taken out%s%s%s",
             token,
             " in its chart's colours" if trued else "",
             " and straightened there" if bend is not None else "",
@@ -938,6 +954,7 @@ class OwnWorks:
             seen.used,
             seen.replaced * 100,
             ", not one flat work: the one photograph proposed" if seen.doubt else "",
+            f", merged as {by} (here {MERGING}): to be made again here" if by < MERGING else "",
             f" ({json.dumps(phone, ensure_ascii=False, sort_keys=True)[:1500]})" if phone else "",
         )
         if trace and not again:
@@ -1064,15 +1081,17 @@ class OwnWorks:
         angles: dict[str, float | None] | None = None,
         trace: dict[str, float] | None = None,
         phone: dict[str, Any] | None = None,
+        merging: int = MERGING,
     ) -> None:
         """What the merge came to, beside the scan's photographs
-        (``phone``: made there, and what the phone noted of making it)."""
+        (``phone``: made there, and what the phone noted of making it;
+        ``merging``: how it was merged, where the phone did)."""
         info: dict[str, Any] = {
             "at": now_iso(),
             # Which release made it one, and how photographs were merged
             # then: when that changes the work is made of them once more.
             "release": build_version(),
-            "merging": MERGING,
+            "merging": merging,
             "used": seen.used,
             "replaced": seen.replaced,
             # Made of photographs that show no one flat work, for him to
@@ -1747,11 +1766,13 @@ class OwnWorks:
 
     @staticmethod
     def _relit(folder: Path, info: dict[str, Any]) -> None:
-        """The scan's photographs, kept by an earlier release as their
-        chart's patches truly are, lit as a chart lights them now (his
-        first scan with a real chart, 2026-11-18 18:13 UTC: "Wyszło
-        trochę blado i mdło"; 19:13: "Wyważone, pół na pół"). Once: the
-        note says how they are lit."""
+        """The scan's photographs, kept by an earlier release as it lit
+        them (as their chart's patches truly are, or half way to the
+        phone), lit as a chart lights them now (his first scan with a
+        real chart, 2026-11-18 18:13 UTC: "Wyszło trochę blado i mdło";
+        19:13: "Wyważone, pół na pół"; 2026-11-19 11:37: "tak, wolę
+        mocniej - 3/4 w stronę telefonu."). Once: the note says how they
+        are lit."""
         import numpy as np
 
         from .imaging import colorchecker
