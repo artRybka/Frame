@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.145.256
+
+- Skan z kartą koloru też składa teraz iPhone („Czy iPhone będzie także
+  obsługiwać kartę koloru”). Serwer jak dotąd znajduje kartę na pierwszym
+  zdjęciu i wylicza z niej korektę barw, a telefon dostaje tę korektę,
+  nakłada ją na swoje trzy zdjęcia i dopiero wtedy je składa. Wynik jest
+  w barwach karty, tak jak wtedy, gdy składał serwer, tylko po kilku
+  sekundach.
+- Korekta na telefonie daje te same liczby co na serwerze (różnica o
+  jeden poziom w jednej wartości na milion).
+- Potrzebna jest nowa aplikacja i aktualizacja serwera. Starsza
+  aplikacja albo starszy serwer zostawiają skan z kartą serwerowi, jak
+  dotąd.
+
 ## 1.145.255
 
 - Skan własnego dzieła składa teraz iPhone („Tak, składaj na iPhonie”).
