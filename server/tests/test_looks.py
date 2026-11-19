@@ -136,11 +136,11 @@ def _work(
 ) -> Item:
     source, _, source_id = item_id.partition(":")
     fields.setdefault("kind", ItemKind.ARTWORK)
+    fields.setdefault("title", item_id)
     item = Item(
         id=item_id,
         source=source,
         source_id=source_id,
-        title=item_id,
         thumb_url=f"https://example.org/{source_id}.jpg",
         **fields,
     )
@@ -1076,3 +1076,117 @@ def test_the_works_style_and_subject_kept_follow_the_rows(tmp_path: Path) -> Non
     same(shaped)
     index.forget([f"w{n}" for n in range(10, 80)])
     same(shaped)
+
+
+# -- Szukaj's "Słowa": the words and how works look in one ----------------------------------
+
+
+def _slowa(service: FrameService, looks: tuple[Looks, FakePainter]) -> Looks:
+    """Works for "red": one with the word and the look, one with the look
+    alone, one with the word alone (it is blue)."""
+    found, _painter = looks
+    service.ai_config.set_gemini_key("k")
+    _work(service, "met:1", "red", title="A red barn")
+    _work(service, "met:2", "red", title="Barn at dusk")
+    _work(service, "met:3", "blue", title="The red letter")
+    _work(service, "met:4", "green", title="Meadow")
+    _numbers(found)
+    return found
+
+
+def test_slowa_find_works_by_their_words_and_by_how_they_look(
+    service: FrameService, looks: tuple[Looks, FakePainter]
+) -> None:
+    """Mateusz 2026-11-19: "Słowa, słowa kluczowe, hasła i słowa o tym co
+    widać - może połączyć w jedno?": the works with the words, and those
+    that look so, nearest first; those with the words only after them."""
+    _slowa(service, looks)
+    words = PlaylistRules(query="red")
+    assert sorted(i.id for i in service.library.query(words)[1]) == ["met:1", "met:3"]
+    seen = PlaylistRules(query="red", seen=True)
+    total, items = service.library.query(seen)
+    assert [i.id for i in items][:2] in (["met:1", "met:2"], ["met:2", "met:1"])
+    assert [i.id for i in items][2:] == ["met:3"] and total == 3
+    # Another order asked: as the words found them, those by look after.
+    by_year = [i.id for i in service.library.query(seen, sort="year")[1]]
+    assert sorted(by_year[:2]) == ["met:1", "met:3"] and by_year[2:] == ["met:2"]
+
+
+def test_slowa_finding_plenty_by_words_only_order_them(
+    service: FrameService, looks: tuple[Looks, FakePainter], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Words that find many works alone ("Kraków", "akwaforta") get none
+    only by how they look: theirs go nearest first."""
+    from frame_server.library import repo
+
+    _slowa(service, looks)
+    monkeypatch.setattr(repo, "SEEN_PLENTY", 2)
+    items = service.library.query(PlaylistRules(query="red", seen=True))[1]
+    assert [i.id for i in items] == ["met:1", "met:3"]
+
+
+def test_slowa_without_googles_numbers_in_time_answer_with_the_words(
+    service: FrameService, looks: tuple[Looks, FakePainter], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Google slow: the words alone at once, not kept; the numbers come on
+    and the next search has the works that look so too."""
+    import threading
+
+    from frame_server import looks as looks_module
+
+    found = _slowa(service, looks)
+    _found, painter = looks
+    monkeypatch.setattr(looks_module, "WORDS_WAIT", 0.05)
+    held = threading.Event()
+    plain = painter.embed
+
+    def slow(kind: str, inputs: Sequence[Embedded]) -> list[list[float]]:
+        held.wait(5)
+        return plain(kind, inputs)
+
+    painter.embed = slow  # type: ignore[method-assign]
+    seen = PlaylistRules(query="red", seen=True)
+    assert sorted(i.id for i in service.library.query(seen)[1]) == ["met:1", "met:3"]
+    held.set()
+    for _ in range(100):
+        if found.scored("red", wait=0.1) is not None:
+            break
+    assert "met:2" in [i.id for i in service.library.query(seen)[1]]  # not kept before
+
+
+def test_slowa_without_a_key_are_the_words_alone(
+    service: FrameService, looks: tuple[Looks, FakePainter]
+) -> None:
+    _slowa(service, looks)
+    _found, painter = looks
+    painter.key = False
+    items = service.library.query(PlaylistRules(query="red", seen=True))[1]
+    assert sorted(i.id for i in items) == ["met:1", "met:3"]
+
+
+def test_szukaj_asks_slowa_and_the_suggestions_ask_googles_numbers_ahead(
+    service: FrameService, looks: tuple[Looks, FakePainter], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import time
+
+    from frame_server.web import create_app, discover_api
+
+    found = _slowa(service, looks)
+    _found, painter = looks
+    monkeypatch.setattr(discover_api, "PREFETCH_PAUSE", 0.0)
+    app = create_app(service.settings)
+    app.state.service = service
+    with TestClient(app) as client:
+        assert client.get("/api/terms", params={"q": "barn"}).status_code == 200
+        for _ in range(100):
+            if any(QUERY + "barn" in one for one in painter.asked):
+                break
+            time.sleep(0.02)
+        assert [QUERY + "barn"] in painter.asked  # asked while typing
+        asked = len(painter.asked)
+        page = client.get("/api/library/items", params={"q": "barn", "seen": True}).json()
+        assert {i["id"] for i in page["items"]} >= {"met:1", "met:2"}
+        assert len(painter.asked) == asked  # the search asked Google nothing more
+        page = client.get("/api/library/items", params={"q": "barn"}).json()
+        assert sorted(i["id"] for i in page["items"]) == ["met:1", "met:2"]
+    assert found.scored("barn") is not None

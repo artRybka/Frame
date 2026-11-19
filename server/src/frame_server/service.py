@@ -463,6 +463,7 @@ class FrameService:
         # a smart playlist made of them (Mateusz 2026-11-13).
         self.library.looking = self.looks.looking
         self.library.look_near = self.looks.near
+        self.library.look_scores = self.looks.scored
         self.library.like_near = self.looks.alike
         # Works that look like a cover set aside are asked about too.
         self.gatekeeper.alike = self.looks.near_ids

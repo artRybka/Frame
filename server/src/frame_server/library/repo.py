@@ -101,6 +101,10 @@ QUERIES_KEPT = 16
 #: it was made (``Library.query`` with ``paged``), in seconds.
 ORDER_KEPT = 60.0
 ORDER_AT_MOST = 300.0
+#: Szukaj's "Słowa" (``PlaylistRules.seen``): words that find this many
+#: works by their texts alone get no works only by how they look; theirs
+#: are put in the order of how near they look (Mateusz 2026-11-19).
+SEEN_PLENTY = 60
 
 
 class _Counted(NamedTuple):
@@ -262,6 +266,9 @@ class Abandoned(Exception):
 
 #: What this thread's asker says of the question it works on.
 _asker = threading.local()
+#: A search by "Słowa" answered with the words alone (Google's numbers of
+#: the words not here in time): its answer is not kept.
+_short = threading.local()
 #: Works looked at between two looks at whether the asker is still there.
 _ASKER_LOOK = 1024
 
@@ -732,6 +739,11 @@ class Library:
         #: ones ``looking`` chooses from; None when that cannot be asked
         #: now. The service puts :meth:`.looks.Looks.near` here.
         self.look_near: Callable[[str], list[str] | None] | None = None
+        #: The works nearest what words say, with how near, nearest first
+        #: (``PlaylistRules.seen``); None when that cannot be asked now or
+        #: Google's numbers of the words are not here in time. The service
+        #: puts :meth:`.looks.Looks.scored` here.
+        self.look_scores: Callable[[str], list[tuple[str, float]] | None] | None = None
         #: The ids of the works that look like the work of the id given (by
         #: both its subject and its style, or by the one named), one copy of
         #: each, nearest first (``PlaylistRules.like``, ``like_by``); None
@@ -1727,13 +1739,14 @@ class Library:
             else:
                 items = None
         if items is None:
+            _short.words_alone = False
             try:
                 items = self._query(
                     rules, sort, seed, include_excluded, user, limit == 0, proposing
                 )
             except _NotNow:
                 return 0, []  # asked again next time
-            if limit != 0:
+            if limit != 0 and not _short.words_alone:
                 with self._queries_lock:
                     self._queries[kept] = (made_with, items)
                     while len(self._queries) > QUERIES_KEPT:
@@ -1748,6 +1761,60 @@ class Library:
                 while len(self._orders) > QUERIES_KEPT:
                     self._orders.popitem(last=False)
         return len(items), items[offset:end]
+
+    def _seen(
+        self,
+        rules: PlaylistRules,
+        sort: SortKey,
+        seed: int,
+        include_excluded: bool,
+        user: str,
+        count_only: bool,
+        proposing: bool,
+        among: Collection[str] | None,
+    ) -> list[Item]:
+        """Szukaj's "Słowa" (``PlaylistRules.seen``, Mateusz 2026-11-19):
+        the works whose texts have the words, and those that look as the
+        words say, in one list. Words that find :data:`SEEN_PLENTY` works
+        alone get no works only by how they look; in Szukaj's own order
+        ("recent") the works go nearest first, those without numbers last
+        as they came. Google's numbers of the words not here in time: the
+        words alone, not kept (asked again with the next search)."""
+        words = rules.query
+        plain = rules.model_copy(update={"seen": False})
+        found = self._query(plain, sort, seed, include_excluded, user, count_only, proposing, among)
+        near = self.look_scores(words) if self.look_scores is not None else None
+        if near is None:
+            _short.words_alone = True
+            return found
+        grouped = self.works()
+        score: dict[str, float] = {}
+        for item_id, near_by in near:
+            at = grouped.group_index(item_id)
+            for copy in grouped.groups[at] if at is not None else ():
+                score.setdefault(copy.id, near_by)
+            score.setdefault(item_id, near_by)
+        if len(found) < SEEN_PLENTY and self.looking is not None:
+            nearby = set(score) if among is None else set(score) & set(among)
+            others = rules.model_copy(update={"query": "", "seen": False})
+            candidates = self._query(
+                others, "recent", seed, include_excluded, user, False, proposing, among=nearby
+            )
+            looked = self.looking(words, candidates)
+            if looked is None:
+                _short.words_alone = True
+                return found
+
+            def work(item: Item) -> int | str:
+                at = grouped.group_index(item.id)
+                return item.id if at is None else at
+
+            have = {work(i) for i in found}
+            found = found + [i for i in looked if work(i) not in have]
+        if sort != "recent":
+            return found
+        least = -2.0
+        return sorted(found, key=lambda i: -score.get(i.id, least))
 
     def _order(self, key: tuple[Any, ...]) -> list[Item] | None:
         """The order remembered for a list's next page (``query`` with
@@ -1820,6 +1887,10 @@ class Library:
                 return places.get(item.id if kin is None else kin, len(places))
 
             return sorted(found_alike, key=nearness)
+        if rules.seen and rules.query.strip() and not rules.look.strip():
+            return self._seen(
+                rules, sort, seed, include_excluded, user, count_only, proposing, among
+            )
         if rules.look.strip():
             # What the other rules find, those that look so, nearest first:
             # only among the works that may (and their copies). The whole

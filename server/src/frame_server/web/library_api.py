@@ -307,15 +307,18 @@ def list_items(
     like: str = "",
     like_by: Literal["", "subject", "style"] = "",
     like_further: Annotated[int, Query(ge=0, le=3)] = 0,
+    seen: bool = False,
 ) -> ItemPage:
     """The catalogue's works for Szukaj's choices. ``look``: words for how
     the works look ("mglisty poranek nad wodą"), the other choices narrowing
     them, nearest first (Mateusz 2026-11-13); ``like``: a work's id, the
     works that look like it so ("Szukaj podobnych"), by both their subject
     and their style or by the one ``like_by`` names; 409 when that cannot be
-    asked."""
+    asked. ``seen``: with ``q``, the works that look as the words say too
+    (Szukaj's "Słowa", Mateusz 2026-11-19)."""
     rules = PlaylistRules(
         query=q,
+        seen=seen and bool(q.strip()),
         artists=artist or [],
         styles=style or [],
         subjects=subject or [],

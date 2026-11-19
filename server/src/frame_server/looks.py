@@ -53,7 +53,8 @@ import threading
 import time
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Sequence
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -139,6 +140,12 @@ ALIKE_FURTHER = 3
 #: With the numbers of before (no style nor subject), the fixed most.
 ALIKE_OLD_MOST = 120
 AMONG_MOST = 240
+#: Szukaj's "Słowa" (Mateusz 2026-11-19: the words, the works' keywords
+#: and how works look in one): how long a search waits for Google's numbers
+#: of its words before it answers with the words alone. The words are
+#: mostly asked while typing (:meth:`Looks.prefetch`), so this is seldom
+#: waited for.
+WORDS_WAIT = 1.5
 #: A photograph searched in Szukaj (``Looks.photo``) is a ``like`` of its
 #: own: this before the key its numbers are kept under (``photos/<key>``).
 PHOTO = "photo:"
@@ -563,6 +570,9 @@ class Looks:
         self.cared: Callable[[], dict[str, int]] = dict
         self._words: OrderedDict[str, list[float]] = OrderedDict()
         self._words_lock = threading.Lock()
+        #: Words' numbers being asked of Google (:meth:`prefetch`), by key.
+        self._asking: dict[str, Future[list[float]]] = {}
+        self._askers = ThreadPoolExecutor(max_workers=2, thread_name_prefix="looks-words")
         self._stop = threading.Event()
         self._wake = threading.Event()
         self._thread: threading.Thread | None = None
@@ -667,6 +677,69 @@ class Looks:
             seen.add(item.id)
             found.append(Found(item, round(score, 4)))
         return found
+
+    def prefetch(self, texts: Iterable[str]) -> None:
+        """Google's numbers of words asked ahead, while Szukaj's
+        suggestions show them (Mateusz 2026-11-19: "wyniki chciałbym od
+        razu"): the search that follows finds them here. Some 0.0002 cent
+        a time; nothing when they cannot be asked."""
+        if not self.ready():
+            return
+        for text in texts:
+            self._ask(text)
+
+    def _ask(self, text: str) -> Future[list[float]] | None:
+        """The numbers of ``text``: kept, being asked, or asked now in the
+        background; None for no words."""
+        text = " ".join(text.split())[:300]
+        if not text:
+            return None
+        key = text.lower()
+        with self._words_lock:
+            kept = self._words.get(key)
+            if kept is not None:
+                done: Future[list[float]] = Future()
+                done.set_result(kept)
+                return done
+            asking = self._asking.get(key)
+            if asking is not None:
+                return asking
+            asking = self._askers.submit(self._words_vector, text)
+            self._asking[key] = asking
+
+        def gone(_: Future[list[float]]) -> None:
+            with self._words_lock:
+                if self._asking.get(key) is asking:
+                    del self._asking[key]
+
+        asking.add_done_callback(gone)
+        return asking
+
+    def scored(self, text: str, wait: float | None = None) -> list[tuple[str, float]] | None:
+        """The works nearest what the words say (:data:`AMONG_NEAR` of
+        them), each with how near, nearest first: Szukaj's "Słowa"
+        (``PlaylistRules.seen``). None when they cannot be asked, or when
+        Google's numbers of the words are not here within ``wait`` (they
+        are kept once they come)."""
+        try:
+            self._check()
+        except AiUnavailable:
+            return None
+        asking = self._ask(text)
+        if asking is None:
+            return []
+        wait = WORDS_WAIT if wait is None else wait
+        try:
+            vector = asking.result(timeout=wait)
+        except FutureTimeout:
+            log.info("Słowa: Google's numbers of %r not here within %.1f s", text, wait)
+            return None
+        except AiUnavailable:
+            return None
+        except (NotDrawn, httpx.HTTPError) as err:
+            log.warning("Słowa: Google did not answer (%s)", err)
+            return None
+        return self._words_near(vector, AMONG_NEAR)
 
     def near(self, text: str) -> list[str] | None:
         """The ids of the works :meth:`among` chooses from for ``text``
@@ -1455,6 +1528,7 @@ class Looks:
     def stop(self) -> None:
         self._stop.set()
         self._wake.set()
+        self._askers.shutdown(wait=False, cancel_futures=True)
 
     def nudge(self) -> None:
         """The switch or the key changed: look at once."""

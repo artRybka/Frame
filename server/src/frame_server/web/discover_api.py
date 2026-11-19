@@ -1187,8 +1187,29 @@ async def terms(
         except Abandoned:
             return []
 
-    return await to_thread.run_sync(answer, limiter=TERM_THREADS)
+    hits = await to_thread.run_sync(answer, limiter=TERM_THREADS)
+    words = " ".join(q.split())
+    if hits and len(words) >= PREFETCH_LEAST:
+        # Szukaj's "Słowa": Google's numbers of the words asked ahead once
+        # the typing rests, the search that follows finds them here
+        # (Mateusz 2026-11-19: "wyniki chciałbym od razu").
+        asked = [words, *[h.key for h in hits if h.kind == "word" and h.key != words][:3]]
 
+        def ahead() -> None:
+            if not gone():
+                svc.looks.prefetch(asked)
+
+        timer = threading.Timer(PREFETCH_PAUSE, ahead)
+        timer.daemon = True
+        timer.start()
+    return hits
+
+
+#: Szukaj's suggestions: words typed and resting this long (no next letter
+#: asked) get their numbers asked of Google ahead (``Looks.prefetch``),
+#: when they are this many letters at least.
+PREFETCH_PAUSE = 0.35
+PREFETCH_LEAST = 3
 
 #: Threads for asking the museums, apart from the server's own pool: a
 #: search's stream asks some 19 sources at once, and two quick searches took
