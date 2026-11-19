@@ -33,7 +33,7 @@ struct OwnIncoming: Codable, Hashable, Sendable {
     /// him (`OwnPicture.straight`; the corners he sets on that go to the
     /// server as they are on the photograph taken) and of the scan it
     /// makes (`PhoneScan.make`). nil where it is not known, and from a
-    /// server that straightens the work itself (to 1.145.257).
+    /// server that straightens the work itself (to 1.145.258).
     var straight: OwnBend? = nil
 
     var aspect: Double { height > 0 ? Double(width) / Double(height) : 0.75 }

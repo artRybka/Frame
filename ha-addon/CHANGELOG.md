@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.145.258
+## 1.145.259
 
 - Obiektyw prostuje teraz sam iPhone („prostowanie obiektywu. Czy tego
   także nie lepiej robić na iPhone?”). Serwer mówi telefonowi, czym
