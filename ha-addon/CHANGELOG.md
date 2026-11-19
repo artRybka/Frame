@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.145.253
+
+- Próba składania skanu na iPhonie („Najpierw próba na iPhonie”). W
+  Konfiguracja → Diagnostyka jest nowa sekcja „Składanie skanu na
+  iPhonie” z przyciskiem „Zacznij próbę”. iPhone bierze z serwera Twoje
+  trzy ostatnie skany, składa je sam z tych samych zdjęć, z których
+  złożył je serwer, i pokazuje, ile trwał każdy i średnio.
+- W Twojej kolekcji nic się nie zmienia, a skanowanie działa jak dotąd
+  przez serwer. Wynik z telefonu zostaje na serwerze obok zdjęć skanu
+  (znika razem z nimi po dwóch tygodniach) i posłuży do porównania
+  obrazu z tym, co złożył serwer.
+- Próba trwa kilka minut, bo zdjęcia w pełnej wielkości idą z serwera
+  na telefon i z powrotem (ok. 220 MB na skan). Najlepiej w domowym
+  Wi-Fi, z aplikacją otwartą na ekranie.
+- W aplikacji jest do tego to samo składanie co na serwerze, napisane
+  drugi raz dla telefonu, na tym samym OpenCV. Na procesorze Maca skan
+  48 MP składał się nim w ok. 7 s zamiast 34 s na serwerze; ile zajmie
+  na iPhonie, pokaże próba.
+
 ## 1.145.252
 
 - Składanie skanu własnego dzieła trochę szybciej, z tym samym obrazem

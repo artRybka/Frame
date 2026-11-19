@@ -469,6 +469,9 @@ struct SettingsPageView: View {
             SourceRequestsSection()
             TailnetSection(parts: [.log])
             NotificationsSection(parts: [.test])
+            if !model.demoMode {
+                ScanTrialSection()
+            }
         }
     }
 

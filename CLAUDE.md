@@ -34,6 +34,14 @@ uv run mypy src
   and only when the work is added or made again. The waiting photograph
   and a scan's kept ones stay as taken: the phone shows its own copy and
   the corners are set on that (a kept scan notes `lens` and `straight`).
+  The merge of a scan (`imaging/reflections.py`) is written a second time
+  in C++ for the phone (`core/scan`, a trial: Konfiguracja → Diagnostyka
+  merges his kept scans with it, `ios/…/ScanTrial.swift`). The Python here
+  stays the truth. Its numbers reach the core through
+  `core/scan/tools/constants.py` (`tests/test_scan_core.py` fails until
+  `constants.hpp` is made again); a changed step of the merge is changed
+  in the core by hand, and checked step by step on a kept scan with
+  `tools/golden.py` and `tools/check` (his scans never go into the repo).
 - `web/app.py` FastAPI: `/panel/*` for the panel (no auth, must never 404
   once content exists), `/api/*` for the app (Bearer token).
 - Never hand-edit `uv.lock`; use `uv add` / `uv lock`.
@@ -72,6 +80,10 @@ show text with `Text(bound: value)`, also a sentence written in the code
 and `value.bound` for a `Label`, `Button`… Never a bare `Text(value)`. Only on what is shown, never on what is
 typed, edited, searched or sent. The frame's "Opis" page does the same on the
 server (`imaging/breaks.py`); keep the two rule sets in step.
+`ios/Vendor/Scan` (the scan's core and OpenCV, static) is built by
+`scripts/build-scan.sh` like `Vendor/Tailscale`; CI keeps both in its cache
+(`.github/actions/scan-core`), and building OpenCV anew takes some twenty
+minutes: raise `BUILD` in `build-opencv.sh` only when its options change.
 Pages: `.paperPage()` on the ScrollView (never a bare `.background(Theme.paper)`,
 `PageLayoutTests` fails on it) and `.pageWidth()` on its content. A vertical
 ScrollView is only as wide as its content, so a page holding just a spinner or

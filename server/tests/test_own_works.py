@@ -591,6 +591,62 @@ def test_a_scans_photographs_are_kept_two_weeks(service: FrameService) -> None:
     assert not folder.exists()
 
 
+def test_the_phone_merges_a_kept_scan_itself_for_the_trial(service: FrameService) -> None:
+    """Mateusz 2026-11-19 00:12 UTC: "Najpierw próba na iPhonie". The phone
+    is given a kept scan's photographs as the server's merge reads them,
+    and what it made of them itself is kept beside them to be compared.
+    Nothing of his collection changes."""
+    first = _jpeg(photo())
+    with _client(service) as client:
+        token = client.post("/api/own/photos", files={"file": ("p.jpg", first)}).json()["token"]
+        for _ in range(2):
+            client.post(f"/api/own/photos/{token}/sides", files={"file": ("s.jpg", first)})
+        client.post(f"/api/own/photos/{token}/merge")
+        scan = f"/api/debug/own-scans/{token}"
+        folder = service.own_works.scans / token
+
+        got = client.get(f"{scan}/first.jpg/pixels")
+        assert got.status_code == 200, got.text
+        assert int(got.headers["content-length"]) == len(got.content)
+        pixels = np.load(io.BytesIO(got.content))
+        with Image.open(folder / "first.jpg") as img:
+            assert np.array_equal(pixels, np.asarray(img.convert("RGB")))
+        side = np.load(io.BytesIO(client.get(f"{scan}/side2.jpg/pixels").content))
+        assert side.shape == pixels.shape and side.dtype == np.uint8
+        for name in ("side3.jpg", "scan.json", "phone.npy"):
+            assert client.get(f"{scan}/{name}/pixels").status_code == 404
+
+        # What the phone made of them, and what it noted: beside the scan,
+        # which is no younger for it (two weeks and it goes).
+        old = time.time() - 3600
+        os.utime(folder, (old, old))
+        made = io.BytesIO()
+        np.save(made, pixels[::-1])
+        put = client.put(f"{scan}/phone.npy", content=made.getvalue())
+        assert put.status_code == 200, put.text
+        assert put.json() == {"bytes": len(made.getvalue())}
+        note = {"seconds": 5.2, "model": "iPhone18,2", "took": {"laid": 2.1}}
+        assert client.put(f"{scan}/phone.json", json=note).status_code == 200
+        kept = client.get("/api/debug/own-scans").json()[0]
+        assert kept["files"]["phone.npy"] == len(made.getvalue()) and "phone.json" in kept["files"]
+        assert client.get(f"{scan}/phone.json").json() == note
+        back = np.load(io.BytesIO(client.get(f"{scan}/phone.npy").content))
+        assert np.array_equal(back, pixels[::-1])
+        assert abs(folder.stat().st_mtime - old) < 2
+
+        # No picture, no note, a photograph of the scan's, no such scan:
+        # nothing is taken, and what was there stays.
+        assert client.put(f"{scan}/phone.npy", content=b"nothing").status_code == 422
+        assert client.put(f"{scan}/phone.json", content=b"[1]").status_code == 422
+        assert client.put(f"{scan}/first.jpg", content=first).status_code == 404
+        other = f"/api/debug/own-scans/{'0' * 24}/phone.npy"
+        assert client.put(other, content=made.getvalue()).status_code == 404
+        assert client.get(f"{scan}/phone.npy").content == made.getvalue()
+        assert not list(service.own_works.incoming.glob("*.part"))
+        with Image.open(folder / "first.jpg") as img:
+            assert np.array_equal(pixels, np.asarray(img.convert("RGB")))
+
+
 def test_a_veil_over_the_whole_glass_is_left_alone() -> None:
     """Mateusz's print behind glass (2026-11-16): reflections over much of
     the picture are no lamp's glare, and patches from the side photographs
