@@ -835,6 +835,28 @@ struct LiveBackend: FrameBackend {
 
     func sourceRequests() async throws -> SourceRequests { try await get("/api/diagnostics/sources") }
 
+    func keptScans() async throws -> [KeptScan] { try await get("/api/debug/own-scans") }
+
+    /// 48 MP is some 150 MB as it comes: minutes on a slow link.
+    func keptScanPixels(token: String, name: String) async throws -> Data {
+        var req = request("/api/debug/own-scans/\(escape(token))/\(escape(name))/pixels")
+        req.timeoutInterval = 300
+        let (data, response) = try await load(req)
+        guard let http = response as? HTTPURLResponse else { throw BackendError.invalidResponse }
+        guard (200 ..< 300).contains(http.statusCode) else {
+            throw BackendError.http(status: http.statusCode, body: String(decoding: data.prefix(2000), as: UTF8.self))
+        }
+        return data
+    }
+
+    func sendPhoneScan(token: String, name: String, _ data: Data) async throws {
+        var req = request("/api/debug/own-scans/\(escape(token))/\(escape(name))", method: "PUT")
+        req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        req.httpBody = data
+        req.timeoutInterval = 300
+        let _: [String: Int] = try await perform(req)
+    }
+
     func catalogueCounts() async throws -> CatalogueCounts { try await get("/api/library/catalogue") }
 
     func nightTasks() async throws -> NightTasks { try await get("/api/night") }

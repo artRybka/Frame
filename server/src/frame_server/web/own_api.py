@@ -4,17 +4,18 @@ work added with what he wrote (:mod:`frame_server.own_works`)."""
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from ..ai import AiUnavailable
 from ..imaging.cut import valid
 from ..library.models import Item
-from ..own_works import Description, Hints, Incoming, Merged
+from ..own_works import PHONE_BYTES, Description, Hints, Incoming, Merged
 from ..service import FrameService
 from .deps import require_owner, service
 
@@ -162,12 +163,67 @@ async def scans(svc: Svc) -> list[dict[str, object]]:
     return await run_in_threadpool(svc.own_works.kept_scans)
 
 
+#: What a scan's kept files are served as.
+_KEPT = {".jpg": "image/jpeg", ".json": "application/json", ".npy": "application/octet-stream"}
+
+
 @router.get("/debug/own-scans/{token}/{name}")
 async def scan_file(token: str, name: str, svc: Svc) -> FileResponse:
     try:
-        return FileResponse(svc.own_works.scan_file(token, name), media_type="image/jpeg")
+        path = svc.own_works.scan_file(token, name)
     except LookupError as err:
         raise HTTPException(404, str(err)) from err
+    return FileResponse(path, media_type=_KEPT[path.suffix])
+
+
+@router.get("/debug/own-scans/{token}/{name}/pixels")
+async def scan_pixels(token: str, name: str, svc: Svc) -> StreamingResponse:
+    """A kept scan's photograph as the server's merge reads it, a ``.npy``
+    file (rows × columns × RGB, a side one small): the phone merges the
+    same numbers in its trial (Mateusz 2026-11-19: "Najpierw próba na
+    iPhonie")."""
+    try:
+        head, pixels = await run_in_threadpool(svc.own_works.scan_pixels, token, name)
+    except LookupError as err:
+        raise HTTPException(404, str(err)) from err
+
+    def parts(step: int = 1 << 22) -> Iterator[bytes]:
+        yield head
+        for start in range(0, len(pixels), step):
+            yield bytes(pixels[start : start + step])
+
+    return StreamingResponse(
+        parts(),
+        media_type="application/octet-stream",
+        headers={"Content-Length": str(len(head) + len(pixels))},
+    )
+
+
+@router.put("/debug/own-scans/{token}/{name}")
+async def phone_file(token: str, name: str, request: Request, svc: Svc) -> dict[str, int]:
+    """What the phone made of a kept scan's photographs itself
+    (``phone.npy``, as :func:`scan_pixels` gave them) and what it noted of
+    that (``phone.json``), the request's body as it is: kept beside the
+    photographs to be compared with the server's. Nothing of his
+    collection changes."""
+    try:
+        part = svc.own_works.phone_part(token, name)
+    except LookupError as err:
+        raise HTTPException(404, str(err)) from err
+    size = 0
+    with part.open("wb") as out:
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > PHONE_BYTES:
+                break
+            await run_in_threadpool(out.write, chunk)
+    if size > PHONE_BYTES:
+        part.unlink(missing_ok=True)
+        raise HTTPException(413, "too large")
+    try:
+        return {"bytes": await run_in_threadpool(svc.own_works.phone_took, token, name)}
+    except ValueError as err:
+        raise HTTPException(422, str(err)) from err
 
 
 @router.post("/own/photos/{token}/find", response_model=Incoming)

@@ -1,0 +1,45 @@
+name: The scan's core
+description: >
+  ios/Vendor/Scan for the app to link: the merge of a scan of three in C++
+  (core/scan) with the OpenCV it stands on. Taken from the cache, else built
+  (ios/scripts/build-scan.sh): OpenCV once per revision of its script (some
+  twenty minutes), the core whenever it changes (a minute). Each is kept as
+  soon as it is built, so a later step failing does not build it again.
+runs:
+  using: composite
+  steps:
+    - name: Cache the scan's core
+      id: scan
+      uses: actions/cache/restore@v4
+      with:
+        path: ios/Vendor/Scan
+        key: scan-core-${{ hashFiles('core/scan/**', 'ios/scripts/build-scan.sh', 'ios/scripts/build-opencv.sh') }}
+    - name: Cache OpenCV
+      id: opencv
+      if: steps.scan.outputs.cache-hit != 'true'
+      uses: actions/cache/restore@v4
+      with:
+        path: ios/Vendor/OpenCV
+        key: opencv-${{ hashFiles('ios/scripts/build-opencv.sh') }}
+    - name: Build OpenCV
+      if: steps.scan.outputs.cache-hit != 'true' && steps.opencv.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        command -v cmake >/dev/null || brew install cmake
+        ios/scripts/build-opencv.sh
+    - name: Keep OpenCV
+      if: steps.scan.outputs.cache-hit != 'true' && steps.opencv.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ios/Vendor/OpenCV
+        key: opencv-${{ hashFiles('ios/scripts/build-opencv.sh') }}
+    - name: Build the scan's core
+      if: steps.scan.outputs.cache-hit != 'true'
+      shell: bash
+      run: ios/scripts/build-scan.sh
+    - name: Keep the scan's core
+      if: steps.scan.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ios/Vendor/Scan
+        key: scan-core-${{ hashFiles('core/scan/**', 'ios/scripts/build-scan.sh', 'ios/scripts/build-opencv.sh') }}

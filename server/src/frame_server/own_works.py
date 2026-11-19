@@ -110,6 +110,12 @@ LENS = ".lens.json"
 #: A scan's file as :meth:`OwnWorks.merge` names it: the first photograph,
 #: the side ones the scan was made of, and those taken besides.
 _SCAN_FILE = re.compile(r"^(first|side[1-9]|more[1-9])\.jpg$")
+#: What the phone made of a kept scan's photographs itself, and what it
+#: noted of that, beside them (the trial of merging on the phone, Mateusz
+#: 2026-11-19 00:12 UTC: "Najpierw próba na iPhonie").
+_PHONE_FILE = re.compile(r"^phone\.(npy|json)$")
+#: The most a file of the phone's may be: 48 MP of three bytes each.
+PHONE_BYTES = 200 << 20
 #: The side the photograph is looked at for the work's corners and hints:
 #: a JPEG is opened that much faster at an eighth of 48 MP.
 LOOK_SIDE = 3000
@@ -596,6 +602,17 @@ class OwnWorks:
         return seen
 
     @staticmethod
+    def _read(path: Path, side: int | None = None) -> Any:
+        """A scan's photograph as the merge takes it: whole, or (a side
+        one) as the JPEG gives it nearest ``side`` above."""
+        import numpy as np
+
+        with Image.open(path) as img:
+            if side is not None:
+                img.draft("RGB", (side, side))
+            return np.asarray(img.convert("RGB"))
+
+    @staticmethod
     def _merge(
         first: Path, into: Path, sides: list[Path], quad: Quad | None, anyway: bool = False
     ) -> tuple[int, float, bool]:
@@ -605,22 +622,14 @@ class OwnWorks:
         nothing is taken out unless asked for ``anyway``)."""
         import os
 
-        import numpy as np
-
         from .imaging import bands, glare, reflections
-
-        def whole(path: Path, side: int | None = None) -> Any:
-            with Image.open(path) as img:
-                if side is not None:
-                    img.draft("RGB", (side, side))
-                return np.asarray(img.convert("RGB"))
 
         began = time.perf_counter()
         # The side ones only say what is reflection: small is enough. All
         # are read at a time: each is a file of its own.
         small = reflections.MATCH_SIDE if quad is not None else None
         photo, *others = bands.pool.map(
-            lambda read: whole(*read), [(first, None), *((p, small) for p in sides)]
+            lambda read: OwnWorks._read(*read), [(first, None), *((p, small) for p in sides)]
         )
         read = time.perf_counter()
         if quad is not None:
@@ -782,18 +791,77 @@ class OwnWorks:
             files = {
                 p.name: p.stat().st_size
                 for p in sorted(folder.iterdir())
-                if _SCAN_FILE.match(p.name)
+                if _SCAN_FILE.match(p.name) or _PHONE_FILE.match(p.name)
             }
             found.append({"token": folder.name, **info, "files": files})
         return sorted(found, key=lambda scan: str(scan.get("at", "")), reverse=True)
 
     def scan_file(self, token: str, name: str) -> Path:
-        if not _TOKEN.match(token) or not _SCAN_FILE.match(name):
+        if not _TOKEN.match(token) or not (_SCAN_FILE.match(name) or _PHONE_FILE.match(name)):
             raise LookupError("no such photograph")
         path = self.scans / token / name
         if not path.is_file():
             raise LookupError("the photograph is no longer here")
         return path
+
+    def scan_pixels(self, token: str, name: str) -> tuple[bytes, memoryview]:
+        """A kept scan's photograph as :meth:`_merge` reads it (a side one
+        small), as a ``.npy`` file's head and its bytes (rows × columns ×
+        RGB): the phone merges the very numbers the server does, so what
+        differs between the two is the merging alone (the trial of merging
+        on the phone, 2026-11-19)."""
+        import numpy as np
+
+        from .imaging import reflections
+
+        if not _SCAN_FILE.match(name):
+            raise LookupError("no such photograph")
+        path = self.scan_file(token, name)
+        pixels = self._read(path, None if name == "first.jpg" else reflections.MATCH_SIDE)
+        head = io.BytesIO()
+        np.lib.format.write_array_header_1_0(head, np.lib.format.header_data_from_array_1_0(pixels))
+        return head.getvalue(), memoryview(np.ascontiguousarray(pixels)).cast("B")
+
+    def phone_part(self, token: str, name: str) -> Path:
+        """Where a file of the phone's for a kept scan is written as it
+        comes (:meth:`phone_took` puts it in its place)."""
+        if not _TOKEN.match(token) or not _PHONE_FILE.match(name):
+            raise LookupError("no such file of the phone's")
+        if not (self.scans / token / "first.jpg").is_file():
+            raise LookupError("the scan is no longer here")
+        return self.incoming / f"{token}-{name}.part"
+
+    def phone_took(self, token: str, name: str) -> int:
+        """What the phone sent (:meth:`phone_part`) beside the scan's
+        photographs: the picture it made of them itself (``phone.npy``, as
+        it was given them) or what it noted of that (``phone.json``: how
+        long each part took, on what phone). Nothing of his collection
+        changes: the two are there to be compared with the server's. How
+        many bytes it is."""
+        import os
+
+        part = self.phone_part(token, name)
+        folder = self.scans / token
+        try:
+            if name.endswith(".json"):
+                note = json.loads(part.read_text())
+                if not isinstance(note, dict):
+                    raise ValueError("no note")
+                told = json.dumps(note, ensure_ascii=False, sort_keys=True)
+                log.info("scan %s merged on the phone: %s", token, told[:2000])
+            else:
+                with part.open("rb") as file:
+                    if file.read(6) != b"\x93NUMPY":
+                        raise ValueError("no picture")
+            # The folder is as old as its scan (two weeks and it goes):
+            # the phone's file does not make it younger.
+            age = folder.stat()
+            part.replace(folder / name)
+            os.utime(folder, (age.st_atime, age.st_mtime))
+        except (OSError, ValueError) as err:
+            part.unlink(missing_ok=True)
+            raise ValueError(str(err)) from err
+        return (folder / name).stat().st_size
 
     def find(self, token: str) -> Incoming:
         """The work found in the photograph by Opus (``corners`` None when

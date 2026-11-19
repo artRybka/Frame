@@ -78,9 +78,12 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         # libtailscale (Go, static), built by scripts/build-tailscale.sh: the
         # Tailscale node inside the app (Networking/Tailnet.swift, D16).
-        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Vendor/Tailscale/include
-        LIBRARY_SEARCH_PATHS: $(SRCROOT)/Vendor/Tailscale/$(PLATFORM_NAME)
-        OTHER_LDFLAGS: -ltailscale -lresolv -framework Security -framework CoreFoundation -framework SystemConfiguration
+        # libframescan (C++ with OpenCV inside, static), built by
+        # scripts/build-scan.sh of core/scan: the scan of three merged on the
+        # phone (Model/ScanCore.swift, a trial).
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Vendor/Tailscale/include $(SRCROOT)/Vendor/Scan/include
+        LIBRARY_SEARCH_PATHS: $(SRCROOT)/Vendor/Tailscale/$(PLATFORM_NAME) $(SRCROOT)/Vendor/Scan/$(PLATFORM_NAME)
+        OTHER_LDFLAGS: -ltailscale -lframescan -lc++ -lresolv -framework Security -framework CoreFoundation -framework SystemConfiguration
   FrameWidgets:
     # Live Activities only (no home screen widgets yet): the picture on its way
     # to the frame, and a study being written.
@@ -137,8 +140,8 @@ targets:
       - target: Frame
     settings:
       base:
-        # Frame imports the Tailscale module: its tests see it too.
-        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Vendor/Tailscale/include
+        # Frame imports the Tailscale and FrameScan modules: its tests see them too.
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Vendor/Tailscale/include $(SRCROOT)/Vendor/Scan/include
 schemes:
   Frame:
     build:

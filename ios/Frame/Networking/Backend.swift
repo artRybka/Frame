@@ -311,6 +311,15 @@ protocol FrameBackend: Sendable {
     func libraryStorage() async throws -> LibraryStorage
     /// Requests to each art source lately, and the refusals (the owner's).
     func sourceRequests() async throws -> SourceRequests
+    /// The scans of three kept on the server (two weeks), newest first
+    /// (the owner's): what the phone merges in its trial (`ScanTrial`).
+    func keptScans() async throws -> [KeptScan]
+    /// A kept scan's photograph ("first.jpg", "side1.jpg"…) as the server's
+    /// merge reads it: a `.npy` file of rows × columns × RGB.
+    func keptScanPixels(token: String, name: String) async throws -> Data
+    /// What the phone made of a kept scan itself ("phone.npy") or noted of
+    /// that ("phone.json"), to stay beside the scan on the server.
+    func sendPhoneScan(token: String, name: String, _ data: Data) async throws
     /// How many works the server has gathered, and in large pictures.
     func catalogueCounts() async throws -> CatalogueCounts
     /// The night's tasks and how each last went (the owner's).
@@ -425,6 +434,19 @@ extension FrameBackend {
     /// The work's study with its whole page.
     func study(itemID: String, wait: Int) async throws -> StudyView {
         try await study(itemID: itemID, wait: wait, lists: true)
+    }
+}
+
+extension FrameBackend {
+    /// Only the server keeps scans: elsewhere there is none to merge.
+    func keptScans() async throws -> [KeptScan] { [] }
+
+    func keptScanPixels(token: String, name: String) async throws -> Data {
+        throw BackendError.notFound
+    }
+
+    func sendPhoneScan(token: String, name: String, _ data: Data) async throws {
+        throw BackendError.notFound
     }
 }
 

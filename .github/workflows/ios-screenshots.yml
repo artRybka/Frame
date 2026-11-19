@@ -41,6 +41,9 @@ jobs:
       - name: Build libtailscale
         if: steps.tailscale.outputs.cache-hit != 'true'
         run: scripts/build-tailscale.sh
+      # The scan's core for the phone to merge a scan of three itself (C++ on
+      # OpenCV, core/scan): from the cache, built when it changed.
+      - uses: ./.github/actions/scan-core
       - run: brew install xcodegen
       - run: xcodegen generate
       - name: Boot a Pro-size iPhone simulator

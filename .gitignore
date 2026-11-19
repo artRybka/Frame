@@ -28,5 +28,6 @@ DerivedData/
 deploy/synology/frame.env
 deploy/synology/data/
 
-# libtailscale, built by ios/scripts/build-tailscale.sh
+# libtailscale, built by ios/scripts/build-tailscale.sh; OpenCV and the
+# scan's core, built by ios/scripts/build-scan.sh
 ios/Vendor/
