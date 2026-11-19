@@ -81,7 +81,7 @@ from ..museum_places import PlaceHit, commons_picture
 from ..night import give_way
 from ..player import POOL_SIZE, SUGGESTIONS_KEY, TILE_WORKS_KEY
 from ..service import FrameService
-from .deps import require_owner, require_token, service
+from .deps import CurrentUser, require_frame, require_owner, require_token, service
 from .library_api import RemoteItem, RemotePage, remote_items
 from .playlists_api import summary
 
@@ -712,7 +712,7 @@ async def day_suggestions(svc: Svc) -> DayPicksView:
     return await run_in_threadpool(view)
 
 
-@router.post("/suggestions/play", status_code=202)
+@router.post("/suggestions/play", status_code=202, dependencies=[Depends(require_frame)])
 async def play_suggestions(svc: Svc) -> dict[str, bool]:
     """Puts Propozycje dnia on the frame: the rotation without a playlist,
     the asking person's ("Propozycje dnia" in Playlisty)."""
@@ -1020,10 +1020,14 @@ async def stream_theme(
 
 
 @router.post("/themes/{key}/playlist", response_model=ThemePlaylist)
-async def theme_playlist(key: str, request: ThemePlaylistRequest, svc: Svc) -> ThemePlaylist:
+async def theme_playlist(
+    key: str, request: ThemePlaylistRequest, svc: Svc, user: CurrentUser
+) -> ThemePlaylist:
     """A smart playlist with the theme's rules (the one made before, if
     any); museums fill it in the background, and ``play`` puts it on the
     frame."""
+    if request.play and user.is_guest:
+        raise HTTPException(403, "gość nie steruje ramką")
     found = await run_in_threadpool(_theme, key, svc)
     playlist = _theme_playlist(svc, found)
     job_id = None

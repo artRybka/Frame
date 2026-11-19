@@ -69,7 +69,7 @@ from ..library.zoom import zooms
 from ..player import hold_from
 from ..schedule import FrameSettings
 from ..service import FrameService
-from .deps import require_owner, require_token, service
+from .deps import CurrentUser, may_edit_own, require_frame, require_token, service
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["library"])
@@ -969,7 +969,10 @@ async def copy_spot(
 
 
 @router.patch("/library/items/{item_id:item}", response_model=Item)
-async def patch_item(item_id: str, patch: ItemPatch, svc: Svc) -> Item:
+async def patch_item(item_id: str, patch: ItemPatch, svc: Svc, user: CurrentUser) -> Item:
+    if user.is_guest and (patch.excluded is not None or patch.look is not None):
+        # "Ukryj dzieło" hides it from the whole household.
+        raise HTTPException(403, "gość nie ukrywa dzieł")
     item = await _work(svc, item_id, save=True)
     changes = patch.model_dump(exclude_none=True)
     if patch.look is not None:
@@ -998,9 +1001,13 @@ async def patch_item(item_id: str, patch: ItemPatch, svc: Svc) -> Item:
     return updated
 
 
-@router.delete("/library/items/{item_id:item}", dependencies=[Depends(require_owner)])
-def delete_item(item_id: str, svc: Svc) -> dict[str, bool]:
+@router.delete("/library/items/{item_id:item}")
+def delete_item(item_id: str, svc: Svc, user: CurrentUser) -> dict[str, bool]:
+    """The owner's "Usuń z katalogu"; a work of someone's own is removed by
+    whoever added it, too."""
     item = _item(svc, item_id)
+    if not may_edit_own(user, item):
+        raise HTTPException(403, "tylko właściciel ramki")
     svc.library.delete(item_id)
     svc.images.remove(item)
     return {"deleted": True}
@@ -1685,7 +1692,9 @@ def _save_framing(
     return updated
 
 
-@router.post("/library/items/{item_id:item}/show", status_code=202)
+@router.post(
+    "/library/items/{item_id:item}/show", status_code=202, dependencies=[Depends(require_frame)]
+)
 async def show_item(item_id: str, request: ShowRequest, svc: Svc) -> dict[str, Any]:
     item = await _work(svc, item_id, save=True)
     _remember_sent(svc, item)
@@ -1693,7 +1702,9 @@ async def show_item(item_id: str, request: ShowRequest, svc: Svc) -> dict[str, A
     return {"accepted": True, "item_id": item.id}
 
 
-@router.post("/library/items/{item_id:item}/queue", status_code=202)
+@router.post(
+    "/library/items/{item_id:item}/queue", status_code=202, dependencies=[Depends(require_frame)]
+)
 async def queue_item(item_id: str, svc: Svc) -> dict[str, Any]:
     """The owner's "Dodaj do kolejki": the work is shown at the next change."""
     item = await _work(svc, item_id, save=True)
@@ -1714,6 +1725,7 @@ def _remember_sent(svc: FrameService, item: Item) -> None:
 @router.post("/library/upload", response_model=Item)
 async def upload(
     svc: Svc,
+    user: CurrentUser,
     file: Annotated[UploadFile, File()],
     kind: Annotated[ItemKind, Form()] = ItemKind.OWN,
     title: Annotated[str, Form()] = "",
@@ -1729,6 +1741,8 @@ async def upload(
     With ``look`` (Look JSON) a photo is sent once ("Zdjęcie na ramkę"): it
     is shown or queued from the app with that look and stays out of every
     list and rotation."""
+    if look is not None and user.is_guest:
+        raise HTTPException(403, "gość nie wysyła zdjęć na ramkę")
     data = await file.read()
     photo = (
         PhotoInfo(taken_at=taken_at, latitude=latitude, longitude=longitude)

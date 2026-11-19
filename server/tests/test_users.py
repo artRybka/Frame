@@ -35,8 +35,8 @@ def _add(svc, n: int, artist: str = "Ala"):
     )
 
 
-def _join(client: TestClient, name: str = "Paulina") -> dict[str, str]:
-    invite = client.post("/api/users/invites", json={"name": name}, headers=OWNER)
+def _join(client: TestClient, name: str = "Paulina", role: str = "member") -> dict[str, str]:
+    invite = client.post("/api/users/invites", json={"name": name, "role": role}, headers=OWNER)
     assert invite.status_code == 200, invite.text
     joined = client.post(
         "/api/join", json={"code": invite.json()["code"], "device": f"iPhone {name}"}
@@ -44,7 +44,7 @@ def _join(client: TestClient, name: str = "Paulina") -> dict[str, str]:
     assert joined.status_code == 200, joined.text
     body = joined.json()
     assert body["me"]["name"] == name
-    assert body["me"]["role"] == "member"
+    assert body["me"]["role"] == role
     return {"Authorization": f"Bearer {body['token']}"}
 
 
@@ -65,7 +65,7 @@ def test_a_member_joins_once_with_an_invitation(tmp_path: Path) -> None:
 
         me = client.get("/api/me", headers=member).json()
         assert me["name"] == "Paulina" and me["role"] == "member"
-        assert me["studies_left"] == 5
+        assert me["studies_left"] == 3
 
         people = client.get("/api/users", headers=OWNER).json()
         paulina = next(u for u in people["users"] if u["name"] == "Paulina")
@@ -120,7 +120,12 @@ def test_a_member_has_no_konfiguracja(tmp_path: Path) -> None:
             ("delete", "/api/notifications/key"),
             ("get", "/api/users"),
             ("post", "/api/users/invites"),
-            ("delete", "/api/library/items/upload:1"),
+            ("post", "/api/device/sleep"),
+            ("post", "/api/device/restart"),
+            ("get", "/api/ai/restorer"),
+            ("post", "/api/ai/restorer/favourites"),
+            ("get", "/api/debug/own-scans"),
+            ("put", "/api/users/u-1/access"),
             ("get", "/api/debug/panel-requests"),
             ("get", "/api/debug/log"),
             ("get", "/api/diagnostics/sources"),
@@ -349,3 +354,107 @@ def test_each_person_arranges_their_cards(tmp_path: Path) -> None:
         client.put("/api/playlists/order", json={"ids": [fav, b]}, headers=member)
         assert names(member) == ["B", "Ulubione", "A", "C"]
         assert names(OWNER) == ["B", "Ulubione", "A", "C"]
+
+
+def _own(svc, n: int, by: str = ""):
+    from frame_server.library.models import OwnWork
+
+    item = _add(svc, n)
+    return svc.library.update(item.id, own=OwnWork(by=by)) or item
+
+
+def test_a_guest_never_touches_the_frame(tmp_path: Path) -> None:
+    app = _app(tmp_path)
+    svc = app.state.service
+    work = _add(svc, 1)
+    with TestClient(app) as client:
+        guest = _join(client, "Ania", role="guest")
+        me = client.get("/api/me", headers=guest).json()
+        assert me["role"] == "guest" and me["studies_left"] == 1
+        settings = client.get("/api/settings", headers=guest).json()
+        for method, path, body in [
+            ("post", f"/api/library/items/{work.id}/show", {}),
+            ("post", f"/api/library/items/{work.id}/queue", {}),
+            ("post", "/api/player/next", {}),
+            ("post", "/api/player/previous", {}),
+            ("post", "/api/player/hold", {}),
+            ("delete", "/api/player/hold", {}),
+            ("put", "/api/settings", settings),
+            ("post", "/api/suggestions/play", {}),
+            ("post", "/api/playlists/1/play", {}),
+            ("post", "/api/device/wake", {}),
+            ("post", "/api/device/push", {}),
+            ("patch", f"/api/library/items/{work.id}", {"excluded": True}),
+        ]:
+            answer = client.request(method, path, headers=guest, json=body)
+            assert answer.status_code == 403, (method, path, answer.status_code)
+        # What a guest may: look, like, search.
+        liked = client.patch(
+            f"/api/library/items/{work.id}", json={"favorite": True}, headers=guest
+        )
+        assert liked.status_code == 200 and liked.json()["favorite"] is True
+        assert client.get("/api/library/items", headers=guest).status_code == 200
+        # A member still wakes the frame (no panel here: not refused for who asks).
+        member = _join(client)
+        assert client.post("/api/device/wake", headers=member).status_code != 403
+
+
+def test_a_guests_hearts_are_not_the_households_taste(tmp_path: Path) -> None:
+    app = _app(tmp_path)
+    svc = app.state.service
+    a, b = _add(svc, 1), _add(svc, 2)
+    with TestClient(app) as client:
+        guest = _join(client, "Ania", role="guest")
+        member = _join(client)
+        client.patch(f"/api/library/items/{a.id}", json={"favorite": True}, headers=guest)
+        client.patch(f"/api/library/items/{b.id}", json={"favorite": True}, headers=member)
+        assert svc.library.household_likes() == frozenset({b.id})
+        # Both still keep their works in the library.
+        assert svc.library.get(a.id).favorite and svc.library.get(b.id).favorite
+
+
+def test_own_works_are_edited_by_whoever_added_them(tmp_path: Path) -> None:
+    app = _app(tmp_path)
+    svc = app.state.service
+    with TestClient(app) as client:
+        member = _join(client)
+        guest = _join(client, "Ania", role="guest")
+        member_id = client.get("/api/me", headers=member).json()["id"]
+        hers = _own(svc, 1, by=member_id)
+        owners = _own(svc, 2)
+        text = {"title": "Nowy tytuł"}
+        assert (
+            client.put(f"/api/own/works/{owners.id}", json=text, headers=member).status_code == 403
+        )
+        assert client.put(f"/api/own/works/{hers.id}", json=text, headers=guest).status_code == 403
+        done = client.put(f"/api/own/works/{hers.id}", json=text, headers=member)
+        assert done.status_code == 200, done.text
+        assert done.json()["title"] == "Nowy tytuł"
+        assert svc.library.get(hers.id).own.by == member_id  # kept through "Edytuj opis"
+        assert client.put(f"/api/own/works/{hers.id}", json=text, headers=OWNER).status_code == 200
+        # Removed by her or the owner, never by another.
+        assert client.delete(f"/api/library/items/{hers.id}", headers=guest).status_code == 403
+        assert client.delete(f"/api/library/items/{owners.id}", headers=member).status_code == 403
+        assert client.delete(f"/api/library/items/{hers.id}", headers=member).status_code == 200
+        # Adding is everyone's: the scan's first step answers a guest too.
+        assert client.post("/api/own/photos", headers=guest).status_code == 422
+
+
+def test_each_person_has_studies_a_day_of_their_own(tmp_path: Path) -> None:
+    with TestClient(_app(tmp_path)) as client:
+        member = _join(client)
+        guest = _join(client, "Ania", role="guest")
+        people = client.get("/api/users", headers=OWNER).json()
+        limits = {u["name"]: (u["role"], u["study_limit"]) for u in people["users"]}
+        assert limits["Paulina"] == ("member", 3) and limits["Ania"] == ("guest", 1)
+        assert limits["Właściciel"] == ("owner", None)
+        ania = next(u["id"] for u in people["users"] if u["name"] == "Ania")
+        changed = client.put(f"/api/users/{ania}/access", json={"study_limit": 4}, headers=OWNER)
+        assert changed.status_code == 200, changed.text
+        assert client.get("/api/me", headers=guest).json()["studies_left"] == 4
+        assert client.get("/api/me", headers=member).json()["studies_left"] == 3
+        # Made a member: the frame is hers too.
+        client.put(f"/api/users/{ania}/access", json={"role": "member"}, headers=OWNER)
+        assert client.get("/api/me", headers=guest).json()["role"] == "member"
+        refused = client.put(f"/api/users/{ania}/access", json={"role": "owner"}, headers=OWNER)
+        assert refused.status_code == 422

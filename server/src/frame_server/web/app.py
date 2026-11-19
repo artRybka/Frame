@@ -78,7 +78,7 @@ from . import (
     users_api,
 )
 from .compress import Compressed
-from .deps import require_owner, require_token
+from .deps import require_frame, require_owner, require_token
 from .ids import EncodedSlashes
 from .purposes import Purposes
 from .replays import Replays
@@ -403,6 +403,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(Replays)
 
     auth = [Depends(require_token)]
+    #: What sends to the frame: everyone but a guest.
+    frame = [Depends(require_frame)]
+    #: The frame's power but waking it (Mateusz 2026-11-19: "Domownik bez
+    #: menu zasilania"; "Obudź" stays theirs).
+    owner = [Depends(require_owner)]
 
     # -- panel ---------------------------------------------------------------
 
@@ -556,7 +561,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def presets() -> dict[str, object]:
         return {name: p.model_dump(mode="json") for name, p in PRESETS.items()}
 
-    @app.post("/api/display", dependencies=auth)
+    @app.post("/api/display", dependencies=frame)
     async def display(
         file: Annotated[UploadFile, File()],
         preset: Annotated[str, Form()] = "photo",
@@ -609,7 +614,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(502, f"panel: {err}") from err
         return outcome_json(outcome)
 
-    @app.post("/api/device/push", dependencies=auth)
+    @app.post("/api/device/push", dependencies=frame)
     async def push_again(wait: float = 90.0) -> dict[str, object]:
         if not service.device_configured:
             raise HTTPException(409, "panel not configured")
@@ -629,7 +634,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         service.power.publish_status()
         return service.status.status
 
-    @app.post("/api/device/wake", dependencies=auth)
+    @app.post("/api/device/wake", dependencies=frame)
     async def device_wake(sleep_after: bool = False) -> WakeResult:
         """``sleep_after``: the app's "Sprawdź stan" found the panel asleep
         and wakes it only to look at it."""
@@ -637,7 +642,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(409, "panel not configured")
         return await service.power.wake_now(sleep_after=sleep_after)
 
-    @app.post("/api/device/restart", dependencies=auth)
+    @app.post("/api/device/restart", dependencies=owner)
     async def device_restart() -> WakeResult:
         """ "Uruchom ponownie": the frame's app reboots the panel (woken for
         it when asleep in the network, started over MDC when hung)."""
@@ -645,7 +650,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(409, "panel not configured")
         return await service.power.restart_now()
 
-    @app.post("/api/device/sleep", dependencies=auth)
+    @app.post("/api/device/sleep", dependencies=owner)
     async def device_sleep(
         hours: Annotated[int | None, Query(ge=1, le=72)] = None, off: bool = False
     ) -> dict[str, object]:

@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request
 
+from ..library.models import Item
 from ..library.viewer import VIEWER, Viewer
 from ..service import FrameService
 from ..users import User
@@ -55,3 +56,20 @@ async def require_owner(user: CurrentUser) -> User:
     if not user.is_owner:
         raise HTTPException(403, "tylko właściciel ramki")
     return user
+
+
+async def require_frame(user: CurrentUser) -> User:
+    """What sends something to the frame or changes how it plays: everyone
+    but a guest (Mateusz 2026-11-19: "nie może zmieniać ustawień ramki,
+    wysyłać dzieł na ramkę")."""
+    if user.is_guest:
+        raise HTTPException(403, "gość nie steruje ramką")
+    return user
+
+
+def may_edit_own(user: User, item: Item) -> bool:
+    """A work of someone's own is edited and removed by whoever added it,
+    and by the owner (Mateusz 2026-11-19)."""
+    if user.is_owner:
+        return True
+    return item.own is not None and item.own.by == user.id

@@ -73,7 +73,9 @@ struct JoinView: View {
 }
 
 /// Konfiguracja → Domownicy (the owner's): who uses the frame on which
-/// phone, invitations, and how many studies a member may order a day.
+/// phone, as a member or a guest, invitations, and how many studies each
+/// person may order a day (Mateusz 2026-11-19: "możliwość podania limitu
+/// dla każdego osobno").
 struct HouseholdSection: View {
     @Environment(AppModel.self) private var model
     @State private var people: People?
@@ -91,7 +93,7 @@ struct HouseholdSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Domownicy", subtitle: "Kto jeszcze korzysta z ramki, bez dostępu do Konfiguracji")
+            SectionHeader(title: "Domownicy", subtitle: "Kto jeszcze korzysta z ramki: domownicy bez Konfiguracji, goście także bez ramki")
             Card {
                 if let people {
                     if !people.people {
@@ -100,7 +102,7 @@ struct HouseholdSection: View {
                             .foregroundStyle(Theme.warn)
                     } else {
                         ForEach(people.users) { person in
-                            personRow(person, limit: people.studyLimit)
+                            personRow(person)
                             Divider()
                         }
                         ForEach(people.invites) { invite in
@@ -119,18 +121,6 @@ struct HouseholdSection: View {
                         } label: {
                             Label("Dodaj mój telefon", systemImage: "plus.circle")
                         }
-                        Divider()
-                        Stepper(value: Binding(
-                            get: { people.studyLimit },
-                            set: { limit in Task { await save { try await $0.savePeopleSettings(PeopleSettings(studyLimit: limit)) } } }
-                        ), in: 0 ... 50) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Studia dziennie: \(people.studyLimit)")
-                                Text(bound: "Na osobę dziennie, z Twojego klucza Claude.")
-                                    .font(.caption)
-                                    .foregroundStyle(Theme.inkSoft)
-                            }
-                        }
                     }
                 } else if let failed {
                     Text(bound: failed).font(.caption).foregroundStyle(Theme.inkSoft)
@@ -143,14 +133,19 @@ struct HouseholdSection: View {
         .alert("Zaproś osobę", isPresented: $inviting) {
             TextField("Imię", text: $newName)
                 .textInputAutocapitalization(.words)
-            Button("Utwórz zaproszenie") {
+            Button("Jako domownika") {
                 let name = newName.trimmingCharacters(in: .whitespaces)
-                Task { await invite(name: name, userID: nil, title: "Zaproszenie dla: \(name)") }
+                Task { await invite(name: name, userID: nil, role: "member", title: "Zaproszenie dla: \(name)") }
+            }
+            .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
+            Button("Jako gościa") {
+                let name = newName.trimmingCharacters(in: .whitespaces)
+                Task { await invite(name: name, userID: nil, role: "guest", title: "Zaproszenie dla gościa: \(name)") }
             }
             .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
             Button("Anuluj", role: .cancel) {}
         } message: {
-            Text(bound: "Ta osoba zobaczy ramkę, będzie mieć własne Ulubione i playlisty, ale nie Konfigurację.")
+            Text(bound: "Domownik steruje ramką i ma własne Ulubione i playlisty, ale nie Konfigurację. Gość tylko przegląda, szuka, dodaje do Ulubionych i dodaje własne dzieła, bez wysyłania na ramkę.")
         }
         .sheet(item: $shown, onDismiss: { Task { await load() } }) { shown in
             InviteSheet(title: shown.title, link: shown.link)
@@ -158,7 +153,7 @@ struct HouseholdSection: View {
     }
 
     @ViewBuilder
-    private func personRow(_ person: Person, limit: Int) -> some View {
+    private func personRow(_ person: Person) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Image(systemName: person.isOwner ? "person.crop.circle.badge.checkmark" : "person.crop.circle")
@@ -166,7 +161,7 @@ struct HouseholdSection: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(bound: person.isOwner ? "\(person.name) (Ty)" : person.name)
                         .font(.subheadline.weight(.semibold))
-                    Text(bound: "\(person.favorites) w Ulubionych · \(person.playlists) playlist")
+                    Text(bound: "\(Self.roleName(person)) · \(person.favorites) w Ulubionych · \(person.playlists) playlist")
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                 }
@@ -174,7 +169,16 @@ struct HouseholdSection: View {
                 if !person.isOwner {
                     Menu {
                         Button("Nowy telefon", systemImage: "plus.circle") {
-                            Task { await invite(name: "", userID: person.id, title: "Nowy telefon: \(person.name)") }
+                            Task { await invite(name: "", userID: person.id, role: person.role, title: "Nowy telefon: \(person.name)") }
+                        }
+                        if person.studyLimit != nil {
+                            Button(
+                                person.isGuest ? "Zmień na domownika" : "Zmień na gościa",
+                                systemImage: person.isGuest ? "house" : "person.crop.circle.dashed"
+                            ) {
+                                let role = person.isGuest ? "member" : "guest"
+                                Task { await save { try await $0.setAccess(id: person.id, PersonAccess(role: role)) } }
+                            }
                         }
                         Button("Usuń z ramki", systemImage: "person.badge.minus", role: .destructive) {
                             removing = person
@@ -199,6 +203,14 @@ struct HouseholdSection: View {
                     }
                 }
             }
+            if let limit = person.studyLimit, !person.isOwner {
+                Stepper(value: Binding(
+                    get: { limit },
+                    set: { value in Task { await save { try await $0.setAccess(id: person.id, PersonAccess(studyLimit: value)) } } }
+                ), in: 0 ... 50) {
+                    Text(bound: "Studia dziennie: \(limit)").font(.caption)
+                }
+            }
             ForEach(person.devices) { device in
                 HStack {
                     Image(systemName: "iphone").font(.caption).foregroundStyle(Theme.inkSoft)
@@ -219,7 +231,7 @@ struct HouseholdSection: View {
     private func inviteRow(_ invite: PendingInvite) -> some View {
         HStack {
             Image(systemName: "envelope").foregroundStyle(Theme.inkSoft)
-            Text(bound: invite.name.isEmpty ? "Zaproszenie na nowy telefon" : "Zaproszenie dla: \(invite.name)")
+            Text(bound: invite.name.isEmpty ? "Zaproszenie na nowy telefon" : invite.role == "guest" ? "Zaproszenie dla gościa: \(invite.name)" : "Zaproszenie dla: \(invite.name)")
                 .font(.caption)
             Spacer()
             Button("Anuluj") {
@@ -246,9 +258,13 @@ struct HouseholdSection: View {
         }
     }
 
-    private func invite(name: String, userID: String?, title: String) async {
+    private static func roleName(_ person: Person) -> String {
+        person.isOwner ? "Właściciel" : person.isGuest ? "Gość" : "Domownik"
+    }
+
+    private func invite(name: String, userID: String?, role: String = "member", title: String) async {
         do {
-            let made = try await model.backend.invite(InviteRequest(name: name, userId: userID))
+            let made = try await model.backend.invite(InviteRequest(name: name, userId: userID, role: role == "owner" ? "member" : role))
             shown = ShownInvite(title: title, link: model.invitationLink(code: made.code))
         } catch {
             model.show(error)

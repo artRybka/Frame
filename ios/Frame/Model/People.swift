@@ -3,11 +3,13 @@ import Foundation
 /// People on the server (server: users.py, web/users_api.py): the owner
 /// holds the server's own token; a household member ("Domownik") joined
 /// with an invitation and has their own hearts, playlists and
-/// notifications, without Konfiguracja.
+/// notifications, without Konfiguracja; a guest ("Gość", 2026-11-19)
+/// looks, searches, likes and adds works of their own, but never touches
+/// the frame (no "Teraz", no "Ramka", nothing sent to it).
 struct Me: Codable, Hashable, Sendable {
     var id: String
     var name: String
-    /// "owner" or "member".
+    /// "owner", "member" or "guest".
     var role: String
     /// This phone, when it joined with an invitation (nil: the server's token).
     var deviceId: String?
@@ -16,7 +18,9 @@ struct Me: Codable, Hashable, Sendable {
     /// Whether the server can have people (it has a token of its own).
     var people: Bool
 
-    var isOwner: Bool { role != "member" }
+    /// Anything but a member or a guest is the owner (an older server).
+    var isOwner: Bool { role != "member" && role != "guest" }
+    var isGuest: Bool { role == "guest" }
 
     static let owner = Me(id: "owner", name: "Właściciel", role: "owner", deviceId: nil, studiesLeft: nil, people: false)
 }
@@ -46,14 +50,19 @@ struct Person: Codable, Hashable, Identifiable, Sendable {
     var devices: [PersonDevice]
     var playlists: Int
     var favorites: Int
+    /// Studies a day they may order (nil: the owner, or an older server).
+    var studyLimit: Int?
 
-    var isOwner: Bool { role != "member" }
+    var isOwner: Bool { role != "member" && role != "guest" }
+    var isGuest: Bool { role == "guest" }
 }
 
 struct PendingInvite: Codable, Hashable, Identifiable, Sendable {
     var id: String
     var name: String
     var userId: String?
+    /// "member" or "guest" (nil: an older server, a member).
+    var role: String?
     var expiresAt: String
 }
 
@@ -68,6 +77,8 @@ struct People: Codable, Hashable, Sendable {
 struct InviteRequest: Encodable, Sendable {
     var name: String
     var userId: String?
+    /// "member" or "guest" for a new person.
+    var role: String = "member"
 }
 
 struct NewInvite: Decodable, Sendable {
@@ -82,6 +93,13 @@ struct PersonRename: Encodable, Sendable {
 
 struct PeopleSettings: Encodable, Sendable {
     var studyLimit: Int
+}
+
+/// Konfiguracja → Domownicy: a person made a member or a guest, and the
+/// studies a day they may order (server 1.145.270).
+struct PersonAccess: Encodable, Sendable {
+    var role: String?
+    var studyLimit: Int?
 }
 
 /// What an invitation's link carries: the code, where the server is and
@@ -136,7 +154,7 @@ extension FrameBackend {
     func people() async throws -> People {
         People(
             people: true,
-            users: [Person(id: "owner", name: "Właściciel", role: "owner", devices: [], playlists: 6, favorites: 12)],
+            users: [Person(id: "owner", name: "Właściciel", role: "owner", devices: [], playlists: 6, favorites: 12, studyLimit: nil)],
             invites: [],
             studyLimit: 5
         )
@@ -145,7 +163,7 @@ extension FrameBackend {
         let expires = ISO8601DateFormatter().string(from: .now.addingTimeInterval(1800))
         return NewInvite(
             code: "demo-\(UUID().uuidString.prefix(8))",
-            invite: PendingInvite(id: "demo", name: request.name, userId: request.userId, expiresAt: expires)
+            invite: PendingInvite(id: "demo", name: request.name, userId: request.userId, role: request.role, expiresAt: expires)
         )
     }
     func cancelInvite(id: String) async throws -> People { try await people() }
@@ -153,4 +171,5 @@ extension FrameBackend {
     func removePerson(id: String) async throws -> People { try await people() }
     func renamePerson(id: String, name: String) async throws -> People { try await people() }
     func savePeopleSettings(_ settings: PeopleSettings) async throws -> People { try await people() }
+    func setAccess(id: String, _ access: PersonAccess) async throws -> People { try await people() }
 }

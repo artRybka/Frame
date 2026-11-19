@@ -230,6 +230,9 @@ struct PlaylistDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(14)
                 .background(Theme.vermilion.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
+            } else if model.isGuest {
+                // A guest sends nothing to the frame.
+                EmptyView()
             } else if isActive {
                 // A state, not a button: outlined in vermilion, like a label button.
                 Label("Teraz prezentowane na ramce", systemImage: "photo.fill")

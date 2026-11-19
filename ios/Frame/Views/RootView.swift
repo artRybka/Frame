@@ -90,16 +90,26 @@ struct RootView: View {
         // Szukaj is the system search tab: on its own at the bottom, the
         // other tabs fold into one as its glass field opens.
         TabView(selection: tabSelection) {
-            Tab("Teraz", systemImage: "photo.fill", value: Screen.now) { NowView() }
+            // A guest never touches the frame: no "Teraz", no "Ramka"
+            // (Mateusz 2026-11-19).
+            if !model.isGuest {
+                Tab("Teraz", systemImage: "photo.fill", value: Screen.now) { NowView() }
+            }
             Tab("Odkrywaj", systemImage: "square.grid.2x2", value: Screen.discover) { DiscoverView() }
             Tab("Playlisty", systemImage: "rectangle.stack", value: Screen.playlists) { PlaylistsView() }
-            Tab("Ramka", systemImage: "slider.horizontal.3", value: Screen.frame) { FrameTabView() }
+            if !model.isGuest {
+                Tab("Ramka", systemImage: "slider.horizontal.3", value: Screen.frame) { FrameTabView() }
+            }
             Tab("Szukaj", systemImage: "magnifyingglass", value: Screen.search, role: .search) { SearchView() }
         }
         // Cards and the send bar, in a window above the app (over sheets too).
         .background { NoticeWindowInstaller(model: model) }
         // "Teraz" shows the full send bar under the picture.
         .onChange(of: tab, initial: true) { _, tab in model.notices.nowTabOpen = tab == .now }
+        // A guest lands on Odkrywaj (their phone may have opened on "Teraz").
+        .onChange(of: model.isGuest, initial: true) { _, guest in
+            if guest, tab == .now || tab == .frame { tab = .discover }
+        }
         // A held artist's or museum's name: their works on Szukaj.
         .onChange(of: model.artistSearch != nil || model.placeSearch != nil || model.likeSearch != nil) { _, held in
             if held { tab = .search }
@@ -122,8 +132,8 @@ struct RootView: View {
                 model.themeOpenings += 1
             case "artist" where !argument.isEmpty:
                 model.artistSearch = argument  // Szukaj opens on the artist
-            case "now": tab = .now
-            case "frame", "server": tab = .frame
+            case "now" where !model.isGuest: tab = .now
+            case "frame", "server": if !model.isGuest { tab = .frame }
             default: break
             }
         }

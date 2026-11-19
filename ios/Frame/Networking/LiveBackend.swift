@@ -982,6 +982,10 @@ struct LiveBackend: FrameBackend {
         try await send("/api/users/settings", method: "PUT", body: settings)
     }
 
+    func setAccess(id: String, _ access: PersonAccess) async throws -> People {
+        try await send("/api/users/\(escape(id))/access", method: "PUT", body: access)
+    }
+
     /// An invitation redeemed (no token yet: the code is the proof).
     func join(code: String, device: String) async throws -> Joined {
         try await send("/api/join", method: "POST", body: JoinRequest(code: code, device: device))

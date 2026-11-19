@@ -141,11 +141,13 @@ struct PlaylistsView: View {
                             }
                             .buttonStyle(.plain)
                         }
-                        // Last: the works hidden with "Ukryj dzieło".
-                        NavigationLink(value: HiddenRoute()) {
-                            HiddenCard(items: model.hidden)
+                        // Last: the works hidden with "Ukryj dzieło" (not a guest's).
+                        if !model.isGuest {
+                            NavigationLink(value: HiddenRoute()) {
+                                HiddenCard(items: model.hidden)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                     // Let go between the cards (or on Propozycje, Ukryte):
                     // the order as it stands is kept. The whole grid takes
@@ -178,16 +180,14 @@ struct PlaylistsView: View {
                                 Image(systemName: "rectangle.stack.badge.plus")
                             }
                         }
-                        if model.isOwner {
-                            Button {
-                                addingOwn = true
-                            } label: {
-                                Label {
-                                    Text("Dodaj własne dzieło")
-                                    Text(bound: "Zdjęcie obrazu, który masz w domu")
-                                } icon: {
-                                    Image(systemName: "camera")
-                                }
+                        Button {
+                            addingOwn = true
+                        } label: {
+                            Label {
+                                Text("Dodaj własne dzieło")
+                                Text(bound: "Zdjęcie obrazu, który masz w domu")
+                            } icon: {
+                                Image(systemName: "camera")
                             }
                         }
                     } label: {
@@ -265,7 +265,9 @@ extension PlaylistsView {
     /// Held on a cover: present it on the frame, or delete it ("Ulubione" stays).
     @ViewBuilder
     private func menu(_ playlist: PlaylistSummary) -> some View {
-        if playlist.id != active?.id {
+        if model.isGuest {
+            // A guest sends nothing to the frame.
+        } else if playlist.id != active?.id {
             Button("Prezentuj na ramce", systemImage: "photo.fill") {
                 Task { await model.play(playlist) }
             }
@@ -302,7 +304,7 @@ extension PlaylistsView {
     /// Held on "Propozycje": present them, or open them in Discover.
     @ViewBuilder
     private var suggestionsMenu: some View {
-        if !suggestionsActive {
+        if !suggestionsActive, !model.isGuest {
             Button("Prezentuj na ramce", systemImage: "photo.fill") {
                 Task { await model.playSuggestions() }
             }
@@ -418,7 +420,9 @@ struct SuggestionsPage: View {
                     .font(.serif(17))
                     .foregroundStyle(Theme.inkSoft)
             }
-            if isActive {
+            if model.isGuest {
+                // A guest sends nothing to the frame.
+            } else if isActive {
                 // A state, not a button: outlined in vermilion, like a label button.
                 Label("Teraz prezentowane na ramce", systemImage: "photo.fill")
                     .labelStyle(ActionLabelStyle())

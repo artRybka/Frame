@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.145.270
+
+- Nowa rola: **Gość**. Przegląda dzieła, szuka, dodaje do Ulubionych,
+  tworzy własne playlisty i dodaje własne dzieła, ale nie steruje ramką:
+  nie ma zakładek Teraz i Ramka, nie widzi „Pokaż na ramce”, „Do kolejki”
+  ani „Prezentuj na ramce” i nie ukrywa dzieł. Jego serca nie wpływają na
+  propozycje. Zaprasza się go w Konfiguracja → Domownicy („Jako gościa”).
+- Domownik i gość mogą teraz „Popraw kadr”, „Zdejmij werniks”, „Odżółć
+  papier”, „Kreatywny restaurator” i dodawać własne dzieła; swoje dzieła
+  sami edytują i usuwają (Ty wszystkie).
+- Domownik: z menu zasilania zostaje samo „Obudź ramkę”.
+- Limit studiów dziennie ustawiasz każdej osobie osobno w Konfiguracja →
+  Domownicy (domyślnie 3 dla domownika, 1 dla gościa).
+
 ## 1.145.269
 
 - Własne dzieło, krok „Opis” (i „Edytuj opis” na karcie): długi tytuł

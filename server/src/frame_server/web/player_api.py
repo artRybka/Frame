@@ -19,7 +19,7 @@ from ..service import FrameService
 from ..status import DeviceStatus
 from ..store import ContentInfo, preview_url
 from ..users import User
-from .deps import CurrentUser, require_token, service
+from .deps import CurrentUser, require_frame, require_token, service
 from .playlists_api import summary
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["player"])
@@ -211,21 +211,23 @@ def player(svc: Svc) -> PlayerView:
     return _player_view(svc)
 
 
-@router.post("/player/next", status_code=202)
+@router.post("/player/next", status_code=202, dependencies=[Depends(require_frame)])
 async def next_picture(svc: Svc) -> dict[str, Any]:
     svc.player.set_hold(None)
     svc.background(svc.player.next("manual"))
     return {"accepted": True}
 
 
-@router.post("/player/previous", status_code=202)
+@router.post("/player/previous", status_code=202, dependencies=[Depends(require_frame)])
 async def previous_picture(svc: Svc) -> dict[str, Any]:
     svc.player.set_hold(None)
     svc.background(svc.player.previous())
     return {"accepted": True}
 
 
-@router.delete("/player/queue/{item_id:item}", response_model=PlayerView)
+@router.delete(
+    "/player/queue/{item_id:item}", response_model=PlayerView, dependencies=[Depends(require_frame)]
+)
 async def dequeue(item_id: str, svc: Svc) -> PlayerView:
     """Take back a work added with "Dodaj do kolejki"."""
     svc.player.dequeue(item_id)
@@ -233,7 +235,9 @@ async def dequeue(item_id: str, svc: Svc) -> PlayerView:
     return _player_view(svc)
 
 
-@router.post("/player/skip/{item_id:item}", response_model=PlayerView)
+@router.post(
+    "/player/skip/{item_id:item}", response_model=PlayerView, dependencies=[Depends(require_frame)]
+)
 async def skip(item_id: str, svc: Svc) -> PlayerView:
     """The picture waiting in the queue ("Pomiń") is not shown this round."""
     svc.player.skip(item_id)
@@ -241,13 +245,13 @@ async def skip(item_id: str, svc: Svc) -> PlayerView:
     return _player_view(svc)
 
 
-@router.post("/player/hold", response_model=PlayerView)
+@router.post("/player/hold", response_model=PlayerView, dependencies=[Depends(require_frame)])
 def hold(request: HoldRequest, svc: Svc) -> PlayerView:
     svc.player.set_hold(hold_from(request.hold))
     return _player_view(svc)
 
 
-@router.delete("/player/hold", response_model=PlayerView)
+@router.delete("/player/hold", response_model=PlayerView, dependencies=[Depends(require_frame)])
 def release(svc: Svc) -> PlayerView:
     svc.player.set_hold(None)
     return _player_view(svc)
@@ -258,7 +262,7 @@ def get_settings(svc: Svc) -> FrameSettings:
     return svc.player.settings
 
 
-@router.put("/settings", response_model=FrameSettings)
+@router.put("/settings", response_model=FrameSettings, dependencies=[Depends(require_frame)])
 async def put_settings(settings: FrameSettings, svc: Svc, user: CurrentUser) -> FrameSettings:
     player = svc.player
     old = player.settings

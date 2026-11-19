@@ -220,9 +220,9 @@ struct ItemDetailView: View {
                     findingCopies: $findingCopies, pictureSide: pictureSize.map { max($0.0, $0.1) },
                     keepOwn: { Task { await keepOwnPicture() } },
                     restore: canRestore(item) ? { Task { await restoreByModel() } } : nil,
-                    correctCut: canCut(item) && model.isOwner ? { correctingCut = true } : nil,
-                    undoCut: canCut(item) && model.isOwner && item.isCropped ? { Task { await undoCut() } } : nil,
-                    recover: recoveryKind != nil && model.isOwner && !cleaning
+                    correctCut: canCut(item) ? { correctingCut = true } : nil,
+                    undoCut: canCut(item) && item.isCropped ? { Task { await undoCut() } } : nil,
+                    recover: recoveryKind != nil && !cleaning
                         ? { Task { await toggleCleaning() } } : nil,
                     recoveryKind: recoveryKind ?? .varnish, cleaned: item.cleanedShown != nil,
                     editOwn: ownActions(item) ? { editingOwn = true } : nil,
@@ -358,7 +358,7 @@ struct ItemDetailView: View {
         pictureSize = updated.sharper.map { ($0.width, $0.height) }
         lowKnown = updated.sharper.map { LowRes.side(max($0.width, $0.height)) }
         let id = itemID
-        if model.player?.current?.item?.id == id {
+        if model.player?.current?.item?.id == id, !model.isGuest {
             model.notices.info(
                 "Zdjęcie podmienione", "Ramka pokaże je przy następnej zmianie.",
                 action: Notice.Action(label: "Pokaż teraz") {
@@ -370,10 +370,10 @@ struct ItemDetailView: View {
         }
     }
 
-    /// "Kreatywny restaurator" in the menu: for the owner, a museum work
+    /// "Kreatywny restaurator" in the menu: for everyone (2026-11-19), a museum work
     /// whose picture is small for the frame and not drawn again yet.
     private func canRestore(_ item: Item) -> Bool {
-        model.isOwner && item.kind == .artwork && item.look == nil && !restoring
+        item.kind == .artwork && item.look == nil && !restoring
             && item.sharper?.isRestored != true && (lowSide ?? 0) > 0
     }
 
@@ -763,9 +763,9 @@ struct ItemDetailView: View {
         if updated.isOwnWork { model.ownWorkChanged(updated) }
     }
 
-    /// "Edytuj opis", "Zrób zdjęcie ponownie", "Usuń z katalogu": his own
-    /// work, for the owner.
-    private func ownActions(_ item: Item) -> Bool { item.isOwnWork && model.isOwner }
+    /// "Edytuj opis", "Zrób zdjęcie ponownie", "Usuń z katalogu": a work of
+    /// someone's own, for whoever added it and the owner (Mateusz 2026-11-19).
+    private func ownActions(_ item: Item) -> Bool { item.isOwnWork && model.mayEditOwn(item) }
 
     private func deleteOwn() async {
         if await model.deleteOwnWork(itemID) { dismiss() }
@@ -1468,9 +1468,11 @@ struct ItemDetailView: View {
     /// playlist, hiding it) is in the navigation bar.
     private func actions(_ item: Item) -> some View {
         VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                showButton
-                queueButton(item)
+            if !model.isGuest {  // a guest sends nothing to the frame
+                HStack(spacing: 12) {
+                    showButton
+                    queueButton(item)
+                }
             }
             if studyReady { openStudyButton(item) }
         }

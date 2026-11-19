@@ -75,7 +75,8 @@ class ArtistWorks:
         if not is_artist(item.artist):
             return []
         found = self._pool(item)
-        found.sort(key=lambda i: not i.favorite)  # stable: the order drawn stays
+        liked = self.library.household_likes()
+        found.sort(key=lambda i: i.id not in liked)  # stable: the order drawn stays
         picked: list[Item] = []
         skip = skip or set()
         # The pool is kept an hour: a work hidden since ("Ukryj dzieło"),

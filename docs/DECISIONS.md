@@ -170,6 +170,18 @@ przy edycji. Odrzucone: konta z hasłem (logowanie na telefonie jest zbędne
 w domu) i jeden wspólny token z rolą w nagłówku (nie da się odebrać dostępu
 jednemu telefonowi).
 
+**Zmiana 2026-11-19 (Mateusz): trzecia rola, Gość.** Gość przegląda,
+szuka, ma własne Ulubione i playlisty i dodaje własne dzieła, ale nie
+steruje ramką: bez zakładek Teraz i Ramka, bez wysyłania na ramkę i bez
+zmian ustawień ramki; nie ukrywa dzieł. Jego własne dzieła widzą wszyscy,
+jego serca nie wpływają na propozycje ani rotację, dostęp nie wygasa,
+dostaje Tailscale. Domownik i gość mogą „Popraw kadr”, werniks,
+odżółcanie, restauratora jednego dzieła i własne dzieła (edytuje i usuwa
+je autor albo właściciel). Domownik traci menu zasilania poza „Obudź”.
+Limit studiów dziennie każdej osoby osobno w Konfiguracja → Domownicy
+(domyślnie 3 domownik, 1 gość). Pozostałe koszty AI bez limitu (jeden
+miesięczny limit właściciela).
+
 ## D16. Tailscale wbudowany w aplikację — 2026-11-03
 
 **Kontekst.** Poza domem aplikacja łączyła się przez aplikację Tailscale

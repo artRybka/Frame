@@ -594,10 +594,10 @@ class Player:
         first: favourites count most, then works kept in the library (not
         the ones the server picked) and artists lately searched for."""
         scores: Counter[str] = Counter()
-        hearts = None if user is None else self.library.favorites(user)
+        hearts = self.library.household_likes() if user is None else self.library.favorites(user)
         for item in self.library.query(PlaylistRules(kinds=[ItemKind.ARTWORK]))[1]:
             if is_artist(item.artist) and not other_art(item):
-                liked = item.favorite if hearts is None else item.id in hearts
+                liked = item.id in hearts
                 scores[item.artist] += 3 * liked + (not item.pooled)
         searched: Counter[str] = Counter()
         for key in [searched_key(user)] if user is not None else self._searched_keys():

@@ -366,6 +366,9 @@ class OwnWork(BaseModel):
     #: them off the line.
     technique: str = ""
     support: str = ""
+    #: Who added it: a member's or guest's id; "" for the owner (and every
+    #: work added before 2026-11-19, when only he could).
+    by: str = ""
 
     def ratio(self, measured: float) -> float | None:
         """The work's width / height from his size, for the picture cut out
