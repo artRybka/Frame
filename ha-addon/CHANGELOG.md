@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.250
+
+- Szukaj: okrągły przycisk „Utwórz playlistę z tego wyszukiwania” w rogu
+  paska po przewinięciu listy naprawdę się pokazuje („Nie widzę okrągłego
+  przycisku playlisty”). Przy otwartym szukaniu iOS chował cały pasek
+  nawigacji, a z nim ten przycisk; teraz pasek zostaje (bez tytułu).
+
 ## 1.145.249
 
 - Zakrzywienie obiektywu („Zakrzywienie obiektywu iPhone? Jakieś
