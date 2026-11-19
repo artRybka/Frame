@@ -916,7 +916,7 @@ def test_the_white_balance_he_sets_is_the_works_and_stays_when_it_is_scanned_aga
 
 
 def test_he_chooses_between_the_scan_and_the_one_photograph_of_a_relief(
-    service: FrameService,
+    service: FrameService, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Mateusz 2026-11-17 22:43 UTC: "wybór pomiędzy obrazem składanym
     (inteligentnym) a z pojedynczego zdjęcia - zawsze go dawaj, a w
@@ -958,9 +958,14 @@ def test_he_chooses_between_the_scan_and_the_one_photograph_of_a_relief(
         return token, merged.json()
 
     works = service.own_works
-    with _client(service) as client:
+    with _client(service) as client, caplog.at_level("INFO", logger="frame_server.own_works"):
         token, merged = scan(first, sides, client)
         assert merged["used"] == 2 and merged["doubt"] and merged["replaced"] > 0
+        # What the scan's time went on is in his log (2026-11-18 23:34 UTC:
+        # "teraz trwa to zdecydowanie za długo").
+        told = [r.getMessage() for r in caplog.records if "merged in" in r.getMessage()]
+        assert len(told) == 1 and token in told[0]
+        assert all(part in told[0] for part in ("core(s)", "read", "laid", "whole", "written"))
         info = json.loads((works.scans / token / SCAN_INFO).read_text())
         assert info["doubt"] is True
         # The scan waits in the photograph's place, the first one beside it.
