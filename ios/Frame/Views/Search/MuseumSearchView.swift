@@ -55,6 +55,10 @@ struct MuseumSearchView: View {
     /// How many of the squares at the end of "Podobne do" the pull past the
     /// end has lit (`PullForMore`); all of them, let go, ask the next step.
     @State private var pullLit = 0
+    /// All of them were lit while the finger pulled: letting go asks for
+    /// more, however far the list has already sprung back by then.
+    @State private var pullArmed = false
+    @State private var dragging = false
     /// The search's stack: the works opened from the results.
     @Binding var path: NavigationPath
 
@@ -126,14 +130,26 @@ struct MuseumSearchView: View {
             )
             return geometry.contentOffset.y - last
         } action: { _, past in
-            let lit = search.waitsForPull ? min(PullForMore.count, max(0, Int(past / PullForMore.pullPerSquare))) : 0
+            guard search.waitsForPull else {
+                if pullLit != 0 { pullLit = 0 }
+                return
+            }
+            var lit = min(PullForMore.count, max(0, Int(past / PullForMore.pullPerSquare)))
+            if dragging, lit == PullForMore.count { pullArmed = true }
+            if pullArmed { lit = PullForMore.count }
             if lit != pullLit { pullLit = lit }
         }
         .onScrollPhaseChange { old, new in
-            // Let go with all the squares lit.
-            guard old == .interacting, new != .interacting, pullLit >= PullForMore.count else { return }
-            pullLit = 0
-            search.askFurther()
+            dragging = new == .interacting
+            guard new != .interacting else { return }
+            // Let go with all the squares lit (a fling that springs past
+            // the end never arms it: only a finger does).
+            let armed = pullArmed && old == .interacting
+            pullArmed = false
+            if armed {
+                pullLit = 0
+                search.askFurther()
+            }
         }
         .sensoryFeedback(trigger: pullLit) { old, new in
             guard new > old else { return nil }

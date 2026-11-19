@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.258
+
+- „Podobne do”: pociągnięcie końca listy działa. Kwadraciki zapalają
+  się już po krótszym pociągnięciu (ok. 60 pt), a gdy zapalą się
+  wszystkie, puszczenie zawsze doczytuje, nawet jeśli lista zdążyła
+  odskoczyć. („Działa kliknięcie w kwadraciki, ale nie przeciągnięcie”)
+- Każde doczytanie w „Podobne do” jest teraz na żądanie: także kolejne
+  porcje tego samego stopnia, nie tylko następny stopień. („Chyba też po
+  kolejnych skokach znowu dociąga szybko, bez zatrzymania.”)
+
 ## 1.145.256
 
 - „Podobne do”: mniej bliskie dzieła dochodzą teraz tylko na Twoje
