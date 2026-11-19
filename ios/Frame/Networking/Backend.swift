@@ -263,7 +263,10 @@ protocol FrameBackend: Sendable {
     func setLook(itemID: String, _ look: Look) async throws -> Item
     func deleteItem(id: String) async throws
     /// "Dodaj własne dzieło": the photograph kept a day on the server.
-    func sendOwnPhoto(_ data: Data) async throws -> OwnIncoming
+    /// `lens`: what the camera said of its lens for it (`OwnLens`), by
+    /// which the server keeps the work straight where it agrees with what
+    /// was measured of that lens.
+    func sendOwnPhoto(_ data: Data, lens: OwnLens?) async throws -> OwnIncoming
     /// The work found in it (Opus, a few seconds); 503 without a key.
     func findOwnWork(token: String) async throws -> OwnIncoming
     /// A photograph of the same work from the side (the scan), and from
@@ -498,5 +501,13 @@ extension FrameBackend {
     /// The work's Polish texts, waited for whole.
     func polish(itemID: String, wait: Int) async throws -> PolishView {
         try await polish(itemID: itemID, wait: wait, early: false)
+    }
+}
+
+extension FrameBackend {
+    /// A photograph whose camera said nothing of its lens (one picked
+    /// from Photos, the demo's).
+    func sendOwnPhoto(_ data: Data) async throws -> OwnIncoming {
+        try await sendOwnPhoto(data, lens: nil)
     }
 }

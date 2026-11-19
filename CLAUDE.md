@@ -34,6 +34,15 @@ uv run mypy src
   and only when the work is added or made again. The waiting photograph
   and a scan's kept ones stay as taken: the phone shows its own copy and
   the corners are set on that (a kept scan notes `lens` and `straight`).
+  The app sends the camera's own table of how its lens bent a scan's
+  first photograph (`AVCameraCalibrationData`, `OwnLens`; Mateusz
+  2026-11-19): the work is straightened by that where it says what
+  `BENDS` says of the lens (`lens.chosen`, within `AGREES`), by the
+  measured number where it does not. Of a lens not measured the table is
+  noted and not gone by while `ALONE` is false: set it only once his own
+  scans' log lines ("the camera's table says …") have shown the two
+  agree. A work made again is straightened by what its scan noted
+  (`straight`: the number or the table), never by another.
   The merge of a scan (`imaging/reflections.py`) is written a second time
   in C++ for the phone (`core/scan`), and the phone makes his scans with
   it (`ios/…/PhoneScan.swift`, sent to `POST /api/own/photos/{token}/merged`;

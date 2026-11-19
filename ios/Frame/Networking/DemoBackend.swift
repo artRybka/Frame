@@ -1715,7 +1715,7 @@ actor DemoBackend: FrameBackend {
         return item
     }
 
-    func sendOwnPhoto(_ data: Data) async throws -> OwnIncoming {
+    func sendOwnPhoto(_ data: Data, lens: OwnLens?) async throws -> OwnIncoming {
         try await Task.sleep(for: .milliseconds(400))
         guard let image = UIImage(data: data) else { throw BackendError.http(status: 422, body: "no picture") }
         let token = UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(24).lowercased()

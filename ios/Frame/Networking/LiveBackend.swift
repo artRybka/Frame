@@ -700,9 +700,10 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
-    func sendOwnPhoto(_ data: Data) async throws -> OwnIncoming {
+    func sendOwnPhoto(_ data: Data, lens: OwnLens?) async throws -> OwnIncoming {
         var form = MultipartForm()
         form.addFile("file", filename: "photo.jpg", mimeType: "image/jpeg", data: data)
+        if let told = lens?.told { form.addField("lens", told) }
         var req = request("/api/own/photos", method: "POST")
         req.setValue(form.contentType, forHTTPHeaderField: "Content-Type")
         req.httpBody = form.body()

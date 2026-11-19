@@ -681,10 +681,13 @@ final class OwnSending {
 
     private func begin(_ shots: OwnShots, with backend: any FrameBackend) -> Task<OwnIncoming, Error> {
         let file = shots.file(0), picture = shots.first
+        // What the camera said of its lens for this photograph: of its
+        // own file only (a picture drawn anew names no camera).
+        let lens = file != nil ? shots.depth?.lens : nil
         let sent = Task<OwnIncoming, Error> {
             guard let data = file ?? OwnWorkFlow.upright(picture).jpegData(compressionQuality: 0.9)
             else { throw CancellationError() }
-            return try await backend.sendOwnPhoto(data)
+            return try await backend.sendOwnPhoto(data, lens: lens)
         }
         first = sent
         look = Task<OwnIncoming?, Never> {

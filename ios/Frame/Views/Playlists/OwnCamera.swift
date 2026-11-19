@@ -1314,10 +1314,15 @@ final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, AVCapture
         }
 
         let fx, fy, cx, cy: Double
+        // What the camera says of how its lens bent this photograph.
+        var bend: (table: Data, centre: CGPoint, reference: CGSize)?
         if let calibration = data.cameraCalibrationData {
             let m = calibration.intrinsicMatrix
             let reference = calibration.intrinsicMatrixReferenceDimensions
             guard reference.width > 0, reference.height > 0 else { return nil }
+            if let table = calibration.lensDistortionLookupTable {
+                bend = (table, calibration.lensDistortionCenter, reference)
+            }
             let sx = Double(width) / Double(reference.width), sy = Double(height) / Double(reference.height)
             fx = Double(m.columns.0.x) * sx
             fy = Double(m.columns.1.y) * sy
@@ -1342,7 +1347,13 @@ final class OwnCameraSession: NSObject, AVCapturePhotoCaptureDelegate, AVCapture
         if written == .up, let image, (image.size.width > image.size.height) != (width > height) {
             orientation = Self.orientation(angle)
         }
-        return OwnDepth(width: width, height: height, values: values, fx: fx, fy: fy, cx: cx, cy: cy, orientation: orientation)
+        let lens = bend.flatMap {
+            OwnLens(table: $0.table, centre: $0.centre, reference: $0.reference, orientation: orientation)
+        }
+        return OwnDepth(
+            width: width, height: height, values: values, fx: fx, fy: fy, cx: cx, cy: cy, orientation: orientation,
+            lens: lens
+        )
     }
 
     /// The capture's turn as the photograph's metadata says it.
