@@ -777,6 +777,80 @@ def test_the_phone_makes_the_scan_and_the_server_keeps_it(service: FrameService)
         assert last["token"] == token and last["replaced"] == 0 and last["doubt"] is False
 
 
+def test_a_scan_merged_as_the_server_no_longer_merges_is_made_again_here(
+    service: FrameService,
+) -> None:
+    """The app is updated apart from the server. A lamp's wide light on
+    his e-paper frame's screen left a violet patch (2026-11-19 11:01 UTC:
+    "zobacz na łatkę w górnej części ekranu po zasłonięciu lampy"), and
+    the merging was changed on both: a scan the app of before makes after
+    the server's update is merged as before. The phone says how its core
+    merges; what says less than the server's own (or nothing, the app
+    before it said) is made again here of its kept photographs after a start."""
+    import json
+
+    from test_reflections import _three
+
+    from frame_server import own_works
+    from frame_server.imaging.reflections import merge
+    from frame_server.own_works import SCAN_INFO
+
+    _, first, sides = _three()
+    seen = [(0.22, 0.2), (0.78, 0.2), (0.78, 0.8), (0.22, 0.8)]
+    assert own_works.PHONE_MERGING < own_works.MERGING
+
+    def png(img: np.ndarray) -> bytes:
+        out = io.BytesIO()
+        Image.fromarray(img).save(out, "PNG")
+        return out.getvalue()
+
+    picture = _jpeg(Image.fromarray(merge(first, sides, seen, True).image))
+    works = service.own_works
+    added: dict[int | None, str] = {}
+    tokens: dict[int | None, str] = {}
+    with _client(service) as client:
+        for said in (None, own_works.MERGING, own_works.MERGING + 3):
+            token = client.post("/api/own/photos", files={"file": ("p.png", png(first))}).json()[
+                "token"
+            ]
+            for side in sides:
+                client.post(f"/api/own/photos/{token}/sides", files={"file": ("s.png", png(side))})
+            note: dict[str, object] = {"corners": seen, "used": 2, "replaced": 0.0661}
+            if said is not None:
+                note["merging"] = said
+            made = client.post(
+                f"/api/own/photos/{token}/merged",
+                files={"file": ("m.jpg", picture)},
+                data={"note": json.dumps(note)},
+            )
+            assert made.status_code == 200, made.text
+            noted = json.loads((works.scans / token / SCAN_INFO).read_text())
+            # No more than the server's own, whatever a newer app says.
+            assert noted["merging"] == (
+                own_works.PHONE_MERGING if said is None else own_works.MERGING
+            )
+            work = client.post(
+                "/api/own/works",
+                json={"token": token, "corners": seen, "by": "owner", "text": TEXT},
+            )
+            assert work.status_code == 200, work.text
+            added[said], tokens[said] = work.json()["id"], token
+        bad = client.post(
+            f"/api/own/photos/{token}/merged",
+            data={"note": json.dumps({"corners": seen, "used": 2, "replaced": 0, "merging": -1})},
+        )
+        assert bad.status_code == 422
+
+    # After a start only the one merged as before is made again, here.
+    assert works.scanned_again() == 1
+    assert works.scanned_again() == 0
+    for said, token in tokens.items():
+        info = json.loads((works.scans / token / SCAN_INFO).read_text())
+        assert info["merging"] == own_works.MERGING
+        assert bool(info.get("again")) is (said is None), said
+        assert info["item"] == added[said]
+
+
 def test_a_veil_over_the_whole_glass_is_left_alone() -> None:
     """Mateusz's print behind glass (2026-11-16): reflections over much of
     the picture are no lamp's glare, and patches from the side photographs
@@ -1454,7 +1528,7 @@ def test_the_phone_takes_the_lens_bend_out_of_its_scan_and_the_server_not_again(
     import test_lens as lens_
 
     from frame_server.imaging import lens
-    from frame_server.own_works import SCAN_INFO, STRAIGHT, LensBend
+    from frame_server.own_works import MERGING, SCAN_INFO, STRAIGHT, LensBend
 
     x0, y0, x1, y1 = lens_.FRAME
     work = [(x0 + 40, y0 + 40), (x1 - 40, y0 + 40), (x1 - 40, y1 - 40), (x0 + 40, y1 - 40)]
@@ -1495,7 +1569,15 @@ def test_the_phone_takes_the_lens_bend_out_of_its_scan_and_the_server_not_again(
         return token, first.json()["straight"]
 
     def scan(told: object, corners: list[tuple[float, float]], **more: object) -> dict[str, str]:
-        note = {"corners": corners, "used": 2, "replaced": 0.05, "straight": told, **more}
+        # As the app of now says it: merged as the server merges.
+        note = {
+            "corners": corners,
+            "used": 2,
+            "replaced": 0.05,
+            "straight": told,
+            "merging": MERGING,
+            **more,
+        }
         return {"note": json.dumps(note)}
 
     with _client(service) as client, caplog.at_level(logging.INFO, "frame_server.own_works"):

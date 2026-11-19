@@ -137,12 +137,14 @@ def test_a_chart_beside_the_work_gives_the_photograph_its_colours(turned: float)
     assert again.look == colorchecker.LOOK
 
 
-def test_the_chart_sets_the_colours_and_how_light_the_photograph_is_by_half() -> None:
+def test_the_chart_sets_the_colours_and_how_light_the_photograph_is_in_part() -> None:
     """His first scan with a real chart (2026-11-18 18:13 UTC: "Wyszło
     trochę blado i mdło"): the photograph came out as the chart's patches
     truly are, its blacks a dark grey and the phone's contrast undone.
     Shown that, the phone's own lightness and the middle of the two
-    (19:13 UTC): "Wyważone, pół na pół"."""
+    (19:13 UTC): "Wyważone, pół na pół". And of his e-paper frame scanned
+    so (2026-11-19 11:37 UTC): "tak, wolę mocniej - 3/4 w stronę
+    telefonu."."""
     photo = _photographed(_scene(_board(colorchecker.REFERENCE.astype(np.uint8))))
     chart = colorchecker.find(photo)
     assert chart is not None
@@ -154,24 +156,39 @@ def test_the_chart_sets_the_colours_and_how_light_the_photograph_is_by_half() ->
         assert _cast(lit, name) < 0.05
     wall = lit[100:200, 100:400].reshape(-1, 3).mean(0)
     assert np.abs(wall / wall[1] - np.array(WALL) / WALL[1]).max() < 0.04
-    # And each is half way between as light as it truly is and as light
-    # as the phone had it.
+    # And each is three quarters of the way from as light as it truly is
+    # to as light as the phone had it.
+    assert colorchecker.PHONE == 0.75
     true = colorchecker.true(photo, chart)
     for name in FIELDS:
-        middle = (_luma(true, name) + _luma(photo, name)) / 2
-        assert abs(_luma(lit, name) - middle) < 0.08 * middle + 3, name
+        between = _luma(true, name) + (_luma(photo, name) - _luma(true, name)) * 0.75
+        assert abs(_luma(lit, name) - between) < 0.08 * between + 3, name
+        # Not half way, as it was.
+        half = (_luma(true, name) + _luma(photo, name)) / 2
+        if abs(_luma(photo, name) - _luma(true, name)) > 16:
+            assert abs(_luma(lit, name) - between) < abs(_luma(lit, name) - half), name
     assert max(abs(_luma(true, name) - _luma(photo, name)) for name in FIELDS) > 8
     # The colours are the painting's: red is red by as much as it is.
     for name in ("red", "green", "blue", "skin"):
         assert _hue(lit, name) < 12, name
         assert _hue(photo, name) > _hue(lit, name), name
-    # A photograph kept as the patches truly are comes to the same.
-    relit = colorchecker.relit(colorchecker.true(photo, chart), chart)
-    assert np.abs(relit.astype(int) - lit).mean() < 1.5
-    # One noted by an earlier release was kept so.
+    # One noted by an earlier release was kept as the patches truly are;
+    # a photograph kept so comes to the same.
     noted = chart.to_json()
     del noted["look"]
-    assert colorchecker.Chart.from_json(noted).look == 0
+    truly = colorchecker.Chart.from_json(noted)
+    assert truly.look == 0
+    relit = colorchecker.relit(colorchecker.true(photo, chart), truly)
+    assert np.abs(relit.astype(int) - lit).mean() < 1.5
+    # And one kept half way, as his scans to 2026-11-19 are.
+    halved = colorchecker.Chart.from_json({**chart.to_json(), "look": 1})
+    half_way = colorchecker._put(photo, chart, chart.lit(0.5))
+    assert np.abs(half_way.astype(int) - lit).mean() > 2
+    relit = colorchecker.relit(half_way, halved)
+    assert np.abs(relit.astype(int) - lit).mean() < 1.5
+    assert np.abs(relit.astype(int) - lit).max() <= 4
+    # One lit as now is left as it is.
+    assert np.abs(colorchecker.relit(lit, chart).astype(int) - lit).max() <= 1
 
 
 def test_a_small_chart_is_read_too() -> None:
@@ -214,8 +231,10 @@ def test_a_chart_whose_black_patch_has_no_light_is_read_from_the_greys_above() -
     assert chart is not None
     assert (chart.lightest, chart.darkest) == (0, 4) and chart.left < 0.035
     lit = colorchecker.apply(photo, chart)
-    for name in ("light", "skin"):
-        assert _cast(lit, name) < 0.06, name
+    # (The skin is a little more its own colour than it is: three quarters
+    # of how steep the phone had a dim room.)
+    for name, most in (("light", 0.06), ("skin", 0.08)):
+        assert _cast(lit, name) < most, name
     for name in ("red", "green", "blue", "skin"):
         assert _hue(lit, name) < 12, name
     # What had no light has none: nothing is made of nothing.

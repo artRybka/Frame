@@ -239,7 +239,10 @@ static std::map<std::string, Step> steps() {
     };
     s["_kept"] = [](const Call& c) { held("kept", kept(c.mat("in.0"), c.mat("in.1")), c.mat("out")); };
     s["_told"] = [](const Call& c) {
-        held("told", told(c.mat("in.0"), c.mat("in.1"), c.mat("in.2"), c.mat("in.3")), c.mat("out"), 1e-4);
+        Mat reach;
+        if (c.has("in.4") && !c.none("in.4")) reach = c.mat("in.4");
+        held("told", told(c.mat("in.0"), c.mat("in.1"), c.mat("in.2"), c.mat("in.3"), reach.empty() ? nullptr : &reach),
+             c.mat("out"), 1e-4);
     };
     s["_own"] = [](const Call& c) {
         held("own", own(c.mat("in.0"), c.mat("in.1"), c.mat("in.2"), c.mat("in.3")), c.mat("out"), 1e-4);

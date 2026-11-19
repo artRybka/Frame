@@ -182,6 +182,9 @@ class PhoneScan(BaseModel):
     #: The phone took its lens's bend out of the scan, and what by (what
     #: :class:`Incoming` told it the bend is).
     straight: LensBend | None = None
+    #: How its core merges (``own_works.MERGING`` as its app had it;
+    #: none said before 2026-11-19).
+    merging: int | None = Field(default=None, ge=0, le=100_000)
 
 
 @router.post("/own/photos/{token}/merged", response_model=Merged)
@@ -221,6 +224,7 @@ async def merged(
             told.phone,
             told.trued,
             told.straight,
+            told.merging,
         )
     except LookupError as err:
         raise HTTPException(404, str(err)) from err

@@ -44,6 +44,11 @@ enum PhoneScan {
     static let square = 16.0
     /// The server keeps a scan as a JPEG of this quality.
     static let quality = 0.95
+    /// `own_works.MERGING`: how this app's core merges. Said with every
+    /// scan: the app is updated apart from the server, and a scan merged
+    /// as the server no longer merges is made again there of its kept
+    /// photographs.
+    static let merging = 5
     /// The most the merge holds for each pixel of the first photograph
     /// (1.6 GB of 48 MP, measured on a Mac), and a third more: with less
     /// to spare the server makes the scan.
@@ -387,6 +392,7 @@ enum PhoneScan {
             "used": made.note.used,
             "replaced": made.picture == nil ? 0 : min(1, max(0, made.note.removed)),
             "doubt": made.note.doubt,
+            "merging": merging,
             "phone": phone,
         ]
         // In the colours of the chart the server read: it takes no scan

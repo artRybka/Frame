@@ -182,6 +182,7 @@ struct OwnCamera: View {
         look.quarter = quarter
         guard scan != nil else {
             look.live = outline
+            look.down = OwnScanView.down(guide.lean)
             look.advice = OwnScanView.first(upright, aspect: aspect, lean: guide.lean)
             return look
         }

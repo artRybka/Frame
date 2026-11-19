@@ -240,6 +240,80 @@ def test_under_a_lamp_that_burnt_the_photograph_the_work_is_what_the_sides_tell(
     )
 
 
+def test_a_lamps_wide_glow_does_not_colour_the_work_put_in_under_it() -> None:
+    """His e-paper frame on a workbench under a lamp (2026-11-19 11:01
+    UTC: "zobacz na łatkę w górnej części ekranu po zasłonięciu lampy").
+    On the screen's matt face the lamp was burnt white in the middle of a
+    glow a third of the work wide, lilac in its chart's colours. The glow
+    told what the first photograph differs from the side ones by about
+    the lamp, and the work put in under it from the side photographs was
+    a violet patch: the glow's colour for its tone."""
+    scene = _scene()
+    yy, xx = np.mgrid[0:H, 0:W]
+    lamp = np.exp(-(((xx - 520) / 45.0) ** 2 + ((yy - 600) / 35.0) ** 2)).astype(np.float32) * 3
+    glow = np.exp(-(((xx - 520) / 150.0) ** 2 + ((yy - 600) / 120.0) ** 2)).astype(np.float32)
+    inside = np.zeros((H, W), np.float32)
+    inside[Y0:Y1, X0:X1] = 1
+    lilac = (glow * inside)[..., None] * np.float32([0.15, 0.1125, 0.25])
+    clean = _coded(scene)
+    first = _coded(scene + _glass(0.05, None, None) + lamp[..., None] + lilac)
+    left = _coded(_from_side(scene + _glass(0.12, None, None), -1) * 0.9)
+    right = _coded(_from_side(scene + _glass(0.1, None, None), 1) * 1.1)
+    done = merge(first, [left, right], CORNERS)
+    assert done.used == 2
+
+    burnt = lamp > 1.5
+    assert (first[burnt] > 250).mean() > 0.95
+    calm = (slice(900, 1080), slice(300, 520))
+    veil = (done.image[calm].astype(int) - clean[calm]).reshape(-1, 3).mean(0)
+    off = (done.image[burnt].astype(np.float32) - clean[burnt]).mean(0) - veil
+    # As light as the work beside it (it was 14 to 28 lighter)…
+    assert np.abs(off).max() < 10, off
+    # …and of the work's colour: next to no bluer than it is green, nor
+    # redder (it was 14 bluer).
+    assert abs(off[2] - off[1]) < 5 and abs(off[0] - off[1]) < 5, off
+
+
+def test_a_lamp_is_no_wider_for_being_told_without_its_glow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """His Nikifor behind glass, made with the lamp found anew once the
+    views were told without its glow (2026-11-19 12:16 UTC, two places
+    ringed: "Dwa nieidealne miejsca na Nikiforze"). Told so, more of the
+    first photograph is a lamp's light, and what was put in from the side
+    photographs grew over a band of his fields and a letter by the frame:
+    a pale notch in the one, the other smeared. The first photograph
+    shows the work through a glow."""
+    scene = _scene()
+    yy, xx = np.mgrid[0:H, 0:W]
+    lamp = np.exp(-(((xx - 520) / 45.0) ** 2 + ((yy - 600) / 35.0) ** 2)).astype(np.float32) * 3
+    glow = np.exp(-(((xx - 520) / 200.0) ** 2 + ((yy - 600) / 160.0) ** 2)).astype(np.float32)
+    inside = np.zeros((H, W), np.float32)
+    inside[Y0:Y1, X0:X1] = 1
+    white = (glow * inside)[..., None] * np.float32([0.54, 0.48, 0.6])
+    first = _coded(scene + _glass(0.05, None, None) + lamp[..., None] + white)
+    left = _coded(_from_side(scene + _glass(0.12, None, None), -1) * 0.9)
+    right = _coded(_from_side(scene + _glass(0.1, None, None), 1) * 1.1)
+    # Through the glow the work is still there in the first photograph.
+    through = (lamp < 0.05) & (white.min(-1) > 0.25)
+    assert through.sum() > 20000 and (first[through].min(-1) < 250).mean() > 0.95
+
+    patches = []
+    toned = reflections._toned
+
+    def seen(work: np.ndarray, to: np.ndarray, patch: np.ndarray) -> np.ndarray:
+        patches.append(patch)
+        return np.asarray(toned(work, to, patch))
+
+    monkeypatch.setattr(reflections, "_toned", seen)
+    done = merge(first, [left, right], CORNERS)
+    assert done.used == 2 and len(patches) == 1
+    # What is put in from the side photographs is the lamp, and not the
+    # glow about it (found anew it was four times the lamp).
+    put_in = float((patches[0][..., 0] > 0.5).sum())
+    assert 0 < put_in < 1.5 * float((lamp > 0.2).sum())
+
+
 def test_a_finger_in_the_glass_goes_from_the_lines_and_the_dark_as_from_beside_them() -> None:
     """His sixteen cows scanned again (2026-11-16 22:30 UTC, three places
     ringed; "Odbicia w szybie - jest lepiej, ale przejście powinno być
