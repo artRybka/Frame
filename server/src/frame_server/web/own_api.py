@@ -22,6 +22,7 @@ from ..own_works import (
     Description,
     Hints,
     Incoming,
+    LensBend,
     Merged,
 )
 from ..service import FrameService
@@ -178,6 +179,9 @@ class PhoneScan(BaseModel):
     #: The phone put its photographs in the colours of the chart read
     #: here first (:func:`chart`).
     trued: bool = False
+    #: The phone took its lens's bend out of the scan, and what by (what
+    #: :class:`Incoming` told it the bend is).
+    straight: LensBend | None = None
 
 
 @router.post("/own/photos/{token}/merged", response_model=Merged)
@@ -216,6 +220,7 @@ async def merged(
             told.trace,
             told.phone,
             told.trued,
+            told.straight,
         )
     except LookupError as err:
         raise HTTPException(404, str(err)) from err

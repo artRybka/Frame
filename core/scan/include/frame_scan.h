@@ -33,6 +33,31 @@ int frame_scan_merge_files(const char* first, const char* const* sides, int coun
  * it was. */
 int frame_scan_chart_file(const char* path, const char* tables, char* error, int error_size);
 
+/* How a lens bends what it draws is said by the one measured term `k1`
+ * about the photograph's middle, or (`count` above 0) by the camera's own
+ * `table` of `count` values about the lens's middle (`centre_x`,
+ * `centre_y`: 0–1 across and down the photograph): `imaging/lens.py`
+ * `Bend` on the server, which tells the phone which.
+ *
+ * The picture at `path` (.npy, rows × columns × 3 of 8 bits) as a lens
+ * without that bend would have drawn it, in place: the server's
+ * `lens.straight`. Zero when it went well; else what went wrong is said in
+ * `error`, and the file is as it was. */
+int frame_scan_straight_file(const char* path, double k1, const double* table, int count, double centre_x,
+                             double centre_y, char* error, int error_size);
+
+/* The same of `pixels` (rows × columns × 3 bytes, a row after another), in
+ * place: what the phone shows of a photograph. */
+int frame_scan_straight_pixels(unsigned char* pixels, int rows, int columns, double k1, const double* table,
+                               int count, double centre_x, double centre_y, char* error, int error_size);
+
+/* `points` (x and y of each of `many`, 0–1 across and down a photograph of
+ * `columns` by `rows`) set on the photograph as taken, put where they are
+ * on it straightened (`lens.moved`); `back` not zero: set on it
+ * straightened, put where they are on it as taken (`lens.bent`). In place. */
+int frame_scan_lens_points(double* points, int many, int columns, int rows, double k1, const double* table,
+                           int count, double centre_x, double centre_y, int back, char* error, int error_size);
+
 /* A scene made up (a work under glass, a lamp in it, photographed three
  * times), `side` pixels long, merged: nothing is read or written. For a
  * test, and to time a phone without a scan at hand. */

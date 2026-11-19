@@ -28,8 +28,45 @@ struct OwnIncoming: Codable, Hashable, Sendable {
     /// tables the server gives of it (`FrameBackend.ownChartTables`). nil
     /// from a server that gives none (to 1.145.256): it makes the scan.
     var tables: Bool? = nil
+    /// The bend of the lens that took it, where the server knows it: the
+    /// work is kept without it. The phone takes it out of what it shows
+    /// him (`OwnPicture.straight`; the corners he sets on that go to the
+    /// server as they are on the photograph taken) and of the scan it
+    /// makes (`PhoneScan.make`). nil where it is not known, and from a
+    /// server that straightens the work itself (to 1.145.258).
+    var straight: OwnBend? = nil
 
     var aspect: Double { height > 0 ? Double(width) / Double(height) : 0.75 }
+}
+
+/// How a lens bends what it draws, as the server says it (`LensBend` in
+/// `own_works.py`, `imaging/lens.py`): the one measured term `k1` about the
+/// photograph's middle, or the camera's own `table` (how much further from
+/// the lens's middle a point is drawn, at radii evenly from that middle,
+/// `centre` 0–1 across and down the photograph, to its farthest corner).
+struct OwnBend: Codable, Hashable, Sendable {
+    var k1: Double = 0
+    var table: [Double] = []
+    var centre: [Double] = [0.5, 0.5]
+
+    init(k1: Double = 0, table: [Double] = [], centre: [Double] = [0.5, 0.5]) {
+        self.k1 = k1
+        self.table = table
+        self.centre = centre
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        k1 = try values.decodeIfPresent(Double.self, forKey: .k1) ?? 0
+        table = try values.decodeIfPresent([Double].self, forKey: .table) ?? []
+        centre = try values.decodeIfPresent([Double].self, forKey: .centre) ?? [0.5, 0.5]
+    }
+
+    var centreX: Double { centre.count == 2 ? centre[0] : 0.5 }
+    var centreY: Double { centre.count == 2 ? centre[1] : 0.5 }
+
+    /// As it goes back to the server with a scan straightened by it.
+    var told: [String: Any] { ["k1": k1, "table": table, "centre": [centreX, centreY]] }
 }
 
 /// The first photograph with the glare taken out by the side ones (the

@@ -45,4 +45,26 @@ struct Chart {
 /// server's `colorchecker.apply`.
 void put(cv::Mat& photo, const Chart& chart);
 
+/// How a lens bends what it draws, as the server says it
+/// (`imaging/lens.py` `Bend`): the one measured term `k1` about the
+/// photograph's middle, or the camera's own `table` (the share at radii
+/// evenly from the lens's middle, `centre` 0–1 across and down the
+/// photograph, to the photograph's farthest corner from it).
+struct Bend {
+    double k1 = 0;
+    std::vector<double> table;
+    double centre[2] = {0.5, 0.5};
+};
+
+/// `photo` (8 bits) as a lens without `bend` would have drawn it, the
+/// same size and middle: the server's `lens.straight`.
+void straight(cv::Mat& photo, const Bend& bend);
+
+/// Where `points` (0–1 across and down a photograph `width` by `height`)
+/// set on the photograph as taken are on it straightened (`lens.moved`);
+/// `back`: set on it straightened, where they are on it as taken
+/// (`lens.bent`).
+std::vector<cv::Point2d> moved(const std::vector<cv::Point2d>& points, int width, int height, const Bend& bend,
+                               bool back = false);
+
 }  // namespace frame::scan
