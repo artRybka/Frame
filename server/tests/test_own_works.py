@@ -1319,6 +1319,123 @@ def test_the_lens_bend_is_taken_out_of_the_work_he_adds(service: FrameService) -
         assert again.cut is not None and again.cut.work == made.cut.work
 
 
+def test_the_cameras_own_table_straightens_the_work_where_it_says_what_was_measured(
+    service: FrameService, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Mateusz 2026-11-19 08:09 UTC: "Korekta obiektywu - a nie ma
+    natywnego rozwiązania od Apple w tym zakresie?". The camera gives
+    with a photograph the table it would be straightened by, of that very
+    photograph; the app sends it with a scan's first one. It is noted,
+    and the work is straightened by it where it says of his lens what the
+    measurement says. A table that says otherwise is not gone by (the
+    measurement is); nor is one of a lens that was not measured, yet."""
+    import json
+    import logging
+
+    import test_lens as lens_
+
+    from frame_server.own_works import SCAN_INFO
+
+    x0, y0, x1, y1 = lens_.FRAME
+    work = [(x0 + 40, y0 + 40), (x1 - 40, y0 + 40), (x1 - 40, y1 - 40), (x0 + 40, y1 - 40)]
+    # This photograph's lens, a little other than the few measured: its
+    # table says so, the measured number would leave a twelfth of the bow.
+    k1 = lens_.K1 * 1.12
+    taken = lens_.bent(lens_.scene(), k1)
+    own = {"table": lens_.table(k1), "centre": [0.5, 0.5]}
+    works = service.own_works
+
+    def drawn(corners: list[tuple[int, int]]) -> list[tuple[float, float]]:
+        half = float(np.hypot(lens_.W, lens_.H)) / 2
+        out = []
+        for x, y in corners:
+            ux, uy = (x - lens_.W / 2) / half, (y - lens_.H / 2) / half
+            f = 1 + k1 * (ux * ux + uy * uy)
+            out.append(
+                (
+                    round((ux * f * half + lens_.W / 2) / lens_.W, 5),
+                    round((uy * f * half + lens_.H / 2) / lens_.H, 5),
+                )
+            )
+        return out
+
+    def scanned(
+        client: TestClient, camera: dict[str, object] | None, model: str = lens_.PHONE
+    ) -> tuple[Any, dict[str, Any], float]:
+        data = {"lens": json.dumps(camera)} if camera is not None else None
+        sent = client.post(
+            "/api/own/photos",
+            files={"file": ("p.jpg", lens_.photograph(model=model, img=taken))},
+            data=data,
+        )
+        assert sent.status_code == 200, sent.text
+        token = sent.json()["token"]
+        for _ in range(2):
+            client.post(
+                f"/api/own/photos/{token}/sides",
+                files={"file": ("s.jpg", _jpeg(Image.fromarray(taken)))},
+            )
+        client.post(f"/api/own/photos/{token}/merge", json={"corners": drawn(work)})
+        added = client.post(
+            "/api/own/works", json={"token": token, "corners": drawn(work), "text": TEXT}
+        )
+        assert added.status_code == 200, added.text
+        item = service.library.get(added.json()["id"])
+        assert item is not None and item.cut is not None
+        info = json.loads((works.scans / token / SCAN_INFO).read_text())
+        with Image.open(service.images.museum_photo(item, urgent=True)) as img:
+            return item, info, lens_.bow(np.asarray(img.convert("RGB")))
+
+    def near(got: list[tuple[float, float]] | None) -> float:
+        assert got is not None
+        return max(
+            max(abs(gx * lens_.W - x), abs(gy * lens_.H - y))
+            for (gx, gy), (x, y) in zip(got, work, strict=True)
+        )
+
+    with _client(service) as client, caplog.at_level(logging.INFO, "frame_server.own_works"):
+        # Without the table: the measured number, and a little of the bow left.
+        item, info, left = scanned(client, None)
+        assert info["straight"] == lens_.K1 and "table" not in info["lens"]
+        assert 0.2 < left < 1.0
+
+        # With it: by the table, noted with the scan, and straight.
+        item, info, bowed = scanned(client, own)
+        assert info["lens"]["table"] == pytest.approx(own["table"])
+        assert info["straight"]["table"] == pytest.approx(own["table"])
+        assert info["straight"]["centre"] == [0.5, 0.5]
+        assert bowed < 0.3 and bowed < left / 2
+        assert near(item.cut.work) < 0.6
+        assert any("by the camera's own table" in r.getMessage() for r in caplog.records)
+        # Made again, it is straightened by what its corners were moved by.
+        again = works.rescan(item)
+        assert again.cut is not None and again.cut.work == item.cut.work
+        with Image.open(service.images.museum_photo(again, urgent=True)) as img:
+            assert lens_.bow(np.asarray(img.convert("RGB"))) < 0.3
+
+        # A table that says the lens bends the other way, or twice as
+        # much: one of the two is not what it is taken for, and the
+        # measurement made his frames straight.
+        caplog.clear()
+        for other in (lens_.table(-k1), lens_.table(2 * k1)):
+            _, info, bowed = scanned(client, {"table": other, "centre": [0.5, 0.5]})
+            assert info["straight"] == lens_.K1 and info["lens"]["table"] == pytest.approx(other)
+            assert bowed == pytest.approx(left, abs=0.05)
+        assert sum("not what was measured" in r.getMessage() for r in caplog.records) == 2
+
+        # What is no table is left out, and the photograph taken all the same.
+        for none in ({"table": [0.0, 0.5], "centre": [0.5, 0.5]}, {"table": "x"}, []):
+            _, info, bowed = scanned(client, none)  # type: ignore[arg-type]
+            assert info["straight"] == lens_.K1 and "table" not in info["lens"]
+
+        # Another phone, its lens not measured: noted, and as taken for now.
+        caplog.clear()
+        _, info, bowed = scanned(client, own, model="iPhone 16 Pro Max")
+        assert "straight" not in info and info["lens"]["table"] == pytest.approx(own["table"])
+        assert bowed > 2
+        assert any("of a lens not measured" in r.getMessage() for r in caplog.records)
+
+
 def test_his_earlier_scans_are_set_straight_by_themselves(
     service: FrameService,
     monkeypatch: pytest.MonkeyPatch,
@@ -1444,12 +1561,13 @@ def test_his_earlier_scans_are_set_straight_by_themselves(
 
     # A scan that is no photograph of the sensor's whole (cut, or from
     # elsewhere) and one that named a lens not measured: as they are.
-    assert OwnWorks._bend({"width": 6048, "height": 8064}) == lens_.K1
-    assert OwnWorks._bend({"width": 8064, "height": 6048}) == lens_.K1
+    measured = lens_.lens.Bend(k1=lens_.K1)
+    assert OwnWorks._bend({"width": 6048, "height": 8064}) == measured
+    assert OwnWorks._bend({"width": 8064, "height": 6048}) == measured
     assert OwnWorks._bend({"width": 1100, "height": 1400}) is None
     assert OwnWorks._bend({}) is None
     assert OwnWorks._bend({"lens": None, "width": 6048, "height": 8064}) is None
     named = {"model": "iPhone 16 Pro Max", "main": True}
     assert OwnWorks._bend({"lens": named, "width": 6048, "height": 8064}) is None
     assert OwnWorks._bend({"lens": {"model": lens_.PHONE, "main": False}}) is None
-    assert OwnWorks._bend({"lens": {"model": lens_.PHONE, "main": True}}) == lens_.K1
+    assert OwnWorks._bend({"lens": {"model": lens_.PHONE, "main": True}}) == measured
