@@ -49,6 +49,9 @@ struct LooksLikeSection: View {
     @Environment(AppModel.self) private var model
     let item: Item
     @State private var found: [ItemSummary] = []
+    /// Of `found`, how many Szukaj's "Podobne do" shows (the server's
+    /// closeness floor, Mateusz 2026-11-19); an older server says nothing.
+    @State private var alike: Int?
     /// The card's width, for the height of the row's pictures.
     @State private var width: CGFloat?
 
@@ -78,7 +81,10 @@ struct LooksLikeSection: View {
             guard item.kind == .artwork || item.isOwnWork,  // his own works too (Mateusz 2026-11-16)
                   let answer = try? await model.backend.looksLike(itemID: item.id, limit: Self.counted)
             else { return }
-            withAnimation(.easeOut(duration: 0.25)) { found = answer.items }
+            withAnimation(.easeOut(duration: 0.25)) {
+                found = answer.items
+                alike = answer.alike
+            }
         }
     }
 
@@ -137,7 +143,7 @@ struct LooksLikeSection: View {
     }
 
     private var searchButton: some View {
-        LooksSearchButton(itemID: item.id, title: item.displayTitle, count: found.count)
+        LooksSearchButton(itemID: item.id, title: item.displayTitle, count: alike ?? found.count)
     }
 
     /// The height every picture of the row is fitted into.
@@ -195,7 +201,7 @@ struct LooksSearchButton: View {
             guard count == nil, !itemID.isEmpty,
                   let answer = try? await model.backend.looksLike(itemID: itemID, limit: LooksLikeSection.counted)
             else { return }
-            withAnimation(.easeOut(duration: 0.25)) { asked = answer.items.count }
+            withAnimation(.easeOut(duration: 0.25)) { asked = answer.alike ?? answer.items.count }
         }
     }
 }

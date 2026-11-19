@@ -2327,6 +2327,9 @@ struct LooksStatus: Codable, Hashable, Sendable {
 struct LooksAnswer: Codable, Hashable, Sendable {
     var items: [ItemSummary]
     var scores: [Double]
+    /// On a work's looks: how many of them Szukaj's "Podobne do" shows,
+    /// what "Szukaj podobnych" counts (nil from an older server).
+    var alike: Int?
 }
 
 /// `POST /api/looks/photo`: the key a photograph searched is asked by,

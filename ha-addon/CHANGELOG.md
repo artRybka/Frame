@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.145.251
+
+- „Podobne do” w Szukaj pokazuje dzieła według bliskości, a nie stałe 120
+  („limitem ilości nie powinien być stopień podobieństwa?”). Wybrana
+  granica „do żółtego”: przy „Treść i forma” dzieła od 0,50, przy samej
+  „Treści” od 0,58, przy samej „Formie” od 0,57 (te dwie dają średnio
+  tyle samo dzieł). Ustalone na 20 dziełach z całego katalogu, po 1000
+  najbliższych każdego: wychodzi od ok. 18 (Mucha) do ok. 300 (Hiroshige).
+- Zawsze co najmniej 8 dzieł („żeby nie pokazywać dzieł niezwiązanych”),
+  także przy Twoich własnych dziełach, które na zdjęciu z telefonu leżą
+  dalej od skanów muzealnych; najwyżej 1000.
+- „Szukaj podobnych” na karcie dzieła i w studium liczy według tej samej
+  granicy (dalej „60+” od sześćdziesięciu).
+
 ## 1.145.250
 
 - Szukaj: okrągły przycisk „Utwórz playlistę z tego wyszukiwania” w rogu
