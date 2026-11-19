@@ -59,6 +59,11 @@ struct MuseumSearchView: View {
     /// more, however far the list has already sprung back by then.
     @State private var pullArmed = false
     @State private var dragging = false
+    /// Asked for by a pull: the waiting squares stand where the pulled ones
+    /// were, the end held up by the pull's length, till works come
+    /// (Mateusz 2026-11-19: "kwadraciki animowane w miejscu gdzie były te do
+    /// przeciągnięcia").
+    @State private var pullHeld = false
     /// Where the list stops (`ListEnd`), out of SwiftUI's sight: it
     /// changes every frame and must not redraw anything.
     @State private var listEnd = ListEndSeen()
@@ -149,6 +154,7 @@ struct MuseumSearchView: View {
             pullArmed = false
             if armed {
                 pullLit = 0
+                pullHeld = true
                 PullProbe.note("asked further", end: listEnd.last, past: 0, lit: 0, waits: search.waitsForPull)
                 search.askFurther()
             }
@@ -472,12 +478,18 @@ struct MuseumSearchView: View {
                 // "Podobne do" less near, or the museums after the server's
                 // own works, only when asked for: the end pulled and let go
                 // (Mateusz 2026-11-19).
-                PullForMore(lit: pullLit, museums: search.pullsMuseums) { search.askFurther() }
+                PullForMore(lit: pullLit, museums: search.pullsMuseums) {
+                    pullHeld = true
+                    search.askFurther()
+                }
             } else if search.busy || search.more {
                 // The squares say "waiting" (Mateusz): while the search is
                 // asked, and after as long as a museum may still have more,
                 // also one that hasn't answered and waits to be asked again.
                 SearchWaiting()
+                    .padding(.bottom, pullHeld ? PullForMore.held : 0)
+                    .onChange(of: search.shownCatalogue.count + search.shownFromMuseums.count) { pullHeld = false }
+                    .onDisappear { pullHeld = false }
             }
         }
     }
