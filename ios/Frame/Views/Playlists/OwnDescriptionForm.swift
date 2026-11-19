@@ -19,6 +19,11 @@ struct OwnDescriptionForm: View {
     var places: [String] = []
     /// The size the LiDAR measured, written in when the fields are empty.
     var measured: OwnDepth.Size? = nil
+    /// The authors of his other works (`OwnAuthors.known`): offered under
+    /// the author's field once he has written three letters of one.
+    var authors: [String] = []
+    /// The page's scroller: what is offered is brought above the keyboard.
+    var scroller: ScrollViewProxy? = nil
 
     @State private var heightText = ""
     @State private var widthText = ""
@@ -28,6 +33,9 @@ struct OwnDescriptionForm: View {
     @State private var started = false
     /// The size written in from the LiDAR: marked while the fields still say it.
     @State private var measuredIn: OwnDepth.Size?
+    @FocusState private var focus: Field?
+
+    private enum Field: Hashable { case title, artist, date }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 26) {
@@ -58,28 +66,34 @@ struct OwnDescriptionForm: View {
                 .transition(.opacity)
             }
             VStack(alignment: .leading, spacing: 10) {
-                serifField("Tytuł", text: $text.title, key: "title", size: 26, weight: .semibold, ink: Theme.ink)
-                serifField("Autor", text: $text.artist, key: "artist", size: 18, ink: Theme.ink)
-                serifField("Data", text: $text.dateText, key: "date", size: 18, ink: Theme.inkSoft)
+                serifField(
+                    "Tytuł", text: $text.title, key: "title", size: 26, weight: .semibold, ink: Theme.ink,
+                    field: .title, next: .artist
+                )
+                serifField("Autor", text: $text.artist, key: "artist", size: 18, ink: Theme.ink, field: .artist, next: .date)
+                if !offered.isEmpty { authorsOffered }
+                serifField("Data", text: $text.dateText, key: "date", size: 18, ink: Theme.inkSoft, field: .date, next: nil)
             }
             Card {
+                // A field each (Mateusz 2026-11-19 20:38 UTC: "zrób dwa osobne
+                // pola"); the card's "Technika" is written of the two
+                // (`OwnDescription.medium`).
                 factRow("Technika") {
                     HStack(spacing: 6) {
-                        trailingField("np. olej na płótnie", text: $text.medium, key: "medium")
-                        techniqueMenu
+                        trailingField("np. olej", text: $text.technique, key: "technique", small: true)
+                        wordsMenu("Wybierz technikę", OwnTechnique.techniques.map(\.name)) { text.technique = $0 }
+                    }
+                }
+                Divider()
+                factRow("Podłoże") {
+                    HStack(spacing: 6) {
+                        trailingField("np. płótno", text: $text.support, key: "support", small: true)
+                        wordsMenu("Wybierz podłoże", OwnTechnique.supports.map(\.name)) { text.support = $0 }
                     }
                 }
                 Divider()
                 VStack(alignment: .leading, spacing: 8) {
                     factRow("Rozmiar") { sizeFields }
-                    if sizeMarked {
-                        Text(bound: "Zmierzone LiDAR-em, bez ramy, ±1–2 cm.")
-                            .font(.caption)
-                            .foregroundStyle(Theme.inkSoft)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                            .multilineTextAlignment(.trailing)
-                            .transition(.opacity)
-                    }
                     if let warning = sizeWarning { warningLine(warning) }
                 }
                 .id("size")
@@ -87,7 +101,7 @@ struct OwnDescriptionForm: View {
                 factRow("Gdzie wisi") {
                     HStack(spacing: 6) {
                         trailingField("np. Salon", text: $text.hangs, key: "hangs")
-                        if !places.isEmpty { placesMenu }
+                        if !places.isEmpty { wordsMenu("Gdzie wiszą inne", places) { text.hangs = $0 } }
                     }
                 }
                 Divider()
@@ -116,8 +130,18 @@ struct OwnDescriptionForm: View {
         .onChange(of: text.widthCm) { _, value in
             if Self.number(widthText) != value { widthText = value.map(OwnWork.number) ?? "" }
         }
+        .onChange(of: offered) { _, names in
+            // Under the field he writes in, so often under the keyboard:
+            // brought into sight (no further than that), once laid out.
+            guard !names.isEmpty, let scroller else { return }
+            Task {
+                try? await Task.sleep(for: .milliseconds(150))
+                withAnimation(.easeOut(duration: 0.2)) { scroller.scrollTo(Self.offeredID) }
+            }
+        }
         .animation(.easeOut(duration: 0.25), value: hints)
         .animation(.easeOut(duration: 0.2), value: sizeWarning)
+        .animation(.easeOut(duration: 0.2), value: offered)
     }
 
     private func start() {
@@ -127,20 +151,67 @@ struct OwnDescriptionForm: View {
         widthText = text.widthCm.map(OwnWork.number) ?? ""
         if let hints { fill(from: hints) }
         if let measured { fill(from: measured) }
+        // CI screenshots: the author's field being written in.
+        if LaunchRoute.scroll == "author" {
+            Task {
+                try? await Task.sleep(for: .milliseconds(600))
+                focus = .artist
+            }
+        }
     }
 
     // MARK: Fields
 
+    /// A field of the card's serif, over as many lines as its words take
+    /// (Mateusz 2026-11-19 20:38 UTC of the title: "trzeba łamać na więcej
+    /// linii, a nie zostawiać do przewijania prawo-lewo"). Such a field
+    /// takes "return" as a new line: here it goes on to the `next` field,
+    /// and lines pasted in become one.
     private func serifField(
         _ prompt: String, text value: Binding<String>, key: String, size: CGFloat,
-        weight: Font.Weight = .regular, ink: Color
+        weight: Font.Weight = .regular, ink: Color, field: Field, next: Field?
     ) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            TextField(prompt, text: value)
+            TextField(prompt, text: value, axis: .vertical)
+                .lineLimit(1 ... 10)
                 .font(.serif(size, weight: weight))
                 .foregroundStyle(ink)
+                .focused($focus, equals: field)
+                .submitLabel(next == nil ? .done : .next)
+                .onChange(of: value.wrappedValue) { _, written in
+                    guard written.contains(where: \.isNewline) else { return }
+                    value.wrappedValue = Self.oneLine(written)
+                    focus = next
+                }
             filledMark(key)
         }
+    }
+
+    static func oneLine(_ text: String) -> String {
+        text.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    // MARK: The authors of his other works
+
+    private static let offeredID = "authors"
+
+    /// Offered while he writes in the author's field.
+    private var offered: [String] {
+        focus == .artist ? OwnAuthors.offered(for: text.artist, among: authors) : []
+    }
+
+    private var authorsOffered: some View {
+        FlowLayout(spacing: 8) {
+            ForEach(offered, id: \.self) { name in
+                Chip(title: name) { text.artist = name }
+            }
+        }
+        .padding(.bottom, 4)
+        .id(Self.offeredID)
+        .transition(.opacity)
     }
 
     @ViewBuilder
@@ -163,11 +234,16 @@ struct OwnDescriptionForm: View {
         .font(.subheadline)
     }
 
-    private func trailingField(_ prompt: String, text value: Binding<String>, key: String) -> some View {
+    /// `small`: written with no capital put in for him, as the card's
+    /// "Technika" is ("olej na płótnie").
+    private func trailingField(
+        _ prompt: String, text value: Binding<String>, key: String, small: Bool = false
+    ) -> some View {
         HStack(spacing: 4) {
             TextField(prompt, text: value)
                 .multilineTextAlignment(.trailing)
                 .foregroundStyle(Theme.ink)
+                .textInputAutocapitalization(small ? .never : nil)
             filledMark(key)  // after the value, as by the title
         }
     }
@@ -220,18 +296,12 @@ struct OwnDescriptionForm: View {
         .transition(.opacity)
     }
 
-    /// The techniques and supports, as a menu by the field.
-    private var techniqueMenu: some View {
+    /// Words to choose of, as a menu by the field: the techniques, the
+    /// supports, where his other works hang.
+    private func wordsMenu(_ label: String, _ words: [String], choose: @escaping (String) -> Void) -> some View {
         Menu {
-            Section("Technika") {
-                ForEach(OwnTechnique.techniques, id: \.key) { item in
-                    Button(item.name) { setTechnique(item.key) }
-                }
-            }
-            Section("Podłoże") {
-                ForEach(OwnTechnique.supports, id: \.key) { item in
-                    Button(item.name) { setSupport(item.key) }
-                }
+            ForEach(words, id: \.self) { word in
+                Button(word.bound) { choose(word) }
             }
         } label: {
             Image(systemName: "chevron.up.chevron.down")
@@ -239,37 +309,14 @@ struct OwnDescriptionForm: View {
                 .foregroundStyle(Theme.inkSoft)
                 .frame(width: 24, height: 24)
         }
-        .accessibilityLabel("Wybierz technikę")
-    }
-
-    private var placesMenu: some View {
-        Menu {
-            ForEach(places, id: \.self) { place in
-                Button(place) { text.hangs = place }
-            }
-        } label: {
-            Image(systemName: "chevron.up.chevron.down")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Theme.inkSoft)
-                .frame(width: 24, height: 24)
-        }
-        .accessibilityLabel("Gdzie wiszą inne")
-    }
-
-    private func setTechnique(_ key: String) {
-        let support = OwnTechnique.read(text.medium)?.support
-        text.medium = OwnTechnique.medium(technique: key, support: support)
-    }
-
-    private func setSupport(_ key: String) {
-        let technique = OwnTechnique.read(text.medium)?.technique
-        text.medium = OwnTechnique.medium(technique: technique, support: key)
+        .accessibilityLabel(label)
     }
 
     // MARK: Filled from the picture
 
     private static let fields: [(key: String, path: WritableKeyPath<OwnDescription, String>)] = [
-        ("title", \.title), ("artist", \.artist), ("date", \.dateText), ("medium", \.medium),
+        ("title", \.title), ("artist", \.artist), ("date", \.dateText),
+        ("technique", \.technique), ("support", \.support),
     ]
 
     /// The fields that still say what was read off the picture.
@@ -278,9 +325,12 @@ struct OwnDescriptionForm: View {
     }
 
     private func fill(from hints: OwnHints) {
-        let medium = hints.technique.isEmpty || hints.technique == "unknown" ? ""
-            : OwnTechnique.medium(technique: hints.technique, support: hints.support == "unknown" ? nil : hints.support)
-        let read = ["title": hints.title, "artist": hints.artist, "date": hints.date, "medium": medium]
+        // The server's words in Polish; "unknown" is none of them.
+        let read = [
+            "title": hints.title, "artist": hints.artist, "date": hints.date,
+            "technique": OwnTechnique.name(hints.technique) ?? "",
+            "support": OwnTechnique.support(hints.support) ?? "",
+        ]
         var done: [String: String] = [:]
         withAnimation(.easeOut(duration: 0.25)) {
             for field in Self.fields {
@@ -374,17 +424,19 @@ struct OwnDescriptionSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                OwnDescriptionForm(
-                    text: $text, aspect: item.cornersAspect ?? item.width.flatMap { w in item.height.map { Double(w) / Double(max($0, 1)) } },
-                    places: places
-                )
-                .pageWidth()
-                .padding(.horizontal, Theme.gutter)
-                .padding(.vertical, 16)
+            ScrollViewReader { scroller in
+                ScrollView {
+                    OwnDescriptionForm(
+                        text: $text, aspect: item.cornersAspect ?? item.width.flatMap { w in item.height.map { Double(w) / Double(max($0, 1)) } },
+                        places: places, authors: OwnAuthors.known(model.ownWorks), scroller: scroller
+                    )
+                    .pageWidth()
+                    .padding(.horizontal, Theme.gutter)
+                    .padding(.vertical, 16)
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .paperPage()
             }
-            .scrollDismissesKeyboard(.interactively)
-            .paperPage()
             .navigationTitle("Edytuj opis")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -100,12 +100,15 @@ struct OwnHints: Codable, Hashable, Sendable {
 }
 
 /// What the owner wrote of the work.
-struct OwnDescription: Codable, Hashable, Sendable {
+struct OwnDescription: Encodable, Hashable, Sendable {
     var title: String = ""
     var artist: String = ""
     var dateText: String = ""
-    /// Technique and support as one line ("olej na płótnie").
-    var medium: String = ""
+    /// What it is made with and on, a field each ("olej", "płótno";
+    /// Mateusz 2026-11-19 20:38 UTC: "zrób dwa osobne pola i składaj z nich
+    /// potem pole technika na karcie dzieła").
+    var technique: String = ""
+    var support: String = ""
     /// His note ("O dziele").
     var description: String = ""
     var hangs: String = ""
@@ -113,15 +116,19 @@ struct OwnDescription: Codable, Hashable, Sendable {
     var heightCm: Double? = nil
     var widthCm: Double? = nil
 
+    /// The card's "Technika", written of the two ("olej na płótnie").
+    var medium: String { OwnTechnique.line(technique: technique, support: support) }
+
     init(
-        title: String = "", artist: String = "", dateText: String = "", medium: String = "",
-        description: String = "", hangs: String = "", origin: String = "",
+        title: String = "", artist: String = "", dateText: String = "", technique: String = "",
+        support: String = "", description: String = "", hangs: String = "", origin: String = "",
         heightCm: Double? = nil, widthCm: Double? = nil
     ) {
         self.title = title
         self.artist = artist
         self.dateText = dateText
-        self.medium = medium
+        self.technique = technique
+        self.support = support
         self.description = description
         self.hangs = hangs
         self.origin = origin
@@ -131,11 +138,33 @@ struct OwnDescription: Codable, Hashable, Sendable {
 
     /// "Edytuj opis": as the card has it.
     init(_ item: Item) {
+        let made = OwnTechnique.parts(of: item)
         self.init(
-            title: item.title, artist: item.artist, dateText: item.dateText, medium: item.medium,
-            description: item.description, hangs: item.own?.hangs ?? "", origin: item.own?.origin ?? "",
-            heightCm: item.own?.heightCm, widthCm: item.own?.widthCm
+            title: item.title, artist: item.artist, dateText: item.dateText, technique: made.technique,
+            support: made.support, description: item.description, hangs: item.own?.hangs ?? "",
+            origin: item.own?.origin ?? "", heightCm: item.own?.heightCm, widthCm: item.own?.widthCm
         )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case title, artist, dateText, medium, technique, support, description, hangs, origin, heightCm, widthCm
+    }
+
+    /// With the line beside the two: the card shows the line, and a server
+    /// that keeps the line alone (to 1.145.268) has the technique all the same.
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(title, forKey: .title)
+        try values.encode(artist, forKey: .artist)
+        try values.encode(dateText, forKey: .dateText)
+        try values.encode(medium, forKey: .medium)
+        try values.encode(technique, forKey: .technique)
+        try values.encode(support, forKey: .support)
+        try values.encode(description, forKey: .description)
+        try values.encode(hangs, forKey: .hangs)
+        try values.encode(origin, forKey: .origin)
+        try values.encodeIfPresent(heightCm, forKey: .heightCm)
+        try values.encodeIfPresent(widthCm, forKey: .widthCm)
     }
 }
 
@@ -152,7 +181,7 @@ struct OwnPhotoCut: Codable, Hashable, Sendable {
     var balance: Double = 0
 }
 
-struct NewOwnWork: Codable, Hashable, Sendable {
+struct NewOwnWork: Encodable, Hashable, Sendable {
     var token: String
     var corners: [[Double]]?
     var by: String = "auto"
@@ -161,8 +190,9 @@ struct NewOwnWork: Codable, Hashable, Sendable {
     var text: OwnDescription
 }
 
-/// The technique and the support as chips, the server's words for the
-/// hints in Polish; "olej na płótnie" written from the two.
+/// The technique and the support, a field of his words each; the server's
+/// words for the hints in Polish, and the card's line written of the two
+/// ("olej na płótnie").
 enum OwnTechnique {
     static let techniques: [(key: String, name: String)] = [
         ("oil", "olej"), ("acrylic", "akryl"), ("watercolour", "akwarela"), ("gouache", "gwasz"),
@@ -171,30 +201,97 @@ enum OwnTechnique {
         ("linocut", "linoryt"), ("screenprint", "serigrafia"), ("photograph", "fotografia"),
         ("mixed", "technika mieszana"),
     ]
-    static let supports: [(key: String, name: String, on: String)] = [
-        ("canvas", "płótno", "na płótnie"), ("paper", "papier", "na papierze"),
-        ("board", "tektura", "na tekturze"), ("panel", "deska", "na desce"),
+    /// The supports the hints name: the menu by the field.
+    static let supports: [(key: String, name: String)] = [
+        ("canvas", "płótno"), ("paper", "papier"), ("board", "tektura"), ("panel", "deska"),
+    ]
+    /// The supports whose "na …" is known: the line is "olej na płótnie"
+    /// of these, "olej, płyta HDF" of any other. None of the "na …" ends
+    /// in another (`parts` reads them off a line's end).
+    static let laid: [(name: String, on: String)] = [
+        ("płótno", "na płótnie"), ("papier", "na papierze"), ("tektura", "na tekturze"), ("deska", "na desce"),
+        ("karton", "na kartonie"), ("sklejka", "na sklejce"), ("płyta", "na płycie"),
+        ("płyta pilśniowa", "na płycie pilśniowej"), ("papier czerpany", "na papierze czerpanym"),
+        ("jedwab", "na jedwabiu"), ("szkło", "na szkle"), ("drewno", "na drewnie"), ("blacha", "na blasze"),
+        ("pergamin", "na pergaminie"), ("len", "na lnie"), ("juta", "na jucie"), ("bawełna", "na bawełnie"),
+        ("miedź", "na miedzi"),
     ]
 
     static func name(_ key: String) -> String? { techniques.first { $0.key == key }?.name }
     static func support(_ key: String) -> String? { supports.first { $0.key == key }?.name }
 
-    /// "olej na płótnie", "akwarela", "na papierze".
-    static func medium(technique: String?, support: String?) -> String {
-        let made = technique.flatMap(name) ?? ""
-        let on = support.flatMap { key in supports.first { $0.key == key }?.on } ?? ""
-        return [made, on].filter { !$0.isEmpty }.joined(separator: " ")
+    /// The card's line of the two: "olej na płótnie" where the support's
+    /// "na …" is known or he wrote it so himself, "olej, płyta HDF" (as
+    /// museums list it) where not; one of the two alone as it is
+    /// ("akwarela", "na papierze").
+    static func line(technique: String, support: String) -> String {
+        let made = technique.trimmingCharacters(in: .whitespacesAndNewlines)
+        let under = support.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !under.isEmpty else { return made }
+        let low = under.lowercased()
+        let on = low.hasPrefix("na ") ? under : laid.first { $0.name == low }?.on
+        guard !made.isEmpty else { return on ?? under }
+        return on.map { "\(made) \($0)" } ?? "\(made), \(under)"
     }
 
-    /// The chips back from a line written before ("Edytuj opis").
-    static func read(_ medium: String) -> (technique: String?, support: String?)? {
-        let text = medium.lowercased().trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty else { return (nil, nil) }
-        let technique = techniques.first { text.hasPrefix($0.name) }
-        let rest = technique.map { String(text.dropFirst($0.name.count)).trimmingCharacters(in: .whitespaces) } ?? text
-        let support = supports.first { rest == $0.on }
-        guard rest.isEmpty || support != nil else { return nil }  // his own words: kept as typed
-        return (technique?.key, support?.key)
+    /// The two back from a line written when it was one field ("Edytuj
+    /// opis" of a work described before): "olej na płótnie" is "olej" and
+    /// "płótno". A line that ends in no support known stays whole as the
+    /// technique ("olej i złoto na desce lipowej"): the line written of
+    /// the two is then the line he wrote.
+    static func parts(_ medium: String) -> (technique: String, support: String) {
+        let text = medium.trimmingCharacters(in: .whitespacesAndNewlines)
+        let low = text.lowercased()
+        guard low.count == text.count else { return (text, "") }
+        for known in laid where low == known.on || low.hasSuffix(" " + known.on) {
+            return (String(text.dropLast(known.on.count)).trimmingCharacters(in: .whitespaces), known.name)
+        }
+        return (text, "")
+    }
+
+    /// The two of a work: as he wrote them where the server keeps them,
+    /// read off its line where it does not (or kept none yet).
+    static func parts(of item: Item) -> (technique: String, support: String) {
+        let made = item.own?.technique ?? "", under = item.own?.support ?? ""
+        return made.isEmpty && under.isEmpty ? parts(item.medium) : (made, under)
+    }
+}
+
+/// The authors of his earlier works, offered while he writes one (Mateusz
+/// 2026-11-19 20:38 UTC: "proponuj z już wcześniej dodanych Własnych dzieł
+/// gdy zaczynam wpisywać (po 3 znakach)").
+enum OwnAuthors {
+    /// So many letters written before any is offered.
+    static let from = 3
+    /// So many offered at the most.
+    static let most = 4
+
+    /// Each author of his works once, as written the last time (the works
+    /// come the last added first).
+    static func known(_ works: [ItemSummary]) -> [String] {
+        var seen = Set<String>()
+        return works.map { $0.artist.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && seen.insert(fold($0)).inserted }
+    }
+
+    /// Those a word of whose name begins with what is written ("ryb" finds
+    /// "Mateusz Rybicki"), the letters' case and marks aside; none before
+    /// three letters, nor the one written whole already.
+    static func offered(for written: String, among authors: [String]) -> [String] {
+        let typed = fold(written)
+        guard typed.count >= from else { return [] }
+        let found = authors.filter { name in
+            let folded = fold(name)
+            guard folded != typed else { return false }
+            return folded.hasPrefix(typed) || folded.contains(" " + typed) || folded.contains("-" + typed)
+        }
+        return Array(found.prefix(most))
+    }
+
+    private static func fold(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespaces)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            .replacingOccurrences(of: "ł", with: "l")  // no mark to fold: a letter of its own
     }
 }
 

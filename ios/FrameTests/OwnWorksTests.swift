@@ -7,15 +7,119 @@ import XCTest
 /// "Dodaj własne dzieło": the technique's line and chips, the size's words,
 /// and what the server sends of his work.
 final class OwnWorksTests: XCTestCase {
-    func testTheTechniqueLineIsWrittenFromTheChipsAndReadBack() {
-        XCTAssertEqual(OwnTechnique.medium(technique: "oil", support: "canvas"), "olej na płótnie")
-        XCTAssertEqual(OwnTechnique.medium(technique: "watercolour", support: nil), "akwarela")
-        XCTAssertEqual(OwnTechnique.medium(technique: nil, support: "paper"), "na papierze")
-        XCTAssertEqual(OwnTechnique.read("olej na płótnie")?.technique, "oil")
-        XCTAssertEqual(OwnTechnique.read("olej na płótnie")?.support, "canvas")
-        XCTAssertEqual(OwnTechnique.read("Akwarela")?.technique, "watercolour")
-        // His own words stay his: no chip claims them.
-        XCTAssertNil(OwnTechnique.read("olej i złoto na desce lipowej"))
+    /// The technique and the support are a field each, and the card's
+    /// "Technika" is written of the two (Mateusz 2026-11-19 20:38 UTC:
+    /// "zrób dwa osobne pola i składaj z nich potem pole technika na
+    /// karcie dzieła").
+    func testTheCardsTechniqueIsWrittenOfTheTwoFields() {
+        XCTAssertEqual(OwnTechnique.line(technique: "olej", support: "płótno"), "olej na płótnie")
+        XCTAssertEqual(OwnTechnique.line(technique: " Olej ", support: "Płótno"), "Olej na płótnie")
+        XCTAssertEqual(OwnTechnique.line(technique: "akwarela", support: ""), "akwarela")
+        XCTAssertEqual(OwnTechnique.line(technique: "", support: "papier"), "na papierze")
+        // He wrote the "na …" himself: as he wrote it.
+        XCTAssertEqual(OwnTechnique.line(technique: "olej", support: "na desce lipowej"), "olej na desce lipowej")
+        // A support whose "na …" is not known: as museums list the two.
+        XCTAssertEqual(OwnTechnique.line(technique: "akryl", support: "płyta HDF"), "akryl, płyta HDF")
+        XCTAssertEqual(OwnTechnique.line(technique: "", support: "płyta HDF"), "płyta HDF")
+        XCTAssertEqual(OwnDescription(technique: "olej", support: "płótno").medium, "olej na płótnie")
+        // The hints' words are the menus' words.
+        XCTAssertEqual(OwnTechnique.name("oil"), "olej")
+        XCTAssertEqual(OwnTechnique.support("canvas"), "płótno")
+        XCTAssertNil(OwnTechnique.name("unknown"))
+        XCTAssertNil(OwnTechnique.support("unknown"))
+    }
+
+    /// A work described when the technique was one field: the two are
+    /// read off its line, and the line written of them is the same line.
+    func testTheTwoFieldsAreReadOffALineWrittenBefore() throws {
+        XCTAssertTrue(OwnTechnique.parts("olej na płótnie") == ("olej", "płótno"))
+        XCTAssertTrue(OwnTechnique.parts("Akwarela") == ("Akwarela", ""))
+        XCTAssertTrue(OwnTechnique.parts("na papierze") == ("", "papier"))
+        XCTAssertTrue(OwnTechnique.parts("tusz na papierze czerpanym") == ("tusz", "papier czerpany"))
+        // His own words stay whole, as the technique.
+        XCTAssertTrue(OwnTechnique.parts("olej i złoto na desce lipowej") == ("olej i złoto na desce lipowej", ""))
+        XCTAssertTrue(OwnTechnique.parts("") == ("", ""))
+        for line in ["olej na płótnie", "Akwarela", "na papierze", "olej i złoto na desce lipowej", "akryl, płyta HDF", ""] {
+            let two = OwnTechnique.parts(line)
+            XCTAssertEqual(OwnTechnique.line(technique: two.technique, support: two.support), line)
+        }
+        // None of the "na …" known ends in another: a line's end names one.
+        for known in OwnTechnique.laid {
+            XCTAssertFalse(OwnTechnique.laid.contains { $0.on != known.on && $0.on.hasSuffix(" " + known.on) }, known.on)
+            XCTAssertTrue(OwnTechnique.parts("olej " + known.on) == ("olej", known.name), known.on)
+        }
+
+        // "Edytuj opis": the two as the server keeps them, read off the
+        // line where it keeps none (a work described before, an older server).
+        func work(_ own: [String: Any]) throws -> Item {
+            let url = try XCTUnwrap(Bundle.main.url(forResource: "DemoFramed", withExtension: "json"))
+            let file = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+            var fields = try XCTUnwrap((file["items"] as? [[String: Any]])?.first)
+            fields["kind"] = "own"
+            fields["source"] = "upload"
+            fields["medium"] = "akryl, płyta HDF"
+            var whole: [String: Any] = ["hangs": "", "origin": ""]
+            whole.merge(own) { _, given in given }
+            fields["own"] = whole
+            return try LiveBackend.decoder().decode(Item.self, from: JSONSerialization.data(withJSONObject: fields))
+        }
+        let kept = try work(["technique": "akryl", "support": "płyta HDF"])
+        XCTAssertEqual(OwnDescription(kept).technique, "akryl")
+        XCTAssertEqual(OwnDescription(kept).support, "płyta HDF")
+        XCTAssertEqual(OwnDescription(kept).medium, kept.medium)
+        let none: [[String: Any]] = [[:], ["technique": "", "support": ""]]
+        for before in none {
+            let read = OwnDescription(try work(before))
+            XCTAssertEqual(read.technique, "akryl, płyta HDF")
+            XCTAssertEqual(read.support, "")
+            XCTAssertEqual(read.medium, "akryl, płyta HDF")
+        }
+    }
+
+    /// The authors of his earlier works are offered once he has written
+    /// three letters of one (Mateusz 2026-11-19 20:38 UTC: "proponuj z już
+    /// wcześniej dodanych Własnych dzieł gdy zaczynam wpisywać (po 3
+    /// znakach)").
+    func testTheAuthorsOfHisOtherWorksAreOfferedFromThreeLetters() {
+        let authors = ["Stefan Nowak", "Zofia Wyczółkowska-Lis", "Stanisław Wyspiański", "Jan Stanisławski"]
+        XCTAssertEqual(OwnAuthors.offered(for: "St", among: authors), [])
+        XCTAssertEqual(OwnAuthors.offered(for: "Ste", among: authors), ["Stefan Nowak"])
+        // A word of the name, whatever the letters' case and marks.
+        XCTAssertEqual(OwnAuthors.offered(for: "now", among: authors), ["Stefan Nowak"])
+        XCTAssertEqual(OwnAuthors.offered(for: "wyczol", among: authors), ["Zofia Wyczółkowska-Lis"])
+        XCTAssertEqual(OwnAuthors.offered(for: "lis", among: authors), ["Zofia Wyczółkowska-Lis"])
+        XCTAssertEqual(OwnAuthors.offered(for: "STAN", among: authors), ["Stanisław Wyspiański", "Jan Stanisławski"])
+        // Not the middle of a word, and not the one written whole already.
+        XCTAssertEqual(OwnAuthors.offered(for: "owak", among: authors), [])
+        XCTAssertEqual(OwnAuthors.offered(for: "stefan nowak ", among: authors), [])
+        XCTAssertEqual(OwnAuthors.offered(for: "   ", among: authors), [])
+        XCTAssertEqual(OwnAuthors.offered(for: "a b", among: ["A B C"]), ["A B C"])
+        // No more than a few.
+        let many = (1 ... 9).map { "Anna Nowak \($0)" }
+        XCTAssertEqual(OwnAuthors.offered(for: "Anna", among: many).count, OwnAuthors.most)
+    }
+
+    func testEachAuthorOfHisWorksIsKnownOnce() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        func work(_ id: Int, _ artist: String) throws -> ItemSummary {
+            let json = """
+            {"id": "upload:\(id)", "kind": "own", "source": "upload", "title": "", "artist": "\(artist)",
+             "date_text": "", "colors": [], "favorite": false}
+            """
+            return try decoder.decode(ItemSummary.self, from: Data(json.utf8))
+        }
+        let works = try [work(1, "Stefan Nowak"), work(2, ""), work(3, " stefan nowak"), work(4, "Zofia Lis")]
+        XCTAssertEqual(OwnAuthors.known(works), ["Stefan Nowak", "Zofia Lis"])
+    }
+
+    /// The title is written over as many lines as it takes; "return" in
+    /// such a field would be a new line, and lines pasted in become one.
+    func testATitleOfSeveralLinesIsOneLine() {
+        XCTAssertEqual(OwnDescriptionForm.oneLine("Spacer po klifie\n"), "Spacer po klifie")
+        XCTAssertEqual(OwnDescriptionForm.oneLine("Spacer \npo klifie"), "Spacer po klifie")
+        XCTAssertEqual(OwnDescriptionForm.oneLine("Spacer\n\n  po klifie\r\nw Pourville"), "Spacer po klifie w Pourville")
+        XCTAssertEqual(OwnDescriptionForm.oneLine("\n"), "")
     }
 
     func testTheSizeIsHeightByWidthInCentimetres() {
@@ -72,11 +176,21 @@ final class OwnWorksTests: XCTestCase {
     func testTheDescriptionGoesInTheServersWords() throws {
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
-        let text = OwnDescription(title: " Klif ", dateText: "1965", heightCm: 46, widthCm: 55)
+        let text = OwnDescription(
+            title: " Klif ", dateText: "1965", technique: " olej", support: "płótno ", heightCm: 46, widthCm: 55
+        )
         let sent = try JSONSerialization.jsonObject(with: encoder.encode(text.trimmed)) as? [String: Any]
         XCTAssertEqual(sent?["title"] as? String, "Klif")
         XCTAssertEqual(sent?["date_text"] as? String, "1965")
         XCTAssertEqual(sent?["height_cm"] as? Double, 46)
+        // The two fields, and the card's line written of them beside.
+        XCTAssertEqual(sent?["technique"] as? String, "olej")
+        XCTAssertEqual(sent?["support"] as? String, "płótno")
+        XCTAssertEqual(sent?["medium"] as? String, "olej na płótnie")
+        // No size given: none sent.
+        let bare = try JSONSerialization.jsonObject(with: encoder.encode(OwnDescription())) as? [String: Any]
+        XCTAssertNil(bare?["height_cm"])
+        XCTAssertEqual(bare?["medium"] as? String, "")
     }
 
     func testHisSizeGivesTheWorkItsShape() throws {

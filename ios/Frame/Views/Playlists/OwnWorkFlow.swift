@@ -582,7 +582,8 @@ struct OwnWorkFlow: View {
                 ScrollView {
                     OwnDescriptionForm(
                         text: $text, picture: picture, aspect: picture.map { Double($0.size.width / max($0.size.height, 1)) },
-                        hints: hints, readingHints: readingHints, places: places, measured: measured
+                        hints: hints, readingHints: readingHints, places: places, measured: measured,
+                        authors: authors, scroller: proxy
                     )
                     .pageWidth()
                     .padding(.horizontal, Theme.gutter)
@@ -615,6 +616,13 @@ struct OwnWorkFlow: View {
     private var places: [String] {
         var seen = Set<String>()
         return model.ownWorks.compactMap { $0.own?.hangs }.filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+
+    /// Who made his other works: offered while he writes the author.
+    private var authors: [String] {
+        // CI screenshots: the demo has no works of his yet.
+        if model.demoMode, LaunchRoute.scroll == "author" { return ["Claude Monet", "Camille Pissarro"] }
+        return OwnAuthors.known(model.ownWorks)
     }
 
     private func add() async {
@@ -662,11 +670,18 @@ struct OwnWorkFlow: View {
             text.title = "Spacer po klifie"
             text.artist = "Claude Monet"
             text.dateText = "1882"
-            text.medium = "olej na płótnie"
+            text.technique = "olej"
+            text.support = "płótno"
             text.heightCm = 65
             text.widthCm = 81
             text.hangs = "Salon"
             text.origin = "Prezent od dziadka"
+        }
+        if LaunchRoute.scroll == "author" {
+            // A title of two lines, and the author as he begins to write it.
+            try? await Task.sleep(for: .seconds(2))
+            text.title = "Spacer po klifie w Pourville, wczesne lato"
+            text.artist = "Cla"
         }
         if LaunchRoute.screen == "own-card" {
             try? await Task.sleep(for: .seconds(1))
@@ -896,7 +911,9 @@ extension OwnDescription {
     /// Without spaces at the ends.
     var trimmed: OwnDescription {
         var out = self
-        let paths: [WritableKeyPath<OwnDescription, String>] = [\.title, \.artist, \.dateText, \.medium, \.description, \.hangs, \.origin]
+        let paths: [WritableKeyPath<OwnDescription, String>] = [
+            \.title, \.artist, \.dateText, \.technique, \.support, \.description, \.hangs, \.origin,
+        ]
         for path in paths {
             out[keyPath: path] = out[keyPath: path].trimmingCharacters(in: .whitespacesAndNewlines)
         }

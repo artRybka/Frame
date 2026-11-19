@@ -308,6 +308,12 @@ jobs:
             capture own-scan 12 "own-scan-doubt-$appearance" -scanLook result -scanDoubt YES
             capture own-balance 18 "own-balance-$appearance" -scanBalance cool
             capture own-balance 18 "own-balance-none-$appearance"
+            # The description of an own work ("Opis"): its lower fields as
+            # filled (the technique and the support, a field each), and a
+            # title of two lines with the authors of his other works
+            # offered under the three letters written.
+            capture own-describe 26 "own-describe-$appearance" -scroll filled
+            capture own-describe 26 "own-describe-author-$appearance" -scroll author
             # A picture on its way (demo: 4 s, then 2.5 s preparing, 2.5 s
             # sending, 9 s drawing): the bar while sending, then the frame
             # painted over in watercolour, the drawing held early, midway and
