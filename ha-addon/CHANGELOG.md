@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.265
+
+- Szukaj: muzea czekają na pociągnięcie końca listy, gdy serwer znalazł
+  co najmniej 12 dzieł (dotąd dopiero od 60). Przy mniejszej liczbie
+  muzea szukają od razu. („Przy doszukiwaniu w muzeach - do jakiej
+  ilości nie ma potrzeby gestu „podciągnięcia”…”, „Albo wiesz co - 12”)
+
 ## 1.145.264
 
 - Pociągnięcie końca listy (Szukaj, „Podobne do”) w połowie drogi: komplet
