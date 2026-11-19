@@ -264,6 +264,8 @@ jobs:
             capture search-museums 8 "search-museums-$appearance"
             capture search-museums 10 "search-museums-typed-$appearance" -typed krak
             capture search-photo 12 "search-photo-$appearance"
+            capture search-typed 10 "search-typed-$appearance" -typed "van gogh"
+            capture search-typed 10 "search-typed-title-$appearance" -typed water
             capture search-like 10 "search-like-$appearance"
             capture search-like 10 "search-like-subject-$appearance" -likeBy subject
             capture search-like 10 "search-like-style-$appearance" -likeBy style
