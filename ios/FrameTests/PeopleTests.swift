@@ -45,4 +45,37 @@ final class PeopleTests: XCTestCase {
         """.utf8))
         XCTAssertTrue(old.isMine)
     }
+
+    func testAGuestIsNeitherTheOwnerNorAMember() throws {
+        let guest = try LiveBackend.decoder().decode(Me.self, from: Data("""
+        {"id": "u-5e6f7a8b", "name": "Ania", "role": "guest", "device_id": "1a2b3c4d",
+         "studies_left": 1, "people": true}
+        """.utf8))
+        XCTAssertFalse(guest.isOwner)
+        XCTAssertTrue(guest.isGuest)
+
+        let people = try LiveBackend.decoder().decode(People.self, from: Data("""
+        {"people": true, "study_limit": 3, "invites": [
+           {"id": "ab12", "name": "Ola", "user_id": null, "role": "guest", "expires_at": "2026-11-20T10:00:00+00:00"}],
+         "users": [
+           {"id": "owner", "name": "Mateusz", "role": "owner", "devices": [], "playlists": 3, "favorites": 9, "study_limit": null},
+           {"id": "u-5e6f7a8b", "name": "Ania", "role": "guest", "devices": [], "playlists": 0, "favorites": 2, "study_limit": 1}]}
+        """.utf8))
+        XCTAssertEqual(people.users.map(\.studyLimit), [nil, 1])
+        XCTAssertEqual(people.users.map(\.isGuest), [false, true])
+        XCTAssertEqual(people.invites.first?.role, "guest")
+
+        // A server before 1.145.271: no limits of each one's own.
+        let old = try LiveBackend.decoder().decode(Person.self, from: Data("""
+        {"id": "u-1", "name": "Paulina", "role": "member", "devices": [], "playlists": 1, "favorites": 2}
+        """.utf8))
+        XCTAssertNil(old.studyLimit)
+    }
+
+    func testOnlyWhoeverAddedAnOwnWorkAndTheOwnerMayEditIt() throws {
+        let theirs = OwnWork(by: "u-1")
+        let owners = OwnWork()
+        XCTAssertEqual(theirs.by, "u-1")
+        XCTAssertNil(owners.by)
+    }
 }

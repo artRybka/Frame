@@ -8,6 +8,15 @@ extension AppModel {
     /// server answered (and on an older server or in the demo): the owner.
     var isOwner: Bool { me?.isOwner ?? true }
 
+    /// A guest sends nothing to the frame and has no "Teraz" nor "Ramka".
+    var isGuest: Bool { me?.isGuest ?? false }
+
+    /// Whether this person may edit and remove a work of someone's own:
+    /// whoever added it, and the owner (Mateusz 2026-11-19).
+    func mayEditOwn(_ item: Item) -> Bool {
+        isOwner || (item.own?.by.map { !$0.isEmpty && $0 == me?.id } ?? false)
+    }
+
     /// An invitation's link opened (QR code, AirDrop, Wiadomości).
     func open(invitation url: URL) -> Bool {
         guard let found = Invitation(url: url) else { return false }

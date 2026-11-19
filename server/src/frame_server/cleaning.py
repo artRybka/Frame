@@ -15,6 +15,13 @@ them (``ImageCache.recut``), and the colours, the colour bar and the search
 are measured on the cleaned picture. The frame, the lists and the studies
 show it. "Przywróć…" goes back to the picture as it came.
 
+Since 2026-11-19 it is each person's own (Mateusz: "zdejmij werniks,
+odżółć papier to indywidualne ustawienia każdego z użytkowników"): the
+reading is the work's, who sees it so is ``Item.cleaned_by``. The kept
+original, thumbnail and colours, and the frame's rotation, go by the
+owner's choice; another person's other choice is a picture made apart
+(``ImageCache.variant``), and the frame shows a work they send their way.
+
 No model is asked and nothing is spent. A study written and a composition
 sheet drawn before stay as they are (they cost; the owner asks again).
 
@@ -38,6 +45,7 @@ from PIL import Image
 
 from .imaging import recovery
 from .library.models import Cleaned, Item, ItemKind
+from .library.viewer import OWNER_ID
 from .library.vocabulary import is_photograph
 
 if TYPE_CHECKING:
@@ -98,21 +106,36 @@ class Cleaning:
 
     # -- the owner's asks -------------------------------------------------------------
 
-    def clean(self, item: Item, made: str) -> Item:
-        """ "Zdejmij werniks" / "Odżółć papier": the work shown cleaned
-        from now on. Raises :class:`NothingToClean` when it has nothing to
-        offer; errors of the download are the caller's."""
-        found = self._read(item, made)
-        if found is None:
-            raise NothingToClean(f"nothing to clean in {item.id}")
-        return self.apply(item, found)
+    def clean(self, item: Item, made: str, user: str = OWNER_ID) -> Item:
+        """ "Zdejmij werniks" / "Odżółć papier": ``user`` sees the work
+        cleaned from now on. Raises :class:`NothingToClean` when it has
+        nothing to offer; errors of the download are the caller's."""
+        reading = item.cleaned_reading()
+        if reading is None:
+            reading = self._read(item, made)
+            if reading is None:
+                raise NothingToClean(f"nothing to clean in {item.id}")
+            who = [user]
+        else:
+            who = sorted({*item.cleaned_viewers(), user})
+        return self._put(item, reading, who)
 
-    def give_up(self, item: Item) -> Item:
-        """ "Przywróć werniks" / "Przywróć ton papieru": the picture as it
-        came again."""
+    def give_up(self, item: Item, user: str = OWNER_ID) -> Item:
+        """ "Przywróć werniks" / "Przywróć ton papieru": ``user`` sees the
+        picture as it came again. The reading goes once nobody sees it."""
         if item.cleaned is None:
             return item
-        return self.apply(item, None)
+        who = [u for u in item.cleaned_viewers() if u != user]
+        return self._put(item, item.cleaned if who else None, who or None)
+
+    def _put(self, item: Item, reading: Cleaned | None, who: list[str] | None) -> Item:
+        """``reading`` and who sees it kept; the kept pictures made again
+        when what the owner sees changed."""
+        before = item.cleaned_shown()
+        changed = item.model_copy(update={"cleaned": reading, "cleaned_by": who})
+        if changed.cleaned_shown() == before:
+            return self.library.update(item.id, cleaned=reading, cleaned_by=who) or changed
+        return self.apply(item, reading, who)
 
     # -- another copy takes the picture's place ---------------------------------------
 
@@ -122,11 +145,11 @@ class Cleaning:
         is cleaned the same; any other copy is another photograph and is
         left as it comes."""
         stored = self.library.get(before.id)
-        if stored is None or stored.cleaned is None or stored.cleaned_shown() is not None:
+        if stored is None or stored.cleaned is None or stored.cleaned_reading() is not None:
             return stored or before
         if stored.sharper is None or not stored.sharper.restored:
             return stored
-        if before.cleaned_shown() is None:
+        if before.cleaned_reading() is None:
             return stored  # drawn from a picture that was not shown cleaned
         cleaned = stored.cleaned.model_copy(update={"drawn": stored.picture_key(), "at": _now()})
         return self.apply(stored, cleaned)
@@ -187,10 +210,15 @@ class Cleaning:
             at=_now(),
         )
 
-    def apply(self, item: Item, cleaned: Cleaned | None) -> Item:
-        """``cleaned`` kept for the work and its pictures made again from
-        it: the original, the thumbnail, the colours, the study's details."""
+    def apply(
+        self, item: Item, cleaned: Cleaned | None, who: list[str] | Literal["same"] | None = "same"
+    ) -> Item:
+        """``cleaned`` kept for the work (seen by ``who``, by default those
+        who saw it) and its pictures made again from it: the original, the
+        thumbnail, the colours, the study's details."""
         changes: dict[str, Any] = {"cleaned": cleaned}
+        if who != "same":
+            changes["cleaned_by"] = who
         updated = self.library.update(item.id, **changes) or item.model_copy(update=changes)
         self.images.recut(updated)
         if self.importer is not None:

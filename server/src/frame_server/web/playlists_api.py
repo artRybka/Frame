@@ -21,7 +21,7 @@ from ..library.duplicates import Works
 from ..library.icloud import album_token
 from ..service import FrameService
 from ..users import User
-from .deps import CurrentUser, require_token, service
+from .deps import CurrentUser, require_frame, require_token, service
 from .library_api import museum_trouble
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["playlists"])
@@ -329,7 +329,9 @@ def last_sync(playlist_id: int, svc: Svc, user: CurrentUser) -> AlbumSync | None
     return svc.library.album_sync(playlist_id)
 
 
-@router.post("/playlists/{playlist_id}/play", status_code=202)
+@router.post(
+    "/playlists/{playlist_id}/play", status_code=202, dependencies=[Depends(require_frame)]
+)
 async def play(playlist_id: int, svc: Svc, user: CurrentUser) -> dict[str, Any]:
     _playlist(svc, playlist_id, user)  # "Ulubione" too: only deleting it is refused
     settings = svc.player.settings

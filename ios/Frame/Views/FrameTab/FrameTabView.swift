@@ -371,24 +371,28 @@ struct FrameTabView: View {
     private var powerTile: some View {
         Menu {
             Button("Obudź ramkę", systemImage: "sun.max") { Task { await model.wake() } }
-            Button("Uśpij ramkę", systemImage: "moon.zzz") { Task { await model.sleepFrame() } }
-            Menu {
-                ForEach(Self.restChoices, id: \.hours) { choice in
-                    Button(choice.label) { Task { await model.restFrame(hours: choice.hours) } }
+            // The rest is the owner's (Mateusz 2026-11-19: "Domownik bez
+            // menu zasilania"; waking it harms nothing).
+            if model.isOwner {
+                Button("Uśpij ramkę", systemImage: "moon.zzz") { Task { await model.sleepFrame() } }
+                Menu {
+                    ForEach(Self.restChoices, id: \.hours) { choice in
+                        Button(choice.label) { Task { await model.restFrame(hours: choice.hours) } }
+                    }
+                } label: {
+                    Label("Głęboki sen", systemImage: "moon.stars")
                 }
-            } label: {
-                Label("Głęboki sen", systemImage: "moon.stars")
+                Button("Uruchom aplikację ponownie", systemImage: "arrow.triangle.2.circlepath") {
+                    Task { await model.installPanelApp() }
+                }
+                Button("Uruchom ramkę ponownie", systemImage: "arrow.clockwise.circle") {
+                    Task { await model.restartFrame() }
+                }
+                // The app reboots the panel: a silent one would not.
+                .disabled(appSilence != nil)
+                Divider()
+                Button("Wyłącz ramkę", systemImage: "power", role: .destructive) { confirmingOff = true }
             }
-            Button("Uruchom aplikację ponownie", systemImage: "arrow.triangle.2.circlepath") {
-                Task { await model.installPanelApp() }
-            }
-            Button("Uruchom ramkę ponownie", systemImage: "arrow.clockwise.circle") {
-                Task { await model.restartFrame() }
-            }
-            // The app reboots the panel: a silent one would not.
-            .disabled(appSilence != nil)
-            Divider()
-            Button("Wyłącz ramkę", systemImage: "power", role: .destructive) { confirmingOff = true }
         } label: {
             StatusTile(title: "Zasilanie", badge: TileBadge(systemImage: "power")) {
                 VStack(alignment: .leading, spacing: 6) {

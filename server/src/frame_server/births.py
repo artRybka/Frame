@@ -102,7 +102,8 @@ class Births:
         many there are."""
         if user is None:
             everyone = self.library.query(PlaylistRules(kinds=[ItemKind.ARTWORK]))[1]
-            items: list[Item] = [i for i in everyone if i.favorite]
+            liked = self.library.household_likes()
+            items: list[Item] = [i for i in everyone if i.id in liked]
         else:
             rules = PlaylistRules(kinds=[ItemKind.ARTWORK], favorites_only=True)
             items = self.library.query(rules, user=user)[1]

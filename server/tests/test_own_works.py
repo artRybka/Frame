@@ -89,6 +89,7 @@ def test_a_photograph_becomes_a_work_cut_out_of_its_frame(
             # An app that writes the technique as one line: the two are not known.
             "technique": "",
             "support": "",
+            "by": "",  # the owner's
         }
         assert work["cut"]["by"] == "auto" and work["cut"]["shape"] == "rectangle"
         # The photograph waits no longer.

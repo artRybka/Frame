@@ -235,6 +235,7 @@ class FrameService:
             log.info("repaired stored text and links of %d items", repaired)
         # The owner (the server's token) and household members.
         self.users = Users(self.library, settings.api_token)
+        self.library.quiet_fans = self.users.guests
         # Before anything reads the panel's address: the app's values win.
         self.panel_config = PanelConfigStore(settings, self.library)
         # Quotas of the sources that have one (library/policy.py) outlive a restart.

@@ -26,9 +26,13 @@ from ..own_works import (
     Merged,
 )
 from ..service import FrameService
-from .deps import require_owner, service
+from ..users import User
+from .deps import CurrentUser, may_edit_own, require_owner, require_token, service
 
-router = APIRouter(prefix="/api", dependencies=[Depends(require_owner)], tags=["own"])
+#: Everyone adds works of their own (Mateusz 2026-11-19); what is kept of the
+#: scans for the merging to be tuned on is the owner's.
+router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["own"])
+Owner = [Depends(require_owner)]
 Svc = Annotated[FrameService, Depends(service)]
 
 
@@ -63,10 +67,12 @@ def _corners(raw: list[tuple[float, float]] | None) -> list[tuple[float, float]]
     return quad
 
 
-async def _own(svc: FrameService, item_id: str) -> Item:
+async def _own(svc: FrameService, item_id: str, user: User) -> Item:
     item = svc.library.get(item_id)
     if item is None:
         raise HTTPException(404, f"no work {item_id!r}")
+    if not may_edit_own(user, item):
+        raise HTTPException(403, "to dzieło dodała inna osoba")
     return item
 
 
@@ -274,7 +280,7 @@ async def photo(token: str, svc: Svc, side: int | None = None) -> Response:
     return FileResponse(found, media_type="image/jpeg")
 
 
-@router.get("/debug/own-scans")
+@router.get("/debug/own-scans", dependencies=Owner)
 async def scans(svc: Svc) -> list[dict[str, object]]:
     """The scans' photographs kept two weeks for the merging to be tuned
     on (Mateusz 2026-11-16): each scan's files and what the merge noted."""
@@ -285,7 +291,7 @@ async def scans(svc: Svc) -> list[dict[str, object]]:
 _KEPT = {".jpg": "image/jpeg", ".json": "application/json", ".npy": "application/octet-stream"}
 
 
-@router.get("/debug/own-scans/{token}/{name}")
+@router.get("/debug/own-scans/{token}/{name}", dependencies=Owner)
 async def scan_file(token: str, name: str, svc: Svc) -> FileResponse:
     try:
         path = svc.own_works.scan_file(token, name)
@@ -294,7 +300,7 @@ async def scan_file(token: str, name: str, svc: Svc) -> FileResponse:
     return FileResponse(path, media_type=_KEPT[path.suffix])
 
 
-@router.get("/debug/own-scans/{token}/{name}/pixels")
+@router.get("/debug/own-scans/{token}/{name}/pixels", dependencies=Owner)
 async def scan_pixels(token: str, name: str, svc: Svc) -> StreamingResponse:
     """A kept scan's photograph as the server's merge reads it, a ``.npy``
     file (rows × columns × RGB, a side one small): the phone merges the
@@ -317,7 +323,7 @@ async def scan_pixels(token: str, name: str, svc: Svc) -> StreamingResponse:
     )
 
 
-@router.put("/debug/own-scans/{token}/{name}")
+@router.put("/debug/own-scans/{token}/{name}", dependencies=Owner)
 async def phone_file(token: str, name: str, request: Request, svc: Svc) -> dict[str, int]:
     """What the phone made of a kept scan's photographs itself
     (``phone.npy``, as :func:`scan_pixels` gave them) and what it noted of
@@ -368,10 +374,11 @@ async def hints(ask: HintsAsk, svc: Svc) -> Hints:
 
 
 @router.post("/own/works", response_model=Item)
-async def add_work(new: NewOwnWork, svc: Svc) -> Item:
-    """The work added to the catalogue, cut and described."""
+async def add_work(new: NewOwnWork, svc: Svc, user: CurrentUser) -> Item:
+    """The work added to the catalogue, cut and described; whoever added
+    it is noted (``OwnWork.by``)."""
     try:
-        return await run_in_threadpool(
+        item = await run_in_threadpool(
             svc.own_works.add,
             new.token,
             _corners(new.corners),
@@ -382,12 +389,16 @@ async def add_work(new: NewOwnWork, svc: Svc) -> Item:
         )
     except LookupError as err:
         raise HTTPException(404, str(err)) from err
+    if user.is_owner or item.own is None:
+        return item
+    own = item.own.model_copy(update={"by": user.id})
+    return svc.library.update(item.id, own=own) or item
 
 
 @router.put("/own/works/{item_id:item}", response_model=Item)
-async def describe(item_id: str, text: Description, svc: Svc) -> Item:
+async def describe(item_id: str, text: Description, svc: Svc, user: CurrentUser) -> Item:
     """ "Edytuj opis"."""
-    item = await _own(svc, item_id)
+    item = await _own(svc, item_id, user)
     try:
         return await run_in_threadpool(svc.own_works.describe, item, text)
     except ValueError as err:
@@ -395,9 +406,9 @@ async def describe(item_id: str, text: Description, svc: Svc) -> Item:
 
 
 @router.put("/own/works/{item_id:item}/photo", response_model=Item)
-async def retake(item_id: str, photo: PhotoCut, svc: Svc) -> Item:
+async def retake(item_id: str, photo: PhotoCut, svc: Svc, user: CurrentUser) -> Item:
     """ "Zrób zdjęcie ponownie": the new photograph, cut; the text stays."""
-    item = await _own(svc, item_id)
+    item = await _own(svc, item_id, user)
     try:
         return await run_in_threadpool(
             svc.own_works.retake,

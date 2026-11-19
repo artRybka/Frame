@@ -301,6 +301,8 @@ struct OwnWork: Codable, Hashable, Sendable {
     /// a work described before: read off the line then (`OwnTechnique.parts`).
     var technique: String? = nil
     var support: String? = nil
+    /// Who added it: a member's or guest's id; "" or nil for the owner.
+    var by: String? = nil
 
     /// "46 × 55 cm" (height first, as museums give it); nil without both.
     var sizeText: String? {

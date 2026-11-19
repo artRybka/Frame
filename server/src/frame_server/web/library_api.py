@@ -70,7 +70,7 @@ from ..player import hold_from
 from ..schedule import FrameSettings
 from ..service import FrameService
 from ..users import User
-from .deps import CurrentUser, require_owner, require_token, service
+from .deps import CurrentUser, may_edit_own, require_frame, require_token, service
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["library"])
@@ -468,6 +468,8 @@ class FineView(BaseModel):
 @router.get("/library/items/{item_id:item}/fine", response_model=FineView)
 async def item_fine(item_id: str, svc: Svc) -> FineView:
     item = await _work(svc, item_id)
+    if item.cleaned_differs(viewer_id()):  # the tiles are of the picture kept
+        return FineView()
     fine = await run_in_threadpool(svc.images.fine, item)
     if fine is None:
         return FineView()
@@ -1012,7 +1014,10 @@ async def copy_spot(
 
 
 @router.patch("/library/items/{item_id:item}", response_model=Item)
-async def patch_item(item_id: str, patch: ItemPatch, svc: Svc) -> Item:
+async def patch_item(item_id: str, patch: ItemPatch, svc: Svc, user: CurrentUser) -> Item:
+    if user.is_guest and (patch.excluded is not None or patch.look is not None):
+        # "Ukryj dzieło" hides it from the whole household.
+        raise HTTPException(403, "gość nie ukrywa dzieł")
     item = await _work(svc, item_id, save=True)
     changes = patch.model_dump(exclude_none=True)
     if patch.look is not None:
@@ -1041,9 +1046,13 @@ async def patch_item(item_id: str, patch: ItemPatch, svc: Svc) -> Item:
     return updated
 
 
-@router.delete("/library/items/{item_id:item}", dependencies=[Depends(require_owner)])
-def delete_item(item_id: str, svc: Svc) -> dict[str, bool]:
+@router.delete("/library/items/{item_id:item}")
+def delete_item(item_id: str, svc: Svc, user: CurrentUser) -> dict[str, bool]:
+    """The owner's "Usuń z katalogu"; a work of someone's own is removed by
+    whoever added it, too."""
     item = _item(svc, item_id)
+    if not may_edit_own(user, item):
+        raise HTTPException(403, "tylko właściciel ramki")
     svc.library.delete(item_id)
     svc.images.remove(item)
     return {"deleted": True}
@@ -1063,7 +1072,15 @@ async def item_thumb(item_id: str, svc: Svc, request: Request, tile: bool = Fals
 
     It goes with its stamp (``ETag``). A phone keeps a thumbnail for a day
     and then asks whether it is still the one with that stamp: it is told
-    so (304) in place of the picture again, and keeps it for another day."""
+    so (304) in place of the picture again, and keeps it for another day.
+
+    A person who sees the work's cleaning otherwise than the owner gets
+    the thumbnail as they see it (``ImageCache.variant``)."""
+    other = await _variant(svc, item_id, thumb=True)
+    if other is not None:
+        if tile:
+            other = await to_thread.run_sync(svc.images.tile, other, limiter=THUMB_THREADS)
+        return FileResponse(other, media_type="image/jpeg", headers={"Cache-Control": THUMB_CACHE})
     kept = await to_thread.run_sync(
         lambda: svc.images.sent_thumb(item_id, tile=tile, have=_stamps(request)),
         limiter=KEPT_THREADS,
@@ -1092,9 +1109,34 @@ async def item_thumb(item_id: str, svc: Svc, request: Request, tile: bool = Fals
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": THUMB_CACHE})
 
 
+async def _variant(svc: FrameService, item_id: str, thumb: bool) -> Path | None:
+    """The asking person's own picture of a work they see cleaned
+    otherwise than the owner (``Item.cleaned_by``); None for the one kept."""
+    stored = svc.library.get(item_id)
+    user = viewer_id()
+    if stored is None or not stored.cleaned_differs(user):
+        return None
+    cleaned = stored.cleaned_shown(user) is not None
+    limiter = THUMB_THREADS if thumb else SHOWN_THREADS
+    try:
+        return await to_thread.run_sync(
+            urgent_call(lambda: svc.images.variant(stored, cleaned, thumb=thumb, urgent=True)),
+            limiter=limiter,
+        )
+    except Gone as err:
+        raise HTTPException(410, f"no picture anywhere: {err}") from err
+    except (httpx.HTTPError, OSError) as err:
+        raise HTTPException(502, f"image unavailable: {err}") from err
+
+
 @router.get("/library/items/{item_id:item}/image")
 async def item_image(item_id: str, svc: Svc) -> FileResponse:
     """The original as the card shows it: before any download in the background."""
+    other = await _variant(svc, item_id, thumb=False)
+    if other is not None:
+        return FileResponse(
+            other, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"}
+        )
     item = await _work(svc, item_id, threads=SHOWN_THREADS)
     try:
         path, original = await to_thread.run_sync(
@@ -1149,8 +1191,12 @@ async def item_recovery(item_id: str, made: Made, svc: Svc) -> RecoveryView:
     are for the apps of 1.145.155–161, whose card showed a preview with a
     slider."""
     item = await _work(svc, item_id, threads=SHOWN_THREADS)
-    if item.cleaned_shown() is not None or not by_its_data(item, made):
+    user = viewer_id()
+    if item.cleaned_shown(user) is not None or not by_its_data(item, made):
         return RecoveryView(kind="none")
+    reading = item.cleaned_reading()
+    if reading is not None:  # read already, someone else sees it so
+        return RecoveryView(kind=reading.kind, strength=reading.strength)
     try:
         path, _ = await to_thread.run_sync(svc.images.picture, item, True, limiter=SHOWN_THREADS)
     except Gone as err:
@@ -1236,7 +1282,8 @@ async def put_cleaned(item_id: str, made: Made, svc: Svc) -> Item:
     if stored is None:  # a museum work only looked at: kept for a while, as for its cut
         stored = await run_in_threadpool(svc.importer.add, item.model_copy(update={"pooled": True}))
     try:
-        return await run_in_threadpool(urgent_call(lambda: svc.cleaning.clean(stored, made)))
+        user = viewer_id()
+        return await run_in_threadpool(urgent_call(lambda: svc.cleaning.clean(stored, made, user)))
     except NothingToClean as err:
         raise HTTPException(422, str(err)) from err
     except Gone as err:
@@ -1253,7 +1300,7 @@ async def delete_cleaned(item_id: str, svc: Svc) -> Item:
     stored = svc.library.get(item.id)
     if stored is None or stored.cleaned is None:
         return stored or item
-    return await run_in_threadpool(svc.cleaning.give_up, stored)
+    return await run_in_threadpool(svc.cleaning.give_up, stored, viewer_id())
 
 
 @router.get("/library/items/{item_id:item}/cleaned/before")
@@ -1728,18 +1775,24 @@ def _save_framing(
     return updated
 
 
-@router.post("/library/items/{item_id:item}/show", status_code=202)
+@router.post(
+    "/library/items/{item_id:item}/show", status_code=202, dependencies=[Depends(require_frame)]
+)
 async def show_item(item_id: str, request: ShowRequest, svc: Svc) -> dict[str, Any]:
     item = await _work(svc, item_id, save=True)
     _remember_sent(svc, item)
+    svc.player.sent_as_seen(item, viewer_id())
     svc.background(svc.player.show(item, "app", hold_from(request.hold)))
     return {"accepted": True, "item_id": item.id}
 
 
-@router.post("/library/items/{item_id:item}/queue", status_code=202)
+@router.post(
+    "/library/items/{item_id:item}/queue", status_code=202, dependencies=[Depends(require_frame)]
+)
 async def queue_item(item_id: str, svc: Svc) -> dict[str, Any]:
     """The owner's "Dodaj do kolejki": the work is shown at the next change."""
     item = await _work(svc, item_id, save=True)
+    svc.player.sent_as_seen(item, viewer_id())
     svc.player.queue_next(item.id)
     _remember_sent(svc, item)
     svc.background(svc.player.get_ready())
@@ -1757,6 +1810,7 @@ def _remember_sent(svc: FrameService, item: Item) -> None:
 @router.post("/library/upload", response_model=Item)
 async def upload(
     svc: Svc,
+    user: CurrentUser,
     file: Annotated[UploadFile, File()],
     kind: Annotated[ItemKind, Form()] = ItemKind.OWN,
     title: Annotated[str, Form()] = "",
@@ -1772,6 +1826,8 @@ async def upload(
     With ``look`` (Look JSON) a photo is sent once ("Zdjęcie na ramkę"): it
     is shown or queued from the app with that look and stays out of every
     list and rotation."""
+    if look is not None and user.is_guest:
+        raise HTTPException(403, "gość nie wysyła zdjęć na ramkę")
     data = await file.read()
     photo = (
         PhotoInfo(taken_at=taken_at, latitude=latitude, longitude=longitude)

@@ -1830,6 +1830,7 @@ class OwnWorks:
             width_cm=text.width_cm,
             technique=text.technique.strip(),
             support=text.support.strip(),
+            by=item.own.by if item.own is not None else "",
         )
         updated = self.library.update(
             item.id,
