@@ -297,3 +297,44 @@ struct SearchWaiting: View {
             .accessibilityLabel("Szukam")
     }
 }
+
+/// The end of "Podobne do" while its less near works wait to be asked for:
+/// the squares stand pale in their row and light one by one as the end is
+/// pulled further; let go with all of them lit, the next step comes. A tap
+/// (or VoiceOver's action) asks for it too.
+struct PullForMore: View {
+    /// How many are lit.
+    let lit: Int
+    let more: () -> Void
+    var height: CGFloat = 96
+
+    static let count = SquareGame.indices.count
+    /// How far past the end lights one more square.
+    static let pullPerSquare: CGFloat = 16
+
+    var body: some View {
+        let side = SquareGame.side
+        HStack(spacing: SquareGame.gap) {
+            ForEach(SquareGame.indices, id: \.self) { index in
+                let on = index < lit
+                Rectangle()
+                    .fill(Theme.iconSquares[index])
+                    .frame(width: side, height: side)
+                    .opacity(on ? 1 : 0.2)
+                    .offset(y: on ? -0.6 * side : 0)
+                    .animation(.snappy(duration: 0.18), value: on)
+            }
+        }
+        // On the line where the waiting squares stand, so nothing jumps
+        // when they take over.
+        .padding(.bottom, SquaresAnimation.fadeRoom)
+        .frame(maxWidth: .infinity, minHeight: height, maxHeight: height, alignment: .bottom)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: more)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Mniej podobne")
+        .accessibilityHint("Pociągnij koniec listy albo stuknij, aby doczytać")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(perform: more)
+    }
+}
