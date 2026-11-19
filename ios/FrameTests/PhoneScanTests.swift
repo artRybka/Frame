@@ -837,18 +837,25 @@ final class PhoneScanTests: XCTestCase {
         cleaned.straightened = 0.614
         var note = try told(cleaned)
         var said = try XCTUnwrap(note["straight"] as? [String: Any])
-        XCTAssertEqual(said["k1"] as? Double, Self.lensNumber)
+        // (Foundation writes and reads some numbers a last digit off:
+        // -0.026 came back -0.026000000000000002. The server takes a
+        // bend for its own within far more, `LensBend.same`.)
+        XCTAssertEqual(try XCTUnwrap(said["k1"] as? Double), Self.lensNumber, accuracy: 1e-12)
         XCTAssertEqual((said["table"] as? [Double])?.count, 0)
         XCTAssertEqual(said["centre"] as? [Double], [0.5, 0.5])
         let phone = try XCTUnwrap(note["phone"] as? [String: Any])
-        XCTAssertEqual(phone["straight"] as? Double, 0.61)
+        XCTAssertEqual(try XCTUnwrap(phone["straight"] as? Double), 0.61, accuracy: 1e-9)
         XCTAssertLessThanOrEqual(phone.count, 32)  // the most the server takes
 
         cleaned.straight = OwnBend(table: Self.lensTable, centre: Self.lensCentre)
         note = try told(cleaned)
         said = try XCTUnwrap(note["straight"] as? [String: Any])
-        XCTAssertEqual(said["table"] as? [Double], Self.lensTable)
-        XCTAssertEqual(said["centre"] as? [Double], Self.lensCentre)
+        let table = try XCTUnwrap(said["table"] as? [Double])
+        let centre = try XCTUnwrap(said["centre"] as? [Double])
+        XCTAssertEqual(table.count, Self.lensTable.count)
+        for (told, was) in zip(table, Self.lensTable) { XCTAssertEqual(told, was, accuracy: 1e-12) }
+        XCTAssertEqual(centre.count, 2)
+        for (told, was) in zip(centre, Self.lensCentre) { XCTAssertEqual(told, was, accuracy: 1e-12) }
         XCTAssertEqual(said["k1"] as? Double, 0)
         // A scan as the photographs were taken says nothing of it.
         cleaned.straight = nil
