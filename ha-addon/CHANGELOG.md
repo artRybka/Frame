@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.145.267
+
+- Bateria nie liczy już snu bez Wi-Fi za darmo. Po zdjęciu z ładowarki
+  ramka przez około dwie i pół doby pokazuje równe 100%, a serwer brał
+  te godziny snu za dowód, że sen nic nie kosztuje. Teraz liczy od
+  ostatniego odczytu 100%: sen kosztuje ok. 1% na dobę, a dzień z jedną
+  zmianą obrazu ok. 2%, tyle ile ramka naprawdę zużyła 18–19 listopada.
+  Kafelek pokaże ok. 6 tygodni zamiast prawie 3 miesięcy.
+- „Trafność” działa przy jednej pobudce na dobę: odczyty co 24 godziny
+  z kilkoma sekundami nie mieściły się w oknie doby.
+- Daty pod wykresem baterii nie nachodzą już na siebie.
+
 ## 1.145.266
 
 - Skan ekranu, na którym coś się w trakcie zmieniło, nie wychodzi już
