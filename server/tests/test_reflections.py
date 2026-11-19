@@ -874,3 +874,69 @@ def test_a_side_view_shows_the_works_tone_from_where_its_lines_are_the_others() 
     whole = reflections._counts(views, ht, wd)
     assert tone[1][:, 28].min() == 1 and whole[1][:, 28].max() < 0.5
     assert tone[1][:, :10].max() == 0
+
+
+def test_around_the_corners_no_more_goes_than_at_them() -> None:
+    """His cows behind glass with a lamp, in a frame that stands out from
+    the wall, the corners at the frame's outer edge (2026-11-19 00:54
+    UTC; merged by his phone for the trial, 07:24 UTC). What lies around
+    the corners is cleaned with the work (:data:`reflections.AROUND`),
+    but the wall there lies deeper than the work the side views are laid
+    over by: they show the frame's dark side over it. The phone took 14
+    levels of 110 off the wall in a stripe down the frame where the
+    server took one (and six to eight further down, and 33 of 78 along
+    the frame's top): what came of such a place turned on a part of a
+    pixel. Here the wall beside the work went from 160 to 87."""
+    scene = _scene()
+    deep = scene.copy()
+    deep[Y0 - 14 : Y1 + 14, X1 : X1 + 14] = 0.03
+    deep[Y0 - 14 : Y1 + 14, X0 - 14 : X0] = 0.03
+    clean = _coded(scene)
+    first = _coded(scene + _glass(0.0, None, (520, 600)))
+    left = _coded(_from_side(deep + _glass(0.03, (560, 300, 860, 620), None), -1) * 0.9)
+    right = _coded(_from_side(deep + _glass(0.04, None, (300, 950)), 1) * 1.1)
+    done = merge(first, [left, right], CORNERS)
+    assert done.used == 2 and done.removed > 0.03
+
+    rows = slice(Y0 + 60, Y1 - 60)
+    # The lamp goes from the work as before.
+    inner = (slice(540, 660), slice(440, 600))
+    assert np.abs(done.image[inner].astype(int) - clean[inner]).mean() < 6
+    # Well within the corners some four levels go all over; beside the
+    # work the wall loses no more.
+    within = float(
+        (first[rows, X0 + 40 : X1 - 40].astype(int) - done.image[rows, X0 + 40 : X1 - 40]).mean()
+    )
+    for beside in (slice(X1 + 2, X1 + 10), slice(X0 - 10, X0 - 2)):
+        gone = float((first[rows, beside].astype(int) - done.image[rows, beside]).mean())
+        assert gone < within + 3, (gone, within)
+    # Beyond what is cleaned around the corners nothing was ever touched.
+    assert np.array_equal(done.image[:, X1 + 40 :], first[:, X1 + 40 :])
+
+
+def test_what_is_taken_off_around_the_corners_is_held_to_what_is_within() -> None:
+    wd, ht = 400, 300
+    by = reflections.AROUND / (1 + 2 * reflections.AROUND)
+    mx, my = round(wd * by), round(ht * by)
+    assert (mx, my) == (6, 4)
+    rng = np.random.default_rng(3)
+    part = rng.uniform(0.0, 0.02, (ht, wd, 3)).astype(np.float32)
+    part[:, wd - mx :] = 0.5  # much taken off beside the right edge
+    part[:my] = -0.3  # and light put in above the top one
+    part[ht - my :, 100:200] = 0.0  # none below a part of the bottom one
+    held = reflections._around(part)
+    assert held.shape == part.shape and held.dtype == np.float32
+    # Within the corners as it was, to the bit.
+    assert np.array_equal(held[my : ht - my, mx : wd - mx], part[my : ht - my, mx : wd - mx])
+    # Around them no more than well within, either way; less stays less.
+    assert held[my : ht - my, wd - mx :].max() <= 0.02
+    assert held[:my].min() >= 0 and held[:my].max() <= 0.02
+    assert np.array_equal(held[ht - my :, 100:200], part[ht - my :, 100:200])
+    # How much of a place is one thing (H × W × 1, or H × W) keeps its shape.
+    one = reflections._around(part[..., :1])
+    assert one.shape == (ht, wd, 1) and np.array_equal(
+        one[..., 0], reflections._around(part[..., 0])
+    )
+    # Too small a picture to have anything well within: as it is.
+    small = part[:12, :12]
+    assert reflections._around(small) is small

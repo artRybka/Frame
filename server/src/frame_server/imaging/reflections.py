@@ -618,6 +618,10 @@ def merge(first: Image, sides: list[Image], corners: Quad, anyway: bool = False)
         finer = _finer(views, told, _from_sides(views, told, 0.0)[0])
     if swap is not None:
         mend = mend + _level(now - mend, swap[0], swap[1], beside)
+    # Around the corners no more goes than at them.
+    veil, share, mend, theirs = _around(veil), _around(share), _around(mend), _around(theirs)
+    if swap is not None:
+        swap = (swap[0], _around(swap[1]))
     mark("mended")
     clean = _subtract(first, (veil, low, share), mend, swap, to_photo, quad, finer, theirs)
     mark("whole")
@@ -673,6 +677,43 @@ def grown(corners: Quad) -> NDArray[np.float64]:
     quad = np.array(corners, np.float64)
     middle = quad.mean(0)
     return middle + (quad - middle) * (1 + 2 * AROUND)
+
+
+def _around(part: Floats) -> Floats:
+    """``part`` (what is taken off the work's own picture, or how much of
+    a place is put in from the side views: it reaches :data:`AROUND`
+    beyond the corners each way) with no more of it around the corners
+    than at them, place by place along their edge.
+
+    What lies around the corners is cleaned so that a cut a little wider
+    has no seam, where it is still the work or its mount under the same
+    glass. Corners at a frame's outer edge have the wall around them, and
+    that lies deeper than the work the side views are laid over by: they
+    show the frame's side there, or the wall from further on. What came
+    of that turned on a hair. His cows behind glass with a lamp
+    (2026-11-19 00:54 UTC), merged by his phone for the trial, had a dark
+    stripe down the wall beside the frame, 14 levels of 110 off, where
+    the server took one off (and six to eight further down the same
+    edge): the same merging on another processor, the side views laid a
+    part of a pixel otherwise. Nothing within the corners differed to the
+    eye."""
+    ht, wd = part.shape[:2]
+    by = AROUND / (1 + 2 * AROUND)
+    mx, my = round(wd * by), round(ht * by)
+    if mx < 1 or my < 1 or wd <= 4 * mx or ht <= 4 * my:
+        return part
+    within = part[my : ht - my, mx : wd - mx]
+    # "At them" is as far within the corners again: what is taken at
+    # their very edge has some of what lies around in it (the layers are
+    # worked out coarser than the picture, and softened).
+    well = part[2 * my : ht - 2 * my, 2 * mx : wd - 2 * mx]
+    at = cv2.copyMakeBorder(well, 2 * my, 2 * my, 2 * mx, 2 * mx, cv2.BORDER_REPLICATE)
+    # Evened along the edge: a place's own row or column is not drawn out
+    # across what lies around (dark lines of a frame's edge were).
+    at = cv2.GaussianBlur(at, (0, 0), max(mx, my) / 4).reshape(part.shape)
+    out = np.asarray(np.clip(part, np.minimum(at, 0), np.maximum(at, 0)), np.float32)
+    out[my : ht - my, mx : wd - mx] = within
+    return out
 
 
 def _larger(across: float, down: float) -> NDArray[np.float64]:

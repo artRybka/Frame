@@ -8,12 +8,12 @@ import UniformTypeIdentifiers
 /// (`imaging/reflections.py`) written once more in C++ on the same OpenCV
 /// (`core/scan`, linked as `libframescan`, `scripts/build-scan.sh`).
 ///
-/// A trial (Mateusz 2026-11-18 23:34 UTC: "przyspieszyć składanie obrazów
-/// … Może iPhone mógłby wykonywać część pracy znacznie szybciej niż
-/// serwer?"; 2026-11-19 00:12 UTC he chose "Najpierw próba na iPhonie"):
-/// Konfiguracja → Diagnostyka merges his kept scans with it to be timed and
-/// compared with the server's (`ScanTrial`). What he scans still goes to
-/// the server.
+/// Mateusz 2026-11-18 23:34 UTC: "przyspieszyć składanie obrazów … Może
+/// iPhone mógłby wykonywać część pracy znacznie szybciej niż serwer?". First
+/// a trial (2026-11-19 00:12 UTC, "Najpierw próba na iPhonie": Konfiguracja →
+/// Diagnostyka merges his kept scans with it, to be timed and compared with
+/// the server's, `ScanTrial`), then the scans he takes (07:42 UTC, "Tak,
+/// składaj na iPhonie": `PhoneScan`).
 enum ScanCore {
     /// What a merge came to, and the seconds each part of it took, by the
     /// names the server's log gives them ("laid", "own", "layer"…).
@@ -94,6 +94,16 @@ private extension ScanCore.Note {
 /// A picture as the core reads and writes it: a NumPy `.npy` file of rows ×
 /// columns × RGB, a byte each.
 enum ScanPicture {
+    /// The head of such a file, as NumPy writes it (version 1.0).
+    static func head(rows: Int, columns: Int) -> Data {
+        var head = "{'descr': '|u1', 'fortran_order': False, 'shape': (\(rows), \(columns), 3), }"
+        head += String(repeating: " ", count: (64 - (10 + head.utf8.count + 1) % 64) % 64) + "\n"
+        var data = Data([0x93, 0x4E, 0x55, 0x4D, 0x50, 0x59, 1, 0])  // "\x93NUMPY", version 1.0
+        data.append(contentsOf: [UInt8(head.utf8.count & 0xFF), UInt8(head.utf8.count >> 8)])
+        data.append(Data(head.utf8))
+        return data
+    }
+
     /// The picture's rows and columns, and where its bytes begin.
     static func shape(of npy: Data) -> (rows: Int, columns: Int, from: Int)? {
         let magic: [UInt8] = [0x93, 0x4E, 0x55, 0x4D, 0x50, 0x59, 1, 0]  // "\x93NUMPY", version 1.0
