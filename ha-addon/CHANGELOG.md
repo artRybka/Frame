@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.145.259
+
+- Obiektyw prostuje teraz sam iPhone („prostowanie obiektywu. Czy tego
+  także nie lepiej robić na iPhone?”). Serwer mówi telefonowi, czym
+  prostować (zmierzona stała albo tabela z aparatu, jak w 1.145.257), a
+  telefon prostuje złożony skan, zanim go wyśle. Serwer zapisuje taki
+  skan tak, jak przyszedł, więc „Dodaj” nie czeka już na prostowanie
+  pełnego zdjęcia na serwerze (w mojej próbie 2 s, na NAS-ie zapewne
+  dłużej), a po drodze odpada jedno ponowne zapisanie JPEG.
+- W „Kadrze” i na stronie „Skan gotowy” widać już obraz bez wygięcia
+  obiektywu i na nim ustawiasz narożniki. Dotąd proste było dopiero
+  dzieło w katalogu.
+- Prostowanie na telefonie daje ten sam obraz co na serwerze, piksel w
+  piksel (sprawdzone na zdjęciu 48 MP, a na mniejszych także w emulacji
+  procesora takiego jak w iPhonie). Czas na samym telefonie odczytam z
+  dziennika po Twoim pierwszym skanie.
+- Serwer zostaje zapasem także tutaj: sam prostuje skan, który sam
+  złożył, zdjęcie „Na wprost”, skan ze starszej aplikacji i dzieła
+  robione ponownie z zachowanych zdjęć.
+- Potrzebna jest nowa aplikacja i aktualizacja serwera. Z jedną ze
+  stron starszą wszystko działa jak w 1.145.257.
+- Dzieło, które nie jest prostokątem, da się zeskanować („Takiego
+  zdjęcia nie mogę zeskanować - nie wykrywa jego krawędzi”, odbitka ze
+  ściętymi rogami). Aparat oceniał pochylenie telefonu po kształcie
+  obrysu: gdy góra i dół obrysu mają różną szerokość, prosił, żeby
+  trzymać telefon prosto. Przy takim dziele obrys zawsze tak wygląda,
+  więc zdjęcie nie robiło się nigdy. Teraz liczy się też czujnik
+  telefonu: gdy telefon stoi pionowo (do 4°), zdjęcie się robi mimo
+  krzywego obrysu. Dla prostokątnych dzieł na ścianie nic się nie
+  zmienia.
+- Gdy aparat widzi dzieło, a zdjęcie na wprost nie robi się przez 6
+  sekund (prosi, żeby stanąć na wprost albo trzymać telefon prosto, i
+  to nie pomaga), pojawia się przycisk migawki i zdjęcie można zrobić
+  samemu. Dotąd migawka pojawiała się tylko wtedy, gdy aparat nie
+  widział krawędzi wcale.
+
 ## 1.145.258
 
 - „Podobne do”: pociągnięcie końca listy działa. Kwadraciki zapalają

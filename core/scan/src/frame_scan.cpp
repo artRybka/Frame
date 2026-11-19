@@ -12,7 +12,9 @@
 #include <cmath>
 #include <cstdio>
 #include <exception>
+#include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -54,6 +56,19 @@ cv::Mat coded(const cv::Mat& light) {
         }
     }
     return out;
+}
+
+// A lens's bend as C says it (`frame_scan.h`).
+frame::scan::Bend bend_of(double k1, const double* table, int count, double centre_x, double centre_y) {
+    frame::scan::Bend bend;
+    bend.k1 = k1;
+    if (table && count > 0) {
+        if (count < 2) throw std::runtime_error("a table of one value is none");
+        bend.table.assign(table, table + count);
+        bend.centre[0] = centre_x;
+        bend.centre[1] = centre_y;
+    }
+    return bend;
 }
 
 }  // namespace
@@ -107,6 +122,62 @@ int frame_scan_chart_file(const char* path, const char* tables, char* error, int
         return failed(err.what(), error, error_size);
     } catch (...) {
         return failed("the chart's colours could not be put", error, error_size);
+    }
+}
+
+int frame_scan_straight_file(const char* path, double k1, const double* table, int count, double centre_x,
+                             double centre_y, char* error, int error_size) {
+    try {
+        npy::Array read = npy::load(path);
+        if (read.depth != CV_8U || read.shape.size() != 3 || read.shape[2] != 3)
+            return failed("the photograph is not rows × columns × 3 of 8 bits", error, error_size);
+        // Off the file's own bytes: a first photograph is 144 MB of them.
+        cv::Mat photo(read.shape[0], read.shape[1], CV_8UC3, read.data.data());
+        frame::scan::straight(photo, bend_of(k1, table, count, centre_x, centre_y));
+        npy::save(std::string(path) + ".part", photo);
+        if (std::rename((std::string(path) + ".part").c_str(), path) != 0)
+            return failed("the photograph could not be written", error, error_size);
+        return 0;
+    } catch (const std::exception& err) {
+        return failed(err.what(), error, error_size);
+    } catch (...) {
+        return failed("the lens's bend could not be taken out", error, error_size);
+    }
+}
+
+int frame_scan_straight_pixels(unsigned char* pixels, int rows, int columns, double k1, const double* table,
+                               int count, double centre_x, double centre_y, char* error, int error_size) {
+    try {
+        if (!pixels || rows <= 0 || columns <= 0) return failed("no picture", error, error_size);
+        cv::Mat photo(rows, columns, CV_8UC3, pixels);
+        cv::Mat made = photo;
+        frame::scan::straight(made, bend_of(k1, table, count, centre_x, centre_y));
+        made.copyTo(photo);
+        return 0;
+    } catch (const std::exception& err) {
+        return failed(err.what(), error, error_size);
+    } catch (...) {
+        return failed("the lens's bend could not be taken out", error, error_size);
+    }
+}
+
+int frame_scan_lens_points(double* points, int many, int columns, int rows, double k1, const double* table,
+                           int count, double centre_x, double centre_y, int back, char* error, int error_size) {
+    try {
+        if (!points || many < 0 || rows <= 0 || columns <= 0) return failed("no points", error, error_size);
+        std::vector<cv::Point2d> given;
+        for (int n = 0; n < many; n++) given.emplace_back(points[2 * n], points[2 * n + 1]);
+        std::vector<cv::Point2d> there =
+            frame::scan::moved(given, columns, rows, bend_of(k1, table, count, centre_x, centre_y), back != 0);
+        for (int n = 0; n < many; n++) {
+            points[2 * n] = there[n].x;
+            points[2 * n + 1] = there[n].y;
+        }
+        return 0;
+    } catch (const std::exception& err) {
+        return failed(err.what(), error, error_size);
+    } catch (...) {
+        return failed("the corners could not be moved", error, error_size);
     }
 }
 

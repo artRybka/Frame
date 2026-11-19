@@ -161,8 +161,10 @@ enum OwnScanView {
     // MARK: What to say
 
     /// Before the first photograph: the work whole in the picture, large
-    /// enough, seen from the front.
-    static func first(_ outline: [CGPoint]?, aspect: Double = 0.75) -> OwnScanAdvice {
+    /// enough, seen from the front. `lean`: how far the phone leans back
+    /// or forth off upright by its own sense of gravity (degrees,
+    /// `OwnScanGuide.leaning`; nil where it has none).
+    static func first(_ outline: [CGPoint]?, aspect: Double = 0.75, lean: Double? = nil) -> OwnScanAdvice {
         guard let outline, outline.count == 4 else { return .lost }
         guard fits(outline) else { return .farther }
         let xs = outline.map(\.x), ys = outline.map(\.y)
@@ -172,9 +174,25 @@ enum OwnScanView {
         // One side taller: seen from the side. The top or the bottom wider:
         // the phone leans back or forth.
         if abs(log(s.left / s.right)) > askew { return .straight }
-        if abs(log(s.top / s.bottom)) > askew { return .level }
+        if abs(log(s.top / s.bottom)) > askew {
+            // Unless the phone itself says it stands upright: the work is
+            // no rectangle then (or leans itself), and its top and bottom
+            // differ whatever he does. A photograph with its corners cut
+            // off was "Telefon jest pochylony" for good, and never taken
+            // (Mateusz 2026-11-19 10:24 UTC: "Takiego zdjęcia nie mogę
+            // zeskanować - nie wykrywa jego krawędzi").
+            if let lean, abs(lean) <= plumb { return .hold }
+            return .level
+        }
         return .hold
     }
+
+    /// Leaning back or forth by no more than this (degrees), the phone
+    /// stands upright. Before a rectangle on the wall `askew` asks as
+    /// much of its outline or less (4° with the work five sixths of the
+    /// picture high, 5.6° at six tenths), so nothing changes for one but
+    /// where it all but fills the picture (3.3° then).
+    static let plumb = 4.0
 
     /// Before a side photograph meant from `target` degrees: the phone
     /// stands at `angle`, `away` times as far as at the front one.
@@ -290,6 +308,40 @@ struct OwnScanAngle: Equatable {
     /// phone's turns are counted from here.
     mutating func rest(gyro: Double) {
         sighted = gyro
+    }
+}
+
+/// The work is seen before the first photograph and the photograph is
+/// not taken: he is asked to stand before it or to hold the phone upright
+/// and that does not come, or it is as it should be and does not last.
+/// The outline is then no rectangle seen from somewhere (the work is
+/// none), and nothing he does will make it one: after a while he is
+/// given the shutter (Mateusz 2026-11-19 10:24 UTC: "Takiego zdjęcia nie
+/// mogę zeskanować").
+struct OwnScanStuck: Equatable {
+    private(set) var since: Date?
+
+    /// So long seen and not taken, he takes the photograph himself.
+    static let patience: TimeInterval = 6
+    /// The outline out of sight for longer than this, the count starts anew
+    /// (it trembles in and out of sight from look to look).
+    static let gone: TimeInterval = 1.5
+
+    /// Whether he is to be given the shutter now. `lost`: for how long no
+    /// outline has been seen (nil while one is).
+    mutating func take(_ advice: OwnScanAdvice, lost: TimeInterval? = nil, at now: Date = .now) -> Bool {
+        switch advice {
+        case .straight, .level, .hold:
+            let began = since ?? now
+            since = began
+            return now.timeIntervalSince(began) > Self.patience
+        case .lost:
+            if (lost ?? 0) > Self.gone { since = nil }
+        default:
+            // Too small, cut off: his to mend, and he is told how.
+            since = nil
+        }
+        return false
     }
 }
 

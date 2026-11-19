@@ -24,7 +24,8 @@ struct OwnScanLook: Equatable {
     /// How much of the way to the left and to the right is walked
     /// (degrees from the front, `OwnScanArc.filled`).
     var filled = [0.0, 0.0]
-    /// The work has not been seen for a while: he takes the photograph himself.
+    /// The work has not been seen for a while, or seen and its photograph
+    /// not taken: he takes the photograph himself.
     var manual = false
     /// Little light: the photograph may come out blurred or grainy.
     var dim = false
@@ -82,6 +83,8 @@ struct OwnScanLook: Equatable {
         case .hold: return number == 1 ? "Dobrze. Robię zdjęcie na wprost" : "Dobrze. Robię zdjęcie z \(side)"
         case .nearer: return "Dzieło jest za małe w kadrze"
         case .farther: return "Dzieło nie mieści się w kadrze"
+        // Asked for a while and it did not come (`OwnScanStuck`).
+        case .straight where manual, .level where manual: return "Możesz też zrobić zdjęcie sam"
         case .straight: return "Dzieło widać z boku"
         case .level: return "Telefon jest pochylony"
         case .aim: return "Dzieło ucieka z kadru"
@@ -106,6 +109,7 @@ struct OwnScanLook: Equatable {
         switch advice {
         case .nearer: "Im bliżej, tym więcej szczegółów na zdjęciu."
         case .farther: "Całe ma być widoczne, z kawałkiem ściany wokół."
+        case .straight where manual, .level where manual: "Tak bywa, gdy dzieło nie jest prostokątem."
         case .straight: "Przesuń się tak, żeby lewy i prawy bok dzieła były równej wysokości."
         case .level: "Trzymaj go pionowo, na wysokości środka dzieła."
         case .aim: "Obróć telefon tak, żeby całe dzieło było w kadrze."

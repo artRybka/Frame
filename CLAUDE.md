@@ -43,6 +43,20 @@ uv run mypy src
   scans' log lines ("the camera's table says …") have shown the two
   agree. A work made again is straightened by what its scan noted
   (`straight`: the number or the table), never by another.
+  Where the server says what the bend is (`Incoming.straight`), the phone
+  takes it out itself (Mateusz 2026-11-19 09:52 UTC: "Czy tego także nie
+  lepiej robić na iPhone?"): of what it shows him (`OwnPicture.straight`;
+  the corners he sets on that go on as they are on the photograph taken,
+  `lens.bent`: corners in `/api/own/*` are always on the photograph as
+  taken) and of the scan it made (`/merged` with `straight`). Such a scan
+  waits straightened (`STRAIGHT` beside it) and the work is added from it
+  as it came; whatever puts a photograph as taken back in its place
+  (`single`, a merge here) takes the mark away. The scan's kept
+  photographs stay as taken. `lens.straight`, `moved` and `bent` are
+  written a second time in the core (`core/scan/src/scan_lens.cpp`): a
+  change of one is a change of the other, checked with
+  `core/scan/tools/lens.py` and held by the fixture in
+  `PhoneScanTests.swift` (`tests/test_scan_core.py`).
   The merge of a scan (`imaging/reflections.py`) is written a second time
   in C++ for the phone (`core/scan`), and the phone makes his scans with
   it (`ios/…/PhoneScan.swift`, sent to `POST /api/own/photos/{token}/merged`;

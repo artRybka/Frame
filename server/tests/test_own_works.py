@@ -1436,6 +1436,192 @@ def test_the_cameras_own_table_straightens_the_work_where_it_says_what_was_measu
         assert any("of a lens not measured" in r.getMessage() for r in caplog.records)
 
 
+def test_the_phone_takes_the_lens_bend_out_of_its_scan_and_the_server_not_again(
+    service: FrameService, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Mateusz 2026-11-19 09:52 UTC: "Część 2 - prostowanie obiektywu. Czy
+    tego także nie lepiej robić na iPhone? Inaczej będziemy niepotrzebnie
+    przesyłać materiały na serwer i z powrotem, a telefon i tak pewnie
+    zrobi to szybciej." The server tells the phone what the lens's bend
+    is; the phone takes it out of the scan it makes and says what by.
+    The scan then waits straightened and the work is added from it as it
+    came ("Dodaj" was seconds at straightening 48 MP here), its corners,
+    said as on the photograph taken, going to where the work is. What the
+    server makes of the kept photographs itself it straightens itself."""
+    import json
+    import logging
+
+    import test_lens as lens_
+
+    from frame_server.imaging import lens
+    from frame_server.own_works import SCAN_INFO, STRAIGHT, LensBend
+
+    x0, y0, x1, y1 = lens_.FRAME
+    work = [(x0 + 40, y0 + 40), (x1 - 40, y0 + 40), (x1 - 40, y1 - 40), (x0 + 40, y1 - 40)]
+    true = [(x / lens_.W, y / lens_.H) for x, y in work]
+    k1 = lens_.K1 * 1.12
+    taken = lens_.bent(lens_.scene(), k1)
+    own = {"table": lens_.table(k1), "centre": [0.5, 0.5]}
+    works = service.own_works
+
+    def bow(path: Path) -> float:
+        with Image.open(path) as img:
+            return lens_.bow(np.asarray(img.convert("RGB")))
+
+    def near(got: list[tuple[float, float]] | None) -> float:
+        assert got is not None
+        return max(
+            max(abs(gx * lens_.W - x), abs(gy * lens_.H - y))
+            for (gx, gy), (x, y) in zip(got, work, strict=True)
+        )
+
+    def sent(
+        client: TestClient, camera: dict[str, object] | None, model: str = lens_.PHONE
+    ) -> tuple[str, Any]:
+        """A scan's photographs with the server, and what it says the
+        phone is to straighten by."""
+        first = client.post(
+            "/api/own/photos",
+            files={"file": ("p.jpg", lens_.photograph(model=model, img=taken))},
+            data={"lens": json.dumps(camera)} if camera is not None else None,
+        )
+        assert first.status_code == 200, first.text
+        token = first.json()["token"]
+        for _ in range(2):
+            client.post(
+                f"/api/own/photos/{token}/sides",
+                files={"file": ("s.jpg", _jpeg(Image.fromarray(taken)))},
+            )
+        return token, first.json()["straight"]
+
+    def scan(told: object, corners: list[tuple[float, float]], **more: object) -> dict[str, str]:
+        note = {"corners": corners, "used": 2, "replaced": 0.05, "straight": told, **more}
+        return {"note": json.dumps(note)}
+
+    with _client(service) as client, caplog.at_level(logging.INFO, "frame_server.own_works"):
+        for camera in (None, own):
+            token, told = sent(client, camera)
+            # By the measured number without the camera's table, by the
+            # table with it.
+            assert (told["table"] == []) == (camera is None)
+            assert told["k1"] == (lens_.K1 if camera is None else 0.0)
+            bend = LensBend.model_validate(told).bend()
+            assert bend is not None
+            # The phone: he sets the corners on its photograph
+            # straightened, it says them as on the one taken; the scan it
+            # made (here the photograph itself) it straightens.
+            corners = lens.bent(true, lens_.W, lens_.H, bend)
+            picture = _jpeg(Image.fromarray(lens.straight(taken, bend)))
+            url = f"/api/own/photos/{token}/merged"
+
+            # Straightened by what is not this lens's bend here, or with
+            # no picture of it: no scan of this photograph.
+            other = {"k1": lens_.K1 * 2, "table": [], "centre": [0.5, 0.5]}
+            refused = client.post(
+                url, files={"file": ("m.jpg", picture)}, data=scan(other, corners)
+            )
+            assert refused.status_code == 422, refused.text
+            assert client.post(url, data=scan(told, corners, replaced=0)).status_code == 422
+            assert not works.path(token).with_suffix(STRAIGHT).exists()
+
+            kept = client.post(url, files={"file": ("m.jpg", picture)}, data=scan(told, corners))
+            assert kept.status_code == 200, kept.text
+            waiting = works.path(token)
+            # The phone's own file waits, straight; the photographs kept
+            # are as taken.
+            assert waiting.read_bytes() == picture and bow(waiting) < (0.5 if camera else 1.0)
+            assert bow(works.scans / token / "first.jpg") > 2
+            assert waiting.with_suffix(STRAIGHT).exists()
+            assert any("and straightened there" in r.getMessage() for r in caplog.records)
+
+            added = client.post(
+                "/api/own/works",
+                json={"token": token, "corners": corners, "by": "owner", "text": TEXT},
+            )
+            assert added.status_code == 200, added.text
+            assert not waiting.with_suffix(STRAIGHT).exists()
+            item = service.library.get(added.json()["id"])
+            assert item is not None and item.cut is not None
+            # Not straightened once more (it would bow the other way),
+            # and the corners where the work is.
+            kept_at = service.images.museum_photo(item, urgent=True)
+            assert bow(kept_at) < (0.5 if camera else 1.0)
+            assert near(item.cut.work) < 0.6
+            info = json.loads((works.scans / token / SCAN_INFO).read_text())
+            assert info["straight"] == bend.to_json()
+            # Made again of the photographs kept: straightened here, by
+            # the same, the corners left where they are.
+            assert works.scanned_again() == 0
+            again = works.rescan(item)
+            assert again.cut is not None and again.cut.work == item.cut.work
+            assert bow(service.images.museum_photo(again, urgent=True)) < (0.5 if camera else 1.0)
+
+        # "Na wprost" after such a scan: the first photograph back as it
+        # was taken, and the work straightened here as it is added.
+        token, told = sent(client, own)
+        bend = LensBend.model_validate(told).bend()
+        assert bend is not None
+        corners = lens.bent(true, lens_.W, lens_.H, bend)
+        picture = _jpeg(Image.fromarray(lens.straight(taken, bend)))
+        url = f"/api/own/photos/{token}/merged"
+        assert (
+            client.post(
+                url, files={"file": ("m.jpg", picture)}, data=scan(told, corners)
+            ).status_code
+            == 200
+        )
+        assert client.post(f"/api/own/photos/{token}/single").json() == {"single": True}
+        waiting = works.path(token)
+        assert bow(waiting) > 2 and not waiting.with_suffix(STRAIGHT).exists()
+        added = client.post(
+            "/api/own/works", json={"token": token, "corners": corners, "by": "owner", "text": TEXT}
+        )
+        assert added.status_code == 200, added.text
+        item = service.library.get(added.json()["id"])
+        assert item is not None and item.cut is not None
+        assert bow(service.images.museum_photo(item, urgent=True)) < 0.5
+        assert near(item.cut.work) < 0.6
+
+        # A scan the phone sends as taken after one it straightened (an
+        # older app's, or his corners set wider) waits as taken again.
+        token, told = sent(client, None)
+        bend = LensBend.model_validate(told).bend()
+        assert bend is not None
+        corners = lens.bent(true, lens_.W, lens_.H, bend)
+        url = f"/api/own/photos/{token}/merged"
+        picture = _jpeg(Image.fromarray(lens.straight(taken, bend)))
+        client.post(url, files={"file": ("m.jpg", picture)}, data=scan(told, corners))
+        assert works.path(token).with_suffix(STRAIGHT).exists()
+        plain = {"note": json.dumps({"corners": corners, "used": 2, "replaced": 0.05})}
+        as_taken = _jpeg(Image.fromarray(taken))
+        assert client.post(url, files={"file": ("m.jpg", as_taken)}, data=plain).status_code == 200
+        assert not works.path(token).with_suffix(STRAIGHT).exists()
+        added = client.post(
+            "/api/own/works", json={"token": token, "corners": corners, "by": "owner", "text": TEXT}
+        )
+        item = service.library.get(added.json()["id"])
+        assert item is not None and item.cut is not None
+        assert bow(service.images.museum_photo(item, urgent=True)) < 1.0
+        assert near(item.cut.work) < 0.6
+
+        # A lens that was not measured: the phone is told of no bend, and
+        # a scan it says it straightened is none of this photograph.
+        token, told = sent(client, own, model="iPhone 16 Pro Max")
+        assert told is None
+        url = f"/api/own/photos/{token}/merged"
+        said = LensBend.of(bend)
+        assert said is not None
+        refused = client.post(
+            url, files={"file": ("m.jpg", picture)}, data=scan(said.model_dump(), corners)
+        )
+        assert refused.status_code == 422, refused.text
+        # The work found in it says the same as the photograph did.
+        works.crops.home_corners = lambda img: None  # type: ignore[method-assign]
+        assert client.post(f"/api/own/photos/{token}/find").json()["straight"] is None
+        token, told = sent(client, None)
+        assert client.post(f"/api/own/photos/{token}/find").json()["straight"] == told
+
+
 def test_his_earlier_scans_are_set_straight_by_themselves(
     service: FrameService,
     monkeypatch: pytest.MonkeyPatch,

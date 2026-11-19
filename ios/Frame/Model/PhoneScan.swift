@@ -19,6 +19,11 @@ import UniformTypeIdentifiers
 /// server read of the chart (`ScanCore.chart`; Mateusz 2026-11-19 08:09
 /// UTC: "Czy iPhone będzie także obsługiwać kartę koloru").
 ///
+/// The lens's own bend, where the server knows it, is taken out of the scan
+/// here as well, before it is sent (`ScanCore.straight`; Mateusz 2026-11-19
+/// 09:52 UTC: "prostowanie obiektywu. Czy tego także nie lepiej robić na
+/// iPhone?"): "Dodaj" then does not wait for the server to do it.
+///
 /// The server still makes the scan where the phone cannot: no corners of
 /// the work are known, the phone has too little memory to spare, the
 /// server gives no tables of its chart, or anything of this fails.
@@ -76,6 +81,10 @@ enum PhoneScan {
         var written: Double
         /// Made of photographs put in a chart's colours (`Read.trued`).
         var trued = false
+        /// The lens's bend taken out of `picture`, and the seconds that
+        /// took; nil, it is as the photographs were taken.
+        var straight: OwnBend? = nil
+        var straightened = 0.0
     }
 
     // MARK: Which photographs
@@ -263,24 +272,38 @@ enum PhoneScan {
     /// also of photographs that show no one flat work, in doubt, as the
     /// server makes the one he chooses from. Seconds of all the phone's
     /// cores: never on the main thread.
-    static func make(_ read: Read, corners: [[Double]]) throws -> Made {
+    ///
+    /// `straight`: the bend of the lens that took the photographs, as the
+    /// server says it (`OwnIncoming.straight`). It is taken out of the
+    /// scan made (not of the photographs: the merge is of them as taken,
+    /// here as on the server, and `corners` are on them as taken).
+    static func make(_ read: Read, corners: [[Double]], straight: OwnBend? = nil) throws -> Made {
         let into = read.folder.appendingPathComponent("made.npy")
         defer { try? FileManager.default.removeItem(at: into) }
         let note = try ScanCore.merge(
             first: read.first, sides: read.sides, corners: corners.flatMap { $0 }, anyway: true, into: into
         )
         var picture: Data?
-        let began = ProcessInfo.processInfo.systemUptime
+        var by: OwnBend?
+        var straightened = 0.0, written = 0.0
         if note.used > 0, note.removed > 0 {
+            var began = ProcessInfo.processInfo.systemUptime
+            if let straight {
+                try ScanCore.straight(into, by: straight)
+                by = straight
+                straightened = ProcessInfo.processInfo.systemUptime - began
+            }
+            began = ProcessInfo.processInfo.systemUptime
             let made = try Data(contentsOf: into, options: .mappedIfSafe)
             guard let jpeg = autoreleasepool(invoking: { jpeg(of: made) }) else {
                 throw Failed(told: "the scan could not be written")
             }
             picture = jpeg
+            written = ProcessInfo.processInfo.systemUptime - began
         }
         return Made(
-            corners: corners, note: note, picture: picture, read: read.seconds,
-            written: ProcessInfo.processInfo.systemUptime - began, trued: read.trued
+            corners: corners, note: note, picture: picture, read: read.seconds, written: written,
+            trued: read.trued, straight: by, straightened: straightened
         )
     }
 
@@ -345,7 +368,7 @@ enum PhoneScan {
         let process = ProcessInfo.processInfo, system = process.operatingSystemVersion
         let app = Bundle.main.infoDictionary ?? [:]
         var phone: [String: Any] = [
-            "seconds": tenths(made.note.seconds + made.read + made.written, 100),
+            "seconds": tenths(made.note.seconds + made.read + made.straightened + made.written, 100),
             "took": made.note.took.mapValues { tenths($0, 100) },
             "files": tenths(made.read, 100),
             "jpeg": tenths(made.written, 100),
@@ -369,6 +392,13 @@ enum PhoneScan {
         // In the colours of the chart the server read: it takes no scan
         // of a photograph with a chart that is not.
         if made.trued { note["trued"] = true }
+        // Without its lens's bend, and what by: the server keeps the work
+        // as it comes then, and takes no scan straightened by another.
+        if let by = made.straight, made.picture != nil {
+            note["straight"] = by.told
+            phone["straight"] = tenths(made.straightened, 100)
+            note["phone"] = phone
+        }
         let noted = trace.filter { $0.value.isFinite }
         if !noted.isEmpty { note["trace"] = noted }
         return (try? JSONSerialization.data(withJSONObject: note, options: [.sortedKeys])) ?? Data("{}".utf8)
@@ -409,6 +439,8 @@ final class OwnPhoneScan {
     }
 
     private var read: PhoneScan.Read?
+    /// The lens's bend the scan is made without (`PhoneScan.make`).
+    private var bend: OwnBend?
     /// What the camera noted of the scan this is made of.
     private(set) var outline: [[Double]]?
     private(set) var trace: [String: Double] = [:]
@@ -436,18 +468,22 @@ final class OwnPhoneScan {
     /// The scan of `shots` within `corners`; nil when the phone could not
     /// make it (the server then does). `chart`: what the server gives of
     /// the colour chart it read beside the work (`PhoneScan.read`).
-    func make(_ shots: OwnShots, corners: [[Double]], chart: Data? = nil) async -> PhoneScan.Made? {
+    /// `straight`: the lens's bend, taken out of the scan (`PhoneScan.make`).
+    func make(
+        _ shots: OwnShots, corners: [[Double]], chart: Data? = nil, straight: OwnBend? = nil
+    ) async -> PhoneScan.Made? {
         let files = shots.files, folder = self.folder
         guard files.count == shots.sides.count + 1 else { return nil }
         outline = shots.outline
         trace = shots.trace
+        bend = straight
         let used = PhoneScan.chosen(angles: shots.sides.indices.map { shots.angle($0) })
         let made = await Task.detached(priority: .userInitiated) { () -> (PhoneScan.Read, PhoneScan.Made)? in
             do {
                 let read = try PhoneScan.read(
                     first: files[0], sides: used.map { files[$0 + 1] }, into: folder, chart: chart
                 )
-                let scan = try PhoneScan.make(read, corners: corners)
+                let scan = try PhoneScan.make(read, corners: corners, straight: straight)
                 return (read, scan)
             } catch {
                 try? FileManager.default.removeItem(at: folder)
@@ -461,14 +497,16 @@ final class OwnPhoneScan {
     /// The scan once more, within other corners.
     func again(corners: [[Double]]) async -> PhoneScan.Made? {
         guard let read else { return nil }
+        let straight = bend
         return await Task.detached(priority: .userInitiated) {
-            try? PhoneScan.make(read, corners: corners)
+            try? PhoneScan.make(read, corners: corners, straight: straight)
         }.value
     }
 
     /// The photographs let go of.
     func clear() {
         read = nil
+        bend = nil
         try? FileManager.default.removeItem(at: folder)
     }
 

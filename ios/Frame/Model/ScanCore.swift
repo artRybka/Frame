@@ -73,6 +73,68 @@ enum ScanCore {
         }
     }
 
+    /// The picture at `picture` (a `.npy` of rows × columns × RGB) as a lens
+    /// without `bend` would have drawn it, in place: the server's
+    /// `lens.straight`, pixel for pixel. Done to the scan the phone made
+    /// before it is sent (Mateusz 2026-11-19 09:52 UTC: "prostowanie
+    /// obiektywu. Czy tego także nie lepiej robić na iPhone? … telefon i
+    /// tak pewnie zrobi to szybciej"): the server then keeps the work as
+    /// it came.
+    static func straight(_ picture: URL, by bend: OwnBend) throws {
+        var error = [CChar](repeating: 0, count: 512)
+        let size = Int32(error.count)
+        let status = bend.table.withUnsafeBufferPointer { table in
+            frame_scan_straight_file(
+                picture.path, bend.k1, table.baseAddress, Int32(table.count), bend.centreX, bend.centreY,
+                &error, size
+            )
+        }
+        guard status == 0 else { throw Failed(told: told(error)) }
+    }
+
+    /// The same of `pixels` (rows × columns × RGB, a byte each), in place:
+    /// what the phone shows him of a photograph.
+    static func straight(_ pixels: inout [UInt8], rows: Int, columns: Int, by bend: OwnBend) throws {
+        guard rows > 0, columns > 0, pixels.count == rows * columns * 3 else {
+            throw Failed(told: "the picture is not rows × columns × 3")
+        }
+        var error = [CChar](repeating: 0, count: 512)
+        let size = Int32(error.count)
+        let status = bend.table.withUnsafeBufferPointer { table in
+            pixels.withUnsafeMutableBufferPointer { raw in
+                frame_scan_straight_pixels(
+                    raw.baseAddress, Int32(rows), Int32(columns), bend.k1, table.baseAddress, Int32(table.count),
+                    bend.centreX, bend.centreY, &error, size
+                )
+            }
+        }
+        guard status == 0 else { throw Failed(told: told(error)) }
+    }
+
+    /// `corners` (x and y each, 0–1 across and down a photograph `columns`
+    /// by `rows`) set on the photograph as taken, where they are on it
+    /// straightened (the server's `lens.moved`); `back`: set on it
+    /// straightened, where they are on it as taken (`lens.bent`), which is
+    /// what the server, the merge and the LiDAR's depth go by.
+    static func moved(
+        _ corners: [[Double]], columns: Int, rows: Int, by bend: OwnBend, back: Bool = false
+    ) throws -> [[Double]] {
+        guard corners.allSatisfy({ $0.count == 2 }) else { throw Failed(told: "a corner is an x and a y") }
+        var points = corners.flatMap { $0 }
+        var error = [CChar](repeating: 0, count: 512)
+        let size = Int32(error.count), many = Int32(corners.count)
+        let status = bend.table.withUnsafeBufferPointer { table in
+            points.withUnsafeMutableBufferPointer { raw in
+                frame_scan_lens_points(
+                    raw.baseAddress, many, Int32(columns), Int32(rows), bend.k1, table.baseAddress,
+                    Int32(table.count), bend.centreX, bend.centreY, back ? 1 : 0, &error, size
+                )
+            }
+        }
+        guard status == 0 else { throw Failed(told: told(error)) }
+        return stride(from: 0, to: points.count, by: 2).map { [points[$0], points[$0 + 1]] }
+    }
+
     /// A scene made up (a work under glass with a lamp in it, photographed
     /// three times), `side` pixels long, merged: nothing read or written.
     /// For a test of the core as it is linked into the app.
