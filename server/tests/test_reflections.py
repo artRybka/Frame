@@ -672,6 +672,42 @@ def test_views_that_do_not_show_one_flat_work_change_nothing_unless_asked() -> N
     assert plain.removed == asked.removed and np.array_equal(plain.image, asked.image)
 
 
+def test_the_parts_worked_out_at_a_time_make_the_same_picture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mateusz 2026-11-18 23:34 UTC: "przyspieszyć składanie obrazów -
+    teraz trwa to zdecydowanie za długo […] Nie może odbyć się kosztem
+    jakości". The side photographs are laid over the first side by side
+    and the photograph's bands worked out several at a time: the picture
+    is the one made of them one after another, to the last bit. And the
+    merge says what its time went on."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from frame_server.imaging import bands
+
+    _, first, sides = _three()
+    done = merge(first, sides, CORNERS)
+    assert list(done.took) == ["laid", "own", "layer", "mended", "whole"]
+    assert all(seconds >= 0 for seconds in done.took.values())
+    with ThreadPoolExecutor(1) as one:
+        monkeypatch.setattr(bands, "pool", one)
+        after = merge(first, sides, CORNERS)
+    monkeypatch.undo()
+    assert after.used == done.used and after.removed == done.removed
+    assert np.array_equal(after.image, done.image)
+
+    # And on a machine with little memory to spare, the bands one after
+    # another: the same again.
+    monkeypatch.setattr(reflections, "spare", lambda: 1.0)
+    tight = merge(first, sides, CORNERS)
+    monkeypatch.undo()
+    assert np.array_equal(tight.image, done.image)
+    assert reflections.spare() > 0
+
+    # Nothing to lay over: only that was tried.
+    assert list(merge(first, [], CORNERS).took) == ["laid"]
+
+
 def test_a_side_view_of_a_work_that_is_no_plane_is_laid_on_the_first_place_by_place(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
