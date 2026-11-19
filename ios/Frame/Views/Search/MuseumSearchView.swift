@@ -59,6 +59,9 @@ struct MuseumSearchView: View {
     /// more, however far the list has already sprung back by then.
     @State private var pullArmed = false
     @State private var dragging = false
+    /// Where the list stops (`ListEnd`), out of SwiftUI's sight: it
+    /// changes every frame and must not redraw anything.
+    @State private var listEnd = ListEndSeen()
     /// The search's stack: the works opened from the results.
     @Binding var path: NavigationPath
 
@@ -123,17 +126,13 @@ struct MuseumSearchView: View {
             search.scrolled(nearEnd: near)
         }
         // How far the end is pulled up past where the list stops.
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-            let last = max(
-                geometry.contentSize.height + geometry.contentInsets.bottom - geometry.containerSize.height,
-                -geometry.contentInsets.top
-            )
-            return geometry.contentOffset.y - last
-        } action: { _, past in
+        .onScrollGeometryChange(for: ListEnd.self, of: { ListEnd($0) }) { _, end in
+            listEnd.last = end
             guard search.waitsForPull else {
                 if pullLit != 0 { pullLit = 0 }
                 return
             }
+            let past = end.past(short: listEnd.short)
             var lit = min(PullForMore.count, max(0, Int(past / PullForMore.pullPerSquare)))
             if dragging, lit == PullForMore.count { pullArmed = true }
             if pullArmed { lit = PullForMore.count }
@@ -141,6 +140,11 @@ struct MuseumSearchView: View {
         }
         .onScrollPhaseChange { old, new in
             dragging = new == .interacting
+            // At rest, the list is never past its end: where it rests near
+            // the end tells how far short of the insets' end that is.
+            if new == .idle, let short = listEnd.last.short {
+                listEnd.short = min(listEnd.short ?? short, short)
+            }
             guard new != .interacting else { return }
             // Let go with all the squares lit (a fling that springs past
             // the end never arms it: only a finger does).
@@ -619,5 +623,50 @@ struct FlowLayout: Layout {
             }
             y += row.height + spacing
         }
+    }
+}
+
+/// The list's end as last seen, and how far short of the insets' own end
+/// it really stops, learnt where it came to rest.
+@MainActor
+final class ListEndSeen {
+    var last = ListEnd()
+    var short: CGFloat?
+}
+
+/// Where a scrolled list stops at its end. The end taken from the content's
+/// size and bottom inset was some 200 pt too far down (the safe area at the
+/// bottom counted twice, it seems): a pull needed two thirds of the screen
+/// (Mateusz 2026-11-19: "muszę przeciągnąć ekran znacząco ponad połowę
+/// ekranu"). Without the bottom inset it is at most that far up; the truth
+/// is learnt where the list comes to rest (`short`).
+struct ListEnd: Equatable {
+    var offset: CGFloat = 0
+    /// The end with the bottom inset, and without it.
+    var withInset: CGFloat = 0
+    var without: CGFloat = 0
+
+    init() {}
+
+    init(_ geometry: ScrollGeometry) {
+        offset = geometry.contentOffset.y
+        let top = -geometry.contentInsets.top
+        let bare = geometry.contentSize.height - geometry.containerSize.height
+        withInset = max(bare + geometry.contentInsets.bottom, top)
+        without = max(bare, top)
+    }
+
+    /// At rest here: how far short of `withInset` the end is, when the list
+    /// rests between the two ends (so at the end, or just short of it).
+    var short: CGFloat? {
+        guard offset >= without - 1, offset <= withInset + 1 else { return nil }
+        return max(0, withInset - offset)
+    }
+
+    /// How far past the end the list is pulled, the end being `short` of
+    /// `withInset` (until that is known, the nearer end without the inset).
+    func past(short: CGFloat?) -> CGFloat {
+        let end = short.map { max(without, withInset - $0) } ?? without
+        return offset - end
     }
 }

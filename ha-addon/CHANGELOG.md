@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.259
+
+- „Podobne do”: pociągnięcie końca listy jest krótkie, tak jak miało być
+  (ok. 60 pt za końcem, jednym palcem). Aplikacja liczyła koniec listy
+  o ok. 200 pt za nisko, więc trzeba było ciągnąć przez dwie trzecie
+  ekranu. Teraz uczy się, gdzie lista naprawdę staje, gdy zatrzyma się
+  na końcu. („muszę przeciągnąć ekran znacząco ponad połowę ekranu”)
+
 ## 1.145.258
 
 - „Podobne do”: pociągnięcie końca listy działa. Kwadraciki zapalają
