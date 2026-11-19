@@ -544,10 +544,25 @@ struct TermSuggestions: View {
     /// for it yet).
     var pickedFromMuseums: () -> Void = {}
 
-    /// The museums' artists the catalogue's suggestions don't have.
+    /// The museums' artists the catalogue's suggestions don't have, nor
+    /// under another spelling ("Van gogh" by "Vincent van Gogh").
     private var museumArtists: [TermHit] {
-        let known = Set(lookup.hits.map(\.id))
-        return (lookup.hint?.artists ?? []).filter { !known.contains($0.id) }
+        Self.museumArtists(lookup.hint?.artists ?? [], besides: lookup.hits)
+    }
+
+    static func museumArtists(_ museums: [TermHit], besides hits: [TermHit]) -> [TermHit] {
+        let known = Set(hits.map(\.id))
+        // First name first ("Gogh, Vincent van"), folded.
+        func plain(_ name: String) -> String {
+            TermLookup.fold(Names.person(name)).split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        }
+        let artists = hits.filter { $0.kind == "artist" }.map { plain($0.name) }
+        return museums.filter { hit in
+            guard !known.contains(hit.id) else { return false }
+            let name = plain(hit.name)
+            // The same person, or the surname with what goes before it of one.
+            return !artists.contains { $0 == name || $0.hasSuffix(" " + name) || name.hasSuffix(" " + $0) }
+        }
     }
 
     var body: some View {
@@ -594,10 +609,12 @@ struct TermSuggestions: View {
         // A title: its work's thumbnail and artist, no count (mostly one).
         let titled = hit.kind == SearchToken.titleKind
         return row(
-            mark: fromMuseums ? "museum" : hit.token.kind,
-            icon: fromMuseums ? "building.columns" : hit.token.icon,
+            // An artist the museums have looks like any other (Mateusz
+            // 2026-11-19: where a work is is not his to know); no count.
+            mark: hit.token.kind,
+            icon: hit.token.icon,
             title: hit.token.kind == "artist" ? Names.artist(hit.name) : hit.name,
-            kind: fromMuseums ? "Artysta z muzeów" : titled ? "Dzieło" : hit.token.kindName,
+            kind: titled ? "Dzieło" : hit.token.kindName,
             detail: fromMuseums ? "" : titled ? Names.artist(hit.detail) : hit.detail,
             count: fromMuseums || titled || lookup.uncounted.contains(hit.id) ? nil : hit.count,
             thumb: titled ? hit.item : nil,

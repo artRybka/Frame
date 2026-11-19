@@ -129,12 +129,13 @@ final class TermLookupTests: XCTestCase {
         XCTAssertTrue(rules.isEmpty)
     }
 
-    /// "Szukaj podobnych" on a work's card: Szukaj's chip "Podobne do: …",
+    /// "Szukaj podobnych" on a work's card: Szukaj's chip, the work's title
+    /// by its mark of two pictures (Mateusz 2026-11-19),
     /// kept in the rules (Mateusz 2026-11-13).
     func testTheWorksLikeOneAreAChipOfTheRules() {
         var rules = PlaylistRules(terms: ["period:baroque"])
         let chip = SearchToken.like("met:1", title: "Słoneczniki")
-        XCTAssertEqual(chip.name, "Podobne do: Słoneczniki")
+        XCTAssertEqual(chip.name, "Słoneczniki")
         XCTAssertEqual(chip.icon, "photo.on.rectangle.angled")
         XCTAssertEqual(chip.markKind, SearchToken.likeWorkMark)
         XCTAssertEqual(GroupMark.Mark(kind: chip.markKind), .framed)
@@ -143,7 +144,7 @@ final class TermLookupTests: XCTestCase {
         XCTAssertEqual(rules.terms, ["period:baroque"])
         XCTAssertEqual(LibraryQuery(rules: rules).like, "met:1")
         let names = [SearchToken.likeName("met:1"): "Słoneczniki"]
-        XCTAssertEqual(rules.tokens(names: names).last?.name, "Podobne do: Słoneczniki")
+        XCTAssertEqual(rules.tokens(names: names).last?.name, "Słoneczniki")
         XCTAssertEqual(rules.tokens(names: [:]).last?.name, "Podobne do dzieła")
         rules.setTokens([chip])
         XCTAssertFalse(rules.isEmpty)
@@ -213,6 +214,19 @@ final class TermLookupTests: XCTestCase {
             TermSuggestions.ordered(hits, typed: "van gogh").map(\.key),
             ["van gogh", "Vincent van Gogh", "Theo van Gogh", "Sypialnia", "słoneczniki van gogha", "style:post"]
         )
+    }
+
+    /// The museums' artists are artists like any other, and one that is an
+    /// artist already suggested, spelled otherwise, is left out (Mateusz
+    /// 2026-11-19: "Van gogh · Artysta z muzeów" under Vincent van Gogh).
+    func testTheMuseumsArtistsAreNoOtherSpellingOfOneSuggested() {
+        let hits = [TermHit(kind: "artist", key: "Vincent van Gogh", name: "Vincent van Gogh", count: 3)]
+        let museums = [
+            TermHit(kind: "artist", key: "Van gogh", name: "Van gogh"),
+            TermHit(kind: "artist", key: "Gogh, Vincent van", name: "Gogh, Vincent van"),
+            TermHit(kind: "artist", key: "Theo van Gogh", name: "Theo van Gogh"),
+        ]
+        XCTAssertEqual(TermSuggestions.museumArtists(museums, besides: hits).map(\.key), ["Theo van Gogh"])
     }
 
     func testFoldingIgnoresCaseAndPolishLetters() {

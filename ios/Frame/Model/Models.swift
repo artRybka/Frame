@@ -3542,11 +3542,12 @@ extension SearchToken {
     /// `GroupMark`'s kind for the works like a work (not a photograph).
     static let likeWorkMark = "like-work"
 
-    /// The works that look like the work `id`, as a chip in the field
-    /// ("Podobne do: Słoneczniki").
+    /// The works that look like the work `id`, as a chip in the field: the
+    /// work's title alone by its mark of two pictures (Mateusz 2026-11-19:
+    /// "skoro dajemy ikonę, to nie piszmy już „Podobne do:”").
     static func like(_ id: String, title: String) -> SearchToken {
         if isPhoto(id) { return SearchToken(kind: likeKind, key: id, name: "Podobne do zdjęcia") }
-        return SearchToken(kind: likeKind, key: id, name: title.isEmpty ? "Podobne do dzieła" : "Podobne do: \(title)")
+        return SearchToken(kind: likeKind, key: id, name: title.isEmpty ? "Podobne do dzieła" : title)
     }
 
     /// Whether a look-alike's key is a photograph searched ("Szukaj
