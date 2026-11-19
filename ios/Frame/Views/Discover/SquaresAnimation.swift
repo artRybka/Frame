@@ -310,7 +310,7 @@ struct PullForMore: View {
 
     static let count = SquareGame.indices.count
     /// How far past the end lights one more square.
-    static let pullPerSquare: CGFloat = 16
+    static let pullPerSquare: CGFloat = 12
 
     var body: some View {
         let side = SquareGame.side
@@ -332,7 +332,7 @@ struct PullForMore: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: more)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Mniej podobne")
+        .accessibilityLabel("Więcej podobnych")
         .accessibilityHint("Pociągnij koniec listy albo stuknij, aby doczytać")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(.default, more)
