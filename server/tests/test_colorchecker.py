@@ -287,9 +287,10 @@ def test_the_scans_photographs_are_all_put_in_the_charts_colours(service: FrameS
     photo = _photographed(_scene(_board(colorchecker.REFERENCE.astype(np.uint8))))
     seen = own.take(_jpeg(photo))
     assert seen.chart is not None and len(seen.chart) == 4
-    # The phone's own photographs are not in the chart's colours: the scan
-    # of these is the server's to make, and one the phone made is not taken.
-    assert seen.phone is False
+    # The phone's own photographs are not in the chart's colours: an app
+    # that knows of no tables leaves the scan to the server, and a scan
+    # the phone made of them as they came is not taken.
+    assert seen.phone is False and seen.tables is True
     with Image.open(own.path(seen.token)) as img:
         assert _cast(np.asarray(img.convert("RGB")), "light") < 0.06
     # A side photograph has no chart read of its own: the first one's.
@@ -304,9 +305,81 @@ def test_the_scans_photographs_are_all_put_in_the_charts_colours(service: FrameS
 
     # No chart: the photograph as it came.
     plain = own.take(_jpeg(photo[:, :1300]))
-    assert plain.chart is None and plain.phone is True
+    assert plain.chart is None and plain.phone is True and plain.tables is False
     with Image.open(own.path(plain.token)) as img:
         assert _cast(np.asarray(img.convert("RGB")), "light") > 0.2
+
+
+def test_the_phone_makes_the_scan_of_photographs_it_put_in_the_charts_colours(
+    service: FrameService,
+) -> None:
+    """Mateusz 2026-11-19 08:09 UTC: "Czy iPhone będzie także obsługiwać
+    kartę koloru". The server reads the chart in the first photograph and
+    gives the phone what it puts a photograph in the chart's colours by;
+    the phone puts its own three through that, merges them, and its scan
+    is kept as any the phone makes. The server makes none of its own."""
+    import json
+
+    from test_own_works import _client
+    from test_scan_core import _as_the_core
+
+    photo = _photographed(_scene(_board(colorchecker.REFERENCE.astype(np.uint8))))
+    work = [(0.3, 0.3), (0.7, 0.3), (0.7, 0.7), (0.3, 0.7)]
+    with _client(service) as client:
+        sent = client.post("/api/own/photos", files={"file": ("p.jpg", _jpeg(photo))}).json()
+        token = sent["token"]
+        assert sent["chart"] and sent["tables"] is True and sent["phone"] is False
+        client.post(f"/api/own/photos/{token}/sides", files={"file": ("s.jpg", _jpeg(photo))})
+
+        tables = client.get(f"/api/own/photos/{token}/chart")
+        assert tables.status_code == 200 and tables.content[:8] == colorchecker.TABLES
+        chart = service.own_works._charted(token)
+        assert chart is not None and tables.content == colorchecker.tables(chart)
+        # The phone's own photograph through them: the colours the
+        # server's copy has (which is a JPEG once more).
+        with Image.open(io.BytesIO(_jpeg(photo))) as img:
+            camera = np.asarray(img.convert("RGB"))
+        trued = _as_the_core(tables.content, camera)
+        assert _cast(trued, "light") < 0.06 < 0.2 < _cast(camera, "light")
+        with Image.open(service.own_works.path(token)) as img:
+            kept = np.asarray(img.convert("RGB")).astype(int)
+        assert np.abs(kept - trued).mean() < 1.5
+
+        url = f"/api/own/photos/{token}/merged"
+        note = {"corners": work, "used": 1, "replaced": 0.05}
+        picture = _jpeg(trued)
+        # As the camera had them: not this photograph's scan.
+        plain = client.post(
+            url, files={"file": ("m.jpg", picture)}, data={"note": json.dumps(note)}
+        )
+        assert plain.status_code == 422 and "chart" in plain.text
+        made = client.post(
+            url,
+            files={"file": ("m.jpg", picture)},
+            data={"note": json.dumps({**note, "trued": True})},
+        )
+        assert made.status_code == 200, made.text
+        assert made.json()["chart"] == sent["chart"] and made.json()["used"] == 1
+        assert service.own_works.path(token).read_bytes() == picture
+        scan = client.get("/api/debug/own-scans").json()[0]
+        assert scan["chart"]["corners"] == sent["chart"]
+        assert set(scan["files"]) == {"first.jpg", "side1.jpg"}
+
+        # No chart: no tables, and no scan said to be in a chart's colours.
+        bare = client.post("/api/own/photos", files={"file": ("p.jpg", _jpeg(photo[:, :1300]))})
+        other = bare.json()["token"]
+        assert bare.json()["tables"] is False
+        assert client.get(f"/api/own/photos/{other}/chart").status_code == 404
+        assert client.get(f"/api/own/photos/{'0' * 24}/chart").status_code == 404
+        client.post(
+            f"/api/own/photos/{other}/sides", files={"file": ("s.jpg", _jpeg(photo[:, :1300]))}
+        )
+        refused = client.post(
+            f"/api/own/photos/{other}/merged",
+            files={"file": ("m.jpg", _jpeg(photo[:, :1300]))},
+            data={"note": json.dumps({**note, "trued": True})},
+        )
+        assert refused.status_code == 422 and "chart" in refused.text
 
 
 def test_a_chart_not_read_when_the_scan_came_is_read_when_the_work_is_made_again(

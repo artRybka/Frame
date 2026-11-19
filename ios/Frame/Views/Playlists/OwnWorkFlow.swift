@@ -256,11 +256,15 @@ struct OwnWorkFlow: View {
                     // Within the corners the server's merge would go by:
                     // the model's, else what the camera followed. With
                     // none, or without the memory to spare, the server
-                    // makes the scan as before.
-                    let within = sent.phone == true ? PhoneScan.valid(sent.corners) ?? PhoneScan.valid(shots.outline) : nil
+                    // makes the scan as before; so it does of a
+                    // photograph with a colour chart when it gives no
+                    // tables of it for the phone's own photographs.
+                    let charted = sent.chart != nil
+                    let may = charted ? sent.tables == true : sent.phone == true
+                    let within = may ? PhoneScan.valid(sent.corners) ?? PhoneScan.valid(shots.outline) : nil
                     let here = within != nil && OwnPhoneScan.can(shots, size: (sent.width, sent.height))
                     merging = Task {
-                        if here, let within, await scanHere(shots, token: token, corners: within) { return }
+                        if here, let within, await scanHere(shots, token: token, corners: within, charted: charted) { return }
                         // He went back to the camera: nothing is asked of the server.
                         guard !Task.isCancelled else { return }
                         await merge(token: token, outline: shots.outline, trace: shots.trace)
@@ -300,9 +304,16 @@ struct OwnWorkFlow: View {
     /// as soon as it is made (some 5 s; the server was 34 s at it) and
     /// sent to the server meanwhile. False when the phone could not make
     /// it: the server then does.
-    private func scanHere(_ shots: OwnShots, token: String, corners: [[Double]]) async -> Bool {
+    private func scanHere(_ shots: OwnShots, token: String, corners: [[Double]], charted: Bool) async -> Bool {
         let scanning = self.scanning, heat = ProcessInfo.processInfo.thermalState
-        guard let made = await scanning.make(shots, corners: corners) else { return false }
+        // A colour chart beside the work: the phone's own photographs are
+        // put in its colours first, by what the server read of it.
+        var chart: Data?
+        if charted {
+            guard let given = try? await model.backend.ownChartTables(token: token) else { return false }
+            chart = given
+        }
+        guard let made = await scanning.make(shots, corners: corners, chart: chart) else { return false }
         // He may have gone back to the camera meanwhile.
         guard incoming?.token == token, !Task.isCancelled else { return true }
         await scanMade(made, by: scanning, token: token, heat: (heat, ProcessInfo.processInfo.thermalState))

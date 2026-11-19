@@ -1760,6 +1760,11 @@ actor DemoBackend: FrameBackend {
         )
     }
 
+    func ownChartTables(token: String) async throws -> Data {
+        // The demo's photographs have no chart beside the work.
+        throw BackendError.notFound
+    }
+
     func keepOwnFirstPhoto(token: String) async throws {
         guard incoming[token] != nil else { throw BackendError.notFound }
         try await Task.sleep(for: .milliseconds(300))

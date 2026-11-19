@@ -27,4 +27,22 @@ struct Merged {
 Merged merge(const cv::Mat& first, const std::vector<cv::Mat>& sides,
              const std::array<cv::Point2d, 4>& corners, bool anyway = false);
 
+/// A colour chart photographed beside the work, as the server read it:
+/// the way from a photograph's 8 bits to the colours the chart gives it
+/// (`imaging/colorchecker.py`, whose `tables` writes what `read` reads).
+struct Chart {
+    float curves[3][256];  // each channel's 8-bit values as true light
+    float linear[256];  // each 8-bit value's own light
+    float matrix[3][3];  // applied to the light the curves give
+    bool top = false;  // the curves end below the photograph's top…
+    double start[3] = {1, 1, 1};  // …from this light on, in each channel
+    std::vector<uint8_t> lit;  // each true light (of 65536) as it is written
+
+    static Chart read(const std::string& path);
+};
+
+/// `photo` (RGB, 8 bits) in the colours `chart` gives it, in place: the
+/// server's `colorchecker.apply`.
+void put(cv::Mat& photo, const Chart& chart);
+
 }  // namespace frame::scan

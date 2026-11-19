@@ -90,6 +90,26 @@ int frame_scan_merge_files(const char* first, const char* const* sides, int coun
     }
 }
 
+int frame_scan_chart_file(const char* path, const char* tables, char* error, int error_size) {
+    try {
+        frame::scan::Chart chart = frame::scan::Chart::read(tables);
+        npy::Array read = npy::load(path);
+        if (read.depth != CV_8U || read.shape.size() != 3 || read.shape[2] != 3)
+            return failed("the photograph is not rows × columns × 3 of 8 bits", error, error_size);
+        // On the file's own bytes: a first photograph is 144 MB of them.
+        cv::Mat photo(read.shape[0], read.shape[1], CV_8UC3, read.data.data());
+        frame::scan::put(photo, chart);
+        npy::save(std::string(path) + ".part", photo);
+        if (std::rename((std::string(path) + ".part").c_str(), path) != 0)
+            return failed("the photograph could not be written", error, error_size);
+        return 0;
+    } catch (const std::exception& err) {
+        return failed(err.what(), error, error_size);
+    } catch (...) {
+        return failed("the chart's colours could not be put", error, error_size);
+    }
+}
+
 int frame_scan_made_up(int side, frame_scan_note* note, char* error, int error_size) {
     try {
         if (note) *note = frame_scan_note{};

@@ -152,6 +152,9 @@ class PhoneScan(BaseModel):
     #: What the phone noted of making it: how long each part took, on
     #: what phone, with which app and core.
     phone: dict[str, Any] | None = Field(default=None, max_length=32)
+    #: The phone put its photographs in the colours of the chart read
+    #: here first (:func:`chart`).
+    trued: bool = False
 
 
 @router.post("/own/photos/{token}/merged", response_model=Merged)
@@ -166,8 +169,9 @@ async def merged(
     :func:`merge` keeps the server's: ``file`` the first photograph
     without its reflections (a JPEG of its size), ``note`` a
     :class:`PhoneScan` as JSON. 422 for what is no scan of this
-    photograph (its colours were set by a chart here, no side photographs
-    are with the server…): the phone then asks :func:`merge`."""
+    photograph (its colours were set by a chart here and not by the phone,
+    no side photographs are with the server…): the phone then asks
+    :func:`merge`."""
     try:
         told = PhoneScan.model_validate_json(note)
     except ValidationError as err:
@@ -188,11 +192,27 @@ async def merged(
             told.doubt,
             told.trace,
             told.phone,
+            told.trued,
         )
     except LookupError as err:
         raise HTTPException(404, str(err)) from err
     except ValueError as err:
         raise HTTPException(422, str(err)) from err
+
+
+@router.get("/own/photos/{token}/chart")
+async def chart(token: str, svc: Svc) -> Response:
+    """The way to the colours of the chart found in the photograph, for
+    the phone's core to put its own photographs of the scan through
+    before it merges them (``colorchecker.tables``, some 70 kB). 404
+    where no chart was found."""
+    try:
+        return Response(
+            await run_in_threadpool(svc.own_works.tables, token),
+            media_type="application/octet-stream",
+        )
+    except LookupError as err:
+        raise HTTPException(404, str(err)) from err
 
 
 @router.post("/own/photos/{token}/single")

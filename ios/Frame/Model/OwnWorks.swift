@@ -23,6 +23,11 @@ struct OwnIncoming: Codable, Hashable, Sendable {
     /// (`PhoneScan`): not where a chart set its colours on the server.
     /// nil from a server that takes no such scan (to 1.145.254).
     var phone: Bool? = nil
+    /// Where a chart did: the phone may make the scan all the same, of
+    /// its own photographs put in the chart's colours first, by the
+    /// tables the server gives of it (`FrameBackend.ownChartTables`). nil
+    /// from a server that gives none (to 1.145.255): it makes the scan.
+    var tables: Bool? = nil
 
     var aspect: Double { height > 0 ? Double(width) / Double(height) : 0.75 }
 }

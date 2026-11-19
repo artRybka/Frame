@@ -281,6 +281,12 @@ protocol FrameBackend: Sendable {
     /// photograph without its reflections (a JPEG; nil where nothing was
     /// taken off). Refused (422) where the server is to make it itself.
     func sendOwnScan(token: String, note: Data, picture: Data?) async throws -> OwnMerged
+    /// What the server goes by to put a photograph in the colours of the
+    /// colour chart it found in it (`colorchecker.tables`, some 70 kB):
+    /// the phone puts its own photographs of the scan through the same
+    /// before it merges them (`ScanCore.chart`). 404 where no chart was
+    /// found.
+    func ownChartTables(token: String) async throws -> Data
     /// "Na wprost" on "Skan gotowy": the first photograph as it was
     /// taken waits again, in the scan's stead.
     func keepOwnFirstPhoto(token: String) async throws

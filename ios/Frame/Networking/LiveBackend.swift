@@ -758,6 +758,17 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
+    func ownChartTables(token: String) async throws -> Data {
+        var req = request("/api/own/photos/\(escape(token))/chart")
+        req.timeoutInterval = 60
+        let (data, response) = try await load(req)
+        guard let http = response as? HTTPURLResponse else { throw BackendError.invalidResponse }
+        guard (200 ..< 300).contains(http.statusCode) else {
+            throw BackendError.http(status: http.statusCode, body: String(decoding: data, as: UTF8.self))
+        }
+        return data
+    }
+
     func keepOwnFirstPhoto(token: String) async throws {
         try await send("/api/own/photos/\(escape(token))/single", method: "POST")
     }

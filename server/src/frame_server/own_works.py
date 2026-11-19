@@ -205,6 +205,11 @@ class Incoming(BaseModel):
     #: (:meth:`OwnWorks.merged_by_phone`): not where a chart set its
     #: colours here, which the phone's own photographs do not have.
     phone: bool = False
+    #: Where a chart did: the phone may make the scan all the same, of
+    #: its own photographs put in the chart's colours first, by the
+    #: tables it has of :meth:`OwnWorks.tables` (an app that knows of
+    #: none goes by ``phone`` and leaves the scan to the server).
+    tables: bool = False
 
 
 class Merged(Incoming):
@@ -348,6 +353,7 @@ class OwnWorks:
             height=img.height,
             chart=list(chart.corners) if chart is not None else None,
             phone=chart is None,
+            tables=chart is not None,
         )
 
     @staticmethod
@@ -454,6 +460,18 @@ class OwnWorks:
             return Chart.from_json(json.loads(self.path(token).with_suffix(CHART).read_text()))
         except (OSError, ValueError, KeyError, TypeError):
             return None
+
+    def tables(self, token: str) -> bytes:
+        """The way to the chart's colours the waiting photograph was put
+        through here, for the phone to put its own photographs of the
+        scan through before it merges them (``colorchecker.tables``).
+        LookupError where no chart was found in it."""
+        from .imaging import colorchecker
+
+        chart = self._charted(token)
+        if chart is None:
+            raise LookupError("no chart was found in the photograph")
+        return colorchecker.tables(chart)
 
     def shown(self, token: str, side: int | None = None) -> Path | bytes:
         """The photograph as it waits, for the phone to set the corners
@@ -682,6 +700,7 @@ class OwnWorks:
         doubt: bool = False,
         trace: dict[str, float] | None = None,
         phone: dict[str, Any] | None = None,
+        trued: bool = False,
     ) -> Merged:
         """The scan as the phone made it of its camera's own photographs
         (Mateusz 2026-11-19 07:42 UTC: "Tak, składaj na iPhonie"; the same
@@ -703,10 +722,16 @@ class OwnWorks:
         than what the phone had cleaned, and it merged again), it takes
         the earlier one's place.
 
+        ``trued``: the phone put its photographs in the colours of the
+        chart read here before it merged them (:meth:`tables`; Mateusz
+        2026-11-19 08:09 UTC asked whether the phone would see to the
+        chart as well). The photographs kept here are in them already.
+
         Raises ValueError for what is no scan of this photograph: no side
         photographs of it are here, the picture is of another size, or
-        its colours were set by a chart here (the phone merged the
-        camera's): the phone then asks :meth:`merge` as before."""
+        its colours were set by a chart here and the phone merged the
+        camera's as they came (or the other way about): the phone then
+        asks :meth:`merge` as before."""
         path = self.path(token)
         folder = self.scans / token
         angles = self._angles(token)
@@ -714,10 +739,15 @@ class OwnWorks:
         again = not sides and (folder / "first.jpg").is_file()
         if not sides and not again:
             raise ValueError("no side photographs of it are here")
-        if self._charted(token) is not None:
+        chart = self._charted(token)
+        if chart is not None and not trued:
             raise ValueError("its colours were set by a chart here")
+        if chart is None and trued:
+            raise ValueError("no chart set its colours here")
         with Image.open(path) as img:
             seen = Merged(token=token, width=img.width, height=img.height, corners=corners)
+        if chart is not None:
+            seen.chart = list(chart.corners)
         seen.used, seen.replaced, seen.doubt = used, round(replaced, 4), doubt
         made = self._upright(data, (seen.width, seen.height)) if seen.replaced > 0 else None
         if seen.replaced > 0 and made is None:
@@ -759,9 +789,10 @@ class OwnWorks:
                 side.unlink(missing_ok=True)
             path.with_suffix(ANGLES).unlink(missing_ok=True)
         log.info(
-            "own photograph %s: merged on the phone%s: %d side(s) laid over, %.1f%% of the light "
+            "own photograph %s: merged on the phone%s%s: %d side(s) laid over, %.1f%% of the light "
             "taken out%s%s",
             token,
+            " in its chart's colours" if trued else "",
             " again within his corners" if again else "",
             seen.used,
             seen.replaced * 100,
@@ -1034,6 +1065,7 @@ class OwnWorks:
                 height=img.height,
                 chart=list(chart.corners) if chart is not None else None,
                 phone=chart is None,
+                tables=chart is not None,
             )
             img.draft("RGB", (LOOK_SIDE, LOOK_SIDE))
             img.load()
