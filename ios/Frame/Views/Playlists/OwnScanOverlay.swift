@@ -29,6 +29,9 @@ struct OwnScanLook: Equatable {
     var manual = false
     /// Little light: the photograph may come out blurred or grainy.
     var dim = false
+    /// The phone looks down at a work lying before it (`OwnScanView.down`):
+    /// held right, it is level there, not upright.
+    var down = false
     /// Where the phone stands, in degrees to the side of the work
     /// (negative: to its left); nil before the first photograph.
     var angle: Double?
@@ -111,6 +114,7 @@ struct OwnScanLook: Equatable {
         case .farther: "Całe ma być widoczne, z kawałkiem ściany wokół."
         case .straight where manual, .level where manual: "Tak bywa, gdy dzieło nie jest prostokątem."
         case .straight: "Przesuń się tak, żeby lewy i prawy bok dzieła były równej wysokości."
+        case .level where down: "Trzymaj go poziomo, nad środkiem dzieła."
         case .level: "Trzymaj go pionowo, na wysokości środka dzieła."
         case .aim: "Obróć telefon tak, żeby całe dzieło było w kadrze."
         case .turned: "Dzieło trzeba zobaczyć z boku. Sam obrót telefonu tego nie da."
