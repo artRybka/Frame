@@ -398,12 +398,10 @@ def matches(
             return False
         if held_at and held_at in {places.canon(p) for p in rules.exclude_places}:
             return False
-    if (
-        rules.title.strip()
-        and item.id not in titled_ids
-        and not has_title(item, titled_as(rules.title) if titled is None else titled)
-    ):
-        return False
+    if rules.title.strip() and item.id not in titled_ids:
+        titled = titled_as(rules.title) if titled is None else titled
+        if not has_title(item, titled) and not (rules.artists and shows_title(item, titled)):
+            return False
     if item.found_for:
         key = rules.search_key() if key is None else key
         if key and key in item.found_for:
@@ -563,6 +561,20 @@ def titled_as(
 def has_title(item: Item, titled: list[list[str]]) -> bool:
     """Whether the work's title has the title asked in one of its forms."""
     return says_in(folded_fields(item)[1], titled)
+
+
+def shows_title(item: Item, titled: list[list[str]]) -> bool:
+    """Whether one of the work's keywords (what Haiku saw on it) is the
+    title asked, whole, in one of its forms. Taken for an artist's works
+    only (:func:`matches`): his "Bathers" are his bathers in any language
+    ("Baigneuses", "Badende"), which the title alone missed (Mateusz
+    2026-11-20, Cézanne's "Baigneuses" of about 1870); a title asked
+    without an artist stays a title (a famous work, not every picture of
+    storks)."""
+    forms = {_bare(phrase_fold(form)) for forms in titled for form in forms if form.strip()}
+    if len(titled) != 1 or not forms:
+        return False
+    return any(_bare(phrase_fold(word)) in forms for word in item.keywords)
 
 
 def says_in(folded: str, said: list[list[str]]) -> bool:
