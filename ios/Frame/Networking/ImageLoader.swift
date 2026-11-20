@@ -538,7 +538,8 @@ struct ArtImage: View {
     /// copy): a thumbnail or preview from before is had anew.
     private var picture: Int {
         switch ref {
-        case let .thumb(id), let .tile(id), let .framePreview(id, _, _, _): model.pictureChanges[id] ?? 0
+        case let .thumb(id), let .tile(id), let .framePreview(id, _, _, _), let .image(id), let .original(id, _):
+            model.pictureChanges[id] ?? 0
         default: 0
         }
     }
@@ -559,6 +560,7 @@ struct ArtImage: View {
     /// found: it would slide once found.
     private var shown: UIImage? {
         if let image { return image }
+        if let made = model.phonePicture(for: ref, maxPixel: maxPixel) { return made }
         guard let request = model.backend.request(for: ref) else { return nil }
         if subjectFocus, focusPoint == nil, SubjectFocus.known(ImageLoader.pictureKey(request)) == nil { return nil }
         return ImageLoader.inMemory(for: request, maxPixel: maxPixel)
@@ -731,6 +733,18 @@ struct ArtImage: View {
     }
 
     private func attempt(_ ref: ImageRef) async -> Outcome {
+        // Made on the phone (the full screen switched its colours): not
+        // waited for from the server.
+        if let made = model.phonePicture(for: ref, maxPixel: maxPixel) {
+            if crossfade, image != nil, image !== made {
+                withAnimation(.easeInOut(duration: 0.5)) { image = made }
+            } else {
+                withAnimation(.easeInOut(duration: 0.3)) { image = made }
+            }
+            shownRef = ref
+            shownPicture = picture
+            return .loaded
+        }
         var missing = false
         for candidate in [ref, fallback].compactMap({ $0 }) {
             guard let request = model.backend.request(for: candidate) else { continue }

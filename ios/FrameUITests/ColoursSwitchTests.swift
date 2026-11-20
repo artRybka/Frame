@@ -25,6 +25,42 @@ final class ColoursSwitchTests: XCTestCase {
         try check(["-paintStyle", "pen", "-demoPaper", "YES"], named: "paper-")
     }
 
+    /// The card under the full screen takes the switched picture at once
+    /// too, not when the slow server has made its own (Mateusz 2026-11-20:
+    /// "I miniatury też już tak działają?… Tak. Działajmy.").
+    @MainActor
+    func testTheCardTakesTheSwitchAtOnce() throws {
+        try? FileManager.default.createDirectory(atPath: Self.folder, withIntermediateDirectories: true)
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "YES", "-screen", "original", "-demoSlowServer", "4", "-paintStyle", "oil"]
+        app.launch()
+        guard let button = Self.find("Korekta barw", in: app, within: 40) else {
+            XCTFail("no colours button on the viewer")
+            return
+        }
+        sleep(6)
+        let close = app.buttons["Zamknij"].firstMatch
+        close.tap()
+        sleep(2)
+        let before = shot("card-1-before")
+        let open = app.buttons["Pokaż oryginał"].firstMatch
+        XCTAssertTrue(open.waitForExistence(timeout: 10), "no way back to the full screen")
+        open.tap()
+        XCTAssertTrue(button.waitForExistence(timeout: 10))
+        sleep(3)  // the other picture made
+        button.tap()
+        usleep(900_000)
+        close.tap()
+        usleep(1_200_000)  // still before the slow server answers
+        let after = shot("card-2-after-switch")
+        let moved = Self.apart(before, after, top: 0.12)
+        XCTAssertGreaterThan(moved, 4, "the card did not take the switched picture at once")
+        sleep(6)  // the server has answered
+        let answered = shot("card-3-server-answered")
+        XCTAssertLessThan(Self.apart(after, answered, top: 0.12), 1.5, "the card changed again when the server answered")
+        Self.log("card-moved \(moved)")
+    }
+
     @MainActor
     private func check(_ style: [String], named prefix: String) throws {
         try? FileManager.default.createDirectory(atPath: Self.folder, withIntermediateDirectories: true)
@@ -106,17 +142,17 @@ final class ColoursSwitchTests: XCTestCase {
 
     /// How far apart two screenshots are in the middle of the picture (mean
     /// level difference, 0–255), away from the buttons and the caption.
-    private static func apart(_ a: UIImage, _ b: UIImage) -> Double {
-        guard let x = levels(a), let y = levels(b), x.count == y.count, !x.isEmpty else { return -1 }
+    private static func apart(_ a: UIImage, _ b: UIImage, top: Double = 0.35) -> Double {
+        guard let x = levels(a, top: top), let y = levels(b, top: top), x.count == y.count, !x.isEmpty else { return -1 }
         let sum = zip(x, y).reduce(0) { $0 + abs(Int($1.0) - Int($1.1)) }
         return Double(sum) / Double(x.count)
     }
 
-    private static func levels(_ image: UIImage) -> [UInt8]? {
+    private static func levels(_ image: UIImage, top: Double) -> [UInt8]? {
         guard let source = image.cgImage else { return nil }
         let width = 60, height = 40
         let crop = CGRect(
-            x: Double(source.width) * 0.2, y: Double(source.height) * 0.35,
+            x: Double(source.width) * 0.2, y: Double(source.height) * top,
             width: Double(source.width) * 0.6, height: Double(source.height) * 0.3
         )
         guard let part = source.cropping(to: crop),
@@ -132,6 +168,14 @@ final class ColoursSwitchTests: XCTestCase {
     }
 
     private static func log(_ line: String) {
-        FileManager.default.createFile(atPath: "\(folder)/colours.log", contents: Data((line + "\n").utf8))
+        let path = "\(folder)/colours.log"
+        let data = Data((line + "\n").utf8)
+        if let file = FileHandle(forWritingAtPath: path) {
+            file.seekToEndOfFile()
+            file.write(data)
+            try? file.close()
+        } else {
+            FileManager.default.createFile(atPath: path, contents: data)
+        }
     }
 }
