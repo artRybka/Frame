@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.145.288
+
+- Menu „…” dzieła krótsze: bez „Przywróć zdjęcie muzeum” (jest na górze
+  „Szukaj lepszej kopii”) i bez „Otwórz w muzeum”.
+- „Zapisz w Zdjęciach” zapisuje dzieło tak, jak je widzisz: z korektą
+  werniksu albo papieru, przycięte. Dzieło w ramie lub passe-partout
+  można zapisać samo albo w ramie.
+- „Ukryj dzieło” działa dla każdej osoby osobno, także dla Gościa. Na
+  ramce nie pojawia się dzieło ukryte przez Ciebie albo Domownika.
+- „Szukaj lepszej kopii” tylko dla właściciela. Kopia w pełniejszych
+  barwach niż zdjęcie z muzeum nie jest już odrzucana.
+
 ## 1.145.287
 
 - Tłumaczenie słów w Szukaj na iPhonie naprawdę działa. Telefon szukał

@@ -68,16 +68,15 @@ struct ItemToolbar: ToolbarContent {
             }
             .accessibilityLabel("Dodaj do playlisty")
             Menu {
-                // Hidden from the whole household: not a guest's to do.
-                if !model.isGuest {
-                    Button(
-                        item.excluded ? "Przywróć dzieło" : "Ukryj dzieło",
-                        systemImage: item.excluded ? "eye" : "eye.slash"
-                    ) {
-                        Task {
-                            if let updated = await model.setExcluded(item.id, !item.excluded) {
-                                changed(updated)
-                            }
+                // Hidden for this person only, a guest too (Mateusz 2026-11-20:
+                // „żeby działało dla każdego użytkownika indywidualnie”).
+                Button(
+                    item.excluded ? "Przywróć dzieło" : "Ukryj dzieło",
+                    systemImage: item.excluded ? "eye" : "eye.slash"
+                ) {
+                    Task {
+                        if let updated = await model.setExcluded(item.id, !item.excluded) {
+                            changed(updated)
                         }
                     }
                 }

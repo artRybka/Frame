@@ -32,6 +32,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from ..imaging.text import MAX_BODY
+from ..library.viewer import OWNER_ID
 from .client import HAIKU, SONNET, image_block, request
 from .daily import _object, _str
 from .pl_text import _paragraphs, _plain, frame_text
@@ -323,7 +324,7 @@ class ReviewFixes:
         """ "Ukryj": the work out of the catalogue (as "Ukryj" on its card),
         and off the list."""
         item = self._work(item_id)
-        updated = self.library.update(item.id, excluded=True, excluded_at=_now()) or item
+        updated = self.library.set_hidden(OWNER_ID, item.id, True, at=_now()) or item
         self.audit.forget_written(item_id)
         self.gatekeeper.forget_written(item_id)
         return updated
