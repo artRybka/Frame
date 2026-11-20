@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.274
+
+- Werniks i odżółcanie przełączają się na pełnym ekranie od razu: druga
+  wersja dzieła pobiera się w tle, gdy je oglądasz (tylko przy dziełach z
+  kółkiem korekty barw). Serwer odpowiada natychmiast, a pliki dzieła i
+  barwy przerabia potem; obie wersje zostają na dysku, więc kolejne
+  przełączenia to odczyt pliku.
+
 ## 1.145.273
 
 - Szukanie wewnątrz playlisty jest szybsze: podczas pisania szuka tylko

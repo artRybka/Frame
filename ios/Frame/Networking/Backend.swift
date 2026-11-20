@@ -29,7 +29,9 @@ enum ImageRef: Hashable, Sendable {
     /// The work as it is shown, with the restorer's drawing or its colours'
     /// correction left off (`restored`, `cleaned` false): the full-screen
     /// viewer's buttons; `version` keeps another picture apart.
-    case treated(String, restored: Bool, cleaned: Bool, version: String)
+    /// `made`: how the work is made, for a correction nobody asked for
+    /// yet (the server reads it then, `/treated?made=`).
+    case treated(String, restored: Bool, cleaned: Bool, version: String, made: String? = nil)
     /// One tile of a work kept larger than its original (`FineView`);
     /// `version` is the tiles' stamp.
     case fine(String, tile: String, version: String)

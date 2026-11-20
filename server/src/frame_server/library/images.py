@@ -581,6 +581,10 @@ class ImageCache:
         self.tiles.mkdir(parents=True, exist_ok=True)
         self.images.mkdir(parents=True, exist_ok=True)
         self.http = http
+        #: Works whose kept pictures are being made again after the owner
+        #: switched their cleaning (``Cleaning``, in the background): until
+        #: then everyone is given :meth:`variant`, never the stale picture.
+        self.remaking: set[str] = set()
         #: Sources whose originals need more than a plain download (by source).
         self.fetchers: dict[str, Callable[[Item], bytes]] = {}
         #: Other addresses of a picture, tried when its own fail (by source):
@@ -990,7 +994,9 @@ class ImageCache:
         ustawienia każdego z użytkowników"): with the cleaning read
         (``cleaned``) or without it. Made once from the museum's photograph
         and kept beside the thumbnails, by the picture, its cut and its
-        cleaning; one of a kind per work."""
+        cleaning. Both kinds are kept (with and without the cleaning), so
+        switching back and forth is a file read (Mateusz 2026-11-20: "Teraz
+        każde kliknięcie włącz/wyłącz to sekundy")."""
         reading = item.cleaned_reading()
         stamp = f"{item.picture_key()}|{item.cut_version()}|{reading.at if reading else ''}"
         key = hashlib.sha1(stamp.encode()).hexdigest()[:10]
@@ -1006,7 +1012,8 @@ class ImageCache:
             img = self.treated(item, restored=True, cleaned=cleaned, side=side, urgent=urgent)
             folder.mkdir(parents=True, exist_ok=True)
             for old in folder.glob(f"{item.file_stem}-*-{end}.jpg"):
-                old.unlink(missing_ok=True)
+                if old.name[len(item.file_stem) + 2 :].split("-")[0] != key:
+                    old.unlink(missing_ok=True)
             _save_jpeg(img, path, side, 85 if thumb else 92)
         return path
 

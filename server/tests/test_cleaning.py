@@ -5,6 +5,7 @@ everywhere, with its colours measured on the cleaned picture."""
 from __future__ import annotations
 
 import io
+import threading
 
 import numpy as np
 import pytest
@@ -33,6 +34,8 @@ def _app(service):
     from frame_server.web import create_app
 
     app = create_app(service.settings)
+    # What is kept made at once, as the checks below read it.
+    app.state.service.cleaning.background = False
     return app, app.state.service
 
 
@@ -337,8 +340,30 @@ def test_each_person_sees_the_cleaning_of_their_own(tmp_path) -> None:
         assert svc.player.state.cleaned_as == {}
         assert svc.player._original(stored, True) == svc.images.image_path(oil)
 
-        # He takes it off too: what is kept is cleaned, she sees the same.
+        # The viewer's button: both ways kept on disk, a file read each.
+        treated = f"/api/library/items/{oil.id}/treated"
+        assert warmth_of(client.get(treated, params={"cleaned": False}, headers=OWNER)) > 1.6
+        assert warmth_of(client.get(treated, params={"cleaned": True}, headers=OWNER)) < 1.35
+        variants = sorted(
+            p.name[:-6] for p in (svc.images.thumbs.parent / "variants").glob("*-o.jpg")
+        )
+        assert [v[len(oil.file_stem) + 1] for v in variants] == ["c", "n"]
+
+        # He takes it off too: answered at once (Mateusz 2026-11-20: "każde
+        # kliknięcie włącz/wyłącz to sekundy"), the kept pictures made after;
+        # meanwhile he is given the cleaned one already.
+        gate = threading.Event()
+        made = svc.images.recut
+        svc.images.recut = lambda item: gate.wait(10) and made(item)  # type: ignore[method-assign]
         client.put(f"/api/library/items/{oil.id}/cleaned", params={"made": "oil"}, headers=OWNER)
+        assert oil.id in svc.images.remaking
+        assert svc.images.image_path(oil).read_bytes() == as_it_came
+        assert warmth_of(client.get(image, headers=OWNER)) < 1.35
+        assert warmth_of(client.get(thumb, headers=OWNER)) < 1.35
+        gate.set()
+        svc.cleaning.wait()
+        svc.images.recut = made  # type: ignore[method-assign]
+        assert oil.id not in svc.images.remaking
         assert _warmth(Image.open(svc.images.image_path(oil))) < 1.35
         assert sorted(svc.library.get(oil.id).cleaned_by) == sorted([her, OWNER_ID])
         # She gives it back: her picture as it came, his stays cleaned.
@@ -348,5 +373,34 @@ def test_each_person_sees_the_cleaning_of_their_own(tmp_path) -> None:
         assert _warmth(Image.open(svc.images.image_path(oil))) < 1.35
         # He gives it back too: nobody sees it, the reading goes.
         client.delete(f"/api/library/items/{oil.id}/cleaned", headers=OWNER)
+        svc.cleaning.wait()
         assert svc.library.get(oil.id).cleaned is None
         assert svc.images.image_path(oil).read_bytes() == as_it_came
+
+
+def test_the_viewer_has_the_cleaned_picture_ready_before_it_is_asked_for(tmp_path) -> None:
+    """Mateusz 2026-11-20: "każde kliknięcie włącz/wyłącz to sekundy", and
+    "Dla wielu dzieł nie ma ta funkcja wogole sensu": the correction is read
+    only when the viewer with its button asks for the other picture, and
+    kept seen by nobody until someone switches it on."""
+    from test_users import OWNER
+    from test_users import _app as people_app
+
+    app = people_app(tmp_path)
+    svc = app.state.service
+    with TestClient(app) as client:
+        oil = _keep(svc, _under_varnish(_painting(), 0.8), number=1, year=1650)
+        treated = f"/api/library/items/{oil.id}/treated"
+        ready = client.get(treated, params={"cleaned": True, "made": "oil"}, headers=OWNER)
+        assert ready.status_code == 200, ready.text
+        assert _warmth(Image.open(io.BytesIO(ready.content))) < 1.35
+        stored = svc.library.get(oil.id)
+        assert stored.cleaned is not None and stored.cleaned_by == []
+        assert client.get(f"/api/library/items/{oil.id}", headers=OWNER).json()["cleaned"] is None
+        # Switched on: no reading again, the picture as had already.
+        done = client.put(
+            f"/api/library/items/{oil.id}/cleaned", params={"made": "oil"}, headers=OWNER
+        )
+        assert done.json()["cleaned"]["at"] == stored.cleaned.at
+        svc.cleaning.wait()
+        assert _warmth(Image.open(svc.images.image_path(oil))) < 1.35
