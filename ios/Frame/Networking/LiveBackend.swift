@@ -70,6 +70,10 @@ struct LiveBackend: FrameBackend {
     // MARK: Library
 
     func items(_ q: LibraryQuery) async throws -> ItemPage {
+        // "Słowa" put in order of how near works look to the words, which
+        // the server reads in English: a phrase translated here first
+        // ("parowiec na rzece", Mateusz 2026-11-20: "Tak, zrób proszę.").
+        if q.seen, q.offset == 0, q.text.contains(where: \.isWhitespace) { await teach([q.text]) }
         var query = [
             URLQueryItem(name: "q", value: q.text),
             URLQueryItem(name: "sort", value: q.sort),
@@ -528,6 +532,12 @@ struct LiveBackend: FrameBackend {
     func vocabulary() async throws -> [TermInfo] { try await get("/api/vocabulary") }
 
     func terms(_ text: String, playlist: Int?) async throws -> [TermHit] {
+        // While typing: a phrase's translation sent ahead, not waited for
+        // (the server asks for how its words look as they are suggested).
+        if text.contains(where: \.isWhitespace) {
+            let phrase = text
+            Task { await self.teach([phrase]) }
+        }
         var query = [URLQueryItem(name: "q", value: text)]
         if let playlist { query.append(URLQueryItem(name: "playlist", value: String(playlist))) }
         return try await get("/api/terms", query: query)
