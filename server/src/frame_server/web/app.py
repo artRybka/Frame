@@ -59,6 +59,7 @@ from ..store import PanelRequest, preview_url
 from . import (
     ai_api,
     calibration_api,
+    crops_api,
     daily_api,
     device_api,
     discover_api,
@@ -344,6 +345,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         restorer_api.router,
         looks_api.router,
         own_api.router,
+        crops_api.router,
     )
     for router in routers:
         app.include_router(router)

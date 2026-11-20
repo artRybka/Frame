@@ -23,6 +23,11 @@ targets:
     sources:
       - Frame
       - Shared
+      # The museum photographs' crop model (`Model/MuseumCrop.swift`), compiled
+      # by Xcode; a file, not a folder of resources.
+      - path: Models/Kadr.mlpackage
+        type: file
+        buildPhase: sources
     dependencies:
       - target: FrameWidgets
       - target: FrameNotifications

@@ -774,6 +774,14 @@ class Crops(CriticNight):
         except OSError:
             return False
 
+    def on_phone(self) -> bool:
+        """Whether the phone's model cuts the museum photographs, and
+        Claude none (Mateusz 2026-11-20: „Celem jest całkowite uniknięcie
+        Opus”; :mod:`..phone_crops`): no judge, no Opus, at night or when a
+        card opens. His own works are still Opus's ("Dodaj własne
+        dzieło")."""
+        return self.config.config.crops_on_phone
+
     def candidates(self, asked: dict[str, Any]) -> list[Item]:
         # A work asked about is asked again when another copy took the
         # place of the photograph looked at (``Item.picture_key``): a
@@ -784,6 +792,13 @@ class Crops(CriticNight):
             for i in self.library.all_items()
             if self.stale(i) and self.wanted(i) and not self._looked_at(asked.get(i.id), i)
         ]
+        return self.ranked(found)
+
+    def ranked(self, found: list[Item]) -> list[Item]:
+        """``found`` in the order they are looked at: the works cared
+        about, then those shown, the museums of Warsaw and Kraków, the
+        newest."""
+        found = list(found)
         found.sort(key=lambda i: i.added_at or "", reverse=True)
         found.sort(key=lambda i: i.source not in FIRST_SOURCES)
         found.sort(key=lambda i: not (not i.pooled or i.favorite or i.show_count > 0))
@@ -839,10 +854,14 @@ class Crops(CriticNight):
 
     def waiting_claims(self) -> int:
         """Works the judge found something around, waiting for Opus."""
+        if self.on_phone():
+            return 0
         claims = self.state().get("claims") or {}
         return sum(1 for c in claims.values() if not _aside(c or {}))
 
     def order(self) -> bool:
+        if self.on_phone():
+            return False
         self.reshaped()
         self.surrounded()
         self.strips_rechecked()
@@ -1512,6 +1531,8 @@ class Crops(CriticNight):
             # sheet the card's "W ramie" (Mateusz 2026-11-18).
             self.apply(stored, stored.cut.model_copy(update={"paper": False}))
             return True
+        if self.on_phone() and stored.source not in OWN_SOURCES:
+            return False  # the phone looks at it (``phone_crops``)
         if self.unsurrounded(stored):
             # "W ramie" on the card (the app reads the work again)
             self.surround_now(stored)
@@ -1581,6 +1602,8 @@ class Crops(CriticNight):
         """The works the judge found something around that wait for Opus
         and are in no batch, the works cared about first (a run on demand,
         ``frame_server.on_demand``)."""
+        if self.on_phone():
+            return []
         state = self.state()
         ordered = set(((state.get("order") or {}).get("ids") or {}).values())
         claims = state.get("claims") or {}
@@ -1593,6 +1616,8 @@ class Crops(CriticNight):
         rather than in the night's batch: whether it was cut; None when its
         claim is gone (asked meanwhile). What the ask raises (no key, the
         limit) is the caller's."""
+        if self.on_phone():
+            return None
         state = self.state()
         claim = (state.get("claims") or {}).get(item_id)
         ordered = set(((state.get("order") or {}).get("ids") or {}).values())

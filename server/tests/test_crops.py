@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 from test_ai import FakeAnthropic, _message, fake  # noqa: F401  (fixture)
@@ -43,6 +44,15 @@ W, H = 900, 700
 FRAME = (150, 100, 750, 600)
 PAINTING = (180, 130, 720, 570)
 TRUE = [(180 / W, 130 / H), (720 / W, 130 / H), (720 / W, 570 / H), (180 / W, 570 / H)]
+
+
+@pytest.fixture(autouse=True)
+def _claude_cuts(request: pytest.FixtureRequest) -> None:
+    """Here Haiku and Opus cut the museum photographs, as before the
+    phone's model did (``test_phone_crops``)."""
+    if "service" in request.fixturenames:
+        service = request.getfixturevalue("service")
+        service.ai_config.update(AiConfigUpdate(crops_on_phone=False))
 
 
 def photo() -> Image.Image:

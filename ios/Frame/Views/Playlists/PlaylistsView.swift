@@ -141,6 +141,13 @@ struct PlaylistsView: View {
                             }
                             .buttonStyle(.plain)
                         }
+                        // The phone's model's cuts waiting for him (Mateusz 2026-11-20).
+                        if model.isOwner, let review = model.cropReview, !review.isEmpty {
+                            NavigationLink(value: CroppedRoute()) {
+                                CroppedCard(review: review)
+                            }
+                            .buttonStyle(.plain)
+                        }
                         // Last: the works hidden with "Ukryj dzieło" (not a guest's).
                         if !model.isGuest {
                             NavigationLink(value: HiddenRoute()) {
@@ -205,6 +212,9 @@ struct PlaylistsView: View {
             .navigationDestination(for: HiddenRoute.self) { _ in
                 HiddenWorksView()
             }
+            .navigationDestination(for: CroppedRoute.self) { _ in
+                CroppedWorksView()
+            }
             .navigationDestination(for: OwnWorksRoute.self) { _ in
                 OwnWorksView(add: { addingOwn = true })
             }
@@ -242,6 +252,7 @@ struct PlaylistsView: View {
                 }
                 if LaunchRoute.screen == "suggestions", path.isEmpty { path.append(SuggestionsRoute()) }
                 if LaunchRoute.screen == "own-works", path.isEmpty { path.append(OwnWorksRoute()) }
+                if LaunchRoute.screen == "cropped", path.isEmpty { path.append(CroppedRoute()) }
                 if LaunchRoute.screen == "editor", editing == nil {
                     editing = Playlist(name: "Błękitne krajobrazy", rules: PlaylistRules(colors: ["blue"]))
                 }
