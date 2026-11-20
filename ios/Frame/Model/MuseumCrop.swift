@@ -275,7 +275,8 @@ extension MuseumCrop {
     /// Nothing when the server has nothing for the phone to look at (an
     /// older server, a work looked at already, not the owner's phone).
     static func look(itemID: String, backend: any FrameBackend, asked: PhoneCropAsk? = nil) async throws -> PhoneCropResult? {
-        let ask = try await asked ?? backend.phoneCropAsk(itemID: itemID)
+        let ask: PhoneCropAsk
+        if let asked { ask = asked } else { ask = try await backend.phoneCropAsk(itemID: itemID) }
         guard ask.look, ask.model == model else { return nil }
         let file = try await backend.museumPhoto(itemID: itemID, side: ask.side)
         let looked = try await Task.detached(priority: .userInitiated) { try MuseumCrop.look(at: file, kind: ask.kind) }.value
