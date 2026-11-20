@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.278
+
+- Kadrowanie zdjęć z muzeów na iPhonie: ramę z modelu zostawiamy tylko
+  wtedy, gdy obejmuje całe dzieło (serwer odrzuca ją też z wersji
+  1.145.277). W „Popraw kadr” jest „Bez ramy”, a na liście „Kadrowane”
+  „Dobrze, bez ramy”. Lista „Kadrowane” odświeża się zaraz po
+  wykadrowaniu dzieła w jego karcie.
+
 ## 1.145.277
 
 - Zdjęcia dzieł z muzeów kadruje teraz sam iPhone, własnym modelem, bez
