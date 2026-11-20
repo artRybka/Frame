@@ -166,7 +166,8 @@ class PhoneCrops:
 
     def review(self) -> tuple[list[Item], list[Item]]:
         """ "Kadrowane": the works the model cut, and those it left to him,
-        still as it left them and not said to be fine, the newest first."""
+        not yet approved, the newest first: as the model left them, or cut
+        by him since (among the cut ones)."""
         state = self._state()
         cut: list[Item] = []
         unsure: list[Item] = []
@@ -176,12 +177,24 @@ class PhoneCrops:
             if item_id in state["fine"] or entry.get("v") not in ("cut", "unsure"):
                 continue
             item = self.library.get(item_id)
-            if item is None or not self._models(item, entry):
+            if item is None or entry.get("p") != item.picture_key():
+                continue
+            if self._owners(item):
+                # He set the cut himself from the list: it stays until he
+                # approves it (Mateusz 2026-11-20: „Gdy klikam zapisz w
+                # edycji kadru to nie zatwierdzaj automatycznie dzieła”).
+                cut.append(item)
+                continue
+            if not self._models(item, entry):
                 continue
             if entry["v"] == "cut":
                 item = self._unframed(item)
             (cut if entry["v"] == "cut" else unsure).append(item)
         return cut, unsure
+
+    @staticmethod
+    def _owners(item: Item) -> bool:
+        return item.cut is not None and item.cut.by == "owner"
 
     def _unframed(self, item: Item) -> Item:
         """``item`` without the frame the model found when it is not around
@@ -201,11 +214,11 @@ class PhoneCrops:
         lesson as it is. Whether there was such a work of the model's."""
         state = self._state()
         entry = state["looked"].get(item.id)
-        if (
-            entry is None
-            or entry.get("v") not in ("cut", "unsure")
-            or not self._models(item, entry)
-        ):
+        if entry is None or entry.get("v") not in ("cut", "unsure"):
+            return False
+        if entry.get("p") != item.picture_key():
+            return False
+        if not (self._owners(item) or self._models(item, entry)):
             return False
         state["fine"][item.id] = _now()
         self._save(state)
