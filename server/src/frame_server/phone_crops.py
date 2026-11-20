@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any
 from PIL import Image
 
 from .ai.crops import Crops
-from .imaging.crop_model import MODEL, holds, kind_of
+from .imaging.crop_model import KINDS, MODEL, holds, kind_of
 from .imaging.cut import Quad, same_picture, valid, worth_cutting
 from .library.models import Cut
 
@@ -40,6 +40,16 @@ VERDICTS = ("cut", "whole", "unsure")
 
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+#: A print is cut to its sheet and never framed by the model (Mateusz
+#: 2026-11-20 22:13 UTC, „Rysunki jak dziś, grafiki do papieru”: of 70 prints
+#: in his trial he corrected 23, the frame found round them right in 11 of 31).
+_PRINT = KINDS.index("print")
+
+
+def _unframed_kind(item: Item) -> bool:
+    return kind_of(item.classification, item.medium) == _PRINT
 
 
 class PhoneCrops:
@@ -119,6 +129,8 @@ class PhoneCrops:
         surround = valid(surround) if surround is not None else None
         if surround is not None and (work is None or not holds(surround, work)):
             surround = None  # not around all of it: no frame (an older app's)
+        if surround is not None and _unframed_kind(stored):
+            surround = None
         if verdict == "cut" and (work is None or not worth_cutting(work)):
             verdict = "whole" if work is not None else "unsure"
         state = self._state()
@@ -198,13 +210,13 @@ class PhoneCrops:
 
     def _unframed(self, item: Item) -> Item:
         """``item`` without the frame the model found when it is not around
-        all of the work (kept so by the app of 1.145.277)."""
+        all of the work (kept so by the app of 1.145.277), or round a print."""
         cut = item.cut
         if cut is None or cut.work is None or cut.surround is None or cut.surround_by == "owner":
             return item
-        if holds(cut.surround, cut.work):
+        if holds(cut.surround, cut.work) and not _unframed_kind(item):
             return item
-        log.info("phone crops: %s frame not around the work, dropped", item.id)
+        log.info("phone crops: %s frame dropped", item.id)
         bare = cut.model_copy(update={"surround": None, "surround_kind": ""})
         return self.crops.apply(item, bare)
 
