@@ -762,7 +762,15 @@ actor DemoBackend: FrameBackend {
     /// numbers of `VarnishSumTests`' picture).
     func colours(itemID: String, made: String) async throws -> ColoursView {
         guard made == "oil" else {
-            return ColoursView(kind: UserDefaults.standard.bool(forKey: "demoPaper") ? "paper" : "none")
+            guard UserDefaults.standard.bool(forKey: "demoPaper") else { return ColoursView(kind: "none") }
+            // A yellowed sheet's tone, even (the server's `_sheet(YELLOWED)`).
+            var view = ColoursView(kind: "paper")
+            view.field = "+DnKOIE1+DnKOIE1+DnKOIE1+DnKOIE1"
+            view.width = 2
+            view.height = 2
+            view.fresh = [0.7397, 0.6918, 0.598]
+            view.opaque = made == "opaque"
+            return view
         }
         let on = items.first { $0.id == itemID }?.cleanedShown != nil
         return ColoursView(

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.280
+
+- Odżółcanie papieru na pełnym ekranie liczy telefon, tak jak werniks:
+  serwer podaje mały odcisk tonu kartki, a telefon odżółca nim to, co
+  widać. Przełączanie jest natychmiastowe i płynne.
+
 ## 1.145.279
 
 - Werniks na pełnym ekranie: kółko korekty barw przełącza obraz od razu i

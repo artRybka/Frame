@@ -113,7 +113,7 @@ class Cleaning:
         self._jobs: ThreadPoolExecutor | None = None
         self._due: dict[str, int] = {}
         #: :meth:`for_viewer`'s answers, by the work, its picture and cut.
-        self._sums: dict[str, tuple[Cleaned, recovery.VarnishSum | None]] = {}
+        self._sums: dict[str, tuple[Cleaned, recovery.VarnishSum | recovery.SheetSum | None]] = {}
         self._guard = threading.Lock()
 
     # -- the owner's asks -------------------------------------------------------------
@@ -249,14 +249,15 @@ class Cleaning:
 
     def for_viewer(
         self, item: Item, made: str
-    ) -> tuple[Cleaned | None, recovery.VarnishSum | None]:
+    ) -> tuple[Cleaned | None, recovery.VarnishSum | recovery.SheetSum | None]:
         """The correction the full-screen viewer switches (Mateusz
         2026-11-20: "korekta może dotyczyć tylko tego co widać a nie
         pliku"): the one read already, else as it would be read now (kept
         nowhere: only asked when the viewer with its button is open), and
-        for a varnish the numbers the phone takes it off what it shows
-        with (:class:`~frame_server.imaging.recovery.VarnishSum`), read on
-        the picture without it."""
+        the numbers the phone takes it off what it shows with
+        (:class:`~frame_server.imaging.recovery.VarnishSum`,
+        :class:`~frame_server.imaging.recovery.SheetSum`), read on the
+        picture without it."""
         reading = item.cleaned_reading()
         key = f"{item.id}|{item.picture_key()}|{item.cut_version()}"
         with self._guard:
@@ -268,9 +269,11 @@ class Cleaning:
             reading = self._read(item, made, picture)
             if reading is None:
                 return None, None
-        found = (
-            recovery.varnish_sum(picture, reading.strength) if reading.kind == "varnish" else None
-        )
+        found: recovery.VarnishSum | recovery.SheetSum | None = None
+        if reading.kind == "varnish":
+            found = recovery.varnish_sum(picture, reading.strength)
+        elif reading.kind == "paper":
+            found = recovery.sheet_sum(picture, opaque=reading.made == "opaque")
         with self._guard:
             if len(self._sums) > SUMS_KEPT:
                 self._sums.clear()
