@@ -470,6 +470,7 @@ struct SettingsPageView: View {
             TailnetSection(parts: [.log])
             NotificationsSection(parts: [.test])
             if !model.demoMode {
+                MuseumCropSection()
                 ScanTrialSection()
             }
         }

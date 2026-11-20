@@ -110,6 +110,9 @@ final class AppModel {
     var playlists: [PlaylistSummary] = []
     /// The hidden works, for "Ukryte" at the end of Playlisty.
     var hidden: [ItemSummary] = []
+    /// "Kadrowane": what the phone's model cut and what it left to him
+    /// (the owner's; nil until asked).
+    var cropReview: CropReview?
     /// The owner's own works ("Moje dzieła" in Playlisty), the last added
     /// first: the card shows only once there is one.
     var ownWorks: [ItemSummary] = []
@@ -850,8 +853,16 @@ final class AppModel {
     func refreshPlaylists() async {
         if let value = try? await backend.playlists() { setPlaylists(value) }
         if let value = try? await backend.hiddenItems() { setHidden(value.items) }
+        await refreshCropReview()
         await refreshOwnWorks()
         await refreshDayPicks()
+    }
+
+    /// "Kadrowane" (the owner's): what the phone's model cut, and what it
+    /// left to him (`MuseumCrop`).
+    func refreshCropReview() async {
+        guard isOwner, !isGuest else { return }
+        if let value = try? await backend.cropReview(), value != cropReview { cropReview = value }
     }
 
     /// "Moje dzieła": the works the owner added from his photographs.

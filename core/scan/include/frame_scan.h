@@ -63,6 +63,27 @@ int frame_scan_lens_points(double* points, int many, int columns, int rows, doub
  * test, and to time a phone without a scan at hand. */
 int frame_scan_made_up(int side, frame_scan_note* note, char* error, int error_size);
 
+/* A museum photograph cut down to the work by the phone's model (`Kadr`),
+ * with no Claude: `server/src/frame_server/imaging/crop_model.py`.
+ *
+ * `pixels` (rows × columns × 3 bytes, RGB, a row after another) as the
+ * model takes it, into `into`: 3 × `side` × `side` floats 0–255, a colour
+ * after another, the photograph shrunk into the middle of black; `box`:
+ * its left, top, width and height there. Zero when it went well. */
+int frame_crop_letterbox(const unsigned char* pixels, int rows, int columns, int side, float* into, int* box,
+                         char* error, int error_size);
+
+/* What the model's answer about `pixels` comes to: `logits` its `masks`
+ * (2 × `side` × `side`: the work, the frame or passe-partout around it,
+ * before the sigmoid), `sure` its `cut`. The work's corners set on the
+ * photograph's edges into `work`, the outer edge around it into
+ * `surround` (x and y of the top left, top right, bottom right and bottom
+ * left, 0–1 across and down); `found`: 1 when there is a work, 2 when
+ * there is a surround (both: 3). 1 cut it, 0 it wants no cut, 2 unsure
+ * (left whole, for the owner); -1 when it went wrong (said in `error`). */
+int frame_crop_find(const unsigned char* pixels, int rows, int columns, const float* logits, int side, double sure,
+                    double* work, double* surround, int* found, char* error, int error_size);
+
 /* No more threads than these from now on (0: as many as there are cores). */
 void frame_scan_threads(int threads);
 

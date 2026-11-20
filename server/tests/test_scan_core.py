@@ -302,3 +302,57 @@ def _as_the_core(tables: bytes, photo: Any) -> Any:
         total = np.clip(total + matrix[c, 2] * light[..., 2], none, all_)
         out[..., c] = lit[(total * np.float32(65535) + np.float32(0.5)).astype(np.uint16)]
     return out
+
+
+def test_the_phone_finds_a_museum_work_as_the_server_does() -> None:
+    """Mateusz 2026-11-20: „Przecież wszystko miało iść na iPhone”. The
+    museum photographs are cut on the phone (``MuseumCrop`` in the app,
+    the core's ``frame_crop_find``) by what ``imaging/crop_model.py`` makes
+    of the model's answer: the app's numbers are the server's, and what the
+    app's tests find with the core in a made-up photograph and made-up
+    masks (``MuseumCropTests``) is what ``crop_model.find`` finds here.
+    (The core against it on museum photographs and the model's own
+    answers: ``core/scan/tools/crop.py``.)"""
+    import json
+    import re
+
+    import numpy as np
+
+    from frame_server.imaging import crop_model as cm
+
+    source = IOS / "Frame" / "Model" / "MuseumCrop.swift"
+    tests = IOS / "FrameTests" / "MuseumCropTests.swift"
+    if not source.is_file() or not tests.is_file():
+        pytest.skip("the server's tree without the app beside it")
+    text, held = source.read_text(), tests.read_text()
+    assert re.search(r'static let model = "([^"]+)"', text).group(1) == cm.MODEL  # type: ignore[union-attr]
+    assert re.search(r"static let side = (\d+)", text).group(1) == str(cm.SIDE)  # type: ignore[union-attr]
+    found = re.search(r"static let photoSide = (\d+)", text)
+    assert found is not None and int(found.group(1)) == cm.PHOTO_SIDE
+
+    def said(name: str) -> Any:
+        found = re.search(rf"static let {name}(?:: [\[\]A-Za-z?]+)? = (.*)\n", held)
+        assert found is not None, name
+        return json.loads(found.group(1))
+
+    # The made-up photograph and masks, as the app's test makes them.
+    h, w = 240, 300
+    photo = np.full((h, w, 3), 120, np.uint8)
+    photo[30:210, 40:260] = (200, 160, 60)
+    y, x = np.mgrid[50:190, 60:240]
+    photo[50:190, 60:240, 0] = (x * 7 + y * 13) % 60 + 30
+    photo[50:190, 60:240, 1] = (x * 3 + y * 5) % 40 + 20
+    photo[50:190, 60:240, 2] = (x + y * 11) % 80 + 90
+    logits = np.full((2, cm.SIDE, cm.SIDE), -8.0, np.float32)
+    logits[0, 102:281, 77:307] = 8.0
+    logits[1, 76:307, 51:333] = 8.0
+    assert "photo[(y * columns + x) * 3] = UInt8((x * 7 + y * 13) % 60 + 30)" in held
+    assert "logits[(y * side + x)] = 8" in held
+
+    want = cm.find(photo, logits, said("sure"))
+    assert want.verdict == said("verdict") == "cut"
+    assert [list(c) for c in want.work or []] == said("work")
+    assert [list(c) for c in want.surround or []] == said("surround")
+    # Not sure enough, or sure it wants none: as here.
+    assert cm.find(photo, logits, 0.5).verdict == "unsure"
+    assert cm.find(photo, logits, 0.05).verdict == "whole"
