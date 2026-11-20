@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.289
+
+- Kadrowanie zdjęć z muzeów na iPhonie zostawia ramę tylko wtedy, gdy
+  wygląda jak rama: ma wyraźny kolor albo odcina się od tła. Model
+  rzadziej dodaje ramę, której nie ma.
+- Grafiki są kadrowane do papieru, bez ramy, także te już na liście
+  „Kadrowane”. Rysunki zostają jak dotąd.
+
 ## 1.145.288
 
 - Wyrażenia w Słowach („parowiec na rzece”) tłumaczy teraz iPhone, więc

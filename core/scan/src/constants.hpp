@@ -127,6 +127,9 @@ namespace frame::crop {
 inline constexpr double BACKDROP_DEPTH = 0.03;
 inline constexpr int BACKDROP_SIDES = 2;
 inline constexpr double BAND = 0.012;
+inline constexpr double FRAME_APART = 15.7;
+inline constexpr double FRAME_CHROMA = 16.0;
+inline constexpr int FRAME_EDGE = 5;
 inline constexpr double HOLD = 0.004;
 inline constexpr double INSET = 0.004;
 inline constexpr double LEAST_KEPT = 0.15;

@@ -216,3 +216,17 @@ def test_a_work_left_whole_is_kept_whole_and_the_list_says_how_sure(
         (lesson,) = client.get("/api/crops/lessons").json()
         assert lesson["id"] == "mnw:2" and lesson["fine"]
         assert lesson["work"] is None and lesson["surround"] is None
+
+
+def test_a_print_is_cut_to_its_sheet_with_no_frame(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    # Mateusz 2026-11-20 22:13 UTC: „Rysunki jak dziś, grafiki do papieru”.
+    _work(service, "mnw:1", pooled=True, medium="akwaforta, papier")
+    _work(service, "mnw:2", pooled=True, medium="ołówek, papier")
+    with _client(service) as client:
+        cut = _found("mnw:1", client)
+        assert cut["cut"] and cut["item"]["cut"]["work"] == KEPT
+        assert cut["item"]["cut"]["surround"] is None
+        assert _found("mnw:2", client)["item"]["cut"]["framed_kind"] == "frame"
