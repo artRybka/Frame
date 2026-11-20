@@ -2,7 +2,11 @@ ARG BUILD_FROM=python:3.13-slim-bookworm
 FROM ${BUILD_FROM}
 
 ARG FRAME_REF=main
+# MALLOC_ARENA_MAX: glibc gives every thread its own arenas of memory and
+# seldom hands them back; with the server's many threads that may be a good
+# part of its 6.2 GB three minutes after a start (2026-11-20): measure.
 ENV PYTHONUNBUFFERED=1 \
+    MALLOC_ARENA_MAX=2 \
     PIP_NO_CACHE_DIR=1 \
     NUMBA_CACHE_DIR=/tmp/numba-cache \
     FRAME_DATA_DIR=/data

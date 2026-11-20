@@ -45,6 +45,7 @@ from .models import (
     PlaylistRules,
     PlaylistSort,
     PlaylistSummary,
+    shared_fields,
 )
 from .phrases import fold as phrase_fold
 from .phrases import has_phrase, parsed, quote
@@ -958,6 +959,7 @@ class Library:
                 self._items = {}
                 for (data,) in rows:
                     item = Item.model_validate_json(data)
+                    shared_fields(item)  # a third of a work's memory
                     self._items[item.id] = item
             return self._items
 
