@@ -335,10 +335,29 @@ jobs:
         run: |
           xcodebuild test -project Frame.xcodeproj -scheme FramePull \
             -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath build \
+            -only-testing:FrameUITests/PullProbeTests \
             CODE_SIGNING_ALLOWED=NO || true
           mkdir -p shots
           cp /tmp/frame-pull/* shots/ || true
+      # `only: colours-probe`: a finger switches the colours' button on the
+      # full-screen viewer with a slow server (FrameUITests/
+      # ColoursSwitchTests.swift): fails the run when the picture waits for
+      # the server; a screenshot of each step comes back either way.
+      - name: Colours probe
+        if: inputs.only == 'colours-probe'
+        run: |
+          set -o pipefail
+          xcodebuild test -project Frame.xcodeproj -scheme FramePull \
+            -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath build \
+            -only-testing:FrameUITests/ColoursSwitchTests \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tail -80
+      - name: Colours probe screenshots
+        if: always() && inputs.only == 'colours-probe'
+        run: |
+          mkdir -p shots
+          cp /tmp/frame-colours/* shots/ || true
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: screenshots
           path: |

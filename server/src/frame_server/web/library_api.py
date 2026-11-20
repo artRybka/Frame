@@ -1382,19 +1382,25 @@ async def treated(
     correction left off (``restored=false``, ``cleaned=false``): the
     full-screen viewer's two buttons (Mateusz 2026-11-16). With ``made``
     and ``cleaned``, a correction nobody asked for yet is read first
-    (``Cleaning.read_ahead``)."""
+    (``Cleaning.for_viewer``; kept, seen by nobody, for a work kept here,
+    so its picture is kept on disk too)."""
     item = await _work(svc, item_id, threads=SHOWN_THREADS)
     drawn = item.sharper is not None and item.sharper.restored
     stored = svc.library.get(item.id)
-    if stored is not None and cleaned and made is not None and stored.cleaned is None:
+    if cleaned and made is not None and item.cleaned_reading() is None:
+        seen = item
         try:
-            item = await run_in_threadpool(
-                urgent_call(lambda: svc.cleaning.read_ahead(stored, made))
+            reading, _ = await run_in_threadpool(
+                urgent_call(lambda: svc.cleaning.for_viewer(seen, made))
             )
         except Gone as err:
             raise HTTPException(410, f"no picture anywhere: {err}") from err
         except (httpx.HTTPError, OSError) as err:
             raise HTTPException(502, f"image unavailable: {err}") from err
+        if reading is not None and stored is not None and stored.cleaned is None:
+            item = svc.cleaning.keep_unseen(stored, reading)
+        elif reading is not None:
+            item = item.model_copy(update={"cleaned": reading, "cleaned_by": []})
     if (restored or not drawn) and side >= kept_side(item) and stored is not None:
         # Kept on disk, both ways (the viewer's colours button asks for the
         # other one when it opens; Mateusz 2026-11-20: "sekundy").
@@ -1423,6 +1429,55 @@ async def treated(
         raise HTTPException(502, f"image unavailable: {err}") from err
     # The address carries the picture's version (the app's `v`).
     return Response(data, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
+
+
+class ColoursView(BaseModel):
+    """The full-screen viewer's colours button for the asking person
+    (Mateusz 2026-11-20: "korekta może dotyczyć tylko tego co widać a nie
+    pliku i będzie szybciej i prościej"): ``kind`` "varnish", "paper" or
+    "none"; ``on``: they see it so now. For a varnish, the numbers the
+    phone takes it off the picture it shows with
+    (:class:`~frame_server.imaging.recovery.VarnishSum`); a sheet is
+    de-yellowed here (``…/treated?cleaned=true&made=``)."""
+
+    kind: Literal["varnish", "paper", "none"]
+    on: bool = False
+    haze: float = 0.0
+    colour: tuple[float, float, float] = (1.0, 1.0, 1.0)
+    even: float = 1.0
+    dark: float = 1.0
+    scale: float = 1.0
+    luma: tuple[float, float, float] = (0.2126, 0.7152, 0.0722)
+
+
+@router.get("/library/items/{item_id:item}/colours", response_model=ColoursView)
+async def item_colours(item_id: str, made: Made, svc: Svc) -> ColoursView:
+    """What the viewer's colours button switches: asked only while the
+    viewer with it is open, never for works no one looks at so."""
+    item = await _work(svc, item_id, threads=SHOWN_THREADS)
+    on = item.cleaned_shown(viewer_id()) is not None
+    try:
+        reading, found = await run_in_threadpool(
+            urgent_call(lambda: svc.cleaning.for_viewer(item, made))
+        )
+    except Gone as err:
+        raise HTTPException(410, f"no picture anywhere: {err}") from err
+    except (httpx.HTTPError, OSError) as err:
+        raise HTTPException(502, f"image unavailable: {err}") from err
+    if reading is None or reading.kind not in ("varnish", "paper"):
+        return ColoursView(kind="none", on=on)
+    if found is None:
+        return ColoursView(kind="paper", on=on)
+    return ColoursView(
+        kind="varnish",
+        on=on,
+        haze=found.haze,
+        colour=found.colour,
+        even=found.even,
+        dark=found.dark,
+        scale=found.scale,
+        luma=found.luma,
+    )
 
 
 _preview_locks: dict[str, asyncio.Lock] = {}

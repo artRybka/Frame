@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.279
+
+- Werniks na pełnym ekranie: kółko korekty barw przełącza obraz od razu i
+  płynnie. Werniks zdejmuje teraz telefon z tego, co widać (według liczb
+  z serwera), a serwer dostaje zmianę po fakcie. Naprawione: ikona robiła
+  się niebieska, a obraz zostawał z werniksem (dzieła z muzeum spoza
+  biblioteki).
+
 ## 1.145.278
 
 - Kadrowanie zdjęć z muzeów na iPhonie: ramę z modelu zostawiamy tylko
