@@ -245,7 +245,8 @@ final class WorkSearch {
 
     /// "Słowa" answered before Google's numbers of the words came: asked
     /// again, twice at most, and the works that look so put in after those
-    /// with the words, unless more of the list has come meanwhile.
+    /// with the words (or all of them put in order of how near they look),
+    /// unless more of the list has come meanwhile.
     private func askLater(_ query: LibraryQuery, key: Key) async {
         guard let model else { return }
         for _ in 0..<2 {
@@ -255,7 +256,12 @@ final class WorkSearch {
                   let found = try? await model.backend.items(query),
                   !Task.isCancelled, key == searched, catalogue?.items.count == shown.items.count
             else { return }
-            if found.total > shown.total { withAnimation(.snappy) { catalogue = found } }
+            // The same works in another order count too: words that find
+            // thousands of works get none only by how they look, the look
+            // puts them in order ("pies": Polish titles first until then,
+            // Mateusz 2026-11-20).
+            let reordered = found.items.map(\.id) != shown.items.map(\.id)
+            if found.total > shown.total || reordered { withAnimation(.snappy) { catalogue = found } }
             if found.later != true { return }
         }
     }

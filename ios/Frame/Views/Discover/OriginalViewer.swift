@@ -194,6 +194,15 @@ struct OriginalViewer: View {
                        willAppear: { if brighten { ScreenBoost.shared.raise() } })
         }
         .onDisappear { ScreenBoost.shared.restore() }
+        .onChange(of: showsCorrected) { _, now in
+            // Every thumbnail and the card take the picture shown at once
+            // (Mateusz 2026-11-20: "I miniatury też już tak działają?").
+            let picture = now == openedCorrected ? image : (now ? corrected : plain)
+            guard let picture, item.kind == .artwork else { return }
+            // Not the server's yet while it is being told, or told otherwise.
+            let pending = telling || now != (toldColours ?? openedCorrected)
+            Task { await model.phoneShows(item, on: now, picture: picture, pending: pending) }
+        }
         .onChange(of: brighten) { _, on in
             if on { ScreenBoost.shared.raise() } else { ScreenBoost.shared.restore() }
         }
@@ -324,7 +333,10 @@ struct OriginalViewer: View {
         while true {
             let wanted = coloursShown
             let kept = toldColours ?? openedCorrected
-            if wanted == kept { return }
+            if wanted == kept {
+                if toldColours != nil { model.phoneConfirmed(item.id) }
+                return
+            }
             do {
                 let updated = wanted
                     ? try await model.backend.clean(

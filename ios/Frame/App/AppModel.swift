@@ -146,6 +146,12 @@ final class AppModel {
     /// place), and how many times: their thumbnails and previews on screen
     /// are had anew.
     private(set) var pictureChanges: [String: Int] = [:]
+    /// The pictures of works whose colours were switched on the full
+    /// screen, made there on the phone (Mateusz 2026-11-20: "I miniatury też
+    /// już tak działają?… Tak. Działajmy."): every thumbnail and card of the
+    /// work shows them at once, not waiting for the server to make its own
+    /// again. Kept while the work shows that picture (`pictureSeen`).
+    @ObservationIgnored private(set) var phonePictures: [String: PhonePicture] = [:]
     /// What the cards opened since launch show of their works' pictures
     /// (`PictureMarks`): the lists loaded before follow (`asOnCard`).
     private(set) var cardMarks: [String: PictureMarks] = [:]
@@ -2227,6 +2233,10 @@ final class AppModel {
     /// 2026-11-04). A work first seen with a copy is had anew once too:
     /// its thumbnail may be from before the copy.
     func pictureSeen(_ itemID: String, copy: String, changed: Bool = false) {
+        if let made = phonePictures[itemID], !made.pending,
+           made.base != PhonePicture.base(of: copy) || made.on != PhonePicture.on(in: copy) {
+            phonePictures[itemID] = nil  // another picture, or switched elsewhere
+        }
         let known = pictureVersions[itemID]
         guard changed || known != (copy.isEmpty ? nil : copy) else { return }
         pictureVersions[itemID] = copy.isEmpty ? nil : copy
@@ -2240,6 +2250,69 @@ final class AppModel {
         ]
         ImageLoader.repictured(itemID, requests: refs.compactMap { backend.request(for: $0) })
         pictureChanges[itemID, default: 0] += 1
+    }
+}
+
+/// A work's picture as the full screen made it (`AppModel.phonePictures`).
+struct PhonePicture {
+    /// `Item.pictureVersion` but for its cleaning: the picture it is of.
+    let base: String
+    /// With the colours corrected.
+    let on: Bool
+    let large: UIImage
+    let small: UIImage
+    /// The server has not said yes yet: a list from before does not take it away.
+    var pending = true
+
+    static let largeSide: CGFloat = 1800
+    static let smallSide: CGFloat = 480
+
+    static func base(of version: String) -> String {
+        version.split(separator: "~", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? version
+    }
+
+    static func on(in version: String) -> Bool { version.contains("~") }
+}
+
+extension AppModel {
+    /// The full screen shows `picture` for the work now (its colours
+    /// switched): every thumbnail of it takes it at once.
+    func phoneShows(_ item: Item, on: Bool, picture: UIImage, pending: Bool = true) async {
+        let large = await Self.scaled(picture, to: PhonePicture.largeSide)
+        let small = await Self.scaled(large, to: PhonePicture.smallSide)
+        let base = PhonePicture.base(of: item.pictureVersion)
+        phonePictures[item.id] = PhonePicture(base: base, on: on, large: large, small: small, pending: pending)
+        if phonePictures.count > 12, let first = phonePictures.keys.first(where: { $0 != item.id }) {
+            phonePictures[first] = nil
+        }
+        pictureChanges[item.id, default: 0] += 1
+    }
+
+    /// The server took the switch: lists from now on say so too.
+    func phoneConfirmed(_ itemID: String) {
+        phonePictures[itemID]?.pending = false
+    }
+
+    /// The picture made on the phone for `ref`, if any: a thumbnail, the
+    /// card's original (not a tile, which is cut otherwise).
+    func phonePicture(for ref: ImageRef, maxPixel: CGFloat) -> UIImage? {
+        switch ref {
+        case let .thumb(id), let .image(id), let .original(id, _):
+            guard let made = phonePictures[id] else { return nil }
+            return maxPixel <= PhonePicture.smallSide ? made.small : made.large
+        default:
+            return nil
+        }
+    }
+
+    private static func scaled(_ picture: UIImage, to side: CGFloat) async -> UIImage {
+        let size = picture.size
+        let long = max(size.width, size.height) * picture.scale
+        guard long > side else { return picture }
+        let ratio = side / long
+        let target = CGSize(width: (size.width * picture.scale * ratio).rounded(),
+                            height: (size.height * picture.scale * ratio).rounded())
+        return await picture.byPreparingThumbnail(ofSize: target) ?? picture
     }
 }
 

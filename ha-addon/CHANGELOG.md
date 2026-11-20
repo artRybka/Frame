@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.145.285
+
+- Słowa w Szukaj układają się według wyglądu także przy pierwszym
+  wyszukiwaniu słowa („pies”: najpierw psy, nie polskie tytuły). Lista
+  przestawia się chwilę po pokazaniu, zanim ją przewiniesz.
+
+## 1.145.284
+
+- Korekta barw przełączona na pełnym ekranie od razu widać też na
+  miniaturach dzieła i na jego karcie: telefon podaje im obraz, który
+  właśnie zrobił, zamiast czekać, aż serwer przerobi swoje pliki.
+
 ## 1.145.283
 
 - Odżółcanie papieru na pełnym ekranie liczy telefon, tak jak werniks:
