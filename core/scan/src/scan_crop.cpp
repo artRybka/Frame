@@ -86,6 +86,28 @@ double area_of(const Quad& q) {
     return std::abs(a - b) / 2;
 }
 
+/// `crop_model.holds`: whether `around` holds every corner of `work`, to HOLD.
+bool holds(const Quad& around, const Quad& work) {
+    double turn = 0.0;
+    for (int i = 0; i < 4; i++) {
+        const auto& a = around[i];
+        const auto& b = around[(i + 1) % 4];
+        turn += a.x * b.y - b.x * a.y;
+    }
+    double sign = turn > 0 ? 1.0 : -1.0;
+    for (int i = 0; i < 4; i++) {
+        const auto& a = around[i];
+        const auto& b = around[(i + 1) % 4];
+        double length = std::hypot(b.x - a.x, b.y - a.y);
+        if (length <= 0) return false;
+        for (const auto& p : work) {
+            double inside = sign * ((b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)) / length;
+            if (inside < -HOLD) return false;
+        }
+    }
+    return true;
+}
+
 double round5(double v) { return std::nearbyint(v * 1e5) / 1e5; }
 
 }  // namespace
@@ -394,7 +416,7 @@ int frame_crop_find(const unsigned char* pixels, int rows, int columns, const fl
             if ((shown = valid(*q))) shown = snap(rgb, *shown);
         if (auto q = mask_quad(probabilities(logits + plane, side, box, columns, rows), nullptr))
             around = valid(*q);
-        if (around && (!shown || area_of(*around) <= area_of(*shown))) around.reset();
+        if (around && (!shown || area_of(*around) <= area_of(*shown) || !holds(*around, *shown))) around.reset();
         *found = (shown ? 1 : 0) | (around ? 2 : 0);
         if (shown) put(*shown, work);
         if (around) put(*around, surround);

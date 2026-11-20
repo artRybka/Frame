@@ -170,9 +170,10 @@ struct CutEditor: View {
     /// The own work's steps go on: nothing to dismiss, and the bar (the
     /// arrow back, "Dalej") is theirs.
     let cancel: (() -> Void)?
-    /// Saves the corners (of the work as shown), whether they changed, and
-    /// the frame's corners when he moved them; whether it went.
-    let save: ([[Double]], Bool, [[Double]]?) async -> Bool
+    /// Saves the corners (of the work as shown), whether they changed, the
+    /// frame's corners when he moved them, and "Bez ramy" when he chose it;
+    /// whether it went.
+    let save: ([[Double]], Bool, [[Double]]?, Bool) async -> Bool
     /// "Dzieło / Rama" (Mateusz 2026-11-17, „Tak, drugie narożniki dla
     /// ramy”): the outer edge of the frame or passe-partout set too, for
     /// the card's "W ramie"; its corners as they are.
@@ -186,6 +187,8 @@ struct CutEditor: View {
     /// The other part's corners, and where they started.
     @State private var parked: [[Double]] = []
     @State private var parkedStart: [[Double]] = []
+    /// "Bez ramy" was chosen when the editor opened (nothing around the work).
+    @State private var bareStart = false
     @Environment(\.dismiss) private var dismiss
     @State private var corners: [[Double]] = []
     @State private var start: [[Double]] = []
@@ -218,7 +221,10 @@ struct CutEditor: View {
     @State private var saving = false
 
     enum Part: Hashable {
-        case work, frame
+        /// `bare`: the work's corners in hand, and nothing around it is a
+        /// frame or passe-partout: background, thrown away ("Bez ramy",
+        /// Mateusz 2026-11-20).
+        case work, frame, bare
     }
 
     init(item: Item, update: @escaping (CutUpdate) async -> Bool) {
@@ -237,8 +243,8 @@ struct CutEditor: View {
             photo: .ref(.museumPhoto(item.id, side: 2400, version: item.pictureVersion)),
             aspect: aspect, corners: item.cutShown, framing: item.cutShown != nil,
             frame: sheet ? item.cut?.work : item.cut?.surround, sheet: sheet
-        ) { work, moved, frame in
-            await update(CutUpdate(corners: moved ? work : nil, frame: frame))
+        ) { work, moved, frame, bare in
+            await update(CutUpdate(corners: moved ? work : nil, frame: bare ? nil : frame, noFrame: bare))
         }
     }
 
@@ -250,14 +256,14 @@ struct CutEditor: View {
         self.init(
             photo: photo, aspect: aspect, corners: corners, framing: false, frame: nil, saveTitle: saveTitle,
             cancelTitle: cancelTitle, savesUnchanged: savesUnchanged, note: note, cancel: cancel
-        ) { work, _, _ in await save(work) }
+        ) { work, _, _, _ in await save(work) }
     }
 
     private init(
         photo: Photo, aspect: Double, corners: [[Double]]?, framing: Bool, frame: [[Double]]?, sheet: Bool = false,
         saveTitle: String = "Zapisz", cancelTitle: String = "Anuluj", savesUnchanged: Bool = false,
         note: String? = nil, cancel: (() -> Void)? = nil,
-        save: @escaping ([[Double]], Bool, [[Double]]?) async -> Bool
+        save: @escaping ([[Double]], Bool, [[Double]]?, Bool) async -> Bool
     ) {
         self.framing = framing
         initialFrame = frame
@@ -276,15 +282,19 @@ struct CutEditor: View {
     /// The corners when nothing is cut yet: a little in from the edges.
     private static let inset: [[Double]] = [[0.06, 0.06], [0.94, 0.06], [0.94, 0.94], [0.06, 0.94]]
     private static let whole: [[Double]] = [[0, 0], [1, 0], [1, 1], [0, 1]]
-    private var changed: Bool { corners != start || parked != parkedStart }
+    private var changed: Bool { corners != start || parked != parkedStart || bareToSave }
+    /// "Bez ramy" chosen now, not so before.
+    private var bareToSave: Bool { part == .bare && !bareStart }
     /// The part in hand changed: what "Cofnij zmiany" undoes.
     private var changedHere: Bool { corners != start }
-    private var workCorners: [[Double]] { part == .work ? corners : parked }
-    private var workStart: [[Double]] { part == .work ? start : parkedStart }
+    private var workCorners: [[Double]] { part != .frame ? corners : parked }
+    private var workStart: [[Double]] { part != .frame ? start : parkedStart }
     private var frameCorners: [[Double]] { part == .frame ? corners : parked }
     private var frameStart: [[Double]] { part == .frame ? start : parkedStart }
     /// The frame's corners to save: when he moved them.
-    private var frameToSave: [[Double]]? { framing && frameCorners != frameStart ? frameCorners : nil }
+    private var frameToSave: [[Double]]? {
+        framing && part != .bare && frameCorners != frameStart ? frameCorners : nil
+    }
     /// His frame leaves part of the work out: "W ramie" could not show it.
     private var frameCutsWork: Bool {
         framing && frameCorners.count == 4 && workCorners.count == 4 && !encloses(frameCorners, workCorners)
@@ -338,7 +348,7 @@ struct CutEditor: View {
             Button {
                 Task {
                     saving = true
-                    if await save(workCorners, workCorners != workStart, frameToSave) { dismiss() }
+                    if await save(workCorners, workCorners != workStart, frameToSave, bareToSave) { dismiss() }
                     saving = false
                 }
             } label: {
@@ -361,7 +371,7 @@ struct CutEditor: View {
     private func saveInSteps() {
         Task {
             saving = true
-            _ = await save(workCorners, workCorners != workStart, frameToSave)
+            _ = await save(workCorners, workCorners != workStart, frameToSave, bareToSave)
             saving = false
         }
     }
@@ -373,9 +383,10 @@ struct CutEditor: View {
                 Picker("Narożniki", selection: Binding(get: { part }, set: { choose($0) })) {
                     Text(bound: "Dzieło").tag(Part.work)
                     Text(bound: sheet ? "Kartka" : "Rama").tag(Part.frame)
+                    if !sheet { Text(bound: "Bez ramy").tag(Part.bare) }
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 260)
+                .frame(maxWidth: sheet ? 260 : 340)
                 .padding(.horizontal, Theme.gutter)
                 .padding(.bottom, 10)
                 .disabled(saving)
@@ -430,6 +441,12 @@ struct CutEditor: View {
             // No frame's edge known: the photograph's own, to move in.
             parked = initialFrame ?? Self.whole
             parkedStart = parked
+            // A cut work with nothing around it: "Bez ramy" (the server's
+            // `Cut.framed_by` None, his choice or nothing found).
+            if framing, !sheet, initial != nil, initialFrame == nil {
+                part = .bare
+                bareStart = true
+            }
             // Screenshots: `-cutPart frame` (with `-screen detail`).
             if framing, UserDefaults.standard.string(forKey: "cutPart") == "frame" {
                 (corners, parked) = (parked, corners)
@@ -443,6 +460,9 @@ struct CutEditor: View {
     /// Under the photograph: how to move a corner, and in "Rama" what the
     /// frame's edge is for.
     private var hint: String {
+        if part == .bare {
+            return "Bez ramy i passe-partout: wszystko wokół dzieła to tło, odcięte. Przeciągnij narożnik dzieła."
+        }
         guard part == .frame else {
             return "Przeciągnij narożnik. Bardzo wolny ruch palca ustawia go dokładniej."
         }
@@ -459,8 +479,12 @@ struct CutEditor: View {
     private func choose(_ next: Part) {
         guard next != part, parked.count == 4 else { return }
         withAnimation(.easeInOut(duration: 0.2)) {
-            (corners, parked) = (parked, corners)
-            (start, parkedStart) = (parkedStart, start)
+            // The frame's corners in hand, or out of it: the two swap;
+            // "Dzieło" and "Bez ramy" both hold the work's.
+            if part == .frame || next == .frame {
+                (corners, parked) = (parked, corners)
+                (start, parkedStart) = (parkedStart, start)
+            }
             part = next
             active = nil
         }
@@ -609,7 +633,7 @@ struct CutEditor: View {
             .fill(.black.opacity(0.42), style: FillStyle(eoFill: true))
             quadPath(corners, in: size)
                 .stroke(Color.white, lineWidth: 1.2)
-            if framing, parked.count == 4 {
+            if framing, part != .bare, parked.count == 4 {
                 // The other part's edges, to set these against.
                 quadPath(parked, in: size)
                     .stroke(Color.white.opacity(0.8), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))

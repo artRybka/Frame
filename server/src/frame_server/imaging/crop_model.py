@@ -46,6 +46,11 @@ WHOLE = 0.1
 #: A cut's corners and sides at most this far from upright and square
 #: (degrees): a work photographed almost straight on.
 UPRIGHT = 3.0
+#: How far a work's corner may stand outside what was found around it (of
+#: the photograph's sides) for that to be its frame: around a work it is
+#: around all of it (Mateusz 2026-11-20, Chełmoński mnw: "dzieło wystaje
+#: za ramę": the dark board behind a sheet, the sheet past its edge).
+HOLD = 0.004
 #: The kinds of work the model is told of (the museum's own words, ``kinds``).
 KINDS = ("painting", "drawing", "print", "photo", "other")
 
@@ -158,6 +163,26 @@ def mask_quad(prob: np.ndarray, threshold: float = MASK) -> tuple[list[list[floa
     return out.tolist(), float(cover)
 
 
+def holds(around: Sequence[Sequence[float]], work: Sequence[Sequence[float]]) -> bool:
+    """Whether ``around`` (a quad, in order) holds every corner of ``work``,
+    to :data:`HOLD`."""
+    turn = 0.0
+    for i in range(4):
+        (ax, ay), (bx, by) = around[i], around[(i + 1) % 4]
+        turn += ax * by - bx * ay
+    sign = 1.0 if turn > 0 else -1.0
+    for i in range(4):
+        (ax, ay), (bx, by) = around[i], around[(i + 1) % 4]
+        length = math.hypot(bx - ax, by - ay)
+        if length <= 0:
+            return False
+        for px, py in work:
+            inside = sign * ((bx - ax) * (py - ay) - (by - ay) * (px - ax)) / length
+            if inside < -HOLD:
+                return False
+    return True
+
+
 def upright_off(quad: Sequence[Sequence[float]], size: tuple[int, int]) -> float:
     """How far (degrees) the quad is from an upright rectangle: the worst
     of its corners' departure from a right angle and its sides' from the
@@ -241,6 +266,8 @@ def find(rgb: np.ndarray, logits: np.ndarray, sure: float) -> Found:
         work = snap(Image.fromarray(rgb), work)
     around, _ = mask_quad(probs[1])
     surround = valid(around) if around is not None else None
-    if surround is not None and (work is None or area(surround) <= area(work)):
+    if surround is not None and (
+        work is None or area(surround) <= area(work) or not holds(surround, work)
+    ):
         surround = None
     return Found(decide(sure, work, (w, h)), work, surround, sure)
