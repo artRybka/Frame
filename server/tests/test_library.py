@@ -6,6 +6,7 @@ import time
 
 import httpx
 import numpy as np
+import pytest
 from conftest import jpeg_bytes
 from PIL import Image, ImageDraw
 
@@ -1915,3 +1916,45 @@ def test_a_muted_colour_on_some_of_the_picture_is_an_accent() -> None:
     assert shares["blue"] >= 0.06 and "accent:blue" in tags
     # Brown is no such accent: the edge of a book, a stain on a fresco.
     assert "accent:brown" not in analyse(portrait((112, 96, 80))).tags
+
+
+def test_the_white_of_a_painting_is_among_its_colours() -> None:
+    # Bruegel's „Harvesters”: four colours of wheat and trees, and the white
+    # of the shirts and the sky a sixth of the picture, near the light wheat.
+    centres = np.array(
+        [
+            [0.58, 0.02, 0.08],
+            [0.49, 0.02, 0.07],
+            [0.67, 0.02, 0.09],
+            [0.39, 0.01, 0.05],
+            [0.81, 0.01, 0.03],
+        ]
+    )
+    weights = np.array([0.22, 0.2, 0.19, 0.16, 0.14])
+    merged = colors.merged_colours(centres, weights)
+    shown = [c for c, _ in merged[:4]]
+    assert colors.passed_over(merged[4:], shown) == []
+    assert len(colors.passed_over(merged[4:], shown, painted=True)) == 1
+    # A cream no whiter than the wheat stays out.
+    centres[4] = [0.71, 0.01, 0.03]
+    merged = colors.merged_colours(centres, weights)
+    assert colors.passed_over(merged[4:], shown, painted=True) == []
+    # On paper it is the sheet; with no medium at all it is paint.
+    assert colors.painting("Oil on canvas") and colors.painting("")
+    assert not colors.painting("Watercolor over graphite on wove paper")
+    assert not colors.painting("Etching") and not colors.painting("pióro, tusz")
+    # Shown a little whiter than measured.
+    shown_white = colors.whiter(np.array([0.82, 0.01, 0.05]))
+    assert shown_white[0] == pytest.approx(0.88) and shown_white[2] == pytest.approx(0.025)
+    assert colors.whiter(np.array([0.95, 0.0, 0.0]))[0] == pytest.approx(colors.WHITE_TOP)
+
+
+def test_the_warm_white_of_a_dark_painting_stands_out() -> None:
+    # Rembrandt's Tulp: dark browns, a cream face colour, and the ruffs a
+    # cream white 0.08 above it.
+    lab = np.zeros((1000, 3))
+    lab[:, 0] = 0.2
+    lab[:30] = [0.82, 0.007, 0.051]
+    shown = [np.array([0.2, 0.0, 0.0]), np.array([0.74, 0.01, 0.05])]
+    assert colors.lights(lab, shown) == []
+    assert len(colors.lights(lab, shown, painted=True)) == 1
