@@ -17,8 +17,24 @@ actor PhoneWords {
     static let shared = PhoneWords()
 
     static let polish = Locale.Language(identifier: "pl")
-    /// English for most museums, French for Paris Musées.
-    static let targets = [Locale.Language(identifier: "en"), Locale.Language(identifier: "fr")]
+    /// English for most museums, French for Paris Musées: each as any of
+    /// its kinds on the phone. The phone has "Angielski (USA)" and asking
+    /// for English alone found it not there: nothing was ever translated
+    /// (Mateusz 2026-11-20, "hulajnoga" by Haiku).
+    static let targets: [[Locale.Language]] = [
+        ["en-US", "en-GB", "en"].map { Locale.Language(identifier: $0) },
+        ["fr-FR", "fr"].map { Locale.Language(identifier: $0) },
+    ]
+
+    /// The kind of `kinds` the phone translates Polish into without the
+    /// network, or nil.
+    static func installed(_ kinds: [Locale.Language]) async -> Locale.Language? {
+        let availability = LanguageAvailability()
+        for kind in kinds where await availability.status(from: polish, to: kind) == .installed {
+            return kind
+        }
+        return nil
+    }
 
     /// How long a search waits for the phone's words at most; what comes
     /// later still goes to the server for the next search.
@@ -39,13 +55,13 @@ actor PhoneWords {
             !done.contains(Self.fold(phrase)) && Self.mayBePolish(phrase)
         }
         guard !wanted.isEmpty else { return [] }
-        let availability = LanguageAvailability()
         var english: [String: String] = [:]
         var french: [String: String] = [:]
-        for target in Self.targets {
-            guard await availability.status(from: Self.polish, to: target) == .installed else { continue }
-            let found = await Self.translate(wanted, to: target)
-            if target.minimalIdentifier == "en" { english = found } else { french = found }
+        if let target = await Self.installed(Self.targets[0]) {
+            english = await Self.translate(wanted, to: target)
+        }
+        if !english.isEmpty, let target = await Self.installed(Self.targets[1]) {
+            french = await Self.translate(wanted, to: target)
         }
         guard !english.isEmpty else { return [] }
         var words: [Word] = []
@@ -110,11 +126,14 @@ struct PhoneWordsLanguages: ViewModifier {
             }
     }
 
-    /// The first language not on the phone and not asked for yet.
+    /// The first language not on the phone (in none of its kinds) and not
+    /// asked for yet.
     private func next() async -> TranslationSession.Configuration? {
         let availability = LanguageAvailability()
         let done = Set(asked.split(separator: ",").map(String.init))
-        for target in PhoneWords.targets where !done.contains(target.minimalIdentifier) {
+        for kinds in PhoneWords.targets {
+            guard let target = kinds.first, !done.contains(target.minimalIdentifier) else { continue }
+            if await PhoneWords.installed(kinds) != nil { continue }
             if await availability.status(from: PhoneWords.polish, to: target) == .supported {
                 return TranslationSession.Configuration(source: PhoneWords.polish, target: target)
             }

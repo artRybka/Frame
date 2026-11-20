@@ -1310,6 +1310,13 @@ async def search_words_taught(svc: Svc, body: TaughtWords) -> TaughtAnswer:
     kept = 0
     for word in body.words:
         kept += svc.search_words.taught(word.text, word.en, word.fr)
+    # Every sending noted, kept or not: whether the phone translates at all
+    # was not to be seen (Mateusz 2026-11-20, "hulajnoga" by Haiku alone).
+    log.info(
+        "the phone translated %s; %d new",
+        ", ".join(f"{w.text!r} -> {w.en!r}" for w in body.words),
+        kept,
+    )
     return TaughtAnswer(kept=kept)
 
 
