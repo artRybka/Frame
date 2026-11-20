@@ -51,6 +51,17 @@ UPRIGHT = 3.0
 #: around all of it (Mateusz 2026-11-20, Chełmoński mnw: "dzieło wystaje
 #: za ramę": the dark board behind a sheet, the sheet past its edge).
 HOLD = 0.004
+#: What is found round a work is its frame only when it has a colour of its
+#: own or stands apart from what is round it: the band's mean colour at
+#: least this far from grey (CIELAB chroma) or this far (ΔE) from
+#: a strip :data:`FRAME_EDGE` pixels wide just outside it. Of his 131 frames
+#: looked at (Mateusz 2026-11-20, „Model bardzo często dodaje ramę której
+#: nie ma”): 38 of the 60 he kept pass, 13 of the 71 he took away; those were
+#: pale, thin strips going on outwards (paper, the museum's backdrop). Its
+#: being of one colour told nothing (gilded frames are less so).
+FRAME_CHROMA = 16.0
+FRAME_APART = 15.7
+FRAME_EDGE = 5
 #: The kinds of work the model is told of (the museum's own words, ``kinds``).
 KINDS = ("painting", "drawing", "print", "photo", "other")
 
@@ -183,6 +194,42 @@ def holds(around: Sequence[Sequence[float]], work: Sequence[Sequence[float]]) ->
     return True
 
 
+def _inside(quad: Sequence[Sequence[float]], w: int, h: int) -> np.ndarray:
+    """The quad (in order) on a mask of a photograph ``w`` × ``h``: the
+    pixels whose middles are inside it, 255."""
+    q = np.array(quad, dtype=float) * [w, h]
+    x, y = np.meshgrid(np.arange(w) + 0.5, np.arange(h) + 0.5)
+    turn = sum(q[i, 0] * q[(i + 1) % 4, 1] - q[(i + 1) % 4, 0] * q[i, 1] for i in range(4))
+    sign = 1.0 if turn > 0 else -1.0
+    keep = np.ones((h, w), bool)
+    for i in range(4):
+        (ax, ay), (bx, by) = q[i], q[(i + 1) % 4]
+        keep &= sign * ((bx - ax) * (y - ay) - (by - ay) * (x - ax)) >= 0
+    return keep.astype(np.uint8) * 255
+
+
+def framed(
+    rgb: np.ndarray, work: Sequence[Sequence[float]], around: Sequence[Sequence[float]]
+) -> bool:
+    """Whether the band between ``work`` and ``around`` (both in order, on
+    ``rgb``) looks like a frame or a passe-partout (:data:`FRAME_CHROMA`,
+    :data:`FRAME_APART`)."""
+    h, w = rgb.shape[:2]
+    lab = cv2.cvtColor(rgb.astype(np.float32) / 255.0, cv2.COLOR_RGB2Lab)
+    outer = _inside(around, w, h)
+    band = cv2.subtract(outer, _inside(work, w, h))
+    if cv2.countNonZero(band) == 0:
+        return False
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2 * FRAME_EDGE + 1, 2 * FRAME_EDGE + 1))
+    strip = cv2.subtract(cv2.dilate(outer, kernel), outer)
+    mean = np.array(cv2.mean(lab, band)[:3])
+    if math.hypot(mean[1], mean[2]) >= FRAME_CHROMA:
+        return True
+    if cv2.countNonZero(strip) == 0:
+        return False
+    return float(np.linalg.norm(mean - np.array(cv2.mean(lab, strip)[:3]))) >= FRAME_APART
+
+
 def upright_off(quad: Sequence[Sequence[float]], size: tuple[int, int]) -> float:
     """How far (degrees) the quad is from an upright rectangle: the worst
     of its corners' departure from a right angle and its sides' from the
@@ -267,7 +314,10 @@ def find(rgb: np.ndarray, logits: np.ndarray, sure: float) -> Found:
     around, _ = mask_quad(probs[1])
     surround = valid(around) if around is not None else None
     if surround is not None and (
-        work is None or area(surround) <= area(work) or not holds(surround, work)
+        work is None
+        or area(surround) <= area(work)
+        or not holds(surround, work)
+        or not framed(rgb, work, surround)
     ):
         surround = None
     return Found(decide(sure, work, (w, h)), work, surround, sure)
