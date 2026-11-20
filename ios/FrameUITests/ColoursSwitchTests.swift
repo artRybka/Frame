@@ -19,9 +19,15 @@ final class ColoursSwitchTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-demo", "YES", "-screen", "original", "-paintStyle", "oil", "-demoSlowServer", "4"]
         app.launch()
-        // A toggle (`.isToggle`): XCUITest has it as a switch, not a button.
-        let button = app.descendants(matching: .any)["Korekta barw"].firstMatch
-        XCTAssertTrue(button.waitForExistence(timeout: 40), "no colours button on the viewer")
+        // A toggle (`.isToggle`): XCUITest may have it as a switch or a
+        // toggle, not a button. (Asking for any element at all timed out on
+        // the whole tree.)
+        guard let button = Self.find("Korekta barw", in: app, within: 40) else {
+            _ = shot("0-no-button")
+            print("--- the tree:\n\(app.debugDescription)")
+            XCTFail("no colours button on the viewer")
+            return
+        }
         sleep(6)  // the picture shown in full, the other made from it
         let before = shot("1-before")
         XCTAssertFalse(Self.on(button))
@@ -53,6 +59,17 @@ final class ColoursSwitchTests: XCTestCase {
         XCTAssertTrue(Self.on(button))
         XCTAssertLessThan(Self.apart(switched, settled), 1.5)
         Self.log("moved \(moved)")
+    }
+
+    private static func find(_ name: String, in app: XCUIApplication, within seconds: TimeInterval) -> XCUIElement? {
+        let until = Date.now.addingTimeInterval(seconds)
+        repeat {
+            for query in [app.switches, app.toggles, app.buttons] where query[name].exists {
+                return query[name].firstMatch
+            }
+            usleep(500_000)
+        } while Date.now < until
+        return nil
     }
 
     /// The button's state, as the value it speaks ("widoczna") or as a
