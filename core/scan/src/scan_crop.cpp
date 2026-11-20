@@ -86,6 +86,51 @@ double area_of(const Quad& q) {
     return std::abs(a - b) / 2;
 }
 
+// `crop_model._inside`: the pixels whose middles are inside the quad, 255.
+cv::Mat inside(const Quad& quad, int columns, int rows) {
+    std::array<cv::Point2d, 4> q;
+    for (int i = 0; i < 4; i++) q[i] = {quad[i].x * columns, quad[i].y * rows};
+    double turn = 0;
+    for (int i = 0; i < 4; i++) turn += q[i].x * q[(i + 1) % 4].y - q[(i + 1) % 4].x * q[i].y;
+    double sign = turn > 0 ? 1.0 : -1.0;
+    cv::Mat mask = cv::Mat::zeros(rows, columns, CV_8U);
+    for (int r = 0; r < rows; r++) {
+        unsigned char* row = mask.ptr<unsigned char>(r);
+        double y = r + 0.5;
+        for (int c = 0; c < columns; c++) {
+            double x = c + 0.5;
+            bool in = true;
+            for (int i = 0; i < 4 && in; i++) {
+                const cv::Point2d &a = q[i], &b = q[(i + 1) % 4];
+                in = sign * ((b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x)) >= 0;
+            }
+            row[c] = in ? 255 : 0;
+        }
+    }
+    return mask;
+}
+
+// `crop_model.framed`: whether the band between the work and what is round
+// it looks like a frame (FRAME_CHROMA, FRAME_APART).
+bool framed(const cv::Mat& rgb, const Quad& work, const Quad& around) {
+    cv::Mat as_float, lab;
+    rgb.convertTo(as_float, CV_32FC3, 1.0 / 255.0);
+    cv::cvtColor(as_float, lab, cv::COLOR_RGB2Lab);
+    cv::Mat outer = inside(around, rgb.cols, rgb.rows), band, grown, strip;
+    cv::subtract(outer, inside(work, rgb.cols, rgb.rows), band);
+    if (cv::countNonZero(band) == 0) return false;
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2 * FRAME_EDGE + 1, 2 * FRAME_EDGE + 1));
+    cv::dilate(outer, grown, kernel);
+    cv::subtract(grown, outer, strip);
+    cv::Scalar mean = cv::mean(lab, band);
+    if (std::hypot(mean[1], mean[2]) >= FRAME_CHROMA) return true;
+    if (cv::countNonZero(strip) == 0) return false;
+    cv::Scalar out = cv::mean(lab, strip);
+    double d = std::sqrt((mean[0] - out[0]) * (mean[0] - out[0]) + (mean[1] - out[1]) * (mean[1] - out[1]) +
+                         (mean[2] - out[2]) * (mean[2] - out[2]));
+    return d >= FRAME_APART;
+}
+
 /// `crop_model.holds`: whether `around` holds every corner of `work`, to HOLD.
 bool holds(const Quad& around, const Quad& work) {
     double turn = 0.0;
@@ -416,7 +461,9 @@ int frame_crop_find(const unsigned char* pixels, int rows, int columns, const fl
             if ((shown = valid(*q))) shown = snap(rgb, *shown);
         if (auto q = mask_quad(probabilities(logits + plane, side, box, columns, rows), nullptr))
             around = valid(*q);
-        if (around && (!shown || area_of(*around) <= area_of(*shown) || !holds(*around, *shown))) around.reset();
+        if (around && (!shown || area_of(*around) <= area_of(*shown) || !holds(*around, *shown) ||
+                       !framed(rgb, *shown, *around)))
+            around.reset();
         *found = (shown ? 1 : 0) | (around ? 2 : 0);
         if (shown) put(*shown, work);
         if (around) put(*around, surround);
