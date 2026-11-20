@@ -384,7 +384,6 @@ def test_a_guest_never_touches_the_frame(tmp_path: Path) -> None:
             ("post", "/api/playlists/1/play", {}),
             ("post", "/api/device/wake", {}),
             ("post", "/api/device/push", {}),
-            ("patch", f"/api/library/items/{work.id}", {"excluded": True}),
         ]:
             answer = client.request(method, path, headers=guest, json=body)
             assert answer.status_code == 403, (method, path, answer.status_code)
@@ -458,3 +457,78 @@ def test_each_person_has_studies_a_day_of_their_own(tmp_path: Path) -> None:
         assert client.get("/api/me", headers=guest).json()["role"] == "member"
         refused = client.put(f"/api/users/{ania}/access", json={"role": "owner"}, headers=OWNER)
         assert refused.status_code == 422
+
+
+def test_only_the_owner_looks_for_and_picks_another_copy(tmp_path: Path) -> None:
+    """Another copy changes the work's picture for the whole household: the
+    owner's to look for and pick (Mateusz 2026-11-20)."""
+    app = _app(tmp_path)
+    svc = app.state.service
+    work = _add(svc, 1)
+    with TestClient(app) as client:
+        for who in (_join(client), _join(client, "Ania", role="guest")):
+            for method, path, body in [
+                ("get", f"/api/library/items/{work.id}/copies", None),
+                ("put", f"/api/library/items/{work.id}/copy", {"item_id": work.id}),
+                ("delete", f"/api/library/items/{work.id}/copy", None),
+            ]:
+                answer = client.request(method, path, headers=who, json=body)
+                assert answer.status_code == 403, (method, path, answer.status_code)
+
+
+def test_each_person_hides_works_for_themselves(tmp_path: Path) -> None:
+    """ "Ukryj dzieło" for the person who asks (Mateusz 2026-11-20); the
+    household's hides (not a guest's) still keep a work off the frame."""
+    app = _app(tmp_path)
+    svc = app.state.service
+    one, two = _add(svc, 1), _add(svc, 2)
+    with TestClient(app) as client:
+        member = _join(client)
+        guest = _join(client, "Ania", role="guest")
+
+        def ids(who: dict[str, str]) -> set[str]:
+            page = client.get("/api/library/items?limit=50", headers=who).json()
+            return {i["id"] for i in page["items"]}
+
+        def hidden(who: dict[str, str]) -> list[str]:
+            return [i["id"] for i in client.get("/api/library/hidden", headers=who).json()["items"]]
+
+        assert {one.id, two.id} <= ids(OWNER) & ids(member) & ids(guest)
+        answer = client.patch(
+            f"/api/library/items/{one.id}", json={"excluded": True}, headers=member
+        )
+        assert answer.status_code == 200 and answer.json()["excluded"] is True
+        answer = client.patch(
+            f"/api/library/items/{two.id}", json={"excluded": True}, headers=guest
+        )
+        assert answer.status_code == 200 and answer.json()["excluded"] is True
+
+        assert one.id not in ids(member) and two.id in ids(member)
+        assert two.id not in ids(guest) and one.id in ids(guest)
+        assert {one.id, two.id} <= ids(OWNER)
+        assert hidden(member) == [one.id] and hidden(guest) == [two.id] and hidden(OWNER) == []
+        seen = client.get(f"/api/library/items/{one.id}", headers=OWNER).json()
+        assert seen["excluded"] is False
+        # The household: a member's hide keeps it off the frame, a guest's not.
+        assert svc.library.get(one.id).excluded and not svc.library.get(two.id).excluded
+
+        client.patch(f"/api/library/items/{one.id}", json={"excluded": False}, headers=member)
+        assert one.id in ids(member) and hidden(member) == []
+        assert not svc.library.get(one.id).excluded
+
+
+def test_works_hidden_before_are_the_owners(tmp_path: Path) -> None:
+    lib = Library(tmp_path / "frame.db")
+    from frame_server.library import Item
+    from frame_server.library import ItemKind as Kind
+    from frame_server.library.repo import HIDDEN_MOVED_KEY
+
+    lib.upsert(
+        Item(id="t:1", kind=Kind.ARTWORK, source="t", source_id="1", title="A", excluded=True)
+    )
+    lib.upsert(Item(id="t:2", kind=Kind.ARTWORK, source="t", source_id="2", title="B"))
+    lib.set_state(HIDDEN_MOVED_KEY, False)  # a library from before
+    again = Library(tmp_path / "frame.db")
+    assert again.hides(OWNER_ID).keys() == {"t:1"}
+    assert [i.id for i in again.hidden_items()] == ["t:1"]
+    assert "t:1" in again.hidden(OWNER_ID).ids and "t:1" in again.hidden().ids

@@ -1312,3 +1312,43 @@ def test_an_unsure_answer_still_cuts_the_backdrop_away(
     assert quad is not None and shown is not None and _near(shown, quad, 0.004)
     assert not crops.now(service.library.get("mnw:13"))  # type: ignore[arg-type]
     assert [p["model"] for p in fake.asked] == [HAIKU, OPUS, HAIKU, OPUS]
+
+
+def test_the_work_in_its_frame_has_the_askers_colours(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+    monkeypatch: Any,
+) -> None:
+    """The work in its frame ("W ramie", saved to the phone's photos too) as
+    the asking person sees its colours, not as the owner does (Mateusz
+    2026-11-20: "Zapisz w zdjęciach … z korektą werniksu")."""
+    from frame_server.library.models import Cleaned
+
+    item = _work(service, "mnw:63", pooled=True)
+    fake.messages.create = lambda **params: (fake.asked.append(params), _message(CORNERS))[1]
+    item = service.crops.apply(item, Cut(work=TRUE, aspect=round(W / H, 5), around=["frame"]))
+    service.crops.now(item)
+    stored = service.library.get("mnw:63")
+    assert stored is not None
+    # Cleaned for the owner only.
+    stored = stored.model_copy(update={"cleaned": Cleaned(kind="varnish"), "cleaned_by": ["owner"]})
+    folder = service.images.thumbs.parent
+    x0, y0, x1, y1 = PAINTING
+    cleaned, plain = folder / "cleaned.jpg", folder / "plain.jpg"
+    Image.new("RGB", (x1 - x0, y1 - y0), (240, 30, 30)).save(cleaned)
+    Image.new("RGB", (x1 - x0, y1 - y0), (30, 30, 240)).save(plain)
+    monkeypatch.setattr(service.images, "ensure_image", lambda item, urgent=False: cleaned)
+    monkeypatch.setattr(
+        service.images,
+        "variant",
+        lambda item, on, thumb=False, urgent=False: cleaned if on else plain,
+    )
+
+    def middle(user: str) -> Any:
+        img = service.images.framed(stored, 4000, user=user)
+        assert img is not None
+        return np.asarray(img.convert("RGB")).astype(int)[img.height // 2, img.width // 2]
+
+    assert abs(middle("owner") - (240, 30, 30)).max() < 30  # the owner's: cleaned
+    # A member who does not see it cleaned: the museum's own colours.
+    assert abs(middle("u-member") - (240, 30, 30)).max() > 60

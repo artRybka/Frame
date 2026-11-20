@@ -218,7 +218,6 @@ struct ItemDetailView: View {
                     model: model, item: item, changed: { self.item = $0 },
                     addingToPlaylist: $showingPlaylists, savingPhoto: $savingPhoto,
                     findingCopies: $findingCopies, pictureSide: pictureSize.map { max($0.0, $0.1) },
-                    keepOwn: { Task { await keepOwnPicture() } },
                     restore: canRestore(item) ? { Task { await restoreByModel() } } : nil,
                     correctCut: canCut(item) ? { correctingCut = true } : nil,
                     undoCut: canCut(item) && item.isCropped ? { Task { await undoCut() } } : nil,
@@ -397,24 +396,6 @@ struct ItemDetailView: View {
             )
         } catch {
             if !error.isCancellation { model.show(error) }
-        }
-    }
-
-    /// "Przywróć zdjęcie muzeum" in the menu.
-    private func keepOwnPicture() async {
-        await restorePicture(to: itemID)
-        if item?.sharper == nil { model.notices.done("Przywrócono zdjęcie muzeum") }
-    }
-
-    /// The picture as it was: the work's own (its id) or a copy before.
-    private func restorePicture(to copyID: String) async {
-        do {
-            let updated = try await model.chooseCopy(itemID: itemID, copyID: copyID)
-            withAnimation(.easeInOut(duration: 0.4)) { item = updated }
-            pictureSize = updated.sharper.map { ($0.width, $0.height) }
-            lowKnown = updated.sharper.map { LowRes.side(max($0.width, $0.height)) }
-        } catch {
-            model.show(error)
         }
     }
 
@@ -1672,7 +1653,10 @@ struct ItemDetailView: View {
             }
             size = pictureSize.map { "\($0.0) × \($0.1) px" }
         }
-        return Button { findingCopies = true } label: {
+        // Another copy changes the picture for everyone: the owner's to
+        // pick (Mateusz 2026-11-20); the others only read the line.
+        let picks = model.isOwner
+        return Button { if picks { findingCopies = true } } label: {
             HStack(alignment: .firstTextBaseline) {
                 Text("Zdjęcie dzieła").foregroundStyle(Theme.inkSoft)
                 Spacer(minLength: 16)
@@ -1690,15 +1674,18 @@ struct ItemDetailView: View {
                         CopyTag(tag: .init(text: "Niska rozdzielczość", tone: .plain))
                     }
                 }
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Theme.inkSoft)
+                if picks {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.inkSoft)
+                }
             }
             .font(.subheadline)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityHint("Szuka lepszej kopii w innych muzeach")
+        .disabled(!picks)
+        .accessibilityHint(picks ? "Szuka lepszej kopii w innych muzeach" : "")
     }
 
     /// CI screenshots (`-sheet playlists`): "Do playlisty" open, with one

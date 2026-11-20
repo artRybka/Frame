@@ -22,6 +22,9 @@ OWNER_ID = "owner"
 class Viewer:
     user_id: str
     likes: Callable[[str], bool]
+    #: Whether they hid the work ("Ukryj dzieło" is each person's own,
+    #: ``Library.hides_work``); None: the stored ``Item.excluded``.
+    hides: Callable[[str], bool] | None = None
 
 
 VIEWER: ContextVar[Viewer | None] = ContextVar("viewer", default=None)
@@ -44,3 +47,10 @@ def viewer_id() -> str:
     """The person asking, or the owner when nobody is (background work)."""
     viewer = VIEWER.get()
     return viewer.user_id if viewer is not None else OWNER_ID
+
+
+def asking() -> str | None:
+    """The person asking, or None in background work (where the
+    household's choices count, not one person's)."""
+    viewer = VIEWER.get()
+    return viewer.user_id if viewer is not None else None

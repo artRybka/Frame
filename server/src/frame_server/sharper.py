@@ -90,7 +90,9 @@ log = logging.getLogger(__name__)
 
 KIND = "sharper"
 #: 2: works found fine are looked at again, for a copy in a tile set.
-VERSION = "sharper-2"
+#: 3: copies in fuller colours are taken (Mateusz 2026-11-20): works with
+#: none found are looked at again.
+VERSION = "sharper-3"
 #: The version of the look at an art archive's photograph: those looked at
 #: before they took copies in other colours are looked at again.
 ARCHIVE_VERSION = "sharper-archive-1"
@@ -113,15 +115,10 @@ MUSH = 0.2
 #: A copy's colours: no greyer than this share of the work's own tint
 #: spread (a black-and-white plate of a painting) ...
 GREYER = 0.5
-#: ... nor coloured where the work has none (a colourised print) ...
+#: (A copy coloured where the work has none, or far more colourful, is
+#: taken since Mateusz 2026-11-20: fuller colours are often the better copy.)
+#: Below this tint spread a picture is grey.
 GREY = 0.012
-#: ... nor this many times as colourful (tint spread): the average colour
-#: misses a faded slide, its white sky and red ground averaging out close to
-#: the painting's yellow sky and violet ground (Foto Marburg's olive grove
-#: against WikiArt's: 0.056 apart, spread 0.020 against 0.077; its yellow
-#: house, schoolboy and postman 2.7 to 3.3 times; two good photographs of
-#: one painting 1.1, Mateusz 2026-11-09) ...
-LIVELIER = 2.0
 #: ... nor far off in its average colour (OKLab distance; photographs of
 #: one painting under other lights differ by a few hundredths).
 COLOUR_OFF = 0.08
@@ -247,22 +244,28 @@ ColourNote = Literal["grey", "coloured", "colour-off"]
 
 def colour_note(own: Tone, copy: Tone) -> ColourNote | None:
     """How ``copy``'s colours differ from ``own``'s: "grey" (a black-and-white
-    plate of a coloured work), "coloured" (a grey work coloured in),
-    "colour-off" (in other light altogether, or far more colourful: one of
-    them faded); None when they are its own."""
+    plate of a coloured work) or "colour-off" (in other light altogether);
+    None when they are its own.
+
+    A copy in fuller colours than the work's own picture is no fault: a
+    better copy is often the one in the work's whole colouring (Mateusz
+    2026-11-20: "«nie podkolorowana» - pomińmy tę zasadę, bo często lepsza
+    znaczy też w pełnej kolorystyce"). Such a copy is held only to the
+    lightness of the work's own (a photograph in other light), not to its
+    tint, and a grey print in colours is taken too ("coloured" is no
+    longer told)."""
     if own.spread >= GREY and copy.spread < own.spread * GREYER:
         return "grey"
-    if own.spread < GREY and copy.spread >= max(GREY * 2, own.spread * 3):
-        return "coloured"
-    if copy.spread >= own.spread * LIVELIER:
-        return "colour-off"
+    if copy.spread > own.spread:
+        lighter = abs(own.mean[0] - copy.mean[0])
+        return None if lighter <= COLOUR_OFF else "colour-off"
     distance = float(np.linalg.norm(np.subtract(own.mean, copy.mean)))
     return None if distance <= COLOUR_OFF else "colour-off"
 
 
 def same_colours(own: Tone, copy: Tone, faded: bool = False) -> bool:
     """``copy`` is in ``own``'s colours: not a grey copy of a coloured work,
-    nor a coloured one of a grey work, nor in other light altogether (but
+    nor in other light altogether (but
     for ``faded``: ``own`` is an archive's old slide, whose colours are off
     themselves)."""
     note = colour_note(own, copy)

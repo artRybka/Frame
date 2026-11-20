@@ -724,6 +724,17 @@ class Item(BaseModel):
         user = viewer.user_id if viewer is not None else OWNER_ID
         return handler(value) if user in self.cleaned_viewers() else None
 
+    @field_serializer("excluded")
+    def _excluded_for_viewer(self, value: bool, info: SerializationInfo) -> bool:
+        """Stored: hidden by the household. To the app: hidden by the viewer
+        (each person's own, Mateusz 2026-11-20)."""
+        if info.context and info.context.get("store"):
+            return value
+        viewer = VIEWER.get()
+        if viewer is None or viewer.hides is None:
+            return value
+        return viewer.hides(self.id)
+
     @field_serializer("favorite")
     def _favorite_for_viewer(self, value: bool, info: SerializationInfo) -> bool:
         """Stored: someone's favourite. To the app: the viewer's own heart

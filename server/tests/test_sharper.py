@@ -162,12 +162,15 @@ def test_colours_tell_a_black_and_white_plate() -> None:
     assert not same_colours(painting, Tone(0.004, (0.7, 0.0, 0.01)))  # B&W plate
     assert not same_colours(painting, Tone(0.06, (0.45, 0.02, 0.05)))  # far darker
     etching = Tone(0.003, (0.8, 0.01, 0.03))
-    assert not same_colours(etching, Tone(0.05, (0.8, 0.02, 0.05)))  # coloured in
+    # In fuller colours: taken (Mateusz 2026-11-20: "często lepsza znaczy
+    # też w pełnej kolorystyce"), held only to the work's lightness.
+    assert same_colours(etching, Tone(0.05, (0.8, 0.02, 0.05)))
+    assert not same_colours(etching, Tone(0.05, (0.6, 0.02, 0.05)))  # far darker
     # Foto Marburg's faded slide of the olive grove against WikiArt's copy:
     # close on average, four times as colourful (Mateusz 2026-11-09).
     slide = Tone(0.0197, (0.529, 0.005, 0.001))
     wikiart = Tone(0.0773, (0.576, -0.008, 0.030))
-    assert not same_colours(slide, wikiart)
+    assert same_colours(slide, wikiart)
     assert same_colours(slide, wikiart, faded=True)
     assert same_colours(painting, Tone(0.07, (0.69, 0.02, 0.05)))  # a little livelier
 
@@ -531,7 +534,7 @@ def test_an_archive_slide_is_beaten_by_any_copy_as_large() -> None:
     assert not Quality(1100, 2.0).better(slide, faded=True)
     faded = Tone(0.03, (0.75, -0.01, -0.03))
     true = Tone(0.07, (0.65, 0.01, 0.07))
-    assert not same_colours(faded, true)
+    assert not same_colours(faded, true)  # fuller colours, but far darker
     assert same_colours(faded, true, faded=True)
     # A black-and-white plate stays out, faded slide or not.
     assert not same_colours(faded, Tone(0.003, (0.7, 0.0, 0.0)), faded=True)

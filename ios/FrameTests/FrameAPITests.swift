@@ -1239,6 +1239,13 @@ final class FrameAPITests: XCTestCase {
         )
         XCTAssertEqual(PhotoSaver.sources(for: item, backend: demo).first?.url, URL(string: "https://upload.wikimedia.org/a.jpg"))
         item.sharper = nil
+        // Seen with its varnish taken off: saved so, from the server (Mateusz 2026-11-20).
+        item.cleaned = Cleaned(kind: "varnish")
+        XCTAssertEqual(PhotoSaver.sources(for: item, backend: demo).map(\.url), [demo.request(for: item.originalRef)?.url])
+        XCTAssertEqual(PhotoSaver.colourNote(item), "Bez werniksu")
+        item.cleaned = nil
+        XCTAssertNil(PhotoSaver.colourNote(item))
+        XCTAssertTrue(PhotoSaver.sources(for: item, framed: true, backend: demo).isEmpty)  // nothing around it
         item.kind = .photo  // an iCloud photo's address expires: the server's copy only
         XCTAssertEqual(PhotoSaver.sources(for: item, backend: demo).count, 1)
         item.artist = "Vincent van Gogh"

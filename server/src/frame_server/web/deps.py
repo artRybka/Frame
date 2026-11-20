@@ -42,7 +42,13 @@ async def current_user(request: Request) -> User:
     request.state.user = user
     request.state.device = device
     library = svc.library
-    VIEWER.set(Viewer(user.id, lambda item_id: library.likes(user.id, item_id)))
+    VIEWER.set(
+        Viewer(
+            user.id,
+            lambda item_id: library.likes(user.id, item_id),
+            lambda item_id: library.hides_work(user.id, item_id),
+        )
+    )
     return user
 
 

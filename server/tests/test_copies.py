@@ -143,7 +143,8 @@ def test_a_copy_in_other_colours_than_an_archives_slide_is_better(app: Any) -> N
     _offer(web, as_large, _print(1, (1618, 1079)))
     hits[:] = [larger, as_large]
     copies = _final(_lines(client, own.id))
-    assert copies["wmc:1"]["verdict"] == "better" and "colour-off" in copies["wmc:1"]["notes"]
+    # In fuller colours than the slide: its own colours (Mateusz 2026-11-20).
+    assert copies["wmc:1"]["verdict"] == "better" and "colours" in copies["wmc:1"]["notes"]
     assert copies["wmc:2"]["verdict"] == "better"
 
 

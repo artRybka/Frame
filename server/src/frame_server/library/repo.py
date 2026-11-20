@@ -53,7 +53,7 @@ from .places import Places, known_places, learn_places
 from .search_index import SearchIndex, folded_fields, folded_text
 from .term_index import TermIndex
 from .verdict import COPIES, Place, Why, against, whys
-from .viewer import OWNER_ID, STORE, viewer_id
+from .viewer import OWNER_ID, STORE, asking, viewer_id
 from .vocabulary import matches_terms, searched_kinds
 
 #: Item fields that tell copies of a work apart or choose between them.
@@ -179,6 +179,8 @@ SENT_KEY = "sent_photos_playlist"
 ORDER_KEY = "playlist_order"
 #: Hearts were moved from ``Item.favorite`` to the owner's in ``favorites``.
 FAVORITES_MOVED_KEY = "favorites_moved"
+#: Works hidden before each person had their own moved to the owner's.
+HIDDEN_MOVED_KEY = "hidden_moved"
 #: What was learnt of the museums (:class:`.places.Places`).
 PLACES_STATE = "places"
 #: Smart playlists' counts and covers as last worked out, kept over a
@@ -223,6 +225,12 @@ CREATE TABLE IF NOT EXISTS favorites (
     user_id TEXT NOT NULL,
     item_id TEXT NOT NULL,
     added_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, item_id)
+);
+CREATE TABLE IF NOT EXISTS hidden_works (
+    user_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    hidden_at TEXT NOT NULL,
     PRIMARY KEY (user_id, item_id)
 );
 """
@@ -866,6 +874,12 @@ class Library:
         self._orders: OrderedDict[tuple[Any, ...], tuple[float, float, list[Item]]] = OrderedDict()
         #: ``hidden()`` as last worked out: (catalogue version, works, it).
         self._hidden_kept: tuple[tuple[int, int], Works, Hidden] | None = None
+        #: Each person's ``hidden(user)`` likewise, with their hides' version.
+        self._hidden_own: dict[str, tuple[tuple[int, int, int, int], Works, Hidden]] = {}
+        #: Each person's hidden works ("Ukryj dzieło", Mateusz 2026-11-20),
+        #: id -> when; None until read. Replaced, never changed in place.
+        self._hides: dict[str, dict[str, str]] | None = None
+        self._hides_version = 0
         #: The items the pictures showed to be details, by the id of the
         #: copy they are a detail of (``Item.detail_of``), as of a version.
         self._details_kept: tuple[int, dict[str, list[str]]] | None = None
@@ -879,6 +893,7 @@ class Library:
         with self._db() as db:
             db.executescript(SCHEMA)
         self._move_favorites()
+        self._move_hidden()
         self._kv_rows()  # read once here, never on the event loop
         # Museums learnt from Wikidata, for every work's place (models).
         learn_places(Places.from_state(self.get_state(PLACES_STATE)))
@@ -1125,6 +1140,92 @@ class Library:
             ):
                 self._drop_works(f"deletion of {item_id}")
             return True
+
+    # -- hidden works, one set for each person -------------------------------
+    #
+    # "Ukryj dzieło" hides a work for the person who asks only (Mateusz
+    # 2026-11-20: "chciałbym żeby działało dla każdego użytkownika
+    # indywidualnie"): their Szukaj, Odkrywaj, lists and "Ukryte" leave it
+    # out. The stored ``Item.excluded`` says whether the household hides it
+    # (the owner or a member, never a guest, as with hearts): what the frame,
+    # the proposals and the night's work go by.
+
+    def _move_hidden(self) -> None:
+        """Once: the works hidden before each person had their own become
+        the owner's."""
+        if self.get_state(HIDDEN_MOVED_KEY):
+            return
+        with self._lock, self._db() as db:
+            stamp = now_iso()
+            db.executemany(
+                "INSERT OR IGNORE INTO hidden_works (user_id, item_id, hidden_at) VALUES (?, ?, ?)",
+                [
+                    (OWNER_ID, i.id, i.excluded_at or stamp)
+                    for i in self._all().values()
+                    if i.excluded
+                ],
+            )
+            self.set_state(HIDDEN_MOVED_KEY, True)
+        self._hides = None
+        self._hides_version += 1
+
+    def _all_hides(self) -> dict[str, dict[str, str]]:
+        hides = self._hides
+        if hides is not None:
+            return hides
+        with self._lock:
+            if self._hides is None:
+                with self._db() as db:
+                    rows = db.execute(
+                        "SELECT user_id, item_id, hidden_at FROM hidden_works"
+                    ).fetchall()
+                found: dict[str, dict[str, str]] = {}
+                for user_id, item_id, at in rows:
+                    found.setdefault(user_id, {})[item_id] = at
+                self._hides = found
+            return self._hides
+
+    def hides(self, user_id: str) -> dict[str, str]:
+        """The works ``user_id`` hid, with when."""
+        return self._all_hides().get(user_id, {})
+
+    def hides_work(self, user_id: str, item_id: str) -> bool:
+        return item_id in self._all_hides().get(user_id, {})
+
+    def set_hidden(
+        self, user_id: str, item_id: str, hidden: bool, at: str | None = None
+    ) -> Item | None:
+        """``user_id`` hides ``item_id`` (or shows it again); the stored
+        ``Item.excluded`` follows the household (a guest's hides left out),
+        ``excluded_at`` its last hide."""
+        with self._lock:
+            if item_id not in self._all():
+                return None
+            hides = dict(self._all_hides())
+            own = dict(hides.get(user_id, {}))
+            with self._db() as db:
+                if hidden:
+                    stamp = at or now_iso()
+                    db.execute(
+                        "INSERT OR REPLACE INTO hidden_works (user_id, item_id, hidden_at)"
+                        " VALUES (?, ?, ?)",
+                        (user_id, item_id, stamp),
+                    )
+                    own[item_id] = stamp
+                else:
+                    db.execute(
+                        "DELETE FROM hidden_works WHERE user_id = ? AND item_id = ?",
+                        (user_id, item_id),
+                    )
+                    own.pop(item_id, None)
+            hides[user_id] = own
+            self._hides = hides
+            self._hides_version += 1
+            quiet = self.quiet_fans()
+            times = [ids[item_id] for u, ids in hides.items() if u not in quiet and item_id in ids]
+            return self._update(
+                item_id, excluded=bool(times), excluded_at=max(times) if times else None
+            )
 
     # -- hearts, one set for each person -------------------------------------
 
@@ -1540,9 +1641,13 @@ class Library:
         ``skip`` left out, the next copy of their works is the one shown."""
         return self.works().spare(skip)
 
-    def hidden(self) -> Hidden:
+    def hidden(self, user: str | None = None) -> Hidden:
         """The works hidden in the app ("Ukryj dzieło"): the hidden items and
-        every copy of their works, here or at a museum."""
+        every copy of their works, here or at a museum. ``user``: the works
+        that person hid (their Szukaj, lists and cards); None: the
+        household's (``Item.excluded``: the frame, proposals, the night)."""
+        if user is not None:
+            return self._hidden_by(user)
         catalogue = self._catalogue_version
         works = self.works()
         # The groups as they are now: a copy named since (``Works.regroup``)
@@ -1573,11 +1678,36 @@ class Library:
         self._hidden_kept = (version, works, found)
         return found
 
-    def hidden_items(self) -> list[Item]:
-        """The items hidden in the app, the last hidden first (the list
-        "Ukryte" in Playlists)."""
-        items = [i for i in self._snapshot() if i.excluded and i.look is None]
-        return sorted(items, key=lambda i: i.excluded_at or "", reverse=True)
+    def _hidden_by(self, user: str) -> Hidden:
+        """:meth:`hidden` of the works ``user`` hid."""
+        works = self.works()
+        version = (self._catalogue_version, works.regrouped, self._hides_version, id(works))
+        kept = self._hidden_own.get(user)
+        if kept is not None and kept[0] == version and kept[1] is works:
+            return kept[2]
+        own = self.hides(user)
+        ids = {i for i in own if self.get(i) is not None}
+        if not ids:
+            found = Hidden()
+        else:
+            groups = {g for i in ids if (g := works.group_index(i)) is not None}
+            liked = self.favorites(user)
+            groups = {
+                g
+                for g in groups
+                if not any(c.id not in own and c.id in liked for c in works.groups[g])
+            }
+            ids |= {c.id for g in groups for c in works.groups[g]}
+            found = Hidden(ids, groups, works)
+        self._hidden_own[user] = (version, works, found)
+        return found
+
+    def hidden_items(self, user: str = OWNER_ID) -> list[Item]:
+        """The items ``user`` hid in the app, the last hidden first (their
+        list "Ukryte" in Playlists)."""
+        own = self.hides(user)
+        items = [i for i in (self.get(x) for x in own) if i is not None and i.look is None]
+        return sorted(items, key=lambda i: own.get(i.id, ""), reverse=True)
 
     def _details_by_whole(self) -> dict[str, list[str]]:
         kept = self._details_kept
@@ -1737,8 +1867,17 @@ class Library:
             include_excluded,
             proposing,
             user,
+            # Someone asking sees their own hidden works left out, the
+            # background the household's (``hidden(user)``).
+            asking() is not None,
         )
-        kept = (*asked, self._version, self._hearts_version, self._playlists_version)
+        kept = (
+            *asked,
+            self._version,
+            self._hearts_version,
+            self._playlists_version,
+            self._hides_version,
+        )
         # The list whatever is left out of it by id (works with no picture:
         # one found so while scrolling is no other list).
         order_key = None
@@ -1757,7 +1896,9 @@ class Library:
         if order_key is not None and offset > 0:
             order = self._order(order_key)
             if order is not None:
-                return len(order), self._held_now(order[offset:end], rules.exclude_ids)
+                return len(order), self._held_now(
+                    order[offset:end], rules.exclude_ids, user if asking() is not None else None
+                )
         # What else decides the answer, compared as the objects they are.
         made_with = (works, known_names(), known_places())
         with self._queries_lock:
@@ -1866,15 +2007,20 @@ class Library:
             self._orders.move_to_end(key)
             return items
 
-    def _held_now(self, page: list[Item], left_out: Collection[str]) -> list[Item]:
+    def _held_now(
+        self, page: list[Item], left_out: Collection[str], user: str | None = None
+    ) -> list[Item]:
         """The works of a remembered page as the library holds them now,
-        without those hidden, left out or gone since."""
-        hidden = self.hidden().ids
+        without those hidden (by ``user``: :meth:`hidden`), left out or gone
+        since."""
+        hidden = self.hidden(user).ids
         out = set(left_out)
         held: list[Item] = []
         for was in page:
             now = self.get(was.id)
-            if now is None or now.excluded or now.id in hidden or now.id in out:
+            if now is None or now.id in hidden or now.id in out:
+                continue
+            if user is None and now.excluded:
                 continue
             held.append(now)
         return held
@@ -1955,7 +2101,11 @@ class Library:
         listed = self.listed(user) if MINE_PLAYLISTS in rules.terms else set()
         mine = rules.favorites_only or any(t in MINE for t in rules.terms)
         hearts = self.favorites(user) if mine else None
-        hidden = Hidden() if include_excluded else self.hidden()
+        # The person asking: their own hidden works, not the household's
+        # (``hidden``); the background: the household's.
+        hider = user if asking() is not None else None
+        hidden = Hidden() if include_excluded else self.hidden(hider)
+        own_hides = self.hides(hider) if hider is not None else None
         key = rules.search_key()
         # The words as typed and as the museums were asked them (English,
         # French): "uliczka" finds "The Little Street" (Mateusz 2026-11-09).
@@ -1979,6 +2129,8 @@ class Library:
                 return False
             if not include_excluded and against(item, place, rules.terms):
                 return False
+            if own_hides is not None and item.excluded != (item.id in own_hides):
+                item = item.model_copy(update={"excluded": item.id in own_hides})
             if include_excluded and item.excluded:
                 unexcluded = item.model_copy(update={"excluded": False})
                 return matches(unexcluded, rules, listed, hearts, key, said, titled, polish)
@@ -2045,6 +2197,12 @@ class Library:
                     if against(copy, place, rules.terms):
                         continue
                     stored = self.get(copy.id)
+                    if (
+                        stored is not None
+                        and own_hides is not None
+                        and stored.excluded != (stored.id in own_hides)
+                    ):
+                        stored = stored.model_copy(update={"excluded": stored.id in own_hides})
                     if stored is not None and matches(
                         stored, plain, listed, hearts, "", None, titled, polish
                     ):

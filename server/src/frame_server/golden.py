@@ -36,6 +36,7 @@ from .library.models import Item, ItemKind
 from .library.repo import Library
 from .library.twins import pair_key
 from .library.verdict import COPIES, NAMES, Why, whys
+from .library.viewer import STORE
 
 if TYPE_CHECKING:
     from .service import FrameService
@@ -100,7 +101,7 @@ def catalogue(library: Library) -> Iterator[bytes]:
     for item in library.query(include_excluded=True)[1]:
         if not _art(item):
             continue
-        said = item.model_dump(mode="json", exclude_defaults=True) | {
+        said = item.model_dump(mode="json", exclude_defaults=True, context=STORE) | {
             "id": item.id,
             "source": item.source,
             "source_id": item.source_id,

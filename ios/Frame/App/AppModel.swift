@@ -2080,11 +2080,11 @@ final class AppModel {
         await refreshPlayer()
     }
 
-    /// "Zapisz w Zdjęciach" on a work's screen.
-    func saveToPhotos(_ item: Item) async {
-        let card = notices.begin("Pobieram obraz do Zdjęć")
+    /// "Zapisz w Zdjęciach" on a work's screen: `framed`, in its frame.
+    func saveToPhotos(_ item: Item, framed: Bool = false) async {
+        let card = notices.begin(framed ? "Pobieram dzieło w ramie do Zdjęć" : "Pobieram obraz do Zdjęć")
         do {
-            try await PhotoSaver.save(item, backend: backend)
+            try await PhotoSaver.save(item, framed: framed, backend: backend)
             notices.end(card, .done, "Zapisano w Zdjęciach")
         } catch {
             notices.fail(error, in: card)

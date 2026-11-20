@@ -932,7 +932,9 @@ class ImageCache:
         path = self.ensure_image(item, urgent)
         return full if full.is_file() else path  # cut as it came in, or whole
 
-    def framed(self, item: Item, side: int, urgent: bool = False) -> Image.Image | None:
+    def framed(
+        self, item: Item, side: int, urgent: bool = False, user: str = OWNER_ID
+    ) -> Image.Image | None:
         """The card's "W ramie" (Mateusz 2026-11-17): the photograph cut to
         the outer edge of the work's frame or passe-partout (a print's
         sheet when it is shown without it, ``Cut.framed_by``) and set
@@ -943,7 +945,12 @@ class ImageCache:
         A work drawn again by the restorer (``SharperCopy.restored``) keeps
         only the drawing of the work: the frame is the museum's photograph
         (:meth:`before_drawn`) with the drawing laid in it ("gdy do dzieła
-        … dodałem restauratora, to obraz stracił ramę", Mateusz 2026-11-18)."""
+        … dodałem restauratora, to obraz stracił ramę", Mateusz 2026-11-18).
+
+        The work's colours are ``user``'s (``Item.cleaned_by``): a person
+        who sees it otherwise than it is kept gets their own picture in the
+        frame (:meth:`variant`), also when saving it to the phone's photos
+        (Mateusz 2026-11-20)."""
         cut = item.cut
         by = cut.framed_by() if cut is not None else None
         work = item.cut_framed()
@@ -957,9 +964,14 @@ class ImageCache:
         if not same_picture(cut.aspect, img.size):
             return None
         shown = None
-        if drawn or item.cleaned_shown() is not None:
+        own = item.cleaned_differs(user)
+        if drawn or item.cleaned_shown(user) is not None:
             try:
-                shown = load_image(self.ensure_image(item, urgent))
+                if own:
+                    cleaned = item.cleaned_shown(user) is not None
+                    shown = load_image(self.variant(item, cleaned, urgent=urgent))
+                else:
+                    shown = load_image(self.ensure_image(item, urgent))
             except OSError:
                 shown = None
         out = framed(img, by[0], work, shown, self._ratio(item))
