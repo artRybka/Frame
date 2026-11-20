@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.286
+
+- Tłumaczenie słów w Szukaj na iPhonie naprawdę działa. Telefon szukał
+  „angielskiego” ogólnie, a pobrany jest „angielski (USA)”, więc dotąd
+  wszystko tłumaczył Haiku.
+
 ## 1.145.285
 
 - Słowa w Szukaj układają się według wyglądu także przy pierwszym
