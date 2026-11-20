@@ -660,7 +660,8 @@ private struct PlaylistSearchField: ViewModifier {
                     lookup, tokens: $tokens, focused: focused, prompt: "Szukaj w tej playliście",
                     opensAtOnce: true, onClose: onClose
                 )
-                .termSuggestions(lookup, tokens: $tokens, focused: focused)
+                // No groups' bar here: right over the keyboard.
+                .termSuggestions(lookup, tokens: $tokens, focused: focused, overKeyboard: 10)
         } else {
             content
         }
