@@ -12,8 +12,9 @@ struct CroppedRoute: Hashable {}
 /// 2026-11-20 17:34 UTC, sketch accepted 17:42): the museum's photograph
 /// with the work's corners and the frame's, the work alone and the work in
 /// its frame, and "Zatwierdź", "Kadr dzieła", "Kadr ramy", "Bez ramy" under
-/// them. A work leaves the list once it is approved or its cut is his own;
-/// both are what the model is taught again from (`/api/crops/lessons`).
+/// them. A work leaves the list once it is approved (also after he set its cut;
+/// Mateusz 2026-11-20); what it is then is what the model is taught again
+/// from (`/api/crops/lessons`).
 struct CroppedWorksView: View {
     @Environment(AppModel.self) private var model
     @State private var loading = false
@@ -135,7 +136,7 @@ struct CroppedWorksView: View {
             let updated = try await model.backend.setCut(itemID: id, update: update)
             items[id] = updated
             model.cardShows(updated, changed: true)
-            // His own corners: corrected, off the list.
+            // His own corners stay on the list until he approves them.
             await model.refreshCropReview()
             return true
         } catch {
@@ -158,8 +159,11 @@ struct CropCheckRow: View {
     let bare: () async -> Void
     @State private var busy = false
 
-    /// The work's corners: amber, as the cut editor's corner in hand.
+    /// The work's corners: amber, as the cut editor's corner in hand; the
+    /// frame's pink. Thin, not to hide what they mark (Mateusz 2026-11-20:
+    /// „Kreski są za grube - zasłaniają sens. Zamiast przerywanej daj różową.”).
     static let workLine = Color(light: 0xF2B93B, dark: 0xF2C14E)
+    static let frameLine = Color(light: 0xFF5FA2, dark: 0xFF7AB4)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -212,13 +216,10 @@ struct CropCheckRow: View {
             .overlay {
                 Canvas { context, size in
                     if let frame = item.cut?.surround, frame.count == 4 {
-                        context.stroke(
-                            quad(frame, size), with: .color(.white),
-                            style: StrokeStyle(lineWidth: 2, dash: [6, 4])
-                        )
+                        context.stroke(quad(frame, size), with: .color(Self.frameLine), lineWidth: 1)
                     }
                     if let work = item.cutShown, work.count == 4 {
-                        context.stroke(quad(work, size), with: .color(Self.workLine), lineWidth: 2.5)
+                        context.stroke(quad(work, size), with: .color(Self.workLine), lineWidth: 1)
                     }
                 }
                 .allowsHitTesting(false)
@@ -246,9 +247,7 @@ struct CropCheckRow: View {
             }
             if item.cut?.surround != nil {
                 HStack(spacing: 6) {
-                    Rectangle()
-                        .stroke(Theme.inkSoft, style: StrokeStyle(lineWidth: 2, dash: [4, 3]))
-                        .frame(width: 18, height: 0.5)
+                    Capsule().fill(Self.frameLine).frame(width: 18, height: 3)
                     Text(bound: "rama albo passe-partout")
                 }
             } else if !unsure {
