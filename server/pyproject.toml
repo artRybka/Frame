@@ -20,6 +20,8 @@ dependencies = [
     "pillow-heif>=0.18",
     "anthropic>=2.3.0",
     "cryptography>=44",
+    "onnxruntime>=1.20",
+    "tokenizers>=0.20",
 ]
 
 [project.scripts]

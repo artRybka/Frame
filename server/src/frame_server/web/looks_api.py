@@ -165,3 +165,42 @@ async def looks_near(
     ilości nie powinien być stopień podobieństwa?"). The owner's only."""
     item = await _work(svc, item_id)
     return _answer(await run_in_threadpool(svc.looks.similar, item, count, by=by))
+
+
+class SeenAnswer(BaseModel):
+    """SigLIP's numbers on the server (``frame_server.seen``): how many works
+    have them, and the works nearest what was asked, with their nearness."""
+
+    done: int
+    total: int
+    model: bool
+    trouble: str | None
+    ids: list[str]
+    scores: list[float]
+
+
+@router.get("/debug/seen", response_model=SeenAnswer, dependencies=[Depends(require_owner)])
+async def seen_state(
+    svc: Svc,
+    item: str = "",
+    text: str = "",
+    count: Annotated[int, Query(ge=1, le=2000)] = 60,
+) -> SeenAnswer:
+    """Step one of SigLIP in Gemini's place (Mateusz 2026-11-20): how far
+    the works' numbers are, and the works nearest ``item`` or ``text``
+    (best in English) by them, beside ``/debug/looks``. The owner's only."""
+    seen = svc.seen
+    done, total = await run_in_threadpool(seen.counts)
+    found: list[tuple[str, float]] | None = []
+    if item:
+        found = await run_in_threadpool(seen.like, item, count)
+    elif text and seen.model.here():
+        found = await run_in_threadpool(seen.words, text, count)
+    return SeenAnswer(
+        done=done,
+        total=total,
+        model=seen.model.here(),
+        trouble=seen.trouble,
+        ids=[i for i, _ in found or []],
+        scores=[round(s, 4) for _, s in found or []],
+    )
