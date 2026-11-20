@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.277
+
+- Zdjęcia dzieł z muzeów kadruje teraz sam iPhone, własnym modelem, bez
+  Opusa i Haiku. Kadr powstaje przy otwarciu karty dzieła albo partiami
+  w Diagnostyce („Kadrowanie zdjęć z muzeów” → „Kadruj partię”). Gdy
+  model nie jest pewny, zdjęcie zostaje całe. Wykadrowane przez model
+  i czekające na kadr są w Playlistach, na liście „Kadrowane”
+  (przytrzymanie → „Dobrze”). Własne dzieła kadrują się jak dotąd.
+
 ## 1.145.276
 
 - Serwer zaczyna liczyć własne odciski wyglądu dzieł modelem SigLIP 2

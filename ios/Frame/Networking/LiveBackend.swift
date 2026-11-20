@@ -920,6 +920,40 @@ struct LiveBackend: FrameBackend {
         return data
     }
 
+    func phoneCropAsk(itemID: String) async throws -> PhoneCropAsk {
+        try await get("/api/crops/phone/\(escape(itemID))")
+    }
+
+    func phoneCropsWaiting(limit: Int) async throws -> PhoneCropsWaiting {
+        try await get("/api/crops/phone/waiting", query: [URLQueryItem(name: "limit", value: String(limit))])
+    }
+
+    func phoneCropFound(itemID: String, _ found: PhoneCropFound) async throws -> PhoneCropResult {
+        // The cut work's pictures are made again before the answer.
+        var req = request("/api/crops/phone/\(escape(itemID))", method: "POST")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try Self.encoder().encode(found)
+        req.timeoutInterval = 120
+        return try await perform(req)
+    }
+
+    func museumPhoto(itemID: String, side: Int) async throws -> Data {
+        guard var req = request(for: .museumPhoto(itemID, side: side, version: "")) else { throw BackendError.notFound }
+        req.timeoutInterval = 120
+        let (data, response) = try await load(req)
+        guard let http = response as? HTTPURLResponse else { throw BackendError.invalidResponse }
+        guard (200 ..< 300).contains(http.statusCode) else {
+            throw BackendError.http(status: http.statusCode, body: String(decoding: data.prefix(2000), as: UTF8.self))
+        }
+        return data
+    }
+
+    func cropReview() async throws -> CropReview { try await get("/api/crops/review") }
+
+    func cropFine(itemID: String) async throws -> CropReview {
+        try await perform(request("/api/crops/review/\(escape(itemID))/fine", method: "POST"))
+    }
+
     func sendPhoneScan(token: String, name: String, _ data: Data) async throws {
         var req = request("/api/debug/own-scans/\(escape(token))/\(escape(name))", method: "PUT")
         req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")

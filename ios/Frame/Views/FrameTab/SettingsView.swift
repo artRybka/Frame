@@ -379,6 +379,7 @@ struct SettingsPageView: View {
                 let target = LaunchRoute.scroll
                 let onTasks = ["study", "night", "rest", "off", "server"]
                 guard (page == .gemini && target == "restorer") || (page == .ai && target == "leftover")
+                    || (page == .diagnostics && target == "crop")
                     || (page == .tasks && onTasks.contains(target ?? "")),
                     let target
                 else { return }
@@ -469,6 +470,8 @@ struct SettingsPageView: View {
             SourceRequestsSection()
             TailnetSection(parts: [.log])
             NotificationsSection(parts: [.test])
+            MuseumCropSection()
+                .id("crop")
             if !model.demoMode {
                 ScanTrialSection()
             }
