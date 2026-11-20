@@ -37,6 +37,8 @@ from the picture as it came and cleaned the same.
 from __future__ import annotations
 
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -103,6 +105,12 @@ class Cleaning:
         self.library = library
         self.images = images
         self.importer: Importer | None = None
+        #: Whether the kept pictures are made again in the background after
+        #: a switch (the service; the tests mostly wait for them).
+        self.background = False
+        self._jobs: ThreadPoolExecutor | None = None
+        self._due: dict[str, int] = {}
+        self._guard = threading.Lock()
 
     # -- the owner's asks -------------------------------------------------------------
 
@@ -120,6 +128,19 @@ class Cleaning:
             who = sorted({*item.cleaned_viewers(), user})
         return self._put(item, reading, who)
 
+    def read_ahead(self, item: Item, made: str) -> Item:
+        """The cleaning read, and kept seen by nobody, before anyone asks
+        for it: the full-screen viewer has the cleaned picture ready while
+        the work is looked at, so the button shows it at once (Mateusz
+        2026-11-20). Only for a work the button is on, never in advance
+        for others ("Dla wielu dzieł nie ma ta funkcja wogole sensu")."""
+        if item.cleaned is not None:
+            return item
+        reading = self._read(item, made)
+        if reading is None:
+            return item
+        return self.library.update(item.id, cleaned=reading, cleaned_by=[]) or item
+
     def give_up(self, item: Item, user: str = OWNER_ID) -> Item:
         """ "Przywróć werniks" / "Przywróć ton papieru": ``user`` sees the
         picture as it came again. The reading goes once nobody sees it."""
@@ -135,7 +156,42 @@ class Cleaning:
         changed = item.model_copy(update={"cleaned": reading, "cleaned_by": who})
         if changed.cleaned_shown() == before:
             return self.library.update(item.id, cleaned=reading, cleaned_by=who) or changed
-        return self.apply(item, reading, who)
+        if not self.background:
+            return self.apply(item, reading, who)
+        # The answer at once, the pictures after (Mateusz 2026-11-20:
+        # "każde kliknięcie włącz/wyłącz to sekundy"): meanwhile everyone
+        # gets the picture as they see it from ``ImageCache.variant``.
+        with self._guard:
+            self.images.remaking.add(item.id)
+            due = self._due[item.id] = self._due.get(item.id, 0) + 1
+        updated = self.library.update(item.id, cleaned=reading, cleaned_by=who) or changed
+        if self._jobs is None:
+            self._jobs = ThreadPoolExecutor(1, thread_name_prefix="cleaning")
+        self._jobs.submit(self._remake, item.id, due)
+        return updated
+
+    def _remake(self, item_id: str, due: int) -> None:
+        """The kept pictures of a work made again as its cleaning is now,
+        once for the last of quick switches."""
+        try:
+            with self._guard:
+                if self._due.get(item_id) != due:
+                    return  # switched again since: that one makes them
+            stored = self.library.get(item_id)
+            if stored is not None:
+                self._made(stored)
+        except Exception:
+            log.exception("pictures of %s not made again", item_id)
+        finally:
+            with self._guard:
+                if self._due.get(item_id) == due:
+                    del self._due[item_id]
+                    self.images.remaking.discard(item_id)
+
+    def wait(self) -> None:
+        """Until the pictures switched so far are made (the tests)."""
+        if self._jobs is not None:
+            self._jobs.submit(lambda: None).result()
 
     # -- another copy takes the picture's place ---------------------------------------
 
@@ -220,6 +276,18 @@ class Cleaning:
         if who != "same":
             changes["cleaned_by"] = who
         updated = self.library.update(item.id, **changes) or item.model_copy(update=changes)
+        updated = self._made(updated)
+        log.info(
+            "cleaning of %s: %s",
+            item.id,
+            "given up" if cleaned is None else f"{cleaned.kind} {cleaned.strength:.2f}",
+        )
+        return updated
+
+    def _made(self, updated: Item) -> Item:
+        """The work's kept pictures made as its cleaning is now: the
+        original, the thumbnail, the colours, the study's details."""
+        item = updated
         self.images.recut(updated)
         if self.importer is not None:
             try:
@@ -229,9 +297,4 @@ class Cleaning:
         details = Path(self.images.thumbs.parent) / "details"
         for old in details.glob(f"{item.file_stem}-*.jpg"):
             old.unlink(missing_ok=True)
-        log.info(
-            "cleaning of %s: %s",
-            item.id,
-            "given up" if cleaned is None else f"{cleaned.kind} {cleaned.strength:.2f}",
-        )
         return updated

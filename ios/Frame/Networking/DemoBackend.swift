@@ -2532,7 +2532,7 @@ actor DemoBackend: FrameBackend {
         case .framed: url = nil
         case let .museumPhoto(id, _, _) where FileManager.default.fileExists(atPath: DemoFraming.uploadURL(id + "-full").path):
             url = DemoFraming.uploadURL(id + "-full")  // an own work's photograph whole
-        case let .image(id), let .original(id, _), let .museumPhoto(id, _, _), let .beforeCleaning(id, _), let .treated(id, _, _, _), let .fine(id, _, _): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
+        case let .image(id), let .original(id, _), let .museumPhoto(id, _, _), let .beforeCleaning(id, _), let .treated(id, _, _, _, _), let .fine(id, _, _): url = Self.bundled(id) ?? imageURLs[id]?.image ?? imageURLs[id]?.thumb
         case let .framePreview(id, settings, framing, _):
             url = framed(id, settings, trying: framing) ?? Self.bundled(id) ?? imageURLs[id]?.thumb
         case let .path(path) where path.hasPrefix("/demo/detail/"):

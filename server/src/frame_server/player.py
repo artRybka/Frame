@@ -1067,11 +1067,10 @@ class Player:
         images = self.service.images
         cleaned = self.state.cleaned_as.get(shown.id)
         reading = shown.cleaned_reading()
-        if (
-            cleaned is not None
-            and reading is not None
-            and cleaned != (shown.cleaned_shown() is not None)
-        ):
+        owners = shown.cleaned_shown() is not None
+        if shown.id in images.remaking:  # the kept one is being made again
+            return images.variant(shown, owners if cleaned is None else cleaned, urgent=urgent)
+        if cleaned is not None and reading is not None and cleaned != owners:
             return images.variant(shown, cleaned, urgent=urgent)
         return images.ensure_image(shown, urgent)
 

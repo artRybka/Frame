@@ -370,6 +370,7 @@ class FrameService:
         # A work shown without its aged varnish, or with its sheet
         # de-yellowed, when the owner asks (no model: imaging/recovery.py).
         self.cleaning = Cleaning(self.library, self.images)
+        self.cleaning.background = True
         self.cleaning.importer = self.importer
         self.sharper.cleaned_again = self.cleaning.renew
         # A page about a work (its study, the day's) reads the work cut

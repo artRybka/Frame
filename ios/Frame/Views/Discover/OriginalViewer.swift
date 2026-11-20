@@ -32,6 +32,15 @@ struct OriginalViewer: View {
     /// The work as it is now, once its colours were switched here.
     @State private var current: Item?
     @State private var savingColours = false
+    /// The picture with the colours' correction switched the other way,
+    /// had in the background once the viewer is open (only where the
+    /// button is): a tap shows it at once and the server is told after
+    /// (Mateusz 2026-11-20: "Teraz każde kliknięcie włącz/wyłącz to sekundy").
+    @State private var otherColours: UIImage?
+    /// The colours as the button shows them while the server is told.
+    @State private var coloursOn: Bool?
+    /// The picture's version switched here: already shown, not had again.
+    @State private var swappedTo: String?
     @State private var framedOn = false
     /// Opened on "W ramie": the frame asked for once (in, or not to be
     /// had). Until then nothing is shown, so the work in its frame is the
@@ -109,7 +118,8 @@ struct OriginalViewer: View {
                             // "można je włączyć/wyłączyć z pełnego ekranu
                             // (zapamiętuje się stan)").
                             TreatmentButton(
-                                treatment: treatment, on: work.cleanedShown != nil, loading: savingColours
+                                treatment: treatment, on: coloursShown,
+                                loading: savingColours && otherColours == nil
                             ) { Task { await saveColours() } }
                         } else {
                             TreatmentButton(
@@ -155,6 +165,7 @@ struct OriginalViewer: View {
             }
         }
         .task(id: work.fragmentsID) { await loadTiles() }
+        .task(id: "\(work.id)|\(work.pictureVersion)|\(treatments.contains(.colours))") { await loadOtherColours() }
         .task(id: off) { await loadTreated() }
         .onAppear {
             // CI screenshots: the work shown without all that was done.
@@ -214,17 +225,46 @@ struct OriginalViewer: View {
         return found
     }
 
+    /// Whether the colours are shown corrected (as the button says it).
+    private var coloursShown: Bool { coloursOn ?? (work.cleanedShown != nil) }
+
+    /// The picture with the colours the other way, from the server (kept
+    /// there on disk both ways), while the work is looked at.
+    private func loadOtherColours() async {
+        // The one shown before a switch here stands in until this comes.
+        guard treatments.contains(.colours), !model.demoMode else { return }
+        let toClean = work.cleanedShown == nil
+        let ref = ImageRef.treated(
+            work.id, restored: true, cleaned: toClean, version: work.pictureVersion,
+            made: toClean ? ColourRecovery.made(PaintStyle.of(work)) ?? "paper" : nil
+        )
+        guard let request = model.backend.request(for: ref) else { return }
+        let loaded = try? await ImageLoader.shared.image(for: request, maxPixel: 4096, priority: .normal)
+        if Task.isCancelled { return }
+        otherColours = await loaded?.byPreparingForDisplay() ?? loaded
+    }
+
     /// The colours' button: the correction switched on or off for this
-    /// person, kept on the server, and the picture had again as they now
-    /// see it (the card follows).
+    /// person and kept on the server (the card follows). With the other
+    /// picture had already, it is shown at once and the server told after;
+    /// should the server refuse, the picture goes back.
     private func saveColours() async {
         guard !savingColours else { return }
         let on = work.cleanedShown != nil
         let made = ColourRecovery.made(PaintStyle.of(work)) ?? "paper"
         UISelectionFeedbackGenerator().selectionChanged()
+        let before = image
+        let swapped = otherColours.flatMap { other in
+            shownOff.contains(.restored) ? nil : other
+        }
         withAnimation(.easeInOut(duration: 0.2)) {
             savingColours = true
             treatFailed = false
+            if let swapped {
+                coloursOn = !on
+                image = swapped
+                otherColours = before
+            }
         }
         defer { withAnimation(.easeInOut(duration: 0.2)) { savingColours = false } }
         do {
@@ -234,9 +274,18 @@ struct OriginalViewer: View {
             treated = [:]
             off.remove(.colours)
             shownOff.remove(.colours)
+            if swapped != nil { swappedTo = updated.pictureVersion }
             current = updated
+            coloursOn = nil
             onChange?(updated)
         } catch {
+            if swapped != nil {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    otherColours = image
+                    image = before
+                    coloursOn = nil
+                }
+            }
             if !error.isCancellation {
                 withAnimation(.easeInOut(duration: 0.2)) { treatFailed = true }
             }
@@ -321,6 +370,9 @@ struct OriginalViewer: View {
     /// never a lone spinner while the original comes), then the copy the
     /// detail screen shows, then a sharper one to zoom into.
     private func load() async {
+        if let swappedTo, swappedTo == work.pictureVersion, image != nil {
+            return  // switched here: the picture shown is that one already
+        }
         if let request = model.backend.request(for: ItemPeeks.tiles[work.id]?.thumb ?? .thumb(work.id)),
            let thumb = try? await ImageLoader.shared.image(for: request, maxPixel: 700, priority: .high) {
             if !underlay { image = thumb }

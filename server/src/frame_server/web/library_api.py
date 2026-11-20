@@ -64,7 +64,7 @@ from ..imaging.pipeline import (
 from ..library import Facets, Item, ItemKind, ItemSummary, Job, Look, PhotoInfo, PlaylistRules
 from ..library.duplicates import work_key
 from ..library.hosts import OverBudget, Resting, urgent_call
-from ..library.images import Gone
+from ..library.images import Gone, kept_side
 from ..library.importer import ALL
 from ..library.low_res import low_side
 from ..library.models import Framing, SharperCopy
@@ -502,7 +502,8 @@ class FineView(BaseModel):
 @router.get("/library/items/{item_id:item}/fine", response_model=FineView)
 async def item_fine(item_id: str, svc: Svc) -> FineView:
     item = await _work(svc, item_id)
-    if item.cleaned_differs(viewer_id()):  # the tiles are of the picture kept
+    # The tiles are of the picture kept.
+    if item.cleaned_differs(viewer_id()) or item.id in svc.images.remaking:
         return FineView()
     fine = await run_in_threadpool(svc.images.fine, item)
     if fine is None:
@@ -1148,7 +1149,9 @@ async def _variant(svc: FrameService, item_id: str, thumb: bool) -> Path | None:
     otherwise than the owner (``Item.cleaned_by``); None for the one kept."""
     stored = svc.library.get(item_id)
     user = viewer_id()
-    if stored is None or not stored.cleaned_differs(user):
+    if stored is None:
+        return None
+    if not stored.cleaned_differs(user) and stored.id not in svc.images.remaking:
         return None
     cleaned = stored.cleaned_shown(user) is not None
     limiter = THUMB_THREADS if thumb else SHOWN_THREADS
@@ -1368,11 +1371,40 @@ async def treated(
     restored: bool = True,
     cleaned: bool = True,
     side: Annotated[int, Query(ge=64, le=4096)] = 4096,
+    made: Made | None = None,
 ) -> Response:
     """The work as it is shown, with the restorer's drawing or its colours'
     correction left off (``restored=false``, ``cleaned=false``): the
-    full-screen viewer's two buttons (Mateusz 2026-11-16)."""
+    full-screen viewer's two buttons (Mateusz 2026-11-16). With ``made``
+    and ``cleaned``, a correction nobody asked for yet is read first
+    (``Cleaning.read_ahead``)."""
     item = await _work(svc, item_id, threads=SHOWN_THREADS)
+    drawn = item.sharper is not None and item.sharper.restored
+    stored = svc.library.get(item.id)
+    if stored is not None and cleaned and made is not None and stored.cleaned is None:
+        try:
+            item = await run_in_threadpool(
+                urgent_call(lambda: svc.cleaning.read_ahead(stored, made))
+            )
+        except Gone as err:
+            raise HTTPException(410, f"no picture anywhere: {err}") from err
+        except (httpx.HTTPError, OSError) as err:
+            raise HTTPException(502, f"image unavailable: {err}") from err
+    if (restored or not drawn) and side >= kept_side(item) and stored is not None:
+        # Kept on disk, both ways (the viewer's colours button asks for the
+        # other one when it opens; Mateusz 2026-11-20: "sekundy").
+        try:
+            path = await to_thread.run_sync(
+                urgent_call(lambda: svc.images.variant(item, cleaned, urgent=True)),
+                limiter=SHOWN_THREADS,
+            )
+        except Gone as err:
+            raise HTTPException(410, f"no picture anywhere: {err}") from err
+        except (httpx.HTTPError, OSError) as err:
+            raise HTTPException(502, f"image unavailable: {err}") from err
+        return FileResponse(
+            path, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"}
+        )
 
     def build() -> bytes:
         img = svc.images.treated(item, restored=restored, cleaned=cleaned, side=side, urgent=True)
