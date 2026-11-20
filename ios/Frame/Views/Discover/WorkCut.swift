@@ -179,6 +179,7 @@ struct CutEditor: View {
     /// the card's "W ramie"; its corners as they are.
     let framing: Bool
     let initialFrame: [[Double]]?
+    let starting: Part
     /// The outer corners are a print's sheet, not a frame's edge ("Dzieło
     /// / Kartka", Mateusz 2026-11-18: „Margines kartki traktujmy jak ramę”).
     let sheet: Bool
@@ -227,7 +228,9 @@ struct CutEditor: View {
         case work, frame, bare
     }
 
-    init(item: Item, update: @escaping (CutUpdate) async -> Bool) {
+    /// `starting`: the part in hand when it opens ("Kadrowane" → "Kadr
+    /// ramy" opens on the frame's corners).
+    init(item: Item, starting: Part = .work, update: @escaping (CutUpdate) async -> Bool) {
         let aspect: Double
         if let cut = item.cut, cut.aspect > 0 {
             aspect = cut.aspect
@@ -242,7 +245,7 @@ struct CutEditor: View {
         self.init(
             photo: .ref(.museumPhoto(item.id, side: 2400, version: item.pictureVersion)),
             aspect: aspect, corners: item.cutShown, framing: item.cutShown != nil,
-            frame: sheet ? item.cut?.work : item.cut?.surround, sheet: sheet
+            frame: sheet ? item.cut?.work : item.cut?.surround, sheet: sheet, starting: starting
         ) { work, moved, frame, bare in
             await update(CutUpdate(corners: moved ? work : nil, frame: bare ? nil : frame, noFrame: bare))
         }
@@ -261,11 +264,12 @@ struct CutEditor: View {
 
     private init(
         photo: Photo, aspect: Double, corners: [[Double]]?, framing: Bool, frame: [[Double]]?, sheet: Bool = false,
-        saveTitle: String = "Zapisz", cancelTitle: String = "Anuluj", savesUnchanged: Bool = false,
+        starting: Part = .work, saveTitle: String = "Zapisz", cancelTitle: String = "Anuluj", savesUnchanged: Bool = false,
         note: String? = nil, cancel: (() -> Void)? = nil,
         save: @escaping ([[Double]], Bool, [[Double]]?, Bool) async -> Bool
     ) {
         self.framing = framing
+        self.starting = starting
         initialFrame = frame
         self.sheet = sheet
         photoSource = photo
@@ -448,7 +452,7 @@ struct CutEditor: View {
                 bareStart = true
             }
             // Screenshots: `-cutPart frame` (with `-screen detail`).
-            if framing, UserDefaults.standard.string(forKey: "cutPart") == "frame" {
+            if framing, starting == .frame || UserDefaults.standard.string(forKey: "cutPart") == "frame" {
                 (corners, parked) = (parked, corners)
                 (start, parkedStart) = (parkedStart, start)
                 part = .frame

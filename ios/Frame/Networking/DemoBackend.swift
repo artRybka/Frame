@@ -855,9 +855,26 @@ actor DemoBackend: FrameBackend {
     }
 
     /// "Kadrowane" in the demo: a few works as the phone's model left them.
+    /// The framed painting (`-demoFramed YES`) first, the others given a
+    /// cut a little in from the photograph's edges.
     func cropReview() async throws -> CropReview {
-        let shown = items.filter { !$0.excluded }.map(\.summary)
-        return CropReview(cut: Array(shown.prefix(4)), unsure: Array(shown.dropFirst(4).prefix(3)))
+        var chosen = items.indices.filter { items[$0].kind == .artwork && !items[$0].excluded }
+        if let framed = chosen.firstIndex(where: { items[$0].id == Self.framedID }) {
+            chosen.insert(chosen.remove(at: framed), at: 0)
+        }
+        let cut = Array(chosen.prefix(4)), unsure = Array(chosen.dropFirst(4).prefix(3))
+        for n in cut where items[n].cut == nil {
+            let item = items[n]
+            let aspect = item.width.flatMap { w in item.height.map { Double(w) / Double(max($0, 1)) } } ?? 0.75
+            items[n].cut = Cut(
+                work: [[0.05, 0.05], [0.95, 0.05], [0.95, 0.95], [0.05, 0.95]], aspect: aspect,
+                picture: item.sharper?.itemId ?? "", at: "demo"
+            )
+        }
+        let sure = (cut + unsure).enumerated().map {
+            CropReview.Sure(id: items[$0.element].id, sure: $0.offset < cut.count ? 0.96 - 0.02 * Double($0.offset) : 0.6)
+        }
+        return CropReview(cut: cut.map { items[$0].summary }, unsure: unsure.map { items[$0].summary }, sure: sure)
     }
 
     func phoneCropsWaiting(limit: Int) async throws -> PhoneCropsWaiting {

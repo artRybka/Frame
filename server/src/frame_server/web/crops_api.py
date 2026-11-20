@@ -67,11 +67,18 @@ class Found(BaseModel):
     item: Item
 
 
+class Sure(BaseModel):
+    id: str
+    sure: float
+
+
 class Review(BaseModel):
     """ "Kadrowane": what the model cut, and what it left to him."""
 
     cut: list[ItemSummary]
     unsure: list[ItemSummary]
+    #: How sure the model was a cut is wanted, of each work.
+    sure: list[Sure] = []
 
 
 @router.get("/phone/waiting", response_model=Waiting)
@@ -120,16 +127,22 @@ async def phone_found(item_id: str, found: PhoneFound, svc: Svc) -> Found:
 @router.get("/review", response_model=Review)
 async def review(svc: Svc) -> Review:
     cut, unsure = await run_in_threadpool(svc.phone_crops.review)
-    return Review(cut=[ItemSummary.of(i) for i in cut], unsure=[ItemSummary.of(i) for i in unsure])
+    sure = svc.phone_crops.sure([i.id for i in cut + unsure])
+    return Review(
+        cut=[ItemSummary.of(i) for i in cut],
+        unsure=[ItemSummary.of(i) for i in unsure],
+        sure=[Sure(id=k, sure=v) for k, v in sure.items()],
+    )
 
 
 @router.post("/review/{item_id:item}/fine", response_model=Review)
 async def review_fine(item_id: str, svc: Svc) -> Review:
-    """ "Dobrze": the model's cut is right; off the list."""
+    """ "Zatwierdź": the model's cut is right, or a work it left whole is
+    right whole ("Bez kadru"); off the list."""
     item = await _work(svc, item_id)
     stored = svc.library.get(item.id) or item
     if not await run_in_threadpool(svc.phone_crops.fine, stored):
-        raise HTTPException(409, "no cut of the model's to keep")
+        raise HTTPException(409, "nothing of the model's to keep")
     return await review(svc)
 
 
