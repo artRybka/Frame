@@ -43,9 +43,12 @@ final class ColoursSwitchTests: XCTestCase {
         close.tap()
         sleep(2)
         let before = shot("card-1-before")
-        let open = app.buttons["Pokaż oryginał"].firstMatch
-        XCTAssertTrue(open.waitForExistence(timeout: 10), "no way back to the full screen")
-        open.tap()
+        // The card's picture opens the full screen; it has only a hint
+        // ("Otwiera obraz na całym ekranie"), no label to find it by, so it
+        // is tapped where it sits (upper third, under the toolbar).
+        // ("Pokaż oryginał" on the card is the translation toggle.)
+        XCTAssertFalse(button.exists, "the full screen did not close")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.33)).tap()
         XCTAssertTrue(button.waitForExistence(timeout: 10))
         sleep(3)  // the other picture made
         button.tap()
