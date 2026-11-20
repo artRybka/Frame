@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any
 from PIL import Image
 
 from .ai.crops import Crops
-from .imaging.crop_model import MODEL, kind_of
+from .imaging.crop_model import MODEL, holds, kind_of
 from .imaging.cut import Quad, same_picture, valid, worth_cutting
 from .library.models import Cut
 
@@ -117,6 +117,8 @@ class PhoneCrops:
             return ""
         work = valid(work) if work is not None else None
         surround = valid(surround) if surround is not None else None
+        if surround is not None and (work is None or not holds(surround, work)):
+            surround = None  # not around all of it: no frame (an older app's)
         if verdict == "cut" and (work is None or not worth_cutting(work)):
             verdict = "whole" if work is not None else "unsure"
         state = self._state()
@@ -176,8 +178,22 @@ class PhoneCrops:
             item = self.library.get(item_id)
             if item is None or not self._models(item, entry):
                 continue
+            if entry["v"] == "cut":
+                item = self._unframed(item)
             (cut if entry["v"] == "cut" else unsure).append(item)
         return cut, unsure
+
+    def _unframed(self, item: Item) -> Item:
+        """``item`` without the frame the model found when it is not around
+        all of the work (kept so by the app of 1.145.277)."""
+        cut = item.cut
+        if cut is None or cut.work is None or cut.surround is None or cut.surround_by == "owner":
+            return item
+        if holds(cut.surround, cut.work):
+            return item
+        log.info("phone crops: %s frame not around the work, dropped", item.id)
+        bare = cut.model_copy(update={"surround": None, "surround_kind": ""})
+        return self.crops.apply(item, bare)
 
     def fine(self, item: Item) -> bool:
         """He looked at the model's cut and it is right: off the list, and
@@ -213,7 +229,7 @@ class PhoneCrops:
                     "fine": fine and not owners,
                     "work": cut.work if owners and cut is not None else entry.get("work"),
                     "surround": cut.surround
-                    if owners and cut is not None
+                    if cut is not None and (owners or cut.surround_by == "owner")
                     else entry.get("surround"),
                     "at": state["fine"].get(item_id) or (cut.at if cut is not None else ""),
                 }

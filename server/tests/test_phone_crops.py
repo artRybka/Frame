@@ -152,3 +152,45 @@ def test_the_phone_cuts_and_claude_is_asked_nothing(
     assert not service.crops.order()
     assert service.crops.waiting_claims() == 0 and service.crops.claims_waiting() == []
     assert fake.batches == {} and fake.asked == []
+
+
+def test_a_frame_not_around_all_of_the_work_is_no_frame(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    # Chełmoński (Mateusz 2026-11-20, „dzieło wystaje za ramę”): the dark
+    # board behind a sheet found as its frame, the sheet's corner past it.
+    short = [(0.13, 0.11), (0.86, 0.11), (0.84, 0.86), (0.13, 0.89)]
+    sheet = [(0.2, 0.2), (0.85, 0.2), (0.85, 0.87), (0.2, 0.87)]
+    assert cm.holds(FRAMED, TRUE) and not cm.holds(short, sheet)
+    rgb = np.asarray(photo())
+    board = [(0.1, 0.1), (0.7, 0.1), (0.7, 0.9), (0.1, 0.9)]
+    found = cm.find(rgb, _logits(TRUE, board, (W, H)), 0.97)
+    assert found.verdict == "cut" and found.surround is None
+    _work(service, "mnw:1", pooled=True, medium="ołówek, papier")
+    with _client(service) as client:
+        cut = _found("mnw:1", client, surround=[[0.1, 0.1], [0.7, 0.1], [0.7, 0.9], [0.1, 0.9]])
+        assert cut["cut"] and cut["item"]["cut"]["surround"] is None
+        assert cut["item"]["cut"]["framed_kind"] == ""
+
+
+def test_bez_ramy_throws_what_is_around_the_work_away(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    # Mateusz 2026-11-20: „kadrujemy dzieło, ale nie ma ono ramy ani
+    # passepartout. Czyli tło jest do wyrzucenia.”
+    _work(service, "mnw:1", pooled=True, medium="ołówek, papier")
+    with _client(service) as client:
+        cut = _found("mnw:1", client)
+        assert cut["item"]["cut"]["framed_kind"] == "frame"
+        bare = client.put("/api/library/items/mnw:1/cut", json={"no_frame": True})
+        assert bare.status_code == 200, bare.text
+        kept = bare.json()["cut"]
+        assert kept["surround"] is None and kept["framed_kind"] == "" and kept["work"] == KEPT
+        assert kept["surround_by"] == "owner"
+        # Still the model's cut on "Kadrowane", said fine without a frame.
+        assert [i["id"] for i in client.get("/api/crops/review").json()["cut"]] == ["mnw:1"]
+        assert client.post("/api/crops/review/mnw:1/fine").json() == {"cut": [], "unsure": []}
+        (lesson,) = client.get("/api/crops/lessons").json()
+        assert lesson["fine"] and lesson["surround"] is None

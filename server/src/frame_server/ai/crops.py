@@ -603,6 +603,14 @@ def _framed_by_owner(cut: Cut, frame: Quad) -> Cut:
     return cut.model_copy(update={**mine, "surround_asked": True})
 
 
+def _unframed_by_owner(cut: Cut) -> Cut:
+    """``cut`` with no frame nor passe-partout around the work: what was
+    around it is background to throw away (Mateusz 2026-11-20: „kadrujemy
+    dzieło, ale nie ma ono ramy ani passepartout”), never found again."""
+    mine = {"surround": None, "surround_kind": "", "surround_by": "owner"}
+    return cut.model_copy(update={**mine, "surround_asked": True})
+
+
 def shown_in(item: Item) -> Callable[[float], float | None] | None:
     """The shape a work is shown in when it is not the one its corners
     give: a work of the owner's own, in the shape of his size
@@ -1393,21 +1401,21 @@ class Crops(CriticNight):
         corners: Quad | None = None,
         paper: bool | None = None,
         frame: Quad | None = None,
+        no_frame: bool = False,
     ) -> Item:
         """The owner's corners (of the work as shown, with its paper or
         without), or his "Pokaż z marginesem / bez marginesu". Without the sheet when
         no plate is known yet: Opus is asked for it now. ``frame``: the
         outer edge of the frame or passe-partout as he set it (the card's
-        "W ramie"); alone, the work's pictures stay as they are."""
-        alone = frame is not None and corners is None and paper is None
-        if (
-            alone
-            and frame is not None
-            and item.cut is not None
-            and item.cut.shown() is not None
-            and not self.stale(item)
-        ):
-            cut = framed(_framed_by_owner(item.cut, frame), shown_in(item))
+        "W ramie"); alone, the work's pictures stay as they are.
+        ``no_frame``: nothing around the work is a frame ("Bez ramy")."""
+        alone = (frame is not None or no_frame) and corners is None and paper is None
+        if alone and item.cut is not None and item.cut.shown() is not None and not self.stale(item):
+            if no_frame or frame is None:
+                mine = _unframed_by_owner(item.cut)
+            else:
+                mine = _framed_by_owner(item.cut, frame)
+            cut = framed(mine, shown_in(item))
             log.info("crops: %s frame's edge set by the owner", item.id)
             return self.library.update(item.id, cut=cut) or item
         old = item.cut if item.cut is not None and not self.stale(item) else None
@@ -1429,7 +1437,9 @@ class Crops(CriticNight):
                 cut.plate = corners
             else:
                 cut.work = corners
-        if frame is not None:
+        if no_frame:
+            cut = _unframed_by_owner(cut)
+        elif frame is not None:
             cut = _framed_by_owner(cut, frame)
         return self.apply(item, cut)
 

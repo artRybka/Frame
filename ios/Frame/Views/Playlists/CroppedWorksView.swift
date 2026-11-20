@@ -23,7 +23,7 @@ struct CroppedWorksView: View {
                 if !review.cut.isEmpty {
                     part(
                         "Wykadrowane przez model",
-                        about: "Przytrzymaj dzieło i wybierz „Dobrze”, jeśli kadr jest dobry. Jeśli nie, popraw go w karcie dzieła.",
+                        about: "Przytrzymaj dzieło i wybierz „Dobrze” albo „Dobrze, bez ramy”, gdy wokół jest samo tło. Jeśli kadr jest zły, popraw go w karcie dzieła.",
                         review.cut, fine: true
                     )
                 }
@@ -98,12 +98,21 @@ struct CroppedWorksView: View {
                     Button("Dobrze", systemImage: "checkmark") {
                         Task { await keep(item) }
                     }
+                    // The work is right, but what was found around it is
+                    // background, no frame (Mateusz 2026-11-20).
+                    Button("Dobrze, bez ramy", systemImage: "rectangle.dashed") {
+                        Task { await keep(item, bare: true) }
+                    }
                 }
             }
     }
 
-    private func keep(_ item: ItemSummary) async {
+    private func keep(_ item: ItemSummary, bare: Bool = false) async {
         do {
+            if bare {
+                let updated = try await model.backend.setCut(itemID: item.id, update: CutUpdate(noFrame: true))
+                model.cardShows(updated, changed: true)
+            }
             model.cropReview = try await model.backend.cropFine(itemID: item.id)
         } catch {
             model.show(error)

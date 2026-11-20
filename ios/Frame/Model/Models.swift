@@ -587,6 +587,8 @@ struct CutUpdate: Codable, Hashable, Sendable {
     var paper: Bool? = nil
     /// The outer edge of the frame or passe-partout, as he set it.
     var frame: [[Double]]? = nil
+    /// No frame nor passe-partout: what is around the work is background.
+    var noFrame: Bool = false
 }
 
 /// A sharper copy of a work's picture, looked for as its card opens:
