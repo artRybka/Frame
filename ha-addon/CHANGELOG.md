@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.286
+
+- „Kadrowane”: cienkie linie, rama różowa zamiast przerywanej. Dzieło,
+  któremu sam zapisałeś kadr, czeka dalej na „Zatwierdź”, więc możesz
+  jeszcze wybrać „Bez ramy”.
+- „Do wykadrowania”: przyciski „Kadr dzieła” i „Dodaj ramę”.
+
 ## 1.145.285
 
 - Słowa w Szukaj układają się według wyglądu także przy pierwszym

@@ -244,7 +244,10 @@ struct CutEditor: View {
         let sheet = item.cut.map { $0.surround == nil && !$0.paper && $0.plate != nil } ?? false
         self.init(
             photo: .ref(.museumPhoto(item.id, side: 2400, version: item.pictureVersion)),
-            aspect: aspect, corners: item.cutShown, framing: item.cutShown != nil,
+            // "Dzieło / Rama" also on a photograph not cut yet ("Kadrowane" →
+            // "Do wykadrowania", Mateusz 2026-11-20: „daj opcję zarówno
+            // dodania kadru dzieła jak i ramy”).
+            aspect: aspect, corners: item.cutShown, framing: true,
             frame: sheet ? item.cut?.work : item.cut?.surround, sheet: sheet, starting: starting
         ) { work, moved, frame, bare in
             await update(CutUpdate(corners: moved ? work : nil, frame: bare ? nil : frame, noFrame: bare))

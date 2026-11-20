@@ -140,6 +140,9 @@ def test_the_phone_cuts_and_claude_is_asked_nothing(
         mine = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
         assert client.put("/api/library/items/mnw:2/cut", json={"corners": mine}).status_code == 200
         after = client.post("/api/crops/review/mnw:1/fine").json()
+        # His own cut stays on the list until he approves it.
+        assert [i["id"] for i in after["cut"]] == ["mnw:2"] and after["unsure"] == []
+        after = client.post("/api/crops/review/mnw:2/fine").json()
         assert after["cut"] == [] and after["unsure"] == []
         assert client.post("/api/crops/review/mnw:3/fine").status_code == 409
         lessons = {lesson["id"]: lesson for lesson in client.get("/api/crops/lessons").json()}
