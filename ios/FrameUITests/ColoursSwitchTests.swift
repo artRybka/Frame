@@ -19,28 +19,29 @@ final class ColoursSwitchTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-demo", "YES", "-screen", "original", "-paintStyle", "oil", "-demoSlowServer", "4"]
         app.launch()
-        let button = app.buttons["Korekta barw"]
+        // A toggle (`.isToggle`): XCUITest has it as a switch, not a button.
+        let button = app.descendants(matching: .any)["Korekta barw"].firstMatch
         XCTAssertTrue(button.waitForExistence(timeout: 40), "no colours button on the viewer")
         sleep(6)  // the picture shown in full, the other made from it
         let before = shot("1-before")
-        XCTAssertEqual(button.value as? String, "ukryta")
+        XCTAssertFalse(Self.on(button))
 
         button.tap()
         usleep(900_000)
         let switched = shot("2-just-after-tap")
-        XCTAssertEqual(button.value as? String, "widoczna")
+        XCTAssertTrue(Self.on(button))
         let moved = Self.apart(before, switched)
         XCTAssertGreaterThan(moved, 4, "the picture did not change within a second of the tap")
 
         sleep(6)  // the slow server has answered
         let answered = shot("3-server-answered")
         XCTAssertLessThan(Self.apart(switched, answered), 1.5, "the picture changed again when the server answered")
-        XCTAssertEqual(button.value as? String, "widoczna")
+        XCTAssertTrue(Self.on(button))
 
         button.tap()
         usleep(900_000)
         let back = shot("4-back")
-        XCTAssertEqual(button.value as? String, "ukryta")
+        XCTAssertFalse(Self.on(button))
         XCTAssertLessThan(Self.apart(before, back), 1.5, "the picture did not come back as it was")
 
         // Quick taps: the last one wins, the server too.
@@ -49,9 +50,16 @@ final class ColoursSwitchTests: XCTestCase {
         button.tap()
         sleep(14)
         let settled = shot("5-three-taps-settled")
-        XCTAssertEqual(button.value as? String, "widoczna")
+        XCTAssertTrue(Self.on(button))
         XCTAssertLessThan(Self.apart(switched, settled), 1.5)
         Self.log("moved \(moved)")
+    }
+
+    /// The button's state, as the value it speaks ("widoczna") or as a
+    /// switch's 1.
+    private static func on(_ button: XCUIElement) -> Bool {
+        let value = button.value.map { "\($0)" } ?? ""
+        return value == "widoczna" || value == "1"
     }
 
     private func shot(_ name: String) -> UIImage {
