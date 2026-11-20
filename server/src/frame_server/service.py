@@ -469,6 +469,8 @@ class FrameService:
         # Google's place (Mateusz 2026-11-20: "Przesiadamy.").
         self.seen = Seen(self.library, self.images, settings.data_dir / "seen")
         self.seen.cared = self.cared.ranks
+        self.looks.seen = self.seen
+        self.looks.english = self._english
         # Szukaj's words for how works look, the groups narrowing them, and
         # a smart playlist made of them (Mateusz 2026-11-13).
         self.library.looking = self.looks.looking
@@ -550,6 +552,11 @@ class FrameService:
             notifications.item_title(self, item) if status == "ready" else "",
             self.study.progress(item.id),
         )
+
+    def _english(self, text: str) -> str:
+        """Szukaj's words in English for SigLIP: the phone's or Haiku's
+        translation as known, else asked (a second at most), else as typed."""
+        return self.search_words.wording(text, wait=1.0).en or text
 
     def _to_come(self, item_id: str) -> bool:
         """The work is the work of a day still to come."""

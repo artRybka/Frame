@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.282
+
+- Słowa w Szukaj porządkuje teraz po wyglądzie angielskie tłumaczenie
+  („koń” jako „horse”), więc na początku są konie, a nie przypadkowe
+  grafiki z polskim tytułem.
+- Serwer uczy się z katalogu rozróżniać formę i treść w nowych odciskach
+  SigLIP. Szukaj przełączy się na nie, kiedy odciski będą gotowe.
+
 ## 1.145.281
 
 - Lista „Kadrowane” do sprawdzania dzieło pod dziełem: każde na całą
