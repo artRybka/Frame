@@ -43,6 +43,7 @@ struct OriginalViewer: View {
     @State private var corrected: UIImage?
     /// The colours as the button and the picture show them: switched at
     /// the tap, the server told after (`tellColours`).
+    @State private var openedAs: Bool?
     @State private var coloursOn: Bool?
     /// What the server was last told here; nil, as the viewer opened.
     @State private var toldColours: Bool?
@@ -175,7 +176,10 @@ struct OriginalViewer: View {
             }
         }
         .task(id: work.fragmentsID) { await loadTiles() }
-        .task(id: work.id) { await prepareColours() }
+        .task(id: work.id) {
+            if openedAs == nil { openedAs = item.cleanedShown != nil }
+            await prepareColours()
+        }
         .task(id: off) { await loadTreated() }
         .onAppear {
             // CI screenshots: the work shown without all that was done.
@@ -238,7 +242,12 @@ struct OriginalViewer: View {
 
     /// Whether the viewer opened on the picture with its colours corrected
     /// (the picture `load` has is that one).
-    private var openedCorrected: Bool { item.cleanedShown != nil }
+    /// Kept as it was when the viewer opened: the card follows a switch
+    /// made here (`onChange`) and hands the viewer the work as the server
+    /// now has it, while the picture `load` has is still the one opened on
+    /// (read from `item` anew, the answer put the varnish back on the
+    /// picture under a blue button; the colours probe on the Mac).
+    private var openedCorrected: Bool { openedAs ?? (item.cleanedShown != nil) }
 
     /// The colours as the button says them.
     private var coloursShown: Bool { coloursOn ?? openedCorrected }
