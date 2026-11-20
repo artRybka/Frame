@@ -206,7 +206,8 @@ jobs:
             capture detail 16 "detail-palette-heightened-$appearance" -scroll palette -paintStyle heightened -paintColours 8a9ba3:0.62/c9cdc6:0.12/4b4e52:0.14/7d6a58:0.07
             capture detail 16 "detail-palette-wash-lit-$appearance" -scroll palette -paintStyle washLitChalk -paintColours 51493a:0.29/645b49:0.20/817763:0.16/99907d:0.14/7b6547:0.24:a/e7e8e0:0.04:a
             capture playlists 12 "playlists-$appearance"
-            capture cropped 14 "cropped-$appearance"
+            capture cropped 16 "cropped-$appearance" -demoFramed YES
+            capture cropped 16 "cropped-second-$appearance" -demoFramed YES -scroll second
             capture connection 12 "diagnostics-crop-$appearance" -settingsPage diagnostics -scroll crop
             capture suggestions 14 "suggestions-$appearance"
             capture playlist 12 "playlist-$appearance"

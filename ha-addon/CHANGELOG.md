@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.281
+
+- Lista „Kadrowane” do sprawdzania dzieło pod dziełem: każde na całą
+  szerokość, w trzech widokach, z przyciskami Zatwierdź, Kadr dzieła,
+  Kadr ramy i Bez ramy. Zatwierdzić można też kadr, którego model nie
+  był pewny.
+
 ## 1.145.280
 
 - Playlista z tytułem i artystą (na przykład „Paul Cezanne · Bathers”)
