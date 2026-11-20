@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import hashlib
 import io
@@ -1437,8 +1438,11 @@ class ColoursView(BaseModel):
     pliku i będzie szybciej i prościej"): ``kind`` "varnish", "paper" or
     "none"; ``on``: they see it so now. For a varnish, the numbers the
     phone takes it off the picture it shows with
-    (:class:`~frame_server.imaging.recovery.VarnishSum`); a sheet is
-    de-yellowed here (``…/treated?cleaned=true&made=``)."""
+    (:class:`~frame_server.imaging.recovery.VarnishSum`); for a sheet its
+    tone, ``height`` × ``width`` × 3 half floats little-endian in base64,
+    and a well-kept sheet's (:class:`~frame_server.imaging.recovery.SheetSum`;
+    Mateusz 2026-11-20: "A może warto jednak się pokłonić nad papierem?").
+    An app before these (``field`` empty) asks ``…/treated?cleaned=true&made=``."""
 
     kind: Literal["varnish", "paper", "none"]
     on: bool = False
@@ -1448,6 +1452,11 @@ class ColoursView(BaseModel):
     dark: float = 1.0
     scale: float = 1.0
     luma: tuple[float, float, float] = (0.2126, 0.7152, 0.0722)
+    field: str = ""
+    width: int = 0
+    height: int = 0
+    fresh: tuple[float, float, float] = (1.0, 1.0, 1.0)
+    opaque: bool = False
 
 
 @router.get("/library/items/{item_id:item}/colours", response_model=ColoursView)
@@ -1466,6 +1475,17 @@ async def item_colours(item_id: str, made: Made, svc: Svc) -> ColoursView:
         raise HTTPException(502, f"image unavailable: {err}") from err
     if reading is None or reading.kind not in ("varnish", "paper"):
         return ColoursView(kind="none", on=on)
+    if isinstance(found, recovery.SheetSum):
+        height, width = found.field.shape[:2]
+        return ColoursView(
+            kind="paper",
+            on=on,
+            field=base64.b64encode(found.field.astype("<f2").tobytes()).decode("ascii"),
+            width=width,
+            height=height,
+            fresh=found.fresh,
+            opaque=found.opaque,
+        )
     if found is None:
         return ColoursView(kind="paper", on=on)
     return ColoursView(

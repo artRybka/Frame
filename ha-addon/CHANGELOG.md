@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.283
+
+- Odżółcanie papieru na pełnym ekranie liczy telefon, tak jak werniks:
+  serwer podaje mały odcisk tonu kartki, a telefon odżółca nim to, co
+  widać. Przełączanie jest natychmiastowe i płynne.
+
 ## 1.145.282
 
 - Słowa w Szukaj porządkuje teraz po wyglądzie angielskie tłumaczenie

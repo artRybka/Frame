@@ -282,6 +282,11 @@ struct OriginalViewer: View {
                 let sum = VarnishSum(view)
                 let made = await Task.detached(priority: .userInitiated) { sum.apply(to: shown) }.value
                 corrected = await made?.byPreparingForDisplay() ?? made
+            } else if let sum = SheetSum(view) {
+                // The sheet too (Mateusz 2026-11-20: "A może warto jednak
+                // się pokłonić nad papierem?").
+                let made = await Task.detached(priority: .userInitiated) { sum.apply(to: shown) }.value
+                corrected = await made?.byPreparingForDisplay() ?? made
             } else {
                 corrected = await had(.treated(
                     item.id, restored: true, cleaned: true, version: item.pictureVersion, made: made
