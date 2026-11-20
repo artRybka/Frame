@@ -4,9 +4,14 @@ import Photos
 import UniformTypeIdentifiers
 
 /// "Zapisz w Zdjęciach": a work into the phone's photos, as large as it can
-/// be had. A museum work comes straight from the museum (the server keeps
-/// a copy of at most 2560 px); the server's copy is the fallback and the
-/// only source for photos. Asks only to add to Photos, never to read them.
+/// be had. A museum work comes straight from the museum; the server's copy
+/// (up to some 4000 px) is the fallback and the only source for photos.
+/// A work shown cut out of its photograph, or with its colours corrected
+/// for this person ("Zdejmij werniks", "Odżółć papier"), is saved as it is
+/// shown: the server's copy, which is this person's (Mateusz 2026-11-20:
+/// „Zapisz w zdjęciach… zapisuje z korektą werniksu / papieru”). In its
+/// frame: the card's "W ramie" picture, as large as the server makes it.
+/// Asks only to add to Photos, never to read them.
 enum PhotoSaver {
     enum Failure: LocalizedError {
         case denied
@@ -26,8 +31,23 @@ enum PhotoSaver {
     /// Larger museum files (a few huge TIFFs) give way to the server's copy.
     private static let maxBytes = 150 * 1024 * 1024
 
-    /// Where the picture can come from, largest first.
-    static func sources(for item: Item, backend: any FrameBackend) -> [URLRequest] {
+    /// The largest "W ramie" picture the server makes.
+    static let framedSide = 4000
+
+    /// Where the picture can come from, largest first; `framed`, the work
+    /// in its frame or passe-partout.
+    static func sources(for item: Item, framed: Bool = false, backend: any FrameBackend) -> [URLRequest] {
+        if framed {
+            guard let look = item.framed else { return [] }
+            let version = "\(item.pictureVersion)|\(look.kind)\(look.aspect)\(look.inner.minX)\(look.inner.minY)\(look.inner.width)"
+            guard var request = backend.request(for: .framed(item.id, side: framedSide, version: version)) else { return [] }
+            request.timeoutInterval = 120  // made on the server from the museum's photograph
+            return [request]
+        }
+        // As shown: only the server has it so.
+        if item.cleanedShown != nil || item.cutShown != nil {
+            return backend.request(for: item.originalRef).map { [$0] } ?? []
+        }
         var sources: [URLRequest] = []
         // A sharper copy from another source first: larger than the museum's own.
         if let sharper = item.sharper, let url = URL(string: sharper.url), url.scheme == "https" {
@@ -55,15 +75,37 @@ enum PhotoSaver {
         return String(cleaned.prefix(100))
     }
 
-    static func save(_ item: Item, backend: any FrameBackend) async throws {
+    /// Under "Zapisz w Zdjęciach" / "Samo dzieło": the colours' correction
+    /// the picture is saved with, when this person sees the work so.
+    static func colourNote(_ item: Item) -> String? {
+        switch item.cleanedShown?.kind {
+        case "varnish": "Bez werniksu"
+        case "paper": "Z odżółconym papierem"
+        case .some: "Z korektą barw"
+        case nil: nil
+        }
+    }
+
+    /// Under "W ramie": what is around the work.
+    static func framedNote(_ item: Item) -> String {
+        let around = switch item.framed?.kind {
+        case "mount": "Z passe-partout"
+        case "paper": "Z marginesem kartki"
+        default: "Z ramą"
+        }
+        guard let note = colourNote(item) else { return "\(around) ze zdjęcia muzeum" }
+        return "\(around), \(note.lowercased())"
+    }
+
+    static func save(_ item: Item, framed: Bool = false, backend: any FrameBackend) async throws {
         let access = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
         guard access == .authorized || access == .limited else { throw Failure.denied }
         var lastError: Error = Failure.unavailable(nil)
-        for source in sources(for: item, backend: backend) {
+        for source in sources(for: item, framed: framed, backend: backend) {
             if Task.isCancelled { throw CancellationError() }
             do {
                 let (data, type) = try await download(source, route: (backend as? LiveBackend)?.route)
-                let name = "\(fileName(for: item)).\(type.preferredFilenameExtension ?? "jpg")"
+                let name = "\(fileName(for: item))\(framed ? " (w ramie)" : "").\(type.preferredFilenameExtension ?? "jpg")"
                 // From memory, not a file: Photos refuses a file whose name has
                 // no extension, and the download's file has none.
                 try await PHPhotoLibrary.shared().performChanges {

@@ -3,7 +3,9 @@ import SwiftUI
 /// The heart, "Do playlisty" (the host shows `AddToPlaylistSheet`) and "…"
 /// of a work, top right: on its card and on its study (Mateusz 2026-11-13:
 /// the playlists out of "…" onto their own button). "…" holds "Ukryj
-/// dzieło", the copies, the museum's page and "Zapisz w Zdjęciach".
+/// dzieło", the copies and "Zapisz w Zdjęciach" (no museum's page nor
+/// "Przywróć zdjęcie muzeum" since Mateusz 2026-11-20; the latter stays on
+/// top of the copies' sheet).
 struct ItemToolbar: ToolbarContent {
     let model: AppModel
     let item: Item
@@ -16,8 +18,6 @@ struct ItemToolbar: ToolbarContent {
     @Binding var findingCopies: Bool
     /// The long side of the picture shown now, when the server has told it.
     var pictureSide: Int? = nil
-    /// "Przywróć zdjęcie muzeum", while a copy stands in for the work's own.
-    var keepOwn: () -> Void = {}
     /// "Restauracja dzieła" (once "Kreatywny restaurator"), under the
     /// colours' correction: for a picture small for the frame (`LowRes`),
     /// drawn again by the image model.
@@ -40,8 +40,10 @@ struct ItemToolbar: ToolbarContent {
     var deleteOwn: (() -> Void)? = nil
     var deletingOwn: Binding<Bool>? = nil
 
-    /// A museum's work, which other sources may have too.
-    private var hasCopies: Bool { item.kind == .artwork && item.look == nil }
+    /// A museum's work, which other sources may have too. Another copy
+    /// changes the picture for the whole household: the owner's to pick
+    /// (Mateusz 2026-11-20).
+    private var hasCopies: Bool { item.kind == .artwork && item.look == nil && model.isOwner }
 
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
@@ -147,7 +149,7 @@ struct ItemToolbar: ToolbarContent {
                         }
                     }
                 }
-                if hasCopies || !item.url.isEmpty { Divider() }
+                if hasCopies { Divider() }
                 if hasCopies {
                     Button { findingCopies = true } label: {
                         Label {
@@ -157,22 +159,8 @@ struct ItemToolbar: ToolbarContent {
                             Image(systemName: "plus.magnifyingglass")
                         }
                     }
-                    if item.sharper != nil {
-                        Button("Przywróć zdjęcie muzeum", systemImage: "arrow.uturn.backward", action: keepOwn)
-                    }
                 }
-                if let url = URL(string: item.url), !item.url.isEmpty {
-                    Link(destination: url) { Label("Otwórz w muzeum", systemImage: "safari") }
-                }
-                // Last, under the museum link.
-                Button("Zapisz w Zdjęciach", systemImage: "square.and.arrow.down") {
-                    savingPhoto = true
-                    Task {
-                        await model.saveToPhotos(item)
-                        savingPhoto = false
-                    }
-                }
-                .disabled(savingPhoto)
+                savePhoto
                 if deleteOwn != nil {
                     Divider()
                     Button("Usuń z katalogu", systemImage: "trash", role: .destructive) {
@@ -193,6 +181,54 @@ struct ItemToolbar: ToolbarContent {
             } message: {
                 Text(bound: "Zdjęcie i opis znikną z serwera, także z playlist. Tego nie da się cofnąć.")
             }
+        }
+    }
+
+    /// "Zapisz w Zdjęciach", last: the work as this person sees it (its
+    /// colours corrected when they are), and for a work in a frame or
+    /// passe-partout, a choice of the work alone or in it (Mateusz
+    /// 2026-11-20, sketch A: one entry opening a short menu).
+    @ViewBuilder private var savePhoto: some View {
+        if item.framed != nil, item.kind == .artwork {
+            Menu {
+                Button(action: { save(framed: false) }) {
+                    Label {
+                        Text("Samo dzieło")
+                        if let note = PhotoSaver.colourNote(item) { Text(bound: note) }
+                    } icon: {
+                        Image(systemName: "photo")
+                    }
+                }
+                Button(action: { save(framed: true) }) {
+                    Label {
+                        Text("W ramie")
+                        Text(bound: PhotoSaver.framedNote(item))
+                    } icon: {
+                        Image(systemName: "photo.artframe")
+                    }
+                }
+            } label: {
+                Label("Zapisz w Zdjęciach", systemImage: "square.and.arrow.down")
+            }
+            .disabled(savingPhoto)
+        } else {
+            Button(action: { save(framed: false) }) {
+                Label {
+                    Text("Zapisz w Zdjęciach")
+                    if let note = PhotoSaver.colourNote(item) { Text(bound: note) }
+                } icon: {
+                    Image(systemName: "square.and.arrow.down")
+                }
+            }
+            .disabled(savingPhoto)
+        }
+    }
+
+    private func save(framed: Bool) {
+        savingPhoto = true
+        Task {
+            await model.saveToPhotos(item, framed: framed)
+            savingPhoto = false
         }
     }
 

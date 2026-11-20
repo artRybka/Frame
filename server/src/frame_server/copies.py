@@ -91,7 +91,7 @@ class CopyView(BaseModel):
     plate, a reproduction, another work: only to look at), "checking"
     (being compared). ``notes``: why, as codes the app names: "whole",
     "colours", "fragment", "page", "whole-work" (the work's picture is a
-    detail of the copy: only to look at, never chosen), "turned", "grey", "coloured",
+    detail of the copy: only to look at, never chosen), "turned", "grey",
     "colour-off", "reproduction", "other" (another picture: the same title,
     another work), "unseen" (its thumbnail could not be had).
     ``role``: "current" (the picture shown now), "own" (the work's own
@@ -498,7 +498,7 @@ class Copies:
         except OSError:
             colours = None
         notes.append(colours or "colours")
-        off = off or colours in ("grey", "coloured")
+        off = off or colours == "grey"
         if against(copy, Place.COMPARED):
             notes.append("reproduction")
             off = True

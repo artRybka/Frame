@@ -186,7 +186,7 @@ struct PlaylistDetailView: View {
                         Button("Anuluj", role: .cancel) {}
                     } message: { asked in
                         Text(
-                            "Model graficzny Google przerysuje dzieła tej playlisty w niskiej rozdzielczości do ok. 2000 px. Około \(Money.usd(asked.usd)) w pakietach Google (połowa zwykłej ceny), w ciągu doby. „Przywróć zdjęcie muzeum” na karcie cofa zmianę."
+                            "Model graficzny Google przerysuje dzieła tej playlisty w niskiej rozdzielczości do ok. 2000 px. Około \(Money.usd(asked.usd)) w pakietach Google (połowa zwykłej ceny), w ciągu doby. Zmianę cofa „Przywróć zdjęcie muzeum” w „Szukaj lepszej kopii” na karcie."
                         )
                     }
                     .confirmationDialog("Usunąć playlistę?", isPresented: $confirmDelete, titleVisibility: .visible) {

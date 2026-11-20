@@ -81,10 +81,13 @@ from ..player import hold_from
 from ..schedule import FrameSettings
 from ..service import FrameService
 from ..users import User
-from .deps import CurrentUser, may_edit_own, require_frame, require_token, service
+from .deps import CurrentUser, may_edit_own, require_frame, require_owner, require_token, service
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["library"])
+#: Another copy of a work's picture changes it for the whole household:
+#: the owner's to look for and pick (Mateusz 2026-11-20).
+OWNER_ONLY = [Depends(require_owner)]
 Svc = Annotated[FrameService, Depends(service)]
 
 
@@ -882,9 +885,10 @@ async def item_framed(
     photograph cut to the frame's outer edge and set straight
     (``ImageCache.framed``); 404 when there is nothing around the work."""
     item = await _work(svc, item_id, threads=SHOWN_THREADS)
+    user = viewer_id()  # the work in it with this person's colours
 
     def made() -> bytes | None:
-        img = svc.images.framed(item, side, urgent=True)
+        img = svc.images.framed(item, side, urgent=True, user=user)
         if img is None:
             return None
         out = io.BytesIO()
@@ -964,7 +968,7 @@ async def delete_cut(item_id: str, svc: Svc) -> Item:
     return await run_in_threadpool(svc.crops.give_up, stored)
 
 
-@router.get("/library/items/{item_id:item}/copies")
+@router.get("/library/items/{item_id:item}/copies", dependencies=OWNER_ONLY)
 async def item_copies(item_id: str, svc: Svc) -> StreamingResponse:
     """Every copy of the work's picture the sources have ("Szukaj lepszej
     kopii"), as they answer: :class:`CopyLine` per line (JSON lines)."""
@@ -1004,7 +1008,7 @@ class CopyPick(BaseModel):
     item_id: str
 
 
-@router.put("/library/items/{item_id:item}/copy", response_model=Item)
+@router.put("/library/items/{item_id:item}/copy", response_model=Item, dependencies=OWNER_ONLY)
 async def choose_copy(item_id: str, pick: CopyPick, svc: Svc) -> Item:
     """The owner's pick for the work's picture: a copy from another source,
     or (its own id) the work's own. The work keeps its id, texts, hearts,
@@ -1023,7 +1027,7 @@ async def choose_copy(item_id: str, pick: CopyPick, svc: Svc) -> Item:
         raise HTTPException(502, f"copy unavailable: {err}") from err
 
 
-@router.delete("/library/items/{item_id:item}/copy", response_model=Item)
+@router.delete("/library/items/{item_id:item}/copy", response_model=Item, dependencies=OWNER_ONLY)
 async def keep_own_picture(item_id: str, svc: Svc) -> Item:
     """Back to the work's own picture; no copy is looked for again."""
     item = await _work(svc, item_id)

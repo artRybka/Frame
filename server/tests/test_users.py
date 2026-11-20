@@ -458,3 +458,20 @@ def test_each_person_has_studies_a_day_of_their_own(tmp_path: Path) -> None:
         assert client.get("/api/me", headers=guest).json()["role"] == "member"
         refused = client.put(f"/api/users/{ania}/access", json={"role": "owner"}, headers=OWNER)
         assert refused.status_code == 422
+
+
+def test_only_the_owner_looks_for_and_picks_another_copy(tmp_path: Path) -> None:
+    """Another copy changes the work's picture for the whole household: the
+    owner's to look for and pick (Mateusz 2026-11-20)."""
+    app = _app(tmp_path)
+    svc = app.state.service
+    work = _add(svc, 1)
+    with TestClient(app) as client:
+        for who in (_join(client), _join(client, "Ania", role="guest")):
+            for method, path, body in [
+                ("get", f"/api/library/items/{work.id}/copies", None),
+                ("put", f"/api/library/items/{work.id}/copy", {"item_id": work.id}),
+                ("delete", f"/api/library/items/{work.id}/copy", None),
+            ]:
+                answer = client.request(method, path, headers=who, json=body)
+                assert answer.status_code == 403, (method, path, answer.status_code)
