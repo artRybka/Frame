@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.285
+
+- Słowa w Szukaj układają się według wyglądu także przy pierwszym
+  wyszukiwaniu słowa („pies”: najpierw psy, nie polskie tytuły). Lista
+  przestawia się chwilę po pokazaniu, zanim ją przewiniesz.
+
 ## 1.145.284
 
 - Korekta barw przełączona na pełnym ekranie od razu widać też na
