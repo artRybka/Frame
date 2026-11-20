@@ -758,7 +758,21 @@ actor DemoBackend: FrameBackend {
         return RecoveryView(kind: "varnish")
     }
 
+    /// The demo's paintings: a varnish of 0.69 taken off on the phone (the
+    /// numbers of `VarnishSumTests`' picture).
+    func colours(itemID: String, made: String) async throws -> ColoursView {
+        guard made == "oil" else {
+            return ColoursView(kind: UserDefaults.standard.bool(forKey: "demoPaper") ? "paper" : "none")
+        }
+        let on = items.first { $0.id == itemID }?.cleanedShown != nil
+        return ColoursView(
+            kind: "varnish", on: on, haze: 0.0104, colour: [1.109, 1.282, 1.994], even: 1.304,
+            dark: 0.15, scale: 0.8
+        )
+    }
+
     func clean(itemID: String, made: String) async throws -> Item {
+        await Self.slowServer()
         let stamp = ISO8601DateFormatter().string(from: .now)
         return try update(itemID) { item in
             item.cleaned = Cleaned(
@@ -769,7 +783,16 @@ actor DemoBackend: FrameBackend {
     }
 
     func unclean(itemID: String) async throws -> Item {
-        try update(itemID) { $0.cleaned = nil }
+        await Self.slowServer()
+        return try update(itemID) { $0.cleaned = nil }
+    }
+
+    /// UI tests: `-demoSlowServer 3` answers a switch of the colours that
+    /// many seconds late, as a NAS making the work's files again would;
+    /// the viewer must not wait for it.
+    private static func slowServer() async {
+        let seconds = UserDefaults.standard.double(forKey: "demoSlowServer")
+        if seconds > 0 { try? await Task.sleep(for: .seconds(seconds)) }
     }
 
     /// Screenshots: `-demoCleaned some` shows every other work cleaned

@@ -294,6 +294,40 @@ def kept_strength(img: Image.Image) -> float:
     return read_varnish(img).strength
 
 
+@dataclass(frozen=True)
+class VarnishSum:
+    """What the sum of :func:`unvarnished` goes by for one picture, read
+    small from it: all the phone needs to take the varnish off what it
+    shows (the full-screen viewer, ``ios/…/VarnishSum.swift``; Mateusz
+    2026-11-20: "korekta może dotyczyć tylko tego co widać"). Per pixel,
+    in linear light: ``clear = clip((lin - haze) / (1 - haze))``,
+    ``share = smoothstep(clip(luminance(clear) / dark))``,
+    ``out = clip(clear * (even + (colour - even) * share) * scale)``."""
+
+    haze: float
+    colour: tuple[float, float, float]
+    even: float
+    dark: float
+    scale: float
+    luma: tuple[float, float, float] = _LUMA
+
+
+def varnish_sum(img: Image.Image, strength: float) -> VarnishSum:
+    """The numbers of the sum taking a varnish of ``strength`` off ``img``."""
+    small = _small(img.convert("RGB"), 640)
+    black, dark = _black(small), _dark(small)
+    scale = _into_range(_without(small, strength, black, dark))
+    colour = np.exp(strength * np.asarray(ALPHA, dtype=np.float32))
+    r, g, b = (float(c) for c in colour)
+    return VarnishSum(
+        haze=float(black * min(DEPTH * strength, 1.0)),
+        colour=(r, g, b),
+        even=float(colour @ np.asarray(_LUMA, dtype=np.float32)),
+        dark=dark,
+        scale=scale,
+    )
+
+
 def unvarnished(img: Image.Image, strength: float) -> Image.Image:
     """``img`` without a varnish of ``strength``, whole and at its own size:
     its black, its middle and how light it gets are read small, the sum

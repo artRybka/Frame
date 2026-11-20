@@ -404,3 +404,90 @@ def test_the_viewer_has_the_cleaned_picture_ready_before_it_is_asked_for(tmp_pat
         assert done.json()["cleaned"]["at"] == stored.cleaned.at
         svc.cleaning.wait()
         assert _warmth(Image.open(svc.images.image_path(oil))) < 1.35
+
+
+def _phone_sum(rgb: np.ndarray, said: dict) -> np.ndarray:
+    """The sum ``VarnishSum`` does on the phone, as written there."""
+    lin = u8_to_linear(rgb)
+    haze = said["haze"]
+    clear = np.clip((lin - haze) / (1 - haze), 0, 1)
+    x = np.clip((clear @ np.asarray(said["luma"], np.float32)) / said["dark"], 0, 1)
+    share = x * x * (3 - 2 * x)
+    colour, even = np.asarray(said["colour"], np.float32), said["even"]
+    out = clear * (even + (colour - even) * share[..., None]) * said["scale"]
+    return linear_to_u8(np.clip(out, 0, 1))
+
+
+def test_the_viewer_takes_the_varnish_off_what_it_shows(tmp_path) -> None:
+    """Mateusz 2026-11-20: "korekta może dotyczyć tylko tego co widać a nie
+    pliku i będzie szybciej i prościej". The viewer asks what its button
+    switches (``/colours``, only while it is open), and takes the varnish
+    off the picture it shows by the numbers given: what the server keeps
+    when it is switched on, to a level."""
+    from test_users import OWNER
+    from test_users import _app as people_app
+
+    app = people_app(tmp_path)
+    svc = app.state.service
+    with TestClient(app) as client:
+        oil = _keep(svc, _under_varnish(_painting(), 0.8), number=1, year=1650)
+        plain = np.asarray(Image.open(svc.images.image_path(oil)).convert("RGB"))
+        colours = f"/api/library/items/{oil.id}/colours"
+        said = client.get(colours, params={"made": "oil"}, headers=OWNER).json()
+        assert said["kind"] == "varnish" and said["on"] is False
+        assert svc.library.get(oil.id).cleaned is None  # asked, kept nowhere
+        shown = _phone_sum(plain, said)
+
+        client.put(f"/api/library/items/{oil.id}/cleaned", params={"made": "oil"}, headers=OWNER)
+        svc.cleaning.wait()
+        kept = np.asarray(Image.open(svc.images.image_path(oil)).convert("RGB"))
+        apart = np.abs(kept.astype(int) - shown.astype(int))
+        # Two JPEGs apart (the picture shown, the one kept), the blue's
+        # ringing at the made-up picture's sharp edges twice as strong; the
+        # varnish itself moved the picture far more.
+        assert apart.mean() < 1.5 and np.quantile(apart, 0.99) <= 8
+        assert np.abs(kept.astype(int) - plain).mean() > 8 * apart.mean()
+        assert client.get(colours, params={"made": "oil"}, headers=OWNER).json()["on"] is True
+
+        # A drawing is no varnish; a work with nothing to offer has no button.
+        late = _keep(svc, _under_varnish(_painting(), 0.8), number=2, year=1975)
+        said = client.get(
+            f"/api/library/items/{late.id}/colours", params={"made": "oil"}, headers=OWNER
+        ).json()
+        assert said["kind"] == "none"
+
+
+def test_the_phones_sum_is_held_to_the_servers() -> None:
+    """``ios/FrameTests/VarnishSumTests.swift`` holds a picture, the
+    numbers read on it and the server's ``unvarnished`` of it: the same as
+    here, and the sum written there (``_phone_sum``) gives it."""
+    import base64
+    import json
+    import re
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parents[2] / "ios" / "FrameTests" / "VarnishSumTests.swift"
+    if not source.is_file():
+        pytest.skip("the server's tree without the app beside it")
+    text = source.read_text()
+
+    def held(name: str) -> np.ndarray:
+        found = re.search(rf'static let {name} = """\n(.*?)\n\s*"""', text, re.S)
+        assert found is not None, name
+        data = base64.b64decode("".join(found.group(1).split()))
+        return np.frombuffer(data, np.uint8).reshape(30, 40, 3)
+
+    found = re.search(r'static let numbers = #"(.*)"#', text)
+    assert found is not None
+    said = json.loads(found.group(1))
+    img = _under_varnish(_painting(), 0.8).resize((40, 30), Image.Resampling.LANCZOS)
+    assert (held("picture") == np.asarray(img)).all()
+    mine = recovery.varnish_sum(img, 0.69)
+    assert said["haze"] == pytest.approx(mine.haze, abs=1e-6)
+    assert said["colour"] == pytest.approx(list(mine.colour), abs=1e-6)
+    assert said["even"] == pytest.approx(mine.even, abs=1e-6)
+    assert said["dark"] == pytest.approx(mine.dark, abs=1e-6)
+    assert said["scale"] == pytest.approx(mine.scale, abs=1e-6)
+    cleaned = np.asarray(recovery.unvarnished(img, 0.69))
+    assert (held("cleaned") == cleaned).all()
+    assert (np.abs(_phone_sum(held("picture"), said).astype(int) - cleaned) <= 1).all()
