@@ -19,7 +19,7 @@ import httpx
 from anyio import CapacityLimiter, to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from ..library import (
@@ -1286,6 +1286,31 @@ MUSEUM_THREADS = CapacityLimiter(24)
 #: kept all the same, so the next round of pulling finds it at once ("Jeżeli
 #: muzeum odpowie po tym czasie, to przyjmujmy wynik").
 MUSEUM_PATIENCE = 8.0
+
+
+class TaughtWord(BaseModel):
+    text: str = Field(max_length=200)
+    en: str = Field(max_length=200)
+    fr: str = Field("", max_length=200)
+
+
+class TaughtWords(BaseModel):
+    words: list[TaughtWord] = Field(max_length=20)
+
+
+class TaughtAnswer(BaseModel):
+    kept: int
+
+
+@router.post("/search/words", response_model=TaughtAnswer)
+async def search_words_taught(svc: Svc, body: TaughtWords) -> TaughtAnswer:
+    """Polish words of Szukaj the phone translated itself (Apple's
+    Translation), sent before the search: remembered, so the museums are
+    asked in their languages without waiting for Haiku."""
+    kept = 0
+    for word in body.words:
+        kept += svc.search_words.taught(word.text, word.en, word.fr)
+    return TaughtAnswer(kept=kept)
 
 
 #: How long the museums' hint, asked while typing, waits for the words'

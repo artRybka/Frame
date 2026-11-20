@@ -236,3 +236,43 @@ def test_museums_are_asked_in_their_languages(
         client.get("/api/museums/mnw/search", params={"q": "gitara"})
         assert asked == {"mnw": "gitara"}
     assert len(fake.asked) == 1
+
+
+def test_the_phone_translates_and_haiku_is_not_asked(
+    service: FrameService, fake: FakeAnthropic
+) -> None:
+    app = create_app(service.settings)
+    app.state.service = service
+    with TestClient(app) as client:
+        answer = client.post(
+            "/api/search/words",
+            json={
+                "words": [
+                    {"text": "Gitara", "en": "guitar", "fr": "guitare"},
+                    # Given back as typed (a name): left to Haiku.
+                    {"text": "Rembrandt", "en": "Rembrandt", "fr": "Rembrandt"},
+                ]
+            },
+        )
+    assert answer.status_code == 200
+    assert answer.json() == {"kept": 1}
+    words = service.search_words.wording("gitara")
+    assert (words.en, words.fr) == ("guitar", "guitare")
+    assert service.search_words.known("gitara") == ("guitar", "guitare")
+    assert fake.asked == []
+    # Kept after a restart too.
+    again = SearchWords(service.library, service.claude, service.ai_config)
+    assert again.wording("GITARA").en == "guitar"
+    assert fake.asked == []
+
+
+def test_the_phone_never_replaces_an_answer(service: FrameService, fake: FakeAnthropic) -> None:
+    assert service.search_words.wording("gitara").en == "guitar"
+    assert not service.search_words.taught("gitara", "guitars")
+    assert service.search_words.wording("gitara").en == "guitar"
+    # Without French the museums in French get the words as typed.
+    assert service.search_words.taught("stara kobieta", "old woman")
+    words = service.search_words.wording("stara kobieta")
+    assert (words.en, words.fr) == ("old woman", "")
+    assert words.in_language("fr") == "stara kobieta"
+    assert len(fake.asked) == 1

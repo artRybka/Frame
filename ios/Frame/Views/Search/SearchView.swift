@@ -27,6 +27,9 @@ struct SearchView: View {
                 }
         }
         .opensStudies(on: $path)
+        // Polish and English on the phone, asked once: Szukaj's words are
+        // translated here (`PhoneWords`).
+        .asksForPhoneWords()
         // A held artist's name: back to the top, on the search.
         .onChange(of: model.artistSearch, initial: true) { _, artist in
             if artist != nil { path = NavigationPath() }
