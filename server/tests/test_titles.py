@@ -88,3 +88,25 @@ def test_searches_without_a_title_keep_their_keys() -> None:
     assert PlaylistRules(query="morze", title="Fala").search_key() != rules.search_key()
     assert PlaylistRules(title="Fala").search_key()
     assert not PlaylistRules(title="Fala").is_empty()
+
+
+def test_an_artists_title_is_found_in_other_languages_by_what_the_work_shows(
+    service: FrameService,
+) -> None:
+    """Mateusz 2026-11-20: Cézanne's "Baigneuses" (c. 1870) was not on his
+    "Paul Cezanne · Bathers": its title is French only. With an artist
+    asked, a work whose keywords hold the title whole fits too; without
+    one a title stays a title."""
+    cezanne = "Paul Cézanne"
+    _work(service, 1, "The Bathers", artist=cezanne, keywords=["bathers", "trees"])
+    _work(service, 2, "Baigneuses", artist=cezanne, keywords=["bathers", "night sky"])
+    _work(service, 3, "Mont Sainte-Victoire", artist=cezanne, keywords=["mountain"])
+    # A bather among other things is no "Bathers": the keyword is whole.
+    _work(service, 4, "Le Lac", artist=cezanne, keywords=["bathers on the shore"])
+    _work(service, 5, "Baigneuses", artist="Pierre-Auguste Renoir", keywords=["bathers"])
+    library = service.library
+
+    found = library.query(PlaylistRules(title="Bathers", artists=["Paul Cezanne"]))[1]
+    assert {i.id for i in found} == {"aic:1", "aic:2"}
+    alone = library.query(PlaylistRules(title="Bathers"))[1]
+    assert {i.id for i in alone} == {"aic:1"}

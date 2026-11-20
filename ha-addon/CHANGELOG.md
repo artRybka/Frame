@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.280
+
+- Playlista z tytułem i artystą (na przykład „Paul Cezanne · Bathers”)
+  znajduje też jego dzieła zatytułowane w innym języku, gdy słowo
+  kluczowe jest całym tytułem: „Baigneuses” Cézanne’a trafia do
+  „Bathers”.
+
 ## 1.145.279
 
 - Werniks na pełnym ekranie: kółko korekty barw przełącza obraz od razu i
