@@ -73,6 +73,7 @@ if TYPE_CHECKING:
     from .ai.gemini import Painter
     from .library import Library
     from .library.images import ImageCache
+    from .seen import Seen
 
 log = logging.getLogger(__name__)
 
@@ -585,12 +586,30 @@ class Looks:
         self._told: dict[str, tuple[int, str]] = {}
         self._told_lock = threading.Lock()
         self._load_told()
+        #: SigLIP's numbers made on the server (``seen.Seen``): they answer
+        #: in Google's place once most works have them (Mateusz 2026-11-20:
+        #: "Przesiadamy."; :meth:`local`).
+        self.seen: Seen | None = None
+        #: The English of Szukaj's words, as known (the phone's translation,
+        #: Haiku's): SigLIP reads English best.
+        self.english: Callable[[str], str] = lambda text: text
 
     # -- what may be asked -----------------------------------------------------------
 
     def enabled(self) -> bool:
-        """Google's key, and the Gemini page's switch on."""
+        """Google's key, and the Gemini page's switch on (SigLIP's numbers
+        need no key)."""
+        if self.local():
+            return self.config.config.looks
         return self.painter.enabled() and self.config.config.looks
+
+    def local(self) -> bool:
+        """Whether SigLIP's numbers made here answer, not Google's."""
+        return self.seen is not None and self.seen.answers()
+
+    def _before(self) -> bool:
+        """Whether Google's numbers of before (the whole thumbnail) answer."""
+        return self._old and not self.local()
 
     def old(self) -> bool:
         """Whether questions are answered by the numbers of before (until
@@ -598,7 +617,15 @@ class Looks:
         return self._old
 
     def _asked(self) -> LookIndex:
+        if self.seen is not None and self.local():
+            return self.seen.index
         return self.index if self._old else self.three
+
+    def _word_floor(self) -> float:
+        return seen_floors().words if self.local() else FLOOR
+
+    def _near_best(self) -> float:
+        return seen_floors().near_best if self.local() else NEAR_BEST
 
     def ready(self) -> bool:
         """Whether a question can be answered: some works have numbers."""
@@ -634,7 +661,7 @@ class Looks:
         if not text:
             return []
         vector = self._words_vector(text)
-        return self._answer(self._words_near(vector, limit * 3), limit, FLOOR)
+        return self._answer(self._words_near(vector, limit * 3), limit, self._word_floor())
 
     def among(self, text: str, allowed: Sequence[Item], limit: int = AMONG_MOST) -> list[Found]:
         """Works of ``allowed`` (what Szukaj's other choices found: a
@@ -671,7 +698,7 @@ class Looks:
             if item is None or item.id in seen:
                 continue
             if bar is None:
-                bar = max(FLOOR, score - NEAR_BEST)
+                bar = max(self._word_floor(), score - self._near_best())
             if score < bar:
                 break
             seen.add(item.id)
@@ -788,7 +815,8 @@ class Looks:
         except (AiUnavailable, NotDrawn, httpx.HTTPError) as err:
             log.info("numbers for museum works: %s", err)
         best = self._words_near(vector, 1)
-        bar = max(FLOOR, (best[0][1] if best else FLOOR) - NEAR_BEST)
+        floor = self._word_floor()
+        bar = max(floor, (best[0][1] if best else floor) - self._near_best())
         scored: list[tuple[float, Item]] = []
         for item in items:
             row = asked.vector(item.id)
@@ -822,6 +850,9 @@ class Looks:
         with ThreadPoolExecutor(min(len(items), 8)) as pool:
             got = [p for p in pool.map(picture, items) if p is not None]
         if not got:
+            return
+        if self.seen is not None and self.local():
+            self.seen.add([(item.id, stamp, img) for item, img, stamp in got])
             return
         if self._old:
             for start in range(0, len(got), EMBED_MAX):
@@ -870,6 +901,10 @@ class Looks:
         self._check()
         small = img.convert("RGB")
         small.thumbnail((640, 640))
+        if self.seen is not None and self.local():
+            vector = self.seen.model.pictures([small])[0]
+            near = self.seen.alike_near(vector, limit * 3 + 8)
+            return self._answer(near, limit, seen_floors().picture, relative=False)
         if self._old:
             vector = np.asarray(self.painter.embed(KIND, [small])[0], dtype=np.float32)
             return self._answer(self.index.nearest(vector, limit * 3), limit, PICTURE_FLOOR)
@@ -890,10 +925,14 @@ class Looks:
         self._check()
         small = img.convert("RGB")
         small.thumbnail((640, 640))
+        if self.seen is not None and self.local():
+            vector = self.seen.model.pictures([small])[0]
+            self._keep_photo(self._photo_path(key, "seen"), vector)
+            return key
         if self._old:
             vector = np.asarray(self.painter.embed(KIND, [small])[0], dtype=np.float32)
             self._keep_photo(self._photo_path(key), vector)
-        self._keep_photo(self._photo_path(key, three=True), self._three_of(small))
+        self._keep_photo(self._photo_path(key, "three"), self._three_of(small))
         return key
 
     @staticmethod
@@ -909,14 +948,17 @@ class Looks:
         if not key.startswith(PHOTO):
             return None
         try:
-            vector = np.fromfile(self._photo_path(key, three=not self._old), dtype=np.float32)
+            kind = "seen" if self.local() else ("" if self._old else "three")
+            vector = np.fromfile(self._photo_path(key, kind), dtype=np.float32)
         except (OSError, ValueError):
             return None
         return vector if len(vector) == self._asked().size else None
 
-    def _photo_path(self, key: str, three: bool = False) -> Path:
+    def _photo_path(self, key: str, kind: str = "") -> Path:
+        """Where a photograph's numbers are kept: Google's of before
+        (``kind`` empty), Google's three ("three"), SigLIP's ("seen")."""
         name = "".join(c for c in key.removeprefix(PHOTO) if c in "0123456789abcdef")
-        return self.root / "photos" / f"{name or '0'}{'.three' if three else ''}.f32"
+        return self.root / "photos" / f"{name or '0'}{'.' + kind if kind else ''}.f32"
 
     def _three_of(self, img: Image.Image) -> np.ndarray:
         """A picture's three, asked of Google at once: its sentence, then
@@ -958,8 +1000,7 @@ class Looks:
         ]
         if near_enough:
             near = self._near_enough(near, by, further)
-        floor = PICTURE_FLOOR if self._old else THREE_FLOOR
-        found = self._answer(near, limit, floor, relative=False, place=place)
+        found = self._answer(near, limit, self._alike_base(), relative=False, place=place)
         return self.enough(found, by, further) if near_enough else found
 
     def enough(self, found: list[Found], by: str = "", further: int = 0) -> list[Found]:
@@ -967,17 +1008,25 @@ class Looks:
         at least :data:`ALIKE_FLOOR` near (``further`` steps less near,
         :data:`ALIKE_STEP` each), though :data:`ALIKE_LEAST` of them
         however far. The numbers of before keep their own floor."""
-        if self._old:
+        if self._before():
             return found[:ALIKE_OLD_MOST]
         floor = self._floor(by, further)
         near = sum(1 for f in found if f.score >= floor)
         return found[: max(near, ALIKE_LEAST)]
 
-    @staticmethod
-    def _floor(by: str, further: int = 0) -> float:
+    def _floor(self, by: str, further: int = 0) -> float:
         """How near a work must be for "Podobne do", ``further`` steps on."""
         steps = min(max(further, 0), ALIKE_FURTHER)
+        if self.local():
+            floors = seen_floors()
+            return floors.alike.get(by, floors.alike[""]) - floors.step * steps
         return ALIKE_FLOOR.get(by, ALIKE_FLOOR[""]) - ALIKE_STEP * steps
+
+    def _alike_base(self) -> float:
+        """How near a work must be to be shown as like another at all."""
+        if self.local():
+            return seen_floors().base
+        return PICTURE_FLOOR if self._old else THREE_FLOOR
 
     def _near_enough(
         self, near: list[tuple[str, float]], by: str, further: int = 0
@@ -986,7 +1035,7 @@ class Looks:
         never keeps, so that they are not looked up: past the floor, only
         enough for :data:`ALIKE_LEAST` works should some nearer be hidden
         or copies of one."""
-        if self._old:
+        if self._before():
             return near
         floor = self._floor(by, further)
         under = next((k for k, (_, score) in enumerate(near) if score < floor), len(near))
@@ -1003,15 +1052,14 @@ class Looks:
         if not self.enabled():
             return None
         shape: By = by if by in ("subject", "style") else ""  # type: ignore[assignment]
-        most = ALIKE_OLD_MOST if self._old else ALIKE_MOST
+        most = ALIKE_OLD_MOST if self._before() else ALIKE_MOST
         if item_id.startswith(PHOTO):
             vector = self.photo_vector(item_id)
             if vector is None:
                 return []
             near = self._alike_near(vector, most * 3 + 8, shape)
             near = self._near_enough(near, shape, further)
-            floor = PICTURE_FLOOR if self._old else THREE_FLOOR
-            found = self._answer(near, most, floor, relative=False)
+            found = self._answer(near, most, self._alike_base(), relative=False)
             return [f.item.id for f in self.enough(found, shape, further)]
         item = self.library.get(item_id)
         if item is None:
@@ -1027,6 +1075,10 @@ class Looks:
         vector = self._asked().vector(item_id)
         if vector is None:
             return []
+        if self.seen is not None and self.local():
+            near = self.seen.index.nearest(vector, limit + 1)
+            raw = seen_floors().raw
+            return [i for i, score in near if i != item_id and score >= raw][:limit]
         if self._old:
             near = self.index.nearest(vector, limit + 1)
             return [i for i, score in near if i != item_id and score >= PICTURE_FLOOR][:limit]
@@ -1055,6 +1107,10 @@ class Looks:
         return [f.item.id for f in self.similar(item, limit, Place.PROPOSED)]
 
     def _check(self) -> None:
+        if self.local():
+            if not self.config.config.looks:
+                raise AiUnavailable("Szukanie wyglądem is switched off")
+            return
         if not self.painter.enabled():
             raise AiUnavailable("no Google API key")
         if not self.config.config.looks:
@@ -1063,13 +1119,18 @@ class Looks:
             raise AiUnavailable("no work has its numbers yet")
 
     def _words_vector(self, text: str) -> list[float]:
-        key = text.lower()
+        local = self.seen is not None and self.local()
+        key = ("seen|" if local else "") + text.lower()
         with self._words_lock:
             if key in self._words:
                 self._words.move_to_end(key)
                 return self._words[key]
         self._check()
-        vector = self.painter.embed(KIND, [QUERY + text])[0]
+        if self.seen is not None and local:
+            english = self.english(text) or text
+            vector = [float(x) for x in self.seen.model.words([english])[0]]
+        else:
+            vector = self.painter.embed(KIND, [QUERY + text])[0]
         with self._words_lock:
             self._words[key] = vector
             while len(self._words) > REMEMBERED:
@@ -1081,7 +1142,7 @@ class Looks:
         thumbnail before, to the nearer of its style and its subject now
         (their raw numbers: words name either)."""
         rows = np.asarray(rows, dtype=np.float32)
-        if self._old:
+        if self._old or self.local():
             return _unit(rows) @ _unit(np.asarray(vector, dtype=np.float32))
         words = _unit(np.asarray(vector, dtype=np.float32)[:PART])
         style = _unit(rows[:, :PART]) @ words
@@ -1091,6 +1152,8 @@ class Looks:
     def _words_near(
         self, vector: Sequence[float] | np.ndarray, count: int
     ) -> list[tuple[str, float]]:
+        if self.seen is not None and self.local():
+            return self.seen.index.nearest(vector, count)
         if self._old:
             return self.index.nearest(vector, count)
         words = _unit(np.asarray(vector, dtype=np.float32)[:PART])
@@ -1107,6 +1170,8 @@ class Looks:
         ``by``; with the numbers of before, simply the nearest. The works'
         style and subject are worked out once (:class:`Shaped`), not for
         each question (some 6 s each for 160 000 works, 2026-11-18)."""
+        if self.seen is not None and self.local():
+            return self.seen.alike_near(vector, count, by)
         if self._old:
             return self.index.nearest(vector, count)
         shaped = self.shaped.get()
@@ -1136,7 +1201,7 @@ class Looks:
             return []
         best = near[0][1]
         low = -2.0 if floor is None else floor
-        bar = max(low, best - NEAR_BEST) if relative else low
+        bar = max(low, best - self._near_best()) if relative else low
         hidden = self.library.hidden()
         works = self.library.works()
         seen: set[int | str] = set()
@@ -1577,3 +1642,11 @@ class Looks:
                     pause = REST
             self._wake.wait(pause)
             self._wake.clear()
+
+
+def seen_floors() -> Any:
+    """SigLIP's floors (:data:`frame_server.seen.FLOORS`), read late: the
+    module needs this one."""
+    from .seen import FLOORS
+
+    return FLOORS

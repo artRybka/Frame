@@ -170,3 +170,60 @@ def test_words_and_pictures_are_read_as_siglip_was_taught() -> None:
     assert SeenModel.clean("Drzeworyt  japoński, &amp; Fuji!") == "drzeworyt japoński fuji"
     seen_as = SeenModel.pixels(Image.new("L", (300, 100), 255))
     assert seen_as.shape == (3, SIDE, SIDE) and np.allclose(seen_as, 1.0)
+
+
+def test_siglip_answers_in_googles_place_once_most_works_have_numbers(
+    service: FrameService, found: Seen, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(seen, "LEAST_SUBJECT", 1)
+    looks = service.looks
+    assert (
+        not service.ai_config.config.gemini_key
+        if hasattr(service.ai_config.config, "gemini_key")
+        else True
+    )
+    _work(service, "met:1", "red", medium="oil on canvas", year=1890, terms=["subject:sea"])
+    _work(service, "met:2", "red", medium="etching", year=1650, terms=["subject:sea"])
+    _work(service, "met:3", "blue", medium="oil on canvas", year=1880, terms=["subject:city"])
+    assert not looks.enabled()  # no Google key, SigLIP not answering yet
+    found.number()
+    assert not found.settle()  # the layers not taught yet
+    assert found.teach() and found.heads is not None
+    assert found.settle() and looks.local() and looks.enabled()
+    # A new start reads that it answers.
+    again = Seen(service.library, service.images, found.root, model=found.model)
+    assert again.answers()
+    # Words, a photograph, a work: no Google asked.
+    assert [f.item.id for f in looks.words("blue water")] == ["met:3"]
+    assert {f.item.id for f in looks.words("red sky")} == {"met:1", "met:2"}
+    photo = Image.new("RGB", (40, 30), COLOURS["blue"])
+    assert [f.item.id for f in looks.picture(photo)] == ["met:3"]
+    import io
+
+    out = io.BytesIO()
+    photo.save(out, "JPEG")
+    key = looks.photo(out.getvalue(), photo)
+    assert looks.alike(key) == ["met:3"]
+    assert looks.alike("met:1")[:1] == ["met:2"]
+    assert looks.alike("met:1", by="style")[:1] == ["met:2"]
+    assert looks.alike("met:1", by="subject")[:1] == ["met:2"]
+    assert looks.near_ids("met:1") == ["met:2"]
+
+
+def test_the_form_is_taught_by_technique_and_half_century(service: FrameService) -> None:
+    from frame_server.seen import TECHNIQUES, form_marks, technique
+
+    oil = Item(id="a:1", source="a", source_id="1", title="x", medium="Oil on canvas", year=1890)
+    print_ = Item(
+        id="a:2",
+        source="a",
+        source_id="2",
+        title="x",
+        medium="Woodblock print",
+        date_text="ca. 1833",
+    )
+    assert technique(oil) == "oil" and technique(print_) == "woodcut"
+    names = [n for n, _ in TECHNIQUES]
+    assert form_marks(oil) == [names.index("oil"), len(TECHNIQUES) + (1890 - 1300) // 50]
+    assert form_marks(print_)[1] == len(TECHNIQUES) + (1833 - 1300) // 50
+    assert form_marks(Item(id="a:3", source="a", source_id="3", title="x")) == []
