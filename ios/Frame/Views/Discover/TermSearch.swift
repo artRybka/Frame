@@ -479,10 +479,12 @@ extension View {
         _ lookup: TermLookup,
         tokens: Binding<[SearchToken]>,
         focused: FocusState<Bool>.Binding,
+        overKeyboard: CGFloat = TermFacetBar.overField,
         pickedFromMuseums: @escaping () -> Void = {}
     ) -> some View {
         modifier(SuggestionsPanel(
-            lookup: lookup, tokens: tokens, focused: focused, pickedFromMuseums: pickedFromMuseums
+            lookup: lookup, tokens: tokens, focused: focused, overKeyboard: overKeyboard,
+            pickedFromMuseums: pickedFromMuseums
         ))
     }
 }
@@ -496,6 +498,10 @@ private struct SuggestionsPanel: ViewModifier {
     let lookup: TermLookup
     @Binding var tokens: [SearchToken]
     var focused: FocusState<Bool>.Binding
+    /// How high over the keyboard it stands: over the groups' bar in Szukaj;
+    /// right on it where there is no bar (a playlist's page, Mateusz
+    /// 2026-11-20: "Teraz jest na środku, kompletnie bez ładu i składu").
+    let overKeyboard: CGFloat
     let pickedFromMuseums: () -> Void
     /// The suggestions' own height: the panel is as tall, up to the room
     /// over the field, and scrolls beyond it.
@@ -537,7 +543,7 @@ private struct SuggestionsPanel: ViewModifier {
                     }
                     .padding(.horizontal, Theme.gutter)
                     // Where the groups' bar ends over the keyboard.
-                    .padding(.bottom, TermFacetBar.overField)
+                    .padding(.bottom, overKeyboard)
                     .transition(.opacity.combined(with: .offset(y: 12)))
                 }
             }

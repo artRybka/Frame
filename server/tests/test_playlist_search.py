@@ -112,3 +112,39 @@ def test_while_typing_the_grid_shows_what_the_suggestions_count(service) -> None
             params={"artist": "Hokusai", "typed": "morze", "playlist": pid},
         ).json()
         assert [i["id"] for i in both["items"]] == [wave]
+
+
+def test_only_the_playlists_works_and_the_letter_before_is_let_go(service) -> None:
+    """On the NAS (2026-11-20) "Słowa" in a two-work playlist answered ten
+    works, nine of them not on it; and every letter's search went on to its
+    end beside the next one's."""
+    from frame_server.web import create_app, library_api
+
+    app = create_app(service.settings)
+    svc = app.state.service
+    sea = _add(svc, 1, "Morze o świcie", "Ivan Aivazovsky", 1850)
+    for n in range(2, 6):
+        _add(svc, n, f"Morze {n}", "Ivan Aivazovsky", 1850 + n)
+
+    with TestClient(app) as client:
+        pid = client.post(
+            "/api/playlists", json={"name": "Jedno", "kind": "manual", "item_ids": [sea]}
+        ).json()["playlist"]["id"]
+        for params in ({"q": "morze", "seen": "true"}, {"q": "morze"}, {"typed": "morze"}):
+            found = client.get("/api/library/items", params={**params, "playlist": pid}).json()
+            assert [i["id"] for i in found["items"]] == [sea] and found["total"] == 1
+
+        # A search whose asker has asked again meanwhile: no answer.
+        real = svc.library.query
+
+        def next_letter_comes(*args, **kwargs):
+            for key in library_api._PLAYLIST_ASKED:
+                library_api._PLAYLIST_ASKED[key] += 1
+            return real(*args, **kwargs)
+
+        svc.library.query = next_letter_comes
+        try:
+            left = client.get("/api/library/items", params={"typed": "morze", "playlist": pid})
+        finally:
+            svc.library.query = real
+        assert left.json() == {"total": 0, "items": [], "later": False}
