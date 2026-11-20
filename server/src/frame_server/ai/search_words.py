@@ -6,9 +6,12 @@ library already knows is used first: the Polish names of the app's styles
 and subjects, and the model's keywords of described works (each Polish tag
 beside its English one). Anything else is asked of Haiku once and
 remembered; without a key, or with the owner's switch off, only what the
-library knows is translated. The Polish museums get the words as typed,
-or, typed in another language (a title the app's hint gave in English,
-"The Storks"), in Polish ("Bociany").
+library knows is translated. The app translates on the phone first
+(Apple's Translation, Mateusz 2026-11-20: "wdrażamy, bo warto.
+Przyspieszy."): what it sends (:meth:`SearchWords.taught`) is remembered as
+an answer, and Haiku is asked only of what the phone could not translate.
+The Polish museums get the words as typed, or, typed in another language
+(a title the app's hint gave in English, "The Storks"), in Polish ("Bociany").
 """
 
 from __future__ import annotations
@@ -207,6 +210,35 @@ class SearchWords:
         if len(parts) > 1 and all(p in words for p in parts):
             return (" ".join(words[p] for p in parts),)
         return ()
+
+    def taught(self, text: str, english: str, french: str = "") -> bool:
+        """The phone's translation of Polish words (Apple's Translation, on
+        the phone): remembered as Haiku's answer would be, so the search
+        that follows asks nothing. Kept only when nothing is known of the
+        words yet and the phone did translate them: words it gave back as
+        they were (a name, English, a word half typed) are left to Haiku,
+        which also tells a title's Polish ("The Storks": "Bociany")."""
+        text = " ".join(text.split())
+        key = _key(text)
+        english = " ".join(english.split())
+        french = " ".join(french.split())
+        if not key or len(text) > MAX_CHARS or any(c in text for c in '"=&:'):
+            return False
+        if not english or len(english) > 2 * MAX_CHARS or fold(english) == key:
+            return False
+        if fold(french) == key or len(french) > 2 * MAX_CHARS:
+            french = ""
+        with self._lock:
+            if _answered(self._known.get(key)):
+                return False
+        if self._from_library(key):
+            return False
+        found = {"en": english, "by": "phone"}
+        if french:
+            found["fr"] = french
+        self._remember(key, found)
+        log.info("search words %r -> %s (the phone)", text, found)
+        return True
 
     # -- what the library knows ---------------------------------------------
 

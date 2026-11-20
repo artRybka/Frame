@@ -544,16 +544,42 @@ struct LiveBackend: FrameBackend {
     }
 
     func museumHint(_ text: String) async throws -> MuseumHint {
-        try await get("/api/terms/museums", query: [URLQueryItem(name: "q", value: text)])
+        await teach([text])
+        return try await get("/api/terms/museums", query: [URLQueryItem(name: "q", value: text)])
     }
 
     func searchMuseums(_ rules: PlaylistRules, sources: [String], page: Int) async throws -> RemotePage {
-        try await get("/api/discover/search", query: museumQuery(rules, sources: sources, page: page))
+        await teach(SearchPhrases.tokens(Self.museumWords(rules).words))
+        return try await get("/api/discover/search", query: museumQuery(rules, sources: sources, page: page))
     }
+
+    /// Polish words of `phrases` translated on the phone (`PhoneWords`) and
+    /// sent before the search that asks for them; waited for at most
+    /// `PhoneWords.patience`, a later translation still goes for the next
+    /// search. A server from before it answers 404: nothing changes.
+    private func teach(_ phrases: [String]) async {
+        let phrases = phrases.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        guard !phrases.isEmpty else { return }
+        let backend = self
+        let sending = Task {
+            let words = await PhoneWords.shared.translated(phrases)
+            guard !words.isEmpty else { return }
+            let _: EmptyResponse? = try? await backend.send("/api/search/words", method: "POST", body: TaughtWords(words: words))
+        }
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await sending.value }
+            group.addTask { try? await Task.sleep(for: PhoneWords.patience) }
+            await group.next()
+            group.cancelAll()
+        }
+    }
+
+    private struct TaughtWords: Encodable { let words: [PhoneWords.Word] }
 
     func museumAnswers(_ rules: PlaylistRules, sources: [String], page: Int) async throws
         -> AsyncThrowingStream<MuseumAnswer, Error>
     {
+        if page <= 1 { await teach(SearchPhrases.tokens(Self.museumWords(rules).words)) }
         let query = museumQuery(rules, sources: sources, page: page)
         let (bytes, response) = try await stream(request("/api/discover/search/stream", query: query))
         guard let http = response as? HTTPURLResponse else { throw BackendError.invalidResponse }
@@ -640,7 +666,8 @@ struct LiveBackend: FrameBackend {
     }
 
     func searchMuseum(source: String, query: String, page: Int) async throws -> RemotePage {
-        try await get(
+        if page <= 1 { await teach(SearchPhrases.tokens(query)) }
+        return try await get(
             "/api/museums/\(source)/search",
             query: [URLQueryItem(name: "q", value: query), URLQueryItem(name: "page", value: String(page))]
         )

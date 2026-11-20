@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.274
+
+- Słowa wpisane w Szukaj tłumaczy teraz sam iPhone (systemowe tłumaczenie
+  Apple'a, bez sieci), więc muzea za granicą dostają „guitar” za „gitara”
+  od razu, bez czekania na Haiku. Haiku tłumaczy już tylko to, czego
+  telefon nie umie. Za pierwszym razem Szukaj poprosi o pobranie języków.
+  („1 - wdrażamy, bo warto. Przyspieszy.”)
+
 ## 1.145.273
 
 - Szukanie wewnątrz playlisty jest szybsze: podczas pisania szuka tylko
