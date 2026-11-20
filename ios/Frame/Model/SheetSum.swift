@@ -44,10 +44,9 @@ struct SheetSum: Sendable {
         guard view.kind == "paper", view.width > 0, view.height > 0, view.fresh.count == 3,
               let data = Data(base64Encoded: view.field), data.count == view.width * view.height * 3 * 2
         else { return nil }
-        let field: [Float] = data.withUnsafeBytes { raw in
-            (0 ..< data.count / 2).map { at in
-                Self.half(UInt16(raw[2 * at]) | UInt16(raw[2 * at + 1]) << 8)
-            }
+        let bytes = [UInt8](data)
+        let field: [Float] = (0 ..< bytes.count / 2).map { at in
+            Self.half(UInt16(bytes[2 * at]) | UInt16(bytes[2 * at + 1]) << 8)
         }
         self.init(field: field, width: view.width, height: view.height,
                   fresh: SIMD3(Float(view.fresh[0]), Float(view.fresh[1]), Float(view.fresh[2])),
