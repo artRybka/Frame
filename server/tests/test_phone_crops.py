@@ -140,7 +140,7 @@ def test_the_phone_cuts_and_claude_is_asked_nothing(
         mine = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
         assert client.put("/api/library/items/mnw:2/cut", json={"corners": mine}).status_code == 200
         after = client.post("/api/crops/review/mnw:1/fine").json()
-        assert after == {"cut": [], "unsure": []}
+        assert after["cut"] == [] and after["unsure"] == []
         assert client.post("/api/crops/review/mnw:3/fine").status_code == 409
         lessons = {lesson["id"]: lesson for lesson in client.get("/api/crops/lessons").json()}
         assert set(lessons) == {"mnw:1", "mnw:2"}
@@ -191,6 +191,25 @@ def test_bez_ramy_throws_what_is_around_the_work_away(
         assert kept["surround_by"] == "owner"
         # Still the model's cut on "Kadrowane", said fine without a frame.
         assert [i["id"] for i in client.get("/api/crops/review").json()["cut"]] == ["mnw:1"]
-        assert client.post("/api/crops/review/mnw:1/fine").json() == {"cut": [], "unsure": []}
+        after = client.post("/api/crops/review/mnw:1/fine").json()
+        assert after["cut"] == [] and after["unsure"] == []
         (lesson,) = client.get("/api/crops/lessons").json()
         assert lesson["fine"] and lesson["surround"] is None
+
+
+def test_a_work_left_whole_is_kept_whole_and_the_list_says_how_sure(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    for n in (1, 2):
+        _work(service, f"mnw:{n}", pooled=True, medium="olej, płótno")
+    with _client(service) as client:
+        _found("mnw:1", client)
+        _found("mnw:2", client, verdict="unsure", sure=0.6)
+        review = client.get("/api/crops/review").json()
+        assert {s["id"]: s["sure"] for s in review["sure"]} == {"mnw:1": 0.96, "mnw:2": 0.6}
+        # "Bez kadru": whole is right.
+        assert client.post("/api/crops/review/mnw:2/fine").status_code == 200
+        (lesson,) = client.get("/api/crops/lessons").json()
+        assert lesson["id"] == "mnw:2" and lesson["fine"]
+        assert lesson["work"] is None and lesson["surround"] is None

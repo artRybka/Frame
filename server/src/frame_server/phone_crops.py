@@ -196,15 +196,25 @@ class PhoneCrops:
         return self.crops.apply(item, bare)
 
     def fine(self, item: Item) -> bool:
-        """He looked at the model's cut and it is right: off the list, and
-        a lesson as it is. Whether there was such a cut."""
+        """He looked at the model's cut and it is right, or at a work it
+        left whole and that is right ("Bez kadru"): off the list, and a
+        lesson as it is. Whether there was such a work of the model's."""
         state = self._state()
         entry = state["looked"].get(item.id)
-        if entry is None or entry.get("v") != "cut" or not self._models(item, entry):
+        if (
+            entry is None
+            or entry.get("v") not in ("cut", "unsure")
+            or not self._models(item, entry)
+        ):
             return False
         state["fine"][item.id] = _now()
         self._save(state)
         return True
+
+    def sure(self, ids: list[str]) -> dict[str, float]:
+        """How sure the model was a cut is wanted, of each of ``ids``."""
+        looked = self._state()["looked"]
+        return {i: float(looked[i].get("s", 0.0)) for i in ids if i in looked}
 
     def lessons(self) -> list[dict[str, Any]]:
         """What the model is taught again from: each work it looked at that
@@ -227,10 +237,12 @@ class PhoneCrops:
                     "kind": kind_of(item.classification, item.medium),
                     "model": entry,
                     "fine": fine and not owners,
-                    "work": cut.work if owners and cut is not None else entry.get("work"),
+                    "work": cut.work
+                    if owners and cut is not None
+                    else (None if entry.get("v") == "unsure" else entry.get("work")),
                     "surround": cut.surround
                     if cut is not None and (owners or cut.surround_by == "owner")
-                    else entry.get("surround"),
+                    else (None if entry.get("v") == "unsure" else entry.get("surround")),
                     "at": state["fine"].get(item_id) or (cut.at if cut is not None else ""),
                 }
             )

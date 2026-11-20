@@ -116,4 +116,41 @@ struct ColoursView: Codable, Hashable, Sendable {
     var dark: Double = 1
     var scale: Double = 1
     var luma: [Double] = [0.2126, 0.7152, 0.0722]
+    /// For a sheet (`SheetSum`): its tone, `height` × `width` × 3 half
+    /// floats in base64 (empty from a server before it), and a well-kept
+    /// sheet's tone; `opaque` for pastel and gouache.
+    var field: String = ""
+    var width: Int = 0
+    var height: Int = 0
+    var fresh: [Double] = [1, 1, 1]
+    var opaque: Bool = false
+
+    init(kind: String, on: Bool = false, haze: Double = 0, colour: [Double] = [1, 1, 1], even: Double = 1,
+         dark: Double = 1, scale: Double = 1) {
+        self.kind = kind
+        self.on = on
+        self.haze = haze
+        self.colour = colour
+        self.even = even
+        self.dark = dark
+        self.scale = scale
+    }
+
+    /// A server before the sheet's numbers sends none of them.
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try c.decode(String.self, forKey: .kind)
+        on = try c.decodeIfPresent(Bool.self, forKey: .on) ?? false
+        haze = try c.decodeIfPresent(Double.self, forKey: .haze) ?? 0
+        colour = try c.decodeIfPresent([Double].self, forKey: .colour) ?? [1, 1, 1]
+        even = try c.decodeIfPresent(Double.self, forKey: .even) ?? 1
+        dark = try c.decodeIfPresent(Double.self, forKey: .dark) ?? 1
+        scale = try c.decodeIfPresent(Double.self, forKey: .scale) ?? 1
+        luma = try c.decodeIfPresent([Double].self, forKey: .luma) ?? [0.2126, 0.7152, 0.0722]
+        field = try c.decodeIfPresent(String.self, forKey: .field) ?? ""
+        width = try c.decodeIfPresent(Int.self, forKey: .width) ?? 0
+        height = try c.decodeIfPresent(Int.self, forKey: .height) ?? 0
+        fresh = try c.decodeIfPresent([Double].self, forKey: .fresh) ?? [1, 1, 1]
+        opaque = try c.decodeIfPresent(Bool.self, forKey: .opaque) ?? false
+    }
 }

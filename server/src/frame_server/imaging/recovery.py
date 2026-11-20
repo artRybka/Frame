@@ -56,6 +56,7 @@ from typing import Literal
 
 import cv2
 import numpy as np
+import numpy.typing as npt
 from PIL import Image
 
 from .color import (
@@ -512,20 +513,52 @@ def _smoothstep(x: FloatArray) -> FloatArray:
     return (x * x * (3 - 2 * x)).astype(np.float32)
 
 
+@dataclass(frozen=True)
+class SheetSum:
+    """What the sum of :func:`deyellow` goes by for one picture, read small
+    from it: all the phone needs to take the yellow off the sheet it shows
+    (``ios/…/SheetSum.swift``; Mateusz 2026-11-20: "A może warto jednak się
+    pokłonić nad papierem?"). ``field`` is the sheet's tone, linear RGB,
+    ``height`` × ``width`` × 3, kept at half precision (what the phone is
+    sent, so that both go by the same numbers); ``fresh`` a well-kept
+    sheet's tone. The smooth fields (the tone's luminance, its OKLab a and
+    b, and the gain ``fresh / field``) are made small and carried to the
+    picture's size by a cubic resize; per pixel see :func:`deyellow`."""
+
+    field: npt.NDArray[np.float16]
+    fresh: tuple[float, float, float]
+    opaque: bool = False
+
+
+def sheet_sum(img: Image.Image, *, opaque: bool = False) -> SheetSum:
+    """The numbers of the sum de-yellowing the sheet of ``img`` (read on a
+    640 px copy of it, as :func:`deyellow` reads its own)."""
+    read = _small(img.convert("RGB"), 640)
+    seed = _seed(read)
+    field, _ = _field(read, _mask(read, seed), seed)
+    half = field.astype(np.float16)
+    r, g, b = (float(c) for c in _fresh(half.astype(np.float32), seed))
+    return SheetSum(field=half, fresh=(r, g, b), opaque=opaque)
+
+
 def deyellow(img: Image.Image, *, opaque: bool = False, long: int = SENT) -> Image.Image:
     """The work with its sheet as a well-kept one. ``opaque``: pastel and
     gouache cover the sheet, only where it shows through is changed."""
     rgb = img.convert("RGB")
     if max(rgb.size) > long:
         rgb.thumbnail((long, long), Image.Resampling.LANCZOS)
-    read = _small(rgb, 640)
-    seed = _seed(read)
-    field, _ = _field(read, _mask(read, seed), seed)
-    fresh = (_fresh(field, seed) / np.maximum(field, 1e-3)).astype(np.float32)
+    return sheet_applied(rgb, sheet_sum(rgb, opaque=opaque))
+
+
+def sheet_applied(rgb: Image.Image, found: SheetSum) -> Image.Image:
+    """``rgb`` (at its own size) de-yellowed by ``found``."""
+    field = found.field.astype(np.float32)
+    fresh = (np.asarray(found.fresh, dtype=np.float32) / np.maximum(field, 1e-3)).astype(np.float32)
+    opaque = found.opaque
     # The field is smooth: found small, carried to the picture's size; the
     # sum itself goes a band of rows at a time, so a 2000 px sheet never
     # holds more than a few bands of floats beside these.
-    source = np.asarray(rgb)
+    source = np.asarray(rgb.convert("RGB"))
     height, width = source.shape[:2]
 
     def up(small: FloatArray) -> FloatArray:

@@ -15,10 +15,23 @@ final class ColoursSwitchTests: XCTestCase {
 
     @MainActor
     func testTheColoursSwitchAtOnce() throws {
+        try check(["-paintStyle", "oil"], named: "")
+    }
+
+    /// The sheet de-yellowed on the phone too (Mateusz 2026-11-20: "A może
+    /// warto jednak się pokłonić nad papierem?").
+    @MainActor
+    func testTheSheetSwitchesAtOnce() throws {
+        try check(["-paintStyle", "pen", "-demoPaper", "YES"], named: "paper-")
+    }
+
+    @MainActor
+    private func check(_ style: [String], named prefix: String) throws {
         try? FileManager.default.createDirectory(atPath: Self.folder, withIntermediateDirectories: true)
         let app = XCUIApplication()
-        app.launchArguments = ["-demo", "YES", "-screen", "original", "-paintStyle", "oil", "-demoSlowServer", "4"]
+        app.launchArguments = ["-demo", "YES", "-screen", "original", "-demoSlowServer", "4"] + style
         app.launch()
+        func shot(_ name: String) -> UIImage { self.shot(prefix + name) }
         // A toggle (`.isToggle`): XCUITest may have it as a switch or a
         // toggle, not a button. (Asking for any element at all timed out on
         // the whole tree.)
@@ -58,7 +71,7 @@ final class ColoursSwitchTests: XCTestCase {
         let settled = shot("5-three-taps-settled")
         XCTAssertTrue(Self.on(button))
         XCTAssertLessThan(Self.apart(switched, settled), 1.5)
-        Self.log("moved \(moved)")
+        Self.log("\(prefix)moved \(moved)")
     }
 
     private static func find(_ name: String, in app: XCUIApplication, within seconds: TimeInterval) -> XCUIElement? {

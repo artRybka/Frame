@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.145.283
+
+- Odżółcanie papieru na pełnym ekranie liczy telefon, tak jak werniks:
+  serwer podaje mały odcisk tonu kartki, a telefon odżółca nim to, co
+  widać. Przełączanie jest natychmiastowe i płynne.
+
+## 1.145.282
+
+- Słowa w Szukaj porządkuje teraz po wyglądzie angielskie tłumaczenie
+  („koń” jako „horse”), więc na początku są konie, a nie przypadkowe
+  grafiki z polskim tytułem.
+- Serwer uczy się z katalogu rozróżniać formę i treść w nowych odciskach
+  SigLIP. Szukaj przełączy się na nie, kiedy odciski będą gotowe.
+
+## 1.145.281
+
+- Lista „Kadrowane” do sprawdzania dzieło pod dziełem: każde na całą
+  szerokość, w trzech widokach, z przyciskami Zatwierdź, Kadr dzieła,
+  Kadr ramy i Bez ramy. Zatwierdzić można też kadr, którego model nie
+  był pewny.
+
 ## 1.145.280
 
 - Playlista z tytułem i artystą (na przykład „Paul Cezanne · Bathers”)

@@ -265,6 +265,13 @@ struct PhoneCropResult: Codable, Hashable, Sendable {
 struct CropReview: Codable, Hashable, Sendable {
     var cut: [ItemSummary]
     var unsure: [ItemSummary]
+    /// How sure the model was of each work (nil from an older server).
+    var sure: [Sure]? = nil
+
+    struct Sure: Codable, Hashable, Sendable {
+        var id: String
+        var sure: Double
+    }
 
     var isEmpty: Bool { cut.isEmpty && unsure.isEmpty }
 }
