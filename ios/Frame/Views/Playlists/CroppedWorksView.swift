@@ -303,7 +303,8 @@ struct CropCheckRow: View {
         HStack(spacing: 8) {
             if unsure {
                 action("Bez kadru", "checkmark", main: true) { await run(approve) }
-                action("Kadruj", "crop") { edit(item, .work) }
+                action("Kadr dzieła", "crop") { edit(item, .work) }
+                action("Dodaj ramę", "square.dashed") { edit(item, .frame) }
             } else {
                 let framed = item.cut?.surround != nil
                 action("Zatwierdź", "checkmark", main: true) { await run(approve) }
