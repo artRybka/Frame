@@ -1126,11 +1126,13 @@ class Looks:
                 self._words.move_to_end(key)
                 return self._words[key]
         self._check()
+        # In English, as the museums abroad are asked: Google read one
+        # Polish word poorly ("koń": an ex libris first, Mateusz 2026-11-20).
+        english = self.english(text) or text
         if self.seen is not None and local:
-            english = self.english(text) or text
             vector = [float(x) for x in self.seen.model.words([english])[0]]
         else:
-            vector = self.painter.embed(KIND, [QUERY + text])[0]
+            vector = self.painter.embed(KIND, [QUERY + english])[0]
         with self._words_lock:
             self._words[key] = vector
             while len(self._words) > REMEMBERED:

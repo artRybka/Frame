@@ -176,6 +176,7 @@ def test_siglip_answers_in_googles_place_once_most_works_have_numbers(
     service: FrameService, found: Seen, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(seen, "LEAST_SUBJECT", 1)
+    monkeypatch.setattr(seen, "FLOORS_SET", True)
     looks = service.looks
     assert (
         not service.ai_config.config.gemini_key

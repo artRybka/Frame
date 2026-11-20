@@ -110,6 +110,9 @@ class Floors:
 
 
 FLOORS = Floors()
+#: Whether :data:`FLOORS` were set on his catalogue: until then SigLIP never
+#: answers, however many works have their numbers.
+FLOORS_SET = False
 
 
 def _unit_rows(rows: np.ndarray) -> np.ndarray:
@@ -430,7 +433,7 @@ class Seen:
         """Answers from now on when enough works have their numbers; whether it does."""
         if self._answers:
             return True
-        if self.heads is None:
+        if self.heads is None or not FLOORS_SET:
             return False
         done, total = self.counts()
         if not total or done < READY_SHARE * total:
