@@ -175,7 +175,7 @@ struct OriginalViewer: View {
             }
         }
         .task(id: work.fragmentsID) { await loadTiles() }
-        .task(id: "\(work.id)|\(cleaningOffered)") { await prepareColours() }
+        .task(id: work.id) { await prepareColours() }
         .task(id: off) { await loadTreated() }
         .onAppear {
             // CI screenshots: the work shown without all that was done.
@@ -253,8 +253,10 @@ struct OriginalViewer: View {
     /// The other picture, ready before the button is touched: what it
     /// switches asked of the server, and the picture made or had.
     private func prepareColours() async {
-        guard item.kind == .artwork, cleaningOffered || openedCorrected else { return }
-        let made = ColourRecovery.made(PaintStyle.of(item)) ?? "paper"
+        // Asked here too, not only when the card has heard: the viewer
+        // opened before the card's own question was answered had no button
+        // (and the card does not ask while the viewer covers it).
+        guard item.kind == .artwork, let made = ColourRecovery.made(PaintStyle.of(item)) else { return }
         guard let view = try? await model.backend.colours(itemID: item.id, made: made) else { return }
         colours = view
         guard view.kind != "none",
