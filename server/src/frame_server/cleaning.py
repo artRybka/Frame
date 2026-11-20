@@ -69,6 +69,8 @@ READ = 640
 #: The share of the proposal the first sum (``Cleaned.reading`` 1) kept a
 #: work at; the proposal is kept whole since.
 FIRST_SHARE = 0.75
+#: How many works' sums :meth:`Cleaning.for_viewer` keeps in memory.
+SUMS_KEPT = 200
 
 
 class NothingToClean(ValueError):
@@ -110,6 +112,8 @@ class Cleaning:
         self.background = False
         self._jobs: ThreadPoolExecutor | None = None
         self._due: dict[str, int] = {}
+        #: :meth:`for_viewer`'s answers, by the work, its picture and cut.
+        self._sums: dict[str, tuple[Cleaned, recovery.VarnishSum | None]] = {}
         self._guard = threading.Lock()
 
     # -- the owner's asks -------------------------------------------------------------
@@ -120,7 +124,8 @@ class Cleaning:
         nothing to offer; errors of the download are the caller's."""
         reading = item.cleaned_reading()
         if reading is None:
-            reading = self._read(item, made)
+            # As the viewer showed it, when it was open (read once).
+            reading, _ = self.for_viewer(item, made)
             if reading is None:
                 raise NothingToClean(f"nothing to clean in {item.id}")
             who = [user]
@@ -128,16 +133,13 @@ class Cleaning:
             who = sorted({*item.cleaned_viewers(), user})
         return self._put(item, reading, who)
 
-    def read_ahead(self, item: Item, made: str) -> Item:
-        """The cleaning read, and kept seen by nobody, before anyone asks
-        for it: the full-screen viewer has the cleaned picture ready while
-        the work is looked at, so the button shows it at once (Mateusz
-        2026-11-20). Only for a work the button is on, never in advance
-        for others ("Dla wielu dzieł nie ma ta funkcja wogole sensu")."""
+    def keep_unseen(self, item: Item, reading: Cleaned) -> Item:
+        """A cleaning read before anyone asked for it (the full-screen
+        viewer, :meth:`for_viewer`), kept seen by nobody: switched on, it
+        is that one, and its picture kept on disk already. Only for a work
+        the viewer's button is on, never in advance for others ("Dla wielu
+        dzieł nie ma ta funkcja wogole sensu", Mateusz 2026-11-20)."""
         if item.cleaned is not None:
-            return item
-        reading = self._read(item, made)
-        if reading is None:
             return item
         return self.library.update(item.id, cleaned=reading, cleaned_by=[]) or item
 
@@ -243,14 +245,47 @@ class Cleaning:
             log.info("cleanings made again with the sum of now: %d", made)
         return made
 
+    # -- what the phone shows -----------------------------------------------------------
+
+    def for_viewer(
+        self, item: Item, made: str
+    ) -> tuple[Cleaned | None, recovery.VarnishSum | None]:
+        """The correction the full-screen viewer switches (Mateusz
+        2026-11-20: "korekta może dotyczyć tylko tego co widać a nie
+        pliku"): the one read already, else as it would be read now (kept
+        nowhere: only asked when the viewer with its button is open), and
+        for a varnish the numbers the phone takes it off what it shows
+        with (:class:`~frame_server.imaging.recovery.VarnishSum`), read on
+        the picture without it."""
+        reading = item.cleaned_reading()
+        key = f"{item.id}|{item.picture_key()}|{item.cut_version()}"
+        with self._guard:
+            kept = self._sums.get(key)
+        if kept is not None and (reading is None or kept[0].strength == reading.strength):
+            return reading or kept[0], kept[1]
+        picture = self.images.before_cleaning(item, urgent=True)
+        if reading is None:
+            reading = self._read(item, made, picture)
+            if reading is None:
+                return None, None
+        found = (
+            recovery.varnish_sum(picture, reading.strength) if reading.kind == "varnish" else None
+        )
+        with self._guard:
+            if len(self._sums) > SUMS_KEPT:
+                self._sums.clear()
+            self._sums[key] = (reading, found)
+        return reading, found
+
     # -- putting it on ----------------------------------------------------------------
 
-    def _read(self, item: Item, made: str) -> Cleaned | None:
+    def _read(self, item: Item, made: str, picture: Image.Image | None = None) -> Cleaned | None:
         """The cleaning the picture shown now would get, None when it has
         nothing to offer."""
         if not by_its_data(item, made):
             return None
-        picture = self.images.before_cleaning(item, urgent=True)
+        if picture is None:
+            picture = self.images.before_cleaning(item, urgent=True)
         small = picture.convert("RGB")
         small.thumbnail((READ, READ), Image.Resampling.LANCZOS)
         kind = offered(item, made, small)

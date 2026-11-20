@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.145.279
+
+- Werniks na pełnym ekranie: kółko korekty barw przełącza obraz od razu i
+  płynnie. Werniks zdejmuje teraz telefon z tego, co widać (według liczb
+  z serwera), a serwer dostaje zmianę po fakcie. Naprawione: ikona robiła
+  się niebieska, a obraz zostawał z werniksem (dzieła z muzeum spoza
+  biblioteki).
+
+## 1.145.278
+
+- Kadrowanie zdjęć z muzeów na iPhonie: ramę z modelu zostawiamy tylko
+  wtedy, gdy obejmuje całe dzieło (serwer odrzuca ją też z wersji
+  1.145.277). W „Popraw kadr” jest „Bez ramy”, a na liście „Kadrowane”
+  „Dobrze, bez ramy”. Lista „Kadrowane” odświeża się zaraz po
+  wykadrowaniu dzieła w jego karcie.
+
+## 1.145.277
+
+- Zdjęcia dzieł z muzeów kadruje teraz sam iPhone, własnym modelem, bez
+  Opusa i Haiku. Kadr powstaje przy otwarciu karty dzieła albo partiami
+  w Diagnostyce („Kadrowanie zdjęć z muzeów” → „Kadruj partię”). Gdy
+  model nie jest pewny, zdjęcie zostaje całe. Wykadrowane przez model
+  i czekające na kadr są w Playlistach, na liście „Kadrowane”
+  (przytrzymanie → „Dobrze”). Własne dzieła kadrują się jak dotąd.
+
 ## 1.145.276
 
 - Serwer zaczyna liczyć własne odciski wyglądu dzieł modelem SigLIP 2

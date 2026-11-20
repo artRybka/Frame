@@ -1,5 +1,5 @@
-// Made by tools/constants.py from server/src/frame_server/imaging/reflections.py:
-// the numbers are set there (and told there why), never here.
+// Made by tools/constants.py from server/src/frame_server/imaging/reflections.py
+// (and cut.py, crop_model.py): the numbers are set there (and told there why), never here.
 #pragma once
 
 #include <array>
@@ -121,3 +121,33 @@ inline constexpr double VEIL_COST = 0.002;
 inline constexpr double VEIL_MOST = 0.3;
 
 }  // namespace frame::scan
+
+namespace frame::crop {
+
+inline constexpr double BACKDROP_DEPTH = 0.03;
+inline constexpr int BACKDROP_SIDES = 2;
+inline constexpr double BAND = 0.012;
+inline constexpr double HOLD = 0.004;
+inline constexpr double INSET = 0.004;
+inline constexpr double LEAST_KEPT = 0.15;
+inline constexpr double LINE_SHARE = 0.6;
+inline constexpr double MASK = 0.5;
+inline constexpr double MOST_KEPT = 0.985;
+inline constexpr double ON_LINE = 2.5;
+inline constexpr double OUTER_SHARE = 0.5;
+inline constexpr double OUT_AT_MOST = 0.03;
+inline constexpr double OUT_BY = 0.01;
+inline constexpr int PHOTO_SIDE = 1024;
+inline constexpr double SAME_SIDE = 0.006;
+inline constexpr int SAMPLES = 160;
+inline constexpr int SIDE = 384;
+inline constexpr int SNAP_SIDE = 1500;
+inline constexpr double SQUARE = 16.0;
+inline constexpr double STRENGTH = 25.0;
+inline constexpr double STRIP_DEEPEST = 0.08;
+inline constexpr double STRIP_LINE = 0.15;
+inline constexpr double SURE = 0.9;
+inline constexpr double UPRIGHT = 3.0;
+inline constexpr double WHOLE = 0.1;
+
+}  // namespace frame::crop

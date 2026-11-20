@@ -106,6 +106,10 @@ class AiConfig(BaseModel):
     #: board around it (Haiku picks them, Opus sets the corners; at night
     #: and when a card opens, ``ai.crops``).
     crops: bool = True
+    #: The museum photographs cut by the phone's own model instead, and
+    #: Claude asked about none of them (Mateusz 2026-11-20: „Celem jest
+    #: całkowite uniknięcie Opus”; ``phone_crops``).
+    crops_on_phone: bool = True
     #: A green that may be a blue under yellowed varnish shown to Haiku at
     #: night; the blue it names is the work's accent (``ai.varnish``).
     varnish_blue: bool = True
@@ -163,6 +167,7 @@ class AiConfigUpdate(BaseModel):
     journey: bool | None = None
     web_facts: bool | None = None
     crops: bool | None = None
+    crops_on_phone: bool | None = None
     varnish_blue: bool | None = None
     drawn: bool | None = None
     looks: bool | None = None

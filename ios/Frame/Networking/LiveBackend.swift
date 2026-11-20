@@ -132,6 +132,15 @@ struct LiveBackend: FrameBackend {
         return try await perform(req, patient: true)
     }
 
+    func colours(itemID: String, made: String) async throws -> ColoursView {
+        var req = request(
+            "/api/library/items/\(escape(itemID))/colours",
+            query: [URLQueryItem(name: "made", value: made)]
+        )
+        req.timeoutInterval = 60
+        return try await perform(req, patient: true)
+    }
+
     func clean(itemID: String, made: String) async throws -> Item {
         // The original is made again from the museum's photograph and its
         // colours measured: seconds on a NAS, more when it is downloaded first.
@@ -918,6 +927,40 @@ struct LiveBackend: FrameBackend {
             throw BackendError.http(status: http.statusCode, body: String(decoding: data.prefix(2000), as: UTF8.self))
         }
         return data
+    }
+
+    func phoneCropAsk(itemID: String) async throws -> PhoneCropAsk {
+        try await get("/api/crops/phone/\(escape(itemID))")
+    }
+
+    func phoneCropsWaiting(limit: Int) async throws -> PhoneCropsWaiting {
+        try await get("/api/crops/phone/waiting", query: [URLQueryItem(name: "limit", value: String(limit))])
+    }
+
+    func phoneCropFound(itemID: String, _ found: PhoneCropFound) async throws -> PhoneCropResult {
+        // The cut work's pictures are made again before the answer.
+        var req = request("/api/crops/phone/\(escape(itemID))", method: "POST")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try Self.encoder().encode(found)
+        req.timeoutInterval = 120
+        return try await perform(req)
+    }
+
+    func museumPhoto(itemID: String, side: Int) async throws -> Data {
+        guard var req = request(for: .museumPhoto(itemID, side: side, version: "")) else { throw BackendError.notFound }
+        req.timeoutInterval = 120
+        let (data, response) = try await load(req)
+        guard let http = response as? HTTPURLResponse else { throw BackendError.invalidResponse }
+        guard (200 ..< 300).contains(http.statusCode) else {
+            throw BackendError.http(status: http.statusCode, body: String(decoding: data.prefix(2000), as: UTF8.self))
+        }
+        return data
+    }
+
+    func cropReview() async throws -> CropReview { try await get("/api/crops/review") }
+
+    func cropFine(itemID: String) async throws -> CropReview {
+        try await perform(request("/api/crops/review/\(escape(itemID))/fine", method: "POST"))
     }
 
     func sendPhoneScan(token: String, name: String, _ data: Data) async throws {

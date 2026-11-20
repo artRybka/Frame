@@ -75,6 +75,7 @@ from .on_demand import OnDemand
 from .own_works import OwnWorks
 from .panel_app import POLL, PanelApp
 from .panel_config import PanelConfigStore
+from .phone_crops import PhoneCrops
 from .places import Places
 from .player import Player
 from .power import INSTALL_LOOK, WAKE_BURST_SECONDS, PowerManager
@@ -365,6 +366,8 @@ class FrameService:
         # sets the corners): at night and when a card opens.
         self.crops = Crops(self.library, self.images, self.claude, self.ai_config)
         self.crops.importer = self.importer
+        # ... or by the phone's own model, with no Claude (Mateusz 2026-11-20).
+        self.phone_crops = PhoneCrops(self.library, self.crops)
         self.own_works = OwnWorks(
             self.library, self.images, self.importer, self.crops, self.sizes, self.claude
         )

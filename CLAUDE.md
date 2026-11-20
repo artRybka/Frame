@@ -83,6 +83,15 @@ uv run mypy src
   reading of a photograph to `load_image`'s and its putting of a chart's
   colours to `colorchecker.apply`'s (a made-up file and a made-up chart
   gone through by both, `ios/FrameTests/PhoneScanTests.swift`).
+  Museum photographs are cut by a model on the phone, with no Claude
+  (Mateusz 2026-11-20; `AiConfig.crops_on_phone`): the app's Core ML model
+  (`ios/Models/Kadr.mlpackage`, trained on the Mac) gives the masks, and
+  what is made of them is `imaging/crop_model.py`, written a second time in
+  the core (`core/scan/src/scan_crop.cpp`, checked with `tools/crop.py`;
+  its numbers through `tools/constants.py`; the app's numbers and a fixture
+  held by `tests/test_scan_core.py`). A new model is a new `MODEL` (both
+  sides): its works are looked at again. `phone_crops.py` keeps what the
+  phone found, the owner's list "Kadrowane" and the lessons for retraining.
 - `web/app.py` FastAPI: `/panel/*` for the panel (no auth, must never 404
   once content exists), `/api/*` for the app (Bearer token).
 - Never hand-edit `uv.lock`; use `uv add` / `uv lock`.

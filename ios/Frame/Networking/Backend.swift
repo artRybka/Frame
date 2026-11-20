@@ -85,6 +85,9 @@ protocol FrameBackend: Sendable {
     /// "Odżółć papier"); `made`: how the app says it is made ("oil",
     /// "paper", "opaque", `ColourRecovery.made`).
     func recovery(itemID: String, made: String) async throws -> RecoveryView
+    /// What the full-screen viewer's colours button switches for this
+    /// person, and for a varnish the numbers to take it off with.
+    func colours(itemID: String, made: String) async throws -> ColoursView
     /// "Zdejmij werniks" / "Odżółć papier": the work shown cleaned from
     /// now on, everywhere; its colours are measured on the cleaned picture.
     func clean(itemID: String, made: String) async throws -> Item
@@ -339,6 +342,19 @@ protocol FrameBackend: Sendable {
     /// What the phone made of a kept scan itself ("phone.npy") or noted of
     /// that ("phone.json"), to stay beside the scan on the server.
     func sendPhoneScan(token: String, name: String, _ data: Data) async throws
+    /// Museum photographs cut by the phone's model (`MuseumCrop`, the
+    /// owner's): whether to look at a work's photograph now.
+    func phoneCropAsk(itemID: String) async throws -> PhoneCropAsk
+    /// "Kadruj partię": the works waiting to be looked at, cared about first.
+    func phoneCropsWaiting(limit: Int) async throws -> PhoneCropsWaiting
+    /// What the model found about a work's photograph; the work cut when it was sure.
+    func phoneCropFound(itemID: String, _ found: PhoneCropFound) async throws -> PhoneCropResult
+    /// The museum's photograph of a work, whole, `side` px long at most.
+    func museumPhoto(itemID: String, side: Int) async throws -> Data
+    /// "Kadrowane": what the model cut and what it left to him.
+    func cropReview() async throws -> CropReview
+    /// "Dobrze": the model's cut is right; off the list.
+    func cropFine(itemID: String) async throws -> CropReview
     /// How many works the server has gathered, and in large pictures.
     func catalogueCounts() async throws -> CatalogueCounts
     /// The night's tasks and how each last went (the owner's).
@@ -474,6 +490,27 @@ extension FrameBackend {
     func sendPhoneScan(token: String, name: String, _ data: Data) async throws {
         throw BackendError.notFound
     }
+}
+
+extension FrameBackend {
+    /// Only the server's museum works are cut by the phone: elsewhere none waits.
+    func phoneCropAsk(itemID: String) async throws -> PhoneCropAsk {
+        PhoneCropAsk(look: false, kind: 4, model: MuseumCrop.model, picture: "", side: MuseumCrop.photoSide)
+    }
+
+    func phoneCropsWaiting(limit: Int) async throws -> PhoneCropsWaiting {
+        PhoneCropsWaiting(model: MuseumCrop.model, side: MuseumCrop.photoSide, works: [], left: 0)
+    }
+
+    func phoneCropFound(itemID: String, _ found: PhoneCropFound) async throws -> PhoneCropResult {
+        throw BackendError.notFound
+    }
+
+    func museumPhoto(itemID: String, side: Int) async throws -> Data { throw BackendError.notFound }
+
+    func cropReview() async throws -> CropReview { CropReview(cut: [], unsure: []) }
+
+    func cropFine(itemID: String) async throws -> CropReview { throw BackendError.notFound }
 }
 
 extension FrameBackend {

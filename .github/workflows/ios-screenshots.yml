@@ -206,6 +206,8 @@ jobs:
             capture detail 16 "detail-palette-heightened-$appearance" -scroll palette -paintStyle heightened -paintColours 8a9ba3:0.62/c9cdc6:0.12/4b4e52:0.14/7d6a58:0.07
             capture detail 16 "detail-palette-wash-lit-$appearance" -scroll palette -paintStyle washLitChalk -paintColours 51493a:0.29/645b49:0.20/817763:0.16/99907d:0.14/7b6547:0.24:a/e7e8e0:0.04:a
             capture playlists 12 "playlists-$appearance"
+            capture cropped 14 "cropped-$appearance"
+            capture connection 12 "diagnostics-crop-$appearance" -settingsPage diagnostics -scroll crop
             capture suggestions 14 "suggestions-$appearance"
             capture playlist 12 "playlist-$appearance"
             capture playlist-search 14 "playlist-search-$appearance" -typed morze
@@ -333,10 +335,29 @@ jobs:
         run: |
           xcodebuild test -project Frame.xcodeproj -scheme FramePull \
             -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath build \
+            -only-testing:FrameUITests/PullProbeTests \
             CODE_SIGNING_ALLOWED=NO || true
           mkdir -p shots
           cp /tmp/frame-pull/* shots/ || true
+      # `only: colours-probe`: a finger switches the colours' button on the
+      # full-screen viewer with a slow server (FrameUITests/
+      # ColoursSwitchTests.swift): fails the run when the picture waits for
+      # the server; a screenshot of each step comes back either way.
+      - name: Colours probe
+        if: inputs.only == 'colours-probe'
+        run: |
+          set -o pipefail
+          xcodebuild test -project Frame.xcodeproj -scheme FramePull \
+            -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath build \
+            -only-testing:FrameUITests/ColoursSwitchTests \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tail -80
+      - name: Colours probe screenshots
+        if: always() && inputs.only == 'colours-probe'
+        run: |
+          mkdir -p shots
+          cp /tmp/frame-colours/* shots/ || true
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: screenshots
           path: |

@@ -603,6 +603,14 @@ def _framed_by_owner(cut: Cut, frame: Quad) -> Cut:
     return cut.model_copy(update={**mine, "surround_asked": True})
 
 
+def _unframed_by_owner(cut: Cut) -> Cut:
+    """``cut`` with no frame nor passe-partout around the work: what was
+    around it is background to throw away (Mateusz 2026-11-20: „kadrujemy
+    dzieło, ale nie ma ono ramy ani passepartout”), never found again."""
+    mine = {"surround": None, "surround_kind": "", "surround_by": "owner"}
+    return cut.model_copy(update={**mine, "surround_asked": True})
+
+
 def shown_in(item: Item) -> Callable[[float], float | None] | None:
     """The shape a work is shown in when it is not the one its corners
     give: a work of the owner's own, in the shape of his size
@@ -774,6 +782,14 @@ class Crops(CriticNight):
         except OSError:
             return False
 
+    def on_phone(self) -> bool:
+        """Whether the phone's model cuts the museum photographs, and
+        Claude none (Mateusz 2026-11-20: „Celem jest całkowite uniknięcie
+        Opus”; :mod:`..phone_crops`): no judge, no Opus, at night or when a
+        card opens. His own works are still Opus's ("Dodaj własne
+        dzieło")."""
+        return self.config.config.crops_on_phone
+
     def candidates(self, asked: dict[str, Any]) -> list[Item]:
         # A work asked about is asked again when another copy took the
         # place of the photograph looked at (``Item.picture_key``): a
@@ -784,6 +800,13 @@ class Crops(CriticNight):
             for i in self.library.all_items()
             if self.stale(i) and self.wanted(i) and not self._looked_at(asked.get(i.id), i)
         ]
+        return self.ranked(found)
+
+    def ranked(self, found: list[Item]) -> list[Item]:
+        """``found`` in the order they are looked at: the works cared
+        about, then those shown, the museums of Warsaw and Kraków, the
+        newest."""
+        found = list(found)
         found.sort(key=lambda i: i.added_at or "", reverse=True)
         found.sort(key=lambda i: i.source not in FIRST_SOURCES)
         found.sort(key=lambda i: not (not i.pooled or i.favorite or i.show_count > 0))
@@ -839,10 +862,14 @@ class Crops(CriticNight):
 
     def waiting_claims(self) -> int:
         """Works the judge found something around, waiting for Opus."""
+        if self.on_phone():
+            return 0
         claims = self.state().get("claims") or {}
         return sum(1 for c in claims.values() if not _aside(c or {}))
 
     def order(self) -> bool:
+        if self.on_phone():
+            return False
         self.reshaped()
         self.surrounded()
         self.strips_rechecked()
@@ -1374,21 +1401,21 @@ class Crops(CriticNight):
         corners: Quad | None = None,
         paper: bool | None = None,
         frame: Quad | None = None,
+        no_frame: bool = False,
     ) -> Item:
         """The owner's corners (of the work as shown, with its paper or
         without), or his "Pokaż z marginesem / bez marginesu". Without the sheet when
         no plate is known yet: Opus is asked for it now. ``frame``: the
         outer edge of the frame or passe-partout as he set it (the card's
-        "W ramie"); alone, the work's pictures stay as they are."""
-        alone = frame is not None and corners is None and paper is None
-        if (
-            alone
-            and frame is not None
-            and item.cut is not None
-            and item.cut.shown() is not None
-            and not self.stale(item)
-        ):
-            cut = framed(_framed_by_owner(item.cut, frame), shown_in(item))
+        "W ramie"); alone, the work's pictures stay as they are.
+        ``no_frame``: nothing around the work is a frame ("Bez ramy")."""
+        alone = (frame is not None or no_frame) and corners is None and paper is None
+        if alone and item.cut is not None and item.cut.shown() is not None and not self.stale(item):
+            if no_frame or frame is None:
+                mine = _unframed_by_owner(item.cut)
+            else:
+                mine = _framed_by_owner(item.cut, frame)
+            cut = framed(mine, shown_in(item))
             log.info("crops: %s frame's edge set by the owner", item.id)
             return self.library.update(item.id, cut=cut) or item
         old = item.cut if item.cut is not None and not self.stale(item) else None
@@ -1410,7 +1437,9 @@ class Crops(CriticNight):
                 cut.plate = corners
             else:
                 cut.work = corners
-        if frame is not None:
+        if no_frame:
+            cut = _unframed_by_owner(cut)
+        elif frame is not None:
             cut = _framed_by_owner(cut, frame)
         return self.apply(item, cut)
 
@@ -1512,6 +1541,8 @@ class Crops(CriticNight):
             # sheet the card's "W ramie" (Mateusz 2026-11-18).
             self.apply(stored, stored.cut.model_copy(update={"paper": False}))
             return True
+        if self.on_phone() and stored.source not in OWN_SOURCES:
+            return False  # the phone looks at it (``phone_crops``)
         if self.unsurrounded(stored):
             # "W ramie" on the card (the app reads the work again)
             self.surround_now(stored)
@@ -1581,6 +1612,8 @@ class Crops(CriticNight):
         """The works the judge found something around that wait for Opus
         and are in no batch, the works cared about first (a run on demand,
         ``frame_server.on_demand``)."""
+        if self.on_phone():
+            return []
         state = self.state()
         ordered = set(((state.get("order") or {}).get("ids") or {}).values())
         claims = state.get("claims") or {}
@@ -1593,6 +1626,8 @@ class Crops(CriticNight):
         rather than in the night's batch: whether it was cut; None when its
         claim is gone (asked meanwhile). What the ask raises (no key, the
         limit) is the caller's."""
+        if self.on_phone():
+            return None
         state = self.state()
         claim = (state.get("claims") or {}).get(item_id)
         ordered = set(((state.get("order") or {}).get("ids") or {}).values())

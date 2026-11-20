@@ -766,7 +766,7 @@ class Leftover:
                     CROPS,
                     CROP_USD,
                     crops.waiting_claims,
-                    lambda: config.enabled("crops"),
+                    lambda: config.enabled("crops") and not crops.on_phone(),
                     crops_run,
                     cap=self._cap(CROPS, CROPS_A_NIGHT),
                 )
