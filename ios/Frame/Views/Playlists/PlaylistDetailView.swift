@@ -33,6 +33,10 @@ struct PlaylistDetailView: View {
     /// What the search found, and for what.
     @State private var found: ItemPage?
     @State private var foundFor: LibraryQuery?
+    /// The search the server did not answer.
+    @State private var failedFor: LibraryQuery?
+    /// The search asked a moment ago and still unanswered.
+    @State private var waitedFor: LibraryQuery?
 
     /// The works as last loaded; nil until the first load.
     private var detail: PlaylistDetail? { model.playlistDetails[playlistID] }
@@ -56,6 +60,17 @@ struct PlaylistDetailView: View {
 
     /// The works the search found (the last answer while the next is asked).
     private var foundShown: ItemPage? { searchQuery == nil ? nil : found }
+
+    /// The field asks what the server has not answered yet: the squares
+    /// say so, the works before them pale (Mateusz 2026-11-20: "przez
+    /// wiele sekund widać wszystkie dzieła i nic nie wskazuje na to że za
+    /// chwilę lista się zawęzi").
+    private var seeking: Bool {
+        guard let query = searchQuery, foundFor != query, failedFor != query else { return false }
+        // The whole playlist at once; what was found, after a moment (a
+        // quick answer to the next letter does not flicker).
+        return found == nil || waitedFor == query
+    }
 
     var body: some View {
         ScrollView {
@@ -104,6 +119,11 @@ struct PlaylistDetailView: View {
             }
         })
         .task(id: searchQuery) { await find() }
+        .task(id: searchQuery) {
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+            withAnimation(.snappy) { waitedFor = searchQuery }
+        }
         .task { await searchForScreenshot() }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -190,7 +210,23 @@ struct PlaylistDetailView: View {
 
     @ViewBuilder
     private func works(_ detail: PlaylistDetail) -> some View {
-        if let found = foundShown, found.items.isEmpty {
+        if seeking {
+            VStack(spacing: 22) {
+                SearchWaiting()
+                // What was found for the words before, until the answer.
+                if let found = foundShown, !found.items.isEmpty {
+                    MasonryGrid(items: found.items) { item in card(item) }
+                        .opacity(0.35)
+                        .allowsHitTesting(false)
+                }
+            }
+            .transition(.opacity)
+        } else if let query = searchQuery, failedFor == query {
+            EmptyStateView(
+                title: "Szukanie nie odpowiada",
+                message: "Serwer nie odpowiedział. Zmień słowa albo spróbuj za chwilę."
+            )
+        } else if let found = foundShown, found.items.isEmpty {
             EmptyStateView(
                 title: "Nic nie znaleziono",
                 message: "Żadne dzieło tej playlisty nie pasuje do tego szukania."
@@ -354,7 +390,7 @@ struct PlaylistDetailView: View {
     /// and on an album, it only tells.
     private func gridHeader(_ playlist: PlaylistSummary) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(bound: foundShown.map { Self.foundText($0.total, of: playlist.itemCount) } ?? playlist.countText)
+            Text(bound: seeking ? "Szukam…" : foundShown.map { Self.foundText($0.total, of: playlist.itemCount) } ?? playlist.countText)
                 .font(.serif(19, weight: .semibold))
                 .foregroundStyle(Theme.ink)
                 .contentTransition(.numericText())
@@ -422,7 +458,15 @@ struct PlaylistDetailView: View {
         try? await Task.sleep(for: .milliseconds(foundFor == nil ? 120 : 260))
         guard !Task.isCancelled else { return }
         for round in 0 ..< 3 {
-            guard let page = try? await model.backend.items(query), !Task.isCancelled else { return }
+            let page: ItemPage
+            do {
+                page = try await model.backend.items(query)
+            } catch {
+                guard !Task.isCancelled, round == 0 else { return }
+                withAnimation(.snappy) { failedFor = query }
+                return
+            }
+            guard !Task.isCancelled else { return }
             withAnimation(.snappy) {
                 found = page
                 foundFor = query
@@ -619,7 +663,8 @@ private struct PlaylistSearchField: ViewModifier {
                     lookup, tokens: $tokens, focused: focused, prompt: "Szukaj w tej playliście",
                     opensAtOnce: true, onClose: onClose
                 )
-                .termSuggestions(lookup, tokens: $tokens, focused: focused)
+                // No groups' bar here: right over the keyboard.
+                .termSuggestions(lookup, tokens: $tokens, focused: focused, overKeyboard: 10)
         } else {
             content
         }

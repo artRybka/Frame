@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.273
+
+- Szukanie wewnątrz playlisty jest szybsze: podczas pisania szuka tylko
+  po tekstach, a szukanie poprzedniej litery jest porzucane, więc litery
+  nie stoją w kolejce. Gdy szuka, nad siatką widać kwadraciki i
+  „Szukam…”. („Conajmniej trzeba dodać coś co wskazuje na proces
+  przeszukiwania”)
+
 ## 1.145.272
 
 - Kadrowanie zdjęć dzieł: naddarta albo nierówna krawędź kartki nie
