@@ -830,6 +830,16 @@ actor DemoBackend: FrameBackend {
         try update(id) { $0.excluded = excluded }
     }
 
+    /// "Kadrowane" in the demo: a few works as the phone's model left them.
+    func cropReview() async throws -> CropReview {
+        let shown = items.filter { !$0.excluded }.map(\.summary)
+        return CropReview(cut: Array(shown.prefix(4)), unsure: Array(shown.dropFirst(4).prefix(3)))
+    }
+
+    func phoneCropsWaiting(limit: Int) async throws -> PhoneCropsWaiting {
+        PhoneCropsWaiting(model: MuseumCrop.model, side: MuseumCrop.photoSide, works: [], left: 1240)
+    }
+
     func hiddenItems() async throws -> ItemPage {
         let hidden = items.filter(\.excluded).map(\.summary)
         return ItemPage(total: hidden.count, items: hidden)

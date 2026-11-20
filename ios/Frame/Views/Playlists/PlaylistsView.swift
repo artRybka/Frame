@@ -252,6 +252,7 @@ struct PlaylistsView: View {
                 }
                 if LaunchRoute.screen == "suggestions", path.isEmpty { path.append(SuggestionsRoute()) }
                 if LaunchRoute.screen == "own-works", path.isEmpty { path.append(OwnWorksRoute()) }
+                if LaunchRoute.screen == "cropped", path.isEmpty { path.append(CroppedRoute()) }
                 if LaunchRoute.screen == "editor", editing == nil {
                     editing = Playlist(name: "Błękitne krajobrazy", rules: PlaylistRules(colors: ["blue"]))
                 }
