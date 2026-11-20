@@ -1,0 +1,45 @@
+name: look-model
+
+# SigLIP 2 for the works' looks (server: frame_server/seen.py), made once
+# and put on a release the server fetches from. Runs when the script
+# changes; a release already there is left as it is (raise TAG for a new one,
+# and seen.MODEL with it).
+on:
+  push:
+    paths: ["scripts/look-model/**", ".github/workflows/look-model.yml"]
+  workflow_dispatch:
+
+env:
+  TAG: look-model-siglip2-b16-1
+
+permissions:
+  contents: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Already released?
+        id: have
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then echo "have=1" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/setup-python@v5
+        if: steps.have.outputs.have != '1'
+        with:
+          python-version: "3.12"
+      - name: Export
+        if: steps.have.outputs.have != '1'
+        run: |
+          pip install -r scripts/look-model/requirements.txt
+          python scripts/look-model/export.py out
+      - name: Release
+        if: steps.have.outputs.have != '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" out/picture.onnx out/words.onnx out/tokenizer.json out/SHA256SUMS \
+            --target "$GITHUB_SHA" --prerelease --title "SigLIP 2 ViT-B-16 for the works' looks" \
+            --notes "SigLIP 2 (ViT-B-16, 256 px) by Google, Apache License 2.0, from timm/ViT-B-16-SigLIP2-256 on Hugging Face, exported to ONNX by scripts/look-model/export.py (the words side's token table as int8). Fetched by the server (frame_server/seen.py); not for download by hand."

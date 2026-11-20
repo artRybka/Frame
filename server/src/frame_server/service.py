@@ -81,6 +81,7 @@ from .power import INSTALL_LOOK, WAKE_BURST_SECONDS, PowerManager
 from .progress import ProgressTracker, Stage
 from .rendered import RenderCache, Rendered, render_key
 from .restorer import Restorer
+from .seen import Seen
 from .sharper import Sharper
 from .sheets import Sheets
 from .sizes import Sizes
@@ -461,6 +462,10 @@ class FrameService:
             self.library, self.images, self.painter, self.ai_config, settings.data_dir / "looks"
         )
         self.looks.cared = self.cared.ranks
+        # The same made on the server by SigLIP 2, in the background, to take
+        # Google's place (Mateusz 2026-11-20: "Przesiadamy.").
+        self.seen = Seen(self.library, self.images, settings.data_dir / "seen")
+        self.seen.cared = self.cared.ranks
         # Szukaj's words for how works look, the groups narrowing them, and
         # a smart playlist made of them (Mateusz 2026-11-13).
         self.library.looking = self.looks.looking

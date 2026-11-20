@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.276
+
+- Serwer zaczyna liczyć własne odciski wyglądu dzieł modelem SigLIP 2
+  (Google, wolna licencja), bez pytania Gemini. Za pierwszym razem pobiera
+  model (ok. 950 MB), potem w tle, gdy nie używasz aplikacji, przelicza
+  cały katalog. Szukaj i „Podobne do” działają na razie jak dotąd;
+  przełączymy je, gdy odciski będą gotowe. („Przesiadamy.”)
+
 ## 1.145.275
 
 - Słowa wpisane w Szukaj tłumaczy teraz sam iPhone (systemowe tłumaczenie

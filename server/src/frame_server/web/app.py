@@ -277,6 +277,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # server answered in 30-70 s for minutes after 1.145.99 began).
             for later in (
                 threading.Timer(LOOKS_DELAY, service.looks.start),
+                threading.Timer(LOOKS_DELAY, service.seen.start),
                 threading.Timer(SEARCHED_DELAY, service.player.resume_searched),
                 # The disk measured for Konfiguracja, if no measure is kept.
                 threading.Timer(LOOKS_DELAY, service.storage.measure_behind),
@@ -304,6 +305,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # work waits while the app is in use too (library/hosts.py).
             host_guard.calm()
             host_guard.app_in_use = lambda: night.idle_for() < APP_IN_USE
+            service.seen.busy = host_guard.app_in_use
         yield
         for task in tasks:
             task.cancel()
@@ -313,6 +315,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         service.restorer.stop()
         service.drawn.stop()
         service.looks.stop()
+        service.seen.stop()
         service.study_refresh.stop()
         service.text_review.stop()
         if service.night is not None:
