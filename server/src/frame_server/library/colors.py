@@ -58,8 +58,10 @@ COLOUR_SPREAD = (0.01, 0.035)
 #: ground (``cast_accents``); 20: a muted colour present on ``PRESENT``
 #: of the picture is an accent (``PRESENT_AREA``); 21: what may be a blue
 #: under yellowed varnish (``varnished_blue``, ``Item.varnish_blue``);
-#: 22: the white laid on a tinted sheet (``LIGHT_TINTED``).
-SCORE_VERSION = 22
+#: 22: the white laid on a tinted sheet (``LIGHT_TINTED``); 23: the
+#: white of a painting (``PAINTED_WHITE``), and white shown a little lighter
+#: (``WHITE_LIFT``).
+SCORE_VERSION = 23
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
 #: this chroma / lightness for light ones: a greyish-blue sky does, a beige
@@ -281,6 +283,18 @@ MIN_DOMINANT = 0.04
 #: print's key block.
 PASSED_SHARE = 0.06
 PASSED_APART = 0.2
+#: The white of a painting (Mateusz 2026-11-20 22:56, of the bars of
+#: paintings: „bardzo często brakuje bieli”). A white is near the colours
+#: next to it (a light beige, a grey) and none of them by ``PASSED_APART``:
+#: the white cloth of Bruegel's „Harvesters”, Matisse's white scarf, the
+#: tablecloths of Hopper's „Chop Suey”, an eighth of each picture, were left
+#: out. In a painting (``painting``), a colour left out is shown too when
+#: it is a white (``PAINTED_WHITE`` light at least, ``PAINTED_WHITE_CHROMA``
+#: at most), ``PASSED_SHARE`` of the picture, and ``PAINTED_WHITE_ABOVE``
+#: lighter than every colour shown. Not on paper: there it is the sheet.
+PAINTED_WHITE = 0.78
+PAINTED_WHITE_CHROMA = 0.07
+PAINTED_WHITE_ABOVE = 0.06
 #: A pixel is coloured enough to be part of an accent from this OKLab
 #: chroma, chroma / lightness (dark reds) or a/b distance from the
 #: picture's own cast (a greyish blue in a brown picture) on.
@@ -392,6 +406,27 @@ LIGHT_DARK = 0.45
 #: a tinted sheet (brown, blue, grey paper), so a white above them is laid
 #: on it: the white gouache that heightens a wash drawing, not the paper.
 LIGHT_TINTED = 0.75
+#: In a painting a white that stands out is a warmer one, and less far
+#: above the colours shown: the ruffs and the sheet of Rembrandt's
+#: „Anatomy Lesson of Dr Tulp” (Mateusz 2026-11-20 23:03), a cream white
+#: a little lighter than the cream of its faces.
+PAINTED_LIGHT_CHROMA = 0.06
+PAINTED_LIGHT_ABOVE = 0.06
+#: The white a bar shows is shown a little whiter than measured: colour is
+#: seen against the picture, and the cream of the lightest pixels of a
+#: dark, warm painting is its white to the eye (Mateusz 2026-11-20 23:08:
+#: „Z racji że kolor jest relatywny, to akcent bieli trochę podciągajmy na
+#: pasku”). ``WHITE_LIFT`` lighter (``WHITE_TOP`` at most) and with
+#: ``WHITE_LIFT_CHROMA`` of its colour. What it is found by is the colour
+#: measured.
+WHITE_LIFT = 0.06
+WHITE_TOP = 0.97
+WHITE_LIFT_CHROMA = 0.5
+#: What says a work is on paper: drawn, washed, pastel (``painting``).
+ON_PAPER = re.compile(
+    r"paper|papier|carta|papel|vellum|parchment|pergamin|watercol|aquarel|akwarel|wash|lawowan|ink|tusz|atrament"
+    r"|chalk|kreda|pencil|ołówek|graphite|grafit|pastel|crayon|charcoal|węgiel|sanguin|pen\b|pióro|drawing|rysun"
+)
 #: What says a work is printed from a plate or a block (``printed``).
 PRINTED = re.compile(
     r"print|etch|engrav|woodcut|woodblock|linocut|aquatint|mezzotint|drypoint|lithogra|burin|eau.forte|pointe.s|gravure"
@@ -403,6 +438,12 @@ PRINTED = re.compile(
 def printed(medium: str) -> bool:
     """Whether a work's medium says it is a print."""
     return bool(PRINTED.search(medium.lower()))
+
+
+def painting(medium: str) -> bool:
+    """Whether a work is painted as far as its medium says: neither printed
+    nor on paper. No medium at all is paint, as the app's bar has it."""
+    return not printed(medium) and not ON_PAPER.search(medium.lower())
 
 
 #: The tints of a pale sheet (Mateusz 2026-11-12 13:46 and 14:28, of
@@ -597,7 +638,8 @@ def analyse(img: Image.Image, spread: float | None = None, medium: str = "") -> 
     faint = [] if monochrome or spread < COLOUR_SPREAD[0] else cast_accents(fine, dominant, accents)
     accents = sorted([*accents, *faint], key=lambda a: -a[1])
     shown = [c for c, _ in dominant] + [c for c, _, _ in accents] + [c for c, _, _ in small]
-    more = passed_over(merged[len(dominant) :], shown)
+    painted = painting(medium)
+    more = passed_over(merged[len(dominant) :], shown, painted)
     shown += [c for c, _ in more]
     # A white that stands out stands out in a dark picture of one tone
     # too: the white line of a black poster (Mateusz 2026-11-14 19:26, of
@@ -609,7 +651,7 @@ def analyse(img: Image.Image, spread: float | None = None, medium: str = "") -> 
     # white gouache on brown paper: „Zwłaszcza brakuje bieli”).
     # A print's dense lines grey it all over: its light is its paper still.
     on_tint = max(float(c[0]) for c, _ in dominant) < LIGHT_TINTED and not printed(medium)
-    white = lights(fine, shown) if not monochrome or dark or on_tint else []
+    white = lights(fine, shown, painted) if not monochrome or dark or on_tint else []
     # What the bar shows the picture is found by (Mateusz 2026-11-12
     # 15:16): the white it shows for standing out (here, or as the colour
     # passed over: the robes of Delacroix's Indian) is an accent by name.
@@ -638,13 +680,14 @@ def analyse(img: Image.Image, spread: float | None = None, medium: str = "") -> 
                     break
             else:
                 tinted.append((colour, share))
-    swatches = [_swatch(c, w) for c, w in dominant + more]
+    swatches = [_swatch(c, w) for c, w in dominant]
+    swatches += [_swatch(whiter(c) if painted and _white(c) else c, w) for c, w in more]
     # A touch is what the eye goes to: it is shown before the least accent.
     room = MAX_SWATCHES - len(swatches) - len(small) - len(white) - len(tinted)
     swatches += [_swatch(c, w, accent=True) for c, w, _ in striking(accents, dominant, room)]
     swatches += [_swatch(c, w, accent=True) for c, w in tinted]
     swatches += [_swatch(c, w, accent=True) for c, w, _ in small]
-    swatches += [_swatch(c, w, accent=True) for c, w in white]
+    swatches += [_swatch(whiter(c), w, accent=True) for c, w in white]
     tags = colour_tags(fine, spread, shown, monochrome, also)
     varnish = 0.0 if monochrome or spread < COLOUR_SPREAD[0] else varnished_blue(fine, tags)
     return Analysis(swatches, tags, colour_shares(fine, spread), varnish)
@@ -1089,15 +1132,36 @@ def dominant_colours(centres: np.ndarray, weights: np.ndarray) -> list[tuple[np.
 
 
 def passed_over(
-    rest: Sequence[tuple[np.ndarray, float]], shown: Sequence[np.ndarray]
+    rest: Sequence[tuple[np.ndarray, float]], shown: Sequence[np.ndarray], painted: bool = False
 ) -> list[tuple[np.ndarray, float]]:
     """The largest of the colours the dominant ones left no room for
     (``rest``) that is sizeable and unlike every colour ``shown`` (see
-    ``PASSED_SHARE``); (colour, weight), or nothing."""
+    ``PASSED_SHARE``), or in a painting (``painted``) the white among
+    them (``PAINTED_WHITE``); (colour, weight), or nothing."""
     for centre, weight in rest:
         if weight >= PASSED_SHARE and all(_distance(centre, c) >= PASSED_APART for c in shown):
             return [(centre, weight)]
+    if not painted:
+        return []
+    for centre, weight in rest:
+        if (
+            weight >= PASSED_SHARE
+            and _white(centre)
+            and all(centre[0] - c[0] >= PAINTED_WHITE_ABOVE for c in shown)
+        ):
+            return [(centre, weight)]
     return []
+
+
+def _white(lab: np.ndarray) -> bool:
+    """Whether a colour is a painting's white (``PAINTED_WHITE``)."""
+    return lab[0] >= PAINTED_WHITE and float(np.hypot(lab[1], lab[2])) <= PAINTED_WHITE_CHROMA
+
+
+def whiter(lab: np.ndarray) -> np.ndarray:
+    """A white as the bar shows it: a little whiter (``WHITE_LIFT``)."""
+    light = min(WHITE_TOP, max(float(lab[0]), float(lab[0]) + WHITE_LIFT))
+    return np.array([light, lab[1] * WHITE_LIFT_CHROMA, lab[2] * WHITE_LIFT_CHROMA])
 
 
 def merged_colours(centres: np.ndarray, weights: np.ndarray) -> list[tuple[np.ndarray, float]]:
@@ -1312,16 +1376,22 @@ def touches(
     return kept
 
 
-def lights(lab: np.ndarray, shown: Sequence[np.ndarray]) -> list[tuple[np.ndarray, float]]:
+def lights(
+    lab: np.ndarray, shown: Sequence[np.ndarray], painted: bool = False
+) -> list[tuple[np.ndarray, float]]:
     """The white that stands out in a picture whose colours (``shown``) are
     all darker: the foam of Turner's sea, a white cap in a dark room; (colour,
-    weight), or nothing (see ``LIGHT_TOP``). Its tag is ``"accent:white"``."""
+    weight), or nothing (see ``LIGHT_TOP``; in a painting, ``painted``,
+    ``PAINTED_LIGHT_CHROMA``). Its tag is ``"accent:white"``."""
+    chroma, above = (
+        (PAINTED_LIGHT_CHROMA, PAINTED_LIGHT_ABOVE) if painted else (LIGHT_CHROMA, LIGHT_ABOVE)
+    )
     light = lab[:, 0]
     top = max(1, int(LIGHT_TOP * len(lab)))
     centre = lab[np.argsort(-light)[:top]].mean(0)
-    if centre[0] < LIGHT_WHITE or float(np.hypot(centre[1], centre[2])) > LIGHT_CHROMA:
+    if centre[0] < LIGHT_WHITE or float(np.hypot(centre[1], centre[2])) > chroma:
         return []
-    if shown and centre[0] - max(float(c[0]) for c in shown) < LIGHT_ABOVE:
+    if shown and centre[0] - max(float(c[0]) for c in shown) < above:
         return []
     if centre[0] - float(np.median(light)) < LIGHT_OVER:
         return []

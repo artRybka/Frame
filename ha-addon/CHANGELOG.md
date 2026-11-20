@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.290
+
+- Paski barw obrazów pokazują biel: białe kryzy, obrusy i koszule, które
+  dotąd wypadały za czterema głównymi barwami albo były za mało jaśniejsze
+  od kremowego mazaka. Biel na pasku jest trochę bielsza, niż zmierzona,
+  bo w ciemnym, ciepłym obrazie oko bierze ten krem za biel. Serwer po
+  aktualizacji przelicza barwy biblioteki (na NAS-ie 1–2 godziny).
+
 ## 1.145.289
 
 - Kadrowanie zdjęć z muzeów na iPhonie zostawia ramę tylko wtedy, gdy
