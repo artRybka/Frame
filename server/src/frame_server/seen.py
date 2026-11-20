@@ -136,6 +136,20 @@ class SeenModel:
     def folder(self) -> Path:
         return self.root / MODEL
 
+    def loaded(self) -> bool:
+        """Whether either side is in memory."""
+        with self._lock:
+            return self._picture is not None or self._words is not None
+
+    def release(self) -> None:
+        """Both sides and the tokenizer out of memory, read again on next
+        use (a second or two). The picture side took some 0.5 GB of the
+        NAS's memory to the next restart, the words' as much once a debug
+        question asked them (Mateusz 2026-11-20: "Potem chyba faktycznie nie
+        musi być cały czas w pamięci"). A run under way keeps its own hold."""
+        with self._lock:
+            self._picture = self._words = self._tokenizer = None
+
     def here(self) -> bool:
         return all((self.folder / name).is_file() for name in FILES)
 
@@ -665,6 +679,12 @@ class Seen:
                                 (self.clock() - began) / 60,
                             )
                             done = 0
+                        # Nothing left to number: the model out of memory
+                        # until a new work or a debug question wants it.
+                        # Never while works wait, nor in the app's pauses.
+                        if self.model.loaded():
+                            self.model.release()
+                            log.info("seen: nothing to number; the model let go of")
                         pause = IDLE
             except Exception as err:
                 self.trouble = str(err)

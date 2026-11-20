@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.291
+
+- Serwer nie zawiesza się już przy otwieraniu dzieła, którego oryginał
+  pobiera się długo (np. z Wellcome). Pilne pobranie dla aplikacji omija
+  tylko pobieranie w tle, a za innym pilnym czeka.
+- Serwer zajmuje mniej pamięci: wspólne pola dzieł w katalogu (ok. 600 MB
+  mniej), model SigLIP zwalniany, gdy nie ma nic do liczenia (nigdy w
+  trakcie), i oszczędniejszy przydział pamięci (`MALLOC_ARENA_MAX=2`).
+
 ## 1.145.290
 
 - Paski barw obrazów pokazują biel: białe kryzy, obrusy i koszule, które

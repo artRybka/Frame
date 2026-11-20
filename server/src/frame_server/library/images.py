@@ -151,6 +151,9 @@ COMMONS_WHOLE = 50_000_000
 #: out the app's use (:meth:`HostGuard.wait_calm`) with the picture's lock
 #: held, and a Szukaj tile waited for it with no end (2026-11-07).
 URGENT_LOCK_WAIT = 3.0
+#: How long an urgent asker waits for another urgent asker's download of the
+#: same picture before it downloads its own anyway (a host gone silent).
+URGENT_HOLDER_WAIT = 120.0
 #: Sources of the owner's own pictures (uploads, iCloud albums, the frame's
 #: placeholder): kept as they are, never trimmed of margins
 #: (:func:`~frame_server.imaging.margins.trim_margins`), a white wall or a
@@ -612,6 +615,8 @@ class ImageCache:
         self._sizes_path = root / "sizes.json"
         self._sizes: dict[str, list[int]] = self._load_sizes()
         self._locks: dict[str, threading.Lock] = {}
+        #: Whether the one holding a picture's lock (by key) is urgent.
+        self._urgent_holders: dict[str, bool] = {}
         #: The museum's own photographs of works the restorer drew again,
         #: downloaded for the full-screen viewer (:meth:`treated`), by
         #: address: the last few, so its buttons switch back and forth
@@ -637,18 +642,34 @@ class ImageCache:
         it takes the lock, and may still wait inside if the app comes back
         meanwhile; after :data:`URGENT_LOCK_WAIT` the urgent one downloads
         its own copy. The thumbnail of a Commons photograph in Szukaj stayed
-        empty for minutes while the background held it (2026-11-07)."""
+        empty for minutes while the background held it (2026-11-07).
+
+        Only the background's download is gone around: behind another urgent
+        one the asker waits for its file (up to :data:`URGENT_HOLDER_WAIT`).
+        Opening one Wellcome work, whose original came slowly, set ten of the
+        app's requests downloading and decoding it each on their own; the
+        NAS ran out of memory and the server was killed (2026-11-20)."""
         urgent = urgent or is_urgent()
         if not urgent:
             self.hosts.wait_calm(urlsplit(url).hostname or "")
         lock = self._lock(key)
         held = lock.acquire(timeout=URGENT_LOCK_WAIT if urgent else -1)
         if not held:
-            log.info("picture %s still on its way in the background; asked again now", key)
+            with self._guard:
+                behind_urgent = self._urgent_holders.get(key, False)
+            if behind_urgent:
+                held = lock.acquire(timeout=URGENT_HOLDER_WAIT)
+            if not held:
+                log.info("picture %s still on its way in the background; asked again now", key)
+        if held:
+            with self._guard:
+                self._urgent_holders[key] = urgent
         try:
             yield
         finally:
             if held:
+                with self._guard:
+                    self._urgent_holders.pop(key, None)
                 lock.release()
 
     def thumb_path(self, item: Item) -> Path:
