@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.288
+
+- Wyrażenia w Słowach („parowiec na rzece”) tłumaczy teraz iPhone, więc
+  kolejność według wyglądu szybciej jest właściwa. Muzea dalej dostają
+  zapytania ułożone przez Haiku.
+
 ## 1.145.287
 
 - Tłumaczenie słów w Szukaj na iPhonie naprawdę działa. Telefon szukał
