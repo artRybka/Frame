@@ -351,8 +351,9 @@ def _cards_stale(svc: FrameService, stamp: float) -> bool:
 
 
 def _cover_lost(svc: FrameService) -> bool:
-    """A work of some card's cover is hidden now, or no longer here."""
-    hidden = svc.library.hidden(viewer_id())
+    """A work of some card's cover is hidden now (by the household: the
+    cards are made for everyone), or no longer here."""
+    hidden = svc.library.hidden()
     return any(
         item in hidden or not svc.library.has(item.id)
         for _count, cover in _cards[1].values()
@@ -1574,7 +1575,7 @@ def keeper(svc: FrameService) -> Callable[[list[Item]], None]:
 
     def keep(items: list[Item]) -> None:
         gone = svc.images.gone_ids()
-        hidden = svc.library.hidden(viewer_id())
+        hidden = svc.library.hidden()  # the household's: the catalogue is everyone's
         svc.player.keep_spare(i for i in items if i.id not in gone and i not in hidden)
 
     return keep

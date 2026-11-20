@@ -200,7 +200,7 @@ struct ItemToolbar: ToolbarContent {
                 }
                 Button(action: { save(framed: true) }) {
                     Label {
-                        Text("W ramie")
+                        Text(bound: "W ramie")
                         Text(bound: PhotoSaver.framedNote(item))
                     } icon: {
                         Image(systemName: "photo.artframe")
@@ -213,7 +213,7 @@ struct ItemToolbar: ToolbarContent {
         } else {
             Button(action: { save(framed: false) }) {
                 Label {
-                    Text("Zapisz w Zdjęciach")
+                    Text(bound: "Zapisz w Zdjęciach")
                     if let note = PhotoSaver.colourNote(item) { Text(bound: note) }
                 } icon: {
                     Image(systemName: "square.and.arrow.down")
