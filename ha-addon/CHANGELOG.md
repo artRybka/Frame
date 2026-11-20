@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.287
+
+- Tłumaczenie słów w Szukaj na iPhonie naprawdę działa. Telefon szukał
+  „angielskiego” ogólnie, a pobrany jest „angielski (USA)”, więc dotąd
+  wszystko tłumaczył Haiku.
+
 ## 1.145.286
 
 - „Kadrowane”: cienkie linie, rama różowa zamiast przerywanej. Dzieło,
