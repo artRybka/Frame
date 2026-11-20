@@ -132,6 +132,15 @@ struct LiveBackend: FrameBackend {
         return try await perform(req, patient: true)
     }
 
+    func colours(itemID: String, made: String) async throws -> ColoursView {
+        var req = request(
+            "/api/library/items/\(escape(itemID))/colours",
+            query: [URLQueryItem(name: "made", value: made)]
+        )
+        req.timeoutInterval = 60
+        return try await perform(req, patient: true)
+    }
+
     func clean(itemID: String, made: String) async throws -> Item {
         // The original is made again from the museum's photograph and its
         // colours measured: seconds on a NAS, more when it is downloaded first.

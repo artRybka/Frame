@@ -31,16 +31,22 @@ struct OriginalViewer: View {
     var onChange: ((Item) -> Void)? = nil
     /// The work as it is now, once its colours were switched here.
     @State private var current: Item?
-    @State private var savingColours = false
-    /// The picture with the colours' correction switched the other way,
-    /// had in the background once the viewer is open (only where the
-    /// button is): a tap shows it at once and the server is told after
-    /// (Mateusz 2026-11-20: "Teraz każde kliknięcie włącz/wyłącz to sekundy").
-    @State private var otherColours: UIImage?
-    /// The colours as the button shows them while the server is told.
+    /// What the colours button switches for this person (`GET …/colours`),
+    /// asked once the viewer is open, only where the button is.
+    @State private var colours: ColoursView?
+    /// The picture without the colours' correction and with it: the one
+    /// shown when the viewer opened, the other made here (a varnish taken
+    /// off what is shown, `VarnishSum`) or had from the server (a sheet, or
+    /// the picture as it came). Mateusz 2026-11-20: "korekta może dotyczyć
+    /// tylko tego co widać a nie pliku i będzie szybciej i prościej".
+    @State private var plain: UIImage?
+    @State private var corrected: UIImage?
+    /// The colours as the button and the picture show them: switched at
+    /// the tap, the server told after (`tellColours`).
     @State private var coloursOn: Bool?
-    /// The picture's version switched here: already shown, not had again.
-    @State private var swappedTo: String?
+    /// What the server was last told here; nil, as the viewer opened.
+    @State private var toldColours: Bool?
+    @State private var telling = false
     @State private var framedOn = false
     /// Opened on "W ramie": the frame asked for once (in, or not to be
     /// had). Until then nothing is shown, so the work in its frame is the
@@ -79,8 +85,12 @@ struct OriginalViewer: View {
                 // The work never moves as its frame comes and goes; only
                 // the frame fades (Mateusz 2026-11-18).
                 ZoomableImage(
-                    image: picture, tiles: shownOff.isEmpty ? tiles : [], whole: whole,
-                    look: Treatment.look(shownOff), framed: framedImage, inner: work.framed?.inner,
+                    image: picture, tiles: shownOff.isEmpty && !showsCorrected ? tiles : [], whole: whole,
+                    // The colours fade from one to the other, as the
+                    // restorer's drawing does ("skokiem a nie płynnym
+                    // przejściem", Mateusz 2026-11-20).
+                    look: Treatment.look(shownOff) + (showsCorrected == openedCorrected ? 0 : 4),
+                    framed: framedImage, inner: work.framed?.inner,
                     framedOn: framedOn
                 ) {
                     withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() }
@@ -119,8 +129,8 @@ struct OriginalViewer: View {
                             // (zapamiętuje się stan)").
                             TreatmentButton(
                                 treatment: treatment, on: coloursShown,
-                                loading: savingColours && otherColours == nil
-                            ) { Task { await saveColours() } }
+                                loading: showsCorrected != coloursShown
+                            ) { switchColours() }
                         } else {
                             TreatmentButton(
                                 treatment: treatment, on: !off.contains(treatment),
@@ -149,7 +159,7 @@ struct OriginalViewer: View {
         .statusBarHidden(!chrome)
         // VoiceOver's two-finger scrub closes it, as the cross does.
         .accessibilityAction(.escape, close)
-        .task(id: "\(work.id)|\(work.pictureVersion)") { await load() }
+        .task(id: work.id) { await load() }
         .task(id: work.id) {
             if inFrame {
                 await toggleFramed()
@@ -165,7 +175,7 @@ struct OriginalViewer: View {
             }
         }
         .task(id: work.fragmentsID) { await loadTiles() }
-        .task(id: "\(work.id)|\(work.pictureVersion)|\(treatments.contains(.colours))") { await loadOtherColours() }
+        .task(id: "\(work.id)|\(cleaningOffered)") { await prepareColours() }
         .task(id: off) { await loadTreated() }
         .onAppear {
             // CI screenshots: the work shown without all that was done.
@@ -216,85 +226,113 @@ struct OriginalViewer: View {
     private var work: Item { current ?? item }
 
     /// What was done to the work's picture, in the buttons' order; the
-    /// colours' button also where they may be corrected and are not yet.
+    /// colours' button where the server says there is something to switch
+    /// (or, until it has said, where the card offered it).
     private var treatments: [Treatment] {
-        var found = Treatment.done(on: work)
-        if cleaningOffered || current != nil, work.kind == .artwork, !found.contains(.colours) {
-            found.insert(.colours, at: 0)
-        }
+        var found = Treatment.done(on: work).filter { $0 != .colours }
+        let offered = colours.map { $0.kind != "none" }
+            ?? (cleaningOffered || item.cleanedShown != nil)
+        if offered, work.kind == .artwork { found.insert(.colours, at: 0) }
         return found
     }
 
-    /// Whether the colours are shown corrected (as the button says it).
-    private var coloursShown: Bool { coloursOn ?? (work.cleanedShown != nil) }
+    /// Whether the viewer opened on the picture with its colours corrected
+    /// (the picture `load` has is that one).
+    private var openedCorrected: Bool { item.cleanedShown != nil }
 
-    /// The picture with the colours the other way, from the server (kept
-    /// there on disk both ways), while the work is looked at.
-    private func loadOtherColours() async {
-        // The one shown before a switch here stands in until this comes.
-        guard treatments.contains(.colours), !model.demoMode else { return }
-        let toClean = work.cleanedShown == nil
-        let ref = ImageRef.treated(
-            work.id, restored: true, cleaned: toClean, version: work.pictureVersion,
-            made: toClean ? ColourRecovery.made(PaintStyle.of(work)) ?? "paper" : nil
-        )
-        guard let request = model.backend.request(for: ref) else { return }
-        let loaded = try? await ImageLoader.shared.image(for: request, maxPixel: 4096, priority: .normal)
-        if Task.isCancelled { return }
-        otherColours = await loaded?.byPreparingForDisplay() ?? loaded
+    /// The colours as the button says them.
+    private var coloursShown: Bool { coloursOn ?? openedCorrected }
+
+    /// Whether the picture shown has them corrected: what the button says
+    /// once that picture is here, the one before until then.
+    private var showsCorrected: Bool {
+        if coloursShown == openedCorrected { return openedCorrected }
+        return (coloursShown ? corrected : plain) != nil ? coloursShown : openedCorrected
     }
 
-    /// The colours' button: the correction switched on or off for this
-    /// person and kept on the server (the card follows). With the other
-    /// picture had already, it is shown at once and the server told after;
-    /// should the server refuse, the picture goes back.
-    private func saveColours() async {
-        guard !savingColours else { return }
-        let on = work.cleanedShown != nil
-        let made = ColourRecovery.made(PaintStyle.of(work)) ?? "paper"
+    /// The other picture, ready before the button is touched: what it
+    /// switches asked of the server, and the picture made or had.
+    private func prepareColours() async {
+        guard item.kind == .artwork, cleaningOffered || openedCorrected else { return }
+        let made = ColourRecovery.made(PaintStyle.of(item)) ?? "paper"
+        guard let view = try? await model.backend.colours(itemID: item.id, made: made) else { return }
+        colours = view
+        guard view.kind != "none",
+              let request = model.backend.request(for: item.originalRef),
+              let shown = try? await ImageLoader.shared.image(for: request, maxPixel: 4096, priority: .high)
+        else { return }
+        if Task.isCancelled { return }
+        if openedCorrected {
+            corrected = shown
+            plain = await had(.treated(item.id, restored: true, cleaned: false, version: item.pictureVersion))
+        } else {
+            plain = shown
+            if view.kind == "varnish" {
+                let sum = VarnishSum(view)
+                let made = await Task.detached(priority: .userInitiated) { sum.apply(to: shown) }.value
+                corrected = await made?.byPreparingForDisplay() ?? made
+            } else {
+                corrected = await had(.treated(
+                    item.id, restored: true, cleaned: true, version: item.pictureVersion, made: made
+                ))
+            }
+        }
+    }
+
+    private func had(_ ref: ImageRef) async -> UIImage? {
+        guard let request = model.backend.request(for: ref),
+              let loaded = try? await ImageLoader.shared.image(for: request, maxPixel: 4096, priority: .normal)
+        else { return nil }
+        return await loaded.byPreparingForDisplay() ?? loaded
+    }
+
+    /// The colours' button: the picture switched at once (as soon as the
+    /// other one is here), the server told after (`tellColours`).
+    private func switchColours() {
         UISelectionFeedbackGenerator().selectionChanged()
-        let before = image
-        let swapped = otherColours.flatMap { other in
-            shownOff.contains(.restored) ? nil : other
+        treatFailed = false
+        if !shownOff.isEmpty {
+            off.remove(.restored)  // the colours of the work as it is shown
         }
-        withAnimation(.easeInOut(duration: 0.2)) {
-            savingColours = true
-            treatFailed = false
-            if let swapped {
-                coloursOn = !on
-                image = swapped
-                otherColours = before
-            }
-        }
-        defer { withAnimation(.easeInOut(duration: 0.2)) { savingColours = false } }
-        do {
-            let updated = on
-                ? try await model.backend.unclean(itemID: work.id)
-                : try await model.backend.clean(itemID: work.id, made: made)
-            treated = [:]
-            off.remove(.colours)
-            shownOff.remove(.colours)
-            if swapped != nil { swappedTo = updated.pictureVersion }
-            current = updated
-            coloursOn = nil
-            onChange?(updated)
-        } catch {
-            if swapped != nil {
+        coloursOn = !coloursShown
+        Task { await tellColours() }
+    }
+
+    /// The server told what the button says now, one ask at a time, the
+    /// last switch of quick ones winning; refused, the picture goes back
+    /// as the server has it. The card follows each answer.
+    private func tellColours() async {
+        guard !telling else { return }
+        telling = true
+        defer { telling = false }
+        while true {
+            let wanted = coloursShown
+            let kept = toldColours ?? openedCorrected
+            if wanted == kept { return }
+            do {
+                let updated = wanted
+                    ? try await model.backend.clean(
+                        itemID: item.id, made: ColourRecovery.made(PaintStyle.of(item)) ?? "paper"
+                    )
+                    : try await model.backend.unclean(itemID: item.id)
+                toldColours = wanted
+                current = updated
+                onChange?(updated)
+            } catch {
                 withAnimation(.easeInOut(duration: 0.2)) {
-                    otherColours = image
-                    image = before
-                    coloursOn = nil
+                    coloursOn = kept
+                    if !error.isCancellation { treatFailed = true }
                 }
-            }
-            if !error.isCancellation {
-                withAnimation(.easeInOut(duration: 0.2)) { treatFailed = true }
+                return
             }
         }
     }
 
     /// The picture with what is left off, once it came; else the work's.
     private var shownImage: UIImage? {
-        shownOff.isEmpty ? image : treated[shownOff] ?? image
+        if !shownOff.isEmpty { return treated[shownOff] ?? image }
+        if showsCorrected != openedCorrected { return showsCorrected ? corrected : plain }
+        return image
     }
 
     private func toggle(_ treatment: Treatment) {
@@ -370,9 +408,6 @@ struct OriginalViewer: View {
     /// never a lone spinner while the original comes), then the copy the
     /// detail screen shows, then a sharper one to zoom into.
     private func load() async {
-        if let swappedTo, swappedTo == work.pictureVersion, image != nil {
-            return  // switched here: the picture shown is that one already
-        }
         if let request = model.backend.request(for: ItemPeeks.tiles[work.id]?.thumb ?? .thumb(work.id)),
            let thumb = try? await ImageLoader.shared.image(for: request, maxPixel: 700, priority: .high) {
             if !underlay { image = thumb }

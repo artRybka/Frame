@@ -85,6 +85,9 @@ protocol FrameBackend: Sendable {
     /// "Odżółć papier"); `made`: how the app says it is made ("oil",
     /// "paper", "opaque", `ColourRecovery.made`).
     func recovery(itemID: String, made: String) async throws -> RecoveryView
+    /// What the full-screen viewer's colours button switches for this
+    /// person, and for a varnish the numbers to take it off with.
+    func colours(itemID: String, made: String) async throws -> ColoursView
     /// "Zdejmij werniks" / "Odżółć papier": the work shown cleaned from
     /// now on, everywhere; its colours are measured on the cleaned picture.
     func clean(itemID: String, made: String) async throws -> Item
