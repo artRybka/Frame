@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.296
+
+- Serwer co 10 minut zapisuje w logu, ile zajmuje pamięci. Właściciel
+  może zobaczyć, na co ją wydaje, i oddać nieużywaną systemowi. Nic się
+  nie zmienia w działaniu, to diagnostyka zużycia pamięci na NAS-ie.
+
 ## 1.145.295
 
 - Szukanie wyglądem gotowe do przesiadki na SigLIP 2: progi bliskości
