@@ -5,17 +5,19 @@ import UIKit
 /// model looks at a batch of the works' photographs one after another, not
 /// only those whose card he opens (Mateusz 2026-11-20: "z ustawienia w
 /// Konfiguracji > Diagnostyka gdzie mógłby robić to większą seria"). What it
-/// cut, and what it left to him, wait in Playlisty → "Kadrowane".
+/// cut, and what it left to him, wait in "Sprawdź kadry" here (Mateusz
+/// 2026-11-21: was a list among Playlisty).
 struct MuseumCropSection: View {
     @Environment(AppModel.self) private var model
     @State private var batch = MuseumCropBatch()
     @State private var teaching = false
+    @State private var checking = LaunchRoute.cropCheck
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             SectionHeader(title: "Kadrowanie zdjęć z muzeów", subtitle: "Na iPhonie")
             Card {
-                Text(bound: "Model na iPhonie odcina ramę, sztalugę albo tło wokół dzieła, gdy jest pewny i dzieło jest sfotografowane prawie na wprost. Resztę zostawia bez kadru do ręcznej poprawki. Wyniki czekają w Playlisty → „Kadrowane”.")
+                Text(bound: "Model na iPhonie odcina ramę, sztalugę albo tło wokół dzieła, gdy jest pewny i dzieło jest sfotografowane prawie na wprost. Resztę zostawia bez kadru do ręcznej poprawki. Wyniki czekają w „Sprawdź kadry”.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.inkSoft)
                 Divider()
@@ -64,6 +66,26 @@ struct MuseumCropSection: View {
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
             Button {
+                checking = true
+            } label: {
+                HStack(spacing: 8) {
+                    Label("Sprawdź kadry", systemImage: "checkmark.rectangle.stack")
+                        .font(.subheadline.weight(.medium))
+                    if let review = model.cropReview, !review.isEmpty {
+                        Text(bound: "\(review.cut.count + review.unsure.count)")
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(Theme.paper)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(Theme.vermilion, in: Capsule())
+                    }
+                }
+            }
+            .buttonStyle(.bordered)
+            Text(bound: "Kadry modelu jeden po drugim: zatwierdź, popraw albo pomiń.")
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
+            Button {
                 teaching = true
             } label: {
                 Label("Ucz kadrowania", systemImage: "graduationcap")
@@ -74,8 +96,17 @@ struct MuseumCropSection: View {
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
         }
-        .task { await batch.count(with: model.backend) }
+        .task {
+            await batch.count(with: model.backend)
+            await model.refreshCropReview()
+        }
         .fullScreenCover(isPresented: $teaching) { TeachCropView() }
+        .fullScreenCover(isPresented: $checking) {
+            CropCheckView()
+        }
+        .onChange(of: batch.running) { _, running in
+            if !running { Task { await model.refreshCropReview() } }
+        }
     }
 }
 

@@ -146,6 +146,11 @@ def test_the_phone_cuts_and_claude_is_asked_nothing(
         assert [i["id"] for i in after["cut"]] == ["mnw:2"] and after["unsure"] == []
         after = client.post("/api/crops/review/mnw:2/fine").json()
         assert after["cut"] == [] and after["unsure"] == []
+        # "Cofnij" takes the approval back, and gives it again.
+        back = client.delete("/api/crops/review/mnw:2/fine").json()
+        assert [i["id"] for i in back["cut"]] == ["mnw:2"]
+        assert client.delete("/api/crops/review/mnw:2/fine").status_code == 404
+        assert client.post("/api/crops/review/mnw:2/fine").json()["cut"] == []
         assert client.post("/api/crops/review/mnw:3/fine").status_code == 409
         lessons = {lesson["id"]: lesson for lesson in client.get("/api/crops/lessons").json()}
         assert set(lessons) == {"mnw:1", "mnw:2"}

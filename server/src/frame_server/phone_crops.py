@@ -259,6 +259,15 @@ class PhoneCrops:
         self._save(state)
         return True
 
+    def unfine(self, item_id: str) -> bool:
+        """ "Cofnij" in "Sprawdź kadry": the approval taken back, the work on
+        the list again. Whether it had been approved."""
+        state = self._state()
+        if state["fine"].pop(item_id, None) is None:
+            return False
+        self._save(state)
+        return True
+
     def sure(self, ids: list[str]) -> dict[str, float]:
         """How sure the model was a cut is wanted, of each of ``ids``."""
         looked = self._state()["looked"]

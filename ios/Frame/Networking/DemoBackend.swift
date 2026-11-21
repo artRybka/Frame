@@ -23,6 +23,8 @@ actor DemoBackend: FrameBackend {
     private var items: [Item]
     /// "Ucz kadrowania": what he said of each photograph.
     private var demoTold: [String: CropTeach.Answer] = [:]
+    /// "Sprawdź kadry" in the demo: the works approved.
+    private var demoFine: Set<String> = []
     private var playlistsByID: [Int: Playlist]
     /// The cards' order once one was moved, as the server keeps it.
     private var playlistOrder: [Int] = []
@@ -864,7 +866,7 @@ actor DemoBackend: FrameBackend {
         try update(id) { $0.excluded = excluded }
     }
 
-    /// "Kadrowane" in the demo: a few works as the phone's model left them.
+    /// "Sprawdź kadry" in the demo: a few works as the phone's model left them.
     /// The framed painting (`-demoFramed YES`) first, the others given a
     /// cut a little in from the photograph's edges.
     func cropReview() async throws -> CropReview {
@@ -872,7 +874,8 @@ actor DemoBackend: FrameBackend {
         if let framed = chosen.firstIndex(where: { items[$0].id == Self.framedID }) {
             chosen.insert(chosen.remove(at: framed), at: 0)
         }
-        let cut = Array(chosen.prefix(4)), unsure = Array(chosen.dropFirst(4).prefix(3))
+        let cut = Array(chosen.prefix(4)).filter { !demoFine.contains(items[$0].id) }
+        let unsure = Array(chosen.dropFirst(4).prefix(3)).filter { !demoFine.contains(items[$0].id) }
         for n in cut where items[n].cut == nil {
             let item = items[n]
             let aspect = item.width.flatMap { w in item.height.map { Double(w) / Double(max($0, 1)) } } ?? 0.75
@@ -885,6 +888,16 @@ actor DemoBackend: FrameBackend {
             CropReview.Sure(id: items[$0.element].id, sure: $0.offset < cut.count ? 0.96 - 0.02 * Double($0.offset) : 0.6)
         }
         return CropReview(cut: cut.map { items[$0].summary }, unsure: unsure.map { items[$0].summary }, sure: sure)
+    }
+
+    func cropFine(itemID: String) async throws -> CropReview {
+        demoFine.insert(itemID)
+        return try await cropReview()
+    }
+
+    func cropUnfine(itemID: String) async throws -> CropReview {
+        demoFine.remove(itemID)
+        return try await cropReview()
     }
 
     func phoneCropsWaiting(limit: Int) async throws -> PhoneCropsWaiting {
