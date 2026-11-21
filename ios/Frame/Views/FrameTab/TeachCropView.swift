@@ -86,6 +86,8 @@ struct TeachCropView: View {
             ArtImage(ref: .thumb(work.id), placeholder: Theme.mat, maxPixel: 1200, contentMode: .fit, priority: .high)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .id(work.id)
+            CornerZoom(work: work)
+                .id("corner-\(work.id)")
             Text(bound: [work.artist, work.title].filter { !$0.isEmpty }.joined(separator: " · "))
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
@@ -179,6 +181,44 @@ struct TeachCropView: View {
             queue += page.works.filter { !have.contains($0.id) && !skipped.contains($0.id) }
         } catch {
             model.show(error)
+        }
+    }
+}
+
+/// The photograph's top left corner, large (Mateusz 2026-11-21 00:54 UTC:
+/// „pokazuj mi powiększenie jednego z narożników prezentowanego dzieła
+/// (czasami ramy są wąskie i nie widać ich na małym ekranie telefonu”):
+/// a quarter of its shorter side, from the kept original.
+struct CornerZoom: View {
+    let work: ItemSummary
+    static let side: CGFloat = 132
+    /// The share of the photograph's shorter side shown.
+    static let share: CGFloat = 0.25
+
+    private var aspect: CGFloat {
+        if let a = work.aspect, a > 0 { return CGFloat(a) }
+        if let w = work.width, let h = work.height, h > 0 { return CGFloat(w) / CGFloat(h) }
+        return 0.75
+    }
+
+    var body: some View {
+        // The whole photograph drawn so large that a quarter of its shorter
+        // side fills the box, its top left corner in the box's.
+        let short = Self.side / Self.share
+        let size = aspect >= 1 ? CGSize(width: short * aspect, height: short) : CGSize(width: short, height: short / aspect)
+        HStack(spacing: 10) {
+            ArtImage(
+                ref: .image(work.id), fallback: .thumb(work.id), placeholder: Theme.mat,
+                maxPixel: 2400, contentMode: .fit
+            )
+            .frame(width: size.width, height: size.height)
+            .frame(width: Self.side, height: Self.side, alignment: .topLeading)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 1))
+            Text(bound: "Lewy górny róg, powiększony")
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
+            Spacer(minLength: 0)
         }
     }
 }
