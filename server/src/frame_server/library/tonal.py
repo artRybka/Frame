@@ -97,12 +97,16 @@ def _lifted(colour: np.ndarray) -> np.ndarray:
 def clusters(fine: np.ndarray, k: int = CLUSTERS) -> list[tuple[np.ndarray, float]]:
     """The picture's colours, each its clean colour (the more coloured half
     of its pixels) at its own lightness, and its share."""
-    weighted = fine * np.array([1.0, 2.0, 2.0])
+    weighted = (fine * np.array([1.0, 2.0, 2.0])).astype(np.float32)
     rng = np.random.default_rng(0)
     centres = weighted[rng.choice(len(weighted), min(k, len(weighted)), replace=False)]
-    owner = np.zeros(len(weighted), dtype=int)
+
+    def nearest(points: np.ndarray) -> np.ndarray:
+        d = (points**2).sum(1)[:, None] - 2 * points @ centres.T + (centres**2).sum(1)[None]
+        return np.asarray(np.argmin(d, 1))
+
     for _ in range(25):
-        owner = np.argmin(((weighted[:, None] - centres[None]) ** 2).sum(2), 1)
+        owner = nearest(weighted)
         centres = np.array(
             [
                 weighted[owner == j].mean(0) if (owner == j).any() else centres[j]

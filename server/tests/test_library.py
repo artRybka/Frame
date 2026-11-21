@@ -385,12 +385,12 @@ def test_analyse_blue_picture() -> None:
     assert swatches[0].hex.startswith("#")
 
 
-
 def _on_paper(img: Image.Image, *args: object, **kwargs: object) -> colors.Analysis:
     """``analyse`` of a work on paper: its bar is the largest colours and
     what stands out beside them. A painting's is its tonal masses and
     accents (``tonal.bar``, tests/test_tonal.py)."""
     return analyse(img, *args, medium="paper", **kwargs)  # type: ignore[arg-type]
+
 
 def test_analyse_finds_small_vivid_accents() -> None:
     # A Vermeer-like interior: a pale wall, brown table and dark corners,
