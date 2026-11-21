@@ -3,8 +3,9 @@ with no Claude at all (Mateusz 2026-11-20: „Celem jest całkowite uniknięcie
 Opus”, „Gdy model brak pewności — po prostu zostawmy do ręcznego
 kadrowania”, „Musi szukać prostokątów prawie na wprost”).
 
-The model (``ios/Models/Kadr.mlpackage``; paintings' own ``KadrPainting.mlpackage``, trained on the Mac from
-Opus's and his own cuts, ``framecam-share/kadr-muzea2``) gives two masks of
+The model (``ios/Models/Kadr.mlpackage``; paintings' own
+``KadrPainting.mlpackage``, trained on the Mac from Opus's and his own
+cuts, ``framecam-share/kadr-muzea2``) gives two masks of
 the photograph letterboxed to :data:`SIDE` (the work, the frame or
 passe-partout round it) and how sure it is the photograph wants a cut at
 all. What is made of them here is the truth the phone's core
