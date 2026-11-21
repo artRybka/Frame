@@ -2293,6 +2293,12 @@ extension AppModel {
         phonePictures[itemID]?.pending = false
     }
 
+    /// The server refused the switch: the work's own pictures again.
+    func phoneForget(_ itemID: String) {
+        guard phonePictures.removeValue(forKey: itemID) != nil else { return }
+        pictureChanges[itemID, default: 0] += 1
+    }
+
     /// The picture made on the phone for `ref`, if any: a thumbnail, the
     /// card's original (not a tile, which is cut otherwise).
     func phonePicture(for ref: ImageRef, maxPixel: CGFloat) -> UIImage? {

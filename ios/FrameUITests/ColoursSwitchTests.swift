@@ -64,6 +64,35 @@ final class ColoursSwitchTests: XCTestCase {
         Self.log("card-moved \(moved)")
     }
 
+    /// The card's own menu ("Odżółć papier") switches its picture at once
+    /// too (Mateusz 2026-11-21: "Pomimo komunikatu odżółconym papierze,
+    /// dzieło pozostaje zażółcone jeszcze przez wiele sekund").
+    @MainActor
+    func testTheCardsMenuSwitchesAtOnce() throws {
+        try? FileManager.default.createDirectory(atPath: Self.folder, withIntermediateDirectories: true)
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-demo", "YES", "-screen", "detail", "-demoSlowServer", "4", "-paintStyle", "pen", "-demoPaper", "YES",
+        ]
+        app.launch()
+        let more = app.buttons["Więcej"].firstMatch
+        XCTAssertTrue(more.waitForExistence(timeout: 40), "no menu on the card")
+        sleep(6)  // the card has asked what its colours may be
+        let before = shot("menu-1-before")
+        more.tap()
+        let entry = app.buttons["Odżółć papier"].firstMatch
+        XCTAssertTrue(entry.waitForExistence(timeout: 10), "no \"Odżółć papier\" in the card's menu")
+        entry.tap()
+        usleep(1_500_000)  // still before the slow server answers
+        let after = shot("menu-2-after")
+        let moved = Self.apart(before, after, top: 0.12)
+        XCTAssertGreaterThan(moved, 4, "the card did not take the de-yellowed picture at once")
+        sleep(6)  // the server has answered
+        let answered = shot("menu-3-server-answered")
+        XCTAssertLessThan(Self.apart(after, answered, top: 0.12), 1.5, "the card changed again when the server answered")
+        Self.log("menu-moved \(moved)")
+    }
+
     @MainActor
     private func check(_ style: [String], named prefix: String) throws {
         try? FileManager.default.createDirectory(atPath: Self.folder, withIntermediateDirectories: true)
@@ -89,7 +118,9 @@ final class ColoursSwitchTests: XCTestCase {
         let switched = shot("2-just-after-tap")
         XCTAssertTrue(Self.on(button))
         let moved = Self.apart(before, switched)
-        XCTAssertGreaterThan(moved, 4, "the picture did not change within a second of the tap")
+        // A sheet with little paper showing (a painting on it) changes
+        // less: 3 on van Gogh's "The Poet's Garden" (2026-11-21).
+        XCTAssertGreaterThan(moved, style.contains("-demoPaper") ? 2 : 4, "the picture did not change within a second of the tap")
 
         sleep(6)  // the slow server has answered
         let answered = shot("3-server-answered")

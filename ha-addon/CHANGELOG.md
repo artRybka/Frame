@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.293
+
+- „Odżółć papier”, „Zdejmij werniks” i „Przywróć…” w menu „…” karty
+  zmieniają obraz od razu, bez czekania kilku sekund na serwer.
+
 ## 1.145.292
 
 - Menu „…” dzieła krótsze: bez „Przywróć zdjęcie muzeum” (jest na górze
