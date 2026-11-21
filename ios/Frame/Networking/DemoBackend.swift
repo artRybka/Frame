@@ -21,6 +21,8 @@ actor DemoBackend: FrameBackend {
     }
 
     private var items: [Item]
+    /// "Ucz kadrowania": what he said of each photograph.
+    private var demoTold: [String: CropTeach.Answer] = [:]
     private var playlistsByID: [Int: Playlist]
     /// The cards' order once one was moved, as the server keeps it.
     private var playlistOrder: [Int] = []
@@ -887,6 +889,17 @@ actor DemoBackend: FrameBackend {
 
     func phoneCropsWaiting(limit: Int) async throws -> PhoneCropsWaiting {
         PhoneCropsWaiting(model: MuseumCrop.model, side: MuseumCrop.photoSide, works: [], left: 1240)
+    }
+
+    /// "Ucz kadrowania" in the demo: the works not told of yet.
+    func cropTeach(kind: Int, limit: Int) async throws -> CropTeach {
+        let works = items.filter { $0.kind == .artwork && !$0.excluded && demoTold[$0.id] == nil }
+        return CropTeach(works: Array(works.prefix(limit)).map(\.summary), told: demoTold.count)
+    }
+
+    func cropTell(itemID: String, _ answer: CropTeach.Answer?) async throws -> CropTeach {
+        demoTold[itemID] = answer
+        return CropTeach(works: [], told: demoTold.count)
     }
 
     func hiddenItems() async throws -> ItemPage {

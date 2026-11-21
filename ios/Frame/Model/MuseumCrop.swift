@@ -276,6 +276,18 @@ struct CropReview: Codable, Hashable, Sendable {
     var isEmpty: Bool { cut.isEmpty && unsure.isEmpty }
 }
 
+/// "Ucz kadrowania": catalogue photographs of one kind for his word at a
+/// glance, and how many he has given.
+struct CropTeach: Codable, Hashable, Sendable {
+    var works: [ItemSummary]
+    var told: Int
+
+    /// What he says of a photograph.
+    enum Answer: String, Codable, Sendable {
+        case whole, cut, framed
+    }
+}
+
 extension MuseumCrop {
     /// A work's photograph looked at on the phone and what was found told
     /// to the server: the work as it is now when it was cut, else nil.

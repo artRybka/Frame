@@ -230,3 +230,26 @@ def test_a_print_is_cut_to_its_sheet_with_no_frame(
         assert cut["cut"] and cut["item"]["cut"]["work"] == KEPT
         assert cut["item"]["cut"]["surround"] is None
         assert _found("mnw:2", client)["item"]["cut"]["framed_kind"] == "frame"
+
+
+def test_he_tells_at_a_glance_whether_a_painting_wants_a_cut_and_a_frame(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    # Mateusz 2026-11-21: „ekran gdzie dam mu dane startowe”, one kind at a time.
+    _work(service, "mnw:1", pooled=True, medium="olej, płótno")
+    _work(service, "mnw:2", pooled=True, medium="olej, płótno")
+    _work(service, "mnw:3", pooled=True, medium="akwaforta, papier")
+    with _client(service) as client:
+        shown = client.get("/api/crops/teach").json()
+        assert sorted(w["id"] for w in shown["works"]) == ["mnw:1", "mnw:2"] and shown["told"] == 0
+        told = client.post("/api/crops/teach/mnw:1", json={"answer": "framed"}).json()
+        assert told["told"] == 1
+        assert [w["id"] for w in client.get("/api/crops/teach").json()["works"]] == ["mnw:2"]
+        assert client.post("/api/crops/teach/mnw:2", json={"answer": "nope"}).status_code == 422
+        client.post("/api/crops/teach/mnw:2", json={"answer": "whole"})
+        assert client.delete("/api/crops/teach/mnw:2").json()["told"] == 1
+        (lesson,) = client.get("/api/crops/told").json()
+        assert lesson["id"] == "mnw:1" and lesson["told"] == "framed" and lesson["kind"] == 0
+        prints = client.get("/api/crops/teach", params={"kind": 2}).json()["works"]
+        assert [w["id"] for w in prints] == ["mnw:3"]
