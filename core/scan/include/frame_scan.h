@@ -75,14 +75,15 @@ int frame_crop_letterbox(const unsigned char* pixels, int rows, int columns, int
 
 /* What the model's answer about `pixels` comes to: `logits` its `masks`
  * (2 × `side` × `side`: the work, the frame or passe-partout around it,
- * before the sigmoid), `sure` its `cut`. The work's corners set on the
+ * before the sigmoid), `sure` its `cut`, a cut at `cut_at` (`SURE`, a
+ * painting's own model `PAINTING_SURE`: `crop_model.sure_of`). The work's corners set on the
  * photograph's edges into `work`, the outer edge around it into
  * `surround` (x and y of the top left, top right, bottom right and bottom
  * left, 0–1 across and down); `found`: 1 when there is a work, 2 when
  * there is a surround (both: 3). 1 cut it, 0 it wants no cut, 2 unsure
  * (left whole, for the owner); -1 when it went wrong (said in `error`). */
 int frame_crop_find(const unsigned char* pixels, int rows, int columns, const float* logits, int side, double sure,
-                    double* work, double* surround, int* found, char* error, int error_size);
+                    double cut_at, double* work, double* surround, int* found, char* error, int error_size);
 
 /* No more threads than these from now on (0: as many as there are cores). */
 void frame_scan_threads(int threads);

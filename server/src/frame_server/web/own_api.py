@@ -362,6 +362,28 @@ async def find_work(token: str, svc: Svc) -> Incoming:
         raise HTTPException(503, str(err)) from err
 
 
+class PhoneFoundWork(BaseModel):
+    """The work the phone found in a photograph itself (``phone_cuts``)."""
+
+    corners: list[tuple[float, float]] | None = None
+    surround: list[tuple[float, float]] | None = None
+    surround_kind: str = ""
+
+
+@router.post("/own/photos/{token}/found", response_model=Incoming)
+async def phone_found_work(token: str, found: PhoneFoundWork, svc: Svc) -> Incoming:
+    """The phone's own find kept (no Claude, Mateusz 2026-11-21): the
+    server's merge goes by it, and the work's frame is kept from it."""
+    corners = valid(found.corners) if found.corners is not None else None
+    surround = valid(found.surround) if found.surround is not None else None
+    try:
+        return await run_in_threadpool(
+            svc.own_works.phone_found, token, corners, surround, found.surround_kind
+        )
+    except LookupError as err:
+        raise HTTPException(404, str(err)) from err
+
+
 @router.post("/own/hints", response_model=Hints)
 async def hints(ask: HintsAsk, svc: Svc) -> Hints:
     """Signature, date, technique and a plain title read off the work."""

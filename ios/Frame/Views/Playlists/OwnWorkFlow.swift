@@ -759,8 +759,17 @@ final class OwnSending {
         }
         first = sent
         look = Task<OwnIncoming?, Never> {
-            guard let token = try? await sent.value.token else { return nil }
-            return try? await backend.findOwnWork(token: token)
+            guard let token = try? await sent.value.token,
+                  var seen = try? await backend.findOwnWork(token: token)
+            else { return nil }
+            // The server asked no one: the phone finds the work itself.
+            if seen.phoneCuts == true, seen.corners == nil,
+               let found = await OwnLocalCut.find(file: file, picture: OwnWorkFlow.upright(picture)) {
+                seen.corners = found.work
+                seen.shape = "rectangle"
+                try? await backend.ownFound(token: token, corners: found.work, surround: found.surround)
+            }
+            return seen
         }
         return sent
     }

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.301
+
+- Własne dzieła są kadrowane na iPhonie, bez pytania Opusa: telefon sam
+  znajduje dzieło na zdjęciu i wysyła serwerowi jego narożniki.
+- Malarstwo z muzeów ma własny model kadrowania na telefonie, lepszy od
+  dotychczasowego. Obrazy obejrzane starym modelem telefon obejrzy od nowa,
+  Twoje poprawki kadrów zostają.
+
 ## 1.145.300
 
 - Serwer co 10 minut oddaje systemowi wolną pamięć i zapisuje w logu,

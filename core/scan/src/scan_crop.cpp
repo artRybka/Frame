@@ -407,9 +407,9 @@ double upright_off(const Quad& quad, int w, int h) {
 }
 
 // `crop_model.decide`: 0 whole, 1 cut, 2 unsure.
-int decide(double sure, const std::optional<Quad>& quad, int w, int h) {
+int decide(double sure, const std::optional<Quad>& quad, int w, int h, double cut_at) {
     if (sure <= WHOLE) return 0;
-    if (sure < SURE || !quad) return 2;
+    if (sure < cut_at || !quad) return 2;
     return upright_off(*quad, w, h) <= UPRIGHT ? 1 : 2;
 }
 
@@ -447,7 +447,7 @@ int frame_crop_letterbox(const unsigned char* pixels, int rows, int columns, int
 }
 
 int frame_crop_find(const unsigned char* pixels, int rows, int columns, const float* logits, int side, double sure,
-                    double* work, double* surround, int* found, char* error, int error_size) {
+                    double cut_at, double* work, double* surround, int* found, char* error, int error_size) {
     using namespace frame::crop;
     try {
         if (!pixels || !logits || !work || !surround || !found || rows <= 0 || columns <= 0 || side <= 0)
@@ -467,7 +467,7 @@ int frame_crop_find(const unsigned char* pixels, int rows, int columns, const fl
         *found = (shown ? 1 : 0) | (around ? 2 : 0);
         if (shown) put(*shown, work);
         if (around) put(*around, surround);
-        return decide(sure, shown, columns, rows);
+        return decide(sure, shown, columns, rows, cut_at);
     } catch (const std::exception& err) {
         return failed(err.what(), error, error_size);
     } catch (...) {

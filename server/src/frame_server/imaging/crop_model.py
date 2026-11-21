@@ -3,8 +3,9 @@ with no Claude at all (Mateusz 2026-11-20: „Celem jest całkowite uniknięcie
 Opus”, „Gdy model brak pewności — po prostu zostawmy do ręcznego
 kadrowania”, „Musi szukać prostokątów prawie na wprost”).
 
-The model (``ios/Frame/Resources/Kadr.mlpackage``, trained on the Mac from
-Opus's and his own cuts, ``framecam-share/kadr-muzea2``) gives two masks of
+The model (``ios/Models/Kadr.mlpackage``; paintings' own
+``KadrPainting.mlpackage``, trained on the Mac from Opus's and his own
+cuts, ``framecam-share/kadr-muzea2``) gives two masks of
 the photograph letterboxed to :data:`SIDE` (the work, the frame or
 passe-partout round it) and how sure it is the photograph wants a cut at
 all. What is made of them here is the truth the phone's core
@@ -32,7 +33,13 @@ from PIL import Image
 from .cut import Quad, area, snap, valid
 
 #: The model's name: a work looked at by another is looked at again.
+#: Drawings, prints and the rest (``model_of``).
 MODEL = "kadr-4"
+#: Paintings' own model (Mateusz 2026-11-21 21:31 UTC, „Tak, wymień dla
+#: malarstwa”): fine-tuned on his 2137 paintings told at a glance ("Ucz
+#: kadrowania"), with Opus's corners where he said a cut; 302 of 375 held
+#: out as he said against kadr-4's 294, at its own :data:`PAINTING_SURE`.
+PAINTING_MODEL = "kadr-10p"
 #: The model's input: the photograph letterboxed into a square this long.
 SIDE = 384
 #: The photograph the phone looks at (``/full?side=``).
@@ -43,6 +50,9 @@ MASK = 0.5
 #: photograph is whole for sure; between the two it is left to him.
 SURE = 0.9
 WHOLE = 0.1
+#: :data:`PAINTING_MODEL`'s: as many cuts in the old test as kadr-4's at
+#: :data:`SURE` (it is less sure of itself, and tells them apart better).
+PAINTING_SURE = 0.81
 #: A cut's corners and sides at most this far from upright and square
 #: (degrees): a work photographed almost straight on.
 UPRIGHT = 3.0
@@ -249,13 +259,28 @@ def upright_off(quad: Sequence[Sequence[float]], size: tuple[int, int]) -> float
     return worst
 
 
-def decide(sure: float, quad: Sequence[Sequence[float]] | None, size: tuple[int, int]) -> str:
+def model_of(kind: int) -> str:
+    """The model that looks at a work of ``kind`` (:data:`KINDS`)."""
+    return PAINTING_MODEL if kind == 0 else MODEL
+
+
+def sure_of(kind: int) -> float:
+    """How sure of a cut :func:`model_of` ``kind`` must be to cut."""
+    return PAINTING_SURE if kind == 0 else SURE
+
+
+def decide(
+    sure: float,
+    quad: Sequence[Sequence[float]] | None,
+    size: tuple[int, int],
+    cut_at: float = SURE,
+) -> str:
     """ "cut", "whole" (no cut wanted) or "unsure" (left whole for him to
-    cut by hand) of the model's ``sure`` (that a cut is wanted) and the
-    work's corners as snapped."""
+    cut by hand) of the model's ``sure`` (that a cut is wanted, a cut at
+    ``cut_at``: :func:`sure_of`) and the work's corners as snapped."""
     if sure <= WHOLE:
         return "whole"
-    if sure < SURE or quad is None:
+    if sure < cut_at or quad is None:
         return "unsure"
     return "cut" if upright_off(quad, size) <= UPRIGHT else "unsure"
 
@@ -301,9 +326,10 @@ class Found:
     sure: float
 
 
-def find(rgb: np.ndarray, logits: np.ndarray, sure: float) -> Found:
+def find(rgb: np.ndarray, logits: np.ndarray, sure: float, cut_at: float = SURE) -> Found:
     """The phone's look at a museum photograph (``rgb``: the one it
-    letterboxed), from the model's ``masks`` and ``cut``."""
+    letterboxed), from the model's ``masks`` and ``cut`` (a cut at
+    ``cut_at``, :func:`sure_of` its kind)."""
     h, w = rgb.shape[:2]
     _, box = letterbox(rgb)
     probs = probabilities(logits, box, (w, h))
@@ -320,4 +346,4 @@ def find(rgb: np.ndarray, logits: np.ndarray, sure: float) -> Found:
         or not framed(rgb, work, surround)
     ):
         surround = None
-    return Found(decide(sure, work, (w, h)), work, surround, sure)
+    return Found(decide(sure, work, (w, h), cut_at), work, surround, sure)

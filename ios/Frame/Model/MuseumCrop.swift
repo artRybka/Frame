@@ -18,8 +18,23 @@ import ImageIO
 /// what was found and cuts the work when the model was sure
 /// (`POST /api/crops/phone/{id}`, `phone_crops.py`).
 enum MuseumCrop {
-    /// The model's name, as the server knows it (`crop_model.MODEL`).
+    /// The model's name, as the server knows it (`crop_model.MODEL`):
+    /// drawings, prints and the rest (`Models/Kadr.mlpackage`).
     static let model = "kadr-4"
+    /// Paintings' own (`crop_model.PAINTING_MODEL`, `Models/KadrPainting.mlpackage`;
+    /// Mateusz 2026-11-21 21:31 UTC: „Tak, wymień dla malarstwa”).
+    static let paintingModel = "kadr-10p"
+    /// How sure of a cut each must be to cut (`crop_model.SURE`,
+    /// `PAINTING_SURE`).
+    static let sure = 0.9
+    static let paintingSure = 0.81
+
+    /// The model that looks at a work of `kind` (`crop_model.model_of`).
+    static func modelOf(_ kind: Int) -> String { kind == 0 ? paintingModel : model }
+    /// How sure of a cut it must be (`crop_model.sure_of`).
+    static func sureOf(_ kind: Int) -> Double { kind == 0 ? paintingSure : sure }
+    /// Its file in the app.
+    private static func file(of kind: Int) -> String { kind == 0 ? "KadrPainting" : "Kadr" }
     /// The model's square (`crop_model.SIDE`).
     static let side = 384
     /// The photograph's long side looked at (`crop_model.PHOTO_SIDE`).
@@ -104,7 +119,7 @@ enum MuseumCrop {
     /// What the model's answer about `photo` comes to
     /// (`crop_model.find`): `logits` its `masks` (2 × `side` × `side`),
     /// `sure` its `cut`.
-    static func find(_ photo: Pixels, logits: [Float], sure: Double) throws -> Found {
+    static func find(_ photo: Pixels, logits: [Float], sure: Double, cutAt: Double = MuseumCrop.sure) throws -> Found {
         guard logits.count == 2 * side * side else { throw Failed(told: "the model's masks are not its size") }
         var work = [Double](repeating: 0, count: 8), surround = [Double](repeating: 0, count: 8)
         var found: Int32 = 0
@@ -114,7 +129,7 @@ enum MuseumCrop {
             logits.withUnsafeBufferPointer { logits in
                 frame_crop_find(
                     rgb.baseAddress, Int32(photo.rows), Int32(photo.columns), logits.baseAddress, Int32(side), sure,
-                    &work, &surround, &found, &error, size
+                    cutAt, &work, &surround, &found, &error, size
                 )
             }
         }
@@ -134,25 +149,26 @@ enum MuseumCrop {
 
     // MARK: The model
 
-    /// The compiled model in the app (`Kadr.mlmodelc`), loaded once.
-    static func loaded() throws -> MLModel {
-        try Loaded.shared.model()
+    /// The compiled model in the app for a work of `kind` (`Kadr.mlmodelc`,
+    /// `KadrPainting.mlmodelc`), each loaded once.
+    static func loaded(of kind: Int = 1) throws -> MLModel {
+        try Loaded.shared.model(file(of: kind))
     }
 
     private final class Loaded: @unchecked Sendable {
         static let shared = Loaded()
         private let lock = NSLock()
-        private var kept: MLModel?
+        private var kept: [String: MLModel] = [:]
 
-        func model() throws -> MLModel {
+        func model(_ name: String) throws -> MLModel {
             lock.lock()
             defer { lock.unlock() }
-            if let kept { return kept }
-            guard let url = Bundle.main.url(forResource: "Kadr", withExtension: "mlmodelc") else {
+            if let made = kept[name] { return made }
+            guard let url = Bundle.main.url(forResource: name, withExtension: "mlmodelc") else {
                 throw Failed(told: "the model is not in the app")
             }
             let made = try MLModel(contentsOf: url, configuration: MLModelConfiguration())
-            kept = made
+            kept[name] = made
             return made
         }
     }
@@ -160,7 +176,7 @@ enum MuseumCrop {
     /// The model's answer about `photo` of `kind` (`crop_model.KINDS`):
     /// its masks before the sigmoid, and how sure it is a cut is wanted.
     static func ask(_ photo: Pixels, kind: Int) throws -> (logits: [Float], sure: Double) {
-        let model = try loaded()
+        let model = try loaded(of: kind)
         let x = try MLMultiArray(shape: [1, 3, NSNumber(value: side), NSNumber(value: side)], dataType: .float32)
         let boxed = try letterbox(photo)
         boxed.withUnsafeBufferPointer { from in
@@ -213,7 +229,7 @@ enum MuseumCrop {
     static func look(at file: Data, kind: Int) throws -> (found: Found, columns: Int, rows: Int) {
         let photo = try pixels(of: file)
         let (logits, sure) = try ask(photo, kind: kind)
-        return (try find(photo, logits: logits, sure: sure), photo.columns, photo.rows)
+        return (try find(photo, logits: logits, sure: sure, cutAt: sureOf(kind)), photo.columns, photo.rows)
     }
 }
 
@@ -301,11 +317,11 @@ extension MuseumCrop {
     static func look(itemID: String, backend: any FrameBackend, asked: PhoneCropAsk? = nil) async throws -> PhoneCropResult? {
         let ask: PhoneCropAsk
         if let asked { ask = asked } else { ask = try await backend.phoneCropAsk(itemID: itemID) }
-        guard ask.look, ask.model == model else { return nil }
+        guard ask.look, ask.model == modelOf(ask.kind) else { return nil }
         let file = try await backend.museumPhoto(itemID: itemID, side: ask.side)
         let looked = try await Task.detached(priority: .userInitiated) { try MuseumCrop.look(at: file, kind: ask.kind) }.value
         let found = PhoneCropFound(
-            model: model, picture: ask.picture, verdict: looked.found.verdict, sure: looked.found.sure,
+            model: ask.model, picture: ask.picture, verdict: looked.found.verdict, sure: looked.found.sure,
             work: looked.found.work, surround: looked.found.surround, width: looked.columns, height: looked.rows
         )
         return try await backend.phoneCropFound(itemID: itemID, found)

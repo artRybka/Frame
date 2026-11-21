@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any
 from PIL import Image
 
 from .ai.crops import Crops
-from .imaging.crop_model import KINDS, MODEL, holds, kind_of
+from .imaging.crop_model import KINDS, holds, kind_of, model_of
 from .imaging.cut import Quad, same_picture, valid, worth_cutting
 from .library.models import Cut
 
@@ -98,14 +98,18 @@ class PhoneCrops:
         if not self.on() or not Crops.wanted(item) or not Crops.open_to_cut(item):
             return False
         seen = (looked if looked is not None else self._state()["looked"]).get(item.id)
-        return not (seen and seen.get("p") == item.picture_key() and seen.get("m") == MODEL)
+        model = model_of(kind_of(item.classification, item.medium))
+        return not (seen and seen.get("p") == item.picture_key() and seen.get("m") == model)
 
     def ask(self, item: Item) -> dict[str, Any]:
         """What the card's app needs to look at ``item``."""
+        kind = kind_of(item.classification, item.medium)
+        # A painting's own model since 2026-11-21: an app without it
+        # (``MuseumCrop.model(of:)``) leaves paintings alone.
         return {
             "look": self.wants(item),
-            "kind": kind_of(item.classification, item.medium),
-            "model": MODEL,
+            "kind": kind,
+            "model": model_of(kind),
             "picture": item.picture_key(),
         }
 

@@ -24,6 +24,17 @@ from frame_server.library.models import ItemKind, ItemSummary
 from frame_server.service import FrameService
 
 
+@pytest.fixture(autouse=True)
+def _claude_cuts(request: pytest.FixtureRequest) -> None:
+    """Here Opus finds his works in their photographs, as before the
+    phone did (``test_the_phone_finds_the_work_and_opus_is_asked_nothing``)."""
+    if "service" in request.fixturenames:
+        from frame_server.ai.config import AiConfigUpdate
+
+        service = request.getfixturevalue("service")
+        service.ai_config.update(AiConfigUpdate(crops_on_phone=False))
+
+
 def _jpeg(img: Image.Image) -> bytes:
     out = io.BytesIO()
     img.save(out, "JPEG", quality=95)
@@ -121,6 +132,38 @@ def test_a_photograph_becomes_a_work_cut_out_of_its_frame(
     with Image.open(service.images.image_path(item)) as img:
         assert abs(img.width / img.height - 55 / 46) < 0.005
     assert service.own_works.reshape() == 0
+
+
+def test_the_phone_finds_the_work_and_opus_is_asked_nothing(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    # Mateusz 2026-11-21 20:44 UTC: „kadrowanie moich własnych dzieł na
+    # pewno chce robić na iPhone, bez Opus”.
+    from frame_server.ai.config import AiConfigUpdate
+
+    service.ai_config.update(AiConfigUpdate(crops_on_phone=True))
+    fake.messages.create = lambda **params: (fake.asked.append(params), _message(CORNERS))[1]
+    with _client(service) as client:
+        sent = client.post("/api/own/photos", files={"file": ("p.jpg", _jpeg(photo()))})
+        token = sent.json()["token"]
+        found = client.post(f"/api/own/photos/{token}/find").json()
+        assert found["phone_cuts"] and found["corners"] is None and not found["looked"]
+        assert fake.asked == []
+        # What the phone found itself is kept: the frame's edge with it.
+        corners = [[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]]
+        frame = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+        kept = client.post(
+            f"/api/own/photos/{token}/found", json={"corners": corners, "surround": frame}
+        ).json()
+        assert kept["looked"] and kept["phone_cuts"] and kept["surround_kind"] == "frame"
+        assert client.post(f"/api/own/photos/{token}/find").json()["corners"] == corners
+        added = client.post(
+            "/api/own/works", json={"token": token, "corners": corners, "text": TEXT}
+        )
+        assert added.status_code == 200, added.text
+        assert added.json()["cut"]["surround"] is not None
+        assert all(p["model"] != OPUS for p in fake.asked)
 
 
 def test_the_frame_about_a_work_of_his_own_holds_it_in_the_shape_of_his_size(

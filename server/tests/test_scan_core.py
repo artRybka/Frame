@@ -326,6 +326,11 @@ def test_the_phone_finds_a_museum_work_as_the_server_does() -> None:
         pytest.skip("the server's tree without the app beside it")
     text, held = source.read_text(), tests.read_text()
     assert re.search(r'static let model = "([^"]+)"', text).group(1) == cm.MODEL  # type: ignore[union-attr]
+    painting = re.search(r'static let paintingModel = "([^"]+)"', text)
+    assert painting is not None and painting.group(1) == cm.PAINTING_MODEL
+    for name, number in (("sure", cm.SURE), ("paintingSure", cm.PAINTING_SURE)):
+        found = re.search(rf"static let {name} = ([0-9.]+)\n", text)
+        assert found is not None and float(found.group(1)) == number, name
     assert re.search(r"static let side = (\d+)", text).group(1) == str(cm.SIDE)  # type: ignore[union-attr]
     found = re.search(r"static let photoSide = (\d+)", text)
     assert found is not None and int(found.group(1)) == cm.PHOTO_SIDE

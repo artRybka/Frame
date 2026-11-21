@@ -35,6 +35,11 @@ struct OwnIncoming: Codable, Hashable, Sendable {
     /// makes (`PhoneScan.make`). nil where it is not known, and from a
     /// server that straightens the work itself (to 1.145.258).
     var straight: OwnBend? = nil
+    /// The phone is to find the work itself (`OwnLocalCut`; Mateusz
+    /// 2026-11-21: „kadrowanie moich własnych dzieł na pewno chce robić
+    /// na iPhone, bez Opus”): the server asked no one. nil from a server
+    /// that asks Opus (to 1.145.300).
+    var phoneCuts: Bool? = nil
 
     var aspect: Double { height > 0 ? Double(width) / Double(height) : 0.75 }
 }

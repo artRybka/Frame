@@ -140,6 +140,7 @@ inline constexpr double ON_LINE = 2.5;
 inline constexpr double OUTER_SHARE = 0.5;
 inline constexpr double OUT_AT_MOST = 0.03;
 inline constexpr double OUT_BY = 0.01;
+inline constexpr double PAINTING_SURE = 0.81;
 inline constexpr int PHOTO_SIDE = 1024;
 inline constexpr double SAME_SIDE = 0.006;
 inline constexpr int SAMPLES = 160;
