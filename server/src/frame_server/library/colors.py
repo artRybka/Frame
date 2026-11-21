@@ -222,6 +222,9 @@ LEVEL_MOST = 0.6
 #: of blue is "mostly blue").
 LEVEL_MOST_EACH = 0.1
 LEVEL_MOST_AREA = 0.12
+#: Each of several colours asked at "most" holds this much of its even
+#: part of ``LEVEL_MOST`` (three: 13% of the picture's colours each).
+LEVEL_MOST_SHARE = 2 / 3
 #: Moods asked from the Tonacja card (``"tone:warm"``): every one must fit.
 TONE_TAG = "tone:"
 #: The Tonacja card's groups: each picture is on exactly one side of each
@@ -1127,7 +1130,17 @@ def _mostly(shares: dict[str, float], families: list[str]) -> bool:
         whole = sum(v for f, v in shares.items() if f not in GROUNDS)
     if whole <= 0 or sum(picked) < LEVEL_MOST_AREA:
         return False
-    return sum(picked) >= LEVEL_MOST * whole and all(v >= LEVEL_MOST_EACH * whole for v in picked)
+    if sum(picked) < LEVEL_MOST * whole or min(picked) < LEVEL_MOST_EACH * whole:
+        return False
+    # In proportion (Mateusz 2026-11-21 23:39: a picture green on 40%, with
+    # a patch of yellow, one of red and half of it blue, is not one mainly
+    # in red, yellow and blue: „udział kolorów powinien być
+    # proporcjonalny”): each holds ``LEVEL_MOST_SHARE`` of its even part,
+    # and no colour not asked is larger than the least of them.
+    if len(picked) > 1 and min(picked) < LEVEL_MOST_SHARE * LEVEL_MOST * whole / len(picked):
+        return False
+    counted = shares.keys() if any(f in GROUNDS for f in families) else shares.keys() - GROUNDS
+    return all(shares[f] <= min(picked) for f in counted if f not in families)
 
 
 def _only(have: set[str], only: set[str]) -> bool:

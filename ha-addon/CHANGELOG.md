@@ -10,6 +10,8 @@
   plakatem, dostaje pasek papieru, nie farby.
 - Szukanie kolorem: kilka barw „wyraźnych” naraz dzieli próg po równo
   (trzy barwy po około 9% obrazu), więc nie wychodzi już pusta lista.
+- „Główna” przy kilku barwach: każda musi mieć proporcjonalny udział, a
+  żadna inna barwa nie może być w obrazie większa od nich.
 - Po aktualizacji serwer raz przelicza barwy dzieł (1–2 godziny).
 
 ## 1.145.301

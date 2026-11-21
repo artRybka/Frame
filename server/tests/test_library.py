@@ -569,9 +569,18 @@ def test_colours_at_levels() -> None:
     assert has_colours(tags, ["blue@much", "teal@much"], shares | {"teal": 0.15})
     # Most of its colours (grey and white aside) are blue, and blue and teal.
     assert has_colours(tags, ["blue@most"], shares)
-    assert has_colours(tags, ["blue@most", "teal@most"], shares)
+    # Teal a sixth of its colours beside blue's three quarters is no longer
+    # "mainly blue and teal" (in proportion, Mateusz 2026-11-21 23:39).
+    assert not has_colours(tags, ["blue@most", "teal@most"], shares)
+    assert has_colours(tags, ["blue@most", "teal@most"], shares | {"teal": 0.2})
     assert not has_colours(tags, ["teal@most"], shares)
     assert not has_colours(tags, ["blue@most", "red@most"], shares)  # red too little
+    # In proportion (Mateusz 2026-11-21 23:39): half blue, a patch of red and
+    # one of yellow, and green larger than either, is not mainly the three.
+    green = {"green": 0.3, "blue": 0.4, "red": 0.1, "yellow": 0.1, "white": 0.1}
+    assert not has_colours([], ["red@most", "yellow@most", "blue@most"], green)
+    mondrian = {"red": 0.25, "yellow": 0.2, "blue": 0.25, "green": 0.05, "white": 0.25}
+    assert has_colours([], ["red@most", "yellow@most", "blue@most"], mondrian)
     # A grey drawing with a touch of blue is not "mostly blue".
     assert not has_colours(["gray"], ["blue@most"], {"gray": 0.9, "blue": 0.05})
     # A neutral at "most" counts the whole picture.
