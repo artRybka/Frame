@@ -664,7 +664,7 @@ actor DemoBackend: FrameBackend {
             if let paper = update.paper { cut.paper = paper }
             if update.noFrame { cut.surround = nil }
             if let corners = update.corners {
-                if !cut.paper, cut.plate != nil { cut.plate = corners } else { cut.work = corners }
+                cut.work = corners  // a print's sheet (server `set_by_owner`)
             }
             item.cut = cut
         }

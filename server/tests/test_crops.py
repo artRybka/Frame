@@ -1103,17 +1103,17 @@ def test_a_work_drawn_by_the_restorer_keeps_its_frame(
     assert abs(a[img.height // 2, img.width // 2] - (230, 40, 200)).max() < 30  # the drawing
 
 
-def test_a_print_shown_without_its_sheet_shows_the_sheet_around_it() -> None:
+def test_a_print_is_shown_on_its_whole_sheet() -> None:
+    # Mateusz 2026-11-21: „Dla rysunku i grafiki zostawimy tylko jedno
+    # kadrowanie - »do kartki«”; 18:17 „Tak” to the sheet shown, not the plate.
     sheet_quad = [(0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9)]
     plate = [(0.2, 0.2), (0.8, 0.2), (0.8, 0.8), (0.2, 0.8)]
-    cut = Cut(work=sheet_quad, plate=plate, paper=True, aspect=1.0)
-    assert cut.framed_by() is None  # with its paper (kept from before): nothing around it
-    bare = cut.model_copy(update={"paper": False})
-    assert bare.framed_by() == (sheet_quad, "paper")
+    for paper in (True, False):
+        cut = Cut(work=sheet_quad, plate=plate, paper=paper, aspect=1.0)
+        assert cut.shown() == sheet_quad and cut.framed_by() is None
     from frame_server.ai.crops import framed
 
-    made = framed(bare)
-    assert made.framed_kind == "paper" and abs(made.framed_aspect - 1.0) < 0.01
+    assert framed(cut).framed_kind == ""
 
 
 def test_cuts_without_their_frames_edge_are_asked_once_at_night(
@@ -1187,58 +1187,61 @@ def test_a_print_with_only_its_paper_around_is_cut_to_its_plate_at_night(
     _answer(fake, PRINT_CORNERS)
     assert crops.order() and crops.collect()
     item = service.library.get("aic:1")
-    assert item is not None and item.cut is not None and not item.cut.paper
+    assert item is not None and item.cut is not None
     shown = item.cut_shown()
-    assert shown is not None and _near(shown, _px(PLATE_BOX), 0.01)
-    # The sheet is the card's "W ramie", as a frame would be.
-    assert item.cut.framed_kind == "paper"
-    framed = service.images.framed(item, 1800)
-    assert framed is not None
-    assert abs(framed.width / framed.height - 660 / 540) < 0.03
+    # On its whole sheet (2026-11-21), its plate kept and not shown.
+    assert shown is not None and _near(shown, _px(SHEET_BOX), 0.01)
+    assert item.cut.plate is not None and item.cut.framed_kind == ""
 
 
-def test_the_plate_alone_on_a_sheet_filling_the_photograph_is_cut_to() -> None:
+def test_a_sheet_filling_the_photograph_is_shown_whole() -> None:
     plate = [(0.2, 0.2), (0.8, 0.2), (0.8, 0.8), (0.2, 0.8)]
     cut = Cut(work=None, plate=plate, aspect=1.0)
-    assert cut.shown() == plate
-    by = cut.framed_by()
-    assert by is not None and by[1] == "paper" and by[0][2] == (1.0, 1.0)
+    assert cut.shown() is None and cut.framed_by() is None
 
 
-def test_margins_kept_from_before_go_and_paper_alone_goes_to_opus_once(
+def test_prints_shown_on_their_plate_are_made_again_on_their_sheet_once(
     service: FrameService,
 ) -> None:
+    # Mateusz 2026-11-21 18:17 UTC: „Tak” to a print shown on its whole sheet.
     crops = service.crops
     aspect = round(W / H, 5)
     kept = _work(service, "aic:2", picture=print_on_sheet(), pooled=True)
-    crops.apply(
-        kept,
-        Cut(
+    service.library.update(
+        kept.id,
+        cut=Cut(
             work=_px(SHEET_BOX),
             plate=_px(PLATE_BOX),
-            paper=True,
+            paper=False,
             aspect=aspect,
+            picture=kept.picture_key(),
             shape="rectangle",
         ),
     )
-    assert service.library.get("aic:2").cut_shown() == _px(SHEET_BOX)  # type: ignore[union-attr]
-    alone = _work(service, "aic:3", picture=print_on_sheet(), pooled=True)
-    service.library.update(alone.id, cut=Cut(around=["paper_margin"]))
-    given_up = _work(service, "aic:4", picture=print_on_sheet(), pooled=True)
-    service.library.update(given_up.id, cut=Cut(around=["paper_margin"], by="owner"))
-
-    assert crops.margins_off() == 2
+    opened = _work(service, "aic:3", picture=print_on_sheet(), pooled=True)
+    service.library.update(
+        opened.id,
+        cut=Cut(
+            work=_px(SHEET_BOX),
+            plate=_px(PLATE_BOX),
+            aspect=aspect,
+            picture=opened.picture_key(),
+            shape="rectangle",
+        ),
+    )
+    # Its card opened before the night: made again on its sheet at once.
+    assert crops.now(service.library.get("aic:3"))  # type: ignore[arg-type]
+    assert service.library.get("aic:3").cut.paper  # type: ignore[union-attr]
+    assert crops.sheets_on() == 1
     item = service.library.get("aic:2")
-    assert item is not None and item.cut is not None and not item.cut.paper
-    assert item.cut_shown() == _px(PLATE_BOX) and item.cut.framed_kind == "paper"
+    assert item is not None and item.cut is not None and item.cut.paper
+    assert item.cut_shown() == _px(SHEET_BOX) and item.cut.framed_kind == ""
     with Image.open(service.images.image_path(item)) as img:
-        assert abs(img.width / img.height - 420 / 330) < 0.05
-    claims = crops.state()["claims"]
-    assert claims == {"aic:3": {"around": ["paper_margin"], "sheet": True}}
-    assert crops.margins_off() == 0  # once
+        assert abs(img.width / img.height - 660 / 540) < 0.05
+    assert crops.sheets_on() == 0  # once
 
 
-def test_a_card_opened_shows_the_plate_and_asks_opus_for_one_once(
+def test_a_card_opened_keeps_a_print_on_its_sheet(
     service: FrameService,
     fake: FakeAnthropic,  # noqa: F811
 ) -> None:
@@ -1255,25 +1258,12 @@ def test_a_card_opened_shows_the_plate_and_asks_opus_for_one_once(
             shape="rectangle",
         ),
     )
-    assert crops.now(service.library.get("aic:5"))  # type: ignore[arg-type]
-    assert service.library.get("aic:5").cut_shown() == _px(PLATE_BOX)  # type: ignore[union-attr]
+    crops.now(service.library.get("aic:5"))  # type: ignore[arg-type]
+    assert service.library.get("aic:5").cut_shown() == _px(SHEET_BOX)  # type: ignore[union-attr]
     assert fake.asked == []  # nothing asked for that
 
-    alone = _work(service, "aic:6", picture=print_on_sheet(), pooled=True)
-    service.library.update(alone.id, cut=Cut(around=["paper_margin"]))
-    state = crops.state()
-    state["asked"] = {"aic:6": {"v": 2, "at": "2026-11-14", "p": "", "q": QUESTION, "band": 2}}
-    crops._save(state)
-    fake.messages.create = lambda **params: (fake.asked.append(params), _message(PRINT_CORNERS))[1]
-    assert crops.now(service.library.get("aic:6"))  # type: ignore[arg-type]
-    assert [p["model"] for p in fake.asked] == [OPUS]  # straight to Opus
-    item = service.library.get("aic:6")
-    assert item is not None and item.cut is not None and item.cut.framed_kind == "paper"
-    assert not crops.now(item)  # asked once
-    assert len(fake.asked) == 1
 
-
-def test_the_owner_sets_the_sheets_edge_as_a_frames(service: FrameService) -> None:
+def test_the_owner_sets_a_prints_sheet_as_its_cut(service: FrameService) -> None:
     crops = service.crops
     aspect = round(W / H, 5)
     item = _work(service, "aic:7", picture=print_on_sheet(), pooled=True)
@@ -1281,9 +1271,9 @@ def test_the_owner_sets_the_sheets_edge_as_a_frames(service: FrameService) -> No
         item, Cut(work=_px(SHEET_BOX), plate=_px(PLATE_BOX), aspect=aspect, shape="rectangle")
     )
     wider = _px((100, 60, 800, 640))
-    item = crops.set_by_owner(item, frame=wider)
+    item = crops.set_by_owner(item, corners=wider)
     assert item.cut is not None and item.cut.work == wider and item.cut.surround is None
-    assert item.cut_shown() == _px(PLATE_BOX) and item.cut.framed_kind == "paper"
+    assert item.cut_shown() == wider and item.cut.framed_kind == ""
 
 
 def test_an_unsure_answer_still_cuts_the_backdrop_away(

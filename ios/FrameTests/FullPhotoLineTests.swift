@@ -28,7 +28,7 @@ final class FullPhotoLineTests: XCTestCase {
 }
 
 /// A work on paper (Mateusz 2026-11-14 22:36–22:42): named by its
-/// technique, shown "z marginesem" or "bez marginesu".
+/// technique, shown "z marginesem" (on its whole sheet since 2026-11-21).
 final class PaperLineTests: XCTestCase {
     private let hard = "\u{00A0}"
 
@@ -46,9 +46,9 @@ final class PaperLineTests: XCTestCase {
         XCTAssertEqual(
             cut.paperLine(medium: "pastel on paper"),
             "Muzeum sfotografowało pastel z\(hard)marginesem\(hard)kartki.\n"
-                + "Prezentowany jest pastel bez\(hard)marginesu."
+                + "Prezentowany jest pastel z\(hard)marginesem."
         )
-        // Its plate not known yet: the sheet is shown.
+        // Its plate known or not, the whole sheet is shown (2026-11-21: „do kartki”).
         let print = Cut(around: ["backdrop", "mount", "paper_margin"])
         XCTAssertEqual(
             print.paperLine(medium: "etching"),

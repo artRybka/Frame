@@ -490,14 +490,14 @@ struct Cut: Codable, Hashable, Sendable {
 
     /// The line under "Pełny kadr" for a work on paper (Mateusz 2026-11-14,
     /// layout 1): what the museum photographed, then whether the work is
-    /// shown with its paper's margin or without (without once its plate is
-    /// known). The work named by its technique ("pastel", "odbitkę"),
+    /// shown with its paper's margin: always now (Mateusz 2026-11-21:
+    /// „do kartki”). The work named by its technique ("pastel", "odbitkę"),
     /// "dzieło" when it says nothing.
     func paperLine(medium: String) -> String {
         let work = PaperWork(medium: medium, around: around)
         var places = Self.places(around.filter { $0 != "paper_margin" && $0 != "page_text" })
         places.append(around.contains("page_text") ? "na stronie z tekstem" : "z marginesem kartki")
-        let shown = !paper && plate != nil ? "bez marginesu" : "z marginesem"
+        let shown = "z marginesem"
         return [
             "Muzeum sfotografowało \(work.accusative) \(Self.joined(places)).",
             "\(work.shownAs) jest \(work.name) \(shown).",
