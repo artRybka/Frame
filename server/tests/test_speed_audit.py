@@ -671,6 +671,26 @@ def test_the_owner_reads_the_servers_memory(tmp_path: Path) -> None:
         assert read["process_mb"].get("resident", 1) > 0
 
 
+def test_the_owner_asks_where_the_memory_goes(tmp_path: Path) -> None:
+    """2026-11-21: 8.3 GB held, 3.4 GB of it untouched in swap. The
+    owner's questions: memory handed back, Python's objects by type, and a
+    line in the log every ten minutes."""
+    from frame_server.web.app import memory_parts
+
+    app = create_app(Settings(data_dir=tmp_path, seed_library=False, scheduler=False))
+    with TestClient(app) as client:
+        trimmed = client.post("/api/debug/memory/trim").json()
+        assert {"trimmed", "seconds", "before", "after"} <= trimmed.keys()
+        census = client.get("/api/debug/memory/census?top=5").json()
+        assert len(census["types"]) == 5
+        assert census["types"][0]["count"] > 0
+        assert census["parts"]["works"] == 0
+        service = app.state.service
+        line = memory.MemoryLog(lambda: memory_parts(service)).line()
+        assert line.startswith("memory: resident ") and "works=0" in line
+        assert "seen_model=False" in line
+
+
 # -- the start ---------------------------------------------------------------
 
 
