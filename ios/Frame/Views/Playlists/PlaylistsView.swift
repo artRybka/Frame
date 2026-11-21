@@ -148,13 +148,12 @@ struct PlaylistsView: View {
                             }
                             .buttonStyle(.plain)
                         }
-                        // Last: the works hidden with "Ukryj dzieło" (not a guest's).
-                        if !model.isGuest {
-                            NavigationLink(value: HiddenRoute()) {
-                                HiddenCard(items: model.hidden)
-                            }
-                            .buttonStyle(.plain)
+                        // Last: the works this person hid with "Ukryj dzieło"
+                        // (each person's own, Mateusz 2026-11-20).
+                        NavigationLink(value: HiddenRoute()) {
+                            HiddenCard(items: model.hidden)
                         }
+                        .buttonStyle(.plain)
                     }
                     // Let go between the cards (or on Propozycje, Ukryte):
                     // the order as it stands is kept. The whole grid takes

@@ -151,6 +151,9 @@ COMMONS_WHOLE = 50_000_000
 #: out the app's use (:meth:`HostGuard.wait_calm`) with the picture's lock
 #: held, and a Szukaj tile waited for it with no end (2026-11-07).
 URGENT_LOCK_WAIT = 3.0
+#: How long an urgent asker waits for another urgent asker's download of the
+#: same picture before it downloads its own anyway (a host gone silent).
+URGENT_HOLDER_WAIT = 120.0
 #: Sources of the owner's own pictures (uploads, iCloud albums, the frame's
 #: placeholder): kept as they are, never trimmed of margins
 #: (:func:`~frame_server.imaging.margins.trim_margins`), a white wall or a
@@ -612,6 +615,8 @@ class ImageCache:
         self._sizes_path = root / "sizes.json"
         self._sizes: dict[str, list[int]] = self._load_sizes()
         self._locks: dict[str, threading.Lock] = {}
+        #: Whether the one holding a picture's lock (by key) is urgent.
+        self._urgent_holders: dict[str, bool] = {}
         #: The museum's own photographs of works the restorer drew again,
         #: downloaded for the full-screen viewer (:meth:`treated`), by
         #: address: the last few, so its buttons switch back and forth
@@ -637,18 +642,34 @@ class ImageCache:
         it takes the lock, and may still wait inside if the app comes back
         meanwhile; after :data:`URGENT_LOCK_WAIT` the urgent one downloads
         its own copy. The thumbnail of a Commons photograph in Szukaj stayed
-        empty for minutes while the background held it (2026-11-07)."""
+        empty for minutes while the background held it (2026-11-07).
+
+        Only the background's download is gone around: behind another urgent
+        one the asker waits for its file (up to :data:`URGENT_HOLDER_WAIT`).
+        Opening one Wellcome work, whose original came slowly, set ten of the
+        app's requests downloading and decoding it each on their own; the
+        NAS ran out of memory and the server was killed (2026-11-20)."""
         urgent = urgent or is_urgent()
         if not urgent:
             self.hosts.wait_calm(urlsplit(url).hostname or "")
         lock = self._lock(key)
         held = lock.acquire(timeout=URGENT_LOCK_WAIT if urgent else -1)
         if not held:
-            log.info("picture %s still on its way in the background; asked again now", key)
+            with self._guard:
+                behind_urgent = self._urgent_holders.get(key, False)
+            if behind_urgent:
+                held = lock.acquire(timeout=URGENT_HOLDER_WAIT)
+            if not held:
+                log.info("picture %s still on its way in the background; asked again now", key)
+        if held:
+            with self._guard:
+                self._urgent_holders[key] = urgent
         try:
             yield
         finally:
             if held:
+                with self._guard:
+                    self._urgent_holders.pop(key, None)
                 lock.release()
 
     def thumb_path(self, item: Item) -> Path:
@@ -911,7 +932,9 @@ class ImageCache:
         path = self.ensure_image(item, urgent)
         return full if full.is_file() else path  # cut as it came in, or whole
 
-    def framed(self, item: Item, side: int, urgent: bool = False) -> Image.Image | None:
+    def framed(
+        self, item: Item, side: int, urgent: bool = False, user: str = OWNER_ID
+    ) -> Image.Image | None:
         """The card's "W ramie" (Mateusz 2026-11-17): the photograph cut to
         the outer edge of the work's frame or passe-partout (a print's
         sheet when it is shown without it, ``Cut.framed_by``) and set
@@ -922,7 +945,12 @@ class ImageCache:
         A work drawn again by the restorer (``SharperCopy.restored``) keeps
         only the drawing of the work: the frame is the museum's photograph
         (:meth:`before_drawn`) with the drawing laid in it ("gdy do dzieła
-        … dodałem restauratora, to obraz stracił ramę", Mateusz 2026-11-18)."""
+        … dodałem restauratora, to obraz stracił ramę", Mateusz 2026-11-18).
+
+        The work's colours are ``user``'s (``Item.cleaned_by``): a person
+        who sees it otherwise than it is kept gets their own picture in the
+        frame (:meth:`variant`), also when saving it to the phone's photos
+        (Mateusz 2026-11-20)."""
         cut = item.cut
         by = cut.framed_by() if cut is not None else None
         work = item.cut_framed()
@@ -936,9 +964,14 @@ class ImageCache:
         if not same_picture(cut.aspect, img.size):
             return None
         shown = None
-        if drawn or item.cleaned_shown() is not None:
+        own = item.cleaned_differs(user)
+        if drawn or item.cleaned_shown(user) is not None:
             try:
-                shown = load_image(self.ensure_image(item, urgent))
+                if own:
+                    cleaned = item.cleaned_shown(user) is not None
+                    shown = load_image(self.variant(item, cleaned, urgent=urgent))
+                else:
+                    shown = load_image(self.ensure_image(item, urgent))
             except OSError:
                 shown = None
         out = framed(img, by[0], work, shown, self._ratio(item))

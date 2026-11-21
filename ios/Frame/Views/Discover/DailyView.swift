@@ -228,18 +228,7 @@ struct DailyView: View {
                 ItemToolbar(
                     model: model, item: card, changed: { self.card = $0 },
                     addingToPlaylist: $addingToPlaylist, savingPhoto: $savingPhoto,
-                    findingCopies: $findingCopies,
-                    keepOwn: {
-                        Task {
-                            let id = card.id
-                            do {
-                                self.card = try await model.chooseCopy(itemID: id, copyID: id)
-                                model.notices.done("Przywrócono zdjęcie muzeum")
-                            } catch {
-                                model.show(error)
-                            }
-                        }
-                    }
+                    findingCopies: $findingCopies
                 )
             }
         }

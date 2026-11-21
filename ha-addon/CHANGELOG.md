@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.145.292
+
+- Menu „…” dzieła krótsze: bez „Przywróć zdjęcie muzeum” (jest na górze
+  „Szukaj lepszej kopii”) i bez „Otwórz w muzeum”.
+- „Zapisz w Zdjęciach” zapisuje dzieło tak, jak je widzisz: z korektą
+  werniksu albo papieru, przycięte. Dzieło w ramie lub passe-partout
+  można zapisać samo albo w ramie.
+- „Ukryj dzieło” działa dla każdej osoby osobno, także dla Gościa. Na
+  ramce nie pojawia się dzieło ukryte przez Ciebie albo Domownika.
+- „Szukaj lepszej kopii” tylko dla właściciela. Kopia w pełniejszych
+  barwach niż zdjęcie z muzeum nie jest już odrzucana.
+
+## 1.145.291
+
+- Serwer nie zawiesza się już przy otwieraniu dzieła, którego oryginał
+  pobiera się długo (np. z Wellcome). Pilne pobranie dla aplikacji omija
+  tylko pobieranie w tle, a za innym pilnym czeka.
+- Serwer zajmuje mniej pamięci: wspólne pola dzieł w katalogu (ok. 600 MB
+  mniej), model SigLIP zwalniany, gdy nie ma nic do liczenia (nigdy w
+  trakcie), i oszczędniejszy przydział pamięci (`MALLOC_ARENA_MAX=2`).
+
 ## 1.145.290
 
 - Paski barw obrazów pokazują biel: białe kryzy, obrusy i koszule, które

@@ -27,6 +27,7 @@ from frame_server.ai.gemini import (
     embed_cost,
 )
 from frame_server.library.models import Item, ItemKind, PlaylistRules
+from frame_server.library.viewer import OWNER_ID
 from frame_server.looks import (
     ALIKE_LEAST,
     DESCRIBE,
@@ -147,7 +148,10 @@ def _work(
     path = service.images.thumb_path(item)
     path.parent.mkdir(parents=True, exist_ok=True)
     Image.new("RGB", (48, 64) if tall else (64, 48), COLOURS[colour]).save(path, "JPEG")
-    return service.library.upsert(item)
+    stored = service.library.upsert(item)
+    if item.excluded:  # hidden by the owner (each person hides their own)
+        stored = service.library.set_hidden(OWNER_ID, item_id, True) or stored
+    return stored
 
 
 def _numbers(found: Looks) -> int:

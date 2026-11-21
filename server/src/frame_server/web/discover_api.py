@@ -351,7 +351,8 @@ def _cards_stale(svc: FrameService, stamp: float) -> bool:
 
 
 def _cover_lost(svc: FrameService) -> bool:
-    """A work of some card's cover is hidden now, or no longer here."""
+    """A work of some card's cover is hidden now (by the household: the
+    cards are made for everyone), or no longer here."""
     hidden = svc.library.hidden()
     return any(
         item in hidden or not svc.library.has(item.id)
@@ -587,7 +588,7 @@ def _zoom_row(svc: FrameService) -> SuggestionRow | None:
         threading.Thread(target=player.tile_set_files, name="tile sets", daemon=True).start()
     if not zoom.pages():
         return None
-    hidden = svc.library.hidden()
+    hidden = svc.library.hidden(viewer_id())
     works = svc.library.works()
     # The catalogue's works that zoom, as its whole list has them: looked
     # for among the copies of the works one copy of which zooms (the best
@@ -743,7 +744,7 @@ def _theme_list(svc: FrameService) -> list[ThemeCard]:
     # inne" first, Player._add_other_art).
     every = [t for t in every if cards.get(t.key, (0, []))[0] >= CARD_MIN]
     ordered = sorted(every, key=lambda t: GROUPS.index(t.group))
-    hidden = svc.library.hidden()  # once, not for each card
+    hidden = svc.library.hidden(viewer_id())  # once, not for each card
     return [_card(svc, t, cards, playlists, hidden) for t in ordered]
 
 
@@ -1574,7 +1575,7 @@ def keeper(svc: FrameService) -> Callable[[list[Item]], None]:
 
     def keep(items: list[Item]) -> None:
         gone = svc.images.gone_ids()
-        hidden = svc.library.hidden()
+        hidden = svc.library.hidden()  # the household's: the catalogue is everyone's
         svc.player.keep_spare(i for i in items if i.id not in gone and i not in hidden)
 
     return keep

@@ -70,7 +70,7 @@ from ..library.importer import ALL
 from ..library.low_res import low_side
 from ..library.models import Framing, SharperCopy
 from ..library.museums import MUSEUMS, LoginRefused
-from ..library.repo import Abandoned, Hidden, SortKey, asked_by, now_iso
+from ..library.repo import Abandoned, Hidden, SortKey, asked_by
 from ..library.search import fill as fill_by_search
 from ..library.search import keep_shown
 from ..library.seed import PACKS, import_queries, pack
@@ -81,10 +81,13 @@ from ..player import hold_from
 from ..schedule import FrameSettings
 from ..service import FrameService
 from ..users import User
-from .deps import CurrentUser, may_edit_own, require_frame, require_token, service
+from .deps import CurrentUser, may_edit_own, require_frame, require_owner, require_token, service
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["library"])
+#: Another copy of a work's picture changes it for the whole household:
+#: the owner's to look for and pick (Mateusz 2026-11-20).
+OWNER_ONLY = [Depends(require_owner)]
 Svc = Annotated[FrameService, Depends(service)]
 
 
@@ -166,7 +169,7 @@ def remote_items(
     if keep_hidden:
         hidden = Hidden()
     elif hidden is None:
-        hidden = svc.library.hidden()
+        hidden = svc.library.hidden(viewer_id())
     for item in items:
         if item.id in gone or item in hidden:
             continue
@@ -442,7 +445,7 @@ def _in_playlist(
 def hidden_items(svc: Svc) -> ItemPage:
     """The works hidden in the app ("Ukryte" at the end of Playlists), the
     last hidden first."""
-    items = svc.library.hidden_items()
+    items = svc.library.hidden_items(viewer_id())
     return ItemPage(total=len(items), items=[ItemSummary.of(i) for i in items])
 
 
@@ -882,9 +885,10 @@ async def item_framed(
     photograph cut to the frame's outer edge and set straight
     (``ImageCache.framed``); 404 when there is nothing around the work."""
     item = await _work(svc, item_id, threads=SHOWN_THREADS)
+    user = viewer_id()  # the work in it with this person's colours
 
     def made() -> bytes | None:
-        img = svc.images.framed(item, side, urgent=True)
+        img = svc.images.framed(item, side, urgent=True, user=user)
         if img is None:
             return None
         out = io.BytesIO()
@@ -964,7 +968,7 @@ async def delete_cut(item_id: str, svc: Svc) -> Item:
     return await run_in_threadpool(svc.crops.give_up, stored)
 
 
-@router.get("/library/items/{item_id:item}/copies")
+@router.get("/library/items/{item_id:item}/copies", dependencies=OWNER_ONLY)
 async def item_copies(item_id: str, svc: Svc) -> StreamingResponse:
     """Every copy of the work's picture the sources have ("Szukaj lepszej
     kopii"), as they answer: :class:`CopyLine` per line (JSON lines)."""
@@ -1004,7 +1008,7 @@ class CopyPick(BaseModel):
     item_id: str
 
 
-@router.put("/library/items/{item_id:item}/copy", response_model=Item)
+@router.put("/library/items/{item_id:item}/copy", response_model=Item, dependencies=OWNER_ONLY)
 async def choose_copy(item_id: str, pick: CopyPick, svc: Svc) -> Item:
     """The owner's pick for the work's picture: a copy from another source,
     or (its own id) the work's own. The work keeps its id, texts, hearts,
@@ -1023,7 +1027,7 @@ async def choose_copy(item_id: str, pick: CopyPick, svc: Svc) -> Item:
         raise HTTPException(502, f"copy unavailable: {err}") from err
 
 
-@router.delete("/library/items/{item_id:item}/copy", response_model=Item)
+@router.delete("/library/items/{item_id:item}/copy", response_model=Item, dependencies=OWNER_ONLY)
 async def keep_own_picture(item_id: str, svc: Svc) -> Item:
     """Back to the work's own picture; no copy is looked for again."""
     item = await _work(svc, item_id)
@@ -1056,9 +1060,8 @@ async def copy_spot(
 
 @router.patch("/library/items/{item_id:item}", response_model=Item)
 async def patch_item(item_id: str, patch: ItemPatch, svc: Svc, user: CurrentUser) -> Item:
-    if user.is_guest and (patch.excluded is not None or patch.look is not None):
-        # "Ukryj dzieło" hides it from the whole household.
-        raise HTTPException(403, "gość nie ukrywa dzieł")
+    if user.is_guest and patch.look is not None:
+        raise HTTPException(403, "gość nie zmienia wyglądu dzieł")
     item = await _work(svc, item_id, save=True)
     changes = patch.model_dump(exclude_none=True)
     if patch.look is not None:
@@ -1069,9 +1072,10 @@ async def patch_item(item_id: str, patch: ItemPatch, svc: Svc, user: CurrentUser
     if liked is not None:  # the asking person's own heart
         svc.library.set_favorite(viewer_id(), item.id, liked)
         changes.setdefault("favorite", liked)  # for the player below
-    stored = {k: v for k, v in changes.items() if k != "favorite"}
-    if "excluded" in stored and stored["excluded"] != item.excluded:
-        stored["excluded_at"] = now_iso() if stored["excluded"] else None
+    hide = changes.get("excluded")
+    if hide is not None:  # the asking person's own (Mateusz 2026-11-20)
+        svc.library.set_hidden(viewer_id(), item.id, hide)
+    stored = {k: v for k, v in changes.items() if k not in ("favorite", "excluded")}
     updated = svc.library.update(item.id, **stored) if stored else svc.library.get(item.id)
     assert updated is not None
     if changes.keys() & {"favorite", "excluded"}:

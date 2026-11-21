@@ -645,6 +645,52 @@ def test_the_owner_does_not_wait_for_the_backgrounds_download(
     assert cache.thumb_path(item).is_file()
 
 
+def test_the_app_waits_for_its_own_download_of_a_picture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Behind another of the app's requests, an urgent asker waits for its
+    file instead of downloading the same picture again: ten copies of one
+    slow Wellcome original at once took the NAS's memory (2026-11-20)."""
+    from frame_server.library import images
+    from frame_server.library.hosts import HostGuard, urgently
+
+    monkeypatch.setattr(images, "URGENT_LOCK_WAIT", 0.05)
+    stuck = threading.Event()
+    release = threading.Event()
+    asked: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        asked.append(str(request.url))
+        if not stuck.is_set():
+            stuck.set()
+            release.wait(10)  # the first urgent download, slow
+        return httpx.Response(200, content=_jpeg())
+
+    cache = ImageCache(tmp_path, lambda: httpx.Client(transport=httpx.MockTransport(handler)))
+    cache.hosts = HostGuard(pace={}, limits={})
+    item = _item(32)
+
+    def first() -> None:
+        with urgently():
+            cache.ensure_thumb(item)
+
+    owner = threading.Thread(target=first)
+    owner.start()
+    try:
+        assert stuck.wait(5)
+        second = threading.Thread(target=first)
+        second.start()
+        time.sleep(0.3)  # well past URGENT_LOCK_WAIT
+        assert len(asked) == 1
+        release.set()
+        second.join(5)
+    finally:
+        release.set()
+        owner.join(5)
+    assert len(asked) == 1
+    assert cache.thumb_path(item).is_file()
+
+
 def test_the_background_waits_for_the_app_before_it_holds_a_picture(tmp_path: Path) -> None:
     from frame_server.library.hosts import HostGuard, urgently
 

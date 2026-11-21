@@ -228,3 +228,53 @@ def test_the_form_is_taught_by_technique_and_half_century(service: FrameService)
     assert form_marks(oil) == [names.index("oil"), len(TECHNIQUES) + (1890 - 1300) // 50]
     assert form_marks(print_)[1] == len(TECHNIQUES) + (1833 - 1300) // 50
     assert form_marks(Item(id="a:3", source="a", source_id="3", title="x")) == []
+
+
+class _Session:
+    def run(self, _out: object, feed: dict[str, np.ndarray]) -> list[np.ndarray]:
+        return [np.zeros((len(next(iter(feed.values()))), SIZE), dtype=np.float32)]
+
+
+def test_the_model_lets_go_only_with_nothing_left_to_number(
+    found: Seen, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Out of memory once every work has its numbers, never while works
+    wait or the app is in use: its first counting is not to be held up
+    (Mateusz 2026-11-20)."""
+    model = SeenModel(tmp_path / "real")
+    made: list[str] = []
+    monkeypatch.setattr(model, "fetch", lambda client=None: None)
+    monkeypatch.setattr(model, "_session", lambda name: made.append(name) or _Session())
+    found.model = model
+    for name in ("tidy", "teach", "settle"):
+        monkeypatch.setattr(found, name, lambda: None)
+    rounds = iter([True, False, False, False])  # busy, then three rounds
+    counts = iter([16, 0])
+    states: list[bool] = []
+
+    def busy() -> bool:
+        return next(rounds)
+
+    def number() -> int:
+        count = next(counts)
+        if count:
+            model.pictures([Image.new("RGB", (8, 8))])
+        states.append(model.loaded())
+        return count
+
+    def wait(_pause: float) -> bool:
+        states.append(model.loaded())
+        if len(states) >= 5:
+            found._stop.set()
+        return found._stop.is_set()
+
+    found.busy = busy
+    monkeypatch.setattr(found, "number", number)
+    monkeypatch.setattr(found._stop, "wait", wait)
+    found._run()
+    # busy: nothing loaded; 16 numbered: kept; none left: kept while it
+    # looks, let go before the long pause.
+    assert states == [False, True, True, True, False]
+    assert made == ["picture.onnx"]
+    model.pictures([Image.new("RGB", (8, 8))])
+    assert made == ["picture.onnx", "picture.onnx"]  # read again when wanted
