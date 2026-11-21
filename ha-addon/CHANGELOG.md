@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.304
+
+- „Kadrowane” nie jest już playlistą: jako „Sprawdź kadry” jest w
+  Konfiguracji → Diagnostyka → „Kadrowanie zdjęć z muzeów”, z liczbą
+  czekających dzieł.
+- Kadry sprawdza się jak w „Ucz kadrowania”: jedno dzieło naraz, z
+  powiększonym rogiem kadru, „Samo dzieło” i „W ramie”, duże „Zatwierdź”
+  i „Pomiń”. „Cofnij” przywraca ostatnio zatwierdzone.
+
 ## 1.145.301
 
 - Własne dzieła są kadrowane na iPhonie, bez pytania Opusa: telefon sam
