@@ -288,7 +288,7 @@ class PhoneCrops:
         """Catalogue photographs of ``kind`` for him to say of whether they
         want a cut and a frame: museum works shown as the museum
         photographed them (no cut, so their small picture is the
-        photograph) with their original kept, not looked at by the model nor told of yet, at random.
+        photograph), not looked at by the model nor told of yet, at random.
         And how many he has told of."""
         if kind not in TAUGHT_KINDS:
             raise ValueError(f"no such kind: {kind}")
@@ -303,17 +303,7 @@ class PhoneCrops:
             and Crops.wanted(item)
             and kind_of(item.classification, item.medium) == kind
         ]
-        random.Random(len(told)).shuffle(found)
-        # Only works whose original is kept: its corner is shown large
-        # (00:54: „pokazuj mi powiększenie jednego z narożników”), and no
-        # museum is asked for it.
-        chosen: list[Item] = []
-        for item in found:
-            if len(chosen) >= limit:
-                break
-            if self.crops.images.has_image(item):
-                chosen.append(item)
-        return chosen, len(told)
+        return random.Random(len(told)).sample(found, min(limit, len(found))), len(told)
 
     def tell(self, item: Item, answer: str | None) -> int:
         """His word on ``item``'s photograph ("whole", "cut" or "framed"),

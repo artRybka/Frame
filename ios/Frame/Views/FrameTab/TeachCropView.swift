@@ -188,7 +188,8 @@ struct TeachCropView: View {
 /// The photograph's top left corner, large (Mateusz 2026-11-21 00:54 UTC:
 /// „pokazuj mi powiększenie jednego z narożników prezentowanego dzieła
 /// (czasami ramy są wąskie i nie widać ich na małym ekranie telefonu”):
-/// a quarter of its shorter side, from the kept original.
+/// a quarter of its shorter side, from the thumbnail (00:55: „może być z
+/// miniatury”: every work, not only those with an original kept).
 struct CornerZoom: View {
     let work: ItemSummary
     static let side: CGFloat = 132
@@ -208,8 +209,7 @@ struct CornerZoom: View {
         let size = aspect >= 1 ? CGSize(width: short * aspect, height: short) : CGSize(width: short, height: short / aspect)
         HStack(spacing: 10) {
             ArtImage(
-                ref: .image(work.id), fallback: .thumb(work.id), placeholder: Theme.mat,
-                maxPixel: 2400, contentMode: .fit
+                ref: .thumb(work.id), placeholder: Theme.mat, maxPixel: 1200, contentMode: .fit
             )
             .frame(width: size.width, height: size.height)
             .frame(width: Self.side, height: Self.side, alignment: .topLeading)
