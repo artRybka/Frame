@@ -89,7 +89,7 @@ same, tylko nazywają miejsce:
 | Miejsce (`Place`) | Kto pyta | Dobrane przez serwer | Zachowane przez właściciela |
 |---|---|---|---|
 | `LISTED` | katalog przeglądany (Ulubione, playlisty, wszystko), słowa kluczowe, polskie teksty | wszystkie powody | nic |
-| `FOUND` | katalog pytany słowem, autorem albo filtrem | wszystkie powody | „Sztuki inne”, znaczek, dokument, akta z archiwum państwowego, szare zdjęcie z archiwum sztuki |
+| `FOUND` | katalog pytany słowem, autorem albo filtrem | wszystkie powody | „Sztuki inne”, znaczek, dokument, akta z archiwum państwowego, zdjęcie przyrodnicze, szare zdjęcie z archiwum sztuki |
 | `PROPOSED` | to, co serwer proponuje sam: Studium dnia, karty i strony Odkrywaj z katalogu, Propozycje dnia, inne dzieła autora (od 1.145.19; wcześniej `STUDIED`, tylko pula Studium dnia, a zachowane: „Sztuki inne” i czarno-białe kopie) | wszystkie powody | wszystkie powody |
 | `MUSEUM` | odpowiedź muzeum przy czytaniu | kopie | kopie |
 | `SOUGHT` | Szukaj w muzeach, karty Odkrywaj z muzeów, dobieranie | wszystkie powody | wszystkie powody |

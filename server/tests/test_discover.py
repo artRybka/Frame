@@ -37,6 +37,7 @@ from frame_server.library.vocabulary import (
     is_grey_copy,
     is_grey_painting,
     is_manuscript,
+    is_nature_record,
     is_photograph,
     is_postal,
     is_reproduction,
@@ -467,11 +468,23 @@ def test_catalogue_leaves_manuscripts_out(museums) -> None:  # noqa: F811
     assert service.player.drop_set_aside() == 1
 
     # A catalogue cleaned by the version before loses only what the new one
-    # leaves out: the state archives' records, not the grey plate again.
+    # leaves out: natural history's photographs, not the grey plate again.
     library.set_state(SET_ASIDE_KEY, SET_ASIDE_VERSION - 1)
     library.upsert(plate)
-    form = library.upsert(_nara(8, pooled=True))
-    kept_form = library.upsert(_nara(9))
+
+    def rose(n: int, pooled: bool) -> Item:
+        return _work(
+            n,
+            title="Rosa 'Claude Monet ®'",
+            credit="Department of Life Sciences, University of Trieste",
+            classification="",
+            pooled=pooled,
+        ).model_copy(
+            update={"id": f"europeana:11628~{n}", "source": "europeana", "source_id": f"11628~{n}"}
+        )
+
+    form = library.upsert(rose(8, pooled=True))
+    kept_form = library.upsert(rose(9, pooled=False))
     assert service.player.drop_set_aside() == 1
     assert library.get(form.id) is None and library.get(kept_form.id) is not None
     assert library.get(plate.id) is not None
@@ -812,3 +825,36 @@ def test_antiquity_comes_before_the_middle_ages() -> None:
     assert span(PlaylistRules(terms=["period:egypt"])) == (None, 1)
     assert span(PlaylistRules(terms=["period:rome"])) == (None, 476)
     assert span(PlaylistRules(terms=["period:ancient"])) == (None, 499)
+
+
+def test_natural_history_photographs_are_never_pictures() -> None:
+    """Mateusz 2026-11-21: "Rosa 'Claude Monet ®'", Trieste's photograph of a
+    rose, found by Monet's name before Europeana's search left OpenUp! out."""
+    rose = Item(
+        id="europeana:11628~_FOTO_AM_UNITS_ITALY_94647",
+        source="europeana",
+        source_id="11628~_FOTO_AM_UNITS_ITALY_94647",
+        title="Rosa 'Claude Monet ®'",
+        credit="Department of Life Sciences, University of Trieste",
+    )
+    assert is_nature_record(rose) and against(rose, Place.SOUGHT)
+    assert against(rose, Place.MUSEUM)
+    # A botanical garden's watercolour or print is a picture, as is its
+    # portrait of a naturalist.
+    padua = rose.model_copy(
+        update={
+            "title": "[Cornus sanguinea]",
+            "credit": "University of Padua - Botanical Garden Library",
+            "classification": "Painting, dipinto",
+        }
+    )
+    assert not is_nature_record(padua)
+    lyell = rose.model_copy(
+        update={
+            "title": "Porträt von Charles Lyell",
+            "credit": "Berlin-Dahlem Botanical Garden and Botanical Museum",
+        }
+    )
+    assert not is_nature_record(lyell)
+    # Nor does a museum of art's work with no type go.
+    assert not is_nature_record(rose.model_copy(update={"credit": "Rijksmuseum"}))
