@@ -63,7 +63,7 @@ def reading(proc: Path = Path("/proc"), cgroup: Path = Path("/sys/fs/cgroup")) -
 
 # -- finding where it goes (2026-11-21) ----------------------------------------------------
 
-#: How often :class:`MemoryLog` writes its line.
+#: How often :class:`MemoryLog` hands free memory back and writes its line.
 LOG_EVERY = 600.0
 
 
@@ -144,6 +144,27 @@ class MemoryLog:
             f"machine available {machine.get('available', '?')} MB; {said}"
         )
 
+    def round(self) -> str:
+        """Free memory handed back (:func:`trim`), then the line, with what
+        the trim gave. Right after a start of 1.145.296 a trim took the
+        process from 5.85 to 4.98 GB in 0.24 s (2026-11-21): glibc kept what
+        the start's work had freed, and kept more as the day's big passing
+        arrays (SigLIP's teaching, pictures decoded) came and went."""
+        before = _resident()
+        trimmed = trim()
+        line = self.line()
+        after = _resident()
+        if trimmed and before is not None and after is not None:
+            line += f" trimmed={before - after}MB"
+        return line
+
     def _run(self) -> None:
         while not self._stop.wait(self.every):
-            log.info("%s", self.line())
+            log.info("%s", self.round())
+
+
+def _resident() -> int | None:
+    process = reading()["process_mb"]
+    assert isinstance(process, dict)
+    value = process.get("resident")
+    return value if isinstance(value, int) else None
