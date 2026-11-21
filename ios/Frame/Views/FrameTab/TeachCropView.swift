@@ -57,7 +57,7 @@ struct TeachCropView: View {
             }
             .padding(.horizontal, Theme.gutter)
             .padding(.bottom, 12)
-            .background(Theme.paper.ignoresSafeArea())
+            .paperPage()
             .navigationTitle("Ucz kadrowania")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
