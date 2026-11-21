@@ -89,30 +89,31 @@ ANSWERS = "answers"
 @dataclass(frozen=True)
 class Floors:
     """How near is near enough with SigLIP's numbers, in place of
-    :mod:`frame_server.looks`' Gemini floors (set on his catalogue on the
-    NAS, as many works shown as Gemini showed)."""
+    :mod:`frame_server.looks`' Gemini floors. Set on his catalogue on the NAS
+    (2026-11-21, 35 works, 40% numbered): as many works above each floor as
+    Gemini showed, ``scripts/look-model/calibrate.py``."""
 
     #: Words: at least this near, and not further than ``near_best`` below the best.
     words: float = 0.08
     near_best: float = 0.04
     #: A photograph: at least this near.
-    picture: float = 0.60
+    picture: float = 0.78
     #: A work like another: at least this near to be shown at all.
-    base: float = 0.57
+    base: float = 0.70
     #: "Podobne do": both, the subject, the style; ``step`` less for each
     #: step scrolled on.
     alike: dict[str, float] = field(
-        default_factory=lambda: {"": 0.80, "subject": 0.72, "style": 0.72}
+        default_factory=lambda: {"": 0.84, "subject": 0.80, "style": 0.85}
     )
     step: float = 0.03
     #: The gatekeeper's look-alikes of a cover.
-    raw: float = 0.85
+    raw: float = 0.84
 
 
 FLOORS = Floors()
 #: Whether :data:`FLOORS` were set on his catalogue: until then SigLIP never
 #: answers, however many works have their numbers.
-FLOORS_SET = False
+FLOORS_SET = True
 
 
 def _unit_rows(rows: np.ndarray) -> np.ndarray:

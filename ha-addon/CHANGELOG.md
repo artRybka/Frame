@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.295
+
+- Szukanie wyglądem gotowe do przesiadki na SigLIP 2: progi bliskości
+  ustawione na Twoim katalogu tak, by „Podobne do” pokazywało tyle dzieł co
+  Gemini. Przełączenie nastąpi samo, gdy serwer policzy odciski 95% dzieł.
+
 ## 1.145.294
 
 - Nowy ekran „Ucz kadrowania” (Konfiguracja → Diagnostyka → Kadrowanie
