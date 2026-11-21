@@ -1,12 +1,24 @@
 # Changelog
 
-## 1.145.296
+## 1.145.298
 
 - „Szukaj zdjęciem” liczy odcisk zdjęcia na iPhonie: model pobiera się raz
   w tle, potem na serwer idzie tylko odcisk (3 KB) zamiast zdjęcia.
 - Przy szukaniu zdjęciem, po dziełach z katalogu, pytane są też muzea:
   o tematy najbliższych dzieł z katalogu, bez Claude. To, co przyniosą,
   zostaje tylko wtedy, gdy wygląda jak zdjęcie.
+
+## 1.145.297
+
+- „Ucz kadrowania” pokazuje najpierw dzieła, przy których model
+  kadrowania na telefonie najbardziej się waha, czy kadrować. Twoje oceny
+  tych dzieł najbardziej pomogą go douczyć.
+
+## 1.145.296
+
+- Serwer co 10 minut zapisuje w logu, ile zajmuje pamięci. Właściciel
+  może zobaczyć, na co ją wydaje, i oddać nieużywaną systemowi. Nic się
+  nie zmienia w działaniu, to diagnostyka zużycia pamięci na NAS-ie.
 
 ## 1.145.295
 
