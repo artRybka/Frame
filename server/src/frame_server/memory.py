@@ -168,3 +168,81 @@ def _resident() -> int | None:
     assert isinstance(process, dict)
     value = process.get("resident")
     return value if isinstance(value, int) else None
+
+
+#: The longest an allocation trace runs (:class:`Trace`).
+TRACE_MOST = 3600.0
+
+
+class Trace:
+    """Where memory is taken, between two moments: Python's tracemalloc
+    from :meth:`begin` (numpy's arrays included, which the census cannot
+    see) until :meth:`report`, the places that took most since then.
+    Things go a little slower while it runs, so it stops itself after
+    :data:`TRACE_MOST`. In two hours after a start of 1.145.298 the process
+    grew from 5.2 to 8.0 GB while Python's objects stayed at 1.3 GB and a
+    trim gave back 0.9 GB (2026-11-21)."""
+
+    def __init__(self) -> None:
+        self._first: object = None
+        self._began = 0.0
+        self._lock = threading.Lock()
+        self._timer: threading.Timer | None = None
+
+    def begin(self, frames: int = 8, most: float = TRACE_MOST) -> None:
+        import time
+        import tracemalloc
+
+        with self._lock:
+            if not tracemalloc.is_tracing():
+                tracemalloc.start(frames)
+            self._first = tracemalloc.take_snapshot()
+            self._began = time.monotonic()
+            if self._timer is not None:
+                self._timer.cancel()
+            self._timer = threading.Timer(most, self.end)
+            self._timer.daemon = True
+            self._timer.start()
+
+    def end(self) -> None:
+        import tracemalloc
+
+        with self._lock:
+            self._first = None
+            if self._timer is not None:
+                self._timer.cancel()
+                self._timer = None
+            tracemalloc.stop()
+
+    def report(self, top: int = 25) -> dict[str, object]:
+        """The places whose memory grew most since :meth:`begin`, by their
+        call chain's last frames (``running`` False: no trace)."""
+        import time
+        import tracemalloc
+
+        with self._lock:
+            first = self._first
+            if first is None or not tracemalloc.is_tracing():
+                return {"running": False}
+            now = tracemalloc.take_snapshot()
+            minutes = (time.monotonic() - self._began) / 60
+        assert isinstance(first, tracemalloc.Snapshot)
+        grown = now.compare_to(first, "traceback")
+        traced, peak = tracemalloc.get_traced_memory()
+        return {
+            "running": True,
+            "minutes": round(minutes, 1),
+            "traced_mb": traced >> 20,
+            "peak_mb": peak >> 20,
+            "grown": [
+                {
+                    "mb": round(stat.size_diff / 1048576, 1),
+                    "count": stat.count_diff,
+                    "at": [
+                        f"{f.filename.rsplit('site-packages/', 1)[-1]}:{f.lineno}"
+                        for f in stat.traceback
+                    ][-6:],
+                }
+                for stat in grown[:top]
+            ],
+        }
