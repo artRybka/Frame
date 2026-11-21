@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.299
+
+- Rysunki i grafiki z muzeów są kadrowane tylko „do kartki”: znika tło,
+  na którym sfotografowano papier, a passe-partout i margines kartki
+  zostają. Grafiki pokazują się całą kartką zamiast samej odbitki. Te
+  przycięte wcześniej do odbitki zostaną zrobione od nowa w nocy albo
+  przy otwarciu karty.
+- „Ucz kadrowania” przy rysunku i grafice ma tylko „Bez kadru” i „Kadr do
+  kartki”.
+
 ## 1.145.298
 
 - „Szukaj zdjęciem” liczy odcisk zdjęcia na iPhonie: model pobiera się raz
