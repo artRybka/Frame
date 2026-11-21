@@ -67,6 +67,7 @@ from .ai.client import AiUnavailable
 from .ai.gemini import EMBED_MAX, EMBED_SIZE, Embedded, NotDrawn, TooHeavy
 from .library.models import Item, ItemKind
 from .library.verdict import Place, against
+from .library.wording import Wording
 
 if TYPE_CHECKING:
     from .ai.config import AiConfigStore
@@ -150,6 +151,12 @@ WORDS_WAIT = 1.5
 #: A photograph searched in Szukaj (``Looks.photo``) is a ``like`` of its
 #: own: this before the key its numbers are kept under (``photos/<key>``).
 PHOTO = "photo:"
+#: A photograph's museum searches (:meth:`Looks.photo_searches`): the
+#: subjects of its nearest works of the catalogue, this many of them looked
+#: at, a subject had by at least ``PHOTO_SUBJECT``, ``PHOTO_SEARCHES`` at most.
+PHOTO_NEAR = 24
+PHOTO_SUBJECT = 4
+PHOTO_SEARCHES = 3
 #: A work whose thumbnail is not here is looked at again after this long.
 NO_THUMB_AGAIN = 86_400.0
 #: Rows of the numbers worked through at once (some 12 MB as floats).
@@ -934,6 +941,83 @@ class Looks:
             self._keep_photo(self._photo_path(key), vector)
         self._keep_photo(self._photo_path(key, "three"), self._three_of(small))
         return key
+
+    def photo_numbers(self, vector: np.ndarray) -> str:
+        """:meth:`photo` for a photograph the phone numbered itself with
+        SigLIP's picture side (``seen.PHONE``): the numbers kept under the
+        key the photograph would have had, at length 1. Only while SigLIP
+        answers (:class:`AiUnavailable` otherwise: the app sends the
+        photograph then)."""
+        if not self.local():
+            raise AiUnavailable("SigLIP does not answer yet")
+        vector = np.asarray(vector, dtype=np.float32).reshape(-1)
+        norm = float(np.linalg.norm(vector))
+        if len(vector) != self._asked().size or not np.isfinite(norm) or norm < 1e-6:
+            raise ValueError("not a photograph's numbers")
+        vector = vector / norm
+        key = PHOTO + hashlib.sha256(vector.astype("<f4").tobytes()).hexdigest()[:20]
+        if self.photo_vector(key) is None:
+            self._keep_photo(self._photo_path(key, "seen"), vector)
+        return key
+
+    def photo_searches(self, key: str) -> list[Wording]:
+        """The museums' searches for a photograph searched (Mateusz
+        2026-11-21: "Tak, zróbmy proszę w ten sposób", no Claude asked): the
+        subjects most of the catalogue's :data:`PHOTO_NEAR` nearest works
+        have, at least :data:`PHOTO_SUBJECT` of them, :data:`PHOTO_SEARCHES`
+        at most, each by its museum word with its Polish name. None but with
+        SigLIP's numbers (Google's would be asked for each museum work)."""
+        from .library.vocabulary import term
+
+        vector = self.photo_vector(key)
+        if vector is None or self.seen is None or not self.local():
+            return []
+        near = self.seen.alike_near(vector, PHOTO_NEAR * 3)
+        counted: dict[str, int] = {}
+        works = 0
+        for item_id, score in near:
+            if score < seen_floors().picture or works >= PHOTO_NEAR:
+                break
+            item = self.library.get(item_id)
+            if item is None:
+                continue
+            works += 1
+            for found in dict.fromkeys(t for t in item.terms if t.startswith("subject:")):
+                counted[found] = counted.get(found, 0) + 1
+        out: list[Wording] = []
+        for found, count in sorted(counted.items(), key=lambda c: -c[1]):
+            named = term(found)
+            if count < PHOTO_SUBJECT or named is None or not named.query:
+                continue
+            out.append(Wording(named.query, en=named.query, pl=named.name.lower()))
+            if len(out) >= PHOTO_SEARCHES:
+                break
+        return out
+
+    def judge_photo(self, key: str, items: Sequence[Item]) -> list[Item]:
+        """:meth:`judge` for a photograph searched: the museum works that
+        look like it, at least :attr:`Floors.picture` near, nearest first;
+        their thumbnails numbered here now and kept."""
+        vector = self.photo_vector(key)
+        if vector is None or not items or self.seen is None or not self.local():
+            return []
+        asked = self._asked()
+        try:
+            self._number([i for i in items if i.id not in asked])
+        except (AiUnavailable, NotDrawn, httpx.HTTPError) as err:
+            log.info("numbers for museum works: %s", err)
+        query = vector / max(float(np.linalg.norm(vector)), 1e-9)
+        floor = seen_floors().picture
+        scored: list[tuple[float, Item]] = []
+        for item in items:
+            row = asked.vector(item.id)
+            if row is None:
+                continue
+            score = float(row @ query) / max(float(np.linalg.norm(row)), 1e-9)
+            if score >= floor:
+                scored.append((score, item))
+        scored.sort(key=lambda s: -s[0])
+        return [item for _, item in scored]
 
     @staticmethod
     def _keep_photo(path: Path, vector: np.ndarray) -> None:

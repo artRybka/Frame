@@ -3,11 +3,15 @@ it looks, a photograph of one, and the works that look like a work."""
 
 from __future__ import annotations
 
+import base64
+import binascii
 import io
 from typing import Annotated
 
 import httpx
+import numpy as np
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
@@ -118,6 +122,73 @@ async def looks_photo(svc: Svc, file: Annotated[UploadFile, File()]) -> LooksPho
         raise HTTPException(409, str(err)) from err
     except (NotDrawn, httpx.HTTPError) as err:
         raise HTTPException(502, f"Google did not answer: {err}") from err
+    return LooksPhoto(key=key)
+
+
+class LooksPhone(BaseModel):
+    """Whether the app may number a photograph itself (``seen.PHONE``):
+    the model it would use, its zip's size and sum when the server has it,
+    and whether SigLIP answers now (else the photograph is sent)."""
+
+    model: str
+    here: bool
+    size: int
+    sha256: str
+    answers: bool
+
+
+@router.get("/looks/phone", response_model=LooksPhone)
+async def looks_phone(svc: Svc) -> LooksPhone:
+    from ..seen import PHONE, PHONE_SUM
+
+    path = svc.seen.model.phone_here()
+    return LooksPhone(
+        model=PHONE,
+        here=path is not None,
+        size=path.stat().st_size if path is not None else 0,
+        sha256=PHONE_SUM if path is not None else "",
+        answers=svc.looks.local(),
+    )
+
+
+@router.get("/looks/phone/model")
+async def looks_phone_model(svc: Svc) -> FileResponse:
+    """The phone's picture side (Core ML, in a tar), fetched once by the app."""
+    path = svc.seen.model.phone_here()
+    if path is None:
+        raise HTTPException(404, "the phone's model is not here yet")
+    return FileResponse(path, media_type="application/x-tar", filename=path.name)
+
+
+class LooksNumbers(BaseModel):
+    """A photograph numbered on the phone: the model's release and its
+    numbers (float32, little-endian, base64)."""
+
+    model: str
+    look: str
+
+
+@router.post("/looks/photo/numbers", response_model=LooksPhoto)
+async def looks_photo_numbers(svc: Svc, body: LooksNumbers) -> LooksPhoto:
+    """``/looks/photo`` for a photograph the phone numbered itself: only
+    numbers come, never the photograph. 409 when SigLIP does not answer or
+    the phone's model is another (the app sends the photograph then), 422
+    when the numbers are not a photograph's."""
+    from ..seen import PHONE
+
+    if body.model != PHONE:
+        raise HTTPException(409, f"another model: {PHONE} here")
+    try:
+        raw = base64.b64decode(body.look, validate=True)
+        vector = np.frombuffer(raw, dtype="<f4")
+    except (binascii.Error, ValueError) as err:
+        raise HTTPException(422, f"not numbers: {err}") from err
+    try:
+        key = await run_in_threadpool(svc.looks.photo_numbers, vector)
+    except AiUnavailable as err:
+        raise HTTPException(409, str(err)) from err
+    except ValueError as err:
+        raise HTTPException(422, str(err)) from err
     return LooksPhoto(key=key)
 
 

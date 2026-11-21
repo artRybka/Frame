@@ -36,6 +36,9 @@ class FakeModel(SeenModel):
     def fetch(self, client: httpx.Client | None = None) -> None:
         pass
 
+    def phone(self, client: httpx.Client | None = None) -> Path | None:
+        return super().phone(client) if client is not None else None
+
     @staticmethod
     def _way(at: int) -> np.ndarray:
         out = np.zeros(SIZE, dtype=np.float32)
@@ -244,6 +247,7 @@ def test_the_model_lets_go_only_with_nothing_left_to_number(
     model = SeenModel(tmp_path / "real")
     made: list[str] = []
     monkeypatch.setattr(model, "fetch", lambda client=None: None)
+    monkeypatch.setattr(model, "phone", lambda client=None: None)
     monkeypatch.setattr(model, "_session", lambda name: made.append(name) or _Session())
     found.model = model
     for name in ("tidy", "teach", "settle"):
@@ -278,3 +282,99 @@ def test_the_model_lets_go_only_with_nothing_left_to_number(
     assert made == ["picture.onnx"]
     model.pictures([Image.new("RGB", (8, 8))])
     assert made == ["picture.onnx", "picture.onnx"]  # read again when wanted
+
+
+def test_the_phone_numbers_a_photograph_itself_and_sends_only_numbers(
+    service: FrameService, found: Seen, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import base64
+
+    from frame_server.web import create_app
+
+    monkeypatch.setattr(seen, "LEAST_SUBJECT", 1)
+    monkeypatch.setattr(seen, "FLOORS_SET", True)
+    monkeypatch.setattr(seen, "PHONE_SUM", hashlib.sha256(b"core ml").hexdigest())
+    _work(service, "met:1", "red", medium="oil on canvas", year=1890, terms=["subject:sea"])
+    _work(service, "met:3", "blue", medium="oil on canvas", year=1880, terms=["subject:city"])
+    found.number()
+    blue = np.zeros(SIZE, dtype="<f4")
+    blue[2] = 3.0  # any length: kept at length 1
+    sent = {"model": seen.PHONE, "look": base64.b64encode(blue.tobytes()).decode()}
+    app = create_app(service.settings)
+    app.state.service = service
+    with TestClient(app) as client:
+        state = client.get("/api/looks/phone").json()
+        assert state == {
+            "model": seen.PHONE,
+            "here": False,
+            "size": 0,
+            "sha256": "",
+            "answers": False,
+        }
+        assert client.get("/api/looks/phone/model").status_code == 404
+        assert client.post("/api/looks/photo/numbers", json=sent).status_code == 409
+
+        def answer(request: httpx.Request) -> httpx.Response:
+            assert request.url.path.endswith(f"/{seen.PHONE}/{seen.PHONE_FILE}")
+            return httpx.Response(200, content=b"core ml")
+
+        with httpx.Client(transport=httpx.MockTransport(answer)) as http:
+            assert found.model.phone(http) is not None
+        assert found.teach() and found.settle()
+        state = client.get("/api/looks/phone").json()
+        assert state["here"] and state["answers"] and state["size"] == 7
+        assert client.get("/api/looks/phone/model").content == b"core ml"
+        key = client.post("/api/looks/photo/numbers", json=sent).json()["key"]
+        assert key.startswith("photo:") and service.looks.alike(key) == ["met:3"]
+        assert client.post("/api/looks/photo/numbers", json=sent).json()["key"] == key
+        other = {**sent, "model": "look-model-other"}
+        assert client.post("/api/looks/photo/numbers", json=other).status_code == 409
+        short = {**sent, "look": base64.b64encode(blue[:10].tobytes()).decode()}
+        assert client.post("/api/looks/photo/numbers", json=short).status_code == 422
+        assert (
+            client.post("/api/looks/photo/numbers", json={**sent, "look": "!"}).status_code == 422
+        )
+
+
+def test_the_phones_model_is_checked_on_the_way(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model = SeenModel(tmp_path)
+    monkeypatch.setattr(seen, "PHONE_SUM", "")
+    assert model.phone() is None  # none released yet: never asked
+    monkeypatch.setattr(seen, "PHONE_SUM", hashlib.sha256(b"core ml").hexdigest())
+    with (
+        httpx.Client(
+            transport=httpx.MockTransport(lambda r: httpx.Response(200, content=b"changed"))
+        ) as http,
+        pytest.raises(ValueError),
+    ):
+        model.phone(http)
+    assert model.phone_here() is None and not list(tmp_path.rglob("*.part"))
+
+
+def test_a_photograph_asks_the_museums_by_its_nearest_works_subjects(
+    service: FrameService, found: Seen, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from frame_server import looks as looks_module
+
+    monkeypatch.setattr(seen, "LEAST_SUBJECT", 1)
+    monkeypatch.setattr(seen, "FLOORS_SET", True)
+    monkeypatch.setattr(looks_module, "PHOTO_SUBJECT", 2)
+    looks = service.looks
+    _work(service, "met:1", "blue", terms=["subject:sea", "subject:ships"])
+    _work(service, "met:2", "blue", terms=["subject:sea"])
+    _work(service, "met:3", "red", terms=["subject:city"])
+    found.number()
+    assert found.teach() and found.settle()
+    blue = np.zeros(SIZE, dtype=np.float32)
+    blue[2] = 1.0
+    key = looks.photo_numbers(blue)
+    words = service._look_searches(key)
+    assert [w.en for w in words] == ["sea"] and words[0].in_language("pl") == "morze"
+    # What the museums bring is judged by how it looks like the photograph.
+    _work(service, "met:4", "blue")
+    _work(service, "met:5", "green")
+    museum = [service.library.get("met:5"), service.library.get("met:4")]
+    assert [i.id for i in service._judge_look(key, [i for i in museum if i])] == ["met:4"]
+    assert service._look_searches("photo:0000") == []  # not searched here
