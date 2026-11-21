@@ -689,6 +689,8 @@ def test_the_owner_asks_where_the_memory_goes(tmp_path: Path) -> None:
         line = memory.MemoryLog(lambda: memory_parts(service)).line()
         assert line.startswith("memory: resident ") and "works=0" in line
         assert "seen_model=False" in line
+        # Each round hands free memory back first (a no-op off glibc).
+        assert memory.MemoryLog(lambda: memory_parts(service)).round().startswith("memory: ")
 
 
 # -- the start ---------------------------------------------------------------
