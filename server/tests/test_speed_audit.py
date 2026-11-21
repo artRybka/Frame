@@ -689,6 +689,16 @@ def test_the_owner_asks_where_the_memory_goes(tmp_path: Path) -> None:
         line = memory.MemoryLog(lambda: memory_parts(service)).line()
         assert line.startswith("memory: resident ") and "works=0" in line
         assert "seen_model=False" in line
+        # The allocation trace: where memory grew since it began.
+        assert client.get("/api/debug/memory/trace").json() == {"running": False}
+        assert client.post("/api/debug/memory/trace").json() == {"running": True}
+        kept = [bytearray(1 << 20) for _ in range(4)]  # noqa: F841 - held while asked
+        report = client.get("/api/debug/memory/trace?top=5").json()
+        assert report["running"] and report["grown"][0]["mb"] >= 1
+        assert client.post("/api/debug/memory/trace?stop=true").json() == {"running": False}
+        assert client.get("/api/debug/memory/trace").json() == {"running": False}
+        # Each round hands free memory back first (a no-op off glibc).
+        assert memory.MemoryLog(lambda: memory_parts(service)).round().startswith("memory: ")
 
 
 # -- the start ---------------------------------------------------------------
