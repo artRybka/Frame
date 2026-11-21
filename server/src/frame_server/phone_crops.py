@@ -18,6 +18,7 @@ taught again from (:meth:`PhoneCrops.lessons`).
 from __future__ import annotations
 
 import logging
+import random
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -36,6 +37,13 @@ log = logging.getLogger(__name__)
 #: The state's key in the library.
 KEY = "phone_crops"
 VERDICTS = ("cut", "whole", "unsure")
+#: "Ucz kadrowania" (Mateusz 2026-11-21 00:47 UTC: „przygotuj mi ekran gdzie
+#: dam mu dane startowe - ocenę czy trzeba kadrować i jeżeli tak, to czy jest
+#: rama”): what he says of a catalogue photograph at a glance.
+TOLD = ("whole", "cut", "framed")
+#: The kinds he tells of, one at a time (Mateusz 2026-11-21 00:48 UTC:
+#: „oddzielnie malarstwem, rysunkiem i grafiką. Będzie mi łatwiej”).
+TAUGHT_KINDS = (0, 1, 2)
 
 
 def _now() -> str:
@@ -66,6 +74,7 @@ class PhoneCrops:
         state = dict(self.library.get_state(KEY, {}) or {})
         state.setdefault("looked", {})
         state.setdefault("fine", {})
+        state.setdefault("told", {})
         return state
 
     def _save(self, state: dict[str, Any]) -> None:
@@ -269,6 +278,66 @@ class PhoneCrops:
                     if cut is not None and (owners or cut.surround_by == "owner")
                     else (None if entry.get("v") == "unsure" else entry.get("surround")),
                     "at": state["fine"].get(item_id) or (cut.at if cut is not None else ""),
+                }
+            )
+        return found
+
+    # -- "Ucz kadrowania": his word on a photograph at a glance ------------------------
+
+    def to_teach(self, limit: int, kind: int = 0) -> tuple[list[Item], int]:
+        """Catalogue photographs of ``kind`` for him to say of whether they
+        want a cut and a frame: museum works shown as the museum
+        photographed them (no cut, so their small picture is the
+        photograph), not looked at by the model nor told of yet, at random.
+        And how many he has told of."""
+        if kind not in TAUGHT_KINDS:
+            raise ValueError(f"no such kind: {kind}")
+        state = self._state()
+        told, looked = state["told"], state["looked"]
+        found = [
+            item
+            for item in self.library.all_items()
+            if item.cut is None
+            and item.id not in told
+            and item.id not in looked
+            and Crops.wanted(item)
+            and kind_of(item.classification, item.medium) == kind
+        ]
+        return random.Random(len(told)).sample(found, min(limit, len(found))), len(told)
+
+    def tell(self, item: Item, answer: str | None) -> int:
+        """His word on ``item``'s photograph ("whole", "cut" or "framed"),
+        kept; None takes it back ("Cofnij"). How many he has told of."""
+        if answer is not None and answer not in TOLD:
+            raise ValueError(f"no such answer: {answer}")
+        state = self._state()
+        if answer is None:
+            state["told"].pop(item.id, None)
+        else:
+            state["told"][item.id] = {
+                "p": item.picture_key(),
+                "t": answer,
+                "k": kind_of(item.classification, item.medium),
+                "at": _now(),
+            }
+        self._save(state)
+        return len(state["told"])
+
+    def told(self) -> list[dict[str, Any]]:
+        """What he said at a glance, for teaching the model on the Mac: the
+        photograph whole, cut, or cut with a frame round the work (no
+        corners); the photographs from ``/api/library/items/{id}/full?side=``."""
+        found: list[dict[str, Any]] = []
+        for item_id, entry in self._state()["told"].items():
+            item = self.library.get(item_id)
+            if item is None or entry.get("p") != item.picture_key():
+                continue
+            found.append(
+                {
+                    "id": item_id,
+                    "kind": entry.get("k"),
+                    "told": entry.get("t"),
+                    "at": entry.get("at"),
                 }
             )
         return found

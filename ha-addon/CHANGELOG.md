@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.294
+
+- Nowy ekran „Ucz kadrowania” (Konfiguracja → Diagnostyka → Kadrowanie
+  zdjęć z muzeów): szybko oceniasz
+  zdjęcia z katalogu, osobno malarstwo, rysunki i grafiki. Do wyboru masz
+  „bez kadru”, „kadr” albo „kadr z ramą”, a powiększony róg pokazuje, czy
+  rama jest. Te oceny będą danymi startowymi do douczenia modelu
+  kadrowania.
+
 ## 1.145.293
 
 - „Odżółć papier”, „Zdejmij werniks” i „Przywróć…” w menu „…” karty

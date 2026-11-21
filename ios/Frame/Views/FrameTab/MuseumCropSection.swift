@@ -9,6 +9,7 @@ import UIKit
 struct MuseumCropSection: View {
     @Environment(AppModel.self) private var model
     @State private var batch = MuseumCropBatch()
+    @State private var teaching = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -62,8 +63,19 @@ struct MuseumCropSection: View {
             Text(bound: "Zostaw aplikację otwartą: zdjęcia idą z serwera, a kadry wracają na serwer. Ekran nie wygaśnie w trakcie.")
                 .font(.caption)
                 .foregroundStyle(Theme.inkSoft)
+            Button {
+                teaching = true
+            } label: {
+                Label("Ucz kadrowania", systemImage: "graduationcap")
+                    .font(.subheadline.weight(.medium))
+            }
+            .buttonStyle(.bordered)
+            Text(bound: "Zdjęcia z katalogu jedno po drugim: powiedz, czy dzieło trzeba kadrować i czy ma ramę. Z tych ocen model uczy się od nowa.")
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
         }
         .task { await batch.count(with: model.backend) }
+        .fullScreenCover(isPresented: $teaching) { TeachCropView() }
     }
 }
 

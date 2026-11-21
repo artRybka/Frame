@@ -973,6 +973,22 @@ struct LiveBackend: FrameBackend {
         try await perform(request("/api/crops/review/\(escape(itemID))/fine", method: "POST"))
     }
 
+    func cropTeach(kind: Int, limit: Int) async throws -> CropTeach {
+        try await get("/api/crops/teach", query: [
+            URLQueryItem(name: "kind", value: String(kind)), URLQueryItem(name: "limit", value: String(limit)),
+        ])
+    }
+
+    func cropTell(itemID: String, _ answer: CropTeach.Answer?) async throws -> CropTeach {
+        guard let answer else {
+            return try await perform(request("/api/crops/teach/\(escape(itemID))", method: "DELETE"))
+        }
+        var req = request("/api/crops/teach/\(escape(itemID))", method: "POST")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(["answer": answer.rawValue])
+        return try await perform(req)
+    }
+
     func sendPhoneScan(token: String, name: String, _ data: Data) async throws {
         var req = request("/api/debug/own-scans/\(escape(token))/\(escape(name))", method: "PUT")
         req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
