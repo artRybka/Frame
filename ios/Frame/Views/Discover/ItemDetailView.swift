@@ -1136,21 +1136,66 @@ struct ItemDetailView: View {
             cleaning = true
         }
         defer { withAnimation(.easeInOut(duration: 0.3)) { cleaning = false } }
+        let made = ColourRecovery.made(PaintStyle.of(item)) ?? "paper"
+        // The picture switched on the phone at once, as the full screen does
+        // it, not when the server has made its own again (Mateusz
+        // 2026-11-21: "Pomimo komunikatu odżółconym papierze, dzieło
+        // pozostaje zażółcone jeszcze przez wiele sekund").
+        async let shown: Void = showOnPhone(item, on: !on, made: made)
         do {
             let updated = on
                 ? try await model.backend.unclean(itemID: item.id)
-                : try await model.backend.clean(
-                    itemID: item.id, made: ColourRecovery.made(PaintStyle.of(item)) ?? "paper"
-                )
+                : try await model.backend.clean(itemID: item.id, made: made)
+            await shown
             guard item.id == itemID else { return }
+            model.phoneConfirmed(item.id)
             cutChanged(updated)
             model.notices.done(ColourRecovery.done(kind, on: on))
         } catch BackendError.http(let status, _) where status == 422 {
+            await shown
+            model.phoneForget(item.id)
             // Read again by the server, the picture has nothing to take off.
             recovery = nil
             model.notices.info("Nie ma czego korygować", "Ten obraz nie ma pożółkłego werniksu ani arkusza.")
         } catch {
+            await shown
+            model.phoneForget(item.id)
             if !error.isCancellation { model.show(error) }
+        }
+    }
+
+    /// The work's picture with its colours corrected (`on`) or as it came,
+    /// made on the phone and given to the card and every thumbnail of it
+    /// (`AppModel.phoneShows`): the varnish or the sheet's yellow taken off
+    /// by the server's numbers (`/colours`), the picture as it came had
+    /// from the server's kept copy.
+    private func showOnPhone(_ item: Item, on: Bool, made: String) async {
+        guard item.kind == .artwork else { return }
+        if on {
+            guard let view = try? await model.backend.colours(itemID: item.id, made: made),
+                  let request = model.backend.request(for: item.originalRef),
+                  let base = try? await ImageLoader.shared.image(
+                      for: request, maxPixel: PhonePicture.largeSide, priority: .high
+                  )
+            else { return }
+            let picture: UIImage?
+            if view.kind == "varnish" {
+                let sum = VarnishSum(view)
+                picture = await Task.detached(priority: .userInitiated) { sum.apply(to: base) }.value
+            } else if let sum = SheetSum(view) {
+                picture = await Task.detached(priority: .userInitiated) { sum.apply(to: base) }.value
+            } else {
+                picture = nil
+            }
+            if let picture { await model.phoneShows(item, on: true, picture: picture) }
+        } else {
+            let plain = ImageRef.treated(item.id, restored: true, cleaned: false, version: item.pictureVersion)
+            guard let request = model.backend.request(for: plain),
+                  let picture = try? await ImageLoader.shared.image(
+                      for: request, maxPixel: PhonePicture.largeSide, priority: .high
+                  )
+            else { return }
+            await model.phoneShows(item, on: false, picture: picture)
         }
     }
 
