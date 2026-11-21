@@ -36,6 +36,9 @@ class FakeModel(SeenModel):
     def fetch(self, client: httpx.Client | None = None) -> None:
         pass
 
+    def phone(self, client: httpx.Client | None = None) -> Path | None:
+        return super().phone(client) if client is not None else None
+
     @staticmethod
     def _way(at: int) -> np.ndarray:
         out = np.zeros(SIZE, dtype=np.float32)
@@ -244,6 +247,7 @@ def test_the_model_lets_go_only_with_nothing_left_to_number(
     model = SeenModel(tmp_path / "real")
     made: list[str] = []
     monkeypatch.setattr(model, "fetch", lambda client=None: None)
+    monkeypatch.setattr(model, "phone", lambda client=None: None)
     monkeypatch.setattr(model, "_session", lambda name: made.append(name) or _Session())
     found.model = model
     for name in ("tidy", "teach", "settle"):
@@ -336,6 +340,7 @@ def test_the_phones_model_is_checked_on_the_way(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     model = SeenModel(tmp_path)
+    monkeypatch.setattr(seen, "PHONE_SUM", "")
     assert model.phone() is None  # none released yet: never asked
     monkeypatch.setattr(seen, "PHONE_SUM", hashlib.sha256(b"core ml").hexdigest())
     with (

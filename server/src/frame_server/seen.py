@@ -65,7 +65,7 @@ SUMS = "SHA256SUMS"
 #: Empty: none yet.
 PHONE = "look-model-siglip2-b16-phone-1"
 PHONE_FILE = "Look.mlpackage.tar"
-PHONE_SUM = ""
+PHONE_SUM = "88ca2a8b423763a4da6751d524c5e454e3dd06b226f516d3112c6bad3423fb69"
 
 #: Numbers a work.
 SIZE = 768
