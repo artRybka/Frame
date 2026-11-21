@@ -138,6 +138,9 @@ SURROUND_KINDS = {"frame_outer": "frame", "mount": "mount"}
 #: the works with only their paper seen around them put before Opus for
 #: their plate (:meth:`Crops.margins_off`; Mateusz 2026-11-18).
 MARGIN_SWEEP = 1
+#: Once the prints and drawings shown on their plate alone (2026-11-18 to
+#: 2026-11-21) are shown on their whole sheet (:meth:`Crops.sheets_on`).
+SHEET_SWEEP = 1
 #: Of those, asked in one night at most: the corners' whole question,
 #: about a cent each through the Batch API.
 SHEET_PER_NIGHT = 150
@@ -593,11 +596,8 @@ def _owners_frame(cut: Cut) -> dict[str, Any]:
 
 def _framed_by_owner(cut: Cut, frame: Quad) -> Cut:
     """``cut`` with the outer edge of the card's "W ramie" the owner set
-    ("Popraw kadr" → "Rama" or "Kartka"): a print's sheet when that is what
-    is around its plate (:meth:`Cut.framed_by`), else the frame's or the
-    passe-partout's edge, never changed by the model again."""
-    if cut.surround is None and not cut.paper and cut.plate is not None:
-        return cut.model_copy(update={"work": frame})
+    ("Popraw kadr" → "Rama"): the frame's or the passe-partout's edge,
+    never changed by the model again."""
     kind = cut.surround_kind or "frame"
     mine = {"surround": frame, "surround_kind": kind, "surround_by": "owner"}
     return cut.model_copy(update={**mine, "surround_asked": True})
@@ -868,6 +868,7 @@ class Crops(CriticNight):
         return sum(1 for c in claims.values() if not _aside(c or {}))
 
     def order(self) -> bool:
+        self.sheets_on()
         if self.on_phone():
             return False
         self.reshaped()
@@ -876,7 +877,6 @@ class Crops(CriticNight):
         self.swept()
         self.untwinned()
         self.sheets_out()
-        self.margins_off()
         return super().order()
 
     def reshaped(self) -> int:
@@ -1012,6 +1012,32 @@ class Crops(CriticNight):
         (the old switch "Z marginesem"), its plate known."""
         cut = item.cut
         return cut is not None and cut.paper and cut.plate is not None
+
+    def on_plate(self, item: Item) -> bool:
+        """A print or drawing whose pictures were made on its plate alone
+        (2026-11-18 to 2026-11-21), to be made again on its sheet."""
+        cut = item.cut
+        return cut is not None and not cut.paper and cut.plate is not None and not self.stale(item)
+
+    def sheets_on(self) -> int:
+        """Once (:data:`SHEET_SWEEP`; Mateusz 2026-11-21 18:17 UTC, „Tak” to
+        a print shown on its whole sheet, „do kartki”): the prints and
+        drawings shown on their plate alone are made again on their sheet,
+        and the sheet is no more the card's "W ramie". Not while a round is
+        under way. How many changed."""
+        state = self.state()
+        if state.get("sheet_sweep") == SHEET_SWEEP or state.get("order"):
+            return 0
+        done = 0
+        for item in self.library.all_items():
+            if self.on_plate(item) and item.cut is not None:
+                self.apply(item, item.cut.model_copy(update={"paper": True}))
+                done += 1
+        state = self.state()
+        state["sheet_sweep"] = SHEET_SWEEP
+        self._save(state)
+        log.info("crops: %d prints and drawings shown on their whole sheet", done)
+        return done
 
     def margins_off(self) -> int:
         """Once (:data:`MARGIN_SWEEP`; Mateusz 2026-11-18, „Margines kartki
@@ -1433,10 +1459,7 @@ class Crops(CriticNight):
                     if cut.work is None and found["plate"] is not None:
                         cut.work = found["work"]
         if corners is not None:
-            if not cut.paper and cut.plate is not None:
-                cut.plate = corners
-            else:
-                cut.work = corners
+            cut.work = corners  # the sheet of a print or drawing (``Cut.shown``)
         if no_frame:
             cut = _unframed_by_owner(cut)
         elif frame is not None:
@@ -1534,13 +1557,13 @@ class Crops(CriticNight):
         since) is looked at now, the judge and then Opus, as at night.
         Whether it was cut."""
         stored = self.library.get(item.id) or item
+        if self.on_plate(stored) and stored.cut is not None:
+            # Shown on its plate alone before 2026-11-21: on its whole sheet
+            # now, before the night's sweep comes to it (``sheets_on``).
+            self.apply(stored, stored.cut.model_copy(update={"paper": True}))
+            return True
         if not self.config.enabled(self.switch):
             return False
-        if self.margin_shown(stored) and stored.cut is not None and not self.stale(stored):
-            # Kept from before with its paper's margin: its plate now, the
-            # sheet the card's "W ramie" (Mateusz 2026-11-18).
-            self.apply(stored, stored.cut.model_copy(update={"paper": False}))
-            return True
         if self.on_phone() and stored.source not in OWN_SOURCES:
             return False  # the phone looks at it (``phone_crops``)
         if self.unsurrounded(stored):
@@ -1562,21 +1585,14 @@ class Crops(CriticNight):
             asked, again = None, False
         if again and asked is not None and int(asked.get("q") or 1) < QUESTION:
             asked, again = None, False  # left uncut by an older question
-        # Only its paper seen before it was cut away like a frame (Mateusz
-        # 2026-11-18): Opus asked for the plate under it.
-        sheet = again and asked is not None and not asked.get("sheet") and self.sheet_only(stored)
-        if (
-            not sheet
-            and asked is not None
-            and again
-            and (asked.get("band") == BAND or not self.banded(stored))
-        ):
+        # Its plate is no more asked for when only its paper was seen: a
+        # print is shown on its whole sheet (Mateusz 2026-11-21).
+        if asked is not None and again and (asked.get("band") == BAND or not self.banded(stored)):
             log.info("crops: %s looked at %s, nothing to cut", stored.id, asked.get("at"))
             return False  # looked at, and no thin backdrop the judge missed then
         try:
-            if sheet and stored.cut is not None:
-                claim: dict[str, Any] | None = {"around": sorted(stored.cut.around)}
-            elif again:  # Opus straight away: the judge saw nothing (or only paper) before
+            claim: dict[str, Any] | None
+            if again:  # Opus straight away: the judge saw nothing (or only paper) before
                 around = stored.cut.around if stored.cut is not None else []
                 claim = {
                     "around": sorted({*around, "backdrop"}),

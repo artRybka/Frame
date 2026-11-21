@@ -239,9 +239,10 @@ struct CutEditor: View {
         } else {
             aspect = 0.75
         }
-        // A print shown without its sheet: the sheet is its "W ramie"
-        // (server `Cut.framed_by`), its edge set as a frame's would be.
-        let sheet = item.cut.map { $0.surround == nil && !$0.paper && $0.plate != nil } ?? false
+        // A print or drawing is shown on its whole sheet (Mateusz 2026-11-21:
+        // „tylko jedno kadrowanie - »do kartki«”): the work's corners are the
+        // sheet's, and its sheet is no more a "W ramie" (server `Cut.shown`).
+        let sheet = false
         self.init(
             photo: .ref(.museumPhoto(item.id, side: 2400, version: item.pictureVersion)),
             // "Dzieło / Rama" also on a photograph not cut yet ("Kadrowane" →

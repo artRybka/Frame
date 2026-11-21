@@ -53,11 +53,21 @@ def _now() -> str:
 #: A print is cut to its sheet and never framed by the model (Mateusz
 #: 2026-11-20 22:13 UTC, „Rysunki jak dziś, grafiki do papieru”: of 70 prints
 #: in his trial he corrected 23, the frame found round them right in 11 of 31).
-_PRINT = KINDS.index("print")
+# Drawings and prints are cut to the sheet, with no frame or passe-partout
+# round them (Mateusz 2026-11-21 17:48 UTC: „Dla rysunku i grafiki
+# zostawimy tylko jedno kadrowanie - »do kartki«”; prints since 2026-11-20).
+SHEET_KINDS = (KINDS.index("drawing"), KINDS.index("print"))
 
 
 def _unframed_kind(item: Item) -> bool:
-    return kind_of(item.classification, item.medium) == _PRINT
+    return kind_of(item.classification, item.medium) in SHEET_KINDS
+
+
+def _as_told(answer: str | None, kind: int | None) -> str | None:
+    """His word as it is taught: "framed" of a drawing or print is a cut
+    (17:48: „jeżeli gdzieś wybrałem »kadr z ramą« to potraktuj to jako
+    »kadr«”)."""
+    return "cut" if answer == "framed" and kind in SHEET_KINDS else answer
 
 
 class PhoneCrops:
@@ -314,10 +324,11 @@ class PhoneCrops:
         if answer is None:
             state["told"].pop(item.id, None)
         else:
+            kind = kind_of(item.classification, item.medium)
             state["told"][item.id] = {
                 "p": item.picture_key(),
-                "t": answer,
-                "k": kind_of(item.classification, item.medium),
+                "t": _as_told(answer, kind),
+                "k": kind,
                 "at": _now(),
             }
         self._save(state)
@@ -336,7 +347,7 @@ class PhoneCrops:
                 {
                     "id": item_id,
                     "kind": entry.get("k"),
-                    "told": entry.get("t"),
+                    "told": _as_told(entry.get("t"), entry.get("k")),
                     "at": entry.get("at"),
                 }
             )

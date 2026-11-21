@@ -300,13 +300,14 @@ class Cut(BaseModel):
     #: itself.
     work: list[tuple[float, float]] | None = None
     #: A print or drawing without its paper (the plate or the image area),
-    #: when it is known: shown with ``paper`` off.
+    #: when it is known. Kept, never shown: a print or drawing is shown on
+    #: its whole sheet (Mateusz 2026-11-21 17:48 UTC: „Dla rysunku i grafiki
+    #: zostawimy tylko jedno kadrowanie - »do kartki«”, 18:17 „Tak” to the
+    #: sheet in place of the plate shown since 2026-11-18).
     plate: list[tuple[float, float]] | None = None
-    #: Whether a print or drawing is shown with its paper's margin. No more
-    #: (Mateusz 2026-11-18: „Margines kartki traktujmy jak ramę”): the
-    #: plate is shown, the sheet is the card's "W ramie" like a frame;
-    #: True only in cuts kept from before (``Crops.margins_off``) and from
-    #: an older app's switch.
+    #: Whether a print or drawing is shown with its paper's margin: always
+    #: now (above); False in cuts kept from 2026-11-18 to 2026-11-21, set
+    #: True once (``Crops.sheets_on``).
     paper: bool = False
     #: "auto" (the model) or "owner" (corrected or chosen in the app).
     by: Literal["auto", "owner"] = "auto"
@@ -361,15 +362,12 @@ class Cut(BaseModel):
     def framed_by(self) -> tuple[list[tuple[float, float]], str] | None:
         """The corners of the card's "W ramie" on the photograph and what
         they are (:attr:`framed_kind`): the frame's or the passe-partout's
-        outer edge, else a print's sheet when it is shown without it; None
-        for neither, or a work shown whole."""
+        outer edge; None for neither, or a work shown whole. A print's
+        sheet is no more (it is what is shown, :meth:`shown`)."""
         if self.shown() is None:
             return None
         if self.surround is not None and self.surround_kind:
             return self.surround, self.surround_kind
-        if not self.paper and self.plate is not None:
-            # The sheet filling the photograph (``work`` None): the photograph.
-            return self.work or WHOLE, "paper"
         return None
 
     def without_twin(self) -> Cut:
@@ -390,8 +388,9 @@ class Cut(BaseModel):
         return self.shape in NOT_RECTANGLE
 
     def shown(self) -> list[tuple[float, float]] | None:
-        """The corners the picture is cut to, None for the whole photograph."""
-        return self.plate if not self.paper and self.plate is not None else self.work
+        """The corners the picture is cut to, None for the whole photograph:
+        a print or drawing on its whole sheet, never its plate alone."""
+        return self.work
 
     @property
     def has_paper(self) -> bool:
