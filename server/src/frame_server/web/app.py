@@ -737,6 +737,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "after": memory.reading()["process_mb"],
         }
 
+    trace = memory.Trace()
+
+    @app.post("/api/debug/memory/trace", dependencies=[Depends(require_owner)])
+    def memory_trace_begin(stop: bool = False) -> dict[str, object]:
+        """Begin (or, with ``stop``, end) the allocation trace (memory.Trace)."""
+        if stop:
+            trace.end()
+            return {"running": False}
+        trace.begin()
+        return {"running": True}
+
+    @app.get("/api/debug/memory/trace", dependencies=[Depends(require_owner)])
+    def memory_trace_report(top: int = 25) -> dict[str, object]:
+        """The places whose memory grew most since the trace began."""
+        return trace.report(min(top, 100))
+
     @app.get("/api/debug/memory/census", dependencies=[Depends(require_owner)])
     def memory_census(top: int = 30) -> dict[str, object]:
         """Python's objects by type (memory.census) and the server's parts."""

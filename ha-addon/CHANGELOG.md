@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.300
+
+- Serwer co 10 minut oddaje systemowi wolną pamięć i zapisuje w logu,
+  ile oddał. Właściciel może też na godzinę włączyć śledzenie, gdzie
+  przybywa pamięci (diagnostyka zużycia pamięci na NAS-ie).
+
 ## 1.145.299
 
 - Rysunki i grafiki z muzeów są kadrowane tylko „do kartki”: znika tło,
