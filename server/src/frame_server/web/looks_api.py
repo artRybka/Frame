@@ -166,6 +166,9 @@ class LooksNumbers(BaseModel):
 
     model: str
     look: str
+    #: Its colours as the phone found them (``palettes.colours_of``: rows
+    #: L, a, b, share), for "Barwy"; an older app sends none.
+    palette: list[list[float]] | None = None
 
 
 @router.post("/looks/photo/numbers", response_model=LooksPhoto)
@@ -184,7 +187,8 @@ async def looks_photo_numbers(svc: Svc, body: LooksNumbers) -> LooksPhoto:
     except (binascii.Error, ValueError) as err:
         raise HTTPException(422, f"not numbers: {err}") from err
     try:
-        key = await run_in_threadpool(svc.looks.photo_numbers, vector)
+        palette = None if body.palette is None else np.asarray(body.palette, dtype=np.float32)
+        key = await run_in_threadpool(svc.looks.photo_numbers, vector, palette)
     except AiUnavailable as err:
         raise HTTPException(409, str(err)) from err
     except ValueError as err:

@@ -52,6 +52,8 @@ enum LaunchRoute {
     /// "Podobne do" by "subject" or "style" (`-screen search-like`; none:
     /// both together).
     static let likeBy = UserDefaults.standard.string(forKey: "likeBy")
+    /// "Barwy" on beside them (`-likeColours YES`).
+    static let likeColours = UserDefaults.standard.bool(forKey: "likeColours")
 }
 
 struct RootView: View {

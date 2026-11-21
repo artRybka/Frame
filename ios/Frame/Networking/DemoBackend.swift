@@ -609,7 +609,11 @@ actor DemoBackend: FrameBackend {
         }
         if !query.like.isEmpty {
             // The works that look like it, nearest first, as the server's numbers.
-            let near = alike(query.like, by: query.likeBy).map(\.id)
+            var near = alike(query.like, by: query.likeBy).map(\.id)
+            // "Barwy" beside: those of near colours, some of them.
+            if query.likeColours, query.likeBy != LikeBy.colours.rawValue {
+                near = near.enumerated().filter { $0.offset % 2 == 0 }.map(\.element)
+            }
             let fitting = Dictionary(list.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             list = near.compactMap { fitting[$0] }
         }
@@ -1630,7 +1634,7 @@ actor DemoBackend: FrameBackend {
     private func alike(_ itemID: String, by: String = "") -> [Item] {
         let works = items.filter { $0.kind == .artwork && $0.id != itemID && !$0.excluded }
         // Another pretend neighbourhood for the subject and for the style.
-        let shift = by == LikeBy.subject.rawValue ? 1 : by == LikeBy.style.rawValue ? 2 : 0
+        let shift = by == LikeBy.subject.rawValue ? 1 : by == LikeBy.style.rawValue ? 2 : by == LikeBy.colours.rawValue ? 3 : 0
         let seed = itemID.unicodeScalars.reduce(0) { $0 &+ Int($1.value) } &+ shift
         return works.indices.filter { ($0 &+ seed) % 3 == 0 }.map { works[$0] }
     }

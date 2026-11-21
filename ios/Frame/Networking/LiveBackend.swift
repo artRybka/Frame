@@ -100,6 +100,10 @@ struct LiveBackend: FrameBackend {
         if !q.title.isEmpty { query.append(URLQueryItem(name: "title", value: q.title)) }
         if !q.like.isEmpty { query.append(URLQueryItem(name: "like", value: q.like)) }
         if !q.like.isEmpty, !q.likeBy.isEmpty { query.append(URLQueryItem(name: "like_by", value: q.likeBy)) }
+        // "Barwy" beside "Treść" or "Forma".
+        if !q.like.isEmpty, q.likeColours, q.likeBy != LikeBy.colours.rawValue {
+            query.append(URLQueryItem(name: "like_colours", value: "true"))
+        }
         if !q.like.isEmpty, q.likeFurther > 0 {
             query.append(URLQueryItem(name: "like_further", value: String(q.likeFurther)))
         }
@@ -565,10 +569,12 @@ struct LiveBackend: FrameBackend {
                   try await self.phoneModel()
               })
         else { return nil }
-        struct Numbers: Encodable { var model: String; var look: String }
+        struct Numbers: Encodable { var model: String; var look: String; var palette: [[Float]]? }
+        // Its colours too, for "Barwy" (made here, Mateusz 2026-11-21).
+        let palette = PhonePalette.colours(picture)
         return try? await send(
             "/api/looks/photo/numbers", method: "POST",
-            body: Numbers(model: status.model, look: PhoneLook.encoded(numbers))
+            body: Numbers(model: status.model, look: PhoneLook.encoded(numbers), palette: palette)
         )
     }
 
