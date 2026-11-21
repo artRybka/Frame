@@ -823,6 +823,16 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
+    func ownFound(token: String, corners: [[Double]]?, surround: [[Double]]?) async throws {
+        var body: [String: Any] = [:]
+        if let corners { body["corners"] = corners }
+        if let surround { body["surround"] = surround }
+        var req = request("/api/own/photos/\(escape(token))/found", method: "POST")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let _: OwnIncoming = try await perform(req)
+    }
+
     func sendOwnSide(token: String, _ data: Data, angle: Double?) async throws {
         var form = MultipartForm()
         form.addFile("file", filename: "side.jpg", mimeType: "image/jpeg", data: data)

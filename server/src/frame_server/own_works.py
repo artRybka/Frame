@@ -1279,6 +1279,30 @@ class OwnWorks:
             known.write_text(seen.model_dump_json())
         return seen
 
+    def phone_found(
+        self,
+        token: str,
+        corners: Quad | None,
+        surround: Quad | None,
+        surround_kind: str = "",
+    ) -> Incoming:
+        """What the phone found in the photograph itself (its model, or
+        what the camera followed; ``phone_cuts``), kept as Opus's answer
+        was: the server's merge goes by it, and the work added from it
+        keeps its frame's edge (:meth:`_surround`)."""
+        seen = self.find(token)
+        if seen.looked and not seen.phone_cuts:
+            return seen  # Opus's, from before the switch
+        seen.corners = corners
+        seen.shape = "rectangle" if corners is not None else ""
+        seen.surround = surround if corners is not None else None
+        seen.surround_kind = (surround_kind or "frame") if seen.surround is not None else ""
+        seen.looked = True
+        seen.phone_cuts = True
+        with contextlib.suppress(OSError):
+            self.path(token).with_suffix(FOUND).write_text(seen.model_dump_json())
+        return seen
+
     def hints(self, token: str, corners: Quad | None = None) -> Hints:
         """Signature, date, technique and a plain title read off the work
         (Sonnet, about a grosz); an empty answer when it refused."""

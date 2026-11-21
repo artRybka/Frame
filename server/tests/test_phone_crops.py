@@ -114,7 +114,9 @@ def test_the_phone_cuts_and_claude_is_asked_nothing(
         seen = client.post("/api/library/items/mnw:1/cut/check?wait=5").json()
         assert not seen["changed"]
         ask = client.get("/api/crops/phone/mnw:1").json()
-        assert ask["look"] and ask["kind"] == 0 and ask["model"] == cm.MODEL
+        # A painting: its own model since 2026-11-21 („Tak, wymień dla malarstwa”).
+        assert ask["look"] and ask["kind"] == 0 and ask["model"] == cm.PAINTING_MODEL
+        assert cm.model_of(1) == cm.model_of(2) == cm.MODEL
         waiting = client.get("/api/crops/phone/waiting?limit=2").json()
         assert waiting["left"] == 4 and len(waiting["works"]) == 2
 

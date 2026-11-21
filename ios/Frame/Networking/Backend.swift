@@ -274,8 +274,12 @@ protocol FrameBackend: Sendable {
     /// which the server keeps the work straight where it agrees with what
     /// was measured of that lens.
     func sendOwnPhoto(_ data: Data, lens: OwnLens?) async throws -> OwnIncoming
-    /// The work found in it (Opus, a few seconds); 503 without a key.
+    /// The work found in it (Opus, a few seconds); 503 without a key. A
+    /// server that leaves it to the phone (`phoneCuts`) finds none.
     func findOwnWork(token: String) async throws -> OwnIncoming
+    /// What the phone found in it itself (`OwnLocalCut`), kept by the
+    /// server: its merge goes by it, the work keeps its frame from it.
+    func ownFound(token: String, corners: [[Double]]?, surround: [[Double]]?) async throws
     /// A photograph of the same work from the side (the scan), and from
     /// how far to the side the phone counted it (degrees; negative: from
     /// the work's left): of several from one side the server makes the
@@ -495,6 +499,10 @@ extension FrameBackend {
     func sendPhoneScan(token: String, name: String, _ data: Data) async throws {
         throw BackendError.notFound
     }
+}
+
+extension FrameBackend {
+    func ownFound(token: String, corners: [[Double]]?, surround: [[Double]]?) async throws {}
 }
 
 extension FrameBackend {

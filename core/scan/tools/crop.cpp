@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
         int found = 0;
         int verdict = frame_crop_find(photo.data.data(), photo.shape[0], photo.shape[1],
                                       reinterpret_cast<const float*>(logits.data.data()), logits.shape[1],
-                                      std::strtod(argv[3], nullptr), work, surround, &found, error, sizeof(error));
+                                      std::strtod(argv[3], nullptr), 0.9 /* crop_model.SURE */, work, surround, &found, error, sizeof(error));
         if (verdict < 0) {
             std::fprintf(stderr, "%s\n", error);
             return 1;
