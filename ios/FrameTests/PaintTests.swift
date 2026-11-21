@@ -1785,4 +1785,33 @@ final class PaintTests: XCTestCase {
         XCTAssertGreaterThan(light(8), 0.9, "the paper's white at the light end")
         XCTAssertLessThan(light(200), light(60), "darker along the bar")
     }
+
+    /// A painting's bar (server `tonal.bar`, Mateusz 2026-11-21): its
+    /// masses are bands however narrow, its accents lie where the server
+    /// puts them, a dab as large as there is of the colour, two beside
+    /// each other sharing at most a fifth of their dabs.
+    func testAPaintingsAccentsLieInTheirPlacesAsLargeAsThereIsOfThem() {
+        var tulp = shares([("#120d0a", 0.42), ("#2b2018", 0.3), ("#6b5440", 0.16), ("#8f5439", 0.015), ("#cbb38b", 0.042),
+                           ("#f0ebe3", 0.06)])
+        for (k, (at, amount)) in [(0.74, 0.003), (0.75, 0.05), (0.9, 0.1)].enumerated() {
+            tulp[3 + k].accent = true
+            tulp[3 + k].at = at
+            tulp[3 + k].amount = amount
+        }
+        XCTAssertEqual(Paint.accents(tulp), [false, false, false, true, true, true])
+        let width = 354.0, room = width - 6
+        let dabs = OilStrip.pulls(tulp, width: width, seed: 5).filter(\.on).sorted { $0.a < $1.a }
+        XCTAssertEqual(dabs.count, 3)
+        let longs = dabs.map { $0.e - $0.a }
+        XCTAssertEqual(longs[0], Paint.dab(amount: 0.003).long, accuracy: 0.5)
+        XCTAssertLessThan(longs[0], longs[1])
+        XCTAssertEqual(longs[2], 42, accuracy: 0.5)
+        XCTAssertLessThan(dabs[0].wide, dabs[2].wide)
+        XCTAssertEqual((dabs[2].a + dabs[2].e) / 2, 0.9 * room, accuracy: 25)
+        for k in 0..<2 {
+            let centre = (dabs[k].a + dabs[k].e) / 2, next = (dabs[k + 1].a + dabs[k + 1].e) / 2
+            XCTAssertGreaterThanOrEqual(next - centre, 0.8 * (longs[k] + longs[k + 1]) / 2 - 0.5)
+        }
+        XCTAssertEqual(Paint.apart([100, 100], longs: [40, 40], room: 348), [84, 116])
+    }
 }

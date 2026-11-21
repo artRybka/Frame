@@ -597,7 +597,8 @@ struct PaintedStrip: View {
     @Environment(\.colorScheme) private var scheme
 
     /// More colours than this are no bar any more, only specks.
-    static let most = 8
+    /// A painting's bar (server `tonal.bar`) has up to 5 masses and 6 accents.
+    static let most = 11
 
     /// CI screenshots: "-paintColours 918d78:0.28/4c4a3c:0.26" are the
     /// colours of every work's bar (an engraving's, for an engraving's
@@ -621,7 +622,7 @@ struct PaintedStrip: View {
         if !forced.isEmpty { return forced }
         return swatches.compactMap { swatch in
             guard let rgb = Paint.rgb(swatch.hex), swatch.weight > 0 else { return nil }
-            return PaintShare(rgb: rgb, weight: swatch.weight, accent: swatch.accent ?? false)
+            return PaintShare(rgb: rgb, weight: swatch.weight, accent: swatch.accent ?? false, at: swatch.at, amount: swatch.amount)
         }
         .prefix(most).map { $0 }
     }
@@ -637,7 +638,7 @@ struct PaintedStrip: View {
                     let dark = scheme == .dark, wide = Double((width / slim).rounded())
                     let line = Self.forcedContour ?? contour
                     let key = "\(style.rawValue)|\(Int(wide))|\(dark)|\(seed)|\(relief)|"
-                        + shares.map { "\($0.rgb)\($0.weight)" }.joined(separator: ",")
+                        + shares.map { "\($0.rgb)\($0.weight)\($0.at ?? -1)" }.joined(separator: ",")
                         + (line.map { "|\($0.rgb)\($0.length)\($0.width)" } ?? "")
                     let takes = style.barTime(shares, width: wide)
                     let job = jobs.job(key) {

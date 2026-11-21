@@ -767,6 +767,9 @@ enum Paint {
     /// first, while each is under `touch` of a bar `room` wide, enough of
     /// the picture stays under them and one colour at least.
     static func accents(_ shares: [PaintShare]) -> [Bool] {
+        // A painting's bar (server `tonal.bar`) says which are its accents:
+        // its masses are bands however narrow.
+        if shares.contains(where: { $0.at != nil }) { return shares.map { $0.accent && $0.at != nil } }
         let total = max(shares.reduce(0) { $0 + $1.weight }, 0.000_001)
         var accent = shares.map { _ in false }, kept = total, left = shares.count
         for i in shares.indices.sorted(by: { shares[$0].weight < shares[$1].weight }) {
@@ -776,6 +779,37 @@ enum Paint {
             left -= 1
         }
         return accent
+    }
+
+    /// A painting's accent dab (`ColorSwatch.amount`): 12 pt long and
+    /// half as thick for the least of a colour, 42 pt and whole from 6%
+    /// of the picture on, by the root of its amount.
+    static func dab(amount: Double) -> (long: Double, thin: Double) {
+        let full = min(1, (max(amount, 0) / 0.06).squareRoot())
+        return (12 + 30 * full, 0.5 + 0.5 * full)
+    }
+
+    /// Placed accents (`wishes`, in pt, in order) moved apart along a bar
+    /// `room` wide: two beside each other share at most `overlap` of their
+    /// dabs (Mateusz 2026-11-21 22:39: „akcenty nie mogą na siebie
+    /// wchodzić aż tak bardzo”), none past the bar's ends.
+    static func apart(_ wishes: [Double], longs: [Double], room: Double, overlap: Double = 0.2) -> [Double] {
+        var at = wishes
+        guard at.count == longs.count, !at.isEmpty else { return at }
+        for _ in 0..<50 {
+            for k in at.indices { at[k] = min(max(at[k], longs[k] / 2 + 4), room - 16 - longs[k] / 2) }
+            var moved = false
+            for k in 0..<(at.count - 1) {
+                let gap = (1 - overlap) * (longs[k] + longs[k + 1]) / 2, now = at[k + 1] - at[k]
+                if now < gap {
+                    at[k] -= (gap - now) / 2
+                    at[k + 1] += (gap - now) / 2
+                    moved = true
+                }
+            }
+            if !moved { break }
+        }
+        return at
     }
 
     /// Where accents `longs` long go along a bar `width` wide: spread
@@ -882,6 +916,10 @@ struct PaintShare: Sendable, Hashable {
     /// The server found it as an accent (a small vivid colour, a pale
     /// sheet's tint), not among the picture's large colours.
     var accent = false
+    /// A painting's accent: where along the bar it lies (0 to 1) and how
+    /// much of the picture it is (`ColorSwatch.at`, `amount`).
+    var at: Double?
+    var amount: Double?
 }
 
 /// Something painted over time: the palette bar or one paint's swatch.
@@ -1697,7 +1735,32 @@ final class OilStrip: PaintPainter, @unchecked Sendable {
         let seams = pulls.dropFirst().filter { !$0.over }.map(\.a)
         at += (look.over > 0 ? 0 : stroke - apart) + accents.after
         var spots = [(at: Double, long: Double)]()
+        // A painting's accents have their places from the server, on the
+        // mass each stands on, and a dab as large as there is of it
+        // (Mateusz 2026-11-21 22:28: „akcenty powinny być zmiennej
+        // wielkości - zależnie od ich „ilości”? Teraz są chyba zbyt
+        // masywne”), the ones beside each other apart (22:39).
+        let placed = !small.isEmpty && small.allSatisfy { shares[$0].at != nil && shares[$0].amount != nil }
+        let sizes = placed ? small.map { Paint.dab(amount: shares[$0].amount ?? 0) } : []
+        let places = placed ? Paint.apart(small.map { room * (shares[$0].at ?? 0) }, longs: sizes.map(\.long), room: room) : []
         for (n, i) in small.enumerated() {
+            if placed {
+                spots.append((places[n], sizes[n].long))
+                var pull = varied(a: places[n] - sizes[n].long / 2, e: places[n] + sizes[n].long / 2, touch: true, even: even,
+                                  random: &random)
+                pull.tilt *= look.own
+                pull.dy *= look.own
+                pull.sway *= look.own
+                pull.wide *= 0.92 * sizes[n].thin
+                if !look.tail { pull.full += 0.2 }
+                pull.rgb = shares[i].rgb
+                pull.on = true
+                pull.at = at
+                pull.takes = dab
+                pulls.append(pull)
+                at += accents.apart
+                continue
+            }
             let wish = room * (0.1 + 0.8 * (Double(n) + 0.5 + 0.5 * (random.next() - 0.5)) / Double(small.count))
             let long = 30 + 12 * min(1, width * shares[i].weight / total / touch)
             // On the body of a pull, not across the place where one begins, and clear of the other accents:

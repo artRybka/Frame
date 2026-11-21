@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.302
+
+- Pasek barw obrazów (malarstwa) składany od nowa: tony obrazu od
+  najciemniejszego do najjaśniejszego, a na nich akcenty tam, gdzie leżą w
+  obrazie, tym mniejsze, im mniej ich w dziele. Biel, ciemne zielenie i
+  barwy odstające od tonu obrazu widać teraz wyraźniej.
+- Dzieło bez podanej techniki, które muzeum nazywa rysunkiem, grafiką albo
+  plakatem, dostaje pasek papieru, nie farby.
+- Po aktualizacji serwer raz przelicza barwy dzieł (1–2 godziny).
+
 ## 1.145.301
 
 - Własne dzieła są kadrowane na iPhonie, bez pytania Opusa: telefon sam
