@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.297
+
+- „Ucz kadrowania” pokazuje najpierw dzieła, przy których model
+  kadrowania na telefonie najbardziej się waha, czy kadrować. Twoje oceny
+  tych dzieł najbardziej pomogą go douczyć.
+
 ## 1.145.296
 
 - Serwer co 10 minut zapisuje w logu, ile zajmuje pamięci. Właściciel
