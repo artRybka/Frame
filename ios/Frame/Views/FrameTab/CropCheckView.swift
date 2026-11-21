@@ -120,7 +120,7 @@ struct CropCheckView: View {
             }
             // The work shown, as the server has it now, and the next one
             // meanwhile.
-            .task(id: shown.prefix(2).map { "\($0.id)|\($0.pictureVersion)" }) {
+            .task(id: shown.prefix(2).map { "\($0.id)|\(String(describing: $0.pictureVersion))" }) {
                 for summary in shown.prefix(2) where items[summary.id]?.pictureVersion != summary.pictureVersion {
                     if let fresh = try? await model.backend.item(id: summary.id) { items[summary.id] = fresh }
                 }
@@ -325,8 +325,9 @@ struct LinedPhoto: View {
     static let frameLine = Color(light: 0xFF5FA2, dark: 0xFF7AB4)
 
     var aspect: CGFloat {
-        CGFloat(item.cut.map(\.aspect).flatMap { $0 > 0 ? $0 : nil }
-            ?? item.width.flatMap { w in item.height.map { Double(w) / Double(max($0, 1)) } } ?? 4 / 3)
+        if let a = item.cut?.aspect, a > 0 { return CGFloat(a) }
+        if let w = item.width, let h = item.height { return CGFloat(Double(w) / Double(max(h, 1))) }
+        return 4 / 3
     }
 
     var body: some View {
