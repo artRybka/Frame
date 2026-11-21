@@ -203,6 +203,21 @@ def after_start(service: FrameService) -> None:
     log.info("start: all of it in %.1f s", time.monotonic() - whole)
 
 
+def memory_parts(service: FrameService) -> dict[str, object]:
+    """What :class:`memory.MemoryLog` writes beside the process's numbers:
+    the parts that grow with the catalogue."""
+    seen = service.seen
+    looks = service.looks
+    return {
+        "works": service.library.count(),
+        "seen_rows": len(seen.index),
+        "seen_mb": seen.index._rows.nbytes >> 20,
+        "seen_model": seen.model.loaded(),
+        "looks_mb": (looks.index._rows.nbytes + looks.three._rows.nbytes) >> 20,
+        "threads": threading.active_count(),
+    }
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.load()
     service = FrameService(settings)
@@ -233,6 +248,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 asyncio.create_task(LoopWatch().run()),
             ]
             service.ai.start()
+            memory.MemoryLog(lambda: memory_parts(service)).start()
         service.app.ensure_package()  # built and signed here (panel_package.py)
         seed_playlists(service.importer)
         painterly_colour_playlists(service.library)  # once: colour playlists keep to paintings only
@@ -706,6 +722,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """The server's memory and the machine's (memory.py): whether the
         catalogue fits, or part of it went to the disk."""
         return {"works": service.library.count(), **memory.reading()}
+
+    @app.post("/api/debug/memory/trim", dependencies=[Depends(require_owner)])
+    def memory_trim() -> dict[str, object]:
+        """Free memory handed back to the system: the reading before and
+        after (memory.trim)."""
+        before = memory.reading()["process_mb"]
+        started = time.monotonic()
+        trimmed = memory.trim()
+        return {
+            "trimmed": trimmed,
+            "seconds": round(time.monotonic() - started, 2),
+            "before": before,
+            "after": memory.reading()["process_mb"],
+        }
+
+    @app.get("/api/debug/memory/census", dependencies=[Depends(require_owner)])
+    def memory_census(top: int = 30) -> dict[str, object]:
+        """Python's objects by type (memory.census) and the server's parts."""
+        return {"parts": memory_parts(service), "types": memory.census(min(top, 200))}
 
     log_buffer = logbuffer.install()
 
