@@ -146,6 +146,14 @@ async def review_fine(item_id: str, svc: Svc) -> Review:
     return await review(svc)
 
 
+@router.delete("/review/{item_id:item}/fine", response_model=Review)
+async def review_unfine(item_id: str, svc: Svc) -> Review:
+    """ "Cofnij": the last approval taken back; the work is on the list again."""
+    if not await run_in_threadpool(svc.phone_crops.unfine, item_id):
+        raise HTTPException(404, "not approved")
+    return await review(svc)
+
+
 @router.get("/lessons")
 async def lessons(svc: Svc) -> list[dict[str, Any]]:
     """What the model is taught again from (on the Mac): his corrections and

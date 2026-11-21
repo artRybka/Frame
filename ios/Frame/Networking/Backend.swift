@@ -355,10 +355,12 @@ protocol FrameBackend: Sendable {
     func phoneCropFound(itemID: String, _ found: PhoneCropFound) async throws -> PhoneCropResult
     /// The museum's photograph of a work, whole, `side` px long at most.
     func museumPhoto(itemID: String, side: Int) async throws -> Data
-    /// "Kadrowane": what the model cut and what it left to him.
+    /// "Sprawdź kadry": what the model cut and what it left to him.
     func cropReview() async throws -> CropReview
     /// "Dobrze": the model's cut is right; off the list.
     func cropFine(itemID: String) async throws -> CropReview
+    /// "Cofnij": the approval taken back; the work is on the list again.
+    func cropUnfine(itemID: String) async throws -> CropReview
     /// "Ucz kadrowania": catalogue photographs of `kind` (0 painting, 1
     /// drawing, 2 print) for his word.
     func cropTeach(kind: Int, limit: Int) async throws -> CropTeach
@@ -524,6 +526,8 @@ extension FrameBackend {
     func cropReview() async throws -> CropReview { CropReview(cut: [], unsure: []) }
 
     func cropFine(itemID: String) async throws -> CropReview { throw BackendError.notFound }
+
+    func cropUnfine(itemID: String) async throws -> CropReview { throw BackendError.notFound }
 
     func cropTeach(kind: Int, limit: Int) async throws -> CropTeach { CropTeach(works: [], told: 0) }
 

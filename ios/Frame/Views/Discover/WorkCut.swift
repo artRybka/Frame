@@ -228,7 +228,7 @@ struct CutEditor: View {
         case work, frame, bare
     }
 
-    /// `starting`: the part in hand when it opens ("Kadrowane" → "Kadr
+    /// `starting`: the part in hand when it opens ("Sprawdź kadry" → "Kadr
     /// ramy" opens on the frame's corners).
     init(item: Item, starting: Part = .work, update: @escaping (CutUpdate) async -> Bool) {
         let aspect: Double
@@ -245,7 +245,7 @@ struct CutEditor: View {
         let sheet = false
         self.init(
             photo: .ref(.museumPhoto(item.id, side: 2400, version: item.pictureVersion)),
-            // "Dzieło / Rama" also on a photograph not cut yet ("Kadrowane" →
+            // "Dzieło / Rama" also on a photograph not cut yet ("Sprawdź kadry" →
             // "Do wykadrowania", Mateusz 2026-11-20: „daj opcję zarówno
             // dodania kadru dzieła jak i ramy”).
             aspect: aspect, corners: item.cutShown, framing: true,

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.303
+
+- „Kadrowane” nie jest już playlistą: jako „Sprawdź kadry” jest w
+  Konfiguracji → Diagnostyka → „Kadrowanie zdjęć z muzeów”, z liczbą
+  czekających dzieł.
+- Kadry sprawdza się jak w „Ucz kadrowania”: jedno dzieło naraz, z
+  powiększonym rogiem kadru, „Samo dzieło” i „W ramie”, duże „Zatwierdź”
+  i „Pomiń”. „Cofnij” przywraca ostatnio zatwierdzone.
+
 ## 1.145.302
 
 - Zdjęcia roślin i okazów z kolekcji przyrodniczych w Europeanie
