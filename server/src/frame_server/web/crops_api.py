@@ -152,3 +152,49 @@ async def lessons(svc: Svc) -> list[dict[str, Any]]:
     the cuts he kept, with what the model proposed; the photographs from
     ``/api/library/items/{id}/full?side=``."""
     return await run_in_threadpool(svc.phone_crops.lessons)
+
+
+class Teach(BaseModel):
+    """ "Ucz kadrowania": photographs for his word, and how many he gave."""
+
+    works: list[ItemSummary]
+    told: int
+
+
+class Told(BaseModel):
+    answer: Literal["whole", "cut", "framed"]
+
+
+@router.get("/teach", response_model=Teach)
+async def teach(
+    svc: Svc,
+    limit: Annotated[int, Query(ge=1, le=100)] = 30,
+    kind: Annotated[int, Query(ge=0, le=2)] = 0,
+) -> Teach:
+    """Photographs of one kind (0 painting, 1 drawing, 2 print) for his word."""
+    works, told = await run_in_threadpool(svc.phone_crops.to_teach, limit, kind)
+    return Teach(works=[ItemSummary.of(i) for i in works], told=told)
+
+
+@router.post("/teach/{item_id:item}", response_model=Teach)
+async def teach_tell(item_id: str, told: Told, svc: Svc) -> Teach:
+    """His word on a photograph: "whole" (no cut), "cut" (no frame), "framed"."""
+    item = await _work(svc, item_id)
+    stored = svc.library.get(item.id) or item
+    count = await run_in_threadpool(svc.phone_crops.tell, stored, told.answer)
+    return Teach(works=[], told=count)
+
+
+@router.delete("/teach/{item_id:item}", response_model=Teach)
+async def teach_untell(item_id: str, svc: Svc) -> Teach:
+    """ "Cofnij": his word taken back."""
+    item = await _work(svc, item_id)
+    stored = svc.library.get(item.id) or item
+    count = await run_in_threadpool(svc.phone_crops.tell, stored, None)
+    return Teach(works=[], told=count)
+
+
+@router.get("/told")
+async def told(svc: Svc) -> list[dict[str, Any]]:
+    """What he said at a glance (``/teach``), for teaching on the Mac."""
+    return await run_in_threadpool(svc.phone_crops.told)
