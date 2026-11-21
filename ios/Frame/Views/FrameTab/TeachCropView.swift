@@ -7,6 +7,9 @@ import SwiftUI
 /// frame or passe-partout round the work. One kind at a time (00:48:
 /// „oddzielnie malarstwem, rysunkiem i grafiką. Będzie mi łatwiej”). What
 /// he says is what the phone's model is taught from next (`/api/crops/told`).
+/// Those the model can least tell of come first (15:01: „Tak, jeżeli to
+/// pomoże, to poproszę”): the phone's own model looks at each thumbnail
+/// before it is shown, so each word of his teaches it the most.
 struct TeachCropView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -16,13 +19,19 @@ struct TeachCropView: View {
     @State private var said: [ItemSummary] = []
     @State private var skipped: Set<String> = []
     @State private var told: Int?
-    @State private var loading = false
+    /// The kind whose photographs are being asked for and looked at.
+    @State private var loading: Int?
     @State private var sending = false
+    /// How far the model is from wavering on each photograph: 0 where it
+    /// cannot tell whether to cut, 0.5 where it is sure; 1 not looked at.
+    @State private var doubt: [String: Double] = [:]
 
     static let kinds = [(0, "Malarstwo"), (1, "Rysunek"), (2, "Grafika")]
     /// Photographs asked of the server at a time, and how few left asks again.
-    static let page = 30
+    static let page = 40
     static let low = 5
+    /// Looked at before the first is shown.
+    static let weighed = 8
 
     private var current: ItemSummary? { queue.first }
 
@@ -41,7 +50,7 @@ struct TeachCropView: View {
                 if let current {
                     photograph(current)
                     answers
-                } else if loading {
+                } else if loading == kind {
                     Spacer()
                     ProgressView()
                     Spacer()
@@ -76,6 +85,7 @@ struct TeachCropView: View {
             .task(id: kind) {
                 queue = []
                 said = []
+                doubt = [:]
                 await more()
             }
         }
@@ -169,19 +179,56 @@ struct TeachCropView: View {
     }
 
     private func more() async {
-        guard !loading else { return }
-        loading = true
-        defer { loading = false }
+        let asked = kind
+        guard loading != asked else { return }
+        loading = asked
+        defer { if loading == asked { loading = nil } }
         do {
-            let asked = kind
-            let page = try await model.backend.cropTeach(kind: asked, limit: Self.page + skipped.count + queue.count)
+            let page = try await model.backend.cropTeach(kind: asked, limit: min(100, Self.page + skipped.count + queue.count))
             guard asked == kind else { return }
             told = page.told
             let have = Set(queue.map(\.id))
-            queue += page.works.filter { !have.contains($0.id) && !skipped.contains($0.id) }
+            // With nothing shown yet, the first few looked at are weighed
+            // together, so the first shown is not just the first loaded.
+            var held: [(ItemSummary, Double)] = []
+            for work in page.works where !have.contains(work.id) && !skipped.contains(work.id) {
+                let far = await farFromDoubt(work, kind: asked)
+                guard asked == kind else { return }
+                if queue.isEmpty, held.count < Self.weighed - 1 {
+                    held.append((work, far))
+                    continue
+                }
+                for (one, its) in held { place(one, its) }
+                held = []
+                place(work, far)
+            }
+            for (one, its) in held { place(one, its) }
         } catch {
             model.show(error)
         }
+    }
+
+    /// `work` into the queue by how sure the model is of it, the least sure
+    /// first; the one shown stays where it is.
+    private func place(_ work: ItemSummary, _ far: Double) {
+        guard !queue.contains(where: { $0.id == work.id }) else { return }
+        doubt[work.id] = far
+        let from = queue.isEmpty ? 0 : 1
+        let at = queue[from...].firstIndex { (doubt[$0.id] ?? 1) > far } ?? queue.count
+        withAnimation(.easeInOut(duration: 0.2)) { queue.insert(work, at: at) }
+    }
+
+    /// The model's answer on the thumbnail he will see (`MuseumCrop.ask`,
+    /// read as `.thumb` at the size shown, so it is kept for showing):
+    /// how far its "a cut is wanted" is from a toss of a coin.
+    private func farFromDoubt(_ work: ItemSummary, kind: Int) async -> Double {
+        guard let request = model.backend.request(for: .thumb(work.id)),
+              let image = try? await ImageLoader.shared.image(for: request, maxPixel: 1200),
+              let picture = image.cgImage,
+              let photo = try? MuseumCrop.pixels(of: picture)
+        else { return 1 }
+        let sure = try? await Task.detached(priority: .userInitiated) { try MuseumCrop.ask(photo, kind: kind).sure }.value
+        return sure.map { abs($0 - 0.5) } ?? 1
     }
 }
 

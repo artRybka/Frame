@@ -50,9 +50,14 @@ enum MuseumCrop {
     /// `load_image` reads the JPEG it sent.
     static func pixels(of file: Data) throws -> Pixels {
         guard let source = CGImageSourceCreateWithData(file as CFData, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCache: false] as CFDictionary),
-              let colours = CGColorSpace(name: CGColorSpace.sRGB)
+              let image = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCache: false] as CFDictionary)
         else { throw Failed(told: "the photograph is no picture") }
+        return try pixels(of: image)
+    }
+
+    /// A picture already read (a thumbnail shown), in sRGB.
+    static func pixels(of image: CGImage) throws -> Pixels {
+        guard let colours = CGColorSpace(name: CGColorSpace.sRGB) else { throw Failed(told: "no sRGB") }
         let columns = image.width, rows = image.height
         guard let context = CGContext(
             data: nil, width: columns, height: rows, bitsPerComponent: 8, bytesPerRow: columns * 4,
