@@ -108,6 +108,12 @@ struct ItemDetailView: View {
     @State private var recovery: RecoveryView?
     /// The server makes the picture again, cleaned or as it came.
     @State private var cleaning = false
+    /// The menu's other picture, made on the phone before the entry is
+    /// touched (`prepareSwitch`), for `switchKey`.
+    @State private var prepared: (key: String, picture: UIImage)?
+    /// The menu's switch is shown already (made on the phone): no badge
+    /// over it while the server makes its own.
+    @State private var switchedOnPhone = false
 
     enum Sent { case done, failed }
 
@@ -260,6 +266,7 @@ struct ItemDetailView: View {
         .task(id: described) { await findHolder() }
         .task(id: described) { await findMedium() }
         .task(id: recoveryKey) { await findRecovery() }
+        .task(id: switchKey) { await prepareSwitch() }
         .task(id: view == .frame ? draftKey : "") { await loadFraming() }
         .onChange(of: item) { _, item in
             if let item { ItemPeeks.keep(item) }
@@ -1141,7 +1148,15 @@ struct ItemDetailView: View {
         // it, not when the server has made its own again (Mateusz
         // 2026-11-21: "Pomimo komunikatu odżółconym papierze, dzieło
         // pozostaje zażółcone jeszcze przez wiele sekund").
-        async let shown: Void = showOnPhone(item, on: !on, made: made)
+        let key = switchKey
+        let ready = prepared.flatMap { !key.isEmpty && $0.key == key ? $0.picture : nil }
+        if ready != nil { switchedOnPhone = true }  // no badge, not even a moment
+        defer { switchedOnPhone = false }
+        if let ready {
+            // Made before the touch: shown before anything is asked.
+            await model.phoneShows(item, on: !on, picture: ready)
+        }
+        async let shown: Void = ready != nil ? () : showOnPhone(item, on: !on, made: made)
         do {
             let updated = on
                 ? try await model.backend.unclean(itemID: item.id)
@@ -1170,14 +1185,48 @@ struct ItemDetailView: View {
     /// by the server's numbers (`/colours`), the picture as it came had
     /// from the server's kept copy.
     private func showOnPhone(_ item: Item, on: Bool, made: String) async {
-        guard item.kind == .artwork else { return }
+        guard let picture = await madeOnPhone(item, on: on, made: made) else { return }
+        await model.phoneShows(item, on: on, picture: picture)
+        withAnimation(.easeInOut(duration: 0.3)) { switchedOnPhone = true }
+    }
+
+    /// What the menu's entry switches now: the work's picture, how it is
+    /// made and which way; "" while the menu offers no switch.
+    private var switchKey: String {
+        guard let item, recoveryKind != nil, !recoveryKey.isEmpty else { return "" }
+        return "\(recoveryKey)|\(item.cleanedShown != nil)"
+    }
+
+    /// The menu's other picture made while the card is read, as the full
+    /// screen makes its own (Mateusz 2026-11-21: the card's "Odżółć
+    /// papier" waited many seconds): a moment after the card is here, so
+    /// nothing it loads waits for it.
+    private func prepareSwitch() async {
+        let key = switchKey
+        guard !key.isEmpty, prepared?.key != key, let item else { return }
+        prepared = nil
+        try? await Task.sleep(for: .milliseconds(800))
+        guard !Task.isCancelled else { return }
+        let made = ColourRecovery.made(PaintStyle.of(item)) ?? "paper"
+        guard let picture = await madeOnPhone(item, on: item.cleanedShown == nil, made: made),
+              !Task.isCancelled, key == switchKey
+        else { return }
+        prepared = (key, picture)
+    }
+
+    /// The work's picture corrected (`on`) or as it came, made on the
+    /// phone: the varnish or the sheet's yellow taken off by the server's
+    /// numbers (`/colours`), the picture as it came had from the server's
+    /// kept copy.
+    private func madeOnPhone(_ item: Item, on: Bool, made: String) async -> UIImage? {
+        guard item.kind == .artwork else { return nil }
         if on {
             guard let view = try? await model.backend.colours(itemID: item.id, made: made),
                   let request = model.backend.request(for: item.originalRef),
                   let base = try? await ImageLoader.shared.image(
                       for: request, maxPixel: PhonePicture.largeSide, priority: .high
                   )
-            else { return }
+            else { return nil }
             let picture: UIImage?
             if view.kind == "varnish" {
                 let sum = VarnishSum(view)
@@ -1187,15 +1236,15 @@ struct ItemDetailView: View {
             } else {
                 picture = nil
             }
-            if let picture { await model.phoneShows(item, on: true, picture: picture) }
+            return picture
         } else {
             let plain = ImageRef.treated(item.id, restored: true, cleaned: false, version: item.pictureVersion)
             guard let request = model.backend.request(for: plain),
                   let picture = try? await ImageLoader.shared.image(
                       for: request, maxPixel: PhonePicture.largeSide, priority: .high
                   )
-            else { return }
-            await model.phoneShows(item, on: false, picture: picture)
+            else { return nil }
+            return picture
         }
     }
 
@@ -1240,7 +1289,7 @@ struct ItemDetailView: View {
                             }
                         }
                         .overlay {
-                            if cleaning, let kind = recoveryKind {
+                            if cleaning, !switchedOnPhone, let kind = recoveryKind {
                                 LoadingBadge(text: ColourRecovery.working(kind, on: item.cleanedShown != nil))
                                     .transition(.opacity)
                             }
