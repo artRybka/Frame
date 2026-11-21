@@ -117,8 +117,16 @@ struct TeachCropView: View {
         VStack(spacing: 10) {
             HStack(spacing: 10) {
                 answer("Bez kadru", "photo", .whole)
-                answer("Kadr", "crop", .cut)
-                answer("Kadr z ramą", "square.dashed", .framed)
+                if kind == 0 {
+                    answer("Kadr", "crop", .cut)
+                    answer("Kadr z ramą", "square.dashed", .framed)
+                } else {
+                    // A drawing or print is cut to its sheet, with no frame
+                    // or passe-partout (Mateusz 2026-11-21 17:48 UTC: „Dla
+                    // rysunku i grafiki zostawimy tylko jedno kadrowanie -
+                    // »do kartki«”).
+                    answer("Kadr do kartki", "crop", .cut)
+                }
             }
             Button {
                 skip()

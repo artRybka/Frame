@@ -182,8 +182,9 @@ def test_bez_ramy_throws_what_is_around_the_work_away(
     fake: FakeAnthropic,  # noqa: F811
 ) -> None:
     # Mateusz 2026-11-20: „kadrujemy dzieło, ale nie ma ono ramy ani
-    # passepartout. Czyli tło jest do wyrzucenia.”
-    _work(service, "mnw:1", pooled=True, medium="ołówek, papier")
+    # passepartout. Czyli tło jest do wyrzucenia.” (A painting: a drawing
+    # gets no frame from the model at all since 2026-11-21.)
+    _work(service, "mnw:1", pooled=True, medium="olej, płótno")
     with _client(service) as client:
         cut = _found("mnw:1", client)
         assert cut["item"]["cut"]["framed_kind"] == "frame"
@@ -218,18 +219,22 @@ def test_a_work_left_whole_is_kept_whole_and_the_list_says_how_sure(
         assert lesson["work"] is None and lesson["surround"] is None
 
 
-def test_a_print_is_cut_to_its_sheet_with_no_frame(
+def test_a_print_or_drawing_is_cut_to_its_sheet_with_no_frame(
     service: FrameService,
     fake: FakeAnthropic,  # noqa: F811
 ) -> None:
-    # Mateusz 2026-11-20 22:13 UTC: „Rysunki jak dziś, grafiki do papieru”.
+    # Mateusz 2026-11-20 22:13 UTC: „Rysunki jak dziś, grafiki do papieru”;
+    # 2026-11-21 17:48: „Dla rysunku i grafiki zostawimy tylko jedno
+    # kadrowanie - »do kartki«”.
     _work(service, "mnw:1", pooled=True, medium="akwaforta, papier")
     _work(service, "mnw:2", pooled=True, medium="ołówek, papier")
+    _work(service, "mnw:3", pooled=True, medium="olej, płótno")
     with _client(service) as client:
-        cut = _found("mnw:1", client)
-        assert cut["cut"] and cut["item"]["cut"]["work"] == KEPT
-        assert cut["item"]["cut"]["surround"] is None
-        assert _found("mnw:2", client)["item"]["cut"]["framed_kind"] == "frame"
+        for sheet in ("mnw:1", "mnw:2"):
+            cut = _found(sheet, client)
+            assert cut["cut"] and cut["item"]["cut"]["work"] == KEPT
+            assert cut["item"]["cut"]["surround"] is None
+        assert _found("mnw:3", client)["item"]["cut"]["framed_kind"] == "frame"
 
 
 def test_he_tells_at_a_glance_whether_a_painting_wants_a_cut_and_a_frame(
@@ -253,3 +258,8 @@ def test_he_tells_at_a_glance_whether_a_painting_wants_a_cut_and_a_frame(
         assert lesson["id"] == "mnw:1" and lesson["told"] == "framed" and lesson["kind"] == 0
         prints = client.get("/api/crops/teach", params={"kind": 2}).json()["works"]
         assert [w["id"] for w in prints] == ["mnw:3"]
+        # A drawing or print is cut to its sheet (17:48: „tylko jedno
+        # kadrowanie - »do kartki«”): "framed" of one is taught as a cut.
+        client.post("/api/crops/teach/mnw:3", json={"answer": "framed"})
+        told_of = {t["id"]: t["told"] for t in client.get("/api/crops/told").json()}
+        assert told_of == {"mnw:1": "framed", "mnw:3": "cut"}
