@@ -144,13 +144,17 @@ final class WorkSearch {
     /// they come on their own.
     var waitsForPull: Bool {
         guard let catalogue, !searching, !pulledFurther, !catalogue.items.isEmpty else { return false }
-        if searched?.rules.like.isEmpty == false { return catalogueMore }
+        // A photograph's museums (Mateusz 2026-11-21) after the last of
+        // its catalogue's steps; a work's look-alikes are the catalogue's alone.
+        if let like = searched?.rules.like, !like.isEmpty, catalogueMore || !SearchToken.isPhoto(like) {
+            return catalogueMore
+        }
         return museumsWaiting && !catalogueMore
     }
 
     /// What the pull at the end brings: the museums' works, or more of
     /// "Podobne do".
-    var pullsMuseums: Bool { museumsWaiting }
+    var pullsMuseums: Bool { museumsWaiting && !catalogueMore }
 
     /// The end pulled: the museums' first pages, or the next works of
     /// "Podobne do", the next page of this step or the next step, less near.
@@ -223,7 +227,7 @@ final class WorkSearch {
         // The catalogue answers at once (it is the server's own); with
         // plenty in it the museums are asked only when its end is pulled.
         if Task.isCancelled || key != searched { return }
-        if asksMuseums(key), (catalogue?.total ?? 0) >= Self.plenty {
+        if asksMuseums(key), (catalogue?.total ?? 0) >= Self.plenty || SearchToken.isPhoto(key.rules.like) {
             museumsWaiting = true
         } else {
             await listen(key, sources: key.museumSources ?? key.sources, page: 1)
@@ -273,9 +277,13 @@ final class WorkSearch {
     /// playlists are the owner's, no museum has them. A look is asked of
     /// them by searches Haiku makes of it, what they bring judged by how it
     /// looks (Mateusz 2026-11-13); the works like one ("Podobne do") are the
-    /// catalogue's own numbers alone.
+    /// catalogue's own numbers alone. A photograph searched asks them too,
+    /// by the subjects of its nearest works there, what they bring judged by
+    /// how it looks like the photograph (the server's
+    /// `Looks.photo_searches`, no Claude; Mateusz 2026-11-21), once the
+    /// catalogue's steps are all pulled.
     private func asksMuseums(_ key: Key) -> Bool {
-        key.museums && !key.rules.asksMine && key.rules.like.isEmpty
+        key.museums && !key.rules.asksMine && (key.rules.like.isEmpty || SearchToken.isPhoto(key.rules.like))
     }
 
     /// Takes in the museums' answers as each comes.

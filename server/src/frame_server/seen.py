@@ -57,6 +57,15 @@ RELEASES = "https://github.com/artRybka/Frame/releases/download"
 #: The model's files; their sums come in ``SHA256SUMS``.
 FILES = ("picture.onnx", "words.onnx", "tokenizer.json")
 SUMS = "SHA256SUMS"
+#: The picture side for the phone (Core ML, made on the Mac from the same
+#: weights, ``scripts/look-model/phone.py``; an uncompressed tar): fetched
+#: beside the server's own and handed to the app, which numbers a photograph
+#: itself and sends the numbers (Mateusz 2026-11-21: "szykujmy takie
+#: rozwiązanie"). Its sum is kept here: the release has no ``SHA256SUMS``.
+#: Empty: none yet.
+PHONE = "look-model-siglip2-b16-phone-1"
+PHONE_FILE = "Look.mlpackage.tar"
+PHONE_SUM = ""
 
 #: Numbers a work.
 SIZE = 768
@@ -183,6 +192,41 @@ class SeenModel:
         finally:
             if own:
                 http.close()
+
+    def phone(self, client: httpx.Client | None = None) -> Path | None:
+        """The phone's picture side (:data:`PHONE`), fetched when not here and
+        checked against :data:`PHONE_SUM`; None when there is none yet."""
+        if not PHONE_SUM:
+            return None
+        path = self.root / PHONE / PHONE_FILE
+        if path.is_file():
+            return path
+        own = client is None
+        http = client or httpx.Client(follow_redirects=True, timeout=httpx.Timeout(60.0))
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            part = path.with_suffix(path.suffix + ".part")
+            digest = hashlib.sha256()
+            with http.stream("GET", f"{RELEASES}/{PHONE}/{PHONE_FILE}") as answer:
+                answer.raise_for_status()
+                with part.open("wb") as out:
+                    for chunk in answer.iter_bytes(1 << 20):
+                        digest.update(chunk)
+                        out.write(chunk)
+            if digest.hexdigest() != PHONE_SUM:
+                part.unlink(missing_ok=True)
+                raise ValueError(f"seen: {PHONE_FILE} came changed on the way")
+            os.replace(part, path)
+            log.info("seen: the phone's model fetched (%d MB)", path.stat().st_size >> 20)
+            return path
+        finally:
+            if own:
+                http.close()
+
+    def phone_here(self) -> Path | None:
+        """The phone's picture side when already fetched, else None."""
+        path = self.root / PHONE / PHONE_FILE
+        return path if PHONE_SUM and path.is_file() else None
 
     @staticmethod
     def _sums(text: str) -> dict[str, str]:
@@ -649,6 +693,7 @@ class Seen:
                     pause = IN_USE
                 else:
                     self.model.fetch()
+                    self.model.phone()
                     if self.clock() - tidied > 86_400:
                         self.tidy()
                         tidied = self.clock()

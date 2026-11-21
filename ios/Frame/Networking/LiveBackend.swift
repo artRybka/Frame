@@ -546,6 +546,7 @@ struct LiveBackend: FrameBackend {
     func looksStatus() async throws -> LooksStatus { try await get("/api/looks") }
 
     func lookPhoto(_ picture: Data) async throws -> LooksPhoto {
+        if let numbered = await phoneNumbered(picture) { return numbered }
         var form = MultipartForm()
         form.addFile("file", filename: "photo.jpg", mimeType: "image/jpeg", data: picture)
         var req = request("/api/looks/photo", method: "POST")
@@ -553,6 +554,41 @@ struct LiveBackend: FrameBackend {
         req.httpBody = form.body()
         req.timeoutInterval = 60
         return try await perform(req)
+    }
+
+    /// The photograph numbered on the phone (`PhoneLook`), only its numbers
+    /// sent; nil when it cannot be: a server from before it, Google's numbers
+    /// answering there, the model not here yet (fetched meanwhile).
+    private func phoneNumbered(_ picture: Data) async -> LooksPhoto? {
+        guard let status: PhoneLook.Status = try? await get("/api/looks/phone"),
+              let numbers = await PhoneLook.shared.numbers(picture, status: status, fetch: { [self] in
+                  try await self.phoneModel()
+              })
+        else { return nil }
+        struct Numbers: Encodable { var model: String; var look: String }
+        return try? await send(
+            "/api/looks/photo/numbers", method: "POST",
+            body: Numbers(model: status.model, look: PhoneLook.encoded(numbers))
+        )
+    }
+
+    /// The phone's look model's tar, fetched into a file of its own.
+    private func phoneModel() async throws -> URL {
+        var req = request("/api/looks/phone/model")
+        req.timeoutInterval = 120
+        let kept = FileManager.default.temporaryDirectory.appending(path: "PhoneLook-\(UUID().uuidString).tar")
+        let status = try await route.follow(req) { req in
+            try await Tailnet.shared.send(req) { session in
+                let (file, response) = try await session.download(for: req)
+                try FileManager.default.moveItem(at: file, to: kept)
+                return (response as? HTTPURLResponse)?.statusCode ?? 200
+            }
+        }
+        guard (200 ..< 300).contains(status) else {
+            try? FileManager.default.removeItem(at: kept)
+            throw BackendError.http(status: status, body: "")
+        }
+        return kept
     }
 
     func looksLike(itemID: String, limit: Int) async throws -> LooksAnswer {
@@ -656,7 +692,13 @@ struct LiveBackend: FrameBackend {
         // A title asked by its words; a look by searches Haiku makes of
         // it, what the museums bring judged by how it looks (2026-11-13).
         if !rules.title.isEmpty { query.append(URLQueryItem(name: "title", value: rules.title)) }
-        if !look.isEmpty { query.append(URLQueryItem(name: "look", value: look)) }
+        if !look.isEmpty {
+            query.append(URLQueryItem(name: "look", value: look))
+        } else if SearchToken.isPhoto(rules.like) {
+            // A photograph searched: its key is the look, the server asks
+            // the museums by its nearest works' subjects (2026-11-21).
+            query.append(URLQueryItem(name: "look", value: rules.like))
+        }
         return query
     }
 

@@ -66,7 +66,8 @@ from .library.museums import client as museum_client
 from .library.records import records
 from .library.twins import Twins
 from .library.wikidata import MIRRORED, CommonsCopies
-from .looks import Looks
+from .library.wording import Wording
+from .looks import PHOTO, Looks
 from .media import Media
 from .museum_places import MuseumPlaces
 from .night import NightQueue
@@ -482,8 +483,8 @@ class FrameService:
         # The museums asked for a look by Haiku's searches, what they bring
         # judged by how it looks (Mateusz 2026-11-13, card).
         self.look_words = LookWords(self.library, self.claude, self.ai_config)
-        self.importer.look_searches = self.look_words.searches
-        self.importer.judge_look = self.looks.judge
+        self.importer.look_searches = self._look_searches
+        self.importer.judge_look = self._judge_look
         self.daily.looks_like = self.looks.neighbours
         # A small picture is drawn larger first, before its study (Mateusz
         # 2026-11-13); which works get none: the rules, the sheet's pixels and
@@ -552,6 +553,19 @@ class FrameService:
             notifications.item_title(self, item) if status == "ready" else "",
             self.study.progress(item.id),
         )
+
+    def _look_searches(self, look: str) -> list[Wording]:
+        """The museums' searches for a look: Haiku's of words, the
+        catalogue's subjects near a photograph searched (``photo:…``, the
+        app sends its key as the look; Mateusz 2026-11-21)."""
+        if look.startswith(PHOTO):
+            return self.looks.photo_searches(look)
+        return self.look_words.searches(look)
+
+    def _judge_look(self, look: str, items: list[Item]) -> list[Item]:
+        if look.startswith(PHOTO):
+            return self.looks.judge_photo(look, items)
+        return self.looks.judge(look, items)
 
     def _english(self, text: str) -> str:
         """Szukaj's words in English for SigLIP: the phone's or Haiku's

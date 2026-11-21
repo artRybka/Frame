@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.296
+
+- „Szukaj zdjęciem” liczy odcisk zdjęcia na iPhonie: model pobiera się raz
+  w tle, potem na serwer idzie tylko odcisk (3 KB) zamiast zdjęcia.
+- Przy szukaniu zdjęciem, po dziełach z katalogu, pytane są też muzea:
+  o tematy najbliższych dzieł z katalogu, bez Claude. To, co przyniosą,
+  zostaje tylko wtedy, gdy wygląda jak zdjęcie.
+
 ## 1.145.295
 
 - Szukanie wyglądem gotowe do przesiadki na SigLIP 2: progi bliskości
