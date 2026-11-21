@@ -1093,6 +1093,13 @@ def at_levels(have: set[str], shares: dict[str, float], wanted: list[str]) -> bo
     """Whether a picture with tags ``have`` and ``shares`` has each colour
     at its asked level (``LEVELS``); colours asked at "most" together."""
     most: list[str] = []
+    # Several colours asked "clear" (wyraźna) share it evenly (Mateusz
+    # 2026-11-21 23:21, of red, yellow and blue „wyraźna”: 0 works, each
+    # alone 7, 41 and 12: „W tej sytuacji kolory powinny się podzielić po
+    # równo?”): each holds its part of ``LEVEL_MUCH``, never less than
+    # ``LEVEL_CLEAR``.
+    much = sum(1 for token in wanted if token.partition(LEVEL_MARK)[2] == "much")
+    much_each = max(LEVEL_CLEAR, LEVEL_MUCH / much) if much else LEVEL_MUCH
     for token in wanted:
         family, _, at = token.partition(LEVEL_MARK)
         share = shares.get(family, 0.0)
@@ -1102,7 +1109,7 @@ def at_levels(have: set[str], shares: dict[str, float], wanted: list[str]) -> bo
             if ACCENT_TAG + family not in have:
                 return False
         elif at in ("clear", "much"):
-            if share < (LEVEL_CLEAR if at == "clear" else LEVEL_MUCH):
+            if share < (LEVEL_CLEAR if at == "clear" else much_each):
                 return False
         else:
             return False

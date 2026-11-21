@@ -8,6 +8,8 @@
   barwy odstające od tonu obrazu widać teraz wyraźniej.
 - Dzieło bez podanej techniki, które muzeum nazywa rysunkiem, grafiką albo
   plakatem, dostaje pasek papieru, nie farby.
+- Szukanie kolorem: kilka barw „wyraźnych” naraz dzieli próg po równo
+  (trzy barwy po około 9% obrazu), więc nie wychodzi już pusta lista.
 - Po aktualizacji serwer raz przelicza barwy dzieł (1–2 godziny).
 
 ## 1.145.301
