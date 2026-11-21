@@ -258,6 +258,9 @@ class Incoming(BaseModel):
     surround_kind: str = ""
     #: Whether Opus answered (``surround`` asked).
     looked: bool = False
+    #: The phone is to find the work in it itself (``AiConfig.crops_on_phone``):
+    #: Opus was not asked, its model and Vision are (``MuseumCrop``).
+    phone_cuts: bool = False
     #: The phone may make the scan of this photograph itself and send it
     #: (:meth:`OwnWorks.merged_by_phone`): not where a chart set its
     #: colours here, which the phone's own photographs do not have.
@@ -1224,7 +1227,8 @@ class OwnWorks:
 
     def find(self, token: str) -> Incoming:
         """The work found in the photograph by Opus (``corners`` None when
-        nothing was, or no key). Asked once of a photograph: :meth:`merge`
+        nothing was, or no key); with ``crops_on_phone`` by none here
+        (``phone_cuts``: the phone finds it). Asked once of a photograph: :meth:`merge`
         asks first, and the phone after it."""
         path = self.path(token)
         known = path.with_suffix(FOUND)
@@ -1244,6 +1248,13 @@ class OwnWorks:
                 straight=LensBend.of(self._waiting_bend(token)),
             )
             size = img.size
+            if self.crops.on_phone():
+                # The phone finds the work itself, with no Claude (Mateusz
+                # 2026-11-21 20:44 UTC: „kadrowanie moich własnych dzieł na
+                # pewno chce robić na iPhone, bez Opus”): nothing is asked
+                # here, nor kept, so it is asked should the switch go off.
+                seen.phone_cuts = True
+                return seen
             img.draft("RGB", (LOOK_SIDE, LOOK_SIDE))
             img.load()
             found = self.crops.home_corners(img)
