@@ -355,6 +355,12 @@ def test_each_person_arranges_their_cards(tmp_path: Path) -> None:
         assert names(member) == ["B", "Ulubione", "A", "C"]
         assert names(OWNER) == ["B", "Ulubione", "A", "C"]
 
+        # "Kolekcja prywatna" (-1) is moved among them and kept in the order.
+        assert client.get("/api/playlists/order", headers=OWNER).json()["ids"] == [b, fav, a]
+        client.put("/api/playlists/order", json={"ids": [b, -1, fav, a, -7]}, headers=OWNER)
+        assert client.get("/api/playlists/order", headers=OWNER).json()["ids"] == [b, -1, fav, a]
+        assert names(OWNER) == ["B", "Ulubione", "A", "C"]
+
 
 def _own(svc, n: int, by: str = ""):
     from frame_server.library.models import OwnWork

@@ -140,10 +140,18 @@ def list_playlists(svc: Svc, user: CurrentUser) -> list[PlaylistSummary]:
     return [summary(svc, p) for p in svc.library.arranged_playlists(user.id)]
 
 
+@router.get("/playlists/order", response_model=PlaylistOrder)
+def playlist_order(svc: Svc, user: CurrentUser) -> PlaylistOrder:
+    """The order of the cards as the asking person last put them, with -1
+    where "Kolekcja prywatna" stands (not a playlist; absent until moved)."""
+    return PlaylistOrder(ids=svc.library.playlist_order(user.id))
+
+
 @router.put("/playlists/order", response_model=list[PlaylistSummary])
 def arrange_playlists(order: PlaylistOrder, svc: Svc, user: CurrentUser) -> list[PlaylistSummary]:
     """A card moved in Playlisty: the asking person's order from now on
-    (each person has their own; Propozycje and Ukryte are not playlists)."""
+    (each person has their own; Propozycje and Ukryte are not playlists,
+    "Kolekcja prywatna" is kept in it as -1)."""
     svc.library.arrange_playlists(user.id, order.ids)
     return list_playlists(svc, user)
 

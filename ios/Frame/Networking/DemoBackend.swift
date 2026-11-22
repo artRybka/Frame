@@ -27,7 +27,7 @@ actor DemoBackend: FrameBackend {
     private var demoFine: Set<String> = []
     private var playlistsByID: [Int: Playlist]
     /// The cards' order once one was moved, as the server keeps it.
-    private var playlistOrder: [Int] = []
+    private var cardOrder: [Int] = []
     /// The order chosen for each playlist's works (the server keeps it with the playlist).
     private var playlistSorts: [Int: PlaylistSort] = [:]
     private var settingsValue = FrameSettings.defaults
@@ -1066,15 +1066,17 @@ actor DemoBackend: FrameBackend {
             return fa != fb ? fa : a < b
         }
         let ids = made.sorted { a, b in
-            (playlistOrder.firstIndex(of: a) ?? playlistOrder.count) < (playlistOrder.firstIndex(of: b) ?? playlistOrder.count)
+            (cardOrder.firstIndex(of: a) ?? cardOrder.count) < (cardOrder.firstIndex(of: b) ?? cardOrder.count)
         }
         return ids.compactMap { playlistsByID[$0] }.map(summary)
     }
 
     func arrangePlaylists(ids: [Int]) async throws -> [PlaylistSummary] {
-        playlistOrder = ids.filter { playlistsByID[$0] != nil }
+        cardOrder = ids.filter { playlistsByID[$0] != nil || $0 == -1 }  // -1: "Kolekcja prywatna"
         return try await playlists()
     }
+
+    func playlistOrder() async throws -> [Int] { cardOrder }
 
     func playlist(id: Int) async throws -> PlaylistDetail {
         guard let playlist = playlistsByID[id] else { throw BackendError.notFound }

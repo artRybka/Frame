@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.331
+
+- „Moje dzieła” w Playlistach nazywają się teraz „Kolekcja prywatna”, a
+  ich kafelek można przesuwać między playlistami tak jak inne (palcem
+  albo „Przesuń na początek/koniec” w menu). Miejsce jest zapamiętane.
+
 ## 1.145.327
 
 - „Doszukuj w tle” w edycji inteligentnej playlisty: co 12 godzin serwer
