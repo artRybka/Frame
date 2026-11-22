@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.323
+
+- Restaurator zostawia więcej szczegółu (siedem dziesiątych tego, co
+  dorysował model), bo poprzednie dzieła wychodziły trochę za miękkie.
+  Zapisane restauracje dostają szczegół z powrotem raz po starcie
+  serwera, bez ponownej restauracji.
+
 ## 1.145.322
 
 - Restaurator mniej zmyśla: z drobnych szczegółów, które model dorysował
