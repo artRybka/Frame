@@ -19,7 +19,7 @@ Lokalnie, **0 USD** (bez fal). Na wynikach r8: wariant D (twarz = pusty owal z p
 Twarz to mały kawałek obrazu, więc liczby całego dzieła się nie ruszają. Ocena tylko na oko.
 
 ## Na oko (L2-twarze-zblizenia.jpg)
-- Twarz przestaje być pustym manekinem: zostaje kawałek brwi, oka, nosa i ust, ale bez portretowego wykończenia. Najlepiej wychodzi u Maneta, Gierymskiej, Boznańskiej, Mleczarki i Delacroix.
+- Twarz przestaje być pustym manekinem: zostaje kawałek brwi, oka, nosa i ust, ale bez portretowego wykończenia. Najlepiej wychodzi u Maneta, w „Żydówce” Gierymskiego, u Boznańskiej, Mleczarki i Delacroix.
 - **30%** daje bardzo ogólną twarz, czasem prawie nieczytelną (Delacroix, Homer). **50%** daje szkicową, ale czytelną twarz. Polecam **50%**.
 - Słabe strony: plamy różu z D na oczach (Gierymski, Boznańska) zostają i przy porwanych liniach wyglądają jak siniaki. Broda Homera i Maneta jest tylko z linii, bo w D jej nie ma. Wyspiańskiego i Hoppera D prawie nie zmienił, więc nie zmienia się też tu.
 - Szwu na brzegu maski nie widać.
