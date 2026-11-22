@@ -1285,13 +1285,17 @@ class OwnWorks:
         corners: Quad | None,
         surround: Quad | None,
         surround_kind: str = "",
+        *,
+        owner: bool = False,
     ) -> Incoming:
         """What the phone found in the photograph itself (its model, or
         what the camera followed; ``phone_cuts``), kept as Opus's answer
         was: the server's merge goes by it, and the work added from it
-        keeps its frame's edge (:meth:`_surround`)."""
+        keeps its frame's edge (:meth:`_surround`). ``owner``: the work's
+        and frame's corners he set in "Kadr" ("Dzieło / Rama", Mateusz
+        2026-11-22), kept over Opus's answer too."""
         seen = self.find(token)
-        if seen.looked and not seen.phone_cuts:
+        if seen.looked and not seen.phone_cuts and not owner:
             return seen  # Opus's, from before the switch
         seen.corners = corners
         seen.shape = "rectangle" if corners is not None else ""
