@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import math
+from collections.abc import Callable
 
 import cv2
 import numpy as np
@@ -57,6 +58,16 @@ HARMONICS = 6
 #: are left: they would take the picture's masses away. (Those a little
 #: farther are the screen's moiré, and go.)
 NEAREST = 5.0
+
+#: The mirrored border put round a picture before its spectrum is taken,
+#: as a share of its longer side.
+PAD = 0.04
+
+#: A picture no longer than this is drawn more than three times larger;
+#: its grain finer than :data:`SOFT` cycles a pixel (a period of under
+#: three pixels) is let go of, gently, up to none at the finest.
+SMALL = 1000
+SOFT = 0.3
 
 #: The picture is looked at no larger than this (its middle), for speed.
 LOOKED = 1024
@@ -128,32 +139,69 @@ def lattice(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
     return out
 
 
-def descreened(picture: Image.Image) -> Image.Image:
-    """``picture`` with a printed screen taken out; ``picture`` itself
-    when it has none."""
-    found = screen(picture)
-    if not found:
-        return picture
-    points = lattice(found)
-    notch = NOTCH * min(math.hypot(py, px) for py, px in found)
-    rgb = np.asarray(picture.convert("RGB"), dtype=np.float32)
+def _filtered(rgb: np.ndarray, keep: Callable[[int, int], np.ndarray]) -> np.ndarray:
+    """``rgb`` through a filter of its spectrum, ``keep(h, w)`` (in the
+    order of ``np.fft.fftfreq``), mirrored at its edges first so that the
+    spectrum's wrapping round leaves no band along them."""
     h, w = rgb.shape[:2]
-    keep = np.ones((h, w), dtype=np.float32)
-    ry, rx = max(1, int(4 * notch * h)), max(1, int(4 * notch * w))
-    dy = (np.arange(-ry, ry + 1) / h)[:, None]
-    dx = (np.arange(-rx, rx + 1) / w)[None, :]
-    for py, px in points:
-        for sy, sx in ((py, px), (-py, -px)):
-            cy, cx = round(sy * h), round(sx * w)
-            gy = (dy + cy / h - sy) ** 2
-            gx = (dx + cx / w - sx) ** 2
-            rows = np.arange(cy - ry, cy + ry + 1) % h
-            cols = np.arange(cx - rx, cx + rx + 1) % w
-            keep[np.ix_(rows, cols)] *= 1.0 - np.exp(-(gy + gx) / (2 * notch * notch)).astype(
-                np.float32
-            )
+    pad = max(8, round(PAD * max(h, w)))
+    big = cv2.copyMakeBorder(rgb, pad, pad, pad, pad, cv2.BORDER_REFLECT)
+    bh, bw = big.shape[:2]
+    mask = keep(bh, bw)
+    both = np.dstack([mask, mask])
     out = np.empty_like(rgb)
     for c in range(3):
-        out[..., c] = np.real(np.fft.ifft2(np.fft.fft2(rgb[..., c]) * keep))
-    log.info("descreen: a printed screen (%d points) taken out of %dx%d", len(found), w, h)
-    return Image.fromarray(np.clip(out + 0.5, 0, 255).astype(np.uint8))
+        spectrum = cv2.dft(np.ascontiguousarray(big[..., c]), flags=cv2.DFT_COMPLEX_OUTPUT)
+        back = cv2.idft(spectrum * both, flags=cv2.DFT_SCALE | cv2.DFT_REAL_OUTPUT)
+        out[..., c] = back[pad : pad + h, pad : pad + w]
+    return out
+
+
+def _notches(points: list[tuple[float, float]], notch: float) -> Callable[[int, int], np.ndarray]:
+    def keep(h: int, w: int) -> np.ndarray:
+        mask = np.ones((h, w), dtype=np.float32)
+        ry, rx = max(1, int(4 * notch * h)), max(1, int(4 * notch * w))
+        dy = (np.arange(-ry, ry + 1) / h)[:, None]
+        dx = (np.arange(-rx, rx + 1) / w)[None, :]
+        for py, px in points:
+            for sy, sx in ((py, px), (-py, -px)):
+                cy, cx = round(sy * h), round(sx * w)
+                gy = (dy + cy / h - sy) ** 2
+                gx = (dx + cx / w - sx) ** 2
+                rows = np.arange(cy - ry, cy + ry + 1) % h
+                cols = np.arange(cx - rx, cx + rx + 1) % w
+                dip = np.exp(-(gy + gx) / (2 * notch * notch)).astype(np.float32)
+                mask[np.ix_(rows, cols)] *= 1.0 - dip
+        return mask
+
+    return keep
+
+
+def _finest_off(h: int, w: int) -> np.ndarray:
+    fy = np.fft.fftfreq(h).astype(np.float32)[:, None]
+    fx = np.fft.fftfreq(w).astype(np.float32)[None, :]
+    radius = np.sqrt(fy * fy + fx * fx)
+    # Full below SOFT, none at the corner of the spectrum, smooth between.
+    t = np.clip((radius - SOFT) / (0.5 - SOFT), 0.0, 1.0)
+    return (0.5 + 0.5 * np.cos(np.pi * t)).astype(np.float32)
+
+
+def descreened(picture: Image.Image) -> Image.Image:
+    """``picture`` with a printed screen taken out; ``picture`` itself
+    when it has none. A small picture (no longer than :data:`SMALL`) loses
+    its finest grain as well: a screen there is at the edge of what its
+    pixels hold, too weak to be found, and drawn three times larger it
+    was a sharp net (Valtat's, a 595-pixel photograph)."""
+    found = screen(picture)
+    small = max(picture.size) <= SMALL
+    if not found and not small:
+        return picture
+    rgb = np.asarray(picture.convert("RGB"), dtype=np.float32)
+    h, w = rgb.shape[:2]
+    if found:
+        notch = NOTCH * min(math.hypot(py, px) for py, px in found)
+        rgb = _filtered(rgb, _notches(lattice(found), notch))
+        log.info("descreen: a printed screen (%d points) taken out of %dx%d", len(found), w, h)
+    if small:
+        rgb = _filtered(rgb, _finest_off)
+    return Image.fromarray(np.clip(rgb + 0.5, 0, 255).astype(np.uint8))

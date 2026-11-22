@@ -53,7 +53,8 @@ def test_a_painting_and_its_jpeg_have_no_screen() -> None:
     plain = Image.fromarray((_painting() * 255).astype(np.uint8))
     assert screen(plain) == []
     assert screen(_jpeg(plain, 50)) == []
-    assert descreened(plain) is plain
+    big = Image.fromarray((_painting(1200, 1100) * 255).astype(np.uint8))
+    assert descreened(big) is big
 
 
 def test_a_printed_screen_is_taken_off_and_the_masses_stay() -> None:
@@ -69,6 +70,30 @@ def test_a_printed_screen_is_taken_off_and_the_masses_stay() -> None:
         assert float(np.abs(masses - kept).mean()) < 3.0
 
 
-def test_a_tiny_picture_is_left() -> None:
-    small = Image.new("RGB", (40, 40), "white")
-    assert descreened(small) is small
+def test_a_tiny_picture_keeps_its_size() -> None:
+    small = Image.new("RGB", (40, 30), "white")
+    assert screen(small) == []
+    assert descreened(small).size == (40, 30)
+
+
+def test_a_small_picture_loses_only_its_finest_grain() -> None:
+    plain = Image.fromarray((_painting() * 255).astype(np.uint8))
+    soft = descreened(plain)
+    assert soft is not plain and soft.size == plain.size
+    masses = np.asarray(plain.filter(ImageFilter.GaussianBlur(3)), dtype=np.float32)
+    kept = np.asarray(soft.filter(ImageFilter.GaussianBlur(3)), dtype=np.float32)
+    assert float(np.abs(masses - kept).mean()) < 1.0
+    y, x = np.mgrid[0:400, 0:400]
+    net = Image.fromarray(
+        np.stack([((np.sin(2.6 * x) * np.sin(2.6 * y)) * 40 + 128)] * 3, -1).astype(np.uint8)
+    )
+    assert np.asarray(descreened(net), dtype=np.float32).std() < 0.2 * np.asarray(net).std()
+
+
+def test_the_edges_are_left_as_they_were() -> None:
+    printed = _printed(_painting(), 5, 45)
+    clean = np.asarray(descreened(printed.resize((1200, 1500))), dtype=np.float32)
+    before = np.asarray(printed.resize((1200, 1500)), dtype=np.float32)
+    edge = np.abs(clean - before)[:6].mean()
+    middle = np.abs(clean - before)[600:606].mean()
+    assert edge < 1.5 * middle
