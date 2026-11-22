@@ -68,7 +68,7 @@ from ..library.hosts import OverBudget, Resting, urgent_call
 from ..library.images import Gone, kept_side
 from ..library.importer import ALL
 from ..library.low_res import low_side
-from ..library.models import Framing, SharperCopy
+from ..library.models import POLISH_TITLE, Framing, SharperCopy
 from ..library.museums import MUSEUMS, LoginRefused
 from ..library.repo import Abandoned, Hidden, SortKey, asked_by
 from ..library.search import fill as fill_by_search
@@ -127,6 +127,9 @@ class RemoteItem(BaseModel):
     #: In a search's later answers: the worse copy, shown before, that this
     #: one takes the place of.
     replaces: str | None = None
+    #: The work's Polish title, once its Polish texts are written
+    #: (``ItemSummary.title_pl``).
+    title_pl: str | None = None
     #: Width / height, also when the museum gives no size (measured on the
     #: thumbnail, see ``Importer.measure``); None when not known yet.
     aspect: float | None = None
@@ -216,6 +219,7 @@ def remote_items(
                 # from a copy of 1920 × 2548 (2026-11-15).
                 low_side=low_side(own or item),
                 restored=own is not None and own.sharper is not None and own.sharper.restored,
+                title_pl=None if item.kind == ItemKind.PHOTO else POLISH_TITLE[0](item.id) or None,
             ),
         )
     return list(found.values())

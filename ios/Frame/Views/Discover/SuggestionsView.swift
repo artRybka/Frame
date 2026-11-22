@@ -454,7 +454,7 @@ struct WorkTile: View {
     static let closer: CGFloat = 1.18
 
     private var shownTitle: String {
-        let title = title ?? item.summary.title
+        let title = title ?? item.summary.shownTitle
         return title.isEmpty ? "Bez tytułu" : title
     }
 

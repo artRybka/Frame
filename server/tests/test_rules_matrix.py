@@ -236,7 +236,9 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "akta z archiwum": ("-----------", "+----------"),
     "zdjęcie przyrodnicze": ("-----------", "+----------"),
     "archiwum fotografii": ("-----------", "++---------"),
-    "archiwum sztuki, kolor": ("++-++++++++", "++-++++++++"),
+    # Left out until a copy takes its place (Mateusz 2026-11-22: "Szukaj
+    # kopii, potem ukryj").
+    "archiwum sztuki, kolor": ("-----------", "+----------"),
     "archiwum sztuki, szare": ("-----------", "+----------"),
     "kopia z Openverse": ("-----------", "++---------"),
     "fotografia z Openverse": ("-----------", "+----------"),
@@ -262,6 +264,7 @@ BROWSED_NOT_FOUND = {
     "dokument",
     "akta z archiwum",
     "zdjęcie przyrodnicze",
+    "archiwum sztuki, kolor",
     "archiwum sztuki, szare",
     "fotografia z Openverse",
     "fotografia z muzeum",

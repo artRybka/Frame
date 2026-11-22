@@ -26,9 +26,10 @@ disk already; "Przywróć zdjęcie muzeum" brings the own back by hand).
 A work whose picture is an art history archive's photograph of it
 (Europeana's Foto Marburg: colour slides decades old, their dyes faded to
 blue and white, Mateusz 2026-11-09) takes any other copy of the same picture
-whole as large as its own, in other colours too: the museums' scans have the
-painting's colours, the slide has lost them. Such a photograph is never a
-copy itself (Mateusz 2026-11-09: two van Goghs from Foto Marburg took
+whole, in other colours too, and smaller too (at least :data:`LEAST_SIDE`;
+Mateusz 2026-11-22): the museums' scans have the painting's colours, the
+slide has lost them; until it has one, it is left out (``Why.ARCHIVE_SLIDE``).
+Such a photograph is never a copy itself (Mateusz 2026-11-09: two van Goghs from Foto Marburg took
 another Marburg slide, as faded, before Commons was asked). Of the copies
 that pass, the largest is taken, and one still too small for the frame is
 looked past again after :data:`WEAK_AGAIN`.
@@ -165,7 +166,9 @@ THUMBS_VERSION = 1
 ARCHIVES_KEY = "archive_copies"
 #: 2: works shown in an archive's photograph taken as a copy are looked at
 #: again, without it.
-ARCHIVES_VERSION = 2
+#: 3: looked at again by their Polish titles too (``titled``): those with
+#: no copy are left out since (``Why.ARCHIVE_SLIDE``, Mateusz 2026-11-22).
+ARCHIVES_VERSION = 3
 #: Where an art archive's photographs are, for a copy no longer in the
 #: library (Foto Marburg's Bildindex, KIK-IRPA's BALaT).
 ARCHIVE_HOSTS = ("bildindex.de", "fotomarburg.de", "kikirpa.be")
@@ -219,7 +222,10 @@ class Quality(NamedTuple):
     def better(self, own: Quality, faded: bool = False) -> bool:
         """This picture shows the work clearly better than ``own`` does.
         ``faded``: ``own`` is an art archive's old photograph
-        (:func:`archive_own`), which any copy about as large beats."""
+        (:func:`archive_own`), which any copy beats that is not too small
+        for the frame's thumbnail (:data:`LEAST_SIDE`), smaller than the
+        photograph too (Mateusz 2026-11-22: "kopia nie musi być lepszej
+        rozdzielczości. Bo te Marburg nieraz ma dobrą")."""
         if self.bits is not None and self.bits < MUSH:
             return False
         ratio = max(self.ratio, own.ratio)  # copies of one work: the same shape
@@ -228,7 +234,7 @@ class Quality(NamedTuple):
             return False
         if side >= own_side * GAIN:
             return True
-        if faded and side >= own_side * 0.95:
+        if faded:
             return True
         return (
             side >= own_side * 0.95

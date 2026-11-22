@@ -527,12 +527,15 @@ def _slide(service: FrameService, web: Web, credit: str = MARBURG) -> Item:
     )
 
 
-def test_an_archive_slide_is_beaten_by_any_copy_as_large() -> None:
+def test_an_archive_slide_is_beaten_by_any_copy_not_too_small() -> None:
     slide = Quality(1494, 2.0)
     assert not Quality(1618, 2.0).better(slide)  # hardly larger
     assert Quality(1618, 2.0).better(slide, faded=True)
     assert Quality(1440, 2.0).better(slide, faded=True)  # about as large
-    assert not Quality(1100, 2.0).better(slide, faded=True)
+    # Smaller too (Mateusz 2026-11-22: "kopia nie musi być lepszej rozdzielczości").
+    assert Quality(1100, 2.0).better(slide, faded=True)
+    assert not Quality(900, 2.0).better(slide, faded=True)
+    assert not Quality(1600, 0.1).better(slide, faded=True)  # mush
     faded = Tone(0.03, (0.75, -0.01, -0.03))
     true = Tone(0.07, (0.65, 0.01, 0.07))
     assert not same_colours(faded, true)  # fuller colours, but far darker
