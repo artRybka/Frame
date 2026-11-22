@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.313
+
+- Analiza kompozycji jednobarwnej grafiki albo rysunku ma podkład samą
+  kreską w kolorze odbitki, bez akwareli i barw. Zapisane arkusze takich
+  dzieł dostają nowe studium (kolorowe linie zostają).
+
 ## 1.145.312
 
 - Szukanie słowami znów szybkie: część modelu od słów zostaje w pamięci
