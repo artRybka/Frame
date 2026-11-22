@@ -25,9 +25,9 @@ from .markup import (
     commons_rendition,
     drop_tags,
     extension,
-    strip_artist,
     strip_language_prefix,
     strip_markup,
+    tidy_title,
 )
 
 if TYPE_CHECKING:
@@ -223,7 +223,7 @@ def file_title(name: str, artist: str, year: int | None = None) -> str:
     title = _file_stem(name)
     if year:
         title = re.sub(rf"\s*[,–—-]?\s*\(?{year}\)?$", "", title) or title
-    return strip_artist(title, artist)
+    return tidy_title(title, artist)
 
 
 # Bump when the cleaning rules change, so stored items are cleaned again.
@@ -247,7 +247,10 @@ def file_title(name: str, artist: str, year: int | None = None) -> str:
 #     "pierwsza dekada XX wieku"): works without one were never in Epoka.
 # 11: Commons artists with the hidden English name glued to the Polish one
 #     ("NieznanyUnknown author", {{Unknown|author}}; Mateusz 2026-11-07).
-REPAIR_VERSION = 11
+# 12: titles that are a file's name ("Van gogh digger f866 jh54" -> "Digger"):
+#     catalogue numbers, underscores and the surname in front, any source
+#     (Mateusz 2026-11-22).
+REPAIR_VERSION = 12
 REPAIR_STATE_KEY = "commons_text_repair"
 # The household's own photos: their captions are left as they were typed.
 OWN_SOURCES = frozenset({"upload", "icloud"})
@@ -303,7 +306,7 @@ def _source_repairs(item: Item) -> dict[str, object]:
             # Named after its file: the year at the end goes as well.
             clean = file_title(title, artist, item.year)
         else:
-            clean = strip_artist(title, artist)
+            clean = tidy_title(title, artist)
         if clean != title:
             fixes["title"] = clean
     if item.source == "aic":
@@ -327,7 +330,7 @@ def _source_repairs(item: Item) -> dict[str, object]:
     if glued := _GLUED_UNKNOWN.match(str(fixes.get("artist", item.artist))):
         fixes["artist"] = glued.group(1)
     title = strip_language_prefix(commons_plain(str(fixes.get("title", item.title)), title=True))
-    title = strip_artist(title, str(fixes.get("artist", item.artist)))
+    title = tidy_title(title, str(fixes.get("artist", item.artist)))
     if title and title != item.title:
         fixes["title"] = title
     date_text = commons_plain(item.date_text)

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.328
+
+- Podpowiedzi w Szukaj nie pokazują już starej liczby dzieł dla słów
+  wpisanych wcześniej: odpowiedź starsza niż 20 s jest pobierana od nowa.
+- „Künstler: Vincent van Gogh”, „Być może Vincent van Gogh” i podobne
+  nie są osobnymi artystami, tylko tym samym.
+- Tytuły zrobione z nazw plików tracą numery katalogowe (F, JH),
+  podkreślenia i nazwisko artysty z przodu („Van gogh digger f866 jh54”
+  → „Digger”).
+
 ## 1.145.327
 
 - „Doszukuj w tle” w edycji inteligentnej playlisty: co 12 godzin serwer

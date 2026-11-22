@@ -585,11 +585,63 @@ def _remark(text: str) -> bool:
     return set(_LETTERS.findall(fold(text))) <= _REMARKS
 
 
+#: Words of a doubt said before a name: "Być może Vincent van Gogh",
+#: "Possibly Rembrandt", "Vermutlich Dürer" (folded, Mateusz 2026-11-22: one
+#: van Gogh in Szukaj's suggestions, not three). The museum gives the work
+#: to them all the same, as "attributed to" does.
+_HEDGES = (
+    "byc moze",
+    "prawdopodobnie",
+    "przypuszczalnie",
+    "possibly",
+    "probably",
+    "perhaps",
+    "vermutlich",
+    "wahrscheinlich",
+    "moglicherweise",
+    "mogelijk",
+    "waarschijnlijk",
+    "peut-etre",
+    "probablement",
+    "forse",
+    "probabilmente",
+    "posiblemente",
+    "probablemente",
+)
+#: A role before a colon: "Künstler: Vincent van Gogh", "Artist: …",
+#: "Künstler/in: …".
+_ROLE_LABEL = re.compile(r"^\s*([^\W\d_]+)(?:/[^\W\d_]+)?\s*:\s*(?=\S)")
+
+
+def _without_lead(line: str) -> str:
+    """The name without a role or a doubt said before it: "Vincent van
+    Gogh" for "Künstler: Vincent van Gogh" and "Być może Vincent van
+    Gogh"."""
+    while True:
+        label = _ROLE_LABEL.match(line)
+        if label and fold(label.group(1)) in ROLES:
+            line = line[label.end() :]
+            continue
+        folded = fold(line).lstrip()
+        hedge = next(
+            (h for h in _HEDGES if folded.startswith(h + " ") or folded.startswith(h + ":")),
+            None,
+        )
+        if hedge is None or not _LETTERS.search(folded[len(hedge) + 1 :]):
+            return line
+        words = line.split(maxsplit=hedge.count(" ") + 1)
+        line = words[-1].lstrip(" :") if len(words) > hedge.count(" ") + 1 else line
+        if fold(line).lstrip().startswith(hedge):
+            return line  # "Być może:" written together: left as it is
+
+
 def _bare(line: str) -> str:
     """The name without remarks after it: "Abraham Storck" for "Abraham
     Storck (signed by artist)", "Vincent Van Gogh" for "Vincent Van Gogh,
     The Netherlands". A reversed name stays: "Gogh, Vincent van", and
-    "Opałka, Roman" is not "Opałka" of the Romans."""
+    "Opałka, Roman" is not "Opałka" of the Romans. Nor a role or a doubt
+    before it (:func:`_without_lead`)."""
+    line = _without_lead(line)
     while (bracket := _BRACKET_TAIL.search(line)) and _remark(bracket.group(1)):
         if not line[: bracket.start()].strip():
             break
