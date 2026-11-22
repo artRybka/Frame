@@ -193,8 +193,10 @@ def update_playlist(
     shared = playlist.shared if "shared" in playlist.model_fields_set else existing.shared
     # The order is set on its own (``/sort``); the editor sends none.
     sort = playlist.sort if "sort" in playlist.model_fields_set else existing.sort
+    # An app from before "Doszukuj w tle" sends no ``grows``: kept as it is.
+    grows = playlist.grows if "grows" in playlist.model_fields_set else existing.grows
     playlist = _checked(playlist).model_copy(
-        update={"owner": existing.owner, "shared": shared, "sort": sort}
+        update={"owner": existing.owner, "shared": shared, "sort": sort, "grows": grows}
     )
     if _only_favorites(svc, existing):
         # It may be renamed and narrowed, but stays the hearts' playlist.

@@ -29,7 +29,7 @@ from .contour import contour
 from .dates import text_year
 from .duplicates import better, dedupe
 from .fragments import Fragments, split_part
-from .hosts import as_asked, deferrable
+from .hosts import SHOWN, as_asked, asking_for, deferrable
 from .images import ImageCache
 from .lifespan import LifeDates
 from .models import Item, ItemKind, Look, PhotoInfo, PlaylistRules
@@ -296,6 +296,9 @@ class Importer:
         self._searched_seen: OrderedDict[str, None] = OrderedDict()
         self._searched_lock = threading.Lock()
         self._searching: threading.Thread | None = None
+        #: Takes in what searches showed, beside ``_searching`` (works not
+        #: shown): it does not wait while the app is in use.
+        self._showing: threading.Thread | None = None
         #: The shown works being taken in now (:meth:`take_shown`).
         self._taking: list[Item] = []
         #: Techniques of "Sztuki inne" with room left in the catalogue: works
@@ -1467,32 +1470,71 @@ class Importer:
 
     def _start_searched(self) -> None:
         """Starts taking works in, unless it is under way (with
-        ``_searched_lock`` held)."""
-        waiting = self._searched or self._spare or self._far
-        if not waiting or (self._searching and self._searching.is_alive()):
-            return
-        self._searching = threading.Thread(target=self._take_searched, name="searched", daemon=True)
-        self._searching.start()
+        ``_searched_lock`` held): what searches showed in a thread of its
+        own, not held back while the app is in use (Mateusz 2026-11-22: "Tak,
+        wprowadź tę zmianę"; they came in only minutes after he had stopped
+        searching, so the same search again lacked them), the works not
+        shown in the background's, which waits."""
+        if self._searched and not (self._showing and self._showing.is_alive()):
+            self._showing = threading.Thread(
+                target=self._take_showed, name="shown-works", daemon=True
+            )
+            self._showing.start()
+        if (self._spare or self._far) and not (self._searching and self._searching.is_alive()):
+            self._searching = threading.Thread(
+                target=self._take_searched, name="searched", daemon=True
+            )
+            self._searching.start()
 
-    def _take_searched(self) -> None:
+    def _take_showed(self) -> None:
+        """What searches showed, into the catalogue, batch after batch, as
+        :data:`hosts.SHOWN` (each museum still at its own pace)."""
         while True:
             with self._searched_lock:
-                self._taking = []
-                if self._searched:
-                    batch = list(self._searched.values())
-                    self._searched.clear()
-                    self._taking = batch
-                elif self._spare or self._far:
-                    queue = self._spare or self._far
-                    count = min(SPARE_BATCH, len(queue))
-                    batch = [queue.popitem(last=False)[1] for _ in range(count)]
-                else:
-                    self._searching = None
-                    batch = []
+                batch = list(self._searched.values())
+                self._searched.clear()
+                self._taking = batch
                 for item in batch:
                     self._searched_seen[item.id] = None
                 while len(self._searched_seen) > SEARCHED_MEMO:
                     self._searched_seen.popitem(last=False)
+                if not batch:
+                    self._showing = None
+            if not batch:
+                self._save_searched()  # nothing left waiting
+                return
+            try:
+                with asking_for(SHOWN):
+                    self._take(
+                        [iter(batch)],
+                        len(batch),
+                        Job(id="shown", description="shown"),
+                        before=lambda item: True,
+                        after=lambda item: True,
+                        pooled=True,
+                        terms=list(self._searched_room),
+                    )
+            except Exception:
+                log.exception("keeping the works searches showed failed")
+            finally:
+                with self._searched_lock:
+                    self._taking = []
+            self._save_searched()  # the batch taken (or left out) is no longer waiting
+
+    def _take_searched(self) -> None:
+        """The works searches brought but did not show, into the catalogue
+        in batches, as the background (waiting while the app is in use)."""
+        while True:
+            with self._searched_lock:
+                queue = self._spare or self._far
+                count = min(SPARE_BATCH, len(queue))
+                batch = [queue.popitem(last=False)[1] for _ in range(count)]
+                for item in batch:
+                    self._searched_seen[item.id] = None
+                while len(self._searched_seen) > SEARCHED_MEMO:
+                    self._searched_seen.popitem(last=False)
+                if not batch:
+                    self._searching = None
             if not batch:
                 self._save_searched()  # nothing left waiting
                 return

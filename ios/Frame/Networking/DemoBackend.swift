@@ -381,7 +381,8 @@ actor DemoBackend: FrameBackend {
                 )
             },
             theme: playlist.theme,
-            sort: playlist.kind == .album ? nil : order(of: playlist)
+            sort: playlist.kind == .album ? nil : order(of: playlist),
+            grows: playlist.grows
         )
     }
 
