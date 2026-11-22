@@ -93,6 +93,12 @@ class ColorSwatch(BaseModel):
     #: A small, vivid colour (the Milkmaid's blue apron) listed after the
     #: dominant ones; its weight counts only the pixels that look like it.
     accent: bool = False
+    #: A painting's accent (``tonal.bar``): its place along the bar (0 to 1,
+    #: on the mass it stands on in the picture) and how much of the picture
+    #: it is (its ``weight`` is what it holds of the bar), for the size of
+    #: its dab.
+    at: float | None = None
+    amount: float | None = None
 
 
 class Contour(BaseModel):

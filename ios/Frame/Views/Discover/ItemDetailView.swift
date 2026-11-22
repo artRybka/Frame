@@ -749,7 +749,7 @@ struct ItemDetailView: View {
         guard model.isOwner, !item.isOwnWork, !Task.isCancelled,
               let found = try? await MuseumCrop.look(itemID: id, backend: model.backend)
         else { return }
-        // Cut, or left to him: "Kadrowane" in Playlisty shows it at once.
+        // Cut, or left to him: "Sprawdź kadry" in Diagnostyka shows it at once.
         if !found.verdict.isEmpty { await model.refreshCropReview() }
         guard !Task.isCancelled, id == itemID, found.cut else { return }
         cutChanged(found.item)

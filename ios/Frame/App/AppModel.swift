@@ -110,7 +110,7 @@ final class AppModel {
     var playlists: [PlaylistSummary] = []
     /// The hidden works, for "Ukryte" at the end of Playlisty.
     var hidden: [ItemSummary] = []
-    /// "Kadrowane": what the phone's model cut and what it left to him
+    /// "Sprawdź kadry": what the phone's model cut and what it left to him
     /// (the owner's; nil until asked).
     var cropReview: CropReview?
     /// The owner's own works ("Moje dzieła" in Playlisty), the last added
@@ -864,7 +864,7 @@ final class AppModel {
         await refreshDayPicks()
     }
 
-    /// "Kadrowane" (the owner's): what the phone's model cut, and what it
+    /// "Sprawdź kadry" (the owner's): what the phone's model cut, and what it
     /// left to him (`MuseumCrop`).
     func refreshCropReview() async {
         guard isOwner, !isGuest else { return }

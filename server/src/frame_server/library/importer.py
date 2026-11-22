@@ -541,7 +541,9 @@ class Importer:
         its size is the work's and stays."""
         with Image.open(self.cache.ensure_thumb(item)) as thumb:
             spread = tint_spread(thumb)
-            colors, tags, shares, varnish = analyse(thumb, spread, item.medium)
+            colors, tags, shares, varnish = analyse(
+                thumb, spread, item.medium, item.classification or ""
+            )
             line = contour(thumb, tags)
         if varnish and saw_blue(self.library.note(item.id, VARNISH_NOTE)):
             tags = with_blue(tags)
@@ -558,7 +560,9 @@ class Importer:
     def _analysed(self, item: Item) -> Item:
         with Image.open(self.cache.ensure_thumb(item)) as thumb:
             spread = tint_spread(thumb)
-            colors, tags, shares, varnish = analyse(thumb, spread, item.medium)
+            colors, tags, shares, varnish = analyse(
+                thumb, spread, item.medium, item.classification or ""
+            )
             line = contour(thumb, tags)
             width, height = item.width, item.height
             if not width or not height:
@@ -757,7 +761,7 @@ class Importer:
         try:
             with self._thumbnail(item) as img:
                 spread = tint_spread(img)
-                _, tags, shares, _ = analyse(img, spread, item.medium)
+                _, tags, shares, _ = analyse(img, spread, item.medium, item.classification or "")
                 self._remember_aspect(item, img)
         except (httpx.HTTPError, OSError, ValueError) as err:
             log.info("no thumbnail of %s to look at: %s", item.id, err)

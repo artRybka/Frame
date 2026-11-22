@@ -52,6 +52,8 @@ enum LaunchRoute {
     /// "Podobne do" by "subject" or "style" (`-screen search-like`; none:
     /// both together).
     static let likeBy = UserDefaults.standard.string(forKey: "likeBy")
+    /// `-cropCheck YES`: Diagnostyka opens "Sprawdź kadry" by itself.
+    static let cropCheck = UserDefaults.standard.bool(forKey: "cropCheck")
 }
 
 struct RootView: View {
@@ -67,7 +69,7 @@ struct RootView: View {
             case "discover", "discover-group", "discover-theme", "daily", "detail", "original": .discover
             case "museums", "search", "search-picker", "search-colors", "search-tones", "search-empty", "search-styles", "search-subjects", "search-techniques", "search-chosen", "search-museums", "search-photo", "search-like", "search-typed": .search
             case "playlists", "playlist", "playlist-search", "suggestions", "editor", "editor-new", "editor-manual",
-                 "own-works", "cropped", "own-start", "own-cut", "own-balance", "own-describe", "own-card", "own-scan", "own-scan2": .playlists
+                 "own-works", "own-start", "own-cut", "own-balance", "own-describe", "own-card", "own-scan", "own-scan2": .playlists
             case "frame", "notices", "connection", "battery", "schedule", "schedule-economy", "presentation", "presentation-photo", "orientation": .frame
             default: .now
             }

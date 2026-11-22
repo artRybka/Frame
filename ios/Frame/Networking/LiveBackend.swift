@@ -1025,6 +1025,10 @@ struct LiveBackend: FrameBackend {
         try await perform(request("/api/crops/review/\(escape(itemID))/fine", method: "POST"))
     }
 
+    func cropUnfine(itemID: String) async throws -> CropReview {
+        try await perform(request("/api/crops/review/\(escape(itemID))/fine", method: "DELETE"))
+    }
+
     func cropTeach(kind: Int, limit: Int) async throws -> CropTeach {
         try await get("/api/crops/teach", query: [
             URLQueryItem(name: "kind", value: String(kind)), URLQueryItem(name: "limit", value: String(limit)),

@@ -282,7 +282,7 @@ struct PhoneCropResult: Codable, Hashable, Sendable {
     var item: Item
 }
 
-/// "Kadrowane": the works the model cut, and those it left to him.
+/// "Sprawdź kadry": the works the model cut, and those it left to him.
 struct CropReview: Codable, Hashable, Sendable {
     var cut: [ItemSummary]
     var unsure: [ItemSummary]

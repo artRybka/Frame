@@ -1796,7 +1796,9 @@ class Player:
                     spread = item.tint_spread
                     if spread is None:
                         spread = tint_spread(img)
-                    colors, tags, shares, varnish = analyse(img, spread, item.medium)
+                    colors, tags, shares, varnish = analyse(
+                        img, spread, item.medium, item.classification or ""
+                    )
             except OSError:
                 log.warning("rescore: cannot read %s", path)
                 continue
