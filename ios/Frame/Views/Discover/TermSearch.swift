@@ -19,9 +19,13 @@ final class TermLookup {
     private(set) var uncounted: Set<String> = []
     private(set) var hint: MuseumHint?
     private(set) var askingMuseums = false
-    /// The server's answers by the words typed: a letter taken back shows
-    /// its answer again without asking.
-    @ObservationIgnored private var answers: [String: [TermHit]] = [:]
+    /// The server's answers by the words typed, with when they came: a
+    /// letter taken back shows its answer again at once, and one older than
+    /// `answerLasts` is asked again behind it (Mateusz 2026-11-22: „van gog”
+    /// still said 205 van Goghs from earlier while the catalogue had 798).
+    @ObservationIgnored private var answers: [String: (at: Date, hits: [TermHit])] = [:]
+    /// Seconds a kept answer is shown without asking the server again.
+    private static let answerLasts: TimeInterval = 20
 
     var trimmed: String { text.trimmingCharacters(in: .whitespaces) }
     var typing: Bool { !trimmed.isEmpty }
@@ -71,11 +75,18 @@ final class TermLookup {
             uncounted = []
             return
         }
-        if let known = answers[words] {
-            hits = known
+        let key = "\(playlist ?? -1)|\(words)"
+        if let known = answers[key], -known.at.timeIntervalSinceNow < Self.answerLasts {
+            hits = known.hits
             uncounted = []
         } else {
-            guess(words, vocabulary: vocabulary)
+            if let known = answers[key] {
+                // Shown meanwhile; the counts may have changed since.
+                hits = known.hits
+                uncounted = []
+            } else {
+                guess(words, vocabulary: vocabulary)
+            }
             // Debounce typing. One or two letters wait longer: their count
             // goes through nearly the whole catalogue, and the next letter
             // of a word mostly follows at once (the guess shows meanwhile).
@@ -84,7 +95,7 @@ final class TermLookup {
             do {
                 let found = try await backend.terms(words, playlist: playlist)
                 if answers.count > 200 { answers.removeAll() }
-                answers[words] = found
+                answers[key] = (Date(), found)
                 hits = found
                 uncounted = []
             } catch {

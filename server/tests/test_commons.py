@@ -20,6 +20,7 @@ from frame_server.library.markup import (
     strip_artist,
     strip_language_prefix,
     strip_markup,
+    tidy_title,
 )
 from frame_server.library.museums import Openverse, WikimediaCommons
 
@@ -731,3 +732,47 @@ def test_old_photographs_are_drawn_without_words() -> None:
         assert commons.discover(Discovery(), limit=24) == (0, [])
         drawn = commons.random_draw(photos, random.Random(1))
         assert next(drawn).classification == "Photograph"
+
+
+def test_a_title_that_is_a_file_s_name_is_tidied() -> None:
+    """Commons files named "Van_gogh_digger_f866_jh54.jpg" (Mateusz
+    2026-11-22: "dziwne tytuły"): no catalogue numbers, no surname in front."""
+    gogh = "Vincent van Gogh"
+    cases = {
+        "Van gogh digger f866 jh54": "Digger",
+        "Van gogh digger f1656 jh262": "Digger",
+        "Vincent_van_Gogh_-_Wheatfield_with_Crows.jpg": "Wheatfield with Crows",
+        "Worn Out (F997)": "Worn Out",
+        "Autoportret (F 345)": "Autoportret",
+        "Digger (F866, JH54)": "Digger",
+    }
+    for title, want in cases.items():
+        assert tidy_title(title, gogh) == want, title
+    # Titles: a surname written as a name, an F that is no number, another's name.
+    for title, artist in (
+        ("Van Gogh's Chair", gogh),
+        ("Van Gogh A Paris", "anonymous"),
+        ("Portret Vincenta van Gogha", "Anonymous Artist"),
+        ("Formula F1", "Jan Kowalski"),
+        ("Sonata (F)", gogh),
+        ("Van Gogh", gogh),
+    ):
+        assert tidy_title(title, artist) == title, title
+
+
+def test_stored_file_titles_are_tidied_once(tmp_path) -> None:
+    library = Library(tmp_path / "lib.db")
+    library.upsert(
+        Item(
+            id="wmc:82506311",
+            source="wmc",
+            source_id="82506311",
+            title="Van gogh digger f866 jh54",
+            artist="Vincent van Gogh",
+            image_url="https://upload.wikimedia.org/a/b/Van_gogh_digger_f866_jh54.jpg",
+            thumb_url="",
+        )
+    )
+    library.set_state(REPAIR_STATE_KEY, REPAIR_VERSION - 1)
+    assert repair_library(library) == 1
+    assert library.get("wmc:82506311").title == "Digger"

@@ -32,7 +32,7 @@ import httpx
 from pydantic import BaseModel, Field
 
 from ..imaging.text import MAX_BODY, sentences
-from ..library.markup import strip_artist, strip_language_prefix, strip_markup
+from ..library.markup import strip_language_prefix, strip_markup, tidy_title
 from ..library.models import ItemKind, Note
 from ..library.museums import client
 from ..library.nationality import artist_note, fix_note
@@ -451,7 +451,7 @@ def polish_title(raw: Any, facts: Facts | None, artist: str = "") -> str:
     # The frame wraps three lines, then cuts.
     if not title:
         return ""
-    return strip_artist(strip_language_prefix(_plain(title, TITLE_MAX + 40)), artist)
+    return tidy_title(strip_language_prefix(_plain(title, TITLE_MAX + 40)), artist)
 
 
 #: The title in an answer still being written: the schema puts it first, so

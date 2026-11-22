@@ -124,6 +124,84 @@ def strip_artist(title: str, artist: str) -> str:
     return rest if _WORD.search(rest) else title
 
 
+#: Catalogue numbers a file's name carries after the work's: van Gogh's
+#: de la Faille and Jan Hulsker ("Van gogh digger f866 jh54", Mateusz
+#: 2026-11-22). JH is always one; F only beside JH or in a file's name.
+_JH_NUMBER = re.compile(r"\s*[(\[,]?\s*\bjh\s?\.?\s?\d{1,4}[a-z]?\b\s*[)\]]?", re.IGNORECASE)
+_F_NUMBER = re.compile(r"\s*[(\[,]?\s*\bf\s?\.?\s?\d{1,4}[a-z]?\b\s*[)\]]?", re.IGNORECASE)
+#: An F number alone in brackets at the end: "Worn Out (F997)", "Autoportret (F 345)".
+_F_BRACKET = re.compile(r"\s*[(\[]\s*f\s?\.?\s?\d{1,4}[a-z]?\s*[)\]]\s*$", re.IGNORECASE)
+_EXTENSION = re.compile(r"\.(?:jpe?g|png|tiff?|gif|webp)$", re.IGNORECASE)
+#: Small words a surname starts with: "van Gogh", "de Goya", "von Menzel".
+_PARTICLES = frozenset(
+    {"van", "von", "de", "der", "den", "di", "da", "del", "della", "du", "le", "la", "ter", "ten"}
+)
+
+
+def _surname(artist: str) -> list[str]:
+    """The folded words of the artist's surname with its particles: ["van",
+    "gogh"] for "Vincent van Gogh"; [] for a one-word name."""
+    name = _NAME_TAIL.sub("", artist.split("\n")[0])
+    if "," in name:  # "Gogh, Vincent van"
+        family, _, given = name.partition(",")
+        words = [_fold(w) for w in _WORD.findall(family)]
+        tail = [_fold(w) for w in _WORD.findall(given)]
+        while tail and tail[-1] in _PARTICLES:
+            words.insert(0, tail.pop())
+        return words if tail else []
+    words = [_fold(w) for w in _WORD.findall(name)]
+    if len(words) < 2:
+        return []
+    at = len(words) - 1
+    while at > 1 and words[at - 1] in _PARTICLES:
+        at -= 1
+    return words[at:]
+
+
+def _file_like(title: str, artist: str) -> bool:
+    """``title`` reads as a file's name: underscores, an image's extension,
+    or the artist's surname written small ("Van gogh digger")."""
+    if "_" in title or _EXTENSION.search(title):
+        return True
+    surname = [w for w in _surname(artist) if w not in _PARTICLES]
+    return any(_fold(w) in surname and w[:1].islower() for w in _WORD.findall(title))
+
+
+def tidy_title(title: str, artist: str) -> str:
+    """``title`` as a title: without the artist's name in front
+    (:func:`strip_artist`) and, when it was a file's name, without its
+    underscores, extension, catalogue numbers and the artist's surname in
+    front: "Van gogh digger f866 jh54" -> "Digger" (Mateusz 2026-11-22: "dziwne
+    tytuły"). A title that would be left with nothing stays as it is."""
+    if not title:
+        return title
+    clean = title
+    file_like = _file_like(title, artist)
+    if file_like:
+        clean = _EXTENSION.sub("", clean).replace("_", " ")
+    if _JH_NUMBER.search(clean):
+        clean = _F_NUMBER.sub("", _JH_NUMBER.sub("", clean))
+    elif file_like:
+        clean = _F_NUMBER.sub("", clean)
+    else:
+        clean = _F_BRACKET.sub("", clean)
+    clean = re.sub(r"\s+", " ", clean).strip(" ,;-–—")
+    clean = strip_artist(clean, artist)
+    if file_like and clean == strip_artist(clean, artist):
+        surname = _surname(artist)
+        folded = _fold(clean)
+        lead = " ".join(surname)
+        if surname and folded.startswith(lead) and (rest := clean[len(lead) :]):
+            after = _AFTER_NAME.match(rest)
+            if after and after.end() and _WORD.search(rest[after.end() :]):
+                clean = rest[after.end() :].strip()
+    if not _WORD.search(clean):
+        return title
+    if clean != title and clean[:1].islower():
+        clean = clean[:1].upper() + clean[1:]
+    return clean
+
+
 #: Formats every browser opens; Commons' TIFFs (often 100 MB and more) are
 #: better taken as its rendered JPEG too.
 WEB_IMAGES = frozenset({"jpg", "jpeg", "png", "gif", "webp"})
