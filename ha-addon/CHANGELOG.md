@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.312
+
+- Szukanie słowami znów szybkie: część modelu od słów zostaje w pamięci
+  serwera (wczytywana od nowa trzymała pierwsze wyniki kilka sekund),
+  a dzieła z muzeów nie trzymają listy, gdy serwer liczy ich odciski.
+  Te nieobliczone w 2 s liczą się w tle i dochodzą przy kolejnym
+  szukaniu.
+
 ## 1.145.311
 
 - „Treść” bez „Formy” liczona tak jak na planszy, którą wybrałeś: od

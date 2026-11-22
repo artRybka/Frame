@@ -152,13 +152,15 @@ class SeenModel:
             return self._picture is not None or self._words is not None
 
     def release(self) -> None:
-        """Both sides and the tokenizer out of memory, read again on next
-        use (a second or two). The picture side took some 0.5 GB of the
-        NAS's memory to the next restart, the words' as much once a debug
-        question asked them (Mateusz 2026-11-20: "Potem chyba faktycznie nie
-        musi być cały czas w pamięci"). A run under way keeps its own hold."""
+        """The picture side out of memory, read again on next use (a second
+        or two): it took some 0.5 GB of the NAS's memory to the next
+        restart (Mateusz 2026-11-20: "Potem chyba faktycznie nie musi być
+        cały czas w pamięci"). The words' side stays: Szukaj asks it at
+        every search, and read anew it kept the words' first answer waiting
+        past :data:`looks.WORDS_WAIT` (Mateusz 2026-11-22: "Wcześniej było
+        niemal natychmiastowe"). A run under way keeps its own hold."""
         with self._lock:
-            self._picture = self._words = self._tokenizer = None
+            self._picture = None
 
     def here(self) -> bool:
         return all((self.folder / name).is_file() for name in FILES)

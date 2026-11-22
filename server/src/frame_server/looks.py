@@ -149,6 +149,11 @@ AMONG_MOST = 240
 #: mostly asked while typing (:meth:`Looks.prefetch`), so this is seldom
 #: waited for.
 WORDS_WAIT = 1.5
+#: How long a museum search waits for its works' numbers (made on the NAS
+#: by SigLIP, their thumbnails fetched first: 10-19 s a page, Mateusz
+#: 2026-11-22 "Wcześniej było niemal natychmiastowe"); those not numbered by
+#: then go on in the background and are judged at the next search.
+JUDGE_WAIT = 2.0
 #: A photograph searched in Szukaj (``Looks.photo``) is a ``like`` of its
 #: own: this before the key its numbers are kept under (``photos/<key>``).
 PHOTO = "photo:"
@@ -594,6 +599,8 @@ class Looks:
         #: Words' numbers being asked of Google (:meth:`prefetch`), by key.
         self._asking: dict[str, Future[list[float]]] = {}
         self._askers = ThreadPoolExecutor(max_workers=2, thread_name_prefix="looks-words")
+        self._numberers = ThreadPoolExecutor(max_workers=1, thread_name_prefix="looks-judge")
+        self._numbering: set[str] = set()
         self._stop = threading.Event()
         self._wake = threading.Event()
         self._thread: threading.Thread | None = None
@@ -789,7 +796,7 @@ class Looks:
         try:
             vector = asking.result(timeout=wait)
         except FutureTimeout:
-            log.info("Słowa: Google's numbers of %r not here within %.1f s", text, wait)
+            log.info("Słowa: the numbers of %r not here within %.1f s", text, wait)
             return None
         except AiUnavailable:
             return None
@@ -832,10 +839,7 @@ class Looks:
         if not items:
             return []
         asked = self._asked()
-        try:
-            self._number([i for i in items if i.id not in asked])
-        except (AiUnavailable, NotDrawn, httpx.HTTPError) as err:
-            log.info("numbers for museum works: %s", err)
+        self._number_within([i for i in items if i.id not in asked])
         best = self._words_near(vector, 1)
         floor = self._word_floor()
         bar = max(floor, (best[0][1] if best else floor) - self._near_best())
@@ -849,6 +853,32 @@ class Looks:
                 scored.append((float(score), item))
         scored.sort(key=lambda s: -s[0])
         return [item for _, item in scored]
+
+    def _number_within(self, items: Sequence[Item], wait: float | None = None) -> None:
+        """:meth:`_number` for museum works, waited for :data:`JUDGE_WAIT`
+        at most: the rest go on behind (once, however many searches ask)."""
+        with self._words_lock:
+            fresh = [i for i in items if i.id not in self._numbering]
+            self._numbering.update(i.id for i in fresh)
+        if not fresh:
+            return
+
+        def number() -> None:
+            try:
+                self._number(fresh)
+            except (AiUnavailable, NotDrawn, httpx.HTTPError) as err:
+                log.info("numbers for museum works: %s", err)
+            except Exception:
+                log.exception("numbers for museum works")
+            finally:
+                with self._words_lock:
+                    self._numbering.difference_update(i.id for i in fresh)
+
+        going = self._numberers.submit(number)
+        try:
+            going.result(timeout=JUDGE_WAIT if wait is None else wait)
+        except FutureTimeout:
+            log.info("museum works: %d still being numbered, judged at the next search", len(fresh))
 
     def _number(self, items: Sequence[Item]) -> None:
         """Numbers for museum works' thumbnails (downloaded and kept, as the
@@ -1094,10 +1124,7 @@ class Looks:
         if vector is None or not items or self.seen is None or not self.local():
             return []
         asked = self._asked()
-        try:
-            self._number([i for i in items if i.id not in asked])
-        except (AiUnavailable, NotDrawn, httpx.HTTPError) as err:
-            log.info("numbers for museum works: %s", err)
+        self._number_within([i for i in items if i.id not in asked])
         query = vector / max(float(np.linalg.norm(vector)), 1e-9)
         # As near as the catalogue's works shown for it.
         floor = min(seen_floors().picture, self._photo_floor(self.seen.alike_near(vector, 1)))

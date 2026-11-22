@@ -417,3 +417,41 @@ def test_the_subject_alone_is_asked_without_the_form(found: Seen) -> None:
     # The subject layer reads nothing here: the half-and-half levels are
     # half the whole look's.
     assert [s for _, s in alone] == pytest.approx([s / 2 for _, s in both], abs=1e-3)
+
+
+def test_the_words_side_stays_when_the_model_lets_go(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Szukaj asks it every time (Mateusz 2026-11-22: "Wcześniej było
+    niemal natychmiastowe"): only the picture side is let go of."""
+    model = SeenModel(tmp_path / "real")
+    monkeypatch.setattr(model, "_session", lambda name: _Session())
+    monkeypatch.setattr(model, "tokens", lambda texts: np.zeros((len(texts), 4), np.int64))
+    model.pictures([Image.new("RGB", (8, 8))])
+    model.words(["ships"])
+    model.release()
+    assert model._picture is None and model._words is not None
+
+
+def test_a_museum_search_waits_for_its_works_numbers_a_while(
+    service: FrameService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Those not numbered in :data:`looks.JUDGE_WAIT` go on behind, once."""
+    import threading
+
+    looks = service.looks
+    go = threading.Event()
+    asked: list[list[str]] = []
+
+    def number(items: Sequence[Item]) -> None:
+        asked.append([i.id for i in items])
+        go.wait(5)
+
+    monkeypatch.setattr(looks, "_number", number)
+    works = [Item(id=f"met:{n}", source="met", source_id=str(n)) for n in range(2)]
+    looks._number_within(works, wait=0.05)
+    looks._number_within(works, wait=0.05)  # already on their way
+    assert asked == [["met:0", "met:1"]]
+    go.set()
+    looks._numberers.submit(lambda: None).result(5)
+    assert not looks._numbering
