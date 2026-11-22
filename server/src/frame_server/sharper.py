@@ -52,6 +52,7 @@ Saintes-Maries-de-la-Mer", finds the Van Gogh Museum's scan on Commons.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 from collections import OrderedDict
 from collections.abc import Callable, Iterator
@@ -105,7 +106,10 @@ KIND = "sharper"
 #: none found are looked at again.
 #: 4: works are looked for by their Polish title too (``titled``): works
 #: with none found are looked at again.
-VERSION = "sharper-4"
+#: 5: copies titled as the work are compared first (``_titled_alike``),
+#: WikiArt's whatever size it says (``SIZE_UNSAID``), and copies in other
+#: colours unless grey (``colour_note``).
+VERSION = "sharper-5"
 #: The version of the look at an art archive's photograph: those looked at
 #: before they took copies in other colours are looked at again.
 ARCHIVE_VERSION = "sharper-archive-2"
@@ -132,13 +136,16 @@ GREYER = 0.5
 #: taken since Mateusz 2026-11-20: fuller colours are often the better copy.)
 #: Below this tint spread a picture is grey.
 GREY = 0.012
-#: ... nor far off in its average colour (OKLab distance; photographs of
-#: one painting under other lights differ by a few hundredths).
-COLOUR_OFF = 0.08
+#: (A copy in other light, lighter, darker or of another tint, is taken
+#: since Mateusz 2026-11-22: "globalnie olał te różnice kolorów. Byle nie
+#: czarno-białe jeżeli jest w kolorze".)
 #: Results asked from each source.
 HITS = 6
+#: Sources whose said sizes are not their files' (WikiArt's): measured once
+#: downloaded, never left out by what they say.
+SIZE_UNSAID = frozenset({"wikiart"})
 #: Copies whose thumbnails are compared, and whose pictures are downloaded.
-COMPARED = 10
+COMPARED = 16
 DOWNLOADED = 3
 #: A work with no sharper copy anywhere is asked about again after this.
 AGAIN = timedelta(days=30)
@@ -259,37 +266,26 @@ def tone(path: Path) -> Tone:
     return Tone(spread, (float(lab[0]), float(lab[1]), float(lab[2])))
 
 
-ColourNote = Literal["grey", "coloured", "colour-off"]
+ColourNote = Literal["grey"]
 
 
 def colour_note(own: Tone, copy: Tone) -> ColourNote | None:
     """How ``copy``'s colours differ from ``own``'s: "grey" (a black-and-white
-    plate of a coloured work) or "colour-off" (in other light altogether);
-    None when they are its own.
+    plate of a coloured work); None otherwise.
 
-    A copy in fuller colours than the work's own picture is no fault: a
-    better copy is often the one in the work's whole colouring (Mateusz
-    2026-11-20: "«nie podkolorowana» - pomińmy tę zasadę, bo często lepsza
-    znaczy też w pełnej kolorystyce"). Such a copy is held only to the
-    lightness of the work's own (a photograph in other light), not to its
-    tint, and a grey print in colours is taken too ("coloured" is no
-    longer told)."""
+    Fuller colours are no fault (Mateusz 2026-11-20: "często lepsza znaczy
+    też w pełnej kolorystyce"), and neither is other light, lighter, darker
+    or of another tint (Mateusz 2026-11-22: "ja bym chyba globalnie olał te
+    różnice kolorów. Byle nie czarno-białe jeżeli jest w kolorze")."""
     if own.spread >= GREY and copy.spread < own.spread * GREYER:
         return "grey"
-    if copy.spread > own.spread:
-        lighter = abs(own.mean[0] - copy.mean[0])
-        return None if lighter <= COLOUR_OFF else "colour-off"
-    distance = float(np.linalg.norm(np.subtract(own.mean, copy.mean)))
-    return None if distance <= COLOUR_OFF else "colour-off"
+    return None
 
 
 def same_colours(own: Tone, copy: Tone, faded: bool = False) -> bool:
-    """``copy`` is in ``own``'s colours: not a grey copy of a coloured work,
-    nor in other light altogether (but
-    for ``faded``: ``own`` is an archive's old slide, whose colours are off
-    themselves)."""
-    note = colour_note(own, copy)
-    return note is None or (faded and note == "colour-off")
+    """``copy`` may stand for ``own``'s colours: not a grey copy of a
+    coloured work (``faded``: ``own`` is an archive's old slide; the same)."""
+    return colour_note(own, copy) is None
 
 
 def titled(own: str, wording: Wording | None, language: str) -> str:
@@ -307,6 +303,21 @@ def titled(own: str, wording: Wording | None, language: str) -> str:
         other = wording.en
     other = " ".join(other.split())[:80].strip()
     return "" if not other or fold(other) == fold(own.strip()) else other
+
+
+def _words(title: str) -> frozenset[str]:
+    return frozenset(w for w in re.findall(r"\w+", fold(title)) if len(w) > 2)
+
+
+def _titled_alike(item: Item, copy: Item) -> float:
+    """How much of ``item``'s title ``copy``'s has, word by word (0 to 1);
+    1 for a copy the catalogue knows as the same work."""
+    if same_work(item, copy):
+        return 1.0
+    own = _words(item.title)
+    if not own:
+        return 0.0
+    return round(len(own & _words(copy.title)) / len(own), 2)
 
 
 def version(item: Item) -> str:
@@ -533,6 +544,7 @@ class Sharper:
         if stored.sharper is not None:  # its weak copy stays, looked past again later
             self._remember(item, "found", stored.sharper.item_id, self.own_size(stored))
             return "found"
+        log.info("no sharper copy of %s found", item.id)
         self._remember(item, "none")
         return "none"
 
@@ -662,7 +674,11 @@ class Sharper:
                 hits = []
             hits += self._by_other_title(item)
             hits = [h for h in hits if self._by_artist(item, h)]
-            hits.sort(key=lambda h: -max(h.width or 0, h.height or 0))
+            # Copies titled as the work first, then the largest: the artist's
+            # other, larger works took the places to compare, and WikiArt's
+            # "Still Life with Four Sunflowers" was never looked at (Mateusz
+            # 2026-11-22).
+            hits.sort(key=lambda h: (-_titled_alike(item, h), -max(h.width or 0, h.height or 0)))
             found += hits
         seen: set[str] = {item.id}
         out = []
@@ -722,7 +738,11 @@ class Sharper:
 
     @staticmethod
     def _promising(copy: Item, own: Quality, faded: bool = False) -> bool:
-        """Not smaller than needed by what its source says (when it says)."""
+        """Not smaller than needed by what its source says (when it says, and
+        can be gone by: WikiArt said 750 px of the sunflowers its file has at
+        2374, Mateusz 2026-11-22; 433 × 600 of a file of 1441 × 1999)."""
+        if copy.source in SIZE_UNSAID:
+            return True
         side = max(copy.width or 0, copy.height or 0)
         return not side or Quality(side).better(Quality(own.side), faded)
 

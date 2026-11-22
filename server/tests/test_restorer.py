@@ -478,3 +478,13 @@ def test_a_drawing_kept_before_is_put_in_the_pictures_colours(app: Any, monkeypa
     assert len(painter.asked) == 1  # nothing drawn again
     # Once.
     assert service.restorer.recolour_kept() == 0
+
+
+def test_half_of_what_the_model_drew_finer_than_the_picture_is_kept() -> None:
+    rng = np.random.default_rng(3)
+    picture = Image.fromarray(np.full((100, 80, 3), 128, np.uint8))
+    made_up = np.clip(128 + rng.normal(0, 30, (400, 320, 3)), 0, 255).astype(np.uint8)
+    kept = np.asarray(recoloured(picture, Image.fromarray(made_up)), dtype=np.float32)
+    plain = np.asarray(recoloured(picture, Image.fromarray(np.full((400, 320, 3), 128, np.uint8))))
+    ratio = float(np.abs(kept - plain).std()) / float(np.abs(made_up - 128.0).std())
+    assert 0.3 < ratio < 0.7

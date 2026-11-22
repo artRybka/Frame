@@ -91,13 +91,14 @@ class CopyView(BaseModel):
     """One copy of the work's picture as the owner sees it in the list.
 
     ``verdict``: "better" (sharper on the frame, the same picture whole in
-    its colours), "warn" (sharper, but its colours differ), "worse" (the
+    colour unless grey; Mateusz 2026-11-22), "warn" (no longer told: once
+    a sharper copy whose colours differ), "worse" (the
     same picture, not sharper), "off" (a detail, a page around it, a grey
     plate, a reproduction, another work: only to look at), "checking"
     (being compared). ``notes``: why, as codes the app names: "whole",
     "colours", "fragment", "page", "whole-work" (the work's picture is a
     detail of the copy: only to look at, never chosen), "turned", "grey",
-    "colour-off", "reproduction", "other" (another picture: the same title,
+    "reproduction", "other" (another picture: the same title,
     another work), "unseen" (its thumbnail could not be had).
     ``role``: "current" (the picture shown now), "own" (the work's own
     picture, while a copy stands in for it), "larger" (the work's own
@@ -559,11 +560,11 @@ class Copies:
         elif not quality.better(current, faded):
             view.verdict = "worse"
         else:
-            view.verdict = "warn" if colours and not faded else "better"
+            view.verdict = "better"
         if not off and self.tiled(copy.id):
             notes.append("tiles")
             if view.verdict == "worse" and not shown_tiled and (view.gain or 0) >= TILED_GAIN:
-                view.verdict = "warn" if colours and not faded else "better"
+                view.verdict = "better"
         view.notes = notes
         return view
 

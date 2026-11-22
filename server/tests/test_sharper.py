@@ -161,12 +161,13 @@ def test_colours_tell_a_black_and_white_plate() -> None:
     painting = Tone(0.06, (0.7, 0.02, 0.05))
     assert same_colours(painting, Tone(0.05, (0.68, 0.025, 0.045)))
     assert not same_colours(painting, Tone(0.004, (0.7, 0.0, 0.01)))  # B&W plate
-    assert not same_colours(painting, Tone(0.06, (0.45, 0.02, 0.05)))  # far darker
+    # Far darker: taken too (Mateusz 2026-11-22: "olał te różnice kolorów").
+    assert same_colours(painting, Tone(0.06, (0.45, 0.02, 0.05)))
     etching = Tone(0.003, (0.8, 0.01, 0.03))
     # In fuller colours: taken (Mateusz 2026-11-20: "często lepsza znaczy
     # też w pełnej kolorystyce"), held only to the work's lightness.
     assert same_colours(etching, Tone(0.05, (0.8, 0.02, 0.05)))
-    assert not same_colours(etching, Tone(0.05, (0.6, 0.02, 0.05)))  # far darker
+    assert same_colours(etching, Tone(0.05, (0.6, 0.02, 0.05)))  # far darker
     # Foto Marburg's faded slide of the olive grove against WikiArt's copy:
     # close on average, four times as colourful (Mateusz 2026-11-09).
     slide = Tone(0.0197, (0.529, 0.005, 0.001))
@@ -538,7 +539,7 @@ def test_an_archive_slide_is_beaten_by_any_copy_not_too_small() -> None:
     assert not Quality(1600, 0.1).better(slide, faded=True)  # mush
     faded = Tone(0.03, (0.75, -0.01, -0.03))
     true = Tone(0.07, (0.65, 0.01, 0.07))
-    assert not same_colours(faded, true)  # fuller colours, but far darker
+    assert same_colours(faded, true)  # fuller colours, far darker
     assert same_colours(faded, true, faded=True)
     # A black-and-white plate stays out, faded slide or not.
     assert not same_colours(faded, Tone(0.003, (0.7, 0.0, 0.0)), faded=True)
@@ -869,6 +870,45 @@ def test_a_copy_found_only_by_the_polish_title_stands_in(frame: Any) -> None:
     assert stored is not None
     assert service.sharper.soon(stored).result(30) == "found"
     assert asked == [{"wmc": "fishing boats on the beach corot", "mnw": "Łodzie rybackie corot"}]
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None
+    assert stored.sharper.item_id == "wmc:9"
+
+
+def test_wikiarts_said_size_does_not_leave_its_copy_out(frame: Any) -> None:
+    """WikiArt said 750 px of van Gogh's sunflowers, whose file has 2374
+    (Mateusz 2026-11-22): its copy is downloaded and measured all the same."""
+    service, web, answer = frame
+    own = _own(service)
+    copy = _copy(9).model_copy(
+        update={
+            "id": "wikiart:9",
+            "source": "wikiart",
+            "source_id": "9",
+            "width": 750,
+            "height": 500,
+        }
+    )
+    _offer(web, copy, _print(1, (3600, 2400)))
+    answer([copy])
+    assert service.sharper.soon(own).result(30) == "found"
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None
+    assert stored.sharper.item_id == "wikiart:9"
+
+
+def test_copies_titled_as_the_work_are_compared_first(frame: Any) -> None:
+    """The artist's other, larger works came first and took every place to
+    compare: the work's copy, smaller, was never looked at."""
+    service, web, answer = frame
+    own = _own(service)
+    others = [_copy(20 + n, title=f"Landscape {n}", width=5000, height=3000) for n in range(20)]
+    for other in others:
+        _offer(web, other, _print(7, (5000, 3000)))
+    copy = _copy(9, width=3000, height=2000)
+    _offer(web, copy, _print(1, (3000, 2000)))
+    answer([*others, copy])
+    assert service.sharper.soon(own).result(60) == "found"
     stored = service.library.get(own.id)
     assert stored is not None and stored.sharper is not None
     assert stored.sharper.item_id == "wmc:9"
