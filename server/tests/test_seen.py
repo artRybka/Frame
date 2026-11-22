@@ -380,3 +380,39 @@ def test_a_photograph_asks_the_museums_by_its_nearest_works_subjects(
     judged = service._judge_look(key, [i for i in museum if i])
     assert judged and judged[0].id == "met:4"
     assert service._look_searches("photo:0000") == []  # not searched here
+
+
+def test_the_subject_alone_is_asked_without_the_form(found: Seen) -> None:
+    """Mateusz 2026-11-22 (Wyspiański's self-portrait by Treść alone: "w
+    wynikach praktycznie tylko rysunek"; "Bez formy" on the boards): the
+    directions the form layer reads are out of both sides, and the works
+    are told at the levels of before."""
+    from frame_server.seen import Heads
+
+    def way(**at: float) -> list[float]:
+        out = np.zeros(SIZE, dtype=np.float32)
+        for name, value in at.items():
+            out[{"form": 0, "subject": 1, "face": 2}[name]] = value
+        return list(out)
+
+    found.index.add(
+        [
+            ("met:asked", 1, way(form=1, face=1)),  # a drawn face
+            ("met:drawn", 1, way(form=1, face=-0.2)),  # another drawing
+            ("met:oil", 1, way(form=-1, face=1)),  # the face in oil
+        ]
+    )
+    reads = np.zeros((SIZE, 1), dtype=np.float32)
+    form = np.vstack([reads.copy(), [[0.0]], [[1.0]]]).astype(np.float32)
+    form[0, 0] = 1.0
+    subject = np.vstack([reads, [[0.0]], [[1.0]]]).astype(np.float32)
+    found.heads = Heads(form, subject, ["subject:portrait"], 3)
+    asked = found.index.vector("met:asked")
+    assert asked is not None
+    both = found.alike_near(asked, 3)
+    alone = found.alike_near(asked, 3, "subject")
+    assert [i for i, _ in both] == ["met:asked", "met:drawn", "met:oil"]
+    assert [i for i, _ in alone] == ["met:asked", "met:oil", "met:drawn"]
+    # The subject layer reads nothing here: the half-and-half levels are
+    # half the whole look's.
+    assert [s for _, s in alone] == pytest.approx([s / 2 for _, s in both], abs=1e-3)
