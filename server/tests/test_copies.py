@@ -99,6 +99,8 @@ def test_every_copy_is_listed_with_its_verdict(app: Any) -> None:
     _offer(web, other, _print(7, (3600, 2400)))  # another work, the same title
     _offer(web, smaller, _print(1, (1700, 1133)))
     hits[:] = [sharper, detail, grey, other, smaller]
+    taken: list[str] = []
+    service.copies.other_works = lambda items: taken.extend(i.id for i in items)
 
     lines = _lines(client, own.id)
     assert lines[0] == {
@@ -122,6 +124,9 @@ def test_every_copy_is_listed_with_its_verdict(app: Any) -> None:
     # Everything a source found is told, another work too (only to look at).
     assert set(copies) == {"wmc:1", "wmc:2", "wmc:3", "wmc:4", "wmc:5"}
     assert copies["wmc:4"]["verdict"] == "off" and copies["wmc:4"]["notes"] == ["other"]
+    # Another work of the artist goes into the catalogue as a work of its
+    # own; its grey plate, a detail and copies do not (Mateusz 2026-11-22).
+    assert taken == ["wmc:4"]
     assert not any(line["kind"] == "drop" for line in lines)
     best = copies["wmc:1"]
     assert best["verdict"] == "better" and best["measured"]
@@ -544,3 +549,15 @@ def test_a_brought_copy_is_kept_for_good(app: Any) -> None:
 
     item = client.delete(f"/api/library/items/{own.id}/copy").json()
     assert item["sharper"] is None
+
+
+def test_other_works_found_join_the_catalogue_as_searched(
+    app: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, service, _, _ = app
+    kept: list[list[str]] = []
+    monkeypatch.setattr(
+        service.player, "keep_searched", lambda items, found="": kept.append([i.id for i in items])
+    )
+    service.copies.other_works([_copy(9)])
+    assert kept == [["wmc:9"]]

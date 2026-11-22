@@ -85,6 +85,7 @@ from .library.likeness import Likeness
 from .library.models import Note, SharperCopy
 from .library.verdict import Place, against
 from .library.vocabulary import (
+    GREY_PAINTING_SPREAD,
     archive_own,
     artist_matches,
     fold,
@@ -108,8 +109,9 @@ KIND = "sharper"
 #: with none found are looked at again.
 #: 5: copies titled as the work are compared first (``_titled_alike``),
 #: WikiArt's whatever size it says (``SIZE_UNSAID``), and copies in other
-#: colours unless grey (``colour_note``).
-VERSION = "sharper-5"
+#: colours unless grey (``colour_note``). 6: grey only without any colour
+#: (a muted brown painting was "grey" beside a warmer copy).
+VERSION = "sharper-6"
 #: The version of the look at an art archive's photograph: those looked at
 #: before they took copies in other colours are looked at again.
 ARCHIVE_VERSION = "sharper-archive-2"
@@ -276,8 +278,12 @@ def colour_note(own: Tone, copy: Tone) -> ColourNote | None:
     Fuller colours are no fault (Mateusz 2026-11-20: "często lepsza znaczy
     też w pełnej kolorystyce"), and neither is other light, lighter, darker
     or of another tint (Mateusz 2026-11-22: "ja bym chyba globalnie olał te
-    różnice kolorów. Byle nie czarno-białe jeżeli jest w kolorze")."""
-    if own.spread >= GREY and copy.spread < own.spread * GREYER:
+    różnice kolorów. Byle nie czarno-białe jeżeli jest w kolorze"). Grey
+    is no colour at all (``vocabulary.GREY_PAINTING_SPREAD``, as the
+    catalogue tells a black-and-white plate): van Gogh's brown "Para butów"
+    (0.009) was "grey" beside a warmer copy and is the right one (Mateusz
+    2026-11-22: "„czarno-biała” jest zbyt restrykcyjne")."""
+    if own.spread >= GREY and copy.spread < min(own.spread * GREYER, GREY_PAINTING_SPREAD):
         return "grey"
     return None
 
