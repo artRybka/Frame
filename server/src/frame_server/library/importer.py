@@ -55,6 +55,7 @@ from .verdict import Place, against
 from .vocabulary import (
     HIGHLIGHT,
     TECHNIQUE_KINDS,
+    UNTYPED_SOURCES,
     asked_artists,
     asked_topics,
     is_grey_copy,
@@ -62,6 +63,7 @@ from .vocabulary import (
     museum_kind,
     museum_queries,
     object_category,
+    stated_type,
     type_tells,
     years,
 )
@@ -91,7 +93,11 @@ MISREAD = "@language"
 #: The museums whose kept works are read again (:meth:`Importer.read_again`)
 #: when their reading (``pages.READINGS``) changes, and the library's state
 #: that says with which reading each was.
-READ_AGAIN = ("rijks", "europeana")
+READ_AGAIN = ("rijks", "europeana", "wikiart")
+#: Of these, the ones read every night: works keep coming whose record was
+#: never read (WikiArt's searches name no medium; its record does, and says
+#: which of its "paintings" are drawings, Mateusz 2026-11-22).
+READ_ALWAYS = ("wikiart",)
 READ_AGAIN_KEY = "read_again"
 #: How long a search waits for typed words to be translated (seconds); an
 #: answer that comes later serves the next search.
@@ -231,6 +237,8 @@ def _untold(item: Item) -> bool:
     painters given as agents only)."""
     if item.source == "europeana":
         return not item.artist.strip() or _reference(item.artist)
+    if item.source in READ_ALWAYS:
+        return not item.medium.strip()
     return MISREAD in (item.artist, item.classification) or not type_tells(item)
 
 
@@ -240,6 +248,10 @@ def _read_anew(item: Item, fresh: Item | None) -> dict[str, str]:
     where the record says one, and a misread word in any case. A maker
     read right stays as kept (with its "possibly")."""
     fixes: dict[str, str] = {}
+    if item.source in READ_ALWAYS:
+        # Its medium alone: its type is the same for every work.
+        medium = fresh.medium if fresh is not None else ""
+        return {"medium": medium} if medium and medium != item.medium else {}
     told = fresh.classification if fresh is not None else ""
     if told != item.classification and (told or item.classification == MISREAD):
         fixes["classification"] = told
@@ -463,11 +475,15 @@ class Importer:
         2026-11-11). Most records are kept at home (library/records.py);
         the others are asked one after another while ``quiet``, and the
         next night goes on where a night stopped. Only the type and a
-        misread maker change. Returns how many works did."""
+        misread maker change; of WikiArt's works (:data:`READ_ALWAYS`,
+        read every night while they have none) the medium, and their colours
+        are measured again. Returns how many works did."""
         read = dict(self.library.get_state(READ_AGAIN_KEY, {}))
         changed = 0
         for source in READ_AGAIN:
-            if source not in self.sources() or read.get(source) == reading(source):
+            if source not in self.sources() or (
+                source not in READ_ALWAYS and read.get(source) == reading(source)
+            ):
                 continue
             works = [i for i in self.library.all_items() if i.source == source and _untold(i)]
             with self.http() as http:
@@ -481,8 +497,15 @@ class Importer:
                         log.info("%s could not be read again tonight", item.id)
                         return changed
                     if fixes := _read_anew(item, fresh):
-                        self.library.update(item.id, **fixes)
+                        kept = self.library.update(item.id, **fixes)
                         changed += 1
+                        if "medium" in fixes and kept is not None and kept.colors:
+                            # Whether one strong tint is monochrome goes
+                            # by whether the work is painted.
+                            try:
+                                self.measure_again(kept)
+                            except (httpx.HTTPError, OSError, ValueError) as err:
+                                log.info("%s not measured again: %s", item.id, err)
             read[source] = reading(source)
             self.library.set_state(READ_AGAIN_KEY, read)
         return changed
@@ -548,9 +571,7 @@ class Importer:
         its size is the work's and stays."""
         with Image.open(self.cache.ensure_thumb(item)) as thumb:
             spread = tint_spread(thumb)
-            colors, tags, shares, varnish = analyse(
-                thumb, spread, item.medium, item.classification or ""
-            )
+            colors, tags, shares, varnish = analyse(thumb, spread, item.medium, stated_type(item))
             line = contour(thumb, tags)
         if varnish and saw_blue(self.library.note(item.id, VARNISH_NOTE)):
             tags = with_blue(tags)
@@ -567,9 +588,7 @@ class Importer:
     def _analysed(self, item: Item) -> Item:
         with Image.open(self.cache.ensure_thumb(item)) as thumb:
             spread = tint_spread(thumb)
-            colors, tags, shares, varnish = analyse(
-                thumb, spread, item.medium, item.classification or ""
-            )
+            colors, tags, shares, varnish = analyse(thumb, spread, item.medium, stated_type(item))
             line = contour(thumb, tags)
             width, height = item.width, item.height
             if not width or not height:
@@ -768,7 +787,7 @@ class Importer:
         try:
             with self._thumbnail(item) as img:
                 spread = tint_spread(img)
-                _, tags, shares, _ = analyse(img, spread, item.medium, item.classification or "")
+                _, tags, shares, _ = analyse(img, spread, item.medium, stated_type(item))
                 self._remember_aspect(item, img)
         except (httpx.HTTPError, OSError, ValueError) as err:
             log.info("no thumbnail of %s to look at: %s", item.id, err)
@@ -863,6 +882,31 @@ class Importer:
             i
             for i, colours in zip(items, found, strict=True)
             if colours and colours[0] and has_colours(colours[0], colors, colours[1])
+        ]
+
+    def typed_by_picture(self, items: list[Item]) -> list[Item]:
+        """``items`` with the colour tags, from their thumbnails, of those
+        whose technique their picture decides (``vocabulary.technique_type``:
+        WikiArt's works of a search name no medium, and its type calls its
+        drawings paintings): one of one tone is a drawing."""
+        untold = [
+            i
+            for i in items
+            if i.source in UNTYPED_SOURCES
+            and not i.medium.strip()
+            and not i.color_tags
+            and i.thumb_url
+        ]
+        if not untold:
+            return items
+        with ThreadPoolExecutor(min(len(untold), 16)) as pool:
+            seen_all = list(pool.map(as_asked(self.colours_of), untold))
+        found = {i.id: seen for i, seen in zip(untold, seen_all, strict=True)}
+        return [
+            i.model_copy(update={"color_tags": seen[0], "color_shares": seen[1]})
+            if (seen := found.get(i.id))
+            else i
+            for i in items
         ]
 
     def without_grey(self, items: list[Item]) -> list[Item]:
