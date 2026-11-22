@@ -78,6 +78,7 @@ from .library.vocabulary import (
     SCULPTURE,
     object_category,
     other_art,
+    stated_type,
 )
 from .night import give_way
 from .progress import Stage
@@ -1797,7 +1798,7 @@ class Player:
                     if spread is None:
                         spread = tint_spread(img)
                     colors, tags, shares, varnish = analyse(
-                        img, spread, item.medium, item.classification or ""
+                        img, spread, item.medium, stated_type(item)
                     )
             except OSError:
                 log.warning("rescore: cannot read %s", path)

@@ -20,6 +20,9 @@ from .verdict import category_fits
 from .vocabulary import HIGHLIGHT, asked_artists, asked_topics, museum_kind
 from .wording import Wording
 
+#: Techniques a picture of one tone tells apart (``Importer.typed_by_picture``).
+PICTURE_TECHNIQUES = ("technique:painting", "technique:drawing", "technique:print")
+
 #: With colours asked, museum pages of this many works are looked at, until
 #: ``limit`` fit, this many pages are seen or this many seconds have passed.
 COLOR_PAGE = 24
@@ -230,6 +233,8 @@ class MuseumSearch:
         (Mateusz 2026-11-07, "szkoda byłoby tracić te odpytania")."""
         rules = self.rules
         colors = rules.colors
+        # A technique asked: works whose picture decides it are looked at.
+        by_picture = any(t in PICTURE_TECHNIQUES for t in rules.terms)
         asked = COLOR_PAGE if colors else self.limit
         artists = asked_artists(rules.artists, rules.terms)
         deeper = artists or phrases(asked_words(rules))
@@ -288,6 +293,8 @@ class MuseumSearch:
             # after: of the museums' own pages a search of warm paintings
             # judged the colours of every vase and coin (two works in seven
             # minutes, 2026-11-12).
+            if by_picture:
+                items = importer.typed_by_picture(items)
             said_it = [
                 i
                 for i in items

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.327
+
+- Rysunki odsiewają się filtrami: mocna sepia i brązowy tusz na żółtym
+  papierze są teraz „Mono”, więc nie trafiają do „Kolorowych”. Dzieła
+  z WikiArt, który każde dzieło nazywa obrazem, mają technikę z karty
+  dzieła (doczytywanej nocą), a do tego czasu z wyglądu: jednobarwne to
+  rysunek, więc nie wchodzą do „Malarstwa”. Barwy katalogu przeliczają
+  się po aktualizacji.
+
 ## 1.145.326
 
 - Kopia jest oznaczana jako „czarno-biała” tylko wtedy, gdy nie ma

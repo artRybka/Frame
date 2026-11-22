@@ -1252,6 +1252,40 @@ def _own_type(classification: str) -> str:
     return ",".join(parts) if any(p.strip() for p in parts) else classification
 
 
+#: Sources whose type of a work says nothing: WikiArt types every work
+#: "Painting" (``museums.WikiArt``), van Gogh's pencil and ink drawings too
+#: (Mateusz 2026-11-22: "Driveway" and "Old Woman Asleep after Rops" under
+#: Malarstwo).
+UNTYPED_SOURCES = frozenset({"wikiart"})
+
+
+def stated_type(item: Item) -> str:
+    """The work's type as its source states it, without its broad
+    categories (:func:`_own_type`); of a source that types every work alike
+    (:data:`UNTYPED_SOURCES`) "Painting" only when its medium names paint,
+    else none."""
+    if item.source not in UNTYPED_SOURCES:
+        return _own_type(item.classification)
+    return item.classification if _is_painting("", item.medium) else ""
+
+
+def technique_type(item: Item) -> str:
+    """The type a work's technique is judged by: its museum's own
+    (:func:`_own_type`). A work of a source that types every work alike
+    (:data:`UNTYPED_SOURCES`) is a painting when its medium names paint;
+    with another medium, what that medium names decides, a drawing when it
+    names nothing known ("pencil, paper"); with none (the works of a
+    search, whose record was not read yet), a picture of one tone (its
+    ``"monochrome"`` tag) is a drawing and any other a painting."""
+    if item.source not in UNTYPED_SOURCES:
+        return _own_type(item.classification)
+    if _is_painting("", item.medium):
+        return "Painting"
+    if item.medium.strip():
+        return "" if _names_technique(item.medium) else "Drawing"
+    return "Drawing" if "monochrome" in item.color_tags else "Painting"
+
+
 def _technique_matches(found: Term, item: Item) -> bool:
     """What the museum says the object is, never what its text or the
     model's keywords mention: a Monet drawing whose description talks of
@@ -1264,14 +1298,14 @@ def _technique_matches(found: Term, item: Item) -> bool:
         return False
     if found.key == POSTER:
         return is_poster(item)
-    said = f"{_own_type(item.classification)} {item.medium}"
+    said = f"{technique_type(item)} {item.medium}"
     if pattern.search(said):
         return True
     if found.key == "technique:print" and _names(said, (POSTER,)):
         # A poster's design in pencil or gouache is no print: the
         # Rijksmuseum types one "design, poster, drawing".
-        return not _names(_own_type(item.classification), _NO_POSTER)
-    if _object_technique(_own_type(item.classification), item.medium):
+        return not _names(technique_type(item), _NO_POSTER)
+    if _object_technique(technique_type(item), item.medium):
         return False
     return bool(pattern.search(" ".join((item.title, *item.styles, *item.subjects))))
 
@@ -1289,7 +1323,7 @@ def is_poster(item: Item) -> bool:
     an artist and posters brings any of his works, so this is checked on
     every work, found by that search or not."""
     return _is_poster(
-        _own_type(item.classification),
+        technique_type(item),
         item.medium,
         " ".join((item.title, *item.styles, *item.subjects)),
     )
@@ -1351,7 +1385,7 @@ def searched_technique_fits(techniques: list[Term], item: Item) -> bool:
         return True
     painting = any(t.key == "technique:painting" for t in asked)
     prints = any(t.key == "technique:print" for t in asked)
-    for text, material in ((_own_type(item.classification), False), (item.medium, True)):
+    for text, material in ((technique_type(item), False), (item.medium, True)):
         if any(t.pattern is not None and t.pattern.search(text) for t in asked):
             return True
         if prints and _names(text, (POSTER,)):

@@ -681,6 +681,25 @@ def test_monochrome_is_one_tone() -> None:
     assert "monochrome" not in analyse(Image.fromarray(pixels)).tags
 
 
+def test_one_strong_tint_is_monochrome_unless_painted() -> None:
+    # Van Gogh's brown ink on strongly yellowed paper ("Driveway",
+    # Mateusz 2026-11-22: under Kolorowe): too vivid for the faint sepia
+    # rule, one tone still, its colour going with its lightness.
+    ramp = np.linspace(0, 1, 200)[:, None, None]
+    pixels = (1 - ramp) * np.array((238, 208, 120)) + ramp * np.array((70, 42, 12))
+    sheet = Image.fromarray(np.repeat(pixels, 200, 1).astype(np.uint8))
+    for medium, kind in (("", ""), ("pencil, paper", ""), ("", "Drawing")):
+        tags = analyse(sheet, None, medium, kind).tags
+        assert "monochrome" in tags and "tone:monochrome" in tags
+    # A painting says so: dark old masters are of one strong tint too.
+    for medium, kind in (("oil on canvas", ""), ("", "Painting")):
+        assert "tone:colorful" in analyse(sheet, None, medium, kind).tags
+    # Colour that does not follow the lightness is no ink on paper.
+    noisy = np.asarray(sheet).astype(int).copy()
+    noisy[::2, ::2] = np.clip(noisy[::2, ::2] + (40, -30, -30), 0, 255)
+    assert "monochrome" not in analyse(Image.fromarray(noisy.astype(np.uint8))).tags
+
+
 def test_a_faded_colour_print_is_not_monochrome() -> None:
     # A Japanese print gone pale: a pink and a blue-grey robe on yellowed
     # paper, black hair. All of it faint and warm, yet in colours.
