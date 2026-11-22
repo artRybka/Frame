@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.308
+
+- Restaurator dzieł może rysować modelem SeedVR2 na fal.ai: niczego nie
+  przesuwa ani nie wymyśla, a kosztuje ok. 0,5 centa za dzieło. Klucz
+  wpisuje się w Konfiguracji (Klucze → „fal.ai”). Bez klucza, albo gdy
+  fal.ai nic nie odda, rysuje Gemini jak dotąd.
+
 ## 1.145.307
 
 - Szukanie zdjęciem pokazuje znów wiele dzieł: zdjęcie z życia (twarz,

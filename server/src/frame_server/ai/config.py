@@ -115,6 +115,8 @@ class AiConfig(BaseModel):
     varnish_blue: bool = True
     #: Google's key (the image model, ``ai.drawn``).
     gemini_api_key: str | None = None
+    #: fal.ai's key: the creative restorer's model, SeedVR2 (``ai.fal``).
+    fal_api_key: str | None = None
     #: The study sheets of the analyses drawn by the image model (three
     #: pictures a sheet, about 0.15 USD); needs Google's key.
     drawn: bool = True
@@ -236,6 +238,23 @@ class AiConfigStore:
     def gemini_tail(self) -> str | None:
         key = self.gemini_key
         return key[-KEY_TAIL:] if key else None
+
+    @property
+    def fal_key(self) -> str | None:
+        """fal.ai's key (the app's; there is no other)."""
+        return self.config.fal_api_key
+
+    @property
+    def fal_tail(self) -> str | None:
+        key = self.fal_key
+        return key[-KEY_TAIL:] if key else None
+
+    def set_fal_key(self, key: str | None) -> AiConfig:
+        """Keep fal.ai's key (None forgets it)."""
+        update = {"fal_api_key": clean_key(key) if key else None}
+        config = self.config.model_copy(update=update)
+        self._save(config)
+        return config
 
     @property
     def drawn(self) -> bool:

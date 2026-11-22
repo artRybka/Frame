@@ -232,7 +232,14 @@ def test_the_favourites_through_the_batch(app: Any) -> None:
     service.library.set_favorite(OWNER_ID, own.id, True)
 
     view = client.get("/api/ai/restorer").json()
-    assert view == {"enabled": True, "items": 1, "usd": 0.03, "waiting": 0, "restored": 0}
+    assert view == {
+        "enabled": True,
+        "by_fal": False,
+        "items": 1,
+        "usd": 0.03,
+        "waiting": 0,
+        "restored": 0,
+    }
     view = client.post("/api/ai/restorer/favourites").json()
     assert view["items"] == 0 and view["waiting"] == 1
     assert list(painter.batches) == ["batches/1"]
@@ -313,7 +320,14 @@ def test_a_playlists_works_through_the_batch(app: Any) -> None:
     # Not a favourite: Konfiguracja's line leaves it out, the playlist's has it.
     assert client.get("/api/ai/restorer").json()["items"] == 0
     view = client.get(f"/api/ai/restorer/playlists/{playlist_id}").json()
-    assert view == {"enabled": True, "items": 1, "usd": 0.03, "waiting": 0, "restored": 0}
+    assert view == {
+        "enabled": True,
+        "by_fal": False,
+        "items": 1,
+        "usd": 0.03,
+        "waiting": 0,
+        "restored": 0,
+    }
 
     view = client.post(f"/api/ai/restorer/playlists/{playlist_id}").json()
     assert view["items"] == 0 and view["waiting"] == 1

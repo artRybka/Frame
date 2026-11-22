@@ -2068,6 +2068,11 @@ struct AiSettings: Codable, Hashable, Sendable {
     /// characters. Nil from servers before the drawn sheets.
     var geminiKeySet: Bool? = nil
     var geminiKeyTail: String? = nil
+    /// fal.ai's key for SeedVR2, the creative restorer's model (Mateusz
+    /// 2026-11-22): whether the server has one, its last characters. Nil
+    /// from servers before it.
+    var falKeySet: Bool? = nil
+    var falKeyTail: String? = nil
     /// "Arkusze kompozycji z modelu graficznego"; nil from older servers.
     var drawn: Bool? = nil
     /// About what one drawn sheet costs at once, and through Google's Batch.
