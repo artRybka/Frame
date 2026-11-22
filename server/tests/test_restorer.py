@@ -487,4 +487,4 @@ def test_half_of_what_the_model_drew_finer_than_the_picture_is_kept() -> None:
     kept = np.asarray(recoloured(picture, Image.fromarray(made_up)), dtype=np.float32)
     plain = np.asarray(recoloured(picture, Image.fromarray(np.full((400, 320, 3), 128, np.uint8))))
     ratio = float(np.abs(kept - plain).std()) / float(np.abs(made_up - 128.0).std())
-    assert 0.3 < ratio < 0.7
+    assert 0.55 < ratio < 0.85
