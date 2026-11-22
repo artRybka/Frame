@@ -394,6 +394,7 @@ class FrameService:
             tidier.cared = self.cared.ranks
         self.daily.sharper = self.sharper
         self.copies = Copies(self.sharper)
+        self.sharper.other_title = self._other_title
         # The museums of works from Commons, Openverse, WikiArt: looked up
         # when a card opens and at night.
         self.holders = Holders(self.library, museum_client)
@@ -572,6 +573,15 @@ class FrameService:
         if look.startswith(PHOTO):
             return self.looks.judge_photo(look, items)
         return self.looks.judge(look, items)
+
+    def _other_title(self, item: Item, wait: float) -> Wording | None:
+        """The work's Polish title (the card's) with its translations, for
+        the search of its copies by another title than its own; None while
+        it has none."""
+        text = self.pl_text.text(item)
+        if text is None or not text.title.strip():
+            return None
+        return self.importer.wording(text.title, wait)
 
     def _english(self, text: str) -> str:
         """Szukaj's words in English for SigLIP: the phone's or Haiku's
