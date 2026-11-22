@@ -145,15 +145,19 @@ def _filtered(rgb: np.ndarray, keep: Callable[[int, int], np.ndarray]) -> np.nda
     spectrum's wrapping round leaves no band along them."""
     h, w = rgb.shape[:2]
     pad = max(8, round(PAD * max(h, w)))
-    big = cv2.copyMakeBorder(rgb, pad, pad, pad, pad, cv2.BORDER_REFLECT)
-    bh, bw = big.shape[:2]
+    # Padded on to a size the transform is quick at (2, 3 and 5 only).
+    bh, bw = cv2.getOptimalDFTSize(h + 2 * pad), cv2.getOptimalDFTSize(w + 2 * pad)
+    top, left = (bh - h) // 2, (bw - w) // 2
+    big = cv2.copyMakeBorder(rgb, top, bh - h - top, left, bw - w - left, cv2.BORDER_REFLECT)
     mask = keep(bh, bw)
-    both = np.dstack([mask, mask])
     out = np.empty_like(rgb)
     for c in range(3):
         spectrum = cv2.dft(np.ascontiguousarray(big[..., c]), flags=cv2.DFT_COMPLEX_OUTPUT)
-        back = cv2.idft(spectrum * both, flags=cv2.DFT_SCALE | cv2.DFT_REAL_OUTPUT)
-        out[..., c] = back[pad : pad + h, pad : pad + w]
+        spectrum[..., 0] *= mask
+        spectrum[..., 1] *= mask
+        back = cv2.idft(spectrum, flags=cv2.DFT_SCALE | cv2.DFT_REAL_OUTPUT)
+        out[..., c] = back[top : top + h, left : left + w]
+        del spectrum, back
     return out
 
 
