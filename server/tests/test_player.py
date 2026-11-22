@@ -614,8 +614,9 @@ def test_searched_works_join_the_catalogue(service, monkeypatch) -> None:
         params = {"q": "sea", "source": ["fake"]}
         with client.stream("GET", "/api/discover/search/stream", params=params) as resp:
             assert [line for line in resp.iter_lines() if line]
-        if (worker := svc.importer._searching) is not None:
-            worker.join(10)
+        for worker in (svc.importer._showing, svc.importer._searching):
+            if worker is not None:
+                worker.join(10)
 
     with TestClient(app) as client:
         assert svc.importer.save("fake:2") is not None  # kept by the owner before

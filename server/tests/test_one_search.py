@@ -4,6 +4,7 @@ choices in the catalogue too."""
 
 from __future__ import annotations
 
+import time
 from typing import ClassVar
 
 from frame_server.library import Item, Library, PlaylistRules
@@ -395,11 +396,38 @@ def test_works_not_shown_join_the_catalogue_after_the_shown_ones(tmp_path) -> No
     importer.keep_spare([_item(3), _item(1), _item(2)])
     # Shown meanwhile: it goes first, and once.
     importer.keep_searched([_item(4), _item(2)], found="s:1")
+    importer._take_showed()
     importer._take_searched()
     assert taken == [["aic:4", "aic:2"], ["aic:1"], ["aic:3"]]
     # Seen once, not queued again.
     importer.keep_spare([_item(1), _item(4), _item(3)])
     assert not importer._spare and not importer._far
+
+
+def test_the_works_shown_join_the_catalogue_while_the_app_is_in_use(tmp_path) -> None:
+    """Mateusz 2026-11-22: the same search again a moment later lacked what
+    the first had shown; it came in only once he had stopped. What a search
+    showed doesn't wait for the app (each museum still at its pace), what it
+    brought but didn't show does."""
+    from frame_server.library.hosts import SHOWN, deferrable, purpose
+
+    library = Library(tmp_path / "lib.db")
+
+    class Cache:
+        def thumb_path(self, item: Item):  # type: ignore[no-untyped-def]
+            return tmp_path / f"{item.source_id}.jpg"
+
+    importer = Importing(library, Cache(), None)  # type: ignore[arg-type]
+    asked: list[tuple[str, bool]] = []
+    importer._start_searched = lambda: None  # type: ignore[method-assign]
+    importer._take = lambda *a, **k: asked.append((purpose(), deferrable()))  # type: ignore[method-assign]
+    (tmp_path / "1.jpg").write_bytes(b"jpeg")
+    importer.keep_spare([_item(1)])
+    importer.keep_searched([_item(2)], found="s:1")
+    importer._take_showed()
+    importer._take_searched()
+    assert asked[0] == (SHOWN, False)
+    assert asked[1][1]  # the works not shown wait
 
 
 def test_the_works_waiting_to_join_the_catalogue_outlive_a_restart(tmp_path) -> None:
@@ -424,9 +452,10 @@ def test_the_works_waiting_to_join_the_catalogue_outlive_a_restart(tmp_path) -> 
     taken: list[list[str]] = []
     again._take = lambda streams, *a, **k: taken.append([i.id for i in streams[0]])  # type: ignore[method-assign]
     assert again.resume_searched() == 2
-    assert again._searching is not None
-    again._searching.join(5)
-    assert taken == [["aic:1"], ["aic:3"]]
+    deadline = time.monotonic() + 5  # each thread lets go of itself when done
+    while (again._showing or again._searching) and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert sorted(taken) == [["aic:1"], ["aic:3"]]
     assert library.get_state("searched_queue") == {"searched": [], "spare": []}
 
 
