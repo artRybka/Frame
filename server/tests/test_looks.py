@@ -640,8 +640,9 @@ def test_a_photograph_is_searched_in_szukajs_own_list(
             page = client.get("/api/library/items", params=params).json()
             return [i["id"] for i in page["items"]]
 
-        assert sorted(ids(like=key)) == ["aic:7", "met:1"]
-        assert ids(like=key, artist="Anna A") == ["met:1"]
+        # A photograph's nearest, no floor (Mateusz 2026-11-22): the reds first.
+        assert sorted(ids(like=key)[:2]) == ["aic:7", "met:1"]
+        assert ids(like=key, artist="Anna A")[0] == "met:1"
         assert ids(like="photo:0000") == []  # a key nobody kept
         bad = {"file": ("photo.jpg", b"not a picture", "image/jpeg")}
         assert client.post("/api/looks/photo", files=bad).status_code == 422
@@ -650,7 +651,7 @@ def test_a_photograph_is_searched_in_szukajs_own_list(
     assert [p.suffixes[-2] for p in kept] == [".palette", ".three"]
     assert kept[1].stat().st_size == 3 * PART * 4 and kept[0].stat().st_size <= 4 * 8 * 4
     rules = PlaylistRules(like=key)
-    assert sorted(i.id for i in service.library.query(rules)[1]) == ["aic:7", "met:1"]
+    assert sorted(i.id for i in service.library.query(rules)[1][:2]) == ["aic:7", "met:1"]
     assert rules.search_key() == ""  # no museum asked
     painter.key = False
     with TestClient(app) as client:
@@ -940,7 +941,7 @@ def test_the_numbers_of_before_answer_until_most_works_have_their_three(
     )
     assert found.old() and found.ready() and len(found.three) == 0
     assert [f.item.id for f in found.similar(red, by="style")] == ["aic:7"]
-    assert found.alike(PHOTO + "ab") == ["met:2"]
+    assert (found.alike(PHOTO + "ab") or [""])[0] == "met:2"
     assert [f.item.id for f in found.words("red")] == ["met:1", "aic:7"]
     found.send()
     found.collect()

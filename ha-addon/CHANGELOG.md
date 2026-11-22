@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.307
+
+- Szukanie zdjęciem pokazuje znów wiele dzieł: zdjęcie z życia (twarz,
+  kwiaty) leży dalej od obrazów niż obraz od obrazu, więc dzieła są
+  liczone od najbliższego trafienia, a nie od progów dzieło–dzieło
+  (selfie dawało jeden autoportret).
+
 ## 1.145.306
 
 - Serwer nie staje już na kilkanaście sekund, gdy zaraz po starcie

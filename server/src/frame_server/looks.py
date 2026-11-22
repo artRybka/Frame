@@ -158,6 +158,18 @@ PHOTO = "photo:"
 PHOTO_NEAR = 24
 PHOTO_SUBJECT = 4
 PHOTO_SEARCHES = 3
+#: "Podobne do" a photograph: the works no further than ``PHOTO_BELOW``
+#: below its nearest (``ALIKE_STEP``… more for each step of the list
+#: scrolled on, ``seen.Floors.step``), and never under ``PHOTO_LOWEST``,
+#: though :data:`ALIKE_LEAST` however far. A photograph lies further from
+#: every painting than paintings from each other: the floors set on works
+#: left one work for his self-portrait photographed (Mateusz 2026-11-22:
+#: „spodziewałem się wielu autoportretów i portretów”; measured on the Mac:
+#: his selfie to 25 painted self-portraits nearest 0.68, median 0.61; a
+#: portrait to a portrait median 0.81-0.83; a photograph of a painting to
+#: it some 0.9). The museums' works shown with it: as near (``judge_photo``).
+PHOTO_BELOW = 0.08
+PHOTO_LOWEST = 0.50
 #: A work whose thumbnail is not here is looked at again after this long.
 NO_THUMB_AGAIN = 86_400.0
 #: Rows of the numbers worked through at once (some 12 MB as floats).
@@ -1004,6 +1016,16 @@ class Looks:
             [c.id for c in works.groups[own] if c.id != item_id] if own is not None else []
         )
 
+    def _photo_floor(self, near: list[tuple[str, float]], further: int = 0) -> float:
+        """How near a work must be to a photograph (``near``: the nearest
+        first) to be shown like it: :data:`PHOTO_BELOW` under the nearest,
+        a step less for each step on, never under :data:`PHOTO_LOWEST`."""
+        if not near:
+            return PHOTO_LOWEST
+        steps = min(max(further, 0), ALIKE_FURTHER)
+        step = seen_floors().step if self.local() else ALIKE_STEP
+        return max(PHOTO_LOWEST, near[0][1] - PHOTO_BELOW - step * steps)
+
     def alike_colours(self, item_id: str, further: int = 0) -> list[str]:
         """ "Barwy" alone (Mateusz 2026-11-21): the works whose palettes lie
         nearest the work's (or photograph's), of its kind, nearest first,
@@ -1065,7 +1087,8 @@ class Looks:
 
     def judge_photo(self, key: str, items: Sequence[Item]) -> list[Item]:
         """:meth:`judge` for a photograph searched: the museum works that
-        look like it, at least :attr:`Floors.picture` near, nearest first;
+        look like it, as near as the catalogue's shown for it
+        (:meth:`_photo_floor`, or :attr:`Floors.picture`), nearest first;
         their thumbnails numbered here now and kept."""
         vector = self.photo_vector(key)
         if vector is None or not items or self.seen is None or not self.local():
@@ -1076,7 +1099,8 @@ class Looks:
         except (AiUnavailable, NotDrawn, httpx.HTTPError) as err:
             log.info("numbers for museum works: %s", err)
         query = vector / max(float(np.linalg.norm(vector)), 1e-9)
-        floor = seen_floors().picture
+        # As near as the catalogue's works shown for it.
+        floor = min(seen_floors().picture, self._photo_floor(self.seen.alike_near(vector, 1)))
         scored: list[tuple[float, Item]] = []
         for item in items:
             row = asked.vector(item.id)
@@ -1218,9 +1242,10 @@ class Looks:
             if vector is None:
                 return []
             near = self._alike_near(vector, most * 3 + 8, shape)
-            near = self._near_enough(near, shape, wide)
-            found = self._answer(near, most, self._alike_base(), relative=False)
-            ids = [f.item.id for f in self.enough(found, shape, wide)]
+            floor = self._photo_floor(near, wide)
+            found = self._answer(near, most, None, relative=False)
+            kept = sum(1 for f in found if f.score >= floor)
+            ids = [f.item.id for f in found[: max(kept, ALIKE_LEAST)]]
         else:
             item = self.library.get(item_id)
             if item is None:
