@@ -295,6 +295,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             for later in (
                 threading.Timer(LOOKS_DELAY, service.looks.start),
                 threading.Timer(LOOKS_DELAY, service.seen.start),
+                # The catalogue's palettes for "Barwy", before anyone asks.
+                threading.Timer(LOOKS_DELAY, service.looks.palettes.warm),
                 threading.Timer(SEARCHED_DELAY, service.player.resume_searched),
                 # The disk measured for Konfiguracja, if no measure is kept.
                 threading.Timer(LOOKS_DELAY, service.storage.measure_behind),

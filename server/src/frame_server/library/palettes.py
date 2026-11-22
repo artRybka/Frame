@@ -25,6 +25,7 @@ photograph with paintings).
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 from collections.abc import Callable, Sequence
@@ -197,6 +198,23 @@ def summary(rows: np.ndarray) -> np.ndarray:
     return np.asarray(out, dtype=np.float32)
 
 
+def summaries(colours: np.ndarray, weights: np.ndarray) -> np.ndarray:
+    """:func:`summary` of many palettes at once (``colours`` (N, K, 3),
+    ``weights`` (N, K), a missing colour weighing 0)."""
+    light = np.where(weights > 0, colours[..., 0], np.inf)
+    order = np.argsort(light, axis=1, kind="stable")
+    c = np.take_along_axis(colours, order[..., None], 1)
+    w = np.take_along_axis(weights, order, 1)
+    edge = np.cumsum(w, 1) - w / 2
+    edge = np.where(w > 0, edge, np.inf)
+    out = []
+    for q in (0.2, 0.5, 0.8):
+        i = np.argmin(np.abs(edge - q), 1)
+        pick = c[np.arange(len(c)), i]
+        out += [pick[:, 0], 2 * pick[:, 1], 2 * pick[:, 2]]
+    return np.stack(out, 1).astype(np.float32) if len(c) else np.zeros((0, 9), np.float32)
+
+
 @dataclass
 class _Index:
     ids: list[str]
@@ -210,50 +228,99 @@ class _Index:
 
 
 class Palettes:
-    """The catalogue's palettes, read from its works' bars when asked and
-    again when the catalogue has changed (at most every :data:`AGAIN`)."""
+    """The catalogue's palettes, read from its works' bars at once for all
+    of them (some 198 thousand in about a second), made in the background
+    and swapped in whole: a question never waits for them but the very
+    first (2026-11-22: made under a lock on the first question after a
+    start, item by item, they held every search on the NAS for 45 s, and
+    again every :data:`AGAIN` while works came in)."""
 
     def __init__(self, items: Callable[[], list[Item]], stamp: Callable[[], object]) -> None:
         self._items = items
         self._stamp = stamp
         self._index: _Index | None = None
         self._lock = threading.Lock()
+        self._making: threading.Thread | None = None
+
+    def warm(self) -> None:
+        """Make the palettes now, in the background (after a start)."""
+        self._again()
+
+    def _again(self) -> None:
+        with self._lock:
+            if self._making is not None and self._making.is_alive():
+                return
+            self._making = threading.Thread(target=self._remake, name="palettes", daemon=True)
+            self._making.start()
+
+    def _remake(self) -> None:
+        index = self._make(self._stamp(), time.monotonic())
+        with self._lock:
+            self._index = index
 
     def _get(self) -> _Index:
-        with self._lock:
-            now = time.monotonic()
-            stamp = self._stamp()
-            index = self._index
-            if index is None or (index.stamp != stamp and now - index.made >= AGAIN):
-                index = self._index = self._make(stamp, now)
-            return index
+        index = self._index
+        if index is None:
+            # The first question: made here, once (the others wait for it).
+            with self._lock:
+                if self._index is None:
+                    self._index = self._make(self._stamp(), time.monotonic())
+                return self._index
+        if index.stamp != self._stamp() and time.monotonic() - index.made >= AGAIN:
+            self._again()
+        return index
 
     def _make(self, stamp: object, now: float) -> _Index:
         ids: list[str] = []
-        rows: list[np.ndarray] = []
+        hexes: list[list[str]] = []
+        shares: list[list[float]] = []
         painted: list[bool] = []
         for item in self._items():
             if item.kind != ItemKind.ARTWORK or not item.colors:
                 continue
-            p = of_swatches(item.colors)
-            if p is None:
-                continue
             ids.append(item.id)
-            rows.append(p)
+            hexes.append([c.hex for c in item.colors])
+            shares.append([c.amount if c.amount is not None else c.weight for c in item.colors])
             painted.append(C.painting(item.medium, item.classification))
-        colours = np.zeros((len(rows), K, 3), dtype=np.float32)
-        weights = np.zeros((len(rows), K), dtype=np.float32)
-        summaries = np.zeros((len(rows), 9), dtype=np.float32)
-        for n, p in enumerate(rows):
-            colours[n, : len(p)] = p[:, :3]
-            weights[n, : len(p)] = p[:, 3]
-            summaries[n] = summary(p)
+        n = len(ids)
+        width = max((len(h) for h in hexes), default=1)
+        # Every colour once to OKLab, then each work's by its place.
+        known: dict[str, int] = {}
+        place = np.zeros((n, width), dtype=np.int64)
+        share = np.zeros((n, width), dtype=np.float32)
+        for row, (hs, ws) in enumerate(zip(hexes, shares, strict=True)):
+            for col, (h, w) in enumerate(zip(hs, ws, strict=True)):
+                place[row, col] = known.setdefault(h.lower(), len(known))
+                share[row, col] = w
+        rgb = np.zeros((max(len(known), 1), 3), dtype=np.uint8)
+        for h, k in known.items():
+            with contextlib.suppress(ValueError):
+                rgb[k] = [int(h[i : i + 2], 16) for i in (1, 3, 5)]
+        lab = np.asarray(linear_to_oklab(u8_to_linear(rgb)), dtype=np.float32)
+        colours = lab[place]  # (N, width, 3)
+        present = np.zeros((n, width), dtype=bool)
+        for row, hs in enumerate(hexes):
+            present[row, : len(hs)] = True
+        # The largest K, each by how coloured it is, summing to 1 (``palette``).
+        order = np.argsort(np.where(present, -share, np.inf), axis=1, kind="stable")[:, :K]
+        colours = np.take_along_axis(colours, order[..., None], 1)
+        share = np.take_along_axis(share, order, 1)
+        present = np.take_along_axis(present, order, 1)
+        chroma = np.hypot(colours[..., 1], colours[..., 2])
+        weights = np.maximum(share, 1e-4) * (1 + EMPHASIS * np.minimum(chroma / CHROMA_FULL, 1.0))
+        weights = np.where(present, weights, 0).astype(np.float32)
+        weights /= np.maximum(weights.sum(1, keepdims=True), 1e-12)
+        colours = np.where(present[..., None], colours, 0).astype(np.float32)
+        if colours.shape[1] < K:
+            pad = K - colours.shape[1]
+            colours = np.pad(colours, ((0, 0), (0, pad), (0, 0)))
+            weights = np.pad(weights, ((0, 0), (0, pad)))
         return _Index(
             ids,
-            {i: n for n, i in enumerate(ids)},
+            {i: k for k, i in enumerate(ids)},
             colours,
             weights,
-            summaries,
+            summaries(colours, weights),
             np.asarray(painted, dtype=bool),
             stamp,
             now,
