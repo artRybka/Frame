@@ -109,8 +109,9 @@ KIND = "sharper"
 #: with none found are looked at again.
 #: 5: copies titled as the work are compared first (``_titled_alike``),
 #: WikiArt's whatever size it says (``SIZE_UNSAID``), and copies in other
-#: colours unless grey (``colour_note``).
-VERSION = "sharper-5"
+#: colours unless grey (``colour_note``). 6: grey only without any colour
+#: (a muted brown painting was "grey" beside a warmer copy).
+VERSION = "sharper-6"
 #: The version of the look at an art archive's photograph: those looked at
 #: before they took copies in other colours are looked at again.
 ARCHIVE_VERSION = "sharper-archive-2"
