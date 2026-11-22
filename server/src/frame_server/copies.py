@@ -6,7 +6,10 @@ when it is certainly better, and says nothing. Here the owner sees them all
 as the sources answer: each copy judged by the same tests (the same picture
 whole, in its colours, not a reproduction, how much sharper on the frame),
 with the reason when it falls short, and a close-up of one spot in both
-pictures at the frame's scale (:meth:`Copies.compare`). The pick is kept as
+pictures at the frame's scale (:meth:`Copies.compare`). Each source is
+asked for the work's own title and for its Polish title in the source's
+language (:func:`~frame_server.sharper.titled`): Foto Marburg's "Boote am
+Ufer" found nothing anywhere (Mateusz 2026-11-22). The pick is kept as
 the work's sharper copy (``Item.sharper``, marked ``chosen``): the work
 keeps its id, texts, hearts, playlists and crops.
 """
@@ -35,10 +38,12 @@ from .library.aic import aic_large_size
 from .library.duplicates import surname
 from .library.hosts import as_asked
 from .library.images import FRAME_SIDE, display_copy, own_copy
+from .library.importer import language_of
 from .library.likeness import WHOLE_TURN, Fit, keypoints, whole_work
 from .library.verdict import Place, against
 from .library.vocabulary import archive_own, is_photograph
-from .sharper import Quality, colour_note, tone
+from .library.wording import Wording
+from .sharper import TITLE_WAIT, Quality, colour_note, titled, tone
 
 if TYPE_CHECKING:
     from .sharper import Sharper
@@ -250,7 +255,7 @@ class Copies:
         query = f"{title} {surname(stored.artist)}".strip()
         judged: list[Future[None]] = []
         # Not a ``with``: leaving it would wait for a source that does not answer.
-        asking = ThreadPoolExecutor(max(1, len(keys)) + 1, "copies-ask")
+        asking = ThreadPoolExecutor(max(1, len(keys)) + 2, "copies-ask")
         try:
             with ThreadPoolExecutor(JUDGES, "copies-judge") as judging:
                 # The pools' threads ask as this one does (for the app, now):
@@ -259,9 +264,10 @@ class Copies:
                 asked: dict[Future[list[Item]], str] = {
                     asking.submit(as_asked(self.known), stored): ""
                 }
+                other = asking.submit(as_asked(self.sharper.other_title), stored, TITLE_WAIT)
                 for key in keys:
-                    if text := title if key in TITLE_ONLY else query:
-                        asked[asking.submit(as_asked(self._ask), key, text)] = key
+                    text = title if key in TITLE_ONLY else query
+                    asked[asking.submit(as_asked(self._ask_titled), key, text, stored, other)] = key
                 waiting = set(asked)
                 deadline = time.monotonic() + self.answer
                 while waiting and not gone.is_set():
@@ -301,6 +307,34 @@ class Copies:
             self._answers.move_to_end((key, query))
             while len(self._answers) > KEPT_ANSWERS:
                 self._answers.popitem(last=False)
+        return found
+
+    def _ask_titled(
+        self, key: str, text: str, item: Item, other: Future[Wording | None]
+    ) -> list[Item]:
+        """``key``'s works for ``text`` (the work's own title), then for its
+        Polish title in ``key``'s language (``other``: its translations, as
+        they come); a failure of one of the two costs nothing of the other's."""
+        found: list[Item] = []
+        failed: Exception | None = None
+        if text:
+            try:
+                found += self._ask(key, text)
+            except Exception as err:
+                failed = err
+        try:
+            wording = other.result(TITLE_WAIT + 1.0)
+        except Exception:
+            wording = None
+        if alt := titled(item.title, wording, language_of(key)):
+            query = alt if key in TITLE_ONLY else f"{alt} {surname(item.artist)}".strip()
+            if query != text:
+                try:
+                    found += self._ask(key, query)
+                except Exception as err:
+                    failed = failed or err
+        if failed is not None and not found:
+            raise failed
         return found
 
     def known(self, item: Item) -> list[Item]:

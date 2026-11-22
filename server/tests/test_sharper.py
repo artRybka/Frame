@@ -17,8 +17,9 @@ from frame_server.config import Settings
 from frame_server.library import Item, ItemKind
 from frame_server.library.images import ImageCache
 from frame_server.library.models import SharperCopy
+from frame_server.library.wording import Wording
 from frame_server.service import FrameService
-from frame_server.sharper import Quality, Tone, same_colours
+from frame_server.sharper import Quality, Tone, same_colours, titled
 from frame_server.web.app import create_app
 
 
@@ -821,3 +822,50 @@ def test_the_catalogues_works_of_tile_sets_take_them_once(frame: Any) -> None:
     assert stored is not None and stored.sharper is not None
     assert stored.sharper.item_id == copy.id
     assert service.sharper.tiled_once(lambda: pytest.fail("once")) == 0
+
+
+def test_the_polish_title_in_each_sources_language() -> None:
+    """Foto Marburg's van Gogh, "Boote am Ufer", found nothing anywhere
+    (Mateusz 2026-11-22): its Polish title is asked too, translated."""
+    pl = Wording(
+        "Łodzie rybackie na plaży w Saintes-Maries-de-la-Mer",
+        en="fishing boats on the beach at Saintes-Maries-de-la-Mer",
+        fr="bateaux de pêche sur la plage des Saintes-Maries-de-la-Mer",
+    )
+    own = "Boote am Ufer"
+    assert titled(own, pl, "en") == pl.en
+    assert titled(own, pl, "fr") == pl.fr
+    assert titled(own, pl, "pl") == pl.text
+    assert titled(own, None, "en") == ""
+    # A Polish museum's work: its own title is the Polish one.
+    assert titled("Łodzie rybackie na plaży w Saintes-Maries-de-la-Mer", pl, "pl") == ""
+    # Not translated (no key): nothing for the museums abroad.
+    assert titled(own, Wording(pl.text), "en") == ""
+
+
+def test_a_copy_found_only_by_the_polish_title_stands_in(frame: Any) -> None:
+    service, web, answer = frame
+    own = _slide(service, web)
+    service.library.update(own.id, title="Boote am Ufer")
+    copy = _copy(9, title="Fishing Boats on the Beach at Les Saintes-Maries-de-la-Mer")
+    _offer(web, copy, _print(1, (3600, 2400)))
+    answer([])  # nothing for "Boote am Ufer Corot"
+    asked: list[dict[str, str]] = []
+
+    def search_each(texts: dict[str, str], n: int) -> list[Item]:
+        asked.append(texts)
+        service.importer.remember([copy])
+        return [copy] if "fishing boats" in texts.get("wmc", "") else []
+
+    service.sharper.sources = lambda: ["wmc", "mnw"]
+    service.sharper.search_each = search_each
+    service.sharper.other_title = lambda item, wait: Wording(
+        "Łodzie rybackie", en="fishing boats on the beach"
+    )
+    stored = service.library.get(own.id)
+    assert stored is not None
+    assert service.sharper.soon(stored).result(30) == "found"
+    assert asked == [{"wmc": "fishing boats on the beach corot", "mnw": "Łodzie rybackie corot"}]
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None
+    assert stored.sharper.item_id == "wmc:9"

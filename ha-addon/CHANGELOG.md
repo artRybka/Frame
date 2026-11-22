@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.315
+
+- „Szukaj lepszej kopii” pyta muzea także o polski tytuł z karty,
+  przetłumaczony na język źródła. Dotąd dzieło, które przyszło z obcym
+  tytułem (np. van Gogh z Foto Marburg, „Boote am Ufer”), nie miało
+  lepszej kopii, choć muzea ją mają.
+
 ## 1.145.314
 
 - „Treść” bez „Formy” odejmuje formę o połowę słabiej (pełne odjęcie
