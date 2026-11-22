@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.309
+
+- Pasek barw na karcie zmienia się sam po zdjęciu werniksu albo
+  odżółceniu papieru, bez wychodzenia z dzieła.
+
 ## 1.145.308
 
 - Restaurator dzieł może rysować modelem SeedVR2 na fal.ai: niczego nie

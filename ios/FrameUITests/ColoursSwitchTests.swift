@@ -93,6 +93,36 @@ final class ColoursSwitchTests: XCTestCase {
         Self.log("menu-moved \(moved)")
     }
 
+    /// The card's colour bar follows a switch of its colours, measured by
+    /// the server after it has answered, without the card left and opened
+    /// again (Mateusz 2026-11-22: "Pasek po zdjęciu werniksu zmienia się
+    /// dopiero gdy wyjdę i wejdę ponownie w dzieło").
+    @MainActor
+    func testTheCardsBarFollowsTheSwitch() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-demo", "YES", "-screen", "detail", "-demoSlowServer", "2", "-demoSlowColours", "4",
+            "-paintStyle", "pen", "-demoPaper", "YES",
+        ]
+        app.launch()
+        let more = app.buttons["Więcej"].firstMatch
+        XCTAssertTrue(more.waitForExistence(timeout: 40), "no menu on the card")
+        let bar = app.descendants(matching: .any)["colour-bar"].firstMatch
+        XCTAssertTrue(bar.waitForExistence(timeout: 20), "no colour bar on the card")
+        sleep(4)  // the card has asked what its colours may be
+        let before = bar.value as? String ?? ""
+        XCTAssertFalse(before.isEmpty)
+        more.tap()
+        let entry = app.buttons["Odżółć papier"].firstMatch
+        XCTAssertTrue(entry.waitForExistence(timeout: 10), "no \"Odżółć papier\" in the card's menu")
+        entry.tap()
+        let followed = NSPredicate(format: "value != %@", before)
+        let changed = XCTNSPredicateExpectation(predicate: followed, object: bar)
+        XCTAssertEqual(XCTWaiter().wait(for: [changed], timeout: 25), .completed,
+                       "the bar did not take the colours measured after the switch")
+        Self.log("bar-followed")
+    }
+
     @MainActor
     private func check(_ style: [String], named prefix: String) throws {
         try? FileManager.default.createDirectory(atPath: Self.folder, withIntermediateDirectories: true)
