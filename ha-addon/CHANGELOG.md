@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.310
+
+- „Podobne do” z samą „Treścią” (bez „Formy”) nie ciągnie już techniki:
+  z odcisku wyjmowane jest to, co mówi o technice i epoce, więc
+  autoportret ołówkiem pokazuje też portrety olejne i grafiki, a nie
+  prawie same rysunki.
+
 ## 1.145.309
 
 - Pasek barw na karcie zmienia się sam po zdjęciu werniksu albo

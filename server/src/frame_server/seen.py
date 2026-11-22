@@ -377,6 +377,7 @@ class Heads:
         self.subject = subject
         self.subjects = subjects
         self.count = count
+        self._basis: np.ndarray | None = None
 
     @staticmethod
     def _ridge(x: np.ndarray, xty: np.ndarray, hold: float) -> np.ndarray:
@@ -414,6 +415,20 @@ class Heads:
             HOLD_SUBJECT,
         )
         return cls(form, subject, subjects, len(items))
+
+    def form_basis(self) -> np.ndarray:
+        """The directions of the numbers the form layer reads technique and
+        half century from (:data:`SIZE` × at most its columns, orthonormal):
+        taken out of the numbers when only the subject is asked
+        (:meth:`Seen.alike_near`)."""
+        kept = self._basis
+        if kept is None:
+            weights = self.form[:-2].astype(np.float64)
+            left, values, _ = np.linalg.svd(weights, full_matrices=False)
+            wide = values > values.max(initial=0.0) * 1e-4
+            kept = left[:, wide].astype(np.float32)
+            self._basis = kept
+        return kept
 
     @staticmethod
     def answer(layer: np.ndarray, vectors: np.ndarray) -> np.ndarray:
@@ -640,7 +655,16 @@ class Seen:
     def alike_near(self, vector: np.ndarray, count: int, by: str = "") -> list[tuple[str, float]]:
         """The works nearest a work's (or a photograph's) numbers: by its
         whole look (``by`` empty), or by its form ("style") or its subject
-        ("subject"): the layer's answer and the whole look, half each."""
+        ("subject"): the layer's answer and the whole look, half each.
+
+        The subject alone is asked of the numbers without their form
+        (Mateusz 2026-11-22, Wyspiański's self-portrait by Treść alone: "w
+        wynikach praktycznie tylko rysunek"; of the boards he chose "Bez
+        formy"): the directions the form layer reads technique and half
+        century from are taken out of both sides before they are compared.
+        Its scores are then told at the levels the half-and-half ones have at
+        the same places (the n-th nearest gets the n-th nearest's score of
+        before), so the floors set on those still show as many works."""
         query = _unit_rows(np.asarray(vector, dtype=np.float32)[None, :])[0]
         shaped = self.shaped() if by in ("style", "subject") else None
         if shaped is None:
@@ -648,17 +672,32 @@ class Seen:
         heads, forms, subjects, ids, live = shaped
         layer, answers = (heads.form, forms) if by == "style" else (heads.subject, subjects)
         asked = Heads.answer(layer, query[None, :])[0]
+        basis = heads.form_basis() if by == "subject" else None
+        if basis is not None:
+            rest = query - basis @ (basis.T @ query)
+            rest /= max(float(np.linalg.norm(rest)), 1e-9)
         with self.index._lock:
             rows, norms = self.index._rows, self.index._norms
         rows, norms = rows[: len(answers)], norms[: len(answers)]
         scores = np.empty(len(answers), dtype=np.float32)
+        levels = np.empty(len(answers), dtype=np.float32) if basis is not None else None
         for at in range(0, len(answers), CHUNK):
-            whole = rows[at : at + CHUNK].astype(np.float32) @ query
-            whole /= np.maximum(norms[at : at + CHUNK, 0], 1e-9)
-            scores[at : at + CHUNK] = (
-                whole + answers[at : at + CHUNK].astype(np.float32) @ asked
-            ) / 2
-        return LookIndex.top(scores, ids, live, count)
+            part = rows[at : at + CHUNK].astype(np.float32)
+            length = np.maximum(norms[at : at + CHUNK, 0], 1e-9)
+            told = answers[at : at + CHUNK].astype(np.float32) @ asked
+            whole = part @ query / length
+            if basis is None or levels is None:
+                scores[at : at + CHUNK] = (whole + told) / 2
+                continue
+            levels[at : at + CHUNK] = (whole + told) / 2
+            inside = part @ basis
+            left = np.sqrt(np.maximum(length**2 - (inside * inside).sum(axis=1), 1e-12))
+            scores[at : at + CHUNK] = (part @ rest / left + told) / 2
+        found = LookIndex.top(scores, ids, live, count)
+        if levels is None:
+            return found
+        before = sorted((s for _, s in LookIndex.top(levels, ids, live, len(found))), reverse=True)
+        return [(i, level) for (i, _), level in zip(found, before, strict=False)]
 
     def like(self, item_id: str, count: int, by: str = "") -> list[tuple[str, float]] | None:
         """The works nearest this one (``by`` as :meth:`alike_near`), or
