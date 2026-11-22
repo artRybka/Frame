@@ -187,6 +187,10 @@ class Copies:
         #: The Wikidata item of a work (``Holders.work_qid``): finds the
         #: Commons files with a tile set that show it.
         self.work_qid: Callable[[Item], str] | None = None
+        #: The other works of its artist the list found ("Nie pasują",
+        #: "Inne dzieło"), into the catalogue as works of their own
+        #: (``Player.keep_searched``; Mateusz 2026-11-22).
+        self.other_works: Callable[[list[Item]], None] = lambda items: None
 
     # -- the list ------------------------------------------------------------------
 
@@ -212,6 +216,8 @@ class Copies:
         seen = {stored.id, *([stored.sharper.item_id] if stored.sharper else [])}
         measured = [MEASURED]
         lock = threading.Lock()
+        #: Another work of the artist: the catalogue's, unless held.
+        others: list[Item] = []
 
         def fresh(found: Iterable[Item]) -> list[Item]:
             out = []
@@ -236,6 +242,9 @@ class Copies:
                 emit(CopyLine(kind="drop", item_id=copy.id))
             else:
                 emit(CopyLine(kind="copy", copy=view))
+                if view.notes == ["other"] and self.sharper.library.get(copy.id) is None:
+                    with lock:
+                        others.append(copy)
 
         def answered(key: str, future: Future[list[Item]]) -> None:
             failed = False
@@ -292,6 +301,14 @@ class Copies:
                     verdict.result()
         finally:
             asking.shutdown(wait=False, cancel_futures=True)
+            if others:
+                # Other works of the artist, found and their thumbnails
+                # had: works of the catalogue like those Szukaj shows
+                # (copies of held works and grey plates left out there).
+                try:
+                    self.other_works(others)
+                except Exception:
+                    log.exception("other works found for %s", stored.id)
         emit(CopyLine(kind="end"))
 
     def _ask(self, key: str, query: str) -> list[Item]:
