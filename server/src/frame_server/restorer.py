@@ -97,12 +97,16 @@ COLOUR_SIGMA = 2.0
 #: (:func:`recoloured`): the rest is the picture enlarged plainly. All of
 #: it was too much made up (Mateusz 2026-11-22, Janinet's print: "Czy
 #: możemy ograniczyć odrobinę „zmyślanie” przy restauracji?"); half kept
-#: half the change and a contour drawn thinner, the texture still there.
-DRAWN = 0.5
+#: half the change and a contour drawn thinner, the texture still there,
+#: but the work "trochę za miękki" (19:40): seven tenths.
+DRAWN = 0.7
 #: A drawing's note says it is in the picture's colours and tempered by
 #: :data:`DRAWN` (``colours``): the ones kept before are made so once
 #: (:meth:`Restorer.recolour_kept`).
-COLOURS = 2
+COLOURS = 3
+#: What each ``colours`` of a kept drawing kept of what was drawn: a
+#: drawing kept softer is given back its detail by the difference.
+KEPT = {1: 1.0, 2: 0.5}
 #: Works in one batch: their pictures go in the request (inline, under
 #: the API's 20 MB).
 PER_BATCH = 24
@@ -382,7 +386,10 @@ class Restorer:
             url = item.sharper.url
             try:
                 drawing = self.images.sample(url)
-                fitted = recoloured(descreened(self.images.before_drawn(item)), drawing)
+                was = KEPT.get(int(note.data.get("colours") or 1), 1.0) if note else 1.0
+                fitted = recoloured(
+                    descreened(self.images.before_drawn(item)), drawing, DRAWN / was
+                )
             except Exception as err:
                 log.info("restorer: %s not recoloured: %s", item.id, err)
                 continue
@@ -719,21 +726,21 @@ def fit(size: tuple[int, int], drawn: Image.Image) -> Image.Image:
     return drawn.convert("RGB").resize((dw, dh), Image.Resampling.LANCZOS)
 
 
-def recoloured(picture: Image.Image, drawn: Image.Image) -> Image.Image:
+def recoloured(picture: Image.Image, drawn: Image.Image, share: float = DRAWN) -> Image.Image:
     """``drawn`` in the colours of the picture it was drawn from (Mateusz
     2026-11-16: "Bywa że „restauracja dzieła” zmienia nieznacznie
     kolorystykę. Czy możemy po ‚stworzeniu’ jakości przenieść kolorystykę
     z oryginału?"). In OKLab, the drawing's tones and colours at the
     picture's own scale (blurred by :data:`COLOUR_SIGMA` of its pixels) are
     replaced by the picture's; of what is finer, the detail the model
-    drew, :data:`DRAWN` is kept over the picture enlarged plainly."""
+    drew, ``share`` is kept over the picture enlarged plainly."""
     size = drawn.size
     sigma = COLOUR_SIGMA * max(size) / max(picture.size)
     own = picture.convert("RGB").resize(size, Image.Resampling.LANCZOS)
     museum = linear_to_oklab(u8_to_linear(np.asarray(own))).astype(np.float32)
     lab = linear_to_oklab(u8_to_linear(np.asarray(drawn.convert("RGB")))).astype(np.float32)
     lab += cv2.GaussianBlur(museum, (0, 0), sigma) - cv2.GaussianBlur(lab, (0, 0), sigma)
-    lab = museum + DRAWN * (lab - museum)
+    lab = museum + share * (lab - museum)
     rgb = linear_to_u8(np.clip(oklab_to_linear(lab), 0.0, 1.0))
     return Image.fromarray(rgb, "RGB")
 
