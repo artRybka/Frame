@@ -431,6 +431,9 @@ protocol FrameBackend: Sendable {
     /// before keeping it.
     func saveGeminiKey(_ key: String) async throws -> AiSettings
     func deleteGeminiKey() async throws -> AiSettings
+    /// fal.ai's key for the creative restorer; checked with fal before kept.
+    func saveFalKey(_ key: String) async throws -> AiSettings
+    func deleteFalKey() async throws -> AiSettings
     /// Keys of art sources; the server checks a key with its source before keeping it.
     func sourceKeys() async throws -> [SourceKey]
     func saveSourceKey(_ source: String, key: String) async throws -> [SourceKey]

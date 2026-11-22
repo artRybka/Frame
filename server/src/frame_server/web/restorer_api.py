@@ -33,6 +33,8 @@ class RestorerView(BaseModel):
     about ``usd``), those waiting in batches, and the works drawn so far."""
 
     enabled: bool
+    #: Drawn by SeedVR2 on fal.ai (its key in Konfiguracja), not Google's.
+    by_fal: bool = False
     items: int
     usd: float
     waiting: int
@@ -44,7 +46,8 @@ def _view(svc: FrameService, works: list[Item] | None = None) -> RestorerView:
     items, usd = svc.restorer.estimate(works)
     waiting, restored = svc.restorer.counts()
     return RestorerView(
-        enabled=svc.painter.enabled(),
+        enabled=svc.restorer.enabled(),
+        by_fal=svc.restorer.by_fal(),
         items=items,
         usd=usd,
         waiting=waiting,
@@ -66,7 +69,7 @@ async def restore_favourites(svc: Svc) -> RestorerView:
     except AiUnavailable as err:
         raise HTTPException(409, str(err)) from err
     except httpx.HTTPError as err:
-        raise HTTPException(502, f"Google did not answer: {err}") from err
+        raise HTTPException(502, f"the image model did not answer: {err}") from err
     return await run_in_threadpool(_view, svc)
 
 
@@ -95,7 +98,7 @@ async def restore_playlist(playlist_id: int, svc: Svc, user: CurrentUser) -> Res
     except AiUnavailable as err:
         raise HTTPException(409, str(err)) from err
     except httpx.HTTPError as err:
-        raise HTTPException(502, f"Google did not answer: {err}") from err
+        raise HTTPException(502, f"the image model did not answer: {err}") from err
     return await run_in_threadpool(_view, svc, works)
 
 

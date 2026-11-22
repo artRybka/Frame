@@ -22,6 +22,7 @@ from .ai.curator import Curator
 from .ai.daily import View
 from .ai.details import MendJob
 from .ai.extras import ExtrasJob
+from .ai.fal import Upscaler
 from .ai.gatekeeper import Gatekeeper
 from .ai.gemini import Painter
 from .ai.journey import Journeys
@@ -454,9 +455,14 @@ class FrameService:
         # A study is ready once its sketch is drawn too (Mateusz 2026-11-15).
         self.study.sketch_coming = lambda item: self.drawn.coming(item, STUDY_KIND)
         self.study.sketches = self.drawn.draws
-        # Small pictures of works drawn again larger by the same model
-        # ("Kreatywny restaurator"), kept as the owner's pick.
-        self.restorer = Restorer(self.library, self.images, self.sharper, self.painter)
+        # Small pictures of works drawn again larger ("Kreatywny restaurator"),
+        # kept as the owner's pick: by SeedVR2 on fal.ai when Konfiguracja
+        # has its key (Mateusz 2026-11-22), else by Google's model. fal's
+        # pictures count in the image models' month.
+        self.upscaler = Upscaler(self.ai_config, self.painter.spending, self.painter.budget_left)
+        self.restorer = Restorer(
+            self.library, self.images, self.sharper, self.painter, upscaler=self.upscaler
+        )
         # How a work was painted, when a technical study of it was found.
         self.stages = PaintingStages(self.library, self.claude, self.web_facts, self.ai_config)
         # How the museums' works look, as Google's numbers: Szukaj by how a
