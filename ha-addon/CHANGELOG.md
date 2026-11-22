@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.145.318
+
+- Szukanie zdjęciem zaczyna od „Treści” i „Barw”, bez „Formy” (aplikacja).
+
 ## 1.145.317
 
 - „Treść” bez „Formy” i „Forma” bez „Treści” odejmują drugą warstwę
