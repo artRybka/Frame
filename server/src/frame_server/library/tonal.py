@@ -80,8 +80,9 @@ def _hue_apart(p: np.ndarray, q: np.ndarray) -> float:
 
 
 def _near(lab: np.ndarray, colour: np.ndarray) -> np.ndarray:
+    """How far each pixel is from ``colour``, squared (chroma counted twice)."""
     d = lab - colour
-    return np.asarray(np.sqrt(d[..., 0] ** 2 + 4 * (d[..., 1] ** 2 + d[..., 2] ** 2)))
+    return np.asarray(d[..., 0] ** 2 + 4 * (d[..., 1] ** 2 + d[..., 2] ** 2))
 
 
 def _lifted(colour: np.ndarray) -> np.ndarray:
@@ -100,19 +101,35 @@ def clusters(fine: np.ndarray, k: int = CLUSTERS) -> list[tuple[np.ndarray, floa
     weighted = (fine * np.array([1.0, 2.0, 2.0])).astype(np.float32)
     rng = np.random.default_rng(0)
     centres = weighted[rng.choice(len(weighted), min(k, len(weighted)), replace=False)]
+    # Pixels along the columns: the nearest centre is a column's least, the
+    # first of equals as ``np.argmin`` has it (which is slower across).
+    across = np.ascontiguousarray(weighted.T)
+    own = (weighted**2).sum(1)[None]
+    d = np.empty((len(centres), len(weighted)), np.float32)
 
-    def nearest(points: np.ndarray) -> np.ndarray:
-        d = (points**2).sum(1)[:, None] - 2 * points @ centres.T + (centres**2).sum(1)[None]
-        return np.asarray(np.argmin(d, 1))
+    def nearest() -> np.ndarray:
+        np.matmul(centres, across, out=d)
+        np.multiply(d, -2, out=d)
+        np.add(d, own, out=d)
+        np.add(d, (centres**2).sum(1)[:, None], out=d)
+        least = d.min(0)
+        at = np.full(len(weighted), len(d) - 1, np.intp)
+        for j in range(len(d) - 2, -1, -1):
+            at[d[j] == least] = j
+        return at
 
+    owner = nearest()
     for _ in range(25):
-        owner = nearest(weighted)
-        centres = np.array(
-            [
-                weighted[owner == j].mean(0) if (owner == j).any() else centres[j]
-                for j in range(len(centres))
-            ]
+        count = np.bincount(owner, minlength=len(centres)).astype(np.float32)
+        sums = np.stack(
+            [np.bincount(owner, weights=across[c], minlength=len(centres)) for c in range(3)], 1
         )
+        centres = np.where(
+            count[:, None] > 0, sums / np.maximum(count, 1)[:, None], centres
+        ).astype(np.float32)
+        before, owner = owner, nearest()
+        if np.array_equal(before, owner):
+            break
     out = []
     for j in range(len(centres)):
         pixels = fine[owner == j]
@@ -164,6 +181,7 @@ def candidates(
     fine: np.ndarray,
     found: Sequence[tuple[np.ndarray, float]],
     mains: Sequence[tuple[np.ndarray, float]],
+    cast: np.ndarray | None = None,
 ) -> list[tuple[np.ndarray, float]]:
     """What may be an accent, after the server's own ones: the lightest
     light, the small clusters, the white, the colours off the cast, the
@@ -177,14 +195,14 @@ def candidates(
     white = (fine[:, 0] >= WHITE_LIGHT) & (np.hypot(fine[:, 1], fine[:, 2]) <= WHITE_CHROMA)
     if white.mean() >= WHITE_AREA:
         out.append((fine[white].mean(0), float(white.mean())))
-    cast = np.median(fine[:, 1:], 0)
+    cast = np.median(fine[:, 1:], 0) if cast is None else cast
     off = fine[:, 1:] - cast
     off_hue = np.degrees(np.arctan2(off[:, 1], off[:, 0])) % 360
     off_by = np.hypot(off[:, 0], off[:, 1])
+    lit = fine[:, 0] > 0.15
+    off_enough = (off_by >= OFF_CAST) & lit
     for _, start, end in C.ACCENT_SECTORS:
-        sector = (
-            ((off_hue - start) % 360 < end - start) & (off_by >= OFF_CAST) & (fine[:, 0] > 0.15)
-        )
+        sector = ((off_hue - start) % 360 < end - start) & off_enough
         if sector.mean() >= OFF_AREA:
             c = fine[sector].mean(0)
             c[1:] += CAST_LIFT * (c[1:] - cast)
@@ -194,7 +212,7 @@ def candidates(
         (hue >= GREENS[0])
         & (hue < GREENS[1])
         & (np.hypot(fine[:, 1], fine[:, 2]) >= GREEN_CHROMA)
-        & (fine[:, 0] > 0.15)
+        & lit
     )
     if green.mean() >= GREEN_AREA:
         c = fine[green].mean(0)
@@ -218,11 +236,12 @@ def bar(grid: np.ndarray, own: Sequence[tuple[np.ndarray, float]] = ()) -> list[
     trusted = len(own)
     kernel = np.ones((5, 5), np.uint8)
     picked: list[tuple[np.ndarray, float, float, int, float]] = []
-    for n, (colour, share) in enumerate([*own, *candidates(fine, found, mains)]):
+    for n, (colour, share) in enumerate([*own, *candidates(fine, found, mains, cast)]):
         c = np.asarray(colour, dtype=float).copy()
-        here = _near(grid, c) < 0.06
+        far = _near(grid, c)
+        here = far < 0.06**2
         if here.sum() < 3:
-            here = _near(grid, c) < 0.1
+            here = far < 0.1**2
         ring = cv2.dilate(here.astype(np.uint8), kernel).astype(bool) & ~here
         around = owner[ring] if ring.any() else owner[here]
         host = int(np.bincount(around, minlength=len(mains)).argmax()) if around.size else 0
