@@ -58,6 +58,7 @@ def test_every_kind_of_copy_has_its_reason() -> None:
     assert told["dokument"] == (Why.DOCUMENT,)
     assert told["archiwum fotografii"] == (Why.ARCHIVE_PHOTO,)
     assert told["archiwum sztuki, szare"] == (Why.GREY_SLIDE,)
+    assert told["archiwum sztuki, kolor"] == (Why.ARCHIVE_SLIDE,)
     assert told["kopia z Openverse"] == (Why.OPENVERSE_COPY,)
     assert told["fotografia z Openverse"] == (Why.OPENVERSE_PHOTO, Why.PHOTOGRAPH)
     assert told["fotografia z muzeum"] == (Why.PHOTOGRAPH,)
@@ -90,7 +91,6 @@ ASKS = {
 #: work's kind: the work of the day wants a large picture and no archive's
 #: slide, the gatekeeper looks at no museum's own works.
 OWN_WISHES = {
-    ("studium dnia", "archiwum sztuki, kolor"),
     ("studium dnia", "mały obraz"),
     ("Strażnik", "obraz z muzeum"),
     ("Strażnik", "szara grafika z muzeum"),

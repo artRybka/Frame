@@ -11,6 +11,7 @@ from test_pools import _wait, museums  # noqa: F401  (fixture)
 
 from frame_server.library import Item, ItemKind, PlaylistRules
 from frame_server.library.importer import fill_queries, span
+from frame_server.library.models import SharperCopy
 from frame_server.library.museums import by_artist
 from frame_server.library.repo import matches
 from frame_server.library.search import museum_text
@@ -25,7 +26,7 @@ from frame_server.library.themes import (
     WEEKLY,
     theme_of_the_day,
 )
-from frame_server.library.verdict import Place, against, category_fits, copy_whys
+from frame_server.library.verdict import Place, Why, against, category_fits, copy_whys
 from frame_server.library.vocabulary import (
     BY_KEY,
     EARLY_COLOUR,
@@ -363,7 +364,8 @@ def test_paintings_without_colour_are_copies() -> None:
 def test_black_and_white_photos_of_art_archives_are_copies() -> None:
     """Foto Marburg's old prints on a catalogue card ("La Berceuse, Bildnis
     der Madame Roulin", Neg.-Nr. typed below) are copies whatever the work;
-    its colour photographs, and museums' own grey prints, stay."""
+    its colour photographs too until a copy takes their place (Mateusz
+    2026-11-22); museums' own grey prints stay."""
     marburg = "German Documentation Center for Art History - Marburg Picture Index"
 
     def archive(n: int, **fields) -> Item:
@@ -384,7 +386,10 @@ def test_black_and_white_photos_of_art_archives_are_copies() -> None:
     )
     colour = archive(3, title="La Berceuse / Madame Roulin", tint_spread=0.027)
     unknown = archive(4, title="La Berceuse / Madame Roulin")
-    assert not copy_whys(colour) and not copy_whys(unknown)
+    assert copy_whys(colour) == copy_whys(unknown) == (Why.ARCHIVE_SLIDE,)
+    copy = SharperCopy(url="https://x/c.jpg", item_id="wmc:1", source="wmc", width=3000, height=99)
+    colour = colour.model_copy(update={"sharper": copy})
+    assert not copy_whys(colour)
     etching = _work(5, title="Melencolia I", classification="Print", tint_spread=0.0)
     assert not is_grey_copy(etching) and not copy_whys(etching)
     grey_oil = _work(6, title="Babie lato", classification="Painting", tint_spread=0.002)
