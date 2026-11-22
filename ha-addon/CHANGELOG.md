@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.311
+
+- „Treść” bez „Formy” liczona tak jak na planszy, którą wybrałeś: od
+  podobieństwa całego wyglądu odejmowane jest podobieństwo formy (techniki
+  i epoki). Poprzednia wersja prawie nic nie zmieniała.
+
 ## 1.145.310
 
 - „Podobne do” z samą „Treścią” (bez „Formy”) nie ciągnie już techniki:
