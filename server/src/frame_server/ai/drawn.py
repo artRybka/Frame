@@ -1,36 +1,39 @@
-"""The study sheet of an analysis of composition, drawn by an image model
-(Google's, through the Interactions API): what is asked of it and in what
-order. The pictures' own sums are in ``imaging.drawn``.
+"""The study sheet of an analysis of composition: its study drawn by an
+image model (Google's, through the Interactions API), its marks drawn here
+in chalk (``imaging.chalk``). What is asked of the model and in what order;
+the pictures' own sums are in ``imaging.drawn``.
 
 Mateusz 2026-11-12, after four rounds of trial sheets (19:44: "całość
-łącznie z akwarela robi model graficzny"; 21:29: "wybieram opcję Model
-rysuje sam, z opisu"; 22:14: "Jest świetnie. Wdrażamy."). Three questions
-a sheet, each answered with a picture, about 0.15 USD together:
+łącznie z akwarela robi model graficzny"; 22:14: "Jest świetnie.
+Wdrażamy."). Two questions a sheet, each answered with a picture, about
+0.08 USD together:
 
 1. The work redrawn as a painter's study in watercolour and pen
    (:data:`UNDERLAY`): what the analysis says matters is drawn exactly and
    in fuller colour, the rest set down in broad pale washes; what is dark
    is one schematic wash, the wash carries no detail, a face is a few
    lines and hair a mass (his remarks of 20:54, 21:26 and 21:59).
-2. The analysis's marks drawn over that study as a painting teacher
-   would, from words alone (:data:`LINES`): every mark with a coloured
-   pencil of its own, so that they can be taken apart again.
-3. One wash and one pen line let out of the study to the side edges of
+2. One wash and one pen line let out of the study to the side edges of
    the page (:data:`SPILL`; 21:59: "wyjścia szkicem i akwarelą w
    pojedynczych miejscach do krawędzi ekranu. subtelnie - jedną plamą,
    pojedynczą kreską"). Asked as a change to the finished study: asked for
    together with the study, the model painted a photograph of a sheet
    with a smaller study on it.
 
+The analysis's marks were drawn over the study by the model too, from
+words, a coloured pencil each, and taken apart again (``drawn.split``).
+Since 2026-11-22 they are drawn here, in chalk, each straight into a layer
+of its own (Mateusz 22:10, after five rounds of trial sheets: "Jest super.
+Działamy."): every mark where it lies, nothing written, the study under
+them untouched, and nothing paid.
+
 Each answer differs, so a sheet is made once and kept (``drawn``).
 
-Cheaper since the trial of 2026-11-13 (0.12 USD instead of 0.15, Mateusz
-07:11: "zastanów się jak obniżyć koszt"): the study and the lines are asked
-of a model that does not think first (:data:`THINK`; the same look, and a
-third faster), the spill of Google's cheapest model (``gemini.LITE``),
-which lets a wash run out as well as the dearer one. Asking for the spill
-together with the lines, or sending the work with a stain already painted
-beside it, spoilt the study, so the three questions stay.
+Cheaper since the trial of 2026-11-13 (Mateusz 07:11: "zastanów się jak
+obniżyć koszt"): the study is asked of a model that does not think first
+(:data:`THINK`; the same look, and a third faster), the spill of Google's
+cheapest model (``gemini.LITE``), which lets a wash run out as well as the
+dearer one.
 """
 
 from __future__ import annotations
@@ -47,7 +50,7 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-from ..imaging import drawn
+from ..imaging import chalk, drawn
 from .client import HAIKU, AiUnavailable, request
 from .daily import Mark, Spot, View
 from .gemini import NotDrawn, blocked
@@ -57,13 +60,11 @@ log = logging.getLogger(__name__)
 
 #: What the sheets are counted as in the month's spending.
 KIND = "sheet"
-#: A sheet is about this much (three answers), for what is told before.
-TYPICAL_USD = 0.12
-#: How much the model thinks before it draws the study and the lines.
+#: A sheet is about this much (two answers: its study and what runs out of
+#: it; its marks are drawn here), for what is told before.
+TYPICAL_USD = 0.08
+#: How much the model thinks before it draws the study.
 THINK = "minimal"
-#: The lines are asked for this many times at most while a mark is left
-#: out (the answer with more of them is kept), at once and in the Batch.
-LINES_TRIES = 2
 #: A study Google will not take at all (a nude, now and then) is asked for
 #: up to this many times: a refusal costs nothing (Mateusz 2026-11-13 08:26:
 #: "Akty - ograniczmy się do powielania prób (do 8 razy)"; black bars over
@@ -263,67 +264,6 @@ the margins stays bare, clean paper. Nothing is depicted in the margin.
 LINE = 1
 
 
-LINES = """\
-This image is a finished composition study of a painting (watercolour and pen). A painting \
-teacher now explains its composition by drawing over it with coloured pencils, one pencil for \
-each finding. Draw the teacher's marks and return the study with them on it. The teacher only \
-draws: nothing is written anywhere on the sheet.
-
-THE STUDY STAYS AS IT IS. Same framing and size, edge to edge. Do not repaint, recolour, \
-sharpen, clean or redraw any of it: every wash and every ink line stays exactly where and how \
-it is. Bare paper stays bare. Only coloured pencil is added on top.
-
-THE PENCILS. Waxy coloured pencils, a little grainy at the edge of the stroke, clearly thicker \
-than the ink line, pressed firmly so that the colour stays pure and saturated over any wash, \
-light or dark. Pressure varies within a stroke: heavier where it starts, lighter where it \
-leaves the paper.
-
-ONE PENCIL FOR ONE FINDING. Each finding below names its own pencil. Every stroke of that \
-finding (its rings, arcs, arrowhead, echo strokes, ticks) is drawn with that pencil alone. No \
-two findings share a colour. Colours are never mixed, shaded into one another or changed along \
-a stroke; where two marks cross, each keeps its own colour. Use exactly the colours named.
-
-WHAT THE TEACHER SHOWS. These are the findings of the analysis, one gesture for each, and \
-nothing besides. Places are given in percent of the width from the left and of the height from \
-the top, as a help to find the thing: draw each mark where the thing really is in the study. \
-The names in quotation marks are for you alone, to know what each finding is about: they are \
-never written on the sheet.
-{MARKS}
-
-THE ANALYSIS IN WORDS (to understand what the marks mean; in Polish): {TEXT}
-
-HOW THE TEACHER DRAWS. This is not a diagram. It is live, loose, sketchy drawing done while \
-talking, and every mark hugs the thing it is about.
-- LOOP: to point at a thing the pencil runs round it, an envelope that follows its silhouette \
-closely, open, the ends overlapping; never a neat ellipse or circle. It takes the outline of \
-the thing itself: boxy with a curved top round the footboard of a bed, long and pointed round \
-a boat, egg-shaped and leaning round a tilted head.
-- TRIANGLE, BOX: a big shape is thrown in with long fast strokes that lie along the real edges \
-it is made of (an arm, a mast, a hem, a bed rail), cross a little past the corners and fade \
-out.
-- LINE: one swift stroke along the form or edge it names; where it leads the eye somewhere it \
-ends in an open arrowhead.
-- MOTION: a sweeping curved arrow along the gesture of the body, the wave or the cloth, with \
-an open arrowhead and two or three short strokes echoing it.
-- ECHO: a small quick ring round each of the places that answer each other and a faint dotted \
-arc from one ring to the next.
-- RHYTHM: short repeated strokes, one on each repeated element.
-- DIRECTION: one swift stroke from its start to its end, with an open arrowhead at the end.
-- PERSPECTIVE: a few swift straight strokes along the real edges that run to the vanishing \
-point, fanning out from it; they need not reach it.
-- SPIRAL: one winding stroke that starts wide, turns through the things on its way and coils \
-into its eye.
-- UNDERLINE: one firm stroke under the thing, a little past both its ends.
-Some strokes are gone over twice. Nothing is ruled, closed neatly or geometrically perfect. \
-Keep it sparse and legible: only the gestures listed. Marks that concern neighbouring things \
-run beside each other, never one on top of the other: leave a clear gap of paper between two \
-different pencils wherever they do not have to cross.
-
-NOTHING IS WRITTEN. No words, names, titles or captions beside the marks, no numbers, no \
-letters, in any language. No legend, no colour key, no frame, no other additions. The sheet \
-shows the study and the pencil strokes, nothing else.
-"""
-
 SPILL = """\
 This image is a finished composition study of a painting (watercolour and pen) on a sheet of \
 cream paper. The study lies in the middle; round it there is a margin of the same bare paper. \
@@ -468,51 +408,6 @@ def _pc(spot: Spot) -> str:
     return f"({round(spot.x * 100)}, {round(spot.y * 100)})"
 
 
-def said(mark: Mark) -> str:
-    """A mark in words: what it is and about where it lies (per cent of the
-    width and of the height), as a help to find the thing."""
-    pts = mark.points
-    if mark.shape == "loop":
-        x0, y0, x1, y1 = _loop_box(mark, (100, 100))
-        return (
-            f"LOOP round what lies between {round(x0)} and {round(x1)} across, "
-            f"{round(y0)} and {round(y1)} down"
-        )
-    if mark.shape == "triangle":
-        return "TRIANGLE with its corners at " + ", ".join(_pc(p) for p in pts)
-    if mark.shape == "rect":
-        return f"BOX from {_pc(pts[0])} to {_pc(pts[-1])}"
-    if mark.shape == "rhythm":
-        across = ", ".join(f"{round(p.x * 100)} across" for p in pts[::2])
-        return f"RHYTHM: a tick on each of the repeated elements standing at {across}"
-    if mark.shape == "echo":
-        return "ECHO between the places at " + ", ".join(_pc(p) for p in pts)
-    if mark.shape == "motion" and len(pts) > 2:
-        through = ", ".join(_pc(p) for p in pts[1:-1])
-        return f"MOTION that starts at {_pc(pts[0])}, passes {through} and ends at {_pc(pts[-1])}"
-    if mark.shape in ("motion", "arrow"):
-        return f"DIRECTION from {_pc(pts[0])} to {_pc(pts[-1])}"
-    if mark.shape == "rays":
-        ends = ", ".join(_pc(p) for p in pts[1:])
-        return f"PERSPECTIVE: edges running to the vanishing point at {_pc(pts[0])} from {ends}"
-    if mark.shape == "spiral":
-        return (
-            f"SPIRAL that starts at {_pc(pts[0])}, turns through {_pc(pts[1])} "
-            f"and winds into its eye at {_pc(pts[-1])}"
-        )
-    if mark.shape == "underline":
-        return f"UNDERLINE from {_pc(pts[0])} to {_pc(pts[-1])}"
-    return "LINE through " + ", ".join(_pc(p) for p in pts)
-
-
-def lines_prompt(marks: Sequence[Mark], pencils: Sequence[tuple[str, str]], text: str) -> str:
-    rows = [
-        f"{n}. {word} pencil ({colour}). „{m.title}” ({m.text.rstrip('.')}): {said(m)}."
-        for n, (m, (word, colour)) in enumerate(zip(marks, pencils, strict=False), start=1)
-    ]
-    return LINES.replace("{MARKS}", "\n".join(rows)).replace("{TEXT}", text)
-
-
 def _course(mark: Mark) -> tuple[list[tuple[float, float]], bool]:
     """Where a mark runs (fractions of the field) and whether it closes."""
     pts = [(p.x, p.y) for p in mark.points]
@@ -591,27 +486,6 @@ def spill_prompt(line: bool = False) -> str:
     return SPILL_LINE if line else SPILL
 
 
-def lines_ask(study: Image.Image, view: View) -> tuple[str, list[str]] | None:
-    """What is asked for the take's marks over its ``study``, and the
-    pencils' colours in the marks' order; None when it has none to draw."""
-    marks = titled(view)
-    if not marks:
-        return None
-    pencils = drawn.pencils([_course(m) for m in marks], study)
-    return lines_prompt(marks, pencils, view.text), [colour for _, colour in pencils]
-
-
-def _there(layers: Sequence[Any]) -> int:
-    return sum(float((layer > 0.3).mean()) >= drawn.NO_MARK for layer in layers)
-
-
-def marks_there(study: Image.Image, marked: Image.Image, colours: Sequence[str]) -> int:
-    """How many of the take's marks (one per pencil in ``colours``) the
-    model drew over ``study`` in its answer ``marked``."""
-    layers, _ = drawn.split(study, marked, colours)
-    return _there(layers)
-
-
 def _asked(paint: Paint, prompt: str, picture: Image.Image) -> tuple[Image.Image, float]:
     """The study (or its lines) as asked, asked again while Google will not
     take the question (:data:`BLOCKED_TRIES` at most; refused, it costs
@@ -639,28 +513,6 @@ def _study(
         if off <= drawn.FAR_OFF:
             return study, frac
     raise NotDrawn(f"the study lies {off:.1f}% off the work")
-
-
-def _marks(
-    study: Image.Image, view: View, paint: Paint, costs: dict[str, float]
-) -> Image.Image | None:
-    """The study with the take's marks as the model drew them over it.
-    Asked once more when a mark is left out; the answer with more of the
-    marks is kept."""
-    ask = lines_ask(study, view)
-    if ask is None:
-        return None
-    prompt, colours = ask
-    best: tuple[int, Image.Image] | None = None
-    for _ in range(LINES_TRIES):
-        marked, usd = _asked(paint, prompt, study)
-        costs["lines"] = costs.get("lines", 0.0) + usd
-        there = marks_there(study, marked, colours)
-        if best is None or there > best[0]:
-            best = (there, marked)
-        if best[0] == len(colours):
-            break
-    return best[1] if best is not None else None
 
 
 def _field(work: Image.Image, study: Image.Image) -> tuple[tuple[int, int], Any, Any]:
@@ -701,47 +553,61 @@ def repaged(
     return _page(study, spilt, frac, size, field_, seed)
 
 
+def strokes(view: View) -> list[chalk.Stroke]:
+    """The take's titled marks as the chalk draws them."""
+    return [chalk.Stroke(m.shape, [(p.x, p.y) for p in m.points], m.text) for m in titled(view)]
+
+
+def lines(
+    field_: Any, view: View, seed: int
+) -> tuple[list[Any], list[str], list[list[tuple[float, float]]]]:
+    """The take's marks in chalk over ``field_`` (the field as the page
+    shows it, RGB 0…1): a layer for each (the field large), its pencil's
+    colour (the one that stands out most from what it lies on,
+    ``imaging.drawn.pencils``) and where its numbers stand, on its own line
+    (fractions of the field; a ring of an echo each, a rhythm's first and
+    last element)."""
+    marks = titled(view)
+    if not marks:
+        return [], [], []
+    h, w = field_.shape[:2]
+    rgb = (np.clip(field_, 0, 1) * 255 + 0.5).astype(np.uint8)
+    pencils = drawn.pencils([_course(m) for m in marks], Image.fromarray(rgb))
+    layers = chalk.draw(rgb, strokes(view), seed)
+    placed = [
+        drawn.Placed(
+            m.shape,
+            [(p.x * w, p.y * h) for p in m.points],
+            _loop_box(m, (w, h)) if m.shape == "loop" else None,
+        )
+        for m in marks
+    ]
+    numbers = [[(x / w, y / h) for x, y in found] for found in drawn.spots(placed, layers, field_)]
+    return layers, [colour.lower() for _, colour in pencils], numbers
+
+
+def _there(layer: Any) -> bool:
+    return float((layer > 0.3).mean()) >= drawn.NO_MARK
+
+
 def put_together(
     work: Image.Image,
     view: View,
     study: Image.Image,
-    marked: Image.Image | None,
     spilt: Image.Image | None,
     costs: dict[str, float],
     seed: int = 1,
 ) -> Sheet:
-    """The sheet out of the model's three answers: ``work`` as it was sent
-    (:func:`imaging.drawn.sent`), its ``study``, the study with the take's
-    marks (``marked``; None when the take has none) and with what runs out
-    of it (``spilt``; None: the sheet goes without). Raises
+    """The sheet out of the model's answers and the chalk: ``work`` as it
+    was sent (:func:`imaging.drawn.sent`), its ``study`` and the study with
+    what runs out of it (``spilt``; None: the sheet goes without); the
+    take's marks are drawn over the study as the page shows it. Raises
     :class:`NotDrawn` when the study is not the work's."""
     size, frac, field_ = _field(work, study)
-    marks = titled(view)
-    layers: list[Any] = []
-    colours: list[str] = []
-    numbers: list[list[tuple[float, float]]] = []
-    ask = lines_ask(study, view) if marked is not None else None
-    if ask is not None and marked is not None:
-        raw, colours = drawn.split(study, marked, ask[1])
-        for n, layer in enumerate(raw):
-            as_image = Image.fromarray((np.clip(layer, 0, 1) * 255).astype(np.uint8))
-            on = np.asarray(drawn.laid(as_image, frac, size), np.float32) / 255
-            layers.append(drawn.softened(on, seed + n))
-        placed = [
-            drawn.Placed(
-                m.shape,
-                [(p.x * size[0], p.y * size[1]) for p in m.points],
-                _loop_box(m, size) if m.shape == "loop" else None,
-            )
-            for m in marks
-        ]
-        numbers = [
-            [(x / size[0], y / size[1]) for x, y in found]
-            for found in drawn.spots(placed, layers, field_)
-        ]
+    layers, colours, numbers = lines(field_, view, seed)
     return Sheet(
         page=_page(study, spilt, frac, size, field_, seed),
-        layers=[drawn.png(layer) if _there([layer]) else None for layer in layers],
+        layers=[drawn.png(layer) if _there(layer) else None for layer in layers],
         colours=colours,
         numbers=numbers,
         size=size,
@@ -788,9 +654,9 @@ def draw(
     field alone, when the take has one) and ``view`` the take as its field
     sees it (``View.inside``); ``spill`` paints what runs out of the study
     (``paint`` itself when None). Over ``under`` (the work's study, had
-    before) only the take's lines are asked for (Mateusz 2026-11-12 23:20:
-    "gdy zamawiam ponowną analizę, a podkład od Gemini już jest, to rób
-    nim tylko kolorowe kreski"). ``costs``: what was paid for this sheet
+    before) nothing is asked: the take's marks are drawn in chalk over it
+    (Mateusz 2026-11-12 23:20: "gdy zamawiam ponowną analizę, a podkład od
+    Gemini już jest, to rób nim tylko kolorowe kreski"). ``costs``: what was paid for this sheet
     before (its study, asked apart), added to. Raises :class:`NotDrawn`
     when the study is not the work's; a spill that cannot be had is left
     out."""
@@ -798,7 +664,6 @@ def draw(
     costs = dict(costs or {})
     if under is None:
         under = underlay(work, view, paint, spill, costs, line)
-    marked = _marks(under.study, view, paint, costs)
-    sheet = put_together(work, view, under.study, marked, under.spilt, costs, seed)
+    sheet = put_together(work, view, under.study, under.spilt, costs, seed)
     sheet.under = under
     return sheet

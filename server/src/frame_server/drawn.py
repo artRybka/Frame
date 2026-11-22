@@ -1,7 +1,9 @@
 """The study sheets drawn by the image model (``ai.drawn``): made once in
-the background, kept on disk.
+the background, kept on disk. The model draws the study; the analysis's
+marks are drawn over it here, in chalk (``imaging.chalk``, since
+2026-11-22), at no cost.
 
-A drawn sheet costs about 0.12 USD and every answer of the model differs,
+A drawn sheet costs about 0.08 USD and every answer of the model differs,
 so one is made once for a take and never thrown away by the server (a take
 put aside for another keeps its sheet, should the owner go back to it).
 What is kept for a take (``<work>-<key>-…`` in ``drawn/``):
@@ -18,8 +20,8 @@ And for the work and its field (``<work>-u<field>-…``), whatever the take:
 what runs out of it, as answered. Another take of the same work and field
 (Mateusz 2026-11-12 23:20: "gdy zamawiam ponowną analizę, a podkład od
 Gemini już jest, to rób nim tylko kolorowe kreski") is drawn over them:
-its lines alone are asked for (about a third of a sheet), and its page is
-the same one.
+nothing is asked, its marks are drawn in chalk, and its page is the same
+one.
 
 Which takes get one, and when (Mateusz 2026-11-12 22:32: "Nowe od razu,
 zapisane przez Batch po aktualizacji dla obniżenia kosztu lub poprzez
@@ -30,9 +32,9 @@ zapisane przez Batch po aktualizacji dla obniżenia kosztu lub poprzez
   (``ai.drawn.AT_ONCE``);
 - through Google's Batch, at half the price and within a day: the takes
   of the pages saved before, some at a time, the newest page's first. A
-  batch is two rounds: the studies, then over each study its lines and
-  what runs out of it (``batch.json`` holds where it is, so that a
-  restart loses nothing).
+  batch is two rounds: the studies, then what runs out of each (``batch.json``
+  holds where it is, so that a restart loses nothing); the marks are drawn
+  in chalk as each sheet is put together.
 
 A study asked for is ready only once its take's sheet is drawn
 (:meth:`DrawnSheets.coming`, Mateusz 2026-11-15 09:56: "Wlicz
@@ -81,8 +83,7 @@ from .ai.drawn import (
     draw,
     judge_request,
     lined,
-    lines_ask,
-    marks_there,
+    lines,
     put_together,
     repaged,
     spill_prompt,
@@ -140,10 +141,13 @@ KEY_REJECTED = "key_rejected"
 LIMIT = "limit"
 
 Take = tuple["Item", "View"]
-#: Sheets kept before whose lines strayed (``imaging.doubtful``) have
-#: them drawn anew once: the state says which sweep was made.
-CHECKED = "drawn_lines_checked"
-CHECK = 1
+#: The marks of the sheets kept before are drawn anew in chalk once, over
+#: their page as it is (Mateusz 2026-11-22 22:10, "Działamy"; nothing is
+#: paid): a sheet notes it (``chalk`` in its meta), the state that all are.
+CHALKED = "drawn_chalk"
+CHALK = 1
+#: The sheets whose marks are drawn anew in one go of the background.
+CHALK_AT_ONCE = 8
 
 #: Kept sheets whose study says more than its painting (Mateusz 2026-11-14
 #: 20:33: "Dla studiów tego wymagających w mojej bazie zlec podmianę
@@ -258,6 +262,7 @@ class DrawnSheets:
         meta = {
             "look": LOOK,
             "made": now_iso(),
+            "chalk": CHALK,
             #: The study's prompt, when it is known to be the one of now
             #: (a study drawn with the sheet); else the judge looks at it.
             **({"plain": PLAIN} if plain else {}),
@@ -599,8 +604,8 @@ class DrawnSheets:
         return zlib.crc32(item.id.encode())
 
     def make(self, item: Item, view: View) -> None:
-        """Draws the take's sheet now and keeps it: three paid answers, or
-        the lines' alone over the study the work already has."""
+        """Draws the take's sheet now and keeps it: two paid answers, or
+        none over the study the work already has (its marks are chalk)."""
         paint = partial(self.painter.paint, KIND, think=THINK)
         spill = partial(self.painter.paint, KIND, model=LITE)
         work = self._work(item, view)
@@ -609,8 +614,8 @@ class DrawnSheets:
         costs: dict[str, float] = {}
         fresh = under is None
         if under is None:
-            # Kept before the lines are asked for: should they fail, the
-            # study is paid for once, and the next go asks the lines alone.
+            # Kept before the sheet is put together: should that fail, the
+            # study is paid for once.
             under = underlay(work, inside, paint, spill, costs, self._lined(item))
             self._keep_under(item, view, under)
         sheet = draw(work, inside, paint, seed=self._seed(item), under=under, costs=costs)
@@ -644,7 +649,8 @@ class DrawnSheets:
     # -- through the Batch ------------------------------------------------------
 
     def _batch(self) -> dict[str, Any] | None:
-        """Where the open batch is: its round ("study", "lines"), Google's
+        """Where the open batch is: its round ("study", "lines": the second,
+        what runs out of each study), Google's
         name for it ("" when the round is still to be handed over), its
         takes (work, key) and what their answers cost so far."""
         try:
@@ -701,7 +707,7 @@ class DrawnSheets:
                 prompt = study_prompt(view.inside(), self._lined(item))
                 asks.append(Ask(under, prompt, [work], think=THINK))
             takes.append([item.id, self.key(view)])
-        if takes and not asks:  # each has its study: their lines alone are asked for
+        if takes and not asks:  # each has its study: what runs out of it, if anything
             self._set_batch({"round": "lines", "name": "", "takes": takes, "cost": {}})
             return True
         name = None
@@ -758,8 +764,8 @@ class DrawnSheets:
         self._set_batch({"round": "lines", "name": "", "takes": takes, "cost": cost})
 
     def _second(self, state: dict[str, Any]) -> None:
-        """Hands the second round to the Batch: over each study the take's
-        lines, and what runs out of it."""
+        """Hands the second round to the Batch: what runs out of each study
+        that has nothing running out of it yet (the marks are chalk)."""
         asks: list[Ask] = []
         each = self._each(state)
         for stem, item, view in each:
@@ -767,15 +773,12 @@ class DrawnSheets:
             if under is None:
                 self._fail(stem, "its study is gone", count=False)
                 continue
-            ask = lines_ask(under.study, view.inside())
-            if ask is not None:
-                asks.append(Ask(f"{stem}/lines", ask[0], [under.study], think=THINK))
             spill = f"{self._under_name(item, view)}/spill"
             if under.spilt is None and all(ask.name != spill for ask in asks):
                 # one batch is one model's: the spill stays with it, without thinking
                 prompt = spill_prompt(self._lined(item))
                 asks.append(Ask(spill, prompt, [imaging.padded(under.study)[0]], think=THINK))
-        if not asks:  # nothing to ask: the takes without marks get their page at once
+        if not asks:  # nothing to ask: the sheets are put together at once
             self._lines_in(state, {})
             return
         try:
@@ -789,19 +792,12 @@ class DrawnSheets:
             self._looked = time.monotonic()
 
     def _lines_in(self, state: dict[str, Any], answers: dict[str, Any]) -> None:
-        """The second round came: the sheets are put together and kept. A
-        take whose answer left a mark out has its lines asked for once more
-        in another round, as at once (``ai.drawn.LINES_TRIES``), and the
-        answer with more of its marks is kept."""
-        again: list[list[str]] = []
-        stems: list[str] = []
-        cost_again: dict[str, dict[str, float]] = {}
-        asked_again = set(state.get("again") or [])
+        """The second round came: each sheet is put together, its marks in
+        chalk, and kept. (A batch handed over before 2026-11-22 holds the
+        model's lines too: they are not looked at.)"""
         for stem, item, view in self._each(state):
             cost = dict(state["cost"].get(stem) or {})
-            lines = answers.get(f"{stem}/lines")
             spill = answers.get(f"{self._under_name(item, view)}/spill")
-            inside = view.inside()
             try:
                 under = self._under(item, view)
                 if under is None:
@@ -809,69 +805,19 @@ class DrawnSheets:
                 if under.spilt is None and isinstance(spill, tuple):
                     under.spilt, cost["spill"] = spill
                     self._keep_under(item, view, under)
-                ask = lines_ask(under.study, inside)
-                marked = self._marked(stem)
-                if ask is not None and isinstance(lines, tuple):
-                    answer, usd = lines
-                    cost["lines"] = round(cost.get("lines", 0.0) + usd, 4)
-                    there = marks_there(under.study, answer, ask[1])
-                    if marked is not None:  # the first answer, kept for this one
-                        first = marks_there(under.study, marked, ask[1])
-                        if first >= there:
-                            answer, there = marked, first
-                    marked = answer
-                    if there < len(ask[1]) and stem not in asked_again:
-                        self._keep_marked(stem, marked)
-                        again.append([item.id, self.key(view)])
-                        stems.append(stem)
-                        cost_again[stem] = cost
-                        continue
-                elif ask is not None and marked is None:
-                    code = lines.code if isinstance(lines, NotDrawn) else ""
-                    raise NotDrawn(f"no lines: {lines or 'no answer'}", code)
-                if ask is None:
-                    marked = None  # a take without a mark to draw
                 work = self._work(item, view)
-                seed = self._seed(item)
-                sheet = put_together(work, inside, under.study, marked, under.spilt, cost, seed)
+                sheet = put_together(
+                    work, view.inside(), under.study, under.spilt, cost, self._seed(item)
+                )
             except NotDrawn as err:
                 self._fail(stem, err)
-                self._drop_marked(stem)
                 continue
             except Exception as err:
                 self._fail(stem, err, count=False)
-                self._drop_marked(stem)
                 continue
             self._keep(item, view, sheet, plain="underlay" in cost)
-            self._drop_marked(stem)
             log.info("sheet of %s drawn through the batch: %s", item.id, sheet.cost)
-        if again:
-            log.info("%d sheets' lines asked for once more: a mark was left out", len(again))
-            self._set_batch(
-                {"round": "lines", "name": "", "takes": again, "cost": cost_again, "again": stems}
-            )
-        else:
-            self._set_batch(None)
-
-    def _marked_file(self, stem: str) -> Path:
-        return self.dir / f"{stem}-marked.png"
-
-    def _marked(self, stem: str) -> Image.Image | None:
-        """The lines the Batch drew over a take's study the first time,
-        kept while they are asked for once more."""
-        try:
-            return Image.open(self._marked_file(stem)).convert("RGB")
-        except OSError:
-            return None
-
-    def _keep_marked(self, stem: str, marked: Image.Image) -> None:
-        out = io.BytesIO()
-        marked.save(out, "PNG")
-        self._write(self._marked_file(stem).name, out.getvalue())
-
-    def _drop_marked(self, stem: str) -> None:
-        with contextlib.suppress(OSError):
-            self._marked_file(stem).unlink()
+        self._set_batch(None)
 
     def _batched(self) -> bool:
         """A step of the Batch; False when there is nothing to do now."""
@@ -905,55 +851,78 @@ class DrawnSheets:
             self._lines_in(state, answers)
         return True
 
-    # -- lines that strayed --------------------------------------------------------
+    # -- marks drawn anew in chalk ---------------------------------------------------
 
-    def _covers(self, stem: str, meta: dict[str, Any]) -> list[float]:
-        """How much of the field each kept line of a sheet covers."""
-        covers = []
-        for n, there in enumerate(meta.get("layers") or [], start=1):
-            if not there:
-                continue
-            try:
-                alpha = np.asarray(Image.open(self.dir / f"{stem}-m{n}.png").getchannel("A"))
-            except (OSError, ValueError):
-                continue
-            covers.append(float((alpha > 120).mean()))
-        return covers
-
-    def _recheck(self) -> None:
-        """Once (:data:`CHECK`): a sheet kept with lines that are not the
-        model's pencils has them drawn anew at once, over the study it
-        keeps (about 0.05 USD). Until 1.145.91 a lines' answer laid askew
-        on its study had the study's own washes and ink lines taken for
-        the pencils it left out: grey and black lines over half the field,
-        their numbers by the edge (Mateusz 2026-11-13 11:44, Pissarro's
-        „Wzgórze Jalais w Pontoise”: "coś się wysypuje warstwa z kolorowymi
-        adnotacjami kredą")."""
-        if self.library.get_state(CHECKED, 0) == CHECK:
-            return
-        found = 0
+    def _unchalked(self) -> list[tuple[Item, View, str, dict[str, Any]]]:
+        """The kept sheets of the pages whose marks are the model's still."""
+        found: dict[str, tuple[Item, View, str, dict[str, Any]]] = {}
         for kind in PAGES:
             for item_id, note in self.library.notes(kind).items():
                 views = page_views(note.data)
                 item = self.library.get(item_id) if views else None
-                meta = self.meta(item, views[0]) if item is not None else None
-                if item is None or meta is None:
+                kept = self.kept(item, views[0]) if item is not None else None
+                if item is None or kept is None or kept[1].get("chalk", 0) >= CHALK:
                     continue
-                stem = self._stem(item, self.key(views[0]))
-                if not imaging.doubtful(meta.get("colours") or [], self._covers(stem, meta)):
-                    continue
-                log.info("the lines of %s strayed: drawn anew", item.id)
+                found.setdefault(self._stem(item, kept[0]), (item, views[0], kept[0], kept[1]))
+        return list(found.values())
+
+    def rechalk(self, item: Item, view: View, key: str, meta: dict[str, Any]) -> None:
+        """Draws a kept sheet's marks anew in chalk over its page as it is
+        (its field, between the page's margins): its layers, colours and
+        numbers are the chalk's from now on; the page and its study stay."""
+        stem = self._stem(item, key)
+        width, height = meta["size"]
+        with Image.open(self.dir / f"{stem}-page.jpg") as img:
+            page = img.convert("RGB")
+        margin = (page.width - width) // 2
+        field_ = page.crop((margin, 0, margin + width, height))
+        if field_.size != (width, height):
+            field_ = field_.resize((width, height), Image.Resampling.LANCZOS)
+        rgb = np.asarray(field_, np.float32) / 255
+        layers, colours, numbers = lines(rgb, view.inside(), self._seed(item))
+        there = [bool((layer > 0.3).mean() >= imaging.NO_MARK) for layer in layers]
+        for n, (layer, on) in enumerate(zip(layers, there, strict=True), start=1):
+            if on:
+                self._write(f"{stem}-m{n}.png", imaging.png(layer))
+            else:
                 with contextlib.suppress(OSError):
-                    (self.dir / f"{stem}-meta.json").unlink()
-                self._kept.pop(stem, None)
-                tries = self._tries()
-                if tries.pop(stem, None) is not None:
-                    self._write("tries.json", json.dumps(tries).encode())
-                relist(self.library, AT_ONCE, item.id, on=True)
-                found += 1
-        if found:
-            log.info("%d sheets' lines to be drawn anew", found)
-        self.library.set_state(CHECKED, CHECK)
+                    (self.dir / f"{stem}-m{n}.png").unlink()
+        for n in range(len(layers) + 1, len(meta.get("layers") or []) + 1):
+            with contextlib.suppress(OSError):
+                (self.dir / f"{stem}-m{n}.png").unlink()
+        titled = [n for n, m in enumerate(view.marks) if m.title]
+        meta = {
+            **meta,
+            "chalk": CHALK,
+            "marks": titled[: len(layers)],
+            "layers": there,
+            "colours": colours,
+            "numbers": [[[round(x, 4), round(y, 4)] for x, y in spots] for spots in numbers],
+        }
+        self._write(f"{stem}-meta.json", json.dumps(meta).encode())
+        self._kept[stem] = meta
+
+    def _rechalk(self) -> bool:
+        """Once (:data:`CHALK`): the marks of a few kept sheets drawn anew in
+        chalk; False when none is left (and the state says so)."""
+        if self.library.get_state(CHALKED, 0) == CHALK:
+            return False
+        left = self._unchalked()
+        for item, view, key, meta in left[:CHALK_AT_ONCE]:
+            try:
+                self.rechalk(item, view, key, meta)
+            except Exception as err:  # its page is gone: it keeps its lines, noted as done
+                log.warning("the marks of %s not drawn anew in chalk: %s", item.id, err)
+                stem = self._stem(item, key)
+                meta = {**meta, "chalk": CHALK}
+                self._write(f"{stem}-meta.json", json.dumps(meta).encode())
+                self._kept[stem] = meta
+        if len(left) > CHALK_AT_ONCE:
+            return True
+        if left:
+            log.info("the marks of the kept sheets drawn anew in chalk")
+        self.library.set_state(CHALKED, CHALK)
+        return bool(left)
 
     # -- studies that say more than their painting -------------------------------
 
@@ -1256,11 +1225,13 @@ class DrawnSheets:
     # -- the background ---------------------------------------------------------
 
     def ahead(self) -> bool:
-        """Draws one sheet that is wanted now, else takes a step of the
-        Batch; False when there is nothing to do now."""
+        """Draws the kept sheets' marks anew in chalk (once), else one sheet
+        that is wanted now, else takes a step of the Batch; False when there
+        is nothing to do now."""
+        if self._rechalk():  # needs no key: nothing is asked of the model
+            return True
         if not self.enabled() or self._resting():
             return False
-        self._recheck()
         now = self.at_once()
         if now:
             return self._now(*now[0])

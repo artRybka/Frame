@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.329
+
+- Kreski kompozycji na arkuszu studium rysuje teraz serwer kredą, bez
+  drugiego wywołania Gemini (Gemini robi tylko podkład). Zachowane
+  arkusze dostają nowe kreski raz w tle. Kółka powtórzeń połączone
+  linią mają jeden numerek zamiast numerka na każdym.
+
 ## 1.145.328
 
 - Podpowiedzi w Szukaj nie pokazują już starej liczby dzieł dla słów
