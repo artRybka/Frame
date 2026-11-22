@@ -6,7 +6,7 @@ import hashlib
 import json
 import math
 import threading
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from enum import StrEnum
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -768,6 +768,13 @@ def cut_size(
     return (cw, ch) if cw > 0 and ch > 0 else None
 
 
+#: A work's Polish title by its id ("" when it has none yet: its Polish
+#: texts are not written), set by the service (``Library.polish_titles``):
+#: lists show it in place of the museum's (Mateusz 2026-11-22: "Tytuły na
+#: liście - jak dużym problemem byłoby żeby były polskie?").
+POLISH_TITLE: list[Callable[[str], str]] = [lambda item_id: ""]
+
+
 class ItemSummary(BaseModel):
     """Compact form for grids and lists."""
 
@@ -783,7 +790,8 @@ class ItemSummary(BaseModel):
     height: int | None
     favorite: bool
     pooled: bool = False
-    #: The Polish title, where a list shows it ("Teraz"); None elsewhere.
+    #: The work's Polish title, once its Polish texts are written; None
+    #: before (the list shows the museum's).
     title_pl: str | None = None
     #: ``Item.held_by``: the museum the work is in, "" when not known.
     held_by: str = ""
@@ -859,6 +867,8 @@ class ItemSummary(BaseModel):
         if item.kind == ItemKind.PHOTO:
             summary.title = photo_title(item)
             summary.subtitle = photo_line(item)
+        elif title_pl := POLISH_TITLE[0](item.id):
+            summary.title_pl = title_pl
         return summary
 
 
