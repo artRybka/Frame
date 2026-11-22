@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.331
+
+- Restaurator najpierw nakłada zdjęcie muzeum dokładnie na rysunek
+  modelu, a gdy się nie da, zostawia sam rysunek. Dzieła o ostrych,
+  prostych liniach (np. Mondrian) nie mają już podwójnych konturów.
+
 ## 1.145.330
 
 - Rysunki odsiewają się filtrami: mocna sepia i brązowy tusz na żółtym
