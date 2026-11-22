@@ -940,8 +940,12 @@ class PlaylistRules(BaseModel):
     like: str = ""
     #: What of ``like`` is asked (Mateusz 2026-11-17: "Podobne tematem",
     #: "Podobne stylem"): "" both its subject and its style, "subject" or
-    #: "style" alone.
-    like_by: Literal["", "subject", "style"] = ""
+    #: "style" alone; "colours": its colours alone ("Barwy", Mateusz
+    #: 2026-11-21, ``library.palettes``).
+    like_by: Literal["", "subject", "style", "colours"] = ""
+    #: "Barwy" beside the subject or the style (``like_by``): of the works
+    #: alike so, those of near colours.
+    like_colours: bool = False
     #: How many steps of nearness past ``like``'s own floor are asked
     #: (``looks.ALIKE_STEP`` each): Szukaj's list, once scrolled to its end,
     #: brings the less near ones (Mateusz 2026-11-19: "po obecnym limicie

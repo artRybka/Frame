@@ -132,30 +132,57 @@ private struct PhotoShown: View {
 }
 
 /// "Treść" and "Forma", each on or off, both on at first: what "Podobne
-/// do" finds alike (`PlaylistRules.likeBy`). One of them is always on; no
-/// line under them (Mateusz 2026-11-18: "Dajmy jednak zupełnie bez
-/// podpisów").
+/// do" finds alike (`PlaylistRules.likeBy`); "Barwy" beside them, off at
+/// first (Mateusz 2026-11-21: works of the nearest palette, "domyślnie
+/// wyłączony"; `PlaylistRules.likeColours`, "Barwy" alone with neither).
+/// One of them is always on; no line under them (Mateusz 2026-11-18:
+/// "Dajmy jednak zupełnie bez podpisów").
 struct LikeBySwitches: View {
     @Binding var selection: String
+    @Binding var colours: Bool
 
     private var by: LikeBy { LikeBy(rawValue: selection) ?? .both }
-    private var subject: Bool { by != .style }
-    private var style: Bool { by != .subject }
+    private var subject: Bool { by == .both || by == .subject }
+    private var style: Bool { by == .both || by == .style }
+    private var coloured: Bool { colours || by == .colours }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 toggle(LikeBy.subject.title, on: subject) {
-                    // Off only while the other is on.
-                    selection = subject ? (style ? LikeBy.style.rawValue : selection) : LikeBy.both.rawValue
+                    switch (subject, style) {
+                    case (true, true): selection = LikeBy.style.rawValue
+                    case (true, false):
+                        // Off only while another is on: "Barwy" alone.
+                        guard coloured else { return }
+                        selection = LikeBy.colours.rawValue
+                        colours = true
+                    case (false, true): selection = LikeBy.both.rawValue
+                    case (false, false): selection = LikeBy.subject.rawValue
+                    }
                 }
                 toggle(LikeBy.style.title, on: style) {
-                    selection = style ? (subject ? LikeBy.subject.rawValue : selection) : LikeBy.both.rawValue
+                    switch (style, subject) {
+                    case (true, true): selection = LikeBy.subject.rawValue
+                    case (true, false):
+                        guard coloured else { return }
+                        selection = LikeBy.colours.rawValue
+                        colours = true
+                    case (false, true): selection = LikeBy.both.rawValue
+                    case (false, false): selection = LikeBy.style.rawValue
+                    }
+                }
+                toggle(LikeBy.colours.title, on: coloured) {
+                    // Off only while "Treść" or "Forma" is on.
+                    guard by != .colours else { return }
+                    colours.toggle()
                 }
             }
         }
         .animation(.snappy(duration: 0.2), value: selection)
+        .animation(.snappy(duration: 0.2), value: colours)
         .sensoryFeedback(.selection, trigger: selection)
+        .sensoryFeedback(.selection, trigger: colours)
         .accessibilityIdentifier("likeBy")
     }
 

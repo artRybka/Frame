@@ -911,8 +911,12 @@ struct PlaylistRules: Codable, Hashable, Sendable {
     /// 2026-11-13). Only the catalogue's works: no museum is asked.
     var like: String = ""
     /// What "like" is by (`LikeBy`): subject and style together (""), the
-    /// subject or the style alone (Mateusz 2026-11-17).
+    /// subject or the style alone (Mateusz 2026-11-17), the colours alone
+    /// ("colours", "Barwy" with neither, Mateusz 2026-11-21).
     var likeBy: String = ""
+    /// "Barwy" beside "Treść" or "Forma" (Mateusz 2026-11-21): of the works
+    /// alike so, those of near colours (the server's `like_colours`).
+    var likeColours: Bool = false
     /// With `query`: also the works that look as the words say, after
     /// those with the words (Szukaj's "Słowa", Mateusz 2026-11-19: one row
     /// for the words, keywords and the look). Rules saved before keep their
@@ -955,6 +959,7 @@ extension PlaylistRules {
         title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""  // before 1.145.98
         like = try c.decodeIfPresent(String.self, forKey: .like) ?? ""  // before 1.145.106
         likeBy = try c.decodeIfPresent(String.self, forKey: .likeBy) ?? ""  // before 1.145.231
+        likeColours = try c.decodeIfPresent(Bool.self, forKey: .likeColours) ?? false  // "Barwy", 2026-11-21
         seen = try c.decodeIfPresent(Bool.self, forKey: .seen) ?? false  // before 1.145.268
     }
 }
@@ -997,6 +1002,8 @@ enum LikeBy: String, CaseIterable, Identifiable, Sendable {
     case both = ""
     case subject
     case style
+    /// Neither: "Barwy" alone (`PlaylistRules.likeColours`, 2026-11-21).
+    case colours
 
     var id: Self { self }
 
@@ -1005,6 +1012,7 @@ enum LikeBy: String, CaseIterable, Identifiable, Sendable {
         case .both: "Treść i forma"
         case .subject: "Treść"
         case .style: "Forma"
+        case .colours: "Barwy"
         }
     }
 }
@@ -3734,7 +3742,10 @@ extension PlaylistRules {
         look = tokens.last { $0.kind == SearchToken.lookKind }?.key ?? ""
         title = tokens.last { $0.kind == SearchToken.titleKind }?.key ?? ""
         like = tokens.last { $0.kind == SearchToken.likeKind }?.key ?? ""
-        if like.isEmpty { likeBy = "" }
+        if like.isEmpty {
+            likeBy = ""
+            likeColours = false
+        }
     }
 
     /// "years:1880-1914" as "1880–1914".
@@ -3852,6 +3863,8 @@ struct LibraryQuery: Hashable, Sendable {
     var like = ""
     /// As in `PlaylistRules.likeBy`.
     var likeBy = ""
+    /// As in `PlaylistRules.likeColours`.
+    var likeColours = false
     /// As in `PlaylistRules.seen`.
     var seen = false
     /// "Podobne do" this many steps less near than its floor (Szukaj's list
@@ -3891,6 +3904,7 @@ struct LibraryQuery: Hashable, Sendable {
         title = rules.title
         like = rules.like
         likeBy = rules.likeBy
+        likeColours = rules.likeColours
         seen = rules.seen
         self.sort = sort
         self.limit = limit

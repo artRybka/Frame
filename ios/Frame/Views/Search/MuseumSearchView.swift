@@ -256,6 +256,7 @@ struct MuseumSearchView: View {
                 var asked = PlaylistRules()
                 asked.like = work.id
                 asked.likeBy = LaunchRoute.likeBy ?? ""
+                asked.likeColours = LaunchRoute.likeColours
                 rules = asked
                 // CI screenshots: scrolled past "Utwórz playlistę z tego
                 // wyszukiwania", the round one in the bar.
@@ -392,9 +393,10 @@ struct MuseumSearchView: View {
                         withAnimation(.snappy) {
                             rules.like = ""
                             rules.likeBy = ""
+                            rules.likeColours = false
                         }
                     }
-                    LikeBySwitches(selection: $rules.likeBy)
+                    LikeBySwitches(selection: $rules.likeBy, colours: $rules.likeColours)
                 }
                 .padding(.top, 2)
             }
