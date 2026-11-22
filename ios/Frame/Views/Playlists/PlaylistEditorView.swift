@@ -134,7 +134,7 @@ struct PlaylistEditorView: View {
                                 set: { playlist.grows = $0 }
                             )) {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("Doszukuj w tle")
+                                    Text(bound: "Doszukuj w tle")
                                     Text(bound: "Co 12 godzin serwer dobiera z muzeów do 24 nowych pasujących dzieł, także gdy ramka pokazuje coś innego.")
                                         .font(.caption)
                                         .foregroundStyle(Theme.inkSoft)
