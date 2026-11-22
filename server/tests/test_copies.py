@@ -148,6 +148,42 @@ def test_a_copy_in_other_colours_than_an_archives_slide_is_better(app: Any) -> N
     assert copies["wmc:2"]["verdict"] == "better"
 
 
+def test_sources_are_asked_the_polish_title_in_their_language(app: Any) -> None:
+    """Foto Marburg's "Boote am Ufer" (Mateusz 2026-11-22): the copy is found
+    by the work's Polish title in English, told once for its source."""
+    from frame_server.library.wording import Wording
+
+    client, service, web, _ = app
+    own = _slide(service, web)
+    service.library.update(own.id, title="Boote am Ufer")
+    copy = _copy(1, title="Fishing Boats on the Beach")
+    _offer(web, copy, _print(1, (3600, 2400)))
+    asked: list[tuple[str, str]] = []
+
+    def search_in(key: str, query: str, n: int) -> list[Any]:
+        asked.append((key, query))
+        if key == "met":
+            raise ValueError("the Met is down")
+        found = [copy] if query.startswith("fishing boats") else []
+        service.importer.remember(found)
+        return found
+
+    service.copies.search_in = search_in
+    service.sharper.other_title = lambda item, wait: Wording(
+        "Łodzie rybackie na plaży", en="fishing boats on the beach"
+    )
+    lines = _lines(client, own.id)
+    assert ("wmc", "Boote am Ufer corot") in asked
+    assert ("wmc", "fishing boats on the beach corot") in asked
+    sources = [line for line in lines if line["kind"] == "source"]
+    assert [s["source"] for s in sources].count("wmc") == 1
+    wmc = next(s for s in sources if s["source"] == "wmc")
+    assert wmc["found"] == 1 and not wmc["failed"]
+    met = next(s for s in sources if s["source"] == "met")
+    assert met["failed"]
+    assert _final(lines)["wmc:1"]["verdict"] == "better"
+
+
 def test_a_copy_with_a_tile_set_is_offered(app: Any) -> None:
     """ "Nocna straż" (Mateusz 2026-11-09): of two Commons copies as large,
     the one with a tile set goes first and says so."""
