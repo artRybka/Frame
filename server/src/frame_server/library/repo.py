@@ -995,6 +995,11 @@ class Library:
     def all_items(self) -> list[Item]:
         return self._snapshot()
 
+    @property
+    def catalogue_version(self) -> int:
+        """Raised whenever an item is added, changed or removed."""
+        return self._catalogue_version
+
     def get(self, item_id: str) -> Item | None:
         return self._all().get(item_id)
 

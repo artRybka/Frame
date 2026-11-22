@@ -395,6 +395,7 @@ class FrameService:
             tidier.cared = self.cared.ranks
         self.daily.sharper = self.sharper
         self.copies = Copies(self.sharper)
+        self.copies.other_works = lambda items: self.player.keep_searched(items)
         self.sharper.other_title = self._other_title
         # Lists show the works' Polish titles once written (Mateusz 2026-11-22).
         POLISH_TITLE[0] = self._polish_title

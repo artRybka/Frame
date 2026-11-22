@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.145.326
+
+- Kopia jest oznaczana jako „czarno-biała” tylko wtedy, gdy nie ma
+  koloru wcale. Stonowane, brązowe płótna (np. „Para butów” van Gogha)
+  nie są już tak oznaczane i mogą wejść jako lepsza kopia. Dzieła bez
+  kopii są oglądane ponownie przy otwarciu karty.
+
+## 1.145.325
+
+- Kopie oznaczone w „Kopiach dzieła” jako „Inne dzieło” (ten sam artysta,
+  inny obraz), których katalog jeszcze nie ma, dołączają do katalogu
+  jako osobne dzieła. Czarno-białe zdjęcia i kopie dzieł z katalogu nie
+  wchodzą.
+
+## 1.145.324
+
+- Szukaj porównuje wyniki z muzeów obrazem z dziełami tego artysty w
+  katalogu, zanim je pokaże, więc to samo dzieło pod tytułami w dwóch
+  językach nie pojawia się dwa razy. Dzieła dodane z Szukaj są od razu
+  porównywane z resztą katalogu.
+
 ## 1.145.323
 
 - Restaurator zostawia więcej szczegółu (siedem dziesiątych tego, co

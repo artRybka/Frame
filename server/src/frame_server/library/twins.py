@@ -57,8 +57,10 @@ import math
 import re
 import threading
 import time
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from collections.abc import Callable, Iterable, Iterator, Mapping
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import wait as wait_for
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from functools import lru_cache
@@ -69,7 +71,7 @@ import numpy as np
 
 from ..imaging.layout import load_image
 from .artists import known_names
-from .duplicates import STOPWORDS, surname
+from .duplicates import STOPWORDS, better, surname
 from .images import Gone
 from .likeness import (
     FEATURES,
@@ -178,6 +180,23 @@ APART_KEY = "twins_apart"
 SUSPECTS_MAX = 3000
 #: What the judge may write (:meth:`Twins.apply`).
 APPLIED = ("same", "b_detail_of_a", "b_photo_of_a", "a_detail_of_b", "a_photo_of_b")
+#: A search's works the library does not hold are laid over the held works
+#: of their artist before Szukaj shows them (:meth:`Twins.shown`): a work
+#: held under one title came again from WikiArt under another (van Gogh's
+#: "Terrace of a Cafe on Montmartre", 2026-11-22). For this long at most
+#: (seconds), ...
+SHOWN_BUDGET = 3.0
+#: ... their thumbnails fetched for it at most this many at once (the app
+#: asks for them right after, from here), ...
+SHOWN_FETCHERS = 8
+#: ... each laid over this many works at most: those whose titles share a
+#: word with its own first, then those hashed near, then those dated a year
+#: apart at most.
+SHOWN_PAIRS = 24
+#: Keypoints of thumbnails kept for the next search (by id).
+SHOWN_KEPT = 4000
+#: The held works by artist are made again no more often (seconds).
+SHOWN_INDEX_AGE = 120.0
 #: Title words too common to tell one work from another.
 COMMON_WORDS = STOPWORDS | {
     "portrait",
@@ -377,29 +396,43 @@ class Twins:
         self.cared: Callable[[], Mapping[str, int]] = dict
         #: What was changed, for the owner to look over (``tidy_log``).
         self.log = TidyLog(library)
+        #: Szukaj's look (:meth:`shown`): the held works by artist, when
+        #: made, and the keypoints and hashes of thumbnails by id.
+        self._held: tuple[float, int, dict[str, list[Item]]] | None = None
+        self._held_lock = threading.Lock()
+        self._points: OrderedDict[str, Keypoints | None] = OrderedDict()
+        self._hashed: OrderedDict[str, str] = OrderedDict()
+        self._kept_lock = threading.Lock()
 
     # -- when ------------------------------------------------------------------
 
     def after_search(self, items: Iterable[Item]) -> None:
         """The artists of a search's works looked at in the background, those
         with pictures not looked at yet."""
-        keys = {
-            key
+        due = [
+            i
             for i in items
             if (i.twins_seen < VERSION or i.twins_large < LARGE_VERSION or not i.picture_hash)
             and candidate(i)
-            and (key := artist_key(i.artist))
-        }
+            and artist_key(i.artist)
+        ]
+        keys = {artist_key(i.artist) for i in due}
         with self._asked_lock:
             keys -= self._asked
             if not keys:
                 return
             self._asked |= keys
-        threading.Thread(target=self._search_round, args=(keys,), name="twins", daemon=True).start()
+        # Their thumbnails here already (works Szukaj showed and took in):
+        # looked at now, not after the wait for the app. Two copies taken
+        # in were two tiles for two minutes (Mateusz 2026-11-22).
+        here = all(self.images.thumb_path(i).is_file() for i in due)
+        threading.Thread(
+            target=self._search_round, args=(keys, not here), name="twins", daemon=True
+        ).start()
 
-    def _search_round(self, keys: set[str]) -> None:
+    def _search_round(self, keys: set[str], wait: bool = True) -> None:
         try:
-            if self.search_delay > 0:
+            if wait and self.search_delay > 0:
                 time.sleep(self.search_delay)
             self.look(keys, budget=SEARCH_BUDGET, downloads=SEARCH_DOWNLOADS)
         except Exception:
@@ -410,6 +443,187 @@ class Twins:
 
     def at_night(self, quiet: Callable[[], bool] = lambda: True) -> int:
         return self.look(None, budget=NIGHT_BUDGET, quiet=quiet)
+
+    # -- Szukaj ------------------------------------------------------------------
+
+    def shown(self, results: list[Item]) -> dict[str, str]:
+        """Of a search's ``results`` the library does not hold, those whose
+        pictures are one with a held work's (the id of the copy the
+        catalogue shows of it) or with another result's (that result's id,
+        the better copy). Szukaj leaves them out (``RemoteItem.twin``).
+
+        Titles in other languages never meet ("Gartenlokal auf dem
+        Montmartre", "Terrace of a Cafe on Montmartre"), and the nightly
+        look (:meth:`look`) sees only works held; so the thumbnails are
+        laid over each other here, for :data:`SHOWN_BUDGET` at most, over
+        the held works of the artist likeliest to be the same (Mateusz
+        2026-11-22)."""
+        fresh = [
+            r
+            for r in results
+            if candidate(r) and artist_key(r.artist) and self.library.get(r.id) is None
+        ]
+        if not fresh:
+            return {}
+        until = self.clock() + SHOWN_BUDGET
+        self._fetch_thumbs(fresh, until)
+        here = [r for r in fresh if self.images.thumb_path(r).is_file()]
+        if not here:
+            return {}
+        held = self._held_by_artist()
+        kept_apart = self.apart()
+        found: dict[str, str] = {}
+        for at, item in enumerate(here):
+            if self.clock() > until:
+                break
+            mine = self._points_of(item)
+            if mine is None:
+                continue
+            key = artist_key(item.artist)
+            others = [o for o in here[:at] if o.id not in found and artist_key(o.artist) == key]
+            answers = {o.id for o in others}
+            likely = self._likely(item, held.get(key, []))
+            for other in others + likely:
+                if self.clock() > until:
+                    break
+                is_held = other.id not in answers
+                if is_held:  # as it is now (copies named since)
+                    other = self.library.get(other.id) or other
+                if pair_key(item.id, other.id) in kept_apart or _apart(item, other):
+                    continue
+                theirs = self._points_of(other)
+                fit = _fit(mine, theirs) if theirs is not None else None
+                if fit is None or not fit.same:
+                    continue
+                if is_held:
+                    if self.library.get(other.id) is None:
+                        continue  # gone since the works were listed
+                    shown = self.library.twin(other) or other
+                    found[item.id] = shown.id
+                elif better(item, other):
+                    found[other.id] = item.id
+                    found.update({k: item.id for k, v in found.items() if v == other.id})
+                else:
+                    found[item.id] = other.id
+                break
+        if found:
+            log.info(
+                "twins: %d of a search's %d works are copies of others", len(found), len(fresh)
+            )
+        return found
+
+    def _fetch_thumbs(self, items: list[Item], until: float) -> None:
+        """The thumbnails of ``items`` not here fetched together, until
+        ``until`` at most (those late come for the app all the same)."""
+        missing = [i for i in items if not self.images.thumb_path(i).is_file()]
+        if not missing:
+            return
+        pool = ThreadPoolExecutor(max_workers=SHOWN_FETCHERS, thread_name_prefix="twins-shown")
+        try:
+            jobs = [pool.submit(self.images.ensure_thumb, i, True) for i in missing]
+            wait_for(jobs, timeout=max(0.0, until - self.clock()))
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+
+    def _held_by_artist(self) -> dict[str, list[Item]]:
+        """The held works that may be copies, by artist. Once the catalogue
+        changed and :data:`SHOWN_INDEX_AGE` has passed they are made again
+        in the background (a pass over every work), the last ones serving
+        meanwhile; made here only the first time."""
+        kept = self._held
+        if kept is None:
+            with self._held_lock:
+                if self._held is None:
+                    self._held = self._make_held()
+                return self._held[2]
+        stale = (
+            kept[1] != self.library.catalogue_version and self.clock() - kept[0] >= SHOWN_INDEX_AGE
+        )
+        if stale and self._held_lock.acquire(blocking=False):
+
+            def remake() -> None:
+                try:
+                    self._held = self._make_held()
+                except Exception:
+                    log.exception("twins: the held works by artist")
+                finally:
+                    self._held_lock.release()
+
+            threading.Thread(target=remake, name="twins-held", daemon=True).start()
+        return kept[2]
+
+    def _make_held(self) -> tuple[float, int, dict[str, list[Item]]]:
+        made, version = self.clock(), self.library.catalogue_version
+        by_artist: dict[str, list[Item]] = defaultdict(list)
+        keys: dict[str, str] = {}  # one name looked up once
+        for item in self.library.all_items():
+            if not candidate(item):
+                continue
+            key = keys.get(item.artist)
+            if key is None:
+                key = keys[item.artist] = artist_key(item.artist)
+            if key:
+                by_artist[key].append(item)
+        return made, version, dict(by_artist)
+
+    def _likely(self, item: Item, works: list[Item]) -> list[Item]:
+        """Of an artist's held ``works``, those likeliest to be ``item``'s,
+        :data:`SHOWN_PAIRS` at most: titles sharing a word, then hashes
+        near, then dated a year apart at most."""
+        words = title_words(item.title)
+        mine = self._hash_of(item)
+        rows = hash_words([mine]) if mine != NO_HASH else None
+        ranked: list[tuple[int, Item]] = []
+        for work in works:
+            if words & title_words(work.title):
+                ranked.append((0, work))
+            elif (
+                rows is not None
+                and work.picture_hash
+                and work.picture_hash != NO_HASH
+                and hash_distances(rows[0], hash_words([work.picture_hash]))[0] <= HASH_NEAR
+            ):
+                ranked.append((1, work))
+            elif abs((item.year or -99) - (work.year or 99)) <= 1:
+                ranked.append((2, work))
+        ranked.sort(key=lambda rw: rw[0])
+        return [w for _, w in ranked[:SHOWN_PAIRS]]
+
+    def _hash_of(self, item: Item) -> str:
+        if item.picture_hash:
+            return item.picture_hash
+        with self._kept_lock:
+            if item.id in self._hashed:
+                return self._hashed[item.id]
+        path = self.images.thumb_path(item)
+        value = picture_hash(path) if path.is_file() else NO_HASH
+        with self._kept_lock:
+            self._hashed[item.id] = value
+            while len(self._hashed) > SHOWN_KEPT:
+                self._hashed.popitem(last=False)
+        return value
+
+    def _points_of(self, item: Item) -> Keypoints | None:
+        """``item``'s thumbnail's keypoints, kept for the next search; None
+        when it is not here or has too few."""
+        path = self.images.thumb_path(item)
+        try:
+            at = f"{item.id}@{path.stat().st_mtime_ns}"  # a new thumbnail: anew
+        except OSError:
+            return None
+        with self._kept_lock:
+            if at in self._points:
+                self._points.move_to_end(at)
+                return self._points[at]
+        try:
+            found = keypoints(path)
+        except Exception:  # a broken file: no opinion
+            found = None
+        with self._kept_lock:
+            self._points[at] = found
+            while len(self._points) > SHOWN_KEPT:
+                self._points.popitem(last=False)
+        return found
 
     # -- looking ---------------------------------------------------------------
 

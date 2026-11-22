@@ -476,3 +476,68 @@ def test_works_taken_in_are_looked_at(
 
 def test_the_service_tells_the_twins_of_works_taken_in(service: FrameService) -> None:
     assert service.importer.taken == service.twins.after_search
+
+
+def _found(service: FrameService, item_id: str, img: Image.Image, **fields: Any) -> Item:
+    """A museum's answer the library does not hold, its thumbnail here (the
+    app asked for it)."""
+    held = _work(service, item_id, img, **fields)
+    service.library.delete(item_id)
+    assert service.library.get(item_id) is None
+    return held
+
+
+def test_a_search_leaves_out_a_held_work_under_another_title(service: FrameService) -> None:
+    """WikiArt's "Terrace of a Cafe on Montmartre" beside the catalogue's
+    "Gartenlokal auf dem Montmartre" was two tiles in Szukaj: titles in two
+    languages, and the nightly look sees only works held (Mateusz
+    2026-11-22)."""
+    from frame_server.web.library_api import remote_items
+
+    painting = _print(21, (640, 500))
+    fields = {"artist": "Vincent van Gogh", "year": 1886}
+    _work(service, "wmc:1", painting, title="Gartenlokal auf dem Montmartre", **fields)
+    copy = _found(
+        service,
+        "wikiart:2",
+        painting.resize((600, 468)),
+        title="Terrace of a Cafe on Montmartre (La Guinguette)",
+        **fields,
+    )
+    other = _found(service, "wikiart:3", _print(22, (640, 500)), title="Montmartre", **fields)
+    pictured = service.twins.shown([copy, other])
+    assert pictured == {"wikiart:2": "wmc:1"}
+    tiles = {r.item.id: r.twin for r in remote_items(service, [copy, other], pictured=pictured)}
+    assert tiles == {"wikiart:2": "wmc:1", "wikiart:3": None}
+
+
+def test_two_answers_of_one_picture_are_one_tile(service: FrameService) -> None:
+    from frame_server.web.library_api import remote_items
+
+    painting = _print(23, (640, 500))
+    fields = {"artist": "Vincent van Gogh", "year": 1886}
+    small = _found(
+        service, "wikiart:4", painting.resize((500, 390)), title="La Guinguette", **fields
+    )
+    large = _found(service, "wmc:5", painting, title="Gartenlokal (La Guinguette)", **fields)
+    small = small.model_copy(update={"width": 750, "height": 585})
+    large = large.model_copy(update={"width": 3528, "height": 2736})
+    pictured = service.twins.shown([small, large])
+    assert pictured == {"wikiart:4": "wmc:5"}
+    assert [r.item.id for r in remote_items(service, [small, large], pictured=pictured)] == [
+        "wmc:5"
+    ]
+
+
+def test_works_taken_with_their_thumbnails_are_looked_at_at_once(
+    service: FrameService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Shown in Szukaj and taken in, their thumbnails are here: no wait for
+    the app (two copies were two tiles for two minutes, 2026-11-22)."""
+    painting = _print(24, (600, 700))
+    here = _work(service, "wmc:6", painting, title="Mleczarka")
+    asked = threading.Event()
+    monkeypatch.setattr(service.twins, "look", lambda *a, **k: asked.set() or 0)
+    service.twins.search_delay = 30
+    service.twins.after_search([here])
+    assert asked.wait(5)

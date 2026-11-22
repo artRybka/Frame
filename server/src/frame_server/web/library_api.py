@@ -10,7 +10,7 @@ import io
 import logging
 import threading
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -149,6 +149,7 @@ def remote_items(
     copies: bool = True,
     keep_hidden: bool = False,
     hidden: Hidden | None = None,
+    pictured: Mapping[str, str] | None = None,
 ) -> list[RemoteItem]:
     """Works found for the app, each once, marked whether the library holds
     them (and whether the owner likes them). With ``copies`` (results from
@@ -166,8 +167,12 @@ def remote_items(
     "Het meisje met de parel" the pictures showed to be the catalogue's "Girl
     with a Pearl Earring" (``library.twins``), and Szukaj leaves it out only
     so (Mateusz 2026-11-10). One the pictures showed to be a detail, or a
-    photograph of a work in its frame, is left out unless ``keep_hidden``."""
+    photograph of a work in its frame, is left out unless ``keep_hidden``.
+    ``pictured``: works not held whose thumbnails are one with a held work's
+    or another of these (``Twins.shown``): that work as their twin, the
+    other one's copy left out (Mateusz 2026-11-22)."""
     found: dict[str, RemoteItem] = {}
+    pictured = pictured or {}
     gone = svc.images.gone_ids()
     if keep_hidden:
         hidden = Hidden()
@@ -186,6 +191,10 @@ def remote_items(
                     item = copy
                 elif other := svc.library.twin(item):
                     twin = other.id
+                elif one := pictured.get(item.id):
+                    if svc.library.get(one) is None:
+                        continue  # another of these is the better copy
+                    twin = one
         elif not keep_hidden and against(held, Place.MUSEUM):
             continue  # a detail or a framed photograph (library.twins)
         elif best := svc.library.twin(held):
@@ -2023,6 +2032,7 @@ async def museum_search(
 ) -> RemotePage:
     """One museum, or ``all`` of them (``limit`` results from each)."""
     failed: list[str] = []
+    pictured: dict[str, str] = {}
     if source == ALL:
         texts = await run_in_threadpool(svc.importer.typed, q)
         total, items, failed = await run_in_threadpool(
@@ -2039,7 +2049,9 @@ async def museum_search(
     else:
         raise HTTPException(404, f"unknown museum {source!r}")
     return RemotePage(
-        total=total, items=remote_items(svc, items, copies=source == ALL), failed=failed
+        total=total,
+        items=remote_items(svc, items, copies=source == ALL, pictured=pictured),
+        failed=failed,
     )
 
 
