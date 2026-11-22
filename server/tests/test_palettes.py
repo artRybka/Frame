@@ -190,3 +190,40 @@ def test_a_photographs_palette_comes_with_its_numbers_or_is_made_here(
     _work(service, "met:2", "oil", ("#203018", 0.9), ("#101010", 0.1))
     monkeypatch.setattr(P, "LEAST", 1)
     assert looks.alike(key, by="colours") == ["met:1"]
+
+
+def test_the_catalogues_palettes_are_made_at_once_and_again_in_the_background(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """All at once, as each alone (2026-11-22: item by item, under a lock,
+    they held every search on the NAS for 45 s); made again behind the
+    questions, which go on with the old ones meanwhile."""
+    swatches = [
+        [ColorSwatch(hex="#e8dcc4", weight=0.7), ColorSwatch(hex="#b02020", weight=0.3)],
+        [
+            ColorSwatch(hex="#203018", weight=0.9),
+            ColorSwatch(hex="#c03028", weight=0.06, accent=True, amount=0.01),
+        ],
+    ]
+    items = [
+        Item(id=f"met:{n}", source="met", source_id=str(n), kind=ItemKind.ARTWORK, colors=c)
+        for n, c in enumerate(swatches)
+    ]
+    stamp = [1]
+    palettes = P.Palettes(lambda: items, lambda: stamp[0])
+    for item in items:
+        found = palettes.of(item.id)
+        alone = P.of_swatches(item.colors)
+        assert found is not None and alone is not None
+        order = np.argsort(alone[:, 3])
+        assert np.allclose(found[0][np.argsort(found[0][:, 3])], alone[order], atol=1e-5)
+        n = palettes._get().at[item.id]
+        assert np.allclose(palettes._get().summaries[n], P.summary(alone), atol=1e-5)
+    first = palettes._get()
+    stamp[0] = 2
+    monkeypatch.setattr(P, "AGAIN", 0.0)
+    assert palettes._get() is first  # answered by the old ones
+    making = palettes._making
+    assert making is not None
+    making.join(5)
+    assert palettes._get() is not first and palettes._get().stamp == 2

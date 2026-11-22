@@ -1308,9 +1308,14 @@ async def search_words_taught(svc: Svc, body: TaughtWords) -> TaughtAnswer:
     """Polish words of Szukaj the phone translated itself (Apple's
     Translation), sent before the search: remembered, so the museums are
     asked in their languages without waiting for Haiku."""
-    kept = 0
-    for word in body.words:
-        kept += svc.search_words.taught(word.text, word.en, word.fr)
+
+    def teach() -> int:
+        return sum(svc.search_words.taught(w.text, w.en, w.fr) for w in body.words)
+
+    # Off the event loop: after a start the library's words are still being
+    # gathered, and waiting for them here held every request, the frame's
+    # too, for 17 s (the NAS, 2026-11-22 08:27 UTC).
+    kept = await run_in_threadpool(teach)
     # Every sending noted, kept or not: whether the phone translates at all
     # was not to be seen (Mateusz 2026-11-20, "hulajnoga" by Haiku alone).
     log.info(

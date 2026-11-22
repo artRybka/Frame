@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.306
+
+- Serwer nie staje już na kilkanaście sekund, gdy zaraz po starcie
+  telefon przyśle przetłumaczone słowa z Szukaj.
+- Ani przy pierwszym szukaniu po starcie, ani co kilka minut potem: palety
+  dzieł dla „Barw” liczą się teraz w tle i dużo szybciej, a szukanie na nie
+  nie czeka (szukanie zdjęciem trwało przez to 45 s).
+
 ## 1.145.305
 
 - „Podobne do” ma trzeci przełącznik, „Barwy” (domyślnie wyłączony): sam
