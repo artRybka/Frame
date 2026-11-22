@@ -207,7 +207,7 @@ def test_siglip_answers_in_googles_place_once_most_works_have_numbers(
     out = io.BytesIO()
     photo.save(out, "JPEG")
     key = looks.photo(out.getvalue(), photo)
-    assert looks.alike(key) == ["met:3"]
+    assert (looks.alike(key) or [""])[0] == "met:3"  # nearest first, no floor
     assert looks.alike("met:1")[:1] == ["met:2"]
     assert looks.alike("met:1", by="style")[:1] == ["met:2"]
     assert looks.alike("met:1", by="subject")[:1] == ["met:2"]
@@ -325,7 +325,7 @@ def test_the_phone_numbers_a_photograph_itself_and_sends_only_numbers(
         assert state["here"] and state["answers"] and state["size"] == 7
         assert client.get("/api/looks/phone/model").content == b"core ml"
         key = client.post("/api/looks/photo/numbers", json=sent).json()["key"]
-        assert key.startswith("photo:") and service.looks.alike(key) == ["met:3"]
+        assert key.startswith("photo:") and (service.looks.alike(key) or [""])[0] == "met:3"
         assert client.post("/api/looks/photo/numbers", json=sent).json()["key"] == key
         other = {**sent, "model": "look-model-other"}
         assert client.post("/api/looks/photo/numbers", json=other).status_code == 409
@@ -376,5 +376,7 @@ def test_a_photograph_asks_the_museums_by_its_nearest_works_subjects(
     _work(service, "met:4", "blue")
     _work(service, "met:5", "green")
     museum = [service.library.get("met:5"), service.library.get("met:4")]
-    assert [i.id for i in service._judge_look(key, [i for i in museum if i])] == ["met:4"]
+    # As near as the catalogue's works shown for it, the nearest first.
+    judged = service._judge_look(key, [i for i in museum if i])
+    assert judged and judged[0].id == "met:4"
     assert service._look_searches("photo:0000") == []  # not searched here

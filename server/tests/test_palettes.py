@@ -227,3 +227,15 @@ def test_the_catalogues_palettes_are_made_at_once_and_again_in_the_background(
     assert making is not None
     making.join(5)
     assert palettes._get() is not first and palettes._get().stamp == 2
+
+
+def test_a_photograph_is_shown_the_works_near_its_nearest(service: FrameService) -> None:
+    """Not the floors of works like works (Mateusz 2026-11-22: one work for
+    his selfie): those near its nearest, never under the lowest."""
+    from frame_server import looks as L
+
+    looks = service.looks
+    assert looks._photo_floor([("a", 0.68)]) == pytest.approx(0.68 - L.PHOTO_BELOW)
+    assert looks._photo_floor([("a", 0.9)], 1) < 0.9 - L.PHOTO_BELOW
+    assert looks._photo_floor([("a", 0.52)]) == L.PHOTO_LOWEST
+    assert looks._photo_floor([]) == L.PHOTO_LOWEST
