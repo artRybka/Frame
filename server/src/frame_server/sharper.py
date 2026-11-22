@@ -52,6 +52,7 @@ Saintes-Maries-de-la-Mer", finds the Van Gogh Museum's scan on Commons.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 from collections import OrderedDict
 from collections.abc import Callable, Iterator
@@ -105,7 +106,9 @@ KIND = "sharper"
 #: none found are looked at again.
 #: 4: works are looked for by their Polish title too (``titled``): works
 #: with none found are looked at again.
-VERSION = "sharper-4"
+#: 5: copies titled as the work are compared first (``_titled_alike``),
+#: WikiArt's whatever size it says (``SIZE_UNSAID``).
+VERSION = "sharper-5"
 #: The version of the look at an art archive's photograph: those looked at
 #: before they took copies in other colours are looked at again.
 ARCHIVE_VERSION = "sharper-archive-2"
@@ -137,8 +140,11 @@ GREY = 0.012
 COLOUR_OFF = 0.08
 #: Results asked from each source.
 HITS = 6
+#: Sources whose said sizes are not their files' (WikiArt's): measured once
+#: downloaded, never left out by what they say.
+SIZE_UNSAID = frozenset({"wikiart"})
 #: Copies whose thumbnails are compared, and whose pictures are downloaded.
-COMPARED = 10
+COMPARED = 16
 DOWNLOADED = 3
 #: A work with no sharper copy anywhere is asked about again after this.
 AGAIN = timedelta(days=30)
@@ -307,6 +313,21 @@ def titled(own: str, wording: Wording | None, language: str) -> str:
         other = wording.en
     other = " ".join(other.split())[:80].strip()
     return "" if not other or fold(other) == fold(own.strip()) else other
+
+
+def _words(title: str) -> frozenset[str]:
+    return frozenset(w for w in re.findall(r"\w+", fold(title)) if len(w) > 2)
+
+
+def _titled_alike(item: Item, copy: Item) -> float:
+    """How much of ``item``'s title ``copy``'s has, word by word (0 to 1);
+    1 for a copy the catalogue knows as the same work."""
+    if same_work(item, copy):
+        return 1.0
+    own = _words(item.title)
+    if not own:
+        return 0.0
+    return round(len(own & _words(copy.title)) / len(own), 2)
 
 
 def version(item: Item) -> str:
@@ -533,6 +554,7 @@ class Sharper:
         if stored.sharper is not None:  # its weak copy stays, looked past again later
             self._remember(item, "found", stored.sharper.item_id, self.own_size(stored))
             return "found"
+        log.info("no sharper copy of %s found", item.id)
         self._remember(item, "none")
         return "none"
 
@@ -662,7 +684,11 @@ class Sharper:
                 hits = []
             hits += self._by_other_title(item)
             hits = [h for h in hits if self._by_artist(item, h)]
-            hits.sort(key=lambda h: -max(h.width or 0, h.height or 0))
+            # Copies titled as the work first, then the largest: the artist's
+            # other, larger works took the places to compare, and WikiArt's
+            # "Still Life with Four Sunflowers" was never looked at (Mateusz
+            # 2026-11-22).
+            hits.sort(key=lambda h: (-_titled_alike(item, h), -max(h.width or 0, h.height or 0)))
             found += hits
         seen: set[str] = {item.id}
         out = []
@@ -722,7 +748,11 @@ class Sharper:
 
     @staticmethod
     def _promising(copy: Item, own: Quality, faded: bool = False) -> bool:
-        """Not smaller than needed by what its source says (when it says)."""
+        """Not smaller than needed by what its source says (when it says, and
+        can be gone by: WikiArt said 750 px of the sunflowers its file has at
+        2374, Mateusz 2026-11-22; 433 × 600 of a file of 1441 × 1999)."""
+        if copy.source in SIZE_UNSAID:
+            return True
         side = max(copy.width or 0, copy.height or 0)
         return not side or Quality(side).better(Quality(own.side), faded)
 

@@ -872,3 +872,42 @@ def test_a_copy_found_only_by_the_polish_title_stands_in(frame: Any) -> None:
     stored = service.library.get(own.id)
     assert stored is not None and stored.sharper is not None
     assert stored.sharper.item_id == "wmc:9"
+
+
+def test_wikiarts_said_size_does_not_leave_its_copy_out(frame: Any) -> None:
+    """WikiArt said 750 px of van Gogh's sunflowers, whose file has 2374
+    (Mateusz 2026-11-22): its copy is downloaded and measured all the same."""
+    service, web, answer = frame
+    own = _own(service)
+    copy = _copy(9).model_copy(
+        update={
+            "id": "wikiart:9",
+            "source": "wikiart",
+            "source_id": "9",
+            "width": 750,
+            "height": 500,
+        }
+    )
+    _offer(web, copy, _print(1, (3600, 2400)))
+    answer([copy])
+    assert service.sharper.soon(own).result(30) == "found"
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None
+    assert stored.sharper.item_id == "wikiart:9"
+
+
+def test_copies_titled_as_the_work_are_compared_first(frame: Any) -> None:
+    """The artist's other, larger works came first and took every place to
+    compare: the work's copy, smaller, was never looked at."""
+    service, web, answer = frame
+    own = _own(service)
+    others = [_copy(20 + n, title=f"Landscape {n}", width=5000, height=3000) for n in range(20)]
+    for other in others:
+        _offer(web, other, _print(7, (5000, 3000)))
+    copy = _copy(9, width=3000, height=2000)
+    _offer(web, copy, _print(1, (3000, 2000)))
+    answer([*others, copy])
+    assert service.sharper.soon(own).result(60) == "found"
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None
+    assert stored.sharper.item_id == "wmc:9"
