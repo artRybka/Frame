@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.314
+
+- „Treść” bez „Formy” odejmuje formę o połowę słabiej (pełne odjęcie
+  gubiło temat: lilie bez wody, fala bez morza), a „Forma” bez „Treści”
+  odejmuje teraz tak samo część tematu, więc daje też inne rysunki, nie
+  tylko portrety. Siła obu do ustawienia na Twoim katalogu.
+
 ## 1.145.313
 
 - Analiza kompozycji jednobarwnej grafiki albo rysunku ma podkład samą
