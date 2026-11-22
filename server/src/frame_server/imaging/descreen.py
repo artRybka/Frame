@@ -65,9 +65,10 @@ PAD = 0.04
 
 #: A picture no longer than this is drawn more than three times larger;
 #: its grain finer than :data:`SOFT` cycles a pixel (a period of under
-#: three pixels) is let go of, gently, up to none at the finest.
+#: two and a half pixels) is let go of, gently, up to none at the finest
+#: (0.3 took Valtat's net away but left him blurred: Mateusz 2026-11-22).
 SMALL = 1000
-SOFT = 0.3
+SOFT = 0.42
 
 #: The picture is looked at no larger than this (its middle), for speed.
 LOOKED = 1024

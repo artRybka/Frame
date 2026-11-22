@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.145.322
+
+- Restaurator mniej zmyśla: z drobnych szczegółów, które model dorysował
+  ponad zdjęcie muzeum, zostaje połowa. Dzieła odrestaurowane wcześniej
+  są tak złagodzone raz po starcie serwera, bez ponownej restauracji.
+- Ziarno małych zdjęć jest zdejmowane łagodniej, więc dzieła takie jak
+  Valtat wychodzą ostrzejsze.
+
+## 1.145.321
+
+- Lepsza kopia z WikiArt wchodzi sama: kopie z WikiArt są zawsze
+  pobierane i mierzone (WikiArt podawał w wynikach 750 px zamiast
+  prawdziwego rozmiaru), kopie zatytułowane jak dzieło są porównywane
+  najpierw, a miejsc do porównania jest 16.
+- Inne kolory kopii nie blokują już podmiany ani listy „Kopie dzieła”;
+  odpada tylko czarno-biała kopia dzieła w kolorze. Dzieła bez kopii są
+  oglądane ponownie przy otwarciu karty.
+
 ## 1.145.320
 
 - Listy dzieł (Odkrywaj, playlisty, wyniki) pokazują polski tytuł, gdy
