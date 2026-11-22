@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.319
+
+- Restaurator dzieł zdejmuje najpierw raster druku (drobną siateczkę
+  punktów z reprodukcji), a dopiero potem rysuje dzieło od nowa, więc
+  siateczka nie przechodzi do odrestaurowanej wersji. Dzieło
+  odrestaurowane wcześniej trzeba odrestaurować ponownie.
+
 ## 1.145.318
 
 - Szukanie zdjęciem zaczyna od „Treści” i „Barw”, bez „Formy” (aplikacja).

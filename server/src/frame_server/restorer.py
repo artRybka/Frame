@@ -63,6 +63,7 @@ from .ai import fal
 from .ai.client import AiUnavailable
 from .ai.gemini import MODEL, PRO, Ask, NotDrawn
 from .imaging.color import linear_to_oklab, linear_to_u8, oklab_to_linear, u8_to_linear
+from .imaging.descreen import descreened
 from .library import Item, ItemKind
 from .library.low_res import LOW_SIDE, low_side
 from .library.models import Note
@@ -254,12 +255,14 @@ class Restorer:
         if item.cleaned_shown() is not None:
             # A work shown cleaned (``Item.cleaned``) is drawn from the
             # picture as it came: the drawing is cleaned after, the same.
-            return self.images.before_cleaning(item, urgent=True).convert("RGB")
+            return descreened(self.images.before_cleaning(item, urgent=True).convert("RGB"))
         # Without its original (a dead link), the thumbnail the card shows
         # (``ImageCache.picture``) is what is drawn larger.
         path, _original = self.images.picture(item, urgent=True)
         with Image.open(path) as img:
-            return img.convert("RGB")
+            # A scan of a printed page loses its dots first: drawn larger,
+            # they were a net over the whole work (``imaging.descreen``).
+            return descreened(img.convert("RGB"))
 
     def restore(self, item: Item) -> Item:
         """``item`` drawn again now (some 25 s), kept in place of its
