@@ -226,9 +226,11 @@ class Job:
 def _untold(item: Item) -> bool:
     """``item`` is worth reading again from its museum (:meth:`Importer.
     read_again`): Europeana's only for a maker kept as the provider's id
-    ("250_person", Michael Ancher's at SMK; reading 7)."""
+    ("250_person", Michael Ancher's at SMK; reading 7; the Thyssen's
+    "MTB-PE-394", Jongkind's, reading 8) or for none (the Rijksmuseum's
+    painters given as agents only)."""
     if item.source == "europeana":
-        return _reference(item.artist)
+        return not item.artist.strip() or _reference(item.artist)
     return MISREAD in (item.artist, item.classification) or not type_tells(item)
 
 
@@ -243,6 +245,8 @@ def _read_anew(item: Item, fresh: Item | None) -> dict[str, str]:
         fixes["classification"] = told
     if item.artist == MISREAD or _reference(item.artist):
         fixes["artist"] = fresh.artist if fresh is not None else ""
+    elif not item.artist.strip() and fresh is not None and fresh.artist:
+        fixes["artist"] = fresh.artist
     if item.source == "europeana":
         fixes.pop("classification", None)  # read again for the maker only
     return fixes
