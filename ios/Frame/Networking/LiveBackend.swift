@@ -1230,6 +1230,12 @@ struct LiveBackend: FrameBackend {
 
     func deleteGeminiKey() async throws -> AiSettings { try await send("/api/ai/gemini-key", method: "DELETE") }
 
+    func saveFalKey(_ key: String) async throws -> AiSettings {
+        try await send("/api/ai/fal-key", method: "PUT", body: AiKeyUpdate(key: key))
+    }
+
+    func deleteFalKey() async throws -> AiSettings { try await send("/api/ai/fal-key", method: "DELETE") }
+
     func sourceKeys() async throws -> [SourceKey] { try await get("/api/sources/keys") }
 
     func saveSourceKey(_ source: String, key: String) async throws -> [SourceKey] {

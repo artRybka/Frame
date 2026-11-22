@@ -16,6 +16,7 @@ from ..ai.composition import PAGES
 from ..ai.config import TaskUpdate
 from ..ai.daily import CHECK_ROUND, ROUND
 from ..ai.drawn import TYPICAL_USD as SHEET_USD
+from ..ai.fal import FalRejected
 from ..ai.gatekeeper import SEEN_AS
 from ..ai.gemini import GeminiRejected
 from ..ai.keywords import KIND as KEYWORDS
@@ -72,6 +73,9 @@ class AiView(BaseModel):
     #: (``ai.drawn``): whether there is one, its last letters.
     gemini_key_set: bool = False
     gemini_key_tail: str | None = None
+    #: fal.ai's key for SeedVR2, the creative restorer's model (``ai.fal``).
+    fal_key_set: bool = False
+    fal_key_tail: str | None = None
     #: The owner's switch "Arkusze rysowane przez model graficzny".
     drawn: bool = True
     #: About what one drawn sheet costs.
@@ -345,6 +349,8 @@ def _view(svc: FrameService) -> AiView:
         error=svc.ai.error,
         gemini_key_set=bool(store.gemini_key),
         gemini_key_tail=store.gemini_tail,
+        fal_key_set=bool(store.fal_key),
+        fal_key_tail=store.fal_tail,
         drawn=config.drawn,
         gemini_error=svc.drawn.error if store.drawn else None,
         drawn_waiting=waiting,
@@ -501,6 +507,33 @@ async def delete_gemini_key(svc: Svc) -> AiView:
     """Forget Google's key: the sheets are made by the server again."""
     svc.ai_config.set_gemini_key(None)
     svc.drawn.again()
+    return await run_in_threadpool(_view, svc)
+
+
+@router.put("/fal-key", response_model=AiView)
+async def put_fal_key(update: KeyUpdate, svc: Svc) -> AiView:
+    """Check fal.ai's key (free), then keep it: the creative restorer draws
+    with SeedVR2 from now on (Mateusz 2026-11-22)."""
+    key = update.key.strip()
+    if not key:
+        raise HTTPException(400, "empty API key")
+    try:
+        await run_in_threadpool(svc.upscaler.check_key, key)
+    except FalRejected as err:
+        raise HTTPException(400, str(err)) from err
+    except httpx.HTTPError as err:
+        raise HTTPException(502, f"fal.ai did not answer: {err}") from err
+    try:
+        svc.ai_config.set_fal_key(key)
+    except ValueError as err:
+        raise HTTPException(400, str(err)) from err
+    return await run_in_threadpool(_view, svc)
+
+
+@router.delete("/fal-key", response_model=AiView)
+async def delete_fal_key(svc: Svc) -> AiView:
+    """Forget fal.ai's key: the restorer draws with Google's model again."""
+    svc.ai_config.set_fal_key(None)
     return await run_in_threadpool(_view, svc)
 
 

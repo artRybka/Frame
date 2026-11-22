@@ -17,6 +17,13 @@ be and nothing takes it for another work; "Przywróć zdjęcie muzeum" goes
 back to the museum's picture. The gatekeeper does not ask about it
 (``gatekeeper.asked_by_rules``): it is the owner's.
 
+Since 2026-11-22 the drawing is SeedVR2's on fal.ai when Konfiguracja
+holds fal's key (:mod:`.ai.fal`; Mateusz 09:14 UTC, after two rounds of
+trials: nothing moved, nothing invented, about 0.004 USD a work): the
+same detail drawn larger, refusing nothing, so the works Google would not
+draw are drawn too. Google's model stays the spare: without fal's key,
+or when fal gives no picture for a work from its card.
+
 One work at a time from its card ("…" → "Kreatywny restaurator", about
 25 s), or many at once through the Batch API: the owner's favourites
 under the threshold from Konfiguracja, or a playlist's from its "…"
@@ -48,9 +55,12 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import cv2
+import httpx
 import numpy as np
 from PIL import Image
 
+from .ai import fal
+from .ai.client import AiUnavailable
 from .ai.gemini import MODEL, PRO, Ask, NotDrawn
 from .imaging.color import linear_to_oklab, linear_to_u8, oklab_to_linear, u8_to_linear
 from .library import Item, ItemKind
@@ -59,6 +69,7 @@ from .library.models import Note
 from .library.viewer import OWNER_ID
 
 if TYPE_CHECKING:
+    from .ai.fal import Upscaler
     from .ai.gemini import Painter
     from .library import ImageCache, Library
     from .sharper import Sharper
@@ -94,6 +105,8 @@ POLL = 600.0
 BATCH_USD = 0.03
 #: The same of Pro (:data:`PRO`; the trial paid 0.14 at once).
 PRO_BATCH_USD = 0.07
+#: Seconds between looks while fal's pictures are waiting.
+FAL_POLL = 20.0
 #: The library state key of the batches waiting.
 BATCHES = "restorer.batches"
 #: A picture the model will not draw is asked for this many times in all,
@@ -141,11 +154,14 @@ class Restorer:
         sharper: Sharper,
         painter: Painter,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        upscaler: Upscaler | None = None,
     ) -> None:
         self.library = library
         self.images = images
         self.sharper = sharper
         self.painter = painter
+        #: fal's SeedVR2, the model asked first when it has a key.
+        self.upscaler = upscaler
         self.clock = clock
         self._lock = threading.Lock()
         self._wake = threading.Event()
@@ -153,6 +169,14 @@ class Restorer:
         self._thread: threading.Thread | None = None
 
     # -- what can be drawn -------------------------------------------------------------
+
+    def by_fal(self) -> bool:
+        """Whether the drawings are SeedVR2's (fal's key in Konfiguracja)."""
+        return self.upscaler is not None and self.upscaler.enabled()
+
+    def enabled(self) -> bool:
+        """Whether anything can draw: fal's key or Google's."""
+        return self.by_fal() or self.painter.enabled()
 
     @staticmethod
     def restored(item: Item) -> bool:
@@ -171,7 +195,10 @@ class Restorer:
             raise NotRestored("large", f"its picture is {side} px already")
 
     def refused(self) -> set[str]:
-        """The works the model would not draw :data:`REFUSED_TRIES` times."""
+        """The works Google's model would not draw :data:`REFUSED_TRIES`
+        times; none when SeedVR2 draws, which refuses nothing."""
+        if self.by_fal():
+            return set()
         return {
             item_id
             for item_id, note in self.library.notes(KIND).items()
@@ -209,6 +236,8 @@ class Restorer:
 
     def estimate(self, items: Iterable[Item] | None = None) -> tuple[int, float]:
         found = self.candidates(items)
+        if self.by_fal():
+            return len(found), round(len(found) * fal.TYPICAL_USD, 3)
         usd = sum(
             BATCH_USD if model_for(self._refusals(i.id)) == MODEL else PRO_BATCH_USD for i in found
         )
@@ -241,6 +270,17 @@ class Restorer:
         if self.restored(stored):  # drawn from the museum's picture, not the drawing
             stored = self.sharper.keep_own(stored)
         picture = self._picture(stored)
+        if self.by_fal():
+            assert self.upscaler is not None
+            try:
+                drawn, usd = self.upscaler.upscale(KIND, picture, LONGEST)
+                return self._keep(stored, picture, drawn, usd, fal.MODEL)
+            except (fal.NotUpscaled, AiUnavailable, httpx.HTTPError) as err:
+                if not self.painter.enabled():
+                    if isinstance(err, AiUnavailable):
+                        raise
+                    raise NotRestored("not_drawn", str(err)) from err
+                log.info("restorer: %s not drawn by SeedVR2, Google's then: %s", stored.id, err)
         tries = 0
         while True:
             model = model_for(tries)
@@ -370,6 +410,8 @@ class Restorer:
         the owner's favourites) sent in batches; how many."""
         with self._lock:
             found = self.candidates(items)
+            if self.by_fal():
+                return self._order_fal(found)
             batches = self._batches()
             sent = 0
             by_model: dict[str, list[Item]] = {}
@@ -406,6 +448,86 @@ class Restorer:
             self._wake.set()
         return sent
 
+    def _order_fal(self, found: list[Item]) -> int:
+        """``found`` sent to fal's queue, one picture each, kept as one
+        "batch" whose requests :meth:`poll` looks after."""
+        assert self.upscaler is not None
+        batches = self._batches()
+        requests: dict[str, str] = {}
+        sizes: dict[str, list[int]] = {}
+        for item in found:
+            try:
+                self.check(item)
+                picture = self._picture(item)
+                asked = self.upscaler.submit(picture, LONGEST)
+            except AiUnavailable:
+                raise  # no key, no credit, the month's limit: the rest waits too
+            except (NotRestored, OSError, ValueError, fal.NotUpscaled) as err:
+                log.info("restorer: %s left out: %s", item.id, err)
+                continue
+            except Exception as err:  # a download refused: next time
+                log.info("restorer: %s not had: %s", item.id, err)
+                continue
+            requests[item.id] = asked.request_id
+            sizes[item.id] = list(picture.size)
+        if requests:
+            batches.append(
+                {
+                    "name": f"fal:{self.clock().isoformat()}",
+                    "model": fal.MODEL,
+                    "ids": list(requests),
+                    "requests": requests,
+                    "sizes": sizes,
+                    "at": self.clock().isoformat(),
+                }
+            )
+            self.library.set_state(BATCHES, batches)
+            log.info("restorer: %d works sent to SeedVR2", len(requests))
+            self._wake.set()
+        return len(requests)
+
+    def _poll_fal(self, batch: dict[str, Any]) -> tuple[int, dict[str, Any] | None]:
+        """The pictures of a fal batch that are ready kept; how many, and
+        the batch with those still waiting (None when none is)."""
+        assert self.upscaler is not None
+        requests: dict[str, str] = dict(batch.get("requests") or {})
+        drawn = 0
+        for item_id, request_id in list(requests.items()):
+            status = self.upscaler.state(request_id)
+            if status in ("IN_QUEUE", "IN_PROGRESS"):
+                continue
+            del requests[item_id]
+            if status != "COMPLETED":
+                log.info("restorer: %s lost by fal (%s)", item_id, status)
+                continue
+            item = self.library.get(item_id)
+            if item is None or self.restored(item):
+                continue
+            if item.sharper is not None and item.sharper.chosen:
+                continue  # the owner picked another copy meanwhile
+            try:
+                answer = self.upscaler.result(KIND, request_id)
+                picture = self._picture(item)
+            except fal.NotUpscaled as err:
+                log.info("restorer: %s not drawn by SeedVR2: %s", item_id, err)
+                self._note(item_id, FAILED, why=str(err)[:300], tries=1, model=fal.MODEL)
+                continue
+            except Exception as err:
+                log.info("restorer: %s not had again: %s", item_id, err)
+                continue
+            size = batch.get("sizes", {}).get(item_id)
+            if size and tuple(size) != picture.size:
+                continue  # its picture changed meanwhile: drawn from another
+            try:
+                self._keep(item, picture, answer[0], answer[1], fal.MODEL)
+            except (NotRestored, ValueError) as err:
+                log.info("restorer: %s not kept: %s", item_id, err)
+                continue
+            drawn += 1
+        if not requests:
+            return drawn, None
+        return drawn, {**batch, "requests": requests, "ids": list(requests)}
+
     def poll(self) -> int:
         """The batches done taken in; how many works were drawn. The works
         the model would not draw yet fewer than :data:`REFUSED_TRIES` times
@@ -416,6 +538,20 @@ class Restorer:
             batches = self._batches()
             left = []
             for batch in batches:
+                if batch.get("model") == fal.MODEL:
+                    if not self.by_fal():
+                        left.append(batch)  # its key forgotten: kept for when it is back
+                        continue
+                    try:
+                        took, waiting = self._poll_fal(batch)
+                    except (AiUnavailable, httpx.HTTPError) as err:
+                        log.info("restorer: fal not asked now: %s", err)
+                        left.append(batch)
+                        continue
+                    drawn += took
+                    if waiting is not None:
+                        left.append(waiting)
+                    continue
                 try:
                     model = str(batch.get("model") or MODEL)
                     answers = self.painter.batched(KIND, str(batch["name"]), model=model)
@@ -426,7 +562,7 @@ class Restorer:
                     left.append(batch)
                     continue
                 drawn += self._take(batch, answers, again)
-            if len(left) != len(batches):
+            if left != batches:
                 self.library.set_state(BATCHES, left)
         if again:
             items = [i for i in map(self.library.get, again) if i is not None]
@@ -516,12 +652,14 @@ class Restorer:
         except Exception:
             log.exception("restorer: drawings not recoloured")
         while not self._stop.is_set():
-            if self._batches() and self.painter.enabled():
+            batches = self._batches()
+            if batches and self.enabled():
                 try:
                     self.poll()
                 except Exception:
                     log.exception("restorer: batches not looked at")
-            self._wake.wait(POLL)
+            soon = any(b.get("model") == fal.MODEL for b in self._batches())
+            self._wake.wait(FAL_POLL if soon else POLL)
             self._wake.clear()
 
 
