@@ -114,6 +114,9 @@ struct ItemDetailView: View {
     /// The menu's switch is shown already (made on the phone): no badge
     /// over it while the server makes its own.
     @State private var switchedOnPhone = false
+    /// Asks again for the colours the server measures on a switched
+    /// picture after it has answered (`followColours`).
+    @State private var coloursFollow: Task<Void, Never>?
 
     enum Sent { case done, failed }
 
@@ -756,9 +759,41 @@ struct ItemDetailView: View {
     }
 
     private func cutChanged(_ updated: Item) {
+        let switched = item?.id == updated.id && (item?.cleanedShown != nil) != (updated.cleanedShown != nil)
         withAnimation(.easeInOut(duration: 0.4)) { item = updated }
         model.cardShows(updated, changed: true)
         if updated.isOwnWork { model.ownWorkChanged(updated) }
+        if switched { followColours(updated) }
+    }
+
+    /// The colours and the bar of a picture whose colours were switched
+    /// (the card's menu, the full screen's button): the server answers the
+    /// switch at once and measures them on the picture it makes after, so
+    /// the card asks again until they have changed (Mateusz 2026-11-22:
+    /// "Pasek po zdjęciu werniksu zmienia się dopiero gdy wyjdę i wejdę
+    /// ponownie w dzieło"), for a minute and a half at most.
+    private func followColours(_ asked: Item) {
+        coloursFollow?.cancel()
+        let before = asked.colors
+        let on = asked.cleanedShown != nil
+        coloursFollow = Task {
+            for wait in [2, 2, 3, 3, 5, 5, 10, 15, 20, 25] {
+                try? await Task.sleep(for: .seconds(wait))
+                // Gone, another work, or switched again: that one follows.
+                guard !Task.isCancelled, let shown = item, shown.id == asked.id,
+                      (shown.cleanedShown != nil) == on
+                else { return }
+                guard let fresh = try? await model.backend.item(id: asked.id), !Task.isCancelled,
+                      item?.id == asked.id, (item?.cleanedShown != nil) == on
+                else { continue }
+                if (fresh.cleanedShown != nil) != on { return }
+                if fresh.colors != before {
+                    withAnimation(.easeInOut(duration: 0.4)) { item = fresh }
+                    model.cardShows(fresh)
+                    return
+                }
+            }
+        }
     }
 
     /// "Edytuj opis", "Zrób zdjęcie ponownie", "Usuń z katalogu": a work of
@@ -1659,11 +1694,20 @@ struct ItemDetailView: View {
             Eyebrow("Kolorystyka")
             if bare {
                 EmptyView()
-            } else if let style = PaintStyle.of(item), !PaintedStrip.shares(item.colors).isEmpty {
-                PaintedStrip(swatches: item.colors, style: style, seed: Paint.seed(item.id), whole: true, relief: Paint.relief(item),
-                             contour: ContourLine(item), gold: Gold.kind(medium: item.medium, style: style))
             } else {
-                PaletteStrip(swatches: item.colors, height: Paint.shown, cornerRadius: 6)
+                Group {
+                    if let style = PaintStyle.of(item), !PaintedStrip.shares(item.colors).isEmpty {
+                        PaintedStrip(swatches: item.colors, style: style, seed: Paint.seed(item.id), whole: true, relief: Paint.relief(item),
+                                     contour: ContourLine(item), gold: Gold.kind(medium: item.medium, style: style))
+                    } else {
+                        PaletteStrip(swatches: item.colors, height: Paint.shown, cornerRadius: 6)
+                    }
+                }
+                // Its colours, for the probe that it follows a switch.
+                .accessibilityElement()
+                .accessibilityLabel(Text(bound: "Pasek barw"))
+                .accessibilityValue(item.colors.map(\.hex).joined(separator: " "))
+                .accessibilityIdentifier("colour-bar")
             }
             // One row each, in the Kolor sheet's order: colours, accents, moods.
             if !rows.isEmpty {

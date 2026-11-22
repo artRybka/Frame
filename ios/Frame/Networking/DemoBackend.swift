@@ -789,6 +789,7 @@ actor DemoBackend: FrameBackend {
 
     func clean(itemID: String, made: String) async throws -> Item {
         await Self.slowServer()
+        measureLater(itemID)
         let stamp = ISO8601DateFormatter().string(from: .now)
         return try update(itemID) { item in
             item.cleaned = Cleaned(
@@ -800,7 +801,20 @@ actor DemoBackend: FrameBackend {
 
     func unclean(itemID: String) async throws -> Item {
         await Self.slowServer()
+        measureLater(itemID)
         return try update(itemID) { $0.cleaned = nil }
+    }
+
+    /// UI tests: `-demoSlowColours 4` measures a switched picture's colours
+    /// that many seconds after the switch is answered, as the server does
+    /// (its bar's colours turned round here).
+    private func measureLater(_ itemID: String) {
+        let seconds = UserDefaults.standard.double(forKey: "demoSlowColours")
+        guard seconds > 0 else { return }
+        Task {
+            try? await Task.sleep(for: .seconds(seconds))
+            _ = try? update(itemID) { $0.colors.reverse() }
+        }
     }
 
     /// UI tests: `-demoSlowServer 3` answers a switch of the colours that
