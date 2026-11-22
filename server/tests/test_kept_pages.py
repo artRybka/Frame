@@ -284,3 +284,26 @@ def test_europeana_works_kept_with_a_provider_s_id_for_their_maker_are_read_agai
     assert not _untold(kept.model_copy(update={"artist": "Michael Ancher"}))
     fresh = kept.model_copy(update={"artist": "Michael Ancher", "classification": "painting"})
     assert _read_anew(kept, fresh) == {"artist": "Michael Ancher"}
+
+
+def test_europeana_works_kept_with_a_code_or_no_maker_are_read_again() -> None:
+    """The Thyssen's "MTB-PE-394" came as Jongkind's name, and the
+    Rijksmuseum's painters given as agents only as none ("Europeana" on the
+    card; Mateusz 2026-11-22); a maker read right stays as kept."""
+    from frame_server.library.importer import _read_anew, _untold
+
+    kept = Item(
+        id="europeana:/2058501/MTB_AW_1968_7",
+        source="europeana",
+        source_id="/2058501/MTB_AW_1968_7",
+        artist="MTB-PE-394",
+    )
+    assert _untold(kept)
+    fresh = kept.model_copy(update={"artist": "Johann Barthold Jongkind"})
+    assert _read_anew(kept, fresh) == {"artist": "Johann Barthold Jongkind"}
+    unnamed = kept.model_copy(update={"artist": ""})
+    assert _untold(unnamed)
+    assert _read_anew(unnamed, fresh) == {"artist": "Johann Barthold Jongkind"}
+    assert _read_anew(unnamed, None) == {}
+    assert not _untold(fresh)
+    assert not _untold(kept.model_copy(update={"artist": "Rembrandt van Rijn"}))

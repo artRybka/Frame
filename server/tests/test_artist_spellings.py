@@ -116,6 +116,31 @@ def test_europeana_s_maker_from_its_agents_and_contributors() -> None:
         edmAgentLabelLangAware={"def": ["Ancher, Michael", "Statens Museum for Kunst"]},
     )
     assert artist(smk) == "Michael Ancher"
+    # The Thyssen's code for the painting's maker ("MTB-PE-394") is no
+    # name either: Jongkind's agent is (Mateusz 2026-11-22, "Vista del
+    # puerto en Rotterdam").
+    thyssen = _europeana(
+        dcCreator=["MTB-PE-394", "MTB-PE-394"],
+        dcCreatorLangAware={"def": ["MTB-PE-394"], "en": ["MTB-PE-394"]},
+        edmAgent=["MTB-PE-394"],
+        edmAgentLabelLangAware={"en": ["Jongkind, Johann Barthold"]},
+    )
+    assert artist(thyssen) == "Johann Barthold Jongkind"
+    # The Rijksmuseum names its painter as an agent only, with no creator
+    # (Mateusz 2026-11-22, "De brug over de IJssel bij Doesburg", shown
+    # as by "Europeana").
+    rijks = _europeana(
+        edmAgent=["urn:rijksmuseum:people:RM0001.PEOPLE.1749"],
+        edmAgentLabelLangAware={"en": ["Roelofs, Willem (I)"], "nl": ["Roelofs, Willem (I)"]},
+    )
+    assert artist(rijks) == "Willem Roelofs"
+    # An agent the work shows is not its maker.
+    portrait = _europeana(
+        edmAgent=["http://data.europeana.eu/agent/1"],
+        dcSubject=["http://data.europeana.eu/agent/1"],
+        edmAgentLabelLangAware={"en": ["Napoleon"]},
+    )
+    assert artist(portrait) == ""
     # A contributor in another role is no author.
     assert artist(_europeana(dcContributor=["Musée X (Leihgeber)"])) == ""
 

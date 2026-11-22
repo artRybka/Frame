@@ -39,6 +39,13 @@ takes that file in its place even when its own picture is good: the
 full-screen viewer then goes far closer in on its tiles (Mateusz
 2026-11-09). Found by the work's Wikidata item when it is looked at, and
 once for the catalogue's works after the update (:meth:`Sharper.tiled_once`).
+
+A work is looked for by its own title, and by its Polish title (the card's)
+in each source's language as well (:func:`titled`): an art archive gives the
+title in its own language ("Boote am Ufer", Foto Marburg's van Gogh), which
+no museum or Commons uses, so nothing was found for it (Mateusz 2026-11-22);
+its Polish title in English, "fishing boats on the beach at
+Saintes-Maries-de-la-Mer", finds the Van Gogh Museum's scan on Commons.
 """
 
 from __future__ import annotations
@@ -71,16 +78,19 @@ from .library.images import (
     kept_long,
     own_copy,
 )
+from .library.importer import language_of
 from .library.likeness import Likeness
 from .library.models import Note, SharperCopy
 from .library.verdict import Place, against
 from .library.vocabulary import (
     archive_own,
     artist_matches,
+    fold,
     is_art_archive_photo,
     is_grey_copy,
     is_photograph,
 )
+from .library.wording import Wording
 
 if TYPE_CHECKING:
     from .library import Importer, Library
@@ -92,10 +102,12 @@ KIND = "sharper"
 #: 2: works found fine are looked at again, for a copy in a tile set.
 #: 3: copies in fuller colours are taken (Mateusz 2026-11-20): works with
 #: none found are looked at again.
-VERSION = "sharper-3"
+#: 4: works are looked for by their Polish title too (``titled``): works
+#: with none found are looked at again.
+VERSION = "sharper-4"
 #: The version of the look at an art archive's photograph: those looked at
 #: before they took copies in other colours are looked at again.
-ARCHIVE_VERSION = "sharper-archive-1"
+ARCHIVE_VERSION = "sharper-archive-2"
 
 #: A picture shorter than ``images.WEAK_SIDE`` is worth a sharper copy, and
 #: so is one squeezed below this many bits per pixel (a painting's
@@ -132,6 +144,8 @@ AGAIN = timedelta(days=30)
 #: A work whose copy is still weak (smaller than the frame wants) is
 #: looked at again after this.
 WEAK_AGAIN = timedelta(days=1)
+#: Seconds the translation of a work's Polish title is waited for.
+TITLE_WAIT = 5.0
 #: Looked for at once.
 THREADS = 2
 #: How long the work of the day waits for its look.
@@ -272,6 +286,23 @@ def same_colours(own: Tone, copy: Tone, faded: bool = False) -> bool:
     return note is None or (faded and note == "colour-off")
 
 
+def titled(own: str, wording: Wording | None, language: str) -> str:
+    """What a source searching in ``language`` is asked for the work besides
+    its own title ``own``: its Polish title (``wording``: the card's, with
+    its translations) in that language; "" when there is none, or it is the
+    own title (a Polish museum's work)."""
+    if wording is None:
+        return ""
+    if language == "pl":
+        other = wording.pl or wording.text
+    elif language == "fr":
+        other = wording.fr or wording.en
+    else:
+        other = wording.en
+    other = " ".join(other.split())[:80].strip()
+    return "" if not other or fold(other) == fold(own.strip()) else other
+
+
 def version(item: Item) -> str:
     """The version of the look at ``item``."""
     return ARCHIVE_VERSION if is_art_archive_photo(item) else VERSION
@@ -299,6 +330,17 @@ class Sharper:
         self.search: Callable[[str, int], tuple[int, list[Item], list[str]]] = lambda query, n: (
             importer.search_all(query, n)
         )
+        #: Each source with its own text (``Importer.search_all``): the
+        #: work's Polish title in its language (:func:`titled`).
+        self.search_each: Callable[[dict[str, str], int], list[Item]] = lambda texts, n: (
+            importer.search_all(texts, n, keys=list(texts))[1]
+        )
+        #: The sources searched.
+        self.sources: Callable[[], list[str]] = importer.asked_sources
+        #: The work's Polish title with its translations, None when it has
+        #: none yet; set by the service. ``wait``: seconds a translation not
+        #: known yet is waited for.
+        self.other_title: Callable[[Item, float], Wording | None] = lambda item, wait: None
         #: Wikimedia Commons alone, asked first for a stand-in.
         self.search_commons: Callable[[str, int], list[Item]] = lambda query, n: (
             importer.search_all(query, n, keys=["wmc"])[1] if "wmc" in importer.sources() else []
@@ -612,6 +654,7 @@ class Sharper:
             except (httpx.HTTPError, ValueError) as err:
                 log.info("sources on %r: %s", query, err)
                 hits = []
+            hits += self._by_other_title(item)
             hits = [h for h in hits if self._by_artist(item, h)]
             hits.sort(key=lambda h: -max(h.width or 0, h.height or 0))
             found += hits
@@ -623,6 +666,28 @@ class Sharper:
             seen.add(copy.id)
             out.append(copy)
         return out
+
+    def _by_other_title(self, item: Item) -> list[Item]:
+        """What the sources find for ``item``'s Polish title, each in its
+        language, where that is not its own title (:func:`titled`)."""
+        try:
+            wording = self.other_title(item, TITLE_WAIT)
+        except Exception:
+            log.exception("Polish title of %s", item.id)
+            return []
+        name = surname(item.artist)
+        texts = {
+            key: f"{other} {name}".strip()
+            for key in self.sources()
+            if (other := titled(item.title, wording, language_of(key)))
+        }
+        if not texts:
+            return []
+        try:
+            return self.search_each(texts, HITS)
+        except (httpx.HTTPError, ValueError) as err:
+            log.info("sources on the Polish title of %s: %s", item.id, err)
+            return []
 
     @staticmethod
     def _by_artist(item: Item, copy: Item) -> bool:
