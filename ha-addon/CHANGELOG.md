@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.306
+
+- Serwer nie staje już na kilkanaście sekund, gdy zaraz po starcie
+  telefon przyśle przetłumaczone słowa z Szukaj.
+
 ## 1.145.305
 
 - „Podobne do” ma trzeci przełącznik, „Barwy” (domyślnie wyłączony): sam
