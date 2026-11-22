@@ -85,6 +85,7 @@ from .library.likeness import Likeness
 from .library.models import Note, SharperCopy
 from .library.verdict import Place, against
 from .library.vocabulary import (
+    GREY_PAINTING_SPREAD,
     archive_own,
     artist_matches,
     fold,
@@ -276,8 +277,12 @@ def colour_note(own: Tone, copy: Tone) -> ColourNote | None:
     Fuller colours are no fault (Mateusz 2026-11-20: "często lepsza znaczy
     też w pełnej kolorystyce"), and neither is other light, lighter, darker
     or of another tint (Mateusz 2026-11-22: "ja bym chyba globalnie olał te
-    różnice kolorów. Byle nie czarno-białe jeżeli jest w kolorze")."""
-    if own.spread >= GREY and copy.spread < own.spread * GREYER:
+    różnice kolorów. Byle nie czarno-białe jeżeli jest w kolorze"). Grey
+    is no colour at all (``vocabulary.GREY_PAINTING_SPREAD``, as the
+    catalogue tells a black-and-white plate): van Gogh's brown "Para butów"
+    (0.009) was "grey" beside a warmer copy and is the right one (Mateusz
+    2026-11-22: "„czarno-biała” jest zbyt restrykcyjne")."""
+    if own.spread >= GREY and copy.spread < min(own.spread * GREYER, GREY_PAINTING_SPREAD):
         return "grey"
     return None
 

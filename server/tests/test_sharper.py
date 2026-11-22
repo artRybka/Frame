@@ -161,6 +161,9 @@ def test_colours_tell_a_black_and_white_plate() -> None:
     painting = Tone(0.06, (0.7, 0.02, 0.05))
     assert same_colours(painting, Tone(0.05, (0.68, 0.025, 0.045)))
     assert not same_colours(painting, Tone(0.004, (0.7, 0.0, 0.01)))  # B&W plate
+    # Van Gogh's brown "Para butów" (0.009) is muted, not black and white
+    # (Mateusz 2026-11-22).
+    assert same_colours(painting, Tone(0.009, (0.5, 0.01, 0.04)))
     # Far darker: taken too (Mateusz 2026-11-22: "olał te różnice kolorów").
     assert same_colours(painting, Tone(0.06, (0.45, 0.02, 0.05)))
     etching = Tone(0.003, (0.8, 0.01, 0.03))
