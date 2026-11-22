@@ -92,6 +92,10 @@ uv run mypy src
   held by `tests/test_scan_core.py`). A new model is a new `MODEL` (both
   sides): its works are looked at again. `phone_crops.py` keeps what the
   phone found, the owner's list "Kadrowane" and the lessons for retraining.
+- "Barwy" in "Podobne do" (`library/palettes.py`): works by their bars'
+  palettes. A photograph's palette is made on the phone the same way
+  (`ios/…/PhonePalette.swift`); `tests/test_palettes.py` holds the two
+  (constants and the fixture rows in `PhonePaletteTests.swift`).
 - `web/app.py` FastAPI: `/panel/*` for the panel (no auth, must never 404
   once content exists), `/api/*` for the app (Bearer token).
 - Never hand-edit `uv.lock`; use `uv add` / `uv lock`.

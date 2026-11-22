@@ -325,7 +325,8 @@ def list_items(
     look: str = "",
     title: str = "",
     like: str = "",
-    like_by: Literal["", "subject", "style"] = "",
+    like_by: Literal["", "subject", "style", "colours"] = "",
+    like_colours: bool = False,
     like_further: Annotated[int, Query(ge=0, le=3)] = 0,
     seen: bool = False,
     playlist: int | None = None,
@@ -336,7 +337,8 @@ def list_items(
     the works look ("mglisty poranek nad wodą"), the other choices narrowing
     them, nearest first (Mateusz 2026-11-13); ``like``: a work's id, the
     works that look like it so ("Szukaj podobnych"), by both their subject
-    and their style or by the one ``like_by`` names; 409 when that cannot be
+    and their style or by the one ``like_by`` names ("colours": by their
+    colours alone, "Barwy"; ``like_colours``: "Barwy" beside); 409 when that cannot be
     asked. ``seen``: with ``q``, the works that look as the words say too
     (Szukaj's "Słowa", Mateusz 2026-11-19). ``playlist``: only that
     playlist's works, all of them (its page shows at most 400), in its own
@@ -367,11 +369,12 @@ def list_items(
         title=" ".join(title.split()),
         like=like.strip(),
         like_by=like_by if like.strip() else "",
+        like_colours=like_colours and bool(like.strip()) and like_by != "colours",
         like_further=like_further if like.strip() else 0,
     )
     if rules.look and not svc.looks.ready():
         raise HTTPException(409, "Szukanie wyglądem is not ready")
-    if rules.like and not svc.looks.enabled():
+    if rules.like and rules.like_by != "colours" and not svc.looks.enabled():
         raise HTTPException(409, "Szukanie wyglądem is off")
     if playlist is not None:
         # The search one letter ago is let go: they all looked through the

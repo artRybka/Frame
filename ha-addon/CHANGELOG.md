@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.305
+
+- „Podobne do” ma trzeci przełącznik, „Barwy” (domyślnie wyłączony): sam
+  znajduje dzieła o najbliższej palecie barw, obok „Treści” albo „Formy”
+  zostawia z podobnych te w bliskich barwach. Barwy zdjęcia liczy iPhone.
+
 ## 1.145.304
 
 - Pasek barw obrazów (malarstwa) składany od nowa: tony obrazu od

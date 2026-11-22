@@ -54,6 +54,8 @@ enum LaunchRoute {
     static let likeBy = UserDefaults.standard.string(forKey: "likeBy")
     /// `-cropCheck YES`: Diagnostyka opens "Sprawdź kadry" by itself.
     static let cropCheck = UserDefaults.standard.bool(forKey: "cropCheck")
+    /// "Barwy" on beside them (`-likeColours YES`).
+    static let likeColours = UserDefaults.standard.bool(forKey: "likeColours")
 }
 
 struct RootView: View {

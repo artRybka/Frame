@@ -65,6 +65,7 @@ from PIL import Image
 
 from .ai.client import AiUnavailable
 from .ai.gemini import EMBED_MAX, EMBED_SIZE, Embedded, NotDrawn, TooHeavy
+from .library import palettes as palettes_
 from .library.models import Item, ItemKind
 from .library.verdict import Place, against
 from .library.wording import Wording
@@ -600,6 +601,8 @@ class Looks:
         #: The English of Szukaj's words, as known (the phone's translation,
         #: Haiku's): SigLIP reads English best.
         self.english: Callable[[str], str] = lambda text: text
+        #: The catalogue's palettes, for "Barwy" (:mod:`.library.palettes`).
+        self.palettes = palettes_.Palettes(library.all_items, library.stamp)
 
     # -- what may be asked -----------------------------------------------------------
 
@@ -930,6 +933,7 @@ class Looks:
         if self.photo_vector(key) is not None:
             return key
         self._check()
+        self._keep_photo(self._photo_path(key, "palette"), palettes_.of_picture(img))
         small = img.convert("RGB")
         small.thumbnail((640, 640))
         if self.seen is not None and self.local():
@@ -942,12 +946,13 @@ class Looks:
         self._keep_photo(self._photo_path(key, "three"), self._three_of(small))
         return key
 
-    def photo_numbers(self, vector: np.ndarray) -> str:
+    def photo_numbers(self, vector: np.ndarray, palette: np.ndarray | None = None) -> str:
         """:meth:`photo` for a photograph the phone numbered itself with
         SigLIP's picture side (``seen.PHONE``): the numbers kept under the
         key the photograph would have had, at length 1. Only while SigLIP
         answers (:class:`AiUnavailable` otherwise: the app sends the
-        photograph then)."""
+        photograph then). ``palette``: its colours as the phone found them
+        (``palettes.colours_of``'s rows), for "Barwy"."""
         if not self.local():
             raise AiUnavailable("SigLIP does not answer yet")
         vector = np.asarray(vector, dtype=np.float32).reshape(-1)
@@ -956,9 +961,73 @@ class Looks:
             raise ValueError("not a photograph's numbers")
         vector = vector / norm
         key = PHOTO + hashlib.sha256(vector.astype("<f4").tobytes()).hexdigest()[:20]
+        if palette is not None:
+            rows = np.asarray(palette, dtype=np.float32).reshape(-1)
+            if (
+                len(rows) % 4
+                or not 0 < len(rows) <= 4 * 2 * palettes_.K
+                or not np.isfinite(rows).all()
+            ):
+                raise ValueError("not a palette")
+            rows = palettes_.palette(rows.reshape(-1, 4)[:, :3], rows.reshape(-1, 4)[:, 3])
+            self._keep_photo(self._photo_path(key, "palette"), rows)
         if self.photo_vector(key) is None:
             self._keep_photo(self._photo_path(key, "seen"), vector)
         return key
+
+    def photo_palette(self, key: str) -> np.ndarray | None:
+        """A photograph's palette (rows L, a, b, weight), or None when it
+        came without one (an older app)."""
+        if not key.startswith(PHOTO):
+            return None
+        try:
+            rows = np.fromfile(self._photo_path(key, "palette"), dtype=np.float32)
+        except (OSError, ValueError):
+            return None
+        return rows.reshape(-1, 4) if len(rows) and len(rows) % 4 == 0 else None
+
+    def _palette_of(self, item_id: str) -> tuple[np.ndarray, bool] | None:
+        """The palette asked about, and whether to compare it with
+        paintings: a photograph's (with paintings), a work's or its copy's."""
+        if item_id.startswith(PHOTO):
+            rows = self.photo_palette(item_id)
+            return None if rows is None else (rows, True)
+        for copy in self._copies(item_id):
+            if (found := self.palettes.of(copy)) is not None:
+                return found
+        return None
+
+    def _copies(self, item_id: str) -> list[str]:
+        works = self.library.works()
+        own = works.group_index(item_id)
+        return [item_id] + (
+            [c.id for c in works.groups[own] if c.id != item_id] if own is not None else []
+        )
+
+    def alike_colours(self, item_id: str, further: int = 0) -> list[str]:
+        """ "Barwy" alone (Mateusz 2026-11-21): the works whose palettes lie
+        nearest the work's (or photograph's), of its kind, nearest first,
+        as near as :func:`palettes.floor` says. Needs no numbers."""
+        asked = self._palette_of(item_id)
+        if asked is None:
+            return []
+        rows, painted = asked
+        skip = set(self._copies(item_id)) if not item_id.startswith(PHOTO) else set()
+        near = [
+            (i, d)
+            for i, d in self.palettes.near(rows, painted, palettes_.MOST + len(skip))
+            if i not in skip
+        ]
+        return palettes_.enough(near, palettes_.floor(False, further))
+
+    def _coloured(self, item_id: str, ids: list[str], further: int) -> list[str]:
+        """ "Barwy" beside "Treść" or "Forma": of the works found alike
+        (``ids``), those whose palettes lie near the one asked, nearest first."""
+        asked = self._palette_of(item_id)
+        if asked is None:
+            return ids
+        ranked = self.palettes.ranked(asked[0], ids)
+        return palettes_.enough(ranked, palettes_.floor(True, further))
 
     def photo_searches(self, key: str) -> list[Wording]:
         """The museums' searches for a photograph searched (Mateusz
@@ -1125,31 +1194,40 @@ class Looks:
         under = next((k for k, (_, score) in enumerate(near) if score < floor), len(near))
         return near[: max(under, ALIKE_LEAST * 3 + 8)]
 
-    def alike(self, item_id: str, by: str = "", further: int = 0) -> list[str] | None:
+    def alike(
+        self, item_id: str, by: str = "", further: int = 0, colours: bool = False
+    ) -> list[str] | None:
         """The ids of the works that look like the work ``item_id`` (or the
         photograph kept as ``photo:…``, :meth:`photo`), by ``by`` (both
         their subject and their style, "subject" or "style"), nearest
         first, as near as :meth:`enough` says (``further`` steps less
         near: the list scrolled to its end), for Szukaj
         (``Library.like_near``, ``PlaylistRules.like``); None with Szukanie
-        wyglądem off. Asks Google nothing."""
+        wyglądem off. Asks Google nothing. ``colours`` ("Barwy" beside
+        them): of those, a step less near, the ones of near colours; ``by``
+        "colours": "Barwy" alone (:meth:`alike_colours`)."""
+        if by == "colours":
+            return self.alike_colours(item_id, further)
         if not self.enabled():
             return None
         shape: By = by if by in ("subject", "style") else ""  # type: ignore[assignment]
         most = ALIKE_OLD_MOST if self._before() else ALIKE_MOST
+        wide = further + 1 if colours else further
         if item_id.startswith(PHOTO):
             vector = self.photo_vector(item_id)
             if vector is None:
                 return []
             near = self._alike_near(vector, most * 3 + 8, shape)
-            near = self._near_enough(near, shape, further)
+            near = self._near_enough(near, shape, wide)
             found = self._answer(near, most, self._alike_base(), relative=False)
-            return [f.item.id for f in self.enough(found, shape, further)]
-        item = self.library.get(item_id)
-        if item is None:
-            return []
-        found = self.similar(item, most, by=shape, near_enough=True, further=further)
-        return [f.item.id for f in found]
+            ids = [f.item.id for f in self.enough(found, shape, wide)]
+        else:
+            item = self.library.get(item_id)
+            if item is None:
+                return []
+            found = self.similar(item, most, by=shape, near_enough=True, further=wide)
+            ids = [f.item.id for f in found]
+        return self._coloured(item_id, ids, further) if colours else ids
 
     def near_ids(self, item_id: str, limit: int = 40) -> list[str]:
         """The ids of the works whose numbers lie nearest ``item_id``'s

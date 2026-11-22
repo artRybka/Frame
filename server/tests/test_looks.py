@@ -645,8 +645,10 @@ def test_a_photograph_is_searched_in_szukajs_own_list(
         assert ids(like="photo:0000") == []  # a key nobody kept
         bad = {"file": ("photo.jpg", b"not a picture", "image/jpeg")}
         assert client.post("/api/looks/photo", files=bad).status_code == 422
-    kept = list((found.root / "photos").iterdir())
-    assert len(kept) == 1 and kept[0].stat().st_size == 3 * PART * 4  # numbers only
+    kept = sorted((found.root / "photos").iterdir())
+    # Numbers only, and its colours ("Barwy"): never the photograph.
+    assert [p.suffixes[-2] for p in kept] == [".palette", ".three"]
+    assert kept[1].stat().st_size == 3 * PART * 4 and kept[0].stat().st_size <= 4 * 8 * 4
     rules = PlaylistRules(like=key)
     assert sorted(i.id for i in service.library.query(rules)[1]) == ["aic:7", "met:1"]
     assert rules.search_key() == ""  # no museum asked
