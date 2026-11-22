@@ -674,7 +674,7 @@ struct OwnWorkFlow: View {
         guard LaunchRoute.screen != "own-cut" else { return }
         for _ in 0 ..< 50 where step != .cut { try? await Task.sleep(for: .milliseconds(200)) }
         guard step == .cut else { return }
-        _ = await cutChosen(DemoOwn.work)
+        _ = await cutChosen(DemoOwn.work, frame: nil, frameMoved: false)
         // The page with the white balance (the demo has no colour chart),
         // as set by `-scanBalance`; the later screens go on from it.
         balance = OwnBalance.launched
