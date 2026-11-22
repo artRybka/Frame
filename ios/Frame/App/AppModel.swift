@@ -1755,6 +1755,34 @@ final class AppModel {
         notices.done("Usunięto klucz")
     }
 
+    /// True when the server checked the key with fal.ai and kept it.
+    func saveFalKey(_ key: String) async -> Bool {
+        do {
+            aiSettings = try await backend.saveFalKey(key)
+        } catch BackendError.http(400, _) {
+            notices.fail("fal.ai nie przyjął klucza", "Sprawdź, czy skopiowano go w całości.")
+            return false
+        } catch BackendError.http(502, _) {
+            notices.fail("fal.ai teraz nie odpowiada", "Spróbuj za chwilę.")
+            return false
+        } catch {
+            show(error)
+            return false
+        }
+        notices.done("Klucz zapisany")
+        return true
+    }
+
+    func deleteFalKey() async {
+        do {
+            aiSettings = try await backend.deleteFalKey()
+        } catch {
+            show(error)
+            return
+        }
+        notices.done("Usunięto klucz")
+    }
+
     func loadSourceKeys() async {
         sourceKeys = (try? await backend.sourceKeys()) ?? []
     }

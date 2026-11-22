@@ -86,7 +86,7 @@ actor DemoBackend: FrameBackend {
         reviewCount: 2, monthlyLimitUsd: 100, spentUsd: 11.14,
         keywordsProgress: .init(done: 0, waiting: 0, refused: 0, batchItems: 0, batchDone: 0, preparing: false),
         plTextProgress: nil, error: nil,
-        geminiKeySet: true, geminiKeyTail: "wxyz", drawn: true, drawnUsd: 0.15, drawnBatchUsd: 0.075,
+        geminiKeySet: true, geminiKeyTail: "wxyz", falKeySet: false, drawn: true, drawnUsd: 0.15, drawnBatchUsd: 0.075,
         drawnWaiting: 12, drawnInBatch: 20, geminiError: nil,
         geminiMonthlyLimitUsd: 5, geminiSpentUsd: 1.35, geminiSpentByKind: ["sheet": 1.35],
         periodDay: 1, periodStart: "2026-11-01", periodEnd: "2026-11-30",
@@ -2602,6 +2602,18 @@ actor DemoBackend: FrameBackend {
         aiValue.geminiKeySet = false
         aiValue.geminiKeyTail = nil
         aiValue.drawnWaiting = 0
+        return aiValue
+    }
+
+    func saveFalKey(_ key: String) async throws -> AiSettings {
+        aiValue.falKeySet = true
+        aiValue.falKeyTail = String(key.trimmingCharacters(in: .whitespaces).suffix(4))
+        return aiValue
+    }
+
+    func deleteFalKey() async throws -> AiSettings {
+        aiValue.falKeySet = false
+        aiValue.falKeyTail = nil
         return aiValue
     }
 
