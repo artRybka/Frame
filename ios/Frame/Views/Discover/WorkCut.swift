@@ -266,6 +266,24 @@ struct CutEditor: View {
         ) { work, _, _, _ in await save(work) }
     }
 
+    /// His own work ("Dodaj własne dzieło"): "Dzieło / Rama / Bez ramy"
+    /// too (Mateusz 2026-11-22: „Dlaczego gdy dodaję własne dzieło to
+    /// kadrowane jest tylko dzieło a rama obrazu nie?”). Saves the work's
+    /// corners, the frame's as they are then (nil: none), and whether he
+    /// changed the frame.
+    init(
+        photo: Photo, aspect: Double, corners: [[Double]]?, frame: [[Double]]?, saveTitle: String,
+        savesUnchanged: Bool, note: String?, cancel: (() -> Void)?,
+        save: @escaping ([[Double]], [[Double]]?, Bool) async -> Bool
+    ) {
+        self.init(
+            photo: photo, aspect: aspect, corners: corners, framing: true, frame: frame, saveTitle: saveTitle,
+            savesUnchanged: savesUnchanged, note: note, cancel: cancel
+        ) { work, _, moved, bare in
+            await save(work, bare ? nil : moved ?? frame, moved != nil || bare)
+        }
+    }
+
     private init(
         photo: Photo, aspect: Double, corners: [[Double]]?, framing: Bool, frame: [[Double]]?, sheet: Bool = false,
         starting: Part = .work, saveTitle: String = "Zapisz", cancelTitle: String = "Anuluj", savesUnchanged: Bool = false,

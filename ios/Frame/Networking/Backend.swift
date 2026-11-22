@@ -279,7 +279,9 @@ protocol FrameBackend: Sendable {
     func findOwnWork(token: String) async throws -> OwnIncoming
     /// What the phone found in it itself (`OwnLocalCut`), kept by the
     /// server: its merge goes by it, the work keeps its frame from it.
-    func ownFound(token: String, corners: [[Double]]?, surround: [[Double]]?) async throws
+    /// `owner`: what he set in "Kadr" ("Dzieło / Rama"), kept over even
+    /// what Opus found.
+    func ownFound(token: String, corners: [[Double]]?, surround: [[Double]]?, owner: Bool) async throws
     /// A photograph of the same work from the side (the scan), and from
     /// how far to the side the phone counted it (degrees; negative: from
     /// the work's left): of several from one side the server makes the
@@ -507,7 +509,7 @@ extension FrameBackend {
 }
 
 extension FrameBackend {
-    func ownFound(token: String, corners: [[Double]]?, surround: [[Double]]?) async throws {}
+    func ownFound(token: String, corners: [[Double]]?, surround: [[Double]]?, owner: Bool) async throws {}
 }
 
 extension FrameBackend {

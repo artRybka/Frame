@@ -368,6 +368,8 @@ class PhoneFoundWork(BaseModel):
     corners: list[tuple[float, float]] | None = None
     surround: list[tuple[float, float]] | None = None
     surround_kind: str = ""
+    #: What he set in "Kadr" ("Dzieło / Rama"): kept over Opus's answer too.
+    owner: bool = False
 
 
 @router.post("/own/photos/{token}/found", response_model=Incoming)
@@ -378,7 +380,12 @@ async def phone_found_work(token: str, found: PhoneFoundWork, svc: Svc) -> Incom
     surround = valid(found.surround) if found.surround is not None else None
     try:
         return await run_in_threadpool(
-            svc.own_works.phone_found, token, corners, surround, found.surround_kind
+            svc.own_works.phone_found,
+            token,
+            corners,
+            surround,
+            found.surround_kind,
+            owner=found.owner,
         )
     except LookupError as err:
         raise HTTPException(404, str(err)) from err

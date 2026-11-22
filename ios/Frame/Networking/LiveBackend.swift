@@ -829,8 +829,8 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
-    func ownFound(token: String, corners: [[Double]]?, surround: [[Double]]?) async throws {
-        var body: [String: Any] = [:]
+    func ownFound(token: String, corners: [[Double]]?, surround: [[Double]]?, owner: Bool) async throws {
+        var body: [String: Any] = ["owner": owner]
         if let corners { body["corners"] = corners }
         if let surround { body["surround"] = surround }
         var req = request("/api/own/photos/\(escape(token))/found", method: "POST")

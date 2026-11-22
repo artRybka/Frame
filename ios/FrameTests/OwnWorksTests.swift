@@ -7,6 +7,31 @@ import XCTest
 /// "Dodaj własne dzieło": the technique's line and chips, the size's words,
 /// and what the server sends of his work.
 final class OwnWorksTests: XCTestCase {
+    /// The frame around his work, where the model saw none (Mateusz
+    /// 2026-11-22: „kadrowane jest tylko dzieło a rama obrazu nie?”): of
+    /// the rectangles the phone sees, the least that holds the work and is
+    /// a frame's size around it; never the work's own edge nor a wall.
+    func testTheFrameIsTheLeastRectangleAroundTheWork() {
+        func box(_ x0: Double, _ y0: Double, _ x1: Double, _ y1: Double) -> [[Double]] {
+            [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+        }
+        let work = box(0.3, 0.3, 0.7, 0.7)
+        let frame = box(0.25, 0.25, 0.75, 0.75)
+        let seen = [
+            box(0.3, 0.3, 0.7, 0.7),  // the work itself
+            box(0.0, 0.0, 1.0, 1.0),  // the photograph
+            box(0.22, 0.22, 0.78, 0.78),  // a wider edge of the same frame
+            frame,
+            box(0.5, 0.25, 0.9, 0.75),  // beside it, holding half
+        ]
+        XCTAssertEqual(OwnLocalCut.frame(of: seen, around: work), frame)
+        // Corners the other way round, a work's corner a hair outside.
+        let turned = Array(frame.reversed())
+        XCTAssertEqual(OwnLocalCut.frame(of: [turned], around: box(0.245, 0.3, 0.7, 0.7)), turned)
+        XCTAssertNil(OwnLocalCut.frame(of: [box(0.0, 0.0, 1.0, 1.0), work], around: work))
+        XCTAssertNil(OwnLocalCut.frame(of: [box(0.35, 0.25, 0.75, 0.75)], around: work))
+    }
+
     /// The technique and the support are a field each, and the card's
     /// "Technika" is written of the two (Mateusz 2026-11-19 20:38 UTC:
     /// "zrób dwa osobne pola i składaj z nich potem pole technika na
