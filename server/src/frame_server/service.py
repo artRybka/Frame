@@ -62,6 +62,7 @@ from .library.commons import repair_library
 from .library.fragments import Fragments
 from .library.hosts import guard as host_guard
 from .library.loc import loc_mirrors
+from .library.models import POLISH_TITLE
 from .library.museums import PRIVATE_LICENCE, TEST_LICENCE, Access, WikiArt, europeana_mirrors
 from .library.museums import client as museum_client
 from .library.records import records
@@ -395,6 +396,8 @@ class FrameService:
         self.daily.sharper = self.sharper
         self.copies = Copies(self.sharper)
         self.sharper.other_title = self._other_title
+        # Lists show the works' Polish titles once written (Mateusz 2026-11-22).
+        POLISH_TITLE[0] = self._polish_title
         # The museums of works from Commons, Openverse, WikiArt: looked up
         # when a card opens and at night.
         self.holders = Holders(self.library, museum_client)
@@ -573,6 +576,11 @@ class FrameService:
         if look.startswith(PHOTO):
             return self.looks.judge_photo(look, items)
         return self.looks.judge(look, items)
+
+    def _polish_title(self, item_id: str) -> str:
+        """The work's Polish title as its texts give it, "" for none yet."""
+        known = self.library.polish_titles().get(item_id)
+        return known[0] if known else ""
 
     def _other_title(self, item: Item, wait: float) -> Wording | None:
         """The work's Polish title (the card's) with its translations, for

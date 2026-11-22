@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.320
+
+- Listy dzieł (Odkrywaj, playlisty, wyniki) pokazują polski tytuł, gdy
+  dzieło ma już polskie teksty, tak jak karta dzieła.
+- Dzieła, które są tylko zdjęciem z archiwum sztuki (np. Foto Marburg,
+  czarno-białe zdjęcie obrazu), raz jeszcze szukają kopii z muzeum
+  (wystarczy 1000 px). Te, dla których żadnej kopii nie ma, nie są
+  pokazywane.
+
 ## 1.145.319
 
 - Restaurator dzieł zdejmuje najpierw raster druku (drobną siateczkę

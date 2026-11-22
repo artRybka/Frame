@@ -27,6 +27,7 @@ from .vocabulary import (
     OBJECT_CATEGORIES,
     PHOTOGRAPHY,
     SCULPTURE,
+    archive_own,
     is_archive_photo,
     is_art_archive_photo,
     is_design,
@@ -76,6 +77,10 @@ class Why(StrEnum):
     GREY_COPY = "grey_copy"
     #: A black-and-white photograph of a work from an art history archive.
     GREY_SLIDE = "grey_slide"
+    #: An art history archive's colour photograph of a work (Foto Marburg's
+    #: faded slides) with no other copy in its place: left out until one
+    #: is found (Mateusz 2026-11-22: "Szukaj kopii, potem ukryj").
+    ARCHIVE_SLIDE = "archive_slide"
     #: "Sztuki inne": works that keep to their own group.
     MANUSCRIPT = "manuscript"
     PHOTOGRAPH = "photograph"
@@ -107,6 +112,7 @@ COPIES = frozenset(
         Why.REPRODUCTION,
         Why.GREY_COPY,
         Why.GREY_SLIDE,
+        Why.ARCHIVE_SLIDE,
     }
 )
 #: The reasons of "Sztuki inne" (``vocabulary.other_art``), by the category
@@ -143,6 +149,7 @@ NAMES = {
     Why.REPRODUCTION: "reprodukcja",
     Why.GREY_COPY: "czarno-biała kopia",
     Why.GREY_SLIDE: "czarno-białe zdjęcie z archiwum sztuki",
+    Why.ARCHIVE_SLIDE: "zdjęcie z archiwum sztuki bez lepszej kopii",
     Why.MANUSCRIPT: "rękopis",
     Why.PHOTOGRAPH: "fotografia",
     Why.SCULPTURE: "rzeźba",
@@ -181,6 +188,8 @@ def _whys(item: Item) -> tuple[Why, ...]:
     ]
     if is_grey_copy(item):
         found.append(Why.GREY_SLIDE if is_art_archive_photo(item) else Why.GREY_COPY)
+    elif archive_own(item):
+        found.append(Why.ARCHIVE_SLIDE)
     category = object_category(item)
     if category is not None:
         found.append(OTHER_ART[category])
@@ -246,7 +255,8 @@ MINDS: dict[Place, tuple[frozenset[Why], frozenset[Why]]] = {
     # no painting (Mateusz 2026-11-09); a detail he kept is found.
     Place.FOUND: (
         EVERY,
-        OTHER | {Why.POSTAL, Why.DOCUMENT, Why.RECORDS, Why.NATURE, Why.GREY_SLIDE},
+        OTHER
+        | {Why.POSTAL, Why.DOCUMENT, Why.RECORDS, Why.NATURE, Why.GREY_SLIDE, Why.ARCHIVE_SLIDE},
     ),
     # The details, reproductions and stamps he kept stay his (Ulubione, his
     # playlists, Szukaj): the server proposes none of them itself (Mateusz

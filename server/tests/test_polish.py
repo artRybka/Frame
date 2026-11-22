@@ -551,6 +551,10 @@ def test_teraz_gets_polish_titles_and_texts(tmp_path: Path) -> None:
         upcoming = {i["id"]: i for i in client.get("/api/player").json()["upcoming"]}
         assert upcoming["met:1"]["title_pl"] == "Burza śnieżna"
         assert upcoming["met:2"]["title_pl"] is None
+        # Lists show it too, once written (Mateusz 2026-11-22: "Polskie tylko znane").
+        listed = {i["id"]: i for i in client.get("/api/library/items").json()["items"]}
+        assert listed["met:1"]["title_pl"] == "Burza śnieżna"
+        assert listed["met:2"]["title_pl"] is None
 
 
 def test_the_card_asks_for_polish_texts(tmp_path: Path) -> None:

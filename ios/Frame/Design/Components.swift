@@ -255,7 +255,7 @@ struct ArtCard: View {
     private var marked: Bool { Self.hasMarks(shown) }
 
     private var title: Text {
-        Self.markedTitle(shown, title: item.title.isEmpty ? "Bez tytułu" : item.title, weight: .medium)
+        Self.markedTitle(shown, title: item.shownTitle.isEmpty ? "Bez tytułu" : item.shownTitle, weight: .medium)
     }
 
     /// Whether a mark follows `item`'s title (`markedTitle`).
@@ -578,7 +578,7 @@ struct MasonryGrid<Content: View>: View {
     /// title on one or two lines as it fits the column (`ArtCard`: serif
     /// 15 pt title, caption-size artist, 8 pt apart).
     static func height(_ item: ItemSummary, columnWidth: Double = phoneColumn) -> Double {
-        let title = item.title.isEmpty ? "Bez tytułu" : item.title
+        let title = item.shownTitle.isEmpty ? "Bez tytułu" : item.shownTitle
         let lines = Double(title.count) * 8 > columnWidth ? 2.0 : 1.0
         let caption = 8 + lines * 19 + 2 + 16
         return 1 / (0.45...wide).clamp(item.aspectRatio) + caption / max(columnWidth, 60)

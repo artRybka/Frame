@@ -804,7 +804,7 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
         return "\(copy)@\(stamp)"
     }
 
-    /// The title "Teraz" shows: Polish when there is one.
+    /// The title lists and "Teraz" show: Polish when there is one.
     var shownTitle: String { titlePl ?? title }
 
     /// Width / height, defaulting to landscape when unknown.
@@ -2846,6 +2846,9 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
     var lowSide: Int? = nil
     /// `ItemSummary.restored`: the library's copy was drawn again.
     var restored: Bool? = nil
+    /// The work's Polish title, once its Polish texts are written: the
+    /// tile shows it in place of the museum's (Mateusz 2026-11-22).
+    var titlePl: String? = nil
     var id: String { item.id }
 
     /// The tile's summary, with the measured shape: without it every work
@@ -2856,6 +2859,7 @@ struct RemoteItem: Codable, Hashable, Sendable, Identifiable {
         summary.zoom = zoom
         summary.lowSide = lowSide
         if restored == true { summary.restored = true }
+        if let titlePl, !titlePl.isEmpty { summary.titlePl = titlePl }
         return summary
     }
 
