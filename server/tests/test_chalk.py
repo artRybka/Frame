@@ -132,3 +132,32 @@ def test_a_motion_is_one_smooth_arc_with_an_empty_head_and_two_echoes() -> None:
     # Beside the arc, on its outer side, two thinner arcs: three strokes cross its middle.
     on = np.nonzero(column > 0.3)[0]
     assert (np.diff(on) > 8).sum() + 1 == 3
+
+
+def test_an_echo_has_one_number_and_a_rhythm_two() -> None:
+    """22:44: "skoro łączymy kółka powtórzeń, to nie dajemy na każdym
+    numerka"; a rhythm keeps its number at its first and last element."""
+    from frame_server.ai.daily import Mark, Spot, View
+    from frame_server.ai.drawn import lines
+
+    def at(*points: tuple[float, float]) -> list[Spot]:
+        return [Spot(x=x, y=y) for x, y in points]
+
+    view = View(
+        title="t",
+        text="",
+        marks=[
+            Mark(shape="echo", title="Czerwień", points=at((0.2, 0.3), (0.8, 0.3), (0.5, 0.75))),
+            Mark(
+                shape="rhythm",
+                title="Pasy",
+                points=at((0.1, 0.1), (0.1, 0.5), (0.3, 0.1), (0.3, 0.5), (0.9, 0.1), (0.9, 0.5)),
+            ),
+        ],
+    )
+    layers, colours, numbers = lines(_sheet().astype(np.float32) / 255, view, seed=4)
+    assert len(layers) == 2 and len(set(colours)) == 2
+    assert [len(spots) for spots in numbers] == [1, 2]
+    for layer, spots in zip(layers, numbers, strict=True):  # each on its own line
+        for x, y in spots:
+            assert _at(layer, x, y, 8) > 0.3
