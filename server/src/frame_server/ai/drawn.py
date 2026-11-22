@@ -168,6 +168,101 @@ DO NOT ADD any text, signature, numbers, labels, arrows, construction lines, geo
 cast shadows, pencils or other props. The image is only the flat sheet, seen straight on.
 """
 
+#: The study of a work of one colour, a print or a drawing (Mateusz
+#: 2026-11-22 14:22: "dla grafik i rysunków monochromatycznych nie dajemy
+#: akwareli"; 14:26, of three ways: "Kreska w kolorze odbitki"): drawn in
+#: line alone, in the work's own ink on its own paper, its tones by
+#: hatching as a print makes them; no wash, no colour. Which works:
+#: :func:`lined`.
+UNDERLAY_LINE = """\
+Redraw this work (a print or a drawing in one colour) as an artist's composition study in line \
+alone: pen or pencil in the work's own ink, on paper of the work's own tone. A study is a \
+summary: it says less than the work, never more. It dwells on what the work is about and only \
+sets down the rest.
+
+GEOMETRY (most important). Keep exactly the framing of the source image. Every figure, object \
+and edge stays at exactly the same position and the same size as in the source, from edge to \
+edge. Do not crop, zoom, shift, rotate or mirror. Do not add a margin, border, frame, mat or the \
+edge of a sheet. The study fills the same rectangle as the work.
+
+LINE ALONE, ONE COLOUR. The whole study is drawn with one point in one colour: the colour of the \
+work's own ink or chalk (black, grey, brown, sepia, red chalk, blue, as it is). The paper is the \
+work's own paper tone, plain and even, with no stains. No watercolour, no wash, no tint, no \
+second colour, no smudged or rubbed tone: every tone is made of lines.
+
+LESS THAN THE WORK (the rule over all the others). The study always holds fewer lines, fewer \
+details and fewer things than the work, everywhere, the focus included. When in doubt, leave it \
+out. Never add anything the work does not plainly show: no features, folds, leaves, ornaments, \
+animals, props or figures that are not clearly there, and never more of them than there are. \
+Never sharpen, complete or explain what the artist left open. A schematic, general study is \
+right; a busy, over-exact one is wrong.
+
+WHAT MATTERS. An analysis of this work names what matters in it (in Polish): {FOCUS}. These \
+places are the focus of the study. Everything else is the setting.
+
+THE FOCUS is the most finished part, and still a summary: its main contours, the big shapes and \
+the one or two details that tell, as simply as the artist drew them or more simply. A face is \
+its outline and, only where the artist clearly drew them, the eyes, nose and mouth as a few \
+short marks. Hair is one mass: its outline and a few strokes of its direction. Hands are a few \
+lines.
+
+TONE BY HATCHING. The work's big pattern of light and dark stays and reads from across a room, \
+made the way a print or a drawing makes it: parallel hatching for a middle tone, crossed \
+hatching for a dark, dense crossed hatching for the darkest, so dense in the deepest darks of \
+a dark work that it nearly closes. The hatching is simpler, looser and more open than the \
+work's own: long even strokes laid in one or two directions over a whole area, following the \
+direction of its form, never the work's every engraved line. Lights are bare paper. What is \
+dark in the work is just as dark in the study: keep the work's own balance of light and dark. A \
+dark work (a night, a mezzotint, a charcoal drawing of deep shadow) gets a dark study, most of \
+it dense crossed hatching closing almost to solid, with the paper showing only in its lights.
+
+THE SETTING is never left empty and never detailed: each big area of it (a sky, a ground, a \
+wall, a background) gets its tone as one broad field of even hatching, with at most a few long \
+loose lines for its main edges and directions. Figures and things in the setting are \
+silhouettes: an outline of a few strokes filled with the hatching of their tone; no faces, no \
+hands, no inner lines.
+
+MANNER. This is a study of this particular work, so it keeps the artist's own way of drawing, \
+simplified further, never refined: the same contours, proportions and distortions, the same \
+character of line (an etcher's free line, an engraver's swelling line, a chalk's soft grain, a \
+pen's sharp line). Never make a face, a body or a space more realistic or prettier than the \
+artist did.
+
+BARE PAPER. Only the lights and the gaps between hatched fields.
+
+FIDELITY. What is drawn stays true: poses, directions of gaze and proportions as they are; \
+every figure keeps its place, at least as a silhouette, however small; nothing is invented, \
+moved, beautified or modernised.
+
+DO NOT ADD any text, signature, numbers, labels, plate marks, arrows, construction lines, \
+geometric diagrams, pencils or other props. The image is only the flat sheet, seen straight on.
+"""
+
+#: What runs out of a line study: two lines, never a wash.
+SPILL_LINE = """\
+This image is a finished composition study of a print or drawing (line alone, in one colour) \
+on a sheet of paper. The study lies in the middle; round it there is a margin of the same bare \
+paper. Do one thing only: let the study leave its rectangle in two places, the way an artist's \
+pen sometimes runs off a study. Return the same sheet with that added.
+
+THE STUDY STAYS AS IT IS. Same framing and size: the study stays where it is and as large as \
+it is, the margin stays as wide as it is. Do not redraw, darken, sharpen or clean any of it: \
+every line stays exactly where and how it is. Nothing is added inside the study.
+
+THE SPILL, into the LEFT and RIGHT margins only, one on each side. On each side choose one line \
+of the study that already runs to its edge (a horizon, a contour, an arm, the edge of a hatched \
+field) and carry it on in a single stroke of the same pen and colour across the margin to the \
+edge of the image, getting thinner. Or, on one side instead, let a few strokes of a hatched \
+field run a little way out, loose and thinning. No wash, no colour, no tint. Subtle. The rest of \
+the margins stays bare, clean paper. Nothing is depicted in the margin.
+"""
+
+#: Which line study the kept ones of the works of one colour were drawn
+#: with: one drawn before (in watercolour) is drawn anew, its lines kept
+#: (``drawn.DrawnSheets``). 1: line alone, 2026-11-22.
+LINE = 1
+
+
 LINES = """\
 This image is a finished composition study of a painting (watercolour and pen). A painting \
 teacher now explains its composition by drawing over it with coloured pencils, one pencil for \
@@ -475,11 +570,25 @@ def titled(view: View) -> list[Mark]:
     return [m for m in view.marks if m.title][: len(drawn.PENCILS)]
 
 
-def study_prompt(view: View) -> str:
+def lined(tags: Sequence[str]) -> bool:
+    """Whether a work with these colour tags (``Item.color_tags``) gets a
+    study in line alone (:data:`UNDERLAY_LINE`): a print or a drawing of
+    one colour."""
+    return "monochrome" in tags
+
+
+def study_prompt(view: View, line: bool = False) -> str:
+    if line:
+        return UNDERLAY_LINE.replace("{FOCUS}", focus(view) or "—")
     said = colour(view)
     return UNDERLAY.replace("{FOCUS}", focus(view) or "—").replace(
         "{COLOUR}", COLOUR.replace("{SAID}", said) if said else ""
     )
+
+
+def spill_prompt(line: bool = False) -> str:
+    """What is asked for what runs out of a study (of a line study: lines)."""
+    return SPILL_LINE if line else SPILL
 
 
 def lines_ask(study: Image.Image, view: View) -> tuple[str, list[str]] | None:
@@ -517,11 +626,11 @@ def _asked(paint: Paint, prompt: str, picture: Image.Image) -> tuple[Image.Image
 
 
 def _study(
-    picture: Image.Image, view: View, paint: Paint, costs: dict[str, float]
+    picture: Image.Image, view: View, paint: Paint, costs: dict[str, float], line: bool = False
 ) -> tuple[Image.Image, Any]:
     """The work as a study, and where it lies on the work. An answer that
     is not the work's (another framing altogether) is asked for once more."""
-    prompt = study_prompt(view)
+    prompt = study_prompt(view, line)
     off = math.inf
     for _ in range(2):
         study, usd = _asked(paint, prompt, picture)
@@ -646,16 +755,18 @@ def underlay(
     paint: Paint,
     spill: Paint | None = None,
     costs: dict[str, float] | None = None,
+    line: bool = False,
 ) -> Under:
     """What a work's takes are drawn over, asked for now: its study, and
     the study with what runs out of it (``spill`` paints it, ``paint``
-    itself when None; one that cannot be had is left out). Raises
-    :class:`NotDrawn` when the study is not the work's."""
+    itself when None; one that cannot be had is left out); ``line``: a
+    study in line alone (:func:`lined`). Raises :class:`NotDrawn` when the
+    study is not the work's."""
     costs = costs if costs is not None else {}
-    study, _ = _study(drawn.sent(picture), view, paint, costs)
+    study, _ = _study(drawn.sent(picture), view, paint, costs, line)
     spilt = None
     try:
-        spilt, costs["spill"] = (spill or paint)(SPILL, [drawn.padded(study)[0]])
+        spilt, costs["spill"] = (spill or paint)(spill_prompt(line), [drawn.padded(study)[0]])
     except AiUnavailable:
         raise
     except Exception as err:  # the sheet is paid for: it goes without its spill
@@ -671,6 +782,7 @@ def draw(
     under: Under | None = None,
     spill: Paint | None = None,
     costs: dict[str, float] | None = None,
+    line: bool = False,
 ) -> Sheet:
     """The sheet of a take, asked for now: ``picture`` is the work (its
     field alone, when the take has one) and ``view`` the take as its field
@@ -685,7 +797,7 @@ def draw(
     work = drawn.sent(picture)
     costs = dict(costs or {})
     if under is None:
-        under = underlay(work, view, paint, spill, costs)
+        under = underlay(work, view, paint, spill, costs, line)
     marked = _marks(under.study, view, paint, costs)
     sheet = put_together(work, view, under.study, marked, under.spilt, costs, seed)
     sheet.under = under

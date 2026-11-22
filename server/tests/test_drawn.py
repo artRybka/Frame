@@ -148,7 +148,7 @@ class Stand:
 
     def __call__(self, prompt: str, pictures: Any) -> tuple[Image.Image, float]:
         picture = pictures[0]
-        if prompt.startswith(UNDERLAY[:40]):
+        if prompt.startswith((UNDERLAY[:40], ai_drawn.UNDERLAY_LINE[:40])):
             self.asked.append("underlay")
             k = 1024 / max(picture.size)
             small = picture.resize((round(picture.width * k), round(picture.height * k)))
@@ -160,7 +160,7 @@ class Stand:
             return study.transform(
                 study.size, Image.Transform.AFFINE, (1.01, 0, 3, 0, 1.01, -2)
             ), 0.05
-        if prompt == SPILL:
+        if prompt in (SPILL, ai_drawn.SPILL_LINE):
             self.asked.append("spill")
             out = picture.copy()
             m = (picture.width - round(picture.width / (1 + 2 * 0.06))) // 2
@@ -483,7 +483,7 @@ class Stood:
 
     def paint(self, kind: str, prompt: str, pictures: Any, size: str = "1K", **kw: Any) -> Any:
         self.calls.append(kind)
-        self.kw.append({"spill": prompt == SPILL, **kw})
+        self.kw.append({"spill": prompt in (SPILL, ai_drawn.SPILL_LINE), **kw})
         return self._stand()(prompt, pictures)
 
     def batch(self, kind: str, asks: Any) -> str:
@@ -1301,3 +1301,84 @@ def test_a_kept_study_that_says_more_than_its_painting_is_drawn_anew_its_lines_k
         # Done: nothing more is judged or asked.
         assert svc.drawn.ahead() is False and len(asked) == 2 and len(stood.batches) == 2
         assert json.loads((svc.drawn.dir / "plain.json").read_text())["redo"] == []
+
+
+def test_a_work_of_one_colour_is_studied_in_line_and_its_watercolour_drawn_anew(
+    tmp_path: Path,
+) -> None:
+    """Mateusz 2026-11-22 14:22: "dla grafik i rysunków monochromatycznych
+    nie dajemy akwareli. To błąd który jest już teraz"; 14:26, of three ways:
+    "Kreska w kolorze odbitki"."""
+    line = ai_drawn.UNDERLAY_LINE
+    assert "No watercolour, no wash" in line and "TONE BY HATCHING" in line
+    assert "LESS THAN THE WORK" in line and "{COLOUR}" not in line
+    assert ai_drawn.lined(["monochrome", "dark"]) and not ai_drawn.lined(["warm"])
+    view = View(title="t", marks=[Mark(shape="loop", title="Biskup", points=[Spot(x=0.5, y=0.5)])])
+    assert study_prompt(view, line=True).startswith("Redraw this work (a print")
+    assert "„Biskup”" in study_prompt(view, line=True)
+    assert ai_drawn.spill_prompt(True) == ai_drawn.SPILL_LINE
+    assert ai_drawn.spill_prompt(False) == SPILL
+    assert "No wash" in ai_drawn.SPILL_LINE
+
+    app = _app(tmp_path)
+    svc: FrameService = app.state.service
+    with TestClient(app) as client:
+        _catalogue(svc)
+        stood = Stood(svc)
+        _old_page(svc)
+        # Drawn in watercolour, as every work was before.
+        assert svc.drawn.ahead() is True and stood.calls == [KIND] * 3
+        item = svc.library.get("met:1")
+        assert item is not None
+        view = _shown(svc)
+        stem = svc.drawn._stem(item, svc.drawn.key(view))
+        meta_before = svc.drawn.meta(item, view)
+        assert meta_before is not None and "line" not in meta_before
+        lines_before = (svc.drawn.dir / f"{stem}-m1.png").read_bytes()
+        assert svc.drawn.unlined() == [] and svc.drawn.ahead() is False
+
+        # The work is found to be of one colour: its study is drawn anew in
+        # line through the Batch, its lines kept, without the judge.
+        item = svc.library.update("met:1", color_tags=["monochrome"])
+        assert item is not None and svc.drawn._lined(item)
+        svc.drawn._kept.clear()
+        assert [i.id for i, _ in svc.drawn.unlined()] == ["met:1"]
+        assert svc.drawn.unjudged() == []
+        assert svc.drawn.ahead() is True  # set to be drawn anew
+        assert svc.drawn.unlined() == []
+        assert svc.drawn.ahead() is False and len(stood.batches) == 1
+        (study,) = stood.batches[0]
+        assert study.name == stem and study.prompt == study_prompt(view.inside(), line=True)
+        stood.ready = True
+        svc.drawn._plain_looked = 0.0
+        assert svc.drawn.ahead() is True  # the studies came
+        assert svc.drawn.ahead() is False and len(stood.batches) == 2
+        (spill,) = stood.batches[1]
+        assert spill.prompt == ai_drawn.SPILL_LINE
+        svc.drawn._plain_looked = 0.0
+        assert svc.drawn.ahead() is True  # the page laid anew over the line study
+        meta = svc.drawn.meta(item, view)
+        assert meta is not None and meta["line"] == ai_drawn.LINE and meta["repainted"]
+        assert (svc.drawn.dir / f"{stem}-m1.png").read_bytes() == lines_before
+        # Kept apart from the watercolour one, never borrowed back.
+        name = svc.drawn._under_name(item, view)
+        assert name.startswith(f"{item.file_stem}-l")
+        assert (svc.drawn.dir / f"{name}-study.png").is_file()
+        assert svc.drawn.ahead() is False and len(stood.batches) == 2
+        assert client.get("/api/study/met:1").status_code == 200
+
+        # A sheet drawn now for a work of one colour is drawn in line at once.
+        prompts: list[str] = []
+        paint = stood.paint
+
+        def told(kind: str, prompt: str, pictures: Any, size: str = "1K", **kw: Any) -> Any:
+            prompts.append(prompt)
+            return paint(kind, prompt, pictures, size, **kw)
+
+        svc.painter.paint = told  # type: ignore[method-assign]
+        for path in svc.drawn.dir.glob(f"{item.file_stem}-l*"):
+            path.unlink()
+        svc.drawn.make(item, view)
+        assert prompts[0] == study_prompt(view.inside(), line=True)
+        assert prompts[1] == ai_drawn.SPILL_LINE
+        assert (svc.drawn.meta(item, view) or {})["line"] == ai_drawn.LINE

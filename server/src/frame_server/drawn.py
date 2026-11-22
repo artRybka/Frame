@@ -72,18 +72,20 @@ from .ai.drawn import (
     AT_ONCE,
     BLOCKED_TRIES,
     KIND,
+    LINE,
     PLAIN,
-    SPILL,
     THINK,
     TYPICAL_USD,
     Sheet,
     Under,
     draw,
     judge_request,
+    lined,
     lines_ask,
     marks_there,
     put_together,
     repaged,
+    spill_prompt,
     study_prompt,
     underlay,
 )
@@ -259,6 +261,9 @@ class DrawnSheets:
             #: The study's prompt, when it is known to be the one of now
             #: (a study drawn with the sheet); else the judge looks at it.
             **({"plain": PLAIN} if plain else {}),
+            #: Over a line study (a work of one colour): its studies are
+            #: kept apart (``_under_mark``), so one is always of now.
+            **({"line": LINE} if self._lined(item) else {}),
             "size": list(sheet.size),
             #: Which of the take's marks each line is (its place among them).
             "marks": titled[: len(sheet.layers)],
@@ -280,10 +285,21 @@ class DrawnSheets:
 
     # -- what lies under a work's lines -----------------------------------------
 
+    @staticmethod
+    def _lined(item: Item) -> bool:
+        """Whether the work's study is drawn in line alone (``ai.drawn.lined``)."""
+        return lined(item.color_tags)
+
+    @classmethod
+    def _under_mark(cls, item: Item) -> str:
+        """The letter of the work's kept studies: ``l`` for a line study, so
+        that one drawn in watercolour before is neither taken nor borrowed."""
+        return "l" if cls._lined(item) else "u"
+
     def _under_name(self, item: Item, view: View) -> str:
         """The name of what is kept for the work and the take's field."""
         field = view.field.model_dump_json() if view.field is not None else ""
-        return f"{item.file_stem}-u{text_hash(LOOK, field)[:8]}"
+        return f"{item.file_stem}-{self._under_mark(item)}{text_hash(LOOK, field)[:8]}"
 
     def _under_file(self, item: Item, view: View, part: str, name: str | None = None) -> Path:
         return self.dir / f"{name or self._under_name(item, view)}-{part}.png"
@@ -297,7 +313,7 @@ class DrawnSheets:
             return None
         f = view.field
         best: tuple[float, str] | None = None
-        for path in self.dir.glob(f"{item.file_stem}-u*-field.json"):
+        for path in self.dir.glob(f"{item.file_stem}-{self._under_mark(item)}*-field.json"):
             try:
                 box = Box.model_validate_json(path.read_text())
             except (OSError, ValueError):
@@ -595,7 +611,7 @@ class DrawnSheets:
         if under is None:
             # Kept before the lines are asked for: should they fail, the
             # study is paid for once, and the next go asks the lines alone.
-            under = underlay(work, inside, paint, spill, costs)
+            under = underlay(work, inside, paint, spill, costs, self._lined(item))
             self._keep_under(item, view, under)
         sheet = draw(work, inside, paint, seed=self._seed(item), under=under, costs=costs)
         self._keep(item, view, sheet, plain=fresh)
@@ -682,7 +698,8 @@ class DrawnSheets:
                 continue
             under = self._under_name(item, view)
             if self._under(item, view, work) is None and all(ask.name != under for ask in asks):
-                asks.append(Ask(under, study_prompt(view.inside()), [work], think=THINK))
+                prompt = study_prompt(view.inside(), self._lined(item))
+                asks.append(Ask(under, prompt, [work], think=THINK))
             takes.append([item.id, self.key(view)])
         if takes and not asks:  # each has its study: their lines alone are asked for
             self._set_batch({"round": "lines", "name": "", "takes": takes, "cost": {}})
@@ -756,7 +773,8 @@ class DrawnSheets:
             spill = f"{self._under_name(item, view)}/spill"
             if under.spilt is None and all(ask.name != spill for ask in asks):
                 # one batch is one model's: the spill stays with it, without thinking
-                asks.append(Ask(spill, SPILL, [imaging.padded(under.study)[0]], think=THINK))
+                prompt = spill_prompt(self._lined(item))
+                asks.append(Ask(spill, prompt, [imaging.padded(under.study)[0]], think=THINK))
         if not asks:  # nothing to ask: the takes without marks get their page at once
             self._lines_in(state, {})
             return
@@ -959,7 +977,8 @@ class DrawnSheets:
         meta = self.meta(item, view)
         if meta is None:
             return
-        meta = {**meta, "plain": PLAIN, **more}
+        line = {"line": LINE} if self._lined(item) else {}
+        meta = {**meta, "plain": PLAIN, **line, **more}
         self._write(f"{stem}-meta.json", json.dumps(meta).encode())
         self._kept[stem] = meta
 
@@ -977,6 +996,34 @@ class DrawnSheets:
                 key = self.key(views[0])
                 meta = self.meta(item, views[0])
                 if meta is None or meta.get("plain", 0) >= PLAIN or (item_id, key) in redo:
+                    continue
+                if self._unlined(item, meta):  # drawn anew in line, not judged
+                    continue
+                found.setdefault(self._stem(item, key), (item, views[0]))
+        return list(found.values())
+
+    def _unlined(self, item: Item, meta: dict[str, Any]) -> bool:
+        """Whether the kept sheet of a work of one colour lies over a study
+        drawn otherwise than in line of now (in watercolour, before)."""
+        return self._lined(item) and meta.get("line", 0) < LINE
+
+    def unlined(self) -> list[Take]:
+        """The kept sheets of works of one colour drawn over a watercolour
+        study (Mateusz 2026-11-22 14:22: "dla grafik i rysunków
+        monochromatycznych nie dajemy akwareli. To błąd który jest już
+        teraz"), not waiting to be drawn anew yet: their study is drawn anew
+        in line through the Batch like a busy one's, their lines kept."""
+        redo = {(i, k) for i, k in self._plain_state()["redo"]}
+        found: dict[str, Take] = {}
+        for kind in PAGES:
+            for item_id, note in self.library.notes(kind).items():
+                views = page_views(note.data)
+                item = self.library.get(item_id) if views else None
+                if item is None:
+                    continue
+                key = self.key(views[0])
+                meta = self.meta(item, views[0])
+                if meta is None or (item_id, key) in redo or not self._unlined(item, meta):
                     continue
                 found.setdefault(self._stem(item, key), (item, views[0]))
         return list(found.values())
@@ -1009,6 +1056,12 @@ class DrawnSheets:
         batch = state.get("batch")
         if batch:
             return self._plain_batched(state, batch)
+        unlined = self.unlined()
+        if unlined:
+            state["redo"].extend([item.id, self.key(view)] for item, view in unlined)
+            self._set_plain(state)
+            log.info("%d studies of works of one colour to be drawn anew in line", len(unlined))
+            return True
         unjudged = self.unjudged()
         if unjudged:
             item, view = unjudged[0]
@@ -1055,7 +1108,9 @@ class DrawnSheets:
             except Exception as err:  # the picture cannot be had: next time
                 log.warning("the study of %s not drawn anew now: %s", item.id, err)
                 continue
-            asks.append(Ask(stem, study_prompt(view.inside()), [work], think=THINK))
+            asks.append(
+                Ask(stem, study_prompt(view.inside(), self._lined(item)), [work], think=THINK)
+            )
             handed.append([item.id, self.key(view)])
         if not asks:
             return False
@@ -1138,12 +1193,13 @@ class DrawnSheets:
 
     def _plain_spill(self, state: dict[str, Any], batch: dict[str, Any]) -> None:
         asks: list[Ask] = []
-        for stem, _item, _view in self._plain_takes(batch["takes"]):
+        for stem, item, _view in self._plain_takes(batch["takes"]):
             try:
                 study = Image.open(self._plain_file(stem)).convert("RGB")
             except OSError:
                 continue
-            asks.append(Ask(f"{stem}/spill", SPILL, [imaging.padded(study)[0]], think=THINK))
+            prompt = spill_prompt(self._lined(item))
+            asks.append(Ask(f"{stem}/spill", prompt, [imaging.padded(study)[0]], think=THINK))
         if not asks:
             self._plain_in(state, batch, {})
             return
