@@ -208,3 +208,27 @@ def test_the_art_institute_is_asked_by_another_spelling_too() -> None:
     total, items = aic.search_kind(by_artist("Alfons Mucha"), "poster", 24, 1)
     assert asked == ["Alfons Mucha", "Alphonse Mucha"]
     assert total == 1 and items[0].artist == "Alphonse Mucha"
+
+
+def test_a_role_or_a_doubt_before_the_name_is_the_same_person() -> None:
+    """ "Künstler: Vincent van Gogh" and "Być może Vincent van Gogh" are no
+    artists of their own in Szukaj's suggestions (Mateusz 2026-11-22)."""
+    names = ArtistNames(
+        {
+            "Vincent van Gogh": range(800),
+            "Künstler: Vincent van Gogh": [1],
+            "Być może Vincent van Gogh": [2],
+            "Possibly Rembrandt": [3],
+            "Theo van Gogh": [4],
+        }
+    )
+    assert names.spellings["Vincent van Gogh"][0] == "Vincent van Gogh"
+    assert set(names.spellings["Vincent van Gogh"]) == {
+        "Vincent van Gogh",
+        "Künstler: Vincent van Gogh",
+        "Być może Vincent van Gogh",
+    }
+    assert names.shown("Possibly Rembrandt") == "Possibly Rembrandt"  # his only spelling
+    assert "Theo van Gogh" in names.spellings
+    assert made_by("Künstler: Vincent van Gogh", ["Vincent van Gogh"])
+    assert made_by("Być może Vincent van Gogh", ["Vincent van Gogh"])

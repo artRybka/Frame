@@ -516,31 +516,15 @@ def _busy(sheet: Array, radius: float) -> Array:
     return np.clip(busy / max(float(np.percentile(busy, 97)), 1e-4), 0, 1)
 
 
-def _rings(layer: Array, far: float) -> list[Array]:
-    """The rings of an echo the model drew, each as its part of the layer:
-    arcs of one ring that another mark cuts are one ring."""
-    drawn = cv2.dilate((layer > 0.3).astype(np.uint8), np.ones((7, 7), np.uint8))
-    n, parts, stats, cents = cv2.connectedComponentsWithStats(drawn, connectivity=8)
-    top = max((stats[c, cv2.CC_STAT_AREA] for c in range(1, n)), default=0)
-    big = [c for c in range(1, n) if stats[c, cv2.CC_STAT_AREA] >= max(0.3 * top, 500)]
-    rings: list[list[int]] = []
-    for c in sorted(big, key=lambda c: -stats[c, cv2.CC_STAT_AREA]):
-        same = next((r for r in rings if math.dist(cents[c], cents[r[0]]) < far), None)
-        if same is not None:
-            same.append(c)
-        else:
-            rings.append([c])
-    return [layer * np.isin(parts, r) for r in rings]
-
-
 def spots(
     marks: Sequence[Placed], layers: Sequence[Array], sheet: Array
 ) -> list[list[tuple[float, float]]]:
     """Where each mark's number stands (pixels of the sheet), on its own
-    stroke. A mark of repetitions carries its number at each place
+    stroke. A rhythm carries its number at its first and last beat
     (Mateusz 2026-11-12 21:26: "Jeżeli numer dotyczy powtórzeń, to może
-    warto go powtórzyć?"): at every ring of an echo, at a rhythm's first
-    and last beat. A mark the model left out has none."""
+    warto go powtórzyć?"); an echo, its rings joined by a line now, once
+    (2026-11-22 22:44: "skoro łączymy kółka powtórzeń, to nie dajemy na
+    każdym numerka"). A mark left out has none."""
     h, w = sheet.shape[:2]
     radius = NUMBER * max(w, h)
     busy = _busy(sheet, radius)
@@ -563,16 +547,7 @@ def spots(
         ]
         found: list[tuple[float, float]] = []
         places: list[tuple[float, float]] = []
-        if mark.shape == "echo":
-            rings = _rings(layer, 0.07 * max(w, h))
-            if 2 <= len(rings) <= 5:
-                for ring in rings:
-                    spot = _spot(ring, others, taken + found, radius, busy, held)
-                    if spot:
-                        found.append(spot)
-            else:
-                places = list(mark.points)
-        elif mark.shape == "rhythm" and len(mark.points) >= 4:
+        if mark.shape == "rhythm" and len(mark.points) >= 4:
             ends = list(mark.points)
             places = [
                 ((ends[0][0] + ends[1][0]) / 2, (ends[0][1] + ends[1][1]) / 2),

@@ -61,8 +61,10 @@ COLOUR_SPREAD = (0.01, 0.035)
 #: 22: the white laid on a tinted sheet (``LIGHT_TINTED``); 23: the
 #: white of a painting (``PAINTED_WHITE``), and white shown a little lighter
 #: (``WHITE_LIFT``); 24: a painting's bar is its tonal masses and accents
-#: (``tonal.bar``), a work with no medium a painting by its museum's type.
-SCORE_VERSION = 24
+#: (``tonal.bar``), a work with no medium a painting by its museum's type;
+#: 25: one strong tint on its paper is monochrome (``STRONG_VIVID``), and a
+#: WikiArt work is no painting by its type alone (``stated_type``).
+SCORE_VERSION = 25
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
 #: this chroma / lightness for light ones: a greyish-blue sky does, a beige
@@ -178,6 +180,20 @@ MONO_SPREAD = 12.0
 MONO_VIVID = 0.01
 MONO_VIVID_CHROMA = 0.1
 MONO_ACCENT_HUE = 40.0
+
+#: A picture of one strong tint: van Gogh's brown ink and sepia on yellowed
+#: paper (WikiArt's "Driveway", "Vicarage and Church at Etten", "Old Woman
+#: Asleep after Rops", Mateusz 2026-11-22: under Kolorowe) is too vivid for
+#: ``MONO_VIVID`` and too strong for its paper to be seen through
+#: (``toned``). Of one hue still (``MONO_SPREAD``), it is monochrome when
+#: its colour follows its lightness (``follows_lightness``) and less than
+#: ``STRONG_VIVID`` of it is vivid: an orange sunset is more. Not when its
+#: museum calls it a painting: of 188 oils (AIC, WikiArt) 15 dark or hazy
+#: ones (Rembrandt's school, Goya, marines) would be; of 141 drawings it
+#: took 103 for monochrome, the rule before 70 (2026-11-22).
+STRONG_ASTRAY = 0.5
+STRONG_ASTRAY_SHARE = 0.05
+STRONG_VIVID = 0.4
 
 #: A monochrome picture's colours seen as the eye sees them, against its
 #: paper (the median tint of its lightest ``PAPER_LIGHTEST`` share, taken
@@ -452,6 +468,12 @@ FILED_ON_PAPER = re.compile(
 )
 
 
+def typed_painting(medium: str, classification: str) -> bool:
+    """Whether a work's medium or its museum's type says it is a painting
+    (``painting``); a work with neither says nothing."""
+    return bool(medium.strip() or classification.strip()) and painting(medium, classification)
+
+
 def painting(medium: str, classification: str = "") -> bool:
     """Whether a work is painted as far as its medium says: neither printed
     nor on paper. With no medium its museum's type says (Mateusz
@@ -649,7 +671,7 @@ def analyse(
     dominant = dominant_colours(centres, weights)
     accents = accent_colours(fine, dominant)
     small = touches(linear_to_oklab(_sample(img, TOUCH_SAMPLE)), dominant, accents)
-    monochrome = one_tone(fine, spread, accents)
+    monochrome = one_tone(fine, spread, accents, typed_painting(medium, classification))
     # One tint and a collector's stamp is one tint still: no touches there,
     # and its paper is no accent.
     if monochrome:
@@ -807,12 +829,16 @@ def standing_out(lab: np.ndarray) -> np.ndarray:
 
 
 def one_tone(
-    lab: np.ndarray, spread: float, accents: Sequence[tuple[np.ndarray, float, str]] = ()
+    lab: np.ndarray,
+    spread: float,
+    accents: Sequence[tuple[np.ndarray, float, str]] = (),
+    painted: bool = False,
 ) -> bool:
     """Whether a picture is monochrome (its ``"monochrome"`` tag): not in
-    colours (``colourful``) and of one tint (``single_tone``)."""
+    colours (``colourful``) and of one tint (``single_tone``). ``painted``:
+    its museum says it is a painting (``typed_painting``)."""
     # Several hues, however muted (El Greco), are never monochrome.
-    return not colourful(lab, spread) and single_tone(lab, spread, accents)
+    return not colourful(lab, spread) and single_tone(lab, spread, accents, painted)
 
 
 def colour_tags(
@@ -954,20 +980,23 @@ def painted_in(share: dict[str, float]) -> list[str]:
 
 
 def single_tone(
-    lab: np.ndarray, spread: float, accents: Sequence[tuple[np.ndarray, float, str]] = ()
+    lab: np.ndarray,
+    spread: float,
+    accents: Sequence[tuple[np.ndarray, float, str]] = (),
+    painted: bool = False,
 ) -> bool:
     """Whether a picture is monochrome: greys alone, or one tint (sepia, a
     cyanotype, red chalk, grisaille), see ``MONO_SPREAD``. Old photographs
     tint their lights and darks a little apart, so the spread is weighted
     by chroma: their faint greys count for little. Faint colours on
     yellowed paper hide in that, so the colours are looked at against the
-    paper too (``toned``)."""
+    paper too (``toned``). One strong tint (``STRONG_VIVID``) counts only
+    in a work its museum does not call a painting (``painted``)."""
     chroma = np.hypot(lab[:, 1], lab[:, 2])
-    if float((chroma >= MONO_VIVID_CHROMA).mean()) >= MONO_VIVID:
-        return False
+    vivid = float((chroma >= MONO_VIVID_CHROMA).mean())
     tinted = chroma >= MONO_CHROMA
     if spread < COLOUR_SPREAD[0] or tinted.mean() < 0.01:
-        return toned(lab)
+        return vivid < MONO_VIVID and toned(lab)
     hue = np.radians(_hue(lab[tinted]))
     weight = chroma[tinted] ** 2
     centre = np.arctan2((weight * np.sin(hue)).sum(), (weight * np.cos(hue)).sum())
@@ -975,10 +1004,33 @@ def single_tone(
     if float(np.sqrt((weight * off**2).sum() / weight.sum())) > MONO_SPREAD:
         return False
     centre_deg = float(np.degrees(centre)) % 360
-    return toned(lab) and all(
+    if not all(
         abs((float(_hue(c)) - centre_deg + 180) % 360 - 180) <= MONO_ACCENT_HUE
         for c, _, _ in accents
-    )
+    ):
+        return False
+    if vivid < MONO_VIVID and toned(lab):
+        return True
+    return not painted and vivid < STRONG_VIVID and follows_lightness(lab)
+
+
+def follows_lightness(lab: np.ndarray) -> bool:
+    """Whether a picture's colour is set by its lightness alone, as ink or
+    chalk laid on a tinted sheet: in each band of lightness
+    (``TONED_BAND``) at most ``STRONG_ASTRAY_SHARE`` of the picture strays
+    from the band's colour by ``STRONG_ASTRAY`` of it (``TONED_CHROMA`` at
+    least). A painting's colours vary at one lightness."""
+    light = lab[:, 0]
+    ab = lab[:, 1:]
+    band = np.minimum((light / TONED_BAND).astype(int), int(1 / TONED_BAND))
+    astray = np.zeros(len(light), dtype=bool)
+    for value in np.unique(band):
+        inside = band == value
+        middle = np.median(ab[inside], axis=0)
+        off = np.hypot(*(ab[inside] - middle).T)
+        least = TONED_CHROMA / STRONG_ASTRAY
+        astray[inside] = off >= STRONG_ASTRAY * max(float(np.hypot(*middle)), least)
+    return float(astray.mean()) <= STRONG_ASTRAY_SHARE
 
 
 def toned(lab: np.ndarray) -> bool:

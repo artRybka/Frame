@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.145.330
+
+- Rysunki odsiewają się filtrami: mocna sepia i brązowy tusz na żółtym
+  papierze są teraz „Mono”, więc nie trafiają do „Kolorowych”. Dzieła
+  z WikiArt, który każde dzieło nazywa obrazem, mają technikę z karty
+  dzieła (doczytywanej nocą), a do tego czasu z wyglądu: jednobarwne to
+  rysunek, więc nie wchodzą do „Malarstwa”. Barwy katalogu przeliczają
+  się po aktualizacji.
+
+## 1.145.329
+
+- Kreski kompozycji na arkuszu studium rysuje teraz serwer kredą, bez
+  drugiego wywołania Gemini (Gemini robi tylko podkład). Zachowane
+  arkusze dostają nowe kreski raz w tle. Kółka powtórzeń połączone
+  linią mają jeden numerek zamiast numerka na każdym.
+
+## 1.145.328
+
+- Podpowiedzi w Szukaj nie pokazują już starej liczby dzieł dla słów
+  wpisanych wcześniej: odpowiedź starsza niż 20 s jest pobierana od nowa.
+- „Künstler: Vincent van Gogh”, „Być może Vincent van Gogh” i podobne
+  nie są osobnymi artystami, tylko tym samym.
+- Tytuły zrobione z nazw plików tracą numery katalogowe (F, JH),
+  podkreślenia i nazwisko artysty z przodu („Van gogh digger f866 jh54”
+  → „Digger”).
+
 ## 1.145.327
 
 - „Doszukuj w tle” w edycji inteligentnej playlisty: co 12 godzin serwer

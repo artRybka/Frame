@@ -50,7 +50,7 @@ from .markup import (
     clean_title,
     commons_rendition,
     extension,
-    strip_artist,
+    tidy_title,
 )
 from .met_index import INDEX as MET_INDEX
 from .met_objects import met_objects
@@ -393,7 +393,7 @@ class Museum(ABC):
             if key in fields:
                 fields[key] = clean_title(fields[key])
         if "title" in fields:
-            fields["title"] = strip_artist(fields["title"], fields.get("artist", ""))
+            fields["title"] = tidy_title(fields["title"], fields.get("artist", ""))
         return Item(
             id=f"{self.key}:{source_id}",
             kind=ItemKind.ARTWORK,

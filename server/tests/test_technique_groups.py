@@ -237,3 +237,44 @@ def test_the_rijksmuseum_gives_every_type_of_a_work() -> None:
     # porcelain, a furnishing fabric).
     for dutch in ("wandelstokknop", "bekledingsstof", "kraag, godet", "kastanjevaas"):
         assert object_category(read.model_copy(update={"classification": dutch})) == DECORATIVE
+
+
+def test_wikiart_types_by_medium_or_picture() -> None:
+    """WikiArt types every work "Painting": van Gogh's drawings under
+    Malarstwo (Mateusz 2026-11-22). Its medium decides, without one its
+    picture: one of one tone is a drawing."""
+    from frame_server.library.importer import _read_anew, _untold
+    from frame_server.library.vocabulary import BY_KEY as terms
+    from frame_server.library.vocabulary import searched_technique_fits, stated_type
+
+    def wikiart(medium: str = "", tags: tuple[str, ...] = ()) -> Item:
+        return Item(
+            id="wikiart:1",
+            source="wikiart",
+            source_id="1",
+            title="Driveway",
+            artist="Vincent van Gogh",
+            classification="Painting",
+            medium=medium,
+            color_tags=list(tags),
+        )
+
+    painting = PlaylistRules(artists=["Vincent van Gogh"], terms=["technique:painting"])
+    drawing = PlaylistRules(artists=["Vincent van Gogh"], terms=["technique:drawing"])
+    sepia = wikiart(tags=("monochrome", "tone:monochrome"))
+    oil = wikiart(tags=("colorful", "tone:colorful"))
+    assert not matches(sepia, painting) and matches(sepia, drawing)
+    assert matches(oil, painting) and not matches(oil, drawing)
+    assert not matches(wikiart("pencil, paper"), painting)
+    assert matches(wikiart("pencil, paper"), drawing)
+    assert matches(wikiart("oil, canvas", ("monochrome",)), painting)
+    # A search for paintings found them: its type alone is no answer.
+    asked = [terms["technique:painting"]]
+    assert not searched_technique_fits(asked, sepia)
+    assert searched_technique_fits(asked, oil)
+    # Its colours are measured as of a work its type says nothing of.
+    assert stated_type(sepia) == "" and stated_type(wikiart("oil, canvas")) == "Painting"
+    # Its record's medium is read at night, while it has none.
+    assert _untold(sepia) and not _untold(wikiart("pencil, paper"))
+    assert _read_anew(sepia, wikiart("pencil, paper")) == {"medium": "pencil, paper"}
+    assert _read_anew(sepia, None) == {}
