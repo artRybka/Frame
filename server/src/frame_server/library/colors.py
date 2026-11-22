@@ -60,8 +60,9 @@ COLOUR_SPREAD = (0.01, 0.035)
 #: under yellowed varnish (``varnished_blue``, ``Item.varnish_blue``);
 #: 22: the white laid on a tinted sheet (``LIGHT_TINTED``); 23: the
 #: white of a painting (``PAINTED_WHITE``), and white shown a little lighter
-#: (``WHITE_LIFT``).
-SCORE_VERSION = 23
+#: (``WHITE_LIFT``); 24: a painting's bar is its tonal masses and accents
+#: (``tonal.bar``), a work with no medium a painting by its museum's type.
+SCORE_VERSION = 24
 
 #: A pixel counts towards a colour family from this OKLab chroma on, or
 #: this chroma / lightness for light ones: a greyish-blue sky does, a beige
@@ -221,6 +222,9 @@ LEVEL_MOST = 0.6
 #: of blue is "mostly blue").
 LEVEL_MOST_EACH = 0.1
 LEVEL_MOST_AREA = 0.12
+#: Each of several colours asked at "most" holds this much of its even
+#: part of ``LEVEL_MOST`` (three: 13% of the picture's colours each).
+LEVEL_MOST_SHARE = 2 / 3
 #: Moods asked from the Tonacja card (``"tone:warm"``): every one must fit.
 TONE_TAG = "tone:"
 #: The Tonacja card's groups: each picture is on exactly one side of each
@@ -440,9 +444,22 @@ def printed(medium: str) -> bool:
     return bool(PRINTED.search(medium.lower()))
 
 
-def painting(medium: str) -> bool:
+#: A museum's type of a work on paper (``painting``): a drawing, a print,
+#: a poster, a photograph.
+FILED_ON_PAPER = re.compile(
+    r"draw|dessin|zeichn|disegn|dibujo|rysun|tekening|teckning|print|graphi|grafi|estamp|stamp|engrav|etch"
+    r"|lithogra|woodcut|poster|plakat|affiche|photo|fotogra|watercol|aquarel|akwarel|pastel"
+)
+
+
+def painting(medium: str, classification: str = "") -> bool:
     """Whether a work is painted as far as its medium says: neither printed
-    nor on paper. No medium at all is paint, as the app's bar has it."""
+    nor on paper. With no medium its museum's type says (Mateusz
+    2026-11-21 22:55, of the drawings and prints among the works with no
+    medium his new bars were painted for: „największym problemem są dzieła
+    bez techniki”); with neither, paint, as the app's bar has it."""
+    if not medium.strip():
+        return not FILED_ON_PAPER.search(classification.lower())
     return not printed(medium) and not ON_PAPER.search(medium.lower())
 
 
@@ -612,11 +629,15 @@ class Analysis(NamedTuple):
     varnish: float = 0.0
 
 
-def analyse(img: Image.Image, spread: float | None = None, medium: str = "") -> Analysis:
+def analyse(
+    img: Image.Image, spread: float | None = None, medium: str = "", classification: str = ""
+) -> Analysis:
     """Dominant colours, then accents, then the small striking patches
     (``touches``); colour/mood tags and the colour families' shares;
     ``spread`` is the picture's ``tint_spread`` if already known; ``medium``
-    the work's (a print's light is its paper, ``printed``)."""
+    the work's (a print's light is its paper, ``printed``), with its
+    museum's ``classification`` for a work with none (``painting``). A
+    painting's bar is its tonal masses and accents (``tonal.bar``)."""
     if spread is None:
         spread = tint_spread(img)
     linear = _sample(img)
@@ -638,7 +659,10 @@ def analyse(img: Image.Image, spread: float | None = None, medium: str = "") -> 
     faint = [] if monochrome or spread < COLOUR_SPREAD[0] else cast_accents(fine, dominant, accents)
     accents = sorted([*accents, *faint], key=lambda a: -a[1])
     shown = [c for c, _ in dominant] + [c for c, _, _ in accents] + [c for c, _, _ in small]
-    painted = painting(medium)
+    # Nothing says what it is, and it is of one tint: ink or chalk on its paper.
+    painted = painting(medium, classification) and not (
+        monochrome and not medium.strip() and not classification.strip()
+    )
     more = passed_over(merged[len(dominant) :], shown, painted)
     shown += [c for c, _ in more]
     # A white that stands out stands out in a dark picture of one tone
@@ -688,6 +712,14 @@ def analyse(img: Image.Image, spread: float | None = None, medium: str = "") -> 
     swatches += [_swatch(c, w, accent=True) for c, w in tinted]
     swatches += [_swatch(c, w, accent=True) for c, w, _ in small]
     swatches += [_swatch(whiter(c), w, accent=True) for c, w in white]
+    if painted:
+        # A painting's bar (Mateusz 2026-11-21): its masses and its accents,
+        # the ones found here among them; what it shows is what it is found by.
+        from frame_server.library import tonal
+
+        own = [(_lab(s.hex), s.weight) for s in swatches if s.accent]
+        swatches = tonal.bar(grid, own)
+        shown = [_lab(s.hex) for s in swatches]
     tags = colour_tags(fine, spread, shown, monochrome, also)
     varnish = 0.0 if monochrome or spread < COLOUR_SPREAD[0] else varnished_blue(fine, tags)
     return Analysis(swatches, tags, colour_shares(fine, spread), varnish)
@@ -1064,6 +1096,13 @@ def at_levels(have: set[str], shares: dict[str, float], wanted: list[str]) -> bo
     """Whether a picture with tags ``have`` and ``shares`` has each colour
     at its asked level (``LEVELS``); colours asked at "most" together."""
     most: list[str] = []
+    # Several colours asked "clear" (wyraźna) share it evenly (Mateusz
+    # 2026-11-21 23:21, of red, yellow and blue „wyraźna”: 0 works, each
+    # alone 7, 41 and 12: „W tej sytuacji kolory powinny się podzielić po
+    # równo?”): each holds its part of ``LEVEL_MUCH``, never less than
+    # ``LEVEL_CLEAR``.
+    much = sum(1 for token in wanted if token.partition(LEVEL_MARK)[2] == "much")
+    much_each = max(LEVEL_CLEAR, LEVEL_MUCH / much) if much else LEVEL_MUCH
     for token in wanted:
         family, _, at = token.partition(LEVEL_MARK)
         share = shares.get(family, 0.0)
@@ -1073,7 +1112,7 @@ def at_levels(have: set[str], shares: dict[str, float], wanted: list[str]) -> bo
             if ACCENT_TAG + family not in have:
                 return False
         elif at in ("clear", "much"):
-            if share < (LEVEL_CLEAR if at == "clear" else LEVEL_MUCH):
+            if share < (LEVEL_CLEAR if at == "clear" else much_each):
                 return False
         else:
             return False
@@ -1091,7 +1130,17 @@ def _mostly(shares: dict[str, float], families: list[str]) -> bool:
         whole = sum(v for f, v in shares.items() if f not in GROUNDS)
     if whole <= 0 or sum(picked) < LEVEL_MOST_AREA:
         return False
-    return sum(picked) >= LEVEL_MOST * whole and all(v >= LEVEL_MOST_EACH * whole for v in picked)
+    if sum(picked) < LEVEL_MOST * whole or min(picked) < LEVEL_MOST_EACH * whole:
+        return False
+    # In proportion (Mateusz 2026-11-21 23:39: a picture green on 40%, with
+    # a patch of yellow, one of red and half of it blue, is not one mainly
+    # in red, yellow and blue: „udział kolorów powinien być
+    # proporcjonalny”): each holds ``LEVEL_MOST_SHARE`` of its even part,
+    # and no colour not asked is larger than the least of them.
+    if len(picked) > 1 and min(picked) < LEVEL_MOST_SHARE * LEVEL_MOST * whole / len(picked):
+        return False
+    counted = shares.keys() if any(f in GROUNDS for f in families) else shares.keys() - GROUNDS
+    return all(shares[f] <= min(picked) for f in counted if f not in families)
 
 
 def _only(have: set[str], only: set[str]) -> bool:
@@ -1111,6 +1160,12 @@ def _swatch(lab: np.ndarray, weight: float, accent: bool = False) -> ColorSwatch
     return ColorSwatch(
         hex="#{:02x}{:02x}{:02x}".format(*rgb), weight=round(float(weight), 3), accent=accent
     )
+
+
+def _lab(hex_: str) -> np.ndarray:
+    """A swatch's colour in OKLab."""
+    rgb = np.array([[int(hex_[i : i + 2], 16) for i in (1, 3, 5)]], dtype=np.uint8)
+    return np.asarray(linear_to_oklab(u8_to_linear(rgb))[0])
 
 
 def _distance(p: np.ndarray, q: np.ndarray, light: float = 1.0) -> float:

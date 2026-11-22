@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.145.304
+
+- Pasek barw obrazów (malarstwa) składany od nowa: tony obrazu od
+  najciemniejszego do najjaśniejszego, a na nich akcenty tam, gdzie leżą w
+  obrazie, tym mniejsze, im mniej ich w dziele. Biel, ciemne zielenie i
+  barwy odstające od tonu obrazu widać teraz wyraźniej.
+- Dzieło bez podanej techniki, które muzeum nazywa rysunkiem, grafiką albo
+  plakatem, dostaje pasek papieru, nie farby.
+- Szukanie kolorem: kilka barw „wyraźnych” naraz dzieli próg po równo
+  (trzy barwy po około 9% obrazu), więc nie wychodzi już pusta lista.
+- „Główna” przy kilku barwach: każda musi mieć proporcjonalny udział, a
+  żadna inna barwa nie może być w obrazie większa od nich.
+- Po aktualizacji serwer raz przelicza barwy dzieł (1–2 godziny).
+
 ## 1.145.303
 
 - „Kadrowane” nie jest już playlistą: jako „Sprawdź kadry” jest w

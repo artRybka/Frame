@@ -9,6 +9,11 @@ struct ColorSwatch: Codable, Hashable, Sendable {
     let weight: Double
     /// An accent, not one of the picture's large colours.
     var accent: Bool?
+    /// A painting's accent (server `library/tonal.py`): its place along the
+    /// bar (0 to 1, on the mass it stands on in the picture) and how much
+    /// of the picture it is, for the size of its dab.
+    var at: Double?
+    var amount: Double?
 }
 
 /// A picture's drawn contour (server `library/contour.py`): its lines'
