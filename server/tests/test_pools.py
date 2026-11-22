@@ -17,7 +17,7 @@ from frame_server.daily import HISTORY_KEY
 from frame_server.library import Item, ItemKind, Playlist, PlaylistKind, PlaylistRules
 from frame_server.library.importer import Job
 from frame_server.library.museums import MUSEUMS, Discovery, Museum
-from frame_server.player import POOL_SIZE
+from frame_server.player import GROW_SIZE, GROWN_KEY, POOL_SIZE
 from frame_server.study import STATE_KEY as STUDY_KEY
 
 COLOURS = [(200, 30, 30), (30, 60, 180), (240, 200, 30), (30, 140, 60)]
@@ -196,6 +196,57 @@ def test_a_smart_playlist_keeps_asking_museums(museums) -> None:
     assert job is not None
     _wait(job)
     assert len(service.library.playlist_items(playlist)) > 5  # the old limit is gone
+
+
+def test_a_saved_playlist_set_to_grow_asks_museums_while_another_plays(museums) -> None:
+    """ "Doszukuj w tle" (Mateusz 2026-11-22): a smart playlist the frame
+    doesn't play grows by itself, now and then; one not set to doesn't."""
+    service = museums
+    player = service.player
+    still = service.library.save_playlist(
+        Playlist(name="Ala", rules=PlaylistRules(artists=["Ala"]))
+    )
+    assert player.grow_playlists() is None  # none set to grow
+    grows = service.library.save_playlist(
+        Playlist(name="Ola", rules=PlaylistRules(artists=["Ola"]), grows=True)
+    )
+    job = player.grow_playlists()
+    assert job is not None
+    _wait(job)
+    items = service.library.playlist_items(grows)
+    assert len(items) == GROW_SIZE and all(i.artist == "Ola" and i.pooled for i in items)
+    assert not service.library.playlist_items(still)
+    assert service.library.get_state(GROWN_KEY)[str(grows.id)]["found"] == GROW_SIZE
+    assert player.grow_playlists() is None  # again only after a while
+
+    # The one playing tops up as it plays; hearts can't come from museums.
+    service.library.set_state(GROWN_KEY, {})
+    settings = player.settings
+    settings.playlist_id = grows.id
+    player.save_settings(settings)
+    service.library.save_playlist(
+        Playlist(name="Serca", rules=PlaylistRules(favorites_only=True), grows=True)
+    )
+    assert player.grow_playlists() is None
+
+
+def test_an_older_app_keeps_a_playlist_growing(service) -> None:
+    from frame_server.web import create_app
+
+    app = create_app(service.settings)
+    with TestClient(app) as client:
+        made = client.post(
+            "/api/playlists", json={"name": "Ola", "rules": {"artists": ["Ola"]}, "grows": True}
+        ).json()
+        pid, rules = made["playlist"]["id"], made["playlist"]["rules"]
+        assert made["playlist"]["grows"]
+        # No "grows" sent (an app from before it): the playlist keeps growing.
+        kept = client.put(f"/api/playlists/{pid}", json={"name": "Ola 2", "rules": rules}).json()
+        assert kept["playlist"]["grows"]
+        off = client.put(
+            f"/api/playlists/{pid}", json={"name": "Ola", "rules": rules, "grows": False}
+        ).json()
+        assert not off["playlist"]["grows"]
 
 
 def test_catalogue_stays_within_its_size(museums) -> None:

@@ -1120,6 +1120,10 @@ struct Playlist: Codable, Hashable, Sendable {
     var theme: String?
     /// "Wspólna": the household sees it too. Nil leaves it as the server has it.
     var shared: Bool?
+    /// "Doszukuj w tle": a smart playlist the server adds museum works to
+    /// now and then, also while the frame shows another (Mateusz
+    /// 2026-11-22; `Player.grow_playlists`). Nil leaves it as the server has it.
+    var grows: Bool?
     /// "Ulubione", the owner's hearts: always there, never deleted.
     var isFavorites: Bool { kind == .smart && rules.favoritesOnly }
 
@@ -1150,6 +1154,8 @@ struct PlaylistSummary: Codable, Identifiable, Hashable, Sendable {
     var mine: Bool?
     /// The order of its works; nil for an album, and from older servers.
     var sort: PlaylistSort?
+    /// "Doszukuj w tle" (`Playlist.grows`).
+    var grows: Bool?
 
     var isFavorites: Bool { kind == .smart && rules.favoritesOnly }
     /// Made by this phone's person: only they change it.

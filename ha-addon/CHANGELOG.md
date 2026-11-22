@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.327
+
+- „Doszukuj w tle” w edycji inteligentnej playlisty: co 12 godzin serwer
+  dobiera z muzeów do 24 nowych pasujących dzieł, także gdy ramka
+  pokazuje coś innego. Playlista, dla której muzea nic nowego nie mają,
+  odpoczywa tydzień; przy pełnym katalogu nic nie jest dobierane.
+- Dzieła pokazane w Szukaj trafiają do katalogu od razu, także gdy
+  używasz aplikacji, więc to samo wyszukiwanie chwilę później już je ma.
+  Dzieła przyniesione przez muzea, ale niepokazane, dalej czekają.
+
 ## 1.145.326
 
 - Kopia jest oznaczana jako „czarno-biała” tylko wtedy, gdy nie ma

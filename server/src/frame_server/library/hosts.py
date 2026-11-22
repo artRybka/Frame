@@ -166,14 +166,22 @@ def asking_for(why: str, app: bool | None = None) -> Iterator[None]:
             _app.reset(marked)
 
 
+#: What Szukaj showed, taken into the catalogue (``Importer._take_showed``):
+#: not held back while the app is in use, the owner may look for it again
+#: in a moment (Mateusz 2026-11-22). Not :data:`DEFERRABLE`.
+SHOWN = "pokazane w Szukaj"
+
+
 #: The server's own threads and what their requests are for, where they
 #: did not say (:func:`asking_for`): by the thread's name, or the name of the
 #: function it runs.
 THREAD_PURPOSES: tuple[tuple[str, str], ...] = (
     ("night", "noc"),
+    ("shown-works", SHOWN),
     ("searched", "katalog"),
     ("job-pool", "propozycje"),
     ("job-catalogue", "katalog"),
+    ("job-grow", "katalog"),  # Player.grow_playlists: nobody waits for it
     ("job-", "import"),
     ("search-page", "odświeżanie"),
     ("sharper", "kopie"),

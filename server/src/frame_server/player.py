@@ -184,6 +184,15 @@ SENT_NAME = "Historia przesłanych"
 POOL_LOW = 8
 POOL_SIZE = 24
 POOL_MAX = 80
+#: Smart playlists set to grow by themselves ("Doszukuj w tle", Mateusz
+#: 2026-11-22: "taka lista rośnie sama, doszukując sobie dzieła") while the
+#: frame plays something else: each asked of the museums for up to
+#: ``GROW_SIZE`` works at most every ``GROW_EVERY``; one the museums had
+#: nothing more for rests ``GROW_REST``. What each got last, by id.
+GROW_SIZE = 24
+GROW_EVERY = timedelta(hours=12)
+GROW_REST = timedelta(days=7)
+GROWN_KEY = "grown_playlists"
 #: Artists of the owner's taste asked for when topping up Suggestions.
 TASTE_ARTISTS = 6
 #: Artists asked for in Szukaj, the latest this many: each search counts as
@@ -246,6 +255,18 @@ def utcnow() -> datetime:
 def searched_key(user: str) -> str:
     """Each person's searches (the owner's under the key from before)."""
     return SEARCHED_ARTISTS_KEY if user == OWNER_ID else f"{SEARCHED_ARTISTS_KEY}:{user}"
+
+
+def museums_fill(playlist: Playlist) -> bool:
+    """Whether museums can bring works for ``playlist``: a smart one of
+    artworks, not of the owner's hearts or own works."""
+    rules = playlist.rules
+    return (
+        playlist.kind == PlaylistKind.SMART
+        and not rules.favorites_only
+        and not rules.asks_mine()
+        and (not rules.kinds or ItemKind.ARTWORK in rules.kinds)
+    )
 
 
 class Hold(BaseModel):
@@ -1301,27 +1322,69 @@ class Player:
                 self._add_suggestions(job.item_ids)
 
             return importer.start_job("pool", suggest)
-        rules = playlist.rules
-        museum_works = not rules.kinds or ItemKind.ARTWORK in rules.kinds
-        if (
-            playlist.kind != PlaylistKind.SMART
-            or rules.favorites_only
-            or rules.asks_mine()
-            or not museum_works
-        ):
+        if not museums_fill(playlist):
             return None
         items = self.library.playlist_items(playlist)
         have = len(self.fresh(items, settings))
         if have >= POOL_LOW:
             return None
-        want = POOL_SIZE - have
-        rules = rules.model_copy(update={"kinds": [ItemKind.ARTWORK]})
+        return importer.start_job("pool", partial(self._fill, playlist, POOL_SIZE - have))
+
+    def _fill(self, playlist: Playlist, want: int, job: Job) -> None:
+        """Up to ``want`` museum works for ``playlist``, into the catalogue:
+        what Szukaj finds for the owner's choices, a theme's own searches
+        for one made from Odkrywaj."""
+        importer = self.service.importer
+        rules = playlist.rules.model_copy(update={"kinds": [ItemKind.ARTWORK]})
         if playlist.theme is None:
-            # The owner's own playlist: what Szukaj finds for its choices.
-            return importer.start_job(
-                "pool", lambda job: fill_by_search(importer, rules, want, job, pooled=True)
-            )
-        return importer.start_job("pool", lambda job: fill_card(importer, rules, want, job, True))
+            fill_by_search(importer, rules, want, job, pooled=True)
+        else:
+            fill_card(importer, rules, want, job, True)
+
+    def grow_playlists(self) -> Job | None:
+        """One smart playlist set to grow (:attr:`Playlist.grows`) that the
+        frame does not play (that one tops up as it plays, :meth:`top_up`)
+        asked of the museums for more, the one waiting longest first; in the
+        background, waiting while the app is in use. A full catalogue takes
+        nothing in (Mateusz 2026-11-07), so none grows then."""
+        importer = self.service.importer
+        if self._full or any(
+            job.description == "grow" and not job.finished for job in importer.jobs.values()
+        ):
+            return None
+        playing = self.settings.playlist_id
+        grown: dict[str, Any] = self.library.get_state(GROWN_KEY, {})
+        now = utcnow()
+
+        def due(playlist: Playlist) -> datetime | None:
+            last = grown.get(str(playlist.id))
+            if last is None:
+                return datetime.min.replace(tzinfo=UTC)
+            rest = GROW_EVERY if last.get("found", 0) else GROW_REST
+            at = datetime.fromisoformat(last["at"]) + rest
+            return at if at <= now else None
+
+        waiting = [
+            (at, p)
+            for p in self.library.playlists()
+            if p.grows and p.id != playing and museums_fill(p) and (at := due(p)) is not None
+        ]
+        if not waiting:
+            return None
+        playlist = min(waiting, key=lambda pair: pair[0])[1]
+
+        def grow(job: Job) -> None:
+            try:
+                self._fill(playlist, GROW_SIZE, job)
+            finally:
+                kept = self.library.get_state(GROWN_KEY, {})
+                ids = {str(p.id) for p in self.library.playlists() if p.grows}
+                kept = {k: v for k, v in kept.items() if k in ids}
+                kept[str(playlist.id)] = {"at": utcnow().isoformat(), "found": job.done}
+                self.library.set_state(GROWN_KEY, kept)
+                log.info("playlist %r grew by %d museum works", playlist.name, job.done)
+
+        return importer.start_job("grow", grow)
 
     def _pick_from_catalogue(self, count: int, settings: FrameSettings) -> list[Item]:
         """Up to ``count`` new Suggestions from the catalogue: half by the
@@ -2101,6 +2164,7 @@ class Player:
                     # (104 s after a start, 2026-11-04).
                     await run_in_threadpool(self.grow_catalogue)
                     await run_in_threadpool(self.top_up)
+                    await run_in_threadpool(self.grow_playlists)
             except Exception:
                 log.exception("scheduler tick failed")
             await asyncio.sleep(period)
