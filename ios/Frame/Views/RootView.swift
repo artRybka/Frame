@@ -71,7 +71,7 @@ struct RootView: View {
             case "discover", "discover-group", "discover-theme", "daily", "detail", "original": .discover
             case "museums", "search", "search-picker", "search-colors", "search-tones", "search-empty", "search-styles", "search-subjects", "search-techniques", "search-chosen", "search-museums", "search-photo", "search-like", "search-typed": .search
             case "playlists", "playlist", "playlist-search", "suggestions", "editor", "editor-new", "editor-manual",
-                 "own-works", "own-start", "own-cut", "own-balance", "own-describe", "own-card", "own-scan", "own-scan2": .playlists
+                 "own-works", "playlists-own", "own-start", "own-cut", "own-balance", "own-describe", "own-card", "own-scan", "own-scan2": .playlists
             case "frame", "notices", "connection", "battery", "schedule", "schedule-economy", "presentation", "presentation-photo", "orientation": .frame
             default: .now
             }
