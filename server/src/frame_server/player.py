@@ -125,12 +125,16 @@ SET_ASIDE_KEY = "set_aside_dropped"
 #: 5: black-and-white photographs from Foto Marburg and KIK-IRPA,
 #: 6: details by their titles, Openverse's copies of museums' works,
 #: 7: details in file names, photographs described in French,
-#: 8: state archives' records, letters and poems).
-SET_ASIDE_VERSION = 8
+#: 8: state archives' records, letters and poems,
+#: 9: natural history collections' photographs of plants).
+SET_ASIDE_VERSION = 9
 #: What a version leaves out anew: a catalogue cleaned by the one before
 #: loses only works with these reasons, not those the owner may still bring
 #: back (what the gatekeeper set aside, "Przywróć").
-SET_ASIDE_NEW: dict[int, frozenset[Why]] = {8: frozenset({Why.RECORDS, Why.DOCUMENT})}
+SET_ASIDE_NEW: dict[int, frozenset[Why]] = {
+    8: frozenset({Why.RECORDS, Why.DOCUMENT}),
+    9: frozenset({Why.NATURE}),
+}
 #: Version of the colour analysis the library's pictures carry (the key is
 #: of the e-paper score it once went with).
 SCORE_KEY = "suitability_version"

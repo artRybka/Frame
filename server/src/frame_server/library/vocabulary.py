@@ -987,6 +987,50 @@ def _is_state_record(credit: str, artist: str) -> bool:
     return not artist.strip() or bool(_OFFICE.search(artist))
 
 
+#: Europeana's providers of natural history: a university's department of
+#: life sciences, botanical gardens, herbaria, museums of natural history.
+#: OpenUp! gathers their photographs of plants and animals; Europeana's
+#: search leaves it out since 2026-10-29 (``Europeana.not_art``), but three
+#: photographs of the rose "Rosa 'Claude Monet ®'" (Trieste's Department of
+#: Life Sciences) came in on 2026-10-29 by Monet's name, before that
+#: (Mateusz 2026-11-21: "Czy możemy jakoś to odsiać?").
+_NATURE_PROVIDER = re.compile(
+    r"\b(life sciences|natural history|naturhistor\w*|naturkunde|histoire naturelle|"
+    r"storia naturale|historia natural|historii naturalnej|botani\w*|herbar\w*|"
+    r"zoolog\w*|naturalis|biodiversit\w*|openup!?)",
+    re.IGNORECASE,
+)
+#: A picture such a provider types as one stays: Padua's botanical
+#: watercolours ("Painting, dipinto"), Berlin-Dahlem's prints.
+_PICTURE_TYPE = re.compile(
+    r"\b(paint\w*|drawings?|prints?|watercolou?rs?|illustrat\w*|engraving\w*|etching\w*|"
+    r"lithograph\w*|woodcut\w*|gouache|pastels?|dipint\w*|disegn\w*|stamp\w*|"
+    r"zeichnung\w*|druck\w*|gem[äa]lde\w*|rysun\w*|obraz\w*|grafik\w*|posters?)\b",
+    re.IGNORECASE,
+)
+#: Nor a portrait of a naturalist (Berlin-Dahlem's "Porträt von Charles
+#: Lyell"): a picture of a person, not of a plant.
+_PORTRAIT_TITLE = re.compile(r"\b(portr\w*|bildnis\w*|ritratt\w*)", re.IGNORECASE)
+
+
+def is_nature_record(item: Item) -> bool:
+    """A natural history collection's record of a plant, an animal or a
+    specimen from Europeana: no picture, but its photograph, given with no
+    type and no author (``verdict.Why.NATURE``)."""
+    if item.kind != ItemKind.ARTWORK or item.source != "europeana":
+        return False
+    return _is_nature_record(item.credit, item.classification, item.title)
+
+
+@lru_cache(maxsize=PER_WORK)
+def _is_nature_record(credit: str, classification: str, title: str) -> bool:
+    if not _NATURE_PROVIDER.search(credit):
+        return False
+    if _PICTURE_TYPE.search(classification):
+        return False
+    return not _PORTRAIT_TITLE.search(title.split("\n")[0])
+
+
 #: A page of a sketchbook or a sheet of notes and studies, as its museum
 #: says it (Mateusz 2026-11-13: F.E. Church's "Various Studies near the Pool
 #: of Bethesda", no study). A single "Study" or "Sketch" is not one: an oil

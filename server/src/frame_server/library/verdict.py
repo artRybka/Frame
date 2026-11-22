@@ -33,6 +33,7 @@ from .vocabulary import (
     is_detail,
     is_document,
     is_grey_copy,
+    is_nature_record,
     is_openverse_copy,
     is_photograph,
     is_postal,
@@ -67,6 +68,8 @@ class Why(StrEnum):
     DOCUMENT = "document"
     #: A state archive's record: a form, a file, an office's photograph.
     RECORDS = "records"
+    #: A natural history collection's photograph of a plant or animal.
+    NATURE = "nature"
     #: A plate, page, slide or postcard reproducing a work.
     REPRODUCTION = "reproduction"
     #: A black-and-white copy of a painting.
@@ -100,6 +103,7 @@ COPIES = frozenset(
         Why.POSTAL,
         Why.DOCUMENT,
         Why.RECORDS,
+        Why.NATURE,
         Why.REPRODUCTION,
         Why.GREY_COPY,
         Why.GREY_SLIDE,
@@ -135,6 +139,7 @@ NAMES = {
     Why.POSTAL: "znaczek albo banknot",
     Why.DOCUMENT: "dokument albo odwrocie",
     Why.RECORDS: "akta z archiwum państwowego",
+    Why.NATURE: "zdjęcie przyrodnicze albo okaz",
     Why.REPRODUCTION: "reprodukcja",
     Why.GREY_COPY: "czarno-biała kopia",
     Why.GREY_SLIDE: "czarno-białe zdjęcie z archiwum sztuki",
@@ -169,6 +174,7 @@ def _whys(item: Item) -> tuple[Why, ...]:
             (Why.POSTAL, is_postal(item)),
             (Why.DOCUMENT, is_document(item)),
             (Why.RECORDS, is_state_record(item)),
+            (Why.NATURE, is_nature_record(item)),
             (Why.REPRODUCTION, is_reproduction(item)),
         )
         if holds
@@ -238,7 +244,10 @@ MINDS: dict[Place, tuple[frozenset[Why], frozenset[Why]]] = {
     Place.LISTED: (EVERY, frozenset()),
     # A stamp or a page he kept is no still life, Foto Marburg's grey slide
     # no painting (Mateusz 2026-11-09); a detail he kept is found.
-    Place.FOUND: (EVERY, OTHER | {Why.POSTAL, Why.DOCUMENT, Why.RECORDS, Why.GREY_SLIDE}),
+    Place.FOUND: (
+        EVERY,
+        OTHER | {Why.POSTAL, Why.DOCUMENT, Why.RECORDS, Why.NATURE, Why.GREY_SLIDE},
+    ),
     # The details, reproductions and stamps he kept stay his (Ulubione, his
     # playlists, Szukaj): the server proposes none of them itself (Mateusz
     # 2026-11-11).

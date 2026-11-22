@@ -40,6 +40,8 @@ from frame_server.service import FrameService
 MONET = "Claude Monet"
 #: A title for each work: no two alike, none another's with a word added.
 WORDS = [
+    "Roses",
+    "Lilacs",
     "Dunes",
     "Rain",
     "Poplars",
@@ -140,6 +142,16 @@ SPECIMENS: dict[str, tuple[str, dict[str, Any]]] = {
             "artist": "War Department. The Adjutant General's Office. Captured Records Section.",
         },
     ),
+    # A natural history collection's photograph of a rose named after Monet
+    # (OpenUp!, 2026-11-21).
+    "zdjęcie przyrodnicze": (
+        "europeana",
+        {
+            "credit": "Department of Life Sciences, University of Trieste",
+            "classification": "",
+            "medium": "",
+        },
+    ),
     "archiwum fotografii": ("europeana", {"source_id": "718~water-lilies"}),
     "archiwum sztuki, kolor": ("europeana", {"credit": ARCHIVE}),
     "archiwum sztuki, szare": ("europeana", {"credit": ARCHIVE, "tint_spread": 0.001}),
@@ -222,6 +234,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "znaczek": ("-----------", "+----------"),
     "dokument": ("-----------", "+----------"),
     "akta z archiwum": ("-----------", "+----------"),
+    "zdjęcie przyrodnicze": ("-----------", "+----------"),
     "archiwum fotografii": ("-----------", "++---------"),
     "archiwum sztuki, kolor": ("++-++++++++", "++-++++++++"),
     "archiwum sztuki, szare": ("-----------", "+----------"),
@@ -248,6 +261,7 @@ BROWSED_NOT_FOUND = {
     "znaczek",
     "dokument",
     "akta z archiwum",
+    "zdjęcie przyrodnicze",
     "archiwum sztuki, szare",
     "fotografia z Openverse",
     "fotografia z muzeum",

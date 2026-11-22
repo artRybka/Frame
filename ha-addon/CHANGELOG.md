@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.302
+
+- Zdjęcia roślin i okazów z kolekcji przyrodniczych w Europeanie
+  (zielniki, ogrody botaniczne, muzea przyrodnicze) nie trafiają do
+  katalogu; ryciny i akwarele z tych kolekcji zostają. Z katalogu znikają
+  trzy zdjęcia róży „Claude Monet” z Triestu.
+
 ## 1.145.301
 
 - Własne dzieła są kadrowane na iPhonie, bez pytania Opusa: telefon sam
