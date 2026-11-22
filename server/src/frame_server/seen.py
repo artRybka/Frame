@@ -337,9 +337,11 @@ HOLD_SUBJECT = 0.3
 #: by both halves (the boards Mateusz chose it on, 2026-11-22), the other
 #: layer's nearness taken off by this much: whole, the form went too far
 #: (Wyspiański all prints, the Wave's sea lost; 2026-11-22). Set on his
-#: catalogue with ``/api/debug/seen?off=``.
+#: catalogue with ``/api/debug/seen?off=``: at 0.25 each the subject held
+#: and the techniques mixed, at 0.5 the lilies became flowers and the Wave
+#: shores (boards of 5 works, weights 0-1, 2026-11-22).
 BARE_AMONG = 2000
-OFF: dict[str, float] = {"subject": 0.5, "style": 0.5}
+OFF: dict[str, float] = {"subject": 0.25, "style": 0.25}
 #: The layers are taught again once the works with numbers grew by this share.
 TEACH_AGAIN = 0.05
 HEADS = "heads.npz"

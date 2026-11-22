@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.316
+
+- „Treść” bez „Formy” i „Forma” bez „Treści” odejmują drugą warstwę
+  słabiej (ćwierć zamiast połowy), według plansz wag: temat zostaje
+  (lilie z wodą, fala z morzem), a techniki się mieszają.
+
 ## 1.145.315
 
 - „Szukaj lepszej kopii” pyta muzea także o polski tytuł z karty,
