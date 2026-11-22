@@ -333,9 +333,13 @@ LEAST_SUBJECT = 30
 #: How hard each layer holds back (ridge): the trial's best.
 HOLD_FORM = 3.0
 HOLD_SUBJECT = 0.3
-#: The subject alone is chosen among this many nearest by both halves (the
-#: boards Mateusz chose it on, 2026-11-22).
+#: The subject alone or the form alone is chosen among this many nearest
+#: by both halves (the boards Mateusz chose it on, 2026-11-22), the other
+#: layer's nearness taken off by this much: whole, the form went too far
+#: (Wyspiański all prints, the Wave's sea lost; 2026-11-22). Set on his
+#: catalogue with ``/api/debug/seen?off=``.
 BARE_AMONG = 2000
+OFF: dict[str, float] = {"subject": 0.5, "style": 0.5}
 #: The layers are taught again once the works with numbers grew by this share.
 TEACH_AGAIN = 0.05
 HEADS = "heads.npz"
@@ -642,60 +646,78 @@ class Seen:
                 self._shaped = kept
         return heads, kept[2], kept[3], ids, live
 
-    def alike_near(self, vector: np.ndarray, count: int, by: str = "") -> list[tuple[str, float]]:
+    def alike_near(
+        self,
+        vector: np.ndarray,
+        count: int,
+        by: str = "",
+        off: float | None = None,
+        among: int | None = None,
+    ) -> list[tuple[str, float]]:
         """The works nearest a work's (or a photograph's) numbers: by its
         whole look (``by`` empty), or by its form ("style") or its subject
         ("subject"): the layer's answer and the whole look, half each.
 
-        The subject alone is asked of the look without its form (Mateusz
-        2026-11-22, Wyspiański's self-portrait by Treść alone: "w wynikach
-        praktycznie tylko rysunek"; of the boards he chose "Bez formy"): the
-        whole look less what the form layer says of the two, beside the
-        subject layer's answer, among the :data:`BARE_AMONG` nearest.
-        (Taking only the form layer's directions out of the numbers changed
-        nothing: "Chyba bez istotnych zmian?") Its
-        scores are then told at the levels the half-and-half ones have at
-        the same places (the n-th nearest gets the n-th nearest's score of
-        before), so the floors set on those still show as many works."""
+        Asked alone, the subject is asked of the look less its form, and the
+        form of the look less its subject (Mateusz 2026-11-22, Wyspiański's
+        self-portrait by Treść alone: "w wynikach praktycznie tylko
+        rysunek"; by Forma alone only portraits): the whole look less
+        ``off`` (:data:`OFF`) times what the other layer says of the two,
+        beside the asked layer's answer, among the ``among``
+        (:data:`BARE_AMONG`) nearest by both halves. (Taking only the form
+        layer's directions out of the numbers changed nothing.) The scores
+        are then told at the levels the half-and-half ones have at the same
+        places (the n-th nearest gets the n-th nearest's score of before),
+        so the floors set on those still show as many works."""
         query = _unit_rows(np.asarray(vector, dtype=np.float32)[None, :])[0]
         shaped = self.shaped() if by in ("style", "subject") else None
         if shaped is None:
             return self.index.nearest(query, count)
         heads, forms, subjects, ids, live = shaped
-        layer, answers = (heads.form, forms) if by == "style" else (heads.subject, subjects)
+        style = by == "style"
+        layer, answers = (heads.form, forms) if style else (heads.subject, subjects)
+        other_layer, others = (heads.subject, subjects) if style else (heads.form, forms)
         asked = Heads.answer(layer, query[None, :])[0]
-        bare = by == "subject"
-        form_asked = Heads.answer(heads.form, query[None, :])[0] if bare else None
+        weight = OFF.get(by, 0.0) if off is None else off
+        other_asked = Heads.answer(other_layer, query[None, :])[0] if weight else None
         with self.index._lock:
             rows, norms = self.index._rows, self.index._norms
         rows, norms = rows[: len(answers)], norms[: len(answers)]
         scores = np.empty(len(answers), dtype=np.float32)
-        levels = np.empty(len(answers), dtype=np.float32) if bare else None
+        levels = np.empty(len(answers), dtype=np.float32) if other_asked is not None else None
         for at in range(0, len(answers), CHUNK):
             whole = rows[at : at + CHUNK].astype(np.float32) @ query
             whole /= np.maximum(norms[at : at + CHUNK, 0], 1e-9)
             told = answers[at : at + CHUNK].astype(np.float32) @ asked
             scores[at : at + CHUNK] = (whole + told) / 2
-            if levels is not None and form_asked is not None:
+            if levels is not None and other_asked is not None:
                 levels[at : at + CHUNK] = scores[at : at + CHUNK]
-                form = forms[at : at + CHUNK].astype(np.float32) @ form_asked
-                scores[at : at + CHUNK] = (whole - form + told) / 2
+                other = others[at : at + CHUNK].astype(np.float32) @ other_asked
+                scores[at : at + CHUNK] = (whole - weight * other + told) / 2
         if levels is None:
             return LookIndex.top(scores, ids, live, count)
         # Among the nearest of before, as on the boards: over the whole
-        # catalogue a work far in everything but its technique would come.
-        among = LookIndex.top(levels, ids, live, max(BARE_AMONG, count))
-        ranked = sorted(among, key=lambda pair: -float(scores[live[pair[0]]]))[:count]
-        before = [s for _, s in among[: len(ranked)]]
+        # catalogue a work far in everything but what is taken off would come.
+        wide = max(BARE_AMONG if among is None else among, count)
+        near = LookIndex.top(levels, ids, live, wide)
+        ranked = sorted(near, key=lambda pair: -float(scores[live[pair[0]]]))[:count]
+        before = [s for _, s in near[: len(ranked)]]
         return [(i, level) for (i, _), level in zip(ranked, before, strict=True)]
 
-    def like(self, item_id: str, count: int, by: str = "") -> list[tuple[str, float]] | None:
-        """The works nearest this one (``by`` as :meth:`alike_near`), or
-        None when it has no numbers yet."""
+    def like(
+        self,
+        item_id: str,
+        count: int,
+        by: str = "",
+        off: float | None = None,
+        among: int | None = None,
+    ) -> list[tuple[str, float]] | None:
+        """The works nearest this one (``by``, ``off``, ``among`` as
+        :meth:`alike_near`), or None when it has no numbers yet."""
         vector = self.index.vector(item_id)
         if vector is None:
             return None
-        near = self.alike_near(vector, count + 1, by)
+        near = self.alike_near(vector, count + 1, by, off, among)
         return [(i, s) for i, s in near if i != item_id][:count]
 
     def words(self, text: str, count: int) -> list[tuple[str, float]]:

@@ -410,7 +410,12 @@ def test_the_subject_alone_is_asked_without_the_form(found: Seen) -> None:
     asked = found.index.vector("met:asked")
     assert asked is not None
     both = found.alike_near(asked, 3)
-    alone = found.alike_near(asked, 3, "subject")
+    alone = found.alike_near(asked, 3, "subject", off=1.0)
+    assert [i for i, _ in found.alike_near(asked, 3, "subject", off=0.0)] == [
+        "met:asked",
+        "met:drawn",
+        "met:oil",
+    ]
     assert [i for i, _ in both] == ["met:asked", "met:drawn", "met:oil"]
     # The face in oil first, even before the asked work (whose like leaves it out).
     assert [i for i, _ in alone] == ["met:oil", "met:asked", "met:drawn"]

@@ -261,17 +261,21 @@ async def seen_state(
     text: str = "",
     by: By = "",
     count: Annotated[int, Query(ge=1, le=2000)] = 60,
+    off: Annotated[float | None, Query(ge=0, le=2)] = None,
+    among: Annotated[int | None, Query(ge=1, le=20000)] = None,
 ) -> SeenAnswer:
     """Step one of SigLIP in Gemini's place (Mateusz 2026-11-20): how far
     the works' numbers are, and the works nearest ``item`` or ``text``
     (best in English) by them (``by``: the whole look, "subject" or
     "style" with the layers), beside ``/debug/looks``: for setting
-    :data:`frame_server.seen.FLOORS`. The owner's only."""
+    :data:`frame_server.seen.FLOORS`; ``off`` and ``among`` in place of
+    :data:`frame_server.seen.OFF` and ``BARE_AMONG``, for setting those
+    (Mateusz 2026-11-22). The owner's only."""
     seen = svc.seen
     done, total = await run_in_threadpool(seen.counts)
     found: list[tuple[str, float]] | None = []
     if item:
-        found = await run_in_threadpool(seen.like, item, count, by)
+        found = await run_in_threadpool(seen.like, item, count, by, off, among)
     elif text and seen.model.here():
         found = await run_in_threadpool(seen.words, text, count)
     return SeenAnswer(
