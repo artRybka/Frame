@@ -174,6 +174,7 @@ THREAD_PURPOSES: tuple[tuple[str, str], ...] = (
     ("searched", "katalog"),
     ("job-pool", "propozycje"),
     ("job-catalogue", "katalog"),
+    ("job-grow", "katalog"),  # Player.grow_playlists: nobody waits for it
     ("job-", "import"),
     ("search-page", "odświeżanie"),
     ("sharper", "kopie"),

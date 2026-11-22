@@ -126,6 +126,23 @@ struct PlaylistEditorView: View {
                             }
                             .tint(Theme.ink)
                         }
+                        if playlist.kind == .smart, fetchBlocker == nil {
+                            // Mateusz 2026-11-22: "taka lista rośnie sama,
+                            // doszukując sobie dzieła".
+                            Toggle(isOn: Binding(
+                                get: { playlist.grows ?? false },
+                                set: { playlist.grows = $0 }
+                            )) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Doszukuj w tle")
+                                    Text(bound: "Co 12 godzin serwer dobiera z muzeów do 24 nowych pasujących dzieł, także gdy ramka pokazuje coś innego.")
+                                        .font(.caption)
+                                        .foregroundStyle(Theme.inkSoft)
+                                }
+                            }
+                            .tint(Theme.ink)
+                            .accessibilityIdentifier("playlist-grows")
+                        }
 
                         switch playlist.kind {
                         case .smart:

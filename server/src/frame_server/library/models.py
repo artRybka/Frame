@@ -1097,6 +1097,10 @@ class Playlist(BaseModel):
     #: The order its owner chose; None: :meth:`order` (artist for a smart
     #: playlist, the order of adding for a manual one).
     sort: PlaylistSort | None = None
+    #: A smart playlist that grows by itself while the frame plays another:
+    #: the server asks the museums for more of its works now and then
+    #: ("Doszukuj w tle", Mateusz 2026-11-22; ``Player.grow_playlists``).
+    grows: bool = False
     created_at: str = ""
     updated_at: str = ""
 
@@ -1147,6 +1151,7 @@ class PlaylistSummary(BaseModel):
     limit: int | None = None
     #: The order its works are in (:attr:`Playlist.order`); None for an album.
     sort: PlaylistSort | None = None
+    grows: bool = False
 
 
 class FacetValue(BaseModel):

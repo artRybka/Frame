@@ -2448,6 +2448,7 @@ class Library:
             shared=playlist.shared,
             mine=playlist.owner == viewer_id(),
             limit=playlist.limit,
+            grows=playlist.grows,
             sort=None if playlist.kind == PlaylistKind.ALBUM else self.order_of(playlist),
         )
 

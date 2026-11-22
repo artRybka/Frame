@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.324
+
+- „Doszukuj w tle” w edycji inteligentnej playlisty: co 12 godzin serwer
+  dobiera z muzeów do 24 nowych pasujących dzieł, także gdy ramka
+  pokazuje coś innego. Playlista, dla której muzea nic nowego nie mają,
+  odpoczywa tydzień; przy pełnym katalogu nic nie jest dobierane.
+
 ## 1.145.323
 
 - Restaurator zostawia więcej szczegółu (siedem dziesiątych tego, co
