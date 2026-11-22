@@ -433,7 +433,15 @@ struct MuseumSearchView: View {
                 model.lookPhotos[key] = picture
                 var asked = PlaylistRules()
                 asked.like = key
-                if LaunchRoute.screen == "search-photo" { asked.likeBy = LaunchRoute.likeBy ?? "" }
+                // A photograph: "Treść" and "Barwy" on, "Forma" off
+                // (Mateusz 2026-11-22: "domyślnie włączona treść i barwa.
+                // Bez formy").
+                asked.likeBy = LikeBy.subject.rawValue
+                asked.likeColours = true
+                if LaunchRoute.screen == "search-photo", let by = LaunchRoute.likeBy {
+                    asked.likeBy = by
+                    asked.likeColours = LaunchRoute.likeColours
+                }
                 rules = asked
                 sources = []
             } catch {
