@@ -1532,10 +1532,16 @@ def _person(name: str) -> str:
 _LOCAL_ID = re.compile(r"^[\w.:#-]*\d[\w.:#-]*_(?:person|agent|actor|creator)\w*$|^\d+$", re.I)
 
 
+#: A provider's inventory-like code where a name would be: the Thyssen's
+#: "MTB-PE-394" for Jongkind in Europeana's dcCreator (capitals, digits and
+#: dashes, no word of a name).
+_CODE = re.compile(r"^[A-Z0-9][A-Z0-9._:/-]*\d[A-Z0-9._:/-]*$")
+
+
 def _reference(name: str) -> bool:
     """An address or an id where a name would be."""
     name = name.strip()
-    return "://" in name or bool(_LOCAL_ID.match(name))
+    return "://" in name or bool(_LOCAL_ID.match(name)) or bool(_CODE.match(name))
 
 
 def _bare(name: str) -> str:
@@ -1769,13 +1775,32 @@ class Europeana(Museum):
         from .artists import is_artist
 
         creators = self._labels(d, "dcCreator")
-        if not creators and any(_reference(str(c)) for c in d.get("dcCreator") or []):
+        linked = any(_reference(str(c)) for c in d.get("dcCreator") or [])
+        if not creators and (linked or not d.get("dcCreator")) and not self._depicted(d):
+            # The maker by the agent's name: a creator given by an address
+            # or the provider's code (the Thyssen's "MTB-PE-394", Jongkind),
+            # or none at all (the Rijksmuseum's, its painter an agent only:
+            # Willem Roelofs, Mateusz 2026-11-22).
             agents = d.get("edmAgentLabelLangAware") or {}
-            creators = [str(n) for lang in ("en", "def", "pl") for n in agents.get(lang) or []][:1]
+            names = [
+                str(n) for lang in ("en", "def", "pl", *agents) for n in agents.get(lang) or []
+            ]
+            names = list(dict.fromkeys(names))
+            creators = [n for n in names if is_artist(_person(n))][:1] or names[:1]
         authors = [c for c in self._labels(d, "dcContributor") if self._AUTHOR_ROLE.search(c)]
         found = list(dict.fromkeys([*creators, *authors]))
         people = [n for n in found if is_artist(_person(n))]
         return people or found
+
+    @staticmethod
+    def _depicted(d: dict[str, Any]) -> bool:
+        """An agent of the record is what the work shows (its subject), not
+        who made it: no agent is then taken for the maker."""
+        agents = {str(a) for a in d.get("edmAgent") or []}
+        subjects = {str(s) for s in d.get("dcSubject") or []}
+        for labels in (d.get("dcSubjectLangAware") or {}).values():
+            subjects.update(str(s) for s in labels or [])
+        return bool(agents & subjects)
 
     def _death(self, d: dict[str, Any]) -> int | None:
         """When the work's last author died, if every author is known."""

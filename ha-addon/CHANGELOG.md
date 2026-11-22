@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.316
+
+- Dzieła z Europeany mają prawdziwego autora zamiast kodu muzeum
+  („MTB-PE-394” z Thyssena to Johan Barthold Jongkind) albo napisu
+  „Europeana” (obrazy z Rijksmuseum, np. Willem Roelofs). Zapisane
+  dzieła dostają autora przy najbliższym spokojnym czasie serwera.
+
 ## 1.145.315
 
 - „Szukaj lepszej kopii” pyta muzea także o polski tytuł z karty,
