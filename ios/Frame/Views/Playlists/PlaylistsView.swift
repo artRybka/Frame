@@ -163,7 +163,7 @@ struct PlaylistsView: View {
                 guard let playlist = ordered.first(where: { $0.id == id }) else { continue }
                 view = AnyView(PlaylistCard(playlist: playlist, isActive: playlist.id == active?.id))
             }
-            cells[card] = AnyView(LiftedCard(lift: lift, content: view.environment(model)))
+            cells[card] = AnyView(CardCellLift(lift: lift, content: view.environment(model)))
         }
         return cells
     }

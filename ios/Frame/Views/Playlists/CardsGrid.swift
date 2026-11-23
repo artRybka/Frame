@@ -256,7 +256,23 @@ struct CardsGrid: UIViewRepresentable {
             withDestinationIndexPath destination: IndexPath?
         ) -> UICollectionViewDropProposal {
             guard session.localDragSession != nil else { return UICollectionViewDropProposal(operation: .forbidden) }
+            // Over "Propozycje dnia" or past "Ukryte" no gap opens: they
+            // stepped aside and jumped back once the card was let go.
+            if let destination, clamped(destination, in: view) != destination {
+                return UICollectionViewDropProposal(operation: .move, intent: .unspecified)
+            }
             return UICollectionViewDropProposal(operation: .move, intent: .insertAtDestinationIndexPath)
+        }
+
+        /// The card put down without the cell's white behind it.
+        func collectionView(
+            _ view: UICollectionView, dropPreviewParametersForItemAt index: IndexPath
+        ) -> UIDragPreviewParameters? {
+            guard let cell = view.cellForItem(at: index) else { return nil }
+            let parameters = UIDragPreviewParameters()
+            parameters.backgroundColor = .clear
+            parameters.visiblePath = UIBezierPath(roundedRect: cell.bounds, cornerRadius: CardsGrid.radius)
+            return parameters
         }
 
         /// Never before "Propozycje dnia" nor after "Ukryte".
@@ -339,7 +355,7 @@ final class ScrollLift {
 }
 
 /// A card of the grid with the page's scroll.
-struct LiftedCard<Content: View>: View {
+struct CardCellLift<Content: View>: View {
     let lift: ScrollLift
     let content: Content
 
