@@ -3,7 +3,8 @@
 ## 1.145.353
 
 - Galeria: przy całym dziele tytuł, autor i guzik u dołu, dzieło
-  z lekko zaokrąglonymi narożnikami; w podpisie tylko tytuł i autor.
+  z lekko zaokrąglonymi narożnikami; w podpisie tylko tytuł i autor;
+  dzieło sięga do podpisu, a niższe stoją trochę niżej.
 
 ## 1.145.352
 
