@@ -131,9 +131,7 @@ class LookIndex:
     may be ``parts`` sets of numbers side by side (the three of a work),
     each with a direction of its own."""
 
-    def __init__(
-        self, root: Path, size: int = SIZE, parts: int = 1, load: bool = True
-    ) -> None:
+    def __init__(self, root: Path, size: int = SIZE, parts: int = 1, load: bool = True) -> None:
         self.root = root
         self.size = size
         self.parts = parts

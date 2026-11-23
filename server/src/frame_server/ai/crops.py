@@ -155,7 +155,6 @@ def framed(cut: Cut, ratio: Callable[[float], float | None] | None = None) -> Cu
     )
 
 
-
 class Crops:
     """The cuts of the museum works' photographs: kept, and set by the owner."""
 

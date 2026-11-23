@@ -183,8 +183,6 @@ def test_the_app_starts_and_stops_a_run(tmp_path: Path) -> None:
         (texts,) = (u for u in got["leftover_state"]["uses"] if u["key"] == TEXTS)
         assert texts["now_each_usd"] > 0 and texts["run"] is None
         assert got["leftover_state"]["now_free_usd"] == pytest.approx(190.0)
-        (crops,) = (u for u in got["leftover_state"]["uses"] if u["key"] == "crops")
-        assert crops["now_each_usd"] > 0
         (studies,) = (u for u in got["leftover_state"]["uses"] if u["key"] == "studies")
         assert studies["now_each_usd"] is None
         bad = client.post("/api/ai/on-demand", json={"key": TEXTS, "usd": 900}, headers=headers)

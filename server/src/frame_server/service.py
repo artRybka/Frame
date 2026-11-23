@@ -526,9 +526,7 @@ class FrameService:
             audit=self.audit,
         )
         # One of its uses run now, for the owner's amount, at the full price.
-        self.on_demand = OnDemand(
-            self.library, self.claude, self.ai_config, self.ai, self.leftover
-        )
+        self.on_demand = OnDemand(self.library, self.claude, self.ai_config, self.ai, self.leftover)
         self.leftover.on_demand = self.on_demand
 
         #: Heavy work at night, while the server runs its background.

@@ -59,6 +59,7 @@ def _block(img: Image.Image) -> dict[str, Any]:
     data = base64.standard_b64encode(out.getvalue()).decode("ascii")
     return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": data}}
 
+
 #: How long a photograph waits for the owner to add its work.
 KEEP_SECONDS = 24 * 3600
 #: The longest side a photograph is kept with while it waits: the phone's
