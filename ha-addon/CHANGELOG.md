@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.338
+
+- Nowa pierwsza karta „Galeria”: dzieła jedno po drugim na cały ekran,
+  machnięciem w górę następne, w dół poprzednie. Kolejność według Twoich
+  serc i dzieł do nich podobnych. Dotknięcie pokazuje tytuł i autora,
+  serce i pasek; tytuł otwiera kartę dzieła, podwójne stuknięcie daje
+  serce. „Teraz” nazywa się teraz „Ramka”, a ustawienia ramki są pod
+  przyciskiem w jej lewym górnym rogu.
+
 ## 1.145.337
 
 - Szare rysunki z WikiArt (ołówek, tusz) odpadają z „Malarstwa” od razu,

@@ -93,6 +93,8 @@ jobs:
             capture now 16 "now-colour-water-$appearance" -paintStyle water
             capture now 16 "now-colour-contour-$appearance" -paintStyle oil -paintRelief 1 -paintColours c07374:0.261/bc3b3f:0.235/c29794:0.164/d5b5ac:0.149/61383a:0.074 -paintContour 2d1e1d:3.4:1.17
             capture now 16 "now-colour-burin-$appearance" -paintStyle burin -paintColours c7bc9a:0.431/7e6e52:0.179/9d7f5a:0.171/ac9c77:0.138/c06e4f:0.044/aa8e38:0.043
+            capture gallery 14 "gallery-$appearance"
+            capture gallery-caption 14 "gallery-caption-$appearance"
             capture discover 12 "discover-$appearance"
             capture discover 14 "discover-studies-$appearance" -scroll studies
             capture discover 14 "discover-zoom-$appearance" -scroll zoom

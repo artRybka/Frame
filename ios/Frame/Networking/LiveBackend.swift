@@ -395,6 +395,9 @@ struct LiveBackend: FrameBackend {
     func playSuggestions() async throws { try await send("/api/suggestions/play", method: "POST") }
     func playOwnWorks() async throws { try await send("/api/own/play", method: "POST") }
     func daySuggestions() async throws -> DayPicks { try await get("/api/suggestions/day") }
+    func gallery(count: Int) async throws -> [RemoteItem] {
+        try await get("/api/gallery", query: [URLQueryItem(name: "count", value: String(count))])
+    }
 
     // MARK: Settings
 
