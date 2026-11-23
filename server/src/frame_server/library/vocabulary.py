@@ -1256,38 +1256,67 @@ def _own_type(classification: str) -> str:
 #: "Painting" (``museums.WikiArt``), van Gogh's pencil and ink drawings too
 #: (Mateusz 2026-11-22: "Driveway" and "Old Woman Asleep after Rops" under
 #: Malarstwo).
-UNTYPED_SOURCES = frozenset({"wikiart"})
+UNTYPED_SOURCES = frozenset({"wikiart", "wmc"})
+#: Of these, those whose works with no medium are told by their picture:
+#: WikiArt's (a search names none; its record does, read at night). Commons'
+#: "paintings" with none are many photographs of oils, dark and brown ones
+#: among them: they stay paintings until their medium is found
+#: (``media.py``).
+PICTURE_TYPED_SOURCES = frozenset({"wikiart"})
 #: Below this tint spread a picture has no colour of its own beyond one
 #: faint tint (``style.MONOCHROME_SPREAD``): pencil, ink, etchings.
 UNTOLD_GREY_SPREAD = 0.012
 
 
+#: A medium of paint besides :data:`_PAINTING`'s: East Asian ink and
+#: colour on silk or paper, typed paintings by their museums.
+_PAINTED_TOO = re.compile(r"\b(silk|colou?rs? on)\b", re.IGNORECASE)
+
+
+def _paint_said(medium: str) -> bool:
+    return _is_painting("", medium) or bool(_PAINTED_TOO.search(medium))
+
+
+def _guessed(item: Item) -> bool:
+    """Whether ``item``'s type "Painting" is its source's guess for every
+    work (:data:`UNTYPED_SOURCES`): WikiArt types all its works so, and
+    Commons the files of its artworks (van Gogh's "charcoal on paper" and
+    "pencil and ink on paper" under Malarstwo, Mateusz 2026-11-23)."""
+    return item.source in UNTYPED_SOURCES and item.classification == "Painting"
+
+
 def stated_type(item: Item) -> str:
     """The work's type as its source states it, without its broad
-    categories (:func:`_own_type`); of a source that types every work alike
-    (:data:`UNTYPED_SOURCES`) "Painting" only when its medium names paint,
-    else none."""
-    if item.source not in UNTYPED_SOURCES:
+    categories (:func:`_own_type`). A guessed "Painting" (:func:`_guessed`)
+    stands when its medium names paint, or with no medium at a source whose
+    pictures do not tell (:data:`PICTURE_TYPED_SOURCES`); else none."""
+    if not _guessed(item):
         return _own_type(item.classification)
-    return item.classification if _is_painting("", item.medium) else ""
+    if _paint_said(item.medium):
+        return item.classification
+    if not item.medium.strip() and item.source not in PICTURE_TYPED_SOURCES:
+        return item.classification
+    return ""
 
 
 def technique_type(item: Item) -> str:
     """The type a work's technique is judged by: its museum's own
-    (:func:`_own_type`). A work of a source that types every work alike
-    (:data:`UNTYPED_SOURCES`) is a painting when its medium names paint;
-    with another medium, what that medium names decides, a drawing when it
-    names nothing known ("pencil, paper"); with none (the works of a
-    search, whose record was not read yet), a picture of one tone (its
+    (:func:`_own_type`). Of a guessed "Painting" (:func:`_guessed`) the
+    medium decides: paint, a painting; another, what it names, a drawing
+    when it names nothing known ("pencil, paper", "charcoal on paper").
+    With none, a painting; of WikiArt (:data:`PICTURE_TYPED_SOURCES`; a
+    search, whose record was not read yet) a picture of one tone (its
     ``"monochrome"`` tag, or a picture with no colour of its own,
     ``UNTOLD_GREY_SPREAD``: a grey one is known before its colours are
-    analysed again) is a drawing and any other a painting."""
-    if item.source not in UNTYPED_SOURCES:
+    analysed again) is a drawing."""
+    if not _guessed(item):
         return _own_type(item.classification)
-    if _is_painting("", item.medium):
+    if _paint_said(item.medium):
         return "Painting"
     if item.medium.strip():
         return "" if _names_technique(item.medium) else "Drawing"
+    if item.source not in PICTURE_TYPED_SOURCES:
+        return "Painting"
     grey = item.tint_spread is not None and item.tint_spread < UNTOLD_GREY_SPREAD
     return "Drawing" if grey or "monochrome" in item.color_tags else "Painting"
 
