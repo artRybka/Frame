@@ -54,8 +54,8 @@ from .repo import Library, matches, now_iso
 from .verdict import Place, against
 from .vocabulary import (
     HIGHLIGHT,
+    PICTURE_TYPED_SOURCES,
     TECHNIQUE_KINDS,
-    UNTYPED_SOURCES,
     asked_artists,
     asked_topics,
     is_grey_copy,
@@ -892,7 +892,7 @@ class Importer:
         untold = [
             i
             for i in items
-            if i.source in UNTYPED_SOURCES
+            if i.source in PICTURE_TYPED_SOURCES
             and not i.medium.strip()
             and not i.color_tags
             and i.thumb_url

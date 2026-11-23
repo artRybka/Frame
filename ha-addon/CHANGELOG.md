@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.338
+
+- Rysunki z Wikimedia Commons (węgiel, ołówek, tusz, pióro na papierze)
+  odpadają z „Malarstwa”: o technice decyduje materiał z karty, a nie
+  „obraz”, który Commons wpisuje przy każdym dziele.
+
 ## 1.145.337
 
 - Szare rysunki z WikiArt (ołówek, tusz) odpadają z „Malarstwa” od razu,
