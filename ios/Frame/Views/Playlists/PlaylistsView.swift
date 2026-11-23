@@ -86,60 +86,15 @@ struct PlaylistsView: View {
                             }
                             .environment(model)
                         }
-                        ForEach(ordered) { playlist in
-                            NavigationLink(value: playlist.id) {
-                                PlaylistCard(playlist: playlist, isActive: playlist.id == active?.id)
+                        // The playlists and "Kolekcja prywatna" among them,
+                        // each moved with a finger (Mateusz 2026-11-22: his
+                        // own works' card could not be).
+                        ForEach(model.cards, id: \.self) { card in
+                            if card == AppModel.ownWorksCard {
+                                ownWorksCard
+                            } else if let playlist = ordered.first(where: { $0.id == card }) {
+                                playlistCard(playlist)
                             }
-                            .buttonStyle(.plain)
-                            // A card of its own while held, cover left and name
-                            // right: the options sit right under it, not under
-                            // the caption of the tall grid card.
-                            .contextMenu {
-                                menu(playlist)
-                            } preview: {
-                                PlaylistMenuPreview(playlist: playlist)
-                                    .environment(model)
-                            }
-                            // Held and moved, the card goes with the finger
-                            // and the others make room (Mateusz 2026-11-09,
-                            // variant A of playlisty-kolejnosc/szkic.png).
-                            .onDrag {
-                                dragged = playlist.id
-                                return NSItemProvider(object: String(playlist.id) as NSString)
-                            } preview: {
-                                // Drawn apart from the page, without its
-                                // environment: `ArtImage` needs the model
-                                // (1.136.0 crashed as soon as a card was held).
-                                Collage(itemIDs: playlist.coverItemIds, title: playlist.name)
-                                    .frame(width: 150, height: 150)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                    .environment(model)
-                            }
-                            .onDrop(of: [.text], delegate: CardDrop(target: playlist.id, dragged: $dragged, model: model))
-                            // On the card held, not the page: on iOS 26 the dialog
-                            // is a popover pointing at the view it hangs on.
-                            .confirmationDialog(
-                                "Usunąć playlistę „\(playlist.name)”?",
-                                isPresented: Binding(
-                                    get: { deleting?.id == playlist.id },
-                                    set: { if !$0 { deleting = nil } }
-                                ),
-                                titleVisibility: .visible,
-                                presenting: deleting
-                            ) { playlist in
-                                Button("Usuń", role: .destructive) {
-                                    Task { await delete(playlist) }
-                                }
-                            }
-                        }
-                        // New playlists come from the "+" at the top only
-                        // (Mateusz 2026-11-09: no "Nowa playlista" tile).
-                        // His own works, once there is one (Mateusz 2026-11-15).
-                        if !model.ownWorks.isEmpty {
-                            NavigationLink(value: OwnWorksRoute()) {
-                                OwnWorksCard(items: model.ownWorks)
-                            }
-                            .buttonStyle(.plain)
                         }
                         // Last: the works this person hid with "Ukryj dzieło"
                         // (each person's own, Mateusz 2026-11-20).
@@ -165,35 +120,7 @@ struct PlaylistsView: View {
             .navigationTitle("Playlisty")
             .serverLinkBadge()
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    // A playlist, or a work of his own into the catalogue
-                    // (Mateusz 2026-11-15, variant A).
-                    Menu {
-                        Button {
-                            editing = Playlist(name: "")
-                        } label: {
-                            Label {
-                                Text("Nowa playlista")
-                                Text(bound: "Inteligentna, ręczna albo z albumu")
-                            } icon: {
-                                Image(systemName: "rectangle.stack.badge.plus")
-                            }
-                        }
-                        Button {
-                            addingOwn = true
-                        } label: {
-                            Label {
-                                Text("Dodaj własne dzieło")
-                                Text(bound: "Zdjęcie obrazu, który masz w domu")
-                            } icon: {
-                                Image(systemName: "camera")
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                    .accessibilityLabel("Dodaj")
-                }
+                toolbar
             }
             .navigationDestination(for: Int.self) { id in
                 PlaylistDetailView(playlistID: id)
@@ -236,29 +163,138 @@ struct PlaylistsView: View {
             // Made once a day on the server: today's, also on a page kept open overnight.
             .task { await model.refreshDayPicks() }
             .onChange(of: model.playlists.first?.id) { _, first in
-                if ["playlist", "playlist-search"].contains(LaunchRoute.screen), path.isEmpty, let first {
-                    path.append(first)
-                }
-                if LaunchRoute.screen == "suggestions", path.isEmpty { path.append(SuggestionsRoute()) }
-                if LaunchRoute.screen == "own-works", path.isEmpty { path.append(OwnWorksRoute()) }
-                if LaunchRoute.screen == "editor", editing == nil {
-                    editing = Playlist(name: "Błękitne krajobrazy", rules: PlaylistRules(colors: ["blue"]))
-                }
-                if LaunchRoute.screen == "editor-new", editing == nil {
-                    editing = Playlist(name: "", rules: PlaylistRules())
-                }
-                if LaunchRoute.screen == "editor-manual", editing == nil {
-                    editing = Playlist(name: "Na ścianę", kind: .manual)
-                }
-                if LaunchRoute.confirm == "delete-playlist", deleting == nil {
-                    Task {
-                        try? await Task.sleep(for: .seconds(3))
-                        deleting = ordered.first { !$0.isFavorites && $0.isMine }
-                    }
-                }
+                launchRoute(first)
             }
         }
         .opensStudies(on: $path)
+    }
+
+    /// A playlist's card: opened, held for its menu, moved with a finger.
+    private func playlistCard(_ playlist: PlaylistSummary) -> some View {
+        NavigationLink(value: playlist.id) {
+            PlaylistCard(playlist: playlist, isActive: playlist.id == active?.id)
+        }
+        .buttonStyle(.plain)
+        // A card of its own while held, cover left and name
+        // right: the options sit right under it, not under
+        // the caption of the tall grid card.
+        .contextMenu {
+            menu(playlist)
+        } preview: {
+            PlaylistMenuPreview(playlist: playlist)
+                .environment(model)
+        }
+        // Held and moved, the card goes with the finger
+        // and the others make room (Mateusz 2026-11-09,
+        // variant A of playlisty-kolejnosc/szkic.png).
+        .onDrag {
+            dragged = playlist.id
+            return NSItemProvider(object: String(playlist.id) as NSString)
+        } preview: {
+            // Drawn apart from the page, without its
+            // environment: `ArtImage` needs the model
+            // (1.136.0 crashed as soon as a card was held).
+            Collage(itemIDs: playlist.coverItemIds, title: playlist.name)
+                .frame(width: 150, height: 150)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .environment(model)
+        }
+        .onDrop(of: [.text], delegate: CardDrop(target: playlist.id, dragged: $dragged, model: model))
+        // On the card held, not the page: on iOS 26 the dialog
+        // is a popover pointing at the view it hangs on.
+        .confirmationDialog(
+            "Usunąć playlistę „\(playlist.name)”?",
+            isPresented: Binding(
+                get: { deleting?.id == playlist.id },
+                set: { if !$0 { deleting = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: deleting
+        ) { playlist in
+            Button("Usuń", role: .destructive) {
+                Task { await delete(playlist) }
+            }
+        }
+    }
+
+    /// "Kolekcja prywatna", once there is a work of his own (Mateusz
+    /// 2026-11-15), moved like a playlist's card.
+    private var ownWorksCard: some View {
+        NavigationLink(value: OwnWorksRoute()) {
+            OwnWorksCard(items: model.ownWorks)
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            moveMenu(AppModel.ownWorksCard)
+        }
+        .onDrag {
+            dragged = AppModel.ownWorksCard
+            return NSItemProvider(object: String(AppModel.ownWorksCard) as NSString)
+        } preview: {
+            Collage(itemIDs: model.ownWorks.prefix(4).map(\.id), title: OwnWorksCard.title)
+                .frame(width: 150, height: 150)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .environment(model)
+        }
+        .onDrop(of: [.text], delegate: CardDrop(target: AppModel.ownWorksCard, dragged: $dragged, model: model))
+    }
+
+    /// New playlists come from the "+" at the top only (Mateusz
+    /// 2026-11-09: no "Nowa playlista" tile).
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            // A playlist, or a work of his own into the catalogue
+            // (Mateusz 2026-11-15, variant A).
+            Menu {
+                Button {
+                    editing = Playlist(name: "")
+                } label: {
+                    Label {
+                        Text(bound: "Nowa playlista")
+                        Text(bound: "Inteligentna, ręczna albo z albumu")
+                    } icon: {
+                        Image(systemName: "rectangle.stack.badge.plus")
+                    }
+                }
+                Button {
+                    addingOwn = true
+                } label: {
+                    Label {
+                        Text(bound: "Dodaj własne dzieło")
+                        Text(bound: "Zdjęcie obrazu, który masz w domu")
+                    } icon: {
+                        Image(systemName: "camera")
+                    }
+                }
+            } label: {
+                Image(systemName: "plus")
+            }
+            .accessibilityLabel("Dodaj")
+        }
+    }
+
+    private func launchRoute(_ first: Int?) {
+        if ["playlist", "playlist-search"].contains(LaunchRoute.screen), path.isEmpty, let first {
+            path.append(first)
+        }
+        if LaunchRoute.screen == "suggestions", path.isEmpty { path.append(SuggestionsRoute()) }
+        if LaunchRoute.screen == "own-works", path.isEmpty { path.append(OwnWorksRoute()) }
+        if LaunchRoute.screen == "editor", editing == nil {
+            editing = Playlist(name: "Błękitne krajobrazy", rules: PlaylistRules(colors: ["blue"]))
+        }
+        if LaunchRoute.screen == "editor-new", editing == nil {
+            editing = Playlist(name: "", rules: PlaylistRules())
+        }
+        if LaunchRoute.screen == "editor-manual", editing == nil {
+            editing = Playlist(name: "Na ścianę", kind: .manual)
+        }
+        if LaunchRoute.confirm == "delete-playlist", deleting == nil {
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                deleting = ordered.first { !$0.isFavorites && $0.isMine }
+            }
+        }
     }
 }
 
@@ -280,25 +316,32 @@ extension PlaylistsView {
             Button("Teraz prezentowane", systemImage: "checkmark") {}
                 .disabled(true)
         }
-        if let index = model.playlists.firstIndex(where: { $0.id == playlist.id }), index > 0 {
-            Button("Przesuń na początek", systemImage: "arrow.up.to.line") {
-                var list = model.playlists
-                list.insert(list.remove(at: index), at: 0)
-                withAnimation(.snappy) { model.playlists = list }
-                Task { await model.arrangePlaylists(list) }
-            }
-        }
-        if let index = model.playlists.firstIndex(where: { $0.id == playlist.id }),
-           index < model.playlists.count - 1 {
-            Button("Przesuń na koniec", systemImage: "arrow.down.to.line") {
-                var list = model.playlists
-                list.append(list.remove(at: index))
-                withAnimation(.snappy) { model.playlists = list }
-                Task { await model.arrangePlaylists(list) }
-            }
-        }
+        moveMenu(playlist.id)
         if !playlist.isFavorites, playlist.isMine {
             Button("Usuń playlistę", systemImage: "trash", role: .destructive) { deleting = playlist }
+        }
+    }
+
+    /// "Przesuń na początek" and "na koniec" of a card held (a playlist's
+    /// or "Kolekcja prywatna").
+    @ViewBuilder
+    private func moveMenu(_ card: Int) -> some View {
+        let cards = model.cards
+        if let index = cards.firstIndex(of: card), index > 0 {
+            Button("Przesuń na początek", systemImage: "arrow.up.to.line") {
+                var list = cards
+                list.insert(list.remove(at: index), at: 0)
+                withAnimation(.snappy) { model.showCards(list) }
+                Task { await model.arrangeCards(list) }
+            }
+        }
+        if let index = cards.firstIndex(of: card), index < cards.count - 1 {
+            Button("Przesuń na koniec", systemImage: "arrow.down.to.line") {
+                var list = cards
+                list.append(list.remove(at: index))
+                withAnimation(.snappy) { model.showCards(list) }
+                Task { await model.arrangeCards(list) }
+            }
         }
     }
 
@@ -328,20 +371,21 @@ extension Playlist: Identifiable {}
 
 /// A card moved over the others in Playlisty: they make room as it passes
 /// (the order changes at once), and where it is let go the order is kept on
-/// the server. `target` nil: the grid around the cards.
+/// the server. `target` nil: the grid around the cards; "Kolekcja
+/// prywatna" is `AppModel.ownWorksCard`.
 private struct CardDrop: DropDelegate {
     let target: Int?
     @Binding var dragged: Int?
     let model: AppModel
 
     func dropEntered(info: DropInfo) {
+        var cards = model.cards
         guard let target, let dragged, dragged != target,
-              let from = model.playlists.firstIndex(where: { $0.id == dragged }),
-              let to = model.playlists.firstIndex(where: { $0.id == target })
+              let from = cards.firstIndex(of: dragged),
+              let to = cards.firstIndex(of: target)
         else { return }
-        withAnimation(.snappy) {
-            model.playlists.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
-        }
+        cards.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+        withAnimation(.snappy) { model.showCards(cards) }
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
@@ -352,8 +396,8 @@ private struct CardDrop: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         guard dragged != nil else { return false }
         dragged = nil
-        let list = model.playlists
-        Task { await model.arrangePlaylists(list) }
+        let cards = model.cards
+        Task { await model.arrangeCards(cards) }
         return true
     }
 }

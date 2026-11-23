@@ -177,6 +177,9 @@ SENT_KEY = "sent_photos_playlist"
 #: Each person's order of the cards in Playlisty (playlist ids), under
 #: ``playlist_order:<user id>``; set by moving a card in the app.
 ORDER_KEY = "playlist_order"
+#: In that order, the card "Kolekcja prywatna" (the owner's own works), which
+#: is not a playlist but is moved among them (Mateusz 2026-11-22).
+OWN_WORKS_CARD = -1
 #: Hearts were moved from ``Item.favorite`` to the owner's in ``favorites``.
 FAVORITES_MOVED_KEY = "favorites_moved"
 #: Works hidden before each person had their own moved to the owner's.
@@ -2345,10 +2348,16 @@ class Library:
         return sorted(default, key=lambda p: place.get(p.id or 0, len(place)))
 
     def arrange_playlists(self, user: str, ids: list[int]) -> None:
-        """Remember ``user``'s order of the cards (ids they don't see dropped)."""
-        seen = {p.id for p in self.playlists(user)}
+        """Remember ``user``'s order of the cards (ids they don't see dropped;
+        ``OWN_WORKS_CARD`` kept)."""
+        seen = {p.id for p in self.playlists(user)} | {OWN_WORKS_CARD}
         order = list(dict.fromkeys(i for i in ids if i in seen))
         self.set_state(f"{ORDER_KEY}:{user}", order)
+
+    def playlist_order(self, user: str) -> list[int]:
+        """``user``'s order of the cards as they last put them, "Kolekcja
+        prywatna" (``OWN_WORKS_CARD``) among them once it was moved."""
+        return list(self.get_state(f"{ORDER_KEY}:{user}", None) or [])
 
     def playlist(self, playlist_id: int) -> Playlist | None:
         with self._db() as db:

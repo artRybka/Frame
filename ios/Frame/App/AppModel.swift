@@ -113,9 +113,14 @@ final class AppModel {
     /// "Sprawdź kadry": what the phone's model cut and what it left to him
     /// (the owner's; nil until asked).
     var cropReview: CropReview?
-    /// The owner's own works ("Moje dzieła" in Playlisty), the last added
-    /// first: the card shows only once there is one.
+    /// The owner's own works ("Kolekcja prywatna" in Playlisty), the last
+    /// added first: the card shows only once there is one.
     var ownWorks: [ItemSummary] = []
+    /// Where "Kolekcja prywatna" stands among the playlists' cards: how many
+    /// come before it; nil, after them all (until it is moved, Mateusz
+    /// 2026-11-22: it could not be).
+    /// Kept for the next launch, so the card does not jump once the server answers.
+    private(set) var ownWorksAt: Int? = UserDefaults.standard.object(forKey: "ownWorksAt") as? Int
     /// Each playlist's works as last opened: shown at once when it opens
     /// again while fresh ones load.
     var playlistDetails: [Int: PlaylistDetail] = [:]
@@ -857,7 +862,10 @@ final class AppModel {
     )
 
     func refreshPlaylists() async {
-        if let value = try? await backend.playlists() { setPlaylists(value) }
+        if let value = try? await backend.playlists() {
+            setPlaylists(value)
+            if let order = try? await backend.playlistOrder() { placeOwnWorks(order) }
+        }
         if let value = try? await backend.hiddenItems() { setHidden(value.items) }
         await refreshCropReview()
         await refreshOwnWorks()
@@ -871,7 +879,7 @@ final class AppModel {
         if let value = try? await backend.cropReview(), value != cropReview { cropReview = value }
     }
 
-    /// "Moje dzieła": the works the owner added from his photographs.
+    /// "Kolekcja prywatna": the works the owner added from his photographs.
     func refreshOwnWorks() async {
         // Pages of 200, the most the server gives at once: a limit of 500
         // was refused (422), and the list stayed empty (2026-11-16).
@@ -891,7 +899,7 @@ final class AppModel {
         if found != ownWorks { ownWorks = found }
     }
 
-    /// A work of his own added or changed: its card in "Moje dzieła" at once.
+    /// A work of his own added or changed: its card in "Kolekcja prywatna" at once.
     func ownWorkChanged(_ item: Item) {
         ItemPeeks.keep(item)
         let summary = item.summary
@@ -950,16 +958,56 @@ final class AppModel {
         if !demoMode { DayPicksCache.save(value, server: serverURL) }
     }
 
+    /// "Kolekcja prywatna" among the cards' ids: it is not a playlist, but
+    /// is moved among them and the server keeps its place in the order.
+    static let ownWorksCard = -1
+
+    /// The cards of Playlisty in order: the playlists, with "Kolekcja
+    /// prywatna" where it was put once there is a work of his own.
+    var cards: [Int] {
+        var ids = playlists.map(\.id)
+        if !ownWorks.isEmpty { ids.insert(Self.ownWorksCard, at: min(ownWorksAt ?? ids.count, ids.count)) }
+        return ids
+    }
+
+    /// The cards shown in this order at once (while one is moved).
+    func showCards(_ ids: [Int]) {
+        let byID = Dictionary(playlists.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let list = ids.compactMap { byID[$0] }
+        if list.map(\.id) != playlists.map(\.id) { playlists = list }
+        if let at = ids.firstIndex(of: Self.ownWorksCard) {
+            let place = ids[..<at].filter { byID[$0] != nil }.count
+            setOwnWorksAt(place)
+        }
+    }
+
+    private func setOwnWorksAt(_ place: Int?) {
+        guard place != ownWorksAt else { return }
+        ownWorksAt = place
+        if !demoMode { UserDefaults.standard.set(place, forKey: "ownWorksAt") }
+    }
+
     /// The cards in Playlisty in this order: at once here, then kept by the
     /// server (each person's own); back as the server has them if it fails.
-    func arrangePlaylists(_ ordered: [PlaylistSummary]) async {
-        if ordered.map(\.id) != playlists.map(\.id) { playlists = ordered }
+    func arrangeCards(_ ids: [Int]) async {
+        showCards(ids)
         do {
-            setPlaylists(try await backend.arrangePlaylists(ids: ordered.map(\.id)))
+            setPlaylists(try await backend.arrangePlaylists(ids: ids))
         } catch {
             show(error)
             await refreshPlaylists()
         }
+    }
+
+    /// Where the server's order puts "Kolekcja prywatna": after the
+    /// playlists before it there (new ones come after the arranged ones).
+    private func placeOwnWorks(_ order: [Int]) {
+        guard let at = order.firstIndex(of: Self.ownWorksCard) else {
+            setOwnWorksAt(nil)
+            return
+        }
+        let before = Set(order[..<at])
+        setOwnWorksAt(playlists.filter { before.contains($0.id) }.count)
     }
 
     /// A playlist as its page just loaded it: its card in Playlisty shows

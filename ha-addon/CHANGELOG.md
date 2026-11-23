@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.333
+
+- „Moje dzieła” w Playlistach nazywają się teraz „Kolekcja prywatna”, a
+  ich kafelek można przesuwać między playlistami tak jak inne (palcem
+  albo „Przesuń na początek/koniec” w menu). Miejsce jest zapamiętane.
+
 ## 1.145.332
 
 - Własne dzieło w ramie: iPhone sam znajduje ramę wokół dzieła, a w

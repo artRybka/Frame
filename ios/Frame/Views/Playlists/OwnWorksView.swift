@@ -2,14 +2,16 @@ import SwiftUI
 
 struct OwnWorksRoute: Hashable {}
 
-/// "Moje dzieła" in Playlisty, before "Ukryte": the works he added from
-/// his own photographs (Mateusz 2026-11-15), shown once there is one.
+/// "Kolekcja prywatna" in Playlisty (called "Moje dzieła" until Mateusz
+/// 2026-11-22), moved among the playlists: the works he added from his own
+/// photographs (Mateusz 2026-11-15), shown once there is one.
 struct OwnWorksCard: View {
+    static let title = "Kolekcja prywatna"
     let items: [ItemSummary]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Collage(itemIDs: items.prefix(4).map(\.id), title: "Moje dzieła")
+            Collage(itemIDs: items.prefix(4).map(\.id), title: Self.title)
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(alignment: .bottomTrailing) {
@@ -18,7 +20,7 @@ struct OwnWorksCard: View {
                 }
                 .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
             CardCaption {
-                Text("Moje dzieła")
+                Text(bound: Self.title)
                     .font(.serif(16, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                 Text(bound: Names.works(items.count))
@@ -78,8 +80,8 @@ struct OwnWorksView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Eyebrow("Moja kolekcja", color: Theme.vermilion)
-            Text("Moje dzieła")
+            Eyebrow("Własne dzieła", color: Theme.vermilion)
+            Text(bound: OwnWorksCard.title)
                 .font(.serif(32, weight: .semibold))
                 .foregroundStyle(Theme.ink)
             Text(bound: "Dzieła z Twoich zdjęć: na ramce, w playlistach, w Szukaj i w studiach jak każde inne.")
