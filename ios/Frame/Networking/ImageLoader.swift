@@ -482,6 +482,9 @@ struct ArtImage: View {
     var subjectFocus = false
     /// A known place to crop around instead (fractions of the picture).
     var focusPoint: UnitPoint?
+    /// With `focusPoint` (Claude's, only roughly right): cropped around the
+    /// face Vision finds by it instead (`SubjectFocus.near`).
+    var facesNearFocus = false
     /// A new picture fades in over the one before instead of taking its
     /// place at once ("Teraz" from the last launch, then the fresh one).
     var crossfade = false
@@ -562,19 +565,28 @@ struct ArtImage: View {
         if let image { return image }
         if let made = model.phonePicture(for: ref, maxPixel: maxPixel) { return made }
         guard let request = model.backend.request(for: ref) else { return nil }
-        if subjectFocus, focusPoint == nil, SubjectFocus.known(ImageLoader.pictureKey(request)) == nil { return nil }
+        if let key = focusKey(request), SubjectFocus.known(key) == nil { return nil }
         return ImageLoader.inMemory(for: request, maxPixel: maxPixel)
+    }
+
+    /// Where the point the picture is cropped around is remembered, while
+    /// it is to be found (not given).
+    private func focusKey(_ request: URLRequest) -> String? {
+        if let focusPoint {
+            return facesNearFocus ? SubjectFocus.key(ImageLoader.pictureKey(request), near: focusPoint) : nil
+        }
+        return subjectFocus ? ImageLoader.pictureKey(request) : nil
     }
 
     /// Where the picture shown is cropped around: the point given, else
     /// the one found for it; a picture from memory, not loaded yet, by the
     /// point found for it before.
     private var shownFocus: UnitPoint {
-        if let focusPoint { return focusPoint }
-        if image == nil, subjectFocus, let request = model.backend.request(for: ref),
-           let known = SubjectFocus.known(ImageLoader.pictureKey(request)) {
+        if image == nil, let request = model.backend.request(for: ref),
+           let key = focusKey(request), let known = SubjectFocus.known(key) {
             return known
         }
+        if let focusPoint, !facesNearFocus { return focusPoint }
         return focus
     }
 
@@ -736,6 +748,7 @@ struct ArtImage: View {
         // Made on the phone (the full screen switched its colours): not
         // waited for from the server.
         if let made = model.phonePicture(for: ref, maxPixel: maxPixel) {
+            if let focusPoint { focus = focusPoint }
             if crossfade, image != nil, image !== made {
                 withAnimation(.easeInOut(duration: 0.5)) { image = made }
             } else {
@@ -750,7 +763,13 @@ struct ArtImage: View {
             guard let request = model.backend.request(for: candidate) else { continue }
             do {
                 let loaded = try await ImageLoader.shared.image(for: request, maxPixel: maxPixel, priority: priority)
-                if let focusPoint {
+                if let focusPoint, facesNearFocus {
+                    let point = await SubjectFocus.shared.point(
+                        in: loaded, key: ImageLoader.pictureKey(request), near: focusPoint
+                    )
+                    if Task.isCancelled { return .cancelled }
+                    focus = point
+                } else if let focusPoint {
                     focus = focusPoint
                 } else if subjectFocus {
                     // The placeholder stays until the crop is known, so the

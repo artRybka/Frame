@@ -36,11 +36,18 @@ actor SubjectFocus {
     /// Unit point in the picture, origin top-left. Waits `patience` seconds
     /// at most, then gives the middle (the answer still comes in for next
     /// time); a picture scrolled away before its turn is skipped.
-    func point(in image: UIImage, key: String, patience: Double = 2.5) async -> UnitPoint {
+    ///
+    /// With `near` (where Claude said the picture is about, the study of
+    /// the day): the face by that point, Vision's boxes being exact where
+    /// Claude's point is only roughly right (Homer's "Autumn" cut under
+    /// the lady's chin, Mateusz 2026-11-23); no face there, the point.
+    func point(in image: UIImage, key: String, near: UnitPoint? = nil, patience: Double = 2.5) async -> UnitPoint {
+        let key = near.map { Self.key(key, near: $0) } ?? key
         if let cached = Self.found.point(key) { return cached }
+        let fallback = near ?? .center
         let job = Job()
         let operation = BlockOperation {
-            let point = Self.find(in: image)
+            let point = near.map { Self.find(in: image, near: $0) } ?? Self.find(in: image)
             job.finish(point)
             Task { await SubjectFocus.shared.remember(point, for: key) }
         }
@@ -49,13 +56,19 @@ actor SubjectFocus {
                 job.start(continuation)
                 Self.queue.addOperation(operation)
                 DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + patience) {
-                    job.finish(.center)
+                    job.finish(fallback)
                 }
             }
         } onCancel: {
             operation.cancel()
-            job.finish(.center)
+            job.finish(fallback)
         }
+    }
+
+    /// Where a point found near Claude's is remembered: apart from the
+    /// picture's own (the same picture cropped elsewhere without it).
+    nonisolated static func key(_ key: String, near: UnitPoint) -> String {
+        String(format: "%@|near:%.3f,%.3f", key, near.x, near.y)
     }
 
     private func remember(_ point: UnitPoint, for key: String) {
@@ -123,6 +136,48 @@ actor SubjectFocus {
             return center(of: box)
         }
         return .center
+    }
+
+    private static func find(in image: UIImage, near point: UnitPoint) -> UnitPoint {
+        guard let cgImage = image.cgImage else { return point }
+        let faces = VNDetectFaceRectanglesRequest()
+        let people = VNDetectHumanRectanglesRequest()
+        people.upperBodyOnly = false
+        let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up)
+        try? handler.perform([faces, people])
+        return near(
+            point,
+            faces: (faces.results ?? []).filter { $0.confidence > 0.5 }.map { topLeft($0.boundingBox) },
+            people: (people.results ?? []).filter { $0.confidence > 0.5 }.map { topLeft($0.boundingBox) }
+        )
+    }
+
+    /// How far (a share of the picture) a face may be from Claude's point
+    /// and still be the one it meant.
+    static let faceReach: CGFloat = 0.3
+    /// Where a head is in a whole figure's box, from its top.
+    static let headInFigure: CGFloat = 0.1
+
+    /// The face nearest `point` within `faceReach`; else, `point` inside a
+    /// figure, its head (a face turned away, too small for Vision); else
+    /// `point` itself. Boxes are fractions with the origin top-left.
+    static func near(_ point: UnitPoint, faces: [CGRect], people: [CGRect]) -> UnitPoint {
+        func distance(_ box: CGRect) -> CGFloat {
+            hypot(box.midX - point.x, box.midY - point.y)
+        }
+        if let face = faces.filter({ distance($0) <= faceReach }).min(by: { distance($0) < distance($1) }) {
+            return UnitPoint(x: face.midX, y: face.midY)
+        }
+        let inside = people.filter { $0.contains(CGPoint(x: point.x, y: point.y)) }
+        if let figure = inside.min(by: { $0.width * $0.height < $1.width * $1.height }) {
+            return UnitPoint(x: figure.midX, y: figure.minY + figure.height * headInFigure)
+        }
+        return point
+    }
+
+    /// Vision's box (origin bottom-left) with the origin top-left.
+    private static func topLeft(_ box: CGRect) -> CGRect {
+        CGRect(x: box.minX, y: 1 - box.maxY, width: box.width, height: box.height)
     }
 
     private static func union(_ boxes: [CGRect]) -> CGRect? {

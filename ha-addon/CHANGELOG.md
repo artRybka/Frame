@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.335
+
+- Kafelek Studium dnia w Odkrywaj kadruje się na twarz postaci, którą
+  wskazała analiza, a nie na sam przybliżony punkt. Gdy twarzy nie
+  widać, na głowę postaci.
+
 ## 1.145.334
 
 - Kółka powtórzeń na arkuszu kompozycji są mniejsze: mają rozmiar plamy
