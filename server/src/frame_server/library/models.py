@@ -1101,6 +1101,10 @@ class Playlist(BaseModel):
     #: the server asks the museums for more of its works now and then
     #: ("Doszukuj w tle", Mateusz 2026-11-22; ``Player.grow_playlists``).
     grows: bool = False
+    #: "Kolekcja prywatna" as the frame plays it: the owner's own works,
+    #: made when he first presents them (Mateusz 2026-11-23). Not a card of
+    #: its own in Playlisty (that card is the collection's), never listed.
+    own_works: bool = False
     created_at: str = ""
     updated_at: str = ""
 
@@ -1152,6 +1156,8 @@ class PlaylistSummary(BaseModel):
     #: The order its works are in (:attr:`Playlist.order`); None for an album.
     sort: PlaylistSort | None = None
     grows: bool = False
+    #: :attr:`Playlist.own_works`: the app shows it as "Kolekcja prywatna".
+    own_works: bool = False
 
 
 class FacetValue(BaseModel):

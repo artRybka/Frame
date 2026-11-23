@@ -538,3 +538,22 @@ def test_works_hidden_before_are_the_owners(tmp_path: Path) -> None:
     assert again.hides(OWNER_ID).keys() == {"t:1"}
     assert [i.id for i in again.hidden_items()] == ["t:1"]
     assert "t:1" in again.hidden(OWNER_ID).ids and "t:1" in again.hidden().ids
+
+
+def test_own_works_play_as_a_playlist_never_listed(tmp_path: Path) -> None:
+    """ "Prezentuj na ramce" on "Kolekcja prywatna": a playlist of his own
+    works for the frame, made once, never among the cards; the owner's only."""
+    app = _app(tmp_path)
+    svc = app.state.service
+    with TestClient(app) as client:
+        assert client.post("/api/own/play", headers=OWNER).status_code == 202
+        playing = svc.player.settings.playlist_id
+        assert playing is not None
+        assert client.post("/api/own/play", headers=OWNER).status_code == 202
+        assert svc.player.settings.playlist_id == playing  # the same one
+        listed = client.get("/api/playlists", headers=OWNER).json()
+        assert playing not in [p["id"] for p in listed]
+        own = client.get(f"/api/playlists/{playing}", headers=OWNER).json()
+        assert own["playlist"]["own_works"] is True
+        member = _join(client)
+        assert client.post("/api/own/play", headers=member).status_code == 403

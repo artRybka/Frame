@@ -1343,6 +1343,20 @@ final class AppModel {
         if let firstShowsLine { notices.done("Teraz prezentowane: \(playlist.name)", firstShowsLine) }
     }
 
+    /// "Prezentuj na ramce" on "Kolekcja prywatna": his own works, as a
+    /// playlist the server keeps for the frame (never among the cards).
+    func playOwnWorks() async {
+        do {
+            try await backend.playOwnWorks()
+        } catch {
+            show(error)
+            return
+        }
+        notices.done("Teraz prezentowane: \(OwnWorksCard.title)")
+        await followPlayer()
+        if let firstShowsLine { notices.done("Teraz prezentowane: \(OwnWorksCard.title)", firstShowsLine) }
+    }
+
     /// "Propozycje" in Playlisty: back to the rotation from Discover.
     func playSuggestions() async {
         do {
