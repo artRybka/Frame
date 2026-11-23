@@ -75,6 +75,8 @@ struct RootView: View {
         static var initial: Screen {
             if frameScreens.contains(LaunchRoute.screen) { return .now }
             return switch LaunchRoute.screen {
+            // The app starts on Odkrywaj (Mateusz 2026-11-23 17:42).
+            case "": .discover
             case "gallery", "gallery-caption": .gallery
             case "discover", "discover-group", "discover-theme", "daily", "detail", "original": .discover
             case "museums", "search", "search-picker", "search-colors", "search-tones", "search-empty", "search-styles", "search-subjects", "search-techniques", "search-chosen", "search-museums", "search-photo", "search-like", "search-typed": .search
@@ -121,7 +123,7 @@ struct RootView: View {
         .onChange(of: tab, initial: true) { _, tab in model.notices.nowTabOpen = tab == .now }
         // A guest lands on Galeria (their phone may have opened on "Ramka").
         .onChange(of: model.isGuest, initial: true) { _, guest in
-            if guest, tab == .now { tab = .gallery }
+            if guest, tab == .now { tab = .discover }
         }
         // A held artist's or museum's name: their works on Szukaj.
         .onChange(of: model.artistSearch != nil || model.placeSearch != nil || model.likeSearch != nil) { _, held in

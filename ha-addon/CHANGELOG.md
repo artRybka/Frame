@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.348
+
+- Aplikacja startuje na Odkrywaj. Galeria w kadrze pokazuje samo serce;
+  dotknięcie szybko pokazuje całe dzieło na łunach jego barw,
+  z tytułem, autorem i paskiem kart. Polubienie wlewa czerwień w serce.
+
 ## 1.145.347
 
 - Galeria bez ruchu od przechylenia telefonu: dzieło tylko się oddala
