@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.336
+
+- Szare rysunki z WikiArt (ołówek, tusz) odpadają z „Malarstwa” od razu,
+  bez czekania na przeliczenie barw katalogu.
+
 ## 1.145.335
 
 - Kafelek Studium dnia w Odkrywaj kadruje się na twarz postaci, którą

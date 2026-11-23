@@ -902,8 +902,17 @@ class Importer:
         with ThreadPoolExecutor(min(len(untold), 16)) as pool:
             seen_all = list(pool.map(as_asked(self.colours_of), untold))
         found = {i.id: seen for i, seen in zip(untold, seen_all, strict=True)}
+        # A grey picture is a drawing by its tint alone (``technique_type``),
+        # whichever analysis its tags are of.
+        spreads = {i.id: self.spread_of(i) for i in untold if found.get(i.id)}
         return [
-            i.model_copy(update={"color_tags": seen[0], "color_shares": seen[1]})
+            i.model_copy(
+                update={
+                    "color_tags": seen[0],
+                    "color_shares": seen[1],
+                    "tint_spread": i.tint_spread if i.tint_spread is not None else spreads[i.id],
+                }
+            )
             if (seen := found.get(i.id))
             else i
             for i in items
