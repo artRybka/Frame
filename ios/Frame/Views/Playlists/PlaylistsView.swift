@@ -16,6 +16,9 @@ struct PlaylistsView: View {
     /// When the cards last made room: the next move waits for them to
     /// settle, else a card arriving under the finger moved them again.
     @State private var settled = Date.distantPast
+    /// The card on its way with the finger: its place in the grid is left
+    /// empty meanwhile (it showed twice, under the finger and in its place).
+    @State private var lifted: Int?
     /// "Dodaj własne dzieło" on the whole screen.
     @State private var addingOwn = ["own-start", "own-scan", "own-scan2", "own-cut", "own-balance", "own-describe", "own-card"].contains(LaunchRoute.screen)
 
@@ -196,18 +199,7 @@ struct PlaylistsView: View {
         // Held and moved, the card goes with the finger
         // and the others make room (Mateusz 2026-11-09,
         // variant A of playlisty-kolejnosc/szkic.png).
-        .onDrag {
-            dragged = playlist.id
-            return NSItemProvider(object: String(playlist.id) as NSString)
-        } preview: {
-            // The same card as the menu's, so the card held goes on
-            // with the finger as it is: a smaller square in its place
-            // jumped as the drag began (Mateusz 2026-11-23). Drawn
-            // apart from the page, without its environment: `ArtImage`
-            // needs the model (1.136.0 crashed as soon as a card was held).
-            DragCard { PlaylistMenuPreview(playlist: playlist) }
-                .environment(model)
-        }
+        .moved(as: playlist.id, dragged: $dragged, lifted: $lifted, model: model)
         .onDrop(of: [.text], delegate: drop(on: playlist.id))
         // On the card held, not the page: on iOS 26 the dialog
         // is a popover pointing at the view it hangs on.
@@ -241,13 +233,7 @@ struct PlaylistsView: View {
             OwnWorksMenuPreview(items: model.ownWorks)
                 .environment(model)
         }
-        .onDrag {
-            dragged = AppModel.ownWorksCard
-            return NSItemProvider(object: String(AppModel.ownWorksCard) as NSString)
-        } preview: {
-            DragCard { OwnWorksMenuPreview(items: model.ownWorks) }
-                .environment(model)
-        }
+        .moved(as: AppModel.ownWorksCard, dragged: $dragged, lifted: $lifted, model: model)
         .onDrop(of: [.text], delegate: drop(on: AppModel.ownWorksCard))
     }
 
@@ -256,7 +242,7 @@ struct PlaylistsView: View {
 
     /// Where a card moved with a finger is let go.
     private func drop(on target: Int?) -> CardDrop {
-        CardDrop(target: target, dragged: $dragged, settled: $settled, model: model)
+        CardDrop(target: target, dragged: $dragged, lifted: $lifted, settled: $settled, model: model)
     }
 
     /// New playlists come from the "+" at the top only (Mateusz
@@ -413,6 +399,7 @@ extension Playlist: Identifiable {}
 private struct CardDrop: DropDelegate {
     let target: Int?
     @Binding var dragged: Int?
+    @Binding var lifted: Int?
     @Binding var settled: Date
     let model: AppModel
 
@@ -444,6 +431,12 @@ private struct CardDrop: DropDelegate {
         dragged = nil
         let cards = model.cards
         Task { await model.arrangeCards(cards) }
+        // Its place filled as the card lands in it.
+        let lifted = $lifted
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.2))
+            withAnimation(.easeIn(duration: 0.12)) { lifted.wrappedValue = nil }
+        }
         return true
     }
 }
@@ -1208,15 +1201,54 @@ struct PlaylistMenuPreview: View {
     }
 }
 
-/// A card held and moved with a finger: the menu's own card, its corners
-/// as the system's rounded preview has them, so the card lifted for the
-/// menu goes on with the finger unchanged.
-struct DragCard<Content: View>: View {
-    @ViewBuilder let content: Content
+extension View {
+    /// A card of Playlisty held and moved with a finger (Mateusz
+    /// 2026-11-09). The system's own picture of the card goes with the
+    /// finger: from the menu's card it turns into it in one smooth move,
+    /// while a picture of our own (the menu's card, or a 150 pt square
+    /// before) was faded in apart from it, smaller, elsewhere and with
+    /// square corners: the jump as the drag began (Mateusz 2026-11-23,
+    /// checked frame by frame in the simulator). Its place stays empty
+    /// until it is let go, wherever that is.
+    func moved(as card: Int, dragged: Binding<Int?>, lifted: Binding<Int?>, model: AppModel) -> some View {
+        self
+            .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .opacity(lifted.wrappedValue == card ? 0 : 1)
+            .onDrag {
+                dragged.wrappedValue = card
+                // Emptied a moment later: the system takes its picture
+                // of the card first.
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(0.25))
+                    if dragged.wrappedValue == card {
+                        withAnimation(.easeOut(duration: 0.15)) { lifted.wrappedValue = card }
+                    }
+                }
+                let item = CardDragItem(object: String(card) as NSString)
+                item.ended = {
+                    // Let go anywhere, also off the grid (no drop there):
+                    // the card back in its place, the order as it stands kept.
+                    let moved = dragged.wrappedValue != nil
+                    dragged.wrappedValue = nil
+                    withAnimation(.easeIn(duration: 0.12)) { lifted.wrappedValue = nil }
+                    if moved {
+                        let cards = model.cards
+                        Task { await model.arrangeCards(cards) }
+                    }
+                }
+                return item
+            }
+    }
+}
 
-    var body: some View {
-        content
-            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+/// The item a card is moved with: let go when the drag ends, however it
+/// ends, so the card's place is filled again then.
+final class CardDragItem: NSItemProvider {
+    var ended: (@MainActor () -> Void)?
+
+    deinit {
+        guard let ended else { return }
+        Task { @MainActor in ended() }
     }
 }
 

@@ -382,7 +382,7 @@ actor DemoBackend: FrameBackend {
 
     private func summary(_ playlist: Playlist) -> PlaylistSummary {
         let list = items(for: playlist)
-        return PlaylistSummary(
+        var summary = PlaylistSummary(
             id: playlist.id ?? 0, name: playlist.name, description: playlist.description,
             kind: playlist.kind, rules: playlist.rules, itemCount: list.count,
             coverItemIds: list.prefix(4).map(\.id),
@@ -398,6 +398,8 @@ actor DemoBackend: FrameBackend {
             sort: playlist.kind == .album ? nil : order(of: playlist),
             grows: playlist.grows
         )
+        if playlist.id == Self.ownWorksID { summary.ownWorks = true }
+        return summary
     }
 
     private func detail(_ playlist: Playlist) -> PlaylistDetail {
@@ -1075,7 +1077,7 @@ actor DemoBackend: FrameBackend {
 
     func playlists() async throws -> [PlaylistSummary] {
         seedOwnCard()
-        let made = playlistsByID.keys.sorted { a, b in
+        let made = playlistsByID.keys.filter { $0 != Self.ownWorksID }.sorted { a, b in
             // As the server: "Ulubione" first until a card is moved.
             let (fa, fb) = (playlistsByID[a]?.isFavorites == true, playlistsByID[b]?.isFavorites == true)
             return fa != fb ? fa : a < b
@@ -1155,11 +1157,17 @@ actor DemoBackend: FrameBackend {
         try await next()
     }
 
+    /// "Kolekcja prywatna" as the frame plays it, as the server keeps it:
+    /// a playlist never among the cards.
+    private static let ownWorksID = 9_999
+
     func playOwnWorks() async throws {
-        let own = items.filter { $0.kind == .own }.map(\.id)
-        guard !own.isEmpty else { throw BackendError.notFound }
-        queue = own.shuffled()
-        try await next()
+        guard items.contains(where: { $0.kind == .own }) else { throw BackendError.notFound }
+        playlistsByID[Self.ownWorksID] = Playlist(
+            id: Self.ownWorksID, name: "Kolekcja prywatna", kind: .smart,
+            rules: PlaylistRules(kinds: [.own], sources: ["upload"])
+        )
+        try await play(playlistID: Self.ownWorksID)
     }
 
     func playSuggestions() async throws {
