@@ -412,7 +412,7 @@ private struct Glow: View {
     /// How far the edges are drawn out on each side, as a share of the
     /// work's longer side; and their blur, as a share of it too.
     nonisolated static let reach: CGFloat = 0.6
-    nonisolated static let softness: CGFloat = 0.05
+    nonisolated static let softness: CGFloat = 0.12
     nonisolated(unsafe) private static let context = CIContext(options: [.cacheIntermediates: false])
 
     /// The picture with its edges drawn out by `reach` and blurred; the
