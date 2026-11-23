@@ -1,3 +1,4 @@
+import CoreImage
 import SwiftUI
 
 /// "Galeria", the first tab (Mateusz 2026-11-23): works one after another on
@@ -222,6 +223,9 @@ private struct GalleryPage: View {
     @State private var focus: UnitPoint?
     /// The full picture over the thumbnail, 1 once it is in.
     @State private var fullShown: Double = 1
+    /// The colours of the work's edges stretched out and blurred, for
+    /// behind the whole of it (`Glow`); made when it is first tapped.
+    @State private var glow: UIImage?
     /// How far the work has drifted from where it was cut (points).
     @State private var pan: CGFloat = 0
     /// Each work comes a little closer and slowly draws back while it is
@@ -243,8 +247,8 @@ private struct GalleryPage: View {
                 if let shown = full ?? thumb, let focus {
                     let layout = Fill(picture: shown.size, box: geo.size, focus: focus)
                     let place = whole ? Whole(picture: shown.size, box: geo.size, safe: geo.safeAreaInsets) : nil
-                    if let place, let glow = thumb ?? full {
-                        Glow(image: glow, place: place)
+                    if let place, let glow {
+                        Glow(edges: glow, place: place)
                             .transition(.opacity)
                     }
                     ZStack {
@@ -263,6 +267,11 @@ private struct GalleryPage: View {
         }
         .background(whole ? behind : placeholder)
         .task(id: work.id) { await load() }
+        .task(id: whole) {
+            guard whole, glow == nil, let picture = thumb ?? full else { return }
+            let made = await Task.detached(priority: .userInitiated) { Glow.edges(of: picture) }.value
+            withAnimation(.easeOut(duration: 0.25)) { glow = made }
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(work.item.displayTitle)
     }
@@ -393,29 +402,51 @@ private struct Whole {
 
 /// Behind the whole work, the colours of its edges flowing out and
 /// fading into its own quiet colour (Mateusz 2026-11-23 17:53: "rozmyte
-/// ale od krawędzi. Takie łuny koloru").
+/// ale od krawędzi. Takie łuny koloru"): only what is on each edge, the
+/// edge's own pixels drawn outwards (17:55: "na krawędzi nie ma włosów.
+/// Musimy brać kolor który faktycznie jest na krawędzi").
 private struct Glow: View {
-    let image: UIImage
+    let edges: UIImage
     let place: Whole
 
-    /// How far the edges reach out, as a share of the work's size.
-    static let spread: CGFloat = 1.6
-    static let blur: CGFloat = 45
+    /// How far the edges are drawn out on each side, as a share of the
+    /// work's longer side; and their blur, as a share of it too.
+    nonisolated static let reach: CGFloat = 0.6
+    nonisolated static let softness: CGFloat = 0.05
+    nonisolated(unsafe) private static let context = CIContext(options: [.cacheIntermediates: false])
+
+    /// The picture with its edges drawn out by `reach` and blurred; the
+    /// work itself sits in its middle.
+    nonisolated static func edges(of picture: UIImage) -> UIImage? {
+        guard let cg = picture.cgImage else { return nil }
+        // Small is enough for a blur this wide.
+        let long = CGFloat(max(cg.width, cg.height))
+        let scale = min(1, 200 / long)
+        let small = CIImage(cgImage: cg).transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        let extent = small.extent
+        let pad = max(extent.width, extent.height) * reach
+        let out = small.clampedToExtent()
+            .applyingGaussianBlur(sigma: Double(max(extent.width, extent.height) * softness))
+            .cropped(to: extent.insetBy(dx: -pad, dy: -pad))
+        guard let made = context.createCGImage(out, from: out.extent) else { return nil }
+        return UIImage(cgImage: made)
+    }
 
     var body: some View {
-        let size = CGSize(width: place.size.width * Self.spread, height: place.size.height * Self.spread)
-        let reach = max(size.width, size.height) / 2
-        Image(uiImage: image)
+        // The work's share of the made picture: 1 / (1 + 2 * reach * long / side).
+        let long = max(place.size.width, place.size.height)
+        let pad = long * Self.reach
+        let size = CGSize(width: place.size.width + pad * 2, height: place.size.height + pad * 2)
+        Image(uiImage: edges)
             .resizable()
             .frame(width: size.width, height: size.height)
-            .blur(radius: Self.blur)
             .mask {
                 RadialGradient(
-                    colors: [.white, .white.opacity(0.6), .clear],
-                    center: .center, startRadius: reach * 0.35, endRadius: reach * 1.05
+                    colors: [.white, .white.opacity(0.55), .clear],
+                    center: .center, startRadius: long * 0.5, endRadius: long * 0.5 + pad
                 )
             }
-            .opacity(0.85)
+            .opacity(0.9)
             .offset(place.offset)
             .allowsHitTesting(false)
     }
