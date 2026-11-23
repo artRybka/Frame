@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.346
+
+- Galeria: tytuł, autor i pasek zawsze widoczne. Dotknięcie dzieła
+  pokazuje je w całości. Szklane serce w rogu rozbłyskuje po podwójnym
+  stuknięciu. Przytrzymanie dzieła już nie zamyka aplikacji.
+
 ## 1.145.345
 
 - Galeria kadruje na temat dzieła: twarz, główną postać albo najmocniejsze

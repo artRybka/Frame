@@ -3,9 +3,12 @@ import SwiftUI
 /// "Galeria", the first tab (Mateusz 2026-11-23): works one after another on
 /// the whole screen, cut to fill it. A swipe up brings the next, down the one
 /// before; the order is the person's own (`GET /api/gallery`: their hearts,
-/// works like them, new ones). A tap shows the work's caption on it, a glass
-/// heart in the top corner and the tab bar; another tap takes them away. The caption opens the
-/// work's card; a double tap gives a heart; a hold opens the work's menu.
+/// works like them, new ones). The caption, the glass heart in the top
+/// corner and the tab bar are always there (Mateusz 2026-11-23 16:32: "Tytuł,
+/// autor, pasek menu zawsze widoczne"); a tap draws the work back to the
+/// whole of it and another cuts it to the screen again. The caption opens
+/// the work's card; a double tap gives a heart, the corner's lighting up; a
+/// hold opens the work's menu.
 struct GalleryView: View {
     @Environment(AppModel.self) private var model
     /// The works not seen yet when the app was last left: shown at once on
@@ -13,12 +16,13 @@ struct GalleryView: View {
     /// 2026-11-23: "czarny ekran zaraz po otwarciu").
     @State private var works: [RemoteItem] = GalleryView.remembered()
     @State private var position: String?
-    @State private var chrome = LaunchRoute.screen == "gallery-caption"
+    /// The work shown whole (tapped), till the next one or another tap.
+    @State private var whole: String?
     @State private var loading = false
     @State private var failed = false
     @State private var path: [String] = []
-    /// The heart that blooms where a double tap gave one.
-    @State private var bloom: String?
+    /// Double taps given, for the corner heart's flash.
+    @State private var flashes = 0
 
     /// Works asked for at once, and how near the end the next are asked for.
     private static let batch = 12
@@ -33,27 +37,27 @@ struct GalleryView: View {
             pages
                 .background(Color.black)
                 .overlay(alignment: .bottom) {
-                    if chrome, let shown {
+                    if let shown {
                         GalleryCaption(work: shown) { open(shown) }
+                            .id(shown.id)
                             .transition(.opacity)
                     }
                 }
                 .overlay(alignment: .topTrailing) {
-                    if chrome, let shown { heartButton(shown).transition(.opacity) }
+                    if let shown { heartButton(shown) }
                 }
                 .overlay {
                     if works.isEmpty { emptyState }
                 }
-                .animation(.easeInOut(duration: 0.2), value: chrome)
+                .animation(.easeInOut(duration: 0.2), value: shown?.id)
                 .toolbarVisibility(.hidden, for: .navigationBar)
-                .toolbarVisibility(chrome ? .visible : .hidden, for: .tabBar)
-                .statusBarHidden(!chrome)
                 .navigationDestination(for: String.self) { id in
                     ItemDetailView(itemID: id)
                 }
         }
         .task { if works.count < Self.batch { await more() } }
         .onChange(of: position) { _, id in
+            if whole != id { whole = nil }
             guard let id, let index = works.firstIndex(where: { $0.id == id }) else { return }
             Self.remember(Array(works.dropFirst(index + 1)))
             if index >= works.count - Self.ahead { Task { await more() } }
@@ -66,14 +70,22 @@ struct GalleryView: View {
         ScrollView(.vertical) {
             LazyVStack(spacing: 0) {
                 ForEach(works) { work in
-                    GalleryPage(work: work, current: work.id == shown?.id, bloom: bloom == work.id)
+                    GalleryPage(work: work, current: work.id == shown?.id, whole: whole == work.id)
                         .containerRelativeFrame([.horizontal, .vertical])
                         .contentShape(Rectangle())
                         .onTapGesture(count: 2) { heart(work) }
-                        .onTapGesture { chrome.toggle() }
+                        .onTapGesture {
+                            withAnimation(.spring(duration: 0.5, bounce: 0.1)) {
+                                whole = whole == work.id ? nil : work.id
+                            }
+                        }
                         .contextMenu { menu(work) } preview: {
+                            // Drawn apart from the page: `ArtImage` needs the
+                            // model (without it the hold crashed the app,
+                            // Mateusz 2026-11-23 16:41).
                             ArtImage(ref: .thumb(work.id), contentMode: .fit)
                                 .frame(width: 280)
+                                .environment(model)
                         }
                         .id(work.id)
                 }
@@ -101,23 +113,23 @@ struct GalleryView: View {
         }
     }
 
+    /// The heart as on the tiles' corners (Mateusz 2026-11-23 16:32:
+    /// "Szklane serduszko - jak w narożnikach miniatur"), lighting up on a
+    /// double tap (16:41: "rozbłysk, wypełnienie czerwienią").
     private func heartButton(_ work: RemoteItem) -> some View {
         let on = model.liked(work.summary)
         return Button {
             Task { await model.like(work.summary, !on) }
         } label: {
-            Image(systemName: on ? "heart.fill" : "heart")
-                .font(.title3.weight(.medium))
-                .foregroundStyle(on ? Theme.heart : .white)
-                .frame(width: 30, height: 30)
-                .contentTransition(.symbolEffect(.replace))
+            GalleryHeart(on: on, flashes: flashes)
+                .padding(10)
+                .contentShape(Rectangle())
         }
-        .buttonStyle(.glass)
-        .buttonBorderShape(.circle)
-        .environment(\.colorScheme, .dark)
+        .buttonStyle(.plain)
+        .sensoryFeedback(.impact(weight: .light), trigger: on)
         .accessibilityLabel(on ? "Usuń z ulubionych" : "Dodaj do ulubionych")
-        .padding(.trailing, Theme.gutter)
-        .padding(.top, 4)
+        .padding(.trailing, Theme.gutter - 10)
+        .padding(.top, 2)
     }
 
     @ViewBuilder
@@ -140,16 +152,11 @@ struct GalleryView: View {
     private func heart(_ work: RemoteItem) {
         let summary = work.summary
         if !model.liked(summary) { Task { await model.like(summary, true) } }
-        bloom = work.id
-        Task {
-            try? await Task.sleep(for: .milliseconds(900))
-            if bloom == work.id { bloom = nil }
-        }
+        flashes += 1
     }
 
     private func open(_ work: RemoteItem) {
         ItemPeeks.remember(work.summary, thumb: .thumb(work.id))
-        chrome = true  // the tab bar under the card, as elsewhere
         path.append(work.id)
     }
 
@@ -201,7 +208,8 @@ private struct GalleryPage: View {
     let work: RemoteItem
     /// On screen now: a wide work follows the phone's turn.
     var current = false
-    var bloom = false
+    /// Tapped: drawn back to the whole of it, above the caption.
+    var whole = false
 
     @State private var thumb: UIImage?
     @State private var full: UIImage?
@@ -226,30 +234,23 @@ private struct GalleryPage: View {
             ZStack {
                 if let shown = full ?? thumb, let focus {
                     let layout = Fill(picture: shown.size, box: geo.size, focus: focus)
+                    let place = whole ? Whole(picture: shown.size, box: geo.size, safe: geo.safeAreaInsets) : nil
                     ZStack {
-                        if let thumb { picture(thumb, layout) }
-                        if let full { picture(full, layout).opacity(fullShown) }
+                        if let thumb { picture(thumb, layout, place) }
+                        if let full { picture(full, layout, place).opacity(fullShown) }
                     }
-                    .scaleEffect(reduceMotion ? 1 : zoom, anchor: layout.anchor)
-                    .offset(x: layout.wide ? pan : 0)
+                    .scaleEffect(reduceMotion || whole ? 1 : zoom, anchor: layout.anchor)
+                    .offset(x: layout.wide && !whole ? pan : 0)
                     .frame(width: geo.size.width, height: geo.size.height)
                     .clipped()
                     .transition(.opacity)
-                }
-                if bloom {
-                    Image(systemName: "heart.fill")
-                        .font(.system(size: 96))
-                        .foregroundStyle(.white.opacity(0.92))
-                        .shadow(color: .black.opacity(0.35), radius: 12)
-                        .transition(.scale(scale: 0.4).combined(with: .opacity))
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .task(id: geo.size.width > 0 && current && !reduceMotion) { await follow(geo.size) }
             .task(id: current) { await drawBack() }
         }
-        .background(placeholder)
-        .animation(.spring(duration: 0.35), value: bloom)
+        .background(whole ? Color(white: 0.055) : placeholder)
         .task(id: work.id) { await load() }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(work.item.displayTitle)
@@ -261,12 +262,12 @@ private struct GalleryPage: View {
         return (Color(hexString: hex) ?? .black).opacity(0.35)
     }
 
-    private func picture(_ image: UIImage, _ layout: Fill) -> some View {
+    private func picture(_ image: UIImage, _ layout: Fill, _ place: Whole?) -> some View {
         Image(uiImage: image)
             .resizable()
             .interpolation(.high)
-            .frame(width: layout.size.width, height: layout.size.height)
-            .offset(layout.offset)
+            .frame(width: place?.size.width ?? layout.size.width, height: place?.size.height ?? layout.size.height)
+            .offset(place?.offset ?? layout.offset)
     }
 
     private func load() async {
@@ -349,6 +350,76 @@ private struct GalleryPage: View {
     }
 }
 
+/// A tapped work drawn back to the whole of it (Mateusz 2026-11-23 16:32:
+/// "Kliknięcie w dzieło - zmniejsza i pokazuje je w całości"): between the
+/// status bar and the caption, a little in from the sides, on the dark.
+private struct Whole {
+    let size: CGSize
+    let offset: CGSize
+
+    /// The caption's share of the screen's height, and the margins.
+    static let caption: CGFloat = 0.25
+    static let side: CGFloat = 20
+    static let gap: CGFloat = 12
+
+    init(picture: CGSize, box: CGSize, safe: EdgeInsets) {
+        // The pages ignore the safe area: the status bar's height as least.
+        let top = max(safe.top, 59) + Self.gap
+        let bottom = box.height * Self.caption
+        let room = CGSize(width: box.width - Self.side * 2, height: max(box.height - top - bottom - Self.gap, 1))
+        let scale = min(room.width / max(picture.width, 1), room.height / max(picture.height, 1))
+        size = CGSize(width: picture.width * scale, height: picture.height * scale)
+        offset = CGSize(width: 0, height: (top - bottom) / 2)
+    }
+}
+
+/// The corner's glass heart, as on the tiles (`HeartMark`): a double tap
+/// makes it flash, swell and fill red, with a ring going out from it.
+private struct GalleryHeart: View {
+    let on: Bool
+    let flashes: Int
+
+    var body: some View {
+        HeartMark(on: on, size: 26)
+            .animation(.snappy, value: on)
+            .keyframeAnimator(initialValue: Flash(), trigger: flashes) { heart, flash in
+                heart
+                    .scaleEffect(flash.scale)
+                    .background {
+                        HeartShape()
+                            .stroke(.white.opacity(flash.ring), lineWidth: 2)
+                            .scaleEffect(flash.spread)
+                    }
+                    .shadow(color: .white.opacity(flash.glow), radius: 10)
+            } keyframes: { _ in
+                KeyframeTrack(\.scale) {
+                    SpringKeyframe(1.55, duration: 0.18, spring: .snappy)
+                    SpringKeyframe(1, duration: 0.45, spring: .bouncy)
+                }
+                KeyframeTrack(\.spread) {
+                    LinearKeyframe(1, duration: 0.05)
+                    CubicKeyframe(2.6, duration: 0.6)
+                    LinearKeyframe(1, duration: 0.01)
+                }
+                KeyframeTrack(\.ring) {
+                    LinearKeyframe(0.9, duration: 0.05)
+                    CubicKeyframe(0, duration: 0.6)
+                }
+                KeyframeTrack(\.glow) {
+                    LinearKeyframe(0.9, duration: 0.1)
+                    CubicKeyframe(0, duration: 0.6)
+                }
+            }
+    }
+
+    struct Flash {
+        var scale: CGFloat = 1
+        var spread: CGFloat = 1
+        var ring: Double = 0
+        var glow: Double = 0
+    }
+}
+
 /// A picture cut to fill a box around `focus`: its size and where it lies.
 private struct Fill {
     let size: CGSize
@@ -417,7 +488,7 @@ private struct Pan {
 /// The work's caption laid on its lower part (Mateusz 2026-11-23, variant 2:
 /// no card, the text on a shade): the museum, the title with its year, the
 /// artist and their nationality and years, as on the work's card. Tapped:
-/// the card. The Polish texts are asked for only once the caption is shown.
+/// the card. The Polish texts are asked for once the work has stayed a moment.
 private struct GalleryCaption: View {
     @Environment(AppModel.self) private var model
     let work: RemoteItem
@@ -488,7 +559,11 @@ private struct GalleryCaption: View {
 
     private func loadPolish() async {
         polish = ItemPeeks.polish[work.id]
-        guard polish == nil, item.kind == .artwork,
+        // Always shown now: asked for only once the work has stayed a moment,
+        // not for each one swiped past.
+        guard polish == nil, item.kind == .artwork else { return }
+        try? await Task.sleep(for: .seconds(1.5))
+        guard !Task.isCancelled,
               let view = try? await model.backend.polish(itemID: work.id, wait: 0, early: true),
               let text = view.text
         else { return }
