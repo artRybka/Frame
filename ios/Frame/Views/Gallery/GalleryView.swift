@@ -250,6 +250,8 @@ private struct GalleryPage: View {
     @State private var thumb: UIImage?
     @State private var full: UIImage?
     @State private var polish: PolishText?
+    /// The whole work's caption as tall as it is, the work above it.
+    @State private var captionHeight = Whole.captionGuess
     @State private var focus: UnitPoint?
     /// The full picture over the thumbnail, 1 once it is in.
     @State private var fullShown: Double = 1
@@ -276,7 +278,7 @@ private struct GalleryPage: View {
             ZStack {
                 if let shown = full ?? thumb, let focus {
                     let layout = Fill(picture: shown.size, box: geo.size, focus: focus)
-                    let place = Whole(picture: shown.size, box: geo.size, safe: geo.safeAreaInsets)
+                    let place = Whole(picture: shown.size, box: geo.size, safe: geo.safeAreaInsets, caption: captionHeight)
                     // Two pictures, never one moved between them (Mateusz
                     // 2026-11-23 20:14: the scaling "nadal nie wygląda
                     // dobrze. Zaproponuj zupełnie inne rozwiązanie"; B,
@@ -348,6 +350,9 @@ private struct GalleryPage: View {
     private func caption(_ place: Whole?, _ geo: GeometryProxy) -> some View {
         let foot = max(geo.safeAreaInsets.bottom, 34) + (place == nil ? 0 : Whole.tabBar)
         return GalleryCaption(work: work, polish: polish, whole: place != nil, flip: flip, open: open)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                if place != nil, abs(height - captionHeight) > 0.5 { captionHeight = height }
+            }
             .padding(.bottom, foot)
             .frame(width: geo.size.width, height: geo.size.height, alignment: .bottom)
     }
@@ -490,21 +495,32 @@ private struct Whole {
     let size: CGSize
     let offset: CGSize
 
-    /// The caption's share of the screen's height, and the margins.
-    static let caption: CGFloat = 0.36
     /// The floating tab bar's height, the caption above it.
     static let tabBar: CGFloat = 62
     static let side: CGFloat = 20
     static let gap: CGFloat = 12
+    /// Between the work and its title.
+    static let aboveTitle: CGFloat = 22
+    /// The caption's height before it is measured: one line of title, the
+    /// artist and "Karta dzieła".
+    static let captionGuess: CGFloat = 140
+    /// Where a work lower than its room stands in it: this share of the room
+    /// left over above it, the rest below (Mateusz 2026-11-23 22:37: "Dzieła
+    /// które na to pozwalają - trochę niżej").
+    static let lower: CGFloat = 0.64
 
-    init(picture: CGSize, box: CGSize, safe: EdgeInsets) {
+    /// Between the status bar and the caption as tall as it is (22:37: "na
+    /// pewno rezerwa od dołu jest zbyt duża"; it was 36% of the screen, made
+    /// for the museum and the artist's years too).
+    init(picture: CGSize, box: CGSize, safe: EdgeInsets, caption: CGFloat) {
         // The pages ignore the safe area: the status bar's height as least.
         let top = max(safe.top, 59) + Self.gap
-        let bottom = box.height * Self.caption
-        let room = CGSize(width: box.width - Self.side * 2, height: max(box.height - top - bottom - Self.gap, 1))
+        let bottom = max(safe.bottom, 34) + Self.tabBar + caption + Self.aboveTitle
+        let room = CGSize(width: box.width - Self.side * 2, height: max(box.height - top - bottom, 1))
         let scale = min(room.width / max(picture.width, 1), room.height / max(picture.height, 1))
         size = CGSize(width: picture.width * scale, height: picture.height * scale)
-        offset = CGSize(width: 0, height: (top - bottom) / 2)
+        let y = top + (room.height - size.height) * Self.lower
+        offset = CGSize(width: 0, height: y + size.height / 2 - box.height / 2)
     }
 }
 
