@@ -11,11 +11,8 @@ struct PlaylistsView: View {
     @State private var deleting: PlaylistSummary?
     /// How far the page is scrolled, for the glow of the card on top.
     @State private var scrolled: CGFloat = 0
-    /// The card being moved with a finger (`AppModel.cards`).
-    @State private var dragged: Int?
-    /// When the cards last made room: the next move waits for them to
-    /// settle, else a card arriving under the finger moved them again.
-    @State private var settled = Date.distantPast
+    /// The same for the cards of the grid (`CardsGrid`).
+    @State private var lift = ScrollLift()
     /// "Dodaj własne dzieło" on the whole screen.
     @State private var addingOwn = ["own-start", "own-scan", "own-scan2", "own-cut", "own-balance", "own-describe", "own-card"].contains(LaunchRoute.screen)
 
@@ -24,12 +21,6 @@ struct PlaylistsView: View {
         // Another person's private playlist on the frame: as the player has it.
         return model.playlists.first { $0.id == id } ?? model.player?.playlist.flatMap { $0.id == id ? $0 : nil }
     }
-
-    /// Two columns, each card pinned to the top of its row.
-    private static let columns = [
-        GridItem(.flexible(), spacing: 16, alignment: .top),
-        GridItem(.flexible(), spacing: 16, alignment: .top),
-    ]
 
     /// The collections in the order I put the cards (the server keeps it for
     /// each person; my "Ulubione" first, next to "Propozycje", until then).
@@ -82,42 +73,11 @@ struct PlaylistsView: View {
                     }
                     // Every card is as tall as the others (`CardCaption`): rows of
                     // different heights made the lazy grid jump while scrolling.
-                    LazyVGrid(columns: Self.columns, spacing: 22) {
-                        NavigationLink(value: SuggestionsRoute()) {
-                            SuggestionsCard(works: model.suggestionCover, subtitle: suggestionsLine, isActive: suggestionsActive)
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            suggestionsMenu
-                        } preview: {
-                            CardMenuPreview(title: "Propozycje dnia", subtitle: suggestionsLine) {
-                                SuggestionsCover(works: model.suggestionCover)
-                            }
-                            .environment(model)
-                        }
-                        // The playlists and "Kolekcja prywatna" among them,
-                        // each moved with a finger (Mateusz 2026-11-22: his
-                        // own works' card could not be).
-                        ForEach(model.cards, id: \.self) { card in
-                            if card == AppModel.ownWorksCard {
-                                ownWorksCard
-                            } else if let playlist = ordered.first(where: { $0.id == card }) {
-                                playlistCard(playlist)
-                            }
-                        }
-                        // Last: the works this person hid with "Ukryj dzieło"
-                        // (each person's own, Mateusz 2026-11-20).
-                        NavigationLink(value: HiddenRoute()) {
-                            HiddenCard(items: model.hidden)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    // Let go between the cards (or on Propozycje, Ukryte):
-                    // the order as it stands is kept. The whole grid takes
-                    // the card, gaps too: without the shape only the cards
-                    // did, and a card held over a gap showed "no entry".
-                    .contentShape(Rectangle())
-                    .onDrop(of: [.text], delegate: drop(on: nil))
+                    CardsGrid(
+                        items: gridItems, cells: gridCells, revision: gridRevision, previews: gridPreviews,
+                        menus: gridMenus, open: openCard, arranged: { cards in Task { await model.arrangeCards(cards) } },
+                        deleting: $deleting, delete: { playlist in Task { await delete(playlist) } }
+                    )
                 }
                 .environment(\.parallaxLift, scrolled)
                 .pageWidth()
@@ -125,6 +85,7 @@ struct PlaylistsView: View {
                 .padding(.bottom, 40)
             }
             .glowLift($scrolled)
+            .onChange(of: scrolled) { _, value in lift.value = value }
             .paperPage(glow: glow, lift: scrolled, colours: 4)
             .navigationTitle("Playlisty")
             .serverLinkBadge()
@@ -178,69 +139,100 @@ struct PlaylistsView: View {
         .opensStudies(on: $path)
     }
 
-    /// A playlist's card: opened, held for its menu, moved with a finger.
-    private func playlistCard(_ playlist: PlaylistSummary) -> some View {
-        NavigationLink(value: playlist.id) {
-            PlaylistCard(playlist: playlist, isActive: playlist.id == active?.id)
-        }
-        .buttonStyle(.plain)
-        // A card of its own while held, cover left and name
-        // right: the options sit right under it, not under
-        // the caption of the tall grid card.
-        .contextMenu {
-            menu(playlist)
-        } preview: {
-            PlaylistMenuPreview(playlist: playlist)
-                .environment(model)
-        }
-        // Held and moved, the card goes with the finger
-        // and the others make room (Mateusz 2026-11-09,
-        // variant A of playlisty-kolejnosc/szkic.png).
-        .moved(as: playlist.id, dragged: $dragged)
-        .onDrop(of: [.text], delegate: drop(on: playlist.id))
-        // On the card held, not the page: on iOS 26 the dialog
-        // is a popover pointing at the view it hangs on.
-        .confirmationDialog(
-            "Usunąć playlistę „\(playlist.name)”?",
-            isPresented: Binding(
-                get: { deleting?.id == playlist.id },
-                set: { if !$0 { deleting = nil } }
-            ),
-            titleVisibility: .visible,
-            presenting: deleting
-        ) { playlist in
-            Button("Usuń", role: .destructive) {
-                Task { await delete(playlist) }
-            }
-        }
+    /// Propozycje first, then the playlists and "Kolekcja prywatna" in the
+    /// order I put them (Mateusz 2026-11-22: his own works' card could not
+    /// be moved), "Ukryte" last (each person's own, Mateusz 2026-11-20).
+    /// New playlists come from the "+" at the top only (Mateusz 2026-11-09:
+    /// no "Nowa playlista" tile).
+    private var gridItems: [GridCard] {
+        [.suggestions] + model.cards.map(GridCard.card) + [.hidden]
     }
 
-    /// "Kolekcja prywatna", once there is a work of his own (Mateusz
-    /// 2026-11-15), moved like a playlist's card.
-    private var ownWorksCard: some View {
-        NavigationLink(value: OwnWorksRoute()) {
-            OwnWorksCard(items: model.ownWorks, isActive: ownWorksActive)
+    private var gridCells: [GridCard: AnyView] {
+        var cells: [GridCard: AnyView] = [:]
+        for card in gridItems {
+            let view: AnyView
+            switch card {
+            case .suggestions:
+                view = AnyView(SuggestionsCard(works: model.suggestionCover, subtitle: suggestionsLine, isActive: suggestionsActive))
+            case .hidden:
+                view = AnyView(HiddenCard(items: model.hidden))
+            case let .card(id) where id == AppModel.ownWorksCard:
+                view = AnyView(OwnWorksCard(items: model.ownWorks, isActive: ownWorksActive))
+            case let .card(id):
+                guard let playlist = ordered.first(where: { $0.id == id }) else { continue }
+                view = AnyView(PlaylistCard(playlist: playlist, isActive: playlist.id == active?.id))
+            }
+            cells[card] = AnyView(LiftedCard(lift: lift, content: view.environment(model)))
         }
-        .buttonStyle(.plain)
-        // Held: the same menu as a playlist's, without "Usuń playlistę"
-        // (Mateusz 2026-11-23).
-        .contextMenu {
-            ownWorksMenu
-        } preview: {
-            OwnWorksMenuPreview(items: model.ownWorks)
-                .environment(model)
+        return cells
+    }
+
+    /// What the cards show: they are drawn anew only when it changes.
+    private var gridRevision: Int {
+        var hasher = Hasher()
+        hasher.combine(model.playlists)
+        hasher.combine(model.ownWorks.map(\.id))
+        hasher.combine(model.hidden.map(\.id))
+        hasher.combine(model.suggestionCover.map(\.item.id))
+        hasher.combine(suggestionsLine)
+        hasher.combine(suggestionsActive)
+        hasher.combine(active?.id)
+        return hasher.finalize()
+    }
+
+    /// A card held: a card of its own, cover left and name right, so the
+    /// options sit right under it, not under the caption of the tall grid
+    /// card. "Ukryte" has no menu.
+    private var gridPreviews: [GridCard: AnyView] {
+        var previews: [GridCard: AnyView] = [:]
+        for card in gridItems {
+            switch card {
+            case .suggestions:
+                previews[card] = AnyView(CardMenuPreview(title: "Propozycje dnia", subtitle: suggestionsLine) {
+                    SuggestionsCover(works: model.suggestionCover)
+                }.environment(model))
+            case .hidden:
+                break
+            case let .card(id) where id == AppModel.ownWorksCard:
+                previews[card] = AnyView(OwnWorksMenuPreview(items: model.ownWorks).environment(model))
+            case let .card(id):
+                if let playlist = ordered.first(where: { $0.id == id }) {
+                    previews[card] = AnyView(PlaylistMenuPreview(playlist: playlist).environment(model))
+                }
+            }
         }
-        .moved(as: AppModel.ownWorksCard, dragged: $dragged)
-        .onDrop(of: [.text], delegate: drop(on: AppModel.ownWorksCard))
+        return previews
+    }
+
+    private var gridMenus: [GridCard: UIMenu] {
+        var menus: [GridCard: UIMenu] = [:]
+        for card in gridItems {
+            switch card {
+            case .suggestions:
+                menus[card] = suggestionsMenu
+            case .hidden:
+                break
+            case let .card(id) where id == AppModel.ownWorksCard:
+                menus[card] = ownWorksMenu
+            case let .card(id):
+                if let playlist = ordered.first(where: { $0.id == id }) { menus[card] = menu(playlist) }
+            }
+        }
+        return menus
+    }
+
+    private func openCard(_ card: GridCard) {
+        switch card {
+        case .suggestions: path.append(SuggestionsRoute())
+        case .hidden: path.append(HiddenRoute())
+        case let .card(id) where id == AppModel.ownWorksCard: path.append(OwnWorksRoute())
+        case let .card(id): path.append(id)
+        }
     }
 
     /// The frame plays "Kolekcja prywatna".
     private var ownWorksActive: Bool { active?.ownWorks == true }
-
-    /// Where a card moved with a finger is let go.
-    private func drop(on target: Int?) -> CardDrop {
-        CardDrop(target: target, dragged: $dragged, settled: $settled, model: model)
-    }
 
     /// New playlists come from the "+" at the top only (Mateusz
     /// 2026-11-09: no "Nowa playlista" tile).
@@ -303,77 +295,78 @@ struct PlaylistsView: View {
 
 extension PlaylistsView {
     /// Held on a cover: present it on the frame, or delete it ("Ulubione" stays).
-    @ViewBuilder
-    private func menu(_ playlist: PlaylistSummary) -> some View {
-        if model.isGuest {
-            // A guest sends nothing to the frame.
-        } else if playlist.id != active?.id {
-            Button("Prezentuj na ramce", systemImage: "photo.fill") {
-                Task { await model.play(playlist) }
-            }
-            .disabled(playlist.itemCount == 0)
-        } else {
-            // Said, not left out: "Ulubione" on the frame and first had
-            // no option at all, so holding it showed no menu (Mateusz
-            // 2026-11-09 14:07).
-            Button("Teraz prezentowane", systemImage: "checkmark") {}
-                .disabled(true)
+    private func menu(_ playlist: PlaylistSummary) -> UIMenu {
+        var items = presentItems(active: playlist.id == active?.id, enabled: playlist.itemCount > 0) {
+            Task { await model.play(playlist) }
         }
-        moveMenu(playlist.id)
+        items += moveItems(playlist.id)
         if !playlist.isFavorites, playlist.isMine {
-            Button("Usuń playlistę", systemImage: "trash", role: .destructive) { deleting = playlist }
+            items.append(UIAction(title: "Usuń playlistę", image: UIImage(systemName: "trash"), attributes: .destructive) { _ in
+                deleting = playlist
+            })
         }
+        return UIMenu(children: items)
     }
 
-    /// Held on "Kolekcja prywatna": as a playlist's menu, without deleting.
-    @ViewBuilder
-    private var ownWorksMenu: some View {
-        if model.isGuest {
-            // A guest sends nothing to the frame.
-        } else if !ownWorksActive {
-            Button("Prezentuj na ramce", systemImage: "photo.fill") {
-                Task { await model.playOwnWorks() }
-            }
-            .disabled(model.ownWorks.isEmpty || !model.isOwner)
-        } else {
-            Button("Teraz prezentowane", systemImage: "checkmark") {}
-                .disabled(true)
+    /// Held on "Kolekcja prywatna": as a playlist's menu, without deleting
+    /// (Mateusz 2026-11-23).
+    private var ownWorksMenu: UIMenu {
+        let items = presentItems(active: ownWorksActive, enabled: !model.ownWorks.isEmpty && model.isOwner) {
+            Task { await model.playOwnWorks() }
         }
-        moveMenu(AppModel.ownWorksCard)
+        return UIMenu(children: items + moveItems(AppModel.ownWorksCard))
+    }
+
+    /// "Prezentuj na ramce", or, said and not left out, "Teraz
+    /// prezentowane" ("Ulubione" on the frame and first had no option at
+    /// all, so holding it showed no menu, Mateusz 2026-11-09 14:07). A
+    /// guest sends nothing to the frame.
+    private func presentItems(active: Bool, enabled: Bool, play: @escaping () -> Void) -> [UIMenuElement] {
+        if model.isGuest { return [] }
+        if active {
+            return [UIAction(title: "Teraz prezentowane", image: UIImage(systemName: "checkmark"), attributes: .disabled) { _ in }]
+        }
+        return [UIAction(
+            title: "Prezentuj na ramce", image: UIImage(systemName: "photo.fill"), attributes: enabled ? [] : .disabled
+        ) { _ in play() }]
     }
 
     /// "Przesuń na początek" and "na koniec" of a card held (a playlist's
-    /// or "Kolekcja prywatna").
-    @ViewBuilder
-    private func moveMenu(_ card: Int) -> some View {
+    /// or "Kolekcja prywatna"): the others make room as when it is moved
+    /// with a finger.
+    private func moveItems(_ card: Int) -> [UIMenuElement] {
         let cards = model.cards
-        if let index = cards.firstIndex(of: card), index > 0 {
-            Button("Przesuń na początek", systemImage: "arrow.up.to.line") {
+        guard let index = cards.firstIndex(of: card) else { return [] }
+        var items: [UIMenuElement] = []
+        if index > 0 {
+            items.append(UIAction(title: "Przesuń na początek", image: UIImage(systemName: "arrow.up.to.line")) { _ in
                 var list = cards
                 list.insert(list.remove(at: index), at: 0)
-                withAnimation(CardDrop.making) { model.showCards(list) }
                 Task { await model.arrangeCards(list) }
-            }
+            })
         }
-        if let index = cards.firstIndex(of: card), index < cards.count - 1 {
-            Button("Przesuń na koniec", systemImage: "arrow.down.to.line") {
+        if index < cards.count - 1 {
+            items.append(UIAction(title: "Przesuń na koniec", image: UIImage(systemName: "arrow.down.to.line")) { _ in
                 var list = cards
                 list.append(list.remove(at: index))
-                withAnimation(CardDrop.making) { model.showCards(list) }
                 Task { await model.arrangeCards(list) }
-            }
+            })
         }
+        return items
     }
 
     /// Held on "Propozycje": present them, or open them in Discover.
-    @ViewBuilder
-    private var suggestionsMenu: some View {
+    private var suggestionsMenu: UIMenu {
+        var items: [UIMenuElement] = []
         if !suggestionsActive, !model.isGuest {
-            Button("Prezentuj na ramce", systemImage: "photo.fill") {
+            items.append(UIAction(title: "Prezentuj na ramce", image: UIImage(systemName: "photo.fill")) { _ in
                 Task { await model.playSuggestions() }
-            }
+            })
         }
-        Button("Otwórz w Odkrywaj", systemImage: "square.grid.2x2") { model.suggestionsOpened += 1 }
+        items.append(UIAction(title: "Otwórz w Odkrywaj", image: UIImage(systemName: "square.grid.2x2")) { _ in
+            model.suggestionsOpened += 1
+        })
+        return UIMenu(children: items)
     }
 
     private func delete(_ playlist: PlaylistSummary) async {
@@ -388,48 +381,6 @@ extension PlaylistsView {
 }
 
 extension Playlist: Identifiable {}
-
-/// A card moved over the others in Playlisty: they make room as it passes
-/// (the order changes at once), and where it is let go the order is kept on
-/// the server. `target` nil: the grid around the cards; "Kolekcja
-/// prywatna" is `AppModel.ownWorksCard`.
-private struct CardDrop: DropDelegate {
-    let target: Int?
-    @Binding var dragged: Int?
-    @Binding var settled: Date
-    let model: AppModel
-
-    /// How the others make room: soft, without bouncing past their places.
-    static let making = Animation.spring(response: 0.34, dampingFraction: 0.9)
-    /// Until then a card that slid in under the finger does not move them
-    /// again (a card taken across a row moved the whole row back and forth).
-    static let settling: TimeInterval = 0.3
-
-    func dropEntered(info: DropInfo) {
-        var cards = model.cards
-        guard let target, let dragged, dragged != target,
-              Date.now >= settled,
-              let from = cards.firstIndex(of: dragged),
-              let to = cards.firstIndex(of: target)
-        else { return }
-        cards.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
-        settled = .now + Self.settling
-        withAnimation(Self.making) { model.showCards(cards) }
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        // Never "no entry": wherever a card is let go, the order stands.
-        DropProposal(operation: .move)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        guard dragged != nil else { return false }
-        dragged = nil
-        let cards = model.cards
-        Task { await model.arrangeCards(cards) }
-        return true
-    }
-}
 
 /// Opens Propozycje within Playlisty, pushed like a playlist.
 struct SuggestionsRoute: Hashable {}
@@ -1188,26 +1139,6 @@ struct PlaylistMenuPreview: View {
                 Label(owner, systemImage: "person.2").font(.caption2)
             }
         }
-    }
-}
-
-extension View {
-    /// A card of Playlisty held and moved with a finger (Mateusz
-    /// 2026-11-09). The system's own picture of the card goes with the
-    /// finger: from the menu's card it turns into it in one smooth move,
-    /// while a picture of our own (the menu's card, or a 150 pt square
-    /// before) was faded in apart from it, smaller, elsewhere and with
-    /// square corners: the jump as the drag began (Mateusz 2026-11-23,
-    /// checked frame by frame in the simulator). Its place is not emptied
-    /// meanwhile: the system takes its picture of the card late, and an
-    /// emptied card went with the finger as a blank.
-    func moved(as card: Int, dragged: Binding<Int?>) -> some View {
-        self
-            .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .onDrag {
-                dragged.wrappedValue = card
-                return NSItemProvider(object: String(card) as NSString)
-            }
     }
 }
 

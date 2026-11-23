@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.338
+
+- Kafelki w Playlistach przesuwa się teraz jak albumy w Zdjęciach:
+  przenoszony kafelek jest tylko pod palcem, a jego miejsce zostaje puste,
+  dopóki go nie puścisz. Po puszczeniu kafelek ląduje w luce, a świeżo
+  przeniesiony można od razu chwycić ponownie.
+
 ## 1.145.337
 
 - Szare rysunki z WikiArt (ołówek, tusz) odpadają z „Malarstwa” od razu,
