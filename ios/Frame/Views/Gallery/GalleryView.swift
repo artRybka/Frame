@@ -230,7 +230,7 @@ private struct GalleryPage: View {
                         if let thumb { picture(thumb, layout) }
                         if let full { picture(full, layout).opacity(fullShown) }
                     }
-                    .scaleEffect(reduceMotion ? 1 : zoom)
+                    .scaleEffect(reduceMotion ? 1 : zoom, anchor: layout.anchor)
                     .offset(x: layout.wide ? pan : 0)
                     .frame(width: geo.size.width, height: geo.size.height)
                     .clipped()
@@ -307,7 +307,7 @@ private struct GalleryPage: View {
     /// picture comes first, and kept for the other.
     private func settle(_ image: UIImage, key: String) async {
         guard focus == nil else { return }
-        focus = await SubjectFocus.shared.point(in: image, key: key)
+        focus = await SubjectFocus.shared.point(in: image, key: key, subject: true)
     }
 
     /// A wide work moves only once the phone is turned, the way it was
@@ -368,6 +368,17 @@ private struct Fill {
         self.focus = focus
     }
 
+    /// Where `focus` is seen, as a point of the picture's own frame
+    /// (`size`, centred on the box): the draw-back keeps it in place.
+    var anchor: UnitPoint {
+        let x = (focus.x - 0.5) * size.width + offset.width
+        let y = (focus.y - 0.5) * size.height + offset.height
+        return UnitPoint(
+            x: min(max(0.5 + x / max(size.width, 1), 0), 1),
+            y: min(max(0.5 + y / max(size.height, 1), 0), 1)
+        )
+    }
+
     /// Much wider than the box: a good part of it is cut off.
     var wide: Bool { room.width * 2 > size.width * 0.3 }
 }
@@ -378,9 +389,9 @@ private struct Fill {
 /// edge. Points a second.
 private struct Pan {
     /// After a turn, the slow way on.
-    static let creep: Double = 1.5
+    static let creep: Double = 2.5
     /// The most a turn adds: still a slow move.
-    static let turned: Double = 7
+    static let turned: Double = 16
     /// A turn smaller than this is the hand's shake (`Tilt.x`, -1…1).
     static let still: Double = 0.12
 
@@ -391,8 +402,10 @@ private struct Pan {
         if abs(tilt) > Self.still { way = tilt > 0 ? -1 : 1 }
         let along = way == 0 ? 0 : max(0, -tilt * way)
         let goal = way == 0 ? 0 : Self.creep + Self.turned * min(along, 1)
-        // Speeds up and slows down over a couple of seconds.
-        speed += (goal - speed) * min(step * 0.8, 1)
+        // Speeds up within a second, slows down over a couple (Mateusz
+        // 2026-11-23 15:50: "Trochę większa dynamika po przechyleniu").
+        let ease = goal > speed ? 1.6 : 0.8
+        speed += (goal - speed) * min(step * ease, 1)
         return CGFloat(way * speed * step)
     }
 
