@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.349
+
+- Galeria: tytuł i autor widoczne także w kadrze; po dotknięciu
+  podpis stoi tuż pod całym dziełem.
+
 ## 1.145.348
 
 - Aplikacja startuje na Odkrywaj. Galeria w kadrze pokazuje samo serce;
