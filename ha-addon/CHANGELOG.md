@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.342
+
+- Galeria otwiera się od razu na dziełach jeszcze nieobejrzanych, bez
+  czarnego ekranu. Lepsza jakość wchodzi jak łapanie ostrości, bez
+  przesunięcia. Szerokie dzieła powoli płyną w poprzek ekranu, każde
+  inaczej. Bez strzałki przy tytule, pasek już się nie zwija.
+
 ## 1.145.341
 
 - Kafelki w Playlistach przesuwa się teraz jak albumy w Zdjęciach:
