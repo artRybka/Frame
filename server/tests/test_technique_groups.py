@@ -281,3 +281,38 @@ def test_wikiart_types_by_medium_or_picture() -> None:
     assert _untold(sepia) and not _untold(wikiart("pencil, paper"))
     assert _read_anew(sepia, wikiart("pencil, paper")) == {"medium": "pencil, paper"}
     assert _read_anew(sepia, None) == {}
+
+
+def test_commons_paintings_on_paper_are_drawings() -> None:
+    """Commons types its artworks "Painting": van Gogh's charcoal and pen
+    drawings under Malarstwo (Mateusz 2026-11-23). The medium decides;
+    with none, a painting still; its other types stand."""
+    from frame_server.library.vocabulary import stated_type
+
+    def commons(medium: str = "", kind: str = "Painting", spread: float = 0.004) -> Item:
+        return Item(
+            id="wmc:1",
+            source="wmc",
+            source_id="1",
+            title="Back yards with two figures",
+            artist="Vincent van Gogh",
+            classification=kind,
+            medium=medium,
+            tint_spread=spread,
+        )
+
+    painting = PlaylistRules(artists=["Vincent van Gogh"], terms=["technique:painting"])
+    drawing = PlaylistRules(artists=["Vincent van Gogh"], terms=["technique:drawing"])
+    for medium in (
+        "charcoal on paper",
+        "Pencil and Ink on Paper",
+        "pencil and charcoal and reed pen",
+    ):
+        assert not matches(commons(medium), painting)
+        assert matches(commons(medium), drawing)
+        assert stated_type(commons(medium)) == ""
+    assert matches(commons("oil on canvas"), painting)
+    assert matches(commons("ink and color on silk"), painting)
+    # No medium: a painting (a grey photograph of an oil is no drawing).
+    assert matches(commons(), painting) and stated_type(commons()) == "Painting"
+    assert stated_type(commons("Photograph", "Photograph")) == "Photograph"
