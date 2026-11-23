@@ -24,8 +24,24 @@ struct FrameTabView: View {
 
     private var device: DeviceStatus? { model.status?.device }
 
+    /// In "Ramka" (the tab once called "Teraz", Mateusz 2026-11-23): pushed
+    /// on its stack, no stack of its own.
+    let embedded: Bool
+
+    init(embedded: Bool = false) {
+        self.embedded = embedded
+    }
+
     var body: some View {
-        NavigationStack {
+        if embedded {
+            page
+        } else {
+            NavigationStack { page }
+        }
+    }
+
+    private var page: some View {
+        Group {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 28) {
@@ -52,7 +68,7 @@ struct FrameTabView: View {
                 }
             }
             .paperPage()
-            .navigationTitle("Ramka")
+            .navigationTitle(embedded ? "Ustawienia ramki" : "Ramka")
             .serverLinkBadge()
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -270,7 +286,7 @@ struct FrameTabView: View {
     /// under it only name the state (Sieć) and the power source (Zasilanie).
     private var connectionText: String {
         guard let device else { return "Brak danych" }
-        if !device.configured { return "Podaj adres i PIN ekranu pod trybikiem, w Ramce" }
+        if !device.configured { return "Podaj adres i PIN ekranu pod trybikiem, w ustawieniach ramki" }
         if let silent = appSilence { return "Ekran odpowiada · aplikacja milczy \(silent)" }
         switch device.powerState {
         case "online": return "Połączona · \(When.ago(device.lastSeen) ?? "teraz")"
