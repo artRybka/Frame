@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.351
+
+- Galeria: po dotknięciu kadr rozpływa się w łunę, a z niej wypływa
+  całe dzieło; łuny bez krawędzi; mocniejszy błysk serca.
+
 ## 1.145.350
 
 - Galeria: serce wypełnia się od środka z krótkim błyskiem przy
