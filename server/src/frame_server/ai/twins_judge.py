@@ -28,6 +28,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from ..library.picture_hash import NONE as NO_HASH
+from ..library.picture_hash import distance as hash_distance
+from ..library.twins import HASH_NEAR
 from ..library.verdict import Place, against
 from .client import FABLE, HAIKU, OPUS, SONNET, image_block, request
 from .daily import _object, _str
@@ -70,7 +73,9 @@ that must show each artwork once. Decide what kind of pair they are.
 "kind":
 - "same": both show the same physical artwork whole. Different photographs, colour, \
 lighting, sharpness, a trimmed or kept frame, a few percent cropped off an edge, a \
-restoration state: still "same".
+restoration state: still "same". A cast over the whole picture (white balance, a faded \
+photograph or print, yellowed varnish: flowers cream in one and yellow in the other) is \
+photography, not another artwork: compare shapes and their places.
 - "part": one picture shows only a part of the artwork the other shows whole (a head, a \
 corner, a window), so much is missing that it is no longer the whole work.
 - "photo": one picture is a photograph of the artwork the other shows, together with \
@@ -111,7 +116,8 @@ or a photograph of it. A wrong claim hides an artwork the owner wanted to see.
 
 Look for evidence against the claim: figures, objects, a signature or edges in one \
 picture that the other lacks where they should overlap; different shapes or \
-proportions; colours that differ beyond lighting and photography; a part that shows \
+proportions; colours that differ beyond lighting and photography (a cast over the whole \
+picture, cream for yellow, is photography); a part that shows \
 more around its edges than the whole has there; a fragment or cut-down painting that \
 is a canvas of its own; a print, an engraving, a copy or another version instead of the \
 same object. Titles, makers and dates are often wrong: judge by the pictures.
@@ -271,6 +277,19 @@ CRITIC_MODEL = HAIKU
 PAIRS_A_NIGHT = 400
 #: Pairs remembered as judged, the newest.
 JUDGED_MAX = 20_000
+#: The second opinion: a pair whose thumbnails' hashes are this close
+#: (``library.twins.HASH_NEAR``) that Haiku kept apart is asked of Sonnet,
+#: and a claim of Sonnet's goes to Sonnet as the critic. Haiku called the
+#: faded and the clean photograph of van Gogh's "Poppy Flowers" (35 bits
+#: apart) "yellow chrysanthemums against white flowers", Sonnet one picture
+#: (Mateusz 2026-11-23). About 0.4 cent a pair, few pairs.
+SECOND = SONNET
+SECOND_A_NIGHT = 100
+#: What Haiku said that is asked again.
+SECOND_FOR = ("different", "unsure")
+#: Raised to ask again of the pairs judged before: what Haiku kept apart
+#: before the second opinion was (1: 2026-11-23).
+SECOND_AGAIN = 1
 
 
 class NightJudge(CheckedNight):
@@ -299,8 +318,9 @@ class NightJudge(CheckedNight):
 
     def rounds(self, ahead: bool) -> int:
         # Ordered ahead: its answer, the critic's claims, tonight's pairs;
-        # else the critic's claims, or the judge's pairs and then theirs.
-        return 3 if ahead else 2
+        # else the critic's claims, or the judge's pairs and then theirs;
+        # and the second opinions with their claims.
+        return 5 if ahead else 4
 
     # -- state -----------------------------------------------------------------
 
@@ -317,10 +337,16 @@ class NightJudge(CheckedNight):
 
     def _pairs(self, state: dict[str, Any]) -> list[tuple[str, Item, Item, str]]:
         """What to ask next: the claims waiting for the critic, else the
-        suspects not judged yet (``(key, a, b, claim)``)."""
+        pairs waiting for the second opinion (claim "", in ``second``),
+        else the suspects not judged yet (``(key, a, b, claim)``)."""
         claims: dict[str, str] = state.get("claims") or {}
+        second: dict[str, Any] = state.get("second") or {}
+        limit = PAIRS_A_NIGHT
         if claims:
             wanted = list(claims.items())
+        elif second:
+            wanted = [(k, "") for k in second]
+            limit = SECOND_A_NIGHT
         else:
             judged = state.get("judged") or {}
             wanted = [(k, "") for k in self.twins.suspects() if k not in judged]
@@ -331,7 +357,7 @@ class NightJudge(CheckedNight):
         found: list[tuple[str, Item, Item, str]] = []
         gone: list[str] = []
         for key, claim in wanted:
-            if len(found) >= PAIRS_A_NIGHT:
+            if len(found) >= limit:
                 break
             a_id, _, b_id = key.partition("|")
             a, b = self.library.get(a_id), self.library.get(b_id)
@@ -356,10 +382,49 @@ class NightJudge(CheckedNight):
         self.twins.drop_suspects(keys)
         state = self.state()
         claims = state.get("claims") or {}
+        second = state.get("second") or {}
+        by = state.get("claim_models") or {}
         for key in keys:
             claims.pop(key, None)
+            second.pop(key, None)
+            by.pop(key, None)
         state["claims"] = claims
+        state["second"] = second
+        state["claim_models"] = by
         self._save(state)
+
+    def _again(self, state: dict[str, Any]) -> dict[str, Any]:
+        """Once (:data:`SECOND_AGAIN`): the pairs Haiku kept apart before
+        there was a second opinion, hashed near, waiting for it."""
+        if int(state.get("second_again") or 0) >= SECOND_AGAIN:
+            return state
+        second = dict(state.get("second") or {})
+        for key, said in (state.get("judged") or {}).items():
+            if (
+                isinstance(said, dict)
+                and said.get("judge") in SECOND_FOR
+                and "second" not in said
+                and self._near(key)
+            ):
+                second[key] = said.get("judge")
+        state["second"] = second
+        state["second_again"] = SECOND_AGAIN
+        self._save(state)
+        if second:
+            log.info("twins judge: %d pairs kept apart before asked again", len(second))
+        return state
+
+    def _near(self, key: str) -> bool:
+        """Whether the pair's thumbnails are hashed near (one picture, by
+        their hashes: :data:`library.twins.HASH_NEAR`)."""
+        a_id, _, b_id = key.partition("|")
+        a, b = self.library.get(a_id), self.library.get(b_id)
+        if a is None or b is None:
+            return False
+        hashes = (a.picture_hash, b.picture_hash)
+        if not all(hashes) or NO_HASH in hashes:
+            return False
+        return hash_distance(*hashes) <= HASH_NEAR
 
     def order(self) -> bool:
         """The next pairs (the critic's first) asked of the Batch API, unless
@@ -369,15 +434,22 @@ class NightJudge(CheckedNight):
         state = self.state()
         if state.get("order"):
             return False
+        state = self._again(state)
         pairs = self._pairs(state)
         if not pairs:
             return False
         critic = bool(pairs[0][3])
+        second = not critic and pairs[0][0] in (state.get("second") or {})
+        by: dict[str, str] = state.get("claim_models") or {}
         requests: list[dict[str, Any]] = []
         keys: dict[str, str] = {}
+        models: dict[str, str] = {}
         broken: list[str] = []
         for n, (key, a, b, claim) in enumerate(pairs):
-            model = CRITIC_MODEL if critic else JUDGE
+            if critic:
+                model = SECOND if by.get(key) == SECOND else CRITIC_MODEL
+            else:
+                model = SECOND if second else JUDGE
             try:
                 question = params(self.images, a, b, model, "low", claim)
             except Exception as err:  # a thumbnail gone, refused: no opinion
@@ -387,6 +459,7 @@ class NightJudge(CheckedNight):
             custom = f"p{n}"
             requests.append({"custom_id": custom, "params": question})
             keys[custom] = key
+            models[custom] = model
         if broken:
             self._forget(broken)
         if not requests:
@@ -395,12 +468,18 @@ class NightJudge(CheckedNight):
         if batch is None:
             return False
         state = self.state()
-        state["order"] = {"batch": batch, "critic": critic, "pairs": keys}
+        state["order"] = {
+            "batch": batch,
+            "critic": critic,
+            "second": second,
+            "pairs": keys,
+            "models": models,
+        }
         self._save(state)
         log.info(
             "twins judge: %d pairs ordered for the %s (batch %s)",
             len(keys),
-            "critic" if critic else "judge",
+            "critic" if critic else "second opinion" if second else "judge",
             batch,
         )
         return True
@@ -418,18 +497,23 @@ class NightJudge(CheckedNight):
         if results is None:
             return False
         critic = bool(order.get("critic"))
-        model = CRITIC_MODEL if critic else JUDGE
+        second_round = bool(order.get("second"))
+        models: dict[str, str] = order.get("models") or {}
         claims: dict[str, str] = dict(state.get("claims") or {})
+        #: Waiting for the second opinion; the model of each claim.
+        second: dict[str, Any] = dict(state.get("second") or {})
+        by: dict[str, str] = dict(state.get("claim_models") or {})
         #: What the judge said of each claim, for the owner's list.
         reasons: dict[str, str] = dict(state.get("reasons") or {})
         judged: dict[str, Any] = dict(state.get("judged") or {})
         done: list[str] = []
-        counts = {"kept": 0, "claims": 0, "written": 0, "rejected": 0}
+        counts = {"kept": 0, "claims": 0, "second": 0, "written": 0, "rejected": 0}
         at = datetime.now(UTC).date().isoformat()
         for custom, message in results:
             key = order["pairs"].get(custom)
             if key is None or message is None:
                 continue  # failed: asked again another night
+            model = models.get(custom) or (CRITIC_MODEL if critic else JUDGE)
             answer = self.claude.answer(KIND, model, message, batch=True)
             claim = claims.get(key, "") if critic else ""
             found, _, why = read(answer.data, claim)
@@ -437,15 +521,25 @@ class NightJudge(CheckedNight):
                 continue
             a_id, _, b_id = key.partition("|")
             if not critic:
+                first = second.pop(key, None) if second_round else None
                 if found in CLAIMS:
                     claims[key] = found
                     reasons[key] = str(why or "")[:400]
+                    if second_round:
+                        by[key] = SECOND
                     counts["claims"] += 1
+                elif not second_round and found in SECOND_FOR and self._near(key):
+                    second[key] = found  # one picture by their hashes: Sonnet asked
+                    done.append(key)  # no suspect any more: waits in ``second``
+                    counts["second"] += 1
                 else:
-                    judged[key] = {"judge": found, "at": at}
+                    judged[key] = {"judge": first or found, "at": at}
+                    if second_round:
+                        judged[key]["second"] = found
                     done.append(key)
                     counts["kept"] += 1
                 continue
+            by.pop(key, None)
             claims.pop(key, None)
             said = {"why": reasons.pop(key, ""), "critic": str(why or "")[:400]}
             written = found == "confirm" and self.twins.apply(a_id, b_id, claim, said)
@@ -458,15 +552,19 @@ class NightJudge(CheckedNight):
         state = self.state()
         state.pop("order", None)
         state["claims"] = claims
+        state["second"] = second
+        state["claim_models"] = {k: v for k, v in by.items() if k in claims}
         state["reasons"] = {k: v for k, v in reasons.items() if k in claims}
         state["judged"] = judged
         self._save(state)
         self.twins.drop_suspects(done)
         log.info(
-            "twins judge (%s): %d kept apart, %d claims for the critic, %d written, %d rejected",
-            "critic" if critic else "judge",
+            "twins judge (%s): %d kept apart, %d claims for the critic, %d for a second "
+            "opinion, %d written, %d rejected",
+            "critic" if critic else "second opinion" if second_round else "judge",
             counts["kept"],
             counts["claims"],
+            counts["second"],
             counts["written"],
             counts["rejected"],
         )

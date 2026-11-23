@@ -74,7 +74,7 @@ class Change(BaseModel):
     #: "copy", "detail" or "scene", and its Polish name.
     relation: str
     relation_name: str
-    #: "pictures", "hash" or "judge" (the doubtful ones).
+    #: "pictures", "hash", "wikidata" or "judge" (the doubtful ones).
     by: str
     #: What the judge and its critic said (the judge's changes only).
     why: str = ""

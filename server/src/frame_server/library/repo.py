@@ -1029,6 +1029,7 @@ class Library:
                         # The thumbnail kept stays the one made again.
                         "picture_stamp": existing.picture_stamp,
                         "holder": item.holder or existing.holder,
+                        "work_qid": item.work_qid or existing.work_qid,
                         # Looked up where the museum's answer said none
                         # (frame_server.media): kept when it says none again.
                         "medium": item.medium or existing.medium,

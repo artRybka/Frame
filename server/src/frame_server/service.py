@@ -98,6 +98,7 @@ from .study import Study
 from .study_gate import StudyGate
 from .tailnet import Tailnet
 from .users import Users
+from .work_ids import WorkIds
 
 log = logging.getLogger(__name__)
 
@@ -402,6 +403,7 @@ class FrameService:
         # The museums of works from Commons, Openverse, WikiArt: looked up
         # when a card opens and at night.
         self.holders = Holders(self.library, museum_client)
+        self.work_ids = WorkIds(self.library, self.twins, museum_client)
         self.copies.work_qid = self.holders.work_qid
         # How works are made, where their source does not say (the app
         # paints a work's colours in its technique): on the card and at night.
