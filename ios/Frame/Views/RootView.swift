@@ -114,9 +114,6 @@ struct RootView: View {
             Tab("Playlisty", systemImage: "rectangle.stack", value: Screen.playlists) { PlaylistsView() }
             Tab("Szukaj", systemImage: "magnifyingglass", value: Screen.search, role: .search) { SearchView() }
         }
-        // In Galeria the bar folds to one button as the works move on
-        // (Mateusz 2026-11-23); elsewhere it stays as it was.
-        .tabBarMinimizeBehavior(tab == .gallery ? .onScrollDown : .automatic)
         // Cards and the send bar, in a window above the app (over sheets too).
         .background { NoticeWindowInstaller(model: model) }
         // "Teraz" shows the full send bar under the picture.

@@ -4,12 +4,14 @@ import SwiftUI
 /// the whole screen, cut to fill it. A swipe up brings the next, down the one
 /// before; the order is the person's own (`GET /api/gallery`: their hearts,
 /// works like them, new ones). A tap shows the work's caption on it, a glass
-/// heart in the top corner and the tab bar (folding to one button as the
-/// works move on); another tap takes them away. The caption opens the
+/// heart in the top corner and the tab bar; another tap takes them away. The caption opens the
 /// work's card; a double tap gives a heart; a hold opens the work's menu.
 struct GalleryView: View {
     @Environment(AppModel.self) private var model
-    @State private var works: [RemoteItem] = []
+    /// The works not seen yet when the app was last left: shown at once on
+    /// the next launch while the server is asked for more (Mateusz
+    /// 2026-11-23: "czarny ekran zaraz po otwarciu").
+    @State private var works: [RemoteItem] = GalleryView.remembered()
     @State private var position: String?
     @State private var chrome = LaunchRoute.screen == "gallery-caption"
     @State private var loading = false
@@ -50,9 +52,10 @@ struct GalleryView: View {
                     ItemDetailView(itemID: id)
                 }
         }
-        .task { if works.isEmpty { await more() } }
+        .task { if works.count < Self.batch { await more() } }
         .onChange(of: position) { _, id in
             guard let id, let index = works.firstIndex(where: { $0.id == id }) else { return }
+            Self.remember(Array(works.dropFirst(index + 1)))
             if index >= works.count - Self.ahead { Task { await more() } }
         }
         // Hearts given here change what comes next: a fresh batch is asked
@@ -63,7 +66,7 @@ struct GalleryView: View {
         ScrollView(.vertical) {
             LazyVStack(spacing: 0) {
                 ForEach(works) { work in
-                    GalleryPage(work: work, bloom: bloom == work.id)
+                    GalleryPage(work: work, current: work.id == shown?.id, bloom: bloom == work.id)
                         .containerRelativeFrame([.horizontal, .vertical])
                         .contentShape(Rectangle())
                         .onTapGesture(count: 2) { heart(work) }
@@ -150,6 +153,24 @@ struct GalleryView: View {
         path.append(work.id)
     }
 
+    private static let rememberedKey = "gallery.next"
+    private static let rememberedMost = 24
+
+    /// The works left to see, kept for the next launch (CI screenshots
+    /// start from the demo's own order).
+    private static func remembered() -> [RemoteItem] {
+        guard LaunchRoute.screen.isEmpty,
+              let data = UserDefaults.standard.data(forKey: rememberedKey),
+              let works = try? JSONDecoder().decode([RemoteItem].self, from: data)
+        else { return [] }
+        return works
+    }
+
+    private static func remember(_ works: [RemoteItem]) {
+        guard let data = try? JSONEncoder().encode(Array(works.prefix(rememberedMost))) else { return }
+        UserDefaults.standard.set(data, forKey: rememberedKey)
+    }
+
     private func more() async {
         guard !loading else { return }
         loading = true
@@ -160,37 +181,201 @@ struct GalleryView: View {
             let have = Set(works.map(\.id))
             works += next.filter { !have.contains($0.id) }
             if position == nil { position = works.first?.id }
+            let at = works.firstIndex { $0.id == position } ?? 0
+            Self.remember(Array(works.dropFirst(at + 1)))
         } catch {
             failed = works.isEmpty
         }
     }
 }
 
-/// One work on the whole screen, cut to fill it around what draws the eye;
-/// its thumbnail first, the full picture over it as it comes.
+/// One work on the whole screen, cut to fill it around what draws the eye.
+/// The thumbnail comes first; the full picture takes its place as a lens
+/// finding focus (a moment's blur sharpening), cut around the same point so
+/// nothing moves (Mateusz 2026-11-23: "mignięcie/przesunięcie"). A work much
+/// wider than the screen drifts across slowly while it is shown, each work
+/// its own way (`Drift`).
 private struct GalleryPage: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let work: RemoteItem
+    /// On screen now: a wide work drifts.
+    var current = false
     var bloom = false
 
+    @State private var thumb: UIImage?
+    @State private var full: UIImage?
+    @State private var focus: UnitPoint?
+    /// The full picture's blur, 0 once it has "found focus".
+    @State private var blur: CGFloat = 0
+    /// How far the drift has gone (0…1).
+    @State private var drift: CGFloat = 0
+
+    private static let thumbPixel: CGFloat = 900
+    private static let fullPixel: CGFloat = 2800
+
     var body: some View {
-        ZStack {
-            ArtImage(ref: .thumb(work.id), placeholder: Color.black, contentMode: .fill, subjectFocus: true)
-            ArtImage(
-                ref: .image(work.id), placeholder: .clear, maxPixel: 2800, contentMode: .fill,
-                priority: .high, subjectFocus: true
-            )
-            if bloom {
-                Image(systemName: "heart.fill")
-                    .font(.system(size: 96))
-                    .foregroundStyle(.white.opacity(0.92))
-                    .shadow(color: .black.opacity(0.35), radius: 12)
-                    .transition(.scale(scale: 0.4).combined(with: .opacity))
+        GeometryReader { geo in
+            ZStack {
+                if let shown = full ?? thumb, let focus {
+                    let layout = Fill(picture: shown.size, box: geo.size, focus: focus)
+                    let motion = layout.wide && !reduceMotion ? Drift(id: work.id, layout: layout) : nil
+                    ZStack {
+                        if let thumb { picture(thumb, layout) }
+                        if let full { picture(full, layout).blur(radius: blur) }
+                    }
+                    .scaleEffect(motion?.scale(at: drift) ?? 1 + blur * 0.002)
+                    .offset(motion?.offset(at: drift) ?? .zero)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
+                    .transition(.opacity)
+                }
+                if bloom {
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 96))
+                        .foregroundStyle(.white.opacity(0.92))
+                        .shadow(color: .black.opacity(0.35), radius: 12)
+                        .transition(.scale(scale: 0.4).combined(with: .opacity))
+                }
             }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .task(id: geo.size.width > 0 && current) { await startDrift(geo.size) }
         }
+        .background(placeholder)
         .animation(.spring(duration: 0.35), value: bloom)
-        .clipped()
+        .task(id: work.id) { await load() }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(work.item.displayTitle)
+    }
+
+    /// The work's own main colour, dimmed, while its picture comes.
+    private var placeholder: Color {
+        let hex = work.item.colors.first?.hex ?? ""
+        return (Color(hexString: hex) ?? .black).opacity(0.35)
+    }
+
+    private func picture(_ image: UIImage, _ layout: Fill) -> some View {
+        Image(uiImage: image)
+            .resizable()
+            .interpolation(.high)
+            .frame(width: layout.size.width, height: layout.size.height)
+            .offset(layout.offset)
+    }
+
+    private func load() async {
+        guard let thumbRequest = model.backend.request(for: .thumb(work.id)),
+              let fullRequest = model.backend.request(for: .image(work.id))
+        else { return }
+        // In memory already (seen a moment ago): from the first frame.
+        if let image = ImageLoader.inMemory(for: fullRequest, maxPixel: Self.fullPixel) {
+            await settle(image, key: ImageLoader.pictureKey(fullRequest))
+            full = image
+            return
+        }
+        if let image = ImageLoader.inMemory(for: thumbRequest, maxPixel: Self.thumbPixel) {
+            await settle(image, key: ImageLoader.pictureKey(thumbRequest))
+            thumb = image
+        } else if let image = try? await ImageLoader.shared.image(for: thumbRequest, maxPixel: Self.thumbPixel) {
+            await settle(image, key: ImageLoader.pictureKey(thumbRequest))
+            withAnimation(.easeOut(duration: 0.3)) { thumb = image }
+        }
+        guard !Task.isCancelled,
+              let image = try? await ImageLoader.shared.image(
+                  for: fullRequest, maxPixel: Self.fullPixel, priority: current ? .high : .normal
+              ),
+              !Task.isCancelled
+        else { return }
+        await settle(image, key: ImageLoader.pictureKey(fullRequest))
+        guard thumb != nil else {
+            withAnimation(.easeOut(duration: 0.3)) { full = image }
+            return
+        }
+        // Over the thumbnail as it looked, then into focus.
+        blur = 7
+        full = image
+        withAnimation(.easeOut(duration: 0.55)) { blur = 0 }
+    }
+
+    /// The point the picture is cut around: found once, on whichever
+    /// picture comes first, and kept for the other.
+    private func settle(_ image: UIImage, key: String) async {
+        guard focus == nil else { return }
+        focus = await SubjectFocus.shared.point(in: image, key: key)
+    }
+
+    private func startDrift(_ box: CGSize) async {
+        guard current, !reduceMotion else {
+            drift = 0
+            return
+        }
+        // A breath before it starts, so a quick swipe past does not move it.
+        try? await Task.sleep(for: .seconds(0.8))
+        guard !Task.isCancelled, let shown = full ?? thumb, let focus else { return }
+        let layout = Fill(picture: shown.size, box: box, focus: focus)
+        guard layout.wide else { return }
+        let motion = Drift(id: work.id, layout: layout)
+        withAnimation(.easeInOut(duration: motion.duration)) { drift = 1 }
+    }
+}
+
+/// A picture cut to fill a box around `focus`: its size and where it lies.
+private struct Fill {
+    let size: CGSize
+    let offset: CGSize
+    /// How far it can move either way and still fill the box.
+    let room: CGSize
+    let focus: UnitPoint
+
+    init(picture: CGSize, box: CGSize, focus: UnitPoint) {
+        let scale = max(box.width / max(picture.width, 1), box.height / max(picture.height, 1))
+        size = CGSize(width: picture.width * scale, height: picture.height * scale)
+        room = CGSize(width: max(size.width - box.width, 0) / 2, height: max(size.height - box.height, 0) / 2)
+        offset = CGSize(
+            width: min(max((0.5 - focus.x) * size.width, -room.width), room.width),
+            height: min(max((0.5 - focus.y) * size.height, -room.height), room.height)
+        )
+        self.focus = focus
+    }
+
+    /// Much wider than the box: a good part of it is cut off.
+    var wide: Bool { room.width * 2 > size.width * 0.3 }
+}
+
+/// A wide work's slow drift while it is shown (Mateusz 2026-11-23: "z lekkiego
+/// zoomu, oddalenie i pano z lewej na prawo, ale żeby nie było monotonnie"):
+/// from a little closer to the whole height, across the picture. Each work
+/// its own way, the same each time it comes back: to the right or to the
+/// left, from an edge or from what draws the eye, closer or not, faster or
+/// slower.
+private struct Drift {
+    let duration: Double
+    private let fromScale: CGFloat
+    private let from: CGFloat
+    private let to: CGFloat
+
+    init(id: String, layout: Fill) {
+        var seed = UInt64(truncatingIfNeeded: id.utf8.reduce(5381) { ($0 &* 33) &+ Int($1) })
+        func next() -> Double {
+            seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            return Double(seed >> 11) / Double(1 << 53)
+        }
+        let room = layout.room.width
+        let rightward = next() < 0.5
+        let fromFocus = next() < 0.35
+        fromScale = 1 + CGFloat(0.04 + next() * 0.1)
+        duration = 14 + next() * 10
+        // Where the picture lies: +room shows its left edge, -room its right
+        // one. The drift moves it from where it was cut (`layout.offset`).
+        let start = fromFocus ? layout.offset.width : (rightward ? room : -room)
+        let end = rightward ? -room * CGFloat(0.6 + next() * 0.4) : room * CGFloat(0.6 + next() * 0.4)
+        from = start - layout.offset.width
+        to = end - layout.offset.width
+    }
+
+    func scale(at t: CGFloat) -> CGFloat { fromScale + (1 - fromScale) * t }
+
+    func offset(at t: CGFloat) -> CGSize {
+        CGSize(width: from + (to - from) * t, height: 0)
     }
 }
 
@@ -233,9 +418,6 @@ private struct GalleryCaption: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: "chevron.right")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(Theme.inkSoft)
             }
             .padding(.horizontal, Theme.gutter + 2)
             .padding(.top, 70)
