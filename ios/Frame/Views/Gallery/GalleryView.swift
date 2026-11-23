@@ -310,8 +310,8 @@ private struct GalleryPage: View {
                     .animation(whole ? .easeOut(duration: 0.3) : .easeIn(duration: 0.22), value: whole)
                     ZStack {
                         ZStack {
-                            if let thumb { picture(thumb, size: place.size, offset: place.offset) }
-                            if let full { picture(full, size: place.size, offset: place.offset).opacity(fullShown) }
+                            if let thumb { picture(thumb, size: place.size, offset: place.offset, rounded: true) }
+                            if let full { picture(full, size: place.size, offset: place.offset, rounded: true).opacity(fullShown) }
                         }
                         // Faint (21:41: "cień za dziełem znacznie słabszy").
                         .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
@@ -343,13 +343,13 @@ private struct GalleryPage: View {
     /// pełnym ekranie pokazuj także tytuł i autora"): low on the cut work,
     /// on a shade; right under the whole one ("tytuł i autora przesuwaj
     /// bezpośrednio pod dzieło"), with the museum and the artist's years.
+    /// Under the whole work it stands low too, above the tab bar (22:08:
+    /// "Jednak na „całym dziele” tytuł, autor, guzik dajmy u dołu strony").
     private func caption(_ place: Whole?, _ geo: GeometryProxy) -> some View {
-        let box = geo.size
-        let under = place.map { box.height / 2 + $0.offset.height + $0.size.height / 2 + Whole.gap }
+        let foot = max(geo.safeAreaInsets.bottom, 34) + (place == nil ? 0 : Whole.tabBar)
         return GalleryCaption(work: work, polish: polish, whole: place != nil, flip: flip, open: open)
-            .padding(.top, under ?? 0)
-            .padding(.bottom, under == nil ? max(geo.safeAreaInsets.bottom, 34) : 0)
-            .frame(width: box.width, height: box.height, alignment: under == nil ? .bottom : .top)
+            .padding(.bottom, foot)
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .bottom)
     }
 
     /// Behind the whole work: its own main colour, quiet and dark
@@ -376,11 +376,14 @@ private struct GalleryPage: View {
         return (Color(hexString: hex) ?? .black).opacity(0.35)
     }
 
-    private func picture(_ image: UIImage, size: CGSize, offset: CGSize) -> some View {
+    /// Rounded a little when whole, as on the work's card (Mateusz
+    /// 2026-11-23 22:08: "Narożniki dzieła odrobinę zaokrąglone").
+    private func picture(_ image: UIImage, size: CGSize, offset: CGSize, rounded: Bool = false) -> some View {
         Image(uiImage: image)
             .resizable()
             .interpolation(.high)
             .frame(width: size.width, height: size.height)
+            .clipShape(RoundedRectangle(cornerRadius: rounded ? 8 : 0, style: .continuous))
             .offset(offset)
     }
 
@@ -489,6 +492,8 @@ private struct Whole {
 
     /// The caption's share of the screen's height, and the margins.
     static let caption: CGFloat = 0.36
+    /// The floating tab bar's height, the caption above it.
+    static let tabBar: CGFloat = 62
     static let side: CGFloat = 20
     static let gap: CGFloat = 12
 
@@ -734,26 +739,19 @@ private struct GalleryCaption: View {
     private var words: some View {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
-                    let held = item.kind == .artwork ? item.heldBy ?? Names.source(item.source) : Names.source(item.source)
-                    if whole, !held.isEmpty { Eyebrow(held, color: Theme.vermilion).transition(.opacity) }
-                    TitleWithYear(
-                        title: title,
-                        date: nonEmpty(polish?.date) ?? item.dateText,
-                        font: .serif(26, weight: .semibold)
-                    )
-                    .fixedSize(horizontal: false, vertical: true)
-                    .lineLimit(whole ? 2 : 3)
-                    VStack(alignment: .leading, spacing: 0) {
-                        if !item.artist.isEmpty {
-                            Text(bound: Names.artist(item.artist))
-                                .font(.serif(19))
-                                .foregroundStyle(Theme.ink)
-                                .lineLimit(1)
-                        }
-                        let bio = nonEmpty(polish?.artistNote) ?? item.artistBio
-                        if whole, !bio.isEmpty {
-                            Text(bound: bio).font(.subheadline).foregroundStyle(Theme.inkSoft).lineLimit(1)
-                        }
+                    // Only the title and the artist, both ways (Mateusz
+                    // 2026-11-23 22:08: "bez nazwy muzeum, daty, narodowości
+                    // i okresu życia").
+                    Text(bound: title)
+                        .font(.serif(26, weight: .semibold))
+                        .foregroundStyle(Theme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(whole ? 2 : 3)
+                    if !item.artist.isEmpty {
+                        Text(bound: Names.artist(item.artist))
+                            .font(.serif(19))
+                            .foregroundStyle(Theme.ink)
+                            .lineLimit(1)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
