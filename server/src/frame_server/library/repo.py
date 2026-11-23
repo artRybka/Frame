@@ -2329,11 +2329,33 @@ class Library:
         return playlist
 
     def playlists(self, user: str | None = None) -> list[Playlist]:
-        """All playlists, or those ``user`` sees (theirs and shared ones)."""
+        """All playlists, or those ``user`` sees (theirs and shared ones).
+        Never "Kolekcja prywatna" as the frame plays it (:meth:`own_works`):
+        only :meth:`playlist` finds that one."""
         with self._db() as db:
             rows = db.execute("SELECT id, data FROM playlists ORDER BY id").fetchall()
         found = [self._playlist_of(pid, data) for pid, data in rows]
+        found = [p for p in found if not p.own_works]
         return found if user is None else [p for p in found if p.visible_to(user)]
+
+    def own_works(self) -> Playlist:
+        """The owner's own works as a playlist for the frame ("Prezentuj na
+        ramce" on "Kolekcja prywatna"), made the first time it is asked."""
+        with self._db() as db:
+            rows = db.execute("SELECT id, data FROM playlists ORDER BY id").fetchall()
+        for pid, data in rows:
+            found = self._playlist_of(pid, data)
+            if found.own_works:
+                return found
+        rules = PlaylistRules(kinds=[ItemKind.OWN], sources=["upload"])
+        made = Playlist(
+            name="Kolekcja prywatna",
+            rules=rules,
+            owner=OWNER_ID,
+            own_works=True,
+            sort=PlaylistSort(key="added", reverse=True),
+        )
+        return self.save_playlist(made)
 
     def arranged_playlists(self, user: str) -> list[Playlist]:
         """The playlists ``user`` sees, in the order they put the cards in
@@ -2463,6 +2485,7 @@ class Library:
             mine=playlist.owner == viewer_id(),
             limit=playlist.limit,
             grows=playlist.grows,
+            own_works=playlist.own_works,
             sort=None if playlist.kind == PlaylistKind.ALBUM else self.order_of(playlist),
         )
 

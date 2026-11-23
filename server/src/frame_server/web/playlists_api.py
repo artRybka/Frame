@@ -21,7 +21,7 @@ from ..library.duplicates import Works
 from ..library.icloud import album_token
 from ..service import FrameService
 from ..users import User
-from .deps import CurrentUser, require_frame, require_token, service
+from .deps import CurrentUser, require_frame, require_owner, require_token, service
 from .library_api import museum_trouble
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)], tags=["playlists"])
@@ -337,6 +337,17 @@ def sync_album(playlist_id: int, svc: Svc, user: CurrentUser) -> dict[str, Any]:
 def last_sync(playlist_id: int, svc: Svc, user: CurrentUser) -> AlbumSync | None:
     _playlist(svc, playlist_id, user)
     return svc.library.album_sync(playlist_id)
+
+
+@router.post(
+    "/own/play", status_code=202, dependencies=[Depends(require_frame), Depends(require_owner)]
+)
+async def play_own_works(svc: Svc, user: CurrentUser) -> dict[str, Any]:
+    """ "Prezentuj na ramce" on "Kolekcja prywatna": the owner's own works on
+    the frame, as a playlist the app never lists (Mateusz 2026-11-23)."""
+    playlist = svc.library.own_works()
+    assert playlist.id is not None
+    return await play(playlist.id, svc, user)
 
 
 @router.post(
