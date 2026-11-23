@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.347
+
+- Galeria bez ruchu od przechylenia telefonu: dzieło tylko się oddala
+  i bardzo delikatnie przesuwa w bok, za każdym razem w inną stronę.
+
 ## 1.145.346
 
 - Galeria: tytuł, autor i pasek zawsze widoczne. Dotknięcie dzieła
